@@ -1,0 +1,33 @@
+Package: BayesTools
+Title: Tools for Bayesian Analyses
+Version: 0.0.0.9000
+Description: Provides tools for conducting Bayesian analyses. The package contains 
+    functions for creating a wide range of prior distribution objects, mixing posterior 
+    samples from JAGS and Stan models, plotting posterior distributions, and etc...
+    The tools for working with prior distribution span from visualization, generating JAGS 
+    and bridgesampling syntax to basic functions such as rng, quantile, and distribution functions. 
+    creating samples, computing quantiles. 
+Maintainer: František Bartoš <f.bartos96@gmail.com>
+Authors@R: c( 
+    person("František", "Bartoš",     role = c("aut", "cre"),
+    email   = "f.bartos96@gmail.com", comment = c(ORCID = "0000-0002-0018-5573")),
+    person("Maximilian", "Maier",     role = "aut",
+    email   = "maximilianmaier0401@gmail.com", comment = c(ORCID = "0000-0002-9873-6096"))
+    )
+URL: https://fbartos.github.io/BayesTools/
+BugReports: https://github.com/FBartos/BayesTools/issues
+License: GPL-3
+Encoding: UTF-8
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.1.1
+Depends:
+    stats
+Imports:
+    graphics,
+    extraDistr,
+    DPQ
+Suggests: 
+    ggplot2,
+    testthat,
+    vdiffr
