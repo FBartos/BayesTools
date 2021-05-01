@@ -1,6 +1,6 @@
 Package: BayesTools
 Title: Tools for Bayesian Analyses
-Version: 0.0.0.9000
+Version: 0.0.0.9001
 Description: Provides tools for conducting Bayesian analyses. The package contains 
     functions for creating a wide range of prior distribution objects, mixing posterior 
     samples from JAGS and Stan models, plotting posterior distributions, and etc...
@@ -26,7 +26,8 @@ Depends:
 Imports:
     graphics,
     extraDistr,
-    DPQ
+    rjags,
+    bridgesampling
 Suggests: 
     ggplot2,
     testthat,
