@@ -19,11 +19,11 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
                         digits_estimates = 2, silent = FALSE, ...){
 
   .check_prior(x, "x")
-  .check_logical(short_name, "short_name")
-  .check_logical(parameter_names, "parameter_names")
-  .check_n(digits_estimates, "digits_estimates")
-  .check_logical(plot, "plot")
-  .check_logical(silent, "silent")
+  check_bool(short_name, "short_name")
+  check_bool(parameter_names, "parameter_names")
+  check_int(digits_estimates, "digits_estimates", lower = 0)
+  check_bool(plot, "plot")
+  check_bool(silent, "silent")
 
   if(plot){
     silent <- TRUE

@@ -204,10 +204,9 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
     return(list())
   }
 
-  .check_n(chains, "chains")
-  .check_x(seed, name = "seed")
-  if(!is.list(prior_list))
-    stop("'prior_list' must be a list.")
+  check_int(chains, "chains", lower = 1)
+  check_real(seed, "seed")
+  check_list(prior_list, "prior_list")
   if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
 

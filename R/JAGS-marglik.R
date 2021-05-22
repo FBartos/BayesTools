@@ -33,8 +33,8 @@ JAGS_bridgesampling <- function(fit, data, prior_list, log_posterior,
                                 maxiter = 10000, silent = TRUE, ...){
 
 
-  .check_logical(silent, "silent")
-  .check_n(maxiter, "maxiter")
+  check_bool(silent, "silent")
+  check_int(maxiter, "maxiter", lower = 1)
 
 
   ### check the input and split it on posterior and data

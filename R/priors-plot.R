@@ -26,23 +26,14 @@ plot.prior <- function(x, plot_type = "base",
 
   # check input (most arguments are checked within density)
   .check_prior(x)
-  if(!length(plot_type) == 1 | !is.character(plot_type))
-    stop("'plot_type' must be a character vector of length 1.")
-  if(plot_type == "ggplot2")
-    plot_type <- "ggplot"
+  check_char(plot_type, "plot_type")
   if(!plot_type %in% c("base", "ggplot"))
     stop("The passed 'plot_type' is not supported for plotting. See '?plot.RoBMA' for more details.")
-  if(plot_type == "ggplot"){
-    if(!try(requireNamespace("ggplot2")))
-      stop("ggplot2 package needs to be installed. Run 'install.packages('ggplot2')'")
-  }
-  .check_logical(individual, "individual")
-  .check_logical(rescale_x, "rescale_x")
-  if(!is.null(show_figures)){
-    if(show_figures != -1){
-      .check_n(show_figures, "show_figures")
-    }
-  }
+  if(plot_type == "ggplot" && !try(requireNamespace("ggplot2")))
+    stop("ggplot2 package needs to be installed. Run 'install.packages('ggplot2')'")
+  check_bool(individual, "individual")
+  check_bool(rescale_x, "rescale_x")
+  check_int(show_figures, "show_figures", allow_NULL = TRUE)
 
 
   # get the plotting data

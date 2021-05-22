@@ -52,24 +52,27 @@ density.prior <- function(x,
                           transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE, ...){
 
   # input check
-  .check_prior(x,         name = "x")
-  .check_n(n_points,      name = "n_points")
-  .check_n(n_samples,     name = "n_samples")
-  if(!is.null(x_range_quant))
-    .check_q(x_range_quant, name = "x_range_quant")
-  if(!is.null(x_seq))
-    .check_x(x_seq,         name = "x_seq")
-  if(!is.null(x_range)){
-    if(!is.vector(x_range) | length(x_range) != 2 | !is.numeric(x_range))
-      stop("The 'x_range' argument must be a numeric vector of length 2.")
-    if(x_range[1] >= x_range[2])
-      stop("The lower range limit must be lower than the upper range limit.")
+  .check_prior(x, "x")
+  check_real(x_seq, "x_seq", check_length = 0, allow_NULL = TRUE)
+  check_real(x_range, "x_range", check_length = 2, allow_NULL = TRUE)
+  if(!is.null(x_range) && x_range[1] >= x_range[2])
+    stop("The lower range limit must be lower than the upper range limit.")
+  check_real(x_range_quant, "x_range_quant", lower = 0, upper = 1, allow_NULL = TRUE)
+  check_int(n_points, "n_points",  lower = 2)
+  check_int(n_samples, "n_samples", lower = 1)
+  check_bool(force_samples, "force_samples")
+  check_bool(individual, "individual")
+  if(!is.null(transformation)){
+    if(is.character(transformation)){
+      check_char(transformation, "transformation")
+    }else if(is.list(transformation)){
+      check_list(check_list, "check_list", check_length = 3, check_names = c("fun", "inv", "jac"), all_objects = TRUE)
+    }else{
+      stop("Uknown format of the 'transformation' argument.")
+    }
   }
-  .check_logical(force_samples, "force_samples")
-  if(!is.null(transformation_settings)){
-    .check_logical(transformation_settings, "transformation_settings")
-  }
-
+  check_list(transformation_arguments, "transformation_arguments", allow_NULL = TRUE)
+  check_bool(transformation_settings, "transformation_settings")
 
   ### setting the range
   # get plotting range if not specified
@@ -315,9 +318,7 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
 
   .check_prior(x)
   if(!is.null(quantiles)){
-    .check_q(quantiles)
-    if(quantiles >= 0.5)
-      stop("The selected quantile must be lower than 0.5.")
+    check_real(quantiles, "quantiles", upper = 0.5, allow_bound = FALSE)
   }else{
     quantiles <- .range.prior_quantile_default(x)
   }

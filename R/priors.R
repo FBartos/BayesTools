@@ -69,19 +69,15 @@
 prior <- function(distribution, parameters, truncation = list(lower = -Inf, upper = Inf), prior_odds = 1){
 
   # general input check
-  if(!(is.vector(distribution) & length(distribution) <= 2 & is.character(distribution)))
-    stop("Argument 'distribution' is incorectly specified. It must be a character vector.")
-  if(!is.list(parameters))
-    stop("Argument 'parameters' must be a list.")
-  if(!all(sapply(parameters, function(par)(is.vector(par) & is.numeric(par)))))
-    stop("Elements of the 'parameter' argument must be numeric vectors.")
-  if(!(is.list(truncation) & length(truncation) == 2))
-    stop("Argument 'truncation' must be a list of length two.")
+  check_char(distribution, "distribution")
+  check_list(parameters, "parameters")
+  sapply(seq_along(parameters), function(i)check_real(parameters[[i]], names(parameters[[i]]), check_length = 0))
+  check_list(truncation, "truncation", check_names = c("lower", "upper"), check_length = 2)
   if(is.null(names(truncation)))
     names(truncation) <- c("lower", "upper")
-  if(truncation$lower >= truncation$upper)
+  if(truncation[["lower"]] >= truncation[["upper"]])
     stop("The lower truncation point needs to be lower than the upper truncation point.")
-  .check_parameter_positive(prior_odds, "prior_odds")
+  check_real(prior_odds, "prior_odds", lower = 0, allow_bound = FALSE)
 
   # assign proper name
   distribution <- tolower(distribution)
@@ -131,7 +127,7 @@ prior <- function(distribution, parameters, truncation = list(lower = -Inf, uppe
 #' @rdname prior
 prior_none <- function(prior_odds = 1){
 
-  .check_parameter_positive(prior_odds, "prior_odds")
+  check_real(prior_odds, "prior_odds", lower = 0, allow_bound = FALSE)
 
   out <- list()
   out$distribution <- "none"
@@ -187,16 +183,10 @@ prior_none <- function(prior_odds = 1){
 prior_weightfunction <- function(distribution, parameters, prior_odds = 1){
 
   # general input check
-  if(length(distribution) != 1 & is.character(distribution))
-    stop("Argument 'distribution' is incorectly specified. It must be a character vector of length one.")
-  if(!is.list(parameters))
-    stop("Argument 'parameters' must be a list.")
-  if(!all(sapply(parameters, function(par)(is.vector(par) & is.numeric(par)))))
-    stop("Elements of the 'parameter' argument must be numeric vectors.")
-  if(!(is.vector(prior_odds) & is.numeric(prior_odds) & length(prior_odds) == 1))
-    stop("Argument 'prior_odds' must be a numeric vector of length two.")
-  if(prior_odds <= 0)
-    stop("Argument 'prior_odds' must be positive.")
+  check_char(distribution, "distribution")
+  check_list(parameters, "parameters")
+  sapply(seq_along(parameters), function(i)check_real(parameters[[i]], names(parameters[[i]]), check_length = 0))
+  check_real(prior_odds, "prior_odds", lower = 0, allow_bound = FALSE)
 
   # assign proper name
   distribution <- tolower(distribution)
