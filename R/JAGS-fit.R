@@ -1,3 +1,233 @@
+#' @title Fits a JAGS model
+#'
+#' @description A wrapper around
+#' \link[runjags]{run.jags}  that simplifies fitting jags models
+#' with usage with pre-specified model part of the jags syntax, data and list
+#' of prior distributions.
+#' @param model_syntax jags syntax for the model part
+#' @param data data fit the model
+#' @param prior_list named list of prior distribution
+#' (names correspond to the parameter names)
+#' @param chains number of chains to be run, defaults to \code{4}
+#' @param adapt number of samples used for adapting the MCMC chains, defaults to \code{500}
+#' @param burnin number of burnin iterations of the MCMC chains, defaults to \code{1000}
+#' @param sample number of sampling iterations of the MCMC chains, defaults to \code{4000}
+#' @param thin thinning interval for the MCMC samples, defaults to \code{1}
+#' @param autofit whether the models should be refitted until convergence criteria
+#' specified in \code{autofit_control}. Defaults to \code{FALSE}.
+#' @param autofit_control a list of arguments controlling the autofit function.
+#' Possible options are:
+#' \describe{
+#'   \item{max_Rhat}{maximum R-hat error for the autofit function.
+#'   Defaults to \code{1.05}.}
+#'   \item{min_ESS}{minimum effective sample size. Defaults to \code{500}.}
+#'   \item{max_error}{maximum MCMC error. Defaults to \code{1.01}.}
+#'   \item{max_SD_error}{maximum MCMC error as the proportion of standard
+#'   deviation of the parameters. Defaults to \code{0.05}.}
+#'   \item{max_time}{list specifying the time \code{time} and \code{units}
+#'   after which the automatic fitting function is stopped. The units arguments
+#'   need to correspond to \code{units} passed to \link[base]{difftime} function.}
+#'   \item{sample_extend}{number of samples between each convergence check. Defaults to
+#'   \code{1000}.}
+#' }
+#' @param parallel whether the chains should be run in parallel \code{FALSE}
+#' @param cores number of cores used for multithreading if \code{parallel = TRUE},
+#'  defaults to \code{chains}
+#' @param silent whether the function should proceed silently, defaults to \code{TRUE}
+#' @param seed seed for random number generation
+#' @param add_parameters vector of additional parameter names that should be used
+#' monitored but were not specified in the \code{prior_list}
+#' @param required_packages character vector specifying list of packages containing
+#' JAGS models required for sampling (in case that the function is run in parallel or in
+#' detached R session). Defaults to \code{NULL}.
+#'
+#' @seealso [JAGS_check_convergence()]
+#' @export
+JAGS_fit <- function(model_syntax, data, prior_list,
+                     chains = 4, adapt = 500, burnin = 1000, sample = 4000, thin = 1,
+                     autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000),
+                     parallel = FALSE, cores = chains, silent = TRUE, seed = NULL,
+                     add_parameters = NULL, required_packages = NULL){
+
+  ### check input
+  check_int(chains, "chains", lower = 1)
+  check_int(adapt,  "adapt",  lower = 10)
+  check_int(burnin, "burnin", lower = 10)
+  check_int(sample, "sample", lower = 10)
+  check_int(thin,   "thin",   lower = 1)
+  check_bool(autofit, "autofit")
+  check_list(autofit_control, "autofit_control", check_names = c("max_Rhat", "min_ESS", "max_error", "max_SD_error",  "max_time", "sample_extend"))
+  check_real(autofit_control[["max_Rhat"]],     "autofit_control:max_Rhat",     lower = 1, allow_NULL = TRUE)
+  check_real(autofit_control[["min_ESS"]],      "autofit_control:min_ESS",      lower = 0, allow_NULL = TRUE)
+  check_real(autofit_control[["max_error"]],    "autofit_control:max_error",    lower = 0, allow_NULL = TRUE)
+  check_real(autofit_control[["max_SD_error"]], "autofit_control:max_SD_error", lower = 0, upper = 1, allow_NULL = TRUE)
+  check_list(autofit_control[["max_time"]],     "autofit_control:max_time", check_names = c("time", "unit"), check_length = 2, allow_NULL = TRUE)
+  if(!is.null(autofit_control[["max_time"]])){
+    if(is.null(names(autofit_control[["max_time"]]))){
+      names(autofit_control[["max_time"]]) <- c("time", "unit")
+    }
+    check_real(autofit_control[["max_time"]][["time"]], lower = 0)
+    check_char(autofit_control[["max_time"]][["unit"]])
+    if(!autofit_control[["max_time"]][["unit"]] %in% c("secs", "mins", "hours", "days", "weeks"))
+      stop(paste0("The '",autofit_control[["max_time"]][["unit"]],"' argument in 'autofit_control:max_time' is not recognized."))
+  }else{
+    autofit_control[["max_time"]] <- list(time = 60, unit = "mins")
+  }
+  check_int(autofit_control[["sample_extend"]], "autofit_control:sample_extend", lower = 1)
+  check_bool(parallel, "parallel")
+  check_int(cores, "cores", lower = 1)
+  check_bool(silent, "silent")
+  check_int(seed, "seed", allow_NULL = TRUE)
+  check_char(add_parameters, "add_parameters", check_length = 0, allow_NULL = TRUE)
+  check_char(required_packages, "required_packages", check_length = 0, allow_NULL = TRUE)
+
+
+
+  ### create the model call
+  model_call <- list(
+    model     = JAGS_add_priors(model_syntax, prior_list),
+    data      = data,
+    inits     = JAGS_get_inits(prior_list, chains = chains, seed = seed),
+    monitor   = c(JAGS_to_monitor(prior_list), add_parameters),
+    n.chains  = chains,
+    adapt     = adapt,
+    burnin    = burnin,
+    sample    = sample,
+    thin      = thin,
+    summarise = FALSE
+  )
+
+  # parallel vs. not
+  if(parallel){
+    cl <- parallel::makePSOCKcluster(cores)
+    for(i in seq_along(required_packages)){
+      parallel::clusterCall(cl, function(x) requireNamespace(required_packages[i]))
+    }
+    model_call <- c(
+      model_call,
+      method = "rjparallel",
+      cl     = list(cl)
+    )
+  }else{
+    for(i in seq_along(required_packages)){
+      requireNamespace(required_packages[i])
+    }
+    model_call <- c(
+      model_call,
+      method = "rjags"
+    )
+  }
+
+
+  if(!is.null(seed)){
+    set.seed(seed)
+  }
+
+  # set silent mode
+  if(silent){
+    user_silent.jags    <- runjags::runjags.getOption("silent.jags")
+    user_silent.runjags <- runjags::runjags.getOption("silent.runjags")
+    runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
+  }
+
+  start_time <- Sys.time()
+  fit <- tryCatch(do.call(runjags::run.jags, model_call), error = function(e)e)
+
+  if(autofit & !inherits(fit, "error")){
+
+    converged <- JAGS_check_convergence(fit, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]])
+
+    while(!converged){
+
+      if(difftime(Sys.time(), start_time, units = autofit_control[["max_time"]][["unit"]]) > autofit_control[["max_time"]][["time"]]){
+        if(!silent)
+          warning("The automatic model fitting was terminated due to the 'max_time' constraint.")
+        break
+      }
+
+      fit <- tryCatch(runjags::extend.jags(fit, sample = autofit_control[["sample_extend"]]), error = function(e)e)
+
+      if(inherits(fit, "error")){
+        break
+      }
+
+      converged <- JAGS_check_convergence(fit, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]])
+    }
+  }
+
+  # return user settings
+  if(silent){
+    runjags::runjags.options(silent.jags = user_silent.jags, silent.runjags = user_silent.runjags)
+  }
+
+  if(parallel){
+    parallel::stopCluster(cl)
+  }
+
+  return(fit)
+}
+
+
+#' @title Assess convergence of a runjags model
+#'
+#' @description Checks whether the supplied \link[runjags]{runjags-package} model
+#' satisfied convergence criteria.
+#' @param fit a runjags model
+#' @param max_Rhat maximum R-hat error for the autofit function.
+#'   Defaults to \code{1.05}.
+#' @param min_ESS minimum effective sample size. Defaults to \code{500}.
+#' @param max_error maximum MCMC error. Defaults to \code{1.01}.
+#' @param max_SD_error maximum MCMC error as the proportion of standard
+#'   deviation of the parameters. Defaults to \code{0.05}.
+#'
+#' @seealso [JAGS_fit()]
+#' @export
+JAGS_check_convergence <- function(fit, max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05){
+
+  if(!inherits(fit, "runjags"))
+    stop("'fit' must be a runjags fit")
+  check_real(max_Rhat,     "max_Rhat",     lower = 1, allow_NULL = TRUE)
+  check_real(min_ESS,      "min_ESS",      lower = 0, allow_NULL = TRUE)
+  check_real(max_error,    "max_error",    lower = 0, allow_NULL = TRUE)
+  check_real(max_SD_error, "max_SD_error", lower = 0, upper = 1, allow_NULL = TRUE)
+
+  fails         <- NULL
+  temp_summary  <- summary(fit)
+
+  if(!is.null(max_Rhat)){
+    temp_Rhat <- max(ifelse(is.na(temp_summary[, "psrf"]), 1, temp_summary[, "psrf"]))
+    if(temp_Rhat > max_Rhat){
+      fails <- c(fails, paste0("R-hat '", round(temp_Rhat, 3), "' larger then the set target (", max_Rhat, ")."))
+    }
+  }
+
+  if(!is.null(min_ESS)){
+    temp_ESS <- min(ifelse(is.na(temp_summary[, "SSeff"]), Inf, temp_summary[, "SSeff"]))
+    if(temp_ESS < min_ESS){
+      fails <- c(fails, paste0("ESS '", round(temp_ESS), "' lower then the set target (", min_ESS, ")."))
+    }
+  }
+
+  if(!is.null(max_error)){
+    temp_error    <- max(ifelse(is.na(temp_summary[, "MCerr"]), 0, temp_summary[, "MCerr"]))
+    if(temp_error > max_error){
+      fails <- c(fails, paste0("MCMC error '", round(temp_error, 5), "' larger then the set target (", max_error, ")."))
+    }
+  }
+
+  if(!is.null(max_SD_error)){
+    temp_error_SD <- max(ifelse(is.na(temp_summary[, "MC%ofSD"]),   0, temp_summary[, "MC%ofSD"]))
+    if(temp_error_SD/100 > max_SD_error){
+      fails <- c(fails, paste0("MCMC SD error '", round(temp_error_SD/100, 4), "' larger then the set target (", max_SD_error, ")."))
+    }
+  }
+
+  converged <- length(fails) == 0
+  attr(converged, "errors") <- fails
+  return(converged)
+}
+
+
 #' @title Add JAGS prior
 #'
 #' @description Adds priors to JAGS syntax or
@@ -205,7 +435,7 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
   }
 
   check_int(chains, "chains", lower = 1)
-  check_real(seed, "seed")
+  check_real(seed, "seed", allow_NULL = TRUE)
   check_list(prior_list, "prior_list")
   if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")

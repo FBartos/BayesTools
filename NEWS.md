@@ -1,3 +1,6 @@
+## version 0.0.0.9003
+- JAGS fitting related functions
+
 ## version 0.0.0.9002
 - JAGS bridgesampling related functions
 
