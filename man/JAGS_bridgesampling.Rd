@@ -2,7 +2,7 @@
 % Please edit documentation in R/JAGS-marglik.R
 \name{JAGS_bridgesampling}
 \alias{JAGS_bridgesampling}
-\title{compute marginal likelihood of a JAGS model}
+\title{Compute marginal likelihood of a JAGS model}
 \usage{
 JAGS_bridgesampling(
   fit,

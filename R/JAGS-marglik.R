@@ -1,4 +1,4 @@
-#' @title compute marginal likelihood of a JAGS model
+#' @title Compute marginal likelihood of a JAGS model
 #'
 #' @description A wrapper around
 #' \link[bridgesampling]{bridge_sampler} that automatically
