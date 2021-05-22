@@ -39,6 +39,7 @@ check_list(
   check_length = 0,
   check_names = NULL,
   all_objects = FALSE,
+  allow_other = FALSE,
   allow_NULL = FALSE
 )
 }
@@ -68,6 +69,9 @@ Defaults to \code{TRUE}.}
 
 \item{all_objects}{whether all entries in \code{check_names} must be
 present. Defaults to \code{FALSE}.}
+
+\item{allow_other}{whether additional entries then the specified in
+\code{check_names} might be present}
 }
 \description{
 A set of convenience functions for checking

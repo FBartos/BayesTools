@@ -14,6 +14,8 @@
 #' \code{NULL} (do not check).
 #' @param all_objects whether all entries in \code{check_names} must be
 #' present. Defaults to \code{FALSE}.
+#' @param allow_other whether additional entries then the specified in
+#' \code{check_names} might be present
 #' @param lower lower bound of allowed values.
 #' Defaults to \code{-Inf} (do not check).
 #' @param upper upper bound of allowed values.
@@ -128,7 +130,7 @@ check_int    <- function(x, name, lower = -Inf, upper = Inf, allow_bound = TRUE,
 }
 
 #' @rdname check_input
-check_list   <- function(x, name, check_length = 0, check_names = NULL, all_objects = FALSE, allow_NULL = FALSE){
+check_list   <- function(x, name, check_length = 0, check_names = NULL, all_objects = FALSE, allow_other = FALSE, allow_NULL = FALSE){
 
   if(is.null(x)){
     if(allow_NULL){
@@ -149,7 +151,7 @@ check_list   <- function(x, name, check_length = 0, check_names = NULL, all_obje
     if(all_objects && any(!check_names %in% names(x)))
       stop(paste0("The '", paste0(check_names[!check_names %in% names(x)], collapse = "', '") ,"' objects are missing in the '", name, "' argument."))
 
-    if(any(!names(x) %in% check_names))
+    if(!allow_other && any(!names(x) %in% check_names))
       stop(paste0("The '", paste0(names(x)[!names(x) %in% check_names], collapse = "', '") ,"' objects are not recognized by the '", name, "' argument."))
   }
 

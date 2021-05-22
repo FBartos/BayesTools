@@ -2,25 +2,42 @@
 % Please edit documentation in R/model-averaging.R
 \name{models_inference}
 \alias{models_inference}
+\alias{compute_inference}
 \title{Compute posterior probabilities and inclusion Bayes factors}
 \usage{
-models_inference(prior_odds, margliks, is_null = NULL, conditional = FALSE)
+compute_inference(prior_odds, margliks, is_null = NULL, conditional = FALSE)
+
+models_inference(model_list, parameters, is_null_list, conditional = FALSE)
 }
 \arguments{
 \item{prior_odds}{vector of prior model odds}
 
 \item{margliks}{vector of marginal likelihoods}
 
-\item{is_null}{logical vector of indicators whether the model corresponds
+\item{is_null}{logical vector of indicators specifying whether the model corresponds
 to the null or alternative hypothesis (or an integer vector indexing models
 corresponding to the null hypothesis)}
 
 \item{conditional}{whether prior and posterior model probabilities should
 be returned only for the conditional model. Defaults to \code{FALSE}}
+
+\item{model_list}{list of models, each of which contains marginal
+likelihood estimated with bridge sampling \code{marglik} and prior model
+odds \code{prior_odds}}
+
+\item{parameters}{vector of parameters names for which inference should
+be drawn}
+
+\item{is_null_list}{list with entries for each parameter carrying either
+logical vector of indicators specifying whether the model corresponds
+to the null or alternative hypothesis (or an integer vector indexing models
+corresponding to the null hypothesis)}
 }
 \description{
 Computes prior probabilities, posterior probabilities,
-and inclusion Bayes factors based on prior model odds, marginal
-likelihoods, and indicator whether the models represent the null or
-alternative hypothesis
+and inclusion Bayes factors based either on (1) a list of models,
+vector of parameters, and a list of indicators the models represent the
+null or alternative hypothesis for each parameter, or (2) on prior
+model odds, marginal likelihoods, and indicator whether
+the models represent the null or alternative hypothesis
 }

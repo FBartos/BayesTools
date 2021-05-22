@@ -1,3 +1,6 @@
+## version 0.0.0.9005
+- posterior mixing functions
+
 ## version 0.0.0.9004
 - model-averaging functions
 

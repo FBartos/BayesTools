@@ -191,6 +191,7 @@ test_that("Check lists", {
   expect_null(check_list(list("a" = c("a", "b")), "", check_names = c("a", "b")))
   expect_null(check_list(list("a" = c("a", "b"), "b" = 1), "", check_names = c("a", "b"), all_objects = TRUE))
   expect_null(check_list(list("a" = c("a", "b"), "b" = 1), "", check_length = 2))
+  expect_null(check_list(list("a" = c("a", "b"), "b" = 1, "c" = c("a", "b")), "", check_names = c("a", "b"), all_objects = TRUE, allow_other = TRUE))
 
   # these should fail
   expect_error(
