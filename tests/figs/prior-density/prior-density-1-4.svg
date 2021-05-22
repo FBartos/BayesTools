@@ -43,7 +43,7 @@
 <g clip-path='url(#cpMC4wMHw3MjAuMDB8NTc2LjAwfDAuMDA=)'><text transform='translate(41.76,365.65) rotate(-90)' style='font-size: 12.00px; font-family: Liberation Sans;' textLength='23.34px' lengthAdjust='spacingAndGlyphs'>0.30</text></g>
 <g clip-path='url(#cpMC4wMHw3MjAuMDB8NTc2LjAwfDAuMDA=)'><text transform='translate(41.76,224.91) rotate(-90)' style='font-size: 12.00px; font-family: Liberation Sans;' textLength='23.34px' lengthAdjust='spacingAndGlyphs'>0.35</text></g>
 <g clip-path='url(#cpMC4wMHw3MjAuMDB8NTc2LjAwfDAuMDA=)'><text transform='translate(41.76,84.16) rotate(-90)' style='font-size: 12.00px; font-family: Liberation Sans;' textLength='23.34px' lengthAdjust='spacingAndGlyphs'>0.40</text></g>
-<polyline points='59.04,502.56 689.76,502.56 689.76,59.04 59.04,59.04 59.04,502.56 ' style='stroke-width: 0.75;' clip-path='url(#cpMC4wMHw3MjAuMDB8NTc2LjAwfDAuMDA=)' />
+<polygon points='59.04,502.56 689.76,502.56 689.76,59.04 59.04,59.04 ' style='stroke-width: 0.75; fill: none;' clip-path='url(#cpMC4wMHw3MjAuMDB8NTc2LjAwfDAuMDA=)' />
 <g clip-path='url(#cpMC4wMHw3MjAuMDB8NTc2LjAwfDAuMDA=)'><text x='295.99' y='34.47' style='font-size: 14.40px; font-weight: bold; font-family: Liberation Sans;' textLength='156.81px' lengthAdjust='spacingAndGlyphs'>density("Normal(0, 1)")</text></g>
 <g clip-path='url(#cpMC4wMHw3MjAuMDB8NTc2LjAwfDAuMDA=)'><text x='310.04' y='557.28' style='font-size: 12.00px; font-family: Liberation Sans;' textLength='128.72px' lengthAdjust='spacingAndGlyphs'>N = 1000   Bandwidth = </text></g>
 <g clip-path='url(#cpMC4wMHw3MjAuMDB8NTc2LjAwfDAuMDA=)'><text transform='translate(12.96,300.81) rotate(-90)' style='font-size: 12.00px; font-family: Liberation Sans;' textLength='40.02px' lengthAdjust='spacingAndGlyphs'>Density</text></g>
@@ -52,4 +52,5 @@
     <rect x='59.04' y='59.04' width='630.72' height='443.52' />
   </clipPath>
 </defs>
+<line x1='59.04' y1='1198.46' x2='689.76' y2='1198.46' style='stroke-width: 0.07; stroke: #BEBEBE;' clip-path='url(#cpNTkuMDR8Njg5Ljc2fDUwMi41Nnw1OS4wNA==)' />
 </svg>
