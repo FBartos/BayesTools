@@ -4,7 +4,7 @@
 \alias{mix_posteriors}
 \alias{mix_posteriors.simple}
 \alias{mix_posteriors.weightfunction}
-\title{Model average posterior distributions}
+\title{Model-average posterior distributions}
 \usage{
 mix_posteriors(
   model_list,
@@ -52,20 +52,20 @@ be returned only for the conditional model. Defaults to \code{FALSE}}
 \item{seed}{integer specifying seed for sampling posteriors for
 model averaging. Defaults to \code{1}.}
 
-\item{n_samples}{number of samples to be drawn for the model averaged
+\item{n_samples}{number of samples to be drawn for the model-averaged
 posterior distribution}
 
 \item{fits}{list with either runjags or rstan fitted models}
 
-\item{priors}{list of prior distributions for the model averaged
+\item{priors}{list of prior distributions for the model-averaged
 parameter for each passed fit}
 
-\item{parameter}{name of the parameter to be model averaged}
+\item{parameter}{name of the parameter to be model-averaged}
 
 \item{post_probs}{vector of posterior probabilities for each fit}
 }
 \description{
-Model averages posterior distributions based either
+Model-averages posterior distributions based either
 on (1) a list of models, vector of parameters, and a list of
 indicators the models represent the null or alternative hypothesis
 for each parameter, or (2) on model fits, list of priors for a given

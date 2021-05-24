@@ -89,17 +89,24 @@ JAGS_bridgesampling <- function(fit, data, prior_list, log_posterior,
 
 
   ### perform bridgesampling
-  marglik <- bridgesampling::bridge_sampler(
-    samples       = bridgesampling_posterior,
-    data          = data,
-    log_posterior = full_log_posterior,
-    prior_list    = prior_list,
-    lb            = attr(bridgesampling_posterior, "lb"),
-    ub            = attr(bridgesampling_posterior, "ub"),
-    silent        = silent,
-    maxiter       = maxiter,
-    ...
-  )
+  marglik <- tryCatch(suppressWarnings(bridgesampling::bridge_sampler(
+      samples       = bridgesampling_posterior,
+      data          = data,
+      log_posterior = full_log_posterior,
+      prior_list    = prior_list,
+      lb            = attr(bridgesampling_posterior, "lb"),
+      ub            = attr(bridgesampling_posterior, "ub"),
+      silent        = silent,
+      maxiter       = maxiter,
+      ...
+    )), error = function(e)e)
+
+  # add a warning attribute and call the warning if not silent
+  if(!inherits(marglik, "error") && marglik[["niter"]] > maxiter){
+    attr(marglik, "warning") <- "Marginal likelihood could not be estimated within the maximum number of itetations and might be more variable than usual."
+    if(!silent)
+      warning(attr(marglik, "warning"), immediate. = TRUE)
+  }
 
   return(marglik)
 }
@@ -509,11 +516,22 @@ JAGS_marglik_parameters.weightfunction <- function(samples, prior){
   parameter <- list()
   if(all(names(prior[["parameters"]]) %in% c("alpha", "steps"))){
 
-    parameter[["omega"]] <- samples[ paste0("omega[",1:length(prior$parameters[["alpha"]]),"]") ]
+    eta     <- samples[ paste0("eta[",1:length(prior$parameters[["alpha"]]),"]") ]
+    std_eta <- eta / sum(eta)
+    parameter[["omega"]] <- cumsum(std_eta)
 
   }else if(all(names(prior[["parameters"]]) %in% c("alpha1", "alpha2", "steps"))){
 
-    parameter[["omega"]] <- samples[ paste0("omega[",1:(length(prior$parameters[["alpha1"]]) + length(prior$parameters[["alpha2"]])),"]") ]
+    J1 <- length(prior$parameters[["alpha1"]])
+    J2 <- length(prior$parameters[["alpha2"]])
+    omega    <- rep(NA, J1 + J2 - 1)
+    eta1     <- samples[ paste0("eta1[",1:J1,"]") ]
+    std_eta1 <- eta1 / sum(eta1)
+    omega[J2:length(omega)] <- cumsum(std_eta1)
+    eta2     <- samples[ paste0("eta2[",1:J2,"]") ]
+    std_eta2 <- (eta2 / sum(eta2)) * (1 - std_eta1[1])
+    omega[1:(J2-1)] <- rev(cumsum(std_eta2[J2:2])) + std_eta1[1]
+    parameter[["omega"]] <- omega
 
   }else if(prior[["distribution"]] %in% c("one.sided.fixed", "two.sided.fixed")){
 

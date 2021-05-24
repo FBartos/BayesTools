@@ -101,22 +101,22 @@ models_inference <- function(model_list, parameters, is_null_list, conditional =
 
 
 
-#' @title Model average posterior distributions
+#' @title Model-average posterior distributions
 #'
-#' @description Model averages posterior distributions based either
+#' @description Model-averages posterior distributions based either
 #' on (1) a list of models, vector of parameters, and a list of
 #' indicators the models represent the null or alternative hypothesis
 #' for each parameter, or (2) on model fits, list of priors for a given
 #' parameter, parameter name, and posterior probabilities
 #'
 #' @param fits list with either runjags or rstan fitted models
-#' @param priors list of prior distributions for the model averaged
+#' @param priors list of prior distributions for the model-averaged
 #' parameter for each passed fit
-#' @param parameter name of the parameter to be model averaged
+#' @param parameter name of the parameter to be model-averaged
 #' @param post_probs vector of posterior probabilities for each fit
 #' @param seed integer specifying seed for sampling posteriors for
 #' model averaging. Defaults to \code{1}.
-#' @param n_samples number of samples to be drawn for the model averaged
+#' @param n_samples number of samples to be drawn for the model-averaged
 #' posterior distribution
 #'
 #' @inheritParams models_inference
@@ -133,8 +133,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   check_char(parameters, "parameters", check_length = FALSE)
   check_list(is_null_list, "is_null_list", check_length = length(parameters))
   check_real(seed, "seed", allow_NULL = TRUE)
-  sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("fit", "marglik", "priors", "prior_odds"), all_objects = TRUE))
-  if(!all(sapply(model_list, function(m)inherits(m[["fit"]], what = "runjags")) | sapply(model_list, function(m)inherits(m[["fit"]], what = "rstan"))))
+  sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("fit", "marglik", "priors", "prior_odds"), all_objects = TRUE, allow_other = TRUE))
+  if(!all(sapply(model_list, function(m)inherits(m[["fit"]], what = "runjags")) | sapply(model_list, function(m)inherits(m[["fit"]], what = "rstan")) | sapply(model_list, function(m)inherits(m[["fit"]], what = "null_model"))))
     stop("model_list:fit must contain 'runjags' or 'rstan' models")
   if(!all(sapply(model_list, function(m)inherits(m[["marglik"]], what = "bridge"))))
     stop("model_list:marglik must contain 'bridgesampling' marginal likelihoods")
@@ -195,7 +195,7 @@ mix_posteriors.simple         <- function(fits, priors, parameter, post_probs, s
   check_char(parameter, "parameter")
   check_real(post_probs, "post_probs", lower = 0, upper = 1, check_length = length(fits))
   check_real(seed, "seed", allow_NULL = TRUE)
-  if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "rstan")))
+  if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "rstan") | sapply(fits, inherits, what = "null_model")))
     stop("'fits' must be a list of 'runjags' or 'rstan' models")
   if(!all(sapply(priors, is.prior.simple) | sapply(priors, is.prior.point)))
     stop("'priors' must be a list of simple priors")
@@ -266,13 +266,14 @@ mix_posteriors.simple         <- function(fits, priors, parameter, post_probs, s
 mix_posteriors.weightfunction <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000){
 
   # check input
+  # check input
   check_list(fits, "fits")
   check_list(priors, "priors", check_length = length(fits))
   check_char(parameter, "parameter")
   check_real(post_probs, "post_probs", lower = 0, upper = 1, check_length = length(fits))
   check_real(seed, "seed", allow_NULL = TRUE)
-  if(!all(sapply(fits, inherits, what = "runjags")))
-    stop("'fits' must be a list of 'runjags' models")
+  if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "rstan") | sapply(fits, inherits, what = "null_model")))
+    stop("'fits' must be a list of 'runjags' or 'rstan' models")
   if(!all(sapply(priors, is.prior.weightfunction) | sapply(priors, is.prior.point) | sapply(priors, is.prior.none)))
     stop("'priors' must be a list of weightfunction priors distributions")
 

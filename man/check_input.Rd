@@ -9,9 +9,16 @@
 \alias{check_list}
 \title{Check input}
 \usage{
-check_bool(x, name, check_length = 1, allow_NULL = FALSE)
+check_bool(x, name, check_length = 1, allow_NULL = FALSE, call = "")
 
-check_char(x, name, check_length = 1, allow_NULL = FALSE)
+check_char(
+  x,
+  name,
+  check_length = 1,
+  allow_values = NULL,
+  allow_NULL = FALSE,
+  call = ""
+)
 
 check_real(
   x,
@@ -20,7 +27,8 @@ check_real(
   upper = Inf,
   allow_bound = TRUE,
   check_length = 1,
-  allow_NULL = FALSE
+  allow_NULL = FALSE,
+  call = ""
 )
 
 check_int(
@@ -30,7 +38,8 @@ check_int(
   upper = Inf,
   allow_bound = TRUE,
   check_length = 1,
-  allow_NULL = FALSE
+  allow_NULL = FALSE,
+  call = ""
 )
 
 check_list(
@@ -40,7 +49,8 @@ check_list(
   check_names = NULL,
   all_objects = FALSE,
   allow_other = FALSE,
-  allow_NULL = FALSE
+  allow_NULL = FALSE,
+  call = ""
 )
 }
 \arguments{
@@ -54,6 +64,11 @@ message.}
 
 \item{allow_NULL}{whether the object can be \code{NULL}.
 If so, no checks are executed.}
+
+\item{call}{string to be placed as a prefix to the error call.}
+
+\item{allow_values}{names of values allowed in a character vector.
+Defaults to \code{NULL} (do not check).}
 
 \item{lower}{lower bound of allowed values.
 Defaults to \code{-Inf} (do not check).}

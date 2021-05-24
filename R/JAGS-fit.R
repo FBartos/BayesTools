@@ -50,34 +50,8 @@ JAGS_fit <- function(model_syntax, data, prior_list,
                      add_parameters = NULL, required_packages = NULL){
 
   ### check input
-  check_int(chains, "chains", lower = 1)
-  check_int(adapt,  "adapt",  lower = 10)
-  check_int(burnin, "burnin", lower = 10)
-  check_int(sample, "sample", lower = 10)
-  check_int(thin,   "thin",   lower = 1)
-  check_bool(autofit, "autofit")
-  check_list(autofit_control, "autofit_control", check_names = c("max_Rhat", "min_ESS", "max_error", "max_SD_error",  "max_time", "sample_extend"))
-  check_real(autofit_control[["max_Rhat"]],     "autofit_control:max_Rhat",     lower = 1, allow_NULL = TRUE)
-  check_real(autofit_control[["min_ESS"]],      "autofit_control:min_ESS",      lower = 0, allow_NULL = TRUE)
-  check_real(autofit_control[["max_error"]],    "autofit_control:max_error",    lower = 0, allow_NULL = TRUE)
-  check_real(autofit_control[["max_SD_error"]], "autofit_control:max_SD_error", lower = 0, upper = 1, allow_NULL = TRUE)
-  check_list(autofit_control[["max_time"]],     "autofit_control:max_time", check_names = c("time", "unit"), check_length = 2, allow_NULL = TRUE)
-  if(!is.null(autofit_control[["max_time"]])){
-    if(is.null(names(autofit_control[["max_time"]]))){
-      names(autofit_control[["max_time"]]) <- c("time", "unit")
-    }
-    check_real(autofit_control[["max_time"]][["time"]], lower = 0)
-    check_char(autofit_control[["max_time"]][["unit"]])
-    if(!autofit_control[["max_time"]][["unit"]] %in% c("secs", "mins", "hours", "days", "weeks"))
-      stop(paste0("The '",autofit_control[["max_time"]][["unit"]],"' argument in 'autofit_control:max_time' is not recognized."))
-  }else{
-    autofit_control[["max_time"]] <- list(time = 60, unit = "mins")
-  }
-  check_int(autofit_control[["sample_extend"]], "autofit_control:sample_extend", lower = 1)
-  check_bool(parallel, "parallel")
-  check_int(cores, "cores", lower = 1)
-  check_bool(silent, "silent")
-  check_int(seed, "seed", allow_NULL = TRUE)
+  JAGS_check_and_list_fit_settings(chains, adapt, burnin, sample, thin, autofit, parallel, cores, silent, seed)
+  JAGS_check_and_list_autofit_settings(autofit_control)
   check_char(add_parameters, "add_parameters", check_length = 0, allow_NULL = TRUE)
   check_char(required_packages, "required_packages", check_length = 0, allow_NULL = TRUE)
 
@@ -133,21 +107,26 @@ JAGS_fit <- function(model_syntax, data, prior_list,
   start_time <- Sys.time()
   fit <- tryCatch(do.call(runjags::run.jags, model_call), error = function(e)e)
 
+  if(inherits(fit, "error") & !silent)
+    warning(paste0("The model estimation failed with the following error: ", fit$message), immediate. = TRUE)
+
   if(autofit & !inherits(fit, "error")){
 
     converged <- JAGS_check_convergence(fit, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]])
 
     while(!converged){
 
-      if(difftime(Sys.time(), start_time, units = autofit_control[["max_time"]][["unit"]]) > autofit_control[["max_time"]][["time"]]){
+      if(!is.null(autofit_control[["max_time"]]) && difftime(Sys.time(), start_time, units = autofit_control[["max_time"]][["unit"]]) > autofit_control[["max_time"]][["time"]]){
         if(!silent)
-          warning("The automatic model fitting was terminated due to the 'max_time' constraint.")
+          warning("The automatic model fitting was terminated due to the 'max_time' constraint.", immediate. = TRUE)
         break
       }
 
       fit <- tryCatch(runjags::extend.jags(fit, sample = autofit_control[["sample_extend"]]), error = function(e)e)
 
       if(inherits(fit, "error")){
+        if(!silent)
+          warning(paste0("The model estimation failed with the following error: ", fit$message), immediate. = TRUE)
         break
       }
 
@@ -184,6 +163,7 @@ JAGS_fit <- function(model_syntax, data, prior_list,
 #' @export
 JAGS_check_convergence <- function(fit, max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05){
 
+  # check input
   if(!inherits(fit, "runjags"))
     stop("'fit' must be a runjags fit")
   check_real(max_Rhat,     "max_Rhat",     lower = 1, allow_NULL = TRUE)
@@ -192,33 +172,40 @@ JAGS_check_convergence <- function(fit, max_Rhat = 1.05, min_ESS = 500, max_erro
   check_real(max_SD_error, "max_SD_error", lower = 0, upper = 1, allow_NULL = TRUE)
 
   fails         <- NULL
-  temp_summary  <- summary(fit)
+  invisible(utils::capture.output(temp_summary <- suppressWarnings(summary(fit, silent.jags = TRUE))))
 
+  # remove last omega from a weightfunction
+  if(any(grepl("omega", rownames(temp_summary)))){
+    omega_ind    <- grep("omega", rownames(temp_summary))
+    temp_summary <- temp_summary[-omega_ind[length(omega_ind)],,drop = FALSE]
+  }
+
+  # check the convergence
   if(!is.null(max_Rhat)){
     temp_Rhat <- max(ifelse(is.na(temp_summary[, "psrf"]), 1, temp_summary[, "psrf"]))
     if(temp_Rhat > max_Rhat){
-      fails <- c(fails, paste0("R-hat '", round(temp_Rhat, 3), "' larger then the set target (", max_Rhat, ")."))
+      fails <- c(fails, paste0("R-hat '", round(temp_Rhat, 3), "' larger than the set target (", max_Rhat, ")."))
     }
   }
 
   if(!is.null(min_ESS)){
     temp_ESS <- min(ifelse(is.na(temp_summary[, "SSeff"]), Inf, temp_summary[, "SSeff"]))
     if(temp_ESS < min_ESS){
-      fails <- c(fails, paste0("ESS '", round(temp_ESS), "' lower then the set target (", min_ESS, ")."))
+      fails <- c(fails, paste0("ESS '", round(temp_ESS), "' lower than the set target (", min_ESS, ")."))
     }
   }
 
   if(!is.null(max_error)){
     temp_error    <- max(ifelse(is.na(temp_summary[, "MCerr"]), 0, temp_summary[, "MCerr"]))
     if(temp_error > max_error){
-      fails <- c(fails, paste0("MCMC error '", round(temp_error, 5), "' larger then the set target (", max_error, ")."))
+      fails <- c(fails, paste0("MCMC error '", round(temp_error, 5), "' larger than the set target (", max_error, ")."))
     }
   }
 
   if(!is.null(max_SD_error)){
     temp_error_SD <- max(ifelse(is.na(temp_summary[, "MC%ofSD"]),   0, temp_summary[, "MC%ofSD"]))
     if(temp_error_SD/100 > max_SD_error){
-      fails <- c(fails, paste0("MCMC SD error '", round(temp_error_SD/100, 4), "' larger then the set target (", max_SD_error, ")."))
+      fails <- c(fails, paste0("MCMC SD error '", round(temp_error_SD/100, 4), "' larger than the set target (", max_SD_error, ")."))
     }
   }
 
@@ -552,7 +539,7 @@ JAGS_init.weightfunction  <- function(prior){
 }
 
 
-#' @title Creates list of monitored parameters for JAGS model
+#' @title Create list of monitored parameters for JAGS model
 #'
 #' @description Creates a vector of parameter names to be
 #' monitored.
@@ -648,4 +635,111 @@ JAGS_monitor.weightfunction <- function(prior){
   }
 
   return(monitor)
+}
+
+
+#' @title Check and list JAGS fitting settings
+#'
+#' @description Checks and lists settings for the
+#' [JAGS_fit] function.
+#'
+#' @param check_mins named list of minimal values for which
+#' should some input be checked. Defaults to:
+#' \describe{
+#'   \item{chains}{\code{1}}
+#'   \item{adapt}{\code{50}}
+#'   \item{burnin}{\code{50}}
+#'   \item{sample}{\code{100}}
+#'   \item{thin}{\code{1}}
+#' }
+#' @param skip_sample_extend whether \code{sample_extend}
+#' is allowed to be NULL and skipped in the check
+#'
+#' @inheritParams JAGS_fit
+#' @inheritParams check_input
+#' @export JAGS_check_and_list_fit_settings
+#' @export JAGS_check_and_list_autofit_settings
+#' @name JAGS_check_and_list
+NULL
+
+#' @rdname JAGS_check_and_list
+JAGS_check_and_list_fit_settings     <- function(chains, adapt, burnin, sample, thin, autofit, parallel, cores, silent, seed, check_mins = list(chains = 1, adapt = 50, burnin = 50, sample = 100, thin = 1), call = ""){
+
+  check_int(chains, "chains", lower = check_mins[["chains"]], call = call)
+  check_int(adapt,  "adapt",  lower = check_mins[["adapt"]],  call = call)
+  check_int(burnin, "burnin", lower = check_mins[["burnin"]], call = call)
+  check_int(sample, "sample", lower = check_mins[["sample"]], call = call)
+  check_int(thin,   "thin",   lower = check_mins[["thin"]],   call = call)
+  check_bool(parallel, "parallel",                call = call)
+  check_int(cores,     "cores", lower = 1,        call = call)
+  check_bool(autofit,  "autofit",                 call = call)
+  check_bool(silent,   "silent",                  call = call)
+  check_int(seed,      "seed", allow_NULL = TRUE, call = call)
+
+  return(invisible(list(
+    chains   = chains,
+    adapt    = adapt,
+    burnin   = burnin,
+    sample   = sample,
+    thin     = thin,
+    autofit  = autofit,
+    parallel = parallel,
+    cores    = cores,
+    silent   = silent,
+    seed     = seed
+  )))
+}
+
+#' @rdname JAGS_check_and_list
+JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_extend = FALSE, call = ""){
+
+  check_list(autofit_control, "autofit_control", check_names = c("max_Rhat", "min_ESS", "max_error", "max_SD_error",  "max_time", "sample_extend"), call = call)
+  check_real(autofit_control[["max_Rhat"]],     "max_Rhat",     lower = 1, allow_NULL = TRUE, call = call)
+  check_real(autofit_control[["min_ESS"]],      "min_ESS",      lower = 0, allow_NULL = TRUE, call = call)
+  check_real(autofit_control[["max_error"]],    "max_error",    lower = 0, allow_NULL = TRUE, call = call)
+  check_real(autofit_control[["max_SD_error"]], "max_SD_error", lower = 0, upper = 1, allow_NULL = TRUE, call = call)
+  check_list(autofit_control[["max_time"]],     "max_time", check_names = c("time", "unit"), check_length = 2, allow_NULL = TRUE, call = call)
+  if(!is.null(autofit_control[["max_time"]])){
+    if(is.null(names(autofit_control[["max_time"]]))){
+      names(autofit_control[["max_time"]]) <- c("time", "unit")
+    }
+    check_real(autofit_control[["max_time"]][["time"]], "max_time:time", lower = 0, call = call)
+    check_char(autofit_control[["max_time"]][["unit"]], "max_time:unit", allow_values = c("secs", "mins", "hours", "days", "weeks"), call = call)
+  }
+  check_int(autofit_control[["sample_extend"]], "sample_extend", lower = 1, allow_NULL = skip_sample_extend, call = call)
+
+  return(invisible(autofit_control))
+}
+
+
+#' @title Rename and reorder runjags summary
+#'
+#' @description Renames and reorders runjags fit
+#' summary.
+#'
+#' @param fit_summary runjags summary
+#' @export
+JAGS_clean_runjags_summary <- function(fit_summary){
+
+  if(!is.matrix(fit_summary))
+    stop("'fit_summary' must be a summary of a runjags fit.")
+
+  # remove un-wanted columns
+  fit_summary <- fit_summary[,!colnames(fit_summary) %in% c("Mode", "AC.10"),drop = FALSE]
+
+  # rename the rest
+  colnames(fit_summary)[colnames(fit_summary) == "Lower95"] <- "lCI"
+  colnames(fit_summary)[colnames(fit_summary) == "Upper95"] <- "uCI"
+  colnames(fit_summary)[colnames(fit_summary) == "MCerr"]   <- "MCMC error"
+  colnames(fit_summary)[colnames(fit_summary) == "MC%ofSD"] <- "MCMC SD error"
+  colnames(fit_summary)[colnames(fit_summary) == "SSeff"]   <- "ESS"
+  colnames(fit_summary)[colnames(fit_summary) == "psrf"]    <- "Rhat"
+
+  # change the SD error to a fraction
+  fit_summary[, "MCMC SD error"] <- fit_summary[, "MCMC SD error"] / 100
+
+  # reorder the columns
+  fit_summary <- fit_summary[,c("Mean", "SD", "lCI", "Median", "uCI", "MCMC error", "MCMC SD error", "ESS", "Rhat"),drop = FALSE]
+
+  return(fit_summary)
 }

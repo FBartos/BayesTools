@@ -44,6 +44,7 @@ test_that("Check strings", {
   expect_null(check_char("string",  ""))
   expect_null(check_char(c("string", "string1"),  "", check_length = 0))
   expect_null(check_char(as.character(stats::rbinom(5, 1, .5)), "", check_length = 5))
+  expect_null(check_char(c("string", "string1"),  "", check_length = 0, allow_values = c("string", "string1")))
 
 
   # these should fail
@@ -71,6 +72,11 @@ test_that("Check strings", {
     check_char("string", "test object", check_length = 2),
     "The 'test object' argument must have length '2'."
   )
+  expect_error(
+    check_char(c("string", "string1"),  "test object", check_length = 0, allow_values = c("string")),
+    "The 'string1' values are not recognized by the 'test object' argument."
+  )
+
 })
 
 test_that("Check reals", {
@@ -111,19 +117,19 @@ test_that("Check reals", {
   )
   expect_error(
     check_real(stats::rgamma(1, 1, 1), "test object", upper = 0),
-    "All 'test object' must be equal or lower than 0."
+    "The 'test object' must be equal or lower than 0."
   )
   expect_error(
     check_real(stats::rbeta(1, 1, 1), "test object",  lower = 1),
-    "All 'test object' must be equal or higher than 1."
+    "The 'test object' must be equal or higher than 1."
   )
   expect_error(
     check_real(0, "test object", lower = 0, upper = 1, allow_bound = FALSE),
-    "All 'test object' must be higher than 0."
+    "The 'test object' must be higher than 0."
   )
   expect_error(
     check_real(1, "test object", lower = 0, upper = 1, allow_bound = FALSE),
-    "All 'test object' must be lower than 1."
+    "The 'test object' must be lower than 1."
   )
 })
 
@@ -165,19 +171,19 @@ test_that("Check integers", {
   )
   expect_error(
     check_int(1, "test object", upper = 0),
-    "All 'test object' must be equal or lower than 0."
+    "The 'test object' must be equal or lower than 0."
   )
   expect_error(
     check_int(0, "test object",  lower = 1),
-    "All 'test object' must be equal or higher than 1."
+    "The 'test object' must be equal or higher than 1."
   )
   expect_error(
     check_int(0, "test object", lower = 0, upper = 1, allow_bound = FALSE),
-    "All 'test object' must be higher than 0."
+    "The 'test object' must be higher than 0."
   )
   expect_error(
     check_int(1, "test object", lower = 0, upper = 1, allow_bound = FALSE),
-    "All 'test object' must be lower than 1."
+    "The 'test object' must be lower than 1."
   )
 })
 

@@ -1,4 +1,4 @@
-context("JAGS model-averaging functions")
+context("model-averaging functions")
 
 test_that("model-averaging functions work", {
 

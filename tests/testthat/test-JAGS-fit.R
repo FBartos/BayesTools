@@ -103,6 +103,14 @@ test_that("JAGS fit function works" , {
     }
   })
 
+  # check the clean summary function
+  cleaned_summary <- JAGS_clean_runjags_summary(summary(fit, silent.jags = T))
+  expect_equal(colnames(cleaned_summary),
+               c("Mean", "SD", "lCI", "Median", "uCI", "MCMC error", "MCMC SD error", "ESS", "Rhat"))
+  expect_equal(round(unname(cleaned_summary[1,]), 3),
+               c(0.051, 0.060, -0.070, 0.051, 0.166, 0.000, 0.008, 16103.000, 1.000))
+
+
   ### checking control the main control arguments
   fit1 <- JAGS_fit(model_syntax, data, priors_list, chains = 1, adapt = 100, burnin = 150, sample = 175, thin = 3, seed = 2)
   expect_equal(length(fit1$mcmc), 1)
@@ -151,10 +159,10 @@ test_that("JAGS fit function works" , {
 
   convergence <- JAGS_check_convergence(fit4, max_Rhat = 1.001, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05)
   expect_true(!convergence)
-  expect_equal(attr(convergence, "errors")[1], "R-hat '1.007' larger then the set target (1.001).")
-  expect_equal(attr(convergence, "errors")[2], "ESS '149' lower then the set target (500).")
-  expect_equal(attr(convergence, "errors")[3], "MCMC error '0.0698' larger then the set target (0.01).")
-  expect_equal(attr(convergence, "errors")[4], "MCMC SD error '0.082' larger then the set target (0.05).")
+  expect_equal(attr(convergence, "errors")[1], "R-hat '1.007' larger than the set target (1.001).")
+  expect_equal(attr(convergence, "errors")[2], "ESS '149' lower than the set target (500).")
+  expect_equal(attr(convergence, "errors")[3], "MCMC error '0.0698' larger than the set target (0.01).")
+  expect_equal(attr(convergence, "errors")[4], "MCMC SD error '0.082' larger than the set target (0.05).")
 
   fit4b <- JAGS_fit(model_syntax4, data4, priors_list4, autofit = TRUE, autofit_control = list(max_error = 0.05, sample_extend = 100),
                     chains = 2, adapt = 100, burnin = 50, sample = 100, seed = 4)

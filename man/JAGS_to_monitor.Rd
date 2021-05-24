@@ -5,7 +5,7 @@
 \alias{JAGS_monitor.simple}
 \alias{JAGS_monitor.PP}
 \alias{JAGS_monitor.weightfunction}
-\title{Creates list of monitored parameters for JAGS model}
+\title{Create list of monitored parameters for JAGS model}
 \usage{
 JAGS_to_monitor(prior_list)
 
