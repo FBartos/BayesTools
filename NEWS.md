@@ -1,3 +1,6 @@
+## version 0.0.0.9006
+- ensemble and model summary tables functions
+
 ## version 0.0.0.9005
 - posterior mixing functions
 

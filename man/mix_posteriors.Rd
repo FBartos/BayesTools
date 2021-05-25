@@ -66,8 +66,12 @@ parameter for each passed fit}
 }
 \description{
 Model-averages posterior distributions based either
+
 on (1) a list of models, vector of parameters, and a list of
 indicators the models represent the null or alternative hypothesis
 for each parameter, or (2) on model fits, list of priors for a given
 parameter, parameter name, and posterior probabilities
+}
+\seealso{
+\link{ensemble_inference} \link{BayesTools_ensemble_tables}
 }

@@ -3,9 +3,10 @@
 #' @description Computes prior probabilities, posterior probabilities,
 #' and inclusion Bayes factors based either on (1) a list of models,
 #' vector of parameters, and a list of indicators the models represent the
-#' null or alternative hypothesis for each parameter, or (2) on prior
+#' null or alternative hypothesis for each parameter, (2) on prior
 #' model odds, marginal likelihoods, and indicator whether
-#' the models represent the null or alternative hypothesis
+#' the models represent the null or alternative hypothesis, or (3) list of
+#' models for each model.
 #'
 #' @param model_list list of models, each of which contains marginal
 #' likelihood estimated with bridge sampling \code{marglik} and prior model
@@ -24,11 +25,15 @@
 #' @param conditional whether prior and posterior model probabilities should
 #' be returned only for the conditional model. Defaults to \code{FALSE}
 #'
-#' @name models_inference
+#' @name ensemble_inference
 #' @export compute_inference
+#' @export ensemble_inference
 #' @export models_inference
+#'
+#' @seealso [mix_posteriors] [BayesTools_ensemble_tables]
+NULL
 
-#' @rdname models_inference
+#' @rdname ensemble_inference
 compute_inference <- function(prior_odds, margliks, is_null = NULL, conditional = FALSE){
 
   check_real(prior_odds, "prior_odds", lower = 0, check_length = 0)
@@ -67,8 +72,8 @@ compute_inference <- function(prior_odds, margliks, is_null = NULL, conditional 
   return(output)
 }
 
-#' @rdname models_inference
-models_inference <- function(model_list, parameters, is_null_list, conditional = FALSE){
+#' @rdname ensemble_inference
+ensemble_inference <- function(model_list, parameters, is_null_list, conditional = FALSE){
 
   # check input
   check_list(model_list, "model_list")
@@ -99,11 +104,38 @@ models_inference <- function(model_list, parameters, is_null_list, conditional =
   return(out)
 }
 
+#' @rdname ensemble_inference
+models_inference   <- function(model_list){
 
+  sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("marglik", "prior_odds"), all_objects = TRUE, allow_other = TRUE))
+  if(!all(sapply(model_list, function(m)inherits(m[["marglik"]], what = "bridge"))))
+    stop("model_list:marglik must contain 'bridgesampling' marginal likelihoods")
+  sapply(model_list, function(m)check_real(m[["prior_odds"]], "model_list:prior_odds", lower = 0))
+
+  margliks    <- sapply(model_list, function(model)model[["marglik"]][["logml"]])
+  margliks    <- ifelse(is.na(margliks), -Inf, margliks)
+  prior_odds  <- sapply(model_list, function(model)model[["prior_odds"]])
+  prior_probs <- prior_odds / sum(prior_odds)
+  post_probs  <- unname(bridgesampling::post_prob(margliks, prior_prob = prior_probs))
+  incl_BF     <- sapply(seq_along(model_list), function(i) (post_probs[i] / (1 - post_probs[i])) / (prior_probs[i] / (1 - prior_probs[i])))
+
+  for(i in seq_along(model_list)){
+    model_list[[i]][["inference"]] <- list(
+      "m_number"     = i,
+      "marglik"      = margliks[i],
+      "prior_prob"   = prior_probs[i],
+      "post_probs"   = post_probs[i],
+      "inclusion_BF" = incl_BF[i]
+    )
+  }
+
+  return(model_list)
+}
 
 #' @title Model-average posterior distributions
 #'
 #' @description Model-averages posterior distributions based either
+#'
 #' on (1) a list of models, vector of parameters, and a list of
 #' indicators the models represent the null or alternative hypothesis
 #' for each parameter, or (2) on model fits, list of priors for a given
@@ -119,11 +151,14 @@ models_inference <- function(model_list, parameters, is_null_list, conditional =
 #' @param n_samples number of samples to be drawn for the model-averaged
 #' posterior distribution
 #'
-#' @inheritParams models_inference
+#' @inheritParams ensemble_inference
 #' @name mix_posteriors
 #' @export mix_posteriors
 #' @export mix_posteriors.simple
 #' @export mix_posteriors.weightfunction
+#'
+#' @seealso [ensemble_inference] [BayesTools_ensemble_tables]
+NULL
 
 #' @rdname mix_posteriors
 mix_posteriors <- function(model_list, parameters, is_null_list, conditional = FALSE, seed = NULL, n_samples = 10000){
@@ -149,7 +184,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   priors     <- lapply(model_list, function(m)m[["priors"]])
   prior_odds <- sapply(model_list, function(m)m[["prior_odds"]])
 
-  inference  <- models_inference(model_list, parameters, is_null_list, conditional)
+  inference  <- ensemble_inference(model_list, parameters, is_null_list, conditional)
   out <- list()
 
   for(p in seq_along(parameters)){
@@ -457,4 +492,38 @@ weightfunctions_mapping <- function(prior_list, cuts_only = FALSE){
 
 
   return(omega_mapping)
+}
+
+
+#' @title Format Bayes factor
+#'
+#' @description Formats Bayes factor
+#'
+#' @param BF Bayes factor(s)
+#' @param logBF log(BF)
+#' @param BF01 1/BF
+#'
+#' @export
+format_BF <- function(BF, logBF = FALSE, BF01 = FALSE){
+
+  check_real(BF, "BF", lower = 0, check_length = FALSE)
+  check_bool(logBF, "logBF")
+  check_bool(BF01,  "BF01")
+
+  name <- "BF10"
+
+  if(BF01){
+    BF   <- 1/BF
+    name <- "BF01"
+  }
+  if(logBF){
+    BF   <- log(BF)
+    name <- paste0("log(", name, ")")
+  }
+
+  attr(BF, "name")  <- name
+  attr(BF, "logBF") <- logBF
+  attr(BF, "BF01")  <- BF01
+
+  return(BF)
 }

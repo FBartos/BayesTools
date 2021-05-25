@@ -6,6 +6,7 @@
 \usage{
 JAGS_check_convergence(
   fit,
+  prior_list,
   max_Rhat = 1.05,
   min_ESS = 500,
   max_error = 0.01,
@@ -14,6 +15,9 @@ JAGS_check_convergence(
 }
 \arguments{
 \item{fit}{a runjags model}
+
+\item{prior_list}{named list of prior distribution
+(names correspond to the parameter names)}
 
 \item{max_Rhat}{maximum R-hat error for the autofit function.
 Defaults to \code{1.05}.}

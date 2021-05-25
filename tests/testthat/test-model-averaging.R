@@ -1,6 +1,6 @@
-context("model-averaging functions")
+context("Model-averaging functions")
 
-test_that("model-averaging functions work", {
+test_that("Model-averaging functions work", {
 
   expect_equal(compute_inference(c(1,1), c(1, 1))$prior_probs, c(0.5, 0.5))
   expect_equal(compute_inference(c(1,1), c(1, 1))$post_probs,  c(0.5, 0.5))
@@ -21,4 +21,13 @@ test_that("model-averaging functions work", {
   expect_equal(compute_inference(c(1,1), c(1, 2), c(F, T))$BF, exp(1-2))
   expect_equal(compute_inference(c(1,1,1), c(1, 1, 1), c(F, T, F))$BF, 1)
   expect_equal(compute_inference(c(1,1,1), c(1, 2, 1), c(F, T, F))$BF, exp(1-2))
+
+  # and check BF formatting
+  expect_equivalent(format_BF(c(0, 1, 2, Inf)), c(0, 1, 2, Inf))
+  expect_equivalent(format_BF(c(0, 1, 2, Inf), BF01 = TRUE), 1/c(0, 1, 2, Inf))
+  expect_equivalent(format_BF(c(0, 1, 2, Inf), logBF = TRUE), log(c(0, 1, 2, Inf)))
+  expect_equivalent(format_BF(c(0, 1, 2, Inf), BF01 = TRUE, logBF = TRUE), log(1/c(0, 1, 2, Inf)))
+  expect_equal(attr(format_BF(1), "name"), "BF10")
+  expect_equal(attr(format_BF(1, logBF = TRUE), "name"), "log(BF10)")
+  expect_equal(attr(format_BF(1, BF01 = TRUE, logBF = TRUE), "name"), "log(BF01)")
 })

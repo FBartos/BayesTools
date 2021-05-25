@@ -112,13 +112,16 @@ JAGS_fit <- function(model_syntax, data, prior_list,
 
   if(autofit & !inherits(fit, "error")){
 
-    converged <- JAGS_check_convergence(fit, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]])
+    converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]])
 
     while(!converged){
 
       if(!is.null(autofit_control[["max_time"]]) && difftime(Sys.time(), start_time, units = autofit_control[["max_time"]][["unit"]]) > autofit_control[["max_time"]][["time"]]){
-        if(!silent)
-          warning("The automatic model fitting was terminated due to the 'max_time' constraint.", immediate. = TRUE)
+        if(!silent){
+          attr(fit, "warning") <- "The automatic model fitting was terminated due to the 'max_time' constraint."
+          warning(attr(fit, "warning"), immediate. = TRUE)
+        }
+
         break
       }
 
@@ -127,10 +130,11 @@ JAGS_fit <- function(model_syntax, data, prior_list,
       if(inherits(fit, "error")){
         if(!silent)
           warning(paste0("The model estimation failed with the following error: ", fit$message), immediate. = TRUE)
+
         break
       }
 
-      converged <- JAGS_check_convergence(fit, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]])
+      converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]])
     }
   }
 
@@ -152,6 +156,8 @@ JAGS_fit <- function(model_syntax, data, prior_list,
 #' @description Checks whether the supplied \link[runjags]{runjags-package} model
 #' satisfied convergence criteria.
 #' @param fit a runjags model
+#' @param prior_list named list of prior distribution
+#' (names correspond to the parameter names)
 #' @param max_Rhat maximum R-hat error for the autofit function.
 #'   Defaults to \code{1.05}.
 #' @param min_ESS minimum effective sample size. Defaults to \code{500}.
@@ -161,11 +167,14 @@ JAGS_fit <- function(model_syntax, data, prior_list,
 #'
 #' @seealso [JAGS_fit()]
 #' @export
-JAGS_check_convergence <- function(fit, max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05){
+JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05){
 
   # check input
   if(!inherits(fit, "runjags"))
     stop("'fit' must be a runjags fit")
+  check_list(prior_list, "prior_list")
+  if(any(!sapply(prior_list, is.prior)))
+    stop("'prior_list' must be a list of priors.")
   check_real(max_Rhat,     "max_Rhat",     lower = 1, allow_NULL = TRUE)
   check_real(min_ESS,      "min_ESS",      lower = 0, allow_NULL = TRUE)
   check_real(max_error,    "max_error",    lower = 0, allow_NULL = TRUE)
@@ -174,38 +183,46 @@ JAGS_check_convergence <- function(fit, max_Rhat = 1.05, min_ESS = 500, max_erro
   fails         <- NULL
   invisible(utils::capture.output(temp_summary <- suppressWarnings(summary(fit, silent.jags = TRUE))))
 
-  # remove last omega from a weightfunction
-  if(any(grepl("omega", rownames(temp_summary)))){
-    omega_ind    <- grep("omega", rownames(temp_summary))
-    temp_summary <- temp_summary[-omega_ind[length(omega_ind)],,drop = FALSE]
+  # remove auxiliary and support parameters from the summary
+  for(i in seq_along(prior_list)){
+    if(is.prior.weightfunction(prior_list[[i]])){
+      if(prior_list[[i]][["distribution"]] %in% c("one.sided", "two.sided")){
+        temp_summary <- temp_summary[!grepl("eta", rownames(temp_summary)),,drop=FALSE]
+      }
+      temp_summary <- temp_summary[-max(grep("omega", rownames(temp_summary))),,drop=FALSE]
+    }else if(is.prior.point(prior_list[[i]])){
+      temp_summary <- temp_summary[rownames(temp_summary) != names(prior_list)[i],,drop=FALSE]
+    }else if(is.prior.simple(prior_list[[i]]) && prior_list[[i]][["distribution"]] == "invgamma"){
+      temp_summary <- temp_summary[rownames(temp_summary) != paste0("inv_",names(prior_list)[i]),,drop=FALSE]
+    }
   }
 
   # check the convergence
   if(!is.null(max_Rhat)){
     temp_Rhat <- max(ifelse(is.na(temp_summary[, "psrf"]), 1, temp_summary[, "psrf"]))
     if(temp_Rhat > max_Rhat){
-      fails <- c(fails, paste0("R-hat '", round(temp_Rhat, 3), "' larger than the set target (", max_Rhat, ")."))
+      fails <- c(fails, paste0("R-hat ", round(temp_Rhat, 3), " is larger than the set target (", max_Rhat, ")."))
     }
   }
 
   if(!is.null(min_ESS)){
     temp_ESS <- min(ifelse(is.na(temp_summary[, "SSeff"]), Inf, temp_summary[, "SSeff"]))
     if(temp_ESS < min_ESS){
-      fails <- c(fails, paste0("ESS '", round(temp_ESS), "' lower than the set target (", min_ESS, ")."))
+      fails <- c(fails, paste0("ESS ", round(temp_ESS), " is lower than the set target (", min_ESS, ")."))
     }
   }
 
   if(!is.null(max_error)){
     temp_error    <- max(ifelse(is.na(temp_summary[, "MCerr"]), 0, temp_summary[, "MCerr"]))
     if(temp_error > max_error){
-      fails <- c(fails, paste0("MCMC error '", round(temp_error, 5), "' larger than the set target (", max_error, ")."))
+      fails <- c(fails, paste0("MCMC error ", round(temp_error, 5), " is larger than the set target (", max_error, ")."))
     }
   }
 
   if(!is.null(max_SD_error)){
     temp_error_SD <- max(ifelse(is.na(temp_summary[, "MC%ofSD"]),   0, temp_summary[, "MC%ofSD"]))
     if(temp_error_SD/100 > max_SD_error){
-      fails <- c(fails, paste0("MCMC SD error '", round(temp_error_SD/100, 4), "' larger than the set target (", max_SD_error, ")."))
+      fails <- c(fails, paste0("MCMC SD error ", round(temp_error_SD/100, 4), " is larger than the set target (", max_SD_error, ")."))
     }
   }
 
@@ -241,12 +258,13 @@ JAGS_add_priors           <- function(syntax, prior_list){
     return(syntax)
   }
 
-  if(!is.list(prior_list))
-    stop("'prior_list' must be a list.")
+  check_list(prior_list, "prior_list")
   if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
-  if(!is.character(syntax) | length(syntax) != 1)
-    stop("'syntax' must be a character vector of length 1.")
+  check_char(syntax, "syntax", allow_NULL = TRUE)
+  if(is.null(syntax)){
+    syntax <- "model{}"
+  }
   if(!grepl("model", syntax, fixed = TRUE))
     stop("syntax must be a JAGS model syntax")
   if(!grepl("{", syntax, fixed = TRUE))
@@ -290,8 +308,7 @@ JAGS_prior.simple         <- function(prior, parameter_name){
   .check_prior(prior)
   if(!is.prior.simple(prior))
     stop("improper prior provided")
-  if(!is.character(parameter_name) | length(parameter_name) != 1)
-    stop("'parameter_name' must be a character vector of length 1.")
+  check_char(parameter_name, "parameter_name")
 
   # distribution
   syntax <- switch(
@@ -561,8 +578,7 @@ JAGS_to_monitor             <- function(prior_list){
     return("")
   }
 
-  if(!is.list(prior_list))
-    stop("'prior_list' must be a list.")
+  check_list(prior_list, "prior_list")
   if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
 
@@ -709,37 +725,4 @@ JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_ex
   check_int(autofit_control[["sample_extend"]], "sample_extend", lower = 1, allow_NULL = skip_sample_extend, call = call)
 
   return(invisible(autofit_control))
-}
-
-
-#' @title Rename and reorder runjags summary
-#'
-#' @description Renames and reorders runjags fit
-#' summary.
-#'
-#' @param fit_summary runjags summary
-#' @export
-JAGS_clean_runjags_summary <- function(fit_summary){
-
-  if(!is.matrix(fit_summary))
-    stop("'fit_summary' must be a summary of a runjags fit.")
-
-  # remove un-wanted columns
-  fit_summary <- fit_summary[,!colnames(fit_summary) %in% c("Mode", "AC.10"),drop = FALSE]
-
-  # rename the rest
-  colnames(fit_summary)[colnames(fit_summary) == "Lower95"] <- "lCI"
-  colnames(fit_summary)[colnames(fit_summary) == "Upper95"] <- "uCI"
-  colnames(fit_summary)[colnames(fit_summary) == "MCerr"]   <- "MCMC error"
-  colnames(fit_summary)[colnames(fit_summary) == "MC%ofSD"] <- "MCMC SD error"
-  colnames(fit_summary)[colnames(fit_summary) == "SSeff"]   <- "ESS"
-  colnames(fit_summary)[colnames(fit_summary) == "psrf"]    <- "Rhat"
-
-  # change the SD error to a fraction
-  fit_summary[, "MCMC SD error"] <- fit_summary[, "MCMC SD error"] / 100
-
-  # reorder the columns
-  fit_summary <- fit_summary[,c("Mean", "SD", "lCI", "Median", "uCI", "MCMC error", "MCMC SD error", "ESS", "Rhat"),drop = FALSE]
-
-  return(fit_summary)
 }

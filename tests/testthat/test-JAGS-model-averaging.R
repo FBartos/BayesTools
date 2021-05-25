@@ -54,8 +54,8 @@ test_that("JAGS model-averaging functions work (simple)",{
     list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_odds = 1),
     list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_odds = 1)
   )
-  inference <- models_inference(model_list = models, parameters = c("m", "s"), is_null_list = list("m" = 1, "s" = 0), conditional = FALSE)
-  inference_conditional <- models_inference(model_list = models, parameters = c("m", "s"), is_null_list = list("m" = 1, "s" = 0), conditional = TRUE)
+  inference <- ensemble_inference(model_list = models, parameters = c("m", "s"), is_null_list = list("m" = 1, "s" = 0), conditional = FALSE)
+  inference_conditional <- ensemble_inference(model_list = models, parameters = c("m", "s"), is_null_list = list("m" = 1, "s" = 0), conditional = TRUE)
 
   mixed_posteriors <- mix_posteriors(model_list = models, parameters = c("m", "s"), is_null_list = list("m" = 1, "s" = 0), seed = 1)
   mixed_posteriors_conditional <- mix_posteriors(model_list = models, parameters = c("m", "s"), is_null_list = list("m" = 1, "s" = 0), conditional = TRUE)
@@ -150,15 +150,16 @@ test_that("JAGS model-averaging functions work (weightfunctions)",{
     list(fit = fit2, marglik = marglik2, priors = priors_list2, prior_odds = 1)
   )
 
-  # get models inference
-  inference <- models_inference(model_list = models, parameters = c("m", "omega"), is_null_list = list("m" = 0, "omega" = 1), conditional = FALSE)
-  inference_conditional <- models_inference(model_list = models, parameters = c("m", "omega"), is_null_list = list("m" = 0, "omega" = 1), conditional = TRUE)
-
-  # automatically mix posteriors
+  # get models inference &  mix posteriors
+  models    <- models_inference(models)
+  inference <- ensemble_inference(model_list = models, parameters = c("m", "omega"), is_null_list = list("m" = 0, "omega" = 1), conditional = FALSE)
+  inference_conditional <- ensemble_inference(model_list = models, parameters = c("m", "omega"), is_null_list = list("m" = 0, "omega" = 1), conditional = TRUE)
   mixed_posteriors <- mix_posteriors(model_list = models, parameters = c("m", "omega"), is_null_list = list("m" = 0, "omega" = 1), seed = 1)
   mixed_posteriors_conditional <-mix_posteriors(model_list = models, parameters = c("m", "omega"), is_null_list = list("m" = 0, "omega" = 1), seed = 1, conditional = TRUE)
 
-
+  # checking posteriors and inferences
+  expect_equal(names(models[[1]]$inference), c("m_number", "marglik", "prior_prob", "post_probs", "inclusion_BF"))
+  expect_equal(unname(unlist(models[[1]]$inference)), c(1.0000000, -1.1023042, 0.3333333, 0.1998118, 0.4994120), tolerance = 1e-4)
   expect_equal(mean(mixed_posteriors$omega[,-1] == 1), inference$omega$post_probs[1], tolerance = 1e-4)
   expect_true(all(mixed_posteriors$omega[1,] == 1))
   expect_true(all(colnames(mixed_posteriors$omega[1,]) == c("omega[0,0.05]", "omega[0.05,0.5]", "omega[0.5,1]")))
@@ -172,7 +173,8 @@ test_that("JAGS model-averaging functions work (weightfunctions)",{
     sapply(1:3, function(i)hist(mixed_posteriors_conditional$omega[,i], main = "conditional (omega)", xlab = colnames(mixed_posteriors$omega)[i]))
   })
 
-  # checking fixed weightfunctions
+
+  ### checking fixed weightfunctions
   priors_list3 <- list(
     m  = prior("normal", list(0, .3)),
     omega = prior_weightfunction("two.sided.fixed", list(0.20, c(.3, 1)))
@@ -186,7 +188,7 @@ test_that("JAGS model-averaging functions work (weightfunctions)",{
     list(fit = fit3, marglik = marglik3, priors = priors_list3, prior_odds = 1)
   )
 
-  inference <- models_inference(model_list = models, parameters = c("m", "omega"), is_null_list = list("m" = 0, "omega" = 1), conditional = FALSE)
+  inference <- ensemble_inference(model_list = models, parameters = c("m", "omega"), is_null_list = list("m" = 0, "omega" = 1), conditional = FALSE)
   mixed_posteriors <- mix_posteriors(model_list = models, parameters = c("m", "omega"), is_null_list = list("m" = 0, "omega" = 1), seed = 1)
   mixed_posteriors_conditional <- mix_posteriors(model_list = models, parameters = c("m", "omega"), is_null_list = list("m" = 0, "omega" = 1), seed = 1, conditional = TRUE)
 
@@ -198,4 +200,3 @@ test_that("JAGS model-averaging functions work (weightfunctions)",{
     sapply(1:5, function(i)hist(mixed_posteriors_conditional$omega[,i], main = "conditional (omega)", xlab = colnames(mixed_posteriors$omega)[i]))
   })
 })
-
