@@ -281,7 +281,7 @@ mix_posteriors.simple         <- function(fits, priors, parameter, post_probs, s
     temp_ind <- sample(nrow(model_samples), round(n_samples * post_probs[i]), replace = TRUE)
 
     if(is.prior.point(priors[[i]])){
-      samples <- c(samples, rng(length(temp_ind), priors[[i]]))
+      samples <- c(samples, rng(priors[[i]], length(temp_ind)))
     }else{
       samples <- c(samples, model_samples[temp_ind, parameter])
     }

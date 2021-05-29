@@ -10,15 +10,15 @@ context("Prior distribution functions")
 test_prior <- function(prior, skip_moments = FALSE){
   set.seed(1)
   # tests rng and print function (for plot)
-  samples <- rng(100000, prior)
+  samples <- rng(prior, 100000)
   hist(samples, main = print(prior, plot = T), breaks = 50, freq = FALSE)
   # tests density function
   lines(density(prior))
   # tests quantile function
-  abline(v = quant(0.5, prior), col = "blue", lwd = 2)
+  abline(v = quant(prior, 0.5), col = "blue", lwd = 2)
   # tests that pdf(q(x)) == x
   if(prior$distribution != "point"){
-    expect_equal(.25, cdf(quant(0.25, prior), prior), tolerance = 1e-5)
+    expect_equal(.25, cdf(prior, quant(prior, 0.25)), tolerance = 1e-5)
   }
   # test mean and sd functions
   if(!skip_moments){
@@ -30,11 +30,11 @@ test_prior <- function(prior, skip_moments = FALSE){
 test_weightfunction <- function(prior, skip_moments = FALSE){
   set.seed(1)
   # tests rng and print function (for plot)
-  samples   <- rng(10000, prior)
+  samples   <- rng(prior, 10000)
   densities <- density(prior, individual = TRUE)
 
   if(!all(names(prior$parameters) %in% c("steps", "alpha1", "alpha2"))){
-    quantiles <- mquant(0.5, prior)
+    quantiles <- mquant(prior, 0.5)
   }
 
   par(mfcol = c(1, ncol(samples)-1))
@@ -46,7 +46,7 @@ test_weightfunction <- function(prior, skip_moments = FALSE){
       abline(v = quantiles[i], col = "blue", lwd = 2)
     }
     if(!grepl("fixed", prior$distribution) & !all(names(prior$parameters) %in% c("steps", "alpha1", "alpha2"))){
-      expect_equal(.25, mcdf(mquant(0.25, prior)[,i], prior)[,i], tolerance = 1e-5)
+      expect_equal(.25, mcdf(prior, mquant(prior, 0.25)[,i])[,i], tolerance = 1e-5)
     }
     if(!skip_moments){
       expect_equal(apply(samples, 2, mean), mean(prior), tolerance = 1e-2)

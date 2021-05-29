@@ -1,3 +1,6 @@
+## version 0.0.0.9007
+- posterior plotting functions
+
 ## version 0.0.0.9006
 - ensemble and model summary tables functions
 

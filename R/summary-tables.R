@@ -413,7 +413,7 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
     summary_names  <- c(summary_names,  rep("", length(summary_priors) - length(summary_names)))
     summary_values <- c(summary_values, rep("", length(summary_priors) - length(summary_values)))
   }
-  summary_names <- paste0(summary_names, "   ")
+  summary_names <- paste0(summary_names, "  ")
 
   summary_table <- data.frame(cbind(
     summary_names,
@@ -425,7 +425,7 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
 
   # prepare output
   class(summary_table)             <- c("BayesTools_table", class(summary_table))
-  attr(summary_table, "type")      <- c("string", "string", "string", "prior")
+  attr(summary_table, "type")      <- c("string_left", "string", "string", "prior")
   attr(summary_table, "rownames")  <- FALSE
   attr(summary_table, "as.matrix") <- TRUE
   attr(summary_table, "title")     <- title
@@ -454,25 +454,8 @@ runjags_estimates_table  <- function(fit, prior_list, transformations = NULL, ti
 
   # obtain model information
   invisible(utils::capture.output(runjags_summary <- suppressWarnings(summary(fit, silent.jags = TRUE))))
-  model_samples <- suppressWarnings(coda::as.mcmc(fit))
-
-  # remove un-wanted columns
   runjags_summary <- data.frame(runjags_summary)
-  runjags_summary <- runjags_summary[,!colnames(runjags_summary) %in% c("Mode", "AC.10"),drop = FALSE]
-
-  # remove un-wanted estimates (or support values)
-  for(i in seq_along(prior_list)){
-    if(is.prior.weightfunction(prior_list[[i]])){
-      if(prior_list[[i]][["distribution"]] %in% c("one.sided", "two.sided")){
-        runjags_summary <- runjags_summary[!grepl("eta", rownames(runjags_summary)),,drop=FALSE]
-      }
-      runjags_summary[max(grep("omega", rownames(runjags_summary))),c("MCerr", "MC.ofSD","SSeff","psfr")] <- NA
-    }else if(remove_spike_0 && is.prior.point(prior_list[[i]]) && prior_list[[i]][["parameters"]][["location"]] == 0){
-      runjags_summary <- runjags_summary[rownames(runjags_summary) != names(prior_list)[i],,drop=FALSE]
-    }else if(is.prior.simple(prior_list[[i]]) &&  prior_list[[i]][["distribution"]] == "invgamma"){
-      runjags_summary <- runjags_summary[rownames(runjags_summary) != paste0("inv_",names(prior_list)[i]),,drop=FALSE]
-    }
-  }
+  model_samples   <- suppressWarnings(coda::as.mcmc(fit))
 
   # apply transformations
   if(!is.null(transformations)){
@@ -486,11 +469,35 @@ runjags_estimates_table  <- function(fit, prior_list, transformations = NULL, ti
     }
   }
 
-
   # change HPD to quantile intervals
   for(par in rownames(runjags_summary)){
     runjags_summary[par, "Lower95"] <- stats::quantile(model_samples[,par], .025)
     runjags_summary[par, "Upper95"] <- stats::quantile(model_samples[,par], .975)
+  }
+
+  # remove un-wanted columns
+  runjags_summary <- runjags_summary[,!colnames(runjags_summary) %in% c("Mode", "AC.10"),drop = FALSE]
+
+  # remove un-wanted estimates (or support values)
+  for(i in seq_along(prior_list)){
+    if(is.prior.weightfunction(prior_list[[i]])){
+      # remove etas
+      if(prior_list[[i]][["distribution"]] %in% c("one.sided", "two.sided")){
+        runjags_summary <- runjags_summary[!grepl("eta", rownames(runjags_summary)),,drop=FALSE]
+      }
+      # remove wrong diagnostics for the constant
+      runjags_summary[max(grep("omega", rownames(runjags_summary))),c("MCerr", "MC.ofSD","SSeff","psfr")] <- NA
+      # reorder
+      runjags_summary[grep("omega", rownames(runjags_summary)),] <- runjags_summary[rev(grep("omega", rownames(runjags_summary))),]
+      # rename
+      omega_cuts    <- weightfunctions_mapping(prior_list[i], cuts_only = TRUE)
+      omega_names   <- sapply(1:(length(omega_cuts)-1), function(i)paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
+      rownames(runjags_summary)[grep("omega", rownames(runjags_summary))] <- omega_names
+    }else if(remove_spike_0 && is.prior.point(prior_list[[i]]) && prior_list[[i]][["parameters"]][["location"]] == 0){
+      runjags_summary <- runjags_summary[rownames(runjags_summary) != names(prior_list)[i],,drop=FALSE]
+    }else if(is.prior.simple(prior_list[[i]]) &&  prior_list[[i]][["distribution"]] == "invgamma"){
+      runjags_summary <- runjags_summary[rownames(runjags_summary) != paste0("inv_",names(prior_list)[i]),,drop=FALSE]
+    }
   }
 
   # rename the rest
@@ -506,11 +513,6 @@ runjags_estimates_table  <- function(fit, prior_list, transformations = NULL, ti
 
   # reorder the columns
   runjags_summary <- runjags_summary[,c("Mean", "SD", "lCI", "Median", "uCI", "MCMC error", "MCMC SD error", "ESS", "R-hat"), drop = FALSE]
-
-  # fix convergence statistics for the constant omega estimate
-  if(any(grepl("omega", rownames(runjags_summary)))){
-    runjags_summary[max(grep("omega", rownames(runjags_summary))), c("MCMC error", "MCMC SD error", "ESS", "R-hat")] <- NA
-  }
 
   # prepare output
   class(runjags_summary)             <- c("BayesTools_table", "BayesTools_runjags_summary", class(runjags_summary))
@@ -551,6 +553,10 @@ print.BayesTools_table <- function(x, ...){
   # print formatting
   for(i in seq_along(attr(x, "type"))){
     x[,i] <- .format_column(x[,i], attr(x, "type")[i], attr(x, "n_models")[i])
+
+    if(attr(x, "type")[i] == "prior"){
+      colnames(x)[i] <- .string_center(paste0("Prior ", colnames(x)[i]), x[,i])
+    }
   }
 
   # print title
@@ -580,6 +586,7 @@ print.BayesTools_table <- function(x, ...){
     type,
     "integer"         = round(x),
     "prior"           = .center_priors(x),
+    "string_left"     = .string_left(x),
     "string"          = x,
     "estimate"        = format(round(x, digits = 3), nsmall = 3),
     "probability"     = format(round(x, digits = 3), nsmall = 3),
@@ -607,8 +614,30 @@ print.BayesTools_table <- function(x, ...){
         return(0)
       }
     })
-    add_to_right   <- max(from_right) - from_right
+    add_to_right  <- ifelse(from_right == 0, 0, max(from_right) - from_right)
     x <- paste0(x, sapply(seq_along(x), function(i)paste0(rep(" ", add_to_right[i]), collapse = "")))
+
+  }
+
+  return(x)
+}
+.string_left   <- function(x, reference = x){
+
+  if(length(x) > 0){
+
+    add_to_right <- max(nchar(reference)) - nchar(x)
+    x <- paste0(x, sapply(seq_along(x), function(i)paste0(rep(" ", add_to_right[i]), collapse = "")))
+
+  }
+
+  return(x)
+}
+.string_center <- function(x, reference = x){
+
+  if(length(x) > 0){
+
+    add_to_sides <- max(nchar(reference)) - nchar(x)
+    x <- paste0( sapply(seq_along(x), function(i)paste0(rep(" ", round(add_to_sides[i]/2)), collapse = "")), x, sapply(seq_along(x), function(i)paste0(rep(" ", round(add_to_sides[i]/2)), collapse = "")))
 
   }
 

@@ -360,7 +360,7 @@ JAGS_marglik_priors.simple         <- function(samples, prior, parameter_name){
       "distribution" = "gamma",
       "parameters"   = list("shape" = prior$parameters[["shape"]], "rate" = prior$parameters[["scale"]]),
       "truncation"   = list("lower" = prior$truncation[["upper"]]^-1, "upper" = prior$truncation[["lower"]]^-1))
-    marglik <- lpdf(samples[[ paste0("inv_", parameter_name) ]], sampling_prior)
+    marglik <- lpdf(sampling_prior, samples[[ paste0("inv_", parameter_name) ]])
 
   }else if(prior[["distribution"]] == "point"){
 
@@ -368,7 +368,7 @@ JAGS_marglik_priors.simple         <- function(samples, prior, parameter_name){
 
   }else{
 
-    marglik <- lpdf(samples[[ parameter_name ]], prior)
+    marglik <- lpdf(prior, samples[[ parameter_name ]])
 
   }
 

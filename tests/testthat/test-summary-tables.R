@@ -48,14 +48,14 @@ test_that("Summary tables functions work",{
   ### checking summary functions
   # model summary
   model_summary <- model_summary_table(models[[2]])
-  expect_equal(model_summary[,1], c("Model   ", "Prior prob.   ", "log(marglik)   ", "Post. prob.   ", "Inclusion BF   "))
+  expect_equal(model_summary[,1], c("Model  ", "Prior prob.  ", "log(marglik)  ", "Post. prob.  ", "Inclusion BF  "))
   expect_equal(model_summary[,2], c("2", "0.333", "-0.61", "0.325", "0.964"))
   expect_equal(model_summary[,4], c("Parameter prior distributions", "m ~ Normal(0, 0.5)", "omega[one-sided: .05] ~ CumDirichlet(1, 1)", "", ""))
 
   # runjags summary
   runjags_summary <- models[[2]]$fit_summary
   expect_equal(colnames(runjags_summary), c("Mean", "SD", "lCI", "Median", "uCI", "MCMC error", "MCMC SD error", "ESS", "R-hat"))
-  expect_equal(rownames(runjags_summary), c("m", "omega[1]", "omega[2]"))
+  expect_equal(rownames(runjags_summary), c("m", "omega[0,0.05]", "omega[0.05,1]"))
   expect_equal(round(unname(unlist(runjags_summary[1,])), 4), round(c(0.155080816, 0.197817354, -0.247495448, 0.167295089, 0.496803251, 0.009208408, 0.047000000, 461.000000000, NA), 4))
 
   # ensemble estimates

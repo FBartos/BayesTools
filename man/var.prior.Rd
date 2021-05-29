@@ -9,7 +9,7 @@
 \arguments{
 \item{x}{a prior}
 
-\item{...}{unused arguments.}
+\item{...}{unused arguments}
 }
 \description{
 Computes variance

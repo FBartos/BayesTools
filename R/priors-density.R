@@ -112,10 +112,10 @@ density.prior <- function(x,
 
   # get the samples to estimate density / obtain the density directly
   if(force_samples | .density.prior_need_samples(x)){
-    x_sam <- rng(n_samples, x)
+    x_sam <- rng(x, n_samples)
     x_den <- stats::density(x_sam, n = n_points, from = x_range[1], to = x_range[2])$y
   }else{
-    x_den <- mpdf(x_seq, x)
+    x_den <- mpdf(x, x_seq)
     x_sam <- NULL
   }
 
@@ -163,7 +163,7 @@ density.prior <- function(x,
 
   # return the samples if requested
   if(force_samples){
-    x_sam <- rng(n_samples, x)
+    x_sam <- rng(x, n_samples)
   }else{
     x_sam <- NULL
   }
@@ -206,10 +206,10 @@ density.prior <- function(x,
   if(individual){
 
     if(force_samples | .density.prior_need_samples(x)){
-      x_sam <- rng(n_samples, x)
+      x_sam <- rng(x, n_samples)
       x_den <- do.call(cbind, lapply(1:ncol(x_sam), function(i)stats::density(x_sam[,i], n = n_points, from = x_range[1], to = x_range[2])$y))
     }else{
-      x_den <- mpdf(x_seq, x)
+      x_den <- mpdf(x, x_seq)
       x_sam <- NULL
     }
 
@@ -265,14 +265,14 @@ density.prior <- function(x,
     x_seq_rep <- c(1, sort(rep(2:(length(x_seq)-1), 2)) ,length(x_seq))
     x_val_rep <- sort(rep(1:(length(x_seq)-1), 2))
     if(force_samples | .density.prior_need_samples(x)){
-      x_sam  <- rng(n_samples, x)
+      x_sam  <- rng(x, n_samples)
       x_lCI  <- rev(apply(x_sam, 2, stats::quantile, probs = .025))
       x_uCI  <- rev(apply(x_sam, 2, stats::quantile, probs = .975))
       x_mean <- rev(apply(x_sam, 2, mean))
     }else{
       x_sam  <- NULL
-      x_lCI  <- rev(mquant(.025, x))
-      x_uCI  <- rev(mquant(.975, x))
+      x_lCI  <- rev(mquant(x, .025))
+      x_uCI  <- rev(mquant(x, .975))
       x_mean <- rev(mean(x))
     }
 
@@ -327,13 +327,13 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
   x_range <- c(NA, NA)
 
   if(is.infinite(x[["truncation"]][["lower"]])){
-    x_range[1] <- mquant(quantiles, x)
+    x_range[1] <- mquant(x, quantiles)
   }else{
     x_range[1] <- x[["truncation"]][["lower"]]
   }
 
   if(is.infinite(x[["truncation"]][["upper"]])){
-    x_range[2] <- mquant(1 - quantiles, x)
+    x_range[2] <- mquant(x, 1 - quantiles)
   }else{
     x_range[2] <- x[["truncation"]][["upper"]]
   }

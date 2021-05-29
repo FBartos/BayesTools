@@ -598,29 +598,33 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
 #' and marginal variants of the functions (mpdf, mlpf, mcdf,
 #' mccdf, mquant) for prior distributions.
 #'
-#' @param prior a prior distribution.
-#' @param x,q vector or matrix of quantiles.
-#' @param p vector of probabilities.
-#' @param n number of observations.
+#' @param x prior distribution
+#' @param y vector of observations
+#' @param q vector or matrix of quantiles
+#' @param p vector of probabilities
+#' @param n number of observations
+#' @param ... unused arguments
 #'
-#' @export rng
-#' @export cdf
-#' @export ccdf
-#' @export quant
-#' @export lpdf
-#' @export pdf
-#' @export mcdf
-#' @export mccdf
-#' @export mquant
-#' @export mlpdf
-#' @export mpdf
+#' @exportS3Method rng prior
+#' @exportS3Method cdf prior
+#' @exportS3Method ccdf prior
+#' @exportS3Method quant prior
+#' @exportS3Method lpdf prior
+#' @exportS3Method pdf prior
+#' @exportS3Method mcdf prior
+#' @exportS3Method mccdf prior
+#' @exportS3Method mquant prior
+#' @exportS3Method mlpdf prior
+#' @exportS3Method mpdf prior
 #' @name prior_functions
 NULL
 
 
 #### joint distribution functions ####
 #' @rdname prior_functions
-rng   <- function(n, prior){
+rng.prior   <- function(x, n, ...){
+
+  prior <- x
 
   .check_n(n)
   .check_prior(prior)
@@ -664,7 +668,9 @@ rng   <- function(n, prior){
   return(x)
 }
 #' @rdname prior_functions
-cdf   <- function(q, prior){
+cdf.prior   <- function(x, q, ...){
+
+  prior <- x
 
   .check_q(q)
   .check_prior(prior)
@@ -701,7 +707,9 @@ cdf   <- function(q, prior){
   return(p)
 }
 #' @rdname prior_functions
-ccdf  <- function(q, prior){
+ccdf.prior  <- function(x, q, ...){
+
+  prior <- x
 
   .check_q(q)
   .check_prior(prior)
@@ -738,7 +746,10 @@ ccdf  <- function(q, prior){
   return(p)
 }
 #' @rdname prior_functions
-lpdf  <- function(x, prior){
+lpdf.prior  <- function(x, y, ...){
+
+  prior <- x
+  x     <- y
 
   .check_x(x)
   .check_prior(prior)
@@ -772,18 +783,23 @@ lpdf  <- function(x, prior){
   return(log_lik)
 }
 #' @rdname prior_functions
-pdf   <- function(x, prior){
+pdf.prior   <- function(x, y, ...){
+
+  prior <- x
+  x     <- y
 
   .check_x(x)
   .check_prior(prior)
 
-  log_lik <- lpdf(x, prior)
+  log_lik <- lpdf(prior, x)
   lik     <- exp(log_lik)
 
   return(lik)
 }
 #' @rdname prior_functions
-quant <- function(p, prior){
+quant.prior <- function(x, p, ...){
+
+  prior <- x
 
   .check_p(p, log.p = FALSE)
   .check_prior(prior)
@@ -820,7 +836,7 @@ quant <- function(p, prior){
       q <- sapply(p, function(p_i){
         stats::optim(
           par     = start_value,
-          fn      = function(x, prior, p_i)(cdf(x, prior) - p_i)^2,
+          fn      = function(x, prior, p_i)(cdf(prior, x) - p_i)^2,
           lower   = prior$truncation[["lower"]],
           upper   = prior$truncation[["upper"]],
           prior   = prior,
@@ -921,14 +937,16 @@ quant <- function(p, prior){
 # weightfunctions require just marginals for plotting and etc
 # (also, the joint are not implemented in general, since they differ between JAGS/Stan implementations)
 #' @rdname prior_functions
-mcdf   <- function(q, prior){
+mcdf.prior   <- function(x, q, ...){
+
+  prior <- x
 
   .check_q(q)
   .check_prior(prior)
 
   if(is.prior.simple(prior)){
 
-    p <- cdf(q, prior)
+    p <- cdf(prior, q)
 
   }else if(is.prior.weightfunction(prior)){
 
@@ -945,14 +963,16 @@ mcdf   <- function(q, prior){
   return(p)
 }
 #' @rdname prior_functions
-mccdf  <- function(q, prior){
+mccdf.prior  <- function(x, q, ...){
+
+  prior <- x
 
   .check_q(q)
   .check_prior(prior)
 
   if(is.prior.simple(prior)){
 
-    p <- ccdf(q, prior)
+    p <- ccdf(prior, q)
 
   }else if(is.prior.weightfunction(prior)){
 
@@ -969,14 +989,17 @@ mccdf  <- function(q, prior){
   return(p)
 }
 #' @rdname prior_functions
-mlpdf  <- function(x, prior){
+mlpdf.prior  <- function(x, y, ...){
+
+  prior <- x
+  x     <- y
 
   .check_x(x)
   .check_prior(prior)
 
   if(is.prior.simple(prior)){
 
-    log_lik <- lpdf(x, prior)
+    log_lik <- lpdf(prior, x)
 
   }else if(is.prior.weightfunction(prior)){
 
@@ -993,25 +1016,30 @@ mlpdf  <- function(x, prior){
   return(log_lik)
 }
 #' @rdname prior_functions
-mpdf   <- function(x, prior){
+mpdf.prior   <- function(x, y, ...){
+
+  prior <- x
+  x     <- y
 
   .check_x(x)
   .check_prior(prior)
 
-  log_lik <- mlpdf(x, prior)
+  log_lik <- mlpdf(prior, x)
   lik     <- exp(log_lik)
 
   return(lik)
 }
 #' @rdname prior_functions
-mquant <- function(p, prior){
+mquant.prior <- function(x, p, ...){
+
+  prior <- x
 
   .check_p(p, log.p = FALSE)
   .check_prior(prior)
 
   if(is.prior.simple(prior)){
 
-    q <- quant(p, prior)
+    q <- quant(prior, p)
 
   }else if(is.prior.weightfunction(prior)){
 
@@ -1027,6 +1055,78 @@ mquant <- function(p, prior){
 
   return(q)
 }
+
+### create generic method
+#' @title Creates generic for pdf function
+#'
+#' @param x main argument
+#' @param ... unused arguments
+#'
+#' @export rng
+#' @export cdf
+#' @export ccdf
+#' @export quant
+#' @export lpdf
+#' @export pdf
+#' @export mcdf
+#' @export mccdf
+#' @export mquant
+#' @export mlpdf
+#' @export mpdf
+#' @importFrom grDevices pdf
+#' @name prior_functions_methods
+NULL
+
+#' @rdname prior_functions_methods
+rng    <- function(x, ...){
+  UseMethod("rng")
+}
+#' @rdname prior_functions_methods
+cdf    <- function(x, ...){
+  UseMethod("cdf")
+}
+#' @rdname prior_functions_methods
+ccdf   <- function(x, ...){
+  UseMethod("ccdf")
+}
+#' @rdname prior_functions_methods
+quant  <- function(x, ...){
+  UseMethod("quant")
+}
+#' @rdname prior_functions_methods
+lpdf   <- function(x, ...){
+  UseMethod("lpdf")
+}
+#' @rdname prior_functions_methods
+pdf    <- function(x, ...){
+  UseMethod("pdf")
+}
+#' @rdname prior_functions_methods
+mcdf   <- function(x, ...){
+  UseMethod("mcdf")
+}
+#' @rdname prior_functions_methods
+mccdf  <- function(x, ...){
+  UseMethod("mccdf")
+}
+#' @rdname prior_functions_methods
+mquant <- function(x, ...){
+  UseMethod("mquant")
+}
+#' @rdname prior_functions_methods
+mlpdf  <- function(x, ...){
+  UseMethod("mlpdf")
+}
+#' @rdname prior_functions_methods
+mpdf   <- function(x, ...){
+  UseMethod("mpdf")
+}
+
+#' @export
+pdf.default  <- function(x, ...){
+  grDevices::pdf(x, ...)
+}
+
 
 #### additional prior related function ####
 #' @title Prior mean
@@ -1076,7 +1176,7 @@ mean.prior   <- function(x, ...){
       }
 
       m <- stats::integrate(
-        f       = function(x, prior) x * pdf(x, prior),
+        f       = function(x, prior) x * pdf(prior, x),
         lower   = x$truncation[["lower"]],
         upper   = x$truncation[["upper"]],
         prior   = x
@@ -1120,11 +1220,11 @@ var <- function(x, ...){
 
 #' @export
 sd.default  <- function(x, ...){
-  stats::sd(x)
+  stats::sd(x, ...)
 }
 #' @export
 var.default <- function(x, ...){
-  stats::var(x)
+  stats::var(x, ...)
 }
 
 
@@ -1134,7 +1234,7 @@ var.default <- function(x, ...){
 #' of a prior distribution.
 #'
 #' @param x a prior
-#' @param ... unused arguments.
+#' @param ... unused arguments
 #'
 #' @seealso [prior()]
 #' @importFrom stats var
@@ -1176,7 +1276,7 @@ var.prior   <- function(x, ...){
       }
 
       E2 <- stats::integrate(
-        f       = function(x, prior) x^2 * pdf(x, prior),
+        f       = function(x, prior) x^2 * pdf(prior, x),
         lower   = x$truncation[["lower"]],
         upper   = x$truncation[["upper"]],
         prior   = x
@@ -1201,7 +1301,7 @@ var.prior   <- function(x, ...){
 #' of a prior distribution.
 #'
 #' @param x a prior
-#' @param ... unused arguments.
+#' @param ... unused arguments
 #'
 #' @seealso [prior()]
 #' @importFrom stats sd

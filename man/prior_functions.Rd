@@ -2,49 +2,53 @@
 % Please edit documentation in R/priors.R
 \name{prior_functions}
 \alias{prior_functions}
-\alias{rng}
-\alias{cdf}
-\alias{ccdf}
-\alias{lpdf}
-\alias{pdf}
-\alias{quant}
-\alias{mcdf}
-\alias{mccdf}
-\alias{mlpdf}
-\alias{mpdf}
-\alias{mquant}
+\alias{rng.prior}
+\alias{cdf.prior}
+\alias{ccdf.prior}
+\alias{lpdf.prior}
+\alias{pdf.prior}
+\alias{quant.prior}
+\alias{mcdf.prior}
+\alias{mccdf.prior}
+\alias{mlpdf.prior}
+\alias{mpdf.prior}
+\alias{mquant.prior}
 \title{Elementary prior related functions}
 \usage{
-rng(n, prior)
+\method{rng}{prior}(x, n, ...)
 
-cdf(q, prior)
+\method{cdf}{prior}(x, q, ...)
 
-ccdf(q, prior)
+\method{ccdf}{prior}(x, q, ...)
 
-lpdf(x, prior)
+\method{lpdf}{prior}(x, y, ...)
 
-pdf(x, prior)
+\method{pdf}{prior}(x, y, ...)
 
-quant(p, prior)
+\method{quant}{prior}(x, p, ...)
 
-mcdf(q, prior)
+\method{mcdf}{prior}(x, q, ...)
 
-mccdf(q, prior)
+\method{mccdf}{prior}(x, q, ...)
 
-mlpdf(x, prior)
+\method{mlpdf}{prior}(x, y, ...)
 
-mpdf(x, prior)
+\method{mpdf}{prior}(x, y, ...)
 
-mquant(p, prior)
+\method{mquant}{prior}(x, p, ...)
 }
 \arguments{
-\item{n}{number of observations.}
+\item{x}{prior distribution}
 
-\item{prior}{a prior distribution.}
+\item{n}{number of observations}
 
-\item{x, q}{vector or matrix of quantiles.}
+\item{...}{unused arguments}
 
-\item{p}{vector of probabilities.}
+\item{q}{vector or matrix of quantiles}
+
+\item{y}{vector of observations}
+
+\item{p}{vector of probabilities}
 }
 \description{
 Density (pdf / lpdf), distribution

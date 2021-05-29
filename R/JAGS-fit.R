@@ -503,11 +503,11 @@ JAGS_init.simple          <- function(prior, parameter_name){
         "distribution" = "gamma",
         "parameters"   = list("shape" = prior$parameters[["shape"]], "rate" = prior$parameters[["scale"]]),
         "truncation"   = list("lower" = prior$truncation[["upper"]]^-1, "upper" = prior$truncation[["lower"]]^-1))
-      init[[paste0("inv_", parameter_name)]] <- rng(1, sampling_prior)
+      init[[paste0("inv_", parameter_name)]] <- rng(sampling_prior, 1)
 
     }else{
 
-      init[[parameter_name]] <- rng(1, prior)
+      init[[parameter_name]] <- rng(prior, 1)
 
     }
   }
