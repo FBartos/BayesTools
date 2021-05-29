@@ -89,7 +89,7 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95)
   # prepare output
   estimates_table                    <- data.frame(estimates_table)
   colnames(estimates_table)          <- gsub("X", "", colnames(estimates_table))
-  class(estimates_table)             <- c("BayesTools_table", class(estimates_table))
+  class(estimates_table)             <- c("BayesTools_table", "BayesTools_ensemble_summary", class(estimates_table))
   attr(estimates_table, "type")      <- rep("estimate", ncol(estimates_table))
   attr(estimates_table, "rownames")  <- TRUE
   attr(estimates_table, "title")     <- title
@@ -126,16 +126,16 @@ ensemble_inference_table <- function(inference, parameters, logBF = FALSE, BF01 
     rownames(inference_table)[nrow(inference_table)] <- parameter
     n_models <- c(n_models, length(attr(inference[[parameter]], "is_null")))
   }
+  inference_table <- data.frame(inference_table)
 
   # format BF
   formatted_BF <- format_BF(inference_table[,"BF"], logBF = logBF, BF01 = BF01)
-  inference[["BF"]] <- formatted_BF
+  inference_table[,"BF"]  <- formatted_BF
+  colnames(inference_table)[colnames(inference_table) == "BF"]  <- attr(formatted_BF, "name")
 
   # prepare output
-  inference_table                    <- data.frame(inference_table)
-  colnames(inference_table)          <- c("Models", "Prior Prob.", "Post. Prob.", attr(formatted_BF, "name"))
-  class(inference_table)             <- c("BayesTools_table", class(inference_table))
-  attr(inference_table, "type")      <- c("n_models", "probability", "probability", "BF")
+  class(inference_table)             <- c("BayesTools_table", "BayesTools_ensemble_summary", class(inference_table))
+  attr(inference_table, "type")      <- c("n_models", "prior_prob", "post_prob", "inclusion_BF")
   attr(inference_table, "rownames")  <- TRUE
   attr(inference_table, "n_models")  <- n_models
   attr(inference_table, "title")     <- title
@@ -186,15 +186,15 @@ ensemble_summary_table <- function(models, parameters, title = NULL, footnotes =
 
   ensemble_table <- cbind(
     ensemble_table,
-    "Prior prob."  = sapply(models, function(model)model[["inference"]][["prior_prob"]]),
-    "log(marglik)" = sapply(models, function(model)model[["inference"]][["marglik"]]),
-    "Post. prob."  = sapply(models, function(model)model[["inference"]][["post_probs"]]),
-    "Inclusion BF" = sapply(models, function(model)model[["inference"]][["inclusion_BF"]])
+    "prior_prob"   = sapply(models, function(model)model[["inference"]][["prior_prob"]]),
+    "marglik"      = sapply(models, function(model)model[["inference"]][["marglik"]]),
+    "post_prob"    = sapply(models, function(model)model[["inference"]][["post_probs"]]),
+    "BF"           = sapply(models, function(model)model[["inference"]][["inclusion_BF"]])
   )
 
   # prepare output
-  class(ensemble_table)             <- c("BayesTools_table", class(ensemble_table))
-  attr(ensemble_table, "type")      <- c("integer", rep("prior", length(parameters)), "probability", "marglik", "probability", "BF")
+  class(ensemble_table)             <- c("BayesTools_table", "BayesTools_ensemble_summary", class(ensemble_table))
+  attr(ensemble_table, "type")      <- c("integer", rep("prior", length(parameters)), "prior_prob", "marglik", "post_prob", "inclusion_BF")
   attr(ensemble_table, "rownames")  <- FALSE
   attr(ensemble_table, "title")     <- title
   attr(ensemble_table, "footnotes") <- footnotes
@@ -241,23 +241,23 @@ ensemble_diagnostics_table <- function(models, parameters, title = NULL, footnot
 
   ensemble_table <- cbind(
     ensemble_table,
-    "max(MCMC)"    = sapply(models, function(model){
-      MCMC_error <- model[["fit_summary"]][,"MCMC error"]
+    "max_MCMC_error"    = sapply(models, function(model){
+      MCMC_error <- model[["fit_summary"]][,"MCMC_error"]
       if(all(is.na(MCMC_error))){
         return(NA)
       }else{
         max(MCMC_error,    na.rm = TRUE)
       }
     }),
-    "max(MCMC SD)" = sapply(models, function(model){
-      MCMC_SD_error <- model[["fit_summary"]][,"MCMC SD error"]
+    "max_MCMC_SD_error" = sapply(models, function(model){
+      MCMC_SD_error <- model[["fit_summary"]][,"MCMC_SD_error"]
       if(all(is.na(MCMC_SD_error))){
         return(NA)
       }else{
         max(MCMC_SD_error, na.rm = TRUE)
       }
     }),
-    "min(ESS)"     = sapply(models, function(model){
+    "min_ESS"     = sapply(models, function(model){
       ESS <- model[["fit_summary"]][,"ESS"]
       if(all(is.na(ESS))){
         return(NA)
@@ -265,8 +265,8 @@ ensemble_diagnostics_table <- function(models, parameters, title = NULL, footnot
         min(ESS, na.rm = TRUE)
       }
     }),
-    "max(R-hat)"   = sapply(models, function(model){
-      Rhat <- model[["fit_summary"]][,"R-hat"]
+    "max_R_hat"   = sapply(models, function(model){
+      Rhat <- model[["fit_summary"]][,"R_hat"]
       if(all(is.na(Rhat))){
         return(NA)
       }else{
@@ -276,8 +276,8 @@ ensemble_diagnostics_table <- function(models, parameters, title = NULL, footnot
   )
 
   # prepare output
-  class(ensemble_table)             <- c("BayesTools_table", class(ensemble_table))
-  attr(ensemble_table, "type")      <- c("integer", rep("prior", length(parameters)), "MCMC error", "MCMC SD error", "ESS", "R-hat")
+  class(ensemble_table)             <- c("BayesTools_table", "BayesTools_ensemble_summary", class(ensemble_table))
+  attr(ensemble_table, "type")      <- c("integer", rep("prior", length(parameters)), "max_MCMC_error", "max_MCMC_SD_error", "min_ESS", "max_R_hat")
   attr(ensemble_table, "rownames")  <- FALSE
   attr(ensemble_table, "title")     <- title
   attr(ensemble_table, "footnotes") <- footnotes
@@ -503,20 +503,20 @@ runjags_estimates_table  <- function(fit, prior_list, transformations = NULL, ti
   # rename the rest
   colnames(runjags_summary)[colnames(runjags_summary) == "Lower95"] <- "lCI"
   colnames(runjags_summary)[colnames(runjags_summary) == "Upper95"] <- "uCI"
-  colnames(runjags_summary)[colnames(runjags_summary) == "MCerr"]   <- "MCMC error"
-  colnames(runjags_summary)[colnames(runjags_summary) == "MC.ofSD"] <- "MCMC SD error"
+  colnames(runjags_summary)[colnames(runjags_summary) == "MCerr"]   <- "MCMC_error"
+  colnames(runjags_summary)[colnames(runjags_summary) == "MC.ofSD"] <- "MCMC_SD_error"
   colnames(runjags_summary)[colnames(runjags_summary) == "SSeff"]   <- "ESS"
-  colnames(runjags_summary)[colnames(runjags_summary) == "psrf"]    <- "R-hat"
+  colnames(runjags_summary)[colnames(runjags_summary) == "psrf"]    <- "R_hat"
 
   # change the SD error to a fraction
-  runjags_summary[, "MCMC SD error"] <- runjags_summary[, "MCMC SD error"] / 100
+  runjags_summary[, "MCMC_SD_error"] <- runjags_summary[, "MCMC_SD_error"] / 100
 
   # reorder the columns
-  runjags_summary <- runjags_summary[,c("Mean", "SD", "lCI", "Median", "uCI", "MCMC error", "MCMC SD error", "ESS", "R-hat"), drop = FALSE]
+  runjags_summary <- runjags_summary[,c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"), drop = FALSE]
 
   # prepare output
   class(runjags_summary)             <- c("BayesTools_table", "BayesTools_runjags_summary", class(runjags_summary))
-  attr(runjags_summary, "type")      <- c(rep("estimate", 5), "MCMC error", "MCMC SD error", "ESS", "R-hat")
+  attr(runjags_summary, "type")      <- c(rep("estimate", 5), "MCMC_error", "MCMC_SD_error", "ESS", "R_hat")
   attr(runjags_summary, "rownames")  <- TRUE
   attr(runjags_summary, "title")     <- title
   attr(runjags_summary, "footnotes") <- footnotes
@@ -529,10 +529,10 @@ runjags_estimates_table  <- function(fit, prior_list, transformations = NULL, ti
 runjags_estimates_empty_table <- function(title = NULL, footnotes = NULL, warnings = NULL){
 
   empty_table <- data.frame(matrix(nrow = 0, ncol = 9))
-  colnames(empty_table) <- c("Mean", "SD", "lCI", "Median", "uCI", "MCMC error", "MCMC SD error", "ESS", "R-hat")
+  colnames(empty_table) <- c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat")
 
   class(empty_table)             <- c("BayesTools_table", "BayesTools_runjags_summary", class(empty_table))
-  attr(empty_table, "type")      <- c(rep("estimate", 5), "MCMC error", "MCMC SD error", "ESS", "R-hat")
+  attr(empty_table, "type")      <- c(rep("estimate", 5), "MCMC_error", "MCMC_SD_error", "ESS", "R_hat")
   attr(empty_table, "rownames")  <- FALSE
   attr(empty_table, "title")     <- title
   attr(empty_table, "footnotes") <- footnotes
@@ -552,11 +552,8 @@ print.BayesTools_table <- function(x, ...){
 
   # print formatting
   for(i in seq_along(attr(x, "type"))){
-    x[,i] <- .format_column(x[,i], attr(x, "type")[i], attr(x, "n_models")[i])
-
-    if(attr(x, "type")[i] == "prior"){
-      colnames(x)[i] <- .string_center(paste0("Prior ", colnames(x)[i]), x[,i])
-    }
+    x[,i]          <- .format_column(x[,i], attr(x, "type")[i], attr(x, "n_models")[i])
+    colnames(x)[i] <- .format_column_names(colnames(x)[i], attr(x, "type")[i], x[,i])
   }
 
   # print title
@@ -580,24 +577,97 @@ print.BayesTools_table <- function(x, ...){
   return(invisible())
 }
 
+#' @title Format Bayes factor
+#'
+#' @description Formats Bayes factor
+#'
+#' @param BF Bayes factor(s)
+#' @param logBF log(BF)
+#' @param BF01 1/BF
+#'
+#' @export
+format_BF <- function(BF, logBF = FALSE, BF01 = FALSE){
 
-.format_column <- function(x, type, n_models){
-  return(switch(
-    type,
-    "integer"         = round(x),
-    "prior"           = .center_priors(x),
-    "string_left"     = .string_left(x),
-    "string"          = x,
-    "estimate"        = format(round(x, digits = 3), nsmall = 3),
-    "probability"     = format(round(x, digits = 3), nsmall = 3),
-    "marglik"         = format(round(x, digits = 2), nsmall = 2),
-    "BF"              = format(round(x, digits = 3), nsmall = 3),
-    "n_models"        = paste0(round(x), "/", n_models),
-    "ESS"             = round(x),
-    "R-hat"           = format(round(x, digits = 3), nsmall = 3),
-    "MCMC error"      = format(round(x, digits = 5), nsmall = 5),
-    "MCMC SD error"   = format(round(x, digits = 3), nsmall = 3),
-  ))
+  check_real(BF, "BF", lower = 0, check_length = FALSE)
+  check_bool(logBF, "logBF")
+  check_bool(BF01,  "BF01")
+
+  name <- "BF"
+
+  if(BF01){
+    BF   <- 1/BF
+    name <- "1/BF"
+  }
+  if(logBF){
+    BF   <- log(BF)
+    name <- paste0("log(", name, ")")
+  }
+
+  attr(BF, "name")  <- name
+  attr(BF, "logBF") <- logBF
+  attr(BF, "BF01")  <- BF01
+
+  return(BF)
+}
+
+
+.format_column       <- function(x, type, n_models){
+  if(is.null(x)){
+    return(x)
+  }else{
+    return(switch(
+      type,
+      "integer"         = round(x),
+      "prior"           = .center_priors(x),
+      "string_left"     = .string_left(x),
+      "string"          = x,
+      "estimate"        = format(round(x, digits = 3), nsmall = 3),
+      "prior_prob"      = format(round(x, digits = 3), nsmall = 3),
+      "post_prob"       = format(round(x, digits = 3), nsmall = 3),
+      "probability"     = format(round(x, digits = 3), nsmall = 3),
+      "marglik"         = format(round(x, digits = 2), nsmall = 2),
+      "BF"              = format(round(x, digits = 3), nsmall = 3),
+      "inclusion_BF"    = format(round(x, digits = 3), nsmall = 3),
+      "n_models"        = paste0(round(x), "/", n_models),
+      "ESS"             = round(x),
+      "R_hat"           = format(round(x, digits = 3), nsmall = 3),
+      "MCMC_error"      = format(round(x, digits = 5), nsmall = 5),
+      "MCMC_SD_error"   = format(round(x, digits = 3), nsmall = 3),
+      "min_ESS"             = round(x),
+      "max_R_hat"           = format(round(x, digits = 3), nsmall = 3),
+      "max_MCMC_error"      = format(round(x, digits = 5), nsmall = 5),
+      "max_MCMC_SD_error"   = format(round(x, digits = 3), nsmall = 3)
+    ))
+  }
+}
+.format_column_names <- function(x, type, values){
+  if(is.null(x)){
+    return(x)
+  }else{
+    return(switch(
+      type,
+      "integer"         = x,
+      "prior"           = .string_center(paste0("Prior ", x), values),
+      "string_left"     = .string_left(x, values),
+      "string"          = x,
+      "estimate"        = x,
+      "probability"     = x,
+      "prior_prob"      = "Prior prob.",
+      "post_prob"       = "Post. prob.",
+      "marglik"         = "log(marglik)",
+      "BF"              = x,
+      "inclusion_BF"    = paste0("Inclusion ", x),
+      "n_models"        = "Models",
+      "ESS"             = "ESS",
+      "R_hat"           = "R-hat",
+      "MCMC_error"      = "error(MCMC)",
+      "MCMC_SD_error"   = "SD/error(MCMC)",
+      "min_ESS"             = "min(ESS)",
+      "max_R_hat"           = "max(R-hat)",
+      "max_MCMC_error"      = "max[error(MCMC)]",
+      "max_MCMC_SD_error"   = "max[SD/error(MCMC)]",
+    ))
+  }
 }
 .center_priors <- function(x){
 
@@ -637,6 +707,7 @@ print.BayesTools_table <- function(x, ...){
   if(length(x) > 0){
 
     add_to_sides <- max(nchar(reference)) - nchar(x)
+    add_to_sides <- ifelse(add_to_sides < 0, 0, add_to_sides)
     x <- paste0( sapply(seq_along(x), function(i)paste0(rep(" ", round(add_to_sides[i]/2)), collapse = "")), x, sapply(seq_along(x), function(i)paste0(rep(" ", round(add_to_sides[i]/2)), collapse = "")))
 
   }

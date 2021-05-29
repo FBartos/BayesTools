@@ -493,37 +493,3 @@ weightfunctions_mapping <- function(prior_list, cuts_only = FALSE){
 
   return(omega_mapping)
 }
-
-
-#' @title Format Bayes factor
-#'
-#' @description Formats Bayes factor
-#'
-#' @param BF Bayes factor(s)
-#' @param logBF log(BF)
-#' @param BF01 1/BF
-#'
-#' @export
-format_BF <- function(BF, logBF = FALSE, BF01 = FALSE){
-
-  check_real(BF, "BF", lower = 0, check_length = FALSE)
-  check_bool(logBF, "logBF")
-  check_bool(BF01,  "BF01")
-
-  name <- "BF10"
-
-  if(BF01){
-    BF   <- 1/BF
-    name <- "BF01"
-  }
-  if(logBF){
-    BF   <- log(BF)
-    name <- paste0("log(", name, ")")
-  }
-
-  attr(BF, "name")  <- name
-  attr(BF, "logBF") <- logBF
-  attr(BF, "BF01")  <- BF01
-
-  return(BF)
-}

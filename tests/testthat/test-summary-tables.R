@@ -54,7 +54,7 @@ test_that("Summary tables functions work",{
 
   # runjags summary
   runjags_summary <- models[[2]]$fit_summary
-  expect_equal(colnames(runjags_summary), c("Mean", "SD", "lCI", "Median", "uCI", "MCMC error", "MCMC SD error", "ESS", "R-hat"))
+  expect_equal(colnames(runjags_summary), c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
   expect_equal(rownames(runjags_summary), c("m", "omega[0,0.05]", "omega[0.05,1]"))
   expect_equal(round(unname(unlist(runjags_summary[1,])), 4), round(c(0.155080816, 0.197817354, -0.247495448, 0.167295089, 0.496803251, 0.009208408, 0.047000000, 461.000000000, NA), 4))
 
@@ -67,27 +67,27 @@ test_that("Summary tables functions work",{
 
   # ensemble inference
   inference_table <- ensemble_inference_table(inference, names(inference))
-  expect_equal(colnames(inference_table), c("Models", "Prior Prob.", "Post. Prob.", "BF10"))
+  expect_equal(colnames(inference_table), c("models", "prior_prob", "post_prob", "BF"))
   expect_equal(rownames(inference_table), c("m", "omega"))
   expect_equal(unname(unlist(inference_table[1,])), c(3,   1,   1, Inf))
   expect_equal(round(unname(unlist(inference_table[2,])), 4), round(c(2.0000000, 0.6666667, 0.8001882, 2.0023549), 4))
 
   # ensemble summary
   summary_table <- ensemble_summary_table(models, c("m", "omega"))
-  expect_equal(colnames(summary_table), c("Model", "m", "omega", "Prior prob.", "log(marglik)", "Post. prob.", "Inclusion BF"))
+  expect_equal(colnames(summary_table), c("Model", "m", "omega", "prior_prob", "marglik", "post_prob", "BF"))
   expect_equal(unname(unlist(summary_table[1,])), c("1", "Normal(0, 1)", "", "0.333333333333333", "-1.10230423916272", "0.199811784123417", "0.49941196373288"))
   expect_equal(unname(unlist(summary_table[2,])), c("2", "Normal(0, 0.5)", "omega[one-sided: .05] ~ CumDirichlet(1, 1)", "0.333333333333333", "-0.614989663490358", "0.32528132384813", "0.96419836991414"))
 
   # ensemble diagnostics
   diagnostics_table <- ensemble_diagnostics_table(models, c("m", "omega"))
-  expect_equal(colnames(diagnostics_table), c("Model", "m", "omega", "max(MCMC)", "max(MCMC SD)", "min(ESS)", "max(R-hat)"))
+  expect_equal(colnames(diagnostics_table), c("Model", "m", "omega", "max_MCMC_error", "max_MCMC_SD_error", "min_ESS", "max_R_hat"))
   expect_equal(unname(unlist(diagnostics_table[1,])), c("1", "Normal(0, 1)", "", "0.0101903900487724", "0.048", "434", NA))
   expect_equal(unname(unlist(diagnostics_table[2,])), c("2", "Normal(0, 0.5)", "omega[one-sided: .05] ~ CumDirichlet(1, 1)", "0.0134821149740382", "0.047", "461", NA))
 
   ### test additional settings
   # transformations
   runjags_summary2t <- runjags_estimates_table(fit2, priors_list2, transformations = list("m" = list(fun = exp)))
-  expect_equal(exp(models[[3]]$fit_summary[1,c("Mean","lCI","Median","uCI","MCMC error")]), runjags_summary2t[1,c("Mean","lCI","Median","uCI","MCMC error")], tolerance = 1e-5)
+  expect_equal(exp(models[[3]]$fit_summary[1,c("Mean","lCI","Median","uCI","MCMC_error")]), runjags_summary2t[1,c("Mean","lCI","Median","uCI","MCMC_error")], tolerance = 1e-5)
   expect_equal(colnames(models[[3]]$fit_summary), colnames(runjags_summary2t))
   expect_equal(rownames(models[[3]]$fit_summary), rownames(runjags_summary2t))
 
