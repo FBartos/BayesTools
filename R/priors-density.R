@@ -80,7 +80,13 @@ density.prior <- function(x,
     if(!is.null(x_seq)){
       x_range <- range(x_seq)
     }else{
-      x_range <- range(x, if(is.null(x_range_quant)) .range.prior_quantile_default(x) else x_range_quant)
+      if(!individual & (is.prior.PET(x) | is.prior.PEESE(x))){
+        x_range <- c(0, 1)
+      }else if(!individual & is.prior.weightfunction(x)){
+        x_range <- c(0, 1)
+      }else{
+        x_range <- range(x, if(is.null(x_range_quant)) .range.prior_quantile_default(x) else x_range_quant)
+      }
     }
   }
 
@@ -97,12 +103,14 @@ density.prior <- function(x,
 
 
   # use the corresponding density subfunction
-  if(is.prior.point(x)){
+  if(is.prior.weightfunction(x)){
+    out <- .density.prior.weightfunction(x, x_seq, x_range, n_points, n_samples, force_samples, individual)
+  }else if(is.prior.PET(x) | is.prior.PEESE(x)){
+    out <- .density.prior.PETPEESE(x, x_seq, x_range, n_points, n_samples, force_samples, individual, transformation, transformation_arguments)
+  }else if(is.prior.point(x)){
     out <- .density.prior.point(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments)
   }else if(is.prior.simple(x)){
     out <- .density.prior.simple(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments)
-  }else if(is.prior.weightfunction(x)){
-    out <- .density.prior.weightfunction(x, x_seq, x_range, n_points, n_samples, force_samples, individual)
   }
 
   return(out)
@@ -289,6 +297,76 @@ density.prior <- function(x,
 
 
     class(out) <- c("density", "density.prior", "density.prior.weightfunction")
+    attr(out, "x_range") <- c(0, 1)
+    attr(out, "y_range") <- c(0, 1)
+  }
+
+  return(out)
+}
+.density.prior.PETPEESE       <- function(x, x_seq, x_range, n_points, n_samples, force_samples, individual, transformation, transformation_arguments){
+
+  # create either distribution for the parameter or the PET/PEESE function
+  if(individual){
+
+    if(is.prior.point(x)){
+      out <- .density.prior.point(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments)
+    }else if(is.prior.simple(x)){
+      out <- .density.prior.simple(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments)
+    }
+
+  }else{
+
+    # get the samples to estimate density / obtain the density directly
+    if(force_samples | .density.prior_need_samples(x)){
+      x_sam  <- rng(x, n_samples)
+      x_med  <- stats::quantile(x_sam, .500)
+      x_lCI  <- stats::quantile(x_sam, .025)
+      x_uCI  <- stats::quantile(x_sam, .975)
+    }else{
+      x_med  <- quant(x, .500)
+      x_lCI  <- quant(x, .025)
+      x_uCI  <- quant(x, .975)
+      x_sam  <- NULL
+    }
+
+
+    # transform the output, if requested
+    if(!is.null(transformation)){
+      x_med   <- .density.prior_transformation_x(x_med,   transformation, transformation_arguments)
+      x_lCI   <- .density.prior_transformation_x(x_lCI,   transformation, transformation_arguments)
+      x_uCI   <- .density.prior_transformation_x(x_uCI,   transformation, transformation_arguments)
+      x_range <- .density.prior_transformation_x(x_range, transformation, transformation_arguments)
+      if(!is.null(x_sam)){
+        x_sam <- .density.prior_transformation_x(x_sam,   transformation, transformation_arguments)
+      }
+    }
+
+
+    # compute the PET/PEESE
+    if(is.prior.PET(x)){
+      y       = x_med  * x_seq
+      y.lCI   = x_lCI  * x_seq
+      y.uCI   = x_uCI  * x_seq
+    }else if(is.prior.PEESE(x)){
+      y       = x_med  * x_seq^2
+      y.lCI   = x_lCI  * x_seq^2
+      y.uCI   = x_uCI  * x_seq^2
+    }
+
+
+    out <- list(
+      call    = call("density", print(x, silent = TRUE)),
+      bw      = NULL,
+      n       = n_points,
+      x       = x_seq,
+      y       = y,
+      y.lCI   = y.lCI,
+      y.uCI   = y.uCI,
+      samples = x_sam
+    )
+
+
+    class(out) <- c("density", "density.prior", if(is.prior.PET(x)) "density.prior.PET" else if(is.prior.PEESE(x)) "density.prior.PEESE")
     attr(out, "x_range") <- c(0, 1)
     attr(out, "y_range") <- c(0, 1)
   }

@@ -48,4 +48,6 @@
   </clipPath>
 </defs>
 <rect x='82.40' y='75.47' width='584.00' height='410.67' style='stroke-width: 0.75; fill: #D3D3D3;' clip-path='url(#cpNTkuMDR8Njg5Ljc2fDUwMi41Nnw1OS4wNA==)' />
+<line x1='666.40' y1='486.13' x2='666.40' y2='75.47' style='stroke-width: 1.50;' clip-path='url(#cpNTkuMDR8Njg5Ljc2fDUwMi41Nnw1OS4wNA==)' />
+<polyline points='675.40,91.06 666.40,75.47 657.40,91.06 ' style='stroke-width: 1.50;' clip-path='url(#cpNTkuMDR8Njg5Ljc2fDUwMi41Nnw1OS4wNA==)' />
 </svg>

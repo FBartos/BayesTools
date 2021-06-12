@@ -32,7 +32,7 @@ test_that("JAGS model functions work (simple)", {
   for(i in seq_along(priors)){
     expect_doppelganger(paste0("JAGS-model-prior-",i), function(){
       hist(samples[,names(priors)[i]], breaks = 50, main = print(priors[[i]], plot = TRUE), freq = FALSE)
-      lines(density(priors[[i]]))
+      lines(priors[[i]], individual = TRUE)
     })
   }
 })

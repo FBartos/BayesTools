@@ -13,7 +13,7 @@ test_prior <- function(prior, skip_moments = FALSE){
   samples <- rng(prior, 100000)
   hist(samples, main = print(prior, plot = T), breaks = 50, freq = FALSE)
   # tests density function
-  lines(density(prior))
+  lines(prior, individual = TRUE)
   # tests quantile function
   abline(v = quant(prior, 0.5), col = "blue", lwd = 2)
   # tests that pdf(q(x)) == x

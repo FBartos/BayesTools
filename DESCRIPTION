@@ -33,5 +33,6 @@ Imports:
     rstan
 Suggests: 
     ggplot2,
+    scales,
     testthat,
     vdiffr

@@ -26,10 +26,10 @@ test_that("Prior plot (simple) function works", {
   # check dealing with truncation and range changes
   p2 <- prior("Cauchy", list(0, 1), list(0, Inf))
   expect_doppelganger("priors-plot-3-1", function()plot(p2))
-  expect_doppelganger("priors-plot-3-2", function()plot(p2, x_range = c(0, 3)))
+  expect_doppelganger("priors-plot-3-2", function()plot(p2, xlim = c(0, 3)))
   expect_doppelganger("priors-plot-3-3", function()plot(p2, x_seq = seq(-1, 2, .01)))
   expect_doppelganger("priors-plot-3-4", function()plot(p2, x_range_quant = .10))
-  expect_doppelganger("priors-plot-3-5", function()plot(p2, force_samples = TRUE, x_range = c(0, 10)))
+  expect_doppelganger("priors-plot-3-5", function()plot(p2, force_samples = TRUE, xlim = c(0, 10)))
 
   # check transformations
   expect_doppelganger("priors-plot-4-1", function()plot(p1, transformation = "tanh", main = "tanh(x)"))
@@ -57,11 +57,6 @@ test_that("Prior plot (point) function works", {
 
 test_that("Prior plot (weightfunction) function works", {
 
-  # check prefixes
-  p6 <- prior_PET("normal", list(1, 1))
-  expect_doppelganger("priors-plot-7-1", function()plot(p6))
-  expect_doppelganger("priors-plot-7-2", plot(p6, plot_type = "ggplot"))
-
   # check weightfunctions
   p7  <- prior_weightfunction("one.sided", list(c(0.05), c(1, 1)))
   p8  <- prior_weightfunction("one.sided", list(c(0.05, .95), c(1, 1), c(1, 1)))
@@ -79,4 +74,16 @@ test_that("Prior plot (weightfunction) function works", {
     plot(p7, individual =  T, show_figures = NULL)
   })
   expect_doppelganger("priors-plot-8-8", function()plot(p7, rescale_x = TRUE))
+})
+
+test_that("Prior plot (PET-PEESE) function works", {
+
+  p6   <- prior_PET("normal", list(1, 1))
+  p6.1 <- prior_PEESE("Cauchy", list(0, .1))
+  expect_doppelganger("priors-plot-7-1", function()plot(p6))
+  expect_doppelganger("priors-plot-7-2", plot(p6, plot_type = "ggplot"))
+
+  expect_doppelganger("priors-plot-7-1-1", function()plot(p6.1))
+  expect_doppelganger("priors-plot-7-2-1", plot(p6.1, plot_type = "ggplot"))
+
 })
