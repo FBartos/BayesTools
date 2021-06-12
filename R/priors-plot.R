@@ -128,53 +128,40 @@ plot.prior <- function(x, plot_type = "base",
 }
 
 .plot.prior.point          <- function(x, plot_type, plot_data, par_name, ...){
-  # get some common settings
+
+  # get default plot settings
   dots      <- list(...)
+
+  xlim      <- attr(plot_data, "x_range")
+  ylim      <- c(0, 1)
 
   short_name      <- if(is.null(dots[["short_name"]]))      FALSE else dots[["short_name"]]
   parameter_names <- if(is.null(dots[["parameter_names"]])) FALSE else dots[["parameter_names"]]
 
-  cex       <- if(!is.null(dots[["cex"]]))      dots[["cex"]]      else .plot.prior_settings()[["cex"]]
-  cex.axis  <- if(!is.null(dots[["cex.axis"]])) dots[["cex.axis"]] else .plot.prior_settings()[["cex.axis"]]
-  cex.lab   <- if(!is.null(dots[["cex.lab"]]))  dots[["cex.lab"]]  else .plot.prior_settings()[["cex.lab"]]
-  cex.main  <- if(!is.null(dots[["cex.main"]])) dots[["cex.main"]] else .plot.prior_settings()[["cex.main"]]
-  col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
-  col.axis  <- if(!is.null(dots[["col.axis"]])) dots[["col.axis"]] else .plot.prior_settings()[["col.axis"]]
-  col.lab   <- if(!is.null(dots[["col.lab"]]))  dots[["col.lab"]]  else .plot.prior_settings()[["col.lab"]]
-  col.main  <- if(!is.null(dots[["col.main"]])) dots[["col.main"]] else .plot.prior_settings()[["col.main"]]
-  lwd       <- if(!is.null(dots[["lwd"]]))      dots[["lwd"]]      else .plot.prior_settings()[["lwd"]]
-  lty       <- if(!is.null(dots[["lty"]]))      dots[["lty"]]      else .plot.prior_settings()[["lty"]]
-  xlim      <- attr(plot_data, "x_range")
-  ylim      <- c(0, 1)
-
-  main      <- if(!is.null(dots[["main"]])) dots[["main"]] else if (!is.null(attr(plot_data, "steps"))) print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names) else ""
-  xlab      <- if(!is.null(dots[["xlab"]])) dots[["xlab"]] else if (!is.null(attr(plot_data, "steps"))) bquote(omega["["*.(attr(plot_data, "steps")[1])*","~.(attr(plot_data, "steps")[2])*"]"]) else bquote(.(if(!is.null(par_name)){bquote(.(par_name)~"~")})~.(print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names)))
+  main      <- if(!is.null(attr(plot_data, "steps"))) print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names) else ""
+  xlab      <- if(!is.null(attr(plot_data, "steps"))) bquote(omega["["*.(attr(plot_data, "steps")[1])*","~.(attr(plot_data, "steps")[2])*"]"]) else bquote(.(if(!is.null(par_name)){bquote(.(par_name)~"~")})~.(print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names)))
   ylab      <- if(!is.null(dots[["ylab"]])) dots[["ylab"]] else "Density"
+
+  # add it to the user input if desired
+  if(is.null(dots[["main"]])) dots$main <-  main
+  if(is.null(dots[["xlab"]])) dots$xlab <-  xlab
+  if(is.null(dots[["ylab"]])) dots$ylab <-  ylab
+  if(is.null(dots[["xlim"]])) dots$xlim <-  xlim
+  if(is.null(dots[["ylim"]])) dots$ylim <-  ylim
+
 
   if(plot_type == "base"){
 
-    graphics::plot(NA, type = "n", bty  = "n", las = 1, xlab = xlab, ylab = ylab, main = main,
-                   xlim = xlim, ylim = ylim, axes = FALSE,
-                   cex = cex, cex.axis = cex.axis, cex.lab = cex.lab, cex.main = cex.main,
-                   col = col, col.axis = col.axis, col.lab = col.lab, col.main = col.main)
-    graphics::axis(1, col = col.axis, cex = cex.axis)
-    graphics::axis(2, at = c(0, 1), labels = c(0, expression(infinity)), col = col.axis, cex = cex.axis, las = 1)
+    .plot.prior_empty("point", plot_data, dots)
     .lines.prior.point(plot_data, 1, ...)
 
     plot <- NULL
 
   }else if(plot_type == "ggplot"){
 
-    plot <- ggplot2::ggplot()
-    plot <- plot + ggplot2::ggtitle(main)
-    plot <- plot + ggplot2::scale_x_continuous(name = xlab, breaks = pretty(xlim), limits = xlim)
-    plot <- plot + ggplot2::scale_y_continuous(name = ylab, breaks = c(0, 1), labels = c(0, expression(infinity)), limits = ylim)
+    plot <- .ggplot.prior_empty("point", plot_data, main, dots)
     plot <- plot + .geom_prior.point(plot_data, 1, ...)
 
-    plot <- plot + ggplot2::theme(
-      axis.text  = ggplot2::element_text(size = 10 * cex.axis, color = col.axis),
-      axis.title = ggplot2::element_text(size = 10 * cex.lab,  color = col.lab),
-      title      = ggplot2::element_text(size = 10 * cex.main, color = col.main))
   }
 
   # return the plots
@@ -186,51 +173,38 @@ plot.prior <- function(x, plot_type = "base",
 }
 .plot.prior.simple         <- function(x, plot_type, plot_data, par_name, ...){
 
-  # get some common settings
+  # get default plot settings
   dots      <- list(...)
+
+  xlim      <- attr(plot_data, "x_range")
+  ylim      <- attr(plot_data, "y_range")
 
   short_name      <- if(is.null(dots[["short_name"]]))      FALSE else dots[["short_name"]]
   parameter_names <- if(is.null(dots[["parameter_names"]])) FALSE else dots[["parameter_names"]]
 
-  cex       <- if(!is.null(dots[["cex"]]))      dots[["cex"]]      else .plot.prior_settings()[["cex"]]
-  cex.axis  <- if(!is.null(dots[["cex.axis"]])) dots[["cex.axis"]] else .plot.prior_settings()[["cex.axis"]]
-  cex.lab   <- if(!is.null(dots[["cex.lab"]]))  dots[["cex.lab"]]  else .plot.prior_settings()[["cex.lab"]]
-  cex.main  <- if(!is.null(dots[["cex.main"]])) dots[["cex.main"]] else .plot.prior_settings()[["cex.main"]]
-  col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
-  col.axis  <- if(!is.null(dots[["col.axis"]])) dots[["col.axis"]] else .plot.prior_settings()[["col.axis"]]
-  col.lab   <- if(!is.null(dots[["col.lab"]]))  dots[["col.lab"]]  else .plot.prior_settings()[["col.lab"]]
-  col.main  <- if(!is.null(dots[["col.main"]])) dots[["col.main"]] else .plot.prior_settings()[["col.main"]]
-  lwd       <- if(!is.null(dots[["lwd"]]))      dots[["lwd"]]      else .plot.prior_settings()[["lwd"]]
-  lty       <- if(!is.null(dots[["lty"]]))      dots[["lty"]]      else .plot.prior_settings()[["lty"]]
-  xlim      <- attr(plot_data, "x_range")
-  ylim      <- if(!is.null(dots[["ylim"]])) dots[["ylim"]] else attr(plot_data, "y_range")
+  main      <- if(!is.null(attr(plot_data, "steps"))) print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names) else ""
+  xlab      <- if(!is.null(attr(plot_data, "steps"))) bquote(omega["["*.(attr(plot_data, "steps")[1])*","~.(attr(plot_data, "steps")[2])*"]"])  else bquote(.(if(!is.null(par_name)){bquote(.(par_name)~"~")})~.(print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names)))
+  ylab      <- "Density"
 
-  main      <- if(!is.null(dots[["main"]])) dots[["main"]] else if (!is.null(attr(plot_data, "steps"))) print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names) else ""
-  xlab      <- if(!is.null(dots[["xlab"]])) dots[["xlab"]] else if (!is.null(attr(plot_data, "steps"))) bquote(omega["["*.(attr(plot_data, "steps")[1])*","~.(attr(plot_data, "steps")[2])*"]"])  else bquote(.(if(!is.null(par_name)){bquote(.(par_name)~"~")})~.(print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names)))
-  ylab      <- if(!is.null(dots[["ylab"]])) dots[["ylab"]] else "Density"
+  # add it to the user input if desired
+  if(is.null(dots[["main"]])) dots$main <-  main
+  if(is.null(dots[["xlab"]])) dots$xlab <-  xlab
+  if(is.null(dots[["ylab"]])) dots$ylab <-  ylab
+  if(is.null(dots[["xlim"]])) dots$xlim <-  xlim
+  if(is.null(dots[["ylim"]])) dots$ylim <-  ylim
+
 
   if(plot_type == "base"){
 
-    graphics::plot(NA, type = "n", bty  = "n",
-                   las = 1, xlab = xlab, ylab = ylab, main = main,
-                   xlim = xlim, ylim = ylim, lwd = lwd, lty = lty,
-                   cex = cex, cex.axis = cex.axis, cex.lab = cex.lab, cex.main = cex.main,
-                   col = col, col.axis = col.axis, col.lab = col.lab, col.main = col.main)
+    .plot.prior_empty("simple", plot_data, dots)
     .lines.prior.simple(plot_data, ...)
     plot <- NULL
 
   }else if(plot_type == "ggplot"){
 
-    plot <- ggplot2::ggplot()
-    plot <- plot + ggplot2::ggtitle(main)
-    plot <- plot + ggplot2::scale_x_continuous(name = xlab, breaks = pretty(xlim), limits = xlim)
-    plot <- plot + ggplot2::scale_y_continuous(name = ylab, breaks = pretty(ylim), limits = ylim)
+    plot <- .ggplot.prior_empty("simple", plot_data, dots)
     plot <- plot + .geom_prior.simple(plot_data, ...)
 
-    plot <- plot + ggplot2::theme(
-      axis.text  = ggplot2::element_text(size = 10 * cex.axis, color = col.axis),
-      axis.title = ggplot2::element_text(size = 10 * cex.lab,  color = col.lab),
-      title      = ggplot2::element_text(size = 10 * cex.main, color = col.main))
   }
 
   # return the plots
@@ -242,7 +216,7 @@ plot.prior <- function(x, plot_type = "base",
 }
 .plot.prior.weightfunction <- function(x, plot_type, plot_data, rescale_x, par_name, ...){
 
-  # get some common settings
+  # get default plot settings
   dots      <- list(...)
 
   short_name      <- if(is.null(dots[["short_name"]]))      FALSE else dots[["short_name"]]
@@ -251,19 +225,9 @@ plot.prior <- function(x, plot_type = "base",
   xlab      <- if(!is.null(dots[["xlab"]])) dots[["xlab"]] else bquote(italic(p)*"-value")
   main      <- if(!is.null(dots[["main"]])) dots[["main"]] else bquote(.(if(!is.null(par_name)){bquote(.(par_name)~"~")})~.(print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names)))
   ylab      <- if(!is.null(dots[["ylab"]])) dots[["ylab"]] else "Probability"
-  cex       <- if(!is.null(dots[["cex"]]))      dots[["cex"]]      else .plot.prior_settings()[["cex"]]
-  cex.axis  <- if(!is.null(dots[["cex.axis"]])) dots[["cex.axis"]] else .plot.prior_settings()[["cex.axis"]]
-  cex.lab   <- if(!is.null(dots[["cex.lab"]]))  dots[["cex.lab"]]  else .plot.prior_settings()[["cex.lab"]]
-  cex.main  <- if(!is.null(dots[["cex.main"]])) dots[["cex.main"]] else .plot.prior_settings()[["cex.main"]]
-  col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
-  col.axis  <- if(!is.null(dots[["col.axis"]])) dots[["col.axis"]] else .plot.prior_settings()[["col.axis"]]
-  col.lab   <- if(!is.null(dots[["col.lab"]]))  dots[["col.lab"]]  else .plot.prior_settings()[["col.lab"]]
-  col.main  <- if(!is.null(dots[["col.main"]])) dots[["col.main"]] else .plot.prior_settings()[["col.main"]]
-  lwd       <- if(!is.null(dots[["lwd"]]))      dots[["lwd"]]      else .plot.prior_settings()[["lwd"]]
-  lty       <- if(!is.null(dots[["lty"]]))      dots[["lty"]]      else .plot.prior_settings()[["lty"]]
+
   xlim      <- attr(plot_data, "x_range")
   ylim      <- if(!is.null(dots[["ylim"]])) dots[["ylim"]] else c(0, 1)
-
 
   # weightfunction specific stuff (required for axes)
   x_cuts <- plot_data$x
@@ -275,31 +239,28 @@ plot.prior <- function(x, plot_type = "base",
     x_at <- x_cuts
   }
 
+  # add it to the user input if desired
+  if(is.null(dots[["main"]])) dots$main <-  main
+  if(is.null(dots[["xlab"]])) dots$xlab <-  xlab
+  if(is.null(dots[["ylab"]])) dots$ylab <-  ylab
+  if(is.null(dots[["xlim"]])) dots$xlim <-  xlim
+  if(is.null(dots[["ylim"]])) dots$ylim <-  ylim
+  dots$x_at     <- unique(x_at)
+  dots$x_labels <- unique(x_cuts)
+
 
   if(plot_type == "base"){
 
-    graphics::plot(NA, type = "n", bty  = "n", las = 1, xlab = xlab, ylab = ylab, main = main,
-                   xlim = xlim, ylim = ylim, axes = FALSE,
-                   cex = cex, cex.axis = cex.axis, cex.lab = cex.lab, cex.main = cex.main,
-                   col = col, col.axis = col.axis, col.lab = col.lab, col.main = col.main)
-    graphics::axis(1, unique(x_at), unique(x_cuts), col = col.axis, cex = cex.axis)
-    graphics::axis(2, pretty(ylim), col = col.axis, cex = cex.axis, las = 1)
+    .plot.prior_empty("weightfunction", plot_data, dots)
     .lines.prior.weightfunction(plot_data, rescale_x, ...)
 
     plot <- NULL
 
   }else if(plot_type == "ggplot"){
 
-    plot <- ggplot2::ggplot()
-    plot <- plot + ggplot2::ggtitle(main)
-    plot <- plot + ggplot2::scale_x_continuous(name = xlab, breaks = x_at, labels = x_cuts, limits = xlim)
-    plot <- plot + ggplot2::scale_y_continuous(name = ylab, breaks = pretty(ylim), limits = ylim)
+    plot <- .ggplot.prior_empty("weightfunction", plot_data, dots)
     plot <- plot + .geom_prior.weightfunction(plot_data, rescale_x, ...)
 
-    plot <- plot + ggplot2::theme(
-      axis.text  = ggplot2::element_text(size = 10 * cex.axis, color = col.axis),
-      axis.title = ggplot2::element_text(size = 10 * cex.lab,  color = col.lab),
-      title      = ggplot2::element_text(size = 10 * cex.main, color = col.main))
   }
 
   # return the plots
@@ -311,7 +272,7 @@ plot.prior <- function(x, plot_type = "base",
 }
 .plot.prior.PETPEESE       <- function(x, plot_type, plot_data, par_name, ...){
 
-  # get some common settings
+  # get default plot settings
   dots      <- list(...)
 
   short_name      <- if(is.null(dots[["short_name"]]))      FALSE else dots[["short_name"]]
@@ -320,42 +281,31 @@ plot.prior <- function(x, plot_type = "base",
   xlab      <- if(!is.null(dots[["xlab"]])) dots[["xlab"]] else "Standard error"
   main      <- if(!is.null(dots[["main"]])) dots[["main"]] else bquote(.(if(!is.null(par_name)){bquote(.(par_name)~"~")})~.(print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names)))
   ylab      <- if(!is.null(dots[["ylab"]])) dots[["ylab"]] else "Effect size"
-  cex       <- if(!is.null(dots[["cex"]]))      dots[["cex"]]      else .plot.prior_settings()[["cex"]]
-  cex.axis  <- if(!is.null(dots[["cex.axis"]])) dots[["cex.axis"]] else .plot.prior_settings()[["cex.axis"]]
-  cex.lab   <- if(!is.null(dots[["cex.lab"]]))  dots[["cex.lab"]]  else .plot.prior_settings()[["cex.lab"]]
-  cex.main  <- if(!is.null(dots[["cex.main"]])) dots[["cex.main"]] else .plot.prior_settings()[["cex.main"]]
-  col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
-  col.axis  <- if(!is.null(dots[["col.axis"]])) dots[["col.axis"]] else .plot.prior_settings()[["col.axis"]]
-  col.lab   <- if(!is.null(dots[["col.lab"]]))  dots[["col.lab"]]  else .plot.prior_settings()[["col.lab"]]
-  col.main  <- if(!is.null(dots[["col.main"]])) dots[["col.main"]] else .plot.prior_settings()[["col.main"]]
-  lwd       <- if(!is.null(dots[["lwd"]]))      dots[["lwd"]]      else .plot.prior_settings()[["lwd"]]
-  lty       <- if(!is.null(dots[["lty"]]))      dots[["lty"]]      else .plot.prior_settings()[["lty"]]
+
   xlim      <- attr(plot_data, "x_range")
   ylim      <- if(!is.null(dots[["ylim"]])) dots[["ylim"]] else c(0, max(plot_data$y))
+
+  # add it to the user input if desired
+  if(is.null(dots[["main"]])) dots$main <-  main
+  if(is.null(dots[["xlab"]])) dots$xlab <-  xlab
+  if(is.null(dots[["ylab"]])) dots$ylab <-  ylab
+  if(is.null(dots[["xlim"]])) dots$xlim <-  xlim
+  if(is.null(dots[["ylim"]])) dots$ylim <-  ylim
 
 
   if(plot_type == "base"){
 
-    graphics::plot(NA, type = "n", bty  = "n", las = 1, xlab = xlab, ylab = ylab, main = main,
-                   xlim = xlim, ylim = ylim,
-                   cex = cex, cex.axis = cex.axis, cex.lab = cex.lab, cex.main = cex.main,
-                   col = col, col.axis = col.axis, col.lab = col.lab, col.main = col.main)
+    .plot.prior_empty("PETPEESE", plot_data, dots)
     .lines.prior.PETPEESE(plot_data, ...)
 
     plot <- NULL
 
   }else if(plot_type == "ggplot"){
 
-    plot <- ggplot2::ggplot()
-    plot <- plot + ggplot2::ggtitle(main)
-    plot <- plot + ggplot2::scale_x_continuous(name = xlab, breaks = pretty(xlim), limits = xlim, oob = scales::oob_keep)
-    plot <- plot + ggplot2::scale_y_continuous(name = ylab, breaks = pretty(ylim), limits = ylim, oob = scales::oob_keep)
+
+    plot <- .ggplot.prior_empty("PETPEESE", plot_data, dots)
     plot <- plot + .geom_prior.PETPEESE(plot_data, ...)
 
-    plot <- plot + ggplot2::theme(
-      axis.text  = ggplot2::element_text(size = 10 * cex.axis, color = col.axis),
-      axis.title = ggplot2::element_text(size = 10 * cex.lab,  color = col.lab),
-      title      = ggplot2::element_text(size = 10 * cex.main, color = col.main))
   }
 
   # return the plots
@@ -366,6 +316,115 @@ plot.prior <- function(x, plot_type = "base",
   }
 }
 
+.plot.prior_empty    <- function(type, plot_data, dots = list(), ...){
+
+  dots      <- c(dots, list(...))
+
+  main      <- if(!is.null(dots[["main"]]))     dots[["main"]]     else ""
+  xlab      <- if(!is.null(dots[["xlab"]]))     dots[["xlab"]]     else ""
+  ylab      <- if(!is.null(dots[["ylab"]]))     dots[["ylab"]]     else ""
+  xlim      <- if(!is.null(dots[["xlim"]]))     dots[["xlim"]]     else c(0, 1)
+  ylim      <- if(!is.null(dots[["ylim"]]))     dots[["ylim"]]     else c(0, 1)
+  col.main  <- if(!is.null(dots[["col.main"]])) dots[["col.main"]] else .plot.prior_settings()[["col.main"]]
+  cex.axis  <- if(!is.null(dots[["cex.axis"]])) dots[["cex.axis"]] else .plot.prior_settings()[["cex.axis"]]
+  cex.lab   <- if(!is.null(dots[["cex.lab"]]))  dots[["cex.lab"]]  else .plot.prior_settings()[["cex.lab"]]
+  cex.main  <- if(!is.null(dots[["cex.main"]])) dots[["cex.main"]] else .plot.prior_settings()[["cex.main"]]
+  col.axis  <- if(!is.null(dots[["col.axis"]])) dots[["col.axis"]] else .plot.prior_settings()[["col.axis"]]
+  col.lab   <- if(!is.null(dots[["col.lab"]]))  dots[["col.lab"]]  else .plot.prior_settings()[["col.lab"]]
+  x_at      <- if(!is.null(dots[["x_at"]]))     dots[["x_at"]]     else NULL
+  x_labels  <- if(!is.null(dots[["x_labels"]])) dots[["x_labels"]] else NULL
+
+  if(type == "point"){
+
+    graphics::plot(NA, type = "n", bty  = "n", las = 1, xlab = xlab, ylab = ylab, main = main,
+                   xlim = xlim, ylim = ylim, axes = FALSE,
+                   cex.axis = cex.axis, cex.lab = cex.lab, cex.main = cex.main,
+                   col.axis = col.axis, col.lab = col.lab, col.main = col.main)
+    graphics::axis(1, col = col.axis, cex = cex.axis)
+    graphics::axis(2, at = c(0, 1), labels = c(0, expression(infinity)), col = col.axis, cex = cex.axis, las = 1)
+
+  }else if(type == "simple"){
+
+    graphics::plot(NA, type = "n", bty  = "n", las = 1, xlab = xlab, ylab = ylab, main = main,
+                   xlim = xlim, ylim = ylim,
+                   cex.axis = cex.axis, cex.lab = cex.lab, cex.main = cex.main,
+                   col.axis = col.axis, col.lab = col.lab, col.main = col.main)
+
+  }else if(type == "weightfunction"){
+
+    graphics::plot(NA, type = "n", bty  = "n", las = 1, xlab = xlab, ylab = ylab, main = main,
+                   xlim = xlim, ylim = ylim, axes = FALSE,
+                   cex.axis = cex.axis, cex.lab = cex.lab, cex.main = cex.main,
+                   col.axis = col.axis, col.lab = col.lab, col.main = col.main)
+    graphics::axis(1, at = x_at, labels = x_labels, col = col.axis, cex = cex.axis)
+    graphics::axis(2, at = pretty(ylim), col = col.axis, cex = cex.axis, las = 1)
+
+  }else if(type == "PETPEESE"){
+
+    graphics::plot(NA, type = "n", bty  = "n", las = 1, xlab = xlab, ylab = ylab, main = main,
+                   xlim = xlim, ylim = ylim,
+                   cex.axis = cex.axis, cex.lab = cex.lab, cex.main = cex.main,
+                   col.axis = col.axis, col.lab = col.lab, col.main = col.main)
+
+  }
+
+  return(invisible())
+}
+.ggplot.prior_empty  <- function(type, plot_data, dots = list(), ...){
+
+  dots      <- c(dots, list(...))
+
+  cex.axis  <- if(!is.null(dots[["cex.axis"]])) dots[["cex.axis"]] else .plot.prior_settings()[["cex.axis"]]
+  cex.lab   <- if(!is.null(dots[["cex.lab"]]))  dots[["cex.lab"]]  else .plot.prior_settings()[["cex.lab"]]
+  cex.main  <- if(!is.null(dots[["cex.main"]])) dots[["cex.main"]] else .plot.prior_settings()[["cex.main"]]
+  col.axis  <- if(!is.null(dots[["col.axis"]])) dots[["col.axis"]] else .plot.prior_settings()[["col.axis"]]
+  col.lab   <- if(!is.null(dots[["col.lab"]]))  dots[["col.lab"]]  else .plot.prior_settings()[["col.lab"]]
+  col.main  <- if(!is.null(dots[["col.main"]])) dots[["col.main"]] else .plot.prior_settings()[["col.main"]]
+  main      <- if(!is.null(dots[["main"]]))     dots[["main"]]     else main
+  xlab      <- if(!is.null(dots[["xlab"]]))     dots[["xlab"]]     else xlab
+  ylab      <- if(!is.null(dots[["ylab"]]))     dots[["ylab"]]     else ylab
+  xlim      <- if(!is.null(dots[["xlim"]]))     dots[["xlim"]]     else xlim
+  ylim      <- if(!is.null(dots[["ylim"]]))     dots[["ylim"]]     else ylim
+  x_at      <- if(!is.null(dots[["x_at"]]))     dots[["x_at"]]     else NULL
+  x_labels  <- if(!is.null(dots[["x_labels"]])) dots[["x_labels"]] else NULL
+
+  if(type == "point"){
+
+    plot <- ggplot2::ggplot()
+    plot <- plot + ggplot2::ggtitle(main)
+    plot <- plot + ggplot2::scale_x_continuous(name = xlab, breaks = pretty(xlim), limits = xlim, oob = scales::oob_keep)
+    plot <- plot + ggplot2::scale_y_continuous(name = ylab, breaks = c(0, 1), labels = c(0, expression(infinity)), limits = ylim, oob = scales::oob_keep)
+
+  }else if(type == "simple"){
+
+    plot <- ggplot2::ggplot()
+    plot <- plot + ggplot2::ggtitle(main)
+    plot <- plot + ggplot2::scale_x_continuous(name = xlab, breaks = pretty(xlim), limits = xlim, oob = scales::oob_keep)
+    plot <- plot + ggplot2::scale_y_continuous(name = ylab, breaks = pretty(ylim), limits = ylim, oob = scales::oob_keep)
+
+  }else if(type == "weightfunction"){
+
+    plot <- ggplot2::ggplot()
+    plot <- plot + ggplot2::ggtitle(main)
+    plot <- plot + ggplot2::scale_x_continuous(name = xlab, breaks = x_at, labels = x_labels, limits = xlim, oob = scales::oob_keep)
+    plot <- plot + ggplot2::scale_y_continuous(name = ylab, breaks = pretty(ylim), limits = ylim,            oob = scales::oob_keep)
+
+  }else if(type == "PETPEESE"){
+
+    plot <- ggplot2::ggplot()
+    plot <- plot + ggplot2::ggtitle(main)
+    plot <- plot + ggplot2::scale_x_continuous(name = xlab, breaks = pretty(xlim), limits = xlim, oob = scales::oob_keep)
+    plot <- plot + ggplot2::scale_y_continuous(name = ylab, breaks = pretty(ylim), limits = ylim, oob = scales::oob_keep)
+
+  }
+
+  plot <- plot + ggplot2::theme(
+    axis.text  = ggplot2::element_text(size = 10 * cex.axis, color = col.axis),
+    axis.title = ggplot2::element_text(size = 10 * cex.lab,  color = col.lab),
+    title      = ggplot2::element_text(size = 10 * cex.main, color = col.main))
+
+  return(plot)
+}
 .plot.prior_settings <- function(){
   return(list(
   cex       = 1,
@@ -381,8 +440,6 @@ plot.prior <- function(x, plot_type = "base",
   lty       = 1
   ))
 }
-
-
 
 
 

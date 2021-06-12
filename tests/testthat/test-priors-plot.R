@@ -24,6 +24,7 @@ test_that("Prior plot (simple) function works", {
   expect_doppelganger("priors-plot-2-8", plot(p1, par_name = bquote(mu), plot_type = "ggplot"))
 
   # check dealing with truncation and range changes
+  set.seed(1)
   p2 <- prior("Cauchy", list(0, 1), list(0, Inf))
   expect_doppelganger("priors-plot-3-1", function()plot(p2))
   expect_doppelganger("priors-plot-3-2", function()plot(p2, xlim = c(0, 3)))
@@ -57,6 +58,7 @@ test_that("Prior plot (point) function works", {
 
 test_that("Prior plot (weightfunction) function works", {
 
+  set.seed(1)
   # check weightfunctions
   p7  <- prior_weightfunction("one.sided", list(c(0.05), c(1, 1)))
   p8  <- prior_weightfunction("one.sided", list(c(0.05, .95), c(1, 1), c(1, 1)))
