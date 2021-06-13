@@ -16,6 +16,7 @@
   transformation = NULL,
   transformation_arguments = NULL,
   transformation_settings = FALSE,
+  truncate_end = TRUE,
   ...
 )
 }
@@ -67,6 +68,9 @@ the \code{transformation}}
 \item{transformation_settings}{boolean indicating whether the
 settings the \code{x_seq} or \code{x_range} was specified on
 the transformed support}
+
+\item{truncate_end}{whether the density should be set to zero in
+for the endpoints of truncated distributions}
 
 \item{...}{additional arguments}
 }

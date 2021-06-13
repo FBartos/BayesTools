@@ -34,7 +34,7 @@
 <g clip-path='url(#cpMC4wMHwzNjAuMDB8NTc2LjAwfDAuMDA=)'><text x='192.57' y='555.55' style='font-size: 8.40px; font-family: Symbola;' textLength='2.09px' lengthAdjust='spacingAndGlyphs'> </text></g>
 <g clip-path='url(#cpMC4wMHwzNjAuMDB8NTc2LjAwfDAuMDA=)'><text x='194.67' y='555.55' style='font-size: 8.40px; font-family: Liberation Sans;' textLength='16.34px' lengthAdjust='spacingAndGlyphs'>0.05</text></g>
 <g clip-path='url(#cpMC4wMHwzNjAuMDB8NTc2LjAwfDAuMDA=)'><text x='211.01' y='555.55' style='font-size: 8.40px; font-family: Liberation Sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>]</text></g>
-<g clip-path='url(#cpMC4wMHwzNjAuMDB8NTc2LjAwfDAuMDA=)'><text transform='translate(12.96,300.81) rotate(-90)' style='font-size: 12.00px; font-family: Liberation Sans;' textLength='40.02px' lengthAdjust='spacingAndGlyphs'>Density</text></g>
+<g clip-path='url(#cpMC4wMHwzNjAuMDB8NTc2LjAwfDAuMDA=)'><text transform='translate(12.96,308.82) rotate(-90)' style='font-size: 12.00px; font-family: Liberation Sans;' textLength='56.03px' lengthAdjust='spacingAndGlyphs'>Probability</text></g>
 <defs>
   <clipPath id='cpMC4wMHw3MjAuMDB8NTc2LjAwfDAuMDA='>
     <rect x='0.00' y='0.00' width='720.00' height='576.00' />
@@ -57,7 +57,7 @@
 <line x1='59.04' y1='486.13' x2='51.84' y2='486.13' style='stroke-width: 0.75;' clip-path='url(#cpMC4wMHw3MjAuMDB8NTc2LjAwfDAuMDA=)' />
 <line x1='59.04' y1='75.47' x2='51.84' y2='75.47' style='stroke-width: 0.75;' clip-path='url(#cpMC4wMHw3MjAuMDB8NTc2LjAwfDAuMDA=)' />
 <g clip-path='url(#cpMC4wMHw3MjAuMDB8NTc2LjAwfDAuMDA=)'><text x='37.97' y='490.26' style='font-size: 12.00px; font-family: Liberation Sans;' textLength='6.67px' lengthAdjust='spacingAndGlyphs'>0</text></g>
-<g clip-path='url(#cpMC4wMHw3MjAuMDB8NTc2LjAwfDAuMDA=)'><text x='32.64' y='78.04' style='font-size: 12.00px; font-family: Symbola;' textLength='12.00px' lengthAdjust='spacingAndGlyphs'>∞</text></g>
+<g clip-path='url(#cpMC4wMHw3MjAuMDB8NTc2LjAwfDAuMDA=)'><text x='37.97' y='79.59' style='font-size: 12.00px; font-family: Liberation Sans;' textLength='6.67px' lengthAdjust='spacingAndGlyphs'>1</text></g>
 <defs>
   <clipPath id='cpNTkuMDR8MzI5Ljc2fDUwMi41Nnw1OS4wNA=='>
     <rect x='59.04' y='59.04' width='270.72' height='443.52' />

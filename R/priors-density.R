@@ -40,6 +40,8 @@
 #' @param transformation_settings boolean indicating whether the
 #' settings the \code{x_seq} or \code{x_range} was specified on
 #' the transformed support
+#' @param truncate_end whether the density should be set to zero in
+#' for the endpoints of truncated distributions
 #' @param ... additional arguments
 #'
 #' @importFrom stats density
@@ -49,7 +51,7 @@
 density.prior <- function(x,
                           x_seq = NULL, x_range = NULL, x_range_quant = NULL, n_points = 1000,
                           n_samples = 10000, force_samples = FALSE, individual = FALSE,
-                          transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE, ...){
+                          transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE, truncate_end = TRUE, ...){
 
   # input check
   .check_prior(x, "x")
@@ -73,6 +75,8 @@ density.prior <- function(x,
   }
   check_list(transformation_arguments, "transformation_arguments", allow_NULL = TRUE)
   check_bool(transformation_settings, "transformation_settings")
+  check_bool(truncate_end, "truncate_end")
+
 
   ### setting the range
   # get plotting range if not specified
@@ -106,17 +110,17 @@ density.prior <- function(x,
   if(is.prior.weightfunction(x)){
     out <- .density.prior.weightfunction(x, x_seq, x_range, n_points, n_samples, force_samples, individual)
   }else if(is.prior.PET(x) | is.prior.PEESE(x)){
-    out <- .density.prior.PETPEESE(x, x_seq, x_range, n_points, n_samples, force_samples, individual, transformation, transformation_arguments)
+    out <- .density.prior.PETPEESE(x, x_seq, x_range, n_points, n_samples, force_samples, individual, transformation, transformation_arguments, truncate_end)
   }else if(is.prior.point(x)){
     out <- .density.prior.point(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments)
   }else if(is.prior.simple(x)){
-    out <- .density.prior.simple(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments)
+    out <- .density.prior.simple(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
   }
 
   return(out)
 }
 
-.density.prior.simple         <- function(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments){
+.density.prior.simple         <- function(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end){
 
   # get the samples to estimate density / obtain the density directly
   if(force_samples | .density.prior_need_samples(x)){
@@ -129,14 +133,17 @@ density.prior <- function(x,
 
 
   # set the endpoints to zero if they correspond to truncation
-  if(isTRUE(all.equal(x$truncation[["lower"]], x_seq[1])) | x$truncation[["lower"]] >= x_seq[1]){
-    x_den <- c(0, x_den)
-    x_seq <- c(x_seq[1], x_seq)
+  if(truncate_end){
+    if(isTRUE(all.equal(x$truncation[["lower"]], x_seq[1])) | x$truncation[["lower"]] >= x_seq[1]){
+      x_den <- c(0, x_den)
+      x_seq <- c(x_seq[1], x_seq)
+    }
+    if(isTRUE(all.equal(x$truncation[["upper"]], x_seq[length(x_seq)])) | x$truncation[["upper"]] <= x_seq[length(x_seq)]){
+      x_den <- c(x_den, 0)
+      x_seq <- c(x_seq, x_seq[length(x_seq)])
+    }
   }
-  if(isTRUE(all.equal(x$truncation[["upper"]], x_seq[length(x_seq)])) | x$truncation[["upper"]] <= x_seq[length(x_seq)]){
-    x_den <- c(x_den, 0)
-    x_seq <- c(x_seq, x_seq[length(x_seq)])
-  }
+
 
 
   # transform the output, if requested
@@ -177,7 +184,7 @@ density.prior <- function(x,
   }
 
   x_seq <- x$parameters[["location"]]
-  x_den <- Inf
+  x_den <- 1
 
 
   # transform the output, if requested
@@ -243,7 +250,7 @@ density.prior <- function(x,
           bw      = NULL,
           n       = n_points,
           x       = 1,
-          y       = Inf,
+          y       = 1,
           samples = x_sam[,i]
         )
       }else{
@@ -303,7 +310,7 @@ density.prior <- function(x,
 
   return(out)
 }
-.density.prior.PETPEESE       <- function(x, x_seq, x_range, n_points, n_samples, force_samples, individual, transformation, transformation_arguments){
+.density.prior.PETPEESE       <- function(x, x_seq, x_range, n_points, n_samples, force_samples, individual, transformation, transformation_arguments, truncate_end){
 
   # create either distribution for the parameter or the PET/PEESE function
   if(individual){
@@ -311,7 +318,7 @@ density.prior <- function(x,
     if(is.prior.point(x)){
       out <- .density.prior.point(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments)
     }else if(is.prior.simple(x)){
-      out <- .density.prior.simple(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments)
+      out <- .density.prior.simple(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
     }
 
   }else{

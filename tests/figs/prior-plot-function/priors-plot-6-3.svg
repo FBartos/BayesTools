@@ -15,7 +15,7 @@
 <text x='317.56' y='554.80' style='font-size: 12.00px; font-family: Symbola;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
 <text x='320.56' y='554.80' style='font-size: 12.00px; font-style: italic; font-family: Liberation Sans;' textLength='30.02px' lengthAdjust='spacingAndGlyphs'>Spike</text>
 <text x='351.54' y='554.80' style='font-size: 12.00px; font-family: Liberation Sans;' textLength='79.70px' lengthAdjust='spacingAndGlyphs'>(location = 1.5)</text>
-<text transform='translate(12.96,300.81) rotate(-90)' style='font-size: 12.00px; font-family: Liberation Sans;' textLength='40.02px' lengthAdjust='spacingAndGlyphs'>Density</text>
+<text transform='translate(12.96,308.82) rotate(-90)' style='font-size: 12.00px; font-family: Liberation Sans;' textLength='56.03px' lengthAdjust='spacingAndGlyphs'>Probability</text>
 <line x1='82.40' y1='502.56' x2='666.40' y2='502.56' style='stroke-width: 0.75;' />
 <line x1='82.40' y1='502.56' x2='82.40' y2='509.76' style='stroke-width: 0.75;' />
 <line x1='199.20' y1='502.56' x2='199.20' y2='509.76' style='stroke-width: 0.75;' />
@@ -33,7 +33,7 @@
 <line x1='59.04' y1='486.13' x2='51.84' y2='486.13' style='stroke-width: 0.75;' />
 <line x1='59.04' y1='75.47' x2='51.84' y2='75.47' style='stroke-width: 0.75;' />
 <text x='37.97' y='490.26' style='font-size: 12.00px; font-family: Liberation Sans;' textLength='6.67px' lengthAdjust='spacingAndGlyphs'>0</text>
-<text x='32.64' y='78.04' style='font-size: 12.00px; font-family: Symbola;' textLength='12.00px' lengthAdjust='spacingAndGlyphs'>∞</text>
+<text x='37.97' y='79.59' style='font-size: 12.00px; font-family: Liberation Sans;' textLength='6.67px' lengthAdjust='spacingAndGlyphs'>1</text>
 <defs>
   <clipPath id='cpNTkuMDR8Njg5Ljc2fDUwMi41Nnw1OS4wNA=='>
     <rect x='59.04' y='59.04' width='630.72' height='443.52' />

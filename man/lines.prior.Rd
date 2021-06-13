@@ -18,7 +18,7 @@
   show_parameter = if (individual) 1 else NULL,
   individual = FALSE,
   rescale_x = FALSE,
-  point_top = 1,
+  scale_y2 = 1,
   ...
 )
 }
@@ -76,7 +76,7 @@ parameter are plotted and \code{individual = TRUE}.}
 \item{rescale_x}{allows to rescale x-axis in case a
 weightfunction is plotted.}
 
-\item{point_top}{y range of the spike prior distribution}
+\item{scale_y2}{scaling factor for a secondary axis}
 
 \item{...}{additional arguments}
 }

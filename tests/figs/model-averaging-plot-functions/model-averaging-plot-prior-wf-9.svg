@@ -1,0 +1,47 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' viewBox='0 0 720.00 576.00'>
+<defs>
+  <style type='text/css'><![CDATA[
+    line, polyline, polygon, path, rect, circle {
+      fill: none;
+      stroke: #000000;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-miterlimit: 10.00;
+    }
+  ]]></style>
+</defs>
+<rect width='100%' height='100%' style='stroke: none; fill: #FFFFFF;'/>
+<text x='360.40' y='33.64' style='font-size: 12.00px; font-weight: bold; font-family: Liberation Sans;' textLength='28.00px' lengthAdjust='spacingAndGlyphs'>main</text>
+<text x='363.39' y='557.28' style='font-size: 12.00px; font-family: Liberation Sans;' textLength='22.02px' lengthAdjust='spacingAndGlyphs'>xlab</text>
+<text transform='translate(12.96,291.81) rotate(-90)' style='font-size: 12.00px; font-family: Liberation Sans;' textLength='22.02px' lengthAdjust='spacingAndGlyphs'>ylab</text>
+<line x1='82.40' y1='502.56' x2='666.40' y2='502.56' style='stroke-width: 0.75;' />
+<line x1='82.40' y1='502.56' x2='82.40' y2='509.76' style='stroke-width: 0.75;' />
+<line x1='97.00' y1='502.56' x2='97.00' y2='509.76' style='stroke-width: 0.75;' />
+<line x1='111.60' y1='502.56' x2='111.60' y2='509.76' style='stroke-width: 0.75;' />
+<line x1='651.80' y1='502.56' x2='651.80' y2='509.76' style='stroke-width: 0.75;' />
+<line x1='666.40' y1='502.56' x2='666.40' y2='509.76' style='stroke-width: 0.75;' />
+<text x='79.06' y='528.48' style='font-size: 12.00px; font-family: Liberation Sans;' textLength='6.67px' lengthAdjust='spacingAndGlyphs'>0</text>
+<text x='99.93' y='528.48' style='font-size: 12.00px; font-family: Liberation Sans;' textLength='23.34px' lengthAdjust='spacingAndGlyphs'>0.05</text>
+<text x='636.79' y='528.48' style='font-size: 12.00px; font-family: Liberation Sans;' textLength='30.02px' lengthAdjust='spacingAndGlyphs'>0.975</text>
+<line x1='59.04' y1='486.13' x2='59.04' y2='75.47' style='stroke-width: 0.75;' />
+<line x1='59.04' y1='486.13' x2='51.84' y2='486.13' style='stroke-width: 0.75;' />
+<line x1='59.04' y1='404.00' x2='51.84' y2='404.00' style='stroke-width: 0.75;' />
+<line x1='59.04' y1='321.87' x2='51.84' y2='321.87' style='stroke-width: 0.75;' />
+<line x1='59.04' y1='239.73' x2='51.84' y2='239.73' style='stroke-width: 0.75;' />
+<line x1='59.04' y1='157.60' x2='51.84' y2='157.60' style='stroke-width: 0.75;' />
+<line x1='59.04' y1='75.47' x2='51.84' y2='75.47' style='stroke-width: 0.75;' />
+<text x='27.97' y='490.26' style='font-size: 12.00px; font-family: Liberation Sans;' textLength='16.67px' lengthAdjust='spacingAndGlyphs'>0.0</text>
+<text x='27.97' y='408.12' style='font-size: 12.00px; font-family: Liberation Sans;' textLength='16.67px' lengthAdjust='spacingAndGlyphs'>0.2</text>
+<text x='27.97' y='325.99' style='font-size: 12.00px; font-family: Liberation Sans;' textLength='16.67px' lengthAdjust='spacingAndGlyphs'>0.4</text>
+<text x='27.97' y='243.86' style='font-size: 12.00px; font-family: Liberation Sans;' textLength='16.67px' lengthAdjust='spacingAndGlyphs'>0.6</text>
+<text x='27.97' y='161.73' style='font-size: 12.00px; font-family: Liberation Sans;' textLength='16.67px' lengthAdjust='spacingAndGlyphs'>0.8</text>
+<text x='27.97' y='79.59' style='font-size: 12.00px; font-family: Liberation Sans;' textLength='16.67px' lengthAdjust='spacingAndGlyphs'>1.0</text>
+<defs>
+  <clipPath id='cpNTkuMDR8Njg5Ljc2fDUwMi41Nnw1OS4wNA=='>
+    <rect x='59.04' y='59.04' width='630.72' height='443.52' />
+  </clipPath>
+</defs>
+<polygon points='82.40,75.47 97.00,75.47 97.00,418.78 111.60,418.78 111.60,418.78 651.80,418.78 651.80,351.53 666.40,351.53 666.40,75.47 651.80,75.47 651.80,133.62 111.60,133.62 111.60,75.47 97.00,75.47 97.00,75.47 82.40,75.47 ' style='stroke-width: 0.75; stroke: none; fill: #CCCCCC;' clip-path='url(#cpNTkuMDR8Njg5Ljc2fDUwMi41Nnw1OS4wNA==)' />
+<polyline points='82.40,75.47 97.00,75.47 97.00,109.33 111.60,109.33 111.60,280.45 651.80,280.45 651.80,263.00 666.40,263.00 ' style='stroke-width: 0.75;' clip-path='url(#cpNTkuMDR8Njg5Ljc2fDUwMi41Nnw1OS4wNA==)' />
+</svg>

@@ -1,3 +1,6 @@
+## version 0.0.0.9008
+- plotting functions for mixture of priors
+
 ## version 0.0.0.9007
 - improvements to prior plotting functions
 
