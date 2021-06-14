@@ -297,8 +297,8 @@ density.prior <- function(x,
       n       = n_points,
       x       = x_seq[x_seq_rep],
       y       = x_mean[x_val_rep],
-      y.lCI   = x_lCI[x_val_rep],
-      y.uCI   = x_uCI[x_val_rep],
+      y_lCI   = x_lCI[x_val_rep],
+      y_uCI   = x_uCI[x_val_rep],
       samples = x_sam
     )
 
@@ -351,13 +351,13 @@ density.prior <- function(x,
 
     # compute the PET/PEESE
     if(is.prior.PET(x)){
-      y       = x_med  * x_seq
-      y.lCI   = x_lCI  * x_seq
-      y.uCI   = x_uCI  * x_seq
+      y_med   = x_med  * x_seq
+      y_lCI   = x_lCI  * x_seq
+      y_uCI   = x_uCI  * x_seq
     }else if(is.prior.PEESE(x)){
-      y       = x_med  * x_seq^2
-      y.lCI   = x_lCI  * x_seq^2
-      y.uCI   = x_uCI  * x_seq^2
+      y_med   = x_med  * x_seq^2
+      y_lCI   = x_lCI  * x_seq^2
+      y_uCI   = x_uCI  * x_seq^2
     }
 
 
@@ -366,16 +366,16 @@ density.prior <- function(x,
       bw      = NULL,
       n       = n_points,
       x       = x_seq,
-      y       = y,
-      y.lCI   = y.lCI,
-      y.uCI   = y.uCI,
+      y       = y_med,
+      y_lCI   = y_lCI,
+      y_uCI   = y_uCI,
       samples = x_sam
     )
 
 
     class(out) <- c("density", "density.prior", if(is.prior.PET(x)) "density.prior.PET" else if(is.prior.PEESE(x)) "density.prior.PEESE")
-    attr(out, "x_range") <- c(0, 1)
-    attr(out, "y_range") <- c(0, 1)
+    attr(out, "x_range") <- range(x_seq)
+    attr(out, "y_range") <- range(y_med)
   }
 
   return(out)

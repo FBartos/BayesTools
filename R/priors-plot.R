@@ -127,7 +127,7 @@ plot.prior <- function(x, plot_type = "base",
   }
 }
 
-.plot.prior.point          <- function(x, plot_type, plot_data, par_name, ...){
+.plot.prior.point          <- function(x, plot_type, plot_data, par_name = NULL, ...){
 
   # get default plot settings
   dots      <- list(...)
@@ -171,7 +171,7 @@ plot.prior <- function(x, plot_type = "base",
     return(plot)
   }
 }
-.plot.prior.simple         <- function(x, plot_type, plot_data, par_name, ...){
+.plot.prior.simple         <- function(x, plot_type, plot_data, par_name = NULL, ...){
 
   # get default plot settings
   dots      <- list(...)
@@ -214,7 +214,7 @@ plot.prior <- function(x, plot_type = "base",
     return(plot)
   }
 }
-.plot.prior.weightfunction <- function(x, plot_type, plot_data, rescale_x, par_name, ...){
+.plot.prior.weightfunction <- function(x, plot_type, plot_data, rescale_x, par_name = NULL, ...){
 
   # get default plot settings
   dots      <- list(...)
@@ -270,7 +270,7 @@ plot.prior <- function(x, plot_type = "base",
     return(plot)
   }
 }
-.plot.prior.PETPEESE       <- function(x, plot_type, plot_data, par_name, ...){
+.plot.prior.PETPEESE       <- function(x, plot_type, plot_data, par_name = NULL, ...){
 
   # get default plot settings
   dots      <- list(...)
@@ -283,7 +283,7 @@ plot.prior <- function(x, plot_type = "base",
   ylab      <- if(!is.null(dots[["ylab"]])) dots[["ylab"]] else "Effect size"
 
   xlim      <- attr(plot_data, "x_range")
-  ylim      <- if(!is.null(dots[["ylim"]])) dots[["ylim"]] else c(0, max(plot_data$y))
+  ylim      <- if(!is.null(dots[["ylim"]])) dots[["ylim"]] else attr(plot_data, "y_range")
 
   # add it to the user input if desired
   if(is.null(dots[["main"]])) dots$main <-  main
@@ -481,6 +481,46 @@ plot.prior <- function(x, plot_type = "base",
   lty       = 1,
   scale_y2  = 1.10
   ))
+}
+.get_scale_y2        <- function(plot_data, ...){
+
+  dots      <- list(...)
+
+  if(any(sapply(plot_data, inherits, what = "density.prior.simple")) & any(sapply(plot_data, inherits, what = "density.prior.point"))){
+
+    ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.simple")], attr, which = "y_range")))
+    ylim2 <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.point")],  attr, which = "y_range")))
+
+    scale_y2 <- if(!is.null(dots[["scale_y2"]]))  dots[["scale_y2"]]  else .plot.prior_settings()[["scale_y2"]]
+    scale_y2 <- scale_y2 * max(pretty(ylim)) / max(pretty(ylim2))
+
+  }else{
+
+    scale_y2 <- 1
+
+  }
+
+  return(scale_y2)
+}
+.transfer_dots       <- function(dots, ...){
+
+  dots_main <- list(...)
+
+  dots$main      <- if(!is.null(dots_main[["main"]]))     dots_main[["main"]]
+  dots$xlab      <- if(!is.null(dots_main[["xlab"]]))     dots_main[["xlab"]]
+  dots$ylab      <- if(!is.null(dots_main[["ylab"]]))     dots_main[["ylab"]]
+  dots$xlim      <- if(!is.null(dots_main[["xlim"]]))     dots_main[["xlim"]]
+  dots$ylim      <- if(!is.null(dots_main[["ylim"]]))     dots_main[["ylim"]]
+  dots$col.main  <- if(!is.null(dots_main[["col.main"]])) dots_main[["col.main"]]
+  dots$cex.axis  <- if(!is.null(dots_main[["cex.axis"]])) dots_main[["cex.axis"]]
+  dots$cex.lab   <- if(!is.null(dots_main[["cex.lab"]]))  dots_main[["cex.lab"]]
+  dots$cex.main  <- if(!is.null(dots_main[["cex.main"]])) dots_main[["cex.main"]]
+  dots$col.axis  <- if(!is.null(dots_main[["col.axis"]])) dots_main[["col.axis"]]
+  dots$col.lab   <- if(!is.null(dots_main[["col.lab"]]))  dots_main[["col.lab"]]
+  dots$x_at      <- if(!is.null(dots_main[["x_at"]]))     dots_main[["x_at"]]
+  dots$x_labels  <- if(!is.null(dots_main[["x_labels"]])) dots_main[["x_labels"]]
+
+  return(dots)
 }
 
 
@@ -688,8 +728,8 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   # weightfunction specific stuff
   x_cuts <- plot_data$x
   x_mean <- plot_data$y
-  x_lCI  <- plot_data$y.lCI
-  x_uCI  <- plot_data$y.uCI
+  x_lCI  <- plot_data$y_lCI
+  x_uCI  <- plot_data$y_uCI
 
   if(rescale_x){
     x_at <- seq(0, 1, length.out = length(unique(plot_data$x)))
@@ -720,7 +760,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 
   graphics::polygon(
     x   = c(plot_data$x,     rev(plot_data$x)),
-    y   = c(plot_data$y.lCI, rev(plot_data$y.uCI)),
+    y   = c(plot_data$y_lCI, rev(plot_data$y_uCI)),
     col = col.fill, border = NA
   )
   graphics::lines(plot_data$x, plot_data$y, lwd = lwd, lty = lty, col = col)
@@ -786,8 +826,8 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   # weightfunction specific stuff
   x_cuts <- plot_data$x
   x_mean <- plot_data$y
-  x_lCI  <- plot_data$y.lCI
-  x_uCI  <- plot_data$y.uCI
+  x_lCI  <- plot_data$y_lCI
+  x_uCI  <- plot_data$y_uCI
 
   if(rescale_x){
     x_at <- seq(0, 1, length.out = length(unique(plot_data$x)))
@@ -832,7 +872,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     ggplot2::geom_polygon(
       data    = data.frame(
         x = c(plot_data$x,  rev(plot_data$x)),
-        y = c(plot_data$y.lCI, rev(plot_data$y.uCI))),
+        y = c(plot_data$y_lCI, rev(plot_data$y_uCI))),
       mapping = ggplot2::aes_string(
         x = "x",
         y = "y"),

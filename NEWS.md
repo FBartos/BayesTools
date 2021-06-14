@@ -1,3 +1,6 @@
+## version 0.0.0.9009
+- plotting functions for posterior samples
+
 ## version 0.0.0.9008
 - plotting functions for mixture of priors
 

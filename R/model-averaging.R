@@ -202,6 +202,12 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
           temp_priors[[i]] <- prior("spike", parameters = list("location" = 0))
         }
       }
+
+      # replace prior odds with the corresponding prior model odds
+      for(i in seq_along(temp_priors)){
+        temp_priors[[i]][["prior_odds"]] <- temp_inference$prior_probs[i]
+      }
+
       out[[temp_parameter]] <- mix_posteriors.simple(fits, temp_priors, temp_parameter, temp_inference$post_probs, seed, n_samples)
 
     }else if(all(sapply(temp_priors, is.prior.weightfunction) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.prior.none) | sapply(temp_priors, is.null))){
@@ -212,6 +218,12 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
           temp_priors[[i]] <- prior_none()
         }
       }
+
+      # replace prior odds with the corresponding prior model odds
+      for(i in seq_along(temp_priors)){
+        temp_priors[[i]][["prior_odds"]] <- temp_inference$prior_probs[i]
+      }
+
       out[[temp_parameter]] <- mix_posteriors.weightfunction(fits, temp_priors, temp_parameter, temp_inference$post_probs, seed, n_samples)
 
     }
@@ -294,6 +306,9 @@ mix_posteriors.simple         <- function(fits, priors, parameter, post_probs, s
   attr(samples, "sample_ind") <- sample_ind
   attr(samples, "models_ind") <- models_ind
   attr(samples, "parameter")  <- parameter
+  attr(samples, "prior_list") <- priors
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.simple")
+
   return(samples)
 }
 
@@ -377,6 +392,9 @@ mix_posteriors.weightfunction <- function(fits, priors, parameter, post_probs, s
   attr(samples, "sample_ind") <- sample_ind
   attr(samples, "models_ind") <- models_ind
   attr(samples, "parameter")  <- parameter
+  attr(samples, "prior_list") <- priors
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.weightfunction")
+
   return(samples)
 }
 
