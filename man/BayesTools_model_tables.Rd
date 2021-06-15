@@ -34,7 +34,7 @@ runjags_estimates_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
 and \code{inference} object, The \code{inference} must be a
 named list with information about the model: model number
 \code{m_number}, marginal likelihood \code{marglik}, prior and
-posterior probability \code{prior_prob} and \code{post_probs},
+posterior probability \code{prior_prob} and \code{post_prob},
 and model inclusion Bayes factor \code{inclusion_BF}}
 
 \item{model_description}{named list with additional description

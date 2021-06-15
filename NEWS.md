@@ -1,3 +1,6 @@
+## version 0.0.0.9010
+- plotting functions for models
+
 ## version 0.0.0.9009
 - plotting functions for posterior samples
 

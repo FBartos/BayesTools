@@ -37,8 +37,8 @@ test_that("JAGS model-averaging functions work (simple)",{
   inference_m_conditional <- compute_inference(c(1, 1), c(marglik0$logml, marglik1$logml), c(T, F), conditional = T)
 
   # manually mix posteriors
-  mixed_posterior <- mix_posteriors.simple(list(fit0, fit1), list(priors_list0[["m"]], priors_list1[["m"]]), "m", inference_m$post_probs)
-  mixed_posterior_conditional <- mix_posteriors.simple(list(fit0, fit1), list(priors_list0[["m"]], priors_list1[["m"]]), "m", inference_m_conditional$post_probs)
+  mixed_posterior <- mix_posteriors.simple(list(fit0, fit1), list(priors_list0[["m"]], priors_list1[["m"]]), "m", inference_m$post_prob)
+  mixed_posterior_conditional <- mix_posteriors.simple(list(fit0, fit1), list(priors_list0[["m"]], priors_list1[["m"]]), "m", inference_m_conditional$post_prob)
 
   expect_equal(mean(mixed_posterior == 0), inference_m$post_probs[1], tolerance = 1e-4)
   expect_equal(mean(attr(mixed_posterior, "models_ind") == 1), inference_m$post_probs[1], tolerance = 1e-4)
@@ -158,7 +158,7 @@ test_that("JAGS model-averaging functions work (weightfunctions)",{
   mixed_posteriors_conditional <-mix_posteriors(model_list = models, parameters = c("m", "omega"), is_null_list = list("m" = 0, "omega" = 1), seed = 1, conditional = TRUE)
 
   # checking posteriors and inferences
-  expect_equal(names(models[[1]]$inference), c("m_number", "marglik", "prior_prob", "post_probs", "inclusion_BF"))
+  expect_equal(names(models[[1]]$inference), c("m_number", "marglik", "prior_prob", "post_prob", "inclusion_BF"))
   expect_equal(unname(unlist(models[[1]]$inference)), c(1.0000000, -1.1023042, 0.3333333, 0.1998118, 0.4994120), tolerance = 1e-4)
   expect_equal(mean(mixed_posteriors$omega[,-1] == 1), inference$omega$post_probs[1], tolerance = 1e-4)
   expect_true(all(mixed_posteriors$omega[1,] == 1))

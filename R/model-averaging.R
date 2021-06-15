@@ -124,7 +124,7 @@ models_inference   <- function(model_list){
       "m_number"     = i,
       "marglik"      = margliks[i],
       "prior_prob"   = prior_probs[i],
-      "post_probs"   = post_probs[i],
+      "post_prob"    = post_probs[i],
       "inclusion_BF" = incl_BF[i]
     )
   }

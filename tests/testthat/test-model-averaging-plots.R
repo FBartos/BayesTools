@@ -1,7 +1,7 @@
 context("Model-averaging plot functions")
 set.seed(1)
 
-test_that("helper functions", {
+test_that("helper functions work", {
 
   # join duplicate
   prior_list       <- list(
@@ -56,7 +56,7 @@ test_that("helper functions", {
 })
 
 
-test_that("prior plot functions (simple)", {
+test_that("prior plot functions (simple) work", {
 
   ### simple cases
   # continuous
@@ -153,7 +153,7 @@ test_that("prior plot functions (simple)", {
 })
 
 
-test_that("prior plot functions (PET-PEESE)", {
+test_that("prior plot functions (PET-PEESE) work", {
 
   ### simple cases
   # continuous
@@ -244,7 +244,7 @@ test_that("prior plot functions (PET-PEESE)", {
 })
 
 
-test_that("prior plot functions (weightfunctions)", {
+test_that("prior plot functions (weightfunctions) work", {
 
   ### simple cases
   # continuous
@@ -328,7 +328,7 @@ test_that("prior plot functions (weightfunctions)", {
 })
 
 
-test_that("posterior plot functions (simple)", {
+test_that("posterior plot functions (simple) work", {
 
   set.seed(1)
   data <- NULL
@@ -402,7 +402,7 @@ test_that("posterior plot functions (simple)", {
 })
 
 
-test_that("posterior plot functions (PET-PEESE)", {
+test_that("posterior plot functions (PET-PEESE) work", {
 
   set.seed(1)
   data <- NULL
@@ -484,7 +484,7 @@ test_that("posterior plot functions (PET-PEESE)", {
 })
 
 
-test_that("posterior plot functions (weightfunctions)", {
+test_that("posterior plot functions (weightfunctions) work", {
 
   set.seed(1)
   data <- NULL
@@ -568,6 +568,95 @@ test_that("posterior plot functions (weightfunctions)", {
   mixed_posteriors <- mix_posteriors(model_list = models, parameters = "omega", is_null_list = list("omega" = c(F,F,F)), seed = 1)
   expect_doppelganger("model-averaging-plot-posterior-wf-10", function(){
     plot_posterior(mixed_posteriors, "omega", lwd = 2, col = "red", col.fill = scales::alpha("red", .20), n_points = 50, n_samples = 1000, prior = TRUE, dots_prior = list(col = "blue", col.fill = scales::alpha("blue", .20), lty = 2))
+  })
+
+})
+
+
+test_that("models plot functions work", {
+
+  ### prior distribution related functions
+  p0 <- prior(distribution = "point",  parameters = list(location = 0))
+  p1 <- prior(distribution = "normal", parameters = list(mean = 0, sd = 1))
+  p2 <- prior(distribution = "normal", parameters = list(mean = 0, sd = 1), truncation = list(0, Inf))
+
+  data <- list(
+    x = rnorm(10),
+    N = 10
+  )
+
+  ## create and fit models
+  priors_list0 <- list(mu  = p0)
+  priors_list1 <- list(mu  = p1)
+  priors_list2 <- list(tau = p2)
+
+  # define likelihood for the data
+  model_syntax <-
+    "model{
+    for(i in 1:N){
+      x[i] ~ dnorm(mu, 1)
+    }
+  }"
+  model_syntax2 <-
+    "model{
+    for(i in 1:N){
+      x[i] ~ dnorm(0, pow(tau, -2))
+    }
+  }"
+
+  # define log posterior for bridge sampling
+  log_posterior <- function(parameters, data){
+    sum(dnorm(data$x, parameters$mu, 1, log = TRUE))
+  }
+  log_posterior2 <- function(parameters, data){
+    sum(dnorm(data$x, 0, parameters$tau, log = TRUE))
+  }
+  # fit the models
+  fit0 <- JAGS_fit(model_syntax,  data, priors_list0, chains = 1, adapt = 100, burnin = 200, sample = 1000, seed = 0)
+  fit1 <- JAGS_fit(model_syntax,  data, priors_list1, chains = 1, adapt = 100, burnin = 200, sample = 1000, seed = 1)
+  fit2 <- JAGS_fit(model_syntax2, data, priors_list2, chains = 1, adapt = 100, burnin = 200, sample = 1000, seed = 2)
+  # get marginal likelihoods
+  marglik0 <- list(
+    logml = sum(dnorm(data$x, mean(p0), 1, log = TRUE))
+  )
+  class(marglik0) <- "bridge"
+  marglik1 <- JAGS_bridgesampling(fit1, data, priors_list1, log_posterior)
+  marglik2 <- JAGS_bridgesampling(fit2, data, priors_list2, log_posterior2)
+  ## create an object with the models
+  models <- list(
+    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_odds = 1, fit_summary = runjags_estimates_table(fit0, priors_list0)),
+    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_odds = 1, fit_summary = runjags_estimates_table(fit1, priors_list1)),
+    list(fit = fit2, marglik = marglik2, priors = priors_list2, prior_odds = 1, fit_summary = runjags_estimates_table(fit2, priors_list2))
+  )
+  # compare and summarize the models
+  models            <- models_inference(models)
+  inference         <- ensemble_inference(model_list = models, parameters = c("mu", "tau"), is_null_list = list("mu" = c(1, 3), "tau" = c(1, 2)))
+  mixed_posteriors  <- mix_posteriors(model_list = models, parameters = c("mu", "tau"), is_null_list = list("mu" = c(1, 3), "tau" = c(1, 2)), seed = 1)
+
+
+  expect_doppelganger("model-averaging-plot-models-1", function(){
+    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu")
+  })
+  expect_doppelganger("model-averaging-plot-models-2", function(){
+    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "tau")
+  })
+  expect_doppelganger("model-averaging-plot-models-3", function(){
+    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu", prior = TRUE)
+  })
+  expect_doppelganger("model-averaging-plot-models-4", function(){
+    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "tau", prior = TRUE)
+  })
+  expect_doppelganger("model-averaging-plot-models-5", function(){
+    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu", condtional = TRUE)
+  })
+  expect_doppelganger("model-averaging-plot-models-6", function(){
+    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "tau", prior = TRUE, condtional = TRUE)
+  })
+  expect_doppelganger("model-averaging-plot-models-7", {
+    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu", plot_type = "ggplot")
+  })
+  expect_doppelganger("model-averaging-plot-models-8", {
+    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "tau", prior = TRUE, plot_type = "ggplot")
   })
 
 })

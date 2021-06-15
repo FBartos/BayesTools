@@ -651,8 +651,7 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
 #' @seealso [prior()] [lines_prior_list()]  [geom_prior_list()]
 #' @export
 plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE,
-                           x_seq = NULL, xlim = NULL, x_range_quant = NULL, n_points = 1000,
-                           n_samples = 10000, force_samples = FALSE,
+                           n_points = 1000, n_samples = 10000, force_samples = FALSE,
                            transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
                            rescale_x = FALSE, par_name = NULL, dots_prior = list(), ...){
 
@@ -675,7 +674,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     if(is.character(transformation)){
       check_char(transformation, "transformation")
     }else if(is.list(transformation)){
-      check_list(check_list, "check_list", check_length = 3, check_names = c("fun", "inv", "jac"), all_objects = TRUE)
+      check_list(transformation, "transformation", check_length = 3, check_names = c("fun", "inv", "jac"), all_objects = TRUE)
     }else{
       stop("Uknown format of the 'transformation' argument.")
     }
@@ -691,7 +690,9 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   }
 
   # get the plotting range
-  if(is.null(xlim) & is.null(x_seq)){
+  dots <- list(...)
+  xlim <- dots[["xlim"]]
+  if(is.null(xlim)){
     if(parameter %in% c("omega", "PETPEESE") & !individual){
       xlim      <- c(0, 1)
     }else{
@@ -703,13 +704,13 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
   if(parameter == "omega"){
 
-    plot_data <- .plot_data_samples.weightfunction(samples, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant, n_points = n_points)
+    plot_data <- .plot_data_samples.weightfunction(samples, x_seq = NULL, x_range = xlim, x_range_quant = NULL, n_points = n_points)
 
     # add priors, if requested
     if(prior){
       prior_list      <- attr(samples[[parameter]], "prior_list")
       prior_list      <- .simplify_prior_list(prior_list)
-      plot_data_prior <- .plot_data_prior_list.weightfunction(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
+      plot_data_prior <- .plot_data_prior_list.weightfunction(prior_list, x_seq = NULL, x_range = xlim, x_range_quant = NULL,
                                                               n_points = n_points, n_samples = n_samples)
 
       # transplant common xlim and ylim
@@ -738,7 +739,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
   }else if(parameter == "PETPEESE"){
 
-    plot_data <- .plot_data_samples.PETPEESE(samples, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant, n_points = n_points,
+    plot_data <- .plot_data_samples.PETPEESE(samples, x_seq = NULL, x_range = xlim, x_range_quant = NULL, n_points = n_points,
                                              transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings)
 
     # add priors, if requested
@@ -758,7 +759,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       }
       prior_list      <- .simplify_prior_list(prior_list)
 
-      plot_data_prior <- .plot_data_prior_list.PETPEESE(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
+      plot_data_prior <- .plot_data_prior_list.PETPEESE(prior_list, x_seq = NULL, x_range = xlim, x_range_quant = NULL,
                                                   n_points = n_points, n_samples = n_samples,
                                                   transformation = transformation, transformation_arguments = transformation_arguments,
                                                   transformation_settings = transformation_settings)
@@ -802,7 +803,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       prior_list  <- attr(samples[[parameter]], "prior_list")
       prior_list  <- .simplify_prior_list(prior_list)
 
-      plot_data_prior <- .plot_data_prior_list.simple(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
+      plot_data_prior <- .plot_data_prior_list.simple(prior_list, x_seq = NULL, x_range = xlim, x_range_quant = NULL,
                                                 n_points = n_points, n_samples = n_samples, force_samples = force_samples, individual = individual,
                                                 transformation = transformation, transformation_arguments = transformation_arguments,
                                                 transformation_settings = transformation_settings)
@@ -1091,4 +1092,304 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   attr(out, "y_range") <- c(0, 1)
 
   return(out)
+}
+
+
+
+#' @title Plot estimates from models
+#'
+#' @param parameter parameter name to be plotted. Does not support
+#' PET-PEESE and weightfunction.
+#' @param inference object created by [ensemble_inference] function
+#' @param condtional whether conditional models should be displayed
+#' @param order list specifying ordering of the models. The first
+#' element describes whether the ordering should be \code{"increasing"}
+#' or \code{"decreasing"} and the second element describes whether
+#' the ordering should be based \code{"model"} order, \code{"estimate"}
+#' size, posterior \code{"probability"}, or the inclusion \code{"BF"}.
+#' @param ... additional arguments
+#' @inheritParams ensemble_inference
+#' @inheritParams plot.prior
+#' @inheritParams plot_posterior
+#'
+#' @seealso [prior()] [lines_prior_list()]  [geom_prior_list()]
+#' @export
+plot_models <- function(model_list, samples, inference, parameter, plot_type = "base", prior = FALSE, condtional = FALSE,
+                        order = NULL,
+                        transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
+                        par_name = NULL, ...){
+
+  # check input
+  check_list(model_list, "model_list")
+  check_char(parameter, "parameter")
+  sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("fit_summary", "priors"), all_objects = TRUE, allow_other = TRUE))
+  if(!all(unlist(sapply(model_list, function(m)sapply(m[["priors"]], function(p)is.prior(p))))))
+    stop("model_list:priors must contain 'BayesTools' priors")
+  if(!all(sapply(model_list, function(m)inherits(m[["fit_summary"]], what = "BayesTools_runjags_summary"))))
+    stop("model_list:fit_summary must contain 'BayesTools' fit_summary")
+  check_list(samples, "samples")
+  if(any(!sapply(samples, inherits, what = "mixed_posteriors")))
+    stop("'samples' must be a be an object generated by 'mix_posteriors' function.")
+  check_list(order, "order", allow_NULL = TRUE)
+  if(!is.null(order)){
+    check_list(order, "order", check_length = 2)
+    check_char(order[[1]], allow_values = c("decreasing", "increasing"))
+    check_char(order[[2]], allow_values = c("model", "estimate", "probability", "BF"))
+
+  }
+  # extract the objects
+  models_summary   <- lapply(model_list, function(m)m[["fit_summary"]])
+  models_priors    <- lapply(model_list, function(m)m[["priors"]][[parameter]])
+  models_inference <- lapply(model_list, function(m)m[["inference"]])
+  total_inference  <- inference[[parameter]]
+  total_samples    <- samples[[parameter]]
+  prior_list       <- attr(total_samples, "prior_list")
+
+  # create a table with results
+  prior_data <- data.frame(
+    model      = 1:length(models_summary),
+    y          = sapply(prior_list, mean),
+    y_lCI      = sapply(prior_list, quant, .025),
+    y_uCI      = sapply(prior_list, quant, .975),
+    prior_prob = sapply(models_inference, function(m)m[["prior_prob"]]),
+    post_prob  = sapply(models_inference, function(m)m[["post_prob"]]),
+    BF         = sapply(models_inference, function(m)m[["inclusion_BF"]])
+  )
+
+  posterior_data <- data.frame(
+    model      = 1:length(models_summary),
+    y          = sapply(models_summary, function(s)s[parameter, "Mean"]),
+    y_lCI      = sapply(models_summary, function(s)s[parameter, "lCI"]),
+    y_uCI      = sapply(models_summary, function(s)s[parameter, "uCI"]),
+    prior_prob = sapply(models_inference, function(m)m[["prior_prob"]]),
+    post_prob  = sapply(models_inference, function(m)m[["post_prob"]]),
+    BF         = sapply(models_inference, function(m)m[["inclusion_BF"]])
+  )
+
+  # fix empty estimates - due to point values with priors
+  posterior_data[is.na(posterior_data)] <- prior_data[is.na(posterior_data)]
+
+  # remove null models if requested (assuming that the overall estimate is already supplied accordingly)
+  if(condtional){
+    prior_data     <- prior_data[!attr(total_inference, "is_null"),]
+    posterior_data <- posterior_data[!attr(total_inference, "is_null"),]
+  }
+
+  # apply ordering
+  if(!is.null(order)){
+    prior_data <- switch(
+      order[[2]],
+      "model"       = prior_data[order(prior_data$model,      decreasing = order[[1]] == "decreasing"),],
+      "estimate"    = prior_data[order(prior_data$y,          decreasing = order[[1]] == "decreasing"),],
+      "probability" = prior_data[order(prior_data$post_probs, decreasing = order[[1]] == "decreasing"),],
+      "BF"          = prior_data[order(prior_data$BF,         decreasing = order[[1]] == "decreasing"),]
+    )
+    posterior_data <- switch(
+      order[[2]],
+      "model"       = posterior_data[order(posterior_data$model,      decreasing = order[[1]] == "decreasing"),],
+      "estimate"    = posterior_data[order(posterior_data$y,          decreasing = order[[1]] == "decreasing"),],
+      "probability" = posterior_data[order(posterior_data$post_probs, decreasing = order[[1]] == "decreasing"),],
+      "BF"          = posterior_data[order(posterior_data$BF,         decreasing = order[[1]] == "decreasing"),]
+    )
+  }
+
+  # compute overall estimate
+  overal_mean <- mean(total_samples)
+  overal_lCI  <- unname(stats::quantile(total_samples, .025))
+  overal_uCI  <- unname(stats::quantile(total_samples, .975))
+  vertical_0  <- 0
+
+  # apply transformations
+  if(!is.null(transformation)){
+    prior_data[,c("y", "y_lCI","y_uCI")]     <- .density.prior_transformation_x(prior_data[,c("y", "y_lCI","y_uCI")],   transformation, transformation_arguments)
+    posterior_data[,c("y", "y_lCI","y_uCI")] <- .density.prior_transformation_x(posterior_data[,c("y", "y_lCI","y_uCI")],   transformation, transformation_arguments)
+    overal_mean <- .density.prior_transformation_x(overal_mean, transformation, transformation_arguments)
+    overal_lCI  <- .density.prior_transformation_x(overal_lCI,  transformation, transformation_arguments)
+    overal_uCI  <- .density.prior_transformation_x(overal_uCI , transformation, transformation_arguments)
+    vertical_0  <- .density.prior_transformation_x(vertical_0 , transformation, transformation_arguments)
+  }
+
+  # add names and locations
+  prior_data$x     <- 3:(nrow(prior_data) + 2)     + .25
+  posterior_data$x <- 3:(nrow(posterior_data) + 2)
+
+  posterior_data$y_labels2  <- paste0(
+    format(round(posterior_data$y, 2), nsmall = 2),
+    " [", format(round(posterior_data$y_lCI, 2), nsmall = 2), ", ",
+    format(round(posterior_data$y_uCI, 2), nsmall = 2), "]")
+  prior_data$y_labels2      <- paste0(
+    "BF = ", format(round(prior_data$BF, 2), nsmall = 2),
+    " [", format(round(prior_data$prior_prob, 2), nsmall = 2), " -> ", format(round(prior_data$post_prob, 2), nsmall = 2),"]")
+  overal_y_label  <- "Model-Averaged"
+  overal_y_label2 <- paste0(
+    format(round(overal_mean, 2), nsmall = 2), " [", format(round(overal_lCI, 2), nsmall = 2), ", ",
+    format(round(overal_uCI, 2), nsmall = 2), "]")
+
+
+  # set the plotting values
+  dots      <- list(...)
+  y_at      <- c(1,               posterior_data$x)
+  y_labels  <- c(overal_y_label,  paste0("Model ", posterior_data$model))
+  if(!is.null(dots[["fit_details"]]) && !dots[["fit_details"]]){
+    y_at2     <- c(1,               posterior_data$x)
+    y_labels2 <- c(overal_y_label2, posterior_data$y_labels2)
+  }else{
+    y_at2     <- c(1,               posterior_data$x,         prior_data$x)
+    y_labels2 <- c(overal_y_label2, posterior_data$y_labels2, prior_data$y_labels2)
+  }
+
+  ylim      <- c(0, max(posterior_data$x) + 1)
+
+  if(!is.null(dots[["xlim"]])){
+    xlim     <- dots[["xlim"]]
+    x_labels <- pretty(xlim)
+  }else{
+    x_labels  <- pretty(range(c(posterior_data$y_lCI, posterior_data$y_uCI, overal_lCI, overal_uCI, if(prior) c(prior_data$y_lCI, prior_data$y_uCI))))
+    xlim      <- range(x_labels)
+  }
+  if(!is.null(dots[["xlab"]])){
+    xlab <- dots[["xlab"]]
+  }else{
+    xlab <- if(is.null(par_name)) parameter else bquote(.(par_name))
+  }
+  if(!is.null(dots[["cex"]])){
+    cex  <- dots[["cex"]]
+  }else{
+    cex  <- 4
+  }
+  if(!is.null(dots[["col2"]])){
+    col2  <- dots[["col2"]]
+  }else{
+    col2  <- "grey80"
+  }
+  if(!is.null(dots[["col"]])){
+    col   <- dots[["col"]]
+  }else{
+    col   <- "black"
+  }
+
+
+  ### do the plotting
+  if(plot_type == "base"){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+
+    # set up margins
+    if(length(dots[["mar"]]) == 0){
+      graphics::par(mar = c(4, max(nchar(y_labels)) * 2/3, 0, max(nchar(y_labels2)) * 1/2))
+    }else{
+      graphics::par(mar = dots[["mar"]])
+    }
+
+    graphics::plot(NA, bty = "n", las = 1, xlab = xlab, ylab = "", main = "", yaxt = "n", ylim = ylim, xlim = xlim)
+    graphics::axis(2, at = y_at,  labels = y_labels,  las = 1, col = NA)
+    if(is.null(dots[["y_axis2"]]) || (is.null(dots[["y_axis2"]]) && dots[["y_axis2"]])){
+      graphics::axis(4, at = y_at2, labels = y_labels2, las = 1, col = NA, hadj = 0)
+    }
+    graphics::abline(v = vertical_0, lty = 3)
+
+    graphics::arrows(
+      x0 = posterior_data$y_lCI[posterior_data$y_uCI - posterior_data$y_lCI > 0],
+      x1 = posterior_data$y_uCI[posterior_data$y_uCI - posterior_data$y_lCI > 0],
+      y0 = posterior_data$x[posterior_data$y_uCI - posterior_data$y_lCI > 0],
+      code = 3, angle = 90, length = 0.1, col = col)
+    graphics::points(posterior_data$y, posterior_data$x, pch = 15, cex = cex*prior_data$post_prob, col = col)
+
+    if(prior){
+      graphics::arrows(
+        x0 = prior_data$y_lCI[prior_data$y_uCI - prior_data$y_lCI > 0],
+        x1 = prior_data$y_uCI[prior_data$y_uCI - prior_data$y_lCI > 0],
+        y0 = prior_data$x[prior_data$y_uCI - prior_data$y_lCI > 0],
+        code = 3, angle = 90, length = 0.1, col = col2)
+      graphics::points(prior_data$y, prior_data$x, pch = 15, cex = cex*prior_data$prior_prob, col = col2)
+    }
+
+
+    graphics::polygon(
+      x = c(overal_lCI, overal_mean , overal_uCI, overal_mean),
+      y = c(1, 1.25, 1, 0.75),
+      col = col
+    )
+
+  }else if(plot_type == "ggplot"){
+
+    plot <- ggplot2::ggplot()
+
+    # add the studies
+    plot <- plot +ggplot2::geom_errorbarh(
+      mapping = ggplot2::aes(
+        xmin   = posterior_data[posterior_data$y_uCI - posterior_data$y_lCI > 0,]$y_lCI,
+        xmax   = posterior_data[posterior_data$y_uCI - posterior_data$y_lCI > 0,]$y_uCI,
+        y      = posterior_data[posterior_data$y_uCI - posterior_data$y_lCI > 0,]$x),
+      color   = col,
+      height  = .25)
+    plot <- plot +ggplot2::geom_point(
+      mapping = ggplot2::aes(
+        x    = posterior_data$y,
+        y    = posterior_data$x,
+        size = cex * posterior_data$post_prob),
+      col   = col,
+      shape = 15)
+
+    if(prior){
+      plot <- plot +ggplot2::geom_errorbarh(
+        mapping = ggplot2::aes(
+          xmin   = prior_data[prior_data$y_uCI - prior_data$y_lCI > 0,]$y_lCI,
+          xmax   = prior_data[prior_data$y_uCI - prior_data$y_lCI > 0,]$y_uCI,
+          y      = prior_data[prior_data$y_uCI - prior_data$y_lCI > 0,]$x),
+        color   = col2,
+        height  = .25)
+      plot <- plot +ggplot2::geom_point(
+        mapping = ggplot2::aes(
+          x    = prior_data$y,
+          y    = prior_data$x,
+          size = cex * prior_data$prior_prob),
+        shape = 15,
+        col   = col2)
+    }
+
+    # add the overall estimate
+    plot <- plot + ggplot2::geom_polygon(
+      mapping = ggplot2::aes(
+        x = c(overal_lCI, overal_mean , overal_uCI, overal_mean),
+        y = c(1, 1.25, 1, 0.75)),
+      fill = col)
+
+    # add the vertical line
+    plot <- plot + ggplot2::geom_line(
+      mapping = ggplot2::aes(
+        x = c(vertical_0, vertical_0),
+        y = ylim),
+      linetype = "dotted")
+
+    # add all the other stuff
+    if(is.null(dots[["y_axis2"]]) || (is.null(dots[["y_axis2"]]) && dots[["y_axis2"]])){
+      plot <- plot + ggplot2::scale_y_continuous(
+        name = "", breaks = y_at, labels = y_labels, limits = ylim,
+        sec.axis = ggplot2::sec_axis( ~ ., breaks = y_at2, labels = y_labels2))
+      attr(plot, "sec_axis") <- TRUE
+    }else{
+      plot <- plot + ggplot2::scale_y_continuous(
+        name = "", breaks = y_at, labels = y_labels, limits = ylim)
+      attr(plot, "sec_axis") <- FALSE
+    }
+    plot <- plot + ggplot2::scale_x_continuous(
+      name = xlab, breaks = x_labels, labels = x_labels, limits = xlim)
+    plot <- plot + ggplot2::theme(
+      axis.title.y      = ggplot2::element_blank(),
+      axis.line.y       = ggplot2::element_blank(),
+      axis.ticks.y      = ggplot2::element_blank(),
+      axis.text.y       = ggplot2::element_text(hjust = 0, color = "black"),
+      axis.text.y.right = ggplot2::element_text(hjust = 1, color = "black"),
+      legend.position   = "none")
+
+  }
+
+  # return the plots
+  if(plot_type == "base"){
+    return(invisible())
+  }else if(plot_type == "ggplot"){
+    return(plot)
+  }
 }
