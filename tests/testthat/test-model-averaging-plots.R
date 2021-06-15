@@ -14,7 +14,7 @@ test_that("helper functions work", {
   simplified_list <- .simplify_prior_list(prior_list)
 
   expect_equal(simplified_list, list(
-    p1  = prior("normal", list(0, 1), prior_odds = 2),
+    p1  = prior("normal", list(0, 1), prior_weights = 2),
     p2  = prior("lognormal", list(0, .5)),
     p3  = prior("point", list(1))
   ))
@@ -49,8 +49,8 @@ test_that("helper functions work", {
   simplified_list <- .simplify_prior_list(prior_list)
 
   expect_equal(simplified_list, list(
-    p1  = prior("normal", list(0, 1), prior_odds = 3),
-    p2  = prior("lognormal", list(0, .5), prior_odds = 2),
+    p1  = prior("normal", list(0, 1), prior_weights = 3),
+    p2  = prior("lognormal", list(0, .5), prior_weights = 2),
     p3  = prior("point", list(1))
   ))
 })
@@ -232,7 +232,7 @@ test_that("prior plot functions (PET-PEESE) work", {
   prior_list       <- list(
     p1 = prior_PET("cauchy",     list(0, 1)),
     p2 = prior_PEESE("cauchy",   list(0, 5)),
-    p3 = prior_none(prior_odds = 3)
+    p3 = prior_none(prior_weights = 3)
   )
   expect_doppelganger("model-averaging-plot-prior-PETPEESE-11", function(){
     plot_prior_list(prior_list, col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50, ylim = c(0, .5))
@@ -292,7 +292,7 @@ test_that("prior plot functions (weightfunctions) work", {
   prior_list       <- list(
     p1 = prior_weightfunction("one.sided", list(c(.025), c(1, 1))),
     p2 = prior_weightfunction("two.sided", list(c(.05),  c(1, 1))),
-    p3 = prior_weightfunction("one.sided.fixed", list(c(.05), c(1, .5)), prior_odds = 10)
+    p3 = prior_weightfunction("one.sided.fixed", list(c(.05), c(1, .5)), prior_weights = 10)
   )
   expect_doppelganger("model-averaging-plot-prior-wf-7", function(){
     plot_prior_list(prior_list, col = "red", lwd = 4, col.fill = scales::alpha("red", .20), rescale_x = TRUE)
@@ -355,8 +355,8 @@ test_that("posterior plot functions (simple) work", {
   marglik1 <- JAGS_bridgesampling(fit1, data, priors_list1, log_posterior)
   # automatically mix posteriors
   models <- list(
-    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_odds = 1),
-    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_odds = 1)
+    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1)
   )
   mixed_posteriors <- mix_posteriors(model_list = models, parameters = c("m", "s"), is_null_list = list("m" = 1, "s" = 0), seed = 1)
 
@@ -427,8 +427,8 @@ test_that("posterior plot functions (PET-PEESE) work", {
   marglik1 <- JAGS_bridgesampling(fit1, data, priors_list1, log_posterior)
   # automatically mix posteriors
   models <- list(
-    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_odds = 1),
-    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_odds = 1)
+    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1)
   )
   mixed_posteriors <- mix_posteriors(model_list = models, parameters = c("PET", "PEESE"), is_null_list = list("PET" = c(F,T),  "PEESE" = c(T,F)), seed = 1)
 
@@ -464,7 +464,7 @@ test_that("posterior plot functions (PET-PEESE) work", {
 
   # add an overhelming missing model
   priors_list2 <- list(
-    mu = prior("normal", list(0, .8), prior_odds = 4)
+    mu = prior("normal", list(0, .8), prior_weights = 4)
   )
   # fit the models
   fit2 <- suppressWarnings(JAGS_fit(model_syntax, data, priors_list2, chains = 1, adapt = 100, burnin = 150, sample = 2000, seed = 1))
@@ -472,9 +472,9 @@ test_that("posterior plot functions (PET-PEESE) work", {
   marglik2 <- JAGS_bridgesampling(fit2, data, priors_list2, log_posterior)
   # automatically mix posteriors
   models <- list(
-    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_odds = 1),
-    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_odds = 1),
-    list(fit = fit2, marglik = marglik2, priors = priors_list2, prior_odds = 4)
+    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1),
+    list(fit = fit2, marglik = marglik2, priors = priors_list2, prior_weights = 4)
   )
   mixed_posteriors <- mix_posteriors(model_list = models, parameters = c("PET", "PEESE"), is_null_list = list("PET" = c(F,T,F),  "PEESE" = c(T,F,F)), seed = 1)
   expect_doppelganger("model-averaging-plot-posterior-PETPEESE-9", function(){
@@ -509,8 +509,8 @@ test_that("posterior plot functions (weightfunctions) work", {
   marglik1 <- JAGS_bridgesampling(fit1, data, priors_list1, log_posterior)
   # automatically mix posteriors
   models <- list(
-    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_odds = 1),
-    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_odds = 1)
+    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1)
   )
   mixed_posteriors <- mix_posteriors(model_list = models, parameters = "omega", is_null_list = list("omega" = c(F,F)), seed = 1)
 
@@ -553,7 +553,7 @@ test_that("posterior plot functions (weightfunctions) work", {
 
   # add an overhelming missing model
   priors_list2 <- list(
-    mu = prior("normal", list(0, .8), prior_odds = 4)
+    mu = prior("normal", list(0, .8), prior_weights = 4)
   )
   # fit the models
   fit2 <- suppressWarnings(JAGS_fit(model_syntax, data, priors_list2, chains = 1, adapt = 100, burnin = 150, sample = 2000, seed = 1))
@@ -561,9 +561,9 @@ test_that("posterior plot functions (weightfunctions) work", {
   marglik2 <- JAGS_bridgesampling(fit2, data, priors_list2, log_posterior)
   # automatically mix posteriors
   models <- list(
-    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_odds = 1),
-    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_odds = 1),
-    list(fit = fit2, marglik = marglik2, priors = priors_list2, prior_odds = 5)
+    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1),
+    list(fit = fit2, marglik = marglik2, priors = priors_list2, prior_weights = 5)
   )
   mixed_posteriors <- mix_posteriors(model_list = models, parameters = "omega", is_null_list = list("omega" = c(F,F,F)), seed = 1)
   expect_doppelganger("model-averaging-plot-posterior-wf-10", function(){
@@ -624,9 +624,9 @@ test_that("models plot functions work", {
   marglik2 <- JAGS_bridgesampling(fit2, data, priors_list2, log_posterior2)
   ## create an object with the models
   models <- list(
-    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_odds = 1, fit_summary = runjags_estimates_table(fit0, priors_list0)),
-    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_odds = 1, fit_summary = runjags_estimates_table(fit1, priors_list1)),
-    list(fit = fit2, marglik = marglik2, priors = priors_list2, prior_odds = 1, fit_summary = runjags_estimates_table(fit2, priors_list2))
+    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1, fit_summary = runjags_estimates_table(fit0, priors_list0)),
+    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1, fit_summary = runjags_estimates_table(fit1, priors_list1)),
+    list(fit = fit2, marglik = marglik2, priors = priors_list2, prior_weights = 1, fit_summary = runjags_estimates_table(fit2, priors_list2))
   )
   # compare and summarize the models
   models            <- models_inference(models)

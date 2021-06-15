@@ -171,8 +171,8 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
 .plot_data_prior_list.weightfunction <- function(prior_list, x_seq, x_range, x_range_quant, n_points, n_samples){
 
-  prior_odds  <- sapply(prior_list, function(p)p$prior_odds)
-  mixing_prop <- prior_odds / sum(prior_odds)
+  prior_weights  <- sapply(prior_list, function(p)p$prior_weights)
+  mixing_prop <- prior_weights / sum(prior_weights)
 
   # get the samples
   samples_list <- list()
@@ -238,8 +238,8 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     x_range <- .density.prior_transformation_inv_x(x_range, transformation, transformation_arguments)
   }
 
-  prior_odds  <- sapply(prior_list, function(p)p$prior_odds)
-  mixing_prop <- prior_odds / sum(prior_odds)
+  prior_weights  <- sapply(prior_list, function(p)p$prior_weights)
+  mixing_prop <- prior_weights / sum(prior_weights)
 
   # get the samples
   samples_list <- list()
@@ -298,8 +298,8 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     }
   }
 
-  prior_odds  <- sapply(prior_list, function(p)p$prior_odds)
-  mixing_prop <- prior_odds / sum(prior_odds)
+  prior_weights  <- sapply(prior_list, function(p)p$prior_weights)
+  mixing_prop <- prior_weights / sum(prior_weights)
 
   plot_data <- list()
   for(i in seq_along(prior_list)){
@@ -411,7 +411,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   new_prior_list <- prior_list
   for(i in seq_along(new_prior_list)){
-    new_prior_list[[i]][["prior_odds"]] <- NULL
+    new_prior_list[[i]][["prior_weights"]] <- NULL
   }
 
   are_equal <- do.call(rbind, lapply(new_prior_list, function(p)sapply(new_prior_list, identical, y = p)))
@@ -423,18 +423,18 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   }
 
   # find the duplicates and collect prior odds
-  prior_odds <- unname(sapply(prior_list, function(p)p$prior_odds))
+  prior_weights <- unname(sapply(prior_list, function(p)p$prior_weights))
   to_remove  <- NULL
   for(i in 1:nrow(are_equal)){
     this_ind    <- c(1:ncol(are_equal))[are_equal[i,]]
     this_unique <- this_ind[1]
-    prior_odds[this_unique] <- sum(prior_odds[this_ind])
+    prior_weights[this_unique] <- sum(prior_weights[this_ind])
     to_remove   <- c(to_remove, this_ind[-1])
   }
 
   # return prior odds
   for(i in seq_along(prior_list)){
-    prior_list[[i]][["prior_odds"]] <- prior_odds[i]
+    prior_list[[i]][["prior_weights"]] <- prior_weights[i]
   }
 
   # remove the duplicates

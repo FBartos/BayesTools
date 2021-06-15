@@ -40,7 +40,7 @@
 #' \code{upper}, that define the lower and upper truncation of the
 #' distribution. Defaults to \code{list(lower = -Inf, upper = Inf)}.
 #' The truncation is automatically set to the bounds of the support.
-#' @param prior_odds prior odds associated with a given distribution.
+#' @param prior_weights prior odds associated with a given distribution.
 #' The value is passed into the model fitting function, which creates models
 #' corresponding to all combinations of prior distributions for each of
 #' the model parameters and sets the model priors odds to the product
@@ -66,7 +66,7 @@
 #' \link[extraDistr]{LocationScaleT}, \link[extraDistr]{InvGamma}.
 
 #' @rdname prior
-prior <- function(distribution, parameters, truncation = list(lower = -Inf, upper = Inf), prior_odds = 1){
+prior <- function(distribution, parameters, truncation = list(lower = -Inf, upper = Inf), prior_weights = 1){
 
   # general input check
   check_char(distribution, "distribution")
@@ -77,7 +77,7 @@ prior <- function(distribution, parameters, truncation = list(lower = -Inf, uppe
     names(truncation) <- c("lower", "upper")
   if(truncation[["lower"]] >= truncation[["upper"]])
     stop("The lower truncation point needs to be lower than the upper truncation point.")
-  check_real(prior_odds, "prior_odds", lower = 0, allow_bound = FALSE)
+  check_real(prior_weights, "prior_weights", lower = 0, allow_bound = FALSE)
 
   # assign proper name
   distribution <- tolower(distribution)
@@ -114,7 +114,7 @@ prior <- function(distribution, parameters, truncation = list(lower = -Inf, uppe
   output <- do.call(paste0(".prior_", distribution), list(parameters = parameters, truncation = truncation))
 
   # add the prior odds
-  output$prior_odds <- prior_odds
+  output$prior_weights <- prior_weights
 
   class(output) <- c("prior", "prior.simple")
   if(distribution == "point"){
@@ -125,13 +125,13 @@ prior <- function(distribution, parameters, truncation = list(lower = -Inf, uppe
 }
 
 #' @rdname prior
-prior_none <- function(prior_odds = 1){
+prior_none <- function(prior_weights = 1){
 
-  check_real(prior_odds, "prior_odds", lower = 0, allow_bound = FALSE)
+  check_real(prior_weights, "prior_weights", lower = 0, allow_bound = FALSE)
 
   out <- list()
   out$distribution <- "none"
-  out$prior_odds   <- prior_odds
+  out$prior_weights   <- prior_weights
   class(out)       <- c("prior", "prior.none")
 
   return(out)
@@ -163,7 +163,7 @@ prior_none <- function(prior_odds = 1){
 #' }
 #' @param parameters list of appropriate parameters for a given
 #' \code{distribution}.
-#' @param prior_odds prior odds associated with a given distribution.
+#' @param prior_weights prior odds associated with a given distribution.
 #' The model fitting function usually creates models corresponding to
 #' all combinations of prior distributions for each of the model
 #' parameters, and sets the model priors odds to the product of
@@ -180,13 +180,13 @@ prior_none <- function(prior_odds = 1){
 #' @export  prior_weightfunction
 #' @rawNamespace S3method(print, prior)
 #' @seealso [plot.prior()]
-prior_weightfunction <- function(distribution, parameters, prior_odds = 1){
+prior_weightfunction <- function(distribution, parameters, prior_weights = 1){
 
   # general input check
   check_char(distribution, "distribution")
   check_list(parameters, "parameters")
   sapply(seq_along(parameters), function(i)check_real(parameters[[i]], names(parameters[[i]]), check_length = 0))
-  check_real(prior_odds, "prior_odds", lower = 0, allow_bound = FALSE)
+  check_real(prior_weights, "prior_weights", lower = 0, allow_bound = FALSE)
 
   # assign proper name
   distribution <- tolower(distribution)
@@ -211,7 +211,7 @@ prior_weightfunction <- function(distribution, parameters, prior_odds = 1){
   output <- do.call(paste0(".prior_weightfunction_", distribution), list(parameters = parameters))
 
   # add the prior odds
-  output$prior_odds <- prior_odds
+  output$prior_weights <- prior_weights
 
   class(output) <- c("prior", "prior.weightfunction")
 
@@ -240,18 +240,18 @@ prior_weightfunction <- function(distribution, parameters, prior_odds = 1){
 NULL
 
 #' @rdname prior_PP
-prior_PET   <- function(distribution, parameters, truncation = list(lower = 0, upper = Inf), prior_odds = 1){
+prior_PET   <- function(distribution, parameters, truncation = list(lower = 0, upper = Inf), prior_weights = 1){
 
-  output <- prior(distribution, parameters, truncation, prior_odds)
+  output <- prior(distribution, parameters, truncation, prior_weights)
 
   class(output) <- c(class(output), "prior.PET")
 
   return(output)
 }
 #' @rdname prior_PP
-prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, upper = Inf), prior_odds = 1){
+prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, upper = Inf), prior_weights = 1){
 
-  output <- prior(distribution, parameters, truncation, prior_odds)
+  output <- prior(distribution, parameters, truncation, prior_weights)
 
   class(output) <- c(class(output), "prior.PEESE")
 

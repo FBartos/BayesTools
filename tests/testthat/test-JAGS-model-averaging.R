@@ -51,8 +51,8 @@ test_that("JAGS model-averaging functions work (simple)",{
 
   # automatically mix posteriors
   models <- list(
-    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_odds = 1),
-    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_odds = 1)
+    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1)
   )
   inference <- ensemble_inference(model_list = models, parameters = c("m", "s"), is_null_list = list("m" = 1, "s" = 0), conditional = FALSE)
   inference_conditional <- ensemble_inference(model_list = models, parameters = c("m", "s"), is_null_list = list("m" = 1, "s" = 0), conditional = TRUE)
@@ -82,8 +82,8 @@ test_that("JAGS model-averaging functions work (simple)",{
 
   # dealing with missing unspecified null priors
   models2 <- list(
-    list(fit = fit0, marglik = marglik0, priors = list(s  = prior("normal", list(0, 1), list(0, Inf))), prior_odds = 1),
-    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_odds = 1)
+    list(fit = fit0, marglik = marglik0, priors = list(s  = prior("normal", list(0, 1), list(0, Inf))), prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1)
   )
   mixed_posteriors2 <- mix_posteriors(model_list = models2, parameters = c("m", "s"), is_null_list = list("m" = 1, "s" = 0), seed = 1)
   expect_equal(mixed_posteriors, mixed_posteriors2)
@@ -145,9 +145,9 @@ test_that("JAGS model-averaging functions work (weightfunctions)",{
   )
 
   models <- list(
-    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_odds = 1),
-    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_odds = 1),
-    list(fit = fit2, marglik = marglik2, priors = priors_list2, prior_odds = 1)
+    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1),
+    list(fit = fit2, marglik = marglik2, priors = priors_list2, prior_weights = 1)
   )
 
   # get models inference &  mix posteriors
@@ -182,10 +182,10 @@ test_that("JAGS model-averaging functions work (weightfunctions)",{
   fit3     <- JAGS_fit(model_syntax, data, priors_list3, chains = 1, adapt = 100, burnin = 150, sample = 500, seed = 1)
   marglik3 <- JAGS_bridgesampling(fit3, data, priors_list3, log_posterior)
   models <- list(
-    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_odds = 1),
-    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_odds = 1),
-    list(fit = fit2, marglik = marglik2, priors = priors_list2, prior_odds = 1),
-    list(fit = fit3, marglik = marglik3, priors = priors_list3, prior_odds = 1)
+    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1),
+    list(fit = fit2, marglik = marglik2, priors = priors_list2, prior_weights = 1),
+    list(fit = fit3, marglik = marglik3, priors = priors_list3, prior_weights = 1)
   )
 
   inference <- ensemble_inference(model_list = models, parameters = c("m", "omega"), is_null_list = list("m" = 0, "omega" = 1), conditional = FALSE)

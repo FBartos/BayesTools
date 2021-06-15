@@ -6,14 +6,14 @@
 \alias{models_inference}
 \title{Compute posterior probabilities and inclusion Bayes factors}
 \usage{
-compute_inference(prior_odds, margliks, is_null = NULL, conditional = FALSE)
+compute_inference(prior_weights, margliks, is_null = NULL, conditional = FALSE)
 
 ensemble_inference(model_list, parameters, is_null_list, conditional = FALSE)
 
 models_inference(model_list)
 }
 \arguments{
-\item{prior_odds}{vector of prior model odds}
+\item{prior_weights}{vector of prior model odds}
 
 \item{margliks}{vector of marginal likelihoods}
 
@@ -26,7 +26,7 @@ be returned only for the conditional model. Defaults to \code{FALSE}}
 
 \item{model_list}{list of models, each of which contains marginal
 likelihood estimated with bridge sampling \code{marglik} and prior model
-odds \code{prior_odds}}
+odds \code{prior_weights}}
 
 \item{parameters}{vector of parameters names for which inference should
 be drawn}

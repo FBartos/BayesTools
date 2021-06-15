@@ -4,7 +4,7 @@
 \alias{prior_weightfunction}
 \title{Creates a prior distribution for a weight function}
 \usage{
-prior_weightfunction(distribution, parameters, prior_odds = 1)
+prior_weightfunction(distribution, parameters, prior_weights = 1)
 }
 \arguments{
 \item{distribution}{name of the prior distribution. The
@@ -29,7 +29,7 @@ the weights omega.}
 \item{parameters}{list of appropriate parameters for a given
 \code{distribution}.}
 
-\item{prior_odds}{prior odds associated with a given distribution.
+\item{prior_weights}{prior odds associated with a given distribution.
 The model fitting function usually creates models corresponding to
 all combinations of prior distributions for each of the model
 parameters, and sets the model priors odds to the product of

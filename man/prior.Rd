@@ -9,10 +9,10 @@ prior(
   distribution,
   parameters,
   truncation = list(lower = -Inf, upper = Inf),
-  prior_odds = 1
+  prior_weights = 1
 )
 
-prior_none(prior_odds = 1)
+prior_none(prior_weights = 1)
 }
 \arguments{
 \item{distribution}{name of the prior distribution. The
@@ -55,7 +55,7 @@ range from \code{a} to \code{b}}
 distribution. Defaults to \code{list(lower = -Inf, upper = Inf)}.
 The truncation is automatically set to the bounds of the support.}
 
-\item{prior_odds}{prior odds associated with a given distribution.
+\item{prior_weights}{prior odds associated with a given distribution.
 The value is passed into the model fitting function, which creates models
 corresponding to all combinations of prior distributions for each of
 the model parameters and sets the model priors odds to the product

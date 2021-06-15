@@ -10,14 +10,14 @@
 #'
 #' @param model_list list of models, each of which contains marginal
 #' likelihood estimated with bridge sampling \code{marglik} and prior model
-#' odds \code{prior_odds}
+#' odds \code{prior_weights}
 #' @param parameters vector of parameters names for which inference should
 #' be drawn
 #' @param is_null_list list with entries for each parameter carrying either
 #' logical vector of indicators specifying whether the model corresponds
 #' to the null or alternative hypothesis (or an integer vector indexing models
 #' corresponding to the null hypothesis)
-#' @param prior_odds vector of prior model odds
+#' @param prior_weights vector of prior model odds
 #' @param margliks vector of marginal likelihoods
 #' @param is_null logical vector of indicators specifying whether the model corresponds
 #' to the null or alternative hypothesis (or an integer vector indexing models
@@ -34,30 +34,30 @@
 NULL
 
 #' @rdname ensemble_inference
-compute_inference <- function(prior_odds, margliks, is_null = NULL, conditional = FALSE){
+compute_inference <- function(prior_weights, margliks, is_null = NULL, conditional = FALSE){
 
-  check_real(prior_odds, "prior_odds", lower = 0, check_length = 0)
-  check_real(margliks,   "margliks", check_length = length(prior_odds))
+  check_real(prior_weights, "prior_weights", lower = 0, check_length = 0)
+  check_real(margliks,   "margliks", check_length = length(prior_weights))
   check_bool(conditional, "conditional")
   if(!is.null(is_null)){
     if(is.numeric(is_null)){
-      check_int(is_null, "is_null", lower = 0, upper = length(prior_odds), check_length = 0)
-      is_null <- c(1:length(prior_odds)) %in% is_null
+      check_int(is_null, "is_null", lower = 0, upper = length(prior_weights), check_length = 0)
+      is_null <- c(1:length(prior_weights)) %in% is_null
     }else if(is.logical(is_null)){
-      check_bool(is_null, "is_null", check_length = length(prior_odds))
+      check_bool(is_null, "is_null", check_length = length(prior_weights))
     }else{
       stop("'is_null' argument must be either logical vector, integer vector, or NULL.")
     }
   }else{
-    is_null <- rep(FALSE, length(prior_odds))
+    is_null <- rep(FALSE, length(prior_weights))
   }
 
-  prior_probs <- prior_odds / sum(prior_odds)
+  prior_probs <- prior_weights / sum(prior_weights)
   post_probs  <- unname(bridgesampling::post_prob(margliks, prior_prob = prior_probs))
   BF          <- inclusion_BF(prior_probs, post_probs, is_null)
 
   if(conditional){
-    prior_probs <- ifelse(is_null, 0, prior_odds) / sum(prior_odds[!is_null])
+    prior_probs <- ifelse(is_null, 0, prior_weights) / sum(prior_weights[!is_null])
     post_probs  <- unname(bridgesampling::post_prob(margliks, prior_prob = prior_probs))
   }
 
@@ -79,15 +79,15 @@ ensemble_inference <- function(model_list, parameters, is_null_list, conditional
   check_list(model_list, "model_list")
   check_char(parameters, "parameters", check_length = FALSE)
   check_list(is_null_list, "is_null_list", check_length = length(parameters))
-  sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("marglik", "prior_odds"), all_objects = TRUE, allow_other = TRUE))
+  sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("marglik", "prior_weights"), all_objects = TRUE, allow_other = TRUE))
   if(!all(sapply(model_list, function(m)inherits(m[["marglik"]], what = "bridge"))))
     stop("model_list:marglik must contain 'bridgesampling' marginal likelihoods")
-  sapply(model_list, function(m)check_real(m[["prior_odds"]], "model_list:prior_odds", lower = 0))
+  sapply(model_list, function(m)check_real(m[["prior_weights"]], "model_list:prior_weights", lower = 0))
 
 
   # extract the object
   margliks   <- sapply(model_list, function(m)m[["marglik"]][["logml"]])
-  prior_odds <- sapply(model_list, function(m)m[["prior_odds"]])
+  prior_weights <- sapply(model_list, function(m)m[["prior_weights"]])
 
   out <- list()
 
@@ -97,7 +97,7 @@ ensemble_inference <- function(model_list, parameters, is_null_list, conditional
     temp_parameter <- parameters[p]
     temp_is_null   <- is_null_list[[p]]
 
-    out[[temp_parameter]] <- compute_inference(prior_odds = prior_odds, margliks = margliks, is_null = temp_is_null, conditional = conditional)
+    out[[temp_parameter]] <- compute_inference(prior_weights = prior_weights, margliks = margliks, is_null = temp_is_null, conditional = conditional)
   }
 
   attr(out, "conditional") <- conditional
@@ -107,15 +107,15 @@ ensemble_inference <- function(model_list, parameters, is_null_list, conditional
 #' @rdname ensemble_inference
 models_inference   <- function(model_list){
 
-  sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("marglik", "prior_odds"), all_objects = TRUE, allow_other = TRUE))
+  sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("marglik", "prior_weights"), all_objects = TRUE, allow_other = TRUE))
   if(!all(sapply(model_list, function(m)inherits(m[["marglik"]], what = "bridge"))))
     stop("model_list:marglik must contain 'bridgesampling' marginal likelihoods")
-  sapply(model_list, function(m)check_real(m[["prior_odds"]], "model_list:prior_odds", lower = 0))
+  sapply(model_list, function(m)check_real(m[["prior_weights"]], "model_list:prior_weights", lower = 0))
 
   margliks    <- sapply(model_list, function(model)model[["marglik"]][["logml"]])
   margliks    <- ifelse(is.na(margliks), -Inf, margliks)
-  prior_odds  <- sapply(model_list, function(model)model[["prior_odds"]])
-  prior_probs <- prior_odds / sum(prior_odds)
+  prior_weights  <- sapply(model_list, function(model)model[["prior_weights"]])
+  prior_probs <- prior_weights / sum(prior_weights)
   post_probs  <- unname(bridgesampling::post_prob(margliks, prior_prob = prior_probs))
   incl_BF     <- sapply(seq_along(model_list), function(i) (post_probs[i] / (1 - post_probs[i])) / (prior_probs[i] / (1 - prior_probs[i])))
 
@@ -168,21 +168,21 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   check_char(parameters, "parameters", check_length = FALSE)
   check_list(is_null_list, "is_null_list", check_length = length(parameters))
   check_real(seed, "seed", allow_NULL = TRUE)
-  sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("fit", "marglik", "priors", "prior_odds"), all_objects = TRUE, allow_other = TRUE))
+  sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("fit", "marglik", "priors", "prior_weights"), all_objects = TRUE, allow_other = TRUE))
   if(!all(sapply(model_list, function(m)inherits(m[["fit"]], what = "runjags")) | sapply(model_list, function(m)inherits(m[["fit"]], what = "rstan")) | sapply(model_list, function(m)inherits(m[["fit"]], what = "null_model"))))
     stop("model_list:fit must contain 'runjags' or 'rstan' models")
   if(!all(sapply(model_list, function(m)inherits(m[["marglik"]], what = "bridge"))))
     stop("model_list:marglik must contain 'bridgesampling' marginal likelihoods")
   if(!all(unlist(sapply(model_list, function(m)sapply(m[["priors"]], function(p)is.prior(p))))))
     stop("model_list:priors must contain 'BayesTools' priors")
-  sapply(model_list, function(m)check_real(m[["prior_odds"]], "model_list:prior_odds", lower = 0))
+  sapply(model_list, function(m)check_real(m[["prior_weights"]], "model_list:prior_weights", lower = 0))
 
 
   # extract the object
   fits       <- lapply(model_list, function(m)m[["fit"]])
   margliks   <- sapply(model_list, function(m)m[["marglik"]][["logml"]])
   priors     <- lapply(model_list, function(m)m[["priors"]])
-  prior_odds <- sapply(model_list, function(m)m[["prior_odds"]])
+  prior_weights <- sapply(model_list, function(m)m[["prior_weights"]])
 
   inference  <- ensemble_inference(model_list, parameters, is_null_list, conditional)
   out <- list()
@@ -205,7 +205,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 
       # replace prior odds with the corresponding prior model odds
       for(i in seq_along(temp_priors)){
-        temp_priors[[i]][["prior_odds"]] <- temp_inference$prior_probs[i]
+        temp_priors[[i]][["prior_weights"]] <- temp_inference$prior_probs[i]
       }
 
       out[[temp_parameter]] <- mix_posteriors.simple(fits, temp_priors, temp_parameter, temp_inference$post_probs, seed, n_samples)
@@ -221,7 +221,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 
       # replace prior odds with the corresponding prior model odds
       for(i in seq_along(temp_priors)){
-        temp_priors[[i]][["prior_odds"]] <- temp_inference$prior_probs[i]
+        temp_priors[[i]][["prior_weights"]] <- temp_inference$prior_probs[i]
       }
 
       out[[temp_parameter]] <- mix_posteriors.weightfunction(fits, temp_priors, temp_parameter, temp_inference$post_probs, seed, n_samples)

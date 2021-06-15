@@ -36,7 +36,7 @@ mix_posteriors.weightfunction(
 \arguments{
 \item{model_list}{list of models, each of which contains marginal
 likelihood estimated with bridge sampling \code{marglik} and prior model
-odds \code{prior_odds}}
+odds \code{prior_weights}}
 
 \item{parameters}{vector of parameters names for which inference should
 be drawn}
