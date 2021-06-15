@@ -426,9 +426,9 @@ inclusion_BF     <- function(prior_probs, post_probs, is_null){
     stop("'is_null' argument must be either logical vector, integer vector, or NULL.")
   }
 
-  if(all(!is_null)){
+  if(all(!is_null) | isTRUE(all.equal(sum(post_probs[!is_null]), 1)) | isTRUE(all.equal(sum(prior_probs[!is_null]), 1))){
     return(Inf)
-  }else if(all(is_null)){
+  }else if(all(is_null) | isTRUE(all.equal(sum(post_probs[is_null]), 1)) | isTRUE(all.equal(sum(prior_probs[is_null]), 1))){
     return(0)
   }else{
     return(
@@ -491,11 +491,18 @@ weightfunctions_mapping <- function(prior_list, cuts_only = FALSE){
         l = c(0, priors_cuts_new[[p]]),
         u = c(priors_cuts_new[[p]], 1))
 
-      if(grepl("two.sided", priors_type[p])){
-        omega_ind[[p]] <- rev(c( (length(priors_cuts[[p]]) + 1):2, 1:(length(priors_cuts[[p]]) + 1) ))
-      }else if(grepl("one.sided", priors_type[p])){
-        omega_ind[[p]] <- rev(1:(length(priors_cuts[[p]]) + 1))
+      if(any(grepl("one.sided", priors_type))){
+        if(grepl("two.sided", priors_type[p])){
+          omega_ind[[p]] <- rev(c( (length(priors_cuts[[p]]) + 1):2, 1:(length(priors_cuts[[p]]) + 1) ))
+        }else if(grepl("one.sided", priors_type[p])){
+          omega_ind[[p]] <- rev(1:(length(priors_cuts[[p]]) + 1))
+        }
+      }else{
+        if(grepl("two.sided", priors_type[p])){
+          omega_ind[[p]] <- rev(1:(length(priors_cuts[[p]]) + 1))
+        }
       }
+
     }
   }
 

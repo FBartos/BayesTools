@@ -30,4 +30,15 @@ test_that("Model-averaging functions work", {
   expect_equal(attr(format_BF(1), "name"), "BF")
   expect_equal(attr(format_BF(1, logBF = TRUE), "name"), "log(BF)")
   expect_equal(attr(format_BF(1, BF01 = TRUE, logBF = TRUE), "name"), "log(1/BF)")
+
+  # additional BF checks
+  expect_equal(inclusion_BF(prior_probs = c(1, 0), post_probs = c(1, 0), is_null = c(T, F)), 0)
+  expect_equal(inclusion_BF(prior_probs = c(1, 0), post_probs = c(1, 0), is_null = c(F, T)), Inf)
+
+  # additional omega mapping checks
+  expect_equal(weightfunctions_mapping(prior_list = list(
+    prior_none(),
+    prior_weightfunction(distribution = "two.sided", parameters = list(alpha = c(1, 1),       steps = c(0.05)),        prior_weights = 1/2),
+    prior_weightfunction(distribution = "two.sided", parameters = list(alpha = c(1, 1, 1),    steps = c(0.05, 0.10)),  prior_weights = 1/2)
+  )), list(NULL, c(2, 1, 1), c(3, 2, 1)))
 })
