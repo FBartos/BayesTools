@@ -186,8 +186,8 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   }
 
   # merge the samples
-  omega_mapping <- weightfunctions_mapping(prior_list[sapply(prior_list, is.prior.weightfunction)])
-  omega_cuts    <- weightfunctions_mapping(prior_list[sapply(prior_list, is.prior.weightfunction)], cuts_only = TRUE)
+  omega_mapping <- weightfunctions_mapping(prior_list)
+  omega_cuts    <- weightfunctions_mapping(prior_list, cuts_only = TRUE)
 
   # join samples
   samples    <- matrix(nrow = 0, ncol = length(omega_cuts) - 1)
@@ -255,9 +255,9 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   samples <- do.call(rbind, samples_list)
 
 
-  # transform the parameter if requested
+  # transform the PEESE parameter if requested
   if(!is.null(transformation)){
-    samples   <- .density.prior_transformation_x(samples,   transformation, transformation_arguments)
+    samples[,2] <- .density.prior_transformation_x(samples[,2],  transformation, transformation_arguments)
   }
 
 
@@ -289,11 +289,22 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 .plot_data_prior_list.simple         <- function(prior_list, x_seq, x_range, x_range_quant, n_points, n_samples, force_samples, individual,
                                                  transformation, transformation_arguments, transformation_settings){
 
+  # get common range to ascertain that all priors are aligned
+  if(is.null(x_range)){
+    if(!is.null(x_seq)){
+      x_range <- range(x_seq)
+    }else{
+      x_range <- range(as.vector(do.call(rbind, lapply(prior_list, function(p) range(p, if(is.null(x_range_quant)) .range.prior_quantile_default(p) else x_range_quant)))))
+    }
+  }
+
   prior_odds  <- sapply(prior_list, function(p)p$prior_odds)
   mixing_prop <- prior_odds / sum(prior_odds)
 
   plot_data <- list()
   for(i in seq_along(prior_list)){
+    if(round(n_samples * mixing_prop[i]) < 1)
+      next
     plot_data[[i]] <- density(prior_list[[i]], x_seq = x_seq, x_range = x_range, x_range_quant = x_range_quant,
                               n_points = n_points, n_samples = round(n_samples * mixing_prop[i]), force_samples = force_samples,
                               transformation = transformation, transformation_arguments = transformation_arguments,
@@ -325,7 +336,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   # deal with continuous densities
   if(!is.null(y_den)){
     y_den <- apply(y_den, 2, sum)
-    if(any(sapply(1:nrow(x_den), function(i) isFALSE(all.equal(x_den[1,], x_den[i,])))))
+    if(any(sapply(1:nrow(x_den), function(i) !isTRUE(all.equal(x_den[1,], x_den[i,])))))
       stop("non-matching x-coordinates")
     x_den <- x_den[1,]
 
@@ -697,6 +708,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     # add priors, if requested
     if(prior){
       prior_list      <- attr(samples[[parameter]], "prior_list")
+      prior_list      <- .simplify_prior_list(prior_list)
       plot_data_prior <- .plot_data_prior_list.weightfunction(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                                                               n_points = n_points, n_samples = n_samples)
 
@@ -744,7 +756,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       }else if(!is.null(samples[["PET"]]) & is.null(samples[["PEESE"]])){
         prior_list <- attr(samples[["PET"]], "prior_list")
       }
-      #
+      prior_list      <- .simplify_prior_list(prior_list)
 
       plot_data_prior <- .plot_data_prior_list.PETPEESE(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                                                   n_points = n_points, n_samples = n_samples,
@@ -756,6 +768,10 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
       xlim <- range(as.vector(sapply(plot_data_joined, attr, which = "x_range")))
       ylim <- range(as.vector(sapply(plot_data_joined, attr, which = "y_range")))
+      # make sure y-range does not collapse
+      if(all(ylim < .01)){
+        ylim <- c(0, 1)
+      }
       attr(plot_data_prior, "x_range") <- xlim
       attr(plot_data_prior, "y_range") <- ylim
       dots_prior <- .transfer_dots(dots_prior, ...)
@@ -783,7 +799,10 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
     # add priors, if requested
     if(prior){
-      plot_data_prior <- .plot_data_prior_list.simple(attr(samples[[parameter]], "prior_list"), x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
+      prior_list  <- attr(samples[[parameter]], "prior_list")
+      prior_list  <- .simplify_prior_list(prior_list)
+
+      plot_data_prior <- .plot_data_prior_list.simple(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                                                 n_points = n_points, n_samples = n_samples, force_samples = force_samples, individual = individual,
                                                 transformation = transformation, transformation_arguments = transformation_arguments,
                                                 transformation_settings = transformation_settings)
@@ -876,6 +895,10 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     x_points <- as.numeric(names(points_table))
     y_points <- as.numeric(points_table)
 
+    # apply transformations
+    if(!is.null(transformation)){
+      x_points <- .density.prior_transformation_x(x_points, transformation, transformation_arguments)
+    }
   }
 
   # deal with the densities
@@ -995,7 +1018,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
   # transform the parameter if requested
   if(!is.null(transformation)){
-    samples <- .density.prior_transformation_x(samples,   transformation, transformation_arguments)
+    samples[,2] <- .density.prior_transformation_x(samples[,2], transformation, transformation_arguments)
   }
 
 

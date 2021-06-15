@@ -457,6 +457,11 @@ runjags_estimates_table  <- function(fit, prior_list, transformations = NULL, ti
   runjags_summary <- data.frame(runjags_summary)
   model_samples   <- suppressWarnings(coda::as.mcmc(fit))
 
+  # deal with missing median in case of non-stochastic variables
+  if(!any(colnames(runjags_summary) == "Median")){
+    runjags_summary[,"Median"] <- NA
+  }
+
   # apply transformations
   if(!is.null(transformations)){
     for(par in names(transformations)){

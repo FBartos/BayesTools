@@ -454,6 +454,7 @@ weightfunctions_mapping <- function(prior_list, cuts_only = FALSE){
     stop("'priors' must be a list of weightfunction priors distributions")
   check_bool(cuts_only, "cuts_only")
 
+
   # extract cuts and types
   priors_cuts <- lapply(prior_list, function(prior)rev(prior[["parameters"]][["steps"]]))
   priors_type <- sapply(prior_list, function(prior)prior[["distribution"]])

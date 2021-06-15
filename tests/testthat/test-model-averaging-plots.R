@@ -314,7 +314,7 @@ test_that("prior plot functions (weightfunctions)", {
   ### dealing with other type of priors
   prior_list       <- list(
     p1 = prior_weightfunction("one.sided", list(c(.5), c(1, 1))),
-    p2 = prior("normal", list(0, 1)),
+    p2 = prior_none(),
     p3 = prior_none()
   )
   expect_doppelganger("model-averaging-plot-prior-wf-11", function(){

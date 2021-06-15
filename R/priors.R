@@ -677,25 +677,29 @@ cdf.prior   <- function(x, q, ...){
 
   if(is.prior.simple(prior)){
 
-    if(q < prior$truncation[["lower"]]){
-      return(0)
-    }
+    p <- rep(NA, length(q))
 
-    p <- switch(
+    # deal with values below the truncation point
+    q_lower    <- q < prior$truncation[["lower"]]
+    p[q_lower] <- 0
+
+    # compute for the values above truncation point
+    p[!q_lower] <- switch(
       prior[["distribution"]],
-      "normal"    = stats::pnorm(q, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], lower.tail = TRUE, log.p = FALSE),
-      "lognormal" = stats::plnorm(q, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], lower.tail = TRUE, log.p = FALSE),
-      "t"         = extraDistr::plst(q, df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
-      "gamma"     = stats::pgamma(q, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
-      "invgamma"  = extraDistr::pinvgamma(q, alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
-      "beta"      = stats::pbeta(q, shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = TRUE, log.p = FALSE),
-      "exp"       = stats::pexp(q, rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
-      "uniform"   = stats::punif(q, min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = TRUE, log.p = FALSE),
-      "point"     = ppoint(q, location = prior$parameters[["location"]], lower.tail = TRUE, log.p = FALSE)
+      "normal"    = stats::pnorm(q[!q_lower], mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], lower.tail = TRUE, log.p = FALSE),
+      "lognormal" = stats::plnorm(q[!q_lower], meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], lower.tail = TRUE, log.p = FALSE),
+      "t"         = extraDistr::plst(q[!q_lower], df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
+      "gamma"     = stats::pgamma(q[!q_lower], shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
+      "invgamma"  = extraDistr::pinvgamma(q[!q_lower], alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
+      "beta"      = stats::pbeta(q[!q_lower], shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = TRUE, log.p = FALSE),
+      "exp"       = stats::pexp(q[!q_lower], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
+      "uniform"   = stats::punif(q[!q_lower], min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = TRUE, log.p = FALSE),
+      "point"     = ppoint(q[!q_lower], location = prior$parameters[["location"]], lower.tail = TRUE, log.p = FALSE)
     )
 
+    # deal with truncation
     if(prior[["distribution"]] != "point"){
-      p <- (p - .prior_C1(prior)) /.prior_C(prior)
+      p[!q_lower] <- (p[!q_lower] - .prior_C1(prior)) /.prior_C(prior)
     }
 
   }else if(is.prior.weightfunction(prior)){
@@ -716,25 +720,29 @@ ccdf.prior  <- function(x, q, ...){
 
   if(is.prior.simple(prior)){
 
-    if(q > prior$truncation[["upper"]]){
-      return(0)
-    }
+    p <- rep(NA, length(q))
 
-    p <- switch(
+    # deal with values above the truncation point
+    q_higher    <- q > prior$truncation[["upper"]]
+    p[q_higher] <- 0
+
+    # compute for the values belove truncation point
+    p[!q_higher] <- switch(
       prior[["distribution"]],
-      "normal"    = stats::pnorm(q, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], lower.tail = FALSE, log.p = FALSE),
-      "lognormal" = stats::plnorm(q, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], lower.tail = FALSE, log.p = FALSE),
-      "t"         = extraDistr::plst(q, df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]], lower.tail = FALSE, log.p = FALSE),
-      "gamma"     = stats::pgamma(q, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = FALSE, log.p = FALSE),
-      "invgamma"  = extraDistr::pinvgamma(q, alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], lower.tail = FALSE, log.p = FALSE),
-      "beta"      = stats::pbeta(q, shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = FALSE, log.p = FALSE),
-      "exp"       = stats::pexp(q, rate = prior$parameters[["rate"]], lower.tail = FALSE, log.p = FALSE),
-      "uniform"   = stats::punif(q, min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = FALSE, log.p = FALSE),
-      "point"     = ppoint(q, location = prior$parameters[["location"]], lower.tail = FALSE, log.p = FALSE)
+      "normal"    = stats::pnorm(q[!q_higher], mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], lower.tail = FALSE, log.p = FALSE),
+      "lognormal" = stats::plnorm(q[!q_higher], meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], lower.tail = FALSE, log.p = FALSE),
+      "t"         = extraDistr::plst(q[!q_higher], df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]], lower.tail = FALSE, log.p = FALSE),
+      "gamma"     = stats::pgamma(q[!q_higher], shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = FALSE, log.p = FALSE),
+      "invgamma"  = extraDistr::pinvgamma(q[!q_higher], alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], lower.tail = FALSE, log.p = FALSE),
+      "beta"      = stats::pbeta(q[!q_higher], shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = FALSE, log.p = FALSE),
+      "exp"       = stats::pexp(q[!q_higher], rate = prior$parameters[["rate"]], lower.tail = FALSE, log.p = FALSE),
+      "uniform"   = stats::punif(q[!q_higher], min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = FALSE, log.p = FALSE),
+      "point"     = ppoint(q[!q_higher], location = prior$parameters[["location"]], lower.tail = FALSE, log.p = FALSE)
     )
 
+    # deal with truncation
     if(prior[["distribution"]] != "point"){
-      p <- (p - (1 - .prior_C2(prior))) /.prior_C(prior)
+      p[!q_higher] <- (p[!q_higher] - (1 - .prior_C2(prior))) /.prior_C(prior)
     }
 
   }else if(is.prior.weightfunction(prior)){
