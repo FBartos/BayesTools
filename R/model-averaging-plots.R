@@ -183,7 +183,10 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   prior_list <- .simplify_prior_list(prior_list)
 
   prior_weights  <- sapply(prior_list, function(p)p$prior_weights)
-  mixing_prop <- prior_weights / sum(prior_weights)
+  mixing_prop    <- prior_weights / sum(prior_weights)
+
+  prior_list     <- prior_list[round(n_samples * mixing_prop) > 0]
+  mixing_prop    <- mixing_prop[round(n_samples * mixing_prop) > 0]
 
   # get the samples
   samples_list <- list()
@@ -252,7 +255,11 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   }
 
   prior_weights  <- sapply(prior_list, function(p)p$prior_weights)
-  mixing_prop <- prior_weights / sum(prior_weights)
+  mixing_prop    <- prior_weights / sum(prior_weights)
+
+  prior_list     <- prior_list[round(n_samples * mixing_prop) > 0]
+  prior_list_mu  <- prior_list_mu[round(n_samples * mixing_prop) > 0]
+  mixing_prop    <- mixing_prop[round(n_samples * mixing_prop) > 0]
 
   # get the samples
   samples_list <- list()
@@ -317,12 +324,13 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   }
 
   prior_weights  <- sapply(prior_list, function(p)p$prior_weights)
-  mixing_prop <- prior_weights / sum(prior_weights)
+  mixing_prop    <- prior_weights / sum(prior_weights)
+
+  prior_list  <- prior_list[round(n_samples * mixing_prop) > 1]
+  mixing_prop <- mixing_prop[round(n_samples * mixing_prop) > 0]
 
   plot_data <- list()
   for(i in seq_along(prior_list)){
-    if(round(n_samples * mixing_prop[i]) < 1)
-      next
     plot_data[[i]] <- density(prior_list[[i]], x_seq = x_seq, x_range = x_range, x_range_quant = x_range_quant,
                               n_points = n_points, n_samples = round(n_samples * mixing_prop[i]), force_samples = force_samples,
                               transformation = transformation, transformation_arguments = transformation_arguments,
@@ -772,6 +780,10 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     # add priors, if requested
     if(prior){
 
+      if(is.null(samples[["mu"]]))
+        stop("'mu' samples are required for plotting PET-PEESE.")
+      prior_list_mu   <- attr(samples[["mu"]],   "prior_list")
+
       # TODO: a bit of a hack - removing priors that were added as a fill for sampling
       if(!is.null(samples[["PET"]]) & !is.null(samples[["PEESE"]])){
         prior_list_PET   <- attr(samples[["PET"]],   "prior_list")
@@ -779,6 +791,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
         prior_fill       <- seq_along(prior_list_PET)[!sapply(prior_list_PET, is.prior.PET) & !sapply(prior_list_PEESE, is.prior.PEESE)]
         prior_list       <- c(prior_list_PET[sapply(prior_list_PET, is.prior.PET)], prior_list_PEESE[sapply(prior_list_PEESE, is.prior.PEESE)],
                               prior_list_PET[prior_fill])
+        prior_list_mu    <- prior_list_mu[c(c(1:length(prior_list_mu))[sapply(prior_list_PET, is.prior.PET)], c(1:length(prior_list_mu))[sapply(prior_list_PEESE, is.prior.PEESE)], c(1:length(prior_list_mu))[prior_fill])]
       }else if(is.null(samples[["PET"]]) & !is.null(samples[["PEESE"]])){
         prior_list <- attr(samples[["PEESE"]], "prior_list")
       }else if(!is.null(samples[["PET"]]) & is.null(samples[["PEESE"]])){
@@ -786,11 +799,8 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       }else{
         stop("Either PET or PEESE samples need to be provided.")
       }
-      if(is.null(samples[["mu"]]))
-         stop("'mu' samples are required for plotting PET-PEESE.")
 
-      prior_list_mu   <- attr(samples[["mu"]],   "prior_list")  # cannot simplify
-      prior_list      <- prior_list                             # - it would break the dependency with mu
+      # cannot simplify prior_list - it would break the dependency with mu
 
       plot_data_prior <- .plot_data_prior_list.PETPEESE(prior_list, x_seq = NULL, x_range = xlim, x_range_quant = NULL,
                                                   n_points = n_points, n_samples = n_samples,
