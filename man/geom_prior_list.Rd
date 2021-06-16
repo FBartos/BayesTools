@@ -17,6 +17,7 @@ geom_prior_list(
   transformation_settings = FALSE,
   rescale_x = FALSE,
   scale_y2 = NULL,
+  prior_list_mu = NULL,
   ...
 )
 }
@@ -68,6 +69,9 @@ the transformed support}
 weightfunction is plotted.}
 
 \item{scale_y2}{scaling factor for a secondary axis}
+
+\item{prior_list_mu}{list of priors for the mu parameter
+required when plotting PET-PEESE}
 
 \item{...}{additional arguments}
 }

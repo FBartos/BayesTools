@@ -18,6 +18,7 @@ plot_prior_list(
   transformation_settings = FALSE,
   rescale_x = FALSE,
   par_name = NULL,
+  prior_list_mu = NULL,
   ...
 )
 }
@@ -75,6 +76,9 @@ weightfunction is plotted.}
 \item{par_name}{a type of parameter for which the prior is
 specified. Only relevant if the prior corresponds to a mu
 parameter that needs to be transformed.}
+
+\item{prior_list_mu}{list of priors for the mu parameter
+required when plotting PET-PEESE}
 
 \item{...}{additional arguments}
 }

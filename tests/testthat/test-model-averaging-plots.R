@@ -160,15 +160,18 @@ test_that("prior plot functions (PET-PEESE) work", {
   prior_list       <- list(
     p1 = prior_PET("cauchy",   list(0, 1))
   )
+  prior_list_mu   <- list(
+    m1 = prior("spike", list(0))
+  )
   expect_doppelganger("model-averaging-plot-prior-PETPEESE-1", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4, col.fill = ggplot2::alpha("red", .20), n_samples = 1000, n_points = 50)
+    plot_prior_list(prior_list, col = "red", lwd = 4, col.fill = ggplot2::alpha("red", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
     lines(prior_list$p1, col = "blue", lwd = 3, lty = 2, col.fill = ggplot2::alpha("blue", .20))
   })
   prior_list       <- list(
     p1 = prior_PEESE("cauchy",   list(0, 2))
   )
   expect_doppelganger("model-averaging-plot-prior-PETPEESE-2", {
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50) + geom_prior(prior_list$p1, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50)
+    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu) + geom_prior(prior_list$p1, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
   })
 
   # spike
@@ -176,14 +179,14 @@ test_that("prior plot functions (PET-PEESE) work", {
     p1 = prior_PET("point", list(.1))
   )
   expect_doppelganger("model-averaging-plot-prior-PETPEESE-3", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4, n_samples = 1000, n_points = 50)
+    plot_prior_list(prior_list, col = "red", lwd = 4, n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
     lines(prior_list$p1, col = "blue", lwd = 3, lty = 2)
   })
   prior_list       <- list(
     p1 = prior_PEESE("point", list(.05))
   )
   expect_doppelganger("model-averaging-plot-prior-PETPEESE-4", {
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, n_samples = 1000, n_points = 50) + geom_prior(prior_list$p1, col = "blue", lwd = 3, lty = 2, n_samples = 1000, n_points = 50)
+    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu) + geom_prior(prior_list$p1, col = "blue", lwd = 3, lty = 2, n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
   })
 
 
@@ -192,8 +195,12 @@ test_that("prior plot functions (PET-PEESE) work", {
     PET1  = prior_PET("cauchy",   list(0, 1)),
     PET2  = prior_PET("cauchy",   list(0, 1.001))
   )
+  prior_list_mu   <- list(
+    m1 = prior("spike", list(0)),
+    m2 = prior("spike", list(0))
+  )
   expect_doppelganger("model-averaging-plot-prior-PETPEESE-5", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50)
+    plot_prior_list(prior_list, col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
     lines(prior_list$PET1, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20))
   })
   ### the prior joining should give the same prior
@@ -202,7 +209,7 @@ test_that("prior plot functions (PET-PEESE) work", {
     PEESE2 = prior_PEESE("cauchy",   list(0, 1.001))
   )
   expect_doppelganger("model-averaging-plot-prior-PETPEESE-6", function(){
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", col.fill = scales::alpha("red", .20), lwd = 4, n_samples = 1000, n_points = 50) + geom_prior_list(prior_list, col = "blue", col.fill = scales::alpha("blue", .20), lwd = 3, lty = 2, n_samples = 1000, n_points = 50)
+    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", col.fill = scales::alpha("red", .20), lwd = 4, n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu) + geom_prior_list(prior_list, col = "blue", col.fill = scales::alpha("blue", .20), lwd = 3, lty = 2, n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
   })
 
 
@@ -212,19 +219,19 @@ test_that("prior plot functions (PET-PEESE) work", {
     p2 = prior_PEESE("cauchy",   list(0, 5))
   )
   expect_doppelganger("model-averaging-plot-prior-PETPEESE-7", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50)
-    lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50)
+    plot_prior_list(prior_list, col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
+    lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
   })
   expect_doppelganger("model-averaging-plot-prior-PETPEESE-8", function(){
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50) + geom_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50)
+    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu) + geom_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
   })
 
   # with additional settings
   expect_doppelganger("model-averaging-plot-prior-PETPEESE-9", function(){
-    plot_prior_list(prior_list, n_samples = 1000, n_points = 50, xlab = "xlab", ylab = "ylab", main = "main")
+    plot_prior_list(prior_list, n_samples = 1000, n_points = 50, xlab = "xlab", ylab = "ylab", main = "main", prior_list_mu = prior_list_mu)
   })
   expect_doppelganger("model-averaging-plot-prior-PETPEESE-10", function(){
-    plot_prior_list(prior_list, n_samples = 1000, n_points = 50, plot_type = "ggplot", xlab = "xlab", ylab = "ylab", main = "main")
+    plot_prior_list(prior_list, n_samples = 1000, n_points = 50, plot_type = "ggplot", xlab = "xlab", ylab = "ylab", main = "main", prior_list_mu = prior_list_mu)
   })
 
 
@@ -232,14 +239,19 @@ test_that("prior plot functions (PET-PEESE) work", {
   prior_list       <- list(
     p1 = prior_PET("cauchy",     list(0, 1)),
     p2 = prior_PEESE("cauchy",   list(0, 5)),
-    p3 = prior_none(prior_weights = 3)
+    p3 = prior_none(prior_weights = 4)
+  )
+  prior_list_mu    <- list(
+    m1 = prior("spike",  list(0)),
+    m2 = prior("spike",  list(0)),
+    m3 = prior("normal", list(.3, .15))
   )
   expect_doppelganger("model-averaging-plot-prior-PETPEESE-11", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50, ylim = c(0, .5))
-    lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50)
+    plot_prior_list(prior_list, col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50, ylim = c(0, .5), prior_list_mu = prior_list_mu)
+    lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
   })
   expect_doppelganger("model-averaging-plot-prior-PETPEESE-12", function(){
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50, ylim = c(0, .5)) + geom_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50)
+    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50, ylim = c(0, .5), prior_list_mu = prior_list_mu) + geom_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
   })
 })
 
@@ -407,9 +419,11 @@ test_that("posterior plot functions (PET-PEESE) work", {
   set.seed(1)
   data <- NULL
   priors_list0 <- list(
+    mu    = prior("spike", list(0)),
     PET   = prior_PET("normal", list(0, .2))
   )
   priors_list1 <- list(
+    mu    = prior("spike", list(0)),
     PEESE = prior_PEESE("normal", list(0, .8))
   )
   model_syntax <-
@@ -430,22 +444,22 @@ test_that("posterior plot functions (PET-PEESE) work", {
     list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1),
     list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1)
   )
-  mixed_posteriors <- mix_posteriors(model_list = models, parameters = c("PET", "PEESE"), is_null_list = list("PET" = c(F,T),  "PEESE" = c(T,F)), seed = 1)
+  mixed_posteriors <- mix_posteriors(model_list = models, parameters = c("mu", "PET", "PEESE"), is_null_list = list("mu" = c(T, T), "PET" = c(F,T),  "PEESE" = c(T,F)), seed = 1)
 
 
 
   expect_doppelganger("model-averaging-plot-posterior-PETPEESE-1", function(){
     plot_posterior(mixed_posteriors, "PETPEESE", lwd = 2, col = "red", col.fill = scales::alpha("red", .20), par_name = "PET-PEESE", n_points = 50, ylim = c(0, 1))
-    lines_prior_list(list(priors_list0$PET, priors_list1$PEESE), n_points = 50, n_samples = 1000, col = "blue", col.fill = scales::alpha("blue", .20))
+    lines_prior_list(list(priors_list0$PET, priors_list1$PEESE), n_points = 50, n_samples = 1000, col = "blue", col.fill = scales::alpha("blue", .20), prior_list_mu = list(priors_list0$mu, priors_list1$mu))
   })
   expect_doppelganger("model-averaging-plot-posterior-PETPEESE-2", {
-    plot_posterior(mixed_posteriors, "PETPEESE", plot_type = "ggplot", lwd = 2, col = "red", col.fill = scales::alpha("red", .20), ylim = c(0, .5)) + geom_prior_list(list(priors_list0$PET, priors_list1$PEESE), n_points = 50, n_samples = 1000, col = "blue", col.fill = scales::alpha("blue", .20))
+    plot_posterior(mixed_posteriors, "PETPEESE", plot_type = "ggplot", lwd = 2, col = "red", col.fill = scales::alpha("red", .20), ylim = c(0, .5)) + geom_prior_list(list(priors_list0$PET, priors_list1$PEESE), n_points = 50, n_samples = 1000, col = "blue", col.fill = scales::alpha("blue", .20), prior_list_mu = list(priors_list0$mu, priors_list1$mu))
   })
 
   # check transformation
   expect_doppelganger("model-averaging-plot-posterior-PETPEESE-5", function(){
     plot_posterior(mixed_posteriors, "PETPEESE", transformation = "lin", transformation_arguments = list(a = 0, b = 0.5), main = "PET-PEESE (1/2x)")
-    lines_prior_list(list(priors_list0$PET, priors_list1$PEESE), n_points = 50, n_samples = 1000, col = "blue", col.fill = scales::alpha("blue", .20), transformation = "lin", transformation_arguments = list(a = 0, b = 0.5))
+    lines_prior_list(list(priors_list0$PET, priors_list1$PEESE), n_points = 50, n_samples = 1000, col = "blue", col.fill = scales::alpha("blue", .20), transformation = "lin", transformation_arguments = list(a = 0, b = 0.5), prior_list_mu = list(priors_list0$mu, priors_list1$mu))
   })
 
   # prior and posterior
@@ -464,7 +478,7 @@ test_that("posterior plot functions (PET-PEESE) work", {
 
   # add an overhelming missing model
   priors_list2 <- list(
-    mu = prior("normal", list(0, .8), prior_weights = 4)
+    mu = prior("normal", list(.2, .2), prior_weights = 4)
   )
   # fit the models
   fit2 <- suppressWarnings(JAGS_fit(model_syntax, data, priors_list2, chains = 1, adapt = 100, burnin = 150, sample = 2000, seed = 1))
@@ -476,9 +490,9 @@ test_that("posterior plot functions (PET-PEESE) work", {
     list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1),
     list(fit = fit2, marglik = marglik2, priors = priors_list2, prior_weights = 4)
   )
-  mixed_posteriors <- mix_posteriors(model_list = models, parameters = c("PET", "PEESE"), is_null_list = list("PET" = c(F,T,F),  "PEESE" = c(T,F,F)), seed = 1)
+  mixed_posteriors <- mix_posteriors(model_list = models, parameters = c("mu" ,"PET", "PEESE"), is_null_list = list("mu" = c(T, T, F),"PET" = c(F,T,F),  "PEESE" = c(T,F,F)), seed = 1)
   expect_doppelganger("model-averaging-plot-posterior-PETPEESE-9", function(){
-    plot_posterior(mixed_posteriors, "PETPEESE", ylim = c(0, 0.25), lwd = 2, col = "red", col.fill = scales::alpha("red", .20), n_points = 50, n_samples = 1000, prior = TRUE, dots_prior = list(col = "blue", col.fill = scales::alpha("blue", .20), lty = 2))
+    plot_posterior(mixed_posteriors, "PETPEESE", ylim = c(0, 3), lwd = 2, col = "red", col.fill = scales::alpha("red", .20), n_points = 50, n_samples = 1000, prior = TRUE, dots_prior = list(col = "blue", col.fill = scales::alpha("blue", .20), lty = 2))
   })
 
 })

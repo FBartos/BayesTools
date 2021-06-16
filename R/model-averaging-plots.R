@@ -1,6 +1,8 @@
 #' @title Plot a list of prior distributions
 #'
 #' @param prior_list list of prior distributions
+#' @param prior_list_mu list of priors for the mu parameter
+#' required when plotting PET-PEESE
 #' @param ... additional arguments
 #' @inheritParams density.prior
 #' @inheritParams plot.prior
@@ -11,7 +13,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
                             x_seq = NULL, xlim = NULL, x_range_quant = NULL, n_points = 500,
                             n_samples = 10000, force_samples = FALSE,
                             transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
-                            rescale_x = FALSE, par_name = NULL, ...){
+                            rescale_x = FALSE, par_name = NULL, prior_list_mu = NULL, ...){
 
   # TODO: add plots for individual parameters for weightfunction and PET-PEESE
   individual = FALSE
@@ -32,10 +34,6 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     stop("weightfunction and PET-PEESE priors cannot be mixed within a 'prior_list'.")
 
 
-  # join the same priors
-  prior_list <- .simplify_prior_list(prior_list)
-
-
   # get the plotting type
   if(any(sapply(prior_list, is.prior.weightfunction))){
     prior_type <- "weightfunction"
@@ -43,6 +41,16 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     prior_type <- "PETPEESE"
   }else{
     prior_type <- "simple"
+
+  }
+
+  if(prior_type == "PETPEESE"){
+    check_list(prior_list_mu, "prior_list_mu", check_length = length(prior_list))
+    if(is.prior(prior_list_mu) | !all(sapply(prior_list_mu, is.prior)))
+      stop("'prior_list_mu' must be a list of priors (priors for the mu parameter are required for plotting PET-PEESE).")
+  }else{
+    if(!is.null(prior_list_mu))
+      stop("'prior_list_mu' is required only for PET-PEESE plots.")
   }
 
 
@@ -71,7 +79,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     plot_data <- .plot_data_prior_list.PETPEESE(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                                                 n_points = n_points, n_samples = n_samples,
                                                 transformation = transformation, transformation_arguments = transformation_arguments,
-                                                transformation_settings = transformation_settings)
+                                                transformation_settings = transformation_settings, prior_list_mu = prior_list_mu)
     plot <- .plot.prior.PETPEESE(prior_list, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
 
   }else if(prior_type == "simple"){
@@ -171,6 +179,9 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
 .plot_data_prior_list.weightfunction <- function(prior_list, x_seq, x_range, x_range_quant, n_points, n_samples){
 
+  # join the same priors
+  prior_list <- .simplify_prior_list(prior_list)
+
   prior_weights  <- sapply(prior_list, function(p)p$prior_weights)
   mixing_prop <- prior_weights / sum(prior_weights)
 
@@ -227,15 +238,17 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   return(out)
 }
 .plot_data_prior_list.PETPEESE       <- function(prior_list, x_seq, x_range, x_range_quant, n_points, n_samples,
-                                                 transformation, transformation_arguments, transformation_settings){
+                                                 transformation, transformation_arguments, transformation_settings, prior_list_mu){
+
+  # TODO: add dependency on the mu parameter as well
   if(is.null(x_seq)){
     x_seq <- seq(x_range[1], x_range[2], length.out = n_points)
   }
 
   # specify it on the transformed range if requested
   if(transformation_settings & !is.null(transformation)){
-    x_seq   <- .density.prior_transformation_inv_x(x_seq,   transformation, transformation_arguments)
-    x_range <- .density.prior_transformation_inv_x(x_range, transformation, transformation_arguments)
+    x_seq   <- .density.prior_transformation_x(x_seq,   transformation, transformation_arguments)
+    x_range <- .density.prior_transformation_x(x_range, transformation, transformation_arguments)
   }
 
   prior_weights  <- sapply(prior_list, function(p)p$prior_weights)
@@ -245,11 +258,11 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   samples_list <- list()
   for(i in seq_along(prior_list)){
     if(is.prior.PET(prior_list[[i]])){
-      samples_list[[i]] <- cbind(rng(prior_list[[i]], round(n_samples * mixing_prop[i])), rep(0, length = round(n_samples * mixing_prop[i])))
+      samples_list[[i]] <- cbind(rng(prior_list_mu[[i]], round(n_samples * mixing_prop[i])), rng(prior_list[[i]], round(n_samples * mixing_prop[i])), rep(0, length = round(n_samples * mixing_prop[i])))
     }else if(is.prior.PEESE(prior_list[[i]])){
-      samples_list[[i]] <- cbind(rep(0, length = round(n_samples * mixing_prop[i])), rng(prior_list[[i]], round(n_samples * mixing_prop[i])))
+      samples_list[[i]] <- cbind(rng(prior_list_mu[[i]], round(n_samples * mixing_prop[i])), rep(0, length = round(n_samples * mixing_prop[i])), rng(prior_list[[i]], round(n_samples * mixing_prop[i])))
     }else{
-      samples_list[[i]] <- matrix(0, nrow = round(n_samples * mixing_prop[i]), ncol = 2)
+      samples_list[[i]] <- cbind(rng(prior_list_mu[[i]], round(n_samples * mixing_prop[i])), matrix(0, nrow = round(n_samples * mixing_prop[i]), ncol = 2))
     }
   }
   samples <- do.call(rbind, samples_list)
@@ -257,12 +270,15 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   # transform the PEESE parameter if requested
   if(!is.null(transformation)){
-    samples[,2] <- .density.prior_transformation_x(samples[,2],  transformation, transformation_arguments)
+    samples[,1] <- .density.prior_transformation_x(samples[,1],  transformation, transformation_arguments)
+    samples[,3] <- .density.prior_transformation_inv_x(samples[,3],  transformation, transformation_arguments)
   }
 
 
-  # compute PET-PEESE
-  x_sam  <- matrix(samples[,1], nrow = length(samples), ncol = length(x_seq)) * matrix(x_seq, nrow = length(samples), ncol = length(x_seq), byrow = TRUE) + matrix(samples[,2], nrow = length(samples), ncol = length(x_seq)) * matrix(x_seq^2, nrow = length(samples), ncol = length(x_seq), byrow = TRUE)
+  # compute PET-PEESE (mu + PET*se + PEESE*se^2)
+  x_sam  <- matrix(samples[,1], nrow = length(samples), ncol = length(x_seq)) +
+    matrix(samples[,2], nrow = length(samples), ncol = length(x_seq)) * matrix(x_seq,   nrow = length(samples), ncol = length(x_seq), byrow = TRUE) +
+    matrix(samples[,3], nrow = length(samples), ncol = length(x_seq)) * matrix(x_seq^2, nrow = length(samples), ncol = length(x_seq), byrow = TRUE)
   x_med  <- apply(x_sam, 2, stats::quantile, prob = .500)
   x_lCI  <- apply(x_sam, 2, stats::quantile, prob = .025)
   x_uCI  <- apply(x_sam, 2, stats::quantile, prob = .975)
@@ -288,6 +304,8 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 }
 .plot_data_prior_list.simple         <- function(prior_list, x_seq, x_range, x_range_quant, n_points, n_samples, force_samples, individual,
                                                  transformation, transformation_arguments, transformation_settings){
+  # join the same priors
+  prior_list <- .simplify_prior_list(prior_list)
 
   # get common range to ascertain that all priors are aligned
   if(is.null(x_range)){
@@ -457,7 +475,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_points = 500,
                              n_samples = 10000, force_samples = FALSE,
                              transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
-                             rescale_x = FALSE, scale_y2 = NULL, ...){
+                             rescale_x = FALSE, scale_y2 = NULL, prior_list_mu = NULL, ...){
 
   # TODO: add plots for individual parameters for weightfunction and PET-PEESE
   individual = FALSE
@@ -473,10 +491,6 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
   check_real(scale_y2, "scale_y2", lower = 0, allow_NULL = TRUE)
 
 
-  # join the same priors
-  prior_list <- .simplify_prior_list(prior_list)
-
-
   # get the plotting type
   if(any(sapply(prior_list, is.prior.weightfunction))){
     prior_type <- "weightfunction"
@@ -484,6 +498,15 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
     prior_type <- "PETPEESE"
   }else{
     prior_type <- "simple"
+  }
+
+  if(prior_type == "PETPEESE"){
+    check_list(prior_list_mu, "prior_list_mu", check_length = length(prior_list))
+    if(is.prior(prior_list_mu) | !all(sapply(prior_list_mu, is.prior)))
+      stop("'prior_list_mu' must be a list of priors (priors for the mu parameter are required for plotting PET-PEESE).")
+  }else{
+    if(!is.null(prior_list_mu))
+      stop("'prior_list_mu' is required only for PET-PEESE plots.")
   }
 
 
@@ -512,7 +535,7 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
     plot_data <- .plot_data_prior_list.PETPEESE(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                                                 n_points = n_points, n_samples = n_samples,
                                                 transformation = transformation, transformation_arguments = transformation_arguments,
-                                                transformation_settings = transformation_settings)
+                                                transformation_settings = transformation_settings, prior_list_mu = prior_list_mu)
     .lines.prior.PETPEESE(prior_list, plot_data = plot_data, ...)
 
   }else if(prior_type == "simple"){
@@ -551,7 +574,7 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
 geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_points = 500,
                              n_samples = 10000, force_samples = FALSE,
                              transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
-                             rescale_x = FALSE, scale_y2 = NULL, ...){
+                             rescale_x = FALSE, scale_y2 = NULL, prior_list_mu = NULL, ...){
 
   # TODO: add plots for individual parameters for weightfunction and PET-PEESE
   individual = FALSE
@@ -567,10 +590,6 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
   check_real(scale_y2, "scale_y2", lower = 0, allow_NULL = TRUE)
 
 
-  # join the same priors
-  prior_list <- .simplify_prior_list(prior_list)
-
-
   # get the plotting type
   if(any(sapply(prior_list, is.prior.weightfunction))){
     prior_type <- "weightfunction"
@@ -580,6 +599,14 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
     prior_type <- "simple"
   }
 
+  if(prior_type == "PETPEESE"){
+    check_list(prior_list_mu, "prior_list_mu", check_length = length(prior_list))
+    if(is.prior(prior_list_mu) | !all(sapply(prior_list_mu, is.prior)))
+      stop("'prior_list_mu' must be a list of priors (priors for the mu parameter are required for plotting PET-PEESE).")
+  }else{
+    if(!is.null(prior_list_mu))
+      stop("'prior_list_mu' is required only for PET-PEESE plots.")
+  }
 
   # get the plotting range
   if(is.null(xlim) & is.null(x_seq)){
@@ -606,7 +633,7 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
     plot_data <- .plot_data_prior_list.PETPEESE(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                                                 n_points = n_points, n_samples = n_samples,
                                                 transformation = transformation, transformation_arguments = transformation_arguments,
-                                                transformation_settings = transformation_settings)
+                                                transformation_settings = transformation_settings, prior_list_mu = prior_list_mu)
     geom <- .geom_prior.PETPEESE(prior_list, plot_data = plot_data, ...)
 
   }else if(prior_type == "simple"){
@@ -756,13 +783,19 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
         prior_list <- attr(samples[["PEESE"]], "prior_list")
       }else if(!is.null(samples[["PET"]]) & is.null(samples[["PEESE"]])){
         prior_list <- attr(samples[["PET"]], "prior_list")
+      }else{
+        stop("Either PET or PEESE samples need to be provided.")
       }
-      prior_list      <- .simplify_prior_list(prior_list)
+      if(is.null(samples[["mu"]]))
+         stop("'mu' samples are required for plotting PET-PEESE.")
+
+      prior_list_mu   <- attr(samples[["mu"]],   "prior_list")  # cannot simplify
+      prior_list      <- prior_list                             # - it would break the dependency with mu
 
       plot_data_prior <- .plot_data_prior_list.PETPEESE(prior_list, x_seq = NULL, x_range = xlim, x_range_quant = NULL,
                                                   n_points = n_points, n_samples = n_samples,
                                                   transformation = transformation, transformation_arguments = transformation_arguments,
-                                                  transformation_settings = transformation_settings)
+                                                  transformation_settings = transformation_settings, prior_list_mu = prior_list_mu)
 
       # transplant common xlim and ylim
       plot_data_joined <- list(plot_data_prior, plot_data)
@@ -996,16 +1029,18 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   check_list(samples, "samples")
   if(is.null(samples[["PET"]]) & is.null(samples[["PEESE"]]))
     stop("At least one 'PET' or 'PEESE' model needs to be specified.")
+  if(is.null(samples[["mu"]]))
+    stop("'mu' samples need to be present.")
 
   # get the samples
   if(!is.null(samples[["PET"]]) & !is.null(samples[["PEESE"]])){
     if(!all(attr(samples[["PET"]], "models_ind") == attr(samples[["PEESE"]], "models_ind")))
       stop("non-matching dimensions")
-    samples <- cbind(samples[["PET"]], samples[["PEESE"]])
+    samples <- cbind(samples[["mu"]], samples[["PET"]], samples[["PEESE"]])
   }else if(!is.null(samples[["PET"]])){
-    samples <- cbind(rep(0, length(samples[["PEESE"]])), samples[["PEESE"]])
+    samples <- cbind(samples[["mu"]], rep(0, length(samples[["PEESE"]])), samples[["PEESE"]])
   }else if(is.null(samples[["PEESE"]])){
-    samples <- cbind(samples[["PET"]], rep(0, length(samples[["PET"]])))
+    samples <- cbind(samples[["mu"]], samples[["PET"]], rep(0, length(samples[["PET"]])))
   }
 
   # get the plotting range
@@ -1019,12 +1054,16 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
   # transform the parameter if requested
   if(!is.null(transformation)){
-    samples[,2] <- .density.prior_transformation_x(samples[,2], transformation, transformation_arguments)
+    # PEESE needs an inverse transformation to the effect sizes
+    samples[,1] <- .density.prior_transformation_x(samples[,1], transformation, transformation_arguments)
+    samples[,3] <- .density.prior_transformation_inv_x(samples[,3], transformation, transformation_arguments)
   }
 
 
-  # compute PET-PEESE
-  x_sam  <- matrix(samples[,1], nrow = length(samples), ncol = length(x_seq)) * matrix(x_seq, nrow = length(samples), ncol = length(x_seq), byrow = TRUE) + matrix(samples[,2], nrow = length(samples), ncol = length(x_seq)) * matrix(x_seq^2, nrow = length(samples), ncol = length(x_seq), byrow = TRUE)
+  # compute PET-PEESE (mu + PET*se + PEESE*se^2)
+  x_sam  <- matrix(samples[,1], nrow = length(samples), ncol = length(x_seq)) +
+    matrix(samples[,2], nrow = length(samples), ncol = length(x_seq)) * matrix(x_seq, nrow = length(samples), ncol = length(x_seq), byrow = TRUE) +
+    matrix(samples[,3], nrow = length(samples), ncol = length(x_seq)) * matrix(x_seq^2, nrow = length(samples), ncol = length(x_seq), byrow = TRUE)
   x_med  <- apply(x_sam, 2, stats::quantile, prob = .500)
   x_lCI  <- apply(x_sam, 2, stats::quantile, prob = .025)
   x_uCI  <- apply(x_sam, 2, stats::quantile, prob = .975)
