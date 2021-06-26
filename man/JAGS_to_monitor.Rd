@@ -2,26 +2,13 @@
 % Please edit documentation in R/JAGS-fit.R
 \name{JAGS_to_monitor}
 \alias{JAGS_to_monitor}
-\alias{JAGS_monitor.simple}
-\alias{JAGS_monitor.PP}
-\alias{JAGS_monitor.weightfunction}
 \title{Create list of monitored parameters for JAGS model}
 \usage{
 JAGS_to_monitor(prior_list)
-
-JAGS_monitor.simple(prior, parameter_name)
-
-JAGS_monitor.PP(prior)
-
-JAGS_monitor.weightfunction(prior)
 }
 \arguments{
 \item{prior_list}{named list of prior distribution
 (names correspond to the parameter names)}
-
-\item{prior}{prior distribution}
-
-\item{parameter_name}{name of a parameter}
 }
 \description{
 Creates a vector of parameter names to be

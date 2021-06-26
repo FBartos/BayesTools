@@ -2,30 +2,16 @@
 % Please edit documentation in R/JAGS-fit.R
 \name{JAGS_add_priors}
 \alias{JAGS_add_priors}
-\alias{JAGS_prior.simple}
-\alias{JAGS_prior.PP}
-\alias{JAGS_prior.weightfunction}
 \title{Add JAGS prior}
 \usage{
 JAGS_add_priors(syntax, prior_list)
-
-JAGS_prior.simple(prior, parameter_name)
-
-JAGS_prior.PP(prior)
-
-JAGS_prior.weightfunction(prior)
 }
 \arguments{
 \item{syntax}{JAGS model syntax}
 
 \item{prior_list}{named list of prior distribution
 (names correspond to the parameter names)}
-
-\item{prior}{prior distribution}
-
-\item{parameter_name}{name of a parameter}
 }
 \description{
-Adds priors to JAGS syntax or
-generates syntax for a single prior.
+Adds priors to a JAGS syntax.
 }

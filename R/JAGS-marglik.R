@@ -303,14 +303,7 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
 #' function
 #'
 #' @inheritParams JAGS_add_priors
-#' @export JAGS_marglik_priors
-#' @export JAGS_marglik_priors.simple
-#' @export JAGS_marglik_priors.PP
-#' @export JAGS_marglik_priors.weightfunction
-#' @name JAGS_marglik_priors
-NULL
-
-#' @rdname JAGS_marglik_priors
+#' @export
 JAGS_marglik_priors                <- function(samples, prior_list){
 
   # return empty string in case that no prior was specified
@@ -330,23 +323,24 @@ JAGS_marglik_priors                <- function(samples, prior_list){
 
     if(is.prior.weightfunction(prior_list[[i]])){
 
-      marglik <- marglik + JAGS_marglik_priors.weightfunction(samples, prior_list[[i]])
+      marglik <- marglik + .JAGS_marglik_priors.weightfunction(samples, prior_list[[i]])
 
     }else if(is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
 
-      marglik <- marglik + JAGS_marglik_priors.PP(samples, prior_list[[i]])
+      marglik <- marglik + .JAGS_marglik_priors.PP(samples, prior_list[[i]])
 
     }else if(is.prior.simple(prior_list[[i]])){
 
-      marglik <- marglik + JAGS_marglik_priors.simple(samples, prior_list[[i]], names(prior_list)[i])
+      marglik <- marglik + .JAGS_marglik_priors.simple(samples, prior_list[[i]], names(prior_list)[i])
 
     }
   }
 
   return(marglik)
 }
-#' @rdname JAGS_marglik_priors
-JAGS_marglik_priors.simple         <- function(samples, prior, parameter_name){
+
+
+.JAGS_marglik_priors.simple         <- function(samples, prior, parameter_name){
 
   .check_prior(prior)
   if(!is.prior.simple(prior))
@@ -374,23 +368,21 @@ JAGS_marglik_priors.simple         <- function(samples, prior, parameter_name){
 
   return(marglik)
 }
-#' @rdname JAGS_marglik_priors
-JAGS_marglik_priors.PP             <- function(samples, prior){
+.JAGS_marglik_priors.PP             <- function(samples, prior){
 
   .check_prior(prior)
   if(!is.prior.PET(prior) & !is.prior.PEESE(prior))
     stop("improper prior provided")
 
   if(is.prior.PET(prior)){
-    marglik <- JAGS_marglik_priors.simple(samples, prior, "PET")
+    marglik <- .JAGS_marglik_priors.simple(samples, prior, "PET")
   }else if(is.prior.PEESE(prior)){
-    marglik <- JAGS_marglik_priors.simple(samples, prior, "PEESE")
+    marglik <- .JAGS_marglik_priors.simple(samples, prior, "PEESE")
   }
 
   return(marglik)
 }
-#' @rdname JAGS_marglik_priors
-JAGS_marglik_priors.weightfunction <- function(samples, prior){
+.JAGS_marglik_priors.weightfunction <- function(samples, prior){
 
   .check_prior(prior)
   if(!is.prior.weightfunction(prior))
@@ -427,14 +419,7 @@ JAGS_marglik_priors.weightfunction <- function(samples, prior){
 #' function
 #'
 #' @inheritParams JAGS_add_priors
-#' @export JAGS_marglik_parameters
-#' @export JAGS_marglik_parameters.simple
-#' @export JAGS_marglik_parameters.PP
-#' @export JAGS_marglik_parameters.weightfunction
-#' @name JAGS_marglik_parameters
-NULL
-
-#' @rdname JAGS_marglik_parameters
+#' @export
 JAGS_marglik_parameters                <- function(samples, prior_list){
 
   # return empty string in case that no prior was specified
@@ -454,23 +439,24 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
     if(is.prior.weightfunction(prior_list[[i]])){
 
-      parameters <- c(parameters, JAGS_marglik_parameters.weightfunction(samples, prior_list[[i]]))
+      parameters <- c(parameters, .JAGS_marglik_parameters.weightfunction(samples, prior_list[[i]]))
 
     }else if(is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
 
-      parameters <- c(parameters, JAGS_marglik_parameters.PP(samples, prior_list[[i]]))
+      parameters <- c(parameters, .JAGS_marglik_parameters.PP(samples, prior_list[[i]]))
 
     }else if(is.prior.simple(prior_list[[i]])){
 
-      parameters <- c(parameters, JAGS_marglik_parameters.simple(samples, prior_list[[i]], names(prior_list)[i]))
+      parameters <- c(parameters, .JAGS_marglik_parameters.simple(samples, prior_list[[i]], names(prior_list)[i]))
 
     }
   }
 
   return(parameters)
 }
-#' @rdname JAGS_marglik_parameters
-JAGS_marglik_parameters.simple         <- function(samples, prior, parameter_name){
+
+
+.JAGS_marglik_parameters.simple         <- function(samples, prior, parameter_name){
 
   .check_prior(prior)
   if(!is.prior.simple(prior))
@@ -490,23 +476,21 @@ JAGS_marglik_parameters.simple         <- function(samples, prior, parameter_nam
 
   return(parameter)
 }
-#' @rdname JAGS_marglik_parameters
-JAGS_marglik_parameters.PP             <- function(samples, prior){
+.JAGS_marglik_parameters.PP             <- function(samples, prior){
 
   .check_prior(prior)
   if(!is.prior.PET(prior) & !is.prior.PEESE(prior))
     stop("improper prior provided")
 
   if(is.prior.PET(prior)){
-    parameter <- JAGS_marglik_parameters.simple(samples, prior, "PET")
+    parameter <- .JAGS_marglik_parameters.simple(samples, prior, "PET")
   }else if(is.prior.PEESE(prior)){
-    parameter <- JAGS_marglik_parameters.simple(samples, prior, "PEESE")
+    parameter <- .JAGS_marglik_parameters.simple(samples, prior, "PEESE")
   }
 
   return(parameter)
 }
-#' @rdname JAGS_marglik_parameters
-JAGS_marglik_parameters.weightfunction <- function(samples, prior){
+.JAGS_marglik_parameters.weightfunction <- function(samples, prior){
 
   .check_prior(prior)
   if(!is.prior.weightfunction(prior))

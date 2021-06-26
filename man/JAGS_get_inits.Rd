@@ -2,18 +2,9 @@
 % Please edit documentation in R/JAGS-fit.R
 \name{JAGS_get_inits}
 \alias{JAGS_get_inits}
-\alias{JAGS_init.simple}
-\alias{JAGS_init.PP}
-\alias{JAGS_init.weightfunction}
 \title{Create initial values for JAGS model}
 \usage{
 JAGS_get_inits(prior_list, chains, seed)
-
-JAGS_init.simple(prior, parameter_name)
-
-JAGS_init.PP(prior)
-
-JAGS_init.weightfunction(prior)
 }
 \arguments{
 \item{prior_list}{named list of prior distribution
@@ -22,10 +13,6 @@ JAGS_init.weightfunction(prior)
 \item{chains}{number of chains}
 
 \item{seed}{seed for random number generation}
-
-\item{prior}{prior distribution}
-
-\item{parameter_name}{name of a parameter}
 }
 \description{
 Creates initial values for priors.

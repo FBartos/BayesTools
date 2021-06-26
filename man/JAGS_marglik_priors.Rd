@@ -2,18 +2,9 @@
 % Please edit documentation in R/JAGS-marglik.R
 \name{JAGS_marglik_priors}
 \alias{JAGS_marglik_priors}
-\alias{JAGS_marglik_priors.simple}
-\alias{JAGS_marglik_priors.PP}
-\alias{JAGS_marglik_priors.weightfunction}
 \title{Compute marginal likelihood for JAGS priors}
 \usage{
 JAGS_marglik_priors(samples, prior_list)
-
-JAGS_marglik_priors.simple(samples, prior, parameter_name)
-
-JAGS_marglik_priors.PP(samples, prior)
-
-JAGS_marglik_priors.weightfunction(samples, prior)
 }
 \arguments{
 \item{samples}{samples provided by bridgesampling
@@ -21,10 +12,6 @@ function}
 
 \item{prior_list}{named list of prior distribution
 (names correspond to the parameter names)}
-
-\item{prior}{prior distribution}
-
-\item{parameter_name}{name of a parameter}
 }
 \description{
 Computes marginal likelihood for the

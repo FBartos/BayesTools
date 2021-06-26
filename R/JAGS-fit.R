@@ -234,23 +234,13 @@ JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 5
 
 #' @title Add JAGS prior
 #'
-#' @description Adds priors to JAGS syntax or
-#' generates syntax for a single prior.
+#' @description Adds priors to a JAGS syntax.
 #'
 #' @param syntax JAGS model syntax
 #' @param prior_list named list of prior distribution
 #' (names correspond to the parameter names)
-#' @param prior prior distribution
-#' @param parameter_name name of a parameter
 #'
-#' @export JAGS_add_priors
-#' @export JAGS_prior.simple
-#' @export JAGS_prior.PP
-#' @export JAGS_prior.weightfunction
-#' @name JAGS_add_priors
-NULL
-
-#' @rdname JAGS_add_priors
+#' @export
 JAGS_add_priors           <- function(syntax, prior_list){
 
   # return the original syntax in case that no prior was specified
@@ -284,15 +274,15 @@ JAGS_add_priors           <- function(syntax, prior_list){
 
     if(is.prior.weightfunction(prior_list[[i]])){
 
-      syntax_priors <- paste(syntax_priors, JAGS_prior.weightfunction(prior_list[[i]]))
+      syntax_priors <- paste(syntax_priors, .JAGS_prior.weightfunction(prior_list[[i]]))
 
     }else if(is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
 
-      syntax_priors <- paste(syntax_priors, JAGS_prior.PP(prior_list[[i]]))
+      syntax_priors <- paste(syntax_priors, .JAGS_prior.PP(prior_list[[i]]))
 
     }else if(is.prior.simple(prior_list[[i]])){
 
-      syntax_priors <- paste(syntax_priors, JAGS_prior.simple(prior_list[[i]], names(prior_list)[i]))
+      syntax_priors <- paste(syntax_priors, .JAGS_prior.simple(prior_list[[i]], names(prior_list)[i]))
 
     }
   }
@@ -302,8 +292,9 @@ JAGS_add_priors           <- function(syntax, prior_list){
 
   return(syntax)
 }
-#' @rdname JAGS_add_priors
-JAGS_prior.simple         <- function(prior, parameter_name){
+
+
+.JAGS_prior.simple         <- function(prior, parameter_name){
 
   .check_prior(prior)
   if(!is.prior.simple(prior))
@@ -352,23 +343,21 @@ JAGS_prior.simple         <- function(prior, parameter_name){
 
   return(syntax)
 }
-#' @rdname JAGS_add_priors
-JAGS_prior.PP             <- function(prior){
+.JAGS_prior.PP             <- function(prior){
 
   .check_prior(prior)
   if(!is.prior.PET(prior) & !is.prior.PEESE(prior))
     stop("improper prior provided")
 
   if(is.prior.PET(prior)){
-    syntax <- JAGS_prior.simple(prior, "PET")
+    syntax <- .JAGS_prior.simple(prior, "PET")
   }else if(is.prior.PEESE(prior)){
-    syntax <- JAGS_prior.simple(prior, "PEESE")
+    syntax <- .JAGS_prior.simple(prior, "PEESE")
   }
 
   return(syntax)
 }
-#' @rdname JAGS_add_priors
-JAGS_prior.weightfunction <- function(prior){
+.JAGS_prior.weightfunction <- function(prior){
 
   .check_prior(prior)
   if(!is.prior.weightfunction(prior))
@@ -423,14 +412,7 @@ JAGS_prior.weightfunction <- function(prior){
 #' @param seed seed for random number generation
 #'
 #' @inheritParams JAGS_add_priors
-#' @export JAGS_get_inits
-#' @export JAGS_init.simple
-#' @export JAGS_init.PP
-#' @export JAGS_init.weightfunction
-#' @name JAGS_get_inits
-NULL
-
-#' @rdname JAGS_get_inits
+#' @export
 JAGS_get_inits            <- function(prior_list, chains, seed){
 
   # return empty list in case that no prior was specified
@@ -462,15 +444,15 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 
       if(is.prior.weightfunction(prior_list[[i]])){
 
-        temp_inits <- c(temp_inits, JAGS_init.weightfunction(prior_list[[i]]))
+        temp_inits <- c(temp_inits, .JAGS_init.weightfunction(prior_list[[i]]))
 
       }else if(is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
 
-        temp_inits <- c(temp_inits, JAGS_init.PP(prior_list[[i]]))
+        temp_inits <- c(temp_inits, .JAGS_init.PP(prior_list[[i]]))
 
       }else if(is.prior.simple(prior_list[[i]])){
 
-        temp_inits <- c(temp_inits, JAGS_init.simple(prior_list[[i]], names(prior_list)[i]))
+        temp_inits <- c(temp_inits, .JAGS_init.simple(prior_list[[i]], names(prior_list)[i]))
 
       }
     }
@@ -483,8 +465,9 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 
   return(inits)
 }
-#' @rdname JAGS_get_inits
-JAGS_init.simple          <- function(prior, parameter_name){
+
+
+.JAGS_init.simple          <- function(prior, parameter_name){
 
   .check_prior(prior)
   if(!is.prior.simple(prior))
@@ -514,23 +497,21 @@ JAGS_init.simple          <- function(prior, parameter_name){
 
   return(init)
 }
-#' @rdname JAGS_get_inits
-JAGS_init.PP              <- function(prior){
+.JAGS_init.PP              <- function(prior){
 
   .check_prior(prior)
   if(!is.prior.PET(prior) & !is.prior.PEESE(prior))
     stop("improper prior provided")
 
   if(is.prior.PET(prior)){
-    init <- JAGS_init.simple(prior, "PET")
+    init <- .JAGS_init.simple(prior, "PET")
   }else if(is.prior.PEESE(prior)){
-    init <- JAGS_init.simple(prior, "PEESE")
+    init <- .JAGS_init.simple(prior, "PEESE")
   }
 
   return(init)
 }
-#' @rdname JAGS_get_inits
-JAGS_init.weightfunction  <- function(prior){
+.JAGS_init.weightfunction  <- function(prior){
 
   .check_prior(prior)
   if(!is.prior.weightfunction(prior))
@@ -563,14 +544,7 @@ JAGS_init.weightfunction  <- function(prior){
 #'
 #'
 #' @inheritParams JAGS_add_priors
-#' @export JAGS_to_monitor
-#' @export JAGS_monitor.simple
-#' @export JAGS_monitor.PP
-#' @export JAGS_monitor.weightfunction
-#' @name JAGS_to_monitor
-NULL
-
-#' @rdname JAGS_to_monitor
+#' @export
 JAGS_to_monitor             <- function(prior_list){
 
   # return empty string in case that no prior was specified
@@ -589,23 +563,24 @@ JAGS_to_monitor             <- function(prior_list){
 
     if(is.prior.weightfunction(prior_list[[i]])){
 
-      monitor <- c(monitor, JAGS_monitor.weightfunction(prior_list[[i]]))
+      monitor <- c(monitor, .JAGS_monitor.weightfunction(prior_list[[i]]))
 
     }else if(is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
 
-      monitor <- c(monitor, JAGS_monitor.PP(prior_list[[i]]))
+      monitor <- c(monitor, .JAGS_monitor.PP(prior_list[[i]]))
 
     }else if(is.prior.simple(prior_list[[i]])){
 
-      monitor <- c(monitor, JAGS_monitor.simple(prior_list[[i]], names(prior_list)[i]))
+      monitor <- c(monitor, .JAGS_monitor.simple(prior_list[[i]], names(prior_list)[i]))
 
     }
   }
 
   return(monitor)
 }
-#' @rdname JAGS_to_monitor
-JAGS_monitor.simple         <- function(prior, parameter_name){
+
+
+.JAGS_monitor.simple         <- function(prior, parameter_name){
 
   .check_prior(prior)
   if(!is.prior.simple(prior))
@@ -621,23 +596,21 @@ JAGS_monitor.simple         <- function(prior, parameter_name){
 
   return(monitor)
 }
-#' @rdname JAGS_to_monitor
-JAGS_monitor.PP             <- function(prior){
+.JAGS_monitor.PP             <- function(prior){
 
   .check_prior(prior)
   if(!is.prior.PET(prior) & !is.prior.PEESE(prior))
     stop("improper prior provided")
 
   if(is.prior.PET(prior)){
-    monitor <- JAGS_monitor.simple(prior, "PET")
+    monitor <- .JAGS_monitor.simple(prior, "PET")
   }else if(is.prior.PEESE(prior)){
-    monitor <- JAGS_monitor.simple(prior, "PEESE")
+    monitor <- .JAGS_monitor.simple(prior, "PEESE")
   }
 
   return(monitor)
 }
-#' @rdname JAGS_to_monitor
-JAGS_monitor.weightfunction <- function(prior){
+.JAGS_monitor.weightfunction <- function(prior){
 
   .check_prior(prior)
   if(!is.prior.weightfunction(prior))

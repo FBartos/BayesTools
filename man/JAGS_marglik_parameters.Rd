@@ -2,18 +2,9 @@
 % Please edit documentation in R/JAGS-marglik.R
 \name{JAGS_marglik_parameters}
 \alias{JAGS_marglik_parameters}
-\alias{JAGS_marglik_parameters.simple}
-\alias{JAGS_marglik_parameters.PP}
-\alias{JAGS_marglik_parameters.weightfunction}
 \title{Extract parameters for JAGS priors}
 \usage{
 JAGS_marglik_parameters(samples, prior_list)
-
-JAGS_marglik_parameters.simple(samples, prior, parameter_name)
-
-JAGS_marglik_parameters.PP(samples, prior)
-
-JAGS_marglik_parameters.weightfunction(samples, prior)
 }
 \arguments{
 \item{samples}{samples provided by bridgesampling
@@ -21,10 +12,6 @@ function}
 
 \item{prior_list}{named list of prior distribution
 (names correspond to the parameter names)}
-
-\item{prior}{prior distribution}
-
-\item{parameter_name}{name of a parameter}
 }
 \description{
 Extracts transformed parameters from the
