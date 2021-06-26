@@ -4,6 +4,10 @@
 # BayesTools
 
 <!-- badges: start -->
+
+[![Codecov test
+coverage](https://codecov.io/gh/FBartos/BayesTools/branch/master/graph/badge.svg)](https://codecov.io/gh/FBartos/BayesTools?branch=master)
+[![R-CMD-check](https://github.com/FBartos/BayesTools/workflows/R-CMD-check/badge.svg)](https://github.com/FBartos/BayesTools/actions)
 <!-- badges: end -->
 
 The goal of BayesTools is to provide functions that simplify building R
@@ -89,11 +93,11 @@ All priors also contain some basic S3 methods.
 rng(p0, 10)
 #>  [1] 0 0 0 0 0 0 0 0 0 0
 rng(p1, 10)
-#>  [1] -0.3584567 -0.7538463 -1.2443405 -0.3913306 -0.7435117  1.4001987
-#>  [7] -1.0253726 -0.5134422  0.3097428 -1.2419434
+#>  [1] -2.05915443 -1.18514083 -0.59224781  0.31289733 -0.31623208 -1.17852383
+#>  [7] -0.04131906 -1.09537154  0.23096746 -0.31796089
 rng(p2, 10)
-#>  [1] 0.03796275 0.22376943 0.47373160 0.47642228 1.25872189 0.12789872
-#>  [7] 0.53751793 0.16115280 0.69432711 0.43547698
+#>  [1] 0.4644703 0.1869088 0.1796771 0.7048156 1.0739326 1.4825505 1.5600622
+#>  [8] 0.1099895 0.3875515 0.4787874
 
 pdf(p0, c(-1, 0, 1))
 #> [1]   0 Inf   0

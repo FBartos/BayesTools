@@ -16,6 +16,8 @@ knitr::opts_chunk$set(
 # BayesTools
 
 <!-- badges: start -->
+[![Codecov test coverage](https://codecov.io/gh/FBartos/BayesTools/branch/master/graph/badge.svg)](https://codecov.io/gh/FBartos/BayesTools?branch=master)
+[![R-CMD-check](https://github.com/FBartos/BayesTools/workflows/R-CMD-check/badge.svg)](https://github.com/FBartos/BayesTools/actions)
 <!-- badges: end -->
 
 The goal of BayesTools is to provide functions that simplify building R packages focused on Bayesian inference and Bayesian model-averaging.

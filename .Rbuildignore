@@ -2,3 +2,5 @@
 ^\.Rproj\.user$
 ^do-not-share$
 ^README\.Rmd$
+^codecov\.yml$
+^\.github$

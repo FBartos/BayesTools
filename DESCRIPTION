@@ -35,4 +35,5 @@ Suggests:
     ggplot2,
     scales,
     testthat,
-    vdiffr
+    vdiffr,
+    covr
