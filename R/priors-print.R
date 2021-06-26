@@ -12,6 +12,24 @@
 #' @param silent to silently return the print message.
 #' @param ... additional arguments
 #'
+#' @examples
+#' # create some prior distributions
+#' p0 <- prior(distribution = "point",  parameters = list(location = 0))
+#' p1 <- prior(distribution = "normal", parameters = list(mean = 0, sd = 1))
+#'
+#' # print them
+#' p0
+#' p1
+#'
+#' # use short names
+#' print(p1, short_name = TRUE)
+#'
+#' # print parameter names
+#' print(p1, parameter_names = TRUE)
+#'
+#' # generate bquote plotting syntax
+#' plot(0, main = print(p1, plot = TRUE))
+#'
 #' @seealso [prior()]
 #' @rdname print.prior
 #' @export

@@ -27,6 +27,37 @@
 #' @param ... additional argument to the \link[bridgesampling]{bridge_sampler}
 #' and \code{log_posterior} function
 #'
+#' @examples
+#' # simulate data
+#' set.seed(1)
+#' data <- list(
+#'   x = rnorm(10),
+#'   N = 10
+#' )
+#' data$x
+#'
+#' # define priors
+#' priors_list <- list(mu = prior("normal", list(0, 1)))
+#'
+#' # define likelihood for the data
+#' model_syntax <-
+#'   "model{
+#'     for(i in 1:N){
+#'       x[i] ~ dnorm(mu, 1)
+#'     }
+#'   }"
+#'
+#' # fit the models
+#' fit <- JAGS_fit(model_syntax, data, priors_list, chains = 1, sample = 1000, seed = 0)
+#'
+#' # define log posterior for bridge sampling
+#' log_posterior <- function(parameters, data){
+#'   sum(dnorm(data$x, parameters$mu, 1, log = TRUE))
+#' }
+#'
+#' # get marginal likelihoods
+#' marglik <- JAGS_bridgesampling(fit, data, priors_list, log_posterior)
+#'
 #' @export
 JAGS_bridgesampling <- function(fit, data, prior_list, log_posterior,
                                 add_parameters = NULL, add_bounds = NULL,

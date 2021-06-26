@@ -44,6 +44,7 @@ Prior distribution can be created with the `prior` function.
 
 ``` r
 library(BayesTools)
+#> Loading required namespace: runjags
 #> 
 #> Attaching package: 'BayesTools'
 #> The following objects are masked from 'package:stats':
@@ -68,11 +69,16 @@ plot(p0)
 
 ``` r
 plot(p1, lwd = 2, col = "blue", par_name = bquote(mu))
+```
+
+<img src="man/figures/README-unnamed-chunk-3-2.png" width="50%" />
+
+``` r
 plot(p2, plot_type = "ggplot")
 #> Loading required namespace: ggplot2
 ```
 
-<img src="man/figures/README-unnamed-chunk-3-2.png" width="50%" /><img src="man/figures/README-unnamed-chunk-3-3.png" width="50%" />
+<img src="man/figures/README-unnamed-chunk-3-3.png" width="50%" />
 
 ``` r
 plot(p2, plot_type = "ggplot", xlim = c(-2, 2)) + geom_prior(p1, col = "red", lty = 2)
@@ -93,11 +99,11 @@ All priors also contain some basic S3 methods.
 rng(p0, 10)
 #>  [1] 0 0 0 0 0 0 0 0 0 0
 rng(p1, 10)
-#>  [1] -2.05915443 -1.18514083 -0.59224781  0.31289733 -0.31623208 -1.17852383
-#>  [7] -0.04131906 -1.09537154  0.23096746 -0.31796089
+#>  [1]  1.02699572 -0.73820666  0.07436014 -0.02770086 -0.14089681  1.02966330
+#>  [7] -0.68667265 -0.14574682  0.02461917  0.19182737
 rng(p2, 10)
-#>  [1] 0.4644703 0.1869088 0.1796771 0.7048156 1.0739326 1.4825505 1.5600622
-#>  [8] 0.1099895 0.3875515 0.4787874
+#>  [1] 1.4366299 1.4879276 0.1887744 0.3369953 0.7749108 0.1611865 0.1596650
+#>  [8] 0.6664159 0.1904750 1.3669017
 
 pdf(p0, c(-1, 0, 1))
 #> [1]   0 Inf   0
@@ -322,12 +328,6 @@ plot_posterior(mixed_posteriors, parameter = "mu", transformation = "exp", lwd =
 ```
 
 <img src="man/figures/README-unnamed-chunk-11-3.png" width="50%" />
-
-``` r
-plot_posterior(mixed_posteriors, parameter = "mu", transformation = "exp", lwd = 2, col = "red", prior = TRUE, dots_prior = list(col = "blue", lty = 2), xlim = c(-5, 3))
-```
-
-<img src="man/figures/README-unnamed-chunk-11-4.png" width="50%" />
 
 Or comparing estimates from the different models.
 

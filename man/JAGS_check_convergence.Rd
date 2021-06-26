@@ -33,6 +33,31 @@ deviation of the parameters. Defaults to \code{0.05}.}
 Checks whether the supplied \link[runjags]{runjags-package} model
 satisfied convergence criteria.
 }
+\examples{
+# simulate data
+set.seed(1)
+data <- list(
+  x = rnorm(10),
+  N = 10
+)
+data$x
+
+# define priors
+priors_list <- list(mu = prior("normal", list(0, 1)))
+
+# define likelihood for the data
+model_syntax <-
+  "model{
+    for(i in 1:N){
+      x[i] ~ dnorm(mu, 1)
+    }
+  }"
+
+# fit the models
+fit <- JAGS_fit(model_syntax, data, priors_list, seed = 0)
+JAGS_check_convergence(fit, priors_list)
+
+}
 \seealso{
 \code{\link[=JAGS_fit]{JAGS_fit()}}
 }

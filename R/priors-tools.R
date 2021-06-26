@@ -143,9 +143,25 @@
 
 #' @title Reports whether x is a a prior object
 #'
-#' @description Reports whether x is a a prior object
+#' @description Reports whether x is a a prior object. Note that
+#' point priors inherit the prior.simple property
 #'
-#' @param x an object ot test
+#' @param x an object of test
+#'
+#' @examples
+#' # create some prior distributions
+#' p0 <- prior(distribution = "point",  parameters = list(location = 0))
+#' p1 <- prior_PET(distribution = "normal", parameters = list(mean = 0, sd = 1))
+#'
+#' is.prior(p0)
+#' is.prior.simple(p0)
+#' is.prior.point(p0)
+#' is.prior.PET(p0)
+#'
+#' is.prior(p1)
+#' is.prior.simple(p1)
+#' is.prior.point(p1)
+#' is.prior.PET(p1)
 #'
 #' @export is.prior
 #' @export is.prior.simple

@@ -98,3 +98,15 @@ are \eqn{P[X \le x]}, otherwise, \eqn{P[X \ge x]}.}
 Marginal density, marginal distribution function,
 marginal quantile function and random generation for weight functions.
 }
+\examples{
+# draw samples from a two-sided weight function
+rtwo.sided(10, alpha = c(1, 1))
+
+# draw samples from a monotone one-sided weight function
+rone.sided(10, alpha = c(1, 1, 1))
+
+# draw samples from a non-monotone one-sided weight function
+rone.sided(10, alpha1 = c(1, 1), alpha2 = c(1, 1))
+
+
+}

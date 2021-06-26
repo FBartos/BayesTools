@@ -605,6 +605,22 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
 #' @param n number of observations
 #' @param ... unused arguments
 #'
+#' @examples
+#' # create a standard normal prior distribution
+#' p1 <- prior(distribution = "normal", parameters = list(mean = 1, sd = 1))
+#'
+#' # generate a random sample from the prior
+#' rng(p1, 10)
+#'
+#' # compute cumulative density function
+#' cdf(p1, 0)
+#'
+#' # obtain quantile
+#' quant(p1, .5)
+#'
+#' # compute probability density
+#' pdf(p1, c(0, 1, 2))
+#'
 #' @exportS3Method rng prior
 #' @exportS3Method cdf prior
 #' @exportS3Method ccdf prior
@@ -1145,6 +1161,13 @@ pdf.default  <- function(x, ...){
 #' @param x a prior
 #' @param ... unused
 #'
+#' @examples
+#' # create a standard normal prior distribution
+#' p1 <- prior(distribution = "normal", parameters = list(mean = 1, sd = 1))
+#'
+#' # compute mean of the prior distribution
+#' mean(p1)
+#'
 #' @seealso [prior()]
 #' @rdname mean.prior
 #' @export
@@ -1244,6 +1267,13 @@ var.default <- function(x, ...){
 #' @param x a prior
 #' @param ... unused arguments
 #'
+#' @examples
+#' # create a standard normal prior distribution
+#' p1 <- prior(distribution = "normal", parameters = list(mean = 1, sd = 1))
+#'
+#' # compute variance of the prior distribution
+#' var(p1)
+#'
 #' @seealso [prior()]
 #' @importFrom stats var
 #' @rdname var.prior
@@ -1310,6 +1340,13 @@ var.prior   <- function(x, ...){
 #'
 #' @param x a prior
 #' @param ... unused arguments
+#'
+#' @examples
+#' # create a standard normal prior distribution
+#' p1 <- prior(distribution = "normal", parameters = list(mean = 1, sd = 1))
+#'
+#' # compute sd of the prior distribution
+#' sd(p1)
 #'
 #' @seealso [prior()]
 #' @importFrom stats sd

@@ -15,6 +15,14 @@
 Computes standard deviation
 of a prior distribution.
 }
+\examples{
+# create a standard normal prior distribution
+p1 <- prior(distribution = "normal", parameters = list(mean = 1, sd = 1))
+
+# compute sd of the prior distribution
+sd(p1)
+
+}
 \seealso{
 \code{\link[=prior]{prior()}}
 }

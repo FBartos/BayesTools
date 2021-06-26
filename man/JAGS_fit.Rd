@@ -83,6 +83,30 @@ A wrapper around
 with usage with pre-specified model part of the jags syntax, data and list
 of prior distributions.
 }
+\examples{
+# simulate data
+set.seed(1)
+data <- list(
+  x = rnorm(10),
+  N = 10
+)
+data$x
+
+# define priors
+priors_list <- list(mu = prior("normal", list(0, 1)))
+
+# define likelihood for the data
+model_syntax <-
+  "model{
+    for(i in 1:N){
+      x[i] ~ dnorm(mu, 1)
+    }
+  }"
+
+# fit the models
+fit <- JAGS_fit(model_syntax, data, priors_list, seed = 0)
+
+}
 \seealso{
 \code{\link[=JAGS_check_convergence]{JAGS_check_convergence()}}
 }

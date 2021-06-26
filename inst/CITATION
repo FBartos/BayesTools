@@ -1,0 +1,12 @@
+citHeader("To cite the BayesTools package in publications use:")
+
+note <- sprintf("R package version %s", meta$Version)
+
+bibentry(
+  bibtype  = "manual",
+  title    = "BayesTools: Tools for Bayesian Analyses",
+  author   = c(person("František",  "Bartoš")),
+  year     = 2021,
+  note     = note,
+  url      = "https://CRAN.R-project.org/package=BayesTools"
+)

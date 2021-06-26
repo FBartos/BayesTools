@@ -208,12 +208,7 @@ The packages also provides functions for plotting model-averaged posterior distr
 par(mar = c(4, 4, 1, 4))
 plot_posterior(mixed_posteriors, parameter = "mu")
 plot_posterior(mixed_posteriors, parameter = "mu", lwd = 2, col = "black", prior = TRUE, dots_prior = list(col = "grey", lwd = 2), xlim = c(-2, 2))
-
 plot_posterior(mixed_posteriors, parameter = "mu", transformation = "exp", lwd = 2, col = "red", prior = TRUE, dots_prior = list(col = "blue", lty = 2))
-plot_posterior(mixed_posteriors, parameter = "mu", transformation = "exp", lwd = 2, col = "red", prior = TRUE, dots_prior = list(col = "blue", lty = 2), xlim = c(-5, 3))
-
-
-
 ```
 
 Or comparing estimates from the different models.

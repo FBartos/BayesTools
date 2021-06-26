@@ -25,8 +25,25 @@ is.prior.PEESE(x)
 is.prior.weightfunction(x)
 }
 \arguments{
-\item{x}{an object ot test}
+\item{x}{an object of test}
 }
 \description{
-Reports whether x is a a prior object
+Reports whether x is a a prior object. Note that
+point priors inherit the prior.simple property
+}
+\examples{
+# create some prior distributions
+p0 <- prior(distribution = "point",  parameters = list(location = 0))
+p1 <- prior_PET(distribution = "normal", parameters = list(mean = 0, sd = 1))
+
+is.prior(p0)
+is.prior.simple(p0)
+is.prior.point(p0)
+is.prior.PET(p0)
+
+is.prior(p1)
+is.prior.simple(p1)
+is.prior.point(p1)
+is.prior.PET(p1)
+
 }

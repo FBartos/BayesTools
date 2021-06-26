@@ -23,6 +23,17 @@
 #' are \eqn{P[X \le x]}, otherwise, \eqn{P[X \ge x]}.
 #'
 #'
+#' @examples
+#' # draw samples from a two-sided weight function
+#' rtwo.sided(10, alpha = c(1, 1))
+#'
+#' # draw samples from a monotone one-sided weight function
+#' rone.sided(10, alpha = c(1, 1, 1))
+#'
+#' # draw samples from a non-monotone one-sided weight function
+#' rone.sided(10, alpha1 = c(1, 1), alpha2 = c(1, 1))
+#'
+#'
 #' @export mdone.sided
 #' @export mdtwo.sided
 #' @export mdone.sided_fixed

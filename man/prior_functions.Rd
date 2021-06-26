@@ -57,3 +57,20 @@ random generation (rng), mean, standard deviation (sd),
 and marginal variants of the functions (mpdf, mlpf, mcdf,
 mccdf, mquant) for prior distributions.
 }
+\examples{
+# create a standard normal prior distribution
+p1 <- prior(distribution = "normal", parameters = list(mean = 1, sd = 1))
+
+# generate a random sample from the prior
+rng(p1, 10)
+
+# compute cumulative density function
+cdf(p1, 0)
+
+# obtain quantile
+quant(p1, .5)
+
+# compute probability density
+pdf(p1, c(0, 1, 2))
+
+}

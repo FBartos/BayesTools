@@ -16,6 +16,27 @@
 #' @param ... additional arguments
 #' @inheritParams density.prior
 #'
+#' @examples
+#' # create some prior distributions
+#' p0 <- prior(distribution = "point",  parameters = list(location = 0))
+#' p1 <- prior(distribution = "normal", parameters = list(mean = 0, sd = 1))
+#' p2 <- prior(distribution = "normal", parameters = list(mean = 0, sd = 1), truncation = list(0, Inf))
+#'
+#' # a default plot
+#' plot(p0)
+#'
+#' # manipulate line thickness and color, change the parameter name
+#' plot(p1, lwd = 2, col = "blue", par_name = bquote(mu))
+#'
+#' # use ggplot
+#' plot(p2, plot_type = "ggplot")
+#'
+#' # utilize the ggplot prior geom
+#' plot(p2, plot_type = "ggplot", xlim = c(-2, 2)) + geom_prior(p1, col = "red", lty = 2)
+#'
+#' # apply transformation
+#' plot(p1, transformation = "exp")
+#'
 #' @seealso [prior()] [lines.prior()]  [geom_prior()]
 #' @rdname plot.prior
 #' @export

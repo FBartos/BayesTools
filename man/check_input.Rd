@@ -92,3 +92,14 @@ present. Defaults to \code{FALSE}.}
 A set of convenience functions for checking
 objects/arguments to a function passed by a user.
 }
+\examples{
+# check whether the object is logical
+check_bool(TRUE, name = "input")
+
+# will throw an error on any other type
+\dontrun{
+  check_bool("TRUE", name = "input")
+}
+
+
+}

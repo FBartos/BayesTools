@@ -12,6 +12,9 @@
 #' @param lower.tail logical; if \code{TRUE} (default), probabilities
 #' are \eqn{P[X \le x]}, otherwise, \eqn{P[X \ge x]}.
 #'
+#' @examples
+#' # draw samples from a point distribution
+#' rpoint(10, location = 1)
 #'
 #' @export dpoint
 #' @export rpoint

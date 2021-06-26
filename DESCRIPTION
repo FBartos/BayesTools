@@ -9,9 +9,7 @@ Description: Provides tools for conducting Bayesian analyses. The package contai
 Maintainer: František Bartoš <f.bartos96@gmail.com>
 Authors@R: c( 
     person("František", "Bartoš",     role = c("aut", "cre"),
-    email   = "f.bartos96@gmail.com", comment = c(ORCID = "0000-0002-0018-5573")),
-    person("Maximilian", "Maier",     role = "aut",
-    email   = "maximilianmaier0401@gmail.com", comment = c(ORCID = "0000-0002-9873-6096"))
+    email   = "f.bartos96@gmail.com", comment = c(ORCID = "0000-0002-0018-5573"))
     )
 URL: https://fbartos.github.io/BayesTools/
 BugReports: https://github.com/FBartos/BayesTools/issues
@@ -25,7 +23,6 @@ Depends:
 Imports:
     graphics,
     extraDistr,
-    rjags,
     runjags,
     coda,
     bridgesampling,
@@ -36,4 +33,5 @@ Suggests:
     scales,
     testthat,
     vdiffr,
-    covr
+    covr,
+    rjags

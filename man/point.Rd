@@ -35,3 +35,8 @@ are \eqn{P[X \le x]}, otherwise, \eqn{P[X \ge x]}.}
 Density, distribution function,
 quantile function and random generation for point distribution.
 }
+\examples{
+# draw samples from a point distribution
+rpoint(10, location = 1)
+
+}

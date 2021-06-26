@@ -26,6 +26,16 @@
 #' Defaults to \code{TRUE}.
 #' @param call string to be placed as a prefix to the error call.
 #'
+#' @examples
+#' # check whether the object is logical
+#' check_bool(TRUE, name = "input")
+#'
+#' # will throw an error on any other type
+#' \dontrun{
+#'   check_bool("TRUE", name = "input")
+#' }
+#'
+#'
 #' @name check_input
 #' @export check_bool
 #' @export check_char

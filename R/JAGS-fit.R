@@ -41,6 +41,29 @@
 #' JAGS models required for sampling (in case that the function is run in parallel or in
 #' detached R session). Defaults to \code{NULL}.
 #'
+#' @examples
+#' # simulate data
+#' set.seed(1)
+#' data <- list(
+#'   x = rnorm(10),
+#'   N = 10
+#' )
+#' data$x
+#'
+#' # define priors
+#' priors_list <- list(mu = prior("normal", list(0, 1)))
+#'
+#' # define likelihood for the data
+#' model_syntax <-
+#'   "model{
+#'     for(i in 1:N){
+#'       x[i] ~ dnorm(mu, 1)
+#'     }
+#'   }"
+#'
+#' # fit the models
+#' fit <- JAGS_fit(model_syntax, data, priors_list, seed = 0)
+#'
 #' @seealso [JAGS_check_convergence()]
 #' @export
 JAGS_fit <- function(model_syntax, data, prior_list,
@@ -164,6 +187,30 @@ JAGS_fit <- function(model_syntax, data, prior_list,
 #' @param max_error maximum MCMC error. Defaults to \code{1.01}.
 #' @param max_SD_error maximum MCMC error as the proportion of standard
 #'   deviation of the parameters. Defaults to \code{0.05}.
+#'
+#' @examples
+#' # simulate data
+#' set.seed(1)
+#' data <- list(
+#'   x = rnorm(10),
+#'   N = 10
+#' )
+#' data$x
+#'
+#' # define priors
+#' priors_list <- list(mu = prior("normal", list(0, 1)))
+#'
+#' # define likelihood for the data
+#' model_syntax <-
+#'   "model{
+#'     for(i in 1:N){
+#'       x[i] ~ dnorm(mu, 1)
+#'     }
+#'   }"
+#'
+#' # fit the models
+#' fit <- JAGS_fit(model_syntax, data, priors_list, seed = 0)
+#' JAGS_check_convergence(fit, priors_list)
 #'
 #' @seealso [JAGS_fit()]
 #' @export
