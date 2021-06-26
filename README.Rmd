@@ -1,0 +1,222 @@
+---
+output: github_document
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "man/figures/README-",
+  out.width = "100%"
+)
+```
+
+# BayesTools
+
+<!-- badges: start -->
+<!-- badges: end -->
+
+The goal of BayesTools is to provide functions that simplify building R packages focused on Bayesian inference and Bayesian model-averaging.
+
+Currently, the package provides several tools:
+
+  - prior distribution (with S3 methods for plot/print/pdf/cdf/rng/...)
+  - JAGS models automation (generating JAGS model syntax and `bridgesampling` marginal likelihood functions for prior distributions, various wrappers, ...) 
+  - model-averaging (mixing posterior distributions, computing Bayes factors, generating summary tables, ...)
+
+## Installation
+
+You can install the released version of BayesTools from [CRAN](https://CRAN.R-project.org) with:
+
+``` r
+install.packages("BayesTools")
+```
+
+And the development version from [GitHub](https://github.com/) with:
+
+``` r
+# install.packages("devtools")
+devtools::install_github("FBartos/BayesTools")
+```
+
+## Prior Distributions
+
+Prior distribution can be created with the `prior` function.
+
+```{r}
+library(BayesTools)
+
+p0 <- prior(distribution = "point",  parameters = list(location = 0))
+p1 <- prior(distribution = "normal", parameters = list(mean = 0, sd = 1))
+p2 <- prior(distribution = "normal", parameters = list(mean = 0, sd = 1), truncation = list(0, Inf))
+
+```
+
+The priors can be easily visualized with many possible arguments
+
+```{r, out.width="50%"}
+plot(p0)
+plot(p1, lwd = 2, col = "blue", par_name = bquote(mu))
+plot(p2, plot_type = "ggplot")
+plot(p2, plot_type = "ggplot", xlim = c(-2, 2)) + geom_prior(p1, col = "red", lty = 2)
+plot(p1, transformation = "exp")
+```
+
+All priors also contain some basic S3 methods.
+
+```{r}
+
+# S3 methods
+rng(p0, 10)
+rng(p1, 10)
+rng(p2, 10)
+
+pdf(p0, c(-1, 0, 1))
+pdf(p1, c(-1, 0, 1))
+pdf(p2, c(-1, 0, 1))
+
+cdf(p0, c(-1, 0, 1))
+cdf(p1, c(-1, 0, 1))
+cdf(p2, c(-1, 0, 1))
+
+mean(p0)
+mean(p1)
+mean(p2)
+
+sd(p0)
+sd(p1)
+sd(p2)
+
+print(p0)
+print(p1, short_name = TRUE)
+
+```
+
+## JAGS Automation
+
+The packages simplifies development of JAGS models by automatically taking care of the prior distributions relevant portion of the code.
+
+First, we generate few samples from a normal distribution and use the previously specified prior distributions as priors for the mean (passed with a list).
+
+```{r}
+# get some data
+set.seed(1)
+data <- list(
+  x = rnorm(10),
+  N = 10
+)
+data$x
+
+## create and fit models
+# define priors
+priors_list0 <- list(mu = p0)
+priors_list1 <- list(mu = p1)
+priors_list2 <- list(mu = p2)
+```
+
+We create a `model_syntax` that defines likelihood of the data for the JAGs model and fit the models with the `JAGS_fit` wrapper that automatically adds prior distributions to the syntax, generates starting values, creates list of monitored variables, and contains additional control options (most of the functionality is build upon `runjags` package).
+
+```{r}
+# define likelihood for the data
+model_syntax <-
+  "model{
+    for(i in 1:N){
+      x[i] ~ dnorm(mu, 1)
+    }
+  }"
+
+# fit the models
+fit0 <- JAGS_fit(model_syntax, data, priors_list0, seed = 0)
+fit1 <- JAGS_fit(model_syntax, data, priors_list1, seed = 1)
+fit2 <- JAGS_fit(model_syntax, data, priors_list2, seed = 2)
+```
+
+The `runjags_estimates_table` function then provides a nicely formated summary for the fitted model.
+
+```{r}
+# formatted summary tables
+runjags_estimates_table(fit1, priors_list1)
+```
+
+We create a `log_posterior` function that defines the log likelihood of the data for marginal likelihood estimation via `bridgesampling` (while creating a dummy bridge sampling object for the model without any posterior samples).
+
+```{r}
+# define log posterior for bridge sampling
+log_posterior <- function(parameters, data){
+  sum(dnorm(data$x, parameters$mu, 1, log = TRUE))
+}
+
+# get marginal likelihoods
+marglik0 <- list(
+  logml = sum(dnorm(data$x, mean(p0), 1, log = TRUE))
+)
+class(marglik0) <- "bridge"
+marglik1 <- JAGS_bridgesampling(fit1, data, priors_list1, log_posterior)
+marglik2 <- JAGS_bridgesampling(fit2, data, priors_list2, log_posterior)
+
+marglik1
+
+```
+
+## Model-Averaging
+
+The package also simplifies implementation of Bayesian model-averaging (see e.g., `RoBMA` package).
+
+First, we create a list of model objects, each containing the JAGS fit, marginal likelihood, list of prior distribution, prior weights, and generated model summaries. Then we apply the `models_inference` automatically calculating basic model-averaging information. Finally, we can use `model_summary_table` to summarize the individual models.
+
+```{r}
+## create an object with the models
+models <- list(
+  list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1, fit_summary = runjags_estimates_table(fit0, priors_list0)),
+  list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1, fit_summary = runjags_estimates_table(fit1, priors_list1)),
+  list(fit = fit2, marglik = marglik2, priors = priors_list2, prior_weights = 1, fit_summary = runjags_estimates_table(fit2, priors_list2))
+)
+# compare and summarize the models
+models <- models_inference(models)
+
+# create model-summaries
+model_summary_table(models[[1]])
+model_summary_table(models[[2]])
+model_summary_table(models[[3]])
+```
+
+Moreover, we can draw inference based on the whole ensemble for the common parameters with the `ensemble_inference` function, or mixed the posterior distributions based on marginal likelihoods with the `mix_posteriors` functions. The various summary functions then create tables for the inference, estimates, model summary, and MCMC diagnostics.
+
+```{r}
+## draw model based inference
+inference          <- ensemble_inference(model_list = models, parameters = "mu", is_null_list = list("mu" = 1))
+
+# automatically mix posteriors
+mixed_posteriors   <- mix_posteriors(model_list = models, parameters = "mu", is_null_list = list("mu" = 1), seed = 1)
+
+# summarizes the model-averaging summary
+ensemble_inference_table(inference, parameters = "mu")
+ensemble_estimates_table(mixed_posteriors,  parameters = "mu")
+ensemble_summary_table(models, parameters = "mu")
+ensemble_diagnostics_table(models, parameters = "mu", remove_spike_0 = FALSE)
+```
+
+The packages also provides functions for plotting model-averaged posterior distributions.
+
+```{r, out.width="50%"}
+### plotting
+# plot model-average posteriors
+par(mar = c(4, 4, 1, 4))
+plot_posterior(mixed_posteriors, parameter = "mu")
+plot_posterior(mixed_posteriors, parameter = "mu", lwd = 2, col = "black", prior = TRUE, dots_prior = list(col = "grey", lwd = 2), xlim = c(-2, 2))
+
+plot_posterior(mixed_posteriors, parameter = "mu", transformation = "exp", lwd = 2, col = "red", prior = TRUE, dots_prior = list(col = "blue", lty = 2))
+plot_posterior(mixed_posteriors, parameter = "mu", transformation = "exp", lwd = 2, col = "red", prior = TRUE, dots_prior = list(col = "blue", lty = 2), xlim = c(-5, 3))
+
+
+
+```
+
+Or comparing estimates from the different models.
+
+```{r, out.width="50%"}
+plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu", col = "blue")
+plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu", prior = TRUE, plot_type = "ggplot")
+```
