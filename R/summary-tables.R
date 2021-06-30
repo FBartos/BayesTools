@@ -31,6 +31,16 @@
 #' @param footnotes footnotes to be added to the table
 #' @param warnings warnings to be added to the table
 #'
+#'
+#' @return \code{ensemble_estimates_table} returns a table with the
+#' model-averaged estimates, \code{ensemble_inference_table} returns
+#' a table with the prior and posterior probabilities and inclusion
+#' Bayes factors, \code{ensemble_summary_table} returns a table with
+#' overview of the models included in the ensemble, and
+#' \code{ensemble_diagnostics_table} returns an overview of the MCMC
+#' diagnostics for the models included in the ensemble. All of the
+#' tables are objects of class 'BayesTools_table'.
+#'
 #' @export ensemble_estimates_table
 #' @export ensemble_inference_table
 #' @export ensemble_summary_table
@@ -349,6 +359,13 @@ ensemble_diagnostics_table <- function(models, parameters, title = NULL, footnot
 #' to be added to the table
 #' @inheritParams BayesTools_ensemble_tables
 #'
+#'
+#' @return \code{model_summary_table} returns a table with
+#' overview of the fitted model, \code{runjags_estimates_table} returns
+#' a table with MCMC estimates, and \code{runjags_estimates_empty_table}
+#' returns an empty estimates table. All of the tables are objects of
+#' class 'BayesTools_table'.
+#'
 #' @export model_summary_table
 #' @export runjags_estimates_table
 #' @export runjags_estimates_empty_table
@@ -552,6 +569,8 @@ runjags_estimates_empty_table <- function(title = NULL, footnotes = NULL, warnin
 #' @param x a BayesTools_values_tables
 #' @param ... additional arguments.
 #'
+#' @return \code{print.BayesTools_table} returns \code{NULL}.
+#'
 #' @exportS3Method
 print.BayesTools_table <- function(x, ...){
 
@@ -589,6 +608,8 @@ print.BayesTools_table <- function(x, ...){
 #' @param BF Bayes factor(s)
 #' @param logBF log(BF)
 #' @param BF01 1/BF
+#'
+#' @return \code{format_BF} returns a formatted Bayes factor.
 #'
 #' @export
 format_BF <- function(BF, logBF = FALSE, BF01 = FALSE){

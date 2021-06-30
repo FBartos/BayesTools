@@ -80,6 +80,9 @@ weightfunction is plotted.}
 
 \item{...}{additional arguments}
 }
+\value{
+\code{lines.prior} returns \code{NULL}.
+}
 \description{
 Add prior object to a plot
 }

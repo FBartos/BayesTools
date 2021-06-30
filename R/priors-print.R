@@ -30,6 +30,8 @@
 #' # generate bquote plotting syntax
 #' plot(0, main = print(p1, plot = TRUE))
 #'
+#' @return \code{print.prior} invisibly returns the print statement.
+#'
 #' @seealso [prior()]
 #' @rdname print.prior
 #' @export

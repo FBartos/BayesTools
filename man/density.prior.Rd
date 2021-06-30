@@ -74,6 +74,9 @@ for the endpoints of truncated distributions}
 
 \item{...}{additional arguments}
 }
+\value{
+\code{density.prior} returns an object of class 'density'.
+}
 \description{
 Computes density of a prior
 distribution across a range of values.

@@ -7,6 +7,9 @@
 #' @inheritParams density.prior
 #' @inheritParams plot.prior
 #'
+#' @return \code{plot_prior_list} returns either \code{NULL} or
+#' an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
+#'
 #' @seealso [prior()] [lines_prior_list()]  [geom_prior_list()]
 #' @export
 plot_prior_list <- function(prior_list, plot_type = "base",
@@ -477,6 +480,8 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 #' @inheritParams plot_prior_list
 #' @inheritParams density.prior
 #'
+#' @return \code{lines_prior_list} returns \code{NULL}.
+#'
 #' @seealso [plot_prior_list()] [geom_prior_list()]
 #' @rdname lines_prior_list
 #' @export
@@ -575,6 +580,8 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
 #' @inheritParams lines_prior_list
 #' @inheritParams density.prior
 #' @inheritParams plot_prior_list
+#'
+#' @return \code{geom_prior_list} returns an object of class 'ggplot'.
 #'
 #' @seealso [plot_prior_list()] [lines_prior_list()]
 #' @rdname geom_prior_list
@@ -682,6 +689,9 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
 #' @param ... additional arguments
 #' @inheritParams density.prior
 #' @inheritParams plot.prior
+#'
+#' @return \code{plot_posterior} returns either \code{NULL} or
+#' an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
 #'
 #' @seealso [prior()] [lines_prior_list()]  [geom_prior_list()]
 #' @export

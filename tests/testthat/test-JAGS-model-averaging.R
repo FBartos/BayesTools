@@ -37,8 +37,8 @@ test_that("JAGS model-averaging functions work (simple)",{
   inference_m_conditional <- compute_inference(c(1, 1), c(marglik0$logml, marglik1$logml), c(T, F), conditional = T)
 
   # manually mix posteriors
-  mixed_posterior <- mix_posteriors.simple(list(fit0, fit1), list(priors_list0[["m"]], priors_list1[["m"]]), "m", inference_m$post_prob)
-  mixed_posterior_conditional <- mix_posteriors.simple(list(fit0, fit1), list(priors_list0[["m"]], priors_list1[["m"]]), "m", inference_m_conditional$post_prob)
+  mixed_posterior <- BayesTools:::.mix_posteriors.simple(list(fit0, fit1), list(priors_list0[["m"]], priors_list1[["m"]]), "m", inference_m$post_prob)
+  mixed_posterior_conditional <- BayesTools:::.mix_posteriors.simple(list(fit0, fit1), list(priors_list0[["m"]], priors_list1[["m"]]), "m", inference_m_conditional$post_prob)
 
   expect_equal(mean(mixed_posterior == 0), inference_m$post_probs[1], tolerance = 1e-4)
   expect_equal(mean(attr(mixed_posterior, "models_ind") == 1), inference_m$post_probs[1], tolerance = 1e-4)

@@ -2,7 +2,7 @@
 % Please edit documentation in R/JAGS-marglik.R
 \name{JAGS_marglik_parameters}
 \alias{JAGS_marglik_parameters}
-\title{Extract parameters for JAGS priors}
+\title{Extract parameters for 'JAGS' priors}
 \usage{
 JAGS_marglik_parameters(samples, prior_list)
 }
@@ -13,8 +13,12 @@ function}
 \item{prior_list}{named list of prior distribution
 (names correspond to the parameter names)}
 }
+\value{
+\code{JAGS_marglik_parameters} returns a named list
+of (transformed) posterior samples.
+}
 \description{
 Extracts transformed parameters from the
-prior part of a JAGS model inside of a bridgesampling
+prior part of a 'JAGS' model inside of a 'bridgesampling'
 function (returns them as a named list)
 }

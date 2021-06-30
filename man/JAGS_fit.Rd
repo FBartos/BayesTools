@@ -2,7 +2,7 @@
 % Please edit documentation in R/JAGS-fit.R
 \name{JAGS_fit}
 \alias{JAGS_fit}
-\title{Fits a JAGS model}
+\title{Fits a 'JAGS' model}
 \usage{
 JAGS_fit(
   model_syntax,
@@ -77,10 +77,13 @@ monitored but were not specified in the \code{prior_list}}
 JAGS models required for sampling (in case that the function is run in parallel or in
 detached R session). Defaults to \code{NULL}.}
 }
+\value{
+\code{JAGS_fit} returns an object of class 'runjags'.
+}
 \description{
 A wrapper around
-\link[runjags]{run.jags}  that simplifies fitting jags models
-with usage with pre-specified model part of the jags syntax, data and list
+\link[runjags]{run.jags}  that simplifies fitting 'JAGS' models
+with usage with pre-specified model part of the 'JAGS' syntax, data and list
 of prior distributions.
 }
 \examples{

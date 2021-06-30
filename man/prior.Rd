@@ -61,6 +61,10 @@ corresponding to all combinations of prior distributions for each of
 the model parameters and sets the model priors odds to the product
 of its prior distributions.}
 }
+\value{
+\code{prior} and \code{prior_none} return an object of class 'prior'.
+A named list containing the distribution name, parameters, and prior weights.
+}
 \description{
 \code{prior} creates a prior distribution.
 The prior can be visualized by the \code{plot} function.

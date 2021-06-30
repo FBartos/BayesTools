@@ -94,6 +94,16 @@ are \eqn{P[X \le x]}, otherwise, \eqn{P[X \ge x]}.}
 
 \item{p}{vector of probabilities.}
 }
+\value{
+\code{mdone.sided}, \code{mdtwo.sided}, \code{mdone.sided_fixed},
+and \code{mdtwo.sided_fixed} give the marginal density,
+\code{mpone.sided}, \code{mptwo.sided}, \code{mpone.sided_fixed},
+and \code{mptwo.sided_fixed} give the marginal distribution function,
+\code{mqone.sided}, \code{mqtwo.sided}, \code{mqone.sided_fixed},
+and \code{mqtwo.sided_fixed} give the marginal quantile function,
+and \code{rone.sided}, \code{rtwo.sided}, \code{rone.sided_fixed},
+and \code{rtwo.sided_fixed} generate random deviates.
+}
 \description{
 Marginal density, marginal distribution function,
 marginal quantile function and random generation for weight functions.
@@ -107,6 +117,5 @@ rone.sided(10, alpha = c(1, 1, 1))
 
 # draw samples from a non-monotone one-sided weight function
 rone.sided(10, alpha1 = c(1, 1), alpha2 = c(1, 1))
-
 
 }

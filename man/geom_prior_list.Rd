@@ -75,6 +75,9 @@ required when plotting PET-PEESE}
 
 \item{...}{additional arguments}
 }
+\value{
+\code{geom_prior_list} returns an object of class 'ggplot'.
+}
 \description{
 Add list of prior objects to a plot
 }

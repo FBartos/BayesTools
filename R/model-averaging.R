@@ -25,12 +25,19 @@
 #' @param conditional whether prior and posterior model probabilities should
 #' be returned only for the conditional model. Defaults to \code{FALSE}
 #'
+#'
+#' @return \code{compute_inference} returns a named list of prior probabilities,
+#' posterior probabilities, and Bayes factors, \code{ppoint} gives the
+#' distribution function, \code{ensemble_inference} gives a list of named lists of
+#' inferences for each parameter, and \code{models_inference} returns a list of
+#' models, each expanded by the inference list.
+#'
+#' @seealso [mix_posteriors] [BayesTools_ensemble_tables]
+#'
 #' @name ensemble_inference
 #' @export compute_inference
 #' @export ensemble_inference
 #' @export models_inference
-#'
-#' @seealso [mix_posteriors] [BayesTools_ensemble_tables]
 NULL
 
 #' @rdname ensemble_inference
@@ -134,33 +141,24 @@ models_inference   <- function(model_list){
 
 #' @title Model-average posterior distributions
 #'
-#' @description Model-averages posterior distributions based either
-#'
-#' on (1) a list of models, vector of parameters, and a list of
+#' @description Model-averages posterior distributions based on
+#' a list of models, vector of parameters, and a list of
 #' indicators the models represent the null or alternative hypothesis
-#' for each parameter, or (2) on model fits, list of priors for a given
-#' parameter, parameter name, and posterior probabilities
+#' for each parameter.
 #'
-#' @param fits list with either runjags or rstan fitted models
-#' @param priors list of prior distributions for the model-averaged
-#' parameter for each passed fit
-#' @param parameter name of the parameter to be model-averaged
-#' @param post_probs vector of posterior probabilities for each fit
 #' @param seed integer specifying seed for sampling posteriors for
 #' model averaging. Defaults to \code{1}.
 #' @param n_samples number of samples to be drawn for the model-averaged
 #' posterior distribution
-#'
 #' @inheritParams ensemble_inference
-#' @name mix_posteriors
-#' @export mix_posteriors
-#' @export mix_posteriors.simple
-#' @export mix_posteriors.weightfunction
+#'
+#' @return \code{mix_posteriors} returns a named list of mixed posterior
+#' distributions (either a vector of matrix).
 #'
 #' @seealso [ensemble_inference] [BayesTools_ensemble_tables]
-NULL
-
-#' @rdname mix_posteriors
+#'
+#' @name mix_posteriors
+#' @export
 mix_posteriors <- function(model_list, parameters, is_null_list, conditional = FALSE, seed = NULL, n_samples = 10000){
 
   # check input
@@ -208,7 +206,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
         temp_priors[[i]][["prior_weights"]] <- temp_inference$prior_probs[i]
       }
 
-      out[[temp_parameter]] <- mix_posteriors.simple(fits, temp_priors, temp_parameter, temp_inference$post_probs, seed, n_samples)
+      out[[temp_parameter]] <- .mix_posteriors.simple(fits, temp_priors, temp_parameter, temp_inference$post_probs, seed, n_samples)
 
     }else if(all(sapply(temp_priors, is.prior.weightfunction) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.prior.none) | sapply(temp_priors, is.null))){
 
@@ -224,7 +222,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
         temp_priors[[i]][["prior_weights"]] <- temp_inference$prior_probs[i]
       }
 
-      out[[temp_parameter]] <- mix_posteriors.weightfunction(fits, temp_priors, temp_parameter, temp_inference$post_probs, seed, n_samples)
+      out[[temp_parameter]] <- .mix_posteriors.weightfunction(fits, temp_priors, temp_parameter, temp_inference$post_probs, seed, n_samples)
 
     }
 
@@ -233,8 +231,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   return(out)
 }
 
-#' @rdname mix_posteriors
-mix_posteriors.simple         <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000){
+.mix_posteriors.simple         <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000){
 
   # check input
   check_list(fits, "fits")
@@ -311,9 +308,7 @@ mix_posteriors.simple         <- function(fits, priors, parameter, post_probs, s
 
   return(samples)
 }
-
-#' @rdname mix_posteriors
-mix_posteriors.weightfunction <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000){
+.mix_posteriors.weightfunction <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000){
 
   # check input
   # check input
@@ -412,6 +407,8 @@ mix_posteriors.weightfunction <- function(fits, priors, parameter, post_probs, s
 #' to the null or alternative hypothesis (or an integer vector indexing models
 #' corresponding to the null hypothesis)
 #'
+#' @return \code{inclusion_BF} returns a Bayes factor.
+#'
 #' @export
 inclusion_BF     <- function(prior_probs, post_probs, is_null){
 
@@ -445,6 +442,10 @@ inclusion_BF     <- function(prior_probs, post_probs, is_null){
 #'
 #' @param prior_list list of prior distributions
 #' @param cuts_only whether only p-value cuts should be returned
+#'
+#' @return \code{weightfunctions_mapping} returns a list of indices
+#' mapping the publication weights omega from the individual weightfunctions
+#' into a joint weightfunction.
 #'
 #' @export
 weightfunctions_mapping <- function(prior_list, cuts_only = FALSE){

@@ -35,6 +35,7 @@
 #'   check_bool("TRUE", name = "input")
 #' }
 #'
+#' @return returns \code{NULL}, called for the input check.
 #'
 #' @name check_input
 #' @export check_bool

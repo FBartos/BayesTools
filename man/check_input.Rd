@@ -88,6 +88,9 @@ present. Defaults to \code{FALSE}.}
 \item{allow_other}{whether additional entries then the specified in
 \code{check_names} might be present}
 }
+\value{
+returns \code{NULL}, called for the input check.
+}
 \description{
 A set of convenience functions for checking
 objects/arguments to a function passed by a user.
@@ -100,6 +103,5 @@ check_bool(TRUE, name = "input")
 \dontrun{
   check_bool("TRUE", name = "input")
 }
-
 
 }

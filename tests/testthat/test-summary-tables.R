@@ -91,4 +91,18 @@ test_that("Summary tables functions work",{
   expect_equal(colnames(models[[3]]$fit_summary), colnames(runjags_summary2t))
   expect_equal(rownames(models[[3]]$fit_summary), rownames(runjags_summary2t))
 
+  ### test an empty table
+  runjags_summary_empty <- runjags_estimates_empty_table()
+  expect_equivalent(nrow(runjags_summary_empty), 0)
+  expect_equal(colnames(runjags_summary_empty), colnames(runjags_summary))
+  expect_equal(capture_output_lines(runjags_summary_empty, width = 150)[1], capture_output_lines(runjags_summary, width = 150)[1])
+
+
+  ### test print functions
+  expect_equal(capture_output(model_summary, print = TRUE, width = 150), "                                                                            \n Model              2                          Parameter prior distributions\n Prior prob.    0.333                                 m ~ Normal(0, 0.5)    \n log(marglik)   -0.61             omega[one-sided: .05] ~ CumDirichlet(1, 1)\n Post. prob.    0.325                                                       \n Inclusion BF   0.964                                                       ")
+  expect_equal(capture_output(runjags_summary, print = TRUE, width = 150), "               Mean    SD    lCI Median   uCI error(MCMC) SD/error(MCMC) ESS R-hat\nm             0.155 0.198 -0.247  0.167 0.497     0.00921          0.047 461    NA\nomega[0,0.05] 1.000 0.000  1.000  1.000 1.000          NA             NA  NA    NA\nomega[0.05,1] 0.509 0.301  0.028  0.508 0.983     0.01348          0.045 500    NA")
+  expect_equal(capture_output(estimates_table, print = TRUE, width = 150), "                 Mean Median  0.025  0.95\nm               0.152  0.152 -0.220 0.461\nomega[0,0.05]   1.000  1.000  1.000 1.000\nomega[0.05,0.5] 0.679  0.745  0.064 1.000\nomega[0.5,1]    0.529  0.483  0.023 1.000")
+  expect_equal(capture_output(inference_table, print = TRUE, width = 150), "      Models Prior prob. Post. prob. Inclusion BF\nm        3/3       1.000       1.000          Inf\nomega    2/3       0.667       0.800        2.002")
+  expect_equal(capture_output(summary_table, print = TRUE, width = 150), " Model     Prior m                        Prior omega                    Prior prob. log(marglik) Post. prob. Inclusion BF\n     1    Normal(0, 1)                                                         0.333        -1.10       0.200        0.499\n     2  Normal(0, 0.5)     omega[one-sided: .05] ~ CumDirichlet(1, 1)          0.333        -0.61       0.325        0.964\n     3  Normal(0, 0.3) omega[one-sided: .5, .05] ~ CumDirichlet(1, 1, 1)       0.333        -0.24       0.475        1.809")
+  expect_equal(capture_output(diagnostics_table, print = TRUE, width = 150), " Model     Prior m                        Prior omega                    max[error(MCMC)] max[SD/error(MCMC)] min(ESS) max(R-hat)\n     1    Normal(0, 1)                                                            0.01019               0.048      434         NA\n     2  Normal(0, 0.5)     omega[one-sided: .05] ~ CumDirichlet(1, 1)             0.01348               0.047      461         NA\n     3  Normal(0, 0.3) omega[one-sided: .5, .05] ~ CumDirichlet(1, 1, 1)          0.01061               0.045      500         NA")
 })

@@ -85,6 +85,16 @@ at 0 should be removed from the \code{prior_list}}
 \item{short_name}{whether the prior distribution names should be
 shortened. Defaults to \code{FALSE}.}
 }
+\value{
+\code{ensemble_estimates_table} returns a table with the
+model-averaged estimates, \code{ensemble_inference_table} returns
+a table with the prior and posterior probabilities and inclusion
+Bayes factors, \code{ensemble_summary_table} returns a table with
+overview of the models included in the ensemble, and
+\code{ensemble_diagnostics_table} returns an overview of the MCMC
+diagnostics for the models included in the ensemble. All of the
+tables are objects of class 'BayesTools_table'.
+}
 \description{
 Creates estimate summaries based on posterior
 distributions created by \link{mix_posteriors}, inference summaries

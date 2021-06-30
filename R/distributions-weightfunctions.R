@@ -33,6 +33,14 @@
 #' # draw samples from a non-monotone one-sided weight function
 #' rone.sided(10, alpha1 = c(1, 1), alpha2 = c(1, 1))
 #'
+#' @return \code{mdone.sided}, \code{mdtwo.sided}, \code{mdone.sided_fixed},
+#' and \code{mdtwo.sided_fixed} give the marginal density,
+#' \code{mpone.sided}, \code{mptwo.sided}, \code{mpone.sided_fixed},
+#' and \code{mptwo.sided_fixed} give the marginal distribution function,
+#' \code{mqone.sided}, \code{mqtwo.sided}, \code{mqone.sided_fixed},
+#' and \code{mqtwo.sided_fixed} give the marginal quantile function,
+#' and \code{rone.sided}, \code{rtwo.sided}, \code{rone.sided_fixed},
+#' and \code{rtwo.sided_fixed} generate random deviates.
 #'
 #' @export mdone.sided
 #' @export mdtwo.sided
@@ -266,33 +274,33 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
   # https://www.dm.fct.unl.pt/sites/www.dm.fct.unl.pt/files/preprints/2012/7_12.pdf
   # probably solvable with Meijer g-function
 
-  # input check
-  .weightfunctions_check_alpha(alpha1, "alpha1")
-  .weightfunctions_check_alpha(alpha2, "alpha2")
-
-  # transform to matrices for easier manipulation and checks
-  if(length(x) == 1){
-    x <- rep(x, nrow(alpha1))
-  }
-  if(!is.matrix(alpha1)){
-    alpha1 <- matrix(alpha1, nrow = 1)
-  }
-  if(!is.matrix(alpha2)){
-    alpha2 <- matrix(alpha2, nrow = 1)
-  }
-
-  if(nrow(alpha1) != nrow(alpha2))
-    stop("Non matching dimensions of 'alpha1' and 'alpha2'.")
-  if(nrow(alpha1) != length(x) & nrow(alpha1) != 1)
-    stop("Non matching dimensions of 'alpha' and 'x'.")
-
-  if(nrow(alpha1) != length(x) & nrow(alpha1) == 1){
-    alpha1 <- do.call(rbind, lapply(1:length(x), function(i)alpha1))
-    alpha2 <- do.call(rbind, lapply(1:length(x), function(i)alpha2))
-  }
-
-
-  lik1 <- .mdone.sided_monotonic(x, alpha = alpha1, log = log)
+  # # input check
+  # .weightfunctions_check_alpha(alpha1, "alpha1")
+  # .weightfunctions_check_alpha(alpha2, "alpha2")
+  #
+  # # transform to matrices for easier manipulation and checks
+  # if(length(x) == 1){
+  #   x <- rep(x, nrow(alpha1))
+  # }
+  # if(!is.matrix(alpha1)){
+  #   alpha1 <- matrix(alpha1, nrow = 1)
+  # }
+  # if(!is.matrix(alpha2)){
+  #   alpha2 <- matrix(alpha2, nrow = 1)
+  # }
+  #
+  # if(nrow(alpha1) != nrow(alpha2))
+  #   stop("Non matching dimensions of 'alpha1' and 'alpha2'.")
+  # if(nrow(alpha1) != length(x) & nrow(alpha1) != 1)
+  #   stop("Non matching dimensions of 'alpha' and 'x'.")
+  #
+  # if(nrow(alpha1) != length(x) & nrow(alpha1) == 1){
+  #   alpha1 <- do.call(rbind, lapply(1:length(x), function(i)alpha1))
+  #   alpha2 <- do.call(rbind, lapply(1:length(x), function(i)alpha2))
+  # }
+  #
+  #
+  # lik1 <- .mdone.sided_monotonic(x, alpha = alpha1, log = log)
   # the side in the unexpected direction starts with the first step of alpha1, e.g., something like this:
   # lik2 <- .dmone.sided_monotonic(x, alpha = alpha2, log = log) * beta(alpha[,1], t(apply(alpha[,-1], 1, sum)))
   #
@@ -434,26 +442,26 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
 
   stop("Not implemented")
 
-  # input check
-  .weightfunctions_check_alpha(alpha1, "alpha1")
-  .weightfunctions_check_alpha(alpha2, "alpha2")
-
-
-  # transform to matrices for easier manipulation and checks
-  if(!is.matrix(alpha1)){
-    alpha1 <- matrix(alpha1, nrow = 1)
-  }
-  if(!is.matrix(alpha2)){
-    alpha2 <- matrix(alpha2, nrow = 1)
-  }
-  if(length(q) == 1){
-    q <- rep(q, nrow(alpha1))
-  }
-
-  if(nrow(alpha1) != nrow(alpha2))
-    stop("Non matching dimensions of 'alpha1' and 'alpha2'.")
-  if(nrow(alpha1) != length(q) & nrow(alpha1) != 1)
-    stop("Non matching dimensions of 'alpha' and 'q'.")
+  # # input check
+  # .weightfunctions_check_alpha(alpha1, "alpha1")
+  # .weightfunctions_check_alpha(alpha2, "alpha2")
+  #
+  #
+  # # transform to matrices for easier manipulation and checks
+  # if(!is.matrix(alpha1)){
+  #   alpha1 <- matrix(alpha1, nrow = 1)
+  # }
+  # if(!is.matrix(alpha2)){
+  #   alpha2 <- matrix(alpha2, nrow = 1)
+  # }
+  # if(length(q) == 1){
+  #   q <- rep(q, nrow(alpha1))
+  # }
+  #
+  # if(nrow(alpha1) != nrow(alpha2))
+  #   stop("Non matching dimensions of 'alpha1' and 'alpha2'.")
+  # if(nrow(alpha1) != length(q) & nrow(alpha1) != 1)
+  #   stop("Non matching dimensions of 'alpha' and 'q'.")
 
 }
 .mpone.sided_monotonic <- function(q, alpha, lower.tail, log.p){
@@ -514,31 +522,31 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
 
   stop("Not implemented")
 
-  # input check
-  .weightfunctions_check_alpha(alpha1, "alpha1")
-  .weightfunctions_check_alpha(alpha2, "alpha2")
-
-
-  # transform to matrices for easier manipulation and checks
-  if(!is.matrix(alpha1)){
-    alpha1 <- matrix(alpha1, nrow = 1)
-  }
-  if(!is.matrix(alpha2)){
-    alpha2 <- matrix(alpha2, nrow = 1)
-  }
-  if(length(p) == 1){
-    p <- rep(p, nrow(alpha1))
-  }
-
-  if(nrow(alpha1) != nrow(alpha2))
-    stop("Non matching dimensions of 'alpha1' and 'alpha2'.")
-  if(nrow(alpha1) != length(p) & nrow(alpha1) != 1)
-    stop("Non matching dimensions of 'alpha' and 'p'.")
-
-  if(nrow(alpha1) != length(p) & nrow(alpha1) == 1){
-    alpha1 <- do.call(rbind, lapply(1:length(p), function(i)alpha1))
-    alpha2 <- do.call(rbind, lapply(1:length(p), function(i)alpha2))
-  }
+  # # input check
+  # .weightfunctions_check_alpha(alpha1, "alpha1")
+  # .weightfunctions_check_alpha(alpha2, "alpha2")
+  #
+  #
+  # # transform to matrices for easier manipulation and checks
+  # if(!is.matrix(alpha1)){
+  #   alpha1 <- matrix(alpha1, nrow = 1)
+  # }
+  # if(!is.matrix(alpha2)){
+  #   alpha2 <- matrix(alpha2, nrow = 1)
+  # }
+  # if(length(p) == 1){
+  #   p <- rep(p, nrow(alpha1))
+  # }
+  #
+  # if(nrow(alpha1) != nrow(alpha2))
+  #   stop("Non matching dimensions of 'alpha1' and 'alpha2'.")
+  # if(nrow(alpha1) != length(p) & nrow(alpha1) != 1)
+  #   stop("Non matching dimensions of 'alpha' and 'p'.")
+  #
+  # if(nrow(alpha1) != length(p) & nrow(alpha1) == 1){
+  #   alpha1 <- do.call(rbind, lapply(1:length(p), function(i)alpha1))
+  #   alpha2 <- do.call(rbind, lapply(1:length(p), function(i)alpha2))
+  # }
 
 }
 .mqone.sided_monotonic <- function(p, alpha, lower.tail, log.p){

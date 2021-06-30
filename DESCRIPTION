@@ -3,9 +3,7 @@ Title: Tools for Bayesian Analyses
 Version: 0.0.0.9010
 Description: Provides tools for conducting Bayesian analyses. The package contains 
     functions for creating a wide range of prior distribution objects, mixing posterior 
-    samples from JAGS and Stan models, plotting posterior distributions, and etc...
-    The tools for working with prior distribution span from visualization, generating JAGS 
-    and bridgesampling syntax to basic functions such as rng, quantile, and distribution functions. 
+    samples from 'JAGS' and 'Stan' models, plotting posterior distributions, and etc...
 Maintainer: František Bartoš <f.bartos96@gmail.com>
 Authors@R: c( 
     person("František", "Bartoš",     role = c("aut", "cre"),

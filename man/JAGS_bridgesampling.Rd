@@ -2,7 +2,7 @@
 % Please edit documentation in R/JAGS-marglik.R
 \name{JAGS_bridgesampling}
 \alias{JAGS_bridgesampling}
-\title{Compute marginal likelihood of a JAGS model}
+\title{Compute marginal likelihood of a 'JAGS' model}
 \usage{
 JAGS_bridgesampling(
   fit,
@@ -44,13 +44,16 @@ specified in the \code{prior_list}}
 \item{...}{additional argument to the \link[bridgesampling]{bridge_sampler}
 and \code{log_posterior} function}
 }
+\value{
+\code{JAGS_bridgesampling} returns an object of class 'bridge'.
+}
 \description{
 A wrapper around
 \link[bridgesampling]{bridge_sampler} that automatically
 computes likelihood part dependent on the prior distribution
 and prepares parameter samples. \code{log_posterior} must
 specify a function that takes two arguments - a named list
-of samples from the prior distributions and the data, and returs
+of samples from the prior distributions and the data, and returns
 log likelihood of the model part.
 }
 \examples{
@@ -74,7 +77,7 @@ model_syntax <-
   }"
 
 # fit the models
-fit <- JAGS_fit(model_syntax, data, priors_list, seed = 0)
+fit <- JAGS_fit(model_syntax, data, priors_list, chains = 1, sample = 1000, seed = 0)
 
 # define log posterior for bridge sampling
 log_posterior <- function(parameters, data){

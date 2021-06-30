@@ -11,6 +11,9 @@
 
 \item{...}{unused arguments}
 }
+\value{
+a variance of an object of class 'prior'.
+}
 \description{
 Computes variance
 of a prior distribution.

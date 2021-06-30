@@ -4,8 +4,7 @@
 \name{BayesTools}
 \alias{BayesTools}
 \alias{_PACKAGE}
-\alias{RoBMA-package}
-\alias{RoBMA}
+\alias{BayesTools-package}
 \title{BayesTools}
 \description{
 BayesTools: Provides tools for conducting Bayesian analyses. The package contains

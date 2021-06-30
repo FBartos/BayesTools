@@ -16,8 +16,9 @@ knitr::opts_chunk$set(
 # BayesTools
 
 <!-- badges: start -->
-[![Codecov test coverage](https://codecov.io/gh/FBartos/BayesTools/branch/master/graph/badge.svg)](https://codecov.io/gh/FBartos/BayesTools?branch=master)
 [![R-CMD-check](https://github.com/FBartos/BayesTools/workflows/R-CMD-check/badge.svg)](https://github.com/FBartos/BayesTools/actions)
+[![Codecov test coverage](https://codecov.io/gh/FBartos/BayesTools/branch/master/graph/badge.svg)](https://codecov.io/gh/FBartos/BayesTools?branch=master)
+[![CRAN_Status_Badge](https://www.r-pkg.org/badges/version/BayesTools)](https://cran.r-project.org/package=BayesTools)
 <!-- badges: end -->
 
 The goal of BayesTools is to provide functions that simplify building R packages focused on Bayesian inference and Bayesian model-averaging.
@@ -71,6 +72,7 @@ All priors also contain some basic S3 methods.
 ```{r}
 
 # S3 methods
+set.seed(1)
 rng(p0, 10)
 rng(p1, 10)
 rng(p2, 10)

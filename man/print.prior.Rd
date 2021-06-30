@@ -33,6 +33,9 @@ for printed parameters.}
 
 \item{...}{additional arguments}
 }
+\value{
+\code{print.prior} invisibly returns the print statement.
+}
 \description{
 Prints a prior object
 }

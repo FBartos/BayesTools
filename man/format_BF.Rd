@@ -13,6 +13,9 @@ format_BF(BF, logBF = FALSE, BF01 = FALSE)
 
 \item{BF01}{1/BF}
 }
+\value{
+\code{format_BF} returns a formatted Bayes factor.
+}
 \description{
 Formats Bayes factor
 }

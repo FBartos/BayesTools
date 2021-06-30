@@ -1,11 +1,11 @@
-#' @title Compute marginal likelihood of a JAGS model
+#' @title Compute marginal likelihood of a 'JAGS' model
 #'
 #' @description A wrapper around
 #' \link[bridgesampling]{bridge_sampler} that automatically
 #' computes likelihood part dependent on the prior distribution
 #' and prepares parameter samples. \code{log_posterior} must
 #' specify a function that takes two arguments - a named list
-#' of samples from the prior distributions and the data, and returs
+#' of samples from the prior distributions and the data, and returns
 #' log likelihood of the model part.
 #'
 #' @param fit model fitted with either \link[runjags]{runjags} posterior
@@ -57,6 +57,8 @@
 #'
 #' # get marginal likelihoods
 #' marglik <- JAGS_bridgesampling(fit, data, priors_list, log_posterior)
+#'
+#' @return \code{JAGS_bridgesampling} returns an object of class 'bridge'.
 #'
 #' @export
 JAGS_bridgesampling <- function(fit, data, prior_list, log_posterior,
@@ -144,9 +146,9 @@ JAGS_bridgesampling <- function(fit, data, prior_list, log_posterior,
 
 
 
-#' @title Prepare JAGS posterior for bridgesampling
+#' @title Prepare 'JAGS' posterior for 'bridgesampling'
 #'
-#' @description prepares posterior distribution for bridgesampling
+#' @description prepares posterior distribution for 'bridgesampling'
 #' by removing unnecessary parameters and attaching lower and upper
 #' bounds of parameters based on a list of prior distributions.
 #'
@@ -156,6 +158,11 @@ JAGS_bridgesampling <- function(fit, data, prior_list, log_posterior,
 #' (names correspond to the parameter names)
 #'
 #' @inheritParams JAGS_bridgesampling
+#'
+#' @return \code{JAGS_bridgesampling_posterior} returns a matrix of
+#' posterior samples with 'lb' and 'ub' attributes carrying the
+#' lower and upper boundaries.
+#'
 #' @export
 JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters = NULL, add_bounds = NULL){
 
@@ -324,16 +331,20 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
   return(parameter)
 }
 
-#' @title Compute marginal likelihood for JAGS priors
+#' @title Compute marginal likelihood for 'JAGS' priors
 #'
 #' @description Computes marginal likelihood for the
-#' prior part of a JAGS model within bridge sampling
+#' prior part of a 'JAGS' model within 'bridgesampling'
 #' function
 #'
 #' @param samples samples provided by bridgesampling
 #' function
 #'
 #' @inheritParams JAGS_add_priors
+#'
+#' @return \code{JAGS_marglik_priors} returns a numeric value
+#' of likelihood evaluated at the current posterior sample.
+#'
 #' @export
 JAGS_marglik_priors                <- function(samples, prior_list){
 
@@ -440,14 +451,17 @@ JAGS_marglik_priors                <- function(samples, prior_list){
 
 
 
-#' @title Extract parameters for JAGS priors
+#' @title Extract parameters for 'JAGS' priors
 #'
 #' @description Extracts transformed parameters from the
-#' prior part of a JAGS model inside of a bridgesampling
+#' prior part of a 'JAGS' model inside of a 'bridgesampling'
 #' function (returns them as a named list)
 #'
 #' @param samples samples provided by bridgesampling
 #' function
+#'
+#' @return \code{JAGS_marglik_parameters} returns a named list
+#' of (transformed) posterior samples.
 #'
 #' @inheritParams JAGS_add_priors
 #' @export

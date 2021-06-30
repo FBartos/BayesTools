@@ -44,6 +44,8 @@
 #' for the endpoints of truncated distributions
 #' @param ... additional arguments
 #'
+#' @return \code{density.prior} returns an object of class 'density'.
+#'
 #' @importFrom stats density
 #' @seealso [prior()]
 #' @rdname density.prior
@@ -395,6 +397,9 @@ density.prior <- function(x,
 #' case of unbounded distribution.
 #' @param ... additional arguments
 #' @param na.rm unused
+#'
+#' @return \code{range.prior} returns a numeric vector of
+#' length with a plotting range of a prior distribution.
 #'
 #' @seealso [prior()]
 #' @rdname range.prior

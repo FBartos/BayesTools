@@ -5,9 +5,10 @@
 
 <!-- badges: start -->
 
+[![R-CMD-check](https://github.com/FBartos/BayesTools/workflows/R-CMD-check/badge.svg)](https://github.com/FBartos/BayesTools/actions)
 [![Codecov test
 coverage](https://codecov.io/gh/FBartos/BayesTools/branch/master/graph/badge.svg)](https://codecov.io/gh/FBartos/BayesTools?branch=master)
-[![R-CMD-check](https://github.com/FBartos/BayesTools/workflows/R-CMD-check/badge.svg)](https://github.com/FBartos/BayesTools/actions)
+[![CRAN_Status_Badge](https://www.r-pkg.org/badges/version/BayesTools)](https://cran.r-project.org/package=BayesTools)
 <!-- badges: end -->
 
 The goal of BayesTools is to provide functions that simplify building R
@@ -96,14 +97,15 @@ All priors also contain some basic S3 methods.
 
 ``` r
 # S3 methods
+set.seed(1)
 rng(p0, 10)
 #>  [1] 0 0 0 0 0 0 0 0 0 0
 rng(p1, 10)
-#>  [1]  1.02699572 -0.73820666  0.07436014 -0.02770086 -0.14089681  1.02966330
-#>  [7] -0.68667265 -0.14574682  0.02461917  0.19182737
+#>  [1] -0.6264538  0.1836433 -0.8356286  1.5952808  0.3295078 -0.8204684
+#>  [7]  0.4874291  0.7383247  0.5757814 -0.3053884
 rng(p2, 10)
-#>  [1] 1.4366299 1.4879276 0.1887744 0.3369953 0.7749108 0.1611865 0.1596650
-#>  [8] 0.6664159 0.1904750 1.3669017
+#>  [1] 0.38984324 1.12493092 0.94383621 0.82122120 0.59390132 0.91897737
+#>  [7] 0.78213630 0.07456498 0.61982575 0.41794156
 
 pdf(p0, c(-1, 0, 1))
 #> [1]   0 Inf   0

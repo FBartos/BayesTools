@@ -2,7 +2,7 @@
 % Please edit documentation in R/JAGS-marglik.R
 \name{JAGS_bridgesampling_posterior}
 \alias{JAGS_bridgesampling_posterior}
-\title{Prepare JAGS posterior for bridgesampling}
+\title{Prepare 'JAGS' posterior for 'bridgesampling'}
 \usage{
 JAGS_bridgesampling_posterior(
   posterior,
@@ -25,8 +25,13 @@ in bridgesampling but were not specified in the \code{prior_list}}
 containing lower and upper bounds of the additional parameters that were not
 specified in the \code{prior_list}}
 }
+\value{
+\code{JAGS_bridgesampling_posterior} returns a matrix of
+posterior samples with 'lb' and 'ub' attributes carrying the
+lower and upper boundaries.
+}
 \description{
-prepares posterior distribution for bridgesampling
+prepares posterior distribution for 'bridgesampling'
 by removing unnecessary parameters and attaching lower and upper
 bounds of parameters based on a list of prior distributions.
 }

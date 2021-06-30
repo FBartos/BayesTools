@@ -31,6 +31,11 @@ are \eqn{P[X \le x]}, otherwise, \eqn{P[X \ge x]}.}
 
 \item{p}{vector of probabilities.}
 }
+\value{
+\code{dpoint} gives the density, \code{ppoint} gives the
+distribution function, \code{qpoint} gives the quantile function,
+and \code{rpoint} generates random deviates.
+}
 \description{
 Density, distribution function,
 quantile function and random generation for point distribution.

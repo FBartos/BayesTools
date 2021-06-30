@@ -29,6 +29,11 @@ Defaults to \code{1.05}.}
 \item{max_SD_error}{maximum MCMC error as the proportion of standard
 deviation of the parameters. Defaults to \code{0.05}.}
 }
+\value{
+\code{JAGS_check_convergence} returns a boolean
+indicating whether the model converged or not, with an
+attribute 'errors' carrying the failed convergence checks (if any).
+}
 \description{
 Checks whether the supplied \link[runjags]{runjags-package} model
 satisfied convergence criteria.

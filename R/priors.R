@@ -58,6 +58,9 @@
 #' # (see ?plot.prior for all options)
 #' plot(p1)
 #'
+#' @return \code{prior} and \code{prior_none} return an object of class 'prior'.
+#' A named list containing the distribution name, parameters, and prior weights.
+#'
 #' @name prior
 #' @export prior
 #' @export prior_none
@@ -68,15 +71,11 @@
 #' @rdname prior
 prior <- function(distribution, parameters, truncation = list(lower = -Inf, upper = Inf), prior_weights = 1){
 
-  # general input check
+  # general input check (detailed checks are performed withing the constructors)
   check_char(distribution, "distribution")
   check_list(parameters, "parameters")
   sapply(seq_along(parameters), function(i)check_real(parameters[[i]], names(parameters[[i]]), check_length = 0))
-  check_list(truncation, "truncation", check_names = c("lower", "upper"), check_length = 2)
-  if(is.null(names(truncation)))
-    names(truncation) <- c("lower", "upper")
-  if(truncation[["lower"]] >= truncation[["upper"]])
-    stop("The lower truncation point needs to be lower than the upper truncation point.")
+  check_list(truncation, "truncation")
   check_real(prior_weights, "prior_weights", lower = 0, allow_bound = FALSE)
 
   # assign proper name
@@ -176,9 +175,9 @@ prior_none <- function(prior_weights = 1){
 #' # (see ?plot.prior for all options)
 #' plot(p1)
 #'
+#' @return \code{prior_weightfunction} returns an object of class 'prior'.
 #'
 #' @export  prior_weightfunction
-#' @rawNamespace S3method(print, prior)
 #' @seealso [plot.prior()]
 prior_weightfunction <- function(distribution, parameters, prior_weights = 1){
 
@@ -231,10 +230,11 @@ prior_weightfunction <- function(distribution, parameters, prior_weights = 1){
 #'
 #' plot(p1)
 #'
+#' @return \code{prior_PET} and \code{prior_PEESE} return an object of class 'prior'.
+#'
 #' @inheritParams prior
 #' @export prior_PET
 #' @export prior_PEESE
-#' @rawNamespace S3method(print, prior)
 #' @seealso [plot.prior()], [prior()]
 #' @name prior_PP
 NULL
@@ -620,6 +620,13 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
 #'
 #' # compute probability density
 #' pdf(p1, c(0, 1, 2))
+#'
+#' @return \code{pdf} (\code{mpdf}) and \code{lpdf} (\code{mlpdf}) give
+#' the (marginal) density and the log of (marginal) density,
+#' \code{cdf} (\code{mcdf}) and \code{ccdf} (\code{mccdf}) give the
+#' (marginal) distribution and the complement of (marginal) distribution function,
+#' \code{quant} (\code{mquant}) give the (marginal) quantile function,
+#' and \code{rng} generates random deviates for an object of class 'prior'.
 #'
 #' @exportS3Method rng prior
 #' @exportS3Method cdf prior
@@ -1168,6 +1175,8 @@ pdf.default  <- function(x, ...){
 #' # compute mean of the prior distribution
 #' mean(p1)
 #'
+#' @return a mean of an object of class 'prior'.
+#'
 #' @seealso [prior()]
 #' @rdname mean.prior
 #' @export
@@ -1274,6 +1283,8 @@ var.default <- function(x, ...){
 #' # compute variance of the prior distribution
 #' var(p1)
 #'
+#' @return a variance of an object of class 'prior'.
+#'
 #' @seealso [prior()]
 #' @importFrom stats var
 #' @rdname var.prior
@@ -1347,6 +1358,8 @@ var.prior   <- function(x, ...){
 #'
 #' # compute sd of the prior distribution
 #' sd(p1)
+#'
+#' @return a standard deviation of an object of class 'prior'.
 #'
 #' @seealso [prior()]
 #' @importFrom stats sd

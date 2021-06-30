@@ -15,6 +15,9 @@ inclusion_BF(prior_probs, post_probs, is_null)
 to the null or alternative hypothesis (or an integer vector indexing models
 corresponding to the null hypothesis)}
 }
+\value{
+\code{inclusion_BF} returns a Bayes factor.
+}
 \description{
 Computes inclusion Bayes factors based on prior and posterior
 model probabilities and indicator whether the models represent the null or

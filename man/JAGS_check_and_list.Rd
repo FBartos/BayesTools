@@ -4,7 +4,7 @@
 \alias{JAGS_check_and_list}
 \alias{JAGS_check_and_list_fit_settings}
 \alias{JAGS_check_and_list_autofit_settings}
-\title{Check and list JAGS fitting settings}
+\title{Check and list 'JAGS' fitting settings}
 \usage{
 JAGS_check_and_list_fit_settings(
   chains,
@@ -80,6 +80,12 @@ need to correspond to \code{units} passed to \link[base]{difftime} function.}
 
 \item{skip_sample_extend}{whether \code{sample_extend}
 is allowed to be NULL and skipped in the check}
+}
+\value{
+\code{JAGS_check_and_list_fit_settings} invisibly returns a
+list of checked fit settings. \code{JAGS_check_and_list_autofit_settings}
+invisibly returns a list of checked autofit settings.
+parameter names.
 }
 \description{
 Checks and lists settings for the

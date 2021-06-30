@@ -80,6 +80,9 @@ weightfunction is plotted.}
 
 \item{...}{additional arguments}
 }
+\value{
+\code{geom_prior_list} returns an object of class 'ggplot'.
+}
 \description{
 Add prior object to a ggplot
 }

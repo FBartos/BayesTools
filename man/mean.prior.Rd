@@ -11,6 +11,9 @@
 
 \item{...}{unused}
 }
+\value{
+a mean of an object of class 'prior'.
+}
 \description{
 Computes mean of a prior
 distribution.

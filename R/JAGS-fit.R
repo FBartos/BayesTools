@@ -1,8 +1,8 @@
-#' @title Fits a JAGS model
+#' @title Fits a 'JAGS' model
 #'
 #' @description A wrapper around
-#' \link[runjags]{run.jags}  that simplifies fitting jags models
-#' with usage with pre-specified model part of the jags syntax, data and list
+#' \link[runjags]{run.jags}  that simplifies fitting 'JAGS' models
+#' with usage with pre-specified model part of the 'JAGS' syntax, data and list
 #' of prior distributions.
 #' @param model_syntax jags syntax for the model part
 #' @param data data fit the model
@@ -63,6 +63,8 @@
 #'
 #' # fit the models
 #' fit <- JAGS_fit(model_syntax, data, priors_list, seed = 0)
+#'
+#' @return \code{JAGS_fit} returns an object of class 'runjags'.
 #'
 #' @seealso [JAGS_check_convergence()]
 #' @export
@@ -212,6 +214,10 @@ JAGS_fit <- function(model_syntax, data, prior_list,
 #' fit <- JAGS_fit(model_syntax, data, priors_list, seed = 0)
 #' JAGS_check_convergence(fit, priors_list)
 #'
+#' @return \code{JAGS_check_convergence} returns a boolean
+#' indicating whether the model converged or not, with an
+#' attribute 'errors' carrying the failed convergence checks (if any).
+#'
 #' @seealso [JAGS_fit()]
 #' @export
 JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05){
@@ -279,13 +285,15 @@ JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 5
 }
 
 
-#' @title Add JAGS prior
+#' @title Add 'JAGS' prior
 #'
-#' @description Adds priors to a JAGS syntax.
+#' @description Adds priors to a 'JAGS' syntax.
 #'
 #' @param syntax JAGS model syntax
 #' @param prior_list named list of prior distribution
 #' (names correspond to the parameter names)
+#'
+#' @return \code{JAGS_add_priors} returns a JAGS syntax.
 #'
 #' @export
 JAGS_add_priors           <- function(syntax, prior_list){
@@ -451,14 +459,19 @@ JAGS_add_priors           <- function(syntax, prior_list){
 }
 
 
-#' @title Create initial values for JAGS model
+#' @title Create initial values for 'JAGS' model
 #'
-#' @description Creates initial values for priors.
+#' @description Creates initial values for priors in
+#' a 'JAGS' model.
 #'
 #' @param chains number of chains
 #' @param seed seed for random number generation
 #'
 #' @inheritParams JAGS_add_priors
+#'
+#' @return \code{JAGS_add_priors} returns a list of JAGS
+#' initial values.
+#'
 #' @export
 JAGS_get_inits            <- function(prior_list, chains, seed){
 
@@ -584,13 +597,16 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 }
 
 
-#' @title Create list of monitored parameters for JAGS model
+#' @title Create list of monitored parameters for 'JAGS' model
 #'
 #' @description Creates a vector of parameter names to be
-#' monitored.
-#'
+#' monitored in a 'JAGS' model.
 #'
 #' @inheritParams JAGS_add_priors
+#'
+#' @return \code{JAGS_to_monitor} returns a character vector of
+#' parameter names.
+#'
 #' @export
 JAGS_to_monitor             <- function(prior_list){
 
@@ -674,7 +690,7 @@ JAGS_to_monitor             <- function(prior_list){
 }
 
 
-#' @title Check and list JAGS fitting settings
+#' @title Check and list 'JAGS' fitting settings
 #'
 #' @description Checks and lists settings for the
 #' [JAGS_fit] function.
@@ -693,6 +709,12 @@ JAGS_to_monitor             <- function(prior_list){
 #'
 #' @inheritParams JAGS_fit
 #' @inheritParams check_input
+#'
+#' @return \code{JAGS_check_and_list_fit_settings} invisibly returns a
+#' list of checked fit settings. \code{JAGS_check_and_list_autofit_settings}
+#' invisibly returns a list of checked autofit settings.
+#' parameter names.
+#'
 #' @export JAGS_check_and_list_fit_settings
 #' @export JAGS_check_and_list_autofit_settings
 #' @name JAGS_check_and_list

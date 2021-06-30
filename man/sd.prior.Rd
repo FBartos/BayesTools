@@ -11,6 +11,9 @@
 
 \item{...}{unused arguments}
 }
+\value{
+a standard deviation of an object of class 'prior'.
+}
 \description{
 Computes standard deviation
 of a prior distribution.

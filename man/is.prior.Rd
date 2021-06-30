@@ -27,6 +27,10 @@ is.prior.weightfunction(x)
 \arguments{
 \item{x}{an object of test}
 }
+\value{
+returns a boolean indicating whether the test object
+is a prior (of specific type).
+}
 \description{
 Reports whether x is a a prior object. Note that
 point priors inherit the prior.simple property

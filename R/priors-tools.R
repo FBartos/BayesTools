@@ -1,13 +1,18 @@
 # functions for checking input into prior distributions related functions
 .check_and_name_parameters <- function(parameters, names, distribution){
+
   if(length(parameters) != length(names))
-    stop(paste0(distribution, " prior distribution requires ", length(names), " parameters."))
+    stop(paste0(distribution, " prior distribution requires ", length(names), " parameters."), call. = FALSE)
   if(!is.null(names(parameters))){
     if(!all(names(parameters) %in% names))
-      stop(paste0("Parameters ", paste(names(parameters)[!names(parameters) %in% names], sep = ", ", collapse = ""), " are not supported for a ", distribution," distribution."))
+      stop(paste0("Parameters ", paste(paste0("'", names(parameters)[!names(parameters) %in% c(names, "")], "'"), sep = ", ", collapse = ""), " are not supported for a ", distribution," distribution."), call. = FALSE)
   }else{
     names(parameters) <- names
   }
+
+  # order
+  parameters <- parameters[names]
+
   return(parameters)
 }
 .check_and_set_truncation  <- function(truncation, lower = -Inf, upper = Inf){
@@ -27,9 +32,9 @@
     }
   }else{
     if(length(truncation) == 2){
-      names(parameters) <- c("lower", "upper")
+      names(truncation) <- c("lower", "upper")
     }else if(length(truncation) == 1){
-      names(parameters) <- "lower"
+      names(truncation) <- "lower"
       truncation$upper  <- upper
     }else{
       truncation <- list(
@@ -56,36 +61,42 @@
       stop(paste0("Upper truncation point must be smaller or equal to ", upper, "."))
   }
 
+  if(truncation$lower >= truncation$upper)
+    stop("The lower truncation point must be lower than the upper truncation points.")
+
+  # order
+  truncation <- truncation[c("lower", "upper")]
+
   return(truncation)
 }
 .check_parameter <- function(parameter, name, length = 1){
   if(length == -1){
     if(!is.numeric(parameter) | !is.vector(parameter) | length(parameter) > 1)
-      stop(paste0("The '", name, "' must be a numeric vector of length at least 2."))
+      stop(paste0("The '", name, "' must be a numeric vector of length at least 2."), call. = FALSE)
   }else if(length == 0){
     if(!is.numeric(parameter) | !is.vector(parameter))
-      stop(paste0("The '", name, "' must be a numeric vector."))
+      stop(paste0("The '", name, "' must be a numeric vector."), call. = FALSE)
   }else{
     if(!is.numeric(parameter) | !is.vector(parameter) | length(parameter) != length)
-      stop(paste0("The '", name, "' must be a numeric vector of length ", length, "."))
+      stop(paste0("The '", name, "' must be a numeric vector of length ", length, "."), call. = FALSE)
   }
 }
 .check_parameter_positive  <- function(parameter, name, include_zero = FALSE){
   if(include_zero){
     if(any(parameter < 0))
-      stop(paste0("The '", name, "' must be non-negative"))
+      stop(paste0("The '", name, "' must be non-negative."), call. = FALSE)
   }else{
     if(any(parameter <= 0))
-      stop(paste0("The '", name, "' must be positive."))
+      stop(paste0("The '", name, "' must be positive."), call. = FALSE)
   }
 }
 .check_parameter_negative  <- function(parameter, name, include_zero = FALSE){
   if(include_zero){
     if(any(parameter > 0))
-      stop(paste0("The '", name, "' must be non-positive."))
+      stop(paste0("The '", name, "' must be non-positive."), call. = FALSE)
   }else{
     if(any(parameter >= 0))
-      stop(paste0("The '", name, "' must be negative"))
+      stop(paste0("The '", name, "' must be negative."), call. = FALSE)
   }
 }
 .check_parameter_weigthfunction <- function(steps, alpha = NULL, alpha1 = NULL, alpha2 = NULL, omega = NULL){
@@ -96,11 +107,11 @@
     .check_parameter(alpha, "alpha", length = 0)
 
     if(any(steps >= 1) | any(steps <= 0))
-      stop("Parameter 'steps' must be higher than 0 and lower than 1.")
+      stop("Parameter 'steps' must be higher than 0 and lower than 1.", call. = FALSE)
     if(!(all(steps == cummax(steps))))
-      stop("Parameters 'steps' must be monotonically increasing.")
+      stop("Parameters 'steps' must be monotonically increasing.", call. = FALSE)
     if(length(steps) != length(alpha) - 1)
-      stop("The parameter alpha needs to have one more argument then there are steps.")
+      stop("The parameter alpha needs to have one more argument then there are steps.", call. = FALSE)
 
     .check_parameter_positive(alpha, "alpha")
 
@@ -111,13 +122,13 @@
     .check_parameter(alpha2, "alpha2", length = 0)
 
     if(any(steps >= 1) | any(steps <= 0))
-      stop("Parameter 'steps' must be higher than 0 and lower than 1.")
+      stop("Parameter 'steps' must be higher than 0 and lower than 1.", call. = FALSE)
     if(!(all(steps == cummax(steps))))
-      stop("Parameters 'steps' must be monotonically increasing.")
+      stop("Parameters 'steps' must be monotonically increasing.", call. = FALSE)
     if(sum(steps <= .5) != length(alpha1) - 1)
-      stop("The parameter alpha1 needs to have one more argument then there are steps <= .5.")
+      stop("The parameter alpha1 needs to have one more argument then there are steps <= .5.", call. = FALSE)
     if(sum(steps > .5)  != length(alpha2) - 1)
-      stop("The parameter alpha2 needs to have one more argument then there are steps > .5.")
+      stop("The parameter alpha2 needs to have one more argument then there are steps > .5.", call. = FALSE)
 
     .check_parameter_positive(alpha1, "alpha1")
     .check_parameter_positive(alpha2, "alpha2")
@@ -128,15 +139,15 @@
     .check_parameter(omega, "omega", length = 0)
 
     if(any(steps >= 1) | any(steps <= 0))
-      stop("Parameter 'steps' must be higher than 0 and lower than 1.")
+      stop("Parameter 'steps' must be higher than 0 and lower than 1.", call. = FALSE)
     if(!(all(steps == cummax(steps))))
-      stop("Parameters 'steps' must be monotonically increasing.")
+      stop("Parameters 'steps' must be monotonically increasing.", call. = FALSE)
     if(length(steps) != length(omega) - 1)
-      stop("The parameter omega needs to have one more argument then there are steps.")
+      stop("The parameter omega needs to have one more argument then there are steps.", call. = FALSE)
     if(any(omega < 0) | any(omega > 1))
-      stop("Parameter 'omega' must be within 0 to 1 range.")
+      stop("Parameter 'omega' must be within 0 to 1 range.", call. = FALSE)
     if(!any(sapply(omega, function(omega_i)isTRUE(all.equal(omega_i, 1)))))
-      stop("At least one 'omega' parameter must be equal to 1.")
+      stop("At least one 'omega' parameter must be equal to 1.", call. = FALSE)
 
   }
 }
@@ -162,6 +173,9 @@
 #' is.prior.simple(p1)
 #' is.prior.point(p1)
 #' is.prior.PET(p1)
+#'
+#' @return returns a boolean indicating whether the test object
+#' is a prior (of specific type).
 #'
 #' @export is.prior
 #' @export is.prior.simple

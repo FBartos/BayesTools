@@ -2,7 +2,7 @@
 % Please edit documentation in R/JAGS-fit.R
 \name{JAGS_add_priors}
 \alias{JAGS_add_priors}
-\title{Add JAGS prior}
+\title{Add 'JAGS' prior}
 \usage{
 JAGS_add_priors(syntax, prior_list)
 }
@@ -12,6 +12,9 @@ JAGS_add_priors(syntax, prior_list)
 \item{prior_list}{named list of prior distribution
 (names correspond to the parameter names)}
 }
+\value{
+\code{JAGS_add_priors} returns a JAGS syntax.
+}
 \description{
-Adds priors to a JAGS syntax.
+Adds priors to a 'JAGS' syntax.
 }

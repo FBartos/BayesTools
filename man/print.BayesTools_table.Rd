@@ -11,6 +11,9 @@
 
 \item{...}{additional arguments.}
 }
+\value{
+\code{print.BayesTools_table} returns \code{NULL}.
+}
 \description{
 Print a BayesTools table
 }

@@ -82,6 +82,10 @@ required when plotting PET-PEESE}
 
 \item{...}{additional arguments}
 }
+\value{
+\code{plot_prior_list} returns either \code{NULL} or
+an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
+}
 \description{
 Plot a list of prior distributions
 }

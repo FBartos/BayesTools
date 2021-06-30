@@ -8,7 +8,7 @@
 ##'
 ##'
 ##' @name BayesTools
-##' @aliases RoBMA-package RoBMA
+##' @aliases BayesTools-package BayesTools
 ##' @docType package
 ##' @author František Bartoš \email{f.bartos96@@gmail.com}
 ##' @keywords package

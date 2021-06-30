@@ -16,6 +16,10 @@ case of unbounded distribution.}
 
 \item{na.rm}{unused}
 }
+\value{
+\code{range.prior} returns a numeric vector of
+length with a plotting range of a prior distribution.
+}
 \description{
 Computes range of a prior
 distribution (if the prior distribution is

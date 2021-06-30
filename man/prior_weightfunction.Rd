@@ -35,6 +35,9 @@ all combinations of prior distributions for each of the model
 parameters, and sets the model priors odds to the product of
 its prior distributions.}
 }
+\value{
+\code{prior_weightfunction} returns an object of class 'prior'.
+}
 \description{
 \code{prior_weightfunction} creates a prior distribution for fitting
 a RoBMA selection model. The prior can be visualized by the \code{plot} function.
@@ -45,7 +48,6 @@ p1 <- prior_weightfunction("one-sided", parameters = list(steps = c(.05, .10), a
 # the prior distribution can be visualized using the plot function
 # (see ?plot.prior for all options)
 plot(p1)
-
 
 }
 \seealso{

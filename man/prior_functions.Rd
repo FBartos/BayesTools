@@ -50,6 +50,14 @@
 
 \item{p}{vector of probabilities}
 }
+\value{
+\code{pdf} (\code{mpdf}) and \code{lpdf} (\code{mlpdf}) give
+the (marginal) density and the log of (marginal) density,
+\code{cdf} (\code{mcdf}) and \code{ccdf} (\code{mccdf}) give the
+(marginal) distribution and the complement of (marginal) distribution function,
+\code{quant} (\code{mquant}) give the (marginal) quantile function,
+and \code{rng} generates random deviates for an object of class 'prior'.
+}
 \description{
 Density (pdf / lpdf), distribution
 function (cdf / ccdf), quantile function (quant),

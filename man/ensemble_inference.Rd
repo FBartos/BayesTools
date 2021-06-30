@@ -36,6 +36,13 @@ logical vector of indicators specifying whether the model corresponds
 to the null or alternative hypothesis (or an integer vector indexing models
 corresponding to the null hypothesis)}
 }
+\value{
+\code{compute_inference} returns a named list of prior probabilities,
+posterior probabilities, and Bayes factors, \code{ppoint} gives the
+distribution function, \code{ensemble_inference} gives a list of named lists of
+inferences for each parameter, and \code{models_inference} returns a list of
+models, each expanded by the inference list.
+}
 \description{
 Computes prior probabilities, posterior probabilities,
 and inclusion Bayes factors based either on (1) a list of models,

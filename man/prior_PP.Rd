@@ -67,6 +67,9 @@ corresponding to all combinations of prior distributions for each of
 the model parameters and sets the model priors odds to the product
 of its prior distributions.}
 }
+\value{
+\code{prior_PET} and \code{prior_PEESE} return an object of class 'prior'.
+}
 \description{
 \code{prior} creates a prior distribution for fitting a PET or
 PEESE style models in RoBMA. The prior distribution can be visualized

@@ -76,6 +76,10 @@ parameter that needs to be transformed.}
 
 \item{...}{additional arguments}
 }
+\value{
+\code{plot_posterior} returns either \code{NULL} or
+an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
+}
 \description{
 Plot samples from the mixed posterior distributions
 }

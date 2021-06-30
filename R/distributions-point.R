@@ -16,6 +16,10 @@
 #' # draw samples from a point distribution
 #' rpoint(10, location = 1)
 #'
+#' @return \code{dpoint} gives the density, \code{ppoint} gives the
+#' distribution function, \code{qpoint} gives the quantile function,
+#' and \code{rpoint} generates random deviates.
+#'
 #' @export dpoint
 #' @export rpoint
 #' @export ppoint

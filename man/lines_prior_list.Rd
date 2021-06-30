@@ -75,6 +75,9 @@ required when plotting PET-PEESE}
 
 \item{...}{additional arguments}
 }
+\value{
+\code{lines_prior_list} returns \code{NULL}.
+}
 \description{
 Add list of prior objects to a plot
 }

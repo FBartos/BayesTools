@@ -11,6 +11,11 @@ weightfunctions_mapping(prior_list, cuts_only = FALSE)
 
 \item{cuts_only}{whether only p-value cuts should be returned}
 }
+\value{
+\code{weightfunctions_mapping} returns a list of indices
+mapping the publication weights omega from the individual weightfunctions
+into a joint weightfunction.
+}
 \description{
 Creates coefficients mapping between multiple weightfunctions.
 }

@@ -87,6 +87,10 @@ parameter that needs to be transformed.}
 
 \item{...}{additional arguments}
 }
+\value{
+\code{plot.prior} returns either \code{NULL} or
+an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
+}
 \description{
 Plots a prior object
 }

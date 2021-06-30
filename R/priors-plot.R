@@ -37,6 +37,9 @@
 #' # apply transformation
 #' plot(p1, transformation = "exp")
 #'
+#' @return \code{plot.prior} returns either \code{NULL} or
+#' an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
+#'
 #' @seealso [prior()] [lines.prior()]  [geom_prior()]
 #' @rdname plot.prior
 #' @export
@@ -559,6 +562,8 @@ plot.prior <- function(x, plot_type = "base",
 #' @param ... additional arguments
 #' @inheritParams density.prior
 #'
+#' @return \code{lines.prior} returns \code{NULL}.
+#'
 #' @seealso [plot.prior()] [geom_prior()]
 #' @rdname lines.prior
 #' @export
@@ -634,6 +639,8 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 #'
 #' @inheritParams lines.prior
 #' @inheritParams density.prior
+#'
+#' @return \code{geom_prior_list} returns an object of class 'ggplot'.
 #'
 #' @seealso [plot.prior()] [lines.prior()]
 #' @rdname geom_prior

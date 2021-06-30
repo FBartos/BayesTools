@@ -59,6 +59,13 @@ shortened. Defaults to \code{FALSE}.}
 \item{transformations}{named list of transformations to be applied
 to specific parameters}
 }
+\value{
+\code{model_summary_table} returns a table with
+overview of the fitted model, \code{runjags_estimates_table} returns
+a table with MCMC estimates, and \code{runjags_estimates_empty_table}
+returns an empty estimates table. All of the tables are objects of
+class 'BayesTools_table'.
+}
 \description{
 Creates model summary based on a model objects or
 provides estimates table for a runjags fit.
