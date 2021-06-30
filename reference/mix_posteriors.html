@@ -40,11 +40,10 @@
 
 
 <meta property="og:title" content="Model-average posterior distributions — mix_posteriors" />
-<meta property="og:description" content="Model-averages posterior distributions based either
-on (1) a list of models, vector of parameters, and a list of
+<meta property="og:description" content="Model-averages posterior distributions based on
+a list of models, vector of parameters, and a list of
 indicators the models represent the null or alternative hypothesis
-for each parameter, or (2) on model fits, list of priors for a given
-parameter, parameter name, and posterior probabilities" />
+for each parameter." />
 
 
 
@@ -121,11 +120,10 @@ parameter, parameter name, and posterior probabilities" />
     </div>
 
     <div class="ref-description">
-    <p>Model-averages posterior distributions based either</p>
-<p>on (1) a list of models, vector of parameters, and a list of
+    <p>Model-averages posterior distributions based on
+a list of models, vector of parameters, and a list of
 indicators the models represent the null or alternative hypothesis
-for each parameter, or (2) on model fits, list of priors for a given
-parameter, parameter name, and posterior probabilities</p>
+for each parameter.</p>
     </div>
 
     <pre class="usage"><span class='fu'>mix_posteriors</span><span class='op'>(</span>
@@ -133,24 +131,6 @@ parameter, parameter name, and posterior probabilities</p>
   <span class='va'>parameters</span>,
   <span class='va'>is_null_list</span>,
   conditional <span class='op'>=</span> <span class='cn'>FALSE</span>,
-  seed <span class='op'>=</span> <span class='cn'>NULL</span>,
-  n_samples <span class='op'>=</span> <span class='fl'>10000</span>
-<span class='op'>)</span>
-
-<span class='fu'>mix_posteriors.simple</span><span class='op'>(</span>
-  <span class='va'>fits</span>,
-  <span class='va'>priors</span>,
-  <span class='va'>parameter</span>,
-  <span class='va'>post_probs</span>,
-  seed <span class='op'>=</span> <span class='cn'>NULL</span>,
-  n_samples <span class='op'>=</span> <span class='fl'>10000</span>
-<span class='op'>)</span>
-
-<span class='fu'>mix_posteriors.weightfunction</span><span class='op'>(</span>
-  <span class='va'>fits</span>,
-  <span class='va'>priors</span>,
-  <span class='va'>parameter</span>,
-  <span class='va'>post_probs</span>,
   seed <span class='op'>=</span> <span class='cn'>NULL</span>,
   n_samples <span class='op'>=</span> <span class='fl'>10000</span>
 <span class='op'>)</span></pre>
@@ -191,25 +171,12 @@ model averaging. Defaults to <code>1</code>.</p></td>
       <td><p>number of samples to be drawn for the model-averaged
 posterior distribution</p></td>
     </tr>
-    <tr>
-      <th>fits</th>
-      <td><p>list with either runjags or rstan fitted models</p></td>
-    </tr>
-    <tr>
-      <th>priors</th>
-      <td><p>list of prior distributions for the model-averaged
-parameter for each passed fit</p></td>
-    </tr>
-    <tr>
-      <th>parameter</th>
-      <td><p>name of the parameter to be model-averaged</p></td>
-    </tr>
-    <tr>
-      <th>post_probs</th>
-      <td><p>vector of posterior probabilities for each fit</p></td>
-    </tr>
     </table>
 
+    <h2 class="hasAnchor" id="value"><a class="anchor" href="#value"></a>Value</h2>
+
+    <p><code>mix_posteriors</code> returns a named list of mixed posterior
+distributions (either a vector of matrix).</p>
     <h2 class="hasAnchor" id="see-also"><a class="anchor" href="#see-also"></a>See also</h2>
 
     <div class='dont-index'><p><a href='ensemble_inference.html'>ensemble_inference</a> <a href='BayesTools_ensemble_tables.html'>BayesTools_ensemble_tables</a></p></div>

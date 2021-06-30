@@ -14,9 +14,7 @@
 <script src="pkgdown.js"></script><meta property="og:title" content="Tools for Bayesian Analyses">
 <meta property="og:description" content="Provides tools for conducting Bayesian analyses. The package contains 
     functions for creating a wide range of prior distribution objects, mixing posterior 
-    samples from JAGS and Stan models, plotting posterior distributions, and etc...
-    The tools for working with prior distribution span from visualization, generating JAGS 
-    and bridgesampling syntax to basic functions such as rng, quantile, and distribution functions. ">
+    samples from JAGS and Stan models, plotting posterior distributions, and etc...">
 <!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js" integrity="sha256-nvJJv9wWKEm88qvoQl9ekL2J+k/RWIsaSScxxlsrv8k=" crossorigin="anonymous"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/config/TeX-AMS-MML_HTMLorMML.js" integrity="sha256-84DKXVJXs0/F8OTMzX4UR909+jtl4G7SPypPavF+GfA=" crossorigin="anonymous"></script><!--[if lt IE 9]>
 <script src="https://oss.maxcdn.com/html5shiv/3.7.3/html5shiv.min.js"></script>
 <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
@@ -135,14 +133,15 @@
 <p>All priors also contain some basic S3 methods.</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span class="co"># S3 methods</span>
+<span class="fu"><a href="https://rdrr.io/r/base/Random.html">set.seed</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span>
 <span class="fu"><a href="reference/prior_functions_methods.html">rng</a></span><span class="op">(</span><span class="va">p0</span>, <span class="fl">10</span><span class="op">)</span>
 <span class="co">#&gt;  [1] 0 0 0 0 0 0 0 0 0 0</span>
 <span class="fu"><a href="reference/prior_functions_methods.html">rng</a></span><span class="op">(</span><span class="va">p1</span>, <span class="fl">10</span><span class="op">)</span>
-<span class="co">#&gt;  [1]  1.02699572 -0.73820666  0.07436014 -0.02770086 -0.14089681  1.02966330</span>
-<span class="co">#&gt;  [7] -0.68667265 -0.14574682  0.02461917  0.19182737</span>
+<span class="co">#&gt;  [1] -0.6264538  0.1836433 -0.8356286  1.5952808  0.3295078 -0.8204684</span>
+<span class="co">#&gt;  [7]  0.4874291  0.7383247  0.5757814 -0.3053884</span>
 <span class="fu"><a href="reference/prior_functions_methods.html">rng</a></span><span class="op">(</span><span class="va">p2</span>, <span class="fl">10</span><span class="op">)</span>
-<span class="co">#&gt;  [1] 1.4366299 1.4879276 0.1887744 0.3369953 0.7749108 0.1611865 0.1596650</span>
-<span class="co">#&gt;  [8] 0.6664159 0.1904750 1.3669017</span>
+<span class="co">#&gt;  [1] 0.38984324 1.12493092 0.94383621 0.82122120 0.59390132 0.91897737</span>
+<span class="co">#&gt;  [7] 0.78213630 0.07456498 0.61982575 0.41794156</span>
 
 <span class="fu"><a href="reference/prior_functions_methods.html">pdf</a></span><span class="op">(</span><span class="va">p0</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">1</span>, <span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span>
 <span class="co">#&gt; [1]   0 Inf   0</span>
@@ -360,8 +359,9 @@
   <div class="dev-status">
 <h2>Dev status</h2>
 <ul class="list-unstyled">
-<li><a href="https://codecov.io/gh/FBartos/BayesTools?branch=master"><img src="https://codecov.io/gh/FBartos/BayesTools/branch/master/graph/badge.svg" alt="Codecov test coverage"></a></li>
 <li><a href="https://github.com/FBartos/BayesTools/actions"><img src="https://github.com/FBartos/BayesTools/workflows/R-CMD-check/badge.svg" alt="R-CMD-check"></a></li>
+<li><a href="https://codecov.io/gh/FBartos/BayesTools?branch=master"><img src="https://codecov.io/gh/FBartos/BayesTools/branch/master/graph/badge.svg" alt="Codecov test coverage"></a></li>
+<li><a href="https://cran.r-project.org/package=BayesTools"><img src="https://www.r-pkg.org/badges/version/BayesTools" alt="CRAN_Status_Badge"></a></li>
 </ul>
 </div>
 </div>
