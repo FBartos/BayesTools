@@ -6,7 +6,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>Creates generic for pdf function — prior_functions_methods • BayesTools</title>
+<title>Creates generics for common statistical functions — prior_functions_methods • BayesTools</title>
 
 
 <!-- jquery -->
@@ -39,8 +39,12 @@
 
 
 
-<meta property="og:title" content="Creates generic for pdf function — prior_functions_methods" />
-<meta property="og:description" content="Creates generic for pdf function" />
+<meta property="og:title" content="Creates generics for common statistical functions — prior_functions_methods" />
+<meta property="og:description" content="Density (pdf / lpdf), distribution
+function (cdf / ccdf), quantile function (quant),
+random generation (rng), mean, standard deviation (sd),
+and marginal variants of the functions (mpdf, mlpf, mcdf,
+mccdf, mquant)." />
 
 
 
@@ -72,7 +76,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="Released version">0.0.0.9010</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="Released version">0.1.0</span>
       </span>
     </div>
 
@@ -111,13 +115,17 @@
 <div class="row">
   <div class="col-md-9 contents">
     <div class="page-header">
-    <h1>Creates generic for pdf function</h1>
+    <h1>Creates generics for common statistical functions</h1>
     <small class="dont-index">Source: <a href='https://github.com/FBartos/BayesTools/blob/master/R/priors.R'><code>R/priors.R</code></a></small>
     <div class="hidden name"><code>prior_functions_methods.Rd</code></div>
     </div>
 
     <div class="ref-description">
-    <p>Creates generic for pdf function</p>
+    <p>Density (pdf / lpdf), distribution
+function (cdf / ccdf), quantile function (quant),
+random generation (rng), mean, standard deviation (sd),
+and marginal variants of the functions (mpdf, mlpf, mcdf,
+mccdf, mquant).</p>
     </div>
 
     <pre class="usage"><span class='fu'>rng</span><span class='op'>(</span><span class='va'>x</span>, <span class='va'>...</span><span class='op'>)</span>
@@ -155,6 +163,15 @@
     </tr>
     </table>
 
+    <h2 class="hasAnchor" id="value"><a class="anchor" href="#value"></a>Value</h2>
+
+    <p><code>pdf</code> (<code>mpdf</code>) and <code>lpdf</code> (<code>mlpdf</code>) give
+the (marginal) density and the log of (marginal) density,
+<code>cdf</code> (<code>mcdf</code>) and <code>ccdf</code> (<code>mccdf</code>) give the
+(marginal) distribution and the complement of (marginal) distribution function,
+<code>quant</code> (<code>mquant</code>) give the (marginal) quantile function,
+and <code>rng</code> generates random deviates for an object of class 'prior'.</p>
+<p>The <code>pdf</code> function proceeds to PDF graphics device if <code>x</code> is a character.</p>
 
   </div>
   <div class="col-md-3 hidden-xs hidden-sm" id="pkgdown-sidebar">
