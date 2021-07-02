@@ -13,7 +13,7 @@
 \alias{mquant}
 \alias{mlpdf}
 \alias{mpdf}
-\title{Creates generic for pdf function}
+\title{Creates generics for common statistical functions}
 \usage{
 rng(x, ...)
 
@@ -42,6 +42,20 @@ mpdf(x, ...)
 
 \item{...}{unused arguments}
 }
+\value{
+\code{pdf} (\code{mpdf}) and \code{lpdf} (\code{mlpdf}) give
+the (marginal) density and the log of (marginal) density,
+\code{cdf} (\code{mcdf}) and \code{ccdf} (\code{mccdf}) give the
+(marginal) distribution and the complement of (marginal) distribution function,
+\code{quant} (\code{mquant}) give the (marginal) quantile function,
+and \code{rng} generates random deviates for an object of class 'prior'.
+
+The \code{pdf} function proceeds to PDF graphics device if \code{x} is a character.
+}
 \description{
-Creates generic for pdf function
+Density (pdf / lpdf), distribution
+function (cdf / ccdf), quantile function (quant),
+random generation (rng), mean, standard deviation (sd),
+and marginal variants of the functions (mpdf, mlpf, mcdf,
+mccdf, mquant).
 }

@@ -2,5 +2,6 @@
 .Rhistory
 .RData
 .Ruserdata
-do-not-share/
+do-not-share
 docs
+BayesTools.Rcheck

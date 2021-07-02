@@ -107,6 +107,8 @@ test_that("prior plot functions (simple) work", {
     p3 = prior("spike", list(.5))
   )
   expect_doppelganger("model-averaging-plot-prior-simple-7", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_prior_list(prior_list)
   })
@@ -116,6 +118,8 @@ test_that("prior plot functions (simple) work", {
 
   # with additional settings
   expect_doppelganger("model-averaging-plot-prior-simple-9", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_prior_list(prior_list, xlab = "xlab", ylab = "ylab", ylab2 = "ylab2", main = "main")
   })
@@ -131,6 +135,8 @@ test_that("prior plot functions (simple) work", {
     p4 = prior("spike", list(-5))
   )
   expect_doppelganger("model-averaging-plot-prior-simple-11", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_prior_list(prior_list)
   })
@@ -146,6 +152,8 @@ test_that("prior plot functions (simple) work", {
     p4 = prior("spike", list(.5))
   )
   expect_doppelganger("model-averaging-plot-prior-simple-13", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_prior_list(prior_list, lwd = 2)
     lines_prior_list(prior_list, lty = 2, col = "red", lwd = 2)
@@ -374,6 +382,8 @@ test_that("posterior plot functions (simple) work", {
 
 
   expect_doppelganger("model-averaging-plot-posterior-simple-1", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors, "m", lwd = 2, col = "red", par_name = bquote(mu))
     lines_prior_list(attr(mixed_posteriors$m, "prior_list"), col = "blue")
@@ -399,6 +409,8 @@ test_that("posterior plot functions (simple) work", {
 
   # prior and posterior
   expect_doppelganger("model-averaging-plot-posterior-simple-6", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors, "m", lwd = 2, col = "red", prior = TRUE, dots_prior = list(col = "blue", lty = 2))
   })

@@ -62,6 +62,8 @@ test_that("JAGS model functions work (weightfunctions)", {
 
     expect_doppelganger(paste0("JAGS-model-weightfunction-",i), function(){
       densities <- density(priors[[i]], individual = TRUE)
+      oldpar <- graphics::par(no.readonly = TRUE)
+      on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
       par(mfrow = c(1, length(densities)))
       for(j in seq_along(densities)){
         hist(samples[,paste0("omega[",j,"]")], breaks = 50, freq = FALSE)
@@ -97,6 +99,8 @@ test_that("JAGS fit function works" , {
   expect_true(all(sapply(fit$mcmc, function(mcmc)dim(mcmc) == c(4000, 2))))
   expect_doppelganger("JAGS-fit-posterior", function(){
     samples <- do.call(rbind, fit$mcmc)
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 2))
     for(i in seq_along(priors_list)){
       hist(samples[,i], breaks = 50, freq = FALSE)

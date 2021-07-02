@@ -11,6 +11,11 @@ var(x, ...)
 
 \item{...}{additional arguments}
 }
+\value{
+\code{var} returns a variance
+of the supplied object (if it is either a numeric vector
+or an object of class 'prior').
+}
 \description{
 Creates generic for var function
 }

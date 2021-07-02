@@ -312,6 +312,9 @@ posterior distributions.
 
 ``` r
 ### plotting
+oldpar <- graphics::par(no.readonly = TRUE)
+on.exit(graphics::par(mar = oldpar[["mar"]]))
+
 # plot model-average posteriors
 par(mar = c(4, 4, 1, 4))
 plot_posterior(mixed_posteriors, parameter = "mu")

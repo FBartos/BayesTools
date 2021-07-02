@@ -44,6 +44,8 @@ test_that("JAGS model-averaging functions work (simple)",{
   expect_equal(mean(attr(mixed_posterior, "models_ind") == 1), inference_m$post_probs[1], tolerance = 1e-4)
 
   expect_doppelganger("JAGS-model-averaging-1", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 2))
     hist(mixed_posterior, main = "model-averaged")
     hist(mixed_posterior_conditional, main = "conditional")

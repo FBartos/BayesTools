@@ -72,6 +72,8 @@ test_that("Prior plot (weightfunction) function works", {
   expect_doppelganger("priors-plot-8-5", plot(p7, plot_type = "ggplot"))
   expect_doppelganger("priors-plot-8-6", function()plot(p7, individual =  T))
   expect_doppelganger("priors-plot-8-7", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 2))
     plot(p7, individual =  T, show_figures = NULL)
   })

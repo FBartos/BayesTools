@@ -11,6 +11,11 @@ sd(x, ...)
 
 \item{...}{additional arguments}
 }
+\value{
+\code{sd} returns a standard deviation
+of the supplied object (if it is either a numeric vector
+or an object of class 'prior').
+}
 \description{
 Creates generic for sd function
 }

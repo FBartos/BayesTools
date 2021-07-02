@@ -44,10 +44,12 @@ test_that("Prior print function works", {
 
   # check plot names
   empty_plot <- function(){
-    par(mar = c(0, 0, 0, 0))
     plot(NULL, xlim = c(0, 1), ylim = c(0, 1), axes = FALSE, ann = FALSE)
   }
   expect_doppelganger("priors-print-1", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(0, 0, 0, 0))
     empty_plot()
     text(0.5, 1,   print(p1, plot = TRUE))
     text(0.5, 0.9, print(p1, short_name = TRUE, plot = TRUE))
@@ -62,6 +64,9 @@ test_that("Prior print function works", {
   })
 
   expect_doppelganger("priors-print-2", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(0, 0, 0, 0))
     empty_plot()
     text(0.5, 1,   print(p5,  plot = TRUE))
     text(0.5, 0.9, print(p6,  plot = TRUE))

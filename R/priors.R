@@ -1088,10 +1088,25 @@ mquant.prior <- function(x, p, ...){
 }
 
 ### create generic method
-#' @title Creates generic for pdf function
+#' @title Creates generics for common statistical functions
+#'
+#' @description Density (pdf / lpdf), distribution
+#' function (cdf / ccdf), quantile function (quant),
+#' random generation (rng), mean, standard deviation (sd),
+#' and marginal variants of the functions (mpdf, mlpf, mcdf,
+#' mccdf, mquant).
 #'
 #' @param x main argument
 #' @param ... unused arguments
+#'
+#' @return \code{pdf} (\code{mpdf}) and \code{lpdf} (\code{mlpdf}) give
+#' the (marginal) density and the log of (marginal) density,
+#' \code{cdf} (\code{mcdf}) and \code{ccdf} (\code{mccdf}) give the
+#' (marginal) distribution and the complement of (marginal) distribution function,
+#' \code{quant} (\code{mquant}) give the (marginal) quantile function,
+#' and \code{rng} generates random deviates for an object of class 'prior'.
+#'
+#' The \code{pdf} function proceeds to PDF graphics device if \code{x} is a character.
 #'
 #' @export rng
 #' @export cdf
@@ -1241,6 +1256,10 @@ mean.prior   <- function(x, ...){
 #' @param x main argument
 #' @param ... additional arguments
 #'
+#' @return \code{sd} returns a standard deviation
+#' of the supplied object (if it is either a numeric vector
+#' or an object of class 'prior').
+#'
 #' @seealso \link[stats]{sd}
 #' @export
 sd  <- function(x, ...){
@@ -1251,6 +1270,10 @@ sd  <- function(x, ...){
 #'
 #' @param x main argument
 #' @param ... additional arguments
+#'
+#' @return \code{var} returns a variance
+#' of the supplied object (if it is either a numeric vector
+#' or an object of class 'prior').
 #'
 #' @seealso \link[stats]{cor}
 #' @export

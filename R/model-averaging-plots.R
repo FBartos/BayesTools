@@ -1171,6 +1171,9 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 #' @inheritParams plot.prior
 #' @inheritParams plot_posterior
 #'
+#' @return \code{plot_models} returns either \code{NULL} or
+#' an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
+#'
 #' @seealso [prior()] [lines_prior_list()]  [geom_prior_list()]
 #' @export
 plot_models <- function(model_list, samples, inference, parameter, plot_type = "base", prior = FALSE, condtional = FALSE,

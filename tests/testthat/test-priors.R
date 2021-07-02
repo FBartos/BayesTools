@@ -37,6 +37,8 @@ test_weightfunction <- function(prior, skip_moments = FALSE){
     quantiles <- mquant(prior, 0.5)
   }
 
+  oldpar <- graphics::par(no.readonly = TRUE)
+  on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
   par(mfcol = c(1, ncol(samples)-1))
 
   for(i in 1:(ncol(samples)-1)){
