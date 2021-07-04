@@ -124,7 +124,11 @@ models_inference   <- function(model_list){
   prior_weights  <- sapply(model_list, function(model)model[["prior_weights"]])
   prior_probs <- prior_weights / sum(prior_weights)
   post_probs  <- unname(bridgesampling::post_prob(margliks, prior_prob = prior_probs))
-  incl_BF     <- sapply(seq_along(model_list), function(i) (post_probs[i] / (1 - post_probs[i])) / (prior_probs[i] / (1 - prior_probs[i])))
+  incl_BF     <- sapply(seq_along(model_list), function(i){
+    is_null <- rep(TRUE, length(model_list))
+    is_null[i] <- FALSE
+    return(inclusion_BF(prior_probs, post_probs, is_null))
+  })
 
   for(i in seq_along(model_list)){
     model_list[[i]][["inference"]] <- list(
