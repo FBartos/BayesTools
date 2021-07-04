@@ -1243,14 +1243,14 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
       order[[2]],
       "model"       = prior_data[order(prior_data$model,      decreasing = order[[1]] == "decreasing"),],
       "estimate"    = prior_data[order(prior_data$y,          decreasing = order[[1]] == "decreasing"),],
-      "probability" = prior_data[order(prior_data$post_probs, decreasing = order[[1]] == "decreasing"),],
+      "probability" = prior_data[order(prior_data$post_prob,  decreasing = order[[1]] == "decreasing"),],
       "BF"          = prior_data[order(prior_data$BF,         decreasing = order[[1]] == "decreasing"),]
     )
     posterior_data <- switch(
       order[[2]],
       "model"       = posterior_data[order(posterior_data$model,      decreasing = order[[1]] == "decreasing"),],
       "estimate"    = posterior_data[order(posterior_data$y,          decreasing = order[[1]] == "decreasing"),],
-      "probability" = posterior_data[order(posterior_data$post_probs, decreasing = order[[1]] == "decreasing"),],
+      "probability" = posterior_data[order(posterior_data$post_prob,  decreasing = order[[1]] == "decreasing"),],
       "BF"          = posterior_data[order(posterior_data$BF,         decreasing = order[[1]] == "decreasing"),]
     )
   }
