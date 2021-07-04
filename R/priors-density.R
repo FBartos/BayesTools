@@ -59,7 +59,7 @@ density.prior <- function(x,
   .check_prior(x, "x")
   check_real(x_seq, "x_seq", check_length = 0, allow_NULL = TRUE)
   check_real(x_range, "x_range", check_length = 2, allow_NULL = TRUE)
-  if(!is.null(x_range) && x_range[1] >= x_range[2])
+  if(!is.null(x_range) && x_range[1] > x_range[2])
     stop("The lower range limit must be lower than the upper range limit.")
   check_real(x_range_quant, "x_range_quant", lower = 0, upper = 1, allow_NULL = TRUE)
   check_int(n_points, "n_points",  lower = 2)
