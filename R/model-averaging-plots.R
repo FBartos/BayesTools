@@ -1057,7 +1057,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     if(!all(attr(samples[["PET"]], "models_ind") == attr(samples[["PEESE"]], "models_ind")))
       stop("non-matching dimensions")
     samples <- cbind(samples[["mu"]], samples[["PET"]], samples[["PEESE"]])
-  }else if(!is.null(samples[["PET"]])){
+  }else if(is.null(samples[["PET"]])){
     samples <- cbind(samples[["mu"]], rep(0, length(samples[["PEESE"]])), samples[["PEESE"]])
   }else if(is.null(samples[["PEESE"]])){
     samples <- cbind(samples[["mu"]], samples[["PET"]], rep(0, length(samples[["PET"]])))
