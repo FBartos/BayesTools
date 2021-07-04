@@ -276,6 +276,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
         colnames(model_samples) <- fits[[i]]$monitor
       }
     }else if(inherits(fits[[i]], "rstan")){
+      if(!try(requireNamespace("rstan")))
+        stop("rstan package needs to be installed. Run 'install.packages('rstan')'")
       model_samples <- rstan::extract(fits[[i]])
       par_names     <- names(model_samples)
       par_dims      <- sapply(model_samples, function(s)if(is.matrix(s)) ncol(s) else 1)
@@ -359,6 +361,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
         colnames(model_samples) <- fits[[i]]$monitor
       }
     }else if(inherits(fits[[i]], "rstan")){
+      if(!try(requireNamespace("rstan")))
+        stop("rstan package needs to be installed. Run 'install.packages('rstan')'")
       model_samples <- rstan::extract(fits[[i]])
       par_names     <- names(model_samples)
       par_dims      <- sapply(model_samples, function(s)if(is.matrix(s)) ncol(s) else 1)

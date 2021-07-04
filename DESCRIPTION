@@ -26,12 +26,12 @@ Imports:
     runjags,
     coda,
     bridgesampling,
-    parallel,
-    rstan
+    parallel
 Suggests: 
     ggplot2,
     scales,
     testthat,
     vdiffr,
     covr,
-    rjags
+    rjags,
+    rstan
