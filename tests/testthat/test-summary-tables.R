@@ -56,33 +56,45 @@ test_that("Summary tables functions work",{
   runjags_summary <- models[[2]]$fit_summary
   expect_equal(colnames(runjags_summary), c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
   expect_equal(rownames(runjags_summary), c("m", "omega[0,0.05]", "omega[0.05,1]"))
-  expect_equal(round(unname(unlist(runjags_summary[1,])), 4), round(c(0.155080816, 0.197817354, -0.247495448, 0.167295089, 0.496803251, 0.009208408, 0.047000000, 461.000000000, NA), 4))
+  expect_equal(unname(unlist(runjags_summary[1,])), c(0.155080816, 0.197817354, -0.247495448, 0.167295089, 0.496803251, 0.009208408, 0.047000000, 461.000000000, NA), tolerance = 1e-4)
 
   # ensemble estimates
   estimates_table <- ensemble_estimates_table(mixed_posteriors, parameters = c("m", "omega"), probs = c(.025, 0.95))
   expect_equal(colnames(estimates_table), c("Mean", "Median", "0.025",  "0.95"))
   expect_equal(rownames(estimates_table), c("m", "omega[0,0.05]", "omega[0.05,0.5]", "omega[0.5,1]"))
-  expect_equal(round(unname(unlist(estimates_table[1,])), 4), round(c(0.1522389, 0.1519897, -0.2204951, 0.4610624), 4))
-  expect_equal(round(unname(unlist(estimates_table[3,])), 4), round(c(0.6794735, 0.7447313,  0.0643561, 1.0000000), 4))
+  expect_equal(unname(unlist(estimates_table[1,])), c(0.1522389, 0.1519897, -0.2204951, 0.4610624), tolerance = 1e-4)
+  expect_equal(unname(unlist(estimates_table[3,])), c(0.6794735, 0.7447313,  0.0643561, 1.0000000), tolerance = 1e-4)
 
   # ensemble inference
   inference_table <- ensemble_inference_table(inference, names(inference))
   expect_equal(colnames(inference_table), c("models", "prior_prob", "post_prob", "BF"))
   expect_equal(rownames(inference_table), c("m", "omega"))
   expect_equal(unname(unlist(inference_table[1,])), c(3,   1,   1, Inf))
-  expect_equal(round(unname(unlist(inference_table[2,])), 4), round(c(2.0000000, 0.6666667, 0.8001882, 2.0023549), 4))
+  expect_equal(unname(unlist(inference_table[2,])), c(2.0000000, 0.6666667, 0.8001882, 2.0023549), tolerance = 1e-4)
 
   # ensemble summary
   summary_table <- ensemble_summary_table(models, c("m", "omega"))
   expect_equal(colnames(summary_table), c("Model", "m", "omega", "prior_prob", "marglik", "post_prob", "BF"))
-  expect_equal(unname(unlist(summary_table[1,])), c("1", "Normal(0, 1)", "", "0.333333333333333", "-1.10230423916272", "0.199811784123417", "0.49941196373288"))
-  expect_equal(unname(unlist(summary_table[2,])), c("2", "Normal(0, 0.5)", "omega[one-sided: .05] ~ CumDirichlet(1, 1)", "0.333333333333333", "-0.614989663490358", "0.32528132384813", "0.96419836991414"))
+  expect_equal(unname(unlist(summary_table[,1])), c(1, 2, 3))
+  expect_equal(unname(unlist(summary_table[,2])), c("Normal(0, 1)", "Normal(0, 0.5)", "Normal(0, 0.3)"))
+  expect_equal(unname(unlist(summary_table[,3])), c("", "omega[one-sided: .05] ~ CumDirichlet(1, 1)", "omega[one-sided: .5, .05] ~ CumDirichlet(1, 1, 1)"))
+  expect_equal(unname(unlist(summary_table[,4])), c(0.3333333, 0.3333333, 0.3333333),    tolerance = 1e-4)
+  expect_equal(unname(unlist(summary_table[,5])), c(-1.1023042, -0.6149897, -0.2365613), tolerance = 1e-4)
+  expect_equal(unname(unlist(summary_table[,6])), c(0.1998118, 0.3252813, 0.4749069),    tolerance = 1e-4)
+  expect_equal(unname(unlist(summary_table[,7])), c(0.4994120, 0.9641984, 1.8088483),    tolerance = 1e-4)
 
   # ensemble diagnostics
   diagnostics_table <- ensemble_diagnostics_table(models, c("m", "omega"))
   expect_equal(colnames(diagnostics_table), c("Model", "m", "omega", "max_MCMC_error", "max_MCMC_SD_error", "min_ESS", "max_R_hat"))
-  expect_equal(unname(unlist(diagnostics_table[1,])), c("1", "Normal(0, 1)", "", "0.0101903900487724", "0.048", "434", NA))
-  expect_equal(unname(unlist(diagnostics_table[2,])), c("2", "Normal(0, 0.5)", "omega[one-sided: .05] ~ CumDirichlet(1, 1)", "0.0134821149740382", "0.047", "461", NA))
+
+  expect_equal(unname(unlist(diagnostics_table[,1])), c(1, 2, 3))
+  expect_equal(unname(unlist(diagnostics_table[,2])), c("Normal(0, 1)", "Normal(0, 0.5)", "Normal(0, 0.3)"))
+  expect_equal(unname(unlist(diagnostics_table[,3])), c("", "omega[one-sided: .05] ~ CumDirichlet(1, 1)", "omega[one-sided: .5, .05] ~ CumDirichlet(1, 1, 1)"))
+  expect_equal(unname(unlist(diagnostics_table[,4])), c(0.01019039, 0.01348211, 0.01061287), tolerance = 1e-4)
+  expect_equal(unname(unlist(diagnostics_table[,5])), c(0.048, 0.047, 0.045), tolerance = 1e-3)
+  expect_equal(unname(unlist(diagnostics_table[,6])), c(434, 461, 500))
+  expect_equal(unname(unlist(diagnostics_table[,7])), c(NA, NA, NA))
+
 
   ### test additional settings
   # transformations
@@ -99,10 +111,45 @@ test_that("Summary tables functions work",{
 
 
   ### test print functions
-  expect_equal(capture_output(model_summary, print = TRUE, width = 150), "                                                                            \n Model              2                          Parameter prior distributions\n Prior prob.    0.333                                 m ~ Normal(0, 0.5)    \n log(marglik)   -0.61             omega[one-sided: .05] ~ CumDirichlet(1, 1)\n Post. prob.    0.325                                                       \n Inclusion BF   0.964                                                       ")
-  expect_equal(capture_output(runjags_summary, print = TRUE, width = 150), "               Mean    SD    lCI Median   uCI error(MCMC) SD/error(MCMC) ESS R-hat\nm             0.155 0.198 -0.247  0.167 0.497     0.00921          0.047 461    NA\nomega[0,0.05] 1.000 0.000  1.000  1.000 1.000          NA             NA  NA    NA\nomega[0.05,1] 0.509 0.301  0.028  0.508 0.983     0.01348          0.045 500    NA")
-  expect_equal(capture_output(estimates_table, print = TRUE, width = 150), "                 Mean Median  0.025  0.95\nm               0.152  0.152 -0.220 0.461\nomega[0,0.05]   1.000  1.000  1.000 1.000\nomega[0.05,0.5] 0.679  0.745  0.064 1.000\nomega[0.5,1]    0.529  0.483  0.023 1.000")
-  expect_equal(capture_output(inference_table, print = TRUE, width = 150), "      Models Prior prob. Post. prob. Inclusion BF\nm        3/3       1.000       1.000          Inf\nomega    2/3       0.667       0.800        2.002")
-  expect_equal(capture_output(summary_table, print = TRUE, width = 150), " Model     Prior m                        Prior omega                    Prior prob. log(marglik) Post. prob. Inclusion BF\n     1    Normal(0, 1)                                                         0.333        -1.10       0.200        0.499\n     2  Normal(0, 0.5)     omega[one-sided: .05] ~ CumDirichlet(1, 1)          0.333        -0.61       0.325        0.964\n     3  Normal(0, 0.3) omega[one-sided: .5, .05] ~ CumDirichlet(1, 1, 1)       0.333        -0.24       0.475        1.809")
-  expect_equal(capture_output(diagnostics_table, print = TRUE, width = 150), " Model     Prior m                        Prior omega                    max[error(MCMC)] max[SD/error(MCMC)] min(ESS) max(R-hat)\n     1    Normal(0, 1)                                                            0.01019               0.048      434         NA\n     2  Normal(0, 0.5)     omega[one-sided: .05] ~ CumDirichlet(1, 1)             0.01348               0.047      461         NA\n     3  Normal(0, 0.3) omega[one-sided: .5, .05] ~ CumDirichlet(1, 1, 1)          0.01061               0.045      500         NA")
+  expect_equal(capture_output_lines(model_summary, print = TRUE, width = 150),
+               c("                                                                            ",
+                 " Model              2                          Parameter prior distributions",
+                 " Prior prob.    0.333                                 m ~ Normal(0, 0.5)    ",
+                 " log(marglik)   -0.61             omega[one-sided: .05] ~ CumDirichlet(1, 1)",
+                 " Post. prob.    0.325                                                       ",
+                 " Inclusion BF   0.964                                                       "
+               ))
+  expect_equal(capture_output_lines(runjags_summary,   print = TRUE, width = 150),
+               c("               Mean    SD    lCI Median   uCI error(MCMC) SD/error(MCMC) ESS R-hat",
+                 "m             0.155 0.198 -0.247  0.167 0.497     0.00921          0.047 461    NA",
+                 "omega[0,0.05] 1.000 0.000  1.000  1.000 1.000          NA             NA  NA    NA",
+                 "omega[0.05,1] 0.509 0.301  0.028  0.508 0.983     0.01348          0.045 500    NA"
+
+               ))
+  expect_equal(capture_output_lines(estimates_table,   print = TRUE, width = 150),
+               c("                 Mean Median  0.025  0.95",
+                 "m               0.152  0.152 -0.220 0.461",
+                 "omega[0,0.05]   1.000  1.000  1.000 1.000",
+                 "omega[0.05,0.5] 0.679  0.745  0.064 1.000",
+                 "omega[0.5,1]    0.529  0.483  0.023 1.000"
+
+               ))
+  expect_equal(capture_output_lines(inference_table,   print = TRUE, width = 150),
+               c("      Models Prior prob. Post. prob. Inclusion BF",
+                 "m        3/3       1.000       1.000          Inf",
+                 "omega    2/3       0.667       0.800        2.002"
+
+               ))
+  expect_equal(capture_output_lines(summary_table,     print = TRUE, width = 150),
+               c(" Model     Prior m                        Prior omega                    Prior prob. log(marglik) Post. prob. Inclusion BF",
+                 "     1    Normal(0, 1)                                                         0.333        -1.10       0.200        0.499",
+                 "     2  Normal(0, 0.5)     omega[one-sided: .05] ~ CumDirichlet(1, 1)          0.333        -0.61       0.325        0.964",
+                 "     3  Normal(0, 0.3) omega[one-sided: .5, .05] ~ CumDirichlet(1, 1, 1)       0.333        -0.24       0.475        1.809"
+               ))
+  expect_equal(capture_output_lines(diagnostics_table, print = TRUE, width = 150),
+               c(" Model     Prior m                        Prior omega                    max[error(MCMC)] max[SD/error(MCMC)] min(ESS) max(R-hat)",
+                 "     1    Normal(0, 1)                                                            0.01019               0.048      434         NA",
+                 "     2  Normal(0, 0.5)     omega[one-sided: .05] ~ CumDirichlet(1, 1)             0.01348               0.047      461         NA",
+                 "     3  Normal(0, 0.3) omega[one-sided: .5, .05] ~ CumDirichlet(1, 1, 1)          0.01061               0.045      500         NA"
+               ))
 })
