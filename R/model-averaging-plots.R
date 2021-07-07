@@ -937,17 +937,11 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   # deal with spikes
   if(any(sapply(prior_list, is.prior.point))){
 
-    priors_point_map <- cbind(
-      sapply(prior_list[sapply(prior_list, is.prior.point)], function(p)p$parameters[["location"]]),
-      which(sapply(prior_list, is.prior.point))
-    )
+    # aggregate samples across spikes
+    spikes_simplified <- .simplify_spike_samples(samples, prior_list)
 
-    # this should hopefully prevent computer precision issues
-    samples_points <- priors_point_map[,1][attr(samples, "models_ind")[attr(samples, "models_ind") %in% priors_point_map[,2]]]
-    points_table   <- table(samples_points) / length(samples)
-
-    x_points <- as.numeric(names(points_table))
-    y_points <- as.numeric(points_table)
+    x_points <- spikes_simplified[,"location"]
+    y_points <- spikes_simplified[,"probability"]
 
     # apply transformations
     if(!is.null(transformation)){
@@ -1454,4 +1448,38 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
   }else if(plot_type == "ggplot"){
     return(plot)
   }
+}
+
+
+.simplify_spike_samples <- function(samples, prior_list){
+
+  # aggregate for each spike
+  priors_point_map <- data.frame(do.call(rbind, lapply(seq_along(prior_list), function(i) {
+    if(is.prior.point(prior_list[[i]])){
+      c("location" = prior_list[[i]]$parameters[["location"]], "frequency" = sum(attr(samples, "models_ind") == i))
+    }
+  })))
+
+
+  # return the input with fewer than 2 inputs
+  if(nrow(priors_point_map) < 2){
+    spike_probability = data.frame(cbind(
+      "location"    = priors_point_map[, "location"],
+      "probability" = priors_point_map[, "frequency"] / length(samples)))
+    return(spike_probability)
+  }
+
+  # find unique spikes
+  unique_map <- cbind("location" = unique(priors_point_map[, "location"]), "frequency" = 0)
+
+  # collect them
+  for(i in 1:nrow(unique_map)){
+    unique_map[i, "frequency"] <- sum(priors_point_map[sapply(priors_point_map[, "location"], function(l) isTRUE(all.equal(l, unname(unique_map[i, "location"])))), "frequency"])
+  }
+
+  spike_probability = data.frame(cbind(
+    "location"    = unique_map[, "location"],
+    "probability" = unique_map[, "frequency"] / length(samples)))
+
+  return(spike_probability)
 }
