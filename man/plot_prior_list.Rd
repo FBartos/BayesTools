@@ -26,8 +26,7 @@ plot_prior_list(
 \item{prior_list}{list of prior distributions}
 
 \item{plot_type}{whether to use a base plot \code{"base"}
-or ggplot2 \code{"ggplot2"} for plotting. The later
-requires \pkg{ggplot2} package to be installed.}
+or ggplot2 \code{"ggplot"} for plotting.}
 
 \item{x_seq}{sequence of x coordinates}
 

@@ -31,8 +31,7 @@ and \code{"weightfunction"} for plotting a weightfunction with
 parameters \code{"omega"}.}
 
 \item{plot_type}{whether to use a base plot \code{"base"}
-or ggplot2 \code{"ggplot2"} for plotting. The later
-requires \pkg{ggplot2} package to be installed.}
+or ggplot2 \code{"ggplot"} for plotting.}
 
 \item{prior}{whether prior distribution should be added to the figure}
 

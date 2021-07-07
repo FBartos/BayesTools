@@ -2,7 +2,7 @@ context("JAGS marginal likelihood functions")
 
 test_that("JAGS model functions work (simple)", {
 
-
+  skip_if_not_installed("rjags")
   all_priors  <- list(
     p1  = prior("normal", list(0, 1)),
     p2  = prior("normal", list(0, 1), list(1, Inf)),
@@ -39,7 +39,7 @@ test_that("JAGS model functions work (simple)", {
 
 test_that("JAGS model functions work (weightfunctions)", {
 
-
+  skip_if_not_installed("rjags")
   all_priors  <- list(
     prior_weightfunction("one.sided", list(c(.05), c(1, 1))),
     prior_weightfunction("one.sided", list(c(.05, 0.10), c(1, 2, 3))),
@@ -68,6 +68,7 @@ test_that("JAGS model functions work (weightfunctions)", {
 
 test_that("JAGS model functions work (complex scenario)", {
 
+  skip_if_not_installed("rjags")
   # tests different model estimation techniques and passing additional arguments
   set.seed(1)
   data <- list(

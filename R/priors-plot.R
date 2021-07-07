@@ -2,8 +2,7 @@
 #'
 #' @param x a prior
 #' @param plot_type whether to use a base plot \code{"base"}
-#' or ggplot2 \code{"ggplot2"} for plotting. The later
-#' requires \pkg{ggplot2} package to be installed.
+#' or ggplot2 \code{"ggplot"} for plotting.
 #' @param xlim x plotting range
 #' @param par_name a type of parameter for which the prior is
 #' specified. Only relevant if the prior corresponds to a mu
@@ -51,11 +50,7 @@ plot.prior <- function(x, plot_type = "base",
 
   # check input (most arguments are checked within density)
   .check_prior(x)
-  check_char(plot_type, "plot_type")
-  if(!plot_type %in% c("base", "ggplot"))
-    stop("The passed 'plot_type' is not supported for plotting. See '?plot.RoBMA' for more details.")
-  if(plot_type == "ggplot" && !try(requireNamespace("ggplot2")))
-    stop("ggplot2 package needs to be installed. Run 'install.packages('ggplot2')'")
+  check_char(plot_type, "plot_type", allow_values = c("base", "ggplot"))
   check_bool(individual, "individual")
   check_bool(rescale_x, "rescale_x")
   check_int(show_figures, "show_figures", allow_NULL = TRUE)
@@ -656,8 +651,6 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   check_bool(rescale_x, "rescale_x")
   check_int(show_parameter, "show_parameter", allow_NULL = TRUE)
   check_real(scale_y2, "scale_y2", lower = 0)
-  if(!try(requireNamespace("ggplot2")))
-    stop("ggplot2 package needs to be installed. Run 'install.packages('ggplot2')'")
 
 
   # get the plotting data

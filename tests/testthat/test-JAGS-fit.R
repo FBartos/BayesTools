@@ -2,6 +2,7 @@ context("JAGS fit functions")
 
 test_that("JAGS model functions work (simple)", {
 
+  skip_if_not_installed("rjags")
   model_syntax <- "model{}"
   priors       <- list(
     p1  = prior("normal", list(0, 1)),
@@ -39,6 +40,7 @@ test_that("JAGS model functions work (simple)", {
 
 test_that("JAGS model functions work (weightfunctions)", {
 
+  skip_if_not_installed("rjags")
   priors       <- list(
     prior_weightfunction("one.sided", list(c(.05), c(1, 1))),
     prior_weightfunction("one.sided", list(c(.05, 0.10), c(1, 2, 3))),
