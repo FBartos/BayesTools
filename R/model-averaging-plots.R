@@ -863,15 +863,15 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       xlim <- range(as.vector(sapply(plot_data_joined, attr, which = "x_range")))
       attr(plot_data_prior[[1]], "x_range") <- xlim
 
-      if(any(sapply(plot_data_joined, inherits, what = "density.prior.simple")) & any(sapply(plot_data_joined, inherits, what = "density.prior.point"))){
+      if(any(sapply(plot_data_prior, inherits, what = "density.prior.simple")) & any(sapply(plot_data_prior, inherits, what = "density.prior.point"))){
         ylim  <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.simple")], attr, which = "y_range")))
         ylim2 <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.point")],  attr, which = "y_range")))
         attr(plot_data_prior[[which.max(sapply(plot_data_prior, inherits, what = "density.prior.simple"))]], "y_range") <- ylim
         attr(plot_data_prior[[which.max(sapply(plot_data_prior, inherits, what = "density.prior.point"))]],  "y_range") <- ylim2
-      }else if(any(sapply(plot_data_joined, inherits, what = "density.prior.simple"))){
+      }else if(any(sapply(plot_data_prior, inherits, what = "density.prior.simple"))){
         ylim  <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.simple")], attr, which = "y_range")))
         attr(plot_data_prior[[which.max(sapply(plot_data_prior, inherits, what = "density.prior.simple"))]], "y_range") <- ylim
-      }else if(any(sapply(plot_data_joined, inherits, what = "density.prior.point"))){
+      }else if(any(sapply(plot_data_prior, inherits, what = "density.prior.point"))){
         ylim  <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.point")],  attr, which = "y_range")))
         attr(plot_data_prior[[which.max(sapply(plot_data_prior, inherits, what = "density.prior.point"))]], "y_range") <- ylim
       }
@@ -936,8 +936,13 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     # aggregate samples across spikes
     spikes_simplified <- .simplify_spike_samples(samples, prior_list)
 
-    x_points <- spikes_simplified[,"location"]
-    y_points <- spikes_simplified[,"probability"]
+    if(nrow(spikes_simplified) > 0){
+      x_points <- spikes_simplified[,"location"]
+      y_points <- spikes_simplified[,"probability"]
+    }else{
+      x_points <- NULL
+      y_points <- NULL
+    }
 
     # apply transformations
     if(!is.null(transformation)){
@@ -1462,6 +1467,7 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
     spike_probability = data.frame(cbind(
       "location"    = priors_point_map[, "location"],
       "probability" = priors_point_map[, "frequency"] / length(samples)))
+    spike_probability <- spike_probability[priors_point_map[, "frequency"] != 0, ]
     return(spike_probability)
   }
 
@@ -1476,6 +1482,7 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
   spike_probability = data.frame(cbind(
     "location"    = unique_map[, "location"],
     "probability" = unique_map[, "frequency"] / length(samples)))
+  spike_probability <- spike_probability[unique_map[, "frequency"] != 0, ]
 
   return(spike_probability)
 }
