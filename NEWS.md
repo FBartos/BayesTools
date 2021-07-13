@@ -1,3 +1,18 @@
+## version 0.1.1
+### Fixes
+- 'plot_posterior' fails with only mu & PET samples (Issue #5)
+- ordering by "probabilities" does not work in 'plot_models' (Issue #3)
+- BF goes to NaN when only a single model is present in 'models_inference' (Issue #2)
+- summary tables unit tests unable to deal with numerical precision
+- problems with aggregating samples across multiple spikes in `plot_posterior'
+
+### Features
+- allow density.prior with range lower == upper  (Issue #4)
+- moving rstan towards suggested packages
+
+## version 0.1.0
+- published on CRAN
+
 ## version 0.0.0.9010
 - plotting functions for models
 
