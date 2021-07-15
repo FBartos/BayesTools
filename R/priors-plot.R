@@ -178,7 +178,7 @@ plot.prior <- function(x, plot_type = "base",
 
   }else if(plot_type == "ggplot"){
 
-    plot <- .ggplot.prior_empty("point", main, dots)
+    plot <- .ggplot.prior_empty("point", dots)
     plot <- plot + .geom_prior.point(plot_data, ...)
 
   }
@@ -410,17 +410,17 @@ plot.prior <- function(x, plot_type = "base",
 
   dots      <- c(dots, list(...))
 
+  main      <- if(!is.null(dots[["main"]]))     dots[["main"]]     else ""
+  xlab      <- if(!is.null(dots[["xlab"]]))     dots[["xlab"]]     else ""
+  ylab      <- if(!is.null(dots[["ylab"]]))     dots[["ylab"]]     else ""
+  xlim      <- if(!is.null(dots[["xlim"]]))     dots[["xlim"]]     else c(0, 1)
+  ylim      <- if(!is.null(dots[["ylim"]]))     dots[["ylim"]]     else c(0, 1)
+  col.main  <- if(!is.null(dots[["col.main"]])) dots[["col.main"]] else .plot.prior_settings()[["col.main"]]
   cex.axis  <- if(!is.null(dots[["cex.axis"]])) dots[["cex.axis"]] else .plot.prior_settings()[["cex.axis"]]
   cex.lab   <- if(!is.null(dots[["cex.lab"]]))  dots[["cex.lab"]]  else .plot.prior_settings()[["cex.lab"]]
   cex.main  <- if(!is.null(dots[["cex.main"]])) dots[["cex.main"]] else .plot.prior_settings()[["cex.main"]]
   col.axis  <- if(!is.null(dots[["col.axis"]])) dots[["col.axis"]] else .plot.prior_settings()[["col.axis"]]
   col.lab   <- if(!is.null(dots[["col.lab"]]))  dots[["col.lab"]]  else .plot.prior_settings()[["col.lab"]]
-  col.main  <- if(!is.null(dots[["col.main"]])) dots[["col.main"]] else .plot.prior_settings()[["col.main"]]
-  main      <- if(!is.null(dots[["main"]]))     dots[["main"]]     else main
-  xlab      <- if(!is.null(dots[["xlab"]]))     dots[["xlab"]]     else xlab
-  ylab      <- if(!is.null(dots[["ylab"]]))     dots[["ylab"]]     else ylab
-  xlim      <- if(!is.null(dots[["xlim"]]))     dots[["xlim"]]     else xlim
-  ylim      <- if(!is.null(dots[["ylim"]]))     dots[["ylim"]]     else ylim
   x_at      <- if(!is.null(dots[["x_at"]]))     dots[["x_at"]]     else NULL
   x_labels  <- if(!is.null(dots[["x_labels"]])) dots[["x_labels"]] else NULL
 

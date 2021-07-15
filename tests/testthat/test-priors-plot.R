@@ -54,6 +54,7 @@ test_that("Prior plot (point) function works", {
   expect_doppelganger("priors-plot-6-4", function()plot(p5, xlab = "xlab", ylab = "ylab", main = "main"))
   expect_doppelganger("priors-plot-6-5", function()plot(p5, lwd = 3, lty = 3, col = "blue"))
   expect_doppelganger("priors-plot-6-6", function()plot(p5, cex.lab = 2, col.lab = "blue", cex.axis = .5, col.axis = "red", cex.main = 1.75, col.main = "green", main = "main"))
+  expect_doppelganger("priors-plot-6-7", plot(p5, plot_type = "ggplot"))
 })
 
 test_that("Prior plot (weightfunction) function works", {
