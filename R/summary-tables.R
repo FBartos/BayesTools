@@ -687,11 +687,11 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE){
       "ESS"             = "ESS",
       "R_hat"           = "R-hat",
       "MCMC_error"      = "error(MCMC)",
-      "MCMC_SD_error"   = "SD/error(MCMC)",
+      "MCMC_SD_error"   = "error(MCMC)/SD",
       "min_ESS"             = "min(ESS)",
       "max_R_hat"           = "max(R-hat)",
       "max_MCMC_error"      = "max[error(MCMC)]",
-      "max_MCMC_SD_error"   = "max[SD/error(MCMC)]",
+      "max_MCMC_SD_error"   = "max[error(MCMC)/SD]",
     ))
   }
 }

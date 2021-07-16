@@ -120,7 +120,7 @@ test_that("Summary tables functions work",{
                  " Inclusion BF   0.964                                                       "
                ))
   expect_equal(capture_output_lines(runjags_summary,   print = TRUE, width = 150),
-               c("               Mean    SD    lCI Median   uCI error(MCMC) SD/error(MCMC) ESS R-hat",
+               c("               Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD ESS R-hat",
                  "m             0.155 0.198 -0.247  0.167 0.497     0.00921          0.047 461    NA",
                  "omega[0,0.05] 1.000 0.000  1.000  1.000 1.000          NA             NA  NA    NA",
                  "omega[0.05,1] 0.509 0.301  0.028  0.508 0.983     0.01348          0.045 500    NA"
@@ -147,7 +147,7 @@ test_that("Summary tables functions work",{
                  "     3  Normal(0, 0.3) omega[one-sided: .5, .05] ~ CumDirichlet(1, 1, 1)       0.333        -0.24       0.475        1.809"
                ))
   expect_equal(capture_output_lines(diagnostics_table, print = TRUE, width = 150),
-               c(" Model     Prior m                        Prior omega                    max[error(MCMC)] max[SD/error(MCMC)] min(ESS) max(R-hat)",
+               c(" Model     Prior m                        Prior omega                    max[error(MCMC)] max[error(MCMC)/SD] min(ESS) max(R-hat)",
                  "     1    Normal(0, 1)                                                            0.01019               0.048      434         NA",
                  "     2  Normal(0, 0.5)     omega[one-sided: .05] ~ CumDirichlet(1, 1)             0.01348               0.047      461         NA",
                  "     3  Normal(0, 0.3) omega[one-sided: .5, .05] ~ CumDirichlet(1, 1, 1)          0.01061               0.045      500         NA"
