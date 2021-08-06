@@ -70,7 +70,7 @@ density.prior <- function(x,
     if(is.character(transformation)){
       check_char(transformation, "transformation")
     }else if(is.list(transformation)){
-      check_list(check_list, "check_list", check_length = 3, check_names = c("fun", "inv", "jac"), all_objects = TRUE)
+      check_list(transformation, "transformation", check_length = 3, check_names = c("fun", "inv", "jac"), all_objects = TRUE)
     }else{
       stop("Uknown format of the 'transformation' argument.")
     }
