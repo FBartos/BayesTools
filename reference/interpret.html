@@ -6,7 +6,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>Create coefficient mapping between multiple weightfunctions — weightfunctions_mapping • BayesTools</title>
+<title>Interpret ensemble inference and estimates — interpret • BayesTools</title>
 
 
 <!-- jquery -->
@@ -39,8 +39,10 @@
 
 
 
-<meta property="og:title" content="Create coefficient mapping between multiple weightfunctions — weightfunctions_mapping" />
-<meta property="og:description" content="Creates coefficients mapping between multiple weightfunctions." />
+<meta property="og:title" content="Interpret ensemble inference and estimates — interpret" />
+<meta property="og:description" content="Provides textual summary for posterior
+distributions created by mix_posteriors and ensemble inference
+created by ensemble_inference." />
 
 
 
@@ -111,35 +113,55 @@
 <div class="row">
   <div class="col-md-9 contents">
     <div class="page-header">
-    <h1>Create coefficient mapping between multiple weightfunctions</h1>
-    <small class="dont-index">Source: <a href='https://github.com/FBartos/BayesTools/blob/master/R/model-averaging.R'><code>R/model-averaging.R</code></a></small>
-    <div class="hidden name"><code>weightfunctions_mapping.Rd</code></div>
+    <h1>Interpret ensemble inference and estimates</h1>
+    <small class="dont-index">Source: <a href='https://github.com/FBartos/BayesTools/blob/master/R/interpret.R'><code>R/interpret.R</code></a></small>
+    <div class="hidden name"><code>interpret.Rd</code></div>
     </div>
 
     <div class="ref-description">
-    <p>Creates coefficients mapping between multiple weightfunctions.</p>
+    <p>Provides textual summary for posterior
+distributions created by <a href='mix_posteriors.html'>mix_posteriors</a> and ensemble inference
+created by <a href='ensemble_inference.html'>ensemble_inference</a>.</p>
     </div>
 
-    <pre class="usage"><span class='fu'>weightfunctions_mapping</span><span class='op'>(</span><span class='va'>prior_list</span>, cuts_only <span class='op'>=</span> <span class='cn'>FALSE</span><span class='op'>)</span></pre>
+    <pre class="usage"><span class='fu'>interpret</span><span class='op'>(</span><span class='va'>inference</span>, <span class='va'>samples</span>, <span class='va'>specification</span>, <span class='va'>method</span><span class='op'>)</span></pre>
 
     <h2 class="hasAnchor" id="arguments"><a class="anchor" href="#arguments"></a>Arguments</h2>
     <table class="ref-arguments">
     <colgroup><col class="name" /><col class="desc" /></colgroup>
     <tr>
-      <th>prior_list</th>
-      <td><p>list of prior distributions</p></td>
+      <th>inference</th>
+      <td><p>model inference created by <a href='ensemble_inference.html'>ensemble_inference</a></p></td>
     </tr>
     <tr>
-      <th>cuts_only</th>
-      <td><p>whether only p-value cuts should be returned</p></td>
+      <th>samples</th>
+      <td><p>posterior samples created by <a href='mix_posteriors.html'>mix_posteriors</a></p></td>
+    </tr>
+    <tr>
+      <th>specification</th>
+      <td><p>list of lists specifying the generated text.
+Each inner list carries: (1) <code>inference</code> specifying the name of
+in the <code>inference</code> entry and optionally <code>inference_name</code>
+as a name to use in the text and <code>inference_BF_name</code> as a
+symbol to be used instead of the default <code>"BF"</code>, (2) <code>samples</code>
+specifying the name of in the <code>samples</code> entry and optionally
+<code>samples_name</code> as a name to use in the text, <code>samples_units</code> as
+a unit text to be appended after the estimate, and <code>samples_conditional</code>
+specifying whether the estimate is conditional or model-averaged.</p></td>
+    </tr>
+    <tr>
+      <th>method</th>
+      <td><p>character specifying name of the method to be
+appended at the beginning of each sentence.</p></td>
     </tr>
     </table>
 
     <h2 class="hasAnchor" id="value"><a class="anchor" href="#value"></a>Value</h2>
 
-    <p><code>weightfunctions_mapping</code> returns a list of indices
-mapping the publication weights omega from the individual weightfunctions
-into a joint weightfunction.</p>
+    <p><code>interpret</code> returns character.</p>
+    <h2 class="hasAnchor" id="see-also"><a class="anchor" href="#see-also"></a>See also</h2>
+
+    <div class='dont-index'><p><a href='ensemble_inference.html'>ensemble_inference</a> <a href='mix_posteriors.html'>mix_posteriors</a> <a href='BayesTools_model_tables.html'>BayesTools_model_tables</a> <a href='BayesTools_ensemble_tables.html'>BayesTools_ensemble_tables</a></p></div>
 
   </div>
   <div class="col-md-3 hidden-xs hidden-sm" id="pkgdown-sidebar">
