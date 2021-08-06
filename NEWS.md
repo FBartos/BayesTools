@@ -1,6 +1,14 @@
+## to be version 0.1.2
+### Fixes
+- `prior.plot` can't plot "spike" with `plot_type == "ggplot"` (Issue #6)
+- `MCMC error/SD` print names in BayesTools tables (Issue #8)
+
+### Features
+- `interpret` function for creating textual summaries based on inference and samples objects
+
 ## version 0.1.1
 ### Fixes
-- 'plot_posterior' fails with only mu & PET samples (Issue #5)
+- `plot_posterior` fails with only mu & PET samples (Issue #5)
 - ordering by "probabilities" does not work in 'plot_models' (Issue #3)
 - BF goes to NaN when only a single model is present in 'models_inference' (Issue #2)
 - summary tables unit tests unable to deal with numerical precision

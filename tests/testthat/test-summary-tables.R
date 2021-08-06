@@ -152,4 +152,38 @@ test_that("Summary tables functions work",{
                  "     2  Normal(0, 0.5)     omega[one-sided: .05] ~ CumDirichlet(1, 1)             0.01348               0.047      461         NA",
                  "     3  Normal(0, 0.3) omega[one-sided: .5, .05] ~ CumDirichlet(1, 1, 1)          0.01061               0.045      500         NA"
                ))
+
+  ### test explanatory texts
+  inference <- ensemble_inference(model_list = models, parameters = c("m", "omega"), is_null_list = list("m" = 0, "omega" = 1), conditional = FALSE)
+  mixed_posteriors <- mix_posteriors(model_list = models, parameters = c("m", "omega"), is_null_list = list("m" = 0, "omega" = 1), seed = 1)
+
+  expect_equal(interpret(inference, mixed_posteriors, list(
+    list(
+      inference         = "m",
+      samples           = "m",
+      inference_name    = "effect",
+      inference_BF_name = "BF_10",
+      samples_name      = "y",
+      samples_units     = NULL
+    )
+  ), "Test"), "Test found strong evidence in favor of the effect, BF_10 = Inf, with model-averaged mean estimate y = 0.152, 95% CI [-0.220,  0.525].")
+
+  inference[["m"]][["BF"]] <- 1/5
+  expect_equal(interpret(inference, mixed_posteriors, list(
+    list(
+      inference           = "m",
+      samples             = "m",
+      inference_name      = "effect",
+      inference_BF_name   = "BF_10",
+      samples_name        = "y",
+      samples_units       = "mm",
+      samples_conditional = TRUE
+    ),
+    list(
+      inference           = "omega",
+      inference_name      = "bias",
+      inference_BF_name   = "BF_pb"
+    )
+  ), "Test2"), "Test2 found moderate evidence against the effect, BF_10 = 0.200, with conditional mean estimate y = 0.152 mm, 95% CI [-0.220,  0.525]. Test2 found weak evidence in favor of the bias, BF_pb = 2.00.")
+
 })
