@@ -684,5 +684,11 @@ test_that("models plot functions work", {
   expect_doppelganger("model-averaging-plot-models-8", {
     plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "tau", prior = TRUE, plot_type = "ggplot")
   })
+  expect_doppelganger("model-averaging-plot-models-9", {
+    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu", plot_type = "ggplot", y_axis2 = FALSE)
+  })
+  expect_doppelganger("model-averaging-plot-models-10", {
+    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu", plot_type = "ggplot", show_estimates = FALSE)
+  })
 
 })

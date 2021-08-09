@@ -68,7 +68,14 @@ the transformed support}
 specified. Only relevant if the prior corresponds to a mu
 parameter that needs to be transformed.}
 
-\item{...}{additional arguments}
+\item{...}{additional arguments. E.g.:
+\describe{
+\item{\code{"show_updating"}}{whether Bayes factors and change from
+prior to posterior odds should be shown on the secondary y-axis}
+\item{\code{"show_estimates"}}{whether posterior estimates and 95\% CI
+should be shown on the secondary y-axis}
+\item{\code{"y_axis2"}}{whether the secondary y-axis should be shown}
+}}
 }
 \value{
 \code{plot_models} returns either \code{NULL} or

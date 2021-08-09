@@ -1161,7 +1161,14 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 #' or \code{"decreasing"} and the second element describes whether
 #' the ordering should be based \code{"model"} order, \code{"estimate"}
 #' size, posterior \code{"probability"}, or the inclusion \code{"BF"}.
-#' @param ... additional arguments
+#' @param ... additional arguments. E.g.:
+#' \describe{
+#'   \item{\code{"show_updating"}}{whether Bayes factors and change from
+#'   prior to posterior odds should be shown on the secondary y-axis}
+#'   \item{\code{"show_estimates"}}{whether posterior estimates and 95% CI
+#'   should be shown on the secondary y-axis}
+#'   \item{\code{"y_axis2"}}{whether the secondary y-axis should be shown}
+#' }
 #' @inheritParams ensemble_inference
 #' @inheritParams plot.prior
 #' @inheritParams plot_posterior
@@ -1285,17 +1292,16 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
 
   # set the plotting values
   dots      <- list(...)
+
+  show_updating  <- is.null(dots[["show_updating"]])  || dots[["show_updating"]]
+  show_estimates <- is.null(dots[["show_estimates"]]) || dots[["show_estimates"]]
+
   y_at      <- c(1,               posterior_data$x)
   y_labels  <- c(overal_y_label,  paste0("Model ", posterior_data$model))
-  if(!is.null(dots[["fit_details"]]) && !dots[["fit_details"]]){
-    y_at2     <- c(1,               posterior_data$x)
-    y_labels2 <- c(overal_y_label2, posterior_data$y_labels2)
-  }else{
-    y_at2     <- c(1,               posterior_data$x,         prior_data$x)
-    y_labels2 <- c(overal_y_label2, posterior_data$y_labels2, prior_data$y_labels2)
-  }
-
+  y_at2     <- c(1,               posterior_data$x[show_estimates],         prior_data$x[show_updating])
+  y_labels2 <- c(overal_y_label2, posterior_data$y_labels2[show_estimates], prior_data$y_labels2[show_updating])
   ylim      <- c(0, max(posterior_data$x) + 1)
+
 
   if(!is.null(dots[["xlim"]])){
     xlim     <- dots[["xlim"]]
@@ -1341,7 +1347,7 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
 
     graphics::plot(NA, bty = "n", las = 1, xlab = xlab, ylab = "", main = "", yaxt = "n", ylim = ylim, xlim = xlim)
     graphics::axis(2, at = y_at,  labels = y_labels,  las = 1, col = NA)
-    if(is.null(dots[["y_axis2"]]) || (is.null(dots[["y_axis2"]]) && dots[["y_axis2"]])){
+    if(is.null(dots[["y_axis2"]]) || (!is.null(dots[["y_axis2"]]) && dots[["y_axis2"]])){
       graphics::axis(4, at = y_at2, labels = y_labels2, las = 1, col = NA, hadj = 0)
     }
     graphics::abline(v = vertical_0, lty = 3)
@@ -1421,7 +1427,7 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
       linetype = "dotted")
 
     # add all the other stuff
-    if(is.null(dots[["y_axis2"]]) || (is.null(dots[["y_axis2"]]) && dots[["y_axis2"]])){
+    if(is.null(dots[["y_axis2"]]) || (!is.null(dots[["y_axis2"]]) && dots[["y_axis2"]])){
       plot <- plot + ggplot2::scale_y_continuous(
         name = "", breaks = y_at, labels = y_labels, limits = ylim,
         sec.axis = ggplot2::sec_axis( ~ ., breaks = y_at2, labels = y_labels2))
