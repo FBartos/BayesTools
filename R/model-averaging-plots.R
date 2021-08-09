@@ -149,9 +149,14 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     scale_y2 <- .get_scale_y2(plot_data, dots)
     for(i in seq_along(plot_data)){
       if(inherits(plot_data[[i]], what = "density.prior.simple")){
-        do.call(.lines.prior.simple, c(list(plot_data[[i]]), dots))
+        args           <- dots
+        args$plot_data <- plot_data[[i]]
+        do.call(.lines.prior.simple, args)
       }else if(inherits(plot_data[[i]], what = "density.prior.point")){
-        do.call(.lines.prior.point,  c(list(plot_data[[i]]), scale_y2 = scale_y2, dots))
+        args           <- dots
+        args$scale_y2  <- scale_y2
+        args$plot_data <- plot_data[[i]]
+        do.call(.lines.prior.point, args)
       }
     }
     plot <- list(scale_y2 = scale_y2)
@@ -162,9 +167,14 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     scale_y2 <- .get_scale_y2(plot_data, dots)
     for(i in seq_along(plot_data)){
       if(inherits(plot_data[[i]], what = "density.prior.simple")){
-        plot <- plot + do.call(.geom_prior.simple, c(list(plot_data[[i]]), dots))
+        args           <- dots
+        args$plot_data <- plot_data[[i]]
+        plot           <- plot + do.call(.geom_prior.simple, args)
       }else if(inherits(plot_data[[i]], what = "density.prior.point")){
-        plot <- plot + do.call(.geom_prior.point,  c(list(plot_data[[i]]), scale_y2 = scale_y2, dots))
+        args           <- dots
+        args$scale_y2  <- scale_y2
+        args$plot_data <- plot_data[[i]]
+        plot           <- plot + do.call(.geom_prior.point, args)
       }
     }
 
@@ -401,7 +411,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     )
 
     class(out_den) <- c("density", "density.prior", "density.prior.simple")
-    attr(out_den, "x_range") <- x_range
+    attr(out_den, "x_range") <- range(x_den)
     attr(out_den, "y_range") <- c(0, max(y_den))
 
     out[["density"]] <- out_den
@@ -420,7 +430,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
       )
 
       class(temp_points) <- c("density", "density.prior", "density.prior.point")
-      attr(temp_points, "x_range") <- x_range
+      attr(temp_points, "x_range") <- range(x_points)
       attr(temp_points, "y_range") <- c(0, max(y_points[i]))
 
       out[[paste0("points",i)]] <- temp_points
@@ -763,7 +773,13 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       attr(plot_data_prior, "y_range") <- ylim
       dots_prior <- .transfer_dots(dots_prior, ...)
 
-      plot <- do.call(.plot.prior.weightfunction, c(x = list(prior_list), plot_data = list(plot_data_prior), rescale_x = rescale_x, plot_type = plot_type, par_name = par_name, dots_prior))
+      args           <- dots_prior
+      args$x         <- prior_list
+      args$plot_data <- plot_data_prior
+      args$rescale_x <- rescale_x
+      args$plot_type <- plot_type
+      args$par_name  <- par_name
+      plot           <- do.call(.plot.prior.weightfunction, args)
 
       if(plot_type == "ggplot"){
         plot <- plot + .geom_prior.weightfunction(plot_data, rescale_x = rescale_x, ...)
@@ -826,7 +842,12 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       attr(plot_data_prior, "y_range") <- ylim
       dots_prior <- .transfer_dots(dots_prior, ...)
 
-      plot <- do.call(.plot.prior.PETPEESE, c(x = list(prior_list), plot_data = list(plot_data_prior), plot_type = plot_type, par_name = par_name, dots_prior))
+      args           <- dots_prior
+      args$x         <- prior_list
+      args$plot_data <- plot_data_prior
+      args$plot_type <- plot_type
+      args$par_name  <- par_name
+      plot           <- do.call(.plot.prior.PETPEESE, args)
 
       if(plot_type == "ggplot"){
         plot <- plot + .geom_prior.PETPEESE(plot_data, ...)
@@ -878,7 +899,12 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
       scale_y2   <- .get_scale_y2(plot_data_prior, ...)
       dots_prior <- .transfer_dots(dots_prior, ...)
-      plot       <- do.call(.plot_prior_list.both, c(plot_data = list(plot_data_prior), plot_type = plot_type, par_name = par_name, dots_prior))
+
+      args           <- dots_prior
+      args$plot_data <- plot_data_prior
+      args$plot_type <- plot_type
+      args$par_name  <- par_name
+      plot           <- do.call(.plot_prior_list.both, args)
 
       if(plot_type == "ggplot"){
         for(i in seq_along(plot_data)){
