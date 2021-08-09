@@ -110,7 +110,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   xlim      <- range(as.vector(sapply(plot_data, attr, which = "x_range")))
 
   main      <- ""
-  xlab      <- if(!is.null(par_name)){parse(text = bquote(.(par_name)))} else ""
+  xlab      <- if(!is.null(par_name)) par_name else ""
 
   if(any(sapply(plot_data, inherits, what = "density.prior.simple")) & any(sapply(plot_data, inherits, what = "density.prior.point"))){
     type  <- "both"

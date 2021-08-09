@@ -385,7 +385,7 @@ test_that("posterior plot functions (simple) work", {
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "m", lwd = 2, col = "red", par_name = bquote(mu))
+    plot_posterior(mixed_posteriors, "m", lwd = 2, col = "red", par_name = expression(mu))
     lines_prior_list(attr(mixed_posteriors$m, "prior_list"), col = "blue")
   })
   expect_doppelganger("model-averaging-plot-posterior-simple-2", {
