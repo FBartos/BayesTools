@@ -673,10 +673,10 @@ test_that("models plot functions work", {
     plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "tau", prior = TRUE)
   })
   expect_doppelganger("model-averaging-plot-models-5", function(){
-    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu", condtional = TRUE)
+    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu", conditional = TRUE)
   })
   expect_doppelganger("model-averaging-plot-models-6", function(){
-    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "tau", prior = TRUE, condtional = TRUE)
+    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "tau", prior = TRUE, conditional = TRUE)
   })
   expect_doppelganger("model-averaging-plot-models-7", {
     plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu", plot_type = "ggplot")

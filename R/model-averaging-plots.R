@@ -1155,7 +1155,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 #' @param parameter parameter name to be plotted. Does not support
 #' PET-PEESE and weightfunction.
 #' @param inference object created by [ensemble_inference] function
-#' @param condtional whether conditional models should be displayed
+#' @param conditional whether conditional models should be displayed
 #' @param order list specifying ordering of the models. The first
 #' element describes whether the ordering should be \code{"increasing"}
 #' or \code{"decreasing"} and the second element describes whether
@@ -1178,7 +1178,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 #'
 #' @seealso [prior()] [lines_prior_list()]  [geom_prior_list()]
 #' @export
-plot_models <- function(model_list, samples, inference, parameter, plot_type = "base", prior = FALSE, condtional = FALSE,
+plot_models <- function(model_list, samples, inference, parameter, plot_type = "base", prior = FALSE, conditional = FALSE,
                         order = NULL,
                         transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
                         par_name = NULL, ...){
@@ -1234,7 +1234,7 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
   posterior_data[is.na(posterior_data)] <- prior_data[is.na(posterior_data)]
 
   # remove null models if requested (assuming that the overall estimate is already supplied accordingly)
-  if(condtional){
+  if(conditional){
     prior_data     <- prior_data[!attr(total_inference, "is_null"),]
     posterior_data <- posterior_data[!attr(total_inference, "is_null"),]
   }

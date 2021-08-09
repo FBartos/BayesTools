@@ -11,7 +11,7 @@ plot_models(
   parameter,
   plot_type = "base",
   prior = FALSE,
-  condtional = FALSE,
+  conditional = FALSE,
   order = NULL,
   transformation = NULL,
   transformation_arguments = NULL,
@@ -38,7 +38,7 @@ or ggplot2 \code{"ggplot"} for plotting.}
 
 \item{prior}{whether prior distribution should be added to the figure}
 
-\item{condtional}{whether conditional models should be displayed}
+\item{conditional}{whether conditional models should be displayed}
 
 \item{order}{list specifying ordering of the models. The first
 element describes whether the ordering should be \code{"increasing"}

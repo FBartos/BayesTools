@@ -73,8 +73,8 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL, condition
     post_probs  = post_probs,
     BF          = BF
   )
-  attr(output, "is_null")    <- is_null
-  attr(output, "condtional") <- conditional
+  attr(output, "is_null")     <- is_null
+  attr(output, "conditional") <- conditional
 
   return(output)
 }
