@@ -111,9 +111,12 @@ JAGS_bridgesampling <- function(fit, data, prior_list, log_posterior,
 
 
   ### the marglik function
-  full_log_posterior <- function(samples.row, data, prior_list, ...){
+  full_log_posterior <- function(samples.row, data, prior_list, add_parameters, ...){
 
     parameters      <- JAGS_marglik_parameters(samples.row, prior_list)
+    if(!is.null(add_parameters)){
+      parameters    <- c(parameters, samples.row[add_parameters])
+    }
     marglik_priors  <- JAGS_marglik_priors(samples.row, prior_list)
     marglik_model   <- log_posterior(parameters, data, ...)
 
@@ -123,14 +126,15 @@ JAGS_bridgesampling <- function(fit, data, prior_list, log_posterior,
 
   ### perform bridgesampling
   marglik <- tryCatch(suppressWarnings(bridgesampling::bridge_sampler(
-      samples       = bridgesampling_posterior,
-      data          = data,
-      log_posterior = full_log_posterior,
-      prior_list    = prior_list,
-      lb            = attr(bridgesampling_posterior, "lb"),
-      ub            = attr(bridgesampling_posterior, "ub"),
-      silent        = silent,
-      maxiter       = maxiter,
+      samples        = bridgesampling_posterior,
+      data           = data,
+      log_posterior  = full_log_posterior,
+      prior_list     = prior_list,
+      lb             = attr(bridgesampling_posterior, "lb"),
+      ub             = attr(bridgesampling_posterior, "ub"),
+      silent         = silent,
+      maxiter        = maxiter,
+      add_parameters = add_parameters,
       ...
     )), error = function(e)e)
 
@@ -195,7 +199,7 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
   # add the user defined parameters
   if(!is.null(add_parameters)){
     parameters_names_lb <- c(attr(parameters_names, "lb"), add_bounds[["lb"]])
-    parameters_names_ub <- c(attr(parameters_names, "lb"), add_bounds[["lb"]])
+    parameters_names_ub <- c(attr(parameters_names, "ub"), add_bounds[["ub"]])
     parameters_names <- c(parameters_names, add_parameters)
     attr(parameters_names, "lb") <- parameters_names_lb
     attr(parameters_names, "ub") <- parameters_names_ub

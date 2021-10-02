@@ -2,6 +2,7 @@
 ### Fixes
 - `prior.plot` can't plot "spike" with `plot_type == "ggplot"` (Issue #6)
 - `MCMC error/SD` print names in BayesTools tables (Issue #8)
+- `JAGS_bridgesampling_posterior` unable to add a parameter via `add_parameters`
 
 ### Features
 - `interpret` function for creating textual summaries based on inference and samples objects
