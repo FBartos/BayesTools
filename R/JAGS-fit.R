@@ -62,7 +62,7 @@
 #'   }"
 #'
 #' # fit the models
-#' fit <- JAGS_fit(model_syntax, data, priors_list, seed = 0)
+#' fit <- JAGS_fit(model_syntax, data, priors_list, sample = 1000, chains = 2, seed = 0)
 #'
 #' @return \code{JAGS_fit} returns an object of class 'runjags'.
 #'
@@ -211,7 +211,7 @@ JAGS_fit <- function(model_syntax, data, prior_list,
 #'   }"
 #'
 #' # fit the models
-#' fit <- JAGS_fit(model_syntax, data, priors_list, seed = 0)
+#' fit <- JAGS_fit(model_syntax, data, priors_list, burnin = 500, sample = 1000, chains = 2, seed = 0)
 #' JAGS_check_convergence(fit, priors_list)
 #'
 #' @return \code{JAGS_check_convergence} returns a boolean

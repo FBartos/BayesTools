@@ -48,7 +48,8 @@
 #'   }"
 #'
 #' # fit the models
-#' fit <- JAGS_fit(model_syntax, data, priors_list, chains = 1, sample = 1000, seed = 0)
+#' fit <- JAGS_fit(model_syntax, data, priors_list,
+#'                 chains = 1, burnin = 100, sample = 500, seed = 0)
 #'
 #' # define log posterior for bridge sampling
 #' log_posterior <- function(parameters, data){

@@ -1,4 +1,4 @@
-## to be version 0.1.2
+## version 0.1.2
 ### Fixes
 - `prior.plot` can't plot "spike" with `plot_type == "ggplot"` (Issue #6)
 - `MCMC error/SD` print names in BayesTools tables (Issue #8)
