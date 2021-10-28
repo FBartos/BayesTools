@@ -6,7 +6,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>Creates generic for sd function — sd • BayesTools</title>
+<title>Names of medical subfields from the Cochrane database of systematic reviews — prior_informed_medicine_names • BayesTools</title>
 
 
 <!-- jquery -->
@@ -39,8 +39,10 @@
 
 
 
-<meta property="og:title" content="Creates generic for sd function — sd" />
-<meta property="og:description" content="Creates generic for sd function" />
+<meta property="og:title" content="Names of medical subfields from the Cochrane database of systematic reviews — prior_informed_medicine_names" />
+<meta property="og:description" content="Contain names identifying the individual subfields from the Cochrane database
+of systematic reviews. The individual elements correspond to valid name arguments
+for the prior_informed() function." />
 
 
 
@@ -111,39 +113,81 @@
 <div class="row">
   <div class="col-md-9 contents">
     <div class="page-header">
-    <h1>Creates generic for sd function</h1>
-    <small class="dont-index">Source: <a href='https://github.com/FBartos/BayesTools/blob/master/R/priors.R'><code>R/priors.R</code></a></small>
-    <div class="hidden name"><code>sd.Rd</code></div>
+    <h1>Names of medical subfields from the Cochrane database of systematic reviews</h1>
+    <small class="dont-index">Source: <a href='https://github.com/FBartos/BayesTools/blob/master/R/priors-informed.R'><code>R/priors-informed.R</code></a></small>
+    <div class="hidden name"><code>prior_informed_medicine_names.Rd</code></div>
     </div>
 
     <div class="ref-description">
-    <p>Creates generic for sd function</p>
+    <p>Contain names identifying the individual subfields from the Cochrane database
+of systematic reviews. The individual elements correspond to valid <code>name</code> arguments
+for the <code><a href='prior_informed.html'>prior_informed()</a></code> function.</p>
     </div>
 
-    <pre class="usage"><span class='fu'>sd</span><span class='op'>(</span><span class='va'>x</span>, <span class='va'>...</span><span class='op'>)</span></pre>
+    <pre class="usage"><span class='va'>prior_informed_medicine_names</span></pre>
 
-    <h2 class="hasAnchor" id="arguments"><a class="anchor" href="#arguments"></a>Arguments</h2>
-    <table class="ref-arguments">
-    <colgroup><col class="name" /><col class="desc" /></colgroup>
-    <tr>
-      <th>x</th>
-      <td><p>main argument</p></td>
-    </tr>
-    <tr>
-      <th>...</th>
-      <td><p>additional arguments</p></td>
-    </tr>
-    </table>
 
+    <h2 class="hasAnchor" id="format"><a class="anchor" href="#format"></a>Format</h2>
+
+    <p>An object of class <code>character</code> of length 47.</p>
     <h2 class="hasAnchor" id="value"><a class="anchor" href="#value"></a>Value</h2>
 
-    <p><code>sd</code> returns a standard deviation
-of the supplied object (if it is either a numeric vector
-or an object of class 'prior').</p>
+    <p>returns a character vector with names of medical subfields from Cochrane database of
+systematic reviews.</p>
     <h2 class="hasAnchor" id="see-also"><a class="anchor" href="#see-also"></a>See also</h2>
 
-    <div class='dont-index'><p><a href='https://rdrr.io/r/stats/sd.html'>sd</a></p></div>
+    <div class='dont-index'><p><code><a href='prior_informed.html'>prior_informed()</a></code></p></div>
 
+    <h2 class="hasAnchor" id="examples"><a class="anchor" href="#examples"></a>Examples</h2>
+    <pre class="examples"><div class='input'><span class='fu'><a href='https://rdrr.io/r/base/print.html'>print</a></span><span class='op'>(</span><span class='va'>prior_informed_medicine_names</span><span class='op'>)</span>
+</div><div class='output co'>#&gt;  [1] "Acute Respiratory Infections"                     
+#&gt;  [2] "Airways"                                          
+#&gt;  [3] "Anaesthesia"                                      
+#&gt;  [4] "Back and Neck"                                    
+#&gt;  [5] "Bone, Joint and Muscle Trauma"                    
+#&gt;  [6] "Colorectal"                                       
+#&gt;  [7] "Common Mental Disorders"                          
+#&gt;  [8] "Consumers and Communication"                      
+#&gt;  [9] "Cystic Fibrosis and Genetic Disorders"            
+#&gt; [10] "Dementia and Cognitive Improvement"               
+#&gt; [11] "Developmental, Psychosocial and Learning Problems"
+#&gt; [12] "Drugs and Alcohol"                                
+#&gt; [13] "Effective Practice and Organisation of Care"      
+#&gt; [14] "Emergency and Critical Care"                      
+#&gt; [15] "ENT"                                              
+#&gt; [16] "Eyes and Vision"                                  
+#&gt; [17] "Gynaecological, Neuro-oncology and Orphan Cancer" 
+#&gt; [18] "Gynaecology and Fertility"                        
+#&gt; [19] "Heart"                                            
+#&gt; [20] "Hepato-Biliary"                                   
+#&gt; [21] "HIV/AIDS"                                         
+#&gt; [22] "Hypertension"                                     
+#&gt; [23] "Incontinence"                                     
+#&gt; [24] "Infectious Diseases"                              
+#&gt; [25] "Inflammatory Bowel Disease"                       
+#&gt; [26] "Injuries"                                         
+#&gt; [27] "Kidney and Transplant"                            
+#&gt; [28] "Metabolic and Endocrine Disorders"                
+#&gt; [29] "Methodology"                                      
+#&gt; [30] "Movement Disorders"                               
+#&gt; [31] "Musculoskeletal"                                  
+#&gt; [32] "Neonatal"                                         
+#&gt; [33] "Oral Health"                                      
+#&gt; [34] "Pain, Palliative and Supportive Care"             
+#&gt; [35] "Pregnancy and Childbirth"                         
+#&gt; [36] "Public Health"                                    
+#&gt; [37] "Schizophrenia"                                    
+#&gt; [38] "Sexually Transmitted Infections"                  
+#&gt; [39] "Skin"                                             
+#&gt; [40] "Stroke"                                           
+#&gt; [41] "Tobacco Addiction"                                
+#&gt; [42] "Upper GI and Pancreatic Diseases"                 
+#&gt; [43] "Urology"                                          
+#&gt; [44] "Vascular"                                         
+#&gt; [45] "Work"                                             
+#&gt; [46] "Wounds"                                           
+#&gt; [47] "Cochrane"                                         </div><div class='input'>
+</div></pre>
   </div>
   <div class="col-md-3 hidden-xs hidden-sm" id="pkgdown-sidebar">
     <nav id="toc" data-toggle="toc" class="sticky-top">
