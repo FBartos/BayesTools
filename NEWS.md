@@ -1,3 +1,7 @@
+## version 0.1.3
+### Features
+- `prior_informed` function for creating informed prior distributions based on the past psychological and medical research
+
 ## version 0.1.2
 ### Fixes
 - `prior.plot` can't plot "spike" with `plot_type == "ggplot"` (Issue #6)

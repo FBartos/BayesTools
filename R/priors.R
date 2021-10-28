@@ -78,12 +78,8 @@ prior <- function(distribution, parameters, truncation = list(lower = -Inf, uppe
   check_list(truncation, "truncation")
   check_real(prior_weights, "prior_weights", lower = 0, allow_bound = FALSE)
 
-  # assign proper name
-  distribution <- tolower(distribution)
-  distribution <- gsub(".", "", distribution, fixed = TRUE)
-  distribution <- gsub("-", "", distribution, fixed = TRUE)
-  distribution <- gsub("_", "", distribution, fixed = TRUE)
-  distribution <- gsub(" ", "", distribution, fixed = TRUE)
+  # clean the input name
+  distribution <- .prior_clean_input_name(distribution)
 
   if(distribution %in% c("norm", "normal")){
     distribution <- "normal"
@@ -187,12 +183,8 @@ prior_weightfunction <- function(distribution, parameters, prior_weights = 1){
   sapply(seq_along(parameters), function(i)check_real(parameters[[i]], names(parameters[[i]]), check_length = 0))
   check_real(prior_weights, "prior_weights", lower = 0, allow_bound = FALSE)
 
-  # assign proper name
-  distribution <- tolower(distribution)
-  distribution <- gsub(".", "", distribution, fixed = TRUE)
-  distribution <- gsub("-", "", distribution, fixed = TRUE)
-  distribution <- gsub("_", "", distribution, fixed = TRUE)
-  distribution <- gsub(" ", "", distribution, fixed = TRUE)
+  # clean the input name
+  distribution <- .prior_clean_input_name(distribution)
 
   if(distribution == "twosided"){
     distribution <- "two.sided"

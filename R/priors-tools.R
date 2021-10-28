@@ -220,3 +220,19 @@ is.prior.weightfunction  <- function(x){
   if(!is.prior(prior))
     stop(paste0("The '", name, "' argument must be a valid prior object."))
 }
+
+
+# clean user input
+.prior_clean_input_name <- function(name){
+
+  name <- tolower(name)
+  name <- gsub(".", "", name, fixed = TRUE)
+  name <- gsub(",", "", name, fixed = TRUE)
+  name <- gsub(";", "", name, fixed = TRUE)
+  name <- gsub("/", "", name, fixed = TRUE)
+  name <- gsub("-", "", name, fixed = TRUE)
+  name <- gsub("_", "", name, fixed = TRUE)
+  name <- gsub(" ", "", name, fixed = TRUE)
+
+  return(name)
+}

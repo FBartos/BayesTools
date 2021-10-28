@@ -107,7 +107,7 @@ model_syntax <-
   }"
 
 # fit the models
-fit <- JAGS_fit(model_syntax, data, priors_list, seed = 0)
+fit <- JAGS_fit(model_syntax, data, priors_list, sample = 1000, chains = 2, seed = 0)
 
 }
 \seealso{
