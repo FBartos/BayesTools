@@ -173,15 +173,15 @@ attribute 'errors' carrying the failed convergence checks (if any).</p>
     <div class='dont-index'><p><code><a href='JAGS_fit.html'>JAGS_fit()</a></code></p></div>
 
     <h2 class="hasAnchor" id="examples"><a class="anchor" href="#examples"></a>Examples</h2>
-    <pre class="examples"><div class='input'><span class='co'># simulate data</span>
+    <pre class="examples"><div class='input'><span class='kw'>if</span> <span class='op'>(</span><span class='cn'>FALSE</span><span class='op'>)</span> <span class='op'>{</span>
+<span class='co'># simulate data</span>
 <span class='fu'><a href='https://rdrr.io/r/base/Random.html'>set.seed</a></span><span class='op'>(</span><span class='fl'>1</span><span class='op'>)</span>
 <span class='va'>data</span> <span class='op'>&lt;-</span> <span class='fu'><a href='https://rdrr.io/r/base/list.html'>list</a></span><span class='op'>(</span>
   x <span class='op'>=</span> <span class='fu'><a href='https://rdrr.io/r/stats/Normal.html'>rnorm</a></span><span class='op'>(</span><span class='fl'>10</span><span class='op'>)</span>,
   N <span class='op'>=</span> <span class='fl'>10</span>
 <span class='op'>)</span>
 <span class='va'>data</span><span class='op'>$</span><span class='va'>x</span>
-</div><div class='output co'>#&gt;  [1] -0.6264538  0.1836433 -0.8356286  1.5952808  0.3295078 -0.8204684
-#&gt;  [7]  0.4874291  0.7383247  0.5757814 -0.3053884</div><div class='input'>
+
 <span class='co'># define priors</span>
 <span class='va'>priors_list</span> <span class='op'>&lt;-</span> <span class='fu'><a href='https://rdrr.io/r/base/list.html'>list</a></span><span class='op'>(</span>mu <span class='op'>=</span> <span class='fu'><a href='prior.html'>prior</a></span><span class='op'>(</span><span class='st'>"normal"</span>, <span class='fu'><a href='https://rdrr.io/r/base/list.html'>list</a></span><span class='op'>(</span><span class='fl'>0</span>, <span class='fl'>1</span><span class='op'>)</span><span class='op'>)</span><span class='op'>)</span>
 
@@ -194,9 +194,9 @@ attribute 'errors' carrying the failed convergence checks (if any).</p>
   }"</span>
 
 <span class='co'># fit the models</span>
-<span class='va'>fit</span> <span class='op'>&lt;-</span> <span class='fu'><a href='JAGS_fit.html'>JAGS_fit</a></span><span class='op'>(</span><span class='va'>model_syntax</span>, <span class='va'>data</span>, <span class='va'>priors_list</span>, burnin <span class='op'>=</span> <span class='fl'>500</span>, sample <span class='op'>=</span> <span class='fl'>1000</span>, chains <span class='op'>=</span> <span class='fl'>2</span>, seed <span class='op'>=</span> <span class='fl'>0</span><span class='op'>)</span>
+<span class='va'>fit</span> <span class='op'>&lt;-</span> <span class='fu'><a href='JAGS_fit.html'>JAGS_fit</a></span><span class='op'>(</span><span class='va'>model_syntax</span>, <span class='va'>data</span>, <span class='va'>priors_list</span><span class='op'>)</span>
 <span class='fu'>JAGS_check_convergence</span><span class='op'>(</span><span class='va'>fit</span>, <span class='va'>priors_list</span><span class='op'>)</span>
-</div><div class='output co'>#&gt; [1] TRUE</div><div class='input'>
+<span class='op'>}</span>
 </div></pre>
   </div>
   <div class="col-md-3 hidden-xs hidden-sm" id="pkgdown-sidebar">

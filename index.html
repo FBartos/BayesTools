@@ -123,8 +123,7 @@
 <code class="sourceCode R"><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html">plot</a></span><span class="op">(</span><span class="va">p1</span>, lwd <span class="op">=</span> <span class="fl">2</span>, col <span class="op">=</span> <span class="st">"blue"</span>, par_name <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/bquote.html">bquote</a></span><span class="op">(</span><span class="va">mu</span><span class="op">)</span><span class="op">)</span></code></pre></div>
 <p><img src="reference/figures/README-unnamed-chunk-3-2.png" width="50%"></p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html">plot</a></span><span class="op">(</span><span class="va">p2</span>, plot_type <span class="op">=</span> <span class="st">"ggplot"</span><span class="op">)</span>
-<span class="co">#&gt; Loading required namespace: ggplot2</span></code></pre></div>
+<code class="sourceCode R"><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html">plot</a></span><span class="op">(</span><span class="va">p2</span>, plot_type <span class="op">=</span> <span class="st">"ggplot"</span><span class="op">)</span></code></pre></div>
 <p><img src="reference/figures/README-unnamed-chunk-3-3.png" width="50%"></p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html">plot</a></span><span class="op">(</span><span class="va">p2</span>, plot_type <span class="op">=</span> <span class="st">"ggplot"</span>, xlim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">2</span>, <span class="fl">2</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="reference/geom_prior.html">geom_prior</a></span><span class="op">(</span><span class="va">p1</span>, col <span class="op">=</span> <span class="st">"red"</span>, lty <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></code></pre></div>
@@ -218,7 +217,7 @@
 <div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span class="co"># formatted summary tables</span>
 <span class="fu"><a href="reference/BayesTools_model_tables.html">runjags_estimates_table</a></span><span class="op">(</span><span class="va">fit1</span>, <span class="va">priors_list1</span><span class="op">)</span>
-<span class="co">#&gt;     Mean    SD    lCI Median   uCI error(MCMC) SD/error(MCMC)   ESS R-hat</span>
+<span class="co">#&gt;     Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat</span>
 <span class="co">#&gt; mu 0.116 0.304 -0.469  0.117 0.715     0.00242          0.008 15748 1.000</span></code></pre></div>
 <p>We create a <code>log_posterior</code> function that defines the log likelihood of the data for marginal likelihood estimation via <code>bridgesampling</code> (while creating a dummy bridge sampling object for the model without any posterior samples).</p>
 <div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
@@ -297,7 +296,7 @@
 <span class="co">#&gt;      2         Normal(0, 1)       0.333       -13.14       0.186        0.458</span>
 <span class="co">#&gt;      3 Normal(0, 1)[0, Inf]       0.333       -12.87       0.243        0.644</span>
 <span class="fu"><a href="reference/BayesTools_ensemble_tables.html">ensemble_diagnostics_table</a></span><span class="op">(</span><span class="va">models</span>, parameters <span class="op">=</span> <span class="st">"mu"</span>, remove_spike_0 <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span>
-<span class="co">#&gt;  Model       Prior mu       max[error(MCMC)] max[SD/error(MCMC)] min(ESS)</span>
+<span class="co">#&gt;  Model       Prior mu       max[error(MCMC)] max[error(MCMC)/SD] min(ESS)</span>
 <span class="co">#&gt;      1             Spike(0)               NA                  NA       NA</span>
 <span class="co">#&gt;      2         Normal(0, 1)          0.00242               0.008    15748</span>
 <span class="co">#&gt;      3 Normal(0, 1)[0, Inf]          0.00162               0.008    16078</span>
@@ -367,7 +366,7 @@
 <h2>Dev status</h2>
 <ul class="list-unstyled">
 <li><a href="https://github.com/FBartos/BayesTools/actions"><img src="https://github.com/FBartos/BayesTools/workflows/R-CMD-check/badge.svg" alt="R-CMD-check"></a></li>
-<li><a href="https://codecov.io/gh/FBartos/BayesTools?branch=master"><img src="https://codecov.io/gh/FBartos/BayesTools/branch/master/graph/badge.svg" alt="Codecov test coverage"></a></li>
+<li><a href="https://app.codecov.io/gh/FBartos/BayesTools?branch=master"><img src="https://codecov.io/gh/FBartos/BayesTools/branch/master/graph/badge.svg" alt="Codecov test coverage"></a></li>
 <li><a href="https://cran.r-project.org/package=BayesTools"><img src="https://www.r-pkg.org/badges/version/BayesTools" alt="CRAN_Status_Badge"></a></li>
 </ul>
 </div>

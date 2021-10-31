@@ -233,42 +233,42 @@ and <code>rtwo.sided_fixed</code> generate random deviates.</p>
     <pre class="examples"><div class='input'><span class='co'># draw samples from a two-sided weight function</span>
 <span class='fu'>rtwo.sided</span><span class='op'>(</span><span class='fl'>10</span>, alpha <span class='op'>=</span> <span class='fu'><a href='https://rdrr.io/r/base/c.html'>c</a></span><span class='op'>(</span><span class='fl'>1</span>, <span class='fl'>1</span><span class='op'>)</span><span class='op'>)</span>
 </div><div class='output co'>#&gt;             [,1] [,2]
-#&gt;  [1,] 0.37574002    1
-#&gt;  [2,] 0.39870496    1
-#&gt;  [3,] 0.05176311    1
-#&gt;  [4,] 0.42553772    1
-#&gt;  [5,] 0.68518024    1
-#&gt;  [6,] 0.43582263    1
-#&gt;  [7,] 0.37382786    1
-#&gt;  [8,] 0.44676920    1
-#&gt;  [9,] 0.14799466    1
-#&gt; [10,] 0.13299008    1</div><div class='input'>
+#&gt;  [1,] 0.25643199    1
+#&gt;  [2,] 0.78663204    1
+#&gt;  [3,] 0.99620624    1
+#&gt;  [4,] 0.91712054    1
+#&gt;  [5,] 0.04577588    1
+#&gt;  [6,] 0.78327284    1
+#&gt;  [7,] 0.47932399    1
+#&gt;  [8,] 0.79844644    1
+#&gt;  [9,] 0.48136534    1
+#&gt; [10,] 0.49074236    1</div><div class='input'>
 <span class='co'># draw samples from a monotone one-sided weight function</span>
 <span class='fu'>rone.sided</span><span class='op'>(</span><span class='fl'>10</span>, alpha <span class='op'>=</span> <span class='fu'><a href='https://rdrr.io/r/base/c.html'>c</a></span><span class='op'>(</span><span class='fl'>1</span>, <span class='fl'>1</span>, <span class='fl'>1</span><span class='op'>)</span><span class='op'>)</span>
-</div><div class='output co'>#&gt;              [,1]      [,2] [,3]
-#&gt;  [1,] 0.656006805 0.8720998    1
-#&gt;  [2,] 0.199523276 0.2265566    1
-#&gt;  [3,] 0.761886553 0.9111564    1
-#&gt;  [4,] 0.391132971 0.9471112    1
-#&gt;  [5,] 0.310589937 0.6750287    1
-#&gt;  [6,] 0.019353552 0.4468877    1
-#&gt;  [7,] 0.621681296 0.7080281    1
-#&gt;  [8,] 0.006237673 0.5934097    1
-#&gt;  [9,] 0.221231774 0.2891368    1
-#&gt; [10,] 0.466804363 0.6061873    1</div><div class='input'>
+</div><div class='output co'>#&gt;             [,1]      [,2] [,3]
+#&gt;  [1,] 0.06725834 0.9571377    1
+#&gt;  [2,] 0.74022058 0.8310684    1
+#&gt;  [3,] 0.36953872 0.9362038    1
+#&gt;  [4,] 0.25693702 0.5176099    1
+#&gt;  [5,] 0.47831992 0.7934028    1
+#&gt;  [6,] 0.22878709 0.9506422    1
+#&gt;  [7,] 0.89802536 0.9454505    1
+#&gt;  [8,] 0.11865077 0.3342925    1
+#&gt;  [9,] 0.13803908 0.9794552    1
+#&gt; [10,] 0.34253244 0.9249937    1</div><div class='input'>
 <span class='co'># draw samples from a non-monotone one-sided weight function</span>
 <span class='fu'>rone.sided</span><span class='op'>(</span><span class='fl'>10</span>, alpha1 <span class='op'>=</span> <span class='fu'><a href='https://rdrr.io/r/base/c.html'>c</a></span><span class='op'>(</span><span class='fl'>1</span>, <span class='fl'>1</span><span class='op'>)</span>, alpha2 <span class='op'>=</span> <span class='fu'><a href='https://rdrr.io/r/base/c.html'>c</a></span><span class='op'>(</span><span class='fl'>1</span>, <span class='fl'>1</span><span class='op'>)</span><span class='op'>)</span>
-</div><div class='output co'>#&gt;            [,1]        [,2] [,3]
-#&gt;  [1,] 0.8488987 0.332175581    1
-#&gt;  [2,] 0.9163244 0.224871371    1
-#&gt;  [3,] 0.9866824 0.961777147    1
-#&gt;  [4,] 0.9271663 0.597205080    1
-#&gt;  [5,] 0.7160875 0.698279035    1
-#&gt;  [6,] 0.5780643 0.410419311    1
-#&gt;  [7,] 0.7003350 0.615991864    1
-#&gt;  [8,] 0.1948285 0.007895924    1
-#&gt;  [9,] 0.8258818 0.456657857    1
-#&gt; [10,] 0.4057948 0.252243963    1</div><div class='input'>
+</div><div class='output co'>#&gt;            [,1]       [,2] [,3]
+#&gt;  [1,] 0.6649987 0.35513143    1
+#&gt;  [2,] 0.8172982 0.76209104    1
+#&gt;  [3,] 0.3245983 0.14390819    1
+#&gt;  [4,] 0.9115781 0.01467625    1
+#&gt;  [5,] 0.6749378 0.51817415    1
+#&gt;  [6,] 0.6115334 0.12668589    1
+#&gt;  [7,] 0.7861829 0.04020989    1
+#&gt;  [8,] 0.9798124 0.89922879    1
+#&gt;  [9,] 0.9000015 0.75432239    1
+#&gt; [10,] 0.9194674 0.83920173    1</div><div class='input'>
 </div></pre>
   </div>
   <div class="col-md-3 hidden-xs hidden-sm" id="pkgdown-sidebar">
