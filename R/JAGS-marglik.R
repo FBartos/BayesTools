@@ -27,7 +27,7 @@
 #' @param ... additional argument to the \link[bridgesampling]{bridge_sampler}
 #' and \code{log_posterior} function
 #'
-#' @examples
+#' @examples \dontrun{
 #' # simulate data
 #' set.seed(1)
 #' data <- list(
@@ -48,8 +48,7 @@
 #'   }"
 #'
 #' # fit the models
-#' fit <- JAGS_fit(model_syntax, data, priors_list,
-#'                 chains = 1, burnin = 100, sample = 500, seed = 0)
+#' fit <- JAGS_fit(model_syntax, data, priors_list)
 #'
 #' # define log posterior for bridge sampling
 #' log_posterior <- function(parameters, data){
@@ -58,7 +57,7 @@
 #'
 #' # get marginal likelihoods
 #' marglik <- JAGS_bridgesampling(fit, data, priors_list, log_posterior)
-#'
+#' }
 #' @return \code{JAGS_bridgesampling} returns an object of class 'bridge'.
 #'
 #' @export

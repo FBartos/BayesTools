@@ -57,6 +57,7 @@ of samples from the prior distributions and the data, and returns
 log likelihood of the model part.
 }
 \examples{
+\dontrun{
 # simulate data
 set.seed(1)
 data <- list(
@@ -77,8 +78,7 @@ model_syntax <-
   }"
 
 # fit the models
-fit <- JAGS_fit(model_syntax, data, priors_list,
-                chains = 1, burnin = 100, sample = 500, seed = 0)
+fit <- JAGS_fit(model_syntax, data, priors_list)
 
 # define log posterior for bridge sampling
 log_posterior <- function(parameters, data){
@@ -87,5 +87,5 @@ log_posterior <- function(parameters, data){
 
 # get marginal likelihoods
 marglik <- JAGS_bridgesampling(fit, data, priors_list, log_posterior)
-
+}
 }

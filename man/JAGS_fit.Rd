@@ -87,6 +87,7 @@ with usage with pre-specified model part of the 'JAGS' syntax, data and list
 of prior distributions.
 }
 \examples{
+\dontrun{
 # simulate data
 set.seed(1)
 data <- list(
@@ -107,7 +108,8 @@ model_syntax <-
   }"
 
 # fit the models
-fit <- JAGS_fit(model_syntax, data, priors_list, sample = 1000, chains = 2, seed = 0)
+fit <- JAGS_fit(model_syntax, data, priors_list)
+}
 
 }
 \seealso{

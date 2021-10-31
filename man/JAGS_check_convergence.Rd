@@ -39,6 +39,7 @@ Checks whether the supplied \link[runjags]{runjags-package} model
 satisfied convergence criteria.
 }
 \examples{
+\dontrun{
 # simulate data
 set.seed(1)
 data <- list(
@@ -59,9 +60,9 @@ model_syntax <-
   }"
 
 # fit the models
-fit <- JAGS_fit(model_syntax, data, priors_list, burnin = 500, sample = 1000, chains = 2, seed = 0)
+fit <- JAGS_fit(model_syntax, data, priors_list)
 JAGS_check_convergence(fit, priors_list)
-
+}
 }
 \seealso{
 \code{\link[=JAGS_fit]{JAGS_fit()}}

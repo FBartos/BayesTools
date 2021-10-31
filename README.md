@@ -7,7 +7,7 @@
 
 [![R-CMD-check](https://github.com/FBartos/BayesTools/workflows/R-CMD-check/badge.svg)](https://github.com/FBartos/BayesTools/actions)
 [![Codecov test
-coverage](https://codecov.io/gh/FBartos/BayesTools/branch/master/graph/badge.svg)](https://codecov.io/gh/FBartos/BayesTools?branch=master)
+coverage](https://codecov.io/gh/FBartos/BayesTools/branch/master/graph/badge.svg)](https://app.codecov.io/gh/FBartos/BayesTools?branch=master)
 [![CRAN_Status_Badge](https://www.r-pkg.org/badges/version/BayesTools)](https://cran.r-project.org/package=BayesTools)
 <!-- badges: end -->
 
@@ -76,7 +76,6 @@ plot(p1, lwd = 2, col = "blue", par_name = bquote(mu))
 
 ``` r
 plot(p2, plot_type = "ggplot")
-#> Loading required namespace: ggplot2
 ```
 
 <img src="man/figures/README-unnamed-chunk-3-3.png" width="50%" />
@@ -197,7 +196,7 @@ summary for the fitted model.
 ``` r
 # formatted summary tables
 runjags_estimates_table(fit1, priors_list1)
-#>     Mean    SD    lCI Median   uCI error(MCMC) SD/error(MCMC)   ESS R-hat
+#>     Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat
 #> mu 0.116 0.304 -0.469  0.117 0.715     0.00242          0.008 15748 1.000
 ```
 
@@ -297,7 +296,7 @@ ensemble_summary_table(models, parameters = "mu")
 #>      2         Normal(0, 1)       0.333       -13.14       0.186        0.458
 #>      3 Normal(0, 1)[0, Inf]       0.333       -12.87       0.243        0.644
 ensemble_diagnostics_table(models, parameters = "mu", remove_spike_0 = FALSE)
-#>  Model       Prior mu       max[error(MCMC)] max[SD/error(MCMC)] min(ESS)
+#>  Model       Prior mu       max[error(MCMC)] max[error(MCMC)/SD] min(ESS)
 #>      1             Spike(0)               NA                  NA       NA
 #>      2         Normal(0, 1)          0.00242               0.008    15748
 #>      3 Normal(0, 1)[0, Inf]          0.00162               0.008    16078
