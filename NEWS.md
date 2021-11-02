@@ -1,3 +1,7 @@
+## to be version 0.1.4
+### Fixes
+- fixing DOIs in the references file
+
 ## version 0.1.3
 ### Features
 - `prior_informed` function for creating informed prior distributions based on the past psychological and medical research
