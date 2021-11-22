@@ -61,7 +61,7 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL, condition
 
   prior_probs <- prior_weights / sum(prior_weights)
   post_probs  <- unname(bridgesampling::post_prob(margliks, prior_prob = prior_probs))
-  BF          <- inclusion_BF(prior_probs, post_probs, is_null)
+  BF          <- inclusion_BF(prior_probs = prior_probs, margliks = margliks, is_null = is_null)
 
   if(conditional){
     prior_probs <- ifelse(is_null, 0, prior_weights) / sum(prior_weights[!is_null])
@@ -127,7 +127,7 @@ models_inference   <- function(model_list){
   incl_BF     <- sapply(seq_along(model_list), function(i){
     is_null <- rep(TRUE, length(model_list))
     is_null[i] <- FALSE
-    return(inclusion_BF(prior_probs, post_probs, is_null))
+    return(inclusion_BF(prior_probs = prior_probs, margliks = margliks, is_null = is_null))
   })
 
   for(i in seq_along(model_list)){
@@ -405,23 +405,27 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 
 #' @title Compute inclusion Bayes factors
 #'
-#' @description Computes inclusion Bayes factors based on prior and posterior
-#' model probabilities and indicator whether the models represent the null or
-#' alternative hypothesis
+#' @description Computes inclusion Bayes factors based on prior model probabilities,
+#' posterior model probabilities (or marginal likelihoods), and indicator whether
+#' the models represent the null or alternative hypothesis.
 #'
 #' @param prior_probs vector of prior model probabilities
 #' @param post_probs vector of posterior model probabilities
+#' @param margliks vector of marginal likelihoods.
 #' @param is_null logical vector of indicators whether the model corresponds
 #' to the null or alternative hypothesis (or an integer vector indexing models
 #' corresponding to the null hypothesis)
 #'
+#' @details Supplying \code{margliks} as the input is preferred since it is better at dealing with
+#' under/overflow (posterior probabilities are very close to either 0 or 1). In case that both the
+#' \code{post_probs} and \code{margliks} are supplied, the results are based on \code{margliks}.
+#'
 #' @return \code{inclusion_BF} returns a Bayes factor.
 #'
 #' @export
-inclusion_BF     <- function(prior_probs, post_probs, is_null){
+inclusion_BF         <- function(prior_probs, post_probs, margliks, is_null){
 
-  check_real(prior_probs, "prior_probs", lower = 0, upper = 1, check_length = 0)
-  check_real(post_probs,  "post_probs", lower = 0, upper = 1, check_length = length(prior_probs))
+
   if(is.numeric(is_null)){
     check_int(is_null, "is_null", lower = 1, upper = length(prior_probs), check_length = 0)
     is_null <- c(1:length(prior_probs)) %in% is_null
@@ -431,9 +435,30 @@ inclusion_BF     <- function(prior_probs, post_probs, is_null){
     stop("'is_null' argument must be either logical vector, integer vector, or NULL.")
   }
 
-  if(all(!is_null) | isTRUE(all.equal(sum(post_probs[!is_null]), 1)) | isTRUE(all.equal(sum(prior_probs[!is_null]), 1))){
+  # deal with all null or alternative scenarios
+  if(all(!is_null)){
     return(Inf)
-  }else if(all(is_null) | isTRUE(all.equal(sum(post_probs[is_null]), 1)) | isTRUE(all.equal(sum(prior_probs[is_null]), 1))){
+  }else if(all(is_null)){
+    return(0)
+  }
+
+  if(!missing(prior_probs) && !missing(margliks)){
+    return(.inclusion_BF.margliks(prior_probs = prior_probs, margliks = margliks, is_null = is_null))
+  }else if(!missing(prior_probs) && !missing(post_probs)){
+    return(.inclusion_BF.probs(prior_probs = prior_probs, post_probs = post_probs, is_null = is_null))
+  }else{
+    stop("'prior_probs' and either 'post_probs' or 'marglik' must be specified.")
+  }
+}
+
+.inclusion_BF.probs    <- function(prior_probs, post_probs, is_null){
+
+  check_real(prior_probs, "prior_probs", lower = 0, upper = 1, check_length = 0)
+  check_real(post_probs,  "post_probs", lower = 0, upper = 1, check_length = length(prior_probs))
+
+  if(isTRUE(all.equal(sum(post_probs[!is_null]), 1)) | isTRUE(all.equal(sum(prior_probs[!is_null]), 1))){
+    return(Inf)
+  }else if(isTRUE(all.equal(sum(post_probs[is_null]), 1)) | isTRUE(all.equal(sum(prior_probs[is_null]), 1))){
     return(0)
   }else{
     return(
@@ -441,6 +466,19 @@ inclusion_BF     <- function(prior_probs, post_probs, is_null){
         (sum(prior_probs[!is_null]) / sum(prior_probs[is_null]))
     )
   }
+}
+.inclusion_BF.margliks <- function(prior_probs, margliks, is_null){
+
+  check_real(prior_probs, "prior_probs", lower = 0, upper = 1, check_length = 0)
+  check_real(margliks,  "margliks", check_length = length(prior_probs))
+
+  # center the margliks around the mean for higher precision
+  margliks <- margliks - mean(margliks)
+
+  return(
+    (sum(exp(margliks[!is_null]) * prior_probs[!is_null]) / sum(exp(margliks[is_null]) * prior_probs[is_null])) /
+      (sum(prior_probs[!is_null]) / sum(prior_probs[is_null]))
+  )
 }
 
 

@@ -4,12 +4,14 @@
 \alias{inclusion_BF}
 \title{Compute inclusion Bayes factors}
 \usage{
-inclusion_BF(prior_probs, post_probs, is_null)
+inclusion_BF(prior_probs, post_probs, margliks, is_null)
 }
 \arguments{
 \item{prior_probs}{vector of prior model probabilities}
 
 \item{post_probs}{vector of posterior model probabilities}
+
+\item{margliks}{vector of marginal likelihoods.}
 
 \item{is_null}{logical vector of indicators whether the model corresponds
 to the null or alternative hypothesis (or an integer vector indexing models
@@ -19,7 +21,12 @@ corresponding to the null hypothesis)}
 \code{inclusion_BF} returns a Bayes factor.
 }
 \description{
-Computes inclusion Bayes factors based on prior and posterior
-model probabilities and indicator whether the models represent the null or
-alternative hypothesis
+Computes inclusion Bayes factors based on prior model probabilities,
+posterior model probabilities (or marginal likelihoods), and indicator whether
+the models represent the null or alternative hypothesis.
+}
+\details{
+Supplying \code{margliks} as the input is preferred since it is better at dealing with
+under/overflow (posterior probabilities are very close to either 0 or 1). In case that both the
+\code{post_probs} and \code{margliks} are supplied, the results are based on \code{margliks}.
 }

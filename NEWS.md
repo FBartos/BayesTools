@@ -1,6 +1,7 @@
 ## to be version 0.1.4
 ### Fixes
 - fixing DOIs in the references file
+- adds marglik argument `inclusion_BF` to deal with over/underflow (Issue #9)
 
 ## version 0.1.3
 ### Features

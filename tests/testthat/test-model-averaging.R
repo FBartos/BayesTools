@@ -32,8 +32,28 @@ test_that("Model-averaging functions work", {
   expect_equal(attr(format_BF(1, BF01 = TRUE, logBF = TRUE), "name"), "log(1/BF)")
 
   # additional BF checks
+  expect_equal(inclusion_BF(prior_probs = c(.5, .5), post_probs = c(.5, .5), is_null = c(T, F)), 1)
+  expect_equal(inclusion_BF(prior_probs = c(.5, .5), post_probs = c(.75, .25), is_null = c(T, F)), 1/3)
+  expect_equal(inclusion_BF(prior_probs = c(.25, .25, .25, .25), post_probs = c(.75, 0, .25, 0), is_null = c(T, T, F, F)), 1/3)
+  expect_equal(inclusion_BF(prior_probs = c(.25, .25, .25, .25), post_probs = c(.65, .10, .20, 0.05), is_null = c(T, T, F, F)), 1/3)
   expect_equal(inclusion_BF(prior_probs = c(1, 0), post_probs = c(1, 0), is_null = c(T, F)), 0)
   expect_equal(inclusion_BF(prior_probs = c(1, 0), post_probs = c(1, 0), is_null = c(F, T)), Inf)
+
+  # test the marglik versions of BF
+  temp_prior_probs <- 1:6/sum(1:6)
+  temp_margliks    <- -2:3
+  temp_post_probs  <- bridgesampling::post_prob(temp_margliks, prior_prob = temp_prior_probs)
+  expect_equal(
+    inclusion_BF(prior_probs = temp_prior_probs, post_probs = temp_post_probs, is_null = rep(c(T, F), 3)),
+    inclusion_BF(prior_probs = temp_prior_probs, margliks = temp_margliks, is_null = rep(c(T, F), 3))
+  )
+
+  # check for over/underflow
+  temp_prior_probs <- 1:6/sum(1:6)
+  temp_margliks    <- c(-2:2, 100)
+  temp_post_probs  <- bridgesampling::post_prob(temp_margliks, prior_prob = temp_prior_probs)
+  expect_true(is.infinite(inclusion_BF(prior_probs = temp_prior_probs, post_probs = temp_post_probs, is_null = rep(c(T, F), 3))))
+  expect_false(is.infinite(inclusion_BF(prior_probs = temp_prior_probs, margliks = temp_margliks, is_null = rep(c(T, F), 3))))
 
   # additional omega mapping checks
   expect_equal(weightfunctions_mapping(prior_list = list(
