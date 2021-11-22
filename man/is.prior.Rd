@@ -8,6 +8,9 @@
 \alias{is.prior.PET}
 \alias{is.prior.PEESE}
 \alias{is.prior.weightfunction}
+\alias{is.prior.factor}
+\alias{is.prior.orthonormal}
+\alias{is.prior.dummy}
 \title{Reports whether x is a a prior object}
 \usage{
 is.prior(x)
@@ -23,6 +26,12 @@ is.prior.PET(x)
 is.prior.PEESE(x)
 
 is.prior.weightfunction(x)
+
+is.prior.factor(x)
+
+is.prior.orthonormal(x)
+
+is.prior.dummy(x)
 }
 \arguments{
 \item{x}{an object of test}

@@ -250,6 +250,70 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
   return(output)
 }
 
+#' @title Creates a prior distribution for factors
+#'
+#' @description \code{prior_factor} creates a prior distribution for fitting
+#' models with factor predictors.
+#'
+#' @param contrast type of contrast for the prior distribution. The possible options are
+#' \describe{
+#'   \item{\code{"orthonormal"}}{for contrast centered around the grand mean
+#'   with equal marginal distributions, making the prior distribution exchangeable
+#'   across factor levels. Supports only \code{distribution = "normal"} which generates
+#'   the corresponding multivariate normal distribution.}
+#'   \item{\code{"treatment"}}{for contrasts using the first level as a comparison
+#'   group and setting equal prior distribution on differences between the individual
+#'   factor levels and the comparison level.}
+#' }
+#'
+#'
+#' @examples
+#' # create an orthonormal prior distribution
+#' p1 <- prior_factor(distribution = "normal", contrast = "orthonormal", parameters = list(sd = 1))
+#'
+#' @return return an object of class 'prior'.
+#'
+#' @inheritParams prior
+#' @export  prior_factor
+#' @seealso [prior()]
+prior_factor <- function(distribution, contrast, parameters,
+                         truncation = if(contrast == "orthonormal") NULL else list(lower = -Inf, upper = Inf), prior_weights = 1){
+
+  # general input check (detailed checks are performed withing the constructors)
+  check_char(distribution, "distribution")
+  check_char(contrast, "contrast")
+  check_list(parameters, "parameters")
+  sapply(seq_along(parameters), function(i)check_real(parameters[[i]], names(parameters[[i]]), check_length = 0))
+  check_list(truncation, "truncation", allow_NULL = TRUE)
+  check_real(prior_weights, "prior_weights", lower = 0, allow_bound = FALSE)
+
+  # clean the input name
+  distribution <- .prior_clean_input_name(distribution)
+
+
+  if(contrast == "orthonormal"){
+
+    if(distribution %in% "normal"){
+      distribution <- "normal.orthonormal"
+    }else{
+      stop(paste0("Only 'normal' distribution can be used to specify 'orthonormal' contrasts. Please, see '?prior_factor' for more information about supported prior distributions and contrasts for factors."))
+    }
+
+    if(!is.null(truncation))
+      stop("'orthonormal' contrasts do not support truncation.")
+
+    output <- do.call(paste0(".prior_", distribution), list(parameters = parameters))
+    class(output) <- c("prior", "prior.factor", "prior.orthonormal")
+
+  }else if(contrast %in% c("treatment", "dummy")){
+
+    output <- prior(distribution = distribution, parameters = parameters, truncation = truncation, prior_weights = prior_weights)
+    class(output) <- c("prior", "prior.factor", "prior.dummy")
+
+  }
+
+  return(output)
+}
 
 #### functions for constructing prior distributions ####
 .prior_normal    <- function(parameters, truncation){
@@ -577,6 +641,24 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
   output$distribution <- "one.sided.fixed"
   output$parameters   <- parameters
   output$truncation   <- list(lower = 0, upper = 1)
+
+  return(output)
+}
+
+.prior_normal.orthonormal <- function(parameters){
+
+  output <- list()
+
+  # check overall settings
+  parameters <- .check_and_name_parameters(parameters, "sd", "normal.orthonormal")
+
+  # check individual parameters
+  .check_parameter(parameters$sd,   "sd")
+  .check_parameter_positive(parameters$sd, "sd")
+
+  # add the values to the output
+  output$distribution <- "normal.orthonormal"
+  output$parameters   <- parameters
 
   return(output)
 }

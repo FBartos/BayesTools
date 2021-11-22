@@ -184,6 +184,9 @@
 #' @export is.prior.PET
 #' @export is.prior.PEESE
 #' @export is.prior.weightfunction
+#' @export is.prior.factor
+#' @export is.prior.orthonormal
+#' @export is.prior.dummy
 #' @name is.prior
 NULL
 
@@ -214,6 +217,18 @@ is.prior.PEESE           <- function(x){
 #' @rdname is.prior
 is.prior.weightfunction  <- function(x){
   inherits(x, "prior.weightfunction")
+}
+#' @rdname is.prior
+is.prior.factor          <- function(x){
+  inherits(x, "prior.factor")
+}
+#' @rdname is.prior
+is.prior.orthonormal     <- function(x){
+  inherits(x, "prior.orthonormal")
+}
+#' @rdname is.prior
+is.prior.dummy           <- function(x){
+  inherits(x, "prior.dummy")
 }
 
 .check_prior <- function(prior, name = "prior"){

@@ -170,3 +170,11 @@ test_that("Two-sided.fixed weigthfunction prior distribution works", {
   expect_doppelganger("prior-weigthfunction-two.sided.fixed-2", function()test_weightfunction(prior_weightfunction("two.sided.fixed", list(c(.05, 0.10), c(1, .2, .5)))))
 
 })
+
+test_that(" prior distribution works", {
+
+  p1 <- prior_factor(distribution = "normal", contrast = "orthonormal", parameters = list(sd = 1))
+  p2 <- prior_factor(distribution = "normal", contrast = "dummy", parameters = list(mean = 0, sd = 1))
+
+  # TODO: add some tests
+})
