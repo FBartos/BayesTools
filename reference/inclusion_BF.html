@@ -40,9 +40,9 @@
 
 
 <meta property="og:title" content="Compute inclusion Bayes factors — inclusion_BF" />
-<meta property="og:description" content="Computes inclusion Bayes factors based on prior and posterior
-model probabilities and indicator whether the models represent the null or
-alternative hypothesis" />
+<meta property="og:description" content="Computes inclusion Bayes factors based on prior model probabilities,
+posterior model probabilities (or marginal likelihoods), and indicator whether
+the models represent the null or alternative hypothesis." />
 
 
 
@@ -119,12 +119,12 @@ alternative hypothesis" />
     </div>
 
     <div class="ref-description">
-    <p>Computes inclusion Bayes factors based on prior and posterior
-model probabilities and indicator whether the models represent the null or
-alternative hypothesis</p>
+    <p>Computes inclusion Bayes factors based on prior model probabilities,
+posterior model probabilities (or marginal likelihoods), and indicator whether
+the models represent the null or alternative hypothesis.</p>
     </div>
 
-    <pre class="usage"><span class='fu'>inclusion_BF</span><span class='op'>(</span><span class='va'>prior_probs</span>, <span class='va'>post_probs</span>, <span class='va'>is_null</span><span class='op'>)</span></pre>
+    <pre class="usage"><span class='fu'>inclusion_BF</span><span class='op'>(</span><span class='va'>prior_probs</span>, <span class='va'>post_probs</span>, <span class='va'>margliks</span>, <span class='va'>is_null</span><span class='op'>)</span></pre>
 
     <h2 class="hasAnchor" id="arguments"><a class="anchor" href="#arguments"></a>Arguments</h2>
     <table class="ref-arguments">
@@ -138,6 +138,10 @@ alternative hypothesis</p>
       <td><p>vector of posterior model probabilities</p></td>
     </tr>
     <tr>
+      <th>margliks</th>
+      <td><p>vector of marginal likelihoods.</p></td>
+    </tr>
+    <tr>
       <th>is_null</th>
       <td><p>logical vector of indicators whether the model corresponds
 to the null or alternative hypothesis (or an integer vector indexing models
@@ -148,6 +152,11 @@ corresponding to the null hypothesis)</p></td>
     <h2 class="hasAnchor" id="value"><a class="anchor" href="#value"></a>Value</h2>
 
     <p><code>inclusion_BF</code> returns a Bayes factor.</p>
+    <h2 class="hasAnchor" id="details"><a class="anchor" href="#details"></a>Details</h2>
+
+    <p>Supplying <code>margliks</code> as the input is preferred since it is better at dealing with
+under/overflow (posterior probabilities are very close to either 0 or 1). In case that both the
+<code>post_probs</code> and <code>margliks</code> are supplied, the results are based on <code>margliks</code>.</p>
 
   </div>
   <div class="col-md-3 hidden-xs hidden-sm" id="pkgdown-sidebar">

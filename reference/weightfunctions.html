@@ -196,7 +196,7 @@ one.sided of weight function.</p></td>
     <tr>
       <th>log, log.p</th>
       <td><p>logical; if <code>TRUE</code>, probabilities
-<code>p</code> are given as <code><a href='https://rdrr.io/r/base/Log.html'>log(p)</a></code>.</p></td>
+<code>p</code> are given as <code>log(p)</code>.</p></td>
     </tr>
     <tr>
       <th>omega</th>
@@ -230,46 +230,49 @@ and <code>rone.sided</code>, <code>rtwo.sided</code>, <code>rone.sided_fixed</co
 and <code>rtwo.sided_fixed</code> generate random deviates.</p>
 
     <h2 class="hasAnchor" id="examples"><a class="anchor" href="#examples"></a>Examples</h2>
-    <pre class="examples"><div class='input'><span class='co'># draw samples from a two-sided weight function</span>
-<span class='fu'>rtwo.sided</span><span class='op'>(</span><span class='fl'>10</span>, alpha <span class='op'>=</span> <span class='fu'><a href='https://rdrr.io/r/base/c.html'>c</a></span><span class='op'>(</span><span class='fl'>1</span>, <span class='fl'>1</span><span class='op'>)</span><span class='op'>)</span>
-</div><div class='output co'>#&gt;             [,1] [,2]
-#&gt;  [1,] 0.25643199    1
-#&gt;  [2,] 0.78663204    1
-#&gt;  [3,] 0.99620624    1
-#&gt;  [4,] 0.91712054    1
-#&gt;  [5,] 0.04577588    1
-#&gt;  [6,] 0.78327284    1
-#&gt;  [7,] 0.47932399    1
-#&gt;  [8,] 0.79844644    1
-#&gt;  [9,] 0.48136534    1
-#&gt; [10,] 0.49074236    1</div><div class='input'>
-<span class='co'># draw samples from a monotone one-sided weight function</span>
-<span class='fu'>rone.sided</span><span class='op'>(</span><span class='fl'>10</span>, alpha <span class='op'>=</span> <span class='fu'><a href='https://rdrr.io/r/base/c.html'>c</a></span><span class='op'>(</span><span class='fl'>1</span>, <span class='fl'>1</span>, <span class='fl'>1</span><span class='op'>)</span><span class='op'>)</span>
-</div><div class='output co'>#&gt;             [,1]      [,2] [,3]
-#&gt;  [1,] 0.06725834 0.9571377    1
-#&gt;  [2,] 0.74022058 0.8310684    1
-#&gt;  [3,] 0.36953872 0.9362038    1
-#&gt;  [4,] 0.25693702 0.5176099    1
-#&gt;  [5,] 0.47831992 0.7934028    1
-#&gt;  [6,] 0.22878709 0.9506422    1
-#&gt;  [7,] 0.89802536 0.9454505    1
-#&gt;  [8,] 0.11865077 0.3342925    1
-#&gt;  [9,] 0.13803908 0.9794552    1
-#&gt; [10,] 0.34253244 0.9249937    1</div><div class='input'>
-<span class='co'># draw samples from a non-monotone one-sided weight function</span>
-<span class='fu'>rone.sided</span><span class='op'>(</span><span class='fl'>10</span>, alpha1 <span class='op'>=</span> <span class='fu'><a href='https://rdrr.io/r/base/c.html'>c</a></span><span class='op'>(</span><span class='fl'>1</span>, <span class='fl'>1</span><span class='op'>)</span>, alpha2 <span class='op'>=</span> <span class='fu'><a href='https://rdrr.io/r/base/c.html'>c</a></span><span class='op'>(</span><span class='fl'>1</span>, <span class='fl'>1</span><span class='op'>)</span><span class='op'>)</span>
-</div><div class='output co'>#&gt;            [,1]       [,2] [,3]
-#&gt;  [1,] 0.6649987 0.35513143    1
-#&gt;  [2,] 0.8172982 0.76209104    1
-#&gt;  [3,] 0.3245983 0.14390819    1
-#&gt;  [4,] 0.9115781 0.01467625    1
-#&gt;  [5,] 0.6749378 0.51817415    1
-#&gt;  [6,] 0.6115334 0.12668589    1
-#&gt;  [7,] 0.7861829 0.04020989    1
-#&gt;  [8,] 0.9798124 0.89922879    1
-#&gt;  [9,] 0.9000015 0.75432239    1
-#&gt; [10,] 0.9194674 0.83920173    1</div><div class='input'>
-</div></pre>
+    <pre class="examples"><span class='r-in'><span class='co'># draw samples from a two-sided weight function</span></span>
+<span class='r-in'><span class='fu'>rtwo.sided</span><span class='op'>(</span><span class='fl'>10</span>, alpha <span class='op'>=</span> <span class='fu'><a href='https://rdrr.io/r/base/c.html'>c</a></span><span class='op'>(</span><span class='fl'>1</span>, <span class='fl'>1</span><span class='op'>)</span><span class='op'>)</span></span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>             [,1] [,2]</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>  [1,] 0.25643199    1</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>  [2,] 0.78663204    1</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>  [3,] 0.99620624    1</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>  [4,] 0.91712054    1</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>  [5,] 0.04577588    1</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>  [6,] 0.78327284    1</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>  [7,] 0.47932399    1</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>  [8,] 0.79844644    1</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>  [9,] 0.48136534    1</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span> [10,] 0.49074236    1</span>
+<span class='r-in'></span>
+<span class='r-in'><span class='co'># draw samples from a monotone one-sided weight function</span></span>
+<span class='r-in'><span class='fu'>rone.sided</span><span class='op'>(</span><span class='fl'>10</span>, alpha <span class='op'>=</span> <span class='fu'><a href='https://rdrr.io/r/base/c.html'>c</a></span><span class='op'>(</span><span class='fl'>1</span>, <span class='fl'>1</span>, <span class='fl'>1</span><span class='op'>)</span><span class='op'>)</span></span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>             [,1]      [,2] [,3]</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>  [1,] 0.06725834 0.9571377    1</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>  [2,] 0.74022058 0.8310684    1</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>  [3,] 0.36953872 0.9362038    1</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>  [4,] 0.25693702 0.5176099    1</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>  [5,] 0.47831992 0.7934028    1</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>  [6,] 0.22878709 0.9506422    1</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>  [7,] 0.89802536 0.9454505    1</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>  [8,] 0.11865077 0.3342925    1</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>  [9,] 0.13803908 0.9794552    1</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span> [10,] 0.34253244 0.9249937    1</span>
+<span class='r-in'></span>
+<span class='r-in'><span class='co'># draw samples from a non-monotone one-sided weight function</span></span>
+<span class='r-in'><span class='fu'>rone.sided</span><span class='op'>(</span><span class='fl'>10</span>, alpha1 <span class='op'>=</span> <span class='fu'><a href='https://rdrr.io/r/base/c.html'>c</a></span><span class='op'>(</span><span class='fl'>1</span>, <span class='fl'>1</span><span class='op'>)</span>, alpha2 <span class='op'>=</span> <span class='fu'><a href='https://rdrr.io/r/base/c.html'>c</a></span><span class='op'>(</span><span class='fl'>1</span>, <span class='fl'>1</span><span class='op'>)</span><span class='op'>)</span></span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>            [,1]       [,2] [,3]</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>  [1,] 0.6649987 0.35513143    1</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>  [2,] 0.8172982 0.76209104    1</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>  [3,] 0.3245983 0.14390819    1</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>  [4,] 0.9115781 0.01467625    1</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>  [5,] 0.6749378 0.51817415    1</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>  [6,] 0.6115334 0.12668589    1</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>  [7,] 0.7861829 0.04020989    1</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>  [8,] 0.9798124 0.89922879    1</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span>  [9,] 0.9000015 0.75432239    1</span>
+<span class='r-out co'><span class='r-pr'>#&gt;</span> [10,] 0.9194674 0.83920173    1</span>
+<span class='r-in'></span>
+</pre>
   </div>
   <div class="col-md-3 hidden-xs hidden-sm" id="pkgdown-sidebar">
     <nav id="toc" data-toggle="toc" class="sticky-top">
