@@ -3,6 +3,9 @@
 - fixing DOIs in the references file
 - adds marglik argument `inclusion_BF` to deal with over/underflow (Issue #9)
 
+### Features
+- adding logBF and BF01 options to `ensemble_summary_table` (Issue #7)
+
 ## version 0.1.3
 ### Features
 - `prior_informed` function for creating informed prior distributions based on the past psychological and medical research

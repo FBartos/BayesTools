@@ -156,7 +156,8 @@ ensemble_inference_table <- function(inference, parameters, logBF = FALSE, BF01 
 }
 
 #' @rdname BayesTools_ensemble_tables
-ensemble_summary_table <- function(models, parameters, title = NULL, footnotes = NULL, warnings = NULL, remove_spike_0 = TRUE, short_name = FALSE){
+ensemble_summary_table <- function(models, parameters, logBF = FALSE, BF01 = FALSE, title = NULL, footnotes = NULL, warnings = NULL,
+                                   remove_spike_0 = TRUE, short_name = FALSE){
 
   # check input
   check_list(models, "models")
@@ -185,6 +186,8 @@ ensemble_summary_table <- function(models, parameters, title = NULL, footnotes =
       names(parameters) <- parameters
     }
   }
+  check_bool(logBF, "logBF")
+  check_bool(BF01,  "BF01")
   check_char(title, "title", allow_NULL = TRUE)
   check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
   check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
@@ -201,6 +204,10 @@ ensemble_summary_table <- function(models, parameters, title = NULL, footnotes =
     "post_prob"    = sapply(models, function(model)model[["inference"]][["post_prob"]]),
     "BF"           = sapply(models, function(model)model[["inference"]][["inclusion_BF"]])
   )
+
+  formatted_BF <- format_BF(ensemble_table[,"BF"], logBF = logBF, BF01 = BF01)
+  ensemble_table[,"BF"]  <- formatted_BF
+  colnames(ensemble_table)[colnames(ensemble_table) == "BF"]  <- attr(formatted_BF, "name")
 
   # prepare output
   class(ensemble_table)             <- c("BayesTools_table", "BayesTools_ensemble_summary", class(ensemble_table))

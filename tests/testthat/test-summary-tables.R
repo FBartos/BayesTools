@@ -75,25 +75,25 @@ test_that("Summary tables functions work",{
   # ensemble summary
   summary_table <- ensemble_summary_table(models, c("m", "omega"))
   expect_equal(colnames(summary_table), c("Model", "m", "omega", "prior_prob", "marglik", "post_prob", "BF"))
-  expect_equal(unname(unlist(summary_table[,1])), c(1, 2, 3))
-  expect_equal(unname(unlist(summary_table[,2])), c("Normal(0, 1)", "Normal(0, 0.5)", "Normal(0, 0.3)"))
-  expect_equal(unname(unlist(summary_table[,3])), c("", "omega[one-sided: .05] ~ CumDirichlet(1, 1)", "omega[one-sided: .5, .05] ~ CumDirichlet(1, 1, 1)"))
-  expect_equal(unname(unlist(summary_table[,4])), c(0.3333333, 0.3333333, 0.3333333),    tolerance = 1e-4)
-  expect_equal(unname(unlist(summary_table[,5])), c(-1.1023042, -0.6149897, -0.2365613), tolerance = 1e-4)
-  expect_equal(unname(unlist(summary_table[,6])), c(0.1998118, 0.3252813, 0.4749069),    tolerance = 1e-4)
-  expect_equal(unname(unlist(summary_table[,7])), c(0.4994120, 0.9641984, 1.8088483),    tolerance = 1e-4)
+  expect_equal(unname(as.vector(summary_table[,1])), c(1, 2, 3))
+  expect_equal(unname(as.vector(summary_table[,2])), c("Normal(0, 1)", "Normal(0, 0.5)", "Normal(0, 0.3)"))
+  expect_equal(unname(as.vector(summary_table[,3])), c("", "omega[one-sided: .05] ~ CumDirichlet(1, 1)", "omega[one-sided: .5, .05] ~ CumDirichlet(1, 1, 1)"))
+  expect_equal(unname(as.vector(summary_table[,4])), c(0.3333333, 0.3333333, 0.3333333),    tolerance = 1e-4)
+  expect_equal(unname(as.vector(summary_table[,5])), c(-1.1023042, -0.6149897, -0.2365613), tolerance = 1e-4)
+  expect_equal(unname(as.vector(summary_table[,6])), c(0.1998118, 0.3252813, 0.4749069),    tolerance = 1e-4)
+  expect_equal(unname(as.vector(summary_table[,7])), c(0.4994120, 0.9641984, 1.8088483),    tolerance = 1e-4)
 
   # ensemble diagnostics
   diagnostics_table <- ensemble_diagnostics_table(models, c("m", "omega"))
   expect_equal(colnames(diagnostics_table), c("Model", "m", "omega", "max_MCMC_error", "max_MCMC_SD_error", "min_ESS", "max_R_hat"))
 
-  expect_equal(unname(unlist(diagnostics_table[,1])), c(1, 2, 3))
-  expect_equal(unname(unlist(diagnostics_table[,2])), c("Normal(0, 1)", "Normal(0, 0.5)", "Normal(0, 0.3)"))
-  expect_equal(unname(unlist(diagnostics_table[,3])), c("", "omega[one-sided: .05] ~ CumDirichlet(1, 1)", "omega[one-sided: .5, .05] ~ CumDirichlet(1, 1, 1)"))
-  expect_equal(unname(unlist(diagnostics_table[,4])), c(0.01019039, 0.01348211, 0.01061287), tolerance = 1e-4)
-  expect_equal(unname(unlist(diagnostics_table[,5])), c(0.048, 0.047, 0.045), tolerance = 1e-3)
-  expect_equal(unname(unlist(diagnostics_table[,6])), c(434, 461, 500))
-  expect_equal(unname(unlist(diagnostics_table[,7])), c(NA, NA, NA))
+  expect_equal(unname(as.vector(diagnostics_table[,1])), c(1, 2, 3))
+  expect_equal(unname(as.vector(diagnostics_table[,2])), c("Normal(0, 1)", "Normal(0, 0.5)", "Normal(0, 0.3)"))
+  expect_equal(unname(as.vector(diagnostics_table[,3])), c("", "omega[one-sided: .05] ~ CumDirichlet(1, 1)", "omega[one-sided: .5, .05] ~ CumDirichlet(1, 1, 1)"))
+  expect_equal(unname(as.vector(diagnostics_table[,4])), c(0.01019039, 0.01348211, 0.01061287), tolerance = 1e-4)
+  expect_equal(unname(as.vector(diagnostics_table[,5])), c(0.048, 0.047, 0.045), tolerance = 1e-3)
+  expect_equal(unname(as.vector(diagnostics_table[,6])), c(434, 461, 500))
+  expect_equal(unname(as.vector(diagnostics_table[,7])), c(NA, NA, NA))
 
 
   ### test additional settings
