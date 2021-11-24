@@ -5,9 +5,16 @@
 #' with usage with pre-specified model part of the 'JAGS' syntax, data and list
 #' of prior distributions.
 #' @param model_syntax jags syntax for the model part
-#' @param data data fit the model
+#' @param data data to fit the model
 #' @param prior_list named list of prior distribution
-#' (names correspond to the parameter names)
+#' (names correspond to the parameter names) of parameters not specified within the
+#' \code{formula}
+#' @param formula named list of formulas to be added to the model
+#' (names correspond to the parameter name created by the formula)
+#' @param formula_prior_list named list of named lists of prior distributions
+#' (names of the lists correspond to the parameter name created by each of the formula and
+#' the names of the prior distribution correspond to the parameter names) of parameters specified
+#' within the \code{formula}
 #' @param chains number of chains to be run, defaults to \code{4}
 #' @param adapt number of samples used for adapting the MCMC chains, defaults to \code{500}
 #' @param burnin number of burnin iterations of the MCMC chains, defaults to \code{1000}
@@ -69,7 +76,7 @@
 #'
 #' @seealso [JAGS_check_convergence()]
 #' @export
-JAGS_fit <- function(model_syntax, data, prior_list,
+JAGS_fit <- function(model_syntax, data, prior_list, formula = NULL, formula_prior_list = NULL,
                      chains = 4, adapt = 500, burnin = 1000, sample = 4000, thin = 1,
                      autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000),
                      parallel = FALSE, cores = chains, silent = TRUE, seed = NULL,
@@ -81,6 +88,7 @@ JAGS_fit <- function(model_syntax, data, prior_list,
   check_char(add_parameters, "add_parameters", check_length = 0, allow_NULL = TRUE)
   check_char(required_packages, "required_packages", check_length = 0, allow_NULL = TRUE)
 
+  #
 
 
   ### create the model call
@@ -396,6 +404,32 @@ JAGS_add_priors           <- function(syntax, prior_list){
   if(prior[["distribution"]] == "invgamma"){
     syntax <- paste0(syntax, "  ", parameter_name," = pow(inv_",parameter_name,", -1)\n")
   }
+
+  return(syntax)
+}
+.JAGS_prior.factor         <- function(prior, K, parameter_name){
+
+  .check_prior(prior)
+  if(!is.prior.factor(prior))
+    stop("improper prior provided")
+  check_char(parameter_name, "parameter_name")
+  check_int(K, "K", lower = 1)
+
+  if(is.prior.dummy(prior)){
+    syntax <- paste0(
+      "for(i in 1:", K, "){\n",
+      "  ", .JAGS_prior.simple(prior, paste0(parameter_name, "[i]")),
+      "}")
+  }else if(is.prior.orthonormal(prior)){
+    # TODO: .JAGS_prior.vector() and create the sigma matrix
+
+    syntax <- switch(
+      prior[["distribution"]],
+      "mnormal" = paste0(parameter_name," ~ dmnorm(rep(", prior$parameter[["mean"]], ", ", K ,"), ",1/prior$parameter[["sd"]]^2,")"),
+      "mt"      = paste0(parameter_name," ~ dmt(rep(", prior$parameter[["location"]], ", ", K ,"), ",1/prior$parameter[["scale"]]^2,",", prior$parameter[["df"]],")")
+    )
+  }
+
 
   return(syntax)
 }
