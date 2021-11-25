@@ -407,29 +407,62 @@ JAGS_add_priors           <- function(syntax, prior_list){
 
   return(syntax)
 }
-.JAGS_prior.factor         <- function(prior, K, parameter_name){
+.JAGS_prior.vector         <- function(prior, parameter_name){
+
+  .check_prior(prior)
+  if(!is.prior.vector(prior))
+    stop("improper prior provided")
+  check_char(parameter_name, "parameter_name")
+
+  # create the location/means vector the sigma matrix
+  par1 <- switch(
+    "mnormal" = prior$parameter[["mean"]],
+    "mt"      = prior$parameter[["location"]]
+  )
+  par2 <- switch(
+    "mnormal" = prior$parameter[["sd"]],
+    "mt"      = prior$parameter[["scale"]]
+  )
+
+  # TODO: beautify this code by specific JAGS distributions?
+  syntax <- paste0("prior_par1_", parameter_name, " = rep(", par1, ",", prior$parameter[["K"]], ")\n")
+  syntax <- paste0(
+    syntax,
+    "for(i in 1:", prior$parameters[["K"]], "){\n",
+    "  prior_par2_", parameter_name, "[i, i] = ", 1/par2^2, "\n",
+    "}\n")
+
+
+  syntax <- paste0(syntax, switch(
+    prior[["distribution"]],
+    "mnormal" = paste0(parameter_name," ~ dmnorm(prior_par1_", parameter_name, ",prior_par2_", parameter_name, ")"),
+    "mt"      = paste0(parameter_name," ~ dmt(prior_par1_", parameter_name, ",prior_par2_", parameter_name,",", prior$parameter[["df"]],")")
+  ), "\n")
+
+  return(syntax)
+}
+.JAGS_prior.factor         <- function(prior, parameter_name, levels){
 
   .check_prior(prior)
   if(!is.prior.factor(prior))
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
-  check_int(K, "K", lower = 1)
+  check_int(levels, "levels", lower = 2)
 
   if(is.prior.dummy(prior)){
+
     syntax <- paste0(
       "for(i in 1:", K, "){\n",
       "  ", .JAGS_prior.simple(prior, paste0(parameter_name, "[i]")),
       "}")
+
   }else if(is.prior.orthonormal(prior)){
-    # TODO: .JAGS_prior.vector() and create the sigma matrix
 
-    syntax <- switch(
-      prior[["distribution"]],
-      "mnormal" = paste0(parameter_name," ~ dmnorm(rep(", prior$parameter[["mean"]], ", ", K ,"), ",1/prior$parameter[["sd"]]^2,")"),
-      "mt"      = paste0(parameter_name," ~ dmt(rep(", prior$parameter[["location"]], ", ", K ,"), ",1/prior$parameter[["scale"]]^2,",", prior$parameter[["df"]],")")
-    )
+    prior$parameters[["K"]] <- levels - 1
+
+    syntax <- .JAGS_prior.vector(prior, paste0(parameter_name, "[i]"))
+
   }
-
 
   return(syntax)
 }

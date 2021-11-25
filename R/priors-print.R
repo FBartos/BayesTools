@@ -75,13 +75,16 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
   }
 
   # deal with exceptions - Cauchy is passed as T
-  if(x[["distribution"]] == "t"){
-    if(x[["parameters"]][["df"]] == 1){
+  if(x[["distribution"]] == "t" && x[["parameters"]][["df"]] == 1){
       x[["distribution"]] <- "Cauchy"
       x[["parameters"]]   <- list(
         location = x[["parameters"]][["location"]],
         scale    = x[["parameters"]][["scale"]])
-    }
+  }else if(x[["distribution"]] == "mt" && x[["parameters"]][["df"]] == 1){
+    x[["distribution"]] <- "mCauchy"
+    x[["parameters"]]   <- list(
+      location = x[["parameters"]][["location"]],
+      scale    = x[["parameters"]][["scale"]])
   }
 
   ### prepare prior name
@@ -98,7 +101,9 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
       "beta"         = "B",
       "exp"          = "E",
       "uniform"      = "U",
-      "normal.orthonormal"  = "On"
+      "mnormal"      = "mN",
+      "mt"           = "mT",
+      "mCauchy"      = "mC"
     )
   }else{
     out_name <- switch(
@@ -113,7 +118,9 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
       "beta"         = "Beta",
       "exp"          = "Exponential",
       "uniform"      = "Uniform",
-      "normal.orthonormal"  = "Orthonormal"
+      "mnormal"      = "mNormal",
+      "mt"           = "mStudent-t",
+      "mCauchy"      = "mCauchy"
     )
   }
 
@@ -128,6 +135,11 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
     out_prefix <- "orthonormal contrast: "
   }else{
     out_prefix <- NULL
+  }
+
+  # remove the unknown dimensions from multivariate factors
+  if(is.prior.orthonormal(x)){
+    x[["parameters"]] <- x[["parameters"]][names(x[["parameters"]]) != "K"]
   }
 
   ### prepare prior parameters

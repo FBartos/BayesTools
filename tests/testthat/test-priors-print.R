@@ -42,11 +42,11 @@ test_that("Prior print function works", {
   expect_equal(utils::capture.output(print(p10, parameter_names = TRUE)), "omega[one-sided: .1] = (1, 0.7)")
 
   # check factor priors
-  p11 <- prior_factor(distribution = "normal", contrast = "orthonormal", parameters = list(sd = 1))
+  p11 <- prior_factor(distribution = "mnormal", contrast = "orthonormal", parameters = list(0, 1))
   p12 <- prior_factor(distribution = "normal", contrast = "dummy", parameters = list(mean = 0, sd = 1))
   p13 <- prior_factor(distribution = "beta",   contrast = "dummy", parameters = list(alpha = 1, beta = 1))
 
-  expect_equal(utils::capture.output(print(p11)),  "orthonormal contrast: Orthonormal(1)")
+  expect_equal(utils::capture.output(print(p11)),  "orthonormal contrast: mNormal(0, 1)")
   expect_equal(utils::capture.output(print(p12)),  "treatment contrast: Normal(0, 1)")
   expect_equal(utils::capture.output(print(p13)),  "treatment contrast: Beta(1, 1)")
 

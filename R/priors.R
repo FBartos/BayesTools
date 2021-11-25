@@ -101,6 +101,12 @@ prior <- function(distribution, parameters, truncation = list(lower = -Inf, uppe
     distribution <- "uniform"
   }else if(distribution %in% c("point", "spike")){
     distribution <- "point"
+  }else if(distribution %in% c("multivariatenorm", "multivariatenormal", "mnorm", "mnormal")){
+    distribution <- "mnormal"
+  }else if(distribution %in% c("multivariatet", "multivariatestudent", "mt", "mstudent")){
+    distribution <- "mt"
+  }else if(distribution %in% c("multivariatecauchy", "mcauchy")){
+    distribution <- "mcauchy"
   }else{
     stop(paste0("The specified distribution name '", distribution,"' is not known. Please, see '?prior' for more information about supported prior distributions."))
   }
@@ -110,11 +116,6 @@ prior <- function(distribution, parameters, truncation = list(lower = -Inf, uppe
 
   # add the prior odds
   output$prior_weights <- prior_weights
-
-  class(output) <- c("prior", "prior.simple")
-  if(distribution == "point"){
-    class(output) <- c(class(output), "prior.point")
-  }
 
   return(output)
 }
@@ -259,8 +260,9 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
 #' \describe{
 #'   \item{\code{"orthonormal"}}{for contrast centered around the grand mean
 #'   with equal marginal distributions, making the prior distribution exchangeable
-#'   across factor levels. Supports only \code{distribution = "normal"} which generates
-#'   the corresponding multivariate normal distribution.}
+#'   across factor levels. Only supports \code{distribution = "mnormal"} and
+#'   \code{distribution = "mt"} which generates the corresponding multivariate normal/t
+#'   distributions.}
 #'   \item{\code{"treatment"}}{for contrasts using the first level as a comparison
 #'   group and setting equal prior distribution on differences between the individual
 #'   factor levels and the comparison level.}
@@ -276,40 +278,38 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
 #' @inheritParams prior
 #' @export  prior_factor
 #' @seealso [prior()]
-prior_factor <- function(distribution, contrast, parameters,
-                         truncation = if(contrast == "orthonormal") NULL else list(lower = -Inf, upper = Inf), prior_weights = 1){
+prior_factor <- function(distribution, parameters, truncation = list(lower = -Inf, upper = Inf), prior_weights = 1, contrast = "orthonormal"){
 
   # general input check (detailed checks are performed withing the constructors)
-  check_char(distribution, "distribution")
-  check_char(contrast, "contrast")
-  check_list(parameters, "parameters")
-  sapply(seq_along(parameters), function(i)check_real(parameters[[i]], names(parameters[[i]]), check_length = 0))
-  check_list(truncation, "truncation", allow_NULL = TRUE)
-  check_real(prior_weights, "prior_weights", lower = 0, allow_bound = FALSE)
+  check_char(contrast, "contrast", allow_values = c("orthonormal", "treatment", "dummy"))
 
-  # clean the input name
-  distribution <- .prior_clean_input_name(distribution)
-
-
+  # check its compatibility with the contrasts
   if(contrast == "orthonormal"){
 
-    if(distribution %in% "normal"){
-      distribution <- "normal.orthonormal"
-    }else{
-      stop(paste0("Only 'normal' distribution can be used to specify 'orthonormal' contrasts. Please, see '?prior_factor' for more information about supported prior distributions and contrasts for factors."))
-    }
+    # add the (yet unspecified) dimensions parameter
+    parameters[["K"]] <- NULL
 
-    if(!is.null(truncation))
+    # generate the prior object
+    output <- prior(distribution = distribution, parameters = parameters, truncation = truncation, prior_weights = prior_weights)
+
+    if(!is.prior.vector(output))
+      stop("'orthonormal' contrasts require vector prior distribution.")
+    if(!all(sapply(output[["truncation"]], is.infinite)))
       stop("'orthonormal' contrasts do not support truncation.")
 
-    output <- do.call(paste0(".prior_", distribution), list(parameters = parameters))
-    class(output) <- c("prior", "prior.factor", "prior.orthonormal")
+    class(output) <- c(class(output), "prior.factor", "prior.orthonormal")
 
   }else if(contrast %in% c("treatment", "dummy")){
 
+    # generate the prior object
     output <- prior(distribution = distribution, parameters = parameters, truncation = truncation, prior_weights = prior_weights)
-    class(output) <- c("prior", "prior.factor", "prior.dummy")
 
+    if(!is.prior.simple(output))
+      stop("'treatment' contrasts require univariate prior distribution.")
+
+    output <- prior(distribution = distribution, parameters = parameters, truncation = truncation, prior_weights = prior_weights)
+
+    class(output) <- c(class(output), "prior.factor", "prior.dummy")
   }
 
   return(output)
@@ -334,6 +334,8 @@ prior_factor <- function(distribution, contrast, parameters,
   output$parameters   <- parameters
   output$truncation   <- truncation
 
+  class(output) <- c("prior", "prior.simple")
+
   return(output)
 }
 .prior_lognormal <- function(parameters, truncation){
@@ -353,6 +355,8 @@ prior_factor <- function(distribution, contrast, parameters,
   output$distribution <- "lognormal"
   output$parameters   <- parameters
   output$truncation   <- truncation
+
+  class(output) <- c("prior", "prior.simple")
 
   return(output)
 }
@@ -376,6 +380,8 @@ prior_factor <- function(distribution, contrast, parameters,
   output$parameters   <- parameters
   output$truncation   <- truncation
 
+  class(output) <- c("prior", "prior.simple")
+
   return(output)
 }
 .prior_t         <- function(parameters, truncation){
@@ -397,6 +403,8 @@ prior_factor <- function(distribution, contrast, parameters,
   output$distribution <- "t"
   output$parameters   <- parameters
   output$truncation   <- truncation
+
+  class(output) <- c("prior", "prior.simple")
 
   return(output)
 }
@@ -428,6 +436,8 @@ prior_factor <- function(distribution, contrast, parameters,
   output$parameters   <- parameters
   output$truncation   <- truncation
 
+  class(output) <- c("prior", "prior.simple")
+
   return(output)
 }
 .prior_invgamma  <- function(parameters, truncation){
@@ -448,6 +458,8 @@ prior_factor <- function(distribution, contrast, parameters,
   output$distribution <- "invgamma"
   output$parameters   <- parameters
   output$truncation   <- truncation
+
+  class(output) <- c("prior", "prior.simple")
 
   return(output)
 }
@@ -477,6 +489,8 @@ prior_factor <- function(distribution, contrast, parameters,
   output$parameters   <- parameters
   output$truncation   <- truncation
 
+  class(output) <- c("prior", "prior.simple")
+
   return(output)
 }
 .prior_beta      <- function(parameters, truncation){
@@ -497,6 +511,8 @@ prior_factor <- function(distribution, contrast, parameters,
   output$distribution <- "beta"
   output$parameters   <- parameters
   output$truncation   <- truncation
+
+  class(output) <- c("prior", "prior.simple")
 
   return(output)
 }
@@ -519,6 +535,8 @@ prior_factor <- function(distribution, contrast, parameters,
   output$parameters   <- parameters
   output$truncation   <- list(lower = parameters$a, upper = parameters$b)
 
+  class(output) <- c("prior", "prior.simple")
+
   return(output)
 }
 .prior_point     <- function(parameters, truncation){
@@ -535,6 +553,82 @@ prior_factor <- function(distribution, contrast, parameters,
   output$distribution <- "point"
   output$parameters   <- parameters
   output$truncation   <- list(lower = parameters$location, upper = parameters$location)
+
+  class(output) <- c("prior", "prior.simple", "prior.point")
+
+  return(output)
+}
+.prior_mnormal   <- function(parameters, truncation){
+
+  output <- list()
+
+  # check overall settings
+  parameters <- .check_and_name_parameters(parameters, c("mean", "sd", "K"), "multivariate normal")
+  truncation <- .check_and_set_truncation(truncation)
+
+  # check individual parameters
+  .check_parameter(parameters$mean, "mean")
+  .check_parameter(parameters$sd,   "sd")
+  .check_parameter_positive(parameters$sd, "sd")
+  .check_parameter_dimensions(parameters$K, "K", allow_null = TRUE)   # allow undetermined dimensions if called by prior_factor
+
+  # add the values to the output
+  output$distribution <- "mnormal"
+  output$parameters   <- parameters
+  output$truncation   <- truncation
+
+  class(output) <- c("prior", "prior.vector")
+
+  return(output)
+}
+.prior_mcauchy   <- function(parameters, truncation){
+
+  output <- list()
+
+  # check overall settings
+  parameters <- .check_and_name_parameters(parameters, c("location", "scale", "K"), "multivariate Cauchy")
+  truncation <- .check_and_set_truncation(truncation)
+
+  # check individual parameters
+  .check_parameter(parameters$location, "location")
+  .check_parameter(parameters$scale,    "scale")
+  .check_parameter_positive(parameters$scale, "scale")
+  .check_parameter_dimensions(parameters$K,   "K", allow_null = TRUE)   # allow undetermined dimensions if called by prior_factor
+
+  # deal with as with a t-distribution
+  parameters$df <- 1
+
+  output$distribution <- "mt"
+  output$parameters   <- parameters
+  output$truncation   <- truncation
+
+  class(output) <- c("prior", "prior.vector")
+
+  return(output)
+}
+.prior_mt        <- function(parameters, truncation){
+
+  output <- list()
+
+  # check overall settings
+  parameters <- .check_and_name_parameters(parameters, c("location", "scale", "df", "K"), "multivariate student-t")
+  truncation <- .check_and_set_truncation(truncation)
+
+  # check individual parameters
+  .check_parameter(parameters$location, "location")
+  .check_parameter(parameters$scale,    "scale")
+  .check_parameter(parameters$df,       "df")
+  .check_parameter_positive(parameters$scale, "scale")
+  .check_parameter_positive(parameters$df,    "df")
+  .check_parameter_dimensions(parameters$K,   "K", allow_null = TRUE)   # allow undetermined dimensions if called by prior_factor
+
+
+  # add the values to the output
+  output$distribution <- "mt"
+  output$parameters   <- parameters
+  output$truncation   <- truncation
+
+  class(output) <- c("prior", "prior.vector")
 
   return(output)
 }

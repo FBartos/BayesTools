@@ -87,16 +87,17 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
 
   # add intercept and prepare the indexing vector
   if(has_intercept){
-    terms_indexes  <- attr(model_matrix, "assign")[-1] + 1
+    terms_indexes    <- attr(model_matrix, "assign") + 1
+    terms_indexes[1] <- NA
 
-    formula_syntax <- c(formula_syntax, paste0(parameter, "_intercept"))
-    prior_syntax   <- c(prior_syntax, .JAGS_prior.simple(prior_list[["intercept"]], paste0(parameter, "_intercept")))
+    formula_syntax   <- c(formula_syntax, paste0(parameter, "_intercept"))
+    prior_syntax     <- c(prior_syntax, .JAGS_prior.simple(prior_list[["intercept"]], paste0(parameter, "_intercept")))
   }else{
-    terms_indexes  <- attr(model_matrix, "assign")
+    terms_indexes    <- attr(model_matrix, "assign")
   }
 
-  # add the remaining terms
-  for(i in unique(terms_indexes)){
+  # add the remaining terms (omitting the intercept indexed as NA)
+  for(i in unique(na.omit(terms_indexes))){
     if(model_terms_type[i] == "simple"){
 
       if(predictors_type[predictors == model_terms[i]] == "continuous"){
@@ -106,7 +107,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
       }else if(predictors_type[predictors == model_terms[i]] == "factor"){
         JAGS_data[[paste0(parameter, "_data_", model_terms[i])]] <- model_matrix[,terms_indexes == i, drop = FALSE]
         formula_syntax <- c(formula_syntax, "inprod(", paste0(parameter, "_", model_terms[i]), ", ", paste0(parameter, "_data_", model_terms[i], "[i,]"), ")")
-        prior_syntax   <- c(prior_syntax, .JAGS_prior.factor(prior_list[["intercept"]], paste0(parameter, "_", model_terms[i])))
+        prior_syntax   <- c(prior_syntax, .JAGS_prior.factor(prior_list[["intercept"]], paste0(parameter, "_", model_terms[i]), levels = ))
       }
     }
 

@@ -99,6 +99,16 @@
       stop(paste0("The '", name, "' must be negative."), call. = FALSE)
   }
 }
+.check_parameter_dimensions<- function(parameter, name, allow_null = FALSE){
+  if(!allow_null && is.null(parameter)){
+    stop(paste0("The '", name, "' must be defined."), call. = FALSE)
+  }else if(!allow_null){
+    if(length(parameter) != 1 || !is.numeric(parameter))
+      stop(paste0("The '", name, "' must be a numeric vector of length 1."), call. = FALSE)
+    if(!.is.wholenumber(parameter))
+      stop(paste0(call, "The '", name ,"' must be an integer"), call. = FALSE)
+  }
+}
 .check_parameter_weigthfunction <- function(steps, alpha = NULL, alpha1 = NULL, alpha2 = NULL, omega = NULL){
 
   if(!is.null(alpha)){
@@ -179,6 +189,7 @@
 #'
 #' @export is.prior
 #' @export is.prior.simple
+#' @export is.prior.vector
 #' @export is.prior.point
 #' @export is.prior.none
 #' @export is.prior.PET
@@ -205,6 +216,10 @@ is.prior.none            <- function(x){
 #' @rdname is.prior
 is.prior.simple          <- function(x){
   inherits(x, "prior.simple")
+}
+#' @rdname is.prior
+is.prior.vector          <- function(x){
+  inherits(x, "prior.vector")
 }
 #' @rdname is.prior
 is.prior.PET             <- function(x){
