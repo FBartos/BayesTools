@@ -96,19 +96,25 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
     terms_indexes    <- attr(model_matrix, "assign")
   }
 
-  # add the remaining terms (omitting the intercept indexed as NA)
+  # add remaining terms (omitting the intercept indexed as NA)
   for(i in unique(na.omit(terms_indexes))){
-    if(model_terms_type[i] == "simple"){
 
-      if(predictors_type[predictors == model_terms[i]] == "continuous"){
-        JAGS_data[[paste0(parameter, "_data_", model_terms[i])]] <- model_matrix[,terms_indexes == i]
-        formula_syntax <- c(formula_syntax, paste0(parameter, "_", model_terms[i]), " * ", paste0(parameter, "_data_", model_terms[i], "[i]"))
-        prior_syntax   <- c(prior_syntax, .JAGS_prior.simple(prior_list[["intercept"]], paste0(parameter, "_", model_terms[i])))
-      }else if(predictors_type[predictors == model_terms[i]] == "factor"){
-        JAGS_data[[paste0(parameter, "_data_", model_terms[i])]] <- model_matrix[,terms_indexes == i, drop = FALSE]
-        formula_syntax <- c(formula_syntax, "inprod(", paste0(parameter, "_", model_terms[i]), ", ", paste0(parameter, "_data_", model_terms[i], "[i,]"), ")")
-        prior_syntax   <- c(prior_syntax, .JAGS_prior.factor(prior_list[["intercept"]], paste0(parameter, "_", model_terms[i]), levels = ))
-      }
+    if(all(predictors_type[predictors == model_terms[i]] == "continuous")){
+      # continuous variables or interactions of continuous variables are simple predictors
+
+      JAGS_data[[paste0(parameter, "_data_", model_terms[i])]] <- model_matrix[,terms_indexes == i]
+      formula_syntax <- c(formula_syntax, paste0(parameter, "_", model_terms[i]), " * ", paste0(parameter, "_data_", model_terms[i], "[i]"))
+      prior_syntax   <- c(prior_syntax, .JAGS_prior.simple(prior_list[["intercept"]], paste0(parameter, "_", model_terms[i])))
+
+    }else if(any(predictors_type[predictors == model_terms[i]] == "factor")){
+      # factor variables or interactions with a factor requires factor style prior
+
+      JAGS_data[[paste0(parameter, "_data_", model_terms[i])]] <- model_matrix[,terms_indexes == i, drop = FALSE]
+      formula_syntax <- c(formula_syntax, "inprod(", paste0(parameter, "_", model_terms[i]), ", ", paste0(parameter, "_data_", model_terms[i], "[i,]"), ")")
+      prior_syntax   <- c(prior_syntax, .JAGS_prior.factor(prior_list[["intercept"]], paste0(parameter, "_", model_terms[i]), levels = sum(terms_indexes == i) + 1))
+
+    }else{
+      stop("Unrecognized model term.")
     }
 
   }

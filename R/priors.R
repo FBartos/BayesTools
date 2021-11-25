@@ -844,6 +844,26 @@ rng.prior   <- function(x, n, ...){
 
     x <- x[1:n]
 
+  }else if(is.prior.vector(prior)){
+
+    # TODO: generalize this to priors with covariances
+    par1 <- rep(switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameter[["mean"]],
+      "mt"      = prior$parameter[["location"]]
+    ), length = prior$parameter[["K"]])
+    par2 <- diag(switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameter[["sd"]]^2,
+      "mt"      = prior$parameter[["scale"]]^2
+    ), ncol = prior$parameter[["K"]], nrow = prior$parameter[["K"]])
+
+    x <- switch(
+      prior[["distribution"]],
+      "mnormal"    = mvtnorm::rmvnorm(n, mean = par1, sigma = par2),
+      "mt"         = mvtnorm::rmvt(n, delta = par1, sigma = par2, df = prior$parameter[["df"]], type = "shifted"),
+    )
+
   }else if(is.prior.weightfunction(prior)){
 
     x <- switch(
@@ -972,6 +992,26 @@ lpdf.prior  <- function(x, y, ...){
     if(prior[["distribution"]] != "point"){
       log_lik <- log_lik - log(.prior_C(prior))
     }
+
+  }else if(is.prior.vector(prior)){
+
+    # TODO: generalize this to priors with covariances
+    par1 <- rep(switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameter[["mean"]],
+      "mt"      = prior$parameter[["location"]]
+    ), length = prior$parameter[["K"]])
+    par2 <- diag(switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameter[["sd"]]^2,
+      "mt"      = prior$parameter[["scale"]]^2
+    ), ncol = prior$parameter[["K"]], nrow = prior$parameter[["K"]])
+
+    log_lik <- switch(
+      prior[["distribution"]],
+      "mnormal"    = mvtnorm::dmvnorm(x, mean = par1, sigma = par2, log = TRUE),
+      "mt"         = mvtnorm::dmvt(x, delta = par1, sigma = par2, df = prior$parameter[["df"]], type = "shifted", log = TRUE),
+    )
 
   }else if(is.prior.weightfunction(prior)){
 
