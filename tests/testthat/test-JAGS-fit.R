@@ -38,6 +38,34 @@ test_that("JAGS model functions work (simple)", {
   }
 })
 
+test_that("JAGS model functions work (vector)", {
+
+  skip_if_not_installed("rjags")
+  model_syntax <- "model{}"
+  priors       <- list(
+    p1  = prior("mnormal", list(mean = 0, sd = 2, K = 3),),
+    p2  = prior("mcauchy", list(location = 0, scale = 1.5, K = 2)),
+    p3  = prior("mt",      list(location = 0, scale = 0.5, df = 5, K = 5))
+  )
+
+  model_syntax <- JAGS_add_priors(model_syntax, priors)
+  monitor      <- JAGS_to_monitor(priors)
+  inits        <- JAGS_get_inits(priors, chains = 2, seed = 1)
+
+  set.seed(1)
+  model   <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
+  samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 5000, quiet = TRUE, progress.bar = "none")
+  samples <- do.call(rbind, samples)
+
+
+  for(i in seq_along(priors)){
+    expect_doppelganger(paste0("JAGS-model-prior-",i), function(){
+      hist(samples[,names(priors)[i]], breaks = 50, main = print(priors[[i]], plot = TRUE), freq = FALSE)
+      lines(priors[[i]], individual = TRUE)
+    })
+  }
+})
+
 test_that("JAGS model functions work (weightfunctions)", {
 
   skip_if_not_installed("rjags")
