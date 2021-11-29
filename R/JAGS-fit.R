@@ -344,13 +344,17 @@ JAGS_add_priors           <- function(syntax, prior_list){
 
       syntax_priors <- paste(syntax_priors, .JAGS_prior.PP(prior_list[[i]]))
 
-    }else if(is.prior.simple(prior_list[[i]])){
+    }else if(is.prior.factor(prior_list[[i]])){
 
-      syntax_priors <- paste(syntax_priors, .JAGS_prior.simple(prior_list[[i]], names(prior_list)[i]))
+      syntax_priors <- paste(syntax_priors, .JAGS_prior.factor(prior_list[[i]], names(prior_list)[i]))
 
     }else if(is.prior.vector(prior_list[[i]])){
 
       syntax_priors <- paste(syntax_priors, .JAGS_prior.vector(prior_list[[i]], names(prior_list)[i]))
+
+    }else if(is.prior.simple(prior_list[[i]])){
+
+      syntax_priors <- paste(syntax_priors, .JAGS_prior.simple(prior_list[[i]], names(prior_list)[i]))
 
     }
   }
@@ -466,24 +470,24 @@ JAGS_add_priors           <- function(syntax, prior_list){
 
   return(syntax)
 }
-.JAGS_prior.factor         <- function(prior, parameter_name, levels){
+.JAGS_prior.factor         <- function(prior, parameter_name){
 
   .check_prior(prior)
   if(!is.prior.factor(prior))
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
-  check_int(levels, "levels", lower = 2)
+  check_int(attr(prior, "levels"), "levels", lower = 2)
 
   if(is.prior.dummy(prior)){
 
     syntax <- paste0(
-      "for(i in 1:", levels - 1, "){\n",
+      "for(i in 1:", attr(prior, "levels") - 1, "){\n",
       "  ", .JAGS_prior.simple(prior, paste0(parameter_name, "[i]")),
-      "}")
+      "}\n")
 
   }else if(is.prior.orthonormal(prior)){
 
-    prior$parameters[["K"]] <- levels - 1
+    prior$parameters[["K"]] <- attr(prior, "levels") - 1
 
     syntax <- .JAGS_prior.vector(prior, paste0(parameter_name))
 
@@ -603,6 +607,10 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 
         temp_inits <- c(temp_inits, .JAGS_init.PP(prior_list[[i]]))
 
+      }else if(is.prior.factor(prior_list[[i]])){
+
+        temp_inits <- c(temp_inits, .JAGS_init.factor(prior_list[[i]], names(prior_list)[i]))
+
       }else if(is.prior.vector(prior_list[[i]])){
 
         temp_inits <- c(temp_inits, .JAGS_init.vector(prior_list[[i]], names(prior_list)[i]))
@@ -677,22 +685,22 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 
   return(init)
 }
-.JAGS_init.factor          <- function(prior, parameter_name, levels){
+.JAGS_init.factor          <- function(prior, parameter_name){
 
   .check_prior(prior)
   if(!is.prior.factor(prior))
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
-  check_int(levels, "levels", lower = 2)
+  check_int(attr(prior, "levels"), "levels", lower = 2)
 
   if(is.prior.dummy(prior)){
 
     init <- list()
-    init[[parameter_name]] <- rng(prior, levels - 1)
+    init[[parameter_name]] <- rng(prior, attr(prior, "levels") - 1)
 
   }else if(is.prior.orthonormal(prior)){
 
-    prior$parameters[["K"]] <- levels - 1
+    prior$parameters[["K"]] <- attr(prior, "levels") - 1
 
     init <- .JAGS_init.vector(prior, parameter_name)
 
@@ -775,7 +783,15 @@ JAGS_to_monitor             <- function(prior_list){
 
       monitor <- c(monitor, .JAGS_monitor.PP(prior_list[[i]]))
 
-    }else if(is.prior.simple(prior_list[[i]]) | is.prior.vector(prior_list[[i]])){
+    }else if(is.prior.factor(prior_list[[i]])){
+
+      monitor <- c(monitor, .JAGS_monitor.factor(prior_list[[i]], names(prior_list)[i]))
+
+    }else if(is.prior.vector(prior_list[[i]])){
+
+      monitor <- c(monitor, .JAGS_monitor.vector(prior_list[[i]], names(prior_list)[i]))
+
+    }else if(is.prior.simple(prior_list[[i]])){
 
       monitor <- c(monitor, .JAGS_monitor.simple(prior_list[[i]], names(prior_list)[i]))
 
@@ -789,7 +805,7 @@ JAGS_to_monitor             <- function(prior_list){
 .JAGS_monitor.simple         <- function(prior, parameter_name){
 
   .check_prior(prior)
-  if(!(is.prior.simple(prior) | is.prior.vector(prior)))
+  if(!(is.prior.simple(prior) | is.prior.vector(prior) | is.prior.factor(prior)))
     stop("improper prior provided")
   if(!is.character(parameter_name) | length(parameter_name) != 1)
     stop("'parameter_name' must be a character vector of length 1.")
@@ -799,6 +815,18 @@ JAGS_to_monitor             <- function(prior_list){
   }else{
     monitor <- parameter_name
   }
+
+  return(monitor)
+}
+.JAGS_monitor.vector         <- function(prior, parameter_name){
+
+  monitor <- .JAGS_monitor.simple(prior, parameter_name)
+
+  return(monitor)
+}
+.JAGS_monitor.factor         <- function(prior, parameter_name){
+
+  monitor <- .JAGS_monitor.simple(prior, parameter_name)
 
   return(monitor)
 }

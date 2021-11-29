@@ -102,28 +102,22 @@ test_that("JAGS model functions work (vector)", {
 test_that("JAGS model functions work (factor)", {
 
   skip_if_not_installed("rjags")
+  model_syntax <- "model{}"
   priors       <- list(
-    p1  = prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "orthonormal"),
-    p2  = prior_factor("beta", list(alpha = 1, beta = 1), contrast = "dummy"),
-    p2  = prior_factor("beta", list(alpha = 2, beta = 2), contrast = "dummy")
+    p1  = prior_factor("mnorm", list(mean = 0, sd = 1),    contrast = "orthonormal"),
+    p2  = prior_factor("beta",  list(alpha = 1, beta = 1), contrast = "dummy"),
+    p3  = prior_factor("beta",  list(alpha = 2, beta = 2), contrast = "dummy")
   )
 
-  model_syntax <- paste0(
-    "model{",
-    BayesTools:::.JAGS_prior.factor(priors[[1]], parameter_name = "p1", levels = 3),
-    BayesTools:::.JAGS_prior.factor(priors[[2]], parameter_name = "p2", levels = 2),
-    BayesTools:::.JAGS_prior.factor(priors[[3]], parameter_name = "p3", levels = 3),
-    "}")
-  monitor      <- c(
-    BayesTools:::.JAGS_monitor.simple(priors[[1]], parameter_name = "p1"),
-    BayesTools:::.JAGS_monitor.simple(priors[[2]], parameter_name = "p2"),
-    BayesTools:::.JAGS_monitor.simple(priors[[3]], parameter_name = "p3")
-  )
-  inits        <- c(
-    BayesTools:::.JAGS_init.factor(priors[[1]], parameter_name = "p1", levels = 3),
-    BayesTools:::.JAGS_init.factor(priors[[2]], parameter_name = "p2", levels = 2),
-    BayesTools:::.JAGS_init.factor(priors[[3]], parameter_name = "p3", levels = 3)
-  )
+  # add levels
+  attr(priors[[1]], "levels") <- 3
+  attr(priors[[2]], "levels") <- 2
+  attr(priors[[3]], "levels") <- 3
+
+
+  model_syntax <- JAGS_add_priors(model_syntax, priors)
+  monitor      <- JAGS_to_monitor(priors)
+  inits        <- JAGS_get_inits(priors, chains = 2, seed = 1)
 
   set.seed(1)
   model   <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
