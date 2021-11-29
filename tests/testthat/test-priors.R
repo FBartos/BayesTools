@@ -172,9 +172,15 @@ test_that("Two-sided.fixed weigthfunction prior distribution works", {
 })
 
 test_that("Factor prior distribution works", {
+  # TODO
+})
 
-  p1 <- prior_factor(distribution = "normal", contrast = "orthonormal", parameters = list(sd = 1))
-  p2 <- prior_factor(distribution = "normal", contrast = "dummy", parameters = list(mean = 0, sd = 1))
+test_that("Factor prior distribution works", {
 
-  # TODO: add some tests
+  # TODO
+  #
+  # p1 <- prior_factor(distribution = "mnormal", contrast = "orthonormal", parameters = list(0, 1))
+  # p2 <- prior_factor(distribution = "normal", contrast = "dummy", parameters = list(mean = 0, sd = 1))
+
+
 })
