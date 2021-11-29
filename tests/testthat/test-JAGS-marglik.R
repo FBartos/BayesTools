@@ -37,6 +37,34 @@ test_that("JAGS model functions work (simple)", {
 
 })
 
+test_that("JAGS model functions work (vector)", {
+
+  skip_if_not_installed("rjags")
+  all_priors  <- list(
+    p1  = prior("mnormal", list(mean = 0, sd = 1, K = 3),),
+    p2  = prior("mcauchy", list(location = 0, scale = 1.5, K = 2)),
+    p3  = prior("mt",      list(location = 2, scale = 0.5, df = 5, K = 2))
+  )
+  log_posterior <- function(parameters, data){
+    return(0)
+  }
+
+
+  for(i in seq_along(all_priors)){
+    prior_list   <- all_priors[i]
+    model_syntax <- JAGS_add_priors("model{}", prior_list)
+    monitor      <- JAGS_to_monitor(prior_list)
+    inits        <- JAGS_get_inits(prior_list, chains = 2, seed = 1)
+
+    set.seed(1)
+    model   <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
+    samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 10000, quiet = TRUE, progress.bar = "none")
+    marglik <- JAGS_bridgesampling(samples, prior_list = prior_list, data = list(), log_posterior = log_posterior)
+    expect_equal(marglik$logml, 0, tolerance = 5*1e-2) # the mCauchy is a bit more variable
+  }
+
+})
+
 test_that("JAGS model functions work (weightfunctions)", {
 
   skip_if_not_installed("rjags")

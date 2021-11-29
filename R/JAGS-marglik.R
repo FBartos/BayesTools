@@ -246,6 +246,10 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
 
       add_parameter <- .JAGS_bridgesampling_posterior_info.PP(prior_list[[i]])
 
+    }else if(is.prior.vector(prior_list[[i]])){
+
+      add_parameter <- .JAGS_bridgesampling_posterior_info.vector(prior_list[[i]], names(prior_list)[i])
+
     }else if(is.prior.simple(prior_list[[i]])){
 
       add_parameter <- .JAGS_bridgesampling_posterior_info.simple(prior_list[[i]], names(prior_list)[i])
@@ -284,6 +288,28 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
     attr(parameter, "lb") <- prior$truncation[["lower"]]
     attr(parameter, "ub") <- prior$truncation[["upper"]]
   }
+
+  names(attr(parameter, "lb")) <- parameter
+  names(attr(parameter, "ub")) <- parameter
+
+  return(parameter)
+}
+.JAGS_bridgesampling_posterior_info.vector         <- function(prior, parameter_name){
+
+  .check_prior(prior)
+  if(!is.prior.vector(prior))
+    stop("improper prior provided")
+  if(!is.character(parameter_name) | length(parameter_name) != 1)
+    stop("'parameter_name' must be a character vector of length 1.")
+
+  if(prior$parameters[["K"]] == 1){
+    parameter <- parameter_name
+  }else{
+    parameter <- paste0(parameter_name, "[", 1:prior$parameters[["K"]], "]")
+  }
+
+  attr(parameter, "lb") <- rep(prior$truncation[["lower"]], prior$parameters[["K"]])
+  attr(parameter, "ub") <- rep(prior$truncation[["upper"]], prior$parameters[["K"]])
 
   names(attr(parameter, "lb")) <- parameter
   names(attr(parameter, "ub")) <- parameter
@@ -375,6 +401,10 @@ JAGS_marglik_priors                <- function(samples, prior_list){
 
       marglik <- marglik + .JAGS_marglik_priors.PP(samples, prior_list[[i]])
 
+    }else if(is.prior.vector(prior_list[[i]])){
+
+      marglik <- marglik + .JAGS_marglik_priors.vector(samples, prior_list[[i]], names(prior_list)[i])
+
     }else if(is.prior.simple(prior_list[[i]])){
 
       marglik <- marglik + .JAGS_marglik_priors.simple(samples, prior_list[[i]], names(prior_list)[i])
@@ -410,6 +440,22 @@ JAGS_marglik_priors                <- function(samples, prior_list){
 
     marglik <- lpdf(prior, samples[[ parameter_name ]])
 
+  }
+
+  return(marglik)
+}
+.JAGS_marglik_priors.vector         <- function(samples, prior, parameter_name){
+
+  .check_prior(prior)
+  if(!is.prior.vector(prior))
+    stop("improper prior provided")
+  if(!is.character(parameter_name) | length(parameter_name) != 1)
+    stop("'parameter_name' must be a character vector of length 1.")
+
+  if(prior$parameters[["K"]] == 1){
+    marglik <- lpdf(prior, samples[[ parameter_name ]])
+  }else{
+    marglik <- lpdf(prior, samples[ paste0(parameter_name, "[", 1:prior$parameters[["K"]], "]") ])
   }
 
   return(marglik)
@@ -494,6 +540,10 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
       parameters <- c(parameters, .JAGS_marglik_parameters.PP(samples, prior_list[[i]]))
 
+    }else if(is.prior.vector(prior_list[[i]])){
+
+      parameters <- c(parameters, .JAGS_marglik_parameters.vector(samples, prior_list[[i]], names(prior_list)[i]))
+
     }else if(is.prior.simple(prior_list[[i]])){
 
       parameters <- c(parameters, .JAGS_marglik_parameters.simple(samples, prior_list[[i]], names(prior_list)[i]))
@@ -522,6 +572,26 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
   }else{
     parameter[[parameter_name]] <- samples[[ parameter_name ]]
   }
+
+  return(parameter)
+}
+.JAGS_marglik_parameters.vector         <- function(samples, prior, parameter_name){
+
+  .check_prior(prior)
+  if(!is.prior.vector(prior))
+    stop("improper prior provided")
+  if(!is.character(parameter_name) | length(parameter_name) != 1)
+    stop("'parameter_name' must be a character vector of length 1.")
+
+
+  parameter <- list()
+
+  if(prior$parameters[["K"]] == 1){
+    parameter[[parameter_name]] <- samples[[ parameter_name ]]
+  }else{
+    parameter[[parameter_name]] <- samples[ paste0(parameter_name, "[", 1:prior$parameters[["K"]], "]") ]
+  }
+
 
   return(parameter)
 }
