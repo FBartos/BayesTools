@@ -43,10 +43,11 @@ test_that("JAGS model functions work (vector)", {
   skip_if_not_installed("rjags")
   model_syntax <- "model{}"
   priors       <- list(
-    p1  = prior("mnormal", list(mean = 0, sd = 2, K = 3),),
+    p1  = prior("mnormal", list(mean = 0, sd = 1, K = 3),),
     p2  = prior("mcauchy", list(location = 0, scale = 1.5, K = 2)),
-    p3  = prior("mt",      list(location = 0, scale = 0.5, df = 5, K = 5))
+    p3  = prior("mt",      list(location = 2, scale = 0.5, df = 5, K = 2))
   )
+
 
   model_syntax <- JAGS_add_priors(model_syntax, priors)
   monitor      <- JAGS_to_monitor(priors)
@@ -57,13 +58,45 @@ test_that("JAGS model functions work (vector)", {
   samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 5000, quiet = TRUE, progress.bar = "none")
   samples <- do.call(rbind, samples)
 
+  expect_doppelganger("JAGS-model-prior-vector-1", function(){
 
-  for(i in seq_along(priors)){
-    expect_doppelganger(paste0("JAGS-model-prior-",i), function(){
-      hist(samples[,names(priors)[i]], breaks = 50, main = print(priors[[i]], plot = TRUE), freq = FALSE)
-      lines(priors[[i]], individual = TRUE)
-    })
-  }
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfcol = c(1, 2))
+
+    hist(samples[,"p1[1]"], breaks = 50, main = print(priors[[1]], plot = TRUE), freq = FALSE)
+    lines(prior("normal", list(0, 1)))
+
+    plot(samples[,"p1[1]"], samples[,"p1[2]"], pch = 19, xlim = c(-3, 3), ylim = c(-3, 3), asp = 1,
+         xlab = "X1", ylab = "X2", main = print(priors[[1]], plot = TRUE))
+  })
+
+  expect_doppelganger("JAGS-model-prior-vector-2", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfcol = c(1, 2))
+
+    hist(samples[,"p2[1]"][abs(samples[,"p2[1]"]) < 5], breaks = 20, main = print(priors[[2]], plot = TRUE), freq = FALSE)
+    lines(prior("cauchy", list(0, 1.5)))
+
+    plot(samples[,"p2[1]"], samples[,"p2[2]"], pch = 19, xlim = c(-5, 5), ylim = c(-5, 5), asp = 1,
+         xlab = "X1", ylab = "X2", main = print(priors[[2]], plot = TRUE))
+  })
+
+  expect_doppelganger("JAGS-model-prior-vector-3", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfcol = c(1, 2))
+
+    hist(samples[,"p3[1]"], breaks = 50, main = print(priors[[3]], plot = TRUE), freq = FALSE)
+    lines(prior("t", list(2, 0.5, 5)))
+
+    plot(samples[,"p3[1]"], samples[,"p3[2]"], pch = 19, xlim = c(-3, 7), ylim = c(-3, 7), asp = 1,
+         xlab = "X1", ylab = "X2", main = print(priors[[3]], plot = TRUE))
+  })
+
 })
 
 test_that("JAGS model functions work (weightfunctions)", {

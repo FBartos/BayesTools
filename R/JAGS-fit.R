@@ -431,19 +431,38 @@ JAGS_add_priors           <- function(syntax, prior_list){
   )
 
   # TODO: beautify this code by specific JAGS distributions?
-  syntax <- paste0("prior_par1_", parameter_name, " = rep(", par1, ",", prior$parameter[["K"]], ")\n")
-  syntax <- paste0(
-    syntax,
-    "for(i in 1:", prior$parameters[["K"]], "){\n",
-    "  prior_par2_", parameter_name, "[i, i] = ", 1/par2^2, "\n",
-    "}\n")
-
-
-  syntax <- paste0(syntax, switch(
-    prior[["distribution"]],
-    "mnormal" = paste0(parameter_name," ~ dmnorm(prior_par1_", parameter_name, ",prior_par2_", parameter_name, ")"),
-    "mt"      = paste0(parameter_name," ~ dmt(prior_par1_", parameter_name, ",prior_par2_", parameter_name,",", prior$parameter[["df"]],")")
-  ), "\n")
+  if(prior[["distribution"]] == "mt"){
+    # using the chisq * covariance parametrization since the mt fails with 1 df
+    # (using a common df parameter as in Rouder et al. 2012)
+    syntax <- paste0("prior_par1_", parameter_name, " = rep(", par1, ",", prior$parameter[["K"]], ")\n")
+    syntax <- paste0(syntax, "prior_par3_", parameter_name, " ~ dgamma(", prior$parameter[["df"]]/2, ", ", prior$parameter[["df"]]/2,")\n")
+    syntax <- paste0(
+      syntax,
+      "for(i in 1:", prior$parameters[["K"]], "){\n",
+      "  prior_par2_", parameter_name, "[i,i] <- (prior_par3_", parameter_name, ") * ", 1/par2^2, "\n",
+      "  for(j in 1:(i-1)){\n",
+      "    prior_par2_", parameter_name, "[i,j] <- 0\n",
+      "  }\n",
+      "  for (j in (i+1):", prior$parameters[["K"]], "){\n",
+      "    prior_par2_", parameter_name, "[i,j] <- 0\n",
+      "  }\n",
+      "}\n")
+    syntax <- paste0(syntax, parameter_name," ~ dmnorm(prior_par1_", parameter_name, ",prior_par2_", parameter_name, ")")
+  }else{
+    syntax <- paste0("prior_par1_", parameter_name, " = rep(", par1, ",", prior$parameter[["K"]], ")\n")
+    syntax <- paste0(
+      syntax,
+      "for(i in 1:", prior$parameters[["K"]], "){\n",
+      "  prior_par2_", parameter_name, "[i,i] <- ", 1/par2^2, "\n",
+      "  for(j in 1:(i-1)){\n",
+      "    prior_par2_", parameter_name, "[i,j] <- 0\n",
+      "  }\n",
+      "  for (j in (i+1):", prior$parameters[["K"]], "){\n",
+      "    prior_par2_", parameter_name, "[i,j] <- 0\n",
+      "  }\n",
+      "}\n")
+    syntax <- paste0(syntax, parameter_name," ~ dmnorm(prior_par1_", parameter_name, ",prior_par2_", parameter_name, ")")
+  }
 
   return(syntax)
 }
@@ -584,7 +603,11 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 
         temp_inits <- c(temp_inits, .JAGS_init.PP(prior_list[[i]]))
 
-      }else if(is.prior.simple(prior_list[[i]]) | is.prior.vector(prior_list[[i]])){
+      }else if(is.prior.vector(prior_list[[i]])){
+
+        temp_inits <- c(temp_inits, .JAGS_init.vector(prior_list[[i]], names(prior_list)[i]))
+
+      }else if(is.prior.simple(prior_list[[i]])){
 
         temp_inits <- c(temp_inits, .JAGS_init.simple(prior_list[[i]], names(prior_list)[i]))
 
@@ -604,7 +627,7 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 .JAGS_init.simple          <- function(prior, parameter_name){
 
   .check_prior(prior)
-  if(!is.prior.simple(prior) | !is.prior.vector(prior))
+  if(!is.prior.simple(prior))
     stop("improper prior provided")
 
   if(prior[["distribution"]] == "point"){
@@ -627,6 +650,54 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
       init[[parameter_name]] <- rng(prior, 1)
 
     }
+  }
+
+  return(init)
+}
+.JAGS_init.vector          <- function(prior, parameter_name){
+
+  .check_prior(prior)
+  if(!is.prior.vector(prior))
+    stop("improper prior provided")
+
+  if(prior[["distribution"]] == "point"){
+
+    return()
+
+  }else{
+
+    init <- list()
+
+    init[[parameter_name]] <- rng(prior, 1)[1,]
+
+    if(prior[["distribution"]] == "mt"){
+      init[[paste0("prior_par3_", parameter_name)]] <- rng(prior("gamma", list(shape = prior$parameters[["df"]]/2, rate = prior$parameters[["df"]]/2)), 1)
+    }
+
+  }
+
+  return(init)
+}
+.JAGS_init.factor          <- function(prior, parameter_name, levels){
+
+  .check_prior(prior)
+  if(!is.prior.factor(prior))
+    stop("improper prior provided")
+  check_char(parameter_name, "parameter_name")
+  check_int(levels, "levels", lower = 2)
+
+  if(is.prior.dummy(prior)){
+
+    init <- list()
+
+    init[[parameter_name]] <- rng(prior, levels - 1)
+
+  }else if(is.prior.orthonormal(prior)){
+
+    prior$parameters[["K"]] <- levels - 1
+
+    init[[parameter_name]] <- .JAGS_init.vector(prior, parameter_name)
+
   }
 
   return(init)
@@ -720,7 +791,7 @@ JAGS_to_monitor             <- function(prior_list){
 .JAGS_monitor.simple         <- function(prior, parameter_name){
 
   .check_prior(prior)
-  if(!is.prior.simple(prior) | !is.prior.vector(prior))
+  if(!(is.prior.simple(prior) | is.prior.vector(prior)))
     stop("improper prior provided")
   if(!is.character(parameter_name) | length(parameter_name) != 1)
     stop("'parameter_name' must be a character vector of length 1.")

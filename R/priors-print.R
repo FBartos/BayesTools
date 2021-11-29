@@ -52,7 +52,7 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
 
   if(is.prior.none(x)){
     output <- .print.prior.none(x, short_name, parameter_names, plot, digits_estimates, silent)
-  }else if(is.prior.simple(x) || is.prior.factor(x)){
+  }else if(is.prior.simple(x) || is.prior.vector(x)){
     output <- .print.prior.simple(x, short_name, parameter_names, plot, digits_estimates, silent)
   }else if(is.prior.weightfunction(x)){
     output <- .print.prior.weightfunction(x, short_name, parameter_names, plot, digits_estimates, silent)
@@ -68,7 +68,7 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
 .print.prior.simple         <- function(x, short_name, parameter_names, plot, digits_estimates, silent){
 
   # check whether the range was truncated (before the object is modified)
-  if(is.prior.orthonormal(x)){
+  if(is.prior.vector(x)){
     needs_truncation <- FALSE
   }else{
     needs_truncation <- !.is_prior_default_range(x)
@@ -137,8 +137,8 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
     out_prefix <- NULL
   }
 
-  # remove the unknown dimensions from multivariate factors
-  if(is.prior.orthonormal(x)){
+  # remove the dimensions parameter from multivariate prior distributions
+  if(is.prior.vector(x)){
     x[["parameters"]] <- x[["parameters"]][names(x[["parameters"]]) != "K"]
   }
 
