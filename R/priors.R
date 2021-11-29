@@ -287,7 +287,12 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
   if(contrast == "orthonormal"){
 
     # add the (yet unspecified) dimensions parameter
-    parameters[["K"]] <- NA
+    if(is.null(names(parameters))){
+      parameters <- c(parameters, NA)
+    }else{
+      parameters[["K"]] <- NA
+    }
+
 
     # generate the prior object
     output <- prior(distribution = distribution, parameters = parameters, truncation = truncation, prior_weights = prior_weights)
