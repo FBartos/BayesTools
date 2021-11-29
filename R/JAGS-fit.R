@@ -489,7 +489,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
 
     prior$parameters[["K"]] <- attr(prior, "levels") - 1
 
-    syntax <- .JAGS_prior.vector(prior, paste0(parameter_name))
+    syntax <- .JAGS_prior.vector(prior, parameter_name)
 
   }
 

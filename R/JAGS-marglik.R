@@ -246,6 +246,10 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
 
       add_parameter <- .JAGS_bridgesampling_posterior_info.PP(prior_list[[i]])
 
+    }else if(is.prior.factor(prior_list[[i]])){
+
+      add_parameter <- .JAGS_bridgesampling_posterior_info.factor(prior_list[[i]], names(prior_list)[i])
+
     }else if(is.prior.vector(prior_list[[i]])){
 
       add_parameter <- .JAGS_bridgesampling_posterior_info.vector(prior_list[[i]], names(prior_list)[i])
@@ -313,6 +317,50 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
 
   names(attr(parameter, "lb")) <- parameter
   names(attr(parameter, "ub")) <- parameter
+
+  return(parameter)
+}
+.JAGS_bridgesampling_posterior_info.factor         <- function(prior, parameter_name){
+
+  .check_prior(prior)
+  if(!is.prior.factor(prior))
+    stop("improper prior provided")
+  if(!is.character(parameter_name) | length(parameter_name) != 1)
+    stop("'parameter_name' must be a character vector of length 1.")
+
+  if(is.prior.dummy(prior)){
+
+    if((attr(prior, "levels") - 1) == 1){
+
+      parameter <- .JAGS_bridgesampling_posterior_info.simple(prior, parameter_name)
+
+    }else{
+
+      parameter    <- NULL
+      parameter_lb <- NULL
+      parameter_ub <- NULL
+
+      for(i in 1:(attr(prior, "levels") - 1)){
+
+        add_parameter <- .JAGS_bridgesampling_posterior_info.simple(prior, paste0(parameter_name, "[", i, "]"))
+
+        parameter    <- c(parameter,    add_parameter)
+        parameter_lb <- c(parameter_lb, attr(add_parameter, "lb"))
+        parameter_ub <- c(parameter_ub, attr(add_parameter, "ub"))
+      }
+
+      attr(parameter, "lb") <- parameter_lb
+      attr(parameter, "ub") <- parameter_ub
+
+    }
+
+  }else if(is.prior.orthonormal(prior)){
+
+    prior$parameters[["K"]] <- attr(prior, "levels") - 1
+
+    parameter <- .JAGS_bridgesampling_posterior_info.vector(prior, parameter_name)
+
+  }
 
   return(parameter)
 }
@@ -401,6 +449,10 @@ JAGS_marglik_priors                <- function(samples, prior_list){
 
       marglik <- marglik + .JAGS_marglik_priors.PP(samples, prior_list[[i]])
 
+    }else if(is.prior.factor(prior_list[[i]])){
+
+      marglik <- marglik + .JAGS_marglik_priors.factor(samples, prior_list[[i]], names(prior_list)[i])
+
     }else if(is.prior.vector(prior_list[[i]])){
 
       marglik <- marglik + .JAGS_marglik_priors.vector(samples, prior_list[[i]], names(prior_list)[i])
@@ -456,6 +508,36 @@ JAGS_marglik_priors                <- function(samples, prior_list){
     marglik <- lpdf(prior, samples[[ parameter_name ]])
   }else{
     marglik <- lpdf(prior, samples[ paste0(parameter_name, "[", 1:prior$parameters[["K"]], "]") ])
+  }
+
+  return(marglik)
+}
+.JAGS_marglik_priors.factor         <- function(samples, prior, parameter_name){
+
+  .check_prior(prior)
+  if(!is.prior.factor(prior))
+    stop("improper prior provided")
+  if(!is.character(parameter_name) | length(parameter_name) != 1)
+    stop("'parameter_name' must be a character vector of length 1.")
+
+  if(is.prior.dummy(prior)){
+
+    if((attr(prior, "levels") - 1) == 1){
+
+      marglik <- .JAGS_marglik_priors.simple(samples, prior, parameter_name)
+
+    }else{
+
+      marglik <- sum(sapply(1:(attr(prior, "levels") - 1), function(i) .JAGS_marglik_priors.simple(samples, prior, paste0(parameter_name, "[", i, "]"))))
+
+    }
+
+  }else if(is.prior.orthonormal(prior)){
+
+    prior$parameters[["K"]] <- attr(prior, "levels") - 1
+
+    marglik <- .JAGS_marglik_priors.vector(samples, prior, parameter_name)
+
   }
 
   return(marglik)
@@ -540,6 +622,10 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
       parameters <- c(parameters, .JAGS_marglik_parameters.PP(samples, prior_list[[i]]))
 
+    }else if(is.prior.factor(prior_list[[i]])){
+
+      parameters <- c(parameters, .JAGS_marglik_parameters.factor(samples, prior_list[[i]], names(prior_list)[i]))
+
     }else if(is.prior.vector(prior_list[[i]])){
 
       parameters <- c(parameters, .JAGS_marglik_parameters.vector(samples, prior_list[[i]], names(prior_list)[i]))
@@ -584,12 +670,42 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
     stop("'parameter_name' must be a character vector of length 1.")
 
 
-  parameter <- list()
-
   if(prior$parameters[["K"]] == 1){
+    parameter <- list()
     parameter[[parameter_name]] <- samples[[ parameter_name ]]
   }else{
-    parameter[[parameter_name]] <- samples[ paste0(parameter_name, "[", 1:prior$parameters[["K"]], "]") ]
+    parameter <- sapply(paste0(parameter_name, "[", 1:prior$parameters[["K"]], "]"), function(par) samples[[ par ]], simplify = FALSE)
+  }
+
+
+  return(parameter)
+}
+.JAGS_marglik_parameters.factor         <- function(samples, prior, parameter_name){
+
+  .check_prior(prior)
+  if(!is.prior.factor(prior))
+    stop("improper prior provided")
+  if(!is.character(parameter_name) | length(parameter_name) != 1)
+    stop("'parameter_name' must be a character vector of length 1.")
+
+
+  if(is.prior.dummy(prior)){
+
+    if((attr(prior, "levels") - 1) == 1){
+
+      parameter <- .JAGS_marglik_parameters.simple(samples, prior, parameter_name)
+
+    }else{
+
+      parameter <- sapply(1:(attr(prior, "levels") - 1), function(i) .JAGS_marglik_parameters.simple(samples, prior, paste0(parameter_name, "[", i, "]")))
+
+    }
+
+  }else if(is.prior.orthonormal(prior)){
+
+    prior$parameters[["K"]] <- attr(prior, "levels") - 1
+    parameter <- .JAGS_marglik_parameters.vector(samples, prior, parameter_name)
+
   }
 
 
