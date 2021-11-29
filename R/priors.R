@@ -74,7 +74,7 @@ prior <- function(distribution, parameters, truncation = list(lower = -Inf, uppe
   # general input check (detailed checks are performed withing the constructors)
   check_char(distribution, "distribution")
   check_list(parameters, "parameters")
-  sapply(seq_along(parameters), function(i)check_real(parameters[[i]], names(parameters[[i]]), check_length = 0))
+  #sapply(seq_along(parameters), function(i)check_real(parameters[[i]], names(parameters[[i]]), check_length = 0))
   check_list(truncation, "truncation")
   check_real(prior_weights, "prior_weights", lower = 0, allow_bound = FALSE)
 
@@ -287,7 +287,7 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
   if(contrast == "orthonormal"){
 
     # add the (yet unspecified) dimensions parameter
-    parameters[["K"]] <- NULL
+    parameters[["K"]] <- NA
 
     # generate the prior object
     output <- prior(distribution = distribution, parameters = parameters, truncation = truncation, prior_weights = prior_weights)
@@ -570,7 +570,7 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
   .check_parameter(parameters$mean, "mean")
   .check_parameter(parameters$sd,   "sd")
   .check_parameter_positive(parameters$sd, "sd")
-  .check_parameter_dimensions(parameters$K, "K", allow_null = TRUE)   # allow undetermined dimensions if called by prior_factor
+  .check_parameter_dimensions(parameters$K, "K", allow_NA = TRUE)   # allow undetermined dimensions if called by prior_factor
 
   # add the values to the output
   output$distribution <- "mnormal"
@@ -593,7 +593,7 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
   .check_parameter(parameters$location, "location")
   .check_parameter(parameters$scale,    "scale")
   .check_parameter_positive(parameters$scale, "scale")
-  .check_parameter_dimensions(parameters$K,   "K", allow_null = TRUE)   # allow undetermined dimensions if called by prior_factor
+  .check_parameter_dimensions(parameters$K,   "K", allow_NA = TRUE)   # allow undetermined dimensions if called by prior_factor
 
   # deal with as with a t-distribution
   parameters$df <- 1
@@ -620,7 +620,7 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
   .check_parameter(parameters$df,       "df")
   .check_parameter_positive(parameters$scale, "scale")
   .check_parameter_positive(parameters$df,    "df")
-  .check_parameter_dimensions(parameters$K,   "K", allow_null = TRUE)   # allow undetermined dimensions if called by prior_factor
+  .check_parameter_dimensions(parameters$K,   "K", allow_NA = TRUE)   # allow undetermined dimensions if called by prior_factor
 
 
   # add the values to the output

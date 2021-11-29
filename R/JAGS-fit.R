@@ -447,7 +447,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
       "    prior_par2_", parameter_name, "[i,j] <- 0\n",
       "  }\n",
       "}\n")
-    syntax <- paste0(syntax, parameter_name," ~ dmnorm(prior_par1_", parameter_name, ",prior_par2_", parameter_name, ")")
+    syntax <- paste0(syntax, parameter_name," ~ dmnorm(prior_par1_", parameter_name, ",prior_par2_", parameter_name, ")\n")
   }else{
     syntax <- paste0("prior_par1_", parameter_name, " = rep(", par1, ",", prior$parameter[["K"]], ")\n")
     syntax <- paste0(
@@ -461,7 +461,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
       "    prior_par2_", parameter_name, "[i,j] <- 0\n",
       "  }\n",
       "}\n")
-    syntax <- paste0(syntax, parameter_name," ~ dmnorm(prior_par1_", parameter_name, ",prior_par2_", parameter_name, ")")
+    syntax <- paste0(syntax, parameter_name," ~ dmnorm(prior_par1_", parameter_name, ",prior_par2_", parameter_name, ")\n")
   }
 
   return(syntax)
@@ -477,7 +477,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
   if(is.prior.dummy(prior)){
 
     syntax <- paste0(
-      "for(i in 1:", K, "){\n",
+      "for(i in 1:", levels - 1, "){\n",
       "  ", .JAGS_prior.simple(prior, paste0(parameter_name, "[i]")),
       "}")
 
@@ -485,7 +485,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
 
     prior$parameters[["K"]] <- levels - 1
 
-    syntax <- .JAGS_prior.vector(prior, paste0(parameter_name, "[i]"))
+    syntax <- .JAGS_prior.vector(prior, paste0(parameter_name))
 
   }
 
@@ -667,7 +667,6 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
   }else{
 
     init <- list()
-
     init[[parameter_name]] <- rng(prior, 1)[1,]
 
     if(prior[["distribution"]] == "mt"){
@@ -689,14 +688,13 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
   if(is.prior.dummy(prior)){
 
     init <- list()
-
     init[[parameter_name]] <- rng(prior, levels - 1)
 
   }else if(is.prior.orthonormal(prior)){
 
     prior$parameters[["K"]] <- levels - 1
 
-    init[[parameter_name]] <- .JAGS_init.vector(prior, parameter_name)
+    init <- .JAGS_init.vector(prior, parameter_name)
 
   }
 

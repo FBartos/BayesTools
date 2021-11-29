@@ -99,6 +99,73 @@ test_that("JAGS model functions work (vector)", {
 
 })
 
+test_that("JAGS model functions work (factor)", {
+
+  skip_if_not_installed("rjags")
+  priors       <- list(
+    p1  = prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "orthonormal"),
+    p2  = prior_factor("beta", list(alpha = 1, beta = 1), contrast = "dummy"),
+    p2  = prior_factor("beta", list(alpha = 2, beta = 2), contrast = "dummy")
+  )
+
+  model_syntax <- paste0(
+    "model{",
+    BayesTools:::.JAGS_prior.factor(priors[[1]], parameter_name = "p1", levels = 3),
+    BayesTools:::.JAGS_prior.factor(priors[[2]], parameter_name = "p2", levels = 2),
+    BayesTools:::.JAGS_prior.factor(priors[[3]], parameter_name = "p3", levels = 3),
+    "}")
+  monitor      <- c(
+    BayesTools:::.JAGS_monitor.simple(priors[[1]], parameter_name = "p1"),
+    BayesTools:::.JAGS_monitor.simple(priors[[2]], parameter_name = "p2"),
+    BayesTools:::.JAGS_monitor.simple(priors[[3]], parameter_name = "p3")
+  )
+  inits        <- c(
+    BayesTools:::.JAGS_init.factor(priors[[1]], parameter_name = "p1", levels = 3),
+    BayesTools:::.JAGS_init.factor(priors[[2]], parameter_name = "p2", levels = 2),
+    BayesTools:::.JAGS_init.factor(priors[[3]], parameter_name = "p3", levels = 3)
+  )
+
+  set.seed(1)
+  model   <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
+  samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 5000, quiet = TRUE, progress.bar = "none")
+  samples <- do.call(rbind, samples)
+
+  expect_equal(colnames(samples), c("p1[1]", "p1[2]", "p2", "p3[1]", "p3[2]"))
+
+  expect_doppelganger("JAGS-model-prior-factor-1", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfcol = c(1, 2))
+
+    hist(samples[,"p1[1]"], breaks = 50, main = print(priors[[1]], plot = TRUE), freq = FALSE)
+    lines(prior("normal", list(0, 1)))
+
+    plot(samples[,"p1[1]"], samples[,"p1[2]"], pch = 19, xlim = c(-3, 3), ylim = c(-3, 3), asp = 1,
+         xlab = "X1", ylab = "X2", main = print(priors[[1]], plot = TRUE))
+  })
+
+  expect_doppelganger("JAGS-model-prior-factor-2", function(){
+
+    hist(samples[,"p2"], breaks = 20, main = print(priors[[2]], plot = TRUE), freq = FALSE)
+    lines(prior("beta", list(1, 1)))
+  })
+
+  expect_doppelganger("JAGS-model-prior-factor-3", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfcol = c(1, 2))
+
+    hist(samples[,"p3[1]"], breaks = 50, main = print(priors[[3]], plot = TRUE), freq = FALSE)
+    lines(prior("beta", list(2, 2)))
+
+    plot(samples[,"p3[1]"], samples[,"p3[2]"], pch = 19, xlim = c(0, 1), ylim = c(0, 1), asp = 1,
+         xlab = "X1", ylab = "X2", main = print(priors[[3]], plot = TRUE), cex = .25)
+  })
+
+})
+
 test_that("JAGS model functions work (weightfunctions)", {
 
   skip_if_not_installed("rjags")

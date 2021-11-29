@@ -69,7 +69,7 @@
 
   return(truncation)
 }
-.check_parameter <- function(parameter, name, length = 1){
+.check_parameter           <- function(parameter, name, length = 1){
   if(length == -1){
     if(!is.numeric(parameter) | !is.vector(parameter) | length(parameter) > 1)
       stop(paste0("The '", name, "' must be a numeric vector of length at least 2."), call. = FALSE)
@@ -99,10 +99,10 @@
       stop(paste0("The '", name, "' must be negative."), call. = FALSE)
   }
 }
-.check_parameter_dimensions<- function(parameter, name, allow_null = FALSE){
-  if(!allow_null && is.null(parameter)){
+.check_parameter_dimensions<- function(parameter, name, allow_NA = FALSE){
+  if(!allow_NA && is.NA(parameter)){
     stop(paste0("The '", name, "' must be defined."), call. = FALSE)
-  }else if(!allow_null){
+  }else if(!allow_NA){
     if(length(parameter) != 1 || !is.numeric(parameter))
       stop(paste0("The '", name, "' must be a numeric vector of length 1."), call. = FALSE)
     if(!.is.wholenumber(parameter))
