@@ -5,12 +5,14 @@
 #' with usage with pre-specified model part of the 'JAGS' syntax, data and list
 #' of prior distributions.
 #' @param model_syntax jags syntax for the model part
-#' @param data data to fit the model
+#' @param data list containing data to fit the model (not including data for the formulas)
 #' @param prior_list named list of prior distribution
 #' (names correspond to the parameter names) of parameters not specified within the
-#' \code{formula}
-#' @param formula named list of formulas to be added to the model
-#' (names correspond to the parameter name created by the formula)
+#' \code{formula_list}
+#' @param formula_list named list of formulas to be added to the model
+#' (names correspond to the parameter name created by each of the formula)
+#' @param formula_data_list named list of data frames containing data for each formula
+#' (names of the lists correspond to the parameter name created by each of the formula)
 #' @param formula_prior_list named list of named lists of prior distributions
 #' (names of the lists correspond to the parameter name created by each of the formula and
 #' the names of the prior distribution correspond to the parameter names) of parameters specified
@@ -76,24 +78,51 @@
 #'
 #' @seealso [JAGS_check_convergence()]
 #' @export
-JAGS_fit <- function(model_syntax, data, prior_list, formula = NULL, formula_prior_list = NULL,
+JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL,
                      chains = 4, adapt = 500, burnin = 1000, sample = 4000, thin = 1,
                      autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000),
                      parallel = FALSE, cores = chains, silent = TRUE, seed = NULL,
                      add_parameters = NULL, required_packages = NULL){
 
   ### check input
+  .check_JAGS_syntax(model_syntax)
   JAGS_check_and_list_fit_settings(chains, adapt, burnin, sample, thin, autofit, parallel, cores, silent, seed)
   JAGS_check_and_list_autofit_settings(autofit_control)
   check_char(add_parameters, "add_parameters", check_length = 0, allow_NULL = TRUE)
   check_char(required_packages, "required_packages", check_length = 0, allow_NULL = TRUE)
+  check_list(formula_list, "formula_list", allow_NULL = TRUE)
+  check_list(formula_data_list, "formula_data_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
+  check_list(formula_prior_list, "formula_prior_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
 
-  #
+  ### add formulas
+  if(!is.null(formula_list)){
+
+    # obtain settings for each formula
+    formula_output <- list()
+    for(parameter in names(formula_list)){
+      formula_output[[parameter]] <- JAGS_formula(
+        formula    = formula_list[[parameter]],
+        parameter  = parameter,
+        data       = formula_data_list[[parameter]],
+        prior_list = formula_prior_list[[parameter]])
+    }
+
+    # merge with the rest of the input
+    prior_list     <- c(prior_list, do.call(c, unname(lapply(formula_output, function(output) output[["prior_list"]]))))
+    data           <- c(data,       do.call(c, unname(lapply(formula_output, function(output) output[["data"]]))))
+    formula_syntax <- paste0(lapply(formula_output, function(output) output[["formula_syntax"]]), collapse = "")
+
+    # add the formula syntax to the model syntax
+    opening_bracket <- regexpr("{", model_syntax, fixed = TRUE)[1]
+    syntax_start    <- substr(model_syntax, 1, opening_bracket)
+    syntax_end      <- substr(model_syntax, opening_bracket + 1, nchar(model_syntax))
+    model_syntax    <- paste0(syntax_start, "\n", formula_syntax, "\n", syntax_end)
+  }
 
 
   ### create the model call
   model_call <- list(
-    model     = JAGS_add_priors(model_syntax, prior_list),
+    model     = JAGS_add_priors(syntax = model_syntax, prior_list = prior_list),
     data      = data,
     inits     = JAGS_get_inits(prior_list, chains = chains, seed = seed),
     monitor   = c(JAGS_to_monitor(prior_list), add_parameters),
@@ -315,16 +344,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
   check_list(prior_list, "prior_list")
   if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
-  check_char(syntax, "syntax", allow_NULL = TRUE)
-  if(is.null(syntax)){
-    syntax <- "model{}"
-  }
-  if(!grepl("model", syntax, fixed = TRUE))
-    stop("syntax must be a JAGS model syntax")
-  if(!grepl("{", syntax, fixed = TRUE))
-    stop("syntax must be a JAGS model syntax")
-  if(!grepl("}", syntax, fixed = TRUE))
-    stop("syntax must be a JAGS model syntax")
+  .check_JAGS_syntax(syntax)
 
 
   # identify parts of the syntax
@@ -555,6 +575,20 @@ JAGS_add_priors           <- function(syntax, prior_list){
   return(syntax)
 }
 
+
+.check_JAGS_syntax <- function(syntax){
+
+  check_char(syntax, "syntax", allow_NULL = TRUE)
+  if(is.null(syntax)){
+    syntax <- "model{}"
+  }
+  if(!grepl("model", syntax, fixed = TRUE))
+    stop("syntax must be a JAGS model syntax")
+  if(!grepl("{", syntax, fixed = TRUE))
+    stop("syntax must be a JAGS model syntax")
+  if(!grepl("}", syntax, fixed = TRUE))
+    stop("syntax must be a JAGS model syntax")
+}
 
 #' @title Create initial values for 'JAGS' model
 #'

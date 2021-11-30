@@ -1,4 +1,4 @@
-context("Prior distribution functions")
+context("Prior distribution tool functions")
 
 test_that("Prior handling works", {
 

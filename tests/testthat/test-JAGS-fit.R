@@ -311,6 +311,139 @@ test_that("JAGS fit function works" , {
   expect_true(fit4f$timetaken < 5)
 })
 
+test_that("JAGS fit function integration with formula works" , {
+
+  set.seed(1)
+
+  data_formula <- data.frame(
+    x_cont1 = rnorm(300),
+    x_fac2t = factor(rep(c("A", "B"), 150), levels = c("A", "B")),
+    x_fac3t = factor(rep(c("A", "B", "C"), 100), levels = c("A", "B", "C"))
+  )
+  data <- list(
+    y = rnorm(300, .4 * data_formula$x_cont1 + ifelse(data_formula$x_fac3t == "A", 0.0, ifelse(data_formula$x_fac3t == "B", -0.2, 0.4)), ifelse(data_formula$x_fac2t == "A", 0.5, 1)),
+    N = 300
+  )
+
+
+  # create model with mix of a formula and free parameters ---
+  formula_list1 <- list(
+    mu    = ~ x_cont1 + x_fac3t
+  )
+  formula_data_list1 <- list(
+    mu    = data_formula
+  )
+  formula_prior_list1 <- list(
+    mu    = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_cont1"         = prior("normal", list(0, 1)),
+      "x_fac3t"         = prior_factor("normal", contrast = "treatment", list(0, 1))
+    )
+  )
+  prior_list1 <- list(
+    sigma = prior("lognormal", list(0, 1))
+  )
+  model_syntax1 <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  fit1 <- JAGS_fit(
+    model_syntax = model_syntax1, data = data, prior_list = prior_list1,
+    formula_list = formula_list1, formula_data_list = formula_data_list1, formula_prior_list = formula_prior_list1)
+
+  posterior1 <- suppressWarnings(coda::as.mcmc(fit1))
+
+  lm_1 <- stats::lm(y ~ x_cont1 + x_fac3t, data = cbind(data_formula, y = data$y))
+
+  # verify against the frequentist fit
+  expect_doppelganger("JAGS-fit-formula-1", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfrow = c(2, 2))
+
+    hist(posterior1[,"mu_intercept"], freq = FALSE, main = "Intercept")
+    curve(dnorm(x, mean = coef(lm_1)["(Intercept)"], sd = summary(lm_1)$coefficients["(Intercept)", "Std. Error"]), add = TRUE, lwd = 2)
+
+    hist(posterior1[,"mu_x_cont1"], freq = FALSE, main = "mu_x_cont1")
+    curve(dnorm(x, mean = coef(lm_1)["x_cont1"], sd = summary(lm_1)$coefficients["x_cont1", "Std. Error"]), add = TRUE, lwd = 2)
+
+    hist(posterior1[,"mu_x_fac3t[1]"], freq = FALSE, main = "mu_x_fac3t")
+    curve(dnorm(x, mean = coef(lm_1)["x_fac3tB"], sd = summary(lm_1)$coefficients["x_fac3tB", "Std. Error"]), add = TRUE, lwd = 2)
+
+    hist(posterior1[,"mu_x_fac3t[2]"], freq = FALSE, main = "mu_x_fac3t")
+    curve(dnorm(x, mean = coef(lm_1)["x_fac3tC"], sd = summary(lm_1)$coefficients["x_fac3tC", "Std. Error"]), add = TRUE, lwd = 2)
+  })
+
+  # create model with two formulas
+  formula_list2 <- list(
+    mu    = ~ x_cont1 + x_fac3t,
+    sigma = ~ x_fac2t
+  )
+
+  formula_data_list2 <- list(
+    mu    = data_formula,
+    sigma = data_formula
+  )
+
+  formula_prior_list2 <- list(
+    mu    = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_cont1"         = prior("normal", list(0, 1)),
+      "x_fac3t"         = prior_factor("normal", contrast = "treatment", list(0, 1))
+    ),
+    sigma = list(
+      "intercept"       = prior("normal", list(0, 1)),
+      "x_fac2t"         = prior_factor("normal",  contrast = "treatment",   list(0, 1))
+    )
+  )
+  model_syntax2 <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(exp(sigma[i]), 2))\n",
+    "}\n",
+    "}"
+  )
+
+
+  fit2 <- JAGS_fit(
+    model_syntax = model_syntax2, data = data, prior_list = NULL,
+    formula_list = formula_list2, formula_data_list = formula_data_list2, formula_prior_list = formula_prior_list2)
+
+  posterior2 <- suppressWarnings(coda::as.mcmc(fit2))
+
+  # verify against the true values
+  expect_doppelganger("JAGS-fit-formula-2", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfrow = c(2, 3))
+
+    hist(posterior2[,"mu_intercept"], freq = FALSE, main = "Intercept")
+    abline(v = 0, lwd = 3, col = "blue")
+
+    hist(posterior2[,"mu_x_cont1"], freq = FALSE, main = "mu_x_cont1")
+    abline(v = .4, lwd = 3, col = "blue")
+
+    hist(posterior2[,"mu_x_fac3t[1]"], freq = FALSE, main = "mu_x_fac3t")
+    abline(v = -0.2, lwd = 3, col = "blue")
+
+    hist(posterior2[,"mu_x_fac3t[2]"], freq = FALSE, main = "mu_x_fac3t")
+    abline(v = 0.4, lwd = 3, col = "blue")
+
+    hist(exp(posterior2[,"sigma_intercept"]), freq = FALSE, main = "sigma_intercept")
+    abline(v = 0.5, lwd = 3, col = "blue")
+
+    hist(exp(posterior2[,"sigma_intercept"] + posterior2[,"sigma_x_fac2t"]), freq = FALSE, main = "sigma_x_fac2t")
+    abline(v = 1, lwd = 3, col = "blue")
+  })
+
+})
+
 test_that("JAGS parallel fit function works" , {
 
   skip("requires parallel processing")

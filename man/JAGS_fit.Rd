@@ -8,7 +8,8 @@ JAGS_fit(
   model_syntax,
   data,
   prior_list,
-  formula = NULL,
+  formula_list = NULL,
+  formula_data_list = NULL,
   formula_prior_list = NULL,
   chains = 4,
   adapt = 500,
@@ -29,14 +30,17 @@ JAGS_fit(
 \arguments{
 \item{model_syntax}{jags syntax for the model part}
 
-\item{data}{data to fit the model}
+\item{data}{list containing data to fit the model (not including data for the formulas)}
 
 \item{prior_list}{named list of prior distribution
 (names correspond to the parameter names) of parameters not specified within the
-\code{formula}}
+\code{formula_list}}
 
-\item{formula}{named list of formulas to be added to the model
-(names correspond to the parameter name created by the formula)}
+\item{formula_list}{named list of formulas to be added to the model
+(names correspond to the parameter name created by each of the formula)}
+
+\item{formula_data_list}{named list of data frames containing data for each formula
+(names of the lists correspond to the parameter name created by each of the formula)}
 
 \item{formula_prior_list}{named list of named lists of prior distributions
 (names of the lists correspond to the parameter name created by each of the formula and
