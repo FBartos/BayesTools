@@ -109,6 +109,9 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   model_frame  <- stats::model.frame(formula, data = data)
   model_matrix <- stats::model.matrix(model_frame, formula = formula, data = data)
 
+  # check whether intercept is unique parameter
+  if(sum(grepl("intercept", names(prior_list))) > 1)
+    stop("only the intercept parameter can contain 'intercept' in its name.")
   # check whether the interaction replacement is in usage
   if(any(grepl("__xXx__", names(prior_list))))
     stop("'__xXx__' string is internally used by the BayesTools package and can't be used for naming variables.")
@@ -171,7 +174,8 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   return(list(
     formula_syntax = formula_syntax,
     data           = JAGS_data,
-    prior_list     = prior_list
+    prior_list     = prior_list,
+    formula        = formula
   ))
 }
 

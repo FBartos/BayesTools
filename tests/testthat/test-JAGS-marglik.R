@@ -211,3 +211,153 @@ test_that("JAGS model functions work (complex scenario)", {
   expect_equal(marglik2$logml, -52.148, tolerance = 1e-2)
   expect_equal(marglik3$logml,   1.489, tolerance = 1e-2)
 })
+
+test_that("JAGS model functions work (formula)",{
+
+  set.seed(1)
+
+  data_formula <- data.frame(
+    x_cont1 = rnorm(300),
+    x_fac2t = factor(rep(c("A", "B"), 150), levels = c("A", "B")),
+    x_fac3t = factor(rep(c("A", "B", "C"), 100), levels = c("A", "B", "C"))
+  )
+  data <- list(
+    y = rnorm(300, .4 * data_formula$x_cont1 + ifelse(data_formula$x_fac3t == "A", 0.0, ifelse(data_formula$x_fac3t == "B", -0.2, 0.4)), ifelse(data_formula$x_fac2t == "A", 0.5, 1)),
+    N = 300
+  )
+
+  # create an empty model ----
+  formula_list0 <- list(
+    mu    = ~ x_cont1 + x_fac3t
+  )
+  formula_data_list0 <- list(
+    mu    = data_formula
+  )
+  formula_prior_list0 <- list(
+    mu    = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_cont1"         = prior("normal", list(0, 1)),
+      "x_fac3t"         = prior_factor("normal", contrast = "treatment", list(0, 1))
+    )
+  )
+  prior_list0 <- list(
+    sigma = prior("lognormal", list(0, 1))
+  )
+  model_syntax0 <- "model{}"
+
+  fit0     <- JAGS_fit(
+    model_syntax = model_syntax0, data = list(), prior_list = prior_list0,
+    formula_list = formula_list0, formula_data_list = formula_data_list0, formula_prior_list = formula_prior_list0)
+
+  log_posterior0 <- function(parameters, data){
+    return(0)
+  }
+
+  marglik0 <- JAGS_bridgesampling(
+    fit                = fit0,
+    log_posterior      = log_posterior0,
+    data               = list(),
+    prior_list         = prior_list0,
+    formula_list       = formula_list0,
+    formula_data_list  = formula_data_list0,
+    formula_prior_list = formula_prior_list0
+  )
+
+  expect_equal(marglik0$logml,   0, tolerance = 1e-3)
+
+
+  # create model with mix of a formula and free parameters ---
+  formula_list1 <- list(
+    mu    = ~ x_cont1 + x_fac3t
+  )
+  formula_data_list1 <- list(
+    mu    = data_formula
+  )
+  formula_prior_list1 <- list(
+    mu    = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_cont1"         = prior("normal", list(0, 1)),
+      "x_fac3t"         = prior_factor("normal", contrast = "treatment", list(0, 1))
+    )
+  )
+  prior_list1 <- list(
+    sigma = prior("lognormal", list(0, 1))
+  )
+  model_syntax1 <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  fit1     <- JAGS_fit(
+    model_syntax = model_syntax1, data = data, prior_list = prior_list1,
+    formula_list = formula_list1, formula_data_list = formula_data_list1, formula_prior_list = formula_prior_list1)
+
+  log_posterior1 <- function(parameters, data){
+    return(sum(stats::dnorm(data$y, mean = parameters[["mu"]], sd = parameters[["sigma"]], log = TRUE)))
+  }
+
+  marglik1 <- JAGS_bridgesampling(
+    fit                = fit1,
+    log_posterior      = log_posterior1,
+    data               = data,
+    prior_list         = prior_list1,
+    formula_list       = formula_list1,
+    formula_data_list  = formula_data_list1,
+    formula_prior_list = formula_prior_list1)
+
+  # more of a consistency test
+  expect_equal(marglik1$logml, -370.87, tolerance = 1e-2)
+
+  # create model with two formulas ---
+  formula_list2 <- list(
+    mu    = ~ x_cont1 + x_fac3t,
+    sigma = ~ x_fac2t
+  )
+
+  formula_data_list2 <- list(
+    mu    = data_formula,
+    sigma = data_formula
+  )
+
+  formula_prior_list2 <- list(
+    mu    = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_cont1"         = prior("normal", list(0, 1)),
+      "x_fac3t"         = prior_factor("normal", contrast = "treatment", list(0, 1))
+    ),
+    sigma = list(
+      "intercept"       = prior("normal", list(0, 1)),
+      "x_fac2t"         = prior_factor("normal",  contrast = "treatment",   list(0, 1))
+    )
+  )
+  model_syntax2 <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(exp(sigma[i]), 2))\n",
+    "}\n",
+    "}"
+  )
+
+  fit2 <- JAGS_fit(
+    model_syntax = model_syntax2, data = data, prior_list = NULL,
+    formula_list = formula_list2, formula_data_list = formula_data_list2, formula_prior_list = formula_prior_list2)
+
+  log_posterior2 <- function(parameters, data){
+    return(sum(stats::dnorm(data$y, mean = parameters[["mu"]], sd = exp(parameters[["sigma"]]), log = TRUE)))
+  }
+
+  marglik2 <- JAGS_bridgesampling(
+    fit                = fit2,
+    log_posterior      = log_posterior2,
+    data               = data,
+    prior_list         = NULL,
+    formula_list       = formula_list2,
+    formula_data_list  = formula_data_list2,
+    formula_prior_list = formula_prior_list2)
+
+  # more of a consistency test
+  expect_equal(marglik2$logml, -351.43, tolerance = 1e-2)
+})

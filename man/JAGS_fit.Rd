@@ -6,8 +6,8 @@
 \usage{
 JAGS_fit(
   model_syntax,
-  data,
-  prior_list,
+  data = NULL,
+  prior_list = NULL,
   formula_list = NULL,
   formula_data_list = NULL,
   formula_prior_list = NULL,

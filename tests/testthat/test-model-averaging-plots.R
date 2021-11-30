@@ -371,8 +371,8 @@ test_that("posterior plot functions (simple) work", {
   fit0 <- suppressWarnings(JAGS_fit(model_syntax, data, priors_list0, chains = 1, adapt = 100, burnin = 150, sample = 500, seed = 0))
   fit1 <- suppressWarnings(JAGS_fit(model_syntax, data, priors_list1, chains = 1, adapt = 100, burnin = 150, sample = 500, seed = 1))
   # get marginal likelihoods
-  marglik0 <- JAGS_bridgesampling(fit0, data, priors_list0, log_posterior)
-  marglik1 <- JAGS_bridgesampling(fit1, data, priors_list1, log_posterior)
+  marglik0 <- JAGS_bridgesampling(fit0, log_posterior = log_posterior, data = data, prior_list = priors_list0)
+  marglik1 <- JAGS_bridgesampling(fit1, log_posterior = log_posterior, data = data, prior_list = priors_list1)
   # automatically mix posteriors
   models <- list(
     list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1),
@@ -449,8 +449,8 @@ test_that("posterior plot functions (PET-PEESE) work", {
   fit0 <- suppressWarnings(JAGS_fit(model_syntax, data, priors_list0, chains = 1, adapt = 100, burnin = 150, sample = 2000, seed = 0))
   fit1 <- suppressWarnings(JAGS_fit(model_syntax, data, priors_list1, chains = 1, adapt = 100, burnin = 150, sample = 2000, seed = 1))
   # get marginal likelihoods
-  marglik0 <- JAGS_bridgesampling(fit0, data, priors_list0, log_posterior)
-  marglik1 <- JAGS_bridgesampling(fit1, data, priors_list1, log_posterior)
+  marglik0 <- JAGS_bridgesampling(fit0, log_posterior = log_posterior, data = data, prior_list = priors_list0)
+  marglik1 <- JAGS_bridgesampling(fit1, log_posterior = log_posterior, data = data, prior_list = priors_list1)
   # automatically mix posteriors
   models <- list(
     list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1),
@@ -495,7 +495,7 @@ test_that("posterior plot functions (PET-PEESE) work", {
   # fit the models
   fit2 <- suppressWarnings(JAGS_fit(model_syntax, data, priors_list2, chains = 1, adapt = 100, burnin = 150, sample = 2000, seed = 1))
   # get marginal likelihoods
-  marglik2 <- JAGS_bridgesampling(fit2, data, priors_list2, log_posterior)
+  marglik2 <- JAGS_bridgesampling(fit2, log_posterior = log_posterior, data = data, prior_list = priors_list2)
   # automatically mix posteriors
   models <- list(
     list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1),
@@ -531,8 +531,8 @@ test_that("posterior plot functions (weightfunctions) work", {
   fit0 <- suppressWarnings(JAGS_fit(model_syntax, data, priors_list0, chains = 1, adapt = 100, burnin = 150, sample = 2000, seed = 0))
   fit1 <- suppressWarnings(JAGS_fit(model_syntax, data, priors_list1, chains = 1, adapt = 100, burnin = 150, sample = 2000, seed = 1))
   # get marginal likelihoods
-  marglik0 <- JAGS_bridgesampling(fit0, data, priors_list0, log_posterior)
-  marglik1 <- JAGS_bridgesampling(fit1, data, priors_list1, log_posterior)
+  marglik0 <- JAGS_bridgesampling(fit0, log_posterior = log_posterior, data = data, prior_list = priors_list0)
+  marglik1 <- JAGS_bridgesampling(fit1, log_posterior = log_posterior, data = data, prior_list = priors_list1)
   # automatically mix posteriors
   models <- list(
     list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1),
@@ -584,7 +584,7 @@ test_that("posterior plot functions (weightfunctions) work", {
   # fit the models
   fit2 <- suppressWarnings(JAGS_fit(model_syntax, data, priors_list2, chains = 1, adapt = 100, burnin = 150, sample = 2000, seed = 1))
   # get marginal likelihoods
-  marglik2 <- JAGS_bridgesampling(fit2, data, priors_list2, log_posterior)
+  marglik2 <- JAGS_bridgesampling(fit2, log_posterior = log_posterior, data = data, prior_list = priors_list2)
   # automatically mix posteriors
   models <- list(
     list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1),
@@ -646,8 +646,8 @@ test_that("models plot functions work", {
     logml = sum(dnorm(data$x, mean(p0), 1, log = TRUE))
   )
   class(marglik0) <- "bridge"
-  marglik1 <- JAGS_bridgesampling(fit1, data, priors_list1, log_posterior)
-  marglik2 <- JAGS_bridgesampling(fit2, data, priors_list2, log_posterior2)
+  marglik1 <- JAGS_bridgesampling(fit1, log_posterior = log_posterior, data = data, prior_list = priors_list1)
+  marglik2 <- JAGS_bridgesampling(fit2, log_posterior = log_posterior2, data = data, prior_list = priors_list2)
   ## create an object with the models
   models <- list(
     list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1, fit_summary = runjags_estimates_table(fit0, priors_list0)),

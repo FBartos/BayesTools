@@ -29,8 +29,8 @@ test_that("JAGS model-averaging functions work (simple)",{
   fit0 <- JAGS_fit(model_syntax, data, priors_list0, chains = 1, adapt = 100, burnin = 150, sample = 500, seed = 0)
   fit1 <- JAGS_fit(model_syntax, data, priors_list1, chains = 1, adapt = 100, burnin = 150, sample = 500, seed = 1)
   # get marginal likelihoods
-  marglik0 <- JAGS_bridgesampling(fit0, data, priors_list0, log_posterior)
-  marglik1 <- JAGS_bridgesampling(fit1, data, priors_list1, log_posterior)
+  marglik0 <- JAGS_bridgesampling(fit0, log_posterior = log_posterior, data = data, prior_list = priors_list0)
+  marglik1 <- JAGS_bridgesampling(fit1, log_posterior = log_posterior, data = data, prior_list = priors_list1)
 
   # make parameter inference
   inference_m             <- compute_inference(c(1, 1), c(marglik0$logml, marglik1$logml), c(T, F))
@@ -125,9 +125,9 @@ test_that("JAGS model-averaging functions work (weightfunctions)",{
   fit1 <- JAGS_fit(model_syntax, data, priors_list1, chains = 1, adapt = 100, burnin = 150, sample = 500, seed = 1)
   fit2 <- JAGS_fit(model_syntax, data, priors_list2, chains = 1, adapt = 100, burnin = 150, sample = 500, seed = 1)
   # get marginal likelihoods
-  marglik0 <- JAGS_bridgesampling(fit0, data, priors_list0, log_posterior)
-  marglik1 <- JAGS_bridgesampling(fit1, data, priors_list1, log_posterior)
-  marglik2 <- JAGS_bridgesampling(fit2, data, priors_list2, log_posterior)
+  marglik0 <- JAGS_bridgesampling(fit0, log_posterior = log_posterior, data = data, prior_list = priors_list0)
+  marglik1 <- JAGS_bridgesampling(fit1, log_posterior = log_posterior, data = data, prior_list = priors_list1)
+  marglik2 <- JAGS_bridgesampling(fit2, log_posterior = log_posterior, data = data, prior_list = priors_list2)
 
   # check coefficient mapping
   expect_equal(weightfunctions_mapping(list(priors_list0$omega, priors_list1$omega, priors_list2$omega)), list(NULL, c(2, 1, 1), c(3, 2, 1)))
@@ -182,7 +182,7 @@ test_that("JAGS model-averaging functions work (weightfunctions)",{
     omega = prior_weightfunction("two.sided.fixed", list(0.20, c(.3, 1)))
   )
   fit3     <- JAGS_fit(model_syntax, data, priors_list3, chains = 1, adapt = 100, burnin = 150, sample = 500, seed = 1)
-  marglik3 <- JAGS_bridgesampling(fit3, data, priors_list3, log_posterior)
+  marglik3 <- JAGS_bridgesampling(fit3, log_posterior = log_posterior, data = data, prior_list = priors_list3)
   models <- list(
     list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1),
     list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1),
