@@ -6,10 +6,10 @@
 \usage{
 prior_factor(
   distribution,
-  contrast,
   parameters,
-  truncation = if (contrast == "orthonormal") NULL else list(lower = -Inf, upper = Inf),
-  prior_weights = 1
+  truncation = list(lower = -Inf, upper = Inf),
+  prior_weights = 1,
+  contrast = "orthonormal"
 )
 }
 \arguments{
@@ -45,17 +45,6 @@ parameter. The later is internally converted to
 range from \code{a} to \code{b}}
 }}
 
-\item{contrast}{type of contrast for the prior distribution. The possible options are
-\describe{
-\item{\code{"orthonormal"}}{for contrast centered around the grand mean
-with equal marginal distributions, making the prior distribution exchangeable
-across factor levels. Supports only \code{distribution = "normal"} which generates
-the corresponding multivariate normal distribution.}
-\item{\code{"treatment"}}{for contrasts using the first level as a comparison
-group and setting equal prior distribution on differences between the individual
-factor levels and the comparison level.}
-}}
-
 \item{parameters}{list of appropriate parameters for a given
 \code{distribution}.}
 
@@ -69,6 +58,18 @@ The value is passed into the model fitting function, which creates models
 corresponding to all combinations of prior distributions for each of
 the model parameters and sets the model priors odds to the product
 of its prior distributions.}
+
+\item{contrast}{type of contrast for the prior distribution. The possible options are
+\describe{
+\item{\code{"orthonormal"}}{for contrast centered around the grand mean
+with equal marginal distributions, making the prior distribution exchangeable
+across factor levels. Only supports \code{distribution = "mnormal"} and
+\code{distribution = "mt"} which generates the corresponding multivariate normal/t
+distributions.}
+\item{\code{"treatment"}}{for contrasts using the first level as a comparison
+group and setting equal prior distribution on differences between the individual
+factor levels and the comparison level.}
+}}
 }
 \value{
 return an object of class 'prior'.
