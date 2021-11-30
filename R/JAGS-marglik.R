@@ -670,13 +670,12 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
     stop("'parameter_name' must be a character vector of length 1.")
 
 
+  parameter <- list()
   if(prior$parameters[["K"]] == 1){
-    parameter <- list()
     parameter[[parameter_name]] <- samples[[ parameter_name ]]
   }else{
-    parameter <- sapply(paste0(parameter_name, "[", 1:prior$parameters[["K"]], "]"), function(par) samples[[ par ]], simplify = FALSE)
+    parameter[[parameter_name]] <- samples[ paste0(parameter_name, "[", 1:prior$parameters[["K"]], "]") ]
   }
-
 
   return(parameter)
 }
@@ -697,7 +696,8 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
     }else{
 
-      parameter <- sapply(1:(attr(prior, "levels") - 1), function(i) .JAGS_marglik_parameters.simple(samples, prior, paste0(parameter_name, "[", i, "]")))
+      parameter <- list()
+      parameter[[parameter_name]] <- samples[ paste0(parameter_name, "[", 1:(attr(prior, "levels") - 1), "]") ]
 
     }
 
