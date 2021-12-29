@@ -375,8 +375,8 @@ test_that("posterior plot functions (simple) work", {
   marglik1 <- JAGS_bridgesampling(fit1, log_posterior = log_posterior, data = data, prior_list = priors_list1)
   # automatically mix posteriors
   models <- list(
-    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1),
-    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1)
+    list(fit = fit0, marglik = marglik0, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, prior_weights = 1)
   )
   mixed_posteriors <- mix_posteriors(model_list = models, parameters = c("m", "s"), is_null_list = list("m" = 1, "s" = 0), seed = 1)
 
@@ -453,8 +453,8 @@ test_that("posterior plot functions (PET-PEESE) work", {
   marglik1 <- JAGS_bridgesampling(fit1, log_posterior = log_posterior, data = data, prior_list = priors_list1)
   # automatically mix posteriors
   models <- list(
-    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1),
-    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1)
+    list(fit = fit0, marglik = marglik0, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, prior_weights = 1)
   )
   mixed_posteriors <- mix_posteriors(model_list = models, parameters = c("mu", "PET", "PEESE"), is_null_list = list("mu" = c(T, T), "PET" = c(F,T),  "PEESE" = c(T,F)), seed = 1)
 
@@ -498,9 +498,9 @@ test_that("posterior plot functions (PET-PEESE) work", {
   marglik2 <- JAGS_bridgesampling(fit2, log_posterior = log_posterior, data = data, prior_list = priors_list2)
   # automatically mix posteriors
   models <- list(
-    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1),
-    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1),
-    list(fit = fit2, marglik = marglik2, priors = priors_list2, prior_weights = 4)
+    list(fit = fit0, marglik = marglik0, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, prior_weights = 1),
+    list(fit = fit2, marglik = marglik2, prior_weights = 4)
   )
   mixed_posteriors <- mix_posteriors(model_list = models, parameters = c("mu" ,"PET", "PEESE"), is_null_list = list("mu" = c(T, T, F),"PET" = c(F,T,F),  "PEESE" = c(T,F,F)), seed = 1)
   expect_doppelganger("model-averaging-plot-posterior-PETPEESE-9", function(){
@@ -535,8 +535,8 @@ test_that("posterior plot functions (weightfunctions) work", {
   marglik1 <- JAGS_bridgesampling(fit1, log_posterior = log_posterior, data = data, prior_list = priors_list1)
   # automatically mix posteriors
   models <- list(
-    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1),
-    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1)
+    list(fit = fit0, marglik = marglik0, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, prior_weights = 1)
   )
   mixed_posteriors <- mix_posteriors(model_list = models, parameters = "omega", is_null_list = list("omega" = c(F,F)), seed = 1)
 
@@ -587,9 +587,9 @@ test_that("posterior plot functions (weightfunctions) work", {
   marglik2 <- JAGS_bridgesampling(fit2, log_posterior = log_posterior, data = data, prior_list = priors_list2)
   # automatically mix posteriors
   models <- list(
-    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1),
-    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1),
-    list(fit = fit2, marglik = marglik2, priors = priors_list2, prior_weights = 5)
+    list(fit = fit0, marglik = marglik0, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, prior_weights = 1),
+    list(fit = fit2, marglik = marglik2, prior_weights = 5)
   )
   mixed_posteriors <- mix_posteriors(model_list = models, parameters = "omega", is_null_list = list("omega" = c(F,F,F)), seed = 1)
   expect_doppelganger("model-averaging-plot-posterior-wf-10", function(){
@@ -650,9 +650,9 @@ test_that("models plot functions work", {
   marglik2 <- JAGS_bridgesampling(fit2, log_posterior = log_posterior2, data = data, prior_list = priors_list2)
   ## create an object with the models
   models <- list(
-    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1, fit_summary = runjags_estimates_table(fit0, priors_list0)),
-    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1, fit_summary = runjags_estimates_table(fit1, priors_list1)),
-    list(fit = fit2, marglik = marglik2, priors = priors_list2, prior_weights = 1, fit_summary = runjags_estimates_table(fit2, priors_list2))
+    list(fit = fit0, marglik = marglik0, prior_weights = 1, fit_summary = runjags_estimates_table(fit0, priors_list0)),
+    list(fit = fit1, marglik = marglik1, prior_weights = 1, fit_summary = runjags_estimates_table(fit1, priors_list1)),
+    list(fit = fit2, marglik = marglik2, prior_weights = 1, fit_summary = runjags_estimates_table(fit2, priors_list2))
   )
   # compare and summarize the models
   models            <- models_inference(models)

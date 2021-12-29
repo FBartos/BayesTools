@@ -1212,8 +1212,8 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
   # check input
   check_list(model_list, "model_list")
   check_char(parameter, "parameter")
-  sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("fit_summary", "priors"), all_objects = TRUE, allow_other = TRUE))
-  if(!all(unlist(sapply(model_list, function(m)sapply(m[["priors"]], function(p)is.prior(p))))))
+  sapply(model_list, function(m)check_list(m, "model_list:model", check_names = "fit_summary", all_objects = TRUE, allow_other = TRUE))
+  if(!all(unlist(sapply(model_list, function(m) sapply(attr(m[["fit"]], "prior_list"), function(p) is.prior(p))))))
     stop("model_list:priors must contain 'BayesTools' priors")
   if(!all(sapply(model_list, function(m)inherits(m[["fit_summary"]], what = "BayesTools_runjags_summary"))))
     stop("model_list:fit_summary must contain 'BayesTools' fit_summary")

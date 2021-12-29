@@ -53,8 +53,8 @@ test_that("JAGS model-averaging functions work (simple)",{
 
   # automatically mix posteriors
   models <- list(
-    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1),
-    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1)
+    list(fit = fit0, marglik = marglik0, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, prior_weights = 1)
   )
   inference <- ensemble_inference(model_list = models, parameters = c("m", "s"), is_null_list = list("m" = 1, "s" = 0), conditional = FALSE)
   inference_conditional <- ensemble_inference(model_list = models, parameters = c("m", "s"), is_null_list = list("m" = 1, "s" = 0), conditional = TRUE)
@@ -84,8 +84,8 @@ test_that("JAGS model-averaging functions work (simple)",{
 
   # dealing with missing unspecified null priors
   models2 <- list(
-    list(fit = fit0, marglik = marglik0, priors = list(s  = prior("normal", list(0, 1), list(0, Inf))), prior_weights = 1),
-    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1)
+    list(fit = fit0, marglik = marglik0, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, prior_weights = 1)
   )
   mixed_posteriors2 <- mix_posteriors(model_list = models2, parameters = c("m", "s"), is_null_list = list("m" = 1, "s" = 0), seed = 1)
   expect_equal(mixed_posteriors, mixed_posteriors2)
@@ -147,9 +147,9 @@ test_that("JAGS model-averaging functions work (weightfunctions)",{
   )
 
   models <- list(
-    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1),
-    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1),
-    list(fit = fit2, marglik = marglik2, priors = priors_list2, prior_weights = 1)
+    list(fit = fit0, marglik = marglik0, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, prior_weights = 1),
+    list(fit = fit2, marglik = marglik2, prior_weights = 1)
   )
 
   # get models inference &  mix posteriors
@@ -184,10 +184,10 @@ test_that("JAGS model-averaging functions work (weightfunctions)",{
   fit3     <- JAGS_fit(model_syntax, data, priors_list3, chains = 1, adapt = 100, burnin = 150, sample = 500, seed = 1)
   marglik3 <- JAGS_bridgesampling(fit3, log_posterior = log_posterior, data = data, prior_list = priors_list3)
   models <- list(
-    list(fit = fit0, marglik = marglik0, priors = priors_list0, prior_weights = 1),
-    list(fit = fit1, marglik = marglik1, priors = priors_list1, prior_weights = 1),
-    list(fit = fit2, marglik = marglik2, priors = priors_list2, prior_weights = 1),
-    list(fit = fit3, marglik = marglik3, priors = priors_list3, prior_weights = 1)
+    list(fit = fit0, marglik = marglik0, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, prior_weights = 1),
+    list(fit = fit2, marglik = marglik2, prior_weights = 1),
+    list(fit = fit3, marglik = marglik3, prior_weights = 1)
   )
 
   inference <- ensemble_inference(model_list = models, parameters = c("m", "omega"), is_null_list = list("m" = 0, "omega" = 1), conditional = FALSE)
@@ -201,4 +201,165 @@ test_that("JAGS model-averaging functions work (weightfunctions)",{
     sapply(1:5, function(i)hist(mixed_posteriors$omega[,i], main = "model-averaged (omega)", xlab = colnames(mixed_posteriors$omega)[i]))
     sapply(1:5, function(i)hist(mixed_posteriors_conditional$omega[,i], main = "conditional (omega)", xlab = colnames(mixed_posteriors$omega)[i]))
   })
+})
+
+test_that("JAGS model-averaging functions work (formula + factors)",{
+
+  set.seed(1)
+
+  data_formula <- data.frame(
+    x_cont1 = rnorm(60),
+    x_fac2t = factor(rep(c("A", "B"), 30), levels = c("A", "B")),
+    x_fac3o = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C")),
+    x_fac3t = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C"))
+  )
+  data <- list(
+    y = rnorm(60, .4 * data_formula$x_cont1 + ifelse(data_formula$x_fac3t == "A", 0.0, ifelse(data_formula$x_fac3t == "B", -0.2, 0.4)), 1),
+    N = 60
+  )
+
+  # create model with mix of a formula and free parameters ---
+  formula_list0 <- list(mu = ~ x_fac2t)
+  formula_list1 <- list(mu = ~ x_cont1 + x_fac3t)
+  formula_list2 <- list(mu = ~ x_fac3o)
+  formula_list3 <- list(mu = ~ x_cont1 * x_fac3o)
+
+  formula_prior_list0 <- list(
+    mu    = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_fac2t"         = prior_factor("normal",  contrast = "treatment", list(0, 1))
+    )
+  )
+  formula_prior_list1 <- list(
+    mu    = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_cont1"         = prior("normal", list(0, 1)),
+      "x_fac3t"         = prior_factor("normal", contrast = "treatment", list(0, 1))
+    )
+  )
+  formula_prior_list2 <- list(
+    mu    = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_fac3o"         = prior_factor("mnormal", contrast = "orthonormal", list(0, 1))
+    )
+  )
+  formula_prior_list3 <- list(
+    mu    = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_cont1"         = prior("normal", list(0, 1)),
+      "x_fac3o"         = prior_factor("mnormal", contrast = "orthonormal", list(0, 1)),
+      "x_cont1:x_fac3o" = prior_factor("mnormal", contrast = "orthonormal", list(0, 1))
+    )
+  )
+
+  prior_list        <- list(sigma = prior("lognormal", list(0, 1)))
+  formula_data_list <- list(mu = data_formula)
+
+  model_syntax <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  log_posterior <- function(parameters, data){
+    sum(stats::dnorm(data$y, parameters[["mu"]], parameters[["sigma"]], log = TRUE))
+  }
+
+  fit0 <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list0, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0, seed = 1)
+  fit1 <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1, seed = 2)
+  fit2 <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list2, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list2, seed = 3)
+  fit3 <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list3, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list3, seed = 4)
+
+  marglik0 <- JAGS_bridgesampling(
+    fit0, log_posterior = log_posterior, data = data, prior_list = prior_list,
+    formula_list = formula_list0, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0)
+  marglik1 <- JAGS_bridgesampling(
+    fit1, log_posterior = log_posterior, data = data, prior_list = prior_list,
+    formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1)
+  marglik2 <- JAGS_bridgesampling(
+    fit2, log_posterior = log_posterior, data = data, prior_list = prior_list,
+    formula_list = formula_list2, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list2)
+  marglik3 <- JAGS_bridgesampling(
+    fit3, log_posterior = log_posterior, data = data, prior_list = prior_list,
+    formula_list = formula_list3, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list3)
+
+
+  # mix posteriors
+  models <- list(
+    list(fit = fit0, marglik = marglik0, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, prior_weights = 1),
+    list(fit = fit2, marglik = marglik2, prior_weights = 1),
+    list(fit = fit3, marglik = marglik3, prior_weights = 1)
+  )
+
+
+  inference <- ensemble_inference(
+    model_list   = models,
+    parameters   = c("mu_x_cont1", "mu_x_fac2t", "mu_x_fac3t", "mu_x_fac3o", "mu_x_cont1__xXx__x_fac3o"),
+    is_null_list = list(
+      "mu_x_cont1"         = c(TRUE,  FALSE, TRUE,  FALSE),
+      "mu_x_fac2t"         = c(FALSE, TRUE,  TRUE,  TRUE),
+      "mu_x_fac2t"         = c(TRUE,  FALSE, TRUE,  TRUE),
+      "mu_x_fac2t"         = c(TRUE,  TRUE,  FALSE, FALSE),
+      "mu_x_cont1:x_fac3o" = c(TRUE,  TRUE,  TRUE,  FALSE)
+      ),
+    conditional = FALSE)
+
+  mixed_posteriors <- mix_posteriors(
+    model_list   = models,
+    parameters   = c("mu_x_cont1", "mu_x_fac2t", "mu_x_fac3t", "mu_x_fac3o", "mu_x_cont1__xXx__x_fac3o"),
+    is_null_list = list(
+      "mu_x_cont1"         = c(TRUE,  FALSE, TRUE,  FALSE),
+      "mu_x_fac2t"         = c(FALSE, TRUE,  TRUE,  TRUE),
+      "mu_x_fac2t"         = c(TRUE,  FALSE, TRUE,  TRUE),
+      "mu_x_fac2t"         = c(TRUE,  TRUE,  FALSE, FALSE),
+      "mu_x_cont1:x_fac3o" = c(TRUE,  TRUE,  TRUE,  FALSE)
+    ),
+    seed = 1, n_samples = 10000)
+
+  mixed_posteriors_c <- mix_posteriors(
+    model_list   = models,
+    parameters   = c("mu_x_cont1", "mu_x_fac2t", "mu_x_fac3t", "mu_x_fac3o", "mu_x_cont1__xXx__x_fac3o"),
+    is_null_list = list(
+      "mu_x_cont1"         = c(TRUE,  FALSE, TRUE,  FALSE),
+      "mu_x_fac2t"         = c(FALSE, TRUE,  TRUE,  TRUE),
+      "mu_x_fac2t"         = c(TRUE,  FALSE, TRUE,  TRUE),
+      "mu_x_fac2t"         = c(TRUE,  TRUE,  FALSE, FALSE),
+      "mu_x_cont1:x_fac3o" = c(TRUE,  TRUE,  TRUE,  FALSE)
+    ),
+    seed = 1, n_samples = 10000, conditional = TRUE)
+
+
+  expect_true(is.numeric(inference$mu_x_cont1$BF))
+  expect_true(is.numeric(inference$mu_x_fac2t$BF))
+  expect_true(is.numeric(inference$mu_x_fac3t$BF))
+  expect_true(is.numeric(inference$mu_x_fac3o$BF))
+  expect_true(is.numeric(inference$mu_x_cont1__xXx__x_fac3o$BF))
+
+  expect_equal(length(mixed_posteriors$mu_x_cont1), 10000)
+  expect_equal(length(mixed_posteriors$mu_x_fac2t), 10000)
+  expect_equal(dim(mixed_posteriors$mu_x_fac3t),               c(10000, 2))
+  expect_equal(dim(mixed_posteriors$mu_x_fac3o),               c(10000, 2))
+  expect_equal(dim(mixed_posteriors$mu_x_cont1__xXx__x_fac3o), c(10000, 2))
+
+  expect_doppelganger("JAGS-model-averaging-3", function(){
+    par(mfrow = c(2, 3))
+    hist(mixed_posteriors$mu_x_fac2t,       main = "averaged x_fac2t")
+    hist(mixed_posteriors_c$mu_x_fac2t,     main = "conditiona x_fac2t")
+    hist(mixed_posteriors_c$mu_x_fac3t[,1], main = "conditional mu_x_fac3t[1]")
+    hist(mixed_posteriors_c$mu_x_fac3t[,2], main = "conditional mu_x_fac3t[2]")
+    hist(mixed_posteriors_c$mu_x_cont1__xXx__x_fac3o[,1], main = "conditional mu_x_cont1__xXx__x_fac3o[1]")
+    hist(mixed_posteriors_c$mu_x_cont1__xXx__x_fac3o[,2], main = "conditional mu_x_cont1__xXx__x_fac3o[2]")
+  })
+
 })

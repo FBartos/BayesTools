@@ -161,8 +161,8 @@ ensemble_summary_table <- function(models, parameters, logBF = FALSE, BF01 = FAL
   check_list(models, "models")
   for(i in seq_along(models)){
     model <- models[[i]]
-    check_list(model, "model", check_names = c("priors", "inference"), allow_other = TRUE, all_objects = TRUE)
-    prior_list <- model[["priors"]]
+    check_list(model, "model", check_names = "inference", allow_other = TRUE, all_objects = TRUE)
+    prior_list <- attr(model[["fit"]], "prior_list")
     check_list(prior_list, "model:priors")
     if(!all(sapply(prior_list, is.prior)))
       stop("'model:priors' must be a list of priors.")
@@ -223,8 +223,8 @@ ensemble_diagnostics_table <- function(models, parameters, title = NULL, footnot
   check_list(models, "models")
   for(i in seq_along(models)){
     model <- models[[i]]
-    check_list(model, "model", check_names = c("priors", "fit_summary", "inference"), allow_other = TRUE, all_objects = TRUE)
-    prior_list <- model[["priors"]]
+    check_list(model, "model", check_names = c("fit_summary", "inference"), allow_other = TRUE, all_objects = TRUE)
+    prior_list <- attr(model[["fit"]], "prior_list")
     check_list(prior_list, "model:priors")
     if(!all(sapply(prior_list, is.prior)))
       stop("'model:priors' must be a list of priors.")
@@ -307,18 +307,20 @@ ensemble_diagnostics_table <- function(models, parameters, title = NULL, footnot
     model_row <- list()
     model_row[["Model"]] <- models[[i]][["inference"]][["m_number"]]
 
+    temp_prior_list <- attr(models[[i]][["fit"]], "prior_list")
+
     for(p in seq_along(parameters)){
       if(is.list(parameters)){
-        if(sum(names(models[[i]][["priors"]]) %in% parameters[[p]]) == 1){
-          temp_prior <- models[[i]][["priors"]][[parameters[[p]][parameters[[p]] %in% names(models[[i]][["priors"]])]]]
-        }else if(sum(names(models[[i]][["priors"]]) %in% parameters[[p]]) == 0){
+        if(sum(names(temp_prior_list) %in% parameters[[p]]) == 1){
+          temp_prior <- temp_prior_list[[parameters[[p]][parameters[[p]] %in% names(temp_prior_list)]]]
+        }else if(sum(names(temp_prior_list) %in% parameters[[p]]) == 0){
           temp_prior <- prior_none()
         }else{
           stop("More than one prior matching the specified grouping.")
         }
       }else{
-        if(any(names(models[[i]][["priors"]]) == parameters[p])){
-          temp_prior <- models[[i]][["priors"]][[parameters[p]]]
+        if(any(names(temp_prior_list) == parameters[p])){
+          temp_prior <- temp_prior_list[[parameters[p]]]
         }else{
           temp_prior <- prior_none()
         }
@@ -381,8 +383,8 @@ NULL
 model_summary_table <- function(model, model_description = NULL, title = NULL, footnotes = NULL, warnings = NULL, remove_spike_0 = TRUE, short_name = FALSE){
 
   # check input
-  check_list(model, "model", check_names = c("priors", "inference"), allow_other = TRUE, all_objects = TRUE)
-  prior_list <- model[["priors"]]
+  check_list(model, "model", check_names = "inference", allow_other = TRUE, all_objects = TRUE)
+  prior_list <- attr(model[["fit"]], "prior_list")
   check_list(prior_list, "model:priors")
   if(!all(sapply(prior_list, is.prior)))
     stop("'model:priors' must be a list of priors.")

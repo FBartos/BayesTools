@@ -170,21 +170,22 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   check_char(parameters, "parameters", check_length = FALSE)
   check_list(is_null_list, "is_null_list", check_length = length(parameters))
   check_real(seed, "seed", allow_NULL = TRUE)
-  sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("fit", "marglik", "priors", "prior_weights"), all_objects = TRUE, allow_other = TRUE))
-  if(!all(sapply(model_list, function(m)inherits(m[["fit"]], what = "runjags")) | sapply(model_list, function(m)inherits(m[["fit"]], what = "rstan")) | sapply(model_list, function(m)inherits(m[["fit"]], what = "null_model"))))
+  sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("fit", "marglik", "prior_weights"), all_objects = TRUE, allow_other = TRUE))
+  if(!all(sapply(model_list, function(m) inherits(m[["fit"]], what = "runjags")) | sapply(model_list, function(m)inherits(m[["fit"]], what = "rstan")) | sapply(model_list, function(m)inherits(m[["fit"]], what = "null_model"))))
     stop("model_list:fit must contain 'runjags' or 'rstan' models")
-  if(!all(sapply(model_list, function(m)inherits(m[["marglik"]], what = "bridge"))))
+  if(!all(sapply(model_list, function(m) inherits(m[["marglik"]], what = "bridge"))))
     stop("model_list:marglik must contain 'bridgesampling' marginal likelihoods")
-  if(!all(unlist(sapply(model_list, function(m)sapply(m[["priors"]], function(p)is.prior(p))))))
+  if(!all(unlist(sapply(model_list, function(m) sapply(attr(m[["fit"]], "prior_list"), function(p) is.prior(p))))))
     stop("model_list:priors must contain 'BayesTools' priors")
-  sapply(model_list, function(m)check_real(m[["prior_weights"]], "model_list:prior_weights", lower = 0))
+  sapply(model_list, function(m) check_real(m[["prior_weights"]], "model_list:prior_weights", lower = 0))
 
 
   # extract the object
-  fits       <- lapply(model_list, function(m)m[["fit"]])
-  margliks   <- sapply(model_list, function(m)m[["marglik"]][["logml"]])
-  priors     <- lapply(model_list, function(m)m[["priors"]])
-  prior_weights <- sapply(model_list, function(m)m[["prior_weights"]])
+  fits           <- lapply(model_list, function(m) m[["fit"]])
+  margliks       <- sapply(model_list, function(m) m[["marglik"]][["logml"]])
+  priors         <- lapply(model_list, function(m) attr(m[["fit"]], "prior_list"))
+  formula_priors <- lapply(model_list, function(m) m[["formula_priors"]])
+  prior_weights  <- sapply(model_list, function(m) m[["prior_weights"]])
 
   inference  <- ensemble_inference(model_list, parameters, is_null_list, conditional)
   out <- list()
@@ -194,25 +195,10 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
     # prepare parameter specific values
     temp_parameter    <- parameters[p]
     temp_inference    <- inference[[temp_parameter]]
-    temp_priors       <- lapply(priors, function(p)p[[temp_parameter]])
+    temp_priors       <- lapply(priors, function(p) p[[temp_parameter]])
 
-    if(all(sapply(temp_priors, is.prior.simple) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.null))){
-
-      # replace missing priors with default prior: spike(0)
-      for(i in 1:length(fits)){
-        if(is.null(temp_priors[[i]])){
-          temp_priors[[i]] <- prior("spike", parameters = list("location" = 0))
-        }
-      }
-
-      # replace prior odds with the corresponding prior model odds
-      for(i in seq_along(temp_priors)){
-        temp_priors[[i]][["prior_weights"]] <- temp_inference$prior_probs[i]
-      }
-
-      out[[temp_parameter]] <- .mix_posteriors.simple(fits, temp_priors, temp_parameter, temp_inference$post_probs, seed, n_samples)
-
-    }else if(all(sapply(temp_priors, is.prior.weightfunction) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.prior.none) | sapply(temp_priors, is.null))){
+    if(any(sapply(temp_priors, is.prior.weightfunction)) && all(sapply(temp_priors, is.prior.weightfunction) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.prior.none) | sapply(temp_priors, is.null))){
+      # weightfunctions:
 
       # replace missing priors with default prior: none
       for(i in 1:length(fits)){
@@ -228,6 +214,59 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 
       out[[temp_parameter]] <- .mix_posteriors.weightfunction(fits, temp_priors, temp_parameter, temp_inference$post_probs, seed, n_samples)
 
+    }else if(any(sapply(temp_priors, is.prior.factor)) && all(sapply(temp_priors, is.prior.factor) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.null))){
+      # factor priors
+
+      # replace missing priors with default prior: spike(0)
+      for(i in 1:length(fits)){
+        if(is.null(temp_priors[[i]])){
+          temp_priors[[i]] <- prior("spike", parameters = list("location" = 0))
+        }
+      }
+
+      # replace prior odds with the corresponding prior model odds
+      for(i in seq_along(temp_priors)){
+        temp_priors[[i]][["prior_weights"]] <- temp_inference$prior_probs[i]
+      }
+
+      out[[temp_parameter]] <- .mix_posteriors.factor(fits, temp_priors, temp_parameter, temp_inference$post_probs, seed, n_samples)
+
+    }else if(any(sapply(temp_priors, is.prior.vector)) && all(sapply(temp_priors, is.prior.vector) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.null))){
+      # vector priors:
+
+      # replace missing priors with default prior: spike(0)
+      for(i in 1:length(fits)){
+        if(is.null(temp_priors[[i]])){
+          temp_priors[[i]] <- prior("spike", parameters = list("location" = 0))
+        }
+      }
+
+      # replace prior odds with the corresponding prior model odds
+      for(i in seq_along(temp_priors)){
+        temp_priors[[i]][["prior_weights"]] <- temp_inference$prior_probs[i]
+      }
+
+      out[[temp_parameter]] <- .mix_posteriors.vector(fits, temp_priors, temp_parameter, temp_inference$post_probs, seed, n_samples)
+
+    }else if(all(sapply(temp_priors, is.prior.simple) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.null))){
+      # simple priors:
+
+      # replace missing priors with default prior: spike(0)
+      for(i in 1:length(fits)){
+        if(is.null(temp_priors[[i]])){
+          temp_priors[[i]] <- prior("spike", parameters = list("location" = 0))
+        }
+      }
+
+      # replace prior odds with the corresponding prior model odds
+      for(i in seq_along(temp_priors)){
+        temp_priors[[i]][["prior_weights"]] <- temp_inference$prior_probs[i]
+      }
+
+      out[[temp_parameter]] <- .mix_posteriors.simple(fits, temp_priors, temp_parameter, temp_inference$post_probs, seed, n_samples)
+
+    }else{
+      stop("The posterior samples cannot be mixed: unsupported mixture of prior distributions.")
     }
 
   }
@@ -311,6 +350,157 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- priors
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.simple")
+
+  return(samples)
+}
+.mix_posteriors.vector         <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000){
+
+  # check input
+  check_list(fits, "fits")
+  check_list(priors, "priors", check_length = length(fits))
+  check_char(parameter, "parameter")
+  check_real(post_probs, "post_probs", lower = 0, upper = 1, check_length = length(fits))
+  check_real(seed, "seed", allow_NULL = TRUE)
+  if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "rstan") | sapply(fits, inherits, what = "null_model")))
+    stop("'fits' must be a list of 'runjags' or 'rstan' models")
+  if(!all(sapply(priors, is.prior.vector) | sapply(priors, is.prior.point)))
+    stop("'priors' must be a list of vector priors")
+
+  # set seed at the beginning makes sure that the samples of different parameters from the same models retain their correlation
+  if(!is.null(seed)){
+    set.seed(seed)
+  }else{
+    set.seed(1)
+  }
+
+  # prepare output objects
+  K <- unique(sapply(priors[sapply(priors, is.prior.vector)], function(p) p$parameters[["K"]]))
+  if(length(K) != 1)
+    stop("all vector priors must be of the same length")
+
+  samples    <- matrix(nrow = 0, ncol = K)
+  sample_ind <- NULL
+  models_ind <- NULL
+
+  # mix samples
+  for(i in seq_along(fits)[round(post_probs * n_samples) > 1]){
+
+    # obtain posterior samples
+    if(inherits(fits[[i]], "null_model")){
+      # deal with a possibility of completely null model
+      model_samples <- matrix()
+    }else if(inherits(fits[[i]], "runjags")){
+      model_samples <- suppressWarnings(coda::as.mcmc(fits[[i]]))
+      if(!is.matrix(model_samples)){
+        # deal with automatic coercion into a vector in case of a single predictor
+        model_samples <- matrix(model_samples, ncol = 1)
+        colnames(model_samples) <- fits[[i]]$monitor
+      }
+    }else if(inherits(fits[[i]], "rstan")){
+      if(!try(requireNamespace("rstan")))
+        stop("rstan package needs to be installed. Run 'install.packages('rstan')'")
+      model_samples <- rstan::extract(fits[[i]])
+      par_names     <- names(model_samples)
+      par_dims      <- sapply(model_samples, function(s)if(is.matrix(s)) ncol(s) else 1)
+      par_names     <- unlist(sapply(seq_along(par_names), function(p){
+        if(par_dims[p] == 1){
+          return(par_names[p])
+        }else{
+          return(paste0(par_names[p], "[", 1:par_dims[p],"]"))
+        }
+      }))
+      model_samples <- data.frame(do.call(cbind, model_samples))
+      colnames(model_samples) <- par_names
+    }
+
+    # sample indexes
+    temp_ind <- sample(nrow(model_samples), round(n_samples * post_probs[i]), replace = TRUE)
+
+    if(is.prior.point(priors[[i]])){
+      samples <- rbind(samples, matrix(rng(priors[[i]], 1), nrow = length(temp_ind), ncol = K))
+    }else{
+      samples <- rbind(samples, model_samples[temp_ind, paste0(parameter,"[",1:K,"]")])
+    }
+
+    sample_ind <- c(sample_ind, temp_ind)
+    models_ind <- c(models_ind, rep(i, length(temp_ind)))
+  }
+
+  rownames(samples) <- NULL
+  colnames(samples) <- paste0(parameter,"[",1:K,"]")
+  attr(samples, "sample_ind") <- sample_ind
+  attr(samples, "models_ind") <- models_ind
+  attr(samples, "parameter")  <- parameter
+  attr(samples, "prior_list") <- priors
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.vector")
+
+  return(samples)
+}
+.mix_posteriors.factor         <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000){
+
+  # check input
+  check_list(fits, "fits")
+  check_list(priors, "priors", check_length = length(fits))
+  check_char(parameter, "parameter")
+  check_real(post_probs, "post_probs", lower = 0, upper = 1, check_length = length(fits))
+  check_real(seed, "seed", allow_NULL = TRUE)
+  if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "rstan") | sapply(fits, inherits, what = "null_model")))
+    stop("'fits' must be a list of 'runjags' or 'rstan' models")
+  if(!all(sapply(priors, is.prior.factor) | sapply(priors, is.prior.point)))
+    stop("'priors' must be a list of factor priors")
+
+  # check the prior levels
+  levels <- unique(sapply(priors[sapply(priors, is.prior.factor)], function(p) attr(p, "levels")))
+  if(length(levels) != 1)
+    stop("all facotr priors must be of the same number of levels")
+
+
+  if(all(sapply(priors[sapply(priors, is.prior.factor)], is.prior.dummy))){
+
+    if((levels - 1) == 1){
+
+      samples <- .mix_posteriors.simple(fits, priors, parameter, post_probs, seed, n_samples)
+      class(samples) <- c(class(samples), "mixed_posteriors.factor")
+
+    }else{
+
+      # keep the same seed across levels
+      if(is.null(seed)){
+        seed <- sample(666666, 1)
+      }
+
+      samples <- lapply(1:(levels - 1), function(i) .mix_posteriors.simple(fits, priors, paste0(parameter, "[", i, "]"), post_probs, seed, n_samples))
+
+      sample_ind <- attr(samples[[1]], "sample_ind")
+      models_ind <- attr(samples[[1]], "models_ind")
+
+      samples <- do.call(cbind, samples)
+
+      rownames(samples) <- NULL
+      colnames(samples) <- paste0(parameter,"[",1:(levels - 1),"]")
+      attr(samples, "sample_ind") <- sample_ind
+      attr(samples, "models_ind") <- models_ind
+      attr(samples, "parameter")  <- parameter
+      attr(samples, "prior_list") <- priors
+      class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
+
+    }
+
+  }else if(all(sapply(priors[sapply(priors, is.prior.factor)], is.prior.orthonormal))){
+
+    for(i in seq_along(priors)){
+      if(is.prior.factor(priors[[i]])){
+        priors[[i]]$parameters[["K"]] <- levels - 1
+      }
+    }
+
+    samples <- .mix_posteriors.vector(fits, priors, parameter, post_probs, seed, n_samples)
+    class(samples) <- c(class(samples), "mixed_posteriors.factor")
+
+  }else{
+    stop("all factor priors must be of either 'treatment' or 'orthonormal' type")
+  }
+
 
   return(samples)
 }
@@ -400,7 +590,6 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 
   return(samples)
 }
-
 
 
 #' @title Compute inclusion Bayes factors

@@ -210,6 +210,10 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     parallel::stopCluster(cl)
   }
 
+  # add information to the fitted object
+  attr(fit, "prior_list")   <- prior_list
+  attr(fit, "model_syntax") <- model_syntax
+
   return(fit)
 }
 
