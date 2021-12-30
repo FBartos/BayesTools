@@ -849,6 +849,37 @@ rng.prior   <- function(x, n, ...){
 
     x <- x[1:n]
 
+  }else if(is.prior.orthonormal(prior)){
+
+    if(switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameters[["mean"]],
+      "mt"      = prior$parameters[["location"]]) != 0){
+      stop("the orthonormal prior distribution must be centered")
+    }
+
+    if(is.na(prior$parameters[["K"]]) && !is.null(attr(prior, "levels"))){
+      prior$parameters[["K"]] <- attr(prior, "levels") - 1
+    }else if(is.na(prior$parameters[["K"]])){
+      prior$parameters[["K"]] <- 1
+      warning("number of factor levels / dimensionality of the prior distribution was not specified -- assuming two factor levels")
+    }
+
+    par1 <- rep(0, prior$parameter[["K"]])
+    par2 <- diag(switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameter[["sd"]]^2,
+      "mt"      = prior$parameter[["scale"]]^2
+    ), ncol = prior$parameter[["K"]], nrow = prior$parameter[["K"]])
+
+    x <- switch(
+      prior[["distribution"]],
+      "mnormal"    = mvtnorm::rmvnorm(n, mean = par1, sigma = par2),
+      "mt"         = mvtnorm::rmvt(n, delta = par1, sigma = par2, df = prior$parameter[["df"]], type = "shifted"),
+    )
+
+    x <- x %*% t(contr.orthonormal(1:(prior$parameters[["K"]] + 1)))
+
   }else if(is.prior.vector(prior)){
 
     # TODO: generalize this to priors with covariances
@@ -1202,6 +1233,33 @@ mcdf.prior   <- function(x, q, ...){
       "two.sided.fixed" = mptwo.sided_fixed(q, omega = prior$parameters[["omega"]])
     )
 
+  }else if(is.prior.orthonormal(prior)){
+
+    if(switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameters[["mean"]],
+      "mt"      = prior$parameters[["location"]]) != 0){
+      stop("the orthonormal prior distribution must be centered")
+    }
+
+    if(is.na(prior$parameters[["K"]]) && !is.null(attr(prior, "levels"))){
+      prior$parameters[["K"]] <- attr(prior, "levels") - 1
+    }else if(is.na(prior$parameters[["K"]])){
+      prior$parameters[["K"]] <- 1
+      warning("number of factor levels / dimensionality of the prior distribution was not specified -- assuming two factor levels")
+    }
+
+    par2 <- sqrt(sum( (contr.orthonormal(1:(prior$parameters[["K"]] + 1))[1,] * switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameters[["sd"]],
+      "mt"      = prior$parameters[["scale"]]) )^2 ))
+
+    p <- switch(
+      prior[["distribution"]],
+      "mnormal" = stats::pnorm(q, mean = 0, sd = par2),
+      "mt"      = extraDistr::plst(q, df = prior$parameters[["df"]], mu = 0, sigma = par2)
+    )
+
   }
 
   return(p)
@@ -1228,6 +1286,32 @@ mccdf.prior  <- function(x, q, ...){
       "two.sided.fixed" = mptwo.sided_fixed(q, omega = prior$parameters[["omega"]], lower.tail = FALSE)
     )
 
+  }else if(is.prior.orthonormal(prior)){
+
+    if(switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameters[["mean"]],
+      "mt"      = prior$parameters[["location"]]) != 0){
+      stop("the orthonormal prior distribution must be centered")
+    }
+
+    if(is.na(prior$parameters[["K"]]) && !is.null(attr(prior, "levels"))){
+      prior$parameters[["K"]] <- attr(prior, "levels") - 1
+    }else if(is.na(prior$parameters[["K"]])){
+      prior$parameters[["K"]] <- 1
+      warning("number of factor levels / dimensionality of the prior distribution was not specified -- assuming two factor levels")
+    }
+
+    par2 <- sqrt(sum( (contr.orthonormal(1:(prior$parameters[["K"]] + 1))[1,] * switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameters[["sd"]],
+      "mt"      = prior$parameters[["scale"]]) )^2 ))
+
+    p <- switch(
+      prior[["distribution"]],
+      "mnormal" = stats::pnorm(q, mean = 0, sd = par2, lower.tail = FALSE),
+      "mt"      = extraDistr::plst(q, df = prior$parameters[["df"]], mu = 0, sigma = par2, lower.tail = FALSE)
+    )
   }
 
   return(p)
@@ -1255,6 +1339,32 @@ mlpdf.prior  <- function(x, y, ...){
       "two.sided.fixed" = mdtwo.sided_fixed(x, omega = prior$parameters[["omega"]], log = TRUE),
     )
 
+  }else if(is.prior.orthonormal(prior)){
+
+    if(switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameters[["mean"]],
+      "mt"      = prior$parameters[["location"]]) != 0){
+      stop("the orthonormal prior distribution must be centered")
+    }
+
+    if(is.na(prior$parameters[["K"]]) && !is.null(attr(prior, "levels"))){
+      prior$parameters[["K"]] <- attr(prior, "levels") - 1
+    }else if(is.na(prior$parameters[["K"]])){
+      prior$parameters[["K"]] <- 1
+      warning("number of factor levels / dimensionality of the prior distribution was not specified -- assuming two factor levels")
+    }
+
+    par2 <- sqrt(sum( (contr.orthonormal(1:(prior$parameters[["K"]] + 1))[1,] * switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameters[["sd"]],
+      "mt"      = prior$parameters[["scale"]]) )^2 ))
+
+    log_lik <- switch(
+      prior[["distribution"]],
+      "mnormal" = stats::dnorm(x, mean = 0, sd = par2, log = TRUE),
+      "mt"      = extraDistr::dlst(x, df = prior$parameters[["df"]], mu = 0, sigma = par2, log = TRUE)
+    )
   }
 
   return(log_lik)
@@ -1293,6 +1403,33 @@ mquant.prior <- function(x, p, ...){
       "two.sided" = mqtwo.sided(p, alpha = prior$parameters[["alpha"]]),
       "one.sided.fixed" = mqone.sided_fixed(p, omega = prior$parameters[["omega"]]),
       "two.sided.fixed" = mqtwo.sided_fixed(p, omega = prior$parameters[["omega"]])
+    )
+
+  }else if(is.prior.orthonormal(prior)){
+
+    if(switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameters[["mean"]],
+      "mt"      = prior$parameters[["location"]]) != 0){
+      stop("the orthonormal prior distribution must be centered")
+    }
+
+    if(is.na(prior$parameters[["K"]]) && !is.null(attr(prior, "levels"))){
+      prior$parameters[["K"]] <- attr(prior, "levels") - 1
+    }else if(is.na(prior$parameters[["K"]])){
+      prior$parameters[["K"]] <- 1
+      warning("number of factor levels / dimensionality of the prior distribution was not specified -- assuming two factor levels")
+    }
+
+    par2 <- sqrt(sum( (contr.orthonormal(1:(prior$parameters[["K"]] + 1))[1,] * switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameters[["sd"]],
+      "mt"      = prior$parameters[["scale"]]) )^2 ))
+
+    q <- switch(
+      prior[["distribution"]],
+      "mnormal" = stats::qnorm(p, mean = 0, sd = par2),
+      "mt"      = extraDistr::qlst(p, df = prior$parameters[["df"]], mu = 0, sigma = par2)
     )
 
   }

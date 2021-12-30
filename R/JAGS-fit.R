@@ -742,6 +742,9 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 
     prior$parameters[["K"]] <- attr(prior, "levels") - 1
 
+    # remove the orthonormal class, otherwise samples from the transformed distributions are generated
+    class(prior) <- class(prior)[!class(prior) %in% "prior.orthonormal"]
+
     init <- .JAGS_init.vector(prior, parameter_name)
 
   }
