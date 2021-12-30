@@ -27,6 +27,9 @@
 #' shortened. Defaults to \code{FALSE}.
 #' @param remove_spike_0 whether prior distributions equal to spike
 #' at 0 should be removed from the \code{prior_list}
+#' @param transform_orthonormal whether factors with orthonormal prior
+#' distributions should be transformed to differences from the grand
+#' mean
 #' @param title title to be added to the table
 #' @param footnotes footnotes to be added to the table
 #' @param warnings warnings to be added to the table
@@ -51,7 +54,7 @@
 NULL
 
 #' @rdname BayesTools_ensemble_tables
-ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95), title = NULL, footnotes = NULL, warnings = NULL){
+ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95), transform_orthonormal = FALSE, title = NULL, footnotes = NULL, warnings = NULL){
 
   # check input
   check_char(parameters, "parameters", check_length = 0)
@@ -60,6 +63,12 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95)
   check_char(title, "title", allow_NULL = TRUE)
   check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
   check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
+
+  # transform orthonormal posterior
+  if(transform_orthonormal){
+    samples <- .transform_orthonormal_samples(samples)
+  }
+
 
   # extract values
   estimates_table <- NULL
@@ -496,7 +505,7 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
 }
 
 #' @rdname BayesTools_model_tables
-runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, footnotes = NULL, warnings = NULL, remove_spike_0 = TRUE){
+runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, footnotes = NULL, warnings = NULL, remove_spike_0 = TRUE, transform_orthonormal = FALSE){
 
   # check fits
   if(!inherits(fit, "runjags"))
@@ -534,6 +543,62 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       runjags_summary[par, "Median"]  <- do.call(transformations[[par]][["fun"]], c(list(runjags_summary[par, "Median"]), transformations[[par]][["arg"]]))
       runjags_summary[par, "MCerr"]   <- do.call(transformations[[par]][["fun"]], c(list(runjags_summary[par, "MCerr"]), transformations[[par]][["arg"]]))
       runjags_summary[par, "MC.ofSD"] <- runjags_summary[par, "MCerr"] / runjags_summary[par, "SD"]
+    }
+  }
+
+  # transform orthonormal factors to differences from mean
+  if(transform_orthonormal & any(sapply(prior_list, is.prior.orthonormal))){
+    for(par in names(prior_list)[sapply(prior_list, is.prior.orthonormal)]){
+
+      if((attr(prior_list[[par]], "levels") - 1) == 1){
+        par_names <- par
+      }else{
+        par_names <- paste0(par, "[", 1:(attr(prior_list[[par]], "levels") - 1), "]")
+      }
+
+      orthonormal_samples <- model_samples[,par_names,drop = FALSE]
+      transformed_samples <- orthonormal_samples %*% t(contr.orthonormal(1:attr(prior_list[[par]], "levels")))
+
+      if(attr(prior_list[[par]], "interaction")){
+        if(length(attr(prior_list[[par]], "level_names")) == 1){
+          transformed_names <- paste0(par, " [dif: ", attr(prior_list[[par]], "level_names")[[1]],"]")
+        }else{
+          stop("orthonormal de-transformation for interaction of multiple factors is not implemented.")
+        }
+      }else{
+        transformed_names <- paste0(par, " [dif: ", attr(prior_list[[par]], "level_names"),"]")
+      }
+      colnames(transformed_samples) <- transformed_names
+
+      # update samples
+      model_samples <- model_samples[,!colnames(model_samples) %in% par_names]
+      model_samples <- cbind(model_samples, transformed_samples)
+
+      # update summary
+      transformed_chains  <- lapply(split(data.frame(transformed_samples), sort(rep(1:4, 4000))), coda::mcmc)
+      transformed_summary <- summary(runjags::combine.mcmc(transformed_chains, collapse.chains = FALSE))
+      transformed_summary <- cbind(
+        Lower95 = transformed_summary$quantiles[,"2.5%"],
+        Median  = transformed_summary$quantiles[,"50%"],
+        Upper95 = transformed_summary$quantiles[,"97.5%"],
+        Mean    = transformed_summary$statistics[,"Mean"],
+        SD      = transformed_summary$statistics[,"SD"],
+        Mode    = NA,
+        MCerr   = transformed_summary$statistics[,"Naive SE"],
+        MC.ofSD = transformed_summary$statistics[,"Naive SE"] / transformed_summary$statistics[,"SD"],
+        SSeff   = unname(coda::effectiveSize(coda::as.mcmc(transformed_samples))),
+        AC.10   = coda::autocorr.diag(coda::as.mcmc(transformed_samples), lags = 10)[1,],
+        psrf    = if(length(fit$mcmc)) unname(coda::gelman.diag(transformed_chains, multivariate = FALSE)$psrf[,"Point est."]) else NA
+      )
+      rownames(transformed_summary) <- transformed_names
+
+      par_index       <- which.max(rownames(runjags_summary) %in% par_names)
+      runjags_summary <- runjags_summary[!rownames(runjags_summary) %in% par_names,]
+      runjags_summary <- rbind(
+        if(par_index > 1) runjags_summary[1:(par_index-1),],
+        transformed_summary,
+        if(par_index <= nrow(runjags_summary)) runjags_summary[par_index:nrow(runjags_summary),]
+      )
     }
   }
 

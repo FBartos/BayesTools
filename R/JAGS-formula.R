@@ -141,6 +141,8 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   # add remaining terms (omitting the intercept indexed as NA)
   for(i in unique(terms_indexes[terms_indexes > 0])){
 
+    attr(prior_list[[model_terms[i]]], "interaction") <- grepl("__xXx__", model_terms[i])
+
     if(model_terms_type[i] == "continuous"){
       # continuous variables or interactions of continuous variables are simple predictors
 
@@ -150,8 +152,19 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
     }else if(model_terms_type[i] == "factor"){
       # factor variables or interactions with a factor requires factor style prior
 
-      # add levels attribute to factors
+      # add levels information attributes to factors
       attr(prior_list[[model_terms[i]]], "levels") <- sum(terms_indexes == i) + 1
+      if(attr(prior_list[[model_terms[i]]], "interaction")){
+        level_names <- list()
+        for(sub_term in strsplit(model_terms[i], "__xXx__")[[1]]){
+          if(model_terms_type[sub_term] == "factor"){
+            level_names[[sub_term]] <- levels(data[,sub_term])
+          }
+        }
+        attr(prior_list[[model_terms[i]]], "level_names") <- level_names
+      }else{
+        attr(prior_list[[model_terms[i]]], "level_names") <- levels(data[,model_terms[i]])
+      }
 
       JAGS_data[[paste0(parameter, "_data_", model_terms[i])]] <- model_matrix[,terms_indexes == i, drop = FALSE]
       formula_syntax <- c(formula_syntax, paste0("inprod(", parameter, "_", model_terms[i], ", ", parameter, "_data_", model_terms[i], "[i,])"))
@@ -159,6 +172,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
     }else{
       stop("Unrecognized model term.")
     }
+
 
   }
 
@@ -182,13 +196,73 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   ))
 }
 
-.remove_response  <- function(formula){
+.remove_response               <- function(formula){
   if(attr(stats::terms(formula), "response")  == 1){
     formula[2] <- NULL
   }
   return(formula)
 }
+.transform_orthonormal_samples <- function(samples){
 
+  samples_orthonormal_info <- sapply(samples, function(s){
+    if(inherits(s, what = "mixed_posteriors.factor")){
+      temp_info <- lapply(attr(s, "prior_list"), function(p){
+        if(is.prior.orthonormal(p)){
+          return(list(
+            "levels"      = attr(p, "levels"),
+            "level_names" = attr(p, "level_names"),
+            "interaction" = attr(p, "interaction")
+          ))
+        }
+      })
+      if(is.null(unlist(temp_info))){
+        return(FALSE)
+      }else{
+        temp_info <- temp_info[!sapply(temp_info, is.null)]
+        if(length(temp_info) >= 2 && any(!unlist(lapply(temp_info, function(i) all.equal(i, temp_info[[1]]))))){
+          stop("non-matching orthonormal prior specifications")
+        }
+        return(temp_info[[1]])
+      }
+    }else{
+      return(FALSE)
+    }
+  })
+  samples_orthonormal_info <- samples_orthonormal_info[!sapply(samples_orthonormal_info, isFALSE)]
+
+  for(i in seq_along(samples_orthonormal_info)){
+
+    par <- names(samples_orthonormal_info)[i]
+
+    if((samples_orthonormal_info[[i]][["levels"]] - 1) == 1){
+      par_names <- par
+    }else{
+      par_names <- paste0(names(samples_orthonormal_info)[i], "[", 1:(samples_orthonormal_info[[i]][["levels"]] - 1), "]")
+    }
+
+    orthonormal_samples <- samples[[par]]
+    transformed_samples <- orthonormal_samples %*% t(contr.orthonormal(1:samples_orthonormal_info[[i]][["levels"]]))
+
+
+    if(samples_orthonormal_info[[i]][["interaction"]]){
+      if(length(samples_orthonormal_info[[i]][["level_names"]]) == 1){
+        transformed_names <- paste0(par, " [dif: ", samples_orthonormal_info[[i]][["level_names"]][[1]],"]")
+      }else{
+        stop("orthonormal de-transformation for interaction of multiple factors is not implemented.")
+      }
+    }else{
+      transformed_names <- paste0(par, " [dif: ", samples_orthonormal_info[[i]][["level_names"]],"]")
+    }
+
+    colnames(transformed_samples)   <- transformed_names
+    attributes(transformed_samples) <- c(attributes(transformed_samples), attributes(orthonormal_samples)[!names(attributes(orthonormal_samples)) %in% names(attributes(transformed_samples))])
+    class(transformed_samples)      <- c(class(transformed_samples), "mixed_posteriors.orthonormal_transformed")
+
+    samples[[par]] <- transformed_samples
+  }
+
+  return(samples)
+}
 
 #' @title Orthornomal contrast natrix
 #'

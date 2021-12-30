@@ -370,6 +370,36 @@ test_that("Summary tables functions work (formulas + factors)",{
 
   ### test additional settings
   # transformations of orthonormal contrast to differences from the mean
+  runjags_summary_t <- runjags_estimates_table(fit3, transform_orthonormal = TRUE)
+  expect_equal(colnames(runjags_summary_t), c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
+  expect_equal(rownames(runjags_summary_t), c("(mu) intercept","(mu) x_cont1","(mu) x_fac3o [dif: A]","(mu) x_fac3o [dif: B]","(mu) x_fac3o [dif: C]", "(mu) x_cont1:x_fac3o [dif: A]", "(mu) x_cont1:x_fac3o [dif: B]", "(mu) x_cont1:x_fac3o [dif: C]", "sigma" ))
+  expect_equal(capture_output_lines(runjags_summary_t, print = TRUE, width = 150),
+               c("                                Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
+                 "(mu) intercept                 0.188 0.121 -0.051  0.188 0.429     0.00099          0.008 14975 1.000",
+                 "(mu) x_cont1                   0.324 0.140  0.047  0.324 0.597     0.00112          0.008 15680 1.000",
+                 "(mu) x_fac3o [dif: A]         -0.010 0.168 -0.337 -0.011 0.321     0.00132          0.000 15278 1.000",
+                 "(mu) x_fac3o [dif: B]         -0.064 0.170 -0.397 -0.064 0.270     0.00134          0.000 15081 1.000",
+                 "(mu) x_fac3o [dif: C]          0.074 0.167 -0.251  0.072 0.404     0.00132          0.000 15630 1.000",
+                 "(mu) x_cont1:x_fac3o [dif: A] -0.283 0.197 -0.668 -0.283 0.105     0.00156          0.000 15581 1.000",
+                 "(mu) x_cont1:x_fac3o [dif: B]  0.164 0.194 -0.221  0.164 0.539     0.00153          0.000 14954 1.000",
+                 "(mu) x_cont1:x_fac3o [dif: C]  0.119 0.202 -0.275  0.118 0.521     0.00160          0.000 15372 1.000",
+                 "sigma                          0.925 0.090  0.770  0.918 1.119     0.00100          0.011  7969 1.001"
+               ))
+
+
+  estimates_table_t <- ensemble_estimates_table(mixed_posteriors, parameters = c("mu_x_cont1", "mu_x_fac3o", "mu_x_cont1__xXx__x_fac3o"), probs = c(.025, 0.95), transform_orthonormal = TRUE)
+  expect_equal(colnames(estimates_table_t), c("Mean", "Median", "0.025",  "0.95"))
+  expect_equal(rownames(estimates_table_t), c("(mu) x_cont1","(mu) x_fac3o [dif: A]", "(mu) x_fac3o [dif: B]", "(mu) x_fac3o [dif: C]", "(mu) x_cont1:x_fac3o [dif: A]", "(mu) x_cont1:x_fac3o [dif: B]", "(mu) x_cont1:x_fac3o [dif: C]"))
+  expect_equal(capture_output_lines(estimates_table_t, print = TRUE, width = 150),
+               c("                                Mean Median  0.025  0.95",
+                 "(mu) x_cont1                   0.122  0.000  0.000 0.479",
+                 "(mu) x_fac3o [dif: A]         -0.003  0.000 -0.176 0.030",
+                 "(mu) x_fac3o [dif: B]         -0.003  0.000 -0.181 0.039",
+                 "(mu) x_fac3o [dif: C]          0.007  0.000 -0.105 0.100",
+                 "(mu) x_cont1:x_fac3o [dif: A] -0.010  0.000 -0.183 0.000",
+                 "(mu) x_cont1:x_fac3o [dif: B]  0.006  0.000  0.000 0.000",
+                 "(mu) x_cont1:x_fac3o [dif: C]  0.005  0.000  0.000 0.000"
+               ))
 
 
 
