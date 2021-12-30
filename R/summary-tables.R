@@ -75,7 +75,16 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95)
         par_summary <- cbind(par_summary, apply(samples[[parameter]], 2, stats::quantile, probs = probs[i]))
         colnames(par_summary)[ncol(par_summary)] <- probs[i]
       }
-      rownames(par_summary) <- colnames(samples[[parameter]])
+
+      if(inherits(samples[[parameter]], "mixed_posteriors.formula")){
+        parameters <- colnames(samples[[parameter]])
+        parameters <- gsub(paste0(attr(samples[[parameter]], "formula_parameter"), "_"), paste0("(", attr(samples[[parameter]], "formula_parameter"), ") "), parameters)
+        parameters <- gsub("__xXx__", ":", parameters)
+      }else{
+        parameters <- colnames(samples[[parameter]])
+      }
+
+      rownames(par_summary) <- parameters
       estimates_table       <- rbind(estimates_table, par_summary)
 
     }else if(is.numeric(samples[[parameter]])){
@@ -89,7 +98,14 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95)
         names(par_summary)[length(par_summary)] <- probs[i]
       }
       estimates_table <- rbind(estimates_table, par_summary)
+
+      if(inherits(samples[[parameter]], "mixed_posteriors.formula")){
+        parameter <- gsub(paste0(attr(samples[[parameter]], "formula_parameter"), "_"), paste0("(", attr(samples[[parameter]], "formula_parameter"), ") "), parameter)
+        parameter <- gsub("__xXx__", ":", parameter)
+      }
+
       rownames(estimates_table)[nrow(estimates_table)] <- parameter
+
 
     }else{
       stop("Uknown parameter type.")
@@ -133,7 +149,7 @@ ensemble_inference_table <- function(inference, parameters, logBF = FALSE, BF01 
       "post_prob"    = sum(inference[[parameter]][["post_probs"]][!attr(inference[[parameter]], "is_null")] ),
       "inclusion_BF" = inference[[parameter]][["BF"]]
     ))
-    rownames(inference_table)[nrow(inference_table)] <- parameter
+    rownames(inference_table)[nrow(inference_table)] <- attr(inference[[parameter]], "parameter_name")
     n_models <- c(n_models, length(attr(inference[[parameter]], "is_null")))
   }
   inference_table <- data.frame(inference_table)
@@ -335,11 +351,25 @@ ensemble_diagnostics_table <- function(models, parameters, title = NULL, footnot
     }
     model_rows[[i]] <- model_row
   }
+
   summary_table <- data.frame(do.call(rbind, model_rows))
   for(i in 1:ncol(summary_table)){
     summary_table[,i] <- unlist(summary_table[,i])
   }
+
   colnames(summary_table) <- c("Model", names(parameters))
+  for(p in seq_along(parameters)){
+
+    parameter_name    <- parameters[[p]]
+    formula_parameter <- unique(unlist(lapply(models, function(m) attr(attr(m[["fit"]], "prior_list")[[parameter_name]], "parameter"))))
+
+    if(!is.null(unlist(formula_parameter))){
+      parameter_name <- gsub(paste0(formula_parameter, "_"), paste0("(", formula_parameter, ") "), parameter_name)
+      parameter_name <- gsub("__xXx__", ":", parameter_name)
+
+      colnames(summary_table)[colnames(summary_table) == parameters[[p]]] <- parameter_name
+    }
+  }
 
   return(summary_table)
 }
@@ -416,17 +446,25 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
     .format_column(model_inference[["marglik"]],      "marglik"),
     .format_column(model_inference[["post_prob"]],    "probability"),
     .format_column(model_inference[["inclusion_BF"]], "BF"))
-  summary_priors <- "Parameter prior distributions"
+
+  summary_priors  <- "Parameter prior distributions"
   for(i in seq_along(prior_list)){
+    # get the prior name
     if(remove_spike_0 && is.prior.point(prior_list[[i]]) && prior_list[[i]][["parameters"]][["location"]] == 0){
       next
     }else if(is.prior.weightfunction(prior_list[[i]]) | is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
-      summary_priors <- c(summary_priors, print(prior_list[[i]], silent = TRUE, short_name = short_name))
-    }else if(is.prior.simple(prior_list[[i]])){
-      summary_priors <- c(summary_priors, paste0(names(prior_list)[i], " ~ " , print(prior_list[[i]], silent = TRUE, short_name = short_name)))
+      temp_prior <- print(prior_list[[i]], silent = TRUE, short_name = short_name)
+    }else if(is.prior.simple(prior_list[[i]]) | is.prior.vector(prior_list[[i]]) | is.prior.factor(prior_list[[i]])){
+      temp_prior <- paste0(names(prior_list)[i], " ~ " , print(prior_list[[i]], silent = TRUE, short_name = short_name))
     }else if(is.prior.point(prior_list[[i]])){
-      summary_priors <- c(summary_priors, paste0(names(prior_list)[i], " = " , print(prior_list[[i]], silent = TRUE, short_name = short_name)))
+      temp_prior <- paste0(names(prior_list)[i], " = " , print(prior_list[[i]], silent = TRUE, short_name = short_name))
     }
+    # change the formula formatting
+    if(!is.null(attr(prior_list[[i]], "parameter"))){
+      temp_prior <- gsub(paste0(attr(prior_list[[i]], "parameter"), "_"), paste0("(", attr(prior_list[[i]], "parameter"), ") "), temp_prior)
+      temp_prior <- gsub("__xXx__", ":", temp_prior)
+    }
+    summary_priors <- c(summary_priors, temp_prior)
   }
 
   if(length(summary_names) > length(summary_priors)){
@@ -458,11 +496,14 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
 }
 
 #' @rdname BayesTools_model_tables
-runjags_estimates_table  <- function(fit, prior_list, transformations = NULL, title = NULL, footnotes = NULL, warnings = NULL, remove_spike_0 = TRUE){
+runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, footnotes = NULL, warnings = NULL, remove_spike_0 = TRUE){
 
   # check fits
   if(!inherits(fit, "runjags"))
     stop("'fit' must be a runjags fit")
+  if(!inherits(fit, "BayesTools_fit"))
+    stop("'fit' must be a BayesTools fit")
+  prior_list <- attr(fit, "prior_list")
   check_list(prior_list, "prior_list")
   if(!all(sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
@@ -525,6 +566,21 @@ runjags_estimates_table  <- function(fit, prior_list, transformations = NULL, ti
     }else if(is.prior.simple(prior_list[[i]]) &&  prior_list[[i]][["distribution"]] == "invgamma"){
       runjags_summary <- runjags_summary[rownames(runjags_summary) != paste0("inv_",names(prior_list)[i]),,drop=FALSE]
     }
+  }
+
+  # rename formula parameters
+  if(any(!sapply(lapply(prior_list, attr, which = "parameter"), is.null))){
+    for(parameter in unique(unlist(lapply(prior_list, attr, which = "parameter")))){
+      rownames(runjags_summary)[grep(paste0(parameter, "_"), rownames(runjags_summary))] <- gsub(
+        paste0(parameter, "_"),
+        paste0("(", parameter, ") "),
+        rownames(runjags_summary)[grep(paste0(parameter, "_"), rownames(runjags_summary))])
+    }
+    rownames(runjags_summary)[grep("__xXx__", rownames(runjags_summary))] <- gsub(
+      "__xXx__",
+      ":",
+      rownames(runjags_summary)[grep("__xXx__", rownames(runjags_summary))]
+    )
   }
 
   # rename the rest

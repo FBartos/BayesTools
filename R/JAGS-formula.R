@@ -168,8 +168,11 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
     "  ", parameter, "[i] = ", paste0(formula_syntax, collapse = " + "), "\n",
     "}\n")
 
-  # add the parameter name as a prefix to the prior list
+  # add the parameter name as a prefix and attribute to each prior in the list
   names(prior_list) <- paste0(parameter, "_", names(prior_list))
+  for(i in seq_along(prior_list)){
+    attr(prior_list[[i]], "parameter") <- parameter
+  }
 
   return(list(
     formula_syntax = formula_syntax,

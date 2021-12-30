@@ -73,8 +73,10 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL, condition
     post_probs  = post_probs,
     BF          = BF
   )
+
   attr(output, "is_null")     <- is_null
   attr(output, "conditional") <- conditional
+  class(output) <- c(class(output), "inference")
 
   return(output)
 }
@@ -93,18 +95,28 @@ ensemble_inference <- function(model_list, parameters, is_null_list, conditional
 
 
   # extract the object
-  margliks   <- sapply(model_list, function(m)m[["marglik"]][["logml"]])
-  prior_weights <- sapply(model_list, function(m)m[["prior_weights"]])
+  margliks      <- sapply(model_list, function(m) m[["marglik"]][["logml"]])
+  prior_weights <- sapply(model_list, function(m) m[["prior_weights"]])
 
   out <- list()
 
   for(p in seq_along(parameters)){
 
     # prepare parameter specific values
-    temp_parameter <- parameters[p]
-    temp_is_null   <- is_null_list[[p]]
+    out[[parameters[p]]] <- compute_inference(prior_weights = prior_weights, margliks = margliks, is_null = is_null_list[[p]], conditional = conditional)
 
-    out[[temp_parameter]] <- compute_inference(prior_weights = prior_weights, margliks = margliks, is_null = temp_is_null, conditional = conditional)
+    # add parameter names
+    parameter_name    <- parameters[p]
+    formula_parameter <- unique(unlist(lapply(model_list, function(m) attr(attr(m[["fit"]], "prior_list")[[parameters[p]]], "parameter"))))
+
+    if(!is.null(unlist(formula_parameter))){
+      parameter_name <- gsub(paste0(formula_parameter, "_"), paste0("(", formula_parameter, ") "), parameter_name)
+      parameter_name <- gsub("__xXx__", ":", parameter_name)
+      class(out[[parameters[p]]]) <- c(class(out[[parameters[p]]]), "inference.formula")
+      attr(out[[parameters[p]]], "formula_parameter")  <- formula_parameter
+    }
+    attr(out[[parameters[p]]], "parameter_name")  <- parameter_name
+
   }
 
   attr(out, "conditional") <- conditional
@@ -267,6 +279,12 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 
     }else{
       stop("The posterior samples cannot be mixed: unsupported mixture of prior distributions.")
+    }
+
+    # add formula relevant information
+    if(!is.null(unique(unlist(lapply(temp_priors, attr, which = "parameter"))))){
+      class(out[[temp_parameter]]) <- c(class(out[[temp_parameter]]), "mixed_posteriors.formula")
+      attr(out[[temp_parameter]], "formula_parameter")  <- unique(unlist(lapply(temp_priors, attr, which = "parameter")))
     }
 
   }

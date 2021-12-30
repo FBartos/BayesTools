@@ -108,8 +108,8 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     }
 
     # merge with the rest of the input
-    prior_list     <- c(prior_list, do.call(c, unname(lapply(formula_output, function(output) output[["prior_list"]]))))
-    data           <- c(data,       do.call(c, unname(lapply(formula_output, function(output) output[["data"]]))))
+    prior_list     <- c(do.call(c, unname(lapply(formula_output, function(output) output[["prior_list"]]))), prior_list)
+    data           <- c(do.call(c, unname(lapply(formula_output, function(output) output[["data"]]))),       data)
     formula_syntax <- paste0(lapply(formula_output, function(output) output[["formula_syntax"]]), collapse = "")
 
     # add the formula syntax to the model syntax
@@ -213,6 +213,8 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   # add information to the fitted object
   attr(fit, "prior_list")   <- prior_list
   attr(fit, "model_syntax") <- model_syntax
+
+  class(fit) <- c(class(fit), "BayesTools_fit")
 
   return(fit)
 }

@@ -271,7 +271,7 @@ test_that("JAGS fit function works" , {
   runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
   fit4 <- JAGS_fit(model_syntax4, data4, priors_list4, autofit = FALSE,
                    chains = 2, adapt = 100, burnin = 50, sample = 100, seed = 4)
-  summary_4 <- summary(fit4)
+  summary_4 <- suppressWarnings(summary(fit4))
   expect_true(summary_4[1,"MCerr"]   > 0.069)
   expect_true(summary_4[1,"MC%ofSD"] > 8)
   expect_true(summary_4[1,"SSeff"]   < 150)

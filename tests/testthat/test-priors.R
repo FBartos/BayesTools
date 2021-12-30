@@ -171,7 +171,7 @@ test_that("Two-sided.fixed weigthfunction prior distribution works", {
 
 })
 
-test_that("Factor prior distribution works", {
+test_that("Vector prior distribution works", {
   # TODO
 })
 
