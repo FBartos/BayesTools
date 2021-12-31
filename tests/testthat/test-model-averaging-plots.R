@@ -348,6 +348,110 @@ test_that("prior plot functions (weightfunctions) work", {
 })
 
 
+test_that("prior plot functions (orthonormal) work", {
+
+  ### simple cases
+  prior_list       <- list(
+    p1 = prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "orthonormal")
+  )
+  prior_list$p1$parameters$K <- 3
+
+  expect_doppelganger("model-averaging-plot-prior-orthonormal-1", function(){
+    plot_prior_list(prior_list, col = "red", lwd = 4)
+    lines(prior_list$p1, col = "blue", lwd = 3, lty = 2)
+  })
+  expect_doppelganger("model-averaging-plot-prior-orthonormal-2", {
+    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4) +
+      geom_prior(prior_list$p1, col = "blue", lwd = 3, lty = 2)
+  })
+
+  # spike & slab mixture
+  prior_list       <- list(
+    p1 = prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "orthonormal"),
+    p2 = prior("spike", list(0))
+  )
+  prior_list$p1$parameters$K <- 3
+
+  expect_doppelganger("model-averaging-plot-prior-orthonormal-3", function(){
+    plot_prior_list(prior_list, col = "red", lwd = 4)
+  })
+
+  expect_doppelganger("model-averaging-plot-prior-orthonormal-4", {
+    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4)
+  })
+
+
+  ### mixtures
+  prior_list       <- list(
+    p1 = prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "orthonormal"),
+    p2 = prior_factor("mcauchy", list(location = 0, scale = 1), contrast = "orthonormal"),
+    p3 = prior("spike", list(0))
+  )
+  prior_list$p1$parameters$K <- 3
+  prior_list$p2$parameters$K <- 3
+
+  expect_doppelganger("model-averaging-plot-prior-orthonormal-5", function(){
+    plot_prior_list(prior_list, col = "red", lwd = 4)
+    lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2)
+  })
+  expect_doppelganger("model-averaging-plot-prior-orthonormal-6", function(){
+    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 2) +
+      geom_prior_list(prior_list, col = "blue", lwd = 1, lty = 2)
+  })
+
+})
+
+
+test_that("prior plot functions (treatment) work", {
+
+  ### simple cases
+  prior_list       <- list(
+    p1 = prior_factor("beta", list(alpha = 4, beta = 5), contrast = "treatment")
+  )
+
+  expect_doppelganger("model-averaging-plot-prior-treatment-1", function(){
+    plot_prior_list(prior_list, col = "red", lwd = 4)
+    lines(prior_list$p1, col = "blue", lwd = 3, lty = 2)
+  })
+  expect_doppelganger("model-averaging-plot-prior-treatment-2", {
+    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4) +
+      geom_prior(prior_list$p1, col = "blue", lwd = 3, lty = 2)
+  })
+
+  # spike & slab mixture
+  prior_list       <- list(
+    p1 = prior_factor("beta", list(alpha = 4, beta = 5), contrast = "treatment"),
+    p2 = prior("spike", list(0))
+  )
+
+  expect_doppelganger("model-averaging-plot-prior-treatment-3", function(){
+    plot_prior_list(prior_list, col = "red", lwd = 4)
+  })
+
+  expect_doppelganger("model-averaging-plot-prior-treatment-4", {
+    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 2)
+  })
+
+
+  ### mixtures
+  prior_list       <- list(
+    p1 = prior_factor("normal", list(mean = 0, sd = 1), contrast = "treatment"),
+    p2 = prior_factor("beta", list(alpha = 4, beta = 5), contrast = "treatment"),
+    p3 = prior("spike", list(0))
+  )
+
+  expect_doppelganger("model-averaging-plot-prior-treatment-5", function(){
+    plot_prior_list(prior_list, col = "red", lwd = 4)
+    lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2)
+  })
+  expect_doppelganger("model-averaging-plot-prior-treatment-6", function(){
+    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 2) +
+      geom_prior_list(prior_list, col = "blue", lwd = 1, lty = 2)
+  })
+
+})
+
+
 test_that("posterior plot functions (simple) work", {
 
   set.seed(1)
@@ -599,8 +703,234 @@ test_that("posterior plot functions (weightfunctions) work", {
 })
 
 
+test_that("posterior plot functions (orthonormal) work", {
+
+  set.seed(1)
+
+  data_formula <- data.frame(
+    x_fac3o = factor(rep(c("A", "B", "C"), 40), levels = c("A", "B", "C"))
+  )
+  data <- list(
+    y = rnorm(120, .4  + ifelse(data_formula$x_fac3o == "A", 0.0, ifelse(data_formula$x_fac3o == "B", -0.5, 0.5)), 1),
+    N = 120
+  )
+
+  # create model with mix of a formula and free parameters ---
+  formula_list0 <- list(mu = ~ 1)
+  formula_list1 <- list(mu = ~ x_fac3o)
+
+  formula_prior_list0 <- list(
+    mu    = list(
+      "intercept"       = prior("normal", list(0, 5))
+    )
+  )
+  formula_prior_list1 <- list(
+    mu    = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_fac3o"         = prior_factor("mnormal", contrast = "orthonormal", list(0, 0.5))
+    )
+  )
+
+  prior_list        <- list(sigma = prior("lognormal", list(0, 1)))
+  formula_data_list <- list(mu = data_formula)
+
+  model_syntax <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  log_posterior <- function(parameters, data){
+    sum(stats::dnorm(data$y, parameters[["mu"]], parameters[["sigma"]], log = TRUE))
+  }
+
+  fit0 <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list0, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0, seed = 1)
+  fit1 <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1, seed = 2)
+
+  marglik0 <- JAGS_bridgesampling(
+    fit0, log_posterior = log_posterior, data = data, prior_list = prior_list,
+    formula_list = formula_list0, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0)
+  marglik1 <- JAGS_bridgesampling(
+    fit1, log_posterior = log_posterior, data = data, prior_list = prior_list,
+    formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1)
+
+  # mix posteriors
+  models <- list(
+    list(fit = fit0, marglik = marglik0, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, prior_weights = 1)
+  )
+
+  mixed_posteriors <- mix_posteriors(
+    model_list   = models,
+    parameters   = c("mu_intercept", "mu_x_fac3o"),
+    is_null_list = list(
+      "mu_intercept"  = c(TRUE,  TRUE),
+      "mu_x_fac3o"    = c(FALSE, TRUE)
+    ),
+    seed = 1, n_samples = 10000)
+
+
+  expect_doppelganger("model-averaging-plot-posterior-orthonormal-1", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors, "mu_x_fac3o")
+  })
+  expect_doppelganger("model-averaging-plot-posterior-orthonormal-2", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors, "mu_x_fac3o", col = c("red", "green", "blue"))
+  })
+  expect_doppelganger("model-averaging-plot-posterior-orthonormal-3", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors, "mu_x_fac3o", lty = c(2, 3, 4), col = "blue", lwd = 2)
+  })
+  expect_doppelganger("model-averaging-plot-posterior-orthonormal-4", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors, "mu_x_fac3o", legend = FALSE)
+  })
+  expect_doppelganger("model-averaging-plot-posterior-orthonormal-5", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors, "mu_x_fac3o", col = c("red", "green", "blue"), prior = TRUE)
+  })
+
+  expect_doppelganger("model-averaging-ggplot-posterior-orthonormal-1", plot_posterior(mixed_posteriors, "mu_x_fac3o", plot_type = "ggplot"))
+  expect_doppelganger("model-averaging-ggplot-posterior-orthonormal-2", plot_posterior(mixed_posteriors, "mu_x_fac3o", col = c("red", "green", "blue"), plot_type = "ggplot"))
+  expect_doppelganger("model-averaging-ggplot-posterior-orthonormal-3", plot_posterior(mixed_posteriors, "mu_x_fac3o", lty = c(2, 3, 4), col = "blue", lwd = 2, plot_type = "ggplot"))
+  expect_doppelganger("model-averaging-ggplot-posterior-orthonormal-4", plot_posterior(mixed_posteriors, "mu_x_fac3o", legend = FALSE, plot_type = "ggplot"))
+  expect_doppelganger("model-averaging-ggplot-posterior-orthonormal-5", plot_posterior(mixed_posteriors, "mu_x_fac3o", col = c("red", "green", "blue"), prior = TRUE, plot_type = "ggplot"))
+
+})
+
+
+test_that("posterior plot functions (treatment) work", {
+
+  set.seed(1)
+
+  data_formula <- data.frame(
+    x_fac2t = factor(rep(c("A", "B"), 60), levels = c("A", "B"))
+  )
+  data <- list(
+    y = rnorm(120, .4  + ifelse(data_formula$x_fac2t == "A", 0.0, 0.5), 1),
+    N = 120
+  )
+
+  # create model with mix of a formula and free parameters ---
+  formula_list0 <- list(mu = ~ 1)
+  formula_list1 <- list(mu = ~ x_fac2t)
+
+  formula_prior_list0 <- list(
+    mu    = list(
+      "intercept"       = prior("normal", list(0, 5))
+    )
+  )
+  formula_prior_list1 <- list(
+    mu    = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_fac2t"         = prior_factor("normal", contrast = "treatment", list(0, 0.5))
+    )
+  )
+
+  prior_list        <- list(sigma = prior("lognormal", list(0, 1)))
+  formula_data_list <- list(mu = data_formula)
+
+  model_syntax <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  log_posterior <- function(parameters, data){
+    sum(stats::dnorm(data$y, parameters[["mu"]], parameters[["sigma"]], log = TRUE))
+  }
+
+  fit0 <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list0, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0, seed = 1)
+  fit1 <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1, seed = 2)
+
+  marglik0 <- JAGS_bridgesampling(
+    fit0, log_posterior = log_posterior, data = data, prior_list = prior_list,
+    formula_list = formula_list0, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0)
+  marglik1 <- JAGS_bridgesampling(
+    fit1, log_posterior = log_posterior, data = data, prior_list = prior_list,
+    formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1)
+
+  # mix posteriors
+  models <- list(
+    list(fit = fit0, marglik = marglik0, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, prior_weights = 1)
+  )
+
+  mixed_posteriors <- mix_posteriors(
+    model_list   = models,
+    parameters   = c("mu_intercept", "mu_x_fac2t"),
+    is_null_list = list(
+      "mu_intercept"  = c(TRUE,  TRUE),
+      "mu_x_fac2t"    = c(FALSE, TRUE)
+    ),
+    seed = 1, n_samples = 10000)
+
+  expect_doppelganger("model-averaging-plot-posterior-treatment-1", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors, "mu_x_fac2t")
+  })
+  expect_doppelganger("model-averaging-plot-posterior-treatment-2", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors, "mu_x_fac2t", col = "red")
+  })
+  expect_doppelganger("model-averaging-plot-posterior-treatment-3", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors, "mu_x_fac2t", lty = 2, col = "blue", lwd = 2)
+  })
+  expect_doppelganger("model-averaging-plot-posterior-treatment-4", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors, "mu_x_fac2t", legend = FALSE)
+  })
+  expect_doppelganger("model-averaging-plot-posterior-treatment-5", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors, "mu_x_fac2t", col = "red", prior = TRUE)
+  })
+
+  expect_doppelganger("model-averaging-ggplot-posterior-treatment-1", plot_posterior(mixed_posteriors, "mu_x_fac2t", plot_type = "ggplot"))
+  expect_doppelganger("model-averaging-ggplot-posterior-treatment-2", plot_posterior(mixed_posteriors, "mu_x_fac2t", col = "red", plot_type = "ggplot"))
+  expect_doppelganger("model-averaging-ggplot-posterior-treatment-3", plot_posterior(mixed_posteriors, "mu_x_fac2t", lty = 2, col = "blue", lwd = 2, plot_type = "ggplot"))
+  expect_doppelganger("model-averaging-ggplot-posterior-treatment-4", plot_posterior(mixed_posteriors, "mu_x_fac2t", legend = FALSE, plot_type = "ggplot"))
+  expect_doppelganger("model-averaging-ggplot-posterior-treatment-5", plot_posterior(mixed_posteriors, "mu_x_fac2t", col = "red", prior = TRUE, plot_type = "ggplot"))
+
+})
+
+
 test_that("models plot functions work", {
 
+  set.seed(1)
   ### prior distribution related functions
   p0 <- prior(distribution = "point",  parameters = list(location = 0))
   p1 <- prior(distribution = "normal", parameters = list(mean = 0, sd = 1))

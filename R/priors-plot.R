@@ -659,8 +659,8 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 
 
   # plot PET-PEESE
-  if((is.prior.PET(x) | is.prior.PEESE(x)) | !individual){
-    if(inherits(plot_data, "density.prior.PET") | inherits(plot_data, "density.prior.PEESE")){
+  if((is.prior.PET(x) | is.prior.PEESE(x))){
+    if(!individual){
       .lines.prior.PETPEESE(plot_data, ...)
     }else if(inherits(plot_data, "density.prior.simple")){
       .lines.prior.simple(plot_data, ...)
@@ -669,7 +669,6 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     }
     return(invisible())
   }
-
 
   # plot orthonormal
   if(is.prior.orthonormal(x)){
@@ -868,6 +867,18 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 
   return(invisible())
 }
+.lines.prior.factor          <- function(plot_data, ...){
+
+  dots <- list(...)
+  col  <- if(!is.null(dots[["col"]][dots[["level"]]])) dots[["col"]][dots[["level"]]] else .plot.prior_settings()[["col"]]
+  lty  <- if(!is.null(dots[["lty"]][dots[["level"]]])) dots[["lty"]][dots[["level"]]] else .plot.prior_settings()[["lty"]]
+  lwd  <- if(!is.null(dots[["lwd"]]))                  dots[["lwd"]]                  else .plot.prior_settings()[["lwd"]]
+
+  graphics::lines(x = plot_data$x, y = plot_data$y, type = "l", lwd = lwd, lty = lty, col = col)
+
+  return(invisible())
+}
+
 # ggplot prior plot elements
 .geom_prior.simple           <- function(plot_data, ...){
 
@@ -1004,6 +1015,36 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
       x = "x",
       y = "y"),
     size = lwd, linetype = lty, color = col)
+
+  return(geom)
+}
+.geom_prior.factors          <- function(plot_data, ...){
+
+  # this function notably differs from the .line_prior.factor counterpart
+  # - it's so much more difficult to draw custom legend in ggplot2 ... :(
+
+  dots <- list(...)
+  col  <- if(!is.null(dots[["col"]]))      dots[["col"]]      else rep(.plot.prior_settings()[["col"]], length(dots[["level_names"]]))
+  lty  <- if(!is.null(dots[["linetype"]])) dots[["linetype"]]
+  else  if(!is.null(dots[["lty"]]))        dots[["lty"]]      else rep(.plot.prior_settings()[["lty"]], length(dots[["level_names"]]))
+  lwd  <- if(!is.null(dots[["size"]]))     dots[["size"]]
+  else  if(!is.null(dots[["lwd"]]))        dots[["lwd"]]      else .plot.prior_settings()[["lwd"]]
+
+  names(col) <- dots[["level_names"]]
+  names(lty) <- dots[["level_names"]]
+
+  geom <- list(
+    ggplot2::geom_line(
+      data    = plot_data,
+      mapping = ggplot2::aes_string(
+        x        = "x",
+        y        = "y",
+        color    = "level",
+        linetype = "level",
+        group    = "level"),
+      size = 1, show.legend = dots[["legend"]]),
+    ggplot2::scale_linetype_manual(name = "level", values = lty),
+    ggplot2::scale_color_manual(name = "level", values = col))
 
   return(geom)
 }

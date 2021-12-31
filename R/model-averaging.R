@@ -472,13 +472,36 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   if(length(levels) != 1)
     stop("all facotr priors must be of the same number of levels")
 
+  # gather and check compatibility of prior distributions
+  priors_info <- lapply(priors, function(p){
+    if(is.prior.factor(p)){
+      return(list(
+        "levels"      = attr(p, "levels"),
+        "level_names" = attr(p, "level_names"),
+        "interaction" = attr(p, "interaction"),
+        "treatment"   = is.prior.dummy(p),
+        "orthonormal" = is.prior.orthonormal(p)
+      ))
+    }else{
+      return(FALSE)
+    }
+  })
+  priors_info <- priors_info[!sapply(priors_info, isFALSE)]
+  if(length(priors_info) >= 2 && any(!unlist(lapply(priors_info, function(i) all.equal(i, priors_info[[1]]))))){
+    stop("non-matching orthonormal prior specifications")
+  }
+  priors_info <- priors_info[[1]]
 
   if(all(sapply(priors[sapply(priors, is.prior.factor)], is.prior.dummy))){
 
     if((levels - 1) == 1){
 
       samples <- .mix_posteriors.simple(fits, priors, parameter, post_probs, seed, n_samples)
-      class(samples) <- c(class(samples), "mixed_posteriors.factor")
+
+      sample_ind <- attr(samples, "sample_ind")
+      models_ind <- attr(samples, "models_ind")
+
+      samples <- matrix(samples, ncol = 1)
 
     }else{
 
@@ -494,15 +517,15 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 
       samples <- do.call(cbind, samples)
 
-      rownames(samples) <- NULL
-      colnames(samples) <- paste0(parameter,"[",1:(levels - 1),"]")
-      attr(samples, "sample_ind") <- sample_ind
-      attr(samples, "models_ind") <- models_ind
-      attr(samples, "parameter")  <- parameter
-      attr(samples, "prior_list") <- priors
-      class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
-
     }
+
+    rownames(samples) <- NULL
+    colnames(samples) <- paste0(parameter,"[",priors_info$level_names[-1],"]")
+    attr(samples, "sample_ind") <- sample_ind
+    attr(samples, "models_ind") <- models_ind
+    attr(samples, "parameter")  <- parameter
+    attr(samples, "prior_list") <- priors
+    class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
 
   }else if(all(sapply(priors[sapply(priors, is.prior.factor)], is.prior.orthonormal))){
 
@@ -519,6 +542,11 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
     stop("all factor priors must be of either 'treatment' or 'orthonormal' type")
   }
 
+  attr(samples, "levels")      <- priors_info[["levels"]]
+  attr(samples, "level_names") <- priors_info[["level_names"]]
+  attr(samples, "interaction") <- priors_info[["interaction"]]
+  attr(samples, "treatment")   <- priors_info[["treatment"]]
+  attr(samples, "orthonormal") <- priors_info[["orthonormal"]]
 
   return(samples)
 }
