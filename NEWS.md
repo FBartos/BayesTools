@@ -6,7 +6,6 @@
 - adding formula interface for fitting and computing marginal likelihood of JAGS models
 - adding factor prior distributions (with treatment and orthonormal contrasts)
 
-
 ## version 0.1.4
 ### Fixes
 - fixing DOIs in the references file
