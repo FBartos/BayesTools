@@ -1,4 +1,4 @@
-## to be version 0.2
+## version 0.2.0
 ### Changes
 - ensemble inference, summary, and plot functions now extract the prior list from attribute of the fit objects (previously, the prior_list needed to be passed for each model within the model_list as the priors argument
 
