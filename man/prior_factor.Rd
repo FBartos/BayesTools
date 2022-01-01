@@ -80,7 +80,8 @@ models with factor predictors.
 }
 \examples{
 # create an orthonormal prior distribution
-p1 <- prior_factor(distribution = "normal", contrast = "orthonormal", parameters = list(sd = 1))
+p1 <- prior_factor(distribution = "mnormal", contrast = "orthonormal",
+                   parameters = list(mean = 0, sd = 1))
 
 }
 \seealso{

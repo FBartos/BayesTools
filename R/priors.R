@@ -271,7 +271,8 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
 #'
 #' @examples
 #' # create an orthonormal prior distribution
-#' p1 <- prior_factor(distribution = "normal", contrast = "orthonormal", parameters = list(sd = 1))
+#' p1 <- prior_factor(distribution = "mnormal", contrast = "orthonormal",
+#'                    parameters = list(mean = 0, sd = 1))
 #'
 #' @return return an object of class 'prior'.
 #'

@@ -396,7 +396,6 @@ ensemble_diagnostics_table <- function(models, parameters, title = NULL, footnot
 #' posterior probability \code{prior_prob} and \code{post_prob},
 #' and model inclusion Bayes factor \code{inclusion_BF}
 #' @param fit runjags model fit
-#' @param prior_list list of prior distributions
 #' @param transformations named list of transformations to be applied
 #' to specific parameters
 #' @param model_description named list with additional description
@@ -633,6 +632,19 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     }
   }
 
+  # rename treatment factor levels
+  if(any(sapply(prior_list, is.prior.dummy))){
+    for(par in names(prior_list)[sapply(prior_list, is.prior.dummy)]){
+      if(!attr(prior_list[[par]], "interaction")){
+        rownames(runjags_summary)[rownames(runjags_summary) %in% paste0(par,"[",1:(attr(prior_list[[par]], "levels")-1),"]")] <-
+          paste0(par,"[",attr(prior_list[[par]], "level_names")[-1], "]")
+      }else if(length(attr(prior_list[[par]], "levels")) == 1){
+        rownames(runjags_summary)[rownames(runjags_summary) %in% paste0(par,"[",1:(attr(prior_list[[par]], "levels")-1),"]")] <-
+          paste0(par,"[",attr(prior_list[[par]], "level_names")[[1]][-1], "]")
+      }
+    }
+  }
+
   # rename formula parameters
   if(any(!sapply(lapply(prior_list, attr, which = "parameter"), is.null))){
     for(parameter in unique(unlist(lapply(prior_list, attr, which = "parameter")))){
@@ -647,6 +659,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       rownames(runjags_summary)[grep("__xXx__", rownames(runjags_summary))]
     )
   }
+
 
   # rename the rest
   colnames(runjags_summary)[colnames(runjags_summary) == "Lower95"] <- "lCI"

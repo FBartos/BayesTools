@@ -321,12 +321,24 @@ test_that("Summary tables functions work (formulas + factors)",{
   expect_equal(model_summary[,4], c("Parameter prior distributions","(mu) intercept ~ Normal(0, 5)","(mu) x_cont1 ~ Normal(0, 1)","(mu) x_fac3o ~ orthonormal contrast: mNormal(0, 1)","(mu) x_cont1:x_fac3o ~ orthonormal contrast: mNormal(0, 1)","sigma ~ Lognormal(0, 1)"))
 
   # runjags summary
+  runjags_summary <- models[[2]]$fit_summary
+  expect_equal(colnames(runjags_summary), c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
+  expect_equal(rownames(runjags_summary), c("(mu) intercept",  "(mu) x_cont1", "(mu) x_fac3t[B]", "(mu) x_fac3t[C]", "sigma"))
+  expect_equal(unname(unlist(runjags_summary[3,])), c(5.746362e-03, 2.808364e-01, -5.496105e-01, 1.058318e-02, 5.504860e-01, 4.142589e-03, 1.500000e-02, 4.596000e+03,1.000580e+00), tolerance = 1e-4)
+
   runjags_summary <- models[[4]]$fit_summary
   expect_equal(colnames(runjags_summary), c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
   expect_equal(rownames(runjags_summary), c("(mu) intercept", "(mu) x_cont1", "(mu) x_fac3o[1]", "(mu) x_fac3o[2]", "(mu) x_cont1:x_fac3o[1]", "(mu) x_cont1:x_fac3o[2]", "sigma" ))
   expect_equal(unname(unlist(runjags_summary[1,])), c(1.876569e-01, 1.210763e-01, -5.091384e-02, 1.878474e-01, 4.285015e-01, 9.894116e-04, 8.000000e-03, 1.497500e+04, 1.000068e+00), tolerance = 1e-4)
 
   # ensemble estimates
+  estimates_table <- ensemble_estimates_table(mixed_posteriors, parameters = c("mu_x_cont1", "mu_x_fac3t", "mu_x_fac3o", "mu_x_cont1__xXx__x_fac3o"), probs = c(.025, 0.95))
+  expect_equal(colnames(estimates_table), c("Mean", "Median", "0.025",  "0.95"))
+  expect_equal(rownames(estimates_table), c("(mu) x_cont1", "(mu) x_fac3t[B]", "(mu) x_fac3t[C]", "(mu) x_fac3o[1]", "(mu) x_fac3o[2]", "(mu) x_cont1:x_fac3o[1]", "(mu) x_cont1:x_fac3o[2]"))
+  expect_equal(unname(unlist(estimates_table[1,])), c(0.1224567, 0.0000000, 0.0000000, 0.4794182), tolerance = 1e-4)
+  expect_equal(unname(unlist(estimates_table[3,])), c(0.0397569, 0.0000000, -0.2895047, 0.4087159), tolerance = 1e-4)
+  expect_equal(unname(unlist(estimates_table[5,])), c(-0.004121766, 0.000000000, -0.215131954, 0.036829714), tolerance = 1e-4)
+
   estimates_table <- ensemble_estimates_table(mixed_posteriors, parameters = c("mu_x_cont1", "mu_x_fac3o", "mu_x_cont1__xXx__x_fac3o"), probs = c(.025, 0.95))
   expect_equal(colnames(estimates_table), c("Mean", "Median", "0.025",  "0.95"))
   expect_equal(rownames(estimates_table), c("(mu) x_cont1", "(mu) x_fac3o[1]", "(mu) x_fac3o[2]", "(mu) x_cont1:x_fac3o[1]", "(mu) x_cont1:x_fac3o[2]"))

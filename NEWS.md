@@ -4,7 +4,7 @@
 
 ### Features
 - adding formula interface for fitting and computing marginal likelihood of JAGS models
-- adding vector and factor prior distributions
+- adding factor prior distributions (with treatment and orthonormal contrasts)
 
 
 ## version 0.1.4

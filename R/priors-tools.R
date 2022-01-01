@@ -100,7 +100,7 @@
   }
 }
 .check_parameter_dimensions<- function(parameter, name, allow_NA = FALSE){
-  if(!allow_NA && is.NA(parameter)){
+  if(!allow_NA && is.na(parameter)){
     stop(paste0("The '", name, "' must be defined."), call. = FALSE)
   }else if(!allow_NA){
     if(length(parameter) != 1 || !is.numeric(parameter))
