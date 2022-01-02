@@ -5,18 +5,9 @@
 #' with usage with pre-specified model part of the 'JAGS' syntax, data and list
 #' of prior distributions.
 #' @param model_syntax jags syntax for the model part
-#' @param data list containing data to fit the model (not including data for the formulas)
+#' @param data data fit the model
 #' @param prior_list named list of prior distribution
-#' (names correspond to the parameter names) of parameters not specified within the
-#' \code{formula_list}
-#' @param formula_list named list of formulas to be added to the model
-#' (names correspond to the parameter name created by each of the formula)
-#' @param formula_data_list named list of data frames containing data for each formula
-#' (names of the lists correspond to the parameter name created by each of the formula)
-#' @param formula_prior_list named list of named lists of prior distributions
-#' (names of the lists correspond to the parameter name created by each of the formula and
-#' the names of the prior distribution correspond to the parameter names) of parameters specified
-#' within the \code{formula}
+#' (names correspond to the parameter names)
 #' @param chains number of chains to be run, defaults to \code{4}
 #' @param adapt number of samples used for adapting the MCMC chains, defaults to \code{500}
 #' @param burnin number of burnin iterations of the MCMC chains, defaults to \code{1000}
@@ -78,51 +69,23 @@
 #'
 #' @seealso [JAGS_check_convergence()]
 #' @export
-JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL,
+JAGS_fit <- function(model_syntax, data, prior_list,
                      chains = 4, adapt = 500, burnin = 1000, sample = 4000, thin = 1,
                      autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000),
                      parallel = FALSE, cores = chains, silent = TRUE, seed = NULL,
                      add_parameters = NULL, required_packages = NULL){
 
   ### check input
-  .check_JAGS_syntax(model_syntax)
   JAGS_check_and_list_fit_settings(chains, adapt, burnin, sample, thin, autofit, parallel, cores, silent, seed)
   JAGS_check_and_list_autofit_settings(autofit_control)
   check_char(add_parameters, "add_parameters", check_length = 0, allow_NULL = TRUE)
   check_char(required_packages, "required_packages", check_length = 0, allow_NULL = TRUE)
-  check_list(formula_list, "formula_list", allow_NULL = TRUE)
-  check_list(formula_data_list, "formula_data_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
-  check_list(formula_prior_list, "formula_prior_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
 
-  ### add formulas
-  if(!is.null(formula_list)){
-
-    # obtain settings for each formula
-    formula_output <- list()
-    for(parameter in names(formula_list)){
-      formula_output[[parameter]] <- JAGS_formula(
-        formula    = formula_list[[parameter]],
-        parameter  = parameter,
-        data       = formula_data_list[[parameter]],
-        prior_list = formula_prior_list[[parameter]])
-    }
-
-    # merge with the rest of the input
-    prior_list     <- c(do.call(c, unname(lapply(formula_output, function(output) output[["prior_list"]]))), prior_list)
-    data           <- c(do.call(c, unname(lapply(formula_output, function(output) output[["data"]]))),       data)
-    formula_syntax <- paste0(lapply(formula_output, function(output) output[["formula_syntax"]]), collapse = "")
-
-    # add the formula syntax to the model syntax
-    opening_bracket <- regexpr("{", model_syntax, fixed = TRUE)[1]
-    syntax_start    <- substr(model_syntax, 1, opening_bracket)
-    syntax_end      <- substr(model_syntax, opening_bracket + 1, nchar(model_syntax))
-    model_syntax    <- paste0(syntax_start, "\n", formula_syntax, "\n", syntax_end)
-  }
 
 
   ### create the model call
   model_call <- list(
-    model     = JAGS_add_priors(syntax = model_syntax, prior_list = prior_list),
+    model     = JAGS_add_priors(model_syntax, prior_list),
     data      = data,
     inits     = JAGS_get_inits(prior_list, chains = chains, seed = seed),
     monitor   = c(JAGS_to_monitor(prior_list), add_parameters),
@@ -209,12 +172,6 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   if(parallel){
     parallel::stopCluster(cl)
   }
-
-  # add information to the fitted object
-  attr(fit, "prior_list")   <- prior_list
-  attr(fit, "model_syntax") <- model_syntax
-
-  class(fit) <- c(class(fit), "BayesTools_fit")
 
   return(fit)
 }
@@ -350,7 +307,16 @@ JAGS_add_priors           <- function(syntax, prior_list){
   check_list(prior_list, "prior_list")
   if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
-  .check_JAGS_syntax(syntax)
+  check_char(syntax, "syntax", allow_NULL = TRUE)
+  if(is.null(syntax)){
+    syntax <- "model{}"
+  }
+  if(!grepl("model", syntax, fixed = TRUE))
+    stop("syntax must be a JAGS model syntax")
+  if(!grepl("{", syntax, fixed = TRUE))
+    stop("syntax must be a JAGS model syntax")
+  if(!grepl("}", syntax, fixed = TRUE))
+    stop("syntax must be a JAGS model syntax")
 
 
   # identify parts of the syntax
@@ -369,14 +335,6 @@ JAGS_add_priors           <- function(syntax, prior_list){
     }else if(is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
 
       syntax_priors <- paste(syntax_priors, .JAGS_prior.PP(prior_list[[i]]))
-
-    }else if(is.prior.factor(prior_list[[i]])){
-
-      syntax_priors <- paste(syntax_priors, .JAGS_prior.factor(prior_list[[i]], names(prior_list)[i]))
-
-    }else if(is.prior.vector(prior_list[[i]])){
-
-      syntax_priors <- paste(syntax_priors, .JAGS_prior.vector(prior_list[[i]], names(prior_list)[i]))
 
     }else if(is.prior.simple(prior_list[[i]])){
 
@@ -437,86 +395,6 @@ JAGS_add_priors           <- function(syntax, prior_list){
   # transform the parameter in case of inverse-gamma
   if(prior[["distribution"]] == "invgamma"){
     syntax <- paste0(syntax, "  ", parameter_name," = pow(inv_",parameter_name,", -1)\n")
-  }
-
-  return(syntax)
-}
-.JAGS_prior.vector         <- function(prior, parameter_name){
-
-  .check_prior(prior)
-  if(!is.prior.vector(prior))
-    stop("improper prior provided")
-  check_char(parameter_name, "parameter_name")
-
-  # create the location/means vector the sigma matrix
-  par1 <- switch(
-    prior[["distribution"]],
-    "mnormal" = prior$parameter[["mean"]],
-    "mt"      = prior$parameter[["location"]]
-  )
-  par2 <- switch(
-    prior[["distribution"]],
-    "mnormal" = prior$parameter[["sd"]],
-    "mt"      = prior$parameter[["scale"]]
-  )
-
-  # TODO: beautify this code by specific JAGS distributions?
-  if(prior[["distribution"]] == "mt"){
-    # using the chisq * covariance parametrization since the mt fails with 1 df
-    # (using a common df parameter as in Rouder et al. 2012)
-    syntax <- paste0("prior_par1_", parameter_name, " = rep(", par1, ",", prior$parameter[["K"]], ")\n")
-    syntax <- paste0(syntax, "prior_par3_", parameter_name, " ~ dgamma(", prior$parameter[["df"]]/2, ", ", prior$parameter[["df"]]/2,")\n")
-    syntax <- paste0(
-      syntax,
-      "for(i in 1:", prior$parameters[["K"]], "){\n",
-      "  prior_par2_", parameter_name, "[i,i] <- (prior_par3_", parameter_name, ") * ", 1/par2^2, "\n",
-      "  for(j in 1:(i-1)){\n",
-      "    prior_par2_", parameter_name, "[i,j] <- 0\n",
-      "  }\n",
-      "  for (j in (i+1):", prior$parameters[["K"]], "){\n",
-      "    prior_par2_", parameter_name, "[i,j] <- 0\n",
-      "  }\n",
-      "}\n")
-    syntax <- paste0(syntax, parameter_name," ~ dmnorm(prior_par1_", parameter_name, ",prior_par2_", parameter_name, ")\n")
-  }else{
-    syntax <- paste0("prior_par1_", parameter_name, " = rep(", par1, ",", prior$parameter[["K"]], ")\n")
-    syntax <- paste0(
-      syntax,
-      "for(i in 1:", prior$parameters[["K"]], "){\n",
-      "  prior_par2_", parameter_name, "[i,i] <- ", 1/par2^2, "\n",
-      "  for(j in 1:(i-1)){\n",
-      "    prior_par2_", parameter_name, "[i,j] <- 0\n",
-      "  }\n",
-      "  for (j in (i+1):", prior$parameters[["K"]], "){\n",
-      "    prior_par2_", parameter_name, "[i,j] <- 0\n",
-      "  }\n",
-      "}\n")
-    syntax <- paste0(syntax, parameter_name," ~ dmnorm(prior_par1_", parameter_name, ",prior_par2_", parameter_name, ")\n")
-  }
-
-  return(syntax)
-}
-.JAGS_prior.factor         <- function(prior, parameter_name){
-
-  .check_prior(prior)
-  if(!is.prior.factor(prior))
-    stop("improper prior provided")
-  check_char(parameter_name, "parameter_name")
-  check_int(attr(prior, "levels"), "levels", lower = 2)
-
-  if(is.prior.dummy(prior)){
-
-    syntax <- paste0(
-      "for(i in 1:", attr(prior, "levels") - 1, "){\n",
-      "  ", .JAGS_prior.simple(prior, paste0(parameter_name, "[i]")),
-      "}\n")
-
-  }else if(is.prior.orthonormal(prior)){
-
-    prior$parameters[["K"]] <- attr(prior, "levels") - 1
-
-    syntax <- .JAGS_prior.vector(prior, parameter_name)
-
   }
 
   return(syntax)
@@ -582,20 +460,6 @@ JAGS_add_priors           <- function(syntax, prior_list){
 }
 
 
-.check_JAGS_syntax <- function(syntax){
-
-  check_char(syntax, "syntax", allow_NULL = TRUE)
-  if(is.null(syntax)){
-    syntax <- "model{}"
-  }
-  if(!grepl("model", syntax, fixed = TRUE))
-    stop("syntax must be a JAGS model syntax")
-  if(!grepl("{", syntax, fixed = TRUE))
-    stop("syntax must be a JAGS model syntax")
-  if(!grepl("}", syntax, fixed = TRUE))
-    stop("syntax must be a JAGS model syntax")
-}
-
 #' @title Create initial values for 'JAGS' model
 #'
 #' @description Creates initial values for priors in
@@ -647,14 +511,6 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 
         temp_inits <- c(temp_inits, .JAGS_init.PP(prior_list[[i]]))
 
-      }else if(is.prior.factor(prior_list[[i]])){
-
-        temp_inits <- c(temp_inits, .JAGS_init.factor(prior_list[[i]], names(prior_list)[i]))
-
-      }else if(is.prior.vector(prior_list[[i]])){
-
-        temp_inits <- c(temp_inits, .JAGS_init.vector(prior_list[[i]], names(prior_list)[i]))
-
       }else if(is.prior.simple(prior_list[[i]])){
 
         temp_inits <- c(temp_inits, .JAGS_init.simple(prior_list[[i]], names(prior_list)[i]))
@@ -698,55 +554,6 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
       init[[parameter_name]] <- rng(prior, 1)
 
     }
-  }
-
-  return(init)
-}
-.JAGS_init.vector          <- function(prior, parameter_name){
-
-  .check_prior(prior)
-  if(!is.prior.vector(prior))
-    stop("improper prior provided")
-
-  if(prior[["distribution"]] == "point"){
-
-    return()
-
-  }else{
-
-    init <- list()
-    init[[parameter_name]] <- rng(prior, 1)[1,]
-
-    if(prior[["distribution"]] == "mt"){
-      init[[paste0("prior_par3_", parameter_name)]] <- rng(prior("gamma", list(shape = prior$parameters[["df"]]/2, rate = prior$parameters[["df"]]/2)), 1)
-    }
-
-  }
-
-  return(init)
-}
-.JAGS_init.factor          <- function(prior, parameter_name){
-
-  .check_prior(prior)
-  if(!is.prior.factor(prior))
-    stop("improper prior provided")
-  check_char(parameter_name, "parameter_name")
-  check_int(attr(prior, "levels"), "levels", lower = 2)
-
-  if(is.prior.dummy(prior)){
-
-    init <- list()
-    init[[parameter_name]] <- rng(prior, attr(prior, "levels") - 1)
-
-  }else if(is.prior.orthonormal(prior)){
-
-    prior$parameters[["K"]] <- attr(prior, "levels") - 1
-
-    # remove the orthonormal class, otherwise samples from the transformed distributions are generated
-    class(prior) <- class(prior)[!class(prior) %in% "prior.orthonormal"]
-
-    init <- .JAGS_init.vector(prior, parameter_name)
-
   }
 
   return(init)
@@ -826,14 +633,6 @@ JAGS_to_monitor             <- function(prior_list){
 
       monitor <- c(monitor, .JAGS_monitor.PP(prior_list[[i]]))
 
-    }else if(is.prior.factor(prior_list[[i]])){
-
-      monitor <- c(monitor, .JAGS_monitor.factor(prior_list[[i]], names(prior_list)[i]))
-
-    }else if(is.prior.vector(prior_list[[i]])){
-
-      monitor <- c(monitor, .JAGS_monitor.vector(prior_list[[i]], names(prior_list)[i]))
-
     }else if(is.prior.simple(prior_list[[i]])){
 
       monitor <- c(monitor, .JAGS_monitor.simple(prior_list[[i]], names(prior_list)[i]))
@@ -848,7 +647,7 @@ JAGS_to_monitor             <- function(prior_list){
 .JAGS_monitor.simple         <- function(prior, parameter_name){
 
   .check_prior(prior)
-  if(!(is.prior.simple(prior) | is.prior.vector(prior) | is.prior.factor(prior)))
+  if(!is.prior.simple(prior))
     stop("improper prior provided")
   if(!is.character(parameter_name) | length(parameter_name) != 1)
     stop("'parameter_name' must be a character vector of length 1.")
@@ -858,18 +657,6 @@ JAGS_to_monitor             <- function(prior_list){
   }else{
     monitor <- parameter_name
   }
-
-  return(monitor)
-}
-.JAGS_monitor.vector         <- function(prior, parameter_name){
-
-  monitor <- .JAGS_monitor.simple(prior, parameter_name)
-
-  return(monitor)
-}
-.JAGS_monitor.factor         <- function(prior, parameter_name){
-
-  monitor <- .JAGS_monitor.simple(prior, parameter_name)
 
   return(monitor)
 }

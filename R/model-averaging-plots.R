@@ -40,8 +40,6 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     prior_type <- "weightfunction"
   }else if(any(sapply(prior_list, is.prior.PET)) | any(sapply(prior_list, is.prior.PEESE))){
     prior_type <- "PETPEESE"
-  }else if(any(sapply(prior_list, is.prior.orthonormal))){
-    prior_type <- "orthonormal"
   }else{
     prior_type <- "simple"
 
@@ -61,7 +59,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   if(is.null(xlim) & is.null(x_seq)){
     if(prior_type %in% c("weightfunction", "PETPEESE") & !individual){
       xlim      <- c(0, 1)
-    }else if(prior_type %in% c("simple", "orthonormal")){
+    }else if(prior_type == "simple"){
       xlim   <- do.call(rbind, lapply(prior_list, range, quantiles = x_range_quant))
       xlim   <- range(pretty(range(as.vector(xlim))))
     }
@@ -85,7 +83,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
                                                 transformation_settings = transformation_settings, prior_list_mu = prior_list_mu)
     plot <- .plot.prior.PETPEESE(prior_list, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
 
-  }else if(prior_type %in% c("simple", "orthonormal")){
+  }else if(prior_type == "simple"){
 
     # solve analytically
     plot_data <- .plot_data_prior_list.simple(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
@@ -104,7 +102,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   }
 }
 
-.plot_prior_list.both             <- function(plot_data, plot_type, par_name = NULL, scale_y2 = NULL, ...){
+.plot_prior_list.both             <- function(plot_data, plot_type, par_name = NULL, ...){
 
   # get default plot settings
   dots      <- list(...)
@@ -113,8 +111,6 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   main      <- ""
   xlab      <- if(!is.null(par_name)) par_name else ""
-
-  if(is.null(scale_y2)) scale_y2  <- .get_scale_y2(plot_data, dots)
 
   if(any(sapply(plot_data, inherits, what = "density.prior.simple")) & any(sapply(plot_data, inherits, what = "density.prior.point"))){
     type  <- "both"
@@ -150,7 +146,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   if(plot_type == "base"){
 
     .plot.prior_empty(type, dots)
-
+    scale_y2 <- .get_scale_y2(plot_data, dots)
     for(i in seq_along(plot_data)){
       if(inherits(plot_data[[i]], what = "density.prior.simple")){
         args           <- dots
@@ -168,7 +164,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   }else if(plot_type == "ggplot"){
 
     plot     <- .ggplot.prior_empty(type, dots)
-
+    scale_y2 <- .get_scale_y2(plot_data, dots)
     for(i in seq_along(plot_data)){
       if(inherits(plot_data[[i]], what = "density.prior.simple")){
         args           <- dots
@@ -182,152 +178,6 @@ plot_prior_list <- function(prior_list, plot_type = "base",
       }
     }
 
-  }
-
-  # return the plots
-  if(plot_type == "base"){
-    return(invisible(plot))
-  }else if(plot_type == "ggplot"){
-    return(plot)
-  }
-}
-.plot_prior_list.factor           <- function(plot_data, plot_type, par_name = NULL, scale_y2 = NULL, ...){
-
-  # get default plot settings
-  dots      <- list(...)
-
-  xlim      <- range(as.vector(sapply(plot_data, attr, which = "x_range")))
-
-  main      <- ""
-  xlab      <- if(!is.null(par_name)) par_name else ""
-
-  if(is.null(scale_y2)) scale_y2  <- .get_scale_y2(plot_data, dots)
-
-  if(any(sapply(plot_data, inherits, what = "density.prior.simple")) & any(sapply(plot_data, inherits, what = "density.prior.point"))){
-    type  <- "both"
-    ylab  <- "Density"
-    ylab2 <- "Probability"
-    ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.simple")], attr, which = "y_range")))
-    ylim2 <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.point")],  attr, which = "y_range")))
-  }else if(any(sapply(plot_data, inherits, what = "density.prior.simple"))){
-    type  <- "simple"
-    ylab  <- "Density"
-    ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.simple")], attr, which = "y_range")))
-    ylab2 <- NULL
-    ylim2 <- NULL
-  }else if(any(sapply(plot_data, inherits, what = "density.prior.point"))){
-    type  <- "point"
-    ylab  <- "Probability"
-    ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.point")],  attr, which = "y_range")))
-    ylab2 <- NULL
-    ylim2 <- NULL
-  }
-
-
-  # add it to the user input if desired
-  if(is.null(dots[["main"]]))  dots$main  <-  main
-  if(is.null(dots[["xlab"]]))  dots$xlab  <-  xlab
-  if(is.null(dots[["ylab"]]))  dots$ylab  <-  ylab
-  if(is.null(dots[["ylab2"]])) dots$ylab2 <-  ylab2
-  if(is.null(dots[["xlim"]]))  dots$xlim  <-  xlim
-  if(is.null(dots[["ylim"]]))  dots$ylim  <-  ylim
-  if(is.null(dots[["ylim2"]])) dots$ylim2 <-  ylim2
-
-  # split on points and factors
-  plot_data_points  <- plot_data[sapply(plot_data, inherits, what = "density.prior.point")]
-  plot_data_factors <- plot_data[sapply(plot_data, inherits, what = "density.prior.factor")]
-
-  # prepare factor naming & formatting
-  level_names <- sapply(plot_data_factors, attr, which = "level_name")
-  if(any(grepl("[dif:", level_names, fixed = TRUE))){
-    level_names <- substr(level_names, regexpr("[dif:", level_names, fixed = TRUE)[[1]] + 5, regexpr("]", level_names, fixed = TRUE) - 1)
-  }else{
-    level_names <- substr(level_names, regexpr("[", level_names, fixed = TRUE)[[1]] + 1, regexpr("]", level_names, fixed = TRUE) - 1)
-  }
-
-
-  # prepare legend information
-  if(!is.null(dots[["legend"]]) && !dots[["legend"]]){
-    if(!is.null(dots[["col"]]))      dots[["col"]]      <- rep(dots[["col"]][1], length(level_names))
-    if(!is.null(dots[["lty"]]))      dots[["lty"]]      <- rep(dots[["lty"]][1], length(level_names))
-    if(!is.null(dots[["linetype"]])) dots[["linetype"]] <- rep(dots[["linetype"]][1], length(level_names))
-  }else{
-    if(is.null(dots[["col"]]) & (is.null(dots[["lty"]]) | is.null(dots[["linetype"]]))){
-      dots$col <- grDevices::palette.colors(n = length(level_names) + 1)[-1]
-    }
-    if(length(dots[["col"]]) == 1)      dots[["col"]]      <- rep(dots[["col"]],      length(level_names))
-    if(length(dots[["lty"]]) == 1)      dots[["lty"]]      <- rep(dots[["lty"]],      length(level_names))
-    if(length(dots[["linetype"]]) == 1) dots[["linetype"]] <- rep(dots[["linetype"]], length(level_names))
-
-    if(is.null(dots[["legend"]]))       dots[["legend"]]   <- TRUE
-  }
-
-
-  if(plot_type == "base"){
-
-    .plot.prior_empty(type, dots)
-
-    # plot points
-    for(i in seq_along(plot_data_points)){
-      args           <- dots
-      args$scale_y2  <- scale_y2
-      args$plot_data <- plot_data_points[[i]]
-      args$col       <- if(unique(length(dots[["col"]])) > 1) .plot.prior_settings()[["col"]]
-      args$lty       <- if(unique(length(dots[["lty"]])) > 1) .plot.prior_settings()[["lty"]]
-      do.call(.lines.prior.point, args)
-    }
-
-    # plot factor levels
-    for(i in seq_along(plot_data_factors)){
-      args           <- dots
-      args$plot_data <- plot_data_factors[[i]]
-      args$level     <- i
-      do.call(.lines.prior.factor, args)
-    }
-
-    if(dots[["legend"]]){
-      graphics::legend(
-        if(is.null(dots[["legend_position"]])) "topright" else dots[["legend_position"]],
-        legend = level_names,
-        col    = if(!is.null(dots[["col"]])) dots[["col"]] else rep(.plot.prior_settings()[["col"]], length(level_names)),
-        lty    = if(!is.null(dots[["lty"]])) dots[["lty"]] else rep(.plot.prior_settings()[["lty"]], length(level_names)),
-        lwd    = if(!is.null(dots[["lwd"]])) dots[["lwd"]] else rep(.plot.prior_settings()[["lwd"]], length(level_names)),
-        bty    = "n")
-    }
-
-    plot <- list(scale_y2 = scale_y2)
-
-  }else if(plot_type == "ggplot"){
-
-    plot     <- .ggplot.prior_empty(type, dots)
-
-    # plot points
-    for(i in seq_along(plot_data_points)){
-      args           <- dots
-      args$scale_y2  <- scale_y2
-      args$plot_data <- plot_data[[i]]
-      args$col       <- if(unique(length(dots[["col"]])) > 1)      .plot.prior_settings()[["col"]]
-      args$lty       <- if(unique(length(dots[["linetype"]])) > 1) .plot.prior_settings()[["linetype"]]
-      plot           <- plot + do.call(.geom_prior.point, args)
-    }
-
-    # plot factor levels
-    plot_data_factors <- data.frame(
-      x     = do.call(c, lapply(plot_data_factors, function(x) x$x)),
-      y     = do.call(c, lapply(plot_data_factors, function(x) x$y)),
-      level = do.call(c, lapply(seq_along(plot_data_factors), function(i) rep(level_names[i], length(plot_data_factors[[i]]$x))))
-    )
-
-    args             <- dots
-    args$level_names <- level_names
-    args$plot_data   <- plot_data_factors
-    plot             <- plot + do.call(.geom_prior.factors, args)
-
-    if(dots[["legend"]]){
-      plot <- plot + ggplot2::theme(
-        legend.title    = ggplot2::element_blank(),
-        legend.position = if(is.null(dots[["legend_position"]])) "right" else dots[["legend_position"]])
-    }
   }
 
   # return the plots
@@ -514,7 +364,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     if(inherits(plot_data[[i]], "density.prior.point")){
       x_points <- c(x_points, plot_data[[i]]$x[plot_data[[i]]$y != 0])
       y_points <- c(y_points, mixing_prop[i])
-    }else if(inherits(plot_data[[i]], "density.prior.simple") | inherits(plot_data[[i]], "density.prior.orthonormal")){
+    }else if(inherits(plot_data[[i]], "density.prior.simple")){
       x_den <- rbind(x_den, plot_data[[i]]$x)
       y_den <- rbind(y_den, plot_data[[i]]$y * mixing_prop[i])
     }
@@ -589,7 +439,6 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   return(out)
 }
-
 .simplify_prior_list <- function(prior_list){
 
   # return the input with fewer than 2 priors
@@ -1016,21 +865,13 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
   }else{
 
-    prior_list  <- attr(samples[[parameter]], "prior_list")
-    prior_list  <- .simplify_prior_list(prior_list)
-
-    if(any(sapply(prior_list, is.prior.factor))){
-      plot_data <- .plot_data_samples.factor(samples, parameter = parameter, n_points = n_points,
-                                             transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings)
-    }else{
-      plot_data <- .plot_data_samples.simple(samples, parameter = parameter, n_points = n_points,
-                                             transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings)
-    }
-
-
+    plot_data <- .plot_data_samples.simple(samples, parameter = parameter, n_points = n_points,
+                                           transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings)
 
     # add priors, if requested
     if(prior){
+      prior_list  <- attr(samples[[parameter]], "prior_list")
+      prior_list  <- .simplify_prior_list(prior_list)
 
       plot_data_prior <- .plot_data_prior_list.simple(prior_list, x_seq = NULL, x_range = xlim, x_range_quant = NULL,
                                                 n_points = n_points, n_samples = n_samples, force_samples = force_samples, individual = individual,
@@ -1059,58 +900,34 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       scale_y2   <- .get_scale_y2(plot_data_prior, ...)
       dots_prior <- .transfer_dots(dots_prior, ...)
 
+      args           <- dots_prior
+      args$plot_data <- plot_data_prior
+      args$plot_type <- plot_type
+      args$par_name  <- par_name
+      plot           <- do.call(.plot_prior_list.both, args)
 
-      # set the y/x ranges
-      for(i in seq_along(plot_data)){
-        if(inherits(plot_data[[i]], what = "density.prior.point")){
-          attr(plot_data[[i]], which = "y_range") <- if(any(sapply(plot_data_prior, inherits, what = "density.prior.simple")) & any(sapply(plot_data_prior, inherits, what = "density.prior.point"))) ylim2 else ylim
-        }else{
-          attr(plot_data[[i]], which = "y_range") <- ylim
-          attr(plot_data[[i]], which = "x_range") <- xlim
+      if(plot_type == "ggplot"){
+        for(i in seq_along(plot_data)){
+          if(inherits(plot_data[[i]], what = "density.prior.simple")){
+            plot <- plot + .geom_prior.simple(plot_data[[i]], ...)
+          }else if(inherits(plot_data[[i]], what = "density.prior.point")){
+            plot <- plot + .geom_prior.point(plot_data[[i]], scale_y2 = scale_y2, ...)
+          }
         }
-      }
-
-      # plot posterior
-      if(any(sapply(prior_list, is.prior.factor))){
-        plot <- .plot_prior_list.factor(plot_data = plot_data, plot_type = plot_type, par_name = par_name, ...)
       }else{
-        plot <- .plot_prior_list.both(plot_data = plot_data, plot_type = plot_type, par_name = par_name, ...)
-      }
-
-
-      for(i in seq_along(plot_data_prior)){
-
-        args           <- dots_prior
-        args$plot_data <- plot_data_prior[[i]]
-        args$plot_type <- plot_type
-        args$par_name  <- par_name
-        args$scale_y2  <- scale_y2
-
-        if(plot_type == "ggplot"){
-
-          if(inherits(plot_data_prior[[i]], what = "density.prior.simple")){
-            plot <- plot + do.call(.geom_prior.simple, args)
-          }else if(inherits(plot_data_prior[[i]], what = "density.prior.point")){
-            plot <- plot + do.call(.geom_prior.point, args)
-          }
-        }else{
-          if(inherits(plot_data_prior[[i]], what = "density.prior.simple")){
-            do.call(.lines.prior.simple, args)
-          }else if(inherits(plot_data_prior[[i]], what = "density.prior.point")){
-            do.call(.lines.prior.point, args)
+        for(i in seq_along(plot_data)){
+          if(inherits(plot_data[[i]], what = "density.prior.simple")){
+            .lines.prior.simple(plot_data[[i]], ...)
+          }else if(inherits(plot_data[[i]], what = "density.prior.point")){
+            .lines.prior.point(plot_data[[i]], scale_y2 = scale_y2, ...)
           }
         }
       }
-
 
     }else{
 
       # plot just posterior otherwise
-      if(any(sapply(prior_list, is.prior.factor))){
-        plot <- .plot_prior_list.factor(plot_data = plot_data, plot_type = plot_type, par_name = par_name, ...)
-      }else{
-        plot <- .plot_prior_list.both(plot_data = plot_data, plot_type = plot_type, par_name = par_name, ...)
-      }
+      plot <- .plot_prior_list.both(plot_data = plot_data, plot_type = plot_type, par_name = par_name, ...)
 
     }
 
@@ -1356,130 +1173,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
   return(out)
 }
-.plot_data_samples.factor         <- function(samples, parameter, n_points, transformation, transformation_arguments, transformation_settings){
 
-  check_list(samples, "samples", check_names = parameter, allow_other = TRUE)
-
-  x_points <- NULL
-  y_points <- NULL
-  x_den    <- NULL
-  y_den    <- NULL
-
-  # transform & extract the relevant data
-  prior_list <- attr(samples[[parameter]], "prior_list")
-
-  if(any(sapply(prior_list, is.prior.orthonormal))){
-    samples  <- .transform_orthonormal_samples(samples)
-  }
-  samples    <- samples[[parameter]]
-
-  # create the output object
-  out <- list()
-
-  # deal with spikes
-  if(any(sapply(prior_list, is.prior.point))){
-
-    # aggregate samples across spikes
-    spikes_simplified <- .simplify_spike_samples(samples, prior_list)
-
-    if(nrow(spikes_simplified) > 0){
-      x_points <- spikes_simplified[,"location"]
-      y_points <- spikes_simplified[,"probability"]
-    }else{
-      x_points <- NULL
-      y_points <- NULL
-    }
-
-    # apply transformations
-    if(!is.null(transformation)){
-      x_points <- .density.prior_transformation_x(x_points, transformation, transformation_arguments)
-    }
-
-    for(i in seq_along(y_points)){
-      temp_points <- list(
-        call    = call("density", paste0("point", i)),
-        bw      = NULL,
-        n       = n_points,
-        x       = x_points[i],
-        y       = y_points[i],
-        samples = NULL
-      )
-
-      class(temp_points) <- c("density", "density.prior", "density.prior.point")
-      attr(temp_points, "x_range") <- range(x_points[i])
-      attr(temp_points, "y_range") <- c(0, max(y_points[i]))
-
-      out[[paste0("points",i)]] <- temp_points
-    }
-  }
-
-  # deal with the densities
-  if(any(!sapply(prior_list, is.prior.point))){
-
-    samples_density <- samples[attr(samples, "models_ind") %in% which(!sapply(prior_list, is.prior.point)),,drop=FALSE]
-
-    if(nrow(samples_density) > 0){
-      for(i in 1:ncol(samples_density)){
-
-        args <- list(x = samples_density[,i], n = n_points)
-
-        # set the endpoints for possible truncation
-        prior_list_simple <- prior_list[!sapply(prior_list, is.prior.point)]
-        prior_list_simple_lower <- min(sapply(prior_list_simple, function(p) p$truncation[["lower"]]))
-        prior_list_simple_upper <- max(sapply(prior_list_simple, function(p) p$truncation[["upper"]]))
-        if(!is.infinite(prior_list_simple_lower)){
-          args <- c(args, from = prior_list_simple_lower)
-        }
-        if(!is.infinite(prior_list_simple_upper)){
-          args <- c(args, to = prior_list_simple_upper)
-        }
-
-        # get the density estimate
-        density_continuous <- do.call(stats::density, args)
-        x_den    <- density_continuous$x
-        y_den    <- density_continuous$y * (length(samples_density[,i]) / length(samples))
-
-        # check for truncation
-        if(isTRUE(all.equal(prior_list_simple_lower, x_den[1])) | prior_list_simple_lower >= x_den[1]){
-          y_den <- c(0, y_den)
-          x_den <- c(x_den[1], x_den)
-        }
-        if(isTRUE(all.equal(prior_list_simple_upper, x_den[length(x_den)])) | prior_list_simple_upper <= x_den[length(x_den)]){
-          y_den <- c(y_den, 0)
-          x_den <- c(x_den, x_den[length(x_den)])
-        }
-
-        # apply transformations
-        if(!is.null(transformation)){
-          x_den   <- .density.prior_transformation_x(x_den,   transformation, transformation_arguments)
-          y_den   <- .density.prior_transformation_y(x_den, y_den, transformation, transformation_arguments)
-          samples_density[,i] <- .density.prior_transformation_x(samples_density[,i],   transformation, transformation_arguments)
-        }
-
-        out_den    <- list(
-          call    = call("density", "mixed samples"),
-          bw      = NULL,
-          n       = n_points,
-          x       = x_den,
-          y       = y_den,
-          samples = samples_density
-        )
-
-        class(out_den) <- c("density", "density.prior", "density.prior.factor", "density.prior.simple")
-        attr(out_den, "x_range")    <- range(x_den)
-        attr(out_den, "y_range")    <- c(0, max(y_den))
-        attr(out_den, "level_name") <- colnames(samples_density)[i]
-
-        out[[paste0("density", i)]] <- out_den
-
-      }
-    }
-  }
-
-
-
-  return(out)
-}
 
 
 #' @title Plot estimates from models
@@ -1518,8 +1212,8 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
   # check input
   check_list(model_list, "model_list")
   check_char(parameter, "parameter")
-  sapply(model_list, function(m)check_list(m, "model_list:model", check_names = "fit_summary", all_objects = TRUE, allow_other = TRUE))
-  if(!all(unlist(sapply(model_list, function(m) sapply(attr(m[["fit"]], "prior_list"), function(p) is.prior(p))))))
+  sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("fit_summary", "priors"), all_objects = TRUE, allow_other = TRUE))
+  if(!all(unlist(sapply(model_list, function(m)sapply(m[["priors"]], function(p)is.prior(p))))))
     stop("model_list:priors must contain 'BayesTools' priors")
   if(!all(sapply(model_list, function(m)inherits(m[["fit_summary"]], what = "BayesTools_runjags_summary"))))
     stop("model_list:fit_summary must contain 'BayesTools' fit_summary")
@@ -1804,7 +1498,7 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
   if(nrow(priors_point_map) < 2){
     spike_probability = data.frame(cbind(
       "location"    = priors_point_map[, "location"],
-      "probability" = priors_point_map[, "frequency"] / if(!is.matrix(samples)) length(samples) else nrow(samples) ))
+      "probability" = priors_point_map[, "frequency"] / length(samples)))
     spike_probability <- spike_probability[priors_point_map[, "frequency"] != 0, ]
     return(spike_probability)
   }
@@ -1819,7 +1513,7 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
 
   spike_probability = data.frame(cbind(
     "location"    = unique_map[, "location"],
-    "probability" = unique_map[, "frequency"] / if(!is.matrix(samples)) length(samples) else nrow(samples) ))
+    "probability" = unique_map[, "frequency"] / length(samples)))
   spike_probability <- spike_probability[unique_map[, "frequency"] != 0, ]
 
   return(spike_probability)

@@ -52,7 +52,7 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
 
   if(is.prior.none(x)){
     output <- .print.prior.none(x, short_name, parameter_names, plot, digits_estimates, silent)
-  }else if(is.prior.simple(x) || is.prior.vector(x)){
+  }else if(is.prior.simple(x)){
     output <- .print.prior.simple(x, short_name, parameter_names, plot, digits_estimates, silent)
   }else if(is.prior.weightfunction(x)){
     output <- .print.prior.weightfunction(x, short_name, parameter_names, plot, digits_estimates, silent)
@@ -66,25 +66,17 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
 }
 
 .print.prior.simple         <- function(x, short_name, parameter_names, plot, digits_estimates, silent){
-
   # check whether the range was truncated (before the object is modified)
-  if(is.prior.vector(x)){
-    needs_truncation <- FALSE
-  }else{
-    needs_truncation <- !.is_prior_default_range(x)
-  }
+  needs_truncation <- !.is_prior_default_range(x)
 
   # deal with exceptions - Cauchy is passed as T
-  if(x[["distribution"]] == "t" && x[["parameters"]][["df"]] == 1){
+  if(x[["distribution"]] == "t"){
+    if(x[["parameters"]][["df"]] == 1){
       x[["distribution"]] <- "Cauchy"
       x[["parameters"]]   <- list(
         location = x[["parameters"]][["location"]],
         scale    = x[["parameters"]][["scale"]])
-  }else if(x[["distribution"]] == "mt" && x[["parameters"]][["df"]] == 1){
-    x[["distribution"]] <- "mCauchy"
-    x[["parameters"]]   <- list(
-      location = x[["parameters"]][["location"]],
-      scale    = x[["parameters"]][["scale"]])
+    }
   }
 
   ### prepare prior name
@@ -100,10 +92,7 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
       "point"        = "S",
       "beta"         = "B",
       "exp"          = "E",
-      "uniform"      = "U",
-      "mnormal"      = "mN",
-      "mt"           = "mT",
-      "mCauchy"      = "mC"
+      "uniform"      = "U"
     )
   }else{
     out_name <- switch(
@@ -118,9 +107,6 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
       "beta"         = "Beta",
       "exp"          = "Exponential",
       "uniform"      = "Uniform",
-      "mnormal"      = "mNormal",
-      "mt"           = "mStudent-t",
-      "mCauchy"      = "mCauchy"
     )
   }
 
@@ -129,17 +115,8 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
     out_prefix <- "PET ~ "
   }else if(is.prior.PEESE(x)){
     out_prefix <- "PEESE ~ "
-  }else if(is.prior.dummy(x)){
-    out_prefix <- "treatment contrast: "
-  }else if(is.prior.orthonormal(x)){
-    out_prefix <- "orthonormal contrast: "
   }else{
     out_prefix <- NULL
-  }
-
-  # remove the dimensions parameter from multivariate prior distributions
-  if(is.prior.vector(x)){
-    x[["parameters"]] <- x[["parameters"]][names(x[["parameters"]]) != "K"]
   }
 
   ### prepare prior parameters

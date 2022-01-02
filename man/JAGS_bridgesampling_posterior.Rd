@@ -16,8 +16,7 @@ JAGS_bridgesampling_posterior(
 distribution}
 
 \item{prior_list}{named list of prior distribution
-(names correspond to the parameter names) of parameters not specified within the
-\code{formula_list}}
+(names correspond to the parameter names)}
 
 \item{add_parameters}{vector of additional parameter names that should be used
 in bridgesampling but were not specified in the \code{prior_list}}
