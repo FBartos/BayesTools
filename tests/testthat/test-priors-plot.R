@@ -92,3 +92,32 @@ test_that("Prior plot (PET-PEESE) function works", {
   expect_doppelganger("priors-plot-7-2-1", plot(p6.1, plot_type = "ggplot"))
 
 })
+
+test_that("Prior plot (orthonormal) function works", {
+
+  p11   <- prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "orthonormal")
+  p12   <- prior_factor("mcauchy", list(location = 0, scale = 1), contrast = "orthonormal")
+  p11.5 <- p11.3 <- p11.2 <- p11
+  p12.9 <- p12
+  p11.2$parameters$K <- 2
+  p11.3$parameters$K <- 3
+  p11.5$parameters$K <- 5
+  p12.9$parameters$K <- 9
+
+  expect_doppelganger("priors-plot-11-2", function()plot(p11.2))
+  expect_doppelganger("priors-plot-11-3", plot(p11.3, plot_type = "ggplot"))
+  expect_doppelganger("priors-plot-11-5", function()plot(p11.5))
+  expect_doppelganger("priors-plot-12-9", function()plot(p12.9))
+
+})
+
+test_that("Prior plot (treatment) function works", {
+
+  p13   <- prior_factor("normal", list(mean = 0, sd = 1), contrast = "treatment")
+  p14   <- prior_factor("beta", list(alpha = 2, beta = 3), contrast = "treatment")
+
+  expect_doppelganger("priors-plot-13-1", function()plot(p13))
+  expect_doppelganger("priors-plot-13-2", plot(p13, plot_type = "ggplot"))
+  expect_doppelganger("priors-plot-14",   function()plot(p14))
+
+})

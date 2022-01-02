@@ -69,7 +69,7 @@
 
   return(truncation)
 }
-.check_parameter <- function(parameter, name, length = 1){
+.check_parameter           <- function(parameter, name, length = 1){
   if(length == -1){
     if(!is.numeric(parameter) | !is.vector(parameter) | length(parameter) > 1)
       stop(paste0("The '", name, "' must be a numeric vector of length at least 2."), call. = FALSE)
@@ -97,6 +97,16 @@
   }else{
     if(any(parameter >= 0))
       stop(paste0("The '", name, "' must be negative."), call. = FALSE)
+  }
+}
+.check_parameter_dimensions<- function(parameter, name, allow_NA = FALSE){
+  if(!allow_NA && is.na(parameter)){
+    stop(paste0("The '", name, "' must be defined."), call. = FALSE)
+  }else if(!allow_NA){
+    if(length(parameter) != 1 || !is.numeric(parameter))
+      stop(paste0("The '", name, "' must be a numeric vector of length 1."), call. = FALSE)
+    if(!.is.wholenumber(parameter))
+      stop(paste0(call, "The '", name ,"' must be an integer"), call. = FALSE)
   }
 }
 .check_parameter_weigthfunction <- function(steps, alpha = NULL, alpha1 = NULL, alpha2 = NULL, omega = NULL){
@@ -179,11 +189,15 @@
 #'
 #' @export is.prior
 #' @export is.prior.simple
+#' @export is.prior.vector
 #' @export is.prior.point
 #' @export is.prior.none
 #' @export is.prior.PET
 #' @export is.prior.PEESE
 #' @export is.prior.weightfunction
+#' @export is.prior.factor
+#' @export is.prior.orthonormal
+#' @export is.prior.dummy
 #' @name is.prior
 NULL
 
@@ -204,6 +218,10 @@ is.prior.simple          <- function(x){
   inherits(x, "prior.simple")
 }
 #' @rdname is.prior
+is.prior.vector          <- function(x){
+  inherits(x, "prior.vector")
+}
+#' @rdname is.prior
 is.prior.PET             <- function(x){
   inherits(x, "prior.PET")
 }
@@ -214,6 +232,18 @@ is.prior.PEESE           <- function(x){
 #' @rdname is.prior
 is.prior.weightfunction  <- function(x){
   inherits(x, "prior.weightfunction")
+}
+#' @rdname is.prior
+is.prior.factor          <- function(x){
+  inherits(x, "prior.factor")
+}
+#' @rdname is.prior
+is.prior.orthonormal     <- function(x){
+  inherits(x, "prior.orthonormal")
+}
+#' @rdname is.prior
+is.prior.dummy           <- function(x){
+  inherits(x, "prior.dummy")
 }
 
 .check_prior <- function(prior, name = "prior"){

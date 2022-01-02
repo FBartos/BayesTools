@@ -49,13 +49,13 @@
 <line x1='547.20' y1='159.20' x2='554.40' y2='159.20' style='stroke-width: 0.75; stroke: none;' />
 <line x1='547.20' y1='99.20' x2='554.40' y2='99.20' style='stroke-width: 0.75; stroke: none;' />
 <line x1='547.20' y1='79.20' x2='554.40' y2='79.20' style='stroke-width: 0.75; stroke: none;' />
-<text x='561.60' y='423.33' style='font-size: 12.00px; font-family: sans;' textLength='86.74px' lengthAdjust='spacingAndGlyphs'>0.19 [0.00, 1.11]</text>
+<text x='561.60' y='423.33' style='font-size: 12.00px; font-family: sans;' textLength='86.74px' lengthAdjust='spacingAndGlyphs'>0.23 [0.00, 1.11]</text>
 <text x='561.60' y='263.33' style='font-size: 12.00px; font-family: sans;' textLength='86.74px' lengthAdjust='spacingAndGlyphs'>0.00 [0.00, 0.00]</text>
-<text x='561.60' y='243.33' style='font-size: 12.00px; font-family: sans;' textLength='126.76px' lengthAdjust='spacingAndGlyphs'>BF = 2.71 [0.33 -&gt; 0.58]</text>
+<text x='561.60' y='243.33' style='font-size: 12.00px; font-family: sans;' textLength='126.76px' lengthAdjust='spacingAndGlyphs'>BF = 2.42 [0.33 -&gt; 0.55]</text>
 <text x='561.60' y='183.33' style='font-size: 12.00px; font-family: sans;' textLength='86.74px' lengthAdjust='spacingAndGlyphs'>0.00 [0.00, 0.00]</text>
-<text x='561.60' y='163.33' style='font-size: 12.00px; font-family: sans;' textLength='126.76px' lengthAdjust='spacingAndGlyphs'>BF = 0.55 [0.33 -&gt; 0.22]</text>
-<text x='561.60' y='103.33' style='font-size: 12.00px; font-family: sans;' textLength='86.74px' lengthAdjust='spacingAndGlyphs'>0.90 [0.59, 1.46]</text>
-<text x='561.60' y='83.33' style='font-size: 12.00px; font-family: sans;' textLength='126.76px' lengthAdjust='spacingAndGlyphs'>BF = 0.52 [0.33 -&gt; 0.21]</text>
+<text x='561.60' y='163.33' style='font-size: 12.00px; font-family: sans;' textLength='126.76px' lengthAdjust='spacingAndGlyphs'>BF = 0.43 [0.33 -&gt; 0.18]</text>
+<text x='561.60' y='103.33' style='font-size: 12.00px; font-family: sans;' textLength='86.74px' lengthAdjust='spacingAndGlyphs'>0.84 [0.53, 1.31]</text>
+<text x='561.60' y='83.33' style='font-size: 12.00px; font-family: sans;' textLength='126.76px' lengthAdjust='spacingAndGlyphs'>BF = 0.75 [0.33 -&gt; 0.27]</text>
 </g>
 <defs>
   <clipPath id='cpMTM0LjQwfDU0Ny4yMHwwLjAwfDUxOC40MA=='>
@@ -64,18 +64,18 @@
 </defs>
 <g clip-path='url(#cpMTM0LjQwfDU0Ny4yMHwwLjAwfDUxOC40MA==)'>
 <line x1='149.69' y1='518.40' x2='149.69' y2='0.00' style='stroke-width: 0.75; stroke-dasharray: 1.00,3.00;' />
-<line x1='239.68' y1='99.20' x2='372.94' y2='99.20' style='stroke-width: 0.75;' />
-<polyline points='239.68,92.00 239.68,99.20 239.68,106.40 ' style='stroke-width: 0.75;' />
-<polyline points='372.94,106.40 372.94,99.20 372.94,92.00 ' style='stroke-width: 0.75;' />
-<polygon points='143.48,265.41 155.90,265.41 155.90,252.99 143.48,252.99 ' style='stroke-width: 0.75; stroke: none; fill: #000000;' />
-<polygon points='147.35,181.54 152.03,181.54 152.03,176.86 147.35,176.86 ' style='stroke-width: 0.75; stroke: none; fill: #000000;' />
-<polygon points='285.47,101.45 289.96,101.45 289.96,96.95 285.47,96.95 ' style='stroke-width: 0.75; stroke: none; fill: #000000;' />
+<line x1='230.81' y1='99.20' x2='349.40' y2='99.20' style='stroke-width: 0.75;' />
+<polyline points='230.81,92.00 230.81,99.20 230.81,106.40 ' style='stroke-width: 0.75;' />
+<polyline points='349.40,106.40 349.40,99.20 349.40,92.00 ' style='stroke-width: 0.75;' />
+<polygon points='143.77,265.12 155.61,265.12 155.61,253.28 143.77,253.28 ' style='stroke-width: 0.75; stroke: none; fill: #000000;' />
+<polygon points='147.76,181.13 151.62,181.13 151.62,177.27 147.76,177.27 ' style='stroke-width: 0.75; stroke: none; fill: #000000;' />
+<polygon points='274.56,102.15 280.47,102.15 280.47,96.25 274.56,96.25 ' style='stroke-width: 0.75; stroke: none; fill: #000000;' />
 <line x1='154.48' y1='79.20' x2='492.37' y2='79.20' style='stroke-width: 0.75; stroke: #CCCCCC;' />
 <polyline points='154.48,72.00 154.48,79.20 154.48,86.40 ' style='stroke-width: 0.75; stroke: #CCCCCC;' />
 <polyline points='492.37,86.40 492.37,79.20 492.37,72.00 ' style='stroke-width: 0.75; stroke: #CCCCCC;' />
 <polygon points='146.09,242.80 153.29,242.80 153.29,235.60 146.09,235.60 ' style='stroke-width: 0.75; stroke: none; fill: #CCCCCC;' />
 <polygon points='146.09,162.80 153.29,162.80 153.29,155.60 146.09,155.60 ' style='stroke-width: 0.75; stroke: none; fill: #CCCCCC;' />
 <polygon points='268.08,82.80 275.28,82.80 275.28,75.60 268.08,75.60 ' style='stroke-width: 0.75; stroke: none; fill: #CCCCCC;' />
-<polygon points='149.69,419.20 178.04,399.20 319.67,419.20 178.04,439.20 ' style='stroke-width: 0.75; fill: #000000;' />
+<polygon points='149.69,419.20 184.76,399.20 320.16,419.20 184.76,439.20 ' style='stroke-width: 0.75; fill: #000000;' />
 </g>
 </svg>

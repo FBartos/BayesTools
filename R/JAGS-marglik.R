@@ -10,12 +10,21 @@
 #'
 #' @param fit model fitted with either \link[runjags]{runjags} posterior
 #' samples obtained with \link[rjags]{rjags-package}
-#' @param data data that were used to fit the model
-#' @param prior_list named list of prior distribution
-#' (names correspond to the parameter names)
 #' @param log_posterior function that takes a named list of samples, the data,
 #' and additional list of parameters passed as \code{...} as input and
 #' returns the log of the unnormalized posterior density of the model part
+#' @param data list containing data to fit the model (not including data for the formulas)
+#' @param prior_list named list of prior distribution
+#' (names correspond to the parameter names) of parameters not specified within the
+#' \code{formula_list}
+#' @param formula_list named list of formulas to be added to the model
+#' (names correspond to the parameter name created by each of the formula)
+#' @param formula_data_list named list of data frames containing data for each formula
+#' (names of the lists correspond to the parameter name created by each of the formula)
+#' @param formula_prior_list named list of named lists of prior distributions
+#' (names of the lists correspond to the parameter name created by each of the formula and
+#' the names of the prior distribution correspond to the parameter names) of parameters specified
+#' within the \code{formula}
 #' @param add_parameters vector of additional parameter names that should be used
 #' in bridgesampling but were not specified in the \code{prior_list}
 #' @param add_bounds list with two name vectors (\code{"lb"} and \code{"up"})
@@ -56,19 +65,21 @@
 #' }
 #'
 #' # get marginal likelihoods
-#' marglik <- JAGS_bridgesampling(fit, data, priors_list, log_posterior)
+#' marglik <- JAGS_bridgesampling(fit, log_posterior, data, priors_list)
 #' }
 #' @return \code{JAGS_bridgesampling} returns an object of class 'bridge'.
 #'
 #' @export
-JAGS_bridgesampling <- function(fit, data, prior_list, log_posterior,
+JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL,
                                 add_parameters = NULL, add_bounds = NULL,
                                 maxiter = 10000, silent = TRUE, ...){
 
-
+  ### check input
   check_bool(silent, "silent")
   check_int(maxiter, "maxiter", lower = 1)
-
+  check_list(formula_list, "formula_list", allow_NULL = TRUE)
+  check_list(formula_data_list, "formula_data_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
+  check_list(formula_prior_list, "formula_prior_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
 
   ### check the input and split it on posterior and data
   if(inherits(fit, "runjags")){
@@ -104,37 +115,78 @@ JAGS_bridgesampling <- function(fit, data, prior_list, log_posterior,
   }
 
 
+  ### prepare formula objects summary
+  if(!is.null(formula_list)){
+
+    # obtain settings for each formula
+    formula_output <- list()
+    for(parameter in names(formula_list)){
+      formula_output[[parameter]] <- JAGS_formula(
+        formula    = formula_list[[parameter]],
+        parameter  = parameter,
+        data       = formula_data_list[[parameter]],
+        prior_list = formula_prior_list[[parameter]])
+    }
+
+    # merge with the rest of the input
+    formula_list       <- lapply(formula_output, function(output) output[["formula"]])
+    formula_prior_list <- lapply(formula_output, function(output) output[["prior_list"]])
+    formula_data_list  <- lapply(formula_output, function(output) output[["data"]])
+
+    all_prior_list <- c(prior_list, do.call(c, unname(formula_prior_list)))
+
+  }else{
+    all_prior_list <- prior_list
+  }
+
   ### extract relevant variables and upper and lower bound
-  bridgesampling_posterior <- JAGS_bridgesampling_posterior(posterior, prior_list, add_parameters, add_bounds)
+  bridgesampling_posterior <- JAGS_bridgesampling_posterior(posterior = posterior, prior_list = all_prior_list, add_parameters = add_parameters, add_bounds = add_bounds)
   if(ncol(bridgesampling_posterior) == 0)
     stop("Bridge sampling cannot proceed without any estimated parameter")
 
 
-  ### the marglik function
-  full_log_posterior <- function(samples.row, data, prior_list, add_parameters, ...){
+  ### define the marglik function
+  full_log_posterior <- function(samples.row, data, prior_list, formula_data_list, formula_prior_list, add_parameters, ...){
 
-    parameters      <- JAGS_marglik_parameters(samples.row, prior_list)
-    if(!is.null(add_parameters)){
-      parameters    <- c(parameters, samples.row[add_parameters])
+    # prepare object for holding the parameters, later accessible to the user specified 'log_posterior'
+    parameters <- list()
+    if(!is.null(prior_list)){
+      parameters <- c(parameters, JAGS_marglik_parameters(samples.row, prior_list))
     }
-    marglik_priors  <- JAGS_marglik_priors(samples.row, prior_list)
-    marglik_model   <- log_posterior(parameters, data, ...)
+    if(!is.null(formula_prior_list)){
+      parameters <- c(parameters, JAGS_marglik_parameters_formula(samples.row, formula_data_list, formula_prior_list))
+    }
+    if(!is.null(add_parameters)){
+      parameters <- c(parameters, samples.row[add_parameters])
+    }
 
-    return(marglik_priors + marglik_model)
+    # compute the marginal likelihoods
+    marglik <- 0
+    if(!is.null(prior_list)){
+      marglik <- marglik + JAGS_marglik_priors(samples.row, prior_list)
+    }
+    if(!is.null(formula_prior_list)){
+      marglik <- marglik + JAGS_marglik_priors_formula(samples.row, formula_prior_list)
+    }
+    marglik   <- marglik + log_posterior(parameters, data, ...)
+
+    return(marglik)
   }
 
 
   ### perform bridgesampling
   marglik <- tryCatch(suppressWarnings(bridgesampling::bridge_sampler(
-      samples        = bridgesampling_posterior,
-      data           = data,
-      log_posterior  = full_log_posterior,
-      prior_list     = prior_list,
-      lb             = attr(bridgesampling_posterior, "lb"),
-      ub             = attr(bridgesampling_posterior, "ub"),
-      silent         = silent,
-      maxiter        = maxiter,
-      add_parameters = add_parameters,
+      samples            = bridgesampling_posterior,
+      data               = data,
+      log_posterior      = full_log_posterior,
+      prior_list         = prior_list,
+      formula_data_list  = formula_data_list,
+      formula_prior_list = formula_prior_list,
+      lb                 = attr(bridgesampling_posterior, "lb"),
+      ub                 = attr(bridgesampling_posterior, "ub"),
+      silent             = silent,
+      maxiter            = maxiter,
+      add_parameters     = add_parameters,
       ...
     )), error = function(e)e)
 
@@ -158,8 +210,6 @@ JAGS_bridgesampling <- function(fit, data, prior_list, log_posterior,
 #'
 #' @param posterior matrix of mcmc samples from the posterior
 #' distribution
-#' @param prior_list named list of prior distribution
-#' (names correspond to the parameter names)
 #'
 #' @inheritParams JAGS_bridgesampling
 #'
@@ -246,6 +296,14 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
 
       add_parameter <- .JAGS_bridgesampling_posterior_info.PP(prior_list[[i]])
 
+    }else if(is.prior.factor(prior_list[[i]])){
+
+      add_parameter <- .JAGS_bridgesampling_posterior_info.factor(prior_list[[i]], names(prior_list)[i])
+
+    }else if(is.prior.vector(prior_list[[i]])){
+
+      add_parameter <- .JAGS_bridgesampling_posterior_info.vector(prior_list[[i]], names(prior_list)[i])
+
     }else if(is.prior.simple(prior_list[[i]])){
 
       add_parameter <- .JAGS_bridgesampling_posterior_info.simple(prior_list[[i]], names(prior_list)[i])
@@ -287,6 +345,72 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
 
   names(attr(parameter, "lb")) <- parameter
   names(attr(parameter, "ub")) <- parameter
+
+  return(parameter)
+}
+.JAGS_bridgesampling_posterior_info.vector         <- function(prior, parameter_name){
+
+  .check_prior(prior)
+  if(!is.prior.vector(prior))
+    stop("improper prior provided")
+  if(!is.character(parameter_name) | length(parameter_name) != 1)
+    stop("'parameter_name' must be a character vector of length 1.")
+
+  if(prior$parameters[["K"]] == 1){
+    parameter <- parameter_name
+  }else{
+    parameter <- paste0(parameter_name, "[", 1:prior$parameters[["K"]], "]")
+  }
+
+  attr(parameter, "lb") <- rep(prior$truncation[["lower"]], prior$parameters[["K"]])
+  attr(parameter, "ub") <- rep(prior$truncation[["upper"]], prior$parameters[["K"]])
+
+  names(attr(parameter, "lb")) <- parameter
+  names(attr(parameter, "ub")) <- parameter
+
+  return(parameter)
+}
+.JAGS_bridgesampling_posterior_info.factor         <- function(prior, parameter_name){
+
+  .check_prior(prior)
+  if(!is.prior.factor(prior))
+    stop("improper prior provided")
+  if(!is.character(parameter_name) | length(parameter_name) != 1)
+    stop("'parameter_name' must be a character vector of length 1.")
+
+  if(is.prior.dummy(prior)){
+
+    if((attr(prior, "levels") - 1) == 1){
+
+      parameter <- .JAGS_bridgesampling_posterior_info.simple(prior, parameter_name)
+
+    }else{
+
+      parameter    <- NULL
+      parameter_lb <- NULL
+      parameter_ub <- NULL
+
+      for(i in 1:(attr(prior, "levels") - 1)){
+
+        add_parameter <- .JAGS_bridgesampling_posterior_info.simple(prior, paste0(parameter_name, "[", i, "]"))
+
+        parameter    <- c(parameter,    add_parameter)
+        parameter_lb <- c(parameter_lb, attr(add_parameter, "lb"))
+        parameter_ub <- c(parameter_ub, attr(add_parameter, "ub"))
+      }
+
+      attr(parameter, "lb") <- parameter_lb
+      attr(parameter, "ub") <- parameter_ub
+
+    }
+
+  }else if(is.prior.orthonormal(prior)){
+
+    prior$parameters[["K"]] <- attr(prior, "levels") - 1
+
+    parameter <- .JAGS_bridgesampling_posterior_info.vector(prior, parameter_name)
+
+  }
 
   return(parameter)
 }
@@ -344,12 +468,17 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
 #' @param samples samples provided by bridgesampling
 #' function
 #'
-#' @inheritParams JAGS_add_priors
+#' @inheritParams JAGS_bridgesampling
 #'
 #' @return \code{JAGS_marglik_priors} returns a numeric value
 #' of likelihood evaluated at the current posterior sample.
 #'
-#' @export
+#' @export JAGS_marglik_priors
+#' @export JAGS_marglik_priors_formula
+#' @name JAGS_marglik_priors
+NULL
+
+#' @rdname JAGS_marglik_priors
 JAGS_marglik_priors                <- function(samples, prior_list){
 
   # return empty string in case that no prior was specified
@@ -374,6 +503,14 @@ JAGS_marglik_priors                <- function(samples, prior_list){
     }else if(is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
 
       marglik <- marglik + .JAGS_marglik_priors.PP(samples, prior_list[[i]])
+
+    }else if(is.prior.factor(prior_list[[i]])){
+
+      marglik <- marglik + .JAGS_marglik_priors.factor(samples, prior_list[[i]], names(prior_list)[i])
+
+    }else if(is.prior.vector(prior_list[[i]])){
+
+      marglik <- marglik + .JAGS_marglik_priors.vector(samples, prior_list[[i]], names(prior_list)[i])
 
     }else if(is.prior.simple(prior_list[[i]])){
 
@@ -409,6 +546,52 @@ JAGS_marglik_priors                <- function(samples, prior_list){
   }else{
 
     marglik <- lpdf(prior, samples[[ parameter_name ]])
+
+  }
+
+  return(marglik)
+}
+.JAGS_marglik_priors.vector         <- function(samples, prior, parameter_name){
+
+  .check_prior(prior)
+  if(!is.prior.vector(prior))
+    stop("improper prior provided")
+  if(!is.character(parameter_name) | length(parameter_name) != 1)
+    stop("'parameter_name' must be a character vector of length 1.")
+
+  if(prior$parameters[["K"]] == 1){
+    marglik <- lpdf(prior, samples[[ parameter_name ]])
+  }else{
+    marglik <- lpdf(prior, samples[ paste0(parameter_name, "[", 1:prior$parameters[["K"]], "]") ])
+  }
+
+  return(marglik)
+}
+.JAGS_marglik_priors.factor         <- function(samples, prior, parameter_name){
+
+  .check_prior(prior)
+  if(!is.prior.factor(prior))
+    stop("improper prior provided")
+  if(!is.character(parameter_name) | length(parameter_name) != 1)
+    stop("'parameter_name' must be a character vector of length 1.")
+
+  if(is.prior.dummy(prior)){
+
+    if((attr(prior, "levels") - 1) == 1){
+
+      marglik <- .JAGS_marglik_priors.simple(samples, prior, parameter_name)
+
+    }else{
+
+      marglik <- sum(sapply(1:(attr(prior, "levels") - 1), function(i) .JAGS_marglik_priors.simple(samples, prior, paste0(parameter_name, "[", i, "]"))))
+
+    }
+
+  }else if(is.prior.orthonormal(prior)){
+
+    prior$parameters[["K"]] <- attr(prior, "levels") - 1
+
+    marglik <- .JAGS_marglik_priors.vector(samples, prior, parameter_name)
 
   }
 
@@ -453,7 +636,17 @@ JAGS_marglik_priors                <- function(samples, prior_list){
   return(marglik)
 }
 
+#' @rdname JAGS_marglik_priors
+JAGS_marglik_priors_formula <- function(samples, formula_prior_list){
 
+  marglik <- 0
+
+  for(parameter in names(formula_prior_list)){
+    marglik <- marglik + JAGS_marglik_priors(samples, formula_prior_list[[parameter]])
+  }
+
+  return(marglik)
+}
 
 #' @title Extract parameters for 'JAGS' priors
 #'
@@ -467,11 +660,16 @@ JAGS_marglik_priors                <- function(samples, prior_list){
 #' @return \code{JAGS_marglik_parameters} returns a named list
 #' of (transformed) posterior samples.
 #'
-#' @inheritParams JAGS_add_priors
-#' @export
+#' @inheritParams JAGS_bridgesampling
+#' @export JAGS_marglik_parameters
+#' @export JAGS_marglik_parameters_formula
+#' @name JAGS_marglik_parameters
+NULL
+
+#' @rdname JAGS_marglik_parameters
 JAGS_marglik_parameters                <- function(samples, prior_list){
 
-  # return empty string in case that no prior was specified
+  # return empty list in case that no prior was specified
   if(length(prior_list) == 0){
     return(list())
   }
@@ -493,6 +691,14 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
     }else if(is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
 
       parameters <- c(parameters, .JAGS_marglik_parameters.PP(samples, prior_list[[i]]))
+
+    }else if(is.prior.factor(prior_list[[i]])){
+
+      parameters <- c(parameters, .JAGS_marglik_parameters.factor(samples, prior_list[[i]], names(prior_list)[i]))
+
+    }else if(is.prior.vector(prior_list[[i]])){
+
+      parameters <- c(parameters, .JAGS_marglik_parameters.vector(samples, prior_list[[i]], names(prior_list)[i]))
 
     }else if(is.prior.simple(prior_list[[i]])){
 
@@ -522,6 +728,56 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
   }else{
     parameter[[parameter_name]] <- samples[[ parameter_name ]]
   }
+
+  return(parameter)
+}
+.JAGS_marglik_parameters.vector         <- function(samples, prior, parameter_name){
+
+  .check_prior(prior)
+  if(!is.prior.vector(prior))
+    stop("improper prior provided")
+  if(!is.character(parameter_name) | length(parameter_name) != 1)
+    stop("'parameter_name' must be a character vector of length 1.")
+
+
+  parameter <- list()
+  if(prior$parameters[["K"]] == 1){
+    parameter[[parameter_name]] <- samples[[ parameter_name ]]
+  }else{
+    parameter[[parameter_name]] <- samples[ paste0(parameter_name, "[", 1:prior$parameters[["K"]], "]") ]
+  }
+
+  return(parameter)
+}
+.JAGS_marglik_parameters.factor         <- function(samples, prior, parameter_name){
+
+  .check_prior(prior)
+  if(!is.prior.factor(prior))
+    stop("improper prior provided")
+  if(!is.character(parameter_name) | length(parameter_name) != 1)
+    stop("'parameter_name' must be a character vector of length 1.")
+
+
+  if(is.prior.dummy(prior)){
+
+    if((attr(prior, "levels") - 1) == 1){
+
+      parameter <- .JAGS_marglik_parameters.simple(samples, prior, parameter_name)
+
+    }else{
+
+      parameter <- list()
+      parameter[[parameter_name]] <- samples[ paste0(parameter_name, "[", 1:(attr(prior, "levels") - 1), "]") ]
+
+    }
+
+  }else if(is.prior.orthonormal(prior)){
+
+    prior$parameters[["K"]] <- attr(prior, "levels") - 1
+    parameter <- .JAGS_marglik_parameters.vector(samples, prior, parameter_name)
+
+  }
+
 
   return(parameter)
 }
@@ -573,4 +829,61 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
   }
 
   return(parameter)
+}
+
+#' @rdname JAGS_marglik_parameters
+JAGS_marglik_parameters_formula      <- function(samples, formula_data_list, formula_prior_list){
+
+  # return empty list in case that no prior was specified
+  if(length(formula_prior_list) == 0){
+    return(list())
+  }
+
+  parameters <- list()
+
+  for(parameter in names(formula_prior_list)){
+    parameters[[parameter]] <- .JAGS_marglik_parameters_formula_get(samples, parameter, formula_data_list[[parameter]], formula_prior_list[[parameter]])
+  }
+
+  return(parameters)
+}
+
+.JAGS_marglik_parameters_formula_get <- function(samples, parameter, formula_data_list, formula_prior_list){
+
+  formula_terms            <- names(formula_prior_list)
+  names(formula_data_list) <- gsub("_data", "", names(formula_data_list))
+
+  # start with intercept
+  if(sum(formula_terms == paste0(parameter, "_intercept")) == 1){
+    output <- rep(samples[[paste0(parameter, "_intercept")]], formula_data_list[[paste0("N_", parameter)]])
+  }else{
+    output <- rep(0, formula_data_list[[paste0("N_", parameter)]])
+  }
+
+  # add the remaining terms
+  remaining_terms <- formula_terms[formula_terms != paste0(parameter, "_intercept")]
+  if(length(remaining_terms) > 0){
+    for(term in remaining_terms){
+
+      if(is.prior.factor(formula_prior_list[[term]])){
+
+        levels <- attr(formula_prior_list[[term]], "levels")
+        if((levels-1) == 1){
+          output <- output + samples[[term]] * formula_data_list[[term]]
+        }else{
+          output <- output + formula_data_list[[term]] %*% samples[paste0(term,"[", 1:(levels-1), "]")]
+        }
+
+
+      }else if(is.prior.simple(formula_prior_list[[term]])){
+
+        output <- output + samples[[term]] * formula_data_list[[term]]
+
+      }
+
+    }
+  }
+
+
+  return(as.vector(output))
 }
