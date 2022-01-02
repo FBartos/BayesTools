@@ -1,7 +1,8 @@
-## to be version 0.1.4
+## version 0.1.4
 ### Fixes
 - fixing DOIs in the references file
 - adds marglik argument `inclusion_BF` to deal with over/underflow (Issue #9)
+- better passing of BF names through the `ensemble_inference_table()` (Issue #11)
 
 ### Features
 - adding logBF and BF01 options to `ensemble_summary_table` (Issue #7)

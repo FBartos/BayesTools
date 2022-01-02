@@ -4,7 +4,7 @@
 \alias{format_BF}
 \title{Format Bayes factor}
 \usage{
-format_BF(BF, logBF = FALSE, BF01 = FALSE)
+format_BF(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE)
 }
 \arguments{
 \item{BF}{Bayes factor(s)}
@@ -12,6 +12,8 @@ format_BF(BF, logBF = FALSE, BF01 = FALSE)
 \item{logBF}{log(BF)}
 
 \item{BF01}{1/BF}
+
+\item{inclusion}{whether the Bayes factor is an inclusion BF (for naming purposes)}
 }
 \value{
 \code{format_BF} returns a formatted Bayes factor.

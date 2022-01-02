@@ -67,14 +67,14 @@ test_that("Summary tables functions work",{
 
   # ensemble inference
   inference_table <- ensemble_inference_table(inference, names(inference))
-  expect_equal(colnames(inference_table), c("models", "prior_prob", "post_prob", "BF"))
+  expect_equal(colnames(inference_table), c("models", "prior_prob", "post_prob", "inclusion_BF"))
   expect_equal(rownames(inference_table), c("m", "omega"))
   expect_equal(unname(unlist(inference_table[1,])), c(3,   1,   1, Inf))
   expect_equal(unname(unlist(inference_table[2,])), c(2.0000000, 0.6666667, 0.8001882, 2.0023549), tolerance = 1e-4)
 
   # ensemble summary
   summary_table <- ensemble_summary_table(models, c("m", "omega"))
-  expect_equal(colnames(summary_table), c("Model", "m", "omega", "prior_prob", "marglik", "post_prob", "BF"))
+  expect_equal(colnames(summary_table), c("Model", "m", "omega", "prior_prob", "marglik", "post_prob", "inclusion_BF"))
   expect_equal(unname(as.vector(summary_table[,1])), c(1, 2, 3))
   expect_equal(unname(as.vector(summary_table[,2])), c("Normal(0, 1)", "Normal(0, 0.5)", "Normal(0, 0.3)"))
   expect_equal(unname(as.vector(summary_table[,3])), c("", "omega[one-sided: .05] ~ CumDirichlet(1, 1)", "omega[one-sided: .5, .05] ~ CumDirichlet(1, 1, 1)"))

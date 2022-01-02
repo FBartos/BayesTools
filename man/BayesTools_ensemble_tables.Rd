@@ -30,6 +30,8 @@ ensemble_inference_table(
 ensemble_summary_table(
   models,
   parameters,
+  logBF = FALSE,
+  BF01 = FALSE,
   title = NULL,
   footnotes = NULL,
   warnings = NULL,

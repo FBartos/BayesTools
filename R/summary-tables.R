@@ -128,10 +128,10 @@ ensemble_inference_table <- function(inference, parameters, logBF = FALSE, BF01 
   n_models        <- NULL
   for(parameter in parameters){
     inference_table <- rbind(inference_table, c(
-      "models"     = sum(!attr(inference[[parameter]], "is_null")),
-      "prior_prob" = sum(inference[[parameter]][["prior_probs"]][!attr(inference[[parameter]], "is_null")]),
-      "post_prob"  = sum(inference[[parameter]][["post_probs"]][!attr(inference[[parameter]], "is_null")] ),
-      "BF"         = inference[[parameter]][["BF"]]
+      "models"       = sum(!attr(inference[[parameter]], "is_null")),
+      "prior_prob"   = sum(inference[[parameter]][["prior_probs"]][!attr(inference[[parameter]], "is_null")]),
+      "post_prob"    = sum(inference[[parameter]][["post_probs"]][!attr(inference[[parameter]], "is_null")] ),
+      "inclusion_BF" = inference[[parameter]][["BF"]]
     ))
     rownames(inference_table)[nrow(inference_table)] <- parameter
     n_models <- c(n_models, length(attr(inference[[parameter]], "is_null")))
@@ -139,9 +139,7 @@ ensemble_inference_table <- function(inference, parameters, logBF = FALSE, BF01 
   inference_table <- data.frame(inference_table)
 
   # format BF
-  formatted_BF <- format_BF(inference_table[,"BF"], logBF = logBF, BF01 = BF01)
-  inference_table[,"BF"]  <- formatted_BF
-  colnames(inference_table)[colnames(inference_table) == "BF"]  <- attr(formatted_BF, "name")
+  inference_table[,"inclusion_BF"]  <- format_BF(inference_table[,"inclusion_BF"], logBF = logBF, BF01 = BF01, inclusion = TRUE)
 
   # prepare output
   class(inference_table)             <- c("BayesTools_table", "BayesTools_ensemble_summary", class(inference_table))
@@ -202,12 +200,10 @@ ensemble_summary_table <- function(models, parameters, logBF = FALSE, BF01 = FAL
     "prior_prob"   = sapply(models, function(model)model[["inference"]][["prior_prob"]]),
     "marglik"      = sapply(models, function(model)model[["inference"]][["marglik"]]),
     "post_prob"    = sapply(models, function(model)model[["inference"]][["post_prob"]]),
-    "BF"           = sapply(models, function(model)model[["inference"]][["inclusion_BF"]])
+    "inclusion_BF" = sapply(models, function(model)model[["inference"]][["inclusion_BF"]])
   )
 
-  formatted_BF <- format_BF(ensemble_table[,"BF"], logBF = logBF, BF01 = BF01)
-  ensemble_table[,"BF"]  <- formatted_BF
-  colnames(ensemble_table)[colnames(ensemble_table) == "BF"]  <- attr(formatted_BF, "name")
+  ensemble_table[,"inclusion_BF"]  <- format_BF(ensemble_table[,"inclusion_BF"], logBF = logBF, BF01 = BF01, inclusion = TRUE)
 
   # prepare output
   class(ensemble_table)             <- c("BayesTools_table", "BayesTools_ensemble_summary", class(ensemble_table))
@@ -583,8 +579,8 @@ print.BayesTools_table <- function(x, ...){
 
   # print formatting
   for(i in seq_along(attr(x, "type"))){
-    x[,i]          <- .format_column(x[,i], attr(x, "type")[i], attr(x, "n_models")[i])
     colnames(x)[i] <- .format_column_names(colnames(x)[i], attr(x, "type")[i], x[,i])
+    x[,i]          <- .format_column(x[,i], attr(x, "type")[i], attr(x, "n_models")[i])
   }
 
   # print title
@@ -615,21 +611,22 @@ print.BayesTools_table <- function(x, ...){
 #' @param BF Bayes factor(s)
 #' @param logBF log(BF)
 #' @param BF01 1/BF
+#' @param inclusion whether the Bayes factor is an inclusion BF (for naming purposes)
 #'
 #' @return \code{format_BF} returns a formatted Bayes factor.
 #'
 #' @export
-format_BF <- function(BF, logBF = FALSE, BF01 = FALSE){
+format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
 
   check_real(BF, "BF", lower = 0, check_length = FALSE)
   check_bool(logBF, "logBF")
   check_bool(BF01,  "BF01")
 
-  name <- "BF"
+  name <- ifelse(inclusion, "Inclusion BF", "BF")
 
   if(BF01){
     BF   <- 1/BF
-    name <- "1/BF"
+    name <- ifelse(inclusion, "Exclusion BF", "1/BF")
   }
   if(logBF){
     BF   <- log(BF)
@@ -642,6 +639,7 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE){
 
   return(BF)
 }
+
 
 
 .format_column       <- function(x, type, n_models){
@@ -688,8 +686,8 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE){
       "prior_prob"      = "Prior prob.",
       "post_prob"       = "Post. prob.",
       "marglik"         = "log(marglik)",
-      "BF"              = x,
-      "inclusion_BF"    = paste0("Inclusion ", x),
+      "BF"              = attr(values, "name"),
+      "inclusion_BF"    = attr(values, "name"),
       "n_models"        = "Models",
       "ESS"             = "ESS",
       "R_hat"           = "R-hat",
