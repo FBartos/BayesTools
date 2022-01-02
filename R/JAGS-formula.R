@@ -204,61 +204,28 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
 }
 .transform_orthonormal_samples <- function(samples){
 
-  samples_orthonormal_info <- sapply(samples, function(s){
-    if(inherits(s, what = "mixed_posteriors.factor")){
-      temp_info <- lapply(attr(s, "prior_list"), function(p){
-        if(is.prior.orthonormal(p)){
-          return(list(
-            "levels"      = attr(p, "levels"),
-            "level_names" = attr(p, "level_names"),
-            "interaction" = attr(p, "interaction")
-          ))
+  for(i in seq_along(samples)){
+    if(inherits(samples[[i]], "mixed_posteriors.factor") && attr(samples[[i]], "orthonormal")){
+
+      orthonormal_samples <- samples[[i]]
+      transformed_samples <- orthonormal_samples %*% t(contr.orthonormal(1:attr(samples[[i]], "levels")))
+
+      if(attr(samples[[i]], "interaction")){
+        if(length(attr(samples[[i]], "level_names")) == 1){
+          transformed_names <- paste0(names(samples)[i], " [dif: ", attr(samples[[i]], "level_names")[[1]],"]")
+        }else{
+          stop("orthonormal de-transformation for interaction of multiple factors is not implemented.")
         }
-      })
-      if(is.null(unlist(temp_info))){
-        return(FALSE)
       }else{
-        temp_info <- temp_info[!sapply(temp_info, is.null)]
-        if(length(temp_info) >= 2 && any(!unlist(lapply(temp_info, function(i) all.equal(i, temp_info[[1]]))))){
-          stop("non-matching orthonormal prior specifications")
-        }
-        return(temp_info[[1]])
+        transformed_names <- paste0(names(samples)[i], " [dif: ", attr(samples[[i]], "level_names"),"]")
       }
-    }else{
-      return(FALSE)
+
+      colnames(transformed_samples)   <- transformed_names
+      attributes(transformed_samples) <- c(attributes(transformed_samples), attributes(orthonormal_samples)[!names(attributes(orthonormal_samples)) %in% names(attributes(transformed_samples))])
+      class(transformed_samples)      <- c(class(transformed_samples), "mixed_posteriors.orthonormal_transformed")
+
+      samples[[i]] <- transformed_samples
     }
-  })
-  samples_orthonormal_info <- samples_orthonormal_info[!sapply(samples_orthonormal_info, isFALSE)]
-
-  for(i in seq_along(samples_orthonormal_info)){
-
-    par <- names(samples_orthonormal_info)[i]
-
-    if((samples_orthonormal_info[[i]][["levels"]] - 1) == 1){
-      par_names <- par
-    }else{
-      par_names <- paste0(names(samples_orthonormal_info)[i], "[", 1:(samples_orthonormal_info[[i]][["levels"]] - 1), "]")
-    }
-
-    orthonormal_samples <- samples[[par]]
-    transformed_samples <- orthonormal_samples %*% t(contr.orthonormal(1:samples_orthonormal_info[[i]][["levels"]]))
-
-
-    if(samples_orthonormal_info[[i]][["interaction"]]){
-      if(length(samples_orthonormal_info[[i]][["level_names"]]) == 1){
-        transformed_names <- paste0(par, " [dif: ", samples_orthonormal_info[[i]][["level_names"]][[1]],"]")
-      }else{
-        stop("orthonormal de-transformation for interaction of multiple factors is not implemented.")
-      }
-    }else{
-      transformed_names <- paste0(par, " [dif: ", samples_orthonormal_info[[i]][["level_names"]],"]")
-    }
-
-    colnames(transformed_samples)   <- transformed_names
-    attributes(transformed_samples) <- c(attributes(transformed_samples), attributes(orthonormal_samples)[!names(attributes(orthonormal_samples)) %in% names(attributes(transformed_samples))])
-    class(transformed_samples)      <- c(class(transformed_samples), "mixed_posteriors.orthonormal_transformed")
-
-    samples[[par]] <- transformed_samples
   }
 
   return(samples)

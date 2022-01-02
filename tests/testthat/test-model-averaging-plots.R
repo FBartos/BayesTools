@@ -776,42 +776,42 @@ test_that("posterior plot functions (orthonormal) work", {
     seed = 1, n_samples = 10000)
 
 
-  expect_doppelganger("model-averaging-plot-posterior-orthonormal-1", function(){
+  expect_doppelganger("model-averaging-plot-posterior-o-1", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors, "mu_x_fac3o")
   })
-  expect_doppelganger("model-averaging-plot-posterior-orthonormal-2", function(){
+  expect_doppelganger("model-averaging-plot-posterior-o-2", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors, "mu_x_fac3o", col = c("red", "green", "blue"))
   })
-  expect_doppelganger("model-averaging-plot-posterior-orthonormal-3", function(){
+  expect_doppelganger("model-averaging-plot-posterior-o-3", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors, "mu_x_fac3o", lty = c(2, 3, 4), col = "blue", lwd = 2)
   })
-  expect_doppelganger("model-averaging-plot-posterior-orthonormal-4", function(){
+  expect_doppelganger("model-averaging-plot-posterior-o-4", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors, "mu_x_fac3o", legend = FALSE)
   })
-  expect_doppelganger("model-averaging-plot-posterior-orthonormal-5", function(){
+  expect_doppelganger("model-averaging-plot-posterior-o-5", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors, "mu_x_fac3o", col = c("red", "green", "blue"), prior = TRUE)
   })
 
-  expect_doppelganger("model-averaging-ggplot-posterior-orthonormal-1", plot_posterior(mixed_posteriors, "mu_x_fac3o", plot_type = "ggplot"))
-  expect_doppelganger("model-averaging-ggplot-posterior-orthonormal-2", plot_posterior(mixed_posteriors, "mu_x_fac3o", col = c("red", "green", "blue"), plot_type = "ggplot"))
-  expect_doppelganger("model-averaging-ggplot-posterior-orthonormal-3", plot_posterior(mixed_posteriors, "mu_x_fac3o", lty = c(2, 3, 4), col = "blue", lwd = 2, plot_type = "ggplot"))
-  expect_doppelganger("model-averaging-ggplot-posterior-orthonormal-4", plot_posterior(mixed_posteriors, "mu_x_fac3o", legend = FALSE, plot_type = "ggplot"))
-  expect_doppelganger("model-averaging-ggplot-posterior-orthonormal-5", plot_posterior(mixed_posteriors, "mu_x_fac3o", col = c("red", "green", "blue"), prior = TRUE, plot_type = "ggplot"))
+  expect_doppelganger("model-averaging-ggplot-posterior-o-1", plot_posterior(mixed_posteriors, "mu_x_fac3o", plot_type = "ggplot"))
+  expect_doppelganger("model-averaging-ggplot-posterior-o-2", plot_posterior(mixed_posteriors, "mu_x_fac3o", col = c("red", "green", "blue"), plot_type = "ggplot"))
+  expect_doppelganger("model-averaging-ggplot-posterior-o-3", plot_posterior(mixed_posteriors, "mu_x_fac3o", lty = c(2, 3, 4), col = "blue", lwd = 2, plot_type = "ggplot"))
+  expect_doppelganger("model-averaging-ggplot-posterior-o-4", plot_posterior(mixed_posteriors, "mu_x_fac3o", legend = FALSE, plot_type = "ggplot"))
+  expect_doppelganger("model-averaging-ggplot-posterior-o-5", plot_posterior(mixed_posteriors, "mu_x_fac3o", col = c("red", "green", "blue"), prior = TRUE, plot_type = "ggplot"))
 
 })
 
@@ -888,42 +888,42 @@ test_that("posterior plot functions (treatment) work", {
     ),
     seed = 1, n_samples = 10000)
 
-  expect_doppelganger("model-averaging-plot-posterior-treatment-1", function(){
+  expect_doppelganger("model-averaging-plot-posterior-t-1", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors, "mu_x_fac2t")
   })
-  expect_doppelganger("model-averaging-plot-posterior-treatment-2", function(){
+  expect_doppelganger("model-averaging-plot-posterior-t-2", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors, "mu_x_fac2t", col = "red")
   })
-  expect_doppelganger("model-averaging-plot-posterior-treatment-3", function(){
+  expect_doppelganger("model-averaging-plot-posterior-t-3", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors, "mu_x_fac2t", lty = 2, col = "blue", lwd = 2)
   })
-  expect_doppelganger("model-averaging-plot-posterior-treatment-4", function(){
+  expect_doppelganger("model-averaging-plot-posterior-t-4", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors, "mu_x_fac2t", legend = FALSE)
   })
-  expect_doppelganger("model-averaging-plot-posterior-treatment-5", function(){
+  expect_doppelganger("model-averaging-plot-posterior-t-5", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors, "mu_x_fac2t", col = "red", prior = TRUE)
   })
 
-  expect_doppelganger("model-averaging-ggplot-posterior-treatment-1", plot_posterior(mixed_posteriors, "mu_x_fac2t", plot_type = "ggplot"))
-  expect_doppelganger("model-averaging-ggplot-posterior-treatment-2", plot_posterior(mixed_posteriors, "mu_x_fac2t", col = "red", plot_type = "ggplot"))
-  expect_doppelganger("model-averaging-ggplot-posterior-treatment-3", plot_posterior(mixed_posteriors, "mu_x_fac2t", lty = 2, col = "blue", lwd = 2, plot_type = "ggplot"))
-  expect_doppelganger("model-averaging-ggplot-posterior-treatment-4", plot_posterior(mixed_posteriors, "mu_x_fac2t", legend = FALSE, plot_type = "ggplot"))
-  expect_doppelganger("model-averaging-ggplot-posterior-treatment-5", plot_posterior(mixed_posteriors, "mu_x_fac2t", col = "red", prior = TRUE, plot_type = "ggplot"))
+  expect_doppelganger("model-averaging-ggplot-posterior-t-1", plot_posterior(mixed_posteriors, "mu_x_fac2t", plot_type = "ggplot"))
+  expect_doppelganger("model-averaging-ggplot-posterior-t-2", plot_posterior(mixed_posteriors, "mu_x_fac2t", col = "red", plot_type = "ggplot"))
+  expect_doppelganger("model-averaging-ggplot-posterior-t-3", plot_posterior(mixed_posteriors, "mu_x_fac2t", lty = 2, col = "blue", lwd = 2, plot_type = "ggplot"))
+  expect_doppelganger("model-averaging-ggplot-posterior-t-4", plot_posterior(mixed_posteriors, "mu_x_fac2t", legend = FALSE, plot_type = "ggplot"))
+  expect_doppelganger("model-averaging-ggplot-posterior-t-5", plot_posterior(mixed_posteriors, "mu_x_fac2t", col = "red", prior = TRUE, plot_type = "ggplot"))
 
 })
 
