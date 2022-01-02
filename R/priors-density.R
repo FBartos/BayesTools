@@ -113,6 +113,8 @@ density.prior <- function(x,
     out <- .density.prior.weightfunction(x, x_seq, x_range, n_points, n_samples, force_samples, individual)
   }else if(is.prior.PET(x) | is.prior.PEESE(x)){
     out <- .density.prior.PETPEESE(x, x_seq, x_range, n_points, n_samples, force_samples, individual, transformation, transformation_arguments, truncate_end)
+  }else if(is.prior.orthonormal(x)){
+    out <- .density.prior.orthonormal(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
   }else if(is.prior.point(x)){
     out <- .density.prior.point(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments)
   }else if(is.prior.simple(x)){
@@ -382,6 +384,65 @@ density.prior <- function(x,
 
   return(out)
 }
+.density.prior.orthonormal    <- function(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end){
+
+  # get the samples to estimate density / obtain the density directly
+  if(force_samples | .density.prior_need_samples(x)){
+
+    if(is.na(x$parameters[["K"]]) && !is.null(attr(x, "levels"))){
+      x$parameters[["K"]] <- attr(prior, "levels") - 1
+    }else if(is.na(x$parameters[["K"]])){
+      x$parameters[["K"]] <- 1
+      warning("number of factor levels / dimensionality of the prior distribution was not specified -- assuming two factor levels")
+    }
+
+    x_sam <- rng(x, n_samples)
+    x_sam <- as.vector(x_sam)
+    x_den <- stats::density(x_sam, n = n_points, from = x_range[1], to = x_range[2])$y
+
+  }else{
+    x_den <- mpdf(x, x_seq)
+    x_sam <- NULL
+  }
+
+
+  # set the endpoints to zero if they correspond to truncation
+  if(truncate_end){
+    if(isTRUE(all.equal(x$truncation[["lower"]], x_seq[1])) | x$truncation[["lower"]] >= x_seq[1]){
+      x_den <- c(0, x_den)
+      x_seq <- c(x_seq[1], x_seq)
+    }
+    if(isTRUE(all.equal(x$truncation[["upper"]], x_seq[length(x_seq)])) | x$truncation[["upper"]] <= x_seq[length(x_seq)]){
+      x_den <- c(x_den, 0)
+      x_seq <- c(x_seq, x_seq[length(x_seq)])
+    }
+  }
+
+
+
+  # transform the output, if requested
+  if(!is.null(transformation)){
+    stop("transformations are not supported for orthonormal prior distributions")
+  }
+
+
+  # create the output object
+  out <- list(
+    call    = call("density", print(x, silent = TRUE)),
+    bw      = NULL,
+    n       = n_points,
+    x       = x_seq,
+    y       = x_den,
+    samples = x_sam
+  )
+
+
+  class(out) <- c("density", "density.prior", "density.prior.orthonormal")
+  attr(out, "x_range") <- x_range
+  attr(out, "y_range") <- c(0, max(x_den))
+
+  return(out)
+}
 
 
 
@@ -455,6 +516,8 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
     }else{
       return(c(rep("simple", length(prior[["parameters"]][["steps"]])), "point"))
     }
+  }else if(is.prior.orthonormal(prior)){
+    return("orthonormal")
   }
 }
 .range.prior_quantile_default <- function(prior){
@@ -473,7 +536,9 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
     "one.sided" = .005,
     "one.sided" = .005,
     "two.sided.fixed" = .005,
-    "two.sided.fixed" = .005
+    "two.sided.fixed" = .005,
+    "mnormal"    = .005,
+    "mt"         = .010
   )
 
 }

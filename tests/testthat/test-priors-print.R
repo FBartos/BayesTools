@@ -41,6 +41,23 @@ test_that("Prior print function works", {
   expect_equal(utils::capture.output(print(p9,  parameter_names = TRUE)), "omega[two-sided: .05] ~ CumDirichlet(alpha = 1, 1)")
   expect_equal(utils::capture.output(print(p10, parameter_names = TRUE)), "omega[one-sided: .1] = (1, 0.7)")
 
+  # check vector priors
+  p11 <- prior(distribution = "mnormal", parameters = list(mean = 0, sd = 1, K = 3))
+  p12 <- prior(distribution = "mcauchy", parameters = list(0, 1, 5))
+  p13 <- prior(distribution = "mt",      parameters = list(location = 1, scale = .5, df = 3, K = 2))
+
+  expect_equal(utils::capture.output(print(p11)),  "mNormal(0, 1)")
+  expect_equal(utils::capture.output(print(p12)),  "mCauchy(0, 1)")
+  expect_equal(utils::capture.output(print(p13)),  "mStudent-t(1, 0.5, 3)")
+
+  # check factor priors
+  p14 <- prior_factor(distribution = "mnormal", contrast = "orthonormal", parameters = list(0, 1))
+  p15 <- prior_factor(distribution = "normal", contrast = "dummy", parameters = list(mean = 0, sd = 1))
+  p16 <- prior_factor(distribution = "beta",   contrast = "dummy", parameters = list(alpha = 1, beta = 1))
+
+  expect_equal(utils::capture.output(print(p14)),  "orthonormal contrast: mNormal(0, 1)")
+  expect_equal(utils::capture.output(print(p15)),  "treatment contrast: Normal(0, 1)")
+  expect_equal(utils::capture.output(print(p16)),  "treatment contrast: Beta(1, 1)")
 
   # check plot names
   empty_plot <- function(){
@@ -78,5 +95,18 @@ test_that("Prior print function works", {
     text(0.5, 0.3, print(p8,  parameter_names = TRUE, plot = TRUE))
     text(0.5, 0.2, print(p9,  parameter_names = TRUE, plot = TRUE))
     text(0.5, 0.1, print(p10, parameter_names = TRUE, plot = TRUE))
+  })
+
+  expect_doppelganger("priors-print-3", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(0, 0, 0, 0))
+    empty_plot()
+    text(0.5, 1,   print(p11, plot = TRUE))
+    text(0.5, 0.9, print(p12, plot = TRUE))
+    text(0.5, 0.8, print(p13, plot = TRUE))
+    text(0.5, 0.7, print(p14, plot = TRUE))
+    text(0.5, 0.6, print(p15, plot = TRUE))
+    text(0.5, 0.5, print(p16, plot = TRUE))
   })
 })

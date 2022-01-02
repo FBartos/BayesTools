@@ -7,7 +7,7 @@ context("Prior distribution functions")
 # - distribution function
 # - print function
 # - mean and sd functions
-test_prior <- function(prior, skip_moments = FALSE){
+test_prior          <- function(prior, skip_moments = FALSE){
   set.seed(1)
   # tests rng and print function (for plot)
   samples <- rng(prior, 100000)
@@ -55,6 +55,20 @@ test_weightfunction <- function(prior, skip_moments = FALSE){
       expect_equal(apply(samples, 2, sd),   sd(prior)  , tolerance = 1e-2)
     }
   }
+  return(invisible())
+}
+test_orthonormal    <- function(prior){
+  set.seed(1)
+  # tests rng and print function (for plot)
+  samples <- rng(prior, 100000)
+  hist(samples, main = print(prior, plot = T), breaks = 50, freq = FALSE)
+  # tests density function
+  lines(prior, individual = TRUE)
+  # tests quantile function
+  abline(v = mquant(prior, 0.5), col = "blue", lwd = 2)
+  # tests that pdf(q(x)) == x
+  expect_equal(.25, mcdf(prior, mquant(prior, 0.25)), tolerance = 1e-5)
+
   return(invisible())
 }
 
@@ -168,5 +182,34 @@ test_that("Two-sided.fixed weigthfunction prior distribution works", {
 
   expect_doppelganger("prior-weigthfunction-two.sided.fixed-1", function()test_weightfunction(prior_weightfunction("two.sided.fixed", list(c(.05), c(1, .5)))))
   expect_doppelganger("prior-weigthfunction-two.sided.fixed-2", function()test_weightfunction(prior_weightfunction("two.sided.fixed", list(c(.05, 0.10), c(1, .2, .5)))))
+
+})
+
+test_that("Vector prior distribution works", {
+  # TODO
+})
+
+test_that("Orthonormal prior distribution works", {
+
+  p1   <- prior_factor("mnormal", list(mean = 0, sd = 0.5), contrast = "orthonormal")
+  p2   <- prior_factor("mcauchy", list(location = 0, scale = 1), contrast = "orthonormal")
+  p1.5 <- p1.3 <- p1.2 <- p1
+  p2.9 <- p2
+  p1.2$parameters$K <- 2
+  p1.3$parameters$K <- 3
+  p1.5$parameters$K <- 5
+  p2.9$parameters$K <- 9
+
+  expect_doppelganger("prior-orthonormal-1-2", function()test_orthonormal(p1.2))
+  expect_doppelganger("prior-orthonormal-1-3", function()test_orthonormal(p1.3))
+  expect_doppelganger("prior-orthonormal-1-5", function()test_orthonormal(p1.5))
+  expect_doppelganger("prior-orthonormal-2-9", function()test_orthonormal(p2.9))
+
+})
+
+test_that("Treatment prior distribution works", {
+
+  expect_doppelganger("prior-treatment-1", function()test_prior(prior_factor("normal", list(mean = 0, sd = 1), contrast = "treatment")))
+  expect_doppelganger("prior-treatment-2", function()test_prior(prior_factor("beta", list(alpha = 2, beta = 3), contrast = "treatment")))
 
 })

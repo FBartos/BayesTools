@@ -12,6 +12,7 @@ ensemble_estimates_table(
   samples,
   parameters,
   probs = c(0.025, 0.95),
+  transform_orthonormal = FALSE,
   title = NULL,
   footnotes = NULL,
   warnings = NULL
@@ -58,6 +59,10 @@ diagnostics tables) specifying the parameters
 (and their grouping) for the summary table}
 
 \item{probs}{quantiles for parameter estimates}
+
+\item{transform_orthonormal}{whether factors with orthonormal prior
+distributions should be transformed to differences from the grand
+mean}
 
 \item{title}{title to be added to the table}
 

@@ -74,7 +74,7 @@ prior <- function(distribution, parameters, truncation = list(lower = -Inf, uppe
   # general input check (detailed checks are performed withing the constructors)
   check_char(distribution, "distribution")
   check_list(parameters, "parameters")
-  sapply(seq_along(parameters), function(i)check_real(parameters[[i]], names(parameters[[i]]), check_length = 0))
+  #sapply(seq_along(parameters), function(i)check_real(parameters[[i]], names(parameters[[i]]), check_length = 0))
   check_list(truncation, "truncation")
   check_real(prior_weights, "prior_weights", lower = 0, allow_bound = FALSE)
 
@@ -101,6 +101,12 @@ prior <- function(distribution, parameters, truncation = list(lower = -Inf, uppe
     distribution <- "uniform"
   }else if(distribution %in% c("point", "spike")){
     distribution <- "point"
+  }else if(distribution %in% c("multivariatenorm", "multivariatenormal", "mnorm", "mnormal")){
+    distribution <- "mnormal"
+  }else if(distribution %in% c("multivariatet", "multivariatestudent", "mt", "mstudent")){
+    distribution <- "mt"
+  }else if(distribution %in% c("multivariatecauchy", "mcauchy")){
+    distribution <- "mcauchy"
   }else{
     stop(paste0("The specified distribution name '", distribution,"' is not known. Please, see '?prior' for more information about supported prior distributions."))
   }
@@ -110,11 +116,6 @@ prior <- function(distribution, parameters, truncation = list(lower = -Inf, uppe
 
   # add the prior odds
   output$prior_weights <- prior_weights
-
-  class(output) <- c("prior", "prior.simple")
-  if(distribution == "point"){
-    class(output) <- c(class(output), "prior.point")
-  }
 
   return(output)
 }
@@ -250,6 +251,75 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
   return(output)
 }
 
+#' @title Creates a prior distribution for factors
+#'
+#' @description \code{prior_factor} creates a prior distribution for fitting
+#' models with factor predictors.
+#'
+#' @param contrast type of contrast for the prior distribution. The possible options are
+#' \describe{
+#'   \item{\code{"orthonormal"}}{for contrast centered around the grand mean
+#'   with equal marginal distributions, making the prior distribution exchangeable
+#'   across factor levels. Only supports \code{distribution = "mnormal"} and
+#'   \code{distribution = "mt"} which generates the corresponding multivariate normal/t
+#'   distributions.}
+#'   \item{\code{"treatment"}}{for contrasts using the first level as a comparison
+#'   group and setting equal prior distribution on differences between the individual
+#'   factor levels and the comparison level.}
+#' }
+#'
+#'
+#' @examples
+#' # create an orthonormal prior distribution
+#' p1 <- prior_factor(distribution = "mnormal", contrast = "orthonormal",
+#'                    parameters = list(mean = 0, sd = 1))
+#'
+#' @return return an object of class 'prior'.
+#'
+#' @inheritParams prior
+#' @export  prior_factor
+#' @seealso [prior()]
+prior_factor <- function(distribution, parameters, truncation = list(lower = -Inf, upper = Inf), prior_weights = 1, contrast = "orthonormal"){
+
+  # general input check (detailed checks are performed withing the constructors)
+  check_char(contrast, "contrast", allow_values = c("orthonormal", "treatment", "dummy"))
+
+  # check its compatibility with the contrasts
+  if(contrast == "orthonormal"){
+
+    # add the (yet unspecified) dimensions parameter
+    if(is.null(names(parameters))){
+      parameters <- c(parameters, NA)
+    }else{
+      parameters[["K"]] <- NA
+    }
+
+
+    # generate the prior object
+    output <- prior(distribution = distribution, parameters = parameters, truncation = truncation, prior_weights = prior_weights)
+
+    if(!is.prior.vector(output))
+      stop("'orthonormal' contrasts require vector prior distribution.")
+    if(!all(sapply(output[["truncation"]], is.infinite)))
+      stop("'orthonormal' contrasts do not support truncation.")
+
+    class(output) <- c(class(output), "prior.factor", "prior.orthonormal")
+
+  }else if(contrast %in% c("treatment", "dummy")){
+
+    # generate the prior object
+    output <- prior(distribution = distribution, parameters = parameters, truncation = truncation, prior_weights = prior_weights)
+
+    if(!is.prior.simple(output))
+      stop("'treatment' contrasts require univariate prior distribution.")
+
+    output <- prior(distribution = distribution, parameters = parameters, truncation = truncation, prior_weights = prior_weights)
+
+    class(output) <- c(class(output), "prior.factor", "prior.dummy")
+  }
+
+  return(output)
+}
 
 #### functions for constructing prior distributions ####
 .prior_normal    <- function(parameters, truncation){
@@ -270,6 +340,8 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
   output$parameters   <- parameters
   output$truncation   <- truncation
 
+  class(output) <- c("prior", "prior.simple")
+
   return(output)
 }
 .prior_lognormal <- function(parameters, truncation){
@@ -289,6 +361,8 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
   output$distribution <- "lognormal"
   output$parameters   <- parameters
   output$truncation   <- truncation
+
+  class(output) <- c("prior", "prior.simple")
 
   return(output)
 }
@@ -312,6 +386,8 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
   output$parameters   <- parameters
   output$truncation   <- truncation
 
+  class(output) <- c("prior", "prior.simple")
+
   return(output)
 }
 .prior_t         <- function(parameters, truncation){
@@ -333,6 +409,8 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
   output$distribution <- "t"
   output$parameters   <- parameters
   output$truncation   <- truncation
+
+  class(output) <- c("prior", "prior.simple")
 
   return(output)
 }
@@ -364,6 +442,8 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
   output$parameters   <- parameters
   output$truncation   <- truncation
 
+  class(output) <- c("prior", "prior.simple")
+
   return(output)
 }
 .prior_invgamma  <- function(parameters, truncation){
@@ -384,6 +464,8 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
   output$distribution <- "invgamma"
   output$parameters   <- parameters
   output$truncation   <- truncation
+
+  class(output) <- c("prior", "prior.simple")
 
   return(output)
 }
@@ -413,6 +495,8 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
   output$parameters   <- parameters
   output$truncation   <- truncation
 
+  class(output) <- c("prior", "prior.simple")
+
   return(output)
 }
 .prior_beta      <- function(parameters, truncation){
@@ -433,6 +517,8 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
   output$distribution <- "beta"
   output$parameters   <- parameters
   output$truncation   <- truncation
+
+  class(output) <- c("prior", "prior.simple")
 
   return(output)
 }
@@ -455,6 +541,8 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
   output$parameters   <- parameters
   output$truncation   <- list(lower = parameters$a, upper = parameters$b)
 
+  class(output) <- c("prior", "prior.simple")
+
   return(output)
 }
 .prior_point     <- function(parameters, truncation){
@@ -471,6 +559,82 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
   output$distribution <- "point"
   output$parameters   <- parameters
   output$truncation   <- list(lower = parameters$location, upper = parameters$location)
+
+  class(output) <- c("prior", "prior.simple", "prior.point")
+
+  return(output)
+}
+.prior_mnormal   <- function(parameters, truncation){
+
+  output <- list()
+
+  # check overall settings
+  parameters <- .check_and_name_parameters(parameters, c("mean", "sd", "K"), "multivariate normal")
+  truncation <- .check_and_set_truncation(truncation)
+
+  # check individual parameters
+  .check_parameter(parameters$mean, "mean")
+  .check_parameter(parameters$sd,   "sd")
+  .check_parameter_positive(parameters$sd, "sd")
+  .check_parameter_dimensions(parameters$K, "K", allow_NA = TRUE)   # allow undetermined dimensions if called by prior_factor
+
+  # add the values to the output
+  output$distribution <- "mnormal"
+  output$parameters   <- parameters
+  output$truncation   <- truncation
+
+  class(output) <- c("prior", "prior.vector")
+
+  return(output)
+}
+.prior_mcauchy   <- function(parameters, truncation){
+
+  output <- list()
+
+  # check overall settings
+  parameters <- .check_and_name_parameters(parameters, c("location", "scale", "K"), "multivariate Cauchy")
+  truncation <- .check_and_set_truncation(truncation)
+
+  # check individual parameters
+  .check_parameter(parameters$location, "location")
+  .check_parameter(parameters$scale,    "scale")
+  .check_parameter_positive(parameters$scale, "scale")
+  .check_parameter_dimensions(parameters$K,   "K", allow_NA = TRUE)   # allow undetermined dimensions if called by prior_factor
+
+  # deal with as with a t-distribution
+  parameters$df <- 1
+
+  output$distribution <- "mt"
+  output$parameters   <- parameters
+  output$truncation   <- truncation
+
+  class(output) <- c("prior", "prior.vector")
+
+  return(output)
+}
+.prior_mt        <- function(parameters, truncation){
+
+  output <- list()
+
+  # check overall settings
+  parameters <- .check_and_name_parameters(parameters, c("location", "scale", "df", "K"), "multivariate student-t")
+  truncation <- .check_and_set_truncation(truncation)
+
+  # check individual parameters
+  .check_parameter(parameters$location, "location")
+  .check_parameter(parameters$scale,    "scale")
+  .check_parameter(parameters$df,       "df")
+  .check_parameter_positive(parameters$scale, "scale")
+  .check_parameter_positive(parameters$df,    "df")
+  .check_parameter_dimensions(parameters$K,   "K", allow_NA = TRUE)   # allow undetermined dimensions if called by prior_factor
+
+
+  # add the values to the output
+  output$distribution <- "mt"
+  output$parameters   <- parameters
+  output$truncation   <- truncation
+
+  class(output) <- c("prior", "prior.vector")
 
   return(output)
 }
@@ -581,6 +745,24 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
   return(output)
 }
 
+.prior_normal.orthonormal <- function(parameters){
+
+  output <- list()
+
+  # check overall settings
+  parameters <- .check_and_name_parameters(parameters, "sd", "normal.orthonormal")
+
+  # check individual parameters
+  .check_parameter(parameters$sd,   "sd")
+  .check_parameter_positive(parameters$sd, "sd")
+
+  # add the values to the output
+  output$distribution <- "normal.orthonormal"
+  output$parameters   <- parameters
+
+  return(output)
+}
+
 #### elementary prior related functions ####
 #' @title Elementary prior related functions
 #'
@@ -667,6 +849,57 @@ rng.prior   <- function(x, n, ...){
     }
 
     x <- x[1:n]
+
+  }else if(is.prior.orthonormal(prior)){
+
+    if(switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameters[["mean"]],
+      "mt"      = prior$parameters[["location"]]) != 0){
+      stop("the orthonormal prior distribution must be centered")
+    }
+
+    if(is.na(prior$parameters[["K"]]) && !is.null(attr(prior, "levels"))){
+      prior$parameters[["K"]] <- attr(prior, "levels") - 1
+    }else if(is.na(prior$parameters[["K"]])){
+      prior$parameters[["K"]] <- 1
+      warning("number of factor levels / dimensionality of the prior distribution was not specified -- assuming two factor levels")
+    }
+
+    par1 <- rep(0, prior$parameter[["K"]])
+    par2 <- diag(switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameter[["sd"]]^2,
+      "mt"      = prior$parameter[["scale"]]^2
+    ), ncol = prior$parameter[["K"]], nrow = prior$parameter[["K"]])
+
+    x <- switch(
+      prior[["distribution"]],
+      "mnormal"    = mvtnorm::rmvnorm(n, mean = par1, sigma = par2),
+      "mt"         = mvtnorm::rmvt(n, delta = par1, sigma = par2, df = prior$parameter[["df"]], type = "shifted"),
+    )
+
+    x <- x %*% t(contr.orthonormal(1:(prior$parameters[["K"]] + 1)))
+
+  }else if(is.prior.vector(prior)){
+
+    # TODO: generalize this to priors with covariances
+    par1 <- rep(switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameter[["mean"]],
+      "mt"      = prior$parameter[["location"]]
+    ), length = prior$parameter[["K"]])
+    par2 <- diag(switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameter[["sd"]]^2,
+      "mt"      = prior$parameter[["scale"]]^2
+    ), ncol = prior$parameter[["K"]], nrow = prior$parameter[["K"]])
+
+    x <- switch(
+      prior[["distribution"]],
+      "mnormal"    = mvtnorm::rmvnorm(n, mean = par1, sigma = par2),
+      "mt"         = mvtnorm::rmvt(n, delta = par1, sigma = par2, df = prior$parameter[["df"]], type = "shifted"),
+    )
 
   }else if(is.prior.weightfunction(prior)){
 
@@ -796,6 +1029,26 @@ lpdf.prior  <- function(x, y, ...){
     if(prior[["distribution"]] != "point"){
       log_lik <- log_lik - log(.prior_C(prior))
     }
+
+  }else if(is.prior.vector(prior)){
+
+    # TODO: generalize this to priors with covariances
+    par1 <- rep(switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameter[["mean"]],
+      "mt"      = prior$parameter[["location"]]
+    ), length = prior$parameter[["K"]])
+    par2 <- diag(switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameter[["sd"]]^2,
+      "mt"      = prior$parameter[["scale"]]^2
+    ), ncol = prior$parameter[["K"]], nrow = prior$parameter[["K"]])
+
+    log_lik <- switch(
+      prior[["distribution"]],
+      "mnormal"    = mvtnorm::dmvnorm(x, mean = par1, sigma = par2, log = TRUE),
+      "mt"         = mvtnorm::dmvt(x, delta = par1, sigma = par2, df = prior$parameter[["df"]], type = "shifted", log = TRUE),
+    )
 
   }else if(is.prior.weightfunction(prior)){
 
@@ -981,6 +1234,33 @@ mcdf.prior   <- function(x, q, ...){
       "two.sided.fixed" = mptwo.sided_fixed(q, omega = prior$parameters[["omega"]])
     )
 
+  }else if(is.prior.orthonormal(prior)){
+
+    if(switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameters[["mean"]],
+      "mt"      = prior$parameters[["location"]]) != 0){
+      stop("the orthonormal prior distribution must be centered")
+    }
+
+    if(is.na(prior$parameters[["K"]]) && !is.null(attr(prior, "levels"))){
+      prior$parameters[["K"]] <- attr(prior, "levels") - 1
+    }else if(is.na(prior$parameters[["K"]])){
+      prior$parameters[["K"]] <- 1
+      warning("number of factor levels / dimensionality of the prior distribution was not specified -- assuming two factor levels")
+    }
+
+    par2 <- sqrt(sum( (contr.orthonormal(1:(prior$parameters[["K"]] + 1))[1,] * switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameters[["sd"]],
+      "mt"      = prior$parameters[["scale"]]) )^2 ))
+
+    p <- switch(
+      prior[["distribution"]],
+      "mnormal" = stats::pnorm(q, mean = 0, sd = par2),
+      "mt"      = extraDistr::plst(q, df = prior$parameters[["df"]], mu = 0, sigma = par2)
+    )
+
   }
 
   return(p)
@@ -1007,6 +1287,32 @@ mccdf.prior  <- function(x, q, ...){
       "two.sided.fixed" = mptwo.sided_fixed(q, omega = prior$parameters[["omega"]], lower.tail = FALSE)
     )
 
+  }else if(is.prior.orthonormal(prior)){
+
+    if(switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameters[["mean"]],
+      "mt"      = prior$parameters[["location"]]) != 0){
+      stop("the orthonormal prior distribution must be centered")
+    }
+
+    if(is.na(prior$parameters[["K"]]) && !is.null(attr(prior, "levels"))){
+      prior$parameters[["K"]] <- attr(prior, "levels") - 1
+    }else if(is.na(prior$parameters[["K"]])){
+      prior$parameters[["K"]] <- 1
+      warning("number of factor levels / dimensionality of the prior distribution was not specified -- assuming two factor levels")
+    }
+
+    par2 <- sqrt(sum( (contr.orthonormal(1:(prior$parameters[["K"]] + 1))[1,] * switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameters[["sd"]],
+      "mt"      = prior$parameters[["scale"]]) )^2 ))
+
+    p <- switch(
+      prior[["distribution"]],
+      "mnormal" = stats::pnorm(q, mean = 0, sd = par2, lower.tail = FALSE),
+      "mt"      = extraDistr::plst(q, df = prior$parameters[["df"]], mu = 0, sigma = par2, lower.tail = FALSE)
+    )
   }
 
   return(p)
@@ -1034,6 +1340,32 @@ mlpdf.prior  <- function(x, y, ...){
       "two.sided.fixed" = mdtwo.sided_fixed(x, omega = prior$parameters[["omega"]], log = TRUE),
     )
 
+  }else if(is.prior.orthonormal(prior)){
+
+    if(switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameters[["mean"]],
+      "mt"      = prior$parameters[["location"]]) != 0){
+      stop("the orthonormal prior distribution must be centered")
+    }
+
+    if(is.na(prior$parameters[["K"]]) && !is.null(attr(prior, "levels"))){
+      prior$parameters[["K"]] <- attr(prior, "levels") - 1
+    }else if(is.na(prior$parameters[["K"]])){
+      prior$parameters[["K"]] <- 1
+      warning("number of factor levels / dimensionality of the prior distribution was not specified -- assuming two factor levels")
+    }
+
+    par2 <- sqrt(sum( (contr.orthonormal(1:(prior$parameters[["K"]] + 1))[1,] * switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameters[["sd"]],
+      "mt"      = prior$parameters[["scale"]]) )^2 ))
+
+    log_lik <- switch(
+      prior[["distribution"]],
+      "mnormal" = stats::dnorm(x, mean = 0, sd = par2, log = TRUE),
+      "mt"      = extraDistr::dlst(x, df = prior$parameters[["df"]], mu = 0, sigma = par2, log = TRUE)
+    )
   }
 
   return(log_lik)
@@ -1072,6 +1404,33 @@ mquant.prior <- function(x, p, ...){
       "two.sided" = mqtwo.sided(p, alpha = prior$parameters[["alpha"]]),
       "one.sided.fixed" = mqone.sided_fixed(p, omega = prior$parameters[["omega"]]),
       "two.sided.fixed" = mqtwo.sided_fixed(p, omega = prior$parameters[["omega"]])
+    )
+
+  }else if(is.prior.orthonormal(prior)){
+
+    if(switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameters[["mean"]],
+      "mt"      = prior$parameters[["location"]]) != 0){
+      stop("the orthonormal prior distribution must be centered")
+    }
+
+    if(is.na(prior$parameters[["K"]]) && !is.null(attr(prior, "levels"))){
+      prior$parameters[["K"]] <- attr(prior, "levels") - 1
+    }else if(is.na(prior$parameters[["K"]])){
+      prior$parameters[["K"]] <- 1
+      warning("number of factor levels / dimensionality of the prior distribution was not specified -- assuming two factor levels")
+    }
+
+    par2 <- sqrt(sum( (contr.orthonormal(1:(prior$parameters[["K"]] + 1))[1,] * switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameters[["sd"]],
+      "mt"      = prior$parameters[["scale"]]) )^2 ))
+
+    q <- switch(
+      prior[["distribution"]],
+      "mnormal" = stats::qnorm(p, mean = 0, sd = par2),
+      "mt"      = extraDistr::qlst(p, df = prior$parameters[["df"]], mu = 0, sigma = par2)
     )
 
   }

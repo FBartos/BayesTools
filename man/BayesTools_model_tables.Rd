@@ -19,12 +19,12 @@ model_summary_table(
 
 runjags_estimates_table(
   fit,
-  prior_list,
   transformations = NULL,
   title = NULL,
   footnotes = NULL,
   warnings = NULL,
-  remove_spike_0 = TRUE
+  remove_spike_0 = TRUE,
+  transform_orthonormal = FALSE
 )
 
 runjags_estimates_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
@@ -54,10 +54,12 @@ shortened. Defaults to \code{FALSE}.}
 
 \item{fit}{runjags model fit}
 
-\item{prior_list}{list of prior distributions}
-
 \item{transformations}{named list of transformations to be applied
 to specific parameters}
+
+\item{transform_orthonormal}{whether factors with orthonormal prior
+distributions should be transformed to differences from the grand
+mean}
 }
 \value{
 \code{model_summary_table} returns a table with
