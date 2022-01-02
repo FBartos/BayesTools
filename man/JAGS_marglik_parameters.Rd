@@ -2,16 +2,28 @@
 % Please edit documentation in R/JAGS-marglik.R
 \name{JAGS_marglik_parameters}
 \alias{JAGS_marglik_parameters}
+\alias{JAGS_marglik_parameters_formula}
 \title{Extract parameters for 'JAGS' priors}
 \usage{
 JAGS_marglik_parameters(samples, prior_list)
+
+JAGS_marglik_parameters_formula(samples, formula_data_list, formula_prior_list)
 }
 \arguments{
 \item{samples}{samples provided by bridgesampling
 function}
 
 \item{prior_list}{named list of prior distribution
-(names correspond to the parameter names)}
+(names correspond to the parameter names) of parameters not specified within the
+\code{formula_list}}
+
+\item{formula_data_list}{named list of data frames containing data for each formula
+(names of the lists correspond to the parameter name created by each of the formula)}
+
+\item{formula_prior_list}{named list of named lists of prior distributions
+(names of the lists correspond to the parameter name created by each of the formula and
+the names of the prior distribution correspond to the parameter names) of parameters specified
+within the \code{formula}}
 }
 \value{
 \code{JAGS_marglik_parameters} returns a named list

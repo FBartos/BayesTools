@@ -38,6 +38,128 @@ test_that("JAGS model functions work (simple)", {
   }
 })
 
+test_that("JAGS model functions work (vector)", {
+
+  skip_if_not_installed("rjags")
+  model_syntax <- "model{}"
+  priors       <- list(
+    p1  = prior("mnormal", list(mean = 0, sd = 1, K = 3),),
+    p2  = prior("mcauchy", list(location = 0, scale = 1.5, K = 2)),
+    p3  = prior("mt",      list(location = 2, scale = 0.5, df = 5, K = 2))
+  )
+
+
+  model_syntax <- JAGS_add_priors(model_syntax, priors)
+  monitor      <- JAGS_to_monitor(priors)
+  inits        <- JAGS_get_inits(priors, chains = 2, seed = 1)
+
+  set.seed(1)
+  model   <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
+  samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 5000, quiet = TRUE, progress.bar = "none")
+  samples <- do.call(rbind, samples)
+
+  expect_doppelganger("JAGS-model-prior-vector-1", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfcol = c(1, 2))
+
+    hist(samples[,"p1[1]"], breaks = 50, main = print(priors[[1]], plot = TRUE), freq = FALSE)
+    lines(prior("normal", list(0, 1)))
+
+    plot(samples[,"p1[1]"], samples[,"p1[2]"], pch = 19, xlim = c(-3, 3), ylim = c(-3, 3), asp = 1,
+         xlab = "X1", ylab = "X2", main = print(priors[[1]], plot = TRUE))
+  })
+
+  expect_doppelganger("JAGS-model-prior-vector-2", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfcol = c(1, 2))
+
+    hist(samples[,"p2[1]"][abs(samples[,"p2[1]"]) < 5], breaks = 20, main = print(priors[[2]], plot = TRUE), freq = FALSE)
+    lines(prior("cauchy", list(0, 1.5)))
+
+    plot(samples[,"p2[1]"], samples[,"p2[2]"], pch = 19, xlim = c(-5, 5), ylim = c(-5, 5), asp = 1,
+         xlab = "X1", ylab = "X2", main = print(priors[[2]], plot = TRUE))
+  })
+
+  expect_doppelganger("JAGS-model-prior-vector-3", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfcol = c(1, 2))
+
+    hist(samples[,"p3[1]"], breaks = 50, main = print(priors[[3]], plot = TRUE), freq = FALSE)
+    lines(prior("t", list(2, 0.5, 5)))
+
+    plot(samples[,"p3[1]"], samples[,"p3[2]"], pch = 19, xlim = c(-3, 7), ylim = c(-3, 7), asp = 1,
+         xlab = "X1", ylab = "X2", main = print(priors[[3]], plot = TRUE))
+  })
+
+})
+
+test_that("JAGS model functions work (factor)", {
+
+  skip_if_not_installed("rjags")
+  model_syntax <- "model{}"
+  priors       <- list(
+    p1  = prior_factor("mnorm", list(mean = 0, sd = 1),    contrast = "orthonormal"),
+    p2  = prior_factor("beta",  list(alpha = 1, beta = 1), contrast = "dummy"),
+    p3  = prior_factor("beta",  list(alpha = 2, beta = 2), contrast = "dummy")
+  )
+
+  # add levels
+  attr(priors[[1]], "levels") <- 3
+  attr(priors[[2]], "levels") <- 2
+  attr(priors[[3]], "levels") <- 3
+
+
+  model_syntax <- JAGS_add_priors(model_syntax, priors)
+  monitor      <- JAGS_to_monitor(priors)
+  inits        <- JAGS_get_inits(priors, chains = 2, seed = 1)
+
+  set.seed(1)
+  model   <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
+  samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 5000, quiet = TRUE, progress.bar = "none")
+  samples <- do.call(rbind, samples)
+
+  expect_equal(colnames(samples), c("p1[1]", "p1[2]", "p2", "p3[1]", "p3[2]"))
+
+  expect_doppelganger("JAGS-model-prior-factor-1", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfcol = c(1, 2))
+
+    hist(samples[,"p1[1]"], breaks = 50, main = print(priors[[1]], plot = TRUE), freq = FALSE)
+    lines(prior("normal", list(0, 1)))
+
+    plot(samples[,"p1[1]"], samples[,"p1[2]"], pch = 19, xlim = c(-3, 3), ylim = c(-3, 3), asp = 1,
+         xlab = "X1", ylab = "X2", main = print(priors[[1]], plot = TRUE))
+  })
+
+  expect_doppelganger("JAGS-model-prior-factor-2", function(){
+
+    hist(samples[,"p2"], breaks = 20, main = print(priors[[2]], plot = TRUE), freq = FALSE)
+    lines(prior("beta", list(1, 1)))
+  })
+
+  expect_doppelganger("JAGS-model-prior-factor-3", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfcol = c(1, 2))
+
+    hist(samples[,"p3[1]"], breaks = 50, main = print(priors[[3]], plot = TRUE), freq = FALSE)
+    lines(prior("beta", list(2, 2)))
+
+    plot(samples[,"p3[1]"], samples[,"p3[2]"], pch = 19, xlim = c(0, 1), ylim = c(0, 1), asp = 1,
+         xlab = "X1", ylab = "X2", main = print(priors[[3]], plot = TRUE), cex = .25)
+  })
+
+})
+
 test_that("JAGS model functions work (weightfunctions)", {
 
   skip_if_not_installed("rjags")
@@ -149,7 +271,7 @@ test_that("JAGS fit function works" , {
   runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
   fit4 <- JAGS_fit(model_syntax4, data4, priors_list4, autofit = FALSE,
                    chains = 2, adapt = 100, burnin = 50, sample = 100, seed = 4)
-  summary_4 <- summary(fit4)
+  summary_4 <- suppressWarnings(summary(fit4))
   expect_true(summary_4[1,"MCerr"]   > 0.069)
   expect_true(summary_4[1,"MC%ofSD"] > 8)
   expect_true(summary_4[1,"SSeff"]   < 150)
@@ -187,6 +309,139 @@ test_that("JAGS fit function works" , {
   summary_4f <- summary(fit4f)
   expect_true(summary_4f[1,"MCerr"] > 0.0001)
   expect_true(fit4f$timetaken < 5)
+})
+
+test_that("JAGS fit function integration with formula works" , {
+
+  set.seed(1)
+
+  data_formula <- data.frame(
+    x_cont1 = rnorm(300),
+    x_fac2t = factor(rep(c("A", "B"), 150), levels = c("A", "B")),
+    x_fac3t = factor(rep(c("A", "B", "C"), 100), levels = c("A", "B", "C"))
+  )
+  data <- list(
+    y = rnorm(300, .4 * data_formula$x_cont1 + ifelse(data_formula$x_fac3t == "A", 0.0, ifelse(data_formula$x_fac3t == "B", -0.2, 0.4)), ifelse(data_formula$x_fac2t == "A", 0.5, 1)),
+    N = 300
+  )
+
+
+  # create model with mix of a formula and free parameters ---
+  formula_list1 <- list(
+    mu    = ~ x_cont1 + x_fac3t
+  )
+  formula_data_list1 <- list(
+    mu    = data_formula
+  )
+  formula_prior_list1 <- list(
+    mu    = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_cont1"         = prior("normal", list(0, 1)),
+      "x_fac3t"         = prior_factor("normal", contrast = "treatment", list(0, 1))
+    )
+  )
+  prior_list1 <- list(
+    sigma = prior("lognormal", list(0, 1))
+  )
+  model_syntax1 <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  fit1 <- JAGS_fit(
+    model_syntax = model_syntax1, data = data, prior_list = prior_list1,
+    formula_list = formula_list1, formula_data_list = formula_data_list1, formula_prior_list = formula_prior_list1)
+
+  posterior1 <- suppressWarnings(coda::as.mcmc(fit1))
+
+  lm_1 <- stats::lm(y ~ x_cont1 + x_fac3t, data = cbind(data_formula, y = data$y))
+
+  # verify against the frequentist fit
+  expect_doppelganger("JAGS-fit-formula-1", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfrow = c(2, 2))
+
+    hist(posterior1[,"mu_intercept"], freq = FALSE, main = "Intercept")
+    curve(dnorm(x, mean = coef(lm_1)["(Intercept)"], sd = summary(lm_1)$coefficients["(Intercept)", "Std. Error"]), add = TRUE, lwd = 2)
+
+    hist(posterior1[,"mu_x_cont1"], freq = FALSE, main = "mu_x_cont1")
+    curve(dnorm(x, mean = coef(lm_1)["x_cont1"], sd = summary(lm_1)$coefficients["x_cont1", "Std. Error"]), add = TRUE, lwd = 2)
+
+    hist(posterior1[,"mu_x_fac3t[1]"], freq = FALSE, main = "mu_x_fac3t")
+    curve(dnorm(x, mean = coef(lm_1)["x_fac3tB"], sd = summary(lm_1)$coefficients["x_fac3tB", "Std. Error"]), add = TRUE, lwd = 2)
+
+    hist(posterior1[,"mu_x_fac3t[2]"], freq = FALSE, main = "mu_x_fac3t")
+    curve(dnorm(x, mean = coef(lm_1)["x_fac3tC"], sd = summary(lm_1)$coefficients["x_fac3tC", "Std. Error"]), add = TRUE, lwd = 2)
+  })
+
+  # create model with two formulas
+  formula_list2 <- list(
+    mu    = ~ x_cont1 + x_fac3t,
+    sigma = ~ x_fac2t
+  )
+
+  formula_data_list2 <- list(
+    mu    = data_formula,
+    sigma = data_formula
+  )
+
+  formula_prior_list2 <- list(
+    mu    = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_cont1"         = prior("normal", list(0, 1)),
+      "x_fac3t"         = prior_factor("normal", contrast = "treatment", list(0, 1))
+    ),
+    sigma = list(
+      "intercept"       = prior("normal", list(0, 1)),
+      "x_fac2t"         = prior_factor("normal",  contrast = "treatment",   list(0, 1))
+    )
+  )
+  model_syntax2 <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(exp(sigma[i]), 2))\n",
+    "}\n",
+    "}"
+  )
+
+
+  fit2 <- JAGS_fit(
+    model_syntax = model_syntax2, data = data, prior_list = NULL,
+    formula_list = formula_list2, formula_data_list = formula_data_list2, formula_prior_list = formula_prior_list2)
+
+  posterior2 <- suppressWarnings(coda::as.mcmc(fit2))
+
+  # verify against the true values
+  expect_doppelganger("JAGS-fit-formula-2", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfrow = c(2, 3))
+
+    hist(posterior2[,"mu_intercept"], freq = FALSE, main = "Intercept")
+    abline(v = 0, lwd = 3, col = "blue")
+
+    hist(posterior2[,"mu_x_cont1"], freq = FALSE, main = "mu_x_cont1")
+    abline(v = .4, lwd = 3, col = "blue")
+
+    hist(posterior2[,"mu_x_fac3t[1]"], freq = FALSE, main = "mu_x_fac3t")
+    abline(v = -0.2, lwd = 3, col = "blue")
+
+    hist(posterior2[,"mu_x_fac3t[2]"], freq = FALSE, main = "mu_x_fac3t")
+    abline(v = 0.4, lwd = 3, col = "blue")
+
+    hist(exp(posterior2[,"sigma_intercept"]), freq = FALSE, main = "sigma_intercept")
+    abline(v = 0.5, lwd = 3, col = "blue")
+
+    hist(exp(posterior2[,"sigma_intercept"] + posterior2[,"sigma_x_fac2t"]), freq = FALSE, main = "sigma_x_fac2t")
+    abline(v = 1, lwd = 3, col = "blue")
+  })
+
 })
 
 test_that("JAGS parallel fit function works" , {

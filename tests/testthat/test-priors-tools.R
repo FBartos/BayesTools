@@ -1,4 +1,4 @@
-context("Prior distribution functions")
+context("Prior distribution tool functions")
 
 test_that("Prior handling works", {
 
@@ -21,7 +21,7 @@ test_that("Prior handling works", {
   # check errors messages
   expect_error(prior("normal", list(0)), "normal prior distribution requires 2 parameters.")
   expect_error(prior("normal", list(c(0, 0), 1)), "The 'mean' must be a numeric vector of length 1.")
-  expect_error(prior("normal", list("a", 1)), "The '' argument must be a numeric vector.")
+  expect_error(prior("normal", list("a", 1)), "The 'mean' must be a numeric vector of length 1.")
   expect_error(prior("normal", list(0, "location" = 1)), "Parameters 'location' are not supported for a normal distribution.")
   expect_error(prior("normal", list(0, 1), list(Inf, -Inf)), "The lower truncation point must be lower than the upper truncation points.")
   expect_error(prior("lognormal", list(0, 1), list(-5, Inf)), "Lower truncation point must be larger or equal to 0.")

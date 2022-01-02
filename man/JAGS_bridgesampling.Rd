@@ -6,9 +6,12 @@
 \usage{
 JAGS_bridgesampling(
   fit,
-  data,
-  prior_list,
   log_posterior,
+  data = NULL,
+  prior_list = NULL,
+  formula_list = NULL,
+  formula_data_list = NULL,
+  formula_prior_list = NULL,
   add_parameters = NULL,
   add_bounds = NULL,
   maxiter = 10000,
@@ -20,14 +23,26 @@ JAGS_bridgesampling(
 \item{fit}{model fitted with either \link[runjags]{runjags} posterior
 samples obtained with \link[rjags]{rjags-package}}
 
-\item{data}{data that were used to fit the model}
-
-\item{prior_list}{named list of prior distribution
-(names correspond to the parameter names)}
-
 \item{log_posterior}{function that takes a named list of samples, the data,
 and additional list of parameters passed as \code{...} as input and
 returns the log of the unnormalized posterior density of the model part}
+
+\item{data}{list containing data to fit the model (not including data for the formulas)}
+
+\item{prior_list}{named list of prior distribution
+(names correspond to the parameter names) of parameters not specified within the
+\code{formula_list}}
+
+\item{formula_list}{named list of formulas to be added to the model
+(names correspond to the parameter name created by each of the formula)}
+
+\item{formula_data_list}{named list of data frames containing data for each formula
+(names of the lists correspond to the parameter name created by each of the formula)}
+
+\item{formula_prior_list}{named list of named lists of prior distributions
+(names of the lists correspond to the parameter name created by each of the formula and
+the names of the prior distribution correspond to the parameter names) of parameters specified
+within the \code{formula}}
 
 \item{add_parameters}{vector of additional parameter names that should be used
 in bridgesampling but were not specified in the \code{prior_list}}
@@ -86,6 +101,6 @@ log_posterior <- function(parameters, data){
 }
 
 # get marginal likelihoods
-marglik <- JAGS_bridgesampling(fit, data, priors_list, log_posterior)
+marglik <- JAGS_bridgesampling(fit, log_posterior, data, priors_list)
 }
 }
