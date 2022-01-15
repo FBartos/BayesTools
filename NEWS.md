@@ -1,3 +1,7 @@
+## version 0.2.1
+### Fixes
+- fixing JAGS code for multivariate-t prior distribution
+
 ## version 0.2.0
 ### Changes
 - ensemble inference, summary, and plot functions now extract the prior list from attribute of the fit objects (previously, the prior_list needed to be passed for each model within the model_list as the priors argument
