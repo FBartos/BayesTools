@@ -464,20 +464,23 @@ JAGS_add_priors           <- function(syntax, prior_list){
   if(prior[["distribution"]] == "mt"){
     # using the chisq * covariance parametrization since the mt fails with 1 df
     # (using a common df parameter as in Rouder et al. 2012)
-    syntax <- paste0("prior_par1_", parameter_name, " = rep(", par1, ",", prior$parameter[["K"]], ")\n")
-    syntax <- paste0(syntax, "prior_par3_", parameter_name, " ~ dgamma(", prior$parameter[["df"]]/2, ", ", prior$parameter[["df"]]/2,")\n")
+    syntax <- paste0("prior_par1_", parameter_name, " = rep(0,", prior$parameter[["K"]], ")\n")
+    syntax <- paste0(syntax, "prior_par_s_", parameter_name, " ~ dgamma(", prior$parameter[["df"]]/2, ", ", prior$parameter[["df"]]/2,")\n")
     syntax <- paste0(
       syntax,
       "for(i in 1:", prior$parameters[["K"]], "){\n",
-      "  prior_par2_", parameter_name, "[i,i] <- (prior_par3_", parameter_name, ") * ", 1/par2^2, "\n",
+      "  prior_par2_", parameter_name, "[i,i] <- ", 1/par2^2, "\n",
       "  for(j in 1:(i-1)){\n",
       "    prior_par2_", parameter_name, "[i,j] <- 0\n",
       "  }\n",
       "  for (j in (i+1):", prior$parameters[["K"]], "){\n",
       "    prior_par2_", parameter_name, "[i,j] <- 0\n",
       "  }\n",
+      "}\n",
+      "prior_par_z_", parameter_name, " ~ dmnorm(prior_par1_", parameter_name, ",prior_par2_", parameter_name, ")\n",
+      "for(i in 1:", prior$parameters[["K"]], "){\n",
+      "  ", parameter_name, "[i] <- prior_par_z_", parameter_name, "[i]/sqrt(prior_par_s_", parameter_name, ") + ", par1, " \n",
       "}\n")
-    syntax <- paste0(syntax, parameter_name," ~ dmnorm(prior_par1_", parameter_name, ",prior_par2_", parameter_name, ")\n")
   }else{
     syntax <- paste0("prior_par1_", parameter_name, " = rep(", par1, ",", prior$parameter[["K"]], ")\n")
     syntax <- paste0(
@@ -715,10 +718,13 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
   }else{
 
     init <- list()
-    init[[parameter_name]] <- rng(prior, 1)[1,]
+
 
     if(prior[["distribution"]] == "mt"){
-      init[[paste0("prior_par3_", parameter_name)]] <- rng(prior("gamma", list(shape = prior$parameters[["df"]]/2, rate = prior$parameters[["df"]]/2)), 1)
+      init[[paste0("prior_par_s_", parameter_name)]] <- rng(prior("gamma", list(shape = prior$parameters[["df"]]/2, rate = prior$parameters[["df"]]/2)), 1)
+      init[[paste0("prior_par_z_", parameter_name)]] <- rng(prior("mnormal", list(mean = 0, sd = prior$parameters[["scale"]], K = prior$parameters[["K"]])), 1)[1,]
+    }else{
+      init[[parameter_name]] <- rng(prior, 1)[1,]
     }
 
   }
