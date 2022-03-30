@@ -804,7 +804,7 @@ test_that("posterior plot functions (orthonormal) work", {
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "mu_x_fac3o", col = c("red", "green", "blue"), prior = TRUE)
+    plot_posterior(mixed_posteriors, "mu_x_fac3o", col = c("red", "green", "blue"), dots_prior = list(col = "grey"), prior = TRUE)
   })
 
   expect_doppelganger("model-averaging-ggplot-posterior-o-1", plot_posterior(mixed_posteriors, "mu_x_fac3o", plot_type = "ggplot"))
