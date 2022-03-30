@@ -1,3 +1,7 @@
+## version 0.2.3
+### Fixes
+- fixing error from trying to rename formula parameters in BayesTools tables when multiple parameters were nested within a component
+
 ## version 0.2.2
 ### Fixes
 - fixing layering of prior and posterior plots in `plot_posterior` (posterior is now plotted over the prior)

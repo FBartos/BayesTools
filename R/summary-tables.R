@@ -367,16 +367,18 @@ ensemble_diagnostics_table <- function(models, parameters, title = NULL, footnot
   }
 
   colnames(summary_table) <- c("Model", names(parameters))
+
+  parameters <- unlist(parameters) # deal with potential matching of multiple parameters withing a name
   for(p in seq_along(parameters)){
 
-    parameter_name    <- parameters[[p]]
+    parameter_name    <- parameters[p]
     formula_parameter <- unique(unlist(lapply(models, function(m) attr(attr(m[["fit"]], "prior_list")[[parameter_name]], "parameter"))))
 
     if(!is.null(unlist(formula_parameter))){
       parameter_name <- gsub(paste0(formula_parameter, "_"), paste0("(", formula_parameter, ") "), parameter_name)
       parameter_name <- gsub("__xXx__", ":", parameter_name)
 
-      colnames(summary_table)[colnames(summary_table) == parameters[[p]]] <- parameter_name
+      colnames(summary_table)[colnames(summary_table) == parameters[p]] <- parameter_name
     }
   }
 
