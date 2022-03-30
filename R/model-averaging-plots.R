@@ -104,7 +104,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   }
 }
 
-.plot_prior_list.both             <- function(plot_data, plot_type, par_name = NULL, scale_y2 = NULL, ...){
+.plot_prior_list.both             <- function(plot_data, plot_type, par_name = NULL, scale_y2 = NULL, add = FALSE, ...){
 
   # get default plot settings
   dots      <- list(...)
@@ -149,7 +149,9 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   if(plot_type == "base"){
 
-    .plot.prior_empty(type, dots)
+    if(!add){
+      .plot.prior_empty(type, dots)
+    }
 
     for(i in seq_along(plot_data)){
       if(inherits(plot_data[[i]], what = "density.prior.simple")){
@@ -167,19 +169,23 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   }else if(plot_type == "ggplot"){
 
-    plot     <- .ggplot.prior_empty(type, dots)
+    plot <- list()
 
     for(i in seq_along(plot_data)){
       if(inherits(plot_data[[i]], what = "density.prior.simple")){
         args           <- dots
         args$plot_data <- plot_data[[i]]
-        plot           <- plot + do.call(.geom_prior.simple, args)
+        plot           <- c(plot, do.call(.geom_prior.simple, args))
       }else if(inherits(plot_data[[i]], what = "density.prior.point")){
         args           <- dots
         args$scale_y2  <- scale_y2
         args$plot_data <- plot_data[[i]]
-        plot           <- plot + do.call(.geom_prior.point, args)
+        plot           <- c(plot, do.call(.geom_prior.point, args))
       }
+    }
+
+    if(!add){
+      plot <- .ggplot.prior_empty(type, dots) + plot
     }
 
   }
@@ -191,7 +197,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     return(plot)
   }
 }
-.plot_prior_list.factor           <- function(plot_data, plot_type, par_name = NULL, scale_y2 = NULL, ...){
+.plot_prior_list.factor           <- function(plot_data, plot_type, par_name = NULL, scale_y2 = NULL, add = FALSE, ...){
 
   # get default plot settings
   dots      <- list(...)
@@ -265,7 +271,9 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   if(plot_type == "base"){
 
-    .plot.prior_empty(type, dots)
+    if(!add){
+      .plot.prior_empty(type, dots)
+    }
 
     # plot points
     for(i in seq_along(plot_data_points)){
@@ -299,7 +307,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   }else if(plot_type == "ggplot"){
 
-    plot     <- .ggplot.prior_empty(type, dots)
+    plot <- list()
 
     # plot points
     for(i in seq_along(plot_data_points)){
@@ -308,7 +316,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
       args$plot_data <- plot_data[[i]]
       args$col       <- if(unique(length(dots[["col"]])) > 1)      .plot.prior_settings()[["col"]]
       args$lty       <- if(unique(length(dots[["linetype"]])) > 1) .plot.prior_settings()[["linetype"]]
-      plot           <- plot + do.call(.geom_prior.point, args)
+      plot           <- c(plot, do.call(.geom_prior.point, args))
     }
 
     # plot factor levels
@@ -321,13 +329,20 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     args             <- dots
     args$level_names <- level_names
     args$plot_data   <- plot_data_factors
-    plot             <- plot + do.call(.geom_prior.factors, args)
+
+    plot <- c(plot, do.call(.geom_prior.factors, args))
+
 
     if(dots[["legend"]]){
-      plot <- plot + ggplot2::theme(
+      plot <- c(plot, list(ggplot2::theme(
         legend.title    = ggplot2::element_blank(),
-        legend.position = if(is.null(dots[["legend_position"]])) "right" else dots[["legend_position"]])
+        legend.position = if(is.null(dots[["legend_position"]])) "right" else dots[["legend_position"]])))
     }
+
+    if(!add){
+      plot <- .ggplot.prior_empty(type, dots) + plot
+    }
+
   }
 
   # return the plots
@@ -1070,35 +1085,35 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
         }
       }
 
+      # plot prior
+      args_prior           <- dots_prior
+      args_prior$plot_data <- plot_data_prior
+      args_prior$plot_type <- plot_type
+      args_prior$par_name  <- par_name
+      args_prior$scale_y2  <- scale_y2
+
+      plot <- do.call(.plot_prior_list.both, args_prior)
+
+
       # plot posterior
-      if(any(sapply(prior_list, is.prior.factor))){
-        plot <- .plot_prior_list.factor(plot_data = plot_data, plot_type = plot_type, par_name = par_name, ...)
-      }else{
-        plot <- .plot_prior_list.both(plot_data = plot_data, plot_type = plot_type, par_name = par_name, ...)
-      }
+      args           <- list(...)
+      args$plot_data <- plot_data
+      args$plot_type <- plot_type
+      args$par_name  <- par_name
+      args$scale_y2  <- scale_y2
+      args$add       <- TRUE
 
-
-      for(i in seq_along(plot_data_prior)){
-
-        args           <- dots_prior
-        args$plot_data <- plot_data_prior[[i]]
-        args$plot_type <- plot_type
-        args$par_name  <- par_name
-        args$scale_y2  <- scale_y2
-
-        if(plot_type == "ggplot"){
-
-          if(inherits(plot_data_prior[[i]], what = "density.prior.simple")){
-            plot <- plot + do.call(.geom_prior.simple, args)
-          }else if(inherits(plot_data_prior[[i]], what = "density.prior.point")){
-            plot <- plot + do.call(.geom_prior.point, args)
-          }
+      if(plot_type == "base"){
+        if(any(sapply(prior_list, is.prior.factor))){
+          plot <- do.call(.plot_prior_list.factor, args)
         }else{
-          if(inherits(plot_data_prior[[i]], what = "density.prior.simple")){
-            do.call(.lines.prior.simple, args)
-          }else if(inherits(plot_data_prior[[i]], what = "density.prior.point")){
-            do.call(.lines.prior.point, args)
-          }
+          plot <- do.call(.plot_prior_list.both, args)
+        }
+      }else if(plot_type == "ggplot"){
+        if(any(sapply(prior_list, is.prior.factor))){
+          plot <- plot + do.call(.plot_prior_list.factor, args)
+        }else{
+          plot <- plot + do.call(.plot_prior_list.both, args)
         }
       }
 
@@ -1468,6 +1483,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
         class(out_den) <- c("density", "density.prior", "density.prior.factor", "density.prior.simple")
         attr(out_den, "x_range")    <- range(x_den)
         attr(out_den, "y_range")    <- c(0, max(y_den))
+        attr(out_den, "level")      <- i
         attr(out_den, "level_name") <- colnames(samples_density)[i]
 
         out[[paste0("density", i)]] <- out_den

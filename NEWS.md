@@ -1,3 +1,7 @@
+## version 0.2.2
+### Fixes
+- fixing layering of prior and posterior plots in `plot_posterior` (posterior is now plotted over the prior)
+
 ## version 0.2.1
 ### Fixes
 - fixing JAGS code for multivariate-t prior distribution
