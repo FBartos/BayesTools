@@ -23,6 +23,8 @@
 <![endif]-->
 </head>
 <body data-spy="scroll" data-target="#toc">
+    
+
     <div class="container template-home">
       <header><div class="navbar navbar-default navbar-fixed-top" role="navigation">
   <div class="container">
@@ -35,18 +37,12 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="Released version">0.1.3.4</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.2</span>
       </span>
     </div>
 
     <div id="navbar" class="navbar-collapse collapse">
       <ul class="nav navbar-nav">
-<li>
-  <a href="index.html">
-    <span class="fas fa-home fa-lg"></span>
-     
-  </a>
-</li>
 <li>
   <a href="reference/index.html">Reference</a>
 </li>
@@ -56,7 +52,7 @@
       </ul>
 <ul class="nav navbar-nav navbar-right">
 <li>
-  <a href="https://github.com/FBartos/BayesTools/">
+  <a href="https://github.com/FBartos/BayesTools/" class="external-link">
     <span class="fab fa-github fa-lg"></span>
      
   </a>
@@ -73,9 +69,9 @@
 
       </header><div class="row">
   <div class="contents col-md-9">
-<div id="bayestools" class="section level1">
-<div class="page-header"><h1 class="hasAnchor">
-<a href="#bayestools" class="anchor"></a>BayesTools</h1></div>
+<div class="section level1">
+<div class="page-header"><h1 id="bayestools">BayesTools<a class="anchor" aria-label="anchor" href="#bayestools"></a>
+</h1></div>
 <!-- badges: start -->
 
 <p>The goal of BayesTools is to provide functions that simplify building R packages focused on Bayesian inference and Bayesian model-averaging.</p>
@@ -85,23 +81,23 @@
 <li>JAGS models automation (generating JAGS model syntax and <code>bridgesampling</code> marginal likelihood functions for prior distributions, various wrappers, …)</li>
 <li>model-averaging (mixing posterior distributions, computing Bayes factors, generating summary tables, …)</li>
 </ul>
-<div id="installation" class="section level2">
-<h2 class="hasAnchor">
-<a href="#installation" class="anchor"></a>Installation</h2>
-<p>You can install the released version of BayesTools from <a href="https://CRAN.R-project.org">CRAN</a> with:</p>
+<div class="section level2">
+<h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
+</h2>
+<p>You can install the released version of BayesTools from <a href="https://CRAN.R-project.org" class="external-link">CRAN</a> with:</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html">install.packages</a></span><span class="op">(</span><span class="st">"BayesTools"</span><span class="op">)</span></code></pre></div>
-<p>And the development version from <a href="https://github.com/">GitHub</a> with:</p>
+<code class="sourceCode R"><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html" class="external-link">install.packages</a></span><span class="op">(</span><span class="st">"BayesTools"</span><span class="op">)</span></code></pre></div>
+<p>And the development version from <a href="https://github.com/" class="external-link">GitHub</a> with:</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span class="co"># install.packages("devtools")</span>
 <span class="fu">devtools</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">"FBartos/BayesTools"</span><span class="op">)</span></code></pre></div>
 </div>
-<div id="prior-distributions" class="section level2">
-<h2 class="hasAnchor">
-<a href="#prior-distributions" class="anchor"></a>Prior Distributions</h2>
+<div class="section level2">
+<h2 id="prior-distributions">Prior Distributions<a class="anchor" aria-label="anchor" href="#prior-distributions"></a>
+</h2>
 <p>Prior distribution can be created with the <code>prior</code> function.</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="kw"><a href="https://rdrr.io/r/base/library.html">library</a></span><span class="op">(</span><span class="va"><a href="https://fbartos.github.io/BayesTools/">BayesTools</a></span><span class="op">)</span>
+<code class="sourceCode R"><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://fbartos.github.io/BayesTools/" class="external-link">BayesTools</a></span><span class="op">)</span>
 <span class="co">#&gt; Loading required namespace: runjags</span>
 <span class="co">#&gt; </span>
 <span class="co">#&gt; Attaching package: 'BayesTools'</span>
@@ -112,29 +108,29 @@
 <span class="co">#&gt; </span>
 <span class="co">#&gt;     pdf</span>
 
-<span class="va">p0</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/prior.html">prior</a></span><span class="op">(</span>distribution <span class="op">=</span> <span class="st">"point"</span>,  parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html">list</a></span><span class="op">(</span>location <span class="op">=</span> <span class="fl">0</span><span class="op">)</span><span class="op">)</span>
-<span class="va">p1</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/prior.html">prior</a></span><span class="op">(</span>distribution <span class="op">=</span> <span class="st">"normal"</span>, parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html">list</a></span><span class="op">(</span>mean <span class="op">=</span> <span class="fl">0</span>, sd <span class="op">=</span> <span class="fl">1</span><span class="op">)</span><span class="op">)</span>
-<span class="va">p2</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/prior.html">prior</a></span><span class="op">(</span>distribution <span class="op">=</span> <span class="st">"normal"</span>, parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html">list</a></span><span class="op">(</span>mean <span class="op">=</span> <span class="fl">0</span>, sd <span class="op">=</span> <span class="fl">1</span><span class="op">)</span>, truncation <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html">list</a></span><span class="op">(</span><span class="fl">0</span>, <span class="cn">Inf</span><span class="op">)</span><span class="op">)</span></code></pre></div>
+<span class="va">p0</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/prior.html">prior</a></span><span class="op">(</span>distribution <span class="op">=</span> <span class="st">"point"</span>,  parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>location <span class="op">=</span> <span class="fl">0</span><span class="op">)</span><span class="op">)</span>
+<span class="va">p1</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/prior.html">prior</a></span><span class="op">(</span>distribution <span class="op">=</span> <span class="st">"normal"</span>, parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>mean <span class="op">=</span> <span class="fl">0</span>, sd <span class="op">=</span> <span class="fl">1</span><span class="op">)</span><span class="op">)</span>
+<span class="va">p2</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/prior.html">prior</a></span><span class="op">(</span>distribution <span class="op">=</span> <span class="st">"normal"</span>, parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>mean <span class="op">=</span> <span class="fl">0</span>, sd <span class="op">=</span> <span class="fl">1</span><span class="op">)</span>, truncation <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="fl">0</span>, <span class="cn">Inf</span><span class="op">)</span><span class="op">)</span></code></pre></div>
 <p>The priors can be easily visualized with many possible arguments</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html">plot</a></span><span class="op">(</span><span class="va">p0</span><span class="op">)</span></code></pre></div>
+<code class="sourceCode R"><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">p0</span><span class="op">)</span></code></pre></div>
 <p><img src="reference/figures/README-unnamed-chunk-3-1.png" width="50%"></p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html">plot</a></span><span class="op">(</span><span class="va">p1</span>, lwd <span class="op">=</span> <span class="fl">2</span>, col <span class="op">=</span> <span class="st">"blue"</span>, par_name <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/bquote.html">bquote</a></span><span class="op">(</span><span class="va">mu</span><span class="op">)</span><span class="op">)</span></code></pre></div>
+<code class="sourceCode R"><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">p1</span>, lwd <span class="op">=</span> <span class="fl">2</span>, col <span class="op">=</span> <span class="st">"blue"</span>, par_name <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/bquote.html" class="external-link">bquote</a></span><span class="op">(</span><span class="va">mu</span><span class="op">)</span><span class="op">)</span></code></pre></div>
 <p><img src="reference/figures/README-unnamed-chunk-3-2.png" width="50%"></p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html">plot</a></span><span class="op">(</span><span class="va">p2</span>, plot_type <span class="op">=</span> <span class="st">"ggplot"</span><span class="op">)</span></code></pre></div>
+<code class="sourceCode R"><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">p2</span>, plot_type <span class="op">=</span> <span class="st">"ggplot"</span><span class="op">)</span></code></pre></div>
 <p><img src="reference/figures/README-unnamed-chunk-3-3.png" width="50%"></p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html">plot</a></span><span class="op">(</span><span class="va">p2</span>, plot_type <span class="op">=</span> <span class="st">"ggplot"</span>, xlim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">2</span>, <span class="fl">2</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="reference/geom_prior.html">geom_prior</a></span><span class="op">(</span><span class="va">p1</span>, col <span class="op">=</span> <span class="st">"red"</span>, lty <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></code></pre></div>
+<code class="sourceCode R"><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">p2</span>, plot_type <span class="op">=</span> <span class="st">"ggplot"</span>, xlim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">2</span>, <span class="fl">2</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="reference/geom_prior.html">geom_prior</a></span><span class="op">(</span><span class="va">p1</span>, col <span class="op">=</span> <span class="st">"red"</span>, lty <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></code></pre></div>
 <p><img src="reference/figures/README-unnamed-chunk-3-4.png" width="50%"></p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html">plot</a></span><span class="op">(</span><span class="va">p1</span>, transformation <span class="op">=</span> <span class="st">"exp"</span><span class="op">)</span></code></pre></div>
+<code class="sourceCode R"><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">p1</span>, transformation <span class="op">=</span> <span class="st">"exp"</span><span class="op">)</span></code></pre></div>
 <p><img src="reference/figures/README-unnamed-chunk-3-5.png" width="50%"></p>
 <p>All priors also contain some basic S3 methods.</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span class="co"># S3 methods</span>
-<span class="fu"><a href="https://rdrr.io/r/base/Random.html">set.seed</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span>
+<span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span>
 <span class="fu"><a href="reference/prior_functions_methods.html">rng</a></span><span class="op">(</span><span class="va">p0</span>, <span class="fl">10</span><span class="op">)</span>
 <span class="co">#&gt;  [1] 0 0 0 0 0 0 0 0 0 0</span>
 <span class="fu"><a href="reference/prior_functions_methods.html">rng</a></span><span class="op">(</span><span class="va">p1</span>, <span class="fl">10</span><span class="op">)</span>
@@ -144,25 +140,25 @@
 <span class="co">#&gt;  [1] 0.38984324 1.12493092 0.94383621 0.82122120 0.59390132 0.91897737</span>
 <span class="co">#&gt;  [7] 0.78213630 0.07456498 0.61982575 0.41794156</span>
 
-<span class="fu"><a href="reference/prior_functions_methods.html">pdf</a></span><span class="op">(</span><span class="va">p0</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">1</span>, <span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span>
+<span class="fu"><a href="reference/prior_functions_methods.html">pdf</a></span><span class="op">(</span><span class="va">p0</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">1</span>, <span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span>
 <span class="co">#&gt; [1]   0 Inf   0</span>
-<span class="fu"><a href="reference/prior_functions_methods.html">pdf</a></span><span class="op">(</span><span class="va">p1</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">1</span>, <span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span>
+<span class="fu"><a href="reference/prior_functions_methods.html">pdf</a></span><span class="op">(</span><span class="va">p1</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">1</span>, <span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span>
 <span class="co">#&gt; [1] 0.2419707 0.3989423 0.2419707</span>
-<span class="fu"><a href="reference/prior_functions_methods.html">pdf</a></span><span class="op">(</span><span class="va">p2</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">1</span>, <span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span>
+<span class="fu"><a href="reference/prior_functions_methods.html">pdf</a></span><span class="op">(</span><span class="va">p2</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">1</span>, <span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span>
 <span class="co">#&gt; [1] 0.0000000 0.7978846 0.4839414</span>
 
-<span class="fu"><a href="reference/prior_functions_methods.html">cdf</a></span><span class="op">(</span><span class="va">p0</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">1</span>, <span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span>
+<span class="fu"><a href="reference/prior_functions_methods.html">cdf</a></span><span class="op">(</span><span class="va">p0</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">1</span>, <span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span>
 <span class="co">#&gt; [1] 0 1 1</span>
-<span class="fu"><a href="reference/prior_functions_methods.html">cdf</a></span><span class="op">(</span><span class="va">p1</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">1</span>, <span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span>
+<span class="fu"><a href="reference/prior_functions_methods.html">cdf</a></span><span class="op">(</span><span class="va">p1</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">1</span>, <span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span>
 <span class="co">#&gt; [1] 0.1586553 0.5000000 0.8413447</span>
-<span class="fu"><a href="reference/prior_functions_methods.html">cdf</a></span><span class="op">(</span><span class="va">p2</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">1</span>, <span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span>
+<span class="fu"><a href="reference/prior_functions_methods.html">cdf</a></span><span class="op">(</span><span class="va">p2</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">1</span>, <span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span>
 <span class="co">#&gt; [1] 0.0000000 0.0000000 0.6826895</span>
 
-<span class="fu"><a href="https://rdrr.io/r/base/mean.html">mean</a></span><span class="op">(</span><span class="va">p0</span><span class="op">)</span>
+<span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">p0</span><span class="op">)</span>
 <span class="co">#&gt; [1] 0</span>
-<span class="fu"><a href="https://rdrr.io/r/base/mean.html">mean</a></span><span class="op">(</span><span class="va">p1</span><span class="op">)</span>
+<span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">p1</span><span class="op">)</span>
 <span class="co">#&gt; [1] 0</span>
-<span class="fu"><a href="https://rdrr.io/r/base/mean.html">mean</a></span><span class="op">(</span><span class="va">p2</span><span class="op">)</span>
+<span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">p2</span><span class="op">)</span>
 <span class="co">#&gt; [1] 0.7978846</span>
 
 <span class="fu"><a href="reference/sd.html">sd</a></span><span class="op">(</span><span class="va">p0</span><span class="op">)</span>
@@ -172,21 +168,21 @@
 <span class="fu"><a href="reference/sd.html">sd</a></span><span class="op">(</span><span class="va">p2</span><span class="op">)</span>
 <span class="co">#&gt; [1] 0.6028103</span>
 
-<span class="fu"><a href="https://rdrr.io/r/base/print.html">print</a></span><span class="op">(</span><span class="va">p0</span><span class="op">)</span>
+<span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">p0</span><span class="op">)</span>
 <span class="co">#&gt; Spike(0)</span>
-<span class="fu"><a href="https://rdrr.io/r/base/print.html">print</a></span><span class="op">(</span><span class="va">p1</span>, short_name <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>
+<span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">p1</span>, short_name <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>
 <span class="co">#&gt; N(0, 1)</span></code></pre></div>
 </div>
-<div id="jags-automation" class="section level2">
-<h2 class="hasAnchor">
-<a href="#jags-automation" class="anchor"></a>JAGS Automation</h2>
+<div class="section level2">
+<h2 id="jags-automation">JAGS Automation<a class="anchor" aria-label="anchor" href="#jags-automation"></a>
+</h2>
 <p>The packages simplifies development of JAGS models by automatically taking care of the prior distributions relevant portion of the code.</p>
 <p>First, we generate few samples from a normal distribution and use the previously specified prior distributions as priors for the mean (passed with a list).</p>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span class="co"># get some data</span>
-<span class="fu"><a href="https://rdrr.io/r/base/Random.html">set.seed</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span>
-<span class="va">data</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html">list</a></span><span class="op">(</span>
-  x <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html">rnorm</a></span><span class="op">(</span><span class="fl">10</span><span class="op">)</span>,
+<span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span>
+<span class="va">data</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>
+  x <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fl">10</span><span class="op">)</span>,
   N <span class="op">=</span> <span class="fl">10</span>
 <span class="op">)</span>
 <span class="va">data</span><span class="op">$</span><span class="va">x</span>
@@ -195,9 +191,9 @@
 
 <span class="co">## create and fit models</span>
 <span class="co"># define priors</span>
-<span class="va">priors_list0</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html">list</a></span><span class="op">(</span>mu <span class="op">=</span> <span class="va">p0</span><span class="op">)</span>
-<span class="va">priors_list1</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html">list</a></span><span class="op">(</span>mu <span class="op">=</span> <span class="va">p1</span><span class="op">)</span>
-<span class="va">priors_list2</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html">list</a></span><span class="op">(</span>mu <span class="op">=</span> <span class="va">p2</span><span class="op">)</span></code></pre></div>
+<span class="va">priors_list0</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>mu <span class="op">=</span> <span class="va">p0</span><span class="op">)</span>
+<span class="va">priors_list1</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>mu <span class="op">=</span> <span class="va">p1</span><span class="op">)</span>
+<span class="va">priors_list2</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>mu <span class="op">=</span> <span class="va">p2</span><span class="op">)</span></code></pre></div>
 <p>We create a <code>model_syntax</code> that defines likelihood of the data for the JAGs model and fit the models with the <code>JAGS_fit</code> wrapper that automatically adds prior distributions to the syntax, generates starting values, creates list of monitored variables, and contains additional control options (most of the functionality is build upon <code>runjags</code> package).</p>
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span class="co"># define likelihood for the data</span>
@@ -223,14 +219,14 @@
 <div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span class="co"># define log posterior for bridge sampling</span>
 <span class="va">log_posterior</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">parameters</span>, <span class="va">data</span><span class="op">)</span><span class="op">{</span>
-  <span class="fu"><a href="https://rdrr.io/r/base/sum.html">sum</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/Normal.html">dnorm</a></span><span class="op">(</span><span class="va">data</span><span class="op">$</span><span class="va">x</span>, <span class="va">parameters</span><span class="op">$</span><span class="va">mu</span>, <span class="fl">1</span>, log <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span>
+  <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">dnorm</a></span><span class="op">(</span><span class="va">data</span><span class="op">$</span><span class="va">x</span>, <span class="va">parameters</span><span class="op">$</span><span class="va">mu</span>, <span class="fl">1</span>, log <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span>
 <span class="op">}</span>
 
 <span class="co"># get marginal likelihoods</span>
-<span class="va">marglik0</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html">list</a></span><span class="op">(</span>
-  logml <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html">sum</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/Normal.html">dnorm</a></span><span class="op">(</span><span class="va">data</span><span class="op">$</span><span class="va">x</span>, <span class="fu"><a href="https://rdrr.io/r/base/mean.html">mean</a></span><span class="op">(</span><span class="va">p0</span><span class="op">)</span>, <span class="fl">1</span>, log <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span>
+<span class="va">marglik0</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>
+  logml <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">dnorm</a></span><span class="op">(</span><span class="va">data</span><span class="op">$</span><span class="va">x</span>, <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">p0</span><span class="op">)</span>, <span class="fl">1</span>, log <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span>
 <span class="op">)</span>
-<span class="fu"><a href="https://rdrr.io/r/base/class.html">class</a></span><span class="op">(</span><span class="va">marglik0</span><span class="op">)</span> <span class="op">&lt;-</span> <span class="st">"bridge"</span>
+<span class="fu"><a href="https://rdrr.io/r/base/class.html" class="external-link">class</a></span><span class="op">(</span><span class="va">marglik0</span><span class="op">)</span> <span class="op">&lt;-</span> <span class="st">"bridge"</span>
 <span class="va">marglik1</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/JAGS_bridgesampling.html">JAGS_bridgesampling</a></span><span class="op">(</span><span class="va">fit1</span>, <span class="va">data</span>, <span class="va">priors_list1</span>, <span class="va">log_posterior</span><span class="op">)</span>
 <span class="va">marglik2</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/JAGS_bridgesampling.html">JAGS_bridgesampling</a></span><span class="op">(</span><span class="va">fit2</span>, <span class="va">data</span>, <span class="va">priors_list2</span>, <span class="va">log_posterior</span><span class="op">)</span>
 
@@ -238,17 +234,17 @@
 <span class="co">#&gt; Bridge sampling estimate of the log marginal likelihood: -13.1383</span>
 <span class="co">#&gt; Estimate obtained in 4 iteration(s) via method "normal".</span></code></pre></div>
 </div>
-<div id="model-averaging" class="section level2">
-<h2 class="hasAnchor">
-<a href="#model-averaging" class="anchor"></a>Model-Averaging</h2>
+<div class="section level2">
+<h2 id="model-averaging">Model-Averaging<a class="anchor" aria-label="anchor" href="#model-averaging"></a>
+</h2>
 <p>The package also simplifies implementation of Bayesian model-averaging (see e.g., <code>RoBMA</code> package).</p>
 <p>First, we create a list of model objects, each containing the JAGS fit, marginal likelihood, list of prior distribution, prior weights, and generated model summaries. Then we apply the <code>models_inference</code> automatically calculating basic model-averaging information. Finally, we can use <code>model_summary_table</code> to summarize the individual models.</p>
 <div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span class="co">## create an object with the models</span>
-<span class="va">models</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html">list</a></span><span class="op">(</span>
-  <span class="fu"><a href="https://rdrr.io/r/base/list.html">list</a></span><span class="op">(</span>fit <span class="op">=</span> <span class="va">fit0</span>, marglik <span class="op">=</span> <span class="va">marglik0</span>, priors <span class="op">=</span> <span class="va">priors_list0</span>, prior_weights <span class="op">=</span> <span class="fl">1</span>, fit_summary <span class="op">=</span> <span class="fu"><a href="reference/BayesTools_model_tables.html">runjags_estimates_table</a></span><span class="op">(</span><span class="va">fit0</span>, <span class="va">priors_list0</span><span class="op">)</span><span class="op">)</span>,
-  <span class="fu"><a href="https://rdrr.io/r/base/list.html">list</a></span><span class="op">(</span>fit <span class="op">=</span> <span class="va">fit1</span>, marglik <span class="op">=</span> <span class="va">marglik1</span>, priors <span class="op">=</span> <span class="va">priors_list1</span>, prior_weights <span class="op">=</span> <span class="fl">1</span>, fit_summary <span class="op">=</span> <span class="fu"><a href="reference/BayesTools_model_tables.html">runjags_estimates_table</a></span><span class="op">(</span><span class="va">fit1</span>, <span class="va">priors_list1</span><span class="op">)</span><span class="op">)</span>,
-  <span class="fu"><a href="https://rdrr.io/r/base/list.html">list</a></span><span class="op">(</span>fit <span class="op">=</span> <span class="va">fit2</span>, marglik <span class="op">=</span> <span class="va">marglik2</span>, priors <span class="op">=</span> <span class="va">priors_list2</span>, prior_weights <span class="op">=</span> <span class="fl">1</span>, fit_summary <span class="op">=</span> <span class="fu"><a href="reference/BayesTools_model_tables.html">runjags_estimates_table</a></span><span class="op">(</span><span class="va">fit2</span>, <span class="va">priors_list2</span><span class="op">)</span><span class="op">)</span>
+<span class="va">models</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>
+  <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>fit <span class="op">=</span> <span class="va">fit0</span>, marglik <span class="op">=</span> <span class="va">marglik0</span>, priors <span class="op">=</span> <span class="va">priors_list0</span>, prior_weights <span class="op">=</span> <span class="fl">1</span>, fit_summary <span class="op">=</span> <span class="fu"><a href="reference/BayesTools_model_tables.html">runjags_estimates_table</a></span><span class="op">(</span><span class="va">fit0</span>, <span class="va">priors_list0</span><span class="op">)</span><span class="op">)</span>,
+  <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>fit <span class="op">=</span> <span class="va">fit1</span>, marglik <span class="op">=</span> <span class="va">marglik1</span>, priors <span class="op">=</span> <span class="va">priors_list1</span>, prior_weights <span class="op">=</span> <span class="fl">1</span>, fit_summary <span class="op">=</span> <span class="fu"><a href="reference/BayesTools_model_tables.html">runjags_estimates_table</a></span><span class="op">(</span><span class="va">fit1</span>, <span class="va">priors_list1</span><span class="op">)</span><span class="op">)</span>,
+  <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>fit <span class="op">=</span> <span class="va">fit2</span>, marglik <span class="op">=</span> <span class="va">marglik2</span>, priors <span class="op">=</span> <span class="va">priors_list2</span>, prior_weights <span class="op">=</span> <span class="fl">1</span>, fit_summary <span class="op">=</span> <span class="fu"><a href="reference/BayesTools_model_tables.html">runjags_estimates_table</a></span><span class="op">(</span><span class="va">fit2</span>, <span class="va">priors_list2</span><span class="op">)</span><span class="op">)</span>
 <span class="op">)</span>
 <span class="co"># compare and summarize the models</span>
 <span class="va">models</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/ensemble_inference.html">models_inference</a></span><span class="op">(</span><span class="va">models</span><span class="op">)</span>
@@ -278,10 +274,10 @@
 <p>Moreover, we can draw inference based on the whole ensemble for the common parameters with the <code>ensemble_inference</code> function, or mixed the posterior distributions based on marginal likelihoods with the <code>mix_posteriors</code> functions. The various summary functions then create tables for the inference, estimates, model summary, and MCMC diagnostics.</p>
 <div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span class="co">## draw model based inference</span>
-<span class="va">inference</span>          <span class="op">&lt;-</span> <span class="fu"><a href="reference/ensemble_inference.html">ensemble_inference</a></span><span class="op">(</span>model_list <span class="op">=</span> <span class="va">models</span>, parameters <span class="op">=</span> <span class="st">"mu"</span>, is_null_list <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="fl">1</span><span class="op">)</span><span class="op">)</span>
+<span class="va">inference</span>          <span class="op">&lt;-</span> <span class="fu"><a href="reference/ensemble_inference.html">ensemble_inference</a></span><span class="op">(</span>model_list <span class="op">=</span> <span class="va">models</span>, parameters <span class="op">=</span> <span class="st">"mu"</span>, is_null_list <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="fl">1</span><span class="op">)</span><span class="op">)</span>
 
 <span class="co"># automatically mix posteriors</span>
-<span class="va">mixed_posteriors</span>   <span class="op">&lt;-</span> <span class="fu"><a href="reference/mix_posteriors.html">mix_posteriors</a></span><span class="op">(</span>model_list <span class="op">=</span> <span class="va">models</span>, parameters <span class="op">=</span> <span class="st">"mu"</span>, is_null_list <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="fl">1</span><span class="op">)</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span>
+<span class="va">mixed_posteriors</span>   <span class="op">&lt;-</span> <span class="fu"><a href="reference/mix_posteriors.html">mix_posteriors</a></span><span class="op">(</span>model_list <span class="op">=</span> <span class="va">models</span>, parameters <span class="op">=</span> <span class="st">"mu"</span>, is_null_list <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="fl">1</span><span class="op">)</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span>
 
 <span class="co"># summarizes the model-averaging summary</span>
 <span class="fu"><a href="reference/BayesTools_ensemble_tables.html">ensemble_inference_table</a></span><span class="op">(</span><span class="va">inference</span>, parameters <span class="op">=</span> <span class="st">"mu"</span><span class="op">)</span>
@@ -307,18 +303,18 @@
 <p>The packages also provides functions for plotting model-averaged posterior distributions.</p>
 <div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span class="co">### plotting</span>
-<span class="va">oldpar</span> <span class="op">&lt;-</span> <span class="fu">graphics</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/graphics/par.html">par</a></span><span class="op">(</span>no.readonly <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>
-<span class="fu"><a href="https://rdrr.io/r/base/on.exit.html">on.exit</a></span><span class="op">(</span><span class="fu">graphics</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/graphics/par.html">par</a></span><span class="op">(</span>mar <span class="op">=</span> <span class="va">oldpar</span><span class="op">[[</span><span class="st">"mar"</span><span class="op">]</span><span class="op">]</span><span class="op">)</span><span class="op">)</span>
+<span class="va">oldpar</span> <span class="op">&lt;-</span> <span class="fu">graphics</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/graphics/par.html" class="external-link">par</a></span><span class="op">(</span>no.readonly <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>
+<span class="fu"><a href="https://rdrr.io/r/base/on.exit.html" class="external-link">on.exit</a></span><span class="op">(</span><span class="fu">graphics</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/graphics/par.html" class="external-link">par</a></span><span class="op">(</span>mar <span class="op">=</span> <span class="va">oldpar</span><span class="op">[[</span><span class="st">"mar"</span><span class="op">]</span><span class="op">]</span><span class="op">)</span><span class="op">)</span>
 
 <span class="co"># plot model-average posteriors</span>
-<span class="fu"><a href="https://rdrr.io/r/graphics/par.html">par</a></span><span class="op">(</span>mar <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html">c</a></span><span class="op">(</span><span class="fl">4</span>, <span class="fl">4</span>, <span class="fl">1</span>, <span class="fl">4</span><span class="op">)</span><span class="op">)</span>
+<span class="fu"><a href="https://rdrr.io/r/graphics/par.html" class="external-link">par</a></span><span class="op">(</span>mar <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">4</span>, <span class="fl">4</span>, <span class="fl">1</span>, <span class="fl">4</span><span class="op">)</span><span class="op">)</span>
 <span class="fu"><a href="reference/plot_posterior.html">plot_posterior</a></span><span class="op">(</span><span class="va">mixed_posteriors</span>, parameter <span class="op">=</span> <span class="st">"mu"</span><span class="op">)</span></code></pre></div>
 <p><img src="reference/figures/README-unnamed-chunk-11-1.png" width="50%"></p>
 <div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="fu"><a href="reference/plot_posterior.html">plot_posterior</a></span><span class="op">(</span><span class="va">mixed_posteriors</span>, parameter <span class="op">=</span> <span class="st">"mu"</span>, lwd <span class="op">=</span> <span class="fl">2</span>, col <span class="op">=</span> <span class="st">"black"</span>, prior <span class="op">=</span> <span class="cn">TRUE</span>, dots_prior <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html">list</a></span><span class="op">(</span>col <span class="op">=</span> <span class="st">"grey"</span>, lwd <span class="op">=</span> <span class="fl">2</span><span class="op">)</span>, xlim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">2</span>, <span class="fl">2</span><span class="op">)</span><span class="op">)</span></code></pre></div>
+<code class="sourceCode R"><span class="fu"><a href="reference/plot_posterior.html">plot_posterior</a></span><span class="op">(</span><span class="va">mixed_posteriors</span>, parameter <span class="op">=</span> <span class="st">"mu"</span>, lwd <span class="op">=</span> <span class="fl">2</span>, col <span class="op">=</span> <span class="st">"black"</span>, prior <span class="op">=</span> <span class="cn">TRUE</span>, dots_prior <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>col <span class="op">=</span> <span class="st">"grey"</span>, lwd <span class="op">=</span> <span class="fl">2</span><span class="op">)</span>, xlim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">2</span>, <span class="fl">2</span><span class="op">)</span><span class="op">)</span></code></pre></div>
 <p><img src="reference/figures/README-unnamed-chunk-11-2.png" width="50%"></p>
 <div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="fu"><a href="reference/plot_posterior.html">plot_posterior</a></span><span class="op">(</span><span class="va">mixed_posteriors</span>, parameter <span class="op">=</span> <span class="st">"mu"</span>, transformation <span class="op">=</span> <span class="st">"exp"</span>, lwd <span class="op">=</span> <span class="fl">2</span>, col <span class="op">=</span> <span class="st">"red"</span>, prior <span class="op">=</span> <span class="cn">TRUE</span>, dots_prior <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html">list</a></span><span class="op">(</span>col <span class="op">=</span> <span class="st">"blue"</span>, lty <span class="op">=</span> <span class="fl">2</span><span class="op">)</span><span class="op">)</span></code></pre></div>
+<code class="sourceCode R"><span class="fu"><a href="reference/plot_posterior.html">plot_posterior</a></span><span class="op">(</span><span class="va">mixed_posteriors</span>, parameter <span class="op">=</span> <span class="st">"mu"</span>, transformation <span class="op">=</span> <span class="st">"exp"</span>, lwd <span class="op">=</span> <span class="fl">2</span>, col <span class="op">=</span> <span class="st">"red"</span>, prior <span class="op">=</span> <span class="cn">TRUE</span>, dots_prior <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>col <span class="op">=</span> <span class="st">"blue"</span>, lty <span class="op">=</span> <span class="fl">2</span><span class="op">)</span><span class="op">)</span></code></pre></div>
 <p><img src="reference/figures/README-unnamed-chunk-11-3.png" width="50%"></p>
 <p>Or comparing estimates from the different models.</p>
 <div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
@@ -333,53 +329,57 @@
 
   <div class="col-md-3 hidden-xs hidden-sm" id="pkgdown-sidebar">
     <div class="links">
-<h2>Links</h2>
+<h2 data-toc-skip>Links</h2>
 <ul class="list-unstyled">
-<li>Download from CRAN at <br><a href="https://cloud.r-project.org/package=BayesTools">https://​cloud.r-project.org/​package=BayesTools</a>
-</li>
-<li>Browse source code at <br><a href="https://github.com/FBartos/BayesTools/">https://​github.com/​FBartos/​BayesTools/​</a>
-</li>
-<li>Report a bug at <br><a href="https://github.com/FBartos/BayesTools/issues">https://​github.com/​FBartos/​BayesTools/​issues</a>
-</li>
-</ul>
-</div>
-<div class="license">
-<h2>License</h2>
-<ul class="list-unstyled">
-<li><a href="https://www.r-project.org/Licenses/GPL-3">GPL-3</a></li>
-</ul>
-</div>
-<div class="citation">
-<h2>Citation</h2>
-<ul class="list-unstyled">
-<li><a href="authors.html">Citing BayesTools</a></li>
-</ul>
-</div>
-<div class="developers">
-<h2>Developers</h2>
-<ul class="list-unstyled">
-<li>František Bartoš <br><small class="roles"> Author, maintainer </small> <a href="https://orcid.org/0000-0002-0018-5573" target="orcid.widget" aria-label="ORCID"><span class="fab fa-orcid orcid" aria-hidden="true"></span></a> </li>
+<li><a href="https://cloud.r-project.org/package=BayesTools" class="external-link">View on CRAN</a></li>
+<li><a href="https://github.com/FBartos/BayesTools/" class="external-link">Browse source code</a></li>
+<li><a href="https://github.com/FBartos/BayesTools/issues" class="external-link">Report a bug</a></li>
 </ul>
 </div>
 
-  <div class="dev-status">
-<h2>Dev status</h2>
+<div class="license">
+<h2 data-toc-skip>License</h2>
 <ul class="list-unstyled">
-<li><a href="https://github.com/FBartos/BayesTools/actions"><img src="https://github.com/FBartos/BayesTools/workflows/R-CMD-check/badge.svg" alt="R-CMD-check"></a></li>
-<li><a href="https://app.codecov.io/gh/FBartos/BayesTools?branch=master"><img src="https://codecov.io/gh/FBartos/BayesTools/branch/master/graph/badge.svg" alt="Codecov test coverage"></a></li>
-<li><a href="https://cran.r-project.org/package=BayesTools"><img src="https://www.r-pkg.org/badges/version/BayesTools" alt="CRAN_Status_Badge"></a></li>
+<li><a href="https://www.r-project.org/Licenses/GPL-3" class="external-link">GPL-3</a></li>
 </ul>
 </div>
+
+
+<div class="citation">
+<h2 data-toc-skip>Citation</h2>
+<ul class="list-unstyled">
+<li><a href="authors.html#citation">Citing BayesTools</a></li>
+</ul>
 </div>
+
+<div class="developers">
+<h2 data-toc-skip>Developers</h2>
+<ul class="list-unstyled">
+<li>František Bartoš <br><small class="roles"> Author, maintainer </small> <a href="https://orcid.org/0000-0002-0018-5573" target="orcid.widget" aria-label="ORCID" class="external-link"><span class="fab fa-orcid orcid" aria-hidden="true"></span></a> </li>
+</ul>
+</div>
+
+<div class="dev-status">
+<h2 data-toc-skip>Dev status</h2>
+<ul class="list-unstyled">
+<li><a href="https://github.com/FBartos/BayesTools/actions" class="external-link"><img src="https://github.com/FBartos/BayesTools/workflows/R-CMD-check/badge.svg" alt="R-CMD-check"></a></li>
+<li><a href="https://app.codecov.io/gh/FBartos/BayesTools?branch=master" class="external-link"><img src="https://codecov.io/gh/FBartos/BayesTools/branch/master/graph/badge.svg" alt="Codecov test coverage"></a></li>
+<li><a href="https://cran.r-project.org/package=BayesTools" class="external-link"><img src="https://www.r-pkg.org/badges/version/BayesTools" alt="CRAN_Status_Badge"></a></li>
+</ul>
+</div>
+
+  </div>
 </div>
 
 
       <footer><div class="copyright">
-  <p>Developed by František Bartoš.</p>
+  <p></p>
+<p>Developed by František Bartoš.</p>
 </div>
 
 <div class="pkgdown">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/">pkgdown</a> 1.6.1.</p>
+  <p></p>
+<p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.2.</p>
 </div>
 
       </footer>
@@ -387,6 +387,8 @@
 
   
 
+
+  
 
   </body>
 </html>
