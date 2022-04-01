@@ -205,6 +205,8 @@ test_that("JAGS model-averaging functions work (weightfunctions)",{
 
 test_that("JAGS model-averaging functions work (formula + factors)",{
 
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+
   set.seed(1)
 
   data_formula <- data.frame(

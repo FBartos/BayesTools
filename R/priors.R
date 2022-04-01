@@ -254,7 +254,8 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
 #' @title Creates a prior distribution for factors
 #'
 #' @description \code{prior_factor} creates a prior distribution for fitting
-#' models with factor predictors.
+#' models with factor predictors. (Note that results across different operating
+#' systems might vary due to differences in JAGS numerical precision.)
 #'
 #' @param contrast type of contrast for the prior distribution. The possible options are
 #' \describe{

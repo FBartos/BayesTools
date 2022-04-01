@@ -705,6 +705,8 @@ test_that("posterior plot functions (weightfunctions) work", {
 
 test_that("posterior plot functions (orthonormal) work", {
 
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+
   set.seed(1)
 
   data_formula <- data.frame(
@@ -775,7 +777,6 @@ test_that("posterior plot functions (orthonormal) work", {
     ),
     seed = 1, n_samples = 10000)
 
-
   expect_doppelganger("model-averaging-plot-posterior-o-1", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
@@ -817,6 +818,8 @@ test_that("posterior plot functions (orthonormal) work", {
 
 
 test_that("posterior plot functions (treatment) work", {
+
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
 
   set.seed(1)
 

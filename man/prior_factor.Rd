@@ -76,7 +76,8 @@ return an object of class 'prior'.
 }
 \description{
 \code{prior_factor} creates a prior distribution for fitting
-models with factor predictors.
+models with factor predictors. (Note that results across different operating
+systems might vary due to differences in JAGS numerical precision.)
 }
 \examples{
 # create an orthonormal prior distribution
