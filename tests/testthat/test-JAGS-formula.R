@@ -3,6 +3,7 @@ context("JAGS formula")
 test_that("JAGS formula works", {
 
   # check the posterior distributions with weak priors against a maximum likelihood estimates with ML
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
 
   set.seed(1)
   df_all <- data.frame(
@@ -203,7 +204,6 @@ test_that("JAGS formula works", {
   lm_6 <- stats::lm(y ~ x_fac3o, data = df_6)
 
   expect_doppelganger("JAGS-formula-lm-6", function(){
-
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
     par(mfcol = c(1, 3))
@@ -234,7 +234,6 @@ test_that("JAGS formula works", {
   lm_7 <- stats::lm(y ~ x_fac2t * x_fac3o, data = df_7)
 
   expect_doppelganger("JAGS-formula-lm-7", function(){
-
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
     par(mfrow = c(2, 3))
@@ -275,7 +274,6 @@ test_that("JAGS formula works", {
   lm_8 <- stats::lm(y ~ x_fac2o * x_fac3t, data = df_8)
 
   expect_doppelganger("JAGS-formula-lm-8", function(){
-
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
     par(mfrow = c(2, 3))
@@ -314,7 +312,6 @@ test_that("JAGS formula works", {
   lm_9 <- stats::lm(y ~ x_cont1 * x_fac3o, data = df_9)
 
   expect_doppelganger("JAGS-formula-lm-9", function(){
-
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
     par(mfrow = c(2, 3))

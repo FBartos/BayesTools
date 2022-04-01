@@ -102,6 +102,8 @@ test_that("JAGS model functions work (vector)", {
 test_that("JAGS model functions work (factor)", {
 
   skip_if_not_installed("rjags")
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+
   model_syntax <- "model{}"
   priors       <- list(
     p1  = prior_factor("mnorm", list(mean = 0, sd = 1),    contrast = "orthonormal"),
@@ -313,6 +315,7 @@ test_that("JAGS fit function works" , {
 
 test_that("JAGS fit function integration with formula works" , {
 
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
   set.seed(1)
 
   data_formula <- data.frame(
