@@ -377,6 +377,39 @@ test_that("JAGS formula works", {
   })
 
 
+  # scaling formula parameters by another parameter works ----
+  prior_list_1s  <- prior_list_all[c("intercept", "x_cont1")]
+  attr(prior_list_1s$x_cont1, "multiply_by") <- "sigma"
+  formula_1s     <- JAGS_formula(~ x_cont1, parameter = "mu", data = df_all[,"x_cont1", drop = FALSE], prior_list = prior_list_1s)
+  prior_list_1s  <- c(formula_1s$prior_list, prior_list2)
+  model_syntax_1s<- JAGS_add_priors(paste0("model{", formula_1s$formula_syntax, model_syntax, "}"), prior_list_1s)
+  data_1         <- c(formula_1$data, N = nrow(df_all), y = list(df_all$y))
+
+  model_1s  <- rjags::jags.model(file = textConnection(model_syntax_1s), inits = JAGS_get_inits(prior_list_1s, chains = 2, seed = 1), data = data_1, n.chains = 2, quiet = TRUE)
+  samples_1s <- rjags::coda.samples(model = model_1s, variable.names = JAGS_to_monitor(prior_list_1s), n.iter = 5000, quiet = TRUE, progress.bar = "none")
+  samples_1s <- do.call(rbind, samples_1s)
+
+  expect_equal(formula_1s$formula_syntax, "for(i in 1:N_mu){\n  mu[i] = mu_intercept + sigma * mu_x_cont1 * mu_data_x_cont1[i]\n}\n")
+
+  lm_1s <- stats::lm(y ~ I(sd(y) * x_cont1), data = df_all)
+
+  expect_doppelganger("JAGS-formula-lm-1s", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfcol = c(1, 3))
+
+    hist(samples_1s[,"mu_intercept"], freq = FALSE, main = "Intercept")
+    curve(dnorm(x, mean = coef(lm_1s)["(Intercept)"], sd = summary(lm_1s)$coefficients["(Intercept)", "Std. Error"]), add = TRUE, lwd = 2)
+
+    hist(samples_1s[,"mu_x_cont1"], freq = FALSE, main = "I(sd(y) * x_cont1)")
+    curve(dnorm(x, mean = coef(lm_1s)["I(sd(y) * x_cont1)"], sd = summary(lm_1s)$coefficients["I(sd(y) * x_cont1)", "Std. Error"]), add = TRUE, lwd = 2)
+
+    hist(samples_1s[,"sigma"], freq = FALSE, main = "sigma")
+    abline(v = sigma(lm_1s), lwd = 3)
+  })
+
+
   # input checks work
   expect_error(JAGS_formula(~ x_cont1 , parameter = "mu", data = df_all[,c("x_cont1"), drop = FALSE], prior_list = prior_list_all[c("x_cont1")]),
                "The 'intercept' objects are missing in the 'prior_list' argument.")

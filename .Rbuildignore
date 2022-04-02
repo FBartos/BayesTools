@@ -8,3 +8,5 @@
 ^docs$
 ^pkgdown$
 ^BayesTools.Rcheck$
+^doc$
+^Meta$

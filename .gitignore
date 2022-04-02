@@ -5,3 +5,5 @@
 do-not-share
 docs
 BayesTools.Rcheck
+/doc/
+/Meta/

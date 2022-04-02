@@ -147,7 +147,12 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
       # continuous variables or interactions of continuous variables are simple predictors
 
       JAGS_data[[paste0(parameter, "_data_", model_terms[i])]] <- model_matrix[,terms_indexes == i]
-      formula_syntax <- c(formula_syntax, paste0(parameter, "_", model_terms[i], " * ", parameter, "_data_", model_terms[i], "[i]"))
+      formula_syntax <- c(formula_syntax, paste0(
+        if(!is.null(attr(prior_list[[model_terms[i]]], "multiply_by"))) paste0(attr(prior_list[[model_terms[i]]], "multiply_by"), " * "),
+        parameter, "_", model_terms[i],
+        " * ",
+        parameter, "_data_", model_terms[i], "[i]"
+      ))
 
     }else if(model_terms_type[i] == "factor"){
       # factor variables or interactions with a factor requires factor style prior
@@ -167,7 +172,13 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
       }
 
       JAGS_data[[paste0(parameter, "_data_", model_terms[i])]] <- model_matrix[,terms_indexes == i, drop = FALSE]
-      formula_syntax <- c(formula_syntax, paste0("inprod(", parameter, "_", model_terms[i], ", ", parameter, "_data_", model_terms[i], "[i,])"))
+      formula_syntax <- c(formula_syntax, paste0(
+        if(!is.null(attr(prior_list[[model_terms[i]]], "multiply_by"))) paste0(attr(prior_list[[model_terms[i]]], "multiply_by"), " * "),
+        "inprod(",
+        parameter, "_", model_terms[i],
+        ", ",
+        parameter, "_data_", model_terms[i], "[i,])"
+      ))
 
     }else{
       stop("Unrecognized model term.")

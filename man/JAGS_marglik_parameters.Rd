@@ -7,7 +7,12 @@
 \usage{
 JAGS_marglik_parameters(samples, prior_list)
 
-JAGS_marglik_parameters_formula(samples, formula_data_list, formula_prior_list)
+JAGS_marglik_parameters_formula(
+  samples,
+  formula_data_list,
+  formula_prior_list,
+  prior_list_parameters
+)
 }
 \arguments{
 \item{samples}{samples provided by bridgesampling
@@ -24,6 +29,9 @@ function}
 (names of the lists correspond to the parameter name created by each of the formula and
 the names of the prior distribution correspond to the parameter names) of parameters specified
 within the \code{formula}}
+
+\item{prior_list_parameters}{named list of prior distributions on model parameters
+(not specified within the formula but that might scale the formula parameters)}
 }
 \value{
 \code{JAGS_marglik_parameters} returns a named list

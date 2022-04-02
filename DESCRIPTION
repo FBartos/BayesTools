@@ -1,6 +1,6 @@
 Package: BayesTools
 Title: Tools for Bayesian Analyses
-Version: 0.2.3
+Version: 0.2.4
 Description: Provides tools for conducting Bayesian analyses. The package contains 
     functions for creating a wide range of prior distribution objects, mixing posterior 
     samples from 'JAGS' and 'Stan' models, plotting posterior distributions, and etc...
@@ -24,6 +24,7 @@ Imports:
     graphics,
     extraDistr,
     mvtnorm,
+    rjags,
     runjags,
     coda,
     bridgesampling,
@@ -35,6 +36,9 @@ Suggests:
     testthat,
     vdiffr,
     covr,
-    rjags,
-    rstan
+    knitr,
+    rstan,
+    BayesFactor,
+    rmarkdown
 RdMacros: Rdpack
+VignetteBuilder: knitr

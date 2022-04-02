@@ -154,7 +154,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
       parameters <- c(parameters, JAGS_marglik_parameters(samples.row, prior_list))
     }
     if(!is.null(formula_prior_list)){
-      parameters <- c(parameters, JAGS_marglik_parameters_formula(samples.row, formula_data_list, formula_prior_list))
+      parameters <- c(parameters, JAGS_marglik_parameters_formula(samples.row, formula_data_list, formula_prior_list, parameters))
     }
     if(!is.null(add_parameters)){
       parameters <- c(parameters, samples.row[add_parameters])
@@ -168,7 +168,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     if(!is.null(formula_prior_list)){
       marglik <- marglik + JAGS_marglik_priors_formula(samples.row, formula_prior_list)
     }
-    marglik   <- marglik + log_posterior(parameters, data, ...)
+    marglik   <- marglik + log_posterior(parameters = parameters, data = data, ...)
 
     return(marglik)
   }
@@ -656,6 +656,8 @@ JAGS_marglik_priors_formula <- function(samples, formula_prior_list){
 #'
 #' @param samples samples provided by bridgesampling
 #' function
+#' @param prior_list_parameters named list of prior distributions on model parameters
+#' (not specified within the formula but that might scale the formula parameters)
 #'
 #' @return \code{JAGS_marglik_parameters} returns a named list
 #' of (transformed) posterior samples.
@@ -832,7 +834,7 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 }
 
 #' @rdname JAGS_marglik_parameters
-JAGS_marglik_parameters_formula      <- function(samples, formula_data_list, formula_prior_list){
+JAGS_marglik_parameters_formula      <- function(samples, formula_data_list, formula_prior_list, prior_list_parameters){
 
   # return empty list in case that no prior was specified
   if(length(formula_prior_list) == 0){
@@ -842,13 +844,13 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_data_list, for
   parameters <- list()
 
   for(parameter in names(formula_prior_list)){
-    parameters[[parameter]] <- .JAGS_marglik_parameters_formula_get(samples, parameter, formula_data_list[[parameter]], formula_prior_list[[parameter]])
+    parameters[[parameter]] <- .JAGS_marglik_parameters_formula_get(samples, parameter, formula_data_list[[parameter]], formula_prior_list[[parameter]], prior_list_parameters)
   }
 
   return(parameters)
 }
 
-.JAGS_marglik_parameters_formula_get <- function(samples, parameter, formula_data_list, formula_prior_list){
+.JAGS_marglik_parameters_formula_get <- function(samples, parameter, formula_data_list, formula_prior_list, prior_list_parameters){
 
   formula_terms            <- names(formula_prior_list)
   names(formula_data_list) <- gsub("_data", "", names(formula_data_list))
@@ -865,19 +867,31 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_data_list, for
   if(length(remaining_terms) > 0){
     for(term in remaining_terms){
 
+      # check for scaling factors
+      if(!is.null(attr(formula_prior_list[[term]], "multiply_by"))){
+        if(is.numeric(attr(formula_prior_list[[term]], "multiply_by"))){
+          multiply_by <- attr(formula_prior_list[[term]], "multiply_by")
+        }else{
+          multiply_by <- prior_list_parameters[[attr(formula_prior_list[[term]], "multiply_by")]]
+        }
+      }else{
+        multiply_by <- 1
+      }
+
+
       if(is.prior.factor(formula_prior_list[[term]])){
 
         levels <- attr(formula_prior_list[[term]], "levels")
         if((levels-1) == 1){
-          output <- output + samples[[term]] * formula_data_list[[term]]
+          output <- output + multiply_by * samples[[term]] * formula_data_list[[term]]
         }else{
-          output <- output + formula_data_list[[term]] %*% samples[paste0(term,"[", 1:(levels-1), "]")]
+          output <- output + multiply_by * formula_data_list[[term]] %*% samples[paste0(term,"[", 1:(levels-1), "]")]
         }
 
 
       }else if(is.prior.simple(formula_prior_list[[term]])){
 
-        output <- output + samples[[term]] * formula_data_list[[term]]
+        output <- output + multiply_by * samples[[term]] * formula_data_list[[term]]
 
       }
 
