@@ -316,6 +316,8 @@ test_that("JAGS fit function works" , {
 test_that("JAGS fit function integration with formula works" , {
 
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_on_cran()
+
   set.seed(1)
 
   data_formula <- data.frame(

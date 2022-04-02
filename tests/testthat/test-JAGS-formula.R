@@ -4,6 +4,7 @@ test_that("JAGS formula works", {
 
   # check the posterior distributions with weak priors against a maximum likelihood estimates with ML
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_on_cran()
 
   set.seed(1)
   df_all <- data.frame(
