@@ -706,6 +706,7 @@ test_that("posterior plot functions (weightfunctions) work", {
 test_that("posterior plot functions (orthonormal) work", {
 
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_on_cran()
 
   set.seed(1)
 
@@ -820,6 +821,7 @@ test_that("posterior plot functions (orthonormal) work", {
 test_that("posterior plot functions (treatment) work", {
 
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_on_cran()
 
   set.seed(1)
 
