@@ -311,6 +311,41 @@ test_that("JAGS model functions work (formula)",{
   # more of a consistency test
   expect_equal(marglik1$logml, -370.87, tolerance = 1e-2)
 
+
+  # create model with mix of a formula and free scaled parameters ---
+  prior_list1s         <- prior_list1
+  prior_list1s$scale3  <- prior("point", parameters = list(location = 1/3))
+  formula_prior_list1s <- list(
+    mu    = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_cont1"         = prior("normal", list(0, 1/2)),
+      "x_fac3t"         = prior_factor("normal", contrast = "treatment", list(0, 1*3))
+    )
+  )
+  attr(formula_prior_list1s$mu$x_cont1, "multiply_by") <- 2
+  attr(formula_prior_list1s$mu$x_fac3t, "multiply_by") <- "scale3"
+
+  fit1s     <- JAGS_fit(
+    model_syntax = model_syntax1, data = data, prior_list = prior_list1s,
+    formula_list = formula_list1, formula_data_list = formula_data_list1, formula_prior_list = formula_prior_list1s)
+
+  log_posterior1s <- function(parameters, data){
+    return(sum(stats::dnorm(data$y, mean = parameters[["mu"]], sd = parameters[["sigma"]], log = TRUE)))
+  }
+
+  marglik1s <- JAGS_bridgesampling(
+    fit                = fit1s,
+    log_posterior      = log_posterior1s,
+    data               = data,
+    prior_list         = prior_list1s,
+    formula_list       = formula_list1,
+    formula_data_list  = formula_data_list1,
+    formula_prior_list = formula_prior_list1s)
+
+  # more of a consistency test
+  expect_equal(marglik1$logml, marglik1s$logml, tolerance = 1e-2)
+
+
   # create model with two formulas ---
   formula_list2 <- list(
     mu    = ~ x_cont1 + x_fac3t,

@@ -328,7 +328,7 @@ test_that("Summary tables functions work (formulas + factors)",{
   runjags_summary <- models[[2]]$fit_summary
   expect_equal(colnames(runjags_summary), c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
   expect_equal(rownames(runjags_summary), c("(mu) intercept",  "(mu) x_cont1", "(mu) x_fac3t[B]", "(mu) x_fac3t[C]", "sigma"))
-  expect_equal(unname(unlist(runjags_summary[3,])), c( 2.701608e-03,2.745892e-01, -5.375762e-01,2.797305e-03,5.404275e-01,3.957397e-03,1.400000e-02,4.814000e+03,1.000492e+00), tolerance = 1e-3)
+  expect_equal(unname(unlist(runjags_summary[3,])), c(5.746362e-03,  2.808364e-01, -5.496105e-01,  1.058318e-02,  5.504860e-01,  4.142589e-03,  1.500000e-02,  4.596000e+03,  1.000580e+00), tolerance = 1e-3)
 
   runjags_summary <- models[[4]]$fit_summary
   expect_equal(colnames(runjags_summary), c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
@@ -339,15 +339,15 @@ test_that("Summary tables functions work (formulas + factors)",{
   estimates_table <- ensemble_estimates_table(mixed_posteriors, parameters = c("mu_x_cont1", "mu_x_fac3t", "mu_x_fac3o", "mu_x_cont1__xXx__x_fac3o"), probs = c(.025, 0.95))
   expect_equal(colnames(estimates_table), c("Mean", "Median", "0.025",  "0.95"))
   expect_equal(rownames(estimates_table), c("(mu) x_cont1", "(mu) x_fac3t[B]", "(mu) x_fac3t[C]", "(mu) x_fac3o[1]", "(mu) x_fac3o[2]", "(mu) x_cont1:x_fac3o[1]", "(mu) x_cont1:x_fac3o[2]"))
-  expect_equal(unname(unlist(estimates_table[1,])), c( 0.1205247, 0.0000000, 0.0000000, 0.4772276), tolerance = 1e-3)
-  expect_equal(unname(unlist(estimates_table[3,])), c(0.0366, 0.0000, -0.2962, 0.3985), tolerance = 1e-3)
-  expect_equal(unname(unlist(estimates_table[5,])), c(-0.004121766, 0.000000000, -0.215131954, 0.0368), tolerance = 1e-3)
+  expect_equal(unname(unlist(estimates_table[1,])), c(0.1224567, 0.0000000, 0.0000000, 0.4794182), tolerance = 1e-3)
+  expect_equal(unname(unlist(estimates_table[3,])), c( 0.0397569,  0.0000000, -0.2895047,  0.4087159), tolerance = 1e-3)
+  expect_equal(unname(unlist(estimates_table[5,])), c(-0.004121766,  0.000000000, -0.215131954,  0.036829714), tolerance = 1e-3)
 
   estimates_table <- ensemble_estimates_table(mixed_posteriors, parameters = c("mu_x_cont1", "mu_x_fac3o", "mu_x_cont1__xXx__x_fac3o"), probs = c(.025, 0.95))
   expect_equal(colnames(estimates_table), c("Mean", "Median", "0.025",  "0.95"))
   expect_equal(rownames(estimates_table), c("(mu) x_cont1", "(mu) x_fac3o[1]", "(mu) x_fac3o[2]", "(mu) x_cont1:x_fac3o[1]", "(mu) x_cont1:x_fac3o[2]"))
-  expect_equal(unname(unlist(estimates_table[1,])), c(0.1205247, 0.0000000, 0.0000000, 0.4772276), tolerance = 1e-3)
-  expect_equal(unname(unlist(estimates_table[3,])), c( -0.004121766, 0.000000000, -0.215131954, 0.0368), tolerance = 1e-3)
+  expect_equal(unname(unlist(estimates_table[1,])), c(0.1224567, 0.0000000, 0.0000000, 0.4794182), tolerance = 1e-3)
+  expect_equal(unname(unlist(estimates_table[3,])), c(-0.004121766,  0.000000000, -0.215131954,  0.036829714), tolerance = 1e-3)
 
   # ensemble inference
   inference_table <- ensemble_inference_table(inference, names(inference))
@@ -379,8 +379,8 @@ test_that("Summary tables functions work (formulas + factors)",{
   expect_equal(unname(as.vector(diagnostics_table[,3])), c("", "", "orthonormal contrast: mNormal(0, 1)", "orthonormal contrast: mNormal(0, 1)"))
   expect_equal(unname(as.vector(diagnostics_table[,4])), c("", "", "", "orthonormal contrast: mNormal(0, 1)"))
   expect_equal(unname(as.vector(diagnostics_table[,5])), c(0.003223670, 0.004142589, 0.001676136, 0.001959310), tolerance = 1e-3)
-  expect_equal(unname(as.vector(diagnostics_table[,6])), c(0.013, 0.016, 0.011, 0.011), tolerance = 1e-3)
-  expect_equal(unname(as.vector(diagnostics_table[,7])), c(5582, 3762, 8660, 7969))
+  expect_equal(unname(as.vector(diagnostics_table[,6])), c(0.013, 0.017, 0.011, 0.011), tolerance = 1e-3)
+  expect_equal(unname(as.vector(diagnostics_table[,7])), c(5559, 3526, 8660, 7969))
   expect_equal(unname(as.vector(diagnostics_table[,8])), c(1.001154, 1.000955, 1.000125, 1.000658), tolerance = 1e-3)
 
 
@@ -408,9 +408,9 @@ test_that("Summary tables functions work (formulas + factors)",{
   expect_equal(rownames(estimates_table_t), c("(mu) x_cont1","(mu) x_fac3o [dif: A]", "(mu) x_fac3o [dif: B]", "(mu) x_fac3o [dif: C]", "(mu) x_cont1:x_fac3o [dif: A]", "(mu) x_cont1:x_fac3o [dif: B]", "(mu) x_cont1:x_fac3o [dif: C]"))
   expect_equal(capture_output_lines(estimates_table_t, print = TRUE, width = 150),
                c("                                Mean Median  0.025  0.95",
-                 "(mu) x_cont1                   0.121  0.000  0.000 0.477",
-                 "(mu) x_fac3o [dif: A]         -0.003  0.000 -0.175 0.030",
-                 "(mu) x_fac3o [dif: B]         -0.003  0.000 -0.181 0.038",
+                 "(mu) x_cont1                   0.122  0.000  0.000 0.479",
+                 "(mu) x_fac3o [dif: A]         -0.003  0.000 -0.176 0.030",
+                 "(mu) x_fac3o [dif: B]         -0.003  0.000 -0.181 0.039",
                  "(mu) x_fac3o [dif: C]          0.007  0.000 -0.105 0.100",
                  "(mu) x_cont1:x_fac3o [dif: A] -0.010  0.000 -0.183 0.000",
                  "(mu) x_cont1:x_fac3o [dif: B]  0.006  0.000  0.000 0.000",
@@ -442,9 +442,9 @@ test_that("Summary tables functions work (formulas + factors)",{
                ))
   expect_equal(capture_output_lines(estimates_table,   print = TRUE, width = 150),
                c("                          Mean Median  0.025  0.95",
-                 "(mu) x_cont1             0.121  0.000  0.000 0.477",
+                 "(mu) x_cont1             0.122  0.000  0.000 0.479",
                  "(mu) x_fac3o[1]          0.007  0.000 -0.145 0.125",
-                 "(mu) x_fac3o[2]         -0.004  0.000 -0.215 0.036",
+                 "(mu) x_fac3o[2]         -0.004  0.000 -0.215 0.037",
                  "(mu) x_cont1:x_fac3o[1] -0.001  0.000  0.000 0.000",
                  "(mu) x_cont1:x_fac3o[2] -0.013  0.000 -0.224 0.000"
 
@@ -452,23 +452,23 @@ test_that("Summary tables functions work (formulas + factors)",{
   expect_equal(capture_output_lines(inference_table,   print = TRUE, width = 150),
                c("                     Models Prior prob. Post. prob. Inclusion BF",
                  "(mu) x_cont1            2/4       0.500       0.374        0.598",
-                 "(mu) x_fac2t            1/4       0.250       0.526        3.330",
-                 "(mu) x_fac3t            1/4       0.250       0.340        1.544",
+                 "(mu) x_fac2t            1/4       0.250       0.526        3.329",
+                 "(mu) x_fac3t            1/4       0.250       0.340        1.543",
                  "(mu) x_fac3o            2/4       0.500       0.134        0.155",
                  "(mu) x_cont1:x_fac3o    1/4       0.250       0.035        0.108"
 
                ))
   expect_equal(capture_output_lines(summary_table,     print = TRUE, width = 150),
                c(" Model Prior (mu) x_cont1          Prior (mu) x_fac3o              Prior (mu) x_cont1:x_fac3o     Prior prob. log(marglik) Post. prob. Inclusion BF",
-                 "     1                                                                                                  0.250       -88.22       0.526        3.330",
-                 "     2       Normal(0, 1)                                                                               0.250       -88.66       0.340        1.544",
+                 "     1                                                                                                  0.250       -88.22       0.526        3.329",
+                 "     2       Normal(0, 1)                                                                               0.250       -88.66       0.340        1.543",
                  "     3                    orthonormal contrast: mNormal(0, 1)                                           0.250       -89.89       0.100        0.332",
                  "     4       Normal(0, 1) orthonormal contrast: mNormal(0, 1) orthonormal contrast: mNormal(0, 1)       0.250       -90.94       0.035        0.108"
                ))
   expect_equal(capture_output_lines(diagnostics_table, print = TRUE, width = 180),
                c(" Model Prior (mu) x_cont1          Prior (mu) x_fac3o              Prior (mu) x_cont1:x_fac3o     max[error(MCMC)] max[error(MCMC)/SD] min(ESS) max(R-hat)",
-                 "     1                                                                                                     0.00320               0.013     5582      1.000",
-                 "     2       Normal(0, 1)                                                                                  0.00410               0.016     3762      1.001",
+                 "     1                                                                                                     0.00322               0.013     5559      1.001",
+                 "     2       Normal(0, 1)                                                                                  0.00414               0.017     3526      1.001",
                  "     3                    orthonormal contrast: mNormal(0, 1)                                              0.00168               0.011     8660      1.000",
                  "     4       Normal(0, 1) orthonormal contrast: mNormal(0, 1) orthonormal contrast: mNormal(0, 1)          0.00196               0.011     7969      1.001"
                ))

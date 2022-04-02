@@ -1,3 +1,8 @@
+## version 0.2.4
+### Features
+- adding possibility to multiply a (formula) prior parameter by another term (via `multiply_by` attribute passed with the prior)
+- t-test example vignette
+
 ## version 0.2.3
 ### Fixes
 - fixing error from trying to rename formula parameters in BayesTools tables when multiple parameters were nested within a component
