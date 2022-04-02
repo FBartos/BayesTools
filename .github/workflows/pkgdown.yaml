@@ -10,30 +10,33 @@ name: pkgdown
 
 jobs:
   pkgdown:
-    runs-on: windows-latest
+    runs-on: ${{ matrix.config.os }}
+
+    name: ${{ matrix.config.os }} (${{ matrix.config.r }})
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - {os: ubuntu-20.04,   r: 'release', rspm: "https://packagemanager.rstudio.com/cran/__linux__/focal/latest"}
+
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+
     steps:
       - uses: actions/checkout@v2
 
       - uses: r-lib/actions/setup-r@v1
+        with:
+          r-version: ${{ matrix.config.r }}
 
       - uses: r-lib/actions/setup-pandoc@v1
-      
-      - name: Install JAGS (windows-latest)
-        if: runner.os == 'Windows'
-        run: |
-          curl.exe -o wjags.exe --url https://deac-fra.dl.sourceforge.net/project/mcmc-jags/JAGS/4.x/Windows/JAGS-4.3.0.exe
-          wjags.exe /S
-          del wjags.exe
-        shell: cmd
 
-      - name: Install JAGS (macOS-latest)
-        if: runner.os == 'macOS'
-        run : |
-          rm '/usr/local/bin/gfortran'
-          brew install jags
-          
+      - name: Install harfbuzz freetype2 fribidi Headers
+        if: runner.os == 'Linux'
+        run: sudo apt-get install libharfbuzz-dev libfribidi-dev
+
+
       - name: Query dependencies
         run: |
           install.packages('remotes')
@@ -48,10 +51,32 @@ jobs:
           key: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-${{ hashFiles('.github/depends.Rds') }}
           restore-keys: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-1-
 
+      - name: Install system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          while read -r cmd
+          do
+            eval sudo $cmd
+          done < <(Rscript -e 'writeLines(remotes::system_requirements("ubuntu", "20.04"))')
+
+      - name: Install JAGS (windows-latest)
+        if: runner.os == 'Windows'
+        run: |
+          curl.exe -o wjags.exe --url https://deac-fra.dl.sourceforge.net/project/mcmc-jags/JAGS/4.x/Windows/JAGS-4.3.0.exe
+          wjags.exe /S
+          del wjags.exe
+        shell: cmd
+
+      - name: Install JAGS (macOS-latest)
+        if: runner.os == 'macOS'
+        run : |
+          rm '/usr/local/bin/gfortran'
+          brew install automake jags
+
       - name: Install dependencies
         run: |
           remotes::install_deps(dependencies = TRUE)
-          install.packages("pkgdown", type = "binary")
+          install.packages("pkgdown")
         shell: Rscript {0}
 
       - name: Install package
