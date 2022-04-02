@@ -4,6 +4,12 @@
     <loc>/404.html</loc>
   </url>
   <url>
+    <loc>/articles/ComparisonR.html</loc>
+  </url>
+  <url>
+    <loc>/articles/index.html</loc>
+  </url>
+  <url>
     <loc>/authors.html</loc>
   </url>
   <url>
@@ -86,6 +92,9 @@
   </url>
   <url>
     <loc>/reference/is.prior.html</loc>
+  </url>
+  <url>
+    <loc>/reference/kitchen_rolls.html</loc>
   </url>
   <url>
     <loc>/reference/lines.prior.html</loc>
