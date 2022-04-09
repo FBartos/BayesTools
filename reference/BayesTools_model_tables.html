@@ -18,7 +18,7 @@ provides estimates table for a runjags fit."><!-- mathjax --><script src="https:
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.4</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.5</span>
       </span>
     </div>
 
@@ -72,7 +72,8 @@ provides estimates table for a runjags fit.</p>
   footnotes <span class="op">=</span> <span class="cn">NULL</span>,
   warnings <span class="op">=</span> <span class="cn">NULL</span>,
   remove_spike_0 <span class="op">=</span> <span class="cn">TRUE</span>,
-  short_name <span class="op">=</span> <span class="cn">FALSE</span>
+  short_name <span class="op">=</span> <span class="cn">FALSE</span>,
+  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>
 <span class="op">)</span>
 
 <span class="fu">runjags_estimates_table</span><span class="op">(</span>
@@ -82,7 +83,8 @@ provides estimates table for a runjags fit.</p>
   footnotes <span class="op">=</span> <span class="cn">NULL</span>,
   warnings <span class="op">=</span> <span class="cn">NULL</span>,
   remove_spike_0 <span class="op">=</span> <span class="cn">TRUE</span>,
-  transform_orthonormal <span class="op">=</span> <span class="cn">FALSE</span>
+  transform_orthonormal <span class="op">=</span> <span class="cn">FALSE</span>,
+  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>
 <span class="op">)</span>
 
 <span class="fu">runjags_estimates_empty_table</span><span class="op">(</span>title <span class="op">=</span> <span class="cn">NULL</span>, footnotes <span class="op">=</span> <span class="cn">NULL</span>, warnings <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></code></pre></div>
@@ -112,6 +114,9 @@ at 0 should be removed from the <code>prior_list</code></p></dd>
 <dt>short_name</dt>
 <dd><p>whether the prior distribution names should be
 shortened. Defaults to <code>FALSE</code>.</p></dd>
+<dt>formula_prefix</dt>
+<dd><p>whether the parameter prefix from formula should
+be printed. Defaults to <code>TRUE</code>.</p></dd>
 <dt>fit</dt>
 <dd><p>runjags model fit</p></dd>
 <dt>transformations</dt>
