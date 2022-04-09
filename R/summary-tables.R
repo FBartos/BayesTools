@@ -33,6 +33,8 @@
 #' @param title title to be added to the table
 #' @param footnotes footnotes to be added to the table
 #' @param warnings warnings to be added to the table
+#' @param formula_prefix whether the parameter prefix from formula should
+#' be printed. Defaults to \code{TRUE}.
 #'
 #'
 #' @return \code{ensemble_estimates_table} returns a table with the
@@ -54,7 +56,7 @@
 NULL
 
 #' @rdname BayesTools_ensemble_tables
-ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95), transform_orthonormal = FALSE, title = NULL, footnotes = NULL, warnings = NULL){
+ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95), title = NULL, footnotes = NULL, warnings = NULL, transform_orthonormal = FALSE, formula_prefix = TRUE){
 
   # check input
   check_char(parameters, "parameters", check_length = 0)
@@ -63,6 +65,8 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95)
   check_char(title, "title", allow_NULL = TRUE)
   check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
   check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
+  check_bool(transform_orthonormal, "transform_orthonormal")
+  check_bool(formula_prefix, "formula_prefix")
 
   # transform orthonormal posterior
   if(transform_orthonormal){
@@ -86,14 +90,17 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95)
       }
 
       if(inherits(samples[[parameter]], "mixed_posteriors.formula")){
-        parameters <- colnames(samples[[parameter]])
-        parameters <- gsub(paste0(attr(samples[[parameter]], "formula_parameter"), "_"), paste0("(", attr(samples[[parameter]], "formula_parameter"), ") "), parameters)
-        parameters <- gsub("__xXx__", ":", parameters)
+        parameter_name <- colnames(samples[[parameter]])
+        parameter_name <- gsub(
+          paste0(attr(samples[[parameter]], "formula_parameter"), "_"),
+          if(formula_prefix) paste0("(", attr(samples[[parameter]], "formula_parameter"), ") ") else "",
+          parameter_name)
+        parameter_name <- gsub("__xXx__", ":", parameter_name)
       }else{
-        parameters <- colnames(samples[[parameter]])
+        parameter_name <- colnames(samples[[parameter]])
       }
 
-      rownames(par_summary) <- parameters
+      rownames(par_summary) <- parameter_name
       estimates_table       <- rbind(estimates_table, par_summary)
 
     }else if(is.numeric(samples[[parameter]])){
@@ -109,11 +116,16 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95)
       estimates_table <- rbind(estimates_table, par_summary)
 
       if(inherits(samples[[parameter]], "mixed_posteriors.formula")){
-        parameter <- gsub(paste0(attr(samples[[parameter]], "formula_parameter"), "_"), paste0("(", attr(samples[[parameter]], "formula_parameter"), ") "), parameter)
-        parameter <- gsub("__xXx__", ":", parameter)
+        parameter_name <- gsub(
+          paste0(attr(samples[[parameter]], "formula_parameter"), "_"),
+          if(formula_prefix) paste0("(", attr(samples[[parameter]], "formula_parameter"), ") ") else "",
+          parameter)
+        parameter_name <- gsub("__xXx__", ":", parameter_name)
+      }else{
+        parameter_name <- parameter
       }
 
-      rownames(estimates_table)[nrow(estimates_table)] <- parameter
+      rownames(estimates_table)[nrow(estimates_table)] <- parameter_name
 
 
     }else{
@@ -420,7 +432,7 @@ ensemble_diagnostics_table <- function(models, parameters, title = NULL, footnot
 NULL
 
 #' @rdname BayesTools_model_tables
-model_summary_table <- function(model, model_description = NULL, title = NULL, footnotes = NULL, warnings = NULL, remove_spike_0 = TRUE, short_name = FALSE){
+model_summary_table <- function(model, model_description = NULL, title = NULL, footnotes = NULL, warnings = NULL, remove_spike_0 = TRUE, short_name = FALSE, formula_prefix = TRUE){
 
   # check input
   check_list(model, "model", check_names = "inference", allow_other = TRUE, all_objects = TRUE)
@@ -440,6 +452,7 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
   check_char(title, "title", allow_NULL = TRUE)
   check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
   check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
+  check_bool(formula_prefix, "formula_prefix")
 
   # prepare the columns
   summary_names  <- c(
@@ -471,7 +484,10 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
     }
     # change the formula formatting
     if(!is.null(attr(prior_list[[i]], "parameter"))){
-      temp_prior <- gsub(paste0(attr(prior_list[[i]], "parameter"), "_"), paste0("(", attr(prior_list[[i]], "parameter"), ") "), temp_prior)
+      temp_prior <- gsub(
+        paste0(attr(prior_list[[i]], "parameter"), "_"),
+        if(formula_prefix) paste0("(", attr(prior_list[[i]], "parameter"), ") ") else "",
+        temp_prior)
       temp_prior <- gsub("__xXx__", ":", temp_prior)
     }
     summary_priors <- c(summary_priors, temp_prior)
@@ -506,7 +522,7 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
 }
 
 #' @rdname BayesTools_model_tables
-runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, footnotes = NULL, warnings = NULL, remove_spike_0 = TRUE, transform_orthonormal = FALSE){
+runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, footnotes = NULL, warnings = NULL, remove_spike_0 = TRUE, transform_orthonormal = FALSE, formula_prefix = TRUE){
 
   # check fits
   if(!inherits(fit, "runjags"))
@@ -524,6 +540,8 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
   check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
   check_bool(remove_spike_0, "remove_spike_0")
+  check_bool(transform_orthonormal, "transform_orthonormal")
+  check_bool(formula_prefix, "formula_prefix")
 
   # obtain model information
   invisible(utils::capture.output(runjags_summary <- suppressWarnings(summary(fit, silent.jags = TRUE))))
@@ -652,7 +670,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     for(parameter in unique(unlist(lapply(prior_list, attr, which = "parameter")))){
       rownames(runjags_summary)[grep(paste0(parameter, "_"), rownames(runjags_summary))] <- gsub(
         paste0(parameter, "_"),
-        paste0("(", parameter, ") "),
+        if(formula_prefix) paste0("(", parameter, ") ") else "",
         rownames(runjags_summary)[grep(paste0(parameter, "_"), rownames(runjags_summary))])
     }
     rownames(runjags_summary)[grep("__xXx__", rownames(runjags_summary))] <- gsub(
@@ -779,6 +797,78 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
 }
 
 
+#' @title Adds column to BayesTools table
+#'
+#' @description Adds column to a BayesTools table while not
+#' breaking formatting, attributes, etc...
+#'
+#' @param table BayesTools table
+#' @param column_title title of the new column
+#' @param column_values values of the new column
+#' @param column_position position of the new column (defaults to \code{NULL} which
+#' appends the columnt to the end)
+#' @param column_type type of values of the new column table (important for formatting,
+#' defaults to \code{NULL} = the function tries to guess numeric / character based on the
+#' \code{column_values} but many more specific types are available)
+#'
+#' @return returns an object of 'BayesTools_table' class.
+#'
+#' @export
+add_column <- function(table, column_title, column_values, column_position = NULL, column_type = NULL){
+
+  if(!inherits(table, "BayesTools_table"))
+    stop("The 'table' must be of class 'BayesTools_table'.")
+  check_char(column_title, "column_title")
+  if(!(is.vector(column_values) | is.numeric(column_values)) || length(column_values) != nrow(table))
+    stop("The 'column_values' must be a vector of the same length as has the table rows.")
+  check_int(column_position, "column_position", allow_NULL = TRUE, lower = 0, upper = ncol(table) + 1)
+  .check_table_types(column_type, "column_type", allow_NULL = TRUE)
+
+  # fill defaults
+  if(is.null(column_position)){
+    column_position <- ncol(table) + 1
+  }
+  if(is.null(column_type)){
+    if(all(.is.wholenumber(column_values))){
+      column_type <- "integer"
+    }else if(is.numeric(column_values)){
+      column_type <- "estimate"
+    }else if(is.character(column_values)){
+      column_type <- "string"
+    }else{
+      stop("The 'column_type' could not be guessed. Please, supply it manually.")
+    }
+  }
+
+  # add the column (must be constructed in this was as it can't contain NULL)
+  to_bind   <- list(
+    if(column_position > 1) table[,1:(column_position - 1)],
+    column_values,
+    if(column_position <= ncol(table)) table[,column_position:ncol(table)]
+  )
+  new_table <- do.call(cbind, to_bind[!sapply(to_bind, is.null)])
+
+  # transfer column names
+  colnames(new_table) <- c(
+    if(column_position > 1) colnames(table)[1:(column_position - 1)],
+    column_title,
+    if(column_position <= ncol(table)) colnames(table)[column_position:ncol(table)]
+  )
+
+  # copy attributes
+  class(new_table)        <- class(table)
+  attr(new_table, "type") <- c(
+    if(column_position > 1) attr(table, "type")[1:(column_position - 1)],
+    column_type,
+    if(column_position <= ncol(table)) attr(table, "type")[column_position:ncol(table)]
+  )
+  for(a in names(attributes(table))[!names(attributes(table)) %in% c("class", "type", "names")]){
+    attr(new_table, a) <- attr(table, a)
+  }
+
+  return(new_table)
+}
+
 
 .format_column       <- function(x, type, n_models){
   if(is.null(x)){
@@ -882,4 +972,13 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
   }
 
   return(x)
+}
+
+.check_table_types <- function(x, name, allow_NULL = FALSE){
+  check_char(x, name, allow_values = c(
+    "integer", "prior", "string_left", "string", "estimate",
+    "probability", "prior_prob", "post_prob",
+    "marglik", "BF", "inclusion_BF", "n_models",
+    "ESS", "R_hat", "MCMC_error", "MCMC_SD_error", "min_ESS", "max_R_hat", "max_MCMC_error", "max_MCMC_SD_error"),
+    allow_NULL = allow_NULL)
 }

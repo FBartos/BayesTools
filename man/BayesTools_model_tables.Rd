@@ -14,7 +14,8 @@ model_summary_table(
   footnotes = NULL,
   warnings = NULL,
   remove_spike_0 = TRUE,
-  short_name = FALSE
+  short_name = FALSE,
+  formula_prefix = TRUE
 )
 
 runjags_estimates_table(
@@ -24,7 +25,8 @@ runjags_estimates_table(
   footnotes = NULL,
   warnings = NULL,
   remove_spike_0 = TRUE,
-  transform_orthonormal = FALSE
+  transform_orthonormal = FALSE,
+  formula_prefix = TRUE
 )
 
 runjags_estimates_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
@@ -51,6 +53,9 @@ at 0 should be removed from the \code{prior_list}}
 
 \item{short_name}{whether the prior distribution names should be
 shortened. Defaults to \code{FALSE}.}
+
+\item{formula_prefix}{whether the parameter prefix from formula should
+be printed. Defaults to \code{TRUE}.}
 
 \item{fit}{runjags model fit}
 

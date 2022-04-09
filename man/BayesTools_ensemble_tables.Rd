@@ -12,10 +12,11 @@ ensemble_estimates_table(
   samples,
   parameters,
   probs = c(0.025, 0.95),
-  transform_orthonormal = FALSE,
   title = NULL,
   footnotes = NULL,
-  warnings = NULL
+  warnings = NULL,
+  transform_orthonormal = FALSE,
+  formula_prefix = TRUE
 )
 
 ensemble_inference_table(
@@ -60,15 +61,18 @@ diagnostics tables) specifying the parameters
 
 \item{probs}{quantiles for parameter estimates}
 
-\item{transform_orthonormal}{whether factors with orthonormal prior
-distributions should be transformed to differences from the grand
-mean}
-
 \item{title}{title to be added to the table}
 
 \item{footnotes}{footnotes to be added to the table}
 
 \item{warnings}{warnings to be added to the table}
+
+\item{transform_orthonormal}{whether factors with orthonormal prior
+distributions should be transformed to differences from the grand
+mean}
+
+\item{formula_prefix}{whether the parameter prefix from formula should
+be printed. Defaults to \code{TRUE}.}
 
 \item{inference}{model inference created by \link{ensemble_inference}}
 

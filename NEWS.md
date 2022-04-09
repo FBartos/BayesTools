@@ -1,3 +1,11 @@
+## version 0.2.5
+### Features
+- `add_column` function for extending `BayesTools_table` objects without breaking the attributes etc...
+- ability to suppress the formula parameter prefix in `BayesTools_table` functions with with `formula_prefix` argument
+
+### Fixes
+- allowing to pass point prior distributions for factor type predictors
+
 ## version 0.2.4
 ### Features
 - adding possibility to multiply a (formula) prior parameter by another term (via `multiply_by` attribute passed with the prior)

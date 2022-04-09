@@ -378,7 +378,7 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
   if(!is.character(parameter_name) | length(parameter_name) != 1)
     stop("'parameter_name' must be a character vector of length 1.")
 
-  if(is.prior.dummy(prior)){
+  if(is.prior.point(prior) | is.prior.dummy(prior)){
 
     if((attr(prior, "levels") - 1) == 1){
 
@@ -575,7 +575,7 @@ JAGS_marglik_priors                <- function(samples, prior_list){
   if(!is.character(parameter_name) | length(parameter_name) != 1)
     stop("'parameter_name' must be a character vector of length 1.")
 
-  if(is.prior.dummy(prior)){
+  if(is.prior.point(prior) | is.prior.dummy(prior)){
 
     if((attr(prior, "levels") - 1) == 1){
 
@@ -760,7 +760,7 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
     stop("'parameter_name' must be a character vector of length 1.")
 
 
-  if(is.prior.dummy(prior)){
+  if(is.prior.point(prior) | is.prior.dummy(prior)){
 
     if((attr(prior, "levels") - 1) == 1){
 

@@ -474,7 +474,9 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 
   # gather and check compatibility of prior distributions
   priors_info <- lapply(priors, function(p){
-    if(is.prior.factor(p)){
+    if(is.prior.point(p) | is.prior.none(p)){
+      return(FALSE)
+    }else if(is.prior.factor(p)){
       return(list(
         "levels"      = attr(p, "levels"),
         "level_names" = attr(p, "level_names"),
@@ -483,16 +485,16 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
         "orthonormal" = is.prior.orthonormal(p)
       ))
     }else{
-      return(FALSE)
+      stop("unsupported prior type")
     }
   })
   priors_info <- priors_info[!sapply(priors_info, isFALSE)]
   if(length(priors_info) >= 2 && any(!unlist(lapply(priors_info, function(i) all.equal(i, priors_info[[1]]))))){
-    stop("non-matching orthonormal prior specifications")
+    stop("non-matching prior factor type specifications")
   }
   priors_info <- priors_info[[1]]
 
-  if(all(sapply(priors[sapply(priors, is.prior.factor)], is.prior.dummy))){
+  if(priors_info[["treatment"]]){
 
     if((levels - 1) == 1){
 
@@ -527,7 +529,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
     attr(samples, "prior_list") <- priors
     class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
 
-  }else if(all(sapply(priors[sapply(priors, is.prior.factor)], is.prior.orthonormal))){
+  }else if(priors_info[["orthonormal"]]){
 
     for(i in seq_along(priors)){
       if(is.prior.factor(priors[[i]])){
@@ -538,8 +540,6 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
     samples <- .mix_posteriors.vector(fits, priors, parameter, post_probs, seed, n_samples)
     class(samples) <- c(class(samples), "mixed_posteriors.factor")
 
-  }else{
-    stop("all factor priors must be of either 'treatment' or 'orthonormal' type")
   }
 
   attr(samples, "levels")      <- priors_info[["levels"]]
