@@ -153,6 +153,47 @@ test_that("Summary tables functions work",{
                  "     3  Normal(0, 0.3) omega[one-sided: .5, .05] ~ CumDirichlet(1, 1, 1)          0.01061               0.045      500         NA"
                ))
 
+
+  ### test adding columns
+  expect_error(add_column(runjags_summary, column_title = "New Title", column_values = c(0.2, 0.3, 0.4, 0.5)),
+               "The 'column_values' must be a vector of the same length as has the table rows.")
+  expect_error(add_column(runjags_summary, column_title = "New Title", column_values = c(0.2, 0.3, 0.4), column_type = "random text"),
+               "The 'random text' values are not recognized by the 'column_type' argument.")
+  expect_error(add_column(runjags_summary, column_title = "New Title", column_values = c(0.2, 0.3, 0.4), column_position = 55),
+               "The 'column_position' must be equal or lower than ")
+  expect_error(add_column(data.frame(a = 1:3, b = c("A", "B", "C")), column_title = "New Title", column_values = c(0.2, 0.3, 0.4)),
+               "The 'table' must be of class 'BayesTools_table'.")
+
+  expect_equal(capture_output_lines(
+    add_column(runjags_summary, column_title = "New Title", column_values = c(0.2, 0.3, 0.4)), print = TRUE, width = 150),
+               c("               Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD ESS R-hat New Title",
+                 "m             0.155 0.198 -0.247  0.167 0.497     0.00921          0.047 461    NA     0.200",
+                 "omega[0,0.05] 1.000 0.000  1.000  1.000 1.000          NA             NA  NA    NA     0.300",
+                 "omega[0.05,1] 0.509 0.301  0.028  0.508 0.983     0.01348          0.045 500    NA     0.400"
+               ))
+  expect_equal(capture_output_lines(
+    add_column(estimates_table, column_title = "Models", column_values = c(1:4), column_position = 1), print = TRUE, width = 150),
+    c("                Models  Mean Median  0.025  0.95",
+      "m                    1 0.152  0.152 -0.220 0.461",
+      "omega[0,0.05]        2 1.000  1.000  1.000 1.000",
+      "omega[0.05,0.5]      3 0.679  0.745  0.064 1.000",
+      "omega[0.5,1]         4 0.529  0.483  0.023 1.000"
+    ))
+  expect_equal(capture_output_lines(
+    add_column(inference_table, column_title = "BF2", column_values = inference_table[,4], column_position = 5, column_type = "BF"), print = TRUE, width = 150),
+    c("      Models Prior prob. Post. prob. Inclusion BF Inclusion BF",
+      "m        3/3       1.000       1.000          Inf          Inf",
+      "omega    2/3       0.667       0.800        2.002        2.002"
+    ))
+  expect_equal(capture_output_lines(
+    add_column(summary_table, column_title = "Distribution", column_values = c("A", "B", "C"), column_position = 2, column_type = "string"), print = TRUE, width = 150),
+    c(" Model Distribution     Prior m                        Prior omega                    Prior prob. log(marglik) Post. prob. Inclusion BF",
+      "     1            A    Normal(0, 1)                                                         0.333        -1.10       0.200        0.499",
+      "     2            B  Normal(0, 0.5)     omega[one-sided: .05] ~ CumDirichlet(1, 1)          0.333        -0.61       0.325        0.964",
+      "     3            C  Normal(0, 0.3) omega[one-sided: .5, .05] ~ CumDirichlet(1, 1, 1)       0.333        -0.24       0.475        1.809"
+    ))
+
+
   ### test explanatory texts
   inference <- ensemble_inference(model_list = models, parameters = c("m", "omega"), is_null_list = list("m" = 0, "omega" = 1), conditional = FALSE)
   mixed_posteriors <- mix_posteriors(model_list = models, parameters = c("m", "omega"), is_null_list = list("m" = 0, "omega" = 1), seed = 1)
@@ -324,16 +365,27 @@ test_that("Summary tables functions work (formulas + factors)",{
   expect_equal(model_summary[,1], c("Model  ", "Prior prob.  ", "log(marglik)  ", "Post. prob.  ", "Inclusion BF  ", "  "))
   expect_equal(model_summary[,4], c("Parameter prior distributions","(mu) intercept ~ Normal(0, 5)","(mu) x_cont1 ~ Normal(0, 1)","(mu) x_fac3o ~ orthonormal contrast: mNormal(0, 1)","(mu) x_cont1:x_fac3o ~ orthonormal contrast: mNormal(0, 1)","sigma ~ Lognormal(0, 1)"))
 
+  model_summary2 <- model_summary_table(models[[4]], formula_prefix = FALSE)
+  expect_equal(model_summary2[,1], c("Model  ", "Prior prob.  ", "log(marglik)  ", "Post. prob.  ", "Inclusion BF  ", "  "))
+  expect_equal(model_summary2[,4], c("Parameter prior distributions","intercept ~ Normal(0, 5)","x_cont1 ~ Normal(0, 1)","x_fac3o ~ orthonormal contrast: mNormal(0, 1)","x_cont1:x_fac3o ~ orthonormal contrast: mNormal(0, 1)","sigma ~ Lognormal(0, 1)"))
+
+
   # runjags summary
   runjags_summary <- models[[2]]$fit_summary
   expect_equal(colnames(runjags_summary), c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
   expect_equal(rownames(runjags_summary), c("(mu) intercept",  "(mu) x_cont1", "(mu) x_fac3t[B]", "(mu) x_fac3t[C]", "sigma"))
   expect_equal(unname(unlist(runjags_summary[3,])), c(5.746362e-03,  2.808364e-01, -5.496105e-01,  1.058318e-02,  5.504860e-01,  4.142589e-03,  1.500000e-02,  4.596000e+03,  1.000580e+00), tolerance = 1e-3)
 
+  runjags_summary2 <- runjags_estimates_table(fit1, formula_prefix = FALSE)
+  expect_equal(colnames(runjags_summary2), c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
+  expect_equal(rownames(runjags_summary2), c("intercept",  "x_cont1", "x_fac3t[B]", "x_fac3t[C]", "sigma"))
+  expect_equal(unname(unlist(runjags_summary2[3,])), c(5.746362e-03,  2.808364e-01, -5.496105e-01,  1.058318e-02,  5.504860e-01,  4.142589e-03,  1.500000e-02,  4.596000e+03,  1.000580e+00), tolerance = 1e-3)
+
   runjags_summary <- models[[4]]$fit_summary
   expect_equal(colnames(runjags_summary), c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
   expect_equal(rownames(runjags_summary), c("(mu) intercept", "(mu) x_cont1", "(mu) x_fac3o[1]", "(mu) x_fac3o[2]", "(mu) x_cont1:x_fac3o[1]", "(mu) x_cont1:x_fac3o[2]", "sigma" ))
   expect_equal(unname(unlist(runjags_summary[1,])), c(1.876569e-01, 1.210763e-01, -5.091384e-02, 1.878474e-01, 4.285015e-01, 9.894116e-04, 8.000000e-03, 1.497500e+04, 1.000068e+00), tolerance = 1e-3)
+
 
   # ensemble estimates
   estimates_table <- ensemble_estimates_table(mixed_posteriors, parameters = c("mu_x_cont1", "mu_x_fac3t", "mu_x_fac3o", "mu_x_cont1__xXx__x_fac3o"), probs = c(.025, 0.95))

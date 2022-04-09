@@ -92,6 +92,8 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
         stats::contrasts(data[,factor]) <- "contr.treatment"
       }else if(is.prior.orthonormal(prior_list[[factor]])){
         stats::contrasts(data[,factor]) <- "contr.orthonormal"
+      }else if(is.prior.point(prior_list[[factor]])){
+        class(prior_list[[factor]]) <-  c(class(prior_list[[factor]]), "prior.factor")
       }else{
         stop(paste0("Unsupported prior distribution defined for '", factor, "' factor variable. See '?prior_factor' for details."))
       }

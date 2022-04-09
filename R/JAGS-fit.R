@@ -507,7 +507,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
   check_char(parameter_name, "parameter_name")
   check_int(attr(prior, "levels"), "levels", lower = 2)
 
-  if(is.prior.dummy(prior)){
+  if(is.prior.point(prior) | is.prior.dummy(prior)){
 
     syntax <- paste0(
       "for(i in 1:", attr(prior, "levels") - 1, "){\n",
@@ -642,7 +642,11 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 
     for(i in seq_along(prior_list)){
 
-      if(is.prior.weightfunction(prior_list[[i]])){
+      if(is.prior.point(prior_list[[i]])){
+
+        next
+
+      }else if(is.prior.weightfunction(prior_list[[i]])){
 
         temp_inits <- c(temp_inits, .JAGS_init.weightfunction(prior_list[[i]]))
 
@@ -739,7 +743,7 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
   check_char(parameter_name, "parameter_name")
   check_int(attr(prior, "levels"), "levels", lower = 2)
 
-  if(is.prior.dummy(prior)){
+  if(is.prior.point(prior) | is.prior.dummy(prior)){
 
     init <- list()
     init[[parameter_name]] <- rng(prior, attr(prior, "levels") - 1)
