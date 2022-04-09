@@ -20,7 +20,7 @@ summary/diagnostics based on a list of models_inference models."><!-- mathjax --
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.4</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.5</span>
       </span>
     </div>
 
@@ -73,10 +73,11 @@ summary/diagnostics based on a list of <a href="ensemble_inference.html">models_
   <span class="va">samples</span>,
   <span class="va">parameters</span>,
   probs <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.025</span>, <span class="fl">0.95</span><span class="op">)</span>,
-  transform_orthonormal <span class="op">=</span> <span class="cn">FALSE</span>,
   title <span class="op">=</span> <span class="cn">NULL</span>,
   footnotes <span class="op">=</span> <span class="cn">NULL</span>,
-  warnings <span class="op">=</span> <span class="cn">NULL</span>
+  warnings <span class="op">=</span> <span class="cn">NULL</span>,
+  transform_orthonormal <span class="op">=</span> <span class="cn">FALSE</span>,
+  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>
 <span class="op">)</span>
 
 <span class="fu">ensemble_inference_table</span><span class="op">(</span>
@@ -123,16 +124,19 @@ diagnostics tables) specifying the parameters
 (and their grouping) for the summary table</p></dd>
 <dt>probs</dt>
 <dd><p>quantiles for parameter estimates</p></dd>
-<dt>transform_orthonormal</dt>
-<dd><p>whether factors with orthonormal prior
-distributions should be transformed to differences from the grand
-mean</p></dd>
 <dt>title</dt>
 <dd><p>title to be added to the table</p></dd>
 <dt>footnotes</dt>
 <dd><p>footnotes to be added to the table</p></dd>
 <dt>warnings</dt>
 <dd><p>warnings to be added to the table</p></dd>
+<dt>transform_orthonormal</dt>
+<dd><p>whether factors with orthonormal prior
+distributions should be transformed to differences from the grand
+mean</p></dd>
+<dt>formula_prefix</dt>
+<dd><p>whether the parameter prefix from formula should
+be printed. Defaults to <code>TRUE</code>.</p></dd>
 <dt>inference</dt>
 <dd><p>model inference created by <a href="ensemble_inference.html">ensemble_inference</a></p></dd>
 <dt>logBF</dt>
