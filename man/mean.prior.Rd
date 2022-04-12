@@ -16,7 +16,9 @@ a mean of an object of class 'prior'.
 }
 \description{
 Computes mean of a prior
-distribution.
+distribution. (In case of orthonormal prior distributions
+for factors, the mean of for the deviations from intercept
+is returned.)
 }
 \examples{
 # create a standard normal prior distribution

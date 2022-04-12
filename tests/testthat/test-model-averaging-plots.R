@@ -1027,3 +1027,192 @@ test_that("models plot functions work", {
   })
 
 })
+
+
+test_that("models plot functions work (formulas + factors)", {
+
+
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_on_cran()
+
+  set.seed(1)
+
+  data_formula <- data.frame(
+    x_cont1 = rnorm(60),
+    x_fac2t = factor(rep(c("A", "B"), 30), levels = c("A", "B")),
+    x_fac3o = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C")),
+    x_fac3t = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C"))
+  )
+  data <- list(
+    y = rnorm(60, .4 * data_formula$x_cont1 + ifelse(data_formula$x_fac3t == "A", 0.0, ifelse(data_formula$x_fac3t == "B", -0.2, 0.4)), 1),
+    N = 60
+  )
+
+  # create model with mix of a formula and free parameters ---
+  formula_list0 <- list(mu = ~ x_fac2t)
+  formula_list1 <- list(mu = ~ x_cont1 + x_fac3t)
+  formula_list2 <- list(mu = ~ x_fac3o)
+  formula_list3 <- list(mu = ~ x_cont1 * x_fac3o)
+
+  formula_prior_list0 <- list(
+    mu    = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_fac2t"         = prior_factor("normal",  contrast = "treatment", list(0, 1))
+    )
+  )
+  formula_prior_list1 <- list(
+    mu    = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_cont1"         = prior("normal", list(0, 1)),
+      "x_fac3t"         = prior_factor("normal", contrast = "treatment", list(0, 1))
+    )
+  )
+  formula_prior_list2 <- list(
+    mu    = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_fac3o"         = prior_factor("mnormal", contrast = "orthonormal", list(0, 1))
+    )
+  )
+  formula_prior_list3 <- list(
+    mu    = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_cont1"         = prior("normal", list(0, 1)),
+      "x_fac3o"         = prior_factor("mnormal", contrast = "orthonormal", list(0, 1)),
+      "x_cont1:x_fac3o" = prior_factor("mnormal", contrast = "orthonormal", list(0, 1))
+    )
+  )
+
+  prior_list        <- list(sigma = prior("lognormal", list(0, 1)))
+  formula_data_list <- list(mu = data_formula)
+
+  model_syntax <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  log_posterior <- function(parameters, data){
+    sum(stats::dnorm(data$y, parameters[["mu"]], parameters[["sigma"]], log = TRUE))
+  }
+
+  fit0 <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list0, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0, seed = 1)
+  fit1 <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1, seed = 2)
+  fit2 <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list2, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list2, seed = 3)
+  fit3 <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list3, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list3, seed = 4)
+
+  marglik0 <- JAGS_bridgesampling(
+    fit0, log_posterior = log_posterior, data = data, prior_list = prior_list,
+    formula_list = formula_list0, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0)
+  marglik1 <- JAGS_bridgesampling(
+    fit1, log_posterior = log_posterior, data = data, prior_list = prior_list,
+    formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1)
+  marglik2 <- JAGS_bridgesampling(
+    fit2, log_posterior = log_posterior, data = data, prior_list = prior_list,
+    formula_list = formula_list2, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list2)
+  marglik3 <- JAGS_bridgesampling(
+    fit3, log_posterior = log_posterior, data = data, prior_list = prior_list,
+    formula_list = formula_list3, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list3)
+
+
+  # mix posteriors
+  models <- list(
+    list(fit = fit0, marglik = marglik0, fit_summary = runjags_estimates_table(fit0), prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, fit_summary = runjags_estimates_table(fit1), prior_weights = 1),
+    list(fit = fit2, marglik = marglik2, fit_summary = runjags_estimates_table(fit2), prior_weights = 1),
+    list(fit = fit3, marglik = marglik3, fit_summary = runjags_estimates_table(fit3), prior_weights = 1)
+  )
+  models <- models_inference(models)
+
+
+  inference <- ensemble_inference(
+    model_list   = models,
+    parameters   = c("mu_x_cont1", "mu_x_fac2t", "mu_x_fac3t", "mu_x_fac3o", "mu_x_cont1__xXx__x_fac3o"),
+    is_null_list = list(
+      "mu_x_cont1"         = c(TRUE,  FALSE, TRUE,  FALSE),
+      "mu_x_fac2t"         = c(FALSE, TRUE,  TRUE,  TRUE),
+      "mu_x_fac3t"         = c(TRUE,  FALSE, TRUE,  TRUE),
+      "mu_x_fac3o"         = c(TRUE,  TRUE,  FALSE, FALSE),
+      "mu_x_cont1__xXx__x_fac3o" = c(TRUE,  TRUE,  TRUE,  FALSE)
+    ),
+    conditional = FALSE)
+
+  mixed_posteriors <- mix_posteriors(
+    model_list   = models,
+    parameters   = c("mu_x_cont1", "mu_x_fac2t", "mu_x_fac3t", "mu_x_fac3o", "mu_x_cont1__xXx__x_fac3o"),
+    is_null_list = list(
+      "mu_x_cont1"               = c(TRUE,  FALSE, TRUE,  FALSE),
+      "mu_x_fac2t"               = c(FALSE, TRUE,  TRUE,  TRUE),
+      "mu_x_fac3t"               = c(TRUE,  FALSE, TRUE,  TRUE),
+      "mu_x_fac2t"               = c(TRUE,  TRUE,  FALSE, FALSE),
+      "mu_x_cont1__xXx__x_fac3o" = c(TRUE,  TRUE,  TRUE,  FALSE)
+    ),
+    seed = 1, n_samples = 10000)
+
+
+
+  expect_doppelganger("model-averaging-plot-models-formula-1", function(){
+    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu_x_cont1")
+  })
+  expect_doppelganger("model-averaging-plot-models-formula-2", function(){
+    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu_x_fac2t")
+  })
+  expect_doppelganger("model-averaging-plot-models-formula-3", function(){
+    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu_x_fac2t", prior = TRUE)
+  })
+  expect_doppelganger("model-averaging-plot-models-formula-4", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+    par(mfrow = c(2, 1))
+    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu_x_fac3t")
+  })
+  expect_doppelganger("model-averaging-plot-models-formula-5", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+    par(mfrow = c(2, 1))
+    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu_x_fac3t", prior = TRUE)
+  })
+  expect_doppelganger("model-averaging-plot-models-formula-6", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+    par(mfrow = c(3, 1))
+    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu_x_fac3o")
+  })
+  expect_doppelganger("model-averaging-plot-models-formula-7", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+    par(mfrow = c(3, 1))
+    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu_x_fac3o", prior = TRUE)
+  })
+  expect_doppelganger("model-averaging-plot-models-formula-8", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+    par(mfrow = c(3, 1))
+    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu_x_cont1__xXx__x_fac3o")
+  })
+  expect_doppelganger("model-averaging-plot-models-formula-9", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+    par(mfrow = c(3, 1))
+    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu_x_cont1__xXx__x_fac3o", prior = TRUE)
+  })
+
+  # ggplot versions
+  p1 <- plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu_x_cont1", plot_type = "ggplot")
+  p2 <- plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu_x_fac3o", prior = TRUE, plot_type = "ggplot")
+
+  expect_doppelganger("model-averaging-plot-models-formula-10", p1)
+  expect_doppelganger("model-averaging-plot-models-formula-11", p2[[1]])
+  expect_doppelganger("model-averaging-plot-models-formula-12", p2[[2]])
+  expect_doppelganger("model-averaging-plot-models-formula-13", p2[[3]])
+
+})

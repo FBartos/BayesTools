@@ -1384,7 +1384,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   prior_list <- attr(samples[[parameter]], "prior_list")
 
   if(any(sapply(prior_list, is.prior.orthonormal))){
-    samples  <- .transform_orthonormal_samples(samples)
+    samples  <- transform_orthonormal_samples(samples)
   }
   samples    <- samples[[parameter]]
 
@@ -1500,6 +1500,10 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
 #' @title Plot estimates from models
 #'
+#' @details Plots prior and posterior estimates of the same parameter
+#' across multiple models (prior distributions with orthonormal contrast)
+#' are always plotted as differences from the grand mean).
+#'
 #' @param parameter parameter name to be plotted. Does not support
 #' PET-PEESE and weightfunction.
 #' @param inference object created by [ensemble_inference] function
@@ -1520,6 +1524,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 #' @inheritParams ensemble_inference
 #' @inheritParams plot.prior
 #' @inheritParams plot_posterior
+#' @inheritParams format_parameter_names
 #'
 #' @return \code{plot_models} returns either \code{NULL} or
 #' an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
@@ -1529,7 +1534,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 plot_models <- function(model_list, samples, inference, parameter, plot_type = "base", prior = FALSE, conditional = FALSE,
                         order = NULL,
                         transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
-                        par_name = NULL, ...){
+                        par_name = NULL, formula_prefix = TRUE, ...){
 
   # check input
   check_list(model_list, "model_list")
@@ -1547,39 +1552,114 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
     check_list(order, "order", check_length = 2)
     check_char(order[[1]], allow_values = c("decreasing", "increasing"))
     check_char(order[[2]], allow_values = c("model", "estimate", "probability", "BF"))
-
   }
+
   # extract the objects
   models_summary   <- lapply(model_list, function(m)m[["fit_summary"]])
-  models_priors    <- lapply(model_list, function(m)m[["priors"]][[parameter]])
   models_inference <- lapply(model_list, function(m)m[["inference"]])
   total_inference  <- inference[[parameter]]
   total_samples    <- samples[[parameter]]
   prior_list       <- attr(total_samples, "prior_list")
 
-  # create a table with results
-  prior_data <- data.frame(
-    model      = 1:length(models_summary),
+  # deal with factors
+  if(inherits(total_samples, "mixed_posteriors.factor")){
+
+    # make sure that the orthonormal priors are transformed to differences from the mean
+    if(attr(total_samples, "orthonormal")){
+
+      # transform the samples
+      if(ncol(total_samples) != attr(total_samples, "levels")){
+        total_samples <- transform_orthonormal_samples(samples[parameter])[[parameter]]
+      }
+      # transform the model summaries
+      if(!any(sapply(models_summary, function(m) all(colnames(total_samples) %in% attr(m, "parameters"))))){
+        models_summary <- lapply(model_list, function(m) runjags_estimates_table(m[["fit"]], transform_orthonormal = TRUE))
+      }
+
+    }
+
+    parameter <- colnames(total_samples)
+  }
+
+  # prepare nice parameter names
+  if(is.null(par_name)){
+    par_name  <- format_parameter_names(parameter, attr(total_samples, "formula_parameter"), formula_prefix = formula_prefix)
+  }
+
+  plot <- list()
+  for(i in seq_along(parameter)){
+    plot[[i]] <- .plot_models.simple(models_summary = models_summary, models_inference = models_inference, total_inference = total_inference, total_samples = total_samples,
+                                     prior_list = prior_list, parameter = parameter[i], par_name = par_name[i],
+                                     plot_type = plot_type, prior = prior, conditional = conditional, order = order,
+                                     transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings, ...)
+  }
+
+
+  # return the plots
+  if(plot_type == "base"){
+    return(invisible())
+  }else if(plot_type == "ggplot"){
+    if(length(parameter) == 1){
+      plot <- plot[[i]]
+    }
+    return(plot)
+  }
+}
+
+.plot_models_data_prior     <- function(prior_list, models_inference){
+  return(data.frame(
+    model      = 1:length(prior_list),
     y          = sapply(prior_list, mean),
-    y_lCI      = sapply(prior_list, quant, .025),
-    y_uCI      = sapply(prior_list, quant, .975),
+    y_lCI      = sapply(prior_list, mquant, .025),
+    y_uCI      = sapply(prior_list, mquant, .975),
     prior_prob = sapply(models_inference, function(m)m[["prior_prob"]]),
     post_prob  = sapply(models_inference, function(m)m[["post_prob"]]),
     BF         = sapply(models_inference, function(m)m[["inclusion_BF"]])
-  )
-
-  posterior_data <- data.frame(
+  ))
+}
+.plot_models_data_posterior <- function(models_summary, parameter, prior_list, models_inference){
+  return(data.frame(
     model      = 1:length(models_summary),
-    y          = sapply(models_summary, function(s)s[parameter, "Mean"]),
-    y_lCI      = sapply(models_summary, function(s)s[parameter, "lCI"]),
-    y_uCI      = sapply(models_summary, function(s)s[parameter, "uCI"]),
-    prior_prob = sapply(models_inference, function(m)m[["prior_prob"]]),
-    post_prob  = sapply(models_inference, function(m)m[["post_prob"]]),
-    BF         = sapply(models_inference, function(m)m[["inclusion_BF"]])
-  )
+    y          = sapply(1:length(models_summary), function(i){
+      if(any(attr(models_summary[[i]], "parameters") == parameter)){
+        return(models_summary[[i]][attr(models_summary[[i]], "parameters") == parameter, "Mean"])
+      }else if(is.prior.point(prior_list[[i]])){
+        return(prior_list[[i]]$parameters[["location"]])
+      }else{
+        stop(paste0("Posterior distribution summary for '", parameter, "' is not available."))
+      }
+    }),
+    y_lCI      = sapply(1:length(models_summary), function(i){
+      if(any(attr(models_summary[[i]], "parameters") == parameter)){
+        return(models_summary[[i]][attr(models_summary[[i]], "parameters") == parameter, "lCI"])
+      }else if(is.prior.point(prior_list[[i]])){
+        return(prior_list[[i]]$parameters[["location"]])
+      }else{
+        stop(paste0("Posterior distribution for '", parameter, "' is not available."))
+      }
+    }),
+    y_uCI      = sapply(1:length(models_summary), function(i){
+      if(any(attr(models_summary[[i]], "parameters") == parameter)){
+        return(models_summary[[i]][attr(models_summary[[i]], "parameters") == parameter, "uCI"])
+      }else if(is.prior.point(prior_list[[i]])){
+        return(prior_list[[i]]$parameters[["location"]])
+      }else{
+        stop(paste0("Posterior distribution for '", parameter, "' is not available."))
+      }
+    }),
+    prior_prob = sapply(models_inference, function(m) m[["prior_prob"]]),
+    post_prob  = sapply(models_inference, function(m) m[["post_prob"]]),
+    BF         = sapply(models_inference, function(m) m[["inclusion_BF"]])
+  ))
+}
+.plot_models.simple         <- function(models_summary, models_inference, total_inference, total_samples,
+                                        prior_list, parameter, par_name,
+                                        plot_type, prior, conditional, order,
+                                        transformation, transformation_arguments, transformation_settings, ...){
 
-  # fix empty estimates - due to point values with priors
-  posterior_data[is.na(posterior_data)] <- prior_data[is.na(posterior_data)]
+  # create a table with results
+  prior_data     <- .plot_models_data_prior(prior_list, models_inference)
+  posterior_data <- .plot_models_data_posterior(models_summary, parameter, prior_list, models_inference)
 
   # remove null models if requested (assuming that the overall estimate is already supplied accordingly)
   if(conditional){
@@ -1797,14 +1877,8 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
 
   }
 
-  # return the plots
-  if(plot_type == "base"){
-    return(invisible())
-  }else if(plot_type == "ggplot"){
-    return(plot)
-  }
+  return(plot)
 }
-
 
 .simplify_spike_samples <- function(samples, prior_list){
 
