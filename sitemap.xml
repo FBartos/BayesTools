@@ -43,9 +43,6 @@
     <loc>/reference/JAGS_check_convergence.html</loc>
   </url>
   <url>
-    <loc>/reference/JAGS_clean_names.html</loc>
-  </url>
-  <url>
     <loc>/reference/JAGS_fit.html</loc>
   </url>
   <url>
@@ -80,6 +77,9 @@
   </url>
   <url>
     <loc>/reference/format_BF.html</loc>
+  </url>
+  <url>
+    <loc>/reference/format_parameter_names.html</loc>
   </url>
   <url>
     <loc>/reference/geom_prior.html</loc>
@@ -167,6 +167,9 @@
   </url>
   <url>
     <loc>/reference/sd.prior.html</loc>
+  </url>
+  <url>
+    <loc>/reference/transform_orthonormal_samples.html</loc>
   </url>
   <url>
     <loc>/reference/var.html</loc>

@@ -76,6 +76,7 @@
   transformation_arguments <span class="op">=</span> <span class="cn">NULL</span>,
   transformation_settings <span class="op">=</span> <span class="cn">FALSE</span>,
   par_name <span class="op">=</span> <span class="cn">NULL</span>,
+  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>,
   <span class="va">...</span>
 <span class="op">)</span></code></pre></div>
     </div>
@@ -134,6 +135,9 @@ the transformed support</p></dd>
 <dd><p>a type of parameter for which the prior is
 specified. Only relevant if the prior corresponds to a mu
 parameter that needs to be transformed.</p></dd>
+<dt>formula_prefix</dt>
+<dd><p>whether the <code>formula_parameters</code> names should be
+kept. Defaults to <code>TRUE</code>.</p></dd>
 <dt>...</dt>
 <dd><p>additional arguments. E.g.:</p><dl><dt><code>"show_updating"</code></dt>
 <dd><p>whether Bayes factors and change from
@@ -153,6 +157,12 @@ should be shown on the secondary y-axis</p></dd>
     <h2>Value</h2>
     <p><code>plot_models</code> returns either <code>NULL</code> or
 an object of class 'ggplot' if plot_type is <code>plot_type = "ggplot"</code>.</p>
+    </div>
+    <div id="details">
+    <h2>Details</h2>
+    <p>Plots prior and posterior estimates of the same parameter
+across multiple models (prior distributions with orthonormal contrast)
+are always plotted as differences from the grand mean).</p>
     </div>
     <div id="see-also">
     <h2>See also</h2>
