@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.5</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.6</span>
       </span>
     </div>
 
@@ -57,6 +57,24 @@
       <small>Source: <a href="https://github.com/FBartos/BayesTools/blob/HEAD/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
+    <div class="section level2">
+<h2 class="page-header" data-toc-text="0.2.6" id="version-026">version 0.2.6<a class="anchor" aria-label="anchor" href="#version-026"></a></h2>
+<div class="section level3">
+<h3 id="features-0-2-6">Features<a class="anchor" aria-label="anchor" href="#features-0-2-6"></a></h3>
+<ul><li>
+<code>plot_models</code> implementation for factor predictors</li>
+<li>
+<code>JAGS_clean_names</code> for cleaning parameter names from JAGS</li>
+<li>
+<code>mean</code>, <code>sd</code>, and <code>var</code> functions now return the corresponding values for differences from the mean for the orthonormal prior distributions</li>
+</ul></div>
+<div class="section level3">
+<h3 id="fixes-0-2-6">Fixes<a class="anchor" aria-label="anchor" href="#fixes-0-2-6"></a></h3>
+<ul><li>proper splitting of transformed posterior samples based on orthonormal contrasts in <code>runjags_summary_table</code> function (previous version crashed under other than default <code>fit_JAGS</code> settings)</li>
+<li>always showing name of the comparison group for treatment contrasts in <code>runjags_summary_table</code> function</li>
+<li>better handling of transformed parameter names in <code>plot_models</code> function</li>
+</ul></div>
+</div>
     <div class="section level2">
 <h2 class="page-header" data-toc-text="0.2.5" id="version-025">version 0.2.5<a class="anchor" aria-label="anchor" href="#version-025"></a></h2>
 <div class="section level3">
