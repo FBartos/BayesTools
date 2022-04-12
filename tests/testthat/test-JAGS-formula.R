@@ -428,6 +428,21 @@ test_that("JAGS formula works", {
     "x_cont1"   = prior_factor("normal", list(0, 1), contrast = "treatment")
   )), "Unsupported prior distribution defined for 'x_cont1' continuous variable.")
 
+
+  # additional tools work
+  expect_equal(
+    format_parameter_names(c("mu_x_cont", "mu_x_fac3t", "mu_x_fac3t__xXx__x_cont")),
+    c("mu_x_cont", "mu_x_fac3t", "mu_x_fac3t:x_cont")
+  )
+  expect_equal(
+    format_parameter_names(c("mu_x_cont", "mu_x_fac3t", "mu_x_fac3t__xXx__x_cont"), formula_parameters = "mu"),
+    c("(mu) x_cont", "(mu) x_fac3t", "(mu) x_fac3t:x_cont")
+  )
+  expect_equal(
+    format_parameter_names(c("mu_x_cont", "mu_x_fac3t", "mu_x_fac3t__xXx__x_cont"), formula_parameters = "mu", formula_prefix = FALSE),
+    c("x_cont", "x_fac3t", "x_fac3t:x_cont")
+  )
+
 })
 
 

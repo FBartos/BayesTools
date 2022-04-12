@@ -70,7 +70,7 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95)
 
   # transform orthonormal posterior
   if(transform_orthonormal){
-    samples <- .transform_orthonormal_samples(samples)
+    samples <- transform_orthonormal_samples(samples)
   }
 
 
@@ -594,7 +594,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       model_samples <- cbind(model_samples, transformed_samples)
 
       # update summary
-      transformed_chains  <- lapply(split(data.frame(transformed_samples), sort(rep(1:4, 4000))), coda::mcmc)
+      transformed_chains  <- lapply(split(data.frame(transformed_samples), sort(rep(1:length(fit[["mcmc"]]), fit[["sample"]]))), coda::mcmc)
       transformed_summary <- summary(runjags::combine.mcmc(transformed_chains, collapse.chains = FALSE))
       transformed_summary <- cbind(
         Lower95 = transformed_summary$quantiles[,"2.5%"],
@@ -656,8 +656,13 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   if(any(sapply(prior_list, is.prior.dummy))){
     for(par in names(prior_list)[sapply(prior_list, is.prior.dummy)]){
       if(!attr(prior_list[[par]], "interaction")){
-        rownames(runjags_summary)[rownames(runjags_summary) %in% paste0(par,"[",1:(attr(prior_list[[par]], "levels")-1),"]")] <-
-          paste0(par,"[",attr(prior_list[[par]], "level_names")[-1], "]")
+        if(attr(prior_list[[par]], "levels") == 2){
+          rownames(runjags_summary)[rownames(runjags_summary) == par] <-
+            paste0(par,"[",attr(prior_list[[par]], "level_names")[-1], "]")
+        }else{
+          rownames(runjags_summary)[rownames(runjags_summary) %in% paste0(par,"[",1:(attr(prior_list[[par]], "levels")-1),"]")] <-
+            paste0(par,"[",attr(prior_list[[par]], "level_names")[-1], "]")
+        }
       }else if(length(attr(prior_list[[par]], "levels")) == 1){
         rownames(runjags_summary)[rownames(runjags_summary) %in% paste0(par,"[",1:(attr(prior_list[[par]], "levels")-1),"]")] <-
           paste0(par,"[",attr(prior_list[[par]], "level_names")[[1]][-1], "]")
@@ -665,19 +670,15 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     }
   }
 
+  # store parameter names before removing formula attachments
+  parameter_names <- rownames(runjags_summary)
+
   # rename formula parameters
   if(any(!sapply(lapply(prior_list, attr, which = "parameter"), is.null))){
-    for(parameter in unique(unlist(lapply(prior_list, attr, which = "parameter")))){
-      rownames(runjags_summary)[grep(paste0(parameter, "_"), rownames(runjags_summary))] <- gsub(
-        paste0(parameter, "_"),
-        if(formula_prefix) paste0("(", parameter, ") ") else "",
-        rownames(runjags_summary)[grep(paste0(parameter, "_"), rownames(runjags_summary))])
-    }
-    rownames(runjags_summary)[grep("__xXx__", rownames(runjags_summary))] <- gsub(
-      "__xXx__",
-      ":",
-      rownames(runjags_summary)[grep("__xXx__", rownames(runjags_summary))]
-    )
+    rownames(runjags_summary) <- format_parameter_names(
+      parameters         = rownames(runjags_summary),
+      formula_parameters = unique(unlist(lapply(prior_list, attr, which = "parameter"))),
+      formula_prefix     = formula_prefix)
   }
 
 
@@ -696,12 +697,13 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   runjags_summary <- runjags_summary[,c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"), drop = FALSE]
 
   # prepare output
-  class(runjags_summary)             <- c("BayesTools_table", "BayesTools_runjags_summary", class(runjags_summary))
-  attr(runjags_summary, "type")      <- c(rep("estimate", 5), "MCMC_error", "MCMC_SD_error", "ESS", "R_hat")
-  attr(runjags_summary, "rownames")  <- TRUE
-  attr(runjags_summary, "title")     <- title
-  attr(runjags_summary, "footnotes") <- footnotes
-  attr(runjags_summary, "warnings")  <- warnings
+  class(runjags_summary)              <- c("BayesTools_table", "BayesTools_runjags_summary", class(runjags_summary))
+  attr(runjags_summary, "type")       <- c(rep("estimate", 5), "MCMC_error", "MCMC_SD_error", "ESS", "R_hat")
+  attr(runjags_summary, "parameters") <- parameter_names
+  attr(runjags_summary, "rownames")   <- TRUE
+  attr(runjags_summary, "title")      <- title
+  attr(runjags_summary, "footnotes")  <- footnotes
+  attr(runjags_summary, "warnings")   <- warnings
 
   return(runjags_summary)
 }

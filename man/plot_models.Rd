@@ -17,6 +17,7 @@ plot_models(
   transformation_arguments = NULL,
   transformation_settings = FALSE,
   par_name = NULL,
+  formula_prefix = TRUE,
   ...
 )
 }
@@ -68,6 +69,9 @@ the transformed support}
 specified. Only relevant if the prior corresponds to a mu
 parameter that needs to be transformed.}
 
+\item{formula_prefix}{whether the \code{formula_parameters} names should be
+kept. Defaults to \code{TRUE}.}
+
 \item{...}{additional arguments. E.g.:
 \describe{
 \item{\code{"show_updating"}}{whether Bayes factors and change from
@@ -83,6 +87,11 @@ an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
 }
 \description{
 Plot estimates from models
+}
+\details{
+Plots prior and posterior estimates of the same parameter
+across multiple models (prior distributions with orthonormal contrast)
+are always plotted as differences from the grand mean).
 }
 \seealso{
 \code{\link[=prior]{prior()}} \code{\link[=lines_prior_list]{lines_prior_list()}}  \code{\link[=geom_prior_list]{geom_prior_list()}}

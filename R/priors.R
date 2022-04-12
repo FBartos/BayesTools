@@ -1530,7 +1530,9 @@ pdf.default  <- function(x, ...){
 #' @title Prior mean
 #'
 #' @description Computes mean of a prior
-#' distribution.
+#' distribution. (In case of orthonormal prior distributions
+#' for factors, the mean of for the deviations from intercept
+#' is returned.)
 #'
 #' @param x a prior
 #' @param ... unused
@@ -1595,6 +1597,22 @@ mean.prior   <- function(x, ...){
   }else if(is.prior.weightfunction(x)){
 
     m <- .mean.weightfunction(x)
+
+  }else if(is.prior.orthonormal(x)){
+
+    if(switch(
+      x[["distribution"]],
+      "mnormal" = x$parameters[["mean"]],
+      "mt"      = x$parameters[["location"]]) != 0){
+      stop("the orthonormal prior distribution must be centered")
+    }
+
+    if(x[["distribution"]] == "mt" && x$parameters[["df"]] <= 1){
+      m <- NaN
+    }else{
+      # orthonormal prior distributions must be centered
+      m <- 0
+    }
 
   }
 
@@ -1713,6 +1731,39 @@ var.prior   <- function(x, ...){
   }else if(is.prior.weightfunction(x)){
 
     var <- .var.weightfunction(x)
+
+  }else if(is.prior.orthonormal(x)){
+
+    if(switch(
+      x[["distribution"]],
+      "mnormal" = x$parameters[["mean"]],
+      "mt"      = x$parameters[["location"]]) != 0){
+      stop("the orthonormal prior distribution must be centered")
+    }
+
+    if(x[["distribution"]] == "mt" && x$parameters[["df"]] <= 2){
+      var <- NaN
+    }else{
+
+
+      if(is.na(x$parameters[["K"]]) && !is.null(attr(x, "levels"))){
+        x$parameters[["K"]] <- attr(x, "levels") - 1
+      }else if(is.na(x$parameters[["K"]])){
+        x$parameters[["K"]] <- 1
+        warning("number of factor levels / dimensionality of the prior distribution was not specified -- assuming two factor levels")
+      }
+
+      par2 <- sqrt(sum( (contr.orthonormal(1:(x$parameters[["K"]] + 1))[1,] * switch(
+        x[["distribution"]],
+        "mnormal" = x$parameters[["sd"]],
+        "mt"      = x$parameters[["scale"]]) )^2 ))
+
+      # use the univariate functions
+      var <- switch(
+        x[["distribution"]],
+        "mnormal" = var.prior(x("normal", parameters = c(mean = 0, sd = par2))),
+        "mt"      = var.prior(x("t",      parameters = c(location = 0, scale = par2, df = x$parameters[["df"]]))))
+    }
 
   }
 

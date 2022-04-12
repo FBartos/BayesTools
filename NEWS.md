@@ -1,3 +1,14 @@
+## version 0.2.6
+### Features
+- `plot_models` implementation for factor predictors
+- `format_parameter_names` for cleaning parameter names from JAGS
+- `mean`, `sd`, and `var` functions now return the corresponding values for differences from the mean for the orthonormal prior distributions
+
+### Fixes
+- proper splitting of transformed posterior samples based on orthonormal contrasts in `runjags_summary_table` function (previous version crashed under other than default `fit_JAGS` settings)
+- always showing name of the comparison group for treatment contrasts  in `runjags_summary_table` function
+- better handling of transformed parameter names in `plot_models` function
+
 ## version 0.2.5
 ### Features
 - `add_column` function for extending `BayesTools_table` objects without breaking the attributes etc...

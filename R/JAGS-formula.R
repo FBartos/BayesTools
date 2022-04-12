@@ -215,7 +215,25 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   }
   return(formula)
 }
-.transform_orthonormal_samples <- function(samples){
+
+#' @title Transform orthonomal posterior samples into differences from the mean
+#'
+#' @description Transforms posterior samples from model-averaged posterior
+#' distributions based on orthonormal prior distributions into differences from
+#' the mean.
+#'
+#' @param samples (a list) of mixed posterior distributions created with
+#' \code{mix_posteriors} function
+#'
+#' @return \code{transform_orthonormal_samples} returns a named list of mixed posterior
+#' distributions (either a vector of matrix).
+#'
+#' @seealso [mix_posteriors] [contr.orthonormal]
+#'
+#' @export
+transform_orthonormal_samples <- function(samples){
+
+  check_list(samples, "samples", allow_NULL = TRUE)
 
   for(i in seq_along(samples)){
     if(inherits(samples[[i]], "mixed_posteriors.factor") && attr(samples[[i]], "orthonormal")){
@@ -243,6 +261,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
 
   return(samples)
 }
+
 
 #' @title Orthornomal contrast natrix
 #'
@@ -286,4 +305,34 @@ contr.orthonormal <- function(n, contrasts = TRUE){
   }
 
   return(cont)
+}
+
+
+#' @title Clean parameter names from JAGS
+#'
+#' @description Removes additional formatting from parameter names outputted from
+#' JAGS.
+#'
+#' @param parameters a vector of parameter names
+#' @param formula_parameters a vector of formula parameter prefix names
+#' @param formula_prefix whether the \code{formula_parameters} names should be
+#' kept. Defaults to \code{TRUE}.
+#'
+#' @examples
+#' format_parameter_names(c("mu_x_cont", "mu_x_fac3t", "mu_x_fac3t__xXx__x_cont"), formula_parameters = "mu")
+#'
+#' @return A character vector with reformatted parameter names.
+#'
+#' @export
+format_parameter_names <- function(parameters, formula_parameters = NULL, formula_prefix = TRUE){
+
+  for(i in seq_along(formula_parameters)){
+    parameters[grep(paste0(formula_parameters[i], "_"), parameters)] <- gsub(
+      paste0(formula_parameters[i], "_"),
+      if(formula_prefix) paste0("(", formula_parameters[i], ") ") else "",
+      parameters[grep(paste0(formula_parameters[i], "_"), parameters)])
+  }
+  parameters[grep("__xXx__", parameters)] <- gsub("__xXx__", ":", parameters[grep("__xXx__", parameters)])
+
+  return(parameters)
 }
