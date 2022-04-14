@@ -81,39 +81,9 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   check_list(formula_data_list, "formula_data_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
   check_list(formula_prior_list, "formula_prior_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
 
-  ### check the input and split it on posterior and data
-  if(inherits(fit, "runjags")){
 
-    # get posterior and merge chains
-    posterior <- suppressWarnings(coda::as.mcmc(fit))
-
-  }else if(is.list(fit) & all(sapply(fit, inherits, what = "mcarray"))){
-
-    # rjags model with rjags::jags.samples
-    # merge chains
-    posterior <- do.call(cbind, lapply(names(fit), function(par){
-      if(dim(fit[[par]])[1] > 1){
-        samples <- do.call(rbind, lapply(1:(dim(fit[[par]]))[3],  function(chain)t(fit[[par]][,,chain])))
-        colnames(samples) <- paste0(attr(fit[[par]], "varname"), "[",1:ncol(samples),"]")
-      }else{
-        samples <- matrix(do.call(c, lapply(1:(dim(fit[[par]]))[3],  function(chain)fit[[par]][,,chain])), ncol = 1)
-        colnames(samples) <- attr(fit[[par]], "varname")
-      }
-      return(samples)
-    }))
-
-  }else if(inherits(fit, "mcmc.list")){
-
-    # rjags model with rjags::coda.samples
-    # merge chains
-    posterior <- do.call(rbind, fit)
-
-  }else{
-
-    stop("the method is not implemented for this output")
-
-  }
-
+  # extract the posterior distribution
+  posterior <- .fit_to_posterior(fit)
 
   ### prepare formula objects summary
   if(!is.null(formula_list)){
@@ -200,7 +170,43 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   return(marglik)
 }
 
+.fit_to_posterior <- function(fit){
 
+  ### check the input and split it on posterior and data
+  if(inherits(fit, "runjags")){
+
+    # get posterior and merge chains
+    posterior <- suppressWarnings(coda::as.mcmc(fit))
+
+  }else if(is.list(fit) & all(sapply(fit, inherits, what = "mcarray"))){
+
+    # rjags model with rjags::jags.samples
+    # merge chains
+    posterior <- do.call(cbind, lapply(names(fit), function(par){
+      if(dim(fit[[par]])[1] > 1){
+        samples <- do.call(rbind, lapply(1:(dim(fit[[par]]))[3],  function(chain)t(fit[[par]][,,chain])))
+        colnames(samples) <- paste0(attr(fit[[par]], "varname"), "[",1:ncol(samples),"]")
+      }else{
+        samples <- matrix(do.call(c, lapply(1:(dim(fit[[par]]))[3],  function(chain)fit[[par]][,,chain])), ncol = 1)
+        colnames(samples) <- attr(fit[[par]], "varname")
+      }
+      return(samples)
+    }))
+
+  }else if(inherits(fit, "mcmc.list")){
+
+    # rjags model with rjags::coda.samples
+    # merge chains
+    posterior <- do.call(rbind, fit)
+
+  }else{
+
+    stop("the method is not implemented for this output")
+
+  }
+
+  return(posterior)
+}
 
 #' @title Prepare 'JAGS' posterior for 'bridgesampling'
 #'

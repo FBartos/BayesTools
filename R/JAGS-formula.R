@@ -209,11 +209,165 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   ))
 }
 
-.remove_response               <- function(formula){
+.remove_response <- function(formula){
   if(attr(stats::terms(formula), "response")  == 1){
     formula[2] <- NULL
   }
   return(formula)
+}
+
+
+#' @title Evaluate JAGS formula using posterior samples
+#'
+#' @description Evaluates a JAGS formula on a posterior distribution
+#' obtained from a fitted model.
+#'
+#' @param fit model fitted with either \link[runjags]{runjags} posterior
+#' samples obtained with \link[rjags]{rjags-package}
+#' @param formula formula specifying the right hand side of the assignment (the
+#' left hand side is ignored)
+#' @param parameter name of the parameter created with the formula
+#' @param data data.frame containing predictors included in the formula
+#' @param prior_list named list of prior distribution of parameters specified within
+#' the \code{formula}
+#'
+#'
+#' @return \code{JAGS_evaluate_formula} returns a matrix of the evaluated posterior samples on
+#' the supplied data.
+#'
+#' @seealso [JAGS_fit()] [JAGS_formula()]
+#' @export
+JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
+
+  if(!is.language(formula))
+    stop("'formula' must be a formula")
+  if(!is.data.frame(data))
+    stop("'data' must be a data.frame")
+  check_char(parameter, "parameter")
+  check_list(prior_list, "prior_list")
+  if(any(!sapply(prior_list, is.prior)))
+    stop("'prior_list' must be a list of priors.")
+
+  # extract the posterior distribution
+  posterior <- as.matrix(.fit_to_posterior(fit))
+
+  # remove the specified response (would crash the model.frame if not included)
+  formula <- .remove_response(formula)
+
+  # select priors corresponding to the prior distribution
+  prior_parameter <- sapply(prior_list, function(p) if(is.null(attr(p, "parameter"))) "__none" else attr(p, "parameter"))
+  if(!any(parameter %in% unique(prior_parameter)))
+    stop("The specified parameter '", parameter, "' was not used in any of the prior distributions.")
+  prior_list_formula <- prior_list[prior_parameter == parameter]
+  names(prior_list_formula) <- format_parameter_names(names(prior_list_formula), formula_parameters = parameter, formula_prefix = FALSE)
+
+  # extract the terms information from the formula
+  formula_terms    <- stats::terms(formula)
+  has_intercept    <- attr(formula_terms, "intercept") == 1
+  predictors       <- as.character(attr(formula_terms, "variables"))[-1]
+  model_terms      <- c(if(has_intercept) "intercept", attr(formula_terms, "term.labels"))
+
+  # check that all predictors have data and prior distribution
+  if(!all(predictors %in% colnames(data)))
+    stop(paste0("The ", paste0("'", predictors[!predictors %in% colnames(data)], "'", collapse = ", ")," predictor variable is missing in the data."))
+  if(!all(model_terms %in% names(prior_list_formula)))
+    stop(paste0("The prior distribution for the ", paste0("'", predictors[!model_terms %in% format_parameter_names(names(prior_list_formula), formula_parameters = parameter, formula_prefix = FALSE)], "'", collapse = ", ")," term is missing in the prior_list."))
+
+  # obtain predictors characteristics -- based on prior distributions used to fit the original model
+  # (i.e., do not truest the supplied data -- probably passed by the user)
+  model_terms_type <- sapply(model_terms, function(model_term){
+    if(model_term == "intercept"){
+      return("continuous")
+    }else if(is.prior.factor(prior_list_formula[[model_term]])){
+      return("factor")
+    }else if(is.prior.simple(prior_list_formula[[model_term]])){
+      return("continuous")
+    }
+  })
+  predictors_type <- model_terms_type[predictors]
+
+  # check that passed data correspond to the specified priors (factor levels etc...) and set the proper contrasts
+  if(any(predictors_type == "factor")){
+    # check the proper data input
+    for(factor in names(predictors_type[predictors_type == "factor"])){
+      if(is.factor(data[,factor])){
+        if(all(levels(data[,factor]) %in% attr(prior_list_formula[[factor]], "level_names"))){
+          # either the formatting is correct, or the supplied levels are a subset of the original levels
+          # reformat to check ordering and etc...
+          data[,factor] <- factor(data[,factor], levels = attr(prior_list_formula[[factor]], "level_names"))
+        }else{
+          # there are some additional levels
+          stop(paste0("Levels specified in the '", factor, "' factor variable do not match the levels used for model specification."))
+        }
+      }else if(all(unique(data[,factor]) %in% attr(prior_list_formula[[factor]], "level_names"))){
+        # the variable was not passed as a factor but the values matches the factor levels
+        data[,factor] <- factor(data[,factor], levels = attr(prior_list_formula[[factor]], "level_names"))
+      }else{
+        # there are some additional mismatching values
+        stop(paste0("Levels specified in the '", factor, "' factor variable do not match the levels used for model specification."))
+      }
+    }
+    # set the contrast
+    if(is.prior.orthonormal(prior_list_formula[[factor]])){
+      stats::contrasts(data[,factor]) <- "contr.orthonormal"
+    }else if(is.prior.dummy(prior_list_formula[[factor]])){
+      stats::contrasts(data[,factor]) <- "contr.treatment"
+    }
+  }
+  if(any(predictors_type == "continuous")){
+    for(continuous in names(predictors_type[predictors_type == "continuous"])){
+      if(!is.prior.simple(prior_list_formula[[continuous]]) || is.prior.factor(prior_list_formula[[continuous]])){
+        stop(paste0("Unsupported prior distribution defined for '", continuous, "' continuous variable. See '?prior' for details."))
+      }
+    }
+  }
+
+  # get the design matrix
+  model_frame  <- stats::model.frame(formula, data = data)
+  model_matrix <- stats::model.matrix(model_frame, formula = formula, data = data)
+
+  ### evaluate the design matrix on the samples -> output[data, posterior]
+  if(has_intercept){
+    terms_indexes    <- attr(model_matrix, "assign") + 1
+    terms_indexes[1] <- 0
+
+    output           <- matrix(posterior[,JAGS_parameter_names("intercept", formula_parameter = parameter)], nrow = nrow(data), ncol = nrow(posterior), byrow = TRUE)
+  }else{
+    terms_indexes    <- attr(model_matrix, "assign")
+
+    output           <- matrix(0, nrow = nrow(data), ncol = nrow(posterior))
+  }
+
+  # add remaining terms (omitting the intercept indexed as NA)
+  for(i in unique(terms_indexes[terms_indexes > 0])){
+
+    # check for scaling factors
+    if(!is.null(attr(prior_list_formula[[model_terms[i]]], "multiply_by"))){
+      if(is.numeric(attr(prior_list_formula[[model_terms[i]]], "multiply_by"))){
+        temp_multiply_by <- matrix(attr(prior_list_formula[[model_terms[i]]], "multiply_by"), nrow = nrow(data), ncol = nrow(posterior))
+      }else{
+        temp_multiply_by <- matrix(posterior[,JAGS_parameter_names(attr(prior_list_formula[[model_terms[i]]], "multiply_by"))], nrow = nrow(data), ncol = nrow(posterior), byrow = TRUE)
+      }
+    }else{
+      temp_multiply_by <- matrix(1, nrow = nrow(data), ncol = nrow(posterior))
+    }
+
+
+    # subset the model matrix
+    temp_data    <- model_matrix[,terms_indexes == i,drop = FALSE]
+
+    # get the posterior (unless point prior was used)
+    if(is.prior.point(prior_list_formula[[model_terms[i]]])){
+      temp_posterior <- matrix(prior_list_formula[[model_terms[i]]]$parameters[["location"]], nrow = nrow(posterior), ncol = if(model_terms_type[i] == "factor") attr(prior_list_formula[[model_terms[i]]], "levels")-1 else 1)
+    }else{
+      temp_posterior <- posterior[,paste0(JAGS_parameter_names(model_terms[i], formula_parameter = parameter), if(model_terms_type[i] == "factor" && attr(prior_list_formula[[model_terms[i]]], "levels") > 2) paste0("[", 1:(attr(prior_list_formula[[model_terms[i]]], "levels")-1), "]")),drop = FALSE]
+    }
+
+    output <- output + temp_multiply_by * (temp_data %*% t(temp_posterior))
+
+  }
+
+  return(output)
 }
 
 #' @title Transform orthonomal posterior samples into differences from the mean
@@ -314,17 +468,28 @@ contr.orthonormal <- function(n, contrasts = TRUE){
 #' JAGS.
 #'
 #' @param parameters a vector of parameter names
+#' @param formula_parameter a formula parameter prefix name
 #' @param formula_parameters a vector of formula parameter prefix names
 #' @param formula_prefix whether the \code{formula_parameters} names should be
 #' kept. Defaults to \code{TRUE}.
 #'
 #' @examples
-#' format_parameter_names(c("mu_x_cont", "mu_x_fac3t", "mu_x_fac3t__xXx__x_cont"), formula_parameters = "mu")
+#' format_parameter_names(c("mu_x_cont", "mu_x_fac3t", "mu_x_fac3t__xXx__x_cont"),
+#'                        formula_parameters = "mu")
 #'
 #' @return A character vector with reformatted parameter names.
 #'
-#' @export
+#' @export format_parameter_names
+#' @export JAGS_parameter_names
+#' @name parameter_names
+NULL
+
+#' @rdname parameter_names
 format_parameter_names <- function(parameters, formula_parameters = NULL, formula_prefix = TRUE){
+
+  check_char(parameters, "parameters", check_length = FALSE)
+  check_char(formula_parameters, "formula_parameters", check_length = FALSE, allow_NULL = TRUE)
+  check_bool(formula_prefix, "formula_prefix")
 
   for(i in seq_along(formula_parameters)){
     parameters[grep(paste0(formula_parameters[i], "_"), parameters)] <- gsub(
@@ -333,6 +498,19 @@ format_parameter_names <- function(parameters, formula_parameters = NULL, formul
       parameters[grep(paste0(formula_parameters[i], "_"), parameters)])
   }
   parameters[grep("__xXx__", parameters)] <- gsub("__xXx__", ":", parameters[grep("__xXx__", parameters)])
+
+  return(parameters)
+}
+#' @rdname parameter_names
+JAGS_parameter_names   <- function(parameters, formula_parameter = NULL){
+
+  check_char(parameters, "parameters", check_length = FALSE)
+  check_char(formula_parameter, "formula_parameter", check_length = TRUE, allow_NULL = TRUE)
+
+  if(!is.null(formula_parameter)){
+    parameters <- paste0(formula_parameter, "_", parameters)
+  }
+  parameters <- gsub(":", "__xXx__", parameters)
 
   return(parameters)
 }
