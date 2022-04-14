@@ -428,6 +428,9 @@ test_that("JAGS formula works", {
     "x_cont1"   = prior_factor("normal", list(0, 1), contrast = "treatment")
   )), "Unsupported prior distribution defined for 'x_cont1' continuous variable.")
 
+})
+
+test_that("JAGS formula tools work", {
 
   # additional tools work
   expect_equal(
@@ -443,7 +446,141 @@ test_that("JAGS formula works", {
     c("x_cont", "x_fac3t", "x_fac3t:x_cont")
   )
 
+  expect_equal(
+    JAGS_parameter_names(c("x_cont", "x_fac3t", "x_fac3t:x_cont")),
+    c("x_cont", "x_fac3t", "x_fac3t__xXx__x_cont")
+  )
+  expect_equal(
+    JAGS_parameter_names(c("x_cont", "x_fac3t", "x_fac3t:x_cont"), formula_parameter = "mu"),
+    c("mu_x_cont", "mu_x_fac3t", "mu_x_fac3t__xXx__x_cont")
+  )
+
 })
 
+test_that("JAGS evaluate formula works", {
 
+  # check the posterior distributions with weak priors against a maximum likelihood estimates with ML
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_on_cran()
 
+  # complex formula including scaling
+  set.seed(1)
+  df_all <- data.frame(
+    x_cont1 = rnorm(60),
+    x_cont2 = rnorm(60),
+    x_fac2t = factor(rep(c("A", "B"), 30), levels = c("A", "B")),
+    x_fac3o = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C"))
+  )
+  df_all$y <- rnorm(60, 0.1, 0.5) + 0.30 * df_all$x_cont1 - 0.15 * df_all$x_cont1 * df_all$x_cont2 +
+    ifelse(df_all$x_fac3o == "A", 0.2, ifelse(df_all$x_fac3o == "B", -0.2, 0))
+
+  prior_list_all <- list(
+    "intercept"       = prior("normal", list(0, 5)),
+    "x_cont1"         = prior("normal", list(0, 1)),
+    "x_cont2"         = prior("normal", list(0, 1)),
+    "x_fac2t"         = prior_factor("normal",  contrast = "treatment",   list(0, 1)),
+    "x_fac3o"         = prior_factor("mnormal", contrast = "orthonormal", list(0, 1)),
+    "x_cont1:x_fac3o" = prior_factor("mnormal", contrast = "orthonormal", list(0,  2))
+  )
+  prior_list2  <- list(
+    "sigma" = prior("cauchy", list(0, 1), list(0, 1))
+  )
+  model_syntax <- paste0(
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n"
+  )
+
+  formula      <- JAGS_formula(~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, parameter = "mu", data = df_all, prior_list = prior_list_all)
+  prior_list   <- c(formula$prior_list, prior_list2)
+  model_syntax <- JAGS_add_priors(paste0("model{", formula$formula_syntax, model_syntax, "}"), prior_list)
+  data         <- c(formula$data, N = nrow(df_all), y = list(df_all$y))
+
+  model   <- rjags::jags.model(file = textConnection(model_syntax), inits = JAGS_get_inits(prior_list, chains = 1, seed = 1), data = data, n.chains = 1, quiet = TRUE)
+  samples <- rjags::coda.samples(model = model, variable.names = JAGS_to_monitor(prior_list), n.iter = 10, quiet = TRUE, progress.bar = "none")
+
+  new_data <-  data.frame(
+    x_cont1 = c(0, 0, 1, 1),
+    x_cont2 = c(0, 1, 0, 1),
+    x_fac2t = factor(c("A", "B", "A", "B"), levels = c("A", "B")),
+    x_fac3o = factor(c("A", "B", "C", "A"), levels = c("A", "B", "C"))
+  )
+
+  # test the results against the lm function (by passing the ML estimates)
+  contrasts(df_all$x_fac3o) <- contr.orthonormal(levels(df_all$x_fac3o))
+  fit_lm <- stats::lm(y~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, data = df_all)
+
+  samples_new <- c(coef(fit_lm), sigma = sigma(fit_lm))[c("(Intercept)","x_cont1","x_cont1:x_fac3o1","x_cont1:x_fac3o2","x_cont2","x_fac2tB","x_fac3o1","x_fac3o2","sigma")]
+  samples_new <- matrix(samples_new, nrow = 1)
+  colnames(samples_new) <- colnames(samples[[1]])
+  samples_new <- coda::as.mcmc.list(coda::as.mcmc(samples_new))
+
+  expect_equal(predict(fit_lm, newdata = new_data), JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data, prior_list)[,1])
+
+  # for a posterior samples matrix
+  samples_new <- c(coef(fit_lm), sigma = sigma(fit_lm))[c("(Intercept)","x_cont1","x_cont1:x_fac3o1","x_cont1:x_fac3o2","x_cont2","x_fac2tB","x_fac3o1","x_fac3o2","sigma")]
+  samples_new <- matrix(samples_new, nrow = 5, ncol = length(samples_new), byrow = TRUE)
+  colnames(samples_new) <- colnames(samples[[1]])
+  samples_new <- coda::as.mcmc.list(coda::as.mcmc(samples_new))
+
+  expect_equal(matrix(predict(fit_lm, newdata = new_data), nrow = 4, ncol = 5), unname(JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data, prior_list)))
+
+  # check filling in missing or miss ordered factor levels
+  samples_new <- c(coef(fit_lm), sigma = sigma(fit_lm))[c("(Intercept)","x_cont1","x_cont1:x_fac3o1","x_cont1:x_fac3o2","x_cont2","x_fac2tB","x_fac3o1","x_fac3o2","sigma")]
+  samples_new <- matrix(samples_new, nrow = 1)
+  colnames(samples_new) <- colnames(samples[[1]])
+  samples_new <- coda::as.mcmc.list(coda::as.mcmc(samples_new))
+
+  new_data2         <- new_data
+  new_data2$x_fac2t <- factor(as.character(new_data2$x_fac2t), levels = c("B", "A"))
+  expect_equal(predict(fit_lm, newdata = new_data), JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data2, prior_list)[,1])
+
+  new_data3         <- new_data
+  new_data3$x_fac3o <- factor(c("A", "B", "A", "B"), levels = c("B", "A"))
+  expect_equal(predict(fit_lm, newdata = new_data3), JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data3, prior_list)[,1])
+
+  new_data4         <- new_data
+  new_data4$x_fac3o <- c("A", "B", "A", "B")
+  expect_equal(predict(fit_lm, newdata = new_data3), JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data4, prior_list)[,1])
+
+  # check scaling works (by multiplying be zero)
+  prior_list2 <- prior_list
+  attr(prior_list2$mu_x_cont2, "multiply_by") <- 0
+  attr(prior_list2$mu_x_fac2t, "multiply_by") <- 0
+
+  samples_new2 <- c(coef(fit_lm), sigma = sigma(fit_lm))[c("(Intercept)","x_cont1","x_cont1:x_fac3o1","x_cont1:x_fac3o2","x_cont2","x_fac2tB","x_fac3o1","x_fac3o2","sigma")]
+  samples_new2 <- matrix(samples_new2, nrow = 1)
+  colnames(samples_new2) <- colnames(samples[[1]])
+  samples_new2[,"mu_x_cont2"]    <- 0
+  samples_new2[,"mu_x_fac2t"] <- 0
+  samples_new2 <- coda::as.mcmc.list(coda::as.mcmc(samples_new2))
+
+  expect_equal(JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data, prior_list2)[,1],
+               JAGS_evaluate_formula(samples_new2, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data, prior_list)[,1])
+
+  # check scaling by another parameter works
+  prior_list2 <- prior_list
+  attr(prior_list2$mu_x_cont2, "multiply_by") <- "sigma"
+
+  expect_equal(unname(unlist(JAGS_evaluate_formula(samples, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data, prior_list2)[,1])),
+               c(0.4436353, -0.0658681, 0.1870391, 0.8548012), tolerance = 1e-5)
+
+  ### test input tests
+  expect_error(JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data[,1:3], prior_list),
+               "The 'x_fac3o' predictor variable is missing in the data.")
+  expect_error(JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data, prior_list[-1]),
+               "The prior distribution for the 'x_fac2t' term is missing in the prior_list.")
+
+  bad_data         <- new_data
+  bad_data$x_fac2t <- factor(c("C", "B", "C", "B"), levels = c("B", "C"))
+
+  expect_error(JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", bad_data, prior_list),
+               "Levels specified in the 'x_fac2t' factor variable do not match the levels used for model specification.")
+
+  bad_data2         <- new_data
+  bad_data2$x_fac2t <- c("C", "B", "C", "B")
+
+  expect_error(JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", bad_data2, prior_list),
+               "Levels specified in the 'x_fac2t' factor variable do not match the levels used for model specification.")
+
+})

@@ -1,3 +1,8 @@
+## version 0.2.7
+### Features
+- `JAGS_evaluate_formula` for evaluating formulas based on data and posterior samples (for creating predictions etc)  
+- `JAGS_parameter_names` for transforming formula names into the JAGS syntax
+
 ## version 0.2.6
 ### Features
 - `plot_models` implementation for factor predictors
