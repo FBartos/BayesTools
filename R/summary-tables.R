@@ -213,7 +213,7 @@ ensemble_summary_table <- function(models, parameters, logBF = FALSE, BF01 = FAL
   }
   if(is.list(parameters)){
     check_list(parameters, "parameters")
-    check_char(names(parameters), "names(parameters)", check_length = FALSE)
+    check_char(names(parameters), "names(parameters)", check_length = FALSE, allow_NULL = length(parameters) == 0)
     sapply(parameters, check_char, name = "parameters", check_length = FALSE)
   }else{
     check_char(parameters, "parameters", check_length = FALSE)
@@ -273,7 +273,7 @@ ensemble_diagnostics_table <- function(models, parameters, title = NULL, footnot
   }
   if(is.list(parameters)){
     check_list(parameters, "parameters")
-    check_char(names(parameters), "names(parameters)", check_length = FALSE)
+    check_char(names(parameters), "names(parameters)", check_length = FALSE, allow_NULL = length(parameters) == 0)
     sapply(parameters, check_char, name = "parameters", check_length = FALSE)
   }else{
     check_char(parameters, "parameters", check_length = FALSE)
@@ -590,7 +590,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       colnames(transformed_samples) <- transformed_names
 
       # update samples
-      model_samples <- model_samples[,!colnames(model_samples) %in% par_names]
+      model_samples <- model_samples[,!colnames(model_samples) %in% par_names,drop=FALSE]
       model_samples <- cbind(model_samples, transformed_samples)
 
       # update summary

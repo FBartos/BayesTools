@@ -1,3 +1,9 @@
+## version 0.2.8
+### Fixes
+- dealing with point prior distributions in `JAGS_marglik_parameters_formula` function
+- posterior samples dropping name in `runjags_estimates_table` function
+- `ensemble_summary_table` and `ensemble_diagnostics_table` function can create table without model components
+
 ## version 0.2.7
 ### Features
 - `JAGS_evaluate_formula` for evaluating formulas based on data and posterior samples (for creating predictions etc)  
