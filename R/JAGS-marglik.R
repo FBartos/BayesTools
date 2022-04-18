@@ -885,7 +885,11 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_data_list, for
       }
 
 
-      if(is.prior.factor(formula_prior_list[[term]])){
+      if(is.prior.point(formula_prior_list[[term]])){
+
+        output <- output + multiply_by * formula_prior_list[[term]][["parameters"]][["location"]] * formula_data_list[[term]]
+
+      }else if(is.prior.factor(formula_prior_list[[term]])){
 
         levels <- attr(formula_prior_list[[term]], "levels")
         if((levels-1) == 1){
