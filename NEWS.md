@@ -1,3 +1,7 @@
+## version 0.2.9
+### Fixes
+- dealing with NaNs due to overflow with very large marginal likelihoods
+
 ## version 0.2.8
 ### Fixes
 - dealing with point prior distributions in `JAGS_marglik_parameters_formula` function
