@@ -707,8 +707,8 @@ inclusion_BF         <- function(prior_probs, post_probs, margliks, is_null){
   check_real(prior_probs, "prior_probs", lower = 0, upper = 1, check_length = 0)
   check_real(margliks,  "margliks", check_length = length(prior_probs))
 
-  # center the margliks around the mean for higher precision
-  margliks <- margliks - mean(margliks)
+  # substract the max marglikto remove problems with overflow
+  margliks <- margliks - max(margliks)
 
   return(
     (sum(exp(margliks[!is_null]) * prior_probs[!is_null]) / sum(exp(margliks[is_null]) * prior_probs[is_null])) /
