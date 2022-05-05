@@ -1,6 +1,10 @@
+## version 0.2.10
+### Features
+- diagnostic plots for 
+
 ## version 0.2.9
 ### Fixes
-- dealing with NaNs due to overflow with very large marginal likelihoods
+- dealing with NaNs in inclusion Bayes factors due to overflow with very large marginal likelihoods
 
 ## version 0.2.8
 ### Fixes
