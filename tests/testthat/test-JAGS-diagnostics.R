@@ -50,9 +50,9 @@ test_that("JAGS diagnostics work", {
 
 
   ### density plots
-  expect_doppelganger("diagnostics-plot-density-1", function() JAGS_diagnostics_density(fit, parameter = "mu_x_cont1"))
-  expect_doppelganger("diagnostics-plot-density-2", function() JAGS_diagnostics_density(fit, parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
-  expect_doppelganger("diagnostics-plot-density-3", function() JAGS_diagnostics_density(fit, parameter = "mu_x_fac2t", main = "Treatment", xlab = "Values", ylab = "Smth"))
+  expect_doppelganger("diagnostics-plot-density-1", function() JAGS_diagnostics_density(fit, parameter = "mu_x_cont1", formula_prefix = FALSE))
+  expect_doppelganger("diagnostics-plot-density-2", function() JAGS_diagnostics_density(fit, parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), formula_prefix = FALSE, transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
+  expect_doppelganger("diagnostics-plot-density-3", function() JAGS_diagnostics_density(fit, parameter = "mu_x_fac2t", main = "Treatment", xlab = "Values", formula_prefix = FALSE, ylab = "Smth"))
   expect_doppelganger("diagnostics-plot-density-4", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
@@ -63,7 +63,7 @@ test_that("JAGS diagnostics work", {
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 3))
-    JAGS_diagnostics_density(fit, parameter = "mu_x_fac3o", transform_orthonormal = TRUE)
+    JAGS_diagnostics_density(fit, parameter = "mu_x_fac3o", formula_prefix = FALSE, transform_orthonormal = TRUE)
   })
   expect_doppelganger("diagnostics-plot-density-6", function()JAGS_diagnostics_density(fit, parameter = "PET"))
   expect_doppelganger("diagnostics-plot-density-7", function(){
@@ -73,7 +73,7 @@ test_that("JAGS diagnostics work", {
     JAGS_diagnostics_density(fit, parameter = "omega")
   })
 
-  expect_doppelganger("diagnostics-ggplot-density-1", JAGS_diagnostics_density(fit, plot_type = "ggplot", parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
+  expect_doppelganger("diagnostics-ggplot-density-1", JAGS_diagnostics_density(fit, plot_type = "ggplot", parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), formula_prefix = FALSE, transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
   temp_plot <- JAGS_diagnostics_density(fit, plot_type = "ggplot", parameter = "mu_x_fac3o", transform_orthonormal = TRUE)
   expect_doppelganger("diagnostics-ggplot-density-2.1",temp_plot[[1]])
   expect_doppelganger("diagnostics-ggplot-density-2.2",temp_plot[[2]])
@@ -84,14 +84,14 @@ test_that("JAGS diagnostics work", {
 
 
   ### trace plots
-  expect_doppelganger("diagnostics-plot-trace-1", function() JAGS_diagnostics_trace(fit, parameter = "mu_x_cont1"))
-  expect_doppelganger("diagnostics-plot-trace-2", function() JAGS_diagnostics_trace(fit, parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
-  expect_doppelganger("diagnostics-plot-trace-3", function() JAGS_diagnostics_trace(fit, parameter = "mu_x_fac2t", main = "Treatment", xlab = "Values", ylab = "Smth"))
+  expect_doppelganger("diagnostics-plot-trace-1", function() JAGS_diagnostics_trace(fit, parameter = "mu_x_cont1", formula_prefix = FALSE))
+  expect_doppelganger("diagnostics-plot-trace-2", function() JAGS_diagnostics_trace(fit, parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), formula_prefix = FALSE, transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
+  expect_doppelganger("diagnostics-plot-trace-3", function() JAGS_diagnostics_trace(fit, parameter = "mu_x_fac2t", main = "Treatment", xlab = "Values", formula_prefix = FALSE, ylab = "Smth"))
   expect_doppelganger("diagnostics-plot-trace-4", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 2))
-    JAGS_diagnostics_trace(fit, parameter = "mu_x_fac3o")
+    JAGS_diagnostics_trace(fit, parameter = "mu_x_fac3o", formula_prefix = FALSE)
   })
   expect_doppelganger("diagnostics-plot-trace-5", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
@@ -107,7 +107,7 @@ test_that("JAGS diagnostics work", {
     JAGS_diagnostics_trace(fit, parameter = "omega")
   })
 
-  expect_doppelganger("diagnostics-ggplot-trace-1", JAGS_diagnostics_trace(fit, plot_type = "ggplot", parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
+  expect_doppelganger("diagnostics-ggplot-trace-1", JAGS_diagnostics_trace(fit, plot_type = "ggplot", parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), formula_prefix = FALSE, transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
   temp_plot <- JAGS_diagnostics_trace(fit, plot_type = "ggplot", parameter = "mu_x_fac3o", transform_orthonormal = TRUE)
   expect_doppelganger("diagnostics-ggplot-trace-2.1",temp_plot[[1]])
   expect_doppelganger("diagnostics-ggplot-trace-2.2",temp_plot[[2]])
@@ -118,8 +118,8 @@ test_that("JAGS diagnostics work", {
 
 
   ### autocorrelation plots
-  expect_doppelganger("diagnostics-plot-autocorrelation-1", function() JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_cont1"))
-  expect_doppelganger("diagnostics-plot-autocorrelation-2", function() JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
+  expect_doppelganger("diagnostics-plot-autocorrelation-1", function() JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_cont1", formula_prefix = FALSE))
+  expect_doppelganger("diagnostics-plot-autocorrelation-2", function() JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), formula_prefix = FALSE, transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
   expect_doppelganger("diagnostics-plot-autocorrelation-3", function() JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_fac2t", main = "Treatment", xlab = "Values", ylab = "Smth"))
   expect_doppelganger("diagnostics-plot-autocorrelation-4", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
@@ -131,7 +131,7 @@ test_that("JAGS diagnostics work", {
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 3))
-    JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_fac3o", transform_orthonormal = TRUE)
+    JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_fac3o", formula_prefix = FALSE, transform_orthonormal = TRUE)
   })
   expect_doppelganger("diagnostics-plot-autocorrelation-6", function() JAGS_diagnostics_autocorrelation(fit, parameter = "PET"))
   expect_doppelganger("diagnostics-plot-autocorrelation-7", function(){
@@ -141,7 +141,7 @@ test_that("JAGS diagnostics work", {
     JAGS_diagnostics_autocorrelation(fit, parameter = "omega")
   })
 
-  expect_doppelganger("diagnostics-ggplot-autocorrelation-1", JAGS_diagnostics_autocorrelation(fit, plot_type = "ggplot", parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
+  expect_doppelganger("diagnostics-ggplot-autocorrelation-1", JAGS_diagnostics_autocorrelation(fit, plot_type = "ggplot", parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), formula_prefix = FALSE, transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
   temp_plot <- JAGS_diagnostics_autocorrelation(fit, plot_type = "ggplot", parameter = "mu_x_fac3o", transform_orthonormal = TRUE)
   expect_doppelganger("diagnostics-ggplot-autocorrelation-2.1",temp_plot[[1]])
   expect_doppelganger("diagnostics-ggplot-autocorrelation-2.2",temp_plot[[2]])

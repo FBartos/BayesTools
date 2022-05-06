@@ -75,7 +75,7 @@
 <text x='433.54' y='556.75' text-anchor='middle' style='font-size: 10.00px; font-family: sans;' textLength='13.90px' lengthAdjust='spacingAndGlyphs'>1.6</text>
 <text x='558.42' y='556.75' text-anchor='middle' style='font-size: 10.00px; font-family: sans;' textLength='13.90px' lengthAdjust='spacingAndGlyphs'>1.8</text>
 <text x='683.30' y='556.75' text-anchor='middle' style='font-size: 10.00px; font-family: sans;' textLength='13.90px' lengthAdjust='spacingAndGlyphs'>2.0</text>
-<text x='371.10' y='568.44' text-anchor='middle' style='font-size: 10.00px; font-family: sans;' textLength='58.37px' lengthAdjust='spacingAndGlyphs'>(mu) x_cont1</text>
+<text x='371.10' y='568.44' text-anchor='middle' style='font-size: 10.00px; font-family: sans;' textLength='35.03px' lengthAdjust='spacingAndGlyphs'>x_cont1</text>
 <text transform='translate(12.36,284.78) rotate(-90)' text-anchor='middle' style='font-size: 10.00px; font-family: sans;' textLength='33.35px' lengthAdjust='spacingAndGlyphs'>Density</text>
 <text x='27.67' y='14.18' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='38.68px' lengthAdjust='spacingAndGlyphs'>Normal</text>
 <text x='67.65' y='14.18' style='font-size: 12.00px; font-family: sans;' textLength='28.01px' lengthAdjust='spacingAndGlyphs'>(0, 1)</text>

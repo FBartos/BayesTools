@@ -46,7 +46,7 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
     stop("'fit' must be a BayesTools fit")
 
   check_char(type, "type", allow_values = c("density", "trace", "autocorrelation"))
-  check_char(plot_type, "plot_type")
+  check_char(plot_type, "plot_type", allow_values = c("base", "ggplot"))
   prior_list <- attr(fit, "prior_list")
   check_list(prior_list, "prior_list")
   if(!all(sapply(prior_list, is.prior)))
@@ -72,7 +72,7 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
 
 
   # prepare nice parameter names
-  if(formula_prefix && !is.null(attr(prior_list[[parameter]], "parameter"))){
+  if(!is.null(attr(prior_list[[parameter]], "parameter"))){
     parameter_name <- format_parameter_names(attr(plot_data, "parameter_name"), attr(prior_list[[parameter]], "parameter"), formula_prefix = formula_prefix)
   }else{
     parameter_name <- attr(plot_data, "parameter_name")
@@ -91,7 +91,7 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
     type,
     "density"         = "Density",
     "trace"           = parameter_name,
-    "autocorrelation" = "Autocorrelation"
+    "autocorrelation" = paste0("Autocorrelation(", parameter_name, ")")
   )
 
 
@@ -103,7 +103,6 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   if(is.null(dots[["lty"]]))  dots$lty  <-  1
   if(is.null(dots[["lwd"]]))  dots$lwd  <-  1
 
-  if(length(dots[["xlab"]]) == 1) dots$xlab <- rep(dots[["xlab"]], attr(plot_data, "chains"))
   if(length(dots[["col"]]) == 1)  dots$col  <- rep(dots$col, attr(plot_data, "chains"))
   if(length(dots[["lty"]]) == 1)  dots$lty  <- rep(dots$lty, attr(plot_data, "chains"))
   if(length(dots[["lwd"]]) == 1)  dots$lwd  <- rep(dots$lwd, attr(plot_data, "chains"))
@@ -114,7 +113,9 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
 
     temp_dots <- dots
 
-    temp_dots[["xlab"]] <- temp_dots[["xlab"]][i]
+    temp_dots[["xlab"]] <- if(length(temp_dots[["xlab"]]) > 1) temp_dots[["xlab"]][i] else temp_dots[["xlab"]]
+    temp_dots[["ylab"]] <- if(length(temp_dots[["ylab"]]) > 1) temp_dots[["ylab"]][i] else temp_dots[["ylab"]]
+
     if(is.null(temp_dots[["xlim"]])) temp_dots$xlim <-  attr(plot_data[[i]], "x_range")
     if(is.null(temp_dots[["ylim"]])) temp_dots$ylim <-  attr(plot_data[[i]], "y_range")
 

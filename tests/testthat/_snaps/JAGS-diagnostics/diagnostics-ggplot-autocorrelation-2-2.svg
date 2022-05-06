@@ -204,7 +204,7 @@
 <text x='580.87' y='556.75' text-anchor='middle' style='font-size: 10.00px; font-family: sans;' textLength='11.12px' lengthAdjust='spacingAndGlyphs'>25</text>
 <text x='683.68' y='556.75' text-anchor='middle' style='font-size: 10.00px; font-family: sans;' textLength='11.12px' lengthAdjust='spacingAndGlyphs'>30</text>
 <text x='375.27' y='568.44' text-anchor='middle' style='font-size: 10.00px; font-family: sans;' textLength='16.69px' lengthAdjust='spacingAndGlyphs'>Lag</text>
-<text transform='translate(12.36,284.78) rotate(-90)' text-anchor='middle' style='font-size: 10.00px; font-family: sans;' textLength='67.27px' lengthAdjust='spacingAndGlyphs'>Autocorrelation</text>
+<text transform='translate(12.36,284.78) rotate(-90)' text-anchor='middle' style='font-size: 10.00px; font-family: sans;' textLength='163.42px' lengthAdjust='spacingAndGlyphs'>Autocorrelation((mu) x_fac3o [dif: B])</text>
 <text x='36.01' y='14.18' style='font-size: 12.00px; font-family: sans;' textLength='116.73px' lengthAdjust='spacingAndGlyphs'>orthonormal contrast: </text>
 <text x='152.74' y='14.18' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='48.68px' lengthAdjust='spacingAndGlyphs'>mNormal</text>
 <text x='202.73' y='14.18' style='font-size: 12.00px; font-family: sans;' textLength='28.01px' lengthAdjust='spacingAndGlyphs'>(0, 1)</text>
