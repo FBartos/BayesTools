@@ -115,4 +115,38 @@ test_that("JAGS diagnostics work", {
   temp_plot <- JAGS_diagnostics_trace(fit, plot_type = "ggplot", parameter = "omega")
   expect_doppelganger("diagnostics-ggplot-trace-3.1",temp_plot[[1]])
   expect_doppelganger("diagnostics-ggplot-trace-3.2",temp_plot[[2]])
+
+
+  ### autocorrelation plots
+  expect_doppelganger("diagnostics-plot-autocorrelation-1", function() JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_cont1"))
+  expect_doppelganger("diagnostics-plot-autocorrelation-2", function() JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
+  expect_doppelganger("diagnostics-plot-autocorrelation-3", function() JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_fac2t", main = "Treatment", xlab = "Values", ylab = "Smth"))
+  expect_doppelganger("diagnostics-plot-autocorrelation-4", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+    par(mfrow = c(1, 2))
+    JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_fac3o")
+  })
+  expect_doppelganger("diagnostics-plot-autocorrelation-5", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+    par(mfrow = c(1, 3))
+    JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_fac3o", transform_orthonormal = TRUE)
+  })
+  expect_doppelganger("diagnostics-plot-autocorrelation-6", function() JAGS_diagnostics_autocorrelation(fit, parameter = "PET"))
+  expect_doppelganger("diagnostics-plot-autocorrelation-7", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+    par(mfrow = c(1, 2))
+    JAGS_diagnostics_autocorrelation(fit, parameter = "omega")
+  })
+
+  expect_doppelganger("diagnostics-ggplot-autocorrelation-1", JAGS_diagnostics_autocorrelation(fit, plot_type = "ggplot", parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
+  temp_plot <- JAGS_diagnostics_autocorrelation(fit, plot_type = "ggplot", parameter = "mu_x_fac3o", transform_orthonormal = TRUE)
+  expect_doppelganger("diagnostics-ggplot-autocorrelation-2.1",temp_plot[[1]])
+  expect_doppelganger("diagnostics-ggplot-autocorrelation-2.2",temp_plot[[2]])
+  expect_doppelganger("diagnostics-ggplot-autocorrelation-2.3",temp_plot[[3]])
+  temp_plot <- JAGS_diagnostics_autocorrelation(fit, plot_type = "ggplot", parameter = "omega")
+  expect_doppelganger("diagnostics-ggplot-autocorrelation-3.1",temp_plot[[1]])
+  expect_doppelganger("diagnostics-ggplot-autocorrelation-3.2",temp_plot[[2]])
 })
