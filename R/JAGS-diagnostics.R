@@ -3,74 +3,37 @@
 #' @description Creates density plots, trace plots, and autocorrelation plots
 #' for a given parameter of a JAGS model.
 #'
-#' @param fit a JAGS model
+#' @param fit a JAGS model fitted via [JAGS_fit()]
 #' @param parameter parameter to be plotted
+#' @param type what type of model diagnostic should be plotted. The available
+#' options are \code{"density"}, \code{"trace"}, and \code{"autocorrelation"}
 #' @param plot_type whether to use a base plot \code{"base"}
 #' or ggplot2 \code{"ggplot"} for plotting.
 #' @param xlim x plotting range
-#' @param par_name a type of parameter for which the prior is
-#' specified. Only relevant if the prior corresponds to a mu
-#' parameter that needs to be transformed.
-#' @param rescale_x allows to rescale x-axis in case a
-#' weightfunction is plotted.
-#' @param show_figures which figures should be returned in case of
-#' multiple plots are generated. Useful when priors for the omega
-#' parameter are plotted and \code{individual = TRUE}.
-#' @param lags number of lags to be shown for
-#' \code{type = "autocorrelation"}. Defaults to \code{30}.
+#' @param ylim y plotting range
+#' @param lags number of lags to be shown for the autocorrelation plot.
+#' Defaults to \code{30}.
 #' @param ... additional arguments
 #' @inheritParams density.prior
+#' @inheritParams plot.prior
+#' @inheritParams print.prior
+#' @inheritParams BayesTools_model_tables
 #'
-#'
-#' @return \code{JAGS_fit} returns an object of class 'runjags'.
-#'
-#' @seealso [JAGS_check_convergence()]
+#' @seealso [JAGS_fit()] [JAGS_check_convergence()]
 #'
 #' @return \code{diagnostics} returns either \code{NULL} if \code{plot_type = "base"}
 #' or an object/list of objects (depending on the number of parameters to be plotted)
 #' of class 'ggplot2' if \code{plot_type = "ggplot2"}.
 #'
-#' @rdname JAGS_diagnostics
+#' @name JAGS_diagnostics
 #' @aliases JAGS_diagnostics_density JAGS_diagnostics_autocorrelation JAGS_diagnostics_trace
+#' @export JAGS_diagnostics
 #' @export JAGS_diagnostics_density
 #' @export JAGS_diagnostics_autocorrelation
 #' @export JAGS_diagnostics_trace
 
-JAGS_diagnostics_density         <- function(fit, parameter, plot_type = "base",
-                                             xlim = NULL, n_points = 1000,
-                                             transformations = NULL, transform_orthonormal = FALSE,
-                                             short_name = FALSE, parameter_names = FALSE, formula_prefix = TRUE, ...){
-
-  .JAGS_diagnostics_fun(fit = fit, parameter = parameter, plot_type = plot_type, type = "density",
-                        xlim = xlim, n_points = n_points,
-                        transformations = transformations, transform_orthonormal = transform_orthonormal,
-                        short_name = short_name, parameter_names = parameter_names, formula_prefix = formula_prefix, ...)
-}
-
-JAGS_diagnostics_trace           <- function(fit, parameter, plot_type = "base",
-                                             ylim = NULL,
-                                             transformations = NULL, transform_orthonormal = FALSE,
-                                             short_name = FALSE, parameter_names = FALSE, formula_prefix = TRUE, ...){
-
-  .JAGS_diagnostics_fun(fit = fit, parameter = parameter, plot_type = plot_type, type = "trace",
-                        ylim = ylim,
-                        transformations = transformations, transform_orthonormal = transform_orthonormal,
-                        short_name = short_name, parameter_names = parameter_names, formula_prefix = formula_prefix, ...)
-}
-
-JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
-                                             lags = 30,
-                                             transformations = NULL, transform_orthonormal = FALSE,
-                                             short_name = FALSE, parameter_names = FALSE, formula_prefix = TRUE, ...){
-
-  .JAGS_diagnostics_fun(fit = fit, parameter = parameter, plot_type = plot_type, type = "autocorrelation",
-                        lags = lags,
-                        transformations = transformations, transform_orthonormal = transform_orthonormal,
-                        short_name = short_name, parameter_names = parameter_names, formula_prefix = formula_prefix, ...)
-}
-
-
-.JAGS_diagnostics_fun            <- function(fit, parameter, plot_type = "base", type = NULL,
+#' @rdname JAGS_diagnostics
+JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "base",
                                              xlim = NULL, ylim = NULL, lags = 30, n_points = 1000,
                                              transformations = NULL, transform_orthonormal = FALSE,
                                              short_name = FALSE, parameter_names = FALSE, formula_prefix = TRUE, ...){
@@ -82,6 +45,7 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
   if(!inherits(fit, "BayesTools_fit"))
     stop("'fit' must be a BayesTools fit")
 
+  check_char(type, "type", allow_values = c("density", "trace", "autocorrelation"))
   check_char(plot_type, "plot_type")
   prior_list <- attr(fit, "prior_list")
   check_list(prior_list, "prior_list")
@@ -104,7 +68,7 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
     "density"         = .diagnostics_plot_data_density(plot_data, n_points, xlim),
     "trace"           = .diagnostics_plot_data_trace(plot_data, n_points, ylim),
     "autocorrelation" = .diagnostics_plot_data_autocorrelation(plot_data, n_points, lags)
-    )
+  )
 
 
   # prepare nice parameter names
@@ -200,6 +164,42 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
   }
 
 
+}
+
+#' @rdname JAGS_diagnostics
+JAGS_diagnostics_density         <- function(fit, parameter, plot_type = "base",
+                                             xlim = NULL, n_points = 1000,
+                                             transformations = NULL, transform_orthonormal = FALSE,
+                                             short_name = FALSE, parameter_names = FALSE, formula_prefix = TRUE, ...){
+
+  JAGS_diagnostics(fit = fit, parameter = parameter, plot_type = plot_type, type = "density",
+                   xlim = xlim, n_points = n_points,
+                   transformations = transformations, transform_orthonormal = transform_orthonormal,
+                   short_name = short_name, parameter_names = parameter_names, formula_prefix = formula_prefix, ...)
+}
+
+#' @rdname JAGS_diagnostics
+JAGS_diagnostics_trace           <- function(fit, parameter, plot_type = "base",
+                                             ylim = NULL,
+                                             transformations = NULL, transform_orthonormal = FALSE,
+                                             short_name = FALSE, parameter_names = FALSE, formula_prefix = TRUE, ...){
+
+  JAGS_diagnostics(fit = fit, parameter = parameter, plot_type = plot_type, type = "trace",
+                   ylim = ylim,
+                   transformations = transformations, transform_orthonormal = transform_orthonormal,
+                   short_name = short_name, parameter_names = parameter_names, formula_prefix = formula_prefix, ...)
+}
+
+#' @rdname JAGS_diagnostics
+JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
+                                             lags = 30,
+                                             transformations = NULL, transform_orthonormal = FALSE,
+                                             short_name = FALSE, parameter_names = FALSE, formula_prefix = TRUE, ...){
+
+  JAGS_diagnostics(fit = fit, parameter = parameter, plot_type = plot_type, type = "autocorrelation",
+                   lags = lags,
+                   transformations = transformations, transform_orthonormal = transform_orthonormal,
+                   short_name = short_name, parameter_names = parameter_names, formula_prefix = formula_prefix, ...)
 }
 
 

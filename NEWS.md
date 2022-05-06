@@ -1,6 +1,6 @@
 ## version 0.2.10
 ### Features
-- diagnostic plots for 
+- trace, density, and autocorrelation diagnostic plots for JAGS models
 
 ## version 0.2.9
 ### Fixes
