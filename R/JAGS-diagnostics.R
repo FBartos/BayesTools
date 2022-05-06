@@ -68,7 +68,9 @@ JAGS_diagnostics_density <- function(fit, parameter, plot_type = "base",
 
   # prepare nice parameter names
   if(formula_prefix && !is.null(attr(prior_list[[parameter]], "parameter"))){
-    parameter_name  <- format_parameter_names(attr(plot_data, "parameter_name"), attr(prior_list[[parameter]], "parameter"), formula_prefix = formula_prefix)
+    parameter_name <- format_parameter_names(attr(plot_data, "parameter_name"), attr(prior_list[[parameter]], "parameter"), formula_prefix = formula_prefix)
+  }else{
+    parameter_name <- attr(plot_data, "parameter_name")
   }
 
   # get default plot settings
@@ -116,7 +118,7 @@ JAGS_diagnostics_density <- function(fit, parameter, plot_type = "base",
       temp_args[["lty"]]       <- dots[["lty"]][j]
 
       if(plot_type == "ggplot"){
-        plots[[i]] <- plots[[i]] + .geom_prior.simple(plot_data[[i]][[j]], temp_dots)
+        plots[[i]] <- plots[[i]] + do.call(.geom_prior.simple, temp_args)
       }else{
         do.call(.lines.prior.simple, temp_args)
       }
@@ -129,6 +131,9 @@ JAGS_diagnostics_density <- function(fit, parameter, plot_type = "base",
   if(plot_type == "base"){
     return(invisible())
   }else if(plot_type == "ggplot"){
+    if(length(plots) == 1){
+      plots <- plots[[1]]
+    }
     return(plots)
   }
 }
@@ -154,21 +159,26 @@ JAGS_diagnostics_trace           <- function(x) x
 
 
   # extract the relevant parameters
-  if(is.prior.vector(prior_list[[parameter]])){
+  if(is.prior.factor(prior_list[[parameter]])){
+    if(attr(prior_list[[parameter]], "levels") > 2){
+      model_samples <- model_samples[,paste0(parameter, "[", 1:(attr(prior_list[[parameter]], "levels")-1), "]"),drop = FALSE]
+    }else{
+      model_samples <- model_samples[,parameter,drop = FALSE]
+    }
+  }else if(is.prior.weightfunction(prior_list[[parameter]])){
+    model_samples <- model_samples[,paste0("omega", "[", (length(weightfunctions_mapping(list(prior_list[[parameter]]), cuts_only = TRUE)) - 2):1, "]"),drop = FALSE]
+  }else if(is.prior.vector(prior_list[[parameter]])){
     if(prior_list[[parameter]]$parameters[["K"]] > 1){
       model_samples <- model_samples[,paste0(parameter, "[", 1:prior_list[[parameter]]$parameters[["K"]], "]"),drop = FALSE]
     }else{
       model_samples <- model_samples[,parameter,drop = FALSE]
     }
-  }else if(is.prior.factor(prior_list[[parameter]])){
-    if(attr(prior_list[[parameter]], "levels") > 2){
-      model_samples <- model_samples[paste0(parameter, "[", 1:attr(prior_list[[parameter]], "levels"), "]"),drop = FALSE]
-    }else{
-      model_samples <- model_samples[,parameter,drop = FALSE]
-    }
-  }else if(is.prior.weightfunction(prior_list[[parameter]])){
-    model_samples <- model_samples[,paste0("omega", "[", 1:(length(weightfunctions_mapping(list(prior_list[[parameter]]), cuts_only = TRUE)) - 1), "]"),drop = FALSE]
   }else{
+    if(is.prior.PET(prior_list[[parameter]])){
+      parameter <- "PET"
+    }else if(is.prior.PEESE(prior_list[[parameter]])){
+      parameter <- "PEESE"
+    }
     model_samples <- model_samples[,parameter,drop = FALSE]
   }
 
@@ -206,6 +216,14 @@ JAGS_diagnostics_trace           <- function(x) x
         parameter_names <- paste0(par, " [dif: ", attr(prior_list[[par]], "level_names"),"]")
       }
     }
+  }else if(any(sapply(prior_list, is.prior.orthonormal))){
+    for(par in names(prior_list)[sapply(prior_list, is.prior.orthonormal)]){
+      if((attr(prior_list[[par]], "levels") - 1) == 1){
+        parameter_names <- par
+      }else{
+        parameter_names <- paste0(par, "[", 1:(attr(prior_list[[par]], "levels") - 1), "]")
+      }
+    }
   }
 
   # rename treatment factor levels
@@ -223,6 +241,14 @@ JAGS_diagnostics_trace           <- function(x) x
     }
   }
 
+  # rename weightfunctions factor levels
+  if(any(sapply(prior_list, is.prior.weightfunction))){
+    for(par in names(prior_list)[sapply(prior_list, is.prior.weightfunction)]){
+      omega_cuts      <- weightfunctions_mapping(prior_list[par], cuts_only = TRUE)
+      parameter_names <- sapply(1:(length(omega_cuts)-1), function(i)paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
+      parameter_names <- parameter_names[-1]
+    }
+  }
 
   # attach the relevant attributes
   colnames(model_samples)          <- parameter_names

@@ -1,4 +1,4 @@
-test_that("JAGS evaluate formula works", {
+test_that("JAGS diagnostics work", {
 
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
   skip_on_cran()
@@ -32,7 +32,9 @@ test_that("JAGS evaluate formula works", {
     )
   )
   prior_list <- list(
-    sigma = prior("lognormal", list(0, 1))
+    sigma = prior("lognormal", list(0, 1)),
+    omega = prior_weightfunction("onesided", list(c(0.05, 0.10), c(1,1,1))),
+    PET   = prior_PET("gamma", list(2, 2))
   )
   model_syntax <- paste0(
     "model{\n",
@@ -46,11 +48,38 @@ test_that("JAGS evaluate formula works", {
     model_syntax = model_syntax, data = data, prior_list = prior_list,
     formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list)
 
-  runjags_estimates_table(fit)
 
-  JAGS_diagnostics_density(fit, parameter = "mu_x_cont1")
-  JAGS_diagnostics_density(fit, parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"))
-  debugonce(JAGS_diagnostics_density)
+  ### density plots
+  expect_doppelganger("diagnostics-plot-density-1", function() JAGS_diagnostics_density(fit, parameter = "mu_x_cont1"))
+  expect_doppelganger("diagnostics-plot-density-2", function() JAGS_diagnostics_density(fit, parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
+  expect_doppelganger("diagnostics-plot-density-3", function() JAGS_diagnostics_density(fit, parameter = "mu_x_fac2t", main = "Treatment", xlab = "Values", ylab = "Smth"))
+  expect_doppelganger("diagnostics-plot-density-4", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+    par(mfrow = c(1, 2))
+    JAGS_diagnostics_density(fit, parameter = "mu_x_fac3o")
+  })
+  expect_doppelganger("diagnostics-plot-density-5", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+    par(mfrow = c(1, 3))
+    JAGS_diagnostics_density(fit, parameter = "mu_x_fac3o", transform_orthonormal = TRUE)
+  })
+  expect_doppelganger("diagnostics-plot-density-6", function()JAGS_diagnostics_density(fit, parameter = "PET"))
+  expect_doppelganger("diagnostics-plot-density-7", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+    par(mfrow = c(1, 2))
+    JAGS_diagnostics_density(fit, parameter = "omega")
+  })
 
+  expect_doppelganger("diagnostics-ggplot-density-1", JAGS_diagnostics_density(fit, plot_type = "ggplot", parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
+  temp_plot <- JAGS_diagnostics_density(fit, plot_type = "ggplot", parameter = "mu_x_fac3o", transform_orthonormal = TRUE)
+  expect_doppelganger("diagnostics-ggplot-density-2.1",temp_plot[[1]])
+  expect_doppelganger("diagnostics-ggplot-density-2.2",temp_plot[[2]])
+  expect_doppelganger("diagnostics-ggplot-density-2.3",temp_plot[[3]])
+  temp_plot <- JAGS_diagnostics_density(fit, plot_type = "ggplot", parameter = "omega")
+  expect_doppelganger("diagnostics-ggplot-density-3.1",temp_plot[[1]])
+  expect_doppelganger("diagnostics-ggplot-density-3.2",temp_plot[[2]])
 
 })
