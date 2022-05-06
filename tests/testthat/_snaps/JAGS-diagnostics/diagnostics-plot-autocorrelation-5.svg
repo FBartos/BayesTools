@@ -56,8 +56,8 @@
 <text x='65.24' y='21.53' style='font-size: 7.92px; font-family: sans;' textLength='77.04px' lengthAdjust='spacingAndGlyphs'>orthonormal contrast: </text>
 <text x='142.29' y='21.53' style='font-size: 7.92px; font-style: italic; font-family: sans;' textLength='32.13px' lengthAdjust='spacingAndGlyphs'>mNormal</text>
 <text x='175.28' y='21.53' style='font-size: 7.92px; font-family: sans;' textLength='18.49px' lengthAdjust='spacingAndGlyphs'>(0, 1)</text>
-<text x='129.50' y='563.64' text-anchor='middle' style='font-size: 7.92px; font-family: sans;' textLength='70.88px' lengthAdjust='spacingAndGlyphs'>(mu) x_fac3o [dif: A]</text>
-<text transform='translate(8.55,283.25) rotate(-90)' text-anchor='middle' style='font-size: 7.92px; font-family: sans;' textLength='26.42px' lengthAdjust='spacingAndGlyphs'>Density</text>
+<text x='129.50' y='563.64' text-anchor='middle' style='font-size: 7.92px; font-family: sans;' textLength='13.22px' lengthAdjust='spacingAndGlyphs'>Lag</text>
+<text transform='translate(8.55,283.25) rotate(-90)' text-anchor='middle' style='font-size: 7.92px; font-family: sans;' textLength='53.27px' lengthAdjust='spacingAndGlyphs'>Autocorrelation</text>
 </g>
 <defs>
   <clipPath id='cpMzguOTd8MjIwLjA0fDM4Ljk3fDUyNy41Mw=='>
@@ -236,8 +236,8 @@
 <text x='305.24' y='21.53' style='font-size: 7.92px; font-family: sans;' textLength='77.04px' lengthAdjust='spacingAndGlyphs'>orthonormal contrast: </text>
 <text x='382.29' y='21.53' style='font-size: 7.92px; font-style: italic; font-family: sans;' textLength='32.13px' lengthAdjust='spacingAndGlyphs'>mNormal</text>
 <text x='415.28' y='21.53' style='font-size: 7.92px; font-family: sans;' textLength='18.49px' lengthAdjust='spacingAndGlyphs'>(0, 1)</text>
-<text x='369.50' y='563.64' text-anchor='middle' style='font-size: 7.92px; font-family: sans;' textLength='70.88px' lengthAdjust='spacingAndGlyphs'>(mu) x_fac3o [dif: B]</text>
-<text transform='translate(248.55,283.25) rotate(-90)' text-anchor='middle' style='font-size: 7.92px; font-family: sans;' textLength='26.42px' lengthAdjust='spacingAndGlyphs'>Density</text>
+<text x='369.50' y='563.64' text-anchor='middle' style='font-size: 7.92px; font-family: sans;' textLength='13.22px' lengthAdjust='spacingAndGlyphs'>Lag</text>
+<text transform='translate(248.55,283.25) rotate(-90)' text-anchor='middle' style='font-size: 7.92px; font-family: sans;' textLength='53.27px' lengthAdjust='spacingAndGlyphs'>Autocorrelation</text>
 </g>
 <g clip-path='url(#cpMjc4Ljk3fDQ2MC4wNHwzOC45N3w1MjcuNTM=)'>
 <rect x='283.30' y='57.06' width='4.75' height='452.37' style='stroke-width: 0.75; fill: #000000;' />
@@ -411,8 +411,8 @@
 <text x='545.24' y='21.53' style='font-size: 7.92px; font-family: sans;' textLength='77.04px' lengthAdjust='spacingAndGlyphs'>orthonormal contrast: </text>
 <text x='622.29' y='21.53' style='font-size: 7.92px; font-style: italic; font-family: sans;' textLength='32.13px' lengthAdjust='spacingAndGlyphs'>mNormal</text>
 <text x='655.28' y='21.53' style='font-size: 7.92px; font-family: sans;' textLength='18.49px' lengthAdjust='spacingAndGlyphs'>(0, 1)</text>
-<text x='609.50' y='563.64' text-anchor='middle' style='font-size: 7.92px; font-family: sans;' textLength='71.31px' lengthAdjust='spacingAndGlyphs'>(mu) x_fac3o [dif: C]</text>
-<text transform='translate(488.55,283.25) rotate(-90)' text-anchor='middle' style='font-size: 7.92px; font-family: sans;' textLength='26.42px' lengthAdjust='spacingAndGlyphs'>Density</text>
+<text x='609.50' y='563.64' text-anchor='middle' style='font-size: 7.92px; font-family: sans;' textLength='13.22px' lengthAdjust='spacingAndGlyphs'>Lag</text>
+<text transform='translate(488.55,283.25) rotate(-90)' text-anchor='middle' style='font-size: 7.92px; font-family: sans;' textLength='53.27px' lengthAdjust='spacingAndGlyphs'>Autocorrelation</text>
 </g>
 <g clip-path='url(#cpNTE4Ljk3fDcwMC4wNHwzOC45N3w1MjcuNTM=)'>
 <rect x='523.30' y='57.06' width='4.75' height='452.37' style='stroke-width: 0.75; fill: #000000;' />

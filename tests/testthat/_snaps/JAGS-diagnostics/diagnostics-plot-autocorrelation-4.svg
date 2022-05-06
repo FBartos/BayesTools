@@ -56,8 +56,8 @@
 <text x='97.04' y='32.63' style='font-size: 12.00px; font-family: sans;' textLength='116.73px' lengthAdjust='spacingAndGlyphs'>orthonormal contrast: </text>
 <text x='213.77' y='32.63' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='48.68px' lengthAdjust='spacingAndGlyphs'>mNormal</text>
 <text x='263.75' y='32.63' style='font-size: 12.00px; font-family: sans;' textLength='28.01px' lengthAdjust='spacingAndGlyphs'>(0, 1)</text>
-<text x='194.40' y='557.28' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='83.38px' lengthAdjust='spacingAndGlyphs'>(mu) x_fac3o[1]</text>
-<text transform='translate(12.96,280.80) rotate(-90)' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='40.02px' lengthAdjust='spacingAndGlyphs'>Density</text>
+<text x='194.40' y='557.28' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='20.02px' lengthAdjust='spacingAndGlyphs'>Lag</text>
+<text transform='translate(12.96,280.80) rotate(-90)' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='80.72px' lengthAdjust='spacingAndGlyphs'>Autocorrelation</text>
 </g>
 <defs>
   <clipPath id='cpNTkuMDR8MzI5Ljc2fDU5LjA0fDUwMi41Ng=='>
@@ -236,8 +236,8 @@
 <text x='457.04' y='32.63' style='font-size: 12.00px; font-family: sans;' textLength='116.73px' lengthAdjust='spacingAndGlyphs'>orthonormal contrast: </text>
 <text x='573.77' y='32.63' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='48.68px' lengthAdjust='spacingAndGlyphs'>mNormal</text>
 <text x='623.75' y='32.63' style='font-size: 12.00px; font-family: sans;' textLength='28.01px' lengthAdjust='spacingAndGlyphs'>(0, 1)</text>
-<text x='554.40' y='557.28' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='83.38px' lengthAdjust='spacingAndGlyphs'>(mu) x_fac3o[2]</text>
-<text transform='translate(372.96,280.80) rotate(-90)' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='40.02px' lengthAdjust='spacingAndGlyphs'>Density</text>
+<text x='554.40' y='557.28' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='20.02px' lengthAdjust='spacingAndGlyphs'>Lag</text>
+<text transform='translate(372.96,280.80) rotate(-90)' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='80.72px' lengthAdjust='spacingAndGlyphs'>Autocorrelation</text>
 </g>
 <g clip-path='url(#cpNDE5LjA0fDY4OS43Nnw1OS4wNHw1MDIuNTY=)'>
 <rect x='425.52' y='75.47' width='7.10' height='410.67' style='stroke-width: 0.75; fill: #000000;' />
