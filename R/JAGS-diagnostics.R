@@ -36,10 +36,10 @@
 #' @export JAGS_diagnostics_autocorrelation
 #' @export JAGS_diagnostics_trace
 
-JAGS_diagnostics_density <- function(fit, parameter, plot_type = "base",
-                                     xlim = NULL, n_points = 1000,
-                                     transformations = NULL, transform_orthonormal = FALSE,
-                                     short_name = FALSE, parameter_names = FALSE, formula_prefix = TRUE, ...){
+JAGS_diagnostics_density         <- function(fit, parameter, plot_type = "base",
+                                             xlim = NULL, n_points = 1000,
+                                             transformations = NULL, transform_orthonormal = FALSE,
+                                             short_name = FALSE, parameter_names = FALSE, formula_prefix = TRUE, ...){
 
   # check fits
   if(!inherits(fit, "runjags"))
@@ -138,8 +138,111 @@ JAGS_diagnostics_density <- function(fit, parameter, plot_type = "base",
   }
 }
 
+JAGS_diagnostics_trace           <- function(fit, parameter, plot_type = "base",
+                                             ylim = NULL,
+                                             transformations = NULL, transform_orthonormal = FALSE,
+                                             short_name = FALSE, parameter_names = FALSE, formula_prefix = TRUE, ...){
+
+  # check fits
+  if(!inherits(fit, "runjags"))
+    stop("'fit' must be a runjags fit")
+  if(!inherits(fit, "BayesTools_fit"))
+    stop("'fit' must be a BayesTools fit")
+
+  check_char(plot_type, "plot_type")
+  prior_list <- attr(fit, "prior_list")
+  check_list(prior_list, "prior_list")
+  if(!all(sapply(prior_list, is.prior)))
+    stop("'prior_list' must be a list of priors.")
+  check_char(parameter, "parameter", allow_values = names(prior_list))
+  if(!is.null(transformations))
+    check_char(names(transformations), "names(transformations)", allow_values = parameter)
+
+  # do not produce diagnostics for a spike prior
+  if(is.prior.point(prior_list[[parameter]])){
+    message("No diagnostic plots are produced for a spike prior distribution")
+    return(NULL)
+  }
+
+  # prepare the plot data
+  plot_data <- .diagnostics_plot_data(fit = fit, parameter = parameter, prior_list = prior_list, transformations = transformations, transform_orthonormal = transform_orthonormal)
+  plot_data <- .diagnostics_plot_data_trace(plot_data, n_points, ylim)
+
+  # prepare nice parameter names
+  if(formula_prefix && !is.null(attr(prior_list[[parameter]], "parameter"))){
+    parameter_name <- format_parameter_names(attr(plot_data, "parameter_name"), attr(prior_list[[parameter]], "parameter"), formula_prefix = formula_prefix)
+  }else{
+    parameter_name <- attr(plot_data, "parameter_name")
+  }
+
+  # get default plot settings
+  dots      <- list(...)
+  main      <- print(prior_list[[parameter]], plot = TRUE, short_name = short_name, parameter_names = parameter_names)
+  xlab      <- parameter_name
+  ylab      <- "Density"
+
+  if(is.null(dots[["main"]])) dots$main <-  main
+  if(is.null(dots[["xlab"]])) dots$xlab <-  xlab
+  if(is.null(dots[["ylab"]])) dots$ylab <-  ylab
+
+  if(is.null(dots[["col"]]))  dots$col  <-  "black"
+  if(is.null(dots[["lty"]]))  dots$lty  <-  1
+  if(is.null(dots[["lwd"]]))  dots$lwd  <-  1
+
+  if(length(dots[["xlab"]]) == 1) dots$xlab <- rep(dots[["xlab"]], attr(plot_data, "chains"))
+  if(length(dots[["col"]]) == 1)  dots$col  <- rep(dots$col, attr(plot_data, "chains"))
+  if(length(dots[["lty"]]) == 1)  dots$lty  <- rep(dots$lty, attr(plot_data, "chains"))
+  if(length(dots[["lwd"]]) == 1)  dots$lwd  <- rep(dots$lwd, attr(plot_data, "chains"))
+
+  plots <- list()
+
+  for(i in seq_along(plot_data)){
+
+    temp_dots <- dots
+
+    temp_dots[["xlab"]] <- temp_dots[["xlab"]][i]
+    if(is.null(temp_dots[["xlim"]])) temp_dots$xlim <-  attr(plot_data[[i]], "x_range")
+    if(is.null(temp_dots[["ylim"]])) temp_dots$ylim <-  attr(plot_data[[i]], "y_range")
+
+
+    if(plot_type == "ggplot"){
+      plots[[i]] <- .ggplot.prior_empty("simple", temp_dots)
+    }else{
+      .plot.prior_empty("simple", temp_dots)
+    }
+
+    for(j in seq_along(plot_data[[i]])){
+
+      temp_args <- list()
+      temp_args[["plot_data"]] <- plot_data[[i]][[j]]
+      temp_args[["col"]]       <- dots[["col"]][j]
+      temp_args[["lwd"]]       <- dots[["lwd"]][j]
+      temp_args[["lty"]]       <- dots[["lty"]][j]
+
+      if(plot_type == "ggplot"){
+        plots[[i]] <- plots[[i]] + do.call(.geom_diagnostics.chain, temp_args)
+      }else{
+        do.call(.lines_diagnostics.chain, temp_args)
+      }
+
+    }
+  }
+
+
+  # return the plots
+  if(plot_type == "base"){
+    return(invisible())
+  }else if(plot_type == "ggplot"){
+    if(length(plots) == 1){
+      plots <- plots[[1]]
+    }
+    return(plots)
+  }
+}
+
+
 JAGS_diagnostics_autocorrelation <- function(x) x
-JAGS_diagnostics_trace           <- function(x) x
+
 
 
 .diagnostics_plot_data         <- function(fit, parameter, prior_list, transformations, transform_orthonormal){
@@ -331,6 +434,89 @@ JAGS_diagnostics_trace           <- function(x) x
 
   return(out)
 }
+.diagnostics_plot_data_trace   <- function(plot_data, n_points, ylim){
+
+  chain <- attr(plot_data, "chain")
+  iter  <- attr(plot_data, "iter")
+  prior <- attr(plot_data, "prior")
+
+  out   <- list()
+
+  for(i in 1:ncol(plot_data)){
+
+    if(is.null(ylim)){
+      y_range <- range(plot_data[,i])
+    }else{
+      y_range <- ylim
+    }
+    x_range <- range(iter)
+
+    for(j in seq_along(unique(chain))){
+
+      temp_x       <- iter[chain == j]
+      temp_y       <- plot_data[chain == j,i]
+
+      temp_chain <- list(
+        x       = temp_x,
+        y       = temp_y
+      )
+
+      class(temp_chain) <- c("BayesTools_chain")
+      attr(temp_chain, "x_range")        <- x_range
+      attr(temp_chain, "y_range")        <- y_range
+      attr(temp_chain, "chain")          <- j
+      attr(temp_chain, "parameter")      <- attr(plot_data, "parameter")
+      attr(temp_chain, "parameter_name") <- colnames(plot_data)[i]
+
+      out[[colnames(plot_data)[[i]]]][[j]] <- temp_chain
+    }
+
+    attr(out[[colnames(plot_data)[[i]]]], "x_range")        <- x_range
+    attr(out[[colnames(plot_data)[[i]]]], "y_range")        <- y_range
+    attr(out[[colnames(plot_data)[[i]]]], "chains")         <- length(unique(chain))
+    attr(out[[colnames(plot_data)[[i]]]], "parameter")      <- attr(plot_data, "parameter")
+    attr(out[[colnames(plot_data)[[i]]]], "parameter_name") <- colnames(plot_data)[i]
+  }
+
+  attr(out, "chains")         <- length(unique(chain))
+  attr(out, "parameter")      <- attr(plot_data, "parameter")
+  attr(out, "parameter_name") <- colnames(plot_data)
+
+  return(out)
+}
+
+.lines_diagnostics.chain <- function(plot_data, ...){
+
+  dots      <- list(...)
+  col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
+  lwd       <- if(!is.null(dots[["lwd"]]))      dots[["lwd"]]      else .plot.prior_settings()[["lwd"]]
+  lty       <- if(!is.null(dots[["lty"]]))      dots[["lty"]]      else .plot.prior_settings()[["lty"]]
+
+
+  graphics::lines(x = plot_data$x, y = plot_data$y, type = "l", lwd = lwd, lty = lty, col = col)
+
+  return(invisible())
+}
+.geom_diagnostics.chain  <- function(plot_data, ...){
+
+  dots      <- list(...)
+  col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
+  lwd       <- if(!is.null(dots[["size"]]))     dots[["size"]]     else  if(!is.null(dots[["lwd"]])) dots[["lwd"]] else .plot.prior_settings()[["lwd"]]
+  lty       <- if(!is.null(dots[["linetype"]])) dots[["linetype"]] else  if(!is.null(dots[["lty"]])) dots[["lty"]] else .plot.prior_settings()[["lty"]]
+
+  geom <- ggplot2::geom_line(
+    data    = data.frame(
+      x = plot_data$x,
+      y = plot_data$y),
+    mapping = ggplot2::aes_string(
+      x = "x",
+      y = "y"),
+    size = lwd, linetype = lty, color = col)
+
+  return(geom)
+}
+
+
 #
 #
 # diagnostics <- function(fit, parameter, type, plot_type = "base", show_models = NULL,

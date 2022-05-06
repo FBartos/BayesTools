@@ -82,4 +82,37 @@ test_that("JAGS diagnostics work", {
   expect_doppelganger("diagnostics-ggplot-density-3.1",temp_plot[[1]])
   expect_doppelganger("diagnostics-ggplot-density-3.2",temp_plot[[2]])
 
+
+  ### trace plots
+  expect_doppelganger("diagnostics-plot-trace-1", function() JAGS_diagnostics_trace(fit, parameter = "mu_x_cont1"))
+  expect_doppelganger("diagnostics-plot-trace-2", function() JAGS_diagnostics_trace(fit, parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
+  expect_doppelganger("diagnostics-plot-trace-3", function() JAGS_diagnostics_trace(fit, parameter = "mu_x_fac2t", main = "Treatment", xlab = "Values", ylab = "Smth"))
+  expect_doppelganger("diagnostics-plot-trace-4", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+    par(mfrow = c(1, 2))
+    JAGS_diagnostics_trace(fit, parameter = "mu_x_fac3o")
+  })
+  expect_doppelganger("diagnostics-plot-trace-5", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+    par(mfrow = c(1, 3))
+    JAGS_diagnostics_trace(fit, parameter = "mu_x_fac3o", transform_orthonormal = TRUE)
+  })
+  expect_doppelganger("diagnostics-plot-trace-6", function() JAGS_diagnostics_trace(fit, parameter = "PET"))
+  expect_doppelganger("diagnostics-plot-trace-7", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+    par(mfrow = c(1, 2))
+    JAGS_diagnostics_trace(fit, parameter = "omega")
+  })
+
+  expect_doppelganger("diagnostics-ggplot-trace-1", JAGS_diagnostics_trace(fit, plot_type = "ggplot", parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
+  temp_plot <- JAGS_diagnostics_trace(fit, plot_type = "ggplot", parameter = "mu_x_fac3o", transform_orthonormal = TRUE)
+  expect_doppelganger("diagnostics-ggplot-trace-2.1",temp_plot[[1]])
+  expect_doppelganger("diagnostics-ggplot-trace-2.2",temp_plot[[2]])
+  expect_doppelganger("diagnostics-ggplot-trace-2.3",temp_plot[[3]])
+  temp_plot <- JAGS_diagnostics_trace(fit, plot_type = "ggplot", parameter = "omega")
+  expect_doppelganger("diagnostics-ggplot-trace-3.1",temp_plot[[1]])
+  expect_doppelganger("diagnostics-ggplot-trace-3.2",temp_plot[[2]])
 })
