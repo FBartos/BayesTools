@@ -417,7 +417,7 @@ transform_orthonormal_samples <- function(samples){
 }
 
 
-#' @title Orthornomal contrast natrix
+#' @title Orthornomal contrast matrix
 #'
 #' @description Return a matrix of orthornomal contrasts.
 #' Code is based on \code{stanova::contr.bayes} and corresponding to description
