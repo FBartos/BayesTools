@@ -2,7 +2,7 @@
 % Please edit documentation in R/JAGS-formula.R
 \name{contr.orthonormal}
 \alias{contr.orthonormal}
-\title{Orthornomal contrast natrix}
+\title{Orthornomal contrast matrix}
 \usage{
 contr.orthonormal(n, contrasts = TRUE)
 }

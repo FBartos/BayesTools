@@ -5,10 +5,12 @@ on:
     branches:
       - main
       - master
+      - pre-release
   pull_request:
     branches:
       - main
       - master
+      - pre-release
 
 name: R-CMD-check
 
@@ -23,9 +25,9 @@ jobs:
       matrix:
         config:
           - {os: windows-latest, r: 'release'}
-          - {os: ubuntu-20.04, r: 'release', rspm: "https://packagemanager.rstudio.com/cran/__linux__/focal/latest"}
-          - {os: ubuntu-20.04,   r: 'devel', rspm: "https://packagemanager.rstudio.com/cran/__linux__/focal/latest", http-user-agent: "R/4.1.0 (ubuntu-20.04) R (4.1.0 x86_64-pc-linux-gnu x86_64 linux-gnu) on GitHub Actions" }
-          #- {os: macOS-latest, r: 'release'}
+          - {os: ubuntu-20.04,   r: 'release', rspm: "https://packagemanager.rstudio.com/cran/__linux__/focal/latest"}
+          - {os: ubuntu-20.04,   r: 'devel',   rspm: "https://packagemanager.rstudio.com/cran/__linux__/focal/latest", http-user-agent: "R/4.1.0 (ubuntu-20.04) R (4.1.0 x86_64-pc-linux-gnu x86_64 linux-gnu) on GitHub Actions" }
+          - {os: macOS-latest,   r: 'release'} 
 
     env:
       R_REMOTES_NO_ERRORS_FROM_WARNINGS: true
@@ -66,7 +68,7 @@ jobs:
       - name: Install JAGS (windows-latest)
         if: runner.os == 'Windows'
         run: |
-          curl.exe -o wjags.exe --url https://deac-fra.dl.sourceforge.net/project/mcmc-jags/JAGS/4.x/Windows/JAGS-4.3.0.exe
+          curl.exe -o wjags.exe --url https://deac-fra.dl.sourceforge.net/project/mcmc-jags/JAGS/4.x/Windows/JAGS-4.2.0-Rtools33.exe
           wjags.exe /S
           del wjags.exe
         shell: cmd
@@ -75,7 +77,7 @@ jobs:
         if: runner.os == 'macOS'
         run : |
           rm '/usr/local/bin/gfortran'
-          brew install jags
+          brew install automake jags
 
       - name: Install dependencies
         run: |
@@ -84,12 +86,33 @@ jobs:
         shell: Rscript {0}
 
       - name: Check
+        if: runner.os != 'Windows'
         env:
           _R_CHECK_CRAN_INCOMING_REMOTE_: false
         run: |
           options(crayon.enabled = TRUE)
-          rcmdcheck::rcmdcheck(args = c("--no-manual", "--as-cran"), error_on = "warning", check_dir = "check")
+          rcmdcheck::rcmdcheck(
+            args        = c("--no-manual", "--as-cran", "--ignore-vignettes"),
+            build_args  = c("--no-build-vignettes"),
+            error_on    = "warning",
+            check_dir   = "check")
+        shell: Rscript {0}"
+
+      - name: Check
+        if: runner.os == 'Windows'
+        env:
+          _R_CHECK_CRAN_INCOMING_REMOTE_: false
+          JAGS_ROOT: "/c/progra~1/JAGS/JAGS-4.2.0"
+          JAGS_MAJOR_VERSION: 4
+        run: |
+          options(crayon.enabled = TRUE)
+          rcmdcheck::rcmdcheck(
+            args        = c("--no-manual", "--as-cran", "--ignore-vignettes"),
+            build_args  = c("--no-build-vignettes"),
+            error_on    = "warning",
+            check_dir   = "check")
         shell: Rscript {0}
+
 
       - name: Upload check results
         if: failure()

@@ -524,6 +524,8 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
 #' @rdname BayesTools_model_tables
 runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, footnotes = NULL, warnings = NULL, remove_spike_0 = TRUE, transform_orthonormal = FALSE, formula_prefix = TRUE){
 
+  # most of the code is shared with .diagnostics_plot_data function (keep them in sync on update)
+
   # check fits
   if(!inherits(fit, "runjags"))
     stop("'fit' must be a runjags fit")
