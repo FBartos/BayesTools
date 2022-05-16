@@ -11,13 +11,17 @@ test_prior          <- function(prior, skip_moments = FALSE){
   set.seed(1)
   # tests rng and print function (for plot)
   samples <- rng(prior, 100000)
-  hist(samples, main = print(prior, plot = T), breaks = 50, freq = FALSE)
+  if(is.prior.discrete(prior)){
+    barplot(table(samples)/length(samples), main = print(prior, plot = T), width = 1/(max(samples)+1), space = 0, xlim = c(-0.25, max(samples)+0.25))
+  }else{
+    hist(samples, main = print(prior, plot = T), breaks = 50, freq = FALSE)
+  }
   # tests density function
   lines(prior, individual = TRUE)
   # tests quantile function
   abline(v = quant(prior, 0.5), col = "blue", lwd = 2)
   # tests that pdf(q(x)) == x
-  if(prior$distribution != "point"){
+  if(!prior$distribution %in% c("point","bernoulli")){
     expect_equal(.25, cdf(prior, quant(prior, 0.25)), tolerance = 1e-5)
   }
   # test mean and sd functions
@@ -127,6 +131,13 @@ test_that("Beta prior distribution works", {
 
   expect_doppelganger("prior-beta-1", function()test_prior(prior("beta", list(1, 1))))
   expect_doppelganger("prior-beta-2", function()test_prior(prior("beta", list(25, 15), list(0.5, 1))))
+
+})
+
+test_that("Beta prior distribution works", {
+
+  expect_doppelganger("prior-bernoulli-1", function()test_prior(prior("bernoulli", list(.50))))
+  expect_doppelganger("prior-bernoulli-2", function()test_prior(prior("bernoulli", list(.66))))
 
 })
 

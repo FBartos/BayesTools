@@ -161,6 +161,15 @@
 
   }
 }
+.check_parameter_range          <- function(parameter, name, lower, upper, include_bounds = FALSE){
+  if(include_bounds){
+    if(any(parameter < lower) | any(parameter > upper))
+      stop(paste0("The '", name, "' must be higher than ", lower, " and lower than ", upper, "."), call. = FALSE)
+  }else{
+    if(any(parameter <= lower) | any(parameter >= upper))
+      stop(paste0("The '", name, "' must be higher or equal to than ", lower, " and lower or equal to than ", upper, "."), call. = FALSE)
+  }
+}
 
 #' @title Reports whether x is a a prior object
 #'
@@ -189,6 +198,7 @@
 #'
 #' @export is.prior
 #' @export is.prior.simple
+#' @export is.prior.discrete
 #' @export is.prior.vector
 #' @export is.prior.point
 #' @export is.prior.none
@@ -216,6 +226,10 @@ is.prior.none            <- function(x){
 #' @rdname is.prior
 is.prior.simple          <- function(x){
   inherits(x, "prior.simple")
+}
+#' @rdname is.prior
+is.prior.discrete        <- function(x){
+  inherits(x, "prior.discrete")
 }
 #' @rdname is.prior
 is.prior.vector          <- function(x){

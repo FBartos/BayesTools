@@ -5,6 +5,7 @@
 \alias{is.prior.point}
 \alias{is.prior.none}
 \alias{is.prior.simple}
+\alias{is.prior.discrete}
 \alias{is.prior.vector}
 \alias{is.prior.PET}
 \alias{is.prior.PEESE}
@@ -21,6 +22,8 @@ is.prior.point(x)
 is.prior.none(x)
 
 is.prior.simple(x)
+
+is.prior.discrete(x)
 
 is.prior.vector(x)
 

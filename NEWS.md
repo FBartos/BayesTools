@@ -1,3 +1,7 @@
+## to be version 0.2.11
+### Features
+- adding Bernoulli prior distribution
+
 ## version 0.2.10
 ### Features
 - trace, density, and autocorrelation diagnostic plots for JAGS models

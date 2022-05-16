@@ -88,6 +88,8 @@ density.prior <- function(x,
     }else{
       if(!individual & (is.prior.PET(x) | is.prior.PEESE(x))){
         x_range <- c(0, 1)
+      }else if(is.prior.discrete(x)){
+        x_range <- c(x[["truncation"]]["lower"], x[["truncation"]]["upper"])
       }else if(!individual & is.prior.weightfunction(x)){
         x_range <- c(0, 1)
       }else{
@@ -98,7 +100,11 @@ density.prior <- function(x,
 
   # get the x_seq for plotting
   if(is.null(x_seq)){
-    x_seq <- seq(x_range[1], x_range[2], length.out = n_points)
+    if(is.prior.discrete(x)){
+      x_seq <- seq(x_range[1], x_range[2], by = 1)
+    }else{
+      x_seq <- seq(x_range[1], x_range[2], length.out = n_points)
+    }
   }
 
   # specify it on the transformed range if requested
@@ -131,6 +137,11 @@ density.prior <- function(x,
     x_sam <- rng(x, n_samples)
     x_den <- stats::density(x_sam, n = n_points, from = x_range[1], to = x_range[2])$y
   }else{
+
+    if(is.prior.discrete(x)){
+      x_seq <- unique(round(x_seq))
+    }
+
     x_den <- mpdf(x, x_seq)
     x_sam <- NULL
   }

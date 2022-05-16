@@ -140,6 +140,15 @@ plot.prior <- function(x, plot_type = "base",
     }
   }
 
+  # discrete prior plots
+  if(is.prior.discrete(x)){
+    plots <- .plot.prior.discrete(x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
+    if(plot_type == "ggplot"){
+      return(plots)
+    }else{
+      return(invisible())
+    }
+  }
 
   # default prior plots
   if(is.prior.simple(x)){
@@ -234,6 +243,49 @@ plot.prior <- function(x, plot_type = "base",
 
     plot <- .ggplot.prior_empty("simple", dots)
     plot <- plot + .geom_prior.simple(plot_data, ...)
+
+  }
+
+  # return the plots
+  if(plot_type == "base"){
+    return(invisible())
+  }else if(plot_type == "ggplot"){
+    return(plot)
+  }
+}
+.plot.prior.discrete       <- function(x, plot_type, plot_data, par_name = NULL, ...){
+
+  # get default plot settings
+  dots      <- list(...)
+
+  xlim      <- attr(plot_data, "x_range")
+  ylim      <- attr(plot_data, "y_range")
+
+  short_name      <- if(is.null(dots[["short_name"]]))      FALSE else dots[["short_name"]]
+  parameter_names <- if(is.null(dots[["parameter_names"]])) FALSE else dots[["parameter_names"]]
+
+  main      <- if(!is.null(attr(plot_data, "steps"))) print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names) else ""
+  xlab      <- if(!is.null(attr(plot_data, "steps"))) bquote(omega["["*.(attr(plot_data, "steps")[1])*","~.(attr(plot_data, "steps")[2])*"]"])  else bquote(.(if(!is.null(par_name)){bquote(.(par_name)~"~")})~.(print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names)))
+  ylab      <- "Probability"
+
+  # add it to the user input if desired
+  if(is.null(dots[["main"]])) dots$main <-  main
+  if(is.null(dots[["xlab"]])) dots$xlab <-  xlab
+  if(is.null(dots[["ylab"]])) dots$ylab <-  ylab
+  if(is.null(dots[["xlim"]])) dots$xlim <-  xlim
+  if(is.null(dots[["ylim"]])) dots$ylim <-  ylim
+
+
+  if(plot_type == "base"){
+
+    .plot.prior_empty("simple", dots)
+    .lines.prior.discrete(plot_data, ...)
+    plot <- NULL
+
+  }else if(plot_type == "ggplot"){
+
+    plot <- .ggplot.prior_empty("simple", dots)
+    plot <- plot + .geom_prior.discrete(plot_data, ...)
 
   }
 
@@ -552,7 +604,8 @@ plot.prior <- function(x, plot_type = "base",
   col.fill  = "grey80",
   lwd       = 1,
   lty       = 1,
-  scale_y2  = 1.10
+  scale_y2  = 1.10,
+  width     = 0.20
   ))
 }
 .get_scale_y2        <- function(plot_data, ...){
@@ -676,6 +729,12 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     return(invisible())
   }
 
+  # plot discrete prior
+  if(is.prior.discrete(x)){
+    .lines.prior.discrete(plot_data, ...)
+    return(invisible())
+  }
+
   # default prior plots
   if(is.prior.simple(x)){
     if(inherits(plot_data, "density.prior.simple")){
@@ -760,6 +819,13 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   }
 
 
+  # plot discrete prior
+  if(is.prior.discrete(x)){
+    geom <- .geom_prior.discrete(plot_data, ...)
+    return(geom)
+  }
+
+
   # default prior plots
   if(is.prior.simple(x)){
     if(inherits(plot_data, "density.prior.simple")){
@@ -784,6 +850,23 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 
 
   graphics::lines(x = plot_data$x, y = plot_data$y, type = "l", lwd = lwd, lty = lty, col = col)
+
+  return(invisible())
+}
+.lines.prior.discrete        <- function(plot_data, ...){
+
+  dots      <- list(...)
+  col       <- if(!is.null(dots[["col"]]))   dots[["col"]]   else .plot.prior_settings()[["col"]]
+  width     <- if(!is.null(dots[["width"]])) dots[["width"]] else .plot.prior_settings()[["width"]]
+  lwd       <- if(!is.null(dots[["lwd"]]))   dots[["lwd"]]   else .plot.prior_settings()[["lwd"]]
+  lty       <- if(!is.null(dots[["lty"]]))   dots[["lty"]]   else .plot.prior_settings()[["lty"]]
+
+  graphics::rect(
+    xleft   = plot_data$x - width/2,
+    ybottom = 0,
+    xright  = plot_data$x + width/2,
+    ytop    = plot_data$y,
+    lwd = lwd, lty = lty, col = col)
 
   return(invisible())
 }
@@ -895,6 +978,25 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
       x = "x",
       y = "y"),
     size = lwd, linetype = lty, color = col)
+
+  return(geom)
+}
+.geom_prior.discrete         <- function(plot_data, ...){
+
+  dots      <- list(...)
+  col       <- if(!is.null(dots[["col"]]))   dots[["col"]]   else .plot.prior_settings()[["col"]]
+  width     <- if(!is.null(dots[["width"]])) dots[["width"]] else .plot.prior_settings()[["width"]]
+  lwd       <- if(!is.null(dots[["lwd"]]))   dots[["lwd"]]   else .plot.prior_settings()[["lwd"]]
+  lty       <- if(!is.null(dots[["lty"]]))   dots[["lty"]]   else .plot.prior_settings()[["lty"]]
+
+  geom <-   geom <- ggplot2::geom_bar(
+    data    = data.frame(
+      x = plot_data$x,
+      y = plot_data$y),
+    mapping = ggplot2::aes_string(
+      x      = "x",
+      weight = "y"),
+    size = lwd, linetype = lty, color = col, fill = col, width = width)
 
   return(geom)
 }
