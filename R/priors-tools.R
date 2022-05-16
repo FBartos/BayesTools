@@ -208,6 +208,7 @@
 #' @export is.prior.factor
 #' @export is.prior.orthonormal
 #' @export is.prior.dummy
+#' @export is.prior.spike_and_slab
 #' @name is.prior
 NULL
 
@@ -259,6 +260,11 @@ is.prior.orthonormal     <- function(x){
 is.prior.dummy           <- function(x){
   inherits(x, "prior.dummy")
 }
+#' @rdname is.prior
+is.prior.spike_and_slab  <- function(x){
+  inherits(x, "prior.spike_and_slab")
+}
+
 
 .check_prior <- function(prior, name = "prior"){
   if(!is.prior(prior))

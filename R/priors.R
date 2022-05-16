@@ -324,6 +324,51 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
   return(output)
 }
 
+
+#' @title Creates a spike and slab prior distribution
+#'
+#' @description \code{prior_spike_and_slab} creates a spike and slab prior
+#' distribution corresponding to the specification in
+#' \insertCite{kuo1998variable;textual}{BayesTools} (see
+#' \insertCite{ohara2009review;textual}{BayesTools} for further details). I.e.,
+#' a prior distribution is multiplied by an independent indicator with values
+#' either zero or one.
+#'
+#' @param prior_indicator a prior distribution for the indicator variable. The
+#' only supported option is \code{distribution = "bernoulli"} with the probability
+#' of success corresponding to the prior probability of the specified prior distribution.
+#'
+#'
+#' @examples
+#' # create an orthonormal prior distribution
+#' p1 <- prior_spike_and_slab(
+#'    distribution = "normal", parameters = list(mean = 0, sd = 1),
+#'    prior_indicator = prior(distribution = "bernoulli", parameters = list(probability = 0.5))
+#' )
+#'
+#' @return return an object of class 'prior'.
+#'
+#' @inheritParams prior
+#' @seealso [prior()]
+#' @export
+prior_spike_and_slab <- function(distribution, parameters, truncation = list(lower = -Inf, upper = Inf),
+                                 prior_indicator = prior(distribution = "bernoulli", parameters = list(probability = 0.5)),
+                                 prior_weights = 1){
+
+  if(!is.prior(prior_indicator) || prior_indicator["distribution"] != "bernoulli")
+    stop("'prior_indicator' must be a 'bernoulli' prior distribution")
+
+  output <- list(
+    parameter = prior(distribution = distribution, parameters = parameters, truncation = truncation, prior_weights = prior_weights),
+    indicator = prior_indicator
+  )
+
+  class(output) <- c("prior", "prior.spike_and_slab")
+
+  return(output)
+}
+
+
 #### functions for constructing prior distributions ####
 .prior_normal    <- function(parameters, truncation){
 
