@@ -88,10 +88,12 @@ density.prior <- function(x,
     }else{
       if(!individual & (is.prior.PET(x) | is.prior.PEESE(x))){
         x_range <- c(0, 1)
-      }else if(is.prior.discrete(x)){
-        x_range <- c(x[["truncation"]]["lower"], x[["truncation"]]["upper"])
       }else if(!individual & is.prior.weightfunction(x)){
         x_range <- c(0, 1)
+      }else if(is.prior.spike_and_slab(x)){
+        x_range <- range(x[["variable"]][["truncation"]]["lower"], x[["variable"]][["truncation"]]["upper"], 0)
+      }else if(is.prior.discrete(x)){
+        x_range <- c(x[["truncation"]]["lower"], x[["truncation"]]["upper"])
       }else{
         x_range <- range(x, if(is.null(x_range_quant)) .range.prior_quantile_default(x) else x_range_quant)
       }
@@ -119,6 +121,8 @@ density.prior <- function(x,
     out <- .density.prior.weightfunction(x, x_seq, x_range, n_points, n_samples, force_samples, individual)
   }else if(is.prior.PET(x) | is.prior.PEESE(x)){
     out <- .density.prior.PETPEESE(x, x_seq, x_range, n_points, n_samples, force_samples, individual, transformation, transformation_arguments, truncate_end)
+  }else if(is.prior.spike_and_slab(x)){
+    out <- .density.prior.spike_and_slab(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
   }else if(is.prior.orthonormal(x)){
     out <- .density.prior.orthonormal(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
   }else if(is.prior.point(x)){
@@ -454,7 +458,32 @@ density.prior <- function(x,
 
   return(out)
 }
+.density.prior.spike_and_slab <- function(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end){
 
+  density_variable  <- .density.prior.simple(x[["variable"]], x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
+  density_indicator <- .density.prior.point(prior(distribution = "spike", parameters = list(location = 0)), x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments)
+
+  density_variable$y  <- density_variable[["y"]]  * x[["indicator"]][["parameters"]][["probability"]]
+  density_indicator$y <- density_indicator[["y"]] * (1 - x[["indicator"]][["parameters"]][["probability"]])
+
+  attr(density_variable,  "y_range") <- attr(density_variable, "y_range")  * x[["indicator"]][["parameters"]][["probability"]]
+  attr(density_indicator, "y_range") <- attr(density_indicator, "y_range") * (1 - x[["indicator"]][["parameters"]][["probability"]])
+
+  # create the output object
+  out <- list(
+    call      = call("density", print(x, silent = TRUE)),
+    variable  = density_variable,
+    indicator = density_indicator
+  )
+
+
+  class(out) <- c("density", "density.prior.spike_and_slab")
+  attr(out, "x_range") <- x_range
+  attr(out, "y_range_variable")  <- attr(density_variable,  "y_range")
+  attr(out, "y_range_indicator") <- attr(density_indicator, "y_range")
+
+  return(out)
+}
 
 
 #' @title Prior range

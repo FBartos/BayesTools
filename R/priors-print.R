@@ -56,6 +56,8 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
     output <- .print.prior.simple(x, short_name, parameter_names, plot, digits_estimates, silent)
   }else if(is.prior.weightfunction(x)){
     output <- .print.prior.weightfunction(x, short_name, parameter_names, plot, digits_estimates, silent)
+  }else if(is.prior.spike_and_slab(x)){
+    output <- .print.prior.spike_and_slab(x, short_name, parameter_names, plot, digits_estimates, silent)
   }
 
 
@@ -295,6 +297,20 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
     output <- out_name
   }else{
     output <- bquote(italic(.(out_name)))
+  }
+
+  return(output)
+}
+.print.prior.spike_and_slab <- function(x, short_name, parameter_names, plot, digits_estimates, silent){
+
+  variable  <- print(x[["variable"]],  short_name, parameter_names, plot, digits_estimates, silent = TRUE)
+  indicator <- print(x[["indicator"]], short_name, parameter_names, plot, digits_estimates, silent = TRUE)
+
+  ### combine the results together
+  if(!plot){
+    output <- paste0(variable, " * ", indicator)
+  }else{
+    output <- bquote(.(variable) ~ "*" ~ .(indicator))
   }
 
   return(output)

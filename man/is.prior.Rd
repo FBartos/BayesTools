@@ -13,6 +13,7 @@
 \alias{is.prior.factor}
 \alias{is.prior.orthonormal}
 \alias{is.prior.dummy}
+\alias{is.prior.spike_and_slab}
 \title{Reports whether x is a a prior object}
 \usage{
 is.prior(x)
@@ -38,6 +39,8 @@ is.prior.factor(x)
 is.prior.orthonormal(x)
 
 is.prior.dummy(x)
+
+is.prior.spike_and_slab(x)
 }
 \arguments{
 \item{x}{an object of test}

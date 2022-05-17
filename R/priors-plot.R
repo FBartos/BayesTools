@@ -60,6 +60,9 @@ plot.prior <- function(x, plot_type = "base",
   if(is.null(xlim) & is.null(x_seq)){
     if((is.prior.PET(x) | is.prior.PEESE(x) | is.prior.weightfunction(x)) & !individual){
       xlim   <- c(0, 1)
+    }else if(is.prior.spike_and_slab(x)){
+      xlim   <- range(c(0,range(x[["variable"]], quantiles = x_range_quant)))
+      xlim   <- range(pretty(xlim))
     }else{
       xlim   <- range(x, quantiles = x_range_quant)
       xlim   <- range(pretty(xlim))
@@ -133,6 +136,16 @@ plot.prior <- function(x, plot_type = "base",
   # plot orthonormal priors
   if(is.prior.orthonormal(x)){
     plots <- .plot.prior.orthonormal(x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
+    if(plot_type == "ggplot"){
+      return(plots)
+    }else{
+      return(invisible())
+    }
+  }
+
+  # spike and slab prior plots
+  if(is.prior.spike_and_slab(x)){
+    plots <- .plot.prior.spike_and_slab(x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
     if(plot_type == "ggplot"){
       return(plots)
     }else{
@@ -440,6 +453,41 @@ plot.prior <- function(x, plot_type = "base",
     return(plot)
   }
 }
+.plot.prior.spike_and_slab <- function(x, plot_type, plot_data, par_name = NULL, ...){
+
+  # get default plot settings
+  dots      <- list(...)
+
+  xlim      <- attr(plot_data, "x_range")
+  ylim      <- attr(plot_data, "y_range")
+
+  short_name      <- if(is.null(dots[["short_name"]]))      FALSE else dots[["short_name"]]
+  parameter_names <- if(is.null(dots[["parameter_names"]])) FALSE else dots[["parameter_names"]]
+
+  main      <- if(!is.null(attr(plot_data, "steps"))) print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names) else ""
+  xlab      <- if(!is.null(attr(plot_data, "steps"))) bquote(omega["["*.(attr(plot_data, "steps")[1])*","~.(attr(plot_data, "steps")[2])*"]"])  else bquote(.(if(!is.null(par_name)){bquote(.(par_name)~"~")})~.(print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names)))
+  ylab      <- "Density"
+
+  # add it to the user input if desired
+  if(is.null(dots[["main"]])) dots$main <-  main
+  if(is.null(dots[["xlab"]])) dots$xlab <-  xlab
+  if(is.null(dots[["ylab"]])) dots$ylab <-  ylab
+  if(is.null(dots[["xlim"]])) dots$xlim <-  xlim
+  if(is.null(dots[["ylim"]])) dots$ylim <-  ylim
+
+  args_prior           <- dots
+  args_prior$plot_data <- plot_data
+  args_prior$plot_type <- plot_type
+
+  plot <- do.call(.plot_prior_list.both, args_prior)
+
+  # return the plots
+  if(plot_type == "base"){
+    return(invisible())
+  }else if(plot_type == "ggplot"){
+    return(plot)
+  }
+}
 
 .plot.prior_empty    <- function(type, dots = list(), ...){
 
@@ -686,6 +734,9 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   if(is.null(xlim) & is.null(x_seq)){
     if((is.prior.PET(x) | is.prior.PEESE(x) | is.prior.weightfunction(x)) & !individual){
       xlim   <- c(0, 1)
+    }else if(is.prior.spike_and_slab(x)){
+      xlim   <- range(c(0,range(x[["variable"]], quantiles = x_range_quant)))
+      xlim   <- range(pretty(xlim))
     }else{
       xlim   <- range(x, quantiles = x_range_quant)
       xlim   <- range(pretty(xlim))
@@ -732,6 +783,12 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   # plot discrete prior
   if(is.prior.discrete(x)){
     .lines.prior.discrete(plot_data, ...)
+    return(invisible())
+  }
+
+  # plot spike and slab prior
+  if(is.prior.spike_and_slab(x)){
+    .lines.prior.spike_and_slab(plot_data, ...)
     return(invisible())
   }
 
@@ -822,6 +879,13 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   # plot discrete prior
   if(is.prior.discrete(x)){
     geom <- .geom_prior.discrete(plot_data, ...)
+    return(geom)
+  }
+
+
+  # plot spike and slab prior
+  if(is.prior.spike_and_slab(x)){
+    geom <- .geom_prior.spike_and_slab(plot_data, ...)
     return(geom)
   }
 
@@ -958,6 +1022,13 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   lwd  <- if(!is.null(dots[["lwd"]]))                  dots[["lwd"]]                  else .plot.prior_settings()[["lwd"]]
 
   graphics::lines(x = plot_data$x, y = plot_data$y, type = "l", lwd = lwd, lty = lty, col = col)
+
+  return(invisible())
+}
+.lines.prior.spike_and_slab  <- function(plot_data, ...){
+
+  .lines.prior.simple(plot_data[["variable"]], ...)
+  .lines.prior.point(plot_data[["indicator"]], ...)
 
   return(invisible())
 }
@@ -1147,6 +1218,15 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
       size = 1, show.legend = dots[["legend"]]),
     ggplot2::scale_linetype_manual(name = "level", values = lty),
     ggplot2::scale_color_manual(name = "level", values = col))
+
+  return(geom)
+}
+.geom_prior.spike_and_slab   <- function(plot_data, ...){
+
+  geom <- list(
+    .geom.prior.simple(plot_data[["variable"]], ...),
+    .geom.prior.point(plot_data[["indicator"]], ...)
+  )
 
   return(geom)
 }

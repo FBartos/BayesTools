@@ -109,8 +109,8 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     all_prior_list <- prior_list
   }
 
-  if(any(sapply(all_prior_list, is.prior.discrete)))
-    stop("Discrete priors are not supported with bridgesampling.")
+  if(any(sapply(all_prior_list, function(prior) is.prior.discrete(prior) | is.prior.spike_and_slab)))
+    stop("Discrete or spike and slab priors are not supported with bridgesampling.")
 
   ### extract relevant variables and upper and lower bound
   bridgesampling_posterior <- JAGS_bridgesampling_posterior(posterior = posterior, prior_list = all_prior_list, add_parameters = add_parameters, add_bounds = add_bounds)

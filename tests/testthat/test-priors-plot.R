@@ -77,6 +77,26 @@ test_that("Prior plot (point) function works", {
   expect_doppelganger("priors-plot-6-7", plot(p5, plot_type = "ggplot"))
 })
 
+test_that("Prior plot (spike and slab) function works", {
+
+  # check the default options
+  p1 <- prior("bernoulli", list(.33))
+
+  expect_doppelganger("priors-plot-15-1", function()plot(p1))
+  expect_doppelganger("priors-plot-15-2", function()plot(p1, short_name = TRUE))
+  expect_doppelganger("priors-plot-15-3", function()plot(p1, parameter_names = TRUE))
+  expect_doppelganger("priors-plot-15-4", function()plot(p1, lwd = 3, lty = 3, col = "blue"))
+  expect_doppelganger("priors-plot-15-5", function()plot(p1, par_name = "name"))
+
+  expect_doppelganger("priors-plot-15-6",  plot(p1, plot_type = "ggplot"))
+  expect_doppelganger("priors-plot-15-7",  plot(p1, short_name = TRUE, plot_type = "ggplot"))
+  expect_doppelganger("priors-plot-15-8",  plot(p1, parameter_names = TRUE, plot_type = "ggplot"))
+  expect_doppelganger("priors-plot-15-9",  plot(p1, xlab = "xlab", ylab = "ylab", main = "main", plot_type = "ggplot"))
+  expect_doppelganger("priors-plot-15-10", plot(p1, lwd = 3, lty = 3, col = "blue", plot_type = "ggplot"))
+  expect_doppelganger("priors-plot-15-11", plot(p1, par_name = bquote(mu), plot_type = "ggplot"))
+
+})
+
 test_that("Prior plot (weightfunction) function works", {
 
   set.seed(1)

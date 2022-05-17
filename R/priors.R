@@ -359,7 +359,7 @@ prior_spike_and_slab <- function(distribution, parameters, truncation = list(low
     stop("'prior_indicator' must be a 'bernoulli' prior distribution")
 
   output <- list(
-    parameter = prior(distribution = distribution, parameters = parameters, truncation = truncation, prior_weights = prior_weights),
+    variable  = prior(distribution = distribution, parameters = parameters, truncation = truncation, prior_weights = prior_weights),
     indicator = prior_indicator
   )
 
@@ -918,6 +918,11 @@ rng.prior   <- function(x, n, ...){
       x <- c(x, temp_x[temp_x >= prior$truncation[["lower"]] & temp_x <= prior$truncation[["upper"]]])
     }
 
+    # make sure the enough samples were generated
+    if(length(x) < n){
+      x <- rng(prior, n)
+    }
+
     x <- x[1:n]
 
   }else if(is.prior.orthonormal(prior)){
@@ -981,6 +986,10 @@ rng.prior   <- function(x, n, ...){
       "two.sided.fixed" = rtwo.sided_fixed(n, omega = prior$parameters[["omega"]])
     )
 
+  }else if(is.prior.spike_and_slab(prior)){
+
+    x <- rng(prior[["variable"]], n) * rng(prior[["indicator"]], n)
+
   }
 
   return(x)
@@ -1025,6 +1034,10 @@ cdf.prior   <- function(x, q, ...){
 
     stop("Only marginal cdfs are implemented for prior weightfunctions.")
 
+  }else if(is.prior.spike_and_slab(prior)){
+
+    stop("No cdfs are implemented for spike and slab priors.")
+
   }
 
   return(p)
@@ -1068,6 +1081,10 @@ ccdf.prior  <- function(x, q, ...){
   }else if(is.prior.weightfunction(prior)){
 
     stop("Only marginal ccdf functions are implemented for prior weightfunctions.")
+
+  }else if(is.prior.spike_and_slab(prior)){
+
+    stop("No ccdf are implemented for spike and slab priors.")
 
   }
 
@@ -1126,6 +1143,10 @@ lpdf.prior  <- function(x, y, ...){
   }else if(is.prior.weightfunction(prior)){
 
     stop("Only marginal lpdf are implemented for prior weightfunctions.")
+
+  }else if(is.prior.spike_and_slab(prior)){
+
+    stop("No lpdf are implemented for spike and slab priors.")
 
   }
 
@@ -1204,6 +1225,10 @@ quant.prior <- function(x, p, ...){
   }else if(is.prior.weightfunction(prior)){
 
     stop("Only marginal quantile functions are implemented for prior weightfunctions.")
+
+  }else if(is.prior.spike_and_slab(prior)){
+
+    stop("No quantile functions are implemented for spike and slab priors.")
 
   }
 
@@ -1338,6 +1363,10 @@ mcdf.prior   <- function(x, q, ...){
       "mt"      = extraDistr::plst(q, df = prior$parameters[["df"]], mu = 0, sigma = par2)
     )
 
+  }else if(is.prior.spike_and_slab(prior)){
+
+    stop("No cdf are implemented for spike and slab priors.")
+
   }
 
   return(p)
@@ -1390,6 +1419,10 @@ mccdf.prior  <- function(x, q, ...){
       "mnormal" = stats::pnorm(q, mean = 0, sd = par2, lower.tail = FALSE),
       "mt"      = extraDistr::plst(q, df = prior$parameters[["df"]], mu = 0, sigma = par2, lower.tail = FALSE)
     )
+  }else if(is.prior.spike_and_slab(prior)){
+
+    stop("No mccdf are implemented for spike and slab priors.")
+
   }
 
   return(p)
@@ -1443,6 +1476,10 @@ mlpdf.prior  <- function(x, y, ...){
       "mnormal" = stats::dnorm(x, mean = 0, sd = par2, log = TRUE),
       "mt"      = extraDistr::dlst(x, df = prior$parameters[["df"]], mu = 0, sigma = par2, log = TRUE)
     )
+  }else if(is.prior.spike_and_slab(prior)){
+
+    stop("No lpdf are implemented for spike and slab priors.")
+
   }
 
   return(log_lik)
@@ -1509,6 +1546,10 @@ mquant.prior <- function(x, p, ...){
       "mnormal" = stats::qnorm(p, mean = 0, sd = par2),
       "mt"      = extraDistr::qlst(p, df = prior$parameters[["df"]], mu = 0, sigma = par2)
     )
+
+  }else if(is.prior.spike_and_slab(prior)){
+
+    stop("No quantile functions are implemented for spike and slab priors.")
 
   }
 
@@ -1691,6 +1732,10 @@ mean.prior   <- function(x, ...){
       m <- 0
     }
 
+  }else if(is.prior.spike_and_slab(x)){
+
+    m <- mean(x[["variable"]]) * mean(x[["indicator"]])
+
   }
 
   return(m)
@@ -1842,6 +1887,13 @@ var.prior   <- function(x, ...){
         "mnormal" = var.prior(x("normal", parameters = c(mean = 0, sd = par2))),
         "mt"      = var.prior(x("t",      parameters = c(location = 0, scale = par2, df = x$parameters[["df"]]))))
     }
+
+  }else if(is.prior.spike_and_slab(x)){
+
+    var <-
+      (var(x[["variable"]])  + mean(x[["variable"]])^2) *
+      (var(x[["indicator"]]) + mean(x[["indicator"]])^2) -
+      (mean(x[["variable"]])^2 * mean(x[["indicator"]])^2)
 
   }
 
