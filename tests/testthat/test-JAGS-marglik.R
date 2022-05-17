@@ -16,6 +16,7 @@ test_that("JAGS model functions work (simple)", {
     p10 = prior("uniform", list(1, 5)),
     PET = prior_PET("normal", list(0, 1)),
     PEESE = prior_PEESE("gamma", list(1, 1))
+    #p12 = prior("bernoulli", list(0.75)) discrete priors are not supported with bridgesampling
   )
   log_posterior <- function(parameters, data){
     return(0)

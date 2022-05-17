@@ -17,7 +17,8 @@ test_that("JAGS model functions work (simple)", {
     p10 = prior("uniform", list(1, 5)),
     p11 = prior("point", list(1)),
     PET = prior_PET("normal", list(0, 1)),
-    PEESE = prior_PEESE("gamma", list(1, 1))
+    PEESE = prior_PEESE("gamma", list(1, 1)),
+    p12 = prior("bernoulli", list(0.75))
   )
 
   model_syntax <- JAGS_add_priors(model_syntax, priors)
@@ -32,7 +33,11 @@ test_that("JAGS model functions work (simple)", {
 
   for(i in seq_along(priors)){
     expect_doppelganger(paste0("JAGS-model-prior-",i), function(){
-      hist(samples[,names(priors)[i]], breaks = 50, main = print(priors[[i]], plot = TRUE), freq = FALSE)
+      if(is.prior.discrete(priors[[i]])){
+        barplot(table(samples[,names(priors)[i]])/length(samples[,names(priors)[i]]), main = print(priors[[i]], plot = T), width = 1/(max(samples[,names(priors)[i]])+1), space = 0, xlim = c(-0.25, max(samples[,names(priors)[i]])+0.25))
+      }else{
+        hist(samples[,names(priors)[i]], breaks = 50, main = print(priors[[i]], plot = TRUE), freq = FALSE)
+      }
       lines(priors[[i]], individual = TRUE)
     })
   }

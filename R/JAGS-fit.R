@@ -410,6 +410,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
     "invgamma"  = paste0("inv_",parameter_name," ~ dgamma(",prior$parameter[["shape"]],",",prior$parameter[["scale"]],")"),
     "exp"       = paste0(parameter_name," ~ dexp(",prior$parameter[["rate"]],")"),
     "beta"      = paste0(parameter_name," ~ dbeta(",prior$parameter[["alpha"]],",",prior$parameter[["beta"]],")"),
+    "bernoulli" = paste0(parameter_name," ~ dbern(",prior$parameter[["probability"]],")"),
     "uniform"   = paste0(parameter_name," ~ dunif(",prior$parameter[["a"]],",",prior$parameter[["b"]],")")
   )
 
