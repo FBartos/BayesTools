@@ -334,16 +334,16 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
 #' a prior distribution is multiplied by an independent indicator with values
 #' either zero or one.
 #'
-#' @param prior_indicator a prior distribution for the indicator variable. The
-#' only supported option is \code{distribution = "bernoulli"} with the probability
-#' of success corresponding to the prior probability of the specified prior distribution.
+#' @param prior_inclusion a prior distribution for the inclusion probability variable. The
+#' only supported option is \code{distribution = "beta"} with the probability
+#' of success corresponding to the prior probability of including the specified predictor.
 #'
 #'
 #' @examples
 #' # create an orthonormal prior distribution
 #' p1 <- prior_spike_and_slab(
 #'    distribution = "normal", parameters = list(mean = 0, sd = 1),
-#'    prior_indicator = prior(distribution = "bernoulli", parameters = list(probability = 0.5))
+#'    prior_inclusion = prior(distribution = "beta", parameters = list(alpha = 1, beta = 1))
 #' )
 #'
 #' @return return an object of class 'prior'.
@@ -352,15 +352,15 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
 #' @seealso [prior()]
 #' @export
 prior_spike_and_slab <- function(distribution, parameters, truncation = list(lower = -Inf, upper = Inf),
-                                 prior_indicator = prior(distribution = "bernoulli", parameters = list(probability = 0.5)),
+                                 prior_inclusion = prior(distribution = "beta", parameters = list(alpha = 1, beta = 1)),
                                  prior_weights = 1){
 
-  if(!is.prior(prior_indicator) || prior_indicator["distribution"] != "bernoulli")
-    stop("'prior_indicator' must be a 'bernoulli' prior distribution")
+  if(!is.prior(prior_inclusion) || prior_inclusion["distribution"] != "beta")
+    stop("'prior_inclusion' must be a 'beta' prior distribution")
 
   output <- list(
     variable  = prior(distribution = distribution, parameters = parameters, truncation = truncation, prior_weights = prior_weights),
-    indicator = prior_indicator
+    inclusion = prior_inclusion
   )
 
   class(output) <- c("prior", "prior.spike_and_slab")
@@ -988,7 +988,7 @@ rng.prior   <- function(x, n, ...){
 
   }else if(is.prior.spike_and_slab(prior)){
 
-    x <- rng(prior[["variable"]], n) * rng(prior[["indicator"]], n)
+    x <- rng(prior[["variable"]], n) * rbinom(n, size = 1, prob = rng(prior[["inclusion"]], n))
 
   }
 
@@ -1734,7 +1734,7 @@ mean.prior   <- function(x, ...){
 
   }else if(is.prior.spike_and_slab(x)){
 
-    m <- mean(x[["variable"]]) * mean(x[["indicator"]])
+    m <- mean(x[["variable"]]) * mean(x[["inclusion"]])
 
   }
 
@@ -1890,10 +1890,14 @@ var.prior   <- function(x, ...){
 
   }else if(is.prior.spike_and_slab(x)){
 
+    # the inclusion is always beta -> indicators are betabinom
+    var_inclusion <- with(x[["inclusion"]][["parameters"]], (alpha * beta * (alpha + beta + 1) ) / ( (alpha + beta)^2 * (alpha + beta + 1)  ) )
+
+
     var <-
       (var(x[["variable"]])  + mean(x[["variable"]])^2) *
-      (var(x[["indicator"]]) + mean(x[["indicator"]])^2) -
-      (mean(x[["variable"]])^2 * mean(x[["indicator"]])^2)
+      (var_inclusion         + mean(x[["inclusion"]])^2) -
+      (mean(x[["variable"]])^2 * mean(x[["inclusion"]])^2)
 
   }
 

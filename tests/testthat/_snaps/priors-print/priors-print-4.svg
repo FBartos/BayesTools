@@ -25,12 +25,12 @@
   </clipPath>
 </defs>
 <g clip-path='url(#cpNTkuMDR8Njg5Ljc2fDU5LjA0fDUwMi41Ng==)'>
-<text x='296.89' y='78.57' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='42.69px' lengthAdjust='spacingAndGlyphs'>Gamma</text>
-<text x='340.55' y='78.57' style='font-size: 12.00px; font-family: sans;' textLength='28.01px' lengthAdjust='spacingAndGlyphs'>(1, 2)</text>
-<text x='368.56' y='78.57' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
-<text x='371.56' y='78.57' style='font-size: 12.00px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>*</text>
-<text x='376.23' y='78.57' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
-<text x='379.24' y='78.57' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='46.69px' lengthAdjust='spacingAndGlyphs'>Bernoulli</text>
-<text x='427.23' y='78.57' style='font-size: 12.00px; font-family: sans;' textLength='24.67px' lengthAdjust='spacingAndGlyphs'>(0.3)</text>
+<text x='306.40' y='78.57' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='42.69px' lengthAdjust='spacingAndGlyphs'>Gamma</text>
+<text x='350.05' y='78.57' style='font-size: 12.00px; font-family: sans;' textLength='28.01px' lengthAdjust='spacingAndGlyphs'>(1, 2)</text>
+<text x='378.06' y='78.57' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
+<text x='381.06' y='78.57' style='font-size: 12.00px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>*</text>
+<text x='385.74' y='78.57' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
+<text x='388.74' y='78.57' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='24.69px' lengthAdjust='spacingAndGlyphs'>Beta</text>
+<text x='414.40' y='78.57' style='font-size: 12.00px; font-family: sans;' textLength='28.01px' lengthAdjust='spacingAndGlyphs'>(3, 2)</text>
 </g>
 </svg>

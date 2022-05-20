@@ -461,26 +461,26 @@ density.prior <- function(x,
 .density.prior.spike_and_slab <- function(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end){
 
   density_variable  <- .density.prior.simple(x[["variable"]], x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
-  density_indicator <- .density.prior.point(prior(distribution = "spike", parameters = list(location = 0)), x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments)
+  density_inclusion <- .density.prior.point(prior(distribution = "spike", parameters = list(location = 0)), x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments)
 
-  density_variable$y  <- density_variable[["y"]]  * x[["indicator"]][["parameters"]][["probability"]]
-  density_indicator$y <- density_indicator[["y"]] * (1 - x[["indicator"]][["parameters"]][["probability"]])
+  density_variable$y  <- density_variable[["y"]]  * mean(x[["inclusion"]])
+  density_inclusion$y <- density_inclusion[["y"]] * (1 - mean(x[["inclusion"]]))
 
-  attr(density_variable,  "y_range") <- attr(density_variable, "y_range")  * x[["indicator"]][["parameters"]][["probability"]]
-  attr(density_indicator, "y_range") <- attr(density_indicator, "y_range") * (1 - x[["indicator"]][["parameters"]][["probability"]])
+  attr(density_variable,  "y_range") <- attr(density_variable, "y_range")  * mean(x[["inclusion"]])
+  attr(density_inclusion, "y_range") <- attr(density_inclusion, "y_range") * (1 - mean(x[["inclusion"]]))
 
   # create the output object
   out <- list(
     call      = call("density", print(x, silent = TRUE)),
     variable  = density_variable,
-    indicator = density_indicator
+    inclusion = density_inclusion
   )
 
 
   class(out) <- c("density", "density.prior.spike_and_slab")
   attr(out, "x_range") <- x_range
   attr(out, "y_range_variable")  <- attr(density_variable,  "y_range")
-  attr(out, "y_range_indicator") <- attr(density_indicator, "y_range")
+  attr(out, "y_range_inclusion") <- attr(density_inclusion, "y_range")
 
   return(out)
 }

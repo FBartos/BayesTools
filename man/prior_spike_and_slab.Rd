@@ -8,8 +8,8 @@ prior_spike_and_slab(
   distribution,
   parameters,
   truncation = list(lower = -Inf, upper = Inf),
-  prior_indicator = prior(distribution = "bernoulli", parameters = list(probability =
-    0.5)),
+  prior_inclusion = prior(distribution = "beta", parameters = list(alpha = 1, beta =
+    1)),
   prior_weights = 1
 )
 }
@@ -54,9 +54,9 @@ range from \code{a} to \code{b}}
 distribution. Defaults to \code{list(lower = -Inf, upper = Inf)}.
 The truncation is automatically set to the bounds of the support.}
 
-\item{prior_indicator}{a prior distribution for the indicator variable. The
-only supported option is \code{distribution = "bernoulli"} with the probability
-of success corresponding to the prior probability of the specified prior distribution.}
+\item{prior_inclusion}{a prior distribution for the inclusion probability variable. The
+only supported option is \code{distribution = "beta"} with the probability
+of success corresponding to the prior probability of including the specified predictor.}
 
 \item{prior_weights}{prior odds associated with a given distribution.
 The value is passed into the model fitting function, which creates models
@@ -79,7 +79,7 @@ either zero or one.
 # create an orthonormal prior distribution
 p1 <- prior_spike_and_slab(
    distribution = "normal", parameters = list(mean = 0, sd = 1),
-   prior_indicator = prior(distribution = "bernoulli", parameters = list(probability = 0.5))
+   prior_inclusion = prior(distribution = "beta", parameters = list(alpha = 1, beta = 1))
 )
 
 }

@@ -111,9 +111,9 @@ test_that("Prior print function works", {
   })
 
   p17 <- prior_spike_and_slab("gamma", list(1, 2), list(0, Inf),
-                              prior_indicator = prior("bernoulli", list(0.3)))
-  expect_equal(utils::capture.output(print(p17)), "Gamma(1, 2) * Bernoulli(0.3)")
-  expect_equal(utils::capture.output(print(p17, short_name = TRUE)), "G(1, 2) * Br(0.3)")
+                              prior_inclusion = prior("beta", list(3, 2)))
+  expect_equal(utils::capture.output(print(p17)), "Gamma(1, 2) * Beta(3, 2)")
+  expect_equal(utils::capture.output(print(p17, short_name = TRUE)), "G(1, 2) * B(3, 2)")
   expect_doppelganger("priors-print-4", function(){
     empty_plot()
     text(0.5, 1, print(p17, plot = TRUE))

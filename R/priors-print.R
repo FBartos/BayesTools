@@ -304,13 +304,13 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
 .print.prior.spike_and_slab <- function(x, short_name, parameter_names, plot, digits_estimates, silent){
 
   variable  <- print(x[["variable"]],  short_name, parameter_names, plot, digits_estimates, silent = TRUE)
-  indicator <- print(x[["indicator"]], short_name, parameter_names, plot, digits_estimates, silent = TRUE)
+  inclusion <- print(x[["inclusion"]], short_name, parameter_names, plot, digits_estimates, silent = TRUE)
 
   ### combine the results together
   if(!plot){
-    output <- paste0(variable, " * ", indicator)
+    output <- paste0(variable, " * ", inclusion)
   }else{
-    output <- bquote(.(variable) ~ "*" ~ .(indicator))
+    output <- bquote(.(variable) ~ "*" ~ .(inclusion))
   }
 
   return(output)
