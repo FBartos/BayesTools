@@ -370,6 +370,10 @@ JAGS_add_priors           <- function(syntax, prior_list){
 
       syntax_priors <- paste(syntax_priors, .JAGS_prior.PP(prior_list[[i]]))
 
+    }else if(is.prior.spike_and_slab(prior_list[[i]])){
+
+      syntax_priors <- paste(syntax_priors, .JAGS_prior.spike_and_slab(prior_list[[i]], names(prior_list)[i]))
+
     }else if(is.prior.factor(prior_list[[i]])){
 
       syntax_priors <- paste(syntax_priors, .JAGS_prior.factor(prior_list[[i]], names(prior_list)[i]))
@@ -584,7 +588,22 @@ JAGS_add_priors           <- function(syntax, prior_list){
 
   return(syntax)
 }
+.JAGS_prior.spike_and_slab <- function(prior, parameter_name){
 
+  .check_prior(prior)
+  if(!is.prior.spike_and_slab(prior))
+    stop("improper prior provided")
+  check_char(parameter_name, "parameter_name")
+
+  syntax <- paste0(
+    .JAGS_prior.simple(prior[["variable"]],  paste0(parameter_name, "_variable")),
+    .JAGS_prior.simple(prior[["inclusion"]], paste0(parameter_name, "_inclusion")),
+    parameter_name, "_indicator ~ dbern(",   paste0(parameter_name, "_inclusion"), ")\n",
+    parameter_name, " = ",  parameter_name, "_variable * ", parameter_name, "_indicator\n"
+  )
+
+  return(syntax)
+}
 
 .check_JAGS_syntax <- function(syntax){
 
@@ -655,6 +674,10 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 
         temp_inits <- c(temp_inits, .JAGS_init.PP(prior_list[[i]]))
 
+      }else if(is.prior.spike_and_slab(prior_list[[i]])){
+
+        temp_inits <- c(temp_inits, .JAGS_init.spike_and_slab(prior_list[[i]], names(prior_list)[i]))
+
       }else if(is.prior.factor(prior_list[[i]])){
 
         temp_inits <- c(temp_inits, .JAGS_init.factor(prior_list[[i]], names(prior_list)[i]))
@@ -685,6 +708,7 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
   .check_prior(prior)
   if(!is.prior.simple(prior))
     stop("improper prior provided")
+  check_char(parameter_name, "parameter_name")
 
   if(prior[["distribution"]] == "point"){
 
@@ -715,6 +739,7 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
   .check_prior(prior)
   if(!is.prior.vector(prior))
     stop("improper prior provided")
+  check_char(parameter_name, "parameter_name")
 
   if(prior[["distribution"]] == "point"){
 
@@ -800,6 +825,18 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 
   return(init)
 }
+.JAGS_init.spike_and_slab  <- function(prior, parameter_name){
+
+  .check_prior(prior)
+  if(!is.prior.spike_and_slab(prior))
+    stop("improper prior provided")
+
+  init <- list()
+  init[[paste0(parameter_name, "_variable")]]  <- rng(prior[["variable"]], 1)
+  init[[paste0(parameter_name, "_inclusion")]] <- rng(prior[["inclusion"]], 1)
+
+  return(init)
+}
 
 
 #' @title Create list of monitored parameters for 'JAGS' model
@@ -837,6 +874,10 @@ JAGS_to_monitor             <- function(prior_list){
 
       monitor <- c(monitor, .JAGS_monitor.PP(prior_list[[i]]))
 
+    }else if(is.prior.spike_and_slab(prior_list[[i]])){
+
+      monitor <- c(monitor, .JAGS_monitor.spike_and_slab(prior_list[[i]], names(prior_list)[i]))
+
     }else if(is.prior.factor(prior_list[[i]])){
 
       monitor <- c(monitor, .JAGS_monitor.factor(prior_list[[i]], names(prior_list)[i]))
@@ -861,8 +902,7 @@ JAGS_to_monitor             <- function(prior_list){
   .check_prior(prior)
   if(!(is.prior.simple(prior) | is.prior.vector(prior) | is.prior.factor(prior)))
     stop("improper prior provided")
-  if(!is.character(parameter_name) | length(parameter_name) != 1)
-    stop("'parameter_name' must be a character vector of length 1.")
+  check_char(parameter_name, "parameter_name")
 
   if(prior[["distribution"]] == "invgamma"){
     monitor <- c(parameter_name, paste0("inv_", parameter_name))
@@ -913,7 +953,21 @@ JAGS_to_monitor             <- function(prior_list){
 
   return(monitor)
 }
+.JAGS_monitor.spike_and_slab <- function(prior, parameter_name){
 
+  .check_prior(prior)
+  if(!is.prior.spike_and_slab(prior))
+    stop("improper prior provided")
+  check_char(parameter_name, "parameter_name")
+
+  monitor <- c(
+    .JAGS_monitor.simple(prior[["variable"]], parameter_name),
+    paste0(parameter_name, "_variable"),
+    paste0(parameter_name, "_inclusion")
+  )
+
+  return(monitor)
+}
 
 #' @title Check and list 'JAGS' fitting settings
 #'

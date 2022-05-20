@@ -204,6 +204,35 @@ test_that("JAGS model functions work (weightfunctions)", {
   }
 })
 
+test_that("JAGS model functions work (spike and slab)", {
+
+  skip_if_not_installed("rjags")
+  priors       <- list(
+    "mu" = prior_spike_and_slab("normal", list(0, 1))
+  )
+
+  for(i in 1:length(priors)){
+    model_syntax <- "model{}"
+    model_syntax <- JAGS_add_priors(model_syntax, priors[i])
+    monitor      <- JAGS_to_monitor(priors[i])
+    inits        <- JAGS_get_inits(priors[i], chains = 2, seed = 1)
+
+    set.seed(1)
+    model   <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
+    samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 5000, quiet = TRUE, progress.bar = "none")
+    samples <- do.call(rbind, samples)
+
+
+    expect_doppelganger(paste0("JAGS-model-prior_spike-and-slab-",i), function(){
+      temp_samples <- samples[,names(priors)[i]]
+      hs <- hist(temp_samples[temp_samples != 0], breaks = 50, plot = FALSE)
+      hs$density <- hs$density * mean(temp_samples != 0)
+      plot(hs, main = print(priors[[i]], plot = TRUE), freq = FALSE, ylim = range(c(0, max(hs$density), mean(temp_samples == 0))))
+      lines(priors[[i]], individual = TRUE)
+    })
+  }
+})
+
 test_that("JAGS fit function works" , {
 
   set.seed(1)
@@ -450,6 +479,70 @@ test_that("JAGS fit function integration with formula works" , {
 
     hist(exp(posterior2[,"sigma_intercept"] + posterior2[,"sigma_x_fac2t"]), freq = FALSE, main = "sigma_x_fac2t")
     abline(v = 1, lwd = 3, col = "blue")
+  })
+
+})
+
+test_that("JAGS fit function integration with formula and spike and slab works" , {
+
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_on_cran()
+
+  set.seed(1)
+
+  data_formula <- data.frame(
+    x_cont1 = rnorm(300),
+    x_fac2t = factor(rep(c("A", "B"), 150), levels = c("A", "B")),
+    x_fac3t = factor(rep(c("A", "B", "C"), 100), levels = c("A", "B", "C"))
+  )
+  data <- list(
+    y = rnorm(300, .20 * data_formula$x_cont1 + ifelse(data_formula$x_fac3t == "A", 0.0, ifelse(data_formula$x_fac3t == "B", -0.2, 0.4)), ifelse(data_formula$x_fac2t == "A", 0.5, 1)),
+    N = 300
+  )
+
+
+  # create model with mix of a formula and free parameters ---
+  formula_list1 <- list(
+    mu    = ~ x_cont1
+  )
+  formula_data_list1 <- list(
+    mu    = data_formula
+  )
+  formula_prior_list1 <- list(
+    mu    = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_cont1"         = prior_spike_and_slab("normal", list(0, 1))
+    )
+  )
+  prior_list1 <- list(
+    sigma = prior("lognormal", list(0, 1))
+  )
+  model_syntax1 <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  fit1 <- JAGS_fit(
+    model_syntax = model_syntax1, data = data, prior_list = prior_list1,
+    formula_list = formula_list1, formula_data_list = formula_data_list1, formula_prior_list = formula_prior_list1)
+
+  posterior1 <- suppressWarnings(coda::as.mcmc(fit1))
+
+  # verify against the frequentist fit
+  expect_doppelganger("JAGS-fit-formula-spike-and-slab-1", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfrow = c(1, 3))
+
+    hist(posterior1[,"mu_x_cont1"], freq = FALSE, main = "x_cont1")
+
+    hist(posterior1[,"mu_x_cont1_variable"], freq = FALSE, main = "x_cont1")
+
+    hist(posterior1[,"mu_x_cont1_inclusion"], freq = FALSE, main = "x_cont1_inclusion")
   })
 
 })
