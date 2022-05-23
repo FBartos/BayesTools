@@ -14,6 +14,7 @@ vignette: >
   %\VignetteEngine{knitr::rmarkdown_notangle}
 ---
 
+
 ```{r setup, include = FALSE}
 # is_check <- ("CheckExEnv" %in% search()) ||
 #              any(c("_R_CHECK_TIMINGS_", "_R_CHECK_LICENSE_") %in% names(Sys.getenv())) 
@@ -41,7 +42,7 @@ where $\mu$ corresponds to the grand mean, $\sigma$ to the grand standard deviat
 To perform the test, we specify two competing hypotheses:
 
  - the null hypothesis $\mathcal{H}_0: \delta = 0$ assuming that the standardized effect size is zero,
- - and the alternative hypothesis $\mathcal{H}_1: \delta \sim g()$ assuming that the standardized effect size is non-zero and prior distribution $g()$ characterizes our believes about the possible values of the standardized effect size.
+ - and the alternative hypothesis $\mathcal{H}_1: \delta \sim g()$ assuming that the standardized effect size is non-zero and prior distribution $g()$ characterizes our hypothesis about the possible values of the standardized effect size.
 
 
 ### Kitchen Rolls Data Set
@@ -191,16 +192,16 @@ To obtain the resulting Bayes factor in favor of the null hypothesis, I can use 
 bridgesampling::bf(marglik_model_H0, marglik_model_Hp)
 ```
 
-or specify a BayesTools model ensemble object that provides that can be further inspected by a variety of functions.
+or specify a BayesTools model ensemble object that can be further inspected by a variety of functions.
 
 ```{r}
 models_list <- models_inference(list(
   list(model = ttest_model_H0, marglik = marglik_model_H0, prior_weights = 1/2),
   list(model = ttest_model_Hp, marglik = marglik_model_Hp, prior_weights = 1/2)
 ))
-enseble_info <- ensemble_inference(models_list, parameters = "delta", is_null_list = list("delta" = c(TRUE, FALSE)))
+ensemble_info <- ensemble_inference(models_list, parameters = "delta", is_null_list = list("delta" = c(TRUE, FALSE)))
 
-ensemble_inference_table(enseble_info, "delta", BF01 = TRUE)
+ensemble_inference_table(ensemble_info, "delta", BF01 = TRUE)
 ```
 
 The corresponding results can be also obtained numerically with the `ttestBF()` function from the BayesFactor R package [@BayesFactor].

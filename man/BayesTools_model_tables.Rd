@@ -4,6 +4,7 @@
 \alias{BayesTools_model_tables}
 \alias{model_summary_table}
 \alias{runjags_estimates_table}
+\alias{JAGS_estimates_table}
 \alias{runjags_estimates_empty_table}
 \title{Create BayesTools model tables}
 \usage{
@@ -19,6 +20,17 @@ model_summary_table(
 )
 
 runjags_estimates_table(
+  fit,
+  transformations = NULL,
+  title = NULL,
+  footnotes = NULL,
+  warnings = NULL,
+  remove_spike_0 = TRUE,
+  transform_orthonormal = FALSE,
+  formula_prefix = TRUE
+)
+
+JAGS_estimates_table(
   fit,
   transformations = NULL,
   title = NULL,

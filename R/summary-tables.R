@@ -425,6 +425,7 @@ ensemble_diagnostics_table <- function(models, parameters, title = NULL, footnot
 #'
 #' @export model_summary_table
 #' @export runjags_estimates_table
+#' @export JAGS_estimates_table
 #' @export runjags_estimates_empty_table
 #' @name BayesTools_model_tables
 #'
@@ -709,6 +710,9 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 
   return(runjags_summary)
 }
+
+#' @rdname BayesTools_model_tables
+JAGS_estimates_table <- runjags_estimates_table
 
 #' @rdname BayesTools_model_tables
 runjags_estimates_empty_table <- function(title = NULL, footnotes = NULL, warnings = NULL){
