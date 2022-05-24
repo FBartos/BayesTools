@@ -962,8 +962,7 @@ JAGS_to_monitor             <- function(prior_list){
 
   monitor <- c(
     .JAGS_monitor.simple(prior[["variable"]], parameter_name),
-    paste0(parameter_name, "_variable"),
-    paste0(parameter_name, "_inclusion")
+    paste0(parameter_name, "_indicator")
   )
 
   return(monitor)
