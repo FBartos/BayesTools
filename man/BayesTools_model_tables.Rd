@@ -57,13 +57,9 @@ JAGS_estimates_table(
 
 JAGS_inference_table(
   fit,
-  transformations = NULL,
   title = NULL,
   footnotes = NULL,
   warnings = NULL,
-  conditional = FALSE,
-  remove_spike_0 = TRUE,
-  transform_orthonormal = FALSE,
   formula_prefix = TRUE
 )
 
