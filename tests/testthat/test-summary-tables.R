@@ -99,7 +99,7 @@ test_that("Summary tables functions work",{
   ### test additional settings
   # transformations
   runjags_summary2t <- runjags_estimates_table(fit2, transformations = list("m" = list(fun = exp)))
-  expect_equal(exp(models[[3]]$fit_summary[1,c("Mean","lCI","Median","uCI","MCMC_error")]), runjags_summary2t[1,c("Mean","lCI","Median","uCI","MCMC_error")], tolerance = 1e-5)
+  expect_equal(exp(models[[3]]$fit_summary[1,c("lCI","Median","uCI","MCMC_error")]), runjags_summary2t[1,c("lCI","Median","uCI","MCMC_error")], tolerance = 1e-5)
   expect_equal(colnames(models[[3]]$fit_summary), colnames(runjags_summary2t))
   expect_equal(rownames(models[[3]]$fit_summary), rownames(runjags_summary2t))
 

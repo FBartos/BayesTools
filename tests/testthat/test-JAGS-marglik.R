@@ -103,7 +103,9 @@ test_that("JAGS model functions work (spike and slab)", {
 
   skip_if_not_installed("rjags")
   all_priors   <- list(
-    p1  = prior_spike_and_slab("normal", list(mean = 0, sd = 1))
+    p1  = prior_spike_and_slab("normal",   list(0, 1), prior_inclusion = prior("beta", list(1, 1))),
+    p2  = prior_spike_and_slab("gamma",    list(3, 4), prior_inclusion = prior("beta", list(5, 1))),
+    p3  = prior_spike_and_slab("invgamma", list(4, 5), prior_inclusion = prior("point", list(.3)))
   )
 
   log_posterior <- function(parameters, data){
@@ -121,7 +123,7 @@ test_that("JAGS model functions work (spike and slab)", {
     model   <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
     samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 10000, quiet = TRUE, progress.bar = "none")
     marglik <- JAGS_bridgesampling(samples, prior_list = prior_list, data = list(), log_posterior = log_posterior)
-    expect_equal(marglik$logml, 0, tolerance = 1e-2)
+    expect_equal(marglik$logml, 0, tolerance = 1e-3)
   }
 
 })

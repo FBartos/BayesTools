@@ -475,17 +475,23 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
 
+  if(!is.prior.point(prior[["inclusion"]])){
 
-  parameter_variable  <- .JAGS_bridgesampling_posterior_info.simple(prior[["variable"]],  paste0(parameter_name, "_variable"))
-  parameter_inclusion <- .JAGS_bridgesampling_posterior_info.simple(prior[["inclusion"]], paste0(parameter_name, "_inclusion"))
+    parameter_variable  <- .JAGS_bridgesampling_posterior_info.simple(prior[["variable"]],  paste0(parameter_name, "_variable"))
+    parameter_inclusion <- .JAGS_bridgesampling_posterior_info.simple(prior[["inclusion"]], paste0(parameter_name, "_inclusion"))
 
-  parameter <- c(parameter_variable, parameter_inclusion)
+    parameter <- c(parameter_variable, parameter_inclusion)
 
-  attr(parameter, "lb") <- c(attr(parameter_variable, "lb"), attr(parameter_inclusion, "lb"))
-  attr(parameter, "ub") <- c(attr(parameter_variable, "ub"), attr(parameter_inclusion, "ub"))
+    attr(parameter, "lb") <- c(attr(parameter_variable, "lb"), attr(parameter_inclusion, "lb"))
+    attr(parameter, "ub") <- c(attr(parameter_variable, "ub"), attr(parameter_inclusion, "ub"))
 
-  names(attr(parameter, "lb")) <- c(names(attr(parameter_variable, "lb")), names(attr(parameter_inclusion, "lb")))
-  names(attr(parameter, "ub")) <- c(names(attr(parameter_variable, "ub")), names(attr(parameter_inclusion, "ub")))
+    names(attr(parameter, "lb")) <- c(names(attr(parameter_variable, "lb")), names(attr(parameter_inclusion, "lb")))
+    names(attr(parameter, "ub")) <- c(names(attr(parameter_variable, "ub")), names(attr(parameter_inclusion, "ub")))
+
+  }else{
+    parameter  <- .JAGS_bridgesampling_posterior_info.simple(prior[["variable"]],  paste0(parameter_name, "_variable"))
+  }
+
 
   return(parameter)
 }
@@ -674,9 +680,14 @@ JAGS_marglik_priors                <- function(samples, prior_list){
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
 
-  # TODO: fix
-  stop("marginalized marglik needs to be implemented")
-  # marglik <- lpdf(prior[["variable"]], samples[[ paste0(parameter_name, "_variable") ]]) + log(samples[[ paste0(parameter_name, "_inclusion") ]])
+  marglik <- 0
+  if(!is.prior.point(prior[["inclusion"]])){
+    marglik <- marglik + .JAGS_marglik_priors.simple(samples, prior[["inclusion"]], paste0(parameter_name, "_inclusion"))
+  }
+
+  if(samples[[ paste0(if(prior[["variable"]][["distribution"]] == "invgamma") "inv_" else "", parameter_name, "_variable") ]] != 0){
+    marglik <- marglik + .JAGS_marglik_priors.simple(samples, prior[["variable"]], paste0(parameter_name, "_variable"))
+  }
 
   return(marglik)
 }
@@ -887,7 +898,9 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
   parameter <- list()
   parameter[paste0(parameter_name, "_variable")]  <- .JAGS_marglik_parameters.simple(samples, prior[["variable"]],  paste0(parameter_name, "_variable"))
-  parameter[paste0(parameter_name, "_inclusion")] <- .JAGS_marglik_parameters.simple(samples, prior[["inclusion"]], paste0(parameter_name, "_inclusion"))
+  if(!is.prior.point(prior[[parameter_name]][["inclusion"]])){
+    parameter[paste0(parameter_name, "_inclusion")] <- .JAGS_marglik_parameters.simple(samples, prior[["inclusion"]], paste0(parameter_name, "_inclusion"))
+  }
 
   return(parameter)
 }

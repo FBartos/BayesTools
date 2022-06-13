@@ -831,9 +831,12 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
   if(!is.prior.spike_and_slab(prior))
     stop("improper prior provided")
 
-  init <- list()
-  init[[paste0(parameter_name, "_variable")]]  <- rng(prior[["variable"]], 1)
-  init[[paste0(parameter_name, "_inclusion")]] <- rng(prior[["inclusion"]], 1)
+  init <- .JAGS_init.simple(prior[["variable"]], paste0(parameter_name, "_variable"))
+
+  if(!is.prior.point(prior[["inclusion"]])){
+    init[[paste0(parameter_name, "_inclusion")]] <- rng(prior[["inclusion"]], 1)
+  }
+
 
   return(init)
 }
@@ -961,7 +964,9 @@ JAGS_to_monitor             <- function(prior_list){
   check_char(parameter_name, "parameter_name")
 
   monitor <- c(
-    .JAGS_monitor.simple(prior[["variable"]], parameter_name),
+    parameter_name,
+    .JAGS_monitor.simple(prior[["variable"]], paste0(parameter_name, "_variable")),
+    if(!is.prior.point(prior[["inclusion"]])) .JAGS_monitor.simple(prior[["variable"]], paste0(parameter_name, "_inclusion")),
     paste0(parameter_name, "_indicator")
   )
 

@@ -355,8 +355,12 @@ prior_spike_and_slab <- function(distribution, parameters, truncation = list(low
                                  prior_inclusion = prior(distribution = "beta", parameters = list(alpha = 1, beta = 1)),
                                  prior_weights = 1){
 
-  if(!is.prior(prior_inclusion) || prior_inclusion["distribution"] != "beta")
-    stop("'prior_inclusion' must be a 'beta' prior distribution")
+  if(!is.prior(prior_inclusion))
+    stop("'prior_inclusion' must be a prior distribution")
+  if(is.prior.point(prior_inclusion) && (prior_inclusion$parameters[["location"]] < 0 | prior_inclusion$parameters[["location"]] > 1))
+    stop("The probability parameter of 'prior_inclusion' must be within 0 and 1.")
+  if(is.prior.point(prior_inclusion) && (prior_inclusion$truncation[["lower"]] < 0 | prior_inclusion$truncation[["upper"]] > 1))
+    stop("The range of the probability parameter (set via the 'truncation' argument) of 'prior_inclusion' must be within 0 and 1.")
 
   output <- list(
     variable  = prior(distribution = distribution, parameters = parameters, truncation = truncation, prior_weights = prior_weights),
