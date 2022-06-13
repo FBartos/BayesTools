@@ -1,5 +1,5 @@
 ---
-title: "Spike and slab prior distributions vs. Bayes factors"
+title: "Bayes factors via spike and slab prior vs. bridge sampling"
 author: "František Bartoš"
 date: "`r Sys.Date()`"
 output:
@@ -8,7 +8,7 @@ output:
 bibliography: ../inst/REFERENCES.bib
 csl: ../inst/apa.csl
 vignette: >
-  %\VignetteIndexEntry{Spike and slab vs. Bayes factors}
+  %\VignetteIndexEntry{Bayes factors via spike and slab prior vs. bridge sampling}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
   %\VignetteEngine{knitr::rmarkdown_notangle}
@@ -37,7 +37,7 @@ $\text{BF}_{10} = \frac{p(\text{data} \mid \mathcal{M}_{1})}{p(\text{data} \mid 
 
 which quantify relative predictive performance of two competing models [@wrinch1921on; @kass1995bayes; @rouder2019teaching]. Convenient model specification then allows users and package developers to easily compute Bayes factors and test a wide range of informed hypotheses. See RoBMA [@RoBMA] and [@RoBSA] R packages for implementation examples.
 
-However, when considering a simple regression, the model space of all possible models increases exponentially, i.e., the possibility for including vs. excluding $k$ predictors leads to $2^k$ possible submodels that we might want to compare. Even relatively computationally simple models (e.g. ~ 1 min of computation) with 10 possible predictors would result in more than 17 hours of computation. Therefore, we might require more computationally efficient methods when performing variable selection with more than a few covariates. In this vignette, I showcase how to use BayesTools package to specify spike and slab priors that aim to explore most of the model space and obtain posterior inclusion probabilities for each predictor within a single MCMC run [@kuo1998variable; @ohara2009review].
+However, when considering a simple regression, the model space of all possible models increases exponentially with additional predictors. I.e., the possibility of including vs. excluding $k$ predictors leads to $2^k$ possible submodels that need to be computed. Even relatively computationally simple models (e.g. ~ 1 min of computation) with 10 possible predictors would result in more than 17 hours of computation. Therefore, we might require more computationally efficient methods when performing variable selection with more than a few covariates. In this vignette, I showcase how to use BayesTools package to specify spike and slab priors that aim to explore most of the model space and obtain posterior inclusion probabilities for each predictor within a single MCMC run [@kuo1998variable; @ohara2009review].
 
 
 ```{r}
@@ -80,9 +80,9 @@ We consider two following models:
 where $g()$ characterizes our hypothesis about the degree of the effect. In our example, we specify a simple two-sided hypothesis represented by a normal distribution with mean 0 and standard deviation 0.5, e.g., $\beta \sim \text{Normal}(0, 0.5^2)$.
 
 
-## Bayes Factors
+## Maginal Likelihoods
 
-First, we compare the two models via Bayes factors. To do that, we need to specify the likelihood for the response variable $y$,
+First, we compute the Bayes factor model comparison via marginal likelihoods. To do that, we need to specify the likelihood for the response variable $y$,
 
 ```{r}
 model_likelihood <- 
@@ -228,12 +228,12 @@ $\text{BF}_{10} = \frac{p(\mathcal{M}_{1} \mid \text{data})}{p(\mathcal{M}_{0} \
 we can also estimate the Bayes factor via the inclusion indicator.
 
 
-Now, we compare the two models using the spike and slab prior. We have already specified the likelihood, data lists, prior distributions for the nuisance parameters, and even the formulas (now we need only formula for the full model) in the previous sections. Therefore, we proceed directly by specifying the spike and slab prior distribution for the predictor. We use the `prior_spike_and_slab` which follows similar notation as the `prior` function. We need to specify the distribution, the parameters (and we could also set truncation if needed) corresponding to the alternative hypothesis. Furthermore, we need to specify the prior distribution for the inclusion via the `prior_inclusion` argument. Here, we use a $\text{Beta}(1, 1)$ prior which sets the mean prior inclusion probability to 1/2.
+Now, we compare the two models using the spike and slab prior. We have already specified the likelihood, data lists, prior distributions for the nuisance parameters, and even the formulas (now we need only formula for the full model) in the previous sections. Therefore, we proceed directly by specifying the spike and slab prior distribution for the predictor. We use the `prior_spike_and_slab` which follows similar notation as the `prior` function. We need to specify the distribution, the parameters (and we could also set truncation if needed) corresponding to the alternative hypothesis. Furthermore, we need to specify the prior distribution for the inclusion via the `prior_inclusion` argument. Here, we use a $\text{Spike}(0.5)$ prior which sets the prior inclusion probability to 1/2.
 
 ```{r} 
 prior_beta_spike_and_slab <- prior_spike_and_slab(
   distribution    = "normal", parameters = list(mean = 0, sd = 0.5),
-  prior_inclusion = prior(distribution = "beta", parameters = list(alpha = 1, beta = 1)) 
+  prior_inclusion = prior(distribution = "spike", parameters = list(location = 0.5)) 
 )
 
 ```
@@ -264,7 +264,7 @@ The estimates are essentially identical to the estimates from the previous model
 JAGS_inference_table(MS)
 ```
 
-As before, we find absence of evidence for either of the hypotheses, $\text{BF}_{10} = 1.174$, with posterior probability of $P(\mathcal{M}_{1} \mid \text{data}) = 0.540$.
+As before, we find absence of evidence for either of the hypotheses, $\text{BF}_{10} = 1.157$, with posterior probability of $P(\mathcal{M}_{1} \mid \text{data}) = 0.536$.
 
 
 ### References

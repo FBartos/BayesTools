@@ -586,6 +586,10 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       runjags_summary <- runjags_summary[rownames(runjags_summary) != paste0(par, "_indicator"),,drop=FALSE]
       model_samples   <- model_samples[colnames(runjags_summary) != paste0(par, "_indicator"),,drop=FALSE]
 
+      # remove the latent variable
+      runjags_summary <- runjags_summary[rownames(runjags_summary) != paste0(par, "_variable"),,drop=FALSE]
+      model_samples   <- model_samples[colnames(runjags_summary) != paste0(par, "_variable"),,drop=FALSE]
+
       # modify the parameter list
       prior_list[[par]] <- prior_list[[par]]$variable
     }
