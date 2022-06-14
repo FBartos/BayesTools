@@ -316,7 +316,7 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
   }
   if(any(predictors_type == "continuous")){
     for(continuous in names(predictors_type[predictors_type == "continuous"])){
-      if(!(is.prior.simple(prior_list[[continuous]]) || is.prior.spike_and_slab(prior_list[[continuous]])) || is.prior.factor(prior_list[[continuous]])){
+      if(!(is.prior.simple(prior_list_formula[[continuous]]) || is.prior.spike_and_slab(prior_list_formula[[continuous]])) || is.prior.factor(prior_list_formula[[continuous]])){
         stop(paste0("Unsupported prior distribution defined for '", continuous, "' continuous variable. See '?prior' for details."))
       }
     }

@@ -251,6 +251,8 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
       stop("lb' and 'ub' must be numeric vectors.")
   }
 
+  if(any(sapply(prior_list, is.prior.spike_and_slab)))
+    stop("Marginal likelihood computation for spike and slab priors is not implemented.")
 
   # get information about the specified parameters
   parameters_names <- .JAGS_bridgesampling_posterior_info(prior_list)
