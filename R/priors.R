@@ -335,12 +335,14 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
 #' either zero or one.
 #'
 #' @param prior_inclusion a prior distribution for the inclusion probability variable. The
-#' only supported option is \code{distribution = "beta"} with the probability
-#' of success corresponding to the prior probability of including the specified predictor.
+#' inclusion probability must be bounded within 0 and 1 range. Defaults to
+#' \code{prior("spike", parameters = list(location = 0.5))} which corresponds to 1/2
+#' prior probability of including the slab prior distribution (but other prior
+#' distributions, like beta etc can be also specified).
 #'
 #'
 #' @examples
-#' # create an orthonormal prior distribution
+#' # create a spike and slab prior distribution
 #' p1 <- prior_spike_and_slab(
 #'    distribution = "normal", parameters = list(mean = 0, sd = 1),
 #'    prior_inclusion = prior(distribution = "beta", parameters = list(alpha = 1, beta = 1))
@@ -352,14 +354,14 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
 #' @seealso [prior()]
 #' @export
 prior_spike_and_slab <- function(distribution, parameters, truncation = list(lower = -Inf, upper = Inf),
-                                 prior_inclusion = prior(distribution = "beta", parameters = list(alpha = 1, beta = 1)),
+                                 prior_inclusion = prior(distribution = "spike", parameters = list(location = 0.5)),
                                  prior_weights = 1){
 
   if(!is.prior(prior_inclusion))
     stop("'prior_inclusion' must be a prior distribution")
   if(is.prior.point(prior_inclusion) && (prior_inclusion$parameters[["location"]] < 0 | prior_inclusion$parameters[["location"]] > 1))
     stop("The probability parameter of 'prior_inclusion' must be within 0 and 1.")
-  if(is.prior.point(prior_inclusion) && (prior_inclusion$truncation[["lower"]] < 0 | prior_inclusion$truncation[["upper"]] > 1))
+  if(!is.prior.point(prior_inclusion) && (prior_inclusion$truncation[["lower"]] < 0 | prior_inclusion$truncation[["upper"]] > 1))
     stop("The range of the probability parameter (set via the 'truncation' argument) of 'prior_inclusion' must be within 0 and 1.")
 
   output <- list(

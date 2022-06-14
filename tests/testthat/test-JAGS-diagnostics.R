@@ -179,7 +179,7 @@ test_that("JAGS diagnostics work (spike and slab)", {
   formula_prior_list <- list(
     mu    = list(
       "intercept"   = prior("normal", list(0, 5)),
-      "x_cont"      = prior_spike_and_slab("normal", list(0, 1))
+      "x_cont"      = prior_spike_and_slab("normal", list(0, 1), prior_inclusion = prior("beta", list(1,1)))
     )
   )
   prior_list <- list(

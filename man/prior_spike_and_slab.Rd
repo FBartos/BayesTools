@@ -8,8 +8,7 @@ prior_spike_and_slab(
   distribution,
   parameters,
   truncation = list(lower = -Inf, upper = Inf),
-  prior_inclusion = prior(distribution = "beta", parameters = list(alpha = 1, beta =
-    1)),
+  prior_inclusion = prior(distribution = "spike", parameters = list(location = 0.5)),
   prior_weights = 1
 )
 }
@@ -55,8 +54,10 @@ distribution. Defaults to \code{list(lower = -Inf, upper = Inf)}.
 The truncation is automatically set to the bounds of the support.}
 
 \item{prior_inclusion}{a prior distribution for the inclusion probability variable. The
-only supported option is \code{distribution = "beta"} with the probability
-of success corresponding to the prior probability of including the specified predictor.}
+inclusion probability must be bounded within 0 and 1 range. Defaults to
+\code{prior("spike", parameters = list(location = 0.5))} which corresponds to 1/2
+prior probability of including the slab prior distribution (but other prior
+distributions, like beta etc can be also specified).}
 
 \item{prior_weights}{prior odds associated with a given distribution.
 The value is passed into the model fitting function, which creates models
@@ -76,7 +77,7 @@ a prior distribution is multiplied by an independent indicator with values
 either zero or one.
 }
 \examples{
-# create an orthonormal prior distribution
+# create a spike and slab prior distribution
 p1 <- prior_spike_and_slab(
    distribution = "normal", parameters = list(mean = 0, sd = 1),
    prior_inclusion = prior(distribution = "beta", parameters = list(alpha = 1, beta = 1))

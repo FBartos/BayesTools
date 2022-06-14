@@ -100,7 +100,7 @@ test_that("JAGS model functions work (factor)", {
 })
 
 test_that("JAGS model functions work (spike and slab)", {
-
+  skip("Marginal likelihood computation for spike and slab priors is not implemented.")
   skip_if_not_installed("rjags")
   all_priors   <- list(
     p1  = prior_spike_and_slab("normal",   list(0, 1), prior_inclusion = prior("beta", list(1, 1))),
