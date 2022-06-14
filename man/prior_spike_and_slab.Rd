@@ -5,55 +5,15 @@
 \title{Creates a spike and slab prior distribution}
 \usage{
 prior_spike_and_slab(
-  distribution,
-  parameters,
-  truncation = list(lower = -Inf, upper = Inf),
+  prior_parameter,
   prior_inclusion = prior(distribution = "spike", parameters = list(location = 0.5)),
   prior_weights = 1
 )
 }
 \arguments{
-\item{distribution}{name of the prior distribution. The
-possible options are
-\describe{
-\item{\code{"point"}}{for a point density characterized by a
-\code{location} parameter.}
-\item{\code{"normal"}}{for a normal distribution characterized
-by a \code{mean} and \code{sd} parameters.}
-\item{\code{"lognormal"}}{for a lognormal distribution characterized
-by a \code{meanlog} and \code{sdlog} parameters.}
-\item{\code{"cauchy"}}{for a Cauchy distribution characterized
-by a \code{location} and \code{scale} parameters. Internally
-converted into a generalized t-distribution with \code{df = 1}.}
-\item{\code{"t"}}{for a generalized t-distribution characterized
-by a \code{location}, \code{scale}, and \code{df} parameters.}
-\item{\code{"gamma"}}{for a gamma distribution characterized
-by either \code{shape} and \code{rate}, or \code{shape} and
-\code{scale} parameters. The later is internally converted to
-the \code{shape} and \code{rate} parametrization}
-\item{\code{"invgamma"}}{for an inverse-gamma distribution
-characterized by a \code{shape} and \code{scale} parameters. The
-JAGS part uses a 1/gamma distribution with a shape and rate
-parameter.}
-\item{\code{"beta"}}{for a beta distribution
-characterized by an \code{alpha} and \code{beta} parameters.}
-\item{\code{"exp"}}{for an exponential distribution
-characterized by either \code{rate} or \code{scale}
-parameter. The later is internally converted to
-\code{rate}.}
-\item{\code{"uniform"}}{for a uniform distribution defined on a
-range from \code{a} to \code{b}}
-}}
+\item{prior_parameter}{a prior distribution for the parameter}
 
-\item{parameters}{list of appropriate parameters for a given
-\code{distribution}.}
-
-\item{truncation}{list with two elements, \code{lower} and
-\code{upper}, that define the lower and upper truncation of the
-distribution. Defaults to \code{list(lower = -Inf, upper = Inf)}.
-The truncation is automatically set to the bounds of the support.}
-
-\item{prior_inclusion}{a prior distribution for the inclusion probability variable. The
+\item{prior_inclusion}{a prior distribution for the inclusion probability. The
 inclusion probability must be bounded within 0 and 1 range. Defaults to
 \code{prior("spike", parameters = list(location = 0.5))} which corresponds to 1/2
 prior probability of including the slab prior distribution (but other prior
@@ -79,7 +39,7 @@ either zero or one.
 \examples{
 # create a spike and slab prior distribution
 p1 <- prior_spike_and_slab(
-   distribution = "normal", parameters = list(mean = 0, sd = 1),
+   prior(distribution = "normal", parameters = list(mean = 0, sd = 1)),
    prior_inclusion = prior(distribution = "beta", parameters = list(alpha = 1, beta = 1))
 )
 

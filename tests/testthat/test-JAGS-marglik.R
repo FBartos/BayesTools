@@ -103,9 +103,9 @@ test_that("JAGS model functions work (spike and slab)", {
   skip("Marginal likelihood computation for spike and slab priors is not implemented.")
   skip_if_not_installed("rjags")
   all_priors   <- list(
-    p1  = prior_spike_and_slab("normal",   list(0, 1), prior_inclusion = prior("beta", list(1, 1))),
-    p2  = prior_spike_and_slab("gamma",    list(3, 4), prior_inclusion = prior("beta", list(5, 1))),
-    p3  = prior_spike_and_slab("invgamma", list(4, 5), prior_inclusion = prior("point", list(.3)))
+    p1  = prior_spike_and_slab(prior("normal",   list(0, 1)), prior_inclusion = prior("beta", list(1, 1))),
+    p2  = prior_spike_and_slab(prior("gamma",    list(3, 4)), prior_inclusion = prior("beta", list(5, 1))),
+    p3  = prior_spike_and_slab(prior("invgamma", list(4, 5)), prior_inclusion = prior("point", list(.3)))
   )
 
   log_posterior <- function(parameters, data){

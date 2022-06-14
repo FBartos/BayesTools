@@ -208,7 +208,7 @@ test_that("JAGS model functions work (spike and slab)", {
 
   skip_if_not_installed("rjags")
   priors       <- list(
-    "mu" = prior_spike_and_slab("normal", list(0, 1), prior_inclusion = prior("beta", list(1,1)))
+    "mu" = prior_spike_and_slab(prior("normal", list(0, 1)), prior_inclusion = prior("beta", list(1,1)))
   )
 
   for(i in 1:length(priors)){
@@ -511,7 +511,7 @@ test_that("JAGS fit function integration with formula and spike and slab works" 
   formula_prior_list1 <- list(
     mu    = list(
       "intercept"       = prior("normal", list(0, 5)),
-      "x_cont1"         = prior_spike_and_slab("normal", list(0, 1), prior_inclusion = prior("beta", list(1,1)))
+      "x_cont1"         = prior_spike_and_slab(prior("normal", list(0, 1)), prior_inclusion = prior("beta", list(1,1)))
     )
   )
   prior_list1 <- list(

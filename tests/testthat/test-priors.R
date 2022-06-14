@@ -164,7 +164,7 @@ test_that("spike and slab prior distribution works", {
 
   expect_doppelganger("prior-spike-and-slab-1",   function()test_prior(
     prior_spike_and_slab(
-    "gamma", list(2, 2), list(0, Inf),
+    prior("gamma", list(2, 2), list(0, Inf)),
     prior_inclusion = prior("beta", list(2, 1)))
   ))
 

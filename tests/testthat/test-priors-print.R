@@ -110,7 +110,7 @@ test_that("Prior print function works", {
     text(0.5, 0.5, print(p16, plot = TRUE))
   })
 
-  p17 <- prior_spike_and_slab("gamma", list(1, 2), list(0, Inf),
+  p17 <- prior_spike_and_slab(prior("gamma", list(1, 2), list(0, Inf)),
                               prior_inclusion = prior("beta", list(3, 2)))
   expect_equal(utils::capture.output(print(p17)), "Gamma(1, 2) * Beta(3, 2)")
   expect_equal(utils::capture.output(print(p17, short_name = TRUE)), "G(1, 2) * B(3, 2)")
