@@ -232,7 +232,7 @@ Now, we compare the two models using the spike and slab prior. We have already s
 
 ```{r} 
 prior_beta_spike_and_slab <- prior_spike_and_slab(
-  distribution    = "normal", parameters = list(mean = 0, sd = 0.5),
+  prior_parameter = prior(distribution = "normal", parameters = list(mean = 0, sd = 0.5)),
   prior_inclusion = prior(distribution = "spike", parameters = list(location = 0.5)) 
 )
 

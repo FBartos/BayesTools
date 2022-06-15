@@ -1,7 +1,7 @@
 ## to be version 0.2.11
 ### Features
 - adding Bernoulli prior distribution
-- adding spike and slab type of prior distributions
+- adding spike and slab type of prior distributions (without marginal likelihood computations/model-averaging capabilities)
 
 ### Fixes
 - when transformation is applied, JAGS summary tables now produce mean of the transformed variable (previous versions incorrectly returned transformation of the mean) 
