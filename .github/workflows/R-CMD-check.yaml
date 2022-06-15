@@ -127,6 +127,7 @@ jobs:
             build_args  = c("--no-build-vignettes"),
             error_on    = "warning",
             check_dir   = "check")
+        shell: Rscript {0}"
 
       - name: Upload check results
         if: failure()
