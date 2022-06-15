@@ -30,7 +30,7 @@ jobs:
 
     env:
       RSPM: ${{ matrix.config.rspm }}
-      GITHUB_PAT: ${{ secrets.GITHUBPAT }}
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_REMOTES_NO_ERRORS_FROM_WARNINGS: false
       NOT_CRAN: true
 
@@ -69,12 +69,12 @@ jobs:
           Get-Command g++ | Select-Object -ExpandProperty Definition
           mingw32-make --version
           Get-Command mingw32-make | Select-Object -ExpandProperty Definition
-          (New-Object System.Net.WebClient).DownloadFile('https://sourceforge.net/projects/mcmc-jags/files/JAGS/4.x/Windows/JAGS-4.3.0.exe', 'C:\JAGS-4.3.0.exe')
+          (New-Object System.Net.WebClient).DownloadFile('https://sourceforge.net/projects/mcmc-jags/files/JAGS/4.x/Windows/JAGS-4.3.1.exe', 'C:\JAGS-4.3.1.exe')
         shell: powershell
 
       - name: Install JAGS on Windows
         if: runner.os == 'Windows'
-        run: C:\JAGS-4.3.0.exe /S
+        run: C:\JAGS-4.3.1.exe /S
         shell: cmd
 
       - name: Install Linux system dependencies
@@ -108,7 +108,6 @@ jobs:
         env:
           _R_CHECK_CRAN_INCOMING_REMOTE_: false
         run: |
-          options(crayon.enabled = TRUE)
           rcmdcheck::rcmdcheck(
             args        = c("--no-manual", "--as-cran", "--ignore-vignettes"),
             build_args  = c("--no-build-vignettes"),
@@ -120,10 +119,9 @@ jobs:
         if: runner.os == 'Windows'
         env:
           _R_CHECK_CRAN_INCOMING_REMOTE_: false
-          JAGS_ROOT: "/c/progra~1/JAGS/JAGS-4.3.0"
+          JAGS_ROOT: "/c/progra~1/JAGS/JAGS-4.3.1"
           JAGS_MAJOR_VERSION: 4
         run: |
-          options(crayon.enabled = TRUE)
           rcmdcheck::rcmdcheck(
             args        = c("--no-manual", "--as-cran", "--ignore-vignettes"),
             build_args  = c("--no-build-vignettes"),
