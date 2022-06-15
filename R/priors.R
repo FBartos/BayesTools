@@ -996,7 +996,7 @@ rng.prior   <- function(x, n, ...){
 
   }else if(is.prior.spike_and_slab(prior)){
 
-    x <- rng(prior[["variable"]], n) * rbinom(n, size = 1, prob = rng(prior[["inclusion"]], n))
+    x <- rng(prior[["variable"]], n) * stats::rbinom(n, size = 1, prob = rng(prior[["inclusion"]], n))
 
   }
 

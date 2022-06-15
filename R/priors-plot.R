@@ -1224,8 +1224,8 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 .geom_prior.spike_and_slab   <- function(plot_data, ...){
 
   geom <- list(
-    .geom.prior.simple(plot_data[["variable"]], ...),
-    .geom.prior.point(plot_data[["inclusion"]], ...)
+    .geom_prior.simple(plot_data[["variable"]], ...),
+    .geom_prior.point(plot_data[["inclusion"]], ...)
   )
 
   return(geom)

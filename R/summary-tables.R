@@ -661,7 +661,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       # update summary
       if(anyNA(transformed_samples)){
         # remove NA's introduced by conditional models and spike & slab priors -- also removes the
-        transformed_chains  <- lapply(split(data.frame(transformed_samples), sort(rep(1:length(fit[["mcmc"]]), fit[["sample"]]))), function(x) coda::mcmc(na.omit(x)))
+        transformed_chains  <- lapply(split(data.frame(transformed_samples), sort(rep(1:length(fit[["mcmc"]]), fit[["sample"]]))), function(x) coda::mcmc(stats::na.omit(x)))
         transformed_summary <- summary(runjags::combine.mcmc(transformed_chains, collapse.chains = FALSE))
         transformed_summary <- cbind(
           Lower95 = transformed_summary$quantiles[,"2.5%"],

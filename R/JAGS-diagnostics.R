@@ -472,7 +472,7 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
     for(j in seq_along(unique(chain))){
 
       temp_x  <- 0:lags
-      temp_y  <- stats::acf(plot_data[chain == j,i], lag.max = lags, plot = FALSE, na.action = na.pass)$acf[, , 1L]
+      temp_y  <- stats::acf(plot_data[chain == j,i], lag.max = lags, plot = FALSE, na.action = stats::na.pass)$acf[, , 1L]
 
 
       temp_autocor <- list(
