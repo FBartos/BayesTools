@@ -410,10 +410,14 @@ ensemble_diagnostics_table <- function(models, parameters, title = NULL, footnot
 #' posterior probability \code{prior_prob} and \code{post_prob},
 #' and model inclusion Bayes factor \code{inclusion_BF}
 #' @param fit runjags model fit
+#' @param conditional summarizes estimates conditional on being included
+#' in the model for spike and slab priors. Defaults to \code{FALSE}.
 #' @param transformations named list of transformations to be applied
 #' to specific parameters
 #' @param model_description named list with additional description
 #' to be added to the table
+#' @param remove_inclusion whether estimates of the inclusion probabilities
+#' should be excluded from the summary table. Defaults to \code{FALSE}.
 #' @inheritParams BayesTools_ensemble_tables
 #'
 #'
@@ -423,9 +427,14 @@ ensemble_diagnostics_table <- function(models, parameters, title = NULL, footnot
 #' returns an empty estimates table. All of the tables are objects of
 #' class 'BayesTools_table'.
 #'
+#' @export JAGS_summary_table
+#' @export JAGS_estimates_table
+#' @export JAGS_inference_table
 #' @export model_summary_table
 #' @export runjags_estimates_table
+#' @export runjags_inference_table
 #' @export runjags_estimates_empty_table
+#' @export runjags_inference_empty_table
 #' @name BayesTools_model_tables
 #'
 #' @seealso [BayesTools_ensemble_tables]
@@ -477,7 +486,7 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
       next
     }else if(is.prior.weightfunction(prior_list[[i]]) | is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
       temp_prior <- print(prior_list[[i]], silent = TRUE, short_name = short_name)
-    }else if(is.prior.simple(prior_list[[i]]) | is.prior.vector(prior_list[[i]]) | is.prior.factor(prior_list[[i]])){
+    }else if(is.prior.simple(prior_list[[i]]) | is.prior.vector(prior_list[[i]]) | is.prior.factor(prior_list[[i]]) | is.prior.spike_and_slab(prior_list[[i]])){
       temp_prior <- paste0(names(prior_list)[i], " ~ " , print(prior_list[[i]], silent = TRUE, short_name = short_name))
     }else if(is.prior.point(prior_list[[i]])){
       temp_prior <- paste0(names(prior_list)[i], " = " , print(prior_list[[i]], silent = TRUE, short_name = short_name))
@@ -522,7 +531,7 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
 }
 
 #' @rdname BayesTools_model_tables
-runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, footnotes = NULL, warnings = NULL, remove_spike_0 = TRUE, transform_orthonormal = FALSE, formula_prefix = TRUE){
+runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, footnotes = NULL, warnings = NULL, conditional = FALSE, remove_spike_0 = TRUE, transform_orthonormal = FALSE, formula_prefix = TRUE, remove_inclusion = FALSE){
 
   # most of the code is shared with .diagnostics_plot_data function (keep them in sync on update)
 
@@ -542,6 +551,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
   check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
   check_bool(remove_spike_0, "remove_spike_0")
+  check_bool(conditional, "conditional")
   check_bool(transform_orthonormal, "transform_orthonormal")
   check_bool(formula_prefix, "formula_prefix")
 
@@ -555,12 +565,65 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     runjags_summary[,"Median"] <- NA
   }
 
+  # simplify spike and slab priors to simple priors -- the samples and summary can be dealth with as any other prior
+  for(par in names(prior_list)){
+    if(is.prior.spike_and_slab(prior_list[[par]])){
+
+      # prepare parameter names
+      if(is.prior.factor(prior_list[[par]][["variable"]])){
+        if((attr(prior_list[[par]][["variable"]], "levels") - 1) == 1){
+          par_names <- par
+        }else{
+          par_names <- paste0(par, "[", 1:(attr(prior_list[[par]][["variable"]], "levels") - 1), "]")
+        }
+      }else{
+        par_names <- par
+      }
+
+      # change the samples between conditional/averaged based on the preferences
+      if(conditional){
+
+        # set the spike samples to NA
+        model_samples[
+          model_samples[,colnames(model_samples) == paste0(par, "_indicator")] == 0,
+          colnames(model_samples) %in% par_names] <- NA
+
+        # recompute the summaries
+        runjags_summary[par_names, "Mean"]    <- mean(model_samples[,par_names], na.rm = TRUE)
+        runjags_summary[par_names, "Median"]  <- stats::median(model_samples[,par_names], na.rm = TRUE)
+        runjags_summary[par_names, "SD"]      <- sd(model_samples[,par_names], na.rm = TRUE)
+        runjags_summary[par_names, "Lower95"] <- stats::quantile(model_samples[,par_names], .025, na.rm = TRUE)
+        runjags_summary[par_names, "Upper95"] <- stats::quantile(model_samples[,par_names], .975, na.rm = TRUE)
+      }
+
+      # remove the indicator
+      runjags_summary <- runjags_summary[rownames(runjags_summary) != paste0(par, "_indicator"),,drop=FALSE]
+      model_samples   <- model_samples[colnames(runjags_summary) != paste0(par, "_indicator"),,drop=FALSE]
+
+      # remove the latent variable
+      runjags_summary <- runjags_summary[!rownames(runjags_summary) %in% gsub(par, paste0(par, "_variable"), par_names),,drop=FALSE]
+      model_samples   <- model_samples[!colnames(runjags_summary) %in% gsub(par, paste0(par, "_variable"), par_names),,drop=FALSE]
+
+      # remove/rename the inclusions probabilities
+      if(remove_inclusion){
+        runjags_summary <- runjags_summary[rownames(runjags_summary) != paste0(par, "_inclusion"),,drop=FALSE]
+        model_samples   <- model_samples[colnames(runjags_summary) != paste0(par, "_inclusion"),,drop=FALSE]
+      }else{
+        rownames(runjags_summary)[rownames(runjags_summary) == paste0(par, "_inclusion")] <- paste0(par, " (inclusion)")
+        colnames(model_samples)[colnames(model_samples) == paste0(par, "_inclusion")] <- paste0(par, " (inclusion)")
+      }
+
+      # modify the parameter list
+      prior_list[[par]] <- prior_list[[par]]$variable
+    }
+  }
+
   # apply transformations
   if(!is.null(transformations)){
     for(par in names(transformations)){
       model_samples[,par] <- do.call(transformations[[par]][["fun"]], c(list(model_samples[,par]), transformations[[par]][["arg"]]))
-      runjags_summary[par, "Mean"]    <- do.call(transformations[[par]][["fun"]], c(list(runjags_summary[par, "Mean"]), transformations[[par]][["arg"]]))
-      runjags_summary[par, "SD"]      <- sd(model_samples[,par])
+      runjags_summary[par, "Mean"]    <- mean(model_samples[,par], na.rm = TRUE)
+      runjags_summary[par, "SD"]      <- sd(model_samples[,par], na.rm = TRUE)
       runjags_summary[par, "Median"]  <- do.call(transformations[[par]][["fun"]], c(list(runjags_summary[par, "Median"]), transformations[[par]][["arg"]]))
       runjags_summary[par, "MCerr"]   <- do.call(transformations[[par]][["fun"]], c(list(runjags_summary[par, "MCerr"]), transformations[[par]][["arg"]]))
       runjags_summary[par, "MC.ofSD"] <- runjags_summary[par, "MCerr"] / runjags_summary[par, "SD"]
@@ -596,21 +659,41 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       model_samples <- cbind(model_samples, transformed_samples)
 
       # update summary
-      transformed_chains  <- lapply(split(data.frame(transformed_samples), sort(rep(1:length(fit[["mcmc"]]), fit[["sample"]]))), coda::mcmc)
-      transformed_summary <- summary(runjags::combine.mcmc(transformed_chains, collapse.chains = FALSE))
-      transformed_summary <- cbind(
-        Lower95 = transformed_summary$quantiles[,"2.5%"],
-        Median  = transformed_summary$quantiles[,"50%"],
-        Upper95 = transformed_summary$quantiles[,"97.5%"],
-        Mean    = transformed_summary$statistics[,"Mean"],
-        SD      = transformed_summary$statistics[,"SD"],
-        Mode    = NA,
-        MCerr   = transformed_summary$statistics[,"Naive SE"],
-        MC.ofSD = transformed_summary$statistics[,"Naive SE"] / transformed_summary$statistics[,"SD"],
-        SSeff   = unname(coda::effectiveSize(coda::as.mcmc(transformed_samples))),
-        AC.10   = coda::autocorr.diag(coda::as.mcmc(transformed_samples), lags = 10)[1,],
-        psrf    = if(length(fit$mcmc)) unname(coda::gelman.diag(transformed_chains, multivariate = FALSE)$psrf[,"Point est."]) else NA
-      )
+      if(anyNA(transformed_samples)){
+        # remove NA's introduced by conditional models and spike & slab priors -- also removes the
+        transformed_chains  <- lapply(split(data.frame(transformed_samples), sort(rep(1:length(fit[["mcmc"]]), fit[["sample"]]))), function(x) coda::mcmc(stats::na.omit(x)))
+        transformed_summary <- summary(runjags::combine.mcmc(transformed_chains, collapse.chains = FALSE))
+        transformed_summary <- cbind(
+          Lower95 = transformed_summary$quantiles[,"2.5%"],
+          Median  = transformed_summary$quantiles[,"50%"],
+          Upper95 = transformed_summary$quantiles[,"97.5%"],
+          Mean    = transformed_summary$statistics[,"Mean"],
+          SD      = transformed_summary$statistics[,"SD"],
+          Mode    = NA,
+          MCerr   = NA,
+          MC.ofSD = NA,
+          SSeff   = NA,
+          AC.10   = NA,
+          psrf    = NA
+        )
+      }else{
+        transformed_chains  <- lapply(split(data.frame(transformed_samples), sort(rep(1:length(fit[["mcmc"]]), fit[["sample"]]))), coda::mcmc)
+        transformed_summary <- summary(runjags::combine.mcmc(transformed_chains, collapse.chains = FALSE))
+        transformed_summary <- cbind(
+          Lower95 = transformed_summary$quantiles[,"2.5%"],
+          Median  = transformed_summary$quantiles[,"50%"],
+          Upper95 = transformed_summary$quantiles[,"97.5%"],
+          Mean    = transformed_summary$statistics[,"Mean"],
+          SD      = transformed_summary$statistics[,"SD"],
+          Mode    = NA,
+          MCerr   = transformed_summary$statistics[,"Naive SE"],
+          MC.ofSD = transformed_summary$statistics[,"Naive SE"] / transformed_summary$statistics[,"SD"],
+          SSeff   = unname(coda::effectiveSize(coda::as.mcmc(transformed_samples))),
+          AC.10   = coda::autocorr.diag(coda::as.mcmc(transformed_samples), lags = 10)[1,],
+          psrf    = if(length(fit$mcmc)) unname(coda::gelman.diag(transformed_chains, multivariate = FALSE)$psrf[,"Point est."]) else NA
+        )
+      }
+
       rownames(transformed_summary) <- transformed_names
 
       par_index       <- which.max(rownames(runjags_summary) %in% par_names)
@@ -625,14 +708,14 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 
   # change HPD to quantile intervals
   for(par in rownames(runjags_summary)){
-    runjags_summary[par, "Lower95"] <- stats::quantile(model_samples[,par], .025)
-    runjags_summary[par, "Upper95"] <- stats::quantile(model_samples[,par], .975)
+    runjags_summary[par, "Lower95"] <- stats::quantile(model_samples[,par], .025, na.rm = TRUE)
+    runjags_summary[par, "Upper95"] <- stats::quantile(model_samples[,par], .975, na.rm = TRUE)
   }
 
   # remove un-wanted columns
   runjags_summary <- runjags_summary[,!colnames(runjags_summary) %in% c("Mode", "AC.10"),drop = FALSE]
 
-  # remove un-wanted estimates (or support values)
+  # remove un-wanted estimates (or support values) - spike and slab priors already dealt with
   for(i in seq_along(prior_list)){
     if(is.prior.weightfunction(prior_list[[i]])){
       # remove etas
@@ -711,6 +794,72 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 }
 
 #' @rdname BayesTools_model_tables
+runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnings = NULL, formula_prefix = TRUE){
+
+  # check fits
+  if(!inherits(fit, "runjags"))
+    stop("'fit' must be a runjags fit")
+  if(!inherits(fit, "BayesTools_fit"))
+    stop("'fit' must be a BayesTools fit")
+  prior_list <- attr(fit, "prior_list")
+  check_list(prior_list, "prior_list")
+  if(!all(sapply(prior_list, is.prior)))
+    stop("'prior_list' must be a list of priors.")
+  check_char(title, "title", allow_NULL = TRUE)
+  check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
+  check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
+  check_bool(formula_prefix, "formula_prefix")
+
+  # return empty table if none of the priors is spike and slab
+  if(!any(sapply(prior_list, is.prior.spike_and_slab))){
+    runjags_summary <- runjags_inference_empty_table(title = title, footnotes = footnotes, warnings = warnings)
+    return(runjags_summary)
+  }
+
+  # extract samples
+  model_samples   <- suppressWarnings(coda::as.mcmc(fit))
+  runjags_summary <- data.frame(matrix(nrow = 0, ncol = 4))
+
+  for(par in names(prior_list)){
+    if(is.prior.spike_and_slab(prior_list[[par]])){
+
+      temp_prior_prob <- mean(prior_list[[par]][["inclusion"]])
+      temp_post_prob  <- mean(model_samples[,paste0(par, "_indicator")])
+
+      runjags_summary <- rbind(runjags_summary, data.frame(
+        Parameter    = par,
+        prior_prob   = temp_prior_prob,
+        post_prob    = temp_post_prob,
+        inclusion_BF = (temp_post_prob / (1-temp_post_prob))  /  (temp_prior_prob / (1-temp_prior_prob))
+      ))
+    }
+  }
+
+  runjags_summary$Parameter <- format_parameter_names(
+    parameters         = runjags_summary$Parameter,
+    formula_parameters = unique(unlist(lapply(prior_list, attr, which = "parameter"))),
+    formula_prefix     = formula_prefix)
+
+  class(runjags_summary)             <- c("BayesTools_table", "BayesTools_runjags_summary", class(runjags_summary))
+  attr(runjags_summary, "type")      <- c("string", "prior_prob", "post_prob", "inclusion_BF")
+  attr(runjags_summary, "rownames")  <- FALSE
+  attr(runjags_summary, "title")     <- title
+  attr(runjags_summary, "footnotes") <- footnotes
+  attr(runjags_summary, "warnings")  <- warnings
+
+  return(runjags_summary)
+}
+
+#' @rdname BayesTools_model_tables
+JAGS_estimates_table <- runjags_estimates_table
+
+#' @rdname BayesTools_model_tables
+JAGS_inference_table <- runjags_inference_table
+
+#' @rdname BayesTools_model_tables
+JAGS_summary_table   <- model_summary_table
+
+#' @rdname BayesTools_model_tables
 runjags_estimates_empty_table <- function(title = NULL, footnotes = NULL, warnings = NULL){
 
   empty_table <- data.frame(matrix(nrow = 0, ncol = 9))
@@ -718,6 +867,22 @@ runjags_estimates_empty_table <- function(title = NULL, footnotes = NULL, warnin
 
   class(empty_table)             <- c("BayesTools_table", "BayesTools_runjags_summary", class(empty_table))
   attr(empty_table, "type")      <- c(rep("estimate", 5), "MCMC_error", "MCMC_SD_error", "ESS", "R_hat")
+  attr(empty_table, "rownames")  <- FALSE
+  attr(empty_table, "title")     <- title
+  attr(empty_table, "footnotes") <- footnotes
+  attr(empty_table, "warnings")  <- warnings
+
+  return(empty_table)
+}
+
+#' @rdname BayesTools_model_tables
+runjags_inference_empty_table <- function(title = NULL, footnotes = NULL, warnings = NULL){
+
+  empty_table <- data.frame(matrix(nrow = 0, ncol = 4))
+  colnames(empty_table) <- c("Parameter", "prior_prob", "post_prob", "BF")
+
+  class(empty_table)             <- c("BayesTools_table", "BayesTools_runjags_summary", class(empty_table))
+  attr(empty_table, "type")      <- c("string", "prior_prob", "post_prob", "BF")
   attr(empty_table, "rownames")  <- FALSE
   attr(empty_table, "title")     <- title
   attr(empty_table, "footnotes") <- footnotes
@@ -782,12 +947,13 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
   check_bool(logBF, "logBF")
   check_bool(BF01,  "BF01")
 
-  name <- ifelse(inclusion, "Inclusion BF", "BF")
-
   if(BF01){
     BF   <- 1/BF
     name <- ifelse(inclusion, "Exclusion BF", "1/BF")
+  }else{
+    name <- ifelse(inclusion, "Inclusion BF", "BF")
   }
+
   if(logBF){
     BF   <- log(BF)
     name <- paste0("log(", name, ")")
@@ -918,8 +1084,8 @@ add_column <- function(table, column_title, column_values, column_position = NUL
       "prior_prob"      = "Prior prob.",
       "post_prob"       = "Post. prob.",
       "marglik"         = "log(marglik)",
-      "BF"              = attr(values, "name"),
-      "inclusion_BF"    = attr(values, "name"),
+      "BF"              = if(is.null(attr(values, "name"))) "BF"           else attr(values, "name"),
+      "inclusion_BF"    = if(is.null(attr(values, "name"))) "Inclusion BF" else attr(values, "name"),
       "n_models"        = "Models",
       "ESS"             = "ESS",
       "R_hat"           = "R-hat",

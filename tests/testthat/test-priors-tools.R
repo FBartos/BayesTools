@@ -11,6 +11,10 @@ test_that("Prior handling works", {
   expect_null(BayesTools:::.check_parameter_negative(0, "par", TRUE))
   expect_error(BayesTools:::.check_parameter_negative(.01, "par", TRUE), "The 'par' must be non-positive.")
 
+  expect_error(BayesTools:::.check_parameter_range(-.01, "par", lower = 0, upper = 1, include_bounds = TRUE), "The 'par' must be higher than 0 and lower than 1.")
+  expect_error(BayesTools:::.check_parameter_range(3, "par", lower = 1, upper = 3, include_bounds = FALSE), "The 'par' must be higher or equal to than 1 and lower or equal to than 3.")
+
+
   # check different ordering of names withing lists
   expect_equal(prior("normal", list(0, 1)), prior("normal", list(0, 1), list(-Inf, Inf)))
   expect_equal(prior("normal", list(0, 1), list(0, Inf)), prior("normal", list(0, 1), list("lower" = 0)))

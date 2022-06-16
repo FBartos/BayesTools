@@ -95,6 +95,8 @@ prior <- function(distribution, parameters, truncation = list(lower = -Inf, uppe
     distribution <- "gamma"
   }else if(distribution %in% c("beta")){
     distribution <- "beta"
+  }else if(distribution %in% c("bernoulli", "bernouli", "bern")){
+    distribution <- "bernoulli"
   }else if(distribution %in% c("exp", "exponential")){
     distribution <- "exp"
   }else if(distribution %in% c("uniform", "unif")){
@@ -322,6 +324,59 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
   return(output)
 }
 
+
+#' @title Creates a spike and slab prior distribution
+#'
+#' @description \code{prior_spike_and_slab} creates a spike and slab prior
+#' distribution corresponding to the specification in
+#' \insertCite{kuo1998variable;textual}{BayesTools} (see
+#' \insertCite{ohara2009review;textual}{BayesTools} for further details). I.e.,
+#' a prior distribution is multiplied by an independent indicator with values
+#' either zero or one.
+#'
+#' @param prior_parameter a prior distribution for the parameter
+#' @param prior_inclusion a prior distribution for the inclusion probability. The
+#' inclusion probability must be bounded within 0 and 1 range. Defaults to
+#' \code{prior("spike", parameters = list(location = 0.5))} which corresponds to 1/2
+#' prior probability of including the slab prior distribution (but other prior
+#' distributions, like beta etc can be also specified).
+#'
+#'
+#' @examples
+#' # create a spike and slab prior distribution
+#' p1 <- prior_spike_and_slab(
+#'    prior(distribution = "normal", parameters = list(mean = 0, sd = 1)),
+#'    prior_inclusion = prior(distribution = "beta", parameters = list(alpha = 1, beta = 1))
+#' )
+#'
+#' @return return an object of class 'prior'.
+#'
+#' @inheritParams prior
+#' @seealso [prior()]
+#' @export
+prior_spike_and_slab <- function(prior_parameter,
+                                 prior_inclusion = prior(distribution = "spike", parameters = list(location = 0.5)),
+                                 prior_weights = 1){
+  if(!is.prior(prior_parameter))
+    stop("'prior_parameter' must be a prior distribution")
+  if(!is.prior(prior_inclusion))
+    stop("'prior_inclusion' must be a prior distribution")
+  if(is.prior.point(prior_inclusion) && (prior_inclusion$parameters[["location"]] < 0 | prior_inclusion$parameters[["location"]] > 1))
+    stop("The probability parameter of 'prior_inclusion' must be within 0 and 1.")
+  if(!is.prior.point(prior_inclusion) && (prior_inclusion$truncation[["lower"]] < 0 | prior_inclusion$truncation[["upper"]] > 1))
+    stop("The range of the probability parameter (set via the 'truncation' argument) of 'prior_inclusion' must be within 0 and 1.")
+
+  output <- list(
+    variable  = prior_parameter,
+    inclusion = prior_inclusion
+  )
+
+  class(output) <- c("prior", "prior.spike_and_slab")
+
+  return(output)
+}
+
+
 #### functions for constructing prior distributions ####
 .prior_normal    <- function(parameters, truncation){
 
@@ -520,6 +575,27 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
   output$truncation   <- truncation
 
   class(output) <- c("prior", "prior.simple")
+
+  return(output)
+}
+.prior_bernoulli <- function(parameters, truncation){
+
+  output <- list()
+
+  # check overall settings
+  parameters <- .check_and_name_parameters(parameters, "probability", "bernoulli")
+  truncation <- .check_and_set_truncation(truncation, lower = 0, upper = 1)
+
+  # check individual parameters
+  .check_parameter(parameters$probability, "probability")
+  .check_parameter_range(parameters$probability, "probability", lower = 0, upper = 1, include_bounds = TRUE)
+
+  # add the values to the output
+  output$distribution <- "bernoulli"
+  output$parameters   <- parameters
+  output$truncation   <- truncation
+
+  class(output) <- c("prior", "prior.simple", "prior.discrete")
 
   return(output)
 }
@@ -842,11 +918,17 @@ rng.prior   <- function(x, n, ...){
         "gamma"     = stats::rgamma(nn, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]]),
         "invgamma"  = extraDistr::rinvgamma(nn, alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]]),
         "beta"      = stats::rbeta(nn, shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]]),
+        "bernoulli" = stats::rbinom(nn, size = 1, prob = prior$parameters[["probability"]]),
         "exp"       = stats::rexp(nn, rate = prior$parameters[["rate"]]),
         "uniform"   = stats::runif(nn, min = prior$parameters[["a"]], max = prior$parameters[["b"]]),
         "point"     = rpoint(n, location = prior$parameters[["location"]])
       )
       x <- c(x, temp_x[temp_x >= prior$truncation[["lower"]] & temp_x <= prior$truncation[["upper"]]])
+    }
+
+    # make sure the enough samples were generated
+    if(length(x) < n){
+      x <- rng(prior, n)
     }
 
     x <- x[1:n]
@@ -912,6 +994,10 @@ rng.prior   <- function(x, n, ...){
       "two.sided.fixed" = rtwo.sided_fixed(n, omega = prior$parameters[["omega"]])
     )
 
+  }else if(is.prior.spike_and_slab(prior)){
+
+    x <- rng(prior[["variable"]], n) * stats::rbinom(n, size = 1, prob = rng(prior[["inclusion"]], n))
+
   }
 
   return(x)
@@ -941,6 +1027,7 @@ cdf.prior   <- function(x, q, ...){
       "gamma"     = stats::pgamma(q[!q_lower], shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
       "invgamma"  = extraDistr::pinvgamma(q[!q_lower], alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
       "beta"      = stats::pbeta(q[!q_lower], shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = TRUE, log.p = FALSE),
+      "bernoulli" = stats::pbinom(q[!q_lower], size = 1, prob = prior$parameters[["probability"]], lower.tail = TRUE, log.p = FALSE),
       "exp"       = stats::pexp(q[!q_lower], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
       "uniform"   = stats::punif(q[!q_lower], min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = TRUE, log.p = FALSE),
       "point"     = ppoint(q[!q_lower], location = prior$parameters[["location"]], lower.tail = TRUE, log.p = FALSE)
@@ -954,6 +1041,10 @@ cdf.prior   <- function(x, q, ...){
   }else if(is.prior.weightfunction(prior)){
 
     stop("Only marginal cdfs are implemented for prior weightfunctions.")
+
+  }else if(is.prior.spike_and_slab(prior)){
+
+    stop("No cdfs are implemented for spike and slab priors.")
 
   }
 
@@ -984,6 +1075,7 @@ ccdf.prior  <- function(x, q, ...){
       "gamma"     = stats::pgamma(q[!q_higher], shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = FALSE, log.p = FALSE),
       "invgamma"  = extraDistr::pinvgamma(q[!q_higher], alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], lower.tail = FALSE, log.p = FALSE),
       "beta"      = stats::pbeta(q[!q_higher], shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = FALSE, log.p = FALSE),
+      "bernoulli" = stats::pbinom(q[!q_higher], size = 1, prob = prior$parameters[["probability"]], lower.tail = FALSE, log.p = FALSE),
       "exp"       = stats::pexp(q[!q_higher], rate = prior$parameters[["rate"]], lower.tail = FALSE, log.p = FALSE),
       "uniform"   = stats::punif(q[!q_higher], min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = FALSE, log.p = FALSE),
       "point"     = ppoint(q[!q_higher], location = prior$parameters[["location"]], lower.tail = FALSE, log.p = FALSE)
@@ -997,6 +1089,10 @@ ccdf.prior  <- function(x, q, ...){
   }else if(is.prior.weightfunction(prior)){
 
     stop("Only marginal ccdf functions are implemented for prior weightfunctions.")
+
+  }else if(is.prior.spike_and_slab(prior)){
+
+    stop("No ccdf are implemented for spike and slab priors.")
 
   }
 
@@ -1021,6 +1117,7 @@ lpdf.prior  <- function(x, y, ...){
       "gamma"     = stats::dgamma(x, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], log = TRUE),
       "invgamma"  = extraDistr::dinvgamma(x, alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], log = TRUE),
       "beta"      = stats::dbeta(x, shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], log = TRUE),
+      "bernoulli" = stats::dbinom(x, size = 1, prob = prior$parameters[["probability"]], log = TRUE),
       "exp"       = stats::dexp(x, rate = prior$parameters[["rate"]], log = TRUE),
       "uniform"   = stats::dunif(x, min = prior$parameters[["a"]], max = prior$parameters[["b"]], log = TRUE),
       "point"     = dpoint(x, location = prior$parameters[["location"]], log = TRUE)
@@ -1054,6 +1151,10 @@ lpdf.prior  <- function(x, y, ...){
   }else if(is.prior.weightfunction(prior)){
 
     stop("Only marginal lpdf are implemented for prior weightfunctions.")
+
+  }else if(is.prior.spike_and_slab(prior)){
+
+    stop("No lpdf are implemented for spike and slab priors.")
 
   }
 
@@ -1093,6 +1194,7 @@ quant.prior <- function(x, p, ...){
         "gamma"     = stats::qgamma(p, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
         "invgamma"  = extraDistr::qinvgamma(p, alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
         "beta"      = stats::qbeta(p, shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = TRUE, log.p = FALSE),
+        "bernoulli" = stats::qbinom(p, size = 1, prob = prior$parameters[["probability"]], lower.tail = TRUE, log.p = FALSE),
         "exp"       = stats::qexp(p, rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
         "uniform"   = stats::qunif(p, min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = TRUE, log.p = FALSE),
         "point"     = qpoint(p, location = prior$parameters[["location"]], lower.tail = TRUE, log.p = FALSE)
@@ -1132,6 +1234,10 @@ quant.prior <- function(x, p, ...){
 
     stop("Only marginal quantile functions are implemented for prior weightfunctions.")
 
+  }else if(is.prior.spike_and_slab(prior)){
+
+    stop("No quantile functions are implemented for spike and slab priors.")
+
   }
 
   return(q)
@@ -1148,6 +1254,7 @@ quant.prior <- function(x, p, ...){
       "gamma"     = stats::pgamma(prior$truncation[["lower"]], shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
       "invgamma"  = extraDistr::pinvgamma(prior$truncation[["lower"]], alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
       "beta"      = stats::pbeta(prior$truncation[["lower"]], shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = TRUE, log.p = FALSE),
+      "bernoulli" = stats::pbinom(prior$truncation[["lower"]] - 1, size = 1, prob = prior$parameters[["probability"]], lower.tail = TRUE, log.p = FALSE),
       "exp"       = stats::pexp(prior$truncation[["lower"]], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
       "uniform"   = stats::punif(prior$truncation[["lower"]], min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = TRUE, log.p = FALSE),
       "point"     = ppoint(prior$truncation[["lower"]], location = prior$parameters[["location"]], lower.tail = TRUE, log.p = FALSE)
@@ -1169,6 +1276,7 @@ quant.prior <- function(x, p, ...){
       "gamma"     = stats::pgamma(prior$truncation[["upper"]], shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
       "invgamma"  = extraDistr::pinvgamma(prior$truncation[["upper"]], alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
       "beta"      = stats::pbeta(prior$truncation[["upper"]], shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = TRUE, log.p = FALSE),
+      "bernoulli" = stats::pbinom(prior$truncation[["upper"]] + 1, size = 1, prob = prior$parameters[["probability"]], lower.tail = TRUE, log.p = FALSE),
       "exp"       = stats::pexp(prior$truncation[["upper"]], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
       "uniform"   = stats::punif(prior$truncation[["upper"]], min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = TRUE, log.p = FALSE),
       "point"     = ppoint(prior$truncation[["upper"]], location = prior$parameters[["location"]], lower.tail = TRUE, log.p = FALSE)
@@ -1199,6 +1307,7 @@ quant.prior <- function(x, p, ...){
     "gamma"     = isTRUE(all.equal(prior$truncation[["lower"]], 0)) & is.infinite(prior$truncation[["upper"]]),
     "invgamma"  = isTRUE(all.equal(prior$truncation[["lower"]], 0)) & is.infinite(prior$truncation[["upper"]]),
     "beta"      = isTRUE(all.equal(prior$truncation[["lower"]], 0)) & isTRUE(all.equal(prior$truncation[["upper"]], 1)),
+    "bernoulli" = isTRUE(all.equal(prior$truncation[["lower"]], 0)) & isTRUE(all.equal(prior$truncation[["upper"]], 1)),
     "exp"       = isTRUE(all.equal(prior$truncation[["lower"]], 0)) & is.infinite(prior$truncation[["upper"]]),
     "uniform"   = TRUE,
     "point"     = TRUE,
@@ -1262,6 +1371,10 @@ mcdf.prior   <- function(x, q, ...){
       "mt"      = extraDistr::plst(q, df = prior$parameters[["df"]], mu = 0, sigma = par2)
     )
 
+  }else if(is.prior.spike_and_slab(prior)){
+
+    stop("No cdf are implemented for spike and slab priors.")
+
   }
 
   return(p)
@@ -1314,6 +1427,10 @@ mccdf.prior  <- function(x, q, ...){
       "mnormal" = stats::pnorm(q, mean = 0, sd = par2, lower.tail = FALSE),
       "mt"      = extraDistr::plst(q, df = prior$parameters[["df"]], mu = 0, sigma = par2, lower.tail = FALSE)
     )
+  }else if(is.prior.spike_and_slab(prior)){
+
+    stop("No mccdf are implemented for spike and slab priors.")
+
   }
 
   return(p)
@@ -1367,6 +1484,10 @@ mlpdf.prior  <- function(x, y, ...){
       "mnormal" = stats::dnorm(x, mean = 0, sd = par2, log = TRUE),
       "mt"      = extraDistr::dlst(x, df = prior$parameters[["df"]], mu = 0, sigma = par2, log = TRUE)
     )
+  }else if(is.prior.spike_and_slab(prior)){
+
+    stop("No lpdf are implemented for spike and slab priors.")
+
   }
 
   return(log_lik)
@@ -1433,6 +1554,10 @@ mquant.prior <- function(x, p, ...){
       "mnormal" = stats::qnorm(p, mean = 0, sd = par2),
       "mt"      = extraDistr::qlst(p, df = prior$parameters[["df"]], mu = 0, sigma = par2)
     )
+
+  }else if(is.prior.spike_and_slab(prior)){
+
+    stop("No quantile functions are implemented for spike and slab priors.")
 
   }
 
@@ -1565,6 +1690,7 @@ mean.prior   <- function(x, ...){
         "gamma"     = x$parameters[["shape"]] / x$parameters[["rate"]],
         "invgamma"  = ifelse(x$parameters[["shape"]] > 1, x$parameters[["scale"]]/(x$parameters[["shape"]] - 1), NaN),
         "beta"      = x$parameters[["alpha"]] / (x$parameters[["alpha"]] + x$parameters[["beta"]]),
+        "bernoulli" = x$parameters[["probability"]],
         "exp"       = 1 / x$parameters[["rate"]],
         "uniform"   = (x$parameters[["a"]] + x$parameters[["b"]]) / 2,
         "point"     = x$parameters[["location"]]
@@ -1613,6 +1739,10 @@ mean.prior   <- function(x, ...){
       # orthonormal prior distributions must be centered
       m <- 0
     }
+
+  }else if(is.prior.spike_and_slab(x)){
+
+    m <- mean(x[["variable"]]) * mean(x[["inclusion"]])
 
   }
 
@@ -1698,6 +1828,7 @@ var.prior   <- function(x, ...){
         "gamma"     = x$parameters[["shape"]] / x$parameters[["rate"]]^2,
         "invgamma"  = ifelse(x$parameters[["shape"]] > 2, x$parameters[["scale"]]^2 / (x$parameters[["shape"]] - 1)^2 * (x$parameters[["shape"]] - 2), NaN),
         "beta"      = (x$parameters[["alpha"]] * x$parameters[["beta"]]) / ((x$parameters[["alpha"]] + x$parameters[["beta"]])^2 * (x$parameters[["alpha"]] + x$parameters[["beta"]] + 1)),
+        "bernoulli" = (x$parameters[["probability"]] * (1 - x$parameters[["probability"]]) ),
         "exp"       = 1 / x$parameters[["rate"]]^2,
         "uniform"   = (x$parameters[["b"]] - x$parameters[["a"]])^2 / 12,
         "point"     = 0
@@ -1764,6 +1895,17 @@ var.prior   <- function(x, ...){
         "mnormal" = var.prior(x("normal", parameters = c(mean = 0, sd = par2))),
         "mt"      = var.prior(x("t",      parameters = c(location = 0, scale = par2, df = x$parameters[["df"]]))))
     }
+
+  }else if(is.prior.spike_and_slab(x)){
+
+    # the inclusion is always beta -> indicators are betabinom
+    var_inclusion <- with(x[["inclusion"]][["parameters"]], (alpha * beta * (alpha + beta + 1) ) / ( (alpha + beta)^2 * (alpha + beta + 1)  ) )
+
+
+    var <-
+      (var(x[["variable"]])  + mean(x[["variable"]])^2) *
+      (var_inclusion         + mean(x[["inclusion"]])^2) -
+      (mean(x[["variable"]])^2 * mean(x[["inclusion"]])^2)
 
   }
 

@@ -56,6 +56,8 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
     output <- .print.prior.simple(x, short_name, parameter_names, plot, digits_estimates, silent)
   }else if(is.prior.weightfunction(x)){
     output <- .print.prior.weightfunction(x, short_name, parameter_names, plot, digits_estimates, silent)
+  }else if(is.prior.spike_and_slab(x)){
+    output <- .print.prior.spike_and_slab(x, short_name, parameter_names, plot, digits_estimates, silent)
   }
 
 
@@ -99,6 +101,7 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
       "invgamma"     = "Ig",
       "point"        = "S",
       "beta"         = "B",
+      "bernoulli"    = "Br",
       "exp"          = "E",
       "uniform"      = "U",
       "mnormal"      = "mN",
@@ -116,6 +119,7 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
       "invgamma"     = "InvGamma",
       "point"        = "Spike",
       "beta"         = "Beta",
+      "bernoulli"    = "Bernoulli",
       "exp"          = "Exponential",
       "uniform"      = "Uniform",
       "mnormal"      = "mNormal",
@@ -293,6 +297,20 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
     output <- out_name
   }else{
     output <- bquote(italic(.(out_name)))
+  }
+
+  return(output)
+}
+.print.prior.spike_and_slab <- function(x, short_name, parameter_names, plot, digits_estimates, silent){
+
+  variable  <- print(x[["variable"]],  short_name, parameter_names, plot, digits_estimates, silent = TRUE)
+  inclusion <- print(x[["inclusion"]], short_name, parameter_names, plot, digits_estimates, silent = TRUE)
+
+  ### combine the results together
+  if(!plot){
+    output <- paste0(variable, " * ", inclusion)
+  }else{
+    output <- bquote(.(variable) ~ "*" ~ .(inclusion))
   }
 
   return(output)

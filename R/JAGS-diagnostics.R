@@ -221,6 +221,20 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
 
 
   # extract the relevant parameters
+  if(is.prior.spike_and_slab(prior_list[[parameter]])){
+
+    if(sum(model_samples[,colnames(model_samples) == paste0(parameter, "_indicator")] != 0) < 10)
+      stop("The parameter with a spike and slab prior did not result in enough samples under the slab for producing a diagnostic figure.")
+
+    # change the samples between conditional
+    model_samples[
+      model_samples[,colnames(model_samples) == paste0(parameter, "_indicator")] == 0,
+      colnames(model_samples) == parameter] <- NA
+
+    # modify the parameter list
+    prior_list[[parameter]] <- prior_list[[parameter]]$variable
+  }
+
   if(is.prior.factor(prior_list[[parameter]])){
     if(attr(prior_list[[parameter]], "levels") > 2){
       model_samples <- model_samples[,paste0(parameter, "[", 1:(attr(prior_list[[parameter]], "levels")-1), "]"),drop = FALSE]
@@ -339,14 +353,14 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
   for(i in 1:ncol(plot_data)){
 
     if(is.null(xlim)){
-      x_range <- range(plot_data[,i])
+      x_range <- range(plot_data[,i], na.rm = TRUE)
     }else{
       x_range <- xlim
     }
 
     for(j in seq_along(unique(chain))){
 
-      temp_args    <- list(x = plot_data[chain == j,i], n = n_points, from = x_range[1], to = x_range[2])
+      temp_args    <- list(x = plot_data[chain == j,i], n = n_points, from = x_range[1], to = x_range[2], na.rm = TRUE)
       temp_density <- do.call(stats::density, temp_args)
 
       x_den    <- temp_density$x
@@ -404,7 +418,7 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
   for(i in 1:ncol(plot_data)){
 
     if(is.null(ylim)){
-      y_range <- range(plot_data[,i])
+      y_range <- range(plot_data[,i], na.rm = TRUE)
     }else{
       y_range <- ylim
     }
@@ -458,7 +472,7 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
     for(j in seq_along(unique(chain))){
 
       temp_x  <- 0:lags
-      temp_y  <- stats::acf(plot_data[chain == j,i], lag.max = lags, plot = FALSE)$acf[, , 1L]
+      temp_y  <- stats::acf(plot_data[chain == j,i], lag.max = lags, plot = FALSE, na.action = stats::na.pass)$acf[, , 1L]
 
 
       temp_autocor <- list(

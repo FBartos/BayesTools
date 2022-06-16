@@ -11,13 +11,23 @@ test_prior          <- function(prior, skip_moments = FALSE){
   set.seed(1)
   # tests rng and print function (for plot)
   samples <- rng(prior, 100000)
-  hist(samples, main = print(prior, plot = T), breaks = 50, freq = FALSE)
+  if(is.prior.discrete(prior)){
+    barplot(table(samples)/length(samples), main = print(prior, plot = T), width = 1/(max(samples)+1), space = 0, xlim = c(-0.25, max(samples)+0.25))
+  }else if(is.prior.spike_and_slab(prior)){
+    xh         <- hist(samples[samples != 0], breaks = 50, plot = FALSE)
+    xh$density <- xh$density * mean(samples != 0)
+    plot(xh, main = print(prior, plot = T), freq = FALSE)
+  }else{
+    hist(samples, main = print(prior, plot = T), breaks = 50, freq = FALSE)
+  }
   # tests density function
   lines(prior, individual = TRUE)
   # tests quantile function
-  abline(v = quant(prior, 0.5), col = "blue", lwd = 2)
+  if(!is.prior.spike_and_slab(prior)){
+    abline(v = quant(prior, 0.5), col = "blue", lwd = 2)
+  }
   # tests that pdf(q(x)) == x
-  if(prior$distribution != "point"){
+  if(!is.prior.point(prior) & !is.prior.discrete(prior) & !is.prior.spike_and_slab(prior)){
     expect_equal(.25, cdf(prior, quant(prior, 0.25)), tolerance = 1e-5)
   }
   # test mean and sd functions
@@ -130,6 +140,13 @@ test_that("Beta prior distribution works", {
 
 })
 
+test_that("Beta prior distribution works", {
+
+  expect_doppelganger("prior-bernoulli-1", function()test_prior(prior("bernoulli", list(.50))))
+  expect_doppelganger("prior-bernoulli-2", function()test_prior(prior("bernoulli", list(.66))))
+
+})
+
 test_that("Uniform prior distribution works", {
 
   expect_doppelganger("prior-uniform-1", function()test_prior(prior("uniform", list(0, 1))))
@@ -140,6 +157,16 @@ test_that("Uniform prior distribution works", {
 test_that("Spike prior distribution works", {
 
   expect_doppelganger("prior-point-1", function()test_prior(prior("point", list(1))))
+
+})
+
+test_that("spike and slab prior distribution works", {
+
+  expect_doppelganger("prior-spike-and-slab-1",   function()test_prior(
+    prior_spike_and_slab(
+    prior("gamma", list(2, 2), list(0, Inf)),
+    prior_inclusion = prior("beta", list(2, 1)))
+  ))
 
 })
 

@@ -109,6 +109,9 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     all_prior_list <- prior_list
   }
 
+  if(any(sapply(all_prior_list, is.prior.discrete)))
+    stop("Discrete or spike and slab priors are not supported with bridgesampling.")
+
   ### extract relevant variables and upper and lower bound
   bridgesampling_posterior <- JAGS_bridgesampling_posterior(posterior = posterior, prior_list = all_prior_list, add_parameters = add_parameters, add_bounds = add_bounds)
   if(ncol(bridgesampling_posterior) == 0)
@@ -248,6 +251,8 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
       stop("lb' and 'ub' must be numeric vectors.")
   }
 
+  if(any(sapply(prior_list, is.prior.spike_and_slab)))
+    stop("Marginal likelihood computation for spike and slab priors is not implemented.")
 
   # get information about the specified parameters
   parameters_names <- .JAGS_bridgesampling_posterior_info(prior_list)
@@ -302,6 +307,10 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
 
       add_parameter <- .JAGS_bridgesampling_posterior_info.PP(prior_list[[i]])
 
+    }else if(is.prior.spike_and_slab(prior_list[[i]])){
+
+      add_parameter <- .JAGS_bridgesampling_posterior_info.spike_and_slab(prior_list[[i]], names(prior_list)[i])
+
     }else if(is.prior.factor(prior_list[[i]])){
 
       add_parameter <- .JAGS_bridgesampling_posterior_info.factor(prior_list[[i]], names(prior_list)[i])
@@ -333,8 +342,7 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
   .check_prior(prior)
   if(!is.prior.simple(prior))
     stop("improper prior provided")
-  if(!is.character(parameter_name) | length(parameter_name) != 1)
-    stop("'parameter_name' must be a character vector of length 1.")
+  check_char(parameter_name, "parameter_name")
 
 
   if(prior[["distribution"]] == "invgamma"){
@@ -359,8 +367,7 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
   .check_prior(prior)
   if(!is.prior.vector(prior))
     stop("improper prior provided")
-  if(!is.character(parameter_name) | length(parameter_name) != 1)
-    stop("'parameter_name' must be a character vector of length 1.")
+  check_char(parameter_name, "parameter_name")
 
   if(prior$parameters[["K"]] == 1){
     parameter <- parameter_name
@@ -381,8 +388,7 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
   .check_prior(prior)
   if(!is.prior.factor(prior))
     stop("improper prior provided")
-  if(!is.character(parameter_name) | length(parameter_name) != 1)
-    stop("'parameter_name' must be a character vector of length 1.")
+  check_char(parameter_name, "parameter_name")
 
   if(is.prior.point(prior) | is.prior.dummy(prior)){
 
@@ -464,6 +470,33 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
 
   return(parameter)
 }
+.JAGS_bridgesampling_posterior_info.spike_and_slab <- function(prior, parameter_name){
+
+  .check_prior(prior)
+  if(!is.prior.spike_and_slab(prior))
+    stop("improper prior provided")
+  check_char(parameter_name, "parameter_name")
+
+  if(!is.prior.point(prior[["inclusion"]])){
+
+    parameter_variable  <- .JAGS_bridgesampling_posterior_info.simple(prior[["variable"]],  paste0(parameter_name, "_variable"))
+    parameter_inclusion <- .JAGS_bridgesampling_posterior_info.simple(prior[["inclusion"]], paste0(parameter_name, "_inclusion"))
+
+    parameter <- c(parameter_variable, parameter_inclusion)
+
+    attr(parameter, "lb") <- c(attr(parameter_variable, "lb"), attr(parameter_inclusion, "lb"))
+    attr(parameter, "ub") <- c(attr(parameter_variable, "ub"), attr(parameter_inclusion, "ub"))
+
+    names(attr(parameter, "lb")) <- c(names(attr(parameter_variable, "lb")), names(attr(parameter_inclusion, "lb")))
+    names(attr(parameter, "ub")) <- c(names(attr(parameter_variable, "ub")), names(attr(parameter_inclusion, "ub")))
+
+  }else{
+    parameter  <- .JAGS_bridgesampling_posterior_info.simple(prior[["variable"]],  paste0(parameter_name, "_variable"))
+  }
+
+
+  return(parameter)
+}
 
 #' @title Compute marginal likelihood for 'JAGS' priors
 #'
@@ -510,6 +543,10 @@ JAGS_marglik_priors                <- function(samples, prior_list){
 
       marglik <- marglik + .JAGS_marglik_priors.PP(samples, prior_list[[i]])
 
+    }else if(is.prior.spike_and_slab(prior_list[[i]])){
+
+      marglik <- marglik + .JAGS_marglik_priors.spike_and_slab(samples, prior_list[[i]], names(prior_list)[i])
+
     }else if(is.prior.factor(prior_list[[i]])){
 
       marglik <- marglik + .JAGS_marglik_priors.factor(samples, prior_list[[i]], names(prior_list)[i])
@@ -534,8 +571,7 @@ JAGS_marglik_priors                <- function(samples, prior_list){
   .check_prior(prior)
   if(!is.prior.simple(prior))
     stop("improper prior provided")
-  if(!is.character(parameter_name) | length(parameter_name) != 1)
-    stop("'parameter_name' must be a character vector of length 1.")
+  check_char(parameter_name, "parameter_name")
 
   if(prior[["distribution"]] == "invgamma"){
 
@@ -562,8 +598,7 @@ JAGS_marglik_priors                <- function(samples, prior_list){
   .check_prior(prior)
   if(!is.prior.vector(prior))
     stop("improper prior provided")
-  if(!is.character(parameter_name) | length(parameter_name) != 1)
-    stop("'parameter_name' must be a character vector of length 1.")
+  check_char(parameter_name, "parameter_name")
 
   if(prior$parameters[["K"]] == 1){
     marglik <- lpdf(prior, samples[[ parameter_name ]])
@@ -578,8 +613,7 @@ JAGS_marglik_priors                <- function(samples, prior_list){
   .check_prior(prior)
   if(!is.prior.factor(prior))
     stop("improper prior provided")
-  if(!is.character(parameter_name) | length(parameter_name) != 1)
-    stop("'parameter_name' must be a character vector of length 1.")
+  check_char(parameter_name, "parameter_name")
 
   if(is.prior.point(prior) | is.prior.dummy(prior)){
 
@@ -637,6 +671,24 @@ JAGS_marglik_priors                <- function(samples, prior_list){
       sum(stats::dgamma(samples[ paste0("eta1[",1:length(prior$parameters[["alpha1"]]),"]") ], shape = prior$parameters[["alpha1"]], rate = 1, log = TRUE)) +
       sum(stats::dgamma(samples[ paste0("eta2[",1:length(prior$parameters[["alpha2"]]),"]") ], shape = prior$parameters[["alpha2"]], rate = 1, log = TRUE))
 
+  }
+
+  return(marglik)
+}
+.JAGS_marglik_priors.spike_and_slab <- function(samples, prior, parameter_name){
+
+  .check_prior(prior)
+  if(!is.prior.spike_and_slab(prior))
+    stop("improper prior provided")
+  check_char(parameter_name, "parameter_name")
+
+  marglik <- 0
+  if(!is.prior.point(prior[["inclusion"]])){
+    marglik <- marglik + .JAGS_marglik_priors.simple(samples, prior[["inclusion"]], paste0(parameter_name, "_inclusion"))
+  }
+
+  if(samples[[ paste0(if(prior[["variable"]][["distribution"]] == "invgamma") "inv_" else "", parameter_name, "_variable") ]] != 0){
+    marglik <- marglik + .JAGS_marglik_priors.simple(samples, prior[["variable"]], paste0(parameter_name, "_variable"))
   }
 
   return(marglik)
@@ -700,6 +752,10 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
       parameters <- c(parameters, .JAGS_marglik_parameters.PP(samples, prior_list[[i]]))
 
+    }else if(is.prior.spike_and_slab(prior_list[[i]])){
+
+      parameters <- c(parameters, .JAGS_marglik_parameters.spike_and_slab(samples, prior_list[[i]], names(prior_list)[i]))
+
     }else if(is.prior.factor(prior_list[[i]])){
 
       parameters <- c(parameters, .JAGS_marglik_parameters.factor(samples, prior_list[[i]], names(prior_list)[i]))
@@ -724,8 +780,7 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
   .check_prior(prior)
   if(!is.prior.simple(prior))
     stop("improper prior provided")
-  if(!is.character(parameter_name) | length(parameter_name) != 1)
-    stop("'parameter_name' must be a character vector of length 1.")
+  check_char(parameter_name, "parameter_name")
 
 
   parameter <- list()
@@ -744,8 +799,7 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
   .check_prior(prior)
   if(!is.prior.vector(prior))
     stop("improper prior provided")
-  if(!is.character(parameter_name) | length(parameter_name) != 1)
-    stop("'parameter_name' must be a character vector of length 1.")
+  check_char(parameter_name, "parameter_name")
 
 
   parameter <- list()
@@ -762,8 +816,7 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
   .check_prior(prior)
   if(!is.prior.factor(prior))
     stop("improper prior provided")
-  if(!is.character(parameter_name) | length(parameter_name) != 1)
-    stop("'parameter_name' must be a character vector of length 1.")
+  check_char(parameter_name, "parameter_name")
 
 
   if(is.prior.point(prior) | is.prior.dummy(prior)){
@@ -834,6 +887,21 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
     parameter[["omega"]] <- prior$parameters[["omega"]]
 
+  }
+
+  return(parameter)
+}
+.JAGS_marglik_parameters.spike_and_slab <- function(samples, prior, parameter_name){
+
+  .check_prior(prior)
+  if(!is.prior.spike_and_slab(prior))
+    stop("improper prior provided")
+  check_char(parameter_name, "parameter_name")
+
+  parameter <- list()
+  parameter[paste0(parameter_name, "_variable")]  <- .JAGS_marglik_parameters.simple(samples, prior[["variable"]],  paste0(parameter_name, "_variable"))
+  if(!is.prior.point(prior[[parameter_name]][["inclusion"]])){
+    parameter[paste0(parameter_name, "_inclusion")] <- .JAGS_marglik_parameters.simple(samples, prior[["inclusion"]], paste0(parameter_name, "_inclusion"))
   }
 
   return(parameter)
