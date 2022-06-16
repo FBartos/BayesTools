@@ -150,3 +150,55 @@ test_that("JAGS diagnostics work", {
   expect_doppelganger("diagnostics-ggplot-autocorrelation-3.1",temp_plot[[1]])
   expect_doppelganger("diagnostics-ggplot-autocorrelation-3.2",temp_plot[[2]])
 })
+
+test_that("JAGS diagnostics work (spike and slab)", {
+
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_on_cran()
+
+  set.seed(1)
+
+  data_formula <- data.frame(
+    x_cont  = rnorm(300),
+    x_fac2t = factor(rep(c("A", "B"), 150), levels = c("A", "B")),
+    x_fac3t = factor(rep(c("A", "B", "C"), 100), levels = c("A", "B", "C"))
+  )
+  data <- list(
+    y = rnorm(300, .20 * data_formula$x_cont + ifelse(data_formula$x_fac3t == "A", 0.0, ifelse(data_formula$x_fac3t == "B", -0.2, 0.4)), ifelse(data_formula$x_fac2t == "A", 0.5, 1)),
+    N = 300
+  )
+
+
+  # create model with mix of a formula and free parameters ---
+  formula_list <- list(
+    mu    = ~ x_cont
+  )
+  formula_data_list <- list(
+    mu    = data_formula
+  )
+  formula_prior_list <- list(
+    mu    = list(
+      "intercept"   = prior("normal", list(0, 5)),
+      "x_cont"      = prior_spike_and_slab(prior("normal", list(0, 1)), prior_inclusion = prior("beta", list(1,1)))
+    )
+  )
+  prior_list <- list(
+    sigma = prior("lognormal", list(0, 1))
+  )
+  model_syntax <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  fit <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list)
+
+  ### density plots
+  expect_doppelganger("diagnostics-plot-spike-and-slab-1", function() JAGS_diagnostics_density(fit, parameter = "mu_x_cont"))
+  expect_doppelganger("diagnostics-plot-spike-and-slab-2", function() JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_cont"))
+  expect_doppelganger("diagnostics-plot-spike-and-slab-3", function() JAGS_diagnostics_trace(fit, parameter = "mu_x_cont"))
+})

@@ -1,3 +1,15 @@
+## version 0.2.11
+### Features
+- adding Bernoulli prior distribution
+- adding spike and slab type of prior distributions (without marginal likelihood computations/model-averaging capabilities)
+- new vignette comparing Bayes factor computation via marginal likelihood and spike and slab priors
+
+### Fixes
+- when a transformation is applied, JAGS summary tables now produce the mean of the transformed variable (previous versions incorrectly returned transformation of the mean) 
+
+### Changes
+- runjags_XXX_table functions are now also exported as JAGS_XXX_functions for consistency with the rest of the code
+
 ## version 0.2.10
 ### Features
 - trace, density, and autocorrelation diagnostic plots for JAGS models

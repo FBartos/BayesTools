@@ -17,7 +17,8 @@ test_that("JAGS model functions work (simple)", {
     p10 = prior("uniform", list(1, 5)),
     p11 = prior("point", list(1)),
     PET = prior_PET("normal", list(0, 1)),
-    PEESE = prior_PEESE("gamma", list(1, 1))
+    PEESE = prior_PEESE("gamma", list(1, 1)),
+    p12 = prior("bernoulli", list(0.75))
   )
 
   model_syntax <- JAGS_add_priors(model_syntax, priors)
@@ -32,7 +33,11 @@ test_that("JAGS model functions work (simple)", {
 
   for(i in seq_along(priors)){
     expect_doppelganger(paste0("JAGS-model-prior-",i), function(){
-      hist(samples[,names(priors)[i]], breaks = 50, main = print(priors[[i]], plot = TRUE), freq = FALSE)
+      if(is.prior.discrete(priors[[i]])){
+        barplot(table(samples[,names(priors)[i]])/length(samples[,names(priors)[i]]), main = print(priors[[i]], plot = T), width = 1/(max(samples[,names(priors)[i]])+1), space = 0, xlim = c(-0.25, max(samples[,names(priors)[i]])+0.25))
+      }else{
+        hist(samples[,names(priors)[i]], breaks = 50, main = print(priors[[i]], plot = TRUE), freq = FALSE)
+      }
       lines(priors[[i]], individual = TRUE)
     })
   }
@@ -196,6 +201,65 @@ test_that("JAGS model functions work (weightfunctions)", {
         lines(densities[[j]])
       }
     })
+  }
+})
+
+test_that("JAGS model functions work (spike and slab)", {
+
+  skip_if_not_installed("rjags")
+  priors       <- list(
+    "mu"   = prior_spike_and_slab(prior("normal", list(0, 1)), prior_inclusion = prior("beta", list(1,1))),
+    "beta" = prior_spike_and_slab(prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+                                  prior_inclusion = prior("beta", list(1,1)))
+  )
+
+  attr(priors$beta$variable, "levels") <- 3
+
+  for(i in 1:length(priors)){
+    model_syntax <- "model{}"
+    model_syntax <- JAGS_add_priors(model_syntax, priors[i])
+    monitor      <- JAGS_to_monitor(priors[i])
+    inits        <- JAGS_get_inits(priors[i], chains = 2, seed = 1)
+
+    set.seed(1)
+    model   <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
+    samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 5000, quiet = TRUE, progress.bar = "none")
+    samples <- do.call(rbind, samples)
+
+
+    if(i == 1){
+      expect_doppelganger(paste0("JAGS-model-prior_spike-and-slab-",i), function(){
+        temp_samples <- samples[,names(priors)[i]]
+        hs <- hist(temp_samples[temp_samples != 0], breaks = 50, plot = FALSE)
+        hs$density <- hs$density * mean(temp_samples != 0)
+        plot(hs, main = print(priors[[i]], plot = TRUE), freq = FALSE, ylim = range(c(0, max(hs$density), mean(temp_samples == 0))))
+        lines(priors[[i]], individual = TRUE)
+      })
+    }else{
+      expect_doppelganger(paste0("JAGS-model-prior_spike-and-slab-",i), function(){
+
+        oldpar <- graphics::par(no.readonly = TRUE)
+        on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+        par(mfrow = c(1, 3))
+
+        temp_samples <- samples[,paste0(names(priors)[i], "[", 1:2, "]")]  %*% t(contr.orthonormal(1:3))
+
+        hs1 <- hist(temp_samples[temp_samples[,1] != 0, 1], breaks = 50, plot = FALSE)
+        hs1$density <- hs1$density * mean(temp_samples[,1] != 0)
+        plot(hs1, main = print(priors[[i]], plot = TRUE), freq = FALSE, ylim = range(c(0, max(hs1$density), mean(temp_samples == 0))))
+        lines(priors[[i]], individual = TRUE)
+
+        hs2 <- hist(temp_samples[temp_samples[,2] != 0, 2], breaks = 50, plot = FALSE)
+        hs2$density <- hs2$density * mean(temp_samples[,1] != 0)
+        plot(hs2, main = print(priors[[i]], plot = TRUE), freq = FALSE, ylim = range(c(0, max(hs2$density), mean(temp_samples == 0))))
+        lines(priors[[i]], individual = TRUE)
+
+        hs3 <- hist(temp_samples[temp_samples[,3] != 0, 3], breaks = 50, plot = FALSE)
+        hs3$density <- hs3$density * mean(temp_samples[,1] != 0)
+        plot(hs3, main = print(priors[[i]], plot = TRUE), freq = FALSE, ylim = range(c(0, max(hs3$density), mean(temp_samples == 0))))
+        lines(priors[[i]], individual = TRUE)
+      })
+    }
   }
 })
 
@@ -445,6 +509,90 @@ test_that("JAGS fit function integration with formula works" , {
 
     hist(exp(posterior2[,"sigma_intercept"] + posterior2[,"sigma_x_fac2t"]), freq = FALSE, main = "sigma_x_fac2t")
     abline(v = 1, lwd = 3, col = "blue")
+  })
+
+})
+
+test_that("JAGS fit function integration with formula and spike and slab works" , {
+
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_on_cran()
+
+  set.seed(1)
+
+  data_formula <- data.frame(
+    x_cont1 = rnorm(300),
+    x_fac2t = factor(rep(c("A", "B"), 150), levels = c("A", "B")),
+    x_fac3t = factor(rep(c("A", "B", "C"), 100), levels = c("A", "B", "C"))
+  )
+  data <- list(
+    y = rnorm(300, .20 * data_formula$x_cont1 + ifelse(data_formula$x_fac3t == "A", 0.0, ifelse(data_formula$x_fac3t == "B", -0.2, 0.2)), ifelse(data_formula$x_fac2t == "A", 0.5, 1)),
+    N = 300
+  )
+
+
+  # create model with mix of a formula and free parameters ---
+  formula_list1 <- list(
+    mu    = ~ x_cont1 + x_fac3t
+  )
+  formula_data_list1 <- list(
+    mu    = data_formula
+  )
+  formula_prior_list1 <- list(
+    mu    = list(
+      "intercept"  = prior("normal", list(0, 5)),
+      "x_cont1"    = prior_spike_and_slab(prior("normal", list(0, 1)), prior_inclusion = prior("beta", list(1,1))),
+      "x_fac3t"    = prior_spike_and_slab(prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+                                          prior_inclusion = prior("spike", list(0.5)))
+    )
+  )
+  attr(formula_prior_list1$mu$x_fac3t$variable, "multiply_by") <- "sigma"
+  prior_list1 <- list(
+    sigma = prior("lognormal", list(0, 1))
+  )
+  model_syntax1 <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  fit1 <- JAGS_fit(
+    model_syntax = model_syntax1, data = data, prior_list = prior_list1,
+    formula_list = formula_list1, formula_data_list = formula_data_list1, formula_prior_list = formula_prior_list1)
+
+  posterior1 <- suppressWarnings(coda::as.mcmc(fit1))
+
+  expect_doppelganger("JAGS-fit-formula-spike-and-slab-1", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfrow = c(1, 3))
+
+    hist(posterior1[,"mu_x_cont1"], freq = FALSE, main = "x_cont1")
+
+    hist(posterior1[,"mu_x_cont1_variable"], freq = FALSE, main = "x_cont1_variable")
+
+    hist(posterior1[,"mu_x_cont1_inclusion"], freq = FALSE, main = "x_cont1_inclusion")
+  })
+
+  expect_doppelganger("JAGS-fit-formula-spike-and-slab-2", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfrow = c(2, 3))
+
+    temp_samples          <- posterior1[,paste0("mu_x_fac3t[", 1:2, "]")]          %*% t(contr.orthonormal(1:3))
+    temp_samples_variable <- posterior1[,paste0("mu_x_fac3t_variable[", 1:2, "]")]  %*% t(contr.orthonormal(1:3))
+
+    hist(temp_samples[,1], freq = FALSE, main = "x_fac3t[A]")
+    hist(temp_samples[,2], freq = FALSE, main = "x_fac3t[B]")
+    hist(temp_samples[,3], freq = FALSE, main = "x_fac3t[C]")
+
+    hist(temp_samples_variable[,1], freq = FALSE, main = "x_fac3t_variable[A]")
+    hist(temp_samples_variable[,2], freq = FALSE, main = "x_fac3t_variable[B]")
+    hist(temp_samples_variable[,3], freq = FALSE, main = "x_fac3t_variable[C]")
   })
 
 })

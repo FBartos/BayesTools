@@ -16,6 +16,7 @@ test_that("JAGS model functions work (simple)", {
     p10 = prior("uniform", list(1, 5)),
     PET = prior_PET("normal", list(0, 1)),
     PEESE = prior_PEESE("gamma", list(1, 1))
+    #p12 = prior("bernoulli", list(0.75)) discrete priors are not supported with bridgesampling
   )
   log_posterior <- function(parameters, data){
     return(0)
@@ -94,6 +95,35 @@ test_that("JAGS model functions work (factor)", {
     samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 10000, quiet = TRUE, progress.bar = "none")
     marglik <- JAGS_bridgesampling(samples, prior_list = prior_list, data = list(), log_posterior = log_posterior)
     expect_equal(marglik$logml, 0, tolerance = 1e-2)
+  }
+
+})
+
+test_that("JAGS model functions work (spike and slab)", {
+  skip("Marginal likelihood computation for spike and slab priors is not implemented.")
+  skip_if_not_installed("rjags")
+  all_priors   <- list(
+    p1  = prior_spike_and_slab(prior("normal",   list(0, 1)), prior_inclusion = prior("beta", list(1, 1))),
+    p2  = prior_spike_and_slab(prior("gamma",    list(3, 4)), prior_inclusion = prior("beta", list(5, 1))),
+    p3  = prior_spike_and_slab(prior("invgamma", list(4, 5)), prior_inclusion = prior("point", list(.3)))
+  )
+
+  log_posterior <- function(parameters, data){
+    return(0)
+  }
+
+
+  for(i in seq_along(all_priors)){
+    prior_list   <- all_priors[i]
+    model_syntax <- JAGS_add_priors("model{}", prior_list)
+    monitor      <- JAGS_to_monitor(prior_list)
+    inits        <- JAGS_get_inits(prior_list, chains = 2, seed = 1)
+
+    set.seed(1)
+    model   <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
+    samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 10000, quiet = TRUE, progress.bar = "none")
+    marglik <- JAGS_bridgesampling(samples, prior_list = prior_list, data = list(), log_posterior = log_posterior)
+    expect_equal(marglik$logml, 0, tolerance = 1e-3)
   }
 
 })

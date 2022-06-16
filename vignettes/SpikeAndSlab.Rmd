@@ -1,0 +1,271 @@
+---
+title: "Bayes factors via spike and slab prior vs. bridge sampling"
+author: "František Bartoš"
+date: "`r Sys.Date()`"
+output:
+  rmarkdown::html_vignette:
+  self_contained: yes
+bibliography: ../inst/REFERENCES.bib
+csl: ../inst/apa.csl
+vignette: >
+  %\VignetteIndexEntry{Bayes factors via spike and slab prior vs. bridge sampling}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+  %\VignetteEngine{knitr::rmarkdown_notangle}
+---
+
+
+```{r setup, include = FALSE}
+# is_check <- ("CheckExEnv" %in% search()) ||
+#              any(c("_R_CHECK_TIMINGS_", "_R_CHECK_LICENSE_") %in% names(Sys.getenv()))
+is_check <- F
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment  = "#>",
+  eval     = !is_check,
+  dev      = "png"
+)
+if(.Platform$OS.type == "windows"){
+  knitr::opts_chunk$set(dev.args = list(type = "cairo"))
+}
+```
+
+
+One of the main features of BayesTools is assistance in generating JAGS [@JAGS] code based on formulas and prior distribution objects and subsequent estimation of marginal likelihoods with the bridgesampling R package [@bridgesampling]. Marginal likelihoods, $p(\text{data} \mid \mathcal{M})$, are the key ingredient for computing Bayes factors,
+
+$\text{BF}_{10} = \frac{p(\text{data} \mid \mathcal{M}_{1})}{p(\text{data} \mid \mathcal{M}_{0})}$,
+
+which quantify relative predictive performance of two competing models [@wrinch1921on; @kass1995bayes; @rouder2019teaching]. Convenient model specification then allows users and package developers to easily compute Bayes factors and test a wide range of informed hypotheses. See RoBMA [@RoBMA] and [@RoBSA] R packages for implementation examples.
+
+However, when considering a simple regression, the model space of all possible models increases exponentially with additional predictors. I.e., the possibility of including vs. excluding $k$ predictors leads to $2^k$ possible submodels that need to be computed. Even relatively computationally simple models (e.g. ~ 1 min of computation) with 10 possible predictors would result in more than 17 hours of computation. Therefore, we might require more computationally efficient methods when performing variable selection with more than a few covariates. In this vignette, I showcase how to use BayesTools package to specify spike and slab priors that aim to explore most of the model space and obtain posterior inclusion probabilities for each predictor within a single MCMC run [@kuo1998variable; @ohara2009review].
+
+
+```{r}
+library(BayesTools)
+```
+
+## Simulated Data
+
+To keep it simple, let's consider a linear regression with one continuous predictor $x$. We simulate $N = 100$ observations of a dependent variable $y$ under the presence of a small effect $\beta$ of a continuous predictor $x$.
+
+```{r}
+set.seed(-68) # set seed for reproducibility
+
+N     <- 100      # number of observations
+x     <- rnorm(N) # continuous predictor
+alpha <- -0.5     # intercept
+beta  <- 0.15     # small effect
+
+# compute the mean parameter for each predictor value
+mu <- alpha + beta * x
+
+# generate the response for each observation 
+y  <- rnorm(N, mean = mu, sd = 1) 
+```
+
+We quickly verify that our simulated data correspond to the desired settings (up to a random error) with the `lm` function.
+
+```{r}
+summary(lm(y ~ x))
+```
+
+
+## Model Specification
+
+We consider two following models:
+
+ - $\mathcal{M}_0$: $\beta = 0$
+ - and $\mathcal{M}_1$: $\beta \sim g()$,
+ 
+where $g()$ characterizes our hypothesis about the degree of the effect. In our example, we specify a simple two-sided hypothesis represented by a normal distribution with mean 0 and standard deviation 0.5, e.g., $\beta \sim \text{Normal}(0, 0.5^2)$.
+
+
+## Maginal Likelihoods
+
+First, we compute the Bayes factor model comparison via marginal likelihoods. To do that, we need to specify the likelihood for the response variable $y$,
+
+```{r}
+model_likelihood <- 
+"model{
+  for(i in 1:N){
+    y[i] ~ dnorm(mu[i], pow(sigma, -2))
+  }
+}
+"
+```
+
+where `mu` corresponds to the mean parameter (that we specify via a formula in the next step) and `sigma` to a standard deviation of the response variable (that we treat as a nuisance parameter here).
+
+We specify formulas for the `mu` parameter of each of the considered models,
+
+```{r}
+formula_M0 <- list("mu" = ~ 1)
+formula_M1 <- list("mu" = ~ 1 + x)
+```
+
+where `1` corresponds to the intercept (it is not necessary for the second model as it is included by default).
+
+To finish the model specification, we set the prior distribution corresponding to our hypothesis test of the beta parameter, set a broad prior distributions for the nuisance intercept and sigma parameters, and create a list containing data for the model specified within `model_likelihood` (in the first step) and a data frame for the data contained within the formula for mu within `formula_M0` and `formula_M1` (specified in the second step).
+
+```{r}
+# prior on the test parameter
+prior_beta  <- prior(distribution = "normal", parameters = list(mean = 0, sd = 0.5))
+
+# priors on the nuisance parameters
+prior_int   <- prior(distribution = "normal", parameters = list(mean = 0, sd = 5))
+prior_sigma <- prior(distribution = "normal", parameters = list(mean = 0, sd = 5), truncation = list(0, Inf))
+
+# the data list
+data_list <- list(
+  y = y,
+  N = N
+)
+data_formula <- data.frame(
+  x = x
+)
+```
+
+We estimate the models with the `JAGS_fit` function. Since we are using the formula interface (which allows us to specify multiple formulas for different parameters), we need to pass the arguments as named lists,
+
+```{r} 
+M0 <- JAGS_fit(
+  # specification for the `model_likelihood` part
+  model_syntax = model_likelihood,
+  data         = list(y = y, N = N),
+  prior_list   = list("sigma" = prior_sigma),
+
+  # specification for the `formula_M0` part 
+  formula_list       = formula_M0,
+  formula_prior_list = list("mu" = list("intercept" = prior_int)),
+  formula_data_list  = list("mu" = data_formula),
+  
+  # seed for reproducibility
+  seed         = 0
+)
+
+M1 <- JAGS_fit(
+  model_syntax = model_likelihood,
+  data         = list(y = y, N = N),
+  prior_list   = list("sigma" = prior_sigma),
+  formula_list       = formula_M1,
+  formula_prior_list = list("mu" = list("intercept" = prior_int, "x" = prior_beta)),
+  formula_data_list  = list("mu" = data_formula),
+  seed         = 1
+)
+```
+
+We quickly verify that our parameter estimates (from the full model) are similar to the frequentist results obtained via `lm` function earlier. 
+
+```{r}
+JAGS_estimates_table(M1)
+```
+
+To obtain the marginal likelihoods and compute Bayes factors, we only need to write the likelihood function corresponding to the JAGS model. Importantly, BayesTools handles all priors and formula related computation automatically, in other words, we do not need to worry about computing the mean parameter based on the intercept and predictors since we already obtain the computed mu in the `parameters[["mu"]]` object (a vector with a value for each y),
+
+```{r}
+log_posterior <- function(parameters, data){
+  sum(dnorm(
+    x    = data[["y"]],
+    mean = parameters[["mu"]],
+    sd   = parameters[["sigma"]],
+    log  = TRUE
+  ))
+}
+```
+
+where the `parameters` arguments is a list containing the parameters and `data` argument is a list containing data. We use `sum(dnorm(..., log = TRUE))` to sum the logarithmic likelihood of all observations.
+
+Finally, we pass our objects to the `JAGS_bridgesampling` function to compute the marginal likelihoods.
+
+```{r}
+marglik_model_H0 <- JAGS_bridgesampling(
+  # specification for the model part
+  fit           = M0,
+  log_posterior = log_posterior,
+  data          = list(y = y, N = N),
+  prior_list    = list("sigma" = prior_sigma),
+
+  # specification for the formula` part 
+  formula_list       = formula_M0,
+  formula_prior_list = list("mu" = list("intercept" = prior_int)),
+  formula_data_list  = list("mu" = data_formula)
+)
+
+marglik_model_H1 <- JAGS_bridgesampling(
+  fit           = M1,
+  log_posterior = log_posterior,
+  data          = list(y = y, N = N),
+  prior_list    = list("sigma" = prior_sigma),
+  formula_list       = formula_M1,
+  formula_prior_list = list("mu" = list("intercept" = prior_int, "x" = prior_beta)),
+  formula_data_list  = list("mu" = data_formula),
+)
+```
+
+We specify a BayesTools model ensemble object that we interrogate with the `ensemble_inference_table` function for information about the test for the beta parameter. 
+
+```{r}
+models_list <- models_inference(list(
+  list(model = M0, marglik = marglik_model_H0, prior_weights = 1/2),
+  list(model = M1, marglik = marglik_model_H1, prior_weights = 1/2)
+))
+ensemble_info <- ensemble_inference(models_list, parameters = "x", is_null_list = list("x" = c(TRUE, FALSE)))
+
+ensemble_inference_table(ensemble_info, parameters = "x")
+```
+
+We find absence of evidence for either of the hypotheses, $\text{BF}_{10} = 1.181$, with posterior probability of $P(\mathcal{M}_{1} \mid \text{data}) = 0.542$ (asuming equal prior probability specified via `prior_weights` in the `models_inference` function previously).
+
+
+## Spike and Slab Priors
+
+The @kuo1998variable's spike an slab prior distribution is specified as a mixture of two prior distributions. A spike, a parameter value of zero corresponding to no effect, and a slab, a parameter value sampled from a continuous density corresponding to the alternative hypothesis. The parametrization uses two independent prior distributions: one for the parameter value, $\beta \sim g()$, and one for the inclusion indicator, $I_\beta \sim f()$, which assigns the prior model probability $P(\mathcal{M}_{1})$ of inclusion.
+
+The inclusion indicator can attain one of two values: either zero or one. Multiplying the parameter with the inclusion indicator, $\beta I_\beta$, then results in setting the parameter to zero when the indicator is zero, or keeping its original value when the indicator is one. The proportion of times the indicator attains the value of one then corresponds to the posterior inclusion probability of the predictor, $P(\mathcal{M}_{1} \mid \text{data})$. Since Bayes factor can be written as the change from prior to posterior odds,
+
+$\text{BF}_{10} = \frac{p(\mathcal{M}_{1} \mid \text{data})}{p(\mathcal{M}_{0} \mid \text{data})} / \frac{p(\mathcal{M}_{1})}{p(\mathcal{M}_{0})}$,
+
+we can also estimate the Bayes factor via the inclusion indicator.
+
+
+Now, we compare the two models using the spike and slab prior. We have already specified the likelihood, data lists, prior distributions for the nuisance parameters, and even the formulas (now we need only formula for the full model) in the previous sections. Therefore, we proceed directly by specifying the spike and slab prior distribution for the predictor. We use the `prior_spike_and_slab` which follows similar notation as the `prior` function. We need to specify the distribution, the parameters (and we could also set truncation if needed) corresponding to the alternative hypothesis. Furthermore, we need to specify the prior distribution for the inclusion via the `prior_inclusion` argument. Here, we use a $\text{Spike}(0.5)$ prior which sets the prior inclusion probability to 1/2.
+
+```{r} 
+prior_beta_spike_and_slab <- prior_spike_and_slab(
+  prior_parameter = prior(distribution = "normal", parameters = list(mean = 0, sd = 0.5)),
+  prior_inclusion = prior(distribution = "spike", parameters = list(location = 0.5)) 
+)
+
+```
+
+Then we can directly proceed to calling the `JAGS_fit` function with the same specification as we used for the `M1` model, however, changing the prior distribution object for the predictor `x` to the newly created `prior_beta_spike_and_slab` prior distribution.
+
+```{r}
+MS <- JAGS_fit(
+  model_syntax = model_likelihood,
+  data         = list(y = y, N = N),
+  prior_list   = list("sigma" = prior_sigma),
+  formula_list       = formula_M1,
+  formula_prior_list = list("mu" = list("intercept" = prior_int, "x" = prior_beta_spike_and_slab)),
+  formula_data_list  = list("mu" = data_formula),
+  seed         = 1
+)
+```
+
+We can again verify that our parameter estimates match the previous results. Now, we need to set the `conditional = TRUE` argument in the `JAGS_estimates_table` to obtain samples assuming that the spike and slab parameter values are included. (The function summarized the complete posterior distribution by default, i.e., parameter estimates model-averaged across the spike and the slab.)
+
+```{r}
+JAGS_estimates_table(MS, conditional = TRUE)
+```
+
+The estimates are essentially identical to the estimates from the previous models. Finally, we can also obtain summary of the inclusion probabilities via the `JAGS_inference_table` function
+
+```{r}
+JAGS_inference_table(MS)
+```
+
+As before, we find absence of evidence for either of the hypotheses, $\text{BF}_{10} = 1.157$, with posterior probability of $P(\mathcal{M}_{1} \mid \text{data}) = 0.536$.
+
+
+### References
+

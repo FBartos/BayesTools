@@ -87,21 +87,45 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
 
   # assign factor contrasts to the data based on prior distributions
   if(any(predictors_type == "factor")){
+
     for(factor in names(predictors_type[predictors_type == "factor"])){
-      if(is.prior.dummy(prior_list[[factor]])){
+
+      # select the corresponding prior for the variable
+      if(is.prior.spike_and_slab(prior_list[[factor]])){
+        this_prior <- prior_list[[factor]][["variable"]]
+      }else{
+        this_prior <- prior_list[[factor]]
+      }
+
+      if(is.prior.dummy(this_prior)){
         stats::contrasts(data[,factor]) <- "contr.treatment"
-      }else if(is.prior.orthonormal(prior_list[[factor]])){
+      }else if(is.prior.orthonormal(this_prior)){
         stats::contrasts(data[,factor]) <- "contr.orthonormal"
-      }else if(is.prior.point(prior_list[[factor]])){
-        class(prior_list[[factor]]) <-  c(class(prior_list[[factor]]), "prior.factor")
+      }else if(is.prior.point(this_prior)){
+        # change the prior class to behave as factor
+        class(this_prior) <-  c(class(this_prior), "prior.factor")
+        if(is.prior.spike_and_slab(prior_list[[factor]])){
+          this_prior -> prior_list[[factor]][["variable"]]
+        }else{
+          this_prior -> prior_list[[factor]]
+        }
       }else{
         stop(paste0("Unsupported prior distribution defined for '", factor, "' factor variable. See '?prior_factor' for details."))
       }
     }
   }
   if(any(predictors_type == "continuous")){
+
     for(continuous in names(predictors_type[predictors_type == "continuous"])){
-      if(!is.prior.simple(prior_list[[continuous]]) || is.prior.factor(prior_list[[continuous]])){
+
+      # select the corresponding prior for the variable
+      if(is.prior.spike_and_slab(prior_list[[continuous]])){
+        this_prior <- prior_list[[continuous]][["variable"]]
+      }else{
+        this_prior <- prior_list[[continuous]]
+      }
+
+      if(is.prior.factor(this_prior)){
         stop(paste0("Unsupported prior distribution defined for '", continuous, "' continuous variable. See '?prior' for details."))
       }
     }
@@ -143,39 +167,49 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   # add remaining terms (omitting the intercept indexed as NA)
   for(i in unique(terms_indexes[terms_indexes > 0])){
 
-    attr(prior_list[[model_terms[i]]], "interaction") <- grepl("__xXx__", model_terms[i])
+    # extract the corresponding prior distribution for a given coefficient
+    if(is.prior.spike_and_slab(prior_list[[model_terms[i]]])){
+      this_prior <- prior_list[[model_terms[i]]][["variable"]]
+    }else{
+      this_prior <- prior_list[[model_terms[i]]]
+    }
+
+    # check whether the term is an interaction or not
+    attr(this_prior, "interaction") <- grepl("__xXx__", model_terms[i])
 
     if(model_terms_type[i] == "continuous"){
-      # continuous variables or interactions of continuous variables are simple predictors
 
+      # continuous variables or interactions of continuous variables are simple predictors
       JAGS_data[[paste0(parameter, "_data_", model_terms[i])]] <- model_matrix[,terms_indexes == i]
+
       formula_syntax <- c(formula_syntax, paste0(
-        if(!is.null(attr(prior_list[[model_terms[i]]], "multiply_by"))) paste0(attr(prior_list[[model_terms[i]]], "multiply_by"), " * "),
+        if(!is.null(attr(this_prior, "multiply_by"))) paste0(attr(this_prior, "multiply_by"), " * "),
         parameter, "_", model_terms[i],
         " * ",
         parameter, "_data_", model_terms[i], "[i]"
       ))
 
     }else if(model_terms_type[i] == "factor"){
+
       # factor variables or interactions with a factor requires factor style prior
 
       # add levels information attributes to factors
-      attr(prior_list[[model_terms[i]]], "levels") <- sum(terms_indexes == i) + 1
-      if(attr(prior_list[[model_terms[i]]], "interaction")){
+      attr(this_prior, "levels") <- sum(terms_indexes == i) + 1
+      if(attr(this_prior, "interaction")){
         level_names <- list()
         for(sub_term in strsplit(model_terms[i], "__xXx__")[[1]]){
           if(model_terms_type[sub_term] == "factor"){
             level_names[[sub_term]] <- levels(data[,sub_term])
           }
         }
-        attr(prior_list[[model_terms[i]]], "level_names") <- level_names
+        attr(this_prior, "level_names") <- level_names
       }else{
-        attr(prior_list[[model_terms[i]]], "level_names") <- levels(data[,model_terms[i]])
+        attr(this_prior, "level_names") <- levels(data[,model_terms[i]])
       }
 
       JAGS_data[[paste0(parameter, "_data_", model_terms[i])]] <- model_matrix[,terms_indexes == i, drop = FALSE]
       formula_syntax <- c(formula_syntax, paste0(
-        if(!is.null(attr(prior_list[[model_terms[i]]], "multiply_by"))) paste0(attr(prior_list[[model_terms[i]]], "multiply_by"), " * "),
+        if(!is.null(attr(this_prior, "multiply_by"))) paste0(attr(this_prior, "multiply_by"), " * "),
         "inprod(",
         parameter, "_", model_terms[i],
         ", ",
@@ -186,6 +220,12 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
       stop("Unrecognized model term.")
     }
 
+    # update the corresponding prior distribution back into the prior list
+    if(is.prior.spike_and_slab(prior_list[[model_terms[i]]])){
+      this_prior -> prior_list[[model_terms[i]]][["variable"]]
+    }else{
+      this_prior -> prior_list[[model_terms[i]]]
+    }
 
   }
 
@@ -288,35 +328,55 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
 
   # check that passed data correspond to the specified priors (factor levels etc...) and set the proper contrasts
   if(any(predictors_type == "factor")){
-    # check the proper data input
+
+    # check the proper data input for each factor prior
     for(factor in names(predictors_type[predictors_type == "factor"])){
+
+      # select the corresponding prior in the variable
+      if(is.prior.spike_and_slab(prior_list_formula[[factor]])){
+        this_prior <- prior_list_formula[[factor]][["variable"]]
+      }else{
+        this_prior <- prior_list_formula[[factor]]
+      }
+
       if(is.factor(data[,factor])){
-        if(all(levels(data[,factor]) %in% attr(prior_list_formula[[factor]], "level_names"))){
+        if(all(levels(data[,factor]) %in% attr(this_prior, "level_names"))){
           # either the formatting is correct, or the supplied levels are a subset of the original levels
           # reformat to check ordering and etc...
-          data[,factor] <- factor(data[,factor], levels = attr(prior_list_formula[[factor]], "level_names"))
+          data[,factor] <- factor(data[,factor], levels = attr(this_prior, "level_names"))
         }else{
           # there are some additional levels
           stop(paste0("Levels specified in the '", factor, "' factor variable do not match the levels used for model specification."))
         }
-      }else if(all(unique(data[,factor]) %in% attr(prior_list_formula[[factor]], "level_names"))){
+      }else if(all(unique(data[,factor]) %in% attr(this_prior, "level_names"))){
         # the variable was not passed as a factor but the values matches the factor levels
-        data[,factor] <- factor(data[,factor], levels = attr(prior_list_formula[[factor]], "level_names"))
+        data[,factor] <- factor(data[,factor], levels = attr(this_prior, "level_names"))
       }else{
         # there are some additional mismatching values
         stop(paste0("Levels specified in the '", factor, "' factor variable do not match the levels used for model specification."))
       }
     }
+
     # set the contrast
-    if(is.prior.orthonormal(prior_list_formula[[factor]])){
+    if(is.prior.orthonormal(this_prior)){
       stats::contrasts(data[,factor]) <- "contr.orthonormal"
-    }else if(is.prior.dummy(prior_list_formula[[factor]])){
+    }else if(is.prior.dummy(this_prior)){
       stats::contrasts(data[,factor]) <- "contr.treatment"
     }
   }
   if(any(predictors_type == "continuous")){
+
+    # check the proper data input for each continuous prior
     for(continuous in names(predictors_type[predictors_type == "continuous"])){
-      if(!is.prior.simple(prior_list_formula[[continuous]]) || is.prior.factor(prior_list_formula[[continuous]])){
+
+      # select the corresponding prior in the variable
+      if(is.prior.spike_and_slab(prior_list_formula[[continuous]])){
+        this_prior <- prior_list_formula[[continuous]][["variable"]]
+      }else{
+        this_prior <- prior_list_formula[[continuous]]
+      }
+
+      if(is.prior.factor(this_prior)){
         stop(paste0("Unsupported prior distribution defined for '", continuous, "' continuous variable. See '?prior' for details."))
       }
     }

@@ -5,6 +5,7 @@
 \alias{is.prior.point}
 \alias{is.prior.none}
 \alias{is.prior.simple}
+\alias{is.prior.discrete}
 \alias{is.prior.vector}
 \alias{is.prior.PET}
 \alias{is.prior.PEESE}
@@ -12,6 +13,7 @@
 \alias{is.prior.factor}
 \alias{is.prior.orthonormal}
 \alias{is.prior.dummy}
+\alias{is.prior.spike_and_slab}
 \title{Reports whether x is a a prior object}
 \usage{
 is.prior(x)
@@ -21,6 +23,8 @@ is.prior.point(x)
 is.prior.none(x)
 
 is.prior.simple(x)
+
+is.prior.discrete(x)
 
 is.prior.vector(x)
 
@@ -35,6 +39,8 @@ is.prior.factor(x)
 is.prior.orthonormal(x)
 
 is.prior.dummy(x)
+
+is.prior.spike_and_slab(x)
 }
 \arguments{
 \item{x}{an object of test}

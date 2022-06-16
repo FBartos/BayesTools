@@ -99,7 +99,7 @@ test_that("Summary tables functions work",{
   ### test additional settings
   # transformations
   runjags_summary2t <- runjags_estimates_table(fit2, transformations = list("m" = list(fun = exp)))
-  expect_equal(exp(models[[3]]$fit_summary[1,c("Mean","lCI","Median","uCI","MCMC_error")]), runjags_summary2t[1,c("Mean","lCI","Median","uCI","MCMC_error")], tolerance = 1e-5)
+  expect_equal(exp(models[[3]]$fit_summary[1,c("lCI","Median","uCI","MCMC_error")]), runjags_summary2t[1,c("lCI","Median","uCI","MCMC_error")], tolerance = 1e-5)
   expect_equal(colnames(models[[3]]$fit_summary), colnames(runjags_summary2t))
   expect_equal(rownames(models[[3]]$fit_summary), rownames(runjags_summary2t))
 
@@ -524,6 +524,104 @@ test_that("Summary tables functions work (formulas + factors)",{
                  "     3                    orthonormal contrast: mNormal(0, 1)                                              0.00168               0.011     8660      1.000",
                  "     4       Normal(0, 1) orthonormal contrast: mNormal(0, 1) orthonormal contrast: mNormal(0, 1)          0.00196               0.011     7969      1.001"
                ))
+
+})
+
+test_that("Summary tables functions work (spike and slab priors)",{
+
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_on_cran()
+
+  set.seed(1)
+
+  data_formula <- data.frame(
+    x_cont1 = rnorm(60),
+    x_fac2t = factor(rep(c("A", "B"), 30), levels = c("A", "B")),
+    x_fac3o = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C")),
+    x_fac3t = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C"))
+  )
+  data <- list(
+    y = rnorm(60, .4 * data_formula$x_cont1 + ifelse(data_formula$x_fac3t == "A", 0.0, ifelse(data_formula$x_fac3t == "B", -0.2, 0.4)), 1),
+    N = 60
+  )
+
+  # create model with mix of a formula and free parameters ---
+  formula_list0 <- list(mu = ~ x_cont1 + x_fac2t + x_fac3o)
+
+  formula_prior_list0 <- list(
+    mu    = list(
+      "intercept" = prior("normal", list(0, 5)),
+      "x_cont1"   = prior_spike_and_slab(
+        prior_parameter = prior("normal", list(0, 0.5)),
+        prior_inclusion = prior("beta", list(1, 1))
+      ),
+      "x_fac2t"   = prior_spike_and_slab(
+        prior_parameter = prior_factor("normal",  contrast = "treatment", list(0, 1)),
+        prior_inclusion = prior("beta", list(1, 1))
+      ),
+      "x_fac3o"   = prior_spike_and_slab(
+        prior_parameter = prior_factor("mnormal", contrast = "orthonormal", list(0, 1)),
+        prior_inclusion = prior("spike", list(.5))
+      )
+    )
+  )
+
+
+  prior_list        <- list(sigma = prior("lognormal", list(0, 1)))
+  formula_data_list <- list(mu = data_formula)
+
+  model_syntax <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  log_posterior <- function(parameters, data){
+    sum(stats::dnorm(data$y, parameters[["mu"]], parameters[["sigma"]], log = TRUE))
+  }
+
+  fit0 <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list0, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0, seed = 1)
+
+  marglik0 <- list(logml = 0)
+  class(marglik0) <- "bridge"
+  # mix posteriors
+  models <- list(
+    list(fit = fit0, marglik = marglik0, fit_summary = runjags_estimates_table(fit0), prior_weights = 1)
+  )
+  models <- models_inference(models)
+
+  model_summary_table(models[[1]])
+  ### checking summary functions
+  # model summary
+  model_summary <- model_summary_table(models[[1]])
+  expect_equal(model_summary[,1], c("Model  ", "Prior prob.  ", "log(marglik)  ", "Post. prob.  ", "Inclusion BF  ", "  "))
+  expect_equal(model_summary[,4], c("Parameter prior distributions", "(mu) intercept ~ Normal(0, 5)", "(mu) x_cont1 ~ Normal(0, 0.5) * Beta(1, 1)", "(mu) x_fac2t ~ treatment contrast: Normal(0, 1) * Beta(1, 1)", "(mu) x_fac3o ~ orthonormal contrast: mNormal(0, 1) * Spike(0.5)", "sigma ~ Lognormal(0, 1)"))
+
+  model_estimates <- runjags_estimates_table(fit0)
+  expect_equal(colnames(model_estimates), c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
+  expect_equal(rownames(model_estimates), c("(mu) intercept", "(mu) x_cont1", "(mu) x_cont1 (inclusion)", "(mu) x_fac2t[B]", "(mu) x_fac2t (inclusion)", "(mu) x_fac3o[1]", "(mu) x_fac3o[2]", "(mu) x_fac3o (inclusion)", "sigma"))
+  expect_equal(unname(unlist(model_estimates[7,])), c(-1.776437e-03, 4.269207e-02, 0.000000e+00, 0.000000e+00, 0.000000e+00, 3.428435e-04, 8.000000e-03, 1.550600e+04, 1.001065e+00), tolerance = 1e-3)
+
+  model_estimates <- runjags_estimates_table(fit0, transform_orthonormal = TRUE, conditional = TRUE)
+  expect_equal(colnames(model_estimates), c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
+  expect_equal(rownames(model_estimates), c("(mu) intercept", "(mu) x_cont1", "(mu) x_cont1 (inclusion)", "(mu) x_fac2t[B]", "(mu) x_fac2t (inclusion)", "(mu) x_fac3o [dif: A]", "(mu) x_fac3o [dif: B]", "(mu) x_fac3o [dif: C]", "(mu) x_fac3o (inclusion)", "sigma"))
+  expect_equal(unname(unlist(model_estimates[8,])), c(0.0626582174, 0.1661778973, -0.2621073424, 0.0591205499, 0.3954805352,  NA, NA, NA, NA), tolerance = 1e-3)
+
+  model_estimates <- runjags_estimates_table(fit0, transform_orthonormal = TRUE, conditional = TRUE, remove_inclusion = TRUE)
+  expect_equal(colnames(model_estimates), c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
+  expect_equal(rownames(model_estimates), c("(mu) intercept", "(mu) x_cont1", "(mu) x_fac2t[B]", "(mu) x_fac3o [dif: A]", "(mu) x_fac3o [dif: B]", "(mu) x_fac3o [dif: C]", "sigma"))
+  expect_equal(unname(unlist(model_estimates[2,])), c(3.040927e-01, 1.355633e-01, 3.256895e-02, 3.058346e-01, 5.678668e-01, 2.298187e-03, 1.300000e-02, 5.720000e+03, 1.000421e+00), tolerance = 1e-3)
+
+  model_inference <- runjags_inference_table(fit0)
+  expect_equal(colnames(model_inference), c("Parameter", "prior_prob", "post_prob", "inclusion_BF"))
+  expect_equal(model_inference[,1], c("(mu) x_cont1", "(mu) x_fac2t", "(mu) x_fac3o"))
+  expect_equal(model_inference[,2], c(0.5, 0.5, 0.5))
+  expect_equal(model_inference[,3], c(0.7798125, 0.1864375, 0.0399375), tolerance = 1e-3)
+  expect_equal(model_inference[,4], c(3.54158388, 0.22916187, 0.04159885), tolerance = 1e-3)
 
 })
 

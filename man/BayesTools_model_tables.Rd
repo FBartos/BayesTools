@@ -4,7 +4,12 @@
 \alias{BayesTools_model_tables}
 \alias{model_summary_table}
 \alias{runjags_estimates_table}
+\alias{runjags_inference_table}
+\alias{JAGS_estimates_table}
+\alias{JAGS_inference_table}
+\alias{JAGS_summary_table}
 \alias{runjags_estimates_empty_table}
+\alias{runjags_inference_empty_table}
 \title{Create BayesTools model tables}
 \usage{
 model_summary_table(
@@ -24,12 +29,56 @@ runjags_estimates_table(
   title = NULL,
   footnotes = NULL,
   warnings = NULL,
+  conditional = FALSE,
   remove_spike_0 = TRUE,
   transform_orthonormal = FALSE,
+  formula_prefix = TRUE,
+  remove_inclusion = FALSE
+)
+
+runjags_inference_table(
+  fit,
+  title = NULL,
+  footnotes = NULL,
+  warnings = NULL,
+  formula_prefix = TRUE
+)
+
+JAGS_estimates_table(
+  fit,
+  transformations = NULL,
+  title = NULL,
+  footnotes = NULL,
+  warnings = NULL,
+  conditional = FALSE,
+  remove_spike_0 = TRUE,
+  transform_orthonormal = FALSE,
+  formula_prefix = TRUE,
+  remove_inclusion = FALSE
+)
+
+JAGS_inference_table(
+  fit,
+  title = NULL,
+  footnotes = NULL,
+  warnings = NULL,
+  formula_prefix = TRUE
+)
+
+JAGS_summary_table(
+  model,
+  model_description = NULL,
+  title = NULL,
+  footnotes = NULL,
+  warnings = NULL,
+  remove_spike_0 = TRUE,
+  short_name = FALSE,
   formula_prefix = TRUE
 )
 
 runjags_estimates_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
+
+runjags_inference_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
 }
 \arguments{
 \item{model}{model object containing a list of \code{priors}
@@ -62,9 +111,15 @@ be printed. Defaults to \code{TRUE}.}
 \item{transformations}{named list of transformations to be applied
 to specific parameters}
 
+\item{conditional}{summarizes estimates conditional on being included
+in the model for spike and slab priors. Defaults to \code{FALSE}.}
+
 \item{transform_orthonormal}{whether factors with orthonormal prior
 distributions should be transformed to differences from the grand
 mean}
+
+\item{remove_inclusion}{whether estimates of the inclusion probabilities
+should be excluded from the summary table. Defaults to \code{FALSE}.}
 }
 \value{
 \code{model_summary_table} returns a table with
