@@ -18,7 +18,7 @@ provides estimates table for a runjags fit."><!-- mathjax --><script src="https:
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.10</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
       </span>
     </div>
 
@@ -34,6 +34,9 @@ provides estimates table for a runjags fit."><!-- mathjax --><script src="https:
   </a>
   <ul class="dropdown-menu" role="menu"><li>
       <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
     </li>
   </ul></li>
 <li>
@@ -82,12 +85,56 @@ provides estimates table for a runjags fit.</p>
   title <span class="op">=</span> <span class="cn">NULL</span>,
   footnotes <span class="op">=</span> <span class="cn">NULL</span>,
   warnings <span class="op">=</span> <span class="cn">NULL</span>,
+  conditional <span class="op">=</span> <span class="cn">FALSE</span>,
   remove_spike_0 <span class="op">=</span> <span class="cn">TRUE</span>,
   transform_orthonormal <span class="op">=</span> <span class="cn">FALSE</span>,
+  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>,
+  remove_inclusion <span class="op">=</span> <span class="cn">FALSE</span>
+<span class="op">)</span>
+
+<span class="fu">runjags_inference_table</span><span class="op">(</span>
+  <span class="va">fit</span>,
+  title <span class="op">=</span> <span class="cn">NULL</span>,
+  footnotes <span class="op">=</span> <span class="cn">NULL</span>,
+  warnings <span class="op">=</span> <span class="cn">NULL</span>,
   formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>
 <span class="op">)</span>
 
-<span class="fu">runjags_estimates_empty_table</span><span class="op">(</span>title <span class="op">=</span> <span class="cn">NULL</span>, footnotes <span class="op">=</span> <span class="cn">NULL</span>, warnings <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></code></pre></div>
+<span class="fu">JAGS_estimates_table</span><span class="op">(</span>
+  <span class="va">fit</span>,
+  transformations <span class="op">=</span> <span class="cn">NULL</span>,
+  title <span class="op">=</span> <span class="cn">NULL</span>,
+  footnotes <span class="op">=</span> <span class="cn">NULL</span>,
+  warnings <span class="op">=</span> <span class="cn">NULL</span>,
+  conditional <span class="op">=</span> <span class="cn">FALSE</span>,
+  remove_spike_0 <span class="op">=</span> <span class="cn">TRUE</span>,
+  transform_orthonormal <span class="op">=</span> <span class="cn">FALSE</span>,
+  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>,
+  remove_inclusion <span class="op">=</span> <span class="cn">FALSE</span>
+<span class="op">)</span>
+
+<span class="fu">JAGS_inference_table</span><span class="op">(</span>
+  <span class="va">fit</span>,
+  title <span class="op">=</span> <span class="cn">NULL</span>,
+  footnotes <span class="op">=</span> <span class="cn">NULL</span>,
+  warnings <span class="op">=</span> <span class="cn">NULL</span>,
+  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>
+<span class="op">)</span>
+
+<span class="fu">JAGS_summary_table</span><span class="op">(</span>
+  <span class="va">model</span>,
+  model_description <span class="op">=</span> <span class="cn">NULL</span>,
+  title <span class="op">=</span> <span class="cn">NULL</span>,
+  footnotes <span class="op">=</span> <span class="cn">NULL</span>,
+  warnings <span class="op">=</span> <span class="cn">NULL</span>,
+  remove_spike_0 <span class="op">=</span> <span class="cn">TRUE</span>,
+  short_name <span class="op">=</span> <span class="cn">FALSE</span>,
+  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>
+<span class="op">)</span>
+
+<span class="fu">runjags_estimates_empty_table</span><span class="op">(</span>title <span class="op">=</span> <span class="cn">NULL</span>, footnotes <span class="op">=</span> <span class="cn">NULL</span>, warnings <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span>
+
+<span class="fu">runjags_inference_empty_table</span><span class="op">(</span>title <span class="op">=</span> <span class="cn">NULL</span>, footnotes <span class="op">=</span> <span class="cn">NULL</span>, warnings <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></code></pre></div>
     </div>
 
     <div id="arguments">
@@ -99,39 +146,75 @@ named list with information about the model: model number
 <code>m_number</code>, marginal likelihood <code>marglik</code>, prior and
 posterior probability <code>prior_prob</code> and <code>post_prob</code>,
 and model inclusion Bayes factor <code>inclusion_BF</code></p></dd>
+
+
 <dt>model_description</dt>
 <dd><p>named list with additional description
 to be added to the table</p></dd>
+
+
 <dt>title</dt>
 <dd><p>title to be added to the table</p></dd>
+
+
 <dt>footnotes</dt>
 <dd><p>footnotes to be added to the table</p></dd>
+
+
 <dt>warnings</dt>
 <dd><p>warnings to be added to the table</p></dd>
+
+
 <dt>remove_spike_0</dt>
 <dd><p>whether prior distributions equal to spike
 at 0 should be removed from the <code>prior_list</code></p></dd>
+
+
 <dt>short_name</dt>
 <dd><p>whether the prior distribution names should be
 shortened. Defaults to <code>FALSE</code>.</p></dd>
+
+
 <dt>formula_prefix</dt>
 <dd><p>whether the parameter prefix from formula should
 be printed. Defaults to <code>TRUE</code>.</p></dd>
+
+
 <dt>fit</dt>
 <dd><p>runjags model fit</p></dd>
+
+
 <dt>transformations</dt>
 <dd><p>named list of transformations to be applied
 to specific parameters</p></dd>
+
+
+<dt>conditional</dt>
+<dd><p>summarizes estimates conditional on being included
+in the model for spike and slab priors. Defaults to <code>FALSE</code>.</p></dd>
+
+
 <dt>transform_orthonormal</dt>
 <dd><p>whether factors with orthonormal prior
 distributions should be transformed to differences from the grand
 mean</p></dd>
+
+
+<dt>remove_inclusion</dt>
+<dd><p>whether estimates of the inclusion probabilities
+should be excluded from the summary table. Defaults to <code>FALSE</code>.</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p><code>model_summary_table</code> returns a table with
+    
+
+<p><code>model_summary_table</code> returns a table with
 overview of the fitted model, <code>runjags_estimates_table</code> returns
-a table with MCMC estimates, and <code>runjags_estimates_empty_table</code>returns an empty estimates table. All of the tables are objects of
+a table with MCMC estimates, and <code>runjags_estimates_empty_table</code></p>
+
+
+<p>returns an empty estimates table. All of the tables are objects of
 class 'BayesTools_table'.</p>
     </div>
     <div id="see-also">
@@ -151,7 +234,7 @@ class 'BayesTools_table'.</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.3.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
 </div>
 
       </footer></div>

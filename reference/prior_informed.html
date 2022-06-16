@@ -18,7 +18,7 @@ research. The prior can be visualized by the plot function."><!-- mathjax --><sc
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.10</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
       </span>
     </div>
 
@@ -34,6 +34,9 @@ research. The prior can be visualized by the plot function."><!-- mathjax --><sc
   </a>
   <ul class="dropdown-menu" role="menu"><li>
       <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
     </li>
   </ul></li>
 <li>
@@ -93,18 +96,25 @@ continuous standardized outcomes based on the Cochrane database of systematic re
 Use <code>"Cochrane"</code> for a prior distribution based on the whole database or call
 <code>print(prior_informed_medicine_names)</code> to inspect the names of
 all 46 subfields and set the appropriate <code>parameter</code> and <code>type</code>.</p></dd>
+
+
 <dt>parameter</dt>
 <dd><p>parameter name describing what prior distribution is supposed to be produced in cases
 where the <code>name</code> corresponds to multiple prior distributions. Relevant only for the empirical medical
 prior distributions.</p></dd>
+
+
 <dt>type</dt>
 <dd><p>prior type describing what prior distribution is supposed to be produced in cases
 where the <code>name</code> and <code>parameter</code> correspond to multiple prior distributions. Relevant only for
 the empirical medical prior distributions.</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p><code>prior_informed</code> returns an object of class 'prior'.</p>
+    
+
+<p><code>prior_informed</code> returns an object of class 'prior'.</p>
     </div>
     <div id="references">
     <h2>References</h2>
@@ -160,7 +170,7 @@ the empirical medical prior distributions.</p></dd>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.3.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
 </div>
 
       </footer></div>

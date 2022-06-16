@@ -18,7 +18,7 @@ JAGS_fit function."><!-- mathjax --><script src="https://cdnjs.cloudflare.com/aj
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.10</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
       </span>
     </div>
 
@@ -34,6 +34,9 @@ JAGS_fit function."><!-- mathjax --><script src="https://cdnjs.cloudflare.com/aj
   </a>
   <ul class="dropdown-menu" role="menu"><li>
       <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
     </li>
   </ul></li>
 <li>
@@ -91,26 +94,46 @@ JAGS_fit function."><!-- mathjax --><script src="https://cdnjs.cloudflare.com/aj
     <h2>Arguments</h2>
     <dl><dt>chains</dt>
 <dd><p>number of chains to be run, defaults to <code>4</code></p></dd>
+
+
 <dt>adapt</dt>
 <dd><p>number of samples used for adapting the MCMC chains, defaults to <code>500</code></p></dd>
+
+
 <dt>burnin</dt>
 <dd><p>number of burnin iterations of the MCMC chains, defaults to <code>1000</code></p></dd>
+
+
 <dt>sample</dt>
 <dd><p>number of sampling iterations of the MCMC chains, defaults to <code>4000</code></p></dd>
+
+
 <dt>thin</dt>
 <dd><p>thinning interval for the MCMC samples, defaults to <code>1</code></p></dd>
+
+
 <dt>autofit</dt>
 <dd><p>whether the models should be refitted until convergence criteria
 specified in <code>autofit_control</code>. Defaults to <code>FALSE</code>.</p></dd>
+
+
 <dt>parallel</dt>
 <dd><p>whether the chains should be run in parallel <code>FALSE</code></p></dd>
+
+
 <dt>cores</dt>
 <dd><p>number of cores used for multithreading if <code>parallel = TRUE</code>,
 defaults to <code>chains</code></p></dd>
+
+
 <dt>silent</dt>
 <dd><p>whether the function should proceed silently, defaults to <code>TRUE</code></p></dd>
+
+
 <dt>seed</dt>
 <dd><p>seed for random number generation</p></dd>
+
+
 <dt>check_mins</dt>
 <dd><p>named list of minimal values for which
 should some input be checked. Defaults to:</p><dl><dt>chains</dt>
@@ -130,8 +153,12 @@ should some input be checked. Defaults to:</p><dl><dt>chains</dt>
 
 
 </dl></dd>
+
+
 <dt>call</dt>
 <dd><p>string to be placed as a prefix to the error call.</p></dd>
+
+
 <dt>autofit_control</dt>
 <dd><p>a list of arguments controlling the autofit function.
 Possible options are:</p><dl><dt>max_Rhat</dt>
@@ -159,14 +186,22 @@ need to correspond to <code>units</code> passed to <a href="https://rdrr.io/r/ba
 
 
 </dl></dd>
+
+
 <dt>skip_sample_extend</dt>
 <dd><p>whether <code>sample_extend</code>
 is allowed to be NULL and skipped in the check</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p><code>JAGS_check_and_list_fit_settings</code> invisibly returns a
-list of checked fit settings. <code>JAGS_check_and_list_autofit_settings</code>invisibly returns a list of checked autofit settings.
+    
+
+<p><code>JAGS_check_and_list_fit_settings</code> invisibly returns a
+list of checked fit settings. <code>JAGS_check_and_list_autofit_settings</code></p>
+
+
+<p>invisibly returns a list of checked autofit settings.
 parameter names.</p>
     </div>
 
@@ -182,7 +217,7 @@ parameter names.</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.3.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
 </div>
 
       </footer></div>

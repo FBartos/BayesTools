@@ -19,7 +19,7 @@ function"><!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/libs/ma
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.10</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
       </span>
     </div>
 
@@ -35,6 +35,9 @@ function"><!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/libs/ma
   </a>
   <ul class="dropdown-menu" role="menu"><li>
       <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
     </li>
   </ul></li>
 <li>
@@ -75,17 +78,26 @@ function</p>
     <dl><dt>formula</dt>
 <dd><p>formula specifying the right hand side of the assignment (the
 left hand side is ignored)</p></dd>
+
+
 <dt>parameter</dt>
 <dd><p>name of the parameter to be created with the formula</p></dd>
+
+
 <dt>data</dt>
 <dd><p>data.frame containing predictors included in the formula</p></dd>
+
+
 <dt>prior_list</dt>
 <dd><p>named list of prior distribution of parameters specified within
 the <code>formula</code></p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p><code>JAGS_formula</code> returns a list containing the formula JAGS syntax,
+    
+
+<p><code>JAGS_formula</code> returns a list containing the formula JAGS syntax,
 JAGS data object, and modified prior_list.</p>
     </div>
     <div id="see-also">
@@ -133,7 +145,7 @@ JAGS data object, and modified prior_list.</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.3.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
 </div>
 
       </footer></div>

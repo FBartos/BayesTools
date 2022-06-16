@@ -18,7 +18,7 @@ JAGS."><!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/libs/mathj
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.10</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
       </span>
     </div>
 
@@ -34,6 +34,9 @@ JAGS."><!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/libs/mathj
   </a>
   <ul class="dropdown-menu" role="menu"><li>
       <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
     </li>
   </ul></li>
 <li>
@@ -78,17 +81,26 @@ JAGS.</p>
     <h2>Arguments</h2>
     <dl><dt>parameters</dt>
 <dd><p>a vector of parameter names</p></dd>
+
+
 <dt>formula_parameters</dt>
 <dd><p>a vector of formula parameter prefix names</p></dd>
+
+
 <dt>formula_prefix</dt>
 <dd><p>whether the <code>formula_parameters</code> names should be
 kept. Defaults to <code>TRUE</code>.</p></dd>
+
+
 <dt>formula_parameter</dt>
 <dd><p>a formula parameter prefix name</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p>A character vector with reformatted parameter names.</p>
+    
+
+<p>A character vector with reformatted parameter names.</p>
     </div>
 
     <div id="ref-examples">
@@ -111,7 +123,7 @@ kept. Defaults to <code>TRUE</code>.</p></dd>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.3.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
 </div>
 
       </footer></div>

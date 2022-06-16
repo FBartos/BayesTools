@@ -19,7 +19,7 @@ bounds of parameters based on a list of prior distributions."><!-- mathjax --><s
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.10</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
       </span>
     </div>
 
@@ -35,6 +35,9 @@ bounds of parameters based on a list of prior distributions."><!-- mathjax --><s
   </a>
   <ul class="dropdown-menu" role="menu"><li>
       <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
     </li>
   </ul></li>
 <li>
@@ -80,21 +83,30 @@ bounds of parameters based on a list of prior distributions.</p>
     <dl><dt>posterior</dt>
 <dd><p>matrix of mcmc samples from the posterior
 distribution</p></dd>
+
+
 <dt>prior_list</dt>
 <dd><p>named list of prior distribution
 (names correspond to the parameter names) of parameters not specified within the
 <code>formula_list</code></p></dd>
+
+
 <dt>add_parameters</dt>
 <dd><p>vector of additional parameter names that should be used
 in bridgesampling but were not specified in the <code>prior_list</code></p></dd>
+
+
 <dt>add_bounds</dt>
 <dd><p>list with two name vectors (<code>"lb"</code> and <code>"up"</code>)
 containing lower and upper bounds of the additional parameters that were not
 specified in the <code>prior_list</code></p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p><code>JAGS_bridgesampling_posterior</code> returns a matrix of
+    
+
+<p><code>JAGS_bridgesampling_posterior</code> returns a matrix of
 posterior samples with 'lb' and 'ub' attributes carrying the
 lower and upper boundaries.</p>
     </div>
@@ -111,7 +123,7 @@ lower and upper boundaries.</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.3.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
 </div>
 
       </footer></div>

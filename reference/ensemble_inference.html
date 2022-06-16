@@ -23,7 +23,7 @@ models for each model."><!-- mathjax --><script src="https://cdnjs.cloudflare.co
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.10</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
       </span>
     </div>
 
@@ -39,6 +39,9 @@ models for each model."><!-- mathjax --><script src="https://cdnjs.cloudflare.co
   </a>
   <ul class="dropdown-menu" role="menu"><li>
       <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
     </li>
   </ul></li>
 <li>
@@ -86,31 +89,46 @@ models for each model.</p>
     <h2>Arguments</h2>
     <dl><dt>prior_weights</dt>
 <dd><p>vector of prior model odds</p></dd>
+
+
 <dt>margliks</dt>
 <dd><p>vector of marginal likelihoods</p></dd>
+
+
 <dt>is_null</dt>
 <dd><p>logical vector of indicators specifying whether the model corresponds
 to the null or alternative hypothesis (or an integer vector indexing models
 corresponding to the null hypothesis)</p></dd>
+
+
 <dt>conditional</dt>
 <dd><p>whether prior and posterior model probabilities should
 be returned only for the conditional model. Defaults to <code>FALSE</code></p></dd>
+
+
 <dt>model_list</dt>
 <dd><p>list of models, each of which contains marginal
 likelihood estimated with bridge sampling <code>marglik</code> and prior model
 odds <code>prior_weights</code></p></dd>
+
+
 <dt>parameters</dt>
 <dd><p>vector of parameters names for which inference should
 be drawn</p></dd>
+
+
 <dt>is_null_list</dt>
 <dd><p>list with entries for each parameter carrying either
 logical vector of indicators specifying whether the model corresponds
 to the null or alternative hypothesis (or an integer vector indexing models
 corresponding to the null hypothesis)</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p><code>compute_inference</code> returns a named list of prior probabilities,
+    
+
+<p><code>compute_inference</code> returns a named list of prior probabilities,
 posterior probabilities, and Bayes factors, <code>ppoint</code> gives the
 distribution function, <code>ensemble_inference</code> gives a list of named lists of
 inferences for each parameter, and <code>models_inference</code> returns a list of
@@ -133,7 +151,7 @@ models, each expanded by the inference list.</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.3.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
 </div>
 
       </footer></div>

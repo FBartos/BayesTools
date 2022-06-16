@@ -18,7 +18,7 @@ for a given parameter of a JAGS model."><!-- mathjax --><script src="https://cdn
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.10</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
       </span>
     </div>
 
@@ -34,6 +34,9 @@ for a given parameter of a JAGS model."><!-- mathjax --><script src="https://cdn
   </a>
   <ul class="dropdown-menu" role="menu"><li>
       <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
     </li>
   </ul></li>
 <li>
@@ -127,46 +130,78 @@ for a given parameter of a JAGS model.</p>
     <h2>Arguments</h2>
     <dl><dt>fit</dt>
 <dd><p>a JAGS model fitted via <code><a href="JAGS_fit.html">JAGS_fit()</a></code></p></dd>
+
+
 <dt>parameter</dt>
 <dd><p>parameter to be plotted</p></dd>
+
+
 <dt>type</dt>
 <dd><p>what type of model diagnostic should be plotted. The available
 options are <code>"density"</code>, <code>"trace"</code>, and <code>"autocorrelation"</code></p></dd>
+
+
 <dt>plot_type</dt>
 <dd><p>whether to use a base plot <code>"base"</code>
 or ggplot2 <code>"ggplot"</code> for plotting.</p></dd>
+
+
 <dt>xlim</dt>
 <dd><p>x plotting range</p></dd>
+
+
 <dt>ylim</dt>
 <dd><p>y plotting range</p></dd>
+
+
 <dt>lags</dt>
 <dd><p>number of lags to be shown for the autocorrelation plot.
 Defaults to <code>30</code>.</p></dd>
+
+
 <dt>n_points</dt>
 <dd><p>number of equally spaced points
 in the <code>x_range</code> if <code>x_seq</code> is unspecified</p></dd>
+
+
 <dt>transformations</dt>
 <dd><p>named list of transformations to be applied
 to specific parameters</p></dd>
+
+
 <dt>transform_orthonormal</dt>
 <dd><p>whether factors with orthonormal prior
 distributions should be transformed to differences from the grand
 mean</p></dd>
+
+
 <dt>short_name</dt>
 <dd><p>whether prior distribution names should be
 shorted</p></dd>
+
+
 <dt>parameter_names</dt>
 <dd><p>whether parameter names should be
 printed</p></dd>
+
+
 <dt>formula_prefix</dt>
 <dd><p>whether the parameter prefix from formula should
 be printed. Defaults to <code>TRUE</code>.</p></dd>
+
+
 <dt>...</dt>
 <dd><p>additional arguments</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p><code>diagnostics</code> returns either <code>NULL</code> if <code>plot_type = "base"</code>or an object/list of objects (depending on the number of parameters to be plotted)
+    
+
+<p><code>diagnostics</code> returns either <code>NULL</code> if <code>plot_type = "base"</code></p>
+
+
+<p>or an object/list of objects (depending on the number of parameters to be plotted)
 of class 'ggplot2' if <code>plot_type = "ggplot2"</code>.</p>
     </div>
     <div id="see-also">
@@ -186,7 +221,7 @@ of class 'ggplot2' if <code>plot_type = "ggplot2"</code>.</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.3.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
 </div>
 
       </footer></div>
