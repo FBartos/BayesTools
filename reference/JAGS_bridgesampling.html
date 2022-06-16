@@ -23,7 +23,7 @@ log likelihood of the model part."><!-- mathjax --><script src="https://cdnjs.cl
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.10</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
       </span>
     </div>
 
@@ -39,6 +39,9 @@ log likelihood of the model part."><!-- mathjax --><script src="https://cdnjs.cl
   </a>
   <ul class="dropdown-menu" role="menu"><li>
       <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
     </li>
   </ul></li>
 <li>
@@ -96,46 +99,71 @@ log likelihood of the model part.</p>
     <dl><dt>fit</dt>
 <dd><p>model fitted with either <a href="https://rdrr.io/pkg/runjags/man/runjags-package.html" class="external-link">runjags</a> posterior
 samples obtained with <a href="https://rdrr.io/pkg/rjags/man/rjags-package.html" class="external-link">rjags-package</a></p></dd>
+
+
 <dt>log_posterior</dt>
 <dd><p>function that takes a named list of samples, the data,
 and additional list of parameters passed as <code>...</code> as input and
 returns the log of the unnormalized posterior density of the model part</p></dd>
+
+
 <dt>data</dt>
 <dd><p>list containing data to fit the model (not including data for the formulas)</p></dd>
+
+
 <dt>prior_list</dt>
 <dd><p>named list of prior distribution
 (names correspond to the parameter names) of parameters not specified within the
 <code>formula_list</code></p></dd>
+
+
 <dt>formula_list</dt>
 <dd><p>named list of formulas to be added to the model
 (names correspond to the parameter name created by each of the formula)</p></dd>
+
+
 <dt>formula_data_list</dt>
 <dd><p>named list of data frames containing data for each formula
 (names of the lists correspond to the parameter name created by each of the formula)</p></dd>
+
+
 <dt>formula_prior_list</dt>
 <dd><p>named list of named lists of prior distributions
 (names of the lists correspond to the parameter name created by each of the formula and
 the names of the prior distribution correspond to the parameter names) of parameters specified
 within the <code>formula</code></p></dd>
+
+
 <dt>add_parameters</dt>
 <dd><p>vector of additional parameter names that should be used
 in bridgesampling but were not specified in the <code>prior_list</code></p></dd>
+
+
 <dt>add_bounds</dt>
 <dd><p>list with two name vectors (<code>"lb"</code> and <code>"up"</code>)
 containing lower and upper bounds of the additional parameters that were not
 specified in the <code>prior_list</code></p></dd>
+
+
 <dt>maxiter</dt>
 <dd><p>maximum number of iterations for the
 <a href="https://rdrr.io/pkg/bridgesampling/man/bridge_sampler.html" class="external-link">bridge_sampler</a></p></dd>
+
+
 <dt>silent</dt>
 <dd><p>whether the progress should be printed, defaults to <code>TRUE</code></p></dd>
+
+
 <dt>...</dt>
 <dd><p>additional argument to the <a href="https://rdrr.io/pkg/bridgesampling/man/bridge_sampler.html" class="external-link">bridge_sampler</a>
 and <code>log_posterior</code> function</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p><code>JAGS_bridgesampling</code> returns an object of class 'bridge'.</p>
+    
+
+<p><code>JAGS_bridgesampling</code> returns an object of class 'bridge'.</p>
     </div>
 
     <div id="ref-examples">
@@ -185,7 +213,7 @@ and <code>log_posterior</code> function</p></dd>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.3.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
 </div>
 
       </footer></div>

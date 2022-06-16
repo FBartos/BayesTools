@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.10</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
       </span>
     </div>
 
@@ -33,6 +33,9 @@
   </a>
   <ul class="dropdown-menu" role="menu"><li>
       <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
     </li>
   </ul></li>
 <li>
@@ -58,7 +61,22 @@
     </div>
 
     <div class="section level2">
-<h2 class="page-header" data-toc-text="0.2.10" id="version-0210">version 0.2.10<a class="anchor" aria-label="anchor" href="#version-0210"></a></h2>
+<h2 class="page-header" data-toc-text="0.2.11" id="version-0211">version 0.2.11<small>2022-06-15</small><a class="anchor" aria-label="anchor" href="#version-0211"></a></h2>
+<div class="section level3">
+<h3 id="features-0-2-11">Features<a class="anchor" aria-label="anchor" href="#features-0-2-11"></a></h3>
+<ul><li>adding Bernoulli prior distribution</li>
+<li>adding spike and slab type of prior distributions (without marginal likelihood computations/model-averaging capabilities)</li>
+<li>new vignette comparing Bayes factor computation via marginal likelihood and spike and slab priors</li>
+</ul></div>
+<div class="section level3">
+<h3 id="fixes-0-2-11">Fixes<a class="anchor" aria-label="anchor" href="#fixes-0-2-11"></a></h3>
+<ul><li>when a transformation is applied, JAGS summary tables now produce the mean of the transformed variable (previous versions incorrectly returned transformation of the mean)</li></ul></div>
+<div class="section level3">
+<h3 id="changes-0-2-11">Changes<a class="anchor" aria-label="anchor" href="#changes-0-2-11"></a></h3>
+<ul><li>runjags_XXX_table functions are now also exported as JAGS_XXX_functions for consistency with the rest of the code</li></ul></div>
+</div>
+    <div class="section level2">
+<h2 class="page-header" data-toc-text="0.2.10" id="version-0210">version 0.2.10<small>2022-05-09</small><a class="anchor" aria-label="anchor" href="#version-0210"></a></h2>
 <div class="section level3">
 <h3 id="features-0-2-10">Features<a class="anchor" aria-label="anchor" href="#features-0-2-10"></a></h3>
 <ul><li>trace, density, and autocorrelation diagnostic plots for JAGS models</li></ul></div>
@@ -259,7 +277,7 @@
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.3.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
 </div>
 
       </footer></div>

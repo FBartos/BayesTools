@@ -21,7 +21,7 @@ mccdf, mquant)."><!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.10</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
       </span>
     </div>
 
@@ -37,6 +37,9 @@ mccdf, mquant)."><!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/
   </a>
   <ul class="dropdown-menu" role="menu"><li>
       <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
     </li>
   </ul></li>
 <li>
@@ -98,18 +101,25 @@ mccdf, mquant).</p>
     <h2>Arguments</h2>
     <dl><dt>x</dt>
 <dd><p>main argument</p></dd>
+
+
 <dt>...</dt>
 <dd><p>unused arguments</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p><code>pdf</code> (<code>mpdf</code>) and <code>lpdf</code> (<code>mlpdf</code>) give
+    
+
+<p><code>pdf</code> (<code>mpdf</code>) and <code>lpdf</code> (<code>mlpdf</code>) give
 the (marginal) density and the log of (marginal) density,
 <code>cdf</code> (<code>mcdf</code>) and <code>ccdf</code> (<code>mccdf</code>) give the
 (marginal) distribution and the complement of (marginal) distribution function,
 <code>quant</code> (<code>mquant</code>) give the (marginal) quantile function,
-and <code>rng</code> generates random deviates for an object of class 'prior'.
-The <code>pdf</code> function proceeds to PDF graphics device if <code>x</code> is a character.</p>
+and <code>rng</code> generates random deviates for an object of class 'prior'.</p>
+
+
+<p>The <code>pdf</code> function proceeds to PDF graphics device if <code>x</code> is a character.</p>
     </div>
 
   </div>
@@ -124,7 +134,7 @@ The <code>pdf</code> function proceeds to PDF graphics device if <code>x</code> 
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.3.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
 </div>
 
       </footer></div>

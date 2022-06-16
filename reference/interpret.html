@@ -19,7 +19,7 @@ created by ensemble_inference."><!-- mathjax --><script src="https://cdnjs.cloud
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.10</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
       </span>
     </div>
 
@@ -35,6 +35,9 @@ created by ensemble_inference."><!-- mathjax --><script src="https://cdnjs.cloud
   </a>
   <ul class="dropdown-menu" role="menu"><li>
       <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
     </li>
   </ul></li>
 <li>
@@ -74,8 +77,12 @@ created by <a href="ensemble_inference.html">ensemble_inference</a>.</p>
     <h2>Arguments</h2>
     <dl><dt>inference</dt>
 <dd><p>model inference created by <a href="ensemble_inference.html">ensemble_inference</a></p></dd>
+
+
 <dt>samples</dt>
 <dd><p>posterior samples created by <a href="mix_posteriors.html">mix_posteriors</a></p></dd>
+
+
 <dt>specification</dt>
 <dd><p>list of lists specifying the generated text.
 Each inner list carries: (1) <code>inference</code> specifying the name of
@@ -86,13 +93,18 @@ specifying the name of in the <code>samples</code> entry and optionally
 <code>samples_name</code> as a name to use in the text, <code>samples_units</code> as
 a unit text to be appended after the estimate, and <code>samples_conditional</code>
 specifying whether the estimate is conditional or model-averaged.</p></dd>
+
+
 <dt>method</dt>
 <dd><p>character specifying name of the method to be
 appended at the beginning of each sentence.</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p><code>interpret</code> returns character.</p>
+    
+
+<p><code>interpret</code> returns character.</p>
     </div>
     <div id="see-also">
     <h2>See also</h2>
@@ -111,7 +123,7 @@ appended at the beginning of each sentence.</p></dd>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.3.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
 </div>
 
       </footer></div>

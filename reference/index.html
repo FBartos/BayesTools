@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.10</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
       </span>
     </div>
 
@@ -33,6 +33,9 @@
   </a>
   <ul class="dropdown-menu" role="menu"><li>
       <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
     </li>
   </ul></li>
 <li>
@@ -69,7 +72,7 @@
         </td>
         <td><p>Create BayesTools ensemble summary tables</p></td>
       </tr><tr><td>
-          <p><code><a href="BayesTools_model_tables.html">model_summary_table()</a></code> <code><a href="BayesTools_model_tables.html">runjags_estimates_table()</a></code> <code><a href="BayesTools_model_tables.html">runjags_estimates_empty_table()</a></code> </p>
+          <p><code><a href="BayesTools_model_tables.html">model_summary_table()</a></code> <code><a href="BayesTools_model_tables.html">runjags_estimates_table()</a></code> <code><a href="BayesTools_model_tables.html">runjags_inference_table()</a></code> <code><a href="BayesTools_model_tables.html">JAGS_estimates_table()</a></code> <code><a href="BayesTools_model_tables.html">JAGS_inference_table()</a></code> <code><a href="BayesTools_model_tables.html">JAGS_summary_table()</a></code> <code><a href="BayesTools_model_tables.html">runjags_estimates_empty_table()</a></code> <code><a href="BayesTools_model_tables.html">runjags_inference_empty_table()</a></code> </p>
         </td>
         <td><p>Create BayesTools model tables</p></td>
       </tr><tr><td>
@@ -165,7 +168,7 @@
         </td>
         <td><p>Interpret ensemble inference and estimates</p></td>
       </tr><tr><td>
-          <p><code><a href="is.prior.html">is.prior()</a></code> <code><a href="is.prior.html">is.prior.point()</a></code> <code><a href="is.prior.html">is.prior.none()</a></code> <code><a href="is.prior.html">is.prior.simple()</a></code> <code><a href="is.prior.html">is.prior.vector()</a></code> <code><a href="is.prior.html">is.prior.PET()</a></code> <code><a href="is.prior.html">is.prior.PEESE()</a></code> <code><a href="is.prior.html">is.prior.weightfunction()</a></code> <code><a href="is.prior.html">is.prior.factor()</a></code> <code><a href="is.prior.html">is.prior.orthonormal()</a></code> <code><a href="is.prior.html">is.prior.dummy()</a></code> </p>
+          <p><code><a href="is.prior.html">is.prior()</a></code> <code><a href="is.prior.html">is.prior.point()</a></code> <code><a href="is.prior.html">is.prior.none()</a></code> <code><a href="is.prior.html">is.prior.simple()</a></code> <code><a href="is.prior.html">is.prior.discrete()</a></code> <code><a href="is.prior.html">is.prior.vector()</a></code> <code><a href="is.prior.html">is.prior.PET()</a></code> <code><a href="is.prior.html">is.prior.PEESE()</a></code> <code><a href="is.prior.html">is.prior.weightfunction()</a></code> <code><a href="is.prior.html">is.prior.factor()</a></code> <code><a href="is.prior.html">is.prior.orthonormal()</a></code> <code><a href="is.prior.html">is.prior.dummy()</a></code> <code><a href="is.prior.html">is.prior.spike_and_slab()</a></code> </p>
         </td>
         <td><p>Reports whether x is a a prior object</p></td>
       </tr><tr><td>
@@ -251,6 +254,10 @@ Wagenmakers et al. (2015)
         </td>
         <td><p>Names of medical subfields from the Cochrane database of systematic reviews</p></td>
       </tr><tr><td>
+          <p><code><a href="prior_spike_and_slab.html">prior_spike_and_slab()</a></code> </p>
+        </td>
+        <td><p>Creates a spike and slab prior distribution</p></td>
+      </tr><tr><td>
           <p><code><a href="prior_weightfunction.html">prior_weightfunction()</a></code> </p>
         </td>
         <td><p>Creates a prior distribution for a weight function</p></td>
@@ -299,7 +306,7 @@ Wagenmakers et al. (2015)
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.3.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
 </div>
 
       </footer></div>

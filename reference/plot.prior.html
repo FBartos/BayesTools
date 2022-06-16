@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.10</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
       </span>
     </div>
 
@@ -33,6 +33,9 @@
   </a>
   <ul class="dropdown-menu" role="menu"><li>
       <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
     </li>
   </ul></li>
 <li>
@@ -88,13 +91,21 @@
     <h2>Arguments</h2>
     <dl><dt>x</dt>
 <dd><p>a prior</p></dd>
+
+
 <dt>plot_type</dt>
 <dd><p>whether to use a base plot <code>"base"</code>
 or ggplot2 <code>"ggplot"</code> for plotting.</p></dd>
+
+
 <dt>x_seq</dt>
 <dd><p>sequence of x coordinates</p></dd>
+
+
 <dt>xlim</dt>
 <dd><p>x plotting range</p></dd>
+
+
 <dt>x_range_quant</dt>
 <dd><p>quantile used for
 automatically obtaining <code>x_range</code>
@@ -103,17 +114,25 @@ are unspecified. Defaults to <code>0.005</code>
 for all but Cauchy, Student-t, Gamma, and
 Inverse-gamme distributions that use
 <code>0.010</code>.</p></dd>
+
+
 <dt>n_points</dt>
 <dd><p>number of equally spaced points
 in the <code>x_range</code> if <code>x_seq</code> is unspecified</p></dd>
+
+
 <dt>n_samples</dt>
 <dd><p>number of samples from the prior
 distribution if the density cannot be obtained
 analytically (or if samples are forced with
 <code>force_samples = TRUE</code>)</p></dd>
+
+
 <dt>force_samples</dt>
 <dd><p>should prior be sampled instead
 of obtaining analytic solution whenever possible</p></dd>
+
+
 <dt>transformation</dt>
 <dd><p>transformation to be applied
 to the prior distribution. Either a character
@@ -130,33 +149,50 @@ specifying one of the prepared transformations:</p><dl><dt>lin</dt>
 </dl><p>, or a list containing the transformation function <code>fun</code>,
 inverse transformation function <code>inv</code>, and the Jacobian of
 the transformation <code>jac</code>. See examples for details.</p></dd>
+
+
 <dt>transformation_arguments</dt>
 <dd><p>a list with named arguments for
 the <code>transformation</code></p></dd>
+
+
 <dt>transformation_settings</dt>
 <dd><p>boolean indicating whether the
 settings the <code>x_seq</code> or <code>x_range</code> was specified on
 the transformed support</p></dd>
+
+
 <dt>show_figures</dt>
 <dd><p>which figures should be returned in case of
 multiple plots are generated. Useful when priors for the omega
 parameter are plotted and <code>individual = TRUE</code>.</p></dd>
+
+
 <dt>individual</dt>
 <dd><p>should individual densities be returned
 (e.g., in case of weightfunction)</p></dd>
+
+
 <dt>rescale_x</dt>
 <dd><p>allows to rescale x-axis in case a
 weightfunction is plotted.</p></dd>
+
+
 <dt>par_name</dt>
 <dd><p>a type of parameter for which the prior is
 specified. Only relevant if the prior corresponds to a mu
 parameter that needs to be transformed.</p></dd>
+
+
 <dt>...</dt>
 <dd><p>additional arguments</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p><code>plot.prior</code> returns either <code>NULL</code> or
+    
+
+<p><code>plot.prior</code> returns either <code>NULL</code> or
 an object of class 'ggplot' if plot_type is <code>plot_type = "ggplot"</code>.</p>
     </div>
     <div id="see-also">
@@ -205,7 +241,7 @@ an object of class 'ggplot' if plot_type is <code>plot_type = "ggplot"</code>.</
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.3.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
 </div>
 
       </footer></div>

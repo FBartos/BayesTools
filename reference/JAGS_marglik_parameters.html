@@ -19,7 +19,7 @@ function (returns them as a named list)"><!-- mathjax --><script src="https://cd
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.10</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
       </span>
     </div>
 
@@ -35,6 +35,9 @@ function (returns them as a named list)"><!-- mathjax --><script src="https://cd
   </a>
   <ul class="dropdown-menu" role="menu"><li>
       <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
     </li>
   </ul></li>
 <li>
@@ -82,25 +85,36 @@ function (returns them as a named list)</p>
     <dl><dt>samples</dt>
 <dd><p>samples provided by bridgesampling
 function</p></dd>
+
+
 <dt>prior_list</dt>
 <dd><p>named list of prior distribution
 (names correspond to the parameter names) of parameters not specified within the
 <code>formula_list</code></p></dd>
+
+
 <dt>formula_data_list</dt>
 <dd><p>named list of data frames containing data for each formula
 (names of the lists correspond to the parameter name created by each of the formula)</p></dd>
+
+
 <dt>formula_prior_list</dt>
 <dd><p>named list of named lists of prior distributions
 (names of the lists correspond to the parameter name created by each of the formula and
 the names of the prior distribution correspond to the parameter names) of parameters specified
 within the <code>formula</code></p></dd>
+
+
 <dt>prior_list_parameters</dt>
 <dd><p>named list of prior distributions on model parameters
 (not specified within the formula but that might scale the formula parameters)</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p><code>JAGS_marglik_parameters</code> returns a named list
+    
+
+<p><code>JAGS_marglik_parameters</code> returns a named list
 of (transformed) posterior samples.</p>
     </div>
 
@@ -116,7 +130,7 @@ of (transformed) posterior samples.</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.3.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
 </div>
 
       </footer></div>

@@ -18,7 +18,7 @@ marginal quantile function and random generation for weight functions."><!-- mat
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.10</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
       </span>
     </div>
 
@@ -34,6 +34,9 @@ marginal quantile function and random generation for weight functions."><!-- mat
   </a>
   <ul class="dropdown-menu" role="menu"><li>
       <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
     </li>
   </ul></li>
 <li>
@@ -116,35 +119,54 @@ marginal quantile function and random generation for weight functions.</p>
     <h2>Arguments</h2>
     <dl><dt>x, q</dt>
 <dd><p>vector or matrix of quantiles.</p></dd>
+
+
 <dt>alpha</dt>
 <dd><p>vector or matrix with concentration parameters for
 the Dirichlet distribution for a monotonic one.sided or a two.sided
 weight function.</p></dd>
+
+
 <dt>alpha1</dt>
 <dd><p>vector or matrix with concentration parameters for
 the Dirichlet distribution for the expected direction of non-monotonic
 one.sided of weight function.</p></dd>
+
+
 <dt>alpha2</dt>
 <dd><p>vector or matrix with concentration parameters for
 the Dirichlet distribution for the unexpected direction of non-monotonic
 one.sided of weight function.</p></dd>
+
+
 <dt>log, log.p</dt>
 <dd><p>logical; if <code>TRUE</code>, probabilities
 <code>p</code> are given as <code>log(p)</code>.</p></dd>
+
+
 <dt>omega</dt>
 <dd><p>vector or matrix of fixed probabilities for a one.sided or
 a two.sided weight function.</p></dd>
+
+
 <dt>n</dt>
 <dd><p>number of observations.</p></dd>
+
+
 <dt>lower.tail</dt>
 <dd><p>logical; if <code>TRUE</code> (default), probabilities
 are \(P[X \le x]\), otherwise, \(P[X \ge x]\).</p></dd>
+
+
 <dt>p</dt>
 <dd><p>vector of probabilities.</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p><code>mdone.sided</code>, <code>mdtwo.sided</code>, <code>mdone.sided_fixed</code>,
+    
+
+<p><code>mdone.sided</code>, <code>mdtwo.sided</code>, <code>mdone.sided_fixed</code>,
 and <code>mdtwo.sided_fixed</code> give the marginal density,
 <code>mpone.sided</code>, <code>mptwo.sided</code>, <code>mpone.sided_fixed</code>,
 and <code>mptwo.sided_fixed</code> give the marginal distribution function,
@@ -212,7 +234,7 @@ and <code>rtwo.sided_fixed</code> generate random deviates.</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.3.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
 </div>
 
       </footer></div>

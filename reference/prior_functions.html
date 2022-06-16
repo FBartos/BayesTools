@@ -21,7 +21,7 @@ mccdf, mquant) for prior distributions."><!-- mathjax --><script src="https://cd
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.10</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
       </span>
     </div>
 
@@ -37,6 +37,9 @@ mccdf, mquant) for prior distributions."><!-- mathjax --><script src="https://cd
   </a>
   <ul class="dropdown-menu" role="menu"><li>
       <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
     </li>
   </ul></li>
 <li>
@@ -109,20 +112,33 @@ mccdf, mquant) for prior distributions.</p>
     <h2>Arguments</h2>
     <dl><dt>x</dt>
 <dd><p>prior distribution</p></dd>
+
+
 <dt>n</dt>
 <dd><p>number of observations</p></dd>
+
+
 <dt>...</dt>
 <dd><p>unused arguments</p></dd>
+
+
 <dt>q</dt>
 <dd><p>vector or matrix of quantiles</p></dd>
+
+
 <dt>y</dt>
 <dd><p>vector of observations</p></dd>
+
+
 <dt>p</dt>
 <dd><p>vector of probabilities</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p><code>pdf</code> (<code>mpdf</code>) and <code>lpdf</code> (<code>mlpdf</code>) give
+    
+
+<p><code>pdf</code> (<code>mpdf</code>) and <code>lpdf</code> (<code>mlpdf</code>) give
 the (marginal) density and the log of (marginal) density,
 <code>cdf</code> (<code>mcdf</code>) and <code>ccdf</code> (<code>mccdf</code>) give the
 (marginal) distribution and the complement of (marginal) distribution function,
@@ -166,7 +182,7 @@ and <code>rng</code> generates random deviates for an object of class 'prior'.</
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.3.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
 </div>
 
       </footer></div>

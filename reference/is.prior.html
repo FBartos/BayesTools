@@ -18,7 +18,7 @@ point priors inherit the prior.simple property"><!-- mathjax --><script src="htt
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.10</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
       </span>
     </div>
 
@@ -34,6 +34,9 @@ point priors inherit the prior.simple property"><!-- mathjax --><script src="htt
   </a>
   <ul class="dropdown-menu" role="menu"><li>
       <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
     </li>
   </ul></li>
 <li>
@@ -73,6 +76,8 @@ point priors inherit the prior.simple property</p>
 
 <span class="fu">is.prior.simple</span><span class="op">(</span><span class="va">x</span><span class="op">)</span>
 
+<span class="fu">is.prior.discrete</span><span class="op">(</span><span class="va">x</span><span class="op">)</span>
+
 <span class="fu">is.prior.vector</span><span class="op">(</span><span class="va">x</span><span class="op">)</span>
 
 <span class="fu">is.prior.PET</span><span class="op">(</span><span class="va">x</span><span class="op">)</span>
@@ -85,17 +90,22 @@ point priors inherit the prior.simple property</p>
 
 <span class="fu">is.prior.orthonormal</span><span class="op">(</span><span class="va">x</span><span class="op">)</span>
 
-<span class="fu">is.prior.dummy</span><span class="op">(</span><span class="va">x</span><span class="op">)</span></code></pre></div>
+<span class="fu">is.prior.dummy</span><span class="op">(</span><span class="va">x</span><span class="op">)</span>
+
+<span class="fu">is.prior.spike_and_slab</span><span class="op">(</span><span class="va">x</span><span class="op">)</span></code></pre></div>
     </div>
 
     <div id="arguments">
     <h2>Arguments</h2>
     <dl><dt>x</dt>
 <dd><p>an object of test</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p>returns a boolean indicating whether the test object
+    
+
+<p>returns a boolean indicating whether the test object
 is a prior (of specific type).</p>
     </div>
 
@@ -137,7 +147,7 @@ is a prior (of specific type).</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.3.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
 </div>
 
       </footer></div>

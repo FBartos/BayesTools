@@ -20,7 +20,7 @@ of prior distributions."><!-- mathjax --><script src="https://cdnjs.cloudflare.c
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.10</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
       </span>
     </div>
 
@@ -36,6 +36,9 @@ of prior distributions."><!-- mathjax --><script src="https://cdnjs.cloudflare.c
   </a>
   <ul class="dropdown-menu" role="menu"><li>
       <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
     </li>
   </ul></li>
 <li>
@@ -97,36 +100,60 @@ of prior distributions.</p>
     <h2>Arguments</h2>
     <dl><dt>model_syntax</dt>
 <dd><p>jags syntax for the model part</p></dd>
+
+
 <dt>data</dt>
 <dd><p>list containing data to fit the model (not including data for the formulas)</p></dd>
+
+
 <dt>prior_list</dt>
 <dd><p>named list of prior distribution
 (names correspond to the parameter names) of parameters not specified within the
 <code>formula_list</code></p></dd>
+
+
 <dt>formula_list</dt>
 <dd><p>named list of formulas to be added to the model
 (names correspond to the parameter name created by each of the formula)</p></dd>
+
+
 <dt>formula_data_list</dt>
 <dd><p>named list of data frames containing data for each formula
 (names of the lists correspond to the parameter name created by each of the formula)</p></dd>
+
+
 <dt>formula_prior_list</dt>
 <dd><p>named list of named lists of prior distributions
 (names of the lists correspond to the parameter name created by each of the formula and
 the names of the prior distribution correspond to the parameter names) of parameters specified
 within the <code>formula</code></p></dd>
+
+
 <dt>chains</dt>
 <dd><p>number of chains to be run, defaults to <code>4</code></p></dd>
+
+
 <dt>adapt</dt>
 <dd><p>number of samples used for adapting the MCMC chains, defaults to <code>500</code></p></dd>
+
+
 <dt>burnin</dt>
 <dd><p>number of burnin iterations of the MCMC chains, defaults to <code>1000</code></p></dd>
+
+
 <dt>sample</dt>
 <dd><p>number of sampling iterations of the MCMC chains, defaults to <code>4000</code></p></dd>
+
+
 <dt>thin</dt>
 <dd><p>thinning interval for the MCMC samples, defaults to <code>1</code></p></dd>
+
+
 <dt>autofit</dt>
 <dd><p>whether the models should be refitted until convergence criteria
 specified in <code>autofit_control</code>. Defaults to <code>FALSE</code>.</p></dd>
+
+
 <dt>autofit_control</dt>
 <dd><p>a list of arguments controlling the autofit function.
 Possible options are:</p><dl><dt>max_Rhat</dt>
@@ -154,26 +181,41 @@ need to correspond to <code>units</code> passed to <a href="https://rdrr.io/r/ba
 
 
 </dl></dd>
+
+
 <dt>parallel</dt>
 <dd><p>whether the chains should be run in parallel <code>FALSE</code></p></dd>
+
+
 <dt>cores</dt>
 <dd><p>number of cores used for multithreading if <code>parallel = TRUE</code>,
 defaults to <code>chains</code></p></dd>
+
+
 <dt>silent</dt>
 <dd><p>whether the function should proceed silently, defaults to <code>TRUE</code></p></dd>
+
+
 <dt>seed</dt>
 <dd><p>seed for random number generation</p></dd>
+
+
 <dt>add_parameters</dt>
 <dd><p>vector of additional parameter names that should be used
 monitored but were not specified in the <code>prior_list</code></p></dd>
+
+
 <dt>required_packages</dt>
 <dd><p>character vector specifying list of packages containing
 JAGS models required for sampling (in case that the function is run in parallel or in
 detached R session). Defaults to <code>NULL</code>.</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p><code>JAGS_fit</code> returns an object of class 'runjags'.</p>
+    
+
+<p><code>JAGS_fit</code> returns an object of class 'runjags'.</p>
     </div>
     <div id="see-also">
     <h2>See also</h2>
@@ -220,7 +262,7 @@ detached R session). Defaults to <code>NULL</code>.</p></dd>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.3.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
 </div>
 
       </footer></div>

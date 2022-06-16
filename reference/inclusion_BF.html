@@ -19,7 +19,7 @@ the models represent the null or alternative hypothesis."><!-- mathjax --><scrip
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.10</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
       </span>
     </div>
 
@@ -35,6 +35,9 @@ the models represent the null or alternative hypothesis."><!-- mathjax --><scrip
   </a>
   <ul class="dropdown-menu" role="menu"><li>
       <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
     </li>
   </ul></li>
 <li>
@@ -74,18 +77,27 @@ the models represent the null or alternative hypothesis.</p>
     <h2>Arguments</h2>
     <dl><dt>prior_probs</dt>
 <dd><p>vector of prior model probabilities</p></dd>
+
+
 <dt>post_probs</dt>
 <dd><p>vector of posterior model probabilities</p></dd>
+
+
 <dt>margliks</dt>
 <dd><p>vector of marginal likelihoods.</p></dd>
+
+
 <dt>is_null</dt>
 <dd><p>logical vector of indicators whether the model corresponds
 to the null or alternative hypothesis (or an integer vector indexing models
 corresponding to the null hypothesis)</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p><code>inclusion_BF</code> returns a Bayes factor.</p>
+    
+
+<p><code>inclusion_BF</code> returns a Bayes factor.</p>
     </div>
     <div id="details">
     <h2>Details</h2>
@@ -106,7 +118,7 @@ under/overflow (posterior probabilities are very close to either 0 or 1). In cas
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.3.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
 </div>
 
       </footer></div>

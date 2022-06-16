@@ -18,7 +18,7 @@ objects/arguments to a function passed by a user."><!-- mathjax --><script src="
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.10</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
       </span>
     </div>
 
@@ -34,6 +34,9 @@ objects/arguments to a function passed by a user."><!-- mathjax --><script src="
   </a>
   <ul class="dropdown-menu" role="menu"><li>
       <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
     </li>
   </ul></li>
 <li>
@@ -114,42 +117,67 @@ objects/arguments to a function passed by a user.</p>
     <h2>Arguments</h2>
     <dl><dt>x</dt>
 <dd><p>object to be checked</p></dd>
+
+
 <dt>name</dt>
 <dd><p>name of the object that will be print in the error
 message.</p></dd>
+
+
 <dt>check_length</dt>
 <dd><p>length of the object to be checked. Defaults to
 <code>1</code>. Set to <code>0</code> in order to not check object length.</p></dd>
+
+
 <dt>allow_NULL</dt>
 <dd><p>whether the object can be <code>NULL</code>.
 If so, no checks are executed.</p></dd>
+
+
 <dt>call</dt>
 <dd><p>string to be placed as a prefix to the error call.</p></dd>
+
+
 <dt>allow_values</dt>
 <dd><p>names of values allowed in a character vector.
 Defaults to <code>NULL</code> (do not check).</p></dd>
+
+
 <dt>lower</dt>
 <dd><p>lower bound of allowed values.
 Defaults to <code>-Inf</code> (do not check).</p></dd>
+
+
 <dt>upper</dt>
 <dd><p>upper bound of allowed values.
 Defaults to <code>Inf</code> (do not check).</p></dd>
+
+
 <dt>allow_bound</dt>
 <dd><p>whether the values at the boundary are allowed.
 Defaults to <code>TRUE</code>.</p></dd>
+
+
 <dt>check_names</dt>
 <dd><p>names of entries allowed in a list. Defaults to
 <code>NULL</code> (do not check).</p></dd>
+
+
 <dt>all_objects</dt>
 <dd><p>whether all entries in <code>check_names</code> must be
 present. Defaults to <code>FALSE</code>.</p></dd>
+
+
 <dt>allow_other</dt>
 <dd><p>whether additional entries then the specified in
 <code>check_names</code> might be present</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p>returns <code>NULL</code>, called for the input check.</p>
+    
+
+<p>returns <code>NULL</code>, called for the input check.</p>
     </div>
 
     <div id="ref-examples">
@@ -177,7 +205,7 @@ present. Defaults to <code>FALSE</code>.</p></dd>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.3.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
 </div>
 
       </footer></div>

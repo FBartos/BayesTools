@@ -33,7 +33,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.10</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
       </span>
     </div>
 
@@ -51,6 +51,9 @@
   <ul class="dropdown-menu" role="menu">
 <li>
       <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
     </li>
   </ul>
 </li>
@@ -81,7 +84,7 @@
       <h1 data-toc-skip>Comparison to other R packages</h1>
                         <h4 data-toc-skip class="author">František Bartoš</h4>
             
-            <h4 data-toc-skip class="date">2022-05-08</h4>
+            <h4 data-toc-skip class="date">2022-06-16</h4>
       
       <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/HEAD/vignettes/ComparisonR.Rmd" class="external-link"><code>vignettes/ComparisonR.Rmd</code></a></small>
       <div class="hidden name"><code>ComparisonR.Rmd</code></div>
@@ -98,7 +101,7 @@
 <p>To perform the test, we specify two competing hypotheses:</p>
 <ul>
 <li>the null hypothesis <span class="math inline">\(\mathcal{H}_0: \delta = 0\)</span> assuming that the standardized effect size is zero,</li>
-<li>and the alternative hypothesis <span class="math inline">\(\mathcal{H}_1: \delta \sim g()\)</span> assuming that the standardized effect size is non-zero and prior distribution <span class="math inline">\(g()\)</span> characterizes our believes about the possible values of the standardized effect size.</li>
+<li>and the alternative hypothesis <span class="math inline">\(\mathcal{H}_1: \delta \sim g()\)</span> assuming that the standardized effect size is non-zero and prior distribution <span class="math inline">\(g()\)</span> characterizes our hypothesis about the possible values of the standardized effect size.</li>
 </ul>
 <div class="section level3">
 <h3 id="kitchen-rolls-data-set">Kitchen Rolls Data Set<a class="anchor" aria-label="anchor" href="#kitchen-rolls-data-set"></a>
@@ -233,15 +236,15 @@
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span class="fu">bridgesampling</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/bridgesampling/man/bf.html" class="external-link">bf</a></span><span class="op">(</span><span class="va">marglik_model_H0</span>, <span class="va">marglik_model_Hp</span><span class="op">)</span>
 <span class="co">#&gt; Estimated Bayes factor in favor of marglik_model_H0 over marglik_model_Hp: 10.71767</span></code></pre></div>
-<p>or specify a BayesTools model ensemble object that provides that can be further inspected by a variety of functions.</p>
+<p>or specify a BayesTools model ensemble object that can be further inspected by a variety of functions.</p>
 <div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span class="va">models_list</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ensemble_inference.html">models_inference</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>
   <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>model <span class="op">=</span> <span class="va">ttest_model_H0</span>, marglik <span class="op">=</span> <span class="va">marglik_model_H0</span>, prior_weights <span class="op">=</span> <span class="fl">1</span><span class="op">/</span><span class="fl">2</span><span class="op">)</span>,
   <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>model <span class="op">=</span> <span class="va">ttest_model_Hp</span>, marglik <span class="op">=</span> <span class="va">marglik_model_Hp</span>, prior_weights <span class="op">=</span> <span class="fl">1</span><span class="op">/</span><span class="fl">2</span><span class="op">)</span>
 <span class="op">)</span><span class="op">)</span>
-<span class="va">enseble_info</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ensemble_inference.html">ensemble_inference</a></span><span class="op">(</span><span class="va">models_list</span>, parameters <span class="op">=</span> <span class="st">"delta"</span>, is_null_list <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"delta"</span> <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="cn">TRUE</span>, <span class="cn">FALSE</span><span class="op">)</span><span class="op">)</span><span class="op">)</span>
+<span class="va">ensemble_info</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ensemble_inference.html">ensemble_inference</a></span><span class="op">(</span><span class="va">models_list</span>, parameters <span class="op">=</span> <span class="st">"delta"</span>, is_null_list <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"delta"</span> <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="cn">TRUE</span>, <span class="cn">FALSE</span><span class="op">)</span><span class="op">)</span><span class="op">)</span>
 
-<span class="fu"><a href="../reference/BayesTools_ensemble_tables.html">ensemble_inference_table</a></span><span class="op">(</span><span class="va">enseble_info</span>, <span class="st">"delta"</span>, BF01 <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>
+<span class="fu"><a href="../reference/BayesTools_ensemble_tables.html">ensemble_inference_table</a></span><span class="op">(</span><span class="va">ensemble_info</span>, <span class="st">"delta"</span>, BF01 <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>
 <span class="co">#&gt;       Models Prior prob. Post. prob. Exclusion BF</span>
 <span class="co">#&gt; delta    1/2       0.500       0.085       10.718</span></code></pre></div>
 <p>The corresponding results can be also obtained numerically with the <code>ttestBF()</code> function from the BayesFactor R package <span class="citation">(Morey et al., 2015)</span>.</p>
@@ -310,7 +313,7 @@
 
 <div class="pkgdown">
   <p></p>
-<p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.3.</p>
+<p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
 </div>
 
       </footer>

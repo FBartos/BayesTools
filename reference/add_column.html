@@ -18,7 +18,7 @@ breaking formatting, attributes, etc..."><!-- mathjax --><script src="https://cd
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.10</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
       </span>
     </div>
 
@@ -34,6 +34,9 @@ breaking formatting, attributes, etc..."><!-- mathjax --><script src="https://cd
   </a>
   <ul class="dropdown-menu" role="menu"><li>
       <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
     </li>
   </ul></li>
 <li>
@@ -78,21 +81,32 @@ breaking formatting, attributes, etc...</p>
     <h2>Arguments</h2>
     <dl><dt>table</dt>
 <dd><p>BayesTools table</p></dd>
+
+
 <dt>column_title</dt>
 <dd><p>title of the new column</p></dd>
+
+
 <dt>column_values</dt>
 <dd><p>values of the new column</p></dd>
+
+
 <dt>column_position</dt>
 <dd><p>position of the new column (defaults to <code>NULL</code> which
 appends the columnt to the end)</p></dd>
+
+
 <dt>column_type</dt>
 <dd><p>type of values of the new column table (important for formatting,
 defaults to <code>NULL</code> = the function tries to guess numeric / character based on the
 <code>column_values</code> but many more specific types are available)</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p>returns an object of 'BayesTools_table' class.</p>
+    
+
+<p>returns an object of 'BayesTools_table' class.</p>
     </div>
 
   </div>
@@ -107,7 +121,7 @@ defaults to <code>NULL</code> = the function tries to guess numeric / character 
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.3.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
 </div>
 
       </footer></div>

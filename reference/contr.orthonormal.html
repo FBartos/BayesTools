@@ -19,7 +19,7 @@ by Rouder et al. (2012)"><!-- mathjax --><script src="https://cdnjs.cloudflare.c
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.10</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
       </span>
     </div>
 
@@ -35,6 +35,9 @@ by Rouder et al. (2012)"><!-- mathjax --><script src="https://cdnjs.cloudflare.c
   </a>
   <ul class="dropdown-menu" role="menu"><li>
       <a href="../articles/ComparisonR.html">Comparison to other R packages</a>
+    </li>
+    <li>
+      <a href="../articles/SpikeAndSlab.html">Bayes factors via spike and slab prior vs. bridge sampling</a>
     </li>
   </ul></li>
 <li>
@@ -74,12 +77,17 @@ by Rouder et al. (2012)</p>
     <h2>Arguments</h2>
     <dl><dt>n</dt>
 <dd><p>a vector of levels for a factor, or the number of levels</p></dd>
+
+
 <dt>contrasts</dt>
 <dd><p>logical indicating whether contrasts should be computed</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
-    <p>A matrix with n rows and k columns, with k = n - 1 if <code>contrasts = TRUE</code> and k = n
+    
+
+<p>A matrix with n rows and k columns, with k = n - 1 if <code>contrasts = TRUE</code> and k = n
 if <code>contrasts = FALSE</code>.</p>
     </div>
     <div id="references">
@@ -117,7 +125,7 @@ if <code>contrasts = FALSE</code>.</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.3.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
 </div>
 
       </footer></div>
