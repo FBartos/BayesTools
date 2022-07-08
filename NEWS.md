@@ -1,3 +1,12 @@
+## version 0.2.12
+### Fixes
+- dealing with posterior samples from rstan
+- dealing with vector posterior samples
+- fixing MCMC error of SD calculation for transformed samples (previously reported 100 times lower)
+
+### Features
+- `stan_estimates_summary()` function
+
 ## version 0.2.11
 ### Features
 - adding Bernoulli prior distribution

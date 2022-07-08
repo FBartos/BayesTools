@@ -10,6 +10,7 @@
 \alias{JAGS_summary_table}
 \alias{runjags_estimates_empty_table}
 \alias{runjags_inference_empty_table}
+\alias{stan_estimates_summary}
 \title{Create BayesTools model tables}
 \usage{
 model_summary_table(
@@ -79,6 +80,15 @@ JAGS_summary_table(
 runjags_estimates_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
 
 runjags_inference_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
+
+stan_estimates_summary(
+  fit,
+  transformations = NULL,
+  title = NULL,
+  footnotes = NULL,
+  warnings = NULL,
+  remove_spike_0 = TRUE
+)
 }
 \arguments{
 \item{model}{model object containing a list of \code{priors}
