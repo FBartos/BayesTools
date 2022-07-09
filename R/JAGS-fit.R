@@ -84,6 +84,8 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
                      parallel = FALSE, cores = chains, silent = TRUE, seed = NULL,
                      add_parameters = NULL, required_packages = NULL){
 
+  .check_runjags()
+
   ### check input
   .check_JAGS_syntax(model_syntax)
   JAGS_check_and_list_fit_settings(chains, adapt, burnin, sample, thin, autofit, parallel, cores, silent, seed)

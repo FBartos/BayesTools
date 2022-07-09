@@ -183,7 +183,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   check_list(is_null_list, "is_null_list", check_length = length(parameters))
   check_real(seed, "seed", allow_NULL = TRUE)
   sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("fit", "marglik", "prior_weights"), all_objects = TRUE, allow_other = TRUE))
-  if(!all(sapply(model_list, function(m) inherits(m[["fit"]], what = "runjags")) | sapply(model_list, function(m)inherits(m[["fit"]], what = "rstan")) | sapply(model_list, function(m)inherits(m[["fit"]], what = "null_model"))))
+  if(!all(sapply(model_list, function(m) inherits(m[["fit"]], what = "runjags")) | sapply(model_list, function(m)inherits(m[["fit"]], what = "stanfit")) | sapply(model_list, function(m)inherits(m[["fit"]], what = "null_model"))))
     stop("model_list:fit must contain 'runjags' or 'rstan' models")
   if(!all(sapply(model_list, function(m) inherits(m[["marglik"]], what = "bridge"))))
     stop("model_list:marglik must contain 'bridgesampling' marginal likelihoods")
@@ -300,7 +300,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   check_char(parameter, "parameter")
   check_real(post_probs, "post_probs", lower = 0, upper = 1, check_length = length(fits))
   check_real(seed, "seed", allow_NULL = TRUE)
-  if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "rstan") | sapply(fits, inherits, what = "null_model")))
+  if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "stanfit") | sapply(fits, inherits, what = "null_model")))
     stop("'fits' must be a list of 'runjags' or 'rstan' models")
   if(!all(sapply(priors, is.prior.simple) | sapply(priors, is.prior.point)))
     stop("'priors' must be a list of simple priors")
@@ -332,21 +332,9 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
         model_samples <- matrix(model_samples, ncol = 1)
         colnames(model_samples) <- fits[[i]]$monitor
       }
-    }else if(inherits(fits[[i]], "rstan")){
-      if(!try(requireNamespace("rstan")))
-        stop("rstan package needs to be installed. Run 'install.packages('rstan')'")
-      model_samples <- rstan::extract(fits[[i]])
-      par_names     <- names(model_samples)
-      par_dims      <- sapply(model_samples, function(s)if(is.matrix(s)) ncol(s) else 1)
-      par_names     <- unlist(sapply(seq_along(par_names), function(p){
-        if(par_dims[p] == 1){
-          return(par_names[p])
-        }else{
-          return(paste0(par_names[p], "[", 1:par_dims[p],"]"))
-        }
-      }))
-      model_samples <- data.frame(do.call(cbind, model_samples))
-      colnames(model_samples) <- par_names
+    }else if(inherits(fits[[i]], "stanfit")){
+      .check_rstan()
+      model_samples <- .extract_stan(fits[[i]])
     }
 
     # sample indexes
@@ -379,7 +367,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   check_char(parameter, "parameter")
   check_real(post_probs, "post_probs", lower = 0, upper = 1, check_length = length(fits))
   check_real(seed, "seed", allow_NULL = TRUE)
-  if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "rstan") | sapply(fits, inherits, what = "null_model")))
+  if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "stanfit") | sapply(fits, inherits, what = "null_model")))
     stop("'fits' must be a list of 'runjags' or 'rstan' models")
   if(!all(sapply(priors, is.prior.vector) | sapply(priors, is.prior.point)))
     stop("'priors' must be a list of vector priors")
@@ -414,21 +402,9 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
         model_samples <- matrix(model_samples, ncol = 1)
         colnames(model_samples) <- fits[[i]]$monitor
       }
-    }else if(inherits(fits[[i]], "rstan")){
-      if(!try(requireNamespace("rstan")))
-        stop("rstan package needs to be installed. Run 'install.packages('rstan')'")
-      model_samples <- rstan::extract(fits[[i]])
-      par_names     <- names(model_samples)
-      par_dims      <- sapply(model_samples, function(s)if(is.matrix(s)) ncol(s) else 1)
-      par_names     <- unlist(sapply(seq_along(par_names), function(p){
-        if(par_dims[p] == 1){
-          return(par_names[p])
-        }else{
-          return(paste0(par_names[p], "[", 1:par_dims[p],"]"))
-        }
-      }))
-      model_samples <- data.frame(do.call(cbind, model_samples))
-      colnames(model_samples) <- par_names
+    }else if(inherits(fits[[i]], "stanfit")){
+      .check_rstan()
+      model_samples <- .extract_stan(fits[[i]])
     }
 
     # sample indexes
@@ -462,7 +438,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   check_char(parameter, "parameter")
   check_real(post_probs, "post_probs", lower = 0, upper = 1, check_length = length(fits))
   check_real(seed, "seed", allow_NULL = TRUE)
-  if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "rstan") | sapply(fits, inherits, what = "null_model")))
+  if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "stanfit") | sapply(fits, inherits, what = "null_model")))
     stop("'fits' must be a list of 'runjags' or 'rstan' models")
   if(!all(sapply(priors, is.prior.factor) | sapply(priors, is.prior.point)))
     stop("'priors' must be a list of factor priors")
@@ -470,7 +446,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   # check the prior levels
   levels <- unique(sapply(priors[sapply(priors, is.prior.factor)], function(p) attr(p, "levels")))
   if(length(levels) != 1)
-    stop("all facotr priors must be of the same number of levels")
+    stop("all factor priors must be of the same number of levels")
 
   # gather and check compatibility of prior distributions
   priors_info <- lapply(priors, function(p){
@@ -559,7 +535,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   check_char(parameter, "parameter")
   check_real(post_probs, "post_probs", lower = 0, upper = 1, check_length = length(fits))
   check_real(seed, "seed", allow_NULL = TRUE)
-  if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "rstan") | sapply(fits, inherits, what = "null_model")))
+  if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "stanfit") | sapply(fits, inherits, what = "null_model")))
     stop("'fits' must be a list of 'runjags' or 'rstan' models")
   if(!all(sapply(priors, is.prior.weightfunction) | sapply(priors, is.prior.point) | sapply(priors, is.prior.none)))
     stop("'priors' must be a list of weightfunction priors distributions")
@@ -596,21 +572,9 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
         model_samples <- matrix(model_samples, ncol = 1)
         colnames(model_samples) <- fits[[i]]$monitor
       }
-    }else if(inherits(fits[[i]], "rstan")){
-      if(!try(requireNamespace("rstan")))
-        stop("rstan package needs to be installed. Run 'install.packages('rstan')'")
-      model_samples <- rstan::extract(fits[[i]])
-      par_names     <- names(model_samples)
-      par_dims      <- sapply(model_samples, function(s)if(is.matrix(s)) ncol(s) else 1)
-      par_names     <- unlist(sapply(seq_along(par_names), function(p){
-        if(par_dims[p] == 1){
-          return(par_names[p])
-        }else{
-          return(paste0(par_names[p], "[", 1:par_dims[p],"]"))
-        }
-      }))
-      model_samples <- data.frame(do.call(cbind, model_samples))
-      colnames(model_samples) <- par_names
+    }else if(inherits(fits[[i]], "stanfit")){
+      .check_rstan()
+      model_samples <- .extract_stan(fits[[i]])
     }
 
     # sample indexes

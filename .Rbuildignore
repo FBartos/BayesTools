@@ -10,3 +10,4 @@
 ^BayesTools.Rcheck$
 ^doc$
 ^Meta$
+^tests/models$
