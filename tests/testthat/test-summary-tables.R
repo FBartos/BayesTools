@@ -625,3 +625,20 @@ test_that("Summary tables functions work (spike and slab priors)",{
 
 })
 
+test_that("Summary tables functions work (stan)",{
+
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_on_cran()
+
+  set.seed(1)
+
+  # prefitted model with RoBTT
+  fit <- readRDS("../models/fit_RoBTT.RDS")
+
+  ### checking summary functions
+  model_estimates <- stan_estimates_table(fit)
+  expect_equal(colnames(model_estimates), c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
+  expect_equal(rownames(model_estimates), c("mu", "sigma2", "pooled_sigma", "sigma_i[1]", "sigma_i[2]", "mu_i[1]", "mu_i[2]" ))
+  expect_equal(unname(unlist(model_estimates[1,])), c(1.43876353, 0.37708461, 0.81080656, 1.42486330, 2.15911838, 0.06223762, 0.16504949, 36.70892380, 1.01241771), tolerance = 1e-3)
+
+})

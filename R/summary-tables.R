@@ -435,7 +435,7 @@ ensemble_diagnostics_table <- function(models, parameters, title = NULL, footnot
 #' @export runjags_inference_table
 #' @export runjags_estimates_empty_table
 #' @export runjags_inference_empty_table
-#' @export stan_estimates_summary
+#' @export stan_estimates_table
 #' @name BayesTools_model_tables
 #'
 #' @seealso [BayesTools_ensemble_tables]
@@ -894,7 +894,7 @@ runjags_inference_empty_table <- function(title = NULL, footnotes = NULL, warnin
 }
 
 #' @rdname BayesTools_model_tables
-stan_estimates_summary  <- function(fit, transformations = NULL, title = NULL, footnotes = NULL, warnings = NULL){
+stan_estimates_table  <- function(fit, transformations = NULL, title = NULL, footnotes = NULL, warnings = NULL){
 
   # this is a simplification of the runjags_estimates_table function for stan
   .check_rstan()
