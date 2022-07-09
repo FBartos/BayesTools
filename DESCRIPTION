@@ -1,6 +1,6 @@
 Package: BayesTools
 Title: Tools for Bayesian Analyses
-Version: 0.2.11
+Version: 0.2.12
 Description: Provides tools for conducting Bayesian analyses. The package contains 
     functions for creating a wide range of prior distribution objects, mixing posterior 
     samples from 'JAGS' and 'Stan' models, plotting posterior distributions, and etc...
@@ -17,7 +17,7 @@ License: GPL-3
 Encoding: UTF-8
 LazyData: true
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.1.2
+RoxygenNote: 7.2.0
 SystemRequirements: JAGS >= 4.3.0 (https://mcmc-jags.sourceforge.io/)
 Depends:
     stats
@@ -25,8 +25,6 @@ Imports:
     graphics,
     extraDistr,
     mvtnorm,
-    rjags,
-    runjags,
     coda,
     bridgesampling,
     parallel,
@@ -39,6 +37,8 @@ Suggests:
     covr,
     knitr,
     rstan,
+    rjags,
+    runjags,
     BayesFactor,
     rmarkdown
 RdMacros: Rdpack

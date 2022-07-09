@@ -445,12 +445,12 @@ test_that("Summary tables functions work (formulas + factors)",{
                c("                                Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
                  "(mu) intercept                 0.188 0.121 -0.051  0.188 0.429     0.00099          0.008 14975 1.000",
                  "(mu) x_cont1                   0.324 0.140  0.047  0.324 0.597     0.00112          0.008 15680 1.000",
-                 "(mu) x_fac3o [dif: A]         -0.010 0.168 -0.337 -0.011 0.321     0.00132          0.000 15278 1.000",
-                 "(mu) x_fac3o [dif: B]         -0.064 0.170 -0.397 -0.064 0.270     0.00134          0.000 15081 1.000",
-                 "(mu) x_fac3o [dif: C]          0.074 0.167 -0.251  0.072 0.404     0.00132          0.000 15630 1.000",
-                 "(mu) x_cont1:x_fac3o [dif: A] -0.283 0.197 -0.668 -0.283 0.105     0.00156          0.000 15581 1.000",
-                 "(mu) x_cont1:x_fac3o [dif: B]  0.164 0.194 -0.221  0.164 0.539     0.00153          0.000 14954 1.000",
-                 "(mu) x_cont1:x_fac3o [dif: C]  0.119 0.202 -0.275  0.118 0.521     0.00160          0.000 15372 1.000",
+                 "(mu) x_fac3o [dif: A]         -0.010 0.168 -0.337 -0.011 0.321     0.00132          0.008 15278 1.000",
+                 "(mu) x_fac3o [dif: B]         -0.064 0.170 -0.397 -0.064 0.270     0.00134          0.008 15081 1.000",
+                 "(mu) x_fac3o [dif: C]          0.074 0.167 -0.251  0.072 0.404     0.00132          0.008 15630 1.000",
+                 "(mu) x_cont1:x_fac3o [dif: A] -0.283 0.197 -0.668 -0.283 0.105     0.00156          0.008 15581 1.000",
+                 "(mu) x_cont1:x_fac3o [dif: B]  0.164 0.194 -0.221  0.164 0.539     0.00153          0.008 14954 1.000",
+                 "(mu) x_cont1:x_fac3o [dif: C]  0.119 0.202 -0.275  0.118 0.521     0.00160          0.008 15372 1.000",
                  "sigma                          0.925 0.090  0.770  0.918 1.119     0.00100          0.011  7969 1.001"
                ))
 
@@ -625,3 +625,20 @@ test_that("Summary tables functions work (spike and slab priors)",{
 
 })
 
+test_that("Summary tables functions work (stan)",{
+
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_on_cran()
+
+  set.seed(1)
+
+  # prefitted model with RoBTT
+  fit <- readRDS("../models/fit_RoBTT.RDS")
+
+  ### checking summary functions
+  model_estimates <- stan_estimates_table(fit)
+  expect_equal(colnames(model_estimates), c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
+  expect_equal(rownames(model_estimates), c("mu", "sigma2", "pooled_sigma", "sigma_i[1]", "sigma_i[2]", "mu_i[1]", "mu_i[2]" ))
+  expect_equal(unname(unlist(model_estimates[1,])), c(1.43876353, 0.37708461, 0.81080656, 1.42486330, 2.15911838, 0.06223762, 0.16504949, 36.70892380, 1.01241771), tolerance = 1e-3)
+
+})
