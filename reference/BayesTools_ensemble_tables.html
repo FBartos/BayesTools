@@ -20,7 +20,7 @@ summary/diagnostics based on a list of models_inference models."><!-- mathjax --
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.12</span>
       </span>
     </div>
 
@@ -72,48 +72,48 @@ summary/diagnostics based on a list of <a href="ensemble_inference.html">models_
     </div>
 
     <div id="ref-usage">
-    <div class="sourceCode"><pre class="sourceCode r"><code><span class="fu">ensemble_estimates_table</span><span class="op">(</span>
-  <span class="va">samples</span>,
-  <span class="va">parameters</span>,
-  probs <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.025</span>, <span class="fl">0.95</span><span class="op">)</span>,
-  title <span class="op">=</span> <span class="cn">NULL</span>,
-  footnotes <span class="op">=</span> <span class="cn">NULL</span>,
-  warnings <span class="op">=</span> <span class="cn">NULL</span>,
-  transform_orthonormal <span class="op">=</span> <span class="cn">FALSE</span>,
-  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>
-<span class="op">)</span>
-
-<span class="fu">ensemble_inference_table</span><span class="op">(</span>
-  <span class="va">inference</span>,
-  <span class="va">parameters</span>,
-  logBF <span class="op">=</span> <span class="cn">FALSE</span>,
-  BF01 <span class="op">=</span> <span class="cn">FALSE</span>,
-  title <span class="op">=</span> <span class="cn">NULL</span>,
-  footnotes <span class="op">=</span> <span class="cn">NULL</span>,
-  warnings <span class="op">=</span> <span class="cn">NULL</span>
-<span class="op">)</span>
-
-<span class="fu">ensemble_summary_table</span><span class="op">(</span>
-  <span class="va">models</span>,
-  <span class="va">parameters</span>,
-  logBF <span class="op">=</span> <span class="cn">FALSE</span>,
-  BF01 <span class="op">=</span> <span class="cn">FALSE</span>,
-  title <span class="op">=</span> <span class="cn">NULL</span>,
-  footnotes <span class="op">=</span> <span class="cn">NULL</span>,
-  warnings <span class="op">=</span> <span class="cn">NULL</span>,
-  remove_spike_0 <span class="op">=</span> <span class="cn">TRUE</span>,
-  short_name <span class="op">=</span> <span class="cn">FALSE</span>
-<span class="op">)</span>
-
-<span class="fu">ensemble_diagnostics_table</span><span class="op">(</span>
-  <span class="va">models</span>,
-  <span class="va">parameters</span>,
-  title <span class="op">=</span> <span class="cn">NULL</span>,
-  footnotes <span class="op">=</span> <span class="cn">NULL</span>,
-  warnings <span class="op">=</span> <span class="cn">NULL</span>,
-  remove_spike_0 <span class="op">=</span> <span class="cn">TRUE</span>,
-  short_name <span class="op">=</span> <span class="cn">FALSE</span>
-<span class="op">)</span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">ensemble_estimates_table</span><span class="op">(</span></span>
+<span>  <span class="va">samples</span>,</span>
+<span>  <span class="va">parameters</span>,</span>
+<span>  probs <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.025</span>, <span class="fl">0.95</span><span class="op">)</span>,</span>
+<span>  title <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  footnotes <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  warnings <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  transform_orthonormal <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu">ensemble_inference_table</span><span class="op">(</span></span>
+<span>  <span class="va">inference</span>,</span>
+<span>  <span class="va">parameters</span>,</span>
+<span>  logBF <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  BF01 <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  title <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  footnotes <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  warnings <span class="op">=</span> <span class="cn">NULL</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu">ensemble_summary_table</span><span class="op">(</span></span>
+<span>  <span class="va">models</span>,</span>
+<span>  <span class="va">parameters</span>,</span>
+<span>  logBF <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  BF01 <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  title <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  footnotes <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  warnings <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  remove_spike_0 <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  short_name <span class="op">=</span> <span class="cn">FALSE</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu">ensemble_diagnostics_table</span><span class="op">(</span></span>
+<span>  <span class="va">models</span>,</span>
+<span>  <span class="va">parameters</span>,</span>
+<span>  title <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  footnotes <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  warnings <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  remove_spike_0 <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  short_name <span class="op">=</span> <span class="cn">FALSE</span></span>
+<span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div id="arguments">
@@ -220,7 +220,7 @@ tables are objects of class 'BayesTools_table'.</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.5.</p>
 </div>
 
       </footer></div>

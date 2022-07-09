@@ -1,8 +1,8 @@
 pandoc: 2.7.3
-pkgdown: 2.0.4
+pkgdown: 2.0.5
 pkgdown_sha: ~
 articles:
   ComparisonR: ComparisonR.html
   SpikeAndSlab: SpikeAndSlab.html
-last_built: 2022-06-16T06:16Z
+last_built: 2022-07-09T21:25Z
 

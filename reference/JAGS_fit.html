@@ -20,7 +20,7 @@ of prior distributions."><!-- mathjax --><script src="https://cdnjs.cloudflare.c
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.12</span>
       </span>
     </div>
 
@@ -72,28 +72,28 @@ of prior distributions.</p>
     </div>
 
     <div id="ref-usage">
-    <div class="sourceCode"><pre class="sourceCode r"><code><span class="fu">JAGS_fit</span><span class="op">(</span>
-  <span class="va">model_syntax</span>,
-  data <span class="op">=</span> <span class="cn">NULL</span>,
-  prior_list <span class="op">=</span> <span class="cn">NULL</span>,
-  formula_list <span class="op">=</span> <span class="cn">NULL</span>,
-  formula_data_list <span class="op">=</span> <span class="cn">NULL</span>,
-  formula_prior_list <span class="op">=</span> <span class="cn">NULL</span>,
-  chains <span class="op">=</span> <span class="fl">4</span>,
-  adapt <span class="op">=</span> <span class="fl">500</span>,
-  burnin <span class="op">=</span> <span class="fl">1000</span>,
-  sample <span class="op">=</span> <span class="fl">4000</span>,
-  thin <span class="op">=</span> <span class="fl">1</span>,
-  autofit <span class="op">=</span> <span class="cn">FALSE</span>,
-  autofit_control <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>max_Rhat <span class="op">=</span> <span class="fl">1.05</span>, min_ESS <span class="op">=</span> <span class="fl">500</span>, max_error <span class="op">=</span> <span class="fl">0.01</span>, max_SD_error
-    <span class="op">=</span> <span class="fl">0.05</span>, max_time <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>time <span class="op">=</span> <span class="fl">60</span>, unit <span class="op">=</span> <span class="st">"mins"</span><span class="op">)</span>, sample_extend <span class="op">=</span> <span class="fl">1000</span><span class="op">)</span>,
-  parallel <span class="op">=</span> <span class="cn">FALSE</span>,
-  cores <span class="op">=</span> <span class="va">chains</span>,
-  silent <span class="op">=</span> <span class="cn">TRUE</span>,
-  seed <span class="op">=</span> <span class="cn">NULL</span>,
-  add_parameters <span class="op">=</span> <span class="cn">NULL</span>,
-  required_packages <span class="op">=</span> <span class="cn">NULL</span>
-<span class="op">)</span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">JAGS_fit</span><span class="op">(</span></span>
+<span>  <span class="va">model_syntax</span>,</span>
+<span>  data <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  prior_list <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  formula_list <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  formula_data_list <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  formula_prior_list <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  chains <span class="op">=</span> <span class="fl">4</span>,</span>
+<span>  adapt <span class="op">=</span> <span class="fl">500</span>,</span>
+<span>  burnin <span class="op">=</span> <span class="fl">1000</span>,</span>
+<span>  sample <span class="op">=</span> <span class="fl">4000</span>,</span>
+<span>  thin <span class="op">=</span> <span class="fl">1</span>,</span>
+<span>  autofit <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  autofit_control <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>max_Rhat <span class="op">=</span> <span class="fl">1.05</span>, min_ESS <span class="op">=</span> <span class="fl">500</span>, max_error <span class="op">=</span> <span class="fl">0.01</span>, max_SD_error</span>
+<span>    <span class="op">=</span> <span class="fl">0.05</span>, max_time <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>time <span class="op">=</span> <span class="fl">60</span>, unit <span class="op">=</span> <span class="st">"mins"</span><span class="op">)</span>, sample_extend <span class="op">=</span> <span class="fl">1000</span><span class="op">)</span>,</span>
+<span>  parallel <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  cores <span class="op">=</span> <span class="va">chains</span>,</span>
+<span>  silent <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  seed <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  add_parameters <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  required_packages <span class="op">=</span> <span class="cn">NULL</span></span>
+<span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div id="arguments">
@@ -224,30 +224,30 @@ detached R session). Defaults to <code>NULL</code>.</p></dd>
 
     <div id="ref-examples">
     <h2>Examples</h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span></span>
-<span class="r-in"><span class="co"># simulate data</span></span>
-<span class="r-in"><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span></span>
-<span class="r-in"><span class="va">data</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
-<span class="r-in">  x <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fl">10</span><span class="op">)</span>,</span>
-<span class="r-in">  N <span class="op">=</span> <span class="fl">10</span></span>
-<span class="r-in"><span class="op">)</span></span>
-<span class="r-in"><span class="va">data</span><span class="op">$</span><span class="va">x</span></span>
-<span class="r-in"></span>
-<span class="r-in"><span class="co"># define priors</span></span>
-<span class="r-in"><span class="va">priors_list</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>mu <span class="op">=</span> <span class="fu"><a href="prior.html">prior</a></span><span class="op">(</span><span class="st">"normal"</span>, <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
-<span class="r-in"></span>
-<span class="r-in"><span class="co"># define likelihood for the data</span></span>
-<span class="r-in"><span class="va">model_syntax</span> <span class="op">&lt;-</span></span>
-<span class="r-in">  <span class="st">"model{</span>
-<span class="r-in">    for(i in 1:N){</span>
-<span class="r-in">      x[i] ~ dnorm(mu, 1)</span>
-<span class="r-in">    }</span>
-<span class="r-in">  }"</span></span>
-<span class="r-in"></span>
-<span class="r-in"><span class="co"># fit the models</span></span>
-<span class="r-in"><span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu">JAGS_fit</span><span class="op">(</span><span class="va">model_syntax</span>, <span class="va">data</span>, <span class="va">priors_list</span><span class="op">)</span></span>
-<span class="r-in"><span class="op">}</span></span>
-<span class="r-in"></span>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span></span></span>
+<span class="r-in"><span><span class="co"># simulate data</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">data</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span></span>
+<span class="r-in"><span>  x <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fl">10</span><span class="op">)</span>,</span></span>
+<span class="r-in"><span>  N <span class="op">=</span> <span class="fl">10</span></span></span>
+<span class="r-in"><span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">data</span><span class="op">$</span><span class="va">x</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># define priors</span></span></span>
+<span class="r-in"><span><span class="va">priors_list</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>mu <span class="op">=</span> <span class="fu"><a href="prior.html">prior</a></span><span class="op">(</span><span class="st">"normal"</span>, <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># define likelihood for the data</span></span></span>
+<span class="r-in"><span><span class="va">model_syntax</span> <span class="op">&lt;-</span></span></span>
+<span class="r-in"><span>  <span class="st">"model{</span></span></span>
+<span class="r-in"><span><span class="st">    for(i in 1:N){</span></span></span>
+<span class="r-in"><span><span class="st">      x[i] ~ dnorm(mu, 1)</span></span></span>
+<span class="r-in"><span><span class="st">    }</span></span></span>
+<span class="r-in"><span><span class="st">  }"</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># fit the models</span></span></span>
+<span class="r-in"><span><span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu">JAGS_fit</span><span class="op">(</span><span class="va">model_syntax</span>, <span class="va">data</span>, <span class="va">priors_list</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="op">}</span></span></span>
+<span class="r-in"><span></span></span>
 </code></pre></div>
     </div>
   </div>
@@ -262,7 +262,7 @@ detached R session). Defaults to <code>NULL</code>.</p></dd>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.5.</p>
 </div>
 
       </footer></div>

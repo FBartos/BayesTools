@@ -33,7 +33,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.12</span>
       </span>
     </div>
 
@@ -84,7 +84,7 @@
       <h1 data-toc-skip>Comparison to other R packages</h1>
                         <h4 data-toc-skip class="author">František Bartoš</h4>
             
-            <h4 data-toc-skip class="date">2022-06-16</h4>
+            <h4 data-toc-skip class="date">2022-07-09</h4>
       
       <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/HEAD/vignettes/ComparisonR.Rmd" class="external-link"><code>vignettes/ComparisonR.Rmd</code></a></small>
       <div class="hidden name"><code>ComparisonR.Rmd</code></div>
@@ -109,27 +109,25 @@
 <p>To illustrate the two-sample t-test specification with BayesTools, I use a data set from a replication study conducted by <span class="citation">(Wagenmakers et al., 2015)</span>. <span class="citation">Wagenmakers et al. (2015)</span> replicated the 2nd experiment from a study by <span class="citation">Topolinski &amp; Sparenberg (2012)</span> who claimed that clockwise movements induce psychological states of progression in time and increases orientation toward the future and novelty. In their second experiment, <span class="citation">Topolinski &amp; Sparenberg (2012)</span> let 60 participants to rotate kitchen rolls either clock or counter-clock wise, inducing the progression in time, and increasing their mean score in NEO PI-R items measuring openness to experience <em>t</em>(58) = 2.21, <em>p</em> = 0.031, Cohen’s <em>d</em> = 0.58. In the replication study, <span class="citation">Wagenmakers et al. (2015)</span> collected data from 102 participants and found a <span class="math inline">\(\text{BF}_{0+}\)</span> = 10.76 in the favor of null hypothesis of no effect against a positive effect in the direction of the original study.</p>
 <p>First, we load the package, data set, and split the data set into the two groups.</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://fbartos.github.io/BayesTools/" class="external-link">BayesTools</a></span><span class="op">)</span>
-<span class="co">#&gt; Loading required namespace: rjags</span>
-<span class="co">#&gt; Loading required namespace: runjags</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt; Attaching package: 'BayesTools'</span>
-<span class="co">#&gt; The following objects are masked from 'package:stats':</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt;     sd, var</span>
-<span class="co">#&gt; The following object is masked from 'package:grDevices':</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt;     pdf</span>
-<span class="fu"><a href="https://rdrr.io/r/utils/data.html" class="external-link">data</a></span><span class="op">(</span><span class="st">"kitchen_rolls"</span><span class="op">)</span>
-<span class="va">x</span> <span class="op">&lt;-</span> <span class="va">kitchen_rolls</span><span class="op">$</span><span class="va">mean_NEO</span><span class="op">[</span><span class="va">kitchen_rolls</span><span class="op">$</span><span class="va">rotation</span> <span class="op">==</span> <span class="st">"counter"</span><span class="op">]</span>
-<span class="va">y</span> <span class="op">&lt;-</span> <span class="va">kitchen_rolls</span><span class="op">$</span><span class="va">mean_NEO</span><span class="op">[</span><span class="va">kitchen_rolls</span><span class="op">$</span><span class="va">rotation</span> <span class="op">==</span> <span class="st">"clock"</span><span class="op">]</span></code></pre></div>
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://fbartos.github.io/BayesTools/" class="external-link">BayesTools</a></span><span class="op">)</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Attaching package: 'BayesTools'</span></span>
+<span><span class="co">#&gt; The following objects are masked from 'package:stats':</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt;     sd, var</span></span>
+<span><span class="co">#&gt; The following object is masked from 'package:grDevices':</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt;     pdf</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/utils/data.html" class="external-link">data</a></span><span class="op">(</span><span class="st">"kitchen_rolls"</span><span class="op">)</span></span>
+<span><span class="va">x</span> <span class="op">&lt;-</span> <span class="va">kitchen_rolls</span><span class="op">$</span><span class="va">mean_NEO</span><span class="op">[</span><span class="va">kitchen_rolls</span><span class="op">$</span><span class="va">rotation</span> <span class="op">==</span> <span class="st">"counter"</span><span class="op">]</span></span>
+<span><span class="va">y</span> <span class="op">&lt;-</span> <span class="va">kitchen_rolls</span><span class="op">$</span><span class="va">mean_NEO</span><span class="op">[</span><span class="va">kitchen_rolls</span><span class="op">$</span><span class="va">rotation</span> <span class="op">==</span> <span class="st">"clock"</span><span class="op">]</span></span></code></pre></div>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="va">h1</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/graphics/hist.html" class="external-link">hist</a></span><span class="op">(</span><span class="va">x</span>, breaks <span class="op">=</span> <span class="fl">15</span>, plot <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span>
-<span class="va">h2</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/graphics/hist.html" class="external-link">hist</a></span><span class="op">(</span><span class="va">y</span>, breaks <span class="op">=</span> <span class="fl">15</span>, plot <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span>
-<span class="fu"><a href="https://rdrr.io/r/graphics/par.html" class="external-link">par</a></span><span class="op">(</span>mar <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">4</span>, <span class="fl">4</span>, <span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span>
-<span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">h1</span>, col <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/grDevices/rgb.html" class="external-link">rgb</a></span><span class="op">(</span><span class="fl">0</span>,<span class="fl">0</span>,<span class="fl">1</span>,<span class="fl">1</span><span class="op">/</span><span class="fl">4</span><span class="op">)</span>, xlim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">1</span>, <span class="fl">2</span><span class="op">)</span>, ylim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">16</span><span class="op">)</span>, las <span class="op">=</span> <span class="fl">1</span>, main <span class="op">=</span> <span class="st">""</span>, xlab <span class="op">=</span> <span class="st">"mean NEO PI-R"</span><span class="op">)</span>
-<span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">h2</span>, col <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/grDevices/rgb.html" class="external-link">rgb</a></span><span class="op">(</span><span class="fl">1</span>,<span class="fl">0</span>,<span class="fl">0</span>,<span class="fl">1</span><span class="op">/</span><span class="fl">4</span><span class="op">)</span>, add <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>
-<span class="fu"><a href="https://rdrr.io/r/graphics/legend.html" class="external-link">legend</a></span><span class="op">(</span><span class="st">"topright"</span>, legend <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Counter"</span>, <span class="st">"Clock"</span><span class="op">)</span>, fill <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/grDevices/rgb.html" class="external-link">rgb</a></span><span class="op">(</span><span class="fl">0</span>,<span class="fl">0</span>,<span class="fl">1</span>,<span class="fl">1</span><span class="op">/</span><span class="fl">4</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/grDevices/rgb.html" class="external-link">rgb</a></span><span class="op">(</span><span class="fl">1</span>,<span class="fl">0</span>,<span class="fl">0</span>,<span class="fl">1</span><span class="op">/</span><span class="fl">4</span><span class="op">)</span><span class="op">)</span>, bty <span class="op">=</span> <span class="st">"n"</span><span class="op">)</span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">h1</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/graphics/hist.html" class="external-link">hist</a></span><span class="op">(</span><span class="va">x</span>, breaks <span class="op">=</span> <span class="fl">15</span>, plot <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
+<span><span class="va">h2</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/graphics/hist.html" class="external-link">hist</a></span><span class="op">(</span><span class="va">y</span>, breaks <span class="op">=</span> <span class="fl">15</span>, plot <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/graphics/par.html" class="external-link">par</a></span><span class="op">(</span>mar <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">4</span>, <span class="fl">4</span>, <span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">h1</span>, col <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/grDevices/rgb.html" class="external-link">rgb</a></span><span class="op">(</span><span class="fl">0</span>,<span class="fl">0</span>,<span class="fl">1</span>,<span class="fl">1</span><span class="op">/</span><span class="fl">4</span><span class="op">)</span>, xlim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">1</span>, <span class="fl">2</span><span class="op">)</span>, ylim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">16</span><span class="op">)</span>, las <span class="op">=</span> <span class="fl">1</span>, main <span class="op">=</span> <span class="st">""</span>, xlab <span class="op">=</span> <span class="st">"mean NEO PI-R"</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">h2</span>, col <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/grDevices/rgb.html" class="external-link">rgb</a></span><span class="op">(</span><span class="fl">1</span>,<span class="fl">0</span>,<span class="fl">0</span>,<span class="fl">1</span><span class="op">/</span><span class="fl">4</span><span class="op">)</span>, add <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/graphics/legend.html" class="external-link">legend</a></span><span class="op">(</span><span class="st">"topright"</span>, legend <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Counter"</span>, <span class="st">"Clock"</span><span class="op">)</span>, fill <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/grDevices/rgb.html" class="external-link">rgb</a></span><span class="op">(</span><span class="fl">0</span>,<span class="fl">0</span>,<span class="fl">1</span>,<span class="fl">1</span><span class="op">/</span><span class="fl">4</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/grDevices/rgb.html" class="external-link">rgb</a></span><span class="op">(</span><span class="fl">1</span>,<span class="fl">0</span>,<span class="fl">0</span>,<span class="fl">1</span><span class="op">/</span><span class="fl">4</span><span class="op">)</span><span class="op">)</span>, bty <span class="op">=</span> <span class="st">"n"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="ComparisonR_files/figure-html/fig_dist-1.png" width="60%" style="display: block; margin: auto;"></p>
 </div>
 <div class="section level3">
@@ -137,131 +135,133 @@
 </h3>
 <p>I first specify the model likelihood using the JAGS modeling syntax. Note that JAGS uses mean and precision to define a normal distribution, therefore, I need to specify <span class="math inline">\(\sigma^-2\)</span> as the second parameter. Otherwise, the syntax closely resembles the mathematical notation used to outline the two-sample t-test (notice the substitution of <span class="math inline">\(\delta\)</span> in the place of <span class="math inline">\(\alpha\)</span>). See <a href="https://people.stat.sc.edu/hansont/stat740/jags_user_manual.pdf" class="external-link">JAGS user manual</a> for more details about the syntax and supported distributions.</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="va">ttest_model</span> <span class="op">&lt;-</span> 
-<span class="st">"model{
-  for(i in 1:Nx){
-    x[i] ~ dnorm(mu - delta*sigma/2, pow(sigma, -2))
-  }
-  for(i in 1:Ny){
-    y[i] ~ dnorm(mu + delta*sigma/2, pow(sigma, -2))
-  }
-}
-"</span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">ttest_model</span> <span class="op">&lt;-</span> </span>
+<span><span class="st">"model{</span></span>
+<span><span class="st">  for(i in 1:Nx){</span></span>
+<span><span class="st">    x[i] ~ dnorm(mu - delta*sigma/2, pow(sigma, -2))</span></span>
+<span><span class="st">  }</span></span>
+<span><span class="st">  for(i in 1:Ny){</span></span>
+<span><span class="st">    y[i] ~ dnorm(mu + delta*sigma/2, pow(sigma, -2))</span></span>
+<span><span class="st">  }</span></span>
+<span><span class="st">}</span></span>
+<span><span class="st">"</span></span></code></pre></div>
 <p>Researchers familiar with specifying models in JAGS might notice that I did not specify the prior distribution for any of our parameters (<span class="math inline">\(\mu, \sigma, \delta\)</span>). In fact, all operations related to prior distributions are handled automatically by the BayesTools package. Here, I specify two lists of prior distributions, the first one for the null hypothesis <span class="math inline">\(\mathcal{H}_0\)</span> of no effect and second for the alternative hypothesis of a positive effect <span class="math inline">\(\mathcal{H}_+\)</span>. As in <span class="citation">Wagenmakers et al. (2015)</span>, I use a point null hypothesis for the <span class="math inline">\(\delta\)</span> for <span class="math inline">\(\mathcal{H}_0\)</span> and a half Cauchy distribution with scale <span class="math inline">\(\sqrt{2}/2\)</span> for the alternative hypothesis. Unfortunately, JAGS does not allow us to specify Jeffreys’ priors for the common mean <span class="math inline">\(\mu\)</span> and standard deviation <span class="math inline">\(\sigma\)</span>, therefore I use a relative wide Cauchy prior distribution for the mean and an exponential distribution for the standard deviation, both of which have approximately the same shape as the Jeffreys’ priors in areas where the likelihood is the highest.<span class="math inline">\(^1\)</span></p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="va">ttest_priors_H0</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>
-  mu    <span class="op">=</span> <span class="fu"><a href="../reference/prior.html">prior</a></span><span class="op">(</span><span class="st">"cauchy"</span>,      parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>location <span class="op">=</span> <span class="fl">0</span>, scale <span class="op">=</span> <span class="fl">10</span><span class="op">)</span><span class="op">)</span>,
-  sigma <span class="op">=</span> <span class="fu"><a href="../reference/prior.html">prior</a></span><span class="op">(</span><span class="st">"exponential"</span>, parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>rate <span class="op">=</span> <span class="fl">2</span><span class="op">)</span><span class="op">)</span>,
-  delta <span class="op">=</span> <span class="fu"><a href="../reference/prior.html">prior</a></span><span class="op">(</span><span class="st">"spike"</span>,       parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>location <span class="op">=</span> <span class="fl">0</span><span class="op">)</span><span class="op">)</span>
-<span class="op">)</span>
-<span class="va">ttest_priors_Hp</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>
-  mu    <span class="op">=</span> <span class="fu"><a href="../reference/prior.html">prior</a></span><span class="op">(</span><span class="st">"cauchy"</span>,      parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>location <span class="op">=</span> <span class="fl">0</span>, scale <span class="op">=</span> <span class="fl">10</span><span class="op">)</span><span class="op">)</span>,
-  sigma <span class="op">=</span> <span class="fu"><a href="../reference/prior.html">prior</a></span><span class="op">(</span><span class="st">"exponential"</span>, parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>rate <span class="op">=</span> <span class="fl">2</span><span class="op">)</span><span class="op">)</span>,
-  delta <span class="op">=</span> <span class="fu"><a href="../reference/prior.html">prior</a></span><span class="op">(</span><span class="st">"cauchy"</span>,      parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>location <span class="op">=</span> <span class="fl">0</span>, scale <span class="op">=</span> <span class="fl">1</span><span class="op">)</span>,
-                truncation <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>lower <span class="op">=</span> <span class="fl">0</span>, upper <span class="op">=</span> <span class="cn">Inf</span><span class="op">)</span><span class="op">)</span>
-<span class="op">)</span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">ttest_priors_H0</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
+<span>  mu    <span class="op">=</span> <span class="fu"><a href="../reference/prior.html">prior</a></span><span class="op">(</span><span class="st">"cauchy"</span>,      parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>location <span class="op">=</span> <span class="fl">0</span>, scale <span class="op">=</span> <span class="fl">10</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  sigma <span class="op">=</span> <span class="fu"><a href="../reference/prior.html">prior</a></span><span class="op">(</span><span class="st">"exponential"</span>, parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>rate <span class="op">=</span> <span class="fl">2</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  delta <span class="op">=</span> <span class="fu"><a href="../reference/prior.html">prior</a></span><span class="op">(</span><span class="st">"spike"</span>,       parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>location <span class="op">=</span> <span class="fl">0</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span><span class="va">ttest_priors_Hp</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
+<span>  mu    <span class="op">=</span> <span class="fu"><a href="../reference/prior.html">prior</a></span><span class="op">(</span><span class="st">"cauchy"</span>,      parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>location <span class="op">=</span> <span class="fl">0</span>, scale <span class="op">=</span> <span class="fl">10</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  sigma <span class="op">=</span> <span class="fu"><a href="../reference/prior.html">prior</a></span><span class="op">(</span><span class="st">"exponential"</span>, parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>rate <span class="op">=</span> <span class="fl">2</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  delta <span class="op">=</span> <span class="fu"><a href="../reference/prior.html">prior</a></span><span class="op">(</span><span class="st">"cauchy"</span>,      parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>location <span class="op">=</span> <span class="fl">0</span>, scale <span class="op">=</span> <span class="fl">1</span><span class="op">)</span>,</span>
+<span>                truncation <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>lower <span class="op">=</span> <span class="fl">0</span>, upper <span class="op">=</span> <span class="cn">Inf</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="op">)</span></span></code></pre></div>
 <p>I can visualize and check the prior distributions with the <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> function.</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="fu"><a href="https://rdrr.io/r/graphics/par.html" class="external-link">par</a></span><span class="op">(</span>mfrow <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">2</span>, <span class="fl">2</span><span class="op">)</span>, mar <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">4</span>, <span class="fl">4</span>, <span class="fl">2</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span>
-<span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ttest_priors_H0</span><span class="op">$</span><span class="va">mu</span>,    par_name <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/bquote.html" class="external-link">bquote</a></span><span class="op">(</span><span class="va">mu</span><span class="op">)</span>, xlim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">50</span>, <span class="fl">50</span><span class="op">)</span><span class="op">)</span>
-<span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ttest_priors_H0</span><span class="op">$</span><span class="va">sigma</span>, par_name <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/bquote.html" class="external-link">bquote</a></span><span class="op">(</span><span class="va">sigma</span><span class="op">)</span>, xlim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">50</span><span class="op">)</span><span class="op">)</span>
-<span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ttest_priors_H0</span><span class="op">$</span><span class="va">delta</span>, par_name <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/bquote.html" class="external-link">bquote</a></span><span class="op">(</span><span class="va">delta</span><span class="op">)</span>, 
-     xlim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">1</span>, <span class="fl">1</span><span class="op">)</span>, main <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/bquote.html" class="external-link">bquote</a></span><span class="op">(</span><span class="va">H</span><span class="op">[</span><span class="fl">0</span><span class="op">]</span><span class="op">)</span><span class="op">)</span>
-<span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ttest_priors_Hp</span><span class="op">$</span><span class="va">delta</span>, par_name <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/bquote.html" class="external-link">bquote</a></span><span class="op">(</span><span class="va">delta</span><span class="op">)</span>, 
-     xlim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">5</span><span class="op">)</span>, main <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/bquote.html" class="external-link">bquote</a></span><span class="op">(</span><span class="va">H</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span><span class="op">)</span><span class="op">)</span></code></pre></div>
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/par.html" class="external-link">par</a></span><span class="op">(</span>mfrow <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">2</span>, <span class="fl">2</span><span class="op">)</span>, mar <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">4</span>, <span class="fl">4</span>, <span class="fl">2</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ttest_priors_H0</span><span class="op">$</span><span class="va">mu</span>,    par_name <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/bquote.html" class="external-link">bquote</a></span><span class="op">(</span><span class="va">mu</span><span class="op">)</span>, xlim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">50</span>, <span class="fl">50</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ttest_priors_H0</span><span class="op">$</span><span class="va">sigma</span>, par_name <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/bquote.html" class="external-link">bquote</a></span><span class="op">(</span><span class="va">sigma</span><span class="op">)</span>, xlim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">50</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ttest_priors_H0</span><span class="op">$</span><span class="va">delta</span>, par_name <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/bquote.html" class="external-link">bquote</a></span><span class="op">(</span><span class="va">delta</span><span class="op">)</span>, </span>
+<span>     xlim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">1</span>, <span class="fl">1</span><span class="op">)</span>, main <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/bquote.html" class="external-link">bquote</a></span><span class="op">(</span><span class="va">H</span><span class="op">[</span><span class="fl">0</span><span class="op">]</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ttest_priors_Hp</span><span class="op">$</span><span class="va">delta</span>, par_name <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/bquote.html" class="external-link">bquote</a></span><span class="op">(</span><span class="va">delta</span><span class="op">)</span>, </span>
+<span>     xlim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">5</span><span class="op">)</span>, main <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/bquote.html" class="external-link">bquote</a></span><span class="op">(</span><span class="va">H</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
 <p><img src="ComparisonR_files/figure-html/fig_priors-1.png" width="100%" style="display: block; margin: auto;"></p>
 <p>The last step needed before actually fitting the models is specifying a list with the data set. Here, I need to pass both the observations for <span class="math inline">\(x\)</span> and <span class="math inline">\(y\)</span>, but also the number of observations in each group, <span class="math inline">\(N_x\)</span> and <span class="math inline">\(N_y\)</span>, since I used it the model syntax I specified earlier.</p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="va">ttest_data</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>
-  x  <span class="op">=</span> <span class="va">x</span>,
-  y  <span class="op">=</span> <span class="va">y</span>,
-  Nx <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span>,
-  Ny <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">y</span><span class="op">)</span>
-<span class="op">)</span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">ttest_data</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
+<span>  x  <span class="op">=</span> <span class="va">x</span>,</span>
+<span>  y  <span class="op">=</span> <span class="va">y</span>,</span>
+<span>  Nx <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span>,</span>
+<span>  Ny <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">y</span><span class="op">)</span></span>
+<span><span class="op">)</span></span></code></pre></div>
 <p>Then, I pass the arguments into the <code><a href="../reference/JAGS_fit.html">JAGS_fit()</a></code> function that wraps around the runjags R package <span class="citation">(Denwood, 2016)</span>, specifying the prior distributions, preparing the starting values, etc…</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="va">ttest_model_H0</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/JAGS_fit.html">JAGS_fit</a></span><span class="op">(</span>
-  model_syntax <span class="op">=</span> <span class="va">ttest_model</span>,
-  data         <span class="op">=</span> <span class="va">ttest_data</span>,
-  prior_list   <span class="op">=</span> <span class="va">ttest_priors_H0</span>,
-  seed         <span class="op">=</span> <span class="fl">0</span>
-<span class="op">)</span> 
-
-<span class="va">ttest_model_Hp</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/JAGS_fit.html">JAGS_fit</a></span><span class="op">(</span>
-  model_syntax <span class="op">=</span> <span class="va">ttest_model</span>,
-  data         <span class="op">=</span> <span class="va">ttest_data</span>,
-  prior_list   <span class="op">=</span> <span class="va">ttest_priors_Hp</span>,
-  seed         <span class="op">=</span> <span class="fl">1</span>
-<span class="op">)</span> </code></pre></div>
+<code class="sourceCode R"><span><span class="va">ttest_model_H0</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/JAGS_fit.html">JAGS_fit</a></span><span class="op">(</span></span>
+<span>  model_syntax <span class="op">=</span> <span class="va">ttest_model</span>,</span>
+<span>  data         <span class="op">=</span> <span class="va">ttest_data</span>,</span>
+<span>  prior_list   <span class="op">=</span> <span class="va">ttest_priors_H0</span>,</span>
+<span>  seed         <span class="op">=</span> <span class="fl">0</span></span>
+<span><span class="op">)</span> </span>
+<span><span class="co">#&gt; Loading required namespace: runjags</span></span>
+<span><span class="co">#&gt; Loading required namespace: rjags</span></span>
+<span></span>
+<span><span class="va">ttest_model_Hp</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/JAGS_fit.html">JAGS_fit</a></span><span class="op">(</span></span>
+<span>  model_syntax <span class="op">=</span> <span class="va">ttest_model</span>,</span>
+<span>  data         <span class="op">=</span> <span class="va">ttest_data</span>,</span>
+<span>  prior_list   <span class="op">=</span> <span class="va">ttest_priors_Hp</span>,</span>
+<span>  seed         <span class="op">=</span> <span class="fl">1</span></span>
+<span><span class="op">)</span> </span></code></pre></div>
 <p>I can print the estimated model summary with <code><a href="../reference/BayesTools_model_tables.html">runjags_estimates_table()</a></code> function.</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="fu"><a href="../reference/BayesTools_model_tables.html">runjags_estimates_table</a></span><span class="op">(</span><span class="va">ttest_model_Hp</span><span class="op">)</span>
-<span class="co">#&gt;        Mean    SD   lCI Median   uCI error(MCMC) error(MCMC)/SD  ESS R-hat</span>
-<span class="co">#&gt; mu    0.681 0.048 0.585  0.681 0.774     0.00049          0.010 9784 1.000</span>
-<span class="co">#&gt; sigma 0.488 0.035 0.425  0.486 0.562     0.00036          0.010 9246 1.000</span>
-<span class="co">#&gt; delta 0.113 0.094 0.004  0.091 0.345     0.00139          0.015 4526 1.000</span></code></pre></div>
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/BayesTools_model_tables.html">runjags_estimates_table</a></span><span class="op">(</span><span class="va">ttest_model_Hp</span><span class="op">)</span></span>
+<span><span class="co">#&gt;        Mean    SD   lCI Median   uCI error(MCMC) error(MCMC)/SD  ESS R-hat</span></span>
+<span><span class="co">#&gt; mu    0.681 0.048 0.585  0.681 0.774     0.00049          0.010 9784 1.000</span></span>
+<span><span class="co">#&gt; sigma 0.488 0.035 0.425  0.486 0.562     0.00036          0.010 9246 1.000</span></span>
+<span><span class="co">#&gt; delta 0.113 0.094 0.004  0.091 0.345     0.00139          0.015 4526 1.000</span></span></code></pre></div>
 <p>To compute the Bayes factor in favor of <span class="math inline">\(\mathcal{H}_+\)</span> over <span class="math inline">\(\mathcal{H}_0\)</span>, I need to first obtain the marginal likelihoods. The only additional step is specifying an R function that returns the log likelihood of the model. Here, instead of writing out the loops, I take advantage of the fact that summation on the log scale equals to multiplication on the original scale.</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="va">log_posterior</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">parameters</span>, <span class="va">data</span><span class="op">)</span><span class="op">{</span>
-  <span class="va">loglik_x</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">dnorm</a></span><span class="op">(</span>
-    x    <span class="op">=</span> <span class="va">data</span><span class="op">[[</span><span class="st">"x"</span><span class="op">]</span><span class="op">]</span>,
-    mean <span class="op">=</span> <span class="va">parameters</span><span class="op">[[</span><span class="st">"mu"</span><span class="op">]</span><span class="op">]</span> <span class="op">-</span> <span class="va">parameters</span><span class="op">[[</span><span class="st">"delta"</span><span class="op">]</span><span class="op">]</span> <span class="op">*</span> <span class="va">parameters</span><span class="op">[[</span><span class="st">"sigma"</span><span class="op">]</span><span class="op">]</span> <span class="op">/</span> <span class="fl">2</span>,
-    sd   <span class="op">=</span> <span class="va">parameters</span><span class="op">[[</span><span class="st">"sigma"</span><span class="op">]</span><span class="op">]</span>,
-    log  <span class="op">=</span> <span class="cn">TRUE</span>
-  <span class="op">)</span><span class="op">)</span>
-  <span class="va">loglik_y</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">dnorm</a></span><span class="op">(</span>
-    x    <span class="op">=</span> <span class="va">data</span><span class="op">[[</span><span class="st">"y"</span><span class="op">]</span><span class="op">]</span>,
-    mean <span class="op">=</span> <span class="va">parameters</span><span class="op">[[</span><span class="st">"mu"</span><span class="op">]</span><span class="op">]</span> <span class="op">+</span> <span class="va">parameters</span><span class="op">[[</span><span class="st">"delta"</span><span class="op">]</span><span class="op">]</span> <span class="op">*</span> <span class="va">parameters</span><span class="op">[[</span><span class="st">"sigma"</span><span class="op">]</span><span class="op">]</span> <span class="op">/</span> <span class="fl">2</span>,
-    sd   <span class="op">=</span> <span class="va">parameters</span><span class="op">[[</span><span class="st">"sigma"</span><span class="op">]</span><span class="op">]</span>, 
-    log  <span class="op">=</span> <span class="cn">TRUE</span>
-  <span class="op">)</span><span class="op">)</span>
-  <span class="kw"><a href="https://rdrr.io/r/base/function.html" class="external-link">return</a></span><span class="op">(</span><span class="va">loglik_x</span> <span class="op">+</span> <span class="va">loglik_y</span><span class="op">)</span>
-<span class="op">}</span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">log_posterior</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">parameters</span>, <span class="va">data</span><span class="op">)</span><span class="op">{</span></span>
+<span>  <span class="va">loglik_x</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">dnorm</a></span><span class="op">(</span></span>
+<span>    x    <span class="op">=</span> <span class="va">data</span><span class="op">[[</span><span class="st">"x"</span><span class="op">]</span><span class="op">]</span>,</span>
+<span>    mean <span class="op">=</span> <span class="va">parameters</span><span class="op">[[</span><span class="st">"mu"</span><span class="op">]</span><span class="op">]</span> <span class="op">-</span> <span class="va">parameters</span><span class="op">[[</span><span class="st">"delta"</span><span class="op">]</span><span class="op">]</span> <span class="op">*</span> <span class="va">parameters</span><span class="op">[[</span><span class="st">"sigma"</span><span class="op">]</span><span class="op">]</span> <span class="op">/</span> <span class="fl">2</span>,</span>
+<span>    sd   <span class="op">=</span> <span class="va">parameters</span><span class="op">[[</span><span class="st">"sigma"</span><span class="op">]</span><span class="op">]</span>,</span>
+<span>    log  <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span>  <span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="va">loglik_y</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">dnorm</a></span><span class="op">(</span></span>
+<span>    x    <span class="op">=</span> <span class="va">data</span><span class="op">[[</span><span class="st">"y"</span><span class="op">]</span><span class="op">]</span>,</span>
+<span>    mean <span class="op">=</span> <span class="va">parameters</span><span class="op">[[</span><span class="st">"mu"</span><span class="op">]</span><span class="op">]</span> <span class="op">+</span> <span class="va">parameters</span><span class="op">[[</span><span class="st">"delta"</span><span class="op">]</span><span class="op">]</span> <span class="op">*</span> <span class="va">parameters</span><span class="op">[[</span><span class="st">"sigma"</span><span class="op">]</span><span class="op">]</span> <span class="op">/</span> <span class="fl">2</span>,</span>
+<span>    sd   <span class="op">=</span> <span class="va">parameters</span><span class="op">[[</span><span class="st">"sigma"</span><span class="op">]</span><span class="op">]</span>, </span>
+<span>    log  <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span>  <span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="kw"><a href="https://rdrr.io/r/base/function.html" class="external-link">return</a></span><span class="op">(</span><span class="va">loglik_x</span> <span class="op">+</span> <span class="va">loglik_y</span><span class="op">)</span></span>
+<span><span class="op">}</span></span></code></pre></div>
 <p>The function requires two arguments, <code>parameters</code> and <code>data</code>, both of which are forwarded to it via the <code>JAGS_bridgesampling</code> function that wraps around the bridge sampling R package <span class="citation">(Gronau et al., 2020)</span>, specifying the marginal likelihood for prior distributions and taking care of all required transformations etc…</p>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="va">marglik_model_H0</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/JAGS_bridgesampling.html">JAGS_bridgesampling</a></span><span class="op">(</span>
-  fit           <span class="op">=</span> <span class="va">ttest_model_H0</span>,
-  log_posterior <span class="op">=</span> <span class="va">log_posterior</span>,
-  data          <span class="op">=</span> <span class="va">ttest_data</span>,
-  prior_list    <span class="op">=</span> <span class="va">ttest_priors_H0</span>
-<span class="op">)</span>
-
-<span class="va">marglik_model_Hp</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/JAGS_bridgesampling.html">JAGS_bridgesampling</a></span><span class="op">(</span>
-  fit           <span class="op">=</span> <span class="va">ttest_model_Hp</span>,
-  log_posterior <span class="op">=</span> <span class="va">log_posterior</span>,
-  data          <span class="op">=</span> <span class="va">ttest_data</span>,
-  prior_list    <span class="op">=</span> <span class="va">ttest_priors_Hp</span>
-<span class="op">)</span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">marglik_model_H0</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/JAGS_bridgesampling.html">JAGS_bridgesampling</a></span><span class="op">(</span></span>
+<span>  fit           <span class="op">=</span> <span class="va">ttest_model_H0</span>,</span>
+<span>  log_posterior <span class="op">=</span> <span class="va">log_posterior</span>,</span>
+<span>  data          <span class="op">=</span> <span class="va">ttest_data</span>,</span>
+<span>  prior_list    <span class="op">=</span> <span class="va">ttest_priors_H0</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">marglik_model_Hp</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/JAGS_bridgesampling.html">JAGS_bridgesampling</a></span><span class="op">(</span></span>
+<span>  fit           <span class="op">=</span> <span class="va">ttest_model_Hp</span>,</span>
+<span>  log_posterior <span class="op">=</span> <span class="va">log_posterior</span>,</span>
+<span>  data          <span class="op">=</span> <span class="va">ttest_data</span>,</span>
+<span>  prior_list    <span class="op">=</span> <span class="va">ttest_priors_Hp</span></span>
+<span><span class="op">)</span></span></code></pre></div>
 <p>To obtain the resulting Bayes factor in favor of the null hypothesis, I can use the <code>bf()</code> function from the bridgesampling R package</p>
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="fu">bridgesampling</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/bridgesampling/man/bf.html" class="external-link">bf</a></span><span class="op">(</span><span class="va">marglik_model_H0</span>, <span class="va">marglik_model_Hp</span><span class="op">)</span>
-<span class="co">#&gt; Estimated Bayes factor in favor of marglik_model_H0 over marglik_model_Hp: 10.71767</span></code></pre></div>
+<code class="sourceCode R"><span><span class="fu">bridgesampling</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/bridgesampling/man/bf.html" class="external-link">bf</a></span><span class="op">(</span><span class="va">marglik_model_H0</span>, <span class="va">marglik_model_Hp</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Estimated Bayes factor in favor of marglik_model_H0 over marglik_model_Hp: 10.71767</span></span></code></pre></div>
 <p>or specify a BayesTools model ensemble object that can be further inspected by a variety of functions.</p>
 <div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="va">models_list</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ensemble_inference.html">models_inference</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>
-  <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>model <span class="op">=</span> <span class="va">ttest_model_H0</span>, marglik <span class="op">=</span> <span class="va">marglik_model_H0</span>, prior_weights <span class="op">=</span> <span class="fl">1</span><span class="op">/</span><span class="fl">2</span><span class="op">)</span>,
-  <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>model <span class="op">=</span> <span class="va">ttest_model_Hp</span>, marglik <span class="op">=</span> <span class="va">marglik_model_Hp</span>, prior_weights <span class="op">=</span> <span class="fl">1</span><span class="op">/</span><span class="fl">2</span><span class="op">)</span>
-<span class="op">)</span><span class="op">)</span>
-<span class="va">ensemble_info</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ensemble_inference.html">ensemble_inference</a></span><span class="op">(</span><span class="va">models_list</span>, parameters <span class="op">=</span> <span class="st">"delta"</span>, is_null_list <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"delta"</span> <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="cn">TRUE</span>, <span class="cn">FALSE</span><span class="op">)</span><span class="op">)</span><span class="op">)</span>
-
-<span class="fu"><a href="../reference/BayesTools_ensemble_tables.html">ensemble_inference_table</a></span><span class="op">(</span><span class="va">ensemble_info</span>, <span class="st">"delta"</span>, BF01 <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>
-<span class="co">#&gt;       Models Prior prob. Post. prob. Exclusion BF</span>
-<span class="co">#&gt; delta    1/2       0.500       0.085       10.718</span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">models_list</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ensemble_inference.html">models_inference</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>model <span class="op">=</span> <span class="va">ttest_model_H0</span>, marglik <span class="op">=</span> <span class="va">marglik_model_H0</span>, prior_weights <span class="op">=</span> <span class="fl">1</span><span class="op">/</span><span class="fl">2</span><span class="op">)</span>,</span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>model <span class="op">=</span> <span class="va">ttest_model_Hp</span>, marglik <span class="op">=</span> <span class="va">marglik_model_Hp</span>, prior_weights <span class="op">=</span> <span class="fl">1</span><span class="op">/</span><span class="fl">2</span><span class="op">)</span></span>
+<span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">ensemble_info</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ensemble_inference.html">ensemble_inference</a></span><span class="op">(</span><span class="va">models_list</span>, parameters <span class="op">=</span> <span class="st">"delta"</span>, is_null_list <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"delta"</span> <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="cn">TRUE</span>, <span class="cn">FALSE</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="../reference/BayesTools_ensemble_tables.html">ensemble_inference_table</a></span><span class="op">(</span><span class="va">ensemble_info</span>, <span class="st">"delta"</span>, BF01 <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<span><span class="co">#&gt;       Models Prior prob. Post. prob. Exclusion BF</span></span>
+<span><span class="co">#&gt; delta    1/2       0.500       0.085       10.718</span></span></code></pre></div>
 <p>The corresponding results can be also obtained numerically with the <code>ttestBF()</code> function from the BayesFactor R package <span class="citation">(Morey et al., 2015)</span>.</p>
 <div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="va">BayesFactor_ttest</span> <span class="op">&lt;-</span> <span class="fu">BayesFactor</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/BayesFactor/man/ttestBF.html" class="external-link">ttestBF</a></span><span class="op">(</span>x <span class="op">=</span> <span class="va">x</span>, y <span class="op">=</span> <span class="va">y</span>, rscale <span class="op">=</span> <span class="st">"wide"</span>, nullInterval <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0</span>, <span class="cn">Inf</span><span class="op">)</span><span class="op">)</span>
-<span class="va">BayesFactor_ttest</span>
-<span class="co">#&gt; Bayes factor analysis</span>
-<span class="co">#&gt; --------------</span>
-<span class="co">#&gt; [1] Alt., r=1 0&lt;d&lt;Inf    : 0.3058419  ±0%</span>
-<span class="co">#&gt; [2] Alt., r=1 !(0&lt;d&lt;Inf) : 0.09296717 ±0%</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt; Against denominator:</span>
-<span class="co">#&gt;   Null, mu1-mu2 = 0 </span>
-<span class="co">#&gt; ---</span>
-<span class="co">#&gt; Bayes factor type: BFindepSample, JZS</span>
-<span class="fl">1</span><span class="op">/</span><span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">exp</a></span><span class="op">(</span><span class="va">BayesFactor_ttest</span><span class="op">@</span><span class="va">bayesFactor</span><span class="op">$</span><span class="va">bf</span><span class="op">[</span><span class="fl">2</span><span class="op">]</span><span class="op">)</span>
-<span class="co">#&gt; [1] 10.75649</span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">BayesFactor_ttest</span> <span class="op">&lt;-</span> <span class="fu">BayesFactor</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/BayesFactor/man/ttestBF.html" class="external-link">ttestBF</a></span><span class="op">(</span>x <span class="op">=</span> <span class="va">x</span>, y <span class="op">=</span> <span class="va">y</span>, rscale <span class="op">=</span> <span class="st">"wide"</span>, nullInterval <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0</span>, <span class="cn">Inf</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">BayesFactor_ttest</span></span>
+<span><span class="co">#&gt; Bayes factor analysis</span></span>
+<span><span class="co">#&gt; --------------</span></span>
+<span><span class="co">#&gt; [1] Alt., r=1 0&lt;d&lt;Inf    : 0.3058419  ±0%</span></span>
+<span><span class="co">#&gt; [2] Alt., r=1 !(0&lt;d&lt;Inf) : 0.09296717 ±0%</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Against denominator:</span></span>
+<span><span class="co">#&gt;   Null, mu1-mu2 = 0 </span></span>
+<span><span class="co">#&gt; ---</span></span>
+<span><span class="co">#&gt; Bayes factor type: BFindepSample, JZS</span></span>
+<span><span class="fl">1</span><span class="op">/</span><span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">exp</a></span><span class="op">(</span><span class="va">BayesFactor_ttest</span><span class="op">@</span><span class="va">bayesFactor</span><span class="op">$</span><span class="va">bf</span><span class="op">[</span><span class="fl">2</span><span class="op">]</span><span class="op">)</span></span>
+<span><span class="co">#&gt; [1] 10.75649</span></span></code></pre></div>
 <p>This is of course a trivial example, however, it showcases flexibility of the BayesTools package. The prior distribution on the standardized effect size parameter <span class="math inline">\(\delta\)</span> can be changed to any of the multitude of supported distributions without effecting rest of the code, allowing users and package developers to specify more customized tests.</p>
 </div>
 </div>
@@ -313,7 +313,7 @@
 
 <div class="pkgdown">
   <p></p>
-<p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
+<p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.5.</p>
 </div>
 
       </footer>

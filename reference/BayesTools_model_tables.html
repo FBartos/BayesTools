@@ -18,7 +18,7 @@ provides estimates table for a runjags fit."><!-- mathjax --><script src="https:
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.12</span>
       </span>
     </div>
 
@@ -68,73 +68,81 @@ provides estimates table for a runjags fit.</p>
     </div>
 
     <div id="ref-usage">
-    <div class="sourceCode"><pre class="sourceCode r"><code><span class="fu">model_summary_table</span><span class="op">(</span>
-  <span class="va">model</span>,
-  model_description <span class="op">=</span> <span class="cn">NULL</span>,
-  title <span class="op">=</span> <span class="cn">NULL</span>,
-  footnotes <span class="op">=</span> <span class="cn">NULL</span>,
-  warnings <span class="op">=</span> <span class="cn">NULL</span>,
-  remove_spike_0 <span class="op">=</span> <span class="cn">TRUE</span>,
-  short_name <span class="op">=</span> <span class="cn">FALSE</span>,
-  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>
-<span class="op">)</span>
-
-<span class="fu">runjags_estimates_table</span><span class="op">(</span>
-  <span class="va">fit</span>,
-  transformations <span class="op">=</span> <span class="cn">NULL</span>,
-  title <span class="op">=</span> <span class="cn">NULL</span>,
-  footnotes <span class="op">=</span> <span class="cn">NULL</span>,
-  warnings <span class="op">=</span> <span class="cn">NULL</span>,
-  conditional <span class="op">=</span> <span class="cn">FALSE</span>,
-  remove_spike_0 <span class="op">=</span> <span class="cn">TRUE</span>,
-  transform_orthonormal <span class="op">=</span> <span class="cn">FALSE</span>,
-  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>,
-  remove_inclusion <span class="op">=</span> <span class="cn">FALSE</span>
-<span class="op">)</span>
-
-<span class="fu">runjags_inference_table</span><span class="op">(</span>
-  <span class="va">fit</span>,
-  title <span class="op">=</span> <span class="cn">NULL</span>,
-  footnotes <span class="op">=</span> <span class="cn">NULL</span>,
-  warnings <span class="op">=</span> <span class="cn">NULL</span>,
-  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>
-<span class="op">)</span>
-
-<span class="fu">JAGS_estimates_table</span><span class="op">(</span>
-  <span class="va">fit</span>,
-  transformations <span class="op">=</span> <span class="cn">NULL</span>,
-  title <span class="op">=</span> <span class="cn">NULL</span>,
-  footnotes <span class="op">=</span> <span class="cn">NULL</span>,
-  warnings <span class="op">=</span> <span class="cn">NULL</span>,
-  conditional <span class="op">=</span> <span class="cn">FALSE</span>,
-  remove_spike_0 <span class="op">=</span> <span class="cn">TRUE</span>,
-  transform_orthonormal <span class="op">=</span> <span class="cn">FALSE</span>,
-  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>,
-  remove_inclusion <span class="op">=</span> <span class="cn">FALSE</span>
-<span class="op">)</span>
-
-<span class="fu">JAGS_inference_table</span><span class="op">(</span>
-  <span class="va">fit</span>,
-  title <span class="op">=</span> <span class="cn">NULL</span>,
-  footnotes <span class="op">=</span> <span class="cn">NULL</span>,
-  warnings <span class="op">=</span> <span class="cn">NULL</span>,
-  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>
-<span class="op">)</span>
-
-<span class="fu">JAGS_summary_table</span><span class="op">(</span>
-  <span class="va">model</span>,
-  model_description <span class="op">=</span> <span class="cn">NULL</span>,
-  title <span class="op">=</span> <span class="cn">NULL</span>,
-  footnotes <span class="op">=</span> <span class="cn">NULL</span>,
-  warnings <span class="op">=</span> <span class="cn">NULL</span>,
-  remove_spike_0 <span class="op">=</span> <span class="cn">TRUE</span>,
-  short_name <span class="op">=</span> <span class="cn">FALSE</span>,
-  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>
-<span class="op">)</span>
-
-<span class="fu">runjags_estimates_empty_table</span><span class="op">(</span>title <span class="op">=</span> <span class="cn">NULL</span>, footnotes <span class="op">=</span> <span class="cn">NULL</span>, warnings <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span>
-
-<span class="fu">runjags_inference_empty_table</span><span class="op">(</span>title <span class="op">=</span> <span class="cn">NULL</span>, footnotes <span class="op">=</span> <span class="cn">NULL</span>, warnings <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">model_summary_table</span><span class="op">(</span></span>
+<span>  <span class="va">model</span>,</span>
+<span>  model_description <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  title <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  footnotes <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  warnings <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  remove_spike_0 <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  short_name <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu">runjags_estimates_table</span><span class="op">(</span></span>
+<span>  <span class="va">fit</span>,</span>
+<span>  transformations <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  title <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  footnotes <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  warnings <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  conditional <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  remove_spike_0 <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  transform_orthonormal <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  remove_inclusion <span class="op">=</span> <span class="cn">FALSE</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu">runjags_inference_table</span><span class="op">(</span></span>
+<span>  <span class="va">fit</span>,</span>
+<span>  title <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  footnotes <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  warnings <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu">JAGS_estimates_table</span><span class="op">(</span></span>
+<span>  <span class="va">fit</span>,</span>
+<span>  transformations <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  title <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  footnotes <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  warnings <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  conditional <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  remove_spike_0 <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  transform_orthonormal <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  remove_inclusion <span class="op">=</span> <span class="cn">FALSE</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu">JAGS_inference_table</span><span class="op">(</span></span>
+<span>  <span class="va">fit</span>,</span>
+<span>  title <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  footnotes <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  warnings <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu">JAGS_summary_table</span><span class="op">(</span></span>
+<span>  <span class="va">model</span>,</span>
+<span>  model_description <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  title <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  footnotes <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  warnings <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  remove_spike_0 <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  short_name <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu">runjags_estimates_empty_table</span><span class="op">(</span>title <span class="op">=</span> <span class="cn">NULL</span>, footnotes <span class="op">=</span> <span class="cn">NULL</span>, warnings <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu">runjags_inference_empty_table</span><span class="op">(</span>title <span class="op">=</span> <span class="cn">NULL</span>, footnotes <span class="op">=</span> <span class="cn">NULL</span>, warnings <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu">stan_estimates_table</span><span class="op">(</span></span>
+<span>  <span class="va">fit</span>,</span>
+<span>  transformations <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  title <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  footnotes <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  warnings <span class="op">=</span> <span class="cn">NULL</span></span>
+<span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div id="arguments">
@@ -234,7 +242,7 @@ class 'BayesTools_table'.</p>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.5.</p>
 </div>
 
       </footer></div>
