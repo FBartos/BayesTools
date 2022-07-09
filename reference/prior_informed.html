@@ -18,7 +18,7 @@ research. The prior can be visualized by the plot function."><!-- mathjax --><sc
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.12</span>
       </span>
     </div>
 
@@ -68,7 +68,7 @@ research. The prior can be visualized by the <code>plot</code> function.</p>
     </div>
 
     <div id="ref-usage">
-    <div class="sourceCode"><pre class="sourceCode r"><code><span class="fu">prior_informed</span><span class="op">(</span><span class="va">name</span>, parameter <span class="op">=</span> <span class="cn">NULL</span>, type <span class="op">=</span> <span class="st">"smd"</span><span class="op">)</span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">prior_informed</span><span class="op">(</span><span class="va">name</span>, parameter <span class="op">=</span> <span class="cn">NULL</span>, type <span class="op">=</span> <span class="st">"smd"</span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div id="arguments">
@@ -139,23 +139,23 @@ the empirical medical prior distributions.</p></dd>
 
     <div id="ref-examples">
     <h2>Examples</h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span class="co"># prior distribution representing expected effect sizes in social psychology</span></span>
-<span class="r-in"><span class="co"># based on prior elicitation with dr. Oosterwijk</span></span>
-<span class="r-in"><span class="va">p1</span> <span class="op">&lt;-</span> <span class="fu">prior_informed</span><span class="op">(</span><span class="st">"Oosterwijk"</span><span class="op">)</span></span>
-<span class="r-in"></span>
-<span class="r-in"><span class="co"># the prior distribution can be visualized using the plot function</span></span>
-<span class="r-in"><span class="co"># (see ?plot.prior for all options)</span></span>
-<span class="r-in"><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">p1</span><span class="op">)</span></span>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="co"># prior distribution representing expected effect sizes in social psychology</span></span></span>
+<span class="r-in"><span><span class="co"># based on prior elicitation with dr. Oosterwijk</span></span></span>
+<span class="r-in"><span><span class="va">p1</span> <span class="op">&lt;-</span> <span class="fu">prior_informed</span><span class="op">(</span><span class="st">"Oosterwijk"</span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># the prior distribution can be visualized using the plot function</span></span></span>
+<span class="r-in"><span><span class="co"># (see ?plot.prior for all options)</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">p1</span><span class="op">)</span></span></span>
 <span class="r-plt img"><img src="prior_informed-1.png" alt="" width="700" height="433"></span>
-<span class="r-in"></span>
-<span class="r-in"></span>
-<span class="r-in"><span class="co"># empirical prior distribution for the standardized mean differences from the oral health</span></span>
-<span class="r-in"><span class="co"># medical subfield based on meta-analytic effect size estimates from the</span></span>
-<span class="r-in"><span class="co"># Cochrane database of systematic reviews</span></span>
-<span class="r-in"><span class="va">p2</span> <span class="op">&lt;-</span> <span class="fu">prior_informed</span><span class="op">(</span><span class="st">"Oral Health"</span>, parameter <span class="op">=</span> <span class="st">"effect"</span>, type <span class="op">=</span> <span class="st">"smd"</span><span class="op">)</span></span>
-<span class="r-in"><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">p2</span><span class="op">)</span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># empirical prior distribution for the standardized mean differences from the oral health</span></span></span>
+<span class="r-in"><span><span class="co"># medical subfield based on meta-analytic effect size estimates from the</span></span></span>
+<span class="r-in"><span><span class="co"># Cochrane database of systematic reviews</span></span></span>
+<span class="r-in"><span><span class="va">p2</span> <span class="op">&lt;-</span> <span class="fu">prior_informed</span><span class="op">(</span><span class="st">"Oral Health"</span>, parameter <span class="op">=</span> <span class="st">"effect"</span>, type <span class="op">=</span> <span class="st">"smd"</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">p2</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Student-t(0, 0.51, 5)</span>
-<span class="r-in"></span>
+<span class="r-in"><span></span></span>
 </code></pre></div>
     </div>
   </div>
@@ -170,7 +170,7 @@ the empirical medical prior distributions.</p></dd>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.5.</p>
 </div>
 
       </footer></div>

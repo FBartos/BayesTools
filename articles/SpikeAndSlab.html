@@ -33,7 +33,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.11</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.12</span>
       </span>
     </div>
 
@@ -84,7 +84,7 @@
       <h1 data-toc-skip>Bayes factors via spike and slab prior vs. bridge sampling</h1>
                         <h4 data-toc-skip class="author">František Bartoš</h4>
             
-            <h4 data-toc-skip class="date">2022-06-16</h4>
+            <h4 data-toc-skip class="date">2022-07-09</h4>
       
       <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/HEAD/vignettes/SpikeAndSlab.Rmd" class="external-link"><code>vignettes/SpikeAndSlab.Rmd</code></a></small>
       <div class="hidden name"><code>SpikeAndSlab.Rmd</code></div>
@@ -98,55 +98,53 @@
 <p>which quantify relative predictive performance of two competing models <span class="citation">(Kass &amp; Raftery, 1995; Rouder &amp; Morey, 2019; Wrinch &amp; Jeffreys, 1921)</span>. Convenient model specification then allows users and package developers to easily compute Bayes factors and test a wide range of informed hypotheses. See RoBMA <span class="citation">(Bartoš &amp; Maier, 2020)</span> and <span class="citation">(Bartoš, 2022)</span> R packages for implementation examples.</p>
 <p>However, when considering a simple regression, the model space of all possible models increases exponentially with additional predictors. I.e., the possibility of including vs. excluding <span class="math inline">\(k\)</span> predictors leads to <span class="math inline">\(2^k\)</span> possible submodels that need to be computed. Even relatively computationally simple models (e.g. ~ 1 min of computation) with 10 possible predictors would result in more than 17 hours of computation. Therefore, we might require more computationally efficient methods when performing variable selection with more than a few covariates. In this vignette, I showcase how to use BayesTools package to specify spike and slab priors that aim to explore most of the model space and obtain posterior inclusion probabilities for each predictor within a single MCMC run <span class="citation">(Kuo &amp; Mallick, 1998; O’Hara &amp; Sillanpää, 2009)</span>.</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://fbartos.github.io/BayesTools/" class="external-link">BayesTools</a></span><span class="op">)</span>
-<span class="co">#&gt; Loading required namespace: rjags</span>
-<span class="co">#&gt; Loading required namespace: runjags</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt; Attaching package: 'BayesTools'</span>
-<span class="co">#&gt; The following objects are masked from 'package:stats':</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt;     sd, var</span>
-<span class="co">#&gt; The following object is masked from 'package:grDevices':</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt;     pdf</span></code></pre></div>
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://fbartos.github.io/BayesTools/" class="external-link">BayesTools</a></span><span class="op">)</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Attaching package: 'BayesTools'</span></span>
+<span><span class="co">#&gt; The following objects are masked from 'package:stats':</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt;     sd, var</span></span>
+<span><span class="co">#&gt; The following object is masked from 'package:grDevices':</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt;     pdf</span></span></code></pre></div>
 <div class="section level2">
 <h2 id="simulated-data">Simulated Data<a class="anchor" aria-label="anchor" href="#simulated-data"></a>
 </h2>
 <p>To keep it simple, let’s consider a linear regression with one continuous predictor <span class="math inline">\(x\)</span>. We simulate <span class="math inline">\(N = 100\)</span> observations of a dependent variable <span class="math inline">\(y\)</span> under the presence of a small effect <span class="math inline">\(\beta\)</span> of a continuous predictor <span class="math inline">\(x\)</span>.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="op">-</span><span class="fl">68</span><span class="op">)</span> <span class="co"># set seed for reproducibility</span>
-
-<span class="va">N</span>     <span class="op">&lt;-</span> <span class="fl">100</span>      <span class="co"># number of observations</span>
-<span class="va">x</span>     <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">N</span><span class="op">)</span> <span class="co"># continuous predictor</span>
-<span class="va">alpha</span> <span class="op">&lt;-</span> <span class="op">-</span><span class="fl">0.5</span>     <span class="co"># intercept</span>
-<span class="va">beta</span>  <span class="op">&lt;-</span> <span class="fl">0.15</span>     <span class="co"># small effect</span>
-
-<span class="co"># compute the mean parameter for each predictor value</span>
-<span class="va">mu</span> <span class="op">&lt;-</span> <span class="va">alpha</span> <span class="op">+</span> <span class="va">beta</span> <span class="op">*</span> <span class="va">x</span>
-
-<span class="co"># generate the response for each observation </span>
-<span class="va">y</span>  <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">N</span>, mean <span class="op">=</span> <span class="va">mu</span>, sd <span class="op">=</span> <span class="fl">1</span><span class="op">)</span> </code></pre></div>
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="op">-</span><span class="fl">68</span><span class="op">)</span> <span class="co"># set seed for reproducibility</span></span>
+<span></span>
+<span><span class="va">N</span>     <span class="op">&lt;-</span> <span class="fl">100</span>      <span class="co"># number of observations</span></span>
+<span><span class="va">x</span>     <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">N</span><span class="op">)</span> <span class="co"># continuous predictor</span></span>
+<span><span class="va">alpha</span> <span class="op">&lt;-</span> <span class="op">-</span><span class="fl">0.5</span>     <span class="co"># intercept</span></span>
+<span><span class="va">beta</span>  <span class="op">&lt;-</span> <span class="fl">0.15</span>     <span class="co"># small effect</span></span>
+<span></span>
+<span><span class="co"># compute the mean parameter for each predictor value</span></span>
+<span><span class="va">mu</span> <span class="op">&lt;-</span> <span class="va">alpha</span> <span class="op">+</span> <span class="va">beta</span> <span class="op">*</span> <span class="va">x</span></span>
+<span></span>
+<span><span class="co"># generate the response for each observation </span></span>
+<span><span class="va">y</span>  <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">N</span>, mean <span class="op">=</span> <span class="va">mu</span>, sd <span class="op">=</span> <span class="fl">1</span><span class="op">)</span> </span></code></pre></div>
 <p>We quickly verify that our simulated data correspond to the desired settings (up to a random error) with the <code>lm</code> function.</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm</a></span><span class="op">(</span><span class="va">y</span> <span class="op">~</span> <span class="va">x</span><span class="op">)</span><span class="op">)</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt; Call:</span>
-<span class="co">#&gt; lm(formula = y ~ x)</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt; Residuals:</span>
-<span class="co">#&gt;     Min      1Q  Median      3Q     Max </span>
-<span class="co">#&gt; -2.2960 -0.6832  0.0683  0.7448  2.3815 </span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt; Coefficients:</span>
-<span class="co">#&gt;             Estimate Std. Error t value Pr(&gt;|t|)    </span>
-<span class="co">#&gt; (Intercept)  -0.5487     0.1032  -5.315  6.7e-07 ***</span>
-<span class="co">#&gt; x             0.1962     0.1010   1.943   0.0549 .  </span>
-<span class="co">#&gt; ---</span>
-<span class="co">#&gt; Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt; Residual standard error: 1.03 on 98 degrees of freedom</span>
-<span class="co">#&gt; Multiple R-squared:  0.03708,    Adjusted R-squared:  0.02725 </span>
-<span class="co">#&gt; F-statistic: 3.774 on 1 and 98 DF,  p-value: 0.05494</span></code></pre></div>
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm</a></span><span class="op">(</span><span class="va">y</span> <span class="op">~</span> <span class="va">x</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Call:</span></span>
+<span><span class="co">#&gt; lm(formula = y ~ x)</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Residuals:</span></span>
+<span><span class="co">#&gt;     Min      1Q  Median      3Q     Max </span></span>
+<span><span class="co">#&gt; -2.2960 -0.6832  0.0683  0.7448  2.3815 </span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Coefficients:</span></span>
+<span><span class="co">#&gt;             Estimate Std. Error t value Pr(&gt;|t|)    </span></span>
+<span><span class="co">#&gt; (Intercept)  -0.5487     0.1032  -5.315  6.7e-07 ***</span></span>
+<span><span class="co">#&gt; x             0.1962     0.1010   1.943   0.0549 .  </span></span>
+<span><span class="co">#&gt; ---</span></span>
+<span><span class="co">#&gt; Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Residual standard error: 1.03 on 98 degrees of freedom</span></span>
+<span><span class="co">#&gt; Multiple R-squared:  0.03708,    Adjusted R-squared:  0.02725 </span></span>
+<span><span class="co">#&gt; F-statistic: 3.774 on 1 and 98 DF,  p-value: 0.05494</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="model-specification">Model Specification<a class="anchor" aria-label="anchor" href="#model-specification"></a>
@@ -165,119 +163,121 @@
 </h2>
 <p>First, we compute the Bayes factor model comparison via marginal likelihoods. To do that, we need to specify the likelihood for the response variable <span class="math inline">\(y\)</span>,</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="va">model_likelihood</span> <span class="op">&lt;-</span> 
-<span class="st">"model{
-  for(i in 1:N){
-    y[i] ~ dnorm(mu[i], pow(sigma, -2))
-  }
-}
-"</span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">model_likelihood</span> <span class="op">&lt;-</span> </span>
+<span><span class="st">"model{</span></span>
+<span><span class="st">  for(i in 1:N){</span></span>
+<span><span class="st">    y[i] ~ dnorm(mu[i], pow(sigma, -2))</span></span>
+<span><span class="st">  }</span></span>
+<span><span class="st">}</span></span>
+<span><span class="st">"</span></span></code></pre></div>
 <p>where <code>mu</code> corresponds to the mean parameter (that we specify via a formula in the next step) and <code>sigma</code> to a standard deviation of the response variable (that we treat as a nuisance parameter here).</p>
 <p>We specify formulas for the <code>mu</code> parameter of each of the considered models,</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="va">formula_M0</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="op">~</span> <span class="fl">1</span><span class="op">)</span>
-<span class="va">formula_M1</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="op">~</span> <span class="fl">1</span> <span class="op">+</span> <span class="va">x</span><span class="op">)</span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">formula_M0</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="op">~</span> <span class="fl">1</span><span class="op">)</span></span>
+<span><span class="va">formula_M1</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="op">~</span> <span class="fl">1</span> <span class="op">+</span> <span class="va">x</span><span class="op">)</span></span></code></pre></div>
 <p>where <code>1</code> corresponds to the intercept (it is not necessary for the second model as it is included by default).</p>
 <p>To finish the model specification, we set the prior distribution corresponding to our hypothesis test of the beta parameter, set a broad prior distributions for the nuisance intercept and sigma parameters, and create a list containing data for the model specified within <code>model_likelihood</code> (in the first step) and a data frame for the data contained within the formula for mu within <code>formula_M0</code> and <code>formula_M1</code> (specified in the second step).</p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="co"># prior on the test parameter</span>
-<span class="va">prior_beta</span>  <span class="op">&lt;-</span> <span class="fu"><a href="../reference/prior.html">prior</a></span><span class="op">(</span>distribution <span class="op">=</span> <span class="st">"normal"</span>, parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>mean <span class="op">=</span> <span class="fl">0</span>, sd <span class="op">=</span> <span class="fl">0.5</span><span class="op">)</span><span class="op">)</span>
-
-<span class="co"># priors on the nuisance parameters</span>
-<span class="va">prior_int</span>   <span class="op">&lt;-</span> <span class="fu"><a href="../reference/prior.html">prior</a></span><span class="op">(</span>distribution <span class="op">=</span> <span class="st">"normal"</span>, parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>mean <span class="op">=</span> <span class="fl">0</span>, sd <span class="op">=</span> <span class="fl">5</span><span class="op">)</span><span class="op">)</span>
-<span class="va">prior_sigma</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/prior.html">prior</a></span><span class="op">(</span>distribution <span class="op">=</span> <span class="st">"normal"</span>, parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>mean <span class="op">=</span> <span class="fl">0</span>, sd <span class="op">=</span> <span class="fl">5</span><span class="op">)</span>, truncation <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="fl">0</span>, <span class="cn">Inf</span><span class="op">)</span><span class="op">)</span>
-
-<span class="co"># the data list</span>
-<span class="va">data_list</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>
-  y <span class="op">=</span> <span class="va">y</span>,
-  N <span class="op">=</span> <span class="va">N</span>
-<span class="op">)</span>
-<span class="va">data_formula</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>
-  x <span class="op">=</span> <span class="va">x</span>
-<span class="op">)</span></code></pre></div>
+<code class="sourceCode R"><span><span class="co"># prior on the test parameter</span></span>
+<span><span class="va">prior_beta</span>  <span class="op">&lt;-</span> <span class="fu"><a href="../reference/prior.html">prior</a></span><span class="op">(</span>distribution <span class="op">=</span> <span class="st">"normal"</span>, parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>mean <span class="op">=</span> <span class="fl">0</span>, sd <span class="op">=</span> <span class="fl">0.5</span><span class="op">)</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># priors on the nuisance parameters</span></span>
+<span><span class="va">prior_int</span>   <span class="op">&lt;-</span> <span class="fu"><a href="../reference/prior.html">prior</a></span><span class="op">(</span>distribution <span class="op">=</span> <span class="st">"normal"</span>, parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>mean <span class="op">=</span> <span class="fl">0</span>, sd <span class="op">=</span> <span class="fl">5</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">prior_sigma</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/prior.html">prior</a></span><span class="op">(</span>distribution <span class="op">=</span> <span class="st">"normal"</span>, parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>mean <span class="op">=</span> <span class="fl">0</span>, sd <span class="op">=</span> <span class="fl">5</span><span class="op">)</span>, truncation <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="fl">0</span>, <span class="cn">Inf</span><span class="op">)</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># the data list</span></span>
+<span><span class="va">data_list</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
+<span>  y <span class="op">=</span> <span class="va">y</span>,</span>
+<span>  N <span class="op">=</span> <span class="va">N</span></span>
+<span><span class="op">)</span></span>
+<span><span class="va">data_formula</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span>
+<span>  x <span class="op">=</span> <span class="va">x</span></span>
+<span><span class="op">)</span></span></code></pre></div>
 <p>We estimate the models with the <code>JAGS_fit</code> function. Since we are using the formula interface (which allows us to specify multiple formulas for different parameters), we need to pass the arguments as named lists,</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="va">M0</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/JAGS_fit.html">JAGS_fit</a></span><span class="op">(</span>
-  <span class="co"># specification for the `model_likelihood` part</span>
-  model_syntax <span class="op">=</span> <span class="va">model_likelihood</span>,
-  data         <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>y <span class="op">=</span> <span class="va">y</span>, N <span class="op">=</span> <span class="va">N</span><span class="op">)</span>,
-  prior_list   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"sigma"</span> <span class="op">=</span> <span class="va">prior_sigma</span><span class="op">)</span>,
-
-  <span class="co"># specification for the `formula_M0` part </span>
-  formula_list       <span class="op">=</span> <span class="va">formula_M0</span>,
-  formula_prior_list <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"intercept"</span> <span class="op">=</span> <span class="va">prior_int</span><span class="op">)</span><span class="op">)</span>,
-  formula_data_list  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="va">data_formula</span><span class="op">)</span>,
-  
-  <span class="co"># seed for reproducibility</span>
-  seed         <span class="op">=</span> <span class="fl">0</span>
-<span class="op">)</span>
-
-<span class="va">M1</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/JAGS_fit.html">JAGS_fit</a></span><span class="op">(</span>
-  model_syntax <span class="op">=</span> <span class="va">model_likelihood</span>,
-  data         <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>y <span class="op">=</span> <span class="va">y</span>, N <span class="op">=</span> <span class="va">N</span><span class="op">)</span>,
-  prior_list   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"sigma"</span> <span class="op">=</span> <span class="va">prior_sigma</span><span class="op">)</span>,
-  formula_list       <span class="op">=</span> <span class="va">formula_M1</span>,
-  formula_prior_list <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"intercept"</span> <span class="op">=</span> <span class="va">prior_int</span>, <span class="st">"x"</span> <span class="op">=</span> <span class="va">prior_beta</span><span class="op">)</span><span class="op">)</span>,
-  formula_data_list  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="va">data_formula</span><span class="op">)</span>,
-  seed         <span class="op">=</span> <span class="fl">1</span>
-<span class="op">)</span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">M0</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/JAGS_fit.html">JAGS_fit</a></span><span class="op">(</span></span>
+<span>  <span class="co"># specification for the `model_likelihood` part</span></span>
+<span>  model_syntax <span class="op">=</span> <span class="va">model_likelihood</span>,</span>
+<span>  data         <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>y <span class="op">=</span> <span class="va">y</span>, N <span class="op">=</span> <span class="va">N</span><span class="op">)</span>,</span>
+<span>  prior_list   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"sigma"</span> <span class="op">=</span> <span class="va">prior_sigma</span><span class="op">)</span>,</span>
+<span></span>
+<span>  <span class="co"># specification for the `formula_M0` part </span></span>
+<span>  formula_list       <span class="op">=</span> <span class="va">formula_M0</span>,</span>
+<span>  formula_prior_list <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"intercept"</span> <span class="op">=</span> <span class="va">prior_int</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  formula_data_list  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="va">data_formula</span><span class="op">)</span>,</span>
+<span>  </span>
+<span>  <span class="co"># seed for reproducibility</span></span>
+<span>  seed         <span class="op">=</span> <span class="fl">0</span></span>
+<span><span class="op">)</span></span>
+<span><span class="co">#&gt; Loading required namespace: runjags</span></span>
+<span><span class="co">#&gt; Loading required namespace: rjags</span></span>
+<span></span>
+<span><span class="va">M1</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/JAGS_fit.html">JAGS_fit</a></span><span class="op">(</span></span>
+<span>  model_syntax <span class="op">=</span> <span class="va">model_likelihood</span>,</span>
+<span>  data         <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>y <span class="op">=</span> <span class="va">y</span>, N <span class="op">=</span> <span class="va">N</span><span class="op">)</span>,</span>
+<span>  prior_list   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"sigma"</span> <span class="op">=</span> <span class="va">prior_sigma</span><span class="op">)</span>,</span>
+<span>  formula_list       <span class="op">=</span> <span class="va">formula_M1</span>,</span>
+<span>  formula_prior_list <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"intercept"</span> <span class="op">=</span> <span class="va">prior_int</span>, <span class="st">"x"</span> <span class="op">=</span> <span class="va">prior_beta</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  formula_data_list  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="va">data_formula</span><span class="op">)</span>,</span>
+<span>  seed         <span class="op">=</span> <span class="fl">1</span></span>
+<span><span class="op">)</span></span></code></pre></div>
 <p>We quickly verify that our parameter estimates (from the full model) are similar to the frequentist results obtained via <code>lm</code> function earlier.</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="fu"><a href="../reference/BayesTools_model_tables.html">JAGS_estimates_table</a></span><span class="op">(</span><span class="va">M1</span><span class="op">)</span>
-<span class="co">#&gt;                  Mean    SD    lCI Median    uCI error(MCMC) error(MCMC)/SD</span>
-<span class="co">#&gt; (mu) intercept -0.547 0.104 -0.753 -0.548 -0.341     0.00081          0.008</span>
-<span class="co">#&gt; (mu) x          0.188 0.101 -0.012  0.189  0.385     0.00080          0.008</span>
-<span class="co">#&gt; sigma           1.042 0.076  0.905  1.037  1.205     0.00078          0.010</span>
-<span class="co">#&gt;                  ESS R-hat</span>
-<span class="co">#&gt; (mu) intercept 16408 1.000</span>
-<span class="co">#&gt; (mu) x         15964 1.000</span>
-<span class="co">#&gt; sigma           9502 1.000</span></code></pre></div>
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/BayesTools_model_tables.html">JAGS_estimates_table</a></span><span class="op">(</span><span class="va">M1</span><span class="op">)</span></span>
+<span><span class="co">#&gt;                  Mean    SD    lCI Median    uCI error(MCMC) error(MCMC)/SD</span></span>
+<span><span class="co">#&gt; (mu) intercept -0.547 0.104 -0.753 -0.548 -0.341     0.00081          0.008</span></span>
+<span><span class="co">#&gt; (mu) x          0.188 0.101 -0.012  0.189  0.385     0.00080          0.008</span></span>
+<span><span class="co">#&gt; sigma           1.042 0.076  0.905  1.037  1.205     0.00078          0.010</span></span>
+<span><span class="co">#&gt;                  ESS R-hat</span></span>
+<span><span class="co">#&gt; (mu) intercept 16408 1.000</span></span>
+<span><span class="co">#&gt; (mu) x         15964 1.000</span></span>
+<span><span class="co">#&gt; sigma           9502 1.000</span></span></code></pre></div>
 <p>To obtain the marginal likelihoods and compute Bayes factors, we only need to write the likelihood function corresponding to the JAGS model. Importantly, BayesTools handles all priors and formula related computation automatically, in other words, we do not need to worry about computing the mean parameter based on the intercept and predictors since we already obtain the computed mu in the <code>parameters[["mu"]]</code> object (a vector with a value for each y),</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="va">log_posterior</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">parameters</span>, <span class="va">data</span><span class="op">)</span><span class="op">{</span>
-  <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">dnorm</a></span><span class="op">(</span>
-    x    <span class="op">=</span> <span class="va">data</span><span class="op">[[</span><span class="st">"y"</span><span class="op">]</span><span class="op">]</span>,
-    mean <span class="op">=</span> <span class="va">parameters</span><span class="op">[[</span><span class="st">"mu"</span><span class="op">]</span><span class="op">]</span>,
-    sd   <span class="op">=</span> <span class="va">parameters</span><span class="op">[[</span><span class="st">"sigma"</span><span class="op">]</span><span class="op">]</span>,
-    log  <span class="op">=</span> <span class="cn">TRUE</span>
-  <span class="op">)</span><span class="op">)</span>
-<span class="op">}</span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">log_posterior</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">parameters</span>, <span class="va">data</span><span class="op">)</span><span class="op">{</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">dnorm</a></span><span class="op">(</span></span>
+<span>    x    <span class="op">=</span> <span class="va">data</span><span class="op">[[</span><span class="st">"y"</span><span class="op">]</span><span class="op">]</span>,</span>
+<span>    mean <span class="op">=</span> <span class="va">parameters</span><span class="op">[[</span><span class="st">"mu"</span><span class="op">]</span><span class="op">]</span>,</span>
+<span>    sd   <span class="op">=</span> <span class="va">parameters</span><span class="op">[[</span><span class="st">"sigma"</span><span class="op">]</span><span class="op">]</span>,</span>
+<span>    log  <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span>  <span class="op">)</span><span class="op">)</span></span>
+<span><span class="op">}</span></span></code></pre></div>
 <p>where the <code>parameters</code> arguments is a list containing the parameters and <code>data</code> argument is a list containing data. We use <code>sum(dnorm(..., log = TRUE))</code> to sum the logarithmic likelihood of all observations.</p>
 <p>Finally, we pass our objects to the <code>JAGS_bridgesampling</code> function to compute the marginal likelihoods.</p>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="va">marglik_model_H0</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/JAGS_bridgesampling.html">JAGS_bridgesampling</a></span><span class="op">(</span>
-  <span class="co"># specification for the model part</span>
-  fit           <span class="op">=</span> <span class="va">M0</span>,
-  log_posterior <span class="op">=</span> <span class="va">log_posterior</span>,
-  data          <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>y <span class="op">=</span> <span class="va">y</span>, N <span class="op">=</span> <span class="va">N</span><span class="op">)</span>,
-  prior_list    <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"sigma"</span> <span class="op">=</span> <span class="va">prior_sigma</span><span class="op">)</span>,
-
-  <span class="co"># specification for the formula` part </span>
-  formula_list       <span class="op">=</span> <span class="va">formula_M0</span>,
-  formula_prior_list <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"intercept"</span> <span class="op">=</span> <span class="va">prior_int</span><span class="op">)</span><span class="op">)</span>,
-  formula_data_list  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="va">data_formula</span><span class="op">)</span>
-<span class="op">)</span>
-
-<span class="va">marglik_model_H1</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/JAGS_bridgesampling.html">JAGS_bridgesampling</a></span><span class="op">(</span>
-  fit           <span class="op">=</span> <span class="va">M1</span>,
-  log_posterior <span class="op">=</span> <span class="va">log_posterior</span>,
-  data          <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>y <span class="op">=</span> <span class="va">y</span>, N <span class="op">=</span> <span class="va">N</span><span class="op">)</span>,
-  prior_list    <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"sigma"</span> <span class="op">=</span> <span class="va">prior_sigma</span><span class="op">)</span>,
-  formula_list       <span class="op">=</span> <span class="va">formula_M1</span>,
-  formula_prior_list <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"intercept"</span> <span class="op">=</span> <span class="va">prior_int</span>, <span class="st">"x"</span> <span class="op">=</span> <span class="va">prior_beta</span><span class="op">)</span><span class="op">)</span>,
-  formula_data_list  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="va">data_formula</span><span class="op">)</span>,
-<span class="op">)</span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">marglik_model_H0</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/JAGS_bridgesampling.html">JAGS_bridgesampling</a></span><span class="op">(</span></span>
+<span>  <span class="co"># specification for the model part</span></span>
+<span>  fit           <span class="op">=</span> <span class="va">M0</span>,</span>
+<span>  log_posterior <span class="op">=</span> <span class="va">log_posterior</span>,</span>
+<span>  data          <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>y <span class="op">=</span> <span class="va">y</span>, N <span class="op">=</span> <span class="va">N</span><span class="op">)</span>,</span>
+<span>  prior_list    <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"sigma"</span> <span class="op">=</span> <span class="va">prior_sigma</span><span class="op">)</span>,</span>
+<span></span>
+<span>  <span class="co"># specification for the formula` part </span></span>
+<span>  formula_list       <span class="op">=</span> <span class="va">formula_M0</span>,</span>
+<span>  formula_prior_list <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"intercept"</span> <span class="op">=</span> <span class="va">prior_int</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  formula_data_list  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="va">data_formula</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">marglik_model_H1</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/JAGS_bridgesampling.html">JAGS_bridgesampling</a></span><span class="op">(</span></span>
+<span>  fit           <span class="op">=</span> <span class="va">M1</span>,</span>
+<span>  log_posterior <span class="op">=</span> <span class="va">log_posterior</span>,</span>
+<span>  data          <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>y <span class="op">=</span> <span class="va">y</span>, N <span class="op">=</span> <span class="va">N</span><span class="op">)</span>,</span>
+<span>  prior_list    <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"sigma"</span> <span class="op">=</span> <span class="va">prior_sigma</span><span class="op">)</span>,</span>
+<span>  formula_list       <span class="op">=</span> <span class="va">formula_M1</span>,</span>
+<span>  formula_prior_list <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"intercept"</span> <span class="op">=</span> <span class="va">prior_int</span>, <span class="st">"x"</span> <span class="op">=</span> <span class="va">prior_beta</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  formula_data_list  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="va">data_formula</span><span class="op">)</span>,</span>
+<span><span class="op">)</span></span></code></pre></div>
 <p>We specify a BayesTools model ensemble object that we interrogate with the <code>ensemble_inference_table</code> function for information about the test for the beta parameter.</p>
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="va">models_list</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ensemble_inference.html">models_inference</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>
-  <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>model <span class="op">=</span> <span class="va">M0</span>, marglik <span class="op">=</span> <span class="va">marglik_model_H0</span>, prior_weights <span class="op">=</span> <span class="fl">1</span><span class="op">/</span><span class="fl">2</span><span class="op">)</span>,
-  <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>model <span class="op">=</span> <span class="va">M1</span>, marglik <span class="op">=</span> <span class="va">marglik_model_H1</span>, prior_weights <span class="op">=</span> <span class="fl">1</span><span class="op">/</span><span class="fl">2</span><span class="op">)</span>
-<span class="op">)</span><span class="op">)</span>
-<span class="va">ensemble_info</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ensemble_inference.html">ensemble_inference</a></span><span class="op">(</span><span class="va">models_list</span>, parameters <span class="op">=</span> <span class="st">"x"</span>, is_null_list <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"x"</span> <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="cn">TRUE</span>, <span class="cn">FALSE</span><span class="op">)</span><span class="op">)</span><span class="op">)</span>
-
-<span class="fu"><a href="../reference/BayesTools_ensemble_tables.html">ensemble_inference_table</a></span><span class="op">(</span><span class="va">ensemble_info</span>, parameters <span class="op">=</span> <span class="st">"x"</span><span class="op">)</span>
-<span class="co">#&gt;   Models Prior prob. Post. prob. Inclusion BF</span>
-<span class="co">#&gt; x    1/2       0.500       0.541        1.181</span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">models_list</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ensemble_inference.html">models_inference</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>model <span class="op">=</span> <span class="va">M0</span>, marglik <span class="op">=</span> <span class="va">marglik_model_H0</span>, prior_weights <span class="op">=</span> <span class="fl">1</span><span class="op">/</span><span class="fl">2</span><span class="op">)</span>,</span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>model <span class="op">=</span> <span class="va">M1</span>, marglik <span class="op">=</span> <span class="va">marglik_model_H1</span>, prior_weights <span class="op">=</span> <span class="fl">1</span><span class="op">/</span><span class="fl">2</span><span class="op">)</span></span>
+<span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">ensemble_info</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ensemble_inference.html">ensemble_inference</a></span><span class="op">(</span><span class="va">models_list</span>, parameters <span class="op">=</span> <span class="st">"x"</span>, is_null_list <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"x"</span> <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="cn">TRUE</span>, <span class="cn">FALSE</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="../reference/BayesTools_ensemble_tables.html">ensemble_inference_table</a></span><span class="op">(</span><span class="va">ensemble_info</span>, parameters <span class="op">=</span> <span class="st">"x"</span><span class="op">)</span></span>
+<span><span class="co">#&gt;   Models Prior prob. Post. prob. Inclusion BF</span></span>
+<span><span class="co">#&gt; x    1/2       0.500       0.541        1.181</span></span></code></pre></div>
 <p>We find absence of evidence for either of the hypotheses, <span class="math inline">\(\text{BF}_{10} = 1.181\)</span>, with posterior probability of <span class="math inline">\(P(\mathcal{M}_{1} \mid \text{data}) = 0.542\)</span> (asuming equal prior probability specified via <code>prior_weights</code> in the <code>models_inference</code> function previously).</p>
 </div>
 <div class="section level2">
@@ -289,39 +289,39 @@
 <p>we can also estimate the Bayes factor via the inclusion indicator.</p>
 <p>Now, we compare the two models using the spike and slab prior. We have already specified the likelihood, data lists, prior distributions for the nuisance parameters, and even the formulas (now we need only formula for the full model) in the previous sections. Therefore, we proceed directly by specifying the spike and slab prior distribution for the predictor. We use the <code>prior_spike_and_slab</code> which follows similar notation as the <code>prior</code> function. We need to specify the distribution, the parameters (and we could also set truncation if needed) corresponding to the alternative hypothesis. Furthermore, we need to specify the prior distribution for the inclusion via the <code>prior_inclusion</code> argument. Here, we use a <span class="math inline">\(\text{Spike}(0.5)\)</span> prior which sets the prior inclusion probability to 1/2.</p>
 <div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="va">prior_beta_spike_and_slab</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/prior_spike_and_slab.html">prior_spike_and_slab</a></span><span class="op">(</span>
-  prior_parameter <span class="op">=</span> <span class="fu"><a href="../reference/prior.html">prior</a></span><span class="op">(</span>distribution <span class="op">=</span> <span class="st">"normal"</span>, parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>mean <span class="op">=</span> <span class="fl">0</span>, sd <span class="op">=</span> <span class="fl">0.5</span><span class="op">)</span><span class="op">)</span>,
-  prior_inclusion <span class="op">=</span> <span class="fu"><a href="../reference/prior.html">prior</a></span><span class="op">(</span>distribution <span class="op">=</span> <span class="st">"spike"</span>, parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>location <span class="op">=</span> <span class="fl">0.5</span><span class="op">)</span><span class="op">)</span> 
-<span class="op">)</span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">prior_beta_spike_and_slab</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/prior_spike_and_slab.html">prior_spike_and_slab</a></span><span class="op">(</span></span>
+<span>  prior_parameter <span class="op">=</span> <span class="fu"><a href="../reference/prior.html">prior</a></span><span class="op">(</span>distribution <span class="op">=</span> <span class="st">"normal"</span>, parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>mean <span class="op">=</span> <span class="fl">0</span>, sd <span class="op">=</span> <span class="fl">0.5</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  prior_inclusion <span class="op">=</span> <span class="fu"><a href="../reference/prior.html">prior</a></span><span class="op">(</span>distribution <span class="op">=</span> <span class="st">"spike"</span>, parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>location <span class="op">=</span> <span class="fl">0.5</span><span class="op">)</span><span class="op">)</span> </span>
+<span><span class="op">)</span></span></code></pre></div>
 <p>Then we can directly proceed to calling the <code>JAGS_fit</code> function with the same specification as we used for the <code>M1</code> model, however, changing the prior distribution object for the predictor <code>x</code> to the newly created <code>prior_beta_spike_and_slab</code> prior distribution.</p>
 <div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="va">MS</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/JAGS_fit.html">JAGS_fit</a></span><span class="op">(</span>
-  model_syntax <span class="op">=</span> <span class="va">model_likelihood</span>,
-  data         <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>y <span class="op">=</span> <span class="va">y</span>, N <span class="op">=</span> <span class="va">N</span><span class="op">)</span>,
-  prior_list   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"sigma"</span> <span class="op">=</span> <span class="va">prior_sigma</span><span class="op">)</span>,
-  formula_list       <span class="op">=</span> <span class="va">formula_M1</span>,
-  formula_prior_list <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"intercept"</span> <span class="op">=</span> <span class="va">prior_int</span>, <span class="st">"x"</span> <span class="op">=</span> <span class="va">prior_beta_spike_and_slab</span><span class="op">)</span><span class="op">)</span>,
-  formula_data_list  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="va">data_formula</span><span class="op">)</span>,
-  seed         <span class="op">=</span> <span class="fl">1</span>
-<span class="op">)</span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">MS</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/JAGS_fit.html">JAGS_fit</a></span><span class="op">(</span></span>
+<span>  model_syntax <span class="op">=</span> <span class="va">model_likelihood</span>,</span>
+<span>  data         <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>y <span class="op">=</span> <span class="va">y</span>, N <span class="op">=</span> <span class="va">N</span><span class="op">)</span>,</span>
+<span>  prior_list   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"sigma"</span> <span class="op">=</span> <span class="va">prior_sigma</span><span class="op">)</span>,</span>
+<span>  formula_list       <span class="op">=</span> <span class="va">formula_M1</span>,</span>
+<span>  formula_prior_list <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"intercept"</span> <span class="op">=</span> <span class="va">prior_int</span>, <span class="st">"x"</span> <span class="op">=</span> <span class="va">prior_beta_spike_and_slab</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  formula_data_list  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"mu"</span> <span class="op">=</span> <span class="va">data_formula</span><span class="op">)</span>,</span>
+<span>  seed         <span class="op">=</span> <span class="fl">1</span></span>
+<span><span class="op">)</span></span></code></pre></div>
 <p>We can again verify that our parameter estimates match the previous results. Now, we need to set the <code>conditional = TRUE</code> argument in the <code>JAGS_estimates_table</code> to obtain samples assuming that the spike and slab parameter values are included. (The function summarized the complete posterior distribution by default, i.e., parameter estimates model-averaged across the spike and the slab.)</p>
 <div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="fu"><a href="../reference/BayesTools_model_tables.html">JAGS_estimates_table</a></span><span class="op">(</span><span class="va">MS</span>, conditional <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>
-<span class="co">#&gt;                      Mean    SD    lCI Median    uCI error(MCMC) error(MCMC)/SD</span>
-<span class="co">#&gt; (mu) intercept     -0.540 0.106 -0.749 -0.540 -0.333     0.00085          0.008</span>
-<span class="co">#&gt; (mu) x              0.189 0.100 -0.009  0.190  0.385     0.00145          0.012</span>
-<span class="co">#&gt; (mu) x (inclusion)  0.500 0.000  0.500  0.500  0.500          NA             NA</span>
-<span class="co">#&gt; sigma               1.050 0.076  0.912  1.047  1.211     0.00081          0.011</span>
-<span class="co">#&gt;                      ESS R-hat</span>
-<span class="co">#&gt; (mu) intercept     15590 1.000</span>
-<span class="co">#&gt; (mu) x              6830 1.000</span>
-<span class="co">#&gt; (mu) x (inclusion)    NA    NA</span>
-<span class="co">#&gt; sigma               8894 1.000</span></code></pre></div>
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/BayesTools_model_tables.html">JAGS_estimates_table</a></span><span class="op">(</span><span class="va">MS</span>, conditional <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<span><span class="co">#&gt;                      Mean    SD    lCI Median    uCI error(MCMC) error(MCMC)/SD</span></span>
+<span><span class="co">#&gt; (mu) intercept     -0.540 0.106 -0.749 -0.540 -0.333     0.00085          0.008</span></span>
+<span><span class="co">#&gt; (mu) x              0.189 0.100 -0.009  0.190  0.385     0.00145          0.012</span></span>
+<span><span class="co">#&gt; (mu) x (inclusion)  0.500 0.000  0.500  0.500  0.500          NA             NA</span></span>
+<span><span class="co">#&gt; sigma               1.050 0.076  0.912  1.047  1.211     0.00081          0.011</span></span>
+<span><span class="co">#&gt;                      ESS R-hat</span></span>
+<span><span class="co">#&gt; (mu) intercept     15590 1.000</span></span>
+<span><span class="co">#&gt; (mu) x              6830 1.000</span></span>
+<span><span class="co">#&gt; (mu) x (inclusion)    NA    NA</span></span>
+<span><span class="co">#&gt; sigma               8894 1.000</span></span></code></pre></div>
 <p>The estimates are essentially identical to the estimates from the previous models. Finally, we can also obtain summary of the inclusion probabilities via the <code>JAGS_inference_table</code> function</p>
 <div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="fu"><a href="../reference/BayesTools_model_tables.html">JAGS_inference_table</a></span><span class="op">(</span><span class="va">MS</span><span class="op">)</span>
-<span class="co">#&gt;  Parameter Prior prob. Post. prob. Inclusion BF</span>
-<span class="co">#&gt;     (mu) x       0.500       0.536        1.157</span></code></pre></div>
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/BayesTools_model_tables.html">JAGS_inference_table</a></span><span class="op">(</span><span class="va">MS</span><span class="op">)</span></span>
+<span><span class="co">#&gt;  Parameter Prior prob. Post. prob. Inclusion BF</span></span>
+<span><span class="co">#&gt;     (mu) x       0.500       0.536        1.157</span></span></code></pre></div>
 <p>As before, we find absence of evidence for either of the hypotheses, <span class="math inline">\(\text{BF}_{10} = 1.157\)</span>, with posterior probability of <span class="math inline">\(P(\mathcal{M}_{1} \mid \text{data}) = 0.536\)</span>.</p>
 <div class="section level3 unnumbered">
 <h3 id="references">References<a class="anchor" aria-label="anchor" href="#references"></a>
@@ -376,7 +376,7 @@
 
 <div class="pkgdown">
   <p></p>
-<p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.</p>
+<p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.5.</p>
 </div>
 
       </footer>
