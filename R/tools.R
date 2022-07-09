@@ -202,6 +202,12 @@ check_list   <- function(x, name, check_length = 0, check_names = NULL, all_obje
   if(!inherits(fit, what = "stanfit"))
     stop("'fit' must be an rstan fit")
 
+  # order permutations to correspond to the other
+  # (otherwise, models with same seed produce different posterior draws, like wtf stan???)
+  for(i in seq_along(fit@sim$permutation)){
+    fit@sim$permutation[[i]] <- seq_along(fit@sim$permutation[[i]])
+  }
+
   model_samples <- rstan::extract(fit)
   par_names     <- names(model_samples)
   par_dims      <- sapply(model_samples, function(s)if(is.matrix(s)) ncol(s) else if(drop) 1 else 0)
