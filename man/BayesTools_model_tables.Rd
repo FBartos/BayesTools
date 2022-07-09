@@ -86,8 +86,7 @@ stan_estimates_summary(
   transformations = NULL,
   title = NULL,
   footnotes = NULL,
-  warnings = NULL,
-  remove_spike_0 = TRUE
+  warnings = NULL
 )
 }
 \arguments{
