@@ -562,9 +562,57 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   runjags_summary <- data.frame(runjags_summary)
   model_samples   <- suppressWarnings(coda::as.mcmc(fit))
 
+  # change HPD to quantile intervals
+  for(par in rownames(runjags_summary)){
+    runjags_summary[par, "Lower95"] <- stats::quantile(model_samples[,par], .025, na.rm = TRUE)
+    runjags_summary[par, "Upper95"] <- stats::quantile(model_samples[,par], .975, na.rm = TRUE)
+  }
+
   # deal with missing median in case of non-stochastic variables
   if(!any(colnames(runjags_summary) == "Median")){
     runjags_summary[,"Median"] <- NA
+  }
+
+  # remove un-wanted estimates (or support values) - spike and slab priors already dealt with later
+  # also remove the item from prior list
+  for(i in rev(seq_along(prior_list))){
+    if(is.prior.weightfunction(prior_list[[i]])){
+      # remove etas
+      if(prior_list[[i]][["distribution"]] %in% c("one.sided", "two.sided")){
+        runjags_summary <- runjags_summary[!grepl("eta", rownames(runjags_summary)),,drop=FALSE]
+      }
+      # remove wrong diagnostics for the constant
+      runjags_summary[max(grep("omega", rownames(runjags_summary))),c("MCerr", "MC.ofSD","SSeff","psfr")] <- NA
+      # reorder
+      runjags_summary[grep("omega", rownames(runjags_summary)),] <- runjags_summary[rev(grep("omega", rownames(runjags_summary))),]
+      # rename
+      omega_cuts    <- weightfunctions_mapping(prior_list[i], cuts_only = TRUE)
+      omega_names   <- sapply(1:(length(omega_cuts)-1), function(i)paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
+      rownames(runjags_summary)[grep("omega", rownames(runjags_summary))] <- omega_names
+    }else if(remove_spike_0 && is.prior.point(prior_list[[i]]) && prior_list[[i]][["parameters"]][["location"]] == 0){
+      if(is.prior.factor(prior_list[[i]])){
+        if(!attr(prior_list[[i]], "interaction")){
+          if(attr(prior_list[[i]], "levels") == 2){
+            runjags_summary <- runjags_summary[rownames(runjags_summary) != par,,drop=FALSE]
+          }else{
+            runjags_summary <- runjags_summary[!rownames(runjags_summary) %in% paste0(par,"[",1:(attr(prior_list[[i]], "levels")-1),"]"),,drop=FALSE]
+          }
+        }else if(length(attr(prior_list[[i]], "levels")) == 1){
+          runjags_summary <- runjags_summary[!rownames(runjags_summary) %in% paste0(par,"[",1:(attr(prior_list[[i]], "levels")-1),"]"),,drop=FALSE]
+        }
+      }else{
+        runjags_summary <- runjags_summary[rownames(runjags_summary) != names(prior_list)[i],,drop=FALSE]
+      }
+      prior_list[i] <- NULL
+    }else if(is.prior.simple(prior_list[[i]]) &&  prior_list[[i]][["distribution"]] == "invgamma"){
+      runjags_summary <- runjags_summary[rownames(runjags_summary) != paste0("inv_",names(prior_list)[i]),,drop=FALSE]
+      prior_list[i] <- NULL
+    }
+  }
+
+  # remove transformations for removed variables
+  if(!is.null(transformations)){
+    transformations <-  transformations[names(transformations) %in% names(prior_list)]
   }
 
   # simplify spike and slab priors to simple priors -- the samples and summary can be dealth with as any other prior
@@ -626,6 +674,8 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       model_samples[,par] <- do.call(transformations[[par]][["fun"]], c(list(model_samples[,par]), transformations[[par]][["arg"]]))
       runjags_summary[par, "Mean"]    <- mean(model_samples[,par], na.rm = TRUE)
       runjags_summary[par, "SD"]      <- sd(model_samples[,par], na.rm = TRUE)
+      runjags_summary[par, "Lower95"] <- stats::quantile(model_samples[,par], .025, na.rm = TRUE)
+      runjags_summary[par, "Upper95"] <- stats::quantile(model_samples[,par], .975, na.rm = TRUE)
       runjags_summary[par, "Median"]  <- do.call(transformations[[par]][["fun"]], c(list(runjags_summary[par, "Median"]), transformations[[par]][["arg"]]))
       runjags_summary[par, "MCerr"]   <- do.call(transformations[[par]][["fun"]], c(list(runjags_summary[par, "MCerr"]), transformations[[par]][["arg"]]))
       runjags_summary[par, "MC.ofSD"] <- 100 * runjags_summary[par, "MCerr"] / runjags_summary[par, "SD"]
@@ -708,36 +758,8 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     }
   }
 
-  # change HPD to quantile intervals
-  for(par in rownames(runjags_summary)){
-    runjags_summary[par, "Lower95"] <- stats::quantile(model_samples[,par], .025, na.rm = TRUE)
-    runjags_summary[par, "Upper95"] <- stats::quantile(model_samples[,par], .975, na.rm = TRUE)
-  }
-
   # remove un-wanted columns
   runjags_summary <- runjags_summary[,!colnames(runjags_summary) %in% c("Mode", "AC.10"),drop = FALSE]
-
-  # remove un-wanted estimates (or support values) - spike and slab priors already dealt with
-  for(i in seq_along(prior_list)){
-    if(is.prior.weightfunction(prior_list[[i]])){
-      # remove etas
-      if(prior_list[[i]][["distribution"]] %in% c("one.sided", "two.sided")){
-        runjags_summary <- runjags_summary[!grepl("eta", rownames(runjags_summary)),,drop=FALSE]
-      }
-      # remove wrong diagnostics for the constant
-      runjags_summary[max(grep("omega", rownames(runjags_summary))),c("MCerr", "MC.ofSD","SSeff","psfr")] <- NA
-      # reorder
-      runjags_summary[grep("omega", rownames(runjags_summary)),] <- runjags_summary[rev(grep("omega", rownames(runjags_summary))),]
-      # rename
-      omega_cuts    <- weightfunctions_mapping(prior_list[i], cuts_only = TRUE)
-      omega_names   <- sapply(1:(length(omega_cuts)-1), function(i)paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
-      rownames(runjags_summary)[grep("omega", rownames(runjags_summary))] <- omega_names
-    }else if(remove_spike_0 && is.prior.point(prior_list[[i]]) && prior_list[[i]][["parameters"]][["location"]] == 0){
-      runjags_summary <- runjags_summary[rownames(runjags_summary) != names(prior_list)[i],,drop=FALSE]
-    }else if(is.prior.simple(prior_list[[i]]) &&  prior_list[[i]][["distribution"]] == "invgamma"){
-      runjags_summary <- runjags_summary[rownames(runjags_summary) != paste0("inv_",names(prior_list)[i]),,drop=FALSE]
-    }
-  }
 
   # rename treatment factor levels
   if(any(sapply(prior_list, is.prior.dummy))){
