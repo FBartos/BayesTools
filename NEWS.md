@@ -1,3 +1,7 @@
+## version 0.2.13
+### Fixes
+- inability to deal with constant intercept in marglik formula calculation
+
 ## version 0.2.12
 ### Features
 - `stan_estimates_summary()` function
