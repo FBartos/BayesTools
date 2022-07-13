@@ -450,7 +450,7 @@ transform_orthonormal_samples <- function(samples){
   check_list(samples, "samples", allow_NULL = TRUE)
 
   for(i in seq_along(samples)){
-    if(inherits(samples[[i]], "mixed_posteriors.factor") && attr(samples[[i]], "orthonormal")){
+    if(!inherits(samples[[i]],"mixed_posteriors.orthonormal_transformed") && inherits(samples[[i]], "mixed_posteriors.factor") && attr(samples[[i]], "orthonormal")){
 
       orthonormal_samples <- samples[[i]]
       transformed_samples <- orthonormal_samples %*% t(contr.orthonormal(1:attr(samples[[i]], "levels")))
