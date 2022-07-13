@@ -1,7 +1,8 @@
 ## version 0.2.13
 ### Fixes
 - inability to deal with constant intercept in marglik formula calculation
-- `runjags_estimates_table` can now remove factor spike prior distributions
+- `runjags_estimates_table()` function can now remove factor spike prior distributions
+- `runjags_estimates_table()` function can now handle factor transformations 
 
 ## version 0.2.12
 ### Features

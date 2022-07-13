@@ -582,7 +582,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
         runjags_summary <- runjags_summary[!grepl("eta", rownames(runjags_summary)),,drop=FALSE]
       }
       # remove wrong diagnostics for the constant
-      runjags_summary[max(grep("omega", rownames(runjags_summary))),c("MCerr", "MC.ofSD","SSeff","psfr")] <- NA
+      runjags_summary[max(grep("omega", rownames(runjags_summary))),c("MCerr", "MC.ofSD","SSeff","psrf")] <- NA
       # reorder
       runjags_summary[grep("omega", rownames(runjags_summary)),] <- runjags_summary[rev(grep("omega", rownames(runjags_summary))),]
       # rename
@@ -591,15 +591,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       rownames(runjags_summary)[grep("omega", rownames(runjags_summary))] <- omega_names
     }else if(remove_spike_0 && is.prior.point(prior_list[[i]]) && prior_list[[i]][["parameters"]][["location"]] == 0){
       if(is.prior.factor(prior_list[[i]])){
-        if(!attr(prior_list[[i]], "interaction")){
-          if(attr(prior_list[[i]], "levels") == 2){
-            runjags_summary <- runjags_summary[rownames(runjags_summary) != par,,drop=FALSE]
-          }else{
-            runjags_summary <- runjags_summary[!rownames(runjags_summary) %in% paste0(par,"[",1:(attr(prior_list[[i]], "levels")-1),"]"),,drop=FALSE]
-          }
-        }else if(length(attr(prior_list[[i]], "levels")) == 1){
-          runjags_summary <- runjags_summary[!rownames(runjags_summary) %in% paste0(par,"[",1:(attr(prior_list[[i]], "levels")-1),"]"),,drop=FALSE]
-        }
+        runjags_summary <- runjags_summary[!rownames(runjags_summary) %in% .JAGS_prior_factor_names(names(prior_list)[i], prior_list[[i]]),,drop=FALSE]
       }else{
         runjags_summary <- runjags_summary[rownames(runjags_summary) != names(prior_list)[i],,drop=FALSE]
       }
@@ -615,7 +607,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     transformations <-  transformations[names(transformations) %in% names(prior_list)]
   }
 
-  # simplify spike and slab priors to simple priors -- the samples and summary can be dealth with as any other prior
+  # simplify spike and slab priors to simple priors -- the samples and summary can be dealt with as any other prior
   for(par in names(prior_list)){
     if(is.prior.spike_and_slab(prior_list[[par]])){
 
@@ -668,17 +660,39 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     }
   }
 
-  # apply transformations
+  # apply transformations (not orthornormal if they are to be returned transformed to diffs)
   if(!is.null(transformations)){
     for(par in names(transformations)){
-      model_samples[,par] <- do.call(transformations[[par]][["fun"]], c(list(model_samples[,par]), transformations[[par]][["arg"]]))
-      runjags_summary[par, "Mean"]    <- mean(model_samples[,par], na.rm = TRUE)
-      runjags_summary[par, "SD"]      <- sd(model_samples[,par], na.rm = TRUE)
-      runjags_summary[par, "Lower95"] <- stats::quantile(model_samples[,par], .025, na.rm = TRUE)
-      runjags_summary[par, "Upper95"] <- stats::quantile(model_samples[,par], .975, na.rm = TRUE)
-      runjags_summary[par, "Median"]  <- do.call(transformations[[par]][["fun"]], c(list(runjags_summary[par, "Median"]), transformations[[par]][["arg"]]))
-      runjags_summary[par, "MCerr"]   <- do.call(transformations[[par]][["fun"]], c(list(runjags_summary[par, "MCerr"]), transformations[[par]][["arg"]]))
-      runjags_summary[par, "MC.ofSD"] <- 100 * runjags_summary[par, "MCerr"] / runjags_summary[par, "SD"]
+      if(!is.prior.factor(prior_list[[par]])){
+
+        # non-factor priors
+        model_samples[,par] <- do.call(transformations[[par]][["fun"]], c(list(model_samples[,par]), transformations[[par]][["arg"]]))
+        runjags_summary[par, "Mean"]    <- mean(model_samples[,par], na.rm = TRUE)
+        runjags_summary[par, "SD"]      <- sd(model_samples[,par], na.rm = TRUE)
+        runjags_summary[par, "Lower95"] <- stats::quantile(model_samples[,par], .025, na.rm = TRUE)
+        runjags_summary[par, "Upper95"] <- stats::quantile(model_samples[,par], .975, na.rm = TRUE)
+        runjags_summary[par, "Median"]  <- do.call(transformations[[par]][["fun"]], c(list(runjags_summary[par, "Median"]), transformations[[par]][["arg"]]))
+        runjags_summary[par, "MCerr"]   <- do.call(transformations[[par]][["fun"]], c(list(runjags_summary[par, "MCerr"]), transformations[[par]][["arg"]]))
+        runjags_summary[par, "MC.ofSD"] <- 100 * runjags_summary[par, "MCerr"] / runjags_summary[par, "SD"]
+
+      }else if((!transform_orthonormal && is.prior.orthonormal(prior_list[[par]])) || is.prior.dummy(prior_list[[par]])){
+
+        # dummy priors
+        par_names <-  .JAGS_prior_factor_names(par, prior_list[[par]])
+
+        for(i in seq_along(par_names)){
+          model_samples[,par_names[i]] <- do.call(transformations[[par]][["fun"]], c(list(model_samples[,par_names[i]]), transformations[[par]][["arg"]]))
+          runjags_summary[par_names[i], "Mean"]    <- mean(model_samples[,par_names[i]], na.rm = TRUE)
+          runjags_summary[par_names[i], "SD"]      <- sd(model_samples[,par_names[i]], na.rm = TRUE)
+          runjags_summary[par_names[i], "Lower95"] <- stats::quantile(model_samples[,par_names[i]], .025, na.rm = TRUE)
+          runjags_summary[par_names[i], "Upper95"] <- stats::quantile(model_samples[,par_names[i]], .975, na.rm = TRUE)
+          runjags_summary[par_names[i], "Median"]  <- do.call(transformations[[par]][["fun"]], c(list(runjags_summary[par_names[i], "Median"]), transformations[[par]][["arg"]]))
+          runjags_summary[par_names[i], "MCerr"]   <- do.call(transformations[[par]][["fun"]], c(list(runjags_summary[par_names[i], "MCerr"]), transformations[[par]][["arg"]]))
+          runjags_summary[par_names[i], "MC.ofSD"] <- 100 * runjags_summary[par_names[i], "MCerr"] / runjags_summary[par_names[i], "SD"]
+        }
+
+      }
+
     }
   }
 
@@ -686,14 +700,18 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   if(transform_orthonormal & any(sapply(prior_list, is.prior.orthonormal))){
     for(par in names(prior_list)[sapply(prior_list, is.prior.orthonormal)]){
 
-      if((attr(prior_list[[par]], "levels") - 1) == 1){
-        par_names <- par
-      }else{
-        par_names <- paste0(par, "[", 1:(attr(prior_list[[par]], "levels") - 1), "]")
-      }
+      par_names <- .JAGS_prior_factor_names(par, prior_list[[par]])
 
       orthonormal_samples <- model_samples[,par_names,drop = FALSE]
       transformed_samples <- orthonormal_samples %*% t(contr.orthonormal(1:attr(prior_list[[par]], "levels")))
+
+      # apply transformation if specified
+      if(!is.null(transformations[par])){
+        for(i in 1:ncol(transformed_samples)){
+          transformed_samples[,i] <- do.call(transformations[[par]][["fun"]], c(list(transformed_samples[,i]), transformations[[par]][["arg"]]))
+        }
+      }
+
 
       if(attr(prior_list[[par]], "interaction")){
         if(length(attr(prior_list[[par]], "level_names")) == 1){
@@ -742,7 +760,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
           MC.ofSD = 100 * transformed_summary$statistics[,"Naive SE"] / transformed_summary$statistics[,"SD"],
           SSeff   = unname(coda::effectiveSize(coda::as.mcmc(transformed_samples))),
           AC.10   = coda::autocorr.diag(coda::as.mcmc(transformed_samples), lags = 10)[1,],
-          psrf    = if(length(fit$mcmc)) unname(coda::gelman.diag(transformed_chains, multivariate = FALSE)$psrf[,"Point est."]) else NA
+          psrf    = if(length(fit$mcmc) > 1) unname(coda::gelman.diag(transformed_chains, multivariate = FALSE)$psrf[,"Point est."]) else NA
         )
       }
 

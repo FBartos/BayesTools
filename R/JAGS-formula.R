@@ -574,3 +574,18 @@ JAGS_parameter_names   <- function(parameters, formula_parameter = NULL){
 
   return(parameters)
 }
+
+.JAGS_prior_factor_names <- function(parameter, prior){
+
+  if(!attr(prior, "interaction")){
+    if(attr(prior, "levels") == 2){
+      par_names <- parameter
+    }else{
+      par_names <- paste0(parameter,"[",1:(attr(prior, "levels")-1),"]")
+    }
+  }else if(length(attr(prior, "levels")) == 1){
+    par_names <-  paste0(parameter,"[",1:(attr(prior, "levels")-1),"]")
+  }
+
+  return(par_names)
+}
