@@ -1385,6 +1385,9 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
   if(any(sapply(prior_list, is.prior.orthonormal))){
     samples  <- transform_orthonormal_samples(samples)
+    if(!is.null(transformation)){
+      message("The transformation was applied to the differences from the mean. Note that non-linear transformations do not map from the orthonormal contrasts to the differences from the mean.")
+    }
   }
   samples    <- samples[[parameter]]
 

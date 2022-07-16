@@ -698,6 +698,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 
   # transform orthonormal factors to differences from mean
   if(transform_orthonormal & any(sapply(prior_list, is.prior.orthonormal))){
+    message("The transformation was applied to the differences from the mean. Note that non-linear transformations do not map from the orthonormal contrasts to the differences from the mean.")
     for(par in names(prior_list)[sapply(prior_list, is.prior.orthonormal)]){
 
       par_names <- .JAGS_prior_factor_names(par, prior_list[[par]])
