@@ -434,10 +434,15 @@ density.prior <- function(x,
   }
 
 
-
   # transform the output, if requested
   if(!is.null(transformation)){
-    stop("transformations are not supported for orthonormal prior distributions")
+    message("The transformation was applied to the differences from the mean. Note that non-linear transformations do not map from the orthonormal contrasts to the differences from the mean.")
+    x_seq   <- .density.prior_transformation_x(x_seq,   transformation, transformation_arguments)
+    x_range <- .density.prior_transformation_x(x_range, transformation, transformation_arguments)
+    if(!is.null(x_sam)){
+      x_sam <- .density.prior_transformation_x(x_sam,   transformation, transformation_arguments)
+    }
+    x_den   <- .density.prior_transformation_y(x_seq, x_den, transformation, transformation_arguments)
   }
 
 

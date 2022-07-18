@@ -1,3 +1,14 @@
+## version 0.2.13
+### Features
+- `runjags_estimates_table()` function can now handle factor transformations 
+- `plot_posterior` function can now handle factor transformations 
+
+### Fixes
+- inability to deal with constant intercept in marglik formula calculation
+- `runjags_estimates_table()` function can now remove factor spike prior distributions
+- marginal likelihood calculation for factor prior distributions with spike 
+- mixing samples from vector priors of length 1
+
 ## version 0.2.12
 ### Features
 - `stan_estimates_summary()` function

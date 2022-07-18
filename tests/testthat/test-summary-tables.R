@@ -625,15 +625,16 @@ test_that("Summary tables functions work (spike and slab priors)",{
 
 })
 
+# prefitted model with RoBTT
+skip_on_cran()
+fit <- readRDS(file = file.path("../results/fits", "fit_RoBTT.RDS"))
+
 test_that("Summary tables functions work (stan)",{
 
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
-  skip_on_cran()
+
 
   set.seed(1)
-
-  # prefitted model with RoBTT
-  fit <- readRDS("../models/fit_RoBTT.RDS")
 
   ### checking summary functions
   model_estimates <- stan_estimates_table(fit)

@@ -450,7 +450,7 @@ transform_orthonormal_samples <- function(samples){
   check_list(samples, "samples", allow_NULL = TRUE)
 
   for(i in seq_along(samples)){
-    if(inherits(samples[[i]], "mixed_posteriors.factor") && attr(samples[[i]], "orthonormal")){
+    if(!inherits(samples[[i]],"mixed_posteriors.orthonormal_transformed") && inherits(samples[[i]], "mixed_posteriors.factor") && attr(samples[[i]], "orthonormal")){
 
       orthonormal_samples <- samples[[i]]
       transformed_samples <- orthonormal_samples %*% t(contr.orthonormal(1:attr(samples[[i]], "levels")))
@@ -573,4 +573,19 @@ JAGS_parameter_names   <- function(parameters, formula_parameter = NULL){
   parameters <- gsub(":", "__xXx__", parameters)
 
   return(parameters)
+}
+
+.JAGS_prior_factor_names <- function(parameter, prior){
+
+  if(!attr(prior, "interaction")){
+    if(attr(prior, "levels") == 2){
+      par_names <- parameter
+    }else{
+      par_names <- paste0(parameter,"[",1:(attr(prior, "levels")-1),"]")
+    }
+  }else if(length(attr(prior, "levels")) == 1){
+    par_names <-  paste0(parameter,"[",1:(attr(prior, "levels")-1),"]")
+  }
+
+  return(par_names)
 }
