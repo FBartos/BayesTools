@@ -34,7 +34,8 @@ runjags_estimates_table(
   remove_spike_0 = TRUE,
   transform_orthonormal = FALSE,
   formula_prefix = TRUE,
-  remove_inclusion = FALSE
+  remove_inclusion = FALSE,
+  remove_parameters = NULL
 )
 
 runjags_inference_table(
@@ -55,7 +56,8 @@ JAGS_estimates_table(
   remove_spike_0 = TRUE,
   transform_orthonormal = FALSE,
   formula_prefix = TRUE,
-  remove_inclusion = FALSE
+  remove_inclusion = FALSE,
+  remove_parameters = NULL
 )
 
 JAGS_inference_table(
@@ -129,6 +131,9 @@ mean}
 
 \item{remove_inclusion}{whether estimates of the inclusion probabilities
 should be excluded from the summary table. Defaults to \code{FALSE}.}
+
+\item{remove_parameters}{parameters to be removed from the summary. Defaults
+to \code{NULL}, i.e., including all parameters.}
 }
 \value{
 \code{model_summary_table} returns a table with

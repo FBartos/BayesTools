@@ -418,6 +418,8 @@ ensemble_diagnostics_table <- function(models, parameters, title = NULL, footnot
 #' to be added to the table
 #' @param remove_inclusion whether estimates of the inclusion probabilities
 #' should be excluded from the summary table. Defaults to \code{FALSE}.
+#' @param remove_parameters parameters to be removed from the summary. Defaults
+#' to \code{NULL}, i.e., including all parameters.
 #' @inheritParams BayesTools_ensemble_tables
 #'
 #'
@@ -532,7 +534,7 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
 }
 
 #' @rdname BayesTools_model_tables
-runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, footnotes = NULL, warnings = NULL, conditional = FALSE, remove_spike_0 = TRUE, transform_orthonormal = FALSE, formula_prefix = TRUE, remove_inclusion = FALSE){
+runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, footnotes = NULL, warnings = NULL, conditional = FALSE, remove_spike_0 = TRUE, transform_orthonormal = FALSE, formula_prefix = TRUE, remove_inclusion = FALSE, remove_parameters = NULL){
 
   .check_runjags()
   # most of the code is shared with .diagnostics_plot_data function (keep them in sync on update)
@@ -556,6 +558,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   check_bool(conditional, "conditional")
   check_bool(transform_orthonormal, "transform_orthonormal")
   check_bool(formula_prefix, "formula_prefix")
+  check_char(remove_parameters, "remove_parameters", allow_NULL = TRUE, check_length = 0)
 
   # obtain model information
   invisible(utils::capture.output(runjags_summary <- suppressWarnings(summary(fit, silent.jags = TRUE))))
@@ -589,14 +592,22 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       omega_cuts    <- weightfunctions_mapping(prior_list[i], cuts_only = TRUE)
       omega_names   <- sapply(1:(length(omega_cuts)-1), function(i)paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
       rownames(runjags_summary)[grep("omega", rownames(runjags_summary))] <- omega_names
-    }else if(remove_spike_0 && is.prior.point(prior_list[[i]]) && prior_list[[i]][["parameters"]][["location"]] == 0){
+      # remove if requested
+      if("omega" %in% remove_parameters){
+        prior_list[[i]] <- NULL
+        runjags_summary <- runjags_summary[,!rownames(runjags_summary) %in% omega_names]
+      }
+    }else if((remove_spike_0 && is.prior.point(prior_list[[i]]) && prior_list[[i]][["parameters"]][["location"]] == 0) || (names(prior_list)[[i]] %in% remove_parameters)){
       if(is.prior.factor(prior_list[[i]])){
         runjags_summary <- runjags_summary[!rownames(runjags_summary) %in% .JAGS_prior_factor_names(names(prior_list)[i], prior_list[[i]]),,drop=FALSE]
       }else{
         runjags_summary <- runjags_summary[rownames(runjags_summary) != names(prior_list)[i],,drop=FALSE]
       }
+      if(prior_list[[i]][["distribution"]] == "invgamma"){
+        runjags_summary <- runjags_summary[rownames(runjags_summary) != paste0("inv_",names(prior_list)[i]),,drop=FALSE]
+      }
       prior_list[i] <- NULL
-    }else if(is.prior.simple(prior_list[[i]]) &&  prior_list[[i]][["distribution"]] == "invgamma"){
+    }else if(is.prior.simple(prior_list[[i]]) && prior_list[[i]][["distribution"]] == "invgamma"){
       runjags_summary <- runjags_summary[rownames(runjags_summary) != paste0("inv_",names(prior_list)[i]),,drop=FALSE]
       prior_list[i] <- NULL
     }

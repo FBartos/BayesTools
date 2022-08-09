@@ -2,6 +2,7 @@
 ### Features
 - `runjags_estimates_table()` function can now handle factor transformations 
 - `plot_posterior` function can now handle factor transformations 
+- ability to remove parameters from the `runjags_estimates_table()` function via the `remove_parameters` argument
 
 ### Fixes
 - inability to deal with constant intercept in marglik formula calculation
