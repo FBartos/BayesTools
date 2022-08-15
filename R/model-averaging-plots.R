@@ -617,6 +617,12 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     new_prior_list[[i]][["prior_weights"]] <- NULL
   }
 
+  # remove additional attributes added by the formula interface
+  for(i in seq_along(new_prior_list)){
+    attr(new_prior_list[[i]], "parameter") <- NULL
+  }
+
+  # remove identical priors
   are_equal <- do.call(rbind, lapply(new_prior_list, function(p)sapply(new_prior_list, identical, y = p)))
   are_equal <- are_equal[!duplicated(are_equal) & apply(are_equal, 1, sum) > 1,,drop = FALSE]
 

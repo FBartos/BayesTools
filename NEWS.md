@@ -9,6 +9,7 @@
 - `runjags_estimates_table()` function can now remove factor spike prior distributions
 - marginal likelihood calculation for factor prior distributions with spike 
 - mixing samples from vector priors of length 1
+- same prior distributions not always combined together properly when part of them was generated via the formula interface
 
 ## version 0.2.12
 ### Features
