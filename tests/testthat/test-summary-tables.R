@@ -625,14 +625,17 @@ test_that("Summary tables functions work (spike and slab priors)",{
 
 })
 
-# prefitted model with RoBTT
-skip_on_cran()
-fit <- readRDS(file = file.path("../results/fits", "fit_RoBTT.RDS"))
 
 test_that("Summary tables functions work (stan)",{
 
+  skip_on_cran()
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
 
+  # prefitted model with RoBTT
+  if(!file.exists(file.path("../results/fits", "fit_RoBTT.RDS")))
+    skip(message = "Only runs locally")
+
+  fit <- readRDS(file = file.path("../results/fits", "fit_RoBTT.RDS"))
 
   set.seed(1)
 
