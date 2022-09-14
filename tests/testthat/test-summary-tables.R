@@ -229,6 +229,9 @@ test_that("Summary tables functions work",{
 
 })
 
+# skip the rest as it takes too long
+skip_on_cran()
+
 test_that("Summary tables functions work (formulas + factors)",{
 
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
@@ -526,6 +529,7 @@ test_that("Summary tables functions work (formulas + factors)",{
                ))
 
 })
+
 
 test_that("Summary tables functions work (spike and slab priors)",{
 
