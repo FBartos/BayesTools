@@ -229,6 +229,9 @@ test_that("Summary tables functions work",{
 
 })
 
+# skip the rest as it takes too long
+skip_on_cran()
+
 test_that("Summary tables functions work (formulas + factors)",{
 
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
@@ -527,6 +530,7 @@ test_that("Summary tables functions work (formulas + factors)",{
 
 })
 
+
 test_that("Summary tables functions work (spike and slab priors)",{
 
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
@@ -625,15 +629,19 @@ test_that("Summary tables functions work (spike and slab priors)",{
 
 })
 
+
 test_that("Summary tables functions work (stan)",{
 
-  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
   skip_on_cran()
-
-  set.seed(1)
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
 
   # prefitted model with RoBTT
-  fit <- readRDS("../models/fit_RoBTT.RDS")
+  if(!file.exists(file.path("../results/fits", "fit_RoBTT.RDS")))
+    skip(message = "Only runs locally")
+
+  fit <- readRDS(file = file.path("../results/fits", "fit_RoBTT.RDS"))
+
+  set.seed(1)
 
   ### checking summary functions
   model_estimates <- stan_estimates_table(fit)

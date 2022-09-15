@@ -160,6 +160,8 @@ test_that("prior plot functions (simple) work", {
   })
 })
 
+# skip the rest as it takes too long
+skip_on_cran()
 
 test_that("prior plot functions (PET-PEESE) work", {
 

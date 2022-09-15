@@ -412,6 +412,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 
     if(is.prior.point(priors[[i]])){
       samples <- rbind(samples, matrix(rng(priors[[i]], 1), nrow = length(temp_ind), ncol = K))
+    }else if(K == 1){
+      samples <- rbind(samples, matrix(model_samples[temp_ind, parameter], nrow = length(temp_ind), ncol = K))
     }else{
       samples <- rbind(samples, model_samples[temp_ind, paste0(parameter,"[",1:K,"]")])
     }

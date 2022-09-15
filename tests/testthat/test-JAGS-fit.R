@@ -43,6 +43,9 @@ test_that("JAGS model functions work (simple)", {
   }
 })
 
+# skip the rest as it takes too long
+skip_on_cran()
+
 test_that("JAGS model functions work (vector)", {
 
   skip_if_not_installed("rjags")
