@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.12</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.13</span>
       </span>
     </div>
 
@@ -61,7 +61,27 @@
     </div>
 
     <div class="section level2">
-<h2 class="page-header" data-toc-text="0.2.12" id="version-0212">version 0.2.12<a class="anchor" aria-label="anchor" href="#version-0212"></a></h2>
+<h2 class="page-header" data-toc-text="0.2.13" id="version-0213">version 0.2.13<small>2022-09-14</small><a class="anchor" aria-label="anchor" href="#version-0213"></a></h2>
+<div class="section level3">
+<h3 id="features-0-2-13">Features<a class="anchor" aria-label="anchor" href="#features-0-2-13"></a></h3>
+<ul><li>
+<code><a href="../reference/BayesTools_model_tables.html">runjags_estimates_table()</a></code> function can now handle factor transformations</li>
+<li>
+<code>plot_posterior</code> function can now handle factor transformations</li>
+<li>ability to remove parameters from the <code><a href="../reference/BayesTools_model_tables.html">runjags_estimates_table()</a></code> function via the <code>remove_parameters</code> argument</li>
+</ul></div>
+<div class="section level3">
+<h3 id="fixes-0-2-13">Fixes<a class="anchor" aria-label="anchor" href="#fixes-0-2-13"></a></h3>
+<ul><li>inability to deal with constant intercept in marglik formula calculation</li>
+<li>
+<code><a href="../reference/BayesTools_model_tables.html">runjags_estimates_table()</a></code> function can now remove factor spike prior distributions</li>
+<li>marginal likelihood calculation for factor prior distributions with spike</li>
+<li>mixing samples from vector priors of length 1</li>
+<li>same prior distributions not always combined together properly when part of them was generated via the formula interface</li>
+</ul></div>
+</div>
+    <div class="section level2">
+<h2 class="page-header" data-toc-text="0.2.12" id="version-0212">version 0.2.12<small>2022-07-11</small><a class="anchor" aria-label="anchor" href="#version-0212"></a></h2>
 <div class="section level3">
 <h3 id="features-0-2-12">Features<a class="anchor" aria-label="anchor" href="#features-0-2-12"></a></h3>
 <ul><li>
@@ -292,7 +312,7 @@
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.5.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.6.</p>
 </div>
 
       </footer></div>
