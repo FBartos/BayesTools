@@ -91,6 +91,9 @@ test_that("JAGS model-averaging functions work (simple)",{
   expect_equal(mixed_posteriors, mixed_posteriors2)
 })
 
+# skip the rest as it takes too long
+skip_on_cran()
+
 test_that("JAGS model-averaging functions work (weightfunctions)",{
 
   set.seed(1)

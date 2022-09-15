@@ -931,7 +931,28 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_data_list, for
 
   # start with intercept
   if(sum(formula_terms == paste0(parameter, "_intercept")) == 1){
-    output <- rep(samples[[paste0(parameter, "_intercept")]], formula_data_list[[paste0("N_", parameter)]])
+
+    # check for scaling factors
+    if(!is.null(attr(formula_prior_list[[paste0(parameter, "_intercept")]], "multiply_by"))){
+      if(is.numeric(attr(formula_prior_list[[paste0(parameter, "_intercept")]], "multiply_by"))){
+        multiply_by <- attr(formula_prior_list[[paste0(parameter, "_intercept")]], "multiply_by")
+      }else{
+        multiply_by <- prior_list_parameters[[attr(formula_prior_list[[paste0(parameter, "_intercept")]], "multiply_by")]]
+      }
+    }else{
+      multiply_by <- 1
+    }
+
+    if(is.prior.point(formula_prior_list[[paste0(parameter, "_intercept")]])){
+
+      output <- multiply_by * rep(formula_prior_list[[paste0(parameter, "_intercept")]][["parameters"]][["location"]], formula_data_list[[paste0("N_", parameter)]])
+
+    }else{
+
+      output <- multiply_by * rep(samples[[paste0(parameter, "_intercept")]], formula_data_list[[paste0("N_", parameter)]])
+
+    }
+
   }else{
     output <- rep(0, formula_data_list[[paste0("N_", parameter)]])
   }
@@ -953,9 +974,18 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_data_list, for
       }
 
 
-      if(is.prior.point(formula_prior_list[[term]])){
+      if(is.prior.point(formula_prior_list[[term]]) && !is.prior.factor(formula_prior_list[[term]])){
 
         output <- output + multiply_by * formula_prior_list[[term]][["parameters"]][["location"]] * formula_data_list[[term]]
+
+      }else if(is.prior.point(formula_prior_list[[term]]) && is.prior.factor(formula_prior_list[[term]])){
+
+        levels <- attr(formula_prior_list[[term]], "levels")
+        if((levels-1) == 1){
+          output <- output + multiply_by * formula_prior_list[[term]][["parameters"]][["location"]] * formula_data_list[[term]]
+        }else{
+          output <- output + multiply_by * formula_data_list[[term]] %*% rep(formula_prior_list[[term]][["parameters"]][["location"]], levels-1)
+        }
 
       }else if(is.prior.factor(formula_prior_list[[term]])){
 
