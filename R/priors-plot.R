@@ -1067,7 +1067,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     mapping = ggplot2::aes(
       x      = .data[["x"]],
       weight = .data[["y"]]),
-    size = lwd, linetype = lty, color = col, fill = col, width = width)
+    linewidth = lwd, linetype = lty, color = col, fill = col, width = width)
 
   return(geom)
 }
