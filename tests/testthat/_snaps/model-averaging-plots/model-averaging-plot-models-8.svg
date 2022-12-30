@@ -59,7 +59,7 @@
 <polygon points='94.74,269.04 104.48,269.04 104.48,259.29 94.74,259.29 ' style='stroke-width: 0.71; stroke: none; fill: #CCCCCC;' />
 <polygon points='94.74,189.90 104.48,189.90 104.48,180.15 94.74,180.15 ' style='stroke-width: 0.71; stroke: none; fill: #CCCCCC;' />
 <polygon points='251.89,110.76 261.64,110.76 261.64,101.01 251.89,101.01 ' style='stroke-width: 0.71; stroke: none; fill: #CCCCCC;' />
-<polygon points='99.61,442.23 144.79,422.44 319.22,442.23 144.79,462.01 ' style='stroke-width: 1.07; stroke: none; fill: #000000;' />
+<polygon points='99.61,442.23 144.79,422.44 319.22,442.23 144.79,462.01 ' style='stroke-width: 1.07; stroke: none; stroke-linecap: butt; fill: #000000;' />
 <polyline points='99.61,521.37 99.61,46.53 ' style='stroke-width: 1.07; stroke-dasharray: 1.42,4.27; stroke-linecap: butt;' />
 </g>
 <g clip-path='url(#cpMC4wMHw3MjAuMDB8MC4wMHw1NzYuMDA=)'>
@@ -67,13 +67,13 @@
 <text x='5.48' y='286.98' style='font-size: 8.80px; font-family: sans;' textLength='31.31px' lengthAdjust='spacingAndGlyphs'>Model 1</text>
 <text x='5.48' y='207.84' style='font-size: 8.80px; font-family: sans;' textLength='31.31px' lengthAdjust='spacingAndGlyphs'>Model 2</text>
 <text x='5.48' y='128.69' style='font-size: 8.80px; font-family: sans;' textLength='31.31px' lengthAdjust='spacingAndGlyphs'>Model 3</text>
-<text x='714.52' y='445.14' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='63.61px' lengthAdjust='spacingAndGlyphs'>0.23 [0.00, 1.11]</text>
-<text x='714.52' y='287.24' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='63.61px' lengthAdjust='spacingAndGlyphs'>0.00 [0.00, 0.00]</text>
-<text x='714.52' y='207.76' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='63.61px' lengthAdjust='spacingAndGlyphs'>0.00 [0.00, 0.00]</text>
-<text x='714.52' y='128.81' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='63.61px' lengthAdjust='spacingAndGlyphs'>0.84 [0.53, 1.31]</text>
-<text x='714.52' y='267.37' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='92.96px' lengthAdjust='spacingAndGlyphs'>BF = 2.42 [0.33 -&gt; 0.55]</text>
-<text x='714.52' y='187.90' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='92.96px' lengthAdjust='spacingAndGlyphs'>BF = 0.43 [0.33 -&gt; 0.18]</text>
-<text x='714.52' y='108.94' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='92.96px' lengthAdjust='spacingAndGlyphs'>BF = 0.75 [0.33 -&gt; 0.27]</text>
+<text x='714.52' y='445.26' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='63.61px' lengthAdjust='spacingAndGlyphs'>0.23 [0.00, 1.11]</text>
+<text x='714.52' y='286.98' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='63.61px' lengthAdjust='spacingAndGlyphs'>0.00 [0.00, 0.00]</text>
+<text x='714.52' y='207.84' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='63.61px' lengthAdjust='spacingAndGlyphs'>0.00 [0.00, 0.00]</text>
+<text x='714.52' y='128.69' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='63.61px' lengthAdjust='spacingAndGlyphs'>0.84 [0.53, 1.31]</text>
+<text x='714.52' y='267.19' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='92.96px' lengthAdjust='spacingAndGlyphs'>BF = 2.42 [0.33 -&gt; 0.55]</text>
+<text x='714.52' y='188.05' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='92.96px' lengthAdjust='spacingAndGlyphs'>BF = 0.43 [0.33 -&gt; 0.18]</text>
+<text x='714.52' y='108.91' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='92.96px' lengthAdjust='spacingAndGlyphs'>BF = 0.75 [0.33 -&gt; 0.27]</text>
 <polyline points='99.61,547.85 99.61,545.11 ' style='stroke-width: 1.07; stroke: #333333; stroke-linecap: butt;' />
 <polyline points='198.09,547.85 198.09,545.11 ' style='stroke-width: 1.07; stroke: #333333; stroke-linecap: butt;' />
 <polyline points='296.57,547.85 296.57,545.11 ' style='stroke-width: 1.07; stroke: #333333; stroke-linecap: butt;' />
