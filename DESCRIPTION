@@ -1,6 +1,6 @@
 Package: BayesTools
 Title: Tools for Bayesian Analyses
-Version: 0.2.13
+Version: 0.2.14
 Description: Provides tools for conducting Bayesian analyses. The package contains 
     functions for creating a wide range of prior distribution objects, mixing posterior 
     samples from 'JAGS' and 'Stan' models, plotting posterior distributions, and etc...
@@ -17,7 +17,7 @@ License: GPL-3
 Encoding: UTF-8
 LazyData: true
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.2.0
+RoxygenNote: 7.2.3
 SystemRequirements: JAGS >= 4.3.0 (https://mcmc-jags.sourceforge.io/)
 Depends:
     stats
@@ -29,7 +29,8 @@ Imports:
     bridgesampling,
     parallel,
     ggplot2,
-    Rdpack
+    Rdpack,
+    rlang
 Suggests: 
     scales,
     testthat,

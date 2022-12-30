@@ -390,9 +390,9 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
 
-  if(is.prior.point(prior) | is.prior.dummy(prior)){
+  if(is.prior.point(prior) | is.prior.dummy(prior) | is.prior.independent(prior)){
 
-    if((attr(prior, "levels") - 1) == 1){
+    if(.get_prior_factor_levels(prior) == 1){
 
       parameter <- .JAGS_bridgesampling_posterior_info.simple(prior, parameter_name)
 
@@ -402,7 +402,7 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
       parameter_lb <- NULL
       parameter_ub <- NULL
 
-      for(i in 1:(attr(prior, "levels") - 1)){
+      for(i in 1:.get_prior_factor_levels(prior)){
 
         add_parameter <- .JAGS_bridgesampling_posterior_info.simple(prior, paste0(parameter_name, "[", i, "]"))
 
@@ -418,7 +418,7 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
 
   }else if(is.prior.orthonormal(prior)){
 
-    prior$parameters[["K"]] <- attr(prior, "levels") - 1
+    prior$parameters[["K"]] <- .get_prior_factor_levels(prior)
 
     parameter <- .JAGS_bridgesampling_posterior_info.vector(prior, parameter_name)
 
@@ -615,21 +615,21 @@ JAGS_marglik_priors                <- function(samples, prior_list){
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
 
-  if(is.prior.point(prior) | is.prior.dummy(prior)){
+  if(is.prior.point(prior) | is.prior.dummy(prior) | is.prior.independent(prior)){
 
-    if((attr(prior, "levels") - 1) == 1){
+    if(.get_prior_factor_levels(prior) == 1){
 
       marglik <- .JAGS_marglik_priors.simple(samples, prior, parameter_name)
 
     }else{
 
-      marglik <- sum(sapply(1:(attr(prior, "levels") - 1), function(i) .JAGS_marglik_priors.simple(samples, prior, paste0(parameter_name, "[", i, "]"))))
+      marglik <- sum(sapply(1:.get_prior_factor_levels(prior), function(i) .JAGS_marglik_priors.simple(samples, prior, paste0(parameter_name, "[", i, "]"))))
 
     }
 
   }else if(is.prior.orthonormal(prior)){
 
-    prior$parameters[["K"]] <- attr(prior, "levels") - 1
+    prior$parameters[["K"]] <- .get_prior_factor_levels(prior)
 
     marglik <- .JAGS_marglik_priors.vector(samples, prior, parameter_name)
 
@@ -819,22 +819,22 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
   check_char(parameter_name, "parameter_name")
 
 
-  if(is.prior.point(prior) | is.prior.dummy(prior)){
+  if(is.prior.point(prior) | is.prior.dummy(prior) | is.prior.independent(prior)){
 
-    if((attr(prior, "levels") - 1) == 1){
+    if(.get_prior_factor_levels(prior) == 1){
 
       parameter <- .JAGS_marglik_parameters.simple(samples, prior, parameter_name)
 
     }else{
 
       parameter <- list()
-      parameter[[parameter_name]] <- samples[ paste0(parameter_name, "[", 1:(attr(prior, "levels") - 1), "]") ]
+      parameter[[parameter_name]] <- samples[ paste0(parameter_name, "[", 1:.get_prior_factor_levels(prior), "]") ]
 
     }
 
   }else if(is.prior.orthonormal(prior)){
 
-    prior$parameters[["K"]] <- attr(prior, "levels") - 1
+    prior$parameters[["K"]] <- .get_prior_factor_levels(prior)
     parameter <- .JAGS_marglik_parameters.vector(samples, prior, parameter_name)
 
   }
@@ -980,20 +980,18 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_data_list, for
 
       }else if(is.prior.point(formula_prior_list[[term]]) && is.prior.factor(formula_prior_list[[term]])){
 
-        levels <- attr(formula_prior_list[[term]], "levels")
-        if((levels-1) == 1){
+        if(.get_prior_factor_levels(formula_prior_list[[term]]) == 1){
           output <- output + multiply_by * formula_prior_list[[term]][["parameters"]][["location"]] * formula_data_list[[term]]
         }else{
-          output <- output + multiply_by * formula_data_list[[term]] %*% rep(formula_prior_list[[term]][["parameters"]][["location"]], levels-1)
+          output <- output + multiply_by * formula_data_list[[term]] %*% rep(formula_prior_list[[term]][["parameters"]][["location"]], .get_prior_factor_levels(formula_prior_list[[term]]))
         }
 
       }else if(is.prior.factor(formula_prior_list[[term]])){
 
-        levels <- attr(formula_prior_list[[term]], "levels")
-        if((levels-1) == 1){
+        if(.get_prior_factor_levels(formula_prior_list[[term]]) == 1){
           output <- output + multiply_by * samples[[term]] * formula_data_list[[term]]
         }else{
-          output <- output + multiply_by * formula_data_list[[term]] %*% samples[paste0(term,"[", 1:(levels-1), "]")]
+          output <- output + multiply_by * formula_data_list[[term]] %*% samples[paste0(term,"[", 1:.get_prior_factor_levels(formula_prior_list[[term]]), "]")]
         }
 
 

@@ -161,3 +161,14 @@ test_that("Prior plot (treatment) function works", {
   expect_doppelganger("priors-plot-14",   function()plot(p14))
 
 })
+
+test_that("Prior plot (independent) function works", {
+
+  p15   <- prior_factor("gamma", list(shape = 2, rate = 3), contrast = "independent")
+  p16   <- prior_factor("uniform", list(a = -0.5, b = 1), contrast = "independent")
+
+  expect_doppelganger("priors-plot-16-1", function()plot(p15))
+  expect_doppelganger("priors-plot-16-2", plot(p15, plot_type = "ggplot"))
+  expect_doppelganger("priors-plot-17",   function()plot(p16))
+
+})

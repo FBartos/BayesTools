@@ -1577,7 +1577,7 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
     if(attr(total_samples, "orthonormal")){
 
       # transform the samples
-      if(ncol(total_samples) != attr(total_samples, "levels")){
+      if(ncol(total_samples) == attr(total_samples, "levels")){
         total_samples <- transform_orthonormal_samples(samples[parameter])[[parameter]]
       }
       # transform the model summaries

@@ -236,8 +236,8 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
   }
 
   if(is.prior.factor(prior_list[[parameter]])){
-    if(attr(prior_list[[parameter]], "levels") > 2){
-      model_samples <- model_samples[,paste0(parameter, "[", 1:(attr(prior_list[[parameter]], "levels")-1), "]"),drop = FALSE]
+    if(.get_prior_factor_levels(prior_list[[parameter]]) > 1){
+      model_samples <- model_samples[,paste0(parameter, "[", 1:.get_prior_factor_levels(prior_list[[parameter]]), "]"),drop = FALSE]
     }else{
       model_samples <- model_samples[,parameter,drop = FALSE]
     }
@@ -273,31 +273,31 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
   if(transform_orthonormal & any(sapply(prior_list, is.prior.orthonormal))){
     for(par in names(prior_list)[sapply(prior_list, is.prior.orthonormal)]){
 
-      if((attr(prior_list[[par]], "levels") - 1) == 1){
+      if(.get_prior_factor_levels(prior_list[[par]]) == 1){
         par_names <- par
       }else{
-        par_names <- paste0(par, "[", 1:(attr(prior_list[[par]], "levels") - 1), "]")
+        par_names <- paste0(par, "[", 1:.get_prior_factor_levels(prior_list[[par]]), "]")
       }
 
       orthonormal_samples <- model_samples[,par_names,drop = FALSE]
-      model_samples       <- orthonormal_samples %*% t(contr.orthonormal(1:attr(prior_list[[par]], "levels")))
+      model_samples       <- orthonormal_samples %*% t(contr.orthonormal(1:(.get_prior_factor_levels(prior_list[[par]])+1)))
 
       if(attr(prior_list[[par]], "interaction")){
-        if(length(attr(prior_list[[par]], "level_names")) == 1){
-          parameter_names <- paste0(par, " [dif: ", attr(prior_list[[par]], "level_names")[[1]],"]")
+        if(length(.get_prior_factor_level_names(prior_list[[par]])) == 1){
+          parameter_names <- paste0(par, " [dif: ", .get_prior_factor_level_names(prior_list[[par]])[[1]],"]")
         }else{
           stop("orthonormal de-transformation for interaction of multiple factors is not implemented.")
         }
       }else{
-        parameter_names <- paste0(par, " [dif: ", attr(prior_list[[par]], "level_names"),"]")
+        parameter_names <- paste0(par, " [dif: ", .get_prior_factor_level_names(prior_list[[par]]),"]")
       }
     }
   }else if(any(sapply(prior_list, is.prior.orthonormal))){
     for(par in names(prior_list)[sapply(prior_list, is.prior.orthonormal)]){
-      if((attr(prior_list[[par]], "levels") - 1) == 1){
+      if(.get_prior_factor_levels(prior_list[[par]]) == 1){
         parameter_names <- par
       }else{
-        parameter_names <- paste0(par, "[", 1:(attr(prior_list[[par]], "levels") - 1), "]")
+        parameter_names <- paste0(par, "[", 1:.get_prior_factor_levels(prior_list[[par]]), "]")
       }
     }
   }
@@ -305,14 +305,29 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
   # rename treatment factor levels
   if(any(sapply(prior_list, is.prior.dummy))){
     for(par in names(prior_list)[sapply(prior_list, is.prior.dummy)]){
-      if(!attr(prior_list[[par]], "interaction")){
-        if(attr(prior_list[[par]], "levels") == 2){
-          parameter_names <- paste0(par,"[",attr(prior_list[[par]], "level_names")[-1], "]")
+      if(!.is_prior_interaction(prior_list[[par]])){
+        if(.get_prior_factor_levels(prior_list[[par]]) == 1){
+          parameter_names <- par
         }else{
-          parameter_names <- paste0(par,"[",attr(prior_list[[par]], "level_names")[-1], "]")
+          parameter_names <- paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]])[-1], "]")
         }
       }else if(length(attr(prior_list[[par]], "levels")) == 1){
-        parameter_names <- paste0(par,"[",attr(prior_list[[par]], "level_names")[[1]][-1], "]")
+        parameter_names <- paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]])[[1]][-1], "]")
+      }
+    }
+  }
+
+  # rename independent factor levels
+  if(any(sapply(prior_list, is.prior.independent))){
+    for(par in names(prior_list)[sapply(prior_list, is.prior.independent)]){
+      if(!.is_prior_interaction(prior_list[[par]])){
+        if(.get_prior_factor_levels(prior_list[[par]]) == 1){
+          parameter_names <- par
+        }else{
+          parameter_names <- paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]]), "]")
+        }
+      }else if(length(attr(prior_list[[par]], "levels")) == 1){
+        parameter_names <- paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]]), "]")
       }
     }
   }
@@ -555,10 +570,10 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
     data    = data.frame(
       x = plot_data$x,
       y = plot_data$y),
-    mapping = ggplot2::aes_string(
-      x = "x",
-      y = "y"),
-    size = lwd, linetype = lty, color = col)
+    mapping = ggplot2::aes(
+      x = .data[["x"]],
+      y = .data[["y"]]),
+    linewidth = lwd, linetype = lty, color = col)
 
   return(geom)
 }
@@ -573,10 +588,10 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
     data    = data.frame(
       x = plot_data$x,
       y = plot_data$y),
-    mapping = ggplot2::aes_string(
-      x = "x",
-      y = "y"),
-    size = lwd, linetype = lty, color = col)
+    mapping = ggplot2::aes(
+      x = .data[["x"]],
+      y = .data[["y"]]),
+    linewidth = lwd, linetype = lty, color = col)
 
   return(geom)
 }
@@ -589,9 +604,9 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
     data    = data.frame(
       x = plot_data$x,
       y = plot_data$y),
-    mapping = ggplot2::aes_string(
-      x      = "x",
-      weight = "y"),
+    mapping = ggplot2::aes(
+      x      = .data[["x"]],
+      weight = .data[["y"]]),
     color = col, fill = col)
 
   return(geom)

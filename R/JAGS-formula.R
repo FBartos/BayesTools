@@ -99,6 +99,8 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
 
       if(is.prior.dummy(this_prior)){
         stats::contrasts(data[,factor]) <- "contr.treatment"
+      }else if(is.prior.independent(this_prior)){
+        stats::contrasts(data[,factor]) <- "contr.independent"
       }else if(is.prior.orthonormal(this_prior)){
         stats::contrasts(data[,factor]) <- "contr.orthonormal"
       }else if(is.prior.point(this_prior)){
@@ -194,8 +196,12 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
       # factor variables or interactions with a factor requires factor style prior
 
       # add levels information attributes to factors
-      attr(this_prior, "levels") <- sum(terms_indexes == i) + 1
-      if(attr(this_prior, "interaction")){
+      if(is.prior.independent(this_prior)){
+        attr(this_prior, "levels") <- sum(terms_indexes == i)
+      }else{
+        attr(this_prior, "levels") <- sum(terms_indexes == i) + 1
+      }
+      if(.is_prior_interaction(this_prior)){
         level_names <- list()
         for(sub_term in strsplit(model_terms[i], "__xXx__")[[1]]){
           if(model_terms_type[sub_term] == "factor"){
@@ -340,17 +346,17 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
       }
 
       if(is.factor(data[,factor])){
-        if(all(levels(data[,factor]) %in% attr(this_prior, "level_names"))){
+        if(all(levels(data[,factor]) %in% .get_prior_factor_level_names(this_prior))){
           # either the formatting is correct, or the supplied levels are a subset of the original levels
           # reformat to check ordering and etc...
-          data[,factor] <- factor(data[,factor], levels = attr(this_prior, "level_names"))
+          data[,factor] <- factor(data[,factor], levels = .get_prior_factor_level_names(this_prior))
         }else{
           # there are some additional levels
           stop(paste0("Levels specified in the '", factor, "' factor variable do not match the levels used for model specification."))
         }
-      }else if(all(unique(data[,factor]) %in% attr(this_prior, "level_names"))){
+      }else if(all(unique(data[,factor]) %in% .get_prior_factor_level_names(this_prior))){
         # the variable was not passed as a factor but the values matches the factor levels
-        data[,factor] <- factor(data[,factor], levels = attr(this_prior, "level_names"))
+        data[,factor] <- factor(data[,factor], levels = .get_prior_factor_level_names(this_prior))
       }else{
         # there are some additional mismatching values
         stop(paste0("Levels specified in the '", factor, "' factor variable do not match the levels used for model specification."))
@@ -360,6 +366,8 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
     # set the contrast
     if(is.prior.orthonormal(this_prior)){
       stats::contrasts(data[,factor]) <- "contr.orthonormal"
+    }else if(is.prior.independent(this_prior)){
+      stats::contrasts(data[,factor]) <- "contr.independent"
     }else if(is.prior.dummy(this_prior)){
       stats::contrasts(data[,factor]) <- "contr.treatment"
     }
@@ -418,9 +426,16 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
 
     # get the posterior (unless point prior was used)
     if(is.prior.point(prior_list_formula[[model_terms[i]]])){
-      temp_posterior <- matrix(prior_list_formula[[model_terms[i]]]$parameters[["location"]], nrow = nrow(posterior), ncol = if(model_terms_type[i] == "factor") attr(prior_list_formula[[model_terms[i]]], "levels")-1 else 1)
+      temp_posterior <- matrix(
+        prior_list_formula[[model_terms[i]]]$parameters[["location"]],
+        nrow = nrow(posterior),
+        ncol = if(model_terms_type[i] == "factor") .get_prior_factor_levels(prior_list_formula[[model_terms[i]]]) else 1
+      )
     }else{
-      temp_posterior <- posterior[,paste0(JAGS_parameter_names(model_terms[i], formula_parameter = parameter), if(model_terms_type[i] == "factor" && attr(prior_list_formula[[model_terms[i]]], "levels") > 2) paste0("[", 1:(attr(prior_list_formula[[model_terms[i]]], "levels")-1), "]")),drop = FALSE]
+      temp_posterior <- posterior[,paste0(
+        JAGS_parameter_names(model_terms[i], formula_parameter = parameter),
+        if(model_terms_type[i] == "factor" && .get_prior_factor_levels(prior_list_formula[[model_terms[i]]]) > 1) paste0("[", 1:.get_prior_factor_levels(prior_list_formula[[model_terms[i]]]), "]"))
+        ,drop = FALSE]
     }
 
     output <- output + temp_multiply_by * (temp_data %*% t(temp_posterior))
@@ -453,7 +468,7 @@ transform_orthonormal_samples <- function(samples){
     if(!inherits(samples[[i]],"mixed_posteriors.orthonormal_transformed") && inherits(samples[[i]], "mixed_posteriors.factor") && attr(samples[[i]], "orthonormal")){
 
       orthonormal_samples <- samples[[i]]
-      transformed_samples <- orthonormal_samples %*% t(contr.orthonormal(1:attr(samples[[i]], "levels")))
+      transformed_samples <- orthonormal_samples %*% t(contr.orthonormal(1:(attr(samples[[i]], "levels")+1)))
 
       if(attr(samples[[i]], "interaction")){
         if(length(attr(samples[[i]], "level_names")) == 1){
@@ -522,6 +537,42 @@ contr.orthonormal <- function(n, contrasts = TRUE){
 }
 
 
+#' @title Independent contrast matrix
+#'
+#' @description Return a matrix of independent contrasts -- a level for each term.
+#'
+#' @param n a vector of levels for a factor, or the number of levels
+#' @param contrasts logical indicating whether contrasts should be computed
+#'
+#' @examples
+#' contr.independent(c(1, 2))
+#' contr.independent(c(1, 2, 3))
+#'
+#' @references
+#' \insertAllCited{}
+#'
+#' @return A matrix with n rows and k columns, with k = n if \code{contrasts = TRUE} and k = n
+#' if \code{contrasts = FALSE}.
+#'
+#' @export
+contr.independent <- function(n, contrasts = TRUE){
+
+  if(length(n) <= 1L){
+    if(is.numeric(n) && length(n) == 1L && n >= 1L){
+      return(TRUE)
+    }else{
+      stop("Not enough degrees of freedom to define contrasts.")
+    }
+  }else{
+    n <- length(n)
+  }
+
+  cont <- diag(x = 1, nrow = n, ncol = n)
+
+  return(cont)
+}
+
+
 #' @title Clean parameter names from JAGS
 #'
 #' @description Removes additional formatting from parameter names outputted from
@@ -577,14 +628,14 @@ JAGS_parameter_names   <- function(parameters, formula_parameter = NULL){
 
 .JAGS_prior_factor_names <- function(parameter, prior){
 
-  if(!attr(prior, "interaction")){
-    if(attr(prior, "levels") == 2){
+  if(!.is_prior_interaction(prior)){
+    if(.get_prior_factor_levels(prior) == 1){
       par_names <- parameter
     }else{
-      par_names <- paste0(parameter,"[",1:(attr(prior, "levels")-1),"]")
+      par_names <- paste0(parameter,"[",1:.get_prior_factor_levels(prior),"]")
     }
   }else if(length(attr(prior, "levels")) == 1){
-    par_names <-  paste0(parameter,"[",1:(attr(prior, "levels")-1),"]")
+    par_names <-  paste0(parameter,"[",1:.get_prior_factor_levels(prior),"]")
   }
 
   return(par_names)

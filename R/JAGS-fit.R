@@ -518,18 +518,18 @@ JAGS_add_priors           <- function(syntax, prior_list){
   if(!is.prior.factor(prior))
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
-  check_int(attr(prior, "levels"), "levels", lower = 2)
+  check_int(.get_prior_factor_levels(prior), "levels", lower = 1)
 
-  if(is.prior.point(prior) | is.prior.dummy(prior)){
+  if(is.prior.dummy(prior) | is.prior.independent(prior) | is.prior.point(prior)){
 
     syntax <- paste0(
-      "for(i in 1:", attr(prior, "levels") - 1, "){\n",
+      "for(i in 1:", .get_prior_factor_levels(prior), "){\n",
       "  ", .JAGS_prior.simple(prior, paste0(parameter_name, "[i]")),
       "}\n")
 
   }else if(is.prior.orthonormal(prior)){
 
-    prior$parameters[["K"]] <- attr(prior, "levels") - 1
+    prior$parameters[["K"]] <- .get_prior_factor_levels(prior)
 
     syntax <- .JAGS_prior.vector(prior, parameter_name)
 
@@ -791,16 +791,16 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
   if(!is.prior.factor(prior))
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
-  check_int(attr(prior, "levels"), "levels", lower = 2)
+  check_int(.get_prior_factor_levels(prior), "levels", lower = 1)
 
-  if(is.prior.point(prior) | is.prior.dummy(prior)){
+  if(is.prior.dummy(prior) | is.prior.independent(prior) | is.prior.point(prior)){
 
     init <- list()
-    init[[parameter_name]] <- rng(prior, attr(prior, "levels") - 1)
+    init[[parameter_name]] <- rng(prior, .get_prior_factor_levels(prior))
 
   }else if(is.prior.orthonormal(prior)){
 
-    prior$parameters[["K"]] <- attr(prior, "levels") - 1
+    prior$parameters[["K"]] <- .get_prior_factor_levels(prior)
 
     # remove the orthonormal class, otherwise samples from the transformed distributions are generated
     class(prior) <- class(prior)[!class(prior) %in% "prior.orthonormal"]

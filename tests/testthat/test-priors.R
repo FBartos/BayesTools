@@ -240,3 +240,10 @@ test_that("Treatment prior distribution works", {
   expect_doppelganger("prior-treatment-2", function()test_prior(prior_factor("beta", list(alpha = 2, beta = 3), contrast = "treatment")))
 
 })
+
+test_that("Independent prior distribution works", {
+
+  expect_doppelganger("prior-independent-1", function()test_prior(prior_factor("gamma", list(shape = 2, rate = 3), contrast = "independent")))
+  expect_doppelganger("prior-independent-2", function()test_prior(prior_factor("uniform", list(a = -0.5, b = 1), contrast = "independent")))
+
+})

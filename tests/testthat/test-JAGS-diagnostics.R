@@ -34,8 +34,10 @@ test_that("JAGS diagnostics work", {
   prior_list <- list(
     sigma = prior("lognormal", list(0, 1)),
     omega = prior_weightfunction("onesided", list(c(0.05, 0.10), c(1,1,1))),
-    PET   = prior_PET("gamma", list(2, 2))
+    PET   = prior_PET("gamma", list(2, 2)),
+    fac2i = prior_factor("normal", contrast = "independent", list(0, 1/2))
   )
+  attr(prior_list$fac2i, "levels") <- 2
   model_syntax <- paste0(
     "model{\n",
     "for(i in 1:N){\n",
@@ -72,6 +74,12 @@ test_that("JAGS diagnostics work", {
     par(mfrow = c(1, 2))
     JAGS_diagnostics_density(fit, parameter = "omega")
   })
+  expect_doppelganger("diagnostics-plot-density-8", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+    par(mfrow = c(1, 2))
+    JAGS_diagnostics_density(fit, parameter = "fac2i")
+  })
 
   expect_doppelganger("diagnostics-ggplot-density-1", JAGS_diagnostics_density(fit, plot_type = "ggplot", parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), formula_prefix = FALSE, transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
   temp_plot <- JAGS_diagnostics_density(fit, plot_type = "ggplot", parameter = "mu_x_fac3o", transform_orthonormal = TRUE)
@@ -106,6 +114,12 @@ test_that("JAGS diagnostics work", {
     par(mfrow = c(1, 2))
     JAGS_diagnostics_trace(fit, parameter = "omega")
   })
+  expect_doppelganger("diagnostics-plot-trace-8", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+    par(mfrow = c(1, 2))
+    JAGS_diagnostics_trace(fit, parameter = "fac2i")
+  })
 
   expect_doppelganger("diagnostics-ggplot-trace-1", JAGS_diagnostics_trace(fit, plot_type = "ggplot", parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), formula_prefix = FALSE, transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
   temp_plot <- JAGS_diagnostics_trace(fit, plot_type = "ggplot", parameter = "mu_x_fac3o", transform_orthonormal = TRUE)
@@ -139,6 +153,12 @@ test_that("JAGS diagnostics work", {
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 2))
     JAGS_diagnostics_autocorrelation(fit, parameter = "omega")
+  })
+  expect_doppelganger("diagnostics-plot-autocorrelation-8", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+    par(mfrow = c(1, 2))
+    JAGS_diagnostics_autocorrelation(fit, parameter = "fac2i")
   })
 
   expect_doppelganger("diagnostics-ggplot-autocorrelation-1", JAGS_diagnostics_autocorrelation(fit, plot_type = "ggplot", parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), formula_prefix = FALSE, transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))

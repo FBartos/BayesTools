@@ -446,7 +446,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
     stop("'priors' must be a list of factor priors")
 
   # check the prior levels
-  levels <- unique(sapply(priors[sapply(priors, is.prior.factor)], function(p) attr(p, "levels")))
+  levels <- unique(sapply(priors[sapply(priors, is.prior.factor)], .get_prior_factor_levels))
   if(length(levels) != 1)
     stop("all factor priors must be of the same number of levels")
 
@@ -456,10 +456,11 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
       return(FALSE)
     }else if(is.prior.factor(p)){
       return(list(
-        "levels"      = attr(p, "levels"),
-        "level_names" = attr(p, "level_names"),
-        "interaction" = attr(p, "interaction"),
+        "levels"      = .get_prior_factor_levels(p),
+        "level_names" = .get_prior_factor_level_names(p),
+        "interaction" = .is_prior_interaction(p),
         "treatment"   = is.prior.dummy(p),
+        "independent" = is.prior.independent(p),
         "orthonormal" = is.prior.orthonormal(p)
       ))
     }else{
@@ -474,7 +475,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 
   if(priors_info[["treatment"]]){
 
-    if((levels - 1) == 1){
+    if(levels == 1){
 
       samples <- .mix_posteriors.simple(fits, priors, parameter, post_probs, seed, n_samples)
 
@@ -490,7 +491,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
         seed <- sample(666666, 1)
       }
 
-      samples <- lapply(1:(levels - 1), function(i) .mix_posteriors.simple(fits, priors, paste0(parameter, "[", i, "]"), post_probs, seed, n_samples))
+      samples <- lapply(1:levels, function(i) .mix_posteriors.simple(fits, priors, paste0(parameter, "[", i, "]"), post_probs, seed, n_samples))
 
       sample_ind <- attr(samples[[1]], "sample_ind")
       models_ind <- attr(samples[[1]], "models_ind")
@@ -507,11 +508,46 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
     attr(samples, "prior_list") <- priors
     class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
 
+  }else if(priors_info[["independent"]]){
+
+    if(levels == 1){
+
+      samples <- .mix_posteriors.simple(fits, priors, parameter, post_probs, seed, n_samples)
+
+      sample_ind <- attr(samples, "sample_ind")
+      models_ind <- attr(samples, "models_ind")
+
+      samples <- matrix(samples, ncol = 1)
+
+    }else{
+
+      # keep the same seed across levels
+      if(is.null(seed)){
+        seed <- sample(666666, 1)
+      }
+
+      samples <- lapply(1:levels, function(i) .mix_posteriors.simple(fits, priors, paste0(parameter, "[", i, "]"), post_probs, seed, n_samples))
+
+      sample_ind <- attr(samples[[1]], "sample_ind")
+      models_ind <- attr(samples[[1]], "models_ind")
+
+      samples <- do.call(cbind, samples)
+
+    }
+
+    rownames(samples) <- NULL
+    colnames(samples) <- paste0(parameter,"[",priors_info$level_names,"]")
+    attr(samples, "sample_ind") <- sample_ind
+    attr(samples, "models_ind") <- models_ind
+    attr(samples, "parameter")  <- parameter
+    attr(samples, "prior_list") <- priors
+    class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
+
   }else if(priors_info[["orthonormal"]]){
 
     for(i in seq_along(priors)){
       if(is.prior.factor(priors[[i]])){
-        priors[[i]]$parameters[["K"]] <- levels - 1
+        priors[[i]]$parameters[["K"]] <- levels
       }
     }
 
@@ -524,6 +560,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   attr(samples, "level_names") <- priors_info[["level_names"]]
   attr(samples, "interaction") <- priors_info[["interaction"]]
   attr(samples, "treatment")   <- priors_info[["treatment"]]
+  attr(samples, "independent") <- priors_info[["independent"]]
   attr(samples, "orthonormal") <- priors_info[["orthonormal"]]
 
   return(samples)

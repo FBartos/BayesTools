@@ -1,3 +1,7 @@
+## version 0.2.14
+### Features
+- adding `contrast = "independent"` to the `prior_factor` function which generates independent identical prior distributions for each factor level
+
 ## version 0.2.13
 ### Features
 - `runjags_estimates_table()` function can now handle factor transformations 

@@ -171,6 +171,30 @@
   }
 }
 
+.get_prior_factor_levels      <- function(prior){
+  if(is.prior.independent(prior)){
+    return(attr(prior, "levels"))
+  }else if(is.prior.dummy(prior)){
+    return(attr(prior, "levels") - 1)
+  }else if(is.prior.orthonormal(prior)){
+    return(attr(prior, "levels") - 1)
+  }
+}
+.get_prior_factor_level_names <- function(prior){
+  if(is.null(attr(prior, "level_names"))){
+    return(1:.get_prior_factor_levels(prior))
+  }else{
+    return(attr(prior, "level_names"))
+  }
+}
+.is_prior_interaction         <- function(prior){
+  if(is.null(attr(prior, "interaction"))){
+    return(FALSE)
+  }else{
+    return(attr(prior, "interaction"))
+  }
+}
+
 #' @title Reports whether x is a a prior object
 #'
 #' @description Reports whether x is a a prior object. Note that
@@ -208,6 +232,7 @@
 #' @export is.prior.factor
 #' @export is.prior.orthonormal
 #' @export is.prior.dummy
+#' @export is.prior.independent
 #' @export is.prior.spike_and_slab
 #' @name is.prior
 NULL
@@ -259,6 +284,10 @@ is.prior.orthonormal     <- function(x){
 #' @rdname is.prior
 is.prior.dummy           <- function(x){
   inherits(x, "prior.dummy")
+}
+#' @rdname is.prior
+is.prior.independent     <- function(x){
+  inherits(x, "prior.independent")
 }
 #' @rdname is.prior
 is.prior.spike_and_slab  <- function(x){

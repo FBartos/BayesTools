@@ -114,15 +114,19 @@ test_that("JAGS model functions work (factor)", {
 
   model_syntax <- "model{}"
   priors       <- list(
-    p1  = prior_factor("mnorm", list(mean = 0, sd = 1),    contrast = "orthonormal"),
-    p2  = prior_factor("beta",  list(alpha = 1, beta = 1), contrast = "dummy"),
-    p3  = prior_factor("beta",  list(alpha = 2, beta = 2), contrast = "dummy")
+    p1  = prior_factor("mnorm",   list(mean = 0, sd = 1),    contrast = "orthonormal"),
+    p2  = prior_factor("beta",    list(alpha = 1, beta = 1), contrast = "dummy"),
+    p3  = prior_factor("beta",    list(alpha = 2, beta = 2), contrast = "dummy"),
+    p4  = prior_factor("gamma",   list(shape = 2, rate = 3), contrast = "independent"),
+    p5  = prior_factor("uniform", list(a = -0.5, b = 1.5),   contrast = "independent")
   )
 
   # add levels
   attr(priors[[1]], "levels") <- 3
   attr(priors[[2]], "levels") <- 2
   attr(priors[[3]], "levels") <- 3
+  attr(priors[[4]], "levels") <- 1
+  attr(priors[[5]], "levels") <- 3
 
 
   model_syntax <- JAGS_add_priors(model_syntax, priors)
@@ -134,7 +138,7 @@ test_that("JAGS model functions work (factor)", {
   samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 5000, quiet = TRUE, progress.bar = "none")
   samples <- do.call(rbind, samples)
 
-  expect_equal(colnames(samples), c("p1[1]", "p1[2]", "p2", "p3[1]", "p3[2]"))
+  expect_equal(colnames(samples), c("p1[1]", "p1[2]", "p2", "p3[1]", "p3[2]", "p4", "p5[1]", "p5[2]", "p5[3]"))
 
   expect_doppelganger("JAGS-model-prior-factor-1", function(){
 
@@ -166,6 +170,28 @@ test_that("JAGS model functions work (factor)", {
 
     plot(samples[,"p3[1]"], samples[,"p3[2]"], pch = 19, xlim = c(0, 1), ylim = c(0, 1), asp = 1,
          xlab = "X1", ylab = "X2", main = print(priors[[3]], plot = TRUE), cex = .25)
+  })
+
+  expect_doppelganger("JAGS-model-prior-factor-4", function(){
+
+    hist(samples[,"p4"], breaks = 20, main = print(priors[[4]], plot = TRUE), freq = FALSE)
+    lines(prior("gamma", list(shape = 2, rate = 3)))
+  })
+
+  expect_doppelganger("JAGS-model-prior-factor-5", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfcol = c(1, 3))
+
+    hist(samples[,"p5[1]"], breaks = 50, main = print(priors[[5]], plot = TRUE), freq = FALSE)
+    lines(prior("uniform", list(a = -0.5, b = 1.5)))
+
+    hist(samples[,"p5[2]"], breaks = 50, main = print(priors[[5]], plot = TRUE), freq = FALSE)
+    lines(prior("uniform", list(a = -0.5, b = 1.5)))
+
+    hist(samples[,"p5[3]"], breaks = 50, main = print(priors[[5]], plot = TRUE), freq = FALSE)
+    lines(prior("uniform", list(a = -0.5, b = 1.5)))
   })
 
 })

@@ -54,10 +54,12 @@ test_that("Prior print function works", {
   p14 <- prior_factor(distribution = "mnormal", contrast = "orthonormal", parameters = list(0, 1))
   p15 <- prior_factor(distribution = "normal", contrast = "dummy", parameters = list(mean = 0, sd = 1))
   p16 <- prior_factor(distribution = "beta",   contrast = "dummy", parameters = list(alpha = 1, beta = 1))
+  p17 <- prior_factor(distribution = "beta",   contrast = "independent", parameters = list(alpha = 1, beta = 1))
 
   expect_equal(utils::capture.output(print(p14)),  "orthonormal contrast: mNormal(0, 1)")
   expect_equal(utils::capture.output(print(p15)),  "treatment contrast: Normal(0, 1)")
   expect_equal(utils::capture.output(print(p16)),  "treatment contrast: Beta(1, 1)")
+  expect_equal(utils::capture.output(print(p17)),  "independent contrast: Beta(1, 1)")
 
   # check plot names
   empty_plot <- function(){

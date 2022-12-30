@@ -405,7 +405,7 @@ density.prior <- function(x,
   if(force_samples | .density.prior_need_samples(x)){
 
     if(is.na(x$parameters[["K"]]) && !is.null(attr(x, "levels"))){
-      x$parameters[["K"]] <- attr(prior, "levels") - 1
+      x$parameters[["K"]] <- .get_prior_factor_levels(prior)
     }else if(is.na(x$parameters[["K"]])){
       x$parameters[["K"]] <- 1
       warning("number of factor levels / dimensionality of the prior distribution was not specified -- assuming two factor levels")

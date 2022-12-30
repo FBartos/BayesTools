@@ -269,6 +269,9 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
 #'   \item{\code{"treatment"}}{for contrasts using the first level as a comparison
 #'   group and setting equal prior distribution on differences between the individual
 #'   factor levels and the comparison level.}
+#'   \item{\code{"independent"}}{for contrasts specifying dependent prior distribution
+#'   for each factor level (note that this leads to an overparameterized model if the
+#'   intercept is included).}
 #' }
 #'
 #'
@@ -285,7 +288,7 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
 prior_factor <- function(distribution, parameters, truncation = list(lower = -Inf, upper = Inf), prior_weights = 1, contrast = "orthonormal"){
 
   # general input check (detailed checks are performed withing the constructors)
-  check_char(contrast, "contrast", allow_values = c("orthonormal", "treatment", "dummy"))
+  check_char(contrast, "contrast", allow_values = c("orthonormal", "treatment", "dummy", "independent"))
 
   # check its compatibility with the contrasts
   if(contrast == "orthonormal"){
@@ -296,7 +299,6 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
     }else{
       parameters[["K"]] <- NA
     }
-
 
     # generate the prior object
     output <- prior(distribution = distribution, parameters = parameters, truncation = truncation, prior_weights = prior_weights)
@@ -319,6 +321,18 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
     output <- prior(distribution = distribution, parameters = parameters, truncation = truncation, prior_weights = prior_weights)
 
     class(output) <- c(class(output), "prior.factor", "prior.dummy")
+
+  }else if(contrast  == "independent"){
+
+    # generate the prior object
+    output <- prior(distribution = distribution, parameters = parameters, truncation = truncation, prior_weights = prior_weights)
+
+    if(!is.prior.simple(output))
+      stop("'independent' contrasts require univariate prior distribution.")
+
+    output <- prior(distribution = distribution, parameters = parameters, truncation = truncation, prior_weights = prior_weights)
+
+    class(output) <- c(class(output), "prior.factor", "prior.independent")
   }
 
   return(output)
@@ -943,7 +957,7 @@ rng.prior   <- function(x, n, ...){
     }
 
     if(is.na(prior$parameters[["K"]]) && !is.null(attr(prior, "levels"))){
-      prior$parameters[["K"]] <- attr(prior, "levels") - 1
+      prior$parameters[["K"]] <- .get_prior_factor_levels(prior)
     }else if(is.na(prior$parameters[["K"]])){
       prior$parameters[["K"]] <- 1
       warning("number of factor levels / dimensionality of the prior distribution was not specified -- assuming two factor levels")
@@ -1354,7 +1368,7 @@ mcdf.prior   <- function(x, q, ...){
     }
 
     if(is.na(prior$parameters[["K"]]) && !is.null(attr(prior, "levels"))){
-      prior$parameters[["K"]] <- attr(prior, "levels") - 1
+      prior$parameters[["K"]] <- .get_prior_factor_levels(prior)
     }else if(is.na(prior$parameters[["K"]])){
       prior$parameters[["K"]] <- 1
       warning("number of factor levels / dimensionality of the prior distribution was not specified -- assuming two factor levels")
@@ -1411,7 +1425,7 @@ mccdf.prior  <- function(x, q, ...){
     }
 
     if(is.na(prior$parameters[["K"]]) && !is.null(attr(prior, "levels"))){
-      prior$parameters[["K"]] <- attr(prior, "levels") - 1
+      prior$parameters[["K"]] <- .get_prior_factor_levels(prior)
     }else if(is.na(prior$parameters[["K"]])){
       prior$parameters[["K"]] <- 1
       warning("number of factor levels / dimensionality of the prior distribution was not specified -- assuming two factor levels")
@@ -1468,7 +1482,7 @@ mlpdf.prior  <- function(x, y, ...){
     }
 
     if(is.na(prior$parameters[["K"]]) && !is.null(attr(prior, "levels"))){
-      prior$parameters[["K"]] <- attr(prior, "levels") - 1
+      prior$parameters[["K"]] <- .get_prior_factor_levels(prior)
     }else if(is.na(prior$parameters[["K"]])){
       prior$parameters[["K"]] <- 1
       warning("number of factor levels / dimensionality of the prior distribution was not specified -- assuming two factor levels")
@@ -1538,7 +1552,7 @@ mquant.prior <- function(x, p, ...){
     }
 
     if(is.na(prior$parameters[["K"]]) && !is.null(attr(prior, "levels"))){
-      prior$parameters[["K"]] <- attr(prior, "levels") - 1
+      prior$parameters[["K"]] <- .get_prior_factor_levels(prior)
     }else if(is.na(prior$parameters[["K"]])){
       prior$parameters[["K"]] <- 1
       warning("number of factor levels / dimensionality of the prior distribution was not specified -- assuming two factor levels")
@@ -1878,7 +1892,7 @@ var.prior   <- function(x, ...){
 
 
       if(is.na(x$parameters[["K"]]) && !is.null(attr(x, "levels"))){
-        x$parameters[["K"]] <- attr(x, "levels") - 1
+        x$parameters[["K"]] <- .get_prior_factor_levels(x)
       }else if(is.na(x$parameters[["K"]])){
         x$parameters[["K"]] <- 1
         warning("number of factor levels / dimensionality of the prior distribution was not specified -- assuming two factor levels")

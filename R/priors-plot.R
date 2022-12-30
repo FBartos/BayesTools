@@ -1045,10 +1045,10 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     data    = data.frame(
       x = plot_data$x,
       y = plot_data$y),
-    mapping = ggplot2::aes_string(
-      x = "x",
-      y = "y"),
-    size = lwd, linetype = lty, color = col)
+    mapping = ggplot2::aes(
+      x = .data[["x"]],
+      y = .data[["y"]]),
+    linewidth = lwd, linetype = lty, color = col)
 
   return(geom)
 }
@@ -1064,9 +1064,9 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     data    = data.frame(
       x = plot_data$x,
       y = plot_data$y),
-    mapping = ggplot2::aes_string(
-      x      = "x",
-      weight = "y"),
+    mapping = ggplot2::aes(
+      x      = .data[["x"]],
+      weight = .data[["y"]]),
     size = lwd, linetype = lty, color = col, fill = col, width = width)
 
   return(geom)
@@ -1085,13 +1085,13 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
         xend = unique(plot_data$x[plot_data$y != 0]),
         y    = 0,
         yend = plot_data$y[plot_data$y != 0] * scale_y2),
-      mapping = ggplot2::aes_string(
-        x    = "x",
-        xend = "xend",
-        y    = "y",
-        yend = "yend"),
-      arrow   = ggplot2::arrow(length = ggplot2::unit(0.5, "cm")),
-      size = 2*lwd, linetype = lty, color = col)
+      mapping = ggplot2::aes(
+        x    = .data[["x"]],
+        xend = .data[["xend"]],
+        y    = .data[["y"]],
+        yend = .data[["yend"]]),
+      arrow     = ggplot2::arrow(length = ggplot2::unit(0.5, "cm")),
+      linewidth = 2*lwd, linetype = lty, color = col)
   }else{
     geom <- NULL
   }
@@ -1125,19 +1125,19 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
       data    = data.frame(
         x = c(x_at,  rev(x_at)),
         y = c(x_lCI, rev(x_uCI))),
-      mapping = ggplot2::aes_string(
-        x = "x",
-        y = "y"),
+      mapping = ggplot2::aes(
+        x = .data[["x"]],
+        y = .data[["y"]]),
       fill    = col.fill
     ),
     ggplot2::geom_line(
       data    = data.frame(
         x = x_at,
         y = x_mean),
-      mapping = ggplot2::aes_string(
-        x = "x",
-        y = "y"),
-      size = lwd, linetype = lty, color = col)
+      mapping = ggplot2::aes(
+        x = .data[["x"]],
+        y = .data[["y"]]),
+      linewidth = lwd, linetype = lty, color = col)
   )
 
   return(geom)
@@ -1156,19 +1156,19 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
       data    = data.frame(
         x = c(plot_data$x,  rev(plot_data$x)),
         y = c(plot_data$y_lCI, rev(plot_data$y_uCI))),
-      mapping = ggplot2::aes_string(
-        x = "x",
-        y = "y"),
+      mapping = ggplot2::aes(
+        x = .data[["x"]],
+        y = .data[["y"]]),
       fill    = col.fill
     ),
     ggplot2::geom_line(
       data    = data.frame(
         x = plot_data$x,
         y = plot_data$y),
-      mapping = ggplot2::aes_string(
-        x = "x",
-        y = "y"),
-      size = lwd, linetype = lty, color = col)
+      mapping = ggplot2::aes(
+        x = .data[["x"]],
+        y = .data[["y"]]),
+      linewidth = lwd, linetype = lty, color = col)
   )
 
   return(geom)
@@ -1184,10 +1184,10 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     data    = data.frame(
       x = plot_data$x,
       y = plot_data$y),
-    mapping = ggplot2::aes_string(
-      x = "x",
-      y = "y"),
-    size = lwd, linetype = lty, color = col)
+    mapping = ggplot2::aes(
+      x = .data[["x"]],
+      y = .data[["y"]]),
+    linewidth = lwd, linetype = lty, color = col)
 
   return(geom)
 }
@@ -1209,13 +1209,13 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   geom <- list(
     ggplot2::geom_line(
       data    = plot_data,
-      mapping = ggplot2::aes_string(
-        x        = "x",
-        y        = "y",
-        color    = "level",
-        linetype = "level",
-        group    = "level"),
-      size = 1, show.legend = dots[["legend"]]),
+      mapping = ggplot2::aes(
+        x        = .data[["x"]],
+        y        = .data[["y"]],
+        color    = .data[["level"]],
+        linetype = .data[["level"]],
+        group    = .data[["level"]]),
+      linewidth = 1, show.legend = dots[["legend"]]),
     ggplot2::scale_linetype_manual(name = "level", values = lty),
     ggplot2::scale_color_manual(name = "level", values = col))
 

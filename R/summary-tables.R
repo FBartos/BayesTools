@@ -624,10 +624,10 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 
       # prepare parameter names
       if(is.prior.factor(prior_list[[par]][["variable"]])){
-        if((attr(prior_list[[par]][["variable"]], "levels") - 1) == 1){
+        if(.get_prior_factor_levels(prior_list[[par]][["variable"]]) == 1){
           par_names <- par
         }else{
-          par_names <- paste0(par, "[", 1:(attr(prior_list[[par]][["variable"]], "levels") - 1), "]")
+          par_names <- paste0(par, "[", 1:.get_prior_factor_levels(prior_list[[par]][["variable"]]), "]")
         }
       }else{
         par_names <- par
@@ -715,7 +715,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       par_names <- .JAGS_prior_factor_names(par, prior_list[[par]])
 
       orthonormal_samples <- model_samples[,par_names,drop = FALSE]
-      transformed_samples <- orthonormal_samples %*% t(contr.orthonormal(1:attr(prior_list[[par]], "levels")))
+      transformed_samples <- orthonormal_samples %*% t(contr.orthonormal(1:(.get_prior_factor_levels(prior_list[[par]])+1)))
 
       # apply transformation if specified
       if(!is.null(transformations[par])){
@@ -725,14 +725,14 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       }
 
 
-      if(attr(prior_list[[par]], "interaction")){
-        if(length(attr(prior_list[[par]], "level_names")) == 1){
-          transformed_names <- paste0(par, " [dif: ", attr(prior_list[[par]], "level_names")[[1]],"]")
+      if(.is_prior_interaction(prior_list[[par]])){
+        if(length(.get_prior_factor_level_names(prior_list[[par]])) == 1){
+          transformed_names <- paste0(par, " [dif: ", .get_prior_factor_level_names(prior_list[[par]])[[1]],"]")
         }else{
           stop("orthonormal de-transformation for interaction of multiple factors is not implemented.")
         }
       }else{
-        transformed_names <- paste0(par, " [dif: ", attr(prior_list[[par]], "level_names"),"]")
+        transformed_names <- paste0(par, " [dif: ", .get_prior_factor_level_names(prior_list[[par]]),"]")
       }
       colnames(transformed_samples) <- transformed_names
 
@@ -794,17 +794,35 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   # rename treatment factor levels
   if(any(sapply(prior_list, is.prior.dummy))){
     for(par in names(prior_list)[sapply(prior_list, is.prior.dummy)]){
-      if(!attr(prior_list[[par]], "interaction")){
-        if(attr(prior_list[[par]], "levels") == 2){
+      if(!.is_prior_interaction(prior_list[[par]])){
+        if(.get_prior_factor_levels(prior_list[[par]]) == 1){
           rownames(runjags_summary)[rownames(runjags_summary) == par] <-
-            paste0(par,"[",attr(prior_list[[par]], "level_names")[-1], "]")
+            paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]])[-1], "]")
         }else{
-          rownames(runjags_summary)[rownames(runjags_summary) %in% paste0(par,"[",1:(attr(prior_list[[par]], "levels")-1),"]")] <-
-            paste0(par,"[",attr(prior_list[[par]], "level_names")[-1], "]")
+          rownames(runjags_summary)[rownames(runjags_summary) %in% paste0(par,"[",1:.get_prior_factor_levels(prior_list[[par]]),"]")] <-
+            paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]])[-1], "]")
         }
       }else if(length(attr(prior_list[[par]], "levels")) == 1){
-        rownames(runjags_summary)[rownames(runjags_summary) %in% paste0(par,"[",1:(attr(prior_list[[par]], "levels")-1),"]")] <-
-          paste0(par,"[",attr(prior_list[[par]], "level_names")[[1]][-1], "]")
+        rownames(runjags_summary)[rownames(runjags_summary) %in% paste0(par,"[",1:.get_prior_factor_levels(prior_list[[par]]),"]")] <-
+          paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]])[[1]][-1], "]")
+      }
+    }
+  }
+
+  # rename independent factor levels
+  if(any(sapply(prior_list, is.prior.independent))){
+    for(par in names(prior_list)[sapply(prior_list, is.prior.independent)]){
+      if(!.is_prior_interaction(prior_list[[par]])){
+        if(.get_prior_factor_levels(prior_list[[par]]) == 1){
+          rownames(runjags_summary)[rownames(runjags_summary) == par] <-
+            paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]]), "]")
+        }else{
+          rownames(runjags_summary)[rownames(runjags_summary) %in% paste0(par,"[",1:.get_prior_factor_levels(prior_list[[par]]),"]")] <-
+            paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]]), "]")
+        }
+      }else if(length(attr(prior_list[[par]], "levels")) == 1){
+        rownames(runjags_summary)[rownames(runjags_summary) %in% paste0(par,"[",1:.get_prior_factor_levels(prior_list[[par]]),"]")] <-
+          paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]])[[1]], "]")
       }
     }
   }

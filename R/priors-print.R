@@ -137,6 +137,8 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
     out_prefix <- "treatment contrast: "
   }else if(is.prior.orthonormal(x)){
     out_prefix <- "orthonormal contrast: "
+  }else if(is.prior.independent(x)){
+    out_prefix <- "independent contrast: "
   }else{
     out_prefix <- NULL
   }
