@@ -667,6 +667,7 @@ test_that("Summary tables functions work (indepdent factors)",{
 
 test_that("Summary tables functions work (meandif factors)",{
 
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
   skip_on_cran()
 
   set.seed(2)

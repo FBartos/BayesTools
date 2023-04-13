@@ -268,6 +268,8 @@ test_that("Independent prior distribution works", {
 
 test_that("Meandif prior distribution works", {
 
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+
   p1   <- prior_factor("mnormal", list(mean = 0, sd = 0.25), contrast = "meandif")
   p1.5 <- p1.3 <- p1.2 <- p1
   p1.2$parameters$K <- 2
