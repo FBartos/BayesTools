@@ -21,7 +21,8 @@ This is an adjustment to the \code{contr.orthonormal} that ascertains that the p
 distributions on difference between the gran mean and factor level are identical independent
 of the number of factor levels (which does not hold for the orthonormal contrast). Furthermore,
 the contrast is re-scaled so the specified prior distribution exactly corresponds to the prior
-distribution on difference between each factor level and the grand mean.
+distribution on difference between each factor level and the grand mean -- this is approximately
+twice the scale of \code{contr.orthonormal}.
 }
 \examples{
 contr.meandif(c(1, 2))
