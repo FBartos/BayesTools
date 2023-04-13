@@ -495,6 +495,60 @@ test_that("prior plot functions (independent) work", {
 })
 
 
+test_that("prior plot functions (meandif) work", {
+
+  ### simple cases
+  prior_list       <- list(
+    p1 = prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "meandif")
+  )
+  prior_list$p1$parameters$K <- 3
+
+  expect_doppelganger("model-averaging-plot-prior-meandif-1", function(){
+    plot_prior_list(prior_list, col = "red", lwd = 4)
+    lines(prior_list$p1, col = "blue", lwd = 3, lty = 2)
+  })
+  expect_doppelganger("model-averaging-plot-prior-meandif-2", {
+    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4) +
+      geom_prior(prior_list$p1, col = "blue", lwd = 3, lty = 2)
+  })
+
+  # spike & slab mixture
+  prior_list       <- list(
+    p1 = prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "meandif"),
+    p2 = prior("spike", list(0))
+  )
+  prior_list$p1$parameters$K <- 3
+
+  expect_doppelganger("model-averaging-plot-prior-meandif-3", function(){
+    plot_prior_list(prior_list, col = "red", lwd = 4)
+  })
+
+  expect_doppelganger("model-averaging-plot-prior-meandif-4", {
+    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4)
+  })
+
+
+  ### mixtures
+  prior_list       <- list(
+    p1 = prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "meandif"),
+    p2 = prior_factor("mcauchy", list(location = 0, scale = 1), contrast = "meandif"),
+    p3 = prior("spike", list(0))
+  )
+  prior_list$p1$parameters$K <- 3
+  prior_list$p2$parameters$K <- 3
+
+  expect_doppelganger("model-averaging-plot-prior-meandif-5", function(){
+    plot_prior_list(prior_list, col = "red", lwd = 4)
+    lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2)
+  })
+  expect_doppelganger("model-averaging-plot-prior-meandif-6", function(){
+    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 2) +
+      geom_prior_list(prior_list, col = "blue", lwd = 1, lty = 2)
+  })
+
+})
+
+
 test_that("posterior plot functions (simple) work", {
 
   set.seed(1)
@@ -1073,6 +1127,120 @@ test_that("posterior plot functions (independent) work", {
 
 })
 
+
+test_that("posterior plot functions (meandif) work", {
+
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_on_cran()
+
+  set.seed(1)
+
+  data_formula <- data.frame(
+    x_fac3md = factor(rep(c("A", "B", "C"), 40), levels = c("A", "B", "C"))
+  )
+  data <- list(
+    y = rnorm(120, .4  + ifelse(data_formula$x_fac3md == "A", 0.0, ifelse(data_formula$x_fac3md == "B", -0.5, 0.5)), 1),
+    N = 120
+  )
+
+  # create model with mix of a formula and free parameters ---
+  formula_list0 <- list(mu = ~ 1)
+  formula_list1 <- list(mu = ~ x_fac3md)
+
+  formula_prior_list0 <- list(
+    mu    = list(
+      "intercept"       = prior("normal", list(0, 5))
+    )
+  )
+  formula_prior_list1 <- list(
+    mu    = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_fac3md"         = prior_factor("mnormal", contrast = "meandif", list(0, 0.5))
+    )
+  )
+
+  prior_list        <- list(sigma = prior("lognormal", list(0, 1)))
+  formula_data_list <- list(mu = data_formula)
+
+  model_syntax <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  log_posterior <- function(parameters, data){
+    sum(stats::dnorm(data$y, parameters[["mu"]], parameters[["sigma"]], log = TRUE))
+  }
+
+  fit0 <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list0, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0, seed = 1)
+  fit1 <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1, seed = 2)
+
+  marglik0 <- JAGS_bridgesampling(
+    fit0, log_posterior = log_posterior, data = data, prior_list = prior_list,
+    formula_list = formula_list0, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0)
+  marglik1 <- JAGS_bridgesampling(
+    fit1, log_posterior = log_posterior, data = data, prior_list = prior_list,
+    formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1)
+
+  # mix posteriors
+  models <- list(
+    list(fit = fit0, marglik = marglik0, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, prior_weights = 1)
+  )
+
+  mixed_posteriors <- mix_posteriors(
+    model_list   = models,
+    parameters   = c("mu_intercept", "mu_x_fac3md"),
+    is_null_list = list(
+      "mu_intercept"  = c(TRUE,  TRUE),
+      "mu_x_fac3md"    = c(FALSE, TRUE)
+    ),
+    seed = 1, n_samples = 10000)
+
+  expect_doppelganger("model-averaging-plot-posterior-md-1", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors, "mu_x_fac3md")
+  })
+  expect_doppelganger("model-averaging-plot-posterior-md-2", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors, "mu_x_fac3md", col = c("red", "green", "blue"))
+  })
+  expect_doppelganger("model-averaging-plot-posterior-md-3", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors, "mu_x_fac3md", lty = c(2, 3, 4), col = "blue", lwd = 2)
+  })
+  expect_doppelganger("model-averaging-plot-posterior-md-4", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors, "mu_x_fac3md", legend = FALSE)
+  })
+  expect_doppelganger("model-averaging-plot-posterior-md-5", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors, "mu_x_fac3md", col = c("red", "green", "blue"), dots_prior = list(col = "grey"), prior = TRUE)
+  })
+
+  expect_doppelganger("model-averaging-ggplot-posterior-md-1", plot_posterior(mixed_posteriors, "mu_x_fac3md", plot_type = "ggplot"))
+  expect_doppelganger("model-averaging-ggplot-posterior-md-2", plot_posterior(mixed_posteriors, "mu_x_fac3md", col = c("red", "green", "blue"), plot_type = "ggplot"))
+  expect_doppelganger("model-averaging-ggplot-posterior-md-3", plot_posterior(mixed_posteriors, "mu_x_fac3md", lty = c(2, 3, 4), col = "blue", lwd = 2, plot_type = "ggplot"))
+  expect_doppelganger("model-averaging-ggplot-posterior-md-4", plot_posterior(mixed_posteriors, "mu_x_fac3md", legend = FALSE, plot_type = "ggplot"))
+  expect_doppelganger("model-averaging-ggplot-posterior-md-5", plot_posterior(mixed_posteriors, "mu_x_fac3md", col = c("red", "green", "blue"), prior = TRUE, plot_type = "ggplot"))
+
+})
 
 test_that("models plot functions work", {
 

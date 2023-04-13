@@ -27,9 +27,12 @@
 #' shortened. Defaults to \code{FALSE}.
 #' @param remove_spike_0 whether prior distributions equal to spike
 #' at 0 should be removed from the \code{prior_list}
-#' @param transform_orthonormal whether factors with orthonormal prior
-#' distributions should be transformed to differences from the grand
-#' mean
+#' @param transform_factors whether factors with orthonormal/meandif
+#' prior distribution should be transformed to differences from the
+#' grand mean
+#' @param transform_orthonormal (to be depreciated) whether factors
+#' with orthonormal prior distributions should be transformed to
+#' differences from the grand mean
 #' @param title title to be added to the table
 #' @param footnotes footnotes to be added to the table
 #' @param warnings warnings to be added to the table
@@ -56,7 +59,7 @@
 NULL
 
 #' @rdname BayesTools_ensemble_tables
-ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95), title = NULL, footnotes = NULL, warnings = NULL, transform_orthonormal = FALSE, formula_prefix = TRUE){
+ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95), title = NULL, footnotes = NULL, warnings = NULL, transform_factors = FALSE, transform_orthonormal = FALSE, formula_prefix = TRUE){
 
   # check input
   check_char(parameters, "parameters", check_length = 0)
@@ -65,12 +68,17 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95)
   check_char(title, "title", allow_NULL = TRUE)
   check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
   check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
+  check_bool(transform_factors, "transform_factors")
   check_bool(transform_orthonormal, "transform_orthonormal")
   check_bool(formula_prefix, "formula_prefix")
 
-  # transform orthonormal posterior
-  if(transform_orthonormal){
-    samples <- transform_orthonormal_samples(samples)
+  # depreciate
+  transform_factors <- .depreciate.transform_orthonormal(transform_orthonormal, transform_factors)
+
+
+  # transform meandif/orthonormal posterior
+  if(transform_factors){
+    samples <- transform_factor_samples(samples)
   }
 
 
@@ -534,7 +542,7 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
 }
 
 #' @rdname BayesTools_model_tables
-runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, footnotes = NULL, warnings = NULL, conditional = FALSE, remove_spike_0 = TRUE, transform_orthonormal = FALSE, formula_prefix = TRUE, remove_inclusion = FALSE, remove_parameters = NULL){
+runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, footnotes = NULL, warnings = NULL, conditional = FALSE, remove_spike_0 = TRUE, transform_factors = FALSE, transform_orthonormal = FALSE, formula_prefix = TRUE, remove_inclusion = FALSE, remove_parameters = NULL){
 
   .check_runjags()
   # most of the code is shared with .diagnostics_plot_data function (keep them in sync on update)
@@ -556,9 +564,13 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
   check_bool(remove_spike_0, "remove_spike_0")
   check_bool(conditional, "conditional")
+  check_bool(transform_factors, "transform_factors")
   check_bool(transform_orthonormal, "transform_orthonormal")
   check_bool(formula_prefix, "formula_prefix")
   check_char(remove_parameters, "remove_parameters", allow_NULL = TRUE, check_length = 0)
+
+  # depreciate
+  transform_factors <- .depreciate.transform_orthonormal(transform_orthonormal, transform_factors)
 
   # obtain model information
   invisible(utils::capture.output(runjags_summary <- suppressWarnings(summary(fit, silent.jags = TRUE))))
@@ -686,7 +698,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
         runjags_summary[par, "MCerr"]   <- do.call(transformations[[par]][["fun"]], c(list(runjags_summary[par, "MCerr"]), transformations[[par]][["arg"]]))
         runjags_summary[par, "MC.ofSD"] <- 100 * runjags_summary[par, "MCerr"] / runjags_summary[par, "SD"]
 
-      }else if((!transform_orthonormal && is.prior.orthonormal(prior_list[[par]])) || is.prior.dummy(prior_list[[par]])){
+      }else if((!transform_factors && (is.prior.orthonormal(prior_list[[par]]) |  is.prior.meandif(prior_list[[par]]))) || is.prior.dummy(prior_list[[par]])){
 
         # dummy priors
         par_names <-  .JAGS_prior_factor_names(par, prior_list[[par]])
@@ -708,14 +720,19 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   }
 
   # transform orthonormal factors to differences from mean
-  if(transform_orthonormal & any(sapply(prior_list, is.prior.orthonormal))){
-    message("The transformation was applied to the differences from the mean. Note that non-linear transformations do not map from the orthonormal contrasts to the differences from the mean.")
-    for(par in names(prior_list)[sapply(prior_list, is.prior.orthonormal)]){
+  if(transform_factors & any(sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x)))){
+    message("The transformation was applied to the differences from the mean. Note that non-linear transformations do not map from the orthonormal/meandif contrasts to the differences from the mean.")
+    for(par in names(prior_list)[sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x))]){
 
       par_names <- .JAGS_prior_factor_names(par, prior_list[[par]])
 
-      orthonormal_samples <- model_samples[,par_names,drop = FALSE]
-      transformed_samples <- orthonormal_samples %*% t(contr.orthonormal(1:(.get_prior_factor_levels(prior_list[[par]])+1)))
+      original_samples <- model_samples[,par_names,drop = FALSE]
+
+      if(is.prior.orthonormal(prior_list[[par]])){
+        transformed_samples <- original_samples %*% t(contr.orthonormal(1:(.get_prior_factor_levels(prior_list[[par]])+1)))
+      }else if(is.prior.meandif(prior_list[[par]])){
+        transformed_samples <- original_samples %*% t(contr.meandif(1:(.get_prior_factor_levels(prior_list[[par]])+1)))
+      }
 
       # apply transformation if specified
       if(!is.null(transformations[par])){
@@ -729,7 +746,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
         if(length(.get_prior_factor_level_names(prior_list[[par]])) == 1){
           transformed_names <- paste0(par, " [dif: ", .get_prior_factor_level_names(prior_list[[par]])[[1]],"]")
         }else{
-          stop("orthonormal de-transformation for interaction of multiple factors is not implemented.")
+          stop("orthonormal/meandif de-transformation for interaction of multiple factors is not implemented.")
         }
       }else{
         transformed_names <- paste0(par, " [dif: ", .get_prior_factor_level_names(prior_list[[par]]),"]")

@@ -134,8 +134,8 @@ plot.prior <- function(x, plot_type = "base",
 
 
   # plot orthonormal priors
-  if(is.prior.orthonormal(x)){
-    plots <- .plot.prior.orthonormal(x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
+  if(is.prior.orthonormal(x) | is.prior.meandif(x)){
+    plots <- .plot.prior.orthonormal_or_meandif(x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
     if(plot_type == "ggplot"){
       return(plots)
     }else{
@@ -410,7 +410,7 @@ plot.prior <- function(x, plot_type = "base",
     return(plot)
   }
 }
-.plot.prior.orthonormal    <- function(x, plot_type, plot_data, par_name = NULL, ...){
+.plot.prior.orthonormal_or_meandif <- function(x, plot_type, plot_data, par_name = NULL, ...){
 
   # get default plot settings
   dots      <- list(...)
@@ -436,13 +436,13 @@ plot.prior <- function(x, plot_type = "base",
   if(plot_type == "base"){
 
     .plot.prior_empty("simple", dots)
-    .lines.prior.orthonormal(plot_data, ...)
+    .lines.prior.orthonormal_or_meandif(plot_data, ...)
     plot <- NULL
 
   }else if(plot_type == "ggplot"){
 
     plot <- .ggplot.prior_empty("simple", dots)
-    plot <- plot + .geom_prior.orthonormal(plot_data, ...)
+    plot <- plot + .geom_prior.orthonormal_or_meandif(plot_data, ...)
 
   }
 
@@ -775,8 +775,8 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   }
 
   # plot orthonormal
-  if(is.prior.orthonormal(x)){
-    .lines.prior.orthonormal(plot_data, ...)
+  if(is.prior.orthonormal(x) | is.prior.meandif(x)){
+    .lines.prior.orthonormal_or_meandif(plot_data, ...)
     return(invisible())
   }
 
@@ -870,8 +870,8 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 
 
   # plot orthonormal prior
-  if(is.prior.orthonormal(x)){
-    geom <- .geom_prior.orthonormal(plot_data, ...)
+  if(is.prior.orthonormal(x) | is.prior.meandif(x)){
+    geom <- .geom_prior.orthonormal_or_meandif(plot_data, ...)
     return(geom)
   }
 
@@ -1002,7 +1002,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 
   return(invisible())
 }
-.lines.prior.orthonormal     <- function(plot_data, ...){
+.lines.prior.orthonormal_or_meandif <- function(plot_data, ...){
 
   dots      <- list(...)
   col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
@@ -1173,7 +1173,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 
   return(geom)
 }
-.geom_prior.orthonormal      <- function(plot_data, ...){
+.geom_prior.orthonormal_or_meandif <- function(plot_data, ...){
 
   dots      <- list(...)
   col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]

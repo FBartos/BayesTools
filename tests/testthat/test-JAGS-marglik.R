@@ -77,7 +77,8 @@ test_that("JAGS model functions work (factor)", {
     p2  = prior_factor("beta",  list(alpha = 1, beta = 1), contrast = "dummy"),
     p3  = prior_factor("beta",  list(alpha = 2, beta = 2), contrast = "dummy"),
     p4  = prior_factor("gamma",   list(shape = 2, rate = 3), contrast = "independent"),
-    p5  = prior_factor("uniform", list(a = -0.5, b = 1.5),   contrast = "independent")
+    p5  = prior_factor("uniform", list(a = -0.5, b = 1.5),   contrast = "independent"),
+    p6  = prior_factor("mnorm", list(mean = 0, sd = 1),     contrast = "meandif")
   )
 
   # add levels
@@ -86,6 +87,7 @@ test_that("JAGS model functions work (factor)", {
   attr(all_priors[[3]], "levels") <- 3
   attr(all_priors[[4]], "levels") <- 1
   attr(all_priors[[5]], "levels") <- 3
+  attr(all_priors[[6]], "levels") <- 3
   log_posterior <- function(parameters, data){
     return(0)
   }

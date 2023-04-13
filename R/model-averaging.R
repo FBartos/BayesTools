@@ -461,7 +461,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
         "interaction" = .is_prior_interaction(p),
         "treatment"   = is.prior.dummy(p),
         "independent" = is.prior.independent(p),
-        "orthonormal" = is.prior.orthonormal(p)
+        "orthonormal" = is.prior.orthonormal(p),
+        "meandif"     = is.prior.meandif(p)
       ))
     }else{
       stop("unsupported prior type")
@@ -543,7 +544,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
     attr(samples, "prior_list") <- priors
     class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
 
-  }else if(priors_info[["orthonormal"]]){
+  }else if(priors_info[["orthonormal"]] | priors_info[["meandif"]]){
 
     for(i in seq_along(priors)){
       if(is.prior.factor(priors[[i]])){
@@ -562,6 +563,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   attr(samples, "treatment")   <- priors_info[["treatment"]]
   attr(samples, "independent") <- priors_info[["independent"]]
   attr(samples, "orthonormal") <- priors_info[["orthonormal"]]
+  attr(samples, "meandif")     <- priors_info[["meandif"]]
 
   return(samples)
 }

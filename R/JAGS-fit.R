@@ -527,7 +527,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
       "  ", .JAGS_prior.simple(prior, paste0(parameter_name, "[i]")),
       "}\n")
 
-  }else if(is.prior.orthonormal(prior)){
+  }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
 
     prior$parameters[["K"]] <- .get_prior_factor_levels(prior)
 
@@ -798,12 +798,12 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
     init <- list()
     init[[parameter_name]] <- rng(prior, .get_prior_factor_levels(prior))
 
-  }else if(is.prior.orthonormal(prior)){
+  }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
 
     prior$parameters[["K"]] <- .get_prior_factor_levels(prior)
 
-    # remove the orthonormal class, otherwise samples from the transformed distributions are generated
-    class(prior) <- class(prior)[!class(prior) %in% "prior.orthonormal"]
+    # remove the orthonormal/meandif class, otherwise samples from the transformed distributions are generated
+    class(prior) <- class(prior)[!class(prior) %in% c("prior.orthonormal", "prior.meandif")]
 
     init <- .JAGS_init.vector(prior, parameter_name)
 

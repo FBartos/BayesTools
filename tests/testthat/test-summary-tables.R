@@ -441,7 +441,7 @@ test_that("Summary tables functions work (formulas + factors)",{
 
   ### test additional settings
   # transformations of orthonormal contrast to differences from the mean
-  runjags_summary_t <- runjags_estimates_table(fit3, transform_orthonormal = TRUE)
+  runjags_summary_t <- runjags_estimates_table(fit3, transform_factors = TRUE)
   expect_equal(colnames(runjags_summary_t), c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
   expect_equal(rownames(runjags_summary_t), c("(mu) intercept","(mu) x_cont1","(mu) x_fac3o [dif: A]","(mu) x_fac3o [dif: B]","(mu) x_fac3o [dif: C]", "(mu) x_cont1:x_fac3o [dif: A]", "(mu) x_cont1:x_fac3o [dif: B]", "(mu) x_cont1:x_fac3o [dif: C]", "sigma" ))
   expect_equal(capture_output_lines(runjags_summary_t, print = TRUE, width = 150),
@@ -458,7 +458,7 @@ test_that("Summary tables functions work (formulas + factors)",{
                ))
 
 
-  estimates_table_t <- ensemble_estimates_table(mixed_posteriors, parameters = c("mu_x_cont1", "mu_x_fac3o", "mu_x_cont1__xXx__x_fac3o"), probs = c(.025, 0.95), transform_orthonormal = TRUE)
+  estimates_table_t <- ensemble_estimates_table(mixed_posteriors, parameters = c("mu_x_cont1", "mu_x_fac3o", "mu_x_cont1__xXx__x_fac3o"), probs = c(.025, 0.95), transform_factors = TRUE)
   expect_equal(colnames(estimates_table_t), c("Mean", "Median", "0.025",  "0.95"))
   expect_equal(rownames(estimates_table_t), c("(mu) x_cont1","(mu) x_fac3o [dif: A]", "(mu) x_fac3o [dif: B]", "(mu) x_fac3o [dif: C]", "(mu) x_cont1:x_fac3o [dif: A]", "(mu) x_cont1:x_fac3o [dif: B]", "(mu) x_cont1:x_fac3o [dif: C]"))
   expect_equal(capture_output_lines(estimates_table_t, print = TRUE, width = 150),
@@ -665,6 +665,141 @@ test_that("Summary tables functions work (indepdent factors)",{
 
 })
 
+test_that("Summary tables functions work (meandif factors)",{
+
+  skip_on_cran()
+
+  set.seed(2)
+
+  data_formula <- data.frame(
+    x_fac3 = factor(rep(c("A", "B", "C"), 60), levels = c("A", "B", "C"))
+  )
+  data <- list(
+    y = rnorm(180, ifelse(data_formula$x_fac3 == "A", -0.2, ifelse(data_formula$x_fac3 == "B", 0.0, 0.2)), 1),
+    N = 180
+  )
+
+  # create model with mix of a formula and free parameters ---
+  formula_list0 <- list(mu = ~ 1)
+  formula_list1 <- list(mu = ~ x_fac3)
+
+  formula_prior_list0 <- list(
+    mu    = list(
+      "intercept" = prior("normal", list(0, 5))
+    )
+  )
+  formula_prior_list1 <- list(
+    mu    = list(
+      "intercept" = prior("normal", list(0, 5)),
+      "x_fac3"    = prior_factor("mnormal", contrast = "meandif", list(0, 1/5))
+    )
+  )
+
+  prior_list        <- list(sigma = prior("lognormal", list(0, 1)))
+  formula_data_list <- list(mu = data_formula)
+
+  model_syntax <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  log_posterior <- function(parameters, data){
+    sum(stats::dnorm(data$y, parameters[["mu"]], parameters[["sigma"]], log = TRUE))
+  }
+
+  fit0 <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list0, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0, seed = 1)
+  fit1 <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1, seed = 2)
+
+  marglik0 <- JAGS_bridgesampling(
+    fit0, log_posterior = log_posterior, data = data, prior_list = prior_list,
+    formula_list = formula_list0, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0)
+  marglik1 <- JAGS_bridgesampling(
+    fit1, log_posterior = log_posterior, data = data, prior_list = prior_list,
+    formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1)
+
+  # mix posteriors
+  models <- list(
+    list(fit = fit0, marglik = marglik0, fit_summary = runjags_estimates_table(fit0), prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, fit_summary = runjags_estimates_table(fit1), prior_weights = 1)
+  )
+  models <- models_inference(models)
+
+
+  inference <- ensemble_inference(
+    model_list   = models,
+    parameters   = c("mu_x_fac3"),
+    is_null_list = list(
+      "mu_x_fac3" = c(TRUE,  FALSE)
+    ),
+    conditional = FALSE)
+
+  mixed_posteriors <- mix_posteriors(
+    model_list   = models,
+    parameters   = c("mu_x_fac3"),
+    is_null_list = list(
+      "mu_x_fac3" = c(TRUE,  FALSE)
+    ),
+    seed = 1, n_samples = 10000)
+
+
+
+  ### checking summary functions
+  # model summary
+  model_summary <- model_summary_table(models[[2]])
+  expect_equal(model_summary[,1], c("Model  ", "Prior prob.  ", "log(marglik)  ", "Post. prob.  ", "Inclusion BF  "))
+  expect_equal(model_summary[,4], c("Parameter prior distributions", "(mu) intercept ~ Normal(0, 5)", "(mu) x_fac3 ~ mean difference contrast: mNormal(0, 0.2)","sigma ~ Lognormal(0, 1)", ""))
+
+  # runjags summary
+  runjags_summary <- models[[2]]$fit_summary
+  expect_equal(colnames(runjags_summary), c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
+  expect_equal(rownames(runjags_summary), c("(mu) intercept", "(mu) x_fac3[1]", "(mu) x_fac3[2]", "sigma"))
+  expect_equal(unname(unlist(runjags_summary[1,])), c(2.616574e-02,8.256672e-02,-1.369357e-01,2.621934e-02,1.851191e-01,6.471943e-04,8.000000e-03,1.627600e+04,9.999001e-01), tolerance = 1e-3)
+
+  # ensemble estimates
+  estimates_table <- ensemble_estimates_table(mixed_posteriors, parameters = c("mu_x_fac3"), probs = c(.025, 0.95), transform_factors = TRUE)
+  expect_equal(colnames(estimates_table), c("Mean", "Median", "0.025",  "0.95"))
+  expect_equal(rownames(estimates_table), c("(mu) x_fac3 [dif: A]", "(mu) x_fac3 [dif: B]", "(mu) x_fac3 [dif: C]"))
+  expect_equal(unname(unlist(estimates_table[1,])), c(-0.2074503, -0.2206674, -0.4204564,  0.0000000), tolerance = 1e-3)
+  expect_equal(unname(unlist(estimates_table[2,])), c(0.023169431,  0.008606852, -0.163666847,  0.185934433), tolerance = 1e-3)
+  expect_equal(unname(unlist(estimates_table[3,])), c(0.1842808, 0.1938991, 0.0000000, 0.3678031), tolerance = 1e-3)
+
+  # ensemble inference
+  inference_table <- ensemble_inference_table(inference, names(inference))
+  expect_equal(colnames(inference_table), c("models", "prior_prob", "post_prob", "inclusion_BF"))
+  expect_equal(rownames(inference_table), c("(mu) x_fac3"))
+  expect_equal(unname(unlist(inference_table[,1])),    1)
+  expect_equal(unname(unlist(inference_table[,2])),    0.5)
+  expect_equal(unname(unlist(inference_table[,3])),    0.8737537, tolerance = 1e-3)
+  expect_equal(unname(as.vector(inference_table[,4])), 6.921025, tolerance = 1e-3)
+
+  # ensemble summary
+  summary_table <- ensemble_summary_table(models, c("mu_x_fac3"))
+  expect_equal(colnames(summary_table), c("Model", "(mu) x_fac3", "prior_prob", "marglik", "post_prob", "inclusion_BF"))
+  expect_equal(unname(as.vector(summary_table[,1])), c(1, 2))
+  expect_equal(unname(as.vector(summary_table[,2])), c("","mean difference contrast: mNormal(0, 0.2)"))
+  expect_equal(unname(as.vector(summary_table[,3])), c(0.5, 0.5), tolerance = 1e-4)
+  expect_equal(unname(as.vector(summary_table[,4])), c(-282.5467, -280.6121), tolerance = 1e-3)
+  expect_equal(unname(as.vector(summary_table[,5])), c(0.1262463, 0.8737537), tolerance = 1e-3)
+  expect_equal(unname(as.vector(summary_table[,6])), c(0.1444873, 6.9210254), tolerance = 1e-3)
+
+  # ensemble diagnostics
+  diagnostics_table <- ensemble_diagnostics_table(models, c("mu_x_fac3"), remove_spike_0 = FALSE)
+  expect_equal(colnames(diagnostics_table), c("Model", "(mu) x_fac3", "max_MCMC_error", "max_MCMC_SD_error", "min_ESS", "max_R_hat"))
+  expect_equal(unname(as.vector(diagnostics_table[,1])), c(1, 2))
+  expect_equal(unname(as.vector(diagnostics_table[,2])), c("", "mean difference contrast: mNormal(0, 0.2)"))
+  expect_equal(unname(as.vector(diagnostics_table[,3])), c(0.0006707336, 0.0007978420), tolerance = 1e-3)
+  expect_equal(unname(as.vector(diagnostics_table[,4])), c(0.01, 0.01), tolerance = 1e-3)
+  expect_equal(unname(as.vector(diagnostics_table[,5])), c(9676, 9871))
+
+})
+
 test_that("Summary tables functions work (spike and slab priors)",{
 
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
@@ -744,12 +879,12 @@ test_that("Summary tables functions work (spike and slab priors)",{
   expect_equal(rownames(model_estimates), c("(mu) intercept", "(mu) x_cont1", "(mu) x_cont1 (inclusion)", "(mu) x_fac2t[B]", "(mu) x_fac2t (inclusion)", "(mu) x_fac3o[1]", "(mu) x_fac3o[2]", "(mu) x_fac3o (inclusion)", "sigma"))
   expect_equal(unname(unlist(model_estimates[7,])), c(-1.776437e-03, 4.269207e-02, 0.000000e+00, 0.000000e+00, 0.000000e+00, 3.428435e-04, 8.000000e-03, 1.550600e+04, 1.001065e+00), tolerance = 1e-3)
 
-  model_estimates <- runjags_estimates_table(fit0, transform_orthonormal = TRUE, conditional = TRUE)
+  model_estimates <- runjags_estimates_table(fit0, transform_factors = TRUE, conditional = TRUE)
   expect_equal(colnames(model_estimates), c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
   expect_equal(rownames(model_estimates), c("(mu) intercept", "(mu) x_cont1", "(mu) x_cont1 (inclusion)", "(mu) x_fac2t[B]", "(mu) x_fac2t (inclusion)", "(mu) x_fac3o [dif: A]", "(mu) x_fac3o [dif: B]", "(mu) x_fac3o [dif: C]", "(mu) x_fac3o (inclusion)", "sigma"))
   expect_equal(unname(unlist(model_estimates[8,])), c(0.0626582174, 0.1661778973, -0.2621073424, 0.0591205499, 0.3954805352,  NA, NA, NA, NA), tolerance = 1e-3)
 
-  model_estimates <- runjags_estimates_table(fit0, transform_orthonormal = TRUE, conditional = TRUE, remove_inclusion = TRUE)
+  model_estimates <- runjags_estimates_table(fit0, transform_factors = TRUE, conditional = TRUE, remove_inclusion = TRUE)
   expect_equal(colnames(model_estimates), c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
   expect_equal(rownames(model_estimates), c("(mu) intercept", "(mu) x_cont1", "(mu) x_fac2t[B]", "(mu) x_fac3o [dif: A]", "(mu) x_fac3o [dif: B]", "(mu) x_fac3o [dif: C]", "sigma"))
   expect_equal(unname(unlist(model_estimates[2,])), c(3.040927e-01, 1.355633e-01, 3.256895e-02, 3.058346e-01, 5.678668e-01, 2.298187e-03, 1.300000e-02, 5.720000e+03, 1.000421e+00), tolerance = 1e-3)

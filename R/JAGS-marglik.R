@@ -416,7 +416,7 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
 
     }
 
-  }else if(is.prior.orthonormal(prior)){
+  }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
 
     prior$parameters[["K"]] <- .get_prior_factor_levels(prior)
 
@@ -627,7 +627,7 @@ JAGS_marglik_priors                <- function(samples, prior_list){
 
     }
 
-  }else if(is.prior.orthonormal(prior)){
+  }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
 
     prior$parameters[["K"]] <- .get_prior_factor_levels(prior)
 
@@ -832,7 +832,7 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
     }
 
-  }else if(is.prior.orthonormal(prior)){
+  }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
 
     prior$parameters[["K"]] <- .get_prior_factor_levels(prior)
     parameter <- .JAGS_marglik_parameters.vector(samples, prior, parameter_name)

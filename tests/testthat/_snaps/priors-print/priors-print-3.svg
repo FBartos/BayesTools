@@ -33,5 +33,11 @@
 <text x='281.47' y='291.11' style='font-size: 12.00px; font-family: sans;' textLength='103.39px' lengthAdjust='spacingAndGlyphs'>treatment contrast: </text>
 <text x='384.86' y='291.11' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='24.69px' lengthAdjust='spacingAndGlyphs'>Beta</text>
 <text x='410.52' y='291.11' style='font-size: 12.00px; font-family: sans;' textLength='28.01px' lengthAdjust='spacingAndGlyphs'>(1, 1)</text>
+<text x='273.79' y='344.44' style='font-size: 12.00px; font-family: sans;' textLength='118.76px' lengthAdjust='spacingAndGlyphs'>independent contrast: </text>
+<text x='392.55' y='344.44' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='24.69px' lengthAdjust='spacingAndGlyphs'>Beta</text>
+<text x='418.21' y='344.44' style='font-size: 12.00px; font-family: sans;' textLength='28.01px' lengthAdjust='spacingAndGlyphs'>(1, 1)</text>
+<text x='246.62' y='397.77' style='font-size: 12.00px; font-family: sans;' textLength='138.76px' lengthAdjust='spacingAndGlyphs'>mean difference contrast: </text>
+<text x='385.38' y='397.77' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='48.68px' lengthAdjust='spacingAndGlyphs'>mNormal</text>
+<text x='435.36' y='397.77' style='font-size: 12.00px; font-family: sans;' textLength='38.02px' lengthAdjust='spacingAndGlyphs'>(0, 0.5)</text>
 </g>
 </svg>

@@ -32,6 +32,7 @@ runjags_estimates_table(
   warnings = NULL,
   conditional = FALSE,
   remove_spike_0 = TRUE,
+  transform_factors = FALSE,
   transform_orthonormal = FALSE,
   formula_prefix = TRUE,
   remove_inclusion = FALSE,
@@ -54,6 +55,7 @@ JAGS_estimates_table(
   warnings = NULL,
   conditional = FALSE,
   remove_spike_0 = TRUE,
+  transform_factors = FALSE,
   transform_orthonormal = FALSE,
   formula_prefix = TRUE,
   remove_inclusion = FALSE,
@@ -125,9 +127,13 @@ to specific parameters}
 \item{conditional}{summarizes estimates conditional on being included
 in the model for spike and slab priors. Defaults to \code{FALSE}.}
 
-\item{transform_orthonormal}{whether factors with orthonormal prior
-distributions should be transformed to differences from the grand
-mean}
+\item{transform_factors}{whether factors with orthonormal/meandif
+prior distribution should be transformed to differences from the
+grand mean}
+
+\item{transform_orthonormal}{(to be depreciated) whether factors
+with orthonormal prior distributions should be transformed to
+differences from the grand mean}
 
 \item{remove_inclusion}{whether estimates of the inclusion probabilities
 should be excluded from the summary table. Defaults to \code{FALSE}.}

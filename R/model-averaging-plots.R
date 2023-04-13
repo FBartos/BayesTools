@@ -42,6 +42,8 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     prior_type <- "PETPEESE"
   }else if(any(sapply(prior_list, is.prior.orthonormal))){
     prior_type <- "orthonormal"
+  }else if(any(sapply(prior_list, is.prior.meandif))){
+    prior_type <- "meandif"
   }else{
     prior_type <- "simple"
 
@@ -61,7 +63,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   if(is.null(xlim) & is.null(x_seq)){
     if(prior_type %in% c("weightfunction", "PETPEESE") & !individual){
       xlim      <- c(0, 1)
-    }else if(prior_type %in% c("simple", "orthonormal")){
+    }else if(prior_type %in% c("simple", "orthonormal", "meandif")){
       xlim   <- do.call(rbind, lapply(prior_list, range, quantiles = x_range_quant))
       xlim   <- range(pretty(range(as.vector(xlim))))
     }
@@ -85,7 +87,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
                                                 transformation_settings = transformation_settings, prior_list_mu = prior_list_mu)
     plot <- .plot.prior.PETPEESE(prior_list, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
 
-  }else if(prior_type %in% c("simple", "orthonormal")){
+  }else if(prior_type %in% c("simple", "orthonormal", "meandif")){
 
     # solve analytically
     plot_data <- .plot_data_prior_list.simple(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
@@ -529,7 +531,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     if(inherits(plot_data[[i]], "density.prior.point")){
       x_points <- c(x_points, plot_data[[i]]$x[plot_data[[i]]$y != 0])
       y_points <- c(y_points, mixing_prop[i])
-    }else if(inherits(plot_data[[i]], "density.prior.simple") | inherits(plot_data[[i]], "density.prior.orthonormal")){
+    }else if(inherits(plot_data[[i]], "density.prior.simple") | inherits(plot_data[[i]], "density.prior.orthonormal") | inherits(plot_data[[i]], "density.prior.meandif")){
       x_den <- rbind(x_den, plot_data[[i]]$x)
       y_den <- rbind(y_den, plot_data[[i]]$y * mixing_prop[i])
     }
@@ -1389,12 +1391,13 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   # transform & extract the relevant data
   prior_list <- attr(samples[[parameter]], "prior_list")
 
-  if(any(sapply(prior_list, is.prior.orthonormal))){
-    samples  <- transform_orthonormal_samples(samples)
+  if(any(sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x)))){
+    samples  <- transform_factor_samples(samples)
     if(!is.null(transformation)){
-      message("The transformation was applied to the differences from the mean. Note that non-linear transformations do not map from the orthonormal contrasts to the differences from the mean.")
+      message("The transformation was applied to the differences from the mean. Note that non-linear transformations do not map from the meandif/orthonormal contrasts to the differences from the mean.")
     }
   }
+
   samples    <- samples[[parameter]]
 
   # create the output object
@@ -1510,7 +1513,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 #' @title Plot estimates from models
 #'
 #' @details Plots prior and posterior estimates of the same parameter
-#' across multiple models (prior distributions with orthonormal contrast)
+#' across multiple models (prior distributions with orthonormal/meandif contrast
 #' are always plotted as differences from the grand mean).
 #'
 #' @param parameter parameter name to be plotted. Does not support
@@ -1573,16 +1576,16 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
   # deal with factors
   if(inherits(total_samples, "mixed_posteriors.factor")){
 
-    # make sure that the orthonormal priors are transformed to differences from the mean
-    if(attr(total_samples, "orthonormal")){
+    # make sure that the orthonormal/meandif priors are transformed to differences from the mean
+    if(attr(total_samples, "orthonormal") | attr(total_samples, "meandif")){
 
       # transform the samples
       if(ncol(total_samples) == attr(total_samples, "levels")){
-        total_samples <- transform_orthonormal_samples(samples[parameter])[[parameter]]
+        total_samples <- transform_factor_samples(samples[parameter])[[parameter]]
       }
       # transform the model summaries
       if(!any(sapply(models_summary, function(m) all(colnames(total_samples) %in% attr(m, "parameters"))))){
-        models_summary <- lapply(model_list, function(m) runjags_estimates_table(m[["fit"]], transform_orthonormal = TRUE))
+        models_summary <- lapply(model_list, function(m) runjags_estimates_table(m[["fit"]], transform_factors = TRUE))
       }
 
     }

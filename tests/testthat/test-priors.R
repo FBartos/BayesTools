@@ -82,6 +82,21 @@ test_orthonormal    <- function(prior){
 
   return(invisible())
 }
+test_meandif        <- function(prior){
+  set.seed(1)
+  # tests rng and print function (for plot)
+  samples <- rng(prior, 100000)
+  samples <- samples[abs(samples) < 10]
+  hist(samples, main = print(prior, plot = T), breaks = 50, freq = FALSE)
+  # tests density function
+  lines(prior, individual = TRUE)
+  # tests quantile function
+  abline(v = mquant(prior, 0.5), col = "blue", lwd = 2)
+  # tests that pdf(q(x)) == x
+  expect_equal(.25, mcdf(prior, mquant(prior, 0.25)), tolerance = 1e-5)
+
+  return(invisible())
+}
 
 test_that("Normal prior distribution works", {
 
@@ -248,5 +263,19 @@ test_that("Independent prior distribution works", {
 
   expect_doppelganger("prior-independent-1", function()test_prior(prior_factor("gamma", list(shape = 2, rate = 3), contrast = "independent")))
   expect_doppelganger("prior-independent-2", function()test_prior(prior_factor("uniform", list(a = -0.5, b = 1), contrast = "independent")))
+
+})
+
+test_that("Meandif prior distribution works", {
+
+  p1   <- prior_factor("mnormal", list(mean = 0, sd = 0.25), contrast = "meandif")
+  p1.5 <- p1.3 <- p1.2 <- p1
+  p1.2$parameters$K <- 2
+  p1.3$parameters$K <- 3
+  p1.5$parameters$K <- 5
+
+  expect_doppelganger("prior-meandif-1-2", function()test_meandif(p1.2))
+  expect_doppelganger("prior-meandif-1-3", function()test_meandif(p1.3))
+  expect_doppelganger("prior-meandif-1-5", function()test_meandif(p1.5))
 
 })

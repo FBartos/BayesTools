@@ -1,6 +1,10 @@
 ## version 0.2.14
 ### Features
+- adding `contrast = "meandif"` to the `prior_factor` function which generates identical prior distributions for difference between the grand mean and each factor level
 - adding `contrast = "independent"` to the `prior_factor` function which generates independent identical prior distributions for each factor level
+
+### Changes
+`contrast = "meandif"` is now the default setting for `prior_factor` function
 
 ## version 0.2.13
 ### Features

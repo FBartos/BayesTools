@@ -118,7 +118,8 @@ test_that("JAGS model functions work (factor)", {
     p2  = prior_factor("beta",    list(alpha = 1, beta = 1), contrast = "dummy"),
     p3  = prior_factor("beta",    list(alpha = 2, beta = 2), contrast = "dummy"),
     p4  = prior_factor("gamma",   list(shape = 2, rate = 3), contrast = "independent"),
-    p5  = prior_factor("uniform", list(a = -0.5, b = 1.5),   contrast = "independent")
+    p5  = prior_factor("uniform", list(a = -0.5, b = 1.5),   contrast = "independent"),
+    p6  = prior_factor("mnorm",   list(mean = 0, sd = 0.5),  contrast = "meandif")
   )
 
   # add levels
@@ -127,6 +128,7 @@ test_that("JAGS model functions work (factor)", {
   attr(priors[[3]], "levels") <- 3
   attr(priors[[4]], "levels") <- 1
   attr(priors[[5]], "levels") <- 3
+  attr(priors[[6]], "levels") <- 3
 
 
   model_syntax <- JAGS_add_priors(model_syntax, priors)
@@ -138,7 +140,7 @@ test_that("JAGS model functions work (factor)", {
   samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 5000, quiet = TRUE, progress.bar = "none")
   samples <- do.call(rbind, samples)
 
-  expect_equal(colnames(samples), c("p1[1]", "p1[2]", "p2", "p3[1]", "p3[2]", "p4", "p5[1]", "p5[2]", "p5[3]"))
+  expect_equal(colnames(samples), c("p1[1]", "p1[2]", "p2", "p3[1]", "p3[2]", "p4", "p5[1]", "p5[2]", "p5[3]", "p6[1]", "p6[2]"))
 
   expect_doppelganger("JAGS-model-prior-factor-1", function(){
 
@@ -192,6 +194,19 @@ test_that("JAGS model functions work (factor)", {
 
     hist(samples[,"p5[3]"], breaks = 50, main = print(priors[[5]], plot = TRUE), freq = FALSE)
     lines(prior("uniform", list(a = -0.5, b = 1.5)))
+  })
+
+  expect_doppelganger("JAGS-model-prior-factor-6", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfcol = c(1, 2))
+
+    hist(samples[,"p6[1]"], breaks = 50, main = print(priors[[6]], plot = TRUE), freq = FALSE)
+    lines(prior("normal", list(mean = 0, sd = 0.5)))
+
+    hist(samples[,"p6[2]"], breaks = 50, main = print(priors[[6]], plot = TRUE), freq = FALSE)
+    lines(prior("normal", list(mean = 0, sd = 0.5)))
   })
 
 })

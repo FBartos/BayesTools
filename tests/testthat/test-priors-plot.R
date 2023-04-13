@@ -172,3 +172,34 @@ test_that("Prior plot (independent) function works", {
   expect_doppelganger("priors-plot-17",   function()plot(p16))
 
 })
+
+test_that("Prior plot (meandif) function works", {
+
+  p18   <- prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "meandif")
+  p19   <- prior_factor("mcauchy", list(location = 0, scale = 1), contrast = "meandif")
+  p18.5 <- p18.3 <- p18.2 <- p18
+  p19.5 <- p19.3 <- p19.2 <- p19
+  p18.2$parameters$K <- 2
+  p18.3$parameters$K <- 3
+  p18.5$parameters$K <- 5
+  p19.2$parameters$K <- 2
+  p19.3$parameters$K <- 3
+  p19.5$parameters$K <- 5
+
+  expect_doppelganger("priors-plot-18", function(){
+
+    plot(p18.2)
+    lines(p18.3, col = "blue", lty = 2, lwd = 2)
+    lines(p18.5, col = "red", lty = 3, lwd = 2)
+
+  })
+
+  expect_doppelganger("priors-plot-19", function(){
+
+    plot(p19.2)
+    lines(p19.3, col = "blue", lty = 2, lwd = 2)
+    lines(p19.5, col = "red", lty = 3, lwd = 2)
+
+  })
+
+})

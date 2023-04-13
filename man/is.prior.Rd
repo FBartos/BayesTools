@@ -15,6 +15,7 @@
 \alias{is.prior.dummy}
 \alias{is.prior.independent}
 \alias{is.prior.spike_and_slab}
+\alias{is.prior.meandif}
 \title{Reports whether x is a a prior object}
 \usage{
 is.prior(x)
@@ -44,6 +45,8 @@ is.prior.dummy(x)
 is.prior.independent(x)
 
 is.prior.spike_and_slab(x)
+
+is.prior.meandif(x)
 }
 \arguments{
 \item{x}{an object of test}

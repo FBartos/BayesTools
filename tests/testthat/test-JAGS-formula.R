@@ -15,7 +15,8 @@ test_that("JAGS formula works", {
     x_fac2t = factor(rep(c("A", "B"), 30), levels = c("A", "B")),
     x_fac3o = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C")),
     x_fac3t = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C")),
-    x_fac3i = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C"))
+    x_fac3i = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C")),
+    x_fac3md= factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C"))
   )
   df_all$y <- rnorm(60, 0.1, 0.5) + 0.30 * df_all$x_cont1 - 0.15 * df_all$x_cont1 * df_all$x_cont2 + 0.2 * df_all$x_bin +
     ifelse(df_all$x_fac3t == "A", 0.2, ifelse(df_all$x_fac3t == "B", -0.2, 0)) +
@@ -30,6 +31,7 @@ test_that("JAGS formula works", {
     "x_fac3o"         = prior_factor("mnormal", contrast = "orthonormal", list(0, 1)),
     "x_fac3t"         = prior_factor("uniform", contrast = "treatment",   list(-2, 2)),
     "x_fac3i"         = prior_factor("normal",  contrast = "independent", list(0, 1)),
+    "x_fac3md"        = prior_factor("mnormal", contrast = "meandif",     list(0, 1)),
     "x_fac2t:x_fac3o" = prior_factor("mnormal", contrast = "orthonormal", list(0,  2)),
     "x_fac2o:x_fac3t" = prior_factor("normal",  contrast = "treatment",   list(0,  2)),
     "x_cont1:x_fac3o" = prior_factor("mnormal", contrast = "orthonormal", list(0,  2)),
@@ -447,14 +449,44 @@ test_that("JAGS formula works", {
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
     par(mfcol = c(1, 3))
 
-    hist(samples_11[,"mu_x_fac3i[1]"], freq = FALSE, main = "Intercept")
+    hist(samples_11[,"mu_x_fac3i[1]"], freq = FALSE, main = "x_fac3i[1]")
     curve(dnorm(x, mean = coef(lm_11)["x_fac3iA"], sd = summary(lm_11)$coefficients["x_fac3iA", "Std. Error"]), add = TRUE, lwd = 2)
 
-    hist(samples_11[,"mu_x_fac3i[2]"], freq = FALSE, main = "x_fac3o")
+    hist(samples_11[,"mu_x_fac3i[2]"], freq = FALSE, main = "x_fac3i[2]")
     curve(dnorm(x, mean = coef(lm_11)["x_fac3iB"], sd = summary(lm_11)$coefficients["x_fac3iB", "Std. Error"]), add = TRUE, lwd = 2)
 
-    hist(samples_11[,"mu_x_fac3i[3]"], freq = FALSE, main = "x_fac3o")
+    hist(samples_11[,"mu_x_fac3i[3]"], freq = FALSE, main = "x_fac3i[3]")
     curve(dnorm(x, mean = coef(lm_11)["x_fac3iC"], sd = summary(lm_11)$coefficients["x_fac3iC", "Std. Error"]), add = TRUE, lwd = 2)
+  })
+
+
+  # linear regression with an meandif factor (3 levels) ----
+  formula_12      <- JAGS_formula(~ x_fac3md, parameter = "mu", data = df_all[,"x_fac3md",drop = FALSE], prior_list = prior_list_all[c("intercept", "x_fac3md")])
+  prior_list_12   <- c(formula_12$prior_list, prior_list2)
+  model_syntax_12 <- JAGS_add_priors(paste0("model{", formula_12$formula_syntax, model_syntax, "}"), prior_list_12)
+  data_12         <- c(formula_12$data, N = nrow(df_all), y = list(df_all$y))
+
+  model_12   <- rjags::jags.model(file = textConnection(model_syntax_12), inits = JAGS_get_inits(prior_list_12, chains = 2, seed = 1), data = data_12, n.chains = 2, quiet = TRUE)
+  samples_12 <- rjags::coda.samples(model = model_12, variable.names = JAGS_to_monitor(prior_list_12), n.iter = 5000, quiet = TRUE, progress.bar = "none")
+  samples_12 <- do.call(rbind, samples_12)
+
+  df_12 <- df_all
+  contrasts(df_12$x_fac3md) <- contr.meandif(levels(df_12$x_fac3o))
+  lm_12 <- stats::lm(y ~ x_fac3md, data = df_12)
+
+  expect_doppelganger("JAGS-formula-lm-12", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfcol = c(1, 3))
+
+    hist(samples_12[,"mu_intercept"], freq = FALSE, main = "Intercept")
+    curve(dnorm(x, mean = coef(lm_12)["(Intercept)"], sd = summary(lm_12)$coefficients["(Intercept)", "Std. Error"]), add = TRUE, lwd = 2)
+
+    hist(samples_12[,"mu_x_fac3md[1]"], freq = FALSE, main = "x_fac3md")
+    curve(dnorm(x, mean = coef(lm_12)["x_fac3md1"], sd = summary(lm_12)$coefficients["x_fac3md1", "Std. Error"]), add = TRUE, lwd = 2)
+
+    hist(samples_12[,"mu_x_fac3md[2]"], freq = FALSE, main = "x_fac3md")
+    curve(dnorm(x, mean = coef(lm_12)["x_fac3md2"], sd = summary(lm_12)$coefficients["x_fac3md2", "Std. Error"]), add = TRUE, lwd = 2)
   })
 
 

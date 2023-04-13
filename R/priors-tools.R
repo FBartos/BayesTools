@@ -178,6 +178,8 @@
     return(attr(prior, "levels") - 1)
   }else if(is.prior.orthonormal(prior)){
     return(attr(prior, "levels") - 1)
+  }else if(is.prior.meandif(prior)){
+    return(attr(prior, "levels") - 1)
   }
 }
 .get_prior_factor_level_names <- function(prior){
@@ -231,6 +233,7 @@
 #' @export is.prior.weightfunction
 #' @export is.prior.factor
 #' @export is.prior.orthonormal
+#' @export is.prior.meandif
 #' @export is.prior.dummy
 #' @export is.prior.independent
 #' @export is.prior.spike_and_slab
@@ -293,7 +296,10 @@ is.prior.independent     <- function(x){
 is.prior.spike_and_slab  <- function(x){
   inherits(x, "prior.spike_and_slab")
 }
-
+#' @rdname is.prior
+is.prior.meandif         <- function(x){
+  inherits(x, "prior.meandif")
+}
 
 .check_prior <- function(prior, name = "prior"){
   if(!is.prior(prior))

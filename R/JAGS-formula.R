@@ -103,6 +103,8 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
         stats::contrasts(data[,factor]) <- "contr.independent"
       }else if(is.prior.orthonormal(this_prior)){
         stats::contrasts(data[,factor]) <- "contr.orthonormal"
+      }else if(is.prior.meandif(this_prior)){
+        stats::contrasts(data[,factor]) <- "contr.meandif"
       }else if(is.prior.point(this_prior)){
         # change the prior class to behave as factor
         class(this_prior) <-  c(class(this_prior), "prior.factor")
@@ -366,6 +368,8 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
     # set the contrast
     if(is.prior.orthonormal(this_prior)){
       stats::contrasts(data[,factor]) <- "contr.orthonormal"
+    }else if(is.prior.meandif(this_prior)){
+      stats::contrasts(data[,factor]) <- "contr.meandif"
     }else if(is.prior.independent(this_prior)){
       stats::contrasts(data[,factor]) <- "contr.independent"
     }else if(is.prior.dummy(this_prior)){
@@ -443,6 +447,78 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
   }
 
   return(output)
+}
+
+
+#' @title Transform factor posterior samples into differences from the mean
+#'
+#' @description Transforms posterior samples from model-averaged posterior
+#' distributions based on meandif/orthonormal prior distributions into differences from
+#' the mean.
+#'
+#' @param samples (a list) of mixed posterior distributions created with
+#' \code{mix_posteriors} function
+#'
+#' @return \code{transform_meandif_samples} returns a named list of mixed posterior
+#' distributions (either a vector of matrix).
+#'
+#' @seealso [mix_posteriors] [transform_meandif_samples] [transform_meandif_samples] [transform_orthonormal_samples]
+#'
+#' @export
+transform_factor_samples <- function(samples){
+
+  check_list(samples, "samples", allow_NULL = TRUE)
+
+  samples <- transform_meandif_samples(samples)
+  samples <- transform_orthonormal_samples(samples)
+
+  return(samples)
+}
+
+#' @title Transform meandif posterior samples into differences from the mean
+#'
+#' @description Transforms posterior samples from model-averaged posterior
+#' distributions based on meandif prior distributions into differences from
+#' the mean.
+#'
+#' @param samples (a list) of mixed posterior distributions created with
+#' \code{mix_posteriors} function
+#'
+#' @return \code{transform_meandif_samples} returns a named list of mixed posterior
+#' distributions (either a vector of matrix).
+#'
+#' @seealso [mix_posteriors] [contr.meandif]
+#'
+#' @export
+transform_meandif_samples <- function(samples){
+
+  check_list(samples, "samples", allow_NULL = TRUE)
+
+  for(i in seq_along(samples)){
+    if(!inherits(samples[[i]],"mixed_posteriors.meandif_transformed") && inherits(samples[[i]], "mixed_posteriors.factor") && attr(samples[[i]], "meandif")){
+
+      meandif_samples     <- samples[[i]]
+      transformed_samples <- meandif_samples %*% t(contr.meandif(1:(attr(samples[[i]], "levels")+1)))
+
+      if(attr(samples[[i]], "interaction")){
+        if(length(attr(samples[[i]], "level_names")) == 1){
+          transformed_names <- paste0(names(samples)[i], " [dif: ", attr(samples[[i]], "level_names")[[1]],"]")
+        }else{
+          stop("meandif de-transformation for interaction of multiple factors is not implemented.")
+        }
+      }else{
+        transformed_names <- paste0(names(samples)[i], " [dif: ", attr(samples[[i]], "level_names"),"]")
+      }
+
+      colnames(transformed_samples)   <- transformed_names
+      attributes(transformed_samples) <- c(attributes(transformed_samples), attributes(meandif_samples)[!names(attributes(meandif_samples)) %in% names(attributes(transformed_samples))])
+      class(transformed_samples)      <- c(class(transformed_samples), "mixed_posteriors.meandif_transformed")
+
+      samples[[i]] <- transformed_samples
+    }
+  }
+
+  return(samples)
 }
 
 #' @title Transform orthonomal posterior samples into differences from the mean
@@ -531,6 +607,55 @@ contr.orthonormal <- function(n, contrasts = TRUE){
     J_a     <- matrix(1, nrow = a, ncol = a)
     Sigma_a <- I_a - J_a/a
     cont    <- eigen(Sigma_a)$vectors[, seq_len(a - 1), drop = FALSE]
+  }
+
+  return(cont)
+}
+
+#' @title Mean difference contrast matrix
+#'
+#' @description Return a matrix of mean difference contrasts.
+#' This is an adjustment to the \code{contr.orthonormal} that ascertains that the prior
+#' distributions on difference between the gran mean and factor level are identical independent
+#' of the number of factor levels (which does not hold for the orthonormal contrast). Furthermore,
+#' the contrast is re-scaled so the specified prior distribution exactly corresponds to the prior
+#' distribution on difference between each factor level and the grand mean -- this is approximately
+#' twice the scale of \code{contr.orthonormal}.
+#'
+#' @param n a vector of levels for a factor, or the number of levels
+#' @param contrasts logical indicating whether contrasts should be computed
+#'
+#' @examples
+#' contr.meandif(c(1, 2))
+#' contr.meandif(c(1, 2, 3))
+#'
+#' @references
+#' \insertAllCited{}
+#'
+#' @return A matrix with n rows and k columns, with k = n - 1 if \code{contrasts = TRUE} and k = n
+#' if \code{contrasts = FALSE}.
+#'
+#' @export
+contr.meandif <- function(n, contrasts = TRUE){
+
+  if(length(n) <= 1L){
+    if(is.numeric(n) && length(n) == 1L && n > 1L){
+      return(TRUE)
+    }else{
+      stop("Not enough degrees of freedom to define contrasts.")
+    }
+  }else{
+    n <- length(n)
+  }
+
+  cont <- diag(n)
+  if(contrasts){
+    a       <- n
+    I_a     <- diag(a)
+    J_a     <- matrix(1, nrow = a, ncol = a)
+    Sigma_a <- I_a - J_a/a
+    cont    <- eigen(Sigma_a)$vectors[, seq_len(a - 1), drop = FALSE]
+    cont    <- cont / (sqrt(1 - 1/n))
   }
 
   return(cont)

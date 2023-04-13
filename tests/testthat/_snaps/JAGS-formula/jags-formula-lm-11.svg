@@ -25,7 +25,7 @@
   </clipPath>
 </defs>
 <g clip-path='url(#cpMC4wMHwyNDAuMDB8MC4wMHw1NzYuMDA=)'>
-<text x='129.50' y='22.75' text-anchor='middle' style='font-size: 9.50px; font-weight: bold; font-family: sans;' textLength='36.99px' lengthAdjust='spacingAndGlyphs'>Intercept</text>
+<text x='129.50' y='22.75' text-anchor='middle' style='font-size: 9.50px; font-weight: bold; font-family: sans;' textLength='40.69px' lengthAdjust='spacingAndGlyphs'>x_fac3i[1]</text>
 <text x='129.50' y='563.64' text-anchor='middle' style='font-size: 7.92px; font-family: sans;' textLength='106.46px' lengthAdjust='spacingAndGlyphs'>samples_11[, "mu_x_fac3i[1]"]</text>
 <text transform='translate(8.55,283.25) rotate(-90)' text-anchor='middle' style='font-size: 7.92px; font-family: sans;' textLength='26.42px' lengthAdjust='spacingAndGlyphs'>Density</text>
 </g>
@@ -92,7 +92,7 @@
   </clipPath>
 </defs>
 <g clip-path='url(#cpMjQwLjAwfDQ4MC4wMHwwLjAwfDU3Ni4wMA==)'>
-<text x='369.50' y='22.75' text-anchor='middle' style='font-size: 9.50px; font-weight: bold; font-family: sans;' textLength='33.30px' lengthAdjust='spacingAndGlyphs'>x_fac3o</text>
+<text x='369.50' y='22.75' text-anchor='middle' style='font-size: 9.50px; font-weight: bold; font-family: sans;' textLength='40.69px' lengthAdjust='spacingAndGlyphs'>x_fac3i[2]</text>
 <text x='369.50' y='563.64' text-anchor='middle' style='font-size: 7.92px; font-family: sans;' textLength='106.46px' lengthAdjust='spacingAndGlyphs'>samples_11[, "mu_x_fac3i[2]"]</text>
 <text transform='translate(248.55,283.25) rotate(-90)' text-anchor='middle' style='font-size: 7.92px; font-family: sans;' textLength='26.42px' lengthAdjust='spacingAndGlyphs'>Density</text>
 </g>
@@ -151,7 +151,7 @@
   </clipPath>
 </defs>
 <g clip-path='url(#cpNDgwLjAwfDcyMC4wMHwwLjAwfDU3Ni4wMA==)'>
-<text x='609.50' y='22.75' text-anchor='middle' style='font-size: 9.50px; font-weight: bold; font-family: sans;' textLength='33.30px' lengthAdjust='spacingAndGlyphs'>x_fac3o</text>
+<text x='609.50' y='22.75' text-anchor='middle' style='font-size: 9.50px; font-weight: bold; font-family: sans;' textLength='40.69px' lengthAdjust='spacingAndGlyphs'>x_fac3i[3]</text>
 <text x='609.50' y='563.64' text-anchor='middle' style='font-size: 7.92px; font-family: sans;' textLength='106.46px' lengthAdjust='spacingAndGlyphs'>samples_11[, "mu_x_fac3i[3]"]</text>
 <text transform='translate(488.55,283.25) rotate(-90)' text-anchor='middle' style='font-size: 7.92px; font-family: sans;' textLength='26.42px' lengthAdjust='spacingAndGlyphs'>Density</text>
 </g>
