@@ -103,12 +103,40 @@ test_that("Summary tables functions work",{
   expect_equal(colnames(models[[3]]$fit_summary), colnames(runjags_summary2t))
   expect_equal(rownames(models[[3]]$fit_summary), rownames(runjags_summary2t))
 
-  ### test an empty table
+  ### test an empty tables
   runjags_summary_empty <- runjags_estimates_empty_table()
   expect_equivalent(nrow(runjags_summary_empty), 0)
   expect_equal(colnames(runjags_summary_empty), colnames(runjags_summary))
   expect_equal(capture_output_lines(runjags_summary_empty, width = 150)[1], capture_output_lines(runjags_summary, width = 150)[1])
 
+  ensemble_estimates_empty <- ensemble_estimates_empty_table()
+  expect_equivalent(nrow(ensemble_estimates_empty), 0)
+  expect_equal(colnames(ensemble_estimates_empty), colnames(estimates_table))
+  expect_equal(capture_output_lines(ensemble_estimates_empty, width = 150)[1], capture_output_lines(estimates_table, width = 150)[1])
+
+  ensemble_inference_empty <- ensemble_inference_empty_table()
+  expect_equivalent(nrow(ensemble_inference_empty), 0)
+  expect_equal(colnames(ensemble_inference_empty), colnames(inference_table))
+  expect_equal(capture_output_lines(ensemble_inference_empty, width = 150)[1], capture_output_lines(inference_table, width = 150)[1])
+
+  ensemble_summary_table <- ensemble_summary_empty_table()
+  expect_equivalent(nrow(ensemble_summary_table), 0)
+  summary_table.trimmed <- remove_column(summary_table, 2)
+  summary_table.trimmed <- remove_column(summary_table.trimmed, 2)
+  expect_equal(colnames(ensemble_summary_table), colnames(summary_table.trimmed))
+  expect_equal(capture_output_lines(ensemble_summary_table, width = 150)[1], capture_output_lines(summary_table.trimmed, width = 150)[1])
+
+  ensemble_diagnostics_empty <- ensemble_diagnostics_empty_table()
+  expect_equivalent(nrow(ensemble_diagnostics_empty), 0)
+  diagnostics_table.trimmed <- remove_column(diagnostics_table, 2)
+  diagnostics_table.trimmed <- remove_column(diagnostics_table.trimmed, 2)
+  expect_equal(colnames(ensemble_diagnostics_empty), colnames(diagnostics_table.trimmed))
+  expect_equal(capture_output_lines(ensemble_diagnostics_empty, width = 150)[1], capture_output_lines(diagnostics_table.trimmed, width = 150)[1])
+
+  model_summary_empty <- model_summary_empty_table()
+  expect_equivalent(nrow(model_summary_empty), 5)
+  expect_equal(model_summary_empty[,1], model_summary[,1])
+  expect_equal(model_summary_empty[1,4], model_summary[1,4])
 
   ### test print functions
   expect_equal(capture_output_lines(model_summary, print = TRUE, width = 150),
@@ -191,6 +219,18 @@ test_that("Summary tables functions work",{
       "     1            A    Normal(0, 1)                                                         0.333        -1.10       0.200        0.499",
       "     2            B  Normal(0, 0.5)     omega[one-sided: .05] ~ CumDirichlet(1, 1)          0.333        -0.61       0.325        0.964",
       "     3            C  Normal(0, 0.3) omega[one-sided: .5, .05] ~ CumDirichlet(1, 1, 1)       0.333        -0.24       0.475        1.809"
+    ))
+
+
+  ### test removing columns
+  expect_error(remove_column(runjags_summary, column_position = 10),
+               "The 'column_position' must be equal or lower than 9.")
+
+  expect_equal(capture_output_lines(
+    remove_column(inference_table, column_position = 1), print = TRUE, width = 150),
+    c("      Prior prob. Post. prob. Inclusion BF",
+      "m           1.000       1.000          Inf",
+      "omega       0.667       0.800        2.002"
     ))
 
 
@@ -896,6 +936,11 @@ test_that("Summary tables functions work (spike and slab priors)",{
   expect_equal(model_inference[,2], c(0.5, 0.5, 0.5))
   expect_equal(model_inference[,3], c(0.7798125, 0.1864375, 0.0399375), tolerance = 1e-3)
   expect_equal(model_inference[,4], c(3.54158388, 0.22916187, 0.04159885), tolerance = 1e-3)
+
+  runjags_inference_empty <- runjags_inference_empty_table()
+  expect_equivalent(nrow(runjags_inference_empty), 0)
+  expect_equal(colnames(runjags_inference_empty), colnames(model_inference))
+  expect_equal(capture_output_lines(runjags_inference_empty, width = 150)[1], capture_output_lines(model_inference, width = 150)[1])
 
 })
 

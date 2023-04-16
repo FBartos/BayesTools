@@ -6,6 +6,10 @@
 \alias{ensemble_inference_table}
 \alias{ensemble_summary_table}
 \alias{ensemble_diagnostics_table}
+\alias{ensemble_estimates_empty_table}
+\alias{ensemble_inference_empty_table}
+\alias{ensemble_summary_empty_table}
+\alias{ensemble_diagnostics_empty_table}
 \title{Create BayesTools ensemble summary tables}
 \usage{
 ensemble_estimates_table(
@@ -50,6 +54,23 @@ ensemble_diagnostics_table(
   warnings = NULL,
   remove_spike_0 = TRUE,
   short_name = FALSE
+)
+
+ensemble_estimates_empty_table(
+  probs = c(0.025, 0.95),
+  title = NULL,
+  footnotes = NULL,
+  warnings = NULL
+)
+
+ensemble_inference_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
+
+ensemble_summary_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
+
+ensemble_diagnostics_empty_table(
+  title = NULL,
+  footnotes = NULL,
+  warnings = NULL
 )
 }
 \arguments{

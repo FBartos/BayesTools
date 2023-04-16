@@ -2,6 +2,8 @@
 ### Features
 - adding `contrast = "meandif"` to the `prior_factor` function which generates identical prior distributions for difference between the grand mean and each factor level
 - adding `contrast = "independent"` to the `prior_factor` function which generates independent identical prior distributions for each factor level
+- `remove_column` function for removing columns from `BayesTools_table` objects without breaking the attributes etc...
+- adding empty functions (https://github.com/FBartos/BayesTools/issues/10)
 
 ### Changes
 - `contrast = "meandif"` is now the default setting for `prior_factor` function

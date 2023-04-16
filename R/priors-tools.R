@@ -180,6 +180,9 @@
     return(attr(prior, "levels") - 1)
   }else if(is.prior.meandif(prior)){
     return(attr(prior, "levels") - 1)
+  }else if(is.prior.point(prior)){
+    # allow to deal with spike priors assuming there is an intercept & the prior is not independent
+    return(attr(prior, "levels") - 1)
   }
 }
 .get_prior_factor_level_names <- function(prior){

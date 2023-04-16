@@ -53,6 +53,10 @@
 #' @export ensemble_inference_table
 #' @export ensemble_summary_table
 #' @export ensemble_diagnostics_table
+#' @export ensemble_estimates_empty_table
+#' @export ensemble_inference_empty_table
+#' @export ensemble_summary_empty_table
+#' @export ensemble_diagnostics_empty_table
 #' @name BayesTools_ensemble_tables
 #'
 #' @seealso [ensemble_inference] [mix_posteriors] [BayesTools_model_tables]
@@ -344,6 +348,73 @@ ensemble_diagnostics_table <- function(models, parameters, title = NULL, footnot
   return(ensemble_table)
 }
 
+#' @rdname BayesTools_ensemble_tables
+ensemble_estimates_empty_table   <- function(probs = c(0.025, 0.95), title = NULL, footnotes = NULL, warnings = NULL){
+
+  empty_table <- data.frame(matrix(nrow = 0, ncol = 2 + length(probs)))
+  colnames(empty_table) <- c("Mean", "Median", probs)
+
+  class(empty_table)             <- c("BayesTools_table", "BayesTools_ensemble_summary", class(empty_table))
+  attr(empty_table, "type")      <- rep("estimate", ncol(empty_table))
+  attr(empty_table, "rownames")  <- TRUE
+  attr(empty_table, "title")     <- title
+  attr(empty_table, "footnotes") <- footnotes
+  attr(empty_table, "warnings")  <- warnings
+
+  return(empty_table)
+}
+
+#' @rdname BayesTools_ensemble_tables
+ensemble_inference_empty_table   <- function(title = NULL, footnotes = NULL, warnings = NULL){
+
+  empty_table <- data.frame(matrix(nrow = 0, ncol = 4))
+  colnames(empty_table) <- c("models", "prior_prob", "post_prob", "inclusion_BF")
+
+  class(empty_table)             <- c("BayesTools_table", "BayesTools_ensemble_summary", class(empty_table))
+  attr(empty_table, "type")      <- c("n_models", "prior_prob", "post_prob", "inclusion_BF")
+  attr(empty_table, "rownames")  <- TRUE
+  attr(empty_table, "title")     <- title
+  attr(empty_table, "footnotes") <- footnotes
+  attr(empty_table, "warnings")  <- warnings
+
+  return(empty_table)
+}
+
+#' @rdname BayesTools_ensemble_tables
+ensemble_summary_empty_table     <- function(title = NULL, footnotes = NULL, warnings = NULL){
+
+  empty_table <- data.frame(matrix(nrow = 0, ncol = 5))
+  colnames(empty_table) <- c("Model", "prior_prob", "marglik", "post_prob", "inclusion_BF")
+
+  # prepare output
+  class(empty_table)             <- c("BayesTools_table", "BayesTools_ensemble_summary", class(empty_table))
+  attr(empty_table, "type")      <- c("integer", "prior_prob", "marglik", "post_prob", "inclusion_BF")
+  attr(empty_table, "rownames")  <- FALSE
+  attr(empty_table, "title")     <- title
+  attr(empty_table, "footnotes") <- footnotes
+  attr(empty_table, "warnings")  <- warnings
+
+  return(empty_table)
+}
+
+#' @rdname BayesTools_ensemble_tables
+ensemble_diagnostics_empty_table <- function(title = NULL, footnotes = NULL, warnings = NULL){
+
+  empty_table <- data.frame(matrix(nrow = 0, ncol = 5))
+  colnames(empty_table) <- c("Model", "max_MCMC_error", "max_MCMC_SD_error", "min_ESS", "max_R_hat")
+
+  # prepare output
+  class(empty_table)             <- c("BayesTools_table", "BayesTools_ensemble_summary", class(empty_table))
+  attr(empty_table, "type")      <- c("integer", "max_MCMC_error", "max_MCMC_SD_error", "min_ESS", "max_R_hat")
+  attr(empty_table, "rownames")  <- FALSE
+  attr(empty_table, "title")     <- title
+  attr(empty_table, "footnotes") <- footnotes
+  attr(empty_table, "warnings")  <- warnings
+
+  return(empty_table)
+}
+
+
 .ensemble_table_foundation <- function(models, parameters, remove_spike_0, short_name){
 
   model_rows <- list()
@@ -443,6 +514,9 @@ ensemble_diagnostics_table <- function(models, parameters, title = NULL, footnot
 #' @export model_summary_table
 #' @export runjags_estimates_table
 #' @export runjags_inference_table
+#' @export model_summary_empty_table
+#' @export JAGS_inference_empty_table
+#' @export JAGS_estimates_empty_table
 #' @export runjags_estimates_empty_table
 #' @export runjags_inference_empty_table
 #' @export stan_estimates_table
@@ -949,6 +1023,42 @@ JAGS_inference_table <- runjags_inference_table
 JAGS_summary_table   <- model_summary_table
 
 #' @rdname BayesTools_model_tables
+model_summary_empty_table <- function(model_description = NULL, title = NULL, footnotes = NULL, warnings = NULL){
+
+  check_list(model_description, "model_description", allow_NULL = TRUE)
+
+  summary_names  <- c(
+    "Model",
+    if(!is.null(model_description)) names(model_description),
+    "Prior prob.",
+    "log(marglik)",
+    "Post. prob.",
+    "Inclusion BF")
+
+
+  summary_names <- paste0(summary_names, "  ")
+
+  empty_table <- data.frame(cbind(
+    summary_names,
+    rep("",            length(summary_names)),
+    rep("           ", length(summary_names)),
+    c("Parameter prior distributions", rep("", length(summary_names) - 1))
+  ))
+  names(empty_table) <- NULL
+
+  # prepare output
+  class(empty_table)             <- c("BayesTools_table", class(empty_table))
+  attr(empty_table, "type")      <- c("string_left", "string", "string", "prior")
+  attr(empty_table, "rownames")  <- FALSE
+  attr(empty_table, "as.matrix") <- TRUE
+  attr(empty_table, "title")     <- title
+  attr(empty_table, "footnotes") <- footnotes
+  attr(empty_table, "warnings")  <- warnings
+
+  return(empty_table)
+}
+
+#' @rdname BayesTools_model_tables
 runjags_estimates_empty_table <- function(title = NULL, footnotes = NULL, warnings = NULL){
 
   empty_table <- data.frame(matrix(nrow = 0, ncol = 9))
@@ -968,10 +1078,10 @@ runjags_estimates_empty_table <- function(title = NULL, footnotes = NULL, warnin
 runjags_inference_empty_table <- function(title = NULL, footnotes = NULL, warnings = NULL){
 
   empty_table <- data.frame(matrix(nrow = 0, ncol = 4))
-  colnames(empty_table) <- c("Parameter", "prior_prob", "post_prob", "BF")
+  colnames(empty_table) <- c("Parameter", "prior_prob", "post_prob", "inclusion_BF")
 
   class(empty_table)             <- c("BayesTools_table", "BayesTools_runjags_summary", class(empty_table))
-  attr(empty_table, "type")      <- c("string", "prior_prob", "post_prob", "BF")
+  attr(empty_table, "type")      <- c("string", "prior_prob", "post_prob", "inclusion_BF")
   attr(empty_table, "rownames")  <- FALSE
   attr(empty_table, "title")     <- title
   attr(empty_table, "footnotes") <- footnotes
@@ -979,6 +1089,12 @@ runjags_inference_empty_table <- function(title = NULL, footnotes = NULL, warnin
 
   return(empty_table)
 }
+
+#' @rdname BayesTools_model_tables
+JAGS_estimates_empty_table <- runjags_estimates_empty_table
+
+#' @rdname BayesTools_model_tables
+JAGS_inference_empty_table <- runjags_inference_empty_table
 
 #' @rdname BayesTools_model_tables
 stan_estimates_table  <- function(fit, transformations = NULL, title = NULL, footnotes = NULL, warnings = NULL){
@@ -1141,7 +1257,7 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
 #' @param column_title title of the new column
 #' @param column_values values of the new column
 #' @param column_position position of the new column (defaults to \code{NULL} which
-#' appends the columnt to the end)
+#' appends the column to the end)
 #' @param column_type type of values of the new column table (important for formatting,
 #' defaults to \code{NULL} = the function tries to guess numeric / character based on the
 #' \code{column_values} but many more specific types are available)
@@ -1204,9 +1320,47 @@ add_column <- function(table, column_title, column_values, column_position = NUL
   return(new_table)
 }
 
+#' @title Removes column to BayesTools table
+#'
+#' @description Removes column to a BayesTools table while not
+#' breaking formatting, attributes, etc...
+#'
+#' @param table BayesTools table
+#' @param column_position position of the to be removed column (defaults to \code{NULL} which
+#' removes the last column)
+#'
+#' @return returns an object of 'BayesTools_table' class.
+#'
+#' @export
+remove_column <- function(table, column_position = NULL){
+
+  if(!inherits(table, "BayesTools_table"))
+    stop("The 'table' must be of class 'BayesTools_table'.")
+  check_int(column_position, "column_position", allow_NULL = TRUE, lower = 1, upper = ncol(table))
+
+  # fill defaults
+  if(is.null(column_position)){
+    column_position <- ncol(table)
+  }
+
+  # add the column (must be constructed in this was as it can't contain NULL)
+  new_table <- table[,-column_position]
+
+  # transfer column names
+  colnames(new_table) <- colnames(table)[-column_position]
+
+  # copy attributes
+  class(new_table)        <- class(table)
+  attr(new_table, "type") <- attr(table, "type")[-column_position]
+  for(a in names(attributes(table))[!names(attributes(table)) %in% c("class", "type", "names")]){
+    attr(new_table, a) <- attr(table, a)
+  }
+
+  return(new_table)
+}
 
 .format_column       <- function(x, type, n_models){
-  if(is.null(x)){
+  if(is.null(x) || length(x) == 0){
     return(x)
   }else{
     return(switch(
@@ -1235,7 +1389,7 @@ add_column <- function(table, column_title, column_values, column_position = NUL
   }
 }
 .format_column_names <- function(x, type, values){
-  if(is.null(x)){
+  if(is.null(x) || length(x) == 0){
     return(x)
   }else{
     return(switch(

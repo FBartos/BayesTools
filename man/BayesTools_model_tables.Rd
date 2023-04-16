@@ -8,8 +8,11 @@
 \alias{JAGS_estimates_table}
 \alias{JAGS_inference_table}
 \alias{JAGS_summary_table}
+\alias{model_summary_empty_table}
 \alias{runjags_estimates_empty_table}
 \alias{runjags_inference_empty_table}
+\alias{JAGS_estimates_empty_table}
+\alias{JAGS_inference_empty_table}
 \alias{stan_estimates_table}
 \title{Create BayesTools model tables}
 \usage{
@@ -81,9 +84,20 @@ JAGS_summary_table(
   formula_prefix = TRUE
 )
 
+model_summary_empty_table(
+  model_description = NULL,
+  title = NULL,
+  footnotes = NULL,
+  warnings = NULL
+)
+
 runjags_estimates_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
 
 runjags_inference_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
+
+JAGS_estimates_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
+
+JAGS_inference_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
 
 stan_estimates_table(
   fit,
