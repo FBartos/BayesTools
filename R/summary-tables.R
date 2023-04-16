@@ -943,6 +943,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 
   # reorder the columns
   runjags_summary <- runjags_summary[,c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"), drop = FALSE]
+  runjags_summary <- data.frame(runjags_summary)
 
   # prepare output
   class(runjags_summary)              <- c("BayesTools_table", "BayesTools_runjags_summary", class(runjags_summary))
