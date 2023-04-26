@@ -24,7 +24,8 @@ model_summary_table(
   warnings = NULL,
   remove_spike_0 = TRUE,
   short_name = FALSE,
-  formula_prefix = TRUE
+  formula_prefix = TRUE,
+  remove_parameters = NULL
 )
 
 runjags_estimates_table(
@@ -81,7 +82,8 @@ JAGS_summary_table(
   warnings = NULL,
   remove_spike_0 = TRUE,
   short_name = FALSE,
-  formula_prefix = TRUE
+  formula_prefix = TRUE,
+  remove_parameters = NULL
 )
 
 model_summary_empty_table(
@@ -133,6 +135,9 @@ shortened. Defaults to \code{FALSE}.}
 \item{formula_prefix}{whether the parameter prefix from formula should
 be printed. Defaults to \code{TRUE}.}
 
+\item{remove_parameters}{parameters to be removed from the summary. Defaults
+to \code{NULL}, i.e., including all parameters.}
+
 \item{fit}{runjags model fit}
 
 \item{transformations}{named list of transformations to be applied
@@ -151,9 +156,6 @@ differences from the grand mean}
 
 \item{remove_inclusion}{whether estimates of the inclusion probabilities
 should be excluded from the summary table. Defaults to \code{FALSE}.}
-
-\item{remove_parameters}{parameters to be removed from the summary. Defaults
-to \code{NULL}, i.e., including all parameters.}
 }
 \value{
 \code{model_summary_table} returns a table with

@@ -526,7 +526,7 @@ ensemble_diagnostics_empty_table <- function(title = NULL, footnotes = NULL, war
 NULL
 
 #' @rdname BayesTools_model_tables
-model_summary_table <- function(model, model_description = NULL, title = NULL, footnotes = NULL, warnings = NULL, remove_spike_0 = TRUE, short_name = FALSE, formula_prefix = TRUE){
+model_summary_table <- function(model, model_description = NULL, title = NULL, footnotes = NULL, warnings = NULL, remove_spike_0 = TRUE, short_name = FALSE, formula_prefix = TRUE, remove_parameters = NULL){
 
   # check input
   check_list(model, "model", check_names = "inference", allow_other = TRUE, all_objects = TRUE)
@@ -547,6 +547,7 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
   check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
   check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
   check_bool(formula_prefix, "formula_prefix")
+  check_char(remove_parameters, "remove_parameters", allow_NULL = TRUE, check_length = 0)
 
   # prepare the columns
   summary_names  <- c(
@@ -567,7 +568,7 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
   summary_priors  <- "Parameter prior distributions"
   for(i in seq_along(prior_list)){
     # get the prior name
-    if(remove_spike_0 && is.prior.point(prior_list[[i]]) && prior_list[[i]][["parameters"]][["location"]] == 0){
+    if(remove_spike_0 && is.prior.point(prior_list[[i]]) && prior_list[[i]][["parameters"]][["location"]] == 0 || (names(prior_list)[[i]] %in% remove_parameters)){
       next
     }else if(is.prior.weightfunction(prior_list[[i]]) | is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
       temp_prior <- print(prior_list[[i]], silent = TRUE, short_name = short_name)

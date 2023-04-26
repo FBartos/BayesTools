@@ -408,9 +408,9 @@ test_that("Summary tables functions work (formulas + factors)",{
   expect_equal(model_summary[,1], c("Model  ", "Prior prob.  ", "log(marglik)  ", "Post. prob.  ", "Inclusion BF  ", "  "))
   expect_equal(model_summary[,4], c("Parameter prior distributions","(mu) intercept ~ Normal(0, 5)","(mu) x_cont1 ~ Normal(0, 1)","(mu) x_fac3o ~ orthonormal contrast: mNormal(0, 1)","(mu) x_cont1:x_fac3o ~ orthonormal contrast: mNormal(0, 1)","sigma ~ Lognormal(0, 1)"))
 
-  model_summary2 <- model_summary_table(models[[4]], formula_prefix = FALSE)
-  expect_equal(model_summary2[,1], c("Model  ", "Prior prob.  ", "log(marglik)  ", "Post. prob.  ", "Inclusion BF  ", "  "))
-  expect_equal(model_summary2[,4], c("Parameter prior distributions","intercept ~ Normal(0, 5)","x_cont1 ~ Normal(0, 1)","x_fac3o ~ orthonormal contrast: mNormal(0, 1)","x_cont1:x_fac3o ~ orthonormal contrast: mNormal(0, 1)","sigma ~ Lognormal(0, 1)"))
+  model_summary2 <- model_summary_table(models[[4]], formula_prefix = FALSE, remove_parameters = "sigma")
+  expect_equal(model_summary2[,1], c("Model  ", "Prior prob.  ", "log(marglik)  ", "Post. prob.  ", "Inclusion BF  "))
+  expect_equal(model_summary2[,4], c("Parameter prior distributions","intercept ~ Normal(0, 5)","x_cont1 ~ Normal(0, 1)","x_fac3o ~ orthonormal contrast: mNormal(0, 1)","x_cont1:x_fac3o ~ orthonormal contrast: mNormal(0, 1)"))
 
 
   # runjags summary
