@@ -696,7 +696,6 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       prior_list[i] <- NULL
     }else if(is.prior.simple(prior_list[[i]]) && prior_list[[i]][["distribution"]] == "invgamma"){
       runjags_summary <- runjags_summary[rownames(runjags_summary) != paste0("inv_",names(prior_list)[i]),,drop=FALSE]
-      prior_list[i] <- NULL
     }
   }
 
