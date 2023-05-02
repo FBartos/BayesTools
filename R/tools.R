@@ -47,7 +47,7 @@
 #' @rdname check_input
 check_bool   <- function(x, name, check_length = 1, allow_NULL = FALSE, call = ""){
 
-  if(is.null(x)){
+  if(is.null(x) || length(x) == 0){
     if(allow_NULL){
       return()
     }else{
@@ -67,7 +67,7 @@ check_bool   <- function(x, name, check_length = 1, allow_NULL = FALSE, call = "
 #' @rdname check_input
 check_char   <- function(x, name, check_length = 1, allow_values = NULL, allow_NULL = FALSE, call = ""){
 
-  if(is.null(x)){
+  if(is.null(x) || length(x) == 0){
     if(allow_NULL){
       return()
     }else{
@@ -90,7 +90,7 @@ check_char   <- function(x, name, check_length = 1, allow_values = NULL, allow_N
 #' @rdname check_input
 check_real   <- function(x, name, lower = -Inf, upper = Inf, allow_bound = TRUE, check_length = 1, allow_NULL = FALSE, call = ""){
 
-  if(is.null(x)){
+  if(is.null(x) || length(x) == 0){
     if(allow_NULL){
       return()
     }else{
@@ -130,7 +130,7 @@ check_real   <- function(x, name, lower = -Inf, upper = Inf, allow_bound = TRUE,
 #' @rdname check_input
 check_int    <- function(x, name, lower = -Inf, upper = Inf, allow_bound = TRUE, check_length = 1, allow_NULL = FALSE, call = ""){
 
-  if(is.null(x)){
+  if(is.null(x) || length(x) == 0){
     if(allow_NULL){
       return()
     }else{
@@ -149,7 +149,7 @@ check_int    <- function(x, name, lower = -Inf, upper = Inf, allow_bound = TRUE,
 #' @rdname check_input
 check_list   <- function(x, name, check_length = 0, check_names = NULL, all_objects = FALSE, allow_other = FALSE, allow_NULL = FALSE, call = ""){
 
-  if(is.null(x)){
+  if(is.null(x) || length(x) == 0){
     if(allow_NULL){
       return()
     }else{

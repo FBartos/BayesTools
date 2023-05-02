@@ -10,6 +10,9 @@
 - `contrast = "meandif"` is now the default setting for `prior_factor` function
 - depreciating `transform_orthonormal` argument in favor of more general `transform_factors` argument 
 
+### Fixes
+- zero length inputs to `check_bool()`, `check_char()`, `check_real()`, `check_int()`, and `check_list()` do not throw error if `allow_NULL = TRUE`
+
 ## version 0.2.13
 ### Features
 - `runjags_estimates_table()` function can now handle factor transformations 

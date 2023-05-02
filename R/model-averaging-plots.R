@@ -452,18 +452,16 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   }
   samples <- do.call(rbind, samples_list)
 
-
-  # transform the PEESE parameter if requested
-  if(!is.null(transformation)){
-    samples[,1] <- .density.prior_transformation_x(samples[,1],  transformation, transformation_arguments)
-    samples[,3] <- .density.prior_transformation_inv_x(samples[,3],  transformation, transformation_arguments)
-  }
-
-
   # compute PET-PEESE (mu + PET*se + PEESE*se^2)
   x_sam  <- matrix(samples[,1], nrow = length(samples), ncol = length(x_seq)) +
     matrix(samples[,2], nrow = length(samples), ncol = length(x_seq)) * matrix(x_seq,   nrow = length(samples), ncol = length(x_seq), byrow = TRUE) +
     matrix(samples[,3], nrow = length(samples), ncol = length(x_seq)) * matrix(x_seq^2, nrow = length(samples), ncol = length(x_seq), byrow = TRUE)
+
+  # transform the PEESE parameter if requested
+  if(!is.null(transformation)){
+    x_sam <- .density.prior_transformation_x(x_sam, transformation, transformation_arguments)
+  }
+
   x_med  <- apply(x_sam, 2, stats::quantile, prob = .500)
   x_lCI  <- apply(x_sam, 2, stats::quantile, prob = .025)
   x_uCI  <- apply(x_sam, 2, stats::quantile, prob = .975)
@@ -1299,18 +1297,16 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   }
 
 
-  # transform the parameter if requested
-  if(!is.null(transformation)){
-    # PEESE needs an inverse transformation to the effect sizes
-    samples[,1] <- .density.prior_transformation_x(samples[,1], transformation, transformation_arguments)
-    samples[,3] <- .density.prior_transformation_inv_x(samples[,3], transformation, transformation_arguments)
-  }
-
-
   # compute PET-PEESE (mu + PET*se + PEESE*se^2)
   x_sam  <- matrix(samples[,1], nrow = length(samples), ncol = length(x_seq)) +
     matrix(samples[,2], nrow = length(samples), ncol = length(x_seq)) * matrix(x_seq, nrow = length(samples), ncol = length(x_seq), byrow = TRUE) +
     matrix(samples[,3], nrow = length(samples), ncol = length(x_seq)) * matrix(x_seq^2, nrow = length(samples), ncol = length(x_seq), byrow = TRUE)
+
+  # transform the parameter if requested
+  if(!is.null(transformation)){
+    x_sam <- .density.prior_transformation_x(x_sam, transformation, transformation_arguments)
+  }
+
   x_med  <- apply(x_sam, 2, stats::quantile, prob = .500)
   x_lCI  <- apply(x_sam, 2, stats::quantile, prob = .025)
   x_uCI  <- apply(x_sam, 2, stats::quantile, prob = .975)

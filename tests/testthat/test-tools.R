@@ -24,10 +24,6 @@ test_that("Check booleans", {
     "The 'test object' argument must be a logical vector."
   )
   expect_error(
-    check_bool(list(), "test object"),
-    "The 'test object' argument must be a logical vector."
-  )
-  expect_error(
     check_bool(list(TRUE), "test object"),
     "The 'test object' argument must be a logical vector."
   )
@@ -58,10 +54,6 @@ test_that("Check strings", {
   )
   expect_error(
     check_char(1, "test object"),
-    "The 'test object' argument must be a character vector."
-  )
-  expect_error(
-    check_char(list(), "test object"),
     "The 'test object' argument must be a character vector."
   )
   expect_error(
@@ -101,10 +93,6 @@ test_that("Check reals", {
   )
   expect_error(
     check_real("string", "test object"),
-    "The 'test object' argument must be a numeric vector."
-  )
-  expect_error(
-    check_real(list(), "test object"),
     "The 'test object' argument must be a numeric vector."
   )
   expect_error(
@@ -158,10 +146,6 @@ test_that("Check integers", {
     "The 'test object' argument must be a numeric vector."
   )
   expect_error(
-    check_int(list(), "test object"),
-    "The 'test object' argument must be a numeric vector."
-  )
-  expect_error(
     check_int(list(3.2), "test object"),
     "The 'test object' argument must be a numeric vector."
   )
@@ -191,7 +175,7 @@ test_that("Check lists", {
 
   # these should be allowed
   expect_null(check_list(NULL,  "", allow_NULL = TRUE))
-  expect_null(check_list(list(), ""))
+  expect_null(check_list(list(), "", allow_NULL = TRUE))
   expect_null(check_list(list("a" = c("a", "b"), "b" = 1), ""))
   expect_null(check_list(list("a" = c("a", "b"), "b" = 1), "", check_names = c("a", "b")))
   expect_null(check_list(list("a" = c("a", "b")), "", check_names = c("a", "b")))
