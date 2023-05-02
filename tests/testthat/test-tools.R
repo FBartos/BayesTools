@@ -198,7 +198,7 @@ test_that("Check lists", {
   )
   expect_error(
     check_list(list(), "test object", check_length = 2),
-    "The 'test object' argument must have length '2'."
+    "The 'test object' argument cannot be NULL."
   )
   expect_error(
     check_list(list("c" = c("a", "b")), "test object", check_names = c("a", "b")),
