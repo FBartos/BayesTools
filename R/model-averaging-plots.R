@@ -513,6 +513,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
                               transformation_settings = transformation_settings, individual = individual, truncate_end = FALSE)
   }
 
+  # the complete samples are added to each output object
   x_sam    <- NULL
   x_points <- NULL
   y_points <- NULL
@@ -522,7 +523,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   for(i in seq_along(plot_data)){
 
     if(force_samples){
-      x_sam <- plot_data$samples
+      x_sam <- c(x_sam, plot_data[[i]]$samples)
     }
 
     # align points and densities
@@ -591,7 +592,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
         n       = n_points,
         x       = x_points[i],
         y       = y_points[i],
-        samples = NULL
+        samples = x_sam
       )
 
       class(temp_points) <- c("density", "density.prior", "density.prior.point")
