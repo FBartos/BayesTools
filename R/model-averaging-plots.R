@@ -893,17 +893,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   check_bool(individual, "individual")
   check_bool(rescale_x, "rescale_x")
   check_int(show_figures, "show_figures", allow_NULL = TRUE)
-  if(!is.null(transformation)){
-    if(is.character(transformation)){
-      check_char(transformation, "transformation")
-    }else if(is.list(transformation)){
-      check_list(transformation, "transformation", check_length = 3, check_names = c("fun", "inv", "jac"), all_objects = TRUE)
-    }else{
-      stop("Uknown format of the 'transformation' argument.")
-    }
-  }
-  check_list(transformation_arguments, "transformation_arguments", allow_NULL = TRUE)
-  check_bool(transformation_settings, "transformation_settings")
+  .check_transformation_input(transformation, transformation_arguments, transformation_settings)
 
   # deal with bad parameter names for PET-PEESE, weightfunction
   if(tolower(gsub("-", "", gsub("_", "", gsub(".", "", parameter, fixed = TRUE),fixed = TRUE), fixed = TRUE)) %in% c("weightfunction", "weigthfunction", "omega")){

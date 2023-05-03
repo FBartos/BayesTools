@@ -66,17 +66,7 @@ density.prior <- function(x,
   check_int(n_samples, "n_samples", lower = 1)
   check_bool(force_samples, "force_samples")
   check_bool(individual, "individual")
-  if(!is.null(transformation)){
-    if(is.character(transformation)){
-      check_char(transformation, "transformation")
-    }else if(is.list(transformation)){
-      check_list(transformation, "transformation", check_length = 3, check_names = c("fun", "inv", "jac"), all_objects = TRUE)
-    }else{
-      stop("Uknown format of the 'transformation' argument.")
-    }
-  }
-  check_list(transformation_arguments, "transformation_arguments", allow_NULL = TRUE)
-  check_bool(transformation_settings, "transformation_settings")
+  .check_transformation_input(transformation, transformation_arguments, transformation_settings)
   check_bool(truncate_end, "truncate_end")
 
 

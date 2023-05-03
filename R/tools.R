@@ -180,6 +180,23 @@ check_list   <- function(x, name, check_length = 0, check_names = NULL, all_obje
   abs(x - round(x)) < tol
 }
 
+# check transformation argument
+.check_transformation_input <- function(transformation, transformation_arguments, transformation_settings){
+
+  if(!is.null(transformation)){
+    if(is.character(transformation)){
+      check_char(transformation, "transformation")
+    }else if(is.list(transformation)){
+      check_list(transformation, "transformation", check_length = 3, check_names = c("fun", "inv", "jac"), all_objects = TRUE)
+    }else{
+      stop("Uknown format of the 'transformation' argument.")
+    }
+  }
+  check_list(transformation_arguments, "transformation_arguments", allow_NULL = TRUE)
+  check_bool(transformation_settings, "transformation_settings")
+
+  return()
+}
 
 # check whether package is installed
 .check_rstan   <- function(){
