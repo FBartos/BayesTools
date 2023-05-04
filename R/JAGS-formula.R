@@ -567,6 +567,38 @@ transform_orthonormal_samples <- function(samples){
   return(samples)
 }
 
+# not part of transform factor samples (as it's usefull only for marginal effects)
+transform_treatment_samples <- function(samples){
+
+  check_list(samples, "samples", allow_NULL = TRUE)
+
+  for(i in seq_along(samples)){
+    if(!inherits(samples[[i]],"mixed_posteriors.treatment_transformed") && inherits(samples[[i]], "mixed_posteriors.factor") && attr(samples[[i]], "treatment")){
+
+      treatment_samples   <- samples[[i]]
+      transformed_samples <- treatment_samples %*% t(contr.treatment(1:(attr(samples[[i]], "levels")+1)))
+
+      if(attr(samples[[i]], "interaction")){
+        if(length(attr(samples[[i]], "level_names")) == 1){
+          transformed_names <- paste0(names(samples)[i], " [dif: ", attr(samples[[i]], "level_names")[[1]],"]")
+        }else{
+          stop("orthonormal de-transformation for interaction of multiple factors is not implemented.")
+        }
+      }else{
+        transformed_names <- paste0(names(samples)[i], " [dif: ", attr(samples[[i]], "level_names"),"]")
+      }
+
+      colnames(transformed_samples)   <- transformed_names
+      attributes(transformed_samples) <- c(attributes(transformed_samples), attributes(treatment_samples)[!names(attributes(treatment_samples)) %in% names(attributes(transformed_samples))])
+      class(transformed_samples)      <- c(class(transformed_samples), "mixed_posteriors.treatment_transformed")
+
+      samples[[i]] <- transformed_samples
+    }
+  }
+
+  return(samples)
+}
+
 
 #' @title Orthornomal contrast matrix
 #'
