@@ -103,12 +103,15 @@ test_that("helper functions work", {
   )
 
 
+  samples <- mixed_posteriors
   formula <- ~ x_cont1 + x_fac2t + x_cont1*x_fac3md
-  parameter <- "mu_x_fac2t"
-  at <- data.frame(
-    x_cont1 = 0,
-
+  formula_parameter <- "mu"
+  parameter <- "x_fac2t"
+  at <- list(
+    x_cont1  = 0,
+    x_fac3md = c(NA, "A")
   )
+  transformation <- NULL; transformation_arguments <- NULL; transformation_settings <- FALSE
 
   JAGS_estimates_table(fit1, transform_factors = TRUE)
   ensemble_estimates_table(mixed_posteriors, parameters = c("sigma", "mu_intercept", "mu_x_cont1", "mu_x_fac2t", "mu_x_fac3md", "mu_x_cont1__xXx__x_fac3md"), transform_factors = TRUE)
