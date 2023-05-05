@@ -97,7 +97,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
         this_prior <- prior_list[[factor]]
       }
 
-      if(is.prior.dummy(this_prior)){
+      if(is.prior.treatment(this_prior)){
         stats::contrasts(data[,factor]) <- "contr.treatment"
       }else if(is.prior.independent(this_prior)){
         stats::contrasts(data[,factor]) <- "contr.independent"
@@ -372,7 +372,7 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
       stats::contrasts(data[,factor]) <- "contr.meandif"
     }else if(is.prior.independent(this_prior)){
       stats::contrasts(data[,factor]) <- "contr.independent"
-    }else if(is.prior.dummy(this_prior)){
+    }else if(is.prior.treatment(this_prior)){
       stats::contrasts(data[,factor]) <- "contr.treatment"
     }
   }

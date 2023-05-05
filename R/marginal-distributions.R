@@ -105,7 +105,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, formula_param
       #     stats::contrasts(data[,factor]) <- "contr.meandif"
       #   }else if(is.prior.independent(this_prior)){
       #     stats::contrasts(data[,factor]) <- "contr.independent"
-      #   }else if(is.prior.dummy(this_prior)){
+      #   }else if(is.prior.treatment(this_prior)){
       #     stats::contrasts(data[,factor]) <- "contr.treatment"
       #   }
       # }

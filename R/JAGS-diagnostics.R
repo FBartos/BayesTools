@@ -312,8 +312,8 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
   }
 
   # rename treatment factor levels
-  if(any(sapply(prior_list, is.prior.dummy))){
-    for(par in names(prior_list)[sapply(prior_list, is.prior.dummy)]){
+  if(any(sapply(prior_list, is.prior.treatment))){
+    for(par in names(prior_list)[sapply(prior_list, is.prior.treatment)]){
       if(!.is_prior_interaction(prior_list[[par]])){
         if(.get_prior_factor_levels(prior_list[[par]]) == 1){
           parameter_names <- par

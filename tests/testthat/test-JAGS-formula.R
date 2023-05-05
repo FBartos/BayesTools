@@ -105,7 +105,7 @@ test_that("JAGS formula works", {
   })
 
 
-  # linear regression with a dummy factor (2 levels) ----
+  # linear regression with a treatment factor (2 levels) ----
   formula_3      <- JAGS_formula(~ x_fac2t, parameter = "mu", data = df_all[,"x_fac2t",drop = FALSE], prior_list = prior_list_all[c("intercept", "x_fac2t")])
   prior_list_3   <- c(formula_3$prior_list, prior_list2)
   model_syntax_3 <- JAGS_add_priors(paste0("model{", formula_3$formula_syntax, model_syntax, "}"), prior_list_3)
@@ -165,7 +165,7 @@ test_that("JAGS formula works", {
   })
 
 
-  # linear regression with a dummy factor (3 levels) ----
+  # linear regression with a treatment factor (3 levels) ----
   formula_5      <- JAGS_formula(~ x_fac3t, parameter = "mu", data = df_all[,"x_fac3t",drop = FALSE], prior_list = prior_list_all[c("intercept", "x_fac3t")])
   prior_list_5   <- c(formula_5$prior_list, prior_list2)
   model_syntax_5 <- JAGS_add_priors(paste0("model{", formula_5$formula_syntax, model_syntax, "}"), prior_list_5)

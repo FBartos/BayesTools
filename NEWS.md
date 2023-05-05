@@ -9,6 +9,7 @@
 ### Changes
 - `contrast = "meandif"` is now the default setting for `prior_factor` function
 - depreciating `transform_orthonormal` argument in favor of more general `transform_factors` argument 
+- switching `dummy` contrast/factor attributes to `treatment` for consistency (https://github.com/FBartos/BayesTools/issues/23)
 
 ### Fixes
 - zero length inputs to `check_bool()`, `check_char()`, `check_real()`, `check_int()`, and `check_list()` do not throw error if `allow_NULL = TRUE`

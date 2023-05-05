@@ -52,8 +52,8 @@ test_that("Prior print function works", {
 
   # check factor priors
   p14 <- prior_factor(distribution = "mnormal", contrast = "orthonormal", parameters = list(0, 1))
-  p15 <- prior_factor(distribution = "normal", contrast = "dummy", parameters = list(mean = 0, sd = 1))
-  p16 <- prior_factor(distribution = "beta",   contrast = "dummy", parameters = list(alpha = 1, beta = 1))
+  p15 <- prior_factor(distribution = "normal", contrast = "treatment", parameters = list(mean = 0, sd = 1))
+  p16 <- prior_factor(distribution = "beta",   contrast = "treatment", parameters = list(alpha = 1, beta = 1))
   p17 <- prior_factor(distribution = "beta",   contrast = "independent", parameters = list(alpha = 1, beta = 1))
   p18 <- prior_factor(distribution = "mnormal", contrast = "meandif", parameters = list(0, 0.5))
 

@@ -12,7 +12,7 @@
 \alias{is.prior.weightfunction}
 \alias{is.prior.factor}
 \alias{is.prior.orthonormal}
-\alias{is.prior.dummy}
+\alias{is.prior.treatment}
 \alias{is.prior.independent}
 \alias{is.prior.spike_and_slab}
 \alias{is.prior.meandif}
@@ -40,7 +40,7 @@ is.prior.factor(x)
 
 is.prior.orthonormal(x)
 
-is.prior.dummy(x)
+is.prior.treatment(x)
 
 is.prior.independent(x)
 

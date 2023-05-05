@@ -74,8 +74,8 @@ test_that("JAGS model functions work (factor)", {
   skip_if_not_installed("rjags")
   all_priors   <- list(
     p1  = prior_factor("mnorm", list(mean = 0, sd = 1),    contrast = "orthonormal"),
-    p2  = prior_factor("beta",  list(alpha = 1, beta = 1), contrast = "dummy"),
-    p3  = prior_factor("beta",  list(alpha = 2, beta = 2), contrast = "dummy"),
+    p2  = prior_factor("beta",  list(alpha = 1, beta = 1), contrast = "treatment"),
+    p3  = prior_factor("beta",  list(alpha = 2, beta = 2), contrast = "treatment"),
     p4  = prior_factor("gamma",   list(shape = 2, rate = 3), contrast = "independent"),
     p5  = prior_factor("uniform", list(a = -0.5, b = 1.5),   contrast = "independent"),
     p6  = prior_factor("mnorm", list(mean = 0, sd = 1),     contrast = "meandif")

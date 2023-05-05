@@ -772,9 +772,9 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
         runjags_summary[par, "MCerr"]   <- do.call(transformations[[par]][["fun"]], c(list(runjags_summary[par, "MCerr"]), transformations[[par]][["arg"]]))
         runjags_summary[par, "MC.ofSD"] <- 100 * runjags_summary[par, "MCerr"] / runjags_summary[par, "SD"]
 
-      }else if((!transform_factors && (is.prior.orthonormal(prior_list[[par]]) |  is.prior.meandif(prior_list[[par]]))) || is.prior.dummy(prior_list[[par]])){
+      }else if((!transform_factors && (is.prior.orthonormal(prior_list[[par]]) |  is.prior.meandif(prior_list[[par]]))) || is.prior.treatment(prior_list[[par]])){
 
-        # dummy priors
+        # treatment priors
         par_names <-  .JAGS_prior_factor_names(par, prior_list[[par]])
 
         for(i in seq_along(par_names)){
@@ -883,8 +883,8 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   runjags_summary <- runjags_summary[,!colnames(runjags_summary) %in% c("Mode", "AC.10"),drop = FALSE]
 
   # rename treatment factor levels
-  if(any(sapply(prior_list, is.prior.dummy))){
-    for(par in names(prior_list)[sapply(prior_list, is.prior.dummy)]){
+  if(any(sapply(prior_list, is.prior.treatment))){
+    for(par in names(prior_list)[sapply(prior_list, is.prior.treatment)]){
       if(!.is_prior_interaction(prior_list[[par]])){
         if(.get_prior_factor_levels(prior_list[[par]]) == 1){
           rownames(runjags_summary)[rownames(runjags_summary) == par] <-

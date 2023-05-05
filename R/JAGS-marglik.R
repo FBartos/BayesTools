@@ -390,7 +390,7 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
 
-  if(is.prior.point(prior) | is.prior.dummy(prior) | is.prior.independent(prior)){
+  if(is.prior.point(prior) | is.prior.treatment(prior) | is.prior.independent(prior)){
 
     if(.get_prior_factor_levels(prior) == 1){
 
@@ -615,7 +615,7 @@ JAGS_marglik_priors                <- function(samples, prior_list){
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
 
-  if(is.prior.point(prior) | is.prior.dummy(prior) | is.prior.independent(prior)){
+  if(is.prior.point(prior) | is.prior.treatment(prior) | is.prior.independent(prior)){
 
     if(.get_prior_factor_levels(prior) == 1){
 
@@ -819,7 +819,7 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
   check_char(parameter_name, "parameter_name")
 
 
-  if(is.prior.point(prior) | is.prior.dummy(prior) | is.prior.independent(prior)){
+  if(is.prior.point(prior) | is.prior.treatment(prior) | is.prior.independent(prior)){
 
     if(.get_prior_factor_levels(prior) == 1){
 

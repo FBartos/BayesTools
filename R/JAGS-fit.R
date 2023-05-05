@@ -520,7 +520,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
   check_char(parameter_name, "parameter_name")
   check_int(.get_prior_factor_levels(prior), "levels", lower = 1)
 
-  if(is.prior.dummy(prior) | is.prior.independent(prior) | is.prior.point(prior)){
+  if(is.prior.treatment(prior) | is.prior.independent(prior) | is.prior.point(prior)){
 
     syntax <- paste0(
       "for(i in 1:", .get_prior_factor_levels(prior), "){\n",
@@ -793,7 +793,7 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
   check_char(parameter_name, "parameter_name")
   check_int(.get_prior_factor_levels(prior), "levels", lower = 1)
 
-  if(is.prior.dummy(prior) | is.prior.independent(prior) | is.prior.point(prior)){
+  if(is.prior.treatment(prior) | is.prior.independent(prior) | is.prior.point(prior)){
 
     init <- list()
     init[[parameter_name]] <- rng(prior, .get_prior_factor_levels(prior))

@@ -133,7 +133,7 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
     out_prefix <- "PET ~ "
   }else if(is.prior.PEESE(x)){
     out_prefix <- "PEESE ~ "
-  }else if(is.prior.dummy(x)){
+  }else if(is.prior.treatment(x)){
     out_prefix <- "treatment contrast: "
   }else if(is.prior.orthonormal(x)){
     out_prefix <- "orthonormal contrast: "

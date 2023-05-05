@@ -295,7 +295,7 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
 prior_factor <- function(distribution, parameters, truncation = list(lower = -Inf, upper = Inf), prior_weights = 1, contrast = "meandif"){
 
   # general input check (detailed checks are performed withing the constructors)
-  check_char(contrast, "contrast", allow_values = c("meandif", "orthonormal", "treatment", "dummy", "independent"))
+  check_char(contrast, "contrast", allow_values = c("meandif", "orthonormal", "treatment", "treatment", "independent"))
 
   # check its compatibility with the contrasts
   if(contrast %in% c("meandif", "orthonormal")){
@@ -320,7 +320,7 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
 
     class(output) <- c(class(output), "prior.factor", paste0("prior.", contrast))
 
-  }else if(contrast %in% c("treatment", "dummy")){
+  }else if(contrast %in% c("treatment", "treatment")){
 
     # generate the prior object
     output <- prior(distribution = distribution, parameters = parameters, truncation = truncation, prior_weights = prior_weights)
@@ -330,7 +330,7 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
 
     output <- prior(distribution = distribution, parameters = parameters, truncation = truncation, prior_weights = prior_weights)
 
-    class(output) <- c(class(output), "prior.factor", "prior.dummy")
+    class(output) <- c(class(output), "prior.factor", "prior.treatment")
 
   }else if(contrast  == "independent"){
 
