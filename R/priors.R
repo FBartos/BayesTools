@@ -85,7 +85,7 @@ prior <- function(distribution, parameters, truncation = list(lower = -Inf, uppe
     distribution <- "normal"
   }else if(distribution %in% c("lnorm", "lognormal")){
     distribution <- "lognormal"
-  }else if(distribution %in% c("t", "student")){
+  }else if(distribution %in% c("t", "student", "studentt")){
     distribution <- "t"
   }else if(distribution %in% c("cauchy")){
     distribution <- "cauchy"
