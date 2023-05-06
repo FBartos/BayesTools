@@ -34,6 +34,7 @@ dpoint <- function(x, location, log = FALSE){
   # common input check
   .check_log(log)
   .check_x(x)
+  check_real(location, "location", check_length = 0)
 
   if(length(location) != length(x) & length(location) != 1)
     stop("Non matching dimensions of 'location' and 'x'.")
@@ -61,6 +62,7 @@ rpoint <- function(n, location){
 
   # common input check
   .check_n(n)
+  check_real(location, "location", check_length = 0)
 
   if(length(location) != n & length(location) != 1)
     stop("Incompatible dimensions of requested number of samples and 'location'.")
@@ -80,6 +82,10 @@ ppoint <- function(q, location, lower.tail = TRUE, log.p = FALSE){
   .check_log.p(log.p)
   .check_lower.tail(lower.tail)
   .check_q(q)
+  check_real(location, "location", check_length = 0)
+
+  if(length(location) != length(q) & length(location) != 1)
+    stop("Non matching dimensions of 'location' and 'q'.")
 
   if(length(location) != length(q) & length(location) == 1){
     location <- rep(location, length(q))
@@ -103,6 +109,10 @@ qpoint <- function(p, location, lower.tail = TRUE, log.p = FALSE){
   .check_log.p(log.p)
   .check_lower.tail(lower.tail)
   .check_p(p, log.p)
+  check_real(location, "location", check_length = 0)
+
+  if(length(location) != length(p) & length(location) != 1)
+    stop("Non matching dimensions of 'location' and 'p'.")
 
   if(length(location) != length(p) & length(location) == 1){
     location <- rep(location, length(p))

@@ -5,6 +5,7 @@
 - `remove_column` function for removing columns from `BayesTools_table` objects without breaking the attributes etc...
 - adding empty table functions (https://github.com/FBartos/BayesTools/issues/10)
 - adding `remove_parameters` argument to `model_summary_table()`
+- adding multivariate point distribution functions
 
 ### Changes
 - `contrast = "meandif"` is now the default setting for `prior_factor` function
@@ -14,6 +15,7 @@
 ### Fixes
 - zero length inputs to `check_bool()`, `check_char()`, `check_real()`, `check_int()`, and `check_list()` do not throw error if `allow_NULL = TRUE`
 - properly aggregating identical priors in the plotting function (previously overlying multiple spikes on top of each other when attributes did not match)
+- `student-t` allowed as a prior distribution `name`
 
 ## version 0.2.13
 ### Features
