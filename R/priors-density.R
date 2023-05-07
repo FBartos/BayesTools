@@ -113,10 +113,10 @@ density.prior <- function(x,
     out <- .density.prior.PETPEESE(x, x_seq, x_range, n_points, n_samples, force_samples, individual, transformation, transformation_arguments, truncate_end)
   }else if(is.prior.spike_and_slab(x)){
     out <- .density.prior.spike_and_slab(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
-  }else if(is.prior.orthonormal(x) | is.prior.meandif(x)){
-    out <- .density.prior.orthonormal_or_meandif(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
   }else if(is.prior.point(x)){
     out <- .density.prior.point(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments)
+  }else if(is.prior.orthonormal(x) | is.prior.meandif(x)){
+    out <- .density.prior.orthonormal_or_meandif(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
   }else if(is.prior.simple(x)){
     out <- .density.prior.simple(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
   }
@@ -218,7 +218,7 @@ density.prior <- function(x,
   )
 
 
-  class(out) <- c("density", "density.prior", "density.prior.point")
+  class(out) <- c("density", "density.prior", "density.prior.point", if(is.prior.orthonormal(x)) "density.prior.orthonormal" else if(is.prior.meandif(x)) "density.prior.meandif")
   attr(out, "x_range") <- x_range
   attr(out, "y_range") <- c(0, max(x_den))
 

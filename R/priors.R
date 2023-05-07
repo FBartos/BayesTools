@@ -109,6 +109,8 @@ prior <- function(distribution, parameters, truncation = list(lower = -Inf, uppe
     distribution <- "mt"
   }else if(distribution %in% c("multivariatecauchy", "mcauchy")){
     distribution <- "mcauchy"
+  }else if(distribution %in% c("mpoint", "mspike")){
+    distribution <- "mpoint"
   }else{
     stop(paste0("The specified distribution name '", distribution,"' is not known. Please, see '?prior' for more information about supported prior distributions."))
   }
@@ -307,7 +309,14 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
       parameters[["K"]] <- NA
     }
 
-    if(!distribution %in% c("multivariatenorm", "multivariatenormal", "mnorm", "mnormal", "multivariatet", "multivariatestudent", "mt", "mstudent" ,"multivariatecauchy", "mcauchy"))
+    # change spike/point into mpoint dispatch
+    if(distribution %in% c("spike", "mspike", "point", "mpoint"))
+      distribution <- "mpoint"
+
+    if(!distribution %in% c("multivariatenorm", "multivariatenormal", "mnorm", "mnormal",
+                            "multivariatet", "multivariatestudent", "mt", "mstudent",
+                            "multivariatecauchy", "mcauchy",
+                            "mpoint"))
       stop(paste0("'", contrast,"' contrasts require multivariate prior disribution."))
 
     # generate the prior object
@@ -315,7 +324,7 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
 
     if(!is.prior.vector(output))
       stop(paste0("'", contrast,"' contrasts require vector prior distribution."))
-    if(!all(sapply(output[["truncation"]], is.infinite)))
+    if(output[["distribution"]] != "mpoint" && !all(sapply(output[["truncation"]], is.infinite)))
       stop(paste0("'", contrast,"' contrasts do not support truncation."))
 
     class(output) <- c(class(output), "prior.factor", paste0("prior.", contrast))
@@ -739,7 +748,26 @@ prior_spike_and_slab <- function(prior_parameter,
 
   return(output)
 }
+.prior_mpoint    <- function(parameters, truncation){
 
+  output <- list()
+
+  # check overall settings
+  parameters <- .check_and_name_parameters(parameters, c("location", "K"), "multivariate point")
+
+  # check individual parameters
+  .check_parameter(parameters$location, "location")
+  .check_parameter_dimensions(parameters$K, "K", allow_NA = TRUE)   # allow undetermined dimensions if called by prior_factor
+
+  # add the values to the output
+  output$distribution <- "mpoint"
+  output$parameters   <- parameters
+  output$truncation   <- list(lower = parameters$location, upper = parameters$location)
+
+  class(output) <- c("prior", "prior.vector", "prior.point")
+
+  return(output)
+}
 .prior_weightfunction_two.sided <- function(parameters){
 
   output <- list()
@@ -959,10 +987,18 @@ rng.prior   <- function(x, n, ...){
 
   }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
 
-    if(switch(
+    par1 <- switch(
       prior[["distribution"]],
-      "mnormal" = prior$parameters[["mean"]],
-      "mt"      = prior$parameters[["location"]]) != 0){
+      "mnormal" = prior$parameter[["mean"]],
+      "mt"      = prior$parameter[["location"]],
+      "mpoint"  = prior$parameter[["location"]]
+    )
+
+    if(length(par1) != 1){
+      stop("unsported distribution specification in 'rng' -- non-symmetric")
+    }
+
+    if(par1 != 0){
       stop("the orthonormal prior distribution must be centered")
     }
 
@@ -974,17 +1010,22 @@ rng.prior   <- function(x, n, ...){
     }
 
     par1 <- rep(0, prior$parameter[["K"]])
-    par2 <- diag(switch(
-      prior[["distribution"]],
-      "mnormal" = prior$parameter[["sd"]]^2,
-      "mt"      = prior$parameter[["scale"]]^2
-    ), ncol = prior$parameter[["K"]], nrow = prior$parameter[["K"]])
+
+    if(prior[["distribution"]] %in% c("mnormal", "mt")){
+      par2 <- diag(switch(
+        prior[["distribution"]],
+        "mnormal" = prior$parameter[["sd"]]^2,
+        "mt"      = prior$parameter[["scale"]]^2
+      ), ncol = prior$parameter[["K"]], nrow = prior$parameter[["K"]])
+    }
 
     x <- switch(
       prior[["distribution"]],
       "mnormal"    = mvtnorm::rmvnorm(n, mean = par1, sigma = par2),
       "mt"         = mvtnorm::rmvt(n, delta = par1, sigma = par2, df = prior$parameter[["df"]], type = "shifted"),
+      "mpoint"     = rmpoint(n, location = par1)
     )
+
 
     if(is.prior.orthonormal(prior)){
       x <- x %*% t(contr.orthonormal(1:(prior$parameters[["K"]] + 1)))
@@ -994,22 +1035,33 @@ rng.prior   <- function(x, n, ...){
 
   }else if(is.prior.vector(prior)){
 
-    # TODO: generalize this to priors with covariances
-    par1 <- rep(switch(
+    par1 <- switch(
       prior[["distribution"]],
       "mnormal" = prior$parameter[["mean"]],
-      "mt"      = prior$parameter[["location"]]
-    ), length = prior$parameter[["K"]])
-    par2 <- diag(switch(
-      prior[["distribution"]],
-      "mnormal" = prior$parameter[["sd"]]^2,
-      "mt"      = prior$parameter[["scale"]]^2
-    ), ncol = prior$parameter[["K"]], nrow = prior$parameter[["K"]])
+      "mt"      = prior$parameter[["location"]],
+      "mpoint"  = prior$parameter[["location"]]
+    )
+
+    if(length(par1) != 1){
+      stop("unsported distribution specification in 'rng' -- non-symmetric")
+    }
+
+    # TODO: generalize this to priors with covariances
+    par1 <- rep(par1, length = prior$parameter[["K"]])
+
+    if(prior[["distribution"]] %in% c("mnormal", "mt")){
+      par2 <- diag(switch(
+        prior[["distribution"]],
+        "mnormal" = prior$parameter[["sd"]]^2,
+        "mt"      = prior$parameter[["scale"]]^2
+      ), ncol = prior$parameter[["K"]], nrow = prior$parameter[["K"]])
+    }
 
     x <- switch(
       prior[["distribution"]],
       "mnormal"    = mvtnorm::rmvnorm(n, mean = par1, sigma = par2),
       "mt"         = mvtnorm::rmvt(n, delta = par1, sigma = par2, df = prior$parameter[["df"]], type = "shifted"),
+      "mpoint"     = rmpoint(n, location = par1)
     )
 
   }else if(is.prior.weightfunction(prior)){
@@ -1066,6 +1118,10 @@ cdf.prior   <- function(x, q, ...){
       p[!q_lower] <- (p[!q_lower] - .prior_C1(prior)) /.prior_C(prior)
     }
 
+  }else if(is.prior.vector(prior)){
+
+    stop("No cdfs are implemented for vector priors.")
+
   }else if(is.prior.weightfunction(prior)){
 
     stop("Only marginal cdfs are implemented for prior weightfunctions.")
@@ -1114,6 +1170,10 @@ ccdf.prior  <- function(x, q, ...){
       p[!q_higher] <- (p[!q_higher] - (1 - .prior_C2(prior))) /.prior_C(prior)
     }
 
+  }else if(is.prior.vector(prior)){
+
+    stop("No cdfs are implemented for vector priors.")
+
   }else if(is.prior.weightfunction(prior)){
 
     stop("Only marginal ccdf functions are implemented for prior weightfunctions.")
@@ -1158,22 +1218,29 @@ lpdf.prior  <- function(x, y, ...){
 
   }else if(is.prior.vector(prior)){
 
-    # TODO: generalize this to priors with covariances
-    par1 <- rep(switch(
+    par1 <- switch(
       prior[["distribution"]],
       "mnormal" = prior$parameter[["mean"]],
-      "mt"      = prior$parameter[["location"]]
-    ), length = prior$parameter[["K"]])
-    par2 <- diag(switch(
-      prior[["distribution"]],
-      "mnormal" = prior$parameter[["sd"]]^2,
-      "mt"      = prior$parameter[["scale"]]^2
-    ), ncol = prior$parameter[["K"]], nrow = prior$parameter[["K"]])
+      "mt"      = prior$parameter[["location"]],
+      "mpoint"  = prior$parameter[["location"]]
+    )
+
+    # TODO: generalize this to priors with covariances
+    par1 <- rep(par1, length = prior$parameter[["K"]])
+
+    if(prior[["distribution"]] %in% c("mnormal", "mt")){
+      par2 <- diag(switch(
+        prior[["distribution"]],
+        "mnormal" = prior$parameter[["sd"]]^2,
+        "mt"      = prior$parameter[["scale"]]^2
+      ), ncol = prior$parameter[["K"]], nrow = prior$parameter[["K"]])
+    }
 
     log_lik <- switch(
       prior[["distribution"]],
       "mnormal"    = mvtnorm::dmvnorm(x, mean = par1, sigma = par2, log = TRUE),
       "mt"         = mvtnorm::dmvt(x, delta = par1, sigma = par2, df = prior$parameter[["df"]], type = "shifted", log = TRUE),
+      "mpoint"     = dmpoint(x, location = par1, log = TRUE)
     )
 
   }else if(is.prior.weightfunction(prior)){
@@ -1339,6 +1406,7 @@ quant.prior <- function(x, p, ...){
     "exp"       = isTRUE(all.equal(prior$truncation[["lower"]], 0)) & is.infinite(prior$truncation[["upper"]]),
     "uniform"   = TRUE,
     "point"     = TRUE,
+    "mpoint"    = TRUE,
     "one.sided" = TRUE,
     "two.sided" = TRUE,
     "one.sided.fixed" = TRUE,
@@ -1374,10 +1442,18 @@ mcdf.prior   <- function(x, q, ...){
 
   }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
 
-    if(switch(
+    par1 <- switch(
       prior[["distribution"]],
-      "mnormal" = prior$parameters[["mean"]],
-      "mt"      = prior$parameters[["location"]]) != 0){
+      "mnormal" = prior$parameter[["mean"]],
+      "mt"      = prior$parameter[["location"]],
+      "mpoint"  = prior$parameter[["location"]]
+    )
+
+    if(length(par1) != 1){
+      stop("unsported distribution specification in 'rng' -- non-symmetric")
+    }
+
+    if(par1 != 0){
       stop("the orthonormal prior distribution must be centered")
     }
 
@@ -1388,22 +1464,25 @@ mcdf.prior   <- function(x, q, ...){
       warning("number of factor levels / dimensionality of the prior distribution was not specified -- assuming two factor levels")
     }
 
-    if(is.prior.orthonormal(prior)){
-      par2 <- sqrt(sum( (contr.orthonormal(1:(prior$parameters[["K"]] + 1))[1,] * switch(
-        prior[["distribution"]],
-        "mnormal" = prior$parameters[["sd"]],
-        "mt"      = prior$parameters[["scale"]]) )^2 ))
-    }else if(is.prior.meandif(prior)){
-      par2 <- sqrt(sum( (contr.meandif(1:(prior$parameters[["K"]] + 1))[1,] * switch(
-        prior[["distribution"]],
-        "mnormal" = prior$parameters[["sd"]],
-        "mt"      = prior$parameters[["scale"]]) )^2 ))
+    if(prior[["distribution"]] %in% c("mnormal", "mt")){
+      if(is.prior.orthonormal(prior)){
+        par2 <- sqrt(sum( (contr.orthonormal(1:(prior$parameters[["K"]] + 1))[1,] * switch(
+          prior[["distribution"]],
+          "mnormal" = prior$parameters[["sd"]],
+          "mt"      = prior$parameters[["scale"]]) )^2 ))
+      }else if(is.prior.meandif(prior)){
+        par2 <- sqrt(sum( (contr.meandif(1:(prior$parameters[["K"]] + 1))[1,] * switch(
+          prior[["distribution"]],
+          "mnormal" = prior$parameters[["sd"]],
+          "mt"      = prior$parameters[["scale"]]) )^2 ))
+      }
     }
 
     p <- switch(
       prior[["distribution"]],
       "mnormal" = stats::pnorm(q, mean = 0, sd = par2),
-      "mt"      = extraDistr::plst(q, df = prior$parameters[["df"]], mu = 0, sigma = par2)
+      "mt"      = extraDistr::plst(q, df = prior$parameters[["df"]], mu = 0, sigma = par2),
+      "mpoint"  = ppoint(q, location = 0)
     )
 
   }else if(is.prior.spike_and_slab(prior)){
@@ -1438,10 +1517,18 @@ mccdf.prior  <- function(x, q, ...){
 
   }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
 
-    if(switch(
+    par1 <- switch(
       prior[["distribution"]],
-      "mnormal" = prior$parameters[["mean"]],
-      "mt"      = prior$parameters[["location"]]) != 0){
+      "mnormal" = prior$parameter[["mean"]],
+      "mt"      = prior$parameter[["location"]],
+      "mpoint"  = prior$parameter[["location"]]
+    )
+
+    if(length(par1) != 1){
+      stop("unsported distribution specification in 'rng' -- non-symmetric")
+    }
+
+    if(par1 != 0){
       stop("the orthonormal prior distribution must be centered")
     }
 
@@ -1452,22 +1539,25 @@ mccdf.prior  <- function(x, q, ...){
       warning("number of factor levels / dimensionality of the prior distribution was not specified -- assuming two factor levels")
     }
 
-    if(is.prior.orthonormal(prior)){
-      par2 <- sqrt(sum( (contr.orthonormal(1:(prior$parameters[["K"]] + 1))[1,] * switch(
-        prior[["distribution"]],
-        "mnormal" = prior$parameters[["sd"]],
-        "mt"      = prior$parameters[["scale"]]) )^2 ))
-    }else if(is.prior.meandif(prior)){
-      par2 <- sqrt(sum( (contr.meandif(1:(prior$parameters[["K"]] + 1))[1,] * switch(
-        prior[["distribution"]],
-        "mnormal" = prior$parameters[["sd"]],
-        "mt"      = prior$parameters[["scale"]]) )^2 ))
+    if(prior[["distribution"]] %in% c("mnormal", "mt")){
+      if(is.prior.orthonormal(prior)){
+        par2 <- sqrt(sum( (contr.orthonormal(1:(prior$parameters[["K"]] + 1))[1,] * switch(
+          prior[["distribution"]],
+          "mnormal" = prior$parameters[["sd"]],
+          "mt"      = prior$parameters[["scale"]]) )^2 ))
+      }else if(is.prior.meandif(prior)){
+        par2 <- sqrt(sum( (contr.meandif(1:(prior$parameters[["K"]] + 1))[1,] * switch(
+          prior[["distribution"]],
+          "mnormal" = prior$parameters[["sd"]],
+          "mt"      = prior$parameters[["scale"]]) )^2 ))
+      }
     }
 
     p <- switch(
       prior[["distribution"]],
       "mnormal" = stats::pnorm(q, mean = 0, sd = par2, lower.tail = FALSE),
-      "mt"      = extraDistr::plst(q, df = prior$parameters[["df"]], mu = 0, sigma = par2, lower.tail = FALSE)
+      "mt"      = extraDistr::plst(q, df = prior$parameters[["df"]], mu = 0, sigma = par2, lower.tail = FALSE),
+      "mpoint"  = ppoint(q, location = 0, lower.tail = FALSE),
     )
 
   }else if(is.prior.spike_and_slab(prior)){
@@ -1503,10 +1593,18 @@ mlpdf.prior  <- function(x, y, ...){
 
   }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
 
-    if(switch(
+    par1 <- switch(
       prior[["distribution"]],
-      "mnormal" = prior$parameters[["mean"]],
-      "mt"      = prior$parameters[["location"]]) != 0){
+      "mnormal" = prior$parameter[["mean"]],
+      "mt"      = prior$parameter[["location"]],
+      "mpoint"  = prior$parameter[["location"]]
+    )
+
+    if(length(par1) != 1){
+      stop("unsported distribution specification in 'rng' -- non-symmetric")
+    }
+
+    if(par1 != 0){
       stop("the orthonormal prior distribution must be centered")
     }
 
@@ -1517,22 +1615,25 @@ mlpdf.prior  <- function(x, y, ...){
       warning("number of factor levels / dimensionality of the prior distribution was not specified -- assuming two factor levels")
     }
 
-    if(is.prior.orthonormal(prior)){
-      par2 <- sqrt(sum( (contr.orthonormal(1:(prior$parameters[["K"]] + 1))[1,] * switch(
-        prior[["distribution"]],
-        "mnormal" = prior$parameters[["sd"]],
-        "mt"      = prior$parameters[["scale"]]) )^2 ))
-    }else if(is.prior.meandif(prior)){
-      par2 <- sqrt(sum( (contr.meandif(1:(prior$parameters[["K"]] + 1))[1,] * switch(
-        prior[["distribution"]],
-        "mnormal" = prior$parameters[["sd"]],
-        "mt"      = prior$parameters[["scale"]]) )^2 ))
+    if(prior[["distribution"]] %in% c("mnormal", "mt")){
+      if(is.prior.orthonormal(prior)){
+        par2 <- sqrt(sum( (contr.orthonormal(1:(prior$parameters[["K"]] + 1))[1,] * switch(
+          prior[["distribution"]],
+          "mnormal" = prior$parameters[["sd"]],
+          "mt"      = prior$parameters[["scale"]]) )^2 ))
+      }else if(is.prior.meandif(prior)){
+        par2 <- sqrt(sum( (contr.meandif(1:(prior$parameters[["K"]] + 1))[1,] * switch(
+          prior[["distribution"]],
+          "mnormal" = prior$parameters[["sd"]],
+          "mt"      = prior$parameters[["scale"]]) )^2 ))
+      }
     }
 
     log_lik <- switch(
       prior[["distribution"]],
       "mnormal" = stats::dnorm(x, mean = 0, sd = par2, log = TRUE),
-      "mt"      = extraDistr::dlst(x, df = prior$parameters[["df"]], mu = 0, sigma = par2, log = TRUE)
+      "mt"      = extraDistr::dlst(x, df = prior$parameters[["df"]], mu = 0, sigma = par2, log = TRUE),
+      "mpoint"  = dpoint(x, location = 0, log = TRUE),
     )
 
   }else if(is.prior.spike_and_slab(prior)){
@@ -1581,10 +1682,18 @@ mquant.prior <- function(x, p, ...){
 
   }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
 
-    if(switch(
+    par1 <- switch(
       prior[["distribution"]],
-      "mnormal" = prior$parameters[["mean"]],
-      "mt"      = prior$parameters[["location"]]) != 0){
+      "mnormal" = prior$parameter[["mean"]],
+      "mt"      = prior$parameter[["location"]],
+      "mpoint"  = prior$parameter[["location"]]
+    )
+
+    if(length(par1) != 1){
+      stop("unsported distribution specification in 'rng' -- non-symmetric")
+    }
+
+    if(par1 != 0){
       stop("the orthonormal prior distribution must be centered")
     }
 
@@ -1595,22 +1704,25 @@ mquant.prior <- function(x, p, ...){
       warning("number of factor levels / dimensionality of the prior distribution was not specified -- assuming two factor levels")
     }
 
-    if(is.prior.orthonormal(prior)){
-      par2 <- sqrt(sum( (contr.orthonormal(1:(prior$parameters[["K"]] + 1))[1,] * switch(
-        prior[["distribution"]],
-        "mnormal" = prior$parameters[["sd"]],
-        "mt"      = prior$parameters[["scale"]]) )^2 ))
-    }else if(is.prior.meandif(prior)){
-      par2 <- sqrt(sum( (contr.meandif(1:(prior$parameters[["K"]] + 1))[1,] * switch(
-        prior[["distribution"]],
-        "mnormal" = prior$parameters[["sd"]],
-        "mt"      = prior$parameters[["scale"]]) )^2 ))
+    if(prior[["distribution"]] %in% c("mnormal", "mt")){
+      if(is.prior.orthonormal(prior)){
+        par2 <- sqrt(sum( (contr.orthonormal(1:(prior$parameters[["K"]] + 1))[1,] * switch(
+          prior[["distribution"]],
+          "mnormal" = prior$parameters[["sd"]],
+          "mt"      = prior$parameters[["scale"]]) )^2 ))
+      }else if(is.prior.meandif(prior)){
+        par2 <- sqrt(sum( (contr.meandif(1:(prior$parameters[["K"]] + 1))[1,] * switch(
+          prior[["distribution"]],
+          "mnormal" = prior$parameters[["sd"]],
+          "mt"      = prior$parameters[["scale"]]) )^2 ))
+      }
     }
 
     q <- switch(
       prior[["distribution"]],
       "mnormal" = stats::qnorm(p, mean = 0, sd = par2),
-      "mt"      = extraDistr::qlst(p, df = prior$parameters[["df"]], mu = 0, sigma = par2)
+      "mt"      = extraDistr::qlst(p, df = prior$parameters[["df"]], mu = 0, sigma = par2),
+      "mpoint"  = qpoint(p, location = 0)
     )
 
   }else if(is.prior.spike_and_slab(prior)){

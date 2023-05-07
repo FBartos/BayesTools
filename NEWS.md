@@ -6,6 +6,7 @@
 - adding empty table functions (https://github.com/FBartos/BayesTools/issues/10)
 - adding `remove_parameters` argument to `model_summary_table()`
 - adding multivariate point distribution functions
+- adding `point` prior distribution as option to `prior_factor` with `"meandif"` and `"orthonormal"` contrasts
 
 ### Changes
 - `contrast = "meandif"` is now the default setting for `prior_factor` function

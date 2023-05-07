@@ -121,7 +121,6 @@ plot.prior <- function(x, plot_type = "base",
 
   }
 
-
   # plot PET-PEESE
   if((is.prior.PET(x) | is.prior.PEESE(x)) & !individual){
     plots <- .plot.prior.PETPEESE(x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
@@ -132,10 +131,9 @@ plot.prior <- function(x, plot_type = "base",
     }
   }
 
-
-  # plot orthonormal priors
-  if(is.prior.orthonormal(x) | is.prior.meandif(x)){
-    plots <- .plot.prior.orthonormal_or_meandif(x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
+  # spike and slab prior plots
+  if(is.prior.spike_and_slab(x)){
+    plots <- .plot.prior.spike_and_slab(x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
     if(plot_type == "ggplot"){
       return(plots)
     }else{
@@ -143,9 +141,19 @@ plot.prior <- function(x, plot_type = "base",
     }
   }
 
-  # spike and slab prior plots
-  if(is.prior.spike_and_slab(x)){
-    plots <- .plot.prior.spike_and_slab(x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
+  # point prior plots
+  if(is.prior.point(x)){
+    plots <- .plot.prior.point( x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
+    if(plot_type == "ggplot"){
+      return(plots)
+    }else{
+      return(invisible())
+    }
+  }
+
+  # plot orthonormal and meandif priors
+  if(is.prior.orthonormal(x) | is.prior.meandif(x)){
+    plots <- .plot.prior.orthonormal_or_meandif(x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
     if(plot_type == "ggplot"){
       return(plots)
     }else{
@@ -165,12 +173,7 @@ plot.prior <- function(x, plot_type = "base",
 
   # default prior plots
   if(is.prior.simple(x)){
-    if(inherits(plot_data, "density.prior.simple")){
-      plots <- .plot.prior.simple(x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
-    }else if(inherits(plot_data, "density.prior.point")){
-      plots <- .plot.prior.point( x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
-    }
-
+    plots <- .plot.prior.simple(x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
     if(plot_type == "ggplot"){
       return(plots)
     }else{
@@ -191,7 +194,7 @@ plot.prior <- function(x, plot_type = "base",
   parameter_names <- if(is.null(dots[["parameter_names"]])) FALSE else dots[["parameter_names"]]
 
   main      <- if(!is.null(attr(plot_data, "steps"))) print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names) else ""
-  xlab      <- if(!is.null(attr(plot_data, "steps"))) bquote(omega["["*.(attr(plot_data, "steps")[1])*","~.(attr(plot_data, "steps")[2])*"]"]) else bquote(.(if(!is.null(par_name)){bquote(.(par_name)~"~")})~.(print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names)))
+  xlab      <- if(!is.null(attr(plot_data, "steps"))) bquote(omega["["*.(attr(plot_data, "steps")[1])*","~.(attr(plot_data, "steps")[2])*"]"]) else bquote(.(if(is.prior.orthonormal(x) | is.prior.meandif(x))"dif")*.(if(!is.null(par_name)){bquote(.(par_name)~"~")})~.(print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names)))
   ylab      <- if(!is.null(dots[["ylab"]])) dots[["ylab"]] else "Probability"
 
   # add it to the user input if desired
@@ -761,7 +764,6 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     return(invisible())
   }
 
-
   # plot PET-PEESE
   if((is.prior.PET(x) | is.prior.PEESE(x))){
     if(!individual){
@@ -774,7 +776,13 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     return(invisible())
   }
 
-  # plot orthonormal
+  # point prior plots
+  if(is.prior.point(x)){
+    .lines.prior.point(plot_data, scale_y2 = scale_y2, ...)
+    return(invisible())
+  }
+
+  # plot orthonormal and meandif plots
   if(is.prior.orthonormal(x) | is.prior.meandif(x)){
     .lines.prior.orthonormal_or_meandif(plot_data, ...)
     return(invisible())
@@ -794,11 +802,7 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 
   # default prior plots
   if(is.prior.simple(x)){
-    if(inherits(plot_data, "density.prior.simple")){
-      .lines.prior.simple(plot_data, ...)
-    }else if(inherits(plot_data, "density.prior.point")){
-      .lines.prior.point(plot_data, scale_y2 = scale_y2, ...)
-    }
+    .lines.prior.simple(plot_data, ...)
     return(invisible())
   }
 
@@ -869,7 +873,14 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   }
 
 
-  # plot orthonormal prior
+  # plot point prior
+  if(is.prior.point(x)){
+    geom <- .geom_prior.point(plot_data, ...)
+    return(geom)
+  }
+
+
+  # plot orthonormal and meandif prior
   if(is.prior.orthonormal(x) | is.prior.meandif(x)){
     geom <- .geom_prior.orthonormal_or_meandif(plot_data, ...)
     return(geom)
@@ -892,11 +903,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 
   # default prior plots
   if(is.prior.simple(x)){
-    if(inherits(plot_data, "density.prior.simple")){
-      geom <- .geom_prior.simple(plot_data, ...)
-    }else if(inherits(plot_data, "density.prior.point")){
-      geom <- .geom_prior.point(plot_data, ...)
-    }
+    geom <- .geom_prior.simple(plot_data, ...)
     return(geom)
   }
 

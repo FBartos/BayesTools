@@ -106,7 +106,8 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
       "uniform"      = "U",
       "mnormal"      = "mN",
       "mt"           = "mT",
-      "mCauchy"      = "mC"
+      "mCauchy"      = "mC",
+      "mpoint"       = "mS"
     )
   }else{
     out_name <- switch(
@@ -124,7 +125,8 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
       "uniform"      = "Uniform",
       "mnormal"      = "mNormal",
       "mt"           = "mStudent-t",
-      "mCauchy"      = "mCauchy"
+      "mCauchy"      = "mCauchy",
+      "mpoint"       = "mSpike"
     )
   }
 
