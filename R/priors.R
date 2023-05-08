@@ -999,7 +999,7 @@ rng.prior   <- function(x, n, ...){
     }
 
     if(par1 != 0){
-      stop("the orthonormal prior distribution must be centered")
+      stop("the orthonormal/meandif prior distribution must be centered")
     }
 
     if(is.na(prior$parameters[["K"]]) && !is.null(attr(prior, "levels"))){
@@ -1454,7 +1454,7 @@ mcdf.prior   <- function(x, q, ...){
     }
 
     if(par1 != 0){
-      stop("the orthonormal prior distribution must be centered")
+      stop("the orthonormal/meandif prior distribution must be centered")
     }
 
     if(is.na(prior$parameters[["K"]]) && !is.null(attr(prior, "levels"))){
@@ -1529,7 +1529,7 @@ mccdf.prior  <- function(x, q, ...){
     }
 
     if(par1 != 0){
-      stop("the orthonormal prior distribution must be centered")
+      stop("the orthonormal/meandif prior distribution must be centered")
     }
 
     if(is.na(prior$parameters[["K"]]) && !is.null(attr(prior, "levels"))){
@@ -1605,7 +1605,7 @@ mlpdf.prior  <- function(x, y, ...){
     }
 
     if(par1 != 0){
-      stop("the orthonormal prior distribution must be centered")
+      stop("the orthonormal/meandif prior distribution must be centered")
     }
 
     if(is.na(prior$parameters[["K"]]) && !is.null(attr(prior, "levels"))){
@@ -1694,7 +1694,7 @@ mquant.prior <- function(x, p, ...){
     }
 
     if(par1 != 0){
-      stop("the orthonormal prior distribution must be centered")
+      stop("the orthonormal/meandif prior distribution must be centered")
     }
 
     if(is.na(prior$parameters[["K"]]) && !is.null(attr(prior, "levels"))){
@@ -1894,13 +1894,21 @@ mean.prior   <- function(x, ...){
 
     m <- .mean.weightfunction(x)
 
-  }else if(is.prior.orthonormal(x)){
+  }else if(is.prior.orthonormal(x) | is.prior.meandif(x)){
 
-    if(switch(
+    par1 <- switch(
       x[["distribution"]],
-      "mnormal" = x$parameters[["mean"]],
-      "mt"      = x$parameters[["location"]]) != 0){
-      stop("the orthonormal prior distribution must be centered")
+      "mnormal" = x$parameter[["mean"]],
+      "mt"      = x$parameter[["location"]],
+      "mpoint"  = x$parameter[["location"]]
+    )
+
+    if(length(par1) != 1){
+      stop("unsported distribution specification in 'rng' -- non-symmetric")
+    }
+
+    if(par1 != 0){
+      stop("the orthonormal/meandif prior distribution must be centered")
     }
 
     if(x[["distribution"]] == "mt" && x$parameters[["df"]] <= 1){
@@ -2033,16 +2041,26 @@ var.prior   <- function(x, ...){
 
     var <- .var.weightfunction(x)
 
-  }else if(is.prior.orthonormal(x)){
+  }else if(is.prior.orthonormal(x) | is.prior.meandif(x)){
 
-    if(switch(
+    par1 <- switch(
       x[["distribution"]],
-      "mnormal" = x$parameters[["mean"]],
-      "mt"      = x$parameters[["location"]]) != 0){
-      stop("the orthonormal prior distribution must be centered")
+      "mnormal" = x$parameter[["mean"]],
+      "mt"      = x$parameter[["location"]],
+      "mpoint"  = x$parameter[["location"]]
+    )
+
+    if(length(par1) != 1){
+      stop("unsported distribution specification in 'rng' -- non-symmetric")
     }
 
-    if(x[["distribution"]] == "mt" && x$parameters[["df"]] <= 2){
+    if(par1 != 0){
+      stop("the orthonormal/meandif prior distribution must be centered")
+    }
+
+    if(x[["distribution"]] == "mpoint"){
+      var <- 0
+    }else if(x[["distribution"]] == "mt" && x$parameters[["df"]] <= 2){
       var <- NaN
     }else{
 
@@ -2054,10 +2072,18 @@ var.prior   <- function(x, ...){
         warning("number of factor levels / dimensionality of the prior distribution was not specified -- assuming two factor levels")
       }
 
-      par2 <- sqrt(sum( (contr.orthonormal(1:(x$parameters[["K"]] + 1))[1,] * switch(
-        x[["distribution"]],
-        "mnormal" = x$parameters[["sd"]],
-        "mt"      = x$parameters[["scale"]]) )^2 ))
+
+      if(is.prior.orthonormal(x)){
+        par2 <- sqrt(sum( (contr.orthonormal(1:(x$parameters[["K"]] + 1))[1,] * switch(
+          prior[["distribution"]],
+          "mnormal" = x$parameters[["sd"]],
+          "mt"      = x$parameters[["scale"]]) )^2 ))
+      }else if(is.prior.meandif(x)){
+        par2 <- sqrt(sum( (contr.meandif(1:(x$parameters[["K"]] + 1))[1,] * switch(
+          prior[["distribution"]],
+          "mnormal" = x$parameters[["sd"]],
+          "mt"      = x$parameters[["scale"]]) )^2 ))
+      }
 
       # use the univariate functions
       var <- switch(

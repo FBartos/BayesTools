@@ -1,3 +1,5 @@
+context("JAGS diagnostics")
+
 test_that("JAGS diagnostics work", {
 
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
@@ -330,4 +332,64 @@ test_that("JAGS diagnostics work (meandif and independent", {
     par(mfrow = c(1, 3))
     JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_fac3md", formula_prefix = FALSE, transform_factors = TRUE)
   })
+})
+
+test_that("JAGS diagnostics work (spike priors)", {
+
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_on_cran()
+
+  set.seed(1)
+
+  data_formula <- data.frame(
+    x_cont1  = rnorm(150),
+    x_fac2i  = factor(rep(c("A", "B"), 75), levels = c("A", "B")),
+    x_fac3md = factor(rep(c("A", "B", "C"), 50), levels = c("A", "B", "C")),
+    x_fac2o  = factor(rep(c("A", "B"), 75), levels = c("A", "B")),
+    x_fac3t  = factor(rep(c("A", "B", "C"), 50), levels = c("A", "B", "C"))
+  )
+  data <- list(
+    y = rnorm(150, 0.5, 1),
+    N = 150
+  )
+
+  # create model with mix of a formula and free parameters ---
+  formula_list <- list(
+    mu    = ~ x_cont1 + x_fac2i + x_fac3md + x_fac2o + x_fac3t - 1
+  )
+  formula_data_list <- list(
+    mu    = data_formula
+  )
+  formula_prior_list <- list(
+    mu    = list(
+      "x_cont1"   = prior("spike", list(0)),
+      "x_fac2i"   = prior_factor("spike", contrast = "independent", list(1)),
+      "x_fac3md"  = prior_factor("spike", contrast = "meandif",     list(0)),
+      "x_fac2o"   = prior_factor("spike", contrast = "orthonormal", list(0)),
+      "x_fac3t"   = prior_factor("spike", contrast = "treatment",   list(2))
+    )
+  )
+  prior_list <- list(
+    sigma = prior("lognormal", list(0, 1))
+  )
+  model_syntax <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  fit <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list)
+
+
+  ### density plots
+  expect_message(JAGS_diagnostics_density(fit, parameter = "mu_x_cont1"),         "No diagnostic plots are produced for a spike prior distribution")
+  expect_message(JAGS_diagnostics_density(fit, parameter = "mu_x_fac2i"),         "No diagnostic plots are produced for a spike prior distribution")
+  expect_message(JAGS_diagnostics_trace(fit, parameter = "mu_x_fac3md"),          "No diagnostic plots are produced for a spike prior distribution")
+  expect_message(JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_fac2o"), "No diagnostic plots are produced for a spike prior distribution")
+  expect_message(JAGS_diagnostics_density(fit, parameter = "mu_x_fac3t"),         "No diagnostic plots are produced for a spike prior distribution")
+
 })

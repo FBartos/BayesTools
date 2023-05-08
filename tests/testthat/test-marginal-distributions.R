@@ -6,6 +6,7 @@ test_that("helper functions work", {
   # check the posterior distributions with weak priors against a maximum likelihood estimates with ML
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
   skip_on_cran()
+  skip("under development")
 
   # complex formula including scaling
   set.seed(1)

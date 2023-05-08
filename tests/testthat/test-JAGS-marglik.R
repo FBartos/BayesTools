@@ -166,6 +166,49 @@ test_that("JAGS model functions work (weightfunctions)", {
 
 })
 
+test_that("JAGS model functions work (spikes)", {
+
+  skip_if_not_installed("rjags")
+  all_priors  <- list(
+    p1    = prior("spike", list(1)),
+    p2.2  = prior_factor("spike", list(location = 2), contrast = "treatment"),
+    p3.2  = prior_factor("spike", list(location = 3), contrast = "independent"),
+    p4.2  = prior_factor("spike", list(location = 0), contrast = "orthonormal"),
+    p5.2  = prior_factor("spike", list(location = 0), contrast = "meandif"),
+    p2.5  = prior_factor("spike", list(location = 2), contrast = "treatment"),
+    p3.5  = prior_factor("spike", list(location = 3), contrast = "independent"),
+    p4.5  = prior_factor("spike", list(location = 0), contrast = "orthonormal"),
+    p5.5  = prior_factor("spike", list(location = 0), contrast = "meandif")
+  )
+  attr(all_priors$p2.2, "levels") <- 2
+  attr(all_priors$p3.2, "levels") <- 2
+  attr(all_priors$p4.2, "levels") <- 2
+  attr(all_priors$p5.2, "levels") <- 2
+  attr(all_priors$p2.5, "levels") <- 2
+  attr(all_priors$p3.5, "levels") <- 2
+  attr(all_priors$p4.5, "levels") <- 2
+  attr(all_priors$p5.5, "levels") <- 2
+  nuisance_prior <- list(sigma = prior("normal", list(0, 1)))
+  log_posterior <- function(parameters, data){
+    return(0)
+  }
+
+
+  for(i in seq_along(all_priors)){
+    prior_list   <- c(all_priors[i], nuisance_prior)
+    model_syntax <- JAGS_add_priors("model{}", prior_list)
+    monitor      <- JAGS_to_monitor(prior_list)
+    inits        <- JAGS_get_inits(prior_list, chains = 2, seed = 1)
+
+    set.seed(1)
+    model   <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
+    samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 5000, quiet = TRUE, progress.bar = "none")
+    marglik <- JAGS_bridgesampling(samples, prior_list = prior_list, data = list(), log_posterior = log_posterior)
+    expect_equal(marglik$logml, 0, tolerance = 1e-2)
+  }
+
+})
+
 test_that("JAGS model functions work (complex scenario)", {
 
   skip_if_not_installed("rjags")
@@ -305,7 +348,7 @@ test_that("JAGS model functions work (formula)",{
   expect_equal(marglik0$logml,   0, tolerance = 1e-3)
 
 
-  # create model with mix of a formula and free parameters ---
+  # create model with mix of a formula and free parameters ----
   formula_list1 <- list(
     mu    = ~ x_cont1 + x_fac3t
   )
@@ -351,7 +394,7 @@ test_that("JAGS model functions work (formula)",{
   expect_equal(marglik1$logml, -370.87, tolerance = 1e-2)
 
 
-  # create model with mix of a formula and free scaled parameters ---
+  # create model with mix of a formula and free scaled parameters ----
   prior_list1s         <- prior_list1
   prior_list1s$scale3  <- prior("point", parameters = list(location = 1/3))
   formula_prior_list1s <- list(
@@ -385,7 +428,7 @@ test_that("JAGS model functions work (formula)",{
   expect_equal(marglik1$logml, marglik1s$logml, tolerance = 1e-2)
 
 
-  # create model with two formulas ---
+  # create model with two formulas ----
   formula_list2 <- list(
     mu    = ~ x_cont1 + x_fac3t,
     sigma = ~ x_fac2t
@@ -434,4 +477,89 @@ test_that("JAGS model functions work (formula)",{
 
   # more of a consistency test
   expect_equal(marglik2$logml, -351.43, tolerance = 1e-2)
+
+  # create a model with spike factor priors ----
+  formula_list3 <- list(
+    mu    = ~ x_cont1 + x_fac3t
+  )
+  formula_list3c <- list(
+    mu    = ~ x_cont1
+  )
+  formula_data_list3 <- list(
+    mu    = data_formula
+  )
+  formula_prior_list3a <- list(
+    mu    = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_cont1"         = prior("normal", list(0, 1)),
+      "x_fac3t"         = prior_factor("spike", contrast = "treatment", list(0))
+    )
+  )
+  formula_prior_list3b <- list(
+    mu    = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_cont1"         = prior("normal", list(0, 1)),
+      "x_fac3t"         = prior_factor("spike", contrast = "meandif", list(0))
+    )
+  )
+  formula_prior_list3c <- list(
+    mu    = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_cont1"         = prior("normal", list(0, 1))
+    )
+  )
+  prior_list3 <- list(
+    sigma = prior("lognormal", list(0, 1))
+  )
+  model_syntax3 <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  fit3a <- JAGS_fit(
+    model_syntax = model_syntax3, data = data, prior_list = prior_list3,
+    formula_list = formula_list3, formula_data_list = formula_data_list3, formula_prior_list = formula_prior_list3a)
+  fit3b <- JAGS_fit(
+    model_syntax = model_syntax3, data = data, prior_list = prior_list3,
+    formula_list = formula_list3, formula_data_list = formula_data_list3, formula_prior_list = formula_prior_list3b)
+  fit3c <- JAGS_fit(
+    model_syntax = model_syntax3, data = data, prior_list = prior_list3,
+    formula_list = formula_list3c, formula_data_list = formula_data_list3, formula_prior_list = formula_prior_list3c)
+
+  log_posterior3 <- function(parameters, data){
+    return(sum(stats::dnorm(data$y, mean = parameters[["mu"]], sd = parameters[["sigma"]], log = TRUE)))
+  }
+
+  marglik3a <- JAGS_bridgesampling(
+    fit                = fit3a,
+    log_posterior      = log_posterior3,
+    data               = data,
+    prior_list         = prior_list3,
+    formula_list       = formula_list3,
+    formula_data_list  = formula_data_list3,
+    formula_prior_list = formula_prior_list3a)
+  marglik3b <- JAGS_bridgesampling(
+    fit                = fit3b,
+    log_posterior      = log_posterior3,
+    data               = data,
+    prior_list         = prior_list3,
+    formula_list       = formula_list3,
+    formula_data_list  = formula_data_list3,
+    formula_prior_list = formula_prior_list3b)
+  marglik3c <- JAGS_bridgesampling(
+    fit                = fit3c,
+    log_posterior      = log_posterior3,
+    data               = data,
+    prior_list         = prior_list3,
+    formula_list       = formula_list3c,
+    formula_data_list  = formula_data_list3,
+    formula_prior_list = formula_prior_list3c)
+
+  # more of a consistency test
+  expect_equal(marglik3a$logml, marglik3c$logml, tolerance = 1e-2)
+  expect_equal(marglik3b$logml, marglik3c$logml, tolerance = 1e-2)
+
 })

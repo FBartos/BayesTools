@@ -460,7 +460,7 @@ test_that("JAGS formula works", {
   })
 
 
-  # linear regression with an meandif factor (3 levels) ----
+  # linear regression with a meandif factor (3 levels) ----
   formula_12      <- JAGS_formula(~ x_fac3md, parameter = "mu", data = df_all[,"x_fac3md",drop = FALSE], prior_list = prior_list_all[c("intercept", "x_fac3md")])
   prior_list_12   <- c(formula_12$prior_list, prior_list2)
   model_syntax_12 <- JAGS_add_priors(paste0("model{", formula_12$formula_syntax, model_syntax, "}"), prior_list_12)
@@ -489,6 +489,56 @@ test_that("JAGS formula works", {
     curve(dnorm(x, mean = coef(lm_12)["x_fac3md2"], sd = summary(lm_12)$coefficients["x_fac3md2", "Std. Error"]), add = TRUE, lwd = 2)
   })
 
+
+  # linear regression with a spike independent factor (3 levels) ----
+  prior_list_13   <- list("x_fac3i" = prior_factor("spike",  contrast = "independent", list(1.5)))
+  formula_13      <- JAGS_formula(~ x_fac3i - 1, parameter = "mu", data = df_all[,"x_fac3i",drop = FALSE], prior_list = prior_list_13)
+  prior_list_13   <- c(formula_13$prior_list, prior_list2)
+  model_syntax_13 <- JAGS_add_priors(paste0("model{", formula_13$formula_syntax, model_syntax, "}"), prior_list_13)
+  data_13         <- c(formula_13$data, N = nrow(df_all), y = list(df_all$y))
+
+  model_13   <- rjags::jags.model(file = textConnection(model_syntax_13), inits = JAGS_get_inits(prior_list_13, chains = 2, seed = 1), data = data_13, n.chains = 2, quiet = TRUE)
+  samples_13 <- rjags::coda.samples(model = model_13, variable.names = JAGS_to_monitor(prior_list_13), n.iter = 5000, quiet = TRUE, progress.bar = "none")
+  samples_13 <- do.call(rbind, samples_13)
+
+
+  expect_doppelganger("JAGS-formula-lm-13", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfcol = c(1, 3))
+
+    hist(samples_13[,"mu_x_fac3i[1]"], freq = FALSE, main = "x_fac3i[1]")
+    hist(samples_13[,"mu_x_fac3i[2]"], freq = FALSE, main = "x_fac3i[2]")
+    hist(samples_13[,"mu_x_fac3i[3]"], freq = FALSE, main = "x_fac3i[3]")
+  })
+
+
+  # linear regression with a meandif spike factor (3 levels) ----
+  prior_list_14   <- list("intercept" = prior_list_all$intercept, "x_fac3md" = prior_factor("spike",  contrast = "meandif", list(0)))
+  formula_14      <- JAGS_formula(~ x_fac3md, parameter = "mu", data = df_all[,"x_fac3md",drop = FALSE], prior_list = prior_list_14)
+  prior_list_14   <- c(formula_14$prior_list, prior_list2)
+  model_syntax_14 <- JAGS_add_priors(paste0("model{", formula_14$formula_syntax, model_syntax, "}"), prior_list_14)
+  data_14         <- c(formula_14$data, N = nrow(df_all), y = list(df_all$y))
+
+  model_14   <- rjags::jags.model(file = textConnection(model_syntax_14), inits = JAGS_get_inits(prior_list_14, chains = 2, seed = 1), data = data_14, n.chains = 2, quiet = TRUE)
+  samples_14 <- rjags::coda.samples(model = model_14, variable.names = JAGS_to_monitor(prior_list_14), n.iter = 5000, quiet = TRUE, progress.bar = "none")
+  samples_14 <- do.call(rbind, samples_14)
+
+  df_14 <- df_all
+  contrasts(df_14$x_fac3md) <- contr.meandif(levels(df_14$x_fac3o))
+  lm_14 <- stats::lm(y ~ 1, data = df_14)
+
+  expect_doppelganger("JAGS-formula-lm-14", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfcol = c(1, 3))
+
+    hist(samples_14[,"mu_intercept"], freq = FALSE, main = "Intercept")
+    curve(dnorm(x, mean = coef(lm_14)["(Intercept)"], sd = summary(lm_14)$coefficients["(Intercept)", "Std. Error"]), add = TRUE, lwd = 2)
+
+    hist(samples_14[,"mu_x_fac3md[1]"], freq = FALSE, main = "x_fac3md")
+    hist(samples_14[,"mu_x_fac3md[2]"], freq = FALSE, main = "x_fac3md")
+  })
 
 })
 

@@ -411,7 +411,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
     temp_ind <- sample(nrow(model_samples), round(n_samples * post_probs[i]), replace = TRUE)
 
     if(is.prior.point(priors[[i]])){
-      samples <- rbind(samples, matrix(rng(priors[[i]], 1), nrow = length(temp_ind), ncol = K))
+      # not sampling the priors as the samples would be already transformed
+      samples <- rbind(samples, matrix(priors[[i]]$parameters[["location"]], nrow = length(temp_ind), ncol = K))
     }else if(K == 1){
       samples <- rbind(samples, matrix(model_samples[temp_ind, parameter], nrow = length(temp_ind), ncol = K))
     }else{

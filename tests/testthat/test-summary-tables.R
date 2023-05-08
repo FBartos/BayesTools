@@ -964,3 +964,152 @@ test_that("Summary tables functions work (stan)",{
   expect_equal(unname(unlist(model_estimates[1,])), c(1.43876353, 0.37708461, 0.81080656, 1.42486330, 2.15911838, 0.06223762, 0.16504949, 36.70892380, 1.01241771), tolerance = 1e-3)
 
 })
+
+test_that("Summary tables functions work (spike factors)",{
+
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_on_cran()
+
+  set.seed(1)
+
+  data_formula <- data.frame(
+    x_fac3o = factor(rep(c("A", "B", "C"), 100), levels = c("A", "B", "C"))
+  )
+  data <- list(
+    y = rnorm(300, ifelse(data_formula$x_fac3o == "A", 0.0, ifelse(data_formula$x_fac3o == "B", -0.2, 0.4))),
+    N = 300
+  )
+
+
+  formula_list <- list(
+    mu    = ~ x_fac3o
+  )
+  formula_data_list <- list(
+    mu    = data_formula
+  )
+  formula_prior_list0 <- list(
+    mu    = list(
+      "intercept" = prior("normal", list(0, 5)),
+      "x_fac3o"  = prior_factor("spike", contrast = "meandif", list(0))
+    )
+  )
+  formula_prior_list1 <- list(
+    mu    = list(
+      "intercept" = prior("normal", list(0, 5)),
+      "x_fac3o"  = prior_factor("mnormal", contrast = "meandif", list(0, 0.25))
+    )
+  )
+
+  prior_list <- list(
+    sigma = prior("lognormal", list(0, 1))
+  )
+  model_syntax <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  fit0 <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0)
+  fit1 <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1)
+
+  log_posterior <- function(parameters, data){
+    return(sum(stats::dnorm(data$y, mean = parameters[["mu"]], sd = parameters[["sigma"]], log = TRUE)))
+  }
+
+  marglik0 <- JAGS_bridgesampling(
+    fit                = fit0,
+    log_posterior      = log_posterior,
+    data               = data,
+    prior_list         = prior_list,
+    formula_list       = formula_list,
+    formula_data_list  = formula_data_list,
+    formula_prior_list = formula_prior_list0)
+  marglik1 <- JAGS_bridgesampling(
+    fit                = fit1,
+    log_posterior      = log_posterior,
+    data               = data,
+    prior_list         = prior_list,
+    formula_list       = formula_list,
+    formula_data_list  = formula_data_list,
+    formula_prior_list = formula_prior_list1)
+
+
+  # mix posteriors
+  models <- list(
+    list(fit = fit0, marglik = marglik0, fit_summary = runjags_estimates_table(fit0, remove_spike_0 = FALSE, transform_factors = TRUE), prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, fit_summary = runjags_estimates_table(fit1, remove_spike_0 = FALSE, transform_factors = TRUE), prior_weights = 1)
+  )
+  models <- models_inference(models)
+
+  inference <- ensemble_inference(
+    model_list   = models,
+    parameters   = c("mu_x_fac3o"),
+    is_null_list = list(
+      "mu_x_fac3o" = c(TRUE,  FALSE)
+    ),
+    conditional = FALSE)
+
+  mixed_posteriors <- mix_posteriors(
+    model_list   = models,
+    parameters   = c("mu_x_fac3o"),
+    is_null_list = list(
+      "mu_x_fac3o" = c(TRUE,  FALSE)
+    ),
+    seed = 1, n_samples = 10000)
+
+
+  ### checking summary functions
+  # model summary
+  model_summary <- model_summary_table(models[[1]], remove_spike_0 = FALSE)
+  expect_equal(model_summary[,1], c("Model  ", "Prior prob.  ", "log(marglik)  ", "Post. prob.  ", "Inclusion BF  "))
+  expect_equal(model_summary[,4], c("Parameter prior distributions", "(mu) intercept ~ Normal(0, 5)", "(mu) x_fac3o ~ mean difference contrast: mSpike(0)", "sigma ~ Lognormal(0, 1)", ""))
+
+  # runjags summary
+  runjags_summary <- models[[1]]$fit_summary
+  expect_equal(colnames(runjags_summary), c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
+  expect_equal(rownames(runjags_summary), c("(mu) intercept", "(mu) x_fac3o [dif: A]", "(mu) x_fac3o [dif: B]", "(mu) x_fac3o [dif: C]", "sigma"))
+  expect_equal(unname(unlist(runjags_summary[,1])), c(0.09974883, 0.00000000, 0.00000000, 0.00000000, 0.97359248), tolerance = 1e-3)
+
+  # ensemble estimates
+  estimates_table <- ensemble_estimates_table(mixed_posteriors, parameters = c("mu_x_fac3o"), probs = c(.025, 0.95), transform_factors = TRUE)
+  expect_equal(colnames(estimates_table), c("Mean", "Median", "0.025",  "0.95"))
+  expect_equal(rownames(estimates_table), c("(mu) x_fac3o [dif: A]", "(mu) x_fac3o [dif: B]", "(mu) x_fac3o [dif: C]"))
+  expect_equal(unname(unlist(estimates_table[1,])), c(-0.00919489,  0.00000000, -0.15024720,  0.09922589), tolerance = 1e-3)
+  expect_equal(unname(unlist(estimates_table[2,])), c(-0.1246629, -0.1329689, -0.3041710,  0.0000000), tolerance = 1e-3)
+  expect_equal(unname(unlist(estimates_table[3,])), c(0.1338578, 0.1465136, 0.0000000, 0.2895046), tolerance = 1e-3)
+
+  # ensemble inference
+  inference_table <- ensemble_inference_table(inference, names(inference))
+  expect_equal(colnames(inference_table), c("models", "prior_prob", "post_prob", "inclusion_BF"))
+  expect_equal(rownames(inference_table), c("(mu) x_fac3o"))
+  expect_equal(unname(unlist(inference_table[,1])),    1)
+  expect_equal(unname(unlist(inference_table[,2])),    0.5)
+  expect_equal(unname(unlist(inference_table[,3])),    0.751, tolerance = 1e-3)
+  expect_equal(unname(as.vector(inference_table[,4])), 3.020, tolerance = 1e-3)
+
+  # ensemble summary
+  summary_table <- ensemble_summary_table(models, c("mu_x_fac3o"), remove_spike_0 = FALSE)
+  expect_equal(colnames(summary_table), c("Model", "(mu) x_fac3o", "prior_prob", "marglik", "post_prob", "inclusion_BF"))
+  expect_equal(unname(as.vector(summary_table[,1])), c(1, 2))
+  expect_equal(unname(as.vector(summary_table[,2])), c("mean difference contrast: mSpike(0)","mean difference contrast: mNormal(0, 0.25)"))
+  expect_equal(unname(as.vector(summary_table[,3])), c(0.5, 0.5), tolerance = 1e-4)
+  expect_equal(unname(as.vector(summary_table[,4])), c(-424.1119, -423.0067), tolerance = 1e-3)
+  expect_equal(unname(as.vector(summary_table[,5])), c(0.2487827, 0.7512173), tolerance = 1e-3)
+  expect_equal(unname(as.vector(summary_table[,6])), c(0.3311728, 3.0195717), tolerance = 1e-3)
+
+  # ensemble diagnostics
+  diagnostics_table <- ensemble_diagnostics_table(models, c("mu_x_fac3o"), remove_spike_0 = FALSE)
+  expect_equal(colnames(diagnostics_table), c("Model", "(mu) x_fac3o", "max_MCMC_error", "max_MCMC_SD_error", "min_ESS", "max_R_hat"))
+  expect_equal(unname(as.vector(diagnostics_table[,1])), c(1, 2))
+  expect_equal(unname(as.vector(diagnostics_table[,2])), c("mean difference contrast: mSpike(0)", "mean difference contrast: mNormal(0, 0.25)"))
+  expect_equal(unname(as.vector(diagnostics_table[,3])), c(0.0004365069, 0.0006020573), tolerance = 1e-3)
+  expect_equal(unname(as.vector(diagnostics_table[,4])), c(0.01, 0.01), tolerance = 1e-3)
+  expect_equal(unname(as.vector(diagnostics_table[,5])), c(9774, 10554))
+
+})

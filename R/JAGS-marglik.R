@@ -369,17 +369,21 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
 
-  if(prior$parameters[["K"]] == 1){
-    parameter <- parameter_name
+  if(prior[["distribution"]] == "mpoint"){
+    parameter <- NULL
   }else{
-    parameter <- paste0(parameter_name, "[", 1:prior$parameters[["K"]], "]")
+    if(prior$parameters[["K"]] == 1){
+      parameter <- parameter_name
+    }else{
+      parameter <- paste0(parameter_name, "[", 1:prior$parameters[["K"]], "]")
+    }
+
+    attr(parameter, "lb") <- rep(prior$truncation[["lower"]], prior$parameters[["K"]])
+    attr(parameter, "ub") <- rep(prior$truncation[["upper"]], prior$parameters[["K"]])
+
+    names(attr(parameter, "lb")) <- parameter
+    names(attr(parameter, "ub")) <- parameter
   }
-
-  attr(parameter, "lb") <- rep(prior$truncation[["lower"]], prior$parameters[["K"]])
-  attr(parameter, "ub") <- rep(prior$truncation[["upper"]], prior$parameters[["K"]])
-
-  names(attr(parameter, "lb")) <- parameter
-  names(attr(parameter, "ub")) <- parameter
 
   return(parameter)
 }
@@ -390,7 +394,7 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
 
-  if(is.prior.point(prior) | is.prior.treatment(prior) | is.prior.independent(prior)){
+  if(is.prior.treatment(prior) | is.prior.independent(prior)){
 
     if(.get_prior_factor_levels(prior) == 1){
 
@@ -600,7 +604,9 @@ JAGS_marglik_priors                <- function(samples, prior_list){
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
 
-  if(prior$parameters[["K"]] == 1){
+  if(prior[["distribution"]] == "mpoint"){
+    marglik <- 0
+  }else if(prior$parameters[["K"]] == 1){
     marglik <- lpdf(prior, samples[[ parameter_name ]])
   }else{
     marglik <- lpdf(prior, samples[ paste0(parameter_name, "[", 1:prior$parameters[["K"]], "]") ])
@@ -615,7 +621,7 @@ JAGS_marglik_priors                <- function(samples, prior_list){
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
 
-  if(is.prior.point(prior) | is.prior.treatment(prior) | is.prior.independent(prior)){
+  if(is.prior.treatment(prior) | is.prior.independent(prior)){
 
     if(.get_prior_factor_levels(prior) == 1){
 
@@ -804,9 +810,15 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
   parameter <- list()
   if(prior$parameters[["K"]] == 1){
-    parameter[[parameter_name]] <- samples[[ parameter_name ]]
+    parameter_monitor_name <- parameter_name
   }else{
-    parameter[[parameter_name]] <- samples[ paste0(parameter_name, "[", 1:prior$parameters[["K"]], "]") ]
+    parameter_monitor_name <- paste0(parameter_name, "[", 1:prior$parameters[["K"]], "]")
+  }
+
+  if(prior[["distribution"]] == "mpoint"){
+    parameter[[parameter_name]] <- rep(prior$parameters[["location"]], length(parameter_monitor_name))
+  }else{
+    parameter[[parameter_name]] <- samples[ parameter_monitor_name ]
   }
 
   return(parameter)
@@ -819,7 +831,7 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
   check_char(parameter_name, "parameter_name")
 
 
-  if(is.prior.point(prior) | is.prior.treatment(prior) | is.prior.independent(prior)){
+  if(is.prior.treatment(prior) | is.prior.independent(prior)){
 
     if(.get_prior_factor_levels(prior) == 1){
 

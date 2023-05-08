@@ -1,4 +1,4 @@
-context("Distributions - mpoint")
+context("Distributions - Multivariate point")
 
 test_that("Density function works", {
 

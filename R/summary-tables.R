@@ -859,11 +859,11 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
           Mean    = transformed_summary$statistics[,"Mean"],
           SD      = transformed_summary$statistics[,"SD"],
           Mode    = NA,
-          MCerr   = transformed_summary$statistics[,"Naive SE"],
-          MC.ofSD = 100 * transformed_summary$statistics[,"Naive SE"] / transformed_summary$statistics[,"SD"],
-          SSeff   = unname(coda::effectiveSize(coda::as.mcmc(transformed_samples))),
-          AC.10   = coda::autocorr.diag(coda::as.mcmc(transformed_samples), lags = 10)[1,],
-          psrf    = if(length(fit$mcmc) > 1) unname(coda::gelman.diag(transformed_chains, multivariate = FALSE)$psrf[,"Point est."]) else NA
+          MCerr   = if(is.prior.point(prior_list[[par]])) NA else transformed_summary$statistics[,"Naive SE"],
+          MC.ofSD = if(is.prior.point(prior_list[[par]])) NA else 100 * transformed_summary$statistics[,"Naive SE"] / transformed_summary$statistics[,"SD"],
+          SSeff   = if(is.prior.point(prior_list[[par]])) NA else unname(coda::effectiveSize(coda::as.mcmc(transformed_samples))),
+          AC.10   = if(is.prior.point(prior_list[[par]])) NA else coda::autocorr.diag(coda::as.mcmc(transformed_samples), lags = 10)[1,],
+          psrf    = if(is.prior.point(prior_list[[par]])) NA else if(length(fit$mcmc) > 1) unname(coda::gelman.diag(transformed_chains, multivariate = FALSE)$psrf[,"Point est."]) else NA
         )
       }
 
