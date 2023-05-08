@@ -19,7 +19,10 @@ test_that("helper functions work", {
 
   prior_list_0 <- list(
     "intercept"        = prior("normal", list(0, 1)),
-    "x_cont1"          = prior("normal", list(0, 1))
+    "x_cont1"          = prior("normal", list(0, 1)),
+    "x_fac2t"          = prior("spike", contrast = "treatment", list = (0)),
+    "x_fac3md"         = prior_factor("spike", contrast = "meandif", list(0)),
+    "x_cont1:x_fac3md" = prior_factor("spike", contrast = "meandif", list(0))
   )
   prior_list_1 <- list(
     "intercept"        = prior("normal", list(0, 1)),

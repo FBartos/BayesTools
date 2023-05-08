@@ -461,54 +461,67 @@ JAGS_add_priors           <- function(syntax, prior_list){
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
 
-  # create the location/means vector the sigma matrix
-  par1 <- switch(
-    prior[["distribution"]],
-    "mnormal" = prior$parameter[["mean"]],
-    "mt"      = prior$parameter[["location"]]
-  )
-  par2 <- switch(
-    prior[["distribution"]],
-    "mnormal" = prior$parameter[["sd"]],
-    "mt"      = prior$parameter[["scale"]]
-  )
 
-  # TODO: beautify this code by specific JAGS distributions?
-  if(prior[["distribution"]] == "mt"){
-    # using the chisq * covariance parametrization since the mt fails with 1 df
-    # (using a common df parameter as in Rouder et al. 2012)
-    syntax <- paste0("prior_par1_", parameter_name, " = rep(0,", prior$parameter[["K"]], ")\n")
-    syntax <- paste0(syntax, "prior_par_s_", parameter_name, " ~ dgamma(", prior$parameter[["df"]]/2, ", ", prior$parameter[["df"]]/2,")\n")
+  if(prior[["distribution"]] %in% c("mnormal", "mt")){
+    # create the location/means vector the sigma matrix
+
+    par1 <- switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameter[["mean"]],
+      "mt"      = prior$parameter[["location"]]
+    )
+    par2 <- switch(
+      prior[["distribution"]],
+      "mnormal" = prior$parameter[["sd"]],
+      "mt"      = prior$parameter[["scale"]]
+    )
+
+    # TODO: beautify this code by specific JAGS distributions?
+    if(prior[["distribution"]] == "mt"){
+      # using the chisq * covariance parametrization since the mt fails with 1 df
+      # (using a common df parameter as in Rouder et al. 2012)
+      syntax <- paste0("prior_par1_", parameter_name, " = rep(0,", prior$parameter[["K"]], ")\n")
+      syntax <- paste0(syntax, "prior_par_s_", parameter_name, " ~ dgamma(", prior$parameter[["df"]]/2, ", ", prior$parameter[["df"]]/2,")\n")
+      syntax <- paste0(
+        syntax,
+        "for(i in 1:", prior$parameters[["K"]], "){\n",
+        "  prior_par2_", parameter_name, "[i,i] <- ", 1/par2^2, "\n",
+        "  for(j in 1:(i-1)){\n",
+        "    prior_par2_", parameter_name, "[i,j] <- 0\n",
+        "  }\n",
+        "  for (j in (i+1):", prior$parameters[["K"]], "){\n",
+        "    prior_par2_", parameter_name, "[i,j] <- 0\n",
+        "  }\n",
+        "}\n",
+        "prior_par_z_", parameter_name, " ~ dmnorm(prior_par1_", parameter_name, ",prior_par2_", parameter_name, ")\n",
+        "for(i in 1:", prior$parameters[["K"]], "){\n",
+        "  ", parameter_name, "[i] <- prior_par_z_", parameter_name, "[i]/sqrt(prior_par_s_", parameter_name, ") + ", par1, " \n",
+        "}\n")
+    }else if(prior[["distribution"]] == "mnormal"){
+      syntax <- paste0("prior_par1_", parameter_name, " = rep(", par1, ",", prior$parameter[["K"]], ")\n")
+      syntax <- paste0(
+        syntax,
+        "for(i in 1:", prior$parameters[["K"]], "){\n",
+        "  prior_par2_", parameter_name, "[i,i] <- ", 1/par2^2, "\n",
+        "  for(j in 1:(i-1)){\n",
+        "    prior_par2_", parameter_name, "[i,j] <- 0\n",
+        "  }\n",
+        "  for (j in (i+1):", prior$parameters[["K"]], "){\n",
+        "    prior_par2_", parameter_name, "[i,j] <- 0\n",
+        "  }\n",
+        "}\n")
+      syntax <- paste0(syntax, parameter_name," ~ dmnorm(prior_par1_", parameter_name, ",prior_par2_", parameter_name, ")\n")
+    }
+
+  }else if(prior[["distribution"]] == "mpoint"){
+
     syntax <- paste0(
-      syntax,
       "for(i in 1:", prior$parameters[["K"]], "){\n",
-      "  prior_par2_", parameter_name, "[i,i] <- ", 1/par2^2, "\n",
-      "  for(j in 1:(i-1)){\n",
-      "    prior_par2_", parameter_name, "[i,j] <- 0\n",
-      "  }\n",
-      "  for (j in (i+1):", prior$parameters[["K"]], "){\n",
-      "    prior_par2_", parameter_name, "[i,j] <- 0\n",
-      "  }\n",
-      "}\n",
-      "prior_par_z_", parameter_name, " ~ dmnorm(prior_par1_", parameter_name, ",prior_par2_", parameter_name, ")\n",
-      "for(i in 1:", prior$parameters[["K"]], "){\n",
-      "  ", parameter_name, "[i] <- prior_par_z_", parameter_name, "[i]/sqrt(prior_par_s_", parameter_name, ") + ", par1, " \n",
+      "  ", parameter_name, "[i] = ", prior$parameter[["location"]], " \n",
       "}\n")
-  }else{
-    syntax <- paste0("prior_par1_", parameter_name, " = rep(", par1, ",", prior$parameter[["K"]], ")\n")
-    syntax <- paste0(
-      syntax,
-      "for(i in 1:", prior$parameters[["K"]], "){\n",
-      "  prior_par2_", parameter_name, "[i,i] <- ", 1/par2^2, "\n",
-      "  for(j in 1:(i-1)){\n",
-      "    prior_par2_", parameter_name, "[i,j] <- 0\n",
-      "  }\n",
-      "  for (j in (i+1):", prior$parameters[["K"]], "){\n",
-      "    prior_par2_", parameter_name, "[i,j] <- 0\n",
-      "  }\n",
-      "}\n")
-    syntax <- paste0(syntax, parameter_name," ~ dmnorm(prior_par1_", parameter_name, ",prior_par2_", parameter_name, ")\n")
+
   }
+
 
   return(syntax)
 }
@@ -520,7 +533,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
   check_char(parameter_name, "parameter_name")
   check_int(.get_prior_factor_levels(prior), "levels", lower = 1)
 
-  if(is.prior.treatment(prior) | is.prior.independent(prior) | is.prior.point(prior)){
+  if(is.prior.treatment(prior) | is.prior.independent(prior)){
 
     syntax <- paste0(
       "for(i in 1:", .get_prior_factor_levels(prior), "){\n",
@@ -793,7 +806,7 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
   check_char(parameter_name, "parameter_name")
   check_int(.get_prior_factor_levels(prior), "levels", lower = 1)
 
-  if(is.prior.treatment(prior) | is.prior.independent(prior) | is.prior.point(prior)){
+  if(is.prior.treatment(prior) | is.prior.independent(prior)){
 
     init <- list()
     init[[parameter_name]] <- rng(prior, .get_prior_factor_levels(prior))

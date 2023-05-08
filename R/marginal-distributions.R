@@ -30,17 +30,19 @@ marginal_posterior <- function(samples, parameter, formula = NULL, formula_param
       if(!all(BayesTools_model_terms %in% names(samples)))
         stop(paste0("The posterior samples for the ", paste0("'", predictors[!model_terms %in% format_parameter_names(names(prior_list_formula), formula_parameters = parameter, formula_prefix = FALSE)], "'", collapse = ", ")," term is missing in the samples."))
 
-      if(!all(predictors %in% colnames(data)))
-        stop(paste0("The ", paste0("'", predictors[!predictors %in% colnames(data)], "'", collapse = ", ")," predictor variable is missing in the data."))
-
-      # select the relevant prior distributions
+      # select the relevant posterior samples
       posterior_samples_matrix <- do.call(cbind, samples[names(samples) %in% BayesTools_model_terms])
 
       # obtain prior list
-      priors_lists <- lapply(BayesTools_model_terms, function(parameter) attr(samples[[parameter]], "prior_list"))
+      priors_lists <- lapply(BayesTools_model_terms, function(parameter) .simplify_prior_list(attr(samples[[parameter]], "prior_list")))
       names(priors_lists) <- BayesTools_model_terms
 
-      # parameter levels
+      # specify the predictor model matrix
+
+
+      if(!all(predictors %in% colnames(data)))
+        stop(paste0("The ", paste0("'", predictors[!predictors %in% colnames(data)], "'", collapse = ", ")," predictor variable is missing in the data."))
+
 
 
 
@@ -193,7 +195,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, formula_param
 
       posterior_samples <- transform_factor_samples(samples[parameter])
       posterior_samples <- transform_treatment_samples(samples[parameter])[[parameter]]
-      class(posterior_samples[[parameter]]) <- c(class(posterior_samples), "marginal_posteriors.factor")
+      class(posterior_samples) <- c(class(posterior_samples), "marginal_posteriors.factor")
 
     }else if(inherits(samples[[parameter]], "mixed_posteriors.simple")){
 

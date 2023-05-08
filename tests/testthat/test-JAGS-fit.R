@@ -119,16 +119,24 @@ test_that("JAGS model functions work (factor)", {
     p3  = prior_factor("beta",    list(alpha = 2, beta = 2), contrast = "treatment"),
     p4  = prior_factor("gamma",   list(shape = 2, rate = 3), contrast = "independent"),
     p5  = prior_factor("uniform", list(a = -0.5, b = 1.5),   contrast = "independent"),
-    p6  = prior_factor("mnorm",   list(mean = 0, sd = 0.5),  contrast = "meandif")
+    p6  = prior_factor("mnorm",   list(mean = 0, sd = 0.5),  contrast = "meandif"),
+    p7  = prior_factor("spike",   list(location = 1), contrast = "treatment"),
+    p8  = prior_factor("spike",   list(location = 2), contrast = "independent"),
+    p9  = prior_factor("spike",   list(location = 0), contrast = "orthonormal"),
+    p10 = prior_factor("spike",   list(location = 0), contrast = "meandif")
   )
 
   # add levels
-  attr(priors[[1]], "levels") <- 3
-  attr(priors[[2]], "levels") <- 2
-  attr(priors[[3]], "levels") <- 3
-  attr(priors[[4]], "levels") <- 1
-  attr(priors[[5]], "levels") <- 3
-  attr(priors[[6]], "levels") <- 3
+  attr(priors[[1]],  "levels") <- 3
+  attr(priors[[2]],  "levels") <- 2
+  attr(priors[[3]],  "levels") <- 3
+  attr(priors[[4]],  "levels") <- 1
+  attr(priors[[5]],  "levels") <- 3
+  attr(priors[[6]],  "levels") <- 3
+  attr(priors[[7]],  "levels") <- 2
+  attr(priors[[8]],  "levels") <- 3
+  attr(priors[[9]],  "levels") <- 3
+  attr(priors[[10]], "levels") <- 3
 
 
   model_syntax <- JAGS_add_priors(model_syntax, priors)
@@ -140,7 +148,7 @@ test_that("JAGS model functions work (factor)", {
   samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 5000, quiet = TRUE, progress.bar = "none")
   samples <- do.call(rbind, samples)
 
-  expect_equal(colnames(samples), c("p1[1]", "p1[2]", "p2", "p3[1]", "p3[2]", "p4", "p5[1]", "p5[2]", "p5[3]", "p6[1]", "p6[2]"))
+  expect_equal(colnames(samples), c("p1[1]", "p1[2]", "p10[1]", "p10[2]", "p2", "p3[1]", "p3[2]", "p4", "p5[1]", "p5[2]", "p5[3]", "p6[1]", "p6[2]", "p7", "p8[1]", "p8[2]", "p8[3]", "p9[1]", "p9[2]"))
 
   expect_doppelganger("JAGS-model-prior-factor-1", function(){
 
@@ -207,6 +215,55 @@ test_that("JAGS model functions work (factor)", {
 
     hist(samples[,"p6[2]"], breaks = 50, main = print(priors[[6]], plot = TRUE), freq = FALSE)
     lines(prior("normal", list(mean = 0, sd = 0.5)))
+  })
+
+  expect_doppelganger("JAGS-model-prior-factor-7", function(){
+
+    hist(samples[,"p7"], breaks = 50, main = print(priors[[7]], plot = TRUE), freq = FALSE)
+    lines(prior_factor("spike", list(location = 1), contrast = "treatment"))
+
+  })
+
+  expect_doppelganger("JAGS-model-prior-factor-8", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfcol = c(1, 3))
+
+    hist(samples[,"p8[1]"], breaks = 50, main = print(priors[[5]], plot = TRUE), freq = FALSE)
+    lines(prior_factor("spike", list(location = 2), contrast = "independent"))
+
+    hist(samples[,"p8[2]"], breaks = 50, main = print(priors[[5]], plot = TRUE), freq = FALSE)
+    lines(prior_factor("spike", list(location = 2), contrast = "independent"))
+
+    hist(samples[,"p8[3]"], breaks = 50, main = print(priors[[5]], plot = TRUE), freq = FALSE)
+    lines(prior_factor("spike", list(location = 2), contrast = "independent"))
+  })
+
+  expect_doppelganger("JAGS-model-prior-factor-9", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfcol = c(1, 2))
+
+    hist(samples[,"p9[1]"], breaks = 50, main = print(priors[[5]], plot = TRUE), freq = FALSE)
+    lines(prior_factor("spike", list(location = 0), contrast = "orthonormal"))
+
+    hist(samples[,"p9[2]"], breaks = 50, main = print(priors[[5]], plot = TRUE), freq = FALSE)
+    lines(prior_factor("spike", list(location = 0), contrast = "orthonormal"))
+  })
+
+  expect_doppelganger("JAGS-model-prior-factor-10", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfcol = c(1, 2))
+
+    hist(samples[,"p10[1]"], breaks = 50, main = print(priors[[5]], plot = TRUE), freq = FALSE)
+    lines(prior_factor("spike", list(location = 0), contrast = "meandif"))
+
+    hist(samples[,"p10[2]"], breaks = 50, main = print(priors[[5]], plot = TRUE), freq = FALSE)
+    lines(prior_factor("spike", list(location = 0), contrast = "meandif"))
   })
 
 })
