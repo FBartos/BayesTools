@@ -500,7 +500,7 @@ test_that("JAGS formula works", {
   model_13   <- rjags::jags.model(file = textConnection(model_syntax_13), inits = JAGS_get_inits(prior_list_13, chains = 2, seed = 1), data = data_13, n.chains = 2, quiet = TRUE)
   samples_13 <- rjags::coda.samples(model = model_13, variable.names = JAGS_to_monitor(prior_list_13), n.iter = 5000, quiet = TRUE, progress.bar = "none")
   samples_13 <- do.call(rbind, samples_13)
-
+  expect_equal(diag(3), contr.independent(1:3))
 
   expect_doppelganger("JAGS-formula-lm-13", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
@@ -695,4 +695,54 @@ test_that("JAGS evaluate formula works", {
   expect_error(JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", bad_data2, prior_list),
                "Levels specified in the 'x_fac2t' factor variable do not match the levels used for model specification.")
 
+  # evaluate formula with spike prior distributions ----
+  set.seed(1)
+  df_all <- data.frame(
+    x_fac2i  = factor(rep(c("A", "B"), 30), levels = c("A", "B")),
+    x_fac3o  = factor(sample(c("A", "B", "C"), 60, replace = TRUE), levels = c("A", "B", "C")),
+    x_fac3t  = factor(sample(c("A", "B", "C"), 60, replace = TRUE), levels = c("A", "B", "C")),
+    x_fac3md = factor(sample(c("A", "B", "C"), 60, replace = TRUE), levels = c("A", "B", "C"))
+  )
+  df_all$y <- rnorm(60, 0.1, 0.5)
+
+  prior_list_all <- list(
+    "intercept" = prior("normal", list(0, 5)),
+    "x_fac2i"   = prior_factor("spike", contrast = "independent", list(1)),
+    "x_fac3o"   = prior_factor("spike", contrast = "orthonormal", list(0)),
+    "x_fac3t"   = prior_factor("spike", contrast = "treatment",   list(2)),
+    "x_fac3md"  = prior_factor("spike", contrast = "meandif",     list(0))
+  )
+  prior_list2  <- list(
+    "sigma" = prior("cauchy", list(0, 1), list(0, 1))
+  )
+  model_syntax <- paste0(
+    "model{",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  fit1 <- JAGS_fit(
+    model_syntax       = model_syntax,
+    formula_list       = list(mu = ~ x_fac2i + x_fac3o + x_fac3t + x_fac3md),
+    data               = list(y = df_all$y, N = nrow(df_all)),
+    prior_list         = prior_list2,
+    formula_data_list  = list(mu = df_all),
+    formula_prior_list = list(mu = prior_list_all))
+
+  new_data <-  data.frame(
+    x_fac2i  = factor(c("A", "B", "A"), levels = c("A", "B")),
+    x_fac3o  = factor(c("A", "A", "B"), levels = c("A", "B", "C")),
+    x_fac3t  = factor(c("A", "B", "C"), levels = c("A", "B", "C")),
+    x_fac3md = factor(c("B", "B", "C"), levels = c("A", "B", "C"))
+  )
+  new_samples <- JAGS_evaluate_formula(fit1, ~ x_fac2i + x_fac3o + x_fac3t + x_fac3md, "mu", new_data, attr(fit1, "prior_list"))
+  new_samples <- apply(new_samples, 1, mean)
+
+  intercept_estimate <- JAGS_estimates_table(fit1)["(mu) intercept", "Mean"]
+
+  expect_equivalent(intercept_estimate + 1, new_samples[1])
+  expect_equivalent(intercept_estimate + 1 + 2, new_samples[2])
+  expect_equivalent(intercept_estimate + 1 + 2, new_samples[3])
 })

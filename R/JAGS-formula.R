@@ -355,17 +355,17 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
         # there are some additional mismatching values
         stop(paste0("Levels specified in the '", factor, "' factor variable do not match the levels used for model specification."))
       }
-    }
 
-    # set the contrast
-    if(is.prior.orthonormal(this_prior)){
-      stats::contrasts(data[,factor]) <- "contr.orthonormal"
-    }else if(is.prior.meandif(this_prior)){
-      stats::contrasts(data[,factor]) <- "contr.meandif"
-    }else if(is.prior.independent(this_prior)){
-      stats::contrasts(data[,factor]) <- "contr.independent"
-    }else if(is.prior.treatment(this_prior)){
-      stats::contrasts(data[,factor]) <- "contr.treatment"
+      # set the contrast
+      if(is.prior.orthonormal(this_prior)){
+        stats::contrasts(data[,factor]) <- "contr.orthonormal"
+      }else if(is.prior.meandif(this_prior)){
+        stats::contrasts(data[,factor]) <- "contr.meandif"
+      }else if(is.prior.independent(this_prior)){
+        stats::contrasts(data[,factor]) <- "contr.independent"
+      }else if(is.prior.treatment(this_prior)){
+        stats::contrasts(data[,factor]) <- "contr.treatment"
+      }
     }
   }
   if(any(predictors_type == "continuous")){

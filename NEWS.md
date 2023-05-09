@@ -17,6 +17,7 @@
 - zero length inputs to `check_bool()`, `check_char()`, `check_real()`, `check_int()`, and `check_list()` do not throw error if `allow_NULL = TRUE`
 - properly aggregating identical priors in the plotting function (previously overlying multiple spikes on top of each other when attributes did not match)
 - `student-t` allowed as a prior distribution `name`
+- fixing factor contrast settings in `JAGS_evaluate_formula`
 
 ## version 0.2.13
 ### Features
