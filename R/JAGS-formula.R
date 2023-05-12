@@ -170,8 +170,12 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
       this_prior <- prior_list[[model_terms[i]]]
     }
 
-    # check whether the term is an interaction or not
+    # check whether the term is an interaction or not and save the corresponding attributes
     attr(this_prior, "interaction") <- grepl("__xXx__", model_terms[i])
+    if(.is_prior_interaction(this_prior)){
+      attr(this_prior, "interaction_terms") <- strsplit(model_terms[i], "__xXx__")[[1]]
+    }
+
 
     if(model_terms_type[i] == "continuous"){
 
@@ -392,33 +396,27 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
 
   ### evaluate the design matrix on the samples -> output[data, posterior]
   if(has_intercept){
+
     terms_indexes    <- attr(model_matrix, "assign") + 1
     terms_indexes[1] <- 0
 
-    output           <- matrix(posterior[,JAGS_parameter_names("intercept", formula_parameter = parameter)], nrow = nrow(data), ncol = nrow(posterior), byrow = TRUE)
-  }else{
-    terms_indexes    <- attr(model_matrix, "assign")
+    # check for scaling factors
+    temp_multiply_by <- .get_parameter_scaling_factor_matrix(term = "intercept", prior_list = prior_list_formula, posterior = posterior, nrow = nrow(data), ncol = nrow(posterior))
 
+    output           <- temp_multiply_by * matrix(posterior[,JAGS_parameter_names("intercept", formula_parameter = parameter)], nrow = nrow(data), ncol = nrow(posterior), byrow = TRUE)
+
+  }else{
+
+    terms_indexes    <- attr(model_matrix, "assign")
     output           <- matrix(0, nrow = nrow(data), ncol = nrow(posterior))
+
   }
 
   # add remaining terms (omitting the intercept indexed as NA)
   for(i in unique(terms_indexes[terms_indexes > 0])){
 
-    # check for scaling factors
-    if(!is.null(attr(prior_list_formula[[model_terms[i]]], "multiply_by"))){
-      if(is.numeric(attr(prior_list_formula[[model_terms[i]]], "multiply_by"))){
-        temp_multiply_by <- matrix(attr(prior_list_formula[[model_terms[i]]], "multiply_by"), nrow = nrow(data), ncol = nrow(posterior))
-      }else{
-        temp_multiply_by <- matrix(posterior[,JAGS_parameter_names(attr(prior_list_formula[[model_terms[i]]], "multiply_by"))], nrow = nrow(data), ncol = nrow(posterior), byrow = TRUE)
-      }
-    }else{
-      temp_multiply_by <- matrix(1, nrow = nrow(data), ncol = nrow(posterior))
-    }
-
-
     # subset the model matrix
-    temp_data    <- model_matrix[,terms_indexes == i,drop = FALSE]
+    temp_data <- model_matrix[,terms_indexes == i,drop = FALSE]
 
     # get the posterior (unless point prior was used)
     if(is.prior.point(prior_list_formula[[model_terms[i]]])){
@@ -434,6 +432,9 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
         ,drop = FALSE]
     }
 
+    # check for scaling factors
+    temp_multiply_by <- .get_parameter_scaling_factor_matrix(term = model_terms[i], prior_list = prior_list_formula, posterior = posterior, nrow = nrow(data), ncol = nrow(posterior))
+
     output <- output + temp_multiply_by * (temp_data %*% t(temp_posterior))
 
   }
@@ -441,6 +442,21 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
   return(output)
 }
 
+
+.get_parameter_scaling_factor_matrix <- function(term, prior_list, posterior, nrow, ncol){
+
+  if(!is.null(attr(prior_list[[term]], "multiply_by"))){
+    if(is.numeric(attr(prior_list[[term]], "multiply_by"))){
+      temp_multiply_by <- matrix(attr(prior_list[[term]], "multiply_by"), nrow = nrow, ncol = ncol)
+    }else{
+      temp_multiply_by <- matrix(posterior[,JAGS_parameter_names(attr(prior_list[[term]], "multiply_by"))], nrow = nrow, ncol = ncol, byrow = TRUE)
+    }
+  }else{
+    temp_multiply_by <- matrix(1, nrow = nrow, ncol = ncol)
+  }
+
+  return(temp_multiply_by)
+}
 
 #' @title Transform factor posterior samples into differences from the mean
 #'

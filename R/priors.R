@@ -955,6 +955,14 @@ rng.prior   <- function(x, n, ...){
   .check_n(n)
   .check_prior(prior)
 
+  dots  <- list(...)
+  if(!is.null(dots[["transform_factor_samples"]])){
+    check_bool(dots[["transform_factor_samples"]], "transform_factor_samples")
+    transform_factor_samples <- dots[["transform_factor_samples"]]
+  }else{
+    transform_factor_samples <- TRUE
+  }
+
   if(is.prior.simple(prior)){
 
     x <- NULL
@@ -985,7 +993,7 @@ rng.prior   <- function(x, n, ...){
 
     x <- x[1:n]
 
-  }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
+  }else if(transform_factor_samples && (is.prior.orthonormal(prior) | is.prior.meandif(prior))){
 
     par1 <- switch(
       prior[["distribution"]],

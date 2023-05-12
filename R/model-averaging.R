@@ -182,6 +182,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   check_char(parameters, "parameters", check_length = FALSE)
   check_list(is_null_list, "is_null_list", check_length = length(parameters))
   check_real(seed, "seed", allow_NULL = TRUE)
+  check_int(n_samples, "n_samples")
   sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("fit", "marglik", "prior_weights"), all_objects = TRUE, allow_other = TRUE))
   if(!all(sapply(model_list, function(m) inherits(m[["fit"]], what = "runjags")) | sapply(model_list, function(m)inherits(m[["fit"]], what = "stanfit")) | sapply(model_list, function(m)inherits(m[["fit"]], what = "null_model"))))
     stop("model_list:fit must contain 'runjags' or 'rstan' models")
@@ -300,10 +301,30 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   check_char(parameter, "parameter")
   check_real(post_probs, "post_probs", lower = 0, upper = 1, check_length = length(fits))
   check_real(seed, "seed", allow_NULL = TRUE)
+  check_int(n_samples, "n_samples")
   if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "stanfit") | sapply(fits, inherits, what = "null_model")))
     stop("'fits' must be a list of 'runjags' or 'rstan' models")
   if(!all(sapply(priors, is.prior.simple) | sapply(priors, is.prior.point)))
     stop("'priors' must be a list of simple priors")
+
+  # gather and check compatibility of prior distributions
+  priors_info <- lapply(priors, function(p){
+    if(is.prior.point(p) | is.prior.none(p)){
+      return(FALSE)
+    }else{
+      list(
+        "interaction"       = .is_prior_interaction(p),
+        "interaction_terms" = attr(p, "interaction_terms")
+      )
+    }
+  })
+  priors_info <- priors_info[!sapply(priors_info, isFALSE)]
+  if(length(priors_info) >= 2 && any(!unlist(lapply(priors_info, function(i) all.equal(i, priors_info[[1]]))))){
+    stop("non-matching prior factor type specifications")
+  }else if(length(priors_info) != 0){
+    priors_info <- priors_info[[1]]
+  }
+
 
 
   # set seed at the beginning makes sure that the samples of different parameters from the same models retain their correlation
@@ -355,6 +376,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   attr(samples, "models_ind") <- models_ind
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- priors
+  attr(samples, "interaction")       <- if(length(priors_info) == 0) FALSE else priors_info[["interaction"]]
+  attr(samples, "interaction_terms") <- priors_info[["interaction_terms"]]
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.simple")
 
   return(samples)
@@ -367,6 +390,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   check_char(parameter, "parameter")
   check_real(post_probs, "post_probs", lower = 0, upper = 1, check_length = length(fits))
   check_real(seed, "seed", allow_NULL = TRUE)
+  check_int(n_samples, "n_samples")
   if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "stanfit") | sapply(fits, inherits, what = "null_model")))
     stop("'fits' must be a list of 'runjags' or 'rstan' models")
   if(!all(sapply(priors, is.prior.vector) | sapply(priors, is.prior.point)))
@@ -441,6 +465,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   check_char(parameter, "parameter")
   check_real(post_probs, "post_probs", lower = 0, upper = 1, check_length = length(fits))
   check_real(seed, "seed", allow_NULL = TRUE)
+  check_int(n_samples, "n_samples")
   if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "stanfit") | sapply(fits, inherits, what = "null_model")))
     stop("'fits' must be a list of 'runjags' or 'rstan' models")
   if(!all(sapply(priors, is.prior.factor) | sapply(priors, is.prior.point)))
@@ -457,13 +482,14 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
       return(FALSE)
     }else if(is.prior.factor(p)){
       return(list(
-        "levels"      = .get_prior_factor_levels(p),
-        "level_names" = .get_prior_factor_level_names(p),
-        "interaction" = .is_prior_interaction(p),
-        "treatment"   = is.prior.treatment(p),
-        "independent" = is.prior.independent(p),
-        "orthonormal" = is.prior.orthonormal(p),
-        "meandif"     = is.prior.meandif(p)
+        "levels"            = .get_prior_factor_levels(p),
+        "level_names"       = .get_prior_factor_level_names(p),
+        "interaction"       = .is_prior_interaction(p),
+        "interaction_terms" = attr(p, "interaction_terms"),
+        "treatment"         = is.prior.treatment(p),
+        "independent"       = is.prior.independent(p),
+        "orthonormal"       = is.prior.orthonormal(p),
+        "meandif"           = is.prior.meandif(p)
       ))
     }else{
       stop("unsupported prior type")
@@ -473,7 +499,10 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   if(length(priors_info) >= 2 && any(!unlist(lapply(priors_info, function(i) all.equal(i, priors_info[[1]]))))){
     stop("non-matching prior factor type specifications")
   }
-  priors_info <- priors_info[[1]]
+  if(length(priors_info) != 0){
+    priors_info <- priors_info[[1]]
+  }
+
 
   if(priors_info[["treatment"]]){
 
@@ -558,25 +587,26 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 
   }
 
-  attr(samples, "levels")      <- priors_info[["levels"]]
-  attr(samples, "level_names") <- priors_info[["level_names"]]
-  attr(samples, "interaction") <- priors_info[["interaction"]]
-  attr(samples, "treatment")   <- priors_info[["treatment"]]
-  attr(samples, "independent") <- priors_info[["independent"]]
-  attr(samples, "orthonormal") <- priors_info[["orthonormal"]]
-  attr(samples, "meandif")     <- priors_info[["meandif"]]
+  attr(samples, "levels")            <- priors_info[["levels"]]
+  attr(samples, "level_names")       <- priors_info[["level_names"]]
+  attr(samples, "interaction")       <- if(length(priors_info) == 0) FALSE else priors_info[["interaction"]]
+  attr(samples, "interaction_terms") <- priors_info[["interaction_terms"]]
+  attr(samples, "treatment")         <- priors_info[["treatment"]]
+  attr(samples, "independent")       <- priors_info[["independent"]]
+  attr(samples, "orthonormal")       <- priors_info[["orthonormal"]]
+  attr(samples, "meandif")           <- priors_info[["meandif"]]
 
   return(samples)
 }
 .mix_posteriors.weightfunction <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000){
 
   # check input
-  # check input
   check_list(fits, "fits")
   check_list(priors, "priors", check_length = length(fits))
   check_char(parameter, "parameter")
   check_real(post_probs, "post_probs", lower = 0, upper = 1, check_length = length(fits))
   check_real(seed, "seed", allow_NULL = TRUE)
+  check_int(n_samples, "n_samples")
   if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "stanfit") | sapply(fits, inherits, what = "null_model")))
     stop("'fits' must be a list of 'runjags' or 'rstan' models")
   if(!all(sapply(priors, is.prior.weightfunction) | sapply(priors, is.prior.point) | sapply(priors, is.prior.none)))
