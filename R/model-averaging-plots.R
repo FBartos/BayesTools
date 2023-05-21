@@ -1197,13 +1197,24 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       y_den    <- density_continuous$y * (length(samples_density) / length(samples))
 
       # check for truncation
-      if(isTRUE(all.equal(prior_list_simple_lower, x_den[1])) | prior_list_simple_lower >= x_den[1]){
-        y_den <- c(0, y_den)
-        x_den <- c(x_den[1], x_den)
-      }
-      if(isTRUE(all.equal(prior_list_simple_upper, x_den[length(x_den)])) | prior_list_simple_upper <= x_den[length(x_den)]){
-        y_den <- c(y_den, 0)
-        x_den <- c(x_den, x_den[length(x_den)])
+      if(!is.null(transformation)){
+        if(isTRUE(all.equal(prior_list_simple_lower + 1e-5, x_den[1])) | prior_list_simple_lower + 1e-5 >= x_den[1]){
+          y_den <- c(0, y_den)
+          x_den <- c(x_den[1], x_den)
+        }
+        if(isTRUE(all.equal(prior_list_simple_upper - 1e-5, x_den[length(x_den)])) | prior_list_simple_upper + 1e-5 <= x_den[length(x_den)]){
+          y_den <- c(y_den, 0)
+          x_den <- c(x_den, x_den[length(x_den)])
+        }
+      }else{
+        if(isTRUE(all.equal(prior_list_simple_lower, x_den[1])) | prior_list_simple_lower >= x_den[1]){
+          y_den <- c(0, y_den)
+          x_den <- c(x_den[1], x_den)
+        }
+        if(isTRUE(all.equal(prior_list_simple_upper, x_den[length(x_den)])) | prior_list_simple_upper <= x_den[length(x_den)]){
+          y_den <- c(y_den, 0)
+          x_den <- c(x_den, x_den[length(x_den)])
+        }
       }
 
       # apply transformations
