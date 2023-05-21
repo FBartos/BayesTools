@@ -18,6 +18,7 @@
 - properly aggregating identical priors in the plotting function (previously overlying multiple spikes on top of each other when attributes did not match)
 - `student-t` allowed as a prior distribution `name`
 - fixing factor contrast settings in `JAGS_evaluate_formula`
+- fixing spike prior transformations
 
 ## version 0.2.13
 ### Features

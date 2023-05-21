@@ -1184,11 +1184,11 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       prior_list_simple <- prior_list[!sapply(prior_list, is.prior.point)]
       prior_list_simple_lower <- min(sapply(prior_list_simple, function(p) p$truncation[["lower"]]))
       prior_list_simple_upper <- max(sapply(prior_list_simple, function(p) p$truncation[["upper"]]))
-      if(!is.infinite(prior_list_simple_lower)){
-        args <- c(args, from = prior_list_simple_lower)
+      if(!is.infinite(prior_list_simple_lower)){ # adding a small number for possible transformations (0 -> -Inf)
+        args <- c(args, from = prior_list_simple_lower + if(!is.null(transformation)) 1e-5 else 0)
       }
       if(!is.infinite(prior_list_simple_upper)){
-        args <- c(args, to = prior_list_simple_upper)
+        args <- c(args, to = prior_list_simple_upper   - if(!is.null(transformation)) 1e-5 else 0)
       }
 
       # get the density estimate

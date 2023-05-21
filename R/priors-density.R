@@ -203,7 +203,6 @@ density.prior <- function(x,
     if(!is.null(x_sam)){
       x_sam <- .density.prior_transformation_x(x_sam,   transformation, transformation_arguments)
     }
-    x_den   <- .density.prior_transformation_y(x_seq, x_den, transformation, transformation_arguments)
   }
 
 
