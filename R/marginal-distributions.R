@@ -104,7 +104,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         if(JAGS_predictors[i] %in% at_manipulated){
           # specify levels for the parameter of interest
           if(model_terms_type[[JAGS_predictors[i]]] == "continuous"){
-            at[[predictors[i]]] <- 0
+            at[[predictors[i]]] <- c(-1, 0, 1)
           }else{
             at[[predictors[i]]] <- priors_info[[JAGS_predictors[i]]][["level_names"]]
           }
@@ -250,42 +250,64 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       }
 
 
-      # deal with factors
-      if(model_terms_type[parameter] == "continuous"){
+      ### split the output into lists based on specification
+      # create indexing and names for the manipulated predictors
+      if(length(at_manipulated) == 1 && format_parameter_names(at_manipulated, formula_parameters = formula_parameter, formula_prefix = FALSE) == "intercept"){
 
-        class(marginal_posterior_samples) <- c(class(marginal_posterior_samples), "marginal_posteriors.simple")
+        class(marginal_posterior_samples)             <- c(class(marginal_posterior_samples), "marginal_posteriors.simple")
+        attr(marginal_posterior_samples, "parameter") <- parameter
+        attr(marginal_posterior_samples, "level")     <- "intercept"
+        attr(marginal_posterior_samples, "data")      <- data
 
-      }else if(model_terms_type[parameter] == "factor"){
+        marginal_posterior_samples <- list("intercept" = marginal_posterior_samples)
 
-        # TODO: change once dealing with factors interactions is solved
-        if(priors_info[[parameter]][["interaction"]]){
-          if(length(priors_info[[parameter]][["level_names"]]) == 1){
-            level_names <- priors_info[[parameter]][["level_names"]][[1]]
-            data_split  <- lapply(level_names, function(lvl) data[,format_parameter_names(names(priors_info[[parameter]][["level_names"]])[1], formula_parameters = formula_parameter, formula_prefix = FALSE)] == lvl)
-            names(data_split) <- level_names
-          }else{
-            stop("de-transformation for interaction of multiple factors is not implemented.")
+        attr(marginal_posterior_samples, "data")        <- data
+        attr(marginal_posterior_samples, "level_at")    <- NULL
+        attr(marginal_posterior_samples, "level_names") <- "intercept"
+        attr(marginal_posterior_samples, "parameter")   <- parameter
+
+      }else{
+
+        manipulated_predictors <- format_parameter_names(at_manipulated, formula_parameters = formula_parameter, formula_prefix = FALSE)
+        at_index_output        <- at[manipulated_predictors]
+        at_index_output.names  <- at_index_output
+
+        # rename continuous predictors levels
+        for(i in seq_along(at_manipulated)){
+          if(predictors_type[[at_manipulated[i]]] == "continuous"){
+            at_index_output.names[[manipulated_predictors[i]]] <- paste0(at_index_output.names[[manipulated_predictors[i]]], "SD")
           }
-        }else{
-          level_names <- priors_info[[parameter]][["level_names"]]
-          data_split  <- lapply(level_names, function(lvl) data[,format_parameter_names(parameter, formula_parameters = formula_parameter, formula_prefix = FALSE)] == lvl)
-          names(data_split) <- level_names
         }
 
-        marginal_posterior_samples <- lapply(level_names, function(lvl){
+        at_index_output_frame       <- expand.grid(at_index_output)
+        at_index_output.names_frame <- expand.grid(at_index_output.names)
+        level_names                 <- apply(at_index_output.names_frame, 1, paste0, collapse = ", ")
+
+        # split the output samples
+        data_split <- lapply(1:nrow(at_index_output_frame), function(i){
+          apply(do.call(cbind, lapply(colnames(at_index_output_frame), function(pred){
+            data[, pred] == at_index_output_frame[i, pred]
+          })), 1, all)
+        })
+        marginal_posterior_samples <- lapply(seq_along(data_split), function(lvl){
           temp_marginal_posterior_samples <- marginal_posterior_samples[data_split[[lvl]],]
           temp_data                       <- data[data_split[[lvl]],]
-          class(temp_marginal_posterior_samples)        <- c(class(temp_marginal_posterior_samples), "marginal_posteriors.factor")
+          class(temp_marginal_posterior_samples)             <- c(class(temp_marginal_posterior_samples), "marginal_posteriors.simple")
           attr(temp_marginal_posterior_samples, "parameter") <- parameter
-          attr(temp_marginal_posterior_samples, "level") <- lvl
-          attr(temp_marginal_posterior_samples, "data") <- temp_data
+          attr(temp_marginal_posterior_samples, "level")     <- level_names[lvl]
+          attr(temp_marginal_posterior_samples, "data")      <- temp_data
           return(temp_marginal_posterior_samples)
         })
         names(marginal_posterior_samples) <- level_names
         class(marginal_posterior_samples) <- c(class(marginal_posterior_samples), "marginal_posteriors.factor")
+
+        attr(marginal_posterior_samples, "data")        <- data
+        attr(marginal_posterior_samples, "level_at")    <- at_index_output_frame
+        attr(marginal_posterior_samples, "level_names") <- level_names
+        attr(marginal_posterior_samples, "parameter")   <- parameter
+
       }
-      attr(marginal_posterior_samples, "data") <- data
-      attr(marginal_posterior_samples, "parameter") <- parameter
+
 
       # add priors
       if(prior_samples){
@@ -356,22 +378,26 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           marginal_prior_samples <- .density.prior_transformation_x(marginal_prior_samples, transformation, transformation_arguments)
         }
 
-        # deal with factors
-        if(model_terms_type[parameter] == "continuous"){
 
-          class(marginal_prior_samples) <- c(class(marginal_prior_samples), "marginal_posteriors.simple")
+        ### split the output into lists based on specification
+        if(length(at_manipulated) == 1 && format_parameter_names(at_manipulated, formula_parameters = formula_parameter, formula_prefix = FALSE) == "intercept"){
+
+          class(marginal_prior_samples)             <- c(class(marginal_prior_samples), "marginal_posteriors.simple")
           attr(marginal_prior_samples, "parameter") <- parameter
-          attr(marginal_posterior_samples, "prior_samples") <- marginal_prior_samples
+          attr(marginal_prior_samples, "level")     <- "intercept"
+          attr(marginal_prior_samples, "data")      <- data
 
-        }else if(model_terms_type[parameter] == "factor"){
+          attr(marginal_posterior_samples[["intercept"]], "prior_samples") <- marginal_prior_samples
 
-          marginal_prior_samples <- lapply(level_names, function(lvl){
-            temp_marginal_prior_samples <- marginal_prior_samples[data_split[[lvl]], ]
-            temp_data                   <- data[data_split[[lvl]], ]
-            class(temp_marginal_prior_samples) <- c(class(temp_marginal_prior_samples), "marginal_posteriors.factor")
+        }else{
+
+          marginal_prior_samples <- lapply(seq_along(data_split), function(lvl){
+            temp_marginal_prior_samples <- marginal_prior_samples[data_split[[lvl]],]
+            temp_data                       <- data[data_split[[lvl]],]
+            class(temp_marginal_prior_samples)             <- c(class(temp_marginal_prior_samples), "marginal_posteriors.simple")
             attr(temp_marginal_prior_samples, "parameter") <- parameter
-            attr(temp_marginal_prior_samples, "level") <- lvl
-            attr(temp_marginal_prior_samples, "data") <- temp_data
+            attr(temp_marginal_prior_samples, "level")     <- level_names[lvl]
+            attr(temp_marginal_prior_samples, "data")      <- temp_data
             return(temp_marginal_prior_samples)
           })
           names(marginal_prior_samples) <- level_names
@@ -534,6 +560,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     stop("the prior samples are not alligned across models/draws")
   prior_weights <- prior_weights[,1]
 
+  # set seed only once at the beginning -- not in the individual draws as the priors will end up completely correlated
+  if(is.null(seed)){
+    seed <- sample(.Machine$integer.max, 1)
+  }
+  set.seed(seed)
 
   ### adapted from 'mix_posteriors'
   parameters <- names(prior_list)
@@ -555,7 +586,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         }
       }
 
-      out[[temp_parameter]] <- .mix_priors.weightfunction(temp_priors, temp_parameter, seed, n_samples)
+      out[[temp_parameter]] <- .mix_priors.weightfunction(temp_priors, temp_parameter, NULL, n_samples)
 
     }else if(any(sapply(temp_priors, is.prior.factor)) && all(sapply(temp_priors, is.prior.factor) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.null))){
       # factor priors
@@ -567,7 +598,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         }
       }
 
-      out[[temp_parameter]] <- .mix_priors.factor(temp_priors, temp_parameter, seed, n_samples)
+      out[[temp_parameter]] <- .mix_priors.factor(temp_priors, temp_parameter, NULL, n_samples)
 
     }else if(any(sapply(temp_priors, is.prior.vector)) && all(sapply(temp_priors, is.prior.vector) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.null))){
       # vector priors:
@@ -579,7 +610,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         }
       }
 
-      out[[temp_parameter]] <- .mix_priors.vector(temp_priors, temp_parameter, seed, n_samples)
+      out[[temp_parameter]] <- .mix_priors.vector(temp_priors, temp_parameter, NULL, n_samples)
 
     }else if(all(sapply(temp_priors, is.prior.simple) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.null))){
       # simple priors:
@@ -591,7 +622,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         }
       }
 
-      out[[temp_parameter]] <- .mix_priors.simple(temp_priors, temp_parameter, seed, n_samples)
+      out[[temp_parameter]] <- .mix_priors.simple(temp_priors, temp_parameter, NULL, n_samples)
 
     }else{
       stop("The posterior samples cannot be mixed: unsupported mixture of prior distributions.")
@@ -620,11 +651,9 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   prior_probs <- sapply(priors, function(prior) prior[["prior_weights"]])
   prior_probs <- prior_probs / sum(prior_probs)
 
-  # set seed at the beginning makes sure that the samples of different parameters from the same models retain their correlation
+  # do not set seed when sampling multiple priors for the same model -- they will end up completely correlated
   if(!is.null(seed)){
     set.seed(seed)
-  }else{
-    set.seed(1)
   }
 
   # prepare output objects
@@ -668,11 +697,9 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   prior_probs <- sapply(priors, function(prior) prior[["prior_weights"]])
   prior_probs <- prior_probs / sum(prior_probs)
 
-  # set seed at the beginning makes sure that the samples of different parameters from the same models retain their correlation
+  # do not set seed when sampling multiple priors for the same model -- they will end up completely correlated
   if(!is.null(seed)){
     set.seed(seed)
-  }else{
-    set.seed(1)
   }
 
   # prepare output objects
@@ -769,11 +796,6 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
     }else{
 
-      # keep the same seed across levels
-      if(is.null(seed)){
-        seed <- sample(666666, 1)
-      }
-
       samples <- lapply(1:levels, function(i) .mix_priors.simple(priors, paste0(parameter, "[", i, "]"), seed, n_samples))
 
       sample_ind <- attr(samples[[1]], "sample_ind")
@@ -803,11 +825,6 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       samples <- matrix(samples, ncol = 1)
 
     }else{
-
-      # keep the same seed across levels
-      if(is.null(seed)){
-        seed <- sample(666666, 1)
-      }
 
       samples <- lapply(1:levels, function(i) .mix_priors.simple(priors, paste0(parameter, "[", i, "]"), seed, n_samples))
 
@@ -863,11 +880,9 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   prior_probs <- sapply(priors, function(prior) prior[["prior_weights"]])
   prior_probs <- prior_probs / sum(prior_probs)
 
-  # set seed at the beginning makes sure that the samples of different parameters from the same models retain their correlation
+  # do not set seed when sampling multiple priors for the same model -- they will end up completely correlated
   if(!is.null(seed)){
     set.seed(seed)
-  }else{
-    set.seed(1)
   }
 
   # obtain mapping for the weight coefficients

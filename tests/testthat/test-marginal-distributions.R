@@ -5,7 +5,6 @@ test_that("helper functions work", {
 
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
   skip_on_cran()
-  skip("under development")
 
   ### complex formula including scaling ----
   set.seed(1)
@@ -27,7 +26,7 @@ test_that("helper functions work", {
   prior_list_1 <- list(
     "intercept"        = prior("normal", list(0, 1)),
     "x_cont1"          = prior("normal", list(0, 1)),
-    "x_fac2t"          = prior_factor("normal",  contrast = "treatment", list(0, 0.25)),
+    "x_fac2t"          = prior_factor("normal",  contrast = "treatment", list(0, 1.00)),
     "x_fac3md"         = prior_factor("mnormal", contrast = "meandif",   list(0, 0.25)),
     "x_cont1:x_fac3md" = prior_factor("mnormal", contrast = "meandif",   list(0, 0.25))
   )
@@ -121,11 +120,15 @@ test_that("helper functions work", {
     parameter         = "sigma",
     prior_samples     = TRUE)
 
-  hist(marg_post_sigma, freq = FALSE, main = "marginal posterior sigma")
-  lines(density(c(posterior_manual0[,"sigma"], posterior_manual1[,"sigma"])))
+  expect_doppelganger("marginal-simple-con", function(){
+    hist(marg_post_sigma, freq = FALSE, main = "marginal posterior sigma")
+    lines(density(c(posterior_manual0[,"sigma"], posterior_manual1[,"sigma"])))
+  })
 
-  hist(attr(marg_post_sigma, "prior_samples"), freq = FALSE, main = "marginal prior sigma", breaks = 20)
-  lines(density(prior_list$sigma))
+  expect_doppelganger("marginal-simple-con-p", function(){
+    hist(attr(marg_post_sigma, "prior_samples"), freq = FALSE, main = "marginal prior sigma", breaks = 20)
+    lines(density(prior_list$sigma))
+  })
 
 
   ### simple: factor ----
@@ -135,18 +138,32 @@ test_that("helper functions work", {
     prior_samples     = TRUE,
     use_formula       = FALSE)
 
-  par(mfrow = c(1, 2))
-  hist(marg_post_x_fac2t[["A"]], freq = FALSE, main = "marg_post_x_fac2t = A")
+  expect_doppelganger("marginal-simple-fac", function(){
 
-  hist(marg_post_x_fac2t[["B"]], freq = FALSE, main = "marg_post_x_fac2t = B", breaks = 20)
-  lines(density(c(posterior_manual0[,"mu_x_fac2t"], posterior_manual1[,"mu_x_fac2t"])))
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
 
+    par(mfrow = c(1, 2))
+    hist(marg_post_x_fac2t[["A"]], freq = FALSE, main = "marg_post_x_fac2t = A")
 
-  par(mfrow = c(1, 2))
-  hist(attr(marg_post_x_fac2t[["A"]], "prior_samples"), freq = FALSE, main = "marg_post_x_fac2t = A", breaks = 20)
+    hist(marg_post_x_fac2t[["B"]], freq = FALSE, main = "marg_post_x_fac2t = B", breaks = 20)
+    lines(density(c(posterior_manual0[,"mu_x_fac2t"], posterior_manual1[,"mu_x_fac2t"])))
 
-  hist(attr(marg_post_x_fac2t[["B"]], "prior_samples"), freq = FALSE, main = "marg_post_x_fac2t = B", breaks = 20)
-  curve(dnorm(x, 0, 0.25)/2, add = T)
+  })
+
+  expect_doppelganger("marginal-simple-fac-p", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 2))
+    hist(attr(marg_post_x_fac2t[["A"]], "prior_samples"), freq = FALSE, main = "marg_post_x_fac2t = A", breaks = 20)
+
+    hist(attr(marg_post_x_fac2t[["B"]], "prior_samples"), freq = FALSE, main = "marg_post_x_fac2t = B", breaks = 20)
+    curve(dnorm(x, 0, 1)/2, add = T)
+
+  })
+
 
   ### formula: intercept ----
   marg_post_int <- marginal_posterior(
@@ -155,23 +172,54 @@ test_that("helper functions work", {
     formula           = ~ x_cont1 + x_fac2t + x_cont1*x_fac3md,
     prior_samples     = TRUE)
 
-  hist(marg_post_int, freq = FALSE, main = "marginal posterior intercept")
-  lines(density(c(posterior_manual0[,"mu_intercept"], posterior_manual1[,"mu_intercept"] )))
+  expect_doppelganger("marginal-form-int", function(){
+    hist(marg_post_int[["intercept"]], freq = FALSE, main = "marginal posterior intercept")
+    lines(density(c(posterior_manual0[,"mu_intercept"], posterior_manual1[,"mu_intercept"] )))
+  })
 
-  hist(attr(marg_post_int, "prior_samples"), freq = FALSE, main = "marginal prior intercept")
-  lines(prior_list_0$intercept)
+  expect_doppelganger("marginal-form-int-p", function(){
+    hist(attr(marg_post_int[["intercept"]], "prior_samples"), freq = FALSE, main = "marginal prior intercept")
+    lines(prior_list_0$intercept)
+  })
 
-  ### formula: continuous parameter WHAT DO WE EVEN WANT HERE??? ----
+
+  ### formula: continuous parameter (-+1SD) ----
   marg_post_x_cont1 <- marginal_posterior(
     samples           = mixed_posteriors,
     parameter         = "mu_x_cont1",
     formula           = ~ x_cont1 + x_fac2t + x_cont1*x_fac3md,
     prior_samples     = TRUE)
 
-  hist(marg_post_x_cont1, freq = FALSE, main = "marginal posterior x_cont1")
-  lines(density(c(posterior_manual0[,"mu_intercept"] + posterior_manual0[,"mu_x_cont1"], posterior_manual1[,"mu_intercept"] + posterior_manual1[,"mu_x_cont1"])))
+  expect_doppelganger("marginal-form-con", function(){
 
-  hist(attr(marg_post_x_cont1, "prior_samples"), freq = FALSE, main = "marginal prior sigma", breaks = 20)
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 3))
+    hist(marg_post_x_cont1[["-1SD"]], freq = FALSE, main = "marginal posterior x_cont1\n(-1)")
+    lines(density(c(posterior_manual0[,"mu_intercept"] + -1 * posterior_manual0[,"mu_x_cont1"] * posterior_manual0[,"sigma"],
+                    posterior_manual1[,"mu_intercept"] + -1 * posterior_manual1[,"mu_x_cont1"] * posterior_manual1[,"sigma"])))
+
+    hist(marg_post_x_cont1[["0SD"]], freq = FALSE, main = "marginal posterior x_cont1\n(0)")
+    lines(density(c(posterior_manual0[,"mu_intercept"] + 0 * posterior_manual0[,"mu_x_cont1"] * posterior_manual0[,"sigma"],
+                    posterior_manual1[,"mu_intercept"] + 0 * posterior_manual1[,"mu_x_cont1"] * posterior_manual1[,"sigma"])))
+
+    hist(marg_post_x_cont1[["1SD"]], freq = FALSE, main = "marginal posterior x_cont1\n(1)")
+    lines(density(c(posterior_manual0[,"mu_intercept"] + 1 * posterior_manual0[,"mu_x_cont1"] * posterior_manual0[,"sigma"],
+                    posterior_manual1[,"mu_intercept"] + 1 * posterior_manual1[,"mu_x_cont1"] * posterior_manual1[,"sigma"])))
+
+  })
+
+  expect_doppelganger("marginal-form-con-p", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    hist(attr(marg_post_x_cont1[["-1SD"]], "prior_samples"), freq = FALSE, main = "marginal prior x_cont1\n(-1)", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
+    hist(attr(marg_post_x_cont1[["0SD"]], "prior_samples"),  freq = FALSE, main = "marginal prior x_cont1\n(0)",  breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
+    hist(attr(marg_post_x_cont1[["1SD"]], "prior_samples"),  freq = FALSE, main = "marginal prior x_cont1\n(1)",  breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
+
+  })
 
 
   ### formula: treatment factor ----
@@ -181,12 +229,31 @@ test_that("helper functions work", {
     formula           = ~ x_cont1 + x_fac2t + x_cont1*x_fac3md,
     prior_samples     = TRUE)
 
-  par(mfrow = c(1, 2))
-  hist(marg_post_x_fac2t[["A"]], freq = FALSE, main = "marg_post_x_fac2t = A")
-  lines(density(c(posterior_manual0[,"mu_intercept"], posterior_manual1[,"mu_intercept"])))
+  expect_doppelganger("marginal-form-fac.t", function(){
 
-  hist(marg_post_x_fac2t[["B"]], freq = FALSE, main = "marg_post_x_fac2t = B", breaks = 20)
-  lines(density(c(posterior_manual0[,"mu_intercept"] + posterior_manual0[,"mu_x_fac2t"], posterior_manual1[,"mu_intercept"] + posterior_manual1[,"mu_x_fac2t"])))
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 2))
+    hist(marg_post_x_fac2t[["A"]], freq = FALSE, main = "marg_post_x_fac2t = A")
+    lines(density(c(posterior_manual0[,"mu_intercept"], posterior_manual1[,"mu_intercept"])))
+
+    hist(marg_post_x_fac2t[["B"]], freq = FALSE, main = "marg_post_x_fac2t = B", breaks = 20)
+    lines(density(c(posterior_manual0[,"mu_intercept"] + posterior_manual0[,"mu_x_fac2t"], posterior_manual1[,"mu_intercept"] + posterior_manual1[,"mu_x_fac2t"])))
+
+  })
+
+  expect_doppelganger("marginal-form-fac.t-p", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 2))
+    hist(attr(marg_post_x_fac2t[["A"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac2t = A", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x), add = TRUE)
+    hist(attr(marg_post_x_fac2t[["B"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac2t = B",  breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x, 0, (sqrt(1^2 + 0^2) + sqrt(1^2 + 1^2)) / 2), add = TRUE)
+  })
 
 
   ### formula: meandif factor ----
@@ -199,35 +266,123 @@ test_that("helper functions work", {
   posterior_manual0.md <- posterior_manual0[,c("mu_x_fac3md[1]", "mu_x_fac3md[2]")] %*% t(contr.meandif(1:3))
   posterior_manual1.md <- posterior_manual1[,c("mu_x_fac3md[1]", "mu_x_fac3md[2]")] %*% t(contr.meandif(1:3))
 
-  par(mfrow = c(1, 3))
-  hist(marg_post_x_fac3md[["A"]], freq = FALSE, main = "marg_post_x_fac3md = A", breaks = 20)
-  lines(density(c(posterior_manual0[,"mu_intercept"] + posterior_manual0.md[,1], posterior_manual1[,"mu_intercept"] + posterior_manual1.md[,1])))
+  expect_doppelganger("marginal-form-fac.md", function(){
 
-  hist(marg_post_x_fac3md[["B"]], freq = FALSE, main = "marg_post_x_fac3md = B", breaks = 20)
-  lines(density(c(posterior_manual0[,"mu_intercept"] + posterior_manual0.md[,2], posterior_manual1[,"mu_intercept"] + posterior_manual1.md[,2])))
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
 
-  hist(marg_post_x_fac3md[["C"]], freq = FALSE, main = "marg_post_x_fac2t = B", breaks = 20)
-  lines(density(c(posterior_manual0[,"mu_intercept"] + posterior_manual0.md[,3], posterior_manual1[,"mu_intercept"] + posterior_manual1.md[,3])))
+    par(mfrow = c(1, 3))
+    hist(marg_post_x_fac3md[["A"]], freq = FALSE, main = "marg_post_x_fac3md = A", breaks = 20)
+    lines(density(c(posterior_manual0[,"mu_intercept"] + posterior_manual0.md[,1], posterior_manual1[,"mu_intercept"] + posterior_manual1.md[,1])))
 
-  ### formula: meandif factor interaction WHAT DO WE EVEN WANT HERE??? ----
+    hist(marg_post_x_fac3md[["B"]], freq = FALSE, main = "marg_post_x_fac3md = B", breaks = 20)
+    lines(density(c(posterior_manual0[,"mu_intercept"] + posterior_manual0.md[,2], posterior_manual1[,"mu_intercept"] + posterior_manual1.md[,2])))
+
+    hist(marg_post_x_fac3md[["C"]], freq = FALSE, main = "marg_post_x_fac2t = B", breaks = 20)
+    lines(density(c(posterior_manual0[,"mu_intercept"] + posterior_manual0.md[,3], posterior_manual1[,"mu_intercept"] + posterior_manual1.md[,3])))
+  })
+
+  expect_doppelganger("marginal-form-fac.md-p", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    hist(attr(marg_post_x_fac3md[["A"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac3md = A", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x, 0, (sqrt(1^2 + 0^2) + sqrt(1^2 + 0.25^2)) / 2), add = TRUE)
+    hist(attr(marg_post_x_fac3md[["B"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x, 0, (sqrt(1^2 + 0^2) + sqrt(1^2 + 0.25^2)) / 2), add = TRUE)
+    hist(attr(marg_post_x_fac3md[["C"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac3md = C", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x, 0, (sqrt(1^2 + 0^2) + sqrt(1^2 + 0.25^2)) / 2), add = TRUE)
+  })
+
+
+  ### formula: meandif factor interaction ----
   marg_post_x_cont1__xXx__x_fac3md <- marginal_posterior(
     samples           = mixed_posteriors,
     parameter         = "mu_x_cont1__xXx__x_fac3md",
     formula           = ~ x_cont1 + x_fac2t + x_cont1*x_fac3md,
     prior_samples     = TRUE)
 
-  posterior_manual0.md <- posterior_manual0[,c("mu_x_cont1__xXx__x_fac3md[1]", "mu_x_cont1__xXx__x_fac3md[2]")] %*% t(contr.meandif(1:3))
-  posterior_manual1.md <- posterior_manual1[,c("mu_x_cont1__xXx__x_fac3md[1]", "mu_x_cont1__xXx__x_fac3md[2]")] %*% t(contr.meandif(1:3))
+  posterior_manual0.md <- matrix(posterior_manual0[, "mu_intercept"], ncol = 9, nrow = nrow(posterior_manual0)) +
+    posterior_manual0[,c("mu_x_fac3md[1]", "mu_x_fac3md[2]")] %*% do.call(cbind, lapply(1:3, function(i) t(contr.meandif(1:3)))) +
+    matrix(posterior_manual0[, "sigma"], ncol = 9, nrow = nrow(posterior_manual0)) * posterior_manual0[, "mu_x_cont1"] %*% t(c(-1, -1, -1, 0, 0, 0, 1, 1, 1)) +
+    posterior_manual0[,c("mu_x_cont1__xXx__x_fac3md[1]", "mu_x_cont1__xXx__x_fac3md[2]")] %*% (do.call(cbind, lapply(1:3, function(i) t(contr.meandif(1:3)))) * matrix(c(-1, -1, -1, 0, 0, 0, 1, 1, 1), ncol = 9, nrow = 2, byrow = TRUE))
+  posterior_manual1.md <- matrix(posterior_manual1[, "mu_intercept"], ncol = 9, nrow = nrow(posterior_manual1)) +
+    posterior_manual1[,c("mu_x_fac3md[1]", "mu_x_fac3md[2]")] %*% do.call(cbind, lapply(1:3, function(i) t(contr.meandif(1:3)))) +
+    matrix(posterior_manual1[, "sigma"], ncol = 9, nrow = nrow(posterior_manual1)) * posterior_manual1[, "mu_x_cont1"] %*% t(c(-1, -1, -1, 0, 0, 0, 1, 1, 1)) +
+    posterior_manual1[,c("mu_x_cont1__xXx__x_fac3md[1]", "mu_x_cont1__xXx__x_fac3md[2]")] %*% (do.call(cbind, lapply(1:3, function(i) t(contr.meandif(1:3)))) * matrix(c(-1, -1, -1, 0, 0, 0, 1, 1, 1), ncol = 9, nrow = 2, byrow = TRUE))
+  posterior_manual.md <- rbind(posterior_manual0.md, posterior_manual1.md)
 
-  par(mfrow = c(1, 3))
-  hist(marg_post_x_cont1__xXx__x_fac3md[["A"]], freq = FALSE, main = "marg_post_x_fac3md = A", breaks = 20)
-  lines(density(c(posterior_manual0[,"mu_intercept"] + posterior_manual0.md[,1], posterior_manual1[,"mu_intercept"] + posterior_manual1.md[,1])))
+  expect_doppelganger("marginal-form-fac.mdi", function(){
 
-  hist(marg_post_x_cont1__xXx__x_fac3md[["B"]], freq = FALSE, main = "marg_post_x_fac3md = B", breaks = 20)
-  lines(density(c(posterior_manual0[,"mu_intercept"] + posterior_manual0.md[,2], posterior_manual1[,"mu_intercept"] + posterior_manual1.md[,2])))
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
 
-  hist(marg_post_x_cont1__xXx__x_fac3md[["C"]], freq = FALSE, main = "marg_post_x_fac2t = B", breaks = 20)
-  lines(density(c(posterior_manual0[,"mu_intercept"] + posterior_manual0.md[,3], posterior_manual1[,"mu_intercept"] + posterior_manual1.md[,3])))
+    par(mfrow = c(3, 3))
+    hist(marg_post_x_cont1__xXx__x_fac3md[["-1SD, A"]], freq = FALSE, main = "x_cont1 = -1\nmarg_post_x_fac3md = A", breaks = 20)
+    lines(density(posterior_manual.md[,1]))
+
+    hist(marg_post_x_cont1__xXx__x_fac3md[["-1SD, B"]], freq = FALSE, main = "x_cont1 = -1\nmarg_post_x_fac3md = B", breaks = 20)
+    lines(density(posterior_manual.md[,2]))
+
+    hist(marg_post_x_cont1__xXx__x_fac3md[["-1SD, C"]], freq = FALSE, main = "x_cont1 = -1\nmarg_post_x_fac3md = B", breaks = 20)
+    lines(density(posterior_manual.md[,3]))
+
+    hist(marg_post_x_cont1__xXx__x_fac3md[["0SD, A"]], freq = FALSE, main = "x_cont1 = 0\nmarg_post_x_fac3md = A", breaks = 20)
+    lines(density(posterior_manual.md[,4]))
+
+    hist(marg_post_x_cont1__xXx__x_fac3md[["0SD, B"]], freq = FALSE, main = "x_cont1 = 0\nmarg_post_x_fac3md = B", breaks = 20)
+    lines(density(posterior_manual.md[,5]))
+
+    hist(marg_post_x_cont1__xXx__x_fac3md[["0SD, C"]], freq = FALSE, main = "x_cont1 = 0\nmarg_post_x_fac3md = B", breaks = 20)
+    lines(density(posterior_manual.md[,6]))
+
+    hist(marg_post_x_cont1__xXx__x_fac3md[["1SD, A"]], freq = FALSE, main = "x_cont1 = 1\nmarg_post_x_fac3md = A", breaks = 20)
+    lines(density(posterior_manual.md[,7]))
+
+    hist(marg_post_x_cont1__xXx__x_fac3md[["1SD, B"]], freq = FALSE, main = "x_cont1 = 1\nmarg_post_x_fac3md = B", breaks = 20)
+    lines(density(posterior_manual.md[,8]))
+
+    hist(marg_post_x_cont1__xXx__x_fac3md[["1SD, C"]], freq = FALSE, main = "x_cont1 = 1\nmarg_post_x_fac3md = B", breaks = 20)
+    lines(density(posterior_manual.md[,9]))
+
+  })
+
+  expect_doppelganger("marginal-form-fac.mdi-p", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(3, 3))
+    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["-1SD, A"]], "prior_samples"), freq = FALSE, main = "x_cont1 = -1\nmarg_post_x_fac3md = A", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x, 0, sqrt(1^2 + 1^2 + 0.25^2 + 0.25^2)) , add = TRUE)
+
+    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["-1SD, B"]], "prior_samples"), freq = FALSE, main = "x_cont1 = -1\nmarg_post_x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x, 0, sqrt(1^2 + 1^2 + 0.25^2 + 0.25^2)) , add = TRUE)
+
+    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["-1SD, C"]], "prior_samples"), freq = FALSE, main = "x_cont1 = -1\nmarg_post_x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x, 0, sqrt(1^2 + 1^2 + 0.25^2 + 0.25^2)) , add = TRUE)
+
+    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["0SD, A"]], "prior_samples"), freq = FALSE, main = "x_cont1 = 0\nmarg_post_x_fac3md = A", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x, 0, sqrt(1^2 + 0 + 0.25^2 + 0)) , add = TRUE)
+
+    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["0SD, B"]], "prior_samples"), freq = FALSE, main = "x_cont1 = 0\nmarg_post_x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x, 0, sqrt(1^2 + 0 + 0.25^2 + 0)) , add = TRUE)
+
+    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["0SD, C"]], "prior_samples"), freq = FALSE, main = "x_cont1 = 0\nmarg_post_x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x, 0, sqrt(1^2 + 0 + 0.25^2 + 0)) , add = TRUE)
+
+    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["1SD, A"]], "prior_samples"), freq = FALSE, main = "x_cont1 = 1\nmarg_post_x_fac3md = A", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x, 0, sqrt(1^2 + 1^2 + 0.25^2 + 0.25^2)) , add = TRUE)
+
+    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["1SD, B"]], "prior_samples"), freq = FALSE, main = "x_cont1 = 1\nmarg_post_x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x, 0, sqrt(1^2 + 1^2 + 0.25^2 + 0.25^2)) , add = TRUE)
+
+    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["1SD, C"]], "prior_samples"), freq = FALSE, main = "x_cont1 = 1\nmarg_post_x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x, 0, sqrt(1^2 + 1^2 + 0.25^2 + 0.25^2)) , add = TRUE)
+
+  })
+
 
   ### formula: meandif factor + at specification ----
   marg_post_x_fac3md_AT <- marginal_posterior(
@@ -245,61 +400,37 @@ test_that("helper functions work", {
   posterior_manual0.mdi <- posterior_manual0[,c("mu_x_cont1__xXx__x_fac3md[1]", "mu_x_cont1__xXx__x_fac3md[2]")] %*% t(contr.meandif(1:3))
   posterior_manual1.mdi <- posterior_manual1[,c("mu_x_cont1__xXx__x_fac3md[1]", "mu_x_cont1__xXx__x_fac3md[2]")] %*% t(contr.meandif(1:3))
 
+  expect_doppelganger("marginal-form-fac.md-at", function(){
 
-  par(mfrow = c(2, 3))
-  hist(marg_post_x_fac3md_AT[["A"]][1,], freq = FALSE, main = "marg_post_x_fac3md = A | 1,A", breaks = 20)
-  lines(density(c(posterior_manual0[,"mu_intercept"] + posterior_manual0.md[,1] + posterior_manual0[,"mu_x_cont1"] + posterior_manual0.mdi[,1],
-                  posterior_manual1[,"mu_intercept"] + posterior_manual1.md[,1] + posterior_manual1[,"mu_x_cont1"] + posterior_manual1.mdi[,1])))
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
 
-  hist(marg_post_x_fac3md_AT[["A"]][2,], freq = FALSE, main = "marg_post_x_fac3md = A | 1,B", breaks = 20)
-  lines(density(c(posterior_manual0[,"mu_intercept"] + posterior_manual0.md[,1] + posterior_manual0[,"mu_x_cont1"] + posterior_manual0[,"mu_x_fac2t"] + posterior_manual0.mdi[,2],
-                  posterior_manual1[,"mu_intercept"] + posterior_manual1.md[,1] + posterior_manual1[,"mu_x_cont1"] + posterior_manual1[,"mu_x_fac2t"] + posterior_manual1.mdi[,2])))
+    par(mfrow = c(3, 2))
+    hist(marg_post_x_fac3md_AT[["A"]][1,], freq = FALSE, main = "marg_post_x_fac3md = A | 1,A", breaks = 20)
+    lines(density(c(posterior_manual0[,"mu_intercept"] + posterior_manual0.md[,1] + posterior_manual0[,"sigma"] * posterior_manual0[,"mu_x_cont1"] + posterior_manual0.mdi[,1],
+                    posterior_manual1[,"mu_intercept"] + posterior_manual1.md[,1] + posterior_manual1[,"sigma"] * posterior_manual1[,"mu_x_cont1"] + posterior_manual1.mdi[,1])))
 
+    hist(marg_post_x_fac3md_AT[["A"]][2,], freq = FALSE, main = "marg_post_x_fac3md = A | 1,B", breaks = 20)
+    lines(density(c(posterior_manual0[,"mu_intercept"] + posterior_manual0.md[,1] + posterior_manual0[,"sigma"] * posterior_manual0[,"mu_x_cont1"] + posterior_manual0[,"mu_x_fac2t"] + posterior_manual0.mdi[,1],
+                    posterior_manual1[,"mu_intercept"] + posterior_manual1.md[,1] + posterior_manual1[,"sigma"] * posterior_manual1[,"mu_x_cont1"] + posterior_manual1[,"mu_x_fac2t"] + posterior_manual1.mdi[,1])))
 
-  hist(marg_post_x_fac3md[["B"]], freq = FALSE, main = "marg_post_x_fac3md = B", breaks = 20)
-  lines(density(c(posterior_manual0[,"mu_intercept"] + posterior_manual0.md[,2], posterior_manual1[,"mu_intercept"] + posterior_manual1.md[,2])))
+    hist(marg_post_x_fac3md_AT[["B"]][1,], freq = FALSE, main = "marg_post_x_fac3md = B | 1,A", breaks = 20)
+    lines(density(c(posterior_manual0[,"mu_intercept"] + posterior_manual0.md[,2] + posterior_manual0[,"sigma"] * posterior_manual0[,"mu_x_cont1"] + posterior_manual0.mdi[,2],
+                    posterior_manual1[,"mu_intercept"] + posterior_manual1.md[,2] + posterior_manual1[,"sigma"] * posterior_manual1[,"mu_x_cont1"] + posterior_manual1.mdi[,2])))
 
-  hist(marg_post_x_fac3md[["C"]], freq = FALSE, main = "marg_post_x_fac2t = B", breaks = 20)
-  lines(density(c(posterior_manual0[,"mu_intercept"] + posterior_manual0.md[,3], posterior_manual1[,"mu_intercept"] + posterior_manual1.md[,3])))
+    hist(marg_post_x_fac3md_AT[["B"]][2,], freq = FALSE, main = "marg_post_x_fac3md = B | 1,B", breaks = 20)
+    lines(density(c(posterior_manual0[,"mu_intercept"] + posterior_manual0.md[,2] + posterior_manual0[,"sigma"] * posterior_manual0[,"mu_x_cont1"] + posterior_manual0[,"mu_x_fac2t"] + posterior_manual0.mdi[,2],
+                    posterior_manual1[,"mu_intercept"] + posterior_manual1.md[,2] + posterior_manual1[,"sigma"] * posterior_manual1[,"mu_x_cont1"] + posterior_manual1[,"mu_x_fac2t"] + posterior_manual1.mdi[,2])))
 
+    hist(marg_post_x_fac3md_AT[["C"]][1,], freq = FALSE, main = "marg_post_x_fac3md = C | 1,A", breaks = 20)
+    lines(density(c(posterior_manual0[,"mu_intercept"] + posterior_manual0.md[,3] + posterior_manual0[,"sigma"] * posterior_manual0[,"mu_x_cont1"] + posterior_manual0.mdi[,3],
+                    posterior_manual1[,"mu_intercept"] + posterior_manual1.md[,3] + posterior_manual1[,"sigma"] * posterior_manual1[,"mu_x_cont1"] + posterior_manual1.mdi[,3])))
 
+    hist(marg_post_x_fac3md_AT[["C"]][2,], freq = FALSE, main = "marg_post_x_fac3md = C | 1,B", breaks = 20)
+    lines(density(c(posterior_manual0[,"mu_intercept"] + posterior_manual0.md[,3] + posterior_manual0[,"sigma"] * posterior_manual0[,"mu_x_cont1"] + posterior_manual0[,"mu_x_fac2t"] + posterior_manual0.mdi[,3],
+                    posterior_manual1[,"mu_intercept"] + posterior_manual1.md[,3] + posterior_manual1[,"sigma"] * posterior_manual1[,"mu_x_cont1"] + posterior_manual1[,"mu_x_fac2t"] + posterior_manual1.mdi[,3])))
 
-
-  post_x_cont1_x_fac3md <- marginal_posterior(
-    samples           = mixed_posteriors,
-    parameter         = "mu_x_cont1__xXx__x_fac3md",
-    formula           = ~ x_cont1 + x_fac2t + x_cont1*x_fac3md,
-    prior_samples     = TRUE)
-
-  class(samples[["mu_x_fac2t"]]) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
-  post_x_fac2t <- marginal_posterior(
-    samples           = samples,
-    parameter         = "mu_x_fac2t",
-    formula           = ~ x_cont1 + x_fac2t + x_cont1*x_fac3md,
-    at                = list(
-      x_cont1  = 0,
-      x_fac3md = c(NA, "A")
-    ),
-    prior_samples     = TRUE)
-
-  class(samples[["mu_x_cont1__xXx__x_fac3md"]]) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
-  post_mu_x_cont1__xXx__x_fac3md <- marginal_posterior(
-    samples           = samples,
-    parameter         = "mu_x_cont1__xXx__x_fac3md",
-    prior_samples     = TRUE)
-
-  post_sigma <- marginal_posterior(
-    samples           = mixed_posteriors,
-    parameter         = "sigma",
-    prior_samples     = TRUE)
-
-
-  hist(post_sigma)
-  hist(attr(post_sigma, "prior_samples"))
-
-  JAGS_estimates_table(fit1, transform_factors = TRUE)
-  ensemble_estimates_table(mixed_posteriors, parameters = c("sigma", "mu_intercept", "mu_x_cont1", "mu_x_fac2t", "mu_x_fac3md", "mu_x_cont1__xXx__x_fac3md"), transform_factors = TRUE)
-
+  })
 
 })
 
