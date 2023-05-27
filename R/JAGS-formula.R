@@ -584,7 +584,7 @@ transform_treatment_samples <- function(samples){
     if(!inherits(samples[[i]],"mixed_posteriors.treatment_transformed") && inherits(samples[[i]], "mixed_posteriors.factor") && attr(samples[[i]], "treatment")){
 
       treatment_samples   <- samples[[i]]
-      transformed_samples <- treatment_samples %*% t(contr.treatment(1:(attr(samples[[i]], "levels")+1)))
+      transformed_samples <- treatment_samples %*% t(stats::contr.treatment(1:(attr(samples[[i]], "levels")+1)))
 
       if(attr(samples[[i]], "interaction")){
         if(length(attr(samples[[i]], "level_names")) == 1){

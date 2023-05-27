@@ -8,9 +8,9 @@ marginal_posterior(
   samples,
   parameter,
   formula = NULL,
-  formula_parameter = NULL,
   at = NULL,
   prior_samples = FALSE,
+  use_formula = TRUE,
   transformation = NULL,
   transformation_arguments = NULL,
   transformation_settings = FALSE,
@@ -24,9 +24,6 @@ marginal_posterior(
 
 \item{formula}{model formula (needs to be specified if \code{parameter} was part of a formula)}
 
-\item{formula_parameter}{the outcome parameter of the model formula
-(needs to be specified if \code{parameter} was part of a formula)}
-
 \item{at}{named list with predictor levels of the formula for which marginalization
 should be performed. If a predictor level is missing, \code{0} is used for continuous
 predictors, the baseline factor level is used for factors with \code{contrast = "treatment"} prior
@@ -34,6 +31,8 @@ distributions, and the parameter is completely omitted for for factors with \cod
 
 \item{prior_samples}{whether marginal prior distributions should be generated
 \code{contrast = "orthonormal"}, and \code{contrast = "independent"} levels.}
+
+\item{use_formula}{whether the parameter should be evaluated as a part of supplied formula}
 
 \item{transformation}{transformation to be applied
 to the prior distribution. Either a character

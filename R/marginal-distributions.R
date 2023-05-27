@@ -13,6 +13,7 @@
 #' distributions, and the parameter is completely omitted for for factors with \code{contrast = "meandif"},
 #' @param prior_samples whether marginal prior distributions should be generated
 #' \code{contrast = "orthonormal"}, and \code{contrast = "independent"} levels.
+#' @param use_formula whether the parameter should be evaluated as a part of supplied formula
 #' @inheritParams density.prior
 #'
 #' @return \code{marginal_posterior} returns a named list of mixed marginal posterior
@@ -141,7 +142,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
               # there are some additional levels
               stop(paste0("Levels specified in the '", predictors[i], "' factor variable do not match the levels used for model specification."))
             }
-          }else if(all(na.omit(unique(data[,predictors[i]])) %in% priors_info[[JAGS_predictors[i]]][["level_names"]])){
+          }else if(all(stats::na.omit(unique(data[,predictors[i]])) %in% priors_info[[JAGS_predictors[i]]][["level_names"]])){
             # the variable was not passed as a factor but the values matches the factor levels
             data[,predictors[i]] <- factor(data[,predictors[i]], levels = priors_info[[JAGS_predictors[i]]][["level_names"]])
           }else{

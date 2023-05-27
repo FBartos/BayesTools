@@ -1629,13 +1629,13 @@ test_that("models plot functions work (formulas + spike factors)", {
 
 
 
-  expect_doppelganger("model-averaging-plot-models-formula-spike-1", function(){
+  expect_doppelganger("model-averaging-plot-models-formula-s-1", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(3, 1))
     plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu_x_fac3md")
   })
-  expect_doppelganger("model-averaging-plot-models-formula-spike-2", function(){
+  expect_doppelganger("model-averaging-plot-models-formula-s-2", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(3, 1))
