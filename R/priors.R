@@ -508,7 +508,7 @@ prior_spike_and_slab <- function(prior_parameter,
   output <- list()
 
   # deal with possible scale parametrization
-  if(is.null(names(parameters))){
+  if(!is.null(names(parameters))){
     if("scale" %in% names(parameters)){
       parameters <- .check_and_name_parameters(parameters, c("shape", "scale"), "gamma")
       parameters$rate  <- 1/parameters$scale
@@ -563,7 +563,7 @@ prior_spike_and_slab <- function(prior_parameter,
   output <- list()
 
   # deal with possible scale parametrization
-  if(is.null(names(parameters))){
+  if(!is.null(names(parameters))){
     if("scale" %in% names(parameters)){
       parameters <- .check_and_name_parameters(parameters, c("scale"), "exp")
       parameters$rate  <- 1/parameters$scale
@@ -870,24 +870,6 @@ prior_spike_and_slab <- function(prior_parameter,
   output$distribution <- "one.sided.fixed"
   output$parameters   <- parameters
   output$truncation   <- list(lower = 0, upper = 1)
-
-  return(output)
-}
-
-.prior_normal.orthonormal <- function(parameters){
-
-  output <- list()
-
-  # check overall settings
-  parameters <- .check_and_name_parameters(parameters, "sd", "normal.orthonormal")
-
-  # check individual parameters
-  .check_parameter(parameters$sd,   "sd")
-  .check_parameter_positive(parameters$sd, "sd")
-
-  # add the values to the output
-  output$distribution <- "normal.orthonormal"
-  output$parameters   <- parameters
 
   return(output)
 }
@@ -1305,8 +1287,8 @@ quant.prior <- function(x, p, ...){
 
     }else{
 
-      if(!is.infinite(prior$truncation[["upper"]]) & !is.infinite(prior$truncation[["upper"]])){
-        start_value <- (prior$truncation[["upper"]]  - prior$truncation[["lower"]]) / 2
+      if(!is.infinite(prior$truncation[["lower"]]) & !is.infinite(prior$truncation[["upper"]])){
+        start_value <- prior$truncation[["lower"]] + (prior$truncation[["upper"]]  - prior$truncation[["lower"]]) / 2
       }else if(!is.infinite(prior$truncation[["upper"]])){
         start_value <- prior$truncation[["upper"]] - 1
       }else if(!is.infinite(prior$truncation[["lower"]])){
@@ -2083,12 +2065,12 @@ var.prior   <- function(x, ...){
 
       if(is.prior.orthonormal(x)){
         par2 <- sqrt(sum( (contr.orthonormal(1:(x$parameters[["K"]] + 1))[1,] * switch(
-          prior[["distribution"]],
+          x[["distribution"]],
           "mnormal" = x$parameters[["sd"]],
           "mt"      = x$parameters[["scale"]]) )^2 ))
       }else if(is.prior.meandif(x)){
         par2 <- sqrt(sum( (contr.meandif(1:(x$parameters[["K"]] + 1))[1,] * switch(
-          prior[["distribution"]],
+          x[["distribution"]],
           "mnormal" = x$parameters[["sd"]],
           "mt"      = x$parameters[["scale"]]) )^2 ))
       }
@@ -2096,8 +2078,8 @@ var.prior   <- function(x, ...){
       # use the univariate functions
       var <- switch(
         x[["distribution"]],
-        "mnormal" = var.prior(x("normal", parameters = c(mean = 0, sd = par2))),
-        "mt"      = var.prior(x("t",      parameters = c(location = 0, scale = par2, df = x$parameters[["df"]]))))
+        "mnormal" = var.prior(prior("normal", parameters = list(mean = 0, sd = par2))),
+        "mt"      = var.prior(prior("t",      parameters = list(location = 0, scale = par2, df = x$parameters[["df"]]))))
     }
 
   }else if(is.prior.spike_and_slab(x)){

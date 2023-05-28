@@ -1,7 +1,7 @@
 context("Marginal distributions")
 set.seed(1)
 
-test_that("helper functions work", {
+test_that("Marginal distribution prior and posterior functions work", {
 
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
   skip_on_cran()
@@ -114,6 +114,63 @@ test_that("helper functions work", {
   posterior_manual0 <- suppressWarnings(coda::as.mcmc(fit0))
   posterior_manual1 <- suppressWarnings(coda::as.mcmc(fit1))
 
+  ### test error checks ----
+  expect_error(marginal_posterior(
+    samples           = mixed_posteriors,
+    parameter         = "not_here",
+    formula           = ~ x_cont1 + x_fac2t + x_cont1*x_fac3md,
+    prior_samples     = TRUE),
+    "The 'not_here' values are not recognized by the 'parameter' argument.")
+  expect_error(marginal_posterior(
+    samples           = mixed_posteriors,
+    at                = list(mu_x_cont1 = 1),
+    parameter         = "mu_x_cont1",
+    formula           = ~ x_cont1 + x_fac2t + x_cont1*x_fac3md,
+    prior_samples     = TRUE),
+    "The following values passed via the 'at' argument do not correspond to the specified model: 'mu_x_cont1'"
+    )
+  expect_error(marginal_posterior(
+    samples           = mixed_posteriors,
+    at                = list(x_cont1 = 1),
+    parameter         = "mu_x_cont1",
+    formula           = ~ x_cont1 + x_fac2t + x_cont1*x_fac3md,
+    prior_samples     = TRUE),
+    "Values of the parameter of interested cannot be specified via the 'at' argument."
+  )
+  expect_error(marginal_posterior(
+    samples           = mixed_posteriors,
+    at                = list(x_fac2t = "D"),
+    parameter         = "mu_x_cont1",
+    formula           = ~ x_cont1 + x_fac2t + x_cont1*x_fac3md,
+    prior_samples     = TRUE),
+    "Levels specified in the 'x_fac2t' factor variable do not match the levels used for model specification."
+  )
+  expect_error(marginal_posterior(
+    samples           = mixed_posteriors,
+    at                = list(x_fac2t = NA),
+    parameter         = "mu_x_cont1",
+    formula           = ~ x_cont1 + x_fac2t + x_cont1*x_fac3md,
+    prior_samples     = TRUE),
+    "Unspecified levels in the 'x_fac2t' factor",
+  )
+  expect_error(marginal_posterior(
+    samples           = mixed_posteriors,
+    at                = list(x_cont1 = "A"),
+    parameter         = "mu_x_fac2t",
+    formula           = ~ x_cont1 + x_fac2t + x_cont1*x_fac3md,
+    prior_samples     = TRUE),
+    "Nonnumeric values in the 'x_cont1' continuous variable."
+  )
+  expect_error(marginal_posterior(
+    samples           = mixed_posteriors,
+    at                = list(x_cont1 = NA),
+    parameter         = "mu_x_fac2t",
+    formula           = ~ x_cont1 + x_fac2t + x_cont1*x_fac3md,
+    prior_samples     = TRUE),
+    "Unspecified levels in the 'x_cont1' variable"
+  )
+
+
   ### simple: continuous parameter ----
   marg_post_sigma <- marginal_posterior(
     samples           = mixed_posteriors,
@@ -215,6 +272,7 @@ test_that("helper functions work", {
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
 
+    par(mfrow = c(1, 3))
     hist(attr(marg_post_x_cont1[["-1SD"]], "prior_samples"), freq = FALSE, main = "marginal prior x_cont1\n(-1)", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
     hist(attr(marg_post_x_cont1[["0SD"]], "prior_samples"),  freq = FALSE, main = "marginal prior x_cont1\n(0)",  breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
     hist(attr(marg_post_x_cont1[["1SD"]], "prior_samples"),  freq = FALSE, main = "marginal prior x_cont1\n(1)",  breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
@@ -432,5 +490,122 @@ test_that("helper functions work", {
 
   })
 
+  ### formula: transformation ----
+  marg_post_x_cont1.exp <- marginal_posterior(
+    samples           = mixed_posteriors,
+    parameter         = "mu_x_cont1",
+    formula           = ~ x_cont1 + x_fac2t + x_cont1*x_fac3md,
+    transformation    = "exp",
+    prior_samples     = TRUE)
+
+  expect_doppelganger("marginal-form-con-exp", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 3))
+    hist(marg_post_x_cont1.exp[["-1SD"]], freq = FALSE, main = "exp marginal posterior x_cont1\n(-1)")
+    lines(density(exp(marg_post_x_cont1[["-1SD"]])))
+
+    hist(marg_post_x_cont1.exp[["0SD"]], freq = FALSE, main = "exp marginal posterior x_cont1\n(0)")
+    lines(density(exp(marg_post_x_cont1[["0SD"]])))
+
+    hist(marg_post_x_cont1.exp[["1SD"]], freq = FALSE, main = "exp marginal posterior x_cont1\n(1)")
+    lines(density(exp(marg_post_x_cont1[["1SD"]])))
+
+  })
+
+  expect_doppelganger("marginal-form-con-p-exp", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    p.exp1 <- exp(attr(marg_post_x_cont1[["-1SD"]], "prior_samples"))
+    p.exp2 <- exp(attr(marg_post_x_cont1[["0SD"]], "prior_samples"))
+    p.exp3 <- exp(attr(marg_post_x_cont1[["1SD"]], "prior_samples"))
+
+    par(mfrow = c(1, 3))
+    hist(attr(marg_post_x_cont1.exp[["-1SD"]], "prior_samples"), freq = FALSE, main = "marginal prior x_cont1\n(-1)", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
+    lines(density(p.exp1[p.exp1 < 10]))
+
+    hist(exp(attr(marg_post_x_cont1[["0SD"]], "prior_samples")),  freq = FALSE, main = "marginal prior x_cont1\n(0)",  breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
+    lines(density(p.exp2[p.exp2 < 10]))
+
+    hist(attr(marg_post_x_cont1.exp[["1SD"]], "prior_samples"),  freq = FALSE, main = "marginal prior x_cont1\n(1)",  breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
+    lines(density(p.exp3[p.exp3 < 10]))
+  })
+
 })
 
+test_that("Marginal distribution prior functions work", {
+
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_on_cran()
+  set.seed(1)
+
+  ### independent prior distribution ----
+  priors <- list(
+      prior_factor("spike",  list(0), contrast = "independent"),
+      prior_factor("normal", list(0, .3), contrast = "independent"),
+      prior_factor("normal", list(2, .3), contrast = "independent")
+  )
+  attr(priors[[1]], "levels") <- 3
+  attr(priors[[2]], "levels") <- 3
+  attr(priors[[3]], "levels") <- 3
+  temp_prior <- BayesTools:::.mix_priors.factor(priors, "mu", seed = NULL, n_samples = 10000)
+
+
+  expect_doppelganger("marginal-prior-ind", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 3))
+    hist(temp_prior[,1], freq = FALSE, main = "marginal prior independent (1)", breaks = 50)
+    hist(temp_prior[,2], freq = FALSE, main = "marginal prior independent (2)", breaks = 50)
+    hist(temp_prior[,3], freq = FALSE, main = "marginal prior independent (3)", breaks = 50)
+
+  })
+
+  ### 3 level treatment prior distribution ----
+  priors <- list(
+    prior_factor("spike",  list(0),     contrast = "treatment"),
+    prior_factor("normal", list(2, .3), contrast = "treatment")
+  )
+  attr(priors[[1]], "levels") <- 3
+  attr(priors[[2]], "levels") <- 3
+  temp_prior <- BayesTools:::.mix_priors.factor(priors, "mu", seed = NULL, n_samples = 10000)
+
+
+  expect_doppelganger("marginal-prior-trt", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 2))
+    hist(temp_prior[,1], freq = FALSE, main = "marginal prior treatment (1)", breaks = 50)
+    hist(temp_prior[,2], freq = FALSE, main = "marginal prior treatment (2)", breaks = 50)
+
+  })
+
+  ### weightfunction prior distribution ----
+  priors <- list(
+    prior_weightfunction("one-sided-fixed",  list(c(0.05, 0.50), c(1, 1, 1))),
+    prior_weightfunction("one-sided", list(c(0.10), c(1, 1)))
+  )
+  temp_prior <- BayesTools:::.mix_priors.weightfunction(priors, "mu", seed = NULL, n_samples = 10000)
+
+  expect_doppelganger("marginal-prior-weightfunction", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 4))
+    hist(temp_prior[,1], freq = FALSE, main = "marginal prior weightfunction (1)", breaks = 50)
+    hist(temp_prior[,2], freq = FALSE, main = "marginal prior weightfunction (2)", breaks = 50)
+    hist(temp_prior[,3], freq = FALSE, main = "marginal prior weightfunction (3)", breaks = 50)
+    hist(temp_prior[,4], freq = FALSE, main = "marginal prior weightfunction (4)", breaks = 50)
+
+  })
+
+})
