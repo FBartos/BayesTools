@@ -255,7 +255,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       # create indexing and names for the manipulated predictors
       if(length(at_manipulated) == 1 && format_parameter_names(at_manipulated, formula_parameters = formula_parameter, formula_prefix = FALSE) == "intercept"){
 
-        class(marginal_posterior_samples)             <- c(class(marginal_posterior_samples), "marginal_posteriors.simple")
+        class(marginal_posterior_samples)             <- c(class(marginal_posterior_samples), "marginal_posterior.simple")
         attr(marginal_posterior_samples, "parameter") <- parameter
         attr(marginal_posterior_samples, "level")     <- "intercept"
         attr(marginal_posterior_samples, "data")      <- data
@@ -293,14 +293,14 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         marginal_posterior_samples <- lapply(seq_along(data_split), function(lvl){
           temp_marginal_posterior_samples <- marginal_posterior_samples[data_split[[lvl]],]
           temp_data                       <- data[data_split[[lvl]],]
-          class(temp_marginal_posterior_samples)             <- c(class(temp_marginal_posterior_samples), "marginal_posteriors.simple")
+          class(temp_marginal_posterior_samples)             <- c(class(temp_marginal_posterior_samples), "marginal_posterior.simple")
           attr(temp_marginal_posterior_samples, "parameter") <- parameter
           attr(temp_marginal_posterior_samples, "level")     <- level_names[lvl]
           attr(temp_marginal_posterior_samples, "data")      <- temp_data
           return(temp_marginal_posterior_samples)
         })
         names(marginal_posterior_samples) <- level_names
-        class(marginal_posterior_samples) <- c(class(marginal_posterior_samples), "marginal_posteriors.factor")
+        class(marginal_posterior_samples) <- c(class(marginal_posterior_samples), "marginal_posterior.factor")
 
         attr(marginal_posterior_samples, "data")        <- data
         attr(marginal_posterior_samples, "level_at")    <- at_index_output_frame
@@ -383,7 +383,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         ### split the output into lists based on specification
         if(length(at_manipulated) == 1 && format_parameter_names(at_manipulated, formula_parameters = formula_parameter, formula_prefix = FALSE) == "intercept"){
 
-          class(marginal_prior_samples)             <- c(class(marginal_prior_samples), "marginal_posteriors.simple")
+          class(marginal_prior_samples)             <- c(class(marginal_prior_samples), "marginal_posterior.simple")
           attr(marginal_prior_samples, "parameter") <- parameter
           attr(marginal_prior_samples, "level")     <- "intercept"
           attr(marginal_prior_samples, "data")      <- data
@@ -395,7 +395,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           marginal_prior_samples <- lapply(seq_along(data_split), function(lvl){
             temp_marginal_prior_samples <- marginal_prior_samples[data_split[[lvl]],]
             temp_data                       <- data[data_split[[lvl]],]
-            class(temp_marginal_prior_samples)             <- c(class(temp_marginal_prior_samples), "marginal_posteriors.simple")
+            class(temp_marginal_prior_samples)             <- c(class(temp_marginal_prior_samples), "marginal_posterior.simple")
             attr(temp_marginal_prior_samples, "parameter") <- parameter
             attr(temp_marginal_prior_samples, "level")     <- level_names[lvl]
             attr(temp_marginal_prior_samples, "data")      <- temp_data
@@ -449,14 +449,14 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       # create output object
       marginal_posterior_samples <- lapply(level_names, function(lvl){
         temp_marginal_posterior_samples <- marginal_posterior_samples[,level_names == lvl]
-        class(temp_marginal_posterior_samples) <- c(class(temp_marginal_posterior_samples), "marginal_posteriors.factor")
+        class(temp_marginal_posterior_samples) <- c(class(temp_marginal_posterior_samples), "marginal_posterior.factor")
         attr(temp_marginal_posterior_samples, "parameter")  <- parameter
         attr(temp_marginal_posterior_samples, "level_name") <- lvl
         return(temp_marginal_posterior_samples)
       })
       names(marginal_posterior_samples) <- level_names
       attr(marginal_posterior_samples, "level_names") <- level_names
-      class(marginal_posterior_samples) <- c(class(marginal_posterior_samples), "marginal_posteriors.factor")
+      class(marginal_posterior_samples) <- c(class(marginal_posterior_samples), "marginal_posterior.factor")
 
     }else if(inherits(samples[[parameter]], "mixed_posteriors.simple")){
 
@@ -466,7 +466,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       }
 
       marginal_posterior_samples <- samples[[parameter]]
-      class(marginal_posterior_samples) <- c(class(marginal_posterior_samples), "marginal_posteriors.simple")
+      class(marginal_posterior_samples) <- c(class(marginal_posterior_samples), "marginal_posterior.simple")
 
     }
 
@@ -493,13 +493,13 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         # create output object
         marginal_prior_samples <- lapply(level_names, function(lvl){
           temp_marginal_prior_samples <- marginal_prior_samples[,level_names == lvl]
-          class(temp_marginal_prior_samples) <- c(class(temp_marginal_prior_samples), "marginal_posteriors.factor")
+          class(temp_marginal_prior_samples) <- c(class(temp_marginal_prior_samples), "marginal_posterior.factor")
           attr(temp_marginal_prior_samples, "parameter")  <- parameter
           attr(temp_marginal_prior_samples, "level_name") <- lvl
           return(temp_marginal_prior_samples)
         })
         names(marginal_prior_samples) <- level_names
-        class(marginal_prior_samples) <- c(class(marginal_prior_samples), "marginal_posteriors.factor")
+        class(marginal_prior_samples) <- c(class(marginal_prior_samples), "marginal_posterior.factor")
 
         for(lvl in level_names){
           attr(marginal_posterior_samples[[lvl]], "prior_samples") <- marginal_prior_samples[[lvl]]
@@ -515,7 +515,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           marginal_prior_samples <- .density.prior_transformation_x(marginal_prior_samples, transformation, transformation_arguments)
         }
 
-        class(marginal_prior_samples) <- c(class(marginal_prior_samples), "marginal_posteriors.simple")
+        class(marginal_prior_samples) <- c(class(marginal_prior_samples), "marginal_posterior.simple")
         attr(marginal_posterior_samples, "prior_samples") <- marginal_prior_samples
 
       }
@@ -523,9 +523,9 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     }
   }
 
+  class(marginal_posterior_samples) <- c(class(marginal_posterior_samples), "marginal_posterior")
   return(marginal_posterior_samples)
 }
-
 
 .get_combined_parameter_scaling_factor_matrix <- function(term, prior_list, posterior, models_ind, nrow){
 
@@ -539,7 +539,6 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
   return(temp_multiply_by)
 }
-
 
 .mix_priors                <- function(prior_list, seed = NULL, n_samples = 10000){
 
@@ -924,4 +923,117 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.weightfunction")
 
   return(samples)
+}
+
+
+#' @title Compute Savage-Dickey inclusion Bayes factors
+#'
+#' @description Computes Savage-Dickey (density ratio) inclusion Bayes factors
+#' based the change of height from prior to posterior distribution at the test value.
+#'
+#' @param posterior marginal posterior distribution generated via the
+#' \code{marginal_posterior} function.
+#' @param null_hypothesis point null hypothesis to test. Defaults to \code{0}.
+#' @param normal_approximation whether the height of prior and posterior density should be
+#' approximated via a normal distribution (rather than kernel density). Defaults to \code{FALSE}.
+#' @param silent whether warnings should be returned silently. Defaults to \code{FALSE}.
+#'
+#'
+#' @return \code{Savage_Dickey_BF} returns a Bayes factor.
+#'
+#' @export
+Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximation = FALSE, silent = FALSE){
+
+  if(!inherits(posterior, "marginal_posterior"))
+    stop("'BF_savage_dickey' function requires an object of class 'marginal_posteriors'")
+  check_real(null_hypothesis, "null_hypothesis")
+  check_bool(normal_approximation, "normal_approximation")
+  check_bool(silent, "silent")
+
+
+  if(is.list(posterior)){
+    bf <- list()
+    for(i in seq_along(posterior)){
+      bf[[i]] <- .Savage_Dickey_BF.fun(posterior[[i]], null_hypothesis, normal_approximation, silent)
+    }
+    names(bf) <- names(posterior)
+  }else{
+    bf <- .Savage_Dickey_BF.fun(posterior, null_hypothesis, normal_approximation, silent)
+  }
+
+  return(bf)
+}
+
+.Savage_Dickey_BF.fun    <- function(posterior, null_hypothesis, normal_approximation, silent){
+
+  if(is.null(attr(posterior, "prior_samples")))
+    stop("there are no prior samples for the posterior distribution", call. = FALSE)
+
+  prior <- attr(posterior, "prior_samples")
+
+  warnings <- NULL
+
+  if(mean(posterior == null_hypothesis) > 0.05){
+    warnings <- c(warnings, "There is a considerable cluster of posterior samples at the exact null hypothesis values. The Savage-Dickey density ratio is likely to be invalid.")
+  }
+  if(mean(prior == null_hypothesis) > 0.05){
+    warnings <- c(warnings, "There is a considerable cluster of prior samples at the exact null hypothesis values. The Savage-Dickey density ratio is likely to be invalid.")
+  }
+  if(null_hypothesis < min(prior) || null_hypothesis > max(prior)){
+    warnings <- c(warnings, "Prior samples do not span both sides of the null hypothesis. Check whether the prior distribution contain the null hypothesis in the first place. The Savage-Dickey density ratio is likely to be invalid.")
+  }
+  if(!silent && !is.null(warnings)){
+    sapply(warnings, warning, call. = FALSE)
+  }
+
+
+  if(normal_approximation){
+    posterior_height <- .Savage_Dickey_BF.normal(posterior, null_hypothesis)
+    prior_height     <- .Savage_Dickey_BF.normal(prior, null_hypothesis)
+  }else{
+    posterior_height <- .Savage_Dickey_BF.kd(posterior, null_hypothesis)
+    prior_height     <- .Savage_Dickey_BF.kd(prior, null_hypothesis)
+  }
+
+  BF <- exp(log(prior_height) - log(posterior_height))
+
+  if(!is.null(warnings)){
+    attr(BF, "warnings") <- warnings
+  }
+
+  return(BF)
+}
+.Savage_Dickey_BF.normal <- function(samples, null_hypothesis){
+
+  height <- stats::dnorm(null_hypothesis, mean = mean(samples), sd = stats::sd(samples))
+
+  return(height)
+}
+.Savage_Dickey_BF.kd     <- function(samples, null_hypothesis){
+
+  if(null_hypothesis < min(samples) || null_hypothesis > max(samples)){
+
+    # the test value is outside of the samples
+    height  <- 0
+
+  }else{
+
+    # use linear approximation to find the point
+    density_posterior <- stats::density(samples)
+    density_posterior.x <- c(
+      density_posterior$x[which.max(density_posterior$x > null_hypothesis) - 1],
+      density_posterior$x[which.max(density_posterior$x > null_hypothesis)]
+    )
+    density_posterior.y <- c(
+      density_posterior$y[which.max(density_posterior$x > null_hypothesis) - 1],
+      density_posterior$y[which.max(density_posterior$x > null_hypothesis)]
+    )
+
+    dif.y <- density_posterior.y[2] - density_posterior.y[1]
+    dif.x <- density_posterior.x[2] - density_posterior.x[1]
+
+    height <- density_posterior.y[1] + dif.y * (null_hypothesis - density_posterior.x[1])/dif.x
+  }
+
+  return(height)
 }

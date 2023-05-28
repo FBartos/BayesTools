@@ -7,6 +7,8 @@
 - adding `remove_parameters` argument to `model_summary_table()`
 - adding multivariate point distribution functions
 - adding `point` prior distribution as option to `prior_factor` with `"meandif"` and `"orthonormal"` contrasts
+- adding `marginal_posterior` function which creates marginal prior and posterior distributions (according to a model formula specification)
+- adding `Savage_Dickey_BF` function to compute density ratio Bayes factors based on `marginal_posterior` objects
 
 ### Changes
 - `contrast = "meandif"` is now the default setting for `prior_factor` function

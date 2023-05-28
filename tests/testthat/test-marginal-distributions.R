@@ -224,7 +224,7 @@ test_that("Marginal distribution prior and posterior functions work", {
 
 
   ### simple: factor ----
-  marg_post_x_fac2t <- marginal_posterior(
+  marg_post_simple_x_fac2t <- marginal_posterior(
     samples           = mixed_posteriors,
     parameter         = "mu_x_fac2t",
     prior_samples     = TRUE,
@@ -236,9 +236,9 @@ test_that("Marginal distribution prior and posterior functions work", {
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
 
     par(mfrow = c(1, 2))
-    hist(marg_post_x_fac2t[["A"]], freq = FALSE, main = "marg_post_x_fac2t = A")
+    hist(marg_post_simple_x_fac2t[["A"]], freq = FALSE, main = "marg_post_x_fac2t = A")
 
-    hist(marg_post_x_fac2t[["B"]], freq = FALSE, main = "marg_post_x_fac2t = B", breaks = 20)
+    hist(marg_post_simple_x_fac2t[["B"]], freq = FALSE, main = "marg_post_x_fac2t = B", breaks = 20)
     lines(density(c(posterior_manual0[,"mu_x_fac2t"], posterior_manual1[,"mu_x_fac2t"])))
 
   })
@@ -249,9 +249,9 @@ test_that("Marginal distribution prior and posterior functions work", {
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
 
     par(mfrow = c(1, 2))
-    hist(attr(marg_post_x_fac2t[["A"]], "prior_samples"), freq = FALSE, main = "marg_post_x_fac2t = A", breaks = 20)
+    hist(attr(marg_post_simple_x_fac2t[["A"]], "prior_samples"), freq = FALSE, main = "marg_post_x_fac2t = A", breaks = 20)
 
-    hist(attr(marg_post_x_fac2t[["B"]], "prior_samples"), freq = FALSE, main = "marg_post_x_fac2t = B", breaks = 20)
+    hist(attr(marg_post_simple_x_fac2t[["B"]], "prior_samples"), freq = FALSE, main = "marg_post_x_fac2t = B", breaks = 20)
     curve(dnorm(x, 0, 1)/2, add = T)
 
   })
@@ -380,6 +380,7 @@ test_that("Marginal distribution prior and posterior functions work", {
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
 
+    par(mfrow = c(1, 3))
     hist(attr(marg_post_x_fac3md[["A"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac3md = A", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x, 0, (sqrt(1^2 + 0^2) + sqrt(1^2 + 0.25^2)) / 2), add = TRUE)
     hist(attr(marg_post_x_fac3md[["B"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
@@ -569,6 +570,40 @@ test_that("Marginal distribution prior and posterior functions work", {
     hist(attr(marg_post_x_cont1.exp[["1SD"]], "prior_samples"),  freq = FALSE, main = "marginal prior x_cont1\n(1)",  breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
     lines(density(p.exp3[p.exp3 < 10]))
   })
+
+  ### Savage-Dickey BFs ----
+
+  # test input
+  expect_error(Savage_Dickey_BF(list(posterior_manual0)), "'BF_savage_dickey' function requires an object of class 'marginal_posteriors'")
+  expect_error(Savage_Dickey_BF(marginal_posterior(
+    samples           = mixed_posteriors,
+    parameter         = "sigma",
+    prior_samples     = FALSE)), "there are no prior samples for the posterior distribution")
+
+  # simple restricted prior
+  expect_warning(Savage_Dickey_BF(marg_post_sigma),
+                 "Prior samples do not span both sides of the null hypothesis.")
+  BF.marg_post_sigma <- suppressWarnings(Savage_Dickey_BF(marg_post_sigma))
+  expect_equivalent(BF.marg_post_sigma, NaN)
+  expect_equal(attr(BF.marg_post_sigma, "warnings"),
+               "Prior samples do not span both sides of the null hypothesis. Check whether the prior distribution contain the null hypothesis in the first place. The Savage-Dickey density ratio is likely to be invalid.")
+
+  # simple factor
+  BF.marg_post_x_fac2t <- suppressWarnings(Savage_Dickey_BF(marg_post_simple_x_fac2t))
+  expect_equivalent(BF.marg_post_x_fac2t, list("A" = 1, "B" = 1.660247), tolerance = 1e-5)
+  expect_equal(attr(BF.marg_post_x_fac2t[["A"]], "warnings"),
+               c("There is a considerable cluster of posterior samples at the exact null hypothesis values. The Savage-Dickey density ratio is likely to be invalid.",
+                 "There is a considerable cluster of prior samples at the exact null hypothesis values. The Savage-Dickey density ratio is likely to be invalid."))
+
+
+  BF.marg_post_x_fac3md <- Savage_Dickey_BF(marg_post_x_fac3md)
+  expect_equal(BF.marg_post_x_fac3md, list("A" = Inf, "B" = Inf, "C" = Inf))
+
+  BF2.marg_post_x_fac3md <- Savage_Dickey_BF(marg_post_x_fac3md, null_hypothesis = 0.5)
+  expect_equal(BF2.marg_post_x_fac3md, list("A" = 3.950433, "B" = 0.1405758, "C" = 0.1661129), tolerance = 1e-5)
+
+  BF2.marg_post_x_fac3md <- Savage_Dickey_BF(marg_post_x_fac3md, null_hypothesis = 0.5, normal_approximation = TRUE)
+  expect_equal(BF2.marg_post_x_fac3md, list("A" = 0.6342651, "B" = 0.1015235, "C" = 0.1267758), tolerance = 1e-5)
 
 })
 
