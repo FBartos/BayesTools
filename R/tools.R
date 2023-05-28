@@ -207,7 +207,7 @@ check_list   <- function(x, name, check_length = 0, check_names = NULL, all_obje
 }
 .check_runjags <- function(){
   if(!try(requireNamespace("runjags")))
-    stop("rstan package needs to be installed. Run 'install.packages('runjags')'")
+    stop("runjags package needs to be installed. Run 'install.packages('runjags')'")
   else
     return(invisible(TRUE))
 }

@@ -82,6 +82,7 @@ test_orthonormal    <- function(prior, skip_moments = FALSE){
   # tests that pdf(q(x)) == x
   if(!is.prior.point(prior)){
     expect_equal(.25, mcdf(prior, mquant(prior, 0.25)), tolerance = 1e-5)
+    expect_equal(.25, mccdf(prior, mquant(prior, 0.75)), tolerance = 1e-5)
   }
   # test mean and sd functions
   if(!skip_moments){
@@ -103,6 +104,7 @@ test_meandif        <- function(prior, skip_moments = FALSE){
   # tests that pdf(q(x)) == x
   if(!is.prior.point(prior)){
     expect_equal(.25, mcdf(prior, mquant(prior, 0.25)), tolerance = 1e-5)
+    expect_equal(.25, mccdf(prior, mquant(prior, 0.75)), tolerance = 1e-5)
   }
   # test mean and sd functions
   if(!skip_moments){

@@ -31,6 +31,10 @@ test_that("Check booleans", {
     check_bool(TRUE, "test object", check_length = 2),
     "The 'test object' argument must have length '2'."
   )
+  expect_error(
+    check_bool(NULL, "test object"),
+    "The 'test object' argument cannot be NULL."
+  )
 })
 
 test_that("Check strings", {
@@ -68,7 +72,10 @@ test_that("Check strings", {
     check_char(c("string", "string1"),  "test object", check_length = 0, allow_values = c("string")),
     "The 'string1' values are not recognized by the 'test object' argument."
   )
-
+  expect_error(
+    check_char(NULL, "test object"),
+    "The 'test object' argument cannot be NULL."
+  )
 })
 
 test_that("Check reals", {
@@ -118,6 +125,10 @@ test_that("Check reals", {
   expect_error(
     check_real(1, "test object", lower = 0, upper = 1, allow_bound = FALSE),
     "The 'test object' must be lower than 1."
+  )
+  expect_error(
+    check_real(NULL, "test object"),
+    "The 'test object' argument cannot be NULL."
   )
 })
 
@@ -169,6 +180,10 @@ test_that("Check integers", {
     check_int(1, "test object", lower = 0, upper = 1, allow_bound = FALSE),
     "The 'test object' must be lower than 1."
   )
+  expect_error(
+    check_int(NULL, "test object"),
+    "The 'test object' argument cannot be NULL."
+  )
 })
 
 test_that("Check lists", {
@@ -208,5 +223,33 @@ test_that("Check lists", {
     check_list(list("a" = c("a", "b")), "test object", check_names = c("a", "b"), all_objects = TRUE),
     "The 'b' objects are missing in the 'test object' argument."
   )
+  expect_error(
+    check_list(NULL, "test object"),
+    "The 'test object' argument cannot be NULL."
+  )
+})
+
+test_that("Other tools",{
+
+  expect_warning(.depreciate.transform_orthonormal(TRUE, FALSE),
+                 "'transform_orthonormal' argument will be depreciated in favor of 'transform_factors' argument.")
+
+
+  expect_error(.extract_stan(NULL), "'fit' must be an rstan fit")
+
+
+  expect_null(.check_transformation_input(transformation = list(
+    "fun" = function(x) exp(x),
+    "inv" = function(x) log(x),
+    "jac" = function(x) exp(x)
+  ), NULL, FALSE))
+
+  expect_error(.check_transformation_input(transformation = list(
+    "fun" = function(x) exp(x),
+    "inv" = function(x) log(x),
+    "err" = function(x) exp(x)
+  ), NULL, FALSE), "The 'jac' objects are missing in the 'transformation' argument.")
+
+  expect_error(.check_transformation_input(transformation = 1, NULL, FALSE), "Uknown format of the 'transformation' argument.")
 
 })
