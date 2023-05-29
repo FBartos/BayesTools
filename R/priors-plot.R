@@ -1213,18 +1213,30 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   names(col) <- dots[["level_names"]]
   names(lty) <- dots[["level_names"]]
 
-  geom <- list(
-    ggplot2::geom_line(
-      data    = plot_data,
-      mapping = ggplot2::aes(
-        x        = .data[["x"]],
-        y        = .data[["y"]],
-        color    = .data[["level"]],
-        linetype = .data[["level"]],
-        group    = .data[["level"]]),
-      linewidth = 1, show.legend = dots[["legend"]]),
-    ggplot2::scale_linetype_manual(name = "level", values = lty),
-    ggplot2::scale_color_manual(name = "level", values = col))
+  if(!is.null(dots[["hardcode"]]) && dots[["hardcode"]]){
+    geom <- lapply(unique(plot_data$level), function(lvl){
+      ggplot2::geom_line(
+        data    = plot_data[plot_data$level == lvl,],
+        mapping = ggplot2::aes(
+          x        = .data[["x"]],
+          y        = .data[["y"]]),
+        linewidth = 1, show.legend = dots[["legend"]], color = col[lvl], linetype = lty[lvl])
+    })
+  }else{
+    geom <- list(
+      ggplot2::geom_line(
+        data    = plot_data,
+        mapping = ggplot2::aes(
+          x        = .data[["x"]],
+          y        = .data[["y"]],
+          color    = .data[["level"]],
+          linetype = .data[["level"]],
+          group    = .data[["level"]]),
+        linewidth = 1, show.legend = dots[["legend"]]),
+      ggplot2::scale_linetype_manual(name = "level", values = lty),
+      ggplot2::scale_color_manual(name = "level", values = col))
+  }
+
 
   return(geom)
 }

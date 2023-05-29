@@ -11,6 +11,7 @@
 - adding `Savage_Dickey_BF()` function to compute density ratio Bayes factors based on `marginal_posterior` objects
 - adding `marginal_inference()` function to combine information from `marginal_posterior()` and `Savage_Dickey_BF()`
 - adding `marginal_estimates_table()` function to summarize `marginal_inference()` objects
+- adding `plot_marginal()` function to visualize `marginal_inference()` objects
 
 ### Changes
 - `contrast = "meandif"` is now the default setting for `prior_factor` function
