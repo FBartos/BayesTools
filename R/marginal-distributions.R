@@ -674,7 +674,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     temp_ind <- 1:round(n_samples * prior_probs[i])
 
     # sample prior
-    samples <- c(samples, rng(priors[[i]], length(temp_ind)))
+    samples <- c(samples, rng(priors[[i]], length(temp_ind), transform_factor_samples = FALSE))
 
     sample_ind <- c(sample_ind, temp_ind)
     models_ind <- c(models_ind, rep(i, length(temp_ind)))
