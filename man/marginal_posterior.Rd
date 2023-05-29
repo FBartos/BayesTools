@@ -14,6 +14,7 @@ marginal_posterior(
   transformation = NULL,
   transformation_arguments = NULL,
   transformation_settings = FALSE,
+  n_samples = 10000,
   ...
 )
 }
@@ -30,7 +31,7 @@ predictors, the baseline factor level is used for factors with \code{contrast = 
 distributions, and the parameter is completely omitted for for factors with \code{contrast = "meandif"},}
 
 \item{prior_samples}{whether marginal prior distributions should be generated
-\code{contrast = "orthonormal"}, and \code{contrast = "independent"} levels.}
+\code{contrast = "orthonormal"}, and \code{contrast = "independent"} levels}
 
 \item{use_formula}{whether the parameter should be evaluated as a part of supplied formula}
 
@@ -51,6 +52,9 @@ the \code{transformation}}
 \item{transformation_settings}{boolean indicating whether the
 settings the \code{x_seq} or \code{x_range} was specified on
 the transformed support}
+
+\item{n_samples}{number of samples to be drawn for the model-averaged
+posterior distribution}
 
 \item{...}{additional arguments}
 }

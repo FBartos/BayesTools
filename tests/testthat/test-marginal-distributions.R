@@ -87,24 +87,24 @@ test_that("Marginal distribution prior and posterior functions work", {
     model_list   = models,
     parameters   = c("sigma", "mu_intercept", "mu_x_cont1", "mu_x_fac2t", "mu_x_fac3md", "mu_x_cont1__xXx__x_fac3md"),
     is_null_list = list(
-      "sigma"                = c(FALSE, FALSE),
-      "mu_intercept"         = c(FALSE, FALSE),
-      "mu_x_cont1"           = c(FALSE, FALSE),
-      "x_fac2t"              = c(TRUE, FALSE),
-      "x_fac3md"             = c(TRUE, FALSE),
-      "x_cont1_xXx_x_fac3md" = c(TRUE, FALSE)
+      "sigma"                     = c(FALSE, FALSE),
+      "mu_intercept"              = c(FALSE, FALSE),
+      "mu_x_cont1"                = c(FALSE, FALSE),
+      "mu_x_fac2t"                = c(TRUE, FALSE),
+      "mu_x_fac3md"               = c(TRUE, FALSE),
+      "mu_x_cont1__xXx__x_fac3md" = c(TRUE, FALSE)
     ),
     conditional  = FALSE)
   mixed_posteriors <- mix_posteriors(
     model_list   = models,
     parameters   = c("sigma", "mu_intercept", "mu_x_cont1", "mu_x_fac2t", "mu_x_fac3md", "mu_x_cont1__xXx__x_fac3md"),
     is_null_list = list(
-      "sigma"                = c(FALSE, FALSE),
-      "mu_intercept"         = c(FALSE, FALSE),
-      "mu_x_cont1"           = c(FALSE, FALSE),
-      "x_fac2t"              = c(TRUE, FALSE),
-      "x_fac3md"             = c(TRUE, FALSE),
-      "x_cont1_xXx_x_fac3md" = c(TRUE, FALSE)
+      "sigma"                     = c(FALSE, FALSE),
+      "mu_intercept"              = c(FALSE, FALSE),
+      "mu_x_cont1"                = c(FALSE, FALSE),
+      "mu_x_fac2t"                = c(TRUE, FALSE),
+      "mu_x_fac3md"               = c(TRUE, FALSE),
+      "mu_x_cont1__xXx__x_fac3md" = c(TRUE, FALSE)
     ),
     seed         = 1,
     conditional  = FALSE
@@ -572,7 +572,7 @@ test_that("Marginal distribution prior and posterior functions work", {
   })
 
   ### Savage-Dickey BFs ----
-
+  # (uses model-averaged posteriors rather than conditional ones -- which would be correct)
   # test input
   expect_error(Savage_Dickey_BF(list(posterior_manual0)), "'BF_savage_dickey' function requires an object of class 'marginal_posteriors'")
   expect_error(Savage_Dickey_BF(marginal_posterior(
@@ -581,12 +581,12 @@ test_that("Marginal distribution prior and posterior functions work", {
     prior_samples     = FALSE)), "there are no prior samples for the posterior distribution")
 
   # simple restricted prior
-  expect_warning(Savage_Dickey_BF(marg_post_sigma),
-                 "Prior samples do not span both sides of the null hypothesis.")
+  expect_warning(Savage_Dickey_BF(marg_post_sigma))
   BF.marg_post_sigma <- suppressWarnings(Savage_Dickey_BF(marg_post_sigma))
   expect_equivalent(BF.marg_post_sigma, NaN)
   expect_equal(attr(BF.marg_post_sigma, "warnings"),
-               "Prior samples do not span both sides of the null hypothesis. Check whether the prior distribution contain the null hypothesis in the first place. The Savage-Dickey density ratio is likely to be invalid.")
+               c("Prior samples do not span both sides of the null hypothesis. Check whether the prior distribution contain the null hypothesis in the first place. The Savage-Dickey density ratio is likely to be invalid.",
+               "Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated."))
 
   # simple factor
   BF.marg_post_x_fac2t <- suppressWarnings(Savage_Dickey_BF(marg_post_simple_x_fac2t))
@@ -596,14 +596,133 @@ test_that("Marginal distribution prior and posterior functions work", {
                  "There is a considerable cluster of prior samples at the exact null hypothesis values. The Savage-Dickey density ratio is likely to be invalid."))
 
 
-  BF.marg_post_x_fac3md <- Savage_Dickey_BF(marg_post_x_fac3md)
-  expect_equal(BF.marg_post_x_fac3md, list("A" = Inf, "B" = Inf, "C" = Inf))
+  BF.marg_post_x_fac3md <- Savage_Dickey_BF(marg_post_x_fac3md, silent = TRUE)
+  expect_equivalent(BF.marg_post_x_fac3md, list("A" = Inf, "B" = Inf, "C" = Inf))
 
   BF2.marg_post_x_fac3md <- Savage_Dickey_BF(marg_post_x_fac3md, null_hypothesis = 0.5)
-  expect_equal(BF2.marg_post_x_fac3md, list("A" = 3.950433, "B" = 0.1405758, "C" = 0.1661129), tolerance = 1e-5)
+  expect_equivalent(BF2.marg_post_x_fac3md, list("A" = 3.950433, "B" = 0.1405758, "C" = 0.1661129), tolerance = 1e-5)
 
   BF2.marg_post_x_fac3md <- Savage_Dickey_BF(marg_post_x_fac3md, null_hypothesis = 0.5, normal_approximation = TRUE)
   expect_equal(BF2.marg_post_x_fac3md, list("A" = 0.6342651, "B" = 0.1015235, "C" = 0.1267758), tolerance = 1e-5)
+
+  ### marginal_inference ----
+  out <- marginal_inference(
+    model_list          = models,
+    marginal_parameters = c("mu_intercept", "mu_x_cont1", "mu_x_fac2t", "mu_x_fac3md", "mu_x_cont1__xXx__x_fac3md"),
+    parameters          = c("sigma", "mu_intercept", "mu_x_cont1", "mu_x_fac2t", "mu_x_fac3md", "mu_x_cont1__xXx__x_fac3md"),
+    is_null_list        = list(
+      "sigma"                     = c(FALSE, FALSE),
+      "mu_intercept"              = c(FALSE, FALSE),
+      "mu_x_cont1"                = c(FALSE, FALSE),
+      "mu_x_fac2t"                = c(TRUE, FALSE),
+      "mu_x_fac3md"               = c(TRUE, FALSE),
+      "mu_x_cont1__xXx__x_fac3md" = c(TRUE, FALSE)
+    ),
+    formula      =  ~ x_cont1 + x_fac2t + x_cont1*x_fac3md,
+    silent       = TRUE
+  )
+
+  # test samples against previously generated ones
+  expect_doppelganger("marginal_inference-cont",     function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 3))
+    hist(marg_post_x_cont1[["-1SD"]], freq = FALSE, main = "mu_x_cont1 = -1SD", breaks = 20)
+    lines(density(out$averaged$mu_x_cont1[["-1SD"]]))
+
+    hist(marg_post_x_cont1[["0SD"]], freq = FALSE, main = "mu_x_cont1 = 0SD", breaks = 20)
+    lines(density(out$averaged$mu_x_cont1[["0SD"]]))
+
+    hist(marg_post_x_cont1[["1SD"]], freq = FALSE, main = "mu_x_cont1 = +1SD", breaks = 20)
+    lines(density(out$averaged$mu_x_cont1[["1SD"]]))
+
+  })
+  expect_doppelganger("marginal_inference-cont-p",   function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 3))
+    hist(attr(marg_post_x_cont1[["-1SD"]], "prior_samples"), freq = FALSE, main = "mu_x_cont1 = -1SD", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    lines(density(attr(out$averaged$mu_x_cont1[["-1SD"]], "prior_samples")))
+    hist(attr(marg_post_x_cont1[["0SD"]], "prior_samples"), freq = FALSE, main = "mu_x_cont1 = 0SD", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    lines(density(attr(out$averaged$mu_x_cont1[["0SD"]], "prior_samples")))
+    hist(attr(marg_post_x_cont1[["1SD"]], "prior_samples"), freq = FALSE, main = "mu_x_cont1 = 1SD", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    lines(density(attr(out$averaged$mu_x_cont1[["1SD"]], "prior_samples")))
+  })
+  expect_doppelganger("marginal_inference-fac.md",   function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 3))
+    hist(marg_post_x_fac3md[["A"]], freq = FALSE, main = "marg_post_x_fac3md = A", breaks = 20)
+    lines(density(out$averaged$mu_x_fac3md$A))
+
+    hist(marg_post_x_fac3md[["B"]], freq = FALSE, main = "marg_post_x_fac3md = B", breaks = 20)
+    lines(density(out$averaged$mu_x_fac3md$B))
+
+    hist(marg_post_x_fac3md[["C"]], freq = FALSE, main = "marg_post_x_fac2t = B", breaks = 20)
+    lines(density(out$averaged$mu_x_fac3md$C))
+
+  })
+  expect_doppelganger("marginal_inference-fac.md-p", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 3))
+    hist(attr(marg_post_x_fac3md[["A"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac3md = A", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    lines(density(attr(out$averaged$mu_x_fac3md$A, "prior_samples")))
+    hist(attr(marg_post_x_fac3md[["B"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    lines(density(attr(out$averaged$mu_x_fac3md$B, "prior_samples")))
+    hist(attr(marg_post_x_fac3md[["C"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac3md = C", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    lines(density(attr(out$averaged$mu_x_fac3md$C, "prior_samples")))
+  })
+  # the previous BFs were based on model-averaged posteriors so they won't match
+
+  # test summary table
+  expect_equal(
+    capture_output_lines(marginal_estimates_table(out$conditional, out$inference, parameters = c("mu_intercept", "mu_x_cont1", "mu_x_fac2t", "mu_x_fac3md", "mu_x_cont1__xXx__x_fac3md")), print = TRUE, width = 150),
+    c( "                                Mean Median 0.025  0.95 Inclusion BF"                                                                                                               ,
+       "(mu) intercept                 0.616  0.616 0.518 0.691          Inf"                                                                                                               ,
+       "(mu) x_cont1[-1SD]             0.431  0.431 0.303 0.536          Inf"                                                                                                               ,
+       "(mu) x_cont1[0SD]              0.616  0.616 0.518 0.691          Inf"                                                                                                               ,
+       "(mu) x_cont1[1SD]              0.800  0.801 0.678 0.899          Inf"                                                                                                               ,
+       "(mu) x_fac2t[A]                0.613  0.614 0.503 0.700          Inf"                                                                                                               ,
+       "(mu) x_fac2t[B]                0.621  0.621 0.513 0.708          Inf"                                                                                                               ,
+       "(mu) x_fac3md[A]               0.770  0.772 0.618 0.893          Inf"                                                                                                               ,
+       "(mu) x_fac3md[B]               0.518  0.518 0.365 0.646          Inf"                                                                                                               ,
+       "(mu) x_fac3md[C]               0.550  0.551 0.405 0.674          Inf"                                                                                                               ,
+       "(mu) x_cont1:x_fac3md[-1SD, A] 0.556  0.556 0.344 0.734          Inf"                                                                                                               ,
+       "(mu) x_cont1:x_fac3md[0SD, A]  0.770  0.772 0.618 0.893          Inf"                                                                                                               ,
+       "(mu) x_cont1:x_fac3md[1SD, A]  0.984  0.985 0.791 1.140          Inf"                                                                                                               ,
+       "(mu) x_cont1:x_fac3md[-1SD, B] 0.372  0.372 0.159 0.556       10.812"                                                                                                               ,
+       "(mu) x_cont1:x_fac3md[0SD, B]  0.518  0.518 0.365 0.646          Inf"                                                                                                               ,
+       "(mu) x_cont1:x_fac3md[1SD, B]  0.665  0.664 0.464 0.830          Inf"                                                                                                               ,
+       "(mu) x_cont1:x_fac3md[-1SD, C] 0.373  0.373 0.171 0.541       69.936"                                                                                                               ,
+       "(mu) x_cont1:x_fac3md[0SD, C]  0.550  0.551 0.405 0.674          Inf"                                                                                                               ,
+       "(mu) x_cont1:x_fac3md[1SD, C]  0.727  0.727 0.524 0.904          Inf"                                                                                                               ,
+       "\033[0;31mmu_intercept: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m"                     ,
+       "\033[0;31mmu_x_cont1[-1SD]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m"                 ,
+       "\033[0;31mmu_x_cont1[0SD]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m"                  ,
+       "\033[0;31mmu_x_cont1[1SD]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m"                  ,
+       "\033[0;31mmu_x_fac2t[A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m"                    ,
+       "\033[0;31mmu_x_fac2t[B]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m"                    ,
+       "\033[0;31mmu_x_fac3md[A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m"                   ,
+       "\033[0;31mmu_x_fac3md[B]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m"                   ,
+       "\033[0;31mmu_x_fac3md[C]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m"                   ,
+       "\033[0;31mmu_x_cont1__xXx__x_fac3md[-1SD, A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m",
+       "\033[0;31mmu_x_cont1__xXx__x_fac3md[0SD, A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m",
+       "\033[0;31mmu_x_cont1__xXx__x_fac3md[1SD, A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m",
+       "\033[0;31mmu_x_cont1__xXx__x_fac3md[0SD, B]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m",
+       "\033[0;31mmu_x_cont1__xXx__x_fac3md[1SD, B]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m",
+       "\033[0;31mmu_x_cont1__xXx__x_fac3md[0SD, C]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m",
+       "\033[0;31mmu_x_cont1__xXx__x_fac3md[1SD, C]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m"
+  ))
+
 
 })
 

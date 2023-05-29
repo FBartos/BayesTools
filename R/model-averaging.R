@@ -110,8 +110,7 @@ ensemble_inference <- function(model_list, parameters, is_null_list, conditional
     formula_parameter <- unique(unlist(lapply(model_list, function(m) attr(attr(m[["fit"]], "prior_list")[[parameters[p]]], "parameter"))))
 
     if(!is.null(unlist(formula_parameter))){
-      parameter_name <- gsub(paste0(formula_parameter, "_"), paste0("(", formula_parameter, ") "), parameter_name)
-      parameter_name <- gsub("__xXx__", ":", parameter_name)
+      parameter_name <- format_parameter_names(parameter_name, formula_parameters = formula_parameter, formula_prefix = TRUE)
       class(out[[parameters[p]]]) <- c(class(out[[parameters[p]]]), "inference.formula")
       attr(out[[parameters[p]]], "formula_parameter")  <- formula_parameter
     }
@@ -159,11 +158,11 @@ models_inference   <- function(model_list){
 #'
 #' @description Model-averages posterior distributions based on
 #' a list of models, vector of parameters, and a list of
-#' indicators the models represent the null or alternative hypothesis
+#' indicators of the null or alternative hypothesis models
 #' for each parameter.
 #'
 #' @param seed integer specifying seed for sampling posteriors for
-#' model averaging. Defaults to \code{1}.
+#' model averaging. Defaults to \code{NULL}.
 #' @param n_samples number of samples to be drawn for the model-averaged
 #' posterior distribution
 #' @inheritParams ensemble_inference

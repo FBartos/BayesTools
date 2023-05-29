@@ -3,7 +3,8 @@
 #' @description Creates estimate summaries based on posterior
 #' distributions created by [mix_posteriors], inference summaries
 #' based on inference created by [ensemble_inference], or ensemble
-#' summary/diagnostics based on a list of [models_inference] models.
+#' summary/diagnostics based on a list of [models_inference] models
+#' (or [marginal_inference] in case of [marginal_estimates_table]).
 #'
 #' @param samples posterior samples created by [mix_posteriors]
 #' @param inference model inference created by [ensemble_inference]
@@ -57,6 +58,7 @@
 #' @export ensemble_inference_empty_table
 #' @export ensemble_summary_empty_table
 #' @export ensemble_diagnostics_empty_table
+#' @export marginal_estimates_table
 #' @name BayesTools_ensemble_tables
 #'
 #' @seealso [ensemble_inference] [mix_posteriors] [BayesTools_model_tables]
@@ -102,12 +104,7 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95)
       }
 
       if(inherits(samples[[parameter]], "mixed_posteriors.formula")){
-        parameter_name <- colnames(samples[[parameter]])
-        parameter_name <- gsub(
-          paste0(attr(samples[[parameter]], "formula_parameter"), "_"),
-          if(formula_prefix) paste0("(", attr(samples[[parameter]], "formula_parameter"), ") ") else "",
-          parameter_name)
-        parameter_name <- gsub("__xXx__", ":", parameter_name)
+        parameter_name <- format_parameter_names(colnames(samples[[parameter]]), formula_parameters = attr(samples[[parameter]], "formula_parameter"), formula_prefix = formula_prefix)
       }else{
         parameter_name <- colnames(samples[[parameter]])
       }
@@ -413,6 +410,98 @@ ensemble_diagnostics_empty_table <- function(title = NULL, footnotes = NULL, war
 
   return(empty_table)
 }
+
+#' @rdname BayesTools_ensemble_tables
+marginal_estimates_table <- function(samples, inference, parameters, probs = c(0.025, 0.95), logBF = FALSE, BF01 = FALSE, title = NULL, footnotes = NULL, warnings = NULL, formula_prefix = TRUE){
+
+  # check input
+  check_char(parameters, "parameters", check_length = 0)
+  check_list(samples, "samples", check_names = parameters, all_objects = TRUE, allow_other = TRUE)
+  check_list(inference, "inference", check_names = parameters, all_objects = TRUE, allow_other = TRUE)
+  check_real(probs, "probs", lower = 0, upper = 1, check_length = 0, allow_NULL = TRUE)
+  check_bool(logBF, "logBF")
+  check_bool(BF01,  "BF01")
+  check_char(title, "title", allow_NULL = TRUE)
+  check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
+  check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
+  check_bool(formula_prefix, "formula_prefix")
+
+
+  # extract values
+  estimates_table <- NULL
+  for(parameter in parameters){
+
+    # extract the relevant information
+    if(is.list(samples[[parameter]]) && length(samples[[parameter]]) > 1){
+      temp_samples  <- do.call(cbind, samples[[parameter]])
+      temp_BF       <- do.call(c, inference[[parameter]])
+      temp_warnings <- do.call(c, lapply(names(inference[[parameter]]), function(lvl) {
+        if(is.null(attr(inference[[parameter]][[lvl]], "warnings"))){
+          return()
+        }else{
+          paste0("[", lvl, "]: ", attr(inference[[parameter]][[lvl]], "warnings"))
+        }
+      }))
+    }else{
+      temp_samples  <- matrix(samples[[parameter]][[1]], ncol = 1)
+      temp_BF       <- inference[[parameter]][[1]]
+      if(is.null(attr(inference[[parameter]][[1]], "warnings"))){
+        temp_warnings <- NULL
+      }else{
+        temp_warnings <- paste0(if(names(inference[[parameter]]) != "intercept") paste0("[", names(inference[[parameter]]), "]: ") else ": ", attr(inference[[parameter]][[1]], "warnings"))
+      }
+    }
+
+    # add estimates
+    par_summary <- cbind(
+      "Mean"   = apply(temp_samples, 2, mean),
+      "Median" = apply(temp_samples, 2, stats::median)
+    )
+    for(i in seq_along(probs)){
+      par_summary <- cbind(par_summary, apply(temp_samples, 2, stats::quantile, probs = probs[i]))
+      colnames(par_summary)[ncol(par_summary)] <- probs[i]
+    }
+
+    # add BF
+    par_summary <- cbind(par_summary, "inclusion_BF" = temp_BF)
+
+
+    # format parameter names
+    if(inherits(samples[[parameter]], "marginal_posterior.formula")){
+      if(length(names(samples[[parameter]])) == 1 && names(samples[[parameter]]) == "intercept"){
+        parameter_name <- parameter
+      }else{
+        parameter_name <- paste0(parameter, "[", names(samples[[parameter]]), "]")
+      }
+      parameter_name <- format_parameter_names(parameter_name, formula_parameters = attr(samples[[parameter]], "formula_parameter"), formula_prefix = formula_prefix)
+    }else{
+      parameter_name <- paste0(parameter, "[", names(samples[[parameter]]), "]")
+    }
+
+    rownames(par_summary) <- parameter_name
+    estimates_table       <- rbind(estimates_table, par_summary)
+
+    # add warnings
+    if(!is.null(temp_warnings)){
+      warnings <- c(warnings, paste0(parameter, temp_warnings))
+    }
+  }
+
+  estimates_table[,"inclusion_BF"]  <- format_BF(estimates_table[,"inclusion_BF"], logBF = logBF, BF01 = BF01, inclusion = TRUE)
+
+  # prepare output
+  estimates_table                    <- data.frame(estimates_table)
+  colnames(estimates_table)          <- gsub("X", "", colnames(estimates_table))
+  class(estimates_table)             <- c("BayesTools_table", "BayesTools_marginal_estimates", class(estimates_table))
+  attr(estimates_table, "type")      <- c(rep("estimate", ncol(estimates_table) - 1), "inclusion_BF")
+  attr(estimates_table, "rownames")  <- TRUE
+  attr(estimates_table, "title")     <- title
+  attr(estimates_table, "footnotes") <- footnotes
+  attr(estimates_table, "warnings")  <- warnings
+
+  return(estimates_table)
+}
+
 
 
 .ensemble_table_foundation <- function(models, parameters, remove_spike_0, short_name){

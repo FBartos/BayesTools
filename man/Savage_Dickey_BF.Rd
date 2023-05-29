@@ -4,16 +4,23 @@
 \alias{Savage_Dickey_BF}
 \title{Compute Savage-Dickey inclusion Bayes factors}
 \usage{
-Savage_Dickey_BF(posterior, null_hypothesis = 0, normal_approximation = FALSE)
+Savage_Dickey_BF(
+  posterior,
+  null_hypothesis = 0,
+  normal_approximation = FALSE,
+  silent = FALSE
+)
 }
 \arguments{
 \item{posterior}{marginal posterior distribution generated via the
-\code{marginal_posterior} function.}
+\code{marginal_posterior} function}
 
-\item{null_hypothesis}{point null hypothesis to test. Defaults to \code{0}.}
+\item{null_hypothesis}{point null hypothesis to test. Defaults to \code{0}}
 
 \item{normal_approximation}{whether the height of prior and posterior density should be
-approximated via a normal distribution (rather than kernel density).}
+approximated via a normal distribution (rather than kernel density). Defaults to \code{FALSE}.}
+
+\item{silent}{whether warnings should be returned silently. Defaults to \code{FALSE}}
 }
 \value{
 \code{Savage_Dickey_BF} returns a Bayes factor.

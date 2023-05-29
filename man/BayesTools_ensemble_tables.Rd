@@ -10,6 +10,7 @@
 \alias{ensemble_inference_empty_table}
 \alias{ensemble_summary_empty_table}
 \alias{ensemble_diagnostics_empty_table}
+\alias{marginal_estimates_table}
 \title{Create BayesTools ensemble summary tables}
 \usage{
 ensemble_estimates_table(
@@ -71,6 +72,19 @@ ensemble_diagnostics_empty_table(
   title = NULL,
   footnotes = NULL,
   warnings = NULL
+)
+
+marginal_estimates_table(
+  samples,
+  inference,
+  parameters,
+  probs = c(0.025, 0.95),
+  logBF = FALSE,
+  BF01 = FALSE,
+  title = NULL,
+  footnotes = NULL,
+  warnings = NULL,
+  formula_prefix = TRUE
 )
 }
 \arguments{
@@ -136,7 +150,8 @@ tables are objects of class 'BayesTools_table'.
 Creates estimate summaries based on posterior
 distributions created by \link{mix_posteriors}, inference summaries
 based on inference created by \link{ensemble_inference}, or ensemble
-summary/diagnostics based on a list of \link{models_inference} models.
+summary/diagnostics based on a list of \link{models_inference} models
+(or \link{marginal_inference} in case of \link{marginal_estimates_table}).
 }
 \seealso{
 \link{ensemble_inference} \link{mix_posteriors} \link{BayesTools_model_tables}

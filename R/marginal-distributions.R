@@ -12,8 +12,10 @@
 #' predictors, the baseline factor level is used for factors with \code{contrast = "treatment"} prior
 #' distributions, and the parameter is completely omitted for for factors with \code{contrast = "meandif"},
 #' @param prior_samples whether marginal prior distributions should be generated
-#' \code{contrast = "orthonormal"}, and \code{contrast = "independent"} levels.
+#' \code{contrast = "orthonormal"}, and \code{contrast = "independent"} levels
 #' @param use_formula whether the parameter should be evaluated as a part of supplied formula
+#' @param n_samples number of samples to be drawn for the model-averaged
+#' posterior distribution
 #' @inheritParams density.prior
 #'
 #' @return \code{marginal_posterior} returns a named list of mixed marginal posterior
@@ -21,7 +23,8 @@
 #'#'
 #' @export
 marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, prior_samples = FALSE, use_formula = TRUE,
-                               transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE, ...){
+                               transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
+                               n_samples = 10000, ...){
 
   check_list(samples, "samples")
   if(any(!sapply(samples, inherits, what = "mixed_posteriors")))
@@ -314,7 +317,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       if(prior_samples){
 
         ### generate prior samples matrix in the same format as are the posterior samples
-        prior_samples        <- .mix_priors(prior_list = prior_list, n_samples = 10000)
+        prior_samples        <- .mix_priors(prior_list = prior_list, n_samples = n_samples)
         for(i in seq_along(prior_samples)){
           # de-name factor levels
           if(priors_info[[i]][["factor"]]){
@@ -410,6 +413,9 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
       }
 
+      attr(marginal_posterior_samples, "formula_parameter") <- formula_parameter
+      class(marginal_posterior_samples) <- c(class(marginal_posterior_samples), "marginal_posterior.formula")
+
   }else{
 
     if(!is.null(formula))
@@ -474,7 +480,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     # add prior samples
     if(prior_samples){
 
-      prior_samples <- .mix_priors(prior_list = prior_list, n_samples = 10000)
+      prior_samples <- .mix_priors(prior_list = prior_list, n_samples = n_samples)
       marginal_prior_samples <- prior_samples[[parameter]]
 
       # transform if factors
@@ -932,11 +938,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 #' based the change of height from prior to posterior distribution at the test value.
 #'
 #' @param posterior marginal posterior distribution generated via the
-#' \code{marginal_posterior} function.
-#' @param null_hypothesis point null hypothesis to test. Defaults to \code{0}.
+#' \code{marginal_posterior} function
+#' @param null_hypothesis point null hypothesis to test. Defaults to \code{0}
 #' @param normal_approximation whether the height of prior and posterior density should be
 #' approximated via a normal distribution (rather than kernel density). Defaults to \code{FALSE}.
-#' @param silent whether warnings should be returned silently. Defaults to \code{FALSE}.
+#' @param silent whether warnings should be returned silently. Defaults to \code{FALSE}
 #'
 #'
 #' @return \code{Savage_Dickey_BF} returns a Bayes factor.
@@ -981,6 +987,9 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   }
   if(null_hypothesis < min(prior) || null_hypothesis > max(prior)){
     warnings <- c(warnings, "Prior samples do not span both sides of the null hypothesis. Check whether the prior distribution contain the null hypothesis in the first place. The Savage-Dickey density ratio is likely to be invalid.")
+  }
+  if(null_hypothesis < min(posterior) || null_hypothesis > max(posterior)){
+    warnings <- c(warnings, "Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.")
   }
   if(!silent && !is.null(warnings)){
     sapply(warnings, warning, call. = FALSE)
@@ -1036,4 +1045,108 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   }
 
   return(height)
+}
+
+
+#' @title Model-average marginal posterior distributions and
+#' marginal Bayes factors
+#'
+#' @description Creates marginal model-averaged and conditional
+#' posterior distributions based on a list of models, vector of parameters,
+#' formula, and a list of indicators of the null or alternative hypothesis models
+#' for each parameter. Computes inclusion Bayes factors for each
+#' marginal estimate via a Savage-Dickey density approximation.
+#'
+#' @param marginal_parameters parameters for which the the marginal summary
+#' should be created
+#' @param parameters all parameters included in the model_list that are
+#' relevant for the formula (all of which need to have specification of
+#' \code{is_null_list})
+#' @param seed seed for random number generation
+#' @inheritParams ensemble_inference
+#' @inheritParams marginal_posterior
+#' @inheritParams Savage_Dickey_BF
+#'
+#' @return \code{mix_posteriors} returns a named list of mixed posterior
+#' distributions (either a vector of matrix).
+#'
+#' @seealso [ensemble_inference] [mix_posteriors] [BayesTools_ensemble_tables]
+#'
+#' @export
+marginal_inference <- function(model_list, marginal_parameters, parameters, is_null_list, formula,
+                               null_hypothesis = 0, normal_approximation = FALSE,
+                               n_samples = 10000, seed = NULL, silent = FALSE){
+
+  # check input (majority of the checks performed within mix_posteriors)
+  check_list(model_list, "model_list")
+  check_char(parameters, "parameters", check_length = FALSE)
+  check_list(is_null_list, "is_null_list", check_length = length(parameters))
+  if(!all(unlist(sapply(model_list, function(m) sapply(attr(m[["fit"]], "prior_list"), function(p) is.prior(p))))))
+    stop("model_list:priors must contain 'BayesTools' priors")
+
+
+  # create one full model-averaged ensemble
+  averaged_posterior <- BayesTools::mix_posteriors(
+    model_list   = model_list,
+    parameters   = parameters,
+    is_null_list = is_null_list,
+    seed         = seed,
+    n_samples    = n_samples,
+    conditional  = FALSE
+  )
+
+  # prepare output object
+  out <- list(
+    conditional = list(),
+    averaged    = list(),
+    inference   = list()
+  )
+
+  for(i in seq_along(marginal_parameters)){
+
+    if(all(is_null_list[[marginal_parameters[i]]])){
+      warning(paste0("parameter '", marginal_parameters[i], "' does not contain any alternative hypothesis models."), immediate. = TRUE, call. = FALSE)
+      next
+    }
+
+    # obtain model-averaged posterior conditional on including the parameter of interest
+    # (different from individual conditionals)
+    temp_conditional_posterior <- BayesTools::mix_posteriors(
+      model_list   = model_list[!is_null_list[[marginal_parameters[i]]]],
+      parameters   = parameters,
+      is_null_list = lapply(is_null_list, function(l) l[!is_null_list[[marginal_parameters[i]]]]),
+      seed         = seed,
+      n_samples    = n_samples,
+      conditional  = FALSE
+    )
+
+    # compute the marginals
+    out[["averaged"]][[marginal_parameters[i]]] <- marginal_posterior(
+      samples           = averaged_posterior,
+      parameter         = marginal_parameters[i],
+      formula           = formula,
+      prior_samples     = TRUE,
+      n_samples         = n_samples
+    )
+    out[["conditional"]][[marginal_parameters[i]]] <- marginal_posterior(
+      samples           = temp_conditional_posterior,
+      parameter         = marginal_parameters[i],
+      formula           = formula,
+      prior_samples     = TRUE,
+      n_samples         = n_samples
+    )
+
+    # and inclusion Bayes factor
+    out[["inference"]][[marginal_parameters[i]]] <- Savage_Dickey_BF(
+      posterior            = out[["conditional"]][[marginal_parameters[i]]],
+      null_hypothesis      = null_hypothesis,
+      normal_approximation = normal_approximation,
+      silent               = silent
+    )
+  }
+
+  attr(out, "null_hypothesis")      <- null_hypothesis
+  attr(out, "normal_approximation") <- normal_approximation
+  class(out) <- c(class(out), "marginal_inference")
+  return(out)
 }
