@@ -511,7 +511,16 @@ test_that("Summary tables functions work (formulas + factors)",{
                  "(mu) x_cont1:x_fac3o [dif: B]  0.006  0.000  0.000 0.000",
                  "(mu) x_cont1:x_fac3o [dif: C]  0.005  0.000  0.000 0.000"
                ))
-
+  # transform estimates
+  runjags_summary_t2 <- runjags_estimates_table(fit1, transform_factors = FALSE, transformations = list("mu_x_fac2t" = list(fun = exp)))
+  expect_equal(capture_output_lines(runjags_summary_t2, print = TRUE, width = 150),
+               c("                 Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
+                 "(mu) intercept  0.145 0.200 -0.245  0.144 0.541     0.00338          0.017  3526 1.001",
+                 "(mu) x_cont1    0.327 0.139  0.052  0.327 0.602     0.00111          0.008 15725 1.000",
+                 "(mu) x_fac3t[B] 0.006 0.281 -0.550  0.011 0.550     0.00414          0.015  4596 1.001",
+                 "(mu) x_fac3t[C] 0.118 0.277 -0.433  0.120 0.656     0.00407          0.015  4630 1.001",
+                 "sigma           0.926 0.089  0.774  0.918 1.117     0.00099          0.011  8016 1.000"
+               ))
 
 
   ### test print functions
