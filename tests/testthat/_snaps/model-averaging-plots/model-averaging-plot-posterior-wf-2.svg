@@ -49,9 +49,9 @@
 <polyline points='82.27,542.49 82.27,21.71 ' style='stroke-width: 1.07; stroke: #FFFFFF; stroke-linecap: butt;' />
 <polyline points='668.26,542.49 668.26,21.71 ' style='stroke-width: 1.07; stroke: #FFFFFF; stroke-linecap: butt;' />
 <polyline points='683.68,542.49 683.68,21.71 ' style='stroke-width: 1.07; stroke: #FFFFFF; stroke-linecap: butt;' />
-<polygon points='66.85,45.38 82.27,45.38 82.27,504.07 668.26,504.07 668.26,496.51 683.68,496.51 683.68,45.38 668.26,45.38 668.26,55.20 82.27,55.20 82.27,45.38 66.85,45.38 ' style='stroke-width: 1.07; stroke: none; fill: #FF0000; fill-opacity: 0.20;' />
+<polygon points='66.85,45.38 82.27,45.38 82.27,504.07 668.26,504.07 668.26,496.51 683.68,496.51 683.68,45.38 668.26,45.38 668.26,55.20 82.27,55.20 82.27,45.38 66.85,45.38 ' style='stroke-width: 1.07; stroke: none; stroke-linecap: butt; fill: #FF0000; fill-opacity: 0.20;' />
 <polyline points='66.85,45.38 82.27,45.38 82.27,280.54 668.26,280.54 668.26,161.26 683.68,161.26 ' style='stroke-width: 4.27; stroke: #FF0000; stroke-linecap: butt;' />
-<polygon points='66.85,45.38 82.27,45.38 82.27,507.41 668.26,507.41 668.26,495.31 683.68,495.31 683.68,45.38 668.26,45.38 668.26,55.72 82.27,55.72 82.27,45.38 66.85,45.38 ' style='stroke-width: 1.07; stroke: none; fill: #0000FF; fill-opacity: 0.20;' />
+<polygon points='66.85,45.38 82.27,45.38 82.27,507.41 668.26,507.41 668.26,495.31 683.68,495.31 683.68,45.38 668.26,45.38 668.26,55.72 82.27,55.72 82.27,45.38 66.85,45.38 ' style='stroke-width: 1.07; stroke: none; stroke-linecap: butt; fill: #0000FF; fill-opacity: 0.20;' />
 <polyline points='66.85,45.38 82.27,45.38 82.27,272.53 668.26,272.53 668.26,158.13 683.68,158.13 ' style='stroke-width: 2.13; stroke: #0000FF; stroke-linecap: butt;' />
 </g>
 <g clip-path='url(#cpMC4wMHw3MjAuMDB8MC4wMHw1NzYuMDA=)'>

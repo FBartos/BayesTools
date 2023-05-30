@@ -3,7 +3,8 @@
 #' @description Creates estimate summaries based on posterior
 #' distributions created by [mix_posteriors], inference summaries
 #' based on inference created by [ensemble_inference], or ensemble
-#' summary/diagnostics based on a list of [models_inference] models.
+#' summary/diagnostics based on a list of [models_inference] models
+#' (or [marginal_inference] in case of [marginal_estimates_table]).
 #'
 #' @param samples posterior samples created by [mix_posteriors]
 #' @param inference model inference created by [ensemble_inference]
@@ -27,9 +28,12 @@
 #' shortened. Defaults to \code{FALSE}.
 #' @param remove_spike_0 whether prior distributions equal to spike
 #' at 0 should be removed from the \code{prior_list}
-#' @param transform_orthonormal whether factors with orthonormal prior
-#' distributions should be transformed to differences from the grand
-#' mean
+#' @param transform_factors whether factors with orthonormal/meandif
+#' prior distribution should be transformed to differences from the
+#' grand mean
+#' @param transform_orthonormal (to be depreciated) whether factors
+#' with orthonormal prior distributions should be transformed to
+#' differences from the grand mean
 #' @param title title to be added to the table
 #' @param footnotes footnotes to be added to the table
 #' @param warnings warnings to be added to the table
@@ -50,13 +54,18 @@
 #' @export ensemble_inference_table
 #' @export ensemble_summary_table
 #' @export ensemble_diagnostics_table
+#' @export ensemble_estimates_empty_table
+#' @export ensemble_inference_empty_table
+#' @export ensemble_summary_empty_table
+#' @export ensemble_diagnostics_empty_table
+#' @export marginal_estimates_table
 #' @name BayesTools_ensemble_tables
 #'
 #' @seealso [ensemble_inference] [mix_posteriors] [BayesTools_model_tables]
 NULL
 
 #' @rdname BayesTools_ensemble_tables
-ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95), title = NULL, footnotes = NULL, warnings = NULL, transform_orthonormal = FALSE, formula_prefix = TRUE){
+ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95), title = NULL, footnotes = NULL, warnings = NULL, transform_factors = FALSE, transform_orthonormal = FALSE, formula_prefix = TRUE){
 
   # check input
   check_char(parameters, "parameters", check_length = 0)
@@ -65,12 +74,17 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95)
   check_char(title, "title", allow_NULL = TRUE)
   check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
   check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
+  check_bool(transform_factors, "transform_factors")
   check_bool(transform_orthonormal, "transform_orthonormal")
   check_bool(formula_prefix, "formula_prefix")
 
-  # transform orthonormal posterior
-  if(transform_orthonormal){
-    samples <- transform_orthonormal_samples(samples)
+  # depreciate
+  transform_factors <- .depreciate.transform_orthonormal(transform_orthonormal, transform_factors)
+
+
+  # transform meandif/orthonormal posterior
+  if(transform_factors){
+    samples <- transform_factor_samples(samples)
   }
 
 
@@ -90,12 +104,7 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95)
       }
 
       if(inherits(samples[[parameter]], "mixed_posteriors.formula")){
-        parameter_name <- colnames(samples[[parameter]])
-        parameter_name <- gsub(
-          paste0(attr(samples[[parameter]], "formula_parameter"), "_"),
-          if(formula_prefix) paste0("(", attr(samples[[parameter]], "formula_parameter"), ") ") else "",
-          parameter_name)
-        parameter_name <- gsub("__xXx__", ":", parameter_name)
+        parameter_name <- format_parameter_names(colnames(samples[[parameter]]), formula_parameters = attr(samples[[parameter]], "formula_parameter"), formula_prefix = formula_prefix)
       }else{
         parameter_name <- colnames(samples[[parameter]])
       }
@@ -336,6 +345,165 @@ ensemble_diagnostics_table <- function(models, parameters, title = NULL, footnot
   return(ensemble_table)
 }
 
+#' @rdname BayesTools_ensemble_tables
+ensemble_estimates_empty_table   <- function(probs = c(0.025, 0.95), title = NULL, footnotes = NULL, warnings = NULL){
+
+  empty_table <- data.frame(matrix(nrow = 0, ncol = 2 + length(probs)))
+  colnames(empty_table) <- c("Mean", "Median", probs)
+
+  class(empty_table)             <- c("BayesTools_table", "BayesTools_ensemble_summary", class(empty_table))
+  attr(empty_table, "type")      <- rep("estimate", ncol(empty_table))
+  attr(empty_table, "rownames")  <- TRUE
+  attr(empty_table, "title")     <- title
+  attr(empty_table, "footnotes") <- footnotes
+  attr(empty_table, "warnings")  <- warnings
+
+  return(empty_table)
+}
+
+#' @rdname BayesTools_ensemble_tables
+ensemble_inference_empty_table   <- function(title = NULL, footnotes = NULL, warnings = NULL){
+
+  empty_table <- data.frame(matrix(nrow = 0, ncol = 4))
+  colnames(empty_table) <- c("models", "prior_prob", "post_prob", "inclusion_BF")
+
+  class(empty_table)             <- c("BayesTools_table", "BayesTools_ensemble_summary", class(empty_table))
+  attr(empty_table, "type")      <- c("n_models", "prior_prob", "post_prob", "inclusion_BF")
+  attr(empty_table, "rownames")  <- TRUE
+  attr(empty_table, "title")     <- title
+  attr(empty_table, "footnotes") <- footnotes
+  attr(empty_table, "warnings")  <- warnings
+
+  return(empty_table)
+}
+
+#' @rdname BayesTools_ensemble_tables
+ensemble_summary_empty_table     <- function(title = NULL, footnotes = NULL, warnings = NULL){
+
+  empty_table <- data.frame(matrix(nrow = 0, ncol = 5))
+  colnames(empty_table) <- c("Model", "prior_prob", "marglik", "post_prob", "inclusion_BF")
+
+  # prepare output
+  class(empty_table)             <- c("BayesTools_table", "BayesTools_ensemble_summary", class(empty_table))
+  attr(empty_table, "type")      <- c("integer", "prior_prob", "marglik", "post_prob", "inclusion_BF")
+  attr(empty_table, "rownames")  <- FALSE
+  attr(empty_table, "title")     <- title
+  attr(empty_table, "footnotes") <- footnotes
+  attr(empty_table, "warnings")  <- warnings
+
+  return(empty_table)
+}
+
+#' @rdname BayesTools_ensemble_tables
+ensemble_diagnostics_empty_table <- function(title = NULL, footnotes = NULL, warnings = NULL){
+
+  empty_table <- data.frame(matrix(nrow = 0, ncol = 5))
+  colnames(empty_table) <- c("Model", "max_MCMC_error", "max_MCMC_SD_error", "min_ESS", "max_R_hat")
+
+  # prepare output
+  class(empty_table)             <- c("BayesTools_table", "BayesTools_ensemble_summary", class(empty_table))
+  attr(empty_table, "type")      <- c("integer", "max_MCMC_error", "max_MCMC_SD_error", "min_ESS", "max_R_hat")
+  attr(empty_table, "rownames")  <- FALSE
+  attr(empty_table, "title")     <- title
+  attr(empty_table, "footnotes") <- footnotes
+  attr(empty_table, "warnings")  <- warnings
+
+  return(empty_table)
+}
+
+#' @rdname BayesTools_ensemble_tables
+marginal_estimates_table <- function(samples, inference, parameters, probs = c(0.025, 0.95), logBF = FALSE, BF01 = FALSE, title = NULL, footnotes = NULL, warnings = NULL, formula_prefix = TRUE){
+
+  # check input
+  check_char(parameters, "parameters", check_length = 0)
+  check_list(samples, "samples", check_names = parameters, all_objects = TRUE, allow_other = TRUE)
+  check_list(inference, "inference", check_names = parameters, all_objects = TRUE, allow_other = TRUE)
+  check_real(probs, "probs", lower = 0, upper = 1, check_length = 0, allow_NULL = TRUE)
+  check_bool(logBF, "logBF")
+  check_bool(BF01,  "BF01")
+  check_char(title, "title", allow_NULL = TRUE)
+  check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
+  check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
+  check_bool(formula_prefix, "formula_prefix")
+
+
+  # extract values
+  estimates_table <- NULL
+  for(parameter in parameters){
+
+    # extract the relevant information
+    if(is.list(samples[[parameter]]) && length(samples[[parameter]]) > 1){
+      temp_samples  <- do.call(cbind, samples[[parameter]])
+      temp_BF       <- do.call(c, inference[[parameter]])
+      temp_warnings <- do.call(c, lapply(names(inference[[parameter]]), function(lvl) {
+        if(is.null(attr(inference[[parameter]][[lvl]], "warnings"))){
+          return()
+        }else{
+          paste0("[", lvl, "]: ", attr(inference[[parameter]][[lvl]], "warnings"))
+        }
+      }))
+    }else{
+      temp_samples  <- matrix(samples[[parameter]][[1]], ncol = 1)
+      temp_BF       <- inference[[parameter]][[1]]
+      if(is.null(attr(inference[[parameter]][[1]], "warnings"))){
+        temp_warnings <- NULL
+      }else{
+        temp_warnings <- paste0(if(names(inference[[parameter]]) != "intercept") paste0("[", names(inference[[parameter]]), "]: ") else ": ", attr(inference[[parameter]][[1]], "warnings"))
+      }
+    }
+
+    # add estimates
+    par_summary <- cbind(
+      "Mean"   = apply(temp_samples, 2, mean),
+      "Median" = apply(temp_samples, 2, stats::median)
+    )
+    for(i in seq_along(probs)){
+      par_summary <- cbind(par_summary, apply(temp_samples, 2, stats::quantile, probs = probs[i]))
+      colnames(par_summary)[ncol(par_summary)] <- probs[i]
+    }
+
+    # add BF
+    par_summary <- cbind(par_summary, "inclusion_BF" = temp_BF)
+
+
+    # format parameter names
+    if(inherits(samples[[parameter]], "marginal_posterior.formula")){
+      if(length(names(samples[[parameter]])) == 1 && names(samples[[parameter]]) == "intercept"){
+        parameter_name <- parameter
+      }else{
+        parameter_name <- paste0(parameter, "[", names(samples[[parameter]]), "]")
+      }
+      parameter_name <- format_parameter_names(parameter_name, formula_parameters = attr(samples[[parameter]], "formula_parameter"), formula_prefix = formula_prefix)
+    }else{
+      parameter_name <- paste0(parameter, "[", names(samples[[parameter]]), "]")
+    }
+
+    rownames(par_summary) <- parameter_name
+    estimates_table       <- rbind(estimates_table, par_summary)
+
+    # add warnings
+    if(!is.null(temp_warnings)){
+      warnings <- c(warnings, paste0(parameter, temp_warnings))
+    }
+  }
+
+  estimates_table[,"inclusion_BF"]  <- format_BF(estimates_table[,"inclusion_BF"], logBF = logBF, BF01 = BF01, inclusion = TRUE)
+
+  # prepare output
+  estimates_table                    <- data.frame(estimates_table)
+  colnames(estimates_table)          <- gsub("X", "", colnames(estimates_table))
+  class(estimates_table)             <- c("BayesTools_table", "BayesTools_marginal_estimates", class(estimates_table))
+  attr(estimates_table, "type")      <- c(rep("estimate", ncol(estimates_table) - 1), "inclusion_BF")
+  attr(estimates_table, "rownames")  <- TRUE
+  attr(estimates_table, "title")     <- title
+  attr(estimates_table, "footnotes") <- footnotes
+  attr(estimates_table, "warnings")  <- warnings
+
+  return(estimates_table)
+}
+
+
+
 .ensemble_table_foundation <- function(models, parameters, remove_spike_0, short_name){
 
   model_rows <- list()
@@ -435,6 +603,9 @@ ensemble_diagnostics_table <- function(models, parameters, title = NULL, footnot
 #' @export model_summary_table
 #' @export runjags_estimates_table
 #' @export runjags_inference_table
+#' @export model_summary_empty_table
+#' @export JAGS_inference_empty_table
+#' @export JAGS_estimates_empty_table
 #' @export runjags_estimates_empty_table
 #' @export runjags_inference_empty_table
 #' @export stan_estimates_table
@@ -444,7 +615,7 @@ ensemble_diagnostics_table <- function(models, parameters, title = NULL, footnot
 NULL
 
 #' @rdname BayesTools_model_tables
-model_summary_table <- function(model, model_description = NULL, title = NULL, footnotes = NULL, warnings = NULL, remove_spike_0 = TRUE, short_name = FALSE, formula_prefix = TRUE){
+model_summary_table <- function(model, model_description = NULL, title = NULL, footnotes = NULL, warnings = NULL, remove_spike_0 = TRUE, short_name = FALSE, formula_prefix = TRUE, remove_parameters = NULL){
 
   # check input
   check_list(model, "model", check_names = "inference", allow_other = TRUE, all_objects = TRUE)
@@ -465,6 +636,7 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
   check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
   check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
   check_bool(formula_prefix, "formula_prefix")
+  check_char(remove_parameters, "remove_parameters", allow_NULL = TRUE, check_length = 0)
 
   # prepare the columns
   summary_names  <- c(
@@ -485,7 +657,7 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
   summary_priors  <- "Parameter prior distributions"
   for(i in seq_along(prior_list)){
     # get the prior name
-    if(remove_spike_0 && is.prior.point(prior_list[[i]]) && prior_list[[i]][["parameters"]][["location"]] == 0){
+    if(remove_spike_0 && is.prior.point(prior_list[[i]]) && prior_list[[i]][["parameters"]][["location"]] == 0 || (names(prior_list)[[i]] %in% remove_parameters)){
       next
     }else if(is.prior.weightfunction(prior_list[[i]]) | is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
       temp_prior <- print(prior_list[[i]], silent = TRUE, short_name = short_name)
@@ -534,7 +706,7 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
 }
 
 #' @rdname BayesTools_model_tables
-runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, footnotes = NULL, warnings = NULL, conditional = FALSE, remove_spike_0 = TRUE, transform_orthonormal = FALSE, formula_prefix = TRUE, remove_inclusion = FALSE, remove_parameters = NULL){
+runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, footnotes = NULL, warnings = NULL, conditional = FALSE, remove_spike_0 = TRUE, transform_factors = FALSE, transform_orthonormal = FALSE, formula_prefix = TRUE, remove_inclusion = FALSE, remove_parameters = NULL){
 
   .check_runjags()
   # most of the code is shared with .diagnostics_plot_data function (keep them in sync on update)
@@ -556,9 +728,13 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
   check_bool(remove_spike_0, "remove_spike_0")
   check_bool(conditional, "conditional")
+  check_bool(transform_factors, "transform_factors")
   check_bool(transform_orthonormal, "transform_orthonormal")
   check_bool(formula_prefix, "formula_prefix")
   check_char(remove_parameters, "remove_parameters", allow_NULL = TRUE, check_length = 0)
+
+  # depreciate
+  transform_factors <- .depreciate.transform_orthonormal(transform_orthonormal, transform_factors)
 
   # obtain model information
   invisible(utils::capture.output(runjags_summary <- suppressWarnings(summary(fit, silent.jags = TRUE))))
@@ -609,7 +785,6 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       prior_list[i] <- NULL
     }else if(is.prior.simple(prior_list[[i]]) && prior_list[[i]][["distribution"]] == "invgamma"){
       runjags_summary <- runjags_summary[rownames(runjags_summary) != paste0("inv_",names(prior_list)[i]),,drop=FALSE]
-      prior_list[i] <- NULL
     }
   }
 
@@ -624,10 +799,10 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 
       # prepare parameter names
       if(is.prior.factor(prior_list[[par]][["variable"]])){
-        if((attr(prior_list[[par]][["variable"]], "levels") - 1) == 1){
+        if(.get_prior_factor_levels(prior_list[[par]][["variable"]]) == 1){
           par_names <- par
         }else{
-          par_names <- paste0(par, "[", 1:(attr(prior_list[[par]][["variable"]], "levels") - 1), "]")
+          par_names <- paste0(par, "[", 1:.get_prior_factor_levels(prior_list[[par]][["variable"]]), "]")
         }
       }else{
         par_names <- par
@@ -686,9 +861,9 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
         runjags_summary[par, "MCerr"]   <- do.call(transformations[[par]][["fun"]], c(list(runjags_summary[par, "MCerr"]), transformations[[par]][["arg"]]))
         runjags_summary[par, "MC.ofSD"] <- 100 * runjags_summary[par, "MCerr"] / runjags_summary[par, "SD"]
 
-      }else if((!transform_orthonormal && is.prior.orthonormal(prior_list[[par]])) || is.prior.dummy(prior_list[[par]])){
+      }else if((!transform_factors && (is.prior.orthonormal(prior_list[[par]]) |  is.prior.meandif(prior_list[[par]]))) || is.prior.treatment(prior_list[[par]])){
 
-        # dummy priors
+        # treatment priors
         par_names <-  .JAGS_prior_factor_names(par, prior_list[[par]])
 
         for(i in seq_along(par_names)){
@@ -708,14 +883,19 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   }
 
   # transform orthonormal factors to differences from mean
-  if(transform_orthonormal & any(sapply(prior_list, is.prior.orthonormal))){
-    message("The transformation was applied to the differences from the mean. Note that non-linear transformations do not map from the orthonormal contrasts to the differences from the mean.")
-    for(par in names(prior_list)[sapply(prior_list, is.prior.orthonormal)]){
+  if(transform_factors & any(sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x)))){
+    message("The transformation was applied to the differences from the mean. Note that non-linear transformations do not map from the orthonormal/meandif contrasts to the differences from the mean.")
+    for(par in names(prior_list)[sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x))]){
 
       par_names <- .JAGS_prior_factor_names(par, prior_list[[par]])
 
-      orthonormal_samples <- model_samples[,par_names,drop = FALSE]
-      transformed_samples <- orthonormal_samples %*% t(contr.orthonormal(1:attr(prior_list[[par]], "levels")))
+      original_samples <- model_samples[,par_names,drop = FALSE]
+
+      if(is.prior.orthonormal(prior_list[[par]])){
+        transformed_samples <- original_samples %*% t(contr.orthonormal(1:(.get_prior_factor_levels(prior_list[[par]])+1)))
+      }else if(is.prior.meandif(prior_list[[par]])){
+        transformed_samples <- original_samples %*% t(contr.meandif(1:(.get_prior_factor_levels(prior_list[[par]])+1)))
+      }
 
       # apply transformation if specified
       if(!is.null(transformations[par])){
@@ -725,14 +905,14 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       }
 
 
-      if(attr(prior_list[[par]], "interaction")){
-        if(length(attr(prior_list[[par]], "level_names")) == 1){
-          transformed_names <- paste0(par, " [dif: ", attr(prior_list[[par]], "level_names")[[1]],"]")
+      if(.is_prior_interaction(prior_list[[par]])){
+        if(length(.get_prior_factor_level_names(prior_list[[par]])) == 1){
+          transformed_names <- paste0(par, " [dif: ", .get_prior_factor_level_names(prior_list[[par]])[[1]],"]")
         }else{
-          stop("orthonormal de-transformation for interaction of multiple factors is not implemented.")
+          stop("orthonormal/meandif de-transformation for interaction of multiple factors is not implemented.")
         }
       }else{
-        transformed_names <- paste0(par, " [dif: ", attr(prior_list[[par]], "level_names"),"]")
+        transformed_names <- paste0(par, " [dif: ", .get_prior_factor_level_names(prior_list[[par]]),"]")
       }
       colnames(transformed_samples) <- transformed_names
 
@@ -768,11 +948,11 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
           Mean    = transformed_summary$statistics[,"Mean"],
           SD      = transformed_summary$statistics[,"SD"],
           Mode    = NA,
-          MCerr   = transformed_summary$statistics[,"Naive SE"],
-          MC.ofSD = 100 * transformed_summary$statistics[,"Naive SE"] / transformed_summary$statistics[,"SD"],
-          SSeff   = unname(coda::effectiveSize(coda::as.mcmc(transformed_samples))),
-          AC.10   = coda::autocorr.diag(coda::as.mcmc(transformed_samples), lags = 10)[1,],
-          psrf    = if(length(fit$mcmc) > 1) unname(coda::gelman.diag(transformed_chains, multivariate = FALSE)$psrf[,"Point est."]) else NA
+          MCerr   = if(is.prior.point(prior_list[[par]])) NA else transformed_summary$statistics[,"Naive SE"],
+          MC.ofSD = if(is.prior.point(prior_list[[par]])) NA else 100 * transformed_summary$statistics[,"Naive SE"] / transformed_summary$statistics[,"SD"],
+          SSeff   = if(is.prior.point(prior_list[[par]])) NA else unname(coda::effectiveSize(coda::as.mcmc(transformed_samples))),
+          AC.10   = if(is.prior.point(prior_list[[par]])) NA else coda::autocorr.diag(coda::as.mcmc(transformed_samples), lags = 10)[1,],
+          psrf    = if(is.prior.point(prior_list[[par]])) NA else if(length(fit$mcmc) > 1) unname(coda::gelman.diag(transformed_chains, multivariate = FALSE)$psrf[,"Point est."]) else NA
         )
       }
 
@@ -792,19 +972,37 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   runjags_summary <- runjags_summary[,!colnames(runjags_summary) %in% c("Mode", "AC.10"),drop = FALSE]
 
   # rename treatment factor levels
-  if(any(sapply(prior_list, is.prior.dummy))){
-    for(par in names(prior_list)[sapply(prior_list, is.prior.dummy)]){
-      if(!attr(prior_list[[par]], "interaction")){
-        if(attr(prior_list[[par]], "levels") == 2){
+  if(any(sapply(prior_list, is.prior.treatment))){
+    for(par in names(prior_list)[sapply(prior_list, is.prior.treatment)]){
+      if(!.is_prior_interaction(prior_list[[par]])){
+        if(.get_prior_factor_levels(prior_list[[par]]) == 1){
           rownames(runjags_summary)[rownames(runjags_summary) == par] <-
-            paste0(par,"[",attr(prior_list[[par]], "level_names")[-1], "]")
+            paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]])[-1], "]")
         }else{
-          rownames(runjags_summary)[rownames(runjags_summary) %in% paste0(par,"[",1:(attr(prior_list[[par]], "levels")-1),"]")] <-
-            paste0(par,"[",attr(prior_list[[par]], "level_names")[-1], "]")
+          rownames(runjags_summary)[rownames(runjags_summary) %in% paste0(par,"[",1:.get_prior_factor_levels(prior_list[[par]]),"]")] <-
+            paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]])[-1], "]")
         }
       }else if(length(attr(prior_list[[par]], "levels")) == 1){
-        rownames(runjags_summary)[rownames(runjags_summary) %in% paste0(par,"[",1:(attr(prior_list[[par]], "levels")-1),"]")] <-
-          paste0(par,"[",attr(prior_list[[par]], "level_names")[[1]][-1], "]")
+        rownames(runjags_summary)[rownames(runjags_summary) %in% paste0(par,"[",1:.get_prior_factor_levels(prior_list[[par]]),"]")] <-
+          paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]])[[1]][-1], "]")
+      }
+    }
+  }
+
+  # rename independent factor levels
+  if(any(sapply(prior_list, is.prior.independent))){
+    for(par in names(prior_list)[sapply(prior_list, is.prior.independent)]){
+      if(!.is_prior_interaction(prior_list[[par]])){
+        if(.get_prior_factor_levels(prior_list[[par]]) == 1){
+          rownames(runjags_summary)[rownames(runjags_summary) == par] <-
+            paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]]), "]")
+        }else{
+          rownames(runjags_summary)[rownames(runjags_summary) %in% paste0(par,"[",1:.get_prior_factor_levels(prior_list[[par]]),"]")] <-
+            paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]]), "]")
+        }
+      }else if(length(attr(prior_list[[par]], "levels")) == 1){
+        rownames(runjags_summary)[rownames(runjags_summary) %in% paste0(par,"[",1:.get_prior_factor_levels(prior_list[[par]]),"]")] <-
+          paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]])[[1]], "]")
       }
     }
   }
@@ -834,6 +1032,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 
   # reorder the columns
   runjags_summary <- runjags_summary[,c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"), drop = FALSE]
+  runjags_summary <- data.frame(runjags_summary)
 
   # prepare output
   class(runjags_summary)              <- c("BayesTools_table", "BayesTools_runjags_summary", class(runjags_summary))
@@ -914,6 +1113,42 @@ JAGS_inference_table <- runjags_inference_table
 JAGS_summary_table   <- model_summary_table
 
 #' @rdname BayesTools_model_tables
+model_summary_empty_table <- function(model_description = NULL, title = NULL, footnotes = NULL, warnings = NULL){
+
+  check_list(model_description, "model_description", allow_NULL = TRUE)
+
+  summary_names  <- c(
+    "Model",
+    if(!is.null(model_description)) names(model_description),
+    "Prior prob.",
+    "log(marglik)",
+    "Post. prob.",
+    "Inclusion BF")
+
+
+  summary_names <- paste0(summary_names, "  ")
+
+  empty_table <- data.frame(cbind(
+    summary_names,
+    rep("",            length(summary_names)),
+    rep("           ", length(summary_names)),
+    c("Parameter prior distributions", rep("", length(summary_names) - 1))
+  ))
+  names(empty_table) <- NULL
+
+  # prepare output
+  class(empty_table)             <- c("BayesTools_table", class(empty_table))
+  attr(empty_table, "type")      <- c("string_left", "string", "string", "prior")
+  attr(empty_table, "rownames")  <- FALSE
+  attr(empty_table, "as.matrix") <- TRUE
+  attr(empty_table, "title")     <- title
+  attr(empty_table, "footnotes") <- footnotes
+  attr(empty_table, "warnings")  <- warnings
+
+  return(empty_table)
+}
+
+#' @rdname BayesTools_model_tables
 runjags_estimates_empty_table <- function(title = NULL, footnotes = NULL, warnings = NULL){
 
   empty_table <- data.frame(matrix(nrow = 0, ncol = 9))
@@ -933,10 +1168,10 @@ runjags_estimates_empty_table <- function(title = NULL, footnotes = NULL, warnin
 runjags_inference_empty_table <- function(title = NULL, footnotes = NULL, warnings = NULL){
 
   empty_table <- data.frame(matrix(nrow = 0, ncol = 4))
-  colnames(empty_table) <- c("Parameter", "prior_prob", "post_prob", "BF")
+  colnames(empty_table) <- c("Parameter", "prior_prob", "post_prob", "inclusion_BF")
 
   class(empty_table)             <- c("BayesTools_table", "BayesTools_runjags_summary", class(empty_table))
-  attr(empty_table, "type")      <- c("string", "prior_prob", "post_prob", "BF")
+  attr(empty_table, "type")      <- c("string", "prior_prob", "post_prob", "inclusion_BF")
   attr(empty_table, "rownames")  <- FALSE
   attr(empty_table, "title")     <- title
   attr(empty_table, "footnotes") <- footnotes
@@ -944,6 +1179,12 @@ runjags_inference_empty_table <- function(title = NULL, footnotes = NULL, warnin
 
   return(empty_table)
 }
+
+#' @rdname BayesTools_model_tables
+JAGS_estimates_empty_table <- runjags_estimates_empty_table
+
+#' @rdname BayesTools_model_tables
+JAGS_inference_empty_table <- runjags_inference_empty_table
 
 #' @rdname BayesTools_model_tables
 stan_estimates_table  <- function(fit, transformations = NULL, title = NULL, footnotes = NULL, warnings = NULL){
@@ -1106,7 +1347,7 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
 #' @param column_title title of the new column
 #' @param column_values values of the new column
 #' @param column_position position of the new column (defaults to \code{NULL} which
-#' appends the columnt to the end)
+#' appends the column to the end)
 #' @param column_type type of values of the new column table (important for formatting,
 #' defaults to \code{NULL} = the function tries to guess numeric / character based on the
 #' \code{column_values} but many more specific types are available)
@@ -1169,9 +1410,47 @@ add_column <- function(table, column_title, column_values, column_position = NUL
   return(new_table)
 }
 
+#' @title Removes column to BayesTools table
+#'
+#' @description Removes column to a BayesTools table while not
+#' breaking formatting, attributes, etc...
+#'
+#' @param table BayesTools table
+#' @param column_position position of the to be removed column (defaults to \code{NULL} which
+#' removes the last column)
+#'
+#' @return returns an object of 'BayesTools_table' class.
+#'
+#' @export
+remove_column <- function(table, column_position = NULL){
+
+  if(!inherits(table, "BayesTools_table"))
+    stop("The 'table' must be of class 'BayesTools_table'.")
+  check_int(column_position, "column_position", allow_NULL = TRUE, lower = 1, upper = ncol(table))
+
+  # fill defaults
+  if(is.null(column_position)){
+    column_position <- ncol(table)
+  }
+
+  # add the column (must be constructed in this was as it can't contain NULL)
+  new_table <- table[,-column_position]
+
+  # transfer column names
+  colnames(new_table) <- colnames(table)[-column_position]
+
+  # copy attributes
+  class(new_table)        <- class(table)
+  attr(new_table, "type") <- attr(table, "type")[-column_position]
+  for(a in names(attributes(table))[!names(attributes(table)) %in% c("class", "type", "names")]){
+    attr(new_table, a) <- attr(table, a)
+  }
+
+  return(new_table)
+}
 
 .format_column       <- function(x, type, n_models){
-  if(is.null(x)){
+  if(is.null(x) || length(x) == 0){
     return(x)
   }else{
     return(switch(
@@ -1200,7 +1479,7 @@ add_column <- function(table, column_title, column_values, column_position = NUL
   }
 }
 .format_column_names <- function(x, type, values){
-  if(is.null(x)){
+  if(is.null(x) || length(x) == 0){
     return(x)
   }else{
     return(switch(

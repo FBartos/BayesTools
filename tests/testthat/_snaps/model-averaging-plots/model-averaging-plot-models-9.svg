@@ -57,7 +57,7 @@
 <polygon points='346.47,290.70 359.98,290.70 359.98,277.19 346.47,277.19 ' style='stroke-width: 0.71; stroke: none; fill: #000000;' />
 <polygon points='403.98,206.23 406.82,206.23 406.82,203.39 403.98,203.39 ' style='stroke-width: 0.71; stroke: none; fill: #000000;' />
 <polygon points='349.10,129.79 357.35,129.79 357.35,121.54 349.10,121.54 ' style='stroke-width: 0.71; stroke: none; fill: #000000;' />
-<polygon points='276.31,442.23 362.20,422.44 530.31,442.23 362.20,462.01 ' style='stroke-width: 1.07; stroke: none; fill: #000000;' />
+<polygon points='276.31,442.23 362.20,422.44 530.31,442.23 362.20,462.01 ' style='stroke-width: 1.07; stroke: none; stroke-linecap: butt; fill: #000000;' />
 <polyline points='353.23,521.37 353.23,46.53 ' style='stroke-width: 1.07; stroke-dasharray: 1.42,4.27; stroke-linecap: butt;' />
 </g>
 <g clip-path='url(#cpMC4wMHw3MjAuMDB8MC4wMHw1NzYuMDA=)'>

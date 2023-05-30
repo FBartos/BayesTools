@@ -42,6 +42,8 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     prior_type <- "PETPEESE"
   }else if(any(sapply(prior_list, is.prior.orthonormal))){
     prior_type <- "orthonormal"
+  }else if(any(sapply(prior_list, is.prior.meandif))){
+    prior_type <- "meandif"
   }else{
     prior_type <- "simple"
 
@@ -61,7 +63,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   if(is.null(xlim) & is.null(x_seq)){
     if(prior_type %in% c("weightfunction", "PETPEESE") & !individual){
       xlim      <- c(0, 1)
-    }else if(prior_type %in% c("simple", "orthonormal")){
+    }else if(prior_type %in% c("simple", "orthonormal", "meandif")){
       xlim   <- do.call(rbind, lapply(prior_list, range, quantiles = x_range_quant))
       xlim   <- range(pretty(range(as.vector(xlim))))
     }
@@ -85,7 +87,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
                                                 transformation_settings = transformation_settings, prior_list_mu = prior_list_mu)
     plot <- .plot.prior.PETPEESE(prior_list, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
 
-  }else if(prior_type %in% c("simple", "orthonormal")){
+  }else if(prior_type %in% c("simple", "orthonormal", "meandif")){
 
     # solve analytically
     plot_data <- .plot_data_prior_list.simple(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
@@ -247,7 +249,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   level_names <- sapply(plot_data_factors, attr, which = "level_name")
   if(any(grepl("[dif:", level_names, fixed = TRUE))){
     level_names <- substr(level_names, regexpr("[dif:", level_names, fixed = TRUE)[[1]] + 5, regexpr("]", level_names, fixed = TRUE) - 1)
-  }else{
+  }else if(any(grepl("[", level_names, fixed = TRUE))){
     level_names <- substr(level_names, regexpr("[", level_names, fixed = TRUE)[[1]] + 1, regexpr("]", level_names, fixed = TRUE) - 1)
   }
 
@@ -450,18 +452,16 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   }
   samples <- do.call(rbind, samples_list)
 
-
-  # transform the PEESE parameter if requested
-  if(!is.null(transformation)){
-    samples[,1] <- .density.prior_transformation_x(samples[,1],  transformation, transformation_arguments)
-    samples[,3] <- .density.prior_transformation_inv_x(samples[,3],  transformation, transformation_arguments)
-  }
-
-
   # compute PET-PEESE (mu + PET*se + PEESE*se^2)
   x_sam  <- matrix(samples[,1], nrow = length(samples), ncol = length(x_seq)) +
     matrix(samples[,2], nrow = length(samples), ncol = length(x_seq)) * matrix(x_seq,   nrow = length(samples), ncol = length(x_seq), byrow = TRUE) +
     matrix(samples[,3], nrow = length(samples), ncol = length(x_seq)) * matrix(x_seq^2, nrow = length(samples), ncol = length(x_seq), byrow = TRUE)
+
+  # transform the PEESE parameter if requested
+  if(!is.null(transformation)){
+    x_sam <- .density.prior_transformation_x(x_sam, transformation, transformation_arguments)
+  }
+
   x_med  <- apply(x_sam, 2, stats::quantile, prob = .500)
   x_lCI  <- apply(x_sam, 2, stats::quantile, prob = .025)
   x_uCI  <- apply(x_sam, 2, stats::quantile, prob = .975)
@@ -513,6 +513,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
                               transformation_settings = transformation_settings, individual = individual, truncate_end = FALSE)
   }
 
+  # the complete samples are added to each output object
   x_sam    <- NULL
   x_points <- NULL
   y_points <- NULL
@@ -522,14 +523,14 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   for(i in seq_along(plot_data)){
 
     if(force_samples){
-      x_sam <- plot_data$samples
+      x_sam <- c(x_sam, plot_data[[i]]$samples)
     }
 
     # align points and densities
     if(inherits(plot_data[[i]], "density.prior.point")){
       x_points <- c(x_points, plot_data[[i]]$x[plot_data[[i]]$y != 0])
       y_points <- c(y_points, mixing_prop[i])
-    }else if(inherits(plot_data[[i]], "density.prior.simple") | inherits(plot_data[[i]], "density.prior.orthonormal")){
+    }else if(inherits(plot_data[[i]], "density.prior.simple") | inherits(plot_data[[i]], "density.prior.orthonormal") | inherits(plot_data[[i]], "density.prior.meandif")){
       x_den <- rbind(x_den, plot_data[[i]]$x)
       y_den <- rbind(y_den, plot_data[[i]]$y * mixing_prop[i])
     }
@@ -591,7 +592,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
         n       = n_points,
         x       = x_points[i],
         y       = y_points[i],
-        samples = NULL
+        samples = x_sam
       )
 
       class(temp_points) <- c("density", "density.prior", "density.prior.point")
@@ -617,13 +618,13 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     new_prior_list[[i]][["prior_weights"]] <- NULL
   }
 
-  # remove additional attributes added by the formula interface
+  # remove all attributes but names and class
   for(i in seq_along(new_prior_list)){
-    attr(new_prior_list[[i]], "parameter") <- NULL
+    attributes(new_prior_list[[i]])[!names(attributes(new_prior_list[[i]])) %in% c("names", "class")] <- NULL
   }
 
   # remove identical priors
-  are_equal <- do.call(rbind, lapply(new_prior_list, function(p)sapply(new_prior_list, identical, y = p)))
+  are_equal <- do.call(rbind, lapply(new_prior_list, function(p) sapply(new_prior_list, identical, y = p)))
   are_equal <- are_equal[!duplicated(are_equal) & apply(are_equal, 1, sum) > 1,,drop = FALSE]
 
   # return the input with no matches
@@ -893,17 +894,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   check_bool(individual, "individual")
   check_bool(rescale_x, "rescale_x")
   check_int(show_figures, "show_figures", allow_NULL = TRUE)
-  if(!is.null(transformation)){
-    if(is.character(transformation)){
-      check_char(transformation, "transformation")
-    }else if(is.list(transformation)){
-      check_list(transformation, "transformation", check_length = 3, check_names = c("fun", "inv", "jac"), all_objects = TRUE)
-    }else{
-      stop("Uknown format of the 'transformation' argument.")
-    }
-  }
-  check_list(transformation_arguments, "transformation_arguments", allow_NULL = TRUE)
-  check_bool(transformation_settings, "transformation_settings")
+  .check_transformation_input(transformation, transformation_arguments, transformation_settings)
 
   # deal with bad parameter names for PET-PEESE, weightfunction
   if(tolower(gsub("-", "", gsub("_", "", gsub(".", "", parameter, fixed = TRUE),fixed = TRUE), fixed = TRUE)) %in% c("weightfunction", "weigthfunction", "omega")){
@@ -1193,11 +1184,11 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       prior_list_simple <- prior_list[!sapply(prior_list, is.prior.point)]
       prior_list_simple_lower <- min(sapply(prior_list_simple, function(p) p$truncation[["lower"]]))
       prior_list_simple_upper <- max(sapply(prior_list_simple, function(p) p$truncation[["upper"]]))
-      if(!is.infinite(prior_list_simple_lower)){
-        args <- c(args, from = prior_list_simple_lower)
+      if(!is.infinite(prior_list_simple_lower)){ # adding a small number for possible transformations (0 -> -Inf)
+        args <- c(args, from = prior_list_simple_lower + if(!is.null(transformation)) 1e-5 else 0)
       }
       if(!is.infinite(prior_list_simple_upper)){
-        args <- c(args, to = prior_list_simple_upper)
+        args <- c(args, to = prior_list_simple_upper   - if(!is.null(transformation)) 1e-5 else 0)
       }
 
       # get the density estimate
@@ -1206,13 +1197,24 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       y_den    <- density_continuous$y * (length(samples_density) / length(samples))
 
       # check for truncation
-      if(isTRUE(all.equal(prior_list_simple_lower, x_den[1])) | prior_list_simple_lower >= x_den[1]){
-        y_den <- c(0, y_den)
-        x_den <- c(x_den[1], x_den)
-      }
-      if(isTRUE(all.equal(prior_list_simple_upper, x_den[length(x_den)])) | prior_list_simple_upper <= x_den[length(x_den)]){
-        y_den <- c(y_den, 0)
-        x_den <- c(x_den, x_den[length(x_den)])
+      if(!is.null(transformation)){
+        if(isTRUE(all.equal(prior_list_simple_lower + 1e-5, x_den[1])) | prior_list_simple_lower + 1e-5 >= x_den[1]){
+          y_den <- c(0, y_den)
+          x_den <- c(x_den[1], x_den)
+        }
+        if(isTRUE(all.equal(prior_list_simple_upper - 1e-5, x_den[length(x_den)])) | prior_list_simple_upper + 1e-5 <= x_den[length(x_den)]){
+          y_den <- c(y_den, 0)
+          x_den <- c(x_den, x_den[length(x_den)])
+        }
+      }else{
+        if(isTRUE(all.equal(prior_list_simple_lower, x_den[1])) | prior_list_simple_lower >= x_den[1]){
+          y_den <- c(0, y_den)
+          x_den <- c(x_den[1], x_den)
+        }
+        if(isTRUE(all.equal(prior_list_simple_upper, x_den[length(x_den)])) | prior_list_simple_upper <= x_den[length(x_den)]){
+          y_den <- c(y_den, 0)
+          x_den <- c(x_den, x_den[length(x_den)])
+        }
       }
 
       # apply transformations
@@ -1297,18 +1299,16 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   }
 
 
-  # transform the parameter if requested
-  if(!is.null(transformation)){
-    # PEESE needs an inverse transformation to the effect sizes
-    samples[,1] <- .density.prior_transformation_x(samples[,1], transformation, transformation_arguments)
-    samples[,3] <- .density.prior_transformation_inv_x(samples[,3], transformation, transformation_arguments)
-  }
-
-
   # compute PET-PEESE (mu + PET*se + PEESE*se^2)
   x_sam  <- matrix(samples[,1], nrow = length(samples), ncol = length(x_seq)) +
     matrix(samples[,2], nrow = length(samples), ncol = length(x_seq)) * matrix(x_seq, nrow = length(samples), ncol = length(x_seq), byrow = TRUE) +
     matrix(samples[,3], nrow = length(samples), ncol = length(x_seq)) * matrix(x_seq^2, nrow = length(samples), ncol = length(x_seq), byrow = TRUE)
+
+  # transform the parameter if requested
+  if(!is.null(transformation)){
+    x_sam <- .density.prior_transformation_x(x_sam, transformation, transformation_arguments)
+  }
+
   x_med  <- apply(x_sam, 2, stats::quantile, prob = .500)
   x_lCI  <- apply(x_sam, 2, stats::quantile, prob = .025)
   x_uCI  <- apply(x_sam, 2, stats::quantile, prob = .975)
@@ -1389,12 +1389,13 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   # transform & extract the relevant data
   prior_list <- attr(samples[[parameter]], "prior_list")
 
-  if(any(sapply(prior_list, is.prior.orthonormal))){
-    samples  <- transform_orthonormal_samples(samples)
+  if(any(sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x)))){
+    samples  <- transform_factor_samples(samples)
     if(!is.null(transformation)){
-      message("The transformation was applied to the differences from the mean. Note that non-linear transformations do not map from the orthonormal contrasts to the differences from the mean.")
+      message("The transformation was applied to the differences from the mean. Note that non-linear transformations do not map from the meandif/orthonormal contrasts to the differences from the mean.")
     }
   }
+
   samples    <- samples[[parameter]]
 
   # create the output object
@@ -1510,7 +1511,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 #' @title Plot estimates from models
 #'
 #' @details Plots prior and posterior estimates of the same parameter
-#' across multiple models (prior distributions with orthonormal contrast)
+#' across multiple models (prior distributions with orthonormal/meandif contrast
 #' are always plotted as differences from the grand mean).
 #'
 #' @param parameter parameter name to be plotted. Does not support
@@ -1573,16 +1574,16 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
   # deal with factors
   if(inherits(total_samples, "mixed_posteriors.factor")){
 
-    # make sure that the orthonormal priors are transformed to differences from the mean
-    if(attr(total_samples, "orthonormal")){
+    # make sure that the orthonormal/meandif priors are transformed to differences from the mean
+    if(attr(total_samples, "orthonormal") | attr(total_samples, "meandif")){
 
       # transform the samples
-      if(ncol(total_samples) != attr(total_samples, "levels")){
-        total_samples <- transform_orthonormal_samples(samples[parameter])[[parameter]]
+      if(ncol(total_samples) == attr(total_samples, "levels")){
+        total_samples <- transform_factor_samples(samples[parameter])[[parameter]]
       }
       # transform the model summaries
       if(!any(sapply(models_summary, function(m) all(colnames(total_samples) %in% attr(m, "parameters"))))){
-        models_summary <- lapply(model_list, function(m) runjags_estimates_table(m[["fit"]], transform_orthonormal = TRUE))
+        models_summary <- lapply(model_list, function(m) runjags_estimates_table(m[["fit"]], transform_factors = TRUE))
       }
 
     }
@@ -1922,4 +1923,184 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
   spike_probability <- spike_probability[unique_map[, "frequency"] != 0, ]
 
   return(spike_probability)
+}
+
+
+#' @title Plot samples from the marginal posterior distributions
+#'
+#' @param samples samples from a posterior distribution for a
+#' parameter generated by [marginal_inference].
+#' @param parameter parameter name to be plotted.
+#' @param ... additional arguments
+#' @inheritParams plot_posterior
+#' @inheritParams density.prior
+#' @inheritParams plot.prior
+#'
+#' @return \code{plot_marginal} returns either \code{NULL} or
+#' an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
+#'
+#' @seealso [prior()] [marginal_inference()]  [plot_posterior()]
+#' @export
+plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
+                          n_points = 1000,
+                          transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
+                          rescale_x = FALSE, par_name = NULL, dots_prior = list(), ...){
+
+  # check input
+  if(any(!sapply(samples, inherits, what = "marginal_posterior")))
+    stop("'samples' must be a be an object generated by 'marginal_posterior' function.")
+  check_char(parameter, "parameter")
+  check_char(plot_type, "plot_type", allow_values = c("base", "ggplot"))
+  .check_transformation_input(transformation, transformation_arguments, transformation_settings)
+
+
+  # get the plotting range
+  dots <- list(...)
+  xlim <- dots[["xlim"]]
+
+
+  plot_data <- .plot_data_marginal_samples(samples, parameter = parameter, prior = prior, n_points = n_points,
+                                           transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings)
+
+
+
+  # add priors, if requested
+  if(prior){
+
+    plot_data_prior <- lapply(plot_data, attr, which = "prior")
+
+    # transplant common xlim and ylim
+    plot_data_joined <- c(plot_data, plot_data_prior)
+
+    xlim <- range(as.vector(sapply(plot_data_joined, attr, which = "x_range")))
+    attr(plot_data_prior[[1]], "x_range") <- xlim
+
+    xlim <- range(as.vector(sapply(plot_data_joined, attr, which = "y_range")))
+    attr(plot_data_prior[[1]], "y_range") <- xlim
+
+    dots_prior <- .transfer_dots(dots_prior, ...)
+
+
+    # plot prior
+    args_prior           <- dots_prior
+    args_prior$plot_data <- plot_data_prior
+    args_prior$plot_type <- plot_type
+    args_prior$par_name  <- par_name
+    args_prior$hardcode  <- TRUE
+
+    plot <- do.call(.plot_prior_list.factor, args_prior)
+
+
+    # plot posterior
+    args           <- list(...)
+    args$plot_data <- plot_data
+    args$plot_type <- plot_type
+    args$par_name  <- par_name
+    args$add       <- TRUE
+
+    if(plot_type == "base"){
+      plot <- do.call(.plot_prior_list.factor, args)
+    }else if(plot_type == "ggplot"){
+      plot <- plot + do.call(.plot_prior_list.factor, args)
+    }
+
+  }else{
+
+    # plot just posterior otherwise
+    plot <- .plot_prior_list.factor(plot_data = plot_data, plot_type = plot_type, par_name = par_name, ...)
+
+  }
+
+
+  if(plot_type == "ggplot"){
+    return(plot)
+  }else{
+    return(invisible())
+  }
+
+}
+
+.plot_data_marginal_samples     <- function(samples, parameter, prior, n_points, transformation, transformation_arguments, transformation_settings){
+
+  check_list(samples, "samples", check_names = parameter, allow_other = TRUE)
+
+  x_points <- NULL
+  y_points <- NULL
+  x_den    <- NULL
+  y_den    <- NULL
+
+  # extract the relevant information
+  if(is.list(samples[[parameter]]) && length(samples[[parameter]]) > 1){
+    posterior_samples <- do.call(cbind, samples[[parameter]])
+    if(prior){
+      prior_samples <- do.call(cbind, lapply(samples[[parameter]], attr, which = "prior_samples"))
+    }
+  }else{
+    posterior_samples  <- matrix(samples[[parameter]][[1]], ncol = 1)
+    colnames(posterior_samples) <- names(samples[[parameter]])
+    if(prior){
+      prior_samples <- matrix(attr(samples[[parameter]][[1]], "prior_samples"), ncol = 1)
+      if(is.null(prior_samples))
+        stop("'samples' did not contain prior samples")
+      colnames(prior_samples) <- names(samples[[parameter]])
+    }
+  }
+
+
+  # create the output object
+  out <- list()
+
+
+  # deal with the densities
+  for(i in 1:ncol(posterior_samples)){
+
+    out_den <- .plot_data_marginal_samples.den(posterior_samples[,i], n_points, transformation, transformation_arguments, transformation_settings)
+    attr(out_den, "level")      <- i
+    attr(out_den, "level_name") <- colnames(posterior_samples)[i]
+
+    if(prior){
+      out_den.prior <- .plot_data_marginal_samples.den(prior_samples[,i], n_points, transformation, transformation_arguments, transformation_settings)
+      attr(out_den.prior, "level")      <- i
+      attr(out_den.prior, "level_name") <- colnames(prior_samples)[i]
+
+      attr(out_den, "prior") <- out_den.prior
+    }
+
+    out[[paste0("density", i)]] <- out_den
+
+  }
+
+  return(out)
+}
+.plot_data_marginal_samples.den <- function(x, n_points, transformation, transformation_arguments, transformation_settings){
+
+  args <- list(x = x, n = n_points)
+
+  # get the density estimate
+  density_continuous <- do.call(stats::density, args)
+  x_den    <- density_continuous$x
+  y_den    <- density_continuous$y
+
+
+  # apply transformations
+  if(!is.null(transformation)){
+    x_den <- .density.prior_transformation_x(x_den, transformation, transformation_arguments)
+    y_den <- .density.prior_transformation_y(x_den, y_den, transformation, transformation_arguments)
+    x     <- .density.prior_transformation_x(x, transformation, transformation_arguments)
+  }
+
+  out_den <- list(
+    call    = call("density", "mixed samples"),
+    bw      = NULL,
+    n       = n_points,
+    x       = x_den,
+    y       = y_den,
+    samples = x
+  )
+
+  class(out_den) <- c("density", "density.prior", "density.prior.factor", "density.prior.simple")
+  attr(out_den, "x_range")    <- range(x_den)
+  attr(out_den, "y_range")    <- c(0, max(y_den))
+
+  return(out_den)
 }

@@ -52,12 +52,20 @@ test_that("Prior print function works", {
 
   # check factor priors
   p14 <- prior_factor(distribution = "mnormal", contrast = "orthonormal", parameters = list(0, 1))
-  p15 <- prior_factor(distribution = "normal", contrast = "dummy", parameters = list(mean = 0, sd = 1))
-  p16 <- prior_factor(distribution = "beta",   contrast = "dummy", parameters = list(alpha = 1, beta = 1))
+  p15 <- prior_factor(distribution = "normal", contrast = "treatment", parameters = list(mean = 0, sd = 1))
+  p16 <- prior_factor(distribution = "beta",   contrast = "treatment", parameters = list(alpha = 1, beta = 1))
+  p17 <- prior_factor(distribution = "beta",   contrast = "independent", parameters = list(alpha = 1, beta = 1))
+  p18 <- prior_factor(distribution = "mnormal", contrast = "meandif", parameters = list(0, 0.5))
+  p19 <- prior_factor(distribution = "point", contrast = "orthonormal", parameters = list(location = 0))
+  p20 <- prior_factor(distribution = "spike", contrast = "meandif", parameters = list(location = 0))
 
   expect_equal(utils::capture.output(print(p14)),  "orthonormal contrast: mNormal(0, 1)")
   expect_equal(utils::capture.output(print(p15)),  "treatment contrast: Normal(0, 1)")
   expect_equal(utils::capture.output(print(p16)),  "treatment contrast: Beta(1, 1)")
+  expect_equal(utils::capture.output(print(p17)),  "independent contrast: Beta(1, 1)")
+  expect_equal(utils::capture.output(print(p18)),  "mean difference contrast: mNormal(0, 0.5)")
+  expect_equal(utils::capture.output(print(p19)),  "orthonormal contrast: mSpike(0)")
+  expect_equal(utils::capture.output(print(p20)),  "mean difference contrast: mSpike(0)")
 
   # check plot names
   empty_plot <- function(){
@@ -108,14 +116,18 @@ test_that("Prior print function works", {
     text(0.5, 0.7, print(p14, plot = TRUE))
     text(0.5, 0.6, print(p15, plot = TRUE))
     text(0.5, 0.5, print(p16, plot = TRUE))
+    text(0.5, 0.4, print(p17, plot = TRUE))
+    text(0.5, 0.3, print(p18, plot = TRUE))
+    text(0.5, 0.2, print(p19, plot = TRUE))
+    text(0.5, 0.1, print(p20, plot = TRUE))
   })
 
-  p17 <- prior_spike_and_slab(prior("gamma", list(1, 2), list(0, Inf)),
+  p21 <- prior_spike_and_slab(prior("gamma", list(1, 2), list(0, Inf)),
                               prior_inclusion = prior("beta", list(3, 2)))
-  expect_equal(utils::capture.output(print(p17)), "Gamma(1, 2) * Beta(3, 2)")
-  expect_equal(utils::capture.output(print(p17, short_name = TRUE)), "G(1, 2) * B(3, 2)")
+  expect_equal(utils::capture.output(print(p21)), "Gamma(1, 2) * Beta(3, 2)")
+  expect_equal(utils::capture.output(print(p21, short_name = TRUE)), "G(1, 2) * B(3, 2)")
   expect_doppelganger("priors-print-4", function(){
     empty_plot()
-    text(0.5, 1, print(p17, plot = TRUE))
+    text(0.5, 1, print(p21, plot = TRUE))
   })
 })

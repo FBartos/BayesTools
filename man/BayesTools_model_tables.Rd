@@ -8,8 +8,11 @@
 \alias{JAGS_estimates_table}
 \alias{JAGS_inference_table}
 \alias{JAGS_summary_table}
+\alias{model_summary_empty_table}
 \alias{runjags_estimates_empty_table}
 \alias{runjags_inference_empty_table}
+\alias{JAGS_estimates_empty_table}
+\alias{JAGS_inference_empty_table}
 \alias{stan_estimates_table}
 \title{Create BayesTools model tables}
 \usage{
@@ -21,7 +24,8 @@ model_summary_table(
   warnings = NULL,
   remove_spike_0 = TRUE,
   short_name = FALSE,
-  formula_prefix = TRUE
+  formula_prefix = TRUE,
+  remove_parameters = NULL
 )
 
 runjags_estimates_table(
@@ -32,6 +36,7 @@ runjags_estimates_table(
   warnings = NULL,
   conditional = FALSE,
   remove_spike_0 = TRUE,
+  transform_factors = FALSE,
   transform_orthonormal = FALSE,
   formula_prefix = TRUE,
   remove_inclusion = FALSE,
@@ -54,6 +59,7 @@ JAGS_estimates_table(
   warnings = NULL,
   conditional = FALSE,
   remove_spike_0 = TRUE,
+  transform_factors = FALSE,
   transform_orthonormal = FALSE,
   formula_prefix = TRUE,
   remove_inclusion = FALSE,
@@ -76,12 +82,24 @@ JAGS_summary_table(
   warnings = NULL,
   remove_spike_0 = TRUE,
   short_name = FALSE,
-  formula_prefix = TRUE
+  formula_prefix = TRUE,
+  remove_parameters = NULL
+)
+
+model_summary_empty_table(
+  model_description = NULL,
+  title = NULL,
+  footnotes = NULL,
+  warnings = NULL
 )
 
 runjags_estimates_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
 
 runjags_inference_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
+
+JAGS_estimates_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
+
+JAGS_inference_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
 
 stan_estimates_table(
   fit,
@@ -117,6 +135,9 @@ shortened. Defaults to \code{FALSE}.}
 \item{formula_prefix}{whether the parameter prefix from formula should
 be printed. Defaults to \code{TRUE}.}
 
+\item{remove_parameters}{parameters to be removed from the summary. Defaults
+to \code{NULL}, i.e., including all parameters.}
+
 \item{fit}{runjags model fit}
 
 \item{transformations}{named list of transformations to be applied
@@ -125,15 +146,16 @@ to specific parameters}
 \item{conditional}{summarizes estimates conditional on being included
 in the model for spike and slab priors. Defaults to \code{FALSE}.}
 
-\item{transform_orthonormal}{whether factors with orthonormal prior
-distributions should be transformed to differences from the grand
-mean}
+\item{transform_factors}{whether factors with orthonormal/meandif
+prior distribution should be transformed to differences from the
+grand mean}
+
+\item{transform_orthonormal}{(to be depreciated) whether factors
+with orthonormal prior distributions should be transformed to
+differences from the grand mean}
 
 \item{remove_inclusion}{whether estimates of the inclusion probabilities
 should be excluded from the summary table. Defaults to \code{FALSE}.}
-
-\item{remove_parameters}{parameters to be removed from the summary. Defaults
-to \code{NULL}, i.e., including all parameters.}
 }
 \value{
 \code{model_summary_table} returns a table with

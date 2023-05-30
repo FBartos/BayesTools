@@ -12,4 +12,6 @@
 ##' @docType package
 ##' @author František Bartoš \email{f.bartos96@@gmail.com}
 ##' @keywords package
+##' @importFrom rlang .data
+##' @importFrom Rdpack reprompt
 "_PACKAGE"

@@ -75,7 +75,7 @@
 <polygon points='340.86,238.02 350.76,238.02 350.76,228.12 340.86,228.12 ' style='stroke-width: 0.71; stroke: none; fill: #CCCCCC;' />
 <polygon points='340.86,170.19 350.76,170.19 350.76,160.28 340.86,160.28 ' style='stroke-width: 0.71; stroke: none; fill: #CCCCCC;' />
 <polygon points='340.86,102.35 350.76,102.35 350.76,92.45 340.86,92.45 ' style='stroke-width: 0.71; stroke: none; fill: #CCCCCC;' />
-<polygon points='326.32,453.54 345.81,436.58 365.63,453.54 345.81,470.49 ' style='stroke-width: 1.07; stroke: none; fill: #000000;' />
+<polygon points='326.32,453.54 345.81,436.58 365.63,453.54 345.81,470.49 ' style='stroke-width: 1.07; stroke: none; stroke-linecap: butt; fill: #000000;' />
 <polyline points='345.81,521.37 345.81,46.53 ' style='stroke-width: 1.07; stroke-dasharray: 1.42,4.27; stroke-linecap: butt;' />
 </g>
 <g clip-path='url(#cpMC4wMHw3MjAuMDB8MC4wMHw1NzYuMDA=)'>
@@ -84,15 +84,15 @@
 <text x='5.48' y='253.06' style='font-size: 8.80px; font-family: sans;' textLength='31.31px' lengthAdjust='spacingAndGlyphs'>Model 2</text>
 <text x='5.48' y='185.22' style='font-size: 8.80px; font-family: sans;' textLength='31.31px' lengthAdjust='spacingAndGlyphs'>Model 3</text>
 <text x='5.48' y='117.39' style='font-size: 8.80px; font-family: sans;' textLength='31.31px' lengthAdjust='spacingAndGlyphs'>Model 4</text>
-<text x='714.52' y='456.64' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='66.54px' lengthAdjust='spacingAndGlyphs'>0.00 [-0.16, 0.16]</text>
-<text x='714.52' y='320.70' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='66.05px' lengthAdjust='spacingAndGlyphs'>0.00 [ 0.00, 0.00]</text>
-<text x='714.52' y='253.25' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='66.05px' lengthAdjust='spacingAndGlyphs'>0.00 [ 0.00, 0.00]</text>
-<text x='714.52' y='185.28' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='66.54px' lengthAdjust='spacingAndGlyphs'>0.05 [-0.29, 0.38]</text>
-<text x='714.52' y='117.31' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='66.54px' lengthAdjust='spacingAndGlyphs'>0.07 [-0.25, 0.40]</text>
-<text x='714.52' y='303.97' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='92.96px' lengthAdjust='spacingAndGlyphs'>BF = 3.33 [0.25 -&gt; 0.53]</text>
-<text x='714.52' y='236.00' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='92.96px' lengthAdjust='spacingAndGlyphs'>BF = 1.54 [0.25 -&gt; 0.34]</text>
-<text x='714.52' y='168.03' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='92.96px' lengthAdjust='spacingAndGlyphs'>BF = 0.33 [0.25 -&gt; 0.10]</text>
-<text x='714.52' y='100.58' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='92.96px' lengthAdjust='spacingAndGlyphs'>BF = 0.11 [0.25 -&gt; 0.03]</text>
+<text x='714.52' y='456.56' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='66.54px' lengthAdjust='spacingAndGlyphs'>0.00 [-0.16, 0.16]</text>
+<text x='714.52' y='320.89' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='66.05px' lengthAdjust='spacingAndGlyphs'>0.00 [ 0.00, 0.00]</text>
+<text x='714.52' y='253.06' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='66.05px' lengthAdjust='spacingAndGlyphs'>0.00 [ 0.00, 0.00]</text>
+<text x='714.52' y='185.22' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='66.54px' lengthAdjust='spacingAndGlyphs'>0.05 [-0.29, 0.38]</text>
+<text x='714.52' y='117.39' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='66.54px' lengthAdjust='spacingAndGlyphs'>0.07 [-0.25, 0.40]</text>
+<text x='714.52' y='303.93' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='92.96px' lengthAdjust='spacingAndGlyphs'>BF = 3.33 [0.25 -&gt; 0.53]</text>
+<text x='714.52' y='236.10' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='92.96px' lengthAdjust='spacingAndGlyphs'>BF = 1.54 [0.25 -&gt; 0.34]</text>
+<text x='714.52' y='168.26' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='92.96px' lengthAdjust='spacingAndGlyphs'>BF = 0.33 [0.25 -&gt; 0.10]</text>
+<text x='714.52' y='100.43' text-anchor='end' style='font-size: 8.80px; font-family: sans;' textLength='92.96px' lengthAdjust='spacingAndGlyphs'>BF = 0.11 [0.25 -&gt; 0.03]</text>
 <polyline points='99.61,547.85 99.61,545.11 ' style='stroke-width: 1.07; stroke: #333333; stroke-linecap: butt;' />
 <polyline points='161.16,547.85 161.16,545.11 ' style='stroke-width: 1.07; stroke: #333333; stroke-linecap: butt;' />
 <polyline points='222.71,547.85 222.71,545.11 ' style='stroke-width: 1.07; stroke: #333333; stroke-linecap: butt;' />

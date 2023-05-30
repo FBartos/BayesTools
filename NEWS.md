@@ -1,3 +1,30 @@
+## version 0.2.14
+### Features
+- adding `contrast = "meandif"` to the `prior_factor` function which generates identical prior distributions for difference between the grand mean and each factor level
+- adding `contrast = "independent"` to the `prior_factor` function which generates independent identical prior distributions for each factor level
+- `remove_column` function for removing columns from `BayesTools_table` objects without breaking the attributes etc...
+- adding empty table functions (https://github.com/FBartos/BayesTools/issues/10)
+- adding `remove_parameters` argument to `model_summary_table()`
+- adding multivariate point distribution functions
+- adding `point` prior distribution as option to `prior_factor` with `"meandif"` and `"orthonormal"` contrasts
+- adding `marginal_posterior()` function which creates marginal prior and posterior distributions (according to a model formula specification)
+- adding `Savage_Dickey_BF()` function to compute density ratio Bayes factors based on `marginal_posterior` objects
+- adding `marginal_inference()` function to combine information from `marginal_posterior()` and `Savage_Dickey_BF()`
+- adding `marginal_estimates_table()` function to summarize `marginal_inference()` objects
+- adding `plot_marginal()` function to visualize `marginal_inference()` objects
+
+### Changes
+- `contrast = "meandif"` is now the default setting for `prior_factor` function
+- depreciating `transform_orthonormal` argument in favor of more general `transform_factors` argument 
+- switching `dummy` contrast/factor attributes to `treatment` for consistency (https://github.com/FBartos/BayesTools/issues/23)
+
+### Fixes
+- zero length inputs to `check_bool()`, `check_char()`, `check_real()`, `check_int()`, and `check_list()` do not throw error if `allow_NULL = TRUE`
+- properly aggregating identical priors in the plotting function (previously overlying multiple spikes on top of each other when attributes did not match)
+- `student-t` allowed as a prior distribution `name`
+- fixing factor contrast settings in `JAGS_evaluate_formula`
+- fixing spike prior transformations
+
 ## version 0.2.13
 ### Features
 - `runjags_estimates_table()` function can now handle factor transformations 

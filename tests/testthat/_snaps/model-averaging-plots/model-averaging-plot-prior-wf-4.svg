@@ -47,9 +47,9 @@
 <polyline points='66.85,542.49 66.85,21.71 ' style='stroke-width: 1.07; stroke: #FFFFFF; stroke-linecap: butt;' />
 <polyline points='97.69,542.49 97.69,21.71 ' style='stroke-width: 1.07; stroke: #FFFFFF; stroke-linecap: butt;' />
 <polyline points='683.68,542.49 683.68,21.71 ' style='stroke-width: 1.07; stroke: #FFFFFF; stroke-linecap: butt;' />
-<polygon points='66.85,45.38 97.69,45.38 97.69,282.10 683.68,282.10 683.68,282.10 97.69,282.10 97.69,45.38 66.85,45.38 ' style='stroke-width: 1.07; stroke: none; fill: #CCCCCC;' />
+<polygon points='66.85,45.38 97.69,45.38 97.69,282.10 683.68,282.10 683.68,282.10 97.69,282.10 97.69,45.38 66.85,45.38 ' style='stroke-width: 1.07; stroke: none; stroke-linecap: butt; fill: #CCCCCC;' />
 <polyline points='66.85,45.38 97.69,45.38 97.69,282.10 683.68,282.10 ' style='stroke-width: 8.54; stroke: #FF0000; stroke-linecap: butt;' />
-<polygon points='66.85,45.38 97.69,45.38 97.69,282.10 683.68,282.10 683.68,282.10 97.69,282.10 97.69,45.38 66.85,45.38 ' style='stroke-width: 1.07; stroke: none; fill: #CCCCCC;' />
+<polygon points='66.85,45.38 97.69,45.38 97.69,282.10 683.68,282.10 683.68,282.10 97.69,282.10 97.69,45.38 66.85,45.38 ' style='stroke-width: 1.07; stroke: none; stroke-linecap: butt; fill: #CCCCCC;' />
 <polyline points='66.85,45.38 97.69,45.38 97.69,282.10 683.68,282.10 ' style='stroke-width: 6.40; stroke: #0000FF; stroke-dasharray: 34.14,34.14; stroke-linecap: butt;' />
 </g>
 <g clip-path='url(#cpMC4wMHw3MjAuMDB8MC4wMHw1NzYuMDA=)'>

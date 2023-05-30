@@ -97,18 +97,14 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
         this_prior <- prior_list[[factor]]
       }
 
-      if(is.prior.dummy(this_prior)){
+      if(is.prior.treatment(this_prior)){
         stats::contrasts(data[,factor]) <- "contr.treatment"
+      }else if(is.prior.independent(this_prior)){
+        stats::contrasts(data[,factor]) <- "contr.independent"
       }else if(is.prior.orthonormal(this_prior)){
         stats::contrasts(data[,factor]) <- "contr.orthonormal"
-      }else if(is.prior.point(this_prior)){
-        # change the prior class to behave as factor
-        class(this_prior) <-  c(class(this_prior), "prior.factor")
-        if(is.prior.spike_and_slab(prior_list[[factor]])){
-          this_prior -> prior_list[[factor]][["variable"]]
-        }else{
-          this_prior -> prior_list[[factor]]
-        }
+      }else if(is.prior.meandif(this_prior)){
+        stats::contrasts(data[,factor]) <- "contr.meandif"
       }else{
         stop(paste0("Unsupported prior distribution defined for '", factor, "' factor variable. See '?prior_factor' for details."))
       }
@@ -174,8 +170,12 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
       this_prior <- prior_list[[model_terms[i]]]
     }
 
-    # check whether the term is an interaction or not
+    # check whether the term is an interaction or not and save the corresponding attributes
     attr(this_prior, "interaction") <- grepl("__xXx__", model_terms[i])
+    if(.is_prior_interaction(this_prior)){
+      attr(this_prior, "interaction_terms") <- strsplit(model_terms[i], "__xXx__")[[1]]
+    }
+
 
     if(model_terms_type[i] == "continuous"){
 
@@ -194,8 +194,12 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
       # factor variables or interactions with a factor requires factor style prior
 
       # add levels information attributes to factors
-      attr(this_prior, "levels") <- sum(terms_indexes == i) + 1
-      if(attr(this_prior, "interaction")){
+      if(is.prior.independent(this_prior)){
+        attr(this_prior, "levels") <- sum(terms_indexes == i)
+      }else{
+        attr(this_prior, "levels") <- sum(terms_indexes == i) + 1
+      }
+      if(.is_prior_interaction(this_prior)){
         level_names <- list()
         for(sub_term in strsplit(model_terms[i], "__xXx__")[[1]]){
           if(model_terms_type[sub_term] == "factor"){
@@ -340,28 +344,32 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
       }
 
       if(is.factor(data[,factor])){
-        if(all(levels(data[,factor]) %in% attr(this_prior, "level_names"))){
+        if(all(levels(data[,factor]) %in% .get_prior_factor_level_names(this_prior))){
           # either the formatting is correct, or the supplied levels are a subset of the original levels
           # reformat to check ordering and etc...
-          data[,factor] <- factor(data[,factor], levels = attr(this_prior, "level_names"))
+          data[,factor] <- factor(data[,factor], levels = .get_prior_factor_level_names(this_prior))
         }else{
           # there are some additional levels
           stop(paste0("Levels specified in the '", factor, "' factor variable do not match the levels used for model specification."))
         }
-      }else if(all(unique(data[,factor]) %in% attr(this_prior, "level_names"))){
+      }else if(all(unique(data[,factor]) %in% .get_prior_factor_level_names(this_prior))){
         # the variable was not passed as a factor but the values matches the factor levels
-        data[,factor] <- factor(data[,factor], levels = attr(this_prior, "level_names"))
+        data[,factor] <- factor(data[,factor], levels = .get_prior_factor_level_names(this_prior))
       }else{
         # there are some additional mismatching values
         stop(paste0("Levels specified in the '", factor, "' factor variable do not match the levels used for model specification."))
       }
-    }
 
-    # set the contrast
-    if(is.prior.orthonormal(this_prior)){
-      stats::contrasts(data[,factor]) <- "contr.orthonormal"
-    }else if(is.prior.dummy(this_prior)){
-      stats::contrasts(data[,factor]) <- "contr.treatment"
+      # set the contrast
+      if(is.prior.orthonormal(this_prior)){
+        stats::contrasts(data[,factor]) <- "contr.orthonormal"
+      }else if(is.prior.meandif(this_prior)){
+        stats::contrasts(data[,factor]) <- "contr.meandif"
+      }else if(is.prior.independent(this_prior)){
+        stats::contrasts(data[,factor]) <- "contr.independent"
+      }else if(is.prior.treatment(this_prior)){
+        stats::contrasts(data[,factor]) <- "contr.treatment"
+      }
     }
   }
   if(any(predictors_type == "continuous")){
@@ -388,46 +396,137 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
 
   ### evaluate the design matrix on the samples -> output[data, posterior]
   if(has_intercept){
+
     terms_indexes    <- attr(model_matrix, "assign") + 1
     terms_indexes[1] <- 0
 
-    output           <- matrix(posterior[,JAGS_parameter_names("intercept", formula_parameter = parameter)], nrow = nrow(data), ncol = nrow(posterior), byrow = TRUE)
-  }else{
-    terms_indexes    <- attr(model_matrix, "assign")
+    # check for scaling factors
+    temp_multiply_by <- .get_parameter_scaling_factor_matrix(term = "intercept", prior_list = prior_list_formula, posterior = posterior, nrow = nrow(data), ncol = nrow(posterior))
 
+    output           <- temp_multiply_by * matrix(posterior[,JAGS_parameter_names("intercept", formula_parameter = parameter)], nrow = nrow(data), ncol = nrow(posterior), byrow = TRUE)
+
+  }else{
+
+    terms_indexes    <- attr(model_matrix, "assign")
     output           <- matrix(0, nrow = nrow(data), ncol = nrow(posterior))
+
   }
 
   # add remaining terms (omitting the intercept indexed as NA)
   for(i in unique(terms_indexes[terms_indexes > 0])){
 
-    # check for scaling factors
-    if(!is.null(attr(prior_list_formula[[model_terms[i]]], "multiply_by"))){
-      if(is.numeric(attr(prior_list_formula[[model_terms[i]]], "multiply_by"))){
-        temp_multiply_by <- matrix(attr(prior_list_formula[[model_terms[i]]], "multiply_by"), nrow = nrow(data), ncol = nrow(posterior))
-      }else{
-        temp_multiply_by <- matrix(posterior[,JAGS_parameter_names(attr(prior_list_formula[[model_terms[i]]], "multiply_by"))], nrow = nrow(data), ncol = nrow(posterior), byrow = TRUE)
-      }
-    }else{
-      temp_multiply_by <- matrix(1, nrow = nrow(data), ncol = nrow(posterior))
-    }
-
-
     # subset the model matrix
-    temp_data    <- model_matrix[,terms_indexes == i,drop = FALSE]
+    temp_data <- model_matrix[,terms_indexes == i,drop = FALSE]
 
     # get the posterior (unless point prior was used)
     if(is.prior.point(prior_list_formula[[model_terms[i]]])){
-      temp_posterior <- matrix(prior_list_formula[[model_terms[i]]]$parameters[["location"]], nrow = nrow(posterior), ncol = if(model_terms_type[i] == "factor") attr(prior_list_formula[[model_terms[i]]], "levels")-1 else 1)
+      temp_posterior <- matrix(
+        prior_list_formula[[model_terms[i]]]$parameters[["location"]],
+        nrow = nrow(posterior),
+        ncol = if(model_terms_type[i] == "factor") .get_prior_factor_levels(prior_list_formula[[model_terms[i]]]) else 1
+      )
     }else{
-      temp_posterior <- posterior[,paste0(JAGS_parameter_names(model_terms[i], formula_parameter = parameter), if(model_terms_type[i] == "factor" && attr(prior_list_formula[[model_terms[i]]], "levels") > 2) paste0("[", 1:(attr(prior_list_formula[[model_terms[i]]], "levels")-1), "]")),drop = FALSE]
+      temp_posterior <- posterior[,paste0(
+        JAGS_parameter_names(model_terms[i], formula_parameter = parameter),
+        if(model_terms_type[i] == "factor" && .get_prior_factor_levels(prior_list_formula[[model_terms[i]]]) > 1) paste0("[", 1:.get_prior_factor_levels(prior_list_formula[[model_terms[i]]]), "]"))
+        ,drop = FALSE]
     }
+
+    # check for scaling factors
+    temp_multiply_by <- .get_parameter_scaling_factor_matrix(term = model_terms[i], prior_list = prior_list_formula, posterior = posterior, nrow = nrow(data), ncol = nrow(posterior))
 
     output <- output + temp_multiply_by * (temp_data %*% t(temp_posterior))
 
   }
 
   return(output)
+}
+
+
+.get_parameter_scaling_factor_matrix <- function(term, prior_list, posterior, nrow, ncol){
+
+  if(!is.null(attr(prior_list[[term]], "multiply_by"))){
+    if(is.numeric(attr(prior_list[[term]], "multiply_by"))){
+      temp_multiply_by <- matrix(attr(prior_list[[term]], "multiply_by"), nrow = nrow, ncol = ncol)
+    }else{
+      temp_multiply_by <- matrix(posterior[,JAGS_parameter_names(attr(prior_list[[term]], "multiply_by"))], nrow = nrow, ncol = ncol, byrow = TRUE)
+    }
+  }else{
+    temp_multiply_by <- matrix(1, nrow = nrow, ncol = ncol)
+  }
+
+  return(temp_multiply_by)
+}
+
+#' @title Transform factor posterior samples into differences from the mean
+#'
+#' @description Transforms posterior samples from model-averaged posterior
+#' distributions based on meandif/orthonormal prior distributions into differences from
+#' the mean.
+#'
+#' @param samples (a list) of mixed posterior distributions created with
+#' \code{mix_posteriors} function
+#'
+#' @return \code{transform_meandif_samples} returns a named list of mixed posterior
+#' distributions (either a vector of matrix).
+#'
+#' @seealso [mix_posteriors] [transform_meandif_samples] [transform_meandif_samples] [transform_orthonormal_samples]
+#'
+#' @export
+transform_factor_samples <- function(samples){
+
+  check_list(samples, "samples", allow_NULL = TRUE)
+
+  samples <- transform_meandif_samples(samples)
+  samples <- transform_orthonormal_samples(samples)
+
+  return(samples)
+}
+
+#' @title Transform meandif posterior samples into differences from the mean
+#'
+#' @description Transforms posterior samples from model-averaged posterior
+#' distributions based on meandif prior distributions into differences from
+#' the mean.
+#'
+#' @param samples (a list) of mixed posterior distributions created with
+#' \code{mix_posteriors} function
+#'
+#' @return \code{transform_meandif_samples} returns a named list of mixed posterior
+#' distributions (either a vector of matrix).
+#'
+#' @seealso [mix_posteriors] [contr.meandif]
+#'
+#' @export
+transform_meandif_samples <- function(samples){
+
+  check_list(samples, "samples", allow_NULL = TRUE)
+
+  for(i in seq_along(samples)){
+    if(!inherits(samples[[i]],"mixed_posteriors.meandif_transformed") && inherits(samples[[i]], "mixed_posteriors.factor") && attr(samples[[i]], "meandif")){
+
+      meandif_samples     <- samples[[i]]
+      transformed_samples <- meandif_samples %*% t(contr.meandif(1:(attr(samples[[i]], "levels")+1)))
+
+      if(attr(samples[[i]], "interaction")){
+        if(length(attr(samples[[i]], "level_names")) == 1){
+          transformed_names <- paste0(names(samples)[i], " [dif: ", attr(samples[[i]], "level_names")[[1]],"]")
+        }else{
+          stop("meandif de-transformation for interaction of multiple factors is not implemented.")
+        }
+      }else{
+        transformed_names <- paste0(names(samples)[i], " [dif: ", attr(samples[[i]], "level_names"),"]")
+      }
+
+      colnames(transformed_samples)   <- transformed_names
+      attributes(transformed_samples) <- c(attributes(transformed_samples), attributes(meandif_samples)[!names(attributes(meandif_samples)) %in% names(attributes(transformed_samples))])
+      class(transformed_samples)      <- c(class(transformed_samples), "mixed_posteriors.meandif_transformed")
+
+      samples[[i]] <- transformed_samples
+    }
+  }
+
+  return(samples)
 }
 
 #' @title Transform orthonomal posterior samples into differences from the mean
@@ -453,7 +552,7 @@ transform_orthonormal_samples <- function(samples){
     if(!inherits(samples[[i]],"mixed_posteriors.orthonormal_transformed") && inherits(samples[[i]], "mixed_posteriors.factor") && attr(samples[[i]], "orthonormal")){
 
       orthonormal_samples <- samples[[i]]
-      transformed_samples <- orthonormal_samples %*% t(contr.orthonormal(1:attr(samples[[i]], "levels")))
+      transformed_samples <- orthonormal_samples %*% t(contr.orthonormal(1:(attr(samples[[i]], "levels")+1)))
 
       if(attr(samples[[i]], "interaction")){
         if(length(attr(samples[[i]], "level_names")) == 1){
@@ -468,6 +567,38 @@ transform_orthonormal_samples <- function(samples){
       colnames(transformed_samples)   <- transformed_names
       attributes(transformed_samples) <- c(attributes(transformed_samples), attributes(orthonormal_samples)[!names(attributes(orthonormal_samples)) %in% names(attributes(transformed_samples))])
       class(transformed_samples)      <- c(class(transformed_samples), "mixed_posteriors.orthonormal_transformed")
+
+      samples[[i]] <- transformed_samples
+    }
+  }
+
+  return(samples)
+}
+
+# not part of transform factor samples (as it's usefull only for marginal effects)
+transform_treatment_samples <- function(samples){
+
+  check_list(samples, "samples", allow_NULL = TRUE)
+
+  for(i in seq_along(samples)){
+    if(!inherits(samples[[i]],"mixed_posteriors.treatment_transformed") && inherits(samples[[i]], "mixed_posteriors.factor") && attr(samples[[i]], "treatment")){
+
+      treatment_samples   <- samples[[i]]
+      transformed_samples <- treatment_samples %*% t(stats::contr.treatment(1:(attr(samples[[i]], "levels")+1)))
+
+      if(attr(samples[[i]], "interaction")){
+        if(length(attr(samples[[i]], "level_names")) == 1){
+          transformed_names <- paste0(names(samples)[i], " [dif: ", attr(samples[[i]], "level_names")[[1]],"]")
+        }else{
+          stop("orthonormal de-transformation for interaction of multiple factors is not implemented.")
+        }
+      }else{
+        transformed_names <- paste0(names(samples)[i], " [dif: ", attr(samples[[i]], "level_names"),"]")
+      }
+
+      colnames(transformed_samples)   <- transformed_names
+      attributes(transformed_samples) <- c(attributes(transformed_samples), attributes(treatment_samples)[!names(attributes(treatment_samples)) %in% names(attributes(transformed_samples))])
+      class(transformed_samples)      <- c(class(transformed_samples), "mixed_posteriors.treatment_transformed")
 
       samples[[i]] <- transformed_samples
     }
@@ -517,6 +648,91 @@ contr.orthonormal <- function(n, contrasts = TRUE){
     Sigma_a <- I_a - J_a/a
     cont    <- eigen(Sigma_a)$vectors[, seq_len(a - 1), drop = FALSE]
   }
+
+  return(cont)
+}
+
+#' @title Mean difference contrast matrix
+#'
+#' @description Return a matrix of mean difference contrasts.
+#' This is an adjustment to the \code{contr.orthonormal} that ascertains that the prior
+#' distributions on difference between the gran mean and factor level are identical independent
+#' of the number of factor levels (which does not hold for the orthonormal contrast). Furthermore,
+#' the contrast is re-scaled so the specified prior distribution exactly corresponds to the prior
+#' distribution on difference between each factor level and the grand mean -- this is approximately
+#' twice the scale of \code{contr.orthonormal}.
+#'
+#' @param n a vector of levels for a factor, or the number of levels
+#' @param contrasts logical indicating whether contrasts should be computed
+#'
+#' @examples
+#' contr.meandif(c(1, 2))
+#' contr.meandif(c(1, 2, 3))
+#'
+#' @references
+#' \insertAllCited{}
+#'
+#' @return A matrix with n rows and k columns, with k = n - 1 if \code{contrasts = TRUE} and k = n
+#' if \code{contrasts = FALSE}.
+#'
+#' @export
+contr.meandif <- function(n, contrasts = TRUE){
+
+  if(length(n) <= 1L){
+    if(is.numeric(n) && length(n) == 1L && n > 1L){
+      return(TRUE)
+    }else{
+      stop("Not enough degrees of freedom to define contrasts.")
+    }
+  }else{
+    n <- length(n)
+  }
+
+  cont <- diag(n)
+  if(contrasts){
+    a       <- n
+    I_a     <- diag(a)
+    J_a     <- matrix(1, nrow = a, ncol = a)
+    Sigma_a <- I_a - J_a/a
+    cont    <- eigen(Sigma_a)$vectors[, seq_len(a - 1), drop = FALSE]
+    cont    <- cont / (sqrt(1 - 1/n))
+  }
+
+  return(cont)
+}
+
+
+#' @title Independent contrast matrix
+#'
+#' @description Return a matrix of independent contrasts -- a level for each term.
+#'
+#' @param n a vector of levels for a factor, or the number of levels
+#' @param contrasts logical indicating whether contrasts should be computed
+#'
+#' @examples
+#' contr.independent(c(1, 2))
+#' contr.independent(c(1, 2, 3))
+#'
+#' @references
+#' \insertAllCited{}
+#'
+#' @return A matrix with n rows and k columns, with k = n if \code{contrasts = TRUE} and k = n
+#' if \code{contrasts = FALSE}.
+#'
+#' @export
+contr.independent <- function(n, contrasts = TRUE){
+
+  if(length(n) <= 1L){
+    if(is.numeric(n) && length(n) == 1L && n >= 1L){
+      return(TRUE)
+    }else{
+      stop("Not enough degrees of freedom to define contrasts.")
+    }
+  }else{
+    n <- length(n)
+  }
+
+  cont <- diag(x = 1, nrow = n, ncol = n)
 
   return(cont)
 }
@@ -577,14 +793,14 @@ JAGS_parameter_names   <- function(parameters, formula_parameter = NULL){
 
 .JAGS_prior_factor_names <- function(parameter, prior){
 
-  if(!attr(prior, "interaction")){
-    if(attr(prior, "levels") == 2){
+  if(!.is_prior_interaction(prior)){
+    if(.get_prior_factor_levels(prior) == 1){
       par_names <- parameter
     }else{
-      par_names <- paste0(parameter,"[",1:(attr(prior, "levels")-1),"]")
+      par_names <- paste0(parameter,"[",1:.get_prior_factor_levels(prior),"]")
     }
   }else if(length(attr(prior, "levels")) == 1){
-    par_names <-  paste0(parameter,"[",1:(attr(prior, "levels")-1),"]")
+    par_names <-  paste0(parameter,"[",1:.get_prior_factor_levels(prior),"]")
   }
 
   return(par_names)

@@ -121,7 +121,6 @@ plot.prior <- function(x, plot_type = "base",
 
   }
 
-
   # plot PET-PEESE
   if((is.prior.PET(x) | is.prior.PEESE(x)) & !individual){
     plots <- .plot.prior.PETPEESE(x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
@@ -132,10 +131,9 @@ plot.prior <- function(x, plot_type = "base",
     }
   }
 
-
-  # plot orthonormal priors
-  if(is.prior.orthonormal(x)){
-    plots <- .plot.prior.orthonormal(x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
+  # spike and slab prior plots
+  if(is.prior.spike_and_slab(x)){
+    plots <- .plot.prior.spike_and_slab(x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
     if(plot_type == "ggplot"){
       return(plots)
     }else{
@@ -143,9 +141,19 @@ plot.prior <- function(x, plot_type = "base",
     }
   }
 
-  # spike and slab prior plots
-  if(is.prior.spike_and_slab(x)){
-    plots <- .plot.prior.spike_and_slab(x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
+  # point prior plots
+  if(is.prior.point(x)){
+    plots <- .plot.prior.point( x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
+    if(plot_type == "ggplot"){
+      return(plots)
+    }else{
+      return(invisible())
+    }
+  }
+
+  # plot orthonormal and meandif priors
+  if(is.prior.orthonormal(x) | is.prior.meandif(x)){
+    plots <- .plot.prior.orthonormal_or_meandif(x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
     if(plot_type == "ggplot"){
       return(plots)
     }else{
@@ -165,12 +173,7 @@ plot.prior <- function(x, plot_type = "base",
 
   # default prior plots
   if(is.prior.simple(x)){
-    if(inherits(plot_data, "density.prior.simple")){
-      plots <- .plot.prior.simple(x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
-    }else if(inherits(plot_data, "density.prior.point")){
-      plots <- .plot.prior.point( x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
-    }
-
+    plots <- .plot.prior.simple(x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
     if(plot_type == "ggplot"){
       return(plots)
     }else{
@@ -191,7 +194,7 @@ plot.prior <- function(x, plot_type = "base",
   parameter_names <- if(is.null(dots[["parameter_names"]])) FALSE else dots[["parameter_names"]]
 
   main      <- if(!is.null(attr(plot_data, "steps"))) print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names) else ""
-  xlab      <- if(!is.null(attr(plot_data, "steps"))) bquote(omega["["*.(attr(plot_data, "steps")[1])*","~.(attr(plot_data, "steps")[2])*"]"]) else bquote(.(if(!is.null(par_name)){bquote(.(par_name)~"~")})~.(print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names)))
+  xlab      <- if(!is.null(attr(plot_data, "steps"))) bquote(omega["["*.(attr(plot_data, "steps")[1])*","~.(attr(plot_data, "steps")[2])*"]"]) else bquote(.(if(is.prior.orthonormal(x) | is.prior.meandif(x))"dif")*.(if(!is.null(par_name)){bquote(.(par_name)~"~")})~.(print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names)))
   ylab      <- if(!is.null(dots[["ylab"]])) dots[["ylab"]] else "Probability"
 
   # add it to the user input if desired
@@ -410,7 +413,7 @@ plot.prior <- function(x, plot_type = "base",
     return(plot)
   }
 }
-.plot.prior.orthonormal    <- function(x, plot_type, plot_data, par_name = NULL, ...){
+.plot.prior.orthonormal_or_meandif <- function(x, plot_type, plot_data, par_name = NULL, ...){
 
   # get default plot settings
   dots      <- list(...)
@@ -436,13 +439,13 @@ plot.prior <- function(x, plot_type = "base",
   if(plot_type == "base"){
 
     .plot.prior_empty("simple", dots)
-    .lines.prior.orthonormal(plot_data, ...)
+    .lines.prior.orthonormal_or_meandif(plot_data, ...)
     plot <- NULL
 
   }else if(plot_type == "ggplot"){
 
     plot <- .ggplot.prior_empty("simple", dots)
-    plot <- plot + .geom_prior.orthonormal(plot_data, ...)
+    plot <- plot + .geom_prior.orthonormal_or_meandif(plot_data, ...)
 
   }
 
@@ -761,7 +764,6 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     return(invisible())
   }
 
-
   # plot PET-PEESE
   if((is.prior.PET(x) | is.prior.PEESE(x))){
     if(!individual){
@@ -774,9 +776,15 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     return(invisible())
   }
 
-  # plot orthonormal
-  if(is.prior.orthonormal(x)){
-    .lines.prior.orthonormal(plot_data, ...)
+  # point prior plots
+  if(is.prior.point(x)){
+    .lines.prior.point(plot_data, scale_y2 = scale_y2, ...)
+    return(invisible())
+  }
+
+  # plot orthonormal and meandif plots
+  if(is.prior.orthonormal(x) | is.prior.meandif(x)){
+    .lines.prior.orthonormal_or_meandif(plot_data, ...)
     return(invisible())
   }
 
@@ -794,11 +802,7 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 
   # default prior plots
   if(is.prior.simple(x)){
-    if(inherits(plot_data, "density.prior.simple")){
-      .lines.prior.simple(plot_data, ...)
-    }else if(inherits(plot_data, "density.prior.point")){
-      .lines.prior.point(plot_data, scale_y2 = scale_y2, ...)
-    }
+    .lines.prior.simple(plot_data, ...)
     return(invisible())
   }
 
@@ -869,9 +873,16 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   }
 
 
-  # plot orthonormal prior
-  if(is.prior.orthonormal(x)){
-    geom <- .geom_prior.orthonormal(plot_data, ...)
+  # plot point prior
+  if(is.prior.point(x)){
+    geom <- .geom_prior.point(plot_data, ...)
+    return(geom)
+  }
+
+
+  # plot orthonormal and meandif prior
+  if(is.prior.orthonormal(x) | is.prior.meandif(x)){
+    geom <- .geom_prior.orthonormal_or_meandif(plot_data, ...)
     return(geom)
   }
 
@@ -892,11 +903,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 
   # default prior plots
   if(is.prior.simple(x)){
-    if(inherits(plot_data, "density.prior.simple")){
-      geom <- .geom_prior.simple(plot_data, ...)
-    }else if(inherits(plot_data, "density.prior.point")){
-      geom <- .geom_prior.point(plot_data, ...)
-    }
+    geom <- .geom_prior.simple(plot_data, ...)
     return(geom)
   }
 
@@ -1002,7 +1009,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
 
   return(invisible())
 }
-.lines.prior.orthonormal     <- function(plot_data, ...){
+.lines.prior.orthonormal_or_meandif <- function(plot_data, ...){
 
   dots      <- list(...)
   col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
@@ -1045,10 +1052,10 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     data    = data.frame(
       x = plot_data$x,
       y = plot_data$y),
-    mapping = ggplot2::aes_string(
-      x = "x",
-      y = "y"),
-    size = lwd, linetype = lty, color = col)
+    mapping = ggplot2::aes(
+      x = .data[["x"]],
+      y = .data[["y"]]),
+    linewidth = lwd, linetype = lty, color = col)
 
   return(geom)
 }
@@ -1064,10 +1071,10 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     data    = data.frame(
       x = plot_data$x,
       y = plot_data$y),
-    mapping = ggplot2::aes_string(
-      x      = "x",
-      weight = "y"),
-    size = lwd, linetype = lty, color = col, fill = col, width = width)
+    mapping = ggplot2::aes(
+      x      = .data[["x"]],
+      weight = .data[["y"]]),
+    linewidth = lwd, linetype = lty, color = col, fill = col, width = width)
 
   return(geom)
 }
@@ -1085,13 +1092,13 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
         xend = unique(plot_data$x[plot_data$y != 0]),
         y    = 0,
         yend = plot_data$y[plot_data$y != 0] * scale_y2),
-      mapping = ggplot2::aes_string(
-        x    = "x",
-        xend = "xend",
-        y    = "y",
-        yend = "yend"),
-      arrow   = ggplot2::arrow(length = ggplot2::unit(0.5, "cm")),
-      size = 2*lwd, linetype = lty, color = col)
+      mapping = ggplot2::aes(
+        x    = .data[["x"]],
+        xend = .data[["xend"]],
+        y    = .data[["y"]],
+        yend = .data[["yend"]]),
+      arrow     = ggplot2::arrow(length = ggplot2::unit(0.5, "cm")),
+      linewidth = 2*lwd, linetype = lty, color = col)
   }else{
     geom <- NULL
   }
@@ -1125,19 +1132,19 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
       data    = data.frame(
         x = c(x_at,  rev(x_at)),
         y = c(x_lCI, rev(x_uCI))),
-      mapping = ggplot2::aes_string(
-        x = "x",
-        y = "y"),
+      mapping = ggplot2::aes(
+        x = .data[["x"]],
+        y = .data[["y"]]),
       fill    = col.fill
     ),
     ggplot2::geom_line(
       data    = data.frame(
         x = x_at,
         y = x_mean),
-      mapping = ggplot2::aes_string(
-        x = "x",
-        y = "y"),
-      size = lwd, linetype = lty, color = col)
+      mapping = ggplot2::aes(
+        x = .data[["x"]],
+        y = .data[["y"]]),
+      linewidth = lwd, linetype = lty, color = col)
   )
 
   return(geom)
@@ -1156,24 +1163,24 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
       data    = data.frame(
         x = c(plot_data$x,  rev(plot_data$x)),
         y = c(plot_data$y_lCI, rev(plot_data$y_uCI))),
-      mapping = ggplot2::aes_string(
-        x = "x",
-        y = "y"),
+      mapping = ggplot2::aes(
+        x = .data[["x"]],
+        y = .data[["y"]]),
       fill    = col.fill
     ),
     ggplot2::geom_line(
       data    = data.frame(
         x = plot_data$x,
         y = plot_data$y),
-      mapping = ggplot2::aes_string(
-        x = "x",
-        y = "y"),
-      size = lwd, linetype = lty, color = col)
+      mapping = ggplot2::aes(
+        x = .data[["x"]],
+        y = .data[["y"]]),
+      linewidth = lwd, linetype = lty, color = col)
   )
 
   return(geom)
 }
-.geom_prior.orthonormal      <- function(plot_data, ...){
+.geom_prior.orthonormal_or_meandif <- function(plot_data, ...){
 
   dots      <- list(...)
   col       <- if(!is.null(dots[["col"]]))      dots[["col"]]      else .plot.prior_settings()[["col"]]
@@ -1184,10 +1191,10 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     data    = data.frame(
       x = plot_data$x,
       y = plot_data$y),
-    mapping = ggplot2::aes_string(
-      x = "x",
-      y = "y"),
-    size = lwd, linetype = lty, color = col)
+    mapping = ggplot2::aes(
+      x = .data[["x"]],
+      y = .data[["y"]]),
+    linewidth = lwd, linetype = lty, color = col)
 
   return(geom)
 }
@@ -1206,18 +1213,30 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   names(col) <- dots[["level_names"]]
   names(lty) <- dots[["level_names"]]
 
-  geom <- list(
-    ggplot2::geom_line(
-      data    = plot_data,
-      mapping = ggplot2::aes_string(
-        x        = "x",
-        y        = "y",
-        color    = "level",
-        linetype = "level",
-        group    = "level"),
-      size = 1, show.legend = dots[["legend"]]),
-    ggplot2::scale_linetype_manual(name = "level", values = lty),
-    ggplot2::scale_color_manual(name = "level", values = col))
+  if(!is.null(dots[["hardcode"]]) && dots[["hardcode"]]){
+    geom <- lapply(unique(plot_data$level), function(lvl){
+      ggplot2::geom_line(
+        data    = plot_data[plot_data$level == lvl,],
+        mapping = ggplot2::aes(
+          x        = .data[["x"]],
+          y        = .data[["y"]]),
+        linewidth = 1, show.legend = dots[["legend"]], color = col[lvl], linetype = lty[lvl])
+    })
+  }else{
+    geom <- list(
+      ggplot2::geom_line(
+        data    = plot_data,
+        mapping = ggplot2::aes(
+          x        = .data[["x"]],
+          y        = .data[["y"]],
+          color    = .data[["level"]],
+          linetype = .data[["level"]],
+          group    = .data[["level"]]),
+        linewidth = 1, show.legend = dots[["legend"]]),
+      ggplot2::scale_linetype_manual(name = "level", values = lty),
+      ggplot2::scale_color_manual(name = "level", values = col))
+  }
+
 
   return(geom)
 }

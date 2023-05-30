@@ -30,7 +30,7 @@ corresponding to the null hypothesis)}
 be returned only for the conditional model. Defaults to \code{FALSE}}
 
 \item{seed}{integer specifying seed for sampling posteriors for
-model averaging. Defaults to \code{1}.}
+model averaging. Defaults to \code{NULL}.}
 
 \item{n_samples}{number of samples to be drawn for the model-averaged
 posterior distribution}
@@ -42,7 +42,7 @@ distributions (either a vector of matrix).
 \description{
 Model-averages posterior distributions based on
 a list of models, vector of parameters, and a list of
-indicators the models represent the null or alternative hypothesis
+indicators of the null or alternative hypothesis models
 for each parameter.
 }
 \seealso{

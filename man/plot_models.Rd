@@ -90,7 +90,7 @@ Plot estimates from models
 }
 \details{
 Plots prior and posterior estimates of the same parameter
-across multiple models (prior distributions with orthonormal contrast)
+across multiple models (prior distributions with orthonormal/meandif contrast
 are always plotted as differences from the grand mean).
 }
 \seealso{

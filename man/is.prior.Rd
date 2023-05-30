@@ -12,8 +12,10 @@
 \alias{is.prior.weightfunction}
 \alias{is.prior.factor}
 \alias{is.prior.orthonormal}
-\alias{is.prior.dummy}
+\alias{is.prior.treatment}
+\alias{is.prior.independent}
 \alias{is.prior.spike_and_slab}
+\alias{is.prior.meandif}
 \title{Reports whether x is a a prior object}
 \usage{
 is.prior(x)
@@ -38,9 +40,13 @@ is.prior.factor(x)
 
 is.prior.orthonormal(x)
 
-is.prior.dummy(x)
+is.prior.treatment(x)
+
+is.prior.independent(x)
 
 is.prior.spike_and_slab(x)
+
+is.prior.meandif(x)
 }
 \arguments{
 \item{x}{an object of test}

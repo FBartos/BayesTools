@@ -20,7 +20,7 @@ add_column(
 \item{column_values}{values of the new column}
 
 \item{column_position}{position of the new column (defaults to \code{NULL} which
-appends the columnt to the end)}
+appends the column to the end)}
 
 \item{column_type}{type of values of the new column table (important for formatting,
 defaults to \code{NULL} = the function tries to guess numeric / character based on the
