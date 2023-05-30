@@ -369,3 +369,130 @@ test_that("JAGS model-averaging functions work (formula + factors)",{
   })
 
 })
+
+test_that("JAGS model-averaging functions work (formula + spike factors)",{
+
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_on_cran()
+
+  set.seed(1)
+
+  data_formula <- data.frame(
+    x_fac3md = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C"))
+  )
+  data <- list(
+    y = rnorm(60, ifelse(data_formula$x_fac3md == "A", 0.0, ifelse(data_formula$x_fac3md == "B", -0.2, 0.4)), 1),
+    N = 60
+  )
+
+  # create model with mix of a formula and free parameters ---
+  formula_list0a <- list(mu = ~ 1)
+  formula_list0b <- list(mu = ~ x_fac3md)
+  formula_list1  <- list(mu = ~ x_fac3md)
+
+
+  formula_prior_list0a <- list(
+    mu    = list(
+      "intercept" = prior("normal", list(0, 5))
+    )
+  )
+  formula_prior_list0b <- list(
+    mu    = list(
+      "intercept" = prior("normal", list(0, 5)),
+      "x_fac3md"  = prior_factor("spike",  contrast = "meandif", list(0))
+    )
+  )
+  formula_prior_list1 <- list(
+    mu    = list(
+      "intercept" = prior("normal", list(0, 5)),
+      "x_fac3md"  = prior_factor("mnormal",  contrast = "meandif", list(0, 0.25))
+    )
+  )
+
+  prior_list        <- list(sigma = prior("lognormal", list(0, 1)))
+  formula_data_list <- list(mu = data_formula)
+
+  model_syntax <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  log_posterior <- function(parameters, data){
+    sum(stats::dnorm(data$y, parameters[["mu"]], parameters[["sigma"]], log = TRUE))
+  }
+
+  fit0a <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list0a, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0a, seed = 1)
+  fit0b <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list0b, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0b, seed = 2)
+  fit1 <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1, seed = 3)
+
+
+  marglik0a <- JAGS_bridgesampling(
+    fit0a, log_posterior = log_posterior, data = data, prior_list = prior_list,
+    formula_list = formula_list0a, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0a)
+  marglik0b <- JAGS_bridgesampling(
+    fit0b, log_posterior = log_posterior, data = data, prior_list = prior_list,
+    formula_list = formula_list0b, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0b)
+  marglik1 <- JAGS_bridgesampling(
+    fit1, log_posterior = log_posterior, data = data, prior_list = prior_list,
+    formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1)
+
+
+  # mix posteriors
+  modelsA <- list(
+    list(fit = fit0a, marglik = marglik0a, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, prior_weights = 1)
+  )
+  modelsB <- list(
+    list(fit = fit0b, marglik = marglik0b, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, prior_weights = 1)
+  )
+
+
+  inferenceA <- ensemble_inference(
+    model_list   = modelsA,
+    parameters   = c("mu_x_fac3md"),
+    is_null_list = list(
+      "mu_x_fac3md" = c(TRUE, FALSE)
+    ),
+    conditional = FALSE)
+  inferenceB <- ensemble_inference(
+    model_list   = modelsB,
+    parameters   = c("mu_x_fac3md"),
+    is_null_list = list(
+      "mu_x_fac3md" = c(TRUE, FALSE)
+    ),
+    conditional = FALSE)
+
+  mixed_posteriorsA <- mix_posteriors(
+    model_list   = modelsA,
+    parameters   = c("mu_x_fac3md"),
+    is_null_list = list(
+      "mu_x_fac3md" = c(TRUE, FALSE)
+    ),
+    seed = 1, n_samples = 10000)
+  mixed_posteriorsB <- mix_posteriors(
+    model_list   = modelsB,
+    parameters   = c("mu_x_fac3md"),
+    is_null_list = list(
+      "mu_x_fac3md" = c(TRUE, FALSE)
+    ),
+    seed = 1, n_samples = 10000)
+
+
+  expect_equivalent(inferenceA, inferenceB, tolerance = 1e-2)
+
+  common_attributes <- names(attributes(mixed_posteriorsB$mu_x_fac3md))
+  common_attributes <- common_attributes[!common_attributes %in% c("sample_ind", "models_ind", "prior_list")]
+
+  expect_equal(attributes(mixed_posteriorsA$mu_x_fac3md)[common_attributes], attributes(mixed_posteriorsB$mu_x_fac3md)[common_attributes])
+
+})

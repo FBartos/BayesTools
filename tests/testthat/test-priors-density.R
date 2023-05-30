@@ -24,4 +24,12 @@ test_that("Prior density function density", {
   # weightfunctions
   expect_doppelganger("prior-density-3-1", function()plot(density(prior_weightfunction("one.sided", list(c(.05), c(1, 1))))))
   expect_doppelganger("prior-density-3-2", function()plot(density(prior_weightfunction("one.sided.fixed", list(c(.05), c(1, .25))))))
+
+  # factor priors
+  expect_doppelganger("prior-density-4-1", function()plot(density(prior_factor("normal", list(0, 1), list(0, Inf), contrast = "independent"))))
+  expect_doppelganger("prior-density-4-2", function()plot(density(prior_factor("normal", list(0, 1), list(0, Inf), contrast = "treatment"))))
+  expect_doppelganger("prior-density-4-3", function()suppressWarnings(plot(density(prior_factor("mnormal", list(0, 1), contrast = "orthonormal")))))
+  expect_doppelganger("prior-density-4-4", function()suppressWarnings(plot(density(prior_factor("mnormal", list(0, 1), contrast = "meandif")))))
 })
+
+

@@ -137,17 +137,23 @@ test_that("Prior plot (orthonormal) function works", {
 
   p11   <- prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "orthonormal")
   p12   <- prior_factor("mcauchy", list(location = 0, scale = 1), contrast = "orthonormal")
+  p20   <- prior_factor("point", list(location = 0), contrast = "orthonormal")
   p11.5 <- p11.3 <- p11.2 <- p11
   p12.9 <- p12
+  p20.3 <- p20.5 <- p20
   p11.2$parameters$K <- 2
   p11.3$parameters$K <- 3
   p11.5$parameters$K <- 5
   p12.9$parameters$K <- 9
+  p20.3$parameters$K <- 3
+  p20.5$parameters$K <- 5
 
   expect_doppelganger("priors-plot-11-2", function()plot(p11.2))
   expect_doppelganger("priors-plot-11-3", plot(p11.3, plot_type = "ggplot"))
   expect_doppelganger("priors-plot-11-5", function()plot(p11.5))
   expect_doppelganger("priors-plot-12-9", function()plot(p12.9))
+  expect_doppelganger("priors-plot-20-3", function()plot(p20.3))
+  expect_doppelganger("priors-plot-20-5", plot(p20.5, plot_type = "ggplot"))
 
 })
 
@@ -155,9 +161,64 @@ test_that("Prior plot (treatment) function works", {
 
   p13   <- prior_factor("normal", list(mean = 0, sd = 1), contrast = "treatment")
   p14   <- prior_factor("beta", list(alpha = 2, beta = 3), contrast = "treatment")
+  p21   <- prior_factor("spike", list(location = 1), contrast = "treatment")
 
   expect_doppelganger("priors-plot-13-1", function()plot(p13))
   expect_doppelganger("priors-plot-13-2", plot(p13, plot_type = "ggplot"))
   expect_doppelganger("priors-plot-14",   function()plot(p14))
+  expect_doppelganger("priors-plot-21",   function()plot(p21))
+
+})
+
+test_that("Prior plot (independent) function works", {
+
+  p15   <- prior_factor("gamma", list(shape = 2, rate = 3), contrast = "independent")
+  p16   <- prior_factor("uniform", list(a = -0.5, b = 1), contrast = "independent")
+  p22   <- prior_factor("spike", list(location = 0), contrast = "independent")
+
+  expect_doppelganger("priors-plot-16-1", function()plot(p15))
+  expect_doppelganger("priors-plot-16-2", plot(p15, plot_type = "ggplot"))
+  expect_doppelganger("priors-plot-17",   function()plot(p16))
+  expect_doppelganger("priors-plot-22",   function()plot(p22))
+
+})
+
+test_that("Prior plot (meandif) function works", {
+
+  p18   <- prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "meandif")
+  p19   <- prior_factor("mcauchy", list(location = 0, scale = 1), contrast = "meandif")
+  p23   <- prior_factor("point", list(location = 0), contrast = "meandif")
+  p18.5 <- p18.3 <- p18.2 <- p18
+  p19.5 <- p19.3 <- p19.2 <- p19
+  p23.3 <- p23.5 <- p23
+  p18.2$parameters$K <- 2
+  p18.3$parameters$K <- 3
+  p18.5$parameters$K <- 5
+  p19.2$parameters$K <- 2
+  p19.3$parameters$K <- 3
+  p19.5$parameters$K <- 5
+
+  expect_doppelganger("priors-plot-18", function(){
+
+    plot(p18.2)
+    lines(p18.3, col = "blue", lty = 2, lwd = 2)
+    lines(p18.5, col = "red", lty = 3, lwd = 2)
+
+  })
+
+  expect_doppelganger("priors-plot-19", function(){
+
+    plot(p19.2)
+    lines(p19.3, col = "blue", lty = 2, lwd = 2)
+    lines(p19.5, col = "red", lty = 3, lwd = 2)
+
+  })
+
+  expect_doppelganger("priors-plot-23", function(){
+
+    plot(p23.3)
+    lines(p23.5, col = "red", lty = 3, lwd = 2)
+
+  })
 
 })

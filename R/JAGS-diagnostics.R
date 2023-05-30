@@ -35,7 +35,7 @@
 #' @rdname JAGS_diagnostics
 JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "base",
                                              xlim = NULL, ylim = NULL, lags = 30, n_points = 1000,
-                                             transformations = NULL, transform_orthonormal = FALSE,
+                                             transformations = NULL, transform_factors = FALSE, transform_orthonormal = FALSE,
                                              short_name = FALSE, parameter_names = FALSE, formula_prefix = TRUE, ...){
 
 
@@ -61,8 +61,11 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
     return(NULL)
   }
 
+  # depreciate
+  transform_factors <- .depreciate.transform_orthonormal(transform_orthonormal, transform_factors)
+
   # prepare the plot data
-  plot_data <- .diagnostics_plot_data(fit = fit, parameter = parameter, prior_list = prior_list, transformations = transformations, transform_orthonormal = transform_orthonormal)
+  plot_data <- .diagnostics_plot_data(fit = fit, parameter = parameter, prior_list = prior_list, transformations = transformations, transform_factors = transform_factors)
   plot_data <- switch(
     type,
     "density"         = .diagnostics_plot_data_density(plot_data, n_points, xlim),
@@ -170,41 +173,41 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
 #' @rdname JAGS_diagnostics
 JAGS_diagnostics_density         <- function(fit, parameter, plot_type = "base",
                                              xlim = NULL, n_points = 1000,
-                                             transformations = NULL, transform_orthonormal = FALSE,
+                                             transformations = NULL, transform_factors = FALSE, transform_orthonormal = FALSE,
                                              short_name = FALSE, parameter_names = FALSE, formula_prefix = TRUE, ...){
 
   JAGS_diagnostics(fit = fit, parameter = parameter, plot_type = plot_type, type = "density",
                    xlim = xlim, n_points = n_points,
-                   transformations = transformations, transform_orthonormal = transform_orthonormal,
+                   transformations = transformations, transform_factors = transform_factors, transform_orthonormal = transform_orthonormal,
                    short_name = short_name, parameter_names = parameter_names, formula_prefix = formula_prefix, ...)
 }
 
 #' @rdname JAGS_diagnostics
 JAGS_diagnostics_trace           <- function(fit, parameter, plot_type = "base",
                                              ylim = NULL,
-                                             transformations = NULL, transform_orthonormal = FALSE,
+                                             transformations = NULL, transform_factors = FALSE, transform_orthonormal = FALSE,
                                              short_name = FALSE, parameter_names = FALSE, formula_prefix = TRUE, ...){
 
   JAGS_diagnostics(fit = fit, parameter = parameter, plot_type = plot_type, type = "trace",
                    ylim = ylim,
-                   transformations = transformations, transform_orthonormal = transform_orthonormal,
+                   transformations = transformations, transform_factors = transform_factors, transform_orthonormal = transform_orthonormal,
                    short_name = short_name, parameter_names = parameter_names, formula_prefix = formula_prefix, ...)
 }
 
 #' @rdname JAGS_diagnostics
 JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
                                              lags = 30,
-                                             transformations = NULL, transform_orthonormal = FALSE,
+                                             transformations = NULL, transform_factors = FALSE, transform_orthonormal = FALSE,
                                              short_name = FALSE, parameter_names = FALSE, formula_prefix = TRUE, ...){
 
   JAGS_diagnostics(fit = fit, parameter = parameter, plot_type = plot_type, type = "autocorrelation",
                    lags = lags,
-                   transformations = transformations, transform_orthonormal = transform_orthonormal,
+                   transformations = transformations, transform_factors = transform_factors, transform_orthonormal = transform_orthonormal,
                    short_name = short_name, parameter_names = parameter_names, formula_prefix = formula_prefix, ...)
 }
 
 
-.diagnostics_plot_data                 <- function(fit, parameter, prior_list, transformations, transform_orthonormal){
+.diagnostics_plot_data                 <- function(fit, parameter, prior_list, transformations, transform_factors){
 
   check_list(transformations, "transformations", allow_NULL = TRUE)
   if(!is.null(transformations) && any(!sapply(transformations, function(trans)is.function(trans[["fun"]]))))
@@ -236,8 +239,8 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
   }
 
   if(is.prior.factor(prior_list[[parameter]])){
-    if(attr(prior_list[[parameter]], "levels") > 2){
-      model_samples <- model_samples[,paste0(parameter, "[", 1:(attr(prior_list[[parameter]], "levels")-1), "]"),drop = FALSE]
+    if(.get_prior_factor_levels(prior_list[[parameter]]) > 1){
+      model_samples <- model_samples[,paste0(parameter, "[", 1:.get_prior_factor_levels(prior_list[[parameter]]), "]"),drop = FALSE]
     }else{
       model_samples <- model_samples[,parameter,drop = FALSE]
     }
@@ -269,50 +272,71 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
     }
   }
 
-  # transform orthonormal factors to differences from runjags_estimates_table
-  if(transform_orthonormal & any(sapply(prior_list, is.prior.orthonormal))){
-    for(par in names(prior_list)[sapply(prior_list, is.prior.orthonormal)]){
+  # transform meandif and orthonormal factors to differences from runjags_estimates_table
+  if(transform_factors & any(sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x)))){
+    for(par in names(prior_list)[sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x))]){
 
-      if((attr(prior_list[[par]], "levels") - 1) == 1){
+      if(.get_prior_factor_levels(prior_list[[par]]) == 1){
         par_names <- par
       }else{
-        par_names <- paste0(par, "[", 1:(attr(prior_list[[par]], "levels") - 1), "]")
+        par_names <- paste0(par, "[", 1:.get_prior_factor_levels(prior_list[[par]]), "]")
       }
 
-      orthonormal_samples <- model_samples[,par_names,drop = FALSE]
-      model_samples       <- orthonormal_samples %*% t(contr.orthonormal(1:attr(prior_list[[par]], "levels")))
+      original_samples <- model_samples[,par_names,drop = FALSE]
+
+      if(is.prior.orthonormal(prior_list[[par]])){
+        model_samples <- original_samples %*% t(contr.orthonormal(1:(.get_prior_factor_levels(prior_list[[par]])+1)))
+      }else if(is.prior.meandif(prior_list[[par]])){
+        model_samples <- original_samples %*% t(contr.meandif(1:(.get_prior_factor_levels(prior_list[[par]])+1)))
+      }
+
 
       if(attr(prior_list[[par]], "interaction")){
-        if(length(attr(prior_list[[par]], "level_names")) == 1){
-          parameter_names <- paste0(par, " [dif: ", attr(prior_list[[par]], "level_names")[[1]],"]")
+        if(length(.get_prior_factor_level_names(prior_list[[par]])) == 1){
+          parameter_names <- paste0(par, " [dif: ", .get_prior_factor_level_names(prior_list[[par]])[[1]],"]")
         }else{
-          stop("orthonormal de-transformation for interaction of multiple factors is not implemented.")
+          stop("orthonormal/meandif de-transformation for interaction of multiple factors is not implemented.")
         }
       }else{
-        parameter_names <- paste0(par, " [dif: ", attr(prior_list[[par]], "level_names"),"]")
+        parameter_names <- paste0(par, " [dif: ", .get_prior_factor_level_names(prior_list[[par]]),"]")
       }
     }
-  }else if(any(sapply(prior_list, is.prior.orthonormal))){
-    for(par in names(prior_list)[sapply(prior_list, is.prior.orthonormal)]){
-      if((attr(prior_list[[par]], "levels") - 1) == 1){
+  }else if(any(sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x)))){
+    for(par in names(prior_list)[sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x))]){
+      if(.get_prior_factor_levels(prior_list[[par]]) == 1){
         parameter_names <- par
       }else{
-        parameter_names <- paste0(par, "[", 1:(attr(prior_list[[par]], "levels") - 1), "]")
+        parameter_names <- paste0(par, "[", 1:.get_prior_factor_levels(prior_list[[par]]), "]")
       }
     }
   }
 
   # rename treatment factor levels
-  if(any(sapply(prior_list, is.prior.dummy))){
-    for(par in names(prior_list)[sapply(prior_list, is.prior.dummy)]){
-      if(!attr(prior_list[[par]], "interaction")){
-        if(attr(prior_list[[par]], "levels") == 2){
-          parameter_names <- paste0(par,"[",attr(prior_list[[par]], "level_names")[-1], "]")
+  if(any(sapply(prior_list, is.prior.treatment))){
+    for(par in names(prior_list)[sapply(prior_list, is.prior.treatment)]){
+      if(!.is_prior_interaction(prior_list[[par]])){
+        if(.get_prior_factor_levels(prior_list[[par]]) == 1){
+          parameter_names <- par
         }else{
-          parameter_names <- paste0(par,"[",attr(prior_list[[par]], "level_names")[-1], "]")
+          parameter_names <- paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]])[-1], "]")
         }
       }else if(length(attr(prior_list[[par]], "levels")) == 1){
-        parameter_names <- paste0(par,"[",attr(prior_list[[par]], "level_names")[[1]][-1], "]")
+        parameter_names <- paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]])[[1]][-1], "]")
+      }
+    }
+  }
+
+  # rename independent factor levels
+  if(any(sapply(prior_list, is.prior.independent))){
+    for(par in names(prior_list)[sapply(prior_list, is.prior.independent)]){
+      if(!.is_prior_interaction(prior_list[[par]])){
+        if(.get_prior_factor_levels(prior_list[[par]]) == 1){
+          parameter_names <- par
+        }else{
+          parameter_names <- paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]]), "]")
+        }
+      }else if(length(attr(prior_list[[par]], "levels")) == 1){
+        parameter_names <- paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]]), "]")
       }
     }
   }
@@ -555,10 +579,10 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
     data    = data.frame(
       x = plot_data$x,
       y = plot_data$y),
-    mapping = ggplot2::aes_string(
-      x = "x",
-      y = "y"),
-    size = lwd, linetype = lty, color = col)
+    mapping = ggplot2::aes(
+      x = .data[["x"]],
+      y = .data[["y"]]),
+    linewidth = lwd, linetype = lty, color = col)
 
   return(geom)
 }
@@ -573,10 +597,10 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
     data    = data.frame(
       x = plot_data$x,
       y = plot_data$y),
-    mapping = ggplot2::aes_string(
-      x = "x",
-      y = "y"),
-    size = lwd, linetype = lty, color = col)
+    mapping = ggplot2::aes(
+      x = .data[["x"]],
+      y = .data[["y"]]),
+    linewidth = lwd, linetype = lty, color = col)
 
   return(geom)
 }
@@ -589,9 +613,9 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
     data    = data.frame(
       x = plot_data$x,
       y = plot_data$y),
-    mapping = ggplot2::aes_string(
-      x      = "x",
-      weight = "y"),
+    mapping = ggplot2::aes(
+      x      = .data[["x"]],
+      weight = .data[["y"]]),
     color = col, fill = col)
 
   return(geom)

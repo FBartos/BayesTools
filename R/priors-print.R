@@ -106,7 +106,8 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
       "uniform"      = "U",
       "mnormal"      = "mN",
       "mt"           = "mT",
-      "mCauchy"      = "mC"
+      "mCauchy"      = "mC",
+      "mpoint"       = "mS"
     )
   }else{
     out_name <- switch(
@@ -124,7 +125,8 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
       "uniform"      = "Uniform",
       "mnormal"      = "mNormal",
       "mt"           = "mStudent-t",
-      "mCauchy"      = "mCauchy"
+      "mCauchy"      = "mCauchy",
+      "mpoint"       = "mSpike"
     )
   }
 
@@ -133,10 +135,14 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
     out_prefix <- "PET ~ "
   }else if(is.prior.PEESE(x)){
     out_prefix <- "PEESE ~ "
-  }else if(is.prior.dummy(x)){
+  }else if(is.prior.treatment(x)){
     out_prefix <- "treatment contrast: "
   }else if(is.prior.orthonormal(x)){
     out_prefix <- "orthonormal contrast: "
+  }else if(is.prior.meandif(x)){
+    out_prefix <- "mean difference contrast: "
+  }else if(is.prior.independent(x)){
+    out_prefix <- "independent contrast: "
   }else{
     out_prefix <- NULL
   }

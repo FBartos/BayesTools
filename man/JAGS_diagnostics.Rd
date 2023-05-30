@@ -17,6 +17,7 @@ JAGS_diagnostics(
   lags = 30,
   n_points = 1000,
   transformations = NULL,
+  transform_factors = FALSE,
   transform_orthonormal = FALSE,
   short_name = FALSE,
   parameter_names = FALSE,
@@ -31,6 +32,7 @@ JAGS_diagnostics_density(
   xlim = NULL,
   n_points = 1000,
   transformations = NULL,
+  transform_factors = FALSE,
   transform_orthonormal = FALSE,
   short_name = FALSE,
   parameter_names = FALSE,
@@ -44,6 +46,7 @@ JAGS_diagnostics_trace(
   plot_type = "base",
   ylim = NULL,
   transformations = NULL,
+  transform_factors = FALSE,
   transform_orthonormal = FALSE,
   short_name = FALSE,
   parameter_names = FALSE,
@@ -57,6 +60,7 @@ JAGS_diagnostics_autocorrelation(
   plot_type = "base",
   lags = 30,
   transformations = NULL,
+  transform_factors = FALSE,
   transform_orthonormal = FALSE,
   short_name = FALSE,
   parameter_names = FALSE,
@@ -88,9 +92,13 @@ in the \code{x_range} if \code{x_seq} is unspecified}
 \item{transformations}{named list of transformations to be applied
 to specific parameters}
 
-\item{transform_orthonormal}{whether factors with orthonormal prior
-distributions should be transformed to differences from the grand
-mean}
+\item{transform_factors}{whether factors with orthonormal/meandif
+prior distribution should be transformed to differences from the
+grand mean}
+
+\item{transform_orthonormal}{(to be depreciated) whether factors
+with orthonormal prior distributions should be transformed to
+differences from the grand mean}
 
 \item{short_name}{whether prior distribution names should be
 shorted}

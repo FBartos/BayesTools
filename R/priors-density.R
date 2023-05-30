@@ -66,17 +66,7 @@ density.prior <- function(x,
   check_int(n_samples, "n_samples", lower = 1)
   check_bool(force_samples, "force_samples")
   check_bool(individual, "individual")
-  if(!is.null(transformation)){
-    if(is.character(transformation)){
-      check_char(transformation, "transformation")
-    }else if(is.list(transformation)){
-      check_list(transformation, "transformation", check_length = 3, check_names = c("fun", "inv", "jac"), all_objects = TRUE)
-    }else{
-      stop("Uknown format of the 'transformation' argument.")
-    }
-  }
-  check_list(transformation_arguments, "transformation_arguments", allow_NULL = TRUE)
-  check_bool(transformation_settings, "transformation_settings")
+  .check_transformation_input(transformation, transformation_arguments, transformation_settings)
   check_bool(truncate_end, "truncate_end")
 
 
@@ -123,10 +113,10 @@ density.prior <- function(x,
     out <- .density.prior.PETPEESE(x, x_seq, x_range, n_points, n_samples, force_samples, individual, transformation, transformation_arguments, truncate_end)
   }else if(is.prior.spike_and_slab(x)){
     out <- .density.prior.spike_and_slab(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
-  }else if(is.prior.orthonormal(x)){
-    out <- .density.prior.orthonormal(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
   }else if(is.prior.point(x)){
     out <- .density.prior.point(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments)
+  }else if(is.prior.orthonormal(x) | is.prior.meandif(x)){
+    out <- .density.prior.orthonormal_or_meandif(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
   }else if(is.prior.simple(x)){
     out <- .density.prior.simple(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
   }
@@ -134,7 +124,7 @@ density.prior <- function(x,
   return(out)
 }
 
-.density.prior.simple         <- function(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end){
+.density.prior.simple                 <- function(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end){
 
   # get the samples to estimate density / obtain the density directly
   if(force_samples | .density.prior_need_samples(x)){
@@ -193,7 +183,7 @@ density.prior <- function(x,
 
   return(out)
 }
-.density.prior.point          <- function(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments){
+.density.prior.point                  <- function(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments){
 
   # return the samples if requested
   if(force_samples){
@@ -213,7 +203,6 @@ density.prior <- function(x,
     if(!is.null(x_sam)){
       x_sam <- .density.prior_transformation_x(x_sam,   transformation, transformation_arguments)
     }
-    x_den   <- .density.prior_transformation_y(x_seq, x_den, transformation, transformation_arguments)
   }
 
 
@@ -228,13 +217,13 @@ density.prior <- function(x,
   )
 
 
-  class(out) <- c("density", "density.prior", "density.prior.point")
+  class(out) <- c("density", "density.prior", "density.prior.point", if(is.prior.orthonormal(x)) "density.prior.orthonormal" else if(is.prior.meandif(x)) "density.prior.meandif")
   attr(out, "x_range") <- x_range
   attr(out, "y_range") <- c(0, max(x_den))
 
   return(out)
 }
-.density.prior.weightfunction <- function(x, x_seq, x_range, n_points, n_samples, force_samples, individual){
+.density.prior.weightfunction         <- function(x, x_seq, x_range, n_points, n_samples, force_samples, individual){
 
   # create either distribution for the individual weights or the whole weightfunction
   if(individual){
@@ -329,7 +318,7 @@ density.prior <- function(x,
 
   return(out)
 }
-.density.prior.PETPEESE       <- function(x, x_seq, x_range, n_points, n_samples, force_samples, individual, transformation, transformation_arguments, truncate_end){
+.density.prior.PETPEESE               <- function(x, x_seq, x_range, n_points, n_samples, force_samples, individual, transformation, transformation_arguments, truncate_end){
 
   # create either distribution for the parameter or the PET/PEESE function
   if(individual){
@@ -399,13 +388,13 @@ density.prior <- function(x,
 
   return(out)
 }
-.density.prior.orthonormal    <- function(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end){
+.density.prior.orthonormal_or_meandif <- function(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end){
 
   # get the samples to estimate density / obtain the density directly
   if(force_samples | .density.prior_need_samples(x)){
 
     if(is.na(x$parameters[["K"]]) && !is.null(attr(x, "levels"))){
-      x$parameters[["K"]] <- attr(prior, "levels") - 1
+      x$parameters[["K"]] <- .get_prior_factor_levels(prior)
     }else if(is.na(x$parameters[["K"]])){
       x$parameters[["K"]] <- 1
       warning("number of factor levels / dimensionality of the prior distribution was not specified -- assuming two factor levels")
@@ -436,7 +425,7 @@ density.prior <- function(x,
 
   # transform the output, if requested
   if(!is.null(transformation)){
-    message("The transformation was applied to the differences from the mean. Note that non-linear transformations do not map from the orthonormal contrasts to the differences from the mean.")
+    message("The transformation was applied to the differences from the mean. Note that non-linear transformations do not map from the orthonormal/meandif contrasts to the differences from the mean.")
     x_seq   <- .density.prior_transformation_x(x_seq,   transformation, transformation_arguments)
     x_range <- .density.prior_transformation_x(x_range, transformation, transformation_arguments)
     if(!is.null(x_sam)){
@@ -457,13 +446,13 @@ density.prior <- function(x,
   )
 
 
-  class(out) <- c("density", "density.prior", "density.prior.orthonormal")
+  class(out) <- c("density", "density.prior", if(is.prior.orthonormal(x)) "density.prior.orthonormal" else if(is.prior.meandif(x)) "density.prior.meandif")
   attr(out, "x_range") <- x_range
   attr(out, "y_range") <- c(0, max(x_den))
 
   return(out)
 }
-.density.prior.spike_and_slab <- function(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end){
+.density.prior.spike_and_slab         <- function(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end){
 
   density_variable  <- .density.prior.simple(x[["variable"]], x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
   density_inclusion <- .density.prior.point(prior(distribution = "spike", parameters = list(location = 0)), x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments)
@@ -563,6 +552,8 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
     }
   }else if(is.prior.orthonormal(prior)){
     return("orthonormal")
+  }else if(is.prior.meandif(prior)){
+    return("meandif")
   }
 }
 .range.prior_quantile_default <- function(prior){

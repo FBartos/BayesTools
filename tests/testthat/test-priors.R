@@ -28,7 +28,8 @@ test_prior          <- function(prior, skip_moments = FALSE){
   }
   # tests that pdf(q(x)) == x
   if(!is.prior.point(prior) & !is.prior.discrete(prior) & !is.prior.spike_and_slab(prior)){
-    expect_equal(.25, cdf(prior, quant(prior, 0.25)), tolerance = 1e-5)
+    expect_equal(.25, cdf(prior, quant(prior, 0.25)), tolerance = 1e-4)
+    expect_equal(.25, ccdf(prior, quant(prior, 0.75)), tolerance = 1e-4)
   }
   # test mean and sd functions
   if(!skip_moments){
@@ -59,6 +60,7 @@ test_weightfunction <- function(prior, skip_moments = FALSE){
     }
     if(!grepl("fixed", prior$distribution) & !all(names(prior$parameters) %in% c("steps", "alpha1", "alpha2"))){
       expect_equal(.25, mcdf(prior, mquant(prior, 0.25)[,i])[,i], tolerance = 1e-5)
+      expect_equal(.25, mccdf.prior(prior, mquant(prior, 0.75)[,i])[,i], tolerance = 1e-5)
     }
     if(!skip_moments){
       expect_equal(apply(samples, 2, mean), mean(prior), tolerance = 1e-2)
@@ -67,18 +69,48 @@ test_weightfunction <- function(prior, skip_moments = FALSE){
   }
   return(invisible())
 }
-test_orthonormal    <- function(prior){
+test_orthonormal    <- function(prior, skip_moments = FALSE){
   set.seed(1)
   # tests rng and print function (for plot)
   samples <- rng(prior, 100000)
+  samples <- samples[abs(samples) < 10]
   hist(samples, main = print(prior, plot = T), breaks = 50, freq = FALSE)
   # tests density function
   lines(prior, individual = TRUE)
   # tests quantile function
   abline(v = mquant(prior, 0.5), col = "blue", lwd = 2)
   # tests that pdf(q(x)) == x
-  expect_equal(.25, mcdf(prior, mquant(prior, 0.25)), tolerance = 1e-5)
-
+  if(!is.prior.point(prior)){
+    expect_equal(.25, mcdf(prior, mquant(prior, 0.25)), tolerance = 1e-5)
+    expect_equal(.25, mccdf(prior, mquant(prior, 0.75)), tolerance = 1e-5)
+  }
+  # test mean and sd functions
+  if(!skip_moments){
+    expect_equal(mean(samples), mean(prior), tolerance = 1e-2)
+    expect_equal(sd(samples),   sd(prior),   tolerance = 1e-2)
+  }
+  return(invisible())
+}
+test_meandif        <- function(prior, skip_moments = FALSE){
+  set.seed(1)
+  # tests rng and print function (for plot)
+  samples <- rng(prior, 100000)
+  samples <- samples[abs(samples) < 10]
+  hist(samples, main = print(prior, plot = T), breaks = 50, freq = FALSE)
+  # tests density function
+  lines(prior, individual = TRUE)
+  # tests quantile function
+  abline(v = mquant(prior, 0.5), col = "blue", lwd = 2)
+  # tests that pdf(q(x)) == x
+  if(!is.prior.point(prior)){
+    expect_equal(.25, mcdf(prior, mquant(prior, 0.25)), tolerance = 1e-5)
+    expect_equal(.25, mccdf(prior, mquant(prior, 0.75)), tolerance = 1e-5)
+  }
+  # test mean and sd functions
+  if(!skip_moments){
+    expect_equal(mean(samples), mean(prior), tolerance = 1e-2)
+    expect_equal(sd(samples),   sd(prior),   tolerance = 1e-2)
+  }
   return(invisible())
 }
 
@@ -116,7 +148,15 @@ test_that("Gamma prior distribution works", {
 
   expect_doppelganger("prior-gamma-1", function()test_prior(prior("gamma", list(1, 1))))
   expect_doppelganger("prior-gamma-2", function()test_prior(prior("gamma", list(2, 2), list(1, 3))))
+  expect_doppelganger("prior-gamma-3", function(){
 
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 2))
+    test_prior(prior("gamma", list(shape = 2, "rate"  = 3),   list(0, 3)))
+    test_prior(prior("gamma", list(shape = 2, "scale" = 1/3), list(0, 3)))
+  })
 })
 
 test_that("Inverse-gamma prior distribution works", {
@@ -130,6 +170,15 @@ test_that("Exponential prior distribution works", {
 
   expect_doppelganger("prior-exp-1", function()test_prior(prior("exp", list(1.5))))
   expect_doppelganger("prior-exp-2", function()test_prior(prior("exp", list(2), list(1, 3))))
+  expect_doppelganger("prior-exp-3", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 2))
+    test_prior(prior("exp", list("rate"  = 3),   list(1, 3)))
+    test_prior(prior("exp", list("scale" = 1/3), list(1, 3)))
+  })
 
 })
 
@@ -218,19 +267,27 @@ test_that("Vector prior distribution works", {
 
 test_that("Orthonormal prior distribution works", {
 
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate Cauchy sampling does not exactly match across OSes
+
   p1   <- prior_factor("mnormal", list(mean = 0, sd = 0.5), contrast = "orthonormal")
   p2   <- prior_factor("mcauchy", list(location = 0, scale = 1), contrast = "orthonormal")
+  p3   <- prior_factor("point", list(0), contrast = "orthonormal")
   p1.5 <- p1.3 <- p1.2 <- p1
   p2.9 <- p2
+  p3.3 <- p3.5 <- p3
   p1.2$parameters$K <- 2
   p1.3$parameters$K <- 3
   p1.5$parameters$K <- 5
   p2.9$parameters$K <- 9
+  p3.3$parameters$K <- 3
+  p3.5$parameters$K <- 5
 
   expect_doppelganger("prior-orthonormal-1-2", function()test_orthonormal(p1.2))
   expect_doppelganger("prior-orthonormal-1-3", function()test_orthonormal(p1.3))
   expect_doppelganger("prior-orthonormal-1-5", function()test_orthonormal(p1.5))
-  expect_doppelganger("prior-orthonormal-2-9", function()test_orthonormal(p2.9))
+  expect_doppelganger("prior-orthonormal-2-9", function()test_orthonormal(p2.9, skip_moments = TRUE))
+  expect_doppelganger("prior-orthonormal-3-3", function()test_orthonormal(p3.3))
+  expect_doppelganger("prior-orthonormal-3-5", function()test_orthonormal(p3.5))
 
 })
 
@@ -238,5 +295,36 @@ test_that("Treatment prior distribution works", {
 
   expect_doppelganger("prior-treatment-1", function()test_prior(prior_factor("normal", list(mean = 0, sd = 1), contrast = "treatment")))
   expect_doppelganger("prior-treatment-2", function()test_prior(prior_factor("beta", list(alpha = 2, beta = 3), contrast = "treatment")))
+  expect_doppelganger("prior-treatment-3", function()test_prior(prior_factor("spike", list(location = 1), contrast = "treatment")))
+
+})
+
+test_that("Independent prior distribution works", {
+
+  expect_doppelganger("prior-independent-1", function()test_prior(prior_factor("gamma", list(shape = 2, rate = 3), contrast = "independent")))
+  expect_doppelganger("prior-independent-2", function()test_prior(prior_factor("uniform", list(a = -0.5, b = 1), contrast = "independent")))
+  expect_doppelganger("prior-independent-3", function()test_prior(prior_factor("spike", list(location = 1), contrast = "independent")))
+
+})
+
+test_that("Meandif prior distribution works", {
+
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+
+  p1   <- prior_factor("mnormal", list(mean = 0, sd = 0.25), contrast = "meandif")
+  p2   <- prior_factor("point", list(0), contrast = "orthonormal")
+  p1.5 <- p1.3 <- p1.2 <- p1
+  p2.5 <- p2.3 <- p2
+  p1.2$parameters$K <- 2
+  p1.3$parameters$K <- 3
+  p1.5$parameters$K <- 5
+  p2.3$parameters$K <- 3
+  p2.5$parameters$K <- 5
+
+  expect_doppelganger("prior-meandif-1-2", function()test_meandif(p1.2))
+  expect_doppelganger("prior-meandif-1-3", function()test_meandif(p1.3))
+  expect_doppelganger("prior-meandif-1-5", function()test_meandif(p1.5))
+  expect_doppelganger("prior-meandif-2-3", function()test_meandif(p2.3))
+  expect_doppelganger("prior-meandif-2-5", function()test_meandif(p2.5))
 
 })

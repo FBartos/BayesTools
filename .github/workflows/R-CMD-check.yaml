@@ -22,10 +22,10 @@ jobs:
       fail-fast: false
       matrix:
         config:
-        #  - {os: macOS-latest,   r: 'release'}
           - {os: windows-latest, r: 'release'}
-          - {os: ubuntu-latest,   r: 'devel', http-user-agent: 'release'}
-          - {os: ubuntu-latest,   r: 'release'}
+          - {os: ubuntu-latest,  r: 'release'}
+        #  - {os: macOS-latest,   r: 'release'}
+        #  - {os: ubuntu-latest,   r: 'devel', http-user-agent: 'release'}
         #  - {os: ubuntu-latest,   r: 'oldrel-1'}
 
     env:
@@ -37,11 +37,11 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - uses: r-lib/actions/setup-r@master
+      - uses: r-lib/actions/setup-r@v2
         with:
           r-version: ${{ matrix.config.r }}
 
-      - uses: r-lib/actions/setup-pandoc@master
+      - uses: r-lib/actions/setup-pandoc@v2
 
       - name: Query dependencies
         run: |
@@ -94,12 +94,21 @@ jobs:
       - name: Install Mac system dependencies
         if: runner.os == 'macOS'
         run: |
-          brew install jags
-          brew install libgit2
+          rm '/usr/local/bin/gfortran'
+          brew install automake jags
           
       - name: Install dependencies
+        if: runner.os != 'macOS'
         run: |
           remotes::install_deps(dependencies = TRUE, type = ifelse(tolower(Sys.info()["sysname"]) == "linux", "source", "binary"))
+          remotes::install_cran("rcmdcheck")
+        shell: Rscript {0}
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          remotes::install_deps(dependencies = TRUE, type = ifelse(tolower(Sys.info()["sysname"]) == "linux", "source", "binary"))
+          install.packages("rjags", type = "source")
           remotes::install_cran("rcmdcheck")
         shell: Rscript {0}
 

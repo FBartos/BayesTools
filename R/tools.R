@@ -47,7 +47,7 @@
 #' @rdname check_input
 check_bool   <- function(x, name, check_length = 1, allow_NULL = FALSE, call = ""){
 
-  if(is.null(x)){
+  if(is.null(x) || length(x) == 0){
     if(allow_NULL){
       return()
     }else{
@@ -67,7 +67,7 @@ check_bool   <- function(x, name, check_length = 1, allow_NULL = FALSE, call = "
 #' @rdname check_input
 check_char   <- function(x, name, check_length = 1, allow_values = NULL, allow_NULL = FALSE, call = ""){
 
-  if(is.null(x)){
+  if(is.null(x) || length(x) == 0){
     if(allow_NULL){
       return()
     }else{
@@ -90,7 +90,7 @@ check_char   <- function(x, name, check_length = 1, allow_values = NULL, allow_N
 #' @rdname check_input
 check_real   <- function(x, name, lower = -Inf, upper = Inf, allow_bound = TRUE, check_length = 1, allow_NULL = FALSE, call = ""){
 
-  if(is.null(x)){
+  if(is.null(x) || length(x) == 0){
     if(allow_NULL){
       return()
     }else{
@@ -130,7 +130,7 @@ check_real   <- function(x, name, lower = -Inf, upper = Inf, allow_bound = TRUE,
 #' @rdname check_input
 check_int    <- function(x, name, lower = -Inf, upper = Inf, allow_bound = TRUE, check_length = 1, allow_NULL = FALSE, call = ""){
 
-  if(is.null(x)){
+  if(is.null(x) || length(x) == 0){
     if(allow_NULL){
       return()
     }else{
@@ -149,7 +149,7 @@ check_int    <- function(x, name, lower = -Inf, upper = Inf, allow_bound = TRUE,
 #' @rdname check_input
 check_list   <- function(x, name, check_length = 0, check_names = NULL, all_objects = FALSE, allow_other = FALSE, allow_NULL = FALSE, call = ""){
 
-  if(is.null(x)){
+  if(is.null(x) || length(x) == 0){
     if(allow_NULL){
       return()
     }else{
@@ -180,6 +180,23 @@ check_list   <- function(x, name, check_length = 0, check_names = NULL, all_obje
   abs(x - round(x)) < tol
 }
 
+# check transformation argument
+.check_transformation_input <- function(transformation, transformation_arguments, transformation_settings){
+
+  if(!is.null(transformation)){
+    if(is.character(transformation)){
+      check_char(transformation, "transformation")
+    }else if(is.list(transformation)){
+      check_list(transformation, "transformation", check_length = 3, check_names = c("fun", "inv", "jac"), all_objects = TRUE)
+    }else{
+      stop("Uknown format of the 'transformation' argument.")
+    }
+  }
+  check_list(transformation_arguments, "transformation_arguments", allow_NULL = TRUE)
+  check_bool(transformation_settings, "transformation_settings")
+
+  return()
+}
 
 # check whether package is installed
 .check_rstan   <- function(){
@@ -190,7 +207,7 @@ check_list   <- function(x, name, check_length = 0, check_names = NULL, all_obje
 }
 .check_runjags <- function(){
   if(!try(requireNamespace("runjags")))
-    stop("rstan package needs to be installed. Run 'install.packages('runjags')'")
+    stop("runjags package needs to be installed. Run 'install.packages('runjags')'")
   else
     return(invisible(TRUE))
 }
@@ -222,4 +239,18 @@ check_list   <- function(x, name, check_length = 0, check_names = NULL, all_obje
   colnames(model_samples) <- par_names
 
   return(model_samples)
+}
+
+# depreciate orthonormal
+.depreciate.transform_orthonormal <- function(transform_orthonormal, transform_factors){
+
+  if(isTRUE(transform_orthonormal)){
+    warning("'transform_orthonormal' argument will be depreciated in favor of 'transform_factors' argument.", immediate. = TRUE)
+
+    if(isFALSE(transform_factors)){
+      transform_factors <- transform_orthonormal
+    }
+  }
+
+  return(transform_factors)
 }

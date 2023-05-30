@@ -6,6 +6,11 @@
 \alias{ensemble_inference_table}
 \alias{ensemble_summary_table}
 \alias{ensemble_diagnostics_table}
+\alias{ensemble_estimates_empty_table}
+\alias{ensemble_inference_empty_table}
+\alias{ensemble_summary_empty_table}
+\alias{ensemble_diagnostics_empty_table}
+\alias{marginal_estimates_table}
 \title{Create BayesTools ensemble summary tables}
 \usage{
 ensemble_estimates_table(
@@ -15,6 +20,7 @@ ensemble_estimates_table(
   title = NULL,
   footnotes = NULL,
   warnings = NULL,
+  transform_factors = FALSE,
   transform_orthonormal = FALSE,
   formula_prefix = TRUE
 )
@@ -50,6 +56,36 @@ ensemble_diagnostics_table(
   remove_spike_0 = TRUE,
   short_name = FALSE
 )
+
+ensemble_estimates_empty_table(
+  probs = c(0.025, 0.95),
+  title = NULL,
+  footnotes = NULL,
+  warnings = NULL
+)
+
+ensemble_inference_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
+
+ensemble_summary_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
+
+ensemble_diagnostics_empty_table(
+  title = NULL,
+  footnotes = NULL,
+  warnings = NULL
+)
+
+marginal_estimates_table(
+  samples,
+  inference,
+  parameters,
+  probs = c(0.025, 0.95),
+  logBF = FALSE,
+  BF01 = FALSE,
+  title = NULL,
+  footnotes = NULL,
+  warnings = NULL,
+  formula_prefix = TRUE
+)
 }
 \arguments{
 \item{samples}{posterior samples created by \link{mix_posteriors}}
@@ -67,9 +103,13 @@ diagnostics tables) specifying the parameters
 
 \item{warnings}{warnings to be added to the table}
 
-\item{transform_orthonormal}{whether factors with orthonormal prior
-distributions should be transformed to differences from the grand
-mean}
+\item{transform_factors}{whether factors with orthonormal/meandif
+prior distribution should be transformed to differences from the
+grand mean}
+
+\item{transform_orthonormal}{(to be depreciated) whether factors
+with orthonormal prior distributions should be transformed to
+differences from the grand mean}
 
 \item{formula_prefix}{whether the parameter prefix from formula should
 be printed. Defaults to \code{TRUE}.}
@@ -110,7 +150,8 @@ tables are objects of class 'BayesTools_table'.
 Creates estimate summaries based on posterior
 distributions created by \link{mix_posteriors}, inference summaries
 based on inference created by \link{ensemble_inference}, or ensemble
-summary/diagnostics based on a list of \link{models_inference} models.
+summary/diagnostics based on a list of \link{models_inference} models
+(or \link{marginal_inference} in case of \link{marginal_estimates_table}).
 }
 \seealso{
 \link{ensemble_inference} \link{mix_posteriors} \link{BayesTools_model_tables}
