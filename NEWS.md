@@ -1,3 +1,7 @@
+## version 0.2.15
+### Fixes
+- fixing repeated print of previous prior distribution in `model_summary_table()` in case of `prior_none()`
+
 ## version 0.2.14
 ### Features
 - adding `contrast = "meandif"` to the `prior_factor` function which generates identical prior distributions for difference between the grand mean and each factor level
