@@ -33,7 +33,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.13</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.15</span>
       </span>
     </div>
 
@@ -78,13 +78,14 @@
 
       
 
-      </header><script src="ComparisonR_files/accessible-code-block-0.0.1/empty-anchor.js"></script><div class="row">
+      </header><div class="row">
   <div class="col-md-9 contents">
     <div class="page-header toc-ignore">
       <h1 data-toc-skip>Comparison to other R packages</h1>
-                        <h4 data-toc-skip class="author">František Bartoš</h4>
+                        <h4 data-toc-skip class="author">František
+Bartoš</h4>
             
-            <h4 data-toc-skip class="date">2022-09-15</h4>
+            <h4 data-toc-skip class="date">2023-06-23</h4>
       
       <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/HEAD/vignettes/ComparisonR.Rmd" class="external-link"><code>vignettes/ComparisonR.Rmd</code></a></small>
       <div class="hidden name"><code>ComparisonR.Rmd</code></div>
@@ -93,21 +94,55 @@
 
     
     
-<p>BayesTools R package allows package developers and users to conveniently specify a wide variety of models. In this vignette, I show how to reproduce some commonly used models and compare the results to output from other, more specialized, R packages.</p>
+<p>BayesTools R package allows package developers and users to
+conveniently specify a wide variety of models. In this vignette, I show
+how to reproduce some commonly used models and compare the results to
+output from other, more specialized, R packages.</p>
 <div class="section level2">
 <h2 id="bayesian-two-sample-t-test">Bayesian Two-Sample T-Test<a class="anchor" aria-label="anchor" href="#bayesian-two-sample-t-test"></a>
 </h2>
-<p>Bayesian two-sample t-test is one of the most commonly used tests. It compares means of two independent groups and the underlying model is usually defined as<br><span class="math inline">\(x_i \sim \text{Normal}(\mu - \frac{\alpha}{2}, \sigma^2), i = 1,\dots,N_x\)</span>,<br><span class="math inline">\(y_i \sim \text{Normal}(\mu + \frac{\alpha}{2}, \sigma^2), i = 1,\dots,N_y\)</span>.<br> where <span class="math inline">\(\mu\)</span> corresponds to the grand mean, <span class="math inline">\(\sigma\)</span> to the grand standard deviation, and <span class="math inline">\(\alpha\)</span> corresponds to the total effect. The standardized effect size, the usual quantity of interest, <span class="math inline">\(\delta\)</span> can be then obtained as <span class="math inline">\(\delta = \frac{\alpha}{\sigma}\)</span> <span class="citation">(Rouder et al., 2009)</span>.</p>
+<p>Bayesian two-sample t-test is one of the most commonly used tests. It
+compares means of two independent groups and the underlying model is
+usually defined as<br><span class="math inline">\(x_i \sim
+\text{Normal}(\mu - \frac{\alpha}{2}, \sigma^2), i =
+1,\dots,N_x\)</span>,<br><span class="math inline">\(y_i \sim
+\text{Normal}(\mu + \frac{\alpha}{2}, \sigma^2), i =
+1,\dots,N_y\)</span>.<br> where <span class="math inline">\(\mu\)</span>
+corresponds to the grand mean, <span class="math inline">\(\sigma\)</span> to the grand standard deviation,
+and <span class="math inline">\(\alpha\)</span> corresponds to the total
+effect. The standardized effect size, the usual quantity of interest,
+<span class="math inline">\(\delta\)</span> can be then obtained as
+<span class="math inline">\(\delta = \frac{\alpha}{\sigma}\)</span>
+<span class="citation">(Rouder et al., 2009)</span>.</p>
 <p>To perform the test, we specify two competing hypotheses:</p>
 <ul>
-<li>the null hypothesis <span class="math inline">\(\mathcal{H}_0: \delta = 0\)</span> assuming that the standardized effect size is zero,</li>
-<li>and the alternative hypothesis <span class="math inline">\(\mathcal{H}_1: \delta \sim g()\)</span> assuming that the standardized effect size is non-zero and prior distribution <span class="math inline">\(g()\)</span> characterizes our hypothesis about the possible values of the standardized effect size.</li>
+<li>the null hypothesis <span class="math inline">\(\mathcal{H}_0:
+\delta = 0\)</span> assuming that the standardized effect size is
+zero,</li>
+<li>and the alternative hypothesis <span class="math inline">\(\mathcal{H}_1: \delta \sim g()\)</span> assuming
+that the standardized effect size is non-zero and prior distribution
+<span class="math inline">\(g()\)</span> characterizes our hypothesis
+about the possible values of the standardized effect size.</li>
 </ul>
 <div class="section level3">
 <h3 id="kitchen-rolls-data-set">Kitchen Rolls Data Set<a class="anchor" aria-label="anchor" href="#kitchen-rolls-data-set"></a>
 </h3>
-<p>To illustrate the two-sample t-test specification with BayesTools, I use a data set from a replication study conducted by <span class="citation">(Wagenmakers et al., 2015)</span>. <span class="citation">Wagenmakers et al. (2015)</span> replicated the 2nd experiment from a study by <span class="citation">Topolinski &amp; Sparenberg (2012)</span> who claimed that clockwise movements induce psychological states of progression in time and increases orientation toward the future and novelty. In their second experiment, <span class="citation">Topolinski &amp; Sparenberg (2012)</span> let 60 participants to rotate kitchen rolls either clock or counter-clock wise, inducing the progression in time, and increasing their mean score in NEO PI-R items measuring openness to experience <em>t</em>(58) = 2.21, <em>p</em> = 0.031, Cohen’s <em>d</em> = 0.58. In the replication study, <span class="citation">Wagenmakers et al. (2015)</span> collected data from 102 participants and found a <span class="math inline">\(\text{BF}_{0+}\)</span> = 10.76 in the favor of null hypothesis of no effect against a positive effect in the direction of the original study.</p>
-<p>First, we load the package, data set, and split the data set into the two groups.</p>
+<p>To illustrate the two-sample t-test specification with BayesTools, I
+use a data set from a replication study conducted by <span class="citation">(Wagenmakers et al., 2015)</span>. <span class="citation">Wagenmakers et al. (2015)</span> replicated the 2nd
+experiment from a study by <span class="citation">Topolinski &amp;
+Sparenberg (2012)</span> who claimed that clockwise movements induce
+psychological states of progression in time and increases orientation
+toward the future and novelty. In their second experiment, <span class="citation">Topolinski &amp; Sparenberg (2012)</span> let 60
+participants to rotate kitchen rolls either clock or counter-clock wise,
+inducing the progression in time, and increasing their mean score in NEO
+PI-R items measuring openness to experience <em>t</em>(58) = 2.21,
+<em>p</em> = 0.031, Cohen’s <em>d</em> = 0.58. In the replication study,
+<span class="citation">Wagenmakers et al. (2015)</span> collected data
+from 102 participants and found a <span class="math inline">\(\text{BF}_{0+}\)</span> = 10.76 in the favor of
+null hypothesis of no effect against a positive effect in the direction
+of the original study.</p>
+<p>First, we load the package, data set, and split the data set into the
+two groups.</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://fbartos.github.io/BayesTools/" class="external-link">BayesTools</a></span><span class="op">)</span></span>
 <span><span class="co">#&gt; </span></span>
@@ -133,7 +168,13 @@
 <div class="section level3">
 <h3 id="implementation-with-bayestools">Implementation with BayesTools<a class="anchor" aria-label="anchor" href="#implementation-with-bayestools"></a>
 </h3>
-<p>I first specify the model likelihood using the JAGS modeling syntax. Note that JAGS uses mean and precision to define a normal distribution, therefore, I need to specify <span class="math inline">\(\sigma^-2\)</span> as the second parameter. Otherwise, the syntax closely resembles the mathematical notation used to outline the two-sample t-test (notice the substitution of <span class="math inline">\(\delta\)</span> in the place of <span class="math inline">\(\alpha\)</span>). See <a href="https://people.stat.sc.edu/hansont/stat740/jags_user_manual.pdf" class="external-link">JAGS user manual</a> for more details about the syntax and supported distributions.</p>
+<p>I first specify the model likelihood using the JAGS modeling syntax.
+Note that JAGS uses mean and precision to define a normal distribution,
+therefore, I need to specify <span class="math inline">\(\sigma^-2\)</span> as the second parameter.
+Otherwise, the syntax closely resembles the mathematical notation used
+to outline the two-sample t-test (notice the substitution of <span class="math inline">\(\delta\)</span> in the place of <span class="math inline">\(\alpha\)</span>). See <a href="https://people.stat.sc.edu/hansont/stat740/jags_user_manual.pdf" class="external-link">JAGS
+user manual</a> for more details about the syntax and supported
+distributions.</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ttest_model</span> <span class="op">&lt;-</span> </span>
 <span><span class="st">"model{</span></span>
@@ -145,7 +186,21 @@
 <span><span class="st">  }</span></span>
 <span><span class="st">}</span></span>
 <span><span class="st">"</span></span></code></pre></div>
-<p>Researchers familiar with specifying models in JAGS might notice that I did not specify the prior distribution for any of our parameters (<span class="math inline">\(\mu, \sigma, \delta\)</span>). In fact, all operations related to prior distributions are handled automatically by the BayesTools package. Here, I specify two lists of prior distributions, the first one for the null hypothesis <span class="math inline">\(\mathcal{H}_0\)</span> of no effect and second for the alternative hypothesis of a positive effect <span class="math inline">\(\mathcal{H}_+\)</span>. As in <span class="citation">Wagenmakers et al. (2015)</span>, I use a point null hypothesis for the <span class="math inline">\(\delta\)</span> for <span class="math inline">\(\mathcal{H}_0\)</span> and a half Cauchy distribution with scale <span class="math inline">\(\sqrt{2}/2\)</span> for the alternative hypothesis. Unfortunately, JAGS does not allow us to specify Jeffreys’ priors for the common mean <span class="math inline">\(\mu\)</span> and standard deviation <span class="math inline">\(\sigma\)</span>, therefore I use a relative wide Cauchy prior distribution for the mean and an exponential distribution for the standard deviation, both of which have approximately the same shape as the Jeffreys’ priors in areas where the likelihood is the highest.<span class="math inline">\(^1\)</span></p>
+<p>Researchers familiar with specifying models in JAGS might notice that
+I did not specify the prior distribution for any of our parameters
+(<span class="math inline">\(\mu, \sigma, \delta\)</span>). In fact, all
+operations related to prior distributions are handled automatically by
+the BayesTools package. Here, I specify two lists of prior
+distributions, the first one for the null hypothesis <span class="math inline">\(\mathcal{H}_0\)</span> of no effect and second for
+the alternative hypothesis of a positive effect <span class="math inline">\(\mathcal{H}_+\)</span>. As in <span class="citation">Wagenmakers et al. (2015)</span>, I use a point null
+hypothesis for the <span class="math inline">\(\delta\)</span> for <span class="math inline">\(\mathcal{H}_0\)</span> and a half Cauchy
+distribution with scale <span class="math inline">\(\sqrt{2}/2\)</span>
+for the alternative hypothesis. Unfortunately, JAGS does not allow us to
+specify Jeffreys’ priors for the common mean <span class="math inline">\(\mu\)</span> and standard deviation <span class="math inline">\(\sigma\)</span>, therefore I use a relative wide
+Cauchy prior distribution for the mean and an exponential distribution
+for the standard deviation, both of which have approximately the same
+shape as the Jeffreys’ priors in areas where the likelihood is the
+highest.<span class="math inline">\(^1\)</span></p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ttest_priors_H0</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
 <span>  mu    <span class="op">=</span> <span class="fu"><a href="../reference/prior.html">prior</a></span><span class="op">(</span><span class="st">"cauchy"</span>,      parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>location <span class="op">=</span> <span class="fl">0</span>, scale <span class="op">=</span> <span class="fl">10</span><span class="op">)</span><span class="op">)</span>,</span>
@@ -158,7 +213,8 @@
 <span>  delta <span class="op">=</span> <span class="fu"><a href="../reference/prior.html">prior</a></span><span class="op">(</span><span class="st">"cauchy"</span>,      parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>location <span class="op">=</span> <span class="fl">0</span>, scale <span class="op">=</span> <span class="fl">1</span><span class="op">)</span>,</span>
 <span>                truncation <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>lower <span class="op">=</span> <span class="fl">0</span>, upper <span class="op">=</span> <span class="cn">Inf</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
-<p>I can visualize and check the prior distributions with the <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> function.</p>
+<p>I can visualize and check the prior distributions with the
+<code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> function.</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/par.html" class="external-link">par</a></span><span class="op">(</span>mfrow <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">2</span>, <span class="fl">2</span><span class="op">)</span>, mar <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">4</span>, <span class="fl">4</span>, <span class="fl">2</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ttest_priors_H0</span><span class="op">$</span><span class="va">mu</span>,    par_name <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/bquote.html" class="external-link">bquote</a></span><span class="op">(</span><span class="va">mu</span><span class="op">)</span>, xlim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">50</span>, <span class="fl">50</span><span class="op">)</span><span class="op">)</span></span>
@@ -168,7 +224,11 @@
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ttest_priors_Hp</span><span class="op">$</span><span class="va">delta</span>, par_name <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/bquote.html" class="external-link">bquote</a></span><span class="op">(</span><span class="va">delta</span><span class="op">)</span>, </span>
 <span>     xlim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">5</span><span class="op">)</span>, main <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/bquote.html" class="external-link">bquote</a></span><span class="op">(</span><span class="va">H</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
 <p><img src="ComparisonR_files/figure-html/fig_priors-1.png" width="100%" style="display: block; margin: auto;"></p>
-<p>The last step needed before actually fitting the models is specifying a list with the data set. Here, I need to pass both the observations for <span class="math inline">\(x\)</span> and <span class="math inline">\(y\)</span>, but also the number of observations in each group, <span class="math inline">\(N_x\)</span> and <span class="math inline">\(N_y\)</span>, since I used it the model syntax I specified earlier.</p>
+<p>The last step needed before actually fitting the models is specifying
+a list with the data set. Here, I need to pass both the observations for
+<span class="math inline">\(x\)</span> and <span class="math inline">\(y\)</span>, but also the number of observations in
+each group, <span class="math inline">\(N_x\)</span> and <span class="math inline">\(N_y\)</span>, since I used it the model syntax I
+specified earlier.</p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ttest_data</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
 <span>  x  <span class="op">=</span> <span class="va">x</span>,</span>
@@ -176,7 +236,10 @@
 <span>  Nx <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span>,</span>
 <span>  Ny <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">y</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
-<p>Then, I pass the arguments into the <code><a href="../reference/JAGS_fit.html">JAGS_fit()</a></code> function that wraps around the runjags R package <span class="citation">(Denwood, 2016)</span>, specifying the prior distributions, preparing the starting values, etc…</p>
+<p>Then, I pass the arguments into the <code><a href="../reference/JAGS_fit.html">JAGS_fit()</a></code> function
+that wraps around the runjags R package <span class="citation">(Denwood,
+2016)</span>, specifying the prior distributions, preparing the starting
+values, etc…</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ttest_model_H0</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/JAGS_fit.html">JAGS_fit</a></span><span class="op">(</span></span>
 <span>  model_syntax <span class="op">=</span> <span class="va">ttest_model</span>,</span>
@@ -193,14 +256,19 @@
 <span>  prior_list   <span class="op">=</span> <span class="va">ttest_priors_Hp</span>,</span>
 <span>  seed         <span class="op">=</span> <span class="fl">1</span></span>
 <span><span class="op">)</span> </span></code></pre></div>
-<p>I can print the estimated model summary with <code><a href="../reference/BayesTools_model_tables.html">runjags_estimates_table()</a></code> function.</p>
+<p>I can print the estimated model summary with
+<code><a href="../reference/BayesTools_model_tables.html">runjags_estimates_table()</a></code> function.</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/BayesTools_model_tables.html">runjags_estimates_table</a></span><span class="op">(</span><span class="va">ttest_model_Hp</span><span class="op">)</span></span>
 <span><span class="co">#&gt;        Mean    SD   lCI Median   uCI error(MCMC) error(MCMC)/SD  ESS R-hat</span></span>
 <span><span class="co">#&gt; mu    0.681 0.048 0.585  0.681 0.774     0.00049          0.010 9784 1.000</span></span>
 <span><span class="co">#&gt; sigma 0.488 0.035 0.425  0.486 0.562     0.00036          0.010 9246 1.000</span></span>
 <span><span class="co">#&gt; delta 0.113 0.094 0.004  0.091 0.345     0.00139          0.015 4526 1.000</span></span></code></pre></div>
-<p>To compute the Bayes factor in favor of <span class="math inline">\(\mathcal{H}_+\)</span> over <span class="math inline">\(\mathcal{H}_0\)</span>, I need to first obtain the marginal likelihoods. The only additional step is specifying an R function that returns the log likelihood of the model. Here, instead of writing out the loops, I take advantage of the fact that summation on the log scale equals to multiplication on the original scale.</p>
+<p>To compute the Bayes factor in favor of <span class="math inline">\(\mathcal{H}_+\)</span> over <span class="math inline">\(\mathcal{H}_0\)</span>, I need to first obtain the
+marginal likelihoods. The only additional step is specifying an R
+function that returns the log likelihood of the model. Here, instead of
+writing out the loops, I take advantage of the fact that summation on
+the log scale equals to multiplication on the original scale.</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">log_posterior</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">parameters</span>, <span class="va">data</span><span class="op">)</span><span class="op">{</span></span>
 <span>  <span class="va">loglik_x</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">dnorm</a></span><span class="op">(</span></span>
@@ -217,7 +285,12 @@
 <span>  <span class="op">)</span><span class="op">)</span></span>
 <span>  <span class="kw"><a href="https://rdrr.io/r/base/function.html" class="external-link">return</a></span><span class="op">(</span><span class="va">loglik_x</span> <span class="op">+</span> <span class="va">loglik_y</span><span class="op">)</span></span>
 <span><span class="op">}</span></span></code></pre></div>
-<p>The function requires two arguments, <code>parameters</code> and <code>data</code>, both of which are forwarded to it via the <code>JAGS_bridgesampling</code> function that wraps around the bridge sampling R package <span class="citation">(Gronau et al., 2020)</span>, specifying the marginal likelihood for prior distributions and taking care of all required transformations etc…</p>
+<p>The function requires two arguments, <code>parameters</code> and
+<code>data</code>, both of which are forwarded to it via the
+<code>JAGS_bridgesampling</code> function that wraps around the bridge
+sampling R package <span class="citation">(Gronau et al., 2020)</span>,
+specifying the marginal likelihood for prior distributions and taking
+care of all required transformations etc…</p>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">marglik_model_H0</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/JAGS_bridgesampling.html">JAGS_bridgesampling</a></span><span class="op">(</span></span>
 <span>  fit           <span class="op">=</span> <span class="va">ttest_model_H0</span>,</span>
@@ -232,11 +305,14 @@
 <span>  data          <span class="op">=</span> <span class="va">ttest_data</span>,</span>
 <span>  prior_list    <span class="op">=</span> <span class="va">ttest_priors_Hp</span></span>
 <span><span class="op">)</span></span></code></pre></div>
-<p>To obtain the resulting Bayes factor in favor of the null hypothesis, I can use the <code>bf()</code> function from the bridgesampling R package</p>
+<p>To obtain the resulting Bayes factor in favor of the null hypothesis,
+I can use the <code>bf()</code> function from the bridgesampling R
+package</p>
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">bridgesampling</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/bridgesampling/man/bf.html" class="external-link">bf</a></span><span class="op">(</span><span class="va">marglik_model_H0</span>, <span class="va">marglik_model_Hp</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Estimated Bayes factor in favor of marglik_model_H0 over marglik_model_Hp: 10.71767</span></span></code></pre></div>
-<p>or specify a BayesTools model ensemble object that can be further inspected by a variety of functions.</p>
+<p>or specify a BayesTools model ensemble object that can be further
+inspected by a variety of functions.</p>
 <div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">models_list</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ensemble_inference.html">models_inference</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
 <span>  <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>model <span class="op">=</span> <span class="va">ttest_model_H0</span>, marglik <span class="op">=</span> <span class="va">marglik_model_H0</span>, prior_weights <span class="op">=</span> <span class="fl">1</span><span class="op">/</span><span class="fl">2</span><span class="op">)</span>,</span>
@@ -247,7 +323,8 @@
 <span><span class="fu"><a href="../reference/BayesTools_ensemble_tables.html">ensemble_inference_table</a></span><span class="op">(</span><span class="va">ensemble_info</span>, <span class="st">"delta"</span>, BF01 <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="co">#&gt;       Models Prior prob. Post. prob. Exclusion BF</span></span>
 <span><span class="co">#&gt; delta    1/2       0.500       0.085       10.718</span></span></code></pre></div>
-<p>The corresponding results can be also obtained numerically with the <code>ttestBF()</code> function from the BayesFactor R package <span class="citation">(Morey et al., 2015)</span>.</p>
+<p>The corresponding results can be also obtained numerically with the
+<code>ttestBF()</code> function from the BayesFactor R package <span class="citation">(Morey et al., 2015)</span>.</p>
 <div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">BayesFactor_ttest</span> <span class="op">&lt;-</span> <span class="fu">BayesFactor</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/BayesFactor/man/ttestBF.html" class="external-link">ttestBF</a></span><span class="op">(</span>x <span class="op">=</span> <span class="va">x</span>, y <span class="op">=</span> <span class="va">y</span>, rscale <span class="op">=</span> <span class="st">"wide"</span>, nullInterval <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0</span>, <span class="cn">Inf</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="va">BayesFactor_ttest</span></span>
@@ -262,34 +339,61 @@
 <span><span class="co">#&gt; Bayes factor type: BFindepSample, JZS</span></span>
 <span><span class="fl">1</span><span class="op">/</span><span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">exp</a></span><span class="op">(</span><span class="va">BayesFactor_ttest</span><span class="op">@</span><span class="va">bayesFactor</span><span class="op">$</span><span class="va">bf</span><span class="op">[</span><span class="fl">2</span><span class="op">]</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] 10.75649</span></span></code></pre></div>
-<p>This is of course a trivial example, however, it showcases flexibility of the BayesTools package. The prior distribution on the standardized effect size parameter <span class="math inline">\(\delta\)</span> can be changed to any of the multitude of supported distributions without effecting rest of the code, allowing users and package developers to specify more customized tests.</p>
+<p>This is of course a trivial example, however, it showcases
+flexibility of the BayesTools package. The prior distribution on the
+standardized effect size parameter <span class="math inline">\(\delta\)</span> can be changed to any of the
+multitude of supported distributions without effecting rest of the code,
+allowing users and package developers to specify more customized
+tests.</p>
 </div>
 </div>
 <div class="section level2">
 <h2 id="footnotes">Footnotes<a class="anchor" aria-label="anchor" href="#footnotes"></a>
 </h2>
-<p><span class="math inline">\(^1\)</span> Although the Jeffreys’ prior distributions integrate out from the numerical solution for the default Bayesian t-test/ANOVA, the prior distribution for sigma can influence the resulting Bayes factor in favor of the effect since it scales the standardized effect size coefficient.</p>
+<p><span class="math inline">\(^1\)</span> Although the Jeffreys’ prior
+distributions integrate out from the numerical solution for the default
+Bayesian t-test/ANOVA, the prior distribution for sigma can influence
+the resulting Bayes factor in favor of the effect since it scales the
+standardized effect size coefficient.</p>
 <div class="section level3 unnumbered">
-<h3 id="references">References<a class="anchor" aria-label="anchor" href="#references"></a>
+<h3 class="unnumbered" id="references">References<a class="anchor" aria-label="anchor" href="#references"></a>
 </h3>
-<div id="refs" class="references">
-<div id="ref-runjags">
-<p>Denwood, M. J. (2016). Runjags: An R package providing interface utilities, model templates, parallel computing methods and additional distributions for MCMC models in JAGS. <em>Journal of Statistical Software</em>, <em>71</em>(1), 1–25. <a href="https://doi.org/10.18637/jss.v071.i09" class="external-link">https://doi.org/10.18637/jss.v071.i09</a></p>
+<div id="refs" class="references csl-bib-body hanging-indent" line-spacing="2">
+<div id="ref-runjags" class="csl-entry">
+Denwood, M. J. (2016). Runjags: <span>A</span>n <span>R</span> package
+providing interface utilities, model templates, parallel computing
+methods and additional distributions for <span>MCMC</span> models in
+<span>JAGS</span>. <em>Journal of Statistical Software</em>,
+<em>71</em>(1), 1–25. <a href="https://doi.org/10.18637/jss.v071.i09" class="external-link">https://doi.org/10.18637/jss.v071.i09</a>
 </div>
-<div id="ref-bridgesampling">
-<p>Gronau, Q. F., Singmann, H., &amp; Wagenmakers, E.-J. (2020). bridgesampling: An R package for estimating normalizing constants. <em>Journal of Statistical Software</em>, <em>92</em>(10), 1–29. <a href="https://doi.org/10.18637/jss.v092.i10" class="external-link">https://doi.org/10.18637/jss.v092.i10</a></p>
+<div id="ref-bridgesampling" class="csl-entry">
+Gronau, Q. F., Singmann, H., &amp; Wagenmakers, E.-J. (2020). <span class="nocase">bridgesampling</span>: <span>A</span>n <span>R</span>
+package for estimating normalizing constants. <em>Journal of Statistical
+Software</em>, <em>92</em>(10), 1–29. <a href="https://doi.org/10.18637/jss.v092.i10" class="external-link">https://doi.org/10.18637/jss.v092.i10</a>
 </div>
-<div id="ref-BayesFactor">
-<p>Morey, R. D., Rouder, J. N., Jamil, T., &amp; Morey, M. R. D. (2015). <em>BayesFactor: Computation of Bayes factors for common designs</em>. <a href="https://CRAN.R-project.org/package=BayesFactor" class="external-link">https://CRAN.R-project.org/package=BayesFactor</a></p>
+<div id="ref-BayesFactor" class="csl-entry">
+Morey, R. D., Rouder, J. N., Jamil, T., &amp; Morey, M. R. D. (2015).
+<em><span>BayesFactor</span>: <span>C</span>omputation of
+<span>B</span>ayes factors for common designs</em>. <a href="https://CRAN.R-project.org/package=BayesFactor" class="external-link">https://CRAN.R-project.org/package=BayesFactor</a>
 </div>
-<div id="ref-rouder2009bayesian">
-<p>Rouder, J. N., Speckman, P. L., Sun, D., Morey, R. D., &amp; Iverson, G. (2009). Bayesian t tests for accepting and rejecting the null hypothesis. <em>Psychonomic Bulletin &amp; Review</em>, <em>16</em>(2), 225–237. <a href="https://doi.org/10.3758/PBR.16.2.225" class="external-link">https://doi.org/10.3758/PBR.16.2.225</a></p>
+<div id="ref-rouder2009bayesian" class="csl-entry">
+Rouder, J. N., Speckman, P. L., Sun, D., Morey, R. D., &amp; Iverson, G.
+(2009). Bayesian t tests for accepting and rejecting the null
+hypothesis. <em>Psychonomic Bulletin &amp; Review</em>, <em>16</em>(2),
+225–237. <a href="https://doi.org/10.3758/PBR.16.2.225" class="external-link">https://doi.org/10.3758/PBR.16.2.225</a>
 </div>
-<div id="ref-topolinski2012turning">
-<p>Topolinski, S., &amp; Sparenberg, P. (2012). Turning the hands of time: Clockwise movements increase preference for novelty. <em>Social Psychological and Personality Science</em>, <em>3</em>(3), 308–314. <a href="https://doi.org/10.1177/1948550611419266" class="external-link">https://doi.org/10.1177/1948550611419266</a></p>
+<div id="ref-topolinski2012turning" class="csl-entry">
+Topolinski, S., &amp; Sparenberg, P. (2012). Turning the hands of time:
+<span>C</span>lockwise movements increase preference for novelty.
+<em>Social Psychological and Personality Science</em>, <em>3</em>(3),
+308–314. <a href="https://doi.org/10.1177/1948550611419266" class="external-link">https://doi.org/10.1177/1948550611419266</a>
 </div>
-<div id="ref-wagenmakers2015turning">
-<p>Wagenmakers, E.-J., Beek, T. F., Rotteveel, M., Gierholz, A., Matzke, D., Steingroever, H., Ly, A., Verhagen, J., Selker, R., Sasiadek, A., &amp; others. (2015). Turning the hands of time again: A purely confirmatory replication study and a Bayesian analysis. <em>Frontiers in Psychology</em>, <em>6</em>, 494. <a href="https://doi.org/10.3389/fpsyg.2015.00494" class="external-link">https://doi.org/10.3389/fpsyg.2015.00494</a></p>
+<div id="ref-wagenmakers2015turning" class="csl-entry">
+Wagenmakers, E.-J., Beek, T. F., Rotteveel, M., Gierholz, A., Matzke,
+D., Steingroever, H., Ly, A., Verhagen, J., Selker, R., Sasiadek, A., et
+al. (2015). Turning the hands of time again: A purely confirmatory
+replication study and a <span>B</span>ayesian analysis. <em>Frontiers in
+Psychology</em>, <em>6</em>, 494. <a href="https://doi.org/10.3389/fpsyg.2015.00494" class="external-link">https://doi.org/10.3389/fpsyg.2015.00494</a>
 </div>
 </div>
 </div>
@@ -313,7 +417,7 @@
 
 <div class="pkgdown">
   <p></p>
-<p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.6.</p>
+<p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.7.</p>
 </div>
 
       </footer>

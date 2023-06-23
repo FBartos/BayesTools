@@ -19,7 +19,7 @@ systems might vary due to differences in JAGS numerical precision.)"><!-- mathja
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.13</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.15</span>
       </span>
     </div>
 
@@ -75,7 +75,7 @@ systems might vary due to differences in JAGS numerical precision.)</p>
 <span>  <span class="va">parameters</span>,</span>
 <span>  truncation <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>lower <span class="op">=</span> <span class="op">-</span><span class="cn">Inf</span>, upper <span class="op">=</span> <span class="cn">Inf</span><span class="op">)</span>,</span>
 <span>  prior_weights <span class="op">=</span> <span class="fl">1</span>,</span>
-<span>  contrast <span class="op">=</span> <span class="st">"orthonormal"</span></span>
+<span>  contrast <span class="op">=</span> <span class="st">"meandif"</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -155,7 +155,16 @@ of its prior distributions.</p></dd>
 
 
 <dt>contrast</dt>
-<dd><p>type of contrast for the prior distribution. The possible options are</p><dl><dt><code>"orthonormal"</code></dt>
+<dd><p>type of contrast for the prior distribution. The possible options are</p><dl><dt><code>"meandif"</code></dt>
+<dd><p>for contrast centered around the grand mean
+with equal marginal distributions, making the prior distribution exchangeable
+across factor levels. In contrast to <code>"orthonormal"</code>, the marginal distributions
+are identical regardless of the number of factor levels and the specified prior
+distribution corresponds to the difference from grand mean for each factor level.
+Only supports <code>distribution = "mnormal"</code> and <code>distribution = "mt"</code>
+which generates the corresponding multivariate normal/t distributions.</p></dd>
+
+<dt><code>"orthonormal"</code></dt>
 <dd><p>for contrast centered around the grand mean
 with equal marginal distributions, making the prior distribution exchangeable
 across factor levels. Only supports <code>distribution = "mnormal"</code> and
@@ -166,6 +175,11 @@ distributions.</p></dd>
 <dd><p>for contrasts using the first level as a comparison
 group and setting equal prior distribution on differences between the individual
 factor levels and the comparison level.</p></dd>
+
+<dt><code>"independent"</code></dt>
+<dd><p>for contrasts specifying dependent prior distribution
+for each factor level (note that this leads to an overparameterized model if the
+intercept is included).</p></dd>
 
 
 </dl></dd>
@@ -202,7 +216,7 @@ factor levels and the comparison level.</p></dd>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.6.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.7.</p>
 </div>
 
       </footer></div>

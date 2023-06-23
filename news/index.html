@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.13</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.15</span>
       </span>
     </div>
 
@@ -60,6 +60,54 @@
       <small>Source: <a href="https://github.com/FBartos/BayesTools/blob/HEAD/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
+    <div class="section level2">
+<h2 class="page-header" data-toc-text="0.2.15" id="version-0215">version 0.2.15<a class="anchor" aria-label="anchor" href="#version-0215"></a></h2>
+<div class="section level3">
+<h3 id="fixes-0-2-15">Fixes<a class="anchor" aria-label="anchor" href="#fixes-0-2-15"></a></h3>
+<ul><li>fixing repeated print of previous prior distribution in <code><a href="../reference/BayesTools_model_tables.html">model_summary_table()</a></code> in case of <code><a href="../reference/prior.html">prior_none()</a></code>
+</li>
+</ul></div>
+</div>
+    <div class="section level2">
+<h2 class="page-header" data-toc-text="0.2.14" id="version-0214">version 0.2.14<small>2023-05-30</small><a class="anchor" aria-label="anchor" href="#version-0214"></a></h2>
+<div class="section level3">
+<h3 id="features-0-2-14">Features<a class="anchor" aria-label="anchor" href="#features-0-2-14"></a></h3>
+<ul><li>adding <code>contrast = "meandif"</code> to the <code>prior_factor</code> function which generates identical prior distributions for difference between the grand mean and each factor level</li>
+<li>adding <code>contrast = "independent"</code> to the <code>prior_factor</code> function which generates independent identical prior distributions for each factor level</li>
+<li>
+<code>remove_column</code> function for removing columns from <code>BayesTools_table</code> objects without breaking the attributes etc…</li>
+<li>adding empty table functions (<a href="https://github.com/FBartos/BayesTools/issues/10" class="external-link uri">https://github.com/FBartos/BayesTools/issues/10</a>)</li>
+<li>adding <code>remove_parameters</code> argument to <code><a href="../reference/BayesTools_model_tables.html">model_summary_table()</a></code>
+</li>
+<li>adding multivariate point distribution functions</li>
+<li>adding <code>point</code> prior distribution as option to <code>prior_factor</code> with <code>"meandif"</code> and <code>"orthonormal"</code> contrasts</li>
+<li>adding <code><a href="../reference/marginal_posterior.html">marginal_posterior()</a></code> function which creates marginal prior and posterior distributions (according to a model formula specification)</li>
+<li>adding <code><a href="../reference/Savage_Dickey_BF.html">Savage_Dickey_BF()</a></code> function to compute density ratio Bayes factors based on <code>marginal_posterior</code> objects</li>
+<li>adding <code><a href="../reference/marginal_inference.html">marginal_inference()</a></code> function to combine information from <code><a href="../reference/marginal_posterior.html">marginal_posterior()</a></code> and <code><a href="../reference/Savage_Dickey_BF.html">Savage_Dickey_BF()</a></code>
+</li>
+<li>adding <code><a href="../reference/BayesTools_ensemble_tables.html">marginal_estimates_table()</a></code> function to summarize <code><a href="../reference/marginal_inference.html">marginal_inference()</a></code> objects</li>
+<li>adding <code><a href="../reference/plot_marginal.html">plot_marginal()</a></code> function to visualize <code><a href="../reference/marginal_inference.html">marginal_inference()</a></code> objects</li>
+</ul></div>
+<div class="section level3">
+<h3 id="changes-0-2-14">Changes<a class="anchor" aria-label="anchor" href="#changes-0-2-14"></a></h3>
+<ul><li>
+<code>contrast = "meandif"</code> is now the default setting for <code>prior_factor</code> function</li>
+<li>depreciating <code>transform_orthonormal</code> argument in favor of more general <code>transform_factors</code> argument</li>
+<li>switching <code>dummy</code> contrast/factor attributes to <code>treatment</code> for consistency (<a href="https://github.com/FBartos/BayesTools/issues/23" class="external-link uri">https://github.com/FBartos/BayesTools/issues/23</a>)</li>
+</ul></div>
+<div class="section level3">
+<h3 id="fixes-0-2-14">Fixes<a class="anchor" aria-label="anchor" href="#fixes-0-2-14"></a></h3>
+<ul><li>zero length inputs to <code><a href="../reference/check_input.html">check_bool()</a></code>, <code><a href="../reference/check_input.html">check_char()</a></code>, <code><a href="../reference/check_input.html">check_real()</a></code>, <code><a href="../reference/check_input.html">check_int()</a></code>, and <code><a href="../reference/check_input.html">check_list()</a></code> do not throw error if <code>allow_NULL = TRUE</code>
+</li>
+<li>properly aggregating identical priors in the plotting function (previously overlying multiple spikes on top of each other when attributes did not match)</li>
+<li>
+<code>student-t</code> allowed as a prior distribution <code>name</code>
+</li>
+<li>fixing factor contrast settings in <code>JAGS_evaluate_formula</code>
+</li>
+<li>fixing spike prior transformations</li>
+</ul></div>
+</div>
     <div class="section level2">
 <h2 class="page-header" data-toc-text="0.2.13" id="version-0213">version 0.2.13<small>2022-09-14</small><a class="anchor" aria-label="anchor" href="#version-0213"></a></h2>
 <div class="section level3">
@@ -105,22 +153,26 @@
 </ul></div>
 <div class="section level3">
 <h3 id="fixes-0-2-11">Fixes<a class="anchor" aria-label="anchor" href="#fixes-0-2-11"></a></h3>
-<ul><li>when a transformation is applied, JAGS summary tables now produce the mean of the transformed variable (previous versions incorrectly returned transformation of the mean)</li></ul></div>
+<ul><li>when a transformation is applied, JAGS summary tables now produce the mean of the transformed variable (previous versions incorrectly returned transformation of the mean)</li>
+</ul></div>
 <div class="section level3">
 <h3 id="changes-0-2-11">Changes<a class="anchor" aria-label="anchor" href="#changes-0-2-11"></a></h3>
-<ul><li>runjags_XXX_table functions are now also exported as JAGS_XXX_functions for consistency with the rest of the code</li></ul></div>
+<ul><li>runjags_XXX_table functions are now also exported as JAGS_XXX_functions for consistency with the rest of the code</li>
+</ul></div>
 </div>
     <div class="section level2">
 <h2 class="page-header" data-toc-text="0.2.10" id="version-0210">version 0.2.10<small>2022-05-09</small><a class="anchor" aria-label="anchor" href="#version-0210"></a></h2>
 <div class="section level3">
 <h3 id="features-0-2-10">Features<a class="anchor" aria-label="anchor" href="#features-0-2-10"></a></h3>
-<ul><li>trace, density, and autocorrelation diagnostic plots for JAGS models</li></ul></div>
+<ul><li>trace, density, and autocorrelation diagnostic plots for JAGS models</li>
+</ul></div>
 </div>
     <div class="section level2">
 <h2 class="page-header" data-toc-text="0.2.9" id="version-029">version 0.2.9<a class="anchor" aria-label="anchor" href="#version-029"></a></h2>
 <div class="section level3">
 <h3 id="fixes-0-2-9">Fixes<a class="anchor" aria-label="anchor" href="#fixes-0-2-9"></a></h3>
-<ul><li>dealing with NaNs in inclusion Bayes factors due to overflow with very large marginal likelihoods</li></ul></div>
+<ul><li>dealing with NaNs in inclusion Bayes factors due to overflow with very large marginal likelihoods</li>
+</ul></div>
 </div>
     <div class="section level2">
 <h2 class="page-header" data-toc-text="0.2.8" id="version-028">version 0.2.8<small>2022-04-20</small><a class="anchor" aria-label="anchor" href="#version-028"></a></h2>
@@ -170,7 +222,8 @@
 </ul></div>
 <div class="section level3">
 <h3 id="fixes-0-2-5">Fixes<a class="anchor" aria-label="anchor" href="#fixes-0-2-5"></a></h3>
-<ul><li>allowing to pass point prior distributions for factor type predictors</li></ul></div>
+<ul><li>allowing to pass point prior distributions for factor type predictors</li>
+</ul></div>
 </div>
     <div class="section level2">
 <h2 class="page-header" data-toc-text="0.2.4" id="version-024">version 0.2.4<a class="anchor" aria-label="anchor" href="#version-024"></a></h2>
@@ -184,25 +237,29 @@
 <h2 class="page-header" data-toc-text="0.2.3" id="version-023">version 0.2.3<small>2022-04-02</small><a class="anchor" aria-label="anchor" href="#version-023"></a></h2>
 <div class="section level3">
 <h3 id="fixes-0-2-3">Fixes<a class="anchor" aria-label="anchor" href="#fixes-0-2-3"></a></h3>
-<ul><li>fixing error from trying to rename formula parameters in BayesTools tables when multiple parameters were nested within a component</li></ul></div>
+<ul><li>fixing error from trying to rename formula parameters in BayesTools tables when multiple parameters were nested within a component</li>
+</ul></div>
 </div>
     <div class="section level2">
 <h2 class="page-header" data-toc-text="0.2.2" id="version-022">version 0.2.2<a class="anchor" aria-label="anchor" href="#version-022"></a></h2>
 <div class="section level3">
 <h3 id="fixes-0-2-2">Fixes<a class="anchor" aria-label="anchor" href="#fixes-0-2-2"></a></h3>
-<ul><li>fixing layering of prior and posterior plots in <code>plot_posterior</code> (posterior is now plotted over the prior)</li></ul></div>
+<ul><li>fixing layering of prior and posterior plots in <code>plot_posterior</code> (posterior is now plotted over the prior)</li>
+</ul></div>
 </div>
     <div class="section level2">
 <h2 class="page-header" data-toc-text="0.2.1" id="version-021">version 0.2.1<a class="anchor" aria-label="anchor" href="#version-021"></a></h2>
 <div class="section level3">
 <h3 id="fixes-0-2-1">Fixes<a class="anchor" aria-label="anchor" href="#fixes-0-2-1"></a></h3>
-<ul><li>fixing JAGS code for multivariate-t prior distribution</li></ul></div>
+<ul><li>fixing JAGS code for multivariate-t prior distribution</li>
+</ul></div>
 </div>
     <div class="section level2">
 <h2 class="page-header" data-toc-text="0.2.0" id="version-020">version 0.2.0<a class="anchor" aria-label="anchor" href="#version-020"></a></h2>
 <div class="section level3">
 <h3 id="changes-0-2-0">Changes<a class="anchor" aria-label="anchor" href="#changes-0-2-0"></a></h3>
-<ul><li>ensemble inference, summary, and plot functions now extract the prior list from attribute of the fit objects (previously, the prior_list needed to be passed for each model within the model_list as the priors argument</li></ul></div>
+<ul><li>ensemble inference, summary, and plot functions now extract the prior list from attribute of the fit objects (previously, the prior_list needed to be passed for each model within the model_list as the priors argument</li>
+</ul></div>
 <div class="section level3">
 <h3 id="features-0-2-0">Features<a class="anchor" aria-label="anchor" href="#features-0-2-0"></a></h3>
 <ul><li>adding formula interface for fitting and computing marginal likelihood of JAGS models</li>
@@ -219,14 +276,16 @@
 </ul></div>
 <div class="section level3">
 <h3 id="features-0-1-4">Features<a class="anchor" aria-label="anchor" href="#features-0-1-4"></a></h3>
-<ul><li>adding logBF and BF01 options to <code>ensemble_summary_table</code> (Issue <a href="https://github.com/FBartos/BayesTools/issues/7" class="external-link">#7</a>)</li></ul></div>
+<ul><li>adding logBF and BF01 options to <code>ensemble_summary_table</code> (Issue <a href="https://github.com/FBartos/BayesTools/issues/7" class="external-link">#7</a>)</li>
+</ul></div>
 </div>
     <div class="section level2">
 <h2 class="page-header" data-toc-text="0.1.3" id="version-013">version 0.1.3<small>2021-10-31</small><a class="anchor" aria-label="anchor" href="#version-013"></a></h2>
 <div class="section level3">
 <h3 id="features-0-1-3">Features<a class="anchor" aria-label="anchor" href="#features-0-1-3"></a></h3>
 <ul><li>
-<code>prior_informed</code> function for creating informed prior distributions based on the past psychological and medical research</li></ul></div>
+<code>prior_informed</code> function for creating informed prior distributions based on the past psychological and medical research</li>
+</ul></div>
 </div>
     <div class="section level2">
 <h2 class="page-header" data-toc-text="0.1.2" id="version-012">version 0.1.2<small>2021-10-04</small><a class="anchor" aria-label="anchor" href="#version-012"></a></h2>
@@ -243,7 +302,8 @@
 <div class="section level3">
 <h3 id="features-0-1-2">Features<a class="anchor" aria-label="anchor" href="#features-0-1-2"></a></h3>
 <ul><li>
-<code>interpret</code> function for creating textual summaries based on inference and samples objects</li></ul></div>
+<code>interpret</code> function for creating textual summaries based on inference and samples objects</li>
+</ul></div>
 </div>
     <div class="section level2">
 <h2 class="page-header" data-toc-text="0.1.1" id="version-011">version 0.1.1<small>2021-07-13</small><a class="anchor" aria-label="anchor" href="#version-011"></a></h2>
@@ -264,40 +324,52 @@
 </div>
     <div class="section level2">
 <h2 class="page-header" data-toc-text="0.1.0" id="version-010">version 0.1.0<small>2021-07-02</small><a class="anchor" aria-label="anchor" href="#version-010"></a></h2>
-<ul><li>published on CRAN</li></ul></div>
+<ul><li>published on CRAN</li>
+</ul></div>
     <div class="section level2">
 <h2 class="page-header" data-toc-text="0.0.0.9010" id="version-0009010">version 0.0.0.9010<a class="anchor" aria-label="anchor" href="#version-0009010"></a></h2>
-<ul><li>plotting functions for models</li></ul></div>
+<ul><li>plotting functions for models</li>
+</ul></div>
     <div class="section level2">
 <h2 class="page-header" data-toc-text="0.0.0.9009" id="version-0009009">version 0.0.0.9009<a class="anchor" aria-label="anchor" href="#version-0009009"></a></h2>
-<ul><li>plotting functions for posterior samples</li></ul></div>
+<ul><li>plotting functions for posterior samples</li>
+</ul></div>
     <div class="section level2">
 <h2 class="page-header" data-toc-text="0.0.0.9008" id="version-0009008">version 0.0.0.9008<a class="anchor" aria-label="anchor" href="#version-0009008"></a></h2>
-<ul><li>plotting functions for mixture of priors</li></ul></div>
+<ul><li>plotting functions for mixture of priors</li>
+</ul></div>
     <div class="section level2">
 <h2 class="page-header" data-toc-text="0.0.0.9007" id="version-0009007">version 0.0.0.9007<a class="anchor" aria-label="anchor" href="#version-0009007"></a></h2>
-<ul><li>improvements to prior plotting functions</li></ul></div>
+<ul><li>improvements to prior plotting functions</li>
+</ul></div>
     <div class="section level2">
 <h2 class="page-header" data-toc-text="0.0.0.9006" id="version-0009006">version 0.0.0.9006<a class="anchor" aria-label="anchor" href="#version-0009006"></a></h2>
-<ul><li>ensemble and model summary tables functions</li></ul></div>
+<ul><li>ensemble and model summary tables functions</li>
+</ul></div>
     <div class="section level2">
 <h2 class="page-header" data-toc-text="0.0.0.9005" id="version-0009005">version 0.0.0.9005<a class="anchor" aria-label="anchor" href="#version-0009005"></a></h2>
-<ul><li>posterior mixing functions</li></ul></div>
+<ul><li>posterior mixing functions</li>
+</ul></div>
     <div class="section level2">
 <h2 class="page-header" data-toc-text="0.0.0.9004" id="version-0009004">version 0.0.0.9004<a class="anchor" aria-label="anchor" href="#version-0009004"></a></h2>
-<ul><li>model-averaging functions</li></ul></div>
+<ul><li>model-averaging functions</li>
+</ul></div>
     <div class="section level2">
 <h2 class="page-header" data-toc-text="0.0.0.9003" id="version-0009003">version 0.0.0.9003<a class="anchor" aria-label="anchor" href="#version-0009003"></a></h2>
-<ul><li>JAGS fitting related functions</li></ul></div>
+<ul><li>JAGS fitting related functions</li>
+</ul></div>
     <div class="section level2">
 <h2 class="page-header" data-toc-text="0.0.0.9002" id="version-0009002">version 0.0.0.9002<a class="anchor" aria-label="anchor" href="#version-0009002"></a></h2>
-<ul><li>JAGS bridgesampling related functions</li></ul></div>
+<ul><li>JAGS bridgesampling related functions</li>
+</ul></div>
     <div class="section level2">
 <h2 class="page-header" data-toc-text="0.0.0.9001" id="version-0009001">version 0.0.0.9001<a class="anchor" aria-label="anchor" href="#version-0009001"></a></h2>
-<ul><li>JAGS model building related functions</li></ul></div>
+<ul><li>JAGS model building related functions</li>
+</ul></div>
     <div class="section level2">
 <h2 class="page-header" data-toc-text="0.0.0.9000" id="version-0009000">version 0.0.0.9000<a class="anchor" aria-label="anchor" href="#version-0009000"></a></h2>
-<ul><li>priors and related methods</li></ul></div>
+<ul><li>priors and related methods</li>
+</ul></div>
   </div>
 
   <div class="col-md-3 hidden-xs hidden-sm" id="pkgdown-sidebar">
@@ -312,7 +384,7 @@
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.6.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.7.</p>
 </div>
 
       </footer></div>
