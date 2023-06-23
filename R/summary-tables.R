@@ -657,7 +657,9 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
   summary_priors  <- "Parameter prior distributions"
   for(i in seq_along(prior_list)){
     # get the prior name
-    if(remove_spike_0 && is.prior.point(prior_list[[i]]) && prior_list[[i]][["parameters"]][["location"]] == 0 || (names(prior_list)[[i]] %in% remove_parameters)){
+    if(is.prior.none(prior_list[[i]])){
+      next
+    }else if(remove_spike_0 && is.prior.point(prior_list[[i]]) && prior_list[[i]][["parameters"]][["location"]] == 0 || (names(prior_list)[[i]] %in% remove_parameters)){
       next
     }else if(is.prior.weightfunction(prior_list[[i]]) | is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
       temp_prior <- print(prior_list[[i]], silent = TRUE, short_name = short_name)
