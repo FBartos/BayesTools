@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.13</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.15</span>
       </span>
     </div>
 
@@ -68,11 +68,11 @@
         </td>
         <td><p>BayesTools</p></td>
       </tr><tr><td>
-          <p><code><a href="BayesTools_ensemble_tables.html">ensemble_estimates_table()</a></code> <code><a href="BayesTools_ensemble_tables.html">ensemble_inference_table()</a></code> <code><a href="BayesTools_ensemble_tables.html">ensemble_summary_table()</a></code> <code><a href="BayesTools_ensemble_tables.html">ensemble_diagnostics_table()</a></code> </p>
+          <p><code><a href="BayesTools_ensemble_tables.html">ensemble_estimates_table()</a></code> <code><a href="BayesTools_ensemble_tables.html">ensemble_inference_table()</a></code> <code><a href="BayesTools_ensemble_tables.html">ensemble_summary_table()</a></code> <code><a href="BayesTools_ensemble_tables.html">ensemble_diagnostics_table()</a></code> <code><a href="BayesTools_ensemble_tables.html">ensemble_estimates_empty_table()</a></code> <code><a href="BayesTools_ensemble_tables.html">ensemble_inference_empty_table()</a></code> <code><a href="BayesTools_ensemble_tables.html">ensemble_summary_empty_table()</a></code> <code><a href="BayesTools_ensemble_tables.html">ensemble_diagnostics_empty_table()</a></code> <code><a href="BayesTools_ensemble_tables.html">marginal_estimates_table()</a></code> </p>
         </td>
         <td><p>Create BayesTools ensemble summary tables</p></td>
       </tr><tr><td>
-          <p><code><a href="BayesTools_model_tables.html">model_summary_table()</a></code> <code><a href="BayesTools_model_tables.html">runjags_estimates_table()</a></code> <code><a href="BayesTools_model_tables.html">runjags_inference_table()</a></code> <code><a href="BayesTools_model_tables.html">JAGS_estimates_table()</a></code> <code><a href="BayesTools_model_tables.html">JAGS_inference_table()</a></code> <code><a href="BayesTools_model_tables.html">JAGS_summary_table()</a></code> <code><a href="BayesTools_model_tables.html">runjags_estimates_empty_table()</a></code> <code><a href="BayesTools_model_tables.html">runjags_inference_empty_table()</a></code> <code><a href="BayesTools_model_tables.html">stan_estimates_table()</a></code> </p>
+          <p><code><a href="BayesTools_model_tables.html">model_summary_table()</a></code> <code><a href="BayesTools_model_tables.html">runjags_estimates_table()</a></code> <code><a href="BayesTools_model_tables.html">runjags_inference_table()</a></code> <code><a href="BayesTools_model_tables.html">JAGS_estimates_table()</a></code> <code><a href="BayesTools_model_tables.html">JAGS_inference_table()</a></code> <code><a href="BayesTools_model_tables.html">JAGS_summary_table()</a></code> <code><a href="BayesTools_model_tables.html">model_summary_empty_table()</a></code> <code><a href="BayesTools_model_tables.html">runjags_estimates_empty_table()</a></code> <code><a href="BayesTools_model_tables.html">runjags_inference_empty_table()</a></code> <code><a href="BayesTools_model_tables.html">JAGS_estimates_empty_table()</a></code> <code><a href="BayesTools_model_tables.html">JAGS_inference_empty_table()</a></code> <code><a href="BayesTools_model_tables.html">stan_estimates_table()</a></code> </p>
         </td>
         <td><p>Create BayesTools model tables</p></td>
       </tr><tr><td>
@@ -128,6 +128,10 @@
         </td>
         <td><p>Create list of monitored parameters for 'JAGS' model</p></td>
       </tr><tr><td>
+          <p><code><a href="Savage_Dickey_BF.html">Savage_Dickey_BF()</a></code> </p>
+        </td>
+        <td><p>Compute Savage-Dickey inclusion Bayes factors</p></td>
+      </tr><tr><td>
           <p><code><a href="add_column.html">add_column()</a></code> </p>
         </td>
         <td><p>Adds column to BayesTools table</p></td>
@@ -135,6 +139,14 @@
           <p><code><a href="check_input.html">check_bool()</a></code> <code><a href="check_input.html">check_char()</a></code> <code><a href="check_input.html">check_real()</a></code> <code><a href="check_input.html">check_int()</a></code> <code><a href="check_input.html">check_list()</a></code> </p>
         </td>
         <td><p>Check input</p></td>
+      </tr><tr><td>
+          <p><code><a href="contr.independent.html">contr.independent()</a></code> </p>
+        </td>
+        <td><p>Independent contrast matrix</p></td>
+      </tr><tr><td>
+          <p><code><a href="contr.meandif.html">contr.meandif()</a></code> </p>
+        </td>
+        <td><p>Mean difference contrast matrix</p></td>
       </tr><tr><td>
           <p><code><a href="contr.orthonormal.html">contr.orthonormal()</a></code> </p>
         </td>
@@ -168,7 +180,7 @@
         </td>
         <td><p>Interpret ensemble inference and estimates</p></td>
       </tr><tr><td>
-          <p><code><a href="is.prior.html">is.prior()</a></code> <code><a href="is.prior.html">is.prior.point()</a></code> <code><a href="is.prior.html">is.prior.none()</a></code> <code><a href="is.prior.html">is.prior.simple()</a></code> <code><a href="is.prior.html">is.prior.discrete()</a></code> <code><a href="is.prior.html">is.prior.vector()</a></code> <code><a href="is.prior.html">is.prior.PET()</a></code> <code><a href="is.prior.html">is.prior.PEESE()</a></code> <code><a href="is.prior.html">is.prior.weightfunction()</a></code> <code><a href="is.prior.html">is.prior.factor()</a></code> <code><a href="is.prior.html">is.prior.orthonormal()</a></code> <code><a href="is.prior.html">is.prior.dummy()</a></code> <code><a href="is.prior.html">is.prior.spike_and_slab()</a></code> </p>
+          <p><code><a href="is.prior.html">is.prior()</a></code> <code><a href="is.prior.html">is.prior.point()</a></code> <code><a href="is.prior.html">is.prior.none()</a></code> <code><a href="is.prior.html">is.prior.simple()</a></code> <code><a href="is.prior.html">is.prior.discrete()</a></code> <code><a href="is.prior.html">is.prior.vector()</a></code> <code><a href="is.prior.html">is.prior.PET()</a></code> <code><a href="is.prior.html">is.prior.PEESE()</a></code> <code><a href="is.prior.html">is.prior.weightfunction()</a></code> <code><a href="is.prior.html">is.prior.factor()</a></code> <code><a href="is.prior.html">is.prior.orthonormal()</a></code> <code><a href="is.prior.html">is.prior.treatment()</a></code> <code><a href="is.prior.html">is.prior.independent()</a></code> <code><a href="is.prior.html">is.prior.spike_and_slab()</a></code> <code><a href="is.prior.html">is.prior.meandif()</a></code> </p>
         </td>
         <td><p>Reports whether x is a a prior object</p></td>
       </tr><tr><td>
@@ -186,6 +198,15 @@ Wagenmakers et al. (2015)
         </td>
         <td><p>Add list of prior objects to a plot</p></td>
       </tr><tr><td>
+          <p><code><a href="marginal_inference.html">marginal_inference()</a></code> </p>
+        </td>
+        <td><p>Model-average marginal posterior distributions and
+marginal Bayes factors</p></td>
+      </tr><tr><td>
+          <p><code><a href="marginal_posterior.html">marginal_posterior()</a></code> </p>
+        </td>
+        <td><p>Model-average marginal posterior distributions</p></td>
+      </tr><tr><td>
           <p><code><a href="mean.prior.html">mean(<i>&lt;prior&gt;</i>)</a></code> </p>
         </td>
         <td><p>Prior mean</p></td>
@@ -194,6 +215,10 @@ Wagenmakers et al. (2015)
         </td>
         <td><p>Model-average posterior distributions</p></td>
       </tr><tr><td>
+          <p><code><a href="mpoint.html">dmpoint()</a></code> <code><a href="mpoint.html">rmpoint()</a></code> <code><a href="mpoint.html">pmpoint()</a></code> <code><a href="mpoint.html">qmpoint()</a></code> </p>
+        </td>
+        <td><p>Multivariate point mass distribution</p></td>
+      </tr><tr><td>
           <p><code><a href="parameter_names.html">format_parameter_names()</a></code> <code><a href="parameter_names.html">JAGS_parameter_names()</a></code> </p>
         </td>
         <td><p>Clean parameter names from JAGS</p></td>
@@ -201,6 +226,10 @@ Wagenmakers et al. (2015)
           <p><code><a href="plot.prior.html">plot(<i>&lt;prior&gt;</i>)</a></code> </p>
         </td>
         <td><p>Plots a prior object</p></td>
+      </tr><tr><td>
+          <p><code><a href="plot_marginal.html">plot_marginal()</a></code> </p>
+        </td>
+        <td><p>Plot samples from the marginal posterior distributions</p></td>
       </tr><tr><td>
           <p><code><a href="plot_models.html">plot_models()</a></code> </p>
         </td>
@@ -266,6 +295,10 @@ Wagenmakers et al. (2015)
         </td>
         <td><p>Prior range</p></td>
       </tr><tr><td>
+          <p><code><a href="remove_column.html">remove_column()</a></code> </p>
+        </td>
+        <td><p>Removes column to BayesTools table</p></td>
+      </tr><tr><td>
           <p><code><a href="sd.html">sd()</a></code> </p>
         </td>
         <td><p>Creates generic for sd function</p></td>
@@ -273,6 +306,14 @@ Wagenmakers et al. (2015)
           <p><code><a href="sd.prior.html">sd(<i>&lt;prior&gt;</i>)</a></code> </p>
         </td>
         <td><p>Prior sd</p></td>
+      </tr><tr><td>
+          <p><code><a href="transform_factor_samples.html">transform_factor_samples()</a></code> </p>
+        </td>
+        <td><p>Transform factor posterior samples into differences from the mean</p></td>
+      </tr><tr><td>
+          <p><code><a href="transform_meandif_samples.html">transform_meandif_samples()</a></code> </p>
+        </td>
+        <td><p>Transform meandif posterior samples into differences from the mean</p></td>
       </tr><tr><td>
           <p><code><a href="transform_orthonormal_samples.html">transform_orthonormal_samples()</a></code> </p>
         </td>
@@ -306,7 +347,7 @@ Wagenmakers et al. (2015)
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.6.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.7.</p>
 </div>
 
       </footer></div>
