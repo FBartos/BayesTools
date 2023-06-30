@@ -33,7 +33,7 @@ JAGS_extend(
   autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error =
     0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000),
   parallel = FALSE,
-  cores = chains,
+  cores = NULL,
   silent = TRUE,
   seed = NULL
 )
@@ -102,9 +102,12 @@ monitored but were not specified in the \code{prior_list}}
 \item{required_packages}{character vector specifying list of packages containing
 JAGS models required for sampling (in case that the function is run in parallel or in
 detached R session). Defaults to \code{NULL}.}
+
+\item{fit}{a 'BayesTools_fit' object (created by \code{JAGS_fit()} function) to be
+extended}
 }
 \value{
-\code{JAGS_fit} returns an object of class 'runjags'.
+\code{JAGS_fit} returns an object of class 'runjags' and 'BayesTools_fit'.
 }
 \description{
 A wrapper around

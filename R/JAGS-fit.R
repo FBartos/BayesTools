@@ -49,6 +49,8 @@
 #' @param required_packages character vector specifying list of packages containing
 #' JAGS models required for sampling (in case that the function is run in parallel or in
 #' detached R session). Defaults to \code{NULL}.
+#' @param fit a 'BayesTools_fit' object (created by \code{JAGS_fit()} function) to be
+#' extended
 #'
 #' @examples \dontrun{
 #' # simulate data
@@ -74,7 +76,7 @@
 #' fit <- JAGS_fit(model_syntax, data, priors_list)
 #' }
 #'
-#' @return \code{JAGS_fit} returns an object of class 'runjags'.
+#' @return \code{JAGS_fit} returns an object of class 'runjags' and 'BayesTools_fit'.
 #'
 #' @seealso [JAGS_check_convergence()]
 #'
