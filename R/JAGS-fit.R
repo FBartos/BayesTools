@@ -145,6 +145,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   # parallel vs. not
   if(parallel){
     cl <- parallel::makePSOCKcluster(cores)
+    on.exit(parallel::stopCluster(cl))
     for(i in seq_along(required_packages)){
       parallel::clusterCall(cl, function(x) requireNamespace(required_packages[i]))
     }
@@ -170,8 +171,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 
   # set silent mode
   if(silent){
-    user_silent.jags    <- runjags::runjags.getOption("silent.jags")
-    user_silent.runjags <- runjags::runjags.getOption("silent.runjags")
+    on.exit(runjags::runjags.options(silent.jags = runjags::runjags.getOption("silent.jags"), silent.runjags = runjags::runjags.getOption("silent.runjags")))
     runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
   }
 
@@ -209,15 +209,6 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     }
   }
 
-  # return user settings
-  if(silent){
-    runjags::runjags.options(silent.jags = user_silent.jags, silent.runjags = user_silent.runjags)
-  }
-
-  if(parallel){
-    parallel::stopCluster(cl)
-  }
-
   # add information to the fitted object
   attr(fit, "prior_list")   <- prior_list
   attr(fit, "model_syntax") <- model_syntax
@@ -247,6 +238,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
       cores <- length(fit[["mcmc"]])
     }
     cl <- parallel::makePSOCKcluster(cores)
+    on.exit(parallel::stopCluster(cl))
     for(i in seq_along(required_packages)){
       parallel::clusterCall(cl, function(x) requireNamespace(required_packages[i]))
     }
@@ -254,7 +246,8 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
       runjags.object = fit,
       sample         = autofit_control[["sample_extend"]],
       method         = "rjparallel",
-      cl             = cl
+      cl             = cl,
+      summarise      = FALSE
     )
   }else{
     for(i in seq_along(required_packages)){
@@ -263,7 +256,8 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     refit_call <- list(
       runjags.object = fit,
       sample         = autofit_control[["sample_extend"]],
-      method         = "rjags"
+      method         = "rjags",
+      summarise      = FALSE
     )
   }
 
@@ -274,8 +268,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
 
   # set silent mode
   if(silent){
-    user_silent.jags    <- runjags::runjags.getOption("silent.jags")
-    user_silent.runjags <- runjags::runjags.getOption("silent.runjags")
+    on.exit(runjags::runjags.options(silent.jags = runjags::runjags.getOption("silent.jags"), silent.runjags = runjags::runjags.getOption("silent.runjags")))
     runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
   }
 
@@ -303,15 +296,6 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     }
 
     converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]])
-  }
-
-  # return user settings
-  if(silent){
-    runjags::runjags.options(silent.jags = user_silent.jags, silent.runjags = user_silent.runjags)
-  }
-
-  if(parallel){
-    parallel::stopCluster(cl)
   }
 
   # add information to the fitted object
