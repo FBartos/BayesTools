@@ -1,3 +1,7 @@
+## version 0.2.16
+### Features
+- update an existing JAGS fit with `JAGS_extend()` function
+
 ## version 0.2.15
 ### Fixes
 - fixing repeated print of previous prior distribution in `model_summary_table()` in case of `prior_none()`

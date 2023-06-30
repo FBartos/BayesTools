@@ -476,6 +476,11 @@ test_that("JAGS fit function works" , {
   summary_4f <- summary(fit4f)
   expect_true(summary_4f[1,"MCerr"] > 0.0001)
   expect_true(fit4f$timetaken < 5)
+
+  # test extending the fit
+  fite <- JAGS_extend(fit)
+  expect_equal(length(fite$mcmc), 4)
+  expect_true(all(sapply(fite$mcmc, function(mcmc)dim(mcmc) == c(5000, 2))))
 })
 
 test_that("JAGS fit function integration with formula works" , {

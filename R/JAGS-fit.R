@@ -77,7 +77,13 @@
 #' @return \code{JAGS_fit} returns an object of class 'runjags'.
 #'
 #' @seealso [JAGS_check_convergence()]
-#' @export
+#'
+#' @export JAGS_fit
+#' @export JAGS_extend
+#' @name JAGS_fit
+NULL
+
+#' @rdname JAGS_fit
 JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL,
                      chains = 4, adapt = 500, burnin = 1000, sample = 4000, thin = 1,
                      autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000),
@@ -215,6 +221,103 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   # add information to the fitted object
   attr(fit, "prior_list")   <- prior_list
   attr(fit, "model_syntax") <- model_syntax
+  attr(fit, "required_packages") <- required_packages
+
+  class(fit) <- c(class(fit), "BayesTools_fit")
+
+  return(fit)
+}
+
+#' @rdname JAGS_fit
+JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000),
+                        parallel = FALSE, cores = NULL, silent = TRUE, seed = NULL){
+
+  if(!inherits(fit, "BayesTools_fit"))
+    stop("'fit' must be a 'BayesTools_fit'")
+
+  # extract fitting information
+  prior_list        <- attr(fit, "prior_list")
+  model_syntax      <- attr(fit, "model_syntax")
+  required_packages <- attr(fit, "required_packages")
+  JAGS_check_and_list_autofit_settings(autofit_control)
+
+  # parallel vs. not
+  if(parallel){
+    if(is.null(cores)){
+      cores <- length(fit[["mcmc"]])
+    }
+    cl <- parallel::makePSOCKcluster(cores)
+    for(i in seq_along(required_packages)){
+      parallel::clusterCall(cl, function(x) requireNamespace(required_packages[i]))
+    }
+    refit_call <- list(
+      runjags.object = fit,
+      sample         = autofit_control[["sample_extend"]],
+      method         = "rjparallel",
+      cl             = cl
+    )
+  }else{
+    for(i in seq_along(required_packages)){
+      requireNamespace(required_packages[i])
+    }
+    refit_call <- list(
+      runjags.object = fit,
+      sample         = autofit_control[["sample_extend"]],
+      method         = "rjags"
+    )
+  }
+
+
+  if(!is.null(seed)){
+    set.seed(seed)
+  }
+
+  # set silent mode
+  if(silent){
+    user_silent.jags    <- runjags::runjags.getOption("silent.jags")
+    user_silent.runjags <- runjags::runjags.getOption("silent.runjags")
+    runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
+  }
+
+  start_time <- Sys.time()
+  converged  <- FALSE
+
+  while(!converged){
+
+    if(!is.null(autofit_control[["max_time"]]) && difftime(Sys.time(), start_time, units = autofit_control[["max_time"]][["unit"]]) > autofit_control[["max_time"]][["time"]]){
+      if(!silent){
+        attr(fit, "warning") <- "The automatic model fitting was terminated due to the 'max_time' constraint."
+        warning(attr(fit, "warning"), immediate. = TRUE)
+      }
+
+      break
+    }
+
+    fit <- tryCatch(do.call(runjags::extend.jags, refit_call), error = function(e)e)
+
+    if(inherits(fit, "error")){
+      if(!silent)
+        warning(paste0("The model estimation failed with the following error: ", fit$message), immediate. = TRUE)
+
+      break
+    }
+
+    converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]])
+  }
+
+  # return user settings
+  if(silent){
+    runjags::runjags.options(silent.jags = user_silent.jags, silent.runjags = user_silent.runjags)
+  }
+
+  if(parallel){
+    parallel::stopCluster(cl)
+  }
+
+  # add information to the fitted object
+  attr(fit, "prior_list")   <- prior_list
+  attr(fit, "model_syntax") <- model_syntax
+  attr(fit, "required_packages") <- required_packages
 
   class(fit) <- c(class(fit), "BayesTools_fit")
 

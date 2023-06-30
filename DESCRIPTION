@@ -1,6 +1,6 @@
 Package: BayesTools
 Title: Tools for Bayesian Analyses
-Version: 0.2.15
+Version: 0.2.16
 Description: Provides tools for conducting Bayesian analyses and Bayesian model averaging 
     (Kass and Raftery, 1995, <doi:10.1080/01621459.1995.10476572>, 
     Hoeting et al., 1999, <doi:10.1214/ss/1009212519>). The package contains 
