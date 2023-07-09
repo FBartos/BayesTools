@@ -19,7 +19,7 @@ JAGS_fit(
   thin = 1,
   autofit = FALSE,
   autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error =
-    0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000),
+    0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10),
   parallel = FALSE,
   cores = chains,
   silent = TRUE,
@@ -31,7 +31,7 @@ JAGS_fit(
 JAGS_extend(
   fit,
   autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error =
-    0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000),
+    0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10),
   parallel = FALSE,
   cores = NULL,
   silent = TRUE,
@@ -85,6 +85,8 @@ after which the automatic fitting function is stopped. The units arguments
 need to correspond to \code{units} passed to \link[base]{difftime} function.}
 \item{sample_extend}{number of samples between each convergence check. Defaults to
 \code{1000}.}
+\item{restarts}{number of times new initial values should be generated in case the model
+fails to initialize. Defaults to \code{10}.}
 }}
 
 \item{parallel}{whether the chains should be run in parallel \code{FALSE}}
