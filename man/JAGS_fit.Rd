@@ -2,6 +2,7 @@
 % Please edit documentation in R/JAGS-fit.R
 \name{JAGS_fit}
 \alias{JAGS_fit}
+\alias{JAGS_extend}
 \title{Fits a 'JAGS' model}
 \usage{
 JAGS_fit(
@@ -18,13 +19,23 @@ JAGS_fit(
   thin = 1,
   autofit = FALSE,
   autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error =
-    0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000),
+    0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10),
   parallel = FALSE,
   cores = chains,
   silent = TRUE,
   seed = NULL,
   add_parameters = NULL,
   required_packages = NULL
+)
+
+JAGS_extend(
+  fit,
+  autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error =
+    0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10),
+  parallel = FALSE,
+  cores = NULL,
+  silent = TRUE,
+  seed = NULL
 )
 }
 \arguments{
@@ -74,6 +85,8 @@ after which the automatic fitting function is stopped. The units arguments
 need to correspond to \code{units} passed to \link[base]{difftime} function.}
 \item{sample_extend}{number of samples between each convergence check. Defaults to
 \code{1000}.}
+\item{restarts}{number of times new initial values should be generated in case the model
+fails to initialize. Defaults to \code{10}.}
 }}
 
 \item{parallel}{whether the chains should be run in parallel \code{FALSE}}
@@ -91,9 +104,12 @@ monitored but were not specified in the \code{prior_list}}
 \item{required_packages}{character vector specifying list of packages containing
 JAGS models required for sampling (in case that the function is run in parallel or in
 detached R session). Defaults to \code{NULL}.}
+
+\item{fit}{a 'BayesTools_fit' object (created by \code{JAGS_fit()} function) to be
+extended}
 }
 \value{
-\code{JAGS_fit} returns an object of class 'runjags'.
+\code{JAGS_fit} returns an object of class 'runjags' and 'BayesTools_fit'.
 }
 \description{
 A wrapper around
