@@ -1,3 +1,7 @@
+## version 0.2.17
+### Features
+- adds informed prior distributions for dichotomous and time to event outcomes based on Cochrane Database of Systematic Reviews to `prior_informed()` function
+
 ## version 0.2.16
 ### Features
 - update an existing JAGS fit with `JAGS_extend()` function
