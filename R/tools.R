@@ -138,7 +138,7 @@ check_int    <- function(x, name, lower = -Inf, upper = Inf, allow_bound = TRUE,
     }
   }
 
-  check_real(x, name, lower, upper, allow_bound, check_length, allow_NULL)
+  check_real(x, name, lower, upper, allow_bound, check_length, allow_NULL, call = call)
 
   if(!all(.is.wholenumber(x)))
     stop(paste0(call, "The '", name ,"' argument must be an integer vector."), call. = FALSE)
