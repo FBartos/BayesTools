@@ -18,7 +18,7 @@ JAGS_fit function."><!-- mathjax --><script src="https://cdnjs.cloudflare.com/aj
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.15</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.16</span>
       </span>
     </div>
 
@@ -183,6 +183,10 @@ need to correspond to <code>units</code> passed to <a href="https://rdrr.io/r/ba
 <dt>sample_extend</dt>
 <dd><p>number of samples between each convergence check. Defaults to
 <code>1000</code>.</p></dd>
+
+<dt>restarts</dt>
+<dd><p>number of times new initial values should be generated in case the model
+fails to initialize. Defaults to <code>10</code>.</p></dd>
 
 
 </dl></dd>

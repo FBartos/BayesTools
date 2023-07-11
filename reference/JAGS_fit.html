@@ -20,7 +20,7 @@ of prior distributions."><!-- mathjax --><script src="https://cdnjs.cloudflare.c
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.15</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.16</span>
       </span>
     </div>
 
@@ -86,13 +86,23 @@ of prior distributions.</p>
 <span>  thin <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  autofit <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  autofit_control <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>max_Rhat <span class="op">=</span> <span class="fl">1.05</span>, min_ESS <span class="op">=</span> <span class="fl">500</span>, max_error <span class="op">=</span> <span class="fl">0.01</span>, max_SD_error <span class="op">=</span></span>
-<span>    <span class="fl">0.05</span>, max_time <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>time <span class="op">=</span> <span class="fl">60</span>, unit <span class="op">=</span> <span class="st">"mins"</span><span class="op">)</span>, sample_extend <span class="op">=</span> <span class="fl">1000</span><span class="op">)</span>,</span>
+<span>    <span class="fl">0.05</span>, max_time <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>time <span class="op">=</span> <span class="fl">60</span>, unit <span class="op">=</span> <span class="st">"mins"</span><span class="op">)</span>, sample_extend <span class="op">=</span> <span class="fl">1000</span>, restarts <span class="op">=</span> <span class="fl">10</span><span class="op">)</span>,</span>
 <span>  parallel <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  cores <span class="op">=</span> <span class="va">chains</span>,</span>
 <span>  silent <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  seed <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  add_parameters <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  required_packages <span class="op">=</span> <span class="cn">NULL</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu">JAGS_extend</span><span class="op">(</span></span>
+<span>  <span class="va">fit</span>,</span>
+<span>  autofit_control <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>max_Rhat <span class="op">=</span> <span class="fl">1.05</span>, min_ESS <span class="op">=</span> <span class="fl">500</span>, max_error <span class="op">=</span> <span class="fl">0.01</span>, max_SD_error <span class="op">=</span></span>
+<span>    <span class="fl">0.05</span>, max_time <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>time <span class="op">=</span> <span class="fl">60</span>, unit <span class="op">=</span> <span class="st">"mins"</span><span class="op">)</span>, sample_extend <span class="op">=</span> <span class="fl">1000</span>, restarts <span class="op">=</span> <span class="fl">10</span><span class="op">)</span>,</span>
+<span>  parallel <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  cores <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  silent <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  seed <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -179,6 +189,10 @@ need to correspond to <code>units</code> passed to <a href="https://rdrr.io/r/ba
 <dd><p>number of samples between each convergence check. Defaults to
 <code>1000</code>.</p></dd>
 
+<dt>restarts</dt>
+<dd><p>number of times new initial values should be generated in case the model
+fails to initialize. Defaults to <code>10</code>.</p></dd>
+
 
 </dl></dd>
 
@@ -210,12 +224,17 @@ monitored but were not specified in the <code>prior_list</code></p></dd>
 JAGS models required for sampling (in case that the function is run in parallel or in
 detached R session). Defaults to <code>NULL</code>.</p></dd>
 
+
+<dt>fit</dt>
+<dd><p>a 'BayesTools_fit' object (created by <code>JAGS_fit()</code> function) to be
+extended</p></dd>
+
 </dl></div>
     <div id="value">
     <h2>Value</h2>
     
 
-<p><code>JAGS_fit</code> returns an object of class 'runjags'.</p>
+<p><code>JAGS_fit</code> returns an object of class 'runjags' and 'BayesTools_fit'.</p>
     </div>
     <div id="see-also">
     <h2>See also</h2>
