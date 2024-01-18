@@ -11,6 +11,20 @@ test_that("Prior density function density", {
   expect_doppelganger("prior-density-1-7", function()plot(density(prior("normal", list(0, 1)), transformation = "exp")))
   expect_doppelganger("prior-density-1-8", function()plot(density(prior("normal", list(0, 1)), transformation = "lin", transformation_arguments = list(b = 0.5))))
 
+  expect_doppelganger("prior-density-1-9", function(){
+    hist(log(rng(prior("normal", list(0, 1), list(0)), 100000)), freq = F, breaks = 100)
+    lines(density(prior("normal", list(0, 1), list(0)), transformation = "log"), col = "red", lwd = 2)
+  })
+  expect_doppelganger("prior-density-1-10", function(){
+    hist(sqrt(rng(prior("normal", list(0, 1), list(0)), 100000)), freq = F, breaks = 100)
+    lines(density(prior("normal", list(0, 1), list(0)), transformation = "sqrt"), col = "red", lwd = 2)
+  })
+  expect_doppelganger("prior-density-1-11", function(){
+    hist((rng(prior("normal", list(0, 1), list(0)), 100000))^2, freq = F, breaks = 100)
+    lines(density(prior("normal", list(0, 1), list(0)), transformation = "pow"), col = "red", lwd = 2)
+  })
+
+
   set.seed(2)
   expect_doppelganger("prior-density-2-1", function()plot(density(prior("normal", list(0, 1), list(0, Inf)))))
   expect_doppelganger("prior-density-2-2", function()plot(density(prior("normal", list(0, 1), list(0, Inf)), x_seq   = seq(0, 1, 0.1))))

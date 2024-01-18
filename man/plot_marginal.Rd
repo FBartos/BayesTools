@@ -40,9 +40,12 @@ specifying one of the prepared transformations:
 \item{lin}{linear transformation in form of \code{a + b*x}}
 \item{tanh}{also known as Fisher's z transformation}
 \item{exp}{exponential transformation}
+\item{log}{logarithmic transformation (all x >= 0)}
+\item{sqrt}{square root transformation (all x >= 0)}
+\item{pow}{square transformation}
 }, or a list containing the transformation function \code{fun},
 inverse transformation function \code{inv}, and the Jacobian of
-the transformation \code{jac}. See examples for details.}
+the inverse transformation \code{jac}. See examples for details.}
 
 \item{transformation_arguments}{a list with named arguments for
 the \code{transformation}}

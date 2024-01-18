@@ -32,9 +32,12 @@
 #'   \item{lin}{linear transformation in form of \code{a + b*x}}
 #'   \item{tanh}{also known as Fisher's z transformation}
 #'   \item{exp}{exponential transformation}
+#'   \item{log}{logarithmic transformation (all x >= 0)}
+#'   \item{sqrt}{square root transformation (all x >= 0)}
+#'   \item{pow}{square transformation}
 #' }, or a list containing the transformation function \code{fun},
 #' inverse transformation function \code{inv}, and the Jacobian of
-#' the transformation \code{jac}. See examples for details.
+#' the inverse transformation \code{jac}. See examples for details.
 #' @param transformation_arguments a list with named arguments for
 #' the \code{transformation}
 #' @param transformation_settings boolean indicating whether the
@@ -609,7 +612,7 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
 }
 .density.prior_transformation_functions <- function(transformation){
 
-  if(is.character(transformation) & length(transformation) == 1){
+  if(is.character(transformation) && length(transformation) == 1 && transformation %in% c("lin", "tanh", "exp", "log", "sqrt", "pow")){
 
     return(switch(
       transformation,
@@ -627,6 +630,21 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
         fun = exp,
         inv = log,
         jac = function(x)1/x
+      ),
+      "log"  = list(
+        fun = log,
+        inv = exp,
+        jac = exp
+      ),
+      "sqrt" = list(
+        fun = sqrt,
+        inv = function(x)x^2,
+        jac = function(x)2*x
+      ),
+      "pow" = list(
+        fun = function(x)x^2,
+        inv = sqrt,
+        jac = function(x)1/(2*sqrt(x))
       )
     ))
 
@@ -636,7 +654,7 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
 
   }else{
 
-    stop("Transformation must be either a character vector of length 1 corresponding to one of known transformations ('lin' = linear, 'tanh' = Fisher's z, 'exp' = exponential) or a list of three functions (fun = transformation function, inv = inverse transformation, jac = jacobian adjustment).")
+    stop("Transformation must be either a character vector of length 1 corresponding to one of known transformations ('lin'/'tanh'/'exp'/'log'/'sqrt'/'pow') or a list of three functions (fun = transformation function, inv = inverse transformation, jac = jacobian adjustment).")
 
   }
 
