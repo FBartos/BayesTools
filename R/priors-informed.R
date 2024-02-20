@@ -434,113 +434,113 @@ prior_informed <- function(name, parameter = NULL, type ="smd"){
 
     # medical priors for dichotomous outcomes based on Bartoš et al. 2023
     if(name == .prior_clean_input_name("Acute Respiratory Infections")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.01, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.012, df = 1))
     }else if(name == .prior_clean_input_name("Airways")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.01, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.005, df = 1))
     }else if(name == .prior_clean_input_name("Anaesthesia")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.02, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.020, df = 1))
     }else if(name == .prior_clean_input_name("Back and Neck")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.06, df = 2))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.056, df = 2))
     }else if(name == .prior_clean_input_name("Bone, Joint and Muscle Trauma")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.01, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.014, df = 1))
     }else if(name == .prior_clean_input_name("Breast Cancer")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.05, df = 2))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.049, df = 2))
     }else if(name == .prior_clean_input_name("Childhood Cancer")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.02, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.021, df = 1))
     }else if(name == .prior_clean_input_name("Colorectal")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.01, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.010, df = 1))
     }else if(name == .prior_clean_input_name("Common Mental Disorders")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.05, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.051, df = 1))
     }else if(name == .prior_clean_input_name("Consumers and Communication")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.06, df = 2))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.063, df = 2))
     }else if(name == .prior_clean_input_name("Cystic Fibrosis and Genetic Disorders")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.01, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.015, df = 1))
     }else if(name == .prior_clean_input_name("Dementia and Cognitive Improvement")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.02, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.017, df = 1))
     }else if(name == .prior_clean_input_name("Developmental, Psychosocial and Learning Problems")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.08, df = 2))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.082, df = 2))
     }else if(name == .prior_clean_input_name("Drugs and Alcohol")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.02, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.025, df = 1))
     }else if(name == .prior_clean_input_name("Effective Practice and Organisation of Care")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.06, df = 2))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.056, df = 2))
     }else if(name == .prior_clean_input_name("Emergency and Critical Care")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.02, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.019, df = 1))
     }else if(name == .prior_clean_input_name("ENT")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.04, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.042, df = 1))
     }else if(name == .prior_clean_input_name("Epilepsy")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.05, df = 2))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.047, df = 2))
     }else if(name == .prior_clean_input_name("Eyes and Vision")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.04, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.041, df = 1))
     }else if(name == .prior_clean_input_name("Fertility Regulation")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.01, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.014, df = 1))
     }else if(name == .prior_clean_input_name("Gut")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.05, df = 2))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.047, df = 2))
     }else if(name == .prior_clean_input_name("Gynaecological, Neuro-oncology and Orphan Cancer")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.02, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.024, df = 1))
     }else if(name == .prior_clean_input_name("Gynaecology and Fertility")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.02, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.021, df = 1))
     }else if(name == .prior_clean_input_name("Haematology")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.05, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.047, df = 1))
     }else if(name == .prior_clean_input_name("Heart")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.00, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.005, df = 1))
     }else if(name == .prior_clean_input_name("Heart; Vascular")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.08, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.083, df = 1))
     }else if(name == .prior_clean_input_name("Hepato-Biliary")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.01, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.014, df = 1))
     }else if(name == .prior_clean_input_name("HIV/AIDS")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.02, df = 2))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.018, df = 2))
     }else if(name == .prior_clean_input_name("Hypertension")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.01, df = 2))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.006, df = 2))
     }else if(name == .prior_clean_input_name("Incontinence")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.06, df = 2))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.060, df = 2))
     }else if(name == .prior_clean_input_name("Infectious Diseases")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.02, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.019, df = 1))
     }else if(name == .prior_clean_input_name("Injuries")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.01, df = 0))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.010, df = 1))
     }else if(name == .prior_clean_input_name("Kidney and Transplant")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.03, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.028, df = 1))
     }else if(name == .prior_clean_input_name("Lung Cancer")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.06, df = 2))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.057, df = 2))
     }else if(name == .prior_clean_input_name("Metabolic and Endocrine Disorders")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.00, df = 0))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.003, df = 1))
     }else if(name == .prior_clean_input_name("Methodology")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.10, df = 2))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.097, df = 2))
     }else if(name == .prior_clean_input_name("Movement Disorders")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.06, df = 2))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.055, df = 2))
     }else if(name == .prior_clean_input_name("Multiple Sclerosis and Rare Diseases of the CNS")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.07, df = 2))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.067, df = 2))
     }else if(name == .prior_clean_input_name("Musculoskeletal")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.01, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.010, df = 1))
     }else if(name == .prior_clean_input_name("Neonatal")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.02, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.022, df = 1))
     }else if(name == .prior_clean_input_name("Neuromuscular")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.03, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.034, df = 1))
     }else if(name == .prior_clean_input_name("Oral Health")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.03, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.030, df = 1))
     }else if(name == .prior_clean_input_name("Pain, Palliative and Supportive Care")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.11, df = 2))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.111, df = 2))
     }else if(name == .prior_clean_input_name("Pregnancy and Childbirth")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.01, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.012, df = 1))
     }else if(name == .prior_clean_input_name("Schizophrenia")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.03, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.028, df = 1))
     }else if(name == .prior_clean_input_name("Sexually Transmitted Infections")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.04, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.035, df = 1))
     }else if(name == .prior_clean_input_name("Skin")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.03, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.033, df = 1))
     }else if(name == .prior_clean_input_name("Stroke")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.01, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.014, df = 1))
     }else if(name == .prior_clean_input_name("Tobacco Addiction")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.04, df = 2))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.042, df = 2))
     }else if(name == .prior_clean_input_name("Urology")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.04, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.041, df = 1))
     }else if(name == .prior_clean_input_name("Vascular")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.01, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.012, df = 1))
     }else if(name == .prior_clean_input_name("Work")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.06, df = 2))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.062, df = 2))
     }else if(name == .prior_clean_input_name("Wounds")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.01, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.012, df = 1))
     }else if(name == .prior_clean_input_name("Cochrane")){
-      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.03, df = 1))
+      p <- prior(distribution ="t", parameters = list(location = 0, scale = 0.034, df = 1))
     }else{
       stop("unknown subfield 'name' argument for an informed prior distribution from medicine.")
     }
@@ -900,113 +900,113 @@ prior_informed <- function(name, parameter = NULL, type ="smd"){
 
     # medical priors for dichotomous outcomes based on Bartoš et al. 2023
     if(name == .prior_clean_input_name("Acute Respiratory Infections")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.10), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.102), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Airways")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.10), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.099), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Anaesthesia")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.11), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.108), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Back and Neck")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.10), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.102), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Bone, Joint and Muscle Trauma")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.12), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.119), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Breast Cancer")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.12), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.118), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Childhood Cancer")){
       stop("no informed subfield prior distribution for 'Childhood Cancer' category.")
     }else if(name == .prior_clean_input_name("Colorectal")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.10), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.096), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Common Mental Disorders")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.11), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.108), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Consumers and Communication")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.10), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.103), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Cystic Fibrosis and Genetic Disorders")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.09), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.092), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Dementia and Cognitive Improvement")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.09), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.092), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Developmental, Psychosocial and Learning Problems")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.13), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.132), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Drugs and Alcohol")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.10), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.101), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Effective Practice and Organisation of Care")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.11), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.106), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Emergency and Critical Care")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.07), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.068), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("ENT")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.12), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.123), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Epilepsy")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.09), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.086), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Eyes and Vision")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.11), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.112), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Fertility Regulation")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.08), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.082), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Gut")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.09), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.090), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Gynaecological, Neuro-oncology and Orphan Cancer")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.10), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.103), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Gynaecology and Fertility")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.09), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.086), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Haematology")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.09), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.089), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Heart")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.07), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.070), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Heart; Vascular")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.12), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.116), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Hepato-Biliary")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.09), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.093), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("HIV/AIDS")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.10), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.097), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Hypertension")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.06), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.059), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Incontinence")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.12), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.125), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Infectious Diseases")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.10), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.098), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Injuries")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.14), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.137), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Kidney and Transplant")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.09), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.089), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Lung Cancer")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.12), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.116), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Metabolic and Endocrine Disorders")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.09), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.091), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Methodology")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.10), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.102), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Movement Disorders")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.07), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.071), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Multiple Sclerosis and Rare Diseases of the CNS")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.10), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.101), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Musculoskeletal")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.11), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.109), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Neonatal")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.09), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.088), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Neuromuscular")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.08), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.075), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Oral Health")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.12), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.121), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Pain, Palliative and Supportive Care")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.11), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.106), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Pregnancy and Childbirth")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.08), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.082), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Schizophrenia")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.10), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.102), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Sexually Transmitted Infections")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.12), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.117), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Skin")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.12), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.123), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Stroke")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.06), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.060), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Tobacco Addiction")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.07), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.065), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Urology")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.10), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.102), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Vascular")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.12), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.119), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Work")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.12), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.123), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Wounds")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.09), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.088), truncation = list(lower = 0))
     }else if(name == .prior_clean_input_name("Cochrane")){
-      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.10), truncation = list(lower = 0))
+      p <- prior(distribution ="normal", parameters = list(mean = 0, sd = 0.099), truncation = list(lower = 0))
     }else{
       stop("unknown subfield 'name' argument for an informed prior distribution from medicine.")
     }

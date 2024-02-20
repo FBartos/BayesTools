@@ -203,62 +203,61 @@ test_that("Informed prior distributions match the specification", {
   Cochrane                                                  & Student-t(0, 0.32, 3) & Inv-Gamma(1.51, 0.23) "
 
   paper_RD <-  "
-  Acute Respiratory Infections                              & Student-t(0, 0.01, 1) & Normal(0, 0.10) &
-  Airways                                                   & Student-t(0, 0.01, 1) & Normal(0, 0.10) &
-  Anaesthesia                                               & Student-t(0, 0.02, 1) & Normal(0, 0.11) &
-  Back and Neck                                             & Student-t(0, 0.06, 2) & Normal(0, 0.10) &
-  Bone, Joint and Muscle Trauma                             & Student-t(0, 0.01, 1) & Normal(0, 0.12) &
-  Breast Cancer                                             & Student-t(0, 0.05, 2) & Normal(0, 0.12) &
-  Childhood Cancer                                          & Student-t(0, 0.02, 1) & ---             &
-  Colorectal                                                & Student-t(0, 0.01, 1) & Normal(0, 0.10) &
-  Common Mental Disorders                                   & Student-t(0, 0.05, 1) & Normal(0, 0.11) &
-  Consumers and Communication                               & Student-t(0, 0.06, 2) & Normal(0, 0.10) &
-  Cystic Fibrosis and Genetic Disorders                     & Student-t(0, 0.01, 1) & Normal(0, 0.09) &
-  Dementia and Cognitive Improvement                        & Student-t(0, 0.02, 1) & Normal(0, 0.09) &
-  Developmental, Psychosocial and Learning Problems         & Student-t(0, 0.08, 2) & Normal(0, 0.13) &
-  Drugs and Alcohol                                         & Student-t(0, 0.02, 1) & Normal(0, 0.10) &
-  Effective Practice and Organisation of Care               & Student-t(0, 0.06, 2) & Normal(0, 0.11) &
-  Emergency and Critical Care                               & Student-t(0, 0.02, 1) & Normal(0, 0.07) &
-  ENT                                                       & Student-t(0, 0.04, 1) & Normal(0, 0.12) &
-  Epilepsy                                                  & Student-t(0, 0.05, 2) & Normal(0, 0.09) &
-  Eyes and Vision                                           & Student-t(0, 0.04, 1) & Normal(0, 0.11) &
-  Fertility Regulation                                      & Student-t(0, 0.01, 1) & Normal(0, 0.08) &
-  Gut                                                       & Student-t(0, 0.05, 2) & Normal(0, 0.09) &
-  Gynaecological, Neuro-oncology and Orphan Cancer          & Student-t(0, 0.02, 1) & Normal(0, 0.10) &
-  Gynaecology and Fertility                                 & Student-t(0, 0.02, 1) & Normal(0, 0.09) &
-  Haematology                                               & Student-t(0, 0.05, 1) & Normal(0, 0.09) &
-  Heart; Vascular                                           & Student-t(0, 0.08, 1) & Normal(0, 0.12) &
-  Hepato-Biliary                                            & Student-t(0, 0.01, 1) & Normal(0, 0.09) &
-  HIV/AIDS                                                  & Student-t(0, 0.02, 2) & Normal(0, 0.10) &
-  Hypertension                                              & Student-t(0, 0.01, 2) & Normal(0, 0.06) &
-  Incontinence                                              & Student-t(0, 0.06, 2) & Normal(0, 0.12) &
-  Infectious Diseases                                       & Student-t(0, 0.02, 1) & Normal(0, 0.10) &
-  Kidney and Transplant                                     & Student-t(0, 0.03, 1) & Normal(0, 0.09) &
-  Lung Cancer                                               & Student-t(0, 0.06, 2) & Normal(0, 0.12) &
-  Methodology                                               & Student-t(0, 0.10, 2) & Normal(0, 0.10) &
-  Movement Disorders                                        & Student-t(0, 0.06, 2) & Normal(0, 0.07) &
-  Multiple Sclerosis and Rare Diseases of the CNS           & Student-t(0, 0.07, 2) & Normal(0, 0.10) &
-  Musculoskeletal                                           & Student-t(0, 0.01, 1) & Normal(0, 0.11) &
-  Neonatal                                                  & Student-t(0, 0.02, 1) & Normal(0, 0.09) &
-  Neuromuscular                                             & Student-t(0, 0.03, 1) & Normal(0, 0.08) &
-  Oral Health                                               & Student-t(0, 0.03, 1) & Normal(0, 0.12) &
-  Pain, Palliative and Supportive Care                      & Student-t(0, 0.11, 2) & Normal(0, 0.11) &
-  Pregnancy and Childbirth                                  & Student-t(0, 0.01, 1) & Normal(0, 0.08) &
-  Schizophrenia                                             & Student-t(0, 0.03, 1) & Normal(0, 0.10) &
-  Sexually Transmitted Infections                           & Student-t(0, 0.04, 1) & Normal(0, 0.12) &
-  Skin                                                      & Student-t(0, 0.03, 1) & Normal(0, 0.12) &
-  Stroke                                                    & Student-t(0, 0.01, 1) & Normal(0, 0.06) &
-  Tobacco Addiction                                         & Student-t(0, 0.04, 2) & Normal(0, 0.07) &
-  Urology                                                   & Student-t(0, 0.04, 1) & Normal(0, 0.10) &
-  Vascular                                                  & Student-t(0, 0.01, 1) & Normal(0, 0.12) &
-  Work                                                      & Student-t(0, 0.06, 2) & Normal(0, 0.12) &
-  Wounds                                                    & Student-t(0, 0.01, 1) & Normal(0, 0.09) &
-  Cochrane                                                  & Student-t(0, 0.03, 1) & Normal(0, 0.10) "
+  Acute Respiratory Infections                         & Student-t(0, 0.012, 1) & Normal(0, 0.102) &
+  Airways                                              & Student-t(0, 0.005, 1) & Normal(0, 0.099) &
+  Anaesthesia                                          & Student-t(0, 0.020, 1) & Normal(0, 0.108) &
+  Back and Neck                                        & Student-t(0, 0.056, 2) & Normal(0, 0.102) &
+  Bone, Joint and Muscle Trauma                        & Student-t(0, 0.014, 1) & Normal(0, 0.119) &
+  Breast Cancer                                        & Student-t(0, 0.049, 2) & Normal(0, 0.118) &
+  Childhood Cancer                                     & Student-t(0, 0.021, 1) & ---              &
+  Colorectal                                           & Student-t(0, 0.010, 1) & Normal(0, 0.096) &
+  Common Mental Disorders                              & Student-t(0, 0.051, 1) & Normal(0, 0.108) &
+  Consumers and Communication                          & Student-t(0, 0.063, 2) & Normal(0, 0.103) &
+  Cystic Fibrosis and Genetic Disorders                & Student-t(0, 0.015, 1) & Normal(0, 0.092) &
+  Dementia and Cognitive Improvement                   & Student-t(0, 0.017, 1) & Normal(0, 0.092) &
+  Developmental, Psychosocial and Learning Problems    & Student-t(0, 0.082, 2) & Normal(0, 0.132) &
+  Drugs and Alcohol                                    & Student-t(0, 0.025, 1) & Normal(0, 0.101) &
+  Effective Practice and Organisation of Care          & Student-t(0, 0.056, 2) & Normal(0, 0.106) &
+  Emergency and Critical Care                          & Student-t(0, 0.019, 1) & Normal(0, 0.068) &
+  ENT                                                  & Student-t(0, 0.042, 1) & Normal(0, 0.123) &
+  Epilepsy                                             & Student-t(0, 0.047, 2) & Normal(0, 0.086) &
+  Eyes and Vision                                      & Student-t(0, 0.041, 1) & Normal(0, 0.112) &
+  Fertility Regulation                                 & Student-t(0, 0.014, 1) & Normal(0, 0.082) &
+  Gut                                                  & Student-t(0, 0.047, 2) & Normal(0, 0.090) &
+  Gynaecological, Neuro-oncology and Orphan Cancer     & Student-t(0, 0.024, 1) & Normal(0, 0.103) &
+  Gynaecology and Fertility                            & Student-t(0, 0.021, 1) & Normal(0, 0.086) &
+  Haematology                                          & Student-t(0, 0.047, 1) & Normal(0, 0.089) &
+  Heart                                                & Student-t(0, 0.005, 1) & Normal(0, 0.070) &
+  Heart; Vascular                                      & Student-t(0, 0.083, 1) & Normal(0, 0.116) &
+  Hepato-Biliary                                       & Student-t(0, 0.014, 1) & Normal(0, 0.093) &
+  HIV/AIDS                                             & Student-t(0, 0.018, 2) & Normal(0, 0.097) &
+  Hypertension                                         & Student-t(0, 0.006, 2) & Normal(0, 0.059) &
+  Incontinence                                         & Student-t(0, 0.060, 2) & Normal(0, 0.125) &
+  Infectious Diseases                                  & Student-t(0, 0.019, 1) & Normal(0, 0.098) &
+  Injuries                                             & Student-t(0, 0.010, 1) & Normal(0, 0.137) &
+  Kidney and Transplant                                & Student-t(0, 0.028, 1) & Normal(0, 0.089) &
+  Lung Cancer                                          & Student-t(0, 0.057, 2) & Normal(0, 0.116) &
+  Metabolic and Endocrine Disorders                    & Student-t(0, 0.003, 1) & Normal(0, 0.091) &
+  Methodology                                          & Student-t(0, 0.097, 2) & Normal(0, 0.102) &
+  Movement Disorders                                   & Student-t(0, 0.055, 2) & Normal(0, 0.071) &
+  Multiple Sclerosis and Rare Diseases of the CNS      & Student-t(0, 0.067, 2) & Normal(0, 0.101) &
+  Musculoskeletal                                      & Student-t(0, 0.010, 1) & Normal(0, 0.109) &
+  Neonatal                                             & Student-t(0, 0.022, 1) & Normal(0, 0.088) &
+  Neuromuscular                                        & Student-t(0, 0.034, 1) & Normal(0, 0.075) &
+  Oral Health                                          & Student-t(0, 0.030, 1) & Normal(0, 0.121) &
+  Pain, Palliative and Supportive Care                 & Student-t(0, 0.111, 2) & Normal(0, 0.106) &
+  Pregnancy and Childbirth                             & Student-t(0, 0.012, 1) & Normal(0, 0.082) &
+  Schizophrenia                                        & Student-t(0, 0.028, 1) & Normal(0, 0.102) &
+  Sexually Transmitted Infections                      & Student-t(0, 0.035, 1) & Normal(0, 0.117) &
+  Skin                                                 & Student-t(0, 0.033, 1) & Normal(0, 0.123) &
+  Stroke                                               & Student-t(0, 0.014, 1) & Normal(0, 0.060) &
+  Tobacco Addiction                                    & Student-t(0, 0.042, 2) & Normal(0, 0.065) &
+  Urology                                              & Student-t(0, 0.041, 1) & Normal(0, 0.102) &
+  Vascular                                             & Student-t(0, 0.012, 1) & Normal(0, 0.119) &
+  Work                                                 & Student-t(0, 0.062, 2) & Normal(0, 0.123) &
+  Wounds                                               & Student-t(0, 0.012, 1) & Normal(0, 0.088) &
+  Cochrane                                             & Student-t(0, 0.034, 1) & Normal(0, 0.099) "
 
-  # update with manuscript
-  #   Metabolic and Endocrine Disorders                         & Student-t(0, 0.00, 0) & Normal(0, 0.09) &
-  #   Heart                                                     & Student-t(0, 0.00, 1) & Normal(0, 0.07) &
-  #   Injuries                                                  & Student-t(0, 0.01, 0) & Normal(0, 0.14) &
 
   paper_logOR <- matrix(gsub("\n", "", strsplit(paper_logOR, "&")[[1]], fixed = TRUE), ncol = 3, byrow = T)
   paper_logRR <- matrix(gsub("\n", "", strsplit(paper_logRR, "&")[[1]], fixed = TRUE), ncol = 3, byrow = T)
