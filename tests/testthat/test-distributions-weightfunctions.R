@@ -17,7 +17,7 @@ test_that("Density function works", {
   samples   <- t(apply(extraDistr::rdirichlet(10000, c(1, 1)), 1, cumsum))
   densities <- mdone.sided(x_seq, alpha = c(1, 1))
 
-  expect_doppelganger("mdone.sided-1", function()test_dist(x_seq, samples, densities, 1))
+  vdiffr::expect_doppelganger("mdone.sided-1", function()test_dist(x_seq, samples, densities, 1))
   expect_true(all(densities[x_seq != 1,2] == 0) & is.infinite(densities[x_seq == 1,2]))
 
 
@@ -25,8 +25,8 @@ test_that("Density function works", {
   samples   <- t(apply(extraDistr::rdirichlet(10000, c(.3, 1, 2)), 1, cumsum))
   densities <- mdone.sided(x_seq, alpha = c(.3, 1, 2))
 
-  expect_doppelganger("mdone.sided_2-1", function()test_dist(x_seq, samples, densities, 1))
-  expect_doppelganger("mdone.sided_2-2", function()test_dist(x_seq, samples, densities, 2))
+  vdiffr::expect_doppelganger("mdone.sided_2-1", function()test_dist(x_seq, samples, densities, 1))
+  vdiffr::expect_doppelganger("mdone.sided_2-2", function()test_dist(x_seq, samples, densities, 2))
   expect_true(all(densities[x_seq != 1,3] == 0) & is.infinite(densities[x_seq == 1,3]))
 
 
@@ -34,9 +34,9 @@ test_that("Density function works", {
   samples   <- t(apply(extraDistr::rdirichlet(10000, c(4, 3, 5, 2)), 1, cumsum))
   densities <- mdone.sided(x_seq, alpha = c(4, 3, 5, 2))
 
-  expect_doppelganger("mdone.sided_3-1", function()test_dist(x_seq, samples, densities, 1))
-  expect_doppelganger("mdone.sided_3-2", function()test_dist(x_seq, samples, densities, 2))
-  expect_doppelganger("mdone.sided_3-3", function()test_dist(x_seq, samples, densities, 3))
+  vdiffr::expect_doppelganger("mdone.sided_3-1", function()test_dist(x_seq, samples, densities, 1))
+  vdiffr::expect_doppelganger("mdone.sided_3-2", function()test_dist(x_seq, samples, densities, 2))
+  vdiffr::expect_doppelganger("mdone.sided_3-3", function()test_dist(x_seq, samples, densities, 3))
   expect_true(all(densities[x_seq != 1,4] == 0) & is.infinite(densities[x_seq == 1,4]))
 
 
@@ -81,24 +81,24 @@ test_that("Random generator works", {
   set.seed(1)
   samples   <- rone.sided(10000, alpha = c(1, 1))
 
-  expect_doppelganger("rone.sided-1", function()test_dist(1, 1, samples, 1))
+  vdiffr::expect_doppelganger("rone.sided-1", function()test_dist(1, 1, samples, 1))
   expect_equal(samples[,ncol(samples)], rep(1, nrow(samples)))
 
 
   set.seed(2)
   samples   <- rone.sided(10000, alpha = c(.3, 1, 2))
 
-  expect_doppelganger("rone.sided-2-1", function()test_dist(0.3, 3, samples, 1))
-  expect_doppelganger("rone.sided-2-2", function()test_dist(1.3, 2, samples, 2))
+  vdiffr::expect_doppelganger("rone.sided-2-1", function()test_dist(0.3, 3, samples, 1))
+  vdiffr::expect_doppelganger("rone.sided-2-2", function()test_dist(1.3, 2, samples, 2))
   expect_equal(samples[,ncol(samples)], rep(1, nrow(samples)))
 
 
   set.seed(3)
   samples   <- rone.sided(10000, alpha = c(4, 3, 5, 2))
 
-  expect_doppelganger("rone.sided-3-1", function()test_dist( 4, 10, samples, 1))
-  expect_doppelganger("rone.sided-3-2", function()test_dist( 7,  7, samples, 2))
-  expect_doppelganger("rone.sided-3-3", function()test_dist(12,  2, samples, 3))
+  vdiffr::expect_doppelganger("rone.sided-3-1", function()test_dist( 4, 10, samples, 1))
+  vdiffr::expect_doppelganger("rone.sided-3-2", function()test_dist( 7,  7, samples, 2))
+  vdiffr::expect_doppelganger("rone.sided-3-3", function()test_dist(12,  2, samples, 3))
   expect_equal(samples[,ncol(samples)], rep(1, nrow(samples)))
 
 
@@ -120,15 +120,15 @@ test_that("Random generator works", {
   ### at least a visual check for the non-monotonic one-sided
   set.seed(6)
   samples   <- rone.sided(10000, alpha1 = c(1, 1), alpha2 = c(1, 1))
-  expect_doppelganger("rone.sided-4-1", function()hist(samples[,1], xlim = c(0, 1), main = "one.sided(alpha1 = c(1, 1), alpha2 = c(1, 1))"))
-  expect_doppelganger("rone.sided-4-2", function()hist(samples[,2], xlim = c(0, 1), main = "one.sided(alpha1 = c(1, 1), alpha2 = c(1, 1))"))
+  vdiffr::expect_doppelganger("rone.sided-4-1", function()hist(samples[,1], xlim = c(0, 1), main = "one.sided(alpha1 = c(1, 1), alpha2 = c(1, 1))"))
+  vdiffr::expect_doppelganger("rone.sided-4-2", function()hist(samples[,2], xlim = c(0, 1), main = "one.sided(alpha1 = c(1, 1), alpha2 = c(1, 1))"))
   expect_equal(samples[,ncol(samples)], rep(1, nrow(samples)))
 
   set.seed(7)
   samples   <- rone.sided(10000, alpha1 = c(1, 1, 1), alpha2 = c(1, 1))
-  expect_doppelganger("rone.sided-5-1", function()hist(samples[,1], xlim = c(0, 1), main = "one.sided(alpha1 = c(1, 1, 1), alpha2 = c(1, 1))"))
-  expect_doppelganger("rone.sided-5-2", function()hist(samples[,2], xlim = c(0, 1), main = "one.sided(alpha1 = c(1, 1, 1), alpha2 = c(1, 1))"))
-  expect_doppelganger("rone.sided-5-3", function()hist(samples[,3], xlim = c(0, 1), main = "one.sided(alpha1 = c(1, 1, 1), alpha2 = c(1, 1))"))
+  vdiffr::expect_doppelganger("rone.sided-5-1", function()hist(samples[,1], xlim = c(0, 1), main = "one.sided(alpha1 = c(1, 1, 1), alpha2 = c(1, 1))"))
+  vdiffr::expect_doppelganger("rone.sided-5-2", function()hist(samples[,2], xlim = c(0, 1), main = "one.sided(alpha1 = c(1, 1, 1), alpha2 = c(1, 1))"))
+  vdiffr::expect_doppelganger("rone.sided-5-3", function()hist(samples[,3], xlim = c(0, 1), main = "one.sided(alpha1 = c(1, 1, 1), alpha2 = c(1, 1))"))
   expect_equal(samples[,ncol(samples)], rep(1, nrow(samples)))
 
 

@@ -9,7 +9,14 @@
 \alias{check_list}
 \title{Check input}
 \usage{
-check_bool(x, name, check_length = 1, allow_NULL = FALSE, call = "")
+check_bool(
+  x,
+  name,
+  check_length = 1,
+  allow_NULL = FALSE,
+  allow_NA = TRUE,
+  call = ""
+)
 
 check_char(
   x,
@@ -17,6 +24,7 @@ check_char(
   check_length = 1,
   allow_values = NULL,
   allow_NULL = FALSE,
+  allow_NA = TRUE,
   call = ""
 )
 
@@ -28,6 +36,7 @@ check_real(
   allow_bound = TRUE,
   check_length = 1,
   allow_NULL = FALSE,
+  allow_NA = TRUE,
   call = ""
 )
 
@@ -39,6 +48,7 @@ check_int(
   allow_bound = TRUE,
   check_length = 1,
   allow_NULL = FALSE,
+  allow_NA = TRUE,
   call = ""
 )
 
@@ -64,6 +74,9 @@ message.}
 
 \item{allow_NULL}{whether the object can be \code{NULL}.
 If so, no checks are executed.}
+
+\item{allow_NA}{whether the object can contain \code{NA} or \code{NaN}
+values.}
 
 \item{call}{string to be placed as a prefix to the error call.}
 

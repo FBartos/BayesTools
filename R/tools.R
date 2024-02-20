@@ -10,6 +10,8 @@
 #' \code{1}. Set to \code{0} in order to not check object length.
 #' @param allow_NULL whether the object can be \code{NULL}.
 #' If so, no checks are executed.
+#' @param allow_NA whether the object can contain \code{NA} or \code{NaN}
+#' values.
 #' @param allow_values names of values allowed in a character vector.
 #' Defaults to \code{NULL} (do not check).
 #' @param check_names names of entries allowed in a list. Defaults to
@@ -45,7 +47,7 @@
 #' @export check_list
 
 #' @rdname check_input
-check_bool   <- function(x, name, check_length = 1, allow_NULL = FALSE, call = ""){
+check_bool   <- function(x, name, check_length = 1, allow_NULL = FALSE, allow_NA = TRUE, call = ""){
 
   if(is.null(x) || length(x) == 0){
     if(allow_NULL){
@@ -61,11 +63,14 @@ check_bool   <- function(x, name, check_length = 1, allow_NULL = FALSE, call = "
   if(check_length != 0  && length(x) != check_length)
     stop(paste0(call, "The '", name, "' argument must have length '", check_length, "'."), call. = FALSE)
 
+  if(!allow_NA && anyNA(x))
+    stop(paste0(call, "The '", name, "' argument cannot contain NA/NaN values."), call. = FALSE)
+
   return()
 }
 
 #' @rdname check_input
-check_char   <- function(x, name, check_length = 1, allow_values = NULL, allow_NULL = FALSE, call = ""){
+check_char   <- function(x, name, check_length = 1, allow_values = NULL, allow_NULL = FALSE, allow_NA = TRUE, call = ""){
 
   if(is.null(x) || length(x) == 0){
     if(allow_NULL){
@@ -84,11 +89,14 @@ check_char   <- function(x, name, check_length = 1, allow_values = NULL, allow_N
   if(!is.null(allow_values) && any(!x %in% allow_values))
     stop(paste0(call, "The '", paste0(x[!x %in% allow_values], collapse = "', '") ,"' values are not recognized by the '", name, "' argument."), call. = FALSE)
 
+  if(!allow_NA && anyNA(x))
+    stop(paste0(call, "The '", name, "' argument cannot contain NA/NaN values."), call. = FALSE)
+
   return()
 }
 
 #' @rdname check_input
-check_real   <- function(x, name, lower = -Inf, upper = Inf, allow_bound = TRUE, check_length = 1, allow_NULL = FALSE, call = ""){
+check_real   <- function(x, name, lower = -Inf, upper = Inf, allow_bound = TRUE, check_length = 1, allow_NULL = FALSE, allow_NA = TRUE, call = ""){
 
   if(is.null(x) || length(x) == 0){
     if(allow_NULL){
@@ -124,11 +132,15 @@ check_real   <- function(x, name, lower = -Inf, upper = Inf, allow_bound = TRUE,
   if(check_length != 0 && length(x) != check_length)
     stop(paste0(call, "The '", name, "' argument must have length '", check_length, "'."), call. = FALSE)
 
+
+  if(!allow_NA && anyNA(x))
+    stop(paste0(call, "The '", name, "' argument cannot contain NA/NaN values."), call. = FALSE)
+
   return()
 }
 
 #' @rdname check_input
-check_int    <- function(x, name, lower = -Inf, upper = Inf, allow_bound = TRUE, check_length = 1, allow_NULL = FALSE, call = ""){
+check_int    <- function(x, name, lower = -Inf, upper = Inf, allow_bound = TRUE, check_length = 1, allow_NULL = FALSE, allow_NA = TRUE, call = ""){
 
   if(is.null(x) || length(x) == 0){
     if(allow_NULL){
@@ -138,9 +150,9 @@ check_int    <- function(x, name, lower = -Inf, upper = Inf, allow_bound = TRUE,
     }
   }
 
-  check_real(x, name, lower, upper, allow_bound, check_length, allow_NULL, call = call)
+  check_real(x, name = name, lower = lower, upper = upper, allow_bound = allow_bound, check_length = check_length, allow_NULL = allow_NULL, allow_NA = allow_NA, call = call)
 
-  if(!all(.is.wholenumber(x)))
+  if(!all(.is.wholenumber(x, na.rm = TRUE)))
     stop(paste0(call, "The '", name ,"' argument must be an integer vector."), call. = FALSE)
 
   return()
@@ -176,8 +188,12 @@ check_list   <- function(x, name, check_length = 0, check_names = NULL, all_obje
 }
 
 # helper functions
-.is.wholenumber  <- function(x, tol = .Machine$double.eps^0.5){
-  abs(x - round(x)) < tol
+.is.wholenumber  <- function(x, na.rm = FALSE, tol = .Machine$double.eps^0.5){
+  if(na.rm){
+    return(abs(x - round(stats::na.omit(x))) < tol)
+  }else{
+    return(abs(x - round(x)) < tol)
+  }
 }
 
 # check transformation argument

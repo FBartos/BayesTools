@@ -211,6 +211,28 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   return(posterior)
 }
 
+
+#' @title Create a 'bridgesampling' object
+#'
+#' @description prepares a 'bridgesampling' object with a given
+#' log marginal likelihood.
+#'
+#' @param logml log marginal likelihood. Defaults to \code{-Inf}.
+#'
+#'
+#' @return \code{JAGS_bridgesampling} returns an object of class 'bridge'.
+#'
+#' @export
+bridgesampling_object <- function(logml = -Inf){
+
+  marglik        <- list()
+  marglik$logml  <- logml
+  class(marglik) <- "bridge"
+
+  return(marglik)
+}
+
+
 #' @title Prepare 'JAGS' posterior for 'bridgesampling'
 #'
 #' @description prepares posterior distribution for 'bridgesampling'

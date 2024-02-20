@@ -226,6 +226,11 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     }
   }
 
+  # stop cluster manually
+  if(parallel){
+    parallel::stopCluster(cl)
+  }
+
   # add information to the fitted object
   attr(fit, "prior_list")   <- prior_list
   attr(fit, "model_syntax") <- model_syntax
@@ -313,6 +318,11 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     }
 
     converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]])
+  }
+
+  # stop cluster manually
+  if(parallel){
+    parallel::stopCluster(cl)
   }
 
   # add information to the fitted object
@@ -797,7 +807,7 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
     temp_inits <- .JAGS_get_inits.fun(prior_list)
 
     temp_inits[[".RNG.seed"]] <- seed + j
-    temp_inits[[".RNG.name"]] <- "base::Super-Duper"
+    temp_inits[[".RNG.name"]] <- if(chains > 4) "lecuyer::RngStream" else "base::Super-Duper"
 
     inits[[j]] <- temp_inits
   }

@@ -5,7 +5,7 @@
 \alias{prior_informed_medicine_names}
 \title{Names of medical subfields from the Cochrane database of systematic reviews}
 \format{
-An object of class \code{character} of length 47.
+An object of class \code{character} of length 57.
 }
 \usage{
 prior_informed_medicine_names

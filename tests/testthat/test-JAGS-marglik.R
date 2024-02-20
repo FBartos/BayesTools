@@ -563,3 +563,14 @@ test_that("JAGS model functions work (formula)",{
   expect_equal(marglik3b$logml, marglik3c$logml, tolerance = 1e-2)
 
 })
+
+test_that("bridge sampling object function works",{
+
+  marglik0 <- bridgesampling_object()
+  marglik1 <- bridgesampling_object(1)
+
+  expect_equal(marglik0$logml, -Inf)
+  expect_equal(marglik1$logml, 1)
+  expect_s3_class(marglik0, "bridge")
+
+})

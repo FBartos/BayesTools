@@ -71,7 +71,7 @@ test_that("Prior print function works", {
   empty_plot <- function(){
     plot(NULL, xlim = c(0, 1), ylim = c(0, 1), axes = FALSE, ann = FALSE)
   }
-  expect_doppelganger("priors-print-1", function(){
+  vdiffr::expect_doppelganger("priors-print-1", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(0, 0, 0, 0))
@@ -88,7 +88,7 @@ test_that("Prior print function works", {
     text(0.5, 0.1, print(p4, silent = TRUE, plot = TRUE))
   })
 
-  expect_doppelganger("priors-print-2", function(){
+  vdiffr::expect_doppelganger("priors-print-2", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(0, 0, 0, 0))
@@ -105,7 +105,7 @@ test_that("Prior print function works", {
     text(0.5, 0.1, print(p10, parameter_names = TRUE, plot = TRUE))
   })
 
-  expect_doppelganger("priors-print-3", function(){
+  vdiffr::expect_doppelganger("priors-print-3", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(0, 0, 0, 0))
@@ -126,7 +126,7 @@ test_that("Prior print function works", {
                               prior_inclusion = prior("beta", list(3, 2)))
   expect_equal(utils::capture.output(print(p21)), "Gamma(1, 2) * Beta(3, 2)")
   expect_equal(utils::capture.output(print(p21, short_name = TRUE)), "G(1, 2) * B(3, 2)")
-  expect_doppelganger("priors-print-4", function(){
+  vdiffr::expect_doppelganger("priors-print-4", function(){
     empty_plot()
     text(0.5, 1, print(p21, plot = TRUE))
   })
