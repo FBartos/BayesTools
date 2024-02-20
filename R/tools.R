@@ -190,7 +190,7 @@ check_list   <- function(x, name, check_length = 0, check_names = NULL, all_obje
 # helper functions
 .is.wholenumber  <- function(x, na.rm = FALSE, tol = .Machine$double.eps^0.5){
   if(na.rm){
-    return(abs(x - round(na.omit(x))) < tol)
+    return(abs(x - round(stats::na.omit(x))) < tol)
   }else{
     return(abs(x - round(x)) < tol)
   }
