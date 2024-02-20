@@ -9,6 +9,7 @@ test_that("Check booleans", {
   expect_null(check_bool(FALSE, ""))
   expect_null(check_bool(as.logical(stats::rbinom(5, 1, .5)), "", check_length = 0))
   expect_null(check_bool(c(FALSE, FALSE), "", check_length = 2))
+  expect_null(check_bool(NA,  ""))
 
   # these should fail
   expect_error(
@@ -35,6 +36,10 @@ test_that("Check booleans", {
     check_bool(NULL, "test object"),
     "The 'test object' argument cannot be NULL."
   )
+  expect_error(
+    check_bool(NA, "test object", allow_NA = FALSE),
+    "The 'test object' argument cannot contain NA/NaN values."
+  )
 })
 
 test_that("Check strings", {
@@ -45,7 +50,7 @@ test_that("Check strings", {
   expect_null(check_char(c("string", "string1"),  "", check_length = 0))
   expect_null(check_char(as.character(stats::rbinom(5, 1, .5)), "", check_length = 5))
   expect_null(check_char(c("string", "string1"),  "", check_length = 0, allow_values = c("string", "string1")))
-
+  expect_null(check_char(c(NA, ""),  "", check_length = 2))
 
   # these should fail
   expect_error(
@@ -76,6 +81,10 @@ test_that("Check strings", {
     check_char(NULL, "test object"),
     "The 'test object' argument cannot be NULL."
   )
+  expect_error(
+    check_char(c("a", NA), "test object", allow_NA = FALSE, check_length = FALSE),
+    "The 'test object' argument cannot contain NA/NaN values."
+  )
 })
 
 test_that("Check reals", {
@@ -88,6 +97,7 @@ test_that("Check reals", {
   expect_null(check_real(stats::rgamma(1, 1, 1), "", lower = 0))
   expect_null(check_real(stats::rbeta(1, 1, 1), "",  upper = 1))
   expect_null(check_real(c(0, 1), "", lower = 0, upper = 1, check_length = 2))
+  expect_null(check_real(c(NA, NaN),  "", check_length = 2))
 
   # these should fail
   expect_error(
@@ -130,6 +140,10 @@ test_that("Check reals", {
     check_real(NULL, "test object"),
     "The 'test object' argument cannot be NULL."
   )
+  expect_error(
+    check_real(NaN, "test object", allow_NA = FALSE),
+    "The 'test object' argument cannot contain NA/NaN values."
+  )
 })
 
 test_that("Check integers", {
@@ -142,6 +156,7 @@ test_that("Check integers", {
   expect_null(check_int(c(0, 5, 10), "", lower = 0, check_length = 3))
   expect_null(check_int(c(0, -2, 2), "", upper = 2, check_length = 3))
   expect_null(check_int(c(-3, -1), "", lower = -3, upper = -1, check_length = 2))
+  expect_null(check_int(c(NA, NaN),  "", check_length = 2))
 
   # these should fail
   expect_error(
@@ -183,6 +198,10 @@ test_that("Check integers", {
   expect_error(
     check_int(NULL, "test object"),
     "The 'test object' argument cannot be NULL."
+  )
+  expect_error(
+    check_int(c(1, NA), "test object", allow_NA = FALSE, check_length = FALSE),
+    "The 'test object' argument cannot contain NA/NaN values."
   )
 })
 

@@ -1,3 +1,12 @@
+## version 0.2.17
+### Features
+- adding informed prior distributions for dichotomous and time to event outcomes based on Cochrane Database of Systematic Reviews to `prior_informed()` function
+- adding bridge object convenience function `bridge_object()` (fixes: https://github.com/FBartos/BayesTools/issues/28)
+- adding `Na/NaN` tests for `check_` functions (fixes: https://github.com/FBartos/BayesTools/issues/26)
+
+### Fixes
+- ability to run more than 4 chains (fixes: https://github.com/FBartos/BayesTools/issues/20)
+
 ## version 0.2.16
 ### Features
 - update an existing JAGS fit with `JAGS_extend()` function
