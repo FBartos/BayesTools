@@ -212,12 +212,12 @@ test_that("Marginal distribution prior and posterior functions work", {
     parameter         = "sigma",
     prior_samples     = TRUE)
 
-  expect_doppelganger("marginal-simple-con", function(){
+  vdiffr::expect_doppelganger("marginal-simple-con", function(){
     hist(marg_post_sigma, freq = FALSE, main = "marginal posterior sigma")
     lines(density(c(posterior_manual0[,"sigma"], posterior_manual1[,"sigma"])))
   })
 
-  expect_doppelganger("marginal-simple-con-p", function(){
+  vdiffr::expect_doppelganger("marginal-simple-con-p", function(){
     hist(attr(marg_post_sigma, "prior_samples"), freq = FALSE, main = "marginal prior sigma", breaks = 20)
     lines(density(prior_list$sigma))
   })
@@ -230,7 +230,7 @@ test_that("Marginal distribution prior and posterior functions work", {
     prior_samples     = TRUE,
     use_formula       = FALSE)
 
-  expect_doppelganger("marginal-simple-fac", function(){
+  vdiffr::expect_doppelganger("marginal-simple-fac", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
@@ -243,7 +243,7 @@ test_that("Marginal distribution prior and posterior functions work", {
 
   })
 
-  expect_doppelganger("marginal-simple-fac-p", function(){
+  vdiffr::expect_doppelganger("marginal-simple-fac-p", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
@@ -264,12 +264,12 @@ test_that("Marginal distribution prior and posterior functions work", {
     formula           = ~ x_cont1 + x_fac2t + x_cont1*x_fac3md,
     prior_samples     = TRUE)
 
-  expect_doppelganger("marginal-form-int", function(){
+  vdiffr::expect_doppelganger("marginal-form-int", function(){
     hist(marg_post_int[["intercept"]], freq = FALSE, main = "marginal posterior intercept")
     lines(density(c(posterior_manual0[,"mu_intercept"], posterior_manual1[,"mu_intercept"] )))
   })
 
-  expect_doppelganger("marginal-form-int-p", function(){
+  vdiffr::expect_doppelganger("marginal-form-int-p", function(){
     hist(attr(marg_post_int[["intercept"]], "prior_samples"), freq = FALSE, main = "marginal prior intercept")
     lines(prior_list_0$intercept)
   })
@@ -282,7 +282,7 @@ test_that("Marginal distribution prior and posterior functions work", {
     formula           = ~ x_cont1 + x_fac2t + x_cont1*x_fac3md,
     prior_samples     = TRUE)
 
-  expect_doppelganger("marginal-form-con", function(){
+  vdiffr::expect_doppelganger("marginal-form-con", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
@@ -302,7 +302,7 @@ test_that("Marginal distribution prior and posterior functions work", {
 
   })
 
-  expect_doppelganger("marginal-form-con-p", function(){
+  vdiffr::expect_doppelganger("marginal-form-con-p", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
@@ -322,7 +322,7 @@ test_that("Marginal distribution prior and posterior functions work", {
     formula           = ~ x_cont1 + x_fac2t + x_cont1*x_fac3md,
     prior_samples     = TRUE)
 
-  expect_doppelganger("marginal-form-fac.t", function(){
+  vdiffr::expect_doppelganger("marginal-form-fac.t", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
@@ -336,7 +336,7 @@ test_that("Marginal distribution prior and posterior functions work", {
 
   })
 
-  expect_doppelganger("marginal-form-fac.t-p", function(){
+  vdiffr::expect_doppelganger("marginal-form-fac.t-p", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
@@ -359,7 +359,7 @@ test_that("Marginal distribution prior and posterior functions work", {
   posterior_manual0.md <- posterior_manual0[,c("mu_x_fac3md[1]", "mu_x_fac3md[2]")] %*% t(contr.meandif(1:3))
   posterior_manual1.md <- posterior_manual1[,c("mu_x_fac3md[1]", "mu_x_fac3md[2]")] %*% t(contr.meandif(1:3))
 
-  expect_doppelganger("marginal-form-fac.md", function(){
+  vdiffr::expect_doppelganger("marginal-form-fac.md", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
@@ -375,7 +375,7 @@ test_that("Marginal distribution prior and posterior functions work", {
     lines(density(c(posterior_manual0[,"mu_intercept"] + posterior_manual0.md[,3], posterior_manual1[,"mu_intercept"] + posterior_manual1.md[,3])))
   })
 
-  expect_doppelganger("marginal-form-fac.md-p", function(){
+  vdiffr::expect_doppelganger("marginal-form-fac.md-p", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
@@ -407,7 +407,7 @@ test_that("Marginal distribution prior and posterior functions work", {
     posterior_manual1[,c("mu_x_cont1__xXx__x_fac3md[1]", "mu_x_cont1__xXx__x_fac3md[2]")] %*% (do.call(cbind, lapply(1:3, function(i) t(contr.meandif(1:3)))) * matrix(c(-1, -1, -1, 0, 0, 0, 1, 1, 1), ncol = 9, nrow = 2, byrow = TRUE))
   posterior_manual.md <- rbind(posterior_manual0.md, posterior_manual1.md)
 
-  expect_doppelganger("marginal-form-fac.mdi", function(){
+  vdiffr::expect_doppelganger("marginal-form-fac.mdi", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
@@ -442,7 +442,7 @@ test_that("Marginal distribution prior and posterior functions work", {
 
   })
 
-  expect_doppelganger("marginal-form-fac.mdi-p", function(){
+  vdiffr::expect_doppelganger("marginal-form-fac.mdi-p", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
@@ -494,7 +494,7 @@ test_that("Marginal distribution prior and posterior functions work", {
   posterior_manual0.mdi <- posterior_manual0[,c("mu_x_cont1__xXx__x_fac3md[1]", "mu_x_cont1__xXx__x_fac3md[2]")] %*% t(contr.meandif(1:3))
   posterior_manual1.mdi <- posterior_manual1[,c("mu_x_cont1__xXx__x_fac3md[1]", "mu_x_cont1__xXx__x_fac3md[2]")] %*% t(contr.meandif(1:3))
 
-  expect_doppelganger("marginal-form-fac.md-at", function(){
+  vdiffr::expect_doppelganger("marginal-form-fac.md-at", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
@@ -534,7 +534,7 @@ test_that("Marginal distribution prior and posterior functions work", {
     transformation    = "exp",
     prior_samples     = TRUE)
 
-  expect_doppelganger("marginal-form-con-exp", function(){
+  vdiffr::expect_doppelganger("marginal-form-con-exp", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
@@ -551,7 +551,7 @@ test_that("Marginal distribution prior and posterior functions work", {
 
   })
 
-  expect_doppelganger("marginal-form-con-p-exp", function(){
+  vdiffr::expect_doppelganger("marginal-form-con-p-exp", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
@@ -623,7 +623,7 @@ test_that("Marginal distribution prior and posterior functions work", {
   )
 
   # test samples against previously generated ones
-  expect_doppelganger("marginal_inference-cont",     function(){
+  vdiffr::expect_doppelganger("marginal_inference-cont",     function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
@@ -639,7 +639,7 @@ test_that("Marginal distribution prior and posterior functions work", {
     lines(density(out$averaged$mu_x_cont1[["1SD"]]))
 
   })
-  expect_doppelganger("marginal_inference-cont-p",   function(){
+  vdiffr::expect_doppelganger("marginal_inference-cont-p",   function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
@@ -652,7 +652,7 @@ test_that("Marginal distribution prior and posterior functions work", {
     hist(attr(marg_post_x_cont1[["1SD"]], "prior_samples"), freq = FALSE, main = "mu_x_cont1 = 1SD", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
     lines(density(attr(out$averaged$mu_x_cont1[["1SD"]], "prior_samples")))
   })
-  expect_doppelganger("marginal_inference-fac.md",   function(){
+  vdiffr::expect_doppelganger("marginal_inference-fac.md",   function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
@@ -668,7 +668,7 @@ test_that("Marginal distribution prior and posterior functions work", {
     lines(density(out$averaged$mu_x_fac3md$C))
 
   })
-  expect_doppelganger("marginal_inference-fac.md-p", function(){
+  vdiffr::expect_doppelganger("marginal_inference-fac.md-p", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
@@ -724,24 +724,24 @@ test_that("Marginal distribution prior and posterior functions work", {
   ))
 
   # plots
-  expect_doppelganger("plot_marginal-mu_x_fac2t-1", function(){plot_marginal(out$conditional, parameter = "mu_x_fac2t")})
-  expect_doppelganger("plot_marginal-mu_x_fac2t-2", function(){plot_marginal(out$conditional, parameter = "mu_x_fac2t", par_name = "fac2t", lwd = 2)})
-  expect_doppelganger("plot_marginal-mu_x_fac2t-3", function(){plot_marginal(out$conditional, parameter = "mu_x_fac2t", prior = TRUE, dots_prior = list(lty = 2))})
-  expect_doppelganger("plot_marginal-mu_x_fac2t-4", function(){plot_marginal(out$conditional, parameter = "mu_x_fac2t", prior = TRUE, dots_prior = list(lty = 2), xlim = c(0, 1))})
-  expect_doppelganger("plot_marginal-mu_x_fac2t-5", function(){plot_marginal(out$conditional, parameter = "mu_x_fac2t", prior = TRUE, dots_prior = list(lty = 2), transformation = "exp", xlim = c(0, 5), transformation_settings = T)})
+  vdiffr::expect_doppelganger("plot_marginal-mu_x_fac2t-1", function(){plot_marginal(out$conditional, parameter = "mu_x_fac2t")})
+  vdiffr::expect_doppelganger("plot_marginal-mu_x_fac2t-2", function(){plot_marginal(out$conditional, parameter = "mu_x_fac2t", par_name = "fac2t", lwd = 2)})
+  vdiffr::expect_doppelganger("plot_marginal-mu_x_fac2t-3", function(){plot_marginal(out$conditional, parameter = "mu_x_fac2t", prior = TRUE, dots_prior = list(lty = 2))})
+  vdiffr::expect_doppelganger("plot_marginal-mu_x_fac2t-4", function(){plot_marginal(out$conditional, parameter = "mu_x_fac2t", prior = TRUE, dots_prior = list(lty = 2), xlim = c(0, 1))})
+  vdiffr::expect_doppelganger("plot_marginal-mu_x_fac2t-5", function(){plot_marginal(out$conditional, parameter = "mu_x_fac2t", prior = TRUE, dots_prior = list(lty = 2), transformation = "exp", xlim = c(0, 5), transformation_settings = T)})
 
-  expect_doppelganger("ggplot_marginal-mu_x_fac2t-1", plot_marginal(out$conditional, plot_type = "ggplot", parameter = "mu_x_fac2t"))
-  expect_doppelganger("ggplot_marginal-mu_x_fac2t-2", plot_marginal(out$conditional, plot_type = "ggplot", parameter = "mu_x_fac2t", par_name = "fac2t", lwd = 2))
-  expect_doppelganger("ggplot_marginal-mu_x_fac2t-3", plot_marginal(out$conditional, plot_type = "ggplot", parameter = "mu_x_fac2t", prior = TRUE, dots_prior = list(lty = 2)))
-  expect_doppelganger("ggplot_marginal-mu_x_fac2t-4", plot_marginal(out$conditional, plot_type = "ggplot", parameter = "mu_x_fac2t", prior = TRUE, dots_prior = list(lty = 2), xlim = c(0, 1)))
+  vdiffr::expect_doppelganger("ggplot_marginal-mu_x_fac2t-1", plot_marginal(out$conditional, plot_type = "ggplot", parameter = "mu_x_fac2t"))
+  vdiffr::expect_doppelganger("ggplot_marginal-mu_x_fac2t-2", plot_marginal(out$conditional, plot_type = "ggplot", parameter = "mu_x_fac2t", par_name = "fac2t", lwd = 2))
+  vdiffr::expect_doppelganger("ggplot_marginal-mu_x_fac2t-3", plot_marginal(out$conditional, plot_type = "ggplot", parameter = "mu_x_fac2t", prior = TRUE, dots_prior = list(lty = 2)))
+  vdiffr::expect_doppelganger("ggplot_marginal-mu_x_fac2t-4", plot_marginal(out$conditional, plot_type = "ggplot", parameter = "mu_x_fac2t", prior = TRUE, dots_prior = list(lty = 2), xlim = c(0, 1)))
 
-  expect_doppelganger("plot_marginal-mu_x_cont1", function(){plot_marginal(out$conditional, parameter = "mu_x_cont1", prior = TRUE, dots_prior = list(lty = 2), xlim = c(0, 1))})
-  expect_doppelganger("ggplot_marginal-mu_x_cont1", plot_marginal(out$conditional, plot_type = "ggplot", parameter = "mu_x_cont1", prior = TRUE, dots_prior = list(lty = 2), xlim = c(0, 1)))
+  vdiffr::expect_doppelganger("plot_marginal-mu_x_cont1", function(){plot_marginal(out$conditional, parameter = "mu_x_cont1", prior = TRUE, dots_prior = list(lty = 2), xlim = c(0, 1))})
+  vdiffr::expect_doppelganger("ggplot_marginal-mu_x_cont1", plot_marginal(out$conditional, plot_type = "ggplot", parameter = "mu_x_cont1", prior = TRUE, dots_prior = list(lty = 2), xlim = c(0, 1)))
 
-  expect_doppelganger("plot_marginal-mu_x_fac3md", function(){plot_marginal(out$averaged, parameter = "mu_x_fac3md", prior = TRUE, dots_prior = list(lty = 2), xlim = c(-1, 1))})
-  expect_doppelganger("ggplot_marginal-mu_x_fac3md", plot_marginal(out$averaged, plot_type = "ggplot", parameter = "mu_x_fac3md", prior = TRUE, dots_prior = list(lty = 2), xlim = c(-1, 1)))
+  vdiffr::expect_doppelganger("plot_marginal-mu_x_fac3md", function(){plot_marginal(out$averaged, parameter = "mu_x_fac3md", prior = TRUE, dots_prior = list(lty = 2), xlim = c(-1, 1))})
+  vdiffr::expect_doppelganger("ggplot_marginal-mu_x_fac3md", plot_marginal(out$averaged, plot_type = "ggplot", parameter = "mu_x_fac3md", prior = TRUE, dots_prior = list(lty = 2), xlim = c(-1, 1)))
 
-  expect_doppelganger("plot_marginal-int", plot_marginal(out$averaged, plot_type = "ggplot", parameter = "mu_intercept", prior = TRUE, dots_prior = list(lty = 2), xlim = c(-1, 1)))
+  vdiffr::expect_doppelganger("plot_marginal-int", plot_marginal(out$averaged, plot_type = "ggplot", parameter = "mu_intercept", prior = TRUE, dots_prior = list(lty = 2), xlim = c(-1, 1)))
 
 })
 
@@ -763,7 +763,7 @@ test_that("Marginal distribution prior functions work", {
   temp_prior <- BayesTools:::.mix_priors.factor(priors, "mu", seed = NULL, n_samples = 10000)
 
 
-  expect_doppelganger("marginal-prior-ind", function(){
+  vdiffr::expect_doppelganger("marginal-prior-ind", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
@@ -785,7 +785,7 @@ test_that("Marginal distribution prior functions work", {
   temp_prior <- BayesTools:::.mix_priors.factor(priors, "mu", seed = NULL, n_samples = 10000)
 
 
-  expect_doppelganger("marginal-prior-trt", function(){
+  vdiffr::expect_doppelganger("marginal-prior-trt", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
@@ -803,7 +803,7 @@ test_that("Marginal distribution prior functions work", {
   )
   temp_prior <- BayesTools:::.mix_priors.weightfunction(priors, "mu", seed = NULL, n_samples = 10000)
 
-  expect_doppelganger("marginal-prior-weightfunction", function(){
+  vdiffr::expect_doppelganger("marginal-prior-weightfunction", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))

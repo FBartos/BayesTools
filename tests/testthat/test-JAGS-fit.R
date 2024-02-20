@@ -32,7 +32,7 @@ test_that("JAGS model functions work (simple)", {
 
 
   for(i in seq_along(priors)){
-    expect_doppelganger(paste0("JAGS-model-prior-",i), function(){
+    vdiffr::expect_doppelganger(paste0("JAGS-model-prior-",i), function(){
       if(is.prior.discrete(priors[[i]])){
         barplot(table(samples[,names(priors)[i]])/length(samples[,names(priors)[i]]), main = print(priors[[i]], plot = T), width = 1/(max(samples[,names(priors)[i]])+1), space = 0, xlim = c(-0.25, max(samples[,names(priors)[i]])+0.25))
       }else{
@@ -66,7 +66,7 @@ test_that("JAGS model functions work (vector)", {
   samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 5000, quiet = TRUE, progress.bar = "none")
   samples <- do.call(rbind, samples)
 
-  expect_doppelganger("JAGS-model-prior-vector-1", function(){
+  vdiffr::expect_doppelganger("JAGS-model-prior-vector-1", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
@@ -79,7 +79,7 @@ test_that("JAGS model functions work (vector)", {
          xlab = "X1", ylab = "X2", main = print(priors[[1]], plot = TRUE))
   })
 
-  expect_doppelganger("JAGS-model-prior-vector-2", function(){
+  vdiffr::expect_doppelganger("JAGS-model-prior-vector-2", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
@@ -92,7 +92,7 @@ test_that("JAGS model functions work (vector)", {
          xlab = "X1", ylab = "X2", main = print(priors[[2]], plot = TRUE))
   })
 
-  expect_doppelganger("JAGS-model-prior-vector-3", function(){
+  vdiffr::expect_doppelganger("JAGS-model-prior-vector-3", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
@@ -150,7 +150,7 @@ test_that("JAGS model functions work (factor)", {
 
   expect_equal(colnames(samples), c("p1[1]", "p1[2]", "p10[1]", "p10[2]", "p2", "p3[1]", "p3[2]", "p4", "p5[1]", "p5[2]", "p5[3]", "p6[1]", "p6[2]", "p7", "p8[1]", "p8[2]", "p8[3]", "p9[1]", "p9[2]"))
 
-  expect_doppelganger("JAGS-model-prior-factor-1", function(){
+  vdiffr::expect_doppelganger("JAGS-model-prior-factor-1", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
@@ -163,13 +163,13 @@ test_that("JAGS model functions work (factor)", {
          xlab = "X1", ylab = "X2", main = print(priors[[1]], plot = TRUE))
   })
 
-  expect_doppelganger("JAGS-model-prior-factor-2", function(){
+  vdiffr::expect_doppelganger("JAGS-model-prior-factor-2", function(){
 
     hist(samples[,"p2"], breaks = 20, main = print(priors[[2]], plot = TRUE), freq = FALSE)
     lines(prior("beta", list(1, 1)))
   })
 
-  expect_doppelganger("JAGS-model-prior-factor-3", function(){
+  vdiffr::expect_doppelganger("JAGS-model-prior-factor-3", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
@@ -182,13 +182,13 @@ test_that("JAGS model functions work (factor)", {
          xlab = "X1", ylab = "X2", main = print(priors[[3]], plot = TRUE), cex = .25)
   })
 
-  expect_doppelganger("JAGS-model-prior-factor-4", function(){
+  vdiffr::expect_doppelganger("JAGS-model-prior-factor-4", function(){
 
     hist(samples[,"p4"], breaks = 20, main = print(priors[[4]], plot = TRUE), freq = FALSE)
     lines(prior("gamma", list(shape = 2, rate = 3)))
   })
 
-  expect_doppelganger("JAGS-model-prior-factor-5", function(){
+  vdiffr::expect_doppelganger("JAGS-model-prior-factor-5", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
@@ -204,7 +204,7 @@ test_that("JAGS model functions work (factor)", {
     lines(prior("uniform", list(a = -0.5, b = 1.5)))
   })
 
-  expect_doppelganger("JAGS-model-prior-factor-6", function(){
+  vdiffr::expect_doppelganger("JAGS-model-prior-factor-6", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
@@ -217,14 +217,14 @@ test_that("JAGS model functions work (factor)", {
     lines(prior("normal", list(mean = 0, sd = 0.5)))
   })
 
-  expect_doppelganger("JAGS-model-prior-factor-7", function(){
+  vdiffr::expect_doppelganger("JAGS-model-prior-factor-7", function(){
 
     hist(samples[,"p7"], breaks = 50, main = print(priors[[7]], plot = TRUE), freq = FALSE)
     lines(prior_factor("spike", list(location = 1), contrast = "treatment"))
 
   })
 
-  expect_doppelganger("JAGS-model-prior-factor-8", function(){
+  vdiffr::expect_doppelganger("JAGS-model-prior-factor-8", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
@@ -240,7 +240,7 @@ test_that("JAGS model functions work (factor)", {
     lines(prior_factor("spike", list(location = 2), contrast = "independent"))
   })
 
-  expect_doppelganger("JAGS-model-prior-factor-9", function(){
+  vdiffr::expect_doppelganger("JAGS-model-prior-factor-9", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
@@ -253,7 +253,7 @@ test_that("JAGS model functions work (factor)", {
     lines(prior_factor("spike", list(location = 0), contrast = "orthonormal"))
   })
 
-  expect_doppelganger("JAGS-model-prior-factor-10", function(){
+  vdiffr::expect_doppelganger("JAGS-model-prior-factor-10", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
@@ -292,7 +292,7 @@ test_that("JAGS model functions work (weightfunctions)", {
     samples <- do.call(rbind, samples)
 
 
-    expect_doppelganger(paste0("JAGS-model-weightfunction-",i), function(){
+    vdiffr::expect_doppelganger(paste0("JAGS-model-weightfunction-",i), function(){
       densities <- density(priors[[i]], individual = TRUE)
       oldpar <- graphics::par(no.readonly = TRUE)
       on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
@@ -329,7 +329,7 @@ test_that("JAGS model functions work (spike and slab)", {
 
 
     if(i == 1){
-      expect_doppelganger(paste0("JAGS-model-prior_spike-and-slab-",i), function(){
+      vdiffr::expect_doppelganger(paste0("JAGS-model-prior_spike-and-slab-",i), function(){
         temp_samples <- samples[,names(priors)[i]]
         hs <- hist(temp_samples[temp_samples != 0], breaks = 50, plot = FALSE)
         hs$density <- hs$density * mean(temp_samples != 0)
@@ -337,7 +337,7 @@ test_that("JAGS model functions work (spike and slab)", {
         lines(priors[[i]], individual = TRUE)
       })
     }else{
-      expect_doppelganger(paste0("JAGS-model-prior_spike-and-slab-",i), function(){
+      vdiffr::expect_doppelganger(paste0("JAGS-model-prior_spike-and-slab-",i), function(){
 
         oldpar <- graphics::par(no.readonly = TRUE)
         on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
@@ -388,7 +388,7 @@ test_that("JAGS fit function works" , {
   fit <- JAGS_fit(model_syntax, data, priors_list)
   expect_equal(length(fit$mcmc), 4)
   expect_true(all(sapply(fit$mcmc, function(mcmc)dim(mcmc) == c(4000, 2))))
-  expect_doppelganger("JAGS-fit-posterior", function(){
+  vdiffr::expect_doppelganger("JAGS-fit-posterior", function(){
     samples <- do.call(rbind, fit$mcmc)
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
@@ -535,7 +535,7 @@ test_that("JAGS fit function integration with formula works" , {
   lm_1 <- stats::lm(y ~ x_cont1 + x_fac3t, data = cbind(data_formula, y = data$y))
 
   # verify against the frequentist fit
-  expect_doppelganger("JAGS-fit-formula-1", function(){
+  vdiffr::expect_doppelganger("JAGS-fit-formula-1", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
@@ -592,7 +592,7 @@ test_that("JAGS fit function integration with formula works" , {
   posterior2 <- suppressWarnings(coda::as.mcmc(fit2))
 
   # verify against the true values
-  expect_doppelganger("JAGS-fit-formula-2", function(){
+  vdiffr::expect_doppelganger("JAGS-fit-formula-2", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
@@ -670,7 +670,7 @@ test_that("JAGS fit function integration with formula and spike and slab works" 
 
   posterior1 <- suppressWarnings(coda::as.mcmc(fit1))
 
-  expect_doppelganger("JAGS-fit-formula-spike-and-slab-1", function(){
+  vdiffr::expect_doppelganger("JAGS-fit-formula-spike-and-slab-1", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
@@ -683,7 +683,7 @@ test_that("JAGS fit function integration with formula and spike and slab works" 
     hist(posterior1[,"mu_x_cont1_inclusion"], freq = FALSE, main = "x_cont1_inclusion")
   })
 
-  expect_doppelganger("JAGS-fit-formula-spike-and-slab-2", function(){
+  vdiffr::expect_doppelganger("JAGS-fit-formula-spike-and-slab-2", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))

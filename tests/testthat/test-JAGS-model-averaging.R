@@ -43,7 +43,7 @@ test_that("JAGS model-averaging functions work (simple)",{
   expect_equal(mean(mixed_posterior == 0), inference_m$post_probs[1], tolerance = 1e-4)
   expect_equal(mean(attr(mixed_posterior, "models_ind") == 1), inference_m$post_probs[1], tolerance = 1e-4)
 
-  expect_doppelganger("JAGS-model-averaging-1", function(){
+  vdiffr::expect_doppelganger("JAGS-model-averaging-1", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 2))
@@ -74,7 +74,7 @@ test_that("JAGS model-averaging functions work (simple)",{
   expect_equal(mean(attr(mixed_posteriors$s, "models_ind") == 1), inference_m$post_probs[1], tolerance = 1e-4)
   expect_true(all(attr(mixed_posteriors_conditional$m, "models_ind") == 2))
   expect_equal(mean(attr(mixed_posteriors_conditional$s, "models_ind") == 1), inference_m$post_probs[1], tolerance = 1e-4)
-  expect_doppelganger("JAGS-model-averaging-2", function(){
+  vdiffr::expect_doppelganger("JAGS-model-averaging-2", function(){
     par(mfrow = c(2, 2))
     hist(mixed_posteriors$m, main = "model-averaged (m)")
     hist(mixed_posteriors_conditional$m, main = "conditional (m)")
@@ -172,7 +172,7 @@ test_that("JAGS model-averaging functions work (weightfunctions)",{
   expect_equal(mean(attr(mixed_posteriors$omega, "models_ind") == 3), inference$omega$post_probs[3], tolerance = 1e-4)
   expect_equal(mean(attr(mixed_posteriors_conditional$omega, "models_ind") == 2), inference_conditional$omega$post_probs[2], tolerance = 1e-4)
   expect_equal(mean(attr(mixed_posteriors_conditional$omega, "models_ind") == 3), inference_conditional$omega$post_probs[3], tolerance = 1e-4)
-  expect_doppelganger("JAGS-model-averaging-weightfunctions-1", function(){
+  vdiffr::expect_doppelganger("JAGS-model-averaging-weightfunctions-1", function(){
     par(mfrow = c(2, 3))
     sapply(1:3, function(i)hist(mixed_posteriors$omega[,i], main = "model-averaged (omega)", xlab = colnames(mixed_posteriors$omega)[i]))
     sapply(1:3, function(i)hist(mixed_posteriors_conditional$omega[,i], main = "conditional (omega)", xlab = colnames(mixed_posteriors$omega)[i]))
@@ -199,7 +199,7 @@ test_that("JAGS model-averaging functions work (weightfunctions)",{
 
   expect_equal(mean(mixed_posteriors$omega[,1] == .3), inference$omega$post_probs[4], tolerance = 1e-4)
   expect_equal(mean(mixed_posteriors$omega[,3] == 1), inference$omega$post_probs[4] + inference$omega$post_probs[1], tolerance = 1e-4)
-  expect_doppelganger("JAGS-model-averaging-weightfunctions-2", function(){
+  vdiffr::expect_doppelganger("JAGS-model-averaging-weightfunctions-2", function(){
     par(mfrow = c(2, 5))
     sapply(1:5, function(i)hist(mixed_posteriors$omega[,i], main = "model-averaged (omega)", xlab = colnames(mixed_posteriors$omega)[i]))
     sapply(1:5, function(i)hist(mixed_posteriors_conditional$omega[,i], main = "conditional (omega)", xlab = colnames(mixed_posteriors$omega)[i]))
@@ -358,7 +358,7 @@ test_that("JAGS model-averaging functions work (formula + factors)",{
   expect_equal(dim(mixed_posteriors$mu_x_fac3o),               c(10000, 2))
   expect_equal(dim(mixed_posteriors$mu_x_cont1__xXx__x_fac3o), c(10000, 2))
 
-  expect_doppelganger("JAGS-model-averaging-3", function(){
+  vdiffr::expect_doppelganger("JAGS-model-averaging-3", function(){
     par(mfrow = c(2, 3))
     hist(mixed_posteriors$mu_x_fac2t,       main = "averaged x_fac2t")
     hist(mixed_posteriors_c$mu_x_fac2t,     main = "conditiona x_fac2t")

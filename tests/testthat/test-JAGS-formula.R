@@ -59,7 +59,7 @@ test_that("JAGS formula works", {
 
   lm_1 <- stats::lm(y ~ x_cont1, data = df_all)
 
-  expect_doppelganger("JAGS-formula-lm-1", function(){
+  vdiffr::expect_doppelganger("JAGS-formula-lm-1", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
@@ -88,7 +88,7 @@ test_that("JAGS formula works", {
 
   lm_2 <- stats::lm(y ~ x_cont1 * x_cont2, data = df_all)
 
-  expect_doppelganger("JAGS-formula-lm-2", function(){
+  vdiffr::expect_doppelganger("JAGS-formula-lm-2", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
@@ -117,7 +117,7 @@ test_that("JAGS formula works", {
 
   lm_3 <- stats::lm(y ~ x_fac2t, data = df_all)
 
-  expect_doppelganger("JAGS-formula-lm-3", function(){
+  vdiffr::expect_doppelganger("JAGS-formula-lm-3", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
@@ -148,7 +148,7 @@ test_that("JAGS formula works", {
   contrasts(df_4$x_fac2o) <- contr.orthonormal(levels(df_4$x_fac2o))
   lm_4 <- stats::lm(y ~ x_fac2o, data = df_4)
 
-  expect_doppelganger("JAGS-formula-lm-4", function(){
+  vdiffr::expect_doppelganger("JAGS-formula-lm-4", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
@@ -177,7 +177,7 @@ test_that("JAGS formula works", {
 
   lm_5 <- stats::lm(y ~ x_fac3t, data = df_all)
 
-  expect_doppelganger("JAGS-formula-lm-5", function(){
+  vdiffr::expect_doppelganger("JAGS-formula-lm-5", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
@@ -208,7 +208,7 @@ test_that("JAGS formula works", {
   contrasts(df_6$x_fac3o) <- contr.orthonormal(levels(df_6$x_fac3o))
   lm_6 <- stats::lm(y ~ x_fac3o, data = df_6)
 
-  expect_doppelganger("JAGS-formula-lm-6", function(){
+  vdiffr::expect_doppelganger("JAGS-formula-lm-6", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
     par(mfcol = c(1, 3))
@@ -238,7 +238,7 @@ test_that("JAGS formula works", {
   contrasts(df_7$x_fac3o) <- contr.orthonormal(levels(df_7$x_fac3o))
   lm_7 <- stats::lm(y ~ x_fac2t * x_fac3o, data = df_7)
 
-  expect_doppelganger("JAGS-formula-lm-7", function(){
+  vdiffr::expect_doppelganger("JAGS-formula-lm-7", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
     par(mfrow = c(2, 3))
@@ -278,7 +278,7 @@ test_that("JAGS formula works", {
   contrasts(df_8$x_fac2o) <- contr.orthonormal(levels(df_8$x_fac2o))
   lm_8 <- stats::lm(y ~ x_fac2o * x_fac3t, data = df_8)
 
-  expect_doppelganger("JAGS-formula-lm-8", function(){
+  vdiffr::expect_doppelganger("JAGS-formula-lm-8", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
     par(mfrow = c(2, 3))
@@ -316,7 +316,7 @@ test_that("JAGS formula works", {
   contrasts(df_9$x_fac3o) <- contr.orthonormal(levels(df_9$x_fac3o))
   lm_9 <- stats::lm(y ~ x_cont1 * x_fac3o, data = df_9)
 
-  expect_doppelganger("JAGS-formula-lm-9", function(){
+  vdiffr::expect_doppelganger("JAGS-formula-lm-9", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
     par(mfrow = c(2, 3))
@@ -354,7 +354,7 @@ test_that("JAGS formula works", {
 
   lm_10 <- stats::lm(y ~ x_cont1 * x_fac3t, data = df_all)
 
-  expect_doppelganger("JAGS-formula-lm-10", function(){
+  vdiffr::expect_doppelganger("JAGS-formula-lm-10", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
@@ -397,7 +397,7 @@ test_that("JAGS formula works", {
 
   lm_1s <- stats::lm(y ~ I(sd(y) * x_cont1), data = df_all)
 
-  expect_doppelganger("JAGS-formula-lm-1s", function(){
+  vdiffr::expect_doppelganger("JAGS-formula-lm-1s", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
@@ -444,7 +444,7 @@ test_that("JAGS formula works", {
 
   lm_11 <- stats::lm(y ~ x_fac3i - 1, data = df_all)
 
-  expect_doppelganger("JAGS-formula-lm-11", function(){
+  vdiffr::expect_doppelganger("JAGS-formula-lm-11", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
     par(mfcol = c(1, 3))
@@ -474,7 +474,7 @@ test_that("JAGS formula works", {
   contrasts(df_12$x_fac3md) <- contr.meandif(levels(df_12$x_fac3o))
   lm_12 <- stats::lm(y ~ x_fac3md, data = df_12)
 
-  expect_doppelganger("JAGS-formula-lm-12", function(){
+  vdiffr::expect_doppelganger("JAGS-formula-lm-12", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
     par(mfcol = c(1, 3))
@@ -502,7 +502,7 @@ test_that("JAGS formula works", {
   samples_13 <- do.call(rbind, samples_13)
   expect_equal(diag(3), contr.independent(1:3))
 
-  expect_doppelganger("JAGS-formula-lm-13", function(){
+  vdiffr::expect_doppelganger("JAGS-formula-lm-13", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
     par(mfcol = c(1, 3))
@@ -528,7 +528,7 @@ test_that("JAGS formula works", {
   contrasts(df_14$x_fac3md) <- contr.meandif(levels(df_14$x_fac3o))
   lm_14 <- stats::lm(y ~ 1, data = df_14)
 
-  expect_doppelganger("JAGS-formula-lm-14", function(){
+  vdiffr::expect_doppelganger("JAGS-formula-lm-14", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
     par(mfcol = c(1, 3))

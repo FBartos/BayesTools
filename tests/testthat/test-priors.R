@@ -116,39 +116,39 @@ test_meandif        <- function(prior, skip_moments = FALSE){
 
 test_that("Normal prior distribution works", {
 
-  expect_doppelganger("prior-normal-1", function()test_prior(prior("normal", list(0, 1))))
-  expect_doppelganger("prior-normal-2", function()test_prior(prior("normal", list(1, 1), list(0, Inf))))
-  expect_doppelganger("prior-normal-3", function()test_prior(prior("normal", list(2, 1), list(-Inf, 0))))
-  expect_doppelganger("prior-normal-4", function()test_prior(prior("normal", list(0, 1), list(1, 2))))
+  vdiffr::expect_doppelganger("prior-normal-1", function()test_prior(prior("normal", list(0, 1))))
+  vdiffr::expect_doppelganger("prior-normal-2", function()test_prior(prior("normal", list(1, 1), list(0, Inf))))
+  vdiffr::expect_doppelganger("prior-normal-3", function()test_prior(prior("normal", list(2, 1), list(-Inf, 0))))
+  vdiffr::expect_doppelganger("prior-normal-4", function()test_prior(prior("normal", list(0, 1), list(1, 2))))
 
 })
 
 test_that("Log-normal prior distribution works", {
 
-  expect_doppelganger("prior-lognormal-1", function()test_prior(prior("lognormal", list(0, .5))))
-  expect_doppelganger("prior-lognormal-2", function()test_prior(prior("lognormal", list(1, .3), list(1, Inf))))
+  vdiffr::expect_doppelganger("prior-lognormal-1", function()test_prior(prior("lognormal", list(0, .5))))
+  vdiffr::expect_doppelganger("prior-lognormal-2", function()test_prior(prior("lognormal", list(1, .3), list(1, Inf))))
 
 })
 
 test_that("Student-t prior distribution works", {
 
-  expect_doppelganger("prior-t-1", function()test_prior(prior("t", list(0, .5, 5))))
-  expect_doppelganger("prior-t-2", function()test_prior(prior("t", list(1, .3, 8), list(1, Inf))))
+  vdiffr::expect_doppelganger("prior-t-1", function()test_prior(prior("t", list(0, .5, 5))))
+  vdiffr::expect_doppelganger("prior-t-2", function()test_prior(prior("t", list(1, .3, 8), list(1, Inf))))
 
 })
 
 test_that("Cauchy prior distribution works", {
 
-  expect_doppelganger("prior-cauchy-1", function()test_prior(prior("Cauchy", list(0, 1)), skip_moments = TRUE))
-  expect_doppelganger("prior-cauchy-2", function()test_prior(prior("Cauchy", list(1, 0.1), list(-Inf, 0)), skip_moments = TRUE))
+  vdiffr::expect_doppelganger("prior-cauchy-1", function()test_prior(prior("Cauchy", list(0, 1)), skip_moments = TRUE))
+  vdiffr::expect_doppelganger("prior-cauchy-2", function()test_prior(prior("Cauchy", list(1, 0.1), list(-Inf, 0)), skip_moments = TRUE))
 
 })
 
 test_that("Gamma prior distribution works", {
 
-  expect_doppelganger("prior-gamma-1", function()test_prior(prior("gamma", list(1, 1))))
-  expect_doppelganger("prior-gamma-2", function()test_prior(prior("gamma", list(2, 2), list(1, 3))))
-  expect_doppelganger("prior-gamma-3", function(){
+  vdiffr::expect_doppelganger("prior-gamma-1", function()test_prior(prior("gamma", list(1, 1))))
+  vdiffr::expect_doppelganger("prior-gamma-2", function()test_prior(prior("gamma", list(2, 2), list(1, 3))))
+  vdiffr::expect_doppelganger("prior-gamma-3", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
@@ -161,16 +161,16 @@ test_that("Gamma prior distribution works", {
 
 test_that("Inverse-gamma prior distribution works", {
 
-  expect_doppelganger("prior-invgamma-1", function()test_prior(prior("invgamma", list(1.5, 0.15)), skip_moments = TRUE))
-  expect_doppelganger("prior-invgamma-2", function()test_prior(prior("invgamma", list(3, 2), list(1, 3))))
+  vdiffr::expect_doppelganger("prior-invgamma-1", function()test_prior(prior("invgamma", list(1.5, 0.15)), skip_moments = TRUE))
+  vdiffr::expect_doppelganger("prior-invgamma-2", function()test_prior(prior("invgamma", list(3, 2), list(1, 3))))
 
 })
 
 test_that("Exponential prior distribution works", {
 
-  expect_doppelganger("prior-exp-1", function()test_prior(prior("exp", list(1.5))))
-  expect_doppelganger("prior-exp-2", function()test_prior(prior("exp", list(2), list(1, 3))))
-  expect_doppelganger("prior-exp-3", function(){
+  vdiffr::expect_doppelganger("prior-exp-1", function()test_prior(prior("exp", list(1.5))))
+  vdiffr::expect_doppelganger("prior-exp-2", function()test_prior(prior("exp", list(2), list(1, 3))))
+  vdiffr::expect_doppelganger("prior-exp-3", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
@@ -184,34 +184,34 @@ test_that("Exponential prior distribution works", {
 
 test_that("Beta prior distribution works", {
 
-  expect_doppelganger("prior-beta-1", function()test_prior(prior("beta", list(1, 1))))
-  expect_doppelganger("prior-beta-2", function()test_prior(prior("beta", list(25, 15), list(0.5, 1))))
+  vdiffr::expect_doppelganger("prior-beta-1", function()test_prior(prior("beta", list(1, 1))))
+  vdiffr::expect_doppelganger("prior-beta-2", function()test_prior(prior("beta", list(25, 15), list(0.5, 1))))
 
 })
 
 test_that("Beta prior distribution works", {
 
-  expect_doppelganger("prior-bernoulli-1", function()test_prior(prior("bernoulli", list(.50))))
-  expect_doppelganger("prior-bernoulli-2", function()test_prior(prior("bernoulli", list(.66))))
+  vdiffr::expect_doppelganger("prior-bernoulli-1", function()test_prior(prior("bernoulli", list(.50))))
+  vdiffr::expect_doppelganger("prior-bernoulli-2", function()test_prior(prior("bernoulli", list(.66))))
 
 })
 
 test_that("Uniform prior distribution works", {
 
-  expect_doppelganger("prior-uniform-1", function()test_prior(prior("uniform", list(0, 1))))
-  expect_doppelganger("prior-uniform-2", function()test_prior(prior("uniform", list(1, 5))))
+  vdiffr::expect_doppelganger("prior-uniform-1", function()test_prior(prior("uniform", list(0, 1))))
+  vdiffr::expect_doppelganger("prior-uniform-2", function()test_prior(prior("uniform", list(1, 5))))
 
 })
 
 test_that("Spike prior distribution works", {
 
-  expect_doppelganger("prior-point-1", function()test_prior(prior("point", list(1))))
+  vdiffr::expect_doppelganger("prior-point-1", function()test_prior(prior("point", list(1))))
 
 })
 
 test_that("spike and slab prior distribution works", {
 
-  expect_doppelganger("prior-spike-and-slab-1",   function()test_prior(
+  vdiffr::expect_doppelganger("prior-spike-and-slab-1",   function()test_prior(
     prior_spike_and_slab(
     prior("gamma", list(2, 2), list(0, Inf)),
     prior_inclusion = prior("beta", list(2, 1)))
@@ -221,43 +221,43 @@ test_that("spike and slab prior distribution works", {
 
 test_that("PET & PEESE prior distribution works", {
 
-  expect_doppelganger("prior-PET-1",   function()test_prior(prior_PET("normal", list(0, 1))))
-  expect_doppelganger("prior-PEESE-1", function()test_prior(prior_PEESE("gamma", list(1, 1))))
+  vdiffr::expect_doppelganger("prior-PET-1",   function()test_prior(prior_PET("normal", list(0, 1))))
+  vdiffr::expect_doppelganger("prior-PEESE-1", function()test_prior(prior_PEESE("gamma", list(1, 1))))
 
 })
 
 test_that("One-sided weigthfunction prior distribution works", {
 
-  expect_doppelganger("prior-weigthfunction-one.sided-1", function()test_weightfunction(prior_weightfunction("one.sided", list(c(.05), c(1, 1)))))
-  expect_doppelganger("prior-weigthfunction-one.sided-2", function()test_weightfunction(prior_weightfunction("one.sided", list(c(.05, 0.10), c(1, 1, 1)))))
-  expect_doppelganger("prior-weigthfunction-one.sided-3", function()test_weightfunction(prior_weightfunction("one.sided", list(c(.05), c(5, .5)))))
-  expect_doppelganger("prior-weigthfunction-one.sided-4", function()test_weightfunction(prior_weightfunction("one.sided", list(c(.05, 0.10), c(5, 5, 1)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-1", function()test_weightfunction(prior_weightfunction("one.sided", list(c(.05), c(1, 1)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-2", function()test_weightfunction(prior_weightfunction("one.sided", list(c(.05, 0.10), c(1, 1, 1)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-3", function()test_weightfunction(prior_weightfunction("one.sided", list(c(.05), c(5, .5)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-4", function()test_weightfunction(prior_weightfunction("one.sided", list(c(.05, 0.10), c(5, 5, 1)))))
 
   # non-monotonic one-sided requires sampling
-  expect_doppelganger("prior-weigthfunction-one.sided-5", function()test_weightfunction(prior_weightfunction("one.sided", list(c(.05, 0.60), c(1, 1), c(1, 1))), skip_moments = TRUE))
-  expect_doppelganger("prior-weigthfunction-one.sided-6", function()test_weightfunction(prior_weightfunction("one.sided", list(c(.05, 0.10, 0.60), c(1, 1, 1), c(1, 1))), skip_moments = TRUE))
+  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-5", function()test_weightfunction(prior_weightfunction("one.sided", list(c(.05, 0.60), c(1, 1), c(1, 1))), skip_moments = TRUE))
+  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-6", function()test_weightfunction(prior_weightfunction("one.sided", list(c(.05, 0.10, 0.60), c(1, 1, 1), c(1, 1))), skip_moments = TRUE))
 })
 
 test_that("Two-sided weigthfunction prior distribution works", {
 
-  expect_doppelganger("prior-weigthfunction-two.sided-1", function()test_weightfunction(prior_weightfunction("two.sided", list(c(.05), c(1, 1)))))
-  expect_doppelganger("prior-weigthfunction-two.sided-2", function()test_weightfunction(prior_weightfunction("two.sided", list(c(.05, 0.10), c(1, 1, 1)))))
-  expect_doppelganger("prior-weigthfunction-two.sided-3", function()test_weightfunction(prior_weightfunction("two.sided", list(c(.05), c(5, .5)))))
-  expect_doppelganger("prior-weigthfunction-two.sided-4", function()test_weightfunction(prior_weightfunction("two.sided", list(c(.05, 0.10), c(5, 5, 1)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided-1", function()test_weightfunction(prior_weightfunction("two.sided", list(c(.05), c(1, 1)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided-2", function()test_weightfunction(prior_weightfunction("two.sided", list(c(.05, 0.10), c(1, 1, 1)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided-3", function()test_weightfunction(prior_weightfunction("two.sided", list(c(.05), c(5, .5)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided-4", function()test_weightfunction(prior_weightfunction("two.sided", list(c(.05, 0.10), c(5, 5, 1)))))
 
 })
 
 test_that("One-sided.fixed weigthfunction prior distribution works", {
 
-  expect_doppelganger("prior-weigthfunction-one.sided.fixed-1", function()test_weightfunction(prior_weightfunction("one.sided.fixed", list(c(.05), c(1, .5)))))
-  expect_doppelganger("prior-weigthfunction-one.sided.fixed-2", function()test_weightfunction(prior_weightfunction("one.sided.fixed", list(c(.05, 0.10), c(1, .2, .5)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided.fixed-1", function()test_weightfunction(prior_weightfunction("one.sided.fixed", list(c(.05), c(1, .5)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided.fixed-2", function()test_weightfunction(prior_weightfunction("one.sided.fixed", list(c(.05, 0.10), c(1, .2, .5)))))
 
 })
 
 test_that("Two-sided.fixed weigthfunction prior distribution works", {
 
-  expect_doppelganger("prior-weigthfunction-two.sided.fixed-1", function()test_weightfunction(prior_weightfunction("two.sided.fixed", list(c(.05), c(1, .5)))))
-  expect_doppelganger("prior-weigthfunction-two.sided.fixed-2", function()test_weightfunction(prior_weightfunction("two.sided.fixed", list(c(.05, 0.10), c(1, .2, .5)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided.fixed-1", function()test_weightfunction(prior_weightfunction("two.sided.fixed", list(c(.05), c(1, .5)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided.fixed-2", function()test_weightfunction(prior_weightfunction("two.sided.fixed", list(c(.05, 0.10), c(1, .2, .5)))))
 
 })
 
@@ -282,28 +282,28 @@ test_that("Orthonormal prior distribution works", {
   p3.3$parameters$K <- 3
   p3.5$parameters$K <- 5
 
-  expect_doppelganger("prior-orthonormal-1-2", function()test_orthonormal(p1.2))
-  expect_doppelganger("prior-orthonormal-1-3", function()test_orthonormal(p1.3))
-  expect_doppelganger("prior-orthonormal-1-5", function()test_orthonormal(p1.5))
-  expect_doppelganger("prior-orthonormal-2-9", function()test_orthonormal(p2.9, skip_moments = TRUE))
-  expect_doppelganger("prior-orthonormal-3-3", function()test_orthonormal(p3.3))
-  expect_doppelganger("prior-orthonormal-3-5", function()test_orthonormal(p3.5))
+  vdiffr::expect_doppelganger("prior-orthonormal-1-2", function()test_orthonormal(p1.2))
+  vdiffr::expect_doppelganger("prior-orthonormal-1-3", function()test_orthonormal(p1.3))
+  vdiffr::expect_doppelganger("prior-orthonormal-1-5", function()test_orthonormal(p1.5))
+  vdiffr::expect_doppelganger("prior-orthonormal-2-9", function()test_orthonormal(p2.9, skip_moments = TRUE))
+  vdiffr::expect_doppelganger("prior-orthonormal-3-3", function()test_orthonormal(p3.3))
+  vdiffr::expect_doppelganger("prior-orthonormal-3-5", function()test_orthonormal(p3.5))
 
 })
 
 test_that("Treatment prior distribution works", {
 
-  expect_doppelganger("prior-treatment-1", function()test_prior(prior_factor("normal", list(mean = 0, sd = 1), contrast = "treatment")))
-  expect_doppelganger("prior-treatment-2", function()test_prior(prior_factor("beta", list(alpha = 2, beta = 3), contrast = "treatment")))
-  expect_doppelganger("prior-treatment-3", function()test_prior(prior_factor("spike", list(location = 1), contrast = "treatment")))
+  vdiffr::expect_doppelganger("prior-treatment-1", function()test_prior(prior_factor("normal", list(mean = 0, sd = 1), contrast = "treatment")))
+  vdiffr::expect_doppelganger("prior-treatment-2", function()test_prior(prior_factor("beta", list(alpha = 2, beta = 3), contrast = "treatment")))
+  vdiffr::expect_doppelganger("prior-treatment-3", function()test_prior(prior_factor("spike", list(location = 1), contrast = "treatment")))
 
 })
 
 test_that("Independent prior distribution works", {
 
-  expect_doppelganger("prior-independent-1", function()test_prior(prior_factor("gamma", list(shape = 2, rate = 3), contrast = "independent")))
-  expect_doppelganger("prior-independent-2", function()test_prior(prior_factor("uniform", list(a = -0.5, b = 1), contrast = "independent")))
-  expect_doppelganger("prior-independent-3", function()test_prior(prior_factor("spike", list(location = 1), contrast = "independent")))
+  vdiffr::expect_doppelganger("prior-independent-1", function()test_prior(prior_factor("gamma", list(shape = 2, rate = 3), contrast = "independent")))
+  vdiffr::expect_doppelganger("prior-independent-2", function()test_prior(prior_factor("uniform", list(a = -0.5, b = 1), contrast = "independent")))
+  vdiffr::expect_doppelganger("prior-independent-3", function()test_prior(prior_factor("spike", list(location = 1), contrast = "independent")))
 
 })
 
@@ -321,10 +321,10 @@ test_that("Meandif prior distribution works", {
   p2.3$parameters$K <- 3
   p2.5$parameters$K <- 5
 
-  expect_doppelganger("prior-meandif-1-2", function()test_meandif(p1.2))
-  expect_doppelganger("prior-meandif-1-3", function()test_meandif(p1.3))
-  expect_doppelganger("prior-meandif-1-5", function()test_meandif(p1.5))
-  expect_doppelganger("prior-meandif-2-3", function()test_meandif(p2.3))
-  expect_doppelganger("prior-meandif-2-5", function()test_meandif(p2.5))
+  vdiffr::expect_doppelganger("prior-meandif-1-2", function()test_meandif(p1.2))
+  vdiffr::expect_doppelganger("prior-meandif-1-3", function()test_meandif(p1.3))
+  vdiffr::expect_doppelganger("prior-meandif-1-5", function()test_meandif(p1.5))
+  vdiffr::expect_doppelganger("prior-meandif-2-3", function()test_meandif(p2.3))
+  vdiffr::expect_doppelganger("prior-meandif-2-5", function()test_meandif(p2.5))
 
 })
