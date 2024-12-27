@@ -810,7 +810,7 @@ weightfunctions_mapping <- function(prior_list, cuts_only = FALSE, one_sided = F
         l = c(0, priors_cuts_new[[p]]),
         u = c(priors_cuts_new[[p]], 1))
 
-      if(any(grepl("one.sided", priors_type))){
+      if(one_sided || any(grepl("one.sided", priors_type))){
         if(grepl("two.sided", priors_type[p])){
           omega_ind[[p]] <- rev(c( (length(priors_cuts[[p]]) + 1):2, 1:(length(priors_cuts[[p]]) + 1) ))
         }else if(grepl("one.sided", priors_type[p])){
