@@ -759,19 +759,20 @@ inclusion_BF         <- function(prior_probs, post_probs, margliks, is_null){
 #'
 #' @param prior_list list of prior distributions
 #' @param cuts_only whether only p-value cuts should be returned
+#' @param one_sided force one-sided output
 #'
 #' @return \code{weightfunctions_mapping} returns a list of indices
 #' mapping the publication weights omega from the individual weightfunctions
 #' into a joint weightfunction.
 #'
 #' @export
-weightfunctions_mapping <- function(prior_list, cuts_only = FALSE){
+weightfunctions_mapping <- function(prior_list, cuts_only = FALSE, one_sided = FALSE){
 
   # check input
   if(!all(sapply(prior_list, is.prior.weightfunction) | sapply(prior_list, is.prior.point) | sapply(prior_list, is.prior.none)))
     stop("'priors' must be a list of weightfunction priors distributions")
   check_bool(cuts_only, "cuts_only")
-
+  check_bool(one_sided, "one_sided")
 
   # extract cuts and types
   priors_cuts <- lapply(prior_list, function(prior)rev(prior[["parameters"]][["steps"]]))
@@ -780,7 +781,7 @@ weightfunctions_mapping <- function(prior_list, cuts_only = FALSE){
 
   # get new cutpoint appropriate cut-points
   priors_cuts_new <- priors_cuts
-  if(any(grepl("one.sided", priors_type))){
+  if(one_sided || any(grepl("one.sided", priors_type))){
 
     # translate two.sided into one.sided
     for(p in seq_along(priors_type)){
