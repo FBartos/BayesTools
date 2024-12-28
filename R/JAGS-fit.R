@@ -200,7 +200,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 
   if(autofit & !inherits(fit, "error")){
 
-    converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]])
+    converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], add_parameters = add_parameters)
 
     while(!converged){
 
@@ -222,7 +222,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
         break
       }
 
-      converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]])
+      converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], add_parameters = add_parameters)
     }
   }
 
@@ -317,7 +317,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
       break
     }
 
-    converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]])
+    converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], add_parameters = add_parameters)
   }
 
   # stop cluster manually
@@ -349,6 +349,8 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
 #' @param max_error maximum MCMC error. Defaults to \code{1.01}.
 #' @param max_SD_error maximum MCMC error as the proportion of standard
 #'   deviation of the parameters. Defaults to \code{0.05}.
+#' @param add_parameters vector of additional parameter names that should be used
+#' (only allows removing last, fixed, omega element if omega is tracked manually).
 #'
 #' @examples \dontrun{
 #' # simulate data
@@ -380,18 +382,19 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
 #'
 #' @seealso [JAGS_fit()]
 #' @export
-JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05){
+JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, add_parameters = NULL){
 
   # check input
   if(!inherits(fit, "runjags"))
     stop("'fit' must be a runjags fit")
-  check_list(prior_list, "prior_list")
-  if(any(!sapply(prior_list, is.prior)))
+  check_list(prior_list, "prior_list", allow_NULL = TRUE)
+  if(!is.null(prior_list) && any(!sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
   check_real(max_Rhat,     "max_Rhat",     lower = 1, allow_NULL = TRUE)
   check_real(min_ESS,      "min_ESS",      lower = 0, allow_NULL = TRUE)
   check_real(max_error,    "max_error",    lower = 0, allow_NULL = TRUE)
   check_real(max_SD_error, "max_SD_error", lower = 0, upper = 1, allow_NULL = TRUE)
+  check_char(add_parameters, "add_parameters", check_length = 0, allow_NULL = TRUE)
 
   fails         <- NULL
   invisible(utils::capture.output(temp_summary <- suppressWarnings(summary(fit, silent.jags = TRUE))))
@@ -408,6 +411,11 @@ JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 5
     }else if(is.prior.simple(prior_list[[i]]) && prior_list[[i]][["distribution"]] == "invgamma"){
       temp_summary <- temp_summary[rownames(temp_summary) != paste0("inv_",names(prior_list)[i]),,drop=FALSE]
     }
+  }
+
+  # removed last weight if omega's tracked manually (because of mixture distribution in RoBMA)
+  if(!is.null(add_parameters) && "omega" %in% add_parameters){
+    temp_summary <- temp_summary[-max(grep("omega", rownames(temp_summary))),,drop=FALSE]
   }
 
   # check the convergence

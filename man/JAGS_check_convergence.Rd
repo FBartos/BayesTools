@@ -10,7 +10,8 @@ JAGS_check_convergence(
   max_Rhat = 1.05,
   min_ESS = 500,
   max_error = 0.01,
-  max_SD_error = 0.05
+  max_SD_error = 0.05,
+  add_parameters = NULL
 )
 }
 \arguments{
@@ -28,6 +29,9 @@ Defaults to \code{1.05}.}
 
 \item{max_SD_error}{maximum MCMC error as the proportion of standard
 deviation of the parameters. Defaults to \code{0.05}.}
+
+\item{add_parameters}{vector of additional parameter names that should be used
+(only allows removing last, fixed, omega element if omega is tracked manually).}
 }
 \value{
 \code{JAGS_check_convergence} returns a boolean
