@@ -54,7 +54,7 @@ settings the \code{x_seq} or \code{x_range} was specified on
 the transformed support}
 
 \item{n_samples}{number of samples to be drawn for the model-averaged
-posterior distribution}
+prior distribution}
 
 \item{...}{additional arguments}
 }

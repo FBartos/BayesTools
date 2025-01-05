@@ -1,3 +1,11 @@
+# version 0.2.18
+### Features
+- adding `prior_mixture()` function for creating a mixture of prior distributions
+- adding `as_mixed_posteriors()` and `as_marginal_inference()` functions for a single JAGS models (with spike and slab or mixture priors) to enabling tables and figures based on the corresponding output
+
+### Fixes
+- small fixes for expansion of the RoBMA functionality
+
 ## version 0.2.17
 ### Features
 - adding informed prior distributions for dichotomous and time to event outcomes based on Cochrane Database of Systematic Reviews to `prior_informed()` function

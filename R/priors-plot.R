@@ -55,6 +55,14 @@ plot.prior <- function(x, plot_type = "base",
   check_bool(rescale_x, "rescale_x")
   check_int(show_figures, "show_figures", allow_NULL = TRUE)
 
+  if(is.prior.mixture(x)){
+    class(x) <- NULL
+    return(plot_prior_list(x, plot_type = plot_type, x_seq = x_seq, xlim = xlim, x_range_quant = x_range_quant, n_points = n_points,
+                           n_samples = n_samples, force_samples = force_samples, transformation = transformation,
+                           transformation_arguments = transformation_arguments, transformation_settings = transformation_settings,
+                           show_figures = show_figures, individual = individual, rescale_x = rescale_x, par_name = par_name, ...))
+  }
+
 
   # get the plotting data
   if(is.null(xlim) & is.null(x_seq)){
@@ -732,6 +740,15 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   check_int(show_parameter, "show_parameter", allow_NULL = TRUE)
   check_real(scale_y2, "scale_y2", lower = 0)
 
+  if(is.prior.mixture(x)){
+    class(x) <- NULL
+    return(lines_prior_list(x, xlim = xlim, x_seq = x_seq, x_range_quant = x_range_quant, n_points = n_points,
+                            n_samples = n_samples, force_samples = force_samples,
+                            transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings,
+                            rescale_x = rescale_x, scale_y2 = scale_y2, ...))
+  }
+
+
 
   # get the plotting data
   if(is.null(xlim) & is.null(x_seq)){
@@ -776,6 +793,12 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     return(invisible())
   }
 
+  # plot spike and slab prior
+  if(is.prior.spike_and_slab(x)){
+    .lines.prior.spike_and_slab(plot_data, ...)
+    return(invisible())
+  }
+
   # point prior plots
   if(is.prior.point(x)){
     .lines.prior.point(plot_data, scale_y2 = scale_y2, ...)
@@ -791,12 +814,6 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   # plot discrete prior
   if(is.prior.discrete(x)){
     .lines.prior.discrete(plot_data, ...)
-    return(invisible())
-  }
-
-  # plot spike and slab prior
-  if(is.prior.spike_and_slab(x)){
-    .lines.prior.spike_and_slab(plot_data, ...)
     return(invisible())
   }
 
@@ -831,6 +848,13 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   check_int(show_parameter, "show_parameter", allow_NULL = TRUE)
   check_real(scale_y2, "scale_y2", lower = 0)
 
+  if(is.prior.mixture(x)){
+    class(x) <- NULL
+    return(geom_prior_list(x, xlim = xlim, x_seq = x_seq, x_range_quant = x_range_quant, n_points = n_points,
+                            n_samples = n_samples, force_samples = force_samples,
+                            transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings,
+                            rescale_x = rescale_x, scale_y2 = scale_y2, ...))
+  }
 
   # get the plotting data
   if(is.null(xlim) & is.null(x_seq)){
@@ -873,6 +897,13 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   }
 
 
+  # plot spike and slab prior
+  if(is.prior.spike_and_slab(x)){
+    geom <- .geom_prior.spike_and_slab(plot_data, ...)
+    return(geom)
+  }
+
+
   # plot point prior
   if(is.prior.point(x)){
     geom <- .geom_prior.point(plot_data, ...)
@@ -890,13 +921,6 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   # plot discrete prior
   if(is.prior.discrete(x)){
     geom <- .geom_prior.discrete(plot_data, ...)
-    return(geom)
-  }
-
-
-  # plot spike and slab prior
-  if(is.prior.spike_and_slab(x)){
-    geom <- .geom_prior.spike_and_slab(plot_data, ...)
     return(geom)
   }
 

@@ -817,3 +817,527 @@ test_that("Marginal distribution prior functions work", {
   })
 
 })
+
+test_that("Marginal distributions with spike and slab and mixture priors work", {
+
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_on_cran()
+
+  ### complex formula including scaling ----
+  set.seed(1)
+  df_all <- data.frame(
+    x_cont1  = rnorm(180),
+    x_fac2t  = factor(rep(c("A", "B"), 90), levels = c("A", "B")),
+    x_fac3md = factor(rep(c("A", "B", "C"), 60), levels = c("A", "B", "C"))
+  )
+  df_all$y <- rnorm(180, 0.1, 0.5) + 0.5 + 0.20 * df_all$x_cont1 +
+    ifelse(df_all$x_fac3md == "A", 0.15, ifelse(df_all$x_fac3md == "B", -0.15, 0))
+
+  prior_pars <- list(
+    "intercept"        = prior("normal", list(0, 1)),
+    "x_cont1"          = prior_mixture(list(
+      prior("spike", list(0)),
+      prior("normal", list(0, 1))
+    ), is_null = c(T, F)),
+    "x_fac2t"          = prior_spike_and_slab(prior_factor("normal",  contrast = "treatment", list(0, 1.00))),
+    "x_fac3md"         = prior_spike_and_slab(prior_factor("mnormal", contrast = "meandif",   list(0, 0.25))),
+    "x_cont1:x_fac3md" = prior_spike_and_slab(prior_factor("mnormal", contrast = "meandif",   list(0, 0.25)))
+  )
+  prior_list <- list(
+    "sigma" = prior("cauchy", list(0, 1), list(0, 5))
+  )
+  attr(prior_pars$x_cont1, "multiply_by") <- "sigma"
+  model_syntax <- paste0(
+    "model{",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  model_formula <- list(mu = ~ x_cont1 + x_fac2t + x_cont1*x_fac3md)
+
+  fit <- JAGS_fit(
+    model_syntax = model_syntax, data = list(y = df_all$y, N = nrow(df_all)),
+    prior_list = prior_list,
+    formula_list       = model_formula,
+    formula_prior_list = list(mu = prior_pars),
+    formula_data_list  = list(mu = df_all))
+
+  mixed_posteriors <- as_mixed_posteriors(
+    model        = fit,
+    parameters   = c("sigma", "mu_intercept", "mu_x_cont1", "mu_x_fac2t", "mu_x_fac3md", "mu_x_cont1__xXx__x_fac3md")
+  )
+
+  ### simple: continuous parameter ----
+  marg_post_sigma <- marginal_posterior(
+    samples           = mixed_posteriors,
+    parameter         = "sigma",
+    prior_samples     = TRUE)
+
+  vdiffr::expect_doppelganger("marginal-ss-simple-con", function(){
+    hist(marg_post_sigma, freq = FALSE, main = "marginal posterior sigma")
+  })
+
+  vdiffr::expect_doppelganger("marginal-ss-simple-con-p", function(){
+    hist(attr(marg_post_sigma, "prior_samples"), freq = FALSE, main = "marginal prior sigma", breaks = 20)
+    lines(density(prior_list$sigma))
+  })
+
+
+  ### simple: factor ----
+  marg_post_simple_x_fac2t <- marginal_posterior(
+    samples           = mixed_posteriors,
+    parameter         = "mu_x_fac2t",
+    prior_samples     = TRUE,
+    use_formula       = FALSE)
+
+  vdiffr::expect_doppelganger("marginal-ss-simple-fac", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 2))
+    hist(marg_post_simple_x_fac2t[["A"]], freq = FALSE, main = "marg_post_x_fac2t = A")
+
+    hist(marg_post_simple_x_fac2t[["B"]], freq = FALSE, main = "marg_post_x_fac2t = B", breaks = 20)
+  })
+
+  vdiffr::expect_doppelganger("marginal-ss-simple-fac-p", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 2))
+    hist(attr(marg_post_simple_x_fac2t[["A"]], "prior_samples"), freq = FALSE, main = "marg_post_x_fac2t = A", breaks = 20)
+
+    hist(attr(marg_post_simple_x_fac2t[["B"]], "prior_samples"), freq = FALSE, main = "marg_post_x_fac2t = B", breaks = 20)
+    curve(dnorm(x, 0, 1)/2, add = T)
+
+  })
+
+
+  ### formula: intercept ----
+  marg_post_int <- marginal_posterior(
+    samples           = mixed_posteriors,
+    parameter         = "mu_intercept",
+    formula           = ~ x_cont1 + x_fac2t + x_cont1*x_fac3md,
+    prior_samples     = TRUE)
+
+  vdiffr::expect_doppelganger("marginal-ss-form-int", function(){
+    hist(marg_post_int[["intercept"]], freq = FALSE, main = "marginal posterior intercept")
+  })
+
+  vdiffr::expect_doppelganger("marginal-ss-form-int-p", function(){
+    hist(attr(marg_post_int[["intercept"]], "prior_samples"), freq = FALSE, main = "marginal prior intercept")
+    lines(prior_pars$intercept)
+  })
+
+
+  ### formula: continuous parameter (-+1SD) ----
+  marg_post_x_cont1 <- marginal_posterior(
+    samples           = mixed_posteriors,
+    parameter         = "mu_x_cont1",
+    formula           = ~ x_cont1 + x_fac2t + x_cont1*x_fac3md,
+    prior_samples     = TRUE)
+
+  vdiffr::expect_doppelganger("marginal-ss-form-con", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 3))
+    hist(marg_post_x_cont1[["-1SD"]], freq = FALSE, main = "marginal posterior x_cont1\n(-1)")
+    hist(marg_post_x_cont1[["0SD"]], freq = FALSE, main = "marginal posterior x_cont1\n(0)")
+    hist(marg_post_x_cont1[["1SD"]], freq = FALSE, main = "marginal posterior x_cont1\n(1)")
+
+  })
+
+  vdiffr::expect_doppelganger("marginal-ss-form-con-p", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 3))
+    hist(attr(marg_post_x_cont1[["-1SD"]], "prior_samples"), freq = FALSE, main = "marginal prior x_cont1\n(-1)", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
+    hist(attr(marg_post_x_cont1[["0SD"]], "prior_samples"),  freq = FALSE, main = "marginal prior x_cont1\n(0)",  breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
+    hist(attr(marg_post_x_cont1[["1SD"]], "prior_samples"),  freq = FALSE, main = "marginal prior x_cont1\n(1)",  breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
+
+  })
+
+
+  ### formula: treatment factor ----
+  marg_post_x_fac2t <- marginal_posterior(
+    samples           = mixed_posteriors,
+    parameter         = "mu_x_fac2t",
+    formula           = ~ x_cont1 + x_fac2t + x_cont1*x_fac3md,
+    prior_samples     = TRUE)
+
+  vdiffr::expect_doppelganger("marginal-ss-form-fac.t", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 2))
+    hist(marg_post_x_fac2t[["A"]], freq = FALSE, main = "marg_post_x_fac2t = A")
+    hist(marg_post_x_fac2t[["B"]], freq = FALSE, main = "marg_post_x_fac2t = B", breaks = 20)
+
+  })
+
+  vdiffr::expect_doppelganger("marginal-ss-form-fac.t-p", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 2))
+    hist(attr(marg_post_x_fac2t[["A"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac2t = A", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x), add = TRUE)
+    hist(attr(marg_post_x_fac2t[["B"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac2t = B",  breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x, 0, (sqrt(1^2 + 0^2) + sqrt(1^2 + 1^2)) / 2), add = TRUE)
+  })
+
+
+  ### formula: meandif factor ----
+  marg_post_x_fac3md <- marginal_posterior(
+    samples           = mixed_posteriors,
+    parameter         = "mu_x_fac3md",
+    formula           = ~ x_cont1 + x_fac2t + x_cont1*x_fac3md,
+    prior_samples     = TRUE)
+
+  vdiffr::expect_doppelganger("marginal-ss-form-fac.md", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 3))
+    hist(marg_post_x_fac3md[["A"]], freq = FALSE, main = "marg_post_x_fac3md = A", breaks = 20)
+    hist(marg_post_x_fac3md[["B"]], freq = FALSE, main = "marg_post_x_fac3md = B", breaks = 20)
+    hist(marg_post_x_fac3md[["C"]], freq = FALSE, main = "marg_post_x_fac2t = B", breaks = 20)
+  })
+
+  vdiffr::expect_doppelganger("marginal-ss-form-fac.md-p", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 3))
+    hist(attr(marg_post_x_fac3md[["A"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac3md = A", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x, 0, (sqrt(1^2 + 0^2) + sqrt(1^2 + 0.25^2)) / 2), add = TRUE)
+    hist(attr(marg_post_x_fac3md[["B"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x, 0, (sqrt(1^2 + 0^2) + sqrt(1^2 + 0.25^2)) / 2), add = TRUE)
+    hist(attr(marg_post_x_fac3md[["C"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac3md = C", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x, 0, (sqrt(1^2 + 0^2) + sqrt(1^2 + 0.25^2)) / 2), add = TRUE)
+  })
+
+
+  ### formula: meandif factor interaction ----
+  marg_post_x_cont1__xXx__x_fac3md <- marginal_posterior(
+    samples           = mixed_posteriors,
+    parameter         = "mu_x_cont1__xXx__x_fac3md",
+    formula           = ~ x_cont1 + x_fac2t + x_cont1*x_fac3md,
+    prior_samples     = TRUE)
+
+  vdiffr::expect_doppelganger("marginal-ss-form-fac.mdi", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(3, 3))
+    hist(marg_post_x_cont1__xXx__x_fac3md[["-1SD, A"]], freq = FALSE, main = "x_cont1 = -1\nmarg_post_x_fac3md = A", breaks = 20)
+    hist(marg_post_x_cont1__xXx__x_fac3md[["-1SD, B"]], freq = FALSE, main = "x_cont1 = -1\nmarg_post_x_fac3md = B", breaks = 20)
+    hist(marg_post_x_cont1__xXx__x_fac3md[["-1SD, C"]], freq = FALSE, main = "x_cont1 = -1\nmarg_post_x_fac3md = B", breaks = 20)
+
+    hist(marg_post_x_cont1__xXx__x_fac3md[["0SD, A"]], freq = FALSE, main = "x_cont1 = 0\nmarg_post_x_fac3md = A", breaks = 20)
+    hist(marg_post_x_cont1__xXx__x_fac3md[["0SD, B"]], freq = FALSE, main = "x_cont1 = 0\nmarg_post_x_fac3md = B", breaks = 20)
+    hist(marg_post_x_cont1__xXx__x_fac3md[["0SD, C"]], freq = FALSE, main = "x_cont1 = 0\nmarg_post_x_fac3md = B", breaks = 20)
+
+    hist(marg_post_x_cont1__xXx__x_fac3md[["1SD, A"]], freq = FALSE, main = "x_cont1 = 1\nmarg_post_x_fac3md = A", breaks = 20)
+    hist(marg_post_x_cont1__xXx__x_fac3md[["1SD, B"]], freq = FALSE, main = "x_cont1 = 1\nmarg_post_x_fac3md = B", breaks = 20)
+    hist(marg_post_x_cont1__xXx__x_fac3md[["1SD, C"]], freq = FALSE, main = "x_cont1 = 1\nmarg_post_x_fac3md = B", breaks = 20)
+
+  })
+
+  vdiffr::expect_doppelganger("marginal-ss-form-fac.mdi-p", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(3, 3))
+    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["-1SD, A"]], "prior_samples"), freq = FALSE, main = "x_cont1 = -1\nmarg_post_x_fac3md = A", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x, 0, sqrt(0.5*sqrt(1^2 + 1^2 + 0.25^2 + 0.25^2)^2 + 0.5*sqrt(0.25^2 + 0.25^2))), add = TRUE)
+
+    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["-1SD, B"]], "prior_samples"), freq = FALSE, main = "x_cont1 = -1\nmarg_post_x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x, 0, sqrt(0.5*sqrt(1^2 + 1^2 + 0.25^2 + 0.25^2)^2 + 0.5*sqrt(0.25^2 + 0.25^2))), add = TRUE)
+
+    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["-1SD, C"]], "prior_samples"), freq = FALSE, main = "x_cont1 = -1\nmarg_post_x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x, 0, sqrt(0.5*sqrt(1^2 + 1^2 + 0.25^2 + 0.25^2)^2 + 0.5*sqrt(0.25^2 + 0.25^2))), add = TRUE)
+
+    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["0SD, A"]], "prior_samples"), freq = FALSE, main = "x_cont1 = 0\nmarg_post_x_fac3md = A", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x, 0, sqrt(1^2 + 0 + 0.25^2 + 0)) , add = TRUE)
+
+    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["0SD, B"]], "prior_samples"), freq = FALSE, main = "x_cont1 = 0\nmarg_post_x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x, 0, sqrt(1^2 + 0 + 0.25^2 + 0)) , add = TRUE)
+
+    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["0SD, C"]], "prior_samples"), freq = FALSE, main = "x_cont1 = 0\nmarg_post_x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x, 0, sqrt(1^2 + 0 + 0.25^2 + 0)) , add = TRUE)
+
+    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["1SD, A"]], "prior_samples"), freq = FALSE, main = "x_cont1 = 1\nmarg_post_x_fac3md = A", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x, 0, sqrt(0.5*sqrt(1^2 + 1^2 + 0.25^2 + 0.25^2)^2 + 0.5*sqrt(0.25^2 + 0.25^2))), add = TRUE)
+
+    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["1SD, B"]], "prior_samples"), freq = FALSE, main = "x_cont1 = 1\nmarg_post_x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x, 0, sqrt(0.5*sqrt(1^2 + 1^2 + 0.25^2 + 0.25^2)^2 + 0.5*sqrt(0.25^2 + 0.25^2))), add = TRUE)
+
+    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["1SD, C"]], "prior_samples"), freq = FALSE, main = "x_cont1 = 1\nmarg_post_x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    curve(dnorm(x, 0, sqrt(0.5*sqrt(1^2 + 1^2 + 0.25^2 + 0.25^2)^2 + 0.5*sqrt(0.25^2 + 0.25^2))), add = TRUE)
+
+  })
+
+
+  ### formula: meandif factor + at specification ----
+  marg_post_x_fac3md_AT <- marginal_posterior(
+    samples           = mixed_posteriors,
+    parameter         = "mu_x_fac3md",
+    at                = list(
+      x_cont1 = 1,
+      x_fac2t = c("A", "B")
+    ),
+    formula           = ~ x_cont1 + x_fac2t + x_cont1*x_fac3md,
+    prior_samples     = TRUE)
+
+
+  vdiffr::expect_doppelganger("marginal-ss-form-fac.md-at", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(3, 2))
+    hist(marg_post_x_fac3md_AT[["A"]][1,], freq = FALSE, main = "marg_post_x_fac3md = A | 1,A", breaks = 20)
+
+    hist(marg_post_x_fac3md_AT[["A"]][2,], freq = FALSE, main = "marg_post_x_fac3md = A | 1,B", breaks = 20)
+
+    hist(marg_post_x_fac3md_AT[["B"]][1,], freq = FALSE, main = "marg_post_x_fac3md = B | 1,A", breaks = 20)
+
+    hist(marg_post_x_fac3md_AT[["B"]][2,], freq = FALSE, main = "marg_post_x_fac3md = B | 1,B", breaks = 20)
+
+    hist(marg_post_x_fac3md_AT[["C"]][1,], freq = FALSE, main = "marg_post_x_fac3md = C | 1,A", breaks = 20)
+
+    hist(marg_post_x_fac3md_AT[["C"]][2,], freq = FALSE, main = "marg_post_x_fac3md = C | 1,B", breaks = 20)
+
+  })
+
+  ### formula: transformation ----
+  marg_post_x_cont1.exp <- marginal_posterior(
+    samples           = mixed_posteriors,
+    parameter         = "mu_x_cont1",
+    formula           = ~ x_cont1 + x_fac2t + x_cont1*x_fac3md,
+    transformation    = "exp",
+    prior_samples     = TRUE)
+
+  vdiffr::expect_doppelganger("marginal-ss-form-con-exp", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 3))
+    hist(marg_post_x_cont1.exp[["-1SD"]], freq = FALSE, main = "exp marginal posterior x_cont1\n(-1)")
+    lines(density(exp(marg_post_x_cont1[["-1SD"]])))
+
+    hist(marg_post_x_cont1.exp[["0SD"]], freq = FALSE, main = "exp marginal posterior x_cont1\n(0)")
+    lines(density(exp(marg_post_x_cont1[["0SD"]])))
+
+    hist(marg_post_x_cont1.exp[["1SD"]], freq = FALSE, main = "exp marginal posterior x_cont1\n(1)")
+    lines(density(exp(marg_post_x_cont1[["1SD"]])))
+
+  })
+
+  vdiffr::expect_doppelganger("marginal-ss-form-con-p-exp", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    p.exp1 <- exp(attr(marg_post_x_cont1[["-1SD"]], "prior_samples"))
+    p.exp2 <- exp(attr(marg_post_x_cont1[["0SD"]], "prior_samples"))
+    p.exp3 <- exp(attr(marg_post_x_cont1[["1SD"]], "prior_samples"))
+
+    par(mfrow = c(1, 3))
+    hist(attr(marg_post_x_cont1.exp[["-1SD"]], "prior_samples"), freq = FALSE, main = "marginal prior x_cont1\n(-1)", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
+    lines(density(p.exp1[p.exp1 < 10]))
+
+    hist(exp(attr(marg_post_x_cont1[["0SD"]], "prior_samples")),  freq = FALSE, main = "marginal prior x_cont1\n(0)",  breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
+    lines(density(p.exp2[p.exp2 < 10]))
+
+    hist(attr(marg_post_x_cont1.exp[["1SD"]], "prior_samples"),  freq = FALSE, main = "marginal prior x_cont1\n(1)",  breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
+    lines(density(p.exp3[p.exp3 < 10]))
+  })
+
+  ### conditional marginal samples ----
+  mixed_posteriors <- as_mixed_posteriors(
+    model        = fit,
+    parameters   = c("sigma", "mu_intercept", "mu_x_cont1", "mu_x_fac2t", "mu_x_fac3md", "mu_x_cont1__xXx__x_fac3md"),
+    conditional  = c("mu_x_cont1", "mu_x_fac3md"),
+    conditional_rule = "AND"
+  )
+  marg_post_sigma <- marginal_posterior(
+    samples           = mixed_posteriors,
+    parameter         = "mu_x_fac3md",
+    formula           = ~ x_cont1 + x_fac2t + x_cont1*x_fac3md,
+    prior_samples     = TRUE)
+
+  vdiffr::expect_doppelganger("marginal-ss-cond-fac", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(2, 3))
+    hist(marg_post_sigma[["A"]], freq = FALSE, main = "marg_post_x_fac2t = A")
+    hist(marg_post_sigma[["B"]], freq = FALSE, main = "marg_post_x_fac2t = B")
+    hist(marg_post_sigma[["C"]], freq = FALSE, main = "marg_post_x_fac2t = C")
+
+    hist(attr(marg_post_sigma[["A"]], "prior"), freq = FALSE, main = "marg_post_x_fac2t = A")
+    curve(dnorm(x, 0, sqrt(1^2 + 0.25^2)), add = TRUE)
+    hist(attr(marg_post_sigma[["B"]], "prior"), freq = FALSE, main = "marg_post_x_fac2t = B")
+    curve(dnorm(x, 0, sqrt(1^2 + 0.25^2)), add = TRUE)
+    hist(attr(marg_post_sigma[["C"]], "prior"), freq = FALSE, main = "marg_post_x_fac2t = C")
+    curve(dnorm(x, 0, sqrt(1^2 + 0.25^2)), add = TRUE)
+  })
+
+  ### marginal_inference ----
+  out <- as_marginal_inference(
+    model               = fit,
+    parameters          = c("sigma", "mu_intercept", "mu_x_cont1", "mu_x_fac2t", "mu_x_fac3md", "mu_x_cont1__xXx__x_fac3md"),
+    marginal_parameters = c("mu_intercept", "mu_x_cont1", "mu_x_fac2t", "mu_x_fac3md", "mu_x_cont1__xXx__x_fac3md"),
+    conditional_list    = list(
+      "mu_intercept"               = c(),
+      "mu_x_cont1"                 = c("mu_x_cont1"),
+      "mu_x_fac2t"                 = c("mu_x_cont1", "mu_x_fac2t"),
+      "mu_x_fac3md"                = c("mu_x_fac3md"),
+      "mu_x_cont1__xXx__x_fac3md"  = c("mu_x_fac2t", "mu_x_fac3md","mu_x_cont1__xXx__x_fac3md")
+    ),
+    conditional_rule    = "OR",
+    formula      =  ~ x_cont1 + x_fac2t + x_cont1*x_fac3md,
+    silent       = TRUE
+  )
+
+  # test samples against previously generated ones
+  vdiffr::expect_doppelganger("marginal_inference-ss-cont",     function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 3))
+    hist(marg_post_x_cont1[["-1SD"]], freq = FALSE, main = "mu_x_cont1 = -1SD", breaks = 20)
+    lines(density(out$averaged$mu_x_cont1[["-1SD"]]))
+
+    hist(marg_post_x_cont1[["0SD"]], freq = FALSE, main = "mu_x_cont1 = 0SD", breaks = 20)
+    lines(density(out$averaged$mu_x_cont1[["0SD"]]))
+
+    hist(marg_post_x_cont1[["1SD"]], freq = FALSE, main = "mu_x_cont1 = +1SD", breaks = 20)
+    lines(density(out$averaged$mu_x_cont1[["1SD"]]))
+
+  })
+  vdiffr::expect_doppelganger("marginal_inference-ss-cont-p",   function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 3))
+    hist(attr(marg_post_x_cont1[["-1SD"]], "prior_samples"), freq = FALSE, main = "mu_x_cont1 = -1SD", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    lines(density(attr(out$averaged$mu_x_cont1[["-1SD"]], "prior_samples")))
+    hist(attr(marg_post_x_cont1[["0SD"]], "prior_samples"), freq = FALSE, main = "mu_x_cont1 = 0SD", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    lines(density(attr(out$averaged$mu_x_cont1[["0SD"]], "prior_samples")))
+    hist(attr(marg_post_x_cont1[["1SD"]], "prior_samples"), freq = FALSE, main = "mu_x_cont1 = 1SD", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    lines(density(attr(out$averaged$mu_x_cont1[["1SD"]], "prior_samples")))
+  })
+  vdiffr::expect_doppelganger("marginal_inference-ss-fac.md",   function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 3))
+    hist(marg_post_x_fac3md[["A"]], freq = FALSE, main = "marg_post_x_fac3md = A", breaks = 20)
+    lines(density(out$averaged$mu_x_fac3md$A))
+
+    hist(marg_post_x_fac3md[["B"]], freq = FALSE, main = "marg_post_x_fac3md = B", breaks = 20)
+    lines(density(out$averaged$mu_x_fac3md$B))
+
+    hist(marg_post_x_fac3md[["C"]], freq = FALSE, main = "marg_post_x_fac3md = C", breaks = 20)
+    lines(density(out$averaged$mu_x_fac3md$C))
+
+  })
+  vdiffr::expect_doppelganger("marginal_inference-ss-fac.md-p", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 3))
+    hist(attr(marg_post_x_fac3md[["A"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac3md = A", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    lines(density(attr(out$averaged$mu_x_fac3md$A, "prior_samples")))
+    hist(attr(marg_post_x_fac3md[["B"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    lines(density(attr(out$averaged$mu_x_fac3md$B, "prior_samples")))
+    hist(attr(marg_post_x_fac3md[["C"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac3md = C", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    lines(density(attr(out$averaged$mu_x_fac3md$C, "prior_samples")))
+  })
+  # the previous BFs were based on model-averaged posteriors so they won't match
+
+  # test summary table (note that these differ from the first set of tests because of the different model settings)
+  expect_equal(
+    capture_output_lines(marginal_estimates_table(out$conditional, out$inference, parameters = c("mu_intercept", "mu_x_cont1", "mu_x_fac2t", "mu_x_fac3md", "mu_x_cont1__xXx__x_fac3md")), print = TRUE, width = 150),
+    c("                                Mean Median 0.025  0.95 Inclusion BF"                                                                                                                ,
+      "(mu) intercept                 0.617  0.617 0.542 0.681          Inf"                                                                                                                ,
+      "(mu) x_cont1[-1SD]             0.435  0.434 0.320 0.531          Inf"                                                                                                                ,
+      "(mu) x_cont1[0SD]              0.617  0.617 0.542 0.681          Inf"                                                                                                                ,
+      "(mu) x_cont1[1SD]              0.800  0.799 0.691 0.890          Inf"                                                                                                                ,
+      "(mu) x_fac2t[A]                0.617  0.617 0.542 0.681          Inf"                                                                                                                ,
+      "(mu) x_fac2t[B]                0.618  0.617 0.542 0.682          Inf"                                                                                                                ,
+      "(mu) x_fac3md[A]               0.778  0.778 0.651 0.886          Inf"                                                                                                                ,
+      "(mu) x_fac3md[B]               0.518  0.518 0.390 0.625          Inf"                                                                                                                ,
+      "(mu) x_fac3md[C]               0.554  0.554 0.427 0.662          Inf"                                                                                                                ,
+      "(mu) x_cont1:x_fac3md[-1SD, A] 0.590  0.592 0.407 0.729          Inf"                                                                                                                ,
+      "(mu) x_cont1:x_fac3md[0SD, A]  0.774  0.776 0.623 0.884          Inf"                                                                                                                ,
+      "(mu) x_cont1:x_fac3md[1SD, A]  0.958  0.959 0.802 1.084          Inf"                                                                                                                ,
+      "(mu) x_cont1:x_fac3md[-1SD, B] 0.342  0.341 0.182 0.483      164.855"                                                                                                                ,
+      "(mu) x_cont1:x_fac3md[0SD, B]  0.521  0.520 0.392 0.631          Inf"                                                                                                                ,
+      "(mu) x_cont1:x_fac3md[1SD, B]  0.700  0.699 0.549 0.827          Inf"                                                                                                                ,
+      "(mu) x_cont1:x_fac3md[-1SD, C] 0.375  0.374 0.226 0.501          Inf"                                                                                                                ,
+      "(mu) x_cont1:x_fac3md[0SD, C]  0.556  0.556 0.428 0.663          Inf"                                                                                                                ,
+      "(mu) x_cont1:x_fac3md[1SD, C]  0.737  0.738 0.579 0.871          Inf"                                                                                                                ,
+      "\033[0;31mmu_intercept: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m"                      ,
+      "\033[0;31mmu_x_cont1[-1SD]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m"                  ,
+      "\033[0;31mmu_x_cont1[0SD]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m"                   ,
+      "\033[0;31mmu_x_cont1[1SD]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m"                   ,
+      "\033[0;31mmu_x_fac2t[A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m"                     ,
+      "\033[0;31mmu_x_fac2t[B]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m"                     ,
+      "\033[0;31mmu_x_fac3md[A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m"                    ,
+      "\033[0;31mmu_x_fac3md[B]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m"                    ,
+      "\033[0;31mmu_x_fac3md[C]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m"                    ,
+      "\033[0;31mmu_x_cont1__xXx__x_fac3md[-1SD, A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m",
+      "\033[0;31mmu_x_cont1__xXx__x_fac3md[0SD, A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m" ,
+      "\033[0;31mmu_x_cont1__xXx__x_fac3md[1SD, A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m" ,
+      "\033[0;31mmu_x_cont1__xXx__x_fac3md[0SD, B]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m" ,
+      "\033[0;31mmu_x_cont1__xXx__x_fac3md[1SD, B]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m" ,
+      "\033[0;31mmu_x_cont1__xXx__x_fac3md[-1SD, C]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m",
+      "\033[0;31mmu_x_cont1__xXx__x_fac3md[0SD, C]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m" ,
+      "\033[0;31mmu_x_cont1__xXx__x_fac3md[1SD, C]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.\033[0m"
+    ))
+
+  # plots
+  vdiffr::expect_doppelganger("plot_marginal-ss-mu_x_fac2t-1", function(){plot_marginal(out$conditional, parameter = "mu_x_fac2t")})
+  vdiffr::expect_doppelganger("plot_marginal-ss-mu_x_fac2t-2", function(){plot_marginal(out$conditional, parameter = "mu_x_fac2t", par_name = "fac2t", lwd = 2)})
+  vdiffr::expect_doppelganger("plot_marginal-ss-mu_x_fac2t-3", function(){plot_marginal(out$conditional, parameter = "mu_x_fac2t", prior = TRUE, dots_prior = list(lty = 2))})
+  vdiffr::expect_doppelganger("plot_marginal-ss-mu_x_fac2t-4", function(){plot_marginal(out$conditional, parameter = "mu_x_fac2t", prior = TRUE, dots_prior = list(lty = 2), xlim = c(0, 1))})
+  vdiffr::expect_doppelganger("plot_marginal-ss-mu_x_fac2t-5", function(){plot_marginal(out$conditional, parameter = "mu_x_fac2t", prior = TRUE, dots_prior = list(lty = 2), transformation = "exp", xlim = c(0, 5), transformation_settings = T)})
+
+  vdiffr::expect_doppelganger("ggplot_marginal-ss-mu_x_fac2t-1", plot_marginal(out$conditional, plot_type = "ggplot", parameter = "mu_x_fac2t"))
+  vdiffr::expect_doppelganger("ggplot_marginal-ss-mu_x_fac2t-2", plot_marginal(out$conditional, plot_type = "ggplot", parameter = "mu_x_fac2t", par_name = "fac2t", lwd = 2))
+  vdiffr::expect_doppelganger("ggplot_marginal-ss-mu_x_fac2t-3", plot_marginal(out$conditional, plot_type = "ggplot", parameter = "mu_x_fac2t", prior = TRUE, dots_prior = list(lty = 2)))
+  vdiffr::expect_doppelganger("ggplot_marginal-ss-mu_x_fac2t-4", plot_marginal(out$conditional, plot_type = "ggplot", parameter = "mu_x_fac2t", prior = TRUE, dots_prior = list(lty = 2), xlim = c(0, 1)))
+
+  vdiffr::expect_doppelganger("plot_marginal-ss-mu_x_cont1", function(){plot_marginal(out$conditional, parameter = "mu_x_cont1", prior = TRUE, dots_prior = list(lty = 2), xlim = c(0, 1))})
+  vdiffr::expect_doppelganger("ggplot_marginal-ss-mu_x_cont1", plot_marginal(out$conditional, plot_type = "ggplot", parameter = "mu_x_cont1", prior = TRUE, dots_prior = list(lty = 2), xlim = c(0, 1)))
+
+  vdiffr::expect_doppelganger("plot_marginal-ss-mu_x_fac3md", function(){plot_marginal(out$averaged, parameter = "mu_x_fac3md", prior = TRUE, dots_prior = list(lty = 2), xlim = c(-1, 1))})
+  vdiffr::expect_doppelganger("ggplot_marginal-ss-mu_x_fac3md", plot_marginal(out$averaged, plot_type = "ggplot", parameter = "mu_x_fac3md", prior = TRUE, dots_prior = list(lty = 2), xlim = c(-1, 1)))
+
+  vdiffr::expect_doppelganger("plot_marginal-ss-int", plot_marginal(out$averaged, plot_type = "ggplot", parameter = "mu_intercept", prior = TRUE, dots_prior = list(lty = 2), xlim = c(-1, 1)))
+
+})

@@ -21,9 +21,8 @@ test_prior          <- function(prior, skip_moments = FALSE){
     hist(samples, main = print(prior, plot = T), breaks = 50, freq = FALSE)
   }
   # tests density function
-  if(!is.prior.mixture(prior)){
-    lines(prior, individual = TRUE)
-  }
+  lines(prior, individual = TRUE)
+
   # tests quantile function
   if(!is.prior.spike_and_slab(prior) && !is.prior.mixture(prior)){
     abline(v = quant(prior, 0.5), col = "blue", lwd = 2)
@@ -359,4 +358,23 @@ test_that("Prior mixture distributions work", {
   vdiffr::expect_doppelganger("prior-mixture-1", function()test_prior(p1, skip_moments = TRUE))
   vdiffr::expect_doppelganger("prior-mixture-2", function()test_prior(p2, skip_moments = TRUE))
   vdiffr::expect_doppelganger("prior-mixture-3", function()test_prior(p3, skip_moments = TRUE))
+
+
+  # random number generator from complex mixture priors
+  p4 <- prior_mixture(list(
+    prior("spike", list(0), prior_weights = 1),
+    prior_factor("mnormal", list(0, 10), contrast = "orthonormal", prior_weights = 3),
+    prior_factor("mnormal", list(0, 1),  contrast = "orthonormal")
+    ),
+    is_null = c(T, F, F)
+  )
+
+  for(i in seq_along(p4)){
+    p4[[i]]$parameters[["K"]] <- 3
+  }
+
+
+  vdiffr::expect_doppelganger("prior-mixture-4", function()hist(rng(p4, 10000, transform_factor_samples = FALSE), main = print(p4, plot = T), breaks = 50, freq = FALSE))
+  vdiffr::expect_doppelganger("prior-mixture-5", function()hist(rng(p4, 10000, transform_factor_samples = TRUE), main = print(p4, plot = T), breaks = 50, freq = FALSE))
+
 })

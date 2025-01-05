@@ -487,6 +487,29 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 }
 .plot_data_prior_list.simple         <- function(prior_list, x_seq, x_range, x_range_quant, n_points, n_samples, force_samples, individual,
                                                  transformation, transformation_arguments, transformation_settings){
+
+  # dispatching for spike and slab priors
+  if(is.prior.spike_and_slab(prior_list)){
+
+    prior_inclusion   <- prior_list[["inclusion"]]
+    prior_variable    <- prior_list[["variable"]]
+
+    if(mean(prior_inclusion) < 1 && mean(prior_inclusion) > 0){
+      # create a dummy list for the simple mixture
+      prior_null                        <- prior("spike", list(0), prior_weights = 1-mean(prior_inclusion))
+      prior_variable[["prior_weights"]] <- mean(prior_inclusion)
+
+      prior_list <- list(
+        prior_variable,
+        prior_null
+      )
+    }else if(mean(prior_inclusion) >= 1){
+      prior_list <- list(prior_variable)
+    }else if(mean(prior_inclusion) <= 0){
+      prior_list <- list(prior("spike", list(0)))
+    }
+  }
+
   # join the same priors
   prior_list <- .simplify_prior_list(prior_list)
 

@@ -46,5 +46,5 @@ indicators of the null or alternative hypothesis models
 for each parameter.
 }
 \seealso{
-\link{ensemble_inference} \link{BayesTools_ensemble_tables}
+\link{ensemble_inference} \link{BayesTools_ensemble_tables} \link{as_mixed_posteriors}
 }

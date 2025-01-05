@@ -1643,3 +1643,199 @@ test_that("models plot functions work (formulas + spike factors)", {
   })
 
 })
+
+
+test_that("posterior plot model averaging based on complex single JAGS models  (formulas + spike factors + mixture)", {
+
+  set.seed(1)
+
+  data_formula <- data.frame(
+    x_cont1 = rnorm(300),
+    x_fac2t = factor(rep(c("A", "B"), 150), levels = c("A", "B")),
+    x_fac3t = factor(rep(c("A", "B", "C"), 100), levels = c("A", "B", "C"))
+  )
+  data <- list(
+    y = rnorm(300, -0.15 + 0.20 * data_formula$x_cont1 + ifelse(data_formula$x_fac3t == "A", 0.0, ifelse(data_formula$x_fac3t == "B", -0.2, 0.2)), ifelse(data_formula$x_fac2t == "A", 0.5, 1)),
+    N = 300
+  )
+
+  # create model with mix of a formula and free parameters ---
+  formula_list1 <- list(
+    mu    = ~ x_cont1 + x_fac2t + x_fac3t
+  )
+  formula_data_list1 <- list(
+    mu    = data_formula
+  )
+  formula_prior_list1 <- list(
+    mu    = list(
+      "intercept"  = prior_mixture(
+        list(
+          prior("spike",   list(0),       prior_weights = 2),
+          prior("normal",  list(-1, 0.5), prior_weights = 1),
+          prior("normal",  list( 1, 0.5), prior_weights = 1)
+        ),
+        is_null = c(T, F, F)
+      ),
+      "x_cont1"    = prior_spike_and_slab(prior("normal",  list(0, 1), prior_weights = 1)),
+      "x_fac2t"    = prior_mixture(list(
+          prior("spike", list(0), prior_weights = 1),
+          prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+        ),
+        is_null = c(T, F)
+      ),
+      "x_fac3t"    = prior_mixture(list(
+          prior("spike", list(0), prior_weights = 1),
+          prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+        ),
+        is_null = c(T, F)
+      )
+    )
+  )
+
+  attr(formula_prior_list1$mu$x_cont1, "multiply_by") <- "sigma"
+  prior_list1 <- list(
+    "sigma" = prior_mixture(
+      list(
+        prior("normal",    list(0, 1), truncation = list(0, Inf)),
+        prior("lognormal", list(0, 1))
+      ),
+      components = c("normal", "lognormal")
+    ),
+    "bias"  = prior_mixture(list(
+      prior_none(prior_weights = 1),
+      prior_weightfunction(distribution = "two.sided", parameters = list(alpha = c(1, 1), steps = c(0.05)), prior_weights = 1/3),
+      prior_weightfunction(distribution = "one.sided", parameters = list(alpha = c(1, 1, 1), steps = c(0.025, 0.05)), prior_weights = 1/3),
+      prior_PET("normal", list(0, 1), prior_weights = 1/3)
+    ), is_null = c(T, F, F, F))
+  )
+  model_syntax1 <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  if("RoBMA" %in% rownames(installed.packages())){
+    require("RoBMA")
+  }else{
+    skip()
+  }
+
+  fit1 <- JAGS_fit(
+    model_syntax = model_syntax1, data = data, prior_list = prior_list1,
+    formula_list = formula_list1, formula_data_list = formula_data_list1, formula_prior_list = formula_prior_list1,
+    store_runjags_summary = TRUE)
+
+
+  runjags_inference_table(fit1)
+  runjags_estimates_table(fit1)
+
+
+  mixed_posteriors <- as_mixed_posteriors(
+    mode       = fit1,
+    parameters = names(attr(fit1, "prior_list"))
+  )
+
+  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-intercept", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors, "mu_intercept", prior = T, dots_prior = list(col = "grey"))
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-x_cont1", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors, "mu_x_cont1", prior = T, dots_prior = list(col = "grey"))
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-x_fac2t", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors, "mu_x_fac2t", prior = T, dots_prior = list(col = "grey"))
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-x_fac3t", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors, "mu_x_fac3t", prior = T, dots_prior = list(col = "grey"))
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-sigma", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors, "sigma", prior = T, dots_prior = list(col = "grey"))
+  })
+
+  # TODO: implement
+  # vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-bias", function(){
+  #   oldpar <- graphics::par(no.readonly = TRUE)
+  #   on.exit(graphics::par(mar = oldpar[["mar"]]))
+  #   par(mar = c(4, 4, 1, 4), mfrow = c(2, 2))
+  #   plot_posterior(mixed_posteriors, "PET", prior = T, dots_prior = list(col = "grey"))
+  #   plot_posterior(mixed_posteriors, "omega", prior = T, dots_prior = list(col = "grey"))
+  # })
+
+
+  mixed_posteriors_conditional1 <- as_mixed_posteriors(
+    mode       = fit1,
+    parameters  = "mu_intercept",
+    conditional = "mu_intercept",
+    force_plots = TRUE
+  )
+
+  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-intercept-con", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors_conditional1, "mu_intercept", prior = TRUE, dots_prior = list(col = "grey"))
+  })
+
+  mixed_posteriors_conditional2 <- as_mixed_posteriors(
+    mode       = fit1,
+    parameters  = "mu_x_cont1",
+    conditional = "mu_x_cont1",
+    force_plots = TRUE
+  )
+
+  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-x_cont1-con", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors_conditional2, "mu_x_cont1", prior = TRUE, dots_prior = list(col = "grey"))
+  })
+
+  mixed_posteriors_conditional3 <- as_mixed_posteriors(
+    mode       = fit1,
+    parameters  = "mu_x_fac2t",
+    conditional = "mu_x_fac2t",
+    force_plots = TRUE
+  )
+
+  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-x_fac2t-con", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors_conditional3, "mu_x_fac2t", prior = TRUE, dots_prior = list(col = "grey"))
+  })
+
+  mixed_posteriors_conditional4 <- as_mixed_posteriors(
+    mode       = fit1,
+    parameters  = "mu_x_fac3t",
+    conditional = "mu_x_fac3t",
+    force_plots = TRUE
+  )
+
+  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-x_fac3t-con", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors_conditional4, "mu_x_fac3t", prior = TRUE, dots_prior = list(col = "grey"))
+  })
+
+})

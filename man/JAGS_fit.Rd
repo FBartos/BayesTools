@@ -25,7 +25,8 @@ JAGS_fit(
   silent = TRUE,
   seed = NULL,
   add_parameters = NULL,
-  required_packages = NULL
+  required_packages = NULL,
+  store_runjags_summary = FALSE
 )
 
 JAGS_extend(
@@ -35,7 +36,8 @@ JAGS_extend(
   parallel = FALSE,
   cores = NULL,
   silent = TRUE,
-  seed = NULL
+  seed = NULL,
+  add_parameters = NULL
 )
 }
 \arguments{
@@ -104,6 +106,10 @@ monitored but were not specified in the \code{prior_list}}
 \item{required_packages}{character vector specifying list of packages containing
 JAGS models required for sampling (in case that the function is run in parallel or in
 detached R session). Defaults to \code{NULL}.}
+
+\item{store_runjags_summary}{whether the summary of the runjags object should be stored
+in the fitted object. Defaults to \code{FALSE}. It might be advantageous to store the
+runjags summary in case multiple summary tables are needed.}
 
 \item{fit}{a 'BayesTools_fit' object (created by \code{JAGS_fit()} function) to be
 extended}

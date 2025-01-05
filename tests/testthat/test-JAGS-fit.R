@@ -364,6 +364,103 @@ test_that("JAGS model functions work (spike and slab)", {
   }
 })
 
+test_that("JAGS model functions work (mixture)", {
+
+  skip_if_not_installed("rjags")
+  priors       <- list(
+    "mu" = prior_mixture(
+      list(
+        prior("normal", list(0,  1), prior_weights = 1),
+        prior("normal", list(-3, 1), prior_weights = 5),
+        prior("gamma",  list(5, 10), prior_weights = 1)
+      ),
+      is_null = c(T, F, T)
+    ),
+    "beta" = prior_mixture(
+      list(
+        prior("normal", list(0,  1), prior_weights = 1),
+        prior("normal", list(-3, 1), prior_weights = 5)
+      ),
+      components = c("b", "a")
+    ),
+    "gamma" = prior_mixture(
+      list(
+        prior("spike", list(2)),
+        prior("normal", list(-3, 1))
+      )
+    ),
+    "bias" = prior_mixture(list(
+      prior_weightfunction(distribution = "two.sided", parameters = list(alpha = c(1, 1), steps = c(0.05)), prior_weights = 1/12),
+      prior_weightfunction(distribution = "two.sided", parameters = list(alpha = c(1, 1, 1), steps = c(0.05, 0.10)), prior_weights = 1/12),
+      prior_weightfunction(distribution = "one.sided", parameters = list(alpha = c(1, 1), steps = c(0.05)), prior_weights = 1/12),
+      prior_weightfunction(distribution = "one.sided", parameters = list(alpha = c(1, 1, 1), steps = c(0.025, 0.05)), prior_weights = 1/12),
+      prior_weightfunction(distribution = "one.sided", parameters = list(alpha = c(1, 1, 1), steps = c(0.05, 0.5)), prior_weights = 1/12),
+      prior_weightfunction(distribution = "one.sided", parameters = list(alpha = c(1, 1, 1, 1), steps = c(0.025, 0.05, 0.5)), prior_weights = 1/12),
+      prior_PET(distribution = "Cauchy", parameters = list(0,1), truncation = list(0, Inf), prior_weights = 1/4),
+      prior_PEESE(distribution = "Cauchy", parameters = list(0,5), truncation = list(0, Inf), prior_weights = 1/4)
+    ))
+  )
+
+
+
+  for(i in 1:length(priors)){
+    model_syntax <- "model{}"
+    model_syntax <- JAGS_add_priors(model_syntax, priors[i])
+    monitor      <- JAGS_to_monitor(priors[i])
+    inits        <- JAGS_get_inits(priors[i], chains = 2, seed = 1)
+
+    if(i == 4){
+      if("RoBMA" %in% rownames(installed.packages())){
+        require("RoBMA")
+      }else{
+        next
+      }
+    }
+
+    set.seed(1)
+    model   <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
+    samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 5000, quiet = TRUE, progress.bar = "none")
+    samples <- do.call(rbind, samples)
+
+
+    if(i != 4){
+      vdiffr::expect_doppelganger(paste0("JAGS-model-prior_mixture-",i), function(){
+        temp_samples <- samples[,names(priors)[i]]
+        hist(temp_samples, breaks = 100, freq = FALSE, main = print(priors[[i]], plot = TRUE))
+        lines(density(rng(priors[[i]], 1000000)))
+      })
+    }else{
+      vdiffr::expect_doppelganger(paste0("JAGS-model-prior_mixture-",i), function(){
+
+        oldpar <- graphics::par(no.readonly = TRUE)
+        on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+        par(mfrow = c(3, 3))
+
+        samples_PET   <- samples[,"PET"]
+        samples_PEESE <- samples[,"PEESE"]
+        samples_omega <- samples[,paste0("omega[",1:6,"]")]
+        samples_bias  <- samples[,"bias_indicator"]
+
+        barplot(table(samples_bias)/length(samples_bias), main = "Bias componenets")
+
+        hist(samples_PET[samples_PET != 0 & samples_PET < 10], breaks = 50, main = "PET", freq = FALSE)
+        lines(priors$bias[[7]], individual = TRUE)
+
+        hist(samples_PEESE[samples_PEESE != 0 & samples_PEESE < 20], breaks = 50, main = "PEESE", freq = FALSE)
+        lines(priors$bias[[8]], individual = TRUE)
+
+        hist(samples_omega[samples_bias == 2, 1], breaks = 50, main = "omega[2:1]", freq = FALSE)
+        hist(samples_omega[samples_bias == 2, 2], breaks = 50, main = "omega[2:2]", freq = FALSE)
+        hist(samples_omega[samples_bias == 2, 3], breaks = 50, main = "omega[2:3]", freq = FALSE)
+        hist(samples_omega[samples_bias == 2, 4], breaks = 50, main = "omega[2:4]", freq = FALSE)
+        hist(samples_omega[samples_bias == 2, 5], breaks = 50, main = "omega[2:5]", freq = FALSE)
+        hist(samples_omega[samples_bias == 2, 6], breaks = 50, main = "omega[2:6]", freq = FALSE)
+
+        })
+    }
+  }
+})
+
 test_that("JAGS fit function works" , {
 
   set.seed(1)
@@ -684,6 +781,110 @@ test_that("JAGS fit function integration with formula and spike and slab works" 
   })
 
   vdiffr::expect_doppelganger("JAGS-fit-formula-spike-and-slab-2", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfrow = c(2, 3))
+
+    temp_samples          <- posterior1[,paste0("mu_x_fac3t[", 1:2, "]")]          %*% t(contr.orthonormal(1:3))
+    temp_samples_variable <- posterior1[,paste0("mu_x_fac3t_variable[", 1:2, "]")]  %*% t(contr.orthonormal(1:3))
+
+    hist(temp_samples[,1], freq = FALSE, main = "x_fac3t[A]")
+    hist(temp_samples[,2], freq = FALSE, main = "x_fac3t[B]")
+    hist(temp_samples[,3], freq = FALSE, main = "x_fac3t[C]")
+
+    hist(temp_samples_variable[,1], freq = FALSE, main = "x_fac3t_variable[A]")
+    hist(temp_samples_variable[,2], freq = FALSE, main = "x_fac3t_variable[B]")
+    hist(temp_samples_variable[,3], freq = FALSE, main = "x_fac3t_variable[C]")
+  })
+
+})
+
+test_that("JAGS fit function integration with formula, spike and slab works, and mixture works" , {
+
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_on_cran()
+
+  set.seed(1)
+
+  data_formula <- data.frame(
+    x_cont1 = rnorm(300),
+    x_fac2t = factor(rep(c("A", "B"), 150), levels = c("A", "B")),
+    x_fac3t = factor(rep(c("A", "B", "C"), 100), levels = c("A", "B", "C"))
+  )
+  data <- list(
+    y = rnorm(300, -0.15 + 0.20 * data_formula$x_cont1 + ifelse(data_formula$x_fac3t == "A", 0.0, ifelse(data_formula$x_fac3t == "B", -0.2, 0.2)), ifelse(data_formula$x_fac2t == "A", 0.5, 1)),
+    N = 300
+  )
+
+  # create model with mix of a formula and free parameters ---
+  formula_list1 <- list(
+    mu    = ~ x_cont1 + x_fac3t
+  )
+  formula_data_list1 <- list(
+    mu    = data_formula
+  )
+  formula_prior_list1 <- list(
+    mu    = list(
+      "intercept"  = prior_mixture(
+        list(
+          prior("spike",   list(0),       prior_weights = 2),
+          prior("normal",  list(-1, 0.5), prior_weights = 1),
+          prior("normal",  list( 1, 0.5), prior_weights = 1)
+        ),
+        is_null = c(T, F, F)
+      ),
+      "x_cont1"    = prior_mixture(
+        list(
+          prior("spike",   list(0),    prior_weights = 1),
+          prior("normal",  list(0, 1), prior_weights = 1)
+        ),
+        is_null = c(T, F)
+      ),
+      "x_fac3t"    = prior_spike_and_slab(prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+                                          prior_inclusion = prior("spike", list(0.5)))
+    )
+  )
+  attr(formula_prior_list1$mu$x_cont1, "multiply_by") <- "sigma"
+  prior_list1 <- list(
+    "sigma" = prior_mixture(
+      list(
+        prior("normal",    list(0, 1), truncation = list(0, Inf)),
+        prior("lognormal", list(0, 1))
+      ),
+      is_null = c(T, F)
+    )
+  )
+  model_syntax1 <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  fit1 <- JAGS_fit(
+    model_syntax = model_syntax1, data = data, prior_list = prior_list1,
+    formula_list = formula_list1, formula_data_list = formula_data_list1, formula_prior_list = formula_prior_list1)
+
+  posterior1 <- suppressWarnings(coda::as.mcmc(fit1))
+
+  vdiffr::expect_doppelganger("JAGS-fit-formula-mixture-1", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
+    par(mfrow = c(3, 3))
+
+    barplot(table(posterior1[,"mu_intercept_indicator"]) / nrow(posterior1), main = "Intercept indicator")
+    barplot(table(posterior1[,"mu_x_cont1_indicator"]) / nrow(posterior1), main = "x_cont1 indicator")
+    barplot(table(posterior1[,"sigma_indicator"]) / nrow(posterior1), main = "sigma indicator")
+
+    hist(posterior1[,"mu_intercept"], freq = FALSE, main = "mu_intercept")
+    hist(posterior1[,"mu_x_cont1"], freq = FALSE, main = "x_cont1")
+    hist(posterior1[,"sigma"], freq = FALSE, main = "sigma")
+  })
+
+  vdiffr::expect_doppelganger("JAGS-fit-formula-mixture-2", function(){
 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
