@@ -1280,17 +1280,26 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
     }
   }
 
-  runjags_summary$Parameter <- format_parameter_names(
-    parameters         = runjags_summary$Parameter,
-    formula_parameters = unique(unlist(lapply(prior_list, attr, which = "parameter"))),
-    formula_prefix     = formula_prefix)
+  # store parameter names before removing formula attachments
+  parameter_names           <- runjags_summary$Parameter
+  rownames(runjags_summary) <- parameter_names
+  runjags_summary           <- runjags_summary[,-1]
 
-  class(runjags_summary)             <- c("BayesTools_table", "BayesTools_runjags_inference", class(runjags_summary))
-  attr(runjags_summary, "type")      <- c("string", "prior_prob", "post_prob", "inclusion_BF")
-  attr(runjags_summary, "rownames")  <- FALSE
-  attr(runjags_summary, "title")     <- title
-  attr(runjags_summary, "footnotes") <- footnotes
-  attr(runjags_summary, "warnings")  <- warnings
+  # rename formula parameters
+  if(any(!sapply(lapply(prior_list, attr, which = "parameter"), is.null))){
+    rownames(runjags_summary) <- format_parameter_names(
+      parameters         = rownames(runjags_summary),
+      formula_parameters = unique(unlist(lapply(prior_list, attr, which = "parameter"))),
+      formula_prefix     = formula_prefix)
+  }
+
+  class(runjags_summary)               <- c("BayesTools_table", "BayesTools_runjags_inference", class(runjags_summary))
+  attr(runjags_summary, "type")        <- c("prior_prob", "post_prob", "inclusion_BF")
+  attr(runjags_summary, "parameters")  <- parameter_names
+  attr(runjags_summary, "rownames")    <- TRUE
+  attr(runjags_summary, "title")       <- title
+  attr(runjags_summary, "footnotes")   <- footnotes
+  attr(runjags_summary, "warnings")    <- warnings
 
   return(runjags_summary)
 }
@@ -1359,11 +1368,11 @@ runjags_estimates_empty_table <- function(title = NULL, footnotes = NULL, warnin
 #' @rdname BayesTools_model_tables
 runjags_inference_empty_table <- function(title = NULL, footnotes = NULL, warnings = NULL){
 
-  empty_table <- data.frame(matrix(nrow = 0, ncol = 4))
-  colnames(empty_table) <- c("Parameter", "prior_prob", "post_prob", "inclusion_BF")
+  empty_table <- data.frame(matrix(nrow = 0, ncol = 3))
+  colnames(empty_table) <- c("prior_prob", "post_prob", "inclusion_BF")
 
   class(empty_table)             <- c("BayesTools_table", "BayesTools_runjags_inference", class(empty_table))
-  attr(empty_table, "type")      <- c("string", "prior_prob", "post_prob", "inclusion_BF")
+  attr(empty_table, "type")      <- c("prior_prob", "post_prob", "inclusion_BF")
   attr(empty_table, "rownames")  <- FALSE
   attr(empty_table, "title")     <- title
   attr(empty_table, "footnotes") <- footnotes

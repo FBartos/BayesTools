@@ -937,11 +937,11 @@ test_that("Summary tables functions work (spike and slab priors)",{
   expect_equal(unname(unlist(model_estimates[2,])), c(3.040927e-01, 1.355633e-01, 3.256895e-02, 3.058346e-01, 5.678668e-01, 1.21e-03, 8.95e-03, 12477, NA), tolerance = 1e-3)
 
   model_inference <- runjags_inference_table(fit0)
-  expect_equal(colnames(model_inference), c("Parameter", "prior_prob", "post_prob", "inclusion_BF"))
-  expect_equal(model_inference[,1], c("(mu) x_cont1", "(mu) x_fac2t", "(mu) x_fac3o"))
-  expect_equal(model_inference[,2], c(0.5, 0.5, 0.5))
-  expect_equal(model_inference[,3], c(0.7798125, 0.1864375, 0.0399375), tolerance = 1e-3)
-  expect_equal(model_inference[,4], c(3.54158388, 0.22916187, 0.04159885), tolerance = 1e-3)
+  expect_equal(colnames(model_inference), c("prior_prob", "post_prob", "inclusion_BF"))
+  expect_equal(rownames(model_inference), c("(mu) x_cont1", "(mu) x_fac2t", "(mu) x_fac3o"))
+  expect_equal(model_inference[,1], c(0.5, 0.5, 0.5))
+  expect_equal(model_inference[,2], c(0.7798125, 0.1864375, 0.0399375), tolerance = 1e-3)
+  expect_equal(model_inference[,3], c(3.54158388, 0.22916187, 0.04159885), tolerance = 1e-3)
 
   runjags_inference_empty <- runjags_inference_empty_table()
   expect_equivalent(nrow(runjags_inference_empty), 0)
@@ -1333,26 +1333,25 @@ test_that("Summary tables functions work (mixture priors)",{
 
   model_inference <- runjags_inference_table(fit1)
   expect_equal(capture_output_lines(print(model_inference), width = 150),  c(
-    "         Parameter Prior prob. Post. prob. Inclusion BF",
-    "    (mu) intercept       0.500       0.596        1.478",
-    "      (mu) x_cont1       0.500       0.999      841.105",
-    "      (mu) x_fac3t       0.500       0.855        5.894",
-    "    sigma [normal]       0.500       0.510        1.041",
-    " sigma [lognormal]       0.500       0.490        0.961",
-    "              bias       0.500       0.497        0.989"
+    "                  Prior prob. Post. prob. Inclusion BF",
+    "(mu) intercept          0.500       0.596        1.478",
+    "(mu) x_cont1            0.500       0.999      841.105",
+    "(mu) x_fac3t            0.500       0.855        5.894",
+    "sigma [normal]          0.500       0.510        1.041",
+    "sigma [lognormal]       0.500       0.490        0.961",
+    "bias                    0.500       0.497        0.989"
   ))
 
   model_inference <- update(model_inference, title = "Table 1", footnotes = c("Footnote 1", "Footnote 2"), logBF = TRUE)
   expect_equal(capture_output_lines(print(model_inference), width = 150),  c(
     "Table 1"                                                     ,
-    "         Parameter Prior prob. Post. prob. log(Inclusion BF)",
-    "    (mu) intercept       0.500       0.596             0.391",
-    "      (mu) x_cont1       0.500       0.999             6.735",
-    "      (mu) x_fac3t       0.500       0.855             1.774",
-    "    sigma [normal]       0.500       0.510             0.040",
-    " sigma [lognormal]       0.500       0.490            -0.040",
-    "              bias       0.500       0.497            -0.011",
-    "Footnote 1"                                                  ,
-    "Footnote 2"
-  ))
+    "                  Prior prob. Post. prob. log(Inclusion BF)",
+    "(mu) intercept          0.500       0.596             0.391",
+    "(mu) x_cont1            0.500       0.999             6.735",
+    "(mu) x_fac3t            0.500       0.855             1.774",
+    "sigma [normal]          0.500       0.510             0.040",
+    "sigma [lognormal]       0.500       0.490            -0.040",
+    "bias                    0.500       0.497            -0.011",
+    "Footnote 1"                                                 ,
+    "Footnote 2"  ))
 })
