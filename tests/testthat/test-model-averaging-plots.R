@@ -1773,7 +1773,6 @@ test_that("posterior plot model averaging based on complex single JAGS models  (
   #   on.exit(graphics::par(mar = oldpar[["mar"]]))
   #   par(mar = c(4, 4, 1, 4), mfrow = c(2, 2))
   #   plot_posterior(mixed_posteriors, "PET", prior = T, dots_prior = list(col = "grey"))
-  #   plot_posterior(mixed_posteriors, "omega", prior = T, dots_prior = list(col = "grey"))
   # })
 
 
@@ -1860,13 +1859,35 @@ test_that("posterior plot model averaging based on complex single JAGS models  (
     force_plots = TRUE
   )
 
-  # TODO: allow proper plotting
-  # vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-PET-con", function(){
-  #   oldpar <- graphics::par(no.readonly = TRUE)
-  #   on.exit(graphics::par(mar = oldpar[["mar"]]))
-  #   par(mar = c(4, 4, 1, 4))
-  #   ....
-  # })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-weightfunction", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors_conditional5a, parameter = "weightfunction", prior = TRUE, col = "black", col.fill = ggplot2::alpha("grey", 0.2),  dots_prior = list(col = "red", col.fill = ggplot2::alpha("red", 0.5)))
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-weightfunction-con", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors_conditional6b, parameter = "weightfunction", prior = TRUE, col = "black", col.fill = ggplot2::alpha("grey", 0.2),  dots_prior = list(col = "red", col.fill = ggplot2::alpha("red", 0.5)))
+  })
+
+#   # TODO: at some point
+#   vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-PETPEESE", function(){
+#     oldpar <- graphics::par(no.readonly = TRUE)
+#     on.exit(graphics::par(mar = oldpar[["mar"]]))
+#     par(mar = c(4, 4, 1, 4))
+#     plot_posterior(mixed_posteriors_conditional5a, parameter = "PETPEESE", prior = TRUE, col = "black", col.fill = ggplot2::alpha("grey", 0.2),  dots_prior = list(col = "red", col.fill = ggplot2::alpha("red", 0.5)))
+#   })
+#
+#   vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-PETPEESE-con", function(){
+#     oldpar <- graphics::par(no.readonly = TRUE)
+#     on.exit(graphics::par(mar = oldpar[["mar"]]))
+#     par(mar = c(4, 4, 1, 4))
+#     plot_posterior(mixed_posteriors_conditional6b, parameter = "PETPEESE", prior = TRUE, col = "black", col.fill = ggplot2::alpha("grey", 0.2),  dots_prior = list(col = "red", col.fill = ggplot2::alpha("red", 0.5)))
+#   })
 
   vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-PET-con", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
@@ -1893,5 +1914,8 @@ test_that("posterior plot model averaging based on complex single JAGS models  (
     hist(mixed_posteriors_conditional6b$bias[,"omega[0.025,0.05]"], breaks = 50, col = "grey", main = "omega[0.025,0.05]", xlab = "omega[0.025,0.05]")
     hist(mixed_posteriors_conditional6b$bias[,"omega[0.05,0.975]"], breaks = 50, col = "grey", main = "omega[0.05,0.975]", xlab = "omega[0.05,0.975]")
   })
+
+
+
 
 })

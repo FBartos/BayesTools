@@ -512,7 +512,7 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
     class(prior_list) <- c("prior", "prior.simple_mixture", "prior.mixture")
 
   }else{
-    stop("The prior mixture must contain either factor, pubication bias, or simple prior distributions.")
+    stop("The prior mixture must contain either factors, publication bias components, or simple prior distributions.")
   }
 
   attr(prior_list, "components")    <- components
