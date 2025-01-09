@@ -1641,7 +1641,7 @@ marginal_inference <- function(model_list, marginal_parameters, parameters, is_n
 #' @export
 as_marginal_inference <- function(model, marginal_parameters, parameters, conditional_list, conditional_rule, formula,
                                   null_hypothesis = 0, normal_approximation = FALSE,
-                                  n_samples = 10000, silent = FALSE){
+                                  n_samples = 10000, silent = FALSE, force_plots = FALSE){
 
   # check input (majority of the checks performed within mix_posteriors)
   # check input
@@ -1678,7 +1678,8 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
       model            = model,
       parameters       = parameters,
       conditional      = conditional_list[[marginal_parameters[i]]],
-      conditional_rule = conditional_rule
+      conditional_rule = conditional_rule,
+      force_plots       = force_plots
     )
 
     # compute the marginals

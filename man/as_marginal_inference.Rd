@@ -15,7 +15,8 @@ as_marginal_inference(
   null_hypothesis = 0,
   normal_approximation = FALSE,
   n_samples = 10000,
-  silent = FALSE
+  silent = FALSE,
+  force_plots = FALSE
 )
 }
 \arguments{
@@ -44,6 +45,10 @@ approximated via a normal distribution (rather than kernel density). Defaults to
 prior distribution}
 
 \item{silent}{whether warnings should be returned silently. Defaults to \code{FALSE}}
+
+\item{force_plots}{temporal argument allowing to generate conditional posterior samples
+suitable for prior and posterior plots. Only available when conditioning on a
+single parameter.}
 }
 \value{
 \code{as_marginal_inference} returns an object of class 'marginal_inference'.
