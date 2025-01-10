@@ -1724,8 +1724,7 @@ test_that("posterior plot model averaging based on complex single JAGS models  (
 
   fit1 <- JAGS_fit(
     model_syntax = model_syntax1, data = data, prior_list = prior_list1,
-    formula_list = formula_list1, formula_data_list = formula_data_list1, formula_prior_list = formula_prior_list1,
-    store_runjags_summary = TRUE)
+    formula_list = formula_list1, formula_data_list = formula_data_list1, formula_prior_list = formula_prior_list1)
 
   mixed_posteriors <- as_mixed_posteriors(
     mode       = fit1,

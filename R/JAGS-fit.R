@@ -53,9 +53,6 @@
 #' detached R session). Defaults to \code{NULL}.
 #' @param fit a 'BayesTools_fit' object (created by \code{JAGS_fit()} function) to be
 #' extended
-#' @param store_runjags_summary whether the summary of the runjags object should be stored
-#' in the fitted object. Defaults to \code{FALSE}. It might be advantageous to store the
-#' runjags summary in case multiple summary tables are needed.
 #'
 #' @examples \dontrun{
 #' # simulate data
@@ -95,7 +92,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
                      chains = 4, adapt = 500, burnin = 1000, sample = 4000, thin = 1,
                      autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10),
                      parallel = FALSE, cores = chains, silent = TRUE, seed = NULL,
-                     add_parameters = NULL, required_packages = NULL, store_runjags_summary = FALSE){
+                     add_parameters = NULL, required_packages = NULL){
 
   .check_runjags()
 
@@ -108,7 +105,6 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   check_list(formula_list, "formula_list", allow_NULL = TRUE)
   check_list(formula_data_list, "formula_data_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
   check_list(formula_prior_list, "formula_prior_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
-  check_bool(store_runjags_summary, "store_runjags_summary")
 
   ### add formulas
   if(!is.null(formula_list)){
@@ -202,13 +198,9 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   if(inherits(fit, "error") & !silent)
     warning(paste0("The model estimation failed with the following error: ", fit$message), immediate. = TRUE)
 
-  if(!inherits(fit, "error") && store_runjags_summary){
-    fit <- runjags::add.summary(fit)
-  }
-
   if(autofit && !inherits(fit, "error")){
 
-    converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], add_parameters = add_parameters)
+    converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], fail_fast = TRUE)
 
     while(!converged){
 
@@ -232,7 +224,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 
       fit <- runjags::add.summary(fit)
 
-      converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], add_parameters = add_parameters)
+      converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], fail_fast = TRUE)
     }
   }
 
@@ -253,7 +245,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 
 #' @rdname JAGS_fit
 JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10),
-                        parallel = FALSE, cores = NULL, silent = TRUE, seed = NULL, add_parameters = NULL){
+                        parallel = FALSE, cores = NULL, silent = TRUE, seed = NULL){
 
   if(!inherits(fit, "BayesTools_fit"))
     stop("'fit' must be a 'BayesTools_fit'")
@@ -327,7 +319,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
       break
     }
 
-    converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], add_parameters = add_parameters)
+    converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], fail_fast = TRUE)
   }
 
   # stop cluster manually
@@ -361,6 +353,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
 #'   deviation of the parameters. Defaults to \code{0.05}.
 #' @param add_parameters vector of additional parameter names that should be used
 #' (only allows removing last, fixed, omega element if omega is tracked manually).
+#' @param fail_fast whether the function should stop after the first failed convergence check.
 #'
 #' @examples \dontrun{
 #' # simulate data
@@ -392,7 +385,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
 #'
 #' @seealso [JAGS_fit()]
 #' @export
-JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, add_parameters = NULL){
+JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, add_parameters = NULL, fail_fast = FALSE){
 
   # check input
   if(!inherits(fit, "runjags"))
@@ -406,59 +399,88 @@ JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 5
   check_real(max_SD_error, "max_SD_error", lower = 0, upper = 1, allow_NULL = TRUE)
   check_char(add_parameters, "add_parameters", check_length = 0, allow_NULL = TRUE)
 
-  fails         <- NULL
-  if(!is.null(fit[["summaries"]])){
-    temp_summary <- fit[["summaries"]]
-  }else{
-    invisible(utils::capture.output(temp_summary <- suppressWarnings(summary(fit, silent.jags = TRUE))))
-  }
+  # extract samples and parameter information
+  mcmc_samples    <- coda::as.mcmc.list(fit)
+  parameter_names <- colnames(mcmc_samples[[1]])
+  parameters_keep <- rep(TRUE, length(parameter_names))
 
   # remove auxiliary and support parameters from the summary
   for(i in seq_along(prior_list)){
     if(is.prior.weightfunction(prior_list[[i]])){
       if(prior_list[[i]][["distribution"]] %in% c("one.sided", "two.sided")){
-        temp_summary <- temp_summary[!grepl("eta", rownames(temp_summary)),,drop=FALSE]
+        parameters_keep[grepl("eta", parameter_names)] <- FALSE
       }
-      temp_summary <- temp_summary[-max(grep("omega", rownames(temp_summary))),,drop=FALSE]
+      parameter_names[max(grep("omega", parameter_names))] <- FALSE
     }else if(is.prior.mixture(prior_list[[i]]) && any(sapply(prior_list[[i]], is.prior.weightfunction))){
-      temp_summary <- temp_summary[-max(grep("omega", rownames(temp_summary))),,drop=FALSE]
+      parameters_keep[max(grep("omega", parameter_names))] <- FALSE
     }else if(is.prior.point(prior_list[[i]])){
-      temp_summary <- temp_summary[rownames(temp_summary) != names(prior_list)[i],,drop=FALSE]
+      parameters_keep[parameter_names == names(prior_list)[i]] <- FALSE
     }else if(is.prior.simple(prior_list[[i]]) && prior_list[[i]][["distribution"]] == "invgamma"){
-      temp_summary <- temp_summary[rownames(temp_summary) != paste0("inv_",names(prior_list)[i]),,drop=FALSE]
+      parameters_keep[parameter_names == paste0("inv_",names(prior_list)[i])] <- FALSE
     }
   }
 
   # remove indicators/inclusions
-  temp_summary <- temp_summary[!grepl("_indicator", rownames(temp_summary)),,drop=FALSE]
-  temp_summary <- temp_summary[!grepl("_inclusion", rownames(temp_summary)),,drop=FALSE]
+  parameters_keep[grepl("_indicator", parameter_names)] <- FALSE
+  parameters_keep[grepl("_inclusion", parameter_names)] <- FALSE
 
-  # check the convergence
+  # remove parameters that are not monitored
+  for(i in seq_along(mcmc_samples)){
+    mcmc_samples[[i]] <- mcmc_samples[[i]][,parameters_keep,drop=FALSE]
+  }
+
+  ### check the convergence
+  fails <- NULL
+
+  # assess R-hat
   if(!is.null(max_Rhat)){
-    temp_Rhat <- max(ifelse(is.na(temp_summary[, "psrf"]), 1, temp_summary[, "psrf"]))
+    temp_Rhat <- max(coda::gelman.diag(mcmc_samples, multivariate = FALSE, autoburnin = FALSE)$psrf)
     if(temp_Rhat > max_Rhat){
       fails <- c(fails, paste0("R-hat ", round(temp_Rhat, 3), " is larger than the set target (", max_Rhat, ")."))
+      if(fail_fast){
+        return(FALSE)
+      }
     }
   }
 
   if(!is.null(min_ESS)){
-    temp_ESS <- min(ifelse(is.na(temp_summary[, "SSeff"]), Inf, temp_summary[, "SSeff"]))
+    temp_ESS <- min(coda::effectiveSize(mcmc_samples))
     if(temp_ESS < min_ESS){
       fails <- c(fails, paste0("ESS ", round(temp_ESS), " is lower than the set target (", min_ESS, ")."))
+      if(fail_fast){
+        return(FALSE)
+      }
     }
   }
 
+  # compute the MCMC error and & SD error
+  if(!(is.null(max_error) && is.null(max_SD_error))){
+    temp_summary <- summary(mcmc_samples, quantiles = NULL)$statistics
+    if(is.null(dim(temp_summary))){
+      temp_summary <- t(temp_summary)
+    }
+  }
+
+
   if(!is.null(max_error)){
-    temp_error    <- max(ifelse(is.na(temp_summary[, "MCerr"]), 0, temp_summary[, "MCerr"]))
+    temp_error    <- max(temp_summary[,"Time-series SE"])
     if(temp_error > max_error){
       fails <- c(fails, paste0("MCMC error ", round(temp_error, 5), " is larger than the set target (", max_error, ")."))
+      if(fail_fast){
+        return(FALSE)
+      }
     }
   }
 
   if(!is.null(max_SD_error)){
-    temp_error_SD <- max(ifelse(is.na(temp_summary[, "MC%ofSD"]),   0, temp_summary[, "MC%ofSD"]))
-    if(temp_error_SD/100 > max_SD_error){
-      fails <- c(fails, paste0("MCMC SD error ", round(temp_error_SD/100, 4), " is larger than the set target (", max_SD_error, ")."))
+    temp_error_SD <- temp_summary[,"Time-series SE"] / temp_summary[,"SD"]
+    temp_error_SD[is.na(temp_error_SD)] <- 0
+    temp_error_SD <- max(temp_error_SD)
+    if(temp_error_SD > max_SD_error){
+      fails <- c(fails, paste0("MCMC SD error ", round(temp_error_SD, 3), " is larger than the set target (", max_SD_error, ")."))
+      if(fail_fast){
+        return(FALSE)
+      }
     }
   }
 
@@ -1405,10 +1427,10 @@ JAGS_to_monitor             <- function(prior_list){
   names(prior_inclusion) <- paste0(parameter_name, "_inclusion")
 
   monitor <- c(
-    parameter_name,
-    JAGS_to_monitor(prior_variable),
+    paste0(parameter_name, "_indicator"),
     JAGS_to_monitor(prior_inclusion),
-    paste0(parameter_name, "_indicator")
+    parameter_name,
+    JAGS_to_monitor(prior_variable)
   )
 
   return(monitor)

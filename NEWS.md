@@ -2,6 +2,7 @@
 ### Features
 - adding `prior_mixture()` function for creating a mixture of prior distributions
 - adding `as_mixed_posteriors()` and `as_marginal_inference()` functions for a single JAGS models (with spike and slab or mixture priors) to enabling tables and figures based on the corresponding output
+- speedup and improvements to the `runjags_estimates_table()` function
 
 ### Fixes
 - small fixes for expansion of the RoBMA functionality

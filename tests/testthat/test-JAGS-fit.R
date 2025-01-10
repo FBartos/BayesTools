@@ -543,10 +543,10 @@ test_that("JAGS fit function works" , {
 
   convergence <- JAGS_check_convergence(fit4, prior_list = priors_list4, max_Rhat = 1.001, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05)
   expect_true(!convergence)
-  expect_equal(attr(convergence, "errors")[1], "R-hat 1.007 is larger than the set target (1.001).")
+  expect_equal(attr(convergence, "errors")[1], "R-hat 1.053 is larger than the set target (1.001).")
   expect_equal(attr(convergence, "errors")[2], "ESS 149 is lower than the set target (500).")
-  expect_equal(attr(convergence, "errors")[3], "MCMC error 0.0698 is larger than the set target (0.01).")
-  expect_equal(attr(convergence, "errors")[4], "MCMC SD error 0.082 is larger than the set target (0.05).")
+  expect_equal(attr(convergence, "errors")[3], "MCMC error 0.07422 is larger than the set target (0.01).")
+  expect_equal(attr(convergence, "errors")[4], "MCMC SD error 0.087 is larger than the set target (0.05).")
 
   fit4b <- JAGS_fit(model_syntax4, data4, priors_list4, autofit = TRUE, autofit_control = list(max_error = 0.05, sample_extend = 100),
                     chains = 2, adapt = 100, burnin = 50, sample = 100, seed = 4)

@@ -56,7 +56,7 @@ test_that("Summary tables functions work",{
   runjags_summary <- models[[2]]$fit_summary
   expect_equal(colnames(runjags_summary), c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
   expect_equal(rownames(runjags_summary), c("m", "omega[0,0.05]", "omega[0.05,1]"))
-  expect_equal(unname(unlist(runjags_summary[1,])), c(0.155080816, 0.197817354, -0.247495448, 0.167295089, 0.496803251, 0.009208408, 0.047000000, 461.000000000, NA), tolerance = 1e-4)
+  expect_equal(unname(unlist(runjags_summary[1,])), c(0.155080816, 0.197817354, -0.247495448, 0.167295089, 0.496803251, 0.009208408, 0.0466 , 461.4872, NA), tolerance = 1e-4)
 
   # ensemble estimates
   estimates_table <- ensemble_estimates_table(mixed_posteriors, parameters = c("m", "omega"), probs = c(.025, 0.95))
@@ -92,7 +92,7 @@ test_that("Summary tables functions work",{
   expect_equal(unname(as.vector(diagnostics_table[,3])), c("", "omega[one-sided: .05] ~ CumDirichlet(1, 1)", "omega[one-sided: .5, .05] ~ CumDirichlet(1, 1, 1)"))
   expect_equal(unname(as.vector(diagnostics_table[,4])), c(0.01019039, 0.01348211, 0.01061287), tolerance = 1e-4)
   expect_equal(unname(as.vector(diagnostics_table[,5])), c(0.048, 0.047, 0.045), tolerance = 1e-3)
-  expect_equal(unname(as.vector(diagnostics_table[,6])), c(434, 461, 500))
+  expect_equal(unname(as.vector(diagnostics_table[,6])), c(434, 461, 500), tolerance = 1e-3)
   expect_equal(unname(as.vector(diagnostics_table[,7])), c(NA, NA, NA))
 
 
@@ -475,26 +475,26 @@ test_that("Summary tables functions work (formulas + factors)",{
   expect_equal(unname(as.vector(diagnostics_table[,4])), c("", "", "", "orthonormal contrast: mNormal(0, 1)"))
   expect_equal(unname(as.vector(diagnostics_table[,5])), c(0.003223670, 0.004142589, 0.001676136, 0.001959310), tolerance = 1e-3)
   expect_equal(unname(as.vector(diagnostics_table[,6])), c(0.013, 0.017, 0.011, 0.011), tolerance = 1e-3)
-  expect_equal(unname(as.vector(diagnostics_table[,7])), c(5559, 3526, 8660, 7969))
+  expect_equal(unname(as.vector(diagnostics_table[,7])), c(5559, 3526, 8660, 7969), tolerance = 1e-3)
   expect_equal(unname(as.vector(diagnostics_table[,8])), c(1.001154, 1.000955, 1.000125, 1.000658), tolerance = 1e-3)
 
 
   ### test additional settings
   # transformations of orthonormal contrast to differences from the mean
-  runjags_summary_t <- runjags_estimates_table(fit3, transform_factors = TRUE)
+  runjags_summary_t <- suppressMessages(runjags_estimates_table(fit3, transform_factors = TRUE))
   expect_equal(colnames(runjags_summary_t), c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
   expect_equal(rownames(runjags_summary_t), c("(mu) intercept","(mu) x_cont1","(mu) x_fac3o [dif: A]","(mu) x_fac3o [dif: B]","(mu) x_fac3o [dif: C]", "(mu) x_cont1:x_fac3o [dif: A]", "(mu) x_cont1:x_fac3o [dif: B]", "(mu) x_cont1:x_fac3o [dif: C]", "sigma" ))
   expect_equal(capture_output_lines(runjags_summary_t, print = TRUE, width = 150),
                c("                                Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
                  "(mu) intercept                 0.188 0.121 -0.051  0.188 0.429     0.00099          0.008 14975 1.000",
                  "(mu) x_cont1                   0.324 0.140  0.047  0.324 0.597     0.00112          0.008 15680 1.000",
-                 "(mu) x_fac3o [dif: A]         -0.010 0.168 -0.337 -0.011 0.321     0.00132          0.008 15278    NA",
-                 "(mu) x_fac3o [dif: B]         -0.064 0.170 -0.397 -0.064 0.270     0.00134          0.008 15081    NA",
-                 "(mu) x_fac3o [dif: C]          0.074 0.167 -0.251  0.072 0.404     0.00132          0.008 15630    NA",
-                 "(mu) x_cont1:x_fac3o [dif: A] -0.283 0.197 -0.668 -0.283 0.105     0.00156          0.008 15581    NA",
-                 "(mu) x_cont1:x_fac3o [dif: B]  0.164 0.194 -0.221  0.164 0.539     0.00153          0.008 14954    NA",
-                 "(mu) x_cont1:x_fac3o [dif: C]  0.119 0.202 -0.275  0.118 0.521     0.00160          0.008 15372    NA",
-                 "sigma                          0.925 0.090  0.770  0.918 1.119     0.00100          0.011  7969 1.001"
+                 "(mu) x_fac3o [dif: A]         -0.010 0.168 -0.337 -0.011 0.321     0.00134          0.008 15720 1.000",
+                 "(mu) x_fac3o [dif: B]         -0.064 0.170 -0.397 -0.064 0.270     0.00139          0.008 14958 1.000",
+                 "(mu) x_fac3o [dif: C]          0.074 0.167 -0.251  0.072 0.404     0.00133          0.008 15737 1.000",
+                 "(mu) x_cont1:x_fac3o [dif: A] -0.283 0.197 -0.668 -0.283 0.105     0.00158          0.008 15659 1.000",
+                 "(mu) x_cont1:x_fac3o [dif: B]  0.164 0.194 -0.221  0.164 0.539     0.00160          0.008 14777 1.000",
+                 "(mu) x_cont1:x_fac3o [dif: C]  0.119 0.202 -0.275  0.118 0.521     0.00161          0.008 15778 1.000",
+                 "sigma                          0.925 0.090  0.770  0.918 1.119     0.00101          0.011  7969 1.001"
                ))
 
 
@@ -512,12 +512,12 @@ test_that("Summary tables functions work (formulas + factors)",{
                  "(mu) x_cont1:x_fac3o [dif: C]  0.005  0.000  0.000 0.000"
                ))
   # transform estimates
-  runjags_summary_t2 <- runjags_estimates_table(fit1, transform_factors = FALSE, transformations = list("mu_x_fac2t" = list(fun = exp)))
+  runjags_summary_t2 <- suppressMessages(runjags_estimates_table(fit1, transform_factors = FALSE, transformations = list("mu_x_fac2t" = list(fun = exp))))
   expect_equal(capture_output_lines(runjags_summary_t2, print = TRUE, width = 150),
                c("                 Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
                  "(mu) intercept  0.145 0.200 -0.245  0.144 0.541     0.00338          0.017  3526 1.001",
                  "(mu) x_cont1    0.327 0.139  0.052  0.327 0.602     0.00111          0.008 15725 1.000",
-                 "(mu) x_fac3t[B] 0.006 0.281 -0.550  0.011 0.550     0.00414          0.015  4596 1.001",
+                 "(mu) x_fac3t[B] 0.006 0.281 -0.550  0.011 0.550     0.00415          0.015  4596 1.001",
                  "(mu) x_fac3t[C] 0.118 0.277 -0.433  0.120 0.656     0.00407          0.015  4630 1.001",
                  "sigma           0.926 0.089  0.774  0.918 1.117     0.00099          0.011  8016 1.000"
                ))
@@ -541,7 +541,7 @@ test_that("Summary tables functions work (formulas + factors)",{
                  "(mu) x_fac3o[2]         -0.012 0.205 -0.412 -0.013 0.393     0.00164          0.008 15720 1.000",
                  "(mu) x_cont1:x_fac3o[1] -0.032 0.243 -0.507 -0.033 0.448     0.00196          0.008 15383 1.000",
                  "(mu) x_cont1:x_fac3o[2] -0.347 0.242 -0.818 -0.347 0.128     0.00193          0.008 15659 1.000",
-                 "sigma                    0.925 0.090  0.770  0.918 1.119     0.00100          0.011  7969 1.001"
+                 "sigma                    0.925 0.090  0.770  0.918 1.119     0.00101          0.011  7969 1.001"
 
                ))
   expect_equal(capture_output_lines(estimates_table,   print = TRUE, width = 150),
@@ -571,8 +571,8 @@ test_that("Summary tables functions work (formulas + factors)",{
                ))
   expect_equal(capture_output_lines(diagnostics_table, print = TRUE, width = 180),
                c(" Model Prior (mu) x_cont1          Prior (mu) x_fac3o              Prior (mu) x_cont1:x_fac3o     max[error(MCMC)] max[error(MCMC)/SD] min(ESS) max(R-hat)",
-                 "     1                                                                                                     0.00322               0.013     5559      1.001",
-                 "     2       Normal(0, 1)                                                                                  0.00414               0.017     3526      1.001",
+                 "     1                                                                                                     0.00323               0.013     5559      1.001",
+                 "     2       Normal(0, 1)                                                                                  0.00415               0.017     3526      1.001",
                  "     3                    orthonormal contrast: mNormal(0, 1)                                              0.00168               0.011     8660      1.000",
                  "     4       Normal(0, 1) orthonormal contrast: mNormal(0, 1) orthonormal contrast: mNormal(0, 1)          0.00196               0.011     7969      1.001"
                ))
@@ -710,7 +710,7 @@ test_that("Summary tables functions work (indepdent factors)",{
   expect_equal(unname(as.vector(diagnostics_table[,2])), c("independent contrast: Spike(0)","independent contrast: Normal(0, 0.25)"))
   expect_equal(unname(as.vector(diagnostics_table[,3])), c(0.0008277888, 0.0010673515), tolerance = 1e-3)
   expect_equal(unname(as.vector(diagnostics_table[,4])), c(0.010, 0.011), tolerance = 1e-3)
-  expect_equal(unname(as.vector(diagnostics_table[,5])), c(9564, 8145))
+  expect_equal(unname(as.vector(diagnostics_table[,5])), c(9564, 8145), tolerance = 1e-3)
 
 })
 
@@ -813,7 +813,7 @@ test_that("Summary tables functions work (meandif factors)",{
   expect_equal(unname(unlist(runjags_summary[1,])), c(2.616574e-02,8.256672e-02,-1.369357e-01,2.621934e-02,1.851191e-01,6.471943e-04,8.000000e-03,1.627600e+04,9.999001e-01), tolerance = 1e-3)
 
   # ensemble estimates
-  estimates_table <- ensemble_estimates_table(mixed_posteriors, parameters = c("mu_x_fac3"), probs = c(.025, 0.95), transform_factors = TRUE)
+  estimates_table <- suppressMessages(ensemble_estimates_table(mixed_posteriors, parameters = c("mu_x_fac3"), probs = c(.025, 0.95), transform_factors = TRUE))
   expect_equal(colnames(estimates_table), c("Mean", "Median", "0.025",  "0.95"))
   expect_equal(rownames(estimates_table), c("(mu) x_fac3 [dif: A]", "(mu) x_fac3 [dif: B]", "(mu) x_fac3 [dif: C]"))
   expect_equal(unname(unlist(estimates_table[1,])), c(-0.2074503, -0.2206674, -0.4204564,  0.0000000), tolerance = 1e-3)
@@ -846,7 +846,7 @@ test_that("Summary tables functions work (meandif factors)",{
   expect_equal(unname(as.vector(diagnostics_table[,2])), c("", "mean difference contrast: mNormal(0, 0.2)"))
   expect_equal(unname(as.vector(diagnostics_table[,3])), c(0.0006707336, 0.0007978420), tolerance = 1e-3)
   expect_equal(unname(as.vector(diagnostics_table[,4])), c(0.01, 0.01), tolerance = 1e-3)
-  expect_equal(unname(as.vector(diagnostics_table[,5])), c(9676, 9871))
+  expect_equal(unname(as.vector(diagnostics_table[,5])), c(9676, 9871), tolerance = 1e-3)
 
 })
 
@@ -922,19 +922,45 @@ test_that("Summary tables functions work (spike and slab priors)",{
   expect_equal(model_summary[,4], c("Parameter prior distributions", "(mu) intercept ~ Normal(0, 5)", "(mu) x_cont1 ~ Normal(0, 0.5) * Beta(1, 1)", "(mu) x_fac2t ~ treatment contrast: Normal(0, 1) * Beta(1, 1)", "(mu) x_fac3o ~ orthonormal contrast: mNormal(0, 1) * Spike(0.5)", "sigma ~ Lognormal(0, 1)"))
 
   model_estimates <- runjags_estimates_table(fit0)
-  expect_equal(colnames(model_estimates), c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
-  expect_equal(rownames(model_estimates), c("(mu) intercept", "(mu) x_cont1", "(mu) x_cont1 (inclusion)", "(mu) x_fac2t[B]", "(mu) x_fac2t (inclusion)", "(mu) x_fac3o[1]", "(mu) x_fac3o[2]", "(mu) x_fac3o (inclusion)", "sigma"))
-  expect_equal(unname(unlist(model_estimates[7,])), c(-1.776437e-03, 4.269207e-02, 0.000000e+00, 0.000000e+00, 0.000000e+00, 3.428435e-04, 8.000000e-03, 1.550600e+04, 1.001065e+00), tolerance = 1e-3)
+  testthat::expect_equal(capture_output_lines(print(model_estimates), width = 150), c(
+                         "                           Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
+                         "(mu) intercept            0.194 0.132 -0.072  0.195 0.456     0.00132          0.010 10084 1.000",
+                         "(mu) x_cont1 (inclusion)  0.780    NA     NA     NA    NA          NA             NA    NA    NA",
+                         "(mu) x_cont1              0.237 0.174  0.000  0.256 0.555     0.00230          0.013  5720 1.000",
+                         "(mu) x_fac2t (inclusion)  0.186    NA     NA     NA    NA          NA             NA    NA    NA",
+                         "(mu) x_fac2t[B]           0.006 0.105 -0.233  0.000 0.299     0.00123          0.012  7310 1.002",
+                         "(mu) x_fac3o (inclusion)  0.040    NA     NA     NA    NA          NA             NA    NA    NA",
+                         "(mu) x_fac3o[1]           0.003 0.043  0.000  0.000 0.003     0.00034          0.008 15764 1.001",
+                         "(mu) x_fac3o[2]          -0.002 0.043  0.000  0.000 0.000     0.00035          0.008 15506 1.001",
+                         "sigma                     0.922 0.088  0.772  0.915 1.113     0.00095          0.011  8458 1.000"
+  ))
 
-  model_estimates <- runjags_estimates_table(fit0, transform_factors = TRUE, conditional = TRUE)
-  expect_equal(colnames(model_estimates), c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
-  expect_equal(rownames(model_estimates), c("(mu) intercept", "(mu) x_cont1", "(mu) x_cont1 (inclusion)", "(mu) x_fac2t[B]", "(mu) x_fac2t (inclusion)", "(mu) x_fac3o [dif: A]", "(mu) x_fac3o [dif: B]", "(mu) x_fac3o [dif: C]", "(mu) x_fac3o (inclusion)", "sigma"))
-  expect_equal(unname(unlist(model_estimates[8,])), c(0.0626582174, 0.1661778973, -0.2621073424, 0.0591205499, 0.3954805352,  6.57e-03, 3.96e-02, 6.39e+02, NA), tolerance = 1e-3)
+  model_estimates <- suppressMessages(runjags_estimates_table(fit0, transform_factors = TRUE, conditional = TRUE))
+  testthat::expect_equal(capture_output_lines(print(model_estimates), width = 150), c(
+    "                           Mean    SD    lCI Median   uCI",
+    "(mu) intercept            0.194 0.132 -0.072  0.195 0.456",
+    "(mu) x_cont1 (inclusion)  0.780    NA     NA     NA    NA",
+    "(mu) x_cont1              0.304 0.136  0.033  0.306 0.568",
+    "(mu) x_fac2t (inclusion)  0.186    NA     NA     NA    NA",
+    "(mu) x_fac2t[B]           0.033 0.241 -0.435  0.031 0.507",
+    "(mu) x_fac3o (inclusion)  0.040    NA     NA     NA    NA",
+    "(mu) x_fac3o [dif: A]    -0.036 0.171 -0.359 -0.043 0.316",
+    "(mu) x_fac3o [dif: B]    -0.026 0.173 -0.367 -0.026 0.296",
+    "(mu) x_fac3o [dif: C]     0.063 0.166 -0.262  0.059 0.395",
+    "sigma                     0.922 0.088  0.772  0.915 1.113"
+  ))
 
-  model_estimates <- runjags_estimates_table(fit0, transform_factors = TRUE, conditional = TRUE, remove_inclusion = TRUE)
-  expect_equal(colnames(model_estimates), c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
-  expect_equal(rownames(model_estimates), c("(mu) intercept", "(mu) x_cont1", "(mu) x_fac2t[B]", "(mu) x_fac3o [dif: A]", "(mu) x_fac3o [dif: B]", "(mu) x_fac3o [dif: C]", "sigma"))
-  expect_equal(unname(unlist(model_estimates[2,])), c(3.040927e-01, 1.355633e-01, 3.256895e-02, 3.058346e-01, 5.678668e-01, 1.21e-03, 8.95e-03, 12477, NA), tolerance = 1e-3)
+  model_estimates <- suppressMessages(runjags_estimates_table(fit0, transform_factors = TRUE, conditional = TRUE, remove_inclusion = TRUE))
+  testthat::expect_equal(capture_output_lines(print(model_estimates), width = 150), c(
+    "                        Mean    SD    lCI Median   uCI",
+    "(mu) intercept         0.194 0.132 -0.072  0.195 0.456",
+    "(mu) x_cont1           0.304 0.136  0.033  0.306 0.568",
+    "(mu) x_fac2t[B]        0.033 0.241 -0.435  0.031 0.507",
+    "(mu) x_fac3o [dif: A] -0.036 0.171 -0.359 -0.043 0.316",
+    "(mu) x_fac3o [dif: B] -0.026 0.173 -0.367 -0.026 0.296",
+    "(mu) x_fac3o [dif: C]  0.063 0.166 -0.262  0.059 0.395",
+    "sigma                  0.922 0.088  0.772  0.915 1.113"
+  ))
 
   model_inference <- runjags_inference_table(fit0)
   expect_equal(colnames(model_inference), c("prior_prob", "post_prob", "inclusion_BF"))
@@ -1048,8 +1074,8 @@ test_that("Summary tables functions work (spike factors)",{
 
   # mix posteriors
   models <- list(
-    list(fit = fit0, marglik = marglik0, fit_summary = runjags_estimates_table(fit0, remove_spike_0 = FALSE, transform_factors = TRUE), prior_weights = 1),
-    list(fit = fit1, marglik = marglik1, fit_summary = runjags_estimates_table(fit1, remove_spike_0 = FALSE, transform_factors = TRUE), prior_weights = 1)
+    list(fit = fit0, marglik = marglik0, fit_summary = suppressMessages(runjags_estimates_table(fit0, remove_spike_0 = FALSE, transform_factors = TRUE)), prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, fit_summary = suppressMessages(runjags_estimates_table(fit1, remove_spike_0 = FALSE, transform_factors = TRUE)), prior_weights = 1)
   )
   models <- models_inference(models)
 
@@ -1116,7 +1142,7 @@ test_that("Summary tables functions work (spike factors)",{
   expect_equal(unname(as.vector(diagnostics_table[,2])), c("mean difference contrast: mSpike(0)", "mean difference contrast: mNormal(0, 0.25)"))
   expect_equal(unname(as.vector(diagnostics_table[,3])), c(0.0004365069, 0.0006020573), tolerance = 1e-3)
   expect_equal(unname(as.vector(diagnostics_table[,4])), c(0.01, 0.01), tolerance = 1e-3)
-  expect_equal(unname(as.vector(diagnostics_table[,5])), c(0, 10554))
+  expect_equal(unname(as.vector(diagnostics_table[,5])), c(0, 10554), tolerance = 1e-3)
 
 })
 
@@ -1197,8 +1223,7 @@ test_that("Summary tables functions work (mixture priors)",{
 
   fit1 <- JAGS_fit(
     model_syntax = model_syntax1, data = data, prior_list = prior_list1,
-    formula_list = formula_list1, formula_data_list = formula_data_list1, formula_prior_list = formula_prior_list1,
-    store_runjags_summary = TRUE)
+    formula_list = formula_list1, formula_data_list = formula_data_list1, formula_prior_list = formula_prior_list1)
 
   # bridge sampling cannot be computer for spike and slab priors - using a dummy value for marglik
   marglik1 <- list(logml = 0)
@@ -1226,62 +1251,62 @@ test_that("Summary tables functions work (mixture priors)",{
   model_estimates <- runjags_estimates_table(fit1)
   expect_equal(capture_output_lines(print(model_estimates), width = 150),  c(
     "                               Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
-    "(mu) intercept (inclusion)    0.596 0.491  0.000  1.000 1.000     0.00388          0.008   842    NA",
-    "(mu) intercept               -0.087 0.080 -0.226 -0.098 0.000     0.00245          0.031  1067 1.002",
-    "(mu) x_cont1 (inclusion)      0.999 0.034  1.000  1.000 1.000     0.00027          0.008  2047    NA",
-    "(mu) x_cont1                  0.279 0.063  0.154  0.280 0.401     0.00060          0.010 11015 1.000",
-    "(mu) x_fac3t[1]               0.252 0.128  0.000  0.277 0.448     0.00417          0.033   939 1.016",
+    "(mu) intercept (inclusion)    0.596    NA     NA     NA    NA          NA             NA    NA    NA",
+    "(mu) intercept               -0.087 0.080 -0.226 -0.098 0.000     0.00246          0.031  1067 1.002",
+    "(mu) x_cont1 (inclusion)      0.999    NA     NA     NA    NA          NA             NA    NA    NA",
+    "(mu) x_cont1                  0.279 0.063  0.154  0.280 0.401     0.00063          0.010 11015 1.000",
+    "(mu) x_fac3t (inclusion)      0.855    NA     NA     NA    NA          NA             NA    NA    NA",
+    "(mu) x_fac3t[1]               0.252 0.128  0.000  0.277 0.448     0.00467          0.037   939 1.016",
     "(mu) x_fac3t[2]              -0.012 0.074 -0.167  0.000 0.137     0.00057          0.008 17039 1.001",
-    "(mu) x_fac3t (inclusion)      0.500 0.000  0.500  0.500 0.500          NA             NA    NA    NA",
-    "sigma (inclusion: normal)     0.510 0.500  0.000  1.000 1.000     0.00395          0.008   492    NA",
-    "sigma (inclusion: lognormal)  0.490 0.500  0.000  0.000 1.000     0.00395          0.008   492    NA",
+    "sigma (inclusion: normal)     0.510    NA     NA     NA    NA          NA             NA    NA    NA",
+    "sigma (inclusion: lognormal)  0.490    NA     NA     NA    NA          NA             NA    NA    NA",
     "sigma                         0.803 0.034  0.740  0.802 0.874     0.00039          0.011  7753 1.000",
-    "bias (inclusion)              0.497 0.500  0.000  0.000 1.000     0.00395          0.008 16428    NA",
-    "PET                           0.130 0.377  0.000  0.000 1.410     0.00291          0.008 16826 1.000",
+    "bias (inclusion)              0.497    NA     NA     NA    NA          NA             NA    NA    NA",
+    "PET                           0.130 0.377  0.000  0.000 1.410     0.00292          0.008 16826 1.000",
     "omega[0,0.025]                1.000 0.000  1.000  1.000 1.000          NA             NA    NA    NA",
     "omega[0.025,0.05]             0.865 0.248  0.139  1.000 1.000     0.00196          0.008 16000 1.000",
     "omega[0.05,0.975]             0.809 0.316  0.053  1.000 1.000     0.00247          0.008 16361 1.000",
-    "omega[0.975,1]                0.889 0.267  0.076  1.000 1.000     0.00210          0.008 16128 1.000"
+    "omega[0.975,1]                0.889 0.267  0.076  1.000 1.000     0.00211          0.008 16128 1.000"
   ))
 
-  model_estimates <- runjags_estimates_table(fit1, transform_factors = TRUE, conditional = TRUE)
+  model_estimates <- suppressMessages(runjags_estimates_table(fit1, transform_factors = TRUE, conditional = TRUE))
   expect_equal(capture_output_lines(print(model_estimates), width = 150),  c(
-    "                               Mean    SD    lCI Median    uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
-    "(mu) intercept (inclusion)    0.596 0.491  0.000  1.000  1.000     0.00388          0.008   842    NA",
-    "(mu) intercept               -0.145 0.047 -0.238 -0.146 -0.052     0.00048          0.010  7449    NA",
-    "(mu) x_cont1 (inclusion)      0.999 0.034  1.000  1.000  1.000     0.00027          0.008  2047    NA",
-    "(mu) x_cont1                  0.279 0.062  0.155  0.280  0.401     0.00049          0.008  9300    NA",
-    "(mu) x_fac3t [dif: A]        -0.012 0.066 -0.141 -0.012  0.116     0.00056          0.009 13679    NA",
-    "(mu) x_fac3t [dif: B]        -0.203 0.066 -0.333 -0.202 -0.074     0.00057          0.009 15408    NA",
-    "(mu) x_fac3t [dif: C]         0.214 0.065  0.088  0.214  0.341     0.00056          0.009 13346    NA",
-    "(mu) x_fac3t (inclusion)      0.500 0.000  0.500  0.500  0.500          NA             NA    NA    NA",
-    "sigma (inclusion: normal)     0.510 0.500  0.000  1.000  1.000     0.00395          0.008   492    NA",
-    "sigma (inclusion: lognormal)  0.490 0.500  0.000  0.000  1.000     0.00395          0.008   492    NA",
-    "sigma[normal]                 0.804 0.034  0.740  0.802  0.872     0.00038          0.011  4877    NA",
-    "sigma[lognormal]              0.803 0.034  0.740  0.802  0.875     0.00039          0.011  3886    NA",
-    "bias (inclusion)              0.497 0.500  0.000  0.000  1.000     0.00395          0.008 16428    NA",
-    "PET                           0.780 0.589  0.031  0.656  2.113     0.01140          0.019  2671    NA",
-    "omega[0,0.025]                1.000 0.000  1.000  1.000  1.000          NA             NA    NA    NA",
-    "omega[0.025,0.05]             0.592 0.275  0.048  0.627  0.984     0.00378          0.014  5711    NA",
-    "omega[0.05,0.975]             0.421 0.279  0.017  0.386  0.953     0.00384          0.014  5284    NA",
-    "omega[0.975,1]                0.663 0.374  0.027  0.916  1.000     0.00514          0.014  5284    NA"
+    "                               Mean    SD    lCI Median    uCI",
+    "(mu) intercept (inclusion)    0.596    NA     NA     NA     NA",
+    "(mu) intercept               -0.145 0.047 -0.238 -0.146 -0.052",
+    "(mu) x_cont1 (inclusion)      0.999    NA     NA     NA     NA",
+    "(mu) x_cont1                  0.279 0.062  0.155  0.280  0.401",
+    "(mu) x_fac3t (inclusion)      0.855    NA     NA     NA     NA",
+    "(mu) x_fac3t [dif: A]        -0.012 0.066 -0.141 -0.012  0.116",
+    "(mu) x_fac3t [dif: B]        -0.203 0.066 -0.333 -0.202 -0.074",
+    "(mu) x_fac3t [dif: C]         0.214 0.065  0.088  0.214  0.341",
+    "sigma (inclusion: normal)     0.510    NA     NA     NA     NA",
+    "sigma (inclusion: lognormal)  0.490    NA     NA     NA     NA",
+    "sigma[normal]                 0.804 0.034  0.740  0.802  0.872",
+    "sigma[lognormal]              0.803 0.034  0.740  0.802  0.875",
+    "bias (inclusion)              0.497    NA     NA     NA     NA",
+    "PET                           0.780 0.589  0.031  0.656  2.113",
+    "omega[0,0.025]                1.000 0.000  1.000  1.000  1.000",
+    "omega[0.025,0.05]             0.592 0.275  0.048  0.627  0.984",
+    "omega[0.05,0.975]             0.421 0.279  0.017  0.386  0.953",
+    "omega[0.975,1]                0.663 0.374  0.027  0.916  1.000"
   ))
 
   model_estimates <- runjags_estimates_table(fit1, transform_factors = TRUE, conditional = TRUE, remove_inclusion = TRUE)
   expect_equal(capture_output_lines(print(model_estimates), width = 150),  c(
-    "                        Mean    SD    lCI Median    uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
-    "(mu) intercept        -0.145 0.047 -0.238 -0.146 -0.052     0.00048          0.010  7449    NA",
-    "(mu) x_cont1           0.279 0.062  0.155  0.280  0.401     0.00049          0.008  9300    NA",
-    "(mu) x_fac3t [dif: A] -0.012 0.066 -0.141 -0.012  0.116     0.00056          0.009 13679    NA",
-    "(mu) x_fac3t [dif: B] -0.203 0.066 -0.333 -0.202 -0.074     0.00057          0.009 15408    NA",
-    "(mu) x_fac3t [dif: C]  0.214 0.065  0.088  0.214  0.341     0.00056          0.009 13346    NA",
-    "sigma[normal]          0.804 0.034  0.740  0.802  0.872     0.00038          0.011  4877    NA",
-    "sigma[lognormal]       0.803 0.034  0.740  0.802  0.875     0.00039          0.011  3886    NA",
-    "PET                    0.780 0.589  0.031  0.656  2.113     0.01140          0.019  2671    NA",
-    "omega[0,0.025]         1.000 0.000  1.000  1.000  1.000          NA             NA    NA    NA",
-    "omega[0.025,0.05]      0.592 0.275  0.048  0.627  0.984     0.00378          0.014  5711    NA",
-    "omega[0.05,0.975]      0.421 0.279  0.017  0.386  0.953     0.00384          0.014  5284    NA",
-    "omega[0.975,1]         0.663 0.374  0.027  0.916  1.000     0.00514          0.014  5284    NA"
+    "                        Mean    SD    lCI Median    uCI",
+    "(mu) intercept        -0.145 0.047 -0.238 -0.146 -0.052",
+    "(mu) x_cont1           0.279 0.062  0.155  0.280  0.401",
+    "(mu) x_fac3t [dif: A] -0.012 0.066 -0.141 -0.012  0.116",
+    "(mu) x_fac3t [dif: B] -0.203 0.066 -0.333 -0.202 -0.074",
+    "(mu) x_fac3t [dif: C]  0.214 0.065  0.088  0.214  0.341",
+    "sigma[normal]          0.804 0.034  0.740  0.802  0.872",
+    "sigma[lognormal]       0.803 0.034  0.740  0.802  0.875",
+    "PET                    0.780 0.589  0.031  0.656  2.113",
+    "omega[0,0.025]         1.000 0.000  1.000  1.000  1.000",
+    "omega[0.025,0.05]      0.592 0.275  0.048  0.627  0.984",
+    "omega[0.05,0.975]      0.421 0.279  0.017  0.386  0.953",
+    "omega[0.975,1]         0.663 0.374  0.027  0.916  1.000"
   ))
 
   model_estimates <- runjags_estimates_table(fit1, transformations = list(
@@ -1292,22 +1317,22 @@ test_that("Summary tables functions work (mixture priors)",{
   ))
   expect_equal(capture_output_lines(print(model_estimates), width = 150),  c(
     "                               Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
-    "(mu) intercept (inclusion)    0.596 0.491  0.000  1.000 1.000     0.00388          0.008   842    NA",
-    "(mu) intercept                0.920 0.073  0.798  0.907 1.000     0.00058          0.008  1001    NA",
-    "(mu) x_cont1 (inclusion)      0.999 0.034  1.000  1.000 1.000     0.00027          0.008  2047    NA",
-    "(mu) x_cont1                  1.324 0.083  1.166  1.323 1.494     0.00066          0.008  8502    NA",
-    "(mu) x_fac3t[1]               0.252 0.128  0.000  0.277 0.448     0.00417          0.033   939 1.016",
+    "(mu) intercept (inclusion)    0.596    NA     NA     NA    NA          NA             NA    NA    NA",
+    "(mu) intercept                0.920 0.073  0.798  0.907 1.000     0.00225          0.031  1061 1.002",
+    "(mu) x_cont1 (inclusion)      0.999    NA     NA     NA    NA          NA             NA    NA    NA",
+    "(mu) x_cont1                  1.324 0.083  1.166  1.323 1.494     0.00081          0.010 11242 1.000",
+    "(mu) x_fac3t (inclusion)      0.855    NA     NA     NA    NA          NA             NA    NA    NA",
+    "(mu) x_fac3t[1]               0.252 0.128  0.000  0.277 0.448     0.00467          0.037   939 1.016",
     "(mu) x_fac3t[2]              -0.012 0.074 -0.167  0.000 0.137     0.00057          0.008 17039 1.001",
-    "(mu) x_fac3t (inclusion)      0.500 0.000  0.500  0.500 0.500          NA             NA    NA    NA",
-    "sigma (inclusion: normal)     0.510 0.500  0.000  1.000 1.000     0.00395          0.008   492    NA",
-    "sigma (inclusion: lognormal)  0.490 0.500  0.000  0.000 1.000     0.00395          0.008   492    NA",
-    "sigma                         2.235 0.077  2.097  2.231 2.395     0.00061          0.008  6161    NA",
-    "bias (inclusion)              0.497 0.500  0.000  0.000 1.000     0.00395          0.008 16428    NA",
-    "PET                           1.288 1.525  1.000  1.000 4.095     0.01206          0.008 16000    NA",
+    "sigma (inclusion: normal)     0.510    NA     NA     NA    NA          NA             NA    NA    NA",
+    "sigma (inclusion: lognormal)  0.490    NA     NA     NA    NA          NA             NA    NA    NA",
+    "sigma                         2.235 0.077  2.097  2.231 2.395     0.00088          0.011  7722 1.000",
+    "bias (inclusion)              0.497    NA     NA     NA    NA          NA             NA    NA    NA",
+    "PET                           1.288 1.525  1.000  1.000 4.095     0.01205          0.008 16030 1.093",
     "omega[0,0.025]                1.000 0.000  1.000  1.000 1.000          NA             NA    NA    NA",
     "omega[0.025,0.05]             0.865 0.248  0.139  1.000 1.000     0.00196          0.008 16000 1.000",
     "omega[0.05,0.975]             0.809 0.316  0.053  1.000 1.000     0.00247          0.008 16361 1.000",
-    "omega[0.975,1]                0.889 0.267  0.076  1.000 1.000     0.00210          0.008 16128 1.000"
+    "omega[0.975,1]                0.889 0.267  0.076  1.000 1.000     0.00211          0.008 16128 1.000"
   ))
 
   model_estimates <- runjags_estimates_table(fit1, conditional = TRUE, remove_inclusion = TRUE, transformations = list(
@@ -1317,18 +1342,18 @@ test_that("Summary tables functions work (mixture priors)",{
     "PET"          = list(fun = exp)
   ))
   expect_equal(capture_output_lines(print(model_estimates), width = 150),  c(
-    "                    Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
-    "(mu) intercept     0.866 0.041  0.788  0.864 0.949     0.00042          0.010  7440    NA",
-    "(mu) x_cont1       1.325 0.083  1.168  1.323 1.494     0.00065          0.008  9338    NA",
-    "(mu) x_fac3t[1]    0.295 0.081  0.138  0.295 0.454     0.00069          0.009 13315    NA",
-    "(mu) x_fac3t[2]   -0.014 0.080 -0.173 -0.015 0.142     0.00069          0.009 13679    NA",
-    "sigma[normal]      2.235 0.077  2.097  2.231 2.392     0.00085          0.011  4848    NA",
-    "sigma[lognormal]   2.234 0.077  2.097  2.231 2.400     0.00087          0.011  3861    NA",
-    "PET                2.726 3.384  1.032  1.927 8.272     0.06547          0.019  2671    NA",
-    "omega[0,0.025]     1.000 0.000  1.000  1.000 1.000          NA             NA    NA    NA",
-    "omega[0.025,0.05]  0.592 0.275  0.048  0.627 0.984     0.00378          0.014  5711    NA",
-    "omega[0.05,0.975]  0.421 0.279  0.017  0.386 0.953     0.00384          0.014  5284    NA",
-    "omega[0.975,1]     0.663 0.374  0.027  0.916 1.000     0.00514          0.014  5284    NA"
+    "                    Mean    SD    lCI Median   uCI",
+    "(mu) intercept     0.866 0.041  0.788  0.864 0.949",
+    "(mu) x_cont1       1.325 0.083  1.168  1.323 1.494",
+    "(mu) x_fac3t[1]    0.295 0.081  0.138  0.295 0.454",
+    "(mu) x_fac3t[2]   -0.014 0.080 -0.173 -0.015 0.142",
+    "sigma[normal]      2.235 0.077  2.097  2.231 2.392",
+    "sigma[lognormal]   2.234 0.077  2.097  2.231 2.400",
+    "PET                2.726 3.384  1.032  1.927 8.272",
+    "omega[0,0.025]     1.000 0.000  1.000  1.000 1.000",
+    "omega[0.025,0.05]  0.592 0.275  0.048  0.627 0.984",
+    "omega[0.05,0.975]  0.421 0.279  0.017  0.386 0.953",
+    "omega[0.975,1]     0.663 0.374  0.027  0.916 1.000"
   ))
 
   model_inference <- runjags_inference_table(fit1)
