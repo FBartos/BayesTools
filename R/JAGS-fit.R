@@ -149,7 +149,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   # parallel vs. not
   if(parallel){
     cl <- parallel::makePSOCKcluster(cores)
-    on.exit(parallel::stopCluster(cl))
+    on.exit(try(parallel::stopCluster(cl)))
     for(i in seq_along(required_packages)){
       parallel::clusterCall(cl, function(x) requireNamespace(required_packages[i]))
     }
@@ -228,11 +228,6 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     }
   }
 
-  # stop cluster manually
-  if(parallel){
-    parallel::stopCluster(cl)
-  }
-
   # add information to the fitted object
   attr(fit, "prior_list")   <- prior_list
   attr(fit, "model_syntax") <- model_syntax
@@ -262,7 +257,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
       cores <- length(fit[["mcmc"]])
     }
     cl <- parallel::makePSOCKcluster(cores)
-    on.exit(parallel::stopCluster(cl))
+    on.exit(try(parallel::stopCluster(cl)))
     for(i in seq_along(required_packages)){
       parallel::clusterCall(cl, function(x) requireNamespace(required_packages[i]))
     }
@@ -320,11 +315,6 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     }
 
     converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], fail_fast = TRUE)
-  }
-
-  # stop cluster manually
-  if(parallel){
-    parallel::stopCluster(cl)
   }
 
   # add information to the fitted object
