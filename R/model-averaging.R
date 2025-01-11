@@ -767,8 +767,11 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     }))
     conditioning_samples <- apply(conditioning_samples, 1, ifelse(conditional_rule == "AND", all, any))
 
-    if(sum(conditioning_samples) == 0)
-      stop("no samples left after conditioning")
+    if(sum(conditioning_samples) == 0){
+      warning("No samples left after conditioning.", call. = FALSE, immediate. = TRUE)
+      return(list())
+    }
+
 
     model_samples <- model_samples[conditioning_samples,,drop=FALSE]
 

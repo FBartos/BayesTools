@@ -1208,9 +1208,14 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
       # if only null and alternative are specified, removed the null component
       if(all(components %in% c("null", "alternative"))){
 
-        # skip if no alternative is specified
-        if(all(components == "null"))
-          next
+        if(all(components == "null")){
+          temp_prior_prob <- c(temp_prior_prob, "alternative" = 0)
+          temp_post_prob  <- c(temp_post_prob,  "alternative" = 0)
+        }
+        if(all(components == "alternative")){
+          temp_prior_prob <- c("null" = 0, temp_prior_prob)
+          temp_post_prob  <- c("null" = 0,  temp_post_prob)
+        }
 
         runjags_summary <- rbind(runjags_summary, data.frame(
           Parameter    = par,

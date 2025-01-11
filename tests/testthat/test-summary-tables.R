@@ -1380,3 +1380,62 @@ test_that("Summary tables functions work (mixture priors)",{
     "Footnote 1"                                                 ,
     "Footnote 2"  ))
 })
+
+test_that("Summary tables odd cases",{
+
+  set.seed(1)
+
+  data <- list(
+    y = rnorm(10),
+    N = 10
+  )
+
+  prior_list <- list(
+    "mu" = prior_mixture(
+      list(prior("spike", list(0))),
+      is_null = c(FALSE)
+    ),
+    "sigma" = prior_mixture(
+      list(prior("spike", list(1))),
+      is_null = c(TRUE)
+    ),
+    "beta" = prior("normal", list(0, 1))
+  )
+  model_syntax <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu, 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  fit <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list
+  )
+
+  expect_equal(capture_output_lines(print(runjags_estimates_table(fit)), width = 150),  c(
+    "                   Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
+    "mu (inclusion)    1.000    NA     NA     NA    NA          NA             NA    NA    NA",
+    "mu                0.000 0.000  0.000  0.000 0.000     0.00000             NA     0    NA",
+    "sigma (inclusion) 0.000    NA     NA     NA    NA          NA             NA    NA    NA",
+    "sigma             1.000 0.000  1.000  1.000 1.000     0.00000             NA     0    NA",
+    "beta              0.007 1.008 -1.966 -0.009 1.999     0.00771          0.008 17096 1.000"
+  ))
+
+  expect_equal(capture_output_lines(print(runjags_estimates_table(fit, conditional = TRUE)), width = 150),  c(
+    "                   Mean    SD    lCI Median   uCI",
+    "mu (inclusion)    1.000    NA     NA     NA    NA",
+    "mu                0.000 0.000  0.000  0.000 0.000",
+    "sigma (inclusion) 0.000    NA     NA     NA    NA",
+    "sigma               NaN    NA     NA     NA    NA",
+    "beta              0.007 1.008 -1.966 -0.009 1.999",
+    "\033[0;31mConditional summary for sigma parameter could not be computed due to no posterior samples.\033[0m"
+  ))
+
+  expect_equal(capture_output_lines(print(runjags_inference_table(fit)), width = 150),  c(
+    "      Prior prob. Post. prob. Inclusion BF",
+    "mu          1.000       1.000          Inf",
+    "sigma       0.000       0.000        0.000"
+  ))
+
+})

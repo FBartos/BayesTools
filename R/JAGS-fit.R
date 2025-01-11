@@ -407,12 +407,18 @@ JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 5
       parameters_keep[parameter_names == names(prior_list)[i]] <- FALSE
     }else if(is.prior.simple(prior_list[[i]]) && prior_list[[i]][["distribution"]] == "invgamma"){
       parameters_keep[parameter_names == paste0("inv_",names(prior_list)[i])] <- FALSE
+    }else if(is.prior.mixture(prior_list[[i]]) && length(prior_list[[i]]) == 1 && is.prior.point(prior_list[[i]][[1]])){
+      parameters_keep[parameter_names == names(prior_list)[i]] <- FALSE
     }
   }
 
   # remove indicators/inclusions
   parameters_keep[grepl("_indicator", parameter_names)] <- FALSE
   parameters_keep[grepl("_inclusion", parameter_names)] <- FALSE
+
+  if(all(!parameters_keep)){
+    return(TRUE)
+  }
 
   # remove parameters that are not monitored
   for(i in seq_along(mcmc_samples)){
@@ -424,7 +430,9 @@ JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 5
 
   # assess R-hat
   if(!is.null(max_Rhat)){
-    temp_Rhat <- max(coda::gelman.diag(mcmc_samples, multivariate = FALSE, autoburnin = FALSE)$psrf)
+    temp_Rhat <- coda::gelman.diag(mcmc_samples, multivariate = FALSE, autoburnin = FALSE)$psrf
+    temp_Rhat[is.na(temp_Rhat)] <- 1
+    temp_Rhat <- max(temp_Rhat)
     if(temp_Rhat > max_Rhat){
       fails <- c(fails, paste0("R-hat ", round(temp_Rhat, 3), " is larger than the set target (", max_Rhat, ")."))
       if(fail_fast){
@@ -434,7 +442,9 @@ JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 5
   }
 
   if(!is.null(min_ESS)){
-    temp_ESS <- min(coda::effectiveSize(mcmc_samples))
+    temp_ESS <- coda::effectiveSize(mcmc_samples)
+    temp_ESS[is.nan(temp_ESS) | temp_ESS == 0] <- Inf
+    temp_ESS <- min(temp_ESS)
     if(temp_ESS < min_ESS){
       fails <- c(fails, paste0("ESS ", round(temp_ESS), " is lower than the set target (", min_ESS, ")."))
       if(fail_fast){
@@ -453,7 +463,9 @@ JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 5
 
 
   if(!is.null(max_error)){
-    temp_error    <- max(temp_summary[,"Time-series SE"])
+    temp_error    <- temp_summary[,"Time-series SE"]
+    temp_error[is.na(temp_error)] <- 0
+    temp_error    <- max(temp_error)
     if(temp_error > max_error){
       fails <- c(fails, paste0("MCMC error ", round(temp_error, 5), " is larger than the set target (", max_error, ")."))
       if(fail_fast){
