@@ -1414,21 +1414,21 @@ test_that("Summary tables odd cases",{
   )
 
   expect_equal(capture_output_lines(print(runjags_estimates_table(fit)), width = 150),  c(
-    "                   Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
-    "mu (inclusion)    1.000    NA     NA     NA    NA          NA             NA    NA    NA",
-    "mu                0.000 0.000  0.000  0.000 0.000     0.00000             NA     0    NA",
-    "sigma (inclusion) 0.000    NA     NA     NA    NA          NA             NA    NA    NA",
-    "sigma             1.000 0.000  1.000  1.000 1.000     0.00000             NA     0    NA",
-    "beta              0.007 1.008 -1.966 -0.009 1.999     0.00771          0.008 17096 1.000"
+    "                    Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
+    "mu (inclusion)     1.000    NA     NA     NA    NA          NA             NA    NA    NA",
+    "mu                 0.000 0.000  0.000  0.000 0.000     0.00000             NA     0    NA",
+    "sigma (inclusion)  0.000    NA     NA     NA    NA          NA             NA    NA    NA",
+    "sigma              1.000 0.000  1.000  1.000 1.000     0.00000             NA     0    NA",
+    "beta              -0.014 0.999 -1.985 -0.003 1.930     0.00805          0.008 15412 1.000"
   ))
 
   expect_equal(capture_output_lines(print(runjags_estimates_table(fit, conditional = TRUE)), width = 150),  c(
-    "                   Mean    SD    lCI Median   uCI",
-    "mu (inclusion)    1.000    NA     NA     NA    NA",
-    "mu                0.000 0.000  0.000  0.000 0.000",
-    "sigma (inclusion) 0.000    NA     NA     NA    NA",
-    "sigma               NaN    NA     NA     NA    NA",
-    "beta              0.007 1.008 -1.966 -0.009 1.999",
+    "                    Mean    SD    lCI Median   uCI",
+    "mu (inclusion)     1.000    NA     NA     NA    NA",
+    "mu                 0.000 0.000  0.000  0.000 0.000",
+    "sigma (inclusion)  0.000    NA     NA     NA    NA",
+    "sigma                NaN    NA     NA     NA    NA",
+    "beta              -0.014 0.999 -1.985 -0.003 1.930",
     "\033[0;31mConditional summary for sigma parameter could not be computed due to no posterior samples.\033[0m"
   ))
 

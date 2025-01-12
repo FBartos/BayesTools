@@ -11,7 +11,8 @@ JAGS_check_convergence(
   min_ESS = 500,
   max_error = 0.01,
   max_SD_error = 0.05,
-  add_parameters = NULL
+  add_parameters = NULL,
+  fail_fast = FALSE
 )
 }
 \arguments{
@@ -32,6 +33,8 @@ deviation of the parameters. Defaults to \code{0.05}.}
 
 \item{add_parameters}{vector of additional parameter names that should be used
 (only allows removing last, fixed, omega element if omega is tracked manually).}
+
+\item{fail_fast}{whether the function should stop after the first failed convergence check.}
 }
 \value{
 \code{JAGS_check_convergence} returns a boolean

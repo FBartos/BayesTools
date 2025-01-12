@@ -292,9 +292,10 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   }
 
   start_time <- Sys.time()
+  itteration <- 0
   converged  <- FALSE
 
-  while(!converged){
+  while(!converged & itteration < autofit_control[["restarts"]]){
 
     if(!is.null(autofit_control[["max_time"]]) && difftime(Sys.time(), start_time, units = autofit_control[["max_time"]][["unit"]]) > autofit_control[["max_time"]][["time"]]){
       if(!silent){
@@ -315,6 +316,12 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     }
 
     converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], fail_fast = TRUE)
+
+    # update the refit call
+    if(!converged){
+      itteration <- itteration + 1
+      refit_call$runjags.object <- fit
+    }
   }
 
   # add information to the fitted object
@@ -430,13 +437,17 @@ JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 5
 
   # assess R-hat
   if(!is.null(max_Rhat)){
-    temp_Rhat <- coda::gelman.diag(mcmc_samples, multivariate = FALSE, autoburnin = FALSE)$psrf
-    temp_Rhat[is.na(temp_Rhat)] <- 1
-    temp_Rhat <- max(temp_Rhat)
-    if(temp_Rhat > max_Rhat){
-      fails <- c(fails, paste0("R-hat ", round(temp_Rhat, 3), " is larger than the set target (", max_Rhat, ")."))
-      if(fail_fast){
-        return(FALSE)
+    if(length(fit$mcmc) == 1){
+      warning("Only one chain was run. R-hat cannot be computed.", immediate. = TRUE)
+    }else{
+      temp_Rhat <- coda::gelman.diag(mcmc_samples, multivariate = FALSE, autoburnin = FALSE)$psrf
+      temp_Rhat[is.na(temp_Rhat)] <- 1
+      temp_Rhat <- max(temp_Rhat)
+      if(temp_Rhat > max_Rhat){
+        fails <- c(fails, paste0("R-hat ", round(temp_Rhat, 3), " is larger than the set target (", max_Rhat, ")."))
+        if(fail_fast){
+          return(FALSE)
+        }
       }
     }
   }
@@ -893,20 +904,30 @@ JAGS_add_priors           <- function(syntax, prior_list){
       omega_index <- matrix(0, ncol = ncol(omega_index_weighfunction), length(prior_list))
       omega_index[is_weightfunction,] <- omega_index_weighfunction
 
+      # in case of fixed weight functions, the omega_index direly corresponds to the fixed weights
+      for(i in seq_along(prior_list)){
+        if(is.prior.weightfunction(prior_list[[i]])){
+          if(grepl("fixed", prior_list[[i]]$distribution)){
+            omega_index[i,] <- prior_list[[i]]$parameters[["omega"]][omega_index[i,]]
+          }
+        }
+      }
+
       # create the eta to omega mapping
       # eta_index_max helps dispatching within the eta2omega function
       # 0  = non-weightfunction, all weights are set to 0
       # >1 = indicates how many alpha parameters are needed to construct the weightfunction based on the eta_index
-      # -1 = indicates fixed weightfunction, alpha parameters are treated as fixed weights
-      eta_index     <- matrix(0, ncol = max(omega_index), length(prior_list))
+      # -1 = indicates fixed weightfunction, omega index already encoded all weights
+      eta_index     <- matrix(0, nrow = length(prior_list), ncol = max(lengths(alpha)))
       eta_index_max <- rep(0, length(prior_list))
       for(i in seq_along(prior_list)){
-        temp_index <- unique(omega_index[i,])
-        eta_index[i,1:length(temp_index)] <- sort(temp_index)
         if(is.prior.weightfunction(prior_list[[i]])){
           if(grepl("fixed", prior_list[[i]]$distribution)){
             eta_index_max[i] <- -1
+            eta_index[i,]    <- -1
           }else{
+            temp_index       <- unique(omega_index[i,])
+            eta_index[i,1:length(temp_index)] <- sort(temp_index)
             eta_index_max[i] <- length(temp_index)
           }
         }else{
@@ -915,7 +936,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
       }
 
       # create priors for eta (set alpha to 1 for non-weightfunctions to keep the sampling in the expected area)
-      eta_shape <- matrix(1, nrow = nrow(eta_index), ncol = ncol(eta_index))
+      eta_shape <- matrix(1, nrow = length(prior_list), ncol = max(lengths(alpha)))
       for(i in seq_along(prior_list)){
         if(is.prior.weightfunction(prior_list[[i]])){
           if(!grepl("fixed", prior_list[[i]]$distribution)){

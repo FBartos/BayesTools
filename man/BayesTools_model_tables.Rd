@@ -40,7 +40,8 @@ runjags_estimates_table(
   transform_orthonormal = FALSE,
   formula_prefix = TRUE,
   remove_inclusion = FALSE,
-  remove_parameters = NULL
+  remove_parameters = NULL,
+  return_samples = FALSE
 )
 
 runjags_inference_table(
@@ -63,7 +64,8 @@ JAGS_estimates_table(
   transform_orthonormal = FALSE,
   formula_prefix = TRUE,
   remove_inclusion = FALSE,
-  remove_parameters = NULL
+  remove_parameters = NULL,
+  return_samples = FALSE
 )
 
 JAGS_inference_table(

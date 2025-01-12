@@ -782,7 +782,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   }
 
   # assure the correct number of samples
-  samples    <- samples[1:n_samples,]
+  samples    <- samples[1:n_samples,,drop=FALSE]
   sample_ind <- sample_ind[1:n_samples]
   models_ind <- models_ind[1:n_samples]
 
@@ -971,7 +971,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   }
 
   # assure the correct number of samples
-  samples    <- samples[1:n_samples,]
+  samples    <- samples[1:n_samples,,drop=FALSE]
   sample_ind <- sample_ind[1:n_samples]
   models_ind <- models_ind[1:n_samples]
 

@@ -169,6 +169,14 @@ prior_none <- function(prior_weights = 1){
 #' parameters, and sets the model priors odds to the product of
 #' its prior distributions.
 #'
+#' @details Constrained cases of weight functions can be specified by adding
+#' ".fixed" after the distribution name, i.e., \code{"two.sided.fixed"} and
+#' \code{"one.sided.fixed"}. In these cases, the functions are specified using
+#' \code{steps} and \code{omega} parameters, where the \code{omega} parameter
+#' is a vector of weights that corresponds to the relative publication probability
+#' (i.e., no parameters are estimated).
+#'
+#'
 #' @examples
 #' p1 <- prior_weightfunction("one-sided", parameters = list(steps = c(.05, .10), alpha = c(1, 1, 1)))
 #'
@@ -968,7 +976,7 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
   output <- list()
 
   # check overall settings
-  parameters <- .check_and_name_parameters(parameters, c("steps", "omega"), "two-sided.fixed weightfunction")
+  parameters <- .check_and_name_parameters(parameters, c("steps", "omega"), "one-sided.fixed weightfunction")
 
   # check individual parameters
   .check_parameter_weigthfunction(parameters$steps, omega = parameters$omega)
