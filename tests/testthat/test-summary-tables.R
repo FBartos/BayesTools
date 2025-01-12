@@ -1439,3 +1439,25 @@ test_that("Summary tables odd cases",{
   ))
 
 })
+
+test_that("Simplified interpret2 function", {
+
+  set.seed(1)
+  information <- list(
+    list(
+      inference_name        = "Effect",
+      inference_BF_name     = "BF10",
+      inference_BF          = 3.5,
+      estimate_name         = "mu",
+      estimate_samples      = rnorm(1000, 0.3, 0.15),
+      estimate_units        = "kg",
+      estimate_conditional  = FALSE
+    )
+  )
+
+  expect_equal(
+    interpret2(information, "RoBMA"),
+    "RoBMA found moderate evidence in favor of the Effect, BF10 = 3.50, with mean model-averaged estimate mu = 0.298 kg, 95% CI [-0.020,  0.601]."
+  )
+
+})

@@ -1081,7 +1081,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     if(any(is_weightfunction)){
       omega_mapping <- weightfunctions_mapping(prior[is_weightfunction], one_sided = TRUE)
       omega_cuts    <- weightfunctions_mapping(prior[is_weightfunction], cuts_only = TRUE, one_sided = TRUE)
-      omega_names   <- rev(sapply(1:(length(omega_cuts)-1), function(i) paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]")))
+      omega_names   <- sapply(1:(length(omega_cuts)-1), function(i) paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
       omega_par     <- rev(sapply(1:(length(omega_cuts)-1), function(i) paste0("omega[",i,"]")))
     }
 
