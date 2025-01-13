@@ -1766,13 +1766,16 @@ test_that("posterior plot model averaging based on complex single JAGS models  (
     plot_posterior(mixed_posteriors, "sigma", prior = T, dots_prior = list(col = "grey"))
   })
 
-  # TODO: implement
-  # vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-bias", function(){
-  #   oldpar <- graphics::par(no.readonly = TRUE)
-  #   on.exit(graphics::par(mar = oldpar[["mar"]]))
-  #   par(mar = c(4, 4, 1, 4), mfrow = c(2, 2))
-  #   plot_posterior(mixed_posteriors, "PET", prior = T, dots_prior = list(col = "grey"))
-  # })
+  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-bias-PET", function(){
+    PET <- mixed_posteriors$bias[,"PET",drop=FALSE]
+    attributes(PET) <- c(attributes(PET), attributes(mixed_posteriors$bias)[!names(attributes(mixed_posteriors$bias)) %in% c("dimnames", "dim")])
+    attr(PET, "prior_list")[!sapply(attr(PET, "prior_list"), is.prior.PET)] <- lapply(1:sum(!sapply(attr(PET, "prior_list"), is.prior.PET)), function(i) prior("point", list(0)))
+    attr(PET, "prior_list")[ sapply(attr(PET, "prior_list"), is.prior.PET)] <- lapply(attr(PET, "prior_list")[sapply(attr(PET, "prior_list"), is.prior.PET)], function(p) {
+      class(p) <- class(p)[!class(p) %in% "prior.PET"]
+      return(p)
+    })
+    plot_posterior(list(PET = PET), "PET", prior = T, dots_prior = list(col = "grey"))
+  })
 
 
   mixed_posteriors_conditional1 <- as_mixed_posteriors(

@@ -1125,7 +1125,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     rownames(samples) <- NULL
     colnames(samples) <- out_names
     attr(samples, "sample_ind") <- FALSE
-    attr(samples, "models_ind") <- FALSE
+    attr(samples, "models_ind") <- as.vector(indicator)
     attr(samples, "parameter")  <- parameter
     attr(samples, "prior_list") <- prior
     class(samples) <- c("mixed_posteriors", "mixed_posteriors.bias")

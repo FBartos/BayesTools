@@ -640,6 +640,10 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
 .simplify_prior_list <- function(prior_list){
 
+  if(is.prior.mixture(prior_list)){
+    class(prior_list) <- NULL
+  }
+
   # return the input with fewer than 2 priors
   if(length(prior_list) < 2){
     return(prior_list)
