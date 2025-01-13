@@ -1115,15 +1115,17 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       conditioning_samples[which(conditioning_samples)[-(1:requested_samples)]] <- FALSE
     }
 
-    # select the conditional samples
+    # select the conditional samples (and copy attributes)
     for(p in seq_along(parameters)){
       temp <- attributes(out[[parameters[p]]])
       if(is.null(dim(out[[parameters[p]]]))){
         out[[parameters[p]]] <- out[[parameters[p]]][conditioning_samples]
         attributes(out[[parameters[p]]]) <- c(attributes(out[[parameters[p]]]), temp)
+        attr(out[[parameters[p]]], "models_ind") <- attr(out[[parameters[p]]], "models_ind")[conditioning_samples]
       }else{
         out[[parameters[p]]] <- out[[parameters[p]]][conditioning_samples,,drop=FALSE]
         attributes(out[[parameters[p]]]) <- c(attributes(out[[parameters[p]]])[!names(attributes(out[[parameters[p]]])) %in% c("dimnames")], temp[!names(temp) %in% c("dim")])
+        attr(out[[parameters[p]]], "models_ind") <- attr(out[[parameters[p]]], "models_ind")[conditioning_samples]
       }
     }
   }
@@ -1380,16 +1382,28 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     is_factor <- sapply(prior, is.prior.factor)
 
     if(any(is_factor)){
-      stop("mixture of factor priors is not supported")
-      # samples <- .mix_priors.factor(prior, parameter = parameter, seed = seed, n_samples = n_samples)
+      temp_samples <- .mix_priors.factor(prior, parameter = parameter, seed = seed, n_samples = n_samples)
     }else{
-      samples <- .mix_priors.simple(prior, parameter = parameter, seed = seed, n_samples = n_samples)
+      temp_samples <- .mix_priors.simple(prior, parameter = parameter, seed = seed, n_samples = n_samples)
     }
 
   }
 
-  class(samples) <- c(class(samples), "mixed_posteriors.mixture")
+  # the samples parameters need to be randomly shuffled
+  # (the  .mix_priors.XXX functions generate the samples model by model to keep bridge-sampling model-averaging consistent structure,
+  #  this however does not apply to the spike an slab priors)
+  random_ind <- sample(n_samples)
+  if(is.null(dim(temp_samples))){
+    samples <- temp_samples[random_ind]
+  }else{
+    samples <- temp_samples[random_ind,,drop=FALSE]
+  }
+  attributes(samples) <- attributes(temp_samples)
   attr(samples, "sample_ind") <- FALSE
+  attr(samples, "models_ind") <- attr(samples, "models_ind")[random_ind]
+
+  # append classes and priors
+  class(samples) <- c(class(samples), "mixed_posteriors.mixture")
   attr(samples, "prior_list") <- prior
 
   return(samples)
