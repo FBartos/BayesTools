@@ -45,6 +45,7 @@ jobs:
       - name: Install devtools
         run: |
           install.packages('devtools')
+        shell: Rscript {0}
 
       # Set up renv
       - name: Setup renv
