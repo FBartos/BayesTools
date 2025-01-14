@@ -84,6 +84,12 @@ jobs:
           sudo mkdir -p $(brew --prefix)/libexec
           sudo ln -s $(brew --prefix jags)/bin/jags $(brew --prefix)/libexec/jags-terminal
 
+      # Install renv and devtools globally
+      - name: Install renv and devtools
+        run: |
+          install.packages(c("renv", "devtools"), repos = "https://cloud.r-project.org")
+        shell: Rscript {0}
+
       # Set up renv
       - name: Setup renv
         uses: r-lib/actions/setup-renv@v2
@@ -91,7 +97,6 @@ jobs:
       # Install the package
       - name: Install the required packages
         run: |
-          install.packages('devtools')
           install.packages('rcmdcheck')
           install.packages(c('BayesFactor', 'runjags', 'rjags', 'rstan', 'scales', 'vdiffr', 'testthat', 'covr', 'pandoc'))
           devtools::install()
@@ -124,7 +129,6 @@ jobs:
             error_on    = "warning",
             check_dir   = "check")
         shell: Rscript {0}
-
 
       - name: Upload check results
         if: failure()
