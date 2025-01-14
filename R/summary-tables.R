@@ -588,6 +588,8 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
 #' should be excluded from the summary table. Defaults to \code{FALSE}.
 #' @param remove_parameters parameters to be removed from the summary. Defaults
 #' to \code{NULL}, i.e., including all parameters.
+#' @param return_samples whether to return the transoformed and formated samples
+#' instead of the table. Defaults to \code{FALSE}.
 #' @inheritParams BayesTools_ensemble_tables
 #'
 #'

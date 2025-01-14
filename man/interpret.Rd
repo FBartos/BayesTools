@@ -7,7 +7,7 @@
 \usage{
 interpret(inference, samples, specification, method)
 
-interpret2(specification, method)
+interpret2(specification, method = NULL)
 }
 \arguments{
 \item{inference}{model inference created by \link{ensemble_inference}}

@@ -158,6 +158,9 @@ differences from the grand mean}
 
 \item{remove_inclusion}{whether estimates of the inclusion probabilities
 should be excluded from the summary table. Defaults to \code{FALSE}.}
+
+\item{return_samples}{whether to return the transoformed and formated samples
+instead of the table. Defaults to \code{FALSE}.}
 }
 \value{
 \code{model_summary_table} returns a table with
