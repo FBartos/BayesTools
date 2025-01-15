@@ -50,6 +50,7 @@ jobs:
       # Install the package and its dependencies
       - name: Install required packages
         run: |
+          options(repos = c(CRAN = "https://cloud.r-project.org"))
           install.packages('devtools')
           install.packages('pkgdown')
           install.packages(c('BayesFactor', 'runjags', 'rjags', 'rstan', 'scales', 'vdiffr', 'testthat', 'covr', 'pandoc'))

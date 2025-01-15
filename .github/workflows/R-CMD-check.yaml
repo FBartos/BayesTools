@@ -87,6 +87,7 @@ jobs:
       # Install the package
       - name: Install the required packages
         run: |
+          options(repos = c(CRAN = "https://cloud.r-project.org"))
           install.packages('devtools')
           install.packages('rcmdcheck')
           install.packages(c('BayesFactor', 'runjags', 'rjags', 'rstan', 'scales', 'vdiffr', 'testthat', 'covr', 'pandoc'))
