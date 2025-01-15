@@ -1,3 +1,5 @@
-library(devtools)
-library(testthat)
-library(vdiffr)
+if(interactive()){
+  library(devtools)
+  library(testthat)
+  library(vdiffr)
+}
