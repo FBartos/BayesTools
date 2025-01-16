@@ -21,8 +21,14 @@
 #'
 #' @return \code{interpret} returns character.
 #'
+#' @export interpret
+#' @export interpret2
+#' @name interpret
+#'
 #' @seealso [ensemble_inference] [mix_posteriors] [BayesTools_model_tables] [BayesTools_ensemble_tables]
-#' @export
+NULL
+
+#' @rdname interpret
 interpret <- function(inference, samples, specification, method){
 
   # check input
@@ -50,7 +56,33 @@ interpret <- function(inference, samples, specification, method){
   return(output)
 }
 
-.interpret.specification <- function(inference, samples, specification, method){
+#' @rdname interpret
+interpret2                <- function(specification, method = NULL){
+
+  # check input
+  check_list(specification, "specification", check_length = 0)
+  sapply(specification, function(s){
+    check_char(s$inference_name,       "inference_name",        allow_NULL = TRUE)
+    check_char(s$inference_BF_name,    "inference_BF_name",     allow_NULL = TRUE)
+    check_real(s$inference_BF,         "inference_BF",          allow_NULL = TRUE)
+    check_char(s$estimate_name,        "estimate_name",         allow_NULL = TRUE)
+    check_real(s$estimate_samples,     "estimate_samples",      allow_NULL = TRUE, check_length = 0)
+    check_char(s$estimate_units,       "estimate_units",        allow_NULL = TRUE)
+    check_bool(s$estimate_conditional, "estimate_conditional",  allow_NULL = TRUE)
+  })
+  check_char(method, allow_NULL = TRUE)
+
+
+  output <- ""
+
+  for(i in seq_along(specification)){
+    output <- paste0(output, .interpret.specification2(specification[[i]], method), if(i != length(specification)) " ")
+  }
+
+  return(output)
+}
+
+.interpret.specification  <- function(inference, samples, specification, method){
 
   temp_BF <- inference[[specification[["inference"]]]][["BF"]]
   text_BF <- .interpret.BF(temp_BF, if(!is.null(specification[["inference_name"]])) specification[["inference_name"]] else specification[["inference"]],
@@ -66,7 +98,19 @@ interpret <- function(inference, samples, specification, method){
 
   return(paste0(method, " found ", text_BF, ", ", text_par, "."))
 }
-.interpret.BF            <- function(BF, name, BF_name){
+.interpret.specification2 <- function(specification, method){
+
+  text_BF <- .interpret.BF(specification[["inference_BF"]], specification[["inference_name"]], specification[["inference_BF_name"]])
+
+  if(is.null(specification[["estimate_samples"]])){
+    return(paste0(method, " found ", text_BF, "."))
+  }
+
+  text_par <- .interpret.par(specification[["estimate_samples"]], specification[["estimate_name"]], specification[["estimate_units"]], specification[["estimate_conditional"]])
+
+  return(paste0(method, " found ", text_BF, ", ", text_par, "."))
+}
+.interpret.BF             <- function(BF, name, BF_name){
 
   if(abs(log(BF)) > log(10)){
     text <- "strong evidence"
@@ -92,7 +136,7 @@ interpret <- function(inference, samples, specification, method){
 
   return(text)
 }
-.interpret.par           <- function(samples, name, unit, conditional){
+.interpret.par            <- function(samples, name, unit, conditional){
 
   est <- mean(samples)
   CI  <- unname(stats::quantile(samples, probs = c(0.025, 0.975)))

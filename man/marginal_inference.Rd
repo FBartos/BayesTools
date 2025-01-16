@@ -43,15 +43,14 @@ corresponding to the null hypothesis)}
 approximated via a normal distribution (rather than kernel density). Defaults to \code{FALSE}.}
 
 \item{n_samples}{number of samples to be drawn for the model-averaged
-posterior distribution}
+prior distribution}
 
 \item{seed}{seed for random number generation}
 
 \item{silent}{whether warnings should be returned silently. Defaults to \code{FALSE}}
 }
 \value{
-\code{mix_posteriors} returns a named list of mixed posterior
-distributions (either a vector of matrix).
+\code{marginal_inference} returns an object of class 'marginal_inference'.
 }
 \description{
 Creates marginal model-averaged and conditional

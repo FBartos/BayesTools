@@ -49,6 +49,13 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
     silent <- TRUE
   }
 
+  dots <- list(...)
+  if(is.null(dots[["inline"]])){
+    inline <- FALSE
+  }else{
+    inline <- dots[["inline"]]
+    check_bool(inline, "inline")
+  }
 
   if(is.prior.none(x)){
     output <- .print.prior.none(x, short_name, parameter_names, plot, digits_estimates, silent)
@@ -58,6 +65,8 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
     output <- .print.prior.weightfunction(x, short_name, parameter_names, plot, digits_estimates, silent)
   }else if(is.prior.spike_and_slab(x)){
     output <- .print.prior.spike_and_slab(x, short_name, parameter_names, plot, digits_estimates, silent)
+  }else if(is.prior.mixture(x)){
+    output <- .print.prior.mixture(x, short_name, parameter_names, plot, digits_estimates, silent, inline)
   }
 
 
@@ -317,6 +326,43 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
     output <- paste0(variable, " * ", inclusion)
   }else{
     output <- bquote(.(variable) ~ "*" ~ .(inclusion))
+  }
+
+  return(output)
+}
+.print.prior.mixture        <- function(x, short_name, parameter_names, plot, digits_estimates, silent, inline){
+
+  prior_names <- lapply(x, function(p){
+    print(p,  short_name, parameter_names, plot, digits_estimates, silent = TRUE)
+  })
+
+  prior_weights <- attr(x, "prior_weights")
+  prior_weights <- paste0("(", round(prior_weights, digits_estimates), "/", round(sum(prior_weights), digits_estimates), ")")
+
+  prior_components <- attr(x, "components")
+  if(all(prior_components %in% c("null", "alternative"))){
+    prior_components <- sort(prior_components)
+  }
+
+  if(!plot){
+
+    output <- NULL
+
+    # inline printing for summary tables
+    if(inline){
+      output <- paste0(paste0(prior_weights, " * ", prior_names), collapse = " + ")
+    }else{
+      for(component in unique(prior_components)){
+        output <- paste0(output, component, ":\n")
+        for(i in seq_along(prior_components)[prior_components == component]){
+          output <- paste0(output, "  ", prior_weights[i], " * ", prior_names[[i]], "\n")
+        }
+      }
+    }
+
+  }else{
+    output <- Map(function(weight, prior) bquote(.(as.name(weight))~"*"~.(prior)), prior_weights, prior_names)
+    output <- Reduce(function(x, y) bquote(.(x)~+~.(y)), output)
   }
 
   return(output)

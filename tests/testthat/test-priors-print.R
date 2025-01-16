@@ -124,10 +124,45 @@ test_that("Prior print function works", {
 
   p21 <- prior_spike_and_slab(prior("gamma", list(1, 2), list(0, Inf)),
                               prior_inclusion = prior("beta", list(3, 2)))
+  p22 <- prior_mixture(
+    list(
+      prior("normal", list(0,  1)),
+      prior("normal", list(-3, 1)),
+      prior("gamma",  list(5, 10))
+    )
+  )
+  p23 <- prior_mixture(
+    list(
+      prior("normal", list(0,  1), prior_weights = 1),
+      prior("normal", list(-3, 1), prior_weights = 5),
+      prior("gamma",  list(5, 10), prior_weights = 1)
+    ),
+    is_null = c(T, F, T)
+  )
+  p24 <- prior_mixture(
+    list(
+      prior("normal", list(0,  1), prior_weights = 1),
+      prior("normal", list(-3, 1), prior_weights = 5)
+    ),
+    components = c("b", "a")
+  )
+
   expect_equal(utils::capture.output(print(p21)), "Gamma(1, 2) * Beta(3, 2)")
   expect_equal(utils::capture.output(print(p21, short_name = TRUE)), "G(1, 2) * B(3, 2)")
+  expect_equal(utils::capture.output(print(p22, parameter_names = TRUE)), c(
+    "alternative:", "  (1/3) * Normal(mean = 0, sd = 1)", "  (1/3) * Normal(mean = -3, sd = 1)", "  (1/3) * Gamma(shape = 5, rate = 10)"
+  ))
+  expect_equal(utils::capture.output(print(p23, short_name = TRUE)), c(
+    "alternative:", "  (1/7) * N(0, 1)", "null:", "  (5/7) * N(-3, 1)", "  (1/7) * G(5, 10)"
+  ))
+  expect_equal(utils::capture.output(print(p24)), c(
+    "b:", "  (1/6) * Normal(0, 1)",  "a:", "  (5/6) * Normal(-3, 1)"
+  ))
   vdiffr::expect_doppelganger("priors-print-4", function(){
     empty_plot()
     text(0.5, 1, print(p21, plot = TRUE))
+    text(0.5, 0.9, print(p22, plot = TRUE))
+    text(0.5, 0.8, print(p23, plot = TRUE))
+    text(0.5, 0.7, print(p24, plot = TRUE))
   })
 })

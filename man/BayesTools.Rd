@@ -3,7 +3,6 @@
 \docType{package}
 \name{BayesTools}
 \alias{BayesTools}
-\alias{_PACKAGE}
 \alias{BayesTools-package}
 \title{BayesTools}
 \description{

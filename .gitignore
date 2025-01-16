@@ -2,6 +2,7 @@
 .Rhistory
 .RData
 .Ruserdata
+.Rprofile
 do-not-share
 docs
 BayesTools.Rcheck

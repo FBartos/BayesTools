@@ -22,12 +22,13 @@ test_prior          <- function(prior, skip_moments = FALSE){
   }
   # tests density function
   lines(prior, individual = TRUE)
+
   # tests quantile function
-  if(!is.prior.spike_and_slab(prior)){
+  if(!is.prior.spike_and_slab(prior) && !is.prior.mixture(prior)){
     abline(v = quant(prior, 0.5), col = "blue", lwd = 2)
   }
   # tests that pdf(q(x)) == x
-  if(!is.prior.point(prior) & !is.prior.discrete(prior) & !is.prior.spike_and_slab(prior)){
+  if(!is.prior.point(prior) && !is.prior.discrete(prior) && !is.prior.spike_and_slab(prior) && !is.prior.mixture(prior)){
     expect_equal(.25, cdf(prior, quant(prior, 0.25)), tolerance = 1e-4)
     expect_equal(.25, ccdf(prior, quant(prior, 0.75)), tolerance = 1e-4)
   }
@@ -326,5 +327,54 @@ test_that("Meandif prior distribution works", {
   vdiffr::expect_doppelganger("prior-meandif-1-5", function()test_meandif(p1.5))
   vdiffr::expect_doppelganger("prior-meandif-2-3", function()test_meandif(p2.3))
   vdiffr::expect_doppelganger("prior-meandif-2-5", function()test_meandif(p2.5))
+
+})
+
+test_that("Prior mixture distributions work", {
+
+  p1 <- prior_mixture(
+    list(
+      prior("normal", list(0,  1)),
+      prior("normal", list(-3, 1)),
+      prior("gamma",  list(5, 10))
+    )
+  )
+  p2 <- prior_mixture(
+    list(
+      prior("normal", list(0,  1), prior_weights = 1),
+      prior("normal", list(-3, 1), prior_weights = 5),
+      prior("gamma",  list(5, 10), prior_weights = 1)
+    ),
+    is_null = c(T, F, T)
+  )
+  p3 <- prior_mixture(
+    list(
+      prior("normal", list(0,  1), prior_weights = 1),
+      prior("normal", list(-3, 1), prior_weights = 5)
+    ),
+    components = c("b", "a")
+  )
+
+  vdiffr::expect_doppelganger("prior-mixture-1", function()test_prior(p1, skip_moments = TRUE))
+  vdiffr::expect_doppelganger("prior-mixture-2", function()test_prior(p2, skip_moments = TRUE))
+  vdiffr::expect_doppelganger("prior-mixture-3", function()test_prior(p3, skip_moments = TRUE))
+
+
+  # random number generator from complex mixture priors
+  p4 <- prior_mixture(list(
+    prior("spike", list(0), prior_weights = 1),
+    prior_factor("mnormal", list(0, 10), contrast = "orthonormal", prior_weights = 3),
+    prior_factor("mnormal", list(0, 1),  contrast = "orthonormal")
+    ),
+    is_null = c(T, F, F)
+  )
+
+  for(i in seq_along(p4)){
+    p4[[i]]$parameters[["K"]] <- 3
+  }
+
+
+  vdiffr::expect_doppelganger("prior-mixture-4", function()hist(rng(p4, 10000, transform_factor_samples = FALSE), main = print(p4, plot = T), breaks = 50, freq = FALSE))
+  vdiffr::expect_doppelganger("prior-mixture-5", function()hist(rng(p4, 10000, transform_factor_samples = TRUE), main = print(p4, plot = T), breaks = 50, freq = FALSE))
 
 })

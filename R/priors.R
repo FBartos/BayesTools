@@ -169,6 +169,14 @@ prior_none <- function(prior_weights = 1){
 #' parameters, and sets the model priors odds to the product of
 #' its prior distributions.
 #'
+#' @details Constrained cases of weight functions can be specified by adding
+#' ".fixed" after the distribution name, i.e., \code{"two.sided.fixed"} and
+#' \code{"one.sided.fixed"}. In these cases, the functions are specified using
+#' \code{steps} and \code{omega} parameters, where the \code{omega} parameter
+#' is a vector of weights that corresponds to the relative publication probability
+#' (i.e., no parameters are estimated).
+#'
+#'
 #' @examples
 #' p1 <- prior_weightfunction("one-sided", parameters = list(steps = c(.05, .10), alpha = c(1, 1, 1)))
 #'
@@ -404,11 +412,122 @@ prior_spike_and_slab <- function(prior_parameter,
     inclusion = prior_inclusion
   )
 
-  class(output) <- c("prior", "prior.spike_and_slab")
+  # distinguish normal and factor prior distributions
+  if(is.prior.factor(prior_parameter)){
+
+    # obtain and store the contrast type
+    priors_type <- .get_prior_factor_list_type(list(prior_parameter))
+
+    attr(prior_parameter, "K") <- priors_type[["K"]]
+    class(output)              <- c("prior", "prior.spike_and_slab", "prior.factor_spike_and_slab", priors_type[["class"]])
+
+  }else if(is.prior.simple(prior_parameter)){
+    class(output) <- c("prior", "prior.spike_and_slab", "prior.simple_spike_and_slab")
+  }else{
+    stop("The 'prior_parameter' must be either a simple or factor prior distribution.")
+  }
 
   return(output)
 }
 
+
+#' @title Creates a mixture of prior distributions
+#' @description \code{prior_mixture} creates a mixture of prior distributions.
+#' This is a more generic version of the \code{prior_spike_and_slab} function.
+#'
+#' @param prior_list a list of prior distributions to be mixed.
+#' @param is_null a logical vector indicating which of the prior distributions
+#' should be considered as a null distribution. Defaults to \code{rep(FALSE, length(prior_list))}.
+#' @param components a character vector indicating which of the prior distributions
+#' belong to the same mixture component (this is an alternative specification to the \code{is_null} argument).
+#' Defaults to \code{NULL} (i.e., \code{is_null} is used.
+#'
+#' @seealso [prior()]
+#' @export
+prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), components = NULL){
+
+  .check_prior_list(prior_list)
+  check_bool(is_null, "is_null",       check_length = length(prior_list), allow_NULL = TRUE)
+  check_char(components, "components", check_length = length(prior_list), allow_NULL = TRUE)
+  if(is.null(is_null) && is.null(components))
+    stop("Either 'is_null' or 'components' must be specified.")
+
+  if(is.null(components)){
+    components <- ifelse(is_null, "null", "alternative")
+  }
+
+  for(i in seq_along(prior_list)){
+    attr(prior_list[[i]], "component") <- components[i]
+  }
+
+
+  # distinguish normal, factor, and publication bias mixture priors
+  if(any(sapply(prior_list, is.prior.factor))){
+
+    # test that the prior is either a factor prior or a spike prior
+    if(!all(sapply(prior_list, is.prior.factor) | sapply(prior_list, is.prior.point) | sapply(prior_list, is.prior.none)))
+      stop("Factor prior mixture requires that all priors are either factor priors or spike prior distributions")
+
+    # obtain and store the contrast type
+    priors_type <- .get_prior_factor_list_type(prior_list)
+
+    # change prior none/spikes into factor prior spikes
+    for(i in seq_along(prior_list)){
+      if(is.prior.point(prior_list[[i]])){
+        prior_list[[i]] <- prior_factor(
+          distribution = "point",
+          parameters   = list(location = prior_list[[i]][["parameters"]][["location"]]),
+          contrast     = gsub("prior.", "", priors_type[["class"]], fixed = TRUE)
+        )
+      }else if(is.prior.none(prior_list[[i]])){
+        prior_list[[i]] <- prior_factor(
+          distribution = "point",
+          parameters   = list(location = 0),
+          contrast     = gsub("prior.", "", priors_type[["class"]], fixed = TRUE)
+        )
+      }
+    }
+
+    attr(prior_list, "K")  <- priors_type[["K"]]
+    class(prior_list)      <- c("prior", "prior.factor_mixture", "prior.mixture", priors_type[["class"]])
+
+
+  }else if(any(sapply(prior_list, is.prior.PET)) || any(sapply(prior_list, is.prior.PEESE)) || any(sapply(prior_list, is.prior.weightfunction))){
+
+    # test that the prior is either a PET, PEESE, or weightfunction prior
+    if(!all(sapply(prior_list, is.prior.PET) | sapply(prior_list, is.prior.PEESE) | sapply(prior_list, is.prior.weightfunction) | sapply(prior_list, is.prior.none)))
+      stop("PET/PEESE/weightfunction prior mixture requires that all priors are either PET, PEESE, or weightfunction prior distributions")
+
+    class(prior_list) <- c("prior", "prior.bias_mixture", "prior.mixture")
+
+
+  }else if(any(sapply(prior_list, is.prior.simple))){
+
+    # test that all priors are simple priors
+    if(!all(sapply(prior_list, is.prior.simple) | sapply(prior_list, is.prior.none)))
+      stop("Simple prior mixture requires that all priors are simple prior distributions")
+
+    # change none into prior spikes
+    for(i in seq_along(prior_list)){
+      if(is.prior.none(prior_list[[i]])){
+        prior_list[[i]] <- prior(
+          distribution = "point",
+          parameters   = list(location = 0)
+        )
+      }
+    }
+
+    class(prior_list) <- c("prior", "prior.simple_mixture", "prior.mixture")
+
+  }else{
+    stop("The prior mixture must contain either factors, publication bias components, or simple prior distributions.")
+  }
+
+  attr(prior_list, "components")    <- components
+  attr(prior_list, "prior_weights") <- sapply(prior_list, function(p) p[["prior_weights"]])
+
+  return(prior_list)
+}
 
 #### functions for constructing prior distributions ####
 .prior_normal    <- function(parameters, truncation){
@@ -857,7 +976,7 @@ prior_spike_and_slab <- function(prior_parameter,
   output <- list()
 
   # check overall settings
-  parameters <- .check_and_name_parameters(parameters, c("steps", "omega"), "two-sided.fixed weightfunction")
+  parameters <- .check_and_name_parameters(parameters, c("steps", "omega"), "one-sided.fixed weightfunction")
 
   # check individual parameters
   .check_parameter_weigthfunction(parameters$steps, omega = parameters$omega)
@@ -944,8 +1063,60 @@ rng.prior   <- function(x, n, ...){
   }else{
     transform_factor_samples <- TRUE
   }
+  if(!is.null(dots[["sample_components"]])){
+    check_bool(dots[["sample_components"]], "sample_components")
+    sample_components <- dots[["sample_components"]]
+  }else{
+    sample_components <- FALSE
+  }
 
-  if(is.prior.simple(prior)){
+  if(is.prior.spike_and_slab(prior)){
+
+    inclusion <- stats::rbinom(n, size = 1, prob = rng(prior[["inclusion"]], n))
+
+    if(sample_components)
+      return(inclusion)
+
+    x         <- rng(prior[["variable"]], n) * inclusion
+    attr(x, "inclusion") <- inclusion
+
+  }else if(is.prior.mixture(prior)){
+
+    component_probabilities <- attr(prior, "prior_weights")
+    components              <- sample(seq_along(component_probabilities), size = n, replace = TRUE, prob = component_probabilities)
+
+    if(sample_components)
+      return(components)
+
+    if(inherits(prior, "prior.factor_mixture")){
+
+      prior_type <- .get_prior_factor_list_type(prior)
+
+      if(transform_factor_samples){
+        x <- matrix(NA, nrow = n, ncol = prior_type[["K"]] + 1)
+      }else{
+        x <- matrix(NA, nrow = n, ncol = prior_type[["K"]])
+      }
+
+      for(component in unique(components)){
+        x[component == components,] <- rng(prior[[component]], sum(component == components), transform_factor_samples = transform_factor_samples)
+      }
+
+    }else if(inherits(prior, "prior.simple_mixture")){
+
+      x <- rep(NA, n)
+      for(component in unique(components)){
+        x[component == components] <- rng(prior[[component]], sum(component == components))
+      }
+
+    }else{
+      stop("unsupported prior mixture type")
+    }
+
+
+    attr(x, "components") <- components
+
+  }else if(is.prior.simple(prior)){
 
     x <- NULL
     # guesstimate the number of samples needed before the truncation
@@ -1064,10 +1235,6 @@ rng.prior   <- function(x, n, ...){
       "two.sided.fixed" = rtwo.sided_fixed(n, omega = prior$parameters[["omega"]])
     )
 
-  }else if(is.prior.spike_and_slab(prior)){
-
-    x <- rng(prior[["variable"]], n) * stats::rbinom(n, size = 1, prob = rng(prior[["inclusion"]], n))
-
   }
 
   return(x)
@@ -1080,7 +1247,15 @@ cdf.prior   <- function(x, q, ...){
   .check_q(q)
   .check_prior(prior)
 
-  if(is.prior.simple(prior)){
+  if(is.prior.spike_and_slab(prior)){
+
+    stop("No cdfs are implemented for spike and slab priors.")
+
+  }else if(is.prior.mixture(prior)){
+
+    stop("No cdfs are implemented for prior mixtures.")
+
+  }else if(is.prior.simple(prior)){
 
     p <- rep(NA, length(q))
 
@@ -1116,10 +1291,6 @@ cdf.prior   <- function(x, q, ...){
 
     stop("Only marginal cdfs are implemented for prior weightfunctions.")
 
-  }else if(is.prior.spike_and_slab(prior)){
-
-    stop("No cdfs are implemented for spike and slab priors.")
-
   }
 
   return(p)
@@ -1132,7 +1303,15 @@ ccdf.prior  <- function(x, q, ...){
   .check_q(q)
   .check_prior(prior)
 
-  if(is.prior.simple(prior)){
+  if(is.prior.spike_and_slab(prior)){
+
+    stop("No ccdf are implemented for spike and slab priors.")
+
+  }else if(is.prior.mixture(prior)){
+
+    stop("No ccdf are implemented for prior mixtures.")
+
+  }else if(is.prior.simple(prior)){
 
     p <- rep(NA, length(q))
 
@@ -1168,10 +1347,6 @@ ccdf.prior  <- function(x, q, ...){
 
     stop("Only marginal ccdf functions are implemented for prior weightfunctions.")
 
-  }else if(is.prior.spike_and_slab(prior)){
-
-    stop("No ccdf are implemented for spike and slab priors.")
-
   }
 
   return(p)
@@ -1185,7 +1360,15 @@ lpdf.prior  <- function(x, y, ...){
   .check_x(x)
   .check_prior(prior)
 
-  if(is.prior.simple(prior)){
+  if(is.prior.spike_and_slab(prior)){
+
+    stop("No lpdf are implemented for spike and slab priors.")
+
+  }else if(is.prior.mixture(prior)){
+
+    stop("No lpdf are implemented for prior mixtures.")
+
+  }else if(is.prior.simple(prior)){
 
     log_lik <- switch(
       prior[["distribution"]],
@@ -1237,10 +1420,6 @@ lpdf.prior  <- function(x, y, ...){
 
     stop("Only marginal lpdf are implemented for prior weightfunctions.")
 
-  }else if(is.prior.spike_and_slab(prior)){
-
-    stop("No lpdf are implemented for spike and slab priors.")
-
   }
 
   return(log_lik)
@@ -1267,7 +1446,15 @@ quant.prior <- function(x, p, ...){
   .check_p(p, log.p = FALSE)
   .check_prior(prior)
 
-  if(is.prior.simple(prior)){
+  if(is.prior.spike_and_slab(prior)){
+
+    stop("No quantile functions are implemented for spike and slab priors.")
+
+  }else if(is.prior.mixture(prior)){
+
+    stop("No quantile functions are implemented for prior mixtures.")
+
+  }else if(is.prior.simple(prior)){
 
     if(.is_prior_default_range(prior)){
 
@@ -1318,10 +1505,6 @@ quant.prior <- function(x, p, ...){
   }else if(is.prior.weightfunction(prior)){
 
     stop("Only marginal quantile functions are implemented for prior weightfunctions.")
-
-  }else if(is.prior.spike_and_slab(prior)){
-
-    stop("No quantile functions are implemented for spike and slab priors.")
 
   }
 
@@ -1416,7 +1599,15 @@ mcdf.prior   <- function(x, q, ...){
   .check_q(q)
   .check_prior(prior)
 
-  if(is.prior.simple(prior)){
+  if(is.prior.spike_and_slab(prior)){
+
+    stop("No mcdf are implemented for spike and slab priors.")
+
+  }else if(is.prior.mixture(prior)){
+
+    stop("No mcdf are implemented for prior mixtures.")
+
+  }else if(is.prior.simple(prior)){
 
     p <- cdf(prior, q)
 
@@ -1475,10 +1666,6 @@ mcdf.prior   <- function(x, q, ...){
       "mpoint"  = ppoint(q, location = 0)
     )
 
-  }else if(is.prior.spike_and_slab(prior)){
-
-    stop("No cdf are implemented for spike and slab priors.")
-
   }
 
   return(p)
@@ -1491,7 +1678,15 @@ mccdf.prior  <- function(x, q, ...){
   .check_q(q)
   .check_prior(prior)
 
-  if(is.prior.simple(prior)){
+  if(is.prior.spike_and_slab(prior)){
+
+    stop("No mccdf are implemented for spike and slab priors.")
+
+  }else if(is.prior.mixture(prior)){
+
+    stop("No mccdf are implemented for prior mixtures.")
+
+  }else if(is.prior.simple(prior)){
 
     p <- ccdf(prior, q)
 
@@ -1550,10 +1745,6 @@ mccdf.prior  <- function(x, q, ...){
       "mpoint"  = ppoint(q, location = 0, lower.tail = FALSE),
     )
 
-  }else if(is.prior.spike_and_slab(prior)){
-
-    stop("No mccdf are implemented for spike and slab priors.")
-
   }
 
   return(p)
@@ -1567,7 +1758,15 @@ mlpdf.prior  <- function(x, y, ...){
   .check_x(x)
   .check_prior(prior)
 
-  if(is.prior.simple(prior)){
+  if(is.prior.spike_and_slab(prior)){
+
+    stop("No mlpdf are implemented for spike and slab priors.")
+
+  }else if(is.prior.mixture(prior)){
+
+    stop("No mlpdf are implemented for prior mixtures.")
+
+  }else if(is.prior.simple(prior)){
 
     log_lik <- lpdf(prior, x)
 
@@ -1626,10 +1825,6 @@ mlpdf.prior  <- function(x, y, ...){
       "mpoint"  = dpoint(x, location = 0, log = TRUE),
     )
 
-  }else if(is.prior.spike_and_slab(prior)){
-
-    stop("No lpdf are implemented for spike and slab priors.")
-
   }
 
   return(log_lik)
@@ -1656,7 +1851,15 @@ mquant.prior <- function(x, p, ...){
   .check_p(p, log.p = FALSE)
   .check_prior(prior)
 
-  if(is.prior.simple(prior)){
+  if(is.prior.spike_and_slab(prior)){
+
+    stop("No quantile functions are implemented for spike and slab priors.")
+
+  }else if(is.prior.mixture(prior)){
+
+    stop("No quantile functions are implemented for prior mixtures.")
+
+  }else if(is.prior.simple(prior)){
 
     q <- quant(prior, p)
 
@@ -1714,10 +1917,6 @@ mquant.prior <- function(x, p, ...){
       "mt"      = extraDistr::qlst(p, df = prior$parameters[["df"]], mu = 0, sigma = par2),
       "mpoint"  = qpoint(p, location = 0)
     )
-
-  }else if(is.prior.spike_and_slab(prior)){
-
-    stop("No quantile functions are implemented for spike and slab priors.")
 
   }
 
@@ -1838,7 +2037,15 @@ mean.prior   <- function(x, ...){
 
   .check_prior(x, "x")
 
-  if(is.prior.simple(x)){
+  if(is.prior.spike_and_slab(x)){
+
+    m <- mean(x[["variable"]]) * mean(x[["inclusion"]])
+
+  }else if(is.prior.mixture(x)){
+
+    stop("No mean is implemented for prior mixtures.")
+
+  }else if(is.prior.simple(x)){
 
     if(.is_prior_default_range(x)){
 
@@ -1907,10 +2114,6 @@ mean.prior   <- function(x, ...){
       # orthonormal prior distributions must be centered
       m <- 0
     }
-
-  }else if(is.prior.spike_and_slab(x)){
-
-    m <- mean(x[["variable"]]) * mean(x[["inclusion"]])
 
   }
 
@@ -1984,7 +2187,21 @@ var.prior   <- function(x, ...){
 
   .check_prior(x, "x")
 
-  if(is.prior.simple(x)){
+  if(is.prior.spike_and_slab(x)){
+
+    # the inclusion is always beta -> indicators are betabinom
+    var_inclusion <- with(x[["inclusion"]][["parameters"]], (alpha * beta * (alpha + beta + 1) ) / ( (alpha + beta)^2 * (alpha + beta + 1)  ) )
+
+    var <-
+      (var(x[["variable"]])  + mean(x[["variable"]])^2) *
+      (var_inclusion         + mean(x[["inclusion"]])^2) -
+      (mean(x[["variable"]])^2 * mean(x[["inclusion"]])^2)
+
+  }else if(is.prior.mixture(x)){
+
+    stop("No var is implemented for prior mixtures.")
+
+  }else if(is.prior.simple(x)){
 
     if(.is_prior_default_range(x)){
 
@@ -2081,17 +2298,6 @@ var.prior   <- function(x, ...){
         "mnormal" = var.prior(prior("normal", parameters = list(mean = 0, sd = par2))),
         "mt"      = var.prior(prior("t",      parameters = list(location = 0, scale = par2, df = x$parameters[["df"]]))))
     }
-
-  }else if(is.prior.spike_and_slab(x)){
-
-    # the inclusion is always beta -> indicators are betabinom
-    var_inclusion <- with(x[["inclusion"]][["parameters"]], (alpha * beta * (alpha + beta + 1) ) / ( (alpha + beta)^2 * (alpha + beta + 1)  ) )
-
-
-    var <-
-      (var(x[["variable"]])  + mean(x[["variable"]])^2) *
-      (var_inclusion         + mean(x[["inclusion"]])^2) -
-      (mean(x[["variable"]])^2 * mean(x[["inclusion"]])^2)
 
   }
 
