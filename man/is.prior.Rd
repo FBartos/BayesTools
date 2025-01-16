@@ -16,6 +16,7 @@
 \alias{is.prior.independent}
 \alias{is.prior.spike_and_slab}
 \alias{is.prior.meandif}
+\alias{is.prior.mixture}
 \title{Reports whether x is a a prior object}
 \usage{
 is.prior(x)
@@ -47,6 +48,8 @@ is.prior.independent(x)
 is.prior.spike_and_slab(x)
 
 is.prior.meandif(x)
+
+is.prior.mixture(x)
 }
 \arguments{
 \item{x}{an object of test}

@@ -196,6 +196,41 @@
     return(attr(prior, "level_names"))
   }
 }
+.get_prior_factor_list_type   <- function(prior_list){
+
+  priors_type <- do.call(rbind, lapply(prior_list, function(p) {
+    if(is.prior.point(p) | is.prior.none(p)){
+      return(data.frame(
+        "treatment"         = NA,
+        "independent"       = NA,
+        "orthonormal"       = NA,
+        "meandif"           = NA,
+        "K"                 = NA
+      ))
+    }else{
+      return(data.frame(
+        "treatment"         = is.prior.treatment(p),
+        "independent"       = is.prior.independent(p),
+        "orthonormal"       = is.prior.orthonormal(p),
+        "meandif"           = is.prior.meandif(p),
+        "K"                 = if(!is.null(p[["parameters"]][["K"]])) p[["parameters"]][["K"]] else NA
+      ))
+    }
+  }))
+  priors_type <- priors_type[!apply(priors_type, 1, function(x) all(is.na(x))),]
+  priors_type <- unique(priors_type)
+
+  if(nrow(priors_type) > 1)
+    stop("The prior_list must contain only one type of factor priors.")
+
+  class_type <- unlist(priors_type[-ncol(priors_type)])
+  class_type <- names(class_type)[which(class_type)]
+
+  return(list(
+    "class" = paste0("prior.", class_type),
+    "K"     = priors_type[["K"]]
+  ))
+}
 .is_prior_interaction         <- function(prior){
   if(is.null(attr(prior, "interaction"))){
     return(FALSE)
@@ -244,6 +279,7 @@
 #' @export is.prior.treatment
 #' @export is.prior.independent
 #' @export is.prior.spike_and_slab
+#' @export is.prior.mixture
 #' @name is.prior
 NULL
 
@@ -307,10 +343,60 @@ is.prior.spike_and_slab  <- function(x){
 is.prior.meandif         <- function(x){
   inherits(x, "prior.meandif")
 }
+#' @rdname is.prior
+is.prior.mixture         <- function(x){
+  inherits(x, "prior.mixture")
+}
 
 .check_prior <- function(prior, name = "prior"){
+
   if(!is.prior(prior))
-    stop(paste0("The '", name, "' argument must be a valid prior object."))
+    stop(paste0("The '", name, "' argument must be a valid prior object."), call. = FALSE)
+
+  return()
+}
+.check_prior_list <- function(prior_list, name = "prior_list", check_length = 0, allow_NULL = FALSE,
+                              allow_prior.point = TRUE, allow_prior.simple = TRUE, allow_prior.discrete = TRUE, allow_prior.vector = TRUE,
+                              allow_prior.PET = TRUE, allow_prior.PEESE = TRUE, allow_prior.weightfunction = TRUE, allow_prior.factor = TRUE){
+
+  check_list(prior_list, name, check_length = check_length, allow_other = FALSE, allow_NULL = allow_NULL)
+
+  if(allow_NULL && is.null(prior_list) || length(prior_list) == 0)
+    return()
+
+  for(i in seq_along(prior_list)){
+    .check_prior(prior_list[[i]], paste0(name, "[[", i, "]] argument must be a prior distribution."))
+
+    if(!allow_prior.point && is.prior.point(prior_list[[i]]))
+      stop(paste0("The '", name, "' argument must not contain point priors (element [[", i, "]])."), call. = FALSE)
+
+    if(!allow_prior.simple && is.prior.simple(prior_list[[i]]))
+      stop(paste0("The '", name, "' argument must not contain simple priors (element [[", i, "]])."), call. = FALSE)
+
+    if(!allow_prior.discrete && is.prior.discrete(prior_list[[i]]))
+      stop(paste0("The '", name, "' argument must not contain discrete priors (element [[", i, "]])."), call. = FALSE)
+
+    if(!allow_prior.vector && is.prior.vector(prior_list[[i]]))
+      stop(paste0("The '", name, "' argument must not contain vector priors (element [[", i, "]])."), call. = FALSE)
+
+    if(!allow_prior.PET && is.prior.PET(prior_list[[i]]))
+      stop(paste0("The '", name, "' argument must not contain PET priors (element [[", i, "]])."), call. = FALSE)
+
+    if(!allow_prior.PEESE && is.prior.PEESE(prior_list[[i]]))
+      stop(paste0("The '", name, "' argument must not contain PEESE priors (element [[", i, "]])."), call. = FALSE)
+
+    if(!allow_prior.weightfunction && is.prior.weightfunction(prior_list[[i]]))
+      stop(paste0("The '", name, "' argument must not contain weightfunction priors (element [[", i, "]])."), call. = FALSE)
+
+    if(!allow_prior.factor && is.prior.factor(prior_list[[i]]))
+      stop(paste0("The '", name, "' argument must not contain factor priors (element [[", i, "]])."), call. = FALSE)
+
+    if(is.prior.mixture(prior_list[[i]])){
+      stop(paste0("The '", name, "' argument must not contain mixture priors (element [[", i, "]])."), call. = FALSE)
+    }
+  }
+
+  return()
 }
 
 

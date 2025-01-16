@@ -273,8 +273,12 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
       stop("lb' and 'ub' must be numeric vectors.")
   }
 
+  # these are not generally possible because the component indicators are discrete and bridgesampling
+  # package cannot currently deal with them
   if(any(sapply(prior_list, is.prior.spike_and_slab)))
     stop("Marginal likelihood computation for spike and slab priors is not implemented.")
+  if(any(sapply(prior_list, is.prior.mixture)))
+    stop("Marginal likelihood computation for prior mixture priors is not implemented.")
 
   # get information about the specified parameters
   parameters_names <- .JAGS_bridgesampling_posterior_info(prior_list)
@@ -328,10 +332,6 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
     }else if(is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
 
       add_parameter <- .JAGS_bridgesampling_posterior_info.PP(prior_list[[i]])
-
-    }else if(is.prior.spike_and_slab(prior_list[[i]])){
-
-      add_parameter <- .JAGS_bridgesampling_posterior_info.spike_and_slab(prior_list[[i]], names(prior_list)[i])
 
     }else if(is.prior.factor(prior_list[[i]])){
 
@@ -496,33 +496,33 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
 
   return(parameter)
 }
-.JAGS_bridgesampling_posterior_info.spike_and_slab <- function(prior, parameter_name){
-
-  .check_prior(prior)
-  if(!is.prior.spike_and_slab(prior))
-    stop("improper prior provided")
-  check_char(parameter_name, "parameter_name")
-
-  if(!is.prior.point(prior[["inclusion"]])){
-
-    parameter_variable  <- .JAGS_bridgesampling_posterior_info.simple(prior[["variable"]],  paste0(parameter_name, "_variable"))
-    parameter_inclusion <- .JAGS_bridgesampling_posterior_info.simple(prior[["inclusion"]], paste0(parameter_name, "_inclusion"))
-
-    parameter <- c(parameter_variable, parameter_inclusion)
-
-    attr(parameter, "lb") <- c(attr(parameter_variable, "lb"), attr(parameter_inclusion, "lb"))
-    attr(parameter, "ub") <- c(attr(parameter_variable, "ub"), attr(parameter_inclusion, "ub"))
-
-    names(attr(parameter, "lb")) <- c(names(attr(parameter_variable, "lb")), names(attr(parameter_inclusion, "lb")))
-    names(attr(parameter, "ub")) <- c(names(attr(parameter_variable, "ub")), names(attr(parameter_inclusion, "ub")))
-
-  }else{
-    parameter  <- .JAGS_bridgesampling_posterior_info.simple(prior[["variable"]],  paste0(parameter_name, "_variable"))
-  }
-
-
-  return(parameter)
-}
+# .JAGS_bridgesampling_posterior_info.spike_and_slab <- function(prior, parameter_name){
+#
+#   .check_prior(prior)
+#   if(!is.prior.spike_and_slab(prior))
+#     stop("improper prior provided")
+#   check_char(parameter_name, "parameter_name")
+#
+#   if(!is.prior.point(prior[["inclusion"]])){
+#
+#     parameter_variable  <- .JAGS_bridgesampling_posterior_info.simple(prior[["variable"]],  paste0(parameter_name, "_variable"))
+#     parameter_inclusion <- .JAGS_bridgesampling_posterior_info.simple(prior[["inclusion"]], paste0(parameter_name, "_inclusion"))
+#
+#     parameter <- c(parameter_variable, parameter_inclusion)
+#
+#     attr(parameter, "lb") <- c(attr(parameter_variable, "lb"), attr(parameter_inclusion, "lb"))
+#     attr(parameter, "ub") <- c(attr(parameter_variable, "ub"), attr(parameter_inclusion, "ub"))
+#
+#     names(attr(parameter, "lb")) <- c(names(attr(parameter_variable, "lb")), names(attr(parameter_inclusion, "lb")))
+#     names(attr(parameter, "ub")) <- c(names(attr(parameter_variable, "ub")), names(attr(parameter_inclusion, "ub")))
+#
+#   }else{
+#     parameter  <- .JAGS_bridgesampling_posterior_info.simple(prior[["variable"]],  paste0(parameter_name, "_variable"))
+#   }
+#
+#
+#   return(parameter)
+# }
 
 #' @title Compute marginal likelihood for 'JAGS' priors
 #'
@@ -568,10 +568,6 @@ JAGS_marglik_priors                <- function(samples, prior_list){
     }else if(is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
 
       marglik <- marglik + .JAGS_marglik_priors.PP(samples, prior_list[[i]])
-
-    }else if(is.prior.spike_and_slab(prior_list[[i]])){
-
-      marglik <- marglik + .JAGS_marglik_priors.spike_and_slab(samples, prior_list[[i]], names(prior_list)[i])
 
     }else if(is.prior.factor(prior_list[[i]])){
 
@@ -703,24 +699,24 @@ JAGS_marglik_priors                <- function(samples, prior_list){
 
   return(marglik)
 }
-.JAGS_marglik_priors.spike_and_slab <- function(samples, prior, parameter_name){
-
-  .check_prior(prior)
-  if(!is.prior.spike_and_slab(prior))
-    stop("improper prior provided")
-  check_char(parameter_name, "parameter_name")
-
-  marglik <- 0
-  if(!is.prior.point(prior[["inclusion"]])){
-    marglik <- marglik + .JAGS_marglik_priors.simple(samples, prior[["inclusion"]], paste0(parameter_name, "_inclusion"))
-  }
-
-  if(samples[[ paste0(if(prior[["variable"]][["distribution"]] == "invgamma") "inv_" else "", parameter_name, "_variable") ]] != 0){
-    marglik <- marglik + .JAGS_marglik_priors.simple(samples, prior[["variable"]], paste0(parameter_name, "_variable"))
-  }
-
-  return(marglik)
-}
+# .JAGS_marglik_priors.spike_and_slab <- function(samples, prior, parameter_name){
+#
+#   .check_prior(prior)
+#   if(!is.prior.spike_and_slab(prior))
+#     stop("improper prior provided")
+#   check_char(parameter_name, "parameter_name")
+#
+#   marglik <- 0
+#   if(!is.prior.point(prior[["inclusion"]])){
+#     marglik <- marglik + .JAGS_marglik_priors.simple(samples, prior[["inclusion"]], paste0(parameter_name, "_inclusion"))
+#   }
+#
+#   if(samples[[ paste0(if(prior[["variable"]][["distribution"]] == "invgamma") "inv_" else "", parameter_name, "_variable") ]] != 0){
+#     marglik <- marglik + .JAGS_marglik_priors.simple(samples, prior[["variable"]], paste0(parameter_name, "_variable"))
+#   }
+#
+#   return(marglik)
+# }
 
 #' @rdname JAGS_marglik_priors
 JAGS_marglik_priors_formula <- function(samples, formula_prior_list){
@@ -779,10 +775,6 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
     }else if(is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
 
       parameters <- c(parameters, .JAGS_marglik_parameters.PP(samples, prior_list[[i]]))
-
-    }else if(is.prior.spike_and_slab(prior_list[[i]])){
-
-      parameters <- c(parameters, .JAGS_marglik_parameters.spike_and_slab(samples, prior_list[[i]], names(prior_list)[i]))
 
     }else if(is.prior.factor(prior_list[[i]])){
 
@@ -925,21 +917,21 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
   return(parameter)
 }
-.JAGS_marglik_parameters.spike_and_slab <- function(samples, prior, parameter_name){
-
-  .check_prior(prior)
-  if(!is.prior.spike_and_slab(prior))
-    stop("improper prior provided")
-  check_char(parameter_name, "parameter_name")
-
-  parameter <- list()
-  parameter[paste0(parameter_name, "_variable")]  <- .JAGS_marglik_parameters.simple(samples, prior[["variable"]],  paste0(parameter_name, "_variable"))
-  if(!is.prior.point(prior[[parameter_name]][["inclusion"]])){
-    parameter[paste0(parameter_name, "_inclusion")] <- .JAGS_marglik_parameters.simple(samples, prior[["inclusion"]], paste0(parameter_name, "_inclusion"))
-  }
-
-  return(parameter)
-}
+# .JAGS_marglik_parameters.spike_and_slab <- function(samples, prior, parameter_name){
+#
+#   .check_prior(prior)
+#   if(!is.prior.spike_and_slab(prior))
+#     stop("improper prior provided")
+#   check_char(parameter_name, "parameter_name")
+#
+#   parameter <- list()
+#   parameter[paste0(parameter_name, "_variable")]  <- .JAGS_marglik_parameters.simple(samples, prior[["variable"]],  paste0(parameter_name, "_variable"))
+#   if(!is.prior.point(prior[[parameter_name]][["inclusion"]])){
+#     parameter[paste0(parameter_name, "_inclusion")] <- .JAGS_marglik_parameters.simple(samples, prior[["inclusion"]], paste0(parameter_name, "_inclusion"))
+#   }
+#
+#   return(parameter)
+# }
 
 #' @rdname JAGS_marglik_parameters
 JAGS_marglik_parameters_formula      <- function(samples, formula_data_list, formula_prior_list, prior_list_parameters){

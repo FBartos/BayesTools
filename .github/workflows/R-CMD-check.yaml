@@ -1,115 +1,97 @@
-on:
-  push:
-    branches:
-      - main
-      - master
-      - pre-release
-  pull_request:
-    branches:
-      - main
-      - master
-      - pre-release
-
 name: R-CMD-check
 
+on:
+  push:
+    branches: [main, master, pre-release]
+  pull_request:
+    branches: [main, master, pre-release]
+
 jobs:
-  R-CMD-check:
+  build:
     runs-on: ${{ matrix.config.os }}
-
-    name: ${{ matrix.config.os }} (${{ matrix.config.r }})
-
     strategy:
       fail-fast: false
       matrix:
         config:
           - {os: windows-latest, r: 'release'}
-          - {os: ubuntu-latest,  r: 'release'}
-        #  - {os: macOS-latest,   r: 'release'}
-        #  - {os: ubuntu-latest,   r: 'devel', http-user-agent: 'release'}
-        #  - {os: ubuntu-latest,   r: 'oldrel-1'}
-
-    env:
-      RSPM: ${{ matrix.config.rspm }}
-      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
-      R_REMOTES_NO_ERRORS_FROM_WARNINGS: false
-      NOT_CRAN: true
-
+          - {os: ubuntu-latest, r: 'release'}
+          - {os: macOS-latest, r: 'release'}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
-      - uses: r-lib/actions/setup-r@v2
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
         with:
           r-version: ${{ matrix.config.r }}
 
-      - uses: r-lib/actions/setup-pandoc@v2
-
-      - name: Query dependencies
-        run: |
-          install.packages('remotes')
-          saveRDS(remotes::dev_package_deps(dependencies = TRUE), ".github/depends.Rds", version = 2)
-        shell: Rscript {0}
-
-      - name: Cache R packages
-        if: runner.os != 'Windows'
-        uses: actions/cache@v1
-        with:
-          path: ${{ env.R_LIBS_USER }}
-          key: ${{ runner.os }}-r-${{ matrix.config.r }}-3-${{ hashFiles('.github/depends.Rds') }}
-          restore-keys: ${{ runner.os }}-r-${{ matrix.config.r }}-3-
-
-      - name: Set path for RTools 4.0
-        if: runner.os == 'Windows'
-        run: echo "C:/rtools40/usr/bin;C:/rtools40/mingw64/bin" | Out-File -Append -FilePath $env:GITHUB_PATH -Encoding utf8
-      
-      - name: Install most Windows system dependencies
-        if: runner.os == 'Windows'
-        run: |
-          pacman -Syu mingw-w64-x86_64-make --noconfirm
-          g++ --version
-          Get-Command g++ | Select-Object -ExpandProperty Definition
-          mingw32-make --version
-          Get-Command mingw32-make | Select-Object -ExpandProperty Definition
-          (New-Object System.Net.WebClient).DownloadFile('https://sourceforge.net/projects/mcmc-jags/files/JAGS/4.x/Windows/JAGS-4.3.1.exe', 'C:\JAGS-4.3.1.exe')
-        shell: powershell
-
-      - name: Install JAGS on Windows
-        if: runner.os == 'Windows'
-        run: C:\JAGS-4.3.1.exe /S
-        shell: cmd
-
-      - name: Install Linux system dependencies
+      # Install JAGS and system dependencies on Linux
+      - name: Install System Dependencies (Linux)
         if: runner.os == 'Linux'
-        env:
-          RHUB_PLATFORM: linux-x86_64-ubuntu-gcc
         run: |
-          sudo apt-get install -y libglpk-dev
-          Rscript -e "remotes::install_github('r-hub/sysreqs')"
-          sysreqs=$(Rscript -e "cat(sysreqs::sysreq_commands('DESCRIPTION'))")
-          sudo -s eval "$sysreqs"
-          sudo -s apt-get install jags
-          sudo -s apt-get install libv8-dev
-          sudo -s apt-get install libnode-dev
-          sudo -s apt-get install libcurl4-openssl-dev
+          sudo apt-get update
+          sudo apt-get install -y \
+            libssl-dev \
+            libcurl4-openssl-dev \
+            libxml2-dev \
+            libfontconfig1-dev \
+            libharfbuzz-dev \
+            libfribidi-dev \
+            libfreetype6-dev \
+            libpng-dev \
+            libtiff5-dev \
+            libjpeg-dev \
+            libcairo2-dev \
+            jags
 
-      - name: Install Mac system dependencies
+      # Install JAGS on Windows
+      - name: Install JAGS (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          curl -o jags-installer.exe -L https://sourceforge.net/projects/mcmc-jags/files/JAGS/4.x/Windows/JAGS-4.3.1.exe/download
+          jags-installer.exe /S
+          del jags-installer.exe
+
+      # Set JAGS environment variables on Windows
+      - name: Set JAGS environment variables (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          echo JAGS_ROOT=C:\Program Files\JAGS\JAGS-4.3.1>> %GITHUB_ENV%
+          echo JAGS_MAJOR_VERSION=4>> %GITHUB_ENV%
+          echo PATH=C:\Program Files\JAGS\JAGS-4.3.1\bin;%PATH%>> %GITHUB_ENV%
+
+      # Install JAGS on macOS
+      - name: Install JAGS (macOS)
         if: runner.os == 'macOS'
         run: |
-          rm '/usr/local/bin/gfortran'
-          brew install automake jags
-          
-      - name: Install dependencies
-        if: runner.os != 'macOS'
-        run: |
-          remotes::install_deps(dependencies = TRUE, type = ifelse(tolower(Sys.info()["sysname"]) == "linux", "source", "binary"))
-          remotes::install_cran("rcmdcheck")
-        shell: Rscript {0}
+          brew update
+          brew install jags
 
-      - name: Install dependencies (macOS)
+      # Find and Set JAGS Paths
+      - name: Set Environment Variables (macOS)
         if: runner.os == 'macOS'
         run: |
-          remotes::install_deps(dependencies = TRUE, type = ifelse(tolower(Sys.info()["sysname"]) == "linux", "source", "binary"))
-          install.packages("rjags", type = "source")
-          remotes::install_cran("rcmdcheck")
+          JAGS_BIN=$(brew --prefix jags)/bin
+          echo "JAGS_ROOT=$(brew --prefix jags)" >> $GITHUB_ENV
+          echo "PATH=$JAGS_BIN:$PATH" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=$(brew --prefix jags)/lib/pkgconfig" >> $GITHUB_ENV
+
+      # Create Symlink for jags-terminal (if necessary)
+      - name: Create Symlink for jags-terminal (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          sudo mkdir -p $(brew --prefix)/libexec
+          sudo ln -s $(brew --prefix jags)/bin/jags $(brew --prefix)/libexec/jags-terminal
+
+      # Install the package
+      - name: Install the required packages
+        run: |
+          options(repos = c(CRAN = "https://cloud.r-project.org"))
+          install.packages('devtools')
+          install.packages('rcmdcheck')
+          install.packages(c('BayesFactor', 'RoBMA', 'runjags', 'rjags', 'rstan', 'scales', 'vdiffr', 'testthat', 'covr', 'pandoc'))
+          devtools::install()
         shell: Rscript {0}
 
       - name: Check
@@ -117,6 +99,7 @@ jobs:
         env:
           _R_CHECK_CRAN_INCOMING_REMOTE_: false
         run: |
+          options(crayon.enabled = TRUE)
           rcmdcheck::rcmdcheck(
             args        = c("--no-manual", "--as-cran", "--ignore-vignettes"),
             build_args  = c("--no-build-vignettes"),
@@ -131,12 +114,13 @@ jobs:
           JAGS_ROOT: "/c/progra~1/JAGS/JAGS-4.3.1"
           JAGS_MAJOR_VERSION: 4
         run: |
+          options(crayon.enabled = TRUE)
           rcmdcheck::rcmdcheck(
             args        = c("--no-manual", "--as-cran", "--ignore-vignettes"),
             build_args  = c("--no-build-vignettes"),
             error_on    = "warning",
             check_dir   = "check")
-        shell: Rscript {0}"
+        shell: Rscript {0}
 
       - name: Upload check results
         if: failure()

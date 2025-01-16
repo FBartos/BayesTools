@@ -91,11 +91,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
     for(factor in names(predictors_type[predictors_type == "factor"])){
 
       # select the corresponding prior for the variable
-      if(is.prior.spike_and_slab(prior_list[[factor]])){
-        this_prior <- prior_list[[factor]][["variable"]]
-      }else{
-        this_prior <- prior_list[[factor]]
-      }
+      this_prior <- prior_list[[factor]]
 
       if(is.prior.treatment(this_prior)){
         stats::contrasts(data[,factor]) <- "contr.treatment"
@@ -115,13 +111,9 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
     for(continuous in names(predictors_type[predictors_type == "continuous"])){
 
       # select the corresponding prior for the variable
-      if(is.prior.spike_and_slab(prior_list[[continuous]])){
-        this_prior <- prior_list[[continuous]][["variable"]]
-      }else{
-        this_prior <- prior_list[[continuous]]
-      }
+      this_prior <- prior_list[[continuous]]
 
-      if(is.prior.factor(this_prior)){
+      if(is.prior.factor(this_prior)|| is.prior.discrete(this_prior) || is.prior.PET(this_prior) || is.prior.PEESE(this_prior) || is.prior.weightfunction(this_prior)){
         stop(paste0("Unsupported prior distribution defined for '", continuous, "' continuous variable. See '?prior' for details."))
       }
     }
@@ -155,7 +147,9 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
     terms_indexes[1] <- 0
 
     formula_syntax   <- c(formula_syntax, paste0(parameter, "_intercept"))
-    prior_syntax     <- c(prior_syntax, .JAGS_prior.simple(prior_list[["intercept"]], paste0(parameter, "_intercept")))
+    prior_intercept_list        <- prior_list["intercept"]
+    names(prior_intercept_list) <- paste0(parameter, "_intercept")
+    prior_syntax     <- c(prior_syntax, .JAGS_add_priors.fun(prior_intercept_list))
   }else{
     terms_indexes    <- attr(model_matrix, "assign")
   }
@@ -164,11 +158,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   for(i in unique(terms_indexes[terms_indexes > 0])){
 
     # extract the corresponding prior distribution for a given coefficient
-    if(is.prior.spike_and_slab(prior_list[[model_terms[i]]])){
-      this_prior <- prior_list[[model_terms[i]]][["variable"]]
-    }else{
-      this_prior <- prior_list[[model_terms[i]]]
-    }
+    this_prior <- prior_list[[model_terms[i]]]
 
     # check whether the term is an interaction or not and save the corresponding attributes
     attr(this_prior, "interaction") <- grepl("__xXx__", model_terms[i])
@@ -225,8 +215,21 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
     }
 
     # update the corresponding prior distribution back into the prior list
-    if(is.prior.spike_and_slab(prior_list[[model_terms[i]]])){
-      this_prior -> prior_list[[model_terms[i]]][["variable"]]
+    # (and forward attributes to lower level components in the case of spike and slab and mixture priors)
+    if(is.prior.spike_and_slab(this_prior)){
+      attr(this_prior, "levels")            -> attr(this_prior[["variable"]], "levels")
+      attr(this_prior, "level_names")       -> attr(this_prior[["variable"]], "level_names")
+      attr(this_prior, "interaction")       -> attr(this_prior[["variable"]], "interaction")
+      attr(this_prior, "interaction_terms") -> attr(this_prior[["variable"]], "interaction_terms")
+      this_prior -> prior_list[[model_terms[i]]]
+    }else if(is.prior.mixture(this_prior)){
+      for(p in seq_along(this_prior)){
+        attr(this_prior, "levels")            -> attr(this_prior[[p]], "levels")
+        attr(this_prior, "level_names")       -> attr(this_prior[[p]], "level_names")
+        attr(this_prior, "interaction")       -> attr(this_prior[[p]], "interaction")
+        attr(this_prior, "interaction_terms") -> attr(this_prior[[p]], "interaction_terms")
+      }
+      this_prior -> prior_list[[model_terms[i]]]
     }else{
       this_prior -> prior_list[[model_terms[i]]]
     }
@@ -337,11 +340,7 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
     for(factor in names(predictors_type[predictors_type == "factor"])){
 
       # select the corresponding prior in the variable
-      if(is.prior.spike_and_slab(prior_list_formula[[factor]])){
-        this_prior <- prior_list_formula[[factor]][["variable"]]
-      }else{
-        this_prior <- prior_list_formula[[factor]]
-      }
+      this_prior <- prior_list_formula[[factor]]
 
       if(is.factor(data[,factor])){
         if(all(levels(data[,factor]) %in% .get_prior_factor_level_names(this_prior))){
@@ -378,13 +377,9 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
     for(continuous in names(predictors_type[predictors_type == "continuous"])){
 
       # select the corresponding prior in the variable
-      if(is.prior.spike_and_slab(prior_list_formula[[continuous]])){
-        this_prior <- prior_list_formula[[continuous]][["variable"]]
-      }else{
-        this_prior <- prior_list_formula[[continuous]]
-      }
+      this_prior <- prior_list_formula[[continuous]]
 
-      if(is.prior.factor(this_prior)){
+      if(is.prior.factor(this_prior)|| is.prior.discrete(this_prior) || is.prior.PET(this_prior) || is.prior.PEESE(this_prior) || is.prior.weightfunction(this_prior)){
         stop(paste0("Unsupported prior distribution defined for '", continuous, "' continuous variable. See '?prior' for details."))
       }
     }

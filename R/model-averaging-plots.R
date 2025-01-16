@@ -366,6 +366,15 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   prior_list     <- prior_list[round(n_samples * mixing_prop) > 0]
   mixing_prop    <- mixing_prop[round(n_samples * mixing_prop) > 0]
 
+  # replace non-weighfunctions from prior mixture feneration
+  if(any(!c(sapply(prior_list, is.prior.weightfunction) | sapply(prior_list, is.prior.none)))){
+    for(i in seq_along(prior_list)){
+      if(!(is.prior.weightfunction(prior_list[[i]]) | is.prior.none(prior_list[[i]]))){
+        prior_list[[i]] <- prior_none(prior_weights = prior_weights[i])
+      }
+    }
+  }
+
   # get the samples
   samples_list <- list()
   for(i in seq_along(prior_list)){
@@ -487,6 +496,29 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 }
 .plot_data_prior_list.simple         <- function(prior_list, x_seq, x_range, x_range_quant, n_points, n_samples, force_samples, individual,
                                                  transformation, transformation_arguments, transformation_settings){
+
+  # dispatching for spike and slab priors
+  if(is.prior.spike_and_slab(prior_list)){
+
+    prior_inclusion   <- prior_list[["inclusion"]]
+    prior_variable    <- prior_list[["variable"]]
+
+    if(mean(prior_inclusion) < 1 && mean(prior_inclusion) > 0){
+      # create a dummy list for the simple mixture
+      prior_null                        <- prior("spike", list(0), prior_weights = 1-mean(prior_inclusion))
+      prior_variable[["prior_weights"]] <- mean(prior_inclusion)
+
+      prior_list <- list(
+        prior_variable,
+        prior_null
+      )
+    }else if(mean(prior_inclusion) >= 1){
+      prior_list <- list(prior_variable)
+    }else if(mean(prior_inclusion) <= 0){
+      prior_list <- list(prior("spike", list(0)))
+    }
+  }
+
   # join the same priors
   prior_list <- .simplify_prior_list(prior_list)
 
@@ -607,6 +639,10 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 }
 
 .simplify_prior_list <- function(prior_list){
+
+  if(is.prior.mixture(prior_list)){
+    class(prior_list) <- NULL
+  }
 
   # return the input with fewer than 2 priors
   if(length(prior_list) < 2){
@@ -922,7 +958,16 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
     # add priors, if requested
     if(prior){
-      prior_list      <- attr(samples[[parameter]], "prior_list")
+
+      # extract the correct weightfunction samples
+      if(!is.null(samples[[parameter]])){
+        prior_list <- attr(samples[[parameter]], "prior_list")
+      }else if(!is.null(samples[["bias"]])){
+        prior_list <- attr(samples[["bias"]], "prior_list")
+      }else{
+        stop("No 'omega' or 'bias' samples found.")
+      }
+
       prior_list      <- .simplify_prior_list(prior_list)
       plot_data_prior <- .plot_data_prior_list.weightfunction(prior_list, x_seq = NULL, x_range = xlim, x_range_quant = NULL,
                                                               n_points = n_points, n_samples = n_samples)
@@ -1274,6 +1319,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 .plot_data_samples.PETPEESE       <- function(samples, x_seq, x_range, x_range_quant, n_points, transformation, transformation_arguments, transformation_settings){
 
   check_list(samples, "samples")
+
   if(is.null(samples[["PET"]]) & is.null(samples[["PEESE"]]))
     stop("At least one 'PET' or 'PEESE' model needs to be specified.")
   if(is.null(samples[["mu"]]))
@@ -1335,7 +1381,14 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 .plot_data_samples.weightfunction <- function(samples, x_seq, x_range, x_range_quant, n_points){
 
   check_list(samples, "samples", check_names = "omega", allow_other = TRUE)
-  samples    <- samples[["omega"]]
+  if(!is.null(samples[["omega"]])){
+    samples <- samples[["omega"]]
+  }else if(!is.null(samples[["bias"]])){
+    samples <- samples[["bias"]]
+  }else{
+    stop("No 'omega' or 'bias' samples found.")
+  }
+
   prior_list <- attr(samples, "prior_list")
 
   # get the plotting range

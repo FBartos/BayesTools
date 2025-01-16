@@ -51,7 +51,7 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   check_list(prior_list, "prior_list")
   if(!all(sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
-  check_char(parameter, "parameter", allow_values = names(prior_list))
+  check_char(parameter, "parameter", allow_values = c(names(prior_list), if(any(names(prior_list) == "bias")) c("PET", "PEESE", "omega")))
   if(!is.null(transformations))
     check_char(names(transformations), "names(transformations)", allow_values = parameter)
 
@@ -246,6 +246,8 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
     }
   }else if(is.prior.weightfunction(prior_list[[parameter]])){
     model_samples <- model_samples[,paste0("omega", "[", (length(weightfunctions_mapping(list(prior_list[[parameter]]), cuts_only = TRUE)) - 2):1, "]"),drop = FALSE]
+  }else if(parameter == "omega" && !is.null(prior_list[["bias"]])){
+    model_samples <- model_samples[,paste0("omega", "[", 2:(length(weightfunctions_mapping(prior_list[["bias"]][sapply(prior_list[["bias"]], is.prior.weightfunction)], cuts_only = TRUE, one_sided = TRUE)) - 1), "]"),drop = FALSE]
   }else if(is.prior.vector(prior_list[[parameter]])){
     if(prior_list[[parameter]]$parameters[["K"]] > 1){
       model_samples <- model_samples[,paste0(parameter, "[", 1:prior_list[[parameter]]$parameters[["K"]], "]"),drop = FALSE]
@@ -261,8 +263,15 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
     model_samples <- model_samples[,parameter,drop = FALSE]
   }
 
-  prior_list      <- prior_list[parameter]
-  parameter_names <- parameter
+  # deal with bias mixture dispatching
+  if(parameter %in% c("PET", "PEESE", "omega") && !is.null(prior_list[["bias"]])){
+    prior_list      <- prior_list[["bias"]]
+    parameter_names <- parameter
+  }else{
+    prior_list      <- prior_list[parameter]
+    parameter_names <- parameter
+  }
+
 
   # mostly adapted from runjags_estimates_table
   # apply transformations
@@ -342,7 +351,7 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
   }
 
   # rename weightfunctions factor levels
-  if(any(sapply(prior_list, is.prior.weightfunction))){
+  if(any(sapply(prior_list, is.prior.weightfunction)) && !is.prior.mixture(prior_list)){
     for(par in names(prior_list)[sapply(prior_list, is.prior.weightfunction)]){
       omega_cuts      <- weightfunctions_mapping(prior_list[par], cuts_only = TRUE)
       parameter_names <- sapply(1:(length(omega_cuts)-1), function(i)paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
@@ -350,12 +359,17 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
     }
   }
 
+  if(is.prior.mixture(prior_list) && parameter == "omega"){
+    omega_cuts      <- weightfunctions_mapping(prior_list[sapply(prior_list, is.prior.weightfunction)], cuts_only = TRUE, one_sided = TRUE)
+    parameter_names <- sapply(2:(length(omega_cuts)-1), function(i)paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
+  }
+
   # attach the relevant attributes
   colnames(model_samples)          <- parameter_names
   attr(model_samples, "chain")     <- do.call(c, samples_chain)
   attr(model_samples, "iter")      <- do.call(c, samples_iter)
   attr(model_samples, "parameter") <- parameter
-  attr(model_samples, "prior")     <- prior_list[[parameter]]
+  attr(model_samples, "prior")     <- if(is.prior.mixture(prior_list)) prior_list else prior_list[[parameter]]
 
   return(model_samples)
 }

@@ -4,12 +4,14 @@
 \alias{weightfunctions_mapping}
 \title{Create coefficient mapping between multiple weightfunctions}
 \usage{
-weightfunctions_mapping(prior_list, cuts_only = FALSE)
+weightfunctions_mapping(prior_list, cuts_only = FALSE, one_sided = FALSE)
 }
 \arguments{
 \item{prior_list}{list of prior distributions}
 
 \item{cuts_only}{whether only p-value cuts should be returned}
+
+\item{one_sided}{force one-sided output}
 }
 \value{
 \code{weightfunctions_mapping} returns a list of indices
