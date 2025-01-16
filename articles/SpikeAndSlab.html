@@ -6,20 +6,19 @@
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Bayes factors via spike and slab prior vs. bridge sampling • BayesTools</title>
-<!-- jquery --><script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.4.1/jquery.min.js" integrity="sha256-CSXorXvZcTkaix6Yvo6HppcZGetbYMGWSFlBw8HfCJo=" crossorigin="anonymous"></script><!-- Bootstrap --><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.4.1/css/bootstrap.min.css" integrity="sha256-bZLfwXAP04zRMK2BjiO8iu9pf4FbLqX6zitd+tIvLhE=" crossorigin="anonymous">
+<!-- jquery --><script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" integrity="sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script><!-- Bootstrap --><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.4.1/css/bootstrap.min.css" integrity="sha256-bZLfwXAP04zRMK2BjiO8iu9pf4FbLqX6zitd+tIvLhE=" crossorigin="anonymous">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.4.1/js/bootstrap.min.js" integrity="sha256-nuL8/2cJ5NDSSwnKD8VqreErSWHtnEP9E7AySL+1ev4=" crossorigin="anonymous"></script><!-- bootstrap-toc --><link rel="stylesheet" href="../bootstrap-toc.css">
 <script src="../bootstrap-toc.js"></script><!-- Font Awesome icons --><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.12.1/css/all.min.css" integrity="sha256-mmgLkCYLUQbXn0B1SRqzHar6dCnv9oZFPEC1g1cwlkk=" crossorigin="anonymous">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.12.1/css/v4-shims.min.css" integrity="sha256-wZjR52fzng1pJHwx4aV2AO3yyTOXrcDW7jBpJtTwVxw=" crossorigin="anonymous">
 <!-- clipboard.js --><script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.6/clipboard.min.js" integrity="sha256-inc5kl9MA1hkeYUt+EC3BhlIgyp/2jDIyBLS6k3UxPI=" crossorigin="anonymous"></script><!-- headroom.js --><script src="https://cdnjs.cloudflare.com/ajax/libs/headroom/0.11.0/headroom.min.js" integrity="sha256-AsUX4SJE1+yuDu5+mAVzJbuYNPHj/WroHuZ8Ir/CkE0=" crossorigin="anonymous"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/headroom/0.11.0/jQuery.headroom.min.js" integrity="sha256-ZX/yNShbjqsohH1k95liqY9Gd8uOiE1S4vZc+9KQ1K4=" crossorigin="anonymous"></script><!-- pkgdown --><link href="../pkgdown.css" rel="stylesheet">
 <script src="../pkgdown.js"></script><meta property="og:title" content="Bayes factors via spike and slab prior vs. bridge sampling">
-<meta property="og:description" content="BayesTools">
 <!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js" integrity="sha256-nvJJv9wWKEm88qvoQl9ekL2J+k/RWIsaSScxxlsrv8k=" crossorigin="anonymous"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/config/TeX-AMS-MML_HTMLorMML.js" integrity="sha256-84DKXVJXs0/F8OTMzX4UR909+jtl4G7SPypPavF+GfA=" crossorigin="anonymous"></script><!--[if lt IE 9]>
 <script src="https://oss.maxcdn.com/html5shiv/3.7.3/html5shiv.min.js"></script>
 <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
 <![endif]-->
 </head>
 <body data-spy="scroll" data-target="#toc">
-    
+
 
     <div class="container template-article">
       <header><div class="navbar navbar-default navbar-fixed-top" role="navigation">
@@ -33,7 +32,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.17</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.18</span>
       </span>
     </div>
 
@@ -45,7 +44,7 @@
 <li class="dropdown">
   <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
     Articles
-     
+
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu">
@@ -65,7 +64,7 @@
 <li>
   <a href="https://github.com/FBartos/BayesTools/" class="external-link">
     <span class="fab fa-github fa-lg"></span>
-     
+
   </a>
 </li>
       </ul>
@@ -76,7 +75,7 @@
 </div>
 <!--/.navbar -->
 
-      
+
 
       </header><div class="row">
   <div class="col-md-9 contents">
@@ -86,9 +85,9 @@ vs. bridge sampling</h1>
                         <h4 data-toc-skip class="author">František
 Bartoš</h4>
             
-            <h4 data-toc-skip class="date">2024-02-20</h4>
+            <h4 data-toc-skip class="date">2025-01-16</h4>
       
-      <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/HEAD/vignettes/SpikeAndSlab.Rmd" class="external-link"><code>vignettes/SpikeAndSlab.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/vignettes/SpikeAndSlab.Rmd" class="external-link"><code>vignettes/SpikeAndSlab.Rmd</code></a></small>
       <div class="hidden name"><code>SpikeAndSlab.Rmd</code></div>
 
     </div>
@@ -99,10 +98,9 @@ Bartoš</h4>
 JAGS <span class="citation">(Plummer, 2003)</span> code based on
 formulas and prior distribution objects and subsequent estimation of
 marginal likelihoods with the bridgesampling R package <span class="citation">(Gronau et al., 2020)</span>. Marginal likelihoods,
-<span class="math inline">\(p(\text{data} \mid \mathcal{M})\)</span>,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>p</mi><mrow><mo stretchy="true" form="prefix">(</mo><mtext mathvariant="normal">data</mtext><mo>∣</mo><mi>ℳ</mi><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">p(\text{data} \mid \mathcal{M})</annotation></semantics></math>,
 are the key ingredient for computing Bayes factors,</p>
-<p><span class="math inline">\(\text{BF}_{10} = \frac{p(\text{data} \mid
-\mathcal{M}_{1})}{p(\text{data} \mid \mathcal{M}_{0})}\)</span>,</p>
+<p><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mtext mathvariant="normal">BF</mtext><mn>10</mn></msub><mo>=</mo><mfrac><mrow><mi>p</mi><mrow><mo stretchy="true" form="prefix">(</mo><mtext mathvariant="normal">data</mtext><mo>∣</mo><msub><mi>ℳ</mi><mn>1</mn></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><mrow><mi>p</mi><mrow><mo stretchy="true" form="prefix">(</mo><mtext mathvariant="normal">data</mtext><mo>∣</mo><msub><mi>ℳ</mi><mn>0</mn></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow></mfrac></mrow><annotation encoding="application/x-tex">\text{BF}_{10} = \frac{p(\text{data} \mid \mathcal{M}_{1})}{p(\text{data} \mid \mathcal{M}_{0})}</annotation></semantics></math>,</p>
 <p>which quantify relative predictive performance of two competing
 models <span class="citation">(Kass &amp; Raftery, 1995; Rouder &amp;
 Morey, 2019; Wrinch &amp; Jeffreys, 1921)</span>. Convenient model
@@ -112,16 +110,20 @@ Bayes factors and test a wide range of informed hypotheses. See RoBMA
 examples.</p>
 <p>However, when considering a simple regression, the model space of all
 possible models increases exponentially with additional predictors.
-I.e., the possibility of including vs. excluding <span class="math inline">\(k\)</span> predictors leads to <span class="math inline">\(2^k\)</span> possible submodels that need to be
-computed. Even relatively computationally simple models (e.g. ~ 1 min of
-computation) with 10 possible predictors would result in more than 17
-hours of computation. Therefore, we might require more computationally
-efficient methods when performing variable selection with more than a
-few covariates. In this vignette, I showcase how to use BayesTools
-package to specify spike and slab priors that aim to explore most of the
-model space and obtain posterior inclusion probabilities for each
-predictor within a single MCMC run <span class="citation">(Kuo &amp;
-Mallick, 1998; O’Hara &amp; Sillanpää, 2009)</span>.</p>
+I.e., the possibility of including vs. excluding
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>k</mi><annotation encoding="application/x-tex">k</annotation></semantics></math>
+predictors leads to
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mn>2</mn><mi>k</mi></msup><annotation encoding="application/x-tex">2^k</annotation></semantics></math>
+possible submodels that need to be computed. Even relatively
+computationally simple models (e.g. ~ 1 min of computation) with 10
+possible predictors would result in more than 17 hours of computation.
+Therefore, we might require more computationally efficient methods when
+performing variable selection with more than a few covariates. In this
+vignette, I showcase how to use BayesTools package to specify spike and
+slab priors that aim to explore most of the model space and obtain
+posterior inclusion probabilities for each predictor within a single
+MCMC run <span class="citation">(Kuo &amp; Mallick, 1998; O’Hara &amp;
+Sillanpää, 2009)</span>.</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://fbartos.github.io/BayesTools/" class="external-link">BayesTools</a></span><span class="op">)</span></span>
 <span><span class="co">#&gt; </span></span>
@@ -136,11 +138,16 @@ Mallick, 1998; O’Hara &amp; Sillanpää, 2009)</span>.</p>
 <h2 id="simulated-data">Simulated Data<a class="anchor" aria-label="anchor" href="#simulated-data"></a>
 </h2>
 <p>To keep it simple, let’s consider a linear regression with one
-continuous predictor <span class="math inline">\(x\)</span>. We simulate
-<span class="math inline">\(N = 100\)</span> observations of a dependent
-variable <span class="math inline">\(y\)</span> under the presence of a
-small effect <span class="math inline">\(\beta\)</span> of a continuous
-predictor <span class="math inline">\(x\)</span>.</p>
+continuous predictor
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>x</mi><annotation encoding="application/x-tex">x</annotation></semantics></math>.
+We simulate
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>N</mi><mo>=</mo><mn>100</mn></mrow><annotation encoding="application/x-tex">N = 100</annotation></semantics></math>
+observations of a dependent variable
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>y</mi><annotation encoding="application/x-tex">y</annotation></semantics></math>
+under the presence of a small effect
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>β</mi><annotation encoding="application/x-tex">\beta</annotation></semantics></math>
+of a continuous predictor
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>x</mi><annotation encoding="application/x-tex">x</annotation></semantics></math>.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="op">-</span><span class="fl">68</span><span class="op">)</span> <span class="co"># set seed for reproducibility</span></span>
 <span></span>
@@ -183,21 +190,27 @@ settings (up to a random error) with the <code>lm</code> function.</p>
 <p>We consider two following models:</p>
 <ul>
 <li>
-<span class="math inline">\(\mathcal{M}_0\)</span>: <span class="math inline">\(\beta = 0\)</span>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>ℳ</mi><mn>0</mn></msub><annotation encoding="application/x-tex">\mathcal{M}_0</annotation></semantics></math>:
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>β</mi><mo>=</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">\beta = 0</annotation></semantics></math>
 </li>
-<li>and <span class="math inline">\(\mathcal{M}_1\)</span>: <span class="math inline">\(\beta \sim g()\)</span>,</li>
+<li>and
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>ℳ</mi><mn>1</mn></msub><annotation encoding="application/x-tex">\mathcal{M}_1</annotation></semantics></math>:
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>β</mi><mo>∼</mo><mi>g</mi><mrow><mo stretchy="true" form="prefix">(</mo><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\beta \sim g()</annotation></semantics></math>,</li>
 </ul>
-<p>where <span class="math inline">\(g()\)</span> characterizes our
-hypothesis about the degree of the effect. In our example, we specify a
-simple two-sided hypothesis represented by a normal distribution with
-mean 0 and standard deviation 0.5, e.g., <span class="math inline">\(\beta \sim \text{Normal}(0, 0.5^2)\)</span>.</p>
+<p>where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>g</mi><mrow><mo stretchy="true" form="prefix">(</mo><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">g()</annotation></semantics></math>
+characterizes our hypothesis about the degree of the effect. In our
+example, we specify a simple two-sided hypothesis represented by a
+normal distribution with mean 0 and standard deviation 0.5, e.g.,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>β</mi><mo>∼</mo><mtext mathvariant="normal">Normal</mtext><mrow><mo stretchy="true" form="prefix">(</mo><mn>0</mn><mo>,</mo><msup><mn>0.5</mn><mn>2</mn></msup><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\beta \sim \text{Normal}(0, 0.5^2)</annotation></semantics></math>.</p>
 </div>
 <div class="section level2">
 <h2 id="maginal-likelihoods">Maginal Likelihoods<a class="anchor" aria-label="anchor" href="#maginal-likelihoods"></a>
 </h2>
 <p>First, we compute the Bayes factor model comparison via marginal
 likelihoods. To do that, we need to specify the likelihood for the
-response variable <span class="math inline">\(y\)</span>,</p>
+response variable
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>y</mi><annotation encoding="application/x-tex">y</annotation></semantics></math>,</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">model_likelihood</span> <span class="op">&lt;-</span> </span>
 <span><span class="st">"model{</span></span>
@@ -343,11 +356,13 @@ about the test for the beta parameter.</p>
 <span><span class="fu"><a href="../reference/BayesTools_ensemble_tables.html">ensemble_inference_table</a></span><span class="op">(</span><span class="va">ensemble_info</span>, parameters <span class="op">=</span> <span class="st">"x"</span><span class="op">)</span></span>
 <span><span class="co">#&gt;   Models Prior prob. Post. prob. Inclusion BF</span></span>
 <span><span class="co">#&gt; x    1/2       0.500       0.541        1.181</span></span></code></pre></div>
-<p>We find absence of evidence for either of the hypotheses, <span class="math inline">\(\text{BF}_{10} = 1.181\)</span>, with posterior
-probability of <span class="math inline">\(P(\mathcal{M}_{1} \mid
-\text{data}) = 0.542\)</span> (asuming equal prior probability specified
-via <code>prior_weights</code> in the <code>models_inference</code>
-function previously).</p>
+<p>We find absence of evidence for either of the hypotheses,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mtext mathvariant="normal">BF</mtext><mn>10</mn></msub><mo>=</mo><mn>1.181</mn></mrow><annotation encoding="application/x-tex">\text{BF}_{10} = 1.181</annotation></semantics></math>,
+with posterior probability of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>P</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>ℳ</mi><mn>1</mn></msub><mo>∣</mo><mtext mathvariant="normal">data</mtext><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mn>0.542</mn></mrow><annotation encoding="application/x-tex">P(\mathcal{M}_{1} \mid \text{data}) = 0.542</annotation></semantics></math>
+(asuming equal prior probability specified via
+<code>prior_weights</code> in the <code>models_inference</code> function
+previously).</p>
 </div>
 <div class="section level2">
 <h2 id="spike-and-slab-priors">Spike and Slab Priors<a class="anchor" aria-label="anchor" href="#spike-and-slab-priors"></a>
@@ -357,20 +372,24 @@ slab prior distribution is specified as a mixture of two prior
 distributions. A spike, a parameter value of zero corresponding to no
 effect, and a slab, a parameter value sampled from a continuous density
 corresponding to the alternative hypothesis. The parametrization uses
-two independent prior distributions: one for the parameter value, <span class="math inline">\(\beta \sim g()\)</span>, and one for the inclusion
-indicator, <span class="math inline">\(I_\beta \sim f()\)</span>, which
-assigns the prior model probability <span class="math inline">\(P(\mathcal{M}_{1})\)</span> of inclusion.</p>
+two independent prior distributions: one for the parameter value,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>β</mi><mo>∼</mo><mi>g</mi><mrow><mo stretchy="true" form="prefix">(</mo><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\beta \sim g()</annotation></semantics></math>,
+and one for the inclusion indicator,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>I</mi><mi>β</mi></msub><mo>∼</mo><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">I_\beta \sim f()</annotation></semantics></math>,
+which assigns the prior model probability
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>P</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>ℳ</mi><mn>1</mn></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">P(\mathcal{M}_{1})</annotation></semantics></math>
+of inclusion.</p>
 <p>The inclusion indicator can attain one of two values: either zero or
-one. Multiplying the parameter with the inclusion indicator, <span class="math inline">\(\beta I_\beta\)</span>, then results in setting
-the parameter to zero when the indicator is zero, or keeping its
-original value when the indicator is one. The proportion of times the
-indicator attains the value of one then corresponds to the posterior
-inclusion probability of the predictor, <span class="math inline">\(P(\mathcal{M}_{1} \mid \text{data})\)</span>.
+one. Multiplying the parameter with the inclusion indicator,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>β</mi><msub><mi>I</mi><mi>β</mi></msub></mrow><annotation encoding="application/x-tex">\beta I_\beta</annotation></semantics></math>,
+then results in setting the parameter to zero when the indicator is
+zero, or keeping its original value when the indicator is one. The
+proportion of times the indicator attains the value of one then
+corresponds to the posterior inclusion probability of the predictor,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>P</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>ℳ</mi><mn>1</mn></msub><mo>∣</mo><mtext mathvariant="normal">data</mtext><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">P(\mathcal{M}_{1} \mid \text{data})</annotation></semantics></math>.
 Since Bayes factor can be written as the change from prior to posterior
 odds,</p>
-<p><span class="math inline">\(\text{BF}_{10} = \frac{p(\mathcal{M}_{1}
-\mid \text{data})}{p(\mathcal{M}_{0} \mid \text{data})} /
-\frac{p(\mathcal{M}_{1})}{p(\mathcal{M}_{0})}\)</span>,</p>
+<p><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mtext mathvariant="normal">BF</mtext><mn>10</mn></msub><mo>=</mo><mfrac><mrow><mi>p</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>ℳ</mi><mn>1</mn></msub><mo>∣</mo><mtext mathvariant="normal">data</mtext><mo stretchy="true" form="postfix">)</mo></mrow></mrow><mrow><mi>p</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>ℳ</mi><mn>0</mn></msub><mo>∣</mo><mtext mathvariant="normal">data</mtext><mo stretchy="true" form="postfix">)</mo></mrow></mrow></mfrac><mi>/</mi><mfrac><mrow><mi>p</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>ℳ</mi><mn>1</mn></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><mrow><mi>p</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>ℳ</mi><mn>0</mn></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow></mfrac></mrow><annotation encoding="application/x-tex">\text{BF}_{10} = \frac{p(\mathcal{M}_{1} \mid \text{data})}{p(\mathcal{M}_{0} \mid \text{data})} / \frac{p(\mathcal{M}_{1})}{p(\mathcal{M}_{0})}</annotation></semantics></math>,</p>
 <p>we can also estimate the Bayes factor via the inclusion
 indicator.</p>
 <p>Now, we compare the two models using the spike and slab prior. We
@@ -383,8 +402,9 @@ follows similar notation as the <code>prior</code> function. We need to
 specify the distribution, the parameters (and we could also set
 truncation if needed) corresponding to the alternative hypothesis.
 Furthermore, we need to specify the prior distribution for the inclusion
-via the <code>prior_inclusion</code> argument. Here, we use a <span class="math inline">\(\text{Spike}(0.5)\)</span> prior which sets the
-prior inclusion probability to 1/2.</p>
+via the <code>prior_inclusion</code> argument. Here, we use a
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mtext mathvariant="normal">Spike</mtext><mrow><mo stretchy="true" form="prefix">(</mo><mn>0.5</mn><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\text{Spike}(0.5)</annotation></semantics></math>
+prior which sets the prior inclusion probability to 1/2.</p>
 <div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">prior_beta_spike_and_slab</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/prior_spike_and_slab.html">prior_spike_and_slab</a></span><span class="op">(</span></span>
 <span>  prior_parameter <span class="op">=</span> <span class="fu"><a href="../reference/prior.html">prior</a></span><span class="op">(</span>distribution <span class="op">=</span> <span class="st">"normal"</span>, parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>mean <span class="op">=</span> <span class="fl">0</span>, sd <span class="op">=</span> <span class="fl">0.5</span><span class="op">)</span><span class="op">)</span>,</span>
@@ -414,31 +434,26 @@ i.e., parameter estimates model-averaged across the spike and the
 slab.)</p>
 <div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/BayesTools_model_tables.html">JAGS_estimates_table</a></span><span class="op">(</span><span class="va">MS</span>, conditional <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
-<span><span class="co">#&gt;                      Mean    SD    lCI Median    uCI error(MCMC) error(MCMC)/SD</span></span>
-<span><span class="co">#&gt; (mu) intercept     -0.540 0.106 -0.749 -0.540 -0.333     0.00085          0.008</span></span>
-<span><span class="co">#&gt; (mu) x              0.189 0.100 -0.009  0.190  0.385     0.00145          0.012</span></span>
-<span><span class="co">#&gt; (mu) x (inclusion)  0.500 0.000  0.500  0.500  0.500          NA             NA</span></span>
-<span><span class="co">#&gt; sigma               1.050 0.076  0.912  1.047  1.211     0.00081          0.011</span></span>
-<span><span class="co">#&gt;                      ESS R-hat</span></span>
-<span><span class="co">#&gt; (mu) intercept     15590 1.000</span></span>
-<span><span class="co">#&gt; (mu) x              6830 1.000</span></span>
-<span><span class="co">#&gt; (mu) x (inclusion)    NA    NA</span></span>
-<span><span class="co">#&gt; sigma               8894 1.000</span></span></code></pre></div>
+<span><span class="co">#&gt;                      Mean    SD    lCI Median    uCI</span></span>
+<span><span class="co">#&gt; (mu) intercept     -0.540 0.106 -0.749 -0.540 -0.333</span></span>
+<span><span class="co">#&gt; (mu) x (inclusion)  0.536    NA     NA     NA     NA</span></span>
+<span><span class="co">#&gt; (mu) x              0.189 0.100 -0.009  0.190  0.385</span></span>
+<span><span class="co">#&gt; sigma               1.050 0.076  0.912  1.047  1.211</span></span></code></pre></div>
 <p>The estimates are essentially identical to the estimates from the
 previous models. Finally, we can also obtain summary of the inclusion
 probabilities via the <code>JAGS_inference_table</code> function</p>
 <div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/BayesTools_model_tables.html">JAGS_inference_table</a></span><span class="op">(</span><span class="va">MS</span><span class="op">)</span></span>
-<span><span class="co">#&gt;  Parameter Prior prob. Post. prob. Inclusion BF</span></span>
-<span><span class="co">#&gt;     (mu) x       0.500       0.536        1.157</span></span></code></pre></div>
+<span><span class="co">#&gt;        Prior prob. Post. prob. Inclusion BF</span></span>
+<span><span class="co">#&gt; (mu) x       0.500       0.536        1.157</span></span></code></pre></div>
 <p>As before, we find absence of evidence for either of the hypotheses,
-<span class="math inline">\(\text{BF}_{10} = 1.157\)</span>, with
-posterior probability of <span class="math inline">\(P(\mathcal{M}_{1}
-\mid \text{data}) = 0.536\)</span>.</p>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mtext mathvariant="normal">BF</mtext><mn>10</mn></msub><mo>=</mo><mn>1.157</mn></mrow><annotation encoding="application/x-tex">\text{BF}_{10} = 1.157</annotation></semantics></math>,
+with posterior probability of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>P</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>ℳ</mi><mn>1</mn></msub><mo>∣</mo><mtext mathvariant="normal">data</mtext><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mn>0.536</mn></mrow><annotation encoding="application/x-tex">P(\mathcal{M}_{1} \mid \text{data}) = 0.536</annotation></semantics></math>.</p>
 <div class="section level3 unnumbered">
 <h3 class="unnumbered" id="references">References<a class="anchor" aria-label="anchor" href="#references"></a>
 </h3>
-<div id="refs" class="references csl-bib-body hanging-indent" line-spacing="2">
+<div id="refs" class="references csl-bib-body hanging-indent" entry-spacing="0" line-spacing="2">
 <div id="ref-RoBSA" class="csl-entry">
 Bartoš, F. (2022). <em><span>RoBSA</span>: <span>A</span>n
 <span>R</span> package for robust <span>B</span>ayesian
@@ -492,9 +507,7 @@ of scientific inquiry. <em>Philosophical Magazine</em>, <em>42</em>,
 
   <div class="col-md-3 hidden-xs hidden-sm" id="pkgdown-sidebar">
 
-        <nav id="toc" data-toggle="toc"><h2 data-toc-skip>Contents</h2>
-    </nav>
-</div>
+      </div>
 
 </div>
 
@@ -507,16 +520,16 @@ of scientific inquiry. <em>Philosophical Magazine</em>, <em>42</em>,
 
 <div class="pkgdown">
   <p></p>
-<p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.7.</p>
+<p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.1.</p>
 </div>
 
       </footer>
 </div>
 
-  
 
 
-  
+
+
 
   </body>
 </html>
