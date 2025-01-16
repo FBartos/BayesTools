@@ -43,6 +43,7 @@ Suggests:
     rjags,
     runjags,
     BayesFactor,
+    RoBMA,
     rmarkdown
 RdMacros: Rdpack
 VignetteBuilder: knitr
