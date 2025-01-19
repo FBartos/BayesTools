@@ -904,7 +904,7 @@ test_that("JAGS fit function integration with formula, spike and slab works, and
 
 })
 
-test_that("JAGS fir with priors expressions", {
+test_that("JAGS fit with priors expressions", {
 
   skip_if_not_installed("rjags")
 
@@ -982,7 +982,158 @@ test_that("JAGS fir with priors expressions", {
 
 })
 
-test_that("JAGS parallel fit function works" , {
+test_that("JAGS fit function integration with formula and priors expressions", {
+
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+
+  set.seed(1)
+
+  data_formula <- data.frame(
+    x_cont1 = rnorm(100),
+    x_fac2t = factor(rep(c("A", "B"), 50), levels = c("A", "B"))
+  )
+  data <- list(
+    y = rnorm(100, .4 * data_formula$x_cont1 + ifelse(data_formula$x_fac2t == "A", 0.25, 0.50)),
+    N = 100
+  )
+
+  # create model with mix of a formula and free parameters ---
+  formula_list <- list(
+    mu    = ~ x_cont1 + x_fac2t
+  )
+  formula_data_list <- list(
+    mu    = data_formula
+  )
+  formula_prior_list1 <- list(
+    mu    = list(
+      "intercept"   = prior("normal", list(0, 5)),
+      "x_cont1"     = prior("normal", list(0, 1)),
+      "x_fac2t"     = prior_spike_and_slab(prior_factor("cauchy", contrast = "treatment", list(0, 1)))
+    )
+  )
+  formula_prior_list2 <- list(
+    mu    = list(
+      "intercept"   = prior("normal", list(0, 5)),
+      "x_cont1"     = prior("normal", list(0, 1)),
+      "x_fac2t"     = prior_spike_and_slab(prior_factor("normal", contrast = "treatment", list(0, expression(tau))))
+    )
+  )
+  prior_list1 <- list(
+    sigma = prior("lognormal", list(0, 1))
+  )
+  prior_list2 <- list(
+    sigma = prior("lognormal", list(0, 1)),
+    tau   = prior("invgamma", list(1/2, 1/2))
+  )
+
+  model_syntax <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  # fit1 <- JAGS_fit(
+  #   model_syntax = model_syntax, data = data, prior_list = prior_list1,
+  #   formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1, adapt = 1000)
+  fit2 <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list2,
+    formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list2, adapt = 1000)
+
+  # runjags_estimates_table(fit1)
+  # verified against the simpler model directly sampling cauchy
+  expect_equal(capture_output_lines(print(runjags_estimates_table(fit2, conditional = FALSE, remove_parameters = "tau")), width = 150),  c(
+    "                          Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
+    "(mu) intercept           0.304 0.125  0.024  0.312 0.527     0.00197          0.016  4128 1.001",
+    "(mu) x_cont1             0.385 0.111  0.169  0.383 0.604     0.00091          0.008 14631 1.000",
+    "(mu) x_fac2t (inclusion) 0.280    NA     NA     NA    NA          NA             NA    NA    NA",
+    "(mu) x_fac2t[B]          0.068 0.148 -0.002  0.000 0.494     0.00309          0.021  2299 1.002",
+    "sigma                    0.980 0.071  0.854  0.975 1.133     0.00074          0.010  9500 1.001"
+  ))
+
+})
+
+test_that("JAGS fit function integration with formula expressions", {
+
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+
+  set.seed(1)
+
+  data_formula <- data.frame(
+    x_cont1 = rnorm(200),
+    x_fac2t = factor(rep(LETTERS[1:10], 20))
+  )
+  x_fac2t_values        <- rnorm(10, 0, 0.3)
+  names(x_fac2t_values) <- LETTERS[1:10]
+  data <- list(
+    y = rnorm(200, .4 * data_formula$x_cont1 + x_fac2t_values[data_formula[["x_fac2t"]]]),
+    N = 200
+  )
+
+  # add id mapping
+  data[["mapping_id"]] <- as.integer(data_formula$x_fac2t)
+
+  # create model with mix of a formula and free parameters ---
+  formula_list <- list(
+    mu    = ~ x_cont1 + expression(mu_id[mapping_id[i]])
+  )
+  formula_data_list <- list(
+    mu    = data_formula
+  )
+  formula_prior_list <- list(
+    mu    = list(
+      "intercept"   = prior("normal", list(0, 5)),
+      "x_cont1"     = prior("normal", list(0, 1))
+    )
+  )
+  prior_list <- list(
+    sigma = prior("lognormal", list(0, 1)),
+    mu_id = prior_factor("normal", list(0, expression(tau)), contrast = "independent"),
+    tau   = prior("normal", list(0, 10), list(0, Inf))
+  )
+
+  attr(prior_list$mu_id, "levels") <- 10
+
+  model_syntax <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  fit <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list)
+
+  fit_sumary <- runjags_estimates_table(fit, formula_prefix = FALSE)
+  expect_true(cor(fit_sumary[grepl("id", rownames(fit_sumary)),"Mean"], x_fac2t_values) > 0.8)
+  expect_equal(capture_output_lines(print(fit_sumary), width = 150),  c(
+    "            Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
+    "intercept  0.179 0.173 -0.169  0.179 0.525     0.00476          0.028  1319 1.003",
+    "x_cont1    0.423 0.077  0.272  0.424 0.575     0.00064          0.008 14330 1.000",
+    "sigma      0.996 0.051  0.903  0.994 1.103     0.00055          0.011  8587 1.000",
+    "id[1]      0.107 0.246 -0.376  0.106 0.602     0.00470          0.019  2763 1.002",
+    "id[2]      0.359 0.250 -0.118  0.351 0.867     0.00479          0.019  2724 1.003",
+    "id[3]      0.213 0.250 -0.272  0.207 0.726     0.00466          0.019  2873 1.001",
+    "id[4]     -0.340 0.249 -0.853 -0.331 0.127     0.00481          0.019  2699 1.001",
+    "id[5]     -0.476 0.257 -1.001 -0.468 0.009     0.00492          0.019  2804 1.001",
+    "id[6]      0.643 0.260  0.152  0.634 1.180     0.00507          0.019  2692 1.002",
+    "id[7]     -0.213 0.247 -0.723 -0.208 0.260     0.00462          0.019  2882 1.001",
+    "id[8]     -0.069 0.245 -0.551 -0.069 0.413     0.00465          0.019  2781 1.001",
+    "id[9]     -0.362 0.249 -0.873 -0.354 0.107     0.00489          0.020  2656 1.001",
+    "id[10]     0.125 0.245 -0.347  0.122 0.624     0.00446          0.018  3012 1.002",
+    "tau        0.474 0.172  0.229  0.444 0.903     0.00319          0.019  2915 1.001"
+  ))
+
+})
+
+test_that("JAGS parallel fit function works", {
 
   skip("requires parallel processing")
   skip_on_cran()
