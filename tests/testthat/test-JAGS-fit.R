@@ -1133,6 +1133,85 @@ test_that("JAGS fit function integration with formula expressions", {
 
 })
 
+test_that("JAGS fit function with random effects", {
+
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+
+  set.seed(1)
+
+  data_formula <- data.frame(
+    x_cont1 = rnorm(200),
+    id      = factor(rep(LETTERS[1:10], 20))
+  )
+  id_values                <- rnorm(10, 0, 0.5)
+  names(id_values)         <- LETTERS[1:10]
+  id_x_cont1_values        <- rnorm(10, 0, 0.3)
+  names(id_x_cont1_values) <- LETTERS[1:10]
+
+  data <- list(
+    y = rnorm(200, (0.4 + id_x_cont1_values[data_formula$id]) * data_formula$x_cont1 +  + id_values[data_formula$id]),
+    N = 200
+  )
+
+  # # the full model correspond to this lme4 call
+  # summary(lme4::lmer(y ~ x_cont1 + (1 + x_cont1||id), data = cbind(y = data$y, data_formula)))
+
+  # create model with mix of a formula and free parameters ---
+  formula_list <- list(
+    mu    = ~ x_cont1 + x_cont1 + (1 + x_cont1|id)
+  )
+  formula_data_list <- list(
+    mu    = data_formula
+  )
+  formula_prior_list <- list(
+    mu    = list(
+      "intercept"      = prior("normal", list(0, 5)),
+      "x_cont1"        = prior("normal", list(0, 1)),
+      "intercept|id"   = prior("normal", list(0, 1), list(0, 1)),
+      "x_cont1|id"     = prior("normal", list(0, 1), list(0, 1))
+    )
+  )
+  prior_list <- list(
+    sigma = prior("lognormal", list(0, 1))
+  )
+
+
+  model_syntax <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  fit <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list)
+
+  fit_sumary <- runjags_estimates_table(fit, formula_prefix = FALSE)
+  expect_true(cor(fit_sumary[grepl("id", rownames(fit_sumary)),"Mean"], x_fac2t_values) > 0.8)
+  expect_equal(capture_output_lines(print(fit_sumary), width = 150),  c(
+    "            Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
+    "intercept  0.179 0.173 -0.169  0.179 0.525     0.00476          0.028  1319 1.003",
+    "x_cont1    0.423 0.077  0.272  0.424 0.575     0.00064          0.008 14330 1.000",
+    "sigma      0.996 0.051  0.903  0.994 1.103     0.00055          0.011  8587 1.000",
+    "id[1]      0.107 0.246 -0.376  0.106 0.602     0.00470          0.019  2763 1.002",
+    "id[2]      0.359 0.250 -0.118  0.351 0.867     0.00479          0.019  2724 1.003",
+    "id[3]      0.213 0.250 -0.272  0.207 0.726     0.00466          0.019  2873 1.001",
+    "id[4]     -0.340 0.249 -0.853 -0.331 0.127     0.00481          0.019  2699 1.001",
+    "id[5]     -0.476 0.257 -1.001 -0.468 0.009     0.00492          0.019  2804 1.001",
+    "id[6]      0.643 0.260  0.152  0.634 1.180     0.00507          0.019  2692 1.002",
+    "id[7]     -0.213 0.247 -0.723 -0.208 0.260     0.00462          0.019  2882 1.001",
+    "id[8]     -0.069 0.245 -0.551 -0.069 0.413     0.00465          0.019  2781 1.001",
+    "id[9]     -0.362 0.249 -0.873 -0.354 0.107     0.00489          0.020  2656 1.001",
+    "id[10]     0.125 0.245 -0.347  0.122 0.624     0.00446          0.018  3012 1.002",
+    "tau        0.474 0.172  0.229  0.444 0.903     0.00319          0.019  2915 1.001"
+  ))
+
+})
+
 test_that("JAGS parallel fit function works", {
 
   skip("requires parallel processing")

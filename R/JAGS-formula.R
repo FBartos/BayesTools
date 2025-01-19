@@ -264,21 +264,22 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   ))
 }
 
-# remove the response from the formula
-.remove_response     <- function(formula){
+# formula helper functions
+.remove_response        <- function(formula){
+  # removes response from the expression
+  # (prevents crash on formula evaluations)
   if(attr(stats::terms(formula), "response")  == 1){
     formula[2] <- NULL
   }
   return(formula)
 }
-
-# check if there is any expression in the formula
-.has_expression      <- function(formula){
+.has_expression         <- function(formula){
+  # check if there is any expression in the formula
   return(any(grepl("expression\\(", deparse(formula))))
 }
+.extract_expressions    <- function(formula){
+  # extract all expressions from the formula
 
-# extract all expressions from the formula
-.extract_expressions <- function(formula){
   # Convert the formula to a character string
   formula_string <- deparse(formula)
 
@@ -291,14 +292,14 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
 
   return(expressions)
 }
+.clean_from_expression  <- function(x){
+  # expression to character
 
-# expression to character
-.clean_from_expression <- function(x){
   return(sub("expression\\((.*)\\)", "\\1", x))
 }
+.remove_expressions     <- function(formula){
+  # remove all expressions from the formula
 
-# remove all expressions from the formula
-.remove_expressions    <- function(formula){
   # Convert the formula to a character string
   formula_string <- deparse(formula)
 
@@ -317,7 +318,56 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   # Reconvert the cleaned string back to a formula
   return(as.formula(formula_string_clean))
 }
+.has_random_effects     <- function(formula){
+  # Convert the formula to a character string
+  formula_str <- paste(deparse(formula), collapse = " ")
 
+  # Regular expression to match `( ... | ... )` patterns
+  has_random <- grepl("\\([^\\)]+\\|[^\\)]+\\)", formula_str)
+
+  # Return TRUE if at least one match is found, otherwise FALSE
+  return(has_random)
+}
+.extract_random_effects <- function(formula){
+  # Convert the formula to a character string
+  formula_str <- paste(deparse(formula), collapse = " ")
+
+  # Regular expression to match `( ... | ... )` patterns
+  random_effects <- gregexpr("\\([^\\)]+\\|[^\\)]+\\)", formula_str)
+
+  # Extract matches
+  matches <- regmatches(formula_str, random_effects)
+
+  # Clean up the parentheses and remove unnecessary spaces
+  clean_matches <- lapply(unlist(matches), function(x) gsub("^\\(|\\)$", "", x))  # Remove outer parentheses
+  clean_matches <- lapply(clean_matches, trimws)  # Remove extra spaces from each match
+
+  # Return the cleaned random effects as a list
+  as.list(clean_matches)
+}
+.remove_random_effects  <- function(formula){
+  # Convert the formula to a character string
+  formula_str <- paste(deparse(formula), collapse = " ")
+
+  # Regular expression to match and remove `( ... | ... )` patterns
+  cleaned_formula <- gsub("\\+?\\s*\\([^\\)]+\\|[^\\)]+\\)", "", formula_str)
+
+  # Normalize spacing around '+' and remove any leading '+'
+  cleaned_formula <- gsub("\\s*\\+\\s*", " + ", cleaned_formula)  # Normalize '+' spacing
+  cleaned_formula <- gsub("^\\s*~\\s*\\+\\s*", "~ ", cleaned_formula)  # Remove leading '+'
+
+  # Ensure no excessive spaces remain
+  cleaned_formula <- gsub("\\s{2,}", " ", cleaned_formula)  # Replace multiple spaces with a single space
+  cleaned_formula <- trimws(cleaned_formula)  # Trim leading/trailing whitespace
+
+  # Ensure at least "1" remains if formula is empty after cleaning
+  if (grepl("^\\s*~\\s*$", cleaned_formula)) {
+    cleaned_formula <- "~ 1"
+  }
+
+  # Return as a formula
+  as.formula(cleaned_formula)
+}
 
 
 #' @title Evaluate JAGS formula using posterior samples
