@@ -773,7 +773,7 @@ test_that("JAGS evaluate formula works", {
 
 })
 
-test_that("Expression handling functions works", {
+test_that("Expression handling functions work", {
 
   f1 <- formula(y ~ 1)
   f2 <- formula(y ~ z)
@@ -800,4 +800,41 @@ test_that("Expression handling functions works", {
   expect_equal(.remove_expressions(f4), formula(y ~ z))
   expect_equal(.remove_expressions(f5), formula(y ~ z))
   expect_equal(.remove_expressions(f6), formula(y ~ z))
+})
+
+
+test_that("Random effects handling functions work", {
+
+  f1 <- formula( ~ 1)
+  f2 <- formula( ~ x_cont1)
+  f3 <- formula( ~ (1 | id))
+  f4 <- formula( ~ (1 + x_cont1 | id))
+  f5 <- formula( ~ (1 + x_cont1 | id) + x_cont1)
+  f6 <- formula( ~ x_cont1 + (1 + x_cont1 | id))
+  f7 <- formula( ~ x_cont1 + (x_cont1 | id   ) +   x_cont2 + (0   + x_cont2 |   group))
+
+  expect_true(!.has_random_effects(f1))
+  expect_true(!.has_random_effects(f2))
+  expect_true(.has_random_effects(f3))
+  expect_true(.has_random_effects(f4))
+  expect_true(.has_random_effects(f5))
+  expect_true(.has_random_effects(f6))
+  expect_true(.has_random_effects(f7))
+
+  expect_equal(.extract_random_effects(f1), list())
+  expect_equal(.extract_random_effects(f2), list())
+  expect_equal(.extract_random_effects(f3), list("1 | id"))
+  expect_equal(.extract_random_effects(f4), list("1 + x_cont1 | id"))
+  expect_equal(.extract_random_effects(f5), list("1 + x_cont1 | id"))
+  expect_equal(.extract_random_effects(f6), list("1 + x_cont1 | id"))
+  expect_equal(.extract_random_effects(f7), list("x_cont1 | id", "0 + x_cont2 | group"))
+
+  expect_equal(.remove_random_effects(f1), formula( ~ 1))
+  expect_equal(.remove_random_effects(f2), formula( ~ x_cont1))
+  expect_equal(.remove_random_effects(f3), formula( ~ 1))
+  expect_equal(.remove_random_effects(f4), formula( ~ 1))
+  expect_equal(.remove_random_effects(f5), formula( ~ x_cont1))
+  expect_equal(.remove_random_effects(f6), formula( ~ x_cont1))
+  expect_equal(.remove_random_effects(f7), formula( ~ x_cont1 + x_cont2))
+
 })
