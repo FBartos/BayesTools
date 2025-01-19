@@ -1151,7 +1151,7 @@ test_that("JAGS fit function with random effects", {
   names(id_x_cont1_values) <- LETTERS[1:10]
 
   data <- list(
-    y = rnorm(200, (0.4 + id_x_cont1_values[data_formula$id]) * data_formula$x_cont1 +  + id_values[data_formula$id]),
+    y = rnorm(200, (0.4 + id_x_cont1_values[data_formula$id]) * data_formula$x_cont1 + id_values[data_formula$id]),
     N = 200
   )
 

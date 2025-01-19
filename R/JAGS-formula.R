@@ -55,9 +55,13 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
 
   # remove the specified response
   formula <- .remove_response(formula)
-  # store and remove expressions (included later as the literal character input)
-  expressions <- .extract_expressions(formula)
-  formula     <- .remove_expressions(formula)
+  # store expressions (included later as the literal character input)
+  expressions    <- .extract_expressions(formula)
+  # store random effects (included later via a formula interface)
+  random_effects <- .extract_random_effects(formula)
+  # remove expressions and random effects from the formula
+  formula <- .remove_expressions(formula)
+  formula <- .remove_random_effects(formula)
 
   # obtain predictors characteristics factors
   formula_terms    <- stats::terms(formula)
@@ -84,10 +88,20 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
     }
   })
 
-
+  # separate prior lists: extract random effects priors
+  prior_list_random_effects <- list()
+  if(length(random_effects)){
+    # store the random effects specific priors in the corresponding entry
+    for(i in seq_along(random_effects)){
+      prior_list_random_effects[[i]] <- prior_list[which(.get_grouping_factor(names(prior_list)) == attr(random_effects[[i]], "grouping_factor"))]
+    }
+    # remove the random effects specific priors from the prior list
+    prior_list <- prior_list[.get_grouping_factor(names(prior_list)) == ""]
+  }
   # check that all predictors have a prior distribution
   check_list(prior_list, "prior_list", check_names = model_terms, allow_other = FALSE, all_objects = TRUE)
 
+  # check the prior distribution for each predictor
   # assign factor contrasts to the data based on prior distributions
   if(any(predictors_type == "factor")){
 
@@ -132,6 +146,9 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   # check whether the interaction replacement is in usage
   if(any(grepl("__xXx__", names(prior_list))))
     stop("'__xXx__' string is internally used by the BayesTools package and can't be used for naming variables.")
+  if(any(grepl("__xREx__", names(prior_list))))
+    stop("'__xREx__' string is internally used by the BayesTools package and can't be used for naming variables.")
+
   # replace interaction signs (due to JAGS incompatibility)
   colnames(model_matrix)  <- gsub(":", "__xXx__", colnames(model_matrix))
   names(prior_list)       <- gsub(":", "__xXx__", names(prior_list))
@@ -140,7 +157,6 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
 
   # prepare syntax & data based on the formula
   formula_syntax <- NULL
-  prior_syntax   <- NULL
   JAGS_data      <- list()
   JAGS_data[[paste0("N_", parameter)]] <- nrow(data)
 
@@ -150,9 +166,6 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
     terms_indexes[1] <- 0
 
     formula_syntax   <- c(formula_syntax, paste0(parameter, "_intercept"))
-    prior_intercept_list        <- prior_list["intercept"]
-    names(prior_intercept_list) <- paste0(parameter, "_intercept")
-    prior_syntax     <- c(prior_syntax, .JAGS_add_priors.fun(prior_intercept_list))
   }else{
     terms_indexes    <- attr(model_matrix, "assign")
   }
@@ -244,6 +257,14 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
     formula_syntax <- c(formula_syntax, .clean_from_expression(expressions[[i]]))
   }
 
+  # add random effects back to the formula
+  for(i in seq_along(random_effects)){
+    # TODO
+    temp_random   <- .JAGS_random_effect_formula(random_effects[[i]], parameter, data, prior_list_random_effects[[i]])
+
+    formula_syntax <- c(formula_syntax, temp_random$formula_syntax)
+  }
+
   # finish the syntax
   formula_syntax <- paste0(
     "for(i in 1:N_", parameter, "){\n",
@@ -262,6 +283,78 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
     prior_list     = prior_list,
     formula        = formula
   ))
+}
+
+.JAGS_random_effect_formula <- function(formula, parameter, data, prior_list){
+
+  # extract the grouping factor information
+  grouping_factor        <- attr(formula, "grouping_factor")
+  grouping_factor_levels <- levels(as.factor(data[[grouping_factor]]))
+
+  # remove the grouping factor from the formula
+  formula <- .remove_grouping_factor(formula)
+  formula <- as.formula(paste("~", formula))
+
+  # obtain predictors characteristics factors (copy from formula)
+  formula_terms    <- stats::terms(formula)
+  has_intercept    <- attr(formula_terms, "intercept") == 1
+  predictors       <- as.character(attr(formula_terms, "variables"))[-1]
+  if(any(!predictors %in% colnames(data)))
+    stop(paste0("The ", paste0("'", predictors[!predictors %in% colnames(data)], "'", collapse = ", ")," predictor variable is missing in the data set."))
+  predictors_type  <- sapply(predictors, function(predictor){
+    if(is.factor(data[,predictor]) | is.character(data[,predictor])){
+      return("factor")
+    }else{
+      return("continuous")
+    }
+  })
+  model_terms      <- c(if(has_intercept) "intercept", attr(formula_terms, "term.labels"))
+  model_terms_type <- sapply(model_terms, function(model_term){
+    model_term <- strsplit(model_term, ":")[[1]]
+    if(length(model_term) == 1 && model_term == "intercept"){
+      return("continuous")
+    }else if(any(predictors_type[model_term] == "factor")){
+      return("factor")
+    }else{
+      return("continuous")
+    }
+  })
+
+  # TODO: expand to factor random effects
+  if(any(model_terms_type) != "continuous")
+    stop("Random effects can only be continuous.")
+
+  # check that all priors have a lower bound on 0 or their range is > 0, if not, throw a warning and correct
+  for(i in seq_along(prior_list)){
+    if(range(prior_list[[i]])[1] < 0){
+      warning(paste0("The lower bound of the '", names(prior_list)[i], "' prior distribution is below 0. Correcting to 0."), immediate. = TRUE)
+      prior_list[[i]] <- prior_list[[i]]$truncation$lower <- 0
+    }
+  }
+
+  # drop the grouping factor from the prior names
+  names(prior_list) <- .remove_grouping_factor(names(prior_list))
+  # check that all terms have a prior
+  check_list(prior_list, "prior_list", check_names = model_terms, allow_other = TRUE, all_objects = TRUE)
+
+
+  # prepare syntax & data based on the formula
+  parameter      <- paste0(parameter, "__xREx__", grouping_factor)
+  formula_syntax <- NULL
+  JAGS_data      <- list()
+  new_prior_list <- list()
+  JAGS_data[[paste0("N_", parameter)]] <- length(grouping_factor_levels)
+
+  # TODO: HERE - add expressions and dummy random_effect priros (maybe define new class?)
+  if(has_intercept){
+    terms_indexes    <- attr(model_matrix, "assign") + 1
+    terms_indexes[1] <- 0
+
+    formula_syntax   <- c(formula_syntax, paste0(parameter, "_intercept"))
+  }else{
+    terms_indexes    <- attr(model_matrix, "assign")
+  }
+
 }
 
 # formula helper functions
@@ -342,8 +435,13 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   clean_matches <- lapply(unlist(matches), function(x) gsub("^\\(|\\)$", "", x))  # Remove outer parentheses
   clean_matches <- lapply(clean_matches, trimws)  # Remove extra spaces from each match
 
+  # Store the conditioning variable at an attribute
+  for(i in seq_along(clean_matches)){
+    attr(clean_matches[[i]], "grouping_factor") <- .get_grouping_factor(clean_matches[[i]])
+  }
+
   # Return the cleaned random effects as a list
-  as.list(clean_matches)
+  return(as.list(clean_matches))
 }
 .remove_random_effects  <- function(formula){
   # Convert the formula to a character string
@@ -366,9 +464,17 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   }
 
   # Return as a formula
-  as.formula(cleaned_formula)
+  return(as.formula(cleaned_formula))
 }
-
+.get_grouping_factor    <- function(x){
+  has_grouping            <- grepl("\\|", x)
+  grouping                <- rep("", length(x))
+  grouping[has_grouping]  <- trimws(sub(".*\\|\\s*", "", x[has_grouping]))
+  return(grouping)
+}
+.remove_grouping_factor <- function(formula){
+  return(trimws(sub("\\|.*$", "", formula)))
+}
 
 #' @title Evaluate JAGS formula using posterior samples
 #'

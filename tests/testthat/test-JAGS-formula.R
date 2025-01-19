@@ -802,7 +802,6 @@ test_that("Expression handling functions work", {
   expect_equal(.remove_expressions(f6), formula(y ~ z))
 })
 
-
 test_that("Random effects handling functions work", {
 
   f1 <- formula( ~ 1)
@@ -821,13 +820,21 @@ test_that("Random effects handling functions work", {
   expect_true(.has_random_effects(f6))
   expect_true(.has_random_effects(f7))
 
+  t1 <- list("1 | id")
+  t2 <- list("1 + x_cont1 | id")
+  t3 <- list("x_cont1 | id", "0 + x_cont2 | group")
+  attr(t1[[1]], "grouping_factor") <- "id"
+  attr(t2[[1]], "grouping_factor") <- "id"
+  attr(t3[[1]], "grouping_factor") <- "id"
+  attr(t3[[2]], "grouping_factor") <- "group"
+
   expect_equal(.extract_random_effects(f1), list())
   expect_equal(.extract_random_effects(f2), list())
-  expect_equal(.extract_random_effects(f3), list("1 | id"))
-  expect_equal(.extract_random_effects(f4), list("1 + x_cont1 | id"))
-  expect_equal(.extract_random_effects(f5), list("1 + x_cont1 | id"))
-  expect_equal(.extract_random_effects(f6), list("1 + x_cont1 | id"))
-  expect_equal(.extract_random_effects(f7), list("x_cont1 | id", "0 + x_cont2 | group"))
+  expect_equal(.extract_random_effects(f3), t1)
+  expect_equal(.extract_random_effects(f4), t2)
+  expect_equal(.extract_random_effects(f5), t2)
+  expect_equal(.extract_random_effects(f6), t2)
+  expect_equal(.extract_random_effects(f7), t3)
 
   expect_equal(.remove_random_effects(f1), formula( ~ 1))
   expect_equal(.remove_random_effects(f2), formula( ~ x_cont1))
