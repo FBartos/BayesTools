@@ -526,9 +526,6 @@ JAGS_add_priors           <- function(syntax, prior_list){
     stop("'prior_list' must be a list of priors.")
   .check_JAGS_syntax(syntax)
 
-  # create an empty attribute holder if any data need to be passed with the syntax
-  syntax_attributes <- NULL
-
   # identify parts of the syntax
   opening_bracket <- regexpr("{", syntax, fixed = TRUE)[1]
   syntax_start    <- substr(syntax, 1, opening_bracket)
@@ -536,15 +533,9 @@ JAGS_add_priors           <- function(syntax, prior_list){
 
   # create the priors relevant syntax
   syntax_priors <- .JAGS_add_priors.fun(prior_list)
-  if(!is.null(attr(syntax_priors, "auxiliary_data"))){
-    syntax_attributes <- attr(syntax_priors, "auxiliary_data")
-  }
 
   # merge everything back together
   syntax <- paste0(syntax_start, "\n", syntax_priors, "\n", syntax_end)
-  if(!is.null(attr(syntax_priors, "auxiliary_data"))){
-    attr(syntax, "auxiliary_data") <- syntax_attributes
-  }
 
   return(syntax)
 }
@@ -570,11 +561,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
 
     }else if(is.prior.mixture(prior_list[[i]])){
 
-      syntax_mixture <- .JAGS_prior.mixture(prior_list[[i]], names(prior_list)[i])
-      syntax_priors  <- paste(syntax_priors, syntax_mixture)
-      if(!is.null(attr(syntax_mixture, "auxiliary_data"))){
-        syntax_attributes <- attr(syntax_mixture, "auxiliary_data")
-      }
+      syntax_priors <- paste(syntax_priors, .JAGS_prior.mixture(prior_list[[i]], names(prior_list)[i]))
 
     }else if(is.prior.factor(prior_list[[i]])){
 
@@ -591,26 +578,27 @@ JAGS_add_priors           <- function(syntax, prior_list){
     }
   }
 
-  if(length(syntax_attributes) > 0){
-    attr(syntax_priors, "auxiliary_data") <- syntax_attributes
-  }
-
   return(syntax_priors)
 }
 .JAGS_prior.simple         <- function(prior, parameter_name){
 
-  .check_prior(prior)
+  .check_prior(prior, allow_expressions = TRUE)
   if(!is.prior.simple(prior))
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
+
+  # parse expressions to test
+  if(.is_prior_expression(prior)){
+    prior <- .prior_expression_to_character(prior)
+  }
 
   # distribution
   syntax <- switch(
     prior[["distribution"]],
     "point"     = paste0(parameter_name," = ",prior$parameter[["location"]]),
-    "normal"    = paste0(parameter_name," ~ dnorm(",prior$parameter[["mean"]],",",1/prior$parameter[["sd"]]^2,")"),
-    "lognormal" = paste0(parameter_name," ~ dlnorm(",prior$parameter[["meanlog"]],",",1/prior$parameter[["sdlog"]]^2,")"),
-    "t"         = paste0(parameter_name," ~ dt(",prior$parameter[["location"]],",",1/prior$parameter[["scale"]]^2,",", prior$parameter[["df"]],")"),
+    "normal"    = paste0(parameter_name," ~ dnorm(",prior$parameter[["mean"]],",", .JAGS_parameter_to_precision(prior$parameter[["sd"]]),")"),
+    "lognormal" = paste0(parameter_name," ~ dlnorm(",prior$parameter[["meanlog"]],",", .JAGS_parameter_to_precision(prior$parameter[["sdlog"]]),")"),
+    "t"         = paste0(parameter_name," ~ dt(",prior$parameter[["location"]],",", .JAGS_parameter_to_precision(prior$parameter[["scale"]]),",", prior$parameter[["df"]],")"),
     "gamma"     = paste0(parameter_name," ~ dgamma(",prior$parameter[["shape"]],",",prior$parameter[["rate"]],")"),
     "invgamma"  = paste0("inv_",parameter_name," ~ dgamma(",prior$parameter[["shape"]],",",prior$parameter[["scale"]],")"),
     "exp"       = paste0(parameter_name," ~ dexp(",prior$parameter[["rate"]],")"),
@@ -649,11 +637,15 @@ JAGS_add_priors           <- function(syntax, prior_list){
 }
 .JAGS_prior.vector         <- function(prior, parameter_name){
 
-  .check_prior(prior)
+  .check_prior(prior, allow_expressions = TRUE)
   if(!is.prior.vector(prior))
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
 
+  # parse expressions to test
+  if(.is_prior_expression(prior)){
+    prior <- .prior_expression_to_character(prior)
+  }
 
   if(prior[["distribution"]] %in% c("mnormal", "mt")){
     # create the location/means vector the sigma matrix
@@ -669,6 +661,8 @@ JAGS_add_priors           <- function(syntax, prior_list){
       "mt"      = prior$parameter[["scale"]]
     )
 
+    par2 <- .JAGS_parameter_to_precision(par2)
+
     # TODO: beautify this code by specific JAGS distributions?
     if(prior[["distribution"]] == "mt"){
       # using the chisq * covariance parametrization since the mt fails with 1 df
@@ -678,7 +672,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
       syntax <- paste0(
         syntax,
         "for(i in 1:", prior$parameters[["K"]], "){\n",
-        "  prior_par2_", parameter_name, "[i,i] <- ", 1/par2^2, "\n",
+        "  prior_par2_", parameter_name, "[i,i] <- ", par2, "\n",
         "  for(j in 1:(i-1)){\n",
         "    prior_par2_", parameter_name, "[i,j] <- 0\n",
         "  }\n",
@@ -695,7 +689,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
       syntax <- paste0(
         syntax,
         "for(i in 1:", prior$parameters[["K"]], "){\n",
-        "  prior_par2_", parameter_name, "[i,i] <- ", 1/par2^2, "\n",
+        "  prior_par2_", parameter_name, "[i,i] <- ", par2, "\n",
         "  for(j in 1:(i-1)){\n",
         "    prior_par2_", parameter_name, "[i,j] <- 0\n",
         "  }\n",
@@ -825,7 +819,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
 }
 .JAGS_prior.mixture        <- function(prior_list, parameter_name){
 
-  .check_prior_list(prior_list)
+  .check_prior_list(prior_list, allow_expressions = TRUE)
   if(!is.prior.mixture(prior_list))
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
@@ -1016,6 +1010,16 @@ JAGS_add_priors           <- function(syntax, prior_list){
   if(!grepl("}", syntax, fixed = TRUE))
     stop("syntax must be a JAGS model syntax")
 }
+.JAGS_parameter_to_precision <- function(parameter){
+
+  if(is.character(parameter)){
+    parameter <- paste0("1/pow(", parameter, ", 2)")
+  }else{
+    parameter <- 1/parameter^2
+  }
+
+  return(parameter)
+}
 
 #' @title Create initial values for 'JAGS' model
 #'
@@ -1112,10 +1116,15 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 }
 .JAGS_init.simple          <- function(prior, parameter_name){
 
-  .check_prior(prior)
+  .check_prior(prior, allow_expressions = TRUE)
   if(!is.prior.simple(prior))
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
+
+  # no initialization for expression priors: require higher-level input
+  if(.is_prior_expression(prior)){
+    return()
+  }
 
   if(prior[["distribution"]] == "point"){
 
@@ -1143,10 +1152,15 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 }
 .JAGS_init.vector          <- function(prior, parameter_name){
 
-  .check_prior(prior)
+  .check_prior(prior, allow_expressions = TRUE)
   if(!is.prior.vector(prior))
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
+
+  # no initialization for expression priors: require higher-level input
+  if(.is_prior_expression(prior)){
+    return()
+  }
 
   if(prior[["distribution"]] == "point"){
 
@@ -1170,7 +1184,7 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 }
 .JAGS_init.factor          <- function(prior, parameter_name){
 
-  .check_prior(prior)
+  .check_prior(prior, allow_expressions = TRUE)
   if(!is.prior.factor(prior))
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
@@ -1251,7 +1265,7 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 }
 .JAGS_init.mixture         <- function(prior_list, parameter_name){
 
-  .check_prior_list(prior_list)
+  .check_prior_list(prior_list, allow_expressions = TRUE)
   if(!is.prior.mixture(prior_list))
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
@@ -1383,7 +1397,7 @@ JAGS_to_monitor             <- function(prior_list){
 
 .JAGS_monitor.simple         <- function(prior, parameter_name){
 
-  .check_prior(prior)
+  .check_prior(prior, allow_expressions = TRUE)
   if(!(is.prior.simple(prior) | is.prior.vector(prior) | is.prior.factor(prior)))
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
@@ -1460,7 +1474,7 @@ JAGS_to_monitor             <- function(prior_list){
 }
 .JAGS_monitor.mixture        <- function(prior_list, parameter_name){
 
-  .check_prior_list(prior_list)
+  .check_prior_list(prior_list, allow_expressions = TRUE)
   if(!is.prior.mixture(prior_list))
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")

@@ -904,6 +904,84 @@ test_that("JAGS fit function integration with formula, spike and slab works, and
 
 })
 
+test_that("JAGS fir with priors expressions", {
+
+  skip_if_not_installed("rjags")
+
+  # a simple prior
+  model_syntax <- "model{}"
+  priors       <- list(
+    x        = prior("normal",   list(0, expression(x_sigma))),
+    x_sigma  = prior("invgamma", list(1/2, 1/2))
+  )
+
+  model_syntax <- JAGS_add_priors(model_syntax, priors)
+  monitor      <- JAGS_to_monitor(priors)
+  inits        <- JAGS_get_inits(priors, chains = 2, seed = 1)
+
+  set.seed(1)
+  model   <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
+  samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 5000, quiet = TRUE, progress.bar = "none")
+  samples <- do.call(rbind, samples)
+
+  vdiffr::expect_doppelganger("JAGS-model-prior-e1", function(){
+    x_samples <- samples[,"x"]
+    hist(x_samples[abs(x_samples) < 10], breaks = 50, main = print(priors[[1]], plot = TRUE), freq = FALSE)
+    lines(prior("Cauchy", list(0, 1), list(-10, 10)))
+  })
+
+  # a spike and slab prior
+  model_syntax <- "model{}"
+  priors       <- list(
+    x        = prior_spike_and_slab(
+      prior("normal",   list(0, expression(x_sigma)))
+    ),
+    x_sigma  = prior("invgamma", list(1/2, 1/2))
+  )
+
+  model_syntax <- JAGS_add_priors(model_syntax, priors)
+  monitor      <- JAGS_to_monitor(priors)
+  inits        <- JAGS_get_inits(priors, chains = 2, seed = 1)
+
+  set.seed(1)
+  model   <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
+  samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 5000, quiet = TRUE, progress.bar = "none")
+  samples <- do.call(rbind, samples)
+
+  vdiffr::expect_doppelganger("JAGS-model-prior-e2", function(){
+    x_samples <- samples[,"x"]
+    x_samples <- x_samples[x_samples != 0]
+    hist(x_samples[abs(x_samples) < 10], breaks = 50, main = print(priors[[1]], plot = TRUE), freq = FALSE)
+    lines(prior("Cauchy", list(0, 1), list(-10, 10)))
+  })
+
+  # a mixture prior
+  model_syntax <- "model{}"
+  priors       <- list(
+    x        = prior_mixture(list(
+      prior("normal",   list(0, expression(x_sigma))),
+      prior("cauchy",   list(0, 1))
+    ), is_null = c(T, F)),
+    x_sigma  = prior("invgamma", list(1/2, 1/2))
+  )
+
+  model_syntax <- JAGS_add_priors(model_syntax, priors)
+  monitor      <- JAGS_to_monitor(priors)
+  inits        <- JAGS_get_inits(priors, chains = 2, seed = 1)
+
+  set.seed(1)
+  model   <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
+  samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 5000, quiet = TRUE, progress.bar = "none")
+  samples <- do.call(rbind, samples)
+
+  vdiffr::expect_doppelganger("JAGS-model-prior-e3", function(){
+    x_samples <- samples[,"x"]
+    hist(x_samples[abs(x_samples) < 10], breaks = 50, main = print(priors[[1]], plot = TRUE), freq = FALSE)
+    lines(prior("Cauchy", list(0, 1), list(-10, 10)))
+  })
+
+})
+
 test_that("JAGS parallel fit function works" , {
 
   skip("requires parallel processing")
