@@ -256,11 +256,51 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   ))
 }
 
-.remove_response <- function(formula){
+# remove the response from the formula
+.remove_response     <- function(formula){
   if(attr(stats::terms(formula), "response")  == 1){
     formula[2] <- NULL
   }
   return(formula)
+}
+
+# check if there is any expression in the formula
+.has_expression      <- function(formula){
+  return(any(grepl("expression\\(", deparse(formula))))
+}
+
+# extract all expressions from the formula
+.extract_expressions <- function(formula){
+  # Convert the formula to a character string
+  formula_string <- deparse(formula)
+
+  # Use a regex to find all instances of "expression(...)"
+  matches <- gregexpr("expression\\(.*?\\)", formula_string)
+  expressions <- regmatches(formula_string, matches)[[1]]
+
+  # Return the expressions as a list
+  return(lapply(expressions, function(expr) eval(parse(text = expr))))
+}
+
+# remove all expressions from the formula
+.remove_expressions  <- function(formula){
+  # Convert the formula to a character string
+  formula_string <- deparse(formula)
+
+  # Use a regex to remove all instances of "+ expression(...)" or "expression(...) +", considering spaces and newlines
+  formula_string_clean <- gsub("\\+\\s*expression\\(.*?\\)\\s*", "", formula_string)
+  formula_string_clean <- gsub("\\s*expression\\(.*?\\)\\s*\\+", "", formula_string_clean)
+
+  # Handle the case where the expression is the first term in the formula
+  formula_string_clean <- gsub("^\\s*expression\\(.*?\\)\\s*", "", formula_string_clean)
+
+  # Handle the case where the formula reduces to just "y ~ expression(...)"
+  if(grepl("^\\s*[a-zA-Z0-9._]+\\s*~\\s*expression\\(.*?\\)\\s*$", formula_string_clean)){
+    formula_string_clean <- gsub("expression\\(.*?\\)", "1", formula_string_clean)
+  }
+
+  # Reconvert the cleaned string back to a formula
+  return(as.formula(formula_string_clean))
 }
 
 
