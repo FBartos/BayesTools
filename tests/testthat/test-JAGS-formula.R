@@ -789,10 +789,10 @@ test_that("Expression handling functions works", {
   expect_true(.has_expression(f5))
   expect_true(.has_expression(f6))
 
-  expect_equal(.extract_expressions(f3), list(expression(x)))
-  expect_equal(.extract_expressions(f4), list(expression(x)))
-  expect_equal(.extract_expressions(f5), list(expression(x)))
-  expect_equal(.extract_expressions(f6), list(expression(x), expression(b)))
+  expect_equal(.extract_expressions(f3), list("x"))
+  expect_equal(.extract_expressions(f4), list("x"))
+  expect_equal(.extract_expressions(f5), list("x"))
+  expect_equal(.extract_expressions(f6), list("x", "b"))
 
   expect_equal(.remove_expressions(f1), formula(y ~ 1))
   expect_equal(.remove_expressions(f2), formula(y ~ z))

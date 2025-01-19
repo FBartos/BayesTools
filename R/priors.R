@@ -446,7 +446,7 @@ prior_spike_and_slab <- function(prior_parameter,
 #' @export
 prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), components = NULL){
 
-  .check_prior_list(prior_list)
+  .check_prior_list(prior_list, allow_expressions = TRUE)
   check_bool(is_null, "is_null",       check_length = length(prior_list), allow_NULL = TRUE)
   check_char(components, "components", check_length = length(prior_list), allow_NULL = TRUE)
   if(is.null(is_null) && is.null(components))

@@ -275,15 +275,22 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   formula_string <- deparse(formula)
 
   # Use a regex to find all instances of "expression(...)"
-  matches <- gregexpr("expression\\(.*?\\)", formula_string)
+  matches     <- gregexpr("expression\\(.*?\\)", formula_string)
   expressions <- regmatches(formula_string, matches)[[1]]
 
-  # Return the expressions as a list
-  return(lapply(expressions, function(expr) eval(parse(text = expr))))
+  # Use a regex to remove "expression(" and the closing ")"
+  expressions <- lapply(expressions, .clean_from_expression)
+
+  return(expressions)
+}
+
+# expression to character
+.clean_from_expression <- function(x){
+  return(sub("expression\\((.*)\\)", "\\1", x))
 }
 
 # remove all expressions from the formula
-.remove_expressions  <- function(formula){
+.remove_expressions    <- function(formula){
   # Convert the formula to a character string
   formula_string <- deparse(formula)
 
@@ -302,6 +309,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   # Reconvert the cleaned string back to a formula
   return(as.formula(formula_string_clean))
 }
+
 
 
 #' @title Evaluate JAGS formula using posterior samples
