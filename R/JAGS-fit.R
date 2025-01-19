@@ -760,7 +760,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
 }
 .JAGS_prior.factor         <- function(prior, parameter_name){
 
-  .check_prior(prior)
+  .check_prior(prior, allow_expressions = TRUE)
   if(!is.prior.factor(prior))
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
@@ -785,7 +785,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
 }
 .JAGS_prior.PP             <- function(prior){
 
-  .check_prior(prior)
+  .check_prior(prior, allow_expressions = TRUE)
   if(!is.prior.PET(prior) & !is.prior.PEESE(prior))
     stop("improper prior provided")
 
@@ -1235,6 +1235,11 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
   check_int(.get_prior_factor_levels(prior), "levels", lower = 1)
+
+  # no initialization for expression priors: require higher-level input
+  if(.is_prior_expression(prior)){
+    return()
+  }
 
   if(is.prior.treatment(prior) | is.prior.independent(prior)){
 

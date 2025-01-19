@@ -53,8 +53,11 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
     stop("'prior_list' must be a list of priors.")
 
 
-  # remove the specified response (would crash the model.frame if not included)
+  # remove the specified response
   formula <- .remove_response(formula)
+  # store and remove expressions (included later as the literal character input)
+  expressions <- .extract_expressions(formula)
+  formula     <- .remove_expressions(formula)
 
   # obtain predictors characteristics factors
   formula_terms    <- stats::terms(formula)
@@ -234,6 +237,11 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
       this_prior -> prior_list[[model_terms[i]]]
     }
 
+  }
+
+  # add expressions input back to the formula
+  for(i in seq_along(expressions)){
+    formula_syntax <- c(formula_syntax, .clean_from_expression(expressions[[i]]))
   }
 
   # finish the syntax
