@@ -772,3 +772,32 @@ test_that("JAGS evaluate formula works", {
   expect_equivalent(dim(new_samples), c(3, 200))
 
 })
+
+test_that("Expression handling functions works", {
+
+  f1 <- formula(y ~ 1)
+  f2 <- formula(y ~ z)
+  f3 <- formula(y ~ expression(x))
+  f4 <- formula(y ~ z + expression(x))
+  f5 <- formula(y ~ expression(x) + z)
+  f6 <- formula(y ~ expression(x) + z + expression(b))
+
+  expect_true(!.has_expression(f1))
+  expect_true(!.has_expression(f2))
+  expect_true(.has_expression(f3))
+  expect_true(.has_expression(f4))
+  expect_true(.has_expression(f5))
+  expect_true(.has_expression(f6))
+
+  expect_equal(.extract_expressions(f3), list(expression(x)))
+  expect_equal(.extract_expressions(f4), list(expression(x)))
+  expect_equal(.extract_expressions(f5), list(expression(x)))
+  expect_equal(.extract_expressions(f6), list(expression(x), expression(b)))
+
+  expect_equal(.remove_expressions(f1), formula(y ~ 1))
+  expect_equal(.remove_expressions(f2), formula(y ~ z))
+  expect_equal(.remove_expressions(f3), formula(y ~ 1))
+  expect_equal(.remove_expressions(f4), formula(y ~ z))
+  expect_equal(.remove_expressions(f5), formula(y ~ z))
+  expect_equal(.remove_expressions(f6), formula(y ~ z))
+})
