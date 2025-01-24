@@ -1160,7 +1160,7 @@ test_that("JAGS fit function with random effects", {
 
   # create model with mix of a formula and free parameters ---
   formula_list <- list(
-    mu    = ~ x_cont1 + x_cont1 + (1 + x_cont1|id)
+    mu    = ~ x_cont1 + (1 + x_cont1||id)
   )
   formula_data_list <- list(
     mu    = data_formula

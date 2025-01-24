@@ -289,7 +289,14 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
 
   # extract the grouping factor information
   grouping_factor        <- attr(formula, "grouping_factor")
+  grouping_independent   <- attr(formula, "independent")
   grouping_factor_levels <- levels(as.factor(data[[grouping_factor]]))
+
+  # TODO: expand to factor random effects
+  # needs to implement LKJ correlation matrix
+  if(!grouping_independent){
+    stop("Only independent random effects are supported yet.")
+  }
 
   # remove the grouping factor from the formula
   formula <- .remove_grouping_factor(formula)
@@ -319,10 +326,6 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
       return("continuous")
     }
   })
-
-  # TODO: expand to factor random effects
-  if(any(model_terms_type) != "continuous")
-    stop("Random effects can only be continuous.")
 
   # check that all priors have a lower bound on 0 or their range is > 0, if not, throw a warning and correct
   for(i in seq_along(prior_list)){
@@ -421,12 +424,12 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   # Return TRUE if at least one match is found, otherwise FALSE
   return(has_random)
 }
-.extract_random_effects <- function(formula){
+.extract_random_effects <- function(formula) {
   # Convert the formula to a character string
   formula_str <- paste(deparse(formula), collapse = " ")
 
-  # Regular expression to match `( ... | ... )` patterns
-  random_effects <- gregexpr("\\([^\\)]+\\|[^\\)]+\\)", formula_str)
+  # Regular expression to match `( ... | ... )` or `( ... || ... )` patterns
+  random_effects <- gregexpr("\\([^\\)]+\\|{1,2}[^\\)]+\\)", formula_str)
 
   # Extract matches
   matches <- regmatches(formula_str, random_effects)
@@ -435,14 +438,21 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   clean_matches <- lapply(unlist(matches), function(x) gsub("^\\(|\\)$", "", x))  # Remove outer parentheses
   clean_matches <- lapply(clean_matches, trimws)  # Remove extra spaces from each match
 
-  # Store the conditioning variable at an attribute
-  for(i in seq_along(clean_matches)){
-    attr(clean_matches[[i]], "grouping_factor") <- .get_grouping_factor(clean_matches[[i]])
+  # Add random effects information
+  for (i in seq_along(clean_matches)) {
+    # Extract the grouping factor (right-hand side of | or ||)
+    grouping_factor <- trimws(sub(".*\\|{1,2}\\s*", "", clean_matches[[i]]))
+    attr(clean_matches[[i]], "grouping_factor") <- grouping_factor
+
+    # Detect whether independent `||` or correlated `|` random effects are used
+    independent <- grepl("\\|\\|", clean_matches[[i]])  # Check if `||` is used
+    attr(clean_matches[[i]], "independent") <- independent
   }
 
   # Return the cleaned random effects as a list
   return(as.list(clean_matches))
 }
+
 .remove_random_effects  <- function(formula){
   # Convert the formula to a character string
   formula_str <- paste(deparse(formula), collapse = " ")

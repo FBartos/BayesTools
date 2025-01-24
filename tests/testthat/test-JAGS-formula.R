@@ -810,7 +810,7 @@ test_that("Random effects handling functions work", {
   f4 <- formula( ~ (1 + x_cont1 | id))
   f5 <- formula( ~ (1 + x_cont1 | id) + x_cont1)
   f6 <- formula( ~ x_cont1 + (1 + x_cont1 | id))
-  f7 <- formula( ~ x_cont1 + (x_cont1 | id   ) +   x_cont2 + (0   + x_cont2 |   group))
+  f7 <- formula( ~ x_cont1 + (  x_cont1 | id   ) +   x_cont2 + (0   + x_cont2 ||  group))
 
   expect_true(!.has_random_effects(f1))
   expect_true(!.has_random_effects(f2))
@@ -822,11 +822,15 @@ test_that("Random effects handling functions work", {
 
   t1 <- list("1 | id")
   t2 <- list("1 + x_cont1 | id")
-  t3 <- list("x_cont1 | id", "0 + x_cont2 | group")
+  t3 <- list("x_cont1 | id", "0 + x_cont2 || group")
   attr(t1[[1]], "grouping_factor") <- "id"
   attr(t2[[1]], "grouping_factor") <- "id"
   attr(t3[[1]], "grouping_factor") <- "id"
   attr(t3[[2]], "grouping_factor") <- "group"
+  attr(t1[[1]], "independent") <- FALSE
+  attr(t2[[1]], "independent") <- FALSE
+  attr(t3[[1]], "independent") <- FALSE
+  attr(t3[[2]], "independent") <- TRUE
 
   expect_equal(.extract_random_effects(f1), list())
   expect_equal(.extract_random_effects(f2), list())
