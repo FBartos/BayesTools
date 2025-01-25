@@ -310,7 +310,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
 
   # remove the grouping factor from the formula
   formula <- .remove_grouping_factor(formula)
-  formula <- as.formula(paste("~", formula))
+  formula <- stats::as.formula(paste("~", formula))
 
   # obtain predictors characteristics factors (copy from formula)
   formula_terms    <- stats::terms(formula)
@@ -595,7 +595,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   }
 
   # Reconvert the cleaned string back to a formula
-  return(as.formula(formula_string_clean))
+  return(stats::as.formula(formula_string_clean))
 }
 .has_random_effects     <- function(formula){
   # Convert the formula to a character string
@@ -657,7 +657,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   }
 
   # Return as a formula
-  return(as.formula(cleaned_formula))
+  return(stats::as.formula(cleaned_formula))
 }
 .get_grouping_factor    <- function(x){
   has_grouping            <- grepl("\\|", x)
