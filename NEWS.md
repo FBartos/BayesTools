@@ -1,3 +1,9 @@
+# version 0.2.20
+### Features
+- extending prior functions to accept `expression()` instead of a parameter, such objects can be use to create prior distributions that depend on other parameters in JAGS
+- extending the formula interface of `JAGS_fit()` function to accept expressions that are appended as literal text to the generated JAGS formula 
+- extending the formula interface of `JAGS_fit()` function to handle uncorrelated random effects via `(x||y)` (lme4-like) notation
+
 # version 0.2.19
 ### Features
 - adds `max_extend` option to `autofit_control` argument in `JAGS_fit()` to limit the number of iterations for the model extension

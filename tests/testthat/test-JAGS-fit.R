@@ -1143,6 +1143,7 @@ test_that("JAGS fit function with random effects", {
 
   data_formula <- data.frame(
     x_cont1 = rnorm(200),
+    x_fac3  = as.factor(sample(LETTERS[1:3], 200, replace = TRUE)),
     id      = factor(rep(LETTERS[1:10], 20))
   )
   id_values                <- rnorm(10, 0, 0.5)
@@ -1158,9 +1159,9 @@ test_that("JAGS fit function with random effects", {
   # # the full model correspond to this lme4 call
   # summary(lme4::lmer(y ~ x_cont1 + (1 + x_cont1||id), data = cbind(y = data$y, data_formula)))
 
-  # create model with mix of a formula and free parameters ---
+  # intercept only model ----
   formula_list <- list(
-    mu    = ~ x_cont1 + (1 + x_cont1||id)
+    mu    = ~ 1 + (1 ||id)
   )
   formula_data_list <- list(
     mu    = data_formula
@@ -1168,15 +1169,12 @@ test_that("JAGS fit function with random effects", {
   formula_prior_list <- list(
     mu    = list(
       "intercept"      = prior("normal", list(0, 5)),
-      "x_cont1"        = prior("normal", list(0, 1)),
-      "intercept|id"   = prior("normal", list(0, 1), list(0, 1)),
-      "x_cont1|id"     = prior("normal", list(0, 1), list(0, 1))
+      "intercept|id"   = prior("normal", list(0, 1), list(0, 1))
     )
   )
   prior_list <- list(
     sigma = prior("lognormal", list(0, 1))
   )
-
 
   model_syntax <- paste0(
     "model{\n",
@@ -1190,24 +1188,120 @@ test_that("JAGS fit function with random effects", {
     model_syntax = model_syntax, data = data, prior_list = prior_list,
     formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list)
 
-  fit_sumary <- runjags_estimates_table(fit, formula_prefix = FALSE)
-  expect_true(cor(fit_sumary[grepl("id", rownames(fit_sumary)),"Mean"], x_fac2t_values) > 0.8)
-  expect_equal(capture_output_lines(print(fit_sumary), width = 150),  c(
-    "            Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
-    "intercept  0.179 0.173 -0.169  0.179 0.525     0.00476          0.028  1319 1.003",
-    "x_cont1    0.423 0.077  0.272  0.424 0.575     0.00064          0.008 14330 1.000",
-    "sigma      0.996 0.051  0.903  0.994 1.103     0.00055          0.011  8587 1.000",
-    "id[1]      0.107 0.246 -0.376  0.106 0.602     0.00470          0.019  2763 1.002",
-    "id[2]      0.359 0.250 -0.118  0.351 0.867     0.00479          0.019  2724 1.003",
-    "id[3]      0.213 0.250 -0.272  0.207 0.726     0.00466          0.019  2873 1.001",
-    "id[4]     -0.340 0.249 -0.853 -0.331 0.127     0.00481          0.019  2699 1.001",
-    "id[5]     -0.476 0.257 -1.001 -0.468 0.009     0.00492          0.019  2804 1.001",
-    "id[6]      0.643 0.260  0.152  0.634 1.180     0.00507          0.019  2692 1.002",
-    "id[7]     -0.213 0.247 -0.723 -0.208 0.260     0.00462          0.019  2882 1.001",
-    "id[8]     -0.069 0.245 -0.551 -0.069 0.413     0.00465          0.019  2781 1.001",
-    "id[9]     -0.362 0.249 -0.873 -0.354 0.107     0.00489          0.020  2656 1.001",
-    "id[10]     0.125 0.245 -0.347  0.122 0.624     0.00446          0.018  3012 1.002",
-    "tau        0.474 0.172  0.229  0.444 0.903     0.00319          0.019  2915 1.001"
+  fit_summary <- runjags_estimates_table(fit, formula_prefix = FALSE)
+
+  # summary(lme4::lmer(y ~ 1 + (1 | id), data = cbind(y = data$y, data_formula)))
+  expect_equal(capture_output_lines(print(fit_summary), width = 150),  c(
+    "                   Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD  ESS R-hat",
+    "intercept        -0.044 0.156 -0.360 -0.044 0.272     0.00297          0.019 2785 1.004",
+    "sd(intercept|id)  0.377 0.161  0.090  0.361 0.745     0.00260          0.016 3832 1.001",
+    "sigma             1.231 0.064  1.114  1.228 1.364     0.00069          0.011 8608 1.000"
+  ))
+
+  # random slope (no intercept) ----
+  formula_list <- list(
+    mu    = ~ 1 + (0 + x_cont1 ||id)
+  )
+  formula_prior_list <- list(
+    mu    = list(
+      "intercept"      = prior("normal", list(0, 5)),
+      "x_cont1|id"     = prior("normal", list(0, 1), list(0, 1))
+    )
+  )
+
+  fit <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list)
+
+  fit_summary <- runjags_estimates_table(fit, formula_prefix = FALSE)
+
+  # summary(lme4::lmer(y ~ 1 + (0 + x_cont1 | id), data = cbind(y = data$y, data_formula)))
+  expect_equal(capture_output_lines(print(fit_summary), width = 150),  c(
+    "                 Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
+    "intercept      -0.069 0.081 -0.227 -0.069 0.089     0.00067          0.008 14456 1.000",
+    "sd(x_cont1|id)  0.660 0.147  0.401  0.651 0.956     0.00271          0.019  2922 1.003",
+    "sigma           1.113 0.058  1.009  1.110 1.232     0.00061          0.011  8972 1.000"
+  ))
+
+  # random factor slope ----
+  formula_list <- list(
+    mu    = ~ 1 + x_cont1 + (x_fac3 ||id)
+  )
+  formula_prior_list <- list(
+    mu    = list(
+      "intercept"      = prior("normal", list(0, 5)),
+      "x_cont1"        = prior("normal", list(0, 1)),
+      "intercept|id"   = prior("normal", list(0, 1), list(0, 1)),
+      "x_fac3|id"      = prior("normal", list(0, 1), list(0, 1))
+    )
+  )
+
+  fit <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list)
+
+  fit_summary <- runjags_estimates_table(fit, formula_prefix = FALSE)
+
+  # TODO: parameterization does not match lme4
+  # summary(lme4::lmer(y ~ 1 + x_cont1 + (x_fac3 ||id), data = cbind(y = data$y, data_formula)))
+  expect_equal(capture_output_lines(print(fit_summary), width = 150),  c(
+    "                   Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
+    "intercept        -0.067 0.130 -0.328 -0.067 0.190     0.00222          0.017  3452 1.001",
+    "x_cont1           0.530 0.089  0.357  0.530 0.704     0.00078          0.009 13380 1.000",
+    "sd(intercept|id)  0.235 0.151  0.013  0.217 0.591     0.00282          0.019  2908 1.000",
+    "sd(x_fac3[A]|id)  0.245 0.178  0.010  0.213 0.665     0.00251          0.014  5141 1.000",
+    "sd(x_fac3[B]|id)  0.227 0.171  0.009  0.192 0.642     0.00210          0.012  6624 1.000",
+    "sd(x_fac3[C]|id)  0.272 0.190  0.013  0.242 0.722     0.00260          0.014  5389 1.000",
+    "sigma             1.126 0.058  1.020  1.125 1.247     0.00066          0.011  7883 1.000"
+  ))
+
+
+  # full spike and slab model ----
+  formula_list <- list(
+    mu    = ~ x_cont1 + x_fac3 + (x_cont1 + x_fac3||id)
+  )
+  formula_prior_list <- list(
+    mu    = list(
+      "intercept"      = prior_spike_and_slab(prior("normal", list(0, 5))),
+      "x_cont1"        = prior_spike_and_slab(prior("normal", list(0, 1))),
+      "x_fac3"         = prior_spike_and_slab(prior_factor("mnormal", list(0, 1))),
+      "intercept|id"   = prior_spike_and_slab(prior("normal", list(0, 1), list(0, 1))),
+      "x_cont1|id"     = prior_mixture(list(
+        prior("normal", list(0, 1), list(0, 1)),
+        prior("beta", list(1, 2))
+      ), is_null = c(TRUE, FALSE)),
+      "x_fac3|id"      = prior_spike_and_slab(prior("normal", list(0, 1), list(0, 1)))
+    )
+  )
+
+  fit <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list)
+
+  fit_summary   <- runjags_estimates_table(fit, formula_prefix = FALSE, remove_inclusion = TRUE)
+  fit_inference <- runjags_inference_table(fit, formula_prefix = FALSE)
+
+  expect_equal(capture_output_lines(print(fit_summary), width = 150),  c(
+    "                   Mean    SD   lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
+    "intercept        -0.002 0.020 0.000  0.000 0.000     0.00030          0.015  4848 1.003",
+    "x_cont1           0.475 0.196 0.000  0.501 0.800     0.00645          0.033  1000 1.018",
+    "x_fac3[1]         0.001 0.027 0.000  0.000 0.029     0.00026          0.010 11522 1.003",
+    "x_fac3[2]         0.009 0.046 0.000  0.000 0.168     0.00069          0.015  4710 1.002",
+    "sd(intercept|id)  0.121 0.159 0.000  0.000 0.502     0.00386          0.024  1720 1.001",
+    "sd(x_cont1|id)    0.386 0.165 0.091  0.368 0.759     0.00360          0.022  2125 1.003",
+    "sd(x_fac3[A]|id)  0.029 0.094 0.000  0.000 0.351     0.00246          0.026  1585 1.005",
+    "sd(x_fac3[B]|id)  0.041 0.127 0.000  0.000 0.489     0.00352          0.028  1313 1.002",
+    "sd(x_fac3[C]|id)  0.035 0.111 0.000  0.000 0.421     0.00292          0.026  1556 1.005",
+    "sigma             1.104 0.060 0.994  1.101 1.225     0.00076          0.013  6162 1.000"
+  ))
+  expect_equal(capture_output_lines(print(fit_inference), width = 150),  c(
+    "                 Prior prob. Post. prob. Inclusion BF",
+    "intercept              0.500       0.024        0.025",
+    "x_cont1                0.500       0.931       13.401",
+    "x_fac3                 0.500       0.049        0.052",
+    "sd(intercept|id)       0.500       0.487        0.951",
+    "sd(x_cont1|id)         0.500       0.541        1.177",
+    "sd(x_fac3|id)          0.500       0.132        0.153"
   ))
 
 })

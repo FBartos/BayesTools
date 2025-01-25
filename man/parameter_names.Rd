@@ -9,6 +9,7 @@
 format_parameter_names(
   parameters,
   formula_parameters = NULL,
+  formula_random = NULL,
   formula_prefix = TRUE
 )
 

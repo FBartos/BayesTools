@@ -1132,6 +1132,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     colnames(model_samples) <- format_parameter_names(
       parameters         = colnames(model_samples),
       formula_parameters = unique(unlist(lapply(prior_list, attr, which = "parameter"))),
+      formula_random     = unique(unlist(lapply(prior_list, attr, which = "random_factor"))),
       formula_prefix     = formula_prefix)
   }
 
@@ -1252,6 +1253,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
     rownames(runjags_summary) <- format_parameter_names(
       parameters         = rownames(runjags_summary),
       formula_parameters = unique(unlist(lapply(prior_list, attr, which = "parameter"))),
+      formula_random     = unique(unlist(lapply(prior_list, attr, which = "random_factor"))),
       formula_prefix     = formula_prefix)
   }
 
