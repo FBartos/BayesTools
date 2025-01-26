@@ -1242,17 +1242,16 @@ test_that("JAGS fit function with random effects", {
 
   fit_summary <- runjags_estimates_table(fit, formula_prefix = FALSE)
 
-  # TODO: parameterization does not match lme4
+  # this is probably the closest alternative
   # summary(lme4::lmer(y ~ 1 + x_cont1 + (x_fac3 ||id), data = cbind(y = data$y, data_formula)))
   expect_equal(capture_output_lines(print(fit_summary), width = 150),  c(
     "                   Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
-    "intercept        -0.067 0.130 -0.328 -0.067 0.190     0.00222          0.017  3452 1.001",
-    "x_cont1           0.530 0.089  0.357  0.530 0.704     0.00078          0.009 13380 1.000",
-    "sd(intercept|id)  0.235 0.151  0.013  0.217 0.591     0.00282          0.019  2908 1.000",
-    "sd(x_fac3[A]|id)  0.245 0.178  0.010  0.213 0.665     0.00251          0.014  5141 1.000",
-    "sd(x_fac3[B]|id)  0.227 0.171  0.009  0.192 0.642     0.00210          0.012  6624 1.000",
-    "sd(x_fac3[C]|id)  0.272 0.190  0.013  0.242 0.722     0.00260          0.014  5389 1.000",
-    "sigma             1.126 0.058  1.020  1.125 1.247     0.00066          0.011  7883 1.000"
+    "intercept        -0.050 0.127 -0.306 -0.050 0.203     0.00215          0.017  3485 1.001",
+    "x_cont1           0.544 0.089  0.367  0.544 0.718     0.00074          0.008 14246 1.000",
+    "sd(intercept|id)  0.243 0.148  0.016  0.229 0.578     0.00263          0.018  3196 1.002",
+    "sd(x_fac3[B]|id)  0.223 0.170  0.009  0.186 0.637     0.00210          0.012  6576 1.000",
+    "sd(x_fac3[C]|id)  0.277 0.192  0.014  0.247 0.729     0.00271          0.014  5047 1.000",
+    "sigma             1.130 0.059  1.020  1.127 1.254     0.00062          0.011  9075 1.000"
   ))
 
 
@@ -1283,25 +1282,55 @@ test_that("JAGS fit function with random effects", {
 
   expect_equal(capture_output_lines(print(fit_summary), width = 150),  c(
     "                   Mean    SD   lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
-    "intercept        -0.002 0.020 0.000  0.000 0.000     0.00030          0.015  4848 1.003",
-    "x_cont1           0.475 0.196 0.000  0.501 0.800     0.00645          0.033  1000 1.018",
-    "x_fac3[1]         0.001 0.027 0.000  0.000 0.029     0.00026          0.010 11522 1.003",
-    "x_fac3[2]         0.009 0.046 0.000  0.000 0.168     0.00069          0.015  4710 1.002",
-    "sd(intercept|id)  0.121 0.159 0.000  0.000 0.502     0.00386          0.024  1720 1.001",
-    "sd(x_cont1|id)    0.386 0.165 0.091  0.368 0.759     0.00360          0.022  2125 1.003",
-    "sd(x_fac3[A]|id)  0.029 0.094 0.000  0.000 0.351     0.00246          0.026  1585 1.005",
-    "sd(x_fac3[B]|id)  0.041 0.127 0.000  0.000 0.489     0.00352          0.028  1313 1.002",
-    "sd(x_fac3[C]|id)  0.035 0.111 0.000  0.000 0.421     0.00292          0.026  1556 1.005",
-    "sigma             1.104 0.060 0.994  1.101 1.225     0.00076          0.013  6162 1.000"
+    "intercept        -0.002 0.019 0.000  0.000 0.000     0.00026          0.014  5629 1.004",
+    "x_cont1           0.471 0.201 0.000  0.498 0.797     0.00730          0.036   769 1.005",
+    "x_fac3[1]         0.001 0.026 0.000  0.000 0.010     0.00025          0.010 11328 1.000",
+    "x_fac3[2]         0.008 0.043 0.000  0.000 0.166     0.00064          0.015  4569 1.002",
+    "sd(intercept|id)  0.125 0.154 0.000  0.021 0.481     0.00381          0.025  1650 1.001",
+    "sd(x_cont1|id)    0.387 0.169 0.094  0.367 0.773     0.00404          0.024  1822 1.003",
+    "sd(x_fac3|id)     0.030 0.072 0.000  0.000 0.258     0.00116          0.016  3928 1.003",
+    "sigma             1.105 0.059 0.996  1.103 1.226     0.00070          0.012  7094 1.000"
   ))
   expect_equal(capture_output_lines(print(fit_inference), width = 150),  c(
     "                 Prior prob. Post. prob. Inclusion BF",
-    "intercept              0.500       0.024        0.025",
-    "x_cont1                0.500       0.931       13.401",
-    "x_fac3                 0.500       0.049        0.052",
-    "sd(intercept|id)       0.500       0.487        0.951",
-    "sd(x_cont1|id)         0.500       0.541        1.177",
-    "sd(x_fac3|id)          0.500       0.132        0.153"
+    "intercept              0.500       0.023        0.024",
+    "x_cont1                0.500       0.923       11.924",
+    "x_fac3                 0.500       0.043        0.045",
+    "sd(intercept|id)       0.500       0.512        1.050",
+    "sd(x_cont1|id)         0.500       0.521        1.089",
+    "sd(x_fac3|id)          0.500       0.217        0.278"
+  ))
+
+  # independent factor priors ----
+  formula_list <- list(
+    mu    = ~ x_fac3 + (x_fac3||id)
+  )
+  formula_prior_list <- list(
+    mu    = list(
+      "intercept"      = prior("normal", list(0, 5)),
+      "x_fac3"         = prior_factor("normal", list(0, 1), contrast = "independent"),
+      "intercept|id"   = prior("normal", list(0, 1), list(0, 1)),
+      "x_fac3|id"      = prior("normal", list(0, 1), list(0, 1))
+    )
+  )
+
+  fit <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list)
+
+  fit_summary   <- runjags_estimates_table(fit, formula_prefix = FALSE, remove_inclusion = TRUE)
+
+  expect_equal(capture_output_lines(print(fit_summary), width = 150),  c(
+    "                   Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD  ESS R-hat",
+    "intercept        -0.168 0.582 -1.305 -0.158 0.968     0.04375          0.075  187 1.006",
+    "x_fac3[A]         0.227 0.580 -0.891  0.216 1.364     0.04318          0.074  207 1.004",
+    "x_fac3[B]         0.079 0.582 -1.050  0.068 1.221     0.04162          0.072  219 1.005",
+    "x_fac3[C]         0.007 0.580 -1.112 -0.001 1.161     0.03938          0.068  233 1.004",
+    "sd(intercept|id)  0.312 0.177  0.022  0.300 0.710     0.00348          0.020 2585 1.004",
+    "sd(x_fac3[A]|id)  0.410 0.226  0.027  0.399 0.883     0.00377          0.017 3632 1.000",
+    "sd(x_fac3[B]|id)  0.272 0.196  0.011  0.238 0.727     0.00260          0.013 5669 1.000",
+    "sd(x_fac3[C]|id)  0.330 0.216  0.016  0.304 0.827     0.00316          0.015 4694 1.000",
+    "sigma             1.213 0.065  1.096  1.210 1.349     0.00072          0.011 8195 1.001"
   ))
 
 })

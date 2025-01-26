@@ -364,13 +364,6 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   # check that all terms have a prior distribution
   check_list(prior_list, "prior_list", check_names = model_terms, allow_other = TRUE, all_objects = TRUE)
 
-  # all factor random effects need to be changed to independent contrasts
-  # - any other factor projection bounds random effects variances equal across some of the levels
-  # - this allows independent by-factor level variances
-  for(i in seq_along(model_terms[model_terms_type == "factor"])){
-    stats::contrasts(data[[model_terms[model_terms_type == "factor"][i]]]) <- "contr.independent"
-  }
-
   # get the default design matrix
   model_frame  <- stats::model.frame(formula, data = data)
   model_matrix <- stats::model.matrix(model_frame, formula = formula, data = data)
@@ -390,7 +383,6 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   names(prior_list)       <- gsub(":", "__xXx__", names(prior_list))
   names(model_terms_type) <- gsub(":", "__xXx__", names(model_terms_type))
   model_terms             <- gsub(":", "__xXx__", model_terms)
-
 
   # prepare syntax & data based on the formula
   parameter_suffix <- paste0("_xREx__", grouping_factor)       # priors should not be named with parameter name (done on exit from formula)
@@ -455,38 +447,72 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
 
     }else if(model_terms_type[i] == "factor"){
 
-      attr(this_prior, "levels")      <- sum(terms_indexes == i)
-      if(.is_prior_interaction(this_prior)){
-        level_names <- list()
-        for(sub_term in strsplit(model_terms[i], "__xXx__")[[1]]){
-          if(model_terms_type[sub_term] == "factor"){
-            level_names[[sub_term]] <- levels(data[,sub_term])
+      # factor random effects use the same contrasts as set in the upstream formula
+      # (in the rare case that no factor_prior on the upstream formula was set, this might default to a treatment contrast)
+
+      ## parameterization
+      # treatment contrasts: independent variances for the comparison factor levels
+      # independent contrasts: independent variances for each factor level
+      # meandif/orthonormal contrasts: one total variance for the factor
+      if(is.null(attr(data[[model_terms[i]]], "contrasts")) || attr(data[[model_terms[i]]], "contrasts") %in% c("contr.treatment", "contr.independent")){
+
+        # determine the prior type
+        if(is.null(attr(data[[model_terms[i]]], "contrasts")) || attr(data[[model_terms[i]]], "contrasts") == "contr.treatment"){
+          temp_prior_type <- "prior.treatment"
+          attr(this_prior, "levels") <- sum(terms_indexes == i) + 1
+        }else{
+          temp_prior_type <- "prior.independent"
+          attr(this_prior, "levels") <- sum(terms_indexes == i)
+        }
+
+        # store level information
+        if(.is_prior_interaction(this_prior)){
+          level_names <- list()
+          for(sub_term in strsplit(model_terms[i], "__xXx__")[[1]]){
+            if(model_terms_type[sub_term] == "factor"){
+              level_names[[sub_term]] <- levels(data[,sub_term])
+            }
           }
+          attr(this_prior, "level_names") <- level_names
+        }else{
+          attr(this_prior, "level_names") <- levels(data[,model_terms[i]])
         }
-        attr(this_prior, "level_names") <- level_names
+
+        # distribute the individual coefficients to the STD
+        for(j in 1:sum(terms_indexes == i)){
+          random_syntax <- c(random_syntax, paste0(
+            parameter, "_xRE_STDx[", i + j - 1, "] = ", parameter, "_", model_terms[i], "[", j, "]"
+          ))
+        }
+
+        # transform the simple prior into treatment / independent factor prior (for each of the coefficients)
+        if(is.prior.simple(this_prior)){
+          class(this_prior) <- c(class(this_prior), "prior.factor", temp_prior_type)
+        }else if(is.prior.spike_and_slab(this_prior)){
+          class(this_prior[["variable"]]) <- c(class(this_prior[["variable"]]), "prior.factor", temp_prior_type)
+          class(this_prior)               <- c(class(this_prior)[!class(this_prior) %in% c("prior.simple_spike_and_slab")], "prior.factor_spike_and_slab", temp_prior_type)
+        }else if(is.prior.mixture(this_prior)){
+          for(p in seq_along(this_prior)){
+            class(this_prior[[p]]) <- c(class(this_prior[[p]]), "prior.factor", temp_prior_type)
+          }
+          class(this_prior) <- c(class(this_prior)[!class(this_prior) %in% c("prior.simple_mixture")],  "prior.factor_mixture", temp_prior_type)
+        }
+
+      }else if(attr(data[[model_terms[i]]], "contrasts") %in% c("contr.orthonormal", "contr.meandif")){
+
+        # do not change the prior type of create multiple levels
+        # distribute the same coefficients to the STD
+        for(j in 1:sum(terms_indexes == i)){
+          random_syntax <- c(random_syntax, paste0(
+            parameter, "_xRE_STDx[", i + j - 1, "] = ", parameter, "_", model_terms[i]
+          ))
+        }
+        # no prior transformation needed
+
       }else{
-        attr(this_prior, "level_names") <- levels(data[,model_terms[i]])
+        stop("Unsupported factor contrasts for the random effects.")
       }
 
-      # distribute the individual coefficients to the STD
-      for(j in 1:sum(terms_indexes == i)){
-        random_syntax <- c(random_syntax, paste0(
-          parameter, "_xRE_STDx[", i + j - 1, "] = ", parameter, "_", model_terms[i], "[", j, "]"
-        ))
-      }
-
-      # transform the simple prior into independent factor prior (for each of the coefficients)
-      if(is.prior.simple(this_prior)){
-        class(this_prior) <- c(class(this_prior), "prior.factor", "prior.independent")
-      }else if(is.prior.spike_and_slab(this_prior)){
-        class(this_prior[["variable"]]) <- c(class(this_prior[["variable"]]), "prior.factor", "prior.independent")
-        class(this_prior)               <- c(class(this_prior)[!class(this_prior) %in% c("prior.simple_spike_and_slab")], "prior.factor_spike_and_slab", "prior.independent")
-      }else if(is.prior.mixture(this_prior)){
-        for(p in seq_along(this_prior)){
-          class(this_prior[[p]]) <- c(class(this_prior[[p]]), "prior.factor", "prior.independent")
-        }
-        class(this_prior) <- c(class(this_prior)[!class(this_prior) %in% c("prior.simple_mixture")],  "prior.factor_mixture", "prior.independent")
-      }
 
     }else{
       stop("Unrecognized model term.")
