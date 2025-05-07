@@ -1,3 +1,6 @@
+## Fixes
+- diagnostics density plots for mixture distributions
+
 # version 0.2.18
 ### Features
 - adding `prior_mixture()` function for creating a mixture of prior distributions
