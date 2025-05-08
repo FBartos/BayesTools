@@ -106,15 +106,21 @@ check_real   <- function(x, name, lower = -Inf, upper = Inf, allow_bound = TRUE,
     }
   }
 
+  if(!allow_NA && anyNA(x))
+    stop(paste0(call, "The '", name, "' argument cannot contain NA/NaN values."), call. = FALSE)
+
+  if(check_length != 0 && length(x) != check_length)
+    stop(paste0(call, "The '", name, "' argument must have length '", check_length, "'."), call. = FALSE)
+
   if(!is.numeric(x) | !is.vector(x))
     stop(paste0(call, "The '", name, "' argument must be a numeric vector."), call. = FALSE)
 
   if(!is.infinite(lower)){
     if(!allow_bound){
-      if(any(x <= lower))
+      if(any(x[!is.na(x)] <= lower))
         stop(paste0(call, "The '", name ,"' must be higher than ", lower,"."), call. = FALSE)
     }else{
-      if(any(x < lower))
+      if(any(x[!is.na(x)] < lower))
         stop(paste0(call, "The '", name ,"' must be equal or higher than ", lower,"."), call. = FALSE)
     }
   }
@@ -128,13 +134,6 @@ check_real   <- function(x, name, lower = -Inf, upper = Inf, allow_bound = TRUE,
         stop(paste0(call, "The '", name ,"' must be equal or lower than ", upper,"."), call. = FALSE)
     }
   }
-
-  if(check_length != 0 && length(x) != check_length)
-    stop(paste0(call, "The '", name, "' argument must have length '", check_length, "'."), call. = FALSE)
-
-
-  if(!allow_NA && anyNA(x))
-    stop(paste0(call, "The '", name, "' argument cannot contain NA/NaN values."), call. = FALSE)
 
   return()
 }

@@ -760,7 +760,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
       }else{
 
-        warning(sprintf("The parameter '%s' is not a conditional parameter.", parameter), call. = FALSE, immediate. = TRUE)
+        warning(sprintf("The parameter '%s' is not a conditional parameter. All samples are assumed to compe from the conditional posterior distribution.", parameter), call. = FALSE, immediate. = TRUE)
         return(rep(TRUE, nrow(model_samples)))
 
       }

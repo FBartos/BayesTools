@@ -1476,7 +1476,7 @@ print.BayesTools_table <- function(x, ...){
 #' @export
 format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
 
-  check_real(BF, "BF", lower = 0, check_length = FALSE)
+  check_real(BF, "BF", lower = 0, check_length = FALSE, allow_NA = TRUE)
   check_bool(logBF, "logBF")
   check_bool(BF01,  "BF01")
 
