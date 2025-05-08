@@ -1,6 +1,7 @@
 ## Fixes
 - diagnostics density plots for mixture distributions
-- prior and posterior plots for simple as_posterior_mixture objects
+- prior and posterior plots for simple as_mixed_posteriors objects
+- JAGS_evaluate_formula for mixture and spike and slab priors
 
 # version 0.2.18
 ### Features
