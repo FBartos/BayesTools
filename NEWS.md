@@ -1,5 +1,6 @@
 ## Fixes
 - diagnostics density plots for mixture distributions
+- prior and posterior plots for simple as_posterior_mixture objects
 
 # version 0.2.18
 ### Features
