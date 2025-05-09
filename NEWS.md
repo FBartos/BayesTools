@@ -1,8 +1,9 @@
 #### Fixes
-- diagnostics density plots for mixture distributions
-- prior and posterior plots for simple as_mixed_posteriors objects
-- JAGS_evaluate_formula for mixture and spike and slab priors
+- `JAGS_diagnostics_density()` plots for mixture distributions
+- prior and posterior `plot_posterior()` for simple `as_mixed_posteriors` objects
+- `JAGS_evaluate_formula()` for mixture and spike and slab priors
 - set Bayes factors based on alternative only prior distributions to NA
+- better handling of posterior samples in `.fit_to_posterior()`
 
 # version 0.2.18
 ### Features
