@@ -1716,6 +1716,10 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
       force_plots       = force_plots
     )
 
+    # skip the rest of the parameter because of impossibility of obtaining conditional samples
+    if (length(temp_conditional_posterior) == 0)
+      next
+
     # compute the marginals
     out[["averaged"]][[marginal_parameters[i]]] <- marginal_posterior(
       samples           = averaged_posterior,
