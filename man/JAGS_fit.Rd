@@ -33,7 +33,8 @@ JAGS_fit(
 JAGS_extend(
   fit,
   autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error =
-    0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10),
+    0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10,
+    max_extend = 10),
   parallel = FALSE,
   cores = NULL,
   silent = TRUE,
