@@ -74,6 +74,7 @@ deviation of the parameters. Defaults to \code{0.05}.}
 \item{max_time}{list specifying the time \code{time} and \code{units}
 after which the automatic fitting function is stopped. The units arguments
 need to correspond to \code{units} passed to \link[base]{difftime} function.}
+\item{max_extend}{number of times after which the automatic fitting function is stopped.}
 \item{sample_extend}{number of samples between each convergence check. Defaults to
 \code{1000}.}
 \item{restarts}{number of times new initial values should be generated in case the model

@@ -256,6 +256,22 @@ check_list   <- function(x, name, check_length = 0, check_names = NULL, all_obje
   return(model_samples)
 }
 
+# JASP progress bar functions
+.JASP_progress_bar_start <- function(n, label = "", package_source = "jaspBase"){
+  if(isTRUE(eval(expr = parse(text = paste0("require('", package_source, "')")))) && eval(expr = parse(text = paste0(package_source, '::jaspResultsCalledFromJasp()')))){
+    eval(expr = parse(text = paste0(package_source, '::startProgressbar(expectedTicks = n, label = label)')))
+  }else{
+    cat(paste0(label, "(", n , ")\n"))
+  }
+}
+.JASP_progress_bar_tick  <- function(package_source = "jaspBase"){
+  if(isTRUE(eval(expr = parse(text = paste0("require('", package_source, "')")))) && eval(expr = parse(text = paste0(package_source, '::jaspResultsCalledFromJasp()')))){
+    eval(expr = parse(text = paste0(package_source, '::progressbarTick()')))
+  }else{
+    cat(".")
+  }
+}
+
 # depreciate orthonormal
 .depreciate.transform_orthonormal <- function(transform_orthonormal, transform_factors){
 

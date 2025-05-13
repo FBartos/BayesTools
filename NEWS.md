@@ -1,4 +1,8 @@
-#### Fixes
+### Features
+- adds `max_extend` option to `autofit_control` argument in `JAGS_fit()` to limit the number of iterations for the model extension
+- adds JASP progress bar integration
+
+### Fixes
 - `JAGS_diagnostics_density()` plots for mixture distributions
 - prior and posterior `plot_posterior()` for simple `as_mixed_posteriors` objects
 - `JAGS_evaluate_formula()` for mixture and spike and slab priors

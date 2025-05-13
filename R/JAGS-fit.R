@@ -36,6 +36,7 @@
 #'   \item{max_time}{list specifying the time \code{time} and \code{units}
 #'   after which the automatic fitting function is stopped. The units arguments
 #'   need to correspond to \code{units} passed to \link[base]{difftime} function.}
+#'   \item{max_extend}{number of times after which the automatic fitting function is stopped.}
 #'   \item{sample_extend}{number of samples between each convergence check. Defaults to
 #'   \code{1000}.}
 #'   \item{restarts}{number of times new initial values should be generated in case the model
@@ -53,6 +54,7 @@
 #' detached R session). Defaults to \code{NULL}.
 #' @param fit a 'BayesTools_fit' object (created by \code{JAGS_fit()} function) to be
 #' extended
+#' @param ... additional hidden arguments
 #'
 #' @examples \dontrun{
 #' # simulate data
@@ -90,11 +92,12 @@ NULL
 #' @rdname JAGS_fit
 JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL,
                      chains = 4, adapt = 500, burnin = 1000, sample = 4000, thin = 1,
-                     autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10),
+                     autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10),
                      parallel = FALSE, cores = chains, silent = TRUE, seed = NULL,
-                     add_parameters = NULL, required_packages = NULL){
+                     add_parameters = NULL, required_packages = NULL, ...){
 
   .check_runjags()
+  dots <- list(...)
 
   ### check input
   .check_JAGS_syntax(model_syntax)
@@ -180,19 +183,43 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   }
 
   start_time <- Sys.time()
-  if(is.null(autofit_control[["restarts"]])){
-    fit <- tryCatch(do.call(runjags::run.jags, model_call), error = function(e) e)
-  }else{
-    for(i in 1:autofit_control[["restarts"]]){
-      fit <- tryCatch(do.call(runjags::run.jags, model_call), error = function(e) e)
+  # special fitting procedure for JASP
+  # singlcore interrupted fits allowing for bar progression
+  if(isTRUE(dots[["is_JASP"]])){
+
+    model_call_adapt  <- model_call
+    model_call_adapt[["sample"]] <- 1 # at least one burnin & adapt need to be specified
+
+    # adapt & burnin
+    .JASP_progress_bar_start(n = 1, label = paste0(if(!is.null(dots[["is_JASP_prefix"]])) paste0(dots[["is_JASP_prefix"]], ": "), "Adapting and burnin the model"))
+    fit <- tryCatch(do.call(runjags::run.jags, model_call_adapt), error = function(e) e)
+    .JASP_progress_bar_tick()
+
+    # sample
+    .JASP_progress_bar_start(n = 5, label = paste0(if(!is.null(dots[["is_JASP_prefix"]])) paste0(dots[["is_JASP_prefix"]], ": "), "Sampling the model"))
+    for(i in 1:5){
       if(!inherits(fit, "error")){
-        break
-      }else{
-        # restart with different inits
-        model_call$inits <- JAGS_get_inits(prior_list, chains = chains, seed = if(!is.null(seed)) seed + i)
+        fit <- tryCatch(runjags::extend.jags(fit, burnin = 0, sample = floor((model_call[["sample"]])/5)), error = function(e)e)
+        .JASP_progress_bar_tick()
+      }
+    }
+
+  }else{
+    if(is.null(autofit_control[["restarts"]])){
+      fit <- tryCatch(do.call(runjags::run.jags, model_call), error = function(e) e)
+    }else{
+      for(i in 1:autofit_control[["restarts"]]){
+        fit <- tryCatch(do.call(runjags::run.jags, model_call), error = function(e) e)
+        if(!inherits(fit, "error")){
+          break
+        }else{
+          # restart with different inits
+          model_call$inits <- JAGS_get_inits(prior_list, chains = chains, seed = if(!is.null(seed)) seed + i)
+        }
       }
     }
   }
+
 
 
   if(inherits(fit, "error") & !silent)
@@ -200,7 +227,11 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 
   if(autofit && !inherits(fit, "error")){
 
-    converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], fail_fast = TRUE)
+    converged  <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], fail_fast = TRUE)
+    itteration <- 1
+
+    if(!converged && isTRUE(dots[["is_JASP"]]))
+      .JASP_progress_bar_start(n = if (!is.null(autofit_control[["max_extend"]])) autofit_control[["max_extend"]] else 10, label = paste0(if(!is.null(dots[["is_JASP_prefix"]])) paste0(dots[["is_JASP_prefix"]], ": "), "Extending the model (autofit)"))
 
     while(!converged){
 
@@ -209,7 +240,13 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
           attr(fit, "warning") <- "The automatic model fitting was terminated due to the 'max_time' constraint."
           warning(attr(fit, "warning"), immediate. = TRUE)
         }
-
+        break
+      }
+      if(!is.null(autofit_control[["max_extend"]]) && itteration > autofit_control[["max_extend"]]){
+        if(!silent){
+          attr(fit, "warning") <- "The automatic model fitting was terminated due to the 'max_extend' constraint."
+          warning(attr(fit, "warning"), immediate. = TRUE)
+        }
         break
       }
 
@@ -218,13 +255,16 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
       if(inherits(fit, "error")){
         if(!silent)
           warning(paste0("The model estimation failed with the following error: ", fit$message), immediate. = TRUE)
-
         break
       }
 
       fit <- runjags::add.summary(fit)
 
-      converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], fail_fast = TRUE)
+      converged  <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], fail_fast = TRUE)
+      itteration <- itteration + 1
+
+      if(isTRUE(dots[["is_JASP"]]))
+        .JASP_progress_bar_tick()
     }
   }
 
@@ -239,7 +279,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 }
 
 #' @rdname JAGS_fit
-JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10),
+JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10),
                         parallel = FALSE, cores = NULL, silent = TRUE, seed = NULL){
 
   if(!inherits(fit, "BayesTools_fit"))
@@ -302,7 +342,13 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
         attr(fit, "warning") <- "The automatic model fitting was terminated due to the 'max_time' constraint."
         warning(attr(fit, "warning"), immediate. = TRUE)
       }
-
+      break
+    }
+    if(!is.null(autofit_control[["max_extend"]]) && itteration > autofit_control[["max_extend"]]){
+      if(!silent){
+        attr(fit, "warning") <- "The automatic model fitting was terminated due to the 'max_extend' constraint."
+        warning(attr(fit, "warning"), immediate. = TRUE)
+      }
       break
     }
 
@@ -1563,7 +1609,7 @@ JAGS_check_and_list_fit_settings     <- function(chains, adapt, burnin, sample, 
 #' @rdname JAGS_check_and_list
 JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_extend = FALSE, call = ""){
 
-  check_list(autofit_control, "autofit_control", check_names = c("max_Rhat", "min_ESS", "max_error", "max_SD_error",  "max_time", "sample_extend", "restarts"), call = call)
+  check_list(autofit_control, "autofit_control", check_names = c("max_Rhat", "min_ESS", "max_error", "max_SD_error",  "max_time", "sample_extend", "restarts", "max_extend"), call = call)
   check_real(autofit_control[["max_Rhat"]],     "max_Rhat",     lower = 1, allow_NULL = TRUE, call = call)
   check_real(autofit_control[["min_ESS"]],      "min_ESS",      lower = 0, allow_NULL = TRUE, call = call)
   check_real(autofit_control[["max_error"]],    "max_error",    lower = 0, allow_NULL = TRUE, call = call)
@@ -1578,6 +1624,7 @@ JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_ex
   }
   check_int(autofit_control[["sample_extend"]], "sample_extend", lower = 1, allow_NULL = skip_sample_extend, call = call)
   check_int(autofit_control[["restarts"]], "restarts", lower = 1, allow_NULL = TRUE, call = call)
+  check_int(autofit_control[["max_extend"]], "max_extend", lower = 1, allow_NULL = TRUE, call = call)
 
   return(invisible(autofit_control))
 }
