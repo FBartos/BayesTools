@@ -65,7 +65,7 @@ jobs:
       - name: Install the required packages
         run: |
           options(repos = c(CRAN = "https://cloud.r-project.org"))
-          install.packages(c('devtools', 'testthat', 'BayesFactor', 'RoBMA', 'runjags', 'rjags', 'rstan'))
+          install.packages(c('devtools', 'testthat', 'vdiffr', 'BayesFactor', 'RoBMA', 'runjags', 'rjags', 'rstan'))
           devtools::install()
         shell: Rscript {0}
 
