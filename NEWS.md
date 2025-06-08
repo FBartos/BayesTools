@@ -1,3 +1,4 @@
+# version 0.2.19
 ### Features
 - adds `max_extend` option to `autofit_control` argument in `JAGS_fit()` to limit the number of iterations for the model extension
 - adds JASP progress bar integration
