@@ -498,10 +498,10 @@ plot_prior_list <- function(prior_list, plot_type = "base",
                                                  transformation, transformation_arguments, transformation_settings){
 
   # dispatching for spike and slab priors
-  if(is.prior.spike_and_slab(prior_list)){
+  if(length(prior_list) == 1 && is.prior.spike_and_slab(prior_list[[1]])){
 
-    prior_inclusion   <- prior_list[["inclusion"]]
-    prior_variable    <- prior_list[["variable"]]
+    prior_inclusion   <- prior_list[[1]][["inclusion"]]
+    prior_variable    <- prior_list[[1]][["variable"]]
 
     if(mean(prior_inclusion) < 1 && mean(prior_inclusion) > 0){
       # create a dummy list for the simple mixture
@@ -640,9 +640,14 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
 .simplify_prior_list <- function(prior_list){
 
+  # as_mixed_priors stores non-listed priors
+  # (needs to be kept for marginal_ etc)
   if(is.prior.mixture(prior_list)){
     class(prior_list) <- NULL
+  } else if(is.prior(prior_list)){
+    prior_list <- list(prior_list)
   }
+
 
   # return the input with fewer than 2 priors
   if(length(prior_list) < 2){
@@ -1194,7 +1199,8 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   # extract the relevant data
   samples    <- samples[[parameter]]
   prior_list <- attr(samples, "prior_list")
-  prior_list <- prior_list
+  if (!(is.prior.mixture(prior_list) || is.prior.spike_and_slab(prior_list)) && is.prior(prior_list))
+    prior_list <- list(prior_list)
 
   # deal with spikes
   if(any(sapply(prior_list, is.prior.point))){
@@ -1390,6 +1396,8 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   }
 
   prior_list <- attr(samples, "prior_list")
+  if (!(is.prior.mixture(prior_list) || is.prior.spike_and_slab(prior_list)) && is.prior(prior_list))
+    prior_list <- list(prior_list)
 
   # get the plotting range
   if(is.null(x_range)){
@@ -1441,6 +1449,8 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
   # transform & extract the relevant data
   prior_list <- attr(samples[[parameter]], "prior_list")
+  if (!(is.prior.mixture(prior_list) || is.prior.spike_and_slab(prior_list)) && is.prior(prior_list))
+    prior_list <- list(prior_list)
 
   if(any(sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x)))){
     samples  <- transform_factor_samples(samples)

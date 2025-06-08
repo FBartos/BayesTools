@@ -101,7 +101,7 @@ test_that("Check reals", {
 
   # these should fail
   expect_error(
-    check_real(as.matrix(stats::rnorm(4, 1, .5)), "test object"),
+    check_real(as.matrix(stats::rnorm(4, 1, .5)), "test object", check_length = FALSE),
     "The 'test object' argument must be a numeric vector."
   )
   expect_error(
@@ -160,7 +160,7 @@ test_that("Check integers", {
 
   # these should fail
   expect_error(
-    check_int(as.matrix(stats::rpois(4, 1)), "test object"),
+    check_int(as.matrix(stats::rpois(4, 1)), "test object", check_length = FALSE),
     "The 'test object' argument must be a numeric vector."
   )
   expect_error(

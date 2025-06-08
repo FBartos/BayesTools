@@ -760,7 +760,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
       }else{
 
-        warning(sprintf("The parameter '%s' is not a conditional parameter.", parameter), call. = FALSE, immediate. = TRUE)
+        warning(sprintf("The parameter '%s' is not a conditional parameter. All samples are assumed to compe from the conditional posterior distribution.", parameter), call. = FALSE, immediate. = TRUE)
         return(rep(TRUE, nrow(model_samples)))
 
       }
@@ -899,7 +899,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   # format the output
   samples <- unname(samples)
   attr(samples, "sample_ind") <- FALSE
-  attr(samples, "models_ind") <- FALSE
+  attr(samples, "models_ind") <- rep(1, length(samples))
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- prior
   attr(samples, "interaction")       <- if(length(prior_info) == 0) FALSE else prior_info[["interaction"]]
@@ -928,7 +928,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   rownames(samples) <- NULL
   colnames(samples) <- paste0(parameter,"[",1:K,"]")
   attr(samples, "sample_ind") <- FALSE
-  attr(samples, "models_ind") <- FALSE
+  attr(samples, "models_ind") <- rep(1, nrow(samples))
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- prior
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.vector")
@@ -970,7 +970,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     rownames(samples) <- NULL
     colnames(samples) <- paste0(parameter,"[",prior_info[["level_names"]][-1],"]")
     attr(samples, "sample_ind") <- FALSE
-    attr(samples, "models_ind") <- FALSE
+    attr(samples, "models_ind") <- rep(1, nrow(samples))
     attr(samples, "parameter")  <- parameter
     attr(samples, "prior_list") <- prior
     class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
@@ -992,7 +992,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     rownames(samples) <- NULL
     colnames(samples) <- paste0(parameter,"[",prior_info[["level_names"]],"]")
     attr(samples, "sample_ind") <- FALSE
-    attr(samples, "models_ind") <- FALSE
+    attr(samples, "models_ind") <- rep(1, nrow(samples))
     attr(samples, "parameter")  <- parameter
     attr(samples, "prior_list") <- prior
     class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
@@ -1032,7 +1032,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   rownames(samples) <- NULL
   colnames(samples) <- omega_names
   attr(samples, "sample_ind") <- FALSE
-  attr(samples, "models_ind") <- FALSE
+  attr(samples, "models_ind") <- rep(1, nrow(samples))
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- prior
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.weightfunction")

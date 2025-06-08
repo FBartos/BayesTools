@@ -198,11 +198,16 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
 
   }else if(inherits(fit, "mcmc.list")){
 
-    # rjags model with rjags::coda.samples
+    # rjags model with rjags::coda.samples or samples extracted via coda::as.mcmc.list
     # merge chains
     posterior <- do.call(rbind, fit)
 
-  }else{
+  }else if (inherits(fit, "mcmc") && length(dim(fit)) == 2) {
+
+    # rjags model with samples extracted via coda::as.mcmc
+    return(fit)
+
+  } else {
 
     stop("the method is not implemented for this output")
 

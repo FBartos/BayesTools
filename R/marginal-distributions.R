@@ -418,10 +418,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         ### split the output into lists based on specification
         if(length(at_manipulated) == 1 && format_parameter_names(at_manipulated, formula_parameters = formula_parameter, formula_prefix = FALSE) == "intercept"){
 
-          class(marginal_prior_samples)             <- c(class(marginal_prior_samples), "marginal_posterior.simple")
-          attr(marginal_prior_samples, "parameter") <- parameter
-          attr(marginal_prior_samples, "level")     <- "intercept"
-          attr(marginal_prior_samples, "data")      <- data
+          class(marginal_prior_samples)                   <- c(class(marginal_prior_samples), "marginal_posterior.simple")
+          attr(marginal_prior_samples, "parameter")       <- parameter
+          attr(marginal_prior_samples, "level")           <- "intercept"
+          attr(marginal_prior_samples, "data")            <- data
+          attr(marginal_prior_samples, "all_alternative") <- attr(prior_samples, "all_alternative")
 
           attr(marginal_posterior_samples[["intercept"]], "prior_samples") <- marginal_prior_samples
 
@@ -430,10 +431,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           marginal_prior_samples <- lapply(seq_along(data_split), function(lvl){
             temp_marginal_prior_samples <- marginal_prior_samples[data_split[[lvl]],]
             temp_data                       <- data[data_split[[lvl]],]
-            class(temp_marginal_prior_samples)             <- c(class(temp_marginal_prior_samples), "marginal_posterior.simple")
-            attr(temp_marginal_prior_samples, "parameter") <- parameter
-            attr(temp_marginal_prior_samples, "level")     <- level_names[lvl]
-            attr(temp_marginal_prior_samples, "data")      <- temp_data
+            class(temp_marginal_prior_samples)                   <- c(class(temp_marginal_prior_samples), "marginal_posterior.simple")
+            attr(temp_marginal_prior_samples, "parameter")       <- parameter
+            attr(temp_marginal_prior_samples, "level")           <- level_names[lvl]
+            attr(temp_marginal_prior_samples, "data")            <- temp_data
+            attr(temp_marginal_prior_samples, "all_alternative") <- attr(prior_samples, "all_alternative")
             return(temp_marginal_prior_samples)
           })
           names(marginal_prior_samples) <- level_names
@@ -1027,17 +1029,30 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
       }else{
 
-        warning(sprintf("The parameter '%s' is not a conditional parameter.", parameter), call. = FALSE, immediate. = TRUE)
+        warning(sprintf("The parameter '%s' is not a conditional parameter. All samples are assumed to compe from the conditional posterior distribution.", parameter), call. = FALSE, immediate. = TRUE)
         return(1)
       }
     })
+    # add a check when forwarding samples to marginal inference
+    all_alternative <- all(sapply(conditional, function(parameter){
+
+      temp_prior <- prior_list[[parameter]]
+
+      if(is.prior.spike_and_slab(temp_prior)){
+        return(mean(temp_prior[["inclusion"]]) == 1)
+      }else if(is.prior.mixture(temp_prior)){
+        return(all(attr(temp_prior, "components") == "alternative"))
+      }else{
+        return(TRUE)
+      }
+    }))
 
     # multiply by 1.25 to ensure that the requested number of samples is reached
     requested_samples <- n_samples
     if(conditional_rule == "AND"){
       n_samples <- round(n_samples / prod(conditioning_probabilities) * 1.25)
     }else if(conditional_rule == "OR"){
-      n_samples <- round(n_samples / (1 - prod(1 - conditioning_probabilities)) * 1.25)
+      n_samples  <- round(n_samples / (1 - prod(1 - conditioning_probabilities)) * 1.25)
     }
   }
 
@@ -1128,6 +1143,9 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         attr(out[[parameters[p]]], "models_ind") <- attr(out[[parameters[p]]], "models_ind")[conditioning_samples]
       }
     }
+
+    # put a check whether all samples were conditional
+    attr(out, "all_alternative") <- all_alternative
   }
 
   return(out)
@@ -1433,7 +1451,6 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   check_bool(normal_approximation, "normal_approximation")
   check_bool(silent, "silent")
 
-
   if(is.list(posterior)){
     bf <- list()
     for(i in seq_along(posterior)){
@@ -1451,6 +1468,9 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
 
   if(is.null(attr(posterior, "prior_samples")))
     stop("there are no prior samples for the posterior distribution", call. = FALSE)
+
+  if (!is.null(attr(attr(posterior, "prior_samples"),"all_alternative")) && attr(attr(posterior, "prior_samples"),"all_alternative"))
+    return(NA) # all prior samples come from alternative distributions --- there is no hypothesis to test
 
   prior <- attr(posterior, "prior_samples")
 
@@ -1695,6 +1715,10 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
       conditional_rule = conditional_rule,
       force_plots       = force_plots
     )
+
+    # skip the rest of the parameter because of impossibility of obtaining conditional samples
+    if (length(temp_conditional_posterior) == 0)
+      next
 
     # compute the marginals
     out[["averaged"]][[marginal_parameters[i]]] <- marginal_posterior(

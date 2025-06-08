@@ -19,19 +19,22 @@ JAGS_fit(
   thin = 1,
   autofit = FALSE,
   autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error =
-    0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10),
+    0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10,
+    max_extend = 10),
   parallel = FALSE,
   cores = chains,
   silent = TRUE,
   seed = NULL,
   add_parameters = NULL,
-  required_packages = NULL
+  required_packages = NULL,
+  ...
 )
 
 JAGS_extend(
   fit,
   autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error =
-    0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10),
+    0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10,
+    max_extend = 10),
   parallel = FALSE,
   cores = NULL,
   silent = TRUE,
@@ -83,6 +86,7 @@ deviation of the parameters. Defaults to \code{0.05}.}
 \item{max_time}{list specifying the time \code{time} and \code{units}
 after which the automatic fitting function is stopped. The units arguments
 need to correspond to \code{units} passed to \link[base]{difftime} function.}
+\item{max_extend}{number of times after which the automatic fitting function is stopped.}
 \item{sample_extend}{number of samples between each convergence check. Defaults to
 \code{1000}.}
 \item{restarts}{number of times new initial values should be generated in case the model
@@ -104,6 +108,8 @@ monitored but were not specified in the \code{prior_list}}
 \item{required_packages}{character vector specifying list of packages containing
 JAGS models required for sampling (in case that the function is run in parallel or in
 detached R session). Defaults to \code{NULL}.}
+
+\item{...}{additional hidden arguments}
 
 \item{fit}{a 'BayesTools_fit' object (created by \code{JAGS_fit()} function) to be
 extended}
