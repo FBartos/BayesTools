@@ -18,7 +18,7 @@ research. The prior can be visualized by the plot function."><!-- mathjax --><sc
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.18</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.19</span>
       </span>
     </div>
 
@@ -58,7 +58,7 @@ research. The prior can be visualized by the plot function."><!-- mathjax --><sc
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Creates an informed prior distribution based on research</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/v0.2.18/R/priors-informed.R" class="external-link"><code>R/priors-informed.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/v0.2.19/R/priors-informed.R" class="external-link"><code>R/priors-informed.R</code></a></small>
     <div class="hidden name"><code>prior_informed.Rd</code></div>
     </div>
 
@@ -81,16 +81,20 @@ or medical research.
 For psychology, the possible options are</p><dl><dt><code>"van Erp"</code></dt>
 <dd><p>for an informed prior distribution for the heterogeneity parameter tau
 of meta-analytic effect size estimates based on standardized mean differences
-erp2017estimatesBayesTools,</p></dd>
+(van Erp et al. 2017)
+,</p></dd>
 
 <dt><code>"Oosterwijk"</code></dt>
 <dd><p>for an informed prior distribution for the effect sizes expected in
 social psychology based on prior elicitation with dr. Oosterwijk
-gronau2017bayesianBayesTools.</p></dd>
+(Gronau et al. 2017)
+.</p></dd>
 
 
-</dl><p>For medicine, the possible options are based on bartos2021bayesian;textualBayesTools
-and  bartos2023empirical;textualBayesTools
+</dl><p>For medicine, the possible options are based on Bartoš et al. (2021)
+
+and  Bartoš et al. (2023)
+
 who developed empirical prior distributions for the effect size and heterogeneity parameters of the
 continuous outcomes (standardized mean differences), dichotomous outcomes (logOR, logRR, and risk differences),
 and time to event outcomes (logHR) based on the Cochrane database of systematic reviews.
@@ -133,7 +137,22 @@ the empirical medical prior distributions with the following options</p><dl><dt>
     </div>
     <div id="references">
     <h2>References</h2>
-    <p></p>
+    <p>Bartoš F, Gronau QF, Timmers B, Otte WM, Ly A, Wagenmakers E (2021).
+“Bayesian model-averaged meta-analysis in medicine.”
+<em>Statistics in Medicine</em>, <b>40</b>(30), 6743–6761.
+<a href="https://doi.org/10.1002/sim.9170" class="external-link">doi:10.1002/sim.9170</a>
+.<br><br> Bartoš F, Otte WM, Gronau QF, Timmers B, Ly A, Wagenmakers E (2023).
+“Empirical prior distributions for Bayesian meta-analyses of binary and time-to-event outcomes.”
+<a href="https://doi.org/10.48550/arXiv.2306.11468" class="external-link">doi:10.48550/arXiv.2306.11468</a>
+, preprint at <a href="https://doi.org/10.48550/arXiv.2306.11468" class="external-link">https://doi.org/10.48550/arXiv.2306.11468</a>.<br><br> Gronau QF, Van Erp S, Heck DW, Cesario J, Jonas KJ, Wagenmakers E (2017).
+“A Bayesian model-averaged meta-analysis of the power pose effect with informed and default priors: The case of felt power.”
+<em>Comprehensive Results in Social Psychology</em>, <b>2</b>(1), 123–138.
+<a href="https://doi.org/10.1080/23743603.2017.1326760" class="external-link">doi:10.1080/23743603.2017.1326760</a>
+.<br><br> van Erp S, Verhagen J, Grasman RP, Wagenmakers E (2017).
+“Estimates of between-study heterogeneity for 705 meta-analyses reported in Psychological Bulletin from 1990–2013.”
+<em>Journal of Open Psychology Data</em>, <b>5</b>(1).
+<a href="https://doi.org/10.5334/jopd.33" class="external-link">doi:10.5334/jopd.33</a>
+.</p>
     </div>
     <div id="see-also">
     <h2>See also</h2>
@@ -173,7 +192,7 @@ the empirical medical prior distributions with the following options</p><dl><dt>
 </div>
 
 <div class="pkgdown">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.1.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
 </div>
 
       </footer></div>
