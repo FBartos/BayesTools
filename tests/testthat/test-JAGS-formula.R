@@ -745,4 +745,30 @@ test_that("JAGS evaluate formula works", {
   expect_equivalent(intercept_estimate + 1, new_samples[1])
   expect_equivalent(intercept_estimate + 1 + 2, new_samples[2])
   expect_equivalent(intercept_estimate + 1 + 2, new_samples[3])
+
+
+  # dealing with spike and slab and mixture priors
+  prior_list_all2 <- list(
+    "intercept" = prior_spike_and_slab(prior("normal", list(0, 5))),
+    "x_fac2i"   = prior_mixture(list(
+      prior("spike", list(1)),
+      prior_factor("mnormal", contrast = "orthonormal", list(0, 1))
+    ), is_null = c(T,  F)),
+    "x_fac3o"   = prior_spike_and_slab(prior_factor("mnormal", contrast = "orthonormal", list(0, 1))),
+    "x_fac3t"   = prior_mixture(list(
+      prior_factor("normal", contrast = "treatment",   list(0, 1)),
+      prior("spike", list(0))
+    ), is_null = c(T,  F))
+  )
+  fit2 <- JAGS_fit(
+    model_syntax       = model_syntax,
+    formula_list       = list(mu = ~ x_fac2i + x_fac3o + x_fac3t),
+    data               = list(y = df_all$y, N = nrow(df_all)),
+    prior_list         = prior_list2,
+    formula_data_list  = list(mu = df_all),
+    formula_prior_list = list(mu = prior_list_all2), chains = 1, adapt = 100, burnin = 100, sample = 200)
+
+  new_samples <- JAGS_evaluate_formula(fit2, ~ x_fac2i + x_fac3o + x_fac3t, "mu", new_data, attr(fit2, "prior_list"))
+  expect_equivalent(dim(new_samples), c(3, 200))
+
 })

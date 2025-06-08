@@ -943,3 +943,39 @@ test_that("JAGS parallel fit function works" , {
   expect_true(all(sapply(fit1$mcmc, function(mcmc)dim(mcmc) == c(200, 1))))
 
 })
+
+test_that("JAGS fit function with JASP works" , {
+
+  set.seed(1)
+  data <- list(
+    x = rnorm(50, 0, .5),
+    N = 50
+  )
+  priors_list <- list(
+    m  = prior("normal", list(0, 1)),
+    s  = prior("normal", list(0, 1), list(0, Inf))
+  )
+  model_syntax <-
+    "model
+    {
+      for(i in 1:N){
+        x[i] ~ dnorm(m, pow(s, -2))
+      }
+    }"
+
+  ### checking the default settings
+  set.seed(1)
+
+  ### checking control the main control arguments
+  fit <- capture.output(JAGS_fit(model_syntax, data, priors_list, chains = 1, adapt = 100, burnin = 150, sample = 175, thin = 3, seed = 2, is_JASP = TRUE))
+  expect_equal(fit, c(
+    "Adapting and burnin the model(1)"                                                                                                   ,
+    ".Sampling the model(5)"                                                                                                             ,
+    "....."                                                                                                                              ,
+    "JAGS model with 176 samples (thin = 3; adapt+burnin = 250)"                                                                         ,
+    ""                                                                                                                                   ,
+    "Full summary statistics have not been pre-calculated - use either the summary method or add.summary to calculate summary statistics",
+    ""
+    ))
+
+})

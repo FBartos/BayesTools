@@ -381,6 +381,9 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
   if(is.prior.weightfunction(prior)){
     prior_lower <- 0
     prior_upper <- 1
+  }else if(is.prior.mixture(prior)){
+    prior_lower <- min(sapply(prior, function(x) x$truncation[["lower"]]))
+    prior_upper <- max(sapply(prior, function(x) x$truncation[["upper"]]))
   }else{
     prior_lower <- prior$truncation[["lower"]]
     prior_upper <- prior$truncation[["upper"]]

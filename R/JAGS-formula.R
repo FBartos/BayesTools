@@ -325,10 +325,12 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
   model_terms_type <- sapply(model_terms, function(model_term){
     if(model_term == "intercept"){
       return("continuous")
-    }else if(is.prior.factor(prior_list_formula[[model_term]])){
+    }else if(is.prior.factor(prior_list_formula[[model_term]]) || inherits(prior_list_formula[[model_term]], "prior.factor_mixture") || inherits(prior_list_formula[[model_term]], "prior.factor_spike_and_slab")){
       return("factor")
-    }else if(is.prior.simple(prior_list_formula[[model_term]])){
+    }else if(is.prior.simple(prior_list_formula[[model_term]]) || inherits(prior_list_formula[[model_term]], "prior.simple_mixture") || inherits(prior_list_formula[[model_term]], "prior.simple_spike_and_slab")){
       return("continuous")
+    } else {
+      stop(paste0("Unrecognized prior distribution for the '", model_term, "' term."))
     }
   })
   predictors_type <- model_terms_type[predictors]

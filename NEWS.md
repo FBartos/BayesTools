@@ -1,3 +1,15 @@
+# version 0.2.19
+### Features
+- adds `max_extend` option to `autofit_control` argument in `JAGS_fit()` to limit the number of iterations for the model extension
+- adds JASP progress bar integration
+
+### Fixes
+- `JAGS_diagnostics_density()` plots for mixture distributions
+- prior and posterior `plot_posterior()` for simple `as_mixed_posteriors` objects
+- `JAGS_evaluate_formula()` for mixture and spike and slab priors
+- set Bayes factors based on alternative only prior distributions to NA
+- better handling of posterior samples in `.fit_to_posterior()`
+
 # version 0.2.18
 ### Features
 - adding `prior_mixture()` function for creating a mixture of prior distributions
