@@ -25,19 +25,31 @@ jobs:
         with:
           r-version: 'release'
 
-      - name: Install system dependencies
+      # Install JAGS and system dependencies on Linux
+      - name: Install System Dependencies (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             libssl-dev \
             libcurl4-openssl-dev \
             libxml2-dev \
+            libfontconfig1-dev \
+            libharfbuzz-dev \
+            libfribidi-dev \
+            libfreetype6-dev \
+            libpng-dev \
+            libtiff5-dev \
+            libjpeg-dev \
+            libcairo2-dev \
             jags
 
       - name: Install the required packages
         run: |
           options(repos = c(CRAN = "https://cloud.r-project.org"))
-          install.packages(c('devtools', 'testthat', 'vdiffr', 'BayesFactor', 'RoBMA', 'runjags', 'rjags', 'rstan', 'rcmdcheck', 'roxygen2', 'pkgdown', 'covr'))
+          install.packages('devtools')
+          install.packages('rcmdcheck')
+          install.packages(c('BayesFactor', 'RoBMA', 'runjags', 'rjags', 'rstan', 'scales', 'vdiffr', 'testthat', 'covr', 'pandoc'))
           devtools::install()
         shell: Rscript {0}
 
