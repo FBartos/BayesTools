@@ -605,11 +605,11 @@ transform_treatment_samples <- function(samples){
 }
 
 
-#' @title Orthornomal contrast matrix
+#' @title Orthonormal contrast matrix
 #'
-#' @description Return a matrix of orthornomal contrasts.
+#' @description Return a matrix of orthonormal contrasts.
 #' Code is based on \code{stanova::contr.bayes} and corresponding to description
-#' by \insertCite{rouder2012default;textual}{BayesTools}
+#' by Rouder et al. (2012)
 #'
 #' @param n a vector of levels for a factor, or the number of levels
 #' @param contrasts logical indicating whether contrasts should be computed

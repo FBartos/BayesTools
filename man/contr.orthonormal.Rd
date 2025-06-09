@@ -2,7 +2,7 @@
 % Please edit documentation in R/JAGS-formula.R
 \name{contr.orthonormal}
 \alias{contr.orthonormal}
-\title{Orthornomal contrast matrix}
+\title{Orthonormal contrast matrix}
 \usage{
 contr.orthonormal(n, contrasts = TRUE)
 }
@@ -16,9 +16,9 @@ A matrix with n rows and k columns, with k = n - 1 if \code{contrasts = TRUE} an
 if \code{contrasts = FALSE}.
 }
 \description{
-Return a matrix of orthornomal contrasts.
+Return a matrix of orthonormal contrasts.
 Code is based on \code{stanova::contr.bayes} and corresponding to description
-by \insertCite{rouder2012default;textual}{BayesTools}
+by Rouder et al. (2012)
 }
 \examples{
 contr.orthonormal(c(1, 2))
