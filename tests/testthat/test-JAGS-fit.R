@@ -1335,6 +1335,81 @@ test_that("JAGS fit function with random effects", {
 
 })
 
+test_that("JAGS fit function integration with multiple formulas" , {
+
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_on_cran()
+
+  set.seed(1)
+
+  data_formula <- data.frame(
+    x_cont1 = rnorm(300),
+    x_fac2o = factor(rep(c("A", "B"), 150), levels = c("A", "B"))
+  )
+  data_mu    <- 0.20 * data_formula$x_cont1
+  data_sigma <- 0.50 * exp(ifelse(data_formula$x_fac2o == "A", -0.5, 0.5))
+  data <- list(
+    y = rnorm(300, data_mu, data_sigma),
+    N = 300
+  )
+
+
+  # create model with mix of a formula and free parameters ---
+  formula_list1 <- list(
+    mu        = ~ x_cont1 + x_fac2o,
+    sigma_exp = ~ x_cont1 + x_fac2o
+  )
+  formula_data_list1 <- list(
+    mu        = data_formula,
+    sigma_exp = data_formula
+  )
+  formula_prior_list1 <- list(
+    mu         = list(
+      "intercept"  = prior("normal", list(0, 5)),
+      "x_cont1"    = prior_spike_and_slab(prior("normal", list(0, 1))),
+      "x_fac2o"    = prior_spike_and_slab(prior_factor("mnormal", list(0, 1), contrast = "meandif"))
+    ),
+    sigma_exp  = list(
+      "intercept"  = prior("spike", list(0)),
+      "x_cont1"    = prior_spike_and_slab(prior("normal", list(0, 1))),
+      "x_fac2o"    = prior_spike_and_slab(prior_factor("mnormal", list(0, 1), contrast = "meandif"))
+    )
+  )
+  prior_list1 <- list(
+    "sigma"  = prior("normal", list(0, 5), list(0, Inf))
+  )
+  model_syntax1 <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma * exp(sigma_exp[i]), 2))\n",
+    "}\n",
+    "}"
+  )
+
+  fit1 <- suppressWarnings(JAGS_fit(
+    model_syntax = model_syntax1, data = data, prior_list = prior_list1,
+    formula_list = formula_list1, formula_data_list = formula_data_list1, formula_prior_list = formula_prior_list1,
+    chains = 2, adapt = 500, burnin = 500, sample = 1000))
+
+  expect_equal(capture_output_lines(print(JAGS_estimates_table(fit1, remove_inclusion = TRUE)), width = 150),  c(
+    "                      Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD  ESS R-hat",
+    "(mu) intercept      -0.013 0.026 -0.063 -0.014 0.038     0.00066          0.025 1624 1.000",
+    "(mu) x_cont1         0.204 0.027  0.152  0.204 0.255     0.00059          0.022 2102 1.001",
+    "(mu) x_fac2o         0.001 0.009  0.000  0.000 0.017     0.00039          0.043  658 1.027",
+    "(sigma_exp) x_cont1 -0.001 0.009 -0.014  0.000 0.000     0.00028          0.031 1099 1.023",
+    "(sigma_exp) x_fac2o  0.436 0.041  0.348  0.433 0.520     0.00225          0.055  333 1.005",
+    "sigma                0.523 0.021  0.484  0.522 0.570     0.00067          0.032 1020 1.000"
+  ))
+  expect_equal(capture_output_lines(print(JAGS_inference_table(fit1)), width = 150),  c(
+    "                    Prior prob. Post. prob. Inclusion BF",
+    "(mu) x_cont1              0.500       1.000          Inf",
+    "(mu) x_fac2o              0.500       0.040        0.042",
+    "(sigma_exp) x_cont1       0.500       0.045        0.047",
+    "(sigma_exp) x_fac2o       0.500       1.000          Inf"
+  ))
+
+})
+
 test_that("JAGS parallel fit function works", {
 
   skip("requires parallel processing")
