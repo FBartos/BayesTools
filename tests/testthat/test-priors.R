@@ -378,3 +378,19 @@ test_that("Prior mixture distributions work", {
   vdiffr::expect_doppelganger("prior-mixture-5", function()hist(rng(p4, 10000, transform_factor_samples = TRUE), main = print(p4, plot = T), breaks = 50, freq = FALSE))
 
 })
+
+test_that("Priors with expressions work", {
+
+  p0 <- prior("normal", parameters = list(0, 1))
+  p1 <- prior("normal", parameters = list(0, expression(x)))
+  p2 <- prior_mixture(list(p0, p1), is_null = c(T, F))
+
+  expect_true(!.is_prior_expression(p0))
+  expect_true(.is_prior_expression(p1))
+  # ?? expect_true(!.is_prior_expression(p2))
+
+  expect_true(is.numeric(rng(p0, 1)))
+  expect_error(rng(p1, 1), "The 'prior' argument must not contain parameter expressions.")
+  # ?? expect_error(rng(p2, 1), "The 'prior' argument must not contain parameter expressions.")
+
+})
