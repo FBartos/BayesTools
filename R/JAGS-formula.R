@@ -606,7 +606,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   # remove all expressions from the formula
 
   # Convert the formula to a character string
-  formula_string <- deparse(formula)
+  formula_string <- paste0(deparse(formula), collapse = " ")
 
   # Use a regex to remove all instances of "+ expression(...)" or "expression(...) +", considering spaces and newlines
   formula_string_clean <- gsub("\\+\\s*expression\\(.*?\\)\\s*", "", formula_string)
