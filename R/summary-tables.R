@@ -830,8 +830,10 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
         colnames(model_samples)[colnames(model_samples) == paste0(par, "_indicator")] <- paste0(par, " (inclusion)")
       }
 
-      # modify the parameter list
+      # modify the parameter list (forward the parameter attribute)
+      attr(prior_list[[par]]$variable, "parameter") <- attr(prior_list[[par]], "parameter")
       prior_list[[par]] <- prior_list[[par]]$variable
+
 
     }else if(is.prior.mixture(prior_list[[par]])){
 
@@ -966,6 +968,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
               # forward transformations to the conditional estimates
               if(!is.null(transformations[[par]])){
                 transformations[[temp_par_names]] <- transformations[[par]]
+                attr(prior_list[[par]][which(components == component)][1], "parameter") <- attr(prior_list[[par]], "parameter")
                 prior_list[[temp_par_names]]      <- prior_list[[par]][which(components == component)][1]
               }
             }
@@ -1132,6 +1135,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     colnames(model_samples) <- format_parameter_names(
       parameters         = colnames(model_samples),
       formula_parameters = unique(unlist(lapply(prior_list, attr, which = "parameter"))),
+      formula_random     = unique(unlist(lapply(prior_list, attr, which = "random_factor"))),
       formula_prefix     = formula_prefix)
   }
 
@@ -1252,6 +1256,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
     rownames(runjags_summary) <- format_parameter_names(
       parameters         = rownames(runjags_summary),
       formula_parameters = unique(unlist(lapply(prior_list, attr, which = "parameter"))),
+      formula_random     = unique(unlist(lapply(prior_list, attr, which = "random_factor"))),
       formula_prefix     = formula_prefix)
   }
 

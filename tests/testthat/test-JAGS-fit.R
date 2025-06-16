@@ -904,7 +904,513 @@ test_that("JAGS fit function integration with formula, spike and slab works, and
 
 })
 
-test_that("JAGS parallel fit function works" , {
+test_that("JAGS fit with priors expressions", {
+
+  skip_if_not_installed("rjags")
+
+  # a simple prior
+  model_syntax <- "model{}"
+  priors       <- list(
+    x        = prior("normal",   list(0, expression(x_sigma))),
+    x_sigma  = prior("invgamma", list(1/2, 1/2))
+  )
+
+  model_syntax <- JAGS_add_priors(model_syntax, priors)
+  monitor      <- JAGS_to_monitor(priors)
+  inits        <- JAGS_get_inits(priors, chains = 2, seed = 1)
+
+  set.seed(1)
+  model   <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
+  samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 5000, quiet = TRUE, progress.bar = "none")
+  samples <- do.call(rbind, samples)
+
+  vdiffr::expect_doppelganger("JAGS-model-prior-e1", function(){
+    x_samples <- samples[,"x"]
+    hist(x_samples[abs(x_samples) < 10], breaks = 50, main = print(priors[[1]], plot = TRUE), freq = FALSE)
+    lines(prior("Cauchy", list(0, 1), list(-10, 10)))
+  })
+
+  # a spike and slab prior
+  model_syntax <- "model{}"
+  priors       <- list(
+    x        = prior_spike_and_slab(
+      prior("normal",   list(0, expression(x_sigma)))
+    ),
+    x_sigma  = prior("invgamma", list(1/2, 1/2))
+  )
+
+  model_syntax <- JAGS_add_priors(model_syntax, priors)
+  monitor      <- JAGS_to_monitor(priors)
+  inits        <- JAGS_get_inits(priors, chains = 2, seed = 1)
+
+  set.seed(1)
+  model   <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
+  samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 5000, quiet = TRUE, progress.bar = "none")
+  samples <- do.call(rbind, samples)
+
+  vdiffr::expect_doppelganger("JAGS-model-prior-e2", function(){
+    x_samples <- samples[,"x"]
+    x_samples <- x_samples[x_samples != 0]
+    hist(x_samples[abs(x_samples) < 10], breaks = 50, main = print(priors[[1]], plot = TRUE), freq = FALSE)
+    lines(prior("Cauchy", list(0, 1), list(-10, 10)))
+  })
+
+  # a mixture prior
+  model_syntax <- "model{}"
+  priors       <- list(
+    x        = prior_mixture(list(
+      prior("normal",   list(0, expression(x_sigma))),
+      prior("cauchy",   list(0, 1))
+    ), is_null = c(T, F)),
+    x_sigma  = prior("invgamma", list(1/2, 1/2))
+  )
+
+  model_syntax <- JAGS_add_priors(model_syntax, priors)
+  monitor      <- JAGS_to_monitor(priors)
+  inits        <- JAGS_get_inits(priors, chains = 2, seed = 1)
+
+  set.seed(1)
+  model   <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
+  samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 5000, quiet = TRUE, progress.bar = "none")
+  samples <- do.call(rbind, samples)
+
+  vdiffr::expect_doppelganger("JAGS-model-prior-e3", function(){
+    x_samples <- samples[,"x"]
+    hist(x_samples[abs(x_samples) < 10], breaks = 50, main = print(priors[[1]], plot = TRUE), freq = FALSE)
+    lines(prior("Cauchy", list(0, 1), list(-10, 10)))
+  })
+
+})
+
+test_that("JAGS fit function integration with formula and priors expressions", {
+
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+
+  set.seed(1)
+
+  data_formula <- data.frame(
+    x_cont1 = rnorm(100),
+    x_fac2t = factor(rep(c("A", "B"), 50), levels = c("A", "B"))
+  )
+  data <- list(
+    y = rnorm(100, .4 * data_formula$x_cont1 + ifelse(data_formula$x_fac2t == "A", 0.25, 0.50)),
+    N = 100
+  )
+
+  # create model with mix of a formula and free parameters ---
+  formula_list <- list(
+    mu    = ~ x_cont1 + x_fac2t
+  )
+  formula_data_list <- list(
+    mu    = data_formula
+  )
+  formula_prior_list1 <- list(
+    mu    = list(
+      "intercept"   = prior("normal", list(0, 5)),
+      "x_cont1"     = prior("normal", list(0, 1)),
+      "x_fac2t"     = prior_spike_and_slab(prior_factor("cauchy", contrast = "treatment", list(0, 1)))
+    )
+  )
+  formula_prior_list2 <- list(
+    mu    = list(
+      "intercept"   = prior("normal", list(0, 5)),
+      "x_cont1"     = prior("normal", list(0, 1)),
+      "x_fac2t"     = prior_spike_and_slab(prior_factor("normal", contrast = "treatment", list(0, expression(tau))))
+    )
+  )
+  prior_list1 <- list(
+    sigma = prior("lognormal", list(0, 1))
+  )
+  prior_list2 <- list(
+    sigma = prior("lognormal", list(0, 1)),
+    tau   = prior("invgamma", list(1/2, 1/2))
+  )
+
+  model_syntax <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  # fit1 <- JAGS_fit(
+  #   model_syntax = model_syntax, data = data, prior_list = prior_list1,
+  #   formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1, adapt = 1000)
+  fit2 <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list2,
+    formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list2, adapt = 1000)
+
+  # runjags_estimates_table(fit1)
+  # verified against the simpler model directly sampling cauchy
+  expect_equal(capture_output_lines(print(runjags_estimates_table(fit2, conditional = FALSE, remove_parameters = "tau")), width = 150),  c(
+    "                          Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
+    "(mu) intercept           0.304 0.125  0.024  0.312 0.527     0.00197          0.016  4128 1.001",
+    "(mu) x_cont1             0.385 0.111  0.169  0.383 0.604     0.00091          0.008 14631 1.000",
+    "(mu) x_fac2t (inclusion) 0.280    NA     NA     NA    NA          NA             NA    NA    NA",
+    "(mu) x_fac2t[B]          0.068 0.148 -0.002  0.000 0.494     0.00309          0.021  2299 1.002",
+    "sigma                    0.980 0.071  0.854  0.975 1.133     0.00074          0.010  9500 1.001"
+  ))
+
+})
+
+test_that("JAGS fit function integration with formula expressions", {
+
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+
+  set.seed(1)
+
+  data_formula <- data.frame(
+    x_cont1 = rnorm(200),
+    x_fac2t = factor(rep(LETTERS[1:10], 20))
+  )
+  x_fac2t_values        <- rnorm(10, 0, 0.3)
+  names(x_fac2t_values) <- LETTERS[1:10]
+  data <- list(
+    y = rnorm(200, .4 * data_formula$x_cont1 + x_fac2t_values[data_formula[["x_fac2t"]]]),
+    N = 200
+  )
+
+  # add id mapping
+  data[["mapping_id"]] <- as.integer(data_formula$x_fac2t)
+
+  # create model with mix of a formula and free parameters ---
+  formula_list <- list(
+    mu    = ~ x_cont1 + expression(mu_id[mapping_id[i]])
+  )
+  formula_data_list <- list(
+    mu    = data_formula
+  )
+  formula_prior_list <- list(
+    mu    = list(
+      "intercept"   = prior("normal", list(0, 5)),
+      "x_cont1"     = prior("normal", list(0, 1))
+    )
+  )
+  prior_list <- list(
+    sigma = prior("lognormal", list(0, 1)),
+    mu_id = prior_factor("normal", list(0, expression(tau)), contrast = "independent"),
+    tau   = prior("normal", list(0, 10), list(0, Inf))
+  )
+
+  attr(prior_list$mu_id, "levels") <- 10
+
+  model_syntax <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  fit <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list)
+
+  fit_sumary <- runjags_estimates_table(fit, formula_prefix = FALSE)
+  expect_true(cor(fit_sumary[grepl("id", rownames(fit_sumary)),"Mean"], x_fac2t_values) > 0.8)
+  expect_equal(capture_output_lines(print(fit_sumary), width = 150),  c(
+    "            Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
+    "intercept  0.179 0.173 -0.169  0.179 0.525     0.00476          0.028  1319 1.003",
+    "x_cont1    0.423 0.077  0.272  0.424 0.575     0.00064          0.008 14330 1.000",
+    "sigma      0.996 0.051  0.903  0.994 1.103     0.00055          0.011  8587 1.000",
+    "id[1]      0.107 0.246 -0.376  0.106 0.602     0.00470          0.019  2763 1.002",
+    "id[2]      0.359 0.250 -0.118  0.351 0.867     0.00479          0.019  2724 1.003",
+    "id[3]      0.213 0.250 -0.272  0.207 0.726     0.00466          0.019  2873 1.001",
+    "id[4]     -0.340 0.249 -0.853 -0.331 0.127     0.00481          0.019  2699 1.001",
+    "id[5]     -0.476 0.257 -1.001 -0.468 0.009     0.00492          0.019  2804 1.001",
+    "id[6]      0.643 0.260  0.152  0.634 1.180     0.00507          0.019  2692 1.002",
+    "id[7]     -0.213 0.247 -0.723 -0.208 0.260     0.00462          0.019  2882 1.001",
+    "id[8]     -0.069 0.245 -0.551 -0.069 0.413     0.00465          0.019  2781 1.001",
+    "id[9]     -0.362 0.249 -0.873 -0.354 0.107     0.00489          0.020  2656 1.001",
+    "id[10]     0.125 0.245 -0.347  0.122 0.624     0.00446          0.018  3012 1.002",
+    "tau        0.474 0.172  0.229  0.444 0.903     0.00319          0.019  2915 1.001"
+  ))
+
+})
+
+test_that("JAGS fit function with random effects", {
+
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+
+  set.seed(1)
+
+  data_formula <- data.frame(
+    x_cont1 = rnorm(200),
+    x_fac3  = as.factor(sample(LETTERS[1:3], 200, replace = TRUE)),
+    id      = factor(rep(LETTERS[1:10], 20))
+  )
+  id_values                <- rnorm(10, 0, 0.5)
+  names(id_values)         <- LETTERS[1:10]
+  id_x_cont1_values        <- rnorm(10, 0, 0.3)
+  names(id_x_cont1_values) <- LETTERS[1:10]
+
+  data <- list(
+    y = rnorm(200, (0.4 + id_x_cont1_values[data_formula$id]) * data_formula$x_cont1 + id_values[data_formula$id]),
+    N = 200
+  )
+
+  # # the full model correspond to this lme4 call
+  # summary(lme4::lmer(y ~ x_cont1 + (1 + x_cont1||id), data = cbind(y = data$y, data_formula)))
+
+  # intercept only model ----
+  formula_list <- list(
+    mu    = ~ 1 + (1 ||id)
+  )
+  formula_data_list <- list(
+    mu    = data_formula
+  )
+  formula_prior_list <- list(
+    mu    = list(
+      "intercept"      = prior("normal", list(0, 5)),
+      "intercept|id"   = prior("normal", list(0, 1), list(0, 1))
+    )
+  )
+  prior_list <- list(
+    sigma = prior("lognormal", list(0, 1))
+  )
+
+  model_syntax <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  fit <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list)
+
+  fit_summary <- runjags_estimates_table(fit, formula_prefix = FALSE)
+
+  # summary(lme4::lmer(y ~ 1 + (1 | id), data = cbind(y = data$y, data_formula)))
+  expect_equal(capture_output_lines(print(fit_summary), width = 150),  c(
+    "                   Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD  ESS R-hat",
+    "intercept        -0.044 0.156 -0.360 -0.044 0.272     0.00297          0.019 2785 1.004",
+    "sd(intercept|id)  0.377 0.161  0.090  0.361 0.745     0.00260          0.016 3832 1.001",
+    "sigma             1.231 0.064  1.114  1.228 1.364     0.00069          0.011 8608 1.000"
+  ))
+
+  # random slope (no intercept) ----
+  formula_list <- list(
+    mu    = ~ 1 + (0 + x_cont1 ||id)
+  )
+  formula_prior_list <- list(
+    mu    = list(
+      "intercept"      = prior("normal", list(0, 5)),
+      "x_cont1|id"     = prior("normal", list(0, 1), list(0, 1))
+    )
+  )
+
+  fit <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list)
+
+  fit_summary <- runjags_estimates_table(fit, formula_prefix = FALSE)
+
+  # summary(lme4::lmer(y ~ 1 + (0 + x_cont1 | id), data = cbind(y = data$y, data_formula)))
+  expect_equal(capture_output_lines(print(fit_summary), width = 150),  c(
+    "                 Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
+    "intercept      -0.069 0.081 -0.227 -0.069 0.089     0.00067          0.008 14456 1.000",
+    "sd(x_cont1|id)  0.660 0.147  0.401  0.651 0.956     0.00271          0.019  2922 1.003",
+    "sigma           1.113 0.058  1.009  1.110 1.232     0.00061          0.011  8972 1.000"
+  ))
+
+  # random factor slope ----
+  formula_list <- list(
+    mu    = ~ 1 + x_cont1 + (x_fac3 ||id)
+  )
+  formula_prior_list <- list(
+    mu    = list(
+      "intercept"      = prior("normal", list(0, 5)),
+      "x_cont1"        = prior("normal", list(0, 1)),
+      "intercept|id"   = prior("normal", list(0, 1), list(0, 1)),
+      "x_fac3|id"      = prior("normal", list(0, 1), list(0, 1))
+    )
+  )
+
+  fit <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list)
+
+  fit_summary <- runjags_estimates_table(fit, formula_prefix = FALSE)
+
+  # this is probably the closest alternative
+  # summary(lme4::lmer(y ~ 1 + x_cont1 + (x_fac3 ||id), data = cbind(y = data$y, data_formula)))
+  expect_equal(capture_output_lines(print(fit_summary), width = 150),  c(
+    "                   Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
+    "intercept        -0.050 0.127 -0.306 -0.050 0.203     0.00215          0.017  3485 1.001",
+    "x_cont1           0.544 0.089  0.367  0.544 0.718     0.00074          0.008 14246 1.000",
+    "sd(intercept|id)  0.243 0.148  0.016  0.229 0.578     0.00263          0.018  3196 1.002",
+    "sd(x_fac3[B]|id)  0.223 0.170  0.009  0.186 0.637     0.00210          0.012  6576 1.000",
+    "sd(x_fac3[C]|id)  0.277 0.192  0.014  0.247 0.729     0.00271          0.014  5047 1.000",
+    "sigma             1.130 0.059  1.020  1.127 1.254     0.00062          0.011  9075 1.000"
+  ))
+
+
+  # full spike and slab model ----
+  formula_list <- list(
+    mu    = ~ x_cont1 + x_fac3 + (x_cont1 + x_fac3||id)
+  )
+  formula_prior_list <- list(
+    mu    = list(
+      "intercept"      = prior_spike_and_slab(prior("normal", list(0, 5))),
+      "x_cont1"        = prior_spike_and_slab(prior("normal", list(0, 1))),
+      "x_fac3"         = prior_spike_and_slab(prior_factor("mnormal", list(0, 1))),
+      "intercept|id"   = prior_spike_and_slab(prior("normal", list(0, 1), list(0, 1))),
+      "x_cont1|id"     = prior_mixture(list(
+        prior("normal", list(0, 1), list(0, 1)),
+        prior("beta", list(1, 2))
+      ), is_null = c(TRUE, FALSE)),
+      "x_fac3|id"      = prior_spike_and_slab(prior("normal", list(0, 1), list(0, 1)))
+    )
+  )
+
+  fit <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list)
+
+  fit_summary   <- runjags_estimates_table(fit, formula_prefix = FALSE, remove_inclusion = TRUE)
+  fit_inference <- runjags_inference_table(fit, formula_prefix = FALSE)
+
+  expect_equal(capture_output_lines(print(fit_summary), width = 150),  c(
+    "                   Mean    SD   lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat",
+    "intercept        -0.002 0.019 0.000  0.000 0.000     0.00026          0.014  5629 1.004",
+    "x_cont1           0.471 0.201 0.000  0.498 0.797     0.00730          0.036   769 1.005",
+    "x_fac3[1]         0.001 0.026 0.000  0.000 0.010     0.00025          0.010 11328 1.000",
+    "x_fac3[2]         0.008 0.043 0.000  0.000 0.166     0.00064          0.015  4569 1.002",
+    "sd(intercept|id)  0.125 0.154 0.000  0.021 0.481     0.00381          0.025  1650 1.001",
+    "sd(x_cont1|id)    0.387 0.169 0.094  0.367 0.773     0.00404          0.024  1822 1.003",
+    "sd(x_fac3|id)     0.030 0.072 0.000  0.000 0.258     0.00116          0.016  3928 1.003",
+    "sigma             1.105 0.059 0.996  1.103 1.226     0.00070          0.012  7094 1.000"
+  ))
+  expect_equal(capture_output_lines(print(fit_inference), width = 150),  c(
+    "                 Prior prob. Post. prob. Inclusion BF",
+    "intercept              0.500       0.023        0.024",
+    "x_cont1                0.500       0.923       11.924",
+    "x_fac3                 0.500       0.043        0.045",
+    "sd(intercept|id)       0.500       0.512        1.050",
+    "sd(x_cont1|id)         0.500       0.521        1.089",
+    "sd(x_fac3|id)          0.500       0.217        0.278"
+  ))
+
+  # independent factor priors ----
+  formula_list <- list(
+    mu    = ~ x_fac3 + (x_fac3||id)
+  )
+  formula_prior_list <- list(
+    mu    = list(
+      "intercept"      = prior("normal", list(0, 5)),
+      "x_fac3"         = prior_factor("normal", list(0, 1), contrast = "independent"),
+      "intercept|id"   = prior("normal", list(0, 1), list(0, 1)),
+      "x_fac3|id"      = prior("normal", list(0, 1), list(0, 1))
+    )
+  )
+
+  fit <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list)
+
+  fit_summary   <- runjags_estimates_table(fit, formula_prefix = FALSE, remove_inclusion = TRUE)
+
+  expect_equal(capture_output_lines(print(fit_summary), width = 150),  c(
+    "                   Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD  ESS R-hat",
+    "intercept        -0.168 0.582 -1.305 -0.158 0.968     0.04375          0.075  187 1.006",
+    "x_fac3[A]         0.227 0.580 -0.891  0.216 1.364     0.04318          0.074  207 1.004",
+    "x_fac3[B]         0.079 0.582 -1.050  0.068 1.221     0.04162          0.072  219 1.005",
+    "x_fac3[C]         0.007 0.580 -1.112 -0.001 1.161     0.03938          0.068  233 1.004",
+    "sd(intercept|id)  0.312 0.177  0.022  0.300 0.710     0.00348          0.020 2585 1.004",
+    "sd(x_fac3[A]|id)  0.410 0.226  0.027  0.399 0.883     0.00377          0.017 3632 1.000",
+    "sd(x_fac3[B]|id)  0.272 0.196  0.011  0.238 0.727     0.00260          0.013 5669 1.000",
+    "sd(x_fac3[C]|id)  0.330 0.216  0.016  0.304 0.827     0.00316          0.015 4694 1.000",
+    "sigma             1.213 0.065  1.096  1.210 1.349     0.00072          0.011 8195 1.001"
+  ))
+
+})
+
+test_that("JAGS fit function integration with multiple formulas" , {
+
+  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_on_cran()
+
+  set.seed(1)
+
+  data_formula <- data.frame(
+    x_cont1 = rnorm(300),
+    x_fac2o = factor(rep(c("A", "B"), 150), levels = c("A", "B"))
+  )
+  data_mu    <- 0.20 * data_formula$x_cont1
+  data_sigma <- 0.50 * exp(ifelse(data_formula$x_fac2o == "A", -0.5, 0.5))
+  data <- list(
+    y = rnorm(300, data_mu, data_sigma),
+    N = 300
+  )
+
+
+  # create model with mix of a formula and free parameters ---
+  formula_list1 <- list(
+    mu        = ~ x_cont1 + x_fac2o,
+    sigma_exp = ~ x_cont1 + x_fac2o
+  )
+  formula_data_list1 <- list(
+    mu        = data_formula,
+    sigma_exp = data_formula
+  )
+  formula_prior_list1 <- list(
+    mu         = list(
+      "intercept"  = prior("normal", list(0, 5)),
+      "x_cont1"    = prior_spike_and_slab(prior("normal", list(0, 1))),
+      "x_fac2o"    = prior_spike_and_slab(prior_factor("mnormal", list(0, 1), contrast = "meandif"))
+    ),
+    sigma_exp  = list(
+      "intercept"  = prior("spike", list(0)),
+      "x_cont1"    = prior_spike_and_slab(prior("normal", list(0, 1))),
+      "x_fac2o"    = prior_spike_and_slab(prior_factor("mnormal", list(0, 1), contrast = "meandif"))
+    )
+  )
+  prior_list1 <- list(
+    "sigma"  = prior("normal", list(0, 5), list(0, Inf))
+  )
+  model_syntax1 <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma * exp(sigma_exp[i]), 2))\n",
+    "}\n",
+    "}"
+  )
+
+  fit1 <- suppressWarnings(JAGS_fit(
+    model_syntax = model_syntax1, data = data, prior_list = prior_list1,
+    formula_list = formula_list1, formula_data_list = formula_data_list1, formula_prior_list = formula_prior_list1,
+    chains = 2, adapt = 500, burnin = 500, sample = 1000))
+
+  expect_equal(capture_output_lines(print(JAGS_estimates_table(fit1, remove_inclusion = TRUE)), width = 150),  c(
+    "                      Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD  ESS R-hat",
+    "(mu) intercept      -0.013 0.026 -0.063 -0.014 0.038     0.00066          0.025 1624 1.000",
+    "(mu) x_cont1         0.204 0.027  0.152  0.204 0.255     0.00059          0.022 2102 1.001",
+    "(mu) x_fac2o         0.001 0.009  0.000  0.000 0.017     0.00039          0.043  658 1.027",
+    "(sigma_exp) x_cont1 -0.001 0.009 -0.014  0.000 0.000     0.00028          0.031 1099 1.023",
+    "(sigma_exp) x_fac2o  0.436 0.041  0.348  0.433 0.520     0.00225          0.055  333 1.005",
+    "sigma                0.523 0.021  0.484  0.522 0.570     0.00067          0.032 1020 1.000"
+  ))
+  expect_equal(capture_output_lines(print(JAGS_inference_table(fit1)), width = 150),  c(
+    "                    Prior prob. Post. prob. Inclusion BF",
+    "(mu) x_cont1              0.500       1.000          Inf",
+    "(mu) x_fac2o              0.500       0.040        0.042",
+    "(sigma_exp) x_cont1       0.500       0.045        0.047",
+    "(sigma_exp) x_fac2o       0.500       1.000          Inf"
+  ))
+
+})
+
+test_that("JAGS parallel fit function works", {
 
   skip("requires parallel processing")
   skip_on_cran()

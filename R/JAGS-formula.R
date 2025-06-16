@@ -53,8 +53,15 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
     stop("'prior_list' must be a list of priors.")
 
 
-  # remove the specified response (would crash the model.frame if not included)
+  # remove the specified response
   formula <- .remove_response(formula)
+  # store expressions (included later as the literal character input)
+  expressions    <- .extract_expressions(formula)
+  # store random effects (included later via a formula interface)
+  random_effects <- .extract_random_effects(formula)
+  # remove expressions and random effects from the formula
+  formula <- .remove_expressions(formula)
+  formula <- .remove_random_effects(formula)
 
   # obtain predictors characteristics factors
   formula_terms    <- stats::terms(formula)
@@ -81,10 +88,20 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
     }
   })
 
-
+  # separate prior lists: extract random effects priors
+  prior_list_random_effects <- list()
+  if(length(random_effects) > 0){
+    # store the random effects specific priors in the corresponding entry
+    for(i in seq_along(random_effects)){
+      prior_list_random_effects[[i]] <- prior_list[which(.get_grouping_factor(names(prior_list)) == attr(random_effects[[i]], "grouping_factor"))]
+    }
+    # remove the random effects specific priors from the prior list
+    prior_list <- prior_list[.get_grouping_factor(names(prior_list)) == ""]
+  }
   # check that all predictors have a prior distribution
   check_list(prior_list, "prior_list", check_names = model_terms, allow_other = FALSE, all_objects = TRUE)
 
+  # check the prior distribution for each predictor
   # assign factor contrasts to the data based on prior distributions
   if(any(predictors_type == "factor")){
 
@@ -126,9 +143,14 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   # check whether intercept is unique parameter
   if(sum(grepl("intercept", names(prior_list))) > 1)
     stop("only the intercept parameter can contain 'intercept' in its name.")
-  # check whether the interaction replacement is in usage
-  if(any(grepl("__xXx__", names(prior_list))))
-    stop("'__xXx__' string is internally used by the BayesTools package and can't be used for naming variables.")
+  # check whether any reserved term is in usage
+  reserved_terms <- c("__xXx__", "__xREx__", "xRE_PRECx", "xRE_CORx", "xRE_Zx", "xRE_STDx", "xRE_COEFx", "xRE_MAPx", "xRE_COEFx", "xRE_DATAx")
+  for(reserved_term in reserved_terms){
+    if(any(grepl(reserved_term, names(prior_list))))
+      stop(paste0("'", reserved_term, "' string is internally used by the BayesTools package and can't be used for naming variables or prior distributions."))
+  }
+
+
   # replace interaction signs (due to JAGS incompatibility)
   colnames(model_matrix)  <- gsub(":", "__xXx__", colnames(model_matrix))
   names(prior_list)       <- gsub(":", "__xXx__", names(prior_list))
@@ -137,7 +159,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
 
   # prepare syntax & data based on the formula
   formula_syntax <- NULL
-  prior_syntax   <- NULL
+  random_syntax  <- NULL
   JAGS_data      <- list()
   JAGS_data[[paste0("N_", parameter)]] <- nrow(data)
 
@@ -147,9 +169,6 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
     terms_indexes[1] <- 0
 
     formula_syntax   <- c(formula_syntax, paste0(parameter, "_intercept"))
-    prior_intercept_list        <- prior_list["intercept"]
-    names(prior_intercept_list) <- paste0(parameter, "_intercept")
-    prior_syntax     <- c(prior_syntax, .JAGS_add_priors.fun(prior_intercept_list))
   }else{
     terms_indexes    <- attr(model_matrix, "assign")
   }
@@ -236,11 +255,30 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
 
   }
 
+  # add expressions input back to the formula
+  for(i in seq_along(expressions)){
+    formula_syntax <- c(formula_syntax, .clean_from_expression(expressions[[i]]))
+  }
+
+  # add random effects back to the formula
+  for(i in seq_along(random_effects)){
+    temp_random   <- .JAGS_random_effect_formula(random_effects[[i]], parameter, data, prior_list_random_effects[[i]])
+
+    for(i in seq_along(temp_random[["data"]])){
+      JAGS_data[[names(temp_random[["data"]])[i]]] <- temp_random[["data"]][[i]]
+    }
+
+    random_syntax  <- c(random_syntax,  temp_random[["random_syntax"]])
+    formula_syntax <- c(formula_syntax, temp_random[["formula_term"]])
+    prior_list     <- c(prior_list, temp_random[["prior_list"]])
+  }
+
   # finish the syntax
   formula_syntax <- paste0(
     "for(i in 1:N_", parameter, "){\n",
     "  ", parameter, "[i] = ", paste0(formula_syntax, collapse = " + "), "\n",
     "}\n")
+  formula_syntax <- paste0(formula_syntax, paste0(random_syntax, collapse = "\n"), collapse = "\n")
 
   # add the parameter name as a prefix and attribute to each prior in the list
   names(prior_list) <- paste0(parameter, "_", names(prior_list))
@@ -256,13 +294,406 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   ))
 }
 
-.remove_response <- function(formula){
+.JAGS_random_effect_formula <- function(formula, parameter, data, prior_list){
+
+  # extract the grouping factor information
+  grouping_factor        <- attr(formula, "grouping_factor")
+  grouping_independent   <- attr(formula, "independent")
+  grouping_factor_levels <- levels(as.factor(data[[grouping_factor]]))
+  grouping_mapping       <- as.numeric(as.factor(data[[grouping_factor]]))
+
+  # TODO: expand to factor random effects
+  # needs to implement LKJ correlation matrix
+  if(!grouping_independent){
+    stop("Only independent random effects are supported yet.")
+  }
+
+  # remove the grouping factor from the formula
+  formula <- .remove_grouping_factor(formula)
+  formula <- stats::as.formula(paste("~", formula))
+
+  # obtain predictors characteristics factors (copy from formula)
+  formula_terms    <- stats::terms(formula)
+  has_intercept    <- attr(formula_terms, "intercept") == 1
+  predictors       <- as.character(attr(formula_terms, "variables"))[-1]
+  if(any(!predictors %in% colnames(data)))
+    stop(paste0("The ", paste0("'", predictors[!predictors %in% colnames(data)], "'", collapse = ", ")," predictor variable is missing in the data set."))
+  predictors_type  <- sapply(predictors, function(predictor){
+    if(is.factor(data[,predictor]) | is.character(data[,predictor])){
+      return("factor")
+    }else{
+      return("continuous")
+    }
+  })
+  model_terms      <- c(if(has_intercept) "intercept", attr(formula_terms, "term.labels"))
+  model_terms_type <- sapply(model_terms, function(model_term){
+    model_term <- strsplit(model_term, ":")[[1]]
+    if(length(model_term) == 1 && model_term == "intercept"){
+      return("continuous")
+    }else if(any(predictors_type[model_term] == "factor")){
+      return("factor")
+    }else{
+      return("continuous")
+    }
+  })
+
+  # check that all priors have a lower bound on 0 or their range is > 0, if not, throw a warning and correct
+  for(i in seq_along(prior_list)){
+    if(is.prior.spike_and_slab(prior_list[[i]])){
+      if(range(prior_list[[i]][["variable"]])[1] < 0){
+        warning(paste0("The lower bound of the '", names(prior_list)[i], "' prior distribution is below 0. Correcting to 0."), immediate. = TRUE)
+        prior_list[[i]][["variable"]]$truncation$lower <- 0
+      }
+    }else if(is.prior.mixture(prior_list[[i]])){
+      for(j in seq_along(prior_list[[i]])){
+        if(range(prior_list[[i]][[j]])[1] < 0){
+          warning(paste0("The lower bound of the ", j, "-component in '", names(prior_list)[i], "' prior distribution is below 0. Correcting to 0."), immediate. = TRUE)
+          prior_list[[i]][[j]]$truncation$lower <- 0
+        }
+      }
+    }else{
+      if(range(prior_list[[i]])[1] < 0){
+        warning(paste0("The lower bound of the '", names(prior_list)[i], "' prior distribution is below 0. Correcting to 0."), immediate. = TRUE)
+        prior_list[[i]]$truncation$lower <- 0
+      }
+    }
+  }
+
+  # drop the grouping factor from the prior names
+  names(prior_list) <- .remove_grouping_factor(names(prior_list))
+  # check that all terms have a prior distribution
+  check_list(prior_list, "prior_list", check_names = model_terms, allow_other = TRUE, all_objects = TRUE)
+
+  # get the default design matrix
+  model_frame  <- stats::model.frame(formula, data = data)
+  model_matrix <- stats::model.matrix(model_frame, formula = formula, data = data)
+
+  # check whether intercept is unique parameter
+  if(sum(grepl("intercept", names(prior_list))) > 1)
+    stop("only the intercept parameter can contain 'intercept' in its name.")
+  # check whether any reserved term is in usage
+  reserved_terms <- c("__xXx__", "__xREx__", "xRE_PRECx", "xRE_CORx", "xRE_Zx", "xRE_STDx", "xRE_COEFx", "xRE_MAPx", "xRE_COEFx", "xRE_DATAx")
+  for(reserved_term in reserved_terms){
+    if(any(grepl(reserved_term, names(prior_list))))
+      stop(paste0("'", reserved_term, "' string is internally used by the BayesTools package and can't be used for naming variables or prior distributions."))
+  }
+
+  # replace interaction signs (due to JAGS incompatibility)
+  colnames(model_matrix)  <- gsub(":", "__xXx__", colnames(model_matrix))
+  names(prior_list)       <- gsub(":", "__xXx__", names(prior_list))
+  names(model_terms_type) <- gsub(":", "__xXx__", names(model_terms_type))
+  model_terms             <- gsub(":", "__xXx__", model_terms)
+
+  # prepare syntax & data based on the formula
+  parameter_suffix <- paste0("_xREx__", grouping_factor)       # priors should not be named with parameter name (done on exit from formula)
+  parameter        <- paste0(parameter, "_", parameter_suffix) # variables should be named already here
+  random_syntax    <- NULL
+  JAGS_data        <- list()
+  new_prior_list   <- list()
+
+  ### in essence, the following prepares constructors that:
+  # 1) samples standardized random effects xRE_Zx[ids, predictors] from a multivariate normal distribution
+  # 2) create a vector of by-parameter standard deviation of the random effects xRE_STDx[predictors]
+  # 3) multiplies the standardized random effects by parameter-specific standard deviations to create xRE_COEFx[ids, predictors] matrix
+  # 4) computes the per observation formula output based on indexing the by-id COEF and selecting the observation variables
+  # 5) appends the per-observation output to the higher order formula (done in the formula call itself)
+
+  n_id  <- length(grouping_factor_levels)
+  n_par <- ncol(model_matrix)
+
+  # step 1:
+  # TODO: get the identity matrix to sample the standardized random effects (update once correlated random effects are available with cholesky sampled correlation matrix)
+  random_syntax <- c(random_syntax, .add_JAGS_matrix(name = paste0(parameter, "_xRE_PRECx"), diag(1, n_par)))
+  random_syntax <- c(random_syntax, paste0(
+    " for(i in 1:",n_id,"){\n",
+    "   ",paste0(parameter, "_xRE_Zx"),"[i,1:", n_par ,"] ~ dmnorm(rep(0, ", n_par,"), ", paste0(parameter, "_xRE_PRECx"), ")\n",
+    " }\n"
+  ))
+
+  # step 2
+  if(has_intercept){
+    terms_indexes    <- attr(model_matrix, "assign") + 1
+    terms_indexes[1] <- 0
+
+    new_prior_list[[paste0(parameter_suffix, "_intercept")]] <- prior_list[["intercept"]]
+    attr(new_prior_list[[paste0(parameter_suffix, "_intercept")]], "random_factor") <- grouping_factor
+    random_syntax   <- c(random_syntax, paste0(
+      parameter, "_xRE_STDx[1] = ", parameter, "_", "intercept"
+    ))
+  }else{
+    terms_indexes    <- attr(model_matrix, "assign")
+  }
+
+  # add remaining terms (omitting the intercept indexed as NA)
+  for(i in unique(terms_indexes[terms_indexes > 0])){
+
+    # extract the corresponding prior distribution for a given coefficient
+    this_prior <- prior_list[[model_terms[i]]]
+
+    # check whether the term is an interaction or not and save the corresponding attributes
+    attr(this_prior, "interaction") <- grepl("__xXx__", model_terms[i])
+    if(.is_prior_interaction(this_prior)){
+      attr(this_prior, "interaction_terms") <- strsplit(model_terms[i], "__xXx__")[[1]]
+    }
+
+    if(!is.null(attr(this_prior, "multiply_by")))
+      stop("'multiply_by' attribute is inadmissible for random effects")
+
+    if(model_terms_type[i] == "continuous"){
+
+      random_syntax <- c(random_syntax, paste0(
+        parameter, "_xRE_STDx[", i, "] = ", parameter, "_", model_terms[i]
+      ))
+
+    }else if(model_terms_type[i] == "factor"){
+
+      # factor random effects use the same contrasts as set in the upstream formula
+      # (in the rare case that no factor_prior on the upstream formula was set, this might default to a treatment contrast)
+
+      ## parameterization
+      # treatment contrasts: independent variances for the comparison factor levels
+      # independent contrasts: independent variances for each factor level
+      # meandif/orthonormal contrasts: one total variance for the factor
+      if(is.null(attr(data[[model_terms[i]]], "contrasts")) || attr(data[[model_terms[i]]], "contrasts") %in% c("contr.treatment", "contr.independent")){
+
+        # determine the prior type
+        if(is.null(attr(data[[model_terms[i]]], "contrasts")) || attr(data[[model_terms[i]]], "contrasts") == "contr.treatment"){
+          temp_prior_type <- "prior.treatment"
+          attr(this_prior, "levels") <- sum(terms_indexes == i) + 1
+        }else{
+          temp_prior_type <- "prior.independent"
+          attr(this_prior, "levels") <- sum(terms_indexes == i)
+        }
+
+        # store level information
+        if(.is_prior_interaction(this_prior)){
+          level_names <- list()
+          for(sub_term in strsplit(model_terms[i], "__xXx__")[[1]]){
+            if(model_terms_type[sub_term] == "factor"){
+              level_names[[sub_term]] <- levels(data[,sub_term])
+            }
+          }
+          attr(this_prior, "level_names") <- level_names
+        }else{
+          attr(this_prior, "level_names") <- levels(data[,model_terms[i]])
+        }
+
+        # distribute the individual coefficients to the STD
+        for(j in 1:sum(terms_indexes == i)){
+          random_syntax <- c(random_syntax, paste0(
+            parameter, "_xRE_STDx[", i + j - 1, "] = ", parameter, "_", model_terms[i], "[", j, "]"
+          ))
+        }
+
+        # transform the simple prior into treatment / independent factor prior (for each of the coefficients)
+        if(is.prior.simple(this_prior)){
+          class(this_prior) <- c(class(this_prior), "prior.factor", temp_prior_type)
+        }else if(is.prior.spike_and_slab(this_prior)){
+          class(this_prior[["variable"]]) <- c(class(this_prior[["variable"]]), "prior.factor", temp_prior_type)
+          class(this_prior)               <- c(class(this_prior)[!class(this_prior) %in% c("prior.simple_spike_and_slab")], "prior.factor_spike_and_slab", temp_prior_type)
+        }else if(is.prior.mixture(this_prior)){
+          for(p in seq_along(this_prior)){
+            class(this_prior[[p]]) <- c(class(this_prior[[p]]), "prior.factor", temp_prior_type)
+          }
+          class(this_prior) <- c(class(this_prior)[!class(this_prior) %in% c("prior.simple_mixture")],  "prior.factor_mixture", temp_prior_type)
+        }
+
+      }else if(attr(data[[model_terms[i]]], "contrasts") %in% c("contr.orthonormal", "contr.meandif")){
+
+        # do not change the prior type of create multiple levels
+        # distribute the same coefficients to the STD
+        for(j in 1:sum(terms_indexes == i)){
+          random_syntax <- c(random_syntax, paste0(
+            parameter, "_xRE_STDx[", i + j - 1, "] = ", parameter, "_", model_terms[i]
+          ))
+        }
+        # no prior transformation needed
+
+      }else{
+        stop("Unsupported factor contrasts for the random effects.")
+      }
+
+
+    }else{
+      stop("Unrecognized model term.")
+    }
+
+    # update the corresponding prior distribution back into the prior list
+    # (and forward attributes to lower level components in the case of spike and slab and mixture priors)
+    attr(this_prior, "random_sd")     <- TRUE
+    attr(this_prior, "random_factor") <- grouping_factor
+    if(is.prior.spike_and_slab(this_prior)){
+      attr(this_prior, "levels")            -> attr(this_prior[["variable"]], "levels")
+      attr(this_prior, "level_names")       -> attr(this_prior[["variable"]], "level_names")
+      attr(this_prior, "interaction")       -> attr(this_prior[["variable"]], "interaction")
+      attr(this_prior, "interaction_terms") -> attr(this_prior[["variable"]], "interaction_terms")
+      this_prior -> new_prior_list[[paste0(parameter_suffix, "_", model_terms[i])]]
+    }else if(is.prior.mixture(this_prior)){
+      for(p in seq_along(this_prior)){
+        attr(this_prior, "levels")            -> attr(this_prior[[p]], "levels")
+        attr(this_prior, "level_names")       -> attr(this_prior[[p]], "level_names")
+        attr(this_prior, "interaction")       -> attr(this_prior[[p]], "interaction")
+        attr(this_prior, "interaction_terms") -> attr(this_prior[[p]], "interaction_terms")
+      }
+      this_prior -> new_prior_list[[paste0(parameter_suffix, "_", model_terms[i])]]
+    }else{
+      this_prior -> new_prior_list[[paste0(parameter_suffix, "_", model_terms[i])]]
+    }
+
+  }
+
+  # step 3
+  random_syntax <- c(random_syntax, paste0(
+    " for(i in 1:",n_par,"){\n",
+    "   ",paste0(parameter, "_xRE_COEFx"),"[1:",n_id,",i] = ",paste0(parameter, "_xRE_Zx"),"[1:",n_id,",i] * ",paste0(parameter, "_xRE_STDx"),"[i]\n",
+    " }\n"
+  ))
+
+  # step 4
+  random_syntax <- c(random_syntax, paste0(
+    " for(i in 1:",nrow(model_matrix),"){\n",
+    "   ",parameter,"[i] = inprod(", paste0(parameter, "_xRE_COEFx[", paste0(parameter, "_xRE_MAPx[i]"),", 1:",n_par,"]"), ", ", paste0(parameter, "_xRE_DATAx[i,1:", n_par,"]"),")\n",
+    " }\n"
+  ))
+
+  # create the JAGS data list
+  JAGS_data[[paste0(parameter, "_xRE_DATAx")]] <- model_matrix
+  JAGS_data[[paste0(parameter, "_xRE_MAPx")]]  <- grouping_mapping
+
+  return(list(
+    random_syntax  = random_syntax,
+    formula_term   = paste0(parameter,"[i]"),
+    data           = JAGS_data,
+    prior_list     = new_prior_list,
+    formula        = formula
+  ))
+}
+
+# formula helper functions
+.remove_response        <- function(formula){
+  # removes response from the expression
+  # (prevents crash on formula evaluations)
   if(attr(stats::terms(formula), "response")  == 1){
     formula[2] <- NULL
   }
   return(formula)
 }
+.has_expression         <- function(formula){
+  # check if there is any expression in the formula
+  return(any(grepl("expression\\(", deparse(formula))))
+}
+.extract_expressions    <- function(formula){
+  # extract all expressions from the formula
 
+  # Convert the formula to a character string
+  formula_string <- deparse(formula)
+
+  # Use a regex to find all instances of "expression(...)"
+  matches     <- gregexpr("expression\\(.*?\\)", formula_string)
+  expressions <- regmatches(formula_string, matches)[[1]]
+
+  # Use a regex to remove "expression(" and the closing ")"
+  expressions <- lapply(expressions, .clean_from_expression)
+
+  return(expressions)
+}
+.clean_from_expression  <- function(x){
+  # expression to character
+
+  return(sub("expression\\((.*)\\)", "\\1", x))
+}
+.remove_expressions     <- function(formula){
+  # remove all expressions from the formula
+
+  # Convert the formula to a character string
+  formula_string <- paste0(deparse(formula), collapse = " ")
+
+  # Use a regex to remove all instances of "+ expression(...)" or "expression(...) +", considering spaces and newlines
+  formula_string_clean <- gsub("\\+\\s*expression\\(.*?\\)\\s*", "", formula_string)
+  formula_string_clean <- gsub("\\s*expression\\(.*?\\)\\s*\\+", "", formula_string_clean)
+
+  # Handle the case where the expression is the first term in the formula
+  formula_string_clean <- gsub("^\\s*expression\\(.*?\\)\\s*", "", formula_string_clean)
+
+  # Handle the case where the formula reduces to just "y ~ expression(...)"
+  if(grepl("^\\s*[a-zA-Z0-9._]+\\s*~\\s*expression\\(.*?\\)\\s*$", formula_string_clean)){
+    formula_string_clean <- gsub("expression\\(.*?\\)", "1", formula_string_clean)
+  }
+
+  # Reconvert the cleaned string back to a formula
+  return(stats::as.formula(formula_string_clean))
+}
+.has_random_effects     <- function(formula){
+  # Convert the formula to a character string
+  formula_str <- paste(deparse(formula), collapse = " ")
+
+  # Regular expression to match `( ... | ... )` patterns
+  has_random <- grepl("\\([^\\)]+\\|[^\\)]+\\)", formula_str)
+
+  # Return TRUE if at least one match is found, otherwise FALSE
+  return(has_random)
+}
+.extract_random_effects <- function(formula) {
+  # Convert the formula to a character string
+  formula_str <- paste(deparse(formula), collapse = " ")
+
+  # Regular expression to match `( ... | ... )` or `( ... || ... )` patterns
+  random_effects <- gregexpr("\\([^\\)]+\\|{1,2}[^\\)]+\\)", formula_str)
+
+  # Extract matches
+  matches <- regmatches(formula_str, random_effects)
+
+  # Clean up the parentheses and remove unnecessary spaces
+  clean_matches <- lapply(unlist(matches), function(x) gsub("^\\(|\\)$", "", x))  # Remove outer parentheses
+  clean_matches <- lapply(clean_matches, trimws)  # Remove extra spaces from each match
+
+  # Add random effects information
+  for (i in seq_along(clean_matches)) {
+    # Extract the grouping factor (right-hand side of | or ||)
+    grouping_factor <- trimws(sub(".*\\|{1,2}\\s*", "", clean_matches[[i]]))
+    attr(clean_matches[[i]], "grouping_factor") <- grouping_factor
+
+    # Detect whether independent `||` or correlated `|` random effects are used
+    independent <- grepl("\\|\\|", clean_matches[[i]])  # Check if `||` is used
+    attr(clean_matches[[i]], "independent") <- independent
+  }
+
+  # Return the cleaned random effects as a list
+  return(as.list(clean_matches))
+}
+
+.remove_random_effects  <- function(formula){
+  # Convert the formula to a character string
+  formula_str <- paste(deparse(formula), collapse = " ")
+
+  # Regular expression to match and remove `( ... | ... )` patterns
+  cleaned_formula <- gsub("\\+?\\s*\\([^\\)]+\\|[^\\)]+\\)", "", formula_str)
+
+  # Normalize spacing around '+' and remove any leading '+'
+  cleaned_formula <- gsub("\\s*\\+\\s*", " + ", cleaned_formula)  # Normalize '+' spacing
+  cleaned_formula <- gsub("^\\s*~\\s*\\+\\s*", "~ ", cleaned_formula)  # Remove leading '+'
+
+  # Ensure no excessive spaces remain
+  cleaned_formula <- gsub("\\s{2,}", " ", cleaned_formula)  # Replace multiple spaces with a single space
+  cleaned_formula <- trimws(cleaned_formula)  # Trim leading/trailing whitespace
+
+  # Ensure at least "1" remains if formula is empty after cleaning
+  if (grepl("^\\s*~\\s*$", cleaned_formula)) {
+    cleaned_formula <- "~ 1"
+  }
+
+  # Return as a formula
+  return(stats::as.formula(cleaned_formula))
+}
+.get_grouping_factor    <- function(x){
+  has_grouping            <- grepl("\\|", x)
+  grouping                <- rep("", length(x))
+  grouping[has_grouping]  <- trimws(sub(".*\\|\\s*", "", x[has_grouping]))
+  return(grouping)
+}
+.remove_grouping_factor <- function(formula){
+  return(trimws(sub("\\|.*$", "", formula)))
+}
 
 #' @title Evaluate JAGS formula using posterior samples
 #'
@@ -736,6 +1167,7 @@ contr.independent <- function(n, contrasts = TRUE){
 #' @param parameters a vector of parameter names
 #' @param formula_parameter a formula parameter prefix name
 #' @param formula_parameters a vector of formula parameter prefix names
+#' @param formula_random a vector of random effects grouping factors
 #' @param formula_prefix whether the \code{formula_parameters} names should be
 #' kept. Defaults to \code{TRUE}.
 #'
@@ -751,9 +1183,10 @@ contr.independent <- function(n, contrasts = TRUE){
 NULL
 
 #' @rdname parameter_names
-format_parameter_names <- function(parameters, formula_parameters = NULL, formula_prefix = TRUE){
+format_parameter_names <- function(parameters, formula_parameters = NULL, formula_random = NULL, formula_prefix = TRUE){
 
   check_char(parameters, "parameters", check_length = FALSE)
+  check_char(formula_random, "formula_random", check_length = FALSE, allow_NULL = TRUE)
   check_char(formula_parameters, "formula_parameters", check_length = FALSE, allow_NULL = TRUE)
   check_bool(formula_prefix, "formula_prefix")
 
@@ -763,6 +1196,23 @@ format_parameter_names <- function(parameters, formula_parameters = NULL, formul
       if(formula_prefix) paste0("(", formula_parameters[i], ") ") else "",
       parameters[grep(paste0(formula_parameters[i], "_"), parameters)])
   }
+
+  for(i in seq_along(formula_random)){
+    temp_which <- grepl(paste0("_xREx__", formula_random[i], "_"), parameters)
+    temp_incl  <- grepl("(inclusion)", parameters)
+    parameters[temp_which] <- gsub(
+      paste0("_xREx__", formula_random[i], "_"),
+      "",
+      parameters[temp_which]
+    )
+    if(any(temp_which &  temp_incl)){
+      parameters[temp_which &  temp_incl] <- paste0(gsub("(inclusion)", "", parameters[temp_which & temp_incl], fixed = TRUE), "|", formula_random[i], " (inclusion)")
+    }
+    if(any(temp_which & !temp_incl)){
+      parameters[temp_which & !temp_incl] <- paste0("sd(", parameters[temp_which & !temp_incl], "|", formula_random[i], ")")
+    }
+  }
+
   parameters[grep("__xXx__", parameters)] <- gsub("__xXx__", ":", parameters[grep("__xXx__", parameters)])
 
   return(parameters)

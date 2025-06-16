@@ -70,6 +70,11 @@
   return(truncation)
 }
 .check_parameter           <- function(parameter, name, length = 1){
+
+  # allow expressions to be forwarded through the construction functions
+  if(is.expression(parameter))
+    return()
+
   if(length == -1){
     if(!is.numeric(parameter) | !is.vector(parameter) | length(parameter) > 1)
       stop(paste0("The '", name, "' must be a numeric vector of length at least 2."), call. = FALSE)
@@ -82,6 +87,11 @@
   }
 }
 .check_parameter_positive  <- function(parameter, name, include_zero = FALSE){
+
+  # allow expressions to be forwarded through the construction functions
+  if(is.expression(parameter))
+    return()
+
   if(include_zero){
     if(any(parameter < 0))
       stop(paste0("The '", name, "' must be non-negative."), call. = FALSE)
@@ -91,6 +101,11 @@
   }
 }
 .check_parameter_negative  <- function(parameter, name, include_zero = FALSE){
+
+  # allow expressions to be forwarded through the construction functions
+  if(is.expression(parameter))
+    return()
+
   if(include_zero){
     if(any(parameter > 0))
       stop(paste0("The '", name, "' must be non-positive."), call. = FALSE)
@@ -100,6 +115,11 @@
   }
 }
 .check_parameter_dimensions<- function(parameter, name, allow_NA = FALSE){
+
+  # allow expressions to be forwarded through the construction functions
+  if(is.expression(parameter))
+    return()
+
   if(!allow_NA && is.na(parameter)){
     stop(paste0("The '", name, "' must be defined."), call. = FALSE)
   }else if(!allow_NA){
@@ -162,6 +182,11 @@
   }
 }
 .check_parameter_range          <- function(parameter, name, lower, upper, include_bounds = FALSE){
+
+  # allow expressions to be forwarded through the construction functions
+  if(is.expression(parameter))
+    return()
+
   if(include_bounds){
     if(any(parameter < lower) | any(parameter > upper))
       stop(paste0("The '", name, "' must be higher than ", lower, " and lower than ", upper, "."), call. = FALSE)
@@ -171,7 +196,7 @@
   }
 }
 
-.get_prior_factor_levels      <- function(prior){
+.get_prior_factor_levels       <- function(prior){
   if(is.prior.independent(prior)){
     return(attr(prior, "levels"))
   }else if(is.prior.treatment(prior)){
@@ -185,7 +210,7 @@
     return(attr(prior, "levels") - 1)
   }
 }
-.get_prior_factor_level_names <- function(prior){
+.get_prior_factor_level_names  <- function(prior){
   if(is.null(attr(prior, "level_names"))){
     if(is.prior.independent(prior)){
       return(1:.get_prior_factor_levels(prior))
@@ -196,7 +221,7 @@
     return(attr(prior, "level_names"))
   }
 }
-.get_prior_factor_list_type   <- function(prior_list){
+.get_prior_factor_list_type    <- function(prior_list){
 
   priors_type <- do.call(rbind, lapply(prior_list, function(p) {
     if(is.prior.point(p) | is.prior.none(p)){
@@ -231,12 +256,25 @@
     "K"     = priors_type[["K"]]
   ))
 }
-.is_prior_interaction         <- function(prior){
+.is_prior_interaction          <- function(prior){
   if(is.null(attr(prior, "interaction"))){
     return(FALSE)
   }else{
     return(attr(prior, "interaction"))
   }
+}
+.is_prior_expression           <- function(prior){
+  return(any(sapply(prior[["parameters"]], is.expression)))
+}
+.prior_expression_to_character <- function(prior){
+  prior[["parameters"]] <- lapply(prior[["parameters"]], function(x){
+    if(is.expression(x)){
+      return(.clean_from_expression(deparse(x)))
+    }else{
+      return(x)
+    }
+  })
+  return(prior)
 }
 
 #' @title Reports whether x is a a prior object
@@ -348,16 +386,20 @@ is.prior.mixture         <- function(x){
   inherits(x, "prior.mixture")
 }
 
-.check_prior <- function(prior, name = "prior"){
+.check_prior <- function(prior, name = "prior", allow_expressions = FALSE){
 
   if(!is.prior(prior))
     stop(paste0("The '", name, "' argument must be a valid prior object."), call. = FALSE)
+
+  if(!allow_expressions && .is_prior_expression(prior))
+    stop(paste0("The '", name, "' argument must not contain parameter expressions."), call. = FALSE)
 
   return()
 }
 .check_prior_list <- function(prior_list, name = "prior_list", check_length = 0, allow_NULL = FALSE,
                               allow_prior.point = TRUE, allow_prior.simple = TRUE, allow_prior.discrete = TRUE, allow_prior.vector = TRUE,
-                              allow_prior.PET = TRUE, allow_prior.PEESE = TRUE, allow_prior.weightfunction = TRUE, allow_prior.factor = TRUE){
+                              allow_prior.PET = TRUE, allow_prior.PEESE = TRUE, allow_prior.weightfunction = TRUE, allow_prior.factor = TRUE,
+                              allow_expressions = FALSE){
 
   check_list(prior_list, name, check_length = check_length, allow_other = FALSE, allow_NULL = allow_NULL)
 
@@ -365,7 +407,7 @@ is.prior.mixture         <- function(x){
     return()
 
   for(i in seq_along(prior_list)){
-    .check_prior(prior_list[[i]], paste0(name, "[[", i, "]] argument must be a prior distribution."))
+    .check_prior(prior_list[[i]], paste0(name, "[[", i, "]] argument must be a prior distribution."), allow_expressions = allow_expressions)
 
     if(!allow_prior.point && is.prior.point(prior_list[[i]]))
       stop(paste0("The '", name, "' argument must not contain point priors (element [[", i, "]])."), call. = FALSE)
