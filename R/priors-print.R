@@ -38,7 +38,7 @@
 print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = FALSE,
                         digits_estimates = 2, silent = FALSE, ...){
 
-  .check_prior(x, "x")
+  .check_prior(x, "x", allow_expressions = TRUE)
   check_bool(short_name, "short_name")
   check_bool(parameter_names, "parameter_names")
   check_int(digits_estimates, "digits_estimates", lower = 0)
@@ -55,6 +55,10 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
   }else{
     inline <- dots[["inline"]]
     check_bool(inline, "inline")
+  }
+
+  if(.is_prior_expression(x)){
+    x <- .prior_expression_to_character(x)
   }
 
   if(is.prior.none(x)){
@@ -164,7 +168,9 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
   ### prepare prior parameters
   # round the parameters and truncation for printing
   for(i in seq_along(x[["parameters"]])){
-    x[["parameters"]][[i]] <- round(x[["parameters"]][[i]], digits_estimates)
+    if(!is.character(x[["parameters"]][[i]])){
+      x[["parameters"]][[i]] <- round(x[["parameters"]][[i]], digits_estimates)
+    }
   }
   for(i in seq_along(x[["truncation"]])){
     x[["truncation"]][[i]] <- round(x[["truncation"]][[i]], digits_estimates)

@@ -772,3 +772,80 @@ test_that("JAGS evaluate formula works", {
   expect_equivalent(dim(new_samples), c(3, 200))
 
 })
+
+test_that("Expression handling functions work", {
+
+  f1 <- formula(y ~ 1)
+  f2 <- formula(y ~ z)
+  f3 <- formula(y ~ expression(x))
+  f4 <- formula(y ~ z + expression(x))
+  f5 <- formula(y ~ expression(x) + z)
+  f6 <- formula(y ~ expression(x) + z + expression(b))
+
+  expect_true(!.has_expression(f1))
+  expect_true(!.has_expression(f2))
+  expect_true(.has_expression(f3))
+  expect_true(.has_expression(f4))
+  expect_true(.has_expression(f5))
+  expect_true(.has_expression(f6))
+
+  expect_equal(.extract_expressions(f3), list("x"))
+  expect_equal(.extract_expressions(f4), list("x"))
+  expect_equal(.extract_expressions(f5), list("x"))
+  expect_equal(.extract_expressions(f6), list("x", "b"))
+
+  expect_equal(.remove_expressions(f1), formula(y ~ 1))
+  expect_equal(.remove_expressions(f2), formula(y ~ z))
+  expect_equal(.remove_expressions(f3), formula(y ~ 1))
+  expect_equal(.remove_expressions(f4), formula(y ~ z))
+  expect_equal(.remove_expressions(f5), formula(y ~ z))
+  expect_equal(.remove_expressions(f6), formula(y ~ z))
+})
+
+test_that("Random effects handling functions work", {
+
+  f1 <- formula( ~ 1)
+  f2 <- formula( ~ x_cont1)
+  f3 <- formula( ~ (1 | id))
+  f4 <- formula( ~ (1 + x_cont1 | id))
+  f5 <- formula( ~ (1 + x_cont1 | id) + x_cont1)
+  f6 <- formula( ~ x_cont1 + (1 + x_cont1 | id))
+  f7 <- formula( ~ x_cont1 + (  x_cont1 | id   ) +   x_cont2 + (0   + x_cont2 ||  group))
+
+  expect_true(!.has_random_effects(f1))
+  expect_true(!.has_random_effects(f2))
+  expect_true(.has_random_effects(f3))
+  expect_true(.has_random_effects(f4))
+  expect_true(.has_random_effects(f5))
+  expect_true(.has_random_effects(f6))
+  expect_true(.has_random_effects(f7))
+
+  t1 <- list("1 | id")
+  t2 <- list("1 + x_cont1 | id")
+  t3 <- list("x_cont1 | id", "0 + x_cont2 || group")
+  attr(t1[[1]], "grouping_factor") <- "id"
+  attr(t2[[1]], "grouping_factor") <- "id"
+  attr(t3[[1]], "grouping_factor") <- "id"
+  attr(t3[[2]], "grouping_factor") <- "group"
+  attr(t1[[1]], "independent") <- FALSE
+  attr(t2[[1]], "independent") <- FALSE
+  attr(t3[[1]], "independent") <- FALSE
+  attr(t3[[2]], "independent") <- TRUE
+
+  expect_equal(.extract_random_effects(f1), list())
+  expect_equal(.extract_random_effects(f2), list())
+  expect_equal(.extract_random_effects(f3), t1)
+  expect_equal(.extract_random_effects(f4), t2)
+  expect_equal(.extract_random_effects(f5), t2)
+  expect_equal(.extract_random_effects(f6), t2)
+  expect_equal(.extract_random_effects(f7), t3)
+
+  expect_equal(.remove_random_effects(f1), formula( ~ 1))
+  expect_equal(.remove_random_effects(f2), formula( ~ x_cont1))
+  expect_equal(.remove_random_effects(f3), formula( ~ 1))
+  expect_equal(.remove_random_effects(f4), formula( ~ 1))
+  expect_equal(.remove_random_effects(f5), formula( ~ x_cont1))
+  expect_equal(.remove_random_effects(f6), formula( ~ x_cont1))
+  expect_equal(.remove_random_effects(f7), formula( ~ x_cont1 + x_cont2))
+
+})

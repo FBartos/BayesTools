@@ -9,6 +9,7 @@
 format_parameter_names(
   parameters,
   formula_parameters = NULL,
+  formula_random = NULL,
   formula_prefix = TRUE
 )
 
@@ -18,6 +19,8 @@ JAGS_parameter_names(parameters, formula_parameter = NULL)
 \item{parameters}{a vector of parameter names}
 
 \item{formula_parameters}{a vector of formula parameter prefix names}
+
+\item{formula_random}{a vector of random effects grouping factors}
 
 \item{formula_prefix}{whether the \code{formula_parameters} names should be
 kept. Defaults to \code{TRUE}.}
