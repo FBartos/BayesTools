@@ -305,7 +305,7 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
 prior_factor <- function(distribution, parameters, truncation = list(lower = -Inf, upper = Inf), prior_weights = 1, contrast = "meandif"){
 
   # general input check (detailed checks are performed withing the constructors)
-  check_char(contrast, "contrast", allow_values = c("meandif", "orthonormal", "treatment", "treatment", "independent"))
+  check_char(contrast, "contrast", allow_values = c("meandif", "orthonormal", "treatment", "dummy", "independent"))
 
   # check its compatibility with the contrasts
   if(contrast %in% c("meandif", "orthonormal")){
@@ -337,7 +337,7 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
 
     class(output) <- c(class(output), "prior.factor", paste0("prior.", contrast))
 
-  }else if(contrast %in% c("treatment", "treatment")){
+  }else if(contrast %in% c("treatment", "dummy")){
 
     # generate the prior object
     output <- prior(distribution = distribution, parameters = parameters, truncation = truncation, prior_weights = prior_weights)
@@ -446,7 +446,7 @@ prior_spike_and_slab <- function(prior_parameter,
 #' @export
 prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), components = NULL){
 
-  .check_prior_list(prior_list)
+  .check_prior_list(prior_list, allow_expressions = TRUE)
   check_bool(is_null, "is_null",       check_length = length(prior_list), allow_NULL = TRUE)
   check_char(components, "components", check_length = length(prior_list), allow_NULL = TRUE)
   if(is.null(is_null) && is.null(components))

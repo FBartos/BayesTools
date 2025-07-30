@@ -165,4 +165,13 @@ test_that("Prior print function works", {
     text(0.5, 0.8, print(p23, plot = TRUE))
     text(0.5, 0.7, print(p24, plot = TRUE))
   })
+
+  # prior expressions
+  pe1 <- prior("normal", parameters = list(0, expression(x)))
+  expect_equal(utils::capture.output(print(pe1)), "Normal(0, x)")
+
+  vdiffr::expect_doppelganger("priors-print-e1", function(){
+    empty_plot()
+    text(0.5, 1, print(pe1, plot = TRUE))
+  })
 })
