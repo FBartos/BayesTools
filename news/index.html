@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.19</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.20</span>
       </span>
     </div>
 
@@ -57,9 +57,23 @@
   <div class="col-md-9 contents">
     <div class="page-header">
       <h1 data-toc-skip>Changelog <small></small></h1>
-      <small>Source: <a href="https://github.com/FBartos/BayesTools/blob/master/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
+      <small>Source: <a href="https://github.com/FBartos/BayesTools/blob/v0.2.20/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
+    <div class="section level2">
+<h2 class="page-header" data-toc-text="0.2.20" id="version-0220">version 0.2.20<a class="anchor" aria-label="anchor" href="#version-0220"></a></h2>
+<div class="section level4">
+<h4 id="features-0-2-20">Features<a class="anchor" aria-label="anchor" href="#features-0-2-20"></a></h4>
+<ul><li>extending prior functions to accept <code><a href="https://rdrr.io/r/base/expression.html" class="external-link">expression()</a></code> instead of a parameter, such objects can be use to create prior distributions that depend on other parameters in JAGS</li>
+<li>extending the formula interface of <code><a href="../reference/JAGS_fit.html">JAGS_fit()</a></code> function to accept expressions that are appended as literal text to the generated JAGS formula</li>
+<li>extending the formula interface of <code><a href="../reference/JAGS_fit.html">JAGS_fit()</a></code> function to handle uncorrelated random effects via <code>(x||y)</code> (lme4-like) notation</li>
+</ul></div>
+<div class="section level4">
+<h4 id="fixes-0-2-20">Fixes<a class="anchor" aria-label="anchor" href="#fixes-0-2-20"></a></h4>
+<ul><li>
+<code>JAGS_estimates_table</code> not printing formula prefix when only spike and slab priors are supplied</li>
+</ul></div>
+</div>
     <div class="section level2">
 <h2 class="page-header" data-toc-text="0.2.19" id="version-0219">version 0.2.19<small>2025-06-08</small><a class="anchor" aria-label="anchor" href="#version-0219"></a></h2>
 <div class="section level4">

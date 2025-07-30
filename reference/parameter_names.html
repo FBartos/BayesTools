@@ -18,7 +18,7 @@ JAGS."><!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/libs/mathj
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.19</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.20</span>
       </span>
     </div>
 
@@ -58,7 +58,7 @@ JAGS."><!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/libs/mathj
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Clean parameter names from JAGS</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/JAGS-formula.R" class="external-link"><code>R/JAGS-formula.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/v0.2.20/R/JAGS-formula.R" class="external-link"><code>R/JAGS-formula.R</code></a></small>
     <div class="hidden name"><code>parameter_names.Rd</code></div>
     </div>
 
@@ -71,6 +71,7 @@ JAGS.</p>
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">format_parameter_names</span><span class="op">(</span></span>
 <span>  <span class="va">parameters</span>,</span>
 <span>  formula_parameters <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  formula_random <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span>
 <span></span>
@@ -87,6 +88,10 @@ JAGS.</p>
 
 <dt id="arg-formula-parameters">formula_parameters<a class="anchor" aria-label="anchor" href="#arg-formula-parameters"></a></dt>
 <dd><p>a vector of formula parameter prefix names</p></dd>
+
+
+<dt id="arg-formula-random">formula_random<a class="anchor" aria-label="anchor" href="#arg-formula-random"></a></dt>
+<dd><p>a vector of random effects grouping factors</p></dd>
 
 
 <dt id="arg-formula-prefix">formula_prefix<a class="anchor" aria-label="anchor" href="#arg-formula-prefix"></a></dt>
