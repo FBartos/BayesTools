@@ -2,14 +2,34 @@
 #'
 #' @description Creates a JAGS formula syntax, prepares data input, and
 #' returns modified prior list for further processing in the \code{JAGS_fit}
-#' function
+#' function. When a formula with \code{-1} (no intercept) is specified, the 
+#' function automatically removes the \code{-1}, adds an intercept back to the 
+#' formula, and includes a spike(0) prior for the intercept to ensure equivalent 
+#' model behavior while maintaining consistent formula parsing.
 #'
 #' @param formula formula specifying the right hand side of the assignment (the
-#' left hand side is ignored)
+#' left hand side is ignored). If the formula contains \code{-1}, it will be 
+#' automatically converted to include an intercept with a spike(0) prior.
 #' @param parameter name of the parameter to be created with the formula
 #' @param data data.frame containing predictors included in the formula
 #' @param prior_list named list of prior distribution of parameters specified within
-#' the \code{formula}
+#' the \code{formula}. When using \code{-1} in the formula, an "intercept" prior
+#' can be explicitly specified; otherwise, \code{prior("spike", list(0))} is 
+#' automatically added.
+#'
+#' @details 
+#' The \code{-1} notation in formulas is handled as follows:
+#' \itemize{
+#'   \item The \code{-1} is removed from the formula before parsing
+#'   \item An intercept term is always included in the model
+#'   \item If no "intercept" prior is specified in \code{prior_list}, a 
+#'         \code{prior("spike", list(0))} is automatically added
+#'   \item This ensures the model behaves identically to omitting the intercept 
+#'         while maintaining consistent \code{model.frame} parsing
+#' }
+#' 
+#' This behavior differs from standard R formula handling and always occurs 
+#' automatically (no user option to disable).
 #'
 #' @examples
 #' # simulate data
@@ -22,7 +42,7 @@
 #'   x_fac4 = factor(rep(c("A", "B", "C", "D"), 15), levels = c("A", "B", "C", "D"))
 #' )
 #'
-#' # specify priors
+#' # specify priors with intercept
 #' prior_list <- list(
 #' "intercept"     = prior("normal", list(0, 1)),
 #' "x_cont"        = prior("normal", list(0, .5)),
@@ -32,9 +52,18 @@
 #' )
 #'
 #' # create the formula object
-#' formula <- JAGS_formula(
+#' formula_obj <- JAGS_formula(
 #'   formula = ~ x_cont + x_fac3 * x_fac4,
 #'   parameter = "mu", data = df, prior_list = prior_list)
+#'   
+#' # using -1 notation (automatically adds spike(0) intercept)  
+#' prior_list_no_intercept <- list(
+#'   "x_fac3" = prior_factor("normal", list(0, 1), contrast = "treatment")
+#' )
+#' formula_no_intercept <- JAGS_formula(
+#'   formula = ~ x_fac3 - 1,
+#'   parameter = "mu", data = df, prior_list = prior_list_no_intercept)
+#' # Equivalent to specifying intercept = prior("spike", list(0))
 #'
 #' @return \code{JAGS_formula} returns a list containing the formula JAGS syntax,
 #' JAGS data object, and modified prior_list.
@@ -62,6 +91,17 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   # remove expressions and random effects from the formula
   formula <- .remove_expressions(formula)
   formula <- .remove_random_effects(formula)
+  
+  # handle -1 (no intercept) formulas: always add intercept back with spike(0) prior
+  no_intercept_specified <- attr(stats::terms(formula), "intercept") == 0
+  if(no_intercept_specified){
+    # remove -1 from formula and add intercept back
+    formula <- .add_intercept_to_formula(formula)
+    # add spike(0) prior for intercept if not already specified
+    if(!"intercept" %in% names(prior_list)){
+      prior_list[["intercept"]] <- prior("spike", list(0))
+    }
+  }
 
   # obtain predictors characteristics factors
   formula_terms    <- stats::terms(formula)
@@ -693,6 +733,25 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
 }
 .remove_grouping_factor <- function(formula){
   return(trimws(sub("\\|.*$", "", formula)))
+}
+.add_intercept_to_formula <- function(formula){
+  # converts formula with -1 (no intercept) back to formula with intercept
+  # by removing the -1 term
+  formula_str <- paste(deparse(formula), collapse = " ")
+  # Remove various forms of -1 or + -1
+  formula_str <- gsub("\\s*\\-\\s*1\\s*", "", formula_str)
+  formula_str <- gsub("\\s*\\+\\s*\\-\\s*1\\s*", "", formula_str)
+  
+  # Handle case where formula becomes empty (just "~")
+  if(grepl("^\\s*~\\s*$", formula_str)){
+    formula_str <- "~ 1"
+  }
+  
+  # Clean up any double spaces
+  formula_str <- gsub("\\s{2,}", " ", formula_str)
+  formula_str <- trimws(formula_str)
+  
+  return(stats::as.formula(formula_str))
 }
 
 #' @title Evaluate JAGS formula using posterior samples
