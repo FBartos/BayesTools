@@ -81,6 +81,9 @@ jobs:
             cat("All required packages are already installed\n")
           }
           
+          install.packages('mcptools')
+          devtools::install_github("posit-dev/btw")
+
           devtools::install()
         shell: Rscript {0}
 
