@@ -178,7 +178,9 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 
   # set silent mode
   if(silent){
-    on.exit(runjags::runjags.options(silent.jags = runjags::runjags.getOption("silent.jags"), silent.runjags = runjags::runjags.getOption("silent.runjags")))
+    user_silent.jags    <- runjags::runjags.getOption("silent.jags")
+    user_silent.runjags <- runjags::runjags.getOption("silent.runjags")
+    on.exit(runjags::runjags.options(silent.jags = user_silent.jags, silent.runjags = user_silent.runjags))
     runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
   }
 
@@ -327,7 +329,9 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
 
   # set silent mode
   if(silent){
-    on.exit(runjags::runjags.options(silent.jags = runjags::runjags.getOption("silent.jags"), silent.runjags = runjags::runjags.getOption("silent.runjags")))
+    user_silent.jags    <- runjags::runjags.getOption("silent.jags")
+    user_silent.runjags <- runjags::runjags.getOption("silent.runjags")
+    on.exit(runjags::runjags.options(silent.jags = user_silent.jags, silent.runjags = user_silent.runjags))
     runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
   }
 
