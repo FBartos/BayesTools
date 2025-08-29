@@ -81,7 +81,7 @@ density.prior <- function(x,
       }else if(!individual & is.prior.weightfunction(x)){
         x_range <- c(0, 1)
       }else if(is.prior.spike_and_slab(x)){
-        x_range <- range(x[["variable"]][["truncation"]]["lower"], x[["variable"]][["truncation"]]["upper"], 0)
+        x_range <- range(.get_spike_and_slab_variable(x)[["truncation"]]["lower"], .get_spike_and_slab_variable(x)[["truncation"]]["upper"], 0)
       }else if(is.prior.discrete(x)){
         x_range <- c(x[["truncation"]]["lower"], x[["truncation"]]["upper"])
       }else{
@@ -454,14 +454,15 @@ density.prior <- function(x,
 }
 .density.prior.spike_and_slab         <- function(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end){
 
-  density_variable  <- .density.prior.simple(x[["variable"]], x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
+  density_variable  <- .density.prior.simple(.get_spike_and_slab_variable(x), x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
   density_inclusion <- .density.prior.point(prior(distribution = "spike", parameters = list(location = 0)), x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments)
 
-  density_variable$y  <- density_variable[["y"]]  * mean(x[["inclusion"]])
-  density_inclusion$y <- density_inclusion[["y"]] * (1 - mean(x[["inclusion"]]))
+  inclusion_prob <- mean(.get_spike_and_slab_inclusion(x))
+  density_variable$y  <- density_variable[["y"]]  * inclusion_prob
+  density_inclusion$y <- density_inclusion[["y"]] * (1 - inclusion_prob)
 
-  attr(density_variable,  "y_range") <- attr(density_variable, "y_range")  * mean(x[["inclusion"]])
-  attr(density_inclusion, "y_range") <- attr(density_inclusion, "y_range") * (1 - mean(x[["inclusion"]]))
+  attr(density_variable,  "y_range") <- attr(density_variable, "y_range")  * inclusion_prob
+  attr(density_inclusion, "y_range") <- attr(density_inclusion, "y_range") * (1 - inclusion_prob)
 
   # create the output object
   out <- list(

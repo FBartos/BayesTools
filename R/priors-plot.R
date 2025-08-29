@@ -69,7 +69,7 @@ plot.prior <- function(x, plot_type = "base",
     if((is.prior.PET(x) | is.prior.PEESE(x) | is.prior.weightfunction(x)) & !individual){
       xlim   <- c(0, 1)
     }else if(is.prior.spike_and_slab(x)){
-      xlim   <- range(c(0,range(x[["variable"]], quantiles = x_range_quant)))
+      xlim   <- range(c(0,range(.get_spike_and_slab_variable(x), quantiles = x_range_quant)))
       xlim   <- range(pretty(xlim))
     }else{
       xlim   <- range(x, quantiles = x_range_quant)
@@ -755,7 +755,7 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     if((is.prior.PET(x) | is.prior.PEESE(x) | is.prior.weightfunction(x)) & !individual){
       xlim   <- c(0, 1)
     }else if(is.prior.spike_and_slab(x)){
-      xlim   <- range(c(0,range(x[["variable"]], quantiles = x_range_quant)))
+      xlim   <- range(c(0,range(.get_spike_and_slab_variable(x), quantiles = x_range_quant)))
       xlim   <- range(pretty(xlim))
     }else{
       xlim   <- range(x, quantiles = x_range_quant)

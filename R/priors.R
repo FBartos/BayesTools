@@ -432,9 +432,8 @@ prior_spike_and_slab <- function(prior_parameter,
     components = c("alternative", "null")
   )
   
-  # Store original components for specialized behavior
-  mixture_output[["variable"]] <- prior_parameter
-  mixture_output[["inclusion"]] <- prior_inclusion
+  # Store inclusion prior as attribute so it can be retrieved by helper functions
+  attr(mixture_output, "inclusion_prior") <- prior_inclusion
   
   # Add spike_and_slab classes for specialized behavior while keeping mixture functionality
   if(is.prior.factor(prior_parameter)){
@@ -452,6 +451,46 @@ prior_spike_and_slab <- function(prior_parameter,
   }
 
   return(mixture_output)
+}
+
+# Helper functions to extract variable and inclusion from spike_and_slab mixture structure
+.get_spike_and_slab_variable <- function(spike_and_slab_prior) {
+  if (!is.prior.spike_and_slab(spike_and_slab_prior)) {
+    stop("This function only works with spike_and_slab priors")
+  }
+  
+  # Find the alternative component (this is the variable/slab part)
+  components <- attr(spike_and_slab_prior, "components")
+  if (is.null(components)) {
+    stop("Missing components information in spike_and_slab prior")
+  }
+  
+  alternative_idx <- which(components == "alternative")
+  if (length(alternative_idx) != 1) {
+    stop("Could not identify alternative component in spike_and_slab prior")
+  }
+  
+  return(spike_and_slab_prior[[alternative_idx]])
+}
+
+.get_spike_and_slab_inclusion <- function(spike_and_slab_prior) {
+  if (!is.prior.spike_and_slab(spike_and_slab_prior)) {
+    stop("This function only works with spike_and_slab priors")
+  }
+  
+  # For backward compatibility, use stored inclusion if available
+  if (!is.null(spike_and_slab_prior[["inclusion"]])) {
+    return(spike_and_slab_prior[["inclusion"]])
+  }
+  
+  # Get inclusion prior from attribute
+  inclusion_prior <- attr(spike_and_slab_prior, "inclusion_prior")
+  if (!is.null(inclusion_prior)) {
+    return(inclusion_prior)
+  }
+  
+  # Fallback for older objects
+  return(prior("spike", list(location = 0.5)))
 }
 
 
@@ -1096,12 +1135,12 @@ rng.prior   <- function(x, n, ...){
 
   if(is.prior.spike_and_slab(prior)){
 
-    inclusion <- stats::rbinom(n, size = 1, prob = rng(prior[["inclusion"]], n))
+    inclusion <- stats::rbinom(n, size = 1, prob = rng(.get_spike_and_slab_inclusion(prior), n))
 
     if(sample_components)
       return(inclusion)
 
-    x         <- rng(prior[["variable"]], n) * inclusion
+    x         <- rng(.get_spike_and_slab_variable(prior), n) * inclusion
     attr(x, "inclusion") <- inclusion
 
   }else if(is.prior.mixture(prior)){
@@ -2063,7 +2102,7 @@ mean.prior   <- function(x, ...){
 
   if(is.prior.spike_and_slab(x)){
 
-    m <- mean(x[["variable"]]) * mean(x[["inclusion"]])
+    m <- mean(.get_spike_and_slab_variable(x)) * mean(.get_spike_and_slab_inclusion(x))
 
   }else if(is.prior.mixture(x)){
 
@@ -2213,13 +2252,25 @@ var.prior   <- function(x, ...){
 
   if(is.prior.spike_and_slab(x)){
 
-    # the inclusion is always beta -> indicators are betabinom
-    var_inclusion <- with(x[["inclusion"]][["parameters"]], (alpha * beta * (alpha + beta + 1) ) / ( (alpha + beta)^2 * (alpha + beta + 1)  ) )
-
+    inclusion_prior <- .get_spike_and_slab_inclusion(x)
+    variable_prior <- .get_spike_and_slab_variable(x)
+    
+    # Handle different inclusion prior types
+    if(inclusion_prior[["distribution"]] == "beta") {
+      # the inclusion is beta -> indicators are betabinom
+      var_inclusion <- with(inclusion_prior[["parameters"]], (alpha * beta * (alpha + beta + 1) ) / ( (alpha + beta)^2 * (alpha + beta + 1)  ) )
+    } else if(inclusion_prior[["distribution"]] == "point") {
+      # the inclusion is a spike (point) -> no variance
+      var_inclusion <- 0
+    } else {
+      # for other distributions, compute variance directly
+      var_inclusion <- var(inclusion_prior)
+    }
+    
     var <-
-      (var(x[["variable"]])  + mean(x[["variable"]])^2) *
-      (var_inclusion         + mean(x[["inclusion"]])^2) -
-      (mean(x[["variable"]])^2 * mean(x[["inclusion"]])^2)
+      (var(variable_prior)  + mean(variable_prior)^2) *
+      (var_inclusion         + mean(inclusion_prior)^2) -
+      (mean(variable_prior)^2 * mean(inclusion_prior)^2)
 
   }else if(is.prior.mixture(x)){
 
