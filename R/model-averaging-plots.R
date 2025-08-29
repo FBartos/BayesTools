@@ -1188,7 +1188,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 }
 
 # Helper function to decompose spike-and-slab posteriors into mixture format
-# Reuses the logic from .plot_data_prior_list.simple but uses posterior probabilities
+# This mirrors .plot_data_prior_list.simple logic but preserves the prior structure
 .decompose_spike_and_slab_posterior <- function(samples, prior_list){
   
   # Only process spike-and-slab priors
@@ -1199,43 +1199,19 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   prior_inclusion   <- prior_list[[1]][["inclusion"]]
   prior_variable    <- prior_list[[1]][["variable"]]
   
-  # Check if we have posterior samples with model indicators
-  models_ind <- attr(samples, "models_ind")
-  if(!is.null(models_ind)){
-    # Use posterior probabilities from actual samples
-    # In spike-and-slab, model indicator: 0 = continuous/variable, 1 = spike
-    continuous_samples <- sum(models_ind == 0)
-    spike_samples <- sum(models_ind == 1) 
-    total_samples <- length(models_ind)
-    
-    spike_prob <- spike_samples / total_samples
-    continuous_prob <- continuous_samples / total_samples
-    
-    # Decompose based on posterior composition
-    if(spike_prob > 0 && continuous_prob > 0){
-      # Both components present - create mixture
-      prior_null                        <- prior("spike", list(0), prior_weights = spike_prob)
-      prior_variable[["prior_weights"]] <- continuous_prob
-      prior_list <- list(prior_variable, prior_null)
-    } else if(continuous_prob >= 1){
-      # Only continuous component
-      prior_list <- list(prior_variable)
-    } else if(spike_prob >= 1) {
-      # Only spike component  
-      prior_list <- list(prior("spike", list(0)))
-    }
-  } else {
-    # Fallback to prior probabilities if no models_ind available
-    # This reuses the exact logic from .plot_data_prior_list.simple
-    if(mean(prior_inclusion) < 1 && mean(prior_inclusion) > 0){
-      prior_null                        <- prior("spike", list(0), prior_weights = 1-mean(prior_inclusion))
-      prior_variable[["prior_weights"]] <- mean(prior_inclusion)
-      prior_list <- list(prior_variable, prior_null)
-    }else if(mean(prior_inclusion) >= 1){
-      prior_list <- list(prior_variable)
-    }else if(mean(prior_inclusion) <= 0){
-      prior_list <- list(prior("spike", list(0)))
-    }
+  # Always use the prior probabilities for the weights - posterior composition
+  # will be handled naturally by the models_ind filtering in the plotting functions
+  if(mean(prior_inclusion) < 1 && mean(prior_inclusion) > 0){
+    # Create mixture structure with correct prior weights
+    prior_null                        <- prior("spike", list(0), prior_weights = 1-mean(prior_inclusion))
+    prior_variable[["prior_weights"]] <- mean(prior_inclusion)
+    prior_list <- list(prior_variable, prior_null)
+  } else if(mean(prior_inclusion) >= 1){
+    # Only continuous component
+    prior_list <- list(prior_variable)
+  } else if(mean(prior_inclusion) <= 0){
+    # Only spike component  
+    prior_list <- list(prior("spike", list(0)))
   }
   
   return(prior_list)
