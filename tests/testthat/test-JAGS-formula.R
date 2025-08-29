@@ -849,3 +849,34 @@ test_that("Random effects handling functions work", {
   expect_equal(.remove_random_effects(f7), formula( ~ x_cont1 + x_cont2))
 
 })
+
+test_that("-1 (no intercept) formula handling works correctly", {
+
+  # setup test data
+  set.seed(1)
+  df_test <- data.frame(
+    x_fac3md = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C")),
+    x_fac3i  = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C")),
+    x_cont   = rnorm(60)
+  )
+  
+  # Test 1: Basic -1 formula functionality
+  prior_list_basic <- list(
+    "x_fac3md" = prior_factor("mnormal", contrast = "meandif", list(0, 1))
+  )
+  result_basic <- JAGS_formula(~ x_fac3md - 1, parameter = "mu", 
+                              data = df_test[, "x_fac3md", drop = FALSE], 
+                              prior_list = prior_list_basic)
+  
+  # The -1 should automatically add spike(0) intercept
+  expect_true("mu_intercept" %in% names(result_basic$prior_list))
+  expect_true(is.prior.point(result_basic$prior_list$mu_intercept))
+  expect_equal(result_basic$prior_list$mu_intercept$parameters$location, 0)
+  expect_true(grepl("mu_intercept", result_basic$formula_syntax))
+  
+  # Test 2: Helper function test
+  expect_equal(.add_intercept_to_formula(~ x - 1), ~ x)
+  expect_equal(.add_intercept_to_formula(~ x + y - 1), ~ x + y)
+  expect_equal(.add_intercept_to_formula(~ - 1), ~ 1)
+
+})

@@ -1,3 +1,8 @@
+# version 0.2.21
+### Fixes
+- `JAGS_formula()` function now replaces removed missing intercept with 0 (so the model matrix remains unchanged)
+-  resetting `silent = FALSE` argument in the `JAGS_fit()` function now fits the model non-silently again 
+
 # version 0.2.20
 ### Features
 - extending prior functions to accept `expression()` instead of a parameter, such objects can be use to create prior distributions that depend on other parameters in JAGS
