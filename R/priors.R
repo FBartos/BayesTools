@@ -407,27 +407,51 @@ prior_spike_and_slab <- function(prior_parameter,
   if(!is.prior.point(prior_inclusion) && (prior_inclusion$truncation[["lower"]] < 0 | prior_inclusion$truncation[["upper"]] > 1))
     stop("The range of the probability parameter (set via the 'truncation' argument) of 'prior_inclusion' must be within 0 and 1.")
 
-  output <- list(
-    variable  = prior_parameter,
-    inclusion = prior_inclusion
-  )
-
-  # distinguish normal and factor prior distributions
+  # Create the spike component (point at 0)
   if(is.prior.factor(prior_parameter)){
-
+    # For factor priors, create a factor spike
+    priors_type <- .get_prior_factor_list_type(list(prior_parameter))
+    contrast_type <- gsub("prior.", "", priors_type[["class"]], fixed = TRUE)
+    
+    spike_component <- prior_factor(
+      distribution = "point",
+      parameters   = list(location = 0),
+      contrast     = contrast_type
+    )
+  } else {
+    # For simple priors, create a simple spike
+    spike_component <- prior(
+      distribution = "point", 
+      parameters   = list(location = 0)
+    )
+  }
+  
+  # Create the mixture using the mixture backend
+  mixture_output <- prior_mixture(
+    prior_list = list(prior_parameter, spike_component),
+    components = c("alternative", "null")
+  )
+  
+  # Store original components for specialized behavior
+  mixture_output[["variable"]] <- prior_parameter
+  mixture_output[["inclusion"]] <- prior_inclusion
+  
+  # Add spike_and_slab classes for specialized behavior while keeping mixture functionality
+  if(is.prior.factor(prior_parameter)){
     # obtain and store the contrast type
     priors_type <- .get_prior_factor_list_type(list(prior_parameter))
-
+    
     attr(prior_parameter, "K") <- priors_type[["K"]]
-    class(output)              <- c("prior", "prior.spike_and_slab", "prior.factor_spike_and_slab", priors_type[["class"]])
-
+    class(mixture_output) <- c("prior", "prior.spike_and_slab", "prior.factor_spike_and_slab", 
+                              class(mixture_output)[-1], priors_type[["class"]])
   }else if(is.prior.simple(prior_parameter)){
-    class(output) <- c("prior", "prior.spike_and_slab", "prior.simple_spike_and_slab")
+    class(mixture_output) <- c("prior", "prior.spike_and_slab", "prior.simple_spike_and_slab", 
+                              class(mixture_output)[-1])
   }else{
     stop("The 'prior_parameter' must be either a simple or factor prior distribution.")
   }
 
-  return(output)
+  return(mixture_output)
 }
 
 
