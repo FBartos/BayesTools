@@ -1202,6 +1202,59 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   if (!(is.prior.mixture(prior_list) || is.prior.spike_and_slab(prior_list)) && is.prior(prior_list))
     prior_list <- list(prior_list)
 
+  # dispatching for spike and slab posteriors (similar to priors)
+  # Check if we have a spike-and-slab posterior that needs decomposition
+  if(length(prior_list) == 1 && is.prior.spike_and_slab(prior_list[[1]])){
+    
+    prior_inclusion   <- prior_list[[1]][["inclusion"]]
+    prior_variable    <- prior_list[[1]][["variable"]]
+    
+    # Check if we have posterior samples with model indicators
+    models_ind <- attr(samples, "models_ind")
+    if(!is.null(models_ind)){
+      # Calculate posterior spike probability from the actual samples
+      # In spike-and-slab, model indicator: 0 = continuous/variable, 1 = spike
+      continuous_samples <- sum(models_ind == 0)
+      spike_samples <- sum(models_ind == 1) 
+      total_samples <- length(models_ind)
+      
+      spike_prob <- spike_samples / total_samples
+      continuous_prob <- continuous_samples / total_samples
+      
+      # Only decompose if we have meaningful spike probability  
+      if(spike_prob > 0 && continuous_prob > 0){
+        # create a dummy list for the posterior mixture 
+        prior_null                        <- prior("spike", list(0), prior_weights = spike_prob)
+        prior_variable[["prior_weights"]] <- continuous_prob
+        
+        prior_list <- list(
+          prior_variable,
+          prior_null
+        )
+      } else if(continuous_prob >= 1){
+        prior_list <- list(prior_variable)
+      } else if(spike_prob >= 1) {
+        prior_list <- list(prior("spike", list(0)))
+      }
+    } else {
+      # Fallback to prior probabilities if no models_ind available
+      if(mean(prior_inclusion) < 1 && mean(prior_inclusion) > 0){
+        # create a dummy list for the simple mixture
+        prior_null                        <- prior("spike", list(0), prior_weights = 1-mean(prior_inclusion))
+        prior_variable[["prior_weights"]] <- mean(prior_inclusion)
+
+        prior_list <- list(
+          prior_variable,
+          prior_null
+        )
+      }else if(mean(prior_inclusion) >= 1){
+        prior_list <- list(prior_variable)
+      }else if(mean(prior_inclusion) <= 0){
+        prior_list <- list(prior("spike", list(0)))
+      }
+    }
+  }
+
   # deal with spikes
   if(any(sapply(prior_list, is.prior.point))){
 
@@ -1451,6 +1504,59 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   prior_list <- attr(samples[[parameter]], "prior_list")
   if (!(is.prior.mixture(prior_list) || is.prior.spike_and_slab(prior_list)) && is.prior(prior_list))
     prior_list <- list(prior_list)
+
+  # dispatching for spike and slab posteriors (similar to priors)
+  # Check if we have a spike-and-slab posterior that needs decomposition
+  if(length(prior_list) == 1 && is.prior.spike_and_slab(prior_list[[1]])){
+    
+    prior_inclusion   <- prior_list[[1]][["inclusion"]]
+    prior_variable    <- prior_list[[1]][["variable"]]
+    
+    # Check if we have posterior samples with model indicators
+    models_ind <- attr(samples[[parameter]], "models_ind")
+    if(!is.null(models_ind)){
+      # Calculate posterior spike probability from the actual samples
+      # In spike-and-slab, model indicator: 0 = continuous/variable, 1 = spike
+      continuous_samples <- sum(models_ind == 0)
+      spike_samples <- sum(models_ind == 1) 
+      total_samples <- length(models_ind)
+      
+      spike_prob <- spike_samples / total_samples
+      continuous_prob <- continuous_samples / total_samples
+      
+      # Only decompose if we have meaningful spike probability  
+      if(spike_prob > 0 && continuous_prob > 0){
+        # create a dummy list for the posterior mixture 
+        prior_null                        <- prior("spike", list(0), prior_weights = spike_prob)
+        prior_variable[["prior_weights"]] <- continuous_prob
+        
+        prior_list <- list(
+          prior_variable,
+          prior_null
+        )
+      } else if(continuous_prob >= 1){
+        prior_list <- list(prior_variable)
+      } else if(spike_prob >= 1) {
+        prior_list <- list(prior("spike", list(0)))
+      }
+    } else {
+      # Fallback to prior probabilities if no models_ind available
+      if(mean(prior_inclusion) < 1 && mean(prior_inclusion) > 0){
+        # create a dummy list for the simple mixture
+        prior_null                        <- prior("spike", list(0), prior_weights = 1-mean(prior_inclusion))
+        prior_variable[["prior_weights"]] <- mean(prior_inclusion)
+
+        prior_list <- list(
+          prior_variable,
+          prior_null
+        )
+      }else if(mean(prior_inclusion) >= 1){
+        prior_list <- list(prior_variable)
+      }else if(mean(prior_inclusion) <= 0){
+        prior_list <- list(prior("spike", list(0)))
+      }
+    }
+  }
 
   if(any(sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x)))){
     samples  <- transform_factor_samples(samples)
