@@ -9,3 +9,6 @@ BayesTools.Rcheck
 /doc/
 /Meta/
 ..Rcheck/
+Rplots.pdf
+check/
+tests/vdiffr.Rout.fail

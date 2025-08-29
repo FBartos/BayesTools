@@ -65,6 +65,10 @@ jobs:
             pandoc \
             jags
 
+      - name: Set up GitHub token
+        run: |
+          echo "GITHUB_PAT=${{ secrets.GH_TOKEN }}" >> $GITHUB_ENV
+
       - name: Install the required packages
         run: |
           options(repos = c(CRAN = "https://cloud.r-project.org"))
