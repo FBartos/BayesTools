@@ -1081,18 +1081,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     prior_list  <- attr(samples[[parameter]], "prior_list")
     prior_list  <- .simplify_prior_list(prior_list)
 
-    # Check if any prior is a factor prior or a spike-and-slab prior containing a factor prior
-    has_factor_prior <- any(sapply(prior_list, function(p) {
-      if(is.prior.factor(p)){
-        TRUE
-      } else if(is.prior.spike_and_slab(p) && is.prior.factor(p$variable)){
-        TRUE
-      } else {
-        FALSE
-      }
-    }))
-    
-    if(has_factor_prior){
+    if(any(sapply(prior_list, is.prior.factor))){
       plot_data <- .plot_data_samples.factor(samples, parameter = parameter, n_points = n_points,
                                              transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings)
     }else{

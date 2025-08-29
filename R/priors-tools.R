@@ -359,7 +359,7 @@ is.prior.weightfunction  <- function(x){
 }
 #' @rdname is.prior
 is.prior.factor          <- function(x){
-  inherits(x, "prior.factor")
+  inherits(x, "prior.factor") || inherits(x, "prior.factor_spike_and_slab") || inherits(x, "prior.factor_mixture")
 }
 #' @rdname is.prior
 is.prior.orthonormal     <- function(x){

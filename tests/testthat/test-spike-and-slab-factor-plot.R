@@ -83,7 +83,7 @@ test_that("plot_posterior handles spike-and-slab factor priors correctly", {
   expect_silent(plot_posterior(this_posterior_spike, parameter = this_parameter, prior = TRUE))
   
   # Additional verification: the spike-and-slab should have the correct structure
-  spike_prior <- prior_list_spike[[1]]
+  spike_prior <- prior_list_spike_simplified[[1]]
   expect_true(is.prior.spike_and_slab(spike_prior), "First prior should be spike-and-slab")
   expect_true(is.prior.factor(spike_prior$variable), "Variable part should be a factor prior")
   expect_true(is.prior.meandif(spike_prior$variable), "Variable part should be meandif contrast")

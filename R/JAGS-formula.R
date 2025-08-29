@@ -137,14 +137,17 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
 
       # select the corresponding prior for the variable
       this_prior <- prior_list[[factor]]
+      
+      # For spike-and-slab priors, check the inner variable for contrast type
+      prior_to_check <- if(is.prior.spike_and_slab(this_prior)) this_prior$variable else this_prior
 
-      if(is.prior.treatment(this_prior)){
+      if(is.prior.treatment(prior_to_check)){
         stats::contrasts(data[,factor]) <- "contr.treatment"
-      }else if(is.prior.independent(this_prior)){
+      }else if(is.prior.independent(prior_to_check)){
         stats::contrasts(data[,factor]) <- "contr.independent"
-      }else if(is.prior.orthonormal(this_prior)){
+      }else if(is.prior.orthonormal(prior_to_check)){
         stats::contrasts(data[,factor]) <- "contr.orthonormal"
-      }else if(is.prior.meandif(this_prior)){
+      }else if(is.prior.meandif(prior_to_check)){
         stats::contrasts(data[,factor]) <- "contr.meandif"
       }else{
         stop(paste0("Unsupported prior distribution defined for '", factor, "' factor variable. See '?prior_factor' for details."))
@@ -268,6 +271,22 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
       attr(this_prior, "level_names")       -> attr(this_prior[["variable"]], "level_names")
       attr(this_prior, "interaction")       -> attr(this_prior[["variable"]], "interaction")
       attr(this_prior, "interaction_terms") -> attr(this_prior[["variable"]], "interaction_terms")
+      
+      # If the inner variable is now a factor prior, propagate the factor class to the outer prior
+      if(is.prior.factor(this_prior[["variable"]]) && !is.prior.factor(this_prior)){
+        if(is.prior.treatment(this_prior[["variable"]])){
+          class(this_prior) <- c(class(this_prior), "prior.factor", "prior.treatment")
+        }else if(is.prior.independent(this_prior[["variable"]])){
+          class(this_prior) <- c(class(this_prior), "prior.factor", "prior.independent") 
+        }else if(is.prior.orthonormal(this_prior[["variable"]])){
+          class(this_prior) <- c(class(this_prior), "prior.factor", "prior.orthonormal")
+        }else if(is.prior.meandif(this_prior[["variable"]])){
+          class(this_prior) <- c(class(this_prior), "prior.factor", "prior.meandif")
+        }
+        # Update the spike_and_slab class to factor_spike_and_slab
+        class(this_prior) <- gsub("prior.simple_spike_and_slab", "prior.factor_spike_and_slab", class(this_prior))
+      }
+      
       this_prior -> prior_list[[model_terms[i]]]
     }else if(is.prior.mixture(this_prior)){
       for(p in seq_along(this_prior)){
@@ -276,6 +295,24 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
         attr(this_prior, "interaction")       -> attr(this_prior[[p]], "interaction")
         attr(this_prior, "interaction_terms") -> attr(this_prior[[p]], "interaction_terms")
       }
+      
+      # If any component is now a factor prior, propagate the factor class to the outer prior
+      if(any(sapply(this_prior, is.prior.factor)) && !is.prior.factor(this_prior)){
+        # Find the factor contrast type from the first factor component
+        factor_component <- this_prior[[which(sapply(this_prior, is.prior.factor))[1]]]
+        if(is.prior.treatment(factor_component)){
+          class(this_prior) <- c(class(this_prior), "prior.factor", "prior.treatment")
+        }else if(is.prior.independent(factor_component)){
+          class(this_prior) <- c(class(this_prior), "prior.factor", "prior.independent") 
+        }else if(is.prior.orthonormal(factor_component)){
+          class(this_prior) <- c(class(this_prior), "prior.factor", "prior.orthonormal")
+        }else if(is.prior.meandif(factor_component)){
+          class(this_prior) <- c(class(this_prior), "prior.factor", "prior.meandif")
+        }
+        # Update the mixture class to factor_mixture
+        class(this_prior) <- gsub("prior.simple_mixture", "prior.factor_mixture", class(this_prior))
+      }
+      
       this_prior -> prior_list[[model_terms[i]]]
     }else{
       this_prior -> prior_list[[model_terms[i]]]
