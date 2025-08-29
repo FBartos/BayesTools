@@ -7,7 +7,7 @@ on:
     branches: [main, master, pre-release]
 
 jobs:
-  build:
+  check:
     runs-on: ${{ matrix.config.os }}
     strategy:
       fail-fast: false
@@ -132,7 +132,7 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           sudo mkdir -p $(brew --prefix)/libexec
-          sudo ln -s $(brew --prefix jags)/bin/jags $(brew --prefix)/libexec/jags-terminal
+          sudo ln -sf $(brew --prefix jags)/bin/jags $(brew --prefix)/libexec/jags-terminal
 
       # Install the package
       - name: Install the required packages
