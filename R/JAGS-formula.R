@@ -284,7 +284,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
           class(this_prior) <- c(class(this_prior), "prior.factor", "prior.meandif")
         }
         # Update the spike_and_slab class to factor_spike_and_slab
-        class(this_prior) <- gsub("prior.simple_spike_and_slab", "prior.factor_spike_and_slab", class(this_prior))
+        class(this_prior) <- c(class(this_prior)[!class(this_prior) %in% c("prior.simple_spike_and_slab")], "prior.factor_spike_and_slab")
       }
       
       this_prior -> prior_list[[model_terms[i]]]
@@ -310,7 +310,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
           class(this_prior) <- c(class(this_prior), "prior.factor", "prior.meandif")
         }
         # Update the mixture class to factor_mixture
-        class(this_prior) <- gsub("prior.simple_mixture", "prior.factor_mixture", class(this_prior))
+        class(this_prior) <- c(class(this_prior)[!class(this_prior) %in% c("prior.simple_mixture")], "prior.factor_mixture")
       }
       
       this_prior -> prior_list[[model_terms[i]]]
