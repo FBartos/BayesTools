@@ -10,6 +10,7 @@ Bootstrap, build, and test the repository:
 - Install system dependencies: `sudo apt update && sudo apt install -y jags r-cran-devtools r-cran-testthat r-cran-rjags`
 - Install the package: `R -e "devtools::install()"` -- takes 2 minutes. NEVER CANCEL. Set timeout to 5+ minutes.
 - Run tests: `R -e "devtools::test()"` -- takes 15 minutes. NEVER CANCEL. Set timeout to 30+ minutes.
+- Run targeted tests: `R -e "devtools::test(filter = 'priors')"` -- takes 1-5 minutes. Preferred during development.
 - Run R CMD check: `R -e "rcmdcheck::rcmdcheck(args = c('--no-manual', '--as-cran', '--ignore-vignettes'), build_args = c('--no-build-vignettes'), error_on = 'never', check_dir = 'check')"` -- takes 1 minute. Set timeout to 5+ minutes.
 - Update documentation: `R -e "devtools::document()"` -- takes 30 seconds. Set timeout to 2+ minutes.
 
@@ -55,7 +56,17 @@ devtools::install()
 devtools::test()
 ```
 **Timing**: 15 minutes for full suite. **NEVER CANCEL** - set timeout to 30+ minutes.
-Many tests are skipped on CRAN to reduce build time. Visual regression tests (vdiffr) may fail in different environments - this is expected.
+
+### Run Subset of Tests (Recommended for Development)
+```r
+# Run tests matching a pattern - preferred in initial stages of updates
+devtools::test(filter = "priors")        # Run only prior-related tests
+devtools::test(filter = "JAGS")          # Run only JAGS-related tests  
+devtools::test(filter = "model-averaging") # Run only model averaging tests
+```
+**Timing**: 1-5 minutes depending on subset. Use this to target specific functionality during development.
+
+**Notes**: Many tests are skipped on CRAN to reduce build time. Visual regression tests (vdiffr) may fail in different environments - this is expected.
 
 ### R CMD Check (CRAN Validation)
 ```r
@@ -124,9 +135,10 @@ All workflows handle JAGS installation automatically for their respective platfo
 2. **Update docs**: Run `devtools::document()` if you modified roxygen2 comments
 3. **Install locally**: Run `devtools::install()` to test changes
 4. **Validate basic functionality**: Test core features work as expected
-5. **Run tests**: Run `devtools::test()` for comprehensive validation
-6. **CRAN check**: Run `rcmdcheck::rcmdcheck()` to ensure CRAN compliance
-7. **Commit**: Ensure .gitignore excludes build artifacts (check/, Rplots.pdf, etc.)
+5. **Run targeted tests**: Use `devtools::test(filter = "XXX")` to test specific functionality during development
+6. **Run full tests**: Run `devtools::test()` for comprehensive validation before finalizing
+7. **CRAN check**: Run `rcmdcheck::rcmdcheck()` to ensure CRAN compliance
+8. **Commit**: Ensure .gitignore excludes build artifacts (check/, Rplots.pdf, etc.)
 
 ## Performance Considerations
 
