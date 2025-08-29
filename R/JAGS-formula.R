@@ -264,10 +264,18 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
     # update the corresponding prior distribution back into the prior list
     # (and forward attributes to lower level components in the case of spike and slab and mixture priors)
     if(is.prior.spike_and_slab(this_prior)){
-      attr(this_prior, "levels")            -> attr(this_prior[["variable"]], "levels")
-      attr(this_prior, "level_names")       -> attr(this_prior[["variable"]], "level_names")
-      attr(this_prior, "interaction")       -> attr(this_prior[["variable"]], "interaction")
-      attr(this_prior, "interaction_terms") -> attr(this_prior[["variable"]], "interaction_terms")
+      # For spike and slab priors, forward attributes to the variable component
+      variable_component <- .get_spike_and_slab_variable(this_prior)
+      attr(variable_component, "levels")            <- attr(this_prior, "levels")
+      attr(variable_component, "level_names")       <- attr(this_prior, "level_names") 
+      attr(variable_component, "interaction")       <- attr(this_prior, "interaction")
+      attr(variable_component, "interaction_terms") <- attr(this_prior, "interaction_terms")
+      
+      # Update the variable component back into the mixture structure
+      components <- attr(this_prior, "components")
+      alternative_idx <- which(components == "alternative")
+      this_prior[[alternative_idx]] <- variable_component
+      
       this_prior -> prior_list[[model_terms[i]]]
     }else if(is.prior.mixture(this_prior)){
       for(p in seq_along(this_prior)){
@@ -517,8 +525,16 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
         if(is.prior.simple(this_prior)){
           class(this_prior) <- c(class(this_prior), "prior.factor", temp_prior_type)
         }else if(is.prior.spike_and_slab(this_prior)){
-          class(this_prior[["variable"]]) <- c(class(this_prior[["variable"]]), "prior.factor", temp_prior_type)
-          class(this_prior)               <- c(class(this_prior)[!class(this_prior) %in% c("prior.simple_spike_and_slab")], "prior.factor_spike_and_slab", temp_prior_type)
+          # Update the variable component class
+          variable_component <- .get_spike_and_slab_variable(this_prior)
+          class(variable_component) <- c(class(variable_component), "prior.factor", temp_prior_type)
+          
+          # Update the variable component back into the mixture structure
+          components <- attr(this_prior, "components")
+          alternative_idx <- which(components == "alternative")
+          this_prior[[alternative_idx]] <- variable_component
+          
+          class(this_prior) <- c(class(this_prior)[!class(this_prior) %in% c("prior.simple_spike_and_slab")], "prior.factor_spike_and_slab", temp_prior_type)
         }else if(is.prior.mixture(this_prior)){
           for(p in seq_along(this_prior)){
             class(this_prior[[p]]) <- c(class(this_prior[[p]]), "prior.factor", temp_prior_type)
@@ -551,10 +567,18 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
     attr(this_prior, "random_sd")     <- TRUE
     attr(this_prior, "random_factor") <- grouping_factor
     if(is.prior.spike_and_slab(this_prior)){
-      attr(this_prior, "levels")            -> attr(this_prior[["variable"]], "levels")
-      attr(this_prior, "level_names")       -> attr(this_prior[["variable"]], "level_names")
-      attr(this_prior, "interaction")       -> attr(this_prior[["variable"]], "interaction")
-      attr(this_prior, "interaction_terms") -> attr(this_prior[["variable"]], "interaction_terms")
+      # For spike and slab priors, forward attributes to the variable component
+      variable_component <- .get_spike_and_slab_variable(this_prior)
+      attr(variable_component, "levels")            <- attr(this_prior, "levels")
+      attr(variable_component, "level_names")       <- attr(this_prior, "level_names")
+      attr(variable_component, "interaction")       <- attr(this_prior, "interaction")
+      attr(variable_component, "interaction_terms") <- attr(this_prior, "interaction_terms")
+      
+      # Update the variable component back into the mixture structure
+      components <- attr(this_prior, "components")
+      alternative_idx <- which(components == "alternative")
+      this_prior[[alternative_idx]] <- variable_component
+      
       this_prior -> new_prior_list[[paste0(parameter_suffix, "_", model_terms[i])]]
     }else if(is.prior.mixture(this_prior)){
       for(p in seq_along(this_prior)){

@@ -500,8 +500,8 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   # dispatching for spike and slab priors
   if(length(prior_list) == 1 && is.prior.spike_and_slab(prior_list[[1]])){
 
-    prior_inclusion   <- prior_list[[1]][["inclusion"]]
-    prior_variable    <- prior_list[[1]][["variable"]]
+    prior_inclusion   <- .get_spike_and_slab_inclusion(prior_list[[1]])
+    prior_variable    <- .get_spike_and_slab_variable(prior_list[[1]])
 
     if(mean(prior_inclusion) < 1 && mean(prior_inclusion) > 0){
       # create a dummy list for the simple mixture

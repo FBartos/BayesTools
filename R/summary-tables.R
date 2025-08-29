@@ -1194,7 +1194,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   for(par in names(prior_list)){
     if(is.prior.spike_and_slab(prior_list[[par]])){
 
-      temp_prior_prob <- mean(prior_list[[par]][["inclusion"]])
+      temp_prior_prob <- mean(.get_spike_and_slab_inclusion(prior_list[[par]]))
       temp_post_prob  <- mean(model_samples[,paste0(par, "_indicator")])
 
       runjags_summary <- rbind(runjags_summary, data.frame(

@@ -1044,7 +1044,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   # check input
   check_char(parameter, "parameter", check_length = FALSE)
 
-  prior_variable <- prior[["variable"]]
+  prior_variable <- .get_spike_and_slab_variable(prior)
 
   # prepare output objects
   if(is.prior.factor(prior_variable)){
