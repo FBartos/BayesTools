@@ -8,7 +8,7 @@ docs
 BayesTools.Rcheck
 /doc/
 /Meta/
+..Rcheck/
 Rplots.pdf
 check/
 tests/vdiffr.Rout.fail
-tests/testthat/_snaps/model-averaging-plots/*.new.svg
