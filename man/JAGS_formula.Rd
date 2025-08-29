@@ -8,14 +8,17 @@ JAGS_formula(formula, parameter, data, prior_list)
 }
 \arguments{
 \item{formula}{formula specifying the right hand side of the assignment (the
-left hand side is ignored)}
+left hand side is ignored). If the formula contains \code{-1}, it will be
+automatically converted to include an intercept with a spike(0) prior.}
 
 \item{parameter}{name of the parameter to be created with the formula}
 
 \item{data}{data.frame containing predictors included in the formula}
 
 \item{prior_list}{named list of prior distribution of parameters specified within
-the \code{formula}}
+the \code{formula}. When using \code{-1} in the formula, an "intercept" prior
+can be explicitly specified; otherwise, \code{prior("spike", list(0))} is
+automatically added.}
 }
 \value{
 \code{JAGS_formula} returns a list containing the formula JAGS syntax,
@@ -24,7 +27,13 @@ JAGS data object, and modified prior_list.
 \description{
 Creates a JAGS formula syntax, prepares data input, and
 returns modified prior list for further processing in the \code{JAGS_fit}
-function
+function.
+}
+\details{
+When a formula with \code{-1} (no intercept) is specified, the
+function automatically removes the \code{-1}, adds an intercept back to the
+formula, and includes a spike(0) prior for the intercept to ensure equivalent
+model behavior while maintaining consistent formula parsing.
 }
 \examples{
 # simulate data
@@ -37,7 +46,7 @@ df <- data.frame(
   x_fac4 = factor(rep(c("A", "B", "C", "D"), 15), levels = c("A", "B", "C", "D"))
 )
 
-# specify priors
+# specify priors with intercept
 prior_list <- list(
 "intercept"     = prior("normal", list(0, 1)),
 "x_cont"        = prior("normal", list(0, .5)),
@@ -47,9 +56,18 @@ prior_list <- list(
 )
 
 # create the formula object
-formula <- JAGS_formula(
+formula_obj <- JAGS_formula(
   formula = ~ x_cont + x_fac3 * x_fac4,
   parameter = "mu", data = df, prior_list = prior_list)
+
+# using -1 notation (automatically adds spike(0) intercept)
+prior_list_no_intercept <- list(
+  "x_fac3" = prior_factor("normal", list(0, 1), contrast = "treatment")
+)
+formula_no_intercept <- JAGS_formula(
+  formula = ~ x_fac3 - 1,
+  parameter = "mu", data = df, prior_list = prior_list_no_intercept)
+# Equivalent to specifying intercept = prior("spike", list(0))
 
 }
 \seealso{
