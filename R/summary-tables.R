@@ -794,11 +794,11 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     if(is.prior.spike_and_slab(prior_list[[par]])){
 
       # prepare parameter names
-      if(is.prior.factor(prior_list[[par]][["variable"]])){
-        if(.get_prior_factor_levels(prior_list[[par]][["variable"]]) == 1){
+      if(is.prior.factor(.get_spike_and_slab_variable(prior_list[[par]]))){
+        if(.get_prior_factor_levels(.get_spike_and_slab_variable(prior_list[[par]])) == 1){
           par_names <- par
         }else{
-          par_names <- paste0(par, "[", 1:.get_prior_factor_levels(prior_list[[par]][["variable"]]), "]")
+          par_names <- paste0(par, "[", 1:.get_prior_factor_levels(.get_spike_and_slab_variable(prior_list[[par]])), "]")
         }
       }else{
         par_names <- par

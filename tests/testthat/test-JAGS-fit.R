@@ -314,7 +314,10 @@ test_that("JAGS model functions work (spike and slab)", {
                                   prior_inclusion = prior("beta", list(1,1)))
   )
 
-  attr(priors$beta$variable, "levels") <- 3
+  # Set levels attribute on the variable component within the spike_and_slab mixture
+  components <- attr(priors$beta, "components")
+  alternative_idx <- which(components == "alternative")
+  attr(priors$beta[[alternative_idx]], "levels") <- 3
 
   for(i in 1:length(priors)){
     model_syntax <- "model{}"

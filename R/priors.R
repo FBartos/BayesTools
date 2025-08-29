@@ -493,6 +493,92 @@ prior_spike_and_slab <- function(prior_parameter,
   return(prior("spike", list(location = 0.5)))
 }
 
+# Setter functions to allow modifying variable and inclusion components
+.set_spike_and_slab_variable_attr <- function(spike_and_slab_prior, attr_name, value) {
+  if (!is.prior.spike_and_slab(spike_and_slab_prior)) {
+    stop("This function only works with spike_and_slab priors")
+  }
+  
+  # Find the alternative component (this is the variable/slab part)
+  components <- attr(spike_and_slab_prior, "components")
+  if (is.null(components)) {
+    stop("Missing components information in spike_and_slab prior")
+  }
+  
+  alternative_idx <- which(components == "alternative")
+  if (length(alternative_idx) != 1) {
+    stop("Could not identify alternative component in spike_and_slab prior")
+  }
+  
+  # Set attribute on the variable component
+  attr(spike_and_slab_prior[[alternative_idx]], attr_name) <- value
+  
+  return(spike_and_slab_prior)
+}
+
+# Add $ method for spike_and_slab priors to handle legacy access patterns
+#' @export
+`$.prior.spike_and_slab` <- function(x, name) {
+  if (name == "variable") {
+    return(.get_spike_and_slab_variable(x))
+  } else if (name == "inclusion") {
+    return(.get_spike_and_slab_inclusion(x))
+  } else {
+    # Use default method for other fields
+    return(NextMethod("$"))
+  }
+}
+
+# Add $<- method for spike_and_slab priors to handle legacy assignment patterns
+#' @export
+`$<-.prior.spike_and_slab` <- function(x, name, value) {
+  if (name == "variable") {
+    # This is more complex - we need to replace the alternative component
+    components <- attr(x, "components")
+    if (is.null(components)) {
+      stop("Missing components information in spike_and_slab prior")
+    }
+    
+    alternative_idx <- which(components == "alternative")
+    if (length(alternative_idx) != 1) {
+      stop("Could not identify alternative component in spike_and_slab prior")
+    }
+    
+    x[[alternative_idx]] <- value
+    return(x)
+  } else if (name == "inclusion") {
+    # Update the inclusion prior attribute
+    attr(x, "inclusion_prior") <- value
+    return(x)
+  } else {
+    # Use default method for other fields
+    return(NextMethod("$<-"))
+  }
+}
+
+# Special function to handle attribute setting on spike_and_slab variable components
+.set_spike_and_slab_variable_attribute <- function(spike_and_slab_prior, attr_name, value) {
+  if (!is.prior.spike_and_slab(spike_and_slab_prior)) {
+    stop("This function only works with spike_and_slab priors")
+  }
+  
+  # Find the alternative component and set attribute directly on it
+  components <- attr(spike_and_slab_prior, "components")
+  if (is.null(components)) {
+    stop("Missing components information in spike_and_slab prior")
+  }
+  
+  alternative_idx <- which(components == "alternative")
+  if (length(alternative_idx) != 1) {
+    stop("Could not identify alternative component in spike_and_slab prior")
+  }
+  
+  # Set attribute on the variable component in place
+  attr(spike_and_slab_prior[[alternative_idx]], attr_name) <- value
+  
+  return(spike_and_slab_prior)
+}
+
 
 #' @title Creates a mixture of prior distributions
 #' @description \code{prior_mixture} creates a mixture of prior distributions.

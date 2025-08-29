@@ -376,9 +376,13 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   # check that all priors have a lower bound on 0 or their range is > 0, if not, throw a warning and correct
   for(i in seq_along(prior_list)){
     if(is.prior.spike_and_slab(prior_list[[i]])){
-      if(range(prior_list[[i]][["variable"]])[1] < 0){
+      variable_component <- .get_spike_and_slab_variable(prior_list[[i]])
+      if(range(variable_component)[1] < 0){
         warning(paste0("The lower bound of the '", names(prior_list)[i], "' prior distribution is below 0. Correcting to 0."), immediate. = TRUE)
-        prior_list[[i]][["variable"]]$truncation$lower <- 0
+        # Find alternative component and modify it directly
+        components <- attr(prior_list[[i]], "components")
+        alternative_idx <- which(components == "alternative")
+        prior_list[[i]][[alternative_idx]]$truncation$lower <- 0
       }
     }else if(is.prior.mixture(prior_list[[i]])){
       for(j in seq_along(prior_list[[i]])){
