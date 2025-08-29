@@ -1201,11 +1201,15 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   
   # Always use the prior probabilities for the weights - posterior composition
   # will be handled naturally by the models_ind filtering in the plotting functions
+  # 
+  # CRITICAL: Order must match models_ind convention:
+  # - models_ind = 0 -> continuous component -> index 1 in prior_list
+  # - models_ind = 1 -> spike component -> index 2 in prior_list
   if(mean(prior_inclusion) < 1 && mean(prior_inclusion) > 0){
-    # Create mixture structure with correct prior weights
-    prior_null                        <- prior("spike", list(0), prior_weights = 1-mean(prior_inclusion))
+    # Create mixture structure with correct prior weights and order
     prior_variable[["prior_weights"]] <- mean(prior_inclusion)
-    prior_list <- list(prior_variable, prior_null)
+    prior_null                        <- prior("spike", list(0), prior_weights = 1-mean(prior_inclusion))
+    prior_list <- list(prior_variable, prior_null)  # continuous first, spike second
   } else if(mean(prior_inclusion) >= 1){
     # Only continuous component
     prior_list <- list(prior_variable)
