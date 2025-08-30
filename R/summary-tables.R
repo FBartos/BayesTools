@@ -794,11 +794,11 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     if(is.prior.spike_and_slab(prior_list[[par]])){
 
       # prepare parameter names
-      if(is.prior.factor(prior_list[[par]][["variable"]])){
-        if(.get_prior_factor_levels(prior_list[[par]][["variable"]]) == 1){
+      if(is.prior.factor(.get_spike_and_slab_variable(prior_list[[par]]))){
+        if(.get_prior_factor_levels(.get_spike_and_slab_variable(prior_list[[par]])) == 1){
           par_names <- par
         }else{
-          par_names <- paste0(par, "[", 1:.get_prior_factor_levels(prior_list[[par]][["variable"]]), "]")
+          par_names <- paste0(par, "[", 1:.get_prior_factor_levels(.get_spike_and_slab_variable(prior_list[[par]])), "]")
         }
       }else{
         par_names <- par
@@ -831,8 +831,9 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       }
 
       # modify the parameter list (forward the parameter attribute)
-      attr(prior_list[[par]]$variable, "parameter") <- attr(prior_list[[par]], "parameter")
-      prior_list[[par]] <- prior_list[[par]]$variable
+      variable_component <- .get_spike_and_slab_variable(prior_list[[par]])
+      attr(variable_component, "parameter") <- attr(prior_list[[par]], "parameter")
+      prior_list[[par]] <- variable_component
 
 
     }else if(is.prior.mixture(prior_list[[par]])){
@@ -1194,7 +1195,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   for(par in names(prior_list)){
     if(is.prior.spike_and_slab(prior_list[[par]])){
 
-      temp_prior_prob <- mean(prior_list[[par]][["inclusion"]])
+      temp_prior_prob <- mean(.get_spike_and_slab_inclusion(prior_list[[par]]))
       temp_post_prob  <- mean(model_samples[,paste0(par, "_indicator")])
 
       runjags_summary <- rbind(runjags_summary, data.frame(
