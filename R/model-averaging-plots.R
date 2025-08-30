@@ -1955,10 +1955,15 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
 
 .simplify_spike_samples <- function(samples, prior_list){
 
+  # Check if we're dealing with spike_and_slab (0-based indexing) or mixture (1-based indexing)
+  is_spike_and_slab <- is.prior.spike_and_slab(prior_list)
+  
   # aggregate for each spike
   priors_point_map <- data.frame(do.call(rbind, lapply(seq_along(prior_list), function(i) {
     if(is.prior.point(prior_list[[i]])){
-      c("location" = prior_list[[i]]$parameters[["location"]], "frequency" = sum(attr(samples, "models_ind") == i))
+      # For spike_and_slab, model indices are 0-based, so adjust by subtracting 1
+      model_index <- if(is_spike_and_slab) i - 1 else i
+      c("location" = prior_list[[i]]$parameters[["location"]], "frequency" = sum(attr(samples, "models_ind") == model_index))
     }
   })))
 
