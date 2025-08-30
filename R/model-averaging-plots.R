@@ -1961,8 +1961,17 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
   # aggregate for each spike
   priors_point_map <- data.frame(do.call(rbind, lapply(seq_along(prior_list), function(i) {
     if(is.prior.point(prior_list[[i]])){
-      # For spike_and_slab, model indices are 0-based, so adjust by subtracting 1
-      model_index <- if(is_spike_and_slab) i - 1 else i
+      if(is_spike_and_slab) {
+        # For spike_and_slab: dbern() generates 0 (null) and 1 (alternative)
+        # Components are stored as ["alternative", "null"], so:
+        # - point component at index 2 (null) maps to JAGS index 0
+        # - any other point component would be unusual but map accordingly
+        component_name <- attr(prior_list[[i]], "component")
+        model_index <- if(component_name == "null") 0 else 1
+      } else {
+        # For mixture: dcat() generates 1, 2, 3... so index i maps to JAGS index i
+        model_index <- i
+      }
       c("location" = prior_list[[i]]$parameters[["location"]], "frequency" = sum(attr(samples, "models_ind") == model_index))
     }
   })))
