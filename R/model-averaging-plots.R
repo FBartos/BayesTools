@@ -1977,10 +1977,23 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
     if(is.prior.point(current_component)){
       if(is_spike_and_slab) {
         # For spike_and_slab: dbern() generates 0 (null) and 1 (alternative)
-        # Components are stored as ["alternative", "null"], so:
-        # - point component with "null" attribute maps to JAGS index 0
-        # - point component with "alternative" attribute maps to JAGS index 1
+        # We need to determine which component this is
         component_name <- attr(current_component, "component")
+        
+        # Handle case where component attribute might be missing - use the components attr from the parent
+        if(is.null(component_name) || length(component_name) == 0) {
+          parent_components <- attr(prior_list, "components")
+          if(!is.null(parent_components) && length(parent_components) >= i) {
+            component_name <- parent_components[i]
+          }
+        }
+        
+        # Default to mapping based on position if still no component name found
+        if(is.null(component_name) || length(component_name) == 0) {
+          # Assume point components are null (typically the second component in spike_and_slab)
+          component_name <- "null"
+        }
+        
         model_index <- if(component_name == "null") 0 else 1
       } else {
         # For mixture or list of priors: dcat() generates 1, 2, 3... so index i maps to JAGS index i
