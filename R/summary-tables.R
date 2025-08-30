@@ -831,8 +831,9 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       }
 
       # modify the parameter list (forward the parameter attribute)
-      attr(prior_list[[par]]$variable, "parameter") <- attr(prior_list[[par]], "parameter")
-      prior_list[[par]] <- prior_list[[par]]$variable
+      variable_component <- .get_spike_and_slab_variable(prior_list[[par]])
+      attr(variable_component, "parameter") <- attr(prior_list[[par]], "parameter")
+      prior_list[[par]] <- variable_component
 
 
     }else if(is.prior.mixture(prior_list[[par]])){
