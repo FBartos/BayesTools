@@ -1955,24 +1955,38 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
 
 .simplify_spike_samples <- function(samples, prior_list){
 
-  # Check if we're dealing with spike_and_slab (0-based indexing) or mixture (1-based indexing)
+  # Check if we're dealing with spike_and_slab or mixture (which are single priors) vs list of priors
   is_spike_and_slab <- is.prior.spike_and_slab(prior_list)
+  is_mixture <- is.prior.mixture(prior_list)
+  
+  # If we have a spike_and_slab or mixture prior, we need to iterate over their components
+  # Otherwise, we have a list of individual priors
+  if(is_spike_and_slab || is_mixture) {
+    # For spike_and_slab and mixture, iterate over the components
+    components_to_iterate <- prior_list
+    component_indices <- seq_along(prior_list)
+  } else {
+    # For lists of priors, iterate over the list
+    components_to_iterate <- prior_list
+    component_indices <- seq_along(prior_list)
+  }
   
   # aggregate for each spike
-  priors_point_map <- data.frame(do.call(rbind, lapply(seq_along(prior_list), function(i) {
-    if(is.prior.point(prior_list[[i]])){
+  priors_point_map <- data.frame(do.call(rbind, lapply(component_indices, function(i) {
+    current_component <- components_to_iterate[[i]]
+    if(is.prior.point(current_component)){
       if(is_spike_and_slab) {
         # For spike_and_slab: dbern() generates 0 (null) and 1 (alternative)
         # Components are stored as ["alternative", "null"], so:
-        # - point component at index 2 (null) maps to JAGS index 0
-        # - any other point component would be unusual but map accordingly
-        component_name <- attr(prior_list[[i]], "component")
+        # - point component with "null" attribute maps to JAGS index 0
+        # - point component with "alternative" attribute maps to JAGS index 1
+        component_name <- attr(current_component, "component")
         model_index <- if(component_name == "null") 0 else 1
       } else {
-        # For mixture: dcat() generates 1, 2, 3... so index i maps to JAGS index i
+        # For mixture or list of priors: dcat() generates 1, 2, 3... so index i maps to JAGS index i
         model_index <- i
       }
-      c("location" = prior_list[[i]]$parameters[["location"]], "frequency" = sum(attr(samples, "models_ind") == model_index))
+      c("location" = current_component$parameters[["location"]], "frequency" = sum(attr(samples, "models_ind") == model_index))
     }
   })))
 
