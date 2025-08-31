@@ -562,17 +562,25 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
     # change prior none/spikes into factor prior spikes
     for(i in seq_along(prior_list)){
       if(is.prior.point(prior_list[[i]])){
+        # Save the component attribute before recreating
+        component_attr <- attr(prior_list[[i]], "component")
         prior_list[[i]] <- prior_factor(
           distribution = "point",
           parameters   = list(location = prior_list[[i]][["parameters"]][["location"]]),
           contrast     = gsub("prior.", "", priors_type[["class"]], fixed = TRUE)
         )
+        # Restore the component attribute
+        attr(prior_list[[i]], "component") <- component_attr
       }else if(is.prior.none(prior_list[[i]])){
+        # Save the component attribute before recreating
+        component_attr <- attr(prior_list[[i]], "component")
         prior_list[[i]] <- prior_factor(
           distribution = "point",
           parameters   = list(location = 0),
           contrast     = gsub("prior.", "", priors_type[["class"]], fixed = TRUE)
         )
+        # Restore the component attribute
+        attr(prior_list[[i]], "component") <- component_attr
       }
     }
 
