@@ -478,12 +478,7 @@ prior_spike_and_slab <- function(prior_parameter,
   
   # Get inclusion prior from attribute
   inclusion_prior <- attr(spike_and_slab_prior, "inclusion_prior")
-  if (!is.null(inclusion_prior)) {
-    return(inclusion_prior)
-  }
-  
-  # Fallback for older objects
-  return(prior("spike", list(location = 0.5)))
+  return(inclusion_prior)
 }
 
 # Setter functions to allow modifying variable and inclusion components
