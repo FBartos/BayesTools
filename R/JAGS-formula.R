@@ -364,13 +364,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
     if(is.prior.spike_and_slab(prior_list[[i]]) || is.prior.mixture(prior_list[[i]])){
       for(j in seq_along(prior_list[[i]])){
         if(range(prior_list[[i]][[j]])[1] < 0){
-          component_name <- if(is.prior.spike_and_slab(prior_list[[i]])) {
-            components <- attr(prior_list[[i]], "components")
-            components[j]
-          } else {
-            paste0(j, "-component")
-          }
-          warning(paste0("The lower bound of the ", component_name, " in '", names(prior_list)[i], "' prior distribution is below 0. Correcting to 0."), immediate. = TRUE)
+          warning(paste0("The lower bound of the ", j ,"-th component in '", names(prior_list)[i], "' prior distribution is below 0. Correcting to 0."), immediate. = TRUE)
           prior_list[[i]][[j]]$truncation$lower <- 0
         }
       }
