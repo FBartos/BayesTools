@@ -458,17 +458,10 @@ prior_spike_and_slab <- function(prior_parameter,
   if (!is.prior.spike_and_slab(spike_and_slab_prior)) {
     stop("This function only works with spike_and_slab priors")
   }
-  
+ 
   # Find the alternative component (this is the variable/slab part)
-  components <- attr(spike_and_slab_prior, "components")
-  if (is.null(components)) {
-    stop("Missing components information in spike_and_slab prior")
-  }
-  
+  components    <- attr(spike_and_slab_prior, "components") 
   alternative_idx <- which(components == "alternative")
-  if (length(alternative_idx) != 1) {
-    stop("Could not identify alternative component in spike_and_slab prior")
-  }
   
   return(spike_and_slab_prior[[alternative_idx]])
 }
