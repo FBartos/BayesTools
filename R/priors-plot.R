@@ -741,7 +741,6 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   check_real(scale_y2, "scale_y2", lower = 0)
 
   if(is.prior.mixture(x)){
-    class(x) <- NULL
     return(lines_prior_list(x, xlim = xlim, x_seq = x_seq, x_range_quant = x_range_quant, n_points = n_points,
                             n_samples = n_samples, force_samples = force_samples,
                             transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings,

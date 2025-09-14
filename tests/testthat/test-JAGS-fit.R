@@ -752,7 +752,7 @@ test_that("JAGS fit function integration with formula and spike and slab works" 
                                           prior_inclusion = prior("spike", list(0.5)))
     )
   )
-  attr(formula_prior_list1$mu$x_fac3t$variable, "multiply_by") <- "sigma"
+  attr(formula_prior_list1$mu$x_fac3t, "multiply_by") <- "sigma"
   prior_list1 <- list(
     sigma = prior("lognormal", list(0, 1))
   )

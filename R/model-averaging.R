@@ -810,9 +810,6 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
             priors[[parameters]][[i]][["prior_weights"]] <- 0
           }
         }
-      }else if(is.prior.spike_and_slab(priors[[parameters]])){
-        # Set inclusion prior to be certain (spike at 1) - modify attribute
-        attr(priors[[parameters]], "inclusion_prior") <- prior("spike", list(1))
       }else if(is.prior.mixture(priors[[parameters]])){
 
         components <- attr(priors[[parameters]], "components")
