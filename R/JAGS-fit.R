@@ -853,8 +853,8 @@ JAGS_add_priors           <- function(syntax, prior_list){
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
 
-  prior_variable_list  <- prior["variable"]
-  prior_inclusion_list <- prior["inclusion"]
+  prior_variable_list  <- list(.get_spike_and_slab_variable(prior))
+  prior_inclusion_list <- list(.get_spike_and_slab_inclusion(prior))
   names(prior_variable_list)  <- paste0(parameter_name, "_variable")
   names(prior_inclusion_list) <- paste0(parameter_name, "_inclusion")
 
@@ -1307,12 +1307,12 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
   if(!is.prior.spike_and_slab(prior))
     stop("improper prior provided")
 
-  prior_variable        <- prior["variable"]
+  prior_variable        <- list(.get_spike_and_slab_variable(prior))
   names(prior_variable) <- paste0(parameter_name, "_variable")
   init <- .JAGS_get_inits.fun(prior_variable)
 
-  if(!is.prior.point(prior[["inclusion"]])){
-    init[[paste0(parameter_name, "_inclusion")]] <- rng(prior[["inclusion"]], 1)
+  if(!is.prior.point(.get_spike_and_slab_inclusion(prior))){
+    init[[paste0(parameter_name, "_inclusion")]] <- rng(.get_spike_and_slab_inclusion(prior), 1)
   }
 
 
@@ -1513,8 +1513,8 @@ JAGS_to_monitor             <- function(prior_list){
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
 
-  prior_variable  <- prior["variable"]
-  prior_inclusion <- prior["inclusion"]
+  prior_variable  <- list(.get_spike_and_slab_variable(prior))
+  prior_inclusion <- list(.get_spike_and_slab_inclusion(prior))
   names(prior_variable)  <- paste0(parameter_name, "_variable")
   names(prior_inclusion) <- paste0(parameter_name, "_inclusion")
 

@@ -314,7 +314,10 @@ test_that("JAGS model functions work (spike and slab)", {
                                   prior_inclusion = prior("beta", list(1,1)))
   )
 
-  attr(priors$beta$variable, "levels") <- 3
+  # Set levels attribute on the variable component within the spike_and_slab mixture
+  components <- attr(priors$beta, "components")
+  alternative_idx <- which(components == "alternative")
+  attr(priors$beta[[alternative_idx]], "levels") <- 3
 
   for(i in 1:length(priors)){
     model_syntax <- "model{}"
@@ -749,7 +752,7 @@ test_that("JAGS fit function integration with formula and spike and slab works" 
                                           prior_inclusion = prior("spike", list(0.5)))
     )
   )
-  attr(formula_prior_list1$mu$x_fac3t$variable, "multiply_by") <- "sigma"
+  attr(formula_prior_list1$mu$x_fac3t, "multiply_by") <- "sigma"
   prior_list1 <- list(
     sigma = prior("lognormal", list(0, 1))
   )

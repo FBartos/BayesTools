@@ -235,7 +235,7 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
       colnames(model_samples) == parameter] <- NA
 
     # modify the parameter list
-    prior_list[[parameter]] <- prior_list[[parameter]]$variable
+    prior_list[[parameter]] <- .get_spike_and_slab_variable(prior_list[[parameter]])
   }
 
   if(is.prior.factor(prior_list[[parameter]])){

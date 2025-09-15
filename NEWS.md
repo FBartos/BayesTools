@@ -1,3 +1,10 @@
+# version 0.2.22
+### Fixes
+- `plot_posterior()` function with spike and slab priors 
+
+### Changes
+- unifies back-end of `prior_mixture()` and `prior_spike_and_slab()` 
+
 # version 0.2.21
 ### Fixes
 - `JAGS_formula()` function now replaces removed missing intercept with 0 (so the model matrix remains unchanged)

@@ -497,11 +497,14 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 .plot_data_prior_list.simple         <- function(prior_list, x_seq, x_range, x_range_quant, n_points, n_samples, force_samples, individual,
                                                  transformation, transformation_arguments, transformation_settings){
 
+  if(is.prior.spike_and_slab(prior_list))
+    prior_list <- list(prior_list)
+
   # dispatching for spike and slab priors
   if(length(prior_list) == 1 && is.prior.spike_and_slab(prior_list[[1]])){
 
-    prior_inclusion   <- prior_list[[1]][["inclusion"]]
-    prior_variable    <- prior_list[[1]][["variable"]]
+    prior_inclusion   <- .get_spike_and_slab_inclusion(prior_list[[1]])
+    prior_variable    <- .get_spike_and_slab_variable(prior_list[[1]])
 
     if(mean(prior_inclusion) < 1 && mean(prior_inclusion) > 0){
       # create a dummy list for the simple mixture
@@ -718,7 +721,7 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
 
   # check input (most arguments are checked within density)
   check_list(prior_list, "prior_list")
-  if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
+  if(!all(sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
   check_bool(individual, "individual")
   check_bool(rescale_x, "rescale_x")
@@ -1955,10 +1958,36 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
 
 .simplify_spike_samples <- function(samples, prior_list){
 
+  # Check if we're dealing with spike_and_slab or mixture (which are single priors) vs list of priors
+  is_spike_and_slab <- is.prior.spike_and_slab(prior_list)
+  is_mixture <- is.prior.mixture(prior_list)
+
+  # If we have a spike_and_slab or mixture prior, we need to iterate over their components
+  # Otherwise, we have a list of individual priors
+  if(is_spike_and_slab || is_mixture) {
+    # For spike_and_slab and mixture, iterate over the components
+    components_to_iterate <- prior_list
+    component_indices <- seq_along(prior_list)
+  } else {
+    # For lists of priors, iterate over the list
+    components_to_iterate <- prior_list
+    component_indices <- seq_along(prior_list)
+  }
+
   # aggregate for each spike
-  priors_point_map <- data.frame(do.call(rbind, lapply(seq_along(prior_list), function(i) {
-    if(is.prior.point(prior_list[[i]])){
-      c("location" = prior_list[[i]]$parameters[["location"]], "frequency" = sum(attr(samples, "models_ind") == i))
+  priors_point_map <- data.frame(do.call(rbind, lapply(component_indices, function(i) {
+    current_component <- components_to_iterate[[i]]
+    if(is.prior.point(current_component)){
+      if(is_spike_and_slab) {
+        # For spike_and_slab: dbern() generates 0 (null) and 1 (alternative)
+        # We need to determine which component this is
+        component_name <- attr(current_component, "component")
+        model_index <- if(component_name == "null") 0 else 1
+      } else {
+        # For mixture or list of priors: dcat() generates 1, 2, 3... so index i maps to JAGS index i
+        model_index <- i
+      }
+      c("location" = current_component$parameters[["location"]], "frequency" = sum(attr(samples, "models_ind") == model_index))
     }
   })))
 

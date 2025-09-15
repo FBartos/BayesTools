@@ -407,28 +407,97 @@ prior_spike_and_slab <- function(prior_parameter,
   if(!is.prior.point(prior_inclusion) && (prior_inclusion$truncation[["lower"]] < 0 | prior_inclusion$truncation[["upper"]] > 1))
     stop("The range of the probability parameter (set via the 'truncation' argument) of 'prior_inclusion' must be within 0 and 1.")
 
-  output <- list(
-    variable  = prior_parameter,
-    inclusion = prior_inclusion
-  )
-
-  # distinguish normal and factor prior distributions
+  # Create the spike component (point at 0)
   if(is.prior.factor(prior_parameter)){
-
+    # For factor priors, create a factor spike
+    priors_type <- .get_prior_factor_list_type(list(prior_parameter))
+    contrast_type <- gsub("prior.", "", priors_type[["class"]], fixed = TRUE)
+    
+    spike_component <- prior_factor(
+      distribution = "point",
+      parameters   = list(location = 0),
+      contrast     = contrast_type
+    )
+  } else {
+    # For simple priors, create a simple spike
+    spike_component <- prior(
+      distribution = "point", 
+      parameters   = list(location = 0)
+    )
+  }
+  
+  # Create the mixture using the mixture backend
+  mixture_output <- prior_mixture(
+    prior_list = list(prior_parameter, spike_component),
+    components = c("alternative", "null")
+  )
+  
+  # Store inclusion prior as attribute so it can be retrieved by helper functions
+  attr(mixture_output, "inclusion_prior") <- prior_inclusion
+  
+  # Add spike_and_slab classes for specialized behavior while keeping mixture functionality
+  if(is.prior.factor(prior_parameter)){
     # obtain and store the contrast type
     priors_type <- .get_prior_factor_list_type(list(prior_parameter))
-
+    
     attr(prior_parameter, "K") <- priors_type[["K"]]
-    class(output)              <- c("prior", "prior.spike_and_slab", "prior.factor_spike_and_slab", priors_type[["class"]])
-
+    class(mixture_output) <- c("prior", "prior.spike_and_slab", "prior.factor_spike_and_slab", 
+                              class(mixture_output)[-1], priors_type[["class"]])
   }else if(is.prior.simple(prior_parameter)){
-    class(output) <- c("prior", "prior.spike_and_slab", "prior.simple_spike_and_slab")
+    class(mixture_output) <- c("prior", "prior.spike_and_slab", "prior.simple_spike_and_slab", 
+                              class(mixture_output)[-1])
   }else{
     stop("The 'prior_parameter' must be either a simple or factor prior distribution.")
   }
 
-  return(output)
+  return(mixture_output)
 }
+
+# Helper functions to extract variable and inclusion from spike_and_slab mixture structure
+.get_spike_and_slab_variable <- function(spike_and_slab_prior) {
+  if (!is.prior.spike_and_slab(spike_and_slab_prior)) {
+    stop("This function only works with spike_and_slab priors")
+  }
+ 
+  # Find the alternative component (this is the variable/slab part)
+  components    <- attr(spike_and_slab_prior, "components") 
+  alternative_idx <- which(components == "alternative")
+  
+  return(spike_and_slab_prior[[alternative_idx]])
+}
+
+.get_spike_and_slab_inclusion <- function(spike_and_slab_prior) {
+  if (!is.prior.spike_and_slab(spike_and_slab_prior)) {
+    stop("This function only works with spike_and_slab priors")
+  }
+  
+  # For backward compatibility, use stored inclusion if available
+  if (!is.null(spike_and_slab_prior[["inclusion"]])) {
+    return(spike_and_slab_prior[["inclusion"]])
+  }
+  
+  # Get inclusion prior from attribute
+  inclusion_prior <- attr(spike_and_slab_prior, "inclusion_prior")
+  return(inclusion_prior)
+}
+
+# Setter functions to allow modifying variable and inclusion components
+.set_spike_and_slab_variable_attr <- function(spike_and_slab_prior, attr_name, value) {
+  if (!is.prior.spike_and_slab(spike_and_slab_prior)) {
+    stop("This function only works with spike_and_slab priors")
+  }
+  
+  # Find the alternative component (this is the variable/slab part)
+  components <- attr(spike_and_slab_prior, "components") 
+  alternative_idx <- which(components == "alternative")
+
+  # Set attribute on the variable component
+  attr(spike_and_slab_prior[[alternative_idx]], attr_name) <- value
+  
+  return(spike_and_slab_prior)
+}
+
+
 
 
 #' @title Creates a mixture of prior distributions
@@ -474,17 +543,25 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
     # change prior none/spikes into factor prior spikes
     for(i in seq_along(prior_list)){
       if(is.prior.point(prior_list[[i]])){
+        # Save the component attribute before recreating
+        component_attr <- attr(prior_list[[i]], "component")
         prior_list[[i]] <- prior_factor(
           distribution = "point",
           parameters   = list(location = prior_list[[i]][["parameters"]][["location"]]),
           contrast     = gsub("prior.", "", priors_type[["class"]], fixed = TRUE)
         )
+        # Restore the component attribute
+        attr(prior_list[[i]], "component") <- component_attr
       }else if(is.prior.none(prior_list[[i]])){
+        # Save the component attribute before recreating
+        component_attr <- attr(prior_list[[i]], "component")
         prior_list[[i]] <- prior_factor(
           distribution = "point",
           parameters   = list(location = 0),
           contrast     = gsub("prior.", "", priors_type[["class"]], fixed = TRUE)
         )
+        # Restore the component attribute
+        attr(prior_list[[i]], "component") <- component_attr
       }
     }
 
@@ -1072,12 +1149,12 @@ rng.prior   <- function(x, n, ...){
 
   if(is.prior.spike_and_slab(prior)){
 
-    inclusion <- stats::rbinom(n, size = 1, prob = rng(prior[["inclusion"]], n))
+    inclusion <- stats::rbinom(n, size = 1, prob = rng(.get_spike_and_slab_inclusion(prior), n))
 
     if(sample_components)
       return(inclusion)
 
-    x         <- rng(prior[["variable"]], n) * inclusion
+    x         <- rng(.get_spike_and_slab_variable(prior), n) * inclusion
     attr(x, "inclusion") <- inclusion
 
   }else if(is.prior.mixture(prior)){
@@ -2039,7 +2116,7 @@ mean.prior   <- function(x, ...){
 
   if(is.prior.spike_and_slab(x)){
 
-    m <- mean(x[["variable"]]) * mean(x[["inclusion"]])
+    m <- mean(.get_spike_and_slab_variable(x)) * mean(.get_spike_and_slab_inclusion(x))
 
   }else if(is.prior.mixture(x)){
 
@@ -2189,13 +2266,25 @@ var.prior   <- function(x, ...){
 
   if(is.prior.spike_and_slab(x)){
 
-    # the inclusion is always beta -> indicators are betabinom
-    var_inclusion <- with(x[["inclusion"]][["parameters"]], (alpha * beta * (alpha + beta + 1) ) / ( (alpha + beta)^2 * (alpha + beta + 1)  ) )
-
+    inclusion_prior <- .get_spike_and_slab_inclusion(x)
+    variable_prior <- .get_spike_and_slab_variable(x)
+    
+    # Handle different inclusion prior types
+    if(inclusion_prior[["distribution"]] == "beta") {
+      # the inclusion is beta -> indicators are betabinom
+      var_inclusion <- with(inclusion_prior[["parameters"]], (alpha * beta * (alpha + beta + 1) ) / ( (alpha + beta)^2 * (alpha + beta + 1)  ) )
+    } else if(inclusion_prior[["distribution"]] == "point") {
+      # the inclusion is a spike (point) -> no variance
+      var_inclusion <- 0
+    } else {
+      # for other distributions, compute variance directly
+      var_inclusion <- var(inclusion_prior)
+    }
+    
     var <-
-      (var(x[["variable"]])  + mean(x[["variable"]])^2) *
-      (var_inclusion         + mean(x[["inclusion"]])^2) -
-      (mean(x[["variable"]])^2 * mean(x[["inclusion"]])^2)
+      (var(variable_prior)  + mean(variable_prior)^2) *
+      (var_inclusion         + mean(inclusion_prior)^2) -
+      (mean(variable_prior)^2 * mean(inclusion_prior)^2)
 
   }else if(is.prior.mixture(x)){
 
