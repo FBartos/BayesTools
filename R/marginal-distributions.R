@@ -1015,7 +1015,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
       if(is.prior.spike_and_slab(temp_prior)){
 
-        return(mean(temp_prior[["inclusion"]]))
+        return(mean(.get_spike_and_slab_inclusion(temp_prior)))
 
       }else if(is.prior.mixture(temp_prior)){
 
@@ -1039,7 +1039,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       temp_prior <- prior_list[[parameter]]
 
       if(is.prior.spike_and_slab(temp_prior)){
-        return(mean(temp_prior[["inclusion"]]) == 1)
+        return(mean(.get_spike_and_slab_inclusion(temp_prior)) == 1)
       }else if(is.prior.mixture(temp_prior)){
         return(all(attr(temp_prior, "components") == "alternative"))
       }else{
@@ -1337,8 +1337,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     set.seed(seed)
   }
 
-  prior_variable   <- prior[["variable"]]
-  prior_inclusion  <- prior[["inclusion"]]
+  prior_variable   <- .get_spike_and_slab_variable(prior)
+  prior_inclusion  <- .get_spike_and_slab_inclusion(prior)
 
   inclusion <- stats::rbinom(n_samples, size = 1, prob = rng(prior_inclusion, n_samples))
 

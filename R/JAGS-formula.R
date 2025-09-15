@@ -263,13 +263,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
 
     # update the corresponding prior distribution back into the prior list
     # (and forward attributes to lower level components in the case of spike and slab and mixture priors)
-    if(is.prior.spike_and_slab(this_prior)){
-      attr(this_prior, "levels")            -> attr(this_prior[["variable"]], "levels")
-      attr(this_prior, "level_names")       -> attr(this_prior[["variable"]], "level_names")
-      attr(this_prior, "interaction")       -> attr(this_prior[["variable"]], "interaction")
-      attr(this_prior, "interaction_terms") -> attr(this_prior[["variable"]], "interaction_terms")
-      this_prior -> prior_list[[model_terms[i]]]
-    }else if(is.prior.mixture(this_prior)){
+    if(is.prior.spike_and_slab(this_prior) || is.prior.mixture(this_prior)){
       for(p in seq_along(this_prior)){
         attr(this_prior, "levels")            -> attr(this_prior[[p]], "levels")
         attr(this_prior, "level_names")       -> attr(this_prior[[p]], "level_names")
@@ -367,15 +361,10 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
 
   # check that all priors have a lower bound on 0 or their range is > 0, if not, throw a warning and correct
   for(i in seq_along(prior_list)){
-    if(is.prior.spike_and_slab(prior_list[[i]])){
-      if(range(prior_list[[i]][["variable"]])[1] < 0){
-        warning(paste0("The lower bound of the '", names(prior_list)[i], "' prior distribution is below 0. Correcting to 0."), immediate. = TRUE)
-        prior_list[[i]][["variable"]]$truncation$lower <- 0
-      }
-    }else if(is.prior.mixture(prior_list[[i]])){
+    if(is.prior.spike_and_slab(prior_list[[i]]) || is.prior.mixture(prior_list[[i]])){
       for(j in seq_along(prior_list[[i]])){
         if(range(prior_list[[i]][[j]])[1] < 0){
-          warning(paste0("The lower bound of the ", j, "-component in '", names(prior_list)[i], "' prior distribution is below 0. Correcting to 0."), immediate. = TRUE)
+          warning(paste0("The lower bound of the ", j ,"-th component in '", names(prior_list)[i], "' prior distribution is below 0. Correcting to 0."), immediate. = TRUE)
           prior_list[[i]][[j]]$truncation$lower <- 0
         }
       }
@@ -516,14 +505,15 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
         # transform the simple prior into treatment / independent factor prior (for each of the coefficients)
         if(is.prior.simple(this_prior)){
           class(this_prior) <- c(class(this_prior), "prior.factor", temp_prior_type)
-        }else if(is.prior.spike_and_slab(this_prior)){
-          class(this_prior[["variable"]]) <- c(class(this_prior[["variable"]]), "prior.factor", temp_prior_type)
-          class(this_prior)               <- c(class(this_prior)[!class(this_prior) %in% c("prior.simple_spike_and_slab")], "prior.factor_spike_and_slab", temp_prior_type)
-        }else if(is.prior.mixture(this_prior)){
+        }else if(is.prior.spike_and_slab(this_prior) || is.prior.mixture(this_prior)){
           for(p in seq_along(this_prior)){
             class(this_prior[[p]]) <- c(class(this_prior[[p]]), "prior.factor", temp_prior_type)
           }
-          class(this_prior) <- c(class(this_prior)[!class(this_prior) %in% c("prior.simple_mixture")],  "prior.factor_mixture", temp_prior_type)
+          if(is.prior.spike_and_slab(this_prior)){
+            class(this_prior) <- c(class(this_prior)[!class(this_prior) %in% c("prior.simple_spike_and_slab")], "prior.factor_spike_and_slab", temp_prior_type)
+          } else {
+            class(this_prior) <- c(class(this_prior)[!class(this_prior) %in% c("prior.simple_mixture")],  "prior.factor_mixture", temp_prior_type)
+          }
         }
 
       }else if(attr(data[[model_terms[i]]], "contrasts") %in% c("contr.orthonormal", "contr.meandif")){
@@ -550,13 +540,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
     # (and forward attributes to lower level components in the case of spike and slab and mixture priors)
     attr(this_prior, "random_sd")     <- TRUE
     attr(this_prior, "random_factor") <- grouping_factor
-    if(is.prior.spike_and_slab(this_prior)){
-      attr(this_prior, "levels")            -> attr(this_prior[["variable"]], "levels")
-      attr(this_prior, "level_names")       -> attr(this_prior[["variable"]], "level_names")
-      attr(this_prior, "interaction")       -> attr(this_prior[["variable"]], "interaction")
-      attr(this_prior, "interaction_terms") -> attr(this_prior[["variable"]], "interaction_terms")
-      this_prior -> new_prior_list[[paste0(parameter_suffix, "_", model_terms[i])]]
-    }else if(is.prior.mixture(this_prior)){
+    if(is.prior.spike_and_slab(this_prior) || is.prior.mixture(this_prior)){
       for(p in seq_along(this_prior)){
         attr(this_prior, "levels")            -> attr(this_prior[[p]], "levels")
         attr(this_prior, "level_names")       -> attr(this_prior[[p]], "level_names")
