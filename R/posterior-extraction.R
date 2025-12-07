@@ -62,8 +62,8 @@ NULL
         prior_list[i] <- NULL
       }
       
-    } else if (is.prior.point(prior_list[[i]]) && names(prior_list)[[i]] %in% remove_parameters) {
-      # remove parameters to be excluded
+    } else if (names(prior_list)[[i]] %in% remove_parameters) {
+      # remove parameters to be excluded (note: spike_0 removal is handled by caller)
       if (is.prior.factor(prior_list[[i]])) {
         model_samples <- model_samples[, !colnames(model_samples) %in% .JAGS_prior_factor_names(names(prior_list)[i], prior_list[[i]]), drop = FALSE]
       } else {
@@ -132,8 +132,9 @@ NULL
 
 #' @rdname posterior_extraction_helpers
 #' @param transformations list of transformations to apply
+#' @param transform_factors whether orthonormal/meandif will be transformed later
 #' @return updated model_samples matrix
-.apply_parameter_transformations <- function(model_samples, transformations, prior_list) {
+.apply_parameter_transformations <- function(model_samples, transformations, prior_list, transform_factors = FALSE) {
   
   if (is.null(transformations)) {
     return(model_samples)
@@ -143,8 +144,8 @@ NULL
     if (!is.prior.factor(prior_list[[par]])) {
       # non-factor priors
       model_samples[, par] <- do.call(transformations[[par]][["fun"]], c(list(model_samples[, par]), transformations[[par]][["arg"]]))
-    } else if (is.prior.treatment(prior_list[[par]])) {
-      # treatment priors
+    } else if ((!transform_factors && (is.prior.orthonormal(prior_list[[par]]) | is.prior.meandif(prior_list[[par]]))) || is.prior.treatment(prior_list[[par]])) {
+      # treatment priors, or orthonormal/meandif that won't be transformed to differences
       par_names <- .JAGS_prior_factor_names(par, prior_list[[par]])
       
       for (i in seq_along(par_names)) {

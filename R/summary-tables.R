@@ -960,7 +960,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   }
 
   # apply transformations (not orthornormal if they are to be returned transformed to diffs)
-  model_samples <- .apply_parameter_transformations(model_samples, transformations, prior_list)
+  model_samples <- .apply_parameter_transformations(model_samples, transformations, prior_list, transform_factors)
 
   # transform orthonormal factors to differences from mean
   model_samples <- .transform_factor_contrasts(model_samples, prior_list, transform_factors, transformations)

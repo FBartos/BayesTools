@@ -280,7 +280,7 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
 
   # mostly adapted from runjags_estimates_table
   # apply transformations
-  model_samples <- .apply_parameter_transformations(model_samples, transformations, prior_list)
+  model_samples <- .apply_parameter_transformations(model_samples, transformations, prior_list, transform_factors)
 
   # transform meandif and orthonormal factors to differences
   model_samples <- .transform_factor_contrasts(model_samples, prior_list, transform_factors, transformations)

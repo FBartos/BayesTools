@@ -27,7 +27,12 @@
   warnings = NULL
 )
 
-.apply_parameter_transformations(model_samples, transformations, prior_list)
+.apply_parameter_transformations(
+  model_samples,
+  transformations,
+  prior_list,
+  transform_factors = FALSE
+)
 
 .transform_factor_contrasts(
   model_samples,
