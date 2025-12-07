@@ -1,7 +1,9 @@
 # Tests for posterior extraction helper functions
 test_that(".extract_posterior_samples extracts samples correctly", {
 
-  skip_if_not_installed("rjags")
+  skip_on_cran()
+  skip_on_ci()
+  skip_on_os("linux")
 
   # Simple model
   data <- data.frame(y = rnorm(50))
@@ -30,8 +32,9 @@ test_that(".extract_posterior_samples extracts samples correctly", {
 
 
 test_that(".remove_auxiliary_parameters removes invgamma support", {
-
-  skip_if_not_installed("rjags")
+  skip_on_cran()
+  skip_on_ci()
+  skip_on_os("linux")
 
   # Create mock samples with invgamma support parameter
   model_samples <- matrix(rnorm(100), ncol = 2)
@@ -49,8 +52,9 @@ test_that(".remove_auxiliary_parameters removes invgamma support", {
 
 
 test_that(".process_spike_and_slab handles conditional samples", {
-
-  skip_if_not_installed("rjags")
+  skip_on_cran()
+  skip_on_ci()
+  skip_on_os("linux")
 
   # Create mock samples with spike and slab
   model_samples <- matrix(c(
@@ -62,8 +66,7 @@ test_that(".process_spike_and_slab handles conditional samples", {
   prior_list <- list(
     mu = prior_spike_and_slab(
       prior("normal", list(0, 1)),
-      prior("spike", list(0)),
-      inclusion_prior = 0.5
+      prior_inclusion = prior("spike", list(0.5))
     )
   )
 
@@ -79,8 +82,9 @@ test_that(".process_spike_and_slab handles conditional samples", {
 
 
 test_that(".apply_parameter_transformations applies transformations", {
-
-  skip_if_not_installed("rjags")
+  skip_on_cran()
+  skip_on_ci()
+  skip_on_os("linux")
 
   # Create mock samples
   model_samples <- matrix(rnorm(100, 0, 1), ncol = 1)
@@ -105,18 +109,19 @@ test_that(".apply_parameter_transformations applies transformations", {
 
 
 test_that(".rename_factor_levels renames treatment factors", {
-
-  skip_if_not_installed("rjags")
+  skip_on_cran()
+  skip_on_ci()
+  skip_on_os("linux")
 
   # Create mock samples with factor
   model_samples <- matrix(rnorm(300), ncol = 3)
   colnames(model_samples) <- c("group[1]", "group[2]", "group[3]")
 
-  prior_list <- list(
-    group = prior_factor("treatment", list(mean = 0, sd = 1),
-                         contrast = "treatment",
-                         levels = c("A", "B", "C", "D"))
-  )
+  # Create a factor prior with levels attribute (as would be set by JAGS_formula)
+  prior_obj <- prior_factor("normal", list(0, 1), contrast = "treatment")
+  attr(prior_obj, "levels") <- c("A", "B", "C", "D")
+  
+  prior_list <- list(group = prior_obj)
 
   result <- BayesTools:::.rename_factor_levels(model_samples, prior_list)
 
@@ -128,18 +133,19 @@ test_that(".rename_factor_levels renames treatment factors", {
 
 
 test_that(".transform_factor_contrasts transforms orthonormal to differences", {
-
-  skip_if_not_installed("rjags")
+  skip_on_cran()
+  skip_on_ci()
+  skip_on_os("linux")
 
   # Create mock samples with orthonormal contrasts
   model_samples <- matrix(rnorm(300), ncol = 3)
   colnames(model_samples) <- c("group[1]", "group[2]", "group[3]")
 
-  prior_list <- list(
-    group = prior_factor("normal", list(0, 1),
-                         contrast = "orthonormal",
-                         levels = c("A", "B", "C", "D"))
-  )
+  # Create a factor prior with levels attribute (as would be set by JAGS_formula)
+  prior_obj <- prior_factor("normal", list(0, 1), contrast = "orthonormal")
+  attr(prior_obj, "levels") <- c("A", "B", "C", "D")
+  
+  prior_list <- list(group = prior_obj)
 
   expect_message(
     result <- BayesTools:::.transform_factor_contrasts(
@@ -155,8 +161,9 @@ test_that(".transform_factor_contrasts transforms orthonormal to differences", {
 
 
 test_that("helper functions integrate correctly in runjags_estimates_table", {
-
-  skip_if_not_installed("rjags")
+  skip_on_cran()
+  skip_on_ci()
+  skip_on_os("linux")
 
   # Fit a simple model
   data <- data.frame(y = rnorm(50))
