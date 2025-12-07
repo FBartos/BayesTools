@@ -67,17 +67,17 @@
 \item{transform_factors}{whether to transform orthonormal/meandif to differences}
 }
 \value{
-matrix or mcmc.list of posterior samples
+For \code{.extract_posterior_samples()}: matrix or mcmc.list of posterior samples.
 
-list with cleaned model_samples and updated prior_list
+For \code{.remove_auxiliary_parameters()}: list with cleaned model_samples and updated prior_list.
 
-list with updated model_samples, prior_list, and warnings
+For \code{.process_spike_and_slab()}: list with updated model_samples, prior_list, and warnings.
 
-updated model_samples matrix
+For \code{.apply_parameter_transformations()}: updated model_samples matrix.
 
-updated model_samples matrix
+For \code{.transform_factor_contrasts()}: updated model_samples matrix.
 
-updated model_samples matrix with renamed columns
+For \code{.rename_factor_levels()}: updated model_samples matrix with renamed columns.
 }
 \description{
 Internal helper functions to extract posterior samples from JAGS
