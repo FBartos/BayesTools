@@ -238,7 +238,12 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
     prior_list[[parameter]] <- .get_spike_and_slab_variable(prior_list[[parameter]])
   }
 
-  if(is.prior.factor(prior_list[[parameter]])){
+  if(is.prior.factor(prior_list[[parameter]]) || (is.prior.mixture(prior_list[[parameter]]) && any(sapply(prior_list[[parameter]], is.prior.factor)))){
+
+    if(is.prior.mixture(prior_list[[parameter]])){
+      prior_list[[parameter]] <- prior_list[[parameter]][[which(sapply(prior_list[[parameter]], is.prior.factor))[1]]]
+    }
+
     if(.get_prior_factor_levels(prior_list[[parameter]]) > 1){
       model_samples <- model_samples[,paste0(parameter, "[", 1:.get_prior_factor_levels(prior_list[[parameter]]), "]"),drop = FALSE]
     }else{

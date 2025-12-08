@@ -23,6 +23,9 @@ jobs:
         with:
           r-version: ${{ matrix.config.r }}
 
+      - name: Setup Pandoc
+        uses: r-lib/actions/setup-pandoc@v2
+
       # Cache R packages
       - name: Cache R packages
         uses: actions/cache@v3
@@ -72,7 +75,7 @@ jobs:
           options(repos = c(CRAN = "https://cloud.r-project.org"))
           
           # Check if packages are already installed before installing
-          required_packages <- c('devtools', 'rcmdcheck', 'BayesFactor', 'RoBMA', 'runjags', 'rjags', 'rstan', 'scales', 'vdiffr', 'testthat', 'covr', 'pandoc')
+          required_packages <- c('devtools', 'rcmdcheck', 'BayesFactor', 'RoBMA', 'runjags', 'rjags', 'rstan', 'scales', 'vdiffr', 'testthat', 'covr', 'knitr', 'rmarkdown')
           missing_packages <- required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)]
           
           if (length(missing_packages) > 0) {
@@ -87,5 +90,35 @@ jobs:
 
       # Run the coverage check
       - name: Test coverage
-        run: covr::codecov()
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          JAGS_ROOT: "/c/progra~1/JAGS/JAGS-4.3.1"
+          JAGS_MAJOR_VERSION: 4
+        run: |
+          Sys.setenv(NOT_CRAN = "true")
+          # Use a persistent directory for install_path to allow debugging
+          install_path <- file.path(Sys.getenv("RUNNER_TEMP"), "R_LIBS")
+          dir.create(install_path, showWarnings = FALSE, recursive = TRUE)
+          
+          coverage <- covr::package_coverage(
+            quiet = FALSE,
+            clean = FALSE,
+            install_path = install_path
+          )
+          covr::codecov(coverage = coverage)
         shell: Rscript {0}
+      
+      # Print test failure details if coverage fails
+      - name: Show testthat output
+        if: failure()
+        shell: pwsh
+        run: |
+          $failFiles = Get-ChildItem -Path $env:RUNNER_TEMP -Recurse -Filter "testthat.Rout.fail" -ErrorAction SilentlyContinue
+          if ($failFiles) {
+            foreach ($file in $failFiles) {
+              Write-Host "`n=== Contents of $($file.FullName) ===`n"
+              Get-Content $file.FullName
+            }
+          } else {
+            Write-Host "No testthat.Rout.fail files found in $env:RUNNER_TEMP"
+          }

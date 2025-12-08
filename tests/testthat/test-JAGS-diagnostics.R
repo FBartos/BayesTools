@@ -245,7 +245,7 @@ test_that("JAGS diagnostics work (mixture priors)", {
 
   # create model with mix of a formula and free parameters ---
   formula_list <- list(
-    mu    = ~ x_cont
+    mu    = ~ x_cont + x_fac3t
   )
   formula_data_list <- list(
     mu    = data_formula
@@ -256,6 +256,10 @@ test_that("JAGS diagnostics work (mixture priors)", {
       "x_cont"      = prior_mixture(list(
         prior("normal", list(0, 1)),
         prior("spike", list(0))
+      )),
+      "x_fac3t"     = prior_mixture(list(
+        prior("spike", list(0)),
+        prior_factor("mnormal", list(0, .3))
       ))
     )
   )
@@ -278,6 +282,10 @@ test_that("JAGS diagnostics work (mixture priors)", {
   vdiffr::expect_doppelganger("diagnostics-plot-mixture-1", function() JAGS_diagnostics_density(fit, parameter = "mu_x_cont"))
   vdiffr::expect_doppelganger("diagnostics-plot-mixture-2", function() JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_cont"))
   vdiffr::expect_doppelganger("diagnostics-plot-mixture-3", function() JAGS_diagnostics_trace(fit, parameter = "mu_x_cont"))
+
+  vdiffr::expect_doppelganger("diagnostics-plot-mixture-4", function() JAGS_diagnostics_density(fit, parameter = "mu_x_fac3t"))
+  vdiffr::expect_doppelganger("diagnostics-plot-mixture-5", function() JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_fac3t"))
+  vdiffr::expect_doppelganger("diagnostics-plot-mixture-6", function() JAGS_diagnostics_trace(fit, parameter = "mu_x_fac3t"))
 })
 
 test_that("JAGS diagnostics work (meandif and independent)", {

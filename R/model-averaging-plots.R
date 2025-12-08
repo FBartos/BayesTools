@@ -1884,13 +1884,13 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
     plot <- ggplot2::ggplot()
 
     # add the studies
-    plot <- plot +ggplot2::geom_errorbarh(
+    plot <- plot +ggplot2::geom_errorbar(
       mapping = ggplot2::aes(
         xmin   = posterior_data[posterior_data$y_uCI - posterior_data$y_lCI > 0,]$y_lCI,
         xmax   = posterior_data[posterior_data$y_uCI - posterior_data$y_lCI > 0,]$y_uCI,
         y      = posterior_data[posterior_data$y_uCI - posterior_data$y_lCI > 0,]$x),
       color   = col,
-      height  = .25)
+      width   = .25)
     plot <- plot +ggplot2::geom_point(
       mapping = ggplot2::aes(
         x    = posterior_data$y,
@@ -1900,13 +1900,13 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
       shape = 15)
 
     if(prior){
-      plot <- plot +ggplot2::geom_errorbarh(
+      plot <- plot +ggplot2::geom_errorbar(
         mapping = ggplot2::aes(
           xmin   = prior_data[prior_data$y_uCI - prior_data$y_lCI > 0,]$y_lCI,
           xmax   = prior_data[prior_data$y_uCI - prior_data$y_lCI > 0,]$y_uCI,
           y      = prior_data[prior_data$y_uCI - prior_data$y_lCI > 0,]$x),
         color   = col2,
-        height  = .25)
+        width   = .25)
       plot <- plot +ggplot2::geom_point(
         mapping = ggplot2::aes(
           x    = prior_data$y,
