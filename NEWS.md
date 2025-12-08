@@ -1,3 +1,7 @@
+# version 0.2.23
+### Fixes
+- `JAGS_diagnostics` functions now correctly handle factor parameters nested within mixture priors
+
 # version 0.2.22
 ### Fixes
 - `plot_posterior()` function with spike and slab priors 
