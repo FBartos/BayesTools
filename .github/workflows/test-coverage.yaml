@@ -87,12 +87,29 @@ jobs:
 
       # Run the coverage check
       - name: Test coverage
-        run: covr::codecov()
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        run: |
+          Sys.setenv(NOT_CRAN = "true")
+          coverage <- covr::package_coverage(
+            quiet = FALSE,
+            clean = FALSE,
+            install_path = file.path(normalizePath(tempdir(), winslash = "/"), "R_LIBS")
+          )
+          covr::codecov(coverage = coverage)
         shell: Rscript {0}
-
+      
+      # Print test failure details if coverage fails
       - name: Show testthat output
         if: failure()
-        shell: cmd
+        shell: pwsh
         run: |
-          dir /s /b %TEMP%\**\testthat.Rout.fail
-          for /f "delims=" %%f in ('dir /s /b %TEMP%\**\testthat.Rout.fail') do type "%%f"
+          $failFiles = Get-ChildItem -Path $env:TEMP -Recurse -Filter "testthat.Rout.fail" -ErrorAction SilentlyContinue
+          if ($failFiles) {
+            foreach ($file in $failFiles) {
+              Write-Host "`n=== Contents of $($file.FullName) ===`n"
+              Get-Content $file.FullName
+            }
+          } else {
+            Write-Host "No testthat.Rout.fail files found"
+          }
