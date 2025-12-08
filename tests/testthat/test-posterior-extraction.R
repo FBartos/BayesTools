@@ -1,3 +1,5 @@
+context("Posterior density extraction functions")
+
 # Tests for posterior extraction helper functions
 test_that(".extract_posterior_samples extracts samples correctly", {
 
