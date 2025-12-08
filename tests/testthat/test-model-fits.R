@@ -62,15 +62,9 @@ test_that("Simple prior models fit correctly", {
   )
   
   model_syntax_simple <- "model{}"
-  model_syntax_simple <- JAGS_add_priors(model_syntax_simple, priors_various)
-  monitor <- JAGS_to_monitor(priors_various)
-  inits <- JAGS_get_inits(priors_various, chains = 2, seed = 1)
   
-  set.seed(1)
-  model <- rjags::jags.model(file = textConnection(model_syntax_simple), 
-                              inits = inits, n.chains = 2, quiet = TRUE)
-  fit_simple_various <- rjags::coda.samples(model = model, variable.names = monitor, 
-                                             n.iter = 1000, quiet = TRUE, progress.bar = "none")
+  fit_simple_various <- JAGS_fit(model_syntax_simple, data = list(), prior_list = priors_various,
+                                  chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
   save_fit(fit_simple_various, "fit_simple_various")
   
   # Model 3: PET and PEESE priors
@@ -79,15 +73,10 @@ test_that("Simple prior models fit correctly", {
     PEESE = prior_PEESE("gamma", list(1, 1))
   )
   
-  model_syntax_pb <- JAGS_add_priors("model{}", priors_pub_bias)
-  monitor_pb <- JAGS_to_monitor(priors_pub_bias)
-  inits_pb <- JAGS_get_inits(priors_pub_bias, chains = 2, seed = 1)
+  model_syntax_pb <- "model{}"
   
-  set.seed(1)
-  model_pb <- rjags::jags.model(file = textConnection(model_syntax_pb), 
-                                 inits = inits_pb, n.chains = 2, quiet = TRUE)
-  fit_simple_pub_bias <- rjags::coda.samples(model = model_pb, variable.names = monitor_pb, 
-                                              n.iter = 1000, quiet = TRUE, progress.bar = "none")
+  fit_simple_pub_bias <- JAGS_fit(model_syntax_pb, data = list(), prior_list = priors_pub_bias,
+                                   chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
   save_fit(fit_simple_pub_bias, "fit_simple_pub_bias")
   
   expect_true(file.exists(file.path(temp_fits_dir, "fit_simple_normal.RDS")))
@@ -108,15 +97,10 @@ test_that("Vector prior models fit correctly", {
     p1 = prior("mnormal", list(mean = 0, sd = 1, K = 3))
   )
   
-  model_syntax_vec <- JAGS_add_priors("model{}", priors_mnormal)
-  monitor_vec <- JAGS_to_monitor(priors_mnormal)
-  inits_vec <- JAGS_get_inits(priors_mnormal, chains = 2, seed = 1)
+  model_syntax_vec <- "model{}"
   
-  set.seed(1)
-  model_vec <- rjags::jags.model(file = textConnection(model_syntax_vec), 
-                                  inits = inits_vec, n.chains = 2, quiet = TRUE)
-  fit_vector_mnormal <- rjags::coda.samples(model = model_vec, variable.names = monitor_vec, 
-                                             n.iter = 1000, quiet = TRUE, progress.bar = "none")
+  fit_vector_mnormal <- JAGS_fit(model_syntax_vec, data = list(), prior_list = priors_mnormal,
+                                  chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
   save_fit(fit_vector_mnormal, "fit_vector_mnormal")
   
   # Multivariate cauchy
@@ -124,15 +108,10 @@ test_that("Vector prior models fit correctly", {
     p1 = prior("mcauchy", list(location = 0, scale = 1.5, K = 2))
   )
   
-  model_syntax_mc <- JAGS_add_priors("model{}", priors_mcauchy)
-  monitor_mc <- JAGS_to_monitor(priors_mcauchy)
-  inits_mc <- JAGS_get_inits(priors_mcauchy, chains = 2, seed = 1)
+  model_syntax_mc <- "model{}"
   
-  set.seed(1)
-  model_mc <- rjags::jags.model(file = textConnection(model_syntax_mc), 
-                                 inits = inits_mc, n.chains = 2, quiet = TRUE)
-  fit_vector_mcauchy <- rjags::coda.samples(model = model_mc, variable.names = monitor_mc, 
-                                             n.iter = 1000, quiet = TRUE, progress.bar = "none")
+  fit_vector_mcauchy <- JAGS_fit(model_syntax_mc, data = list(), prior_list = priors_mcauchy,
+                                  chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
   save_fit(fit_vector_mcauchy, "fit_vector_mcauchy")
   
   # Multivariate t
@@ -140,15 +119,10 @@ test_that("Vector prior models fit correctly", {
     p1 = prior("mt", list(location = 2, scale = 0.5, df = 5, K = 2))
   )
   
-  model_syntax_mt <- JAGS_add_priors("model{}", priors_mt)
-  monitor_mt <- JAGS_to_monitor(priors_mt)
-  inits_mt <- JAGS_get_inits(priors_mt, chains = 2, seed = 1)
+  model_syntax_mt <- "model{}"
   
-  set.seed(1)
-  model_mt <- rjags::jags.model(file = textConnection(model_syntax_mt), 
-                                 inits = inits_mt, n.chains = 2, quiet = TRUE)
-  fit_vector_mt <- rjags::coda.samples(model = model_mt, variable.names = monitor_mt, 
-                                        n.iter = 1000, quiet = TRUE, progress.bar = "none")
+  fit_vector_mt <- JAGS_fit(model_syntax_mt, data = list(), prior_list = priors_mt,
+                             chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
   save_fit(fit_vector_mt, "fit_vector_mt")
   
   expect_true(file.exists(file.path(temp_fits_dir, "fit_vector_mnormal.RDS")))
@@ -163,7 +137,6 @@ test_that("Vector prior models fit correctly", {
 test_that("Factor prior models fit correctly", {
   
   skip_if_not_installed("rjags")
-  skip_on_os(c("mac", "linux", "solaris"))  # multivariate sampling differences
   
   # Orthonormal contrast
   priors_orthonormal <- list(
@@ -171,15 +144,10 @@ test_that("Factor prior models fit correctly", {
   )
   attr(priors_orthonormal[[1]], "levels") <- 3
   
-  model_syntax_orth <- JAGS_add_priors("model{}", priors_orthonormal)
-  monitor_orth <- JAGS_to_monitor(priors_orthonormal)
-  inits_orth <- JAGS_get_inits(priors_orthonormal, chains = 2, seed = 1)
+  model_syntax_orth <- "model{}"
   
-  set.seed(1)
-  model_orth <- rjags::jags.model(file = textConnection(model_syntax_orth), 
-                                   inits = inits_orth, n.chains = 2, quiet = TRUE)
-  fit_factor_orthonormal <- rjags::coda.samples(model = model_orth, variable.names = monitor_orth, 
-                                                 n.iter = 1000, quiet = TRUE, progress.bar = "none")
+  fit_factor_orthonormal <- JAGS_fit(model_syntax_orth, data = list(), prior_list = priors_orthonormal,
+                                      chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
   save_fit(fit_factor_orthonormal, "fit_factor_orthonormal")
   
   # Treatment contrast
@@ -188,15 +156,10 @@ test_that("Factor prior models fit correctly", {
   )
   attr(priors_treatment[[1]], "levels") <- 2
   
-  model_syntax_treat <- JAGS_add_priors("model{}", priors_treatment)
-  monitor_treat <- JAGS_to_monitor(priors_treatment)
-  inits_treat <- JAGS_get_inits(priors_treatment, chains = 2, seed = 1)
+  model_syntax_treat <- "model{}"
   
-  set.seed(1)
-  model_treat <- rjags::jags.model(file = textConnection(model_syntax_treat), 
-                                    inits = inits_treat, n.chains = 2, quiet = TRUE)
-  fit_factor_treatment <- rjags::coda.samples(model = model_treat, variable.names = monitor_treat, 
-                                               n.iter = 1000, quiet = TRUE, progress.bar = "none")
+  fit_factor_treatment <- JAGS_fit(model_syntax_treat, data = list(), prior_list = priors_treatment,
+                                    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
   save_fit(fit_factor_treatment, "fit_factor_treatment")
   
   # Independent contrast
@@ -205,15 +168,10 @@ test_that("Factor prior models fit correctly", {
   )
   attr(priors_independent[[1]], "levels") <- 3
   
-  model_syntax_ind <- JAGS_add_priors("model{}", priors_independent)
-  monitor_ind <- JAGS_to_monitor(priors_independent)
-  inits_ind <- JAGS_get_inits(priors_independent, chains = 2, seed = 1)
+  model_syntax_ind <- "model{}"
   
-  set.seed(1)
-  model_ind <- rjags::jags.model(file = textConnection(model_syntax_ind), 
-                                  inits = inits_ind, n.chains = 2, quiet = TRUE)
-  fit_factor_independent <- rjags::coda.samples(model = model_ind, variable.names = monitor_ind, 
-                                                 n.iter = 1000, quiet = TRUE, progress.bar = "none")
+  fit_factor_independent <- JAGS_fit(model_syntax_ind, data = list(), prior_list = priors_independent,
+                                      chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
   save_fit(fit_factor_independent, "fit_factor_independent")
   
   # Meandif contrast
@@ -222,15 +180,10 @@ test_that("Factor prior models fit correctly", {
   )
   attr(priors_meandif[[1]], "levels") <- 3
   
-  model_syntax_md <- JAGS_add_priors("model{}", priors_meandif)
-  monitor_md <- JAGS_to_monitor(priors_meandif)
-  inits_md <- JAGS_get_inits(priors_meandif, chains = 2, seed = 1)
+  model_syntax_md <- "model{}"
   
-  set.seed(1)
-  model_md <- rjags::jags.model(file = textConnection(model_syntax_md), 
-                                 inits = inits_md, n.chains = 2, quiet = TRUE)
-  fit_factor_meandif <- rjags::coda.samples(model = model_md, variable.names = monitor_md, 
-                                             n.iter = 1000, quiet = TRUE, progress.bar = "none")
+  fit_factor_meandif <- JAGS_fit(model_syntax_md, data = list(), prior_list = priors_meandif,
+                                  chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 4)
   save_fit(fit_factor_meandif, "fit_factor_meandif")
   
   expect_true(file.exists(file.path(temp_fits_dir, "fit_factor_orthonormal.RDS")))
@@ -252,15 +205,10 @@ test_that("Weightfunction prior models fit correctly", {
     prior_weightfunction("one.sided", list(c(.05), c(1, 1)))
   )
   
-  model_syntax_wf1 <- JAGS_add_priors("model{}", priors_wf_onesided2)
-  monitor_wf1 <- JAGS_to_monitor(priors_wf_onesided2)
-  inits_wf1 <- JAGS_get_inits(priors_wf_onesided2, chains = 2, seed = 1)
+  model_syntax_wf1 <- "model{}"
   
-  set.seed(1)
-  model_wf1 <- rjags::jags.model(file = textConnection(model_syntax_wf1), 
-                                  inits = inits_wf1, n.chains = 2, quiet = TRUE)
-  fit_weightfunction_onesided2 <- rjags::coda.samples(model = model_wf1, variable.names = monitor_wf1, 
-                                                       n.iter = 1000, quiet = TRUE, progress.bar = "none")
+  fit_weightfunction_onesided2 <- JAGS_fit(model_syntax_wf1, data = list(), prior_list = priors_wf_onesided2,
+                                            chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
   save_fit(fit_weightfunction_onesided2, "fit_weightfunction_onesided2")
   
   # One-sided weightfunction (3 intervals)
@@ -268,15 +216,10 @@ test_that("Weightfunction prior models fit correctly", {
     prior_weightfunction("one.sided", list(c(.05, 0.10), c(1, 2, 3)))
   )
   
-  model_syntax_wf2 <- JAGS_add_priors("model{}", priors_wf_onesided3)
-  monitor_wf2 <- JAGS_to_monitor(priors_wf_onesided3)
-  inits_wf2 <- JAGS_get_inits(priors_wf_onesided3, chains = 2, seed = 1)
+  model_syntax_wf2 <- "model{}"
   
-  set.seed(1)
-  model_wf2 <- rjags::jags.model(file = textConnection(model_syntax_wf2), 
-                                  inits = inits_wf2, n.chains = 2, quiet = TRUE)
-  fit_weightfunction_onesided3 <- rjags::coda.samples(model = model_wf2, variable.names = monitor_wf2, 
-                                                       n.iter = 1000, quiet = TRUE, progress.bar = "none")
+  fit_weightfunction_onesided3 <- JAGS_fit(model_syntax_wf2, data = list(), prior_list = priors_wf_onesided3,
+                                            chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
   save_fit(fit_weightfunction_onesided3, "fit_weightfunction_onesided3")
   
   # Two-sided weightfunction
@@ -284,15 +227,10 @@ test_that("Weightfunction prior models fit correctly", {
     prior_weightfunction("two.sided", list(c(.05), c(1, 1)))
   )
   
-  model_syntax_wf3 <- JAGS_add_priors("model{}", priors_wf_twosided)
-  monitor_wf3 <- JAGS_to_monitor(priors_wf_twosided)
-  inits_wf3 <- JAGS_get_inits(priors_wf_twosided, chains = 2, seed = 1)
+  model_syntax_wf3 <- "model{}"
   
-  set.seed(1)
-  model_wf3 <- rjags::jags.model(file = textConnection(model_syntax_wf3), 
-                                  inits = inits_wf3, n.chains = 2, quiet = TRUE)
-  fit_weightfunction_twosided <- rjags::coda.samples(model = model_wf3, variable.names = monitor_wf3, 
-                                                      n.iter = 1000, quiet = TRUE, progress.bar = "none")
+  fit_weightfunction_twosided <- JAGS_fit(model_syntax_wf3, data = list(), prior_list = priors_wf_twosided,
+                                           chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
   save_fit(fit_weightfunction_twosided, "fit_weightfunction_twosided")
   
   # One-sided fixed weightfunction
@@ -300,15 +238,10 @@ test_that("Weightfunction prior models fit correctly", {
     prior_weightfunction("one.sided.fixed", list(c(.05), c(1, .5)))
   )
   
-  model_syntax_wf4 <- JAGS_add_priors("model{}", priors_wf_fixed)
-  monitor_wf4 <- JAGS_to_monitor(priors_wf_fixed)
-  inits_wf4 <- JAGS_get_inits(priors_wf_fixed, chains = 2, seed = 1)
+  model_syntax_wf4 <- "model{}"
   
-  set.seed(1)
-  model_wf4 <- rjags::jags.model(file = textConnection(model_syntax_wf4), 
-                                  inits = inits_wf4, n.chains = 2, quiet = TRUE)
-  fit_weightfunction_fixed <- rjags::coda.samples(model = model_wf4, variable.names = monitor_wf4, 
-                                                   n.iter = 1000, quiet = TRUE, progress.bar = "none")
+  fit_weightfunction_fixed <- JAGS_fit(model_syntax_wf4, data = list(), prior_list = priors_wf_fixed,
+                                        chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 4)
   save_fit(fit_weightfunction_fixed, "fit_weightfunction_fixed")
   
   expect_true(file.exists(file.path(temp_fits_dir, "fit_weightfunction_onesided2.RDS")))
@@ -331,15 +264,10 @@ test_that("Spike-and-slab prior models fit correctly", {
                                  prior_inclusion = prior("beta", list(1,1)))
   )
   
-  model_syntax_ss1 <- JAGS_add_priors("model{}", priors_spike_slab_simple)
-  monitor_ss1 <- JAGS_to_monitor(priors_spike_slab_simple)
-  inits_ss1 <- JAGS_get_inits(priors_spike_slab_simple, chains = 2, seed = 1)
+  model_syntax_ss1 <- "model{}"
   
-  set.seed(1)
-  model_ss1 <- rjags::jags.model(file = textConnection(model_syntax_ss1), 
-                                  inits = inits_ss1, n.chains = 2, quiet = TRUE)
-  fit_spike_slab_simple <- rjags::coda.samples(model = model_ss1, variable.names = monitor_ss1, 
-                                                n.iter = 1000, quiet = TRUE, progress.bar = "none")
+  fit_spike_slab_simple <- JAGS_fit(model_syntax_ss1, data = list(), prior_list = priors_spike_slab_simple,
+                                     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
   save_fit(fit_spike_slab_simple, "fit_spike_slab_simple")
   
   # Spike-and-slab with factor prior
@@ -355,15 +283,10 @@ test_that("Spike-and-slab prior models fit correctly", {
   # Set to 3 levels for a 3-level factor (A, B, C)
   attr(priors_spike_slab_factor$beta[[alternative_idx]], "levels") <- 3
   
-  model_syntax_ss2 <- JAGS_add_priors("model{}", priors_spike_slab_factor)
-  monitor_ss2 <- JAGS_to_monitor(priors_spike_slab_factor)
-  inits_ss2 <- JAGS_get_inits(priors_spike_slab_factor, chains = 2, seed = 1)
+  model_syntax_ss2 <- "model{}"
   
-  set.seed(1)
-  model_ss2 <- rjags::jags.model(file = textConnection(model_syntax_ss2), 
-                                  inits = inits_ss2, n.chains = 2, quiet = TRUE)
-  fit_spike_slab_factor <- rjags::coda.samples(model = model_ss2, variable.names = monitor_ss2, 
-                                                n.iter = 1000, quiet = TRUE, progress.bar = "none")
+  fit_spike_slab_factor <- JAGS_fit(model_syntax_ss2, data = list(), prior_list = priors_spike_slab_factor,
+                                     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
   save_fit(fit_spike_slab_factor, "fit_spike_slab_factor")
   
   expect_true(file.exists(file.path(temp_fits_dir, "fit_spike_slab_simple.RDS")))
@@ -390,15 +313,10 @@ test_that("Mixture prior models fit correctly", {
     )
   )
   
-  model_syntax_mix1 <- JAGS_add_priors("model{}", priors_mixture_simple)
-  monitor_mix1 <- JAGS_to_monitor(priors_mixture_simple)
-  inits_mix1 <- JAGS_get_inits(priors_mixture_simple, chains = 2, seed = 1)
+  model_syntax_mix1 <- "model{}"
   
-  set.seed(1)
-  model_mix1 <- rjags::jags.model(file = textConnection(model_syntax_mix1), 
-                                   inits = inits_mix1, n.chains = 2, quiet = TRUE)
-  fit_mixture_simple <- rjags::coda.samples(model = model_mix1, variable.names = monitor_mix1, 
-                                             n.iter = 1000, quiet = TRUE, progress.bar = "none")
+  fit_mixture_simple <- JAGS_fit(model_syntax_mix1, data = list(), prior_list = priors_mixture_simple,
+                                  chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
   save_fit(fit_mixture_simple, "fit_mixture_simple")
   
   # Mixture with components
@@ -412,15 +330,10 @@ test_that("Mixture prior models fit correctly", {
     )
   )
   
-  model_syntax_mix2 <- JAGS_add_priors("model{}", priors_mixture_components)
-  monitor_mix2 <- JAGS_to_monitor(priors_mixture_components)
-  inits_mix2 <- JAGS_get_inits(priors_mixture_components, chains = 2, seed = 1)
+  model_syntax_mix2 <- "model{}"
   
-  set.seed(1)
-  model_mix2 <- rjags::jags.model(file = textConnection(model_syntax_mix2), 
-                                   inits = inits_mix2, n.chains = 2, quiet = TRUE)
-  fit_mixture_components <- rjags::coda.samples(model = model_mix2, variable.names = monitor_mix2, 
-                                                 n.iter = 1000, quiet = TRUE, progress.bar = "none")
+  fit_mixture_components <- JAGS_fit(model_syntax_mix2, data = list(), prior_list = priors_mixture_components,
+                                      chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
   save_fit(fit_mixture_components, "fit_mixture_components")
   
   # Mixture with spike
@@ -433,15 +346,10 @@ test_that("Mixture prior models fit correctly", {
     )
   )
   
-  model_syntax_mix3 <- JAGS_add_priors("model{}", priors_mixture_spike)
-  monitor_mix3 <- JAGS_to_monitor(priors_mixture_spike)
-  inits_mix3 <- JAGS_get_inits(priors_mixture_spike, chains = 2, seed = 1)
+  model_syntax_mix3 <- "model{}"
   
-  set.seed(1)
-  model_mix3 <- rjags::jags.model(file = textConnection(model_syntax_mix3), 
-                                   inits = inits_mix3, n.chains = 2, quiet = TRUE)
-  fit_mixture_spike <- rjags::coda.samples(model = model_mix3, variable.names = monitor_mix3, 
-                                            n.iter = 1000, quiet = TRUE, progress.bar = "none")
+  fit_mixture_spike <- JAGS_fit(model_syntax_mix3, data = list(), prior_list = priors_mixture_spike,
+                                 chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
   save_fit(fit_mixture_spike, "fit_mixture_spike")
   
   expect_true(file.exists(file.path(temp_fits_dir, "fit_mixture_simple.RDS")))
@@ -456,7 +364,6 @@ test_that("Mixture prior models fit correctly", {
 test_that("Simple formula-based regression models fit correctly", {
   
   skip_if_not_installed("rjags")
-  skip_on_os(c("mac", "linux", "solaris"))
   
   set.seed(1)
   data_formula <- data.frame(
@@ -543,7 +450,6 @@ test_that("Simple formula-based regression models fit correctly", {
 test_that("Formula-based interaction models fit correctly", {
   
   skip_if_not_installed("rjags")
-  skip_on_os(c("mac", "linux", "solaris"))
   
   set.seed(1)
   data_formula <- data.frame(
@@ -635,7 +541,6 @@ test_that("Formula-based interaction models fit correctly", {
 test_that("Multi-formula models fit correctly", {
   
   skip_if_not_installed("rjags")
-  skip_on_os(c("mac", "linux", "solaris"))
   
   set.seed(1)
   data_formula <- data.frame(
@@ -697,7 +602,6 @@ test_that("Multi-formula models fit correctly", {
 test_that("Random effects models fit correctly", {
   
   skip_if_not_installed("rjags")
-  skip_on_os(c("mac", "linux", "solaris"))
   
   set.seed(1)
   data_formula <- data.frame(
@@ -788,7 +692,6 @@ test_that("Random effects models fit correctly", {
 test_that("Spike factor prior models fit correctly", {
   
   skip_if_not_installed("rjags")
-  skip_on_os(c("mac", "linux", "solaris"))
   
   set.seed(1)
   data_formula <- data.frame(
@@ -839,7 +742,6 @@ test_that("Spike factor prior models fit correctly", {
 test_that("Joint complex models fit correctly", {
   
   skip_if_not_installed("rjags")
-  skip_on_os(c("mac", "linux", "solaris"))
   
   set.seed(1)
   data_formula <- data.frame(
@@ -923,15 +825,10 @@ test_that("Expression prior models fit correctly", {
     x_sigma  = prior("invgamma", list(1/2, 1/2))
   )
   
-  model_syntax_expr1 <- JAGS_add_priors("model{}", priors_expr_simple)
-  monitor_expr1 <- JAGS_to_monitor(priors_expr_simple)
-  inits_expr1 <- JAGS_get_inits(priors_expr_simple, chains = 2, seed = 1)
+  model_syntax_expr1 <- "model{}"
   
-  set.seed(1)
-  model_expr1 <- rjags::jags.model(file = textConnection(model_syntax_expr1), 
-                                    inits = inits_expr1, n.chains = 2, quiet = TRUE)
-  fit_expression_simple <- rjags::coda.samples(model = model_expr1, variable.names = monitor_expr1, 
-                                                n.iter = 1000, quiet = TRUE, progress.bar = "none")
+  fit_expression_simple <- JAGS_fit(model_syntax_expr1, data = list(), prior_list = priors_expr_simple,
+                                     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
   save_fit(fit_expression_simple, "fit_expression_simple")
   
   # Spike-and-slab with expression
@@ -942,15 +839,10 @@ test_that("Expression prior models fit correctly", {
     x_sigma  = prior("invgamma", list(1/2, 1/2))
   )
   
-  model_syntax_expr2 <- JAGS_add_priors("model{}", priors_expr_ss)
-  monitor_expr2 <- JAGS_to_monitor(priors_expr_ss)
-  inits_expr2 <- JAGS_get_inits(priors_expr_ss, chains = 2, seed = 1)
+  model_syntax_expr2 <- "model{}"
   
-  set.seed(1)
-  model_expr2 <- rjags::jags.model(file = textConnection(model_syntax_expr2), 
-                                    inits = inits_expr2, n.chains = 2, quiet = TRUE)
-  fit_expression_spike_slab <- rjags::coda.samples(model = model_expr2, variable.names = monitor_expr2, 
-                                                    n.iter = 1000, quiet = TRUE, progress.bar = "none")
+  fit_expression_spike_slab <- JAGS_fit(model_syntax_expr2, data = list(), prior_list = priors_expr_ss,
+                                         chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
   save_fit(fit_expression_spike_slab, "fit_expression_spike_slab")
   
   # Mixture with expression
@@ -962,15 +854,10 @@ test_that("Expression prior models fit correctly", {
     x_sigma  = prior("invgamma", list(1/2, 1/2))
   )
   
-  model_syntax_expr3 <- JAGS_add_priors("model{}", priors_expr_mix)
-  monitor_expr3 <- JAGS_to_monitor(priors_expr_mix)
-  inits_expr3 <- JAGS_get_inits(priors_expr_mix, chains = 2, seed = 1)
+  model_syntax_expr3 <- "model{}"
   
-  set.seed(1)
-  model_expr3 <- rjags::jags.model(file = textConnection(model_syntax_expr3), 
-                                    inits = inits_expr3, n.chains = 2, quiet = TRUE)
-  fit_expression_mixture <- rjags::coda.samples(model = model_expr3, variable.names = monitor_expr3, 
-                                                 n.iter = 1000, quiet = TRUE, progress.bar = "none")
+  fit_expression_mixture <- JAGS_fit(model_syntax_expr3, data = list(), prior_list = priors_expr_mix,
+                                      chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
   save_fit(fit_expression_mixture, "fit_expression_mixture")
   
   expect_true(file.exists(file.path(temp_fits_dir, "fit_expression_simple.RDS")))
