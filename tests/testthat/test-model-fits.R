@@ -9,6 +9,7 @@ skip_on_cran()
 # Setup directory for saving fitted models
 temp_fits_dir <- file.path(tempdir(), "BayesTools_test_fits")
 dir.create(temp_fits_dir, showWarnings = FALSE, recursive = TRUE)
+# Set environment variable so other test files can locate pre-fitted models
 Sys.setenv(BAYESTOOLS_TEST_FITS_DIR = temp_fits_dir)
 
 # Helper function to save fitted models
@@ -347,9 +348,11 @@ test_that("Spike-and-slab prior models fit correctly", {
                                    prior_inclusion = prior("beta", list(1,1)))
   )
   
-  # Set levels attribute on the variable component within the spike_and_slab mixture
+  # Set levels attribute on the factor prior component within the spike_and_slab mixture
+  # The spike_and_slab prior contains multiple components; we need to set levels on the factor component
   components <- attr(priors_spike_slab_factor$beta, "components")
   alternative_idx <- which(components == "alternative")
+  # Set to 3 levels for a 3-level factor (A, B, C)
   attr(priors_spike_slab_factor$beta[[alternative_idx]], "levels") <- 3
   
   model_syntax_ss2 <- JAGS_add_priors("model{}", priors_spike_slab_factor)
@@ -805,6 +808,8 @@ test_that("Spike factor prior models fit correctly", {
   prior_list <- list(sigma = prior("lognormal", list(0, 1)))
   
   # Spike priors with different contrasts
+  # Note: Using - 1 to remove the intercept since spike priors for independent factors 
+  # define all levels explicitly, and we're testing different contrast behaviors
   formula_list_spike <- list(mu = ~ x_fac2i + x_fac3o + x_fac3t + x_fac3md - 1)
   formula_data_list_spike <- list(mu = data_formula)
   formula_prior_list_spike <- list(
@@ -872,6 +877,7 @@ test_that("Joint complex models fit correctly", {
       )
     )
   )
+  # Scale the continuous predictor by sigma (standard practice for hierarchical centering)
   attr(formula_prior_list_joint$mu$x_cont1, "multiply_by") <- "sigma"
   
   prior_list_joint <- list(
