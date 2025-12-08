@@ -92,12 +92,18 @@ jobs:
       - name: Test coverage
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          JAGS_ROOT: "/c/progra~1/JAGS/JAGS-4.3.1"
+          JAGS_MAJOR_VERSION: 4
         run: |
           Sys.setenv(NOT_CRAN = "true")
+          # Use a persistent directory for install_path to allow debugging
+          install_path <- file.path(Sys.getenv("RUNNER_TEMP"), "R_LIBS")
+          dir.create(install_path, showWarnings = FALSE, recursive = TRUE)
+          
           coverage <- covr::package_coverage(
             quiet = FALSE,
             clean = FALSE,
-            install_path = file.path(normalizePath(tempdir(), winslash = "/"), "R_LIBS")
+            install_path = install_path
           )
           covr::codecov(coverage = coverage)
         shell: Rscript {0}
@@ -107,12 +113,12 @@ jobs:
         if: failure()
         shell: pwsh
         run: |
-          $failFiles = Get-ChildItem -Path $env:TEMP -Recurse -Filter "testthat.Rout.fail" -ErrorAction SilentlyContinue
+          $failFiles = Get-ChildItem -Path $env:RUNNER_TEMP -Recurse -Filter "testthat.Rout.fail" -ErrorAction SilentlyContinue
           if ($failFiles) {
             foreach ($file in $failFiles) {
               Write-Host "`n=== Contents of $($file.FullName) ===`n"
               Get-Content $file.FullName
             }
           } else {
-            Write-Host "No testthat.Rout.fail files found"
+            Write-Host "No testthat.Rout.fail files found in $env:RUNNER_TEMP"
           }
