@@ -447,40 +447,42 @@ JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 5
   check_char(add_parameters, "add_parameters", check_length = 0, allow_NULL = TRUE)
 
   # extract samples and parameter information
-  mcmc_samples    <- coda::as.mcmc.list(fit)
-  parameter_names <- colnames(mcmc_samples[[1]])
-  parameters_keep <- rep(TRUE, length(parameter_names))
-
-  # remove auxiliary and support parameters from the summary
-  for(i in seq_along(prior_list)){
-    if(is.prior.weightfunction(prior_list[[i]])){
-      if(prior_list[[i]][["distribution"]] %in% c("one.sided", "two.sided")){
-        parameters_keep[grepl("eta", parameter_names)] <- FALSE
-      }
-      parameter_names[max(grep("omega", parameter_names))] <- FALSE
-    }else if(is.prior.mixture(prior_list[[i]]) && any(sapply(prior_list[[i]], is.prior.weightfunction))){
-      parameters_keep[max(grep("omega", parameter_names))] <- FALSE
-    }else if(is.prior.point(prior_list[[i]])){
-      parameters_keep[parameter_names == names(prior_list)[i]] <- FALSE
-    }else if(is.prior.simple(prior_list[[i]]) && prior_list[[i]][["distribution"]] == "invgamma"){
-      parameters_keep[parameter_names == paste0("inv_",names(prior_list)[i])] <- FALSE
-    }else if(is.prior.mixture(prior_list[[i]]) && length(prior_list[[i]]) == 1 && is.prior.point(prior_list[[i]][[1]])){
-      parameters_keep[parameter_names == names(prior_list)[i]] <- FALSE
-    }
-  }
-
-  # remove indicators/inclusions
-  parameters_keep[grepl("_indicator", parameter_names)] <- FALSE
-  parameters_keep[grepl("_inclusion", parameter_names)] <- FALSE
-
-  if(all(!parameters_keep)){
+  mcmc_samples_list <- coda::as.mcmc.list(fit)
+  mcmc_samples      <- do.call(rbind, mcmc_samples_list)
+  
+  # build remove_parameters list: point priors, spike priors, indicators, inclusions
+  remove_params <- c(
+    # point priors
+    names(prior_list)[sapply(prior_list, is.prior.point)],
+    # mixture with single point prior
+    names(prior_list)[sapply(prior_list, function(p) {
+      is.prior.mixture(p) && length(p) == 1 && is.prior.point(p[[1]])
+    })],
+    # add_parameters that should be excluded
+    add_parameters
+  )
+  
+  # use helper to remove auxiliary parameters
+  cleaned <- .remove_auxiliary_parameters(mcmc_samples, prior_list, remove_params)
+  mcmc_samples <- cleaned$model_samples
+  
+  # remove indicators/inclusions (not handled by helper since they're not in prior_list)
+  indicator_cols <- grepl("_indicator|_inclusion", colnames(mcmc_samples))
+  mcmc_samples <- mcmc_samples[, !indicator_cols, drop = FALSE]
+  
+  if(ncol(mcmc_samples) == 0){
     return(TRUE)
   }
-
-  # remove parameters that are not monitored
-  for(i in seq_along(mcmc_samples)){
-    mcmc_samples[[i]] <- mcmc_samples[[i]][,parameters_keep,drop=FALSE]
-  }
+  
+  # convert back to mcmc.list for convergence checks
+  n_chains <- length(mcmc_samples_list)
+  samples_per_chain <- nrow(mcmc_samples) / n_chains
+  mcmc_samples_list_cleaned <- lapply(1:n_chains, function(i) {
+    start_idx <- (i - 1) * samples_per_chain + 1
+    end_idx <- i * samples_per_chain
+    coda::as.mcmc(mcmc_samples[start_idx:end_idx, , drop = FALSE])
+  })
+  mcmc_samples <- coda::as.mcmc.list(mcmc_samples_list_cleaned)
 
   ### check the convergence
   fails <- NULL

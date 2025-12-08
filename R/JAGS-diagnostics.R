@@ -213,14 +213,14 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
   if(!is.null(transformations) && any(!sapply(transformations, function(trans)is.function(trans[["fun"]]))))
     stop("'transformations' must be list of functions in the 'fun' element.")
 
-  model_samples <- coda::as.mcmc.list(fit)
-  samples_chain <- lapply(seq_along(model_samples), function(i) {
-    return(rep(i, nrow(model_samples[[i]])))
+  model_samples_list <- .extract_posterior_samples(fit, as_list = TRUE)
+  samples_chain <- lapply(seq_along(model_samples_list), function(i) {
+    return(rep(i, nrow(model_samples_list[[i]])))
   })
-  samples_iter  <- lapply(seq_along(model_samples), function(i) {
-    return(1:nrow(model_samples[[i]]))
+  samples_iter  <- lapply(seq_along(model_samples_list), function(i) {
+    return(1:nrow(model_samples_list[[i]]))
   })
-  model_samples <- do.call(rbind, model_samples)
+  model_samples <- do.call(rbind, model_samples_list)
 
 
   # extract the relevant parameters
@@ -280,82 +280,18 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
 
   # mostly adapted from runjags_estimates_table
   # apply transformations
-  if(!is.null(transformations)){
-    for(par in names(transformations)){
-      model_samples[,par] <- do.call(transformations[[par]][["fun"]], c(list(model_samples[,par]), transformations[[par]][["arg"]]))
-    }
-  }
+  model_samples <- .apply_parameter_transformations(model_samples, transformations, prior_list, transform_factors)
 
-  # transform meandif and orthonormal factors to differences from runjags_estimates_table
-  if(transform_factors & any(sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x)))){
-    for(par in names(prior_list)[sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x))]){
+  # transform meandif and orthonormal factors to differences
+  model_samples <- .transform_factor_contrasts(model_samples, prior_list, transform_factors, transformations)
+  
+  # rename factor levels (treatment, independent)
+  model_samples <- .rename_factor_levels(model_samples, prior_list)
+  
+  # extract parameter names from column names after transformations and renaming
+  parameter_names <- colnames(model_samples)
 
-      if(.get_prior_factor_levels(prior_list[[par]]) == 1){
-        par_names <- par
-      }else{
-        par_names <- paste0(par, "[", 1:.get_prior_factor_levels(prior_list[[par]]), "]")
-      }
-
-      original_samples <- model_samples[,par_names,drop = FALSE]
-
-      if(is.prior.orthonormal(prior_list[[par]])){
-        model_samples <- original_samples %*% t(contr.orthonormal(1:(.get_prior_factor_levels(prior_list[[par]])+1)))
-      }else if(is.prior.meandif(prior_list[[par]])){
-        model_samples <- original_samples %*% t(contr.meandif(1:(.get_prior_factor_levels(prior_list[[par]])+1)))
-      }
-
-
-      if(attr(prior_list[[par]], "interaction")){
-        if(length(.get_prior_factor_level_names(prior_list[[par]])) == 1){
-          parameter_names <- paste0(par, " [dif: ", .get_prior_factor_level_names(prior_list[[par]])[[1]],"]")
-        }else{
-          stop("orthonormal/meandif de-transformation for interaction of multiple factors is not implemented.")
-        }
-      }else{
-        parameter_names <- paste0(par, " [dif: ", .get_prior_factor_level_names(prior_list[[par]]),"]")
-      }
-    }
-  }else if(any(sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x)))){
-    for(par in names(prior_list)[sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x))]){
-      if(.get_prior_factor_levels(prior_list[[par]]) == 1){
-        parameter_names <- par
-      }else{
-        parameter_names <- paste0(par, "[", 1:.get_prior_factor_levels(prior_list[[par]]), "]")
-      }
-    }
-  }
-
-  # rename treatment factor levels
-  if(any(sapply(prior_list, is.prior.treatment))){
-    for(par in names(prior_list)[sapply(prior_list, is.prior.treatment)]){
-      if(!.is_prior_interaction(prior_list[[par]])){
-        if(.get_prior_factor_levels(prior_list[[par]]) == 1){
-          parameter_names <- par
-        }else{
-          parameter_names <- paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]])[-1], "]")
-        }
-      }else if(length(attr(prior_list[[par]], "levels")) == 1){
-        parameter_names <- paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]])[[1]][-1], "]")
-      }
-    }
-  }
-
-  # rename independent factor levels
-  if(any(sapply(prior_list, is.prior.independent))){
-    for(par in names(prior_list)[sapply(prior_list, is.prior.independent)]){
-      if(!.is_prior_interaction(prior_list[[par]])){
-        if(.get_prior_factor_levels(prior_list[[par]]) == 1){
-          parameter_names <- par
-        }else{
-          parameter_names <- paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]]), "]")
-        }
-      }else if(length(attr(prior_list[[par]], "levels")) == 1){
-        parameter_names <- paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]]), "]")
-      }
-    }
-  }
-
-  # rename weightfunctions factor levels
+  # rename weightfunctions factor levels (special case that overrides)
   if(any(sapply(prior_list, is.prior.weightfunction)) && !is.prior.mixture(prior_list)){
     for(par in names(prior_list)[sapply(prior_list, is.prior.weightfunction)]){
       omega_cuts      <- weightfunctions_mapping(prior_list[par], cuts_only = TRUE)
