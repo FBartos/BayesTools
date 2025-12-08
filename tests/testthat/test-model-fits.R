@@ -723,6 +723,7 @@ test_that("Random effects models fit correctly", {
   prior_list <- list(sigma = prior("lognormal", list(0, 1)))
   
   # Random intercept only
+  # Note: Using || for uncorrelated random effects (as opposed to | for correlated)
   formula_list_re_int <- list(mu = ~ 1 + (1 ||id))
   formula_data_list_re_int <- list(mu = data_formula)
   formula_prior_list_re_int <- list(
