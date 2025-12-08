@@ -5,26 +5,37 @@ test_that(".extract_posterior_samples extracts samples correctly", {
 
   skip_on_cran()
   skip_if_not_installed("rjags")
-
-  # Test with mock mcmc samples (the helper function is just a wrapper)
-  # We test that it correctly calls coda functions
+  skip_if_not_installed("runjags")
   
-  # Create a simple single-chain mcmc object for matrix test
-  mcmc_single <- coda::mcmc(matrix(rnorm(100), ncol = 1, dimnames = list(NULL, "mu")))
-  
-  # For as_list=FALSE, should work with single chain
-  samples_matrix <- suppressWarnings(coda::as.mcmc(mcmc_single))
-  expect_true(is.matrix(samples_matrix))
-  expect_equal(ncol(samples_matrix), 1)
-  expect_true("mu" %in% colnames(samples_matrix))
+  # Load runjags to ensure S3 methods are registered
+  library(runjags)
 
-  # Create an mcmc.list for list test
-  mcmc1 <- coda::mcmc(matrix(rnorm(100), ncol = 1, dimnames = list(NULL, "mu")))
-  mcmc2 <- coda::mcmc(matrix(rnorm(100), ncol = 1, dimnames = list(NULL, "mu")))
+  # Create a proper runjags object structure for testing
+  # The runjags package has an as.mcmc method that handles mcmc.list objects
+  set.seed(123)
+  mcmc1 <- coda::mcmc(matrix(rnorm(100), ncol = 1, dimnames = list(NULL, "mu")),
+                      start = 1, end = 100, thin = 1)
+  mcmc2 <- coda::mcmc(matrix(rnorm(100), ncol = 1, dimnames = list(NULL, "mu")),
+                      start = 1, end = 100, thin = 1)
   mcmc_list <- coda::mcmc.list(mcmc1, mcmc2)
   
-  # For as_list=TRUE, should return mcmc.list
-  samples_list <- coda::as.mcmc.list(mcmc_list)
+  # Create a minimal runjags object
+  fit <- structure(
+    list(mcmc = mcmc_list),
+    class = c("runjags", "list")
+  )
+
+  # Test matrix extraction (as_list = FALSE)
+  # This calls coda::as.mcmc on the runjags object which returns an mcmc object
+  samples_matrix <- BayesTools:::.extract_posterior_samples(fit, as_list = FALSE)
+  # mcmc objects inherit from matrix
+  expect_true(inherits(samples_matrix, "mcmc"))
+  expect_equal(ncol(samples_matrix), 1)
+  expect_true("mu" %in% colnames(samples_matrix))
+  expect_equal(nrow(samples_matrix), 200)  # 100 samples x 2 chains merged
+
+  # Test list extraction (as_list = TRUE)
+  samples_list <- BayesTools:::.extract_posterior_samples(fit, as_list = TRUE)
   expect_true(inherits(samples_list, "mcmc.list"))
   expect_equal(length(samples_list), 2) # 2 chains
 })
