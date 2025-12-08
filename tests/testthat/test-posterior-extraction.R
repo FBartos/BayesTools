@@ -2,8 +2,7 @@
 test_that(".extract_posterior_samples extracts samples correctly", {
 
   skip_on_cran()
-  skip_on_ci()
-  skip_on_os("linux")
+  skip_if_not_installed("rjags")
 
   # Simple model
   data <- data.frame(y = rnorm(50))
@@ -33,8 +32,7 @@ test_that(".extract_posterior_samples extracts samples correctly", {
 
 test_that(".remove_auxiliary_parameters removes invgamma support", {
   skip_on_cran()
-  skip_on_ci()
-  skip_on_os("linux")
+  skip_if_not_installed("rjags")
 
   # Create mock samples with invgamma support parameter
   model_samples <- matrix(rnorm(100), ncol = 2)
@@ -53,8 +51,7 @@ test_that(".remove_auxiliary_parameters removes invgamma support", {
 
 test_that(".process_spike_and_slab handles conditional samples", {
   skip_on_cran()
-  skip_on_ci()
-  skip_on_os("linux")
+  skip_if_not_installed("rjags")
 
   # Create mock samples with spike and slab
   model_samples <- matrix(c(
@@ -83,8 +80,7 @@ test_that(".process_spike_and_slab handles conditional samples", {
 
 test_that(".apply_parameter_transformations applies transformations", {
   skip_on_cran()
-  skip_on_ci()
-  skip_on_os("linux")
+  skip_if_not_installed("rjags")
 
   # Create mock samples
   model_samples <- matrix(rnorm(100, 0, 1), ncol = 1)
@@ -110,8 +106,7 @@ test_that(".apply_parameter_transformations applies transformations", {
 
 test_that(".rename_factor_levels renames treatment factors", {
   skip_on_cran()
-  skip_on_ci()
-  skip_on_os("linux")
+  skip_if_not_installed("rjags")
 
   # Create mock samples with factor
   model_samples <- matrix(rnorm(300), ncol = 3)
@@ -119,7 +114,8 @@ test_that(".rename_factor_levels renames treatment factors", {
 
   # Create a factor prior with levels attribute (as would be set by JAGS_formula)
   prior_obj <- prior_factor("normal", list(0, 1), contrast = "treatment")
-  attr(prior_obj, "levels") <- c("A", "B", "C", "D")
+  attr(prior_obj, "levels") <- 4  # 4 levels total (treatment has K-1 parameters for K levels)
+  attr(prior_obj, "level_names") <- list(c("A", "B", "C", "D"))
   
   prior_list <- list(group = prior_obj)
 
@@ -134,16 +130,16 @@ test_that(".rename_factor_levels renames treatment factors", {
 
 test_that(".transform_factor_contrasts transforms orthonormal to differences", {
   skip_on_cran()
-  skip_on_ci()
-  skip_on_os("linux")
+  skip_if_not_installed("rjags")
 
   # Create mock samples with orthonormal contrasts
   model_samples <- matrix(rnorm(300), ncol = 3)
   colnames(model_samples) <- c("group[1]", "group[2]", "group[3]")
 
   # Create a factor prior with levels attribute (as would be set by JAGS_formula)
-  prior_obj <- prior_factor("normal", list(0, 1), contrast = "orthonormal")
-  attr(prior_obj, "levels") <- c("A", "B", "C", "D")
+  prior_obj <- prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+  attr(prior_obj, "levels") <- 4  # 4 levels total (orthonormal has K-1 parameters for K levels)
+  attr(prior_obj, "level_names") <- list(c("A", "B", "C", "D"))
   
   prior_list <- list(group = prior_obj)
 
@@ -162,8 +158,7 @@ test_that(".transform_factor_contrasts transforms orthonormal to differences", {
 
 test_that("helper functions integrate correctly in runjags_estimates_table", {
   skip_on_cran()
-  skip_on_ci()
-  skip_on_os("linux")
+  skip_if_not_installed("rjags")
 
   # Fit a simple model
   data <- data.frame(y = rnorm(50))
