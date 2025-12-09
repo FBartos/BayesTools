@@ -19,7 +19,17 @@ if (temp_fits_dir == "" || !dir.exists(temp_fits_dir)) {
 # If models don't exist, run test-00-model-fits.R first
 if (!dir.exists(temp_fits_dir) || length(list.files(temp_fits_dir, pattern = "\\.RDS$")) == 0) {
   message("Pre-fitted models not found. Running test-00-model-fits.R...")
-  test_file("testthat/test-00-model-fits.R")
+  # Try to find the test file relative to this script
+  test_file_path <- file.path(dirname(sys.frame(1)$ofile), "testthat", "test-00-model-fits.R")
+  if (!file.exists(test_file_path)) {
+    # Fallback to assuming we're in tests/ directory
+    test_file_path <- "testthat/test-00-model-fits.R"
+  }
+  if (file.exists(test_file_path)) {
+    test_file(test_file_path)
+  } else {
+    stop("Could not find test-00-model-fits.R. Please run it manually first.")
+  }
 }
 
 # Load models for print testing
