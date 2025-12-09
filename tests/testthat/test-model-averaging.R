@@ -325,19 +325,12 @@ test_that("JAGS model-averaging with formula models", {
 
 
 # ==============================================================================
-# SECTION 3: PRINT TESTS WITH TXT FILE COMPARISON
+# HELPER FUNCTION FOR PRINT TESTS
 # ==============================================================================
-test_that("Model-averaging print output matches expected format", {
-  
-  skip_if_not_installed("rjags")
-  skip_if_not_installed("bridgesampling")
-  
-  # Create a list to store fits for printing
-  fits <- list()
-  
-  # Load some pre-fitted models
+# Generate ensemble inference for print testing
+generate_print_test_inference <- function(temp_fits_dir) {
+  # Load pre-fitted model
   fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
-  fit_simple_various <- readRDS(file.path(temp_fits_dir, "fit_simple_various.RDS"))
   
   # Create test data and models for averaging
   set.seed(1)
@@ -385,12 +378,23 @@ test_that("Model-averaging print output matches expected format", {
     list(fit = fit_simple_normal, marglik = marglik_normal, prior_weights = 1)
   )
   
-  # Generate ensemble inference and mixed posteriors
+  # Generate ensemble inference
   inference <- ensemble_inference(model_list = models, parameters = c("m", "s"), 
                                   is_null_list = list("m" = 1, "s" = 0), conditional = FALSE)
   
-  # Store inference objects for print testing
-  fits[[1]] <- inference
+  return(list(inference))
+}
+
+# ==============================================================================
+# SECTION 3: PRINT TESTS WITH TXT FILE COMPARISON
+# ==============================================================================
+test_that("Model-averaging print output matches expected format", {
+  
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+  
+  # Generate fits for print testing
+  fits <- generate_print_test_inference(temp_fits_dir)
   
   # Compare printed output with saved files
   for(i in 1:length(fits)){
@@ -429,65 +433,8 @@ if(UPDATE_OUTPUT && !identical(Sys.getenv("CI"), "true")) {
       dir.create(print_dir, recursive = TRUE)
     }
     
-    # Create a list to store fits for printing
-    fits <- list()
-    
-    # Load some pre-fitted models
-    fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
-    fit_simple_various <- readRDS(file.path(temp_fits_dir, "fit_simple_various.RDS"))
-    
-    # Create test data and models for averaging
-    set.seed(1)
-    data <- list(
-      x = rnorm(50, 0, .5),
-      N = 50
-    )
-    
-    log_posterior_normal <- function(parameters, data){
-      sum(stats::dnorm(data$x, parameters[["m"]], parameters[["s"]], log = TRUE))
-    }
-    
-    priors_normal <- list(
-      m = prior("normal", list(0, 1)),
-      s = prior("normal", list(0, 1), list(0, Inf))
-    )
-    
-    priors_spike <- list(
-      m = prior("spike", list(0)),
-      s = prior("normal", list(0, 1), list(0, Inf))
-    )
-    
-    model_syntax <-
-      "model
-      {
-        for(i in 1:N){
-          x[i] ~ dnorm(m, pow(s, -2))
-        }
-      }"
-    
-    fit_spike <- JAGS_fit(model_syntax, data, priors_spike, 
-                          chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
-    
-    # Get marginal likelihoods
-    marglik_normal <- JAGS_bridgesampling(fit_simple_normal, 
-                                           log_posterior = log_posterior_normal, 
-                                           data = data, prior_list = priors_normal)
-    marglik_spike <- JAGS_bridgesampling(fit_spike, 
-                                          log_posterior = log_posterior_normal, 
-                                          data = data, prior_list = priors_spike)
-    
-    # Create model list
-    models <- list(
-      list(fit = fit_spike, marglik = marglik_spike, prior_weights = 1),
-      list(fit = fit_simple_normal, marglik = marglik_normal, prior_weights = 1)
-    )
-    
-    # Generate ensemble inference
-    inference <- ensemble_inference(model_list = models, parameters = c("m", "s"), 
-                                    is_null_list = list("m" = 1, "s" = 0), conditional = FALSE)
-    
-    # Store inference objects for print testing
-    fits[[1]] <- inference
+    # Generate fits for print testing
+    fits <- generate_print_test_inference(temp_fits_dir)
     
     # Generate print files
     for(i in seq_along(fits)){
