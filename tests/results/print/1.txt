@@ -1,0 +1,66 @@
+[[1]]
+[[1]]$fit
+
+JAGS model with 500 samples (adapt+burnin = 250)
+
+Full summary statistics have not been pre-calculated - use either the summary method or add.summary to calculate summary statistics
+
+
+[[1]]$marglik
+Bridge sampling estimate of the log marginal likelihood: -28.16707
+Estimate obtained in 6 iteration(s) via method "normal".
+
+[[1]]$prior_weights
+[1] 1
+
+[[1]]$inference
+[[1]]$inference$m_number
+[1] 1
+
+[[1]]$inference$marglik
+[1] -28.16707
+
+[[1]]$inference$prior_prob
+[1] 0.5
+
+[[1]]$inference$post_prob
+[1] 0.5673282
+
+[[1]]$inference$inclusion_BF
+[1] 1.311221
+
+
+
+[[2]]
+[[2]]$fit
+
+JAGS model with 500 samples (adapt+burnin = 250)
+
+Full summary statistics have not been pre-calculated - use either the summary method or add.summary to calculate summary statistics
+
+
+[[2]]$marglik
+Bridge sampling estimate of the log marginal likelihood: -28.43802
+Estimate obtained in 5 iteration(s) via method "normal".
+
+[[2]]$prior_weights
+[1] 1
+
+[[2]]$inference
+[[2]]$inference$m_number
+[1] 2
+
+[[2]]$inference$marglik
+[1] -28.43802
+
+[[2]]$inference$prior_prob
+[1] 0.5
+
+[[2]]$inference$post_prob
+[1] 0.4326718
+
+[[2]]$inference$inclusion_BF
+[1] 0.7626482
+
+
+
