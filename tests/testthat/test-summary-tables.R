@@ -449,7 +449,7 @@ test_that("Summary table printing works", {
   }
   
   # Compare printed output with saved reference files
-  for(i in 1:length(fits)){
+  for(i in seq_along(fits)){
     ref_file <- file.path(print_dir, paste0(i, ".txt"))
     if (!file.exists(ref_file)) {
       skip(paste0("Reference file ", i, ".txt not found. Run tests/generate_print_references.R to generate."))
