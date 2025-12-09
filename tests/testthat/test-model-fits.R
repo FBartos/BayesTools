@@ -79,9 +79,20 @@ test_that("Simple prior models fit correctly", {
                                    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
   save_fit(fit_simple_pub_bias, "fit_simple_pub_bias")
   
+  # Model 4: Test with thinning parameter
+  priors_thin <- list(
+    mu = prior("normal", list(0, 1))
+  )
+  model_syntax_thin <- "model{}"
+  
+  fit_simple_thin <- JAGS_fit(model_syntax_thin, data = list(), prior_list = priors_thin,
+                              chains = 2, adapt = 100, burnin = 150, sample = 300, thin = 3, seed = 2)
+  save_fit(fit_simple_thin, "fit_simple_thin")
+  
   expect_true(file.exists(file.path(temp_fits_dir, "fit_simple_normal.RDS")))
   expect_true(file.exists(file.path(temp_fits_dir, "fit_simple_various.RDS")))
   expect_true(file.exists(file.path(temp_fits_dir, "fit_simple_pub_bias.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_simple_thin.RDS")))
 })
 
 
@@ -244,10 +255,22 @@ test_that("Weightfunction prior models fit correctly", {
                                         chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 4)
   save_fit(fit_weightfunction_fixed, "fit_weightfunction_fixed")
   
+  # No weightfunction (prior_none)
+  priors_wf_none <- list(
+    omega = prior_none()
+  )
+  
+  model_syntax_wf5 <- "model{}"
+  
+  fit_weightfunction_none <- JAGS_fit(model_syntax_wf5, data = list(), prior_list = priors_wf_none,
+                                       chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 5)
+  save_fit(fit_weightfunction_none, "fit_weightfunction_none")
+  
   expect_true(file.exists(file.path(temp_fits_dir, "fit_weightfunction_onesided2.RDS")))
   expect_true(file.exists(file.path(temp_fits_dir, "fit_weightfunction_onesided3.RDS")))
   expect_true(file.exists(file.path(temp_fits_dir, "fit_weightfunction_twosided.RDS")))
   expect_true(file.exists(file.path(temp_fits_dir, "fit_weightfunction_fixed.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_weightfunction_none.RDS")))
 })
 
 
