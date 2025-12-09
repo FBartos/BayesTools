@@ -103,7 +103,7 @@ test_that("Simple prior models fit correctly", {
 
   model_syntax_simple <- "model{}"
 
-  fit_simple_various <- JAGS_fit(model_syntax_simple, data = list(), prior_list = priors_various,
+  fit_simple_various <- JAGS_fit(model_syntax_simple, data = NULL, prior_list = priors_various,
                                   chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
   result <- save_fit(fit_simple_various, "fit_simple_various",
            simple_priors = TRUE,
@@ -119,7 +119,7 @@ test_that("Simple prior models fit correctly", {
 
   model_syntax_pb <- "model{}"
 
-  fit_simple_pub_bias <- JAGS_fit(model_syntax_pb, data = list(), prior_list = priors_pub_bias,
+  fit_simple_pub_bias <- JAGS_fit(model_syntax_pb, data = NULL, prior_list = priors_pub_bias,
                                    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
   result <- save_fit(fit_simple_pub_bias, "fit_simple_pub_bias",
            pub_bias_priors = TRUE,
@@ -133,7 +133,7 @@ test_that("Simple prior models fit correctly", {
   )
   model_syntax_thin <- "model{}"
 
-  fit_simple_thin <- JAGS_fit(model_syntax_thin, data = list(), prior_list = priors_thin,
+  fit_simple_thin <- JAGS_fit(model_syntax_thin, data = NULL, prior_list = priors_thin,
                               chains = 2, adapt = 100, burnin = 150, sample = 300, thin = 3, seed = 2)
   result <- save_fit(fit_simple_thin, "fit_simple_thin",
            simple_priors = TRUE, thinning = TRUE,
@@ -162,7 +162,7 @@ test_that("Vector prior models fit correctly", {
 
   model_syntax_vec <- "model{}"
 
-  fit_vector_mnormal <- JAGS_fit(model_syntax_vec, data = list(), prior_list = priors_mnormal,
+  fit_vector_mnormal <- JAGS_fit(model_syntax_vec, data = NULL, prior_list = priors_mnormal,
                                   chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
   result <- save_fit(fit_vector_mnormal, "fit_vector_mnormal",
            vector_priors = TRUE,
@@ -177,7 +177,7 @@ test_that("Vector prior models fit correctly", {
 
   model_syntax_mc <- "model{}"
 
-  fit_vector_mcauchy <- JAGS_fit(model_syntax_mc, data = list(), prior_list = priors_mcauchy,
+  fit_vector_mcauchy <- JAGS_fit(model_syntax_mc, data = NULL, prior_list = priors_mcauchy,
                                   chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
   result <- save_fit(fit_vector_mcauchy, "fit_vector_mcauchy",
            vector_priors = TRUE,
@@ -192,7 +192,7 @@ test_that("Vector prior models fit correctly", {
 
   model_syntax_mt <- "model{}"
 
-  fit_vector_mt <- JAGS_fit(model_syntax_mt, data = list(), prior_list = priors_mt,
+  fit_vector_mt <- JAGS_fit(model_syntax_mt, data = NULL, prior_list = priors_mt,
                              chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
   result <- save_fit(fit_vector_mt, "fit_vector_mt",
            vector_priors = TRUE,
@@ -221,7 +221,7 @@ test_that("Factor prior models fit correctly", {
 
   model_syntax_orth <- "model{}"
 
-  fit_factor_orthonormal <- JAGS_fit(model_syntax_orth, data = list(), prior_list = priors_orthonormal,
+  fit_factor_orthonormal <- JAGS_fit(model_syntax_orth, data = NULL, prior_list = priors_orthonormal,
                                       chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
   result <- save_fit(fit_factor_orthonormal, "fit_factor_orthonormal",
            factor_priors = TRUE,
@@ -237,7 +237,7 @@ test_that("Factor prior models fit correctly", {
 
   model_syntax_treat <- "model{}"
 
-  fit_factor_treatment <- JAGS_fit(model_syntax_treat, data = list(), prior_list = priors_treatment,
+  fit_factor_treatment <- JAGS_fit(model_syntax_treat, data = NULL, prior_list = priors_treatment,
                                     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
   result <- save_fit(fit_factor_treatment, "fit_factor_treatment",
            factor_priors = TRUE,
@@ -253,7 +253,7 @@ test_that("Factor prior models fit correctly", {
 
   model_syntax_ind <- "model{}"
 
-  fit_factor_independent <- JAGS_fit(model_syntax_ind, data = list(), prior_list = priors_independent,
+  fit_factor_independent <- JAGS_fit(model_syntax_ind, data = NULL, prior_list = priors_independent,
                                       chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
   result <- save_fit(fit_factor_independent, "fit_factor_independent",
            factor_priors = TRUE,
@@ -269,7 +269,7 @@ test_that("Factor prior models fit correctly", {
 
   model_syntax_md <- "model{}"
 
-  fit_factor_meandif <- JAGS_fit(model_syntax_md, data = list(), prior_list = priors_meandif,
+  fit_factor_meandif <- JAGS_fit(model_syntax_md, data = NULL, prior_list = priors_meandif,
                                   chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 4)
   result <- save_fit(fit_factor_meandif, "fit_factor_meandif",
            factor_priors = TRUE,
@@ -298,7 +298,7 @@ test_that("Weightfunction prior models fit correctly", {
 
   model_syntax_wf1 <- "model{}"
 
-  fit_weightfunction_onesided2 <- JAGS_fit(model_syntax_wf1, data = list(), prior_list = priors_wf_onesided2,
+  fit_weightfunction_onesided2 <- JAGS_fit(model_syntax_wf1, data = NULL, prior_list = priors_wf_onesided2,
                                             chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
   result <- save_fit(fit_weightfunction_onesided2, "fit_weightfunction_onesided2",
            weightfunction_priors = TRUE,
@@ -313,7 +313,7 @@ test_that("Weightfunction prior models fit correctly", {
 
   model_syntax_wf2 <- "model{}"
 
-  fit_weightfunction_onesided3 <- JAGS_fit(model_syntax_wf2, data = list(), prior_list = priors_wf_onesided3,
+  fit_weightfunction_onesided3 <- JAGS_fit(model_syntax_wf2, data = NULL, prior_list = priors_wf_onesided3,
                                             chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
   result <- save_fit(fit_weightfunction_onesided3, "fit_weightfunction_onesided3",
            weightfunction_priors = TRUE,
@@ -328,7 +328,7 @@ test_that("Weightfunction prior models fit correctly", {
 
   model_syntax_wf3 <- "model{}"
 
-  fit_weightfunction_twosided <- JAGS_fit(model_syntax_wf3, data = list(), prior_list = priors_wf_twosided,
+  fit_weightfunction_twosided <- JAGS_fit(model_syntax_wf3, data = NULL, prior_list = priors_wf_twosided,
                                            chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
   result <- save_fit(fit_weightfunction_twosided, "fit_weightfunction_twosided",
            weightfunction_priors = TRUE,
@@ -343,7 +343,7 @@ test_that("Weightfunction prior models fit correctly", {
 
   model_syntax_wf4 <- "model{}"
 
-  fit_weightfunction_fixed <- JAGS_fit(model_syntax_wf4, data = list(), prior_list = priors_wf_fixed,
+  fit_weightfunction_fixed <- JAGS_fit(model_syntax_wf4, data = NULL, prior_list = priors_wf_fixed,
                                         chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 4)
   result <- save_fit(fit_weightfunction_fixed, "fit_weightfunction_fixed",
            weightfunction_priors = TRUE,
@@ -358,7 +358,7 @@ test_that("Weightfunction prior models fit correctly", {
 
   model_syntax_wf5 <- "model{}"
 
-  fit_weightfunction_none <- JAGS_fit(model_syntax_wf5, data = list(), prior_list = priors_wf_none,
+  fit_weightfunction_none <- JAGS_fit(model_syntax_wf5, data = NULL, prior_list = priors_wf_none,
                                        chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 5)
   result <- save_fit(fit_weightfunction_none, "fit_weightfunction_none",
            note = "No weightfunction using prior_none()")
@@ -388,7 +388,7 @@ test_that("Spike-and-slab prior models fit correctly", {
 
   model_syntax_ss1 <- "model{}"
 
-  fit_spike_slab_simple <- JAGS_fit(model_syntax_ss1, data = list(), prior_list = priors_spike_slab_simple,
+  fit_spike_slab_simple <- JAGS_fit(model_syntax_ss1, data = NULL, prior_list = priors_spike_slab_simple,
                                      chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
   result <- save_fit(fit_spike_slab_simple, "fit_spike_slab_simple",
            spike_and_slab_priors = TRUE,
@@ -411,7 +411,7 @@ test_that("Spike-and-slab prior models fit correctly", {
 
   model_syntax_ss2 <- "model{}"
 
-  fit_spike_slab_factor <- JAGS_fit(model_syntax_ss2, data = list(), prior_list = priors_spike_slab_factor,
+  fit_spike_slab_factor <- JAGS_fit(model_syntax_ss2, data = NULL, prior_list = priors_spike_slab_factor,
                                      chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
   result <- save_fit(fit_spike_slab_factor, "fit_spike_slab_factor",
            spike_and_slab_priors = TRUE, factor_priors = TRUE,
@@ -445,7 +445,7 @@ test_that("Mixture prior models fit correctly", {
 
   model_syntax_mix1 <- "model{}"
 
-  fit_mixture_simple <- JAGS_fit(model_syntax_mix1, data = list(), prior_list = priors_mixture_simple,
+  fit_mixture_simple <- JAGS_fit(model_syntax_mix1, data = NULL, prior_list = priors_mixture_simple,
                                   chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
   result <- save_fit(fit_mixture_simple, "fit_mixture_simple",
            mixture_priors = TRUE,
@@ -466,7 +466,7 @@ test_that("Mixture prior models fit correctly", {
 
   model_syntax_mix2 <- "model{}"
 
-  fit_mixture_components <- JAGS_fit(model_syntax_mix2, data = list(), prior_list = priors_mixture_components,
+  fit_mixture_components <- JAGS_fit(model_syntax_mix2, data = NULL, prior_list = priors_mixture_components,
                                       chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
   result <- save_fit(fit_mixture_components, "fit_mixture_components",
            mixture_priors = TRUE,
@@ -486,7 +486,7 @@ test_that("Mixture prior models fit correctly", {
 
   model_syntax_mix3 <- "model{}"
 
-  fit_mixture_spike <- JAGS_fit(model_syntax_mix3, data = list(), prior_list = priors_mixture_spike,
+  fit_mixture_spike <- JAGS_fit(model_syntax_mix3, data = NULL, prior_list = priors_mixture_spike,
                                  chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
   result <- save_fit(fit_mixture_spike, "fit_mixture_spike",
            mixture_priors = TRUE,
@@ -1055,7 +1055,7 @@ test_that("Expression prior models fit correctly", {
 
   model_syntax_expr1 <- "model{}"
 
-  fit_expression_simple <- JAGS_fit(model_syntax_expr1, data = list(), prior_list = priors_expr_simple,
+  fit_expression_simple <- JAGS_fit(model_syntax_expr1, data = NULL, prior_list = priors_expr_simple,
                                      chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
   result <- save_fit(fit_expression_simple, "fit_expression_simple",
            expression_priors = TRUE, simple_priors = TRUE,
@@ -1073,7 +1073,7 @@ test_that("Expression prior models fit correctly", {
 
   model_syntax_expr2 <- "model{}"
 
-  fit_expression_spike_slab <- JAGS_fit(model_syntax_expr2, data = list(), prior_list = priors_expr_ss,
+  fit_expression_spike_slab <- JAGS_fit(model_syntax_expr2, data = NULL, prior_list = priors_expr_ss,
                                          chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
   result <- save_fit(fit_expression_spike_slab, "fit_expression_spike_slab",
            expression_priors = TRUE, spike_and_slab_priors = TRUE, simple_priors = TRUE,
@@ -1092,7 +1092,7 @@ test_that("Expression prior models fit correctly", {
 
   model_syntax_expr3 <- "model{}"
 
-  fit_expression_mixture <- JAGS_fit(model_syntax_expr3, data = list(), prior_list = priors_expr_mix,
+  fit_expression_mixture <- JAGS_fit(model_syntax_expr3, data = NULL, prior_list = priors_expr_mix,
                                       chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
   result <- save_fit(fit_expression_mixture, "fit_expression_mixture",
            expression_priors = TRUE, mixture_priors = TRUE, simple_priors = TRUE,

@@ -553,7 +553,7 @@ test_that("JAGS model-averaging works with spike-and-slab priors (using prefitte
   
   # Check that spike-and-slab parameters are in the fits
   expect_true("mu" %in% colnames(fit_spike_slab_simple$mcmc[[1]]))
-  expect_true("beta" %in% colnames(fit_spike_slab_factor$mcmc[[1]]))
+  expect_true(any(grepl("beta", colnames(fit_spike_slab_factor$mcmc[[1]]))))
 })
 
 
