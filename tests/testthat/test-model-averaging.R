@@ -92,43 +92,12 @@ test_that("JAGS model-averaging with simple priors", {
   fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
   marglik_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal_marglik.RDS"))
   
-  # Test data for fitting spike model
-  set.seed(1)
-  data <- list(
-    x = rnorm(50, 0, .5),
-    N = 50
-  )
-  
-  # Define log posterior for bridgesampling
-  log_posterior_normal <- function(parameters, data){
-    sum(stats::dnorm(data$x, parameters[["m"]], parameters[["s"]], log = TRUE))
-  }
-  
-  # Create an alternative model with spike on m
-  priors_spike <- list(
-    m = prior("spike", list(0)),
-    s = prior("normal", list(0, 1), list(0, Inf))
-  )
-  
-  model_syntax <-
-    "model
-    {
-      for(i in 1:N){
-        x[i] ~ dnorm(m, pow(s, -2))
-      }
-    }"
-  
-  fit_spike <- JAGS_fit(model_syntax, data, priors_spike, 
-                        chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
-  
-  # Get marginal likelihood for spike model
-  marglik_spike <- JAGS_bridgesampling(fit_spike, 
-                                        log_posterior = log_posterior_normal, 
-                                        data = data, prior_list = priors_spike)
+  fit_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike.RDS"))
+  marglik_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike_marglik.RDS"))
   
   # Create model list
   models <- list(
-    list(fit = fit_spike, marglik = marglik_spike, prior_weights = 1),
+    list(fit = fit_simple_spike, marglik = marglik_spike, prior_weights = 1),
     list(fit = fit_simple_normal, marglik = marglik_normal, prior_weights = 1)
   )
   
@@ -254,45 +223,16 @@ test_that("JAGS model-averaging with formula models", {
 # ==============================================================================
 # Generate ensemble inference for print testing
 generate_print_test_inference <- function(temp_fits_dir) {
-  # Load pre-fitted model and its marginal likelihood
+  # Load pre-fitted models and their marginal likelihoods
   fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
   marglik_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal_marglik.RDS"))
   
-  # Create test data and models for averaging
-  set.seed(1)
-  data <- list(
-    x = rnorm(50, 0, .5),
-    N = 50
-  )
-  
-  log_posterior_normal <- function(parameters, data){
-    sum(stats::dnorm(data$x, parameters[["m"]], parameters[["s"]], log = TRUE))
-  }
-  
-  priors_spike <- list(
-    m = prior("spike", list(0)),
-    s = prior("normal", list(0, 1), list(0, Inf))
-  )
-  
-  model_syntax <-
-    "model
-    {
-      for(i in 1:N){
-        x[i] ~ dnorm(m, pow(s, -2))
-      }
-    }"
-  
-  fit_spike <- JAGS_fit(model_syntax, data, priors_spike, 
-                        chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
-  
-  # Get marginal likelihood for spike model
-  marglik_spike <- JAGS_bridgesampling(fit_spike, 
-                                        log_posterior = log_posterior_normal, 
-                                        data = data, prior_list = priors_spike)
+  fit_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike.RDS"))
+  marglik_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike_marglik.RDS"))
   
   # Create model list
   models <- list(
-    list(fit = fit_spike, marglik = marglik_spike, prior_weights = 1),
+    list(fit = fit_simple_spike, marglik = marglik_spike, prior_weights = 1),
     list(fit = fit_simple_normal, marglik = marglik_normal, prior_weights = 1)
   )
   

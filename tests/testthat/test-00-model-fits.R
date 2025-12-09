@@ -105,7 +105,28 @@ test_that("Simple prior models fit correctly", {
   model_registry[["fit_simple_normal"]] <<- result$registry_entry
   fit_simple_normal <- result$fit
 
-  # Model 2: Various prior distributions
+  # Model 2: Spike and normal priors (for model averaging)
+  priors_simple_spike <- list(
+    m = prior("spike", list(0)),
+    s = prior("normal", list(0, 1), list(0, Inf))
+  )
+  
+  fit_simple_spike <- JAGS_fit(model_syntax, data, priors_simple_spike,
+                               chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+  
+  # Compute marginal likelihood for model averaging
+  marglik_simple_spike <- JAGS_bridgesampling(fit_simple_spike, 
+                                               log_posterior = log_posterior_simple_normal, 
+                                               data = data, prior_list = priors_simple_spike)
+  
+  result <- save_fit(fit_simple_spike, "fit_simple_spike",
+           marglik = marglik_simple_spike,
+           simple_priors = TRUE,
+           note = "Spike and truncated normal priors with data (for model averaging)")
+  model_registry[["fit_simple_spike"]] <<- result$registry_entry
+  fit_simple_spike <- result$fit
+
+  # Model 3: Various prior distributions
   priors_various <- list(
     p1  = prior("normal", list(0, 1)),
     p2  = prior("lognormal", list(0, .5)),
@@ -129,7 +150,7 @@ test_that("Simple prior models fit correctly", {
   model_registry[["fit_simple_various"]] <<- result$registry_entry
   fit_simple_various <- result$fit
 
-  # Model 3: PET and PEESE priors
+  # Model 4: PET and PEESE priors
   priors_pub_bias <- list(
     PET = prior_PET("normal", list(0, 1)),
     PEESE = prior_PEESE("gamma", list(1, 1))
@@ -145,7 +166,7 @@ test_that("Simple prior models fit correctly", {
   model_registry[["fit_simple_pub_bias"]] <<- result$registry_entry
   fit_simple_pub_bias <- result$fit
 
-  # Model 4: Test with thinning parameter
+  # Model 5: Test with thinning parameter
   priors_thin <- list(
     mu = prior("normal", list(0, 1))
   )
@@ -160,6 +181,7 @@ test_that("Simple prior models fit correctly", {
   fit_simple_thin <- result$fit
 
   expect_true(file.exists(file.path(temp_fits_dir, "fit_simple_normal.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_simple_spike.RDS")))
   expect_true(file.exists(file.path(temp_fits_dir, "fit_simple_various.RDS")))
   expect_true(file.exists(file.path(temp_fits_dir, "fit_simple_pub_bias.RDS")))
   expect_true(file.exists(file.path(temp_fits_dir, "fit_simple_thin.RDS")))
