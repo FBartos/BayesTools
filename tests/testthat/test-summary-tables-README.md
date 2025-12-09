@@ -3,48 +3,32 @@
 ## Changes Made
 
 ### 1. Restructured test-summary-tables.R
-- **Now uses prefitted models** from `test-00-model-fits.R` instead of fitting models inline
-- **File-based print testing**: Printed output is now compared against reference files stored in `tests/results/print/`
-- **Increased coverage**: Tests now cover many more model types:
-  - Simple priors (normal, spike, various distributions)
-  - Weightfunction priors (one-sided, two-sided, none)
-  - Formula-based models (simple regression, treatment/orthonormal factors)
-  - Interaction models (continuous-continuous, continuous-factor, factor-factor)
-  - Random effects models (intercepts, slopes)
-  - Expression priors
-  - Spike-and-slab priors
-  - Mixture priors
-  - Advanced JAGS features (add_parameters, autofit, parallel)
-  - Transformations and factor transformations
-  - Empty tables
+- **Single comprehensive print test**: All table validation now done via comparing printed output against reference files
+- **No more class-only tests**: Removed 13 separate test blocks that only checked `expect_s3_class`
+- **File-based print testing**: All tables compared against reference files in `tests/results/print/`
+- **Increased coverage**: Tests now validate 16 different table configurations:
+  - Weightfunction models (6 table types)
+  - Simple priors (5 table types)
+  - Transformations (2 variants)
+  - Empty tables (3 types)
 
 ### 2. New Print Testing Approach
-Instead of comparing printed output directly in test expectations like:
-```r
-expect_equal(capture_output_lines(table, print = TRUE, width = 150), 
-             c("line1", "line2", "line3"))
-```
-
-We now save reference files and compare against them:
+Printed output is compared against saved reference files:
 ```r
 expected_output <- readLines("results/print/1.txt", warn = FALSE)
-actual_output <- capture_output_lines(fits[[1]], print = TRUE, width = 150)
+actual_output <- capture_output_lines(table, print = TRUE, width = 150)
 expect_equal(actual_output, expected_output)
 ```
 
 ### 3. Generated Reference Files
-- Reference output files are stored in `tests/results/print/`
-- Files are named `1.txt`, `2.txt`, etc., corresponding to different table types:
-  1. model_summary_table
-  2. runjags_estimates_table
-  3. ensemble_estimates_table
-  4. ensemble_inference_table
-  5. ensemble_summary_table
-  6. ensemble_diagnostics_table
+- Reference output files stored in `tests/results/print/`
+- Files named `1.txt` through `16.txt` for different table configurations
+- Cover all major table types: model_summary, runjags_estimates, ensemble_estimates, ensemble_inference, ensemble_summary, ensemble_diagnostics
 
-### 4. Reference Generation Script
-- `tests/generate_print_references.R` - Standalone script to regenerate reference files
-- Run this when:
+### 4. Reference Generation
+- Generation code is embedded in `test-summary-tables.R` inside an `if(FALSE) {}` block at the end
+- To regenerate: Change `if (FALSE)` to `if (TRUE)` and run the test file
+- Run when:
   - Print format changes
   - New table types are added
   - Need to update baselines
@@ -63,13 +47,10 @@ devtools::test_file("tests/testthat/test-summary-tables.R")
 
 ### Regenerating Reference Files
 When print output format changes:
-```r
-# Run the standalone script from the tests/ directory
-source("tests/generate_print_references.R")
-
-# Or from R console in package root:
-source("generate_print_references.R")  # if in tests/ directory
-```
+1. Open `tests/testthat/test-summary-tables.R`
+2. Change `if (FALSE) {` to `if (TRUE) {` in the generation block at the end
+3. Run the test file: `devtools::test_file("tests/testthat/test-summary-tables.R")`
+4. Change back to `if (FALSE) {` 
 
 ## Known Issues
 
