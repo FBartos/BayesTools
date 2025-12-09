@@ -27,7 +27,7 @@ expect_equal(capture_output_lines(table, print = TRUE, width = 150),
 
 We now save reference files and compare against them:
 ```r
-expected_output <- read.table(file = "results/print/1.txt", ...)
+expected_output <- readLines("results/print/1.txt", warn = FALSE)
 actual_output <- capture_output_lines(fits[[1]], print = TRUE, width = 150)
 expect_equal(actual_output, expected_output)
 ```

@@ -19,16 +19,12 @@ if (temp_fits_dir == "" || !dir.exists(temp_fits_dir)) {
 # If models don't exist, run test-00-model-fits.R first
 if (!dir.exists(temp_fits_dir) || length(list.files(temp_fits_dir, pattern = "\\.RDS$")) == 0) {
   message("Pre-fitted models not found. Running test-00-model-fits.R...")
-  # Try to find the test file relative to this script
-  test_file_path <- file.path(dirname(sys.frame(1)$ofile), "testthat", "test-00-model-fits.R")
-  if (!file.exists(test_file_path)) {
-    # Fallback to assuming we're in tests/ directory
-    test_file_path <- "testthat/test-00-model-fits.R"
-  }
+  # Look for test file in testthat subdirectory
+  test_file_path <- "testthat/test-00-model-fits.R"
   if (file.exists(test_file_path)) {
     test_file(test_file_path)
   } else {
-    stop("Could not find test-00-model-fits.R. Please run it manually first.")
+    stop("Could not find test-00-model-fits.R. Please run it manually first or run this script from the tests/ directory.")
   }
 }
 
@@ -77,8 +73,7 @@ if (!dir.exists(print_dir)) {
 for(i in seq_along(fits)){
   output_lines <- capture_output_lines(fits[[i]], print = TRUE, width = 150)
   output_file <- file.path(print_dir, paste0(i, ".txt"))
-  write.table(output_lines, file = output_file, 
-              row.names = FALSE, col.names = FALSE, quote = FALSE)
+  writeLines(output_lines, output_file)
   message("Generated reference file: ", output_file)
 }
 
