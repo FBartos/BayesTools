@@ -189,6 +189,99 @@ test_that("Simple prior models fit correctly", {
 
 
 # ==============================================================================
+# SECTION 1B: MODELS FOR SUMMARY TABLES TESTING
+# ==============================================================================
+test_that("Summary tables models fit correctly", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+
+  set.seed(1)
+  data_summary <- list(
+    x = rnorm(20, 0, 1),
+    N = 20
+  )
+
+  model_syntax_summary <-
+    "model
+    {
+      for(i in 1:N){
+        x[i] ~ dnorm(m, 1)
+      }
+    }"
+
+  # Log posterior for summary tables (constant, no data dependency)
+  log_posterior_summary <- function(parameters, data){
+    return(0)
+  }
+
+  # Model 1: Normal prior with prior_none weightfunction
+  priors_summary0 <- list(
+    m     = prior("normal", list(0, 1)),
+    omega = prior_none()
+  )
+
+  fit_summary0 <- JAGS_fit(model_syntax_summary, data_summary, priors_summary0,
+                           chains = 1, adapt = 100, burnin = 150, sample = 500, seed = 0)
+
+  marglik_summary0 <- JAGS_bridgesampling(fit_summary0,
+                                          log_posterior = log_posterior_summary,
+                                          data = data_summary, prior_list = priors_summary0)
+
+  result <- save_fit(fit_summary0, "fit_summary0",
+           marglik = marglik_summary0,
+           simple_priors = TRUE, weightfunction_priors = TRUE,
+           note = "Model for summary tables with no weightfunction")
+  model_registry[["fit_summary0"]] <<- result$registry_entry
+  fit_summary0 <- result$fit
+
+  # Model 2: Normal prior with one-sided weightfunction (2 intervals)
+  priors_summary1 <- list(
+    m  = prior("normal", list(0, .5)),
+    omega = prior_weightfunction("one.sided", list(c(0.05), c(1, 1)))
+  )
+
+  fit_summary1 <- JAGS_fit(model_syntax_summary, data_summary, priors_summary1,
+                           chains = 1, adapt = 100, burnin = 150, sample = 500, seed = 1)
+
+  marglik_summary1 <- JAGS_bridgesampling(fit_summary1,
+                                          log_posterior = log_posterior_summary,
+                                          data = data_summary, prior_list = priors_summary1)
+
+  result <- save_fit(fit_summary1, "fit_summary1",
+           marglik = marglik_summary1,
+           simple_priors = TRUE, weightfunction_priors = TRUE,
+           note = "Model for summary tables with one-sided weightfunction (cutpoint at .05)")
+  model_registry[["fit_summary1"]] <<- result$registry_entry
+  fit_summary1 <- result$fit
+
+  # Model 3: Normal prior with one-sided weightfunction (3 intervals)
+  priors_summary2 <- list(
+    m  = prior("normal", list(0, .3)),
+    omega = prior_weightfunction("one.sided", list(c(0.05, 0.50), c(1, 1, 1)))
+  )
+
+  fit_summary2 <- JAGS_fit(model_syntax_summary, data_summary, priors_summary2,
+                           chains = 1, adapt = 100, burnin = 150, sample = 500, seed = 1)
+
+  marglik_summary2 <- JAGS_bridgesampling(fit_summary2,
+                                          log_posterior = log_posterior_summary,
+                                          data = data_summary, prior_list = priors_summary2)
+
+  result <- save_fit(fit_summary2, "fit_summary2",
+           marglik = marglik_summary2,
+           simple_priors = TRUE, weightfunction_priors = TRUE,
+           note = "Model for summary tables with one-sided weightfunction (cutpoints at .05, .50)")
+  model_registry[["fit_summary2"]] <<- result$registry_entry
+  fit_summary2 <- result$fit
+
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_summary0.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_summary1.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_summary2.RDS")))
+})
+
+
+# ==============================================================================
 # SECTION 2: VECTOR PRIOR DISTRIBUTIONS
 # ==============================================================================
 test_that("Vector prior models fit correctly", {

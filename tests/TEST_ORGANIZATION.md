@@ -112,8 +112,12 @@ Not all models have marginal likelihoods. Marginal likelihoods are only computed
 - **Sections**:
   1. Basic function tests (no JAGS required)
   2. JAGS model averaging with pre-fitted models
-  3. Print tests with text file comparison
-  4. Output generation script (UPDATE_OUTPUT flag)
+
+#### test-summary-tables.R
+- **Purpose**: Test summary table formatting functions
+- **Dependencies**: Requires `test-00-model-fits.R` to run first
+- **Inputs**: Loads pre-fitted models and marginal likelihoods
+- **Note**: Tests table output formatting, not raw object printing
 
 ## Maintenance Checklist
 
