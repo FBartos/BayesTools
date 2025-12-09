@@ -1,5 +1,8 @@
 context("Model-averaging functions")
 
+# ==============================================================================
+# SECTION 1: BASIC MODEL-AVERAGING FUNCTIONS (NO JAGS FITS)
+# ==============================================================================
 test_that("Model-averaging functions work", {
 
   expect_equal(compute_inference(c(1,1), c(1, 1))$prior_probs, c(0.5, 0.5))
@@ -61,4 +64,155 @@ test_that("Model-averaging functions work", {
     prior_weightfunction(distribution = "two.sided", parameters = list(alpha = c(1, 1),       steps = c(0.05)),        prior_weights = 1/2),
     prior_weightfunction(distribution = "two.sided", parameters = list(alpha = c(1, 1, 1),    steps = c(0.05, 0.10)),  prior_weights = 1/2)
   )), list(NULL, c(2, 1, 1), c(3, 2, 1)))
+})
+
+
+# ==============================================================================
+# SECTION 2: JAGS MODEL-AVERAGING WITH PREFITTED MODELS
+# ==============================================================================
+# Skip on CRAN as these tests use pre-fitted models
+skip_on_cran()
+
+# Get the directory where prefitted models are stored
+# First check environment variable, then fall back to standard temp directory
+temp_fits_dir <- Sys.getenv("BAYESTOOLS_TEST_FITS_DIR")
+if (temp_fits_dir == "" || !dir.exists(temp_fits_dir)) {
+  temp_fits_dir <- file.path(tempdir(), "BayesTools_test_fits")
+}
+if (!dir.exists(temp_fits_dir)) {
+  skip("Pre-fitted models not available. Run test-00-model-fits.R first.")
+}
+
+test_that("JAGS model-averaging with simple priors", {
+  
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+  
+  # Load pre-fitted models and their marginal likelihoods
+  fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
+  marglik_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal_marglik.RDS"))
+  
+  fit_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike.RDS"))
+  marglik_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike_marglik.RDS"))
+  
+  # Create model list
+  models <- list(
+    list(fit = fit_simple_spike, marglik = marglik_spike, prior_weights = 1),
+    list(fit = fit_simple_normal, marglik = marglik_normal, prior_weights = 1)
+  )
+  
+  # Test ensemble inference
+  inference <- ensemble_inference(model_list = models, parameters = c("m", "s"), 
+                                  is_null_list = list("m" = 1, "s" = 0), conditional = FALSE)
+  inference_conditional <- ensemble_inference(model_list = models, parameters = c("m", "s"), 
+                                               is_null_list = list("m" = 1, "s" = 0), conditional = TRUE)
+  
+  # Test mix posteriors
+  mixed_posteriors <- mix_posteriors(model_list = models, parameters = c("m", "s"), 
+                                      is_null_list = list("m" = 1, "s" = 0), seed = 1)
+  mixed_posteriors_conditional <- mix_posteriors(model_list = models, parameters = c("m", "s"), 
+                                                   is_null_list = list("m" = 1, "s" = 0), conditional = TRUE, seed = 1)
+  
+  # Checks
+  expect_true(is.list(inference))
+  expect_true(all(c("m", "s") %in% names(inference)))
+  expect_true(is.numeric(inference$m$BF))
+  expect_true(is.numeric(inference$s$BF))
+  expect_equal(length(mixed_posteriors$m), length(mixed_posteriors$s))
+  expect_true(mean(mixed_posteriors$m == 0) > 0) # Some spike samples
+  
+  # Visual check
+  vdiffr::expect_doppelganger("model-averaging-simple-priors", function(){
+    par(mfrow = c(2, 2))
+    hist(mixed_posteriors$m, main = "model-averaged (m)")
+    hist(mixed_posteriors_conditional$m, main = "conditional (m)")
+    hist(mixed_posteriors$s, main = "model-averaged (s)")
+    hist(mixed_posteriors_conditional$s, main = "conditional (s)")
+  })
+})
+
+test_that("JAGS model-averaging with weightfunction priors - coefficient mapping", {
+  
+  skip_if_not_installed("rjags")
+  
+  # Test coefficient mapping with weightfunctions (doesn't require actual model averaging)
+  priors_none <- prior_none()
+  priors_onesided2 <- prior_weightfunction("one.sided", list(c(.05), c(1, 1)))
+  priors_onesided3 <- prior_weightfunction("one.sided", list(c(.05, 0.10), c(1, 2, 3)))
+  priors_twosided <- prior_weightfunction("two.sided", list(c(.05), c(1, 1)))
+  
+  # Test coefficient mapping
+  expect_equal(
+    weightfunctions_mapping(list(priors_none, priors_onesided2, priors_onesided3)), 
+    list(NULL, c(2, 1, 1), c(3, 2, 1))
+  )
+  
+  expect_equal(
+    weightfunctions_mapping(list(priors_twosided, priors_onesided3)), 
+    list(c(2, 1, 1, 1, 2), c(3, 3, 2, 1, 1))
+  )
+})
+
+test_that("JAGS model-averaging with formula models", {
+  
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+  
+  # Load pre-fitted formula models with their marginal likelihoods
+  fit_formula_simple <- readRDS(file.path(temp_fits_dir, "fit_formula_simple.RDS"))
+  fit_formula_treatment <- readRDS(file.path(temp_fits_dir, "fit_formula_treatment.RDS"))
+  fit_formula_orthonormal <- readRDS(file.path(temp_fits_dir, "fit_formula_orthonormal.RDS"))
+  
+  marglik_simple <- readRDS(file.path(temp_fits_dir, "fit_formula_simple_marglik.RDS"))
+  marglik_treatment <- readRDS(file.path(temp_fits_dir, "fit_formula_treatment_marglik.RDS"))
+  marglik_orthonormal <- readRDS(file.path(temp_fits_dir, "fit_formula_orthonormal_marglik.RDS"))
+  
+  # Create model list
+  models <- list(
+    list(fit = fit_formula_simple, marglik = marglik_simple, prior_weights = 1),
+    list(fit = fit_formula_treatment, marglik = marglik_treatment, prior_weights = 1),
+    list(fit = fit_formula_orthonormal, marglik = marglik_orthonormal, prior_weights = 1)
+  )
+  
+  # Test ensemble inference
+  inference <- ensemble_inference(
+    model_list   = models,
+    parameters   = c("mu_x_cont1", "mu_x_fac2t", "mu_x_fac3o"),
+    is_null_list = list(
+      "mu_x_cont1" = c(FALSE, FALSE, FALSE),
+      "mu_x_fac2t" = c(TRUE,  FALSE, TRUE),
+      "mu_x_fac3o" = c(TRUE,  TRUE,  FALSE)
+    ),
+    conditional = FALSE)
+  
+  # Test mix posteriors
+  mixed_posteriors <- mix_posteriors(
+    model_list   = models,
+    parameters   = c("mu_x_cont1", "mu_x_fac2t", "mu_x_fac3o"),
+    is_null_list = list(
+      "mu_x_cont1" = c(FALSE, FALSE, FALSE),
+      "mu_x_fac2t" = c(TRUE,  FALSE, TRUE),
+      "mu_x_fac3o" = c(TRUE,  TRUE,  FALSE)
+    ),
+    seed = 1, n_samples = 1000)
+  
+  # Checks
+  expect_true(is.list(inference))
+  expect_true(all(c("mu_x_cont1", "mu_x_fac2t", "mu_x_fac3o") %in% names(inference)))
+  expect_true(is.numeric(inference$mu_x_cont1$BF))
+  expect_true(is.numeric(inference$mu_x_fac2t$BF))
+  expect_true(is.numeric(inference$mu_x_fac3o$BF))
+  # Allow for small difference in sample size due to spike samples
+  expect_true(abs(length(mixed_posteriors$mu_x_cont1) - 1000) <= 1)
+  
+  # Visual check
+  vdiffr::expect_doppelganger("model-averaging-formulas", function(){
+    par(mfrow = c(2, 2))
+    hist(mixed_posteriors$mu_x_cont1, main = "mu_x_cont1")
+    hist(mixed_posteriors$mu_x_fac2t, main = "mu_x_fac2t")
+    if(is.matrix(mixed_posteriors$mu_x_fac3o)) {
+      hist(mixed_posteriors$mu_x_fac3o[,1], main = "mu_x_fac3o[1]")
+      hist(mixed_posteriors$mu_x_fac3o[,2], main = "mu_x_fac3o[2]")
+    }
+  })
 })
