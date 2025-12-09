@@ -1,0 +1,6 @@
+                                                                            
+ Model              2                          Parameter prior distributions
+ Prior prob.    0.333                                 m ~ Normal(0, 0.5)    
+ log(marglik)   -0.54             omega[one-sided: .05] ~ CumDirichlet(1, 1)
+ Post. prob.    0.356                                                       
+ Inclusion BF   1.107                                                       
