@@ -5,6 +5,11 @@ context("Summary tables functions")
 
 skip_on_cran()
 
+# Set UPDATE_OUTPUT to TRUE to regenerate the print output files
+# This flag should be set to TRUE when you want to regenerate reference files
+# after making changes to summary table functions or print methods
+UPDATE_OUTPUT <- FALSE
+
 # Get the directory where pre-fitted models are stored
 temp_fits_dir <- Sys.getenv("BAYESTOOLS_TEST_FITS_DIR")
 if(temp_fits_dir == "" || !dir.exists(temp_fits_dir)){
@@ -16,17 +21,27 @@ model_registry_file <- file.path(temp_fits_dir, "model_registry.RDS")
 if(!file.exists(model_registry_file)){
   skip("Model registry not found. Run test-00-model-fits.R first.")
 }
+model_registry <- readRDS(model_registry_file)
 
 # Helper function to load a pre-fitted model
 load_fit <- function(model_name) {
+  # Check if model is in registry
+  if(!model_name %in% model_registry$model_name) {
+    stop(paste("Model", model_name, "not found in registry. Available models:",
+               paste(head(model_registry$model_name, 10), collapse=", ")))
+  }
+  
   fit_file <- file.path(temp_fits_dir, paste0(model_name, ".RDS"))
   if(!file.exists(fit_file)){
-    stop(paste("Pre-fitted model", model_name, "not found."))
+    stop(paste("Pre-fitted model file", model_name, "not found at", fit_file,
+               "\nPlease run test-00-model-fits.R first to generate required models."))
   }
   fit <- readRDS(fit_file)
   # Check if it's a valid runjags fit (not an error)
   if(!inherits(fit, "runjags")){
-    stop(paste("Model", model_name, "is not a valid runjags fit"))
+    stop(paste("Model", model_name, "is not a valid runjags fit.",
+               "\nThis may indicate an error during model fitting in test-00-model-fits.R.",
+               "\nPlease check that test file for issues."))
   }
   fit
 }
@@ -323,6 +338,7 @@ test_that("Print output matches saved files", {
   )
   
   # Check if print output files exist
+  # Using relative path from tests/testthat/ directory
   print_dir <- file.path("../results/print")
   if(!dir.exists(print_dir)) {
     skip("Print output directory not found. Set UPDATE_OUTPUT=TRUE to generate outputs.")
@@ -343,17 +359,18 @@ test_that("Print output matches saved files", {
 })
 
 # =============================================================================
-# UTILITY: Generate print output files (UPDATE_OUTPUT = FALSE)
+# UTILITY: Generate print output files (UPDATE_OUTPUT flag at top of file)
 # =============================================================================
-# Set UPDATE_OUTPUT to TRUE to regenerate the print output files
-UPDATE_OUTPUT <- FALSE
+# The UPDATE_OUTPUT flag at the top of this file controls whether to regenerate
+# the print output reference files. Set it to TRUE to regenerate outputs.
 
 if(UPDATE_OUTPUT) {
   
   test_that("Generate print output files", {
     
     # Create print directory if it doesn't exist
-    print_dir <- file.path("tests/results/print")
+    # Using relative path from tests/testthat/ directory
+    print_dir <- file.path("../results/print")
     dir.create(print_dir, showWarnings = FALSE, recursive = TRUE)
     
     # Select models to generate print outputs for
