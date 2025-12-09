@@ -442,7 +442,7 @@ test_that("Summary table printing works", {
   )
   
   # Check if reference files exist
-  # Use testthat::test_path for robust path resolution
+  # test_path() constructs paths relative to tests/testthat/, so we use ".." to reach tests/results/print
   print_dir <- testthat::test_path("..", "results", "print")
   if (!dir.exists(print_dir)) {
     skip("Print reference directory not found. Run tests/generate_print_references.R to generate.")
