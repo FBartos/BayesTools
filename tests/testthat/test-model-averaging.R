@@ -88,11 +88,11 @@ test_that("JAGS model-averaging with simple priors", {
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")
   
-  # Load pre-fitted models
+  # Load pre-fitted models and their marginal likelihoods
   fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
-  fit_simple_various <- readRDS(file.path(temp_fits_dir, "fit_simple_various.RDS"))
+  marglik_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal_marglik.RDS"))
   
-  # Test data from fit_simple_normal
+  # Test data for fitting spike model
   set.seed(1)
   data <- list(
     x = rnorm(50, 0, .5),
@@ -103,12 +103,6 @@ test_that("JAGS model-averaging with simple priors", {
   log_posterior_normal <- function(parameters, data){
     sum(stats::dnorm(data$x, parameters[["m"]], parameters[["s"]], log = TRUE))
   }
-  
-  # Get priors for the models
-  priors_normal <- list(
-    m = prior("normal", list(0, 1)),
-    s = prior("normal", list(0, 1), list(0, Inf))
-  )
   
   # Create an alternative model with spike on m
   priors_spike <- list(
@@ -127,10 +121,7 @@ test_that("JAGS model-averaging with simple priors", {
   fit_spike <- JAGS_fit(model_syntax, data, priors_spike, 
                         chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
   
-  # Get marginal likelihoods
-  marglik_normal <- JAGS_bridgesampling(fit_simple_normal, 
-                                         log_posterior = log_posterior_normal, 
-                                         data = data, prior_list = priors_normal)
+  # Get marginal likelihood for spike model
   marglik_spike <- JAGS_bridgesampling(fit_spike, 
                                         log_posterior = log_posterior_normal, 
                                         data = data, prior_list = priors_spike)
@@ -198,80 +189,14 @@ test_that("JAGS model-averaging with formula models", {
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")
   
-  # Load pre-fitted formula models
+  # Load pre-fitted formula models with their marginal likelihoods
   fit_formula_simple <- readRDS(file.path(temp_fits_dir, "fit_formula_simple.RDS"))
   fit_formula_treatment <- readRDS(file.path(temp_fits_dir, "fit_formula_treatment.RDS"))
   fit_formula_orthonormal <- readRDS(file.path(temp_fits_dir, "fit_formula_orthonormal.RDS"))
   
-  # Recreate data
-  set.seed(1)
-  data_formula <- data.frame(
-    x_cont1 = rnorm(100),
-    x_fac2t = factor(rep(c("A", "B"), 50), levels = c("A", "B")),
-    x_fac3o = factor(rep(c("A", "B", "C"), length.out = 100), levels = c("A", "B", "C"))
-  )
-  data <- list(
-    y = rnorm(100, .4 * data_formula$x_cont1, 1),
-    N = 100
-  )
-  
-  # Define log posterior
-  log_posterior <- function(parameters, data){
-    sum(stats::dnorm(data$y, parameters[["mu"]], parameters[["sigma"]], log = TRUE))
-  }
-  
-  # Define priors and formulas
-  formula_list_simple <- list(mu = ~ x_cont1)
-  formula_data_list_simple <- list(mu = data_formula)
-  formula_prior_list_simple <- list(
-    mu = list(
-      "intercept" = prior("normal", list(0, 5)),
-      "x_cont1"   = prior("normal", list(0, 1))
-    )
-  )
-  prior_list_simple <- list(sigma = prior("lognormal", list(0, 1)))
-  
-  formula_list_treatment <- list(mu = ~ x_cont1 + x_fac2t)
-  formula_data_list_treatment <- list(mu = data_formula)
-  formula_prior_list_treatment <- list(
-    mu = list(
-      "intercept" = prior("normal", list(0, 5)),
-      "x_cont1"   = prior("normal", list(0, 1)),
-      "x_fac2t"   = prior_factor("normal", contrast = "treatment", list(0, 1))
-    )
-  )
-  
-  formula_list_orthonormal <- list(mu = ~ x_cont1 + x_fac3o)
-  formula_data_list_orthonormal <- list(mu = data_formula)
-  formula_prior_list_orthonormal <- list(
-    mu = list(
-      "intercept" = prior("normal", list(0, 5)),
-      "x_cont1"   = prior("normal", list(0, 1)),
-      "x_fac3o"   = prior_factor("mnormal", contrast = "orthonormal", list(0, 1))
-    )
-  )
-  
-  # Get marginal likelihoods
-  marglik_simple <- JAGS_bridgesampling(
-    fit_formula_simple, log_posterior = log_posterior, data = data, 
-    prior_list = prior_list_simple,
-    formula_list = formula_list_simple, 
-    formula_data_list = formula_data_list_simple, 
-    formula_prior_list = formula_prior_list_simple)
-  
-  marglik_treatment <- JAGS_bridgesampling(
-    fit_formula_treatment, log_posterior = log_posterior, data = data, 
-    prior_list = prior_list_simple,
-    formula_list = formula_list_treatment, 
-    formula_data_list = formula_data_list_treatment, 
-    formula_prior_list = formula_prior_list_treatment)
-  
-  marglik_orthonormal <- JAGS_bridgesampling(
-    fit_formula_orthonormal, log_posterior = log_posterior, data = data, 
-    prior_list = prior_list_simple,
-    formula_list = formula_list_orthonormal, 
-    formula_data_list = formula_data_list_orthonormal, 
-    formula_prior_list = formula_prior_list_orthonormal)
+  marglik_simple <- readRDS(file.path(temp_fits_dir, "fit_formula_simple_marglik.RDS"))
+  marglik_treatment <- readRDS(file.path(temp_fits_dir, "fit_formula_treatment_marglik.RDS"))
+  marglik_orthonormal <- readRDS(file.path(temp_fits_dir, "fit_formula_orthonormal_marglik.RDS"))
   
   # Create model list
   models <- list(
@@ -329,8 +254,9 @@ test_that("JAGS model-averaging with formula models", {
 # ==============================================================================
 # Generate ensemble inference for print testing
 generate_print_test_inference <- function(temp_fits_dir) {
-  # Load pre-fitted model
+  # Load pre-fitted model and its marginal likelihood
   fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
+  marglik_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal_marglik.RDS"))
   
   # Create test data and models for averaging
   set.seed(1)
@@ -342,11 +268,6 @@ generate_print_test_inference <- function(temp_fits_dir) {
   log_posterior_normal <- function(parameters, data){
     sum(stats::dnorm(data$x, parameters[["m"]], parameters[["s"]], log = TRUE))
   }
-  
-  priors_normal <- list(
-    m = prior("normal", list(0, 1)),
-    s = prior("normal", list(0, 1), list(0, Inf))
-  )
   
   priors_spike <- list(
     m = prior("spike", list(0)),
@@ -364,10 +285,7 @@ generate_print_test_inference <- function(temp_fits_dir) {
   fit_spike <- JAGS_fit(model_syntax, data, priors_spike, 
                         chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
   
-  # Get marginal likelihoods
-  marglik_normal <- JAGS_bridgesampling(fit_simple_normal, 
-                                         log_posterior = log_posterior_normal, 
-                                         data = data, prior_list = priors_normal)
+  # Get marginal likelihood for spike model
   marglik_spike <- JAGS_bridgesampling(fit_spike, 
                                         log_posterior = log_posterior_normal, 
                                         data = data, prior_list = priors_spike)
