@@ -529,9 +529,42 @@ test_that("Formula-based interaction models fit correctly", {
     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
   save_fit(fit_formula_interaction_fac, "fit_formula_interaction_fac")
   
+  # Regression with prior_mixture for factor predictor
+  # Testing mixture of spike and normal factor priors
+  set.seed(1)
+  data_formula_mix <- data.frame(
+    x_cont  = rnorm(100),
+    x_fac3t = factor(rep(c("A", "B", "C"), length.out = 100), levels = c("A", "B", "C"))
+  )
+  data_mix <- list(
+    y = rnorm(100, 0.20 * data_formula_mix$x_cont, 1),
+    N = 100
+  )
+  
+  formula_list_factor_mix <- list(mu = ~ x_cont + x_fac3t)
+  formula_data_list_factor_mix <- list(mu = data_formula_mix)
+  formula_prior_list_factor_mix <- list(
+    mu = list(
+      "intercept" = prior("normal", list(0, 5)),
+      "x_cont"    = prior("normal", list(0, 1)),
+      "x_fac3t"   = prior_mixture(list(
+        prior("spike", list(0)),
+        prior_factor("normal", list(0, 0.3), contrast = "treatment")
+      ), is_null = c(TRUE, FALSE))
+    )
+  )
+  
+  fit_formula_factor_mixture <- JAGS_fit(
+    model_syntax = model_syntax, data = data_mix, prior_list = prior_list,
+    formula_list = formula_list_factor_mix, formula_data_list = formula_data_list_factor_mix, 
+    formula_prior_list = formula_prior_list_factor_mix,
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 4)
+  save_fit(fit_formula_factor_mixture, "fit_formula_factor_mixture")
+  
   expect_true(file.exists(file.path(temp_fits_dir, "fit_formula_interaction_cont.RDS")))
   expect_true(file.exists(file.path(temp_fits_dir, "fit_formula_interaction_mix.RDS")))
   expect_true(file.exists(file.path(temp_fits_dir, "fit_formula_interaction_fac.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_formula_factor_mixture.RDS")))
 })
 
 
