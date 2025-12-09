@@ -1,0 +1,1263 @@
+context("Model fits for reuse across tests")
+
+# This file contains all model fitting procedures used across the test suite.
+# Fitted models are saved to a temporary directory for reuse in other tests.
+# This reduces redundant MCMC sampling and speeds up the overall test suite.
+
+skip_on_cran()
+
+# Setup directory for saving fitted models
+temp_fits_dir <- file.path(tempdir(), "BayesTools_test_fits")
+dir.create(temp_fits_dir, showWarnings = FALSE, recursive = TRUE)
+# Set environment variable so other test files can locate pre-fitted models
+Sys.setenv(BAYESTOOLS_TEST_FITS_DIR = temp_fits_dir)
+
+# Initialize model registry to track metadata about each fitted model
+model_registry <- list()
+
+# Helper function to save fitted models and register metadata
+save_fit <- function(fit, name, simple_priors = FALSE, vector_priors = FALSE,
+                     factor_priors = FALSE, pub_bias_priors = FALSE,
+                     weightfunction_priors = FALSE, spike_and_slab_priors = FALSE,
+                     mixture_priors = FALSE, formulas = FALSE,
+                     random_effects = FALSE, interactions = FALSE,
+                     expression_priors = FALSE, multi_formula = FALSE,
+                     autofit = FALSE, parallel = FALSE, thinning = FALSE,
+                     add_parameters = FALSE, note = "") {
+  saveRDS(fit, file = file.path(temp_fits_dir, paste0(name, ".RDS")))
+
+  # Return model metadata entry for registry
+  list(
+    fit = fit,
+    registry_entry = data.frame(
+      model_name = name,
+      simple_priors = simple_priors,
+      vector_priors = vector_priors,
+      factor_priors = factor_priors,
+      pub_bias_priors = pub_bias_priors,
+      weightfunction_priors = weightfunction_priors,
+      spike_and_slab_priors = spike_and_slab_priors,
+      mixture_priors = mixture_priors,
+      formulas = formulas,
+      random_effects = random_effects,
+      interactions = interactions,
+      expression_priors = expression_priors,
+      multi_formula = multi_formula,
+      autofit = autofit,
+      parallel = parallel,
+      thinning = thinning,
+      add_parameters = add_parameters,
+      note = note,
+      stringsAsFactors = FALSE
+    )
+  )
+}
+
+# ==============================================================================
+# SECTION 1: SIMPLE PRIOR DISTRIBUTIONS
+# ==============================================================================
+test_that("Simple prior models fit correctly", {
+
+  skip_if_not_installed("rjags")
+
+  set.seed(1)
+  data <- list(
+    x = rnorm(50, 0, .5),
+    N = 50
+  )
+
+  # Model 1: Normal and truncated normal priors
+  priors_simple_normal <- list(
+    m = prior("normal", list(0, 1)),
+    s = prior("normal", list(0, 1), list(0, Inf))
+  )
+  model_syntax <-
+    "model
+    {
+      for(i in 1:N){
+        x[i] ~ dnorm(m, pow(s, -2))
+      }
+    }"
+
+  fit_simple_normal <- JAGS_fit(model_syntax, data, priors_simple_normal,
+                                 chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
+  result <- save_fit(fit_simple_normal, "fit_simple_normal",
+           simple_priors = TRUE,
+           note = "Normal and truncated normal priors with data")
+  model_registry[["fit_simple_normal"]] <<- result$registry_entry
+  fit_simple_normal <- result$fit
+
+  # Model 2: Various prior distributions
+  priors_various <- list(
+    p1  = prior("normal", list(0, 1)),
+    p2  = prior("lognormal", list(0, .5)),
+    p3  = prior("t", list(0, .5, 5)),
+    p4  = prior("Cauchy", list(1, 0.1), list(-10, 0)),
+    p5  = prior("gamma", list(2, 1)),
+    p6  = prior("invgamma", list(3, 2), list(1, 3)),
+    p7  = prior("exp", list(1.5)),
+    p8  = prior("beta", list(3, 2)),
+    p9  = prior("uniform", list(1, 5)),
+    p10 = prior("point", list(1))
+  )
+
+  model_syntax_simple <- "model{}"
+
+  fit_simple_various <- JAGS_fit(model_syntax_simple, data = list(), prior_list = priors_various,
+                                  chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
+  result <- save_fit(fit_simple_various, "fit_simple_various",
+           simple_priors = TRUE,
+           note = "Various univariate distributions: normal, lognormal, t, Cauchy, gamma, invgamma, exp, beta, uniform, point")
+  model_registry[["fit_simple_various"]] <<- result$registry_entry
+  fit_simple_various <- result$fit
+
+  # Model 3: PET and PEESE priors
+  priors_pub_bias <- list(
+    PET = prior_PET("normal", list(0, 1)),
+    PEESE = prior_PEESE("gamma", list(1, 1))
+  )
+
+  model_syntax_pb <- "model{}"
+
+  fit_simple_pub_bias <- JAGS_fit(model_syntax_pb, data = list(), prior_list = priors_pub_bias,
+                                   chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
+  result <- save_fit(fit_simple_pub_bias, "fit_simple_pub_bias",
+           pub_bias_priors = TRUE,
+           note = "PET and PEESE priors for publication bias")
+  model_registry[["fit_simple_pub_bias"]] <<- result$registry_entry
+  fit_simple_pub_bias <- result$fit
+
+  # Model 4: Test with thinning parameter
+  priors_thin <- list(
+    mu = prior("normal", list(0, 1))
+  )
+  model_syntax_thin <- "model{}"
+
+  fit_simple_thin <- JAGS_fit(model_syntax_thin, data = list(), prior_list = priors_thin,
+                              chains = 2, adapt = 100, burnin = 150, sample = 300, thin = 3, seed = 2)
+  result <- save_fit(fit_simple_thin, "fit_simple_thin",
+           simple_priors = TRUE, thinning = TRUE,
+           note = "Simple normal prior with thinning parameter (thin=3)")
+  model_registry[["fit_simple_thin"]] <<- result$registry_entry
+  fit_simple_thin <- result$fit
+
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_simple_normal.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_simple_various.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_simple_pub_bias.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_simple_thin.RDS")))
+})
+
+
+# ==============================================================================
+# SECTION 2: VECTOR PRIOR DISTRIBUTIONS
+# ==============================================================================
+test_that("Vector prior models fit correctly", {
+
+  skip_if_not_installed("rjags")
+
+  # Multivariate normal
+  priors_mnormal <- list(
+    p1 = prior("mnormal", list(mean = 0, sd = 1, K = 3))
+  )
+
+  model_syntax_vec <- "model{}"
+
+  fit_vector_mnormal <- JAGS_fit(model_syntax_vec, data = list(), prior_list = priors_mnormal,
+                                  chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
+  result <- save_fit(fit_vector_mnormal, "fit_vector_mnormal",
+           vector_priors = TRUE,
+           note = "Multivariate normal prior (K=3)")
+  model_registry[["fit_vector_mnormal"]] <<- result$registry_entry
+  fit_vector_mnormal <- result$fit
+
+  # Multivariate cauchy
+  priors_mcauchy <- list(
+    p1 = prior("mcauchy", list(location = 0, scale = 1.5, K = 2))
+  )
+
+  model_syntax_mc <- "model{}"
+
+  fit_vector_mcauchy <- JAGS_fit(model_syntax_mc, data = list(), prior_list = priors_mcauchy,
+                                  chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+  result <- save_fit(fit_vector_mcauchy, "fit_vector_mcauchy",
+           vector_priors = TRUE,
+           note = "Multivariate Cauchy prior (K=2)")
+  model_registry[["fit_vector_mcauchy"]] <<- result$registry_entry
+  fit_vector_mcauchy <- result$fit
+
+  # Multivariate t
+  priors_mt <- list(
+    p1 = prior("mt", list(location = 2, scale = 0.5, df = 5, K = 2))
+  )
+
+  model_syntax_mt <- "model{}"
+
+  fit_vector_mt <- JAGS_fit(model_syntax_mt, data = list(), prior_list = priors_mt,
+                             chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
+  result <- save_fit(fit_vector_mt, "fit_vector_mt",
+           vector_priors = TRUE,
+           note = "Multivariate t prior with df=5 (K=2)")
+  model_registry[["fit_vector_mt"]] <<- result$registry_entry
+  fit_vector_mt <- result$fit
+
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_vector_mnormal.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_vector_mcauchy.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_vector_mt.RDS")))
+})
+
+
+# ==============================================================================
+# SECTION 3: FACTOR PRIOR DISTRIBUTIONS
+# ==============================================================================
+test_that("Factor prior models fit correctly", {
+
+  skip_if_not_installed("rjags")
+
+  # Orthonormal contrast
+  priors_orthonormal <- list(
+    p1 = prior_factor("mnorm", list(mean = 0, sd = 1), contrast = "orthonormal")
+  )
+  attr(priors_orthonormal[[1]], "levels") <- 3
+
+  model_syntax_orth <- "model{}"
+
+  fit_factor_orthonormal <- JAGS_fit(model_syntax_orth, data = list(), prior_list = priors_orthonormal,
+                                      chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
+  result <- save_fit(fit_factor_orthonormal, "fit_factor_orthonormal",
+           factor_priors = TRUE,
+           note = "Orthonormal contrast with 3 levels")
+  model_registry[["fit_factor_orthonormal"]] <<- result$registry_entry
+  fit_factor_orthonormal <- result$fit
+
+  # Treatment contrast
+  priors_treatment <- list(
+    p1 = prior_factor("beta", list(alpha = 1, beta = 1), contrast = "treatment")
+  )
+  attr(priors_treatment[[1]], "levels") <- 2
+
+  model_syntax_treat <- "model{}"
+
+  fit_factor_treatment <- JAGS_fit(model_syntax_treat, data = list(), prior_list = priors_treatment,
+                                    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+  result <- save_fit(fit_factor_treatment, "fit_factor_treatment",
+           factor_priors = TRUE,
+           note = "Treatment contrast with 2 levels and beta prior")
+  model_registry[["fit_factor_treatment"]] <<- result$registry_entry
+  fit_factor_treatment <- result$fit
+
+  # Independent contrast
+  priors_independent <- list(
+    p1 = prior_factor("gamma", list(shape = 2, rate = 3), contrast = "independent")
+  )
+  attr(priors_independent[[1]], "levels") <- 3
+
+  model_syntax_ind <- "model{}"
+
+  fit_factor_independent <- JAGS_fit(model_syntax_ind, data = list(), prior_list = priors_independent,
+                                      chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
+  result <- save_fit(fit_factor_independent, "fit_factor_independent",
+           factor_priors = TRUE,
+           note = "Independent contrast with 3 levels and gamma prior")
+  model_registry[["fit_factor_independent"]] <<- result$registry_entry
+  fit_factor_independent <- result$fit
+
+  # Meandif contrast
+  priors_meandif <- list(
+    p1 = prior_factor("mnorm", list(mean = 0, sd = 0.5), contrast = "meandif")
+  )
+  attr(priors_meandif[[1]], "levels") <- 3
+
+  model_syntax_md <- "model{}"
+
+  fit_factor_meandif <- JAGS_fit(model_syntax_md, data = list(), prior_list = priors_meandif,
+                                  chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 4)
+  result <- save_fit(fit_factor_meandif, "fit_factor_meandif",
+           factor_priors = TRUE,
+           note = "Meandif contrast with 3 levels")
+  model_registry[["fit_factor_meandif"]] <<- result$registry_entry
+  fit_factor_meandif <- result$fit
+
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_factor_orthonormal.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_factor_treatment.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_factor_independent.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_factor_meandif.RDS")))
+})
+
+
+# ==============================================================================
+# SECTION 4: WEIGHTFUNCTION PRIORS
+# ==============================================================================
+test_that("Weightfunction prior models fit correctly", {
+
+  skip_if_not_installed("rjags")
+
+  # One-sided weightfunction (2 intervals)
+  priors_wf_onesided2 <- list(
+    prior_weightfunction("one.sided", list(c(.05), c(1, 1)))
+  )
+
+  model_syntax_wf1 <- "model{}"
+
+  fit_weightfunction_onesided2 <- JAGS_fit(model_syntax_wf1, data = list(), prior_list = priors_wf_onesided2,
+                                            chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
+  result <- save_fit(fit_weightfunction_onesided2, "fit_weightfunction_onesided2",
+           weightfunction_priors = TRUE,
+           note = "One-sided weightfunction with 2 intervals (cutpoint at .05)")
+  model_registry[["fit_weightfunction_onesided2"]] <<- result$registry_entry
+  fit_weightfunction_onesided2 <- result$fit
+
+  # One-sided weightfunction (3 intervals)
+  priors_wf_onesided3 <- list(
+    prior_weightfunction("one.sided", list(c(.05, 0.10), c(1, 2, 3)))
+  )
+
+  model_syntax_wf2 <- "model{}"
+
+  fit_weightfunction_onesided3 <- JAGS_fit(model_syntax_wf2, data = list(), prior_list = priors_wf_onesided3,
+                                            chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+  result <- save_fit(fit_weightfunction_onesided3, "fit_weightfunction_onesided3",
+           weightfunction_priors = TRUE,
+           note = "One-sided weightfunction with 3 intervals (cutpoints at .05, .10)")
+  model_registry[["fit_weightfunction_onesided3"]] <<- result$registry_entry
+  fit_weightfunction_onesided3 <- result$fit
+
+  # Two-sided weightfunction
+  priors_wf_twosided <- list(
+    prior_weightfunction("two.sided", list(c(.05), c(1, 1)))
+  )
+
+  model_syntax_wf3 <- "model{}"
+
+  fit_weightfunction_twosided <- JAGS_fit(model_syntax_wf3, data = list(), prior_list = priors_wf_twosided,
+                                           chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
+  result <- save_fit(fit_weightfunction_twosided, "fit_weightfunction_twosided",
+           weightfunction_priors = TRUE,
+           note = "Two-sided weightfunction with cutpoint at .05")
+  model_registry[["fit_weightfunction_twosided"]] <<- result$registry_entry
+  fit_weightfunction_twosided <- result$fit
+
+  # One-sided fixed weightfunction
+  priors_wf_fixed <- list(
+    prior_weightfunction("one.sided.fixed", list(c(.05), c(1, .5)))
+  )
+
+  model_syntax_wf4 <- "model{}"
+
+  fit_weightfunction_fixed <- JAGS_fit(model_syntax_wf4, data = list(), prior_list = priors_wf_fixed,
+                                        chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 4)
+  result <- save_fit(fit_weightfunction_fixed, "fit_weightfunction_fixed",
+           weightfunction_priors = TRUE,
+           note = "One-sided fixed weightfunction (weights: 1, .5)")
+  model_registry[["fit_weightfunction_fixed"]] <<- result$registry_entry
+  fit_weightfunction_fixed <- result$fit
+
+  # No weightfunction (prior_none)
+  priors_wf_none <- list(
+    omega = prior_none()
+  )
+
+  model_syntax_wf5 <- "model{}"
+
+  fit_weightfunction_none <- JAGS_fit(model_syntax_wf5, data = list(), prior_list = priors_wf_none,
+                                       chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 5)
+  result <- save_fit(fit_weightfunction_none, "fit_weightfunction_none",
+           note = "No weightfunction using prior_none()")
+  model_registry[["fit_weightfunction_none"]] <<- result$registry_entry
+  fit_weightfunction_none <- result$fit
+
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_weightfunction_onesided2.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_weightfunction_onesided3.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_weightfunction_twosided.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_weightfunction_fixed.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_weightfunction_none.RDS")))
+})
+
+
+# ==============================================================================
+# SECTION 5: SPIKE-AND-SLAB PRIORS
+# ==============================================================================
+test_that("Spike-and-slab prior models fit correctly", {
+
+  skip_if_not_installed("rjags")
+
+  # Simple spike-and-slab
+  priors_spike_slab_simple <- list(
+    "mu" = prior_spike_and_slab(prior("normal", list(0, 1)),
+                                 prior_inclusion = prior("beta", list(1,1)))
+  )
+
+  model_syntax_ss1 <- "model{}"
+
+  fit_spike_slab_simple <- JAGS_fit(model_syntax_ss1, data = list(), prior_list = priors_spike_slab_simple,
+                                     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
+  result <- save_fit(fit_spike_slab_simple, "fit_spike_slab_simple",
+           spike_and_slab_priors = TRUE,
+           note = "Simple spike-and-slab with normal alternative and beta inclusion prior")
+  model_registry[["fit_spike_slab_simple"]] <<- result$registry_entry
+  fit_spike_slab_simple <- result$fit
+
+  # Spike-and-slab with factor prior
+  priors_spike_slab_factor <- list(
+    "beta" = prior_spike_and_slab(prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+                                   prior_inclusion = prior("beta", list(1,1)))
+  )
+
+  # Set levels attribute on the factor prior component within the spike_and_slab mixture
+  # The spike_and_slab prior contains multiple components; we need to set levels on the factor component
+  components <- attr(priors_spike_slab_factor$beta, "components")
+  alternative_idx <- which(components == "alternative")
+  # Set to 3 levels for a 3-level factor (A, B, C)
+  attr(priors_spike_slab_factor$beta[[alternative_idx]], "levels") <- 3
+
+  model_syntax_ss2 <- "model{}"
+
+  fit_spike_slab_factor <- JAGS_fit(model_syntax_ss2, data = list(), prior_list = priors_spike_slab_factor,
+                                     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+  result <- save_fit(fit_spike_slab_factor, "fit_spike_slab_factor",
+           spike_and_slab_priors = TRUE, factor_priors = TRUE,
+           note = "Spike-and-slab with orthonormal factor prior (3 levels) as alternative")
+  model_registry[["fit_spike_slab_factor"]] <<- result$registry_entry
+  fit_spike_slab_factor <- result$fit
+
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_spike_slab_simple.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_spike_slab_factor.RDS")))
+})
+
+
+# ==============================================================================
+# SECTION 6: MIXTURE PRIORS
+# ==============================================================================
+test_that("Mixture prior models fit correctly", {
+
+  skip_if_not_installed("rjags")
+
+  # Simple mixture
+  priors_mixture_simple <- list(
+    "mu" = prior_mixture(
+      list(
+        prior("normal", list(0,  1), prior_weights = 1),
+        prior("normal", list(-3, 1), prior_weights = 5),
+        prior("gamma",  list(5, 10), prior_weights = 1)
+      ),
+      is_null = c(T, F, T)
+    )
+  )
+
+  model_syntax_mix1 <- "model{}"
+
+  fit_mixture_simple <- JAGS_fit(model_syntax_mix1, data = list(), prior_list = priors_mixture_simple,
+                                  chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
+  result <- save_fit(fit_mixture_simple, "fit_mixture_simple",
+           mixture_priors = TRUE,
+           note = "Mixture of 3 components (2 normals, 1 gamma) with is_null flags")
+  model_registry[["fit_mixture_simple"]] <<- result$registry_entry
+  fit_mixture_simple <- result$fit
+
+  # Mixture with components
+  priors_mixture_components <- list(
+    "beta" = prior_mixture(
+      list(
+        prior("normal", list(0,  1), prior_weights = 1),
+        prior("normal", list(-3, 1), prior_weights = 5)
+      ),
+      components = c("b", "a")
+    )
+  )
+
+  model_syntax_mix2 <- "model{}"
+
+  fit_mixture_components <- JAGS_fit(model_syntax_mix2, data = list(), prior_list = priors_mixture_components,
+                                      chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+  result <- save_fit(fit_mixture_components, "fit_mixture_components",
+           mixture_priors = TRUE,
+           note = "Mixture with named components (a, b)")
+  model_registry[["fit_mixture_components"]] <<- result$registry_entry
+  fit_mixture_components <- result$fit
+
+  # Mixture with spike
+  priors_mixture_spike <- list(
+    "gamma" = prior_mixture(
+      list(
+        prior("spike", list(2)),
+        prior("normal", list(-3, 1))
+      )
+    )
+  )
+
+  model_syntax_mix3 <- "model{}"
+
+  fit_mixture_spike <- JAGS_fit(model_syntax_mix3, data = list(), prior_list = priors_mixture_spike,
+                                 chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
+  result <- save_fit(fit_mixture_spike, "fit_mixture_spike",
+           mixture_priors = TRUE,
+           note = "Mixture containing spike prior at value 2")
+  model_registry[["fit_mixture_spike"]] <<- result$registry_entry
+  fit_mixture_spike <- result$fit
+
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_mixture_simple.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_mixture_components.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_mixture_spike.RDS")))
+})
+
+
+# ==============================================================================
+# SECTION 7: FORMULA-BASED MODELS (SIMPLE REGRESSION)
+# ==============================================================================
+test_that("Simple formula-based regression models fit correctly", {
+
+  skip_if_not_installed("rjags")
+
+  set.seed(1)
+  data_formula <- data.frame(
+    x_cont1 = rnorm(100),
+    x_fac2t = factor(rep(c("A", "B"), 50), levels = c("A", "B")),
+    x_fac3o = factor(rep(c("A", "B", "C"), length.out = 100), levels = c("A", "B", "C"))
+  )
+  data <- list(
+    y = rnorm(100, .4 * data_formula$x_cont1, 1),
+    N = 100
+  )
+
+  # Simple linear regression
+  formula_list_simple <- list(mu = ~ x_cont1)
+  formula_data_list_simple <- list(mu = data_formula)
+  formula_prior_list_simple <- list(
+    mu = list(
+      "intercept" = prior("normal", list(0, 5)),
+      "x_cont1"   = prior("normal", list(0, 1))
+    )
+  )
+  prior_list_simple <- list(sigma = prior("lognormal", list(0, 1)))
+
+  model_syntax_simple <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  fit_formula_simple <- JAGS_fit(
+    model_syntax = model_syntax_simple, data = data, prior_list = prior_list_simple,
+    formula_list = formula_list_simple, formula_data_list = formula_data_list_simple,
+    formula_prior_list = formula_prior_list_simple,
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
+  result <- save_fit(fit_formula_simple, "fit_formula_simple",
+           formulas = TRUE, simple_priors = TRUE,
+           note = "Simple linear regression with continuous predictor")
+  model_registry[["fit_formula_simple"]] <<- result$registry_entry
+  fit_formula_simple <- result$fit
+
+  # Regression with treatment factor
+  formula_list_treatment <- list(mu = ~ x_cont1 + x_fac2t)
+  formula_data_list_treatment <- list(mu = data_formula)
+  formula_prior_list_treatment <- list(
+    mu = list(
+      "intercept" = prior("normal", list(0, 5)),
+      "x_cont1"   = prior("normal", list(0, 1)),
+      "x_fac2t"   = prior_factor("normal", contrast = "treatment", list(0, 1))
+    )
+  )
+
+  fit_formula_treatment <- JAGS_fit(
+    model_syntax = model_syntax_simple, data = data, prior_list = prior_list_simple,
+    formula_list = formula_list_treatment, formula_data_list = formula_data_list_treatment,
+    formula_prior_list = formula_prior_list_treatment,
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+  result <- save_fit(fit_formula_treatment, "fit_formula_treatment",
+           formulas = TRUE, factor_priors = TRUE, simple_priors = TRUE,
+           note = "Regression with continuous predictor and 2-level treatment factor")
+  model_registry[["fit_formula_treatment"]] <<- result$registry_entry
+  fit_formula_treatment <- result$fit
+
+  # Regression with orthonormal factor
+  formula_list_orthonormal <- list(mu = ~ x_cont1 + x_fac3o)
+  formula_data_list_orthonormal <- list(mu = data_formula)
+  formula_prior_list_orthonormal <- list(
+    mu = list(
+      "intercept" = prior("normal", list(0, 5)),
+      "x_cont1"   = prior("normal", list(0, 1)),
+      "x_fac3o"   = prior_factor("mnormal", contrast = "orthonormal", list(0, 1))
+    )
+  )
+
+  fit_formula_orthonormal <- JAGS_fit(
+    model_syntax = model_syntax_simple, data = data, prior_list = prior_list_simple,
+    formula_list = formula_list_orthonormal, formula_data_list = formula_data_list_orthonormal,
+    formula_prior_list = formula_prior_list_orthonormal,
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
+  result <- save_fit(fit_formula_orthonormal, "fit_formula_orthonormal",
+           formulas = TRUE, factor_priors = TRUE, simple_priors = TRUE,
+           note = "Regression with continuous predictor and 3-level orthonormal factor")
+  model_registry[["fit_formula_orthonormal"]] <<- result$registry_entry
+  fit_formula_orthonormal <- result$fit
+
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_formula_simple.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_formula_treatment.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_formula_orthonormal.RDS")))
+})
+
+
+# ==============================================================================
+# SECTION 8: FORMULA-BASED MODELS (INTERACTIONS)
+# ==============================================================================
+test_that("Formula-based interaction models fit correctly", {
+
+  skip_if_not_installed("rjags")
+
+  set.seed(1)
+  data_formula <- data.frame(
+    x_cont1 = rnorm(100),
+    x_cont2 = rnorm(100),
+    x_fac2t = factor(rep(c("A", "B"), 50), levels = c("A", "B")),
+    x_fac3o = factor(rep(c("A", "B", "C"), length.out = 100), levels = c("A", "B", "C"))
+  )
+  data <- list(
+    y = rnorm(100, .4 * data_formula$x_cont1 - 0.15 * data_formula$x_cont1 * data_formula$x_cont2, 1),
+    N = 100
+  )
+
+  model_syntax <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+  prior_list <- list(sigma = prior("lognormal", list(0, 1)))
+
+  # Continuous interaction
+  formula_list_cont_int <- list(mu = ~ x_cont1 * x_cont2)
+  formula_data_list_cont_int <- list(mu = data_formula)
+  formula_prior_list_cont_int <- list(
+    mu = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_cont1"         = prior("normal", list(0, 1)),
+      "x_cont2"         = prior("normal", list(0, 1)),
+      "x_cont1:x_cont2" = prior("normal", list(0, 1))
+    )
+  )
+
+  fit_formula_interaction_cont <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list_cont_int, formula_data_list = formula_data_list_cont_int,
+    formula_prior_list = formula_prior_list_cont_int,
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
+  result <- save_fit(fit_formula_interaction_cont, "fit_formula_interaction_cont",
+           formulas = TRUE, interactions = TRUE, simple_priors = TRUE,
+           note = "Continuous-continuous interaction")
+  model_registry[["fit_formula_interaction_cont"]] <<- result$registry_entry
+  fit_formula_interaction_cont <- result$fit
+
+  # Continuous-factor interaction
+  formula_list_mix_int <- list(mu = ~ x_cont1 * x_fac3o)
+  formula_data_list_mix_int <- list(mu = data_formula)
+  formula_prior_list_mix_int <- list(
+    mu = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_cont1"         = prior("normal", list(0, 1)),
+      "x_fac3o"         = prior_factor("mnormal", contrast = "orthonormal", list(0, 1)),
+      "x_cont1:x_fac3o" = prior_factor("mnormal", contrast = "orthonormal", list(0, 1))
+    )
+  )
+
+  fit_formula_interaction_mix <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list_mix_int, formula_data_list = formula_data_list_mix_int,
+    formula_prior_list = formula_prior_list_mix_int,
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+  result <- save_fit(fit_formula_interaction_mix, "fit_formula_interaction_mix",
+           formulas = TRUE, interactions = TRUE, factor_priors = TRUE, simple_priors = TRUE,
+           note = "Continuous-factor interaction with 3-level orthonormal factor")
+  model_registry[["fit_formula_interaction_mix"]] <<- result$registry_entry
+  fit_formula_interaction_mix <- result$fit
+
+  # Factor-factor interaction
+  formula_list_fac_int <- list(mu = ~ x_fac2t * x_fac3o)
+  formula_data_list_fac_int <- list(mu = data_formula)
+  formula_prior_list_fac_int <- list(
+    mu = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_fac2t"         = prior_factor("normal", contrast = "treatment", list(0, 1)),
+      "x_fac3o"         = prior_factor("mnormal", contrast = "orthonormal", list(0, 1)),
+      "x_fac2t:x_fac3o" = prior_factor("mnormal", contrast = "orthonormal", list(0, 1))
+    )
+  )
+
+  fit_formula_interaction_fac <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list_fac_int, formula_data_list = formula_data_list_fac_int,
+    formula_prior_list = formula_prior_list_fac_int,
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
+  result <- save_fit(fit_formula_interaction_fac, "fit_formula_interaction_fac",
+           formulas = TRUE, interactions = TRUE, factor_priors = TRUE, simple_priors = TRUE,
+           note = "Factor-factor interaction: 2-level treatment x 3-level orthonormal")
+  model_registry[["fit_formula_interaction_fac"]] <<- result$registry_entry
+  fit_formula_interaction_fac <- result$fit
+
+  # Regression with prior_mixture for factor predictor
+  # Testing mixture of spike and normal factor priors
+  set.seed(1)
+  data_formula_mix <- data.frame(
+    x_cont  = rnorm(100),
+    x_fac3t = factor(rep(c("A", "B", "C"), length.out = 100), levels = c("A", "B", "C"))
+  )
+  data_mix <- list(
+    y = rnorm(100, 0.20 * data_formula_mix$x_cont, 1),
+    N = 100
+  )
+
+  formula_list_factor_mix <- list(mu = ~ x_cont + x_fac3t)
+  formula_data_list_factor_mix <- list(mu = data_formula_mix)
+  formula_prior_list_factor_mix <- list(
+    mu = list(
+      "intercept" = prior("normal", list(0, 5)),
+      "x_cont"    = prior("normal", list(0, 1)),
+      "x_fac3t"   = prior_mixture(list(
+        prior("spike", list(0)),
+        prior_factor("normal", list(0, 0.3), contrast = "treatment")
+      ), is_null = c(TRUE, FALSE))
+    )
+  )
+
+  fit_formula_factor_mixture <- JAGS_fit(
+    model_syntax = model_syntax, data = data_mix, prior_list = prior_list,
+    formula_list = formula_list_factor_mix, formula_data_list = formula_data_list_factor_mix,
+    formula_prior_list = formula_prior_list_factor_mix,
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 4)
+  result <- save_fit(fit_formula_factor_mixture, "fit_formula_factor_mixture",
+           formulas = TRUE, mixture_priors = TRUE, factor_priors = TRUE, simple_priors = TRUE,
+           note = "Regression with mixture prior on 3-level treatment factor (spike vs normal)")
+  model_registry[["fit_formula_factor_mixture"]] <<- result$registry_entry
+  fit_formula_factor_mixture <- result$fit
+
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_formula_interaction_cont.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_formula_interaction_mix.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_formula_interaction_fac.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_formula_factor_mixture.RDS")))
+})
+
+
+# ==============================================================================
+# SECTION 9: FORMULA-BASED MODELS (MULTIPLE FORMULAS)
+# ==============================================================================
+test_that("Multi-formula models fit correctly", {
+
+  skip_if_not_installed("rjags")
+
+  set.seed(1)
+  data_formula <- data.frame(
+    x_cont1 = rnorm(100),
+    x_fac2t = factor(rep(c("A", "B"), 50), levels = c("A", "B"))
+  )
+  data_mu <- 0.20 * data_formula$x_cont1
+  data_sigma <- 0.50 * exp(ifelse(data_formula$x_fac2t == "A", -0.5, 0.5))
+  data <- list(
+    y = rnorm(100, data_mu, data_sigma),
+    N = 100
+  )
+
+  # Model with two formulas (mu and sigma)
+  formula_list_multi <- list(
+    mu        = ~ x_cont1,
+    sigma_exp = ~ x_fac2t
+  )
+  formula_data_list_multi <- list(
+    mu        = data_formula,
+    sigma_exp = data_formula
+  )
+  formula_prior_list_multi <- list(
+    mu         = list(
+      "intercept" = prior("normal", list(0, 5)),
+      "x_cont1"   = prior("normal", list(0, 1))
+    ),
+    sigma_exp  = list(
+      "intercept" = prior("spike", list(0)),
+      "x_fac2t"   = prior_factor("mnormal", list(0, 1), contrast = "meandif")
+    )
+  )
+  prior_list_multi <- list(
+    "sigma" = prior("normal", list(0, 5), list(0, Inf))
+  )
+
+  model_syntax_multi <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma * exp(sigma_exp[i]), 2))\n",
+    "}\n",
+    "}"
+  )
+
+  fit_formula_multi <- JAGS_fit(
+    model_syntax = model_syntax_multi, data = data, prior_list = prior_list_multi,
+    formula_list = formula_list_multi, formula_data_list = formula_data_list_multi,
+    formula_prior_list = formula_prior_list_multi,
+    chains = 2, adapt = 500, burnin = 500, sample = 500, seed = 1)
+  result <- save_fit(fit_formula_multi, "fit_formula_multi",
+           formulas = TRUE, multi_formula = TRUE, factor_priors = TRUE, simple_priors = TRUE,
+           note = "Two formulas: mu (continuous) and sigma_exp (meandif factor)")
+  model_registry[["fit_formula_multi"]] <<- result$registry_entry
+  fit_formula_multi <- result$fit
+
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_formula_multi.RDS")))
+})
+
+
+# ==============================================================================
+# SECTION 10: RANDOM EFFECTS MODELS
+# ==============================================================================
+test_that("Random effects models fit correctly", {
+
+  skip_if_not_installed("rjags")
+
+  set.seed(1)
+  data_formula <- data.frame(
+    x_cont1 = rnorm(100),
+    x_fac3  = as.factor(sample(LETTERS[1:3], 100, replace = TRUE)),
+    id      = factor(rep(LETTERS[1:10], 10))
+  )
+  id_values <- rnorm(10, 0, 0.5)
+  names(id_values) <- LETTERS[1:10]
+
+  data <- list(
+    y = rnorm(100, 0.4 * data_formula$x_cont1 + id_values[data_formula$id]),
+    N = 100
+  )
+
+  model_syntax <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+  prior_list <- list(sigma = prior("lognormal", list(0, 1)))
+
+  # Random intercept only
+  # Note: Using || for uncorrelated random effects (as opposed to | for correlated)
+  formula_list_re_int <- list(mu = ~ 1 + (1 ||id))
+  formula_data_list_re_int <- list(mu = data_formula)
+  formula_prior_list_re_int <- list(
+    mu = list(
+      "intercept"    = prior("normal", list(0, 5)),
+      "intercept|id" = prior("normal", list(0, 1), list(0, 1))
+    )
+  )
+
+  fit_random_intercept <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list_re_int, formula_data_list = formula_data_list_re_int,
+    formula_prior_list = formula_prior_list_re_int,
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
+  result <- save_fit(fit_random_intercept, "fit_random_intercept",
+           formulas = TRUE, random_effects = TRUE, simple_priors = TRUE,
+           note = "Random intercept model (uncorrelated random effects)")
+  model_registry[["fit_random_intercept"]] <<- result$registry_entry
+  fit_random_intercept <- result$fit
+
+  # Random slope (no intercept)
+  formula_list_re_slope <- list(mu = ~ 1 + (0 + x_cont1 ||id))
+  formula_data_list_re_slope <- list(mu = data_formula)
+  formula_prior_list_re_slope <- list(
+    mu = list(
+      "intercept"  = prior("normal", list(0, 5)),
+      "x_cont1|id" = prior("normal", list(0, 1), list(0, 1))
+    )
+  )
+
+  fit_random_slope <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list_re_slope, formula_data_list = formula_data_list_re_slope,
+    formula_prior_list = formula_prior_list_re_slope,
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+  result <- save_fit(fit_random_slope, "fit_random_slope",
+           formulas = TRUE, random_effects = TRUE, simple_priors = TRUE,
+           note = "Random slope for continuous predictor (no random intercept)")
+  model_registry[["fit_random_slope"]] <<- result$registry_entry
+  fit_random_slope <- result$fit
+
+  # Random factor slope
+  formula_list_re_fac <- list(mu = ~ 1 + x_cont1 + (x_fac3 ||id))
+  formula_data_list_re_fac <- list(mu = data_formula)
+  formula_prior_list_re_fac <- list(
+    mu = list(
+      "intercept"    = prior("normal", list(0, 5)),
+      "x_cont1"      = prior("normal", list(0, 1)),
+      "intercept|id" = prior("normal", list(0, 1), list(0, 1)),
+      "x_fac3|id"    = prior("normal", list(0, 1), list(0, 1))
+    )
+  )
+
+  fit_random_factor_slope <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list_re_fac, formula_data_list = formula_data_list_re_fac,
+    formula_prior_list = formula_prior_list_re_fac,
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
+  result <- save_fit(fit_random_factor_slope, "fit_random_factor_slope",
+           formulas = TRUE, random_effects = TRUE, factor_priors = TRUE, simple_priors = TRUE,
+           note = "Random factor slopes with random intercept")
+  model_registry[["fit_random_factor_slope"]] <<- result$registry_entry
+  fit_random_factor_slope <- result$fit
+
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_random_intercept.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_random_slope.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_random_factor_slope.RDS")))
+})
+
+
+# ==============================================================================
+# SECTION 11: SPIKE FACTOR PRIORS
+# ==============================================================================
+test_that("Spike factor prior models fit correctly", {
+
+  skip_if_not_installed("rjags")
+
+  set.seed(1)
+  data_formula <- data.frame(
+    x_fac2i = factor(rep(c("A", "B"), 50), levels = c("A", "B")),
+    x_fac3o = factor(rep(c("A", "B", "C"), length.out = 100), levels = c("A", "B", "C")),
+    x_fac3t = factor(rep(c("A", "B", "C"), length.out = 100), levels = c("A", "B", "C")),
+    x_fac3md = factor(rep(c("A", "B", "C"), length.out = 100), levels = c("A", "B", "C"))
+  )
+  data <- list(y = rnorm(100, 0, 1), N = 100)
+
+  model_syntax <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+  prior_list <- list(sigma = prior("lognormal", list(0, 1)))
+
+  # Spike priors with different contrasts
+  # Note: Using - 1 to remove the intercept since spike priors for independent factors
+  # define all levels explicitly, and we're testing different contrast behaviors
+  formula_list_spike <- list(mu = ~ x_fac2i + x_fac3o + x_fac3t + x_fac3md - 1)
+  formula_data_list_spike <- list(mu = data_formula)
+  formula_prior_list_spike <- list(
+    mu = list(
+      "x_fac2i"  = prior_factor("spike", contrast = "independent", list(1)),
+      "x_fac3o"  = prior_factor("spike", contrast = "orthonormal", list(0)),
+      "x_fac3t"  = prior_factor("spike", contrast = "treatment", list(2)),
+      "x_fac3md" = prior_factor("spike", contrast = "meandif", list(0))
+    )
+  )
+
+  fit_spike_factors <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list_spike, formula_data_list = formula_data_list_spike,
+    formula_prior_list = formula_prior_list_spike,
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
+  result <- save_fit(fit_spike_factors, "fit_spike_factors",
+           formulas = TRUE, factor_priors = TRUE,
+           note = "Spike priors with all 4 contrast types: independent, orthonormal, treatment, meandif")
+  model_registry[["fit_spike_factors"]] <<- result$registry_entry
+  fit_spike_factors <- result$fit
+
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_spike_factors.RDS")))
+})
+
+
+# ==============================================================================
+# SECTION 12: JOINT MODELS (FORMULA + SPIKE-AND-SLAB + MIXTURE)
+# ==============================================================================
+test_that("Joint complex models fit correctly", {
+
+  skip_if_not_installed("rjags")
+
+  set.seed(1)
+  data_formula <- data.frame(
+    x_cont1 = rnorm(100),
+    x_fac2t = factor(rep(c("A", "B"), 50), levels = c("A", "B")),
+    x_fac3t = factor(rep(c("A", "B", "C"), length.out = 100), levels = c("A", "B", "C"))
+  )
+  data <- list(
+    y = rnorm(100, 0.20 * data_formula$x_cont1, 1),
+    N = 100
+  )
+
+  # Model with mixture intercept, spike-and-slab continuous, spike-and-slab factor
+  formula_list_joint <- list(mu = ~ x_cont1 + x_fac3t)
+  formula_data_list_joint <- list(mu = data_formula)
+  formula_prior_list_joint <- list(
+    mu = list(
+      "intercept" = prior_mixture(
+        list(
+          prior("spike",  list(0),       prior_weights = 2),
+          prior("normal", list(-1, 0.5), prior_weights = 1),
+          prior("normal", list( 1, 0.5), prior_weights = 1)
+        ),
+        is_null = c(T, F, F)
+      ),
+      "x_cont1" = prior_mixture(
+        list(
+          prior("spike",  list(0),    prior_weights = 1),
+          prior("normal", list(0, 1), prior_weights = 1)
+        ),
+        is_null = c(T, F)
+      ),
+      "x_fac3t" = prior_spike_and_slab(
+        prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+        prior_inclusion = prior("spike", list(0.5))
+      )
+    )
+  )
+  # Scale the continuous predictor by sigma (standard practice for hierarchical centering)
+  attr(formula_prior_list_joint$mu$x_cont1, "multiply_by") <- "sigma"
+
+  prior_list_joint <- list(
+    "sigma" = prior_mixture(
+      list(
+        prior("normal",    list(0, 1), truncation = list(0, Inf)),
+        prior("lognormal", list(0, 1))
+      ),
+      is_null = c(T, F)
+    )
+  )
+
+  model_syntax_joint <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  fit_joint_complex <- JAGS_fit(
+    model_syntax = model_syntax_joint, data = data, prior_list = prior_list_joint,
+    formula_list = formula_list_joint, formula_data_list = formula_data_list_joint,
+    formula_prior_list = formula_prior_list_joint,
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
+  result <- save_fit(fit_joint_complex, "fit_joint_complex",
+           formulas = TRUE, mixture_priors = TRUE, spike_and_slab_priors = TRUE,
+           factor_priors = TRUE, simple_priors = TRUE,
+           note = "Complex model: mixture intercept, mixture sigma, spike-and-slab continuous, spike-and-slab factor")
+  model_registry[["fit_joint_complex"]] <<- result$registry_entry
+  fit_joint_complex <- result$fit
+
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_joint_complex.RDS")))
+})
+
+
+# ==============================================================================
+# SECTION 13: EXPRESSION PRIORS
+# ==============================================================================
+test_that("Expression prior models fit correctly", {
+
+  skip_if_not_installed("rjags")
+
+  # Simple prior with expression
+  priors_expr_simple <- list(
+    x        = prior("normal",   list(0, expression(x_sigma))),
+    x_sigma  = prior("invgamma", list(1/2, 1/2))
+  )
+
+  model_syntax_expr1 <- "model{}"
+
+  fit_expression_simple <- JAGS_fit(model_syntax_expr1, data = list(), prior_list = priors_expr_simple,
+                                     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
+  result <- save_fit(fit_expression_simple, "fit_expression_simple",
+           expression_priors = TRUE, simple_priors = TRUE,
+           note = "Normal prior with expression referencing another parameter (x_sigma)")
+  model_registry[["fit_expression_simple"]] <<- result$registry_entry
+  fit_expression_simple <- result$fit
+
+  # Spike-and-slab with expression
+  priors_expr_ss <- list(
+    x        = prior_spike_and_slab(
+      prior("normal", list(0, expression(x_sigma)))
+    ),
+    x_sigma  = prior("invgamma", list(1/2, 1/2))
+  )
+
+  model_syntax_expr2 <- "model{}"
+
+  fit_expression_spike_slab <- JAGS_fit(model_syntax_expr2, data = list(), prior_list = priors_expr_ss,
+                                         chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+  result <- save_fit(fit_expression_spike_slab, "fit_expression_spike_slab",
+           expression_priors = TRUE, spike_and_slab_priors = TRUE, simple_priors = TRUE,
+           note = "Spike-and-slab with expression in alternative prior")
+  model_registry[["fit_expression_spike_slab"]] <<- result$registry_entry
+  fit_expression_spike_slab <- result$fit
+
+  # Mixture with expression
+  priors_expr_mix <- list(
+    x        = prior_mixture(list(
+      prior("normal", list(0, expression(x_sigma))),
+      prior("cauchy", list(0, 1))
+    ), is_null = c(T, F)),
+    x_sigma  = prior("invgamma", list(1/2, 1/2))
+  )
+
+  model_syntax_expr3 <- "model{}"
+
+  fit_expression_mixture <- JAGS_fit(model_syntax_expr3, data = list(), prior_list = priors_expr_mix,
+                                      chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
+  result <- save_fit(fit_expression_mixture, "fit_expression_mixture",
+           expression_priors = TRUE, mixture_priors = TRUE, simple_priors = TRUE,
+           note = "Mixture prior with expression in one component")
+  model_registry[["fit_expression_mixture"]] <<- result$registry_entry
+  fit_expression_mixture <- result$fit
+
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_expression_simple.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_expression_spike_slab.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_expression_mixture.RDS")))
+})
+
+
+# ==============================================================================
+# SECTION 14: ADVANCED JAGS_FIT FEATURES
+# ==============================================================================
+test_that("Advanced JAGS_fit features work correctly", {
+
+  skip_if_not_installed("rjags")
+
+  set.seed(1)
+  data <- list(
+    x = rnorm(20, 0, 1),
+    N = 20
+  )
+  priors_list <- list(
+    m = prior("normal", list(0, 1)),
+    s = prior("normal", list(0, 1), list(0, Inf))
+  )
+  model_syntax <-
+    "model
+    {
+      for(i in 1:N){
+        x[i] ~ dnorm(m, pow(s, -2))
+      }
+    }"
+
+  # Test 1: add_parameters - monitoring additional parameters not in prior_list
+  model_syntax_add_param <-
+    "model
+    {
+      g ~ dnorm(0, 1)
+      for(i in 1:N){
+        x[i] ~ dnorm(m, pow(s, -2))
+      }
+    }"
+
+  fit_add_parameters <- JAGS_fit(model_syntax_add_param, data, priors_list,
+                                  add_parameters = "g",
+                                  chains = 2, adapt = 100, burnin = 100, sample = 300, seed = 1)
+  result <- save_fit(fit_add_parameters, "fit_add_parameters",
+           simple_priors = TRUE, add_parameters = TRUE,
+           note = "Model with additional monitored parameter 'g' not in prior_list")
+  model_registry[["fit_add_parameters"]] <<- result$registry_entry
+  fit_add_parameters <- result$fit
+
+  # Verify that 'g' is in the output
+  expect_true("g" %in% colnames(fit_add_parameters$mcmc[[1]]))
+  expect_equal(ncol(fit_add_parameters$mcmc[[1]]), 3) # m, s, g
+
+  # Test 2: autofit - automatic refitting until convergence
+  # Using a model that requires more samples to converge
+  priors_autofit <- list(
+    m = prior("normal", list(0, 1))
+  )
+  data_autofit <- list(
+    x = c(-500),
+    N = 1
+  )
+  model_syntax_autofit <-
+    "model
+    {
+      l = 1
+      for(i in 1:N){
+        x[i] ~ dt(m, pow(.3, -2), 1)
+      }
+    }"
+
+  runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
+
+  # First fit without autofit (should have poor convergence)
+  fit_no_autofit <- JAGS_fit(model_syntax_autofit, data_autofit, priors_autofit,
+                              autofit = FALSE,
+                              chains = 2, adapt = 100, burnin = 50, sample = 100, seed = 2)
+  result <- save_fit(fit_no_autofit, "fit_no_autofit",
+           simple_priors = TRUE,
+           note = "Model without autofit (poor convergence expected)")
+  model_registry[["fit_no_autofit"]] <<- result$registry_entry
+  fit_no_autofit <- result$fit
+
+  summary_no_autofit <- suppressWarnings(summary(fit_no_autofit))
+  # Check that convergence is poor
+  expect_true(summary_no_autofit[1,"MCerr"] > 0.069 || summary_no_autofit[1,"MC%ofSD"] > 8)
+
+  # Now fit with autofit using max_error criterion
+  fit_autofit_error <- JAGS_fit(model_syntax_autofit, data_autofit, priors_autofit,
+                                 autofit = TRUE,
+                                 autofit_control = list(max_error = 0.05, sample_extend = 100),
+                                 chains = 2, adapt = 100, burnin = 50, sample = 100, seed = 2)
+  result <- save_fit(fit_autofit_error, "fit_autofit_error",
+           simple_priors = TRUE, autofit = TRUE,
+           note = "Autofit with max_error criterion (< 0.05)")
+  model_registry[["fit_autofit_error"]] <<- result$registry_entry
+  fit_autofit_error <- result$fit
+
+  summary_autofit_error <- summary(fit_autofit_error)
+  # Should have better convergence
+  expect_true(summary_autofit_error[1,"MCerr"] < 0.05)
+
+  # Test autofit with min_ESS criterion
+  fit_autofit_ess <- JAGS_fit(model_syntax_autofit, data_autofit, priors_autofit,
+                               autofit = TRUE,
+                               autofit_control = list(min_ESS = 200, sample_extend = 100),
+                               chains = 2, adapt = 100, burnin = 50, sample = 100, seed = 3)
+  result <- save_fit(fit_autofit_ess, "fit_autofit_ess",
+           simple_priors = TRUE, autofit = TRUE,
+           note = "Autofit with min_ESS criterion (> 200)")
+  model_registry[["fit_autofit_ess"]] <<- result$registry_entry
+  fit_autofit_ess <- result$fit
+
+  summary_autofit_ess <- summary(fit_autofit_ess)
+  expect_true(summary_autofit_ess[1,"SSeff"] > 200)
+
+  # Test 3: parallel - running chains in parallel
+  # Note: parallel execution is tested but results should be the same as non-parallel
+  fit_parallel <- JAGS_fit(model_syntax, data, priors_list,
+                           parallel = TRUE, cores = 2,
+                           chains = 2, adapt = 100, burnin = 100, sample = 300, seed = 4)
+  result <- save_fit(fit_parallel, "fit_parallel",
+           simple_priors = TRUE, parallel = TRUE,
+           note = "Model fitted with parallel chains (cores=2)")
+  model_registry[["fit_parallel"]] <<- result$registry_entry
+  fit_parallel <- result$fit
+
+  # Verify the fit worked and has the expected structure
+  expect_equal(length(fit_parallel$mcmc), 2) # 2 chains
+  expect_true(all(sapply(fit_parallel$mcmc, function(mcmc) ncol(mcmc) == 2))) # m and s
+
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_add_parameters.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_no_autofit.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_autofit_error.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_autofit_ess.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_parallel.RDS")))
+})
+
+
+# ==============================================================================
+# SAVE MODEL REGISTRY
+# ==============================================================================
+# Convert the model registry list to a data frame for easy inspection and querying
+test_that("Model registry is created and saved", {
+
+  skip_on_cran()
+
+  # Combine all registry entries into a single data frame
+  model_registry_df <- do.call(rbind, model_registry)
+  rownames(model_registry_df) <- NULL
+
+  # Save the registry alongside the fitted models
+  registry_file <- file.path(temp_fits_dir, "model_registry.RDS")
+  saveRDS(model_registry_df, registry_file)
+
+  # Verify registry was created
+  expect_true(file.exists(registry_file))
+  expect_s3_class(model_registry_df, "data.frame")
+  expect_true(nrow(model_registry_df) > 0)
+})
+
