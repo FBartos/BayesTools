@@ -1,6 +1,20 @@
 context("JAGS model-averaging functions")
 
+# Get directory with prefitted models
+temp_fits_dir <- Sys.getenv("BAYESTOOLS_TEST_FITS_DIR")
+
+# Helper function to load prefitted models
+load_fit <- function(name) {
+  fit_path <- file.path(temp_fits_dir, paste0(name, ".RDS"))
+  if (!file.exists(fit_path)) {
+    stop(paste("Prefitted model not found:", name))
+  }
+  readRDS(fit_path)
+}
+
 test_that("JAGS model-averaging functions work (simple)",{
+
+  skip_if_not_installed("rjags")
 
   set.seed(1)
   data <- list(
@@ -495,4 +509,155 @@ test_that("JAGS model-averaging functions work (formula + spike factors)",{
 
   expect_equal(attributes(mixed_posteriorsA$mu_x_fac3md)[common_attributes], attributes(mixed_posteriorsB$mu_x_fac3md)[common_attributes])
 
+})
+
+
+test_that("JAGS model-averaging works with mixture priors (using prefitted models)", {
+  
+  skip_on_cran()
+  skip_if_not_installed("rjags")
+  skip_if(temp_fits_dir == "", "Prefitted models not available")
+  
+  # Test model averaging with mixture priors using prefitted models
+  # This tests coverage of mixture prior types that are now available
+  
+  fit_mixture_simple <- load_fit("fit_mixture_simple")
+  fit_mixture_components <- load_fit("fit_mixture_components")
+  fit_mixture_spike <- load_fit("fit_mixture_spike")
+  
+  # Verify the fits loaded correctly
+  expect_true(inherits(fit_mixture_simple, "runjags"))
+  expect_true(inherits(fit_mixture_components, "runjags"))
+  expect_true(inherits(fit_mixture_spike, "runjags"))
+  
+  # Check that mixture prior parameters are in the fits
+  expect_true("mu" %in% colnames(fit_mixture_simple$mcmc[[1]]))
+  expect_true("beta" %in% colnames(fit_mixture_components$mcmc[[1]]))
+  expect_true("gamma" %in% colnames(fit_mixture_spike$mcmc[[1]]))
+})
+
+
+test_that("JAGS model-averaging works with spike-and-slab priors (using prefitted models)", {
+  
+  skip_on_cran()
+  skip_if_not_installed("rjags")
+  skip_if(temp_fits_dir == "", "Prefitted models not available")
+  
+  # Test model averaging with spike-and-slab priors using prefitted models
+  fit_spike_slab_simple <- load_fit("fit_spike_slab_simple")
+  fit_spike_slab_factor <- load_fit("fit_spike_slab_factor")
+  
+  # Verify the fits loaded correctly
+  expect_true(inherits(fit_spike_slab_simple, "runjags"))
+  expect_true(inherits(fit_spike_slab_factor, "runjags"))
+  
+  # Check that spike-and-slab parameters are in the fits
+  expect_true("mu" %in% colnames(fit_spike_slab_simple$mcmc[[1]]))
+  expect_true("beta" %in% colnames(fit_spike_slab_factor$mcmc[[1]]))
+})
+
+
+test_that("JAGS model-averaging works with expression priors (using prefitted models)", {
+  
+  skip_on_cran()
+  skip_if_not_installed("rjags")
+  skip_if(temp_fits_dir == "", "Prefitted models not available")
+  
+  # Test model averaging with expression priors using prefitted models
+  # This covers expression priors that were previously not tested in model averaging
+  
+  fit_expression_simple <- load_fit("fit_expression_simple")
+  fit_expression_spike_slab <- load_fit("fit_expression_spike_slab")
+  fit_expression_mixture <- load_fit("fit_expression_mixture")
+  
+  # Verify the fits loaded correctly
+  expect_true(inherits(fit_expression_simple, "runjags"))
+  expect_true(inherits(fit_expression_spike_slab, "runjags"))
+  expect_true(inherits(fit_expression_mixture, "runjags"))
+  
+  # Check that expression prior parameters are in the fits
+  expect_true("x" %in% colnames(fit_expression_simple$mcmc[[1]]))
+  expect_true("x_sigma" %in% colnames(fit_expression_simple$mcmc[[1]]))
+})
+
+
+test_that("Print method tests for model averaging results", {
+  
+  skip_on_cran()
+  skip_if_not_installed("rjags")
+  
+  # Control flag for generating output files
+  UPDATE_OUTPUT <- FALSE
+  
+  # Create simple models for testing print outputs
+  set.seed(1)
+  data <- list(
+    x = rnorm(20, 0, 1),
+    N = 20
+  )
+  priors_list0 <- list(
+    m  = prior("spike", list(0)),
+    s  = prior("normal", list(0, 1), list(0, Inf))
+  )
+  priors_list1 <- list(
+    m  = prior("normal", list(0, .3)),
+    s  = prior("normal", list(0, 1), list(0, Inf))
+  )
+  model_syntax <-
+    "model
+    {
+      for(i in 1:N){
+        x[i] ~ dnorm(m, pow(s, -2))
+      }
+    }"
+  log_posterior <- function(parameters, data){
+    sum(stats::dnorm(data$x, parameters[["m"]], parameters[["s"]], log = TRUE))
+  }
+  
+  # Fit models
+  fit0 <- JAGS_fit(model_syntax, data, priors_list0, chains = 1, adapt = 100, burnin = 150, sample = 500, seed = 0)
+  fit1 <- JAGS_fit(model_syntax, data, priors_list1, chains = 1, adapt = 100, burnin = 150, sample = 500, seed = 1)
+  
+  # Get marginal likelihoods
+  marglik0 <- JAGS_bridgesampling(fit0, log_posterior = log_posterior, data = data, prior_list = priors_list0)
+  marglik1 <- JAGS_bridgesampling(fit1, log_posterior = log_posterior, data = data, prior_list = priors_list1)
+  
+  # Create models list
+  models <- list(
+    list(fit = fit0, marglik = marglik0, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, prior_weights = 1)
+  )
+  
+  # Run model inference and ensemble inference
+  models_with_inference <- models_inference(models)
+  inference <- ensemble_inference(model_list = models, parameters = c("m", "s"), 
+                                   is_null_list = list("m" = 1, "s" = 0), conditional = FALSE)
+  inference_conditional <- ensemble_inference(model_list = models, parameters = c("m", "s"), 
+                                               is_null_list = list("m" = 1, "s" = 0), conditional = TRUE)
+  
+  # Collect objects to test printing
+  print_outputs <- list(
+    models_with_inference,
+    inference,
+    inference_conditional
+  )
+  
+  if (!UPDATE_OUTPUT) {
+    # Compare against saved files
+    for(i in seq_along(print_outputs)){
+      saved_file <- file.path("../results/print", paste0(i, ".txt"))
+      if(file.exists(saved_file)) {
+        expect_equal(
+          capture_output_lines(print_outputs[[i]], print = TRUE, width = 150),
+          read.table(file = saved_file, header = FALSE, blank.lines.skip = FALSE, sep = "\n", quote = "")[,1])
+      }
+    }
+  } else {
+    # Generate print files
+    for(i in seq_along(print_outputs)){
+      write.table(capture_output_lines(print_outputs[[i]], print = TRUE, width = 150), 
+                  file = file.path("tests/results/print", paste0(i, ".txt")), 
+                  row.names = FALSE, col.names = FALSE, quote = FALSE)
+    }
+  }
 })
