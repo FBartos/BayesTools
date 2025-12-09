@@ -1,5 +1,0 @@
-
-JAGS model with 1000 samples (chains = 2; adapt+burnin = 250)
-
-Full summary statistics have not been pre-calculated - use either the summary method or add.summary to calculate summary statistics
-
