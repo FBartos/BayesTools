@@ -16,7 +16,7 @@ Sys.setenv(BAYESTOOLS_TEST_FITS_DIR = temp_fits_dir)
 model_registry <- list()
 
 # Helper function to save fitted models and register metadata
-save_fit <- function(fit, name, simple_priors = FALSE, vector_priors = FALSE,
+save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_priors = FALSE,
                      factor_priors = FALSE, pub_bias_priors = FALSE,
                      weightfunction_priors = FALSE, spike_and_slab_priors = FALSE,
                      mixture_priors = FALSE, formulas = FALSE,
@@ -25,12 +25,19 @@ save_fit <- function(fit, name, simple_priors = FALSE, vector_priors = FALSE,
                      autofit = FALSE, parallel = FALSE, thinning = FALSE,
                      add_parameters = FALSE, note = "") {
   saveRDS(fit, file = file.path(temp_fits_dir, paste0(name, ".RDS")))
+  
+  # Save marglik if provided
+  if (!is.null(marglik)) {
+    saveRDS(marglik, file = file.path(temp_fits_dir, paste0(name, "_marglik.RDS")))
+  }
 
   # Return model metadata entry for registry
   list(
     fit = fit,
+    marglik = marglik,
     registry_entry = data.frame(
       model_name = name,
+      has_marglik = !is.null(marglik),
       simple_priors = simple_priors,
       vector_priors = vector_priors,
       factor_priors = factor_priors,
@@ -59,6 +66,7 @@ save_fit <- function(fit, name, simple_priors = FALSE, vector_priors = FALSE,
 test_that("Simple prior models fit correctly", {
 
   skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
 
   set.seed(1)
   data <- list(
@@ -81,13 +89,44 @@ test_that("Simple prior models fit correctly", {
 
   fit_simple_normal <- JAGS_fit(model_syntax, data, priors_simple_normal,
                                  chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
+  
+  # Compute marginal likelihood for model averaging
+  log_posterior_simple_normal <- function(parameters, data){
+    sum(stats::dnorm(data$x, parameters[["m"]], parameters[["s"]], log = TRUE))
+  }
+  marglik_simple_normal <- JAGS_bridgesampling(fit_simple_normal, 
+                                                log_posterior = log_posterior_simple_normal, 
+                                                data = data, prior_list = priors_simple_normal)
+  
   result <- save_fit(fit_simple_normal, "fit_simple_normal",
+           marglik = marglik_simple_normal,
            simple_priors = TRUE,
            note = "Normal and truncated normal priors with data")
   model_registry[["fit_simple_normal"]] <<- result$registry_entry
   fit_simple_normal <- result$fit
 
-  # Model 2: Various prior distributions
+  # Model 2: Spike and normal priors (for model averaging)
+  priors_simple_spike <- list(
+    m = prior("spike", list(0)),
+    s = prior("normal", list(0, 1), list(0, Inf))
+  )
+  
+  fit_simple_spike <- JAGS_fit(model_syntax, data, priors_simple_spike,
+                               chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+  
+  # Compute marginal likelihood for model averaging
+  marglik_simple_spike <- JAGS_bridgesampling(fit_simple_spike, 
+                                               log_posterior = log_posterior_simple_normal, 
+                                               data = data, prior_list = priors_simple_spike)
+  
+  result <- save_fit(fit_simple_spike, "fit_simple_spike",
+           marglik = marglik_simple_spike,
+           simple_priors = TRUE,
+           note = "Spike and truncated normal priors with data (for model averaging)")
+  model_registry[["fit_simple_spike"]] <<- result$registry_entry
+  fit_simple_spike <- result$fit
+
+  # Model 3: Various prior distributions
   priors_various <- list(
     p1  = prior("normal", list(0, 1)),
     p2  = prior("lognormal", list(0, .5)),
@@ -111,7 +150,7 @@ test_that("Simple prior models fit correctly", {
   model_registry[["fit_simple_various"]] <<- result$registry_entry
   fit_simple_various <- result$fit
 
-  # Model 3: PET and PEESE priors
+  # Model 4: PET and PEESE priors
   priors_pub_bias <- list(
     PET = prior_PET("normal", list(0, 1)),
     PEESE = prior_PEESE("gamma", list(1, 1))
@@ -127,7 +166,7 @@ test_that("Simple prior models fit correctly", {
   model_registry[["fit_simple_pub_bias"]] <<- result$registry_entry
   fit_simple_pub_bias <- result$fit
 
-  # Model 4: Test with thinning parameter
+  # Model 5: Test with thinning parameter
   priors_thin <- list(
     mu = prior("normal", list(0, 1))
   )
@@ -142,9 +181,103 @@ test_that("Simple prior models fit correctly", {
   fit_simple_thin <- result$fit
 
   expect_true(file.exists(file.path(temp_fits_dir, "fit_simple_normal.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_simple_spike.RDS")))
   expect_true(file.exists(file.path(temp_fits_dir, "fit_simple_various.RDS")))
   expect_true(file.exists(file.path(temp_fits_dir, "fit_simple_pub_bias.RDS")))
   expect_true(file.exists(file.path(temp_fits_dir, "fit_simple_thin.RDS")))
+})
+
+
+# ==============================================================================
+# SECTION 1B: MODELS FOR SUMMARY TABLES TESTING
+# ==============================================================================
+test_that("Summary tables models fit correctly", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+
+  set.seed(1)
+  data_summary <- list(
+    x = rnorm(20, 0, 1),
+    N = 20
+  )
+
+  model_syntax_summary <-
+    "model
+    {
+      for(i in 1:N){
+        x[i] ~ dnorm(m, 1)
+      }
+    }"
+
+  # Log posterior for summary tables (constant, no data dependency)
+  log_posterior_summary <- function(parameters, data){
+    return(0)
+  }
+
+  # Model 1: Normal prior with prior_none weightfunction
+  priors_summary0 <- list(
+    m     = prior("normal", list(0, 1)),
+    omega = prior_none()
+  )
+
+  fit_summary0 <- JAGS_fit(model_syntax_summary, data_summary, priors_summary0,
+                           chains = 1, adapt = 100, burnin = 150, sample = 500, seed = 0)
+
+  marglik_summary0 <- JAGS_bridgesampling(fit_summary0,
+                                          log_posterior = log_posterior_summary,
+                                          data = data_summary, prior_list = priors_summary0)
+
+  result <- save_fit(fit_summary0, "fit_summary0",
+           marglik = marglik_summary0,
+           simple_priors = TRUE, weightfunction_priors = TRUE,
+           note = "Model for summary tables with no weightfunction")
+  model_registry[["fit_summary0"]] <<- result$registry_entry
+  fit_summary0 <- result$fit
+
+  # Model 2: Normal prior with one-sided weightfunction (2 intervals)
+  priors_summary1 <- list(
+    m  = prior("normal", list(0, .5)),
+    omega = prior_weightfunction("one.sided", list(c(0.05), c(1, 1)))
+  )
+
+  fit_summary1 <- JAGS_fit(model_syntax_summary, data_summary, priors_summary1,
+                           chains = 1, adapt = 100, burnin = 150, sample = 500, seed = 1)
+
+  marglik_summary1 <- JAGS_bridgesampling(fit_summary1,
+                                          log_posterior = log_posterior_summary,
+                                          data = data_summary, prior_list = priors_summary1)
+
+  result <- save_fit(fit_summary1, "fit_summary1",
+           marglik = marglik_summary1,
+           simple_priors = TRUE, weightfunction_priors = TRUE,
+           note = "Model for summary tables with one-sided weightfunction (cutpoint at .05)")
+  model_registry[["fit_summary1"]] <<- result$registry_entry
+  fit_summary1 <- result$fit
+
+  # Model 3: Normal prior with one-sided weightfunction (3 intervals)
+  priors_summary2 <- list(
+    m  = prior("normal", list(0, .3)),
+    omega = prior_weightfunction("one.sided", list(c(0.05, 0.50), c(1, 1, 1)))
+  )
+
+  fit_summary2 <- JAGS_fit(model_syntax_summary, data_summary, priors_summary2,
+                           chains = 1, adapt = 100, burnin = 150, sample = 500, seed = 1)
+
+  marglik_summary2 <- JAGS_bridgesampling(fit_summary2,
+                                          log_posterior = log_posterior_summary,
+                                          data = data_summary, prior_list = priors_summary2)
+
+  result <- save_fit(fit_summary2, "fit_summary2",
+           marglik = marglik_summary2,
+           simple_priors = TRUE, weightfunction_priors = TRUE,
+           note = "Model for summary tables with one-sided weightfunction (cutpoints at .05, .50)")
+  model_registry[["fit_summary2"]] <<- result$registry_entry
+  fit_summary2 <- result$fit
+
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_summary0.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_summary1.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_summary2.RDS")))
 })
 
 
@@ -506,6 +639,7 @@ test_that("Mixture prior models fit correctly", {
 test_that("Simple formula-based regression models fit correctly", {
 
   skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
 
   set.seed(1)
   data_formula <- data.frame(
@@ -542,7 +676,19 @@ test_that("Simple formula-based regression models fit correctly", {
     formula_list = formula_list_simple, formula_data_list = formula_data_list_simple,
     formula_prior_list = formula_prior_list_simple,
     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
+  
+  # Compute marginal likelihood for model averaging
+  log_posterior_formula <- function(parameters, data){
+    sum(stats::dnorm(data$y, parameters[["mu"]], parameters[["sigma"]], log = TRUE))
+  }
+  marglik_formula_simple <- JAGS_bridgesampling(
+    fit_formula_simple, log_posterior = log_posterior_formula, data = data, 
+    prior_list = prior_list_simple,
+    formula_list = formula_list_simple, formula_data_list = formula_data_list_simple,
+    formula_prior_list = formula_prior_list_simple)
+  
   result <- save_fit(fit_formula_simple, "fit_formula_simple",
+           marglik = marglik_formula_simple,
            formulas = TRUE, simple_priors = TRUE,
            note = "Simple linear regression with continuous predictor")
   model_registry[["fit_formula_simple"]] <<- result$registry_entry
@@ -564,7 +710,16 @@ test_that("Simple formula-based regression models fit correctly", {
     formula_list = formula_list_treatment, formula_data_list = formula_data_list_treatment,
     formula_prior_list = formula_prior_list_treatment,
     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+  
+  # Compute marginal likelihood for model averaging
+  marglik_formula_treatment <- JAGS_bridgesampling(
+    fit_formula_treatment, log_posterior = log_posterior_formula, data = data, 
+    prior_list = prior_list_simple,
+    formula_list = formula_list_treatment, formula_data_list = formula_data_list_treatment,
+    formula_prior_list = formula_prior_list_treatment)
+  
   result <- save_fit(fit_formula_treatment, "fit_formula_treatment",
+           marglik = marglik_formula_treatment,
            formulas = TRUE, factor_priors = TRUE, simple_priors = TRUE,
            note = "Regression with continuous predictor and 2-level treatment factor")
   model_registry[["fit_formula_treatment"]] <<- result$registry_entry
@@ -586,7 +741,16 @@ test_that("Simple formula-based regression models fit correctly", {
     formula_list = formula_list_orthonormal, formula_data_list = formula_data_list_orthonormal,
     formula_prior_list = formula_prior_list_orthonormal,
     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
+  
+  # Compute marginal likelihood for model averaging
+  marglik_formula_orthonormal <- JAGS_bridgesampling(
+    fit_formula_orthonormal, log_posterior = log_posterior_formula, data = data, 
+    prior_list = prior_list_simple,
+    formula_list = formula_list_orthonormal, formula_data_list = formula_data_list_orthonormal,
+    formula_prior_list = formula_prior_list_orthonormal)
+  
   result <- save_fit(fit_formula_orthonormal, "fit_formula_orthonormal",
+           marglik = marglik_formula_orthonormal,
            formulas = TRUE, factor_priors = TRUE, simple_priors = TRUE,
            note = "Regression with continuous predictor and 3-level orthonormal factor")
   model_registry[["fit_formula_orthonormal"]] <<- result$registry_entry

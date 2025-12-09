@@ -1,41 +1,32 @@
 context("Summary tables functions")
 
+# Get the directory where prefitted models are stored
+temp_fits_dir <- Sys.getenv("BAYESTOOLS_TEST_FITS_DIR")
+if (temp_fits_dir == "" || !dir.exists(temp_fits_dir)) {
+  temp_fits_dir <- file.path(tempdir(), "BayesTools_test_fits")
+}
+
 test_that("Summary tables functions work",{
 
-  runjags::runjags.options(silent.jags = T, silent.runjags = T)
-  set.seed(1)
-  data <- list(
-    x = rnorm(20, 0, 1),
-    N = 20
-  )
-  priors_list0 <- list(
-    m     =prior("normal", list(0, 1)),
-    omega = prior_none()
-  )
-  priors_list1 <- list(
-    m  = prior("normal", list(0, .5)),
-    omega = prior_weightfunction("one.sided", list(c(0.05), c(1, 1)))
-  )
-  priors_list2 <- list(
-    m  = prior("normal", list(0, .3)),
-    omega = prior_weightfunction("one.sided", list(c(0.05, 0.50), c(1, 1, 1)))
-  )
-  model_syntax <-
-    "model
-    {
-      for(i in 1:N){
-        x[i] ~ dnorm(m, 1)
-      }
-    }"
-  log_posterior <- function(parameters, data){
-    return(0)
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+  
+  if (!dir.exists(temp_fits_dir)) {
+    skip("Pre-fitted models not available. Run test-00-model-fits.R first.")
   }
-  fit0 <- JAGS_fit(model_syntax, data, priors_list0, chains = 1, adapt = 100, burnin = 150, sample = 500, seed = 0)
-  fit1 <- JAGS_fit(model_syntax, data, priors_list1, chains = 1, adapt = 100, burnin = 150, sample = 500, seed = 1)
-  fit2 <- JAGS_fit(model_syntax, data, priors_list2, chains = 1, adapt = 100, burnin = 150, sample = 500, seed = 1)
-  marglik0 <- JAGS_bridgesampling(fit0, log_posterior = log_posterior, data = data, prior_list = priors_list0)
-  marglik1 <- JAGS_bridgesampling(fit1, log_posterior = log_posterior, data = data, prior_list = priors_list1)
-  marglik2 <- JAGS_bridgesampling(fit2, log_posterior = log_posterior, data = data, prior_list = priors_list2)
+
+  runjags::runjags.options(silent.jags = T, silent.runjags = T)
+  
+  # Load pre-fitted models and their marginal likelihoods
+  fit0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
+  marglik0 <- readRDS(file.path(temp_fits_dir, "fit_summary0_marglik.RDS"))
+  
+  fit1 <- readRDS(file.path(temp_fits_dir, "fit_summary1.RDS"))
+  marglik1 <- readRDS(file.path(temp_fits_dir, "fit_summary1_marglik.RDS"))
+  
+  fit2 <- readRDS(file.path(temp_fits_dir, "fit_summary2.RDS"))
+  marglik2 <- readRDS(file.path(temp_fits_dir, "fit_summary2_marglik.RDS"))
+  
   models <- list(
     list(fit = fit0, marglik = marglik0, prior_weights = 1, fit_summary = runjags_estimates_table(fit0)),
     list(fit = fit1, marglik = marglik1, prior_weights = 1, fit_summary = runjags_estimates_table(fit1)),
