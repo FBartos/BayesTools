@@ -920,3 +920,116 @@ test_that("Expression prior models fit correctly", {
   expect_true(file.exists(file.path(temp_fits_dir, "fit_expression_spike_slab.RDS")))
   expect_true(file.exists(file.path(temp_fits_dir, "fit_expression_mixture.RDS")))
 })
+
+
+# ==============================================================================
+# SECTION 14: ADVANCED JAGS_FIT FEATURES
+# ==============================================================================
+test_that("Advanced JAGS_fit features work correctly", {
+  
+  skip_if_not_installed("rjags")
+  
+  set.seed(1)
+  data <- list(
+    x = rnorm(20, 0, 1),
+    N = 20
+  )
+  priors_list <- list(
+    m = prior("normal", list(0, 1)),
+    s = prior("normal", list(0, 1), list(0, Inf))
+  )
+  model_syntax <- 
+    "model
+    {
+      for(i in 1:N){
+        x[i] ~ dnorm(m, pow(s, -2))
+      }
+    }"
+  
+  # Test 1: add_parameters - monitoring additional parameters not in prior_list
+  model_syntax_add_param <-
+    "model
+    {
+      g ~ dnorm(0, 1)
+      for(i in 1:N){
+        x[i] ~ dnorm(m, pow(s, -2))
+      }
+    }"
+  
+  fit_add_parameters <- JAGS_fit(model_syntax_add_param, data, priors_list, 
+                                  add_parameters = "g",
+                                  chains = 2, adapt = 100, burnin = 100, sample = 300, seed = 1)
+  save_fit(fit_add_parameters, "fit_add_parameters")
+  
+  # Verify that 'g' is in the output
+  expect_true("g" %in% colnames(fit_add_parameters$mcmc[[1]]))
+  expect_equal(ncol(fit_add_parameters$mcmc[[1]]), 3) # m, s, g
+  
+  # Test 2: autofit - automatic refitting until convergence
+  # Using a model that requires more samples to converge
+  priors_autofit <- list(
+    m = prior("normal", list(0, 1))
+  )
+  data_autofit <- list(
+    x = c(-500),
+    N = 1
+  )
+  model_syntax_autofit <-
+    "model
+    {
+      l = 1
+      for(i in 1:N){
+        x[i] ~ dt(m, pow(.3, -2), 1)
+      }
+    }"
+  
+  runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
+  
+  # First fit without autofit (should have poor convergence)
+  fit_no_autofit <- JAGS_fit(model_syntax_autofit, data_autofit, priors_autofit, 
+                              autofit = FALSE,
+                              chains = 2, adapt = 100, burnin = 50, sample = 100, seed = 2)
+  save_fit(fit_no_autofit, "fit_no_autofit")
+  
+  summary_no_autofit <- suppressWarnings(summary(fit_no_autofit))
+  # Check that convergence is poor
+  expect_true(summary_no_autofit[1,"MCerr"] > 0.069 || summary_no_autofit[1,"MC%ofSD"] > 8)
+  
+  # Now fit with autofit using max_error criterion
+  fit_autofit_error <- JAGS_fit(model_syntax_autofit, data_autofit, priors_autofit, 
+                                 autofit = TRUE, 
+                                 autofit_control = list(max_error = 0.05, sample_extend = 100),
+                                 chains = 2, adapt = 100, burnin = 50, sample = 100, seed = 2)
+  save_fit(fit_autofit_error, "fit_autofit_error")
+  
+  summary_autofit_error <- summary(fit_autofit_error)
+  # Should have better convergence
+  expect_true(summary_autofit_error[1,"MCerr"] < 0.05)
+  
+  # Test autofit with min_ESS criterion
+  fit_autofit_ess <- JAGS_fit(model_syntax_autofit, data_autofit, priors_autofit, 
+                               autofit = TRUE, 
+                               autofit_control = list(min_ESS = 200, sample_extend = 100),
+                               chains = 2, adapt = 100, burnin = 50, sample = 100, seed = 3)
+  save_fit(fit_autofit_ess, "fit_autofit_ess")
+  
+  summary_autofit_ess <- summary(fit_autofit_ess)
+  expect_true(summary_autofit_ess[1,"SSeff"] > 200)
+  
+  # Test 3: parallel - running chains in parallel
+  # Note: parallel execution is tested but results should be the same as non-parallel
+  fit_parallel <- JAGS_fit(model_syntax, data, priors_list, 
+                           parallel = TRUE, cores = 2,
+                           chains = 2, adapt = 100, burnin = 100, sample = 300, seed = 4)
+  save_fit(fit_parallel, "fit_parallel")
+  
+  # Verify the fit worked and has the expected structure
+  expect_equal(length(fit_parallel$mcmc), 2) # 2 chains
+  expect_true(all(sapply(fit_parallel$mcmc, function(mcmc) ncol(mcmc) == 2))) # m and s
+  
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_add_parameters.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_no_autofit.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_autofit_error.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_autofit_ess.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_parallel.RDS")))
+})
