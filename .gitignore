@@ -11,4 +11,5 @@ BayesTools.Rcheck
 ..Rcheck/
 Rplots.pdf
 check/
-tests/vdiffr.Rout.failtests/testthat/test-summary-tables-old.R
+tests/vdiffr.Rout.fail
+tests/testthat/test-summary-tables-old.R

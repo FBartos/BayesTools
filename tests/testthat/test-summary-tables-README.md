@@ -64,11 +64,11 @@ devtools::test_file("tests/testthat/test-summary-tables.R")
 ### Regenerating Reference Files
 When print output format changes:
 ```r
-# Option 1: Run the standalone script
+# Run the standalone script from the tests/ directory
 source("tests/generate_print_references.R")
 
-# Option 2: Set UPDATE_OUTPUT = TRUE in test-summary-tables.R
-# Then uncomment the output generation test block
+# Or from R console in package root:
+source("generate_print_references.R")  # if in tests/ directory
 ```
 
 ## Known Issues

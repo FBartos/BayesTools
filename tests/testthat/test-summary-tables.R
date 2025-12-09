@@ -442,20 +442,21 @@ test_that("Summary table printing works", {
   )
   
   # Check if reference files exist
-  print_dir <- file.path("../results/print")
+  # Use testthat::test_path for robust path resolution
+  print_dir <- testthat::test_path("..", "results", "print")
   if (!dir.exists(print_dir)) {
-    skip("Print reference directory not found. Run with UPDATE_OUTPUT = TRUE to generate.")
+    skip("Print reference directory not found. Run tests/generate_print_references.R to generate.")
   }
   
   # Compare printed output with saved reference files
   for(i in 1:length(fits)){
     ref_file <- file.path(print_dir, paste0(i, ".txt"))
     if (!file.exists(ref_file)) {
-      skip(paste0("Reference file ", i, ".txt not found. Run with UPDATE_OUTPUT = TRUE to generate."))
+      skip(paste0("Reference file ", i, ".txt not found. Run tests/generate_print_references.R to generate."))
     }
     
-    expected_output <- read.table(file = ref_file, header = FALSE, 
-                                   blank.lines.skip = FALSE, sep = "\n", stringsAsFactors = FALSE)[,1]
+    # Use readLines for simpler and more robust file reading
+    expected_output <- readLines(ref_file, warn = FALSE)
     actual_output <- capture_output_lines(fits[[i]], print = TRUE, width = 150)
     
     expect_equal(actual_output, expected_output, 
@@ -463,68 +464,4 @@ test_that("Summary table printing works", {
   }
 })
 
-# ==============================================================================
-# OUTPUT GENERATION SCRIPT
-# ==============================================================================
-# Set UPDATE_OUTPUT to TRUE to regenerate reference output files
-UPDATE_OUTPUT <- FALSE
 
-if (UPDATE_OUTPUT) {
-  test_that("Generate print reference files", {
-    
-    skip_if_not_installed("rjags")
-    skip_if_not_installed("bridgesampling")
-    
-    if (!dir.exists(temp_fits_dir)) {
-      skip("Pre-fitted models not available. Run test-00-model-fits.R first.")
-    }
-    
-    runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
-    
-    # Load models
-    fit0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
-    marglik0 <- readRDS(file.path(temp_fits_dir, "fit_summary0_marglik.RDS"))
-    
-    fit1 <- readRDS(file.path(temp_fits_dir, "fit_summary1.RDS"))
-    marglik1 <- readRDS(file.path(temp_fits_dir, "fit_summary1_marglik.RDS"))
-    
-    fit2 <- readRDS(file.path(temp_fits_dir, "fit_summary2.RDS"))
-    marglik2 <- readRDS(file.path(temp_fits_dir, "fit_summary2_marglik.RDS"))
-    
-    models <- list(
-      list(fit = fit0, marglik = marglik0, prior_weights = 1, fit_summary = runjags_estimates_table(fit0)),
-      list(fit = fit1, marglik = marglik1, prior_weights = 1, fit_summary = runjags_estimates_table(fit1)),
-      list(fit = fit2, marglik = marglik2, prior_weights = 1, fit_summary = runjags_estimates_table(fit2))
-    )
-    models <- models_inference(models)
-    inference <- ensemble_inference(model_list = models, parameters = c("m", "omega"), 
-                                     is_null_list = list("m" = 0, "omega" = 1), conditional = FALSE)
-    mixed_posteriors <- mix_posteriors(model_list = models, parameters = c("m", "omega"), 
-                                        is_null_list = list("m" = 0, "omega" = 1), seed = 1)
-    
-    # Create list of table objects
-    fits <- list(
-      model_summary_table(models[[2]]),
-      runjags_estimates_table(fit1),
-      ensemble_estimates_table(mixed_posteriors, parameters = c("m", "omega"), probs = c(.025, 0.95)),
-      ensemble_inference_table(inference, names(inference)),
-      ensemble_summary_table(models, c("m", "omega")),
-      ensemble_diagnostics_table(models, c("m", "omega"))
-    )
-    
-    # Create print directory if it doesn't exist
-    print_dir <- file.path("tests/results/print")
-    if (!dir.exists(print_dir)) {
-      dir.create(print_dir, recursive = TRUE)
-    }
-    
-    # Generate print files
-    for(i in seq_along(fits)){
-      output_lines <- capture_output_lines(fits[[i]], print = TRUE, width = 150)
-      write.table(output_lines, file = file.path(print_dir, paste0(i, ".txt")), 
-                  row.names = FALSE, col.names = FALSE, quote = FALSE)
-    }
-    
-    message("Reference print files generated in ", print_dir)
-  })
-}
