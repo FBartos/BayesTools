@@ -1,6 +1,6 @@
-context("Summary tables functions")
+context("JAGS ensemble tables functions")
 
-REFERENCE_DIR <- testthat::test_path("..", "results", "JAGS-ensemble-tables")
+REFERENCE_DIR <<- testthat::test_path("..", "results", "JAGS-ensemble-tables")
 source(testthat::test_path("common-functions.R"))
 
 # ============================================================================ #
@@ -282,13 +282,14 @@ test_that("Summary table advanced features work correctly", {
   test_reference_table(inference_interaction_table, "interaction_ensemble_inference.txt")
   test_reference_table(summary_interaction_table, "interaction_ensemble_summary.txt")
 
-  # 6. Spike Factors
+  # 6. Spike Factors (using marginal distribution models)
   # -------------------------------------------------------------- #
-  fit_spike_factors_null <- readRDS(file.path(temp_fits_dir, "fit_spike_factors_null.RDS"))
-  marglik_spike_factors_null <- readRDS(file.path(temp_fits_dir, "fit_spike_factors_null_marglik.RDS"))
+  # Using fit_marginal_0 (spike) and fit_marginal_1 (normal) which have meandif factors
+  fit_spike_factors_null <- readRDS(file.path(temp_fits_dir, "fit_marginal_0.RDS"))
+  marglik_spike_factors_null <- readRDS(file.path(temp_fits_dir, "fit_marginal_0_marglik.RDS"))
 
-  fit_spike_factors_alt <- readRDS(file.path(temp_fits_dir, "fit_spike_factors_alt.RDS"))
-  marglik_spike_factors_alt <- readRDS(file.path(temp_fits_dir, "fit_spike_factors_alt_marglik.RDS"))
+  fit_spike_factors_alt <- readRDS(file.path(temp_fits_dir, "fit_marginal_1.RDS"))
+  marglik_spike_factors_alt <- readRDS(file.path(temp_fits_dir, "fit_marginal_1_marglik.RDS"))
 
   models_spike_factors <- list(
     list(fit = fit_spike_factors_null, marglik = marglik_spike_factors_null, prior_weights = 1, fit_summary = runjags_estimates_table(fit_spike_factors_null)),
@@ -340,3 +341,46 @@ test_that("Simplified interpret2 function", {
   )
 
 })
+
+test_that("as_mixed_posteriors works with ensemble tables", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+
+  # 1. Complex Mixed Model
+  fit_complex_mixed <- readRDS(file.path(temp_fits_dir, "fit_complex_mixed.RDS"))
+
+  mixed_posteriors_complex <- as_mixed_posteriors(
+    mode       = fit_complex_mixed,
+    parameters = names(attr(fit_complex_mixed, "prior_list"))
+  )
+
+  # Generate estimates table
+  estimates_table_complex <- ensemble_estimates_table(
+    mixed_posteriors_complex,
+    parameters = names(attr(fit_complex_mixed, "prior_list")),
+    probs = c(.025, 0.95)
+  )
+
+  test_reference_table(estimates_table_complex, "as_mixed_posteriors_complex_estimates.txt")
+
+
+  # 2. Simple Formula Mixed Model
+  fit_simple_formula_mixed <- readRDS(file.path(temp_fits_dir, "fit_simple_formula_mixed.RDS"))
+
+  mixed_posteriors_simple <- as_mixed_posteriors(
+    mode       = fit_simple_formula_mixed,
+    parameters = names(attr(fit_simple_formula_mixed, "prior_list"))
+  )
+
+  # Generate estimates table
+  estimates_table_simple <- ensemble_estimates_table(
+    mixed_posteriors_simple,
+    parameters = names(attr(fit_simple_formula_mixed, "prior_list")),
+    probs = c(.025, 0.95)
+  )
+
+  test_reference_table(estimates_table_simple, "as_mixed_posteriors_simple_estimates.txt")
+
+})
+

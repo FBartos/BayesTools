@@ -1,6 +1,5 @@
 ---
 applyTo: "**/tests/testthat/*.R"
-description: Guidelines for organizing and maintaining tests in BayesTools, including model fitting, model averaging, and summary table tests. Ensures consistency and avoids duplication.
 ---
 
 # BayesTools Test Organization Guidelines
@@ -26,11 +25,17 @@ Tests in BayesTools follow a structured organization where model fitting is cent
   - **Only load** pre-computed marginal likelihoods using `readRDS()`
   - Test the functionality they are designed for (e.g., model averaging, plotting, etc.)
 
-### 2. Avoid Duplication
+### 2. STRICTLY Avoid Duplication
 
-**Before adding a new model to `test-00-model-fits.R`, check if a similar model already exists.**
+**Before adding a new model to `test-00-model-fits.R`, you MUST exhaustively check if an existing model can be used.**
 
-Models are duplicates if they have the same model structure, prior types, and data structure. Use one model per prior type.
+- **Do not create a new model just to test a specific function** (e.g., a plot or summary). Use an existing model that has the necessary components (e.g., if you need a model with a factor prior, use `fit_factor_independent` or `fit_formula_interaction_fac`).
+- **Models are duplicates** if they have the same model structure, prior types, and data structure.
+- **Reuse Strategy**:
+    1. Read `test-00-model-fits.R` to see available models.
+    2. Identify a model that has the features you need (e.g., "I need a model with a spike-and-slab prior").
+    3. Use that model in your test.
+    4. **Only** if no such model exists, add a new one to `test-00-model-fits.R`.
 
 ### 3. Model Naming Convention
 
@@ -63,7 +68,7 @@ marglik_model_name <- readRDS(file.path(temp_fits_dir, "fit_model_name_marglik.R
 
 # Define at the top of test files with reference outputs
 # Load common test helpers that define test_reference_table() and test_reference_text()
-REFERENCE_DIR <- testthat::test_path("..", "results", "print")
+REFERENCE_DIR <<- testthat::test_path("..", "results", "print")
 source(testthat::test_path("common-functions.R"))
 
 ### 6. Test File Organization
@@ -87,6 +92,15 @@ All tests that use JAGS models (e.g., `test-model-averaging.R`, `test-JAGS-*.R`,
   - Default value is `FALSE` (testing mode)
   - Changing to `TRUE` regenerates all reference files (tables, figures, etc.) and should only be done by the maintainer
 - **Outputs**: Reference files (`.txt`, `.svg`, `.png`, etc.) stored in `tests/results/` subdirectories
+
+## AI Agent Protocol
+
+When asked to write or refactor tests:
+
+1.  **Scan `test-00-model-fits.R` FIRST.** Understand the inventory of available models.
+2.  **Map requirements to existing models.** If the user needs a test for "diagnostic plots for factor priors", find an existing model with factor priors (e.g., `fit_formula_interaction_fac`).
+3.  **Refuse to create new models** unless the test requires a specific mathematical structure not present in the entire suite.
+4.  **Never** add a model to `test-00-model-fits.R` without explicitly explaining why none of the existing 15+ models suffice.
 
 ## Maintenance Checklist
 

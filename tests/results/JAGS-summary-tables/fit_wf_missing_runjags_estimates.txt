@@ -1,0 +1,2 @@
+    Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD  ESS R-hat
+mu 0.005 0.790 -1.525  0.002 1.564     0.01767          0.022 2000    NA

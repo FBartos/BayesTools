@@ -1,6 +1,6 @@
-context("Summary tables functions")
+context("JAGS summary tables functions")
 
-REFERENCE_DIR <- testthat::test_path("..", "results", "JAGS-summary-tables")
+REFERENCE_DIR <<- testthat::test_path("..", "results", "JAGS-summary-tables")
 source(testthat::test_path("common-functions.R"))
 
 # ============================================================================ #
