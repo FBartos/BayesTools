@@ -1,0 +1,4 @@
+Class: list, mixed_posteriors
+Parameters: m, omega
+Sample size m: 1000
+Sample size omega: 3000

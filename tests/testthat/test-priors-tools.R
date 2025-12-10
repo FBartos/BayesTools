@@ -43,3 +43,306 @@ test_that("Prior handling works", {
   expect_error(prior_weightfunction("one-sided", list(c(.05, 0.55, .40), c(1, 1), c(1, 1))), "Parameters 'steps' must be monotonically increasing.")
 
 })
+
+
+test_that("is.prior functions work correctly", {
+
+  # Create priors for testing
+  p_normal <- prior("normal", list(0, 1))
+  p_point  <- prior("point", list(0))
+  p_discrete <- prior("bernoulli", list(0.5))
+  p_vector <- prior("mnormal", list(0, 1, 3))
+  p_pet    <- prior_PET("normal", list(0, 1))
+  p_peese  <- prior_PEESE("normal", list(0, 1))
+  p_wf     <- prior_weightfunction("one.sided", list(c(0.05), c(1, 1)))
+  p_factor_t <- prior_factor("normal", contrast = "treatment", list(0, 1))
+  p_factor_o <- prior_factor("mnormal", contrast = "orthonormal", list(0, 1))
+  p_factor_m <- prior_factor("mnormal", contrast = "meandif", list(0, 1))
+  p_factor_i <- prior_factor("beta", contrast = "independent", list(1, 1))
+  p_spike_slab <- prior_spike_and_slab(prior("normal", list(0, 1)), prior_inclusion = prior("spike", list(0.5)))
+  p_none <- prior_none()
+
+  # Test is.prior
+  expect_true(is.prior(p_normal))
+  expect_true(is.prior(p_point))
+  expect_false(is.prior("not a prior"))
+  expect_false(is.prior(list(a = 1)))
+
+  # Test is.prior.simple
+  expect_true(is.prior.simple(p_normal))
+  expect_true(is.prior.simple(p_point))
+  expect_false(is.prior.simple(p_wf))
+  expect_false(is.prior.simple(p_vector))
+
+  # Test is.prior.point
+  expect_true(is.prior.point(p_point))
+  expect_false(is.prior.point(p_normal))
+
+  # Test is.prior.none
+  expect_true(is.prior.none(p_none))
+  expect_false(is.prior.none(p_normal))
+
+  # Test is.prior.discrete
+  expect_true(is.prior.discrete(p_discrete))
+  expect_false(is.prior.discrete(p_normal))
+
+  # Test is.prior.vector
+  expect_true(is.prior.vector(p_vector))
+  expect_false(is.prior.vector(p_normal))
+
+  # Test is.prior.PET
+  expect_true(is.prior.PET(p_pet))
+  expect_false(is.prior.PET(p_normal))
+
+  # Test is.prior.PEESE
+  expect_true(is.prior.PEESE(p_peese))
+  expect_false(is.prior.PEESE(p_normal))
+
+  # Test is.prior.weightfunction
+  expect_true(is.prior.weightfunction(p_wf))
+  expect_false(is.prior.weightfunction(p_normal))
+
+  # Test is.prior.factor
+  expect_true(is.prior.factor(p_factor_t))
+  expect_true(is.prior.factor(p_factor_o))
+  expect_true(is.prior.factor(p_factor_m))
+  expect_true(is.prior.factor(p_factor_i))
+  expect_false(is.prior.factor(p_normal))
+
+  # Test is.prior.treatment
+  expect_true(is.prior.treatment(p_factor_t))
+  expect_false(is.prior.treatment(p_factor_o))
+
+  # Test is.prior.orthonormal
+  expect_true(is.prior.orthonormal(p_factor_o))
+  expect_false(is.prior.orthonormal(p_factor_t))
+
+  # Test is.prior.meandif
+  expect_true(is.prior.meandif(p_factor_m))
+  expect_false(is.prior.meandif(p_factor_o))
+
+  # Test is.prior.independent
+  expect_true(is.prior.independent(p_factor_i))
+  expect_false(is.prior.independent(p_factor_t))
+
+  # Test is.prior.spike_and_slab
+  expect_true(is.prior.spike_and_slab(p_spike_slab))
+  expect_false(is.prior.spike_and_slab(p_normal))
+
+})
+
+
+test_that(".check_prior works correctly", {
+
+  p_normal <- prior("normal", list(0, 1))
+
+  # Valid prior should pass
+  expect_null(BayesTools:::.check_prior(p_normal))
+
+  # Non-prior should fail
+  expect_error(BayesTools:::.check_prior("not a prior"), "must be a valid prior object")
+  expect_error(BayesTools:::.check_prior(list(a = 1)), "must be a valid prior object")
+
+})
+
+
+test_that(".check_prior_list works correctly", {
+
+  p_normal <- prior("normal", list(0, 1))
+  p_point  <- prior("point", list(0))
+  p_wf     <- prior_weightfunction("one.sided", list(c(0.05), c(1, 1)))
+
+  # Valid prior list should pass
+  expect_null(BayesTools:::.check_prior_list(list(p_normal, p_point)))
+
+  # Empty list with allow_NULL
+  expect_null(BayesTools:::.check_prior_list(NULL, allow_NULL = TRUE))
+  expect_null(BayesTools:::.check_prior_list(list(), allow_NULL = TRUE))
+
+  # Non-list should fail
+  expect_error(BayesTools:::.check_prior_list("not a list"), "must be a list")
+
+  # List with non-prior should fail
+  expect_error(BayesTools:::.check_prior_list(list("not a prior")), "must be a prior distribution")
+
+  # Disallowing specific types
+  expect_error(
+    BayesTools:::.check_prior_list(list(p_point), allow_prior.point = FALSE),
+    "must not contain point priors"
+  )
+  expect_error(
+    BayesTools:::.check_prior_list(list(p_wf), allow_prior.weightfunction = FALSE),
+    "must not contain weightfunction priors"
+  )
+
+})
+
+
+test_that(".check_and_name_parameters works correctly", {
+
+  # Valid parameters
+  params <- list(0, 1)
+  result <- BayesTools:::.check_and_name_parameters(params, c("mean", "sd"), "normal")
+  expect_equal(names(result), c("mean", "sd"))
+
+  # Named parameters in different order
+  params2 <- list(sd = 1, mean = 0)
+  result2 <- BayesTools:::.check_and_name_parameters(params2, c("mean", "sd"), "normal")
+  expect_equal(result2$mean, 0)
+  expect_equal(result2$sd, 1)
+
+  # Wrong number of parameters
+  expect_error(
+    BayesTools:::.check_and_name_parameters(list(0), c("mean", "sd"), "normal"),
+    "requires 2 parameters"
+  )
+
+  # Invalid parameter names
+  expect_error(
+    BayesTools:::.check_and_name_parameters(list(location = 0, sd = 1), c("mean", "sd"), "normal"),
+    "Parameters 'location' are not supported"
+  )
+
+})
+
+
+test_that(".check_and_set_truncation works correctly", {
+
+  # Default truncation
+  result <- BayesTools:::.check_and_set_truncation(list())
+  expect_equal(result$lower, -Inf)
+  expect_equal(result$upper, Inf)
+
+  # Named truncation
+  result2 <- BayesTools:::.check_and_set_truncation(list(lower = 0))
+  expect_equal(result2$lower, 0)
+  expect_equal(result2$upper, Inf)
+
+  result3 <- BayesTools:::.check_and_set_truncation(list(upper = 1))
+  expect_equal(result3$lower, -Inf)
+  expect_equal(result3$upper, 1)
+
+  # Positional truncation
+  result4 <- BayesTools:::.check_and_set_truncation(list(0, 1))
+  expect_equal(result4$lower, 0)
+  expect_equal(result4$upper, 1)
+
+  # Single positional (becomes lower)
+  result5 <- BayesTools:::.check_and_set_truncation(list(0))
+  expect_equal(result5$lower, 0)
+
+  # Distribution-specific defaults
+  result6 <- BayesTools:::.check_and_set_truncation(list(), lower = 0)
+  expect_equal(result6$lower, 0)
+
+  # Error conditions
+  expect_error(
+    BayesTools:::.check_and_set_truncation(list(1, 2, 3)),
+    "More than two truncation points"
+  )
+
+  expect_error(
+    BayesTools:::.check_and_set_truncation(list(bad_name = 0)),
+    "must be named 'lower' and 'upper'"
+  )
+
+  expect_error(
+    BayesTools:::.check_and_set_truncation(list(1, 0)),
+    "lower truncation point must be lower"
+  )
+
+  expect_error(
+    BayesTools:::.check_and_set_truncation(list(-1, Inf), lower = 0),
+    "Lower truncation point must be larger or equal to 0"
+  )
+
+  expect_error(
+    BayesTools:::.check_and_set_truncation(list(-Inf, 2), upper = 1),
+    "Upper truncation point must be smaller or equal to 1"
+  )
+
+})
+
+
+test_that(".check_parameter works correctly", {
+
+  # Valid parameters
+  expect_null(BayesTools:::.check_parameter(1, "param"))
+  expect_null(BayesTools:::.check_parameter(c(1, 2, 3), "param", length = 3))
+  expect_null(BayesTools:::.check_parameter(c(1, 2), "param", length = 0))
+
+  # Expressions should pass through
+  expect_null(BayesTools:::.check_parameter(expression(x + 1), "param"))
+
+  # Invalid parameters
+  expect_error(
+    BayesTools:::.check_parameter("a", "param"),
+    "must be a numeric vector"
+  )
+
+  expect_error(
+    BayesTools:::.check_parameter(c(1, 2), "param", length = 3),
+    "must be a numeric vector of length 3"
+  )
+
+})
+
+
+test_that(".check_parameter_dimensions works correctly", {
+
+  # Valid dimensions
+  expect_null(BayesTools:::.check_parameter_dimensions(3, "K"))
+  expect_null(BayesTools:::.check_parameter_dimensions(NA, "K", allow_NA = TRUE))
+
+  # Expressions should pass through
+  expect_null(BayesTools:::.check_parameter_dimensions(expression(K), "K"))
+
+  # Invalid dimensions
+  expect_error(
+    BayesTools:::.check_parameter_dimensions(NA, "K", allow_NA = FALSE),
+    "must be defined"
+  )
+
+  # Note: The function has some implementation quirks with vector input,
+  # so we just test that invalid inputs throw some error
+  expect_error(BayesTools:::.check_parameter_dimensions(c(1, 2), "K"))
+  expect_error(BayesTools:::.check_parameter_dimensions(1.5, "K"))
+
+})
+
+
+test_that(".get_prior_factor_levels works correctly", {
+
+  # Treatment contrast - levels - 1
+  p_treatment <- prior_factor("normal", contrast = "treatment", list(0, 1))
+  attr(p_treatment, "levels") <- 3
+  expect_equal(BayesTools:::.get_prior_factor_levels(p_treatment), 2)
+
+  # Independent contrast - all levels
+  p_independent <- prior_factor("beta", contrast = "independent", list(1, 1))
+  attr(p_independent, "levels") <- 3
+  expect_equal(BayesTools:::.get_prior_factor_levels(p_independent), 3)
+
+  # Orthonormal contrast - levels - 1
+  p_orthonormal <- prior_factor("mnormal", contrast = "orthonormal", list(0, 1))
+  attr(p_orthonormal, "levels") <- 4
+  expect_equal(BayesTools:::.get_prior_factor_levels(p_orthonormal), 3)
+
+  # Meandif contrast - levels - 1
+  p_meandif <- prior_factor("mnormal", contrast = "meandif", list(0, 1))
+  attr(p_meandif, "levels") <- 3
+  expect_equal(BayesTools:::.get_prior_factor_levels(p_meandif), 2)
+
+})
+
+
+test_that(".prior_clean_input_name works correctly", {
+
+  expect_equal(BayesTools:::.prior_clean_input_name("Normal"), "normal")
+  expect_equal(BayesTools:::.prior_clean_input_name("Log-Normal"), "lognormal")
+  expect_equal(BayesTools:::.prior_clean_input_name("Student_t"), "studentt")
+  expect_equal(BayesTools:::.prior_clean_input_name("one.sided"), "onesided")
+  expect_equal(BayesTools:::.prior_clean_input_name("two-sided"), "twosided")
+  expect_equal(BayesTools:::.prior_clean_input_name(" Sp ace "), "space")
+
+})

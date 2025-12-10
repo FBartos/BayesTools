@@ -54,9 +54,18 @@ test_reference_text <- function(text, filename, info_msg = NULL,
     ref_file <- file.path(print_dir, filename)
     if (file.exists(ref_file)) {
       expected_output <- readLines(ref_file, warn = FALSE)
+      expected_output <- paste0(expected_output, collapse = "\n")
       expect_equal(text, expected_output, info = info_msg)
     } else {
       skip(paste("Reference file", filename, "not found."))
     }
+  }
+}
+
+# Skip if pre-fitted models are not available
+skip_if_no_fits <- function() {
+  model_registry_file <- file.path(temp_fits_dir, "model_registry.RDS")
+  if (!file.exists(model_registry_file)) {
+    skip("Pre-fitted models not found. Run test-00-model-fits.R first.")
   }
 }

@@ -1,0 +1,5 @@
+model{
+ mu ~ dnorm(0,1)
+ sigma ~ dgamma(2,1)
+
+}

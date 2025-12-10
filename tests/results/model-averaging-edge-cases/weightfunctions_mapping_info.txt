@@ -1,0 +1,4 @@
+One-sided mapping length: 1
+Two-sided mapping length: 1
+Two-sided with one_sided=TRUE length: 1
+Cuts: 0, 0.05, 1

@@ -1,0 +1,2 @@
+   Prior prob. Post. prob. Inclusion BF
+mu       0.714       0.721        1.034

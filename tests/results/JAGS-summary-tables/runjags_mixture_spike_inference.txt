@@ -1,0 +1,2 @@
+      Prior prob. Post. prob. Inclusion BF
+gamma       1.000       1.000          Inf

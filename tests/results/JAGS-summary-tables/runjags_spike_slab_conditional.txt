@@ -1,0 +1,3 @@
+                 Mean    SD    lCI Median   uCI
+mu (inclusion)  0.504    NA     NA     NA    NA
+mu             -0.006 0.939 -2.015  0.013 1.900

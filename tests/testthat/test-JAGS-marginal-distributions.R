@@ -1,4 +1,4 @@
-context("Marginal distributions")
+context("JAGS marginal distributions")
 
 # This file tests marginal_posterior, ensemble_inference, mix_posteriors,
 # and related functions. Uses pre-fitted models from test-00-model-fits.R.

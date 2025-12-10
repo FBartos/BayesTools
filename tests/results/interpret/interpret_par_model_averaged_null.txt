@@ -1,0 +1,1 @@
+with mean model-averaged estimate delta = 0.499, 95% CI [0.302, 0.696]
