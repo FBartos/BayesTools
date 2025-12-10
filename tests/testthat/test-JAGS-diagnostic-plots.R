@@ -1,288 +1,171 @@
 context("JAGS diagnostics")
 
+# Load common test helpers
+source(testthat::test_path("common-functions.R"))
+
 test_that("JAGS diagnostics work", {
 
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
   skip_on_cran()
+  skip_if_not_installed("rjags")
 
-  set.seed(1)
-
-  data_formula <- data.frame(
-    x_cont1 = rnorm(150),
-    x_fac2t = factor(rep(c("A", "B"), 75), levels = c("A", "B")),
-    x_fac3o = factor(rep(c("A", "B", "C"), 50), levels = c("A", "B", "C"))
-  )
-  data <- list(
-    y = rnorm(150, .4 * data_formula$x_cont1 + ifelse(data_formula$x_fac3o == "A", 0.0, ifelse(data_formula$x_fac3o == "B", -0.2, 0.4)), ifelse(data_formula$x_fac2t == "A", 0.5, 1)),
-    N = 150
-  )
-
-
-  # create model with mix of a formula and free parameters ---
-  formula_list <- list(
-    mu    = ~ x_cont1 + x_fac2t + x_fac3o
-  )
-  formula_data_list <- list(
-    mu    = data_formula
-  )
-  formula_prior_list <- list(
-    mu    = list(
-      "intercept"       = prior("normal", list(0, 5)),
-      "x_cont1"         = prior("normal", list(0, 1)),
-      "x_fac2t"         = prior_factor("normal", contrast = "treatment", list(0, 1)),
-      "x_fac3o"         = prior_factor("mnormal", contrast = "orthonormal", list(0, 1))
-    )
-  )
-  prior_list <- list(
-    sigma = prior("lognormal", list(0, 1)),
-    omega = prior_weightfunction("onesided", list(c(0.05, 0.10), c(1,1,1))),
-    PET   = prior_PET("gamma", list(2, 2)),
-    fac2i = prior_factor("normal", contrast = "independent", list(0, 1/2))
-  )
-  attr(prior_list$fac2i, "levels") <- 2
-  model_syntax <- paste0(
-    "model{\n",
-    "for(i in 1:N){\n",
-    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
-    "}\n",
-    "}"
-  )
-
-  fit <- JAGS_fit(
-    model_syntax = model_syntax, data = data, prior_list = prior_list,
-    formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list)
-
+  # Load pre-fitted models
+  fit_formula_mix <- readRDS(file.path(temp_fits_dir, "fit_formula_interaction_mix.RDS"))
+  fit_formula_fac <- readRDS(file.path(temp_fits_dir, "fit_formula_interaction_fac.RDS"))
+  fit_pet         <- readRDS(file.path(temp_fits_dir, "fit_pet.RDS"))
+  fit_wf          <- readRDS(file.path(temp_fits_dir, "fit_wf_onesided.RDS"))
+  fit_independent <- readRDS(file.path(temp_fits_dir, "fit_factor_independent.RDS"))
+  fit_meandif     <- readRDS(file.path(temp_fits_dir, "fit_spike_factors_alt.RDS"))
 
   ### density plots
-  vdiffr::expect_doppelganger("diagnostics-plot-density-1", function() JAGS_diagnostics_density(fit, parameter = "mu_x_cont1", formula_prefix = FALSE))
-  vdiffr::expect_doppelganger("diagnostics-plot-density-2", function() JAGS_diagnostics_density(fit, parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), formula_prefix = FALSE, transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
-  vdiffr::expect_doppelganger("diagnostics-plot-density-3", function() JAGS_diagnostics_density(fit, parameter = "mu_x_fac2t", main = "Treatment", xlab = "Values", formula_prefix = FALSE, ylab = "Smth"))
+  vdiffr::expect_doppelganger("diagnostics-plot-density-1", function() JAGS_diagnostics_density(fit_formula_mix, parameter = "mu_x_cont1", formula_prefix = FALSE))
+  vdiffr::expect_doppelganger("diagnostics-plot-density-2", function() JAGS_diagnostics_density(fit_formula_mix, parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), formula_prefix = FALSE, transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
+  vdiffr::expect_doppelganger("diagnostics-plot-density-3", function() JAGS_diagnostics_density(fit_formula_fac, parameter = "mu_x_fac2t", main = "Treatment", xlab = "Values", formula_prefix = FALSE, ylab = "Smth"))
   vdiffr::expect_doppelganger("diagnostics-plot-density-4", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 2))
-    JAGS_diagnostics_density(fit, parameter = "mu_x_fac3o")
+    JAGS_diagnostics_density(fit_formula_mix, parameter = "mu_x_fac3o")
   })
   vdiffr::expect_doppelganger("diagnostics-plot-density-5", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 3))
-    JAGS_diagnostics_density(fit, parameter = "mu_x_fac3o", formula_prefix = FALSE, transform_factors = TRUE)
+    JAGS_diagnostics_density(fit_formula_mix, parameter = "mu_x_fac3o", formula_prefix = FALSE, transform_factors = TRUE)
   })
-  vdiffr::expect_doppelganger("diagnostics-plot-density-6", function()JAGS_diagnostics_density(fit, parameter = "PET"))
+  vdiffr::expect_doppelganger("diagnostics-plot-density-6", function() JAGS_diagnostics_density(fit_pet, parameter = "PET"))
   vdiffr::expect_doppelganger("diagnostics-plot-density-7", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 2))
-    JAGS_diagnostics_density(fit, parameter = "omega")
+    JAGS_diagnostics_density(fit_wf, parameter = "omega")
   })
   vdiffr::expect_doppelganger("diagnostics-plot-density-8", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 2))
-    JAGS_diagnostics_density(fit, parameter = "fac2i")
+    # Using p1 from fit_independent (prior only model)
+    JAGS_diagnostics_density(fit_independent, parameter = "p1")
   })
 
-  vdiffr::expect_doppelganger("diagnostics-ggplot-density-1", JAGS_diagnostics_density(fit, plot_type = "ggplot", parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), formula_prefix = FALSE, transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
-  temp_plot <- JAGS_diagnostics_density(fit, plot_type = "ggplot", parameter = "mu_x_fac3o", transform_factors = TRUE)
+  vdiffr::expect_doppelganger("diagnostics-ggplot-density-1", JAGS_diagnostics_density(fit_formula_mix, plot_type = "ggplot", parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), formula_prefix = FALSE, transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
+  temp_plot <- JAGS_diagnostics_density(fit_formula_mix, plot_type = "ggplot", parameter = "mu_x_fac3o", transform_factors = TRUE)
   vdiffr::expect_doppelganger("diagnostics-ggplot-density-2.1",temp_plot[[1]])
   vdiffr::expect_doppelganger("diagnostics-ggplot-density-2.2",temp_plot[[2]])
   vdiffr::expect_doppelganger("diagnostics-ggplot-density-2.3",temp_plot[[3]])
-  temp_plot <- JAGS_diagnostics_density(fit, plot_type = "ggplot", parameter = "omega")
-  vdiffr::expect_doppelganger("diagnostics-ggplot-density-3.1",temp_plot[[1]])
-  vdiffr::expect_doppelganger("diagnostics-ggplot-density-3.2",temp_plot[[2]])
+  temp_plot <- JAGS_diagnostics_density(fit_wf, plot_type = "ggplot", parameter = "omega")
+  vdiffr::expect_doppelganger("diagnostics-ggplot-density-3.1",temp_plot)
 
 
   ### trace plots
-  vdiffr::expect_doppelganger("diagnostics-plot-trace-1", function() JAGS_diagnostics_trace(fit, parameter = "mu_x_cont1", formula_prefix = FALSE))
-  vdiffr::expect_doppelganger("diagnostics-plot-trace-2", function() JAGS_diagnostics_trace(fit, parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), formula_prefix = FALSE, transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
-  vdiffr::expect_doppelganger("diagnostics-plot-trace-3", function() JAGS_diagnostics_trace(fit, parameter = "mu_x_fac2t", main = "Treatment", xlab = "Values", formula_prefix = FALSE, ylab = "Smth"))
+  vdiffr::expect_doppelganger("diagnostics-plot-trace-1", function() JAGS_diagnostics_trace(fit_formula_mix, parameter = "mu_x_cont1", formula_prefix = FALSE))
+  vdiffr::expect_doppelganger("diagnostics-plot-trace-2", function() JAGS_diagnostics_trace(fit_formula_mix, parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), formula_prefix = FALSE, transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
+  vdiffr::expect_doppelganger("diagnostics-plot-trace-3", function() JAGS_diagnostics_trace(fit_formula_fac, parameter = "mu_x_fac2t", main = "Treatment", xlab = "Values", formula_prefix = FALSE, ylab = "Smth"))
   vdiffr::expect_doppelganger("diagnostics-plot-trace-4", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 2))
-    JAGS_diagnostics_trace(fit, parameter = "mu_x_fac3o", formula_prefix = FALSE)
+    JAGS_diagnostics_trace(fit_formula_mix, parameter = "mu_x_fac3o", formula_prefix = FALSE)
   })
   vdiffr::expect_doppelganger("diagnostics-plot-trace-5", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 3))
-    JAGS_diagnostics_trace(fit, parameter = "mu_x_fac3o", transform_factors = TRUE)
+    JAGS_diagnostics_trace(fit_formula_mix, parameter = "mu_x_fac3o", transform_factors = TRUE)
   })
-  vdiffr::expect_doppelganger("diagnostics-plot-trace-6", function() JAGS_diagnostics_trace(fit, parameter = "PET"))
+  vdiffr::expect_doppelganger("diagnostics-plot-trace-6", function() JAGS_diagnostics_trace(fit_pet, parameter = "PET"))
   vdiffr::expect_doppelganger("diagnostics-plot-trace-7", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 2))
-    JAGS_diagnostics_trace(fit, parameter = "omega")
+    JAGS_diagnostics_trace(fit_wf, parameter = "omega")
   })
   vdiffr::expect_doppelganger("diagnostics-plot-trace-8", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 2))
-    JAGS_diagnostics_trace(fit, parameter = "fac2i")
+    JAGS_diagnostics_trace(fit_independent, parameter = "p1")
   })
 
-  vdiffr::expect_doppelganger("diagnostics-ggplot-trace-1", JAGS_diagnostics_trace(fit, plot_type = "ggplot", parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), formula_prefix = FALSE, transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
-  temp_plot <- JAGS_diagnostics_trace(fit, plot_type = "ggplot", parameter = "mu_x_fac3o", transform_factors = TRUE)
+  vdiffr::expect_doppelganger("diagnostics-ggplot-trace-1", JAGS_diagnostics_trace(fit_formula_mix, plot_type = "ggplot", parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), formula_prefix = FALSE, transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
+  temp_plot <- JAGS_diagnostics_trace(fit_formula_mix, plot_type = "ggplot", parameter = "mu_x_fac3o", transform_factors = TRUE)
   vdiffr::expect_doppelganger("diagnostics-ggplot-trace-2.1",temp_plot[[1]])
   vdiffr::expect_doppelganger("diagnostics-ggplot-trace-2.2",temp_plot[[2]])
   vdiffr::expect_doppelganger("diagnostics-ggplot-trace-2.3",temp_plot[[3]])
-  temp_plot <- JAGS_diagnostics_trace(fit, plot_type = "ggplot", parameter = "omega")
-  vdiffr::expect_doppelganger("diagnostics-ggplot-trace-3.1",temp_plot[[1]])
-  vdiffr::expect_doppelganger("diagnostics-ggplot-trace-3.2",temp_plot[[2]])
+  temp_plot <- JAGS_diagnostics_trace(fit_wf, plot_type = "ggplot", parameter = "omega")
+  vdiffr::expect_doppelganger("diagnostics-ggplot-trace-3.1",temp_plot)
 
 
   ### autocorrelation plots
-  vdiffr::expect_doppelganger("diagnostics-plot-autocorrelation-1", function() JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_cont1", formula_prefix = FALSE))
-  vdiffr::expect_doppelganger("diagnostics-plot-autocorrelation-2", function() JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), formula_prefix = FALSE, transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
-  vdiffr::expect_doppelganger("diagnostics-plot-autocorrelation-3", function() JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_fac2t", main = "Treatment", xlab = "Values", ylab = "Smth"))
+  vdiffr::expect_doppelganger("diagnostics-plot-autocorrelation-1", function() JAGS_diagnostics_autocorrelation(fit_formula_mix, parameter = "mu_x_cont1", formula_prefix = FALSE))
+  vdiffr::expect_doppelganger("diagnostics-plot-autocorrelation-2", function() JAGS_diagnostics_autocorrelation(fit_formula_mix, parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), formula_prefix = FALSE, transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
+  vdiffr::expect_doppelganger("diagnostics-plot-autocorrelation-3", function() JAGS_diagnostics_autocorrelation(fit_formula_fac, parameter = "mu_x_fac2t", main = "Treatment", xlab = "Values", ylab = "Smth"))
   vdiffr::expect_doppelganger("diagnostics-plot-autocorrelation-4", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 2))
-    JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_fac3o")
+    JAGS_diagnostics_autocorrelation(fit_formula_mix, parameter = "mu_x_fac3o")
   })
   vdiffr::expect_doppelganger("diagnostics-plot-autocorrelation-5", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 3))
-    JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_fac3o", formula_prefix = FALSE, transform_factors = TRUE)
+    JAGS_diagnostics_autocorrelation(fit_formula_mix, parameter = "mu_x_fac3o", formula_prefix = FALSE, transform_factors = TRUE)
   })
-  vdiffr::expect_doppelganger("diagnostics-plot-autocorrelation-6", function() JAGS_diagnostics_autocorrelation(fit, parameter = "PET"))
+  vdiffr::expect_doppelganger("diagnostics-plot-autocorrelation-6", function() JAGS_diagnostics_autocorrelation(fit_pet, parameter = "PET"))
   vdiffr::expect_doppelganger("diagnostics-plot-autocorrelation-7", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 2))
-    JAGS_diagnostics_autocorrelation(fit, parameter = "omega")
+    JAGS_diagnostics_autocorrelation(fit_wf, parameter = "omega")
   })
   vdiffr::expect_doppelganger("diagnostics-plot-autocorrelation-8", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 2))
-    JAGS_diagnostics_autocorrelation(fit, parameter = "fac2i")
+    JAGS_diagnostics_autocorrelation(fit_independent, parameter = "p1")
   })
 
-  vdiffr::expect_doppelganger("diagnostics-ggplot-autocorrelation-1", JAGS_diagnostics_autocorrelation(fit, plot_type = "ggplot", parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), formula_prefix = FALSE, transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
-  temp_plot <- JAGS_diagnostics_autocorrelation(fit, plot_type = "ggplot", parameter = "mu_x_fac3o", transform_factors = TRUE)
+  vdiffr::expect_doppelganger("diagnostics-ggplot-autocorrelation-1", JAGS_diagnostics_autocorrelation(fit_formula_mix, plot_type = "ggplot", parameter = "mu_x_cont1", col = c("red", "green", "blue", "yellow"), formula_prefix = FALSE, transformations = list(mu_x_cont1 = list(fun = function(x) exp(x)))))
+  temp_plot <- JAGS_diagnostics_autocorrelation(fit_formula_mix, plot_type = "ggplot", parameter = "mu_x_fac3o", transform_factors = TRUE)
   vdiffr::expect_doppelganger("diagnostics-ggplot-autocorrelation-2.1",temp_plot[[1]])
   vdiffr::expect_doppelganger("diagnostics-ggplot-autocorrelation-2.2",temp_plot[[2]])
   vdiffr::expect_doppelganger("diagnostics-ggplot-autocorrelation-2.3",temp_plot[[3]])
-  temp_plot <- JAGS_diagnostics_autocorrelation(fit, plot_type = "ggplot", parameter = "omega")
-  vdiffr::expect_doppelganger("diagnostics-ggplot-autocorrelation-3.1",temp_plot[[1]])
-  vdiffr::expect_doppelganger("diagnostics-ggplot-autocorrelation-3.2",temp_plot[[2]])
+  temp_plot <- JAGS_diagnostics_autocorrelation(fit_wf, plot_type = "ggplot", parameter = "omega")
+  vdiffr::expect_doppelganger("diagnostics-ggplot-autocorrelation-3.1",temp_plot)
 })
 
 test_that("JAGS diagnostics work (spike and slab)", {
 
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
   skip_on_cran()
+  skip_if_not_installed("rjags")
 
-  set.seed(1)
-
-  data_formula <- data.frame(
-    x_cont  = rnorm(300),
-    x_fac2t = factor(rep(c("A", "B"), 150), levels = c("A", "B")),
-    x_fac3t = factor(rep(c("A", "B", "C"), 100), levels = c("A", "B", "C"))
-  )
-  data <- list(
-    y = rnorm(300, .20 * data_formula$x_cont + ifelse(data_formula$x_fac3t == "A", 0.0, ifelse(data_formula$x_fac3t == "B", -0.2, 0.4)), ifelse(data_formula$x_fac2t == "A", 0.5, 1)),
-    N = 300
-  )
-
-
-  # create model with mix of a formula and free parameters ---
-  formula_list <- list(
-    mu    = ~ x_cont
-  )
-  formula_data_list <- list(
-    mu    = data_formula
-  )
-  formula_prior_list <- list(
-    mu    = list(
-      "intercept"   = prior("normal", list(0, 5)),
-      "x_cont"      = prior_spike_and_slab(prior("normal", list(0, 1)), prior_inclusion = prior("beta", list(1,1)))
-    )
-  )
-  prior_list <- list(
-    sigma = prior("lognormal", list(0, 1))
-  )
-  model_syntax <- paste0(
-    "model{\n",
-    "for(i in 1:N){\n",
-    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
-    "}\n",
-    "}"
-  )
-
-  fit <- JAGS_fit(
-    model_syntax = model_syntax, data = data, prior_list = prior_list,
-    formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list)
+  # Use fit_complex_mixed which has spike and slab on x_cont1
+  fit <- readRDS(file.path(temp_fits_dir, "fit_complex_mixed.RDS"))
 
   ### density plots
-  vdiffr::expect_doppelganger("diagnostics-plot-spike-and-slab-1", function() JAGS_diagnostics_density(fit, parameter = "mu_x_cont"))
-  vdiffr::expect_doppelganger("diagnostics-plot-spike-and-slab-2", function() JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_cont"))
-  vdiffr::expect_doppelganger("diagnostics-plot-spike-and-slab-3", function() JAGS_diagnostics_trace(fit, parameter = "mu_x_cont"))
+  vdiffr::expect_doppelganger("diagnostics-plot-spike-and-slab-1", function() JAGS_diagnostics_density(fit, parameter = "mu_x_cont1"))
+  vdiffr::expect_doppelganger("diagnostics-plot-spike-and-slab-2", function() JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_cont1"))
+  vdiffr::expect_doppelganger("diagnostics-plot-spike-and-slab-3", function() JAGS_diagnostics_trace(fit, parameter = "mu_x_cont1"))
 })
 
 test_that("JAGS diagnostics work (mixture priors)", {
 
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
   skip_on_cran()
+  skip_if_not_installed("rjags")
 
-  set.seed(1)
-
-  data_formula <- data.frame(
-    x_cont  = rnorm(300),
-    x_fac2t = factor(rep(c("A", "B"), 150), levels = c("A", "B")),
-    x_fac3t = factor(rep(c("A", "B", "C"), 100), levels = c("A", "B", "C"))
-  )
-  data <- list(
-    y = rnorm(300, .20 * data_formula$x_cont + ifelse(data_formula$x_fac3t == "A", 0.0, ifelse(data_formula$x_fac3t == "B", -0.2, 0.4)), ifelse(data_formula$x_fac2t == "A", 0.5, 1)),
-    N = 300
-  )
-
-
-  # create model with mix of a formula and free parameters ---
-  formula_list <- list(
-    mu    = ~ x_cont + x_fac3t
-  )
-  formula_data_list <- list(
-    mu    = data_formula
-  )
-  formula_prior_list <- list(
-    mu    = list(
-      "intercept"   = prior("normal", list(0, 5)),
-      "x_cont"      = prior_mixture(list(
-        prior("normal", list(0, 1)),
-        prior("spike", list(0))
-      )),
-      "x_fac3t"     = prior_mixture(list(
-        prior("spike", list(0)),
-        prior_factor("mnormal", list(0, .3))
-      ))
-    )
-  )
-  prior_list <- list(
-    sigma = prior("lognormal", list(0, 1))
-  )
-  model_syntax <- paste0(
-    "model{\n",
-    "for(i in 1:N){\n",
-    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
-    "}\n",
-    "}"
-  )
-
-  fit <- JAGS_fit(
-    model_syntax = model_syntax, data = data, prior_list = prior_list,
-    formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list)
+  # Use fit_complex_mixed which has mixture on intercept and x_fac3t
+  fit <- readRDS(file.path(temp_fits_dir, "fit_complex_mixed.RDS"))
 
   ### density plots
-  vdiffr::expect_doppelganger("diagnostics-plot-mixture-1", function() JAGS_diagnostics_density(fit, parameter = "mu_x_cont"))
-  vdiffr::expect_doppelganger("diagnostics-plot-mixture-2", function() JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_cont"))
-  vdiffr::expect_doppelganger("diagnostics-plot-mixture-3", function() JAGS_diagnostics_trace(fit, parameter = "mu_x_cont"))
+  # Using mu_intercept as the first mixture example (was mu_x_cont in original, but x_cont1 is spike/slab in this model)
+  vdiffr::expect_doppelganger("diagnostics-plot-mixture-1", function() JAGS_diagnostics_density(fit, parameter = "mu_intercept"))
+  vdiffr::expect_doppelganger("diagnostics-plot-mixture-2", function() JAGS_diagnostics_autocorrelation(fit, parameter = "mu_intercept"))
+  vdiffr::expect_doppelganger("diagnostics-plot-mixture-3", function() JAGS_diagnostics_trace(fit, parameter = "mu_intercept"))
 
+  # Using mu_x_fac3t as the second mixture example
   vdiffr::expect_doppelganger("diagnostics-plot-mixture-4", function() JAGS_diagnostics_density(fit, parameter = "mu_x_fac3t"))
   vdiffr::expect_doppelganger("diagnostics-plot-mixture-5", function() JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_fac3t"))
   vdiffr::expect_doppelganger("diagnostics-plot-mixture-6", function() JAGS_diagnostics_trace(fit, parameter = "mu_x_fac3t"))
@@ -292,76 +175,37 @@ test_that("JAGS diagnostics work (meandif and independent)", {
 
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
   skip_on_cran()
+  skip_if_not_installed("rjags")
 
-  set.seed(1)
-
-  data_formula <- data.frame(
-    x_cont1  = rnorm(150),
-    x_fac2i  = factor(rep(c("A", "B"), 75), levels = c("A", "B")),
-    x_fac3md = factor(rep(c("A", "B", "C"), 50), levels = c("A", "B", "C"))
-  )
-  data <- list(
-    y = rnorm(150, .4 * data_formula$x_cont1 + ifelse(data_formula$x_fac3md == "A", 0.0, ifelse(data_formula$x_fac3md == "B", -0.2, 0.4)), ifelse(data_formula$x_fac2i == "A", 0.5, 1)),
-    N = 150
-  )
-
-
-  # create model with mix of a formula and free parameters ---
-  formula_list <- list(
-    mu    = ~ x_cont1 + x_fac2i + x_fac3md - 1
-  )
-  formula_data_list <- list(
-    mu    = data_formula
-  )
-  formula_prior_list <- list(
-    mu    = list(
-      "x_cont1"   = prior("normal", list(0, 1)),
-      "x_fac2i"   = prior_factor("normal", contrast = "independent", list(0, 1)),
-      "x_fac3md"  = prior_factor("mnormal", contrast = "meandif", list(0, 1))
-    )
-  )
-  prior_list <- list(
-    sigma = prior("lognormal", list(0, 1))
-  )
-  model_syntax <- paste0(
-    "model{\n",
-    "for(i in 1:N){\n",
-    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
-    "}\n",
-    "}"
-  )
-
-  fit <- JAGS_fit(
-    model_syntax = model_syntax, data = data, prior_list = prior_list,
-    formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list)
-
+  fit_independent <- readRDS(file.path(temp_fits_dir, "fit_factor_independent.RDS"))
+  fit_meandif     <- readRDS(file.path(temp_fits_dir, "fit_spike_factors_alt.RDS"))
 
   ### density plots
   vdiffr::expect_doppelganger("diagnostics3-plot-density-1", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 2))
-    JAGS_diagnostics_density(fit, parameter = "mu_x_fac2i")
+    JAGS_diagnostics_density(fit_independent, parameter = "p1")
   })
   vdiffr::expect_doppelganger("diagnostics3-plot-density-2", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 2))
-    JAGS_diagnostics_density(fit, parameter = "mu_x_fac3md")
+    JAGS_diagnostics_density(fit_meandif, parameter = "mu_x_fac3md")
   })
   vdiffr::expect_doppelganger("diagnostics3-plot-density-3", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 3))
-    JAGS_diagnostics_density(fit, parameter = "mu_x_fac3md", formula_prefix = FALSE, transform_factors = TRUE)
+    JAGS_diagnostics_density(fit_meandif, parameter = "mu_x_fac3md", formula_prefix = FALSE, transform_factors = TRUE)
   })
 
 
-  temp_plot <- JAGS_diagnostics_density(fit, plot_type = "ggplot", parameter = "mu_x_fac2i")
+  temp_plot <- JAGS_diagnostics_density(fit_independent, plot_type = "ggplot", parameter = "p1")
   vdiffr::expect_doppelganger("diagnostics3-ggplot-density-1.1",temp_plot[[1]])
   vdiffr::expect_doppelganger("diagnostics3-ggplot-density-1.2",temp_plot[[2]])
 
-  temp_plot <- JAGS_diagnostics_density(fit, plot_type = "ggplot", parameter = "mu_x_fac3md", transform_factors = TRUE)
+  temp_plot <- JAGS_diagnostics_density(fit_meandif, plot_type = "ggplot", parameter = "mu_x_fac3md", transform_factors = TRUE)
   vdiffr::expect_doppelganger("diagnostics3-ggplot-density-2.1",temp_plot[[1]])
   vdiffr::expect_doppelganger("diagnostics3-ggplot-density-2.2",temp_plot[[2]])
   vdiffr::expect_doppelganger("diagnostics3-ggplot-density-2.3",temp_plot[[3]])
@@ -372,13 +216,13 @@ test_that("JAGS diagnostics work (meandif and independent)", {
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 2))
-    JAGS_diagnostics_trace(fit, parameter = "mu_x_fac2i")
+    JAGS_diagnostics_trace(fit_independent, parameter = "p1")
   })
   vdiffr::expect_doppelganger("diagnostics3-plot-trace-2", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 3))
-    JAGS_diagnostics_trace(fit, parameter = "mu_x_fac3md", formula_prefix = FALSE, transform_factors = TRUE)
+    JAGS_diagnostics_trace(fit_meandif, parameter = "mu_x_fac3md", formula_prefix = FALSE, transform_factors = TRUE)
   })
 
 
@@ -387,13 +231,13 @@ test_that("JAGS diagnostics work (meandif and independent)", {
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 2))
-    JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_fac2i")
+    JAGS_diagnostics_autocorrelation(fit_independent, parameter = "p1")
   })
   vdiffr::expect_doppelganger("diagnostics3-plot-autocorrelation-2", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 3))
-    JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_fac3md", formula_prefix = FALSE, transform_factors = TRUE)
+    JAGS_diagnostics_autocorrelation(fit_meandif, parameter = "mu_x_fac3md", formula_prefix = FALSE, transform_factors = TRUE)
   })
 })
 
@@ -401,58 +245,16 @@ test_that("JAGS diagnostics work (spike priors)", {
 
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
   skip_on_cran()
+  skip_if_not_installed("rjags")
 
-  set.seed(1)
-
-  data_formula <- data.frame(
-    x_cont1  = rnorm(150),
-    x_fac2i  = factor(rep(c("A", "B"), 75), levels = c("A", "B")),
-    x_fac3md = factor(rep(c("A", "B", "C"), 50), levels = c("A", "B", "C")),
-    x_fac2o  = factor(rep(c("A", "B"), 75), levels = c("A", "B")),
-    x_fac3t  = factor(rep(c("A", "B", "C"), 50), levels = c("A", "B", "C"))
-  )
-  data <- list(
-    y = rnorm(150, 0.5, 1),
-    N = 150
-  )
-
-  # create model with mix of a formula and free parameters ---
-  formula_list <- list(
-    mu    = ~ x_cont1 + x_fac2i + x_fac3md + x_fac2o + x_fac3t - 1
-  )
-  formula_data_list <- list(
-    mu    = data_formula
-  )
-  formula_prior_list <- list(
-    mu    = list(
-      "x_cont1"   = prior("spike", list(0)),
-      "x_fac2i"   = prior_factor("spike", contrast = "independent", list(1)),
-      "x_fac3md"  = prior_factor("spike", contrast = "meandif",     list(0)),
-      "x_fac2o"   = prior_factor("spike", contrast = "orthonormal", list(0)),
-      "x_fac3t"   = prior_factor("spike", contrast = "treatment",   list(2))
-    )
-  )
-  prior_list <- list(
-    sigma = prior("lognormal", list(0, 1))
-  )
-  model_syntax <- paste0(
-    "model{\n",
-    "for(i in 1:N){\n",
-    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
-    "}\n",
-    "}"
-  )
-
-  fit <- JAGS_fit(
-    model_syntax = model_syntax, data = data, prior_list = prior_list,
-    formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list)
-
+  fit <- readRDS(file.path(temp_fits_dir, "fit_spike_factors.RDS"))
+  fit_simple <- readRDS(file.path(temp_fits_dir, "fit_spike_slab_simple.RDS"))
 
   ### density plots
-  expect_message(JAGS_diagnostics_density(fit, parameter = "mu_x_cont1"),         "No diagnostic plots are produced for a spike prior distribution")
+  vdiffr::expect_doppelganger("diagnostics4-ggplot-density-fit_simple",JAGS_diagnostics_density(fit_simple, parameter = "mu"))
+
+  # fit_spike_factors has factor spikes
   expect_message(JAGS_diagnostics_density(fit, parameter = "mu_x_fac2i"),         "No diagnostic plots are produced for a spike prior distribution")
   expect_message(JAGS_diagnostics_trace(fit, parameter = "mu_x_fac3md"),          "No diagnostic plots are produced for a spike prior distribution")
-  expect_message(JAGS_diagnostics_autocorrelation(fit, parameter = "mu_x_fac2o"), "No diagnostic plots are produced for a spike prior distribution")
-  expect_message(JAGS_diagnostics_density(fit, parameter = "mu_x_fac3t"),         "No diagnostic plots are produced for a spike prior distribution")
 
 })
