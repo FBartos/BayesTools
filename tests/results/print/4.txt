@@ -1,3 +1,0 @@
-      Models Prior prob. Post. prob. Inclusion BF
-m        3/3       1.000       1.000          Inf
-omega    2/3       0.667       0.797        1.968

@@ -1,4 +1,0 @@
- Model     Prior m                        Prior omega                    Prior prob. log(marglik) Post. prob. Inclusion BF
-     1    Normal(0, 1)                                                         0.333        -1.11       0.203        0.508
-     2  Normal(0, 0.5)     omega[one-sided: .05] ~ CumDirichlet(1, 1)          0.333        -0.54       0.356        1.107
-     3  Normal(0, 0.3) omega[one-sided: .5, .05] ~ CumDirichlet(1, 1, 1)       0.333        -0.33       0.441        1.578
