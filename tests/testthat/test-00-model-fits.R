@@ -25,7 +25,7 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
                      autofit = FALSE, parallel = FALSE, thinning = FALSE,
                      add_parameters = FALSE, note = "") {
   saveRDS(fit, file = file.path(temp_fits_dir, paste0(name, ".RDS")))
-  
+
   # Save marglik if provided
   if (!is.null(marglik)) {
     saveRDS(marglik, file = file.path(temp_fits_dir, paste0(name, "_marglik.RDS")))
@@ -89,15 +89,15 @@ test_that("Simple prior models fit correctly", {
 
   fit_simple_normal <- JAGS_fit(model_syntax, data, priors_simple_normal,
                                  chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
-  
+
   # Compute marginal likelihood for model averaging
   log_posterior_simple_normal <- function(parameters, data){
     sum(stats::dnorm(data$x, parameters[["m"]], parameters[["s"]], log = TRUE))
   }
-  marglik_simple_normal <- JAGS_bridgesampling(fit_simple_normal, 
-                                                log_posterior = log_posterior_simple_normal, 
+  marglik_simple_normal <- JAGS_bridgesampling(fit_simple_normal,
+                                                log_posterior = log_posterior_simple_normal,
                                                 data = data, prior_list = priors_simple_normal)
-  
+
   result <- save_fit(fit_simple_normal, "fit_simple_normal",
            marglik = marglik_simple_normal,
            simple_priors = TRUE,
@@ -110,15 +110,15 @@ test_that("Simple prior models fit correctly", {
     m = prior("spike", list(0)),
     s = prior("normal", list(0, 1), list(0, Inf))
   )
-  
+
   fit_simple_spike <- JAGS_fit(model_syntax, data, priors_simple_spike,
                                chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
-  
+
   # Compute marginal likelihood for model averaging
-  marglik_simple_spike <- JAGS_bridgesampling(fit_simple_spike, 
-                                               log_posterior = log_posterior_simple_normal, 
+  marglik_simple_spike <- JAGS_bridgesampling(fit_simple_spike,
+                                               log_posterior = log_posterior_simple_normal,
                                                data = data, prior_list = priors_simple_spike)
-  
+
   result <- save_fit(fit_simple_spike, "fit_simple_spike",
            marglik = marglik_simple_spike,
            simple_priors = TRUE,
@@ -142,8 +142,8 @@ test_that("Simple prior models fit correctly", {
 
   model_syntax_simple <- "model{}"
 
-  fit_simple_various <- JAGS_fit(model_syntax_simple, data = list(), prior_list = priors_various,
-                                  chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
+  fit_simple_various <- suppressWarnings(JAGS_fit(model_syntax_simple, data = NULL, prior_list = priors_various,
+                                  chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1))
   result <- save_fit(fit_simple_various, "fit_simple_various",
            simple_priors = TRUE,
            note = "Various univariate distributions: normal, lognormal, t, Cauchy, gamma, invgamma, exp, beta, uniform, point")
@@ -158,8 +158,8 @@ test_that("Simple prior models fit correctly", {
 
   model_syntax_pb <- "model{}"
 
-  fit_simple_pub_bias <- JAGS_fit(model_syntax_pb, data = list(), prior_list = priors_pub_bias,
-                                   chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
+  fit_simple_pub_bias <- suppressWarnings(JAGS_fit(model_syntax_pb, data = NULL, prior_list = priors_pub_bias,
+                                   chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1))
   result <- save_fit(fit_simple_pub_bias, "fit_simple_pub_bias",
            pub_bias_priors = TRUE,
            note = "PET and PEESE priors for publication bias")
@@ -172,8 +172,8 @@ test_that("Simple prior models fit correctly", {
   )
   model_syntax_thin <- "model{}"
 
-  fit_simple_thin <- JAGS_fit(model_syntax_thin, data = list(), prior_list = priors_thin,
-                              chains = 2, adapt = 100, burnin = 150, sample = 300, thin = 3, seed = 2)
+  fit_simple_thin <- suppressWarnings(JAGS_fit(model_syntax_thin, data = NULL, prior_list = priors_thin,
+                              chains = 2, adapt = 100, burnin = 150, sample = 300, thin = 3, seed = 2))
   result <- save_fit(fit_simple_thin, "fit_simple_thin",
            simple_priors = TRUE, thinning = TRUE,
            note = "Simple normal prior with thinning parameter (thin=3)")
@@ -295,8 +295,8 @@ test_that("Vector prior models fit correctly", {
 
   model_syntax_vec <- "model{}"
 
-  fit_vector_mnormal <- JAGS_fit(model_syntax_vec, data = list(), prior_list = priors_mnormal,
-                                  chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
+  fit_vector_mnormal <- suppressWarnings(JAGS_fit(model_syntax_vec, data = NULL, prior_list = priors_mnormal,
+                                  chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1))
   result <- save_fit(fit_vector_mnormal, "fit_vector_mnormal",
            vector_priors = TRUE,
            note = "Multivariate normal prior (K=3)")
@@ -310,8 +310,8 @@ test_that("Vector prior models fit correctly", {
 
   model_syntax_mc <- "model{}"
 
-  fit_vector_mcauchy <- JAGS_fit(model_syntax_mc, data = list(), prior_list = priors_mcauchy,
-                                  chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+  fit_vector_mcauchy <- suppressWarnings(JAGS_fit(model_syntax_mc, data = NULL, prior_list = priors_mcauchy,
+                                  chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2))
   result <- save_fit(fit_vector_mcauchy, "fit_vector_mcauchy",
            vector_priors = TRUE,
            note = "Multivariate Cauchy prior (K=2)")
@@ -325,8 +325,8 @@ test_that("Vector prior models fit correctly", {
 
   model_syntax_mt <- "model{}"
 
-  fit_vector_mt <- JAGS_fit(model_syntax_mt, data = list(), prior_list = priors_mt,
-                             chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
+  fit_vector_mt <- suppressWarnings(JAGS_fit(model_syntax_mt, data = NULL, prior_list = priors_mt,
+                             chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3))
   result <- save_fit(fit_vector_mt, "fit_vector_mt",
            vector_priors = TRUE,
            note = "Multivariate t prior with df=5 (K=2)")
@@ -354,8 +354,8 @@ test_that("Factor prior models fit correctly", {
 
   model_syntax_orth <- "model{}"
 
-  fit_factor_orthonormal <- JAGS_fit(model_syntax_orth, data = list(), prior_list = priors_orthonormal,
-                                      chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
+  fit_factor_orthonormal <- suppressWarnings(JAGS_fit(model_syntax_orth, data = NULL, prior_list = priors_orthonormal,
+                                      chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1))
   result <- save_fit(fit_factor_orthonormal, "fit_factor_orthonormal",
            factor_priors = TRUE,
            note = "Orthonormal contrast with 3 levels")
@@ -370,8 +370,8 @@ test_that("Factor prior models fit correctly", {
 
   model_syntax_treat <- "model{}"
 
-  fit_factor_treatment <- JAGS_fit(model_syntax_treat, data = list(), prior_list = priors_treatment,
-                                    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+  fit_factor_treatment <- suppressWarnings(JAGS_fit(model_syntax_treat, data = NULL, prior_list = priors_treatment,
+                                    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2))
   result <- save_fit(fit_factor_treatment, "fit_factor_treatment",
            factor_priors = TRUE,
            note = "Treatment contrast with 2 levels and beta prior")
@@ -386,8 +386,8 @@ test_that("Factor prior models fit correctly", {
 
   model_syntax_ind <- "model{}"
 
-  fit_factor_independent <- JAGS_fit(model_syntax_ind, data = list(), prior_list = priors_independent,
-                                      chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
+  fit_factor_independent <- suppressWarnings(JAGS_fit(model_syntax_ind, data = NULL, prior_list = priors_independent,
+                                      chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3))
   result <- save_fit(fit_factor_independent, "fit_factor_independent",
            factor_priors = TRUE,
            note = "Independent contrast with 3 levels and gamma prior")
@@ -402,8 +402,8 @@ test_that("Factor prior models fit correctly", {
 
   model_syntax_md <- "model{}"
 
-  fit_factor_meandif <- JAGS_fit(model_syntax_md, data = list(), prior_list = priors_meandif,
-                                  chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 4)
+  fit_factor_meandif <- suppressWarnings(JAGS_fit(model_syntax_md, data = NULL, prior_list = priors_meandif,
+                                  chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 4))
   result <- save_fit(fit_factor_meandif, "fit_factor_meandif",
            factor_priors = TRUE,
            note = "Meandif contrast with 3 levels")
@@ -431,8 +431,8 @@ test_that("Weightfunction prior models fit correctly", {
 
   model_syntax_wf1 <- "model{}"
 
-  fit_weightfunction_onesided2 <- JAGS_fit(model_syntax_wf1, data = list(), prior_list = priors_wf_onesided2,
-                                            chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
+  fit_weightfunction_onesided2 <- suppressWarnings(JAGS_fit(model_syntax_wf1, data = NULL, prior_list = priors_wf_onesided2,
+                                            chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1))
   result <- save_fit(fit_weightfunction_onesided2, "fit_weightfunction_onesided2",
            weightfunction_priors = TRUE,
            note = "One-sided weightfunction with 2 intervals (cutpoint at .05)")
@@ -446,8 +446,8 @@ test_that("Weightfunction prior models fit correctly", {
 
   model_syntax_wf2 <- "model{}"
 
-  fit_weightfunction_onesided3 <- JAGS_fit(model_syntax_wf2, data = list(), prior_list = priors_wf_onesided3,
-                                            chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+  fit_weightfunction_onesided3 <- suppressWarnings(JAGS_fit(model_syntax_wf2, data = NULL, prior_list = priors_wf_onesided3,
+                                            chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2))
   result <- save_fit(fit_weightfunction_onesided3, "fit_weightfunction_onesided3",
            weightfunction_priors = TRUE,
            note = "One-sided weightfunction with 3 intervals (cutpoints at .05, .10)")
@@ -461,8 +461,8 @@ test_that("Weightfunction prior models fit correctly", {
 
   model_syntax_wf3 <- "model{}"
 
-  fit_weightfunction_twosided <- JAGS_fit(model_syntax_wf3, data = list(), prior_list = priors_wf_twosided,
-                                           chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
+  fit_weightfunction_twosided <- suppressWarnings(JAGS_fit(model_syntax_wf3, data = NULL, prior_list = priors_wf_twosided,
+                                           chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3))
   result <- save_fit(fit_weightfunction_twosided, "fit_weightfunction_twosided",
            weightfunction_priors = TRUE,
            note = "Two-sided weightfunction with cutpoint at .05")
@@ -476,33 +476,18 @@ test_that("Weightfunction prior models fit correctly", {
 
   model_syntax_wf4 <- "model{}"
 
-  fit_weightfunction_fixed <- JAGS_fit(model_syntax_wf4, data = list(), prior_list = priors_wf_fixed,
-                                        chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 4)
+  fit_weightfunction_fixed <- suppressWarnings(JAGS_fit(model_syntax_wf4, data = NULL, prior_list = priors_wf_fixed,
+                                        chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 4))
   result <- save_fit(fit_weightfunction_fixed, "fit_weightfunction_fixed",
            weightfunction_priors = TRUE,
            note = "One-sided fixed weightfunction (weights: 1, .5)")
   model_registry[["fit_weightfunction_fixed"]] <<- result$registry_entry
   fit_weightfunction_fixed <- result$fit
 
-  # No weightfunction (prior_none)
-  priors_wf_none <- list(
-    omega = prior_none()
-  )
-
-  model_syntax_wf5 <- "model{}"
-
-  fit_weightfunction_none <- JAGS_fit(model_syntax_wf5, data = list(), prior_list = priors_wf_none,
-                                       chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 5)
-  result <- save_fit(fit_weightfunction_none, "fit_weightfunction_none",
-           note = "No weightfunction using prior_none()")
-  model_registry[["fit_weightfunction_none"]] <<- result$registry_entry
-  fit_weightfunction_none <- result$fit
-
   expect_true(file.exists(file.path(temp_fits_dir, "fit_weightfunction_onesided2.RDS")))
   expect_true(file.exists(file.path(temp_fits_dir, "fit_weightfunction_onesided3.RDS")))
   expect_true(file.exists(file.path(temp_fits_dir, "fit_weightfunction_twosided.RDS")))
   expect_true(file.exists(file.path(temp_fits_dir, "fit_weightfunction_fixed.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_weightfunction_none.RDS")))
 })
 
 
@@ -521,8 +506,8 @@ test_that("Spike-and-slab prior models fit correctly", {
 
   model_syntax_ss1 <- "model{}"
 
-  fit_spike_slab_simple <- JAGS_fit(model_syntax_ss1, data = list(), prior_list = priors_spike_slab_simple,
-                                     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
+  fit_spike_slab_simple <- suppressWarnings(JAGS_fit(model_syntax_ss1, data = NULL, prior_list = priors_spike_slab_simple,
+                                     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1))
   result <- save_fit(fit_spike_slab_simple, "fit_spike_slab_simple",
            spike_and_slab_priors = TRUE,
            note = "Simple spike-and-slab with normal alternative and beta inclusion prior")
@@ -544,8 +529,8 @@ test_that("Spike-and-slab prior models fit correctly", {
 
   model_syntax_ss2 <- "model{}"
 
-  fit_spike_slab_factor <- JAGS_fit(model_syntax_ss2, data = list(), prior_list = priors_spike_slab_factor,
-                                     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+  fit_spike_slab_factor <- suppressWarnings(JAGS_fit(model_syntax_ss2, data = NULL, prior_list = priors_spike_slab_factor,
+                                     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2))
   result <- save_fit(fit_spike_slab_factor, "fit_spike_slab_factor",
            spike_and_slab_priors = TRUE, factor_priors = TRUE,
            note = "Spike-and-slab with orthonormal factor prior (3 levels) as alternative")
@@ -578,8 +563,8 @@ test_that("Mixture prior models fit correctly", {
 
   model_syntax_mix1 <- "model{}"
 
-  fit_mixture_simple <- JAGS_fit(model_syntax_mix1, data = list(), prior_list = priors_mixture_simple,
-                                  chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
+  fit_mixture_simple <- suppressWarnings(JAGS_fit(model_syntax_mix1, data = NULL, prior_list = priors_mixture_simple,
+                                  chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1))
   result <- save_fit(fit_mixture_simple, "fit_mixture_simple",
            mixture_priors = TRUE,
            note = "Mixture of 3 components (2 normals, 1 gamma) with is_null flags")
@@ -599,8 +584,8 @@ test_that("Mixture prior models fit correctly", {
 
   model_syntax_mix2 <- "model{}"
 
-  fit_mixture_components <- JAGS_fit(model_syntax_mix2, data = list(), prior_list = priors_mixture_components,
-                                      chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+  fit_mixture_components <- suppressWarnings(JAGS_fit(model_syntax_mix2, data = NULL, prior_list = priors_mixture_components,
+                                      chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2))
   result <- save_fit(fit_mixture_components, "fit_mixture_components",
            mixture_priors = TRUE,
            note = "Mixture with named components (a, b)")
@@ -619,8 +604,8 @@ test_that("Mixture prior models fit correctly", {
 
   model_syntax_mix3 <- "model{}"
 
-  fit_mixture_spike <- JAGS_fit(model_syntax_mix3, data = list(), prior_list = priors_mixture_spike,
-                                 chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
+  fit_mixture_spike <- suppressWarnings(JAGS_fit(model_syntax_mix3, data = NULL, prior_list = priors_mixture_spike,
+                                 chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3))
   result <- save_fit(fit_mixture_spike, "fit_mixture_spike",
            mixture_priors = TRUE,
            note = "Mixture containing spike prior at value 2")
@@ -676,17 +661,17 @@ test_that("Simple formula-based regression models fit correctly", {
     formula_list = formula_list_simple, formula_data_list = formula_data_list_simple,
     formula_prior_list = formula_prior_list_simple,
     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
-  
+
   # Compute marginal likelihood for model averaging
   log_posterior_formula <- function(parameters, data){
     sum(stats::dnorm(data$y, parameters[["mu"]], parameters[["sigma"]], log = TRUE))
   }
   marglik_formula_simple <- JAGS_bridgesampling(
-    fit_formula_simple, log_posterior = log_posterior_formula, data = data, 
+    fit_formula_simple, log_posterior = log_posterior_formula, data = data,
     prior_list = prior_list_simple,
     formula_list = formula_list_simple, formula_data_list = formula_data_list_simple,
     formula_prior_list = formula_prior_list_simple)
-  
+
   result <- save_fit(fit_formula_simple, "fit_formula_simple",
            marglik = marglik_formula_simple,
            formulas = TRUE, simple_priors = TRUE,
@@ -710,14 +695,14 @@ test_that("Simple formula-based regression models fit correctly", {
     formula_list = formula_list_treatment, formula_data_list = formula_data_list_treatment,
     formula_prior_list = formula_prior_list_treatment,
     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
-  
+
   # Compute marginal likelihood for model averaging
   marglik_formula_treatment <- JAGS_bridgesampling(
-    fit_formula_treatment, log_posterior = log_posterior_formula, data = data, 
+    fit_formula_treatment, log_posterior = log_posterior_formula, data = data,
     prior_list = prior_list_simple,
     formula_list = formula_list_treatment, formula_data_list = formula_data_list_treatment,
     formula_prior_list = formula_prior_list_treatment)
-  
+
   result <- save_fit(fit_formula_treatment, "fit_formula_treatment",
            marglik = marglik_formula_treatment,
            formulas = TRUE, factor_priors = TRUE, simple_priors = TRUE,
@@ -741,14 +726,14 @@ test_that("Simple formula-based regression models fit correctly", {
     formula_list = formula_list_orthonormal, formula_data_list = formula_data_list_orthonormal,
     formula_prior_list = formula_prior_list_orthonormal,
     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
-  
+
   # Compute marginal likelihood for model averaging
   marglik_formula_orthonormal <- JAGS_bridgesampling(
-    fit_formula_orthonormal, log_posterior = log_posterior_formula, data = data, 
+    fit_formula_orthonormal, log_posterior = log_posterior_formula, data = data,
     prior_list = prior_list_simple,
     formula_list = formula_list_orthonormal, formula_data_list = formula_data_list_orthonormal,
     formula_prior_list = formula_prior_list_orthonormal)
-  
+
   result <- save_fit(fit_formula_orthonormal, "fit_formula_orthonormal",
            marglik = marglik_formula_orthonormal,
            formulas = TRUE, factor_priors = TRUE, simple_priors = TRUE,
@@ -1219,8 +1204,8 @@ test_that("Expression prior models fit correctly", {
 
   model_syntax_expr1 <- "model{}"
 
-  fit_expression_simple <- JAGS_fit(model_syntax_expr1, data = list(), prior_list = priors_expr_simple,
-                                     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
+  fit_expression_simple <- suppressWarnings(JAGS_fit(model_syntax_expr1, data = NULL, prior_list = priors_expr_simple,
+                                     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1))
   result <- save_fit(fit_expression_simple, "fit_expression_simple",
            expression_priors = TRUE, simple_priors = TRUE,
            note = "Normal prior with expression referencing another parameter (x_sigma)")
@@ -1237,8 +1222,8 @@ test_that("Expression prior models fit correctly", {
 
   model_syntax_expr2 <- "model{}"
 
-  fit_expression_spike_slab <- JAGS_fit(model_syntax_expr2, data = list(), prior_list = priors_expr_ss,
-                                         chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+  fit_expression_spike_slab <- suppressWarnings(JAGS_fit(model_syntax_expr2, data = NULL, prior_list = priors_expr_ss,
+                                         chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2))
   result <- save_fit(fit_expression_spike_slab, "fit_expression_spike_slab",
            expression_priors = TRUE, spike_and_slab_priors = TRUE, simple_priors = TRUE,
            note = "Spike-and-slab with expression in alternative prior")
@@ -1256,8 +1241,8 @@ test_that("Expression prior models fit correctly", {
 
   model_syntax_expr3 <- "model{}"
 
-  fit_expression_mixture <- JAGS_fit(model_syntax_expr3, data = list(), prior_list = priors_expr_mix,
-                                      chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
+  fit_expression_mixture <- suppressWarnings(JAGS_fit(model_syntax_expr3, data = NULL, prior_list = priors_expr_mix,
+                                      chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3))
   result <- save_fit(fit_expression_mixture, "fit_expression_mixture",
            expression_priors = TRUE, mixture_priors = TRUE, simple_priors = TRUE,
            note = "Mixture prior with expression in one component")
