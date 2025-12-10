@@ -1168,73 +1168,11 @@ test_that("Spike factor prior models fit correctly", {
   model_registry[["fit_spike_factors"]] <<- result$registry_entry
   fit_spike_factors <- result$fit
 
-  # Spike vs Normal factor (meandif contrast)
-  # -------------------------------------------------------
-  formula_list_sf <- list(mu = ~ x_fac3md)
-  formula_data_list_sf <- list(mu = data_formula)
-
-  # Log posterior for formula models
-  log_posterior_formula <- function(parameters, data){
-    sum(stats::dnorm(data$y, parameters[["mu"]], parameters[["sigma"]], log = TRUE))
-  }
-
-  # Null model (Spike)
-  formula_prior_list_sf_null <- list(
-    mu = list(
-      "intercept" = prior("normal", list(0, 5)),
-      "x_fac3md"  = prior_factor("spike", contrast = "meandif", list(0))
-    )
-  )
-
-  fit_spike_factors_null <- JAGS_fit(
-    model_syntax = model_syntax, data = data, prior_list = prior_list,
-    formula_list = formula_list_sf, formula_data_list = formula_data_list_sf,
-    formula_prior_list = formula_prior_list_sf_null,
-    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
-
-  marglik_spike_factors_null <- JAGS_bridgesampling(
-    fit_spike_factors_null, log_posterior = log_posterior_formula, data = data,
-    prior_list = prior_list,
-    formula_list = formula_list_sf, formula_data_list = formula_data_list_sf,
-    formula_prior_list = formula_prior_list_sf_null)
-
-  result <- save_fit(fit_spike_factors_null, "fit_spike_factors_null",
-                     marglik = marglik_spike_factors_null,
-                     formulas = TRUE, factor_priors = TRUE,
-                     note = "Spike factor prior (meandif)")
-  model_registry[["fit_spike_factors_null"]] <<- result$registry_entry
-  fit_spike_factors_null <- result$fit
-
-  # Alternative model (Normal)
-  formula_prior_list_sf_alt <- list(
-    mu = list(
-      "intercept" = prior("normal", list(0, 5)),
-      "x_fac3md"  = prior_factor("mnormal", contrast = "meandif", list(0, 0.25))
-    )
-  )
-
-  fit_spike_factors_alt <- JAGS_fit(
-    model_syntax = model_syntax, data = data, prior_list = prior_list,
-    formula_list = formula_list_sf, formula_data_list = formula_data_list_sf,
-    formula_prior_list = formula_prior_list_sf_alt,
-    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
-
-  marglik_spike_factors_alt <- JAGS_bridgesampling(
-    fit_spike_factors_alt, log_posterior = log_posterior_formula, data = data,
-    prior_list = prior_list,
-    formula_list = formula_list_sf, formula_data_list = formula_data_list_sf,
-    formula_prior_list = formula_prior_list_sf_alt)
-
-  result <- save_fit(fit_spike_factors_alt, "fit_spike_factors_alt",
-                     marglik = marglik_spike_factors_alt,
-                     formulas = TRUE, factor_priors = TRUE,
-                     note = "Normal factor prior (meandif)")
-  model_registry[["fit_spike_factors_alt"]] <<- result$registry_entry
-  fit_spike_factors_alt <- result$fit
+  # NOTE: fit_spike_factors_null and fit_spike_factors_alt have been removed
+  # because they are now replaced by fit_marginal_0 and fit_marginal_1
+  # (which have the same meandif factor structure plus additional features)
 
   expect_true(file.exists(file.path(temp_fits_dir, "fit_spike_factors.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_spike_factors_null.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_spike_factors_alt.RDS")))
 })
 
 
@@ -1515,6 +1453,150 @@ test_that("Advanced JAGS_fit features work correctly", {
   expect_true(file.exists(file.path(temp_fits_dir, "fit_autofit_error.RDS")))
   expect_true(file.exists(file.path(temp_fits_dir, "fit_autofit_ess.RDS")))
   expect_true(file.exists(file.path(temp_fits_dir, "fit_parallel.RDS")))
+})
+
+
+# ============================================================================ #
+# SECTION 15: MODELS FOR MARGINAL DISTRIBUTION TESTING
+# ============================================================================ #
+# These models test marginal_posterior, ensemble_inference, and mix_posteriors
+# with complex formulas including interactions and multiply_by scaling.
+test_that("Marginal distribution models fit correctly", {
+
+  skip_if_not_installed("rjags")
+
+  skip_if_not_installed("bridgesampling")
+
+  set.seed(1)
+  data_formula_marg <- data.frame(
+    x_cont1  = rnorm(180),
+    x_fac2t  = factor(rep(c("A", "B"), 90), levels = c("A", "B")),
+    x_fac3md = factor(rep(c("A", "B", "C"), 60), levels = c("A", "B", "C"))
+  )
+  data_marg <- list(
+    y = rnorm(180, 0.1, 0.5) + 0.5 + 0.20 * data_formula_marg$x_cont1 +
+      ifelse(data_formula_marg$x_fac3md == "A", 0.15, ifelse(data_formula_marg$x_fac3md == "B", -0.15, 0)),
+    N = 180
+  )
+
+  # Null model: spike priors on factor effects
+  prior_list_marg_0 <- list(
+    "intercept"        = prior("normal", list(0, 1)),
+    "x_cont1"          = prior("normal", list(0, 1)),
+    "x_fac2t"          = prior_factor("spike", contrast = "treatment", list(0)),
+    "x_fac3md"         = prior_factor("spike", contrast = "meandif",   list(0)),
+    "x_cont1:x_fac3md" = prior_factor("spike", contrast = "meandif",   list(0))
+  )
+  attr(prior_list_marg_0$x_cont1, "multiply_by") <- "sigma"
+
+  # Alternative model: normal priors on factor effects
+  prior_list_marg_1 <- list(
+    "intercept"        = prior("normal", list(0, 1)),
+    "x_cont1"          = prior("normal", list(0, 1)),
+    "x_fac2t"          = prior_factor("normal",  contrast = "treatment", list(0, 1.00)),
+    "x_fac3md"         = prior_factor("mnormal", contrast = "meandif",   list(0, 0.25)),
+    "x_cont1:x_fac3md" = prior_factor("mnormal", contrast = "meandif",   list(0, 0.25))
+  )
+  attr(prior_list_marg_1$x_cont1, "multiply_by") <- "sigma"
+
+  prior_list_marg <- list(
+    "sigma" = prior("cauchy", list(0, 1), list(0, 5))
+  )
+  model_syntax_marg <- paste0(
+    "model{",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+  log_posterior_marg <- function(parameters, data){
+    return(sum(stats::dnorm(data$y, mean = parameters[["mu"]], sd = parameters[["sigma"]], log = TRUE)))
+  }
+  model_formula_marg <- list(mu = ~ x_cont1 + x_fac2t + x_cont1*x_fac3md)
+
+  # Fit null model
+  fit_marginal_0 <- JAGS_fit(
+    model_syntax = model_syntax_marg, data = data_marg,
+    prior_list = prior_list_marg,
+    formula_list       = model_formula_marg,
+    formula_prior_list = list(mu = prior_list_marg_0),
+    formula_data_list  = list(mu = data_formula_marg),
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
+
+  marglik_marginal_0 <- JAGS_bridgesampling(
+    fit                = fit_marginal_0,
+    log_posterior      = log_posterior_marg,
+    data               = data_marg,
+    prior_list         = prior_list_marg,
+    formula_list       = model_formula_marg,
+    formula_prior_list = list(mu = prior_list_marg_0),
+    formula_data_list  = list(mu = data_formula_marg))
+
+  result <- save_fit(fit_marginal_0, "fit_marginal_0",
+                     marglik = marglik_marginal_0,
+                     formulas = TRUE, factor_priors = TRUE, interactions = TRUE,
+                     note = "Marginal dist null model: spike priors on factors with interaction and multiply_by")
+  model_registry[["fit_marginal_0"]] <<- result$registry_entry
+  fit_marginal_0 <- result$fit
+
+  # Fit alternative model
+  fit_marginal_1 <- JAGS_fit(
+    model_syntax = model_syntax_marg, data = data_marg,
+    prior_list = prior_list_marg,
+    formula_list       = model_formula_marg,
+    formula_prior_list = list(mu = prior_list_marg_1),
+    formula_data_list  = list(mu = data_formula_marg),
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+
+  marglik_marginal_1 <- JAGS_bridgesampling(
+    fit                = fit_marginal_1,
+    log_posterior      = log_posterior_marg,
+    data               = data_marg,
+    prior_list         = prior_list_marg,
+    formula_list       = model_formula_marg,
+    formula_prior_list = list(mu = prior_list_marg_1),
+    formula_data_list  = list(mu = data_formula_marg))
+
+  result <- save_fit(fit_marginal_1, "fit_marginal_1",
+                     marglik = marglik_marginal_1,
+                     formulas = TRUE, factor_priors = TRUE, interactions = TRUE,
+                     note = "Marginal dist alt model: normal priors on factors with interaction and multiply_by")
+  model_registry[["fit_marginal_1"]] <<- result$registry_entry
+  fit_marginal_1 <- result$fit
+
+  # Spike-and-slab/mixture model for marginal distributions
+  prior_list_marg_ss <- list(
+    "intercept"        = prior("normal", list(0, 1)),
+    "x_cont1"          = prior_mixture(list(
+      prior("spike", list(0)),
+      prior("normal", list(0, 1))
+    ), is_null = c(T, F)),
+    "x_fac2t"          = prior_spike_and_slab(prior_factor("normal",  contrast = "treatment", list(0, 1.00))),
+    "x_fac3md"         = prior_spike_and_slab(prior_factor("mnormal", contrast = "meandif",   list(0, 0.25))),
+    "x_cont1:x_fac3md" = prior_spike_and_slab(prior_factor("mnormal", contrast = "meandif",   list(0, 0.25)))
+  )
+  attr(prior_list_marg_ss$x_cont1, "multiply_by") <- "sigma"
+
+  fit_marginal_ss <- JAGS_fit(
+    model_syntax = model_syntax_marg, data = data_marg,
+    prior_list = prior_list_marg,
+    formula_list       = model_formula_marg,
+    formula_prior_list = list(mu = prior_list_marg_ss),
+    formula_data_list  = list(mu = data_formula_marg),
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
+
+  result <- save_fit(fit_marginal_ss, "fit_marginal_ss",
+                     formulas = TRUE, factor_priors = TRUE, interactions = TRUE,
+                     spike_and_slab_priors = TRUE, mixture_priors = TRUE,
+                     note = "Marginal dist model: spike-and-slab and mixture priors with interaction and multiply_by")
+  model_registry[["fit_marginal_ss"]] <<- result$registry_entry
+  fit_marginal_ss <- result$fit
+
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_marginal_0.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_marginal_1.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_marginal_ss.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_marginal_0_marglik.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_marginal_1_marglik.RDS")))
 })
 
 

@@ -282,13 +282,14 @@ test_that("Summary table advanced features work correctly", {
   test_reference_table(inference_interaction_table, "interaction_ensemble_inference.txt")
   test_reference_table(summary_interaction_table, "interaction_ensemble_summary.txt")
 
-  # 6. Spike Factors
+  # 6. Spike Factors (using marginal distribution models)
   # -------------------------------------------------------------- #
-  fit_spike_factors_null <- readRDS(file.path(temp_fits_dir, "fit_spike_factors_null.RDS"))
-  marglik_spike_factors_null <- readRDS(file.path(temp_fits_dir, "fit_spike_factors_null_marglik.RDS"))
+  # Using fit_marginal_0 (spike) and fit_marginal_1 (normal) which have meandif factors
+  fit_spike_factors_null <- readRDS(file.path(temp_fits_dir, "fit_marginal_0.RDS"))
+  marglik_spike_factors_null <- readRDS(file.path(temp_fits_dir, "fit_marginal_0_marglik.RDS"))
 
-  fit_spike_factors_alt <- readRDS(file.path(temp_fits_dir, "fit_spike_factors_alt.RDS"))
-  marglik_spike_factors_alt <- readRDS(file.path(temp_fits_dir, "fit_spike_factors_alt_marglik.RDS"))
+  fit_spike_factors_alt <- readRDS(file.path(temp_fits_dir, "fit_marginal_1.RDS"))
+  marglik_spike_factors_alt <- readRDS(file.path(temp_fits_dir, "fit_marginal_1_marglik.RDS"))
 
   models_spike_factors <- list(
     list(fit = fit_spike_factors_null, marglik = marglik_spike_factors_null, prior_weights = 1, fit_summary = runjags_estimates_table(fit_spike_factors_null)),

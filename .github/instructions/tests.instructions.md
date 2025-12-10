@@ -1,6 +1,5 @@
 ---
 applyTo: "**/tests/testthat/*.R"
-description: Guidelines for organizing and maintaining tests in BayesTools, including model fitting, model averaging, and summary table tests. Ensures consistency and avoids duplication.
 ---
 
 # BayesTools Test Organization Guidelines

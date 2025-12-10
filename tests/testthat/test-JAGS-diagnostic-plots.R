@@ -15,7 +15,7 @@ test_that("JAGS diagnostics work", {
   fit_pet         <- readRDS(file.path(temp_fits_dir, "fit_pet.RDS"))
   fit_wf          <- readRDS(file.path(temp_fits_dir, "fit_wf_onesided.RDS"))
   fit_independent <- readRDS(file.path(temp_fits_dir, "fit_factor_independent.RDS"))
-  fit_meandif     <- readRDS(file.path(temp_fits_dir, "fit_spike_factors_alt.RDS"))
+  fit_meandif     <- readRDS(file.path(temp_fits_dir, "fit_marginal_1.RDS"))  # Has meandif factor priors
 
   ### density plots
   vdiffr::expect_doppelganger("diagnostics-plot-density-1", function() JAGS_diagnostics_density(fit_formula_mix, parameter = "mu_x_cont1", formula_prefix = FALSE))
@@ -178,7 +178,7 @@ test_that("JAGS diagnostics work (meandif and independent)", {
   skip_if_not_installed("rjags")
 
   fit_independent <- readRDS(file.path(temp_fits_dir, "fit_factor_independent.RDS"))
-  fit_meandif     <- readRDS(file.path(temp_fits_dir, "fit_spike_factors_alt.RDS"))
+  fit_meandif     <- readRDS(file.path(temp_fits_dir, "fit_marginal_1.RDS"))  # Has meandif factor priors
 
   ### density plots
   vdiffr::expect_doppelganger("diagnostics3-plot-density-1", function(){
