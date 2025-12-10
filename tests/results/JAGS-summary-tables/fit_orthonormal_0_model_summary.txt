@@ -1,0 +1,6 @@
+                                                                    
+ Model                1                Parameter prior distributions
+ Prior prob.      1.000             (mu) intercept ~ Normal(0, 5)   
+ log(marglik)   -165.93                      sigma ~ Lognormal(0, 1)
+ Post. prob.      1.000                                             
+ Inclusion BF       Inf                                             
