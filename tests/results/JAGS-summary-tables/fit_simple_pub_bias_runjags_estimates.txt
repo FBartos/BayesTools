@@ -1,0 +1,3 @@
+       Mean    SD   lCI Median   uCI error(MCMC) error(MCMC)/SD  ESS R-hat
+PET   0.819 0.625 0.041  0.671 2.263     0.01978          0.032 1000 0.999
+PEESE 1.031 1.020 0.034  0.735 3.787     0.03222          0.032 1000 1.013
