@@ -2,28 +2,14 @@
 applyTo: "**/vignettes/*.Rmd"
 ---
 
-# Vignette Writing Instructions for RoBMA
+# Vignette Writing Instructions for BayesTools
 
-This document provides guidance for writing and maintaining vignettes in the RoBMA package.
+This document provides guidance for writing and maintaining vignettes in the BayesTools package.
 
 ## Overview
 
-RoBMA vignettes are R Markdown documents that demonstrate package functionality with real-world examples. They are pre-computed and cached to avoid CRAN check timeouts, as Bayesian model fitting is computationally intensive.
+BayesTools vignettes are R Markdown documents that demonstrate package functionality with real-world examples. They are pre-computed and cached to avoid CRAN check timeouts, as Bayesian model fitting is computationally intensive.
 
-## Vignette Structure
-
-### Current Vignettes
-1. **Tutorial.Rmd** - Introduction to RoBMA-PSMA (publication bias adjustment)
-2. **ReproducingBMA.Rmd** - Classic Bayesian model-averaged meta-analysis (no publication bias)
-3. **MetaRegression.Rmd** - `RoBMA.reg()` with moderators
-4. **HierarchicalRoBMA.Rmd** - Multilevel RoBMA
-5. **HierarchicalRoBMARegression.Rmd** - Multilevel RoBMA with moderators
-6. **HierarchicalBMA.Rmd** - Simpler multilevel models via `study_ids`
-7. **MedicineBMA.Rmd** - Informed priors for medical meta-analysis (continuous outcomes)
-8. **MedicineBiBMA.Rmd** - Informed priors for binary outcomes (log OR, RR, RD, HR)
-9. **CustomEnsembles.Rmd** - Advanced ensemble customization
-10. **FastRoBMA.Rmd** - Spike-and-slab algorithm (`algorithm = "ss"`)
-11. **ZCurveDiagnostics.Rmd** - Meta-analytic z-curve publication bias diagnostics
 
 ## Standard YAML Header
 

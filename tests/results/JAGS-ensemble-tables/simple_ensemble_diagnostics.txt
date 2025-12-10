@@ -1,0 +1,4 @@
+ Model     Prior m                        Prior omega                    max[error(MCMC)] max[error(MCMC)/SD] min(ESS) max(R-hat)
+     1    Normal(0, 1)                                                            0.01019               0.048      434         NA
+     2  Normal(0, 0.5)     omega[one-sided: .05] ~ CumDirichlet(1, 1)             0.01348               0.047      461         NA
+     3  Normal(0, 0.3) omega[one-sided: .5, .05] ~ CumDirichlet(1, 1, 1)          0.01061               0.045      500         NA
