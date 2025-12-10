@@ -1,0 +1,4 @@
+             Models Prior prob. Post. prob. Inclusion BF
+(mu) x_cont1    3/3       1.000       1.000          Inf
+(mu) x_fac2t    1/3       0.333       0.153        0.361
+(mu) x_fac3o    1/3       0.333       0.054        0.115
