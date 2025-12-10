@@ -1,6 +1,6 @@
 context("JAGS ensemble plot functions")
 
-REFERENCE_DIR <- testthat::test_path("..", "results", "JAGS-ensemble-plots")
+REFERENCE_DIR <<- testthat::test_path("..", "results", "JAGS-ensemble-plots")
 source(testthat::test_path("common-functions.R"))
 
 test_that("helper functions work", {
