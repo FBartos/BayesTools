@@ -1670,6 +1670,140 @@ test_that("Orthonormal contrast models fit correctly", {
 
 
 # ============================================================================ #
+# SECTION 2: COMPLEX MODELS FOR PLOTTING
+# ============================================================================ #
+test_that("Complex models for plotting fit correctly", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+
+  set.seed(1)
+
+  data_formula <- data.frame(
+    x_cont1 = rnorm(300),
+    x_fac2t = factor(rep(c("A", "B"), 150), levels = c("A", "B")),
+    x_fac3t = factor(rep(c("A", "B", "C"), 100), levels = c("A", "B", "C"))
+  )
+  data <- list(
+    y = rnorm(300, -0.15 + 0.20 * data_formula$x_cont1 + ifelse(data_formula$x_fac3t == "A", 0.0, ifelse(data_formula$x_fac3t == "B", -0.2, 0.2)), ifelse(data_formula$x_fac2t == "A", 0.5, 1)),
+    N = 300
+  )
+
+  # create model with mix of a formula and free parameters ---
+  formula_list1 <- list(
+    mu    = ~ x_cont1 + x_fac2t + x_fac3t
+  )
+  formula_data_list1 <- list(
+    mu    = data_formula
+  )
+  formula_prior_list1 <- list(
+    mu    = list(
+      "intercept"  = prior_mixture(
+        list(
+          prior("spike",   list(0),       prior_weights = 2),
+          prior("normal",  list(-1, 0.5), prior_weights = 1),
+          prior("normal",  list( 1, 0.5), prior_weights = 1)
+        ),
+        is_null = c(TRUE, FALSE, FALSE)
+      ),
+      "x_cont1"    = prior_spike_and_slab(prior("normal",  list(0, 1), prior_weights = 1)),
+      "x_fac2t"    = prior_mixture(list(
+          prior("spike", list(0), prior_weights = 1),
+          prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+        ),
+        is_null = c(TRUE, FALSE)
+      ),
+      "x_fac3t"    = prior_mixture(list(
+          prior("spike", list(0), prior_weights = 1),
+          prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+        ),
+        is_null = c(TRUE, FALSE)
+      )
+    )
+  )
+
+  attr(formula_prior_list1$mu$x_cont1, "multiply_by") <- "sigma"
+  prior_list1 <- list(
+    "sigma" = prior_mixture(
+      list(
+        prior("normal",    list(0, 1), truncation = list(0, Inf)),
+        prior("lognormal", list(0, 1))
+      ),
+      components = c("normal", "lognormal")
+    ),
+    "bias"  = prior_mixture(list(
+      prior_none(prior_weights = 1),
+      prior_weightfunction(distribution = "two.sided", parameters = list(alpha = c(1, 1), steps = c(0.05)), prior_weights = 1/3),
+      prior_weightfunction(distribution = "one.sided", parameters = list(alpha = c(1, 1, 1), steps = c(0.025, 0.05)), prior_weights = 1/3),
+      prior_PET("normal", list(0, 1), prior_weights = 1/3)
+    ), is_null = c(TRUE, FALSE, FALSE, FALSE))
+  )
+  model_syntax1 <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  fit_complex_mixed <- JAGS_fit(
+    model_syntax = model_syntax1, data = data, prior_list = prior_list1,
+    formula_list = formula_list1, formula_data_list = formula_data_list1, formula_prior_list = formula_prior_list1,
+    chains = 1, adapt = 100, burnin = 150, sample = 500, seed = 1)
+
+  result <- save_fit(fit_complex_mixed, "fit_complex_mixed",
+                     formulas = TRUE, mixture_priors = TRUE, spike_and_slab_priors = TRUE,
+                     pub_bias_priors = TRUE, weightfunction_priors = TRUE,
+                     note = "Complex model with formula, mixtures, spike and slab, and publication bias")
+  model_registry[["fit_complex_mixed"]] <<- result$registry_entry
+  fit_complex_mixed <- result$fit
+
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_complex_mixed.RDS")))
+
+  # Simple formula mixed model
+  formula_list_simple_mixed <- list(
+    mu    = ~ x_cont1 + x_fac2t + x_fac3t
+  )
+  formula_data_list_simple_mixed <- list(
+    mu    = data_formula
+  )
+  formula_prior_list_simple_mixed <- list(
+    mu    = list(
+      "intercept"  = prior("normal",  list(-1, 0.5), prior_weights = 1),
+      "x_cont1"    = prior("normal",  list(0, 1), prior_weights = 1),
+      "x_fac2t"    = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+      "x_fac3t"    = prior_factor("mnormal", list(0, 1), contrast = "meandif")
+    )
+  )
+
+  attr(formula_prior_list_simple_mixed$mu$x_cont1, "multiply_by") <- "sigma"
+  prior_list_simple_mixed <- list(
+    "sigma" =  prior("lognormal", list(0, 1))
+  )
+  model_syntax_simple_mixed <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
+    "}\n",
+    "}"
+  )
+
+  fit_simple_formula_mixed <- JAGS_fit(
+    model_syntax = model_syntax_simple_mixed, data = data, prior_list = prior_list_simple_mixed,
+    formula_list = formula_list_simple_mixed, formula_data_list = formula_data_list_simple_mixed, formula_prior_list = formula_prior_list_simple_mixed,
+    chains = 1, adapt = 100, burnin = 150, sample = 500, seed = 1)
+
+  result <- save_fit(fit_simple_formula_mixed, "fit_simple_formula_mixed",
+                     formulas = TRUE, factor_priors = TRUE, simple_priors = TRUE,
+                     note = "Simple formula model with continuous, orthonormal factor, and meandif factor")
+  model_registry[["fit_simple_formula_mixed"]] <<- result$registry_entry
+  fit_simple_formula_mixed <- result$fit
+
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_simple_formula_mixed.RDS")))
+})
+
+
+# ============================================================================ #
 # SAVE MODEL REGISTRY
 # ============================================================================ #
 # Convert the model registry list to a data frame for easy inspection and querying
