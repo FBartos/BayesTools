@@ -1666,6 +1666,9 @@ test_that("Orthonormal contrast models fit correctly", {
     formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1)
   result <- save_fit(fit_orthonormal_1, "fit_orthonormal_1", marglik = marglik_orthonormal_1, formulas = TRUE, factor_priors = TRUE, note = "Orthonormal alternative model")
   model_registry[["fit_orthonormal_1"]] <<- result$registry_entry
+
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_orthonormal_0.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_orthonormal_1.RDS")))
 })
 
 
@@ -1676,6 +1679,8 @@ test_that("Complex models for plotting fit correctly", {
 
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")
+  skip_if_not_installed("RoBMA")
+  require("RoBMA")
 
   set.seed(1)
 
@@ -1802,7 +1807,6 @@ test_that("Complex models for plotting fit correctly", {
   expect_true(file.exists(file.path(temp_fits_dir, "fit_simple_formula_mixed.RDS")))
 })
 
-
 # ============================================================================ #
 # SAVE MODEL REGISTRY
 # ============================================================================ #
@@ -1824,4 +1828,3 @@ test_that("Model registry is created and saved", {
   expect_s3_class(model_registry_df, "data.frame")
   expect_true(nrow(model_registry_df) > 0)
 })
-
