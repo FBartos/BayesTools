@@ -4,7 +4,7 @@ context("Marginal distributions")
 # and related functions. Uses pre-fitted models from test-00-model-fits.R.
 
 # Reference directory for table outputs
-REFERENCE_DIR <- testthat::test_path("..", "results", "JAGS-marginal-distributions")
+REFERENCE_DIR <<- testthat::test_path("..", "results", "JAGS-marginal-distributions")
 
 # Load common test helpers
 source(testthat::test_path("common-functions.R"))

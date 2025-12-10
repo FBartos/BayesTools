@@ -68,7 +68,7 @@ marglik_model_name <- readRDS(file.path(temp_fits_dir, "fit_model_name_marglik.R
 
 # Define at the top of test files with reference outputs
 # Load common test helpers that define test_reference_table() and test_reference_text()
-REFERENCE_DIR <- testthat::test_path("..", "results", "print")
+REFERENCE_DIR <<- testthat::test_path("..", "results", "print")
 source(testthat::test_path("common-functions.R"))
 
 ### 6. Test File Organization
