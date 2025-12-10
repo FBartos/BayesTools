@@ -1,0 +1,3 @@
+      Models Prior prob. Post. prob. Inclusion BF
+m        4/4       1.000       1.000          Inf
+omega    3/4       0.750       0.859        2.028

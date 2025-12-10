@@ -1,0 +1,4 @@
+ Model max[error(MCMC)] max[error(MCMC)/SD] min(ESS) max(R-hat)
+     1          0.01019               0.048      434         NA
+     2          0.01348               0.047      461         NA
+     3          0.01061               0.045      500         NA

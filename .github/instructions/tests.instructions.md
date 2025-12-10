@@ -61,32 +61,10 @@ marglik_model_name <- readRDS(file.path(temp_fits_dir, "fit_model_name_marglik.R
 
 ### 5. Helper Functions for Reference Files
 
-**Use a helper function to reduce repetition** when saving/testing reference files:
-
-```r
 # Define at the top of test files with reference outputs
-test_reference <- function(table, filename, info_msg = NULL, 
-                              print_dir = testthat::test_path("..", "results", "print")) {
-  if (GENERATE_REFERENCE_FILES) {
-    # Save mode
-    if (!dir.exists(print_dir)) {
-      dir.create(print_dir, recursive = TRUE)
-    }
-    writeLines(capture_output_lines(table, print = TRUE, width = 150),
-               file.path(print_dir, filename))
-  } else {
-    # Test mode
-    ref_file <- file.path(print_dir, filename)
-    if (file.exists(ref_file)) {
-      expected_output <- readLines(ref_file, warn = FALSE)
-      actual_output   <- capture_output_lines(table, print = TRUE, width = 150)
-      expect_equal(actual_output, expected_output, info = info_msg)
-    } else {
-      skip(paste("Reference file", filename, "not found."))
-    }
-  }
-}
-```
+# Load common test helpers that define test_reference_table() and test_reference_text()
+REFERENCE_DIR <- testthat::test_path("..", "results", "print")
+source(testthat::test_path("common-functions.R"))
 
 ### 6. Test File Organization
 
@@ -121,11 +99,11 @@ All tests that use JAGS models (e.g., `test-model-averaging.R`, `test-JAGS-*.R`,
 - [ ] Check marginal likelihood file existence before loading
 
 **Updating summary table tests (MAINTAINER ONLY):**
-- [ ] Set `GENERATE_REFERENCE_FILES <- TRUE` in `test-summary-tables.R`
+- [ ] Set `GENERATE_REFERENCE_FILES <- TRUE`
 - [ ] Run tests to generate reference files
 - [ ] Review diffs carefully before committing
 - [ ] Reset flag to `FALSE`
-- **Note**: Contributors/agents should **never** modify `GENERATE_REFERENCE_FILES`CE_FILES <- TRUE` in `test-summary-tables.R`
+- **Note**: Contributors/agents should **never** modify `GENERATE_REFERENCE_FILES <- TRUE`
 - [ ] Run tests to generate reference files
 - [ ] Review diffs carefully before committing
 - [ ] Reset flag to `FALSE`

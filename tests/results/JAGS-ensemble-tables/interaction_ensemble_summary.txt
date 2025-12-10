@@ -1,0 +1,3 @@
+ Model Prior (mu) x_cont1          Prior (mu) x_fac3o              Prior (mu) x_cont1:x_fac3o     Prior prob. log(marglik) Post. prob. Inclusion BF
+     1       Normal(0, 1) orthonormal contrast: mNormal(0, 1)                                           0.500      -158.89       0.929       13.112
+     2       Normal(0, 1) orthonormal contrast: mNormal(0, 1) orthonormal contrast: mNormal(0, 1)       0.500      -161.46       0.071        0.076
