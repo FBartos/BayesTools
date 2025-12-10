@@ -1,0 +1,6 @@
+                                                                                          
+ Model                1                                      Parameter prior distributions
+ Prior prob.      1.000             (mu) intercept ~ Normal(0, 5)                         
+ log(marglik)   -163.22               (mu) x_fac3o ~ orthonormal contrast: mNormal(0, 0.5)
+ Post. prob.      1.000                      sigma ~ Lognormal(0, 1)                      
+ Inclusion BF       Inf                                                                   
