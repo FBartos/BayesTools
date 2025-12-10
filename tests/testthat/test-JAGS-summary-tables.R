@@ -25,6 +25,7 @@ test_that("Summary table advanced features work correctly", {
 
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")
+  skip_if_no_fits()
 
   # Use fit_formula_interaction_cont for testing advanced features
   # This model has continuous interactions and formulas
@@ -122,6 +123,7 @@ test_that("Summary tables for all saved models", {
 
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")
+  skip_if_no_fits()
 
   runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
 
@@ -162,4 +164,127 @@ test_that("Summary tables for all saved models", {
                      paste0("Runjags estimates mismatch for ", model_name))
 
   }
+})
+
+
+# ============================================================================ #
+# SECTION 4: Test runjags_estimates_table with conditional=TRUE on various priors
+# ============================================================================ #
+test_that("runjags_estimates_table with conditional=TRUE on various prior types", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+  skip_on_cran()
+  skip_if_no_fits()
+
+  # Test with publication bias priors
+  fit_pub_bias <- readRDS(file.path(temp_fits_dir, "fit_simple_pub_bias.RDS"))
+  runjags_pub_bias_conditional <- runjags_estimates_table(fit_pub_bias, conditional = TRUE)
+  test_reference_table(runjags_pub_bias_conditional, "runjags_pub_bias_conditional.txt")
+
+  # Test with factor priors
+  fit_factor <- readRDS(file.path(temp_fits_dir, "fit_factor_orthonormal.RDS"))
+  runjags_factor_conditional <- runjags_estimates_table(fit_factor, conditional = TRUE)
+  test_reference_table(runjags_factor_conditional, "runjags_factor_conditional.txt")
+
+  runjags_factor_conditional_transformed <- runjags_estimates_table(fit_factor, conditional = TRUE, transform_factors = TRUE)
+  test_reference_table(runjags_factor_conditional_transformed, "runjags_factor_conditional_transformed.txt")
+
+  # Test with mixture priors
+  fit_mixture <- readRDS(file.path(temp_fits_dir, "fit_mixture_simple.RDS"))
+  runjags_mixture_conditional <- runjags_estimates_table(fit_mixture, conditional = TRUE)
+  test_reference_table(runjags_mixture_conditional, "runjags_mixture_conditional.txt")
+
+  # Test with spike and slab priors
+  fit_spike_slab <- readRDS(file.path(temp_fits_dir, "fit_spike_slab_simple.RDS"))
+  runjags_spike_slab_conditional <- runjags_estimates_table(fit_spike_slab, conditional = TRUE)
+  test_reference_table(runjags_spike_slab_conditional, "runjags_spike_slab_conditional.txt")
+
+})
+
+
+# ============================================================================ #
+# SECTION 5: Test runjags_inference_table with mixture and formula priors
+# ============================================================================ #
+test_that("runjags_inference_table with mixture priors", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+  skip_on_cran()
+  skip_if_no_fits()
+
+  # Test with mixture priors
+  fit_mixture <- readRDS(file.path(temp_fits_dir, "fit_mixture_simple.RDS"))
+  runjags_mixture_inference <- runjags_inference_table(fit_mixture)
+  test_reference_table(runjags_mixture_inference, "runjags_mixture_inference.txt")
+
+  # Test with mixture containing spike
+  fit_mixture_spike <- readRDS(file.path(temp_fits_dir, "fit_mixture_spike.RDS"))
+  runjags_mixture_spike_inference <- runjags_inference_table(fit_mixture_spike)
+  test_reference_table(runjags_mixture_spike_inference, "runjags_mixture_spike_inference.txt")
+
+})
+
+
+test_that("runjags_inference_table with formula priors", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+  skip_on_cran()
+  skip_if_no_fits()
+
+  # Test with formula + mixture priors (mixture on factor predictor)
+  fit_formula_mixture <- readRDS(file.path(temp_fits_dir, "fit_formula_factor_mixture.RDS"))
+  runjags_formula_mixture_inference <- runjags_inference_table(fit_formula_mixture)
+  test_reference_table(runjags_formula_mixture_inference, "runjags_formula_mixture_inference.txt")
+
+  # Test with joint complex model (formula + mixture + spike-and-slab)
+  fit_joint <- readRDS(file.path(temp_fits_dir, "fit_joint_complex.RDS"))
+  runjags_joint_inference <- runjags_inference_table(fit_joint)
+  test_reference_table(runjags_joint_inference, "runjags_joint_complex_inference.txt")
+
+})
+
+
+# ============================================================================ #
+# SECTION 6: Test empty tables
+# ============================================================================ #
+test_that("model_summary_empty_table works correctly", {
+
+  empty_table <- model_summary_empty_table()
+  expect_s3_class(empty_table, "BayesTools_table")
+  expect_true(nrow(empty_table) > 0)
+  expect_true(ncol(empty_table) > 0)
+  test_reference_table(empty_table, "model_summary_empty.txt")
+
+})
+
+
+test_that("runjags_inference_empty_table works correctly", {
+
+  empty_table <- runjags_inference_empty_table()
+  expect_s3_class(empty_table, "BayesTools_table")
+  expect_equal(nrow(empty_table), 0)
+  expect_true(ncol(empty_table) > 0)
+  test_reference_table(empty_table, "runjags_inference_empty.txt")
+
+})
+
+
+# ============================================================================ #
+# SECTION 7: Test stan_estimates_table with stored RDS file
+# ============================================================================ #
+test_that("stan_estimates_table works with stored fit", {
+
+  skip_if_not_installed("rstan")
+
+  # Load stored stan fit from tests/results/fits
+  stan_fit_file <- testthat::test_path("..", "results", "fits", "fit_RoBTT.RDS")
+
+  fit_stan <- readRDS(stan_fit_file)
+
+  # Test basic stan_estimates_table
+  stan_summary <- stan_estimates_table(fit_stan)
+  test_reference_table(stan_summary, "stan_estimates_basic.txt")
+
 })

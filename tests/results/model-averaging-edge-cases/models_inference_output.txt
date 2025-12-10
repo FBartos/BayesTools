@@ -1,0 +1,9 @@
+Model 1 inference:
+  m_number: 1
+  prior_prob: 0.333333
+  post_prob: 0.040927
+Model 2 inference:
+  m_number: 2
+  prior_prob: 0.666667
+  post_prob: 0.959073
+Total post_prob: 1

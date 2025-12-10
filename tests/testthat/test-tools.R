@@ -272,3 +272,80 @@ test_that("Other tools",{
   expect_error(.check_transformation_input(transformation = 1, NULL, FALSE), "Uknown format of the 'transformation' argument.")
 
 })
+
+
+test_that(".is.wholenumber works correctly", {
+
+  expect_true(BayesTools:::.is.wholenumber(0))
+  expect_true(BayesTools:::.is.wholenumber(5))
+  expect_true(BayesTools:::.is.wholenumber(-3))
+  expect_true(BayesTools:::.is.wholenumber(1e10))
+
+  expect_false(BayesTools:::.is.wholenumber(0.5))
+  expect_false(BayesTools:::.is.wholenumber(1.1))
+  expect_false(BayesTools:::.is.wholenumber(-3.5))
+
+  # NA handling
+  expect_true(is.na(BayesTools:::.is.wholenumber(NA)))
+  # When na.rm = TRUE and input is just NA, result is logical(0)
+  expect_equal(BayesTools:::.is.wholenumber(NA, na.rm = TRUE), logical(0))
+
+  # Vector input
+  expect_equal(BayesTools:::.is.wholenumber(c(1, 2, 3.5)), c(TRUE, TRUE, FALSE))
+
+  # Vector input with NA
+  expect_equal(BayesTools:::.is.wholenumber(c(1, NA, 3.5)), c(TRUE, NA, FALSE))
+
+})
+
+
+test_that("check_int rejects non-integer values", {
+
+  # Non-integer values should fail
+  expect_error(check_int(1.5, "test"), "must be an integer")
+  expect_error(check_int(c(1, 2.5, 3), "test", check_length = 3), "must be an integer")
+
+})
+
+
+test_that("check functions handle empty vectors correctly", {
+
+  # Empty vectors should be treated like NULL
+  expect_error(check_bool(logical(0), "test"))
+  expect_error(check_char(character(0), "test"))
+  expect_error(check_real(numeric(0), "test"))
+  expect_error(check_int(integer(0), "test"))
+
+  # But should succeed with allow_NULL
+  expect_null(check_bool(logical(0), "test", allow_NULL = TRUE))
+  expect_null(check_char(character(0), "test", allow_NULL = TRUE))
+  expect_null(check_real(numeric(0), "test", allow_NULL = TRUE))
+  expect_null(check_int(integer(0), "test", allow_NULL = TRUE))
+
+})
+
+
+test_that("check functions custom error prefix works", {
+
+  expect_error(
+    check_bool("string", "test", call = "[custom] "),
+    "\\[custom\\] The 'test' argument must be a logical"
+  )
+  expect_error(
+    check_char(1, "test", call = "[custom] "),
+    "\\[custom\\] The 'test' argument must be a character"
+  )
+  expect_error(
+    check_real("a", "test", call = "[custom] "),
+    "\\[custom\\] The 'test' argument must be a numeric"
+  )
+  expect_error(
+    check_int("a", "test", call = "[custom] "),
+    "\\[custom\\] The 'test' argument must be a numeric"
+  )
+  expect_error(
+    check_list("a", "test", call = "[custom] "),
+    "\\[custom\\] The 'test' argument must be a list"
+  )
+
+})

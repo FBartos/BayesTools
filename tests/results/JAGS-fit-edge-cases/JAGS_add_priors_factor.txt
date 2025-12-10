@@ -1,0 +1,14 @@
+model{
+ prior_par1_p1 = rep(0,2)
+for(i in 1:2){
+  prior_par2_p1[i,i] <- 1
+  for(j in 1:(i-1)){
+    prior_par2_p1[i,j] <- 0
+  }
+  for (j in (i+1):2){
+    prior_par2_p1[i,j] <- 0
+  }
+}
+p1 ~ dmnorm(prior_par1_p1,prior_par2_p1)
+
+}

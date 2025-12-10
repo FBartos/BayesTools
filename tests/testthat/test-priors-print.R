@@ -1,6 +1,21 @@
 context("Prior print function")
 
 
+test_that("Prior print function input validation", {
+
+  p <- prior("normal", list(0, 1))
+
+  # Check invalid inputs
+  expect_error(print(p, short_name = "no"), "'short_name'")
+  expect_error(print(p, parameter_names = "no"), "'parameter_names'")
+  expect_error(print(p, digits_estimates = "two"), "'digits_estimates'")
+  expect_error(print(p, plot = "yes"), "'plot'")
+  expect_error(print(p, silent = "shh"), "'silent'")
+  expect_error(print(p, inline = "no"), "'inline'")
+
+})
+
+
 test_that("Prior print function works", {
 
   # check the default options
@@ -175,3 +190,78 @@ test_that("Prior print function works", {
     text(0.5, 1, print(pe1, plot = TRUE))
   })
 })
+
+
+test_that("Prior print for prior_none", {
+
+  p_none <- prior_none()
+  output <- utils::capture.output(print(p_none))
+  expect_type(output, "character")
+
+  # Silent output
+  expect_equal(utils::capture.output(print(p_none, silent = TRUE)), character())
+
+})
+
+
+test_that("Prior print with inline option for mixtures", {
+
+  p_mix <- prior_mixture(
+    list(
+      prior("normal", list(0, 1)),
+      prior("normal", list(0, 2))
+    )
+  )
+
+  # Test inline option
+  output_inline <- print(p_mix, silent = TRUE, inline = TRUE)
+  expect_type(output_inline, "character")
+
+})
+
+
+test_that("Prior print for additional distributions", {
+
+  # Beta distribution with different parameters
+  p_beta <- prior("beta", list(alpha = 2, beta = 5))
+  expect_equal(utils::capture.output(print(p_beta)), "Beta(2, 5)")
+  expect_equal(utils::capture.output(print(p_beta, short_name = TRUE)), "B(2, 5)")
+
+  # Exponential distribution
+  p_exp <- prior("exp", list(rate = 2))
+  expect_equal(utils::capture.output(print(p_exp)), "Exponential(2)")
+  expect_equal(utils::capture.output(print(p_exp, short_name = TRUE)), "E(2)")
+
+  # Uniform distribution
+  p_unif <- prior("uniform", list(a = -1, b = 1))
+  expect_equal(utils::capture.output(print(p_unif)), "Uniform(-1, 1)")
+  expect_equal(utils::capture.output(print(p_unif, short_name = TRUE)), "U(-1, 1)")
+
+  # Lognormal distribution
+  p_ln <- prior("lognormal", list(meanlog = 0, sdlog = 1))
+  expect_equal(utils::capture.output(print(p_ln)), "Lognormal(0, 1)")
+  expect_equal(utils::capture.output(print(p_ln, short_name = TRUE)), "Ln(0, 1)")
+
+  # Inverse gamma distribution
+  p_ig <- prior("invgamma", list(shape = 1, scale = 1))
+  expect_equal(utils::capture.output(print(p_ig)), "InvGamma(1, 1)")
+  expect_equal(utils::capture.output(print(p_ig, short_name = TRUE)), "Ig(1, 1)")
+
+})
+
+
+test_that("Prior print digits_estimates parameter", {
+
+  p <- prior("normal", list(mean = 1.2345678, sd = 0.9876543))
+
+  # Default (2 digits)
+  expect_match(utils::capture.output(print(p)), "Normal\\(1\\.23, 0\\.99\\)")
+
+  # 4 digits
+  expect_match(utils::capture.output(print(p, digits_estimates = 4)), "Normal\\(1\\.2346, 0\\.9877\\)")
+
+  # 0 digits
+  expect_match(utils::capture.output(print(p, digits_estimates = 0)), "Normal\\(1, 1\\)")
+
+})
+

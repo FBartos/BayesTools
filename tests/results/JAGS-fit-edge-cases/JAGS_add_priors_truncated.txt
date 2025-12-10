@@ -1,0 +1,4 @@
+model{
+ mu ~ dnorm(0,1)T(0,)
+
+}

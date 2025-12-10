@@ -1,0 +1,1 @@
+with mean conditional estimate mu = 0.499, 95% CI [0.302, 0.696]

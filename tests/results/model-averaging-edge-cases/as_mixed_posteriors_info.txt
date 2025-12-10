@@ -1,0 +1,4 @@
+Class: list, as_mixed_posteriors, mixed_posteriors
+Parameters: m, s
+Has prior_list for m: TRUE
+Has prior_list for s: TRUE
