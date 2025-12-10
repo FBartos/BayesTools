@@ -340,3 +340,46 @@ test_that("Simplified interpret2 function", {
   )
 
 })
+
+test_that("as_mixed_posteriors works with ensemble tables", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+
+  # 1. Complex Mixed Model
+  fit_complex_mixed <- readRDS(file.path(temp_fits_dir, "fit_complex_mixed.RDS"))
+
+  mixed_posteriors_complex <- as_mixed_posteriors(
+    mode       = fit_complex_mixed,
+    parameters = names(attr(fit_complex_mixed, "prior_list"))
+  )
+
+  # Generate estimates table
+  estimates_table_complex <- ensemble_estimates_table(
+    mixed_posteriors_complex,
+    parameters = names(attr(fit_complex_mixed, "prior_list")),
+    probs = c(.025, 0.95)
+  )
+
+  test_reference_table(estimates_table_complex, "as_mixed_posteriors_complex_estimates.txt")
+
+
+  # 2. Simple Formula Mixed Model
+  fit_simple_formula_mixed <- readRDS(file.path(temp_fits_dir, "fit_simple_formula_mixed.RDS"))
+
+  mixed_posteriors_simple <- as_mixed_posteriors(
+    mode       = fit_simple_formula_mixed,
+    parameters = names(attr(fit_simple_formula_mixed, "prior_list"))
+  )
+
+  # Generate estimates table
+  estimates_table_simple <- ensemble_estimates_table(
+    mixed_posteriors_simple,
+    parameters = names(attr(fit_simple_formula_mixed, "prior_list")),
+    probs = c(.025, 0.95)
+  )
+
+  test_reference_table(estimates_table_simple, "as_mixed_posteriors_simple_estimates.txt")
+
+})
+
