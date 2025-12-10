@@ -1,72 +1,26 @@
 context("Summary tables functions")
 
-# ==============================================================================
-# CONFIGURATION: Set to TRUE to regenerate reference files, FALSE to run tests
-# ==============================================================================
-GENERATE_REFERENCE_FILES <- FALSE
+REFERENCE_DIR <- testthat::test_path("..", "results", "JAGS-summary-tables")
+source(testthat::test_path("common-functions.R"))
 
-# Get the directory where prefitted models are stored
-temp_fits_dir <- Sys.getenv("BAYESTOOLS_TEST_FITS_DIR")
-if (temp_fits_dir == "" || !dir.exists(temp_fits_dir)) {
-  temp_fits_dir <- file.path(tempdir(), "BayesTools_test_fits")
-}
-
-# Skip tests on CRAN as they require pre-fitted models
-skip_on_cran()
-
-# ==============================================================================
-# HELPER FUNCTIONS
-# ==============================================================================
-
-# Process reference file: save if GENERATE_REFERENCE_FILES=TRUE, test otherwise
-test_reference <- function(table, filename, info_msg = NULL,
-                              print_dir = testthat::test_path("..", "results", "JAGS-summary-tables")) {
-  if (GENERATE_REFERENCE_FILES) {
-    # Save mode
-    if (!dir.exists(print_dir)) {
-      dir.create(print_dir, recursive = TRUE)
-    }
-    writeLines(capture_output_lines(table, print = TRUE, width = 150),
-               file.path(print_dir, filename))
-  } else {
-    # Test mode
-    ref_file <- file.path(print_dir, filename)
-    if (file.exists(ref_file)) {
-      expected_output <- readLines(ref_file, warn = FALSE)
-      actual_output   <- capture_output_lines(table, print = TRUE, width = 150)
-      expect_equal(actual_output, expected_output, info = info_msg)
-    } else {
-      skip(paste("Reference file", filename, "not found."))
-    }
-  }
-}
-
-# ==============================================================================
+# ============================================================================ #
 # SECTION 1: Test Empty Tables
-# ==============================================================================
+# ============================================================================ #
 test_that("Empty summary tables work correctly", {
 
   runjags_summary_empty <- runjags_estimates_empty_table()
-  ensemble_estimates_empty <- ensemble_estimates_empty_table()
-  ensemble_inference_empty <- ensemble_inference_empty_table()
 
   expect_equivalent(nrow(runjags_summary_empty), 0)
-  expect_equivalent(nrow(ensemble_estimates_empty), 0)
-  expect_equivalent(nrow(ensemble_inference_empty), 0)
 
   # Test that empty tables have correct structure
   expect_s3_class(runjags_summary_empty, "BayesTools_table")
-  expect_s3_class(ensemble_estimates_empty, "BayesTools_table")
-  expect_s3_class(ensemble_inference_empty, "BayesTools_table")
 
-  test_reference(runjags_summary_empty, "empty_runjags_estimates.txt", "Empty runjags_estimates table mismatch")
-  test_reference(ensemble_estimates_empty, "empty_ensemble_estimates.txt", "Empty ensemble_estimates table mismatch")
-  test_reference(ensemble_inference_empty, "empty_ensemble_inference.txt", "Empty ensemble_inference table mismatch")
+  test_reference_table(runjags_summary_empty, "empty_runjags_estimates.txt", "Empty runjags_estimates table mismatch")
 })
 
-# ==============================================================================
+# ============================================================================ #
 # SECTION 2: Test Advanced Features (Transformations, Formula Handling, etc.)
-# ==============================================================================
+# ============================================================================ #
 test_that("Summary table advanced features work correctly", {
 
   skip_if_not_installed("rjags")
@@ -146,24 +100,24 @@ test_that("Summary table advanced features work correctly", {
   # Test that remove_inclusion reduces the number of rows
   expect_true(nrow(runjags_summary_remove_inclusion) <= nrow(runjags_summary_spike))
 
-  test_reference(runjags_summary_transform, "advanced_transform.txt", "Transform table mismatch")
-  test_reference(runjags_summary_prefix_true, "advanced_formula_prefix_true.txt", "Formula prefix true table mismatch")
-  test_reference(runjags_summary_prefix_false, "advanced_formula_prefix_false.txt", "Formula prefix false table mismatch")
-  test_reference(runjags_summary_conditional, "advanced_conditional.txt", "Conditional table mismatch")
-  test_reference(runjags_summary_unconditional, "advanced_unconditional.txt", "Unconditional table mismatch")
-  test_reference(runjags_summary_factor, "advanced_factor_treatment.txt", "Factor treatment table mismatch")
-  test_reference(runjags_summary_spike, "advanced_spike_slab_estimates.txt", "Spike slab estimates table mismatch")
-  test_reference(runjags_inference_spike, "advanced_spike_slab_inference.txt", "Spike slab inference table mismatch")
-  test_reference(runjags_summary_orthonormal, "advanced_orthonormal_transform.txt", "Orthonormal transform table mismatch")
-  test_reference(runjags_summary_custom_transform, "advanced_custom_transform.txt", "Custom transform table mismatch")
-  test_reference(runjags_summary_remove_inclusion, "advanced_remove_inclusion.txt", "Remove inclusion table mismatch")
-  test_reference(runjags_summary_custom_probs, "advanced_custom_probs.txt", "Custom probs table mismatch")
+  test_reference_table(runjags_summary_transform, "advanced_transform.txt", "Transform table mismatch")
+  test_reference_table(runjags_summary_prefix_true, "advanced_formula_prefix_true.txt", "Formula prefix true table mismatch")
+  test_reference_table(runjags_summary_prefix_false, "advanced_formula_prefix_false.txt", "Formula prefix false table mismatch")
+  test_reference_table(runjags_summary_conditional, "advanced_conditional.txt", "Conditional table mismatch")
+  test_reference_table(runjags_summary_unconditional, "advanced_unconditional.txt", "Unconditional table mismatch")
+  test_reference_table(runjags_summary_factor, "advanced_factor_treatment.txt", "Factor treatment table mismatch")
+  test_reference_table(runjags_summary_spike, "advanced_spike_slab_estimates.txt", "Spike slab estimates table mismatch")
+  test_reference_table(runjags_inference_spike, "advanced_spike_slab_inference.txt", "Spike slab inference table mismatch")
+  test_reference_table(runjags_summary_orthonormal, "advanced_orthonormal_transform.txt", "Orthonormal transform table mismatch")
+  test_reference_table(runjags_summary_custom_transform, "advanced_custom_transform.txt", "Custom transform table mismatch")
+  test_reference_table(runjags_summary_remove_inclusion, "advanced_remove_inclusion.txt", "Remove inclusion table mismatch")
+  test_reference_table(runjags_summary_custom_probs, "advanced_custom_probs.txt", "Custom probs table mismatch")
 
 })
 
-# ==============================================================================
+# ============================================================================ #
 # SECTION 3: Test Summary Tables for All Saved Models
-# ==============================================================================
+# ============================================================================ #
 test_that("Summary tables for all saved models", {
 
   skip_if_not_installed("rjags")
@@ -198,13 +152,13 @@ test_that("Summary tables for all saved models", {
       )
       model_list <- models_inference(model_list)
       model_summary <- model_summary_table(model_list[[1]])
-      test_reference(model_summary, paste0(model_name, "_model_summary.txt"),
+      test_reference_table(model_summary, paste0(model_name, "_model_summary.txt"),
                        paste0("Model summary mismatch for ", model_name))
     }
 
     # Process runjags estimates table
     runjags_summary <- runjags_estimates_table(fit)
-    test_reference(runjags_summary, paste0(model_name, "_runjags_estimates.txt"),
+    test_reference_table(runjags_summary, paste0(model_name, "_runjags_estimates.txt"),
                      paste0("Runjags estimates mismatch for ", model_name))
 
   }

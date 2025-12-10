@@ -1,0 +1,8 @@
+ Model Prior (mu) x_cont1        Prior (mu) x_fac2t                 Prior (mu) x_fac3o         max[error(MCMC)] max[error(MCMC)/SD] min(ESS)
+     1       Normal(0, 1)                                                                               0.00317               0.039      674
+     2       Normal(0, 1) treatment contrast: Normal(0, 1)                                              0.00950               0.052      371
+     3       Normal(0, 1)                                  orthonormal contrast: mNormal(0, 1)          0.00604               0.044      505
+ max(R-hat)
+      1.016
+      1.005
+      1.008

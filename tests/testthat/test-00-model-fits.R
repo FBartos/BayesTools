@@ -60,9 +60,9 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
   )
 }
 
-# ==============================================================================
+# ============================================================================ #
 # SECTION 1: SIMPLE PRIOR DISTRIBUTIONS
-# ==============================================================================
+# ============================================================================ #
 test_that("Simple prior models fit correctly", {
 
   skip_if_not_installed("rjags")
@@ -188,9 +188,9 @@ test_that("Simple prior models fit correctly", {
 })
 
 
-# ==============================================================================
+# ============================================================================ #
 # SECTION 1B: MODELS FOR SUMMARY TABLES TESTING
-# ==============================================================================
+# ============================================================================ #
 test_that("Summary tables models fit correctly", {
 
   skip_if_not_installed("rjags")
@@ -275,15 +275,36 @@ test_that("Summary tables models fit correctly", {
   model_registry[["fit_summary2"]] <<- result$registry_entry
   fit_summary2 <- result$fit
 
+  # Model 4: Normal prior with fixed weightfunction
+  priors_summary3 <- list(
+    m  = prior("normal", list(0, .3)),
+    omega = prior_weightfunction("two.sided.fixed", list(0.20, c(.3, 1)))
+  )
+
+  fit_summary3 <- JAGS_fit(model_syntax_summary, data_summary, priors_summary3,
+                           chains = 1, adapt = 100, burnin = 150, sample = 500, seed = 1)
+
+  marglik_summary3 <- JAGS_bridgesampling(fit_summary3,
+                                          log_posterior = log_posterior_summary,
+                                          data = data_summary, prior_list = priors_summary3)
+
+  result <- save_fit(fit_summary3, "fit_summary3",
+           marglik = marglik_summary3,
+           simple_priors = TRUE, weightfunction_priors = TRUE,
+           note = "Model for summary tables with fixed weightfunction")
+  model_registry[["fit_summary3"]] <<- result$registry_entry
+  fit_summary3 <- result$fit
+
   expect_true(file.exists(file.path(temp_fits_dir, "fit_summary0.RDS")))
   expect_true(file.exists(file.path(temp_fits_dir, "fit_summary1.RDS")))
   expect_true(file.exists(file.path(temp_fits_dir, "fit_summary2.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_summary3.RDS")))
 })
 
 
-# ==============================================================================
+# ============================================================================ #
 # SECTION 2: VECTOR PRIOR DISTRIBUTIONS
-# ==============================================================================
+# ============================================================================ #
 test_that("Vector prior models fit correctly", {
 
   skip_if_not_installed("rjags")
@@ -339,9 +360,10 @@ test_that("Vector prior models fit correctly", {
 })
 
 
-# ==============================================================================
+# ============================================================================ #
+
 # SECTION 3: FACTOR PRIOR DISTRIBUTIONS
-# ==============================================================================
+# ============================================================================ #
 test_that("Factor prior models fit correctly", {
 
   skip_if_not_installed("rjags")
@@ -417,9 +439,9 @@ test_that("Factor prior models fit correctly", {
 })
 
 
-# ==============================================================================
+# ============================================================================ #
 # SECTION 4: WEIGHTFUNCTION PRIORS
-# ==============================================================================
+# ============================================================================ #
 test_that("Weightfunction prior models fit correctly", {
 
   skip_if_not_installed("rjags")
@@ -491,9 +513,9 @@ test_that("Weightfunction prior models fit correctly", {
 })
 
 
-# ==============================================================================
+# ============================================================================ #
 # SECTION 5: SPIKE-AND-SLAB PRIORS
-# ==============================================================================
+# ============================================================================ #
 test_that("Spike-and-slab prior models fit correctly", {
 
   skip_if_not_installed("rjags")
@@ -542,9 +564,9 @@ test_that("Spike-and-slab prior models fit correctly", {
 })
 
 
-# ==============================================================================
+# ============================================================================ #
 # SECTION 6: MIXTURE PRIORS
-# ==============================================================================
+# ============================================================================ #
 test_that("Mixture prior models fit correctly", {
 
   skip_if_not_installed("rjags")
@@ -618,9 +640,9 @@ test_that("Mixture prior models fit correctly", {
 })
 
 
-# ==============================================================================
+# ============================================================================ #
 # SECTION 7: FORMULA-BASED MODELS (SIMPLE REGRESSION)
-# ==============================================================================
+# ============================================================================ #
 test_that("Simple formula-based regression models fit correctly", {
 
   skip_if_not_installed("rjags")
@@ -747,9 +769,9 @@ test_that("Simple formula-based regression models fit correctly", {
 })
 
 
-# ==============================================================================
+# ============================================================================ #
 # SECTION 8: FORMULA-BASED MODELS (INTERACTIONS)
-# ==============================================================================
+# ============================================================================ #
 test_that("Formula-based interaction models fit correctly", {
 
   skip_if_not_installed("rjags")
@@ -815,11 +837,53 @@ test_that("Formula-based interaction models fit correctly", {
     formula_list = formula_list_mix_int, formula_data_list = formula_data_list_mix_int,
     formula_prior_list = formula_prior_list_mix_int,
     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+
+  # Compute marginal likelihood for model averaging
+  log_posterior_formula <- function(parameters, data){
+    sum(stats::dnorm(data$y, parameters[["mu"]], parameters[["sigma"]], log = TRUE))
+  }
+  marglik_formula_interaction_mix <- JAGS_bridgesampling(
+    fit_formula_interaction_mix, log_posterior = log_posterior_formula, data = data,
+    prior_list = prior_list,
+    formula_list = formula_list_mix_int, formula_data_list = formula_data_list_mix_int,
+    formula_prior_list = formula_prior_list_mix_int)
+
   result <- save_fit(fit_formula_interaction_mix, "fit_formula_interaction_mix",
+           marglik = marglik_formula_interaction_mix,
            formulas = TRUE, interactions = TRUE, factor_priors = TRUE, simple_priors = TRUE,
            note = "Continuous-factor interaction with 3-level orthonormal factor")
   model_registry[["fit_formula_interaction_mix"]] <<- result$registry_entry
   fit_formula_interaction_mix <- result$fit
+
+  # Continuous-factor interaction (Main effects only)
+  formula_list_mix_main <- list(mu = ~ x_cont1 + x_fac3o)
+  formula_data_list_mix_main <- list(mu = data_formula)
+  formula_prior_list_mix_main <- list(
+    mu = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_cont1"         = prior("normal", list(0, 1)),
+      "x_fac3o"         = prior_factor("mnormal", contrast = "orthonormal", list(0, 1))
+    )
+  )
+
+  fit_formula_interaction_mix_main <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list_mix_main, formula_data_list = formula_data_list_mix_main,
+    formula_prior_list = formula_prior_list_mix_main,
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+
+  marglik_formula_interaction_mix_main <- JAGS_bridgesampling(
+    fit_formula_interaction_mix_main, log_posterior = log_posterior_formula, data = data,
+    prior_list = prior_list,
+    formula_list = formula_list_mix_main, formula_data_list = formula_data_list_mix_main,
+    formula_prior_list = formula_prior_list_mix_main)
+
+  result <- save_fit(fit_formula_interaction_mix_main, "fit_formula_interaction_mix_main",
+           marglik = marglik_formula_interaction_mix_main,
+           formulas = TRUE, factor_priors = TRUE, simple_priors = TRUE,
+           note = "Continuous-factor main effects only (for interaction test)")
+  model_registry[["fit_formula_interaction_mix_main"]] <<- result$registry_entry
+  fit_formula_interaction_mix_main <- result$fit
 
   # Factor-factor interaction
   formula_list_fac_int <- list(mu = ~ x_fac2t * x_fac3o)
@@ -887,9 +951,9 @@ test_that("Formula-based interaction models fit correctly", {
 })
 
 
-# ==============================================================================
+# ============================================================================ #
 # SECTION 9: FORMULA-BASED MODELS (MULTIPLE FORMULAS)
-# ==============================================================================
+# ============================================================================ #
 test_that("Multi-formula models fit correctly", {
 
   skip_if_not_installed("rjags")
@@ -952,9 +1016,9 @@ test_that("Multi-formula models fit correctly", {
 })
 
 
-# ==============================================================================
+# ============================================================================ #
 # SECTION 10: RANDOM EFFECTS MODELS
-# ==============================================================================
+# ============================================================================ #
 test_that("Random effects models fit correctly", {
 
   skip_if_not_installed("rjags")
@@ -1054,9 +1118,9 @@ test_that("Random effects models fit correctly", {
 })
 
 
-# ==============================================================================
+# ============================================================================ #
 # SECTION 11: SPIKE FACTOR PRIORS
-# ==============================================================================
+# ============================================================================ #
 test_that("Spike factor prior models fit correctly", {
 
   skip_if_not_installed("rjags")
@@ -1104,13 +1168,79 @@ test_that("Spike factor prior models fit correctly", {
   model_registry[["fit_spike_factors"]] <<- result$registry_entry
   fit_spike_factors <- result$fit
 
+  # Spike vs Normal factor (meandif contrast)
+  # -------------------------------------------------------
+  formula_list_sf <- list(mu = ~ x_fac3md)
+  formula_data_list_sf <- list(mu = data_formula)
+
+  # Log posterior for formula models
+  log_posterior_formula <- function(parameters, data){
+    sum(stats::dnorm(data$y, parameters[["mu"]], parameters[["sigma"]], log = TRUE))
+  }
+
+  # Null model (Spike)
+  formula_prior_list_sf_null <- list(
+    mu = list(
+      "intercept" = prior("normal", list(0, 5)),
+      "x_fac3md"  = prior_factor("spike", contrast = "meandif", list(0))
+    )
+  )
+
+  fit_spike_factors_null <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list_sf, formula_data_list = formula_data_list_sf,
+    formula_prior_list = formula_prior_list_sf_null,
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+
+  marglik_spike_factors_null <- JAGS_bridgesampling(
+    fit_spike_factors_null, log_posterior = log_posterior_formula, data = data,
+    prior_list = prior_list,
+    formula_list = formula_list_sf, formula_data_list = formula_data_list_sf,
+    formula_prior_list = formula_prior_list_sf_null)
+
+  result <- save_fit(fit_spike_factors_null, "fit_spike_factors_null",
+           marglik = marglik_spike_factors_null,
+           formulas = TRUE, factor_priors = TRUE,
+           note = "Spike factor prior (meandif)")
+  model_registry[["fit_spike_factors_null"]] <<- result$registry_entry
+  fit_spike_factors_null <- result$fit
+
+  # Alternative model (Normal)
+  formula_prior_list_sf_alt <- list(
+    mu = list(
+      "intercept" = prior("normal", list(0, 5)),
+      "x_fac3md"  = prior_factor("mnormal", contrast = "meandif", list(0, 0.25))
+    )
+  )
+
+  fit_spike_factors_alt <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list_sf, formula_data_list = formula_data_list_sf,
+    formula_prior_list = formula_prior_list_sf_alt,
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
+
+  marglik_spike_factors_alt <- JAGS_bridgesampling(
+    fit_spike_factors_alt, log_posterior = log_posterior_formula, data = data,
+    prior_list = prior_list,
+    formula_list = formula_list_sf, formula_data_list = formula_data_list_sf,
+    formula_prior_list = formula_prior_list_sf_alt)
+
+  result <- save_fit(fit_spike_factors_alt, "fit_spike_factors_alt",
+           marglik = marglik_spike_factors_alt,
+           formulas = TRUE, factor_priors = TRUE,
+           note = "Normal factor prior (meandif)")
+  model_registry[["fit_spike_factors_alt"]] <<- result$registry_entry
+  fit_spike_factors_alt <- result$fit
+
   expect_true(file.exists(file.path(temp_fits_dir, "fit_spike_factors.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_spike_factors_null.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_spike_factors_alt.RDS")))
 })
 
 
-# ==============================================================================
+# ============================================================================ #
 # SECTION 12: JOINT MODELS (FORMULA + SPIKE-AND-SLAB + MIXTURE)
-# ==============================================================================
+# ============================================================================ #
 test_that("Joint complex models fit correctly", {
 
   skip_if_not_installed("rjags")
@@ -1189,9 +1319,9 @@ test_that("Joint complex models fit correctly", {
 })
 
 
-# ==============================================================================
+# ============================================================================ #
 # SECTION 13: EXPRESSION PRIORS
-# ==============================================================================
+# ============================================================================ #
 test_that("Expression prior models fit correctly", {
 
   skip_if_not_installed("rjags")
@@ -1255,9 +1385,9 @@ test_that("Expression prior models fit correctly", {
 })
 
 
-# ==============================================================================
+# ============================================================================ #
 # SECTION 14: ADVANCED JAGS_FIT FEATURES
-# ==============================================================================
+# ============================================================================ #
 test_that("Advanced JAGS_fit features work correctly", {
 
   skip_if_not_installed("rjags")
@@ -1388,9 +1518,9 @@ test_that("Advanced JAGS_fit features work correctly", {
 })
 
 
-# ==============================================================================
+# ============================================================================ #
 # SAVE MODEL REGISTRY
-# ==============================================================================
+# ============================================================================ #
 # Convert the model registry list to a data frame for easy inspection and querying
 test_that("Model registry is created and saved", {
 
