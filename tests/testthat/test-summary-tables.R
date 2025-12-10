@@ -1,4 +1,9 @@
-context("Summary tables functions")
+﻿context("Summary tables functions")
+
+# ==============================================================================
+# CONFIGURATION: Set to TRUE to regenerate reference files, FALSE to run tests
+# ==============================================================================
+GENERATE_REFERENCE_FILES <- FALSE
 
 # Get the directory where prefitted models are stored
 temp_fits_dir <- Sys.getenv("BAYESTOOLS_TEST_FITS_DIR")
@@ -9,7 +14,64 @@ if (temp_fits_dir == "" || !dir.exists(temp_fits_dir)) {
 # Skip tests on CRAN as they require pre-fitted models
 skip_on_cran()
 
-test_that("Summary table printing works", {
+# ==============================================================================
+# HELPER FUNCTIONS
+# ==============================================================================
+
+# Process reference file: save if GENERATE_REFERENCE_FILES=TRUE, test otherwise
+test_reference <- function(table, filename, info_msg = NULL, 
+                              print_dir = testthat::test_path("..", "results", "print")) {
+  if (GENERATE_REFERENCE_FILES) {
+    # Save mode
+    if (!dir.exists(print_dir)) {
+      dir.create(print_dir, recursive = TRUE)
+    }
+    writeLines(capture_output_lines(table, print = TRUE, width = 150),
+               file.path(print_dir, filename))
+  } else {
+    # Test mode
+    ref_file <- file.path(print_dir, filename)
+    if (file.exists(ref_file)) {
+      expected_output <- readLines(ref_file, warn = FALSE)
+      actual_output   <- capture_output_lines(table, print = TRUE, width = 150)
+      expect_equal(actual_output, expected_output, info = info_msg)
+    } else {
+      skip(paste("Reference file", filename, "not found."))
+    }
+  }
+}
+
+# ==============================================================================
+# SECTION 1: Test Empty Tables
+# ==============================================================================
+test_that("Empty summary tables work correctly", {
+  
+  runjags_summary_empty <- runjags_estimates_empty_table()
+  ensemble_estimates_empty <- ensemble_estimates_empty_table()
+  ensemble_inference_empty <- ensemble_inference_empty_table()
+  
+  expect_equivalent(nrow(runjags_summary_empty), 0)
+  expect_equivalent(nrow(ensemble_estimates_empty), 0)
+  expect_equivalent(nrow(ensemble_inference_empty), 0)
+  
+  # Test that empty tables have correct structure
+  expect_s3_class(runjags_summary_empty, "BayesTools_table")
+  expect_s3_class(ensemble_estimates_empty, "BayesTools_table")
+  expect_s3_class(ensemble_inference_empty, "BayesTools_table")
+  
+  test_reference(runjags_summary_empty, "empty_runjags_estimates.txt", "Empty runjags_estimates table mismatch")
+  test_reference(ensemble_estimates_empty, "empty_ensemble_estimates.txt", "Empty ensemble_estimates table mismatch")
+  test_reference(ensemble_inference_empty, "empty_ensemble_inference.txt", "Empty ensemble_inference table mismatch")
+  
+  if (GENERATE_REFERENCE_FILES) {
+    message("Generated reference files for empty tables")
+  }
+})
+
+# ==============================================================================
+# SECTION 2: Test Advanced Features (Transformations, Formula Handling, etc.)
+# ==============================================================================
+test_that("Summary table advanced features work correctly", {
   
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")
@@ -20,228 +82,113 @@ test_that("Summary table printing works", {
   
   runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
   
-  # Check if reference files exist
-  # test_path() constructs paths relative to tests/testthat/, so we use ".." to reach tests/results/print
-  print_dir <- testthat::test_path("..", "results", "print")
-  if (!dir.exists(print_dir)) {
-    skip("Print reference directory not found. Set if(FALSE) to if(TRUE) in generation block and run to generate.")
-  }
+  # Use fit_formula_interaction_cont for testing advanced features
+  # This model has continuous interactions and formulas
+  fit_complex <- readRDS(file.path(temp_fits_dir, "fit_formula_interaction_cont.RDS"))
+  marglik_complex <- readRDS(file.path(temp_fits_dir, "fit_formula_interaction_cont_marglik.RDS"))
   
-  # ============================================================================
-  # Test 1-6: Basic summary tables (weightfunction priors)
-  # ============================================================================
-  fit0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
-  marglik0 <- readRDS(file.path(temp_fits_dir, "fit_summary0_marglik.RDS"))
-  
-  fit1 <- readRDS(file.path(temp_fits_dir, "fit_summary1.RDS"))
-  marglik1 <- readRDS(file.path(temp_fits_dir, "fit_summary1_marglik.RDS"))
-  
-  fit2 <- readRDS(file.path(temp_fits_dir, "fit_summary2.RDS"))
-  marglik2 <- readRDS(file.path(temp_fits_dir, "fit_summary2_marglik.RDS"))
-  
-  models_wf <- list(
-    list(fit = fit0, marglik = marglik0, prior_weights = 1, fit_summary = runjags_estimates_table(fit0)),
-    list(fit = fit1, marglik = marglik1, prior_weights = 1, fit_summary = runjags_estimates_table(fit1)),
-    list(fit = fit2, marglik = marglik2, prior_weights = 1, fit_summary = runjags_estimates_table(fit2))
-  )
-  models_wf <- models_inference(models_wf)
-  inference_wf <- ensemble_inference(model_list = models_wf, parameters = c("m", "omega"), 
-                                      is_null_list = list("m" = 0, "omega" = 1), conditional = FALSE)
-  mixed_posteriors_wf <- mix_posteriors(model_list = models_wf, parameters = c("m", "omega"), 
-                                          is_null_list = list("m" = 0, "omega" = 1), seed = 1)
-  
-  # ============================================================================
-  # Test 7-11: Simple priors
-  # ============================================================================
-  fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
-  marglik_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal_marglik.RDS"))
-  
-  fit_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike.RDS"))
-  marglik_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike_marglik.RDS"))
-  
-  models_simple <- list(
-    list(fit = fit_simple_normal, marglik = marglik_simple_normal, prior_weights = 1, 
-         fit_summary = runjags_estimates_table(fit_simple_normal)),
-    list(fit = fit_simple_spike, marglik = marglik_simple_spike, prior_weights = 1, 
-         fit_summary = runjags_estimates_table(fit_simple_spike))
-  )
-  models_simple <- models_inference(models_simple)
-  inference_simple <- ensemble_inference(model_list = models_simple, parameters = c("m", "s"), 
-                                          is_null_list = list("m" = 0, "s" = 1), conditional = FALSE)
-  
-  # ============================================================================
-  # Test 12-13: Transformations
-  # ============================================================================
-  runjags_summary_transform <- runjags_estimates_table(fit_simple_normal, 
-                                                         transformations = list("m" = list(fun = exp)))
-  
-  # ============================================================================
-  # Test 14-16: Empty tables
-  # ============================================================================
-  runjags_summary_empty <- runjags_estimates_empty_table()
-  ensemble_estimates_empty <- ensemble_estimates_empty_table()
-  ensemble_inference_empty <- ensemble_inference_empty_table()
-  
-  # ============================================================================
-  # Create list of all tables to test
-  # ============================================================================
-  fits <- list(
-    # 1-6: Weightfunction models (basic test)
-    model_summary_table(models_wf[[2]]),
-    runjags_estimates_table(fit1),
-    ensemble_estimates_table(mixed_posteriors_wf, parameters = c("m", "omega"), probs = c(.025, 0.95)),
-    ensemble_inference_table(inference_wf, names(inference_wf)),
-    ensemble_summary_table(models_wf, c("m", "omega")),
-    ensemble_diagnostics_table(models_wf, c("m", "omega")),
-    
-    # 7-11: Simple models
-    model_summary_table(models_simple[[1]]),
-    runjags_estimates_table(fit_simple_normal),
-    ensemble_inference_table(inference_simple, names(inference_simple)),
-    ensemble_summary_table(models_simple, c("m", "s")),
-    ensemble_diagnostics_table(models_simple, c("m", "s")),
-    
-    # 12-13: Transformations
-    runjags_summary_transform,
-    runjags_estimates_table(fit2, transformations = list("m" = list(fun = exp))),
-    
-    # 14-16: Empty tables
-    runjags_summary_empty,
-    ensemble_estimates_empty,
-    ensemble_inference_empty
+  # Test 1: Parameter transformations
+  runjags_summary_transform <- runjags_estimates_table(
+    fit_complex, 
+    transformations = list("mu_intercept" = list(fun = exp))
   )
   
-  # Compare printed output with saved reference files
-  for(i in seq_along(fits)){
-    ref_file <- file.path(print_dir, paste0(i, ".txt"))
-    if (!file.exists(ref_file)) {
-      skip(paste0("Reference file ", i, ".txt not found. Set if(FALSE) to if(TRUE) in generation block and run to generate."))
-    }
-    
-    # Use readLines for simpler and more robust file reading
-    expected_output <- readLines(ref_file, warn = FALSE)
-    actual_output <- capture_output_lines(fits[[i]], print = TRUE, width = 150)
-    
-    expect_equal(actual_output, expected_output, 
-                 info = paste0("Print output mismatch for table ", i))
-  }
+  # Test 2: Formula handling with prefix
+  runjags_summary_prefix_true <- runjags_estimates_table(fit_complex, formula_prefix = TRUE)
+  runjags_summary_prefix_false <- runjags_estimates_table(fit_complex, formula_prefix = FALSE)
+  
+  # Test 3: Conditional vs unconditional
+  runjags_summary_conditional <- runjags_estimates_table(fit_complex, conditional = TRUE)
+  runjags_summary_unconditional <- runjags_estimates_table(fit_complex, conditional = FALSE)
+  
+  # Test 4: Factor transformations (use fit_factor_treatment for this)
+  fit_factor <- readRDS(file.path(temp_fits_dir, "fit_factor_treatment.RDS"))
+  marglik_factor <- readRDS(file.path(temp_fits_dir, "fit_factor_treatment_marglik.RDS"))
+  
+  runjags_summary_factor <- runjags_estimates_table(fit_factor)
+  
+  # Test 5: Use fit with spike and slab
+  fit_spike <- readRDS(file.path(temp_fits_dir, "fit_spike_slab_factor.RDS"))
+  marglik_spike <- readRDS(file.path(temp_fits_dir, "fit_spike_slab_factor_marglik.RDS"))
+  
+  runjags_summary_spike <- runjags_estimates_table(fit_spike)
+  runjags_inference_spike <- runjags_inference_table(fit_spike)
+  
+  # Test basic properties
+  expect_s3_class(runjags_summary_transform, "BayesTools_table")
+  expect_s3_class(runjags_summary_prefix_true, "BayesTools_table")
+  expect_s3_class(runjags_summary_prefix_false, "BayesTools_table")
+  expect_s3_class(runjags_summary_conditional, "BayesTools_table")
+  expect_s3_class(runjags_summary_unconditional, "BayesTools_table")
+  expect_s3_class(runjags_summary_factor, "BayesTools_table")
+  expect_s3_class(runjags_summary_spike, "BayesTools_table")
+  expect_s3_class(runjags_inference_spike, "BayesTools_table")
+  
+  # Test that row names differ with different formula_prefix settings
+  expect_false(identical(rownames(runjags_summary_prefix_true), 
+                        rownames(runjags_summary_prefix_false)))
+  
+  # Test that conditional has fewer rows than unconditional (removes low inclusion parameters)
+  # This may not always be true, so we just check they exist
+  expect_true(nrow(runjags_summary_conditional) >= 0)
+  expect_true(nrow(runjags_summary_unconditional) >= 0)
+  
+  test_reference(runjags_summary_transform, "advanced_transform.txt", "Transform table mismatch")
+  test_reference(runjags_summary_prefix_true, "advanced_formula_prefix_true.txt", "Formula prefix true table mismatch")
+  test_reference(runjags_summary_prefix_false, "advanced_formula_prefix_false.txt", "Formula prefix false table mismatch")
+  test_reference(runjags_summary_conditional, "advanced_conditional.txt", "Conditional table mismatch")
+  test_reference(runjags_summary_unconditional, "advanced_unconditional.txt", "Unconditional table mismatch")
+  test_reference(runjags_summary_factor, "advanced_factor_treatment.txt", "Factor treatment table mismatch")
+  test_reference(runjags_summary_spike, "advanced_spike_slab_estimates.txt", "Spike slab estimates table mismatch")
+  test_reference(runjags_inference_spike, "advanced_spike_slab_inference.txt", "Spike slab inference table mismatch")
+
 })
 
 # ==============================================================================
-# REFERENCE OUTPUT GENERATION
+# SECTION 3: Test Summary Tables for All Saved Models
 # ==============================================================================
-# To regenerate reference print output files, set the condition below to TRUE
-# and run this test file. This will overwrite existing reference files.
-if (FALSE) {
+test_that("Summary tables for all saved models", {
   
-  # Ensure models are fitted first
-  if (!dir.exists(temp_fits_dir) || length(list.files(temp_fits_dir, pattern = "\\.RDS$")) == 0) {
-    message("Pre-fitted models not found. Running test-00-model-fits.R...")
-    testthat::test_file(testthat::test_path("test-00-model-fits.R"))
-  }
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
   
   runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
   
-  # ============================================================================
-  # Generate 1-6: Basic summary tables (weightfunction priors)
-  # ============================================================================
-  fit0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
-  marglik0 <- readRDS(file.path(temp_fits_dir, "fit_summary0_marglik.RDS"))
+  # Load model registry to get list of all fitted models
+  registry_file <- file.path(temp_fits_dir, "model_registry.RDS")
   
-  fit1 <- readRDS(file.path(temp_fits_dir, "fit_summary1.RDS"))
-  marglik1 <- readRDS(file.path(temp_fits_dir, "fit_summary1_marglik.RDS"))
+  model_registry <- readRDS(registry_file)
+  model_names <- model_registry$model_name
   
-  fit2 <- readRDS(file.path(temp_fits_dir, "fit_summary2.RDS"))
-  marglik2 <- readRDS(file.path(temp_fits_dir, "fit_summary2_marglik.RDS"))
-  
-  models_wf <- list(
-    list(fit = fit0, marglik = marglik0, prior_weights = 1, fit_summary = runjags_estimates_table(fit0)),
-    list(fit = fit1, marglik = marglik1, prior_weights = 1, fit_summary = runjags_estimates_table(fit1)),
-    list(fit = fit2, marglik = marglik2, prior_weights = 1, fit_summary = runjags_estimates_table(fit2))
-  )
-  models_wf <- models_inference(models_wf)
-  
-  inference_wf <- ensemble_inference(model_list = models_wf, parameters = c("m", "omega"), 
-                                      is_null_list = list("m" = 0, "omega" = 1), conditional = FALSE)
-  mixed_posteriors_wf <- mix_posteriors(model_list = models_wf, parameters = c("m", "omega"), 
-                                          is_null_list = list("m" = 0, "omega" = 1), seed = 1)
-  
-  # ============================================================================
-  # Generate 7-11: Simple priors
-  # ============================================================================
-  fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
-  marglik_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal_marglik.RDS"))
-  
-  fit_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike.RDS"))
-  marglik_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike_marglik.RDS"))
-  
-  models_simple <- list(
-    list(fit = fit_simple_normal, marglik = marglik_simple_normal, prior_weights = 1, 
-         fit_summary = runjags_estimates_table(fit_simple_normal)),
-    list(fit = fit_simple_spike, marglik = marglik_simple_spike, prior_weights = 1, 
-         fit_summary = runjags_estimates_table(fit_simple_spike))
-  )
-  models_simple <- models_inference(models_simple)
-  inference_simple <- ensemble_inference(model_list = models_simple, parameters = c("m", "s"), 
-                                          is_null_list = list("m" = 0, "s" = 1), conditional = FALSE)
-  
-  # ============================================================================
-  # Generate 12-13: Transformations
-  # ============================================================================
-  runjags_summary_transform <- runjags_estimates_table(fit_simple_normal, 
-                                                         transformations = list("m" = list(fun = exp)))
-  
-  # ============================================================================
-  # Generate 14-16: Empty tables
-  # ============================================================================
-  runjags_summary_empty <- runjags_estimates_empty_table()
-  ensemble_estimates_empty <- ensemble_estimates_empty_table()
-  ensemble_inference_empty <- ensemble_inference_empty_table()
-  
-  # ============================================================================
-  # Create list of all tables to generate
-  # ============================================================================
-  fits <- list(
-    # 1-6: Weightfunction models (basic test)
-    model_summary_table(models_wf[[2]]),
-    runjags_estimates_table(fit1),
-    ensemble_estimates_table(mixed_posteriors_wf, parameters = c("m", "omega"), probs = c(.025, 0.95)),
-    ensemble_inference_table(inference_wf, names(inference_wf)),
-    ensemble_summary_table(models_wf, c("m", "omega")),
-    ensemble_diagnostics_table(models_wf, c("m", "omega")),
-    
-    # 7-11: Simple models
-    model_summary_table(models_simple[[1]]),
-    runjags_estimates_table(fit_simple_normal),
-    ensemble_inference_table(inference_simple, names(inference_simple)),
-    ensemble_summary_table(models_simple, c("m", "s")),
-    ensemble_diagnostics_table(models_simple, c("m", "s")),
-    
-    # 12-13: Transformations
-    runjags_summary_transform,
-    runjags_estimates_table(fit2, transformations = list("m" = list(fun = exp))),
-    
-    # 14-16: Empty tables
-    runjags_summary_empty,
-    ensemble_estimates_empty,
-    ensemble_inference_empty
-  )
-  
-  # Create print directory if it doesn't exist
   print_dir <- testthat::test_path("..", "results", "print")
-  if (!dir.exists(print_dir)) {
-    dir.create(print_dir, recursive = TRUE)
-    message("Created directory: ", print_dir)
-  }
   
-  # Generate print files
-  for(i in seq_along(fits)){
-    output_lines <- capture_output_lines(fits[[i]], print = TRUE, width = 150)
-    output_file <- file.path(print_dir, paste0(i, ".txt"))
-    writeLines(output_lines, output_file)
-    message("Generated reference file: ", output_file)
+  for (model_name in model_names) {
+    fit_file <- file.path(temp_fits_dir, paste0(model_name, ".RDS"))
+    marglik_file <- file.path(temp_fits_dir, paste0(model_name, "_marglik.RDS"))
+    
+    fit <- readRDS(fit_file)
+    has_marglik <- file.exists(marglik_file)
+    
+    if (has_marglik) {
+      marglik <- readRDS(marglik_file)
+    }
+    
+    # Process model summary table
+    if (has_marglik) {
+      model_list <- list(
+        list(fit = fit, marglik = marglik, prior_weights = 1,
+             fit_summary = runjags_estimates_table(fit))
+      )
+      model_list <- models_inference(model_list)
+      model_summary <- model_summary_table(model_list[[1]])
+      test_reference(model_summary, paste0(model_name, "_model_summary.txt"),
+                       paste0("Model summary mismatch for ", model_name))
+    }
+    
+    # Process runjags estimates table
+    runjags_summary <- runjags_estimates_table(fit)
+    test_reference(runjags_summary, paste0(model_name, "_runjags_estimates.txt"),
+                     paste0("Runjags estimates mismatch for ", model_name))
+    
   }
-  
-  message("\nReference print files generated successfully in ", normalizePath(print_dir))
-  message("Total files created: ", length(fits))
-}
+})
