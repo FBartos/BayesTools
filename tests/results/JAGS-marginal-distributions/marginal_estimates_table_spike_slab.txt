@@ -1,0 +1,37 @@
+                                Mean Median 0.025  0.95 Inclusion BF
+(mu) intercept                 0.618  0.618 0.545 0.678          Inf
+(mu) x_cont1[-1SD]             0.436  0.434 0.323 0.535          Inf
+(mu) x_cont1[0SD]              0.618  0.618 0.545 0.678          Inf
+(mu) x_cont1[1SD]              0.799  0.799 0.696 0.885          Inf
+(mu) x_fac2t[A]                0.618  0.618 0.545 0.678          Inf
+(mu) x_fac2t[B]                0.618  0.618 0.546 0.680          Inf
+(mu) x_fac3md[A]               0.781  0.780 0.656 0.891          Inf
+(mu) x_fac3md[B]               0.519  0.519 0.390 0.621          Inf
+(mu) x_fac3md[C]               0.553  0.553 0.425 0.659          Inf
+(mu) x_cont1:x_fac3md[-1SD, A] 0.593  0.594 0.406 0.744          Inf
+(mu) x_cont1:x_fac3md[0SD, A]  0.776  0.778 0.632 0.890          Inf
+(mu) x_cont1:x_fac3md[1SD, A]  0.959  0.964 0.812 1.075          Inf
+(mu) x_cont1:x_fac3md[-1SD, B] 0.345  0.342 0.178 0.487          Inf
+(mu) x_cont1:x_fac3md[0SD, B]  0.522  0.521 0.391 0.625          Inf
+(mu) x_cont1:x_fac3md[1SD, B]  0.698  0.701 0.543 0.822          Inf
+(mu) x_cont1:x_fac3md[-1SD, C] 0.375  0.374 0.215 0.503          Inf
+(mu) x_cont1:x_fac3md[0SD, C]  0.555  0.555 0.426 0.662          Inf
+(mu) x_cont1:x_fac3md[1SD, C]  0.735  0.736 0.577 0.865          Inf
+[0;31mmu_intercept: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_cont1[-1SD]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_cont1[0SD]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_cont1[1SD]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_fac2t[A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_fac2t[B]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_fac3md[A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_fac3md[B]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_fac3md[C]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_cont1__xXx__x_fac3md[-1SD, A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_cont1__xXx__x_fac3md[0SD, A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_cont1__xXx__x_fac3md[1SD, A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_cont1__xXx__x_fac3md[-1SD, B]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_cont1__xXx__x_fac3md[0SD, B]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_cont1__xXx__x_fac3md[1SD, B]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_cont1__xXx__x_fac3md[-1SD, C]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_cont1__xXx__x_fac3md[0SD, C]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+[0;31mmu_x_cont1__xXx__x_fac3md[1SD, C]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
