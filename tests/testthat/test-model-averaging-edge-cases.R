@@ -12,6 +12,7 @@ test_that("mix_posteriors handles various prior types correctly", {
 
   skip_on_cran()
   skip_if_not_installed("rjags")
+  skip_if_no_fits()
 
   # Load fits with margliks
   fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
@@ -65,6 +66,7 @@ test_that("mix_posteriors handles weightfunction priors", {
 
   skip_on_cran()
   skip_if_not_installed("rjags")
+  skip_if_no_fits()
 
   # Load summary models which have weightfunction priors
   fit_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
@@ -98,6 +100,7 @@ test_that("mix_posteriors handles factor priors", {
 
   skip_on_cran()
   skip_if_not_installed("rjags")
+  skip_if_no_fits()
 
   # Load the orthonormal factor models (have both factor priors and marginal likelihoods)
   fit_orthonormal_0 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_0.RDS"))
@@ -136,6 +139,7 @@ test_that("mix_posteriors handles vector priors", {
 
   skip_on_cran()
   skip_if_not_installed("rjags")
+  skip_if_no_fits()
 
 
   # Load vector prior models
@@ -175,6 +179,7 @@ test_that("ensemble_inference handles different configurations", {
 
   skip_on_cran()
   skip_if_not_installed("rjags")
+  skip_if_no_fits()
 
   # Load fits with margliks
   fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
@@ -226,6 +231,7 @@ test_that("models_inference computes correctly", {
 
   skip_on_cran()
   skip_if_not_installed("rjags")
+  skip_if_no_fits()
 
   # Load fits with margliks
   fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
@@ -277,6 +283,7 @@ test_that("as_mixed_posteriors works correctly with BayesTools_fit objects", {
 
   skip_on_cran()
   skip_if_not_installed("rjags")
+  skip_if_no_fits()
 
   # Load a fitted model
   fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
@@ -292,6 +299,7 @@ test_that("as_marginal_inference works correctly", {
 
   skip_on_cran()
   skip_if_not_installed("rjags")
+  skip_if_no_fits()
 
   # as_marginal_inference requires a BayesTools_fit object - load one
   fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
