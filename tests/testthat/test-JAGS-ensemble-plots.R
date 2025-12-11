@@ -788,6 +788,14 @@ test_that("posterior plot functions (orthonormal) work", {
       "mu_x_fac3o"    = c(FALSE, TRUE)
     ),
     seed = 1, n_samples = 10000)
+  mixed_posteriors2 <- mix_posteriors(
+    model_list   = models,
+    parameters   = c("mu_x_fac3o"),
+    conditional  = TRUE,
+    is_null_list = list(
+      "mu_x_fac3o"    = c(TRUE, FALSE)
+    ),
+    seed = 1, n_samples = 10000)
 
   vdiffr::expect_doppelganger("model-averaging-plot-posterior-o-1", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
@@ -813,6 +821,165 @@ test_that("posterior plot functions (orthonormal) work", {
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors, "mu_x_fac3o", legend = FALSE)
   })
+  vdiffr::expect_doppelganger("model-averaging-plot-posterior-o-5", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors2, "mu_x_fac3o")
+  })
+})
+
+test_that("posterior plot functions (treatment) work", {
+
+  skip_on_os(c("mac", "linux", "solaris"))
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+
+  fit0 <- readRDS(file.path(temp_fits_dir, "fit_factor_treatment.RDS"))
+  # Create dummy marginal likelihood since this model doesn't have one
+  marglik0 <- structure(list(logml = -10), class = "bridge")
+
+  # Create a second model with different prior for comparison
+  fit1 <- readRDS(file.path(temp_fits_dir, "fit_factor_treatment.RDS"))
+  marglik1 <- structure(list(logml = -12), class = "bridge")
+
+  # mix posteriors
+  models <- list(
+    list(fit = fit0, marglik = marglik0, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, prior_weights = 1)
+  )
+
+  mixed_posteriors <- mix_posteriors(
+    model_list   = models,
+    parameters   = c("p1"),
+    is_null_list = list(
+      "p1"  = c(TRUE,  FALSE)
+    ),
+    seed = 1, n_samples = 10000)
+  mixed_posteriors2 <- mix_posteriors(
+    model_list   = models,
+    parameters   = c("p1"),
+    conditional  = TRUE,
+    is_null_list = list(
+      "p1"  = c(TRUE,  FALSE)
+    ),
+    seed = 1, n_samples = 10000)
+
+  vdiffr::expect_doppelganger("model-averaging-plot-posterior-t-1", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors, "p1")
+  })
+  vdiffr::expect_doppelganger("model-averaging-plot-posterior-t-2", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors2, "p1")
+  })
+})
+
+test_that("posterior plot functions (independent) work", {
+
+  skip_on_os(c("mac", "linux", "solaris"))
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+
+  fit0 <- readRDS(file.path(temp_fits_dir, "fit_factor_independent.RDS"))
+  # Create dummy marginal likelihood since this model doesn't have one
+  marglik0 <- structure(list(logml = -15), class = "bridge")
+
+  # Create a second model with different prior for comparison
+  fit1 <- readRDS(file.path(temp_fits_dir, "fit_factor_independent.RDS"))
+  marglik1 <- structure(list(logml = -17), class = "bridge")
+
+  # mix posteriors
+  models <- list(
+    list(fit = fit0, marglik = marglik0, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, prior_weights = 1)
+  )
+
+  mixed_posteriors <- mix_posteriors(
+    model_list   = models,
+    parameters   = c("p1"),
+    is_null_list = list(
+      "p1[1]"  = c(TRUE,  FALSE)
+    ),
+    seed = 1, n_samples = 10000)
+
+  mixed_posteriors2 <- mix_posteriors(
+    model_list   = models,
+    parameters   = c("p1"),
+    conditional  = TRUE,
+    is_null_list = list(
+      "p1[1]"  = c(TRUE,  FALSE)
+    ),
+    seed = 1, n_samples = 10000)
+
+  vdiffr::expect_doppelganger("model-averaging-plot-posterior-i-1", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors, "p1")
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-posterior-i-2", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors2, "p1")
+  })
+})
+
+test_that("posterior plot functions (meandif) work", {
+
+  skip_on_os(c("mac", "linux", "solaris"))
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+
+  fit0 <- readRDS(file.path(temp_fits_dir, "fit_factor_meandif.RDS"))
+  # Create dummy marginal likelihood since this model doesn't have one
+  marglik0 <- structure(list(logml = -20), class = "bridge")
+
+  # Create a second model with different prior for comparison
+  fit1 <- readRDS(file.path(temp_fits_dir, "fit_factor_meandif.RDS"))
+  marglik1 <- structure(list(logml = -22), class = "bridge")
+
+  # mix posteriors
+  models <- list(
+    list(fit = fit0, marglik = marglik0, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, prior_weights = 1)
+  )
+
+  mixed_posteriors <- mix_posteriors(
+    model_list   = models,
+    parameters   = c("p1"),
+    is_null_list = list(
+      "p"  = c(TRUE,  FALSE)
+    ),
+    seed = 1, n_samples = 10000)
+  mixed_posteriors2 <- mix_posteriors(
+    model_list   = models,
+    parameters   = c("p1"),
+    conditional  = TRUE,
+    is_null_list = list(
+      "p"  = c(TRUE,  FALSE)
+    ),
+    seed = 1, n_samples = 10000)
+
+  vdiffr::expect_doppelganger("model-averaging-plot-posterior-m-1", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors, "p1")
+  })
+  vdiffr::expect_doppelganger("model-averaging-plot-posterior-m-2", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors2, "p1")
+  })
+
 })
 
 test_that("posterior plot model averaging based on complex single JAGS models  (formulas + spike factors + mixture)", {
@@ -1047,6 +1214,114 @@ test_that("posterior plot model averaging based on simple single JAGS models  (f
     plot_posterior(mixed_posteriors, "sigma", prior = T, dots_prior = list(col = "grey"))
   })
 })
+
+
+test_that("posterior plot model averaging based on complex bias mixture model (PET + PEESE + weightfunction)", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+
+  fit1 <- readRDS(file.path(temp_fits_dir, "fit_complex_bias.RDS"))
+
+  mixed_posteriors <- as_mixed_posteriors(
+    mode       = fit1,
+    parameters = names(attr(fit1, "prior_list"))
+  )
+
+  vdiffr::expect_doppelganger("model-averaging-plot-complex-bias-posterior-mu", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors, "mu", prior = TRUE, dots_prior = list(col = "grey"))
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-complex-bias-posterior-bias-PET", function(){
+    PET <- mixed_posteriors$bias[,"PET",drop=FALSE]
+    attributes(PET) <- c(attributes(PET), attributes(mixed_posteriors$bias)[!names(attributes(mixed_posteriors$bias)) %in% c("dimnames", "dim")])
+    attr(PET, "prior_list")[!sapply(attr(PET, "prior_list"), is.prior.PET)] <- lapply(1:sum(!sapply(attr(PET, "prior_list"), is.prior.PET)), function(i) prior("point", list(0)))
+    attr(PET, "prior_list")[ sapply(attr(PET, "prior_list"), is.prior.PET)] <- lapply(attr(PET, "prior_list")[sapply(attr(PET, "prior_list"), is.prior.PET)], function(p) {
+      class(p) <- class(p)[!class(p) %in% "prior.PET"]
+      return(p)
+    })
+    plot_posterior(list(PET = PET), "PET", prior = TRUE, dots_prior = list(col = "grey"))
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-complex-bias-posterior-bias-PEESE", function(){
+    PEESE <- mixed_posteriors$bias[,"PEESE",drop=FALSE]
+    attributes(PEESE) <- c(attributes(PEESE), attributes(mixed_posteriors$bias)[!names(attributes(mixed_posteriors$bias)) %in% c("dimnames", "dim")])
+    attr(PEESE, "prior_list")[!sapply(attr(PEESE, "prior_list"), is.prior.PEESE)] <- lapply(1:sum(!sapply(attr(PEESE, "prior_list"), is.prior.PEESE)), function(i) prior("point", list(0)))
+    attr(PEESE, "prior_list")[ sapply(attr(PEESE, "prior_list"), is.prior.PEESE)] <- lapply(attr(PEESE, "prior_list")[sapply(attr(PEESE, "prior_list"), is.prior.PEESE)], function(p) {
+      class(p) <- class(p)[!class(p) %in% "prior.PEESE"]
+      return(p)
+    })
+    plot_posterior(list(PEESE = PEESE), "PEESE", prior = TRUE, dots_prior = list(col = "grey"))
+  })
+
+
+  mixed_posteriors_conditional1 <- as_mixed_posteriors(
+    mode       = fit1,
+    parameters  = "bias",
+    conditional = "PET",
+    force_plots = TRUE
+  )
+
+  mixed_posteriors_conditional2 <- as_mixed_posteriors(
+    mode       = fit1,
+    parameters  = "bias",
+    conditional = "PEESE",
+    force_plots = TRUE
+  )
+
+  mixed_posteriors_conditional3 <- as_mixed_posteriors(
+    mode       = fit1,
+    parameters  = "bias",
+    conditional = "PETPEESE",
+    force_plots = TRUE
+  )
+
+  mixed_posteriors_conditional4 <- as_mixed_posteriors(
+    mode       = fit1,
+    parameters  = "bias",
+    conditional = "omega",
+    force_plots = TRUE
+  )
+
+  vdiffr::expect_doppelganger("model-averaging-plot-complex-bias-conditional-posterior-PET", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+
+    PET <- mixed_posteriors_conditional1$bias[,"PET",drop=FALSE]
+    attributes(PET) <- c(attributes(PET), attributes(mixed_posteriors_conditional1$bias)[!names(attributes(mixed_posteriors_conditional1$bias)) %in% c("dimnames", "dim")])
+    attr(PET, "prior_list")[!sapply(attr(PET, "prior_list"), is.prior.PET)] <- lapply(1:sum(!sapply(attr(PET, "prior_list"), is.prior.PET)), function(i) prior("point", list(0)))
+    attr(PET, "prior_list")[ sapply(attr(PET, "prior_list"), is.prior.PET)] <- lapply(attr(PET, "prior_list")[sapply(attr(PET, "prior_list"), is.prior.PET)], function(p) {
+      class(p) <- class(p)[!class(p) %in% "prior.PET"]
+      return(p)
+    })
+
+    plot_posterior(list(PET = PET), "PET", prior = TRUE, dots_prior = list(col = "grey"))
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-complex-bias-conditional-posterior-PEESE", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+
+    PEESE <- mixed_posteriors_conditional2$bias[,"PEESE",drop=FALSE]
+    attributes(PEESE) <- c(attributes(PEESE), attributes(mixed_posteriors_conditional1$bias)[!names(attributes(mixed_posteriors_conditional1$bias)) %in% c("dimnames", "dim")])
+    attr(PEESE, "prior_list")[!sapply(attr(PEESE, "prior_list"), is.prior.PEESE)] <- lapply(1:sum(!sapply(attr(PEESE, "prior_list"), is.prior.PEESE)), function(i) prior("point", list(0)))
+    attr(PEESE, "prior_list")[ sapply(attr(PEESE, "prior_list"), is.prior.PEESE)] <- lapply(attr(PEESE, "prior_list")[sapply(attr(PEESE, "prior_list"), is.prior.PEESE)], function(p) {
+      class(p) <- class(p)[!class(p) %in% "prior.PEESE"]
+      return(p)
+    })
+
+    plot_posterior(list(PEESE = PEESE), "PEESE", prior = TRUE, dots_prior = list(col = "grey"))
+  })
+
+})
+
+
+
 
 
 

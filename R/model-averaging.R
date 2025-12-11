@@ -779,35 +779,36 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     # TODO: this needs to be implemented for enabling of the conditional mixture posterior distributions when more than one components is present
     # (e.g., conditional marginal and posterior plots)
     # the current workaround is suitable only for a single parameters (to produce averaged prior and posterior plots)
-    if(length(conditional) == 1 && length(parameters) == 1 && conditional == parameters && force_plots){
+    if(length(conditional) == 1 && length(parameters) == 1 && (parameters == "bias" || conditional == parameters) && force_plots){
 
       # special cases for PET / PEESE / PET-PEESE / weightfunctions
-      if(conditional == "PET" && !is.null(priors[["bias"]]) && is.prior.mixture(priors[["bias"]])){
+      if(parameters == "bias" && conditional == "PET" && !is.null(priors[["bias"]]) && is.prior.mixture(priors[["bias"]])){
         is_PET <- sapply(priors[["bias"]], is.prior.PET)
         for(i in seq(along = is_PET)){
           if(!is_PET[i]){
-            priors[[parameters]][[i]][["prior_weights"]] <- 0
+            priors[["bias"]][[i]][["prior_weights"]] <- 0
           }
         }
-      }else if(conditional == "PEESE" && !is.null(priors[["bias"]]) && is.prior.mixture(priors[["bias"]])){
+      }else if(parameters == "bias" && conditional == "PEESE" && !is.null(priors[["bias"]]) && is.prior.mixture(priors[["bias"]])){
+        is_PEESE <- sapply(priors[["bias"]], is.prior.PEESE)
         for(i in seq(along = is_PEESE)){
           if(!is_PEESE[i]){
-            priors[[parameters]][[i]][["prior_weights"]] <- 0
+            priors[["bias"]][[i]][["prior_weights"]] <- 0
           }
         }
-      }else if(conditional == "PETPEESE" && !is.null(priors[["bias"]]) && is.prior.mixture(priors[["bias"]])){
+      }else if(parameters == "bias" && conditional == "PETPEESE" && !is.null(priors[["bias"]]) && is.prior.mixture(priors[["bias"]])){
         is_PET   <- sapply(priors[["bias"]], is.prior.PET)
         is_PEESE <- sapply(priors[["bias"]], is.prior.PEESE)
         for(i in seq(along = is_PET)){
           if(!(is_PET[i] || is_PEESE[i])){
-            priors[[parameters]][[i]][["prior_weights"]] <- 0
+            priors[["bias"]][[i]][["prior_weights"]] <- 0
           }
         }
-      }else if(conditional == "omega" && !is.null(priors[["bias"]]) && is.prior.mixture(priors[["bias"]])){
+      }else if(parameters == "bias" && conditional == "omega" && !is.null(priors[["bias"]]) && is.prior.mixture(priors[["bias"]])){
         is_weightfunction <- sapply(priors[["bias"]], is.prior.weightfunction)
         for(i in seq(along = is_weightfunction)){
           if(!is_weightfunction[i]){
-            priors[[parameters]][[i]][["prior_weights"]] <- 0
+            priors[["bias"]][[i]][["prior_weights"]] <- 0
           }
         }
       }else if(is.prior.mixture(priors[[parameters]])){
