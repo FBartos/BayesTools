@@ -81,7 +81,7 @@ density.prior <- function(x,
       }else if(!individual & is.prior.weightfunction(x)){
         x_range <- c(0, 1)
       }else if(is.prior.spike_and_slab(x)){
-        x_range <- range(.get_spike_and_slab_variable(x)[["truncation"]]["lower"], .get_spike_and_slab_variable(x)[["truncation"]]["upper"], 0)
+        x_range <- range(c(range(.get_spike_and_slab_variable(x), if(is.null(x_range_quant)) .range.prior_quantile_default(.get_spike_and_slab_variable(x)) else x_range_quant), 0))
       }else if(is.prior.discrete(x)){
         x_range <- c(x[["truncation"]]["lower"], x[["truncation"]]["upper"])
       }else{

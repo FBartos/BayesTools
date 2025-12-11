@@ -377,6 +377,39 @@ test_that("Prior mixture distributions work", {
   vdiffr::expect_doppelganger("prior-mixture-4", function()hist(rng(p4, 10000, transform_factor_samples = FALSE), main = print(p4, plot = T), breaks = 50, freq = FALSE))
   vdiffr::expect_doppelganger("prior-mixture-5", function()hist(rng(p4, 10000, transform_factor_samples = TRUE), main = print(p4, plot = T), breaks = 50, freq = FALSE))
 
+  # mixture with none and spikes
+  p5 <- prior_mixture(
+    list(
+      prior_none(),
+      prior("spike", list(1)),
+      prior("gamma",  list(5, 10))
+    )
+  )
+  p6 <- prior_mixture(
+    list(
+      prior_none(),
+      prior("spike", list(1)),
+      prior_factor("mnormal", list(0, 1),  contrast = "orthonormal")
+    ), components = c("a", "b", "c")
+  )
+  p7 <- prior_mixture(
+    list(
+      prior_none(),
+      prior("spike", list(1)),
+      prior_factor("beta", list(3, 1),  contrast = "treatment")
+    )
+  )
+  for(i in seq_along(p6)){
+    p6[[i]]$parameters[["K"]] <- 2
+  }
+  for(i in seq_along(p7)){
+    p7[[i]]$parameters[["K"]] <- 2
+  }
+
+  vdiffr::expect_doppelganger("prior-mixture-6", function()hist(rng(p5, 10000, transform_factor_samples = FALSE), main = print(p5, plot = T), breaks = 50, freq = FALSE))
+  vdiffr::expect_doppelganger("prior-mixture-7", function()hist(rng(p6, 10000, transform_factor_samples = FALSE), main = print(p6, plot = T), breaks = 50, freq = FALSE))
+  vdiffr::expect_doppelganger("prior-mixture-8", function()hist(rng(p7, 10000, transform_factor_samples = FALSE), main = print(p7, plot = T), breaks = 50, freq = FALSE))
+
 })
 
 test_that("Priors with expressions work", {
