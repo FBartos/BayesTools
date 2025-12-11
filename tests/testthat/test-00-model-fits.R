@@ -1890,6 +1890,45 @@ test_that("Complex models for plotting fit correctly", {
 })
 
 # ============================================================================ #
+# SECTION 3: COMPLEX BIAS ONLY MODEL FOR PLOTTING
+# ============================================================================ #
+test_that("Complex models for plotting fit correctly", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+  skip_if_not_installed("RoBMA")
+  require("RoBMA")
+
+  set.seed(1)
+
+  prior_list1 <- list(
+    "mu"    = prior("gamma", list(3, 3)),
+    "bias"  = prior_mixture(list(
+      prior_none(prior_weights = 1),
+      prior_weightfunction(distribution = "two.sided", parameters = list(alpha = c(1, 1), steps = c(0.05)), prior_weights = 1/3),
+      prior_weightfunction(distribution = "one.sided", parameters = list(alpha = c(1, 1, 1), steps = c(0.025, 0.05)), prior_weights = 1/3),
+      prior_PET("normal", list(0, 1), prior_weights = 1/3),
+      prior_PEESE("normal", list(0, 2), prior_weights = 1/3)
+    ), is_null = c(TRUE, FALSE, FALSE, FALSE, FALSE))
+  )
+  model_syntax1 <- "model{}"
+
+  fit_complex_bias <- suppressWarnings(JAGS_fit(
+    model_syntax = model_syntax1, data = NULL, prior_list = prior_list1,
+    chains = 1, adapt = 100, burnin = 150, sample = 500, seed = 1))
+
+  result <- save_fit(fit_complex_bias, "fit_complex_bias",
+                     formulas = FALSE, mixture_priors = TRUE, spike_and_slab_priors = FALSE,
+                     pub_bias_priors = TRUE, weightfunction_priors = TRUE,
+                     note = "Model with complex publication bias mixture prior")
+  model_registry[["fit_complex_bias"]] <<- result$registry_entry
+  fit_complex_bias <- result$fit
+
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_complex_bias.RDS")))
+})
+
+
+# ============================================================================ #
 # SAVE MODEL REGISTRY
 # ============================================================================ #
 # Convert the model registry list to a data frame for easy inspection and querying
