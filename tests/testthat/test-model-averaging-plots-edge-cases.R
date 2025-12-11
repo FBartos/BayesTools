@@ -56,6 +56,30 @@ test_that("plot_prior_list handles orthonormal priors", {
     plot_prior_list(prior_list, plot_type = "ggplot")
   })
 
+  vdiffr::expect_doppelganger("plot-prior-list-orthonormal2-ggplot", {
+    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lty = 2, linetype = 2)
+  })
+
+  # Create orthonormal factor prior
+  prior_orth0 <- prior_factor("spike", list(0), contrast = "orthonormal")
+  attr(prior_orth0, "levels") <- 3
+
+  prior_list0 <- list(p1 = prior_orth0)
+
+  # Base plot
+  vdiffr::expect_doppelganger("plot-prior-list-orthonormal-spike", function() {
+    plot_prior_list(prior_list0)
+  })
+
+  prior_list2 <- list(
+    p1 = prior_orth,
+    p2 = prior_orth0
+  )
+
+  # Base plot
+  vdiffr::expect_doppelganger("plot-prior-list-orthonormal-spike-and-slab", function() {
+    suppressMessages(plot_prior_list(prior_list2, transformation = "exp", transformation_settings = TRUE, xlim = c(0.01, 5)))
+  })
 })
 
 
@@ -458,6 +482,16 @@ test_that("plot_models handles order argument", {
   # Test with order = decreasing by probability
   vdiffr::expect_doppelganger("plot-models-order-trans-prior", function() {
     BayesTools::plot_models(models, mixed_posteriors, inference, "m", prior = TRUE, transformation = "exp")
+  })
+
+  # Test with order = decreasing by probability
+  vdiffr::expect_doppelganger("plot-models-order-trans-ggplot", function() {
+    BayesTools::plot_models(models, mixed_posteriors, inference, "m", transformation = "exp", plot_type = "ggplot")
+  })
+
+  # Test with order = decreasing by probability
+  vdiffr::expect_doppelganger("plot-models-order-trans-prior-ggplot", function() {
+    BayesTools::plot_models(models, mixed_posteriors, inference, "m", prior = TRUE, transformation = "exp", plot_type = "ggplot")
   })
 
 })

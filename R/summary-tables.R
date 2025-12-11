@@ -753,10 +753,10 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       is.prior.point(prior_list[[i]]) && prior_list[[i]][["parameters"]][["location"]] == 0
     })]
   })
-  
-  cleaned <- .remove_auxiliary_parameters(model_samples, prior_list, remove_params_vec)
+
+  cleaned       <- .remove_auxiliary_parameters(model_samples, prior_list, remove_params_vec)
   model_samples <- cleaned$model_samples
-  prior_list <- cleaned$prior_list
+  prior_list    <- cleaned$prior_list
 
   # simplify mixture and spike and slab priors to simple priors
   # the samples and summary can be dealt with as any other prior (i.e., transformations later)
@@ -764,10 +764,10 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     if(is.prior.spike_and_slab(prior_list[[par]])){
 
       # process spike and slab using helper function
-      processed <- .process_spike_and_slab(model_samples, prior_list, par, conditional, remove_inclusion, warnings)
+      processed     <- .process_spike_and_slab(model_samples, prior_list, par, conditional, remove_inclusion, warnings)
       model_samples <- processed$model_samples
-      prior_list <- processed$prior_list
-      warnings <- processed$warnings
+      prior_list    <- processed$prior_list
+      warnings      <- processed$warnings
 
     }else if(is.prior.mixture(prior_list[[par]])){
 
@@ -852,7 +852,11 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       }else{
 
         # prepare parameter names
-        par_names <- par
+        if(inherits(prior_list[[par]], "prior.factor_mixture")){
+          par_names <- .JAGS_prior_factor_names(par, prior_list[[par]])
+        }else{
+          par_names <- par
+        }
 
         # change the samples between conditional/averaged based on the preferences
         if(conditional){

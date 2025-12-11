@@ -707,12 +707,17 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   return(trimws(sub("\\|.*$", "", formula)))
 }
 .add_intercept_to_formula <- function(formula){
-  # converts formula with -1 (no intercept) back to formula with intercept
-  # by removing the -1 term
+  # converts formula with -1 or 0 (no intercept) back to formula with intercept
+  # by removing the -1 or 0 term
   formula_str <- paste(deparse(formula), collapse = " ")
-  # Remove various forms of -1 or + -1
+  # Remove various forms of -1, + -1, 0, or + 0
   formula_str <- gsub("\\s*\\-\\s*1\\s*", "", formula_str)
   formula_str <- gsub("\\s*\\+\\s*\\-\\s*1\\s*", "", formula_str)
+  formula_str <- gsub("\\s*\\+\\s*0\\s*", "", formula_str)
+  # Handle 0 at the start (e.g., "~ 0 + x")
+  formula_str <- gsub("~\\s*0\\s*\\+\\s*", "~ ", formula_str)
+  # Handle 0 alone (e.g., "~ 0")
+  formula_str <- gsub("~\\s*0\\s*$", "~ 1", formula_str)
 
   # Handle case where formula becomes empty (just "~")
   if(grepl("^\\s*~\\s*$", formula_str)){
