@@ -323,4 +323,8 @@ test_that("-1 (no intercept) formula handling works correctly", {
   expect_equal(.add_intercept_to_formula(~ x + y - 1), ~ x + y)
   expect_equal(.add_intercept_to_formula(~ - 1), ~ 1)
 
+  expect_equal(.add_intercept_to_formula(~ x + 0), ~ x)
+  expect_equal(.add_intercept_to_formula(~ x + y + 0), ~ x + y)
+  expect_equal(.add_intercept_to_formula(~ 0), ~ 1)
+
 })

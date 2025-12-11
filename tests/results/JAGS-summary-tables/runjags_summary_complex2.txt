@@ -1,0 +1,12 @@
+                   Mean    SD   lCI Median   uCI
+mu                1.019 0.588 0.243  0.891 2.460
+bias (inclusion)  0.526    NA    NA     NA    NA
+PET               0.823 0.562 0.034  0.831 2.016
+PEESE             1.365 1.080 0.060  1.208 3.836
+omega[0,0.025]    1.000 0.000 1.000  1.000 1.000
+omega[0.025,0.05] 0.604 0.267 0.062  0.657 0.970
+omega[0.05,0.975] 0.427 0.272 0.018  0.408 0.937
+omega[0.975,1]    0.635 0.367 0.038  0.651 1.000
+[0;31mConditional summary for PET is based on 59 samples.[0m
+[0;31mConditional summary for PEESE is based on 61 samples.[0m
+[0;31mConditional summary for omega is based on 143 samples.[0m

@@ -1,3 +1,11 @@
+# version 0.2.24
+### Features
+- major refactoring and speed-up of unit tests
+
+### Fixes
+- fixes incorrect ordering the printed mixture priors
+- fixes formula with no intercepts coded as `0` (instead of only `-1`)
+
 # version 0.2.23
 ### Fixes
 - `JAGS_diagnostics` functions now correctly handle factor parameters nested within mixture priors

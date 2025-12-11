@@ -59,7 +59,9 @@ test_that("Summary table advanced features work correctly", {
   # Test 6: Orthonormal contrast transformations to differences from the mean
   fit_orthonormal <- readRDS(file.path(temp_fits_dir, "fit_factor_orthonormal.RDS"))
 
-  runjags_summary_orthonormal <- suppressMessages(runjags_estimates_table(fit_orthonormal, transform_factors = TRUE))
+  runjags_summary_orthonormal  <- suppressMessages(runjags_estimates_table(fit_orthonormal, transform_factors = TRUE))
+  runjags_summary_orthonormal2 <- suppressMessages(runjags_estimates_table(fit_orthonormal, transform_factors = TRUE,
+                                                                          transformations = list("p1" = list(fun = exp))))
 
   # Test 7: Custom transformations with transform_factors = FALSE
   # Use a model with factor parameters for transformation testing
@@ -77,8 +79,11 @@ test_that("Summary table advanced features work correctly", {
     remove_inclusion = TRUE
   ))
 
-  # Test 9: Custom probs parameter
-  runjags_summary_custom_probs <- runjags_estimates_table(fit_complex)
+  # Test 9: Conditional estimates with mixture priors
+  fit_complex_bias  <- readRDS(file.path(temp_fits_dir, "fit_complex_bias.RDS"))
+  fit_complex_mixed <- readRDS(file.path(temp_fits_dir, "fit_complex_mixed.RDS"))
+  runjags_summary_complex2 <- runjags_estimates_table(fit_complex_bias, conditional = TRUE)
+  runjags_summary_complex3 <- runjags_estimates_table(fit_complex_mixed, conditional = TRUE)
 
   # Test basic properties
   expect_s3_class(runjags_summary_transform, "BayesTools_table")
@@ -90,9 +95,11 @@ test_that("Summary table advanced features work correctly", {
   expect_s3_class(runjags_summary_spike, "BayesTools_table")
   expect_s3_class(runjags_inference_spike, "BayesTools_table")
   expect_s3_class(runjags_summary_orthonormal, "BayesTools_table")
+  expect_s3_class(runjags_summary_orthonormal2, "BayesTools_table")
   expect_s3_class(runjags_summary_custom_transform, "BayesTools_table")
   expect_s3_class(runjags_summary_remove_inclusion, "BayesTools_table")
-  expect_s3_class(runjags_summary_custom_probs, "BayesTools_table")
+  expect_s3_class(runjags_summary_complex2, "BayesTools_table")
+  expect_s3_class(runjags_summary_complex3, "BayesTools_table")
 
   # Test that row names differ with different formula_prefix settings
   expect_false(identical(rownames(runjags_summary_prefix_true),
@@ -110,9 +117,11 @@ test_that("Summary table advanced features work correctly", {
   test_reference_table(runjags_summary_spike, "advanced_spike_slab_estimates.txt", "Spike slab estimates table mismatch")
   test_reference_table(runjags_inference_spike, "advanced_spike_slab_inference.txt", "Spike slab inference table mismatch")
   test_reference_table(runjags_summary_orthonormal, "advanced_orthonormal_transform.txt", "Orthonormal transform table mismatch")
+  test_reference_table(runjags_summary_orthonormal2, "advanced_orthonormal_transform2.txt", "Orthonormal transform2 table mismatch")
   test_reference_table(runjags_summary_custom_transform, "advanced_custom_transform.txt", "Custom transform table mismatch")
   test_reference_table(runjags_summary_remove_inclusion, "advanced_remove_inclusion.txt", "Remove inclusion table mismatch")
-  test_reference_table(runjags_summary_custom_probs, "advanced_custom_probs.txt", "Custom probs table mismatch")
+  test_reference_table(runjags_summary_complex2, "runjags_summary_complex2.txt", "Custom probs table mismatch")
+  test_reference_table(runjags_summary_complex3, "runjags_summary_complex3.txt", "Custom probs table mismatch")
 
 })
 

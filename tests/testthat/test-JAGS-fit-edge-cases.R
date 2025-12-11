@@ -245,19 +245,44 @@ test_that("JAGS_extend works correctly", {
     seed = 1
   )
 
+  # Test extending a fitted model
+  fit_extended2 <- JAGS_extend(
+    fit_simple,
+    autofit_control = list(
+      max_Rhat = 1.05,
+      min_ESS = 100,
+      max_error = 0.01,
+      max_SD_error = 0.05,
+      max_time = list(time = 1, unit = "mins"),
+      sample_extend = 100,
+      restarts = 2,
+      max_extend = 2
+    ),
+    parallel = 2,
+    cores = 2,
+    silent = TRUE,
+    seed = 1
+  )
+
   # Check that the extended fit is still a BayesTools_fit
 
   expect_true(inherits(fit_extended, "BayesTools_fit"))
   expect_true(inherits(fit_extended, "runjags"))
+  expect_true(inherits(fit_extended2, "BayesTools_fit"))
+  expect_true(inherits(fit_extended2, "runjags"))
 
   # Check that attributes are preserved
   expect_true(!is.null(attr(fit_extended, "prior_list")))
   expect_true(!is.null(attr(fit_extended, "model_syntax")))
+  expect_true(!is.null(attr(fit_extended2, "prior_list")))
+  expect_true(!is.null(attr(fit_extended2, "model_syntax")))
 
   # Check that the extended fit has more samples
-  original_samples <- nrow(suppressWarnings(coda::as.mcmc(fit_simple)))
-  extended_samples <- nrow(suppressWarnings(coda::as.mcmc(fit_extended)))
-  expect_true(extended_samples >= original_samples)
+  original_samples  <- nrow(suppressWarnings(coda::as.mcmc(fit_simple)))
+  extended_samples  <- nrow(suppressWarnings(coda::as.mcmc(fit_extended)))
+  extended_samples2 <- nrow(suppressWarnings(coda::as.mcmc(fit_extended2)))
+  expect_true(extended_samples  >= original_samples)
+  expect_true(extended_samples2 >= original_samples)
 
 })
 

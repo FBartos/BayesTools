@@ -1220,3 +1220,72 @@ test_that("Marginal distributions with spike and slab and mixture priors work", 
   vdiffr::expect_doppelganger("plot_marginal-ss-int", plot_marginal(out$averaged, plot_type = "ggplot", parameter = "mu_intercept", prior = TRUE, dots_prior = list(lty = 2), xlim = c(-1, 1)))
 
 })
+
+
+test_that("Marginal distributions with one-sided weightfunction model work", {
+
+  skip_on_os(c("mac", "linux", "solaris"))
+  skip_on_cran()
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+
+  # Load pre-fitted one-sided weightfunction model
+  fit_wf <- readRDS(file.path(temp_fits_dir, "fit_wf_onesided.RDS"))
+
+  mixed_posteriors <- as_mixed_posteriors(
+    model        = fit_wf,
+    parameters   = "omega"
+  )
+
+  # Not implemented for weightfunctions
+  #  marginal_posterior(mixed_posteriors, parameter = "omega", prior_samples = TRUE)
+  temp_samples <- .as_mixed_priors.weightfunction(attr(fit_wf, "prior_list")[[1]], parameter = "omega")
+
+  # Visual tests for weightfunction posteriors
+  vdiffr::expect_doppelganger("marginal-wf-onesided-hist", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 2))
+    hist(mixed_posteriors$omega[,1], freq = FALSE, main = "omega[0,0.025]", breaks = 50, xlim = c(0, 1))
+    lines(density(temp_samples[,1]))
+    hist(mixed_posteriors$omega[,2], freq = FALSE, main = "omega[0.025,1]", breaks = 50, xlim = c(0, 1))
+  })
+
+})
+
+
+test_that("Marginal distributions with independent factor model work", {
+
+  skip_on_os(c("mac", "linux", "solaris"))
+  skip_on_cran()
+  skip_if_not_installed("rjags")
+
+  # Load pre-fitted independent factor model
+  fit_ind <- readRDS(file.path(temp_fits_dir, "fit_factor_independent.RDS"))
+
+  mixed_posteriors <- as_mixed_posteriors(
+    model        = fit_ind,
+    parameters   = "p1"
+  )
+  marginal_posteriors <- marginal_posterior(mixed_posteriors, parameter = "p1", prior_samples = TRUE)
+
+  # Visual tests for independent factor posteriors
+  vdiffr::expect_doppelganger("marginal-factor-independent-hist", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+
+    par(mfrow = c(1, 3))
+    hist(mixed_posteriors$p1[,1], freq = FALSE, main = "p1[1] (level 1)", breaks = 50)
+    lines(density(marginal_posteriors[[1]]))
+    lines(density(attr(marginal_posteriors[[3]], "prior_samples")), lty = 2)
+    hist(mixed_posteriors$p1[,2], freq = FALSE, main = "p1[2] (level 2)", breaks = 50)
+    lines(density(marginal_posteriors[[2]]))
+    lines(density(attr(marginal_posteriors[[2]], "prior_samples")), lty = 2)
+    hist(mixed_posteriors$p1[,3], freq = FALSE, main = "p1[3] (level 3)", breaks = 50)
+    lines(density(marginal_posteriors[[3]]))
+    lines(density(attr(marginal_posteriors[[3]], "prior_samples")), lty = 2)
+  })
+
+})
+
