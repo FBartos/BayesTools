@@ -370,6 +370,16 @@ test_that(".plot_prior_list.factor handles point priors within factor", {
     plot_prior_list(prior_list)
   })
 
+  # This should handle mixed plotting
+  vdiffr::expect_doppelganger("plot-factor-with-spike-trans", function() {
+    plot_prior_list(prior_list, transformation = "tanh")
+  })
+
+  # This should handle mixed plotting
+  vdiffr::expect_doppelganger("plot-factor-with-spike-trans-settings", function() {
+    plot_prior_list(prior_list, transformation = "tanh", transformation_settings = T, xlim = c(-0.5, 0.5))
+  })
+
 })
 
 test_that(".plot_prior_list.factor handles transformation", {
@@ -440,6 +450,16 @@ test_that("plot_models handles order argument", {
     BayesTools::plot_models(models, mixed_posteriors, inference, "m", order = list("decreasing", "probability"))
   })
 
+  # Test with order = decreasing by probability
+  vdiffr::expect_doppelganger("plot-models-order-trans", function() {
+    BayesTools::plot_models(models, mixed_posteriors, inference, "m", transformation = "exp")
+  })
+
+  # Test with order = decreasing by probability
+  vdiffr::expect_doppelganger("plot-models-order-trans-prior", function() {
+    BayesTools::plot_models(models, mixed_posteriors, inference, "m", prior = TRUE, transformation = "exp")
+  })
+
 })
 
 
@@ -490,46 +510,20 @@ test_that("plot_models handles orthonormal priors", {
     BayesTools::plot_models(models, mixed_posteriors, inference, factor_params)
   })
 
-})
+  vdiffr::expect_doppelganger("plot-models-orthonormal-2", function() {
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4), mfrow = c(3, 1))
+    BayesTools::plot_models(models, mixed_posteriors, inference, factor_params, transformation = "exp")
+  })
 
-
-# ============================================================================ #
-# SECTION 11: .plot_data_samples.factor with transformation
-# ============================================================================ #
-test_that("plot_posterior handles factor samples with transformation", {
-  set.seed(1)
-  skip_if_not_installed("rjags")
-  skip_on_cran()
-  skip_if_no_fits()
-
-  # Load orthonormal models with marginal likelihoods
-  fit_orthonormal_0 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_0.RDS"))
-  marglik_orthonormal_0 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_0_marglik.RDS"))
-
-  fit_orthonormal_1 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_1.RDS"))
-  marglik_orthonormal_1 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_1_marglik.RDS"))
-
-  models <- list(
-    list(fit = fit_orthonormal_0, marglik = marglik_orthonormal_0, prior_weights = 1),
-    list(fit = fit_orthonormal_1, marglik = marglik_orthonormal_1, prior_weights = 1)
-  )
-
-  # Get factor parameter names from the model
-  prior_list <- attr(fit_orthonormal_1, "prior_list")
-  factor_params <- names(prior_list)[sapply(prior_list, is.prior.factor)]
-
-  mixed_posteriors <- mix_posteriors(
-    model_list = models,
-    parameters = factor_params,
-    is_null_list = setNames(list(c(TRUE, FALSE)), factor_params),
-    seed = 1,
-    n_samples = 1000
-  )
-
-  # Test with transformation on factor posterior
-  vdiffr::expect_doppelganger("plot-posterior-factor-transformation", function() {
-    suppressMessages(BayesTools::plot_posterior(mixed_posteriors, factor_params, transformation = "exp"))
+  vdiffr::expect_doppelganger("plot-models-orthonormal-3", function() {
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4), mfrow = c(3, 1))
+    BayesTools::plot_models(models, mixed_posteriors, inference, factor_params, transformation = "exp", prior = TRUE)
   })
 
 })
+
 

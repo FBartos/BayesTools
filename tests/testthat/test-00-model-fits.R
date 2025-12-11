@@ -1357,9 +1357,25 @@ test_that("Advanced JAGS_fit features work correctly", {
       }
     }"
 
+  log_posterior <- function(parameters, data){
+    return(stats::dnorm(parameters[["g"]], log = TRUE))
+    #return(sum(stats::dnorm(data$x, mean = parameters[["m"]], sd = parameters[["s"]], log = TRUE)))
+  }
+  add_l <- c("g" = -Inf)
+  add_u <- c("g" =  Inf)
+
   fit_add_parameters <- JAGS_fit(model_syntax_add_param, data, priors_list,
                                  add_parameters = "g",
                                  chains = 2, adapt = 100, burnin = 100, sample = 300, seed = 1)
+  marglik_fit_add_parameters <- JAGS_bridgesampling(
+    fit                = fit_add_parameters,
+    log_posterior      = log_posterior,
+    data               = data,
+    prior_list         = priors_list,
+    add_parameters     = "g",
+    add_bounds         = list("lb" = add_l, "ub" = add_u)
+    )
+
   result <- save_fit(fit_add_parameters, "fit_add_parameters",
                      simple_priors = TRUE, add_parameters = TRUE,
                      note = "Model with additional monitored parameter 'g' not in prior_list")

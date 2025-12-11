@@ -266,7 +266,6 @@ test_that("prior plot functions (PET-PEESE) work", {
   })
 })
 
-
 test_that("prior plot functions (weightfunctions) work", {
 
   ### simple cases
@@ -350,7 +349,6 @@ test_that("prior plot functions (weightfunctions) work", {
 
 })
 
-
 test_that("prior plot functions (orthonormal) work", {
 
   ### simple cases
@@ -404,7 +402,6 @@ test_that("prior plot functions (orthonormal) work", {
 
 })
 
-
 test_that("prior plot functions (treatment) work", {
 
   ### simple cases
@@ -454,7 +451,6 @@ test_that("prior plot functions (treatment) work", {
 
 })
 
-
 test_that("prior plot functions (independent) work", {
 
   ### simple cases
@@ -494,7 +490,6 @@ test_that("prior plot functions (independent) work", {
   })
 
 })
-
 
 test_that("prior plot functions (meandif) work", {
 
@@ -548,7 +543,6 @@ test_that("prior plot functions (meandif) work", {
   })
 
 })
-
 
 test_that("posterior plot functions (simple) work", {
 
@@ -612,7 +606,6 @@ test_that("posterior plot functions (simple) work", {
     plot_posterior(mixed_posteriors, "s", transformation = "exp", lwd = 2, col = "red", prior = TRUE, dots_prior = list(col = "blue", lty = 2))
   })
 })
-
 
 test_that("posterior plot functions (PET-PEESE) work", {
 
@@ -684,7 +677,6 @@ test_that("posterior plot functions (PET-PEESE) work", {
   })
 
 })
-
 
 test_that("posterior plot functions (weightfunctions) work", {
 
@@ -761,7 +753,6 @@ test_that("posterior plot functions (weightfunctions) work", {
   })
 
 })
-
 
 test_that("posterior plot functions (orthonormal) work", {
 
@@ -1214,7 +1205,6 @@ test_that("posterior plot model averaging based on simple single JAGS models  (f
     plot_posterior(mixed_posteriors, "sigma", prior = T, dots_prior = list(col = "grey"))
   })
 })
-
 
 test_that("posterior plot model averaging based on complex bias mixture model (PET + PEESE + weightfunction)", {
 

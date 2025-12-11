@@ -80,7 +80,7 @@ test_that("Prior plot (point) function works", {
 test_that("Prior plot (spike and slab) function works", {
 
   # check the default options
-  p1 <- prior("bernoulli", list(.33))
+  p1 <- prior_spike_and_slab(prior("Normal", list(0, 1)))
 
   vdiffr::expect_doppelganger("priors-plot-15-1", function()plot(p1))
   vdiffr::expect_doppelganger("priors-plot-15-2", function()plot(p1, short_name = TRUE))
@@ -93,7 +93,10 @@ test_that("Prior plot (spike and slab) function works", {
   vdiffr::expect_doppelganger("priors-plot-15-8",  plot(p1, parameter_names = TRUE, plot_type = "ggplot"))
   vdiffr::expect_doppelganger("priors-plot-15-9",  plot(p1, xlab = "xlab", ylab = "ylab", main = "main", plot_type = "ggplot"))
   vdiffr::expect_doppelganger("priors-plot-15-10", plot(p1, lwd = 3, lty = 3, col = "blue", plot_type = "ggplot"))
-  vdiffr::expect_doppelganger("priors-plot-15-11", plot(p1, par_name = bquote(mu), plot_type = "ggplot"))
+  vdiffr::expect_doppelganger("priors-plot-15-11", plot(p1, par_name = "mu", plot_type = "ggplot"))
+  vdiffr::expect_doppelganger("priors-plot-15-12", plot(p1, par_name = "mu", plot_type = "ggplot", transformation = "exp"))
+  vdiffr::expect_doppelganger("priors-plot-15-13", plot(p1, par_name = "mu", plot_type = "ggplot", transformation = "exp", transformation_settings = T, xlim = c(1, 5)))
+
 
 })
 
@@ -151,9 +154,11 @@ test_that("Prior plot (orthonormal) function works", {
   vdiffr::expect_doppelganger("priors-plot-11-2", function()plot(p11.2))
   vdiffr::expect_doppelganger("priors-plot-11-3", plot(p11.3, plot_type = "ggplot"))
   vdiffr::expect_doppelganger("priors-plot-11-5", function()plot(p11.5))
+  vdiffr::expect_doppelganger("priors-plot-11-5-1", function()suppressMessages(plot(p11.5, transformation = "exp")))
   vdiffr::expect_doppelganger("priors-plot-12-9", function()plot(p12.9))
   vdiffr::expect_doppelganger("priors-plot-20-3", function()plot(p20.3))
   vdiffr::expect_doppelganger("priors-plot-20-5", plot(p20.5, plot_type = "ggplot"))
+  vdiffr::expect_doppelganger("priors-plot-20-5-1", plot(p20.5, plot_type = "ggplot", transformation = "exp"))
 
 })
 
@@ -166,6 +171,7 @@ test_that("Prior plot (treatment) function works", {
   vdiffr::expect_doppelganger("priors-plot-13-1", function()plot(p13))
   vdiffr::expect_doppelganger("priors-plot-13-2", plot(p13, plot_type = "ggplot"))
   vdiffr::expect_doppelganger("priors-plot-14",   function()plot(p14))
+  vdiffr::expect_doppelganger("priors-plot-14-1",   function()plot(p14, transformation = "tanh"))
   vdiffr::expect_doppelganger("priors-plot-21",   function()plot(p21))
 
 })
@@ -179,6 +185,7 @@ test_that("Prior plot (independent) function works", {
   vdiffr::expect_doppelganger("priors-plot-16-1", function()plot(p15))
   vdiffr::expect_doppelganger("priors-plot-16-2", plot(p15, plot_type = "ggplot"))
   vdiffr::expect_doppelganger("priors-plot-17",   function()plot(p16))
+  vdiffr::expect_doppelganger("priors-plot-17-1",   function()plot(p16, transformation = "exp"))
   vdiffr::expect_doppelganger("priors-plot-22",   function()plot(p22))
 
 })

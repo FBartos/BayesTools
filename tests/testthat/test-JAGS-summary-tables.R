@@ -287,4 +287,7 @@ test_that("stan_estimates_table works with stored fit", {
   stan_summary <- stan_estimates_table(fit_stan)
   test_reference_table(stan_summary, "stan_estimates_basic.txt")
 
+  stan_summary2 <- stan_estimates_table(fit_stan, transformations = list("mu" = list(fun = exp)))
+  test_reference_table(stan_summary2, "stan_estimates_basic2.txt")
+
 })
