@@ -133,6 +133,7 @@ test_that("plot_posterior handles various sample types", {
   set.seed(1)
   skip_if_not_installed("rjags")
   skip_on_cran()
+  skip_if_no_fits()
 
   # Load fits
   fit_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
@@ -181,6 +182,7 @@ test_that("plot_posterior handles weightfunction posteriors", {
   set.seed(1)
   skip_if_not_installed("rjags")
   skip_on_cran()
+  skip_if_no_fits()
 
   # Load fits
   fit_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
@@ -344,6 +346,189 @@ test_that("plot_prior_list handles weightfunction priors", {
   # Test ggplot version
   vdiffr::expect_doppelganger("plot-prior-list-weightfunction-ggplot", {
     plot_prior_list(prior_list_wf, plot_type = "ggplot")
+  })
+
+})
+
+
+# ============================================================================ #
+# SECTION 9: .plot_prior_list.factor edge cases
+# ============================================================================ #
+test_that(".plot_prior_list.factor handles point priors within factor", {
+  set.seed(1)
+
+  # Test factor prior - using treatment contrast with normal distribution
+  prior_spike <- prior("spike", list(0))
+  prior_factor_treat <- prior_factor("normal", list(mean = 0, sd = 1), contrast = "treatment")
+  attr(prior_factor_treat, "levels") <- 3
+
+  # Simple list with both spike and factor priors
+  prior_list <- list(p1 = prior_spike, p2 = prior_factor_treat)
+
+  # This should handle mixed plotting
+  vdiffr::expect_doppelganger("plot-factor-with-spike", function() {
+    plot_prior_list(prior_list)
+  })
+
+})
+
+test_that(".plot_prior_list.factor handles transformation", {
+  set.seed(1)
+
+  # Create treatment factor prior with normal distribution
+  prior_treat <- prior_factor("normal", list(mean = 0, sd = 0.5), contrast = "treatment")
+  attr(prior_treat, "levels") <- 3
+
+  prior_list <- list(p1 = prior_treat)
+
+  # Test with transformation (exp) - use string format for simplicity
+  vdiffr::expect_doppelganger("plot-factor-transformation", function() {
+    plot_prior_list(prior_list, transformation = "exp")
+  })
+
+})
+
+
+# ============================================================================ #
+# SECTION 10: plot_models with order argument
+# ============================================================================ #
+test_that("plot_models handles order argument", {
+  set.seed(1)
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+  skip_if_no_fits()
+
+  # Load fits
+  fit_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
+  marglik_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0_marglik.RDS"))
+
+  fit_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1.RDS"))
+  marglik_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1_marglik.RDS"))
+
+  models <- list(
+    list(fit = fit_summary0, marglik = marglik_summary0, prior_weights = 1, fit_summary = runjags_estimates_table(fit_summary0)),
+    list(fit = fit_summary1, marglik = marglik_summary1, prior_weights = 1, fit_summary = runjags_estimates_table(fit_summary1))
+  )
+  models <- models_inference(models)
+
+  inference <- ensemble_inference(
+    model_list = models,
+    parameters = c("m"),
+    is_null_list = list("m" = c(FALSE, FALSE))
+  )
+
+  mixed_posteriors <- mix_posteriors(
+    model_list = models,
+    parameters = c("m"),
+    is_null_list = list("m" = c(FALSE, FALSE)),
+    seed = 1,
+    n_samples = 1000
+  )
+
+  # Test with order = decreasing by estimate
+  vdiffr::expect_doppelganger("plot-models-order-decreasing-estimate", function() {
+    BayesTools::plot_models(models, mixed_posteriors, inference, "m", order = list("decreasing", "estimate"))
+  })
+
+  # Test with order = increasing by BF
+  vdiffr::expect_doppelganger("plot-models-order-increasing-bf", function() {
+    BayesTools::plot_models(models, mixed_posteriors, inference, "m", order = list("decreasing", "BF"))
+  })
+
+  # Test with order = decreasing by probability
+  vdiffr::expect_doppelganger("plot-models-order-decreasing-prob", function() {
+    BayesTools::plot_models(models, mixed_posteriors, inference, "m", order = list("decreasing", "probability"))
+  })
+
+})
+
+
+test_that("plot_models handles orthonormal priors", {
+  set.seed(1)
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+  skip_if_no_fits()
+
+  # Load orthonormal models with marginal likelihoods
+  fit_orthonormal_0 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_0.RDS"))
+  marglik_orthonormal_0 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_0_marglik.RDS"))
+
+  fit_orthonormal_1 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_1.RDS"))
+  marglik_orthonormal_1 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_1_marglik.RDS"))
+
+  models <- list(
+    list(fit = fit_orthonormal_0, marglik = marglik_orthonormal_0, prior_weights = 1,
+         fit_summary = suppressMessages(runjags_estimates_table(fit_orthonormal_0, transform_factors = TRUE))),
+    list(fit = fit_orthonormal_1, marglik = marglik_orthonormal_1, prior_weights = 1,
+         fit_summary = suppressMessages(runjags_estimates_table(fit_orthonormal_1, transform_factors = TRUE)))
+  )
+  models <- models_inference(models)
+
+  # Get factor parameter names from the model
+  prior_list <- attr(fit_orthonormal_1, "prior_list")
+  factor_params <- names(prior_list)[sapply(prior_list, is.prior.factor)]
+
+  inference <- ensemble_inference(
+    model_list = models,
+    parameters = factor_params,
+    is_null_list = setNames(list(c(TRUE, FALSE)), factor_params)
+  )
+
+  mixed_posteriors <- mix_posteriors(
+    model_list = models,
+    parameters = factor_params,
+    is_null_list = setNames(list(c(TRUE, FALSE)), factor_params),
+    seed = 1,
+    n_samples = 1000
+  )
+
+  # Test with orthonormal priors - the models should be transformed to differences from mean
+  vdiffr::expect_doppelganger("plot-models-orthonormal", function() {
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4), mfrow = c(3, 1))
+    BayesTools::plot_models(models, mixed_posteriors, inference, factor_params)
+  })
+
+})
+
+
+# ============================================================================ #
+# SECTION 11: .plot_data_samples.factor with transformation
+# ============================================================================ #
+test_that("plot_posterior handles factor samples with transformation", {
+  set.seed(1)
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+  skip_if_no_fits()
+
+  # Load orthonormal models with marginal likelihoods
+  fit_orthonormal_0 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_0.RDS"))
+  marglik_orthonormal_0 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_0_marglik.RDS"))
+
+  fit_orthonormal_1 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_1.RDS"))
+  marglik_orthonormal_1 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_1_marglik.RDS"))
+
+  models <- list(
+    list(fit = fit_orthonormal_0, marglik = marglik_orthonormal_0, prior_weights = 1),
+    list(fit = fit_orthonormal_1, marglik = marglik_orthonormal_1, prior_weights = 1)
+  )
+
+  # Get factor parameter names from the model
+  prior_list <- attr(fit_orthonormal_1, "prior_list")
+  factor_params <- names(prior_list)[sapply(prior_list, is.prior.factor)]
+
+  mixed_posteriors <- mix_posteriors(
+    model_list = models,
+    parameters = factor_params,
+    is_null_list = setNames(list(c(TRUE, FALSE)), factor_params),
+    seed = 1,
+    n_samples = 1000
+  )
+
+  # Test with transformation on factor posterior
+  vdiffr::expect_doppelganger("plot-posterior-factor-transformation", function() {
+    suppressMessages(BayesTools::plot_posterior(mixed_posteriors, factor_params, transformation = "exp"))
   })
 
 })

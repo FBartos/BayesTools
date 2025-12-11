@@ -120,6 +120,7 @@ test_that("JAGS_get_inits handles various prior types", {
 test_that("JAGS_check_convergence works with fitted models", {
 
   skip_if_not_installed("rjags")
+  skip_if_no_fits()
 
   fit_simple <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
   prior_list <- attr(fit_simple, "prior_list")
@@ -179,6 +180,7 @@ test_that("JAGS_fit preserves attributes", {
 
   skip_if_not_installed("rjags")
   skip_on_cran()
+  skip_if_no_fits()
 
   fit_simple <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
 
@@ -200,6 +202,7 @@ test_that("runjags_estimates_table works with fitted models", {
 
   skip_if_not_installed("rjags")
   skip_on_cran()
+  skip_if_no_fits()
 
   fit_simple <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
 
@@ -210,5 +213,197 @@ test_that("runjags_estimates_table works with fitted models", {
   # Test without specific parameters
   estimates_table_param <- runjags_estimates_table(fit_simple, remove_parameters = "m")
   test_reference_table(estimates_table_param, "runjags_estimates_param_m.txt")
+
+})
+
+
+# ============================================================================ #
+# SECTION 7: JAGS_extend tests
+# ============================================================================ #
+test_that("JAGS_extend works correctly", {
+
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+  skip_if_no_fits()
+
+  fit_simple <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
+
+  # Test extending a fitted model
+  fit_extended <- JAGS_extend(
+    fit_simple,
+    autofit_control = list(
+      max_Rhat = 1.05,
+      min_ESS = 100,
+      max_error = 0.01,
+      max_SD_error = 0.05,
+      max_time = list(time = 1, unit = "mins"),
+      sample_extend = 100,
+      restarts = 2,
+      max_extend = 2
+    ),
+    silent = TRUE,
+    seed = 1
+  )
+
+  # Check that the extended fit is still a BayesTools_fit
+
+  expect_true(inherits(fit_extended, "BayesTools_fit"))
+  expect_true(inherits(fit_extended, "runjags"))
+
+  # Check that attributes are preserved
+  expect_true(!is.null(attr(fit_extended, "prior_list")))
+  expect_true(!is.null(attr(fit_extended, "model_syntax")))
+
+  # Check that the extended fit has more samples
+  original_samples <- nrow(suppressWarnings(coda::as.mcmc(fit_simple)))
+  extended_samples <- nrow(suppressWarnings(coda::as.mcmc(fit_extended)))
+  expect_true(extended_samples >= original_samples)
+
+})
+
+test_that("JAGS_extend error handling", {
+
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+
+  # Test error when fit is not a BayesTools_fit
+  expect_error(
+    JAGS_extend(list(), autofit_control = list()),
+    "'fit' must be a 'BayesTools_fit'"
+  )
+
+})
+
+
+# ============================================================================ #
+# SECTION 8: .check_JAGS_syntax error handling
+# ============================================================================ #
+test_that(".check_JAGS_syntax validates syntax correctly", {
+
+  # Test with valid syntax
+  expect_silent(JAGS_add_priors("model{}", list(mu = prior("normal", list(0, 1)))))
+
+  # Test with missing "model" keyword
+  expect_error(
+    JAGS_add_priors("invalid{}", list(mu = prior("normal", list(0, 1)))),
+    "syntax must be a JAGS model syntax"
+  )
+
+  # Test with missing opening brace
+  expect_error(
+    JAGS_add_priors("model}", list(mu = prior("normal", list(0, 1)))),
+    "syntax must be a JAGS model syntax"
+  )
+
+  # Test with missing closing brace
+  expect_error(
+    JAGS_add_priors("model{", list(mu = prior("normal", list(0, 1)))),
+    "syntax must be a JAGS model syntax"
+  )
+
+  # Test with non-character input
+  expect_error(
+    JAGS_add_priors(123, list(mu = prior("normal", list(0, 1)))),
+    "must be a character"
+  )
+
+})
+
+
+# ============================================================================ #
+# SECTION 9: JAGS_fit with is_JASP mode
+# ============================================================================ #
+test_that("JAGS_fit works with is_JASP mode", {
+
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+
+  # Simple model for testing is_JASP mode
+  set.seed(1)
+  data <- list(
+    y = rnorm(20, 0.5, 1),
+    N = 20
+  )
+
+  prior_list <- list(
+    mu    = prior("normal", list(0, 1)),
+    sigma = prior("normal", list(0, 1), list(0, Inf))
+  )
+
+  model_syntax <- "model{
+    for(i in 1:N){
+      y[i] ~ dnorm(mu, 1/pow(sigma, 2))
+    }
+  }"
+
+  # Mock JASP progress bar functions (they should be skipped if not available)
+  # The is_JASP mode should work but simply skip progress bars if functions don't exist
+
+    fit_jasp <- capture.output(tryCatch({
+      suppressWarnings(JAGS_fit(
+        model_syntax = model_syntax,
+        data = data,
+        prior_list = prior_list,
+        chains = 1,
+        adapt = 50,
+        burnin = 50,
+        sample = 100,
+        seed = 1,
+        silent = TRUE,
+        is_JASP = TRUE,
+        is_JASP_prefix = "Test"
+      ))
+    }, error = function(e) {
+      # If JASP functions don't exist, this should still produce a fit
+      # or fail gracefully
+      if (grepl("JASP", e$message)) {
+        skip("JASP progress bar functions not available")
+      }
+      stop(e)
+    }))
+
+  test_reference_text(paste0(fit_jasp, collapse = ","), "fit_jasp.txt")
+
+})
+
+
+# ============================================================================ #
+# SECTION 10: .JAGS_prior.mixture with PEESE prior
+# ============================================================================ #
+test_that("JAGS_add_priors handles mixture with PEESE prior", {
+
+  skip_if_not_installed("rjags")
+
+  # Create a bias mixture with PEESE prior
+  bias_mixture <- prior_mixture(list(
+    prior_none(prior_weights = 1),
+    prior_PEESE("normal", list(0, 1), prior_weights = 1)
+  ))
+
+  priors_peese <- list(
+    bias = bias_mixture
+  )
+
+  result_peese <- JAGS_add_priors("model{}", priors_peese)
+  test_reference_text(result_peese, "JAGS_add_priors_peese_mixture.txt")
+
+})
+
+test_that("JAGS_add_priors handles mixture with PET prior", {
+
+  skip_if_not_installed("rjags")
+
+  # Create a bias mixture with PET prior
+  bias_mixture <- prior_mixture(list(
+    prior_none(prior_weights = 1),
+    prior_PET("normal", list(0, 1), prior_weights = 1)
+  ))
+
+  priors_pet <- list(
+    bias = bias_mixture
+  )
+
+  result_pet <- JAGS_add_priors("model{}", priors_pet)
+  test_reference_text(result_pet, "JAGS_add_priors_pet_mixture.txt")
 
 })

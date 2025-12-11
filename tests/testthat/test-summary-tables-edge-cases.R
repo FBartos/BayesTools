@@ -22,6 +22,7 @@ test_that("ensemble_estimates_table handles matrix posteriors", {
 
   skip_if_not_installed("rjags")
   skip_on_cran()
+  skip_if_no_fits()
 
   # Load fits with margliks for creating mixed posteriors
   fit_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
@@ -68,6 +69,7 @@ test_that("ensemble_estimates_table handles transform_factors", {
 
   skip_if_not_installed("rjags")
   skip_on_cran()
+  skip_if_no_fits()
 
   # Load orthonormal models with marginal likelihoods
   fit_orthonormal_0 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_0.RDS"))
@@ -109,6 +111,7 @@ test_that("ensemble_estimates_table handles formula posteriors", {
 
   skip_if_not_installed("rjags")
   skip_on_cran()
+  skip_if_no_fits()
 
   # Use orthonormal models (have formulas and marginal likelihoods)
   fit_formula <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_0.RDS"))
@@ -165,6 +168,7 @@ test_that("ensemble_inference_table handles multiple parameters", {
 
   skip_if_not_installed("rjags")
   skip_on_cran()
+  skip_if_no_fits()
 
   fit_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
   marglik_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0_marglik.RDS"))
@@ -209,6 +213,7 @@ test_that("ensemble_summary_table handles different model configurations", {
 
   skip_if_not_installed("rjags")
   skip_on_cran()
+  skip_if_no_fits()
 
   # Use models with and without spike-at-zero to test remove_spike_0
   fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
@@ -246,6 +251,7 @@ test_that("ensemble_summary_table handles parameters as list", {
 
   skip_if_not_installed("rjags")
   skip_on_cran()
+  skip_if_no_fits()
 
   fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
   marglik_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal_marglik.RDS"))
@@ -271,6 +277,7 @@ test_that("ensemble_diagnostics_table handles different configurations", {
 
   skip_if_not_installed("rjags")
   skip_on_cran()
+  skip_if_no_fits()
 
   # Use models with and without spike-at-zero to test remove_spike_0
   fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
@@ -309,6 +316,7 @@ test_that("marginal_estimates_table handles various inputs", {
   skip_on_cran()
 
   # Create sample data for marginal inference testing
+  set.seed(1)  # Ensure reproducibility
   samples <- list(
     mu = rnorm(1000, 0, 1)
   )
@@ -363,6 +371,7 @@ test_that("model_summary_table handles various configurations", {
 
   skip_if_not_installed("rjags")
   skip_on_cran()
+  skip_if_no_fits()
 
   # Use model with spike-at-zero to test remove_spike_0
   fit_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike.RDS"))
@@ -400,6 +409,7 @@ test_that("update.BayesTools_table works correctly", {
 
   skip_if_not_installed("rjags")
   skip_on_cran()
+  skip_if_no_fits()
 
   fit_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
   marglik_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0_marglik.RDS"))
