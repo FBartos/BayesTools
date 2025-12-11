@@ -224,3 +224,193 @@ test_that("bridge sampling object function works",{
   expect_s3_class(marglik0, "bridge")
 
 })
+
+
+# Targeted tests for uncovered code paths in JAGS-marglik.R
+
+test_that("JAGS_bridgesampling_posterior input validation works", {
+
+  posterior <- matrix(rnorm(30), nrow = 10, ncol = 3)
+  colnames(posterior) <- c("mu", "sigma", "x")
+
+  # Input validation errors
+
+  expect_error(JAGS_bridgesampling_posterior(data.frame(x = 1), prior_list = NULL), "'posterior' must be a matrix")
+  expect_error(JAGS_bridgesampling_posterior(posterior, prior_list = "x"), "'prior_list' must be a list.")
+  expect_error(JAGS_bridgesampling_posterior(posterior, prior_list = prior("normal", list(0, 1))), "'prior_list' must be a list of priors.")
+  expect_error(JAGS_bridgesampling_posterior(posterior, prior_list = list(x = 1)), "'prior_list' must be a list of priors.")
+  expect_error(JAGS_bridgesampling_posterior(posterior, prior_list = NULL, add_parameters = 1), "'add_parameters' must be a character")
+  expect_error(JAGS_bridgesampling_posterior(posterior, prior_list = NULL, add_parameters = "x", add_bounds = "x"), "'add_bounds' must be a list")
+  expect_error(JAGS_bridgesampling_posterior(posterior, prior_list = NULL, add_parameters = "x", add_bounds = list(a = 1)), "'add_bounds' must contain lower and upper bounds")
+  expect_error(JAGS_bridgesampling_posterior(posterior, prior_list = NULL, add_parameters = c("x", "y"), add_bounds = list(lb = 0, ub = 1)), "lb' and 'ub' must have the same lenght")
+  expect_error(JAGS_bridgesampling_posterior(posterior, prior_list = NULL, add_parameters = "x", add_bounds = list(lb = "a", ub = "b")), "lb' and 'ub' must be numeric")
+
+  # Unsupported prior types
+  expect_error(
+    JAGS_bridgesampling_posterior(posterior, prior_list = list(p1 = prior_spike_and_slab(prior("normal", list(0, 1)), prior_inclusion = prior("beta", list(1, 1))))),
+    "spike and slab"
+  )
+  expect_error(
+    JAGS_bridgesampling_posterior(posterior, prior_list = list(p1 = prior_mixture(list(prior("normal", list(0, 1)), prior("normal", list(1, 1))), is_null = c(TRUE, FALSE)))),
+    "prior mixture"
+  )
+
+  # Missing parameters
+  posterior_small <- matrix(rnorm(20), nrow = 10, ncol = 2)
+  colnames(posterior_small) <- c("a", "b")
+  expect_error(JAGS_bridgesampling_posterior(posterior_small, prior_list = list(x = prior("normal", list(0, 1)))), "'posterior' does not contain all")
+
+  # Successful case with add_parameters
+  result <- JAGS_bridgesampling_posterior(posterior, prior_list = list(mu = prior("normal", list(0, 1))), add_parameters = "x", add_bounds = list(lb = -Inf, ub = Inf))
+  expect_true(is.matrix(result))
+  expect_true("x" %in% colnames(result))
+
+})
+
+
+test_that("JAGS_marglik_priors input validation and edge cases work", {
+
+  # Empty prior_list returns empty list
+
+  expect_equal(JAGS_marglik_priors(list(), prior_list = list()), list())
+
+  # Input validation
+  expect_error(JAGS_marglik_priors(list(), prior_list = "x"), "'prior_list' must be a list.")
+  expect_error(JAGS_marglik_priors(list(), prior_list = prior("normal", list(0, 1))), "'prior_list' must be a list of priors.")
+  expect_error(JAGS_marglik_priors(list(), prior_list = list(x = 1)), "'prior_list' must be a list of priors.")
+
+})
+
+
+test_that("JAGS_marglik_parameters input validation and edge cases work", {
+
+  # Test: empty prior_list returns empty list
+  result <- JAGS_marglik_parameters(list(), prior_list = list())
+  expect_equal(result, list())
+
+  # Test: prior_list must be a list
+  expect_error(
+    JAGS_marglik_parameters(list(), prior_list = "not_a_list"),
+    "'prior_list' must be a list."
+  )
+
+  # Test: prior_list must be a list of priors (single prior passed)
+  expect_error(
+    JAGS_marglik_parameters(list(), prior_list = prior("normal", list(0, 1))),
+    "'prior_list' must be a list of priors."
+  )
+
+  # Test: prior_list must be a list of priors (non-prior elements)
+  expect_error(
+    JAGS_marglik_parameters(list(), prior_list = list(x = 1)),
+    "'prior_list' must be a list of priors."
+  )
+
+})
+
+
+test_that("JAGS_marglik_parameters_formula works", {
+
+  # Test: empty formula_prior_list returns empty list
+  result <- JAGS_marglik_parameters_formula(list(), list(), list(), list())
+  expect_equal(result, list())
+
+})
+
+
+test_that(".fit_to_posterior handles different input types", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("coda")
+
+  prior_list <- list(mu = prior("normal", list(0, 1)))
+  model_syntax <- JAGS_add_priors("model{}", prior_list)
+  monitor <- JAGS_to_monitor(prior_list)
+  inits <- JAGS_get_inits(prior_list, chains = 2, seed = 1)
+  log_posterior <- function(parameters, data) return(0)
+
+  set.seed(1)
+  model <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
+
+  # mcmc.list (rjags::coda.samples)
+  samples_mcmc_list <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 100, quiet = TRUE, progress.bar = "none")
+  marglik <- JAGS_bridgesampling(samples_mcmc_list, prior_list = prior_list, data = list(), log_posterior = log_posterior)
+  expect_s3_class(marglik, "bridge")
+
+  # mcmc (coda::as.mcmc)
+  samples_mcmc <- coda::as.mcmc(samples_mcmc_list[[1]])
+  marglik_mcmc <- JAGS_bridgesampling(samples_mcmc, prior_list = prior_list, data = list(), log_posterior = log_posterior)
+  expect_s3_class(marglik_mcmc, "bridge")
+
+  # Error for unsupported input
+  expect_error(JAGS_bridgesampling("bad_input", prior_list = prior_list, data = list(), log_posterior = log_posterior), "not implemented")
+
+})
+
+
+test_that(".fit_to_posterior handles jags.samples output", {
+
+  skip_if_not_installed("rjags")
+
+  # Scalar parameter
+  prior_list <- list(mu = prior("normal", list(0, 1)), sigma = prior("gamma", list(1, 1)))
+  model_syntax <- JAGS_add_priors("model{}", prior_list)
+  monitor <- JAGS_to_monitor(prior_list)
+  inits <- JAGS_get_inits(prior_list, chains = 2, seed = 1)
+  log_posterior <- function(parameters, data) return(0)
+
+  set.seed(1)
+  model <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
+  samples_jags <- rjags::jags.samples(model = model, variable.names = monitor, n.iter = 100, progress.bar = "none")
+  marglik_jags <- JAGS_bridgesampling(samples_jags, prior_list = prior_list, data = list(), log_posterior = log_posterior)
+  expect_s3_class(marglik_jags, "bridge")
+
+})
+
+
+test_that(".fit_to_posterior handles vector parameters in jags.samples", {
+
+  skip_if_not_installed("rjags")
+
+  # Vector parameter (K > 1)
+  prior_list <- list(p = prior("mnormal", list(mean = 0, sd = 1, K = 3)))
+  model_syntax <- JAGS_add_priors("model{}", prior_list)
+  monitor <- JAGS_to_monitor(prior_list)
+  inits <- JAGS_get_inits(prior_list, chains = 2, seed = 1)
+  log_posterior <- function(parameters, data) return(0)
+
+  set.seed(1)
+  model <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
+  samples_jags <- rjags::jags.samples(model = model, variable.names = monitor, n.iter = 100, progress.bar = "none")
+  marglik_jags <- JAGS_bridgesampling(samples_jags, prior_list = prior_list, data = list(), log_posterior = log_posterior)
+  expect_s3_class(marglik_jags, "bridge")
+
+})
+
+
+test_that("JAGS_bridgesampling handles runjags output", {
+
+  skip_if_not_installed("runjags")
+  skip_if_not_installed("rjags")
+
+  prior_list <- list(mu = prior("normal", list(0, 1)))
+  model_syntax <- JAGS_add_priors("model{}", prior_list)
+  log_posterior <- function(parameters, data) return(0)
+
+  set.seed(1)
+  fit <- suppressWarnings(runjags::run.jags(
+    model = model_syntax,
+    monitor = "mu",
+    n.chains = 2,
+    adapt = 100,
+    burnin = 100,
+    sample = 500,
+    silent.jags = TRUE,
+    modules = "glm"
+  ))
+
+  marglik <- JAGS_bridgesampling(fit, prior_list = prior_list, data = list(), log_posterior = log_posterior)
+  expect_s3_class(marglik, "bridge")
+  expect_equal(marglik$logml, 0, tolerance = 0.1)
+
+})
