@@ -258,7 +258,7 @@ test_that("JAGS_extend works correctly", {
       restarts = 2,
       max_extend = 2
     ),
-    parallel = 2,
+    parallel = TRUE,
     cores = 2,
     silent = TRUE,
     seed = 1
