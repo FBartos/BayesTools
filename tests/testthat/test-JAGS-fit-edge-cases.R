@@ -432,3 +432,327 @@ test_that("JAGS_add_priors handles mixture with PET prior", {
   test_reference_text(result_pet, "JAGS_add_priors_pet_mixture.txt")
 
 })
+
+
+# ============================================================================ #
+# SECTION 11: Additional coverage tests for uncovered code paths
+# ============================================================================ #
+
+test_that("JAGS_add_priors input validation works", {
+
+  # Empty prior_list returns original syntax
+  expect_equal(JAGS_add_priors("model{}", list()), "model{}")
+
+  # prior_list must be a list of priors
+  expect_error(JAGS_add_priors("model{}", list(x = 1)), "'prior_list' must be a list of priors.")
+  expect_error(JAGS_add_priors("model{}", prior("normal", list(0, 1))), "'prior_list' must be a list of priors.")
+
+})
+
+
+test_that("JAGS_get_inits input validation works", {
+
+  # Empty prior_list returns empty list
+  expect_equal(JAGS_get_inits(list(), chains = 2, seed = 1), list())
+
+  # Input validation
+  expect_error(JAGS_get_inits(list(x = 1), chains = 2, seed = 1), "'prior_list' must be a list of priors.")
+  expect_error(JAGS_get_inits(prior("normal", list(0, 1)), chains = 2, seed = 1), "'prior_list' must be a list of priors.")
+
+})
+
+
+test_that("JAGS_to_monitor input validation works", {
+
+  # Empty prior_list returns empty string
+  expect_equal(JAGS_to_monitor(list()), "")
+
+  # Input validation
+  expect_error(JAGS_to_monitor(list(x = 1)), "'prior_list' must be a list of priors.")
+  expect_error(JAGS_to_monitor(prior("normal", list(0, 1))), "'prior_list' must be a list of priors.")
+
+})
+
+
+test_that("JAGS_check_convergence handles single chain (R-hat warning)", {
+
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+
+  prior_list <- list(mu = prior("normal", list(0, 1)))
+  model_syntax <- JAGS_add_priors("model{}", prior_list)
+
+  set.seed(1)
+  fit <- suppressWarnings(runjags::run.jags(
+    model = model_syntax,
+    monitor = "mu",
+    n.chains = 1,  # Single chain - R-hat cannot be computed
+    adapt = 50,
+    burnin = 50,
+    sample = 100,
+    silent.jags = TRUE
+  ))
+
+  # Should warn about single chain R-hat
+  expect_warning(
+    JAGS_check_convergence(fit, prior_list = prior_list, max_Rhat = 1.05),
+    "Only one chain was run"
+  )
+
+})
+
+
+test_that("JAGS_check_convergence handles ESS and error checks", {
+
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+
+  prior_list <- list(mu = prior("normal", list(0, 1)))
+  model_syntax <- JAGS_add_priors("model{}", prior_list)
+
+  set.seed(1)
+  fit <- suppressWarnings(runjags::run.jags(
+    model = model_syntax,
+    monitor = "mu",
+    n.chains = 2,
+    adapt = 50,
+    burnin = 50,
+    sample = 50,  # Small sample for testing convergence failures
+    silent.jags = TRUE
+  ))
+
+  # Test with very strict ESS requirement (should fail)
+  result_ess <- JAGS_check_convergence(fit, prior_list = prior_list, max_Rhat = NULL, min_ESS = 10000, max_error = NULL, max_SD_error = NULL, fail_fast = FALSE)
+  expect_false(result_ess)
+  expect_true(!is.null(attr(result_ess, "errors")))
+
+  # Test with very strict error requirement
+  result_err <- JAGS_check_convergence(fit, prior_list = prior_list, max_Rhat = NULL, min_ESS = NULL, max_error = 0.00001, max_SD_error = NULL, fail_fast = FALSE)
+  expect_false(result_err)
+
+  # Test with very strict SD error requirement
+  result_sd <- JAGS_check_convergence(fit, prior_list = prior_list, max_Rhat = NULL, min_ESS = NULL, max_error = NULL, max_SD_error = 0.00001, fail_fast = FALSE)
+  expect_false(result_sd)
+
+})
+
+
+test_that("JAGS_check_and_list_autofit_settings validates all parameters", {
+
+  # Valid settings
+  valid_settings <- list(
+    max_Rhat = 1.05,
+    min_ESS = 500,
+    max_error = 0.01,
+    max_SD_error = 0.05,
+    max_time = list(time = 1, unit = "mins"),
+    sample_extend = 100,
+    restarts = 3,
+    max_extend = 10
+  )
+  expect_silent(JAGS_check_and_list_autofit_settings(valid_settings))
+
+  # max_time without names - should auto-assign
+  unnamed_time <- list(
+    max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05,
+    max_time = list(1, "mins"), sample_extend = 100
+  )
+  expect_silent(JAGS_check_and_list_autofit_settings(unnamed_time))
+
+})
+
+
+test_that("JAGS_add_priors handles spike_and_slab priors", {
+
+  skip_if_not_installed("rjags")
+
+  priors_sas <- list(
+    mu = prior_spike_and_slab(
+      prior("normal", list(0, 1)),
+      prior_inclusion = prior("beta", list(1, 1))
+    )
+  )
+
+  result <- JAGS_add_priors("model{}", priors_sas)
+  expect_true(grepl("mu_variable", result))
+  expect_true(grepl("mu_inclusion", result))
+  expect_true(grepl("mu_indicator", result))
+
+  # Test inits
+  inits <- JAGS_get_inits(priors_sas, chains = 2, seed = 1)
+  expect_true("mu_variable" %in% names(inits[[1]]) || "mu_inclusion" %in% names(inits[[1]]))
+
+  # Test monitor
+  monitor <- JAGS_to_monitor(priors_sas)
+  expect_true("mu_indicator" %in% monitor)
+
+})
+
+
+test_that("JAGS_add_priors handles standard prior_mixture (non-bias)", {
+
+  skip_if_not_installed("rjags")
+
+  # Standard mixture (not bias mixture)
+  mix <- prior_mixture(list(
+    prior("normal", list(0, 0.5)),
+    prior("normal", list(0, 1))
+  ), is_null = c(TRUE, FALSE))
+
+  priors_mix <- list(mu = mix)
+
+  result <- JAGS_add_priors("model{}", priors_mix)
+  expect_true(grepl("mu_indicator", result))
+  expect_true(grepl("mu_component_1", result))
+  expect_true(grepl("mu_component_2", result))
+
+  # Test inits
+  inits <- JAGS_get_inits(priors_mix, chains = 2, seed = 1)
+  expect_true("mu_indicator" %in% names(inits[[1]]))
+
+  # Test monitor
+  monitor <- JAGS_to_monitor(priors_mix)
+  expect_true("mu_indicator" %in% monitor)
+  expect_true("mu" %in% monitor)
+
+})
+
+
+test_that("JAGS handles invgamma prior", {
+
+  skip_if_not_installed("rjags")
+
+  priors_inv <- list(tau = prior("invgamma", list(3, 2)))
+
+  # Test syntax
+  result <- JAGS_add_priors("model{}", priors_inv)
+  expect_true(grepl("inv_tau", result))
+  expect_true(grepl("dgamma", result))
+
+  # Test inits
+  inits <- JAGS_get_inits(priors_inv, chains = 2, seed = 1)
+  expect_true("inv_tau" %in% names(inits[[1]]))
+
+  # Test monitor
+  monitor <- JAGS_to_monitor(priors_inv)
+  expect_true("tau" %in% monitor)
+
+})
+
+
+test_that("JAGS handles weightfunction one.sided with alpha1/alpha2", {
+
+  skip_if_not_installed("rjags")
+
+  # One-sided with steps crossing 0.5 uses alpha1/alpha2 parametrization
+  priors_wf2 <- list(omega = prior_weightfunction("one.sided", list(c(0.05, 0.60), c(1, 1), c(1, 1))))
+
+  # Test syntax
+  result <- JAGS_add_priors("model{}", priors_wf2)
+  expect_true(grepl("eta1", result))
+  expect_true(grepl("eta2", result))
+
+  # Test inits
+  inits <- JAGS_get_inits(priors_wf2, chains = 2, seed = 1)
+  expect_true("eta1" %in% names(inits[[1]]))
+  expect_true("eta2" %in% names(inits[[1]]))
+
+  # Test monitor
+  monitor <- JAGS_to_monitor(priors_wf2)
+  expect_true("eta1" %in% monitor)
+  expect_true("eta2" %in% monitor)
+
+})
+
+
+test_that("JAGS handles weightfunction fixed prior", {
+
+  skip_if_not_installed("rjags")
+
+  priors_wf_fixed <- list(omega = prior_weightfunction("one.sided.fixed", list(steps = c(0.05), omega = c(1, 0.5))))
+
+  # Test syntax - fixed weightfunction has no eta parameters to sample
+  result <- JAGS_add_priors("model{}", priors_wf_fixed)
+  expect_true(grepl("omega", result))
+
+  # Test inits - fixed weightfunction should return empty inits for eta
+  inits <- JAGS_get_inits(priors_wf_fixed, chains = 2, seed = 1)
+  # Should not have eta since it's fixed
+  expect_true(!("eta" %in% names(inits[[1]])))
+
+  # Test monitor
+  monitor <- JAGS_to_monitor(priors_wf_fixed)
+  expect_true("omega" %in% monitor)
+
+})
+
+
+test_that("JAGS handles factor treatment/independent priors", {
+
+  skip_if_not_installed("rjags")
+
+  # Treatment contrast
+  prior_treat <- prior_factor("normal", list(0, 1), contrast = "treatment")
+  attr(prior_treat, "levels") <- 3
+
+  priors_treat <- list(fac = prior_treat)
+  result_treat <- JAGS_add_priors("model{}", priors_treat)
+  expect_true(grepl("fac\\[i\\]", result_treat))
+
+  # Independent contrast
+  prior_indep <- prior_factor("gamma", list(2, 1), contrast = "independent")
+  attr(prior_indep, "levels") <- 2
+
+  priors_indep <- list(fac = prior_indep)
+  result_indep <- JAGS_add_priors("model{}", priors_indep)
+  expect_true(grepl("dgamma", result_indep))
+
+})
+
+
+test_that("JAGS handles vector mt prior", {
+
+  skip_if_not_installed("rjags")
+
+  prior_mt <- prior("mt", list(location = 0, scale = 1, df = 5, K = 2))
+  priors_mt <- list(p = prior_mt)
+
+  # Test syntax
+  result <- JAGS_add_priors("model{}", priors_mt)
+  expect_true(grepl("prior_par_s_p", result))
+  expect_true(grepl("prior_par_z_p", result))
+
+  # Test inits
+  inits <- JAGS_get_inits(priors_mt, chains = 2, seed = 1)
+  expect_true("prior_par_s_p" %in% names(inits[[1]]))
+  expect_true("prior_par_z_p" %in% names(inits[[1]]))
+
+})
+
+
+test_that("JAGS handles bias mixture with weightfunction", {
+
+  skip_if_not_installed("rjags")
+
+  bias_mix_wf <- prior_mixture(list(
+    prior_none(prior_weights = 1),
+    prior_weightfunction("one.sided", list(c(0.05), c(1, 1)), prior_weights = 1)
+  ))
+
+  priors_bias_wf <- list(bias = bias_mix_wf)
+
+  result <- JAGS_add_priors("model{}", priors_bias_wf)
+  expect_true(grepl("bias_indicator", result))
+  expect_true(grepl("omega", result))
+  expect_true(grepl("eta", result))
+
+  # Test inits
+  inits <- JAGS_get_inits(priors_bias_wf, chains = 2, seed = 1)
+  expect_true("bias_indicator" %in% names(inits[[1]]))
+
+  # Test monitor
+  monitor <- JAGS_to_monitor(priors_bias_wf)
+  expect_true("bias_indicator" %in% monitor)
+  expect_true("omega" %in% monitor)
+
+})
