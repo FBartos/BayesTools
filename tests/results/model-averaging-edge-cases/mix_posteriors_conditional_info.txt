@@ -1,3 +1,0 @@
-Class: list, mixed_posteriors
-Parameters: m
-Sample size m: 1000

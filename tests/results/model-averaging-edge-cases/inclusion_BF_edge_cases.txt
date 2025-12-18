@@ -1,4 +1,0 @@
-All null models BF: 0
-All alternative models BF: Inf
-Single alternative model BF: Inf
-Equal margliks BF: 1

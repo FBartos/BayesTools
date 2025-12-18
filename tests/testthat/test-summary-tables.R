@@ -1,10 +1,11 @@
 # ============================================================================ #
-# TEST FILE: Summary Tables Edge Cases
+# TEST FILE: Summary Tables
 # ============================================================================ #
 #
 # PURPOSE:
-#   Edge case and comprehensive tests for summary table functions including
-#   ensemble_estimates_table, ensemble_inference_table, and print methods.
+#   Tests for summary table functions including ensemble_estimates_table,
+#   ensemble_inference_table, ensemble_summary_table, ensemble_diagnostics_table,
+#   model_summary_table, and print methods.
 #
 # DEPENDENCIES:
 #   - rjags, bridgesampling: For tests using pre-fitted models
@@ -15,16 +16,17 @@
 #   - skip_if_not_installed("rjags"), skip_if_not_installed("bridgesampling")
 #
 # MODELS/FIXTURES:
-#   - fit_summary*, fit_simple_normal, fit_simple_spike
+#   - fit_summary*, fit_simple_normal, fit_simple_spike, fit_orthonormal_*
 #
-# TAGS: @evaluation, @edge-cases, @summary-tables
+# TAGS: @evaluation, @summary-tables
 # ============================================================================ #
 
-REFERENCE_DIR <<- testthat::test_path("..", "results", "summary-tables-edge-cases")
+REFERENCE_DIR <<- testthat::test_path("..", "results", "summary-tables")
 source(testthat::test_path("common-functions.R"))
 
+
 # ============================================================================ #
-# SECTION 1: ensemble_estimates_table edge cases
+# SECTION 1: ensemble_estimates_table tests
 # ============================================================================ #
 test_that("ensemble_estimates_table handles matrix posteriors", {
 
@@ -43,7 +45,6 @@ test_that("ensemble_estimates_table handles matrix posteriors", {
     list(fit = fit_summary0, marglik = marglik_summary0, prior_weights = 1),
     list(fit = fit_summary1, marglik = marglik_summary1, prior_weights = 1)
   )
-
 
   mixed_posteriors <- mix_posteriors(
     model_list = models,
@@ -170,7 +171,7 @@ test_that("ensemble_estimates_table handles formula posteriors", {
 
 
 # ============================================================================ #
-# SECTION 2: ensemble_inference_table edge cases
+# SECTION 2: ensemble_inference_table tests
 # ============================================================================ #
 test_that("ensemble_inference_table handles multiple parameters", {
 
@@ -215,7 +216,7 @@ test_that("ensemble_inference_table handles multiple parameters", {
 
 
 # ============================================================================ #
-# SECTION 3: ensemble_summary_table and ensemble_diagnostics_table
+# SECTION 3: ensemble_summary_table and ensemble_diagnostics_table tests
 # ============================================================================ #
 test_that("ensemble_summary_table handles different model configurations", {
 
@@ -248,7 +249,7 @@ test_that("ensemble_summary_table handles different model configurations", {
   summary_table_bf <- ensemble_summary_table(models, c("m", "s"), logBF = TRUE, BF01 = TRUE)
   test_reference_table(summary_table_bf, "ensemble_summary_bf_options.txt")
 
-  # Test with remove_spike_0 (should remove 'm' which has spike at zero in fit_simple_spike)
+  # Test with remove_spike_0
   summary_table_no_spike <- ensemble_summary_table(models, c("m", "s"), remove_spike_0 = FALSE)
   test_reference_table(summary_table_no_spike, "ensemble_summary_no_spike.txt")
 
@@ -316,7 +317,7 @@ test_that("ensemble_diagnostics_table handles different configurations", {
 
 
 # ============================================================================ #
-# SECTION 4: marginal_estimates_table edge cases
+# SECTION 4: marginal_estimates_table tests
 # ============================================================================ #
 test_that("marginal_estimates_table handles various inputs", {
 
@@ -324,7 +325,7 @@ test_that("marginal_estimates_table handles various inputs", {
   skip_on_cran()
 
   # Create sample data for marginal inference testing
-  set.seed(1)  # Ensure reproducibility
+  set.seed(1)
   samples <- list(
     mu = rnorm(1000, 0, 1)
   )
@@ -373,7 +374,7 @@ test_that("marginal_estimates_table handles various inputs", {
 
 
 # ============================================================================ #
-# SECTION 7: model_summary_table tests
+# SECTION 5: model_summary_table tests
 # ============================================================================ #
 test_that("model_summary_table handles various configurations", {
 
@@ -409,9 +410,8 @@ test_that("model_summary_table handles various configurations", {
 })
 
 
-
 # ============================================================================ #
-# SECTION 9: update.BayesTools_table tests
+# SECTION 6: update.BayesTools_table tests
 # ============================================================================ #
 test_that("update.BayesTools_table works correctly", {
 
@@ -461,4 +461,3 @@ test_that("update.BayesTools_table works correctly", {
   test_reference_table(updated_bf01, "update_table_BF01.txt")
 
 })
-
