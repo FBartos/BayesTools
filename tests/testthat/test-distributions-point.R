@@ -1,4 +1,18 @@
-context("Distributions - Point")
+# ============================================================================ #
+# TEST FILE: Distributions - Point
+# ============================================================================ #
+#
+# PURPOSE:
+#   Tests for point distribution functions (dpoint, rpoint, ppoint, qpoint).
+#
+# DEPENDENCIES:
+#   - None (pure R)
+#
+# SKIP CONDITIONS:
+#   - None (can run on CRAN)
+#
+# TAGS: @evaluation, @distributions, @point
+# ============================================================================ #
 
 test_that("Density function works", {
 

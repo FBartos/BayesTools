@@ -1,4 +1,21 @@
-context("Prior plot function")
+# ============================================================================ #
+# TEST FILE: Prior Plot Function
+# ============================================================================ #
+#
+# PURPOSE:
+#   Visual regression tests for the plot.prior S3 method including
+#   base graphics and ggplot2 output.
+#
+# DEPENDENCIES:
+#   - vdiffr: Visual regression testing
+#
+# SKIP CONDITIONS:
+#   - skip_if_not_installed("vdiffr")
+#
+# TAGS: @evaluation, @visual, @priors, @plots
+# ============================================================================ #
+
+skip_if_not_installed("vdiffr")
 
 test_that("Prior plot (simple) function works", {
 

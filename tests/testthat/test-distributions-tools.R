@@ -1,4 +1,19 @@
-context("Distribution tools helpers")
+# ============================================================================ #
+# TEST FILE: Distribution Tools Helpers
+# ============================================================================ #
+#
+# PURPOSE:
+#   Tests for internal distribution helper functions like .check_log,
+#   .check_log.p, and .check_lower.tail.
+#
+# DEPENDENCIES:
+#   - None (pure R)
+#
+# SKIP CONDITIONS:
+#   - None (can run on CRAN)
+#
+# TAGS: @evaluation, @distributions, @tools
+# ============================================================================ #
 
 
 test_that(".check_log works", {

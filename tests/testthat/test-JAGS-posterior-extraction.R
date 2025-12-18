@@ -1,9 +1,27 @@
-context("Posterior density extraction functions")
+# ============================================================================ #
+# TEST FILE: Posterior Density Extraction Functions
+# ============================================================================ #
+#
+# PURPOSE:
+#   Tests for posterior extraction helper functions including
+#   .extract_posterior_samples and .remove_auxiliary_parameters.
+#
+# DEPENDENCIES:
+#   - rjags, runjags, coda: For JAGS model handling
+#
+# SKIP CONDITIONS:
+#   - skip_if_not_installed("rjags"), skip_if_not_installed("runjags")
+#   - Note: Creates mock objects, does not need pre-fitted models
+#
+# MODELS/FIXTURES:
+#   - Creates mock runjags objects for testing
+#
+# TAGS: @evaluation, @JAGS, @posterior-extraction
+# ============================================================================ #
 
 # Tests for posterior extraction helper functions
 test_that(".extract_posterior_samples extracts samples correctly", {
 
-  skip_on_cran()
   skip_if_not_installed("rjags")
   skip_if_not_installed("runjags")
   

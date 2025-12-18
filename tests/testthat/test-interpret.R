@@ -1,4 +1,19 @@
-context("Interpret functions")
+# ============================================================================ #
+# TEST FILE: Interpret Functions
+# ============================================================================ #
+#
+# PURPOSE:
+#   Tests for interpret and interpret2 functions that generate human-readable
+#   summaries of Bayesian inference results.
+#
+# DEPENDENCIES:
+#   - common-functions.R: test_reference_text, REFERENCE_DIR
+#
+# SKIP CONDITIONS:
+#   - None (can run on CRAN - pure R with reference file testing)
+#
+# TAGS: @evaluation, @interpret, @output
+# ============================================================================ #
 
 REFERENCE_DIR <<- testthat::test_path("..", "results", "interpret")
 source(testthat::test_path("common-functions.R"))

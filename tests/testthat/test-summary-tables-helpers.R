@@ -1,4 +1,19 @@
-context("Summary tables helper functions")
+# ============================================================================ #
+# TEST FILE: Summary Tables Helper Functions
+# ============================================================================ #
+#
+# PURPOSE:
+#   Tests for format_BF, format_estimates, and other summary table
+#   formatting utilities.
+#
+# DEPENDENCIES:
+#   - common-functions.R: test_reference_table, REFERENCE_DIR
+#
+# SKIP CONDITIONS:
+#   - None (can run on CRAN - pure R with reference file testing)
+#
+# TAGS: @evaluation, @summary-tables, @formatting
+# ============================================================================ #
 
 REFERENCE_DIR <<- testthat::test_path("..", "results", "summary-tables-helpers")
 source(testthat::test_path("common-functions.R"))

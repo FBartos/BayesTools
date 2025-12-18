@@ -1,10 +1,33 @@
-context("Model fits for reuse across tests")
+# ============================================================================ #
+# TEST FILE: Model Fits for Reuse Across Tests
+# ============================================================================ #
+#
+# PURPOSE:
+#   Centralized model fitting for all JAGS models used across the test suite.
+#   Fitted models are saved to temp directory for reuse in other test files.
+#   This reduces redundant MCMC sampling and speeds up the overall test suite.
+#
+# DEPENDENCIES:
+#   - rjags, runjags, bridgesampling: For model fitting
+#
+# SKIP CONDITIONS:
+#   - skip_on_cran(): Long-running model fitting
+#   - skip_if_not_installed("rjags")
+#
+# MODELS/FIXTURES:
+#   - Creates all pre-fitted models used by other test files
+#   - Models saved to BAYESTOOLS_TEST_FITS_DIR environment variable
+#   - Maintains model_registry.RDS with metadata
+#
+# TAGS: @slow, @JAGS, @model-fits
+# ============================================================================ #
 
 # This file contains all model fitting procedures used across the test suite.
 # Fitted models are saved to a temporary directory for reuse in other tests.
 # This reduces redundant MCMC sampling and speeds up the overall test suite.
 
 skip_on_cran()
+skip_if_not_installed("rjags")
 
 # Setup directory for saving fitted models
 temp_fits_dir <- file.path(tempdir(), "BayesTools_test_fits")

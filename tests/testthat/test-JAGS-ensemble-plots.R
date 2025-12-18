@@ -1,4 +1,26 @@
-context("JAGS ensemble plot functions")
+# ============================================================================ #
+# TEST FILE: JAGS Ensemble Plot Functions
+# ============================================================================ #
+#
+# PURPOSE:
+#   Visual regression tests for ensemble plot functions (plot_prior_list,
+#   plot_posterior, plot_models, etc.).
+#
+# DEPENDENCIES:
+#   - vdiffr: Visual regression testing
+#   - rjags, bridgesampling: For tests using pre-fitted models
+#   - common-functions.R: temp_fits_dir, skip_if_no_fits
+#
+# SKIP CONDITIONS:
+#   - First section (prior plots): Can run on CRAN (pure R)
+#   - Second section (posterior plots): skip_if_no_fits(), skip_if_not_installed()
+#   - skip_on_os(): Multivariate sampling differs across OSes
+#
+# MODELS/FIXTURES:
+#   - fit_simple_spike, fit_simple_normal, fit_summary*, fit_marginal_*
+#
+# TAGS: @evaluation, @visual, @JAGS, @model-averaging, @plots
+# ============================================================================ #
 
 REFERENCE_DIR <<- testthat::test_path("..", "results", "JAGS-ensemble-plots")
 source(testthat::test_path("common-functions.R"))
@@ -161,8 +183,12 @@ test_that("prior plot functions (simple) work", {
   })
 })
 
-# skip the rest as it takes too long
+# ============================================================================ #
+# SECTION: Tests requiring pre-fitted models (skip on CRAN)
+# ============================================================================ #
 skip_on_cran()
+skip_if_no_fits()
+skip_if_not_installed("vdiffr")
 
 test_that("prior plot functions (PET-PEESE) work", {
 

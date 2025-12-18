@@ -8,6 +8,57 @@ applyTo: "**/tests/testthat/*.R"
 
 Tests in BayesTools follow a structured organization where model fitting is centralized in `test-00-model-fits.R` and consumed by other test files. This approach ensures consistency, avoids duplication, and speeds up test execution.
 
+**testthat Edition**: This package uses testthat Edition 3. Do not use `context()` calls.
+
+## Test File Structure
+
+### Naming Conventions
+
+| Pattern | Purpose | Example |
+|---------|---------|---------|
+| `test-{feature}.R` | Main evaluation tests | `test-priors.R` |
+| `test-{feature}-input.R` | Input validation tests | `test-tools-input.R` |
+| `test-{feature}-evaluation.R` | Behavior/evaluation tests | `test-tools-evaluation.R` |
+| `test-{feature}-coverage.R` | Edge case coverage tests | `test-priors-coverage.R` |
+| `test-{feature}-edge-cases.R` | Edge case tests | `test-model-averaging-edge-cases.R` |
+
+### File Header Template
+
+Every test file should include a standardized header for AI discoverability:
+
+```r
+# ============================================================================ #
+# TEST FILE: {Description}
+# ============================================================================ #
+#
+# PURPOSE:
+#   {Brief description of what this file tests}
+#
+# DEPENDENCIES:
+#   - {package}: {Why needed}
+#   - common-functions.R: {What helpers used}
+#
+# SKIP CONDITIONS:
+#   - {skip condition and why}
+#
+# MODELS/FIXTURES:
+#   - {What pre-fitted models or fixtures are used}
+#
+# TAGS: @{category}, @{speed}, @{feature}
+# ============================================================================ #
+```
+
+### Common Tags
+
+- `@input-validation`: Tests for input checking (fast)
+- `@evaluation`: Tests for correct behavior/output
+- `@visual`: Visual regression tests (vdiffr)
+- `@coverage`: Gap-filling coverage tests
+- `@edge-cases`: Edge case and error path tests
+- `@fast`: Quick tests (< 1s)
+- `@slow`: Long-running tests (JAGS fitting)
+- `@priors`, `@JAGS`, `@model-averaging`: Feature tags
+
 ## Key Principles
 
 ### 1. Single Source of Truth for Model Fitting
@@ -64,12 +115,29 @@ marglik_model_name <- readRDS(file.path(temp_fits_dir, "fit_model_name_marglik.R
 
 **Note**: Marginal likelihoods are only computed for models with actual data (not spike-and-slab or mixture priors).
 
-### 5. Helper Functions for Reference Files
+### 5. Helper Functions in common-functions.R
 
-# Define at the top of test files with reference outputs
-# Load common test helpers that define test_reference_table() and test_reference_text()
-REFERENCE_DIR <<- testthat::test_path("..", "results", "print")
+The shared helper file provides:
+
+```r
+# Reference file testing
+test_reference_table(table, filename, ...)
+test_reference_text(text, filename, ...)
+
+# Prior distribution testing
+test_prior(prior, skip_moments = FALSE)
+test_weightfunction(prior, skip_moments = FALSE)
+test_orthonormal(prior, skip_moments = FALSE)
+test_meandif(prior, skip_moments = FALSE)
+
+# Skip helpers
+skip_if_no_fits()
+```
+
+Load at the top of test files:
+```r
 source(testthat::test_path("common-functions.R"))
+```
 
 ### 6. Test File Organization
 
@@ -93,6 +161,48 @@ All tests that use JAGS models (e.g., `test-model-averaging.R`, `test-JAGS-*.R`,
   - Changing to `TRUE` regenerates all reference files (tables, figures, etc.) and should only be done by the maintainer
 - **Outputs**: Reference files (`.txt`, `.svg`, `.png`, etc.) stored in `tests/results/` subdirectories
 
+## Skip Condition Standards
+
+### Skip Condition Hierarchy
+
+Use the appropriate skip condition based on what your test needs:
+
+| Skip Condition | When to Use | Example Use Case |
+|----------------|-------------|------------------|
+| `skip_if_no_fits()` | Test loads pre-fitted models from `temp_fits_dir` | Model averaging tests, diagnostic plots |
+| `skip_if_not_installed("rjags")` | Test requires JAGS execution (fitting or syntax) | JAGS syntax tests, marglik tests |
+| `skip_if_not_installed("bridgesampling")` | Test computes marginal likelihoods | Ensemble inference tests |
+| `skip_if_not_installed("vdiffr")` | Test uses visual regression | Prior plot tests |
+| `skip_on_os(c("mac", "linux", "solaris"))` | Test involves multivariate sampling (meandif/orthonormal) | Multivariate prior tests |
+
+### File-Level vs Per-Test Skips
+
+**File-level skips** (after `source(common-functions.R)`):
+```r
+source(testthat::test_path("common-functions.R"))
+
+# File-level skips - ALL tests in this file need these
+skip_if_no_fits()
+skip_if_not_installed("rjags")
+skip_if_not_installed("vdiffr")
+```
+
+**Per-test skips** (only when specific tests have additional requirements):
+```r
+test_that("multivariate sampling works", {
+  skip_on_os(c("mac", "linux", "solaris"))  # Only this test needs OS skip
+  # ...
+})
+```
+
+### Important Notes
+
+1. **`common-functions.R` does NOT call `skip_on_cran()`** - each test file manages its own skip conditions
+2. **`skip_if_no_fits()`** checks for `model_registry.RDS` in `temp_fits_dir` - use this for any test that loads pre-fitted models
+3. **`skip_on_os()`** should ONLY be used for tests involving multivariate priors (meandif, orthonormal) where RNG differs across platforms
+4. **Pure R tests** (e.g., `test-priors-print.R`, `test-tools-input.R`) should have NO file-level skips and can run on CRAN
+```
+
 ## AI Agent Protocol
 
 When asked to write or refactor tests:
@@ -101,12 +211,15 @@ When asked to write or refactor tests:
 2.  **Map requirements to existing models.** If the user needs a test for "diagnostic plots for factor priors", find an existing model with factor priors (e.g., `fit_formula_interaction_fac`).
 3.  **Refuse to create new models** unless the test requires a specific mathematical structure not present in the entire suite.
 4.  **Never** add a model to `test-00-model-fits.R` without explicitly explaining why none of the existing 15+ models suffice.
+5.  **Use descriptive test names** - never use line numbers or implementation details in test names.
+6.  **Follow file naming conventions** - split input validation into `-input.R` files.
 
 ## Maintenance Checklist
 
 **Adding a new model:**
 - [ ] Check for duplicates in `test-00-model-fits.R`
 - [ ] Add model to `test-00-model-fits.R` with `save_fit()` and appropriate metadata
+
 **Using pre-fitted models:**
 - [ ] Load with `readRDS()`, never fit models outside `test-00-model-fits.R`
 - [ ] Add skip conditions for missing models/packages
@@ -117,10 +230,7 @@ When asked to write or refactor tests:
 - [ ] Run tests to generate reference files
 - [ ] Review diffs carefully before committing
 - [ ] Reset flag to `FALSE`
-- **Note**: Contributors/agents should **never** modify `GENERATE_REFERENCE_FILES <- TRUE`
-- [ ] Run tests to generate reference files
-- [ ] Review diffs carefully before committing
-- [ ] Reset flag to `FALSE`
+- **Note**: Contributors/agents should **never** modify `GENERATE_REFERENCE_FILES`
 
 ## Quick Examples
 
@@ -142,19 +252,23 @@ if (file.exists(marglik_file)) {
 # 3. Add to test-summary-tables.R model_names vector
 model_names <- c(..., "fit_new")
 ```
+
 ## Common Pitfalls
 
 ❌ Fitting models outside `test-00-model-fits.R`  
 ❌ Creating duplicate models with different parameters  
-❌ **Modifying `GENERATE_REFERENCE_FILES` flag** (maintainer only)
+❌ **Modifying `GENERATE_REFERENCE_FILES` flag** (maintainer only)  
+❌ Using line numbers in test names (e.g., "line 115")  
+❌ Using `context()` calls (Edition 2 deprecated)
 
 ✅ Always load pre-fitted models with `readRDS()`  
 ✅ Use one model per prior type  
-✅ Leave `GENERATE_REFERENCE_FILES <- FALSE` unchanged
-✅ Set `GENERATE_REFERENCE_FILES <- TRUE` when updating formats
+✅ Leave `GENERATE_REFERENCE_FILES <- FALSE` unchanged  
+✅ Use descriptive, behavior-focused test names  
+✅ Include standardized file headers
+
 ## Troubleshooting
 
 - **"Pre-fitted models not available"**: Run `devtools::test(filter = "00-model-fits")`
 - **Summary table mismatch**: Contact maintainer; **do not** modify `GENERATE_REFERENCE_FILES`
-- **Marginal likelihood not found**: Check model has data and isn't spike-and-slab/mixture
 - **Marginal likelihood not found**: Check model has data and isn't spike-and-slab/mixture

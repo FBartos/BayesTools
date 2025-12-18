@@ -1,10 +1,30 @@
-context("JAGS ensemble tables functions")
+# ============================================================================ #
+# TEST FILE: JAGS Ensemble Tables Functions
+# ============================================================================ #
+#
+# PURPOSE:
+#   Tests for ensemble table generation functions (ensemble_estimates_table,
+#   ensemble_inference_table, ensemble_diagnostics_table).
+#
+# DEPENDENCIES:
+#   - rjags, bridgesampling: For tests using pre-fitted models
+#   - common-functions.R: temp_fits_dir, skip_if_no_fits, test_reference_table
+#
+# SKIP CONDITIONS:
+#   - First section (empty tables): Can run on CRAN (pure R)
+#   - Second section (advanced features): skip_if_no_fits()
+#
+# MODELS/FIXTURES:
+#   - fit_summary0/1/2, fit_formula_interaction_mix/fac
+#
+# TAGS: @evaluation, @JAGS, @model-averaging, @tables
+# ============================================================================ #
 
 REFERENCE_DIR <<- testthat::test_path("..", "results", "JAGS-ensemble-tables")
 source(testthat::test_path("common-functions.R"))
 
 # ============================================================================ #
-# SECTION 1: Test Empty Tables
+# SECTION 1: Test Empty Tables (Can run on CRAN - pure R)
 # ============================================================================ #
 test_that("Empty summary tables work correctly", {
 
@@ -12,9 +32,9 @@ test_that("Empty summary tables work correctly", {
   ensemble_inference_empty <- ensemble_inference_empty_table()
   ensemble_diagnostics_empty <- ensemble_diagnostics_empty_table()
 
-  expect_equivalent(nrow(ensemble_estimates_empty), 0)
-  expect_equivalent(nrow(ensemble_inference_empty), 0)
-  expect_equivalent(nrow(ensemble_diagnostics_empty), 0)
+  expect_equal(nrow(ensemble_estimates_empty), 0, ignore_attr = TRUE)
+  expect_equal(nrow(ensemble_inference_empty), 0, ignore_attr = TRUE)
+  expect_equal(nrow(ensemble_diagnostics_empty), 0, ignore_attr = TRUE)
 
   # Test that empty tables have correct structure
   expect_s3_class(ensemble_estimates_empty, "BayesTools_table")
@@ -27,10 +47,11 @@ test_that("Empty summary tables work correctly", {
 })
 
 # ============================================================================ #
-# SECTION 2: Test Advanced Features (Transformations, Formula Handling, etc.)
+# SECTION 2: Test Advanced Features (Requires pre-fitted models)
 # ============================================================================ #
 test_that("Summary table advanced features work correctly", {
 
+  skip_if_no_fits()
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")
 
@@ -84,7 +105,7 @@ test_that("Summary table advanced features work correctly", {
   expect_equal(colnames(ensemble_diagnostics_empty), colnames(diagnostics_table.trimmed))
   expect_equal(capture_output_lines(ensemble_diagnostics_empty, width = 150)[1], capture_output_lines(diagnostics_table.trimmed, width = 150)[1])
 
-  # Test interpret
+  # # Test interpret
   interpretation <- interpret(inference, mixed_posteriors, list(
     list(
       inference         = "m",

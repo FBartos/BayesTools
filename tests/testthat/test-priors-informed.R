@@ -1,4 +1,19 @@
-context("Prior informed function")
+# ============================================================================ #
+# TEST FILE: Prior Informed Function
+# ============================================================================ #
+#
+# PURPOSE:
+#   Tests for prior_informed function that creates priors based on
+#   published informed prior specifications (Oosterwijk, van Erp, medicine).
+#
+# DEPENDENCIES:
+#   - None (pure R)
+#
+# SKIP CONDITIONS:
+#   - None (can run on CRAN)
+#
+# TAGS: @evaluation, @priors, @informed
+# ============================================================================ #
 
 
 test_that("Informed prior distributions match the specification", {

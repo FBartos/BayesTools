@@ -1,13 +1,41 @@
-context("JAGS diagnostics")
+# ============================================================================ #
+# TEST FILE: JAGS Diagnostic Plot Functions
+# ============================================================================ #
+#
+# PURPOSE:
+#   Visual regression tests for JAGS diagnostic plots (density, trace,
+#   autocorrelation plots).
+#
+# DEPENDENCIES:
+#   - vdiffr: Visual regression testing
+#   - rjags: JAGS model fitting
+#   - common-functions.R: temp_fits_dir, skip_if_no_fits
+#
+# SKIP CONDITIONS:
+#   - skip_if_no_fits(): Pre-fitted models required
+#   - skip_if_not_installed("rjags"): JAGS dependency
+#   - skip_if_not_installed("vdiffr"): Visual regression
+#   - skip_on_os(): Multivariate sampling differs across OSes
+#
+# MODELS/FIXTURES:
+#   - fit_formula_interaction_mix, fit_formula_interaction_fac
+#   - fit_pet, fit_wf_onesided, fit_factor_independent
+#   - fit_marginal_1, fit_complex_mixed
+#
+# TAGS: @evaluation, @visual, @JAGS, @diagnostics
+# ============================================================================ #
 
 # Load common test helpers
 source(testthat::test_path("common-functions.R"))
 
+# File-level skips: JAGS models required
+skip_if_no_fits()
+skip_if_not_installed("rjags")
+skip_if_not_installed("vdiffr")
+
 test_that("JAGS diagnostics work", {
 
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
-  skip_on_cran()
-  skip_if_not_installed("rjags")
 
   # Load pre-fitted models
   fit_formula_mix <- readRDS(file.path(temp_fits_dir, "fit_formula_interaction_mix.RDS"))
@@ -138,8 +166,6 @@ test_that("JAGS diagnostics work", {
 test_that("JAGS diagnostics work (spike and slab)", {
 
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
-  skip_on_cran()
-  skip_if_not_installed("rjags")
 
   # Use fit_complex_mixed which has spike and slab on x_cont1
   fit <- readRDS(file.path(temp_fits_dir, "fit_complex_mixed.RDS"))
@@ -153,8 +179,6 @@ test_that("JAGS diagnostics work (spike and slab)", {
 test_that("JAGS diagnostics work (mixture priors)", {
 
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
-  skip_on_cran()
-  skip_if_not_installed("rjags")
 
   # Use fit_complex_mixed which has mixture on intercept and x_fac3t
   fit <- readRDS(file.path(temp_fits_dir, "fit_complex_mixed.RDS"))
@@ -174,8 +198,6 @@ test_that("JAGS diagnostics work (mixture priors)", {
 test_that("JAGS diagnostics work (meandif and independent)", {
 
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
-  skip_on_cran()
-  skip_if_not_installed("rjags")
 
   fit_independent <- readRDS(file.path(temp_fits_dir, "fit_factor_independent.RDS"))
   fit_meandif     <- readRDS(file.path(temp_fits_dir, "fit_marginal_1.RDS"))  # Has meandif factor priors
@@ -244,8 +266,6 @@ test_that("JAGS diagnostics work (meandif and independent)", {
 test_that("JAGS diagnostics work (spike priors)", {
 
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
-  skip_on_cran()
-  skip_if_not_installed("rjags")
 
   fit <- readRDS(file.path(temp_fits_dir, "fit_spike_factors.RDS"))
   fit_simple <- readRDS(file.path(temp_fits_dir, "fit_spike_slab_simple.RDS"))

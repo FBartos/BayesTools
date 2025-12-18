@@ -1,4 +1,21 @@
-context("Prior density")
+# ============================================================================ #
+# TEST FILE: Prior Density Function
+# ============================================================================ #
+#
+# PURPOSE:
+#   Visual regression tests for the density.prior S3 method including
+#   various transformation options.
+#
+# DEPENDENCIES:
+#   - vdiffr: Visual regression testing
+#
+# SKIP CONDITIONS:
+#   - skip_if_not_installed("vdiffr")
+#
+# TAGS: @evaluation, @visual, @priors, @density
+# ============================================================================ #
+
+skip_if_not_installed("vdiffr")
 
 test_that("Prior density function density", {
   set.seed(1)

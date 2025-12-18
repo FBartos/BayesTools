@@ -1,4 +1,24 @@
-context("Model averaging edge cases and comprehensive tests")
+# ============================================================================ #
+# TEST FILE: Model Averaging Edge Cases
+# ============================================================================ #
+#
+# PURPOSE:
+#   Edge case and comprehensive tests for model averaging functions including
+#   mix_posteriors, ensemble_inference, and related utilities.
+#
+# DEPENDENCIES:
+#   - rjags: For tests using pre-fitted models
+#   - common-functions.R: temp_fits_dir, skip_if_no_fits, test_reference_text
+#
+# SKIP CONDITIONS:
+#   - skip_if_no_fits(): Pre-fitted models required
+#   - skip_if_not_installed("rjags")
+#
+# MODELS/FIXTURES:
+#   - fit_simple_normal, fit_simple_spike, fit_formula_interaction_fac
+#
+# TAGS: @evaluation, @model-averaging, @edge-cases
+# ============================================================================ #
 
 # Reference directory for text output comparisons
 REFERENCE_DIR <<- testthat::test_path("..", "results", "model-averaging-edge-cases")

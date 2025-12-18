@@ -1,4 +1,25 @@
-context("JAGS summary tables functions")
+# ============================================================================ #
+# TEST FILE: JAGS Summary Tables Functions
+# ============================================================================ #
+#
+# PURPOSE:
+#   Tests for runjags_estimates_table, runjags_inference_table, and related
+#   summary table generation functions.
+#
+# DEPENDENCIES:
+#   - rjags, bridgesampling: For tests using pre-fitted models
+#   - common-functions.R: temp_fits_dir, skip_if_no_fits, test_reference_table
+#
+# SKIP CONDITIONS:
+#   - First section (empty tables): Can run on CRAN (pure R)
+#   - Second section (advanced features): skip_if_no_fits()
+#
+# MODELS/FIXTURES:
+#   - fit_formula_interaction_cont, fit_factor_treatment, fit_spike_slab_factor
+#   - fit_factor_orthonormal
+#
+# TAGS: @evaluation, @JAGS, @summary-tables
+# ============================================================================ #
 
 REFERENCE_DIR <<- testthat::test_path("..", "results", "JAGS-summary-tables")
 source(testthat::test_path("common-functions.R"))
@@ -10,7 +31,7 @@ test_that("Empty summary tables work correctly", {
 
   runjags_summary_empty <- runjags_estimates_empty_table()
 
-  expect_equivalent(nrow(runjags_summary_empty), 0)
+  expect_equal(nrow(runjags_summary_empty), 0, ignore_attr = TRUE)
 
   # Test that empty tables have correct structure
   expect_s3_class(runjags_summary_empty, "BayesTools_table")

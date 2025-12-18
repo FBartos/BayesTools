@@ -1,4 +1,23 @@
-context("Model averaging functions")
+# ============================================================================ #
+# TEST FILE: Model Averaging Functions
+# ============================================================================ #
+#
+# PURPOSE:
+#   Tests for compute_inference, ensemble_inference, and related Bayesian
+#   model averaging functions in R/model-averaging.R
+#
+# DEPENDENCIES:
+#   - bridgesampling: Required for marginal likelihood computation
+#   - common-functions.R: Test helpers
+#
+# SKIP CONDITIONS:
+#   - skip_if_not_installed("bridgesampling")
+#
+# MODELS/FIXTURES:
+#   - Uses pre-computed marginal likelihoods, not pre-fitted models
+#
+# TAGS: @evaluation, @model-averaging
+# ============================================================================ #
 
 
 test_that("compute_inference works correctly", {

@@ -1,28 +1,36 @@
-context("Summary tables edge cases and comprehensive tests")
+# ============================================================================ #
+# TEST FILE: Summary Tables Edge Cases
+# ============================================================================ #
+#
+# PURPOSE:
+#   Edge case and comprehensive tests for summary table functions including
+#   ensemble_estimates_table, ensemble_inference_table, and print methods.
+#
+# DEPENDENCIES:
+#   - rjags, bridgesampling: For tests using pre-fitted models
+#   - common-functions.R: temp_fits_dir, test_reference_table
+#
+# SKIP CONDITIONS:
+#   - skip_if_no_fits(): Pre-fitted models required for most tests
+#   - skip_if_not_installed("rjags"), skip_if_not_installed("bridgesampling")
+#
+# MODELS/FIXTURES:
+#   - fit_summary*, fit_simple_normal, fit_simple_spike
+#
+# TAGS: @evaluation, @edge-cases, @summary-tables
+# ============================================================================ #
 
 REFERENCE_DIR <<- testthat::test_path("..", "results", "summary-tables-edge-cases")
 source(testthat::test_path("common-functions.R"))
-
-# Helper to skip if pre-fitted models aren't available
-skip_if_no_fits <- function() {
-  skip_if_not_installed("rjags")
-  skip_if_not_installed("bridgesampling")
-  if (!dir.exists(temp_fits_dir)) {
-    skip("Pre-fitted models directory not found. Run test-00-model-fits.R first.")
-  }
-  if (!file.exists(file.path(temp_fits_dir, "fit_simple_normal.RDS"))) {
-    skip("Pre-fitted models not found. Run test-00-model-fits.R first.")
-  }
-}
 
 # ============================================================================ #
 # SECTION 1: ensemble_estimates_table edge cases
 # ============================================================================ #
 test_that("ensemble_estimates_table handles matrix posteriors", {
 
-  skip_if_not_installed("rjags")
-  skip_on_cran()
   skip_if_no_fits()
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
 
   # Load fits with margliks for creating mixed posteriors
   fit_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))

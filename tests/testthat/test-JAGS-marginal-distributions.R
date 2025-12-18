@@ -1,7 +1,25 @@
-context("JAGS marginal distributions")
-
-# This file tests marginal_posterior, ensemble_inference, mix_posteriors,
-# and related functions. Uses pre-fitted models from test-00-model-fits.R.
+# ============================================================================ #
+# TEST FILE: JAGS Marginal Distributions
+# ============================================================================ #
+#
+# PURPOSE:
+#   Tests for marginal_posterior, ensemble_inference, mix_posteriors,
+#   and related functions. Uses pre-fitted models from test-00-model-fits.R.
+#
+# DEPENDENCIES:
+#   - rjags, bridgesampling: JAGS model fitting and marginal likelihood
+#   - common-functions.R: temp_fits_dir, skip_if_no_fits, test_reference_table
+#
+# SKIP CONDITIONS:
+#   - skip_if_no_fits(): Pre-fitted models required
+#   - skip_if_not_installed("rjags"), skip_if_not_installed("bridgesampling")
+#   - skip_on_os(): Multivariate sampling differs across OSes (meandif priors)
+#
+# MODELS/FIXTURES:
+#   - fit_marginal_0, fit_marginal_1
+#
+# TAGS: @evaluation, @JAGS, @model-averaging, @marginal
+# ============================================================================ #
 
 # Reference directory for table outputs
 REFERENCE_DIR <<- testthat::test_path("..", "results", "JAGS-marginal-distributions")
@@ -9,12 +27,14 @@ REFERENCE_DIR <<- testthat::test_path("..", "results", "JAGS-marginal-distributi
 # Load common test helpers
 source(testthat::test_path("common-functions.R"))
 
+# File-level skips: All tests in this file require pre-fitted models
+skip_if_no_fits()
+skip_if_not_installed("rjags")
+skip_if_not_installed("bridgesampling")
+
 test_that("Marginal distribution prior and posterior functions work", {
 
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
-  skip_on_cran()
-  skip_if_not_installed("rjags")
-  skip_if_not_installed("bridgesampling")
 
   # Load pre-fitted marginal distribution models
   fit0     <- readRDS(file.path(temp_fits_dir, "fit_marginal_0.RDS"))
@@ -548,29 +568,29 @@ test_that("Marginal distribution prior and posterior functions work", {
     prior_samples     = FALSE)), "there are no prior samples for the posterior distribution")
 
   # simple restricted prior
-  expect_warning(Savage_Dickey_BF(marg_post_sigma))
+  suppressWarnings(expect_warning(Savage_Dickey_BF(marg_post_sigma)))
   BF.marg_post_sigma <- suppressWarnings(Savage_Dickey_BF(marg_post_sigma))
-  expect_equivalent(BF.marg_post_sigma, NaN)
+  expect_equal(BF.marg_post_sigma, NaN, ignore_attr = TRUE)
   expect_equal(attr(BF.marg_post_sigma, "warnings"),
                c("Prior samples do not span both sides of the null hypothesis. Check whether the prior distribution contain the null hypothesis in the first place. The Savage-Dickey density ratio is likely to be invalid.",
                "Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated."))
 
   # simple factor
   BF.marg_post_x_fac2t <- suppressWarnings(Savage_Dickey_BF(marg_post_simple_x_fac2t))
-  expect_equivalent(BF.marg_post_x_fac2t, list("A" = 1, "B" = 0.1792675), tolerance = 1e-3)
+  expect_equal(BF.marg_post_x_fac2t, list("A" = 1, "B" = 0.1793), tolerance = 1e-3, ignore_attr = TRUE)
   expect_equal(attr(BF.marg_post_x_fac2t[["A"]], "warnings"),
                c("There is a considerable cluster of posterior samples at the exact null hypothesis values. The Savage-Dickey density ratio is likely to be invalid.",
                  "There is a considerable cluster of prior samples at the exact null hypothesis values. The Savage-Dickey density ratio is likely to be invalid."))
 
 
   BF.marg_post_x_fac3md <- Savage_Dickey_BF(marg_post_x_fac3md, silent = TRUE)
-  expect_equivalent(BF.marg_post_x_fac3md, list("A" = Inf, "B" = Inf, "C" = Inf))
+  expect_equal(BF.marg_post_x_fac3md, list("A" = Inf, "B" = Inf, "C" = Inf), ignore_attr = TRUE)
 
   BF2.marg_post_x_fac3md <- Savage_Dickey_BF(marg_post_x_fac3md, null_hypothesis = 0.5)
-  expect_equivalent(BF2.marg_post_x_fac3md, list("A" = 4.498542, "B" = 0.1316045, "C" = 0.1651373), tolerance = 1e-3)
+  expect_equal(BF2.marg_post_x_fac3md, list("A" = 4.5, "B" = 0.1316, "C" = 0.165), tolerance = 1e-3, ignore_attr = TRUE)
 
   BF2.marg_post_x_fac3md <- Savage_Dickey_BF(marg_post_x_fac3md, null_hypothesis = 0.5, normal_approximation = TRUE)
-  expect_equal(BF2.marg_post_x_fac3md, list("A" = 0.5917503, "B" = 0.09956232, "C" = 0.1266085), tolerance = 1e-3)
+  expect_equal(BF2.marg_post_x_fac3md, list("A" = 0.5918, "B" = 0.0996, "C" = 0.1266), tolerance = 1e-3)
 
   ### marginal_inference ----
   out <- marginal_inference(
