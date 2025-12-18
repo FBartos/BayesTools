@@ -200,6 +200,12 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   prior_weights  <- sapply(model_list, function(m) m[["prior_weights"]])
 
   inference  <- ensemble_inference(model_list, parameters, is_null_list, conditional)
+
+  # set seed only once at the beginning -- not in the individual draws as the priors will end up completely correlated
+  if(!is.null(seed)){
+    set.seed(seed)
+  }
+
   out <- list()
 
   for(p in seq_along(parameters)){
@@ -224,7 +230,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
         temp_priors[[i]][["prior_weights"]] <- temp_inference$prior_probs[i]
       }
 
-      out[[temp_parameter]] <- .mix_posteriors.weightfunction(fits, temp_priors, temp_parameter, temp_inference$post_probs, seed, n_samples)
+      out[[temp_parameter]] <- .mix_posteriors.weightfunction(fits, temp_priors, temp_parameter, temp_inference$post_probs, NULL, n_samples)
 
     }else if(any(sapply(temp_priors, is.prior.factor)) && all(sapply(temp_priors, is.prior.factor) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.null))){
       # factor priors
@@ -241,7 +247,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
         temp_priors[[i]][["prior_weights"]] <- temp_inference$prior_probs[i]
       }
 
-      out[[temp_parameter]] <- .mix_posteriors.factor(fits, temp_priors, temp_parameter, temp_inference$post_probs, seed, n_samples)
+      out[[temp_parameter]] <- .mix_posteriors.factor(fits, temp_priors, temp_parameter, temp_inference$post_probs, NULL, n_samples)
 
     }else if(any(sapply(temp_priors, is.prior.vector)) && all(sapply(temp_priors, is.prior.vector) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.null))){
       # vector priors:
@@ -275,7 +281,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
         temp_priors[[i]][["prior_weights"]] <- temp_inference$prior_probs[i]
       }
 
-      out[[temp_parameter]] <- .mix_posteriors.simple(fits, temp_priors, temp_parameter, temp_inference$post_probs, seed, n_samples)
+      out[[temp_parameter]] <- .mix_posteriors.simple(fits, temp_priors, temp_parameter, temp_inference$post_probs, NULL, n_samples)
 
     }else{
       stop("The posterior samples cannot be mixed: unsupported mixture of prior distributions.")

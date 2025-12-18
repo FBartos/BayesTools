@@ -1,4 +1,24 @@
-context("JAGS fit edge cases and comprehensive tests")
+# ============================================================================ #
+# TEST FILE: JAGS Fit Edge Cases
+# ============================================================================ #
+#
+# PURPOSE:
+#   Edge case and comprehensive tests for JAGS fitting functions including
+#   JAGS_add_priors, JAGS_fit, and related utilities.
+#
+# DEPENDENCIES:
+#   - rjags: For JAGS model syntax generation and testing
+#   - common-functions.R: REFERENCE_DIR, test_reference_text, skip_if_no_fits
+#
+# SKIP CONDITIONS:
+#   - skip_if_not_installed("rjags"): For all tests
+#   - skip_if_no_fits(): For tests using pre-fitted models
+#
+# MODELS/FIXTURES:
+#   - Some tests use pre-fitted models from test-00-model-fits.R
+#
+# TAGS: @evaluation, @edge-cases, @JAGS
+# ============================================================================ #
 
 # Reference directory for text output comparisons
 REFERENCE_DIR <<- testthat::test_path("..", "results", "JAGS-fit-edge-cases")

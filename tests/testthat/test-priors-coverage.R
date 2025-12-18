@@ -1,15 +1,39 @@
-context("Prior distribution coverage tests")
+# ============================================================================ #
+# TEST FILE: Prior Distribution Coverage Tests
+# ============================================================================ #
+#
+# PURPOSE:
+#   Targeted tests to ensure code coverage for edge cases and error paths
+#   in R/priors.R that are not covered by main test-priors.R
+#
+# DEPENDENCIES:
+#   - No external packages required beyond testthat
+#
+# SKIP CONDITIONS:
+#   - None (fast, pure R tests)
+#
+# MODELS/FIXTURES:
+#   - None required
+#
+# TAGS: @coverage, @edge-cases, @priors
+# ============================================================================ #
 
-# Targeted coverage tests for priors.R uncovered lines
 
+# ============================================================================ #
+# SECTION: prior() constructor errors
+# ============================================================================ #
 
-test_that("Unknown distribution name error (line 115)", {
+test_that("prior() rejects unknown distribution names", {
   expect_error(prior("unknown_dist", list(0, 1)),
                "The specified distribution name")
 })
 
 
-test_that("prior_factor orthonormal/meandif with non-vector prior error (lines 328, 334, 336)", {
+# ============================================================================ #
+# SECTION: prior_factor() contrast validation
+# ============================================================================ #
+
+test_that("prior_factor() requires multivariate prior for orthonormal/meandif contrasts", {
   # orthonormal contrast requires multivariate distribution
   expect_error(prior_factor("normal", list(0, 1), contrast = "orthonormal"),
                "contrasts require multivariate prior")
@@ -17,27 +41,24 @@ test_that("prior_factor orthonormal/meandif with non-vector prior error (lines 3
   # meandif contrast requires multivariate distribution
   expect_error(prior_factor("normal", list(0, 1), contrast = "meandif"),
                "contrasts require multivariate prior")
-})
 
-
-test_that("prior_factor orthonormal/meandif with unsupported distribution (line 346)",
-{
   # bernoulli is not a valid multivariate distribution
   expect_error(prior_factor("bernoulli", list(0.5), contrast = "orthonormal"),
                "contrasts require multivariate prior")
 })
 
 
-test_that("prior_factor treatment contrast requires univariate (line 358)", {
-  # treatment contrast with multivariate dist should fail
-  # mnormal requires 3 params, so it fails earlier - use a valid multivariate prior
+test_that("prior_factor() requires univariate prior for treatment contrast", {
   expect_error(prior_factor("mnormal", list(0, 1, 2), contrast = "treatment"),
                "contrasts require univariate prior")
 })
 
 
-test_that("prior_spike_and_slab with factor prior (lines 402-408)", {
-  # spike_and_slab with factor prior as variable
+# ============================================================================ #
+# SECTION: spike_and_slab prior construction and helpers
+# ============================================================================ #
+
+test_that("prior_spike_and_slab() works with factor priors", {
   p_factor <- prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "orthonormal")
   p_factor$parameters[["K"]] <- 2
 
@@ -51,13 +72,12 @@ test_that("prior_spike_and_slab with factor prior (lines 402-408)", {
 })
 
 
-test_that(".set_spike_and_slab_variable_attr (lines 486-497)", {
+test_that(".set_spike_and_slab_variable_attr() sets attributes correctly", {
   p_ss <- prior_spike_and_slab(
     prior_parameter = prior("normal", list(0, 1)),
     prior_inclusion = prior("beta", list(1, 1))
   )
 
-  # Set an attribute on the variable component
   p_ss2 <- BayesTools:::.set_spike_and_slab_variable_attr(p_ss, "test_attr", "test_value")
   expect_true(is.prior.spike_and_slab(p_ss2))
 
@@ -67,20 +87,23 @@ test_that(".set_spike_and_slab_variable_attr (lines 486-497)", {
 })
 
 
-test_that(".get_spike_and_slab_variable error (line 459)", {
+test_that(".get_spike_and_slab_variable() requires spike_and_slab prior", {
   expect_error(BayesTools:::.get_spike_and_slab_variable(prior("normal", list(0, 1))),
                "only works with spike_and_slab priors")
 })
 
 
-test_that(".get_spike_and_slab_inclusion error (lines 471, 476)", {
+test_that(".get_spike_and_slab_inclusion() requires spike_and_slab prior", {
   expect_error(BayesTools:::.get_spike_and_slab_inclusion(prior("normal", list(0, 1))),
                "only works with spike_and_slab priors")
 })
 
 
-test_that("prior_mixture with factor prior containing spike (lines 522, 538)", {
-  # Mixture of factor priors where one is a spike
+# ============================================================================ #
+# SECTION: prior_mixture() construction
+# ============================================================================ #
+
+test_that("prior_mixture() creates factor_mixture with spike component", {
   p1 <- prior("spike", list(0))
   p2 <- prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
   p2$parameters[["K"]] <- 2
@@ -91,8 +114,7 @@ test_that("prior_mixture with factor prior containing spike (lines 522, 538)", {
 })
 
 
-test_that("prior_mixture with prior_none factor (line 576)", {
-  # Mixture with prior_none that should be converted to factor spike
+test_that("prior_mixture() handles prior_none in factor mixtures", {
   p1 <- prior_none()
   p2 <- prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
   p2$parameters[["K"]] <- 2
@@ -103,8 +125,7 @@ test_that("prior_mixture with prior_none factor (line 576)", {
 })
 
 
-test_that("prior_mixture bias mixture (lines 585, 600)", {
-  # PET/PEESE/weightfunction mixture
+test_that("prior_mixture() creates bias_mixture for PET/PEESE/weightfunction", {
   p_pet <- prior_PET("normal", list(0, 1))
   p_wf  <- prior_weightfunction("one.sided", list(steps = c(0.05), alpha = c(1, 1)))
 
@@ -114,13 +135,21 @@ test_that("prior_mixture bias mixture (lines 585, 600)", {
 })
 
 
-test_that("Uniform prior with a > b error (line 843)", {
+# ============================================================================ #
+# SECTION: Distribution parameter validation
+# ============================================================================ #
+
+test_that("uniform prior requires a < b", {
   expect_error(prior("uniform", list(a = 5, b = 1)),
                "lower than")
 })
 
 
-test_that("rng spike_and_slab sample_components (line 1155)", {
+# ============================================================================ #
+# SECTION: rng() function with sample_components
+# ============================================================================ #
+
+test_that("rng() spike_and_slab returns component indicators", {
   p_ss <- prior_spike_and_slab(
     prior_parameter = prior("normal", list(0, 1)),
     prior_inclusion = prior("beta", list(1, 1))
@@ -134,7 +163,7 @@ test_that("rng spike_and_slab sample_components (line 1155)", {
 })
 
 
-test_that("rng mixture sample_components (line 1190)", {
+test_that("rng() mixture returns component indicators", {
   p_mix <- prior_mixture(
     list(prior("normal", list(0, 1)), prior("normal", list(3, 1))),
     components = c("a", "b")
@@ -148,7 +177,7 @@ test_that("rng mixture sample_components (line 1190)", {
 })
 
 
-test_that("rng factor_mixture (lines 1221, 1236, 1240, 1244-1247)", {
+test_that("rng() factor_mixture with transform_factor_samples", {
   p_mix <- prior_mixture(
     list(
       prior("spike", list(0)),
@@ -161,18 +190,16 @@ test_that("rng factor_mixture (lines 1221, 1236, 1240, 1244-1247)", {
   }
 
   set.seed(1)
-  # Default: transform_factor_samples = FALSE
   samples <- rng(p_mix, 10, transform_factor_samples = FALSE)
   expect_true(is.matrix(samples))
 
-  # With transform_factor_samples = TRUE
   samples2 <- rng(p_mix, 10, transform_factor_samples = TRUE)
   expect_true(is.matrix(samples2))
   expect_equal(ncol(samples2), 3)  # K+1 columns
 })
 
 
-test_that("rng orthonormal/meandif transform (line 1284)", {
+test_that("rng() orthonormal prior with transform_factor_samples", {
   p <- prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
   p$parameters[["K"]] <- 2
 
@@ -184,7 +211,11 @@ test_that("rng orthonormal/meandif transform (line 1284)", {
 })
 
 
-test_that("cdf with truncation for spike_and_slab error (lines 1329, 1333)", {
+# ============================================================================ #
+# SECTION: cdf() function edge cases
+# ============================================================================ #
+
+test_that("cdf() not implemented for spike_and_slab", {
   p_ss <- prior_spike_and_slab(
     prior_parameter = prior("normal", list(0, 1)),
     prior_inclusion = prior("beta", list(1, 1))
@@ -194,44 +225,50 @@ test_that("cdf with truncation for spike_and_slab error (lines 1329, 1333)", {
 })
 
 
-test_that("cdf with truncation for simple prior (lines 1363, 1365, 1367, 1369)", {
+test_that("cdf() handles truncated priors correctly", {
   p <- prior("normal", list(0, 1), truncation = list(-2, 2))
 
-  # Test cdf at various points
   expect_true(cdf(p, 0) > 0)
   expect_true(cdf(p, -3) == 0)  # Below truncation
-  expect_true(cdf(p, 3) >= 1 - 1e-6)  # Above truncation (approx 1)
+  expect_true(cdf(p, 3) >= 1 - 1e-6)  # Above truncation
 })
 
 
-test_that("ccdf errors and truncation (lines 1385, 1389, 1419-1425)", {
+# ============================================================================ #
+# SECTION: ccdf() function edge cases
+# ============================================================================ #
+
+test_that("ccdf() not implemented for spike_and_slab or mixture", {
   p_ss <- prior_spike_and_slab(
     prior_parameter = prior("normal", list(0, 1)),
     prior_inclusion = prior("beta", list(1, 1))
   )
-
   expect_error(ccdf(p_ss, 0), "No ccdf are implemented for spike and slab")
 
-  # Mixture error
   p_mix <- prior_mixture(
     list(prior("normal", list(0, 1)), prior("normal", list(3, 1))),
     components = c("a", "b")
   )
   expect_error(ccdf(p_mix, 0), "No ccdf are implemented for prior mixtures")
+})
 
-  # ccdf with truncation
+
+test_that("ccdf() handles truncated priors correctly", {
   p <- prior("normal", list(0, 1), truncation = list(-2, 2))
   expect_true(ccdf(p, 0) > 0)
   expect_true(ccdf(p, 3) == 0)  # Above truncation
 })
 
 
-test_that("lpdf spike_and_slab and mixture errors (lines 1442, 1446, 1496, 1498)", {
+# ============================================================================ #
+# SECTION: lpdf() function edge cases
+# ============================================================================ #
+
+test_that("lpdf() not implemented for spike_and_slab or mixture", {
   p_ss <- prior_spike_and_slab(
     prior_parameter = prior("normal", list(0, 1)),
     prior_inclusion = prior("beta", list(1, 1))
   )
-
   expect_error(lpdf(p_ss, 0), "No lpdf are implemented for spike and slab")
 
   p_mix <- prior_mixture(
@@ -242,12 +279,15 @@ test_that("lpdf spike_and_slab and mixture errors (lines 1442, 1446, 1496, 1498)
 })
 
 
-test_that("quant spike_and_slab and mixture errors (lines 1528, 1532)", {
+# ============================================================================ #
+# SECTION: quant() function edge cases
+# ============================================================================ #
+
+test_that("quant() not implemented for spike_and_slab or mixture", {
   p_ss <- prior_spike_and_slab(
     prior_parameter = prior("normal", list(0, 1)),
     prior_inclusion = prior("beta", list(1, 1))
   )
-
   expect_error(quant(p_ss, 0.5), "No quant(ile)? functions? are implemented for spike and slab")
 
   p_mix <- prior_mixture(
@@ -258,14 +298,12 @@ test_that("quant spike_and_slab and mixture errors (lines 1528, 1532)", {
 })
 
 
-test_that("quant with non-default truncation optimization (lines 1561, 1582, 1584)", {
-  # Truncated prior that requires optimization in quant
+test_that("quant() handles truncated priors with optimization", {
   p <- prior("normal", list(0, 1), truncation = list(0.5, 2))
 
   q <- quant(p, 0.5)
   expect_true(q > 0.5 && q < 2)
 
-  # Also test edge quantiles
   q_low <- quant(p, 0.01)
   q_high <- quant(p, 0.99)
   expect_true(q_low >= 0.5)
@@ -273,15 +311,17 @@ test_that("quant with non-default truncation optimization (lines 1561, 1582, 158
 })
 
 
-test_that("mcdf for orthonormal/meandif (lines 1681, 1685, 1689, 1711-1722)", {
-  # orthonormal prior
+# ============================================================================ #
+# SECTION: Multivariate distribution functions (mcdf, mccdf, mlpdf, mquant)
+# ============================================================================ #
+
+test_that("mcdf() works for orthonormal and meandif priors", {
   p_orth <- prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
   p_orth$parameters[["K"]] <- 2
 
   cdf_val <- mcdf(p_orth, 0)
   expect_true(cdf_val >= 0 && cdf_val <= 1)
 
-  # meandif prior
   p_md <- prior_factor("mnormal", list(0, 1), contrast = "meandif")
   p_md$parameters[["K"]] <- 2
 
@@ -290,7 +330,7 @@ test_that("mcdf for orthonormal/meandif (lines 1681, 1685, 1689, 1711-1722)", {
 })
 
 
-test_that("mccdf for orthonormal/meandif (lines 1760-1801)", {
+test_that("mccdf() works for orthonormal and meandif priors", {
   p_orth <- prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
   p_orth$parameters[["K"]] <- 2
 
@@ -305,7 +345,7 @@ test_that("mccdf for orthonormal/meandif (lines 1760-1801)", {
 })
 
 
-test_that("mlpdf for orthonormal/meandif (lines 1840, 1844, 1870, 1874)", {
+test_that("mlpdf() works for orthonormal and meandif priors", {
   p_orth <- prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
   p_orth$parameters[["K"]] <- 2
 
@@ -320,7 +360,7 @@ test_that("mlpdf for orthonormal/meandif (lines 1840, 1844, 1870, 1874)", {
 })
 
 
-test_that("mquant for orthonormal/meandif (lines 1933, 1937, 1963, 1967)", {
+test_that("mquant() works for orthonormal and meandif priors", {
   p_orth <- prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
   p_orth$parameters[["K"]] <- 2
 
@@ -335,18 +375,24 @@ test_that("mquant for orthonormal/meandif (lines 1933, 1937, 1963, 1967)", {
 })
 
 
-test_that("pdf.default passes through to stats::dnorm for vectors", {
-  # pdf.default calls stats::dnorm for numeric vectors, not an error
-  # This tests the generic S3 dispatch working correctly
+# ============================================================================ #
+# SECTION: S3 dispatch and generic functions
+# ============================================================================ #
+
+test_that("pdf() S3 dispatch works for prior objects", {
   p <- prior("normal", list(0, 1))
   expect_true(is.numeric(pdf(p, 0)))
 })
 
 
-test_that("mean.prior for spike_and_slab (line 2123)", {
+# ============================================================================ #
+# SECTION: mean() function edge cases
+# ============================================================================ #
+
+test_that("mean() works for spike_and_slab priors", {
   p_ss <- prior_spike_and_slab(
     prior_parameter = prior("normal", list(1, 1)),
-    prior_inclusion = prior("point", list(0.5))  # Fixed inclusion probability
+    prior_inclusion = prior("point", list(0.5))
   )
 
   m <- mean(p_ss)
@@ -355,21 +401,21 @@ test_that("mean.prior for spike_and_slab (line 2123)", {
 })
 
 
-test_that("mean.prior for truncated distributions (lines 2148, 2153)", {
+test_that("mean() handles truncated distributions and undefined moments", {
   # Truncated normal
   p <- prior("normal", list(0, 1), truncation = list(0, Inf))
   m <- mean(p)
   expect_true(m > 0)
 
-  # Truncated t with df <= 1 should return NaN
+  # Truncated t with df <= 1 returns NaN
   p_t <- prior("t", list(0, 1, 1), truncation = list(-1, 1))
   m_t <- mean(p_t)
   expect_true(is.nan(m_t))
 })
 
 
-test_that("mean.prior for orthonormal/meandif with mt df<=1 (lines 2181, 2185, 2189)", {
-  p_mt <- prior_factor("mt", list(0, 1, 1), contrast = "orthonormal")  # df = 1
+test_that("mean() returns NaN for multivariate t with df <= 1", {
+  p_mt <- prior_factor("mt", list(0, 1, 1), contrast = "orthonormal")
   p_mt$parameters[["K"]] <- 2
 
   m <- mean(p_mt)
@@ -377,14 +423,17 @@ test_that("mean.prior for orthonormal/meandif with mt df<=1 (lines 2181, 2185, 2
 })
 
 
-test_that("var dispatches to stats::var for vectors", {
-  # var.default calls stats::var for numeric vectors
+# ============================================================================ #
+# SECTION: var() function edge cases
+# ============================================================================ #
+
+test_that("var() S3 dispatch works for numeric vectors", {
   x <- c(1, 2, 3, 4, 5)
   expect_equal(var(x), stats::var(x))
 })
 
 
-test_that("var.prior for spike_and_slab (lines 2276-2291)", {
+test_that("var() works for spike_and_slab priors", {
   # spike_and_slab with beta inclusion
   p_ss <- prior_spike_and_slab(
     prior_parameter = prior("normal", list(0, 1)),
@@ -404,33 +453,33 @@ test_that("var.prior for spike_and_slab (lines 2276-2291)", {
 })
 
 
-test_that("var.prior for truncated distributions (lines 2316, 2321)", {
-  # t with df <= 2 should return NaN for variance
+test_that("var() returns NaN for distributions with undefined variance", {
+  # t with df <= 2 returns NaN for variance
   p_t <- prior("t", list(0, 1, 2), truncation = list(-1, 1))
   v <- var(p_t)
   expect_true(is.nan(v))
 
-  # invgamma with shape <= 2 should return NaN
+  # invgamma with shape <= 2 returns NaN
   p_ig <- prior("invgamma", list(2, 1), truncation = list(0.1, 10))
   v_ig <- var(p_ig)
   expect_true(is.nan(v_ig))
 })
 
 
-test_that("var.prior for orthonormal/meandif (lines 2350-2368)", {
-  # orthonormal with mpoint
+test_that("var() works for orthonormal and meandif priors", {
+  # orthonormal with mpoint returns 0
   p_mp <- prior_factor("mpoint", list(0), contrast = "orthonormal")
   p_mp$parameters[["K"]] <- 2
   v <- var(p_mp)
   expect_equal(v, 0)
 
-  # orthonormal with mt and df <= 2
+  # orthonormal with mt and df <= 2 returns NaN
   p_mt <- prior_factor("mt", list(0, 1, 2), contrast = "orthonormal")
   p_mt$parameters[["K"]] <- 2
   v_mt <- var(p_mt)
   expect_true(is.nan(v_mt))
 
-  # meandif with mnormal
+  # meandif with mnormal returns positive variance
   p_md <- prior_factor("mnormal", list(0, 1), contrast = "meandif")
   p_md$parameters[["K"]] <- 2
   v_md <- var(p_md)
@@ -438,7 +487,7 @@ test_that("var.prior for orthonormal/meandif (lines 2350-2368)", {
 })
 
 
-test_that("var.prior for mixture error", {
+test_that("var() not implemented for mixture priors", {
   p_mix <- prior_mixture(
     list(prior("normal", list(0, 1)), prior("normal", list(3, 1))),
     components = c("a", "b")

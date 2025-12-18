@@ -1,4 +1,22 @@
-context("Distributions - Weight functions")
+# ============================================================================ #
+# TEST FILE: Distributions - Weight Functions
+# ============================================================================ #
+#
+# PURPOSE:
+#   Visual regression tests for weight function distributions including
+#   one-sided and two-sided weight functions.
+#
+# DEPENDENCIES:
+#   - vdiffr: Visual regression testing
+#   - extraDistr: Additional distributions for comparison
+#
+# SKIP CONDITIONS:
+#   - skip_if_not_installed("vdiffr")
+#
+# TAGS: @evaluation, @visual, @distributions, @weightfunctions
+# ============================================================================ #
+
+skip_if_not_installed("vdiffr")
 
 test_that("Density function works", {
 

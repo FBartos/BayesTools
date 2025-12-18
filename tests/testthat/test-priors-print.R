@@ -1,4 +1,19 @@
-context("Prior print function")
+# ============================================================================ #
+# TEST FILE: Prior Print Function
+# ============================================================================ #
+#
+# PURPOSE:
+#   Tests for the print.prior S3 method including input validation,
+#   formatting options, and output correctness.
+#
+# DEPENDENCIES:
+#   - None (pure R)
+#
+# SKIP CONDITIONS:
+#   - None (can run on CRAN)
+#
+# TAGS: @evaluation, @priors, @print
+# ============================================================================ #
 
 
 test_that("Prior print function input validation", {

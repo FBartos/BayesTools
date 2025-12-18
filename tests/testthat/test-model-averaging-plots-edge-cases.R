@@ -1,4 +1,24 @@
-context("Model averaging plots edge cases")
+# ============================================================================ #
+# TEST FILE: Model Averaging Plots Edge Cases
+# ============================================================================ #
+#
+# PURPOSE:
+#   Edge case tests for plot_prior_list, plot_posterior, plot_models and
+#   related visualization functions.
+#
+# DEPENDENCIES:
+#   - vdiffr: Visual regression testing
+#   - common-functions.R: REFERENCE_DIR, test_reference_table
+#
+# SKIP CONDITIONS:
+#   - skip_if_not_installed("vdiffr"): For visual tests
+#   - Note: First section (input validation) can run on CRAN (pure R)
+#
+# MODELS/FIXTURES:
+#   - None required (pure prior testing)
+#
+# TAGS: @evaluation, @edge-cases, @plots, @model-averaging
+# ============================================================================ #
 
 # Reference directory for text output comparisons (if needed)
 REFERENCE_DIR <<- testthat::test_path("..", "results", "model-averaging-plots-edge-cases")

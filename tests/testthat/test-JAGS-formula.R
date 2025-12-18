@@ -1,9 +1,25 @@
-context("JAGS formula")
-
-# This file tests the JAGS formula functions
-# - Helper functions for parameter naming and formula handling
-# - JAGS_evaluate_formula function for prediction
-# Uses pre-fitted models from test-00-model-fits.R per testing guidelines
+# ============================================================================ #
+# TEST FILE: JAGS Formula Handling
+# ============================================================================ #
+#
+# PURPOSE:
+#   Tests for JAGS formula parsing, parameter naming, and prediction functions
+#   in R/JAGS-formula.R. Includes JAGS_evaluate_formula and helper utilities.
+#
+# DEPENDENCIES:
+#   - rjags: Required for JAGS model evaluation
+#   - common-functions.R: Test helpers and pre-fitted model access
+#
+# SKIP CONDITIONS:
+#   - First section (parameter name tools): Can run on CRAN (pure R)
+#   - Second section (JAGS evaluation): skip_if_not_installed("rjags")
+#   - skip_on_os(): Multivariate sampling consistency (meandif priors)
+#
+# MODELS/FIXTURES:
+#   - Uses pre-fitted models from test-00-model-fits.R via temp_fits_dir
+#
+# TAGS: @evaluation, @JAGS, @formula
+# ============================================================================ #
 
 # Load common test helpers
 source(testthat::test_path("common-functions.R"))
@@ -35,12 +51,15 @@ test_that("JAGS formula tools work", {
 
 })
 
+# ============================================================================ #
+# SECTION: Tests requiring JAGS (skip conditions per test)
+# ============================================================================ #
+
 test_that("JAGS evaluate formula works", {
 
   # Test JAGS_evaluate_formula by comparing against lm() predictions using ML estimates.
   # This test constructs samples manually (from ML estimates) - no pre-fitted JAGS model needed.
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
-  skip_on_cran()
   skip_if_not_installed("rjags")
 
   # Setup: complex formula including scaling
@@ -159,6 +178,7 @@ test_that("JAGS evaluate formula works with spike priors", {
   # Test JAGS_evaluate_formula with spike prior distributions using pre-fitted model
   skip_on_os(c("mac", "linux", "solaris"))
   skip_on_cran()
+  skip_if_no_fits()
   skip_if_not_installed("rjags")
 
   # Load pre-fitted model with spike factor priors (all 4 contrast types)
@@ -186,9 +206,9 @@ test_that("JAGS evaluate formula works with spike priors", {
   # Row 1: A(1) + A(0) + A(ref=0) + B(0) = 1
   # Row 2: B(1) + A(0) + B(2) + B(0) = 3
   # Row 3: A(1) + B(0) + C(2) + C(0) = 3
-  expect_equivalent(new_samples_mean[1], 1, tolerance = 0.01)
-  expect_equivalent(new_samples_mean[2], 3, tolerance = 0.01)
-  expect_equivalent(new_samples_mean[3], 3, tolerance = 0.01)
+  expect_equal(new_samples_mean[1], 1, tolerance = 0.01, ignore_attr = TRUE)
+  expect_equal(new_samples_mean[2], 3, tolerance = 0.01, ignore_attr = TRUE)
+  expect_equal(new_samples_mean[3], 3, tolerance = 0.01, ignore_attr = TRUE)
 })
 
 
@@ -197,6 +217,7 @@ test_that("JAGS evaluate formula works with spike-and-slab and mixture priors", 
   # Test JAGS_evaluate_formula with spike-and-slab and mixture priors using pre-fitted model
   skip_on_os(c("mac", "linux", "solaris"))
   skip_on_cran()
+  skip_if_no_fits()
   skip_if_not_installed("rjags")
 
   # Load pre-fitted joint complex model (mixture intercept, spike-and-slab continuous, spike-and-slab factor)
@@ -238,12 +259,12 @@ test_that("Expression handling functions work", {
   expect_equal(.extract_expressions(f5), list("x"))
   expect_equal(.extract_expressions(f6), list("x", "b"))
 
-  expect_equal(.remove_expressions(f1), formula(y ~ 1))
-  expect_equal(.remove_expressions(f2), formula(y ~ z))
-  expect_equal(.remove_expressions(f3), formula(y ~ 1))
-  expect_equal(.remove_expressions(f4), formula(y ~ z))
-  expect_equal(.remove_expressions(f5), formula(y ~ z))
-  expect_equal(.remove_expressions(f6), formula(y ~ z))
+  expect_equal(.remove_expressions(f1), formula(y ~ 1), ignore_formula_env = TRUE)
+  expect_equal(.remove_expressions(f2), formula(y ~ z), ignore_formula_env = TRUE)
+  expect_equal(.remove_expressions(f3), formula(y ~ 1), ignore_formula_env = TRUE)
+  expect_equal(.remove_expressions(f4), formula(y ~ z), ignore_formula_env = TRUE)
+  expect_equal(.remove_expressions(f5), formula(y ~ z), ignore_formula_env = TRUE)
+  expect_equal(.remove_expressions(f6), formula(y ~ z), ignore_formula_env = TRUE)
 })
 
 test_that("Random effects handling functions work", {
@@ -284,13 +305,13 @@ test_that("Random effects handling functions work", {
   expect_equal(.extract_random_effects(f6), t2)
   expect_equal(.extract_random_effects(f7), t3)
 
-  expect_equal(.remove_random_effects(f1), formula( ~ 1))
-  expect_equal(.remove_random_effects(f2), formula( ~ x_cont1))
-  expect_equal(.remove_random_effects(f3), formula( ~ 1))
-  expect_equal(.remove_random_effects(f4), formula( ~ 1))
-  expect_equal(.remove_random_effects(f5), formula( ~ x_cont1))
-  expect_equal(.remove_random_effects(f6), formula( ~ x_cont1))
-  expect_equal(.remove_random_effects(f7), formula( ~ x_cont1 + x_cont2))
+  expect_equal(.remove_random_effects(f1), formula( ~ 1), ignore_formula_env = TRUE)
+  expect_equal(.remove_random_effects(f2), formula( ~ x_cont1), ignore_formula_env = TRUE)
+  expect_equal(.remove_random_effects(f3), formula( ~ 1), ignore_formula_env = TRUE)
+  expect_equal(.remove_random_effects(f4), formula( ~ 1), ignore_formula_env = TRUE)
+  expect_equal(.remove_random_effects(f5), formula( ~ x_cont1), ignore_formula_env = TRUE)
+  expect_equal(.remove_random_effects(f6), formula( ~ x_cont1), ignore_formula_env = TRUE)
+  expect_equal(.remove_random_effects(f7), formula( ~ x_cont1 + x_cont2), ignore_formula_env = TRUE)
 
 })
 
@@ -319,12 +340,12 @@ test_that("-1 (no intercept) formula handling works correctly", {
   expect_true(grepl("mu_intercept", result_basic$formula_syntax))
 
   # Test 2: Helper function test
-  expect_equal(.add_intercept_to_formula(~ x - 1), ~ x)
-  expect_equal(.add_intercept_to_formula(~ x + y - 1), ~ x + y)
-  expect_equal(.add_intercept_to_formula(~ - 1), ~ 1)
+  expect_equal(.add_intercept_to_formula(~ x - 1), ~ x, ignore_formula_env = TRUE)
+  expect_equal(.add_intercept_to_formula(~ x + y - 1), ~ x + y, ignore_formula_env = TRUE)
+  expect_equal(.add_intercept_to_formula(~ - 1), ~ 1, ignore_formula_env = TRUE)
 
-  expect_equal(.add_intercept_to_formula(~ x + 0), ~ x)
-  expect_equal(.add_intercept_to_formula(~ x + y + 0), ~ x + y)
-  expect_equal(.add_intercept_to_formula(~ 0), ~ 1)
+  expect_equal(.add_intercept_to_formula(~ x + 0), ~ x, ignore_formula_env = TRUE)
+  expect_equal(.add_intercept_to_formula(~ x + y + 0), ~ x + y, ignore_formula_env = TRUE)
+  expect_equal(.add_intercept_to_formula(~ 0), ~ 1, ignore_formula_env = TRUE)
 
 })

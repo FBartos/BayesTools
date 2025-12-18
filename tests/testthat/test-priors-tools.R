@@ -1,4 +1,19 @@
-context("Prior distribution tool functions")
+# ============================================================================ #
+# TEST FILE: Prior Distribution Tool Functions
+# ============================================================================ #
+#
+# PURPOSE:
+#   Tests for prior handling utilities, parameter checks, and prior type
+#   detection functions.
+#
+# DEPENDENCIES:
+#   - None (pure R)
+#
+# SKIP CONDITIONS:
+#   - None (can run on CRAN)
+#
+# TAGS: @evaluation, @priors, @tools
+# ============================================================================ #
 
 test_that("Prior handling works", {
 

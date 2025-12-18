@@ -1,119 +1,33 @@
-context("Prior distribution functions")
+# ============================================================================ #
+# TEST FILE: Prior Distribution Evaluation Tests
+# ============================================================================ #
+#
+# PURPOSE:
+#   Visual regression tests for prior distribution functions (rng, pdf, cdf,
+#   quant, mean, sd). Each test validates a distribution type works correctly.
+#
+# DEPENDENCIES:
+#   - vdiffr: Visual regression testing
+#   - common-functions.R: test_prior, test_weightfunction, test_orthonormal,
+#     test_meandif helper functions
+#
+# SKIP CONDITIONS:
+#   - skip_on_os(c("mac", "linux", "solaris")): Multivariate sampling tests
+#     (orthonormal, meandif priors only)
+#   - Note: Pure R tests - can run on CRAN
+#
+# MODELS/FIXTURES:
+#   - None required (pure prior testing)
+#
+# TAGS: @evaluation, @visual, @priors
+# ============================================================================ #
 
-# each test checks that a corresponding prior distribution can be created and the following functions work:
-# - random number generator
-# - quantile function
-# - density function
-# - distribution function
-# - print function
-# - mean and sd functions
-test_prior          <- function(prior, skip_moments = FALSE){
-  set.seed(1)
-  # tests rng and print function (for plot)
-  samples <- rng(prior, 100000)
-  if(is.prior.discrete(prior)){
-    barplot(table(samples)/length(samples), main = print(prior, plot = T), width = 1/(max(samples)+1), space = 0, xlim = c(-0.25, max(samples)+0.25))
-  }else if(is.prior.spike_and_slab(prior)){
-    xh         <- hist(samples[samples != 0], breaks = 50, plot = FALSE)
-    xh$density <- xh$density * mean(samples != 0)
-    plot(xh, main = print(prior, plot = T), freq = FALSE)
-  }else{
-    hist(samples, main = print(prior, plot = T), breaks = 50, freq = FALSE)
-  }
-  # tests density function
-  lines(prior, individual = TRUE)
+# Load test helper functions
+source(testthat::test_path("common-functions.R"))
 
-  # tests quantile function
-  if(!is.prior.spike_and_slab(prior) && !is.prior.mixture(prior)){
-    abline(v = quant(prior, 0.5), col = "blue", lwd = 2)
-  }
-  # tests that pdf(q(x)) == x
-  if(!is.prior.point(prior) && !is.prior.discrete(prior) && !is.prior.spike_and_slab(prior) && !is.prior.mixture(prior)){
-    expect_equal(.25, cdf(prior, quant(prior, 0.25)), tolerance = 1e-4)
-    expect_equal(.25, ccdf(prior, quant(prior, 0.75)), tolerance = 1e-4)
-  }
-  # test mean and sd functions
-  if(!skip_moments){
-    expect_equal(mean(samples), mean(prior), tolerance = 1e-2)
-    expect_equal(sd(samples),   sd(prior),   tolerance = 1e-2)
-  }
-  return(invisible())
-}
-test_weightfunction <- function(prior, skip_moments = FALSE){
-  set.seed(1)
-  # tests rng and print function (for plot)
-  samples   <- rng(prior, 10000)
-  densities <- density(prior, individual = TRUE)
+# File-level skips for visual regression
+skip_if_not_installed("vdiffr")
 
-  if(!all(names(prior$parameters) %in% c("steps", "alpha1", "alpha2"))){
-    quantiles <- mquant(prior, 0.5)
-  }
-
-  oldpar <- graphics::par(no.readonly = TRUE)
-  on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
-  par(mfcol = c(1, ncol(samples)-1))
-
-  for(i in 1:(ncol(samples)-1)){
-    hist(samples[,i], main = print(prior, plot = T), breaks = 50, freq = FALSE)
-    lines(densities[[i]])
-    if(!all(names(prior$parameters) %in% c("steps", "alpha1", "alpha2"))){
-      abline(v = quantiles[i], col = "blue", lwd = 2)
-    }
-    if(!grepl("fixed", prior$distribution) & !all(names(prior$parameters) %in% c("steps", "alpha1", "alpha2"))){
-      expect_equal(.25, mcdf(prior, mquant(prior, 0.25)[,i])[,i], tolerance = 1e-5)
-      expect_equal(.25, mccdf.prior(prior, mquant(prior, 0.75)[,i])[,i], tolerance = 1e-5)
-    }
-    if(!skip_moments){
-      expect_equal(apply(samples, 2, mean), mean(prior), tolerance = 1e-2)
-      expect_equal(apply(samples, 2, sd),   sd(prior)  , tolerance = 1e-2)
-    }
-  }
-  return(invisible())
-}
-test_orthonormal    <- function(prior, skip_moments = FALSE){
-  set.seed(1)
-  # tests rng and print function (for plot)
-  samples <- rng(prior, 100000)
-  samples <- samples[abs(samples) < 10]
-  hist(samples, main = print(prior, plot = T), breaks = 50, freq = FALSE)
-  # tests density function
-  lines(prior, individual = TRUE)
-  # tests quantile function
-  abline(v = mquant(prior, 0.5), col = "blue", lwd = 2)
-  # tests that pdf(q(x)) == x
-  if(!is.prior.point(prior)){
-    expect_equal(.25, mcdf(prior, mquant(prior, 0.25)), tolerance = 1e-5)
-    expect_equal(.25, mccdf(prior, mquant(prior, 0.75)), tolerance = 1e-5)
-  }
-  # test mean and sd functions
-  if(!skip_moments){
-    expect_equal(mean(samples), mean(prior), tolerance = 1e-2)
-    expect_equal(sd(samples),   sd(prior),   tolerance = 1e-2)
-  }
-  return(invisible())
-}
-test_meandif        <- function(prior, skip_moments = FALSE){
-  set.seed(1)
-  # tests rng and print function (for plot)
-  samples <- rng(prior, 100000)
-  samples <- samples[abs(samples) < 10]
-  hist(samples, main = print(prior, plot = T), breaks = 50, freq = FALSE)
-  # tests density function
-  lines(prior, individual = TRUE)
-  # tests quantile function
-  abline(v = mquant(prior, 0.5), col = "blue", lwd = 2)
-  # tests that pdf(q(x)) == x
-  if(!is.prior.point(prior)){
-    expect_equal(.25, mcdf(prior, mquant(prior, 0.25)), tolerance = 1e-5)
-    expect_equal(.25, mccdf(prior, mquant(prior, 0.75)), tolerance = 1e-5)
-  }
-  # test mean and sd functions
-  if(!skip_moments){
-    expect_equal(mean(samples), mean(prior), tolerance = 1e-2)
-    expect_equal(sd(samples),   sd(prior),   tolerance = 1e-2)
-  }
-  return(invisible())
-}
 
 test_that("Normal prior distribution works", {
 

@@ -1,4 +1,25 @@
-context("JAGS marginal likelihood functions")
+# ============================================================================ #
+# TEST FILE: JAGS Marginal Likelihood Functions
+# ============================================================================ #
+#
+# PURPOSE:
+#   Tests for JAGS marginal likelihood computation functions.
+#   Uses simple models where the log marginal likelihood is known to be 0
+#   (for prior samples, the marginal likelihood for any proper prior is 1).
+#
+# DEPENDENCIES:
+#   - rjags: For JAGS model fitting
+#   - bridgesampling: For marginal likelihood computation
+#
+# SKIP CONDITIONS:
+#   - skip_if_not_installed("rjags")
+#   - Note: Creates fresh models, does not need pre-fitted models
+#
+# MODELS/FIXTURES:
+#   - Creates models with known analytical marginal likelihoods for validation
+#
+# TAGS: @evaluation, @JAGS, @marginal-likelihood
+# ============================================================================ #
 
 # This file tests the JAGS marginal likelihood computation functions
 # It uses simple models where the log marginal likelihood is known to be 0
@@ -23,9 +44,7 @@ test_that("JAGS model functions work (simple)", {
     PEESE = prior_PEESE("gamma", list(1, 1))
     #p12 = prior("bernoulli", list(0.75)) discrete priors are not supported with bridgesampling
   )
-  log_posterior <- function(parameters, data){
-    return(0)
-  }
+  log_posterior <- STANDARD_LOG_POSTERIOR
 
 
   for(i in seq_along(all_priors)){
@@ -54,9 +73,7 @@ test_that("JAGS model functions work (vector)", {
     p2  = prior("mcauchy", list(location = 0, scale = 1.5, K = 2)),
     p3  = prior("mt",      list(location = 2, scale = 0.5, df = 5, K = 2))
   )
-  log_posterior <- function(parameters, data){
-    return(0)
-  }
+  log_posterior <- STANDARD_LOG_POSTERIOR
 
 
   for(i in seq_along(all_priors)){
@@ -93,9 +110,7 @@ test_that("JAGS model functions work (factor)", {
   attr(all_priors[[4]], "levels") <- 1
   attr(all_priors[[5]], "levels") <- 3
   attr(all_priors[[6]], "levels") <- 3
-  log_posterior <- function(parameters, data){
-    return(0)
-  }
+  log_posterior <- STANDARD_LOG_POSTERIOR
 
 
   for(i in seq_along(all_priors)){
@@ -122,9 +137,7 @@ test_that("JAGS model functions work (spike and slab)", {
     p3  = prior_spike_and_slab(prior("invgamma", list(4, 5)), prior_inclusion = prior("point", list(.3)))
   )
 
-  log_posterior <- function(parameters, data){
-    return(0)
-  }
+  log_posterior <- STANDARD_LOG_POSTERIOR
 
 
   for(i in seq_along(all_priors)){
@@ -151,9 +164,7 @@ test_that("JAGS model functions work (weightfunctions)", {
     prior_weightfunction("one.sided", list(c(.05, 0.60), c(1, 1), c(1, 5))),
     prior_weightfunction("two.sided", list(c(.05), c(1, 1)))
   )
-  log_posterior <- function(parameters, data){
-    return(0)
-  }
+  log_posterior <- STANDARD_LOG_POSTERIOR
 
 
   for(i in seq_along(all_priors)){
@@ -194,9 +205,7 @@ test_that("JAGS model functions work (spikes)", {
   attr(all_priors$p4.5, "levels") <- 2
   attr(all_priors$p5.5, "levels") <- 2
   nuisance_prior <- list(sigma = prior("normal", list(0, 1)))
-  log_posterior <- function(parameters, data){
-    return(0)
-  }
+  log_posterior <- STANDARD_LOG_POSTERIOR
 
 
   for(i in seq_along(all_priors)){
@@ -327,7 +336,7 @@ test_that(".fit_to_posterior handles different input types", {
   model_syntax <- JAGS_add_priors("model{}", prior_list)
   monitor <- JAGS_to_monitor(prior_list)
   inits <- JAGS_get_inits(prior_list, chains = 2, seed = 1)
-  log_posterior <- function(parameters, data) return(0)
+  log_posterior <- STANDARD_LOG_POSTERIOR
 
   set.seed(1)
   model <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
@@ -357,7 +366,7 @@ test_that(".fit_to_posterior handles jags.samples output", {
   model_syntax <- JAGS_add_priors("model{}", prior_list)
   monitor <- JAGS_to_monitor(prior_list)
   inits <- JAGS_get_inits(prior_list, chains = 2, seed = 1)
-  log_posterior <- function(parameters, data) return(0)
+  log_posterior <- STANDARD_LOG_POSTERIOR
 
   set.seed(1)
   model <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
@@ -377,7 +386,7 @@ test_that(".fit_to_posterior handles vector parameters in jags.samples", {
   model_syntax <- JAGS_add_priors("model{}", prior_list)
   monitor <- JAGS_to_monitor(prior_list)
   inits <- JAGS_get_inits(prior_list, chains = 2, seed = 1)
-  log_posterior <- function(parameters, data) return(0)
+  log_posterior <- STANDARD_LOG_POSTERIOR
 
   set.seed(1)
   model <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
@@ -395,7 +404,7 @@ test_that("JAGS_bridgesampling handles runjags output", {
 
   prior_list <- list(mu = prior("normal", list(0, 1)))
   model_syntax <- JAGS_add_priors("model{}", prior_list)
-  log_posterior <- function(parameters, data) return(0)
+  log_posterior <- STANDARD_LOG_POSTERIOR
 
   set.seed(1)
   fit <- suppressWarnings(runjags::run.jags(

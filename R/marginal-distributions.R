@@ -854,6 +854,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
     }else{
 
+      # keep the same seed across levels
+      if(is.null(seed)){
+        seed <- sample(666666, 1)
+      }
+
       samples <- lapply(1:levels, function(i) .mix_priors.simple(priors, paste0(parameter, "[", i, "]"), seed, n_samples))
 
       sample_ind <- attr(samples[[1]], "sample_ind")
@@ -883,6 +888,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       samples <- matrix(samples, ncol = 1)
 
     }else{
+
+      # keep the same seed across levels
+      if(is.null(seed)){
+        seed <- sample(666666, 1)
+      }
 
       samples <- lapply(1:levels, function(i) .mix_priors.simple(priors, paste0(parameter, "[", i, "]"), seed, n_samples))
 

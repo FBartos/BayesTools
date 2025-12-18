@@ -1,4 +1,19 @@
-context("Distributions - Multivariate point")
+# ============================================================================ #
+# TEST FILE: Distributions - Multivariate Point
+# ============================================================================ #
+#
+# PURPOSE:
+#   Tests for multivariate point distribution functions (dmpoint, rmpoint,
+#   pmpoint, qmpoint).
+#
+# DEPENDENCIES:
+#   - None (pure R)
+#
+# SKIP CONDITIONS:
+#   - None (can run on CRAN)
+#
+# TAGS: @evaluation, @distributions, @multivariate
+# ============================================================================ #
 
 test_that("Density function works", {
 
