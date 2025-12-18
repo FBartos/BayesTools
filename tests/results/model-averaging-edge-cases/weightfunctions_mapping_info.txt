@@ -1,4 +1,3 @@
-One-sided mapping length: 1
-Two-sided mapping length: 1
-Two-sided with one_sided=TRUE length: 1
-Cuts: 0, 0.05, 1
+Mixed mapping length: 2
+Inx 1: 2,2,1,1,1
+Inx 2: 3,2,1,2,3

@@ -1,3 +1,0 @@
- Model    Prior m          Prior s       Prior prob. log(marglik) Post. prob. Inclusion BF
-     1 Normal(0, 1) Normal(0, 1)[0, Inf]       0.500       -31.95       0.079        0.085
-     2     Spike(0) Normal(0, 1)[0, Inf]       0.500       -29.49       0.921       11.717
