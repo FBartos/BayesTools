@@ -1,6 +1,7 @@
 # version 0.2.24
 ### Features
 - major refactoring and speed-up of unit tests
+- adds support for `__default_factor` and `__default_continuous` priors in `JAGS_formula()` - when specified in the `prior_list`, these are used as default priors for factor and continuous predictors that are not explicitly specified
 
 ### Fixes
 - fixes incorrect ordering the printed mixture priors

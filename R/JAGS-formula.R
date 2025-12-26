@@ -12,12 +12,25 @@
 #' @param prior_list named list of prior distribution of parameters specified within
 #' the \code{formula}. When using \code{-1} in the formula, an "intercept" prior
 #' can be explicitly specified; otherwise, \code{prior("spike", list(0))} is
-#' automatically added.
+#' automatically added. The list can also include two special entries:
+#' \describe{
+#'   \item{\code{"__default_continuous"}}{A prior to use for any continuous predictors
+#'     (including the intercept) that are not explicitly specified in the prior list.}
+#'   \item{\code{"__default_factor"}}{A prior to use for any factor predictors
+#'     (including interactions involving factors) that are not explicitly specified
+#'     in the prior list.}
+#' }
+#' These default priors allow for more concise specification when many predictors
+#' share the same prior distribution.
 #'
 #' @details When a formula with \code{-1} (no intercept) is specified, the
 #' function automatically removes the \code{-1}, adds an intercept back to the
 #' formula, and includes a spike(0) prior for the intercept to ensure equivalent
 #' model behavior while maintaining consistent formula parsing.
+#'
+#' When using default priors (\code{"__default_continuous"} or \code{"__default_factor"}),
+#' explicitly specified priors for individual terms take precedence over the defaults.
+#' The defaults are only applied to terms that are not already in the prior list.
 #'
 #' @examples
 #' # simulate data
@@ -52,6 +65,17 @@
 #'   formula = ~ x_fac3 - 1,
 #'   parameter = "mu", data = df, prior_list = prior_list_no_intercept)
 #' # Equivalent to specifying intercept = prior("spike", list(0))
+#'
+#' # using default priors for simpler specification
+#' prior_list_defaults <- list(
+#'   "__default_continuous" = prior("normal", list(0, 1)),
+#'   "__default_factor"     = prior_factor("normal", list(0, 0.5), contrast = "treatment")
+#' )
+#' formula_defaults <- JAGS_formula(
+#'   formula = ~ x_cont + x_fac3,
+#'   parameter = "mu", data = df, prior_list = prior_list_defaults)
+#' # intercept and x_cont get the default continuous prior
+#' # x_fac3 gets the default factor prior
 #'
 #' @return \code{JAGS_formula} returns a list containing the formula JAGS syntax,
 #' JAGS data object, and modified prior_list.
@@ -126,6 +150,30 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
     # remove the random effects specific priors from the prior list
     prior_list <- prior_list[.get_grouping_factor(names(prior_list)) == ""]
   }
+
+  # handle default priors: __default_factor and __default_continuous
+  default_factor_prior     <- prior_list[["__default_factor"]]
+  default_continuous_prior <- prior_list[["__default_continuous"]]
+  has_defaults <- !is.null(default_factor_prior) || !is.null(default_continuous_prior)
+
+  # remove default priors from prior_list before validation
+  prior_list[["__default_factor"]]     <- NULL
+  prior_list[["__default_continuous"]] <- NULL
+
+  # fill in missing priors with defaults based on term type
+  if(has_defaults){
+    for(term in model_terms){
+      if(!term %in% names(prior_list)){
+        term_type <- model_terms_type[[term]]
+        if(term_type == "factor" && !is.null(default_factor_prior)){
+          prior_list[[term]] <- default_factor_prior
+        }else if(term_type == "continuous" && !is.null(default_continuous_prior)){
+          prior_list[[term]] <- default_continuous_prior
+        }
+      }
+    }
+  }
+
   # check that all predictors have a prior distribution
   check_list(prior_list, "prior_list", check_names = model_terms, allow_other = FALSE, all_objects = TRUE)
 
@@ -171,11 +219,11 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   # check whether intercept is unique parameter
   if(sum(grepl("intercept", names(prior_list))) > 1)
     stop("only the intercept parameter can contain 'intercept' in its name.")
-  # check whether any reserved term is in usage
-  reserved_terms <- c("__xXx__", "__xREx__", "xRE_PRECx", "xRE_CORx", "xRE_Zx", "xRE_STDx", "xRE_COEFx", "xRE_MAPx", "xRE_COEFx", "xRE_DATAx")
+  # check whether any reserved term is in usage (note: __default_factor/__default_continuous are reserved but already removed from prior_list)
+  reserved_terms <- c("__xXx__", "__xREx__", "xRE_PRECx", "xRE_CORx", "xRE_Zx", "xRE_STDx", "xRE_COEFx", "xRE_MAPx", "xRE_COEFx", "xRE_DATAx", "__default_factor", "__default_continuous")
   for(reserved_term in reserved_terms){
-    if(any(grepl(reserved_term, names(prior_list))))
-      stop(paste0("'", reserved_term, "' string is internally used by the BayesTools package and can't be used for naming variables or prior distributions."))
+    if(any(grepl(reserved_term, colnames(data))))
+      stop(paste0("'", reserved_term, "' string is internally used by the BayesTools package and can't be used for naming variables."))
   }
 
 

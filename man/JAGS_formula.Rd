@@ -18,7 +18,16 @@ automatically converted to include an intercept with a spike(0) prior.}
 \item{prior_list}{named list of prior distribution of parameters specified within
 the \code{formula}. When using \code{-1} in the formula, an "intercept" prior
 can be explicitly specified; otherwise, \code{prior("spike", list(0))} is
-automatically added.}
+automatically added. The list can also include two special entries:
+\describe{
+\item{\code{"__default_continuous"}}{A prior to use for any continuous predictors
+(including the intercept) that are not explicitly specified in the prior list.}
+\item{\code{"__default_factor"}}{A prior to use for any factor predictors
+(including interactions involving factors) that are not explicitly specified
+in the prior list.}
+}
+These default priors allow for more concise specification when many predictors
+share the same prior distribution.}
 }
 \value{
 \code{JAGS_formula} returns a list containing the formula JAGS syntax,
@@ -34,6 +43,10 @@ When a formula with \code{-1} (no intercept) is specified, the
 function automatically removes the \code{-1}, adds an intercept back to the
 formula, and includes a spike(0) prior for the intercept to ensure equivalent
 model behavior while maintaining consistent formula parsing.
+
+When using default priors (\code{"__default_continuous"} or \code{"__default_factor"}),
+explicitly specified priors for individual terms take precedence over the defaults.
+The defaults are only applied to terms that are not already in the prior list.
 }
 \examples{
 # simulate data
@@ -68,6 +81,17 @@ formula_no_intercept <- JAGS_formula(
   formula = ~ x_fac3 - 1,
   parameter = "mu", data = df, prior_list = prior_list_no_intercept)
 # Equivalent to specifying intercept = prior("spike", list(0))
+
+# using default priors for simpler specification
+prior_list_defaults <- list(
+  "__default_continuous" = prior("normal", list(0, 1)),
+  "__default_factor"     = prior_factor("normal", list(0, 0.5), contrast = "treatment")
+)
+formula_defaults <- JAGS_formula(
+  formula = ~ x_cont + x_fac3,
+  parameter = "mu", data = df, prior_list = prior_list_defaults)
+# intercept and x_cont get the default continuous prior
+# x_fac3 gets the default factor prior
 
 }
 \seealso{

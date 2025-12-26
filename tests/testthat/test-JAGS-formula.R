@@ -349,3 +349,119 @@ test_that("-1 (no intercept) formula handling works correctly", {
   expect_equal(.add_intercept_to_formula(~ 0), ~ 1, ignore_formula_env = TRUE)
 
 })
+
+test_that("Default priors (__default_factor and __default_continuous) work correctly", {
+
+  # setup test data
+  set.seed(1)
+  df_test <- data.frame(
+    x_cont1 = rnorm(60),
+    x_cont2 = rnorm(60),
+    x_fac3  = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C")),
+    x_fac2  = factor(rep(c("X", "Y"), 30), levels = c("X", "Y"))
+  )
+
+  # Test 1: Only __default_continuous - applies to intercept and continuous predictors
+  prior_list_cont_default <- list(
+    "__default_continuous" = prior("normal", list(0, 1))
+  )
+  result1 <- JAGS_formula(~ x_cont1 + x_cont2, parameter = "mu",
+                          data = df_test, prior_list = prior_list_cont_default)
+
+  # Check that intercept and both continuous predictors got the default prior
+  expect_true("mu_intercept" %in% names(result1$prior_list))
+  expect_true("mu_x_cont1" %in% names(result1$prior_list))
+  expect_true("mu_x_cont2" %in% names(result1$prior_list))
+  expect_equal(result1$prior_list$mu_intercept$distribution, "normal")
+  expect_equal(result1$prior_list$mu_x_cont1$distribution, "normal")
+  expect_equal(result1$prior_list$mu_x_cont2$distribution, "normal")
+
+  # Test 2: Only __default_factor - continuous predictors must still be specified
+  prior_list_fac_default <- list(
+    "intercept"            = prior("normal", list(0, 5)),
+    "x_cont1"              = prior("cauchy", list(0, 1)),
+    "__default_factor"     = prior_factor("normal", list(0, 0.5), contrast = "treatment")
+  )
+  result2 <- JAGS_formula(~ x_cont1 + x_fac3 + x_fac2, parameter = "mu",
+                          data = df_test, prior_list = prior_list_fac_default)
+
+  # Check that factors got the default prior
+  expect_true("mu_x_fac3" %in% names(result2$prior_list))
+  expect_true("mu_x_fac2" %in% names(result2$prior_list))
+  expect_equal(result2$prior_list$mu_x_fac3$distribution, "normal")
+  expect_equal(result2$prior_list$mu_x_fac2$distribution, "normal")
+  # Check that explicit priors are preserved
+  expect_equal(result2$prior_list$mu_intercept$distribution, "normal")
+  expect_equal(result2$prior_list$mu_intercept$parameters$mean, 0)
+  expect_equal(result2$prior_list$mu_intercept$parameters$sd, 5)
+  expect_equal(result2$prior_list$mu_x_cont1$distribution, "t")  # cauchy is internally stored as t
+
+  # Test 3: Both defaults - all terms get assigned correctly
+  prior_list_both_defaults <- list(
+    "__default_continuous" = prior("normal", list(0, 2)),
+    "__default_factor"     = prior_factor("normal", list(0, 1), contrast = "treatment")
+  )
+  result3 <- JAGS_formula(~ x_cont1 + x_fac3, parameter = "mu",
+                          data = df_test, prior_list = prior_list_both_defaults)
+
+  expect_equal(result3$prior_list$mu_intercept$distribution, "normal")
+  expect_equal(result3$prior_list$mu_intercept$parameters$sd, 2)  # from continuous default
+  expect_equal(result3$prior_list$mu_x_cont1$parameters$sd, 2)    # from continuous default
+  expect_equal(result3$prior_list$mu_x_fac3$parameters$sd, 1)     # from factor default
+
+  # Test 4: Explicit priors override defaults
+  prior_list_override <- list(
+    "intercept"            = prior("cauchy", list(0, 10)),  # explicit override
+    "__default_continuous" = prior("normal", list(0, 1)),
+    "__default_factor"     = prior_factor("normal", list(0, 0.5), contrast = "treatment"),
+    "x_fac3"               = prior_factor("mnormal", list(0, 2), contrast = "orthonormal")  # explicit override
+  )
+  result4 <- JAGS_formula(~ x_cont1 + x_fac3 + x_fac2, parameter = "mu",
+                          data = df_test, prior_list = prior_list_override)
+
+  # Explicit priors should be used
+  expect_equal(result4$prior_list$mu_intercept$distribution, "t")  # cauchy is internally stored as t
+  expect_equal(result4$prior_list$mu_x_fac3$distribution, "mnormal")
+  expect_equal(result4$prior_list$mu_x_fac3$parameters$sd, 2)
+  # Default priors for non-specified terms
+  expect_equal(result4$prior_list$mu_x_cont1$distribution, "normal")
+  expect_equal(result4$prior_list$mu_x_fac2$distribution, "normal")
+  expect_equal(result4$prior_list$mu_x_fac2$parameters$sd, 0.5)
+
+  # Test 5: Interactions use factor default when they involve factors
+  prior_list_interaction <- list(
+    "__default_continuous" = prior("normal", list(0, 1)),
+    "__default_factor"     = prior_factor("mnormal", list(0, 0.5), contrast = "orthonormal")
+  )
+  result5 <- JAGS_formula(~ x_cont1 * x_fac3, parameter = "mu",
+                          data = df_test, prior_list = prior_list_interaction)
+
+  # x_cont1:x_fac3 interaction involves a factor, so should get factor default
+  expect_true("mu_x_cont1__xXx__x_fac3" %in% names(result5$prior_list))
+  expect_equal(result5$prior_list[["mu_x_cont1__xXx__x_fac3"]]$distribution, "mnormal")
+
+  # Test 6: Error when term is missing and no appropriate default
+  prior_list_missing <- list(
+    "__default_continuous" = prior("normal", list(0, 1))
+    # no __default_factor, and x_fac3 not specified
+ )
+  expect_error(
+    JAGS_formula(~ x_cont1 + x_fac3, parameter = "mu",
+                 data = df_test, prior_list = prior_list_missing),
+    "missing"
+  )
+
+  # Test 7: Reserved names cannot be used as variable names in data
+  df_bad <- data.frame(
+    `__default_factor` = rnorm(10),
+    x = rnorm(10),
+    check.names = FALSE
+  )
+  expect_error(
+    JAGS_formula(~ x, parameter = "mu", data = df_bad,
+                 prior_list = list("intercept" = prior("normal", list(0, 1)),
+                                   "x" = prior("normal", list(0, 1)))),
+    "__default_factor"
+  )
+
+})
