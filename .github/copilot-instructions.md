@@ -36,7 +36,7 @@ BayesTools is an R package for Bayesian analyses, JAGS model automation, and Bay
 
 ### Build & Test
 - **Install**: `devtools::install()` (Timeout: 5m+)
-- **Test**: `devtools::test()` (Timeout: 30m+)
+- **Test**: `devtools::test()` (Timeout: 5m+)
 - **Targeted Test**: `devtools::test(filter = 'priors')` (Recommended for dev)
 - **Check**: `rcmdcheck::rcmdcheck(args = c('--no-manual', '--as-cran'), error_on = 'never')` 
 - **Docs**: `devtools::document()` 
@@ -58,4 +58,11 @@ BayesTools is an R package for Bayesian analyses, JAGS model automation, and Bay
 ### Modifying JAGS Fitting
 1.  Edit `R/JAGS-fit.R` for general fitting logic or `R/JAGS-formula.R` for formula handling.
 2.  Verify with `devtools::test(filter = 'JAGS')`.
-3.  Ensure backward compatibility with `runjags` objects.
+3.  Ensure backward compatibility with `runjags` objects. 
+
+## Feature Addition Steps
+1. Create unit tests verifying the desired behavior.
+2. Implement the feature.
+3. Verify the tests pass.
+4. Update documentation as needed.
+5. Update NEWS.md with a summary of changes.
