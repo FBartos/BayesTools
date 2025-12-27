@@ -843,6 +843,21 @@ test_that("Formula-based interaction models fit correctly", {
   model_registry[["fit_formula_interaction_cont"]] <<- result$registry_entry
   fit_formula_interaction_cont <- result$fit
 
+  # Continuous interaction with standardization (scaled version)
+  formula_scale_list_cont_int <- list(mu = list(x_cont1 = TRUE, x_cont2 = TRUE))
+  
+  fit_formula_interaction_cont_scaled <- JAGS_fit(
+    model_syntax = model_syntax, data = data, prior_list = prior_list,
+    formula_list = formula_list_cont_int, formula_data_list = formula_data_list_cont_int,
+    formula_prior_list = formula_prior_list_cont_int,
+    formula_scale_list = formula_scale_list_cont_int,
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
+  result <- save_fit(fit_formula_interaction_cont_scaled, "fit_formula_interaction_cont_scaled",
+                     formulas = TRUE, interactions = TRUE, simple_priors = TRUE,
+                     note = "Continuous-continuous interaction with standardization")
+  model_registry[["fit_formula_interaction_cont_scaled"]] <<- result$registry_entry
+  fit_formula_interaction_cont_scaled <- result$fit
+
   # Continuous-factor interaction
   formula_list_mix_int <- list(mu = ~ x_cont1 * x_fac3o)
   formula_data_list_mix_int <- list(mu = data_formula)
