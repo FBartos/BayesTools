@@ -931,6 +931,20 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
         stop(paste0("Unsupported prior distribution defined for '", continuous, "' continuous variable. See '?prior' for details."))
       }
     }
+    
+    # apply scaling if predictors were scaled during model fitting
+    formula_scale <- attr(fit, "formula_scale")
+    if(!is.null(formula_scale)){
+      for(continuous in names(predictors_type[predictors_type == "continuous"])){
+        # check if this predictor was scaled (with parameter prefix)
+        scaled_name <- paste0(parameter, "_", continuous)
+        if(scaled_name %in% names(formula_scale)){
+          # apply the same scaling transformation
+          scale_info <- formula_scale[[scaled_name]]
+          data[, continuous] <- (data[, continuous] - scale_info$mean) / scale_info$sd
+        }
+      }
+    }
   }
 
   # get the design matrix
