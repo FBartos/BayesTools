@@ -256,6 +256,20 @@ test_that("Downstream functions work with scaled models", {
   expect_equal(JAGS_estimates_table(fit_manual), JAGS_estimates_table(fit_auto))
 })
 
+test_that("Marginal likelihoods match for manual and automatic scaling", {
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+  skip_if_no_fits()
+  
+  # Load pre-fitted marginal likelihoods
+  marglik_manual <- readRDS(file.path(temp_fits_dir, "fit_formula_manual_scaled_marglik.RDS"))
+  marglik_auto   <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled_marglik.RDS"))
+  
+  # The log marginal likelihoods should be very similar
+  # (both models use same scaled data internally)
+  expect_equal(marglik_manual$logml, marglik_auto$logml, tolerance = 0.1)
+})
+
 test_that("JAGS_evaluate_formula applies scaling correctly", {
   skip_if_not_installed("rjags")
   skip_if_no_fits()

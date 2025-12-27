@@ -12,6 +12,7 @@ JAGS_bridgesampling(
   formula_list = NULL,
   formula_data_list = NULL,
   formula_prior_list = NULL,
+  formula_scale_list = NULL,
   add_parameters = NULL,
   add_bounds = NULL,
   maxiter = 10000,
