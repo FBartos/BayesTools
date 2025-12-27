@@ -4,7 +4,7 @@
 \alias{JAGS_formula}
 \title{Create JAGS formula syntax and data object}
 \usage{
-JAGS_formula(formula, parameter, data, prior_list)
+JAGS_formula(formula, parameter, data, prior_list, formula_scale = NULL)
 }
 \arguments{
 \item{formula}{formula specifying the right hand side of the assignment (the
@@ -18,7 +18,12 @@ automatically converted to include an intercept with a spike(0) prior.}
 \item{prior_list}{named list of prior distribution of parameters specified within
 the \code{formula}. When using \code{-1} in the formula, an "intercept" prior
 can be explicitly specified; otherwise, \code{prior("spike", list(0))} is
-automatically added. The list can also include two special entries:
+automatically added. The list can also include two special entries:}
+
+\item{formula_scale}{named list specifying whether to standardize continuous predictors.
+If \code{NULL} (default), no standardization is applied. If a named list is provided,
+continuous predictors with \code{TRUE} values will be standardized (mean-centered and
+scaled by standard deviation). The intercept is never standardized.
 \describe{
 \item{\code{"__default_continuous"}}{A prior to use for any continuous predictors
 (including the intercept) that are not explicitly specified in the prior list.}
@@ -31,7 +36,8 @@ share the same prior distribution.}
 }
 \value{
 \code{JAGS_formula} returns a list containing the formula JAGS syntax,
-JAGS data object, and modified prior_list.
+JAGS data object, modified prior_list, and (if standardization was applied) a
+\code{formula_scale} list with standardization information for back-transformation.
 }
 \description{
 Creates a JAGS formula syntax, prepares data input, and

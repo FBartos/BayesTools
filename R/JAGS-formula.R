@@ -13,6 +13,10 @@
 #' the \code{formula}. When using \code{-1} in the formula, an "intercept" prior
 #' can be explicitly specified; otherwise, \code{prior("spike", list(0))} is
 #' automatically added. The list can also include two special entries:
+#' @param formula_scale named list specifying whether to standardize continuous predictors.
+#' If \code{NULL} (default), no standardization is applied. If a named list is provided,
+#' continuous predictors with \code{TRUE} values will be standardized (mean-centered and
+#' scaled by standard deviation). The intercept is never standardized.
 #' \describe{
 #'   \item{\code{"__default_continuous"}}{A prior to use for any continuous predictors
 #'     (including the intercept) that are not explicitly specified in the prior list.}
@@ -78,11 +82,12 @@
 #' # x_fac3 gets the default factor prior
 #'
 #' @return \code{JAGS_formula} returns a list containing the formula JAGS syntax,
-#' JAGS data object, and modified prior_list.
+#' JAGS data object, modified prior_list, and (if standardization was applied) a
+#' \code{formula_scale} list with standardization information for back-transformation.
 #'
 #' @seealso [JAGS_fit()]
 #' @export
-JAGS_formula <- function(formula, parameter, data, prior_list){
+JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = NULL){
 
   if(!is.language(formula))
     stop("'formula' must be a formula")
@@ -92,6 +97,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
   check_list(prior_list, "prior_list")
   if(any(!sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
+  check_list(formula_scale, "formula_scale", allow_NULL = TRUE)
 
 
   # remove the specified response
@@ -208,6 +214,22 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
 
       if(is.prior.factor(this_prior)|| is.prior.discrete(this_prior) || is.prior.PET(this_prior) || is.prior.PEESE(this_prior) || is.prior.weightfunction(this_prior)){
         stop(paste0("Unsupported prior distribution defined for '", continuous, "' continuous variable. See '?prior' for details."))
+      }
+    }
+    
+    # standardize continuous predictors if requested
+    scale_info <- list()
+    if(!is.null(formula_scale)){
+      for(continuous in names(predictors_type[predictors_type == "continuous"])){
+        if(!is.null(formula_scale[[continuous]]) && isTRUE(formula_scale[[continuous]])){
+          # store original mean and sd
+          scale_info[[continuous]] <- list(
+            mean = mean(data[, continuous], na.rm = TRUE),
+            sd   = stats::sd(data[, continuous], na.rm = TRUE)
+          )
+          # standardize the predictor
+          data[, continuous] <- (data[, continuous] - scale_info[[continuous]]$mean) / scale_info[[continuous]]$sd
+        }
       }
     }
   }
@@ -356,12 +378,21 @@ JAGS_formula <- function(formula, parameter, data, prior_list){
     attr(prior_list[[i]], "parameter") <- parameter
   }
 
-  return(list(
+  output <- list(
     formula_syntax = formula_syntax,
     data           = JAGS_data,
     prior_list     = prior_list,
     formula        = formula
-  ))
+  )
+  
+  # add scale information if standardization was applied
+  if(exists("scale_info") && length(scale_info) > 0){
+    # add parameter prefix to scale_info names for consistency
+    names(scale_info) <- paste0(parameter, "_", names(scale_info))
+    output$formula_scale <- scale_info
+  }
+  
+  return(output)
 }
 
 .JAGS_random_effect_formula <- function(formula, parameter, data, prior_list){
@@ -1117,6 +1148,101 @@ transform_treatment_samples <- function(samples){
   }
 
   return(samples)
+}
+
+
+#' @title Transform standardized posterior samples back to original scale
+#'
+#' @description Transforms posterior samples from standardized continuous
+#' predictors back to the original scale. This function is used when predictors
+#' were standardized during model fitting via the \code{formula_scale} parameter.
+#'
+#' @param fit a fitted model object with \code{formula_scale} attribute, or
+#' a list of posterior samples
+#' @param formula_scale named list containing standardization information
+#' (mean and sd) for each standardized predictor. If \code{fit} is provided
+#' and has a \code{formula_scale} attribute, this will be used automatically.
+#'
+#' @details The function transforms regression coefficients and intercepts
+#' to account for predictor standardization. For a standardized coefficient
+#' \eqn{\beta_z}, the original scale coefficient is \eqn{\beta = \beta_z / sd}.
+#' The intercept is adjusted as: \eqn{\alpha = \alpha_z - \sum(\beta_z * mean / sd)}.
+#'
+#' @return \code{transform_scale_samples} returns posterior samples transformed
+#' back to the original predictor scale.
+#'
+#' @seealso [JAGS_formula()] [JAGS_fit()]
+#'
+#' @export
+transform_scale_samples <- function(fit, formula_scale = NULL){
+
+  # extract formula_scale from fit if available
+  if(is.null(formula_scale) && !is.null(attr(fit, "formula_scale"))){
+    formula_scale <- attr(fit, "formula_scale")
+  }
+  
+  if(is.null(formula_scale) || length(formula_scale) == 0){
+    # no scaling information, return as is
+    return(fit)
+  }
+  
+  check_list(formula_scale, "formula_scale")
+  
+  # extract posterior samples
+  if(inherits(fit, "runjags") || inherits(fit, "BayesTools_fit")){
+    posterior <- as.matrix(.fit_to_posterior(fit))
+  }else if(is.matrix(fit)){
+    posterior <- fit
+  }else{
+    stop("'fit' must be a fitted model object or a matrix of posterior samples.")
+  }
+  
+  # transform each scaled parameter
+  for(param_name in names(formula_scale)){
+    scale_info <- formula_scale[[param_name]]
+    
+    if(param_name %in% colnames(posterior)){
+      # simple parameter (not an array)
+      posterior[, param_name] <- posterior[, param_name] / scale_info$sd
+    }else{
+      # check for array parameters (e.g., param_name[1], param_name[2])
+      param_cols <- grep(paste0("^", gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\\1", param_name), "\\["), colnames(posterior))
+      if(length(param_cols) > 0){
+        posterior[, param_cols] <- posterior[, param_cols, drop = FALSE] / scale_info$sd
+      }
+    }
+  }
+  
+  # adjust intercept if present
+  # extract parameter prefix (e.g., "mu" from "mu_x_cont")
+  param_prefixes <- unique(sapply(strsplit(names(formula_scale), "_"), `[`, 1))
+  
+  for(prefix in param_prefixes){
+    intercept_name <- paste0(prefix, "_intercept")
+    
+    if(intercept_name %in% colnames(posterior)){
+      # adjust intercept for each scaled predictor
+      for(param_name in names(formula_scale)){
+        # only adjust for parameters with matching prefix
+        if(grepl(paste0("^", prefix, "_"), param_name)){
+          scale_info <- formula_scale[[param_name]]
+          
+          # find the corresponding coefficient column(s)
+          if(param_name %in% colnames(posterior)){
+            # The transformation is:
+            # Original: y = alpha + beta*x
+            # Standardized: y = alpha_z + beta_z*(x-mean)/sd
+            # Therefore: alpha = alpha_z - (beta_z/sd)*mean
+            # Note: At this point, beta has already been divided by sd
+            posterior[, intercept_name] <- posterior[, intercept_name] - 
+              (posterior[, param_name] * scale_info$mean)
+          }
+        }
+      }
+    }
+  }
+  
+  return(posterior)
 }
 
 
