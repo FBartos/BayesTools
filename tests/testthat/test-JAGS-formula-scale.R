@@ -152,60 +152,73 @@ test_that("transform_scale_samples transforms coefficients correctly", {
   expect_equal(posterior_original[, "mu_intercept"], expected_intercept)
 })
 
-test_that("Scaled and unscaled models produce comparable results", {
+test_that("Manual and automatic scaling produce equivalent results", {
   skip_if_not_installed("rjags")
   skip_if_no_fits()
   
   # Load pre-fitted models
-  fit_unscaled <- readRDS(file.path(temp_fits_dir, "fit_formula_interaction_cont.RDS"))
-  fit_scaled <- readRDS(file.path(temp_fits_dir, "fit_formula_interaction_cont_scaled.RDS"))
+  fit_manual <- readRDS(file.path(temp_fits_dir, "fit_formula_manual_scaled.RDS"))
+  fit_auto <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS"))
   
-  # Check that formula_scale is stored in scaled fit object
-  expect_true(!is.null(attr(fit_scaled, "formula_scale")))
-  expect_true("mu_x_cont1" %in% names(attr(fit_scaled, "formula_scale")))
-  expect_true("mu_x_cont2" %in% names(attr(fit_scaled, "formula_scale")))
-  expect_equal(names(attr(fit_scaled, "formula_scale")$mu_x_cont1), c("mean", "sd"))
-  expect_equal(names(attr(fit_scaled, "formula_scale")$mu_x_cont2), c("mean", "sd"))
+  # Check that automatic scaling has formula_scale attribute
+  expect_true(!is.null(attr(fit_auto, "formula_scale")))
+  expect_true("mu_x_cont1" %in% names(attr(fit_auto, "formula_scale")))
+  expect_true("mu_x_cont2" %in% names(attr(fit_auto, "formula_scale")))
   
-  # Check that unscaled fit does not have formula_scale
-  expect_true(is.null(attr(fit_unscaled, "formula_scale")))
+  # Check that manual scaling has the scale info stored
+  expect_true(!is.null(attr(fit_manual, "manual_scale")))
+  
+  # Compare scaling parameters
+  # The automatic and manual scaling should have stored the same mean/sd
+  manual_scale <- attr(fit_manual, "manual_scale")
+  auto_scale <- attr(fit_auto, "formula_scale")
+  
+  expect_equal(manual_scale$mu_x_cont1$mean, auto_scale$mu_x_cont1$mean, tolerance = 1e-10)
+  expect_equal(manual_scale$mu_x_cont1$sd, auto_scale$mu_x_cont1$sd, tolerance = 1e-10)
+  expect_equal(manual_scale$mu_x_cont2$mean, auto_scale$mu_x_cont2$mean, tolerance = 1e-10)
+  expect_equal(manual_scale$mu_x_cont2$sd, auto_scale$mu_x_cont2$sd, tolerance = 1e-10)
   
   # Extract posterior samples
-  posterior_unscaled <- as.matrix(fit_unscaled$mcmc[[1]])
-  posterior_scaled <- as.matrix(fit_scaled$mcmc[[1]])
+  posterior_manual <- as.matrix(fit_manual$mcmc[[1]])
+  posterior_auto <- as.matrix(fit_auto$mcmc[[1]])
   
-  # Transform scaled posterior back to original scale
-  posterior_scaled_transformed <- transform_scale_samples(fit_scaled)
+  # The raw posterior samples should be very similar (both are on scaled space)
+  # since both models were fit with the same seed and same scaled data
   
-  # Check that transformed parameters have similar posterior distributions
-  # (should be similar since same data/model, just different parameterization during sampling)
+  # Compare means of main effects
+  mean_manual_x1 <- mean(posterior_manual[, "mu_x_cont1"])
+  mean_auto_x1 <- mean(posterior_auto[, "mu_x_cont1"])
   
-  # Compare means (should be similar with tolerance for MCMC variability)
-  mean_unscaled_x1 <- mean(posterior_unscaled[, "mu_x_cont1"])
-  mean_scaled_x1 <- mean(posterior_scaled_transformed[, "mu_x_cont1"])
+  mean_manual_x2 <- mean(posterior_manual[, "mu_x_cont2"])
+  mean_auto_x2 <- mean(posterior_auto[, "mu_x_cont2"])
   
-  mean_unscaled_x2 <- mean(posterior_unscaled[, "mu_x_cont2"])
-  mean_scaled_x2 <- mean(posterior_scaled_transformed[, "mu_x_cont2"])
+  mean_manual_interaction <- mean(posterior_manual[, "mu_x_cont1__xXx__x_cont2"])
+  mean_auto_interaction <- mean(posterior_auto[, "mu_x_cont1__xXx__x_cont2"])
   
-  # Note: We use generous tolerance because:
-  # 1. MCMC sampling introduces variability
-  # 2. Different parameterizations can explore posterior differently
-  # 3. Models fit with same seed but standardization changes the JAGS variables
+  # These should be very close since both use scaled data
+  expect_equal(mean_manual_x1, mean_auto_x1, tolerance = 0.05)
+  expect_equal(mean_manual_x2, mean_auto_x2, tolerance = 0.05)
+  expect_equal(mean_manual_interaction, mean_auto_interaction, tolerance = 0.05)
   
-  # Just verify that the transformation produces reasonable values
-  # (not NaN, not infinite, in reasonable range)
-  expect_false(any(is.nan(posterior_scaled_transformed)))
-  expect_false(any(is.infinite(posterior_scaled_transformed)))
+  # Compare standard deviations
+  sd_manual_x1 <- sd(posterior_manual[, "mu_x_cont1"])
+  sd_auto_x1 <- sd(posterior_auto[, "mu_x_cont1"])
   
-  # Verify that the scaled coefficients are actually different from unscaled
-  # (before transformation)
-  expect_false(all(abs(posterior_scaled[, "mu_x_cont1"] - posterior_unscaled[, "mu_x_cont1"]) < 0.01))
-  expect_false(all(abs(posterior_scaled[, "mu_x_cont2"] - posterior_unscaled[, "mu_x_cont2"]) < 0.01))
+  sd_manual_x2 <- sd(posterior_manual[, "mu_x_cont2"])
+  sd_auto_x2 <- sd(posterior_auto[, "mu_x_cont2"])
   
-  # But after transformation, check that magnitudes are in similar ballpark
-  # Use the fact that coefficients should be on the order of 0.1-1 for this data
-  expect_true(abs(mean_scaled_x1) < 10)
-  expect_true(abs(mean_scaled_x2) < 10)
+  sd_manual_interaction <- sd(posterior_manual[, "mu_x_cont1__xXx__x_cont2"])
+  sd_auto_interaction <- sd(posterior_auto[, "mu_x_cont1__xXx__x_cont2"])
+  
+  expect_equal(sd_manual_x1, sd_auto_x1, tolerance = 0.05)
+  expect_equal(sd_manual_x2, sd_auto_x2, tolerance = 0.05)
+  expect_equal(sd_manual_interaction, sd_auto_interaction, tolerance = 0.05)
+  
+  # Compare intercepts (these should also be similar)
+  mean_manual_int <- mean(posterior_manual[, "mu_intercept"])
+  mean_auto_int <- mean(posterior_auto[, "mu_intercept"])
+  
+  expect_equal(mean_manual_int, mean_auto_int, tolerance = 0.05)
 })
 
 test_that("Downstream functions work with scaled models", {
@@ -213,74 +226,79 @@ test_that("Downstream functions work with scaled models", {
   skip_if_no_fits()
   
   # Load pre-fitted models
-  fit_unscaled <- readRDS(file.path(temp_fits_dir, "fit_formula_interaction_cont.RDS"))
-  fit_scaled <- readRDS(file.path(temp_fits_dir, "fit_formula_interaction_cont_scaled.RDS"))
+  fit_manual <- readRDS(file.path(temp_fits_dir, "fit_formula_manual_scaled.RDS"))
+  fit_auto <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS"))
   
   # Test that summary functions work
-  expect_no_error(summary(fit_unscaled))
-  expect_no_error(summary(fit_scaled))
+  expect_no_error(summary(fit_manual))
+  expect_no_error(summary(fit_auto))
   
   # Test JAGS_estimates_table (if available)
   if(requireNamespace("BayesTools", quietly = TRUE)){
-    expect_no_error(JAGS_estimates_table(fit_unscaled))
-    expect_no_error(JAGS_estimates_table(fit_scaled))
+    expect_no_error(JAGS_estimates_table(fit_manual))
+    expect_no_error(JAGS_estimates_table(fit_auto))
   }
 })
 
-test_that("Visual comparison of posterior distributions", {
+test_that("Visual comparison of manual vs automatic scaling", {
   skip_if_not_installed("rjags")
   skip_if_no_fits()
   skip_if_not_installed("vdiffr")
   
   # Load pre-fitted models
-  fit_unscaled <- readRDS(file.path(temp_fits_dir, "fit_formula_interaction_cont.RDS"))
-  fit_scaled <- readRDS(file.path(temp_fits_dir, "fit_formula_interaction_cont_scaled.RDS"))
+  fit_manual <- readRDS(file.path(temp_fits_dir, "fit_formula_manual_scaled.RDS"))
+  fit_auto <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS"))
   
-  # Extract posteriors
-  posterior_unscaled <- as.matrix(fit_unscaled$mcmc[[1]])
-  posterior_scaled <- as.matrix(fit_scaled$mcmc[[1]])
-  posterior_scaled_transformed <- transform_scale_samples(fit_scaled)
+  # Extract posteriors (both are on scaled space)
+  posterior_manual <- as.matrix(fit_manual$mcmc[[1]])
+  posterior_auto <- as.matrix(fit_auto$mcmc[[1]])
   
   # Visual test: Compare density plots
-  # For x_cont1 coefficient
+  # For x_cont1 coefficient (scaled space)
   vdiffr::expect_doppelganger(
-    "posterior-comparison-x_cont1",
+    "scaling-comparison-x_cont1",
     {
-      par(mfrow = c(1, 3))
-      plot(density(posterior_unscaled[, "mu_x_cont1"]), 
-           main = "Unscaled", xlab = "mu_x_cont1")
-      plot(density(posterior_scaled[, "mu_x_cont1"]), 
-           main = "Scaled (raw)", xlab = "mu_x_cont1")
-      plot(density(posterior_scaled_transformed[, "mu_x_cont1"]), 
-           main = "Scaled (transformed)", xlab = "mu_x_cont1")
+      par(mfrow = c(1, 2))
+      plot(density(posterior_manual[, "mu_x_cont1"]), 
+           main = "Manual Scaling", xlab = "mu_x_cont1 (scaled)")
+      plot(density(posterior_auto[, "mu_x_cont1"]), 
+           main = "Automatic Scaling", xlab = "mu_x_cont1 (scaled)")
     }
   )
   
-  # For x_cont2 coefficient
+  # For x_cont2 coefficient (scaled space)
   vdiffr::expect_doppelganger(
-    "posterior-comparison-x_cont2",
+    "scaling-comparison-x_cont2",
     {
-      par(mfrow = c(1, 3))
-      plot(density(posterior_unscaled[, "mu_x_cont2"]), 
-           main = "Unscaled", xlab = "mu_x_cont2")
-      plot(density(posterior_scaled[, "mu_x_cont2"]), 
-           main = "Scaled (raw)", xlab = "mu_x_cont2")
-      plot(density(posterior_scaled_transformed[, "mu_x_cont2"]), 
-           main = "Scaled (transformed)", xlab = "mu_x_cont2")
+      par(mfrow = c(1, 2))
+      plot(density(posterior_manual[, "mu_x_cont2"]), 
+           main = "Manual Scaling", xlab = "mu_x_cont2 (scaled)")
+      plot(density(posterior_auto[, "mu_x_cont2"]), 
+           main = "Automatic Scaling", xlab = "mu_x_cont2 (scaled)")
     }
   )
   
-  # For interaction term
+  # For interaction term (scaled space)
   vdiffr::expect_doppelganger(
-    "posterior-comparison-interaction",
+    "scaling-comparison-interaction",
     {
-      par(mfrow = c(1, 3))
-      plot(density(posterior_unscaled[, "mu_x_cont1__xXx__x_cont2"]), 
-           main = "Unscaled", xlab = "mu_x_cont1:x_cont2")
-      plot(density(posterior_scaled[, "mu_x_cont1__xXx__x_cont2"]), 
-           main = "Scaled (raw)", xlab = "mu_x_cont1:x_cont2")
-      plot(density(posterior_scaled_transformed[, "mu_x_cont1__xXx__x_cont2"]), 
-           main = "Scaled (transformed)", xlab = "mu_x_cont1:x_cont2")
+      par(mfrow = c(1, 2))
+      plot(density(posterior_manual[, "mu_x_cont1__xXx__x_cont2"]), 
+           main = "Manual Scaling", xlab = "mu_x_cont1:x_cont2 (scaled)")
+      plot(density(posterior_auto[, "mu_x_cont1__xXx__x_cont2"]), 
+           main = "Automatic Scaling", xlab = "mu_x_cont1:x_cont2 (scaled)")
+    }
+  )
+  
+  # For intercept (scaled space)
+  vdiffr::expect_doppelganger(
+    "scaling-comparison-intercept",
+    {
+      par(mfrow = c(1, 2))
+      plot(density(posterior_manual[, "mu_intercept"]), 
+           main = "Manual Scaling", xlab = "mu_intercept (scaled)")
+      plot(density(posterior_auto[, "mu_intercept"]), 
+           main = "Automatic Scaling", xlab = "mu_intercept (scaled)")
     }
   )
 })
