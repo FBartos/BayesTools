@@ -97,7 +97,10 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   check_list(prior_list, "prior_list")
   if(any(!sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
-  check_list(formula_scale, "formula_scale", allow_NULL = TRUE)
+  # formula_scale can be TRUE/FALSE (apply to all) or a named list
+  if(!is.null(formula_scale) && !is.logical(formula_scale) && !is.list(formula_scale)){
+    stop("'formula_scale' must be NULL, TRUE, FALSE, or a named list")
+  }
 
 
   # remove the specified response
@@ -221,7 +224,17 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     scale_info <- list()
     if(!is.null(formula_scale)){
       for(continuous in names(predictors_type[predictors_type == "continuous"])){
-        if(!is.null(formula_scale[[continuous]]) && isTRUE(formula_scale[[continuous]])){
+        # determine if this predictor should be scaled
+        should_scale <- FALSE
+        if(is.logical(formula_scale) && length(formula_scale) == 1){
+          # formula_scale = TRUE/FALSE applies to all continuous predictors
+          should_scale <- isTRUE(formula_scale)
+        }else if(is.list(formula_scale) && !is.null(formula_scale[[continuous]])){
+          # named list: check specific predictor
+          should_scale <- isTRUE(formula_scale[[continuous]])
+        }
+        
+        if(should_scale){
           # store original mean and sd
           scale_info[[continuous]] <- list(
             mean = mean(data[, continuous], na.rm = TRUE),

@@ -94,7 +94,7 @@ test_that("JAGS_formula standardization preserves data correctly", {
     "x2"        = prior("normal", list(0, 1))
   )
 
-  # Standardize both predictors
+  ### Standardize both predictors
   result <- JAGS_formula(
     formula       = ~ x1 + x2,
     parameter     = "beta",
@@ -114,8 +114,7 @@ test_that("JAGS_formula standardization preserves data correctly", {
   expect_equal(result$formula_scale$beta_x2$mean, -5, tolerance = 0.5)
   expect_equal(result$formula_scale$beta_x2$sd, 2, tolerance = 0.5)
 
-
-  # Standardize both predictors (lazily)
+  ### Standardize both predictors (lazily)
   result <- JAGS_formula(
     formula       = ~ x1 + x2,
     parameter     = "beta",
@@ -135,8 +134,7 @@ test_that("JAGS_formula standardization preserves data correctly", {
   expect_equal(result$formula_scale$beta_x2$mean, -5, tolerance = 0.5)
   expect_equal(result$formula_scale$beta_x2$sd, 2, tolerance = 0.5)
 
-
-  # Standardize one predictors
+  ### Standardize one predictors
   result <- JAGS_formula(
     formula       = ~ x1 + x2,
     parameter     = "beta",
