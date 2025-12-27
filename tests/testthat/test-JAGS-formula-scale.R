@@ -115,6 +115,27 @@ test_that("JAGS_formula standardization preserves data correctly", {
   expect_equal(result$formula_scale$beta_x2$sd, 2, tolerance = 0.5)
 
 
+  # Standardize both predictors (lazily)
+  result <- JAGS_formula(
+    formula       = ~ x1 + x2,
+    parameter     = "beta",
+    data          = df,
+    prior_list    = prior_list,
+    formula_scale = TRUE
+  )
+
+  # Check that both predictors are standardized
+  expect_length(result$formula_scale, 2)
+  expect_true("beta_x1" %in% names(result$formula_scale))
+  expect_true("beta_x2" %in% names(result$formula_scale))
+
+  # Verify scale parameters
+  expect_equal(result$formula_scale$beta_x1$mean, 10, tolerance = 0.5)
+  expect_equal(result$formula_scale$beta_x1$sd, 3, tolerance = 0.5)
+  expect_equal(result$formula_scale$beta_x2$mean, -5, tolerance = 0.5)
+  expect_equal(result$formula_scale$beta_x2$sd, 2, tolerance = 0.5)
+
+
   # Standardize one predictors
   result <- JAGS_formula(
     formula       = ~ x1 + x2,
@@ -257,47 +278,46 @@ test_that("Downstream functions work with scaled models", {
 })
 
 test_that("Marginal likelihoods match for manual and automatic scaling", {
-  skip_if_not_installed("rjags")
-  skip_if_not_installed("bridgesampling")
+
   skip_if_no_fits()
-  
+
   # Load pre-fitted marginal likelihoods
   marglik_manual <- readRDS(file.path(temp_fits_dir, "fit_formula_manual_scaled_marglik.RDS"))
   marglik_auto   <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled_marglik.RDS"))
-  
+
   # The log marginal likelihoods should be very similar
   # (both models use same scaled data internally)
   expect_equal(marglik_manual$logml, marglik_auto$logml, tolerance = 0.1)
 })
 
 test_that("JAGS_evaluate_formula applies scaling correctly", {
-  skip_if_not_installed("rjags")
+
   skip_if_no_fits()
-  
+
   # Load pre-fitted models with scaling
   fit_manual <- readRDS(file.path(temp_fits_dir, "fit_formula_manual_scaled.RDS"))
-  fit_auto <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS"))
-  
+  fit_auto   <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS"))
+
   # Create new data with same scale as original (unscaled)
   set.seed(3)
   new_data <- data.frame(
-    x_cont1 = rnorm(10, mean = 1000, sd = 500),
-    x_cont2 = rnorm(10, mean = 0.5, sd = 0.1)
+    x_cont1 = rnorm(10, mean = 1000, sd = 1000),
+    x_cont2 = rnorm(10, mean = 0.5,  sd = 0.1)
   )
-  
+
   # Get prior lists from fit attributes
-  prior_list_auto <- attr(fit_auto, "prior_list")
+  prior_list_auto   <- attr(fit_auto, "prior_list")
   prior_list_manual <- attr(fit_manual, "prior_list")
-  
+
   # For manual scaling, we need to manually scale the new data
   manual_scale <- attr(fit_manual, "manual_scale")
-  new_data_manual <- new_data
+  new_data_manual         <- new_data
   new_data_manual$x_cont1 <- (new_data$x_cont1 - manual_scale$mu_x_cont1$mean) / manual_scale$mu_x_cont1$sd
   new_data_manual$x_cont2 <- (new_data$x_cont2 - manual_scale$mu_x_cont2$mean) / manual_scale$mu_x_cont2$sd
-  
+
   # For automatic scaling, JAGS_evaluate_formula should apply scaling automatically
   # (using the formula_scale attribute from fit_auto)
-  
+
   # Evaluate formula on new data
   pred_manual <- JAGS_evaluate_formula(
     fit = fit_manual,
@@ -306,7 +326,7 @@ test_that("JAGS_evaluate_formula applies scaling correctly", {
     data = new_data_manual,
     prior_list = prior_list_manual
   )
-  
+
   pred_auto <- JAGS_evaluate_formula(
     fit = fit_auto,
     formula = ~ x_cont1 * x_cont2,
@@ -314,18 +334,11 @@ test_that("JAGS_evaluate_formula applies scaling correctly", {
     data = new_data,  # Note: passing unscaled data
     prior_list = prior_list_auto
   )
-  
-  # The predictions should be very similar (both models use same scaled data internally)
-  expect_equal(dim(pred_manual), dim(pred_auto))
-  expect_equal(dim(pred_manual), c(10, 1000))  # 10 data points, 1000 posterior samples
-  
-  # Compare mean predictions across all data points
-  mean_pred_manual <- rowMeans(pred_manual)
-  mean_pred_auto <- rowMeans(pred_auto)
-  
-  # Should be very close since both use same scaling
-  expect_equal(mean_pred_manual, mean_pred_auto, tolerance = 0.1)
-  
+
+  # The predictions should be very similar
+  # (both models use same scaled data internally, and seed)
+  expect_equal(pred_manual, pred_auto)
+
   # Also check that without scaling, predictions would be different
   # (this verifies that scaling is actually being applied)
   pred_auto_no_scale <- JAGS_evaluate_formula(
@@ -335,10 +348,8 @@ test_that("JAGS_evaluate_formula applies scaling correctly", {
     data = new_data,  # Unscaled data
     prior_list = prior_list_manual
   )
-  
-  mean_pred_no_scale <- rowMeans(pred_auto_no_scale)
-  
+
   # These should be very different from the correctly scaled predictions
-  expect_true(max(abs(mean_pred_no_scale - mean_pred_auto)) > 1)
+  expect_true(any(rowMean(pred_manual) - rowMean(pred_auto_no_scale) > 1))
 })
 
