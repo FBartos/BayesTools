@@ -1713,134 +1713,78 @@ update.BayesTools_table <- function(object, title = NULL, footnotes = NULL, warn
 }
 
 # Helper function to transform scaled samples in list format (for ensemble/marginal tables)
+# Uses the combinatorial unscaling algorithm via the helper in JAGS-formula.R
 .transform_scale_samples_list <- function(samples, formula_scale){
   
   if(is.null(formula_scale) || length(formula_scale) == 0){
     return(samples)
   }
   
-  # extract parameter prefixes for intercept adjustment
-  param_prefixes <- unique(sapply(strsplit(names(formula_scale), "_"), `[`, 1))
+  # Get all parameter names that have samples
+  sample_names <- names(samples)
   
-  # Identify interaction terms (by __xXx__ separator)
-  interaction_names <- grep("__xXx__", names(samples), value = TRUE)
+  # Identify which samples are numeric or matrix (can be transformed)
+  transformable <- sapply(samples, function(x) is.numeric(x) || is.matrix(x))
+  transformable_names <- sample_names[transformable]
   
-  # Step 1: Transform interaction terms: beta_int_orig = beta_int_z / prod(sds)
-  for(interaction_name in interaction_names){
-    prefix <- strsplit(interaction_name, "_")[[1]][1]
-    interaction_part <- sub(paste0("^", prefix, "_"), "", interaction_name)
-    components <- strsplit(interaction_part, "__xXx__")[[1]]
-    component_names <- paste0(prefix, "_", components)
-    
-    components_with_scale <- component_names[component_names %in% names(formula_scale)]
-    
-    if(length(components_with_scale) > 0){
-      sd_product <- prod(sapply(components_with_scale, function(comp) formula_scale[[comp]]$sd))
-      
-      if(is.matrix(samples[[interaction_name]])){
-        samples[[interaction_name]] <- samples[[interaction_name]] / sd_product
-      }else if(is.numeric(samples[[interaction_name]])){
-        samples[[interaction_name]] <- samples[[interaction_name]] / sd_product
-      }
+  if(length(transformable_names) == 0){
+    return(samples)
+  }
+  
+  # Determine the structure of each sample element
+  # (matrix with multiple columns for factors, or simple numeric/matrix for continuous)
+  # We need to handle each structure appropriately
+  
+  # For simplicity, we'll process each parameter individually using its structure
+  # But the combinatorial algorithm needs all parameters together
+  
+  # Approach: Build a single matrix with all parameters, apply transformation, extract back
+  # This requires handling the case where some parameters are matrices (factor levels)
+  
+  # First, identify simple (non-factor) parameters that can use the matrix approach
+  simple_params <- character(0)
+  factor_params <- character(0)
+  
+  for(name in transformable_names){
+    if(is.matrix(samples[[name]]) && ncol(samples[[name]]) > 1){
+      # Multi-column matrix - likely factor levels, skip for now
+      factor_params <- c(factor_params, name)
+    }else{
+      simple_params <- c(simple_params, name)
     }
   }
   
-  # Step 2: Transform main effect coefficients and store beta_z/sd for intercept adjustment
-  beta_div_sd <- list()
-  for(param_name in names(formula_scale)){
-    scale_info <- formula_scale[[param_name]]
+  if(length(simple_params) > 0){
+    # Build a matrix from simple parameters
+    # Each parameter becomes a column, samples are rows
+    n_samples <- if(is.matrix(samples[[simple_params[1]]])){
+      nrow(samples[[simple_params[1]]])
+    }else{
+      length(samples[[simple_params[1]]])
+    }
     
-    if(param_name %in% names(samples)){
-      if(is.matrix(samples[[param_name]])){
-        beta_div_sd[[param_name]] <- samples[[param_name]] / scale_info$sd
-        samples[[param_name]] <- beta_div_sd[[param_name]]
-      }else if(is.numeric(samples[[param_name]])){
-        beta_div_sd[[param_name]] <- samples[[param_name]] / scale_info$sd
-        samples[[param_name]] <- beta_div_sd[[param_name]]
+    posterior_matrix <- matrix(NA, nrow = n_samples, ncol = length(simple_params))
+    colnames(posterior_matrix) <- simple_params
+    
+    for(i in seq_along(simple_params)){
+      name <- simple_params[i]
+      if(is.matrix(samples[[name]])){
+        posterior_matrix[, i] <- samples[[name]][, 1]
+      }else{
+        posterior_matrix[, i] <- samples[[name]]
       }
     }
-  }
-  
-  # Step 3: Adjust main effects for interaction contributions
-  # beta_orig = beta_z/sd - sum_over_interactions(beta_int_orig * mean_other)
-  for(param_name in names(formula_scale)){
-    if(!param_name %in% names(samples)) next
     
-    prefix <- strsplit(param_name, "_")[[1]][1]
-    var_name <- sub(paste0("^", prefix, "_"), "", param_name)
+    # Apply the combinatorial unscaling transformation
+    posterior_matrix <- .apply_unscale_transform(posterior_matrix, formula_scale)
     
-    for(interaction_name in interaction_names){
-      # Check prefix match first
-      if(!grepl(paste0("^", prefix, "_"), interaction_name)) next
-      
-      # Strip prefix and check if var_name is a component of this interaction
-      interaction_part <- sub(paste0("^", prefix, "_"), "", interaction_name)
-      if(!grepl(paste0("(^|__xXx__)", var_name, "(__xXx__|$)"), interaction_part)) next
-      
-      components <- strsplit(interaction_part, "__xXx__")[[1]]
-      other_vars <- components[components != var_name]
-      
-      for(other_var in other_vars){
-        other_param <- paste0(prefix, "_", other_var)
-        if(other_param %in% names(formula_scale)){
-          other_mean <- formula_scale[[other_param]]$mean
-          
-          if(is.matrix(samples[[param_name]]) && is.matrix(samples[[interaction_name]])){
-            samples[[param_name]] <- samples[[param_name]] - 
-              sweep(samples[[interaction_name]], 2, other_mean, `*`)
-          }else if(is.numeric(samples[[param_name]]) && is.numeric(samples[[interaction_name]])){
-            samples[[param_name]] <- samples[[param_name]] - 
-              samples[[interaction_name]] * other_mean
-          }
-        }
-      }
-    }
-  }
-  
-  # Step 4: Adjust intercepts
-  # alpha_orig = alpha_z - sum(beta_z/sd * mean) + sum_interactions(beta_int_orig * prod(means))
-  for(prefix in param_prefixes){
-    intercept_name <- paste0(prefix, "_intercept")
-    
-    if(intercept_name %in% names(samples)){
-      # Adjust for main effects using beta_z/sd (not the interaction-adjusted value)
-      for(param_name in names(formula_scale)){
-        if(!grepl(paste0("^", prefix, "_"), param_name)) next
-        
-        scale_info <- formula_scale[[param_name]]
-        
-        if(param_name %in% names(beta_div_sd)){
-          if(is.matrix(beta_div_sd[[param_name]]) && is.matrix(samples[[intercept_name]])){
-            samples[[intercept_name]] <- samples[[intercept_name]] - 
-              sweep(beta_div_sd[[param_name]], 2, scale_info$mean, `*`)
-          }else if(is.numeric(beta_div_sd[[param_name]]) && is.numeric(samples[[intercept_name]])){
-            samples[[intercept_name]] <- samples[[intercept_name]] - 
-              beta_div_sd[[param_name]] * scale_info$mean
-          }
-        }
-      }
-      
-      # Adjust for interaction contributions: + beta_int_orig * prod(means)
-      for(interaction_name in interaction_names){
-        if(!grepl(paste0("^", prefix, "_"), interaction_name)) next
-        
-        interaction_part <- sub(paste0("^", prefix, "_"), "", interaction_name)
-        components <- strsplit(interaction_part, "__xXx__")[[1]]
-        component_names <- paste0(prefix, "_", components)
-        
-        scaled_components <- component_names[component_names %in% names(formula_scale)]
-        if(length(scaled_components) > 0){
-          mean_product <- prod(sapply(scaled_components, function(comp) formula_scale[[comp]]$mean))
-          
-          if(is.matrix(samples[[interaction_name]]) && is.matrix(samples[[intercept_name]])){
-            samples[[intercept_name]] <- samples[[intercept_name]] + 
-              samples[[interaction_name]] * mean_product
-          }else if(is.numeric(samples[[interaction_name]]) && is.numeric(samples[[intercept_name]])){
-            samples[[intercept_name]] <- samples[[intercept_name]] + 
-              samples[[interaction_name]] * mean_product
-          }
-        }
-      }
+    # Extract back to list
+    for(i in seq_along(simple_params)){
+      name <- simple_params[i]
+      if(is.matrix(samples[[name]])){
+        samples[[name]][, 1] <- posterior_matrix[, i]
+      }else{
+        samples[[name]] <- posterior_matrix[, i]      }
     }
   }
   

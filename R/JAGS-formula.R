@@ -219,7 +219,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
         stop(paste0("Unsupported prior distribution defined for '", continuous, "' continuous variable. See '?prior' for details."))
       }
     }
-    
+
     # standardize continuous predictors if requested
     scale_info <- list()
     if(!is.null(formula_scale)){
@@ -233,7 +233,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
           # named list: check specific predictor
           should_scale <- isTRUE(formula_scale[[continuous]])
         }
-        
+
         if(should_scale){
           # store original mean and sd
           scale_info[[continuous]] <- list(
@@ -397,14 +397,16 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     prior_list     = prior_list,
     formula        = formula
   )
-  
+
   # add scale information if standardization was applied
   if(exists("scale_info") && length(scale_info) > 0){
     # add parameter prefix to scale_info names for consistency
     names(scale_info) <- paste0(parameter, "_", names(scale_info))
+    # store the parameter prefix as an attribute for later retrieval
+    attr(scale_info, "parameter") <- parameter
     output$formula_scale <- scale_info
   }
-  
+
   return(output)
 }
 
@@ -944,7 +946,7 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
         stop(paste0("Unsupported prior distribution defined for '", continuous, "' continuous variable. See '?prior' for details."))
       }
     }
-    
+
     # apply scaling if predictors were scaled during model fitting
     formula_scale <- attr(fit, "formula_scale")
     if(!is.null(formula_scale)){
@@ -1178,6 +1180,180 @@ transform_treatment_samples <- function(samples){
 }
 
 
+# Helper: Parse a term name into its component variable names
+# e.g., "mu_x1__xXx__x2" with prefix "mu" -> c("x1", "x2")
+# e.g., "mu_intercept" -> character(0) (intercept has no components)
+# e.g., "mu_x1" -> c("x1")
+.parse_term_components <- function(term_name, prefix) {
+  # Remove prefix
+  term_part <- sub(paste0("^", prefix, "_"), "", term_name)
+
+  # Check if it's the intercept
+  if (term_part == "intercept") {
+    return(character(0))
+  }
+
+  # Split by interaction separator
+  components <- strsplit(term_part, "__xXx__")[[1]]
+  return(components)
+}
+
+
+# Helper: Check if set A is a subset of set B (including equality)
+.is_subset <- function(A, B) {
+
+  length(A) == 0 || all(A %in% B)
+}
+
+
+# Helper: Build the transformation matrix for unscaling coefficients
+#
+# For each target term T and source term S, computes the coefficient M[T,S] such that:
+#   coef_orig[T] = sum over S of M[T,S] * coef_z[S]
+#
+# The formula is based on expanding products of (x_i - mu_i)/sigma_i terms.
+# For S to contribute to T:
+#   1. T_unscaled == S_unscaled (unscaled components must match exactly)
+#   2. T_scaled ⊆ S_scaled (T's scaled components are a subset of S's)
+#
+# The contribution is: (-1)^|extra| * prod(mu_extra) / prod(sigma_S_scaled)
+# where extra = S_scaled \ T_scaled
+#
+# @param term_names Character vector of all term names in the posterior
+# @param formula_scale Named list with scaling info (mean, sd) for scaled predictors
+# @param prefix The parameter prefix (e.g., "mu")
+# @return A square transformation matrix
+.build_unscale_matrix <- function(term_names, formula_scale, prefix) {
+
+  n_terms <- length(term_names)
+  M <- diag(n_terms)  # Start with identity matrix
+  rownames(M) <- colnames(M) <- term_names
+
+  # Extract the variable names that are scaled (without prefix)
+  scaled_vars <- sub(paste0("^", prefix, "_"), "", names(formula_scale))
+
+  # Parse all terms into their components
+  term_components <- lapply(term_names, .parse_term_components, prefix = prefix)
+  names(term_components) <- term_names
+
+  # For each term, identify scaled vs unscaled components
+  term_scaled <- lapply(term_components, function(comps) comps[comps %in% scaled_vars])
+  term_unscaled <- lapply(term_components, function(comps) comps[!comps %in% scaled_vars])
+
+  # Warn about high-order interactions
+  max_order <- max(sapply(term_components, length))
+  if (max_order >= 5) {
+    warning("Model contains ", max_order, "-way or higher interactions. ",
+            "Unscaling transformation may be computationally intensive.",
+            immediate. = TRUE)
+  }
+
+  # Build the transformation matrix
+  for (t_idx in seq_along(term_names)) {
+    T_name <- term_names[t_idx]
+    T_scaled <- term_scaled[[T_name]]
+    T_unscaled <- term_unscaled[[T_name]]
+
+    for (s_idx in seq_along(term_names)) {
+      S_name <- term_names[s_idx]
+      S_scaled <- term_scaled[[S_name]]
+      S_unscaled <- term_unscaled[[S_name]]
+
+      # Check contribution conditions
+      # 1. Unscaled parts must match exactly
+      if (!setequal(T_unscaled, S_unscaled)) next
+
+      # 2. T_scaled must be a subset of S_scaled
+      if (!.is_subset(T_scaled, S_scaled)) next
+
+      # 3. S must have at least one scaled component (otherwise no transformation needed)
+      if (length(S_scaled) == 0) {
+        # No scaling for this source term - keep identity (already set)
+        next
+      }
+
+      # Compute the coefficient
+      extra_scaled <- setdiff(S_scaled, T_scaled)
+
+      # Sign: (-1)^|extra|
+      sign <- (-1)^length(extra_scaled)
+
+      # Product of means for extra scaled components
+      if (length(extra_scaled) > 0) {
+        extra_params <- paste0(prefix, "_", extra_scaled)
+        mean_product <- prod(sapply(extra_params, function(p) formula_scale[[p]]$mean))
+      } else {
+        mean_product <- 1
+      }
+
+      # Product of SDs for all scaled components in S
+      S_scaled_params <- paste0(prefix, "_", S_scaled)
+      sd_product <- prod(sapply(S_scaled_params, function(p) formula_scale[[p]]$sd))
+
+      # Contribution coefficient
+      M[t_idx, s_idx] <- sign * mean_product / sd_product
+    }
+  }
+
+  return(M)
+}
+
+
+# Helper: Apply unscaling transformation to a matrix of posterior samples
+#
+# @param posterior Matrix with samples in rows, parameters in columns
+# @param formula_scale Named list with scaling info
+# @param prefix Parameter prefix (default: auto-detect from formula_scale names)
+# @return Transformed posterior matrix
+.apply_unscale_transform <- function(posterior, formula_scale, prefix = NULL) {
+
+  if (is.null(formula_scale) || length(formula_scale) == 0) {
+    return(posterior)
+  }
+
+  # Auto-detect prefix if not provided
+  if (is.null(prefix)) {
+    # First try the parameter attribute
+    prefix <- attr(formula_scale, "parameter")
+    # Fallback: parse from names
+    if (is.null(prefix) && length(names(formula_scale)) > 0) {
+      first_name <- names(formula_scale)[1]
+      # Extract prefix from "mu_x1" -> "mu"
+      prefix <- sub("_.*$", "", first_name)
+    }
+  }
+  
+  if (is.null(prefix)) {
+    warning("Could not detect parameter prefix from formula_scale. Returning unchanged.")
+    return(posterior)
+  }
+
+  # Identify which columns are affected by the transformation
+  # (have the same prefix and either are scaled or contain scaled components)
+  affected_cols <- grep(paste0("^", prefix, "_"), colnames(posterior), value = TRUE)
+
+  if (length(affected_cols) == 0) {
+    return(posterior)
+  }
+
+  # Build transformation matrix for affected columns
+  M <- .build_unscale_matrix(affected_cols, formula_scale, prefix)
+
+  # Apply transformation: posterior_new[, affected] = posterior[, affected] %*% t(M)
+  # Since M[T, S] gives the coefficient of S in the expression for T,
+  # we want: new_T = sum_S M[T,S] * old_S
+  # In matrix form: new = old %*% t(M) would give new[i, T] = sum_S old[i, S] * M[T, S]
+  # But that's transposed... Let me reconsider.
+  #
+  # We have: coef_orig = M %*% coef_z (for a single sample as column vector)
+  # For posterior matrix with samples in rows: posterior_orig = posterior_z %*% t(M)
+
+  posterior[, affected_cols] <- posterior[, affected_cols, drop = FALSE] %*% t(M)
+
+  return(posterior)
+}
+
+
 #' @title Transform standardized posterior samples back to original scale
 #'
 #' @description Transforms posterior samples from standardized continuous
@@ -1185,15 +1361,21 @@ transform_treatment_samples <- function(samples){
 #' were standardized during model fitting via the \code{formula_scale} parameter.
 #'
 #' @param fit a fitted model object with \code{formula_scale} attribute, or
-#' a list of posterior samples
+#' a matrix of posterior samples
 #' @param formula_scale named list containing standardization information
 #' (mean and sd) for each standardized predictor. If \code{fit} is provided
 #' and has a \code{formula_scale} attribute, this will be used automatically.
 #'
 #' @details The function transforms regression coefficients and intercepts
-#' to account for predictor standardization. For a standardized coefficient
-#' \eqn{\beta_z}, the original scale coefficient is \eqn{\beta = \beta_z / sd}.
-#' The intercept is adjusted as: \eqn{\alpha = \alpha_z - \sum(\beta_z * mean / sd)}.
+#' to account for predictor standardization using a combinatorial approach that
+#' correctly handles interactions of any order.
+#'
+#' For a k-way interaction between standardized predictors, the expansion of
+#' \eqn{\prod_{i} (x_i - \mu_i)/\sigma_i} contributes to all lower-order terms.
+#' The contribution to a target term T from a source term S (where T is a subset
+#' of S's scaled components) is:
+#' \deqn{(-1)^{|extra|} \cdot \prod_{i \in extra} \mu_i / \prod_{i \in S_{scaled}} \sigma_i}
+#' where \eqn{extra = S_{scaled} \setminus T_{scaled}}.
 #'
 #' @return \code{transform_scale_samples} returns posterior samples transformed
 #' back to the original predictor scale.
@@ -1207,14 +1389,14 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
   if(is.null(formula_scale) && !is.null(attr(fit, "formula_scale"))){
     formula_scale <- attr(fit, "formula_scale")
   }
-  
+
   if(is.null(formula_scale) || length(formula_scale) == 0){
     # no scaling information, return as is
     return(fit)
   }
-  
+
   check_list(formula_scale, "formula_scale")
-  
+
   # extract posterior samples
   if(inherits(fit, "runjags") || inherits(fit, "BayesTools_fit")){
     posterior <- as.matrix(.fit_to_posterior(fit))
@@ -1223,110 +1405,10 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
   }else{
     stop("'fit' must be a fitted model object or a matrix of posterior samples.")
   }
-  
-  # extract parameter prefix (e.g., "mu" from "mu_x_cont")
-  param_prefixes <- unique(sapply(strsplit(names(formula_scale), "_"), `[`, 1))
-  
-  # Identify interaction terms (by __xXx__ separator)
-  interaction_cols <- grep("__xXx__", colnames(posterior), value = TRUE)
-  
-  # Step 1: Transform interaction terms: beta_int_orig = beta_int_z / prod(sds)
-  for(interaction_col in interaction_cols){
-    prefix <- strsplit(interaction_col, "_")[[1]][1]
-    interaction_part <- sub(paste0("^", prefix, "_"), "", interaction_col)
-    components <- strsplit(interaction_part, "__xXx__")[[1]]
-    component_names <- paste0(prefix, "_", components)
-    
-    components_with_scale <- component_names[component_names %in% names(formula_scale)]
-    
-    if(length(components_with_scale) > 0){
-      sd_product <- prod(sapply(components_with_scale, function(comp) formula_scale[[comp]]$sd))
-      posterior[, interaction_col] <- posterior[, interaction_col] / sd_product
-    }
-  }
-  
-  # Step 2: Transform main effect coefficients: beta_z/sd (store as intermediate for intercept)
-  # We need to keep track of beta_z/sd for the intercept adjustment
-  beta_div_sd <- list()
-  for(param_name in names(formula_scale)){
-    scale_info <- formula_scale[[param_name]]
-    
-    if(param_name %in% colnames(posterior)){
-      # Store beta_z/sd before any interaction adjustment
-      beta_div_sd[[param_name]] <- posterior[, param_name] / scale_info$sd
-      # Transform the main effect
-      posterior[, param_name] <- beta_div_sd[[param_name]]
-    }
-  }
-  
-  # Step 3: Adjust main effects for interaction contributions
-  # beta_orig = beta_z/sd - sum_over_interactions(beta_int_orig * mean_other)
-  for(param_name in names(formula_scale)){
-    if(!param_name %in% colnames(posterior)) next
-    
-    prefix <- strsplit(param_name, "_")[[1]][1]
-    var_name <- sub(paste0("^", prefix, "_"), "", param_name)
-    
-    for(interaction_col in interaction_cols){
-      # Check prefix match first
-      if(!grepl(paste0("^", prefix, "_"), interaction_col)) next
-      
-      # Strip prefix and check if var_name is a component of this interaction
-      interaction_part <- sub(paste0("^", prefix, "_"), "", interaction_col)
-      if(!grepl(paste0("(^|__xXx__)", var_name, "(__xXx__|$)"), interaction_part)) next
-      
-      components <- strsplit(interaction_part, "__xXx__")[[1]]
-      other_vars <- components[components != var_name]
-      
-      for(other_var in other_vars){
-        other_param <- paste0(prefix, "_", other_var)
-        if(other_param %in% names(formula_scale)){
-          other_mean <- formula_scale[[other_param]]$mean
-          posterior[, param_name] <- posterior[, param_name] - 
-            posterior[, interaction_col] * other_mean
-        }
-      }
-    }
-  }
-  
-  # Step 4: Adjust intercept
-  # alpha_orig = alpha_z - sum(beta_z/sd * mean) + sum_interactions(beta_int_orig * prod(means))
-  for(prefix in param_prefixes){
-    intercept_name <- paste0(prefix, "_intercept")
-    
-    if(intercept_name %in% colnames(posterior)){
-      # Adjust for main effects using beta_z/sd (not the interaction-adjusted value)
-      for(param_name in names(formula_scale)){
-        if(!grepl(paste0("^", prefix, "_"), param_name)) next
-        
-        scale_info <- formula_scale[[param_name]]
-        
-        if(param_name %in% names(beta_div_sd)){
-          # alpha = alpha_z - (beta_z/sd) * mean
-          posterior[, intercept_name] <- posterior[, intercept_name] - 
-            beta_div_sd[[param_name]] * scale_info$mean
-        }
-      }
-      
-      # Adjust for interaction contributions: + beta_int_orig * prod(means)
-      for(interaction_col in interaction_cols){
-        if(!grepl(paste0("^", prefix, "_"), interaction_col)) next
-        
-        interaction_part <- sub(paste0("^", prefix, "_"), "", interaction_col)
-        components <- strsplit(interaction_part, "__xXx__")[[1]]
-        component_names <- paste0(prefix, "_", components)
-        
-        scaled_components <- component_names[component_names %in% names(formula_scale)]
-        if(length(scaled_components) > 0){
-          mean_product <- prod(sapply(scaled_components, function(comp) formula_scale[[comp]]$mean))
-          
-          posterior[, intercept_name] <- posterior[, intercept_name] + 
-            posterior[, interaction_col] * mean_product
-        }
-      }
-    }
-  }
-  
+
+  # Apply the combinatorial unscaling transformation
+  posterior <- .apply_unscale_transform(posterior, formula_scale)
+
   return(posterior)
 }
 

@@ -558,3 +558,609 @@ test_that("transform_scaled has no effect when formula_scale is NULL", {
 })
 
 
+# ============================================================================ #
+# LM-BASED VALIDATION TESTS
+# ============================================================================ #
+#
+# These tests validate the unscaling transformation by comparing against lm():
+# 1. Fit lm() with scaled predictors -> extract coefficients
+# 2. Transform coefficients using transform_scale_samples()
+# 3. Compare against lm() with unscaled predictors
+#
+# This approach validates both the implementation AND the derivation.
+# ============================================================================ #
+
+# Helper: Create formula_scale from data frame and variable names
+# Mimics what JAGS_formula does when formula_scale = TRUE
+.make_formula_scale <- function(df, var_names, prefix = "mu") {
+  result <- list()
+  for (var in var_names) {
+    param_name <- paste0(prefix, "_", var)
+    result[[param_name]] <- list(
+      mean = mean(df[[var]]),
+      sd   = sd(df[[var]])
+    )
+  }
+  attr(result, "parameter") <- prefix
+  result
+}
+
+# Helper: Convert lm coefficients to posterior matrix format (repeated rows)
+# Uses the same naming convention as JAGS (__xXx__ for interactions)
+.lm_coefs_to_posterior <- function(coefs, prefix = "mu", n_rep = 10) {
+  # Convert names: "(Intercept)" -> "mu_intercept", "x1:x2" -> "mu_x1__xXx__x2"
+  new_names <- names(coefs)
+  new_names <- gsub("\\(Intercept\\)", "intercept", new_names)
+  new_names <- gsub(":", "__xXx__", new_names)
+  new_names <- paste0(prefix, "_", new_names)
+
+  # Remove scale() wrapper from names if present
+  new_names <- gsub("scale\\(([^)]+)\\)", "\\1", new_names)
+
+  posterior <- matrix(rep(coefs, each = n_rep), nrow = n_rep, ncol = length(coefs))
+  colnames(posterior) <- new_names
+  posterior
+}
+
+# Helper to reorder lm coefficients to match posterior column order
+.reorder_lm_coefs <- function(coef_unscaled, posterior_transformed) {
+  # Build mapping from posterior names to lm names
+  posterior_names <- colnames(posterior_transformed)
+  lm_names <- sapply(posterior_names, function(nm) {
+    # Remove mu_ prefix
+    stripped <- sub("^mu_", "", nm)
+    if (stripped == "intercept") return("(Intercept)")
+    # Replace __xXx__ with :
+    gsub("__xXx__", ":", stripped)
+  })
+  coef_unscaled[lm_names]
+}
+
+
+test_that("lm validation: simple standardization (one predictor)", {
+
+  set.seed(42)
+  df <- data.frame(
+    x1 = rnorm(500, mean = 10, sd = 3),
+    y  = rnorm(500)
+  )
+  df$y <- 5 + 2 * scale(df$x1) + rnorm(500, 0, 0.5)
+
+  # Fit with scaled predictor
+  fit_scaled <- lm(y ~ scale(x1), data = df)
+  coef_scaled <- coef(fit_scaled)
+
+  # Fit with unscaled predictor (ground truth)
+  fit_unscaled <- lm(y ~ x1, data = df)
+  coef_unscaled <- coef(fit_unscaled)
+
+  # Transform scaled coefficients
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
+  formula_scale <- .make_formula_scale(df, "x1")
+  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+
+  # Compare
+  expect_equal(
+    unname(posterior_transformed[1, ]),
+    unname(.reorder_lm_coefs(coef_unscaled, posterior_transformed)),
+    tolerance = 1e-10
+  )
+})
+
+
+test_that("lm validation: multiple predictors (no interaction)", {
+
+  set.seed(43)
+  df <- data.frame(
+    x1 = rnorm(500, mean = 3, sd = 5),
+    x2 = rnorm(500, mean = -10, sd = 2)
+  )
+  df$y <- 2 - 0.5 * scale(df$x1) + 1.5 * scale(df$x2) + rnorm(500, 0, 0.3)
+
+  # Fit with scaled predictors
+  fit_scaled <- lm(y ~ scale(x1) + scale(x2), data = df)
+  coef_scaled <- coef(fit_scaled)
+
+  # Fit with unscaled predictors (ground truth)
+  fit_unscaled <- lm(y ~ x1 + x2, data = df)
+  coef_unscaled <- coef(fit_unscaled)
+
+  # Transform
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
+  formula_scale <- .make_formula_scale(df, c("x1", "x2"))
+  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+
+  # Compare
+  expect_equal(
+    unname(posterior_transformed[1, ]),
+    unname(.reorder_lm_coefs(coef_unscaled, posterior_transformed)),
+    tolerance = 1e-10
+  )
+})
+
+
+test_that("lm validation: two-way interaction (both scaled)", {
+
+  set.seed(44)
+  df <- data.frame(
+    x1 = rnorm(500, mean = 5, sd = 2),
+    x2 = rnorm(500, mean = -3, sd = 4)
+  )
+  df$y <- 3 + 0.8 * scale(df$x1) - 0.5 * scale(df$x2) +
+          0.3 * scale(df$x1) * scale(df$x2) + rnorm(500, 0, 0.5)
+
+  # Fit with scaled predictors
+  fit_scaled <- lm(y ~ scale(x1) * scale(x2), data = df)
+  coef_scaled <- coef(fit_scaled)
+
+  # Fit with unscaled predictors (ground truth)
+  fit_unscaled <- lm(y ~ x1 * x2, data = df)
+  coef_unscaled <- coef(fit_unscaled)
+
+  # Transform
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
+  formula_scale <- .make_formula_scale(df, c("x1", "x2"))
+  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+
+  # Compare all coefficients
+  expect_equal(
+    unname(posterior_transformed[1, ]),
+    unname(.reorder_lm_coefs(coef_unscaled, posterior_transformed)),
+    tolerance = 1e-10
+  )
+})
+
+
+test_that("lm validation: two-way interaction (partial scaling)", {
+
+  set.seed(45)
+  df <- data.frame(
+    x1 = rnorm(500, mean = 8, sd = 3),
+    x2 = rnorm(500, mean = -2, sd = 5)
+  )
+  # Only x1 is scaled
+  df$y <- 1 + 0.6 * scale(df$x1) - 0.4 * df$x2 +
+          0.25 * scale(df$x1) * df$x2 + rnorm(500, 0, 0.4)
+
+  # Fit with partial scaling (only x1 scaled)
+  fit_scaled <- lm(y ~ scale(x1) * x2, data = df)
+  coef_scaled <- coef(fit_scaled)
+
+  # Fit with unscaled predictors (ground truth)
+  fit_unscaled <- lm(y ~ x1 * x2, data = df)
+  coef_unscaled <- coef(fit_unscaled)
+
+  # Transform - only x1 is in formula_scale
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
+  formula_scale <- .make_formula_scale(df, "x1")  # Only x1 scaled
+  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+
+  # Compare
+  expect_equal(
+    unname(posterior_transformed[1, ]),
+    unname(.reorder_lm_coefs(coef_unscaled, posterior_transformed)),
+    tolerance = 1e-10
+  )
+})
+
+
+test_that("lm validation: three-way interaction (all scaled)", {
+
+  set.seed(46)
+  df <- data.frame(
+    x1 = rnorm(500, mean = 3, sd = 2),
+    x2 = rnorm(500, mean = -5, sd = 3),
+    x3 = rnorm(500, mean = 10, sd = 4)
+  )
+  df$y <- 2 +
+          0.5 * scale(df$x1) - 0.3 * scale(df$x2) + 0.4 * scale(df$x3) +
+          0.2 * scale(df$x1) * scale(df$x2) +
+          0.15 * scale(df$x1) * scale(df$x3) +
+          0.1 * scale(df$x2) * scale(df$x3) +
+          0.08 * scale(df$x1) * scale(df$x2) * scale(df$x3) +
+          rnorm(500, 0, 0.3)
+
+  # Fit with scaled predictors
+  fit_scaled <- lm(y ~ scale(x1) * scale(x2) * scale(x3), data = df)
+  coef_scaled <- coef(fit_scaled)
+
+  # Fit with unscaled predictors (ground truth)
+  fit_unscaled <- lm(y ~ x1 * x2 * x3, data = df)
+  coef_unscaled <- coef(fit_unscaled)
+
+  # Transform
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
+  formula_scale <- .make_formula_scale(df, c("x1", "x2", "x3"))
+  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+
+  # Compare all coefficients
+  expect_equal(
+    unname(posterior_transformed[1, ]),
+    unname(.reorder_lm_coefs(coef_unscaled, posterior_transformed)),
+    tolerance = 1e-10
+  )
+})
+
+
+test_that("lm validation: three-way interaction (partial scaling)", {
+
+  set.seed(47)
+  df <- data.frame(
+    x1 = rnorm(500, mean = 4, sd = 2),
+    x2 = rnorm(500, mean = -3, sd = 3),
+    x3 = rnorm(500, mean = 7, sd = 1)  # This one not scaled
+  )
+  # x1 and x2 scaled, x3 not scaled
+  df$y <- 1 +
+          0.4 * scale(df$x1) - 0.2 * scale(df$x2) + 0.3 * df$x3 +
+          0.15 * scale(df$x1) * scale(df$x2) +
+          0.12 * scale(df$x1) * df$x3 +
+          0.08 * scale(df$x2) * df$x3 +
+          0.05 * scale(df$x1) * scale(df$x2) * df$x3 +
+          rnorm(500, 0, 0.2)
+
+  # Fit with partial scaling
+  fit_scaled <- lm(y ~ scale(x1) * scale(x2) * x3, data = df)
+  coef_scaled <- coef(fit_scaled)
+
+  # Fit with unscaled predictors (ground truth)
+  fit_unscaled <- lm(y ~ x1 * x2 * x3, data = df)
+  coef_unscaled <- coef(fit_unscaled)
+
+  # Transform - only x1 and x2 are scaled
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
+  formula_scale <- .make_formula_scale(df, c("x1", "x2"))
+  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+
+  # Compare all coefficients
+  expect_equal(
+    unname(posterior_transformed[1, ]),
+    unname(.reorder_lm_coefs(coef_unscaled, posterior_transformed)),
+    tolerance = 1e-10
+  )
+})
+
+
+test_that("lm validation: four-way interaction", {
+
+  set.seed(48)
+  df <- data.frame(
+    x1 = rnorm(1000, mean = 2, sd = 1),
+    x2 = rnorm(1000, mean = -4, sd = 2),
+    x3 = rnorm(1000, mean = 6, sd = 3),
+    x4 = rnorm(1000, mean = -1, sd = 0.5)
+  )
+  # Complex model with 4-way interaction
+  df$y <- 3 +
+          0.3 * scale(df$x1) - 0.2 * scale(df$x2) +
+          0.4 * scale(df$x3) - 0.1 * scale(df$x4) +
+          0.05 * scale(df$x1) * scale(df$x2) * scale(df$x3) * scale(df$x4) +
+          rnorm(1000, 0, 0.5)
+
+  # Fit with scaled predictors
+  fit_scaled <- lm(y ~ scale(x1) * scale(x2) * scale(x3) * scale(x4), data = df)
+  coef_scaled <- coef(fit_scaled)
+
+  # Fit with unscaled predictors (ground truth)
+  fit_unscaled <- lm(y ~ x1 * x2 * x3 * x4, data = df)
+  coef_unscaled <- coef(fit_unscaled)
+
+  # Transform
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
+  formula_scale <- .make_formula_scale(df, c("x1", "x2", "x3", "x4"))
+  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+
+  # Compare all coefficients
+  expect_equal(
+    unname(posterior_transformed[1, ]),
+    unname(.reorder_lm_coefs(coef_unscaled, posterior_transformed)),
+    tolerance = 1e-10
+  )
+})
+
+
+test_that("lm validation: five-way interaction (warning test)", {
+
+  set.seed(49)
+  df <- data.frame(
+    x1 = rnorm(2000, mean = 1, sd = 0.5),
+    x2 = rnorm(2000, mean = -2, sd = 1),
+    x3 = rnorm(2000, mean = 3, sd = 1.5),
+    x4 = rnorm(2000, mean = -1, sd = 0.3),
+    x5 = rnorm(2000, mean = 4, sd = 2)
+  )
+  df$y <- 2 +
+          0.2 * scale(df$x1) - 0.1 * scale(df$x2) +
+          0.3 * scale(df$x3) - 0.15 * scale(df$x4) + 0.1 * scale(df$x5) +
+          0.02 * scale(df$x1) * scale(df$x2) * scale(df$x3) * scale(df$x4) * scale(df$x5) +
+          rnorm(2000, 0, 0.5)
+
+  # Fit with scaled predictors
+  fit_scaled <- lm(y ~ scale(x1) * scale(x2) * scale(x3) * scale(x4) * scale(x5), data = df)
+  coef_scaled <- coef(fit_scaled)
+
+  # Fit with unscaled predictors (ground truth)
+  fit_unscaled <- lm(y ~ x1 * x2 * x3 * x4 * x5, data = df)
+  coef_unscaled <- coef(fit_unscaled)
+
+  # Transform - expect warning about 5+ way interaction
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
+  formula_scale <- .make_formula_scale(df, c("x1", "x2", "x3", "x4", "x5"))
+
+  expect_warning(
+    posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale),
+    "5-way or higher interactions"
+  )
+
+  # Should still produce correct results despite warning
+  expect_equal(
+    unname(posterior_transformed[1, ]),
+    unname(.reorder_lm_coefs(coef_unscaled, posterior_transformed)),
+    tolerance = 1e-10
+  )
+})
+
+
+test_that("lm validation: complex model from user example", {
+
+  # This is the exact example pattern from the user's request
+  set.seed(1)
+  df_orig <- data.frame(
+    x1 = rnorm(1000, mean =   3, sd = 5),
+    x2 = rnorm(1000, mean = -10, sd = 80),
+    x3 = rnorm(1000, mean = -20, sd = 0.07),
+    x4 = rnorm(1000, mean =  50, sd = 30),
+    x5 = rnorm(1000, mean =  20, sd = 0.2)
+  )
+
+  # DGP with specific structure
+  df_orig$y <- with(
+    df_orig,
+    5 - 0.1 * scale(x1) + 0.2 * scale(x2) + 0.3 * scale(x1) * scale(x2) -
+    0.25 * scale(x3) * scale(x4) * scale(x5) + 0.40 * scale(x3) * scale(x4) +
+    rnorm(1000, 0, 1)
+  )
+
+  # Fit the model with scaled predictors (matching DGP)
+  fit_scaled <- lm(y ~ scale(x1) * scale(x2) + scale(x3) * scale(x4) * scale(x5), data = df_orig)
+  coef_scaled <- coef(fit_scaled)
+
+  # Fit with unscaled predictors (ground truth)
+  fit_unscaled <- lm(y ~ x1 * x2 + x3 * x4 * x5, data = df_orig)
+  coef_unscaled <- coef(fit_unscaled)
+
+  # Transform
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
+  formula_scale <- .make_formula_scale(df_orig, c("x1", "x2", "x3", "x4", "x5"))
+  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+
+  # Compare all coefficients
+  expect_equal(
+    unname(posterior_transformed[1, ]),
+    unname(.reorder_lm_coefs(coef_unscaled, posterior_transformed)),
+    tolerance = 1e-10
+  )
+})
+
+
+test_that("lm validation: factor + scaled continuous interaction", {
+
+  set.seed(50)
+  df <- data.frame(
+    x1 = rnorm(500, mean = 5, sd = 3),
+    f1 = factor(sample(letters[1:2], 500, TRUE))
+  )
+  df$y <- 2 + 0.5 * scale(df$x1) +
+          ifelse(df$f1 == "b", 0.3, 0) +
+          ifelse(df$f1 == "b", 0.2, 0) * scale(df$x1) +
+          rnorm(500, 0, 0.4)
+
+  # Fit with scaled predictor
+  fit_scaled <- lm(y ~ scale(x1) * f1, data = df)
+  coef_scaled <- coef(fit_scaled)
+
+  # Fit with unscaled predictor (ground truth)
+  fit_unscaled <- lm(y ~ x1 * f1, data = df)
+  coef_unscaled <- coef(fit_unscaled)
+
+  # Transform - only x1 is scaled (f1 is factor, not scaled)
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
+  formula_scale <- .make_formula_scale(df, "x1")
+  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+
+  # Compare
+  expect_equal(
+    unname(posterior_transformed[1, ]),
+    unname(.reorder_lm_coefs(coef_unscaled, posterior_transformed)),
+    tolerance = 1e-10
+  )
+})
+
+
+test_that("lm validation: factor + unscaled continuous interaction", {
+
+  set.seed(51)
+  df <- data.frame(
+    x1 = rnorm(500, mean = 8, sd = 2),  # Will NOT be scaled
+    x2 = rnorm(500, mean = -3, sd = 4), # Will be scaled
+    f1 = factor(sample(letters[1:2], 500, TRUE))
+  )
+  df$y <- 1 + 0.3 * df$x1 + 0.4 * scale(df$x2) +
+          ifelse(df$f1 == "b", 0.5, 0) +
+          ifelse(df$f1 == "b", 0.1, 0) * df$x1 +
+          ifelse(df$f1 == "b", 0.15, 0) * scale(df$x2) +
+          rnorm(500, 0, 0.3)
+
+  # Fit with partial scaling (only x2 scaled)
+  fit_scaled <- lm(y ~ x1 * f1 + scale(x2) * f1, data = df)
+  coef_scaled <- coef(fit_scaled)
+
+  # Fit with unscaled predictors (ground truth)
+  fit_unscaled <- lm(y ~ x1 * f1 + x2 * f1, data = df)
+  coef_unscaled <- coef(fit_unscaled)
+
+  # Transform - only x2 is scaled
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
+  formula_scale <- .make_formula_scale(df, "x2")
+  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+
+  # Compare
+  expect_equal(
+    unname(posterior_transformed[1, ]),
+    unname(.reorder_lm_coefs(coef_unscaled, posterior_transformed)),
+    tolerance = 1e-10
+  )
+})
+
+
+test_that("lm validation: multi-level factor with scaled continuous", {
+
+  set.seed(52)
+  df <- data.frame(
+    x1 = rnorm(600, mean = 3, sd = 5),
+    f1 = factor(sample(letters[1:3], 600, TRUE))
+  )
+  df$y <- 2 + 0.6 * scale(df$x1) +
+          ifelse(df$f1 == "b", 0.4, ifelse(df$f1 == "c", -0.3, 0)) +
+          ifelse(df$f1 == "b", 0.2, ifelse(df$f1 == "c", 0.1, 0)) * scale(df$x1) +
+          rnorm(600, 0, 0.5)
+
+  # Fit with scaled predictor
+  fit_scaled <- lm(y ~ scale(x1) * f1, data = df)
+  coef_scaled <- coef(fit_scaled)
+
+  # Fit with unscaled predictor (ground truth)
+  fit_unscaled <- lm(y ~ x1 * f1, data = df)
+  coef_unscaled <- coef(fit_unscaled)
+
+  # Transform
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
+  formula_scale <- .make_formula_scale(df, "x1")
+  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+
+  # Compare
+  expect_equal(
+    unname(posterior_transformed[1, ]),
+    unname(.reorder_lm_coefs(coef_unscaled, posterior_transformed)),
+    tolerance = 1e-10
+  )
+})
+
+
+test_that("lm validation: two factors with scaled continuous interaction", {
+
+  set.seed(53)
+  df <- data.frame(
+    x1 = rnorm(800, mean = 10, sd = 4),
+    f1 = factor(sample(letters[1:2], 800, TRUE)),
+    f2 = factor(sample(letters[1:3], 800, TRUE))
+  )
+  # Complex model with factor-factor and factor-continuous interactions
+  df$y <- 3 + 0.5 * scale(df$x1) + rnorm(800, 0, 0.6)
+
+  # Fit with scaled predictor - full three-way interaction
+  fit_scaled <- lm(y ~ scale(x1) * f1 * f2, data = df)
+  coef_scaled <- coef(fit_scaled)
+
+  # Fit with unscaled predictor (ground truth)
+  fit_unscaled <- lm(y ~ x1 * f1 * f2, data = df)
+  coef_unscaled <- coef(fit_unscaled)
+
+  # Transform
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
+  formula_scale <- .make_formula_scale(df, "x1")
+  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+
+  # Compare
+  expect_equal(
+    unname(posterior_transformed[1, ]),
+    unname(.reorder_lm_coefs(coef_unscaled, posterior_transformed)),
+    tolerance = 1e-10
+  )
+})
+
+
+test_that("lm validation: complex model with factors and mixed scaling", {
+
+  # Comprehensive test with the user's data structure
+  set.seed(1)
+  df <- data.frame(
+    x1 = rnorm(1000, mean =   3, sd = 5),
+    x2 = rnorm(1000, mean = -10, sd = 80),
+    x3 = rnorm(1000, mean = -20, sd = 0.07),
+    x4 = rnorm(1000, mean =  50, sd = 30),
+    x5 = rnorm(1000, mean =  20, sd = 0.2),
+    f1 = factor(sample(letters[1:2], 1000, TRUE)),
+    f2 = factor(sample(letters[1:3], 1000, TRUE))
+  )
+
+  # Model with scaled continuous, unscaled continuous, and factors
+  # x1, x2, x3 are scaled; x4, x5 are NOT scaled
+  df$y <- 5 +
+          0.3 * scale(df$x1) - 0.2 * scale(df$x2) + 0.1 * scale(df$x3) +
+          0.15 * df$x4 - 0.1 * df$x5 +
+          ifelse(df$f1 == "b", 0.4, 0) +
+          0.2 * scale(df$x1) * ifelse(df$f1 == "b", 1, 0) +
+          0.1 * df$x4 * ifelse(df$f1 == "b", 1, 0) +
+          rnorm(1000, 0, 1)
+
+  # Fit with partial scaling
+  fit_scaled <- lm(y ~ scale(x1) * f1 + scale(x2) + scale(x3) + x4 * f1 + x5, data = df)
+  coef_scaled <- coef(fit_scaled)
+
+  # Fit with unscaled predictors (ground truth)
+  fit_unscaled <- lm(y ~ x1 * f1 + x2 + x3 + x4 * f1 + x5, data = df)
+  coef_unscaled <- coef(fit_unscaled)
+
+  # Transform - only x1, x2, x3 are scaled
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
+  formula_scale <- .make_formula_scale(df, c("x1", "x2", "x3"))
+  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+
+  # Compare
+  expect_equal(
+    unname(posterior_transformed[1, ]),
+    unname(.reorder_lm_coefs(coef_unscaled, posterior_transformed)),
+    tolerance = 1e-10
+  )
+})
+
+
+test_that("lm validation: factor interactions with multiple scaled continuous", {
+
+  set.seed(54)
+  df <- data.frame(
+    x1 = rnorm(800, mean = 5, sd = 3),
+    x2 = rnorm(800, mean = -2, sd = 6),
+    f1 = factor(sample(letters[1:2], 800, TRUE))
+  )
+  # Continuous-continuous and continuous-factor interactions
+  df$y <- 2 +
+          0.4 * scale(df$x1) - 0.3 * scale(df$x2) +
+          0.25 * scale(df$x1) * scale(df$x2) +
+          ifelse(df$f1 == "b", 0.5, 0) +
+          0.15 * scale(df$x1) * ifelse(df$f1 == "b", 1, 0) +
+          0.1 * scale(df$x2) * ifelse(df$f1 == "b", 1, 0) +
+          rnorm(800, 0, 0.5)
+
+  # Fit with scaled predictors - three-way interaction x1 * x2 * f1
+  fit_scaled <- lm(y ~ scale(x1) * scale(x2) * f1, data = df)
+  coef_scaled <- coef(fit_scaled)
+
+  # Fit with unscaled predictors (ground truth)
+  fit_unscaled <- lm(y ~ x1 * x2 * f1, data = df)
+  coef_unscaled <- coef(fit_unscaled)
+
+  # Transform
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
+  formula_scale <- .make_formula_scale(df, c("x1", "x2"))
+  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+
+  # Compare
+  expect_equal(
+    unname(posterior_transformed[1, ]),
+    unname(.reorder_lm_coefs(coef_unscaled, posterior_transformed)),
+    tolerance = 1e-10
+  )
+})
+
