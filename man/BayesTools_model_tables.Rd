@@ -41,7 +41,8 @@ runjags_estimates_table(
   formula_prefix = TRUE,
   remove_inclusion = FALSE,
   remove_parameters = NULL,
-  return_samples = FALSE
+  return_samples = FALSE,
+  transform_scaled = FALSE
 )
 
 runjags_inference_table(
@@ -65,7 +66,8 @@ JAGS_estimates_table(
   formula_prefix = TRUE,
   remove_inclusion = FALSE,
   remove_parameters = NULL,
-  return_samples = FALSE
+  return_samples = FALSE,
+  transform_scaled = FALSE
 )
 
 JAGS_inference_table(
@@ -161,6 +163,10 @@ should be excluded from the summary table. Defaults to \code{FALSE}.}
 
 \item{return_samples}{whether to return the transoformed and formated samples
 instead of the table. Defaults to \code{FALSE}.}
+
+\item{transform_scaled}{whether coefficients from standardized
+continuous predictors should be transformed back to the original
+scale. Defaults to \code{FALSE}.}
 }
 \value{
 \code{model_summary_table} returns a table with

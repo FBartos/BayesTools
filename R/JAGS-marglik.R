@@ -121,7 +121,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
 
 
   ### define the marglik function
-  full_log_posterior <- function(samples.row, data, prior_list, formula_data_list, formula_prior_list, add_parameters, ...){
+  full_log_posterior <- function(samples.row, data, prior_list, formula_list, formula_data_list, formula_prior_list, add_parameters, ...){
 
     # prepare object for holding the parameters, later accessible to the user specified 'log_posterior'
     parameters <- list()
@@ -129,7 +129,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
       parameters <- c(parameters, JAGS_marglik_parameters(samples.row, prior_list))
     }
     if(!is.null(formula_prior_list)){
-      parameters <- c(parameters, JAGS_marglik_parameters_formula(samples.row, formula_data_list, formula_prior_list, parameters))
+      parameters <- c(parameters, JAGS_marglik_parameters_formula(samples.row, formula_list, formula_data_list, formula_prior_list, parameters))
     }
     if(!is.null(add_parameters)){
       parameters <- c(parameters, samples.row[add_parameters])
@@ -155,6 +155,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
       data               = data,
       log_posterior      = full_log_posterior,
       prior_list         = prior_list,
+      formula_list       = formula_list,
       formula_data_list  = formula_data_list,
       formula_prior_list = formula_prior_list,
       lb                 = attr(bridgesampling_posterior, "lb"),
@@ -941,7 +942,7 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 # }
 
 #' @rdname JAGS_marglik_parameters
-JAGS_marglik_parameters_formula      <- function(samples, formula_data_list, formula_prior_list, prior_list_parameters){
+JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_data_list, formula_prior_list, prior_list_parameters){
 
   # return empty list in case that no prior was specified
   if(length(formula_prior_list) == 0){
@@ -951,13 +952,15 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_data_list, for
   parameters <- list()
 
   for(parameter in names(formula_prior_list)){
-    parameters[[parameter]] <- .JAGS_marglik_parameters_formula_get(samples, parameter, formula_data_list[[parameter]], formula_prior_list[[parameter]], prior_list_parameters)
+    # check for log(intercept) attribute on the formula
+    log_intercept <- if(!is.null(formula_list[[parameter]])) isTRUE(attr(formula_list[[parameter]], "log(intercept)")) else FALSE
+    parameters[[parameter]] <- .JAGS_marglik_parameters_formula_get(samples, parameter, formula_data_list[[parameter]], formula_prior_list[[parameter]], prior_list_parameters, log_intercept)
   }
 
   return(parameters)
 }
 
-.JAGS_marglik_parameters_formula_get <- function(samples, parameter, formula_data_list, formula_prior_list, prior_list_parameters){
+.JAGS_marglik_parameters_formula_get <- function(samples, parameter, formula_data_list, formula_prior_list, prior_list_parameters, log_intercept = FALSE){
 
   formula_terms            <- names(formula_prior_list)
   names(formula_data_list) <- gsub("_data", "", names(formula_data_list))
@@ -978,11 +981,21 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_data_list, for
 
     if(is.prior.point(formula_prior_list[[paste0(parameter, "_intercept")]])){
 
-      output <- multiply_by * rep(formula_prior_list[[paste0(parameter, "_intercept")]][["parameters"]][["location"]], formula_data_list[[paste0("N_", parameter)]])
+      intercept_value <- formula_prior_list[[paste0(parameter, "_intercept")]][["parameters"]][["location"]]
+      # apply log transformation if log(intercept) attribute is set
+      if(log_intercept){
+        intercept_value <- log(intercept_value)
+      }
+      output <- multiply_by * rep(intercept_value, formula_data_list[[paste0("N_", parameter)]])
 
     }else{
 
-      output <- multiply_by * rep(samples[[paste0(parameter, "_intercept")]], formula_data_list[[paste0("N_", parameter)]])
+      intercept_value <- samples[[paste0(parameter, "_intercept")]]
+      # apply log transformation if log(intercept) attribute is set
+      if(log_intercept){
+        intercept_value <- log(intercept_value)
+      }
+      output <- multiply_by * rep(intercept_value, formula_data_list[[paste0("N_", parameter)]])
 
     }
 
