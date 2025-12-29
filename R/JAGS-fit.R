@@ -17,6 +17,10 @@
 #' (names of the lists correspond to the parameter name created by each of the formula and
 #' the names of the prior distribution correspond to the parameter names) of parameters specified
 #' within the \code{formula}
+#' @param formula_scale_list named list of named lists for standardizing continuous predictors
+#' (names of the lists correspond to the parameter name created by each of the formula).
+#' Each entry should be a named list where continuous predictors with \code{TRUE} values will
+#' be standardized. Defaults to \code{NULL} (no standardization).
 #' @param chains number of chains to be run, defaults to \code{4}
 #' @param adapt number of samples used for adapting the MCMC chains, defaults to \code{500}
 #' @param burnin number of burnin iterations of the MCMC chains, defaults to \code{1000}
@@ -90,7 +94,7 @@
 NULL
 
 #' @rdname JAGS_fit
-JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL,
+JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL, formula_scale_list = NULL,
                      chains = 4, adapt = 500, burnin = 1000, sample = 4000, thin = 1,
                      autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10),
                      parallel = FALSE, cores = chains, silent = TRUE, seed = NULL,
@@ -108,6 +112,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   check_list(formula_list, "formula_list", allow_NULL = TRUE)
   check_list(formula_data_list, "formula_data_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
   check_list(formula_prior_list, "formula_prior_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
+  check_list(formula_scale_list, "formula_scale_list", allow_NULL = TRUE)
 
   ### add formulas
   if(!is.null(formula_list)){
@@ -116,22 +121,30 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     formula_output <- list()
     for(parameter in names(formula_list)){
       formula_output[[parameter]] <- JAGS_formula(
-        formula    = formula_list[[parameter]],
-        parameter  = parameter,
-        data       = formula_data_list[[parameter]],
-        prior_list = formula_prior_list[[parameter]])
+        formula        = formula_list[[parameter]],
+        parameter      = parameter,
+        data           = formula_data_list[[parameter]],
+        prior_list     = formula_prior_list[[parameter]],
+        formula_scale  = if(!is.null(formula_scale_list)) formula_scale_list[[parameter]] else NULL)
     }
 
     # merge with the rest of the input
     prior_list     <- c(do.call(c, unname(lapply(formula_output, function(output) output[["prior_list"]]))), prior_list)
     data           <- c(do.call(c, unname(lapply(formula_output, function(output) output[["data"]]))),       data)
     formula_syntax <- paste0(lapply(formula_output, function(output) output[["formula_syntax"]]), collapse = "")
+    
+    # collect formula_scale information
+    formula_scale_info <- lapply(formula_output, function(output) output[["formula_scale"]])
+    formula_scale_info <- formula_scale_info[!sapply(formula_scale_info, is.null)]
+    if(length(formula_scale_info) == 0) formula_scale_info <- NULL
 
     # add the formula syntax to the model syntax
     opening_bracket <- regexpr("{", model_syntax, fixed = TRUE)[1]
     syntax_start    <- substr(model_syntax, 1, opening_bracket)
     syntax_end      <- substr(model_syntax, opening_bracket + 1, nchar(model_syntax))
     model_syntax    <- paste0(syntax_start, "\n", formula_syntax, "\n", syntax_end)
+  }else{
+    formula_scale_info <- NULL
   }
 
 
@@ -274,6 +287,9 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   attr(fit, "prior_list")   <- prior_list
   attr(fit, "model_syntax") <- model_syntax
   attr(fit, "required_packages") <- required_packages
+  if(!is.null(formula_scale_info)){
+    attr(fit, "formula_scale") <- do.call(c, unname(formula_scale_info))
+  }
 
   class(fit) <- c(class(fit), "BayesTools_fit")
 

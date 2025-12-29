@@ -70,7 +70,7 @@
 #' @return \code{JAGS_bridgesampling} returns an object of class 'bridge'.
 #'
 #' @export
-JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL,
+JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL, formula_scale_list = NULL,
                                 add_parameters = NULL, add_bounds = NULL,
                                 maxiter = 10000, silent = TRUE, ...){
 
@@ -80,6 +80,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   check_list(formula_list, "formula_list", allow_NULL = TRUE)
   check_list(formula_data_list, "formula_data_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
   check_list(formula_prior_list, "formula_prior_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
+  check_list(formula_scale_list, "formula_scale_list", allow_NULL = TRUE)
 
 
   # extract the posterior distribution
@@ -92,10 +93,11 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     formula_output <- list()
     for(parameter in names(formula_list)){
       formula_output[[parameter]] <- JAGS_formula(
-        formula    = formula_list[[parameter]],
-        parameter  = parameter,
-        data       = formula_data_list[[parameter]],
-        prior_list = formula_prior_list[[parameter]])
+        formula       = formula_list[[parameter]],
+        parameter     = parameter,
+        data          = formula_data_list[[parameter]],
+        prior_list    = formula_prior_list[[parameter]],
+        formula_scale = if(!is.null(formula_scale_list)) formula_scale_list[[parameter]] else NULL)
     }
 
     # merge with the rest of the input

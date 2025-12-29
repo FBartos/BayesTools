@@ -12,6 +12,7 @@ JAGS_fit(
   formula_list = NULL,
   formula_data_list = NULL,
   formula_prior_list = NULL,
+  formula_scale_list = NULL,
   chains = 4,
   adapt = 500,
   burnin = 1000,
@@ -60,6 +61,11 @@ JAGS_extend(
 (names of the lists correspond to the parameter name created by each of the formula and
 the names of the prior distribution correspond to the parameter names) of parameters specified
 within the \code{formula}}
+
+\item{formula_scale_list}{named list of named lists for standardizing continuous predictors
+(names of the lists correspond to the parameter name created by each of the formula).
+Each entry should be a named list where continuous predictors with \code{TRUE} values will
+be standardized. Defaults to \code{NULL} (no standardization).}
 
 \item{chains}{number of chains to be run, defaults to \code{4}}
 
