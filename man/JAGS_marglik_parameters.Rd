@@ -9,6 +9,7 @@ JAGS_marglik_parameters(samples, prior_list)
 
 JAGS_marglik_parameters_formula(
   samples,
+  formula_list,
   formula_data_list,
   formula_prior_list,
   prior_list_parameters
@@ -21,6 +22,9 @@ function}
 \item{prior_list}{named list of prior distribution
 (names correspond to the parameter names) of parameters not specified within the
 \code{formula_list}}
+
+\item{formula_list}{named list of formulas to be added to the model
+(names correspond to the parameter name created by each of the formula)}
 
 \item{formula_data_list}{named list of data frames containing data for each formula
 (names of the lists correspond to the parameter name created by each of the formula)}

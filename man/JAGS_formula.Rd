@@ -9,7 +9,10 @@ JAGS_formula(formula, parameter, data, prior_list, formula_scale = NULL)
 \arguments{
 \item{formula}{formula specifying the right hand side of the assignment (the
 left hand side is ignored). If the formula contains \code{-1}, it will be
-automatically converted to include an intercept with a spike(0) prior.}
+automatically converted to include an intercept with a spike(0) prior.
+The formula can also have a \code{"log(intercept)"} attribute set to \code{TRUE}
+to generate syntax of the form \code{log(intercept) + sum(beta_i * x_i)}, which
+is useful for parameters that must be positive (e.g., standard deviation).}
 
 \item{parameter}{name of the parameter to be created with the formula}
 

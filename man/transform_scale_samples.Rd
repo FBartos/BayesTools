@@ -8,7 +8,7 @@ transform_scale_samples(fit, formula_scale = NULL)
 }
 \arguments{
 \item{fit}{a fitted model object with \code{formula_scale} attribute, or
-a list of posterior samples}
+a matrix of posterior samples}
 
 \item{formula_scale}{named list containing standardization information
 (mean and sd) for each standardized predictor. If \code{fit} is provided
@@ -25,9 +25,15 @@ were standardized during model fitting via the \code{formula_scale} parameter.
 }
 \details{
 The function transforms regression coefficients and intercepts
-to account for predictor standardization. For a standardized coefficient
-\eqn{\beta_z}, the original scale coefficient is \eqn{\beta = \beta_z / sd}.
-The intercept is adjusted as: \eqn{\alpha = \alpha_z - \sum(\beta_z * mean / sd)}.
+to account for predictor standardization using a combinatorial approach that
+correctly handles interactions of any order.
+
+For a k-way interaction between standardized predictors, the expansion of
+\eqn{\prod_{i} (x_i - \mu_i)/\sigma_i} contributes to all lower-order terms.
+The contribution to a target term T from a source term S (where T is a subset
+of S's scaled components) is:
+\deqn{(-1)^{|extra|} \cdot \prod_{i \in extra} \mu_i / \prod_{i \in S_{scaled}} \sigma_i}
+where \eqn{extra = S_{scaled} \setminus T_{scaled}}.
 }
 \seealso{
 \code{\link[=JAGS_formula]{JAGS_formula()}} \code{\link[=JAGS_fit]{JAGS_fit()}}

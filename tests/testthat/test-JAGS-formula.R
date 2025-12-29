@@ -172,7 +172,6 @@ test_that("JAGS evaluate formula works", {
                "Levels specified in the 'x_fac2t' factor variable do not match the levels used for model specification.")
 })
 
-
 test_that("JAGS evaluate formula works with spike priors", {
 
   # Test JAGS_evaluate_formula with spike prior distributions using pre-fitted model
@@ -210,7 +209,6 @@ test_that("JAGS evaluate formula works with spike priors", {
   expect_equal(new_samples_mean[2], 3, tolerance = 0.01, ignore_attr = TRUE)
   expect_equal(new_samples_mean[3], 3, tolerance = 0.01, ignore_attr = TRUE)
 })
-
 
 test_that("JAGS evaluate formula works with spike-and-slab and mixture priors", {
 
@@ -348,6 +346,107 @@ test_that("-1 (no intercept) formula handling works correctly", {
   expect_equal(.add_intercept_to_formula(~ x + y + 0), ~ x + y, ignore_formula_env = TRUE)
   expect_equal(.add_intercept_to_formula(~ 0), ~ 1, ignore_formula_env = TRUE)
 
+})
+
+test_that("log(intercept) attribute works for specifying log(int) + sum(beta_i * x_i) models", {
+
+  # this is helpful for specifying models for e.g., standard deviation where the output must be positive,
+  # but we want the intercept to be specified on the original scale - we can take exp() of the whole formula output
+
+  # setup test data
+  set.seed(1)
+  df_test <- data.frame(
+    x_fac3md = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C")),
+    x_fac3i  = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C")),
+    x_cont   = rnorm(60)
+  )
+
+  # Test 1: Basic -1 formula functionality
+  prior_list_basic <- list(
+    "intercept" = prior("normal", list(0, 1)),
+    "x_fac3md"  = prior_factor("mnormal", contrast = "meandif", list(0, 1))
+  )
+
+  # no log intercept
+  result_basic <- JAGS_formula(~ 1 + x_fac3md, parameter = "mu",
+                               data = df_test[, "x_fac3md", drop = FALSE],
+                               prior_list = prior_list_basic)
+
+  # log intercept
+  formula <- ~ 1 + x_fac3md
+  attr(formula, "log(intercept)") <- TRUE
+  result_log   <- JAGS_formula(formula, parameter = "mu",
+                               data = df_test[, "x_fac3md", drop = FALSE],
+                               prior_list = prior_list_basic)
+
+  # generates normal intercept
+  expect_equal(
+    result_basic[["formula_syntax"]],
+    "for(i in 1:N_mu){\n  mu[i] = mu_intercept + inprod(mu_x_fac3md, mu_data_x_fac3md[i,])\n}\n"
+  )
+
+  # generates log intercept
+  expect_equal(
+    result_log[["formula_syntax"]],
+    "for(i in 1:N_mu){\n  mu[i] = log(mu_intercept) + inprod(mu_x_fac3md, mu_data_x_fac3md[i,])\n}\n"
+  )
+
+  # everything else should match
+  result_basic[["formula_syntax"]] <- NULL
+  result_log[["formula_syntax"]]   <- NULL
+  result_basic[["formula"]] <- NULL
+  result_log[["formula"]]   <- NULL
+  expect_equal(result_basic, result_log)
+})
+
+test_that("JAGS_evaluate_formula works with log(intercept) attribute", {
+
+  # Test that JAGS_evaluate_formula correctly applies log() transformation to intercept
+  # when the formula has the log(intercept) attribute set
+
+  skip_if_not_installed("coda")
+
+  # Setup: simple data for testing
+  set.seed(1)
+  df_test <- data.frame(
+    x_cont = rnorm(10)
+  )
+
+  # Create prior list with gamma prior for intercept (must be positive for log)
+  prior_list <- list(
+    "intercept" = prior("gamma", list(2, 1)),
+    "x_cont"    = prior("normal", list(0, 1))
+  )
+
+  # Process formula to get prior_list with parameter names
+  formula_result <- JAGS_formula(~ x_cont, parameter = "mu", data = df_test, prior_list = prior_list)
+  prior_list_processed <- formula_result$prior_list
+
+
+  # Create mock samples: intercept = 2, x_cont = 0.5
+  samples <- matrix(c(2, 0.5), nrow = 1)
+  colnames(samples) <- c("mu_intercept", "mu_x_cont")
+  samples <- coda::as.mcmc.list(coda::as.mcmc(samples))
+
+  # New data for prediction
+  new_data <- data.frame(x_cont = c(0, 1, -1))
+
+  # Test without log(intercept): result = intercept + x_cont * data
+  # For x_cont =  0: result = 2 + 0.5 * 0 = 2
+  # For x_cont =  1: result = 2 + 0.5 * 1 = 2.5
+  # For x_cont = -1: result = 2 + 0.5 * (-1) = 1.5
+  formula_no_log <- ~ x_cont
+  result_no_log <- JAGS_evaluate_formula(samples, formula_no_log, "mu", new_data, prior_list_processed)
+  expect_equal(as.vector(result_no_log[,1]), c(2, 2.5, 1.5), tolerance = 1e-10)
+
+  # Test with log(intercept): result = log(intercept) + x_cont * data
+  # For x_cont =  0: result = log(2) + 0.5 * 0 = log(2)
+  # For x_cont =  1: result = log(2) + 0.5 * 1 = log(2) + 0.5
+  # For x_cont = -1: result = log(2) + 0.5 * (-1) = log(2) - 0.5
+  formula_log <- ~ x_cont
+  attr(formula_log, "log(intercept)") <- TRUE
+  result_log <- JAGS_evaluate_formula(samples, formula_log, "mu", new_data, prior_list_processed)
+  expect_equal(as.vector(result_log[,1]), c(log(2), log(2) + 0.5, log(2) - 0.5), tolerance = 1e-10)
 })
 
 test_that("Default priors (__default_factor and __default_continuous) work correctly", {

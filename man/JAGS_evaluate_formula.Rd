@@ -11,7 +11,9 @@ JAGS_evaluate_formula(fit, formula, parameter, data, prior_list)
 samples obtained with \link[rjags]{rjags-package}}
 
 \item{formula}{formula specifying the right hand side of the assignment (the
-left hand side is ignored)}
+left hand side is ignored). If the formula has a \code{"log(intercept)"}
+attribute set to \code{TRUE}, the intercept values will be log-transformed
+before computing the linear predictor.}
 
 \item{parameter}{name of the parameter created with the formula}
 

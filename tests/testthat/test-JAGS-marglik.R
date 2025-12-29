@@ -21,6 +21,9 @@
 # TAGS: @evaluation, @JAGS, @marginal-likelihood
 # ============================================================================ #
 
+# Load common test helpers
+source(testthat::test_path("common-functions.R"))
+
 # This file tests the JAGS marginal likelihood computation functions
 # It uses simple models where the log marginal likelihood is known to be 0
 # (for prior samples, the marginal likelihood for any proper prior is 1, log(1) = 0)
@@ -234,6 +237,101 @@ test_that("bridge sampling object function works",{
 
 })
 
+test_that("JAGS marglik with formula works", {
+
+  # Test marginal likelihood computation with formula interface
+  # Uses intercept-only formula with various priors
+  # When sampling from prior and computing marglik, the result should be ~0 (log(1))
+
+  skip_if_not_installed("rjags")
+
+  # Simple data for the formula
+  set.seed(1)
+  df_test <- data.frame(x = rnorm(10))
+  log_posterior <- STANDARD_LOG_POSTERIOR
+
+  # Create formula prior list with intercept only
+  prior_list <- list(
+    "intercept" = prior("gamma",  list(2, 2)),
+    "x"         = prior("normal", list(0, 1))
+  )
+
+  # Process formula to get JAGS syntax
+  formula_result <- JAGS_formula(~ 1 + x, parameter = "mu", data = df_test, prior_list = prior_list)
+
+  # Build JAGS model with formula priors
+  model_syntax <- JAGS_add_priors("model{}", formula_result$prior_list)
+  monitor      <- JAGS_to_monitor(formula_result$prior_list)
+  inits        <- JAGS_get_inits(formula_result$prior_list, chains = 2, seed = 1)
+
+  # Sample from prior using JAGS
+  set.seed(1)
+  model   <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
+  samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 5000, quiet = TRUE, progress.bar = "none")
+
+  # Compute marginal likelihood using formula interface
+  marglik <- JAGS_bridgesampling(
+    fit                = samples,
+    log_posterior      = log_posterior,
+    data               = list(),
+    prior_list         = NULL,
+    formula_list       = list(mu = ~ 1 + x),
+    formula_data_list  = list(mu = df_test),
+    formula_prior_list = list(mu = prior_list)
+  )
+
+  expect_equal(marglik$logml, 0, tolerance = 1e-3)
+})
+
+test_that("JAGS marglik with exp(intercept) formula works", {
+
+  # Test marginal likelihood computation with formula interface
+  # Uses intercept-only formula with various priors
+  # When sampling from prior and computing marglik, the result should be ~0 (log(1))
+
+  skip_if_not_installed("rjags")
+
+  # Simple data for the formula
+  set.seed(1)
+  df_test <- data.frame(x = rnorm(10))
+  log_posterior <- STANDARD_LOG_POSTERIOR
+
+  # Create formula prior list with intercept only
+  prior_list <- list(
+    "intercept" = prior("gamma",  list(2, 2)),
+    "x"         = prior("normal", list(0, 1))
+  )
+
+  # Process formula to get JAGS syntax
+  formula <- ~ 1 + x
+  attr(formula, "log(intercept)") <- TRUE
+  formula_result <- JAGS_formula(formula, parameter = "mu", data = df_test, prior_list = prior_list)
+  expect_equal(formula_result$formula_syntax, "for(i in 1:N_mu){\n  mu[i] = log(mu_intercept) + mu_x * mu_data_x[i]\n}\n")
+
+  # Build JAGS model with formula priors
+  model_syntax <- JAGS_add_priors("model{}", formula_result$prior_list)
+  monitor      <- JAGS_to_monitor(formula_result$prior_list)
+  inits        <- JAGS_get_inits(formula_result$prior_list, chains = 2, seed = 1)
+
+  # Sample from prior using JAGS
+  set.seed(1)
+  model   <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
+  samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 5000, quiet = TRUE, progress.bar = "none")
+
+  # Compute marginal likelihood using formula interface
+  marglik <- JAGS_bridgesampling(
+    fit                = samples,
+    log_posterior      = log_posterior,
+    data               = list(),
+    prior_list         = NULL,
+    formula_list       = list(mu = formula),
+    formula_data_list  = list(mu = df_test),
+    formula_prior_list = list(mu = prior_list)
+  )
+
+  expect_equal(marglik$logml, 0, tolerance = 1e-3)
+})
+
 
 # Targeted tests for uncovered code paths in JAGS-marglik.R
 
@@ -276,7 +374,6 @@ test_that("JAGS_bridgesampling_posterior input validation works", {
 
 })
 
-
 test_that("JAGS_marglik_priors input validation and edge cases work", {
 
   # Empty prior_list returns empty list
@@ -289,7 +386,6 @@ test_that("JAGS_marglik_priors input validation and edge cases work", {
   expect_error(JAGS_marglik_priors(list(), prior_list = list(x = 1)), "'prior_list' must be a list of priors.")
 
 })
-
 
 test_that("JAGS_marglik_parameters input validation and edge cases work", {
 
@@ -316,16 +412,6 @@ test_that("JAGS_marglik_parameters input validation and edge cases work", {
   )
 
 })
-
-
-test_that("JAGS_marglik_parameters_formula works", {
-
-  # Test: empty formula_prior_list returns empty list
-  result <- JAGS_marglik_parameters_formula(list(), list(), list(), list())
-  expect_equal(result, list())
-
-})
-
 
 test_that(".fit_to_posterior handles different input types", {
 
@@ -356,7 +442,6 @@ test_that(".fit_to_posterior handles different input types", {
 
 })
 
-
 test_that(".fit_to_posterior handles jags.samples output", {
 
   skip_if_not_installed("rjags")
@@ -376,7 +461,6 @@ test_that(".fit_to_posterior handles jags.samples output", {
 
 })
 
-
 test_that(".fit_to_posterior handles vector parameters in jags.samples", {
 
   skip_if_not_installed("rjags")
@@ -395,7 +479,6 @@ test_that(".fit_to_posterior handles vector parameters in jags.samples", {
   expect_s3_class(marglik_jags, "bridge")
 
 })
-
 
 test_that("JAGS_bridgesampling handles runjags output", {
 

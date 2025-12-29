@@ -7,6 +7,9 @@
 #' @param formula formula specifying the right hand side of the assignment (the
 #' left hand side is ignored). If the formula contains \code{-1}, it will be
 #' automatically converted to include an intercept with a spike(0) prior.
+#' The formula can also have a \code{"log(intercept)"} attribute set to \code{TRUE}
+#' to generate syntax of the form \code{log(intercept) + sum(beta_i * x_i)}, which
+#' is useful for parameters that must be positive (e.g., standard deviation).
 #' @param parameter name of the parameter to be created with the formula
 #' @param data data.frame containing predictors included in the formula
 #' @param prior_list named list of prior distribution of parameters specified within
@@ -105,6 +108,9 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
 
   # remove the specified response
   formula <- .remove_response(formula)
+  # store log(intercept) attribute (for models relying on mu = log(intercept) + sum(beta_i * x_i) trick
+  # exp(mu) = intercept * exp(sum(beta_i * x_i)) (e.g., Poisson regression / regression with log link etc...)
+  log_intercept  <- isTRUE(attr(formula, "log(intercept)"))
   # store expressions (included later as the literal character input)
   expressions    <- .extract_expressions(formula)
   # store random effects (included later via a formula interface)
@@ -279,7 +285,12 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     terms_indexes    <- attr(model_matrix, "assign") + 1
     terms_indexes[1] <- 0
 
-    formula_syntax   <- c(formula_syntax, paste0(parameter, "_intercept"))
+    # use log(intercept) if the formula has the log(intercept) attribute
+    if(log_intercept){
+      formula_syntax <- c(formula_syntax, paste0("log(", parameter, "_intercept)"))
+    }else{
+      formula_syntax <- c(formula_syntax, paste0(parameter, "_intercept"))
+    }
   }else{
     terms_indexes    <- attr(model_matrix, "assign")
   }
@@ -389,6 +400,11 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   names(prior_list) <- paste0(parameter, "_", names(prior_list))
   for(i in seq_along(prior_list)){
     attr(prior_list[[i]], "parameter") <- parameter
+  }
+
+  # preserve log(intercept) attribute on output formula
+  if(log_intercept){
+    attr(formula, "log(intercept)") <- TRUE
   }
 
   output <- list(
@@ -833,7 +849,9 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
 #' @param fit model fitted with either \link[runjags]{runjags} posterior
 #' samples obtained with \link[rjags]{rjags-package}
 #' @param formula formula specifying the right hand side of the assignment (the
-#' left hand side is ignored)
+#' left hand side is ignored). If the formula has a \code{"log(intercept)"}
+#' attribute set to \code{TRUE}, the intercept values will be log-transformed
+#' before computing the linear predictor.
 #' @param parameter name of the parameter created with the formula
 #' @param data data.frame containing predictors included in the formula
 #' @param prior_list named list of prior distribution of parameters specified within
@@ -967,6 +985,9 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
   model_matrix <- stats::model.matrix(model_frame, formula = formula, data = data)
 
   ### evaluate the design matrix on the samples -> output[data, posterior]
+  # check for log(intercept) attribute
+  log_intercept <- isTRUE(attr(formula, "log(intercept)"))
+
   if(has_intercept){
 
     terms_indexes    <- attr(model_matrix, "assign") + 1
@@ -975,7 +996,12 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
     # check for scaling factors
     temp_multiply_by <- .get_parameter_scaling_factor_matrix(term = "intercept", prior_list = prior_list_formula, posterior = posterior, nrow = nrow(data), ncol = nrow(posterior))
 
-    output           <- temp_multiply_by * matrix(posterior[,JAGS_parameter_names("intercept", formula_parameter = parameter)], nrow = nrow(data), ncol = nrow(posterior), byrow = TRUE)
+    # get intercept values and apply log() transformation if log(intercept) attribute is set
+    intercept_values <- posterior[,JAGS_parameter_names("intercept", formula_parameter = parameter)]
+    if(log_intercept){
+      intercept_values <- log(intercept_values)
+    }
+    output           <- temp_multiply_by * matrix(intercept_values, nrow = nrow(data), ncol = nrow(posterior), byrow = TRUE)
 
   }else{
 
