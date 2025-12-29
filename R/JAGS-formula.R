@@ -968,13 +968,17 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
     # apply scaling if predictors were scaled during model fitting
     formula_scale <- attr(fit, "formula_scale")
     if(!is.null(formula_scale)){
-      for(continuous in names(predictors_type[predictors_type == "continuous"])){
-        # check if this predictor was scaled (with parameter prefix)
-        scaled_name <- paste0(parameter, "_", continuous)
-        if(scaled_name %in% names(formula_scale)){
-          # apply the same scaling transformation
-          scale_info <- formula_scale[[scaled_name]]
-          data[, continuous] <- (data[, continuous] - scale_info$mean) / scale_info$sd
+      # Handle nested structure: formula_scale[[parameter]] contains the scaling info
+      param_scale <- formula_scale[[parameter]]
+      if(!is.null(param_scale)){
+        for(continuous in names(predictors_type[predictors_type == "continuous"])){
+          # check if this predictor was scaled (with parameter prefix)
+          scaled_name <- paste0(parameter, "_", continuous)
+          if(scaled_name %in% names(param_scale)){
+            # apply the same scaling transformation
+            scale_info <- param_scale[[scaled_name]]
+            data[, continuous] <- (data[, continuous] - scale_info$mean) / scale_info$sd
+          }
         }
       }
     }
@@ -1328,29 +1332,35 @@ transform_treatment_samples <- function(samples){
 # Helper: Apply unscaling transformation to a matrix of posterior samples
 #
 # @param posterior Matrix with samples in rows, parameters in columns
-# @param formula_scale Named list with scaling info
-# @param prefix Parameter prefix (default: auto-detect from formula_scale names)
+# Apply the unscaling transformation to posterior samples
+#
+# @param posterior Matrix of posterior samples with parameter names as column names
+# @param formula_scale Nested list with scaling info keyed by parameter name:
+#   list(mu = list(mu_x1 = list(mean, sd)), log_sigma = list(log_sigma_x = list(mean, sd)))
 # @return Transformed posterior matrix
-.apply_unscale_transform <- function(posterior, formula_scale, prefix = NULL) {
+.apply_unscale_transform <- function(posterior, formula_scale) {
 
   if (is.null(formula_scale) || length(formula_scale) == 0) {
     return(posterior)
   }
 
-  # Auto-detect prefix if not provided
-  if (is.null(prefix)) {
-    # First try the parameter attribute
-    prefix <- attr(formula_scale, "parameter")
-    # Fallback: parse from names
-    if (is.null(prefix) && length(names(formula_scale)) > 0) {
-      first_name <- names(formula_scale)[1]
-      # Extract prefix from "mu_x1" -> "mu"
-      prefix <- sub("_.*$", "", first_name)
-    }
+  # Handle nested structure: iterate over each parameter
+  for (param_name in names(formula_scale)) {
+    param_scale <- formula_scale[[param_name]]
+    posterior <- .apply_unscale_transform_single(posterior, param_scale, prefix = param_name)
   }
+
+  return(posterior)
+}
+
+# Helper: Apply unscaling for a single parameter's predictors
+# @param posterior Matrix of posterior samples
+# @param formula_scale Flat list of scaling info: list(mu_x1 = list(mean, sd), mu_x2 = list(mean, sd))
+# @param prefix Parameter prefix (e.g., "mu")
+# @return Transformed posterior matrix
+.apply_unscale_transform_single <- function(posterior, formula_scale, prefix) {
   
-  if (is.null(prefix)) {
-    warning("Could not detect parameter prefix from formula_scale. Returning unchanged.")
+  if (is.null(formula_scale) || length(formula_scale) == 0) {
     return(posterior)
   }
 
@@ -1388,9 +1398,10 @@ transform_treatment_samples <- function(samples){
 #'
 #' @param fit a fitted model object with \code{formula_scale} attribute, or
 #' a matrix of posterior samples
-#' @param formula_scale named list containing standardization information
-#' (mean and sd) for each standardized predictor. If \code{fit} is provided
-#' and has a \code{formula_scale} attribute, this will be used automatically.
+#' @param formula_scale nested list containing standardization information keyed by
+#' parameter name. Each parameter entry contains scaling info (mean and sd) for
+#' each standardized predictor, e.g., \code{list(mu = list(mu_x1 = list(mean = 0, sd = 1)))}.
+#' If \code{fit} is provided and has a \code{formula_scale} attribute, this will be used automatically.
 #'
 #' @details The function transforms regression coefficients and intercepts
 #' to account for predictor standardization using a combinatorial approach that

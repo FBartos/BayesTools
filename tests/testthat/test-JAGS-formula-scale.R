@@ -174,8 +174,11 @@ test_that("transform_scale_samples transforms coefficients correctly", {
   colnames(posterior) <- c("mu_intercept", "mu_x_cont", "mu_x_fac")
 
   # Scale information (x_cont was standardized with mean=5, sd=2)
+  # Use nested structure keyed by parameter name
   formula_scale <- list(
-    mu_x_cont = list(mean = 5, sd = 2)
+    mu = list(
+      mu_x_cont = list(mean = 5, sd = 2)
+    )
   )
 
   # Transform back to original scale
@@ -213,10 +216,12 @@ test_that("transform_scale_samples handles interaction terms correctly", {
   )
   colnames(posterior) <- c("mu_intercept", "mu_x1", "mu_x2", "mu_x1__xXx__x2")
 
-  # Scale information
+  # Scale information - use nested structure keyed by parameter name
   formula_scale <- list(
-    mu_x1 = list(mean = 5, sd = 2),
-    mu_x2 = list(mean = 10, sd = 4)
+    mu = list(
+      mu_x1 = list(mean = 5, sd = 2),
+      mu_x2 = list(mean = 10, sd = 4)
+    )
   )
 
   # Transform back to original scale
@@ -256,10 +261,11 @@ test_that("Manual and automatic scaling produce equivalent results", {
   fit_manual <- readRDS(file.path(temp_fits_dir, "fit_formula_manual_scaled.RDS"))
   fit_auto   <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS"))
 
-  # Check that automatic scaling has formula_scale attribute
+  # Check that automatic scaling has formula_scale attribute with nested structure
   expect_true(!is.null(attr(fit_auto, "formula_scale")))
-  expect_true("mu_x_cont1" %in% names(attr(fit_auto, "formula_scale")))
-  expect_true("mu_x_cont2" %in% names(attr(fit_auto, "formula_scale")))
+  expect_true("mu" %in% names(attr(fit_auto, "formula_scale")))
+  expect_true("mu_x_cont1" %in% names(attr(fit_auto, "formula_scale")$mu))
+  expect_true("mu_x_cont2" %in% names(attr(fit_auto, "formula_scale")$mu))
 
   # Check that manual scaling has the scale info stored
   expect_true(!is.null(attr(fit_manual, "manual_scale")))
@@ -267,7 +273,7 @@ test_that("Manual and automatic scaling produce equivalent results", {
   # Compare scaling parameters
   # The automatic and manual scaling should have stored the same mean/sd
   manual_scale <- attr(fit_manual, "manual_scale")
-  auto_scale   <- attr(fit_auto, "formula_scale")
+  auto_scale   <- attr(fit_auto, "formula_scale")$mu
 
   expect_equal(manual_scale$mu_x_cont1$mean, auto_scale$mu_x_cont1$mean, tolerance = 1e-10)
   expect_equal(manual_scale$mu_x_cont1$sd,   auto_scale$mu_x_cont1$sd, tolerance = 1e-10)
@@ -422,11 +428,11 @@ test_that("runjags_estimates_table with transform_scaled unscales coefficients",
   estimates_unscaled <- JAGS_estimates_table(fit_auto, transform_scaled = TRUE)
 
   # The scaled coefficient for x_cont1 should be divided by sd
-  # to get the unscaled coefficient
-  sd_x_cont1   <- formula_scale$mu_x_cont1$sd
-  sd_x_cont2   <- formula_scale$mu_x_cont2$sd
-  mean_x_cont1 <- formula_scale$mu_x_cont1$mean
-  mean_x_cont2 <- formula_scale$mu_x_cont2$mean
+  # to get the unscaled coefficient (nested structure: formula_scale$mu$...)
+  sd_x_cont1   <- formula_scale$mu$mu_x_cont1$sd
+  sd_x_cont2   <- formula_scale$mu$mu_x_cont2$sd
+  mean_x_cont1 <- formula_scale$mu$mu_x_cont1$mean
+  mean_x_cont2 <- formula_scale$mu$mu_x_cont2$mean
 
   # Check that the interaction term is correctly unscaled (divided by product of SDs)
   scaled_coef_int   <- estimates_scaled["(mu) x_cont1:x_cont2", "Mean"]
@@ -465,11 +471,11 @@ test_that("runjags_estimates_table transform_scaled with return_samples works", 
   # Get samples with unscaling
   samples_unscaled <- JAGS_estimates_table(fit_auto, transform_scaled = TRUE, return_samples = TRUE)
 
-  # For models with interactions, the transformation is more complex
-  sd_x_cont1   <- formula_scale$mu_x_cont1$sd
-  sd_x_cont2   <- formula_scale$mu_x_cont2$sd
-  mean_x_cont1 <- formula_scale$mu_x_cont1$mean
-  mean_x_cont2 <- formula_scale$mu_x_cont2$mean
+  # For models with interactions, the transformation is more complex (nested structure)
+  sd_x_cont1   <- formula_scale$mu$mu_x_cont1$sd
+  sd_x_cont2   <- formula_scale$mu$mu_x_cont2$sd
+  mean_x_cont1 <- formula_scale$mu$mu_x_cont1$mean
+  mean_x_cont2 <- formula_scale$mu$mu_x_cont2$mean
 
   # First, compute the unscaled interaction coefficient
   unscaled_int <- samples_scaled[, "(mu) x_cont1:x_cont2"] / (sd_x_cont1 * sd_x_cont2)
@@ -532,11 +538,11 @@ test_that("ensemble_estimates_table with transform_scaled unscales coefficients"
     formula_scale    = formula_scale
   )
 
-  # For models with interactions, the transformation is more complex
-  sd_x_cont1   <- formula_scale$mu_x_cont1$sd
-  sd_x_cont2   <- formula_scale$mu_x_cont2$sd
-  mean_x_cont1 <- formula_scale$mu_x_cont1$mean
-  mean_x_cont2 <- formula_scale$mu_x_cont2$mean
+  # For models with interactions, the transformation is more complex (nested structure)
+  sd_x_cont1   <- formula_scale$mu$mu_x_cont1$sd
+  sd_x_cont2   <- formula_scale$mu$mu_x_cont2$sd
+  mean_x_cont1 <- formula_scale$mu$mu_x_cont1$mean
+  mean_x_cont2 <- formula_scale$mu$mu_x_cont2$mean
 
   # Check that the interaction term is correctly unscaled (divided by product of SDs)
   scaled_coef_int   <- estimates_scaled["(mu) x_cont1:x_cont2", "Mean"]
@@ -584,6 +590,188 @@ test_that("transform_scaled has no effect when formula_scale is NULL", {
 
 
 # ============================================================================ #
+# DUAL PARAMETER REGRESSION WITH LOG(INTERCEPT) TESTS
+# ============================================================================ #
+
+test_that("Dual parameter model with log(intercept) has correct formula_scale structure", {
+
+  skip_if_no_fits()
+
+  # Load pre-fitted dual parameter regression model
+  fit_dual <- readRDS(file.path(temp_fits_dir, "fit_dual_param_regression.RDS"))
+
+  # Check that formula_scale attribute exists
+  formula_scale <- attr(fit_dual, "formula_scale")
+  expect_true(!is.null(formula_scale))
+
+
+  # Check that both parameters have scaling info
+  expect_true("mu" %in% names(formula_scale))
+  expect_true("log_sigma" %in% names(formula_scale))
+  
+  # Check nested structure
+  expect_true("mu_x_mu" %in% names(formula_scale$mu))
+  expect_true("log_sigma_x_sigma" %in% names(formula_scale$log_sigma))
+
+  # Verify scale info structure for mu parameter
+  expect_equal(names(formula_scale$mu$mu_x_mu), c("mean", "sd"))
+  expect_true(is.numeric(formula_scale$mu$mu_x_mu$mean))
+  expect_true(is.numeric(formula_scale$mu$mu_x_mu$sd))
+
+  # Verify scale info structure for log_sigma parameter
+  expect_equal(names(formula_scale$log_sigma$log_sigma_x_sigma), c("mean", "sd"))
+  expect_true(is.numeric(formula_scale$log_sigma$log_sigma_x_sigma$mean))
+  expect_true(is.numeric(formula_scale$log_sigma$log_sigma_x_sigma$sd))
+
+  # Verify the model has expected parameters
+  param_names <- colnames(fit_dual$mcmc[[1]])
+  expect_true("mu_intercept" %in% param_names)
+  expect_true("mu_x_mu" %in% param_names)
+  expect_true("log_sigma_intercept" %in% param_names)
+  expect_true("log_sigma_x_sigma" %in% param_names)
+})
+
+test_that("transform_scale_samples works with dual parameter model", {
+
+  skip_if_no_fits()
+
+  # Load pre-fitted dual parameter regression model
+  fit_dual <- readRDS(file.path(temp_fits_dir, "fit_dual_param_regression.RDS"))
+  formula_scale <- attr(fit_dual, "formula_scale")
+
+  # Extract posterior samples
+  posterior <- as.matrix(fit_dual$mcmc[[1]])
+
+  # Transform to original scale
+  posterior_transformed <- transform_scale_samples(posterior, formula_scale)
+
+  # Get scale parameters (nested structure)
+  mu_scale        <- formula_scale$mu$mu_x_mu
+  log_sigma_scale <- formula_scale$log_sigma$log_sigma_x_sigma
+
+  # Check mu_x_mu coefficient is correctly unscaled (divided by sd)
+  expected_mu_x_mu <- posterior[, "mu_x_mu"] / mu_scale$sd
+  expect_equal(posterior_transformed[, "mu_x_mu"], expected_mu_x_mu, tolerance = 1e-10)
+
+  # Check log_sigma_x_sigma coefficient is correctly unscaled (divided by sd)
+  expected_log_sigma_x_sigma <- posterior[, "log_sigma_x_sigma"] / log_sigma_scale$sd
+  expect_equal(posterior_transformed[, "log_sigma_x_sigma"], expected_log_sigma_x_sigma, tolerance = 1e-10)
+
+  # Check mu intercept is adjusted: intercept_orig = intercept_z - beta_orig * mean
+  expected_mu_intercept <- posterior[, "mu_intercept"] - expected_mu_x_mu * mu_scale$mean
+  expect_equal(posterior_transformed[, "mu_intercept"], expected_mu_intercept, tolerance = 1e-10)
+
+  # Check log_sigma intercept is adjusted: intercept_orig = intercept_z - beta_orig * mean
+  expected_log_sigma_intercept <- posterior[, "log_sigma_intercept"] - expected_log_sigma_x_sigma * log_sigma_scale$mean
+  expect_equal(posterior_transformed[, "log_sigma_intercept"], expected_log_sigma_intercept, tolerance = 1e-10)
+})
+
+test_that("JAGS_estimates_table with transform_scaled works for dual parameter model", {
+
+  skip_if_no_fits()
+
+  # Load pre-fitted dual parameter regression model
+  fit_dual <- readRDS(file.path(temp_fits_dir, "fit_dual_param_regression.RDS"))
+  formula_scale <- attr(fit_dual, "formula_scale")
+
+  # Get estimates without unscaling
+  estimates_scaled <- JAGS_estimates_table(fit_dual, transform_scaled = FALSE)
+
+  # Get estimates with unscaling
+  estimates_unscaled <- JAGS_estimates_table(fit_dual, transform_scaled = TRUE)
+
+  # Get scale parameters (nested structure)
+  mu_sd             <- formula_scale$mu$mu_x_mu$sd
+  mu_mean           <- formula_scale$mu$mu_x_mu$mean
+  log_sigma_sd      <- formula_scale$log_sigma$log_sigma_x_sigma$sd
+  log_sigma_mean    <- formula_scale$log_sigma$log_sigma_x_sigma$mean
+
+  # Check mu_x_mu coefficient is correctly unscaled
+  scaled_mu_coef   <- estimates_scaled["(mu) x_mu", "Mean"]
+  unscaled_mu_coef <- estimates_unscaled["(mu) x_mu", "Mean"]
+  expect_equal(unscaled_mu_coef, scaled_mu_coef / mu_sd, tolerance = 1e-10)
+
+  # Check log_sigma_x_sigma coefficient is correctly unscaled
+  scaled_log_sigma_coef   <- estimates_scaled["(log_sigma) x_sigma", "Mean"]
+  unscaled_log_sigma_coef <- estimates_unscaled["(log_sigma) x_sigma", "Mean"]
+  expect_equal(unscaled_log_sigma_coef, scaled_log_sigma_coef / log_sigma_sd, tolerance = 1e-10)
+
+  # Check mu intercept is correctly adjusted
+  scaled_mu_int   <- estimates_scaled["(mu) intercept", "Mean"]
+  expected_mu_int <- scaled_mu_int - unscaled_mu_coef * mu_mean
+  expect_equal(estimates_unscaled["(mu) intercept", "Mean"], expected_mu_int, tolerance = 1e-10)
+
+  # Check log_sigma intercept is correctly adjusted
+  scaled_log_sigma_int   <- estimates_scaled["(log_sigma) intercept", "Mean"]
+  expected_log_sigma_int <- scaled_log_sigma_int - unscaled_log_sigma_coef * log_sigma_mean
+  expect_equal(estimates_unscaled["(log_sigma) intercept", "Mean"], expected_log_sigma_int, tolerance = 1e-10)
+})
+
+test_that("JAGS_evaluate_formula applies scaling correctly for dual parameter model", {
+
+  skip_if_no_fits()
+
+  # Load pre-fitted dual parameter regression model
+  fit_dual <- readRDS(file.path(temp_fits_dir, "fit_dual_param_regression.RDS"))
+  formula_scale <- attr(fit_dual, "formula_scale")
+  prior_list <- attr(fit_dual, "prior_list")
+
+  # Create new data (on original unscaled scale)
+  set.seed(123)
+  new_data_mu <- data.frame(x_mu = rnorm(5, mean = 5, sd = 2))
+  new_data_sigma <- data.frame(x_sigma = rnorm(5, mean = 3, sd = 1.5))
+
+  # Evaluate mu formula (standard intercept)
+  pred_mu <- JAGS_evaluate_formula(
+    fit       = fit_dual,
+    formula   = ~ x_mu,
+    parameter = "mu",
+    data      = new_data_mu,
+    prior_list = prior_list
+  )
+
+  # Evaluate log_sigma formula (log intercept)
+  formula_log_sigma <- ~ x_sigma
+  attr(formula_log_sigma, "log(intercept)") <- TRUE
+
+  pred_log_sigma <- JAGS_evaluate_formula(
+    fit       = fit_dual,
+    formula   = formula_log_sigma,
+    parameter = "log_sigma",
+    data      = new_data_sigma,
+    prior_list = prior_list
+  )
+
+  # Basic sanity checks
+  expect_equal(nrow(pred_mu), 5)
+  expect_equal(nrow(pred_log_sigma), 5)
+
+  # The predictions should be matrices with n_samples columns
+  expect_true(ncol(pred_mu) > 1)
+  expect_true(ncol(pred_log_sigma) > 1)
+
+  # Verify manually: predictions should match manual calculation
+  posterior <- as.matrix(coda::as.mcmc.list(fit_dual))
+  mu_scale <- formula_scale$mu$mu_x_mu
+  log_sigma_scale <- formula_scale$log_sigma$log_sigma_x_sigma
+
+  # Scale the new data as the function should do internally
+  x_mu_scaled <- (new_data_mu$x_mu - mu_scale$mean) / mu_scale$sd
+  x_sigma_scaled <- (new_data_sigma$x_sigma - log_sigma_scale$mean) / log_sigma_scale$sd
+
+  # For first observation in new_data_mu
+  # mu[i] = intercept + x_mu * x_mu_scaled[i]
+  expected_mu_1 <- posterior[, "mu_intercept"] + posterior[, "mu_x_mu"] * x_mu_scaled[1]
+  expect_equal(pred_mu[1, ], expected_mu_1, tolerance = 1e-10)
+
+  # For first observation in new_data_sigma (with log intercept)
+  # log_sigma[i] = log(intercept) + x_sigma * x_sigma_scaled[i]
+  expected_log_sigma_1 <- log(posterior[, "log_sigma_intercept"]) + posterior[, "log_sigma_x_sigma"] * x_sigma_scaled[1]
+  expect_equal(pred_log_sigma[1, ], expected_log_sigma_1, tolerance = 1e-10)
+})
+
+
+# ============================================================================ #
 # LM-BASED VALIDATION TESTS
 # ============================================================================ #
 #
@@ -596,17 +784,19 @@ test_that("transform_scaled has no effect when formula_scale is NULL", {
 # ============================================================================ #
 
 # Helper: Create formula_scale from data frame and variable names
-# Mimics what JAGS_formula does when formula_scale = TRUE
+# Creates nested structure matching JAGS_fit output: list(mu = list(mu_x1 = list(mean, sd)))
 .make_formula_scale <- function(df, var_names, prefix = "mu") {
-  result <- list()
+  param_scale <- list()
   for (var in var_names) {
     param_name <- paste0(prefix, "_", var)
-    result[[param_name]] <- list(
+    param_scale[[param_name]] <- list(
       mean = mean(df[[var]]),
       sd   = sd(df[[var]])
     )
   }
-  attr(result, "parameter") <- prefix
+  # Return nested structure keyed by parameter name
+  result <- list()
+  result[[prefix]] <- param_scale
   result
 }
 
