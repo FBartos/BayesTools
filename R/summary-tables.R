@@ -34,6 +34,14 @@
 #' @param transform_orthonormal (to be depreciated) whether factors
 #' with orthonormal prior distributions should be transformed to
 #' differences from the grand mean
+#' @param transform_scaled whether coefficients from standardized
+#' continuous predictors should be transformed back to the original
+#' scale. Defaults to \code{FALSE}.
+#' @param formula_scale named list containing standardization information
+#' (mean and sd) for each standardized predictor. Required when
+#' \code{transform_scaled = TRUE} for ensemble/marginal tables. For
+#' \code{runjags_estimates_table}, this is automatically extracted from
+#' the fit object's \code{formula_scale} attribute.
 #' @param title title to be added to the table
 #' @param footnotes footnotes to be added to the table
 #' @param warnings warnings to be added to the table
@@ -65,7 +73,7 @@
 NULL
 
 #' @rdname BayesTools_ensemble_tables
-ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95), title = NULL, footnotes = NULL, warnings = NULL, transform_factors = FALSE, transform_orthonormal = FALSE, formula_prefix = TRUE){
+ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95), title = NULL, footnotes = NULL, warnings = NULL, transform_factors = FALSE, transform_orthonormal = FALSE, formula_prefix = TRUE, transform_scaled = FALSE, formula_scale = NULL){
 
   # check input
   check_char(parameters, "parameters", check_length = 0)
@@ -77,6 +85,8 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95)
   check_bool(transform_factors, "transform_factors")
   check_bool(transform_orthonormal, "transform_orthonormal")
   check_bool(formula_prefix, "formula_prefix")
+  check_bool(transform_scaled, "transform_scaled")
+  check_list(formula_scale, "formula_scale", allow_NULL = TRUE)
 
   # depreciate
   transform_factors <- .depreciate.transform_orthonormal(transform_orthonormal, transform_factors)
@@ -85,6 +95,11 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95)
   # transform meandif/orthonormal posterior
   if(transform_factors){
     samples <- transform_factor_samples(samples)
+  }
+
+  # transform scaled coefficients back to original scale
+  if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
+    samples <- .transform_scale_samples_list(samples, formula_scale)
   }
 
 
@@ -412,7 +427,7 @@ ensemble_diagnostics_empty_table <- function(title = NULL, footnotes = NULL, war
 }
 
 #' @rdname BayesTools_ensemble_tables
-marginal_estimates_table <- function(samples, inference, parameters, probs = c(0.025, 0.95), logBF = FALSE, BF01 = FALSE, title = NULL, footnotes = NULL, warnings = NULL, formula_prefix = TRUE){
+marginal_estimates_table <- function(samples, inference, parameters, probs = c(0.025, 0.95), logBF = FALSE, BF01 = FALSE, title = NULL, footnotes = NULL, warnings = NULL, formula_prefix = TRUE, transform_scaled = FALSE, formula_scale = NULL){
 
   # check input
   check_char(parameters, "parameters", check_length = 0)
@@ -425,6 +440,13 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
   check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
   check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
   check_bool(formula_prefix, "formula_prefix")
+  check_bool(transform_scaled, "transform_scaled")
+  check_list(formula_scale, "formula_scale", allow_NULL = TRUE)
+
+  # transform scaled coefficients back to original scale
+  if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
+    samples <- .transform_scale_samples_list(samples, formula_scale)
+  }
 
 
   # extract values
@@ -713,7 +735,7 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
 #' @rdname BayesTools_model_tables
 runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, footnotes = NULL, warnings = NULL, conditional = FALSE,
                                      remove_spike_0 = TRUE, transform_factors = FALSE, transform_orthonormal = FALSE, formula_prefix = TRUE, remove_inclusion = FALSE, remove_parameters = NULL,
-                                     return_samples = FALSE){
+                                     return_samples = FALSE, transform_scaled = FALSE){
 
   .check_runjags()
   # most of the code is shared with .diagnostics_plot_data function (keep them in sync on update)
@@ -738,6 +760,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   check_bool(transform_factors, "transform_factors")
   check_bool(transform_orthonormal, "transform_orthonormal")
   check_bool(formula_prefix, "formula_prefix")
+  check_bool(transform_scaled, "transform_scaled")
   check_char(remove_parameters, "remove_parameters", allow_NULL = TRUE, check_length = 0)
 
   # depreciate
@@ -971,6 +994,14 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 
   # rename factor levels
   model_samples <- .rename_factor_levels(model_samples, prior_list)
+
+  # transform scaled coefficients back to original scale
+  if(transform_scaled){
+    formula_scale <- attr(fit, "formula_scale")
+    if(!is.null(formula_scale) && length(formula_scale) > 0){
+      model_samples <- transform_scale_samples(model_samples, formula_scale)
+    }
+  }
 
   # store parameter names before removing formula attachments
   parameter_names <- colnames(model_samples)
@@ -1679,4 +1710,90 @@ update.BayesTools_table <- function(object, title = NULL, footnotes = NULL, warn
   }else{
     return()
   }
+}
+
+# Helper function to transform scaled samples in list format (for ensemble/marginal tables)
+# Uses the combinatorial unscaling algorithm via the helper in JAGS-formula.R
+.transform_scale_samples_list <- function(samples, formula_scale){
+  
+  if(is.null(formula_scale) || length(formula_scale) == 0){
+    return(samples)
+  }
+  
+  # Get all parameter names that have samples
+  sample_names <- names(samples)
+  
+  # Identify which samples are numeric or matrix (can be transformed)
+  transformable <- sapply(samples, function(x) is.numeric(x) || is.matrix(x))
+  transformable_names <- sample_names[transformable]
+  
+  if(length(transformable_names) == 0){
+    return(samples)
+  }
+  
+  # Determine the structure of each sample element
+  # (matrix with multiple columns for factors, or simple numeric/matrix for continuous)
+  # We need to handle each structure appropriately
+  
+  # For simplicity, we'll process each parameter individually using its structure
+  # But the combinatorial algorithm needs all parameters together
+  
+  # Approach: Build a single matrix with all parameters, apply transformation, extract back
+  # This requires handling the case where some parameters are matrices (factor levels)
+  
+  # First, identify simple (non-factor) parameters that can use the matrix approach
+  simple_params <- character(0)
+  factor_params <- character(0)
+  
+  for(name in transformable_names){
+    if(is.matrix(samples[[name]]) && ncol(samples[[name]]) > 1){
+      # Multi-column matrix - likely factor levels, skip for now
+      factor_params <- c(factor_params, name)
+    }else{
+      simple_params <- c(simple_params, name)
+    }
+  }
+  
+  if(length(simple_params) > 0){
+    # Build a matrix from simple parameters
+    # Each parameter becomes a column, samples are rows
+    n_samples <- if(is.matrix(samples[[simple_params[1]]])){
+      nrow(samples[[simple_params[1]]])
+    }else{
+      length(samples[[simple_params[1]]])
+    }
+    
+    posterior_matrix <- matrix(NA, nrow = n_samples, ncol = length(simple_params))
+    colnames(posterior_matrix) <- simple_params
+    
+    for(i in seq_along(simple_params)){
+      name <- simple_params[i]
+      if(is.matrix(samples[[name]])){
+        posterior_matrix[, i] <- samples[[name]][, 1]
+      }else{
+        posterior_matrix[, i] <- samples[[name]]
+      }
+    }
+    
+    # Apply the combinatorial unscaling transformation
+    posterior_matrix <- .apply_unscale_transform(posterior_matrix, formula_scale)
+    
+    # Extract back to list, preserving class and attributes
+    for(i in seq_along(simple_params)){
+      name <- simple_params[i]
+      if(is.matrix(samples[[name]])){
+        samples[[name]][, 1] <- posterior_matrix[, i]
+      }else{
+        # Preserve class and attributes
+        old_attrs <- attributes(samples[[name]])
+        samples[[name]] <- posterior_matrix[, i]
+        # Restore attributes (except names which may have changed)
+        for(attr_name in setdiff(names(old_attrs), "names")){
+          attr(samples[[name]], attr_name) <- old_attrs[[attr_name]]
+        }
+      }
+    }
+  }
+  
+  return(samples)
 }

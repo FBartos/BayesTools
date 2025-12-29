@@ -843,6 +843,92 @@ test_that("Formula-based interaction models fit correctly", {
   model_registry[["fit_formula_interaction_cont"]] <<- result$registry_entry
   fit_formula_interaction_cont <- result$fit
 
+  # Test standardization: manual vs automatic scaling
+  # Create data with large scale differences (far from being scaled)
+  set.seed(2)
+  data_unscaled <- data.frame(
+    x_cont1 = rnorm(100, mean = 1000, sd = 1000),  # Large scale
+    x_cont2 = rnorm(100, mean = 0.5, sd = 0.01)    # Small scale
+  )
+  data_scale <- list(
+    y = rnorm(100, 500 * data_unscaled$x_cont1 - 20 * data_unscaled$x_cont1 * data_unscaled$x_cont2, 1),
+    N = 100
+  )
+  
+  # Manual scaling: scale the data manually before fitting
+  data_manual_scaled <- data_unscaled
+  x_cont1_mean <- mean(data_unscaled$x_cont1)
+  x_cont1_sd   <- sd(data_unscaled$x_cont1)
+  x_cont2_mean <- mean(data_unscaled$x_cont2)
+  x_cont2_sd   <- sd(data_unscaled$x_cont2)
+  data_manual_scaled$x_cont1 <- (data_unscaled$x_cont1 - x_cont1_mean) / x_cont1_sd
+  data_manual_scaled$x_cont2 <- (data_unscaled$x_cont2 - x_cont2_mean) / x_cont2_sd
+  
+  formula_list_scale <- list(mu = ~ x_cont1 * x_cont2)
+  formula_prior_list_scale <- list(
+    mu = list(
+      "intercept"       = prior("normal", list(0, 5)),
+      "x_cont1"         = prior("normal", list(0, 1)),
+      "x_cont2"         = prior("normal", list(0, 1)),
+      "x_cont1:x_cont2" = prior("normal", list(0, 1))
+    )
+  )
+  
+  # Fit 1: Manual scaling
+  formula_data_list_manual <- list(mu = data_manual_scaled)
+  fit_formula_manual_scaled <- JAGS_fit(
+    model_syntax = model_syntax, data = data_scale, prior_list = prior_list,
+    formula_list = formula_list_scale, formula_data_list = formula_data_list_manual,
+    formula_prior_list = formula_prior_list_scale,
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+  # Store scaling info as attribute for comparison
+  attr(fit_formula_manual_scaled, "manual_scale") <- list(
+    mu_x_cont1 = list(mean = x_cont1_mean, sd = x_cont1_sd),
+    mu_x_cont2 = list(mean = x_cont2_mean, sd = x_cont2_sd)
+  )
+  
+  # Compute marginal likelihood for manual scaling
+  log_posterior_scale <- function(parameters, data){
+    sum(stats::dnorm(data$y, parameters[["mu"]], parameters[["sigma"]], log = TRUE))
+  }
+  marglik_formula_manual_scaled <- JAGS_bridgesampling(
+    fit_formula_manual_scaled, log_posterior = log_posterior_scale, data = data_scale,
+    prior_list = prior_list,
+    formula_list = formula_list_scale, formula_data_list = formula_data_list_manual,
+    formula_prior_list = formula_prior_list_scale)
+  
+  result <- save_fit(fit_formula_manual_scaled, "fit_formula_manual_scaled",
+                     marglik = marglik_formula_manual_scaled,
+                     formulas = TRUE, interactions = TRUE, simple_priors = TRUE,
+                     note = "Manual scaling of continuous predictors")
+  model_registry[["fit_formula_manual_scaled"]] <<- result$registry_entry
+  fit_formula_manual_scaled <- result$fit
+  
+  # Fit 2: Automatic scaling
+  formula_data_list_auto <- list(mu = data_unscaled)
+  formula_scale_list_auto <- list(mu = list(x_cont1 = TRUE, x_cont2 = TRUE))
+  fit_formula_auto_scaled <- JAGS_fit(
+    model_syntax = model_syntax, data = data_scale, prior_list = prior_list,
+    formula_list = formula_list_scale, formula_data_list = formula_data_list_auto,
+    formula_prior_list = formula_prior_list_scale,
+    formula_scale_list = formula_scale_list_auto,
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
+  
+  # Compute marginal likelihood for automatic scaling
+  marglik_formula_auto_scaled <- JAGS_bridgesampling(
+    fit_formula_auto_scaled, log_posterior = log_posterior_scale, data = data_scale,
+    prior_list = prior_list,
+    formula_list = formula_list_scale, formula_data_list = formula_data_list_auto,
+    formula_prior_list = formula_prior_list_scale,
+    formula_scale_list = formula_scale_list_auto)
+  
+  result <- save_fit(fit_formula_auto_scaled, "fit_formula_auto_scaled",
+                     marglik = marglik_formula_auto_scaled,
+                     formulas = TRUE, interactions = TRUE, simple_priors = TRUE,
+                     note = "Automatic scaling of continuous predictors")
+  model_registry[["fit_formula_auto_scaled"]] <<- result$registry_entry
+  fit_formula_auto_scaled <- result$fit
+
   # Continuous-factor interaction
   formula_list_mix_int <- list(mu = ~ x_cont1 * x_fac3o)
   formula_data_list_mix_int <- list(mu = data_formula)
