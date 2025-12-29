@@ -2103,6 +2103,117 @@ test_that("Complex models for plotting fit correctly", {
 
 
 # ============================================================================ #
+# SECTION 4: DUAL PARAMETER REGRESSION WITH LOG(INTERCEPT) AND FORMULA_SCALE
+# ============================================================================ #
+test_that("Dual parameter regression with log(intercept) and formula_scale fits correctly", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+
+  set.seed(1)
+
+  # Generate data with heteroscedastic variance
+  n <- 100
+  data_formula_dual <- data.frame(
+    x_mu    = rnorm(n, mean = 5, sd = 2),
+    x_sigma = rnorm(n, mean = 3, sd = 1.5)
+  )
+
+  # True parameters: mu = 1 + 0.3 * x_mu, log(sigma) = log(0.5) + 0.2 * x_sigma
+  true_mu    <- 1 + 0.3 * scale(data_formula_dual$x_mu)[,1]
+  true_sigma <- exp(log(0.5) + 0.2 * scale(data_formula_dual$x_sigma)[,1])
+  y <- rnorm(n, mean = true_mu, sd = true_sigma)
+
+  data_dual <- list(y = y, N = n)
+
+  # Formula for mu (standard intercept)
+  formula_mu <- ~ x_mu
+
+  # Formula for log_sigma with log(intercept) attribute
+  formula_log_sigma <- ~ x_sigma
+  attr(formula_log_sigma, "log(intercept)") <- TRUE
+
+  formula_list_dual <- list(
+    mu        = formula_mu,
+    log_sigma = formula_log_sigma
+  )
+
+  formula_data_list_dual <- list(
+    mu        = data_formula_dual,
+    log_sigma = data_formula_dual
+  )
+
+  # Scale both continuous predictors
+  formula_scale_list_dual <- list(
+    mu        = list(x_mu = TRUE),
+    log_sigma = list(x_sigma = TRUE)
+  )
+
+  formula_prior_list_dual <- list(
+    mu = list(
+      "intercept" = prior("normal", list(0, 2)),
+      "x_mu"      = prior("normal", list(0, 1))
+    ),
+    log_sigma = list(
+      "intercept" = prior("lognormal", list(0, 0.5)),  # Must be positive for log()
+      "x_sigma"   = prior("normal", list(0, 0.5))
+    )
+  )
+
+  # Model syntax uses exp() on log_sigma to get positive sigma
+  model_syntax_dual <- paste0(
+    "model{\n",
+    "for(i in 1:N){\n",
+    "  y[i] ~ dnorm(mu[i], 1/pow(exp(log_sigma[i]), 2))\n",
+    "}\n",
+    "}"
+  )
+
+  # Log posterior for marginal likelihood
+  log_posterior_dual <- function(parameters, data){
+    sigma <- exp(parameters[["log_sigma"]])
+    sum(stats::dnorm(data$y, parameters[["mu"]], sigma, log = TRUE))
+  }
+
+  fit_dual_param_regression <- JAGS_fit(
+    model_syntax       = model_syntax_dual,
+    data               = data_dual,
+    prior_list         = NULL,
+    formula_list       = formula_list_dual,
+    formula_data_list  = formula_data_list_dual,
+    formula_prior_list = formula_prior_list_dual,
+    formula_scale_list = formula_scale_list_dual,
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
+
+  marglik_dual_param_regression <- JAGS_bridgesampling(
+    fit                = fit_dual_param_regression,
+    log_posterior      = log_posterior_dual,
+    data               = data_dual,
+    prior_list         = NULL,
+    formula_list       = formula_list_dual,
+    formula_data_list  = formula_data_list_dual,
+    formula_prior_list = formula_prior_list_dual,
+    formula_scale_list = formula_scale_list_dual)
+
+  result <- save_fit(fit_dual_param_regression, "fit_dual_param_regression",
+                     marglik = marglik_dual_param_regression,
+                     formulas = TRUE, simple_priors = TRUE,
+                     note = "Dual parameter regression: mu and log_sigma with log(intercept) and formula_scale")
+  model_registry[["fit_dual_param_regression"]] <<- result$registry_entry
+  fit_dual_param_regression <- result$fit
+
+  # Verify the model has the expected structure
+  expect_true("mu_intercept" %in% colnames(fit_dual_param_regression$mcmc[[1]]))
+  expect_true("mu_x_mu" %in% colnames(fit_dual_param_regression$mcmc[[1]]))
+  expect_true("log_sigma_intercept" %in% colnames(fit_dual_param_regression$mcmc[[1]]))
+  expect_true("log_sigma_x_sigma" %in% colnames(fit_dual_param_regression$mcmc[[1]]))
+
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_dual_param_regression.RDS")))
+  expect_true(file.exists(file.path(temp_fits_dir, "fit_dual_param_regression_marglik.RDS")))
+})
+
+
+# ============================================================================ #
 # SAVE MODEL REGISTRY
 # ============================================================================ #
 # Convert the model registry list to a data frame for easy inspection and querying

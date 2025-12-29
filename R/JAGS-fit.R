@@ -288,7 +288,9 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   attr(fit, "model_syntax") <- model_syntax
   attr(fit, "required_packages") <- required_packages
   if(!is.null(formula_scale_info)){
-    attr(fit, "formula_scale") <- do.call(c, unname(formula_scale_info))
+    # Keep formula_scale as a nested list keyed by parameter name
+    # Each element contains the scaling info for that parameter's predictors
+    attr(fit, "formula_scale") <- formula_scale_info
   }
 
   class(fit) <- c(class(fit), "BayesTools_fit")
