@@ -1778,13 +1778,20 @@ update.BayesTools_table <- function(object, title = NULL, footnotes = NULL, warn
     # Apply the combinatorial unscaling transformation
     posterior_matrix <- .apply_unscale_transform(posterior_matrix, formula_scale)
     
-    # Extract back to list
+    # Extract back to list, preserving class and attributes
     for(i in seq_along(simple_params)){
       name <- simple_params[i]
       if(is.matrix(samples[[name]])){
         samples[[name]][, 1] <- posterior_matrix[, i]
       }else{
-        samples[[name]] <- posterior_matrix[, i]      }
+        # Preserve class and attributes
+        old_attrs <- attributes(samples[[name]])
+        samples[[name]] <- posterior_matrix[, i]
+        # Restore attributes (except names which may have changed)
+        for(attr_name in setdiff(names(old_attrs), "names")){
+          attr(samples[[name]], attr_name) <- old_attrs[[attr_name]]
+        }
+      }
     }
   }
   

@@ -465,11 +465,21 @@ test_that("runjags_estimates_table transform_scaled with return_samples works", 
   # Get samples with unscaling
   samples_unscaled <- JAGS_estimates_table(fit_auto, transform_scaled = TRUE, return_samples = TRUE)
 
-  # Check that x_cont1 samples are correctly unscaled
-  sd_x_cont1 <- formula_scale$mu_x_cont1$sd
+  # For models with interactions, the transformation is more complex
+  sd_x_cont1   <- formula_scale$mu_x_cont1$sd
+  sd_x_cont2   <- formula_scale$mu_x_cont2$sd
+  mean_x_cont1 <- formula_scale$mu_x_cont1$mean
+  mean_x_cont2 <- formula_scale$mu_x_cont2$mean
+
+  # First, compute the unscaled interaction coefficient
+  unscaled_int <- samples_scaled[, "(mu) x_cont1:x_cont2"] / (sd_x_cont1 * sd_x_cont2)
+
+  # Check that x_cont1 samples are correctly unscaled (with interaction adjustment)
+  # beta_x1_orig = beta_x1_z/sd_x1 - beta_int_orig * mean_x2
+  expected_x1 <- samples_scaled[, "(mu) x_cont1"] / sd_x_cont1 - unscaled_int * mean_x_cont2
   expect_equal(
     samples_unscaled[, "(mu) x_cont1"],
-    samples_scaled[, "(mu) x_cont1"] / sd_x_cont1,
+    expected_x1,
     tolerance = 1e-10
   )
 })
@@ -480,7 +490,7 @@ test_that("ensemble_estimates_table with transform_scaled unscales coefficients"
   skip_if_not_installed("bridgesampling")
 
   # Load pre-fitted models
-  fit_auto    <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS"))
+  fit_auto     <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS"))
   marglik_auto <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled_marglik.RDS"))
 
   formula_scale <- attr(fit_auto, "formula_scale")
@@ -494,14 +504,15 @@ test_that("ensemble_estimates_table with transform_scaled unscales coefficients"
     )
   )
 
-  # Get mixed posteriors
+  # Get mixed posteriors - include interaction term for proper unscaling
   mixed_posteriors <- mix_posteriors(
-    model_list  = model_list,
-    parameters  = c("mu_intercept", "mu_x_cont1", "mu_x_cont2"),
+    model_list   = model_list,
+    parameters   = c("mu_intercept", "mu_x_cont1", "mu_x_cont2", "mu_x_cont1__xXx__x_cont2"),
     is_null_list = list(
-      mu_intercept = 1,
-      mu_x_cont1   = 1,
-      mu_x_cont2   = 1
+      mu_intercept               = 1,
+      mu_x_cont1                 = 1,
+      mu_x_cont2                 = 1,
+      "mu_x_cont1__xXx__x_cont2" = 1
     ),
     seed = 1
   )
@@ -509,25 +520,39 @@ test_that("ensemble_estimates_table with transform_scaled unscales coefficients"
   # Get estimates without unscaling
   estimates_scaled <- ensemble_estimates_table(
     samples          = mixed_posteriors,
-    parameters       = c("mu_intercept", "mu_x_cont1", "mu_x_cont2"),
+    parameters       = c("mu_intercept", "mu_x_cont1", "mu_x_cont2", "mu_x_cont1__xXx__x_cont2"),
     transform_scaled = FALSE
   )
 
   # Get estimates with unscaling
   estimates_unscaled <- ensemble_estimates_table(
     samples          = mixed_posteriors,
-    parameters       = c("mu_intercept", "mu_x_cont1", "mu_x_cont2"),
+    parameters       = c("mu_intercept", "mu_x_cont1", "mu_x_cont2", "mu_x_cont1__xXx__x_cont2"),
     transform_scaled = TRUE,
     formula_scale    = formula_scale
   )
 
-  # The scaled coefficient for x_cont1 should be divided by sd
-  sd_x_cont1 <- formula_scale$mu_x_cont1$sd
+  # For models with interactions, the transformation is more complex
+  sd_x_cont1   <- formula_scale$mu_x_cont1$sd
+  sd_x_cont2   <- formula_scale$mu_x_cont2$sd
+  mean_x_cont1 <- formula_scale$mu_x_cont1$mean
+  mean_x_cont2 <- formula_scale$mu_x_cont2$mean
 
-  scaled_coef_x1   <- estimates_scaled["mu_x_cont1", "Mean"]
-  unscaled_coef_x1 <- estimates_unscaled["mu_x_cont1", "Mean"]
+  # Check that the interaction term is correctly unscaled (divided by product of SDs)
+  scaled_coef_int   <- estimates_scaled["(mu) x_cont1:x_cont2", "Mean"]
+  unscaled_coef_int <- estimates_unscaled["(mu) x_cont1:x_cont2", "Mean"]
+  expect_equal(unscaled_coef_int, scaled_coef_int / (sd_x_cont1 * sd_x_cont2), tolerance = 1e-10)
 
-  expect_equal(unscaled_coef_x1, scaled_coef_x1 / sd_x_cont1, tolerance = 1e-10)
+  # The main effects are adjusted for interaction contributions
+  # beta_x1_orig = beta_x1_z/sd_x1 - beta_int_orig * mean_x2
+  scaled_coef_x1 <- estimates_scaled["mu_x_cont1", "Mean"]
+  expected_x1    <- scaled_coef_x1 / sd_x_cont1 - unscaled_coef_int * mean_x_cont2
+  expect_equal(estimates_unscaled["mu_x_cont1", "Mean"], expected_x1, tolerance = 1e-10)
+
+  # beta_x2_orig = beta_x2_z/sd_x2 - beta_int_orig * mean_x1
+  scaled_coef_x2 <- estimates_scaled["mu_x_cont2", "Mean"]
+  expected_x2    <- scaled_coef_x2 / sd_x_cont2 - unscaled_coef_int * mean_x_cont1
+  expect_equal(estimates_unscaled["mu_x_cont2", "Mean"], expected_x2, tolerance = 1e-10)
 })
 
 test_that("transform_scaled = FALSE is the default behavior", {
