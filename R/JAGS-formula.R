@@ -1224,46 +1224,104 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
     stop("'fit' must be a fitted model object or a matrix of posterior samples.")
   }
   
-  # transform each scaled parameter
+  # extract parameter prefix (e.g., "mu" from "mu_x_cont")
+  param_prefixes <- unique(sapply(strsplit(names(formula_scale), "_"), `[`, 1))
+  
+  # Identify interaction terms (by __xXx__ separator)
+  interaction_cols <- grep("__xXx__", colnames(posterior), value = TRUE)
+  
+  # Step 1: Transform interaction terms: beta_int_orig = beta_int_z / prod(sds)
+  for(interaction_col in interaction_cols){
+    prefix <- strsplit(interaction_col, "_")[[1]][1]
+    interaction_part <- sub(paste0("^", prefix, "_"), "", interaction_col)
+    components <- strsplit(interaction_part, "__xXx__")[[1]]
+    component_names <- paste0(prefix, "_", components)
+    
+    components_with_scale <- component_names[component_names %in% names(formula_scale)]
+    
+    if(length(components_with_scale) > 0){
+      sd_product <- prod(sapply(components_with_scale, function(comp) formula_scale[[comp]]$sd))
+      posterior[, interaction_col] <- posterior[, interaction_col] / sd_product
+    }
+  }
+  
+  # Step 2: Transform main effect coefficients: beta_z/sd (store as intermediate for intercept)
+  # We need to keep track of beta_z/sd for the intercept adjustment
+  beta_div_sd <- list()
   for(param_name in names(formula_scale)){
     scale_info <- formula_scale[[param_name]]
     
     if(param_name %in% colnames(posterior)){
-      # simple parameter (not an array)
-      posterior[, param_name] <- posterior[, param_name] / scale_info$sd
-    }else{
-      # check for array parameters (e.g., param_name[1], param_name[2])
-      param_cols <- grep(paste0("^", gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\\1", param_name), "\\["), colnames(posterior))
-      if(length(param_cols) > 0){
-        posterior[, param_cols] <- posterior[, param_cols, drop = FALSE] / scale_info$sd
+      # Store beta_z/sd before any interaction adjustment
+      beta_div_sd[[param_name]] <- posterior[, param_name] / scale_info$sd
+      # Transform the main effect
+      posterior[, param_name] <- beta_div_sd[[param_name]]
+    }
+  }
+  
+  # Step 3: Adjust main effects for interaction contributions
+  # beta_orig = beta_z/sd - sum_over_interactions(beta_int_orig * mean_other)
+  for(param_name in names(formula_scale)){
+    if(!param_name %in% colnames(posterior)) next
+    
+    prefix <- strsplit(param_name, "_")[[1]][1]
+    var_name <- sub(paste0("^", prefix, "_"), "", param_name)
+    
+    for(interaction_col in interaction_cols){
+      # Check prefix match first
+      if(!grepl(paste0("^", prefix, "_"), interaction_col)) next
+      
+      # Strip prefix and check if var_name is a component of this interaction
+      interaction_part <- sub(paste0("^", prefix, "_"), "", interaction_col)
+      if(!grepl(paste0("(^|__xXx__)", var_name, "(__xXx__|$)"), interaction_part)) next
+      
+      components <- strsplit(interaction_part, "__xXx__")[[1]]
+      other_vars <- components[components != var_name]
+      
+      for(other_var in other_vars){
+        other_param <- paste0(prefix, "_", other_var)
+        if(other_param %in% names(formula_scale)){
+          other_mean <- formula_scale[[other_param]]$mean
+          posterior[, param_name] <- posterior[, param_name] - 
+            posterior[, interaction_col] * other_mean
+        }
       }
     }
   }
   
-  # adjust intercept if present
-  # extract parameter prefix (e.g., "mu" from "mu_x_cont")
-  param_prefixes <- unique(sapply(strsplit(names(formula_scale), "_"), `[`, 1))
-  
+  # Step 4: Adjust intercept
+  # alpha_orig = alpha_z - sum(beta_z/sd * mean) + sum_interactions(beta_int_orig * prod(means))
   for(prefix in param_prefixes){
     intercept_name <- paste0(prefix, "_intercept")
     
     if(intercept_name %in% colnames(posterior)){
-      # adjust intercept for each scaled predictor
+      # Adjust for main effects using beta_z/sd (not the interaction-adjusted value)
       for(param_name in names(formula_scale)){
-        # only adjust for parameters with matching prefix
-        if(grepl(paste0("^", prefix, "_"), param_name)){
-          scale_info <- formula_scale[[param_name]]
+        if(!grepl(paste0("^", prefix, "_"), param_name)) next
+        
+        scale_info <- formula_scale[[param_name]]
+        
+        if(param_name %in% names(beta_div_sd)){
+          # alpha = alpha_z - (beta_z/sd) * mean
+          posterior[, intercept_name] <- posterior[, intercept_name] - 
+            beta_div_sd[[param_name]] * scale_info$mean
+        }
+      }
+      
+      # Adjust for interaction contributions: + beta_int_orig * prod(means)
+      for(interaction_col in interaction_cols){
+        if(!grepl(paste0("^", prefix, "_"), interaction_col)) next
+        
+        interaction_part <- sub(paste0("^", prefix, "_"), "", interaction_col)
+        components <- strsplit(interaction_part, "__xXx__")[[1]]
+        component_names <- paste0(prefix, "_", components)
+        
+        scaled_components <- component_names[component_names %in% names(formula_scale)]
+        if(length(scaled_components) > 0){
+          mean_product <- prod(sapply(scaled_components, function(comp) formula_scale[[comp]]$mean))
           
-          # find the corresponding coefficient column(s)
-          if(param_name %in% colnames(posterior)){
-            # The transformation is:
-            # Original: y = alpha + beta*x
-            # Standardized: y = alpha_z + beta_z*(x-mean)/sd
-            # Therefore: alpha = alpha_z - (beta_z/sd)*mean
-            # Note: At this point, beta has already been divided by sd
-            posterior[, intercept_name] <- posterior[, intercept_name] - 
-              (posterior[, param_name] * scale_info$mean)
-          }
+          posterior[, intercept_name] <- posterior[, intercept_name] + 
+            posterior[, interaction_col] * mean_product
         }
       }
     }

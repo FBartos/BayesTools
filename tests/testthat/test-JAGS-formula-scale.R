@@ -110,9 +110,9 @@ test_that("JAGS_formula standardization preserves data correctly", {
 
   # Verify scale parameters
   expect_equal(result$formula_scale$beta_x1$mean, 10, tolerance = 0.5)
-  expect_equal(result$formula_scale$beta_x1$sd, 3, tolerance = 0.5)
+  expect_equal(result$formula_scale$beta_x1$sd,    3, tolerance = 0.5)
   expect_equal(result$formula_scale$beta_x2$mean, -5, tolerance = 0.5)
-  expect_equal(result$formula_scale$beta_x2$sd, 2, tolerance = 0.5)
+  expect_equal(result$formula_scale$beta_x2$sd,    2, tolerance = 0.5)
 
   ### Standardize both predictors (lazily)
   result <- JAGS_formula(
@@ -130,9 +130,9 @@ test_that("JAGS_formula standardization preserves data correctly", {
 
   # Verify scale parameters
   expect_equal(result$formula_scale$beta_x1$mean, 10, tolerance = 0.5)
-  expect_equal(result$formula_scale$beta_x1$sd, 3, tolerance = 0.5)
+  expect_equal(result$formula_scale$beta_x1$sd,    3, tolerance = 0.5)
   expect_equal(result$formula_scale$beta_x2$mean, -5, tolerance = 0.5)
-  expect_equal(result$formula_scale$beta_x2$sd, 2, tolerance = 0.5)
+  expect_equal(result$formula_scale$beta_x2$sd,    2, tolerance = 0.5)
 
   ### Standardize one predictors
   result <- JAGS_formula(
@@ -190,9 +190,62 @@ test_that("transform_scale_samples transforms coefficients correctly", {
   # Check that intercept is adjusted
   # intercept_original = intercept_std - beta_original * mean
   # where beta_original = beta_std / sd (already done above)
-  expected_intercept <- posterior[, "mu_intercept"] -
-    (posterior[, "mu_x_cont"] / 2 * 5)
+  expected_intercept <- posterior[, "mu_intercept"] - (posterior[, "mu_x_cont"] / 2 * 5)
   expect_equal(posterior_original[, "mu_intercept"], expected_intercept)
+})
+
+test_that("transform_scale_samples handles interaction terms correctly", {
+
+  # Create mock posterior samples with interaction
+  set.seed(4)
+  n_samples <- 100
+
+  # Simulated standardized coefficients
+  posterior <- matrix(
+    c(
+      rnorm(n_samples, mean = 1.0, sd = 0.1),   # mu_intercept
+      rnorm(n_samples, mean = 0.3, sd = 0.05),  # mu_x1 (standardized)
+      rnorm(n_samples, mean = 0.2, sd = 0.05),  # mu_x2 (standardized)
+      rnorm(n_samples, mean = 0.1, sd = 0.02)   # mu_x1__xXx__x2 (interaction)
+    ),
+    nrow = n_samples,
+    ncol = 4
+  )
+  colnames(posterior) <- c("mu_intercept", "mu_x1", "mu_x2", "mu_x1__xXx__x2")
+
+  # Scale information
+  formula_scale <- list(
+    mu_x1 = list(mean = 5, sd = 2),
+    mu_x2 = list(mean = 10, sd = 4)
+  )
+
+  # Transform back to original scale
+  posterior_original <- transform_scale_samples(posterior, formula_scale)
+
+  # The interaction coefficient should be divided by (sd_x1 * sd_x2) = 2 * 4 = 8
+  expect_equal(
+    posterior_original[, "mu_x1__xXx__x2"],
+    posterior[, "mu_x1__xXx__x2"] / (2 * 4),
+    tolerance = 1e-10
+  )
+
+  # The main effect x1 should be: beta_x1_orig = beta_x1_z/sd_x1 - beta_int_orig * mean_x2
+  beta_int_orig <- posterior[, "mu_x1__xXx__x2"] / 8
+  beta_x1_z_div_sd <- posterior[, "mu_x1"] / 2
+  expected_beta_x1 <- beta_x1_z_div_sd - beta_int_orig * 10
+  expect_equal(posterior_original[, "mu_x1"], expected_beta_x1, tolerance = 1e-10)
+
+  # The main effect x2 should be: beta_x2_orig = beta_x2_z/sd_x2 - beta_int_orig * mean_x1
+  beta_x2_z_div_sd <- posterior[, "mu_x2"] / 4
+  expected_beta_x2 <- beta_x2_z_div_sd - beta_int_orig * 5
+  expect_equal(posterior_original[, "mu_x2"], expected_beta_x2, tolerance = 1e-10)
+
+  # The intercept should be:
+  # alpha_orig = alpha_z - (beta_x1_z/sd_x1)*mean_x1 - (beta_x2_z/sd_x2)*mean_x2 + beta_int_orig*mean_x1*mean_x2
+  # Note: uses beta_z/sd (intermediate values), not beta_orig (interaction-adjusted values)
+  expected_intercept <- posterior[, "mu_intercept"] -
+    beta_x1_z_div_sd * 5 - beta_x2_z_div_sd * 10 + beta_int_orig * 5 * 10
+  expect_equal(posterior_original[, "mu_intercept"], expected_intercept, tolerance = 1e-10)
 })
 
 test_that("Manual and automatic scaling produce equivalent results", {
@@ -348,6 +401,160 @@ test_that("JAGS_evaluate_formula applies scaling correctly", {
   )
 
   # These should be very different from the correctly scaled predictions
-  expect_true(any(rowMean(pred_manual) - rowMean(pred_auto_no_scale) > 1))
+  expect_true(any(rowMeans(pred_manual) - rowMeans(pred_auto_no_scale) > 1))
 })
+
+test_that("runjags_estimates_table with transform_scaled unscales coefficients", {
+  # TODO: something is wrong here with the intercept handling
+  skip_if_no_fits()
+
+  # Load pre-fitted model with automatic scaling
+  fit_auto <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS"))
+
+  # Get formula_scale attribute
+  formula_scale <- attr(fit_auto, "formula_scale")
+  expect_true(!is.null(formula_scale))
+
+  # Get estimates without unscaling
+  estimates_scaled <- JAGS_estimates_table(fit_auto, transform_scaled = FALSE)
+
+  # Get estimates with unscaling
+  estimates_unscaled <- JAGS_estimates_table(fit_auto, transform_scaled = TRUE)
+
+  # The scaled coefficient for x_cont1 should be divided by sd
+  # to get the unscaled coefficient
+  sd_x_cont1   <- formula_scale$mu_x_cont1$sd
+  sd_x_cont2   <- formula_scale$mu_x_cont2$sd
+  mean_x_cont1 <- formula_scale$mu_x_cont1$mean
+  mean_x_cont2 <- formula_scale$mu_x_cont2$mean
+
+  # Check that the interaction term is correctly unscaled (divided by product of SDs)
+  scaled_coef_int   <- estimates_scaled["(mu) x_cont1:x_cont2", "Mean"]
+  unscaled_coef_int <- estimates_unscaled["(mu) x_cont1:x_cont2", "Mean"]
+  expect_equal(unscaled_coef_int, scaled_coef_int / (sd_x_cont1 * sd_x_cont2), tolerance = 1e-10)
+
+  # The main effects are adjusted for interaction contributions
+  # beta_x1_orig = beta_x1_z/sd_x1 - beta_int_orig * mean_x2
+  scaled_coef_x1 <- estimates_scaled["(mu) x_cont1", "Mean"]
+  expected_x1    <- scaled_coef_x1 / sd_x_cont1 - unscaled_coef_int * mean_x_cont2
+  expect_equal(estimates_unscaled["(mu) x_cont1", "Mean"], expected_x1, tolerance = 1e-10)
+
+  # beta_x2_orig = beta_x2_z/sd_x2 - beta_int_orig * mean_x1
+  scaled_coef_x2 <- estimates_scaled["(mu) x_cont2", "Mean"]
+  expected_x2    <- scaled_coef_x2 / sd_x_cont2 - unscaled_coef_int * mean_x_cont1
+  expect_equal(estimates_unscaled["(mu) x_cont2", "Mean"], expected_x2, tolerance = 1e-10)
+
+  # The intercept should be adjusted
+  # alpha_orig = alpha_z - beta_x1_orig*mean_x1 - beta_x2_orig*mean_x2 - beta_int_orig*mean_x1*mean_x2
+  scaled_intercept   <- estimates_scaled["(mu) intercept", "Mean"]
+  expected_intercept <- scaled_intercept - expected_x1 * mean_x_cont1 - expected_x2 * mean_x_cont2 -
+    unscaled_coef_int * mean_x_cont1 * mean_x_cont2
+  expect_equal(estimates_unscaled["(mu) intercept", "Mean"], expected_intercept, tolerance = 1e-10)
+})
+
+test_that("runjags_estimates_table transform_scaled with return_samples works", {
+
+  skip_if_no_fits()
+
+  fit_auto <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS"))
+  formula_scale <- attr(fit_auto, "formula_scale")
+
+  # Get samples without unscaling
+  samples_scaled <- JAGS_estimates_table(fit_auto, transform_scaled = FALSE, return_samples = TRUE)
+
+  # Get samples with unscaling
+  samples_unscaled <- JAGS_estimates_table(fit_auto, transform_scaled = TRUE, return_samples = TRUE)
+
+  # Check that x_cont1 samples are correctly unscaled
+  sd_x_cont1 <- formula_scale$mu_x_cont1$sd
+  expect_equal(
+    samples_unscaled[, "(mu) x_cont1"],
+    samples_scaled[, "(mu) x_cont1"] / sd_x_cont1,
+    tolerance = 1e-10
+  )
+})
+
+test_that("ensemble_estimates_table with transform_scaled unscales coefficients", {
+
+  skip_if_no_fits()
+  skip_if_not_installed("bridgesampling")
+
+  # Load pre-fitted models
+  fit_auto    <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS"))
+  marglik_auto <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled_marglik.RDS"))
+
+  formula_scale <- attr(fit_auto, "formula_scale")
+
+  # Create a simple model list for mix_posteriors
+  model_list <- list(
+    list(
+      fit           = fit_auto,
+      marglik       = marglik_auto,
+      prior_weights = 1
+    )
+  )
+
+  # Get mixed posteriors
+  mixed_posteriors <- mix_posteriors(
+    model_list  = model_list,
+    parameters  = c("mu_intercept", "mu_x_cont1", "mu_x_cont2"),
+    is_null_list = list(
+      mu_intercept = 1,
+      mu_x_cont1   = 1,
+      mu_x_cont2   = 1
+    ),
+    seed = 1
+  )
+
+  # Get estimates without unscaling
+  estimates_scaled <- ensemble_estimates_table(
+    samples          = mixed_posteriors,
+    parameters       = c("mu_intercept", "mu_x_cont1", "mu_x_cont2"),
+    transform_scaled = FALSE
+  )
+
+  # Get estimates with unscaling
+  estimates_unscaled <- ensemble_estimates_table(
+    samples          = mixed_posteriors,
+    parameters       = c("mu_intercept", "mu_x_cont1", "mu_x_cont2"),
+    transform_scaled = TRUE,
+    formula_scale    = formula_scale
+  )
+
+  # The scaled coefficient for x_cont1 should be divided by sd
+  sd_x_cont1 <- formula_scale$mu_x_cont1$sd
+
+  scaled_coef_x1   <- estimates_scaled["mu_x_cont1", "Mean"]
+  unscaled_coef_x1 <- estimates_unscaled["mu_x_cont1", "Mean"]
+
+  expect_equal(unscaled_coef_x1, scaled_coef_x1 / sd_x_cont1, tolerance = 1e-10)
+})
+
+test_that("transform_scaled = FALSE is the default behavior", {
+
+  skip_if_no_fits()
+
+  fit_auto <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS"))
+
+  # Default behavior should be no unscaling
+  estimates_default <- JAGS_estimates_table(fit_auto)
+  estimates_false   <- JAGS_estimates_table(fit_auto, transform_scaled = FALSE)
+
+  expect_equal(estimates_default, estimates_false)
+})
+
+test_that("transform_scaled has no effect when formula_scale is NULL", {
+
+  skip_if_no_fits()
+
+  # Load model without automatic scaling (manual scaling doesn't have formula_scale attr)
+  fit_manual <- readRDS(file.path(temp_fits_dir, "fit_formula_manual_scaled.RDS"))
+
+  # transform_scaled = TRUE should have no effect when formula_scale is NULL
+  estimates_false <- JAGS_estimates_table(fit_manual, transform_scaled = FALSE)
+  estimates_true  <- JAGS_estimates_table(fit_manual, transform_scaled = TRUE)
+
+  expect_equal(estimates_false, estimates_true)
+})
+
 

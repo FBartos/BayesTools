@@ -34,6 +34,14 @@
 #' @param transform_orthonormal (to be depreciated) whether factors
 #' with orthonormal prior distributions should be transformed to
 #' differences from the grand mean
+#' @param transform_scaled whether coefficients from standardized
+#' continuous predictors should be transformed back to the original
+#' scale. Defaults to \code{FALSE}.
+#' @param formula_scale named list containing standardization information
+#' (mean and sd) for each standardized predictor. Required when
+#' \code{transform_scaled = TRUE} for ensemble/marginal tables. For
+#' \code{runjags_estimates_table}, this is automatically extracted from
+#' the fit object's \code{formula_scale} attribute.
 #' @param title title to be added to the table
 #' @param footnotes footnotes to be added to the table
 #' @param warnings warnings to be added to the table
@@ -65,7 +73,7 @@
 NULL
 
 #' @rdname BayesTools_ensemble_tables
-ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95), title = NULL, footnotes = NULL, warnings = NULL, transform_factors = FALSE, transform_orthonormal = FALSE, formula_prefix = TRUE){
+ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95), title = NULL, footnotes = NULL, warnings = NULL, transform_factors = FALSE, transform_orthonormal = FALSE, formula_prefix = TRUE, transform_scaled = FALSE, formula_scale = NULL){
 
   # check input
   check_char(parameters, "parameters", check_length = 0)
@@ -77,6 +85,8 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95)
   check_bool(transform_factors, "transform_factors")
   check_bool(transform_orthonormal, "transform_orthonormal")
   check_bool(formula_prefix, "formula_prefix")
+  check_bool(transform_scaled, "transform_scaled")
+  check_list(formula_scale, "formula_scale", allow_NULL = TRUE)
 
   # depreciate
   transform_factors <- .depreciate.transform_orthonormal(transform_orthonormal, transform_factors)
@@ -85,6 +95,11 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95)
   # transform meandif/orthonormal posterior
   if(transform_factors){
     samples <- transform_factor_samples(samples)
+  }
+
+  # transform scaled coefficients back to original scale
+  if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
+    samples <- .transform_scale_samples_list(samples, formula_scale)
   }
 
 
@@ -412,7 +427,7 @@ ensemble_diagnostics_empty_table <- function(title = NULL, footnotes = NULL, war
 }
 
 #' @rdname BayesTools_ensemble_tables
-marginal_estimates_table <- function(samples, inference, parameters, probs = c(0.025, 0.95), logBF = FALSE, BF01 = FALSE, title = NULL, footnotes = NULL, warnings = NULL, formula_prefix = TRUE){
+marginal_estimates_table <- function(samples, inference, parameters, probs = c(0.025, 0.95), logBF = FALSE, BF01 = FALSE, title = NULL, footnotes = NULL, warnings = NULL, formula_prefix = TRUE, transform_scaled = FALSE, formula_scale = NULL){
 
   # check input
   check_char(parameters, "parameters", check_length = 0)
@@ -425,6 +440,13 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
   check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
   check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
   check_bool(formula_prefix, "formula_prefix")
+  check_bool(transform_scaled, "transform_scaled")
+  check_list(formula_scale, "formula_scale", allow_NULL = TRUE)
+
+  # transform scaled coefficients back to original scale
+  if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
+    samples <- .transform_scale_samples_list(samples, formula_scale)
+  }
 
 
   # extract values
@@ -713,7 +735,7 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
 #' @rdname BayesTools_model_tables
 runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, footnotes = NULL, warnings = NULL, conditional = FALSE,
                                      remove_spike_0 = TRUE, transform_factors = FALSE, transform_orthonormal = FALSE, formula_prefix = TRUE, remove_inclusion = FALSE, remove_parameters = NULL,
-                                     return_samples = FALSE){
+                                     return_samples = FALSE, transform_scaled = FALSE){
 
   .check_runjags()
   # most of the code is shared with .diagnostics_plot_data function (keep them in sync on update)
@@ -738,6 +760,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   check_bool(transform_factors, "transform_factors")
   check_bool(transform_orthonormal, "transform_orthonormal")
   check_bool(formula_prefix, "formula_prefix")
+  check_bool(transform_scaled, "transform_scaled")
   check_char(remove_parameters, "remove_parameters", allow_NULL = TRUE, check_length = 0)
 
   # depreciate
@@ -971,6 +994,14 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 
   # rename factor levels
   model_samples <- .rename_factor_levels(model_samples, prior_list)
+
+  # transform scaled coefficients back to original scale
+  if(transform_scaled){
+    formula_scale <- attr(fit, "formula_scale")
+    if(!is.null(formula_scale) && length(formula_scale) > 0){
+      model_samples <- transform_scale_samples(model_samples, formula_scale)
+    }
+  }
 
   # store parameter names before removing formula attachments
   parameter_names <- colnames(model_samples)
@@ -1679,4 +1710,139 @@ update.BayesTools_table <- function(object, title = NULL, footnotes = NULL, warn
   }else{
     return()
   }
+}
+
+# Helper function to transform scaled samples in list format (for ensemble/marginal tables)
+.transform_scale_samples_list <- function(samples, formula_scale){
+  
+  if(is.null(formula_scale) || length(formula_scale) == 0){
+    return(samples)
+  }
+  
+  # extract parameter prefixes for intercept adjustment
+  param_prefixes <- unique(sapply(strsplit(names(formula_scale), "_"), `[`, 1))
+  
+  # Identify interaction terms (by __xXx__ separator)
+  interaction_names <- grep("__xXx__", names(samples), value = TRUE)
+  
+  # Step 1: Transform interaction terms: beta_int_orig = beta_int_z / prod(sds)
+  for(interaction_name in interaction_names){
+    prefix <- strsplit(interaction_name, "_")[[1]][1]
+    interaction_part <- sub(paste0("^", prefix, "_"), "", interaction_name)
+    components <- strsplit(interaction_part, "__xXx__")[[1]]
+    component_names <- paste0(prefix, "_", components)
+    
+    components_with_scale <- component_names[component_names %in% names(formula_scale)]
+    
+    if(length(components_with_scale) > 0){
+      sd_product <- prod(sapply(components_with_scale, function(comp) formula_scale[[comp]]$sd))
+      
+      if(is.matrix(samples[[interaction_name]])){
+        samples[[interaction_name]] <- samples[[interaction_name]] / sd_product
+      }else if(is.numeric(samples[[interaction_name]])){
+        samples[[interaction_name]] <- samples[[interaction_name]] / sd_product
+      }
+    }
+  }
+  
+  # Step 2: Transform main effect coefficients and store beta_z/sd for intercept adjustment
+  beta_div_sd <- list()
+  for(param_name in names(formula_scale)){
+    scale_info <- formula_scale[[param_name]]
+    
+    if(param_name %in% names(samples)){
+      if(is.matrix(samples[[param_name]])){
+        beta_div_sd[[param_name]] <- samples[[param_name]] / scale_info$sd
+        samples[[param_name]] <- beta_div_sd[[param_name]]
+      }else if(is.numeric(samples[[param_name]])){
+        beta_div_sd[[param_name]] <- samples[[param_name]] / scale_info$sd
+        samples[[param_name]] <- beta_div_sd[[param_name]]
+      }
+    }
+  }
+  
+  # Step 3: Adjust main effects for interaction contributions
+  # beta_orig = beta_z/sd - sum_over_interactions(beta_int_orig * mean_other)
+  for(param_name in names(formula_scale)){
+    if(!param_name %in% names(samples)) next
+    
+    prefix <- strsplit(param_name, "_")[[1]][1]
+    var_name <- sub(paste0("^", prefix, "_"), "", param_name)
+    
+    for(interaction_name in interaction_names){
+      # Check prefix match first
+      if(!grepl(paste0("^", prefix, "_"), interaction_name)) next
+      
+      # Strip prefix and check if var_name is a component of this interaction
+      interaction_part <- sub(paste0("^", prefix, "_"), "", interaction_name)
+      if(!grepl(paste0("(^|__xXx__)", var_name, "(__xXx__|$)"), interaction_part)) next
+      
+      components <- strsplit(interaction_part, "__xXx__")[[1]]
+      other_vars <- components[components != var_name]
+      
+      for(other_var in other_vars){
+        other_param <- paste0(prefix, "_", other_var)
+        if(other_param %in% names(formula_scale)){
+          other_mean <- formula_scale[[other_param]]$mean
+          
+          if(is.matrix(samples[[param_name]]) && is.matrix(samples[[interaction_name]])){
+            samples[[param_name]] <- samples[[param_name]] - 
+              sweep(samples[[interaction_name]], 2, other_mean, `*`)
+          }else if(is.numeric(samples[[param_name]]) && is.numeric(samples[[interaction_name]])){
+            samples[[param_name]] <- samples[[param_name]] - 
+              samples[[interaction_name]] * other_mean
+          }
+        }
+      }
+    }
+  }
+  
+  # Step 4: Adjust intercepts
+  # alpha_orig = alpha_z - sum(beta_z/sd * mean) + sum_interactions(beta_int_orig * prod(means))
+  for(prefix in param_prefixes){
+    intercept_name <- paste0(prefix, "_intercept")
+    
+    if(intercept_name %in% names(samples)){
+      # Adjust for main effects using beta_z/sd (not the interaction-adjusted value)
+      for(param_name in names(formula_scale)){
+        if(!grepl(paste0("^", prefix, "_"), param_name)) next
+        
+        scale_info <- formula_scale[[param_name]]
+        
+        if(param_name %in% names(beta_div_sd)){
+          if(is.matrix(beta_div_sd[[param_name]]) && is.matrix(samples[[intercept_name]])){
+            samples[[intercept_name]] <- samples[[intercept_name]] - 
+              sweep(beta_div_sd[[param_name]], 2, scale_info$mean, `*`)
+          }else if(is.numeric(beta_div_sd[[param_name]]) && is.numeric(samples[[intercept_name]])){
+            samples[[intercept_name]] <- samples[[intercept_name]] - 
+              beta_div_sd[[param_name]] * scale_info$mean
+          }
+        }
+      }
+      
+      # Adjust for interaction contributions: + beta_int_orig * prod(means)
+      for(interaction_name in interaction_names){
+        if(!grepl(paste0("^", prefix, "_"), interaction_name)) next
+        
+        interaction_part <- sub(paste0("^", prefix, "_"), "", interaction_name)
+        components <- strsplit(interaction_part, "__xXx__")[[1]]
+        component_names <- paste0(prefix, "_", components)
+        
+        scaled_components <- component_names[component_names %in% names(formula_scale)]
+        if(length(scaled_components) > 0){
+          mean_product <- prod(sapply(scaled_components, function(comp) formula_scale[[comp]]$mean))
+          
+          if(is.matrix(samples[[interaction_name]]) && is.matrix(samples[[intercept_name]])){
+            samples[[intercept_name]] <- samples[[intercept_name]] + 
+              samples[[interaction_name]] * mean_product
+          }else if(is.numeric(samples[[interaction_name]]) && is.numeric(samples[[intercept_name]])){
+            samples[[intercept_name]] <- samples[[intercept_name]] + 
+              samples[[interaction_name]] * mean_product
+          }
+        }
+      }
+    }
+  }
+  
+  return(samples)
 }
