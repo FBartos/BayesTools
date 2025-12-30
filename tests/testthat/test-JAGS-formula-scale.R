@@ -622,6 +622,12 @@ test_that("Dual parameter model with log(intercept) has correct formula_scale st
   expect_equal(names(formula_scale$log_sigma$log_sigma_x_sigma), c("mean", "sd"))
   expect_true(is.numeric(formula_scale$log_sigma$log_sigma_x_sigma$mean))
   expect_true(is.numeric(formula_scale$log_sigma$log_sigma_x_sigma$sd))
+  
+  # Verify log_intercept attribute is stored correctly
+  # mu should NOT have log_intercept (or be FALSE)
+  expect_false(isTRUE(attr(formula_scale$mu, "log_intercept")))
+  # log_sigma SHOULD have log_intercept = TRUE
+  expect_true(isTRUE(attr(formula_scale$log_sigma, "log_intercept")))
 
   # Verify the model has expected parameters
   param_names <- colnames(fit_dual$mcmc[[1]])
@@ -661,8 +667,9 @@ test_that("transform_scale_samples works with dual parameter model", {
   expected_mu_intercept <- posterior[, "mu_intercept"] - expected_mu_x_mu * mu_scale$mean
   expect_equal(posterior_transformed[, "mu_intercept"], expected_mu_intercept, tolerance = 1e-10)
 
-  # Check log_sigma intercept is adjusted: intercept_orig = intercept_z - beta_orig * mean
-  expected_log_sigma_intercept <- posterior[, "log_sigma_intercept"] - expected_log_sigma_x_sigma * log_sigma_scale$mean
+  # Check log_sigma intercept is adjusted with multiplicative transformation (due to log(intercept)):
+  # intercept_orig = intercept_z * exp(-beta_orig * mean)
+  expected_log_sigma_intercept <- posterior[, "log_sigma_intercept"] * exp(-expected_log_sigma_x_sigma * log_sigma_scale$mean)
   expect_equal(posterior_transformed[, "log_sigma_intercept"], expected_log_sigma_intercept, tolerance = 1e-10)
 })
 
@@ -701,10 +708,20 @@ test_that("JAGS_estimates_table with transform_scaled works for dual parameter m
   expected_mu_int <- scaled_mu_int - unscaled_mu_coef * mu_mean
   expect_equal(estimates_unscaled["(mu) intercept", "Mean"], expected_mu_int, tolerance = 1e-10)
 
-  # Check log_sigma intercept is correctly adjusted
-  scaled_log_sigma_int   <- estimates_scaled["(log_sigma) intercept", "Mean"]
-  expected_log_sigma_int <- scaled_log_sigma_int - unscaled_log_sigma_coef * log_sigma_mean
-  expect_equal(estimates_unscaled["(log_sigma) intercept", "Mean"], expected_log_sigma_int, tolerance = 1e-10)
+  # Check log_sigma intercept is correctly adjusted with multiplicative transformation
+  # Due to log(intercept): intercept_orig = intercept_z * exp(-beta_orig * mean)
+  # For means, we can't use the simple relationship because E[X * exp(Y)] != E[X] * exp(E[Y])
+  # Instead, verify that the unscaled intercept is close to the true value (0.5)
+  # and that it differs from the scaled intercept (which would be biased)
+  # Note: with transform_scaled=TRUE, the intercept is renamed to exp(intercept)
+  unscaled_log_sigma_int <- estimates_unscaled["(log_sigma) exp(intercept)", "Mean"]
+  
+  # The unscaled intercept should be reasonably close to the true value of 0.5
+  expect_true(abs(unscaled_log_sigma_int - 0.5) < 0.15)
+  
+  # The scaled intercept should NOT be close to 0.5 (it's on the wrong scale)
+  scaled_log_sigma_int <- estimates_scaled["(log_sigma) intercept", "Mean"]
+  expect_true(abs(scaled_log_sigma_int - 0.5) > abs(unscaled_log_sigma_int - 0.5))
 })
 
 test_that("JAGS_evaluate_formula applies scaling correctly for dual parameter model", {

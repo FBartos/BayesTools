@@ -10,7 +10,8 @@ format_parameter_names(
   parameters,
   formula_parameters = NULL,
   formula_random = NULL,
-  formula_prefix = TRUE
+  formula_prefix = TRUE,
+  formula_scale = NULL
 )
 
 JAGS_parameter_names(parameters, formula_parameter = NULL)
@@ -24,6 +25,10 @@ JAGS_parameter_names(parameters, formula_parameter = NULL)
 
 \item{formula_prefix}{whether the \code{formula_parameters} names should be
 kept. Defaults to \code{TRUE}.}
+
+\item{formula_scale}{optional nested list containing scaling info. When provided,
+intercepts from parameters with \code{log_intercept = TRUE} attribute will be
+renamed to \code{exp(intercept)}.}
 
 \item{formula_parameter}{a formula parameter prefix name}
 }
