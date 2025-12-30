@@ -420,6 +420,8 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     names(scale_info) <- paste0(parameter, "_", names(scale_info))
     # store the parameter prefix as an attribute for later retrieval
     attr(scale_info, "parameter") <- parameter
+    # store log_intercept attribute for proper unscaling transformation
+    attr(scale_info, "log_intercept") <- log_intercept
     output$formula_scale <- scale_info
   }
 
@@ -1364,27 +1366,33 @@ transform_treatment_samples <- function(samples){
     return(posterior)
   }
 
+  # Check if this parameter uses log(intercept)
+  log_intercept <- isTRUE(attr(formula_scale, "log_intercept"))
+  intercept_col <- paste0(prefix, "_intercept")
+
   # Identify which columns are affected by the transformation
-  # (have the same prefix and either are scaled or contain scaled components)
   affected_cols <- grep(paste0("^", prefix, "_"), colnames(posterior), value = TRUE)
 
   if (length(affected_cols) == 0) {
     return(posterior)
   }
 
-  # Build transformation matrix for affected columns
+  # For log(intercept): transform to log scale before unscaling, then exp() back
+  # This works because: log_sigma = log(intercept) + beta * x_z
+  # is equivalent to: log_sigma = log_int + beta * x_z (standard additive form)
+  # where log_int = log(intercept)
+  if (log_intercept && intercept_col %in% colnames(posterior)) {
+    posterior[, intercept_col] <- log(posterior[, intercept_col])
+  }
+
+  # Build and apply standard transformation matrix
   M <- .build_unscale_matrix(affected_cols, formula_scale, prefix)
-
-  # Apply transformation: posterior_new[, affected] = posterior[, affected] %*% t(M)
-  # Since M[T, S] gives the coefficient of S in the expression for T,
-  # we want: new_T = sum_S M[T,S] * old_S
-  # In matrix form: new = old %*% t(M) would give new[i, T] = sum_S old[i, S] * M[T, S]
-  # But that's transposed... Let me reconsider.
-  #
-  # We have: coef_orig = M %*% coef_z (for a single sample as column vector)
-  # For posterior matrix with samples in rows: posterior_orig = posterior_z %*% t(M)
-
   posterior[, affected_cols] <- posterior[, affected_cols, drop = FALSE] %*% t(M)
+
+  # Transform intercept back from log scale
+  if (log_intercept && intercept_col %in% colnames(posterior)) {
+    posterior[, intercept_col] <- exp(posterior[, intercept_col])
+  }
 
   return(posterior)
 }
@@ -1584,6 +1592,9 @@ contr.independent <- function(n, contrasts = TRUE){
 #' @param formula_random a vector of random effects grouping factors
 #' @param formula_prefix whether the \code{formula_parameters} names should be
 #' kept. Defaults to \code{TRUE}.
+#' @param formula_scale optional nested list containing scaling info. When provided,
+#' intercepts from parameters with \code{log_intercept = TRUE} attribute will be
+#' renamed to \code{exp(intercept)}.
 #'
 #' @examples
 #' format_parameter_names(c("mu_x_cont", "mu_x_fac3t", "mu_x_fac3t__xXx__x_cont"),
@@ -1597,12 +1608,25 @@ contr.independent <- function(n, contrasts = TRUE){
 NULL
 
 #' @rdname parameter_names
-format_parameter_names <- function(parameters, formula_parameters = NULL, formula_random = NULL, formula_prefix = TRUE){
+format_parameter_names <- function(parameters, formula_parameters = NULL, formula_random = NULL, formula_prefix = TRUE, formula_scale = NULL){
 
   check_char(parameters, "parameters", check_length = FALSE)
   check_char(formula_random, "formula_random", check_length = FALSE, allow_NULL = TRUE)
   check_char(formula_parameters, "formula_parameters", check_length = FALSE, allow_NULL = TRUE)
   check_bool(formula_prefix, "formula_prefix")
+  check_list(formula_scale, "formula_scale", allow_NULL = TRUE)
+
+  # rename intercept to exp(intercept) for parameters with log_intercept attribute
+  if(!is.null(formula_scale)){
+    for(param_name in names(formula_scale)){
+      if(isTRUE(attr(formula_scale[[param_name]], "log_intercept"))){
+        intercept_name <- paste0(param_name, "_intercept")
+        if(intercept_name %in% parameters){
+          parameters[parameters == intercept_name] <- paste0(param_name, "_exp(intercept)")
+        }
+      }
+    }
+  }
 
   for(i in seq_along(formula_parameters)){
     parameters[grep(paste0(formula_parameters[i], "_"), parameters)] <- gsub(

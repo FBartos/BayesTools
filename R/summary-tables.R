@@ -119,7 +119,7 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95)
       }
 
       if(inherits(samples[[parameter]], "mixed_posteriors.formula")){
-        parameter_name <- format_parameter_names(colnames(samples[[parameter]]), formula_parameters = attr(samples[[parameter]], "formula_parameter"), formula_prefix = formula_prefix)
+        parameter_name <- format_parameter_names(colnames(samples[[parameter]]), formula_parameters = attr(samples[[parameter]], "formula_parameter"), formula_prefix = formula_prefix, formula_scale = formula_scale)
       }else{
         parameter_name <- colnames(samples[[parameter]])
       }
@@ -495,7 +495,7 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
       }else{
         parameter_name <- paste0(parameter, "[", names(samples[[parameter]]), "]")
       }
-      parameter_name <- format_parameter_names(parameter_name, formula_parameters = attr(samples[[parameter]], "formula_parameter"), formula_prefix = formula_prefix)
+      parameter_name <- format_parameter_names(parameter_name, formula_parameters = attr(samples[[parameter]], "formula_parameter"), formula_prefix = formula_prefix, formula_scale = formula_scale)
     }else{
       parameter_name <- paste0(parameter, "[", names(samples[[parameter]]), "]")
     }
@@ -1012,7 +1012,8 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       parameters         = colnames(model_samples),
       formula_parameters = unique(unlist(lapply(prior_list, attr, which = "parameter"))),
       formula_random     = unique(unlist(lapply(prior_list, attr, which = "random_factor"))),
-      formula_prefix     = formula_prefix)
+      formula_prefix     = formula_prefix,
+      formula_scale      = if(transform_scaled) formula_scale else NULL)
   }
 
   # return samples if requested
@@ -1133,7 +1134,8 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
       parameters         = rownames(runjags_summary),
       formula_parameters = unique(unlist(lapply(prior_list, attr, which = "parameter"))),
       formula_random     = unique(unlist(lapply(prior_list, attr, which = "random_factor"))),
-      formula_prefix     = formula_prefix)
+      formula_prefix     = formula_prefix,
+      formula_scale      = NULL)
   }
 
   class(runjags_summary)               <- c("BayesTools_table", "BayesTools_runjags_inference", class(runjags_summary))

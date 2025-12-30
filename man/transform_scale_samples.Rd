@@ -10,9 +10,10 @@ transform_scale_samples(fit, formula_scale = NULL)
 \item{fit}{a fitted model object with \code{formula_scale} attribute, or
 a matrix of posterior samples}
 
-\item{formula_scale}{named list containing standardization information
-(mean and sd) for each standardized predictor. If \code{fit} is provided
-and has a \code{formula_scale} attribute, this will be used automatically.}
+\item{formula_scale}{nested list containing standardization information keyed by
+parameter name. Each parameter entry contains scaling info (mean and sd) for
+each standardized predictor, e.g., \code{list(mu = list(mu_x1 = list(mean = 0, sd = 1)))}.
+If \code{fit} is provided and has a \code{formula_scale} attribute, this will be used automatically.}
 }
 \value{
 \code{transform_scale_samples} returns posterior samples transformed
