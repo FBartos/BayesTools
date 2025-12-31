@@ -5,6 +5,11 @@
 - adds automatic standardization of continuous predictors via `formula_scale` parameter in `JAGS_formula()` and `JAGS_fit()` - improves MCMC sampling efficiency and numerical stability
 - adds `transform_scale_samples()` function to transform posterior samples back to original scale after standardization
 - adds `log(intercept)` formula attribute for specifying models of the form `log(intercept) + sum(beta_i * x_i)` - useful for parameters that must be positive (e.g., standard deviation) while keeping the intercept on the original scale. Set via `attr(formula, "log(intercept)") <- TRUE`. Supported in `JAGS_formula()`, `JAGS_evaluate_formula()`, and marginal likelihood computation
+- adds advanced parameter filtering options to `runjags_estimates_table()`:
+  - `remove_parameters = TRUE` to remove all non-formula parameters
+  - `remove_formulas` to remove all parameters from specific formulas
+  - `keep_parameters` to keep only specified parameters
+  - `keep_formulas` to keep only parameters from specified formulas
 
 ### Fixes
 - fixes incorrect ordering the printed mixture priors

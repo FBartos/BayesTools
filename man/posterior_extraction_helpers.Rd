@@ -4,6 +4,8 @@
 \alias{posterior_extraction_helpers}
 \alias{.extract_posterior_samples}
 \alias{.remove_auxiliary_parameters}
+\alias{.remove_parameter_columns}
+\alias{.filter_parameters}
 \alias{.process_spike_and_slab}
 \alias{.apply_parameter_transformations}
 \alias{.transform_factor_contrasts}
@@ -16,6 +18,17 @@
   model_samples,
   prior_list,
   remove_parameters = NULL
+)
+
+.remove_parameter_columns(model_samples, prior, par_name)
+
+.filter_parameters(
+  prior_list,
+  remove_parameters = NULL,
+  remove_formulas = NULL,
+  keep_parameters = NULL,
+  keep_formulas = NULL,
+  remove_spike_0 = TRUE
 )
 
 .process_spike_and_slab(
@@ -52,7 +65,19 @@
 
 \item{prior_list}{list of prior objects}
 
-\item{remove_parameters}{character vector of parameter names to remove}
+\item{remove_parameters}{character vector of parameter names to remove, or TRUE to remove all non-formula parameters}
+
+\item{prior}{prior object for the parameter}
+
+\item{par_name}{name of the parameter}
+
+\item{remove_formulas}{character vector of formula names whose parameters should be removed}
+
+\item{keep_parameters}{character vector of parameter names to keep (all others removed unless in keep_formulas)}
+
+\item{keep_formulas}{character vector of formula names whose parameters should be kept (all others removed unless in keep_parameters)}
+
+\item{remove_spike_0}{whether to remove spike at 0 priors}
 
 \item{par}{parameter name}
 
@@ -71,6 +96,10 @@ matrix or mcmc.list of posterior samples
 
 list with cleaned model_samples and updated prior_list
 
+updated model_samples matrix
+
+list with filtered model_samples and prior_list
+
 list with updated model_samples, prior_list, and warnings
 
 updated model_samples matrix
@@ -84,5 +113,7 @@ Internal helper functions to extract posterior samples from JAGS
 fits and reformat them for further processing (summary tables, diagnostics, plots).
 These functions consolidate common logic that was duplicated across
 \code{runjags_estimates_table}, \code{.diagnostics_plot_data}, and plotting functions.
+
+Helper to remove all columns associated with a parameter
 }
 \keyword{internal}

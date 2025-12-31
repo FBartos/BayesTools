@@ -37,9 +37,11 @@ NULL
   
   for (i in rev(seq_along(prior_list))) {
     
+    par_name <- names(prior_list)[i]
+    
     # invgamma support parameter
     if (is.prior.simple(prior_list[[i]]) && prior_list[[i]][["distribution"]] == "invgamma") {
-      model_samples <- model_samples[, colnames(model_samples) != paste0("inv_", names(prior_list)[i]), drop = FALSE]
+      model_samples <- model_samples[, colnames(model_samples) != paste0("inv_", par_name), drop = FALSE]
     }
     
     # weightfunction parameters
@@ -64,18 +66,150 @@ NULL
         prior_list[i] <- NULL
       }
       
-    } else if (names(prior_list)[[i]] %in% remove_parameters) {
+    } else if (par_name %in% remove_parameters) {
       # remove parameters to be excluded (note: spike_0 removal is handled by caller)
-      if (is.prior.factor(prior_list[[i]])) {
-        model_samples <- model_samples[, !colnames(model_samples) %in% .JAGS_prior_factor_names(names(prior_list)[i], prior_list[[i]]), drop = FALSE]
-      } else {
-        model_samples <- model_samples[, colnames(model_samples) != names(prior_list)[i], drop = FALSE]
-      }
+      model_samples <- .remove_parameter_columns(model_samples, prior_list[[i]], par_name)
       prior_list[i] <- NULL
     }
   }
   
   return(list(model_samples = model_samples, prior_list = prior_list))
+}
+
+
+#' @rdname posterior_extraction_helpers
+#' @description Helper to remove all columns associated with a parameter
+#' @param model_samples matrix of posterior samples
+#' @param prior prior object for the parameter
+#' @param par_name name of the parameter
+#' @return updated model_samples matrix
+.remove_parameter_columns <- function(model_samples, prior, par_name) {
+  
+  # collect all column patterns to remove
+  cols_to_remove <- character(0)
+  
+  if (is.prior.spike_and_slab(prior)) {
+    # spike and slab: remove main parameter, indicator, inclusion, variable
+    cols_to_remove <- c(
+      par_name,
+      paste0(par_name, "_indicator"),
+      paste0(par_name, "_inclusion"),
+      paste0(par_name, "_variable")
+    )
+    # also handle factor spike and slab with indexed columns
+    cols_to_remove <- c(cols_to_remove, 
+      colnames(model_samples)[grepl(paste0("^", par_name, "\\["), colnames(model_samples))],
+      colnames(model_samples)[grepl(paste0("^", par_name, "_variable\\["), colnames(model_samples))]
+    )
+    
+  } else if (is.prior.mixture(prior)) {
+    # mixture: remove main parameter, indicator, and component-specific columns
+    cols_to_remove <- c(
+      par_name,
+      paste0(par_name, "_indicator")
+    )
+    # handle factor mixture with indexed columns
+    cols_to_remove <- c(cols_to_remove,
+      colnames(model_samples)[grepl(paste0("^", par_name, "\\["), colnames(model_samples))]
+    )
+    
+    # check for bias mixture (PET, PEESE, omega)
+    if (inherits(prior, "prior.bias_mixture")) {
+      # remove PET, PEESE, and all omega columns
+      cols_to_remove <- c(cols_to_remove, "PET", "PEESE")
+      cols_to_remove <- c(cols_to_remove,
+        colnames(model_samples)[grepl("^omega\\[", colnames(model_samples))]
+      )
+    }
+    
+  } else if (is.prior.factor(prior)) {
+    # factor prior: remove all indexed columns
+    cols_to_remove <- .JAGS_prior_factor_names(par_name, prior)
+    
+  } else {
+    # simple prior: just remove the main column
+    cols_to_remove <- par_name
+  }
+  
+  # remove duplicates and filter to existing columns
+  cols_to_remove <- unique(cols_to_remove)
+  cols_to_remove <- cols_to_remove[cols_to_remove %in% colnames(model_samples)]
+  
+  model_samples <- model_samples[, !colnames(model_samples) %in% cols_to_remove, drop = FALSE]
+  
+  return(model_samples)
+}
+
+
+#' @rdname posterior_extraction_helpers
+#' @param remove_parameters character vector of parameter names to remove, or TRUE to remove all non-formula parameters
+#' @param remove_formulas character vector of formula names whose parameters should be removed
+#' @param keep_parameters character vector of parameter names to keep (all others removed unless in keep_formulas)
+#' @param keep_formulas character vector of formula names whose parameters should be kept (all others removed unless in keep_parameters)
+#' @param remove_spike_0 whether to remove spike at 0 priors
+#' @return list with filtered model_samples and prior_list
+.filter_parameters <- function(prior_list, remove_parameters = NULL, remove_formulas = NULL,
+                               keep_parameters = NULL, keep_formulas = NULL, remove_spike_0 = TRUE) {
+  
+  # get formula parameter for each prior
+  prior_formulas <- sapply(prior_list, function(p) {
+    form <- attr(p, "parameter")
+    if (is.null(form)) "__none" else form
+  })
+  
+  # initialize parameters to remove
+  params_to_remove <- character(0)
+  
+  # handle remove_spike_0
+  if (remove_spike_0) {
+    spike_0_params <- names(prior_list)[sapply(seq_along(prior_list), function(i) {
+      is.prior.point(prior_list[[i]]) && prior_list[[i]][["parameters"]][["location"]] == 0
+    })]
+    params_to_remove <- c(params_to_remove, spike_0_params)
+  }
+  
+  # handle remove_parameters
+  if (is.logical(remove_parameters) && isTRUE(remove_parameters)) {
+    # remove all non-formula parameters
+    non_formula_params <- names(prior_list)[prior_formulas == "__none"]
+    params_to_remove <- c(params_to_remove, non_formula_params)
+  } else if (is.character(remove_parameters)) {
+    params_to_remove <- c(params_to_remove, remove_parameters)
+  }
+  
+  # handle remove_formulas
+  if (!is.null(remove_formulas)) {
+    formula_params <- names(prior_list)[prior_formulas %in% remove_formulas]
+    params_to_remove <- c(params_to_remove, formula_params)
+  }
+  
+  # handle keep_parameters and keep_formulas (these define what to keep, everything else is removed)
+  if (!is.null(keep_parameters) || !is.null(keep_formulas)) {
+    # start with all parameters as candidates for removal
+    all_params <- names(prior_list)
+    
+    # determine which parameters to keep
+    params_to_keep <- character(0)
+    
+    if (!is.null(keep_parameters)) {
+      params_to_keep <- c(params_to_keep, keep_parameters)
+    }
+    
+    if (!is.null(keep_formulas)) {
+      formula_params_to_keep <- names(prior_list)[prior_formulas %in% keep_formulas]
+      params_to_keep <- c(params_to_keep, formula_params_to_keep)
+    }
+    
+    # add parameters not in keep list to removal list
+    params_not_kept <- all_params[!all_params %in% params_to_keep]
+    params_to_remove <- c(params_to_remove, params_not_kept)
+  }
+  
+  # remove duplicates
+
+  params_to_remove <- unique(params_to_remove)
+  
+  return(params_to_remove)
 }
 
 

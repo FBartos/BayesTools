@@ -41,6 +41,9 @@ runjags_estimates_table(
   formula_prefix = TRUE,
   remove_inclusion = FALSE,
   remove_parameters = NULL,
+  remove_formulas = NULL,
+  keep_parameters = NULL,
+  keep_formulas = NULL,
   return_samples = FALSE,
   transform_scaled = FALSE
 )
@@ -66,6 +69,9 @@ JAGS_estimates_table(
   formula_prefix = TRUE,
   remove_inclusion = FALSE,
   remove_parameters = NULL,
+  remove_formulas = NULL,
+  keep_parameters = NULL,
+  keep_formulas = NULL,
   return_samples = FALSE,
   transform_scaled = FALSE
 )
@@ -139,8 +145,10 @@ shortened. Defaults to \code{FALSE}.}
 \item{formula_prefix}{whether the parameter prefix from formula should
 be printed. Defaults to \code{TRUE}.}
 
-\item{remove_parameters}{parameters to be removed from the summary. Defaults
-to \code{NULL}, i.e., including all parameters.}
+\item{remove_parameters}{parameters to be removed from the summary.
+Can be \code{NULL} (default, no removal), a character vector of parameter
+names to remove, or \code{TRUE} to remove all parameters that are not
+part of any formula.}
 
 \item{fit}{runjags model fit}
 
@@ -160,6 +168,17 @@ differences from the grand mean}
 
 \item{remove_inclusion}{whether estimates of the inclusion probabilities
 should be excluded from the summary table. Defaults to \code{FALSE}.}
+
+\item{remove_formulas}{character vector of formula names whose parameters
+should be removed from the summary. Defaults to \code{NULL}.}
+
+\item{keep_parameters}{character vector of parameter names to keep.
+All other parameters will be removed unless they belong to formulas
+specified in \code{keep_formulas}. Defaults to \code{NULL}.}
+
+\item{keep_formulas}{character vector of formula names whose parameters
+should be kept. All other parameters will be removed unless they are
+specified in \code{keep_parameters}. Defaults to \code{NULL}.}
 
 \item{return_samples}{whether to return the transoformed and formated samples
 instead of the table. Defaults to \code{FALSE}.}

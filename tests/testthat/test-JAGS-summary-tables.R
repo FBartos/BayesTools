@@ -144,6 +144,28 @@ test_that("Summary table advanced features work correctly", {
   test_reference_table(runjags_summary_complex2, "runjags_summary_complex2.txt", "Custom probs table mismatch")
   test_reference_table(runjags_summary_complex3, "runjags_summary_complex3.txt", "Custom probs table mismatch")
 
+  # Removal of formula and parameter names
+  fit_dual_param  <- readRDS(file.path(temp_fits_dir, "fit_dual_param_regression.RDS"))
+
+  runjags_summary_removal_01 <- JAGS_estimates_table(fit_dual_param)
+  runjags_summary_removal_02 <- JAGS_estimates_table(fit_dual_param, remove_formulas = "mu")
+  runjags_summary_removal_03 <- JAGS_estimates_table(fit_dual_param, keep_formulas = "log_sigma")
+  runjags_summary_removal_04 <- JAGS_estimates_table(fit_complex_mixed)
+  runjags_summary_removal_05 <- JAGS_estimates_table(fit_complex_mixed, remove_parameters = TRUE)
+  runjags_summary_removal_06 <- JAGS_estimates_table(fit_complex_mixed, remove_parameters = TRUE, remove_inclusion = TRUE)
+  runjags_summary_removal_07 <- JAGS_estimates_table(fit_complex_mixed, remove_parameters = "bias")
+  runjags_summary_removal_08 <- JAGS_estimates_table(fit_complex_mixed, remove_parameters = "sigma")
+  runjags_summary_removal_09 <- JAGS_estimates_table(fit_complex_mixed, remove_formulas = "mu")
+
+  test_reference_table(runjags_summary_removal_01, "summary_parameter_or_formula_removal01.txt", "Parameter/formula removal")
+  test_reference_table(runjags_summary_removal_02, "summary_parameter_or_formula_removal02.txt", "Parameter/formula removal")
+  test_reference_table(runjags_summary_removal_03, "summary_parameter_or_formula_removal03.txt", "Parameter/formula removal")
+  test_reference_table(runjags_summary_removal_04, "summary_parameter_or_formula_removal04.txt", "Parameter/formula removal")
+  test_reference_table(runjags_summary_removal_05, "summary_parameter_or_formula_removal05.txt", "Parameter/formula removal")
+  test_reference_table(runjags_summary_removal_06, "summary_parameter_or_formula_removal06.txt", "Parameter/formula removal")
+  test_reference_table(runjags_summary_removal_07, "summary_parameter_or_formula_removal07.txt", "Parameter/formula removal")
+  test_reference_table(runjags_summary_removal_08, "summary_parameter_or_formula_removal08.txt", "Parameter/formula removal")
+  test_reference_table(runjags_summary_removal_09, "summary_parameter_or_formula_removal09.txt", "Parameter/formula removal")
 })
 
 # ============================================================================ #
