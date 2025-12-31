@@ -10,6 +10,10 @@
   - `remove_formulas` to remove all parameters from specific formulas
   - `keep_parameters` to keep only specified parameters
   - `keep_formulas` to keep only parameters from specified formulas
+- adds `probs` argument to `runjags_estimates_table()` and `runjags_estimates_empty_table()` for custom quantiles (default: `c(0.025, 0.5, 0.975)`)
+
+### Changes
+- changes quantile column names in `runjags_estimates_table()` and `stan_estimates_table()` from `lCI`/`Median`/`uCI` to numeric values (e.g., `0.025`/`0.5`/`0.975`) for consistency with ensemble summary tables
 
 ### Fixes
 - fixes incorrect ordering the printed mixture priors

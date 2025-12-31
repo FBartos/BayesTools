@@ -1707,7 +1707,7 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
     }),
     y_lCI      = sapply(1:length(models_summary), function(i){
       if(any(attr(models_summary[[i]], "parameters") == parameter)){
-        return(models_summary[[i]][attr(models_summary[[i]], "parameters") == parameter, "lCI"])
+        return(models_summary[[i]][attr(models_summary[[i]], "parameters") == parameter, "0.025"])
       }else if(is.prior.point(prior_list[[i]])){
         return(prior_list[[i]]$parameters[["location"]])
       }else{
@@ -1716,7 +1716,7 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
     }),
     y_uCI      = sapply(1:length(models_summary), function(i){
       if(any(attr(models_summary[[i]], "parameters") == parameter)){
-        return(models_summary[[i]][attr(models_summary[[i]], "parameters") == parameter, "uCI"])
+        return(models_summary[[i]][attr(models_summary[[i]], "parameters") == parameter, "0.975"])
       }else if(is.prior.point(prior_list[[i]])){
         return(prior_list[[i]]$parameters[["location"]])
       }else{

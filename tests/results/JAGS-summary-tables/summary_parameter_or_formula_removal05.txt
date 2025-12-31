@@ -1,4 +1,4 @@
-                             Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD ESS R-hat
+                             Mean    SD  0.025    0.5 0.975 error(MCMC) error(MCMC)/SD ESS R-hat
 (mu) intercept (inclusion)  0.738    NA     NA     NA    NA          NA             NA  NA    NA
 (mu) intercept             -0.103 0.075 -0.222 -0.118 0.000     0.01088          0.146  47    NA
 (mu) x_cont1 (inclusion)    1.000    NA     NA     NA    NA          NA             NA  NA    NA
