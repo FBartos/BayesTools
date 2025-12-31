@@ -622,6 +622,10 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
 #' specified in \code{keep_parameters}. Defaults to \code{NULL}.
 #' @param return_samples whether to return the transoformed and formated samples
 #' instead of the table. Defaults to \code{FALSE}.
+#' @param remove_diagnostics whether to exclude MCMC diagnostics (MCMC error,
+#' ESS, R-hat) from the output table. Defaults to \code{FALSE}. Setting to
+#' \code{TRUE} will exclude diagnostics columns regardless of the
+#' \code{conditional} setting.
 #' @inheritParams BayesTools_ensemble_tables
 #'
 #'
@@ -744,9 +748,10 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
 
 #' @rdname BayesTools_model_tables
 runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, footnotes = NULL, warnings = NULL, conditional = FALSE,
-                                     remove_spike_0 = TRUE, transform_factors = FALSE, transform_orthonormal = FALSE, formula_prefix = TRUE, remove_inclusion = FALSE,
-                                     remove_parameters = NULL, remove_formulas = NULL, keep_parameters = NULL, keep_formulas = NULL,
-                                     return_samples = FALSE, transform_scaled = FALSE){
+                                     probs = c(0.025, 0.5, 0.975), remove_spike_0 = TRUE, transform_factors = FALSE, transform_orthonormal = FALSE,
+                                     formula_prefix = TRUE, remove_inclusion = FALSE, remove_parameters = NULL, remove_formulas = NULL,
+                                     keep_parameters = NULL, keep_formulas = NULL, return_samples = FALSE, transform_scaled = FALSE,
+                                     remove_diagnostics = FALSE){
 
   .check_runjags()
   # most of the code is shared with .diagnostics_plot_data function (keep them in sync on update)
@@ -766,12 +771,14 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   check_char(title, "title", allow_NULL = TRUE)
   check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
   check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
+  check_real(probs, "probs", lower = 0, upper = 1, check_length = 0)
   check_bool(remove_spike_0, "remove_spike_0")
   check_bool(conditional, "conditional")
   check_bool(transform_factors, "transform_factors")
   check_bool(transform_orthonormal, "transform_orthonormal")
   check_bool(formula_prefix, "formula_prefix")
   check_bool(transform_scaled, "transform_scaled")
+  check_bool(remove_diagnostics, "remove_diagnostics")
   if(!is.null(remove_parameters) && !is.logical(remove_parameters))
     check_char(remove_parameters, "remove_parameters", allow_NULL = TRUE, check_length = 0)
   if(is.logical(remove_parameters))
@@ -1044,14 +1051,15 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 
   # compute the summary
   if(ncol(model_samples) == 0){
-    return(runjags_estimates_empty_table(title = title, footnotes = footnotes, warnings = warnings))
+    return(runjags_estimates_empty_table(probs = probs, title = title, footnotes = footnotes, warnings = warnings))
   }else{
-    runjags_summary <- .runjags_summary_fast(model_samples, n_samples = fit$sample, n_chains = length(fit$mcmc), conditional = conditional)
+    runjags_summary <- .runjags_summary_fast(model_samples, n_samples = fit$sample, n_chains = length(fit$mcmc), conditional = conditional, probs = probs, remove_diagnostics = remove_diagnostics)
   }
 
   # prepare output
+  n_estimate_cols <- 2 + length(probs)  # Mean, SD, quantiles
   class(runjags_summary)              <- c("BayesTools_table", "BayesTools_runjags_summary", class(runjags_summary))
-  attr(runjags_summary, "type")       <- c(rep("estimate", 5), if(!conditional) c("MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
+  attr(runjags_summary, "type")       <- c(rep("estimate", n_estimate_cols), if(!conditional && !remove_diagnostics) c("MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
   attr(runjags_summary, "parameters") <- parameter_names
   attr(runjags_summary, "rownames")   <- TRUE
   attr(runjags_summary, "title")      <- title
@@ -1215,13 +1223,14 @@ model_summary_empty_table <- function(model_description = NULL, title = NULL, fo
 }
 
 #' @rdname BayesTools_model_tables
-runjags_estimates_empty_table <- function(title = NULL, footnotes = NULL, warnings = NULL){
+runjags_estimates_empty_table <- function(probs = c(0.025, 0.5, 0.975), title = NULL, footnotes = NULL, warnings = NULL){
 
-  empty_table <- data.frame(matrix(nrow = 0, ncol = 9))
-  colnames(empty_table) <- c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat")
+  n_estimate_cols <- 2 + length(probs)  # Mean, SD, quantiles
+  empty_table <- data.frame(matrix(nrow = 0, ncol = n_estimate_cols + 4), check.names = FALSE)
+  colnames(empty_table) <- c("Mean", "SD", as.character(probs), "MCMC_error", "MCMC_SD_error", "ESS", "R_hat")
 
   class(empty_table)             <- c("BayesTools_table", "BayesTools_runjags_summary", class(empty_table))
-  attr(empty_table, "type")      <- c(rep("estimate", 5), "MCMC_error", "MCMC_SD_error", "ESS", "R_hat")
+  attr(empty_table, "type")      <- c(rep("estimate", n_estimate_cols), "MCMC_error", "MCMC_SD_error", "ESS", "R_hat")
   attr(empty_table, "rownames")  <- FALSE
   attr(empty_table, "title")     <- title
   attr(empty_table, "footnotes") <- footnotes
@@ -1303,15 +1312,16 @@ stan_estimates_table  <- function(fit, transformations = NULL, title = NULL, foo
 
 
   # rename the rest
-  colnames(stan_summary)[colnames(stan_summary) == "Lower95"] <- "lCI"
-  colnames(stan_summary)[colnames(stan_summary) == "Upper95"] <- "uCI"
+  colnames(stan_summary)[colnames(stan_summary) == "Lower95"] <- "0.025"
+  colnames(stan_summary)[colnames(stan_summary) == "Median"]  <- "0.5"
+  colnames(stan_summary)[colnames(stan_summary) == "Upper95"] <- "0.975"
   colnames(stan_summary)[colnames(stan_summary) == "MCerr"]   <- "MCMC_error"
   colnames(stan_summary)[colnames(stan_summary) == "MC.ofSD"] <- "MCMC_SD_error"
   colnames(stan_summary)[colnames(stan_summary) == "SSeff"]   <- "ESS"
   colnames(stan_summary)[colnames(stan_summary) == "psrf"]    <- "R_hat"
 
   # reorder the columns
-  stan_summary <- stan_summary[,c("Mean", "SD", "lCI", "Median", "uCI", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"), drop = FALSE]
+  stan_summary <- stan_summary[,c("Mean", "SD", "0.025", "0.5", "0.975", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"), drop = FALSE]
 
   # store parameter names
   parameter_names <- rownames(stan_summary)
@@ -1673,22 +1683,25 @@ update.BayesTools_table <- function(object, title = NULL, footnotes = NULL, warn
     "ESS", "R_hat", "MCMC_error", "MCMC_SD_error", "min_ESS", "max_R_hat", "max_MCMC_error", "max_MCMC_SD_error"),
     allow_NULL = allow_NULL)
 }
-.runjags_summary_fast   <- function(model_samples, n_samples, n_chains, conditional){
+.runjags_summary_fast   <- function(model_samples, n_samples, n_chains, conditional, probs = c(0.025, 0.975), remove_diagnostics = FALSE){
+
+  # compute quantiles dynamically
+  quantile_cols <- lapply(probs, function(p) apply(model_samples, 2, stats::quantile, probs = p, na.rm = TRUE))
+  names(quantile_cols) <- as.character(probs)
 
   # the chains needs to be kept merged for conditional summary (due to NAs in the chains)
   runjags_summary <- cbind.data.frame(
-    "Mean"    = apply(model_samples, 2, mean,                           na.rm = TRUE),
-    "SD"      = apply(model_samples, 2, stats::sd,                      na.rm = TRUE),
-    "lCI"     = apply(model_samples, 2, stats::quantile, probs = 0.025, na.rm = TRUE),
-    "Median"  = apply(model_samples, 2, stats::median,                  na.rm = TRUE),
-    "uCI"     = apply(model_samples, 2, stats::quantile, probs = 0.975, na.rm = TRUE)
+    "Mean"   = apply(model_samples, 2, mean,          na.rm = TRUE),
+    "SD"     = apply(model_samples, 2, stats::sd,    na.rm = TRUE),
+    as.data.frame(quantile_cols, check.names = FALSE)
   )
 
   # remove all but Mean for inclusions
-  runjags_summary[grepl("(inclusion)", rownames(runjags_summary)), c("SD", "lCI", "Median", "uCI")] <- NA
+  quantile_col_names <- as.character(probs)
+  runjags_summary[grepl("(inclusion)", rownames(runjags_summary)), c("SD", quantile_col_names)] <- NA
 
-  # don't produce fit diagnostics for conditional samples (different chain lengths etc...)
-  if(conditional){
+  # don't produce fit diagnostics for conditional samples (different chain lengths etc...) or if remove_diagnostics is TRUE
+  if(conditional || remove_diagnostics){
     return(runjags_summary)
   }
 

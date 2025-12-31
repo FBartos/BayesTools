@@ -166,6 +166,19 @@ test_that("Summary table advanced features work correctly", {
   test_reference_table(runjags_summary_removal_07, "summary_parameter_or_formula_removal07.txt", "Parameter/formula removal")
   test_reference_table(runjags_summary_removal_08, "summary_parameter_or_formula_removal08.txt", "Parameter/formula removal")
   test_reference_table(runjags_summary_removal_09, "summary_parameter_or_formula_removal09.txt", "Parameter/formula removal")
+
+  # Custom probs
+  runjags_summary_probs_01 <- JAGS_estimates_table(fit_dual_param)
+  runjags_summary_probs_02 <- JAGS_estimates_table(fit_dual_param, probs = c(0.5))
+  runjags_summary_probs_03 <- JAGS_estimates_table(fit_dual_param, probs = c(0.25, 0.20, 0.99))
+
+  test_reference_table(runjags_summary_probs_01, "summary_parameter_probs1.txt", "Parameter/formula removal")
+  test_reference_table(runjags_summary_probs_02, "summary_parameter_probs2.txt", "Parameter/formula removal")
+  test_reference_table(runjags_summary_probs_03, "summary_parameter_probs3.txt", "Parameter/formula removal")
+
+  # Remove diagnostics
+  runjags_remove_diagnostics <- JAGS_estimates_table(fit_dual_param, remove_diagnostics = TRUE)
+  test_reference_table(runjags_remove_diagnostics, "runjags_remove_diagnostics.txt", "Diagnostics removal")
 })
 
 # ============================================================================ #

@@ -35,6 +35,7 @@ runjags_estimates_table(
   footnotes = NULL,
   warnings = NULL,
   conditional = FALSE,
+  probs = c(0.025, 0.5, 0.975),
   remove_spike_0 = TRUE,
   transform_factors = FALSE,
   transform_orthonormal = FALSE,
@@ -45,7 +46,8 @@ runjags_estimates_table(
   keep_parameters = NULL,
   keep_formulas = NULL,
   return_samples = FALSE,
-  transform_scaled = FALSE
+  transform_scaled = FALSE,
+  remove_diagnostics = FALSE
 )
 
 runjags_inference_table(
@@ -63,6 +65,7 @@ JAGS_estimates_table(
   footnotes = NULL,
   warnings = NULL,
   conditional = FALSE,
+  probs = c(0.025, 0.5, 0.975),
   remove_spike_0 = TRUE,
   transform_factors = FALSE,
   transform_orthonormal = FALSE,
@@ -73,7 +76,8 @@ JAGS_estimates_table(
   keep_parameters = NULL,
   keep_formulas = NULL,
   return_samples = FALSE,
-  transform_scaled = FALSE
+  transform_scaled = FALSE,
+  remove_diagnostics = FALSE
 )
 
 JAGS_inference_table(
@@ -103,11 +107,21 @@ model_summary_empty_table(
   warnings = NULL
 )
 
-runjags_estimates_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
+runjags_estimates_empty_table(
+  probs = c(0.025, 0.5, 0.975),
+  title = NULL,
+  footnotes = NULL,
+  warnings = NULL
+)
 
 runjags_inference_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
 
-JAGS_estimates_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
+JAGS_estimates_empty_table(
+  probs = c(0.025, 0.5, 0.975),
+  title = NULL,
+  footnotes = NULL,
+  warnings = NULL
+)
 
 JAGS_inference_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
 
@@ -158,6 +172,8 @@ to specific parameters}
 \item{conditional}{summarizes estimates conditional on being included
 in the model for spike and slab priors. Defaults to \code{FALSE}.}
 
+\item{probs}{quantiles for parameter estimates}
+
 \item{transform_factors}{whether factors with orthonormal/meandif
 prior distribution should be transformed to differences from the
 grand mean}
@@ -186,6 +202,11 @@ instead of the table. Defaults to \code{FALSE}.}
 \item{transform_scaled}{whether coefficients from standardized
 continuous predictors should be transformed back to the original
 scale. Defaults to \code{FALSE}.}
+
+\item{remove_diagnostics}{whether to exclude MCMC diagnostics (MCMC error,
+ESS, R-hat) from the output table. Defaults to \code{FALSE}. Setting to
+\code{TRUE} will exclude diagnostics columns regardless of the
+\code{conditional} setting.}
 }
 \value{
 \code{model_summary_table} returns a table with
