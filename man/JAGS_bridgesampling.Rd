@@ -45,6 +45,11 @@ returns the log of the unnormalized posterior density of the model part}
 the names of the prior distribution correspond to the parameter names) of parameters specified
 within the \code{formula}}
 
+\item{formula_scale_list}{named list of named lists for standardizing continuous predictors
+(names of the lists correspond to the parameter name created by each of the formula).
+Each entry should be a named list where continuous predictors with \code{TRUE} values will
+be standardized. Defaults to \code{NULL} (no standardization).}
+
 \item{add_parameters}{vector of additional parameter names that should be used
 in bridgesampling but were not specified in the \code{prior_list}}
 
