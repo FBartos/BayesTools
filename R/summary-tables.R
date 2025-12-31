@@ -608,8 +608,18 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
 #' to be added to the table
 #' @param remove_inclusion whether estimates of the inclusion probabilities
 #' should be excluded from the summary table. Defaults to \code{FALSE}.
-#' @param remove_parameters parameters to be removed from the summary. Defaults
-#' to \code{NULL}, i.e., including all parameters.
+#' @param remove_parameters parameters to be removed from the summary.
+#' Can be \code{NULL} (default, no removal), a character vector of parameter
+#' names to remove, or \code{TRUE} to remove all parameters that are not
+#' part of any formula.
+#' @param remove_formulas character vector of formula names whose parameters
+#' should be removed from the summary. Defaults to \code{NULL}.
+#' @param keep_parameters character vector of parameter names to keep.
+#' All other parameters will be removed unless they belong to formulas
+#' specified in \code{keep_formulas}. Defaults to \code{NULL}.
+#' @param keep_formulas character vector of formula names whose parameters
+#' should be kept. All other parameters will be removed unless they are
+#' specified in \code{keep_parameters}. Defaults to \code{NULL}.
 #' @param return_samples whether to return the transoformed and formated samples
 #' instead of the table. Defaults to \code{FALSE}.
 #' @inheritParams BayesTools_ensemble_tables
@@ -734,7 +744,8 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
 
 #' @rdname BayesTools_model_tables
 runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, footnotes = NULL, warnings = NULL, conditional = FALSE,
-                                     remove_spike_0 = TRUE, transform_factors = FALSE, transform_orthonormal = FALSE, formula_prefix = TRUE, remove_inclusion = FALSE, remove_parameters = NULL,
+                                     remove_spike_0 = TRUE, transform_factors = FALSE, transform_orthonormal = FALSE, formula_prefix = TRUE, remove_inclusion = FALSE,
+                                     remove_parameters = NULL, remove_formulas = NULL, keep_parameters = NULL, keep_formulas = NULL,
                                      return_samples = FALSE, transform_scaled = FALSE){
 
   .check_runjags()
@@ -761,7 +772,13 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   check_bool(transform_orthonormal, "transform_orthonormal")
   check_bool(formula_prefix, "formula_prefix")
   check_bool(transform_scaled, "transform_scaled")
-  check_char(remove_parameters, "remove_parameters", allow_NULL = TRUE, check_length = 0)
+  if(!is.null(remove_parameters) && !is.logical(remove_parameters))
+    check_char(remove_parameters, "remove_parameters", allow_NULL = TRUE, check_length = 0)
+  if(is.logical(remove_parameters))
+    check_bool(remove_parameters, "remove_parameters")
+  check_char(remove_formulas, "remove_formulas", allow_NULL = TRUE, check_length = 0)
+  check_char(keep_parameters, "keep_parameters", allow_NULL = TRUE, check_length = 0)
+  check_char(keep_formulas, "keep_formulas", allow_NULL = TRUE, check_length = 0)
 
   # depreciate
   transform_factors <- .depreciate.transform_orthonormal(transform_orthonormal, transform_factors)
@@ -770,12 +787,15 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   model_samples <- .extract_posterior_samples(fit, as_list = FALSE)
 
   ### remove un-wanted estimates (or support values) - spike and slab priors already dealt with later (also remove the item from prior list)
-  # also remove zero spike priors if requested
-  remove_params_vec <- c(remove_parameters, if(remove_spike_0) {
-    names(prior_list)[sapply(seq_along(prior_list), function(i) {
-      is.prior.point(prior_list[[i]]) && prior_list[[i]][["parameters"]][["location"]] == 0
-    })]
-  })
+  # compute filtered parameters using the helper function
+  remove_params_vec <- .filter_parameters(
+    prior_list        = prior_list,
+    remove_parameters = remove_parameters,
+    remove_formulas   = remove_formulas,
+    keep_parameters   = keep_parameters,
+    keep_formulas     = keep_formulas,
+    remove_spike_0    = remove_spike_0
+  )
 
   cleaned       <- .remove_auxiliary_parameters(model_samples, prior_list, remove_params_vec)
   model_samples <- cleaned$model_samples

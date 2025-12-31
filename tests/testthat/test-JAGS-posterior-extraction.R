@@ -185,6 +185,160 @@ test_that(".transform_factor_contrasts transforms orthonormal to differences", {
 })
 
 
+test_that(".filter_parameters removes spike at 0 priors", {
+  skip_on_cran()
+  skip_if_not_installed("rjags")
+
+  prior_list <- list(
+    mu = prior("normal", list(0, 1)),
+    delta = prior("point", list(0)),  # spike at 0
+    tau = prior("normal", list(1, 1))
+  )
+
+  # With remove_spike_0 = TRUE
+  result <- BayesTools:::.filter_parameters(prior_list, remove_spike_0 = TRUE)
+  expect_true("delta" %in% result)
+  expect_false("mu" %in% result)
+  expect_false("tau" %in% result)
+
+  # With remove_spike_0 = FALSE
+  result <- BayesTools:::.filter_parameters(prior_list, remove_spike_0 = FALSE)
+  expect_equal(length(result), 0)
+})
+
+
+test_that(".filter_parameters removes character specified parameters", {
+  skip_on_cran()
+  skip_if_not_installed("rjags")
+
+  prior_list <- list(
+    mu = prior("normal", list(0, 1)),
+    delta = prior("normal", list(0, 1)),
+    tau = prior("normal", list(1, 1))
+  )
+
+  result <- BayesTools:::.filter_parameters(prior_list, remove_parameters = c("mu", "tau"), remove_spike_0 = FALSE)
+  expect_true("mu" %in% result)
+  expect_true("tau" %in% result)
+  expect_false("delta" %in% result)
+})
+
+
+test_that(".filter_parameters removes non-formula parameters when TRUE", {
+  skip_on_cran()
+  skip_if_not_installed("rjags")
+
+  # Create priors with formula attributes
+  prior_formula <- prior("normal", list(0, 1))
+  attr(prior_formula, "parameter") <- "y"
+
+  prior_list <- list(
+    intercept = prior_formula,
+    sigma = prior("normal", list(1, 1))  # no formula attribute
+  )
+
+  result <- BayesTools:::.filter_parameters(prior_list, remove_parameters = TRUE, remove_spike_0 = FALSE)
+  expect_true("sigma" %in% result)
+  expect_false("intercept" %in% result)
+})
+
+
+test_that(".filter_parameters removes formula-specific parameters", {
+  skip_on_cran()
+  skip_if_not_installed("rjags")
+
+  # Create priors with different formula attributes
+  prior_y <- prior("normal", list(0, 1))
+  attr(prior_y, "parameter") <- "y"
+
+  prior_x <- prior("normal", list(0, 1))
+  attr(prior_x, "parameter") <- "x"
+
+  prior_list <- list(
+    intercept_y = prior_y,
+    slope_y = prior_y,
+    intercept_x = prior_x,
+    sigma = prior("normal", list(1, 1))  # no formula attribute
+  )
+
+  result <- BayesTools:::.filter_parameters(prior_list, remove_formulas = "y", remove_spike_0 = FALSE)
+  expect_true("intercept_y" %in% result)
+  expect_true("slope_y" %in% result)
+  expect_false("intercept_x" %in% result)
+  expect_false("sigma" %in% result)
+})
+
+
+test_that(".filter_parameters keeps only specified parameters", {
+  skip_on_cran()
+  skip_if_not_installed("rjags")
+
+  prior_list <- list(
+    mu = prior("normal", list(0, 1)),
+    delta = prior("normal", list(0, 1)),
+    tau = prior("normal", list(1, 1))
+  )
+
+  result <- BayesTools:::.filter_parameters(prior_list, keep_parameters = "mu", remove_spike_0 = FALSE)
+  expect_false("mu" %in% result)
+  expect_true("delta" %in% result)
+  expect_true("tau" %in% result)
+})
+
+
+test_that(".filter_parameters keeps only specified formulas", {
+  skip_on_cran()
+  skip_if_not_installed("rjags")
+
+  # Create priors with different formula attributes
+  prior_y <- prior("normal", list(0, 1))
+  attr(prior_y, "parameter") <- "y"
+
+  prior_x <- prior("normal", list(0, 1))
+  attr(prior_x, "parameter") <- "x"
+
+  prior_list <- list(
+    intercept_y = prior_y,
+    slope_y = prior_y,
+    intercept_x = prior_x,
+    sigma = prior("normal", list(1, 1))  # no formula attribute
+  )
+
+  result <- BayesTools:::.filter_parameters(prior_list, keep_formulas = "y", remove_spike_0 = FALSE)
+  expect_false("intercept_y" %in% result)
+  expect_false("slope_y" %in% result)
+  expect_true("intercept_x" %in% result)
+  expect_true("sigma" %in% result)
+})
+
+
+test_that(".filter_parameters combines keep_parameters and keep_formulas", {
+  skip_on_cran()
+  skip_if_not_installed("rjags")
+
+  # Create priors with different formula attributes
+  prior_y <- prior("normal", list(0, 1))
+  attr(prior_y, "parameter") <- "y"
+
+  prior_x <- prior("normal", list(0, 1))
+  attr(prior_x, "parameter") <- "x"
+
+  prior_list <- list(
+    intercept_y = prior_y,
+    slope_y = prior_y,
+    intercept_x = prior_x,
+    sigma = prior("normal", list(1, 1))  # no formula attribute
+  )
+
+  # Keep formula "y" and parameter "sigma"
+  result <- BayesTools:::.filter_parameters(prior_list, keep_parameters = "sigma", keep_formulas = "y", remove_spike_0 = FALSE)
+  expect_false("intercept_y" %in% result)
+  expect_false("slope_y" %in% result)
+  expect_false("sigma" %in% result)
+  expect_true("intercept_x" %in% result)
+})
+
+
 test_that("helper functions work with runjags estimates extraction", {
   skip_on_cran()
   skip_if_not_installed("rjags")
