@@ -339,6 +339,142 @@ test_that(".filter_parameters combines keep_parameters and keep_formulas", {
 })
 
 
+test_that(".filter_parameters removes bias-related parameters when bias is removed", {
+  skip_on_cran()
+  skip_if_not_installed("rjags")
+
+  # Create a mixture prior with PET component (simulating bias)
+  bias_prior <- prior_mixture(list(
+    prior_none(prior_weights = 1),
+    prior_PET("normal", list(0, 1), prior_weights = 1)
+  ))
+  
+  prior_list <- list(
+    mu = prior("normal", list(0, 1)),
+    bias = bias_prior
+  )
+
+  # When bias is removed, PET should also be removed
+  result <- BayesTools:::.filter_parameters(prior_list, remove_parameters = "bias", remove_spike_0 = FALSE)
+  expect_true("bias" %in% result)
+  expect_true("PET" %in% result)
+  expect_false("mu" %in% result)
+})
+
+
+test_that(".filter_parameters removes bias-related parameters when bias contains PEESE", {
+  skip_on_cran()
+  skip_if_not_installed("rjags")
+
+  # Create a mixture prior with PEESE component
+  bias_prior <- prior_mixture(list(
+    prior_none(prior_weights = 1),
+    prior_PEESE("normal", list(0, 1), prior_weights = 1)
+  ))
+  
+  prior_list <- list(
+    mu = prior("normal", list(0, 1)),
+    bias = bias_prior
+  )
+
+  result <- BayesTools:::.filter_parameters(prior_list, remove_parameters = "bias", remove_spike_0 = FALSE)
+  expect_true("bias" %in% result)
+  expect_true("PEESE" %in% result)
+  expect_false("mu" %in% result)
+})
+
+
+test_that(".filter_parameters removes bias-related parameters when bias contains weightfunction", {
+  skip_on_cran()
+  skip_if_not_installed("rjags")
+
+  # Create a mixture prior with weightfunction component
+  bias_prior <- prior_mixture(list(
+    prior_none(prior_weights = 1),
+    prior_weightfunction("one.sided", list(c(0.05), c(1, 1)), prior_weights = 1)
+  ))
+  
+  prior_list <- list(
+    mu = prior("normal", list(0, 1)),
+    bias = bias_prior
+  )
+
+  result <- BayesTools:::.filter_parameters(prior_list, remove_parameters = "bias", remove_spike_0 = FALSE)
+  expect_true("bias" %in% result)
+  expect_true("omega" %in% result)
+  expect_false("mu" %in% result)
+})
+
+
+test_that(".filter_parameters keeps bias-related parameters when bias is kept", {
+  skip_on_cran()
+  skip_if_not_installed("rjags")
+
+  # Create a mixture prior with PET component
+  bias_prior <- prior_mixture(list(
+    prior_none(prior_weights = 1),
+    prior_PET("normal", list(0, 1), prior_weights = 1)
+  ))
+  
+  prior_list <- list(
+    mu = prior("normal", list(0, 1)),
+    tau = prior("normal", list(1, 1)),
+    bias = bias_prior
+  )
+
+  # When only bias is kept, mu and tau should be removed, but PET should be kept
+  result <- BayesTools:::.filter_parameters(prior_list, keep_parameters = "bias", remove_spike_0 = FALSE)
+  expect_false("bias" %in% result)
+  expect_false("PET" %in% result)
+  expect_true("mu" %in% result)
+  expect_true("tau" %in% result)
+})
+
+
+test_that(".filter_parameters handles non-mixture bias priors", {
+  skip_on_cran()
+  skip_if_not_installed("rjags")
+
+  # Create a single PET prior named bias (not a mixture)
+  bias_prior <- prior_PET("normal", list(0, 1))
+  
+  prior_list <- list(
+    mu = prior("normal", list(0, 1)),
+    bias = bias_prior
+  )
+
+  result <- BayesTools:::.filter_parameters(prior_list, remove_parameters = "bias", remove_spike_0 = FALSE)
+  expect_true("bias" %in% result)
+  expect_true("PET" %in% result)
+  expect_false("mu" %in% result)
+})
+
+
+test_that(".filter_parameters removes bias-related parameters when bias is not in keep list", {
+  skip_on_cran()
+  skip_if_not_installed("rjags")
+
+  # Create a mixture prior with PET component
+  bias_prior <- prior_mixture(list(
+    prior_none(prior_weights = 1),
+    prior_PET("normal", list(0, 1), prior_weights = 1)
+  ))
+  
+  prior_list <- list(
+    mu = prior("normal", list(0, 1)),
+    tau = prior("normal", list(1, 1)),
+    bias = bias_prior
+  )
+
+  # When only mu is kept, bias should be removed along with PET
+  result <- BayesTools:::.filter_parameters(prior_list, keep_parameters = "mu", remove_spike_0 = FALSE)
+  expect_false("mu" %in% result)
+  expect_true("bias" %in% result)
+  expect_true("PET" %in% result)
+  expect_true("tau" %in% result)
+})
+
+
 test_that("helper functions work with runjags estimates extraction", {
   skip_on_cran()
   skip_if_not_installed("rjags")
