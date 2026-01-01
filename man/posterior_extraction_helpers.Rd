@@ -65,7 +65,9 @@
 
 \item{prior_list}{list of prior objects}
 
-\item{remove_parameters}{character vector of parameter names to remove, or TRUE to remove all non-formula parameters}
+\item{remove_parameters}{character vector of parameter names to remove, or TRUE to remove all non-formula parameters.
+If "bias" is specified and the bias prior contains PET, PEESE, or weightfunction priors,
+the corresponding parameters (PET, PEESE, omega) are also added to the removal list.}
 
 \item{prior}{prior object for the parameter}
 
@@ -73,7 +75,9 @@
 
 \item{remove_formulas}{character vector of formula names whose parameters should be removed}
 
-\item{keep_parameters}{character vector of parameter names to keep (all others removed unless in keep_formulas)}
+\item{keep_parameters}{character vector of parameter names to keep (all others removed unless in keep_formulas).
+If "bias" is specified and the bias prior contains PET, PEESE, or weightfunction priors,
+the corresponding parameters (PET, PEESE, omega) are also added to the keep list.}
 
 \item{keep_formulas}{character vector of formula names whose parameters should be kept (all others removed unless in keep_parameters)}
 

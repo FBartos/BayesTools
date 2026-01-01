@@ -126,6 +126,14 @@ NULL
     # factor prior: remove all indexed columns
     cols_to_remove <- .JAGS_prior_factor_names(par_name, prior)
     
+  } else if (is.prior.PET(prior)) {
+    # PET prior: remove the PET column (samples are stored as "PET", not par_name)
+    cols_to_remove <- c(par_name, "PET")
+    
+  } else if (is.prior.PEESE(prior)) {
+    # PEESE prior: remove the PEESE column (samples are stored as "PEESE", not par_name)
+    cols_to_remove <- c(par_name, "PEESE")
+    
   } else {
     # simple prior: just remove the main column
     cols_to_remove <- par_name
@@ -142,9 +150,13 @@ NULL
 
 
 #' @rdname posterior_extraction_helpers
-#' @param remove_parameters character vector of parameter names to remove, or TRUE to remove all non-formula parameters
+#' @param remove_parameters character vector of parameter names to remove, or TRUE to remove all non-formula parameters.
+#' If "bias" is specified and the bias prior contains PET, PEESE, or weightfunction priors,
+#' the corresponding parameters (PET, PEESE, omega) are also added to the removal list.
 #' @param remove_formulas character vector of formula names whose parameters should be removed
-#' @param keep_parameters character vector of parameter names to keep (all others removed unless in keep_formulas)
+#' @param keep_parameters character vector of parameter names to keep (all others removed unless in keep_formulas).
+#' If "bias" is specified and the bias prior contains PET, PEESE, or weightfunction priors,
+#' the corresponding parameters (PET, PEESE, omega) are also added to the keep list.
 #' @param keep_formulas character vector of formula names whose parameters should be kept (all others removed unless in keep_parameters)
 #' @param remove_spike_0 whether to remove spike at 0 priors
 #' @return list with filtered model_samples and prior_list
@@ -155,7 +167,38 @@ NULL
   prior_formulas <- sapply(prior_list, function(p) {
     form <- attr(p, "parameter")
     if (is.null(form)) "__none" else form
+
   })
+  
+  # helper function to get bias-related parameters (PET, PEESE, omega) from a bias prior
+  .get_bias_params <- function(prior_list, bias_name = "bias") {
+    bias_params <- character(0)
+    if (bias_name %in% names(prior_list)) {
+      bias_prior <- prior_list[[bias_name]]
+      if (is.prior.mixture(bias_prior)) {
+        if (any(sapply(bias_prior, is.prior.PET))) {
+          bias_params <- c(bias_params, "PET")
+        }
+        if (any(sapply(bias_prior, is.prior.PEESE))) {
+          bias_params <- c(bias_params, "PEESE")
+        }
+        if (any(sapply(bias_prior, is.prior.weightfunction))) {
+          bias_params <- c(bias_params, "omega")
+        }
+      } else {
+        if (is.prior.PET(bias_prior)) {
+          bias_params <- c(bias_params, "PET")
+        }
+        if (is.prior.PEESE(bias_prior)) {
+          bias_params <- c(bias_params, "PEESE")
+        }
+        if (is.prior.weightfunction(bias_prior)) {
+          bias_params <- c(bias_params, "omega")
+        }
+      }
+    }
+    return(bias_params)
+  }
   
   # initialize parameters to remove
   params_to_remove <- character(0)
@@ -175,6 +218,10 @@ NULL
     params_to_remove <- c(params_to_remove, non_formula_params)
   } else if (is.character(remove_parameters)) {
     params_to_remove <- c(params_to_remove, remove_parameters)
+    # if "bias" is in remove_parameters, also add corresponding bias-related parameters
+    if ("bias" %in% remove_parameters) {
+      params_to_remove <- c(params_to_remove, .get_bias_params(prior_list, "bias"))
+    }
   }
   
   # handle remove_formulas
@@ -193,6 +240,10 @@ NULL
     
     if (!is.null(keep_parameters)) {
       params_to_keep <- c(params_to_keep, keep_parameters)
+      # if "bias" is in keep_parameters, also add corresponding bias-related parameters
+      if ("bias" %in% keep_parameters) {
+        params_to_keep <- c(params_to_keep, .get_bias_params(prior_list, "bias"))
+      }
     }
     
     if (!is.null(keep_formulas)) {
@@ -203,6 +254,11 @@ NULL
     # add parameters not in keep list to removal list
     params_not_kept <- all_params[!all_params %in% params_to_keep]
     params_to_remove <- c(params_to_remove, params_not_kept)
+    
+    # if "bias" is in params_not_kept, also add corresponding bias-related parameters
+    if ("bias" %in% params_not_kept) {
+      params_to_remove <- c(params_to_remove, .get_bias_params(prior_list, "bias"))
+    }
   }
   
   # remove duplicates

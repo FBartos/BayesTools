@@ -10,6 +10,7 @@
   - `remove_formulas` to remove all parameters from specific formulas
   - `keep_parameters` to keep only specified parameters
   - `keep_formulas` to keep only parameters from specified formulas
+  - when `bias` is specified in `remove_parameters` or `keep_parameters`, the corresponding bias-related parameters (`PET`, `PEESE`, `omega`) are automatically included based on the bias prior type
 - adds `probs` argument to `runjags_estimates_table()` and `runjags_estimates_empty_table()` for custom quantiles (default: `c(0.025, 0.5, 0.975)`)
 
 ### Changes
