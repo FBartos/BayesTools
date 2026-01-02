@@ -24,6 +24,9 @@ jobs:
         with:
           r-version: ${{ matrix.config.r }}
 
+      - name: Setup Pandoc
+        uses: r-lib/actions/setup-pandoc@v2
+
       # Cache R packages
       - name: Cache R packages
         uses: actions/cache@v3
@@ -140,7 +143,7 @@ jobs:
           options(repos = c(CRAN = "https://cloud.r-project.org"))
           
           # Check if packages are already installed before installing
-          required_packages <- c('devtools', 'rcmdcheck', 'BayesFactor', 'RoBMA', 'runjags', 'rjags', 'rstan', 'scales', 'vdiffr', 'testthat', 'covr', 'pandoc')
+          required_packages <- c('devtools', 'rcmdcheck', 'BayesFactor', 'RoBMA', 'runjags', 'rjags', 'rstan', 'scales', 'vdiffr', 'testthat', 'covr')
           missing_packages <- required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)]
           
           if (length(missing_packages) > 0) {
