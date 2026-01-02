@@ -11,7 +11,6 @@ vignette: >
   %\VignetteIndexEntry{Comparison to other R packages}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
-  %\VignetteEngine{knitr::rmarkdown_notangle}
 ---
 
 

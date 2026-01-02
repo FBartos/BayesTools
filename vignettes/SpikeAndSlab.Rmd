@@ -4,14 +4,13 @@ author: "František Bartoš"
 date: "`r Sys.Date()`"
 output:
   rmarkdown::html_vignette:
-  self_contained: yes
+    self_contained: yes
 bibliography: ../inst/REFERENCES.bib
 csl: ../inst/apa.csl
 vignette: >
   %\VignetteIndexEntry{Bayes factors via spike and slab prior vs. bridge sampling}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
-  %\VignetteEngine{knitr::rmarkdown_notangle}
 ---
 
 
