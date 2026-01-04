@@ -39,8 +39,8 @@ test_that("Marginal distribution prior and posterior functions work", {
   # Load pre-fitted marginal distribution models
   fit0     <- readRDS(file.path(temp_fits_dir, "fit_marginal_0.RDS"))
   fit1     <- readRDS(file.path(temp_fits_dir, "fit_marginal_1.RDS"))
-  marglik0 <- readRDS(file.path(temp_fits_dir, "fit_marginal_0_marglik.RDS"))
-  marglik1 <- readRDS(file.path(temp_fits_dir, "fit_marginal_1_marglik.RDS"))
+  marglik0 <- readRDS(file.path(temp_marglik_dir, "fit_marginal_0.RDS"))
+  marglik1 <- readRDS(file.path(temp_marglik_dir, "fit_marginal_1.RDS"))
 
   # Define prior lists (needed for manual mixing validation and prior_samples)
   prior_list_0 <- list(

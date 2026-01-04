@@ -5,14 +5,22 @@ if (!exists("GENERATE_REFERENCE_FILES")) {
   GENERATE_REFERENCE_FILES <- FALSE
 }
 
-# Get the directory where prefitted models are stored
-temp_fits_dir <- Sys.getenv("BAYESTOOLS_TEST_FITS_DIR")
-if (temp_fits_dir == "" || !dir.exists(temp_fits_dir)) {
-  temp_fits_dir <- file.path(tempdir(), "BayesTools_test_fits")
+
+test_files_dir <- Sys.getenv("BAYESTOOLS_TEST_FILES_DIR")
+if (test_files_dir == "" || !dir.exists(test_files_dir)) {
+  test_files_dir <- file.path(tempdir(), "BayesTools_test_files")
 }
 
-# NOTE: File-level skip_on_cran() was removed intentionally.
-# Each test file should manage its own skip conditions appropriately.
+# Setup directory for saving fitted models
+temp_fits_dir    <- file.path(test_files_dir, "fits")
+temp_marglik_dir <- file.path(test_files_dir, "margliks")
+
+if (!dir.exists(temp_fits_dir)) dir.create(temp_fits_dir, showWarnings = FALSE, recursive = TRUE)
+if (!dir.exists(temp_marglik_dir)) dir.create(temp_marglik_dir, showWarnings = FALSE, recursive = TRUE)
+
+# Set environment variable so other test files can locate pre-fitted models
+Sys.setenv(BAYESTOOLS_TEST_FILES_DIR = test_files_dir)
+
 # Use skip_if_no_fits() for tests that need pre-fitted models.
 
 # ============================================================================ #
@@ -65,7 +73,7 @@ test_reference_text <- function(text, filename, info_msg = NULL,
 
 # Skip if pre-fitted models are not available
 skip_if_no_fits <- function() {
-  model_registry_file <- file.path(temp_fits_dir, "model_registry.RDS")
+  model_registry_file <- file.path(test_files_dir, "model_registry.RDS")
   if (!file.exists(model_registry_file)) {
     skip("Pre-fitted models not found. Run test-00-model-fits.R first.")
   }
@@ -292,4 +300,72 @@ test_meandif <- function(prior, skip_moments = FALSE) {
     expect_equal(sd(samples), sd(prior), tolerance = 1e-2)
   }
   return(invisible())
+}
+
+# Helper function to save fitted models and register metadata
+save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_priors = FALSE,
+                     factor_priors = FALSE, pub_bias_priors = FALSE,
+                     weightfunction_priors = FALSE, spike_and_slab_priors = FALSE,
+                     mixture_priors = FALSE, formulas = FALSE,
+                     random_effects = FALSE, interactions = FALSE,
+                     expression_priors = FALSE, multi_formula = FALSE,
+                     autofit = FALSE, parallel = FALSE, thinning = FALSE,
+                     add_parameters = FALSE, note = "") {
+
+  saveRDS(fit, file = file.path(temp_fits_dir, paste0(name, ".RDS")))
+
+  # Save marglik if provided
+  if (!is.null(marglik)) {
+    saveRDS(marglik, file = file.path(temp_marglik_dir, paste0(name, ".RDS")))
+  }
+
+  # Return model metadata entry for registry
+  list(
+    fit = fit,
+    marglik = marglik,
+    registry_entry = data.frame(
+      model_name = name,
+      has_marglik = !is.null(marglik),
+      simple_priors = simple_priors,
+      vector_priors = vector_priors,
+      factor_priors = factor_priors,
+      pub_bias_priors = pub_bias_priors,
+      weightfunction_priors = weightfunction_priors,
+      spike_and_slab_priors = spike_and_slab_priors,
+      mixture_priors = mixture_priors,
+      formulas = formulas,
+      random_effects = random_effects,
+      interactions = interactions,
+      expression_priors = expression_priors,
+      multi_formula = multi_formula,
+      autofit = autofit,
+      parallel = parallel,
+      thinning = thinning,
+      add_parameters = add_parameters,
+      note = note,
+      stringsAsFactors = FALSE
+    )
+  )
+}
+
+# Skip model fitting if cached fits exist and ROBMA_TEST_SKIP_REFIT is TRUE
+skip_refit_if_cached <- function() {
+  skip_refit <- Sys.getenv("BAYESTOOLS_TEST_SKIP_REFIT")
+  if (skip_refit != "" && as.logical(skip_refit) && length(list.files(temp_fits_dir)) > 0) {
+    skip("Skipping model refitting: cached fits exist and BAYESTOOLS_TEST_SKIP_REFIT=TRUE.")
+  }
+}
+
+# Clean cached fitted models and margliks
+clean_cached_fits <- function() {
+
+  # Remove all cached files from test directories
+  unlink(temp_fits_dir,    recursive = TRUE)
+  unlink(temp_marglik_dir, recursive = TRUE)
+
+  # Recreate empty directories
+  dir.create(temp_fits_dir,    showWarnings = FALSE, recursive = TRUE)
+  dir.create(temp_marglik_dir, showWarnings = FALSE, recursive = TRUE)
+
+  return(invisible(TRUE))
 }

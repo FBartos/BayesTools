@@ -339,8 +339,8 @@ test_that("Marginal likelihoods match for manual and automatic scaling", {
   skip_if_no_fits()
 
   # Load pre-fitted marginal likelihoods
-  marglik_manual <- readRDS(file.path(temp_fits_dir, "fit_formula_manual_scaled_marglik.RDS"))
-  marglik_auto   <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled_marglik.RDS"))
+  marglik_manual <- readRDS(file.path(temp_marglik_dir, "fit_formula_manual_scaled.RDS"))
+  marglik_auto   <- readRDS(file.path(temp_marglik_dir, "fit_formula_auto_scaled.RDS"))
 
   # The log marginal likelihoods should be very similar
   # (both models use same scaled data internally)
@@ -497,7 +497,7 @@ test_that("ensemble_estimates_table with transform_scaled unscales coefficients"
 
   # Load pre-fitted models
   fit_auto     <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS"))
-  marglik_auto <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled_marglik.RDS"))
+  marglik_auto <- readRDS(file.path(temp_marglik_dir, "fit_formula_auto_scaled.RDS"))
 
   formula_scale <- attr(fit_auto, "formula_scale")
 

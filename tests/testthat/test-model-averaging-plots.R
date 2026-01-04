@@ -235,10 +235,10 @@ test_that("plot_posterior handles various sample types", {
 
   # Load fits
   fit_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
-  marglik_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0_marglik.RDS"))
+  marglik_summary0 <- readRDS(file.path(temp_marglik_dir, "fit_summary0.RDS"))
 
   fit_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1.RDS"))
-  marglik_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1_marglik.RDS"))
+  marglik_summary1 <- readRDS(file.path(temp_marglik_dir, "fit_summary1.RDS"))
 
   models <- list(
     list(fit = fit_summary0, marglik = marglik_summary0, prior_weights = 1),
@@ -284,10 +284,10 @@ test_that("plot_posterior handles weightfunction posteriors", {
 
   # Load fits
   fit_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
-  marglik_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0_marglik.RDS"))
+  marglik_summary0 <- readRDS(file.path(temp_marglik_dir, "fit_summary0.RDS"))
 
   fit_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1.RDS"))
-  marglik_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1_marglik.RDS"))
+  marglik_summary1 <- readRDS(file.path(temp_marglik_dir, "fit_summary1.RDS"))
 
   models <- list(
     list(fit = fit_summary0, marglik = marglik_summary0, prior_weights = 1),
@@ -321,10 +321,10 @@ test_that("plot_models handles various configurations", {
 
   # Load fits
   fit_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
-  marglik_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0_marglik.RDS"))
+  marglik_summary0 <- readRDS(file.path(temp_marglik_dir, "fit_summary0.RDS"))
 
   fit_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1.RDS"))
-  marglik_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1_marglik.RDS"))
+  marglik_summary1 <- readRDS(file.path(temp_marglik_dir, "fit_summary1.RDS"))
 
   models <- list(
     list(fit = fit_summary0, marglik = marglik_summary0, prior_weights = 1, fit_summary = runjags_estimates_table(fit_summary0)),
@@ -367,10 +367,10 @@ test_that("plot_models handles order argument", {
 
   # Load fits
   fit_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
-  marglik_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0_marglik.RDS"))
+  marglik_summary0 <- readRDS(file.path(temp_marglik_dir, "fit_summary0.RDS"))
 
   fit_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1.RDS"))
-  marglik_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1_marglik.RDS"))
+  marglik_summary1 <- readRDS(file.path(temp_marglik_dir, "fit_summary1.RDS"))
 
   models <- list(
     list(fit = fit_summary0, marglik = marglik_summary0, prior_weights = 1, fit_summary = runjags_estimates_table(fit_summary0)),
@@ -438,10 +438,10 @@ test_that("plot_models handles orthonormal priors", {
 
   # Load orthonormal models with marginal likelihoods
   fit_orthonormal_0 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_0.RDS"))
-  marglik_orthonormal_0 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_0_marglik.RDS"))
+  marglik_orthonormal_0 <- readRDS(file.path(temp_marglik_dir, "fit_orthonormal_0.RDS"))
 
   fit_orthonormal_1 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_1.RDS"))
-  marglik_orthonormal_1 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_1_marglik.RDS"))
+  marglik_orthonormal_1 <- readRDS(file.path(temp_marglik_dir, "fit_orthonormal_1.RDS"))
 
   models <- list(
     list(fit = fit_orthonormal_0, marglik = marglik_orthonormal_0, prior_weights = 1,

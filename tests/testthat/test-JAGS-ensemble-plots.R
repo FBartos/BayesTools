@@ -576,10 +576,10 @@ test_that("posterior plot functions (simple) work", {
   skip_if_not_installed("bridgesampling")
 
   fit0 <- readRDS(file.path(temp_fits_dir, "fit_simple_spike.RDS"))
-  marglik0 <- readRDS(file.path(temp_fits_dir, "fit_simple_spike_marglik.RDS"))
+  marglik0 <- readRDS(file.path(temp_marglik_dir, "fit_simple_spike.RDS"))
 
   fit1 <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
-  marglik1 <- readRDS(file.path(temp_fits_dir, "fit_simple_normal_marglik.RDS"))
+  marglik1 <- readRDS(file.path(temp_marglik_dir, "fit_simple_normal.RDS"))
 
   # automatically mix posteriors
   models <- list(
@@ -639,9 +639,9 @@ test_that("posterior plot functions (PET-PEESE) work", {
   skip_if_not_installed("bridgesampling")
 
   fit0 <- readRDS(file.path(temp_fits_dir, "fit_pet.RDS"))
-  marglik0 <- readRDS(file.path(temp_fits_dir, "fit_pet_marglik.RDS"))
+  marglik0 <- readRDS(file.path(temp_marglik_dir, "fit_pet.RDS"))
   fit1 <- readRDS(file.path(temp_fits_dir, "fit_peese.RDS"))
-  marglik1 <- readRDS(file.path(temp_fits_dir, "fit_peese_marglik.RDS"))
+  marglik1 <- readRDS(file.path(temp_marglik_dir, "fit_peese.RDS"))
 
   # automatically mix posteriors
   models <- list(
@@ -690,7 +690,7 @@ test_that("posterior plot functions (PET-PEESE) work", {
 
   # add an overhelming missing model
   fit2 <- readRDS(file.path(temp_fits_dir, "fit_missing.RDS"))
-  marglik2 <- readRDS(file.path(temp_fits_dir, "fit_missing_marglik.RDS"))
+  marglik2 <- readRDS(file.path(temp_marglik_dir, "fit_missing.RDS"))
 
   models <- list(
     list(fit = fit0, marglik = marglik0, prior_weights = 1),
@@ -710,9 +710,9 @@ test_that("posterior plot functions (weightfunctions) work", {
   skip_if_not_installed("bridgesampling")
 
   fit0 <- readRDS(file.path(temp_fits_dir, "fit_wf_onesided.RDS"))
-  marglik0 <- readRDS(file.path(temp_fits_dir, "fit_wf_onesided_marglik.RDS"))
+  marglik0 <- readRDS(file.path(temp_marglik_dir, "fit_wf_onesided.RDS"))
   fit1 <- readRDS(file.path(temp_fits_dir, "fit_wf_twosided.RDS"))
-  marglik1 <- readRDS(file.path(temp_fits_dir, "fit_wf_twosided_marglik.RDS"))
+  marglik1 <- readRDS(file.path(temp_marglik_dir, "fit_wf_twosided.RDS"))
 
   # automatically mix posteriors
   models <- list(
@@ -766,7 +766,7 @@ test_that("posterior plot functions (weightfunctions) work", {
 
   # add an overhelming missing model
   fit2 <- readRDS(file.path(temp_fits_dir, "fit_wf_missing.RDS"))
-  marglik2 <- readRDS(file.path(temp_fits_dir, "fit_wf_missing_marglik.RDS"))
+  marglik2 <- readRDS(file.path(temp_marglik_dir, "fit_wf_missing.RDS"))
 
   models <- list(
     list(fit = fit0, marglik = marglik0, prior_weights = 1),
@@ -787,9 +787,9 @@ test_that("posterior plot functions (orthonormal) work", {
   skip_if_not_installed("bridgesampling")
 
   fit0 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_0.RDS"))
-  marglik0 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_0_marglik.RDS"))
+  marglik0 <- readRDS(file.path(temp_marglik_dir, "fit_orthonormal_0.RDS"))
   fit1 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_1.RDS"))
-  marglik1 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_1_marglik.RDS"))
+  marglik1 <- readRDS(file.path(temp_marglik_dir, "fit_orthonormal_1.RDS"))
 
   # mix posteriors
   models <- list(
