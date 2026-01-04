@@ -58,13 +58,13 @@ test_that("Summary table advanced features work correctly", {
   # 1. Simple models (m, omega)
   # -------------------------------------------------------------- #
   fit_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
-  marglik_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0_marglik.RDS"))
+  marglik_summary0 <- readRDS(file.path(temp_marglik_dir, "fit_summary0.RDS"))
 
   fit_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1.RDS"))
-  marglik_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1_marglik.RDS"))
+  marglik_summary1 <- readRDS(file.path(temp_marglik_dir, "fit_summary1.RDS"))
 
   fit_summary2 <- readRDS(file.path(temp_fits_dir, "fit_summary2.RDS"))
-  marglik_summary2 <- readRDS(file.path(temp_fits_dir, "fit_summary2_marglik.RDS"))
+  marglik_summary2 <- readRDS(file.path(temp_marglik_dir, "fit_summary2.RDS"))
 
   models <- list(
     list(fit = fit_summary0, marglik = marglik_summary0, prior_weights = 1, fit_summary = runjags_estimates_table(fit_summary0)),
@@ -144,13 +144,13 @@ test_that("Summary table advanced features work correctly", {
   # 2. Complex models (Formula)
   # -------------------------------------------------------------- #
   fit_formula_simple <- readRDS(file.path(temp_fits_dir, "fit_formula_simple.RDS"))
-  marglik_formula_simple <- readRDS(file.path(temp_fits_dir, "fit_formula_simple_marglik.RDS"))
+  marglik_formula_simple <- readRDS(file.path(temp_marglik_dir, "fit_formula_simple.RDS"))
 
   fit_formula_treatment <- readRDS(file.path(temp_fits_dir, "fit_formula_treatment.RDS"))
-  marglik_formula_treatment <- readRDS(file.path(temp_fits_dir, "fit_formula_treatment_marglik.RDS"))
+  marglik_formula_treatment <- readRDS(file.path(temp_marglik_dir, "fit_formula_treatment.RDS"))
 
   fit_formula_orthonormal <- readRDS(file.path(temp_fits_dir, "fit_formula_orthonormal.RDS"))
-  marglik_formula_orthonormal <- readRDS(file.path(temp_fits_dir, "fit_formula_orthonormal_marglik.RDS"))
+  marglik_formula_orthonormal <- readRDS(file.path(temp_marglik_dir, "fit_formula_orthonormal.RDS"))
 
   models_complex <- list(
     list(fit = fit_formula_simple, marglik = marglik_formula_simple, prior_weights = 1, fit_summary = runjags_estimates_table(fit_formula_simple)),
@@ -194,10 +194,10 @@ test_that("Summary table advanced features work correctly", {
   # 3. Simple Spike vs Normal (Model Averaging)
   # -------------------------------------------------------------- #
   fit_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike.RDS"))
-  marglik_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike_marglik.RDS"))
+  marglik_simple_spike <- readRDS(file.path(temp_marglik_dir, "fit_simple_spike.RDS"))
 
   fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
-  marglik_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal_marglik.RDS"))
+  marglik_simple_normal <- readRDS(file.path(temp_marglik_dir, "fit_simple_normal.RDS"))
 
   models_simple_ma <- list(
     list(fit = fit_simple_spike, marglik = marglik_simple_spike, prior_weights = 1, fit_summary = runjags_estimates_table(fit_simple_spike)),
@@ -230,7 +230,7 @@ test_that("Summary table advanced features work correctly", {
   # -------------------------------------------------------------- #
   # Re-using summary models 0-2 and adding a fixed weightfunction model
   fit_summary3 <- readRDS(file.path(temp_fits_dir, "fit_summary3.RDS"))
-  marglik_summary3 <- readRDS(file.path(temp_fits_dir, "fit_summary3_marglik.RDS"))
+  marglik_summary3 <- readRDS(file.path(temp_marglik_dir, "fit_summary3.RDS"))
 
   models_fixed_wf <- list(
     list(fit = fit_summary0, marglik = marglik_summary0, prior_weights = 1, fit_summary = runjags_estimates_table(fit_summary0)),
@@ -263,10 +263,10 @@ test_that("Summary table advanced features work correctly", {
   # 5. Interactions
   # -------------------------------------------------------------- #
   fit_formula_interaction_mix <- readRDS(file.path(temp_fits_dir, "fit_formula_interaction_mix.RDS"))
-  marglik_formula_interaction_mix <- readRDS(file.path(temp_fits_dir, "fit_formula_interaction_mix_marglik.RDS"))
+  marglik_formula_interaction_mix <- readRDS(file.path(temp_marglik_dir, "fit_formula_interaction_mix.RDS"))
 
   fit_formula_interaction_mix_main <- readRDS(file.path(temp_fits_dir, "fit_formula_interaction_mix_main.RDS"))
-  marglik_formula_interaction_mix_main <- readRDS(file.path(temp_fits_dir, "fit_formula_interaction_mix_main_marglik.RDS"))
+  marglik_formula_interaction_mix_main <- readRDS(file.path(temp_marglik_dir, "fit_formula_interaction_mix_main.RDS"))
 
   models_interaction <- list(
     list(fit = fit_formula_interaction_mix_main, marglik = marglik_formula_interaction_mix_main, prior_weights = 1, fit_summary = runjags_estimates_table(fit_formula_interaction_mix_main)),
@@ -307,10 +307,10 @@ test_that("Summary table advanced features work correctly", {
   # -------------------------------------------------------------- #
   # Using fit_marginal_0 (spike) and fit_marginal_1 (normal) which have meandif factors
   fit_spike_factors_null <- readRDS(file.path(temp_fits_dir, "fit_marginal_0.RDS"))
-  marglik_spike_factors_null <- readRDS(file.path(temp_fits_dir, "fit_marginal_0_marglik.RDS"))
+  marglik_spike_factors_null <- readRDS(file.path(temp_marglik_dir, "fit_marginal_0.RDS"))
 
   fit_spike_factors_alt <- readRDS(file.path(temp_fits_dir, "fit_marginal_1.RDS"))
-  marglik_spike_factors_alt <- readRDS(file.path(temp_fits_dir, "fit_marginal_1_marglik.RDS"))
+  marglik_spike_factors_alt <- readRDS(file.path(temp_marglik_dir, "fit_marginal_1.RDS"))
 
   models_spike_factors <- list(
     list(fit = fit_spike_factors_null, marglik = marglik_spike_factors_null, prior_weights = 1, fit_summary = runjags_estimates_table(fit_spike_factors_null)),

@@ -95,7 +95,7 @@ Use pattern: `fit_{category}_{descriptor}` (e.g., `fit_simple_normal`, `fit_form
 **Model Registry**: `test-00-model-fits.R` maintains a registry of all fitted models in `model_registry.RDS`. Other test files should load this registry to discover available models rather than hardcoding model names:
 
 ```r
-registry_file <- file.path(temp_fits_dir, "model_registry.RDS")
+registry_file <- file.path(test_files_dir, "model_registry.RDS")
 model_registry <- readRDS(registry_file)
 model_names <- model_registry$model_name
 ```
@@ -198,7 +198,7 @@ test_that("multivariate sampling works", {
 ### Important Notes
 
 1. **`common-functions.R` does NOT call `skip_on_cran()`** - each test file manages its own skip conditions
-2. **`skip_if_no_fits()`** checks for `model_registry.RDS` in `temp_fits_dir` - use this for any test that loads pre-fitted models
+2. **`skip_if_no_fits()`** checks for `model_registry.RDS` in `test_files_dir` - use this for any test that loads pre-fitted models
 3. **`skip_on_os()`** should ONLY be used for tests involving multivariate priors (meandif, orthonormal) where RNG differs across platforms
 4. **Pure R tests** (e.g., `test-priors-print.R`, `test-tools-input.R`) should have NO file-level skips and can run on CRAN
 ```

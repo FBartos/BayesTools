@@ -36,10 +36,10 @@ test_that("ensemble_estimates_table handles matrix posteriors", {
 
   # Load fits with margliks for creating mixed posteriors
   fit_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
-  marglik_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0_marglik.RDS"))
+  marglik_summary0 <- readRDS(file.path(temp_marglik_dir, "fit_summary0.RDS"))
 
   fit_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1.RDS"))
-  marglik_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1_marglik.RDS"))
+  marglik_summary1 <- readRDS(file.path(temp_marglik_dir, "fit_summary1.RDS"))
 
   models <- list(
     list(fit = fit_summary0, marglik = marglik_summary0, prior_weights = 1),
@@ -82,10 +82,10 @@ test_that("ensemble_estimates_table handles transform_factors", {
 
   # Load orthonormal models with marginal likelihoods
   fit_orthonormal_0 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_0.RDS"))
-  marglik_orthonormal_0 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_0_marglik.RDS"))
+  marglik_orthonormal_0 <- readRDS(file.path(temp_marglik_dir, "fit_orthonormal_0.RDS"))
 
   fit_orthonormal_1 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_1.RDS"))
-  marglik_orthonormal_1 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_1_marglik.RDS"))
+  marglik_orthonormal_1 <- readRDS(file.path(temp_marglik_dir, "fit_orthonormal_1.RDS"))
 
   models <- list(
     list(fit = fit_orthonormal_0, marglik = marglik_orthonormal_0, prior_weights = 1),
@@ -124,10 +124,10 @@ test_that("ensemble_estimates_table handles formula posteriors", {
 
   # Use orthonormal models (have formulas and marginal likelihoods)
   fit_formula <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_0.RDS"))
-  marglik_formula <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_0_marglik.RDS"))
+  marglik_formula <- readRDS(file.path(temp_marglik_dir, "fit_orthonormal_0.RDS"))
 
   fit_formula2 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_1.RDS"))
-  marglik_formula2 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_1_marglik.RDS"))
+  marglik_formula2 <- readRDS(file.path(temp_marglik_dir, "fit_orthonormal_1.RDS"))
 
   models <- list(
     list(fit = fit_formula, marglik = marglik_formula, prior_weights = 1),
@@ -180,10 +180,10 @@ test_that("ensemble_inference_table handles multiple parameters", {
   skip_if_no_fits()
 
   fit_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
-  marglik_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0_marglik.RDS"))
+  marglik_summary0 <- readRDS(file.path(temp_marglik_dir, "fit_summary0.RDS"))
 
   fit_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1.RDS"))
-  marglik_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1_marglik.RDS"))
+  marglik_summary1 <- readRDS(file.path(temp_marglik_dir, "fit_summary1.RDS"))
 
   models <- list(
     list(fit = fit_summary0, marglik = marglik_summary0, prior_weights = 1),
@@ -226,10 +226,10 @@ test_that("ensemble_summary_table handles different model configurations", {
 
   # Use models with and without spike-at-zero to test remove_spike_0
   fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
-  marglik_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal_marglik.RDS"))
+  marglik_simple_normal <- readRDS(file.path(temp_marglik_dir, "fit_simple_normal.RDS"))
 
   fit_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike.RDS"))
-  marglik_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike_marglik.RDS"))
+  marglik_simple_spike <- readRDS(file.path(temp_marglik_dir, "fit_simple_spike.RDS"))
 
   models <- list(
     list(fit = fit_simple_normal, marglik = marglik_simple_normal, prior_weights = 1, fit_summary = runjags_estimates_table(fit_simple_normal)),
@@ -263,10 +263,10 @@ test_that("ensemble_summary_table handles parameters as list", {
   skip_if_no_fits()
 
   fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
-  marglik_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal_marglik.RDS"))
+  marglik_simple_normal <- readRDS(file.path(temp_marglik_dir, "fit_simple_normal.RDS"))
 
   fit_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike.RDS"))
-  marglik_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike_marglik.RDS"))
+  marglik_simple_spike <- readRDS(file.path(temp_marglik_dir, "fit_simple_spike.RDS"))
 
   models <- list(
     list(fit = fit_simple_normal, marglik = marglik_simple_normal, prior_weights = 1, fit_summary = runjags_estimates_table(fit_simple_normal)),
@@ -290,10 +290,10 @@ test_that("ensemble_diagnostics_table handles different configurations", {
 
   # Use models with and without spike-at-zero to test remove_spike_0
   fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
-  marglik_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal_marglik.RDS"))
+  marglik_simple_normal <- readRDS(file.path(temp_marglik_dir, "fit_simple_normal.RDS"))
 
   fit_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike.RDS"))
-  marglik_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike_marglik.RDS"))
+  marglik_simple_spike <- readRDS(file.path(temp_marglik_dir, "fit_simple_spike.RDS"))
 
   models <- list(
     list(fit = fit_simple_normal, marglik = marglik_simple_normal, prior_weights = 1, fit_summary = runjags_estimates_table(fit_simple_normal)),
@@ -384,7 +384,7 @@ test_that("model_summary_table handles various configurations", {
 
   # Use model with spike-at-zero to test remove_spike_0
   fit_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike.RDS"))
-  marglik_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike_marglik.RDS"))
+  marglik_simple_spike <- readRDS(file.path(temp_marglik_dir, "fit_simple_spike.RDS"))
 
   model <- list(
     fit = fit_simple_spike,
@@ -420,10 +420,10 @@ test_that("update.BayesTools_table works correctly", {
   skip_if_no_fits()
 
   fit_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
-  marglik_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0_marglik.RDS"))
+  marglik_summary0 <- readRDS(file.path(temp_marglik_dir, "fit_summary0.RDS"))
 
   fit_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1.RDS"))
-  marglik_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1_marglik.RDS"))
+  marglik_summary1 <- readRDS(file.path(temp_marglik_dir, "fit_summary1.RDS"))
 
   models <- list(
     list(fit = fit_summary0, marglik = marglik_summary0, prior_weights = 1, fit_summary = runjags_estimates_table(fit_summary0)),

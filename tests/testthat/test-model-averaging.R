@@ -215,10 +215,10 @@ test_that("mix_posteriors handles various prior types correctly", {
 
   # Load fits with margliks
   fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
-  marglik_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal_marglik.RDS"))
+  marglik_simple_normal <- readRDS(file.path(temp_marglik_dir, "fit_simple_normal.RDS"))
 
   fit_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike.RDS"))
-  marglik_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike_marglik.RDS"))
+  marglik_simple_spike <- readRDS(file.path(temp_marglik_dir, "fit_simple_spike.RDS"))
 
   # Create model list for simple priors
   models_simple <- list(
@@ -269,13 +269,13 @@ test_that("mix_posteriors handles weightfunction priors", {
 
   # Load summary models which have weightfunction priors
   fit_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
-  marglik_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0_marglik.RDS"))
+  marglik_summary0 <- readRDS(file.path(temp_marglik_dir, "fit_summary0.RDS"))
 
   fit_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1.RDS"))
-  marglik_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1_marglik.RDS"))
+  marglik_summary1 <- readRDS(file.path(temp_marglik_dir, "fit_summary1.RDS"))
 
   fit_summary2 <- readRDS(file.path(temp_fits_dir, "fit_summary2.RDS"))
-  marglik_summary2 <- readRDS(file.path(temp_fits_dir, "fit_summary2_marglik.RDS"))
+  marglik_summary2 <- readRDS(file.path(temp_marglik_dir, "fit_summary2.RDS"))
 
   models_wf <- list(
     list(fit = fit_summary0, marglik = marglik_summary0, prior_weights = 1),
@@ -303,10 +303,10 @@ test_that("mix_posteriors handles factor priors", {
 
   # Load the orthonormal factor models (have both factor priors and marginal likelihoods)
   fit_orthonormal_0 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_0.RDS"))
-  marglik_orthonormal_0 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_0_marglik.RDS"))
+  marglik_orthonormal_0 <- readRDS(file.path(temp_marglik_dir, "fit_orthonormal_0.RDS"))
 
   fit_orthonormal_1 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_1.RDS"))
-  marglik_orthonormal_1 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_1_marglik.RDS"))
+  marglik_orthonormal_1 <- readRDS(file.path(temp_marglik_dir, "fit_orthonormal_1.RDS"))
 
   # Create model list with two different models
   models_factor <- list(
@@ -379,10 +379,10 @@ test_that("ensemble_inference handles different configurations", {
 
   # Load fits with margliks
   fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
-  marglik_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal_marglik.RDS"))
+  marglik_simple_normal <- readRDS(file.path(temp_marglik_dir, "fit_simple_normal.RDS"))
 
   fit_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike.RDS"))
-  marglik_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike_marglik.RDS"))
+  marglik_simple_spike <- readRDS(file.path(temp_marglik_dir, "fit_simple_spike.RDS"))
 
   models <- list(
     list(fit = fit_simple_normal, marglik = marglik_simple_normal, prior_weights = 1),
@@ -434,10 +434,10 @@ test_that("models_inference computes correctly", {
 
   # Load fits with margliks
   fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
-  marglik_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal_marglik.RDS"))
+  marglik_simple_normal <- readRDS(file.path(temp_marglik_dir, "fit_simple_normal.RDS"))
 
   fit_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike.RDS"))
-  marglik_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike_marglik.RDS"))
+  marglik_simple_spike <- readRDS(file.path(temp_marglik_dir, "fit_simple_spike.RDS"))
 
   models <- list(
     list(fit = fit_simple_normal, marglik = marglik_simple_normal, prior_weights = 1),

@@ -29,59 +29,12 @@
 skip_on_cran()
 skip_if_not_installed("rjags")
 
-# Setup directory for saving fitted models
-temp_fits_dir <- file.path(tempdir(), "BayesTools_test_fits")
-dir.create(temp_fits_dir, showWarnings = FALSE, recursive = TRUE)
-# Set environment variable so other test files can locate pre-fitted models
-Sys.setenv(BAYESTOOLS_TEST_FITS_DIR = temp_fits_dir)
+# Load common test helpers
+source(testthat::test_path("common-functions.R"))
+skip_refit_if_cached()
 
 # Initialize model registry to track metadata about each fitted model
 model_registry <- list()
-
-# Helper function to save fitted models and register metadata
-save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_priors = FALSE,
-                     factor_priors = FALSE, pub_bias_priors = FALSE,
-                     weightfunction_priors = FALSE, spike_and_slab_priors = FALSE,
-                     mixture_priors = FALSE, formulas = FALSE,
-                     random_effects = FALSE, interactions = FALSE,
-                     expression_priors = FALSE, multi_formula = FALSE,
-                     autofit = FALSE, parallel = FALSE, thinning = FALSE,
-                     add_parameters = FALSE, note = "") {
-  saveRDS(fit, file = file.path(temp_fits_dir, paste0(name, ".RDS")))
-
-  # Save marglik if provided
-  if (!is.null(marglik)) {
-    saveRDS(marglik, file = file.path(temp_fits_dir, paste0(name, "_marglik.RDS")))
-  }
-
-  # Return model metadata entry for registry
-  list(
-    fit = fit,
-    marglik = marglik,
-    registry_entry = data.frame(
-      model_name = name,
-      has_marglik = !is.null(marglik),
-      simple_priors = simple_priors,
-      vector_priors = vector_priors,
-      factor_priors = factor_priors,
-      pub_bias_priors = pub_bias_priors,
-      weightfunction_priors = weightfunction_priors,
-      spike_and_slab_priors = spike_and_slab_priors,
-      mixture_priors = mixture_priors,
-      formulas = formulas,
-      random_effects = random_effects,
-      interactions = interactions,
-      expression_priors = expression_priors,
-      multi_formula = multi_formula,
-      autofit = autofit,
-      parallel = parallel,
-      thinning = thinning,
-      add_parameters = add_parameters,
-      note = note,
-      stringsAsFactors = FALSE
-    )
-  )
-}
 
 # ============================================================================ #
 # SECTION 1: SIMPLE PRIOR DISTRIBUTIONS
@@ -202,12 +155,6 @@ test_that("Simple prior models fit correctly", {
                      note = "Simple normal prior with thinning parameter (thin=3)")
   model_registry[["fit_simple_thin"]] <<- result$registry_entry
   fit_simple_thin <- result$fit
-
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_simple_normal.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_simple_spike.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_simple_various.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_simple_pub_bias.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_simple_thin.RDS")))
 })
 
 
@@ -317,11 +264,6 @@ test_that("Summary tables models fit correctly", {
                      note = "Model for summary tables with fixed weightfunction")
   model_registry[["fit_summary3"]] <<- result$registry_entry
   fit_summary3 <- result$fit
-
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_summary0.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_summary1.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_summary2.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_summary3.RDS")))
 })
 
 
@@ -376,10 +318,6 @@ test_that("Vector prior models fit correctly", {
                      note = "Multivariate t prior with df=5 (K=2)")
   model_registry[["fit_vector_mt"]] <<- result$registry_entry
   fit_vector_mt <- result$fit
-
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_vector_mnormal.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_vector_mcauchy.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_vector_mt.RDS")))
 })
 
 
@@ -454,11 +392,6 @@ test_that("Factor prior models fit correctly", {
                      note = "Meandif contrast with 3 levels")
   model_registry[["fit_factor_meandif"]] <<- result$registry_entry
   fit_factor_meandif <- result$fit
-
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_factor_orthonormal.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_factor_treatment.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_factor_independent.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_factor_meandif.RDS")))
 })
 
 
@@ -528,11 +461,6 @@ test_that("Weightfunction prior models fit correctly", {
                      note = "One-sided fixed weightfunction (weights: 1, .5)")
   model_registry[["fit_weightfunction_fixed"]] <<- result$registry_entry
   fit_weightfunction_fixed <- result$fit
-
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_weightfunction_onesided2.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_weightfunction_onesided3.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_weightfunction_twosided.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_weightfunction_fixed.RDS")))
 })
 
 
@@ -581,9 +509,6 @@ test_that("Spike-and-slab prior models fit correctly", {
                      note = "Spike-and-slab with orthonormal factor prior (3 levels) as alternative")
   model_registry[["fit_spike_slab_factor"]] <<- result$registry_entry
   fit_spike_slab_factor <- result$fit
-
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_spike_slab_simple.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_spike_slab_factor.RDS")))
 })
 
 
@@ -656,10 +581,6 @@ test_that("Mixture prior models fit correctly", {
                      note = "Mixture containing spike prior at value 2")
   model_registry[["fit_mixture_spike"]] <<- result$registry_entry
   fit_mixture_spike <- result$fit
-
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_mixture_simple.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_mixture_components.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_mixture_spike.RDS")))
 })
 
 
@@ -785,10 +706,6 @@ test_that("Simple formula-based regression models fit correctly", {
                      note = "Regression with continuous predictor and 3-level orthonormal factor")
   model_registry[["fit_formula_orthonormal"]] <<- result$registry_entry
   fit_formula_orthonormal <- result$fit
-
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_formula_simple.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_formula_treatment.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_formula_orthonormal.RDS")))
 })
 
 
@@ -1052,11 +969,6 @@ test_that("Formula-based interaction models fit correctly", {
                      note = "Regression with mixture prior on 3-level treatment factor (spike vs normal)")
   model_registry[["fit_formula_factor_mixture"]] <<- result$registry_entry
   fit_formula_factor_mixture <- result$fit
-
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_formula_interaction_cont.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_formula_interaction_mix.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_formula_interaction_fac.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_formula_factor_mixture.RDS")))
 })
 
 
@@ -1120,8 +1032,6 @@ test_that("Multi-formula models fit correctly", {
                      note = "Two formulas: mu (continuous) and sigma_exp (meandif factor)")
   model_registry[["fit_formula_multi"]] <<- result$registry_entry
   fit_formula_multi <- result$fit
-
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_formula_multi.RDS")))
 })
 
 
@@ -1265,14 +1175,6 @@ test_that("Random effects models fit correctly", {
                      note = "Random factor slopes with random intercept")
   model_registry[["fit_random_factor_slope3"]] <<- result$registry_entry
   fit_random_factor_slope3 <- result$fit
-
-
-
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_random_intercept.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_random_slope.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_random_factor_slope.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_random_factor_slope2.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_random_factor_slope3.RDS")))
 })
 
 
@@ -1325,12 +1227,6 @@ test_that("Spike factor prior models fit correctly", {
                      note = "Spike priors with all 4 contrast types: independent, orthonormal, treatment, meandif")
   model_registry[["fit_spike_factors"]] <<- result$registry_entry
   fit_spike_factors <- result$fit
-
-  # NOTE: fit_spike_factors_null and fit_spike_factors_alt have been removed
-  # because they are now replaced by fit_marginal_0 and fit_marginal_1
-  # (which have the same meandif factor structure plus additional features)
-
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_spike_factors.RDS")))
 })
 
 
@@ -1410,8 +1306,6 @@ test_that("Joint complex models fit correctly", {
                      note = "Complex model: mixture intercept, mixture sigma, spike-and-slab continuous, spike-and-slab factor")
   model_registry[["fit_joint_complex"]] <<- result$registry_entry
   fit_joint_complex <- result$fit
-
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_joint_complex.RDS")))
 })
 
 
@@ -1474,10 +1368,6 @@ test_that("Expression prior models fit correctly", {
                      note = "Mixture prior with expression in one component")
   model_registry[["fit_expression_mixture"]] <<- result$registry_entry
   fit_expression_mixture <- result$fit
-
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_expression_simple.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_expression_spike_slab.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_expression_mixture.RDS")))
 })
 
 
@@ -1621,12 +1511,6 @@ test_that("Advanced JAGS_fit features work correctly", {
   # Verify the fit worked and has the expected structure
   expect_equal(length(fit_parallel$mcmc), 2) # 2 chains
   expect_true(all(sapply(fit_parallel$mcmc, function(mcmc) ncol(mcmc) == 2))) # m and s
-
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_add_parameters.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_no_autofit.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_autofit_error.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_autofit_ess.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_parallel.RDS")))
 })
 
 
@@ -1765,12 +1649,6 @@ test_that("Marginal distribution models fit correctly", {
                      note = "Marginal dist model: spike-and-slab and mixture priors with interaction and multiply_by")
   model_registry[["fit_marginal_ss"]] <<- result$registry_entry
   fit_marginal_ss <- result$fit
-
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_marginal_0.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_marginal_1.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_marginal_ss.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_marginal_0_marglik.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_marginal_1_marglik.RDS")))
 })
 
 
@@ -1814,10 +1692,6 @@ test_that("PET-PEESE models fit correctly", {
   marglik_missing <- JAGS_bridgesampling(fit_missing, log_posterior = log_posterior, data = data, prior_list = priors_missing)
   result <- save_fit(fit_missing, "fit_missing", marglik = marglik_missing, simple_priors = TRUE, note = "Overwhelming missing model")
   model_registry[["fit_missing"]] <<- result$registry_entry
-
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_pet.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_peese.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_missing.RDS")))
 })
 
 test_that("Weightfunction models fit correctly", {
@@ -1855,10 +1729,6 @@ test_that("Weightfunction models fit correctly", {
   marglik_wf_missing <- JAGS_bridgesampling(fit_wf_missing, log_posterior = log_posterior, data = data, prior_list = priors_wf_missing)
   result <- save_fit(fit_wf_missing, "fit_wf_missing", marglik = marglik_wf_missing, simple_priors = TRUE, note = "Overwhelming missing model for WF")
   model_registry[["fit_wf_missing"]] <<- result$registry_entry
-
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_wf_onesided.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_wf_twosided.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_wf_missing.RDS")))
 })
 
 test_that("Orthonormal contrast models fit correctly", {
@@ -1922,9 +1792,6 @@ test_that("Orthonormal contrast models fit correctly", {
     formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1)
   result <- save_fit(fit_orthonormal_1, "fit_orthonormal_1", marglik = marglik_orthonormal_1, formulas = TRUE, factor_priors = TRUE, note = "Orthonormal alternative model")
   model_registry[["fit_orthonormal_1"]] <<- result$registry_entry
-
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_orthonormal_0.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_orthonormal_1.RDS")))
 })
 
 
@@ -2059,8 +1926,6 @@ test_that("Complex models for plotting fit correctly", {
                      note = "Simple formula model with continuous, orthonormal factor, and meandif factor")
   model_registry[["fit_simple_formula_mixed"]] <<- result$registry_entry
   fit_simple_formula_mixed <- result$fit
-
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_simple_formula_mixed.RDS")))
 })
 
 # ============================================================================ #
@@ -2097,8 +1962,6 @@ test_that("Complex models for plotting fit correctly", {
                      note = "Model with complex publication bias mixture prior")
   model_registry[["fit_complex_bias"]] <<- result$registry_entry
   fit_complex_bias <- result$fit
-
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_complex_bias.RDS")))
 })
 
 
@@ -2207,9 +2070,6 @@ test_that("Dual parameter regression with log(intercept) and formula_scale fits 
   expect_true("mu_x_mu" %in% colnames(fit_dual_param_regression$mcmc[[1]]))
   expect_true("log_sigma_intercept" %in% colnames(fit_dual_param_regression$mcmc[[1]]))
   expect_true("log_sigma_x_sigma" %in% colnames(fit_dual_param_regression$mcmc[[1]]))
-
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_dual_param_regression.RDS")))
-  expect_true(file.exists(file.path(temp_fits_dir, "fit_dual_param_regression_marglik.RDS")))
 })
 
 
@@ -2226,7 +2086,7 @@ test_that("Model registry is created and saved", {
   rownames(model_registry_df) <- NULL
 
   # Save the registry alongside the fitted models
-  registry_file <- file.path(temp_fits_dir, "model_registry.RDS")
+  registry_file <- file.path(test_files_dir, "model_registry.RDS")
   saveRDS(model_registry_df, registry_file)
 
   # Verify registry was created

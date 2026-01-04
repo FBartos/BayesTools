@@ -193,7 +193,7 @@ test_that("Summary tables for all saved models", {
   runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
 
   # Load model registry to get list of all fitted models
-  registry_file <- file.path(temp_fits_dir, "model_registry.RDS")
+  registry_file <- file.path(test_files_dir, "model_registry.RDS")
 
   model_registry <- readRDS(registry_file)
   model_names <- model_registry$model_name
@@ -202,7 +202,7 @@ test_that("Summary tables for all saved models", {
 
   for (model_name in model_names) {
     fit_file <- file.path(temp_fits_dir, paste0(model_name, ".RDS"))
-    marglik_file <- file.path(temp_fits_dir, paste0(model_name, "_marglik.RDS"))
+    marglik_file <- file.path(temp_marglik_dir, paste0(model_name, ".RDS"))
 
     fit <- readRDS(fit_file)
     has_marglik <- file.exists(marglik_file)
