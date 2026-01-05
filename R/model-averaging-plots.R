@@ -15,7 +15,7 @@
 plot_prior_list <- function(prior_list, plot_type = "base",
                             x_seq = NULL, xlim = NULL, x_range_quant = NULL, n_points = 500,
                             n_samples = 10000, force_samples = FALSE,
-                            individual = FALSE, show_parameter = if(individual) 1 else NULL,
+                            individual = FALSE, show_figures = if(individual) 1 else NULL,
                             transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
                             rescale_x = FALSE, par_name = NULL, prior_list_mu = NULL, ...){
 
@@ -25,7 +25,6 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     stop("'prior_list' must be a list of priors.")
   check_char(plot_type, "plot_type", allow_values = c("base", "ggplot"))
   check_bool(individual, "individual")
-  check_int(show_parameter, "show_parameter", allow_NULL = TRUE)
   check_bool(rescale_x, "rescale_x")
   check_int(show_figures, "show_figures", allow_NULL = TRUE)
   # check that there is no mixing of PET-PEESE and weightfunctions
@@ -47,7 +46,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   }
 
-  if(prior_type == "PETPEESE"){
+  if(prior_type == "PETPEESE" && !individual){
     check_list(prior_list_mu, "prior_list_mu", check_length = length(prior_list))
     if(is.prior(prior_list_mu) | !all(sapply(prior_list_mu, is.prior)))
       stop("'prior_list_mu' must be a list of priors (priors for the mu parameter are required for plotting PET-PEESE).")
@@ -713,7 +712,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 #' @export
 lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_points = 500,
                              n_samples = 10000, force_samples = FALSE,
-                             individual = FALSE, show_parameter = if(individual) 1 else NULL,
+                             individual = FALSE, show_figures = if(individual) 1 else NULL,
                              transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
                              rescale_x = FALSE, scale_y2 = NULL, prior_list_mu = NULL, ...){
 
@@ -723,7 +722,7 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
     stop("'prior_list' must be a list of priors.")
   check_bool(individual, "individual")
   check_bool(rescale_x, "rescale_x")
-  check_int(show_parameter, "show_parameter", allow_NULL = TRUE)
+  check_int(show_figures, "show_figures", allow_NULL = TRUE)
   check_real(scale_y2, "scale_y2", lower = 0, allow_NULL = TRUE)
 
 
@@ -811,7 +810,7 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
 #' @export
 geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_points = 500,
                              n_samples = 10000, force_samples = FALSE,
-                             individual = FALSE, show_parameter = if(individual) 1 else NULL,
+                             individual = FALSE, show_figures = if(individual) 1 else NULL,
                              transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
                              rescale_x = FALSE, scale_y2 = NULL, prior_list_mu = NULL, ...){
 
@@ -821,7 +820,7 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
     stop("'prior_list' must be a list of priors.")
   check_bool(individual, "individual")
   check_bool(rescale_x, "rescale_x")
-  check_int(show_parameter, "show_parameter", allow_NULL = TRUE)
+  check_int(show_figures, "show_figures", allow_NULL = TRUE)
   check_real(scale_y2, "scale_y2", lower = 0, allow_NULL = TRUE)
 
 
@@ -935,24 +934,30 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   # deal with bad parameter names for PET-PEESE, weightfunction
   if(tolower(gsub("-", "", gsub("_", "", gsub(".", "", parameter, fixed = TRUE),fixed = TRUE), fixed = TRUE)) %in% c("weightfunction", "weigthfunction", "omega")){
     parameter <- "omega"
-  }else if(tolower(gsub("-", "", gsub("_", "", gsub(".", "", parameter, fixed = TRUE),fixed = TRUE), fixed = TRUE)) %in% c("pet", "peese", "petpeese")){
+  }else if(tolower(gsub("-", "", gsub("_", "", gsub(".", "", parameter, fixed = TRUE),fixed = TRUE), fixed = TRUE)) %in% "petpeese"){
     parameter <- "PETPEESE"
+  }else if(tolower(gsub("-", "", gsub("_", "", gsub(".", "", parameter, fixed = TRUE),fixed = TRUE), fixed = TRUE)) %in% "pet"){
+    parameter <- "PET"
+  }else if(tolower(gsub("-", "", gsub("_", "", gsub(".", "", parameter, fixed = TRUE),fixed = TRUE), fixed = TRUE)) %in% "peese"){
+    parameter <- "PEESE"
   }
 
   # get the plotting range
   dots <- list(...)
   xlim <- dots[["xlim"]]
   if(is.null(xlim)){
-    if(parameter %in% c("omega", "PETPEESE") & !individual){
-      xlim      <- c(0, 1)
+    if(parameter %in% c("PET", "PEESE", "PETPEESE") & !individual){
+      xlim <- c(0, 1)
+    }else if(parameter == "omega"){
+      xlim <- c(0, 1)
     }else{
       # use the data range otherwise
-      xlim   <- NULL
+      xlim <- NULL
     }
   }
 
 
-  if(parameter == "omega" && !individual){
+  if(is.element(parameter, "omega") && !individual){
     # special dispatching for visualizing the whole weightfunction
 
     plot_data <- .plot_data_samples.weightfunction(samples, x_seq = NULL, x_range = xlim, x_range_quant = NULL, n_points = n_points)
@@ -1003,7 +1008,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
     }
 
-  }else if(parameter == "PETPEESE" && !individual){
+  }else if(is.element(parameter, c("PET", "PEESE", "PETPEESE")) && !individual){
     # special dispatching for visualizing the PET-PEESE regression
 
     plot_data <- .plot_data_samples.PETPEESE(samples, x_seq = NULL, x_range = xlim, x_range_quant = NULL, n_points = n_points,
@@ -1012,28 +1017,45 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     # add priors, if requested
     if(prior){
 
-      if(is.null(samples[["mu"]]))
-        stop("'mu' samples are required for plotting PET-PEESE.")
-      prior_list_mu   <- attr(samples[["mu"]],   "prior_list")
+      if(is.null(samples[["mu"]]) && is.null(samples[["mu_intercept"]]))
+        stop("'mu' or 'mu_intercept' samples are required for plotting PET-PEESE.")
 
-      # TODO: a bit of a hack - removing priors that were added as a fill for sampling
-      if(!is.null(samples[["PET"]]) & !is.null(samples[["PEESE"]])){
-        prior_list_PET   <- attr(samples[["PET"]],   "prior_list")
-        prior_list_PEESE <- attr(samples[["PEESE"]], "prior_list")
-        prior_fill       <- seq_along(prior_list_PET)[!sapply(prior_list_PET, is.prior.PET) & !sapply(prior_list_PEESE, is.prior.PEESE)]
-        prior_list       <- c(prior_list_PET[sapply(prior_list_PET, is.prior.PET)], prior_list_PEESE[sapply(prior_list_PEESE, is.prior.PEESE)],
-                              prior_list_PET[prior_fill])
-        prior_list_mu    <- prior_list_mu[c(c(1:length(prior_list_mu))[sapply(prior_list_PET, is.prior.PET)], c(1:length(prior_list_mu))[sapply(prior_list_PEESE, is.prior.PEESE)], c(1:length(prior_list_mu))[prior_fill])]
-      }else if(is.null(samples[["PET"]]) & !is.null(samples[["PEESE"]])){
-        prior_list <- attr(samples[["PEESE"]], "prior_list")
-      }else if(!is.null(samples[["PET"]]) & is.null(samples[["PEESE"]])){
-        prior_list <- attr(samples[["PET"]], "prior_list")
-      }else{
-        stop("Either PET or PEESE samples need to be provided.")
+      if(!is.null(samples[["mu"]])){
+        prior_list_mu <- attr(samples[["mu"]], "prior_list")
+      }else if(!is.null(samples[["mu_intercept"]])){
+        prior_list_mu <- attr(samples[["mu_intercept"]], "prior_list")
+      }
+
+      if (is.null(samples[["bias"]])){
+        # TODO: a bit of a hack - removing priors that were added as a fill for sampling
+        if(!is.null(samples[["PET"]]) & !is.null(samples[["PEESE"]])){
+          prior_list_PET   <- attr(samples[["PET"]],   "prior_list")
+          prior_list_PEESE <- attr(samples[["PEESE"]], "prior_list")
+          prior_fill       <- seq_along(prior_list_PET)[!sapply(prior_list_PET, is.prior.PET) & !sapply(prior_list_PEESE, is.prior.PEESE)]
+          prior_list       <- c(prior_list_PET[sapply(prior_list_PET, is.prior.PET)], prior_list_PEESE[sapply(prior_list_PEESE, is.prior.PEESE)],
+                                prior_list_PET[prior_fill])
+          prior_list_mu    <- prior_list_mu[c(c(1:length(prior_list_mu))[sapply(prior_list_PET, is.prior.PET)], c(1:length(prior_list_mu))[sapply(prior_list_PEESE, is.prior.PEESE)], c(1:length(prior_list_mu))[prior_fill])]
+        }else if(is.null(samples[["PET"]]) & !is.null(samples[["PEESE"]])){
+          prior_list <- attr(samples[["PEESE"]], "prior_list")
+        }else if(!is.null(samples[["PET"]]) & is.null(samples[["PEESE"]])){
+          prior_list <- attr(samples[["PET"]], "prior_list")
+        }else{
+          stop("Either PET or PEESE samples need to be provided.")
+        }
+      } else {
+        prior_list <- attr(samples[["bias"]], "prior_list")
+        prior_list <- prior_list[sapply(prior_list, \(x) is.prior.PET(x) || is.prior.PEESE(x) || is.prior.none(x) || is.prior.point(x))]
+
+        # make cross product of the mixture priors
+        priors_grid <- expand.grid(
+          "mu" = prior_list_mu,
+          "PP" = prior_list
+        )
+        prior_list_mu <- priors_grid[["mu"]]
+        prior_list    <- priors_grid[["PP"]]
       }
 
       # cannot simplify prior_list - it would break the dependency with mu
-
       plot_data_prior <- .plot_data_prior_list.PETPEESE(prior_list, x_seq = NULL, x_range = xlim, x_range_quant = NULL,
                                                   n_points = n_points, n_samples = n_samples,
                                                   transformation = transformation, transformation_arguments = transformation_arguments,
@@ -1074,10 +1096,15 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
 
   }else{
-    # regular prior distributions (or individual plots for parameters from weightfunctions/PET-PEESE)
+    # regular prior distributions (or individual plots for parameters PET-PEESE)
 
+    # bias plot parameters require special extraction
+    if (is.element(parameter, c("PET", "PEESE", "PETPEESE", "omega")) && !is.null(samples[["bias"]]) && inherits(samples[["bias"]], "mixed_posteriors.bias")) {
+      samples <- .simplify_as_mixed_posterior_bias(samples, parameter)
+    }
     prior_list  <- attr(samples[[parameter]], "prior_list")
     prior_list  <- .simplify_prior_list(prior_list)
+
 
     if(any(sapply(prior_list, is.prior.factor))){
       plot_data <- .plot_data_samples.factor(samples, parameter = parameter, n_points = n_points,
@@ -1323,21 +1350,38 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 .plot_data_samples.PETPEESE       <- function(samples, x_seq, x_range, x_range_quant, n_points, transformation, transformation_arguments, transformation_settings){
 
   check_list(samples, "samples")
+  if (is.null(samples[["mu"]]) && is.null(samples[["mu_intercept"]]))
+    stop("'mu' or 'mu_intercept' samples need to be present.")
 
-  if(is.null(samples[["PET"]]) & is.null(samples[["PEESE"]]))
-    stop("At least one 'PET' or 'PEESE' model needs to be specified.")
-  if(is.null(samples[["mu"]]))
-    stop("'mu' samples need to be present.")
+  if (!is.null(samples[["bias"]])) {
 
-  # get the samples
-  if(!is.null(samples[["PET"]]) & !is.null(samples[["PEESE"]])){
-    if(!all(attr(samples[["PET"]], "models_ind") == attr(samples[["PEESE"]], "models_ind")))
-      stop("non-matching dimensions")
-    samples <- cbind(samples[["mu"]], samples[["PET"]], samples[["PEESE"]])
-  }else if(is.null(samples[["PET"]])){
-    samples <- cbind(samples[["mu"]], rep(0, length(samples[["PEESE"]])), samples[["PEESE"]])
-  }else if(is.null(samples[["PEESE"]])){
-    samples <- cbind(samples[["mu"]], samples[["PET"]], rep(0, length(samples[["PET"]])))
+    if(length(c("PET", "PEESE") %in% samples[["bias"]]) == 0)
+      stop("At least one 'PET' or 'PEESE' model needs to be specified.")
+
+    # create mu-PET-PEESE samples matrix
+    new_samples <- matrix(if(!is.null(samples[["mu"]])) samples[["mu"]] else samples[["mu_intercept"]], ncol = 1)
+    for (par in c("PET", "PEESE")) {
+      if (is.element(par, colnames(samples[["bias"]]))) {
+        new_samples <- cbind(new_samples, samples[["bias"]][,par])
+      } else {
+        new_samples <- cbind(new_samples, 0)
+      }
+    }
+
+  } else {
+
+    if(is.null(samples[["PET"]]) & is.null(samples[["PEESE"]]))
+      stop("At least one 'PET' or 'PEESE' model needs to be specified.")
+
+    # create mu-PET-PEESE samples matrix
+    new_samples <- matrix(if(!is.null(samples[["mu"]])) samples[["mu"]] else samples[["mu_intercept"]], ncol = 1)
+    for (par in c("PET", "PEESE")) {
+      if (!is.null(samples[[par]])) {
+        new_samples <- cbind(new_samples, samples[[par]])
+      } else {
+        new_samples <- cbind(new_samples, 0)
+      }
+    }
   }
 
   # get the plotting range
@@ -1350,9 +1394,9 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
 
   # compute PET-PEESE (mu + PET*se + PEESE*se^2)
-  x_sam  <- matrix(samples[,1], nrow = length(samples), ncol = length(x_seq)) +
-    matrix(samples[,2], nrow = length(samples), ncol = length(x_seq)) * matrix(x_seq, nrow = length(samples), ncol = length(x_seq), byrow = TRUE) +
-    matrix(samples[,3], nrow = length(samples), ncol = length(x_seq)) * matrix(x_seq^2, nrow = length(samples), ncol = length(x_seq), byrow = TRUE)
+  x_sam  <- matrix(new_samples[,1], nrow = length(new_samples), ncol = length(x_seq)) +
+    matrix(new_samples[,2], nrow = length(new_samples), ncol = length(x_seq)) * matrix(x_seq,   nrow = length(new_samples), ncol = length(x_seq), byrow = TRUE) +
+    matrix(new_samples[,3], nrow = length(new_samples), ncol = length(x_seq)) * matrix(x_seq^2, nrow = length(new_samples), ncol = length(x_seq), byrow = TRUE)
 
   # transform the parameter if requested
   if(!is.null(transformation)){
@@ -1951,7 +1995,7 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
   return(plot)
 }
 
-.simplify_spike_samples <- function(samples, prior_list){
+.simplify_spike_samples           <- function(samples, prior_list){
 
   # Check if we're dealing with spike_and_slab or mixture (which are single priors) vs list of priors
   is_spike_and_slab <- is.prior.spike_and_slab(prior_list)
@@ -2011,7 +2055,50 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
 
   return(spike_probability)
 }
+.simplify_as_mixed_posterior_bias <- function(samples, parameter) {
 
+  ### replace all remaining priors by null prior
+  prior_list <- attr(samples[["bias"]], "prior_list")
+  if (parameter == "PET") {
+    prior_ind <- which(sapply(prior_list, \(x) !is.prior.PET(x)))
+  } else if (parameter == "PEESE") {
+    prior_ind <- which(sapply(prior_list, \(x) !is.prior.PEESE(x)))
+  } else if (parameter == "omega") {
+    prior_ind <- which(sapply(prior_list, \(x) !is.prior.weightfunction(x)))
+  }
+  if (length(prior_ind) > 0) {
+    for (i in prior_ind) {
+      temp_weight     <- prior_list[[i]][["prior_weights"]]
+      prior_list[[i]] <- if (parameter == "omega") prior_none() else prior("point", parameters = list(0))
+      prior_list[[i]][["prior_weights"]] <- temp_weight
+    }
+  }
+
+  ### create new samples
+  new_samples <- samples[["bias"]][, grepl(parameter, colnames(samples[["bias"]])),drop=FALSE]
+
+  ### store attribute
+  std_attrs  <- c("dim", "dimnames", "names", "prior_list", "mcpar")
+  all_attrs  <- attributes(samples[["bias"]])
+  to_restore <- setdiff(names(all_attrs), std_attrs)
+
+  ### re-assign attributes
+  for (a in to_restore) {
+    attr(new_samples, a) <- all_attrs[[a]]
+  }
+
+  # remove `mixed_posteriors.bias` class
+  class(new_samples) <- class(new_samples)[!class(new_samples) %in% "mixed_posteriors.bias"]
+
+  ### assign prior list and model indicator
+  attr(new_samples, "prior_list") <- prior_list
+
+  ### remove the old samples & store new samples
+  samples[["bias"]]    <- NULL
+  samples[[parameter]] <- new_samples
+
+  return(samples)
+}
 
 #' @title Plot samples from the marginal posterior distributions
 #'

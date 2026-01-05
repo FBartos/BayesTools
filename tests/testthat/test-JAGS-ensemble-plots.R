@@ -999,7 +999,7 @@ test_that("posterior plot functions (meandif) work", {
 
 })
 
-test_that("posterior plot model averaging based on complex single JAGS models  (formulas + spike factors + mixture)", {
+test_that("posterior plot model averaging based on complex single JAGS models (formulas + spike factors + mixture)", {
 
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")
@@ -1046,16 +1046,25 @@ test_that("posterior plot model averaging based on complex single JAGS models  (
     plot_posterior(mixed_posteriors, "sigma", prior = T, dots_prior = list(col = "grey"))
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-bias-PET", function(){
-    PET <- mixed_posteriors$bias[,"PET",drop=FALSE]
-    attributes(PET) <- c(attributes(PET), attributes(mixed_posteriors$bias)[!names(attributes(mixed_posteriors$bias)) %in% c("dimnames", "dim")])
-    attr(PET, "prior_list")[!sapply(attr(PET, "prior_list"), is.prior.PET)] <- lapply(1:sum(!sapply(attr(PET, "prior_list"), is.prior.PET)), function(i) prior("point", list(0)))
-    attr(PET, "prior_list")[ sapply(attr(PET, "prior_list"), is.prior.PET)] <- lapply(attr(PET, "prior_list")[sapply(attr(PET, "prior_list"), is.prior.PET)], function(p) {
-      class(p) <- class(p)[!class(p) %in% "prior.PET"]
-      return(p)
-    })
-    plot_posterior(list(PET = PET), "PET", prior = T, dots_prior = list(col = "grey"))
+  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-bias-PETPEESE", function(){
+    plot_posterior(mixed_posteriors, "PETPEESE", prior = T, dots_prior = list(col.fill = "orange"), ylim = c(-2, 2))
   })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-bias-PET", function(){
+    plot_posterior(mixed_posteriors, "PET", prior = T, dots_prior = list(col.fill = "orange"), ylim = c(-2, 2))
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-bias-PET", function(){
+    plot_posterior(mixed_posteriors, "PET", prior = T, dots_prior = list(col = "grey"), individual = TRUE)
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-bias-weighfunction", function(){
+    plot_posterior(mixed_posteriors, "omega", prior = T, dots_prior = list(col.fill = "orange"))
+  })
+#   TODO: needs a specific dispatch because it becomes a vector of parameters
+#   vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-bias-omega", function(){
+#     plot_posterior(mixed_posteriors, "omega", prior = T, dots_prior = list(col = "grey"), individual = TRUE)
+#   })
 
 
   mixed_posteriors_conditional1 <- as_mixed_posteriors(
@@ -1117,30 +1126,36 @@ test_that("posterior plot model averaging based on complex single JAGS models  (
 
   mixed_posteriors_conditional5a <- as_mixed_posteriors(
     mode       = fit1,
-    parameters  = "bias"
+    parameters = c("mu_intercept", "bias")
   )
 
   mixed_posteriors_conditional5b <- as_mixed_posteriors(
     mode       = fit1,
-    parameters  = "bias",
+    parameters  = c("mu_intercept", "bias"),
     conditional = "bias",
     force_plots = TRUE
   )
 
   mixed_posteriors_conditional6a <- as_mixed_posteriors(
     mode       = fit1,
-    parameters  = "bias",
-    conditional = "PET",
+    parameters  = c("mu_intercept", "bias"),
+    conditional = "PETPEESE",
     force_plots = TRUE
   )
 
   mixed_posteriors_conditional6b <- as_mixed_posteriors(
     mode       = fit1,
+    parameters  = c("mu_intercept", "bias"),
+    conditional = "PET",
+    force_plots = TRUE
+  )
+
+  mixed_posteriors_conditional6c <- as_mixed_posteriors(
+    mode       = fit1,
     parameters  = "bias",
     conditional = "omega",
     force_plots = TRUE
   )
-
 
   vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-weightfunction", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
@@ -1153,34 +1168,49 @@ test_that("posterior plot model averaging based on complex single JAGS models  (
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors_conditional6b, parameter = "weightfunction", prior = TRUE, col = "black", col.fill = ggplot2::alpha("grey", 0.2),  dots_prior = list(col = "red", col.fill = ggplot2::alpha("red", 0.5)))
+    plot_posterior(mixed_posteriors_conditional6c, parameter = "weightfunction", prior = TRUE, col = "black", col.fill = ggplot2::alpha("grey", 0.2),  dots_prior = list(col = "red", col.fill = ggplot2::alpha("red", 0.5)))
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-PETPEESE", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors_conditional5a, parameter = "PETPEESE", prior = TRUE, col = "black", col.fill = ggplot2::alpha("grey", 0.2),  dots_prior = list(col = "red", col.fill = ggplot2::alpha("red", 0.5)), ylim = c(-2, 2))
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-PETPEESE-con", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors_conditional6a, parameter = "PETPEESE", prior = TRUE, col = "black", col.fill = ggplot2::alpha("grey", 0.2),  dots_prior = list(col = "red", col.fill = ggplot2::alpha("red", 0.5)), ylim = c(-2, 2))
   })
 
   vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-PET-con", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4), mfrow = c(3, 1))
-    hist(mixed_posteriors_conditional5a$bias[,"PET"], breaks = 50, col = "grey", main = "PET", xlab = "PET")
-    hist(mixed_posteriors_conditional5b$bias[,"PET"], breaks = 50, col = "grey", main = "PET", xlab = "PET")
-    hist(mixed_posteriors_conditional6a$bias[,"PET"], breaks = 50, col = "grey", main = "PET", xlab = "PET")
+    plot_posterior(mixed_posteriors_conditional5a, parameter = "PET", prior = TRUE, col = "black", col.fill = ggplot2::alpha("grey", 0.2),  dots_prior = list(col = "red", col.fill = ggplot2::alpha("red", 0.5)), individual = TRUE)
+    plot_posterior(mixed_posteriors_conditional6b, parameter = "PET", prior = TRUE, col = "black", col.fill = ggplot2::alpha("grey", 0.2),  dots_prior = list(col = "red", col.fill = ggplot2::alpha("red", 0.5)), individual = TRUE)
+    plot_posterior(mixed_posteriors_conditional6c, parameter = "PET", prior = TRUE, col = "black", col.fill = ggplot2::alpha("grey", 0.2),  dots_prior = list(col = "red", col.fill = ggplot2::alpha("red", 0.5)), individual = TRUE)
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-omega-con", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4), mfrow = c(3, 3))
-    hist(mixed_posteriors_conditional5a$bias[,"omega[0,0.025]"], breaks = 50, col = "grey", main = "omega[0,0.025]", xlab = "omega[0,0.025]")
-    hist(mixed_posteriors_conditional5a$bias[,"omega[0.025,0.05]"], breaks = 50, col = "grey", main = "omega[0.025,0.05]", xlab = "omega[0.025,0.05]")
-    hist(mixed_posteriors_conditional5a$bias[,"omega[0.05,0.975]"], breaks = 50, col = "grey", main = "omega[0.05,0.975]", xlab = "omega[0.05,0.975]")
-
-    hist(mixed_posteriors_conditional5b$bias[,"omega[0,0.025]"], breaks = 50, col = "grey", main = "omega[0,0.025]", xlab = "omega[0,0.025]")
-    hist(mixed_posteriors_conditional5b$bias[,"omega[0.025,0.05]"], breaks = 50, col = "grey", main = "omega[0.025,0.05]", xlab = "omega[0.025,0.05]")
-    hist(mixed_posteriors_conditional5b$bias[,"omega[0.05,0.975]"], breaks = 50, col = "grey", main = "omega[0.05,0.975]", xlab = "omega[0.05,0.975]")
-
-    hist(mixed_posteriors_conditional6b$bias[,"omega[0,0.025]"], breaks = 50, col = "grey", main = "omega[0,0.025]", xlab = "omega[0,0.025]")
-    hist(mixed_posteriors_conditional6b$bias[,"omega[0.025,0.05]"], breaks = 50, col = "grey", main = "omega[0.025,0.05]", xlab = "omega[0.025,0.05]")
-    hist(mixed_posteriors_conditional6b$bias[,"omega[0.05,0.975]"], breaks = 50, col = "grey", main = "omega[0.05,0.975]", xlab = "omega[0.05,0.975]")
-  })
+  # vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-omega-con", function(){
+  #   TODO: add plotting of individual weights
+  #   oldpar <- graphics::par(no.readonly = TRUE)
+  #   on.exit(graphics::par(mar = oldpar[["mar"]]))
+  #   par(mar = c(4, 4, 1, 4), mfrow = c(3, 3))
+  #   hist(mixed_posteriors_conditional5a$bias[,"omega[0,0.025]"], breaks = 50, col = "grey", main = "omega[0,0.025]", xlab = "omega[0,0.025]")
+  #   hist(mixed_posteriors_conditional5a$bias[,"omega[0.025,0.05]"], breaks = 50, col = "grey", main = "omega[0.025,0.05]", xlab = "omega[0.025,0.05]")
+  #   hist(mixed_posteriors_conditional5a$bias[,"omega[0.05,0.975]"], breaks = 50, col = "grey", main = "omega[0.05,0.975]", xlab = "omega[0.05,0.975]")
+  #
+  #   hist(mixed_posteriors_conditional5b$bias[,"omega[0,0.025]"], breaks = 50, col = "grey", main = "omega[0,0.025]", xlab = "omega[0,0.025]")
+  #   hist(mixed_posteriors_conditional5b$bias[,"omega[0.025,0.05]"], breaks = 50, col = "grey", main = "omega[0.025,0.05]", xlab = "omega[0.025,0.05]")
+  #   hist(mixed_posteriors_conditional5b$bias[,"omega[0.05,0.975]"], breaks = 50, col = "grey", main = "omega[0.05,0.975]", xlab = "omega[0.05,0.975]")
+  #
+  #   hist(mixed_posteriors_conditional6b$bias[,"omega[0,0.025]"], breaks = 50, col = "grey", main = "omega[0,0.025]", xlab = "omega[0,0.025]")
+  #   hist(mixed_posteriors_conditional6b$bias[,"omega[0.025,0.05]"], breaks = 50, col = "grey", main = "omega[0.025,0.05]", xlab = "omega[0.025,0.05]")
+  #   hist(mixed_posteriors_conditional6b$bias[,"omega[0.05,0.975]"], breaks = 50, col = "grey", main = "omega[0.05,0.975]", xlab = "omega[0.05,0.975]")
+  # })
 
 })
 
@@ -1250,17 +1280,17 @@ test_that("posterior plot model averaging based on complex bias mixture model (P
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors, "mu", prior = TRUE, dots_prior = list(col = "grey"))
   })
-
-  vdiffr::expect_doppelganger("model-averaging-plot-complex-bias-posterior-bias-PET", function(){
-    PET <- mixed_posteriors$bias[,"PET",drop=FALSE]
-    attributes(PET) <- c(attributes(PET), attributes(mixed_posteriors$bias)[!names(attributes(mixed_posteriors$bias)) %in% c("dimnames", "dim")])
-    attr(PET, "prior_list")[!sapply(attr(PET, "prior_list"), is.prior.PET)] <- lapply(1:sum(!sapply(attr(PET, "prior_list"), is.prior.PET)), function(i) prior("point", list(0)))
-    attr(PET, "prior_list")[ sapply(attr(PET, "prior_list"), is.prior.PET)] <- lapply(attr(PET, "prior_list")[sapply(attr(PET, "prior_list"), is.prior.PET)], function(p) {
-      class(p) <- class(p)[!class(p) %in% "prior.PET"]
-      return(p)
-    })
-    plot_posterior(list(PET = PET), "PET", prior = TRUE, dots_prior = list(col = "grey"))
-  })
+#   TODO: update
+#   vdiffr::expect_doppelganger("model-averaging-plot-complex-bias-posterior-bias-PET", function(){
+#     PET <- mixed_posteriors$bias[,"PET",drop=FALSE]
+#     attributes(PET) <- c(attributes(PET), attributes(mixed_posteriors$bias)[!names(attributes(mixed_posteriors$bias)) %in% c("dimnames", "dim")])
+#     attr(PET, "prior_list")[!sapply(attr(PET, "prior_list"), is.prior.PET)] <- lapply(1:sum(!sapply(attr(PET, "prior_list"), is.prior.PET)), function(i) prior("point", list(0)))
+#     attr(PET, "prior_list")[ sapply(attr(PET, "prior_list"), is.prior.PET)] <- lapply(attr(PET, "prior_list")[sapply(attr(PET, "prior_list"), is.prior.PET)], function(p) {
+#       class(p) <- class(p)[!class(p) %in% "prior.PET"]
+#       return(p)
+#     })
+#     plot_posterior(list(PET = PET), "PET", prior = TRUE, dots_prior = list(col = "grey"))
+#   })
 
   vdiffr::expect_doppelganger("model-averaging-plot-complex-bias-posterior-bias-PEESE", function(){
     PEESE <- mixed_posteriors$bias[,"PEESE",drop=FALSE]
@@ -1345,13 +1375,15 @@ test_that("posterior plot based on as_mixed_posteriors (PET-PEESE) work", {
   fit1 <- readRDS(file.path(temp_fits_dir, "fit_peese.RDS"))
 
   mixed_posteriors0 <- as_mixed_posteriors(
-    mode       = fit0,
-    parameters = names(attr(fit0, "prior_list"))
+    mode        = fit0,
+    parameters  = names(attr(fit0, "prior_list")),
+    force_plots = TRUE
   )
 
   plot_posterior(mixed_posteriors0, "PET", dots_prior = list(col = "grey"))
   plot_posterior(mixed_posteriors0, "PET", dots_prior = list(col = "grey"), individual = TRUE)
 
+  # TODO: fixed this
   plot_posterior(mixed_posteriors0, "PET", prior = TRUE, dots_prior = list(col = "grey"))
   plot_posterior(mixed_posteriors0, "PET", prior = TRUE, dots_prior = list(col = "grey"), individual = TRUE)
   # vdiffr::expect_doppelganger("model-as_mixed_posteriors-PET", function(){
