@@ -26,6 +26,7 @@ Sys.setenv(BAYESTOOLS_TEST_FILES_DIR = test_files_dir)
 # ============================================================================ #
 # HELPER FUNCTIONS: Reference File Testing
 # ============================================================================ #
+require("runjags")
 
 # Process reference file: save if GENERATE_REFERENCE_FILES=TRUE, test otherwise
 test_reference_table <- function(table, filename, info_msg = NULL,

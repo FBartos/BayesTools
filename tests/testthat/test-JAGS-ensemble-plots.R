@@ -1336,8 +1336,24 @@ test_that("posterior plot model averaging based on complex bias mixture model (P
 
 })
 
-
-
-
+# test_that("posterior plot based on as_mixed_posteriors (PET-PEESE) work", {
+#
+#   skip_if_not_installed("rjags")
+#   skip_if_not_installed("bridgesampling")
+#
+#   fit0 <- readRDS(file.path(temp_fits_dir, "fit_pet.RDS"))
+#   fit1 <- readRDS(file.path(temp_fits_dir, "fit_peese.RDS"))
+#
+#   mixed_posteriors0 <- as_mixed_posteriors(
+#     mode       = fit0,
+#     parameters = names(attr(fit0, "prior_list"))
+#   )
+#
+#
+#   vdiffr::expect_doppelganger("model-as_mixed_posteriors-PET", function(){
+#     plot_posterior(mixed_posteriors0, "PET", prior = TRUE, dots_prior = list(col = "grey"))
+#   })
+# })
+#
 
 
