@@ -926,7 +926,8 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
                            rescale_x = FALSE, par_name = NULL, dots_prior = list(), ...){
 
   # TODO: add plots for individual parameters for weightfunction and PET-PEESE
-  individual = FALSE
+  # but these seem to be already possible to a degree?
+  individual   = FALSE
   show_figures = if(individual) 1 else NULL
 
   # check input
