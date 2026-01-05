@@ -12,6 +12,8 @@ plot_posterior(
   n_points = 1000,
   n_samples = 10000,
   force_samples = FALSE,
+  individual = FALSE,
+  show_figures = if (individual) 1 else NULL,
   transformation = NULL,
   transformation_arguments = NULL,
   transformation_settings = FALSE,
@@ -45,6 +47,13 @@ analytically (or if samples are forced with
 
 \item{force_samples}{should prior be sampled instead
 of obtaining analytic solution whenever possible}
+
+\item{individual}{should individual densities be returned
+(e.g., in case of weightfunction)}
+
+\item{show_figures}{which figures should be returned in case of
+multiple plots are generated. Useful when priors for the omega
+parameter are plotted and \code{individual = TRUE}.}
 
 \item{transformation}{transformation to be applied
 to the prior distribution. Either a character
