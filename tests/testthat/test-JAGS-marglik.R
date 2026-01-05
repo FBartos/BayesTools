@@ -23,6 +23,7 @@
 
 # Load common test helpers
 source(testthat::test_path("common-functions.R"))
+skip_refit_if_cached("JAGS-marglik")
 
 # This file tests the JAGS marginal likelihood computation functions
 # It uses simple models where the log marginal likelihood is known to be 0

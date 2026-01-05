@@ -15,12 +15,9 @@
 plot_prior_list <- function(prior_list, plot_type = "base",
                             x_seq = NULL, xlim = NULL, x_range_quant = NULL, n_points = 500,
                             n_samples = 10000, force_samples = FALSE,
+                            individual = FALSE, show_parameter = if(individual) 1 else NULL,
                             transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
                             rescale_x = FALSE, par_name = NULL, prior_list_mu = NULL, ...){
-
-  # TODO: add plots for individual parameters for weightfunction and PET-PEESE
-  individual = FALSE
-  show_figures = if(individual) 1 else NULL
 
   # check input (most arguments are checked within density)
   check_list(prior_list, "prior_list")
@@ -28,6 +25,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     stop("'prior_list' must be a list of priors.")
   check_char(plot_type, "plot_type", allow_values = c("base", "ggplot"))
   check_bool(individual, "individual")
+  check_int(show_parameter, "show_parameter", allow_NULL = TRUE)
   check_bool(rescale_x, "rescale_x")
   check_int(show_figures, "show_figures", allow_NULL = TRUE)
   # check that there is no mixing of PET-PEESE and weightfunctions
@@ -71,14 +69,16 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
 
   # get the plotting data
-  if(prior_type == "weightfunction"){
+  if(prior_type == "weightfunction" && !individual){
+    # special dispatching for visualizing the whole weightfunction
 
     # use samples (not sure how to provide analytic solution for this yes)
     plot_data <- .plot_data_prior_list.weightfunction(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                                                       n_points = n_points, n_samples = n_samples)
     plot <- .plot.prior.weightfunction(prior_list, plot_type = plot_type, plot_data = plot_data, rescale_x = rescale_x, par_name = par_name, ...)
 
-  }else if(prior_type == "PETPEESE"){
+  }else if(prior_type == "PETPEESE" && !individual){
+    # special dispatching for visualizing the PET-PEESE regression
 
     # use samples (not sure how to provide analytic solution for this yes)
     plot_data <- .plot_data_prior_list.PETPEESE(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
@@ -88,6 +88,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     plot <- .plot.prior.PETPEESE(prior_list, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
 
   }else if(prior_type %in% c("simple", "orthonormal", "meandif")){
+    # regular prior distributions (or individual plots for parameters from weightfunctions/PET-PEESE)
 
     # solve analytically
     plot_data <- .plot_data_prior_list.simple(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
@@ -712,12 +713,9 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 #' @export
 lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_points = 500,
                              n_samples = 10000, force_samples = FALSE,
+                             individual = FALSE, show_parameter = if(individual) 1 else NULL,
                              transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
                              rescale_x = FALSE, scale_y2 = NULL, prior_list_mu = NULL, ...){
-
-  # TODO: add plots for individual parameters for weightfunction and PET-PEESE
-  individual = FALSE
-  show_parameter = if(individual) 1 else NULL
 
   # check input (most arguments are checked within density)
   check_list(prior_list, "prior_list")
@@ -813,12 +811,9 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
 #' @export
 geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_points = 500,
                              n_samples = 10000, force_samples = FALSE,
+                             individual = FALSE, show_parameter = if(individual) 1 else NULL,
                              transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
                              rescale_x = FALSE, scale_y2 = NULL, prior_list_mu = NULL, ...){
-
-  # TODO: add plots for individual parameters for weightfunction and PET-PEESE
-  individual = FALSE
-  show_parameter = if(individual) 1 else NULL
 
   # check input (most arguments are checked within density)
   check_list(prior_list, "prior_list")
@@ -922,13 +917,9 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
 #' @export
 plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE,
                            n_points = 1000, n_samples = 10000, force_samples = FALSE,
+                           individual   = FALSE, show_figures = if(individual) 1 else NULL,
                            transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
                            rescale_x = FALSE, par_name = NULL, dots_prior = list(), ...){
-
-  # TODO: add plots for individual parameters for weightfunction and PET-PEESE
-  # but these seem to be already possible to a degree?
-  individual   = FALSE
-  show_figures = if(individual) 1 else NULL
 
   # check input
   check_list(samples, "prior_list")
@@ -944,7 +935,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   # deal with bad parameter names for PET-PEESE, weightfunction
   if(tolower(gsub("-", "", gsub("_", "", gsub(".", "", parameter, fixed = TRUE),fixed = TRUE), fixed = TRUE)) %in% c("weightfunction", "weigthfunction", "omega")){
     parameter <- "omega"
-  }else if(tolower(gsub("-", "", gsub("_", "", gsub(".", "", parameter, fixed = TRUE),fixed = TRUE), fixed = TRUE)) == "petpeese"){
+  }else if(tolower(gsub("-", "", gsub("_", "", gsub(".", "", parameter, fixed = TRUE),fixed = TRUE), fixed = TRUE)) %in% c("pet", "peese", "petpeese")){
     parameter <- "PETPEESE"
   }
 
@@ -961,7 +952,8 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   }
 
 
-  if(parameter == "omega"){
+  if(parameter == "omega" && !individual){
+    # special dispatching for visualizing the whole weightfunction
 
     plot_data <- .plot_data_samples.weightfunction(samples, x_seq = NULL, x_range = xlim, x_range_quant = NULL, n_points = n_points)
 
@@ -1011,7 +1003,8 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
     }
 
-  }else if(parameter == "PETPEESE"){
+  }else if(parameter == "PETPEESE" && !individual){
+    # special dispatching for visualizing the PET-PEESE regression
 
     plot_data <- .plot_data_samples.PETPEESE(samples, x_seq = NULL, x_range = xlim, x_range_quant = NULL, n_points = n_points,
                                              transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings)
@@ -1081,6 +1074,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
 
   }else{
+    # regular prior distributions (or individual plots for parameters from weightfunctions/PET-PEESE)
 
     prior_list  <- attr(samples[[parameter]], "prior_list")
     prior_list  <- .simplify_prior_list(prior_list)

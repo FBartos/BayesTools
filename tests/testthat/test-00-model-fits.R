@@ -31,7 +31,7 @@ skip_if_not_installed("rjags")
 
 # Load common test helpers
 source(testthat::test_path("common-functions.R"))
-skip_refit_if_cached()
+skip_refit_if_cached("model-fit")
 
 # Initialize model registry to track metadata about each fitted model
 model_registry <- list()

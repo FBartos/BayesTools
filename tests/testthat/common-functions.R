@@ -14,9 +14,11 @@ if (test_files_dir == "" || !dir.exists(test_files_dir)) {
 # Setup directory for saving fitted models
 temp_fits_dir    <- file.path(test_files_dir, "fits")
 temp_marglik_dir <- file.path(test_files_dir, "margliks")
+temp_temp_dir    <- file.path(test_files_dir, "temp")
 
-if (!dir.exists(temp_fits_dir)) dir.create(temp_fits_dir, showWarnings = FALSE, recursive = TRUE)
+if (!dir.exists(temp_fits_dir))    dir.create(temp_fits_dir,    showWarnings = FALSE, recursive = TRUE)
 if (!dir.exists(temp_marglik_dir)) dir.create(temp_marglik_dir, showWarnings = FALSE, recursive = TRUE)
+if (!dir.exists(temp_temp_dir))    dir.create(temp_temp_dir,    showWarnings = FALSE, recursive = TRUE)
 
 # Set environment variable so other test files can locate pre-fitted models
 Sys.setenv(BAYESTOOLS_TEST_FILES_DIR = test_files_dir)
@@ -350,23 +352,39 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
 }
 
 # Skip model fitting if cached fits exist and ROBMA_TEST_SKIP_REFIT is TRUE
-skip_refit_if_cached <- function() {
+skip_refit_if_cached <- function(name) {
+  # refitting settings
   skip_refit <- Sys.getenv("BAYESTOOLS_TEST_SKIP_REFIT")
-  if (skip_refit != "" && as.logical(skip_refit) && length(list.files(temp_fits_dir)) > 0) {
+  skip_refit <- skip_refit != "" && as.logical(skip_refit)
+
+  # fitted indicator
+  fitted_indicator <- file.exists(file.path(temp_temp_dir, paste0(name, ".txt")))
+
+  if (skip_refit && fitted_indicator) {
     skip("Skipping model refitting: cached fits exist and BAYESTOOLS_TEST_SKIP_REFIT=TRUE.")
   }
+
+  # tests are not going to be skipped -- add fits done indicator into `temp_temp_dir`
+  file.create(file.path(temp_temp_dir, paste0(name, ".txt")))
 }
 
 # Clean cached fitted models and margliks
 clean_cached_fits <- function() {
 
-  # Remove all cached files from test directories
-  unlink(temp_fits_dir,    recursive = TRUE)
-  unlink(temp_marglik_dir, recursive = TRUE)
+  if (!missing(name)) {
+    # remove only the specific `name`` fitted indicator files side-effects from `temp_temp_dir`
+    file.remove(file.path(temp_temp_dir, paste0(name, ".txt")))
+  } else {
+    # Remove all cached files from test directories
+    unlink(temp_fits_dir,    recursive = TRUE)
+    unlink(temp_marglik_dir, recursive = TRUE)
+    unlink(temp_temp_dir,    recursive = TRUE)
 
-  # Recreate empty directories
-  dir.create(temp_fits_dir,    showWarnings = FALSE, recursive = TRUE)
-  dir.create(temp_marglik_dir, showWarnings = FALSE, recursive = TRUE)
+    # Recreate empty directories
+    dir.create(temp_fits_dir,    showWarnings = FALSE, recursive = TRUE)
+    dir.create(temp_marglik_dir, showWarnings = FALSE, recursive = TRUE)
+    dir.create(temp_temp_dir,    showWarnings = FALSE, recursive = TRUE)
+  }
 
   return(invisible(TRUE))
 }

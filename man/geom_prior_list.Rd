@@ -12,6 +12,8 @@ geom_prior_list(
   n_points = 500,
   n_samples = 10000,
   force_samples = FALSE,
+  individual = FALSE,
+  show_parameter = if (individual) 1 else NULL,
   transformation = NULL,
   transformation_arguments = NULL,
   transformation_settings = FALSE,
@@ -46,6 +48,9 @@ analytically (or if samples are forced with
 
 \item{force_samples}{should prior be sampled instead
 of obtaining analytic solution whenever possible}
+
+\item{individual}{should individual densities be returned
+(e.g., in case of weightfunction)}
 
 \item{transformation}{transformation to be applied
 to the prior distribution. Either a character
