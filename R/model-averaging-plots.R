@@ -427,6 +427,67 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   return(out)
 }
+.plot_data_prior_list.weightparameter<- function(prior_list, parameter, n_points, n_samples){
+
+  # join the same priors
+  prior_list <- .simplify_prior_list(prior_list)
+
+  prior_weights  <- sapply(prior_list, function(p)p$prior_weights)
+  mixing_prop    <- prior_weights / sum(prior_weights)
+
+  prior_list     <- prior_list[round(n_samples * mixing_prop) > 0]
+  mixing_prop    <- mixing_prop[round(n_samples * mixing_prop) > 0]
+
+  # replace non-weighfunctions from prior mixture
+  if(any(!c(sapply(prior_list, is.prior.weightfunction) | sapply(prior_list, is.prior.none)))){
+    for(i in seq_along(prior_list)){
+      if(!(is.prior.weightfunction(prior_list[[i]]) | is.prior.none(prior_list[[i]]))){
+        prior_list[[i]] <- prior_none(prior_weights = prior_weights[i])
+      }
+    }
+  }
+
+  # get the samples
+  samples_list <- list()
+  for(i in seq_along(prior_list)){
+    if(is.prior.weightfunction(prior_list[[i]])){
+      samples_list[[i]] <- rng(prior_list[[i]], round(n_samples * mixing_prop[i]))
+    }else{
+      samples_list[[i]] <- list()
+    }
+
+  }
+
+  # merge the samples
+  omega_mapping <- weightfunctions_mapping(prior_list)
+  omega_cuts    <- weightfunctions_mapping(prior_list, cuts_only = TRUE)
+
+  # join samples
+  samples    <- matrix(nrow = 0, ncol = length(omega_cuts) - 1)
+  models_ind <- NULL
+  for(i in seq_along(samples_list)){
+    if(is.prior.weightfunction(prior_list[[i]])){
+      samples    <- rbind(samples, samples_list[[i]][,omega_mapping[[i]]])
+      models_ind <- c(models_ind, rep(i, nrow(samples_list[[i]])))
+    }else{
+      samples    <- rbind(samples, matrix(1, ncol = length(omega_cuts) - 1, nrow = round(n_samples * mixing_prop[i])))
+      models_ind <- c(models_ind, rep(i,round(n_samples * mixing_prop[i])))
+    }
+  }
+
+  x_seq             <- omega_cuts
+  omega_names       <- sapply(1:(length(omega_cuts)-1), function(i)paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
+  colnames(samples) <- omega_names
+  attr(samples, "prior_list") <- prior_list
+  attr(samples, "models_ind") <- models_ind
+
+  samples <- list("omega" = samples)
+
+  # re-use the posterior function with prior samples
+  out <- .plot_data_samples.weightparameter(samples, parameter = parameter, n_points = n_points)
+
+  return(out)
+}
 .plot_data_prior_list.PETPEESE       <- function(prior_list, x_seq, x_range, x_range_quant, n_points, n_samples,
                                                  transformation, transformation_arguments, transformation_settings, prior_list_mu){
 
@@ -928,7 +989,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   check_char(plot_type, "plot_type", allow_values = c("base", "ggplot"))
   check_bool(individual, "individual")
   check_bool(rescale_x, "rescale_x")
-  check_int(show_figures, "show_figures", allow_NULL = TRUE)
+  check_int(show_figures, "show_figures", allow_NULL = TRUE, lower = 0)
   .check_transformation_input(transformation, transformation_arguments, transformation_settings)
 
   # deal with bad parameter names for PET-PEESE, weightfunction
@@ -957,55 +1018,162 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   }
 
 
-  if(is.element(parameter, "omega") && !individual){
-    # special dispatching for visualizing the whole weightfunction
+  if(is.element(parameter, "omega")){
 
-    plot_data <- .plot_data_samples.weightfunction(samples, x_seq = NULL, x_range = xlim, x_range_quant = NULL, n_points = n_points)
+    if (individual) {
 
-    # add priors, if requested
-    if(prior){
+      # bias plot parameters require special extraction
+      if (!is.null(samples[["bias"]]) && inherits(samples[["bias"]], "mixed_posteriors.bias")) {
+        samples <- .simplify_as_mixed_posterior_bias(samples, parameter)
+      }
+      prior_list  <- attr(samples[[parameter]], "prior_list")
+      prior_list  <- .simplify_prior_list(prior_list)
 
-      # extract the correct weightfunction samples
-      if(!is.null(samples[[parameter]])){
-        prior_list <- attr(samples[[parameter]], "prior_list")
-      }else if(!is.null(samples[["bias"]])){
-        prior_list <- attr(samples[["bias"]], "prior_list")
-      }else{
-        stop("No 'omega' or 'bias' samples found.")
+
+      # plot the individual weight parameters
+      out_list  <- list()
+      par_names <- colnames(samples[["omega"]])
+
+      if (!is.null(show_figures)) {
+        if (show_figures > length(par_names)) {
+          stop("'show_figures' corresponds to a number larger than the number of weight function parameters.")
+        } else {
+          par_names <- par_names[show_figures]
+        }
       }
 
-      prior_list      <- .simplify_prior_list(prior_list)
-      plot_data_prior <- .plot_data_prior_list.weightfunction(prior_list, x_seq = NULL, x_range = xlim, x_range_quant = NULL,
-                                                              n_points = n_points, n_samples = n_samples)
+      for (par in par_names) {
 
-      # transplant common xlim and ylim
-      plot_data_joined <- list(plot_data_prior, plot_data)
+        plot_data <- .plot_data_samples.weightparameter(samples, parameter = par, n_points = n_points)
 
-      xlim <- range(as.vector(sapply(plot_data_joined, attr, which = "x_range")))
-      ylim <- range(as.vector(sapply(plot_data_joined, attr, which = "y_range")))
-      attr(plot_data_prior, "x_range") <- xlim
-      attr(plot_data_prior, "y_range") <- ylim
-      dots_prior <- .transfer_dots(dots_prior, ...)
+        # add priors, if requested
+        if(prior){
 
-      args           <- dots_prior
-      args$x         <- prior_list
-      args$plot_data <- plot_data_prior
-      args$rescale_x <- rescale_x
-      args$plot_type <- plot_type
-      args$par_name  <- par_name
-      plot           <- do.call(.plot.prior.weightfunction, args)
+          plot_data_prior <- .plot_data_prior_list.weightparameter(prior_list, parameter = par_names, n_points = n_points, n_samples = n_samples)
 
-      if(plot_type == "ggplot"){
-        plot <- plot + .geom_prior.weightfunction(plot_data, rescale_x = rescale_x, ...)
-      }else{
-        .lines.prior.weightfunction(plot_data, rescale_x = rescale_x, ...)
+          # transplant common xlim and ylim
+          plot_data_joined <- c(plot_data_prior, plot_data)
+
+          xlim <- range(as.vector(sapply(plot_data_joined, attr, which = "x_range")))
+          attr(plot_data_prior[[1]], "x_range") <- xlim
+
+          if(any(sapply(plot_data_prior, inherits, what = "density.prior.simple")) & any(sapply(plot_data_prior, inherits, what = "density.prior.point"))){
+            ylim  <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.simple")], attr, which = "y_range")))
+            ylim2 <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.point")],  attr, which = "y_range")))
+            attr(plot_data_prior[[which.max(sapply(plot_data_prior, inherits, what = "density.prior.simple"))]], "y_range") <- ylim
+            attr(plot_data_prior[[which.max(sapply(plot_data_prior, inherits, what = "density.prior.point"))]],  "y_range") <- ylim2
+          }else if(any(sapply(plot_data_prior, inherits, what = "density.prior.simple"))){
+            ylim  <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.simple")], attr, which = "y_range")))
+            attr(plot_data_prior[[which.max(sapply(plot_data_prior, inherits, what = "density.prior.simple"))]], "y_range") <- ylim
+          }else if(any(sapply(plot_data_prior, inherits, what = "density.prior.point"))){
+            ylim  <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.point")],  attr, which = "y_range")))
+            attr(plot_data_prior[[which.max(sapply(plot_data_prior, inherits, what = "density.prior.point"))]], "y_range") <- ylim
+          }
+
+          scale_y2   <- .get_scale_y2(plot_data_prior, ...)
+          dots_prior <- .transfer_dots(dots_prior, ...)
+
+
+          # set the y/x ranges
+          for(i in seq_along(plot_data)){
+            if(inherits(plot_data[[i]], what = "density.prior.point")){
+              attr(plot_data[[i]], which = "y_range") <- if(any(sapply(plot_data_prior, inherits, what = "density.prior.simple")) & any(sapply(plot_data_prior, inherits, what = "density.prior.point"))) ylim2 else ylim
+            }else{
+              attr(plot_data[[i]], which = "y_range") <- ylim
+              attr(plot_data[[i]], which = "x_range") <- xlim
+            }
+          }
+
+          # plot prior
+          args_prior           <- dots_prior
+          args_prior$plot_data <- plot_data_prior
+          args_prior$plot_type <- plot_type
+          args_prior$par_name  <- par_name
+          args_prior$scale_y2  <- scale_y2
+
+          plot <- do.call(.plot_prior_list.both, args_prior)
+
+
+          # plot posterior
+          args           <- list(...)
+          args$plot_data <- plot_data
+          args$plot_type <- plot_type
+          args$par_name  <- par_name
+          args$scale_y2  <- scale_y2
+          args$add       <- TRUE
+
+          if(plot_type == "base"){
+            plot <- do.call(.plot_prior_list.both, args)
+          }else if(plot_type == "ggplot"){
+            plot <- plot + do.call(.plot_prior_list.both, args)
+            out_list[[par_name]] <- plot
+          }
+
+        }else{
+
+          # plot just posterior otherwise
+          plot <- .plot_prior_list.both(plot_data = plot_data, plot_type = plot_type, par_name = par_name, ...)
+          out_list[[par_name]] <- plot
+
+        }
       }
 
-    }else{
+      plot <- out_list
 
-      # plot just posterior otherwise
-      plot <- .plot.prior.weightfunction(NULL, plot_data = plot_data, plot_type = plot_type, rescale_x = rescale_x, par_name = par_name, ...)
 
+
+
+    } else {
+
+      # special dispatching for visualizing the whole weightfunction
+
+      plot_data <- .plot_data_samples.weightfunction(samples, x_seq = NULL, x_range = xlim, x_range_quant = NULL, n_points = n_points)
+
+      # add priors, if requested
+      if(prior){
+
+        # extract the correct weightfunction samples
+        if(!is.null(samples[[parameter]])){
+          prior_list <- attr(samples[[parameter]], "prior_list")
+        }else if(!is.null(samples[["bias"]])){
+          prior_list <- attr(samples[["bias"]], "prior_list")
+        }else{
+          stop("No 'omega' or 'bias' samples found.")
+        }
+
+        prior_list      <- .simplify_prior_list(prior_list)
+        plot_data_prior <- .plot_data_prior_list.weightfunction(prior_list, x_seq = NULL, x_range = xlim, x_range_quant = NULL,
+                                                                n_points = n_points, n_samples = n_samples)
+
+        # transplant common xlim and ylim
+        plot_data_joined <- list(plot_data_prior, plot_data)
+
+        xlim <- range(as.vector(sapply(plot_data_joined, attr, which = "x_range")))
+        ylim <- range(as.vector(sapply(plot_data_joined, attr, which = "y_range")))
+        attr(plot_data_prior, "x_range") <- xlim
+        attr(plot_data_prior, "y_range") <- ylim
+        dots_prior <- .transfer_dots(dots_prior, ...)
+
+        args           <- dots_prior
+        args$x         <- prior_list
+        args$plot_data <- plot_data_prior
+        args$rescale_x <- rescale_x
+        args$plot_type <- plot_type
+        args$par_name  <- par_name
+        plot           <- do.call(.plot.prior.weightfunction, args)
+
+        if(plot_type == "ggplot"){
+          plot <- plot + .geom_prior.weightfunction(plot_data, rescale_x = rescale_x, ...)
+        }else{
+          .lines.prior.weightfunction(plot_data, rescale_x = rescale_x, ...)
+        }
+
+      }else{
+
+        # plot just posterior otherwise
+        plot <- .plot.prior.weightfunction(NULL, plot_data = plot_data, plot_type = plot_type, rescale_x = rescale_x, par_name = par_name, ...)
+
+      }
     }
 
   }else if(is.element(parameter, c("PET", "PEESE", "PETPEESE")) && !individual){
@@ -1099,7 +1267,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     # regular prior distributions (or individual plots for parameters PET-PEESE)
 
     # bias plot parameters require special extraction
-    if (is.element(parameter, c("PET", "PEESE", "PETPEESE", "omega")) && !is.null(samples[["bias"]]) && inherits(samples[["bias"]], "mixed_posteriors.bias")) {
+    if (is.element(parameter, c("PET", "PEESE", "PETPEESE")) && !is.null(samples[["bias"]]) && inherits(samples[["bias"]], "mixed_posteriors.bias")) {
       samples <- .simplify_as_mixed_posterior_bias(samples, parameter)
     }
     prior_list  <- attr(samples[[parameter]], "prior_list")
@@ -1477,6 +1645,139 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   class(out) <- c("density", "density.prior", "density.prior.weightfunction")
   attr(out, "x_range") <- c(0, 1)
   attr(out, "y_range") <- c(0, 1)
+
+  return(out)
+}
+.plot_data_samples.weightparameter<- function(samples, parameter, n_points){
+
+  check_list(samples, "samples", check_names = "omega", allow_other = TRUE)
+  if(!is.null(samples[["omega"]])){
+    samples <- samples[["omega"]]
+  }else if(!is.null(samples[["bias"]])){
+    samples <- samples[["bias"]]
+  }else{
+    stop("No 'omega' or 'bias' samples found.")
+  }
+
+  x_points <- NULL
+  y_points <- NULL
+  x_den    <- NULL
+  y_den    <- NULL
+
+  # extract the relevant data
+  prior_list <- attr(samples, "prior_list")
+  models_ind <- attr(samples, "models_ind")
+  samples    <- samples[,parameter]
+  if (!(is.prior.mixture(prior_list) || is.prior.spike_and_slab(prior_list)) && is.prior(prior_list))
+    prior_list <- list(prior_list)
+
+  # replace prior_none with spike(1)
+  for (i in seq_along(prior_list)) {
+    if (is.prior.none(prior_list[[i]])) {
+      temp_weight <- prior_list[[i]][["prior_weights"]]
+      prior_list[[i]] <- prior("spike", parameter = list(1))
+      prior_list[[i]][["prior_weights"]] <- temp_weight
+    }
+  }
+
+  # deal with spikes
+  samples_is_1 <- abs(samples - 1) < 1e-6
+
+  if(any(samples_is_1)){
+    x_points <- 1
+    y_points <- mean(samples_is_1)
+
+    # remove the used samples so they are not re-used in density
+    # (since they might be forced to one even in non-null models due to cummulativness)
+    models_ind <- models_ind[!samples_is_1]
+    samples    <- samples[!samples_is_1]
+
+  }else{
+    x_points <- NULL
+    y_points <- NULL
+  }
+
+  # deal with the densities
+  if (!all(sapply(prior_list, \(x) is.prior.point(x) || is.prior.none(x)))) {
+
+    samples_density   <- samples[models_ind %in% which(!sapply(prior_list, is.prior.point))]
+
+    if(length(samples_density) > 0){
+
+      args <- list(x = samples_density, n = n_points)
+
+      # set the endpoints for possible truncation
+      prior_list_simple <- prior_list[!sapply(prior_list, is.prior.point)]
+      prior_list_simple_lower <- 0
+      prior_list_simple_upper <- 1
+
+      if(!is.infinite(prior_list_simple_lower)){
+        args <- c(args, from = prior_list_simple_lower)
+      }
+      if(!is.infinite(prior_list_simple_upper)){
+        args <- c(args, to = prior_list_simple_upper)
+      }
+
+      # get the density estimate
+      density_continuous <- do.call(stats::density, args)
+      x_den    <- density_continuous$x
+      y_den    <- density_continuous$y * (length(samples_density) / length(samples))
+
+      # check for truncation
+      if(isTRUE(all.equal(prior_list_simple_lower, x_den[1])) | prior_list_simple_lower >= x_den[1]){
+        y_den <- c(0, y_den)
+        x_den <- c(x_den[1], x_den)
+      }
+      if(isTRUE(all.equal(prior_list_simple_upper, x_den[length(x_den)])) | prior_list_simple_upper <= x_den[length(x_den)]){
+        y_den <- c(y_den, 0)
+        x_den <- c(x_den, x_den[length(x_den)])
+      }
+    }
+  }
+
+
+  # create the output object
+  out <- list()
+
+  # add continuous densities
+  if(!is.null(y_den)){
+    out_den    <- list(
+      call    = call("density", "mixed samples"),
+      bw      = NULL,
+      n       = n_points,
+      x       = x_den,
+      y       = y_den,
+      samples = samples_density
+    )
+
+    class(out_den) <- c("density", "density.prior", "density.prior.simple")
+    attr(out_den, "x_range") <- range(x_den)
+    attr(out_den, "y_range") <- c(0, max(y_den))
+    attr(out_den, "parameter") <- parameter
+
+    out[["density"]] <- out_den
+  }
+
+  # add spikes
+  if(!is.null(y_points)){
+    for(i in seq_along(y_points)){
+      temp_points <- list(
+        call    = call("density", paste0("point", i)),
+        bw      = NULL,
+        n       = n_points,
+        x       = x_points[i],
+        y       = y_points[i],
+        samples = NULL
+      )
+
+      class(temp_points) <- c("density", "density.prior", "density.prior.point")
+      attr(temp_points, "x_range") <- c(0, 1)
+      attr(temp_points, "y_range") <- c(0, max(y_points[i]))
+      attr(temp_points, "parameter") <- parameter
+
+      out[[paste0("points",i)]] <- temp_points
+    }
+  }
 
   return(out)
 }
