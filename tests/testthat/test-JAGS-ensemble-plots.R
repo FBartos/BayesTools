@@ -1061,10 +1061,16 @@ test_that("posterior plot model averaging based on complex single JAGS models (f
   vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-bias-weighfunction", function(){
     plot_posterior(mixed_posteriors, "omega", prior = T, dots_prior = list(col.fill = "orange"))
   })
-#   TODO: needs a specific dispatch because it becomes a vector of parameters
-#   vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-bias-omega", function(){
-#     plot_posterior(mixed_posteriors, "omega", prior = T, dots_prior = list(col = "grey"), individual = TRUE)
-#   })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-bias-omega", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4), mfrow = c(2, 2))
+    plot_posterior(mixed_posteriors, "omega", prior = T, dots_prior = list(col = "grey"), individual = TRUE, show_figures = 1)
+    plot_posterior(mixed_posteriors, "omega", prior = T, dots_prior = list(col = "grey"), individual = TRUE, show_figures = 2)
+    plot_posterior(mixed_posteriors, "omega", prior = T, dots_prior = list(col = "grey"), individual = TRUE, show_figures = 3)
+    plot_posterior(mixed_posteriors, "omega", prior = T, dots_prior = list(col = "grey"), individual = TRUE, show_figures = 4)
+  })
 
 
   mixed_posteriors_conditional1 <- as_mixed_posteriors(
@@ -1194,23 +1200,27 @@ test_that("posterior plot model averaging based on complex single JAGS models (f
     plot_posterior(mixed_posteriors_conditional6c, parameter = "PET", prior = TRUE, col = "black", col.fill = ggplot2::alpha("grey", 0.2),  dots_prior = list(col = "red", col.fill = ggplot2::alpha("red", 0.5)), individual = TRUE)
   })
 
-  # vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-omega-con", function(){
-  #   TODO: add plotting of individual weights
-  #   oldpar <- graphics::par(no.readonly = TRUE)
-  #   on.exit(graphics::par(mar = oldpar[["mar"]]))
-  #   par(mar = c(4, 4, 1, 4), mfrow = c(3, 3))
-  #   hist(mixed_posteriors_conditional5a$bias[,"omega[0,0.025]"], breaks = 50, col = "grey", main = "omega[0,0.025]", xlab = "omega[0,0.025]")
-  #   hist(mixed_posteriors_conditional5a$bias[,"omega[0.025,0.05]"], breaks = 50, col = "grey", main = "omega[0.025,0.05]", xlab = "omega[0.025,0.05]")
-  #   hist(mixed_posteriors_conditional5a$bias[,"omega[0.05,0.975]"], breaks = 50, col = "grey", main = "omega[0.05,0.975]", xlab = "omega[0.05,0.975]")
-  #
-  #   hist(mixed_posteriors_conditional5b$bias[,"omega[0,0.025]"], breaks = 50, col = "grey", main = "omega[0,0.025]", xlab = "omega[0,0.025]")
-  #   hist(mixed_posteriors_conditional5b$bias[,"omega[0.025,0.05]"], breaks = 50, col = "grey", main = "omega[0.025,0.05]", xlab = "omega[0.025,0.05]")
-  #   hist(mixed_posteriors_conditional5b$bias[,"omega[0.05,0.975]"], breaks = 50, col = "grey", main = "omega[0.05,0.975]", xlab = "omega[0.05,0.975]")
-  #
-  #   hist(mixed_posteriors_conditional6b$bias[,"omega[0,0.025]"], breaks = 50, col = "grey", main = "omega[0,0.025]", xlab = "omega[0,0.025]")
-  #   hist(mixed_posteriors_conditional6b$bias[,"omega[0.025,0.05]"], breaks = 50, col = "grey", main = "omega[0.025,0.05]", xlab = "omega[0.025,0.05]")
-  #   hist(mixed_posteriors_conditional6b$bias[,"omega[0.05,0.975]"], breaks = 50, col = "grey", main = "omega[0.05,0.975]", xlab = "omega[0.05,0.975]")
-  # })
+  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-omega-con", function(){
+
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4), mfrow = c(3, 4))
+    plot_posterior(mixed_posteriors_conditional5a, "omega", prior = T, dots_prior = list(col = "grey"), individual = TRUE, show_figures = 1)
+    plot_posterior(mixed_posteriors_conditional5a, "omega", prior = T, dots_prior = list(col = "grey"), individual = TRUE, show_figures = 2)
+    plot_posterior(mixed_posteriors_conditional5a, "omega", prior = T, dots_prior = list(col = "grey"), individual = TRUE, show_figures = 3)
+    plot_posterior(mixed_posteriors_conditional5a, "omega", prior = T, dots_prior = list(col = "grey"), individual = TRUE, show_figures = 4)
+
+    plot_posterior(mixed_posteriors_conditional5b, "omega", prior = T, dots_prior = list(col = "grey"), individual = TRUE, show_figures = 1)
+    plot_posterior(mixed_posteriors_conditional5b, "omega", prior = T, dots_prior = list(col = "grey"), individual = TRUE, show_figures = 2)
+    plot_posterior(mixed_posteriors_conditional5b, "omega", prior = T, dots_prior = list(col = "grey"), individual = TRUE, show_figures = 3)
+    plot_posterior(mixed_posteriors_conditional5b, "omega", prior = T, dots_prior = list(col = "grey"), individual = TRUE, show_figures = 4)
+
+    plot_posterior(mixed_posteriors_conditional6c, "omega", prior = T, dots_prior = list(col = "grey"), individual = TRUE, show_figures = 1)
+    plot_posterior(mixed_posteriors_conditional6c, "omega", prior = T, dots_prior = list(col = "grey"), individual = TRUE, show_figures = 2)
+    plot_posterior(mixed_posteriors_conditional6c, "omega", prior = T, dots_prior = list(col = "grey"), individual = TRUE, show_figures = 3)
+    plot_posterior(mixed_posteriors_conditional6c, "omega", prior = T, dots_prior = list(col = "grey"), individual = TRUE, show_figures = 4)
+
+  })
 
 })
 
