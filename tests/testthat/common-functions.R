@@ -95,65 +95,67 @@ STANDARD_LOG_POSTERIOR <- function(parameters, data) {
   return(0)
 }
 
-# Standard simple priors (commonly used across tests)
-STANDARD_PRIORS <- list(
-  normal          = prior("normal", list(0, 1)),
-  normal_trunc    = prior("normal", list(0, 1), list(0, Inf)),
-  lognormal       = prior("lognormal", list(0, 0.5)),
-  t               = prior("t", list(0, 0.5, 5)),
+if (isNamespaceLoaded("BayesTools")) {
 
-  cauchy          = prior("Cauchy", list(0, 1)),
-  cauchy_trunc    = prior("Cauchy", list(1, 0.1), list(-10, 0)),
-  gamma           = prior("gamma", list(2, 1)),
-  invgamma        = prior("invgamma", list(3, 2)),
-  invgamma_trunc  = prior("invgamma", list(3, 2), list(1, 3)),
-  exp             = prior("exp", list(1.5)),
-  beta            = prior("beta", list(3, 2)),
-  uniform         = prior("uniform", list(0, 1)),
-  spike           = prior("spike", list(0)),
-  PET             = prior_PET("normal", list(0, 1)),
-  PEESE           = prior_PEESE("gamma", list(1, 1))
-)
+  # Standard simple priors (commonly used across tests)
+  STANDARD_PRIORS <- list(
+    normal          = prior("normal", list(0, 1)),
+    normal_trunc    = prior("normal", list(0, 1), list(0, Inf)),
+    lognormal       = prior("lognormal", list(0, 0.5)),
+    t               = prior("t", list(0, 0.5, 5)),
 
-# Standard factor priors (for contrast testing)
-STANDARD_FACTOR_PRIORS <- list(
-  orthonormal     = prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "orthonormal"),
-  meandif         = prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "meandif"),
-  treatment       = prior_factor("normal", list(mean = 0, sd = 1), contrast = "treatment"),
-  independent     = prior_factor("normal", list(mean = 0, sd = 1), contrast = "independent"),
-  orth_cauchy     = prior_factor("mcauchy", list(location = 0, scale = 1), contrast = "orthonormal"),
-  orth_spike      = prior_factor("point", list(0), contrast = "orthonormal")
-)
+    cauchy          = prior("Cauchy", list(0, 1)),
+    cauchy_trunc    = prior("Cauchy", list(1, 0.1), list(-10, 0)),
+    gamma           = prior("gamma", list(2, 1)),
+    invgamma        = prior("invgamma", list(3, 2)),
+    invgamma_trunc  = prior("invgamma", list(3, 2), list(1, 3)),
+    exp             = prior("exp", list(1.5)),
+    beta            = prior("beta", list(3, 2)),
+    uniform         = prior("uniform", list(0, 1)),
+    spike           = prior("spike", list(0)),
+    PET             = prior_PET("normal", list(0, 1)),
+    PEESE           = prior_PEESE("gamma", list(1, 1))
+  )
 
-# Complete prior collections for comprehensive testing
-ALL_SIMPLE_PRIORS <- list(
-  p1    = prior("normal", list(0, 1)),
-  p2    = prior("normal", list(0, 1), list(1, Inf)),
-  p3    = prior("lognormal", list(0, 0.5)),
-  p4    = prior("t", list(0, 0.5, 5)),
-  p5    = prior("Cauchy", list(1, 0.1), list(-10, 0)),
-  p6    = prior("gamma", list(2, 1)),
-  p7    = prior("invgamma", list(3, 2), list(1, 3)),
-  p8    = prior("exp", list(1.5)),
-  p9    = prior("beta", list(3, 2)),
-  p10   = prior("uniform", list(1, 5)),
-  PET   = prior_PET("normal", list(0, 1)),
-  PEESE = prior_PEESE("gamma", list(1, 1))
-)
+  # Standard factor priors (for contrast testing)
+  STANDARD_FACTOR_PRIORS <- list(
+    orthonormal     = prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "orthonormal"),
+    meandif         = prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "meandif"),
+    treatment       = prior_factor("normal", list(mean = 0, sd = 1), contrast = "treatment"),
+    independent     = prior_factor("normal", list(mean = 0, sd = 1), contrast = "independent"),
+    orth_cauchy     = prior_factor("mcauchy", list(location = 0, scale = 1), contrast = "orthonormal"),
+    orth_spike      = prior_factor("point", list(0), contrast = "orthonormal")
+  )
 
-ALL_VECTOR_PRIORS <- list(
-  mnormal = prior("mnormal", list(mean = 0, sd = 1, K = 3)),
-  mcauchy = prior("mcauchy", list(location = 0, scale = 1.5, K = 2)),
-  mt      = prior("mt", list(location = 2, scale = 0.5, df = 5, K = 2))
-)
+  # Complete prior collections for comprehensive testing
+  ALL_SIMPLE_PRIORS <- list(
+    p1    = prior("normal", list(0, 1)),
+    p2    = prior("normal", list(0, 1), list(1, Inf)),
+    p3    = prior("lognormal", list(0, 0.5)),
+    p4    = prior("t", list(0, 0.5, 5)),
+    p5    = prior("Cauchy", list(1, 0.1), list(-10, 0)),
+    p6    = prior("gamma", list(2, 1)),
+    p7    = prior("invgamma", list(3, 2), list(1, 3)),
+    p8    = prior("exp", list(1.5)),
+    p9    = prior("beta", list(3, 2)),
+    p10   = prior("uniform", list(1, 5)),
+    PET   = prior_PET("normal", list(0, 1)),
+    PEESE = prior_PEESE("gamma", list(1, 1))
+  )
 
-ALL_FACTOR_PRIORS <- list(
-  orthonormal = prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "orthonormal"),
-  meandif     = prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "meandif"),
-  treatment   = prior_factor("normal", list(mean = 0, sd = 1), contrast = "treatment"),
-  independent = prior_factor("normal", list(mean = 0, sd = 1), contrast = "independent")
-)
+  ALL_VECTOR_PRIORS <- list(
+    mnormal = prior("mnormal", list(mean = 0, sd = 1, K = 3)),
+    mcauchy = prior("mcauchy", list(location = 0, scale = 1.5, K = 2)),
+    mt      = prior("mt", list(location = 2, scale = 0.5, df = 5, K = 2))
+  )
 
+  ALL_FACTOR_PRIORS <- list(
+    orthonormal = prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "orthonormal"),
+    meandif     = prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "meandif"),
+    treatment   = prior_factor("normal", list(mean = 0, sd = 1), contrast = "treatment"),
+    independent = prior_factor("normal", list(mean = 0, sd = 1), contrast = "independent")
+  )
+}
 # ============================================================================ #
 # HELPER FUNCTIONS: Prior Distribution Testing
 # ============================================================================ #
@@ -369,7 +371,7 @@ skip_refit_if_cached <- function(name) {
 }
 
 # Clean cached fitted models and margliks
-clean_cached_fits <- function() {
+clean_cached_fits <- function(name) {
 
   if (!missing(name)) {
     # remove only the specific `name`` fitted indicator files side-effects from `temp_temp_dir`

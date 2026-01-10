@@ -803,19 +803,7 @@ test_that("Formula-based interaction models fit correctly", {
     mu_x_cont1 = list(mean = x_cont1_mean, sd = x_cont1_sd),
     mu_x_cont2 = list(mean = x_cont2_mean, sd = x_cont2_sd)
   )
-
-  # Compute marginal likelihood for manual scaling
-  log_posterior_scale <- function(parameters, data){
-    sum(stats::dnorm(data$y, parameters[["mu"]], parameters[["sigma"]], log = TRUE))
-  }
-  marglik_formula_manual_scaled <- JAGS_bridgesampling(
-    fit_formula_manual_scaled, log_posterior = log_posterior_scale, data = data_scale,
-    prior_list = prior_list,
-    formula_list = formula_list_scale, formula_data_list = formula_data_list_manual,
-    formula_prior_list = formula_prior_list_scale)
-
   result <- save_fit(fit_formula_manual_scaled, "fit_formula_manual_scaled",
-                     marglik = marglik_formula_manual_scaled,
                      formulas = TRUE, interactions = TRUE, simple_priors = TRUE,
                      note = "Manual scaling of continuous predictors")
   model_registry[["fit_formula_manual_scaled"]] <<- result$registry_entry
@@ -830,17 +818,7 @@ test_that("Formula-based interaction models fit correctly", {
     formula_prior_list = formula_prior_list_scale,
     formula_scale_list = formula_scale_list_auto,
     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
-
-  # Compute marginal likelihood for automatic scaling
-  marglik_formula_auto_scaled <- JAGS_bridgesampling(
-    fit_formula_auto_scaled, log_posterior = log_posterior_scale, data = data_scale,
-    prior_list = prior_list,
-    formula_list = formula_list_scale, formula_data_list = formula_data_list_auto,
-    formula_prior_list = formula_prior_list_scale,
-    formula_scale_list = formula_scale_list_auto)
-
   result <- save_fit(fit_formula_auto_scaled, "fit_formula_auto_scaled",
-                     marglik = marglik_formula_auto_scaled,
                      formulas = TRUE, interactions = TRUE, simple_priors = TRUE,
                      note = "Automatic scaling of continuous predictors")
   model_registry[["fit_formula_auto_scaled"]] <<- result$registry_entry
@@ -863,19 +841,7 @@ test_that("Formula-based interaction models fit correctly", {
     formula_list = formula_list_mix_int, formula_data_list = formula_data_list_mix_int,
     formula_prior_list = formula_prior_list_mix_int,
     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
-
-  # Compute marginal likelihood for model averaging
-  log_posterior_formula <- function(parameters, data){
-    sum(stats::dnorm(data$y, parameters[["mu"]], parameters[["sigma"]], log = TRUE))
-  }
-  marglik_formula_interaction_mix <- JAGS_bridgesampling(
-    fit_formula_interaction_mix, log_posterior = log_posterior_formula, data = data,
-    prior_list = prior_list,
-    formula_list = formula_list_mix_int, formula_data_list = formula_data_list_mix_int,
-    formula_prior_list = formula_prior_list_mix_int)
-
   result <- save_fit(fit_formula_interaction_mix, "fit_formula_interaction_mix",
-                     marglik = marglik_formula_interaction_mix,
                      formulas = TRUE, interactions = TRUE, factor_priors = TRUE, simple_priors = TRUE,
                      note = "Continuous-factor interaction with 3-level orthonormal factor")
   model_registry[["fit_formula_interaction_mix"]] <<- result$registry_entry
@@ -897,15 +863,7 @@ test_that("Formula-based interaction models fit correctly", {
     formula_list = formula_list_mix_main, formula_data_list = formula_data_list_mix_main,
     formula_prior_list = formula_prior_list_mix_main,
     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
-
-  marglik_formula_interaction_mix_main <- JAGS_bridgesampling(
-    fit_formula_interaction_mix_main, log_posterior = log_posterior_formula, data = data,
-    prior_list = prior_list,
-    formula_list = formula_list_mix_main, formula_data_list = formula_data_list_mix_main,
-    formula_prior_list = formula_prior_list_mix_main)
-
   result <- save_fit(fit_formula_interaction_mix_main, "fit_formula_interaction_mix_main",
-                     marglik = marglik_formula_interaction_mix_main,
                      formulas = TRUE, factor_priors = TRUE, simple_priors = TRUE,
                      note = "Continuous-factor main effects only (for interaction test)")
   model_registry[["fit_formula_interaction_mix_main"]] <<- result$registry_entry

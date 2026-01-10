@@ -263,10 +263,10 @@ test_that("Summary table advanced features work correctly", {
   # 5. Interactions
   # -------------------------------------------------------------- #
   fit_formula_interaction_mix <- readRDS(file.path(temp_fits_dir, "fit_formula_interaction_mix.RDS"))
-  marglik_formula_interaction_mix <- readRDS(file.path(temp_marglik_dir, "fit_formula_interaction_mix.RDS"))
+  marglik_formula_interaction_mix <- structure(list(logml = -20), class = "bridge")
 
   fit_formula_interaction_mix_main <- readRDS(file.path(temp_fits_dir, "fit_formula_interaction_mix_main.RDS"))
-  marglik_formula_interaction_mix_main <- readRDS(file.path(temp_marglik_dir, "fit_formula_interaction_mix_main.RDS"))
+  marglik_formula_interaction_mix_main <- structure(list(logml = -22), class = "bridge")
 
   models_interaction <- list(
     list(fit = fit_formula_interaction_mix_main, marglik = marglik_formula_interaction_mix_main, prior_weights = 1, fit_summary = runjags_estimates_table(fit_formula_interaction_mix_main)),

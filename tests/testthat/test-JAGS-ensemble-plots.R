@@ -1054,7 +1054,7 @@ test_that("posterior plot model averaging based on complex single JAGS models (f
     plot_posterior(mixed_posteriors, "PET", prior = T, dots_prior = list(col.fill = "orange"), ylim = c(-2, 2))
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-bias-PET", function(){
+  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-bias-PET-ind", function(){
     plot_posterior(mixed_posteriors, "PET", prior = T, dots_prior = list(col = "grey"), individual = TRUE)
   })
 
@@ -1290,27 +1290,25 @@ test_that("posterior plot model averaging based on complex bias mixture model (P
     par(mar = c(4, 4, 1, 4))
     plot_posterior(mixed_posteriors, "mu", prior = TRUE, dots_prior = list(col = "grey"))
   })
-#   TODO: update
-#   vdiffr::expect_doppelganger("model-averaging-plot-complex-bias-posterior-bias-PET", function(){
-#     PET <- mixed_posteriors$bias[,"PET",drop=FALSE]
-#     attributes(PET) <- c(attributes(PET), attributes(mixed_posteriors$bias)[!names(attributes(mixed_posteriors$bias)) %in% c("dimnames", "dim")])
-#     attr(PET, "prior_list")[!sapply(attr(PET, "prior_list"), is.prior.PET)] <- lapply(1:sum(!sapply(attr(PET, "prior_list"), is.prior.PET)), function(i) prior("point", list(0)))
-#     attr(PET, "prior_list")[ sapply(attr(PET, "prior_list"), is.prior.PET)] <- lapply(attr(PET, "prior_list")[sapply(attr(PET, "prior_list"), is.prior.PET)], function(p) {
-#       class(p) <- class(p)[!class(p) %in% "prior.PET"]
-#       return(p)
-#     })
-#     plot_posterior(list(PET = PET), "PET", prior = TRUE, dots_prior = list(col = "grey"))
-#   })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-complex-bias-posterior-bias-PET", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors, "PET", prior = TRUE, dots_prior = list(col = "grey"), individual = T)
+  })
 
   vdiffr::expect_doppelganger("model-averaging-plot-complex-bias-posterior-bias-PEESE", function(){
-    PEESE <- mixed_posteriors$bias[,"PEESE",drop=FALSE]
-    attributes(PEESE) <- c(attributes(PEESE), attributes(mixed_posteriors$bias)[!names(attributes(mixed_posteriors$bias)) %in% c("dimnames", "dim")])
-    attr(PEESE, "prior_list")[!sapply(attr(PEESE, "prior_list"), is.prior.PEESE)] <- lapply(1:sum(!sapply(attr(PEESE, "prior_list"), is.prior.PEESE)), function(i) prior("point", list(0)))
-    attr(PEESE, "prior_list")[ sapply(attr(PEESE, "prior_list"), is.prior.PEESE)] <- lapply(attr(PEESE, "prior_list")[sapply(attr(PEESE, "prior_list"), is.prior.PEESE)], function(p) {
-      class(p) <- class(p)[!class(p) %in% "prior.PEESE"]
-      return(p)
-    })
-    plot_posterior(list(PEESE = PEESE), "PEESE", prior = TRUE, dots_prior = list(col = "grey"))
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors, "PEESE", prior = TRUE, dots_prior = list(col = "grey"), individual = T)
+  })
+  vdiffr::expect_doppelganger("model-averaging-plot-complex-bias-posterior-bias-PETPEESE", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors, "PETPEESE", prior = TRUE, dots_prior = list(col = "grey"), ylim = c(-1, 3))
   })
 
 
@@ -1346,32 +1344,14 @@ test_that("posterior plot model averaging based on complex bias mixture model (P
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
-
-    PET <- mixed_posteriors_conditional1$bias[,"PET",drop=FALSE]
-    attributes(PET) <- c(attributes(PET), attributes(mixed_posteriors_conditional1$bias)[!names(attributes(mixed_posteriors_conditional1$bias)) %in% c("dimnames", "dim")])
-    attr(PET, "prior_list")[!sapply(attr(PET, "prior_list"), is.prior.PET)] <- lapply(1:sum(!sapply(attr(PET, "prior_list"), is.prior.PET)), function(i) prior("point", list(0)))
-    attr(PET, "prior_list")[ sapply(attr(PET, "prior_list"), is.prior.PET)] <- lapply(attr(PET, "prior_list")[sapply(attr(PET, "prior_list"), is.prior.PET)], function(p) {
-      class(p) <- class(p)[!class(p) %in% "prior.PET"]
-      return(p)
-    })
-
-    plot_posterior(list(PET = PET), "PET", prior = TRUE, dots_prior = list(col = "grey"))
+    plot_posterior(mixed_posteriors_conditional1, "PET", prior = TRUE, dots_prior = list(col = "grey"), individual = T)
   })
 
   vdiffr::expect_doppelganger("model-averaging-plot-complex-bias-conditional-posterior-PEESE", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
-
-    PEESE <- mixed_posteriors_conditional2$bias[,"PEESE",drop=FALSE]
-    attributes(PEESE) <- c(attributes(PEESE), attributes(mixed_posteriors_conditional1$bias)[!names(attributes(mixed_posteriors_conditional1$bias)) %in% c("dimnames", "dim")])
-    attr(PEESE, "prior_list")[!sapply(attr(PEESE, "prior_list"), is.prior.PEESE)] <- lapply(1:sum(!sapply(attr(PEESE, "prior_list"), is.prior.PEESE)), function(i) prior("point", list(0)))
-    attr(PEESE, "prior_list")[ sapply(attr(PEESE, "prior_list"), is.prior.PEESE)] <- lapply(attr(PEESE, "prior_list")[sapply(attr(PEESE, "prior_list"), is.prior.PEESE)], function(p) {
-      class(p) <- class(p)[!class(p) %in% "prior.PEESE"]
-      return(p)
-    })
-
-    plot_posterior(list(PEESE = PEESE), "PEESE", prior = TRUE, dots_prior = list(col = "grey"))
+    plot_posterior(mixed_posteriors_conditional2, "PEESE", prior = TRUE, dots_prior = list(col = "grey"), individual = T)
   })
 
 })
@@ -1389,16 +1369,68 @@ test_that("posterior plot based on as_mixed_posteriors (PET-PEESE) work", {
     parameters  = names(attr(fit0, "prior_list")),
     force_plots = TRUE
   )
+  mixed_posteriors1 <- as_mixed_posteriors(
+    mode        = fit1,
+    parameters  = names(attr(fit1, "prior_list")),
+    force_plots = TRUE
+  )
 
-  plot_posterior(mixed_posteriors0, "PET", dots_prior = list(col = "grey"))
-  plot_posterior(mixed_posteriors0, "PET", dots_prior = list(col = "grey"), individual = TRUE)
+  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-PET-ind-no-prior", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors0, "PET", individual = T)
+  })
 
-  # TODO: fixed this
-  plot_posterior(mixed_posteriors0, "PET", prior = TRUE, dots_prior = list(col = "grey"))
-  plot_posterior(mixed_posteriors0, "PET", prior = TRUE, dots_prior = list(col = "grey"), individual = TRUE)
-  # vdiffr::expect_doppelganger("model-as_mixed_posteriors-PET", function(){
-  #   plot_posterior(mixed_posteriors0, "PET", prior = TRUE, dots_prior = list(col = "grey"))
-  # })
+  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-PET-no-prior", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors0, "PET")
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-PET-ind", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors0, "PET", prior = TRUE, dots_prior = list(col = "grey"), individual = T)
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-PET", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors0, "PET", prior = TRUE, dots_prior = list(col = "orange"))
+  })
+
+
+  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-PEESE-ind-no-prior", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors1, "PEESE", individual = T)
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-PEESE-no-prior", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors1, "PEESE")
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-PEESE-ind", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors1, "PEESE", prior = TRUE, dots_prior = list(col = "grey"), individual = T)
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-PEESE", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors1, "PEESE", prior = TRUE, col.fill = scales::alpha("grey", .50), dots_prior = list(col.fill = "orange"))
+  })
 })
 
 
