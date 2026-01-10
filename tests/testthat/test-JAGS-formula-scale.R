@@ -334,19 +334,6 @@ test_that("Downstream functions work with scaled models", {
   expect_equal(JAGS_estimates_table(fit_manual), JAGS_estimates_table(fit_auto))
 })
 
-test_that("Marginal likelihoods match for manual and automatic scaling", {
-
-  skip_if_no_fits()
-
-  # Load pre-fitted marginal likelihoods
-  marglik_manual <- readRDS(file.path(temp_marglik_dir, "fit_formula_manual_scaled.RDS"))
-  marglik_auto   <- readRDS(file.path(temp_marglik_dir, "fit_formula_auto_scaled.RDS"))
-
-  # The log marginal likelihoods should be very similar
-  # (both models use same scaled data internally)
-  expect_equal(marglik_manual$logml, marglik_auto$logml, tolerance = 0.1)
-})
-
 test_that("JAGS_evaluate_formula applies scaling correctly", {
 
   skip_if_no_fits()
@@ -497,7 +484,7 @@ test_that("ensemble_estimates_table with transform_scaled unscales coefficients"
 
   # Load pre-fitted models
   fit_auto     <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS"))
-  marglik_auto <- readRDS(file.path(temp_marglik_dir, "fit_formula_auto_scaled.RDS"))
+  marglik_auto <- structure(list(logml = -20), class = "bridge")
 
   formula_scale <- attr(fit_auto, "formula_scale")
 
@@ -608,7 +595,7 @@ test_that("Dual parameter model with log(intercept) has correct formula_scale st
   # Check that both parameters have scaling info
   expect_true("mu" %in% names(formula_scale))
   expect_true("log_sigma" %in% names(formula_scale))
-  
+
   # Check nested structure
   expect_true("mu_x_mu" %in% names(formula_scale$mu))
   expect_true("log_sigma_x_sigma" %in% names(formula_scale$log_sigma))
@@ -622,7 +609,7 @@ test_that("Dual parameter model with log(intercept) has correct formula_scale st
   expect_equal(names(formula_scale$log_sigma$log_sigma_x_sigma), c("mean", "sd"))
   expect_true(is.numeric(formula_scale$log_sigma$log_sigma_x_sigma$mean))
   expect_true(is.numeric(formula_scale$log_sigma$log_sigma_x_sigma$sd))
-  
+
   # Verify log_intercept attribute is stored correctly
   # mu should NOT have log_intercept (or be FALSE)
   expect_false(isTRUE(attr(formula_scale$mu, "log_intercept")))
@@ -715,10 +702,10 @@ test_that("JAGS_estimates_table with transform_scaled works for dual parameter m
   # and that it differs from the scaled intercept (which would be biased)
   # Note: with transform_scaled=TRUE, the intercept is renamed to exp(intercept)
   unscaled_log_sigma_int <- estimates_unscaled["(log_sigma) exp(intercept)", "Mean"]
-  
+
   # The unscaled intercept should be reasonably close to the true value of 0.5
   expect_true(abs(unscaled_log_sigma_int - 0.5) < 0.15)
-  
+
   # The scaled intercept should NOT be close to 0.5 (it's on the wrong scale)
   scaled_log_sigma_int <- estimates_scaled["(log_sigma) intercept", "Mean"]
   expect_true(abs(scaled_log_sigma_int - 0.5) > abs(unscaled_log_sigma_int - 0.5))

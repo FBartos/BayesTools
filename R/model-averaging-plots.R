@@ -1193,6 +1193,9 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       }else if(!is.null(samples[["mu_intercept"]])){
         prior_list_mu <- attr(samples[["mu_intercept"]], "prior_list")
       }
+      if(is.prior.simple(prior_list_mu)){
+        prior_list_mu <- list(prior_list_mu)
+      }
 
       if (is.null(samples[["bias"]])){
         # TODO: a bit of a hack - removing priors that were added as a fill for sampling
@@ -1209,6 +1212,9 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
           prior_list <- attr(samples[["PET"]], "prior_list")
         }else{
           stop("Either PET or PEESE samples need to be provided.")
+        }
+        if(is.prior.simple(prior_list)){
+          prior_list <- list(prior_list)
         }
       } else {
         prior_list <- attr(samples[["bias"]], "prior_list")
