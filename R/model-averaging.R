@@ -1034,13 +1034,16 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   # check input
   check_char(parameter, "parameter", check_length = FALSE)
 
+
   # obtain mapping for the weight coefficients
   omega_mapping <- weightfunctions_mapping(list(prior))
   omega_cuts    <- weightfunctions_mapping(list(prior), cuts_only = TRUE)
   omega_names   <- sapply(1:(length(omega_cuts)-1), function(i) paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
+  # need to reverse the order since JAGS stores omega in reverse order (from largest p-value to smallest)
+  omega_par     <- rev(sapply(1:(length(omega_cuts)-1), function(i) paste0("omega[",i,"]")))
 
   # prepare output objects
-  samples <- model_samples[, sapply(1:(length(omega_cuts)-1), function(i) paste0("omega[",i,"]"))]
+  samples <- model_samples[, omega_par, drop = FALSE]
 
   rownames(samples) <- NULL
   colnames(samples) <- omega_names
