@@ -1433,5 +1433,113 @@ test_that("posterior plot based on as_mixed_posteriors (PET-PEESE) work", {
   })
 })
 
+test_that("posterior plot based on as_mixed_posteriors (weightfunction) work", {
 
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+
+  fit1   <- readRDS(file.path(temp_fits_dir, "fit_wf_twosided.RDS"))
+  fit2   <- readRDS(file.path(temp_fits_dir, "fit_wf_onesided.RDS"))
+  fitmix <- readRDS(file.path(temp_fits_dir, "fit_complex_mixed.RDS"))
+
+  mixed_posteriors1 <- as_mixed_posteriors(
+    mode        = fit1,
+    parameters  = names(attr(fit1, "prior_list")),
+    force_plots = TRUE
+  )
+  mixed_posteriors2 <- as_mixed_posteriors(
+    mode        = fit2,
+    parameters  = names(attr(fit2, "prior_list")),
+    force_plots = TRUE
+  )
+  mixed_posteriorsmix <- as_mixed_posteriors(
+    mode        = fitmix,
+    parameters  = names(attr(fitmix, "prior_list")),
+    force_plots = TRUE
+  )
+
+  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-omega1-ind-no-prior", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4), mfrow = c(1, 2))
+    plot_posterior(mixed_posteriors1, "omega", individual = T, show_figures = NULL)
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-omega1-no-prior", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors1, "omega")
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-omega1-ind", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4), mfrow = c(1, 2))
+    plot_posterior(mixed_posteriors1, "omega", prior = TRUE, dots_prior = list(col = "grey"), individual = T, show_figures = NULL)
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-omega1", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors1, "omega", prior = TRUE, dots_prior = list(col = "orange"))
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-omega2-ind-no-prior", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4), mfrow = c(1, 2))
+    plot_posterior(mixed_posteriors2, "omega", individual = T, show_figures = NULL)
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-omega2-no-prior", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors2, "omega")
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-omega2-ind", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4), mfrow = c(1, 2))
+    plot_posterior(mixed_posteriors2, "omega", prior = TRUE, dots_prior = list(col = "grey"), individual = T, show_figures = NULL)
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-omega2", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriors2, "omega", prior = TRUE, dots_prior = list(col = "orange"))
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-omegamix-ind-no-prior", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4), mfrow = c(1, 4))
+    plot_posterior(mixed_posteriorsmix, "omega", individual = T, show_figures = NULL)
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-omegamix-no-prior", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriorsmix, "omega")
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-omegamix-ind", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4), mfrow = c(1, 4))
+    plot_posterior(mixed_posteriorsmix, "omega", prior = TRUE, dots_prior = list(col = "grey"), individual = T, show_figures = NULL)
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-omegamix", function(){
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4))
+    plot_posterior(mixed_posteriorsmix, "omega", prior = TRUE, dots_prior = list(col = "orange"))
+  })
+})
 
