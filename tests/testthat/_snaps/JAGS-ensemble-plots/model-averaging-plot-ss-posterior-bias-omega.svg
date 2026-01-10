@@ -25,6 +25,7 @@
   </clipPath>
 </defs>
 <g clip-path='url(#cpMC4wMHwzNjAuMDB8MC4wMHwyODguMDA=)'>
+<text x='180.00' y='285.61' text-anchor='middle' style='font-size: 9.96px; font-family: sans;' textLength='69.23px' lengthAdjust='spacingAndGlyphs'>omega[0,0.025]</text>
 <text transform='translate(9.56,126.07) rotate(-90)' text-anchor='middle' style='font-size: 9.96px; font-family: sans;' textLength='46.51px' lengthAdjust='spacingAndGlyphs'>Probability</text>
 </g>
 <g clip-path='url(#cpMC4wMHw3MjAuMDB8MC4wMHw1NzYuMDA=)'>
@@ -71,6 +72,7 @@
   </clipPath>
 </defs>
 <g clip-path='url(#cpMzYwLjAwfDcyMC4wMHwwLjAwfDI4OC4wMA==)'>
+<text x='540.00' y='285.61' text-anchor='middle' style='font-size: 9.96px; font-family: sans;' textLength='83.07px' lengthAdjust='spacingAndGlyphs'>omega[0.025,0.05]</text>
 <text transform='translate(369.56,126.07) rotate(-90)' text-anchor='middle' style='font-size: 9.96px; font-family: sans;' textLength='33.22px' lengthAdjust='spacingAndGlyphs'>Density</text>
 </g>
 <g clip-path='url(#cpMC4wMHw3MjAuMDB8MC4wMHw1NzYuMDA=)'>
@@ -136,6 +138,7 @@
   </clipPath>
 </defs>
 <g clip-path='url(#cpMC4wMHwzNjAuMDB8Mjg4LjAwfDU3Ni4wMA==)'>
+<text x='180.00' y='573.61' text-anchor='middle' style='font-size: 9.96px; font-family: sans;' textLength='83.07px' lengthAdjust='spacingAndGlyphs'>omega[0.05,0.975]</text>
 <text transform='translate(9.56,414.07) rotate(-90)' text-anchor='middle' style='font-size: 9.96px; font-family: sans;' textLength='33.22px' lengthAdjust='spacingAndGlyphs'>Density</text>
 </g>
 <g clip-path='url(#cpMC4wMHw3MjAuMDB8MC4wMHw1NzYuMDA=)'>
@@ -201,6 +204,7 @@
   </clipPath>
 </defs>
 <g clip-path='url(#cpMzYwLjAwfDcyMC4wMHwyODguMDB8NTc2LjAw)'>
+<text x='540.00' y='573.61' text-anchor='middle' style='font-size: 9.96px; font-family: sans;' textLength='69.23px' lengthAdjust='spacingAndGlyphs'>omega[0.975,1]</text>
 <text transform='translate(369.56,414.07) rotate(-90)' text-anchor='middle' style='font-size: 9.96px; font-family: sans;' textLength='33.22px' lengthAdjust='spacingAndGlyphs'>Density</text>
 </g>
 <g clip-path='url(#cpMC4wMHw3MjAuMDB8MC4wMHw1NzYuMDA=)'>

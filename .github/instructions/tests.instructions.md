@@ -1,5 +1,5 @@
-````instructions
 ---
+description: 'R unit tests: testing standards and Copilot guidance for interaction with unit tests.'
 applyTo: "**/tests/testthat/*.R"
 ---
 
@@ -28,7 +28,7 @@ Model fitting is slow. The caching system lets you run the full suite once and r
 # 1. Run full suite once to verify current code and populate cache (if missing) 
 devtools::test()
 
-# 2. Iterate on your feature (uses cached fits)
+# 2. Iterate on your feature - uses cached fits unless you are modifing model fitting!
 devtools::test(filter = "your-feature")
 
 # 3. Final verification (disable cache if fit / marglik code or its dependencies changed)

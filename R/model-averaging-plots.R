@@ -1049,7 +1049,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
         # add priors, if requested
         if(prior){
 
-          plot_data_prior <- .plot_data_prior_list.weightparameter(prior_list, parameter = par_names, n_points = n_points, n_samples = n_samples)
+          plot_data_prior <- .plot_data_prior_list.weightparameter(prior_list, parameter = par, n_points = n_points, n_samples = n_samples)
 
           # transplant common xlim and ylim
           plot_data_joined <- c(plot_data_prior, plot_data)
