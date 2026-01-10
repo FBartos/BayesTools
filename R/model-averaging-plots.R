@@ -1088,7 +1088,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
           args_prior           <- dots_prior
           args_prior$plot_data <- plot_data_prior
           args_prior$plot_type <- plot_type
-          args_prior$par_name  <- par_name
+          args_prior$par_name  <- par
           args_prior$scale_y2  <- scale_y2
 
           plot <- do.call(.plot_prior_list.both, args_prior)
@@ -1098,7 +1098,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
           args           <- list(...)
           args$plot_data <- plot_data
           args$plot_type <- plot_type
-          args$par_name  <- par_name
+          args$par_name  <- par
           args$scale_y2  <- scale_y2
           args$add       <- TRUE
 
@@ -1106,14 +1106,14 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
             plot <- do.call(.plot_prior_list.both, args)
           }else if(plot_type == "ggplot"){
             plot <- plot + do.call(.plot_prior_list.both, args)
-            out_list[[par_name]] <- plot
+            out_list[[par]] <- plot
           }
 
         }else{
 
           # plot just posterior otherwise
-          plot <- .plot_prior_list.both(plot_data = plot_data, plot_type = plot_type, par_name = par_name, ...)
-          out_list[[par_name]] <- plot
+          plot <- .plot_prior_list.both(plot_data = plot_data, plot_type = plot_type, par_name = par, ...)
+          out_list[[par]] <- plot
 
         }
       }
