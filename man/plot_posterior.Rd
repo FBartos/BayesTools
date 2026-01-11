@@ -13,7 +13,7 @@ plot_posterior(
   n_samples = 10000,
   force_samples = FALSE,
   individual = FALSE,
-  show_figures = if (individual) 1 else NULL,
+  show_figures = NULL,
   transformation = NULL,
   transformation_arguments = NULL,
   transformation_settings = FALSE,
