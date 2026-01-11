@@ -977,7 +977,7 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
 #' @export
 plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE,
                            n_points = 1000, n_samples = 10000, force_samples = FALSE,
-                           individual   = FALSE, show_figures = if(individual) 1 else NULL,
+                           individual   = FALSE, show_figures = NULL,
                            transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
                            rescale_x = FALSE, par_name = NULL, dots_prior = list(), ...){
 
