@@ -19,6 +19,7 @@ plot_posterior(
   transformation_settings = FALSE,
   rescale_x = FALSE,
   par_name = NULL,
+  effect_direction = "positive",
   dots_prior = list(),
   ...
 )
@@ -79,6 +80,11 @@ weightfunction is plotted.}
 \item{par_name}{a type of parameter for which the prior is
 specified. Only relevant if the prior corresponds to a mu
 parameter that needs to be transformed.}
+
+\item{effect_direction}{direction of the effect for PET-PEESE
+regression. Use \code{"positive"} (default) for
+\code{mu + PET*se + PEESE*se^2} or \code{"negative"} for
+\code{mu - PET*se - PEESE*se^2}.}
 
 \item{dots_prior}{additional arguments for the prior distribution plot}
 

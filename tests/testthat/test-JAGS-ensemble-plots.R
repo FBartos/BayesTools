@@ -292,6 +292,40 @@ test_that("prior plot functions (PET-PEESE) work", {
   })
 })
 
+test_that("prior plot functions (PET-PEESE) effect_direction works", {
+
+  ### Test effect_direction parameter for PET-PEESE prior plots
+  prior_list <- list(
+    p1 = prior_PET("cauchy", list(0, 1)),
+    p2 = prior_PEESE("cauchy", list(0, 5))
+  )
+  prior_list_mu <- list(
+    m1 = prior("spike", list(0)),
+    m2 = prior("spike", list(0))
+  )
+
+  # Test effect_direction = "positive" (default)
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-effect-positive", function(){
+    plot_prior_list(prior_list, effect_direction = "positive", col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50, ylim = c(-0.5, 0.5), prior_list_mu = prior_list_mu)
+  })
+
+  # Test effect_direction = "negative" (flipped)
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-effect-negative", function(){
+    plot_prior_list(prior_list, effect_direction = "negative", col = "blue", lwd = 4, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50, ylim = c(-0.5, 0.5), prior_list_mu = prior_list_mu)
+  })
+
+  # Test ggplot version with effect_direction
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-effect-negative-ggplot", function(){
+    plot_prior_list(prior_list, effect_direction = "negative", plot_type = "ggplot", col = "blue", lwd = 4, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50, ylim = c(-0.5, 0.5), prior_list_mu = prior_list_mu)
+  })
+
+  # Test lines_prior_list with effect_direction
+  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-effect-direction-overlay", function(){
+    plot_prior_list(prior_list, effect_direction = "positive", col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50, ylim = c(-0.5, 0.5), prior_list_mu = prior_list_mu)
+    lines_prior_list(prior_list, effect_direction = "negative", col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
+  })
+})
+
 test_that("prior plot functions (weightfunctions) work", {
 
   ### simple cases
@@ -702,6 +736,58 @@ test_that("posterior plot functions (PET-PEESE) work", {
     plot_posterior(mixed_posteriors, "PETPEESE", ylim = c(0, 3), lwd = 2, col = "red", col.fill = scales::alpha("red", .20), n_points = 50, n_samples = 1000, prior = TRUE, dots_prior = list(col = "blue", col.fill = scales::alpha("blue", .20), lty = 2))
   })
 
+})
+
+test_that("posterior plot functions (PET-PEESE) effect_direction works", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+
+  fit0 <- readRDS(file.path(temp_fits_dir, "fit_pet.RDS"))
+  marglik0 <- readRDS(file.path(temp_marglik_dir, "fit_pet.RDS"))
+  fit1 <- readRDS(file.path(temp_fits_dir, "fit_peese.RDS"))
+  marglik1 <- readRDS(file.path(temp_marglik_dir, "fit_peese.RDS"))
+
+  # automatically mix posteriors
+  models <- list(
+    list(fit = fit0, marglik = marglik0, prior_weights = 1),
+    list(fit = fit1, marglik = marglik1, prior_weights = 1)
+  )
+  mixed_posteriors <- mix_posteriors(model_list = models, parameters = c("mu", "PET", "PEESE"), is_null_list = list("mu" = c(T, T), "PET" = c(F, T), "PEESE" = c(T, F)), seed = 1)
+
+  # Reconstruct priors for plotting
+  priors_list0 <- list(
+    mu    = prior("spike", list(0)),
+    PET   = prior_PET("normal", list(0, .2))
+  )
+  priors_list1 <- list(
+    mu    = prior("spike", list(0)),
+    PEESE = prior_PEESE("normal", list(0, .8))
+  )
+
+  # Test effect_direction = "positive" (default behavior)
+  vdiffr::expect_doppelganger("model-averaging-plot-posterior-PETPEESE-effect-positive", function(){
+    plot_posterior(mixed_posteriors, "PETPEESE", effect_direction = "positive", lwd = 2, col = "red", col.fill = scales::alpha("red", .20), par_name = "PET-PEESE (positive)", n_points = 50, ylim = c(-1, 1))
+  })
+
+  # Test effect_direction = "negative" (flipped regression)
+  vdiffr::expect_doppelganger("model-averaging-plot-posterior-PETPEESE-effect-negative", function(){
+    plot_posterior(mixed_posteriors, "PETPEESE", effect_direction = "negative", lwd = 2, col = "blue", col.fill = scales::alpha("blue", .20), par_name = "PET-PEESE (negative)", n_points = 50, ylim = c(-1, 1))
+  })
+
+  # Test with prior overlay using effect_direction
+  vdiffr::expect_doppelganger("model-averaging-plot-posterior-PETPEESE-effect-positive-prior", function(){
+    plot_posterior(mixed_posteriors, "PETPEESE", effect_direction = "positive", prior = TRUE, lwd = 2, col = "red", col.fill = scales::alpha("red", .20), n_points = 50, n_samples = 1000, ylim = c(-1, 1), dots_prior = list(col = "grey", col.fill = scales::alpha("grey", .20), lty = 2))
+  })
+
+  vdiffr::expect_doppelganger("model-averaging-plot-posterior-PETPEESE-effect-negative-prior", function(){
+    plot_posterior(mixed_posteriors, "PETPEESE", effect_direction = "negative", prior = TRUE, lwd = 2, col = "blue", col.fill = scales::alpha("blue", .20), n_points = 50, n_samples = 1000, ylim = c(-1, 1), dots_prior = list(col = "grey", col.fill = scales::alpha("grey", .20), lty = 2))
+  })
+
+  # Test ggplot version with effect_direction
+  vdiffr::expect_doppelganger("model-averaging-plot-posterior-PETPEESE-effect-negative-ggplot", function(){
+    plot_posterior(mixed_posteriors, "PETPEESE", effect_direction = "negative", plot_type = "ggplot", lwd = 2, col = "blue", col.fill = scales::alpha("blue", .20), n_points = 50, ylim = c(-1, 1))
+  })
 })
 
 test_that("posterior plot functions (weightfunctions) work", {
