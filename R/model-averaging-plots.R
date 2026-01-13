@@ -3,6 +3,10 @@
 #' @param prior_list list of prior distributions
 #' @param prior_list_mu list of priors for the mu parameter
 #' required when plotting PET-PEESE
+#' @param effect_direction direction of the effect for PET-PEESE
+#' regression. Use \code{"positive"} (default) for
+#' \code{mu + PET*se + PEESE*se^2} or \code{"negative"} for
+#' \code{mu - PET*se - PEESE*se^2}.
 #' @param ... additional arguments
 #' @inheritParams density.prior
 #' @inheritParams plot.prior
@@ -17,7 +21,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
                             n_samples = 10000, force_samples = FALSE,
                             individual = FALSE, show_figures = if(individual) 1 else NULL,
                             transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
-                            rescale_x = FALSE, par_name = NULL, prior_list_mu = NULL, ...){
+                            rescale_x = FALSE, par_name = NULL, prior_list_mu = NULL, effect_direction = "positive", ...){
 
   # check input (most arguments are checked within density)
   check_list(prior_list, "prior_list")
@@ -27,6 +31,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   check_bool(individual, "individual")
   check_bool(rescale_x, "rescale_x")
   check_int(show_figures, "show_figures", allow_NULL = TRUE)
+  check_char(effect_direction, "effect_direction", allow_values = c("positive", "negative"))
   # check that there is no mixing of PET-PEESE and weightfunctions
   if(any(sapply(prior_list, is.prior.weightfunction)) & (any(sapply(prior_list, is.prior.PET)) | any(sapply(prior_list, is.prior.PEESE))))
     stop("weightfunction and PET-PEESE priors cannot be mixed within a 'prior_list'.")
@@ -83,7 +88,8 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     plot_data <- .plot_data_prior_list.PETPEESE(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                                                 n_points = n_points, n_samples = n_samples,
                                                 transformation = transformation, transformation_arguments = transformation_arguments,
-                                                transformation_settings = transformation_settings, prior_list_mu = prior_list_mu)
+                                                transformation_settings = transformation_settings, prior_list_mu = prior_list_mu,
+                                                effect_direction = effect_direction)
     plot <- .plot.prior.PETPEESE(prior_list, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
 
   }else if(prior_type %in% c("simple", "orthonormal", "meandif")){
@@ -489,7 +495,8 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   return(out)
 }
 .plot_data_prior_list.PETPEESE       <- function(prior_list, x_seq, x_range, x_range_quant, n_points, n_samples,
-                                                 transformation, transformation_arguments, transformation_settings, prior_list_mu){
+                                                 transformation, transformation_arguments, transformation_settings, prior_list_mu,
+                                                 effect_direction = "positive"){
 
   # TODO: add dependency on the mu parameter as well
   if(is.null(x_seq)){
@@ -522,10 +529,12 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   }
   samples <- do.call(rbind, samples_list)
 
-  # compute PET-PEESE (mu + PET*se + PEESE*se^2)
+  # compute PET-PEESE (mu +/- PET*se +/- PEESE*se^2)
+  # effect_direction controls the sign: "positive" uses +, "negative" uses -
+  direction_sign <- if(effect_direction == "negative") -1 else 1
   x_sam  <- matrix(samples[,1], nrow = length(samples), ncol = length(x_seq)) +
-    matrix(samples[,2], nrow = length(samples), ncol = length(x_seq)) * matrix(x_seq,   nrow = length(samples), ncol = length(x_seq), byrow = TRUE) +
-    matrix(samples[,3], nrow = length(samples), ncol = length(x_seq)) * matrix(x_seq^2, nrow = length(samples), ncol = length(x_seq), byrow = TRUE)
+    direction_sign * matrix(samples[,2], nrow = length(samples), ncol = length(x_seq)) * matrix(x_seq,   nrow = length(samples), ncol = length(x_seq), byrow = TRUE) +
+    direction_sign * matrix(samples[,3], nrow = length(samples), ncol = length(x_seq)) * matrix(x_seq^2, nrow = length(samples), ncol = length(x_seq), byrow = TRUE)
 
   # transform the PEESE parameter if requested
   if(!is.null(transformation)){
@@ -775,7 +784,7 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
                              n_samples = 10000, force_samples = FALSE,
                              individual = FALSE, show_figures = if(individual) 1 else NULL,
                              transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
-                             rescale_x = FALSE, scale_y2 = NULL, prior_list_mu = NULL, ...){
+                             rescale_x = FALSE, scale_y2 = NULL, prior_list_mu = NULL, effect_direction = "positive", ...){
 
   # check input (most arguments are checked within density)
   check_list(prior_list, "prior_list")
@@ -785,6 +794,7 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
   check_bool(rescale_x, "rescale_x")
   check_int(show_figures, "show_figures", allow_NULL = TRUE)
   check_real(scale_y2, "scale_y2", lower = 0, allow_NULL = TRUE)
+  check_char(effect_direction, "effect_direction", allow_values = c("positive", "negative"))
 
 
   # get the plotting type
@@ -831,7 +841,8 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
     plot_data <- .plot_data_prior_list.PETPEESE(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                                                 n_points = n_points, n_samples = n_samples,
                                                 transformation = transformation, transformation_arguments = transformation_arguments,
-                                                transformation_settings = transformation_settings, prior_list_mu = prior_list_mu)
+                                                transformation_settings = transformation_settings, prior_list_mu = prior_list_mu,
+                                                effect_direction = effect_direction)
     .lines.prior.PETPEESE(prior_list, plot_data = plot_data, ...)
 
   }else if(prior_type == "simple"){
@@ -873,7 +884,7 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
                              n_samples = 10000, force_samples = FALSE,
                              individual = FALSE, show_figures = if(individual) 1 else NULL,
                              transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
-                             rescale_x = FALSE, scale_y2 = NULL, prior_list_mu = NULL, ...){
+                             rescale_x = FALSE, scale_y2 = NULL, prior_list_mu = NULL, effect_direction = "positive", ...){
 
   # check input (most arguments are checked within density)
   check_list(prior_list, "prior_list")
@@ -883,6 +894,7 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
   check_bool(rescale_x, "rescale_x")
   check_int(show_figures, "show_figures", allow_NULL = TRUE)
   check_real(scale_y2, "scale_y2", lower = 0, allow_NULL = TRUE)
+  check_char(effect_direction, "effect_direction", allow_values = c("positive", "negative"))
 
 
   # get the plotting type
@@ -928,7 +940,8 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
     plot_data <- .plot_data_prior_list.PETPEESE(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                                                 n_points = n_points, n_samples = n_samples,
                                                 transformation = transformation, transformation_arguments = transformation_arguments,
-                                                transformation_settings = transformation_settings, prior_list_mu = prior_list_mu)
+                                                transformation_settings = transformation_settings, prior_list_mu = prior_list_mu,
+                                                effect_direction = effect_direction)
     geom <- .geom_prior.PETPEESE(prior_list, plot_data = plot_data, ...)
 
   }else if(prior_type == "simple"){
@@ -965,6 +978,10 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
 #' and \code{"weightfunction"} for plotting a weightfunction with
 #' parameters \code{"omega"}.
 #' @param prior whether prior distribution should be added to the figure
+#' @param effect_direction direction of the effect for PET-PEESE
+#' regression. Use \code{"positive"} (default) for
+#' \code{mu + PET*se + PEESE*se^2} or \code{"negative"} for
+#' \code{mu - PET*se - PEESE*se^2}.
 #' @param dots_prior additional arguments for the prior distribution plot
 #' @param ... additional arguments
 #' @inheritParams density.prior
@@ -979,7 +996,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
                            n_points = 1000, n_samples = 10000, force_samples = FALSE,
                            individual   = FALSE, show_figures = NULL,
                            transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
-                           rescale_x = FALSE, par_name = NULL, dots_prior = list(), ...){
+                           rescale_x = FALSE, par_name = NULL, effect_direction = "positive", dots_prior = list(), ...){
 
   # check input
   check_list(samples, "prior_list")
@@ -990,6 +1007,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   check_bool(individual, "individual")
   check_bool(rescale_x, "rescale_x")
   check_int(show_figures, "show_figures", allow_NULL = TRUE, lower = 0)
+  check_char(effect_direction, "effect_direction", allow_values = c("positive", "negative"))
   .check_transformation_input(transformation, transformation_arguments, transformation_settings)
 
   # deal with bad parameter names for PET-PEESE, weightfunction
@@ -1180,7 +1198,8 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     # special dispatching for visualizing the PET-PEESE regression
 
     plot_data <- .plot_data_samples.PETPEESE(samples, x_seq = NULL, x_range = xlim, x_range_quant = NULL, n_points = n_points,
-                                             transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings)
+                                             transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings,
+                                             effect_direction = effect_direction)
 
     # add priors, if requested
     if(prior){
@@ -1233,7 +1252,8 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       plot_data_prior <- .plot_data_prior_list.PETPEESE(prior_list, x_seq = NULL, x_range = xlim, x_range_quant = NULL,
                                                   n_points = n_points, n_samples = n_samples,
                                                   transformation = transformation, transformation_arguments = transformation_arguments,
-                                                  transformation_settings = transformation_settings, prior_list_mu = prior_list_mu)
+                                                  transformation_settings = transformation_settings, prior_list_mu = prior_list_mu,
+                                                  effect_direction = effect_direction)
 
       # transplant common xlim and ylim
       plot_data_joined <- list(plot_data_prior, plot_data)
@@ -1521,7 +1541,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
   return(out)
 }
-.plot_data_samples.PETPEESE       <- function(samples, x_seq, x_range, x_range_quant, n_points, transformation, transformation_arguments, transformation_settings){
+.plot_data_samples.PETPEESE       <- function(samples, x_seq, x_range, x_range_quant, n_points, transformation, transformation_arguments, transformation_settings, effect_direction = "positive"){
 
   check_list(samples, "samples")
   if (is.null(samples[["mu"]]) && is.null(samples[["mu_intercept"]]))
@@ -1567,10 +1587,12 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   }
 
 
-  # compute PET-PEESE (mu + PET*se + PEESE*se^2)
+  # compute PET-PEESE (mu +/- PET*se +/- PEESE*se^2)
+  # effect_direction controls the sign: "positive" uses +, "negative" uses -
+  direction_sign <- if(effect_direction == "negative") -1 else 1
   x_sam  <- matrix(new_samples[,1], nrow = length(new_samples), ncol = length(x_seq)) +
-    matrix(new_samples[,2], nrow = length(new_samples), ncol = length(x_seq)) * matrix(x_seq,   nrow = length(new_samples), ncol = length(x_seq), byrow = TRUE) +
-    matrix(new_samples[,3], nrow = length(new_samples), ncol = length(x_seq)) * matrix(x_seq^2, nrow = length(new_samples), ncol = length(x_seq), byrow = TRUE)
+    direction_sign * matrix(new_samples[,2], nrow = length(new_samples), ncol = length(x_seq)) * matrix(x_seq,   nrow = length(new_samples), ncol = length(x_seq), byrow = TRUE) +
+    direction_sign * matrix(new_samples[,3], nrow = length(new_samples), ncol = length(x_seq)) * matrix(x_seq^2, nrow = length(new_samples), ncol = length(x_seq), byrow = TRUE)
 
   # transform the parameter if requested
   if(!is.null(transformation)){

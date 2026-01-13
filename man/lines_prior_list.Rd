@@ -20,6 +20,7 @@ lines_prior_list(
   rescale_x = FALSE,
   scale_y2 = NULL,
   prior_list_mu = NULL,
+  effect_direction = "positive",
   ...
 )
 }
@@ -81,6 +82,11 @@ weightfunction is plotted.}
 
 \item{prior_list_mu}{list of priors for the mu parameter
 required when plotting PET-PEESE}
+
+\item{effect_direction}{direction of the effect for PET-PEESE
+regression. Use \code{"positive"} (default) for
+\code{mu + PET*se + PEESE*se^2} or \code{"negative"} for
+\code{mu - PET*se - PEESE*se^2}.}
 
 \item{...}{additional arguments}
 }
