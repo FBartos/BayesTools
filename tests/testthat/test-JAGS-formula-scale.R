@@ -1383,3 +1383,489 @@ test_that("lm validation: factor interactions with multiple scaled continuous", 
   )
 })
 
+
+# ============================================================================ #
+# SECTION: get_scale_transformation tests
+# ============================================================================ #
+#
+# These tests validate get_scale_transformation using the lm validation pattern:
+# 1. Fit lm() with scaled predictors -> extract coefficients (scaled)
+# 2. Fit lm() with unscaled predictors -> extract coefficients (ground truth)
+# 3. Create mock "fit" object with scaled coefficients as posterior samples
+# 4. Use get_scale_transformation to get transformation parameters
+# 5. Apply transformation and verify it matches unscaled coefficients
+#
+# This validates that get_scale_transformation returns the correct transformation
+# to convert standardized posterior samples to original scale.
+# ============================================================================ #
+
+# Helper: Create a mock fit object from coefficient matrix
+# This mimics the structure expected by get_scale_transformation
+.make_mock_fit <- function(posterior_matrix) {
+  # Create a simple coda mcmc object
+  mcmc_obj <- coda::mcmc(posterior_matrix)
+  fit <- list(mcmc = mcmc_obj)
+  class(fit) <- "runjags"
+  attr(fit, "mcmc") <- coda::mcmc.list(mcmc_obj)
+  fit
+}
+
+
+test_that("get_scale_transformation requires fit argument", {
+
+  formula_scale <- list(
+    mu = list(
+      mu_x1 = list(mean = 5, sd = 2)
+    )
+  )
+
+  # Error when fit is not provided
+
+  expect_error(
+    get_scale_transformation(fit = NULL, "mu_x1", formula_scale),
+    "'fit' argument is required"
+  )
+
+  # Error when fit is NULL
+  expect_error(
+    get_scale_transformation(fit = NULL, "mu_x1", formula_scale),
+    "'fit' argument is required"
+  )
+})
+
+
+test_that("get_scale_transformation returns NULL for unscaled parameters", {
+
+  # Create a minimal mock fit
+  posterior <- matrix(c(0, 0.5), nrow = 10, ncol = 2, byrow = TRUE)
+  colnames(posterior) <- c("mu_intercept", "mu_x1")
+  mock_fit <- .make_mock_fit(posterior)
+
+  formula_scale <- list(
+    mu = list(
+      mu_x1 = list(mean = 5, sd = 2)
+    )
+  )
+
+  # Parameter not in formula_scale
+  result <- get_scale_transformation(fit = mock_fit, "mu_x2", formula_scale)
+  expect_null(result)
+
+  # Parameter with different prefix
+  result <- get_scale_transformation(fit = mock_fit, "sigma_x1", formula_scale)
+  expect_null(result)
+
+  # Empty formula_scale
+  result <- get_scale_transformation(fit = mock_fit, "mu_x1", NULL)
+  expect_null(result)
+
+  result <- get_scale_transformation(fit = mock_fit, "mu_x1", list())
+  expect_null(result)
+})
+
+
+test_that("lm validation: get_scale_transformation for simple coefficient (one predictor)", {
+
+  set.seed(42)
+  df <- data.frame(x1 = rnorm(500, mean = 10, sd = 3))
+  df$y <- 5 + 2 * scale(df$x1) + rnorm(500, 0, 0.5)
+
+  # Fit with scaled predictor
+  fit_scaled <- lm(y ~ scale(x1), data = df)
+  coef_scaled <- coef(fit_scaled)
+
+  # Fit with unscaled predictor (ground truth)
+  fit_unscaled <- lm(y ~ x1, data = df)
+  coef_unscaled <- coef(fit_unscaled)
+
+  # Create formula_scale
+  formula_scale <- .make_formula_scale(df, "x1")
+
+  # Create mock fit with scaled coefficients as posterior
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
+  mock_fit <- .make_mock_fit(posterior_scaled)
+
+  # Get transformation for x1 coefficient
+  trans <- get_scale_transformation(fit = mock_fit, "mu_x1", formula_scale)
+
+  # Apply transformation
+  coef_x1_transformed <- trans$transformation_arguments$a +
+    trans$transformation_arguments$b * coef_scaled["scale(x1)"]
+
+  expect_equal(unname(coef_x1_transformed), unname(coef_unscaled["x1"]), tolerance = 1e-10)
+})
+
+
+test_that("lm validation: get_scale_transformation for intercept (one predictor)", {
+
+  set.seed(42)
+  df <- data.frame(x1 = rnorm(500, mean = 10, sd = 3))
+  df$y <- 5 + 2 * scale(df$x1) + rnorm(500, 0, 0.5)
+
+  # Fit with scaled predictor
+  fit_scaled <- lm(y ~ scale(x1), data = df)
+  coef_scaled <- coef(fit_scaled)
+
+  # Fit with unscaled predictor (ground truth)
+  fit_unscaled <- lm(y ~ x1, data = df)
+  coef_unscaled <- coef(fit_unscaled)
+
+  # Create formula_scale
+  formula_scale <- .make_formula_scale(df, "x1")
+
+  # Create mock fit with scaled coefficients as posterior
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
+  mock_fit <- .make_mock_fit(posterior_scaled)
+
+  # Get transformation for intercept (requires fit for offset computation)
+  trans <- get_scale_transformation(fit = mock_fit, "mu_intercept", formula_scale)
+
+  # Apply transformation
+  coef_int_transformed <- trans$transformation_arguments$a +
+    trans$transformation_arguments$b * coef_scaled["(Intercept)"]
+
+  expect_equal(unname(coef_int_transformed), unname(coef_unscaled["(Intercept)"]), tolerance = 1e-10)
+})
+
+
+test_that("lm validation: get_scale_transformation for multiple predictors", {
+
+  set.seed(43)
+  df <- data.frame(
+    x1 = rnorm(500, mean = 3, sd = 5),
+    x2 = rnorm(500, mean = -10, sd = 2)
+  )
+  df$y <- 2 - 0.5 * scale(df$x1) + 1.5 * scale(df$x2) + rnorm(500, 0, 0.3)
+
+  # Fit with scaled predictors
+  fit_scaled <- lm(y ~ scale(x1) + scale(x2), data = df)
+  coef_scaled <- coef(fit_scaled)
+
+  # Fit with unscaled predictors (ground truth)
+  fit_unscaled <- lm(y ~ x1 + x2, data = df)
+  coef_unscaled <- coef(fit_unscaled)
+
+  # Create formula_scale and mock fit
+  formula_scale <- .make_formula_scale(df, c("x1", "x2"))
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
+  mock_fit <- .make_mock_fit(posterior_scaled)
+
+  # Test each coefficient
+  trans_x1 <- get_scale_transformation(fit = mock_fit, "mu_x1", formula_scale)
+  trans_x2 <- get_scale_transformation(fit = mock_fit, "mu_x2", formula_scale)
+  trans_int <- get_scale_transformation(fit = mock_fit, "mu_intercept", formula_scale)
+
+  coef_x1_transformed <- trans_x1$transformation_arguments$a +
+    trans_x1$transformation_arguments$b * coef_scaled["scale(x1)"]
+  coef_x2_transformed <- trans_x2$transformation_arguments$a +
+    trans_x2$transformation_arguments$b * coef_scaled["scale(x2)"]
+  coef_int_transformed <- trans_int$transformation_arguments$a +
+    trans_int$transformation_arguments$b * coef_scaled["(Intercept)"]
+
+  expect_equal(unname(coef_x1_transformed), unname(coef_unscaled["x1"]), tolerance = 1e-10)
+  expect_equal(unname(coef_x2_transformed), unname(coef_unscaled["x2"]), tolerance = 1e-10)
+  expect_equal(unname(coef_int_transformed), unname(coef_unscaled["(Intercept)"]), tolerance = 1e-10)
+})
+
+
+test_that("lm validation: get_scale_transformation for two-way interaction", {
+
+  set.seed(44)
+  df <- data.frame(
+    x1 = rnorm(500, mean = 5, sd = 2),
+    x2 = rnorm(500, mean = -3, sd = 4)
+  )
+  df$y <- 3 + 0.8 * scale(df$x1) - 0.5 * scale(df$x2) +
+          0.3 * scale(df$x1) * scale(df$x2) + rnorm(500, 0, 0.5)
+
+  # Fit with scaled predictors
+  fit_scaled <- lm(y ~ scale(x1) * scale(x2), data = df)
+  coef_scaled <- coef(fit_scaled)
+
+  # Fit with unscaled predictors (ground truth)
+  fit_unscaled <- lm(y ~ x1 * x2, data = df)
+  coef_unscaled <- coef(fit_unscaled)
+
+  # Create formula_scale and mock fit
+  formula_scale <- .make_formula_scale(df, c("x1", "x2"))
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
+  mock_fit <- .make_mock_fit(posterior_scaled)
+
+  # Test interaction coefficient - this works because interaction has no higher-order terms
+  trans_interaction <- get_scale_transformation(fit = mock_fit, "mu_x1__xXx__x2", formula_scale)
+
+  coef_int_transformed <- trans_interaction$transformation_arguments$a +
+    trans_interaction$transformation_arguments$b * coef_scaled["scale(x1):scale(x2)"]
+
+  expect_equal(unname(coef_int_transformed), unname(coef_unscaled["x1:x2"]), tolerance = 1e-10)
+
+  # For main effects with interactions: get_scale_transformation returns the MARGINAL
+  # transformation (b = 1/sd, a = 0). The full transformation requires knowing other
+  # coefficients' values. When we use transform_scale_samples on the full posterior,
+  # the matrix multiplication handles this correctly.
+
+  # Verify that the b-coefficient is correct (1/sd)
+  trans_x1 <- get_scale_transformation(fit = mock_fit, "mu_x1", formula_scale)
+  trans_x2 <- get_scale_transformation(fit = mock_fit, "mu_x2", formula_scale)
+
+  expect_equal(trans_x1$transformation_arguments$b, 1/sd(df$x1), tolerance = 1e-10)
+  expect_equal(trans_x2$transformation_arguments$b, 1/sd(df$x2), tolerance = 1e-10)
+
+  # To get the full transformation for main effects, use transform_scale_samples
+  # and then compare with unscaled coefficients
+  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+
+  expect_equal(unname(posterior_transformed[1, "mu_x1"]), unname(coef_unscaled["x1"]), tolerance = 1e-10)
+  expect_equal(unname(posterior_transformed[1, "mu_x2"]), unname(coef_unscaled["x2"]), tolerance = 1e-10)
+  expect_equal(unname(posterior_transformed[1, "mu_intercept"]), unname(coef_unscaled["(Intercept)"]), tolerance = 1e-10)
+})
+
+
+test_that("lm validation: get_scale_transformation for three-way interaction", {
+
+  set.seed(46)
+  df <- data.frame(
+    x1 = rnorm(500, mean = 3, sd = 2),
+    x2 = rnorm(500, mean = -5, sd = 3),
+    x3 = rnorm(500, mean = 10, sd = 4)
+  )
+  df$y <- 2 +
+          0.5 * scale(df$x1) - 0.3 * scale(df$x2) + 0.4 * scale(df$x3) +
+          0.2 * scale(df$x1) * scale(df$x2) +
+          0.15 * scale(df$x1) * scale(df$x3) +
+          0.1 * scale(df$x2) * scale(df$x3) +
+          0.08 * scale(df$x1) * scale(df$x2) * scale(df$x3) +
+          rnorm(500, 0, 0.3)
+
+  # Fit with scaled predictors
+  fit_scaled <- lm(y ~ scale(x1) * scale(x2) * scale(x3), data = df)
+  coef_scaled <- coef(fit_scaled)
+
+  # Fit with unscaled predictors (ground truth)
+  fit_unscaled <- lm(y ~ x1 * x2 * x3, data = df)
+  coef_unscaled <- coef(fit_unscaled)
+
+  # Create formula_scale and mock fit
+  formula_scale <- .make_formula_scale(df, c("x1", "x2", "x3"))
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
+  mock_fit <- .make_mock_fit(posterior_scaled)
+
+  # Test three-way interaction (highest order - no contributions from higher terms)
+  trans_3way <- get_scale_transformation(fit = mock_fit, "mu_x1__xXx__x2__xXx__x3", formula_scale)
+
+  coef_3way_transformed <- trans_3way$transformation_arguments$a +
+    trans_3way$transformation_arguments$b * coef_scaled["scale(x1):scale(x2):scale(x3)"]
+
+  expect_equal(unname(coef_3way_transformed), unname(coef_unscaled["x1:x2:x3"]), tolerance = 1e-10)
+
+  # Test two-way interactions (receive contributions from 3-way interaction)
+  trans_x1x2 <- get_scale_transformation(fit = mock_fit, "mu_x1__xXx__x2", formula_scale)
+  trans_x1x3 <- get_scale_transformation(fit = mock_fit, "mu_x1__xXx__x3", formula_scale)
+  trans_x2x3 <- get_scale_transformation(fit = mock_fit, "mu_x2__xXx__x3", formula_scale)
+
+  coef_x1x2_transformed <- trans_x1x2$transformation_arguments$a +
+    trans_x1x2$transformation_arguments$b * coef_scaled["scale(x1):scale(x2)"]
+  coef_x1x3_transformed <- trans_x1x3$transformation_arguments$a +
+    trans_x1x3$transformation_arguments$b * coef_scaled["scale(x1):scale(x3)"]
+  coef_x2x3_transformed <- trans_x2x3$transformation_arguments$a +
+    trans_x2x3$transformation_arguments$b * coef_scaled["scale(x2):scale(x3)"]
+
+  expect_equal(unname(coef_x1x2_transformed), unname(coef_unscaled["x1:x2"]), tolerance = 1e-10)
+  expect_equal(unname(coef_x1x3_transformed), unname(coef_unscaled["x1:x3"]), tolerance = 1e-10)
+  expect_equal(unname(coef_x2x3_transformed), unname(coef_unscaled["x2:x3"]), tolerance = 1e-10)
+
+  # Test main effects (receive contributions from 2-way and 3-way interactions)
+  trans_x1 <- get_scale_transformation(fit = mock_fit, "mu_x1", formula_scale)
+  trans_x2 <- get_scale_transformation(fit = mock_fit, "mu_x2", formula_scale)
+  trans_x3 <- get_scale_transformation(fit = mock_fit, "mu_x3", formula_scale)
+
+  coef_x1_transformed <- trans_x1$transformation_arguments$a +
+    trans_x1$transformation_arguments$b * coef_scaled["scale(x1)"]
+  coef_x2_transformed <- trans_x2$transformation_arguments$a +
+    trans_x2$transformation_arguments$b * coef_scaled["scale(x2)"]
+  coef_x3_transformed <- trans_x3$transformation_arguments$a +
+    trans_x3$transformation_arguments$b * coef_scaled["scale(x3)"]
+
+  expect_equal(unname(coef_x1_transformed), unname(coef_unscaled["x1"]), tolerance = 1e-10)
+  expect_equal(unname(coef_x2_transformed), unname(coef_unscaled["x2"]), tolerance = 1e-10)
+  expect_equal(unname(coef_x3_transformed), unname(coef_unscaled["x3"]), tolerance = 1e-10)
+
+  # Test intercept
+  trans_intercept <- get_scale_transformation(fit = mock_fit, "mu_intercept", formula_scale)
+
+  coef_intercept_transformed <- trans_intercept$transformation_arguments$a +
+    trans_intercept$transformation_arguments$b * coef_scaled["(Intercept)"]
+
+  expect_equal(unname(coef_intercept_transformed), unname(coef_unscaled["(Intercept)"]), tolerance = 1e-10)
+})
+
+
+test_that("lm validation: get_scale_transformation for partial scaling", {
+
+  set.seed(45)
+  df <- data.frame(
+    x1 = rnorm(500, mean = 8, sd = 3),
+    x2 = rnorm(500, mean = -2, sd = 5)  # Not scaled
+  )
+  # Only x1 is scaled
+  df$y <- 1 + 0.6 * scale(df$x1) - 0.4 * df$x2 +
+          0.25 * scale(df$x1) * df$x2 + rnorm(500, 0, 0.4)
+
+  # Fit with partial scaling (only x1 scaled)
+  fit_scaled <- lm(y ~ scale(x1) * x2, data = df)
+  coef_scaled <- coef(fit_scaled)
+
+  # Fit with unscaled predictors (ground truth)
+  fit_unscaled <- lm(y ~ x1 * x2, data = df)
+  coef_unscaled <- coef(fit_unscaled)
+
+  # Create formula_scale (only x1 is scaled)
+  formula_scale <- .make_formula_scale(df, "x1")
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
+  mock_fit <- .make_mock_fit(posterior_scaled)
+
+  # Test x1 coefficient
+  trans_x1 <- get_scale_transformation(fit = mock_fit, "mu_x1", formula_scale)
+
+  coef_x1_transformed <- trans_x1$transformation_arguments$a +
+    trans_x1$transformation_arguments$b * coef_scaled["scale(x1)"]
+
+  expect_equal(unname(coef_x1_transformed), unname(coef_unscaled["x1"]), tolerance = 1e-10)
+
+  # x2 is not scaled, so transformation should return NULL
+  trans_x2 <- get_scale_transformation(fit = mock_fit, "mu_x2", formula_scale)
+  expect_null(trans_x2)
+
+  # Interaction involves x1 which is scaled
+  trans_interaction <- get_scale_transformation(fit = mock_fit, "mu_x1__xXx__x2", formula_scale)
+
+  coef_int_transformed <- trans_interaction$transformation_arguments$a +
+    trans_interaction$transformation_arguments$b * coef_scaled["scale(x1):x2"]
+
+  expect_equal(unname(coef_int_transformed), unname(coef_unscaled["x1:x2"]), tolerance = 1e-10)
+})
+
+
+test_that("lm validation: get_scale_transformation matches transform_scale_samples", {
+
+  # This test verifies that applying get_scale_transformation to each coefficient
+  # produces the same result as transform_scale_samples for the full posterior
+
+  set.seed(789)
+  df <- data.frame(
+    x1 = rnorm(500, mean = 10, sd = 5),
+    x2 = rnorm(500, mean = -3, sd = 2)
+  )
+  df$y <- 2 + 0.5 * scale(df$x1) - 0.3 * scale(df$x2) +
+          0.1 * scale(df$x1) * scale(df$x2) + rnorm(500, 0, 1)
+
+  # Fit with scaled predictors
+  fit_scaled <- lm(y ~ scale(x1) * scale(x2), data = df)
+  coef_scaled <- coef(fit_scaled)
+
+  # Fit with unscaled predictors (ground truth)
+  fit_unscaled <- lm(y ~ x1 * x2, data = df)
+  coef_unscaled <- coef(fit_unscaled)
+
+  # Create formula_scale and mock fit
+  formula_scale <- .make_formula_scale(df, c("x1", "x2"))
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled, n_rep = 50)
+  mock_fit <- .make_mock_fit(posterior_scaled)
+
+  # Apply transform_scale_samples (the reference implementation)
+  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+
+  # Get individual transformations and apply them
+  # For the highest-order term (interaction), transformation is simple
+  trans_interaction <- get_scale_transformation(fit = mock_fit, "mu_x1__xXx__x2", formula_scale)
+  transformed_interaction <- trans_interaction$transformation_arguments$a +
+    trans_interaction$transformation_arguments$b * posterior_scaled[1, "mu_x1__xXx__x2"]
+
+  expect_equal(
+    unname(transformed_interaction),
+    unname(posterior_transformed[1, "mu_x1__xXx__x2"]),
+    tolerance = 1e-10,
+    info = "Parameter: mu_x1__xXx__x2"
+  )
+
+  # For main effects and intercept, the transformation includes offset from other terms
+  trans_x1 <- get_scale_transformation(fit = mock_fit, "mu_x1", formula_scale)
+  trans_x2 <- get_scale_transformation(fit = mock_fit, "mu_x2", formula_scale)
+  trans_int <- get_scale_transformation(fit = mock_fit, "mu_intercept", formula_scale)
+
+  transformed_x1 <- trans_x1$transformation_arguments$a +
+    trans_x1$transformation_arguments$b * posterior_scaled[1, "mu_x1"]
+  transformed_x2 <- trans_x2$transformation_arguments$a +
+    trans_x2$transformation_arguments$b * posterior_scaled[1, "mu_x2"]
+  transformed_int <- trans_int$transformation_arguments$a +
+    trans_int$transformation_arguments$b * posterior_scaled[1, "mu_intercept"]
+
+  expect_equal(
+    unname(transformed_x1),
+    unname(posterior_transformed[1, "mu_x1"]),
+    tolerance = 1e-10,
+    info = "Parameter: mu_x1"
+  )
+
+  expect_equal(
+    unname(transformed_x2),
+    unname(posterior_transformed[1, "mu_x2"]),
+    tolerance = 1e-10,
+    info = "Parameter: mu_x2"
+  )
+
+  expect_equal(
+    unname(transformed_int),
+    unname(posterior_transformed[1, "mu_intercept"]),
+    tolerance = 1e-10,
+    info = "Parameter: mu_intercept"
+  )
+
+  # Also verify against unscaled lm coefficients
+  expect_equal(unname(transformed_x1), unname(coef_unscaled["x1"]), tolerance = 1e-10)
+  expect_equal(unname(transformed_x2), unname(coef_unscaled["x2"]), tolerance = 1e-10)
+  expect_equal(unname(transformed_int), unname(coef_unscaled["(Intercept)"]), tolerance = 1e-10)
+})
+
+
+test_that("lm validation: get_scale_transformation with factor + continuous interaction", {
+
+  set.seed(50)
+  df <- data.frame(
+    x1 = rnorm(500, mean = 5, sd = 3),
+    f1 = factor(sample(letters[1:2], 500, TRUE))
+  )
+  df$y <- 2 + 0.5 * scale(df$x1) +
+          ifelse(df$f1 == "b", 0.3, 0) +
+          ifelse(df$f1 == "b", 0.2, 0) * scale(df$x1) +
+          rnorm(500, 0, 0.4)
+
+  # Fit with scaled predictor
+  fit_scaled <- lm(y ~ scale(x1) * f1, data = df)
+  coef_scaled <- coef(fit_scaled)
+
+  # Fit with unscaled predictor (ground truth)
+  fit_unscaled <- lm(y ~ x1 * f1, data = df)
+  coef_unscaled <- coef(fit_unscaled)
+
+  # Create formula_scale (only x1 is scaled, f1 is factor)
+  formula_scale <- .make_formula_scale(df, "x1")
+  posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
+  mock_fit <- .make_mock_fit(posterior_scaled)
+
+  # Test main effect of x1
+  trans_x1 <- get_scale_transformation(fit = mock_fit, "mu_x1", formula_scale)
+
+  coef_x1_transformed <- trans_x1$transformation_arguments$a +
+    trans_x1$transformation_arguments$b * coef_scaled["scale(x1)"]
+
+  expect_equal(unname(coef_x1_transformed), unname(coef_unscaled["x1"]), tolerance = 1e-10)
+
+  # Test interaction (x1:f1b involves scaled x1)
+  trans_interaction <- get_scale_transformation(fit = mock_fit, "mu_x1__xXx__f1b", formula_scale)
+
+  coef_int_transformed <- trans_interaction$transformation_arguments$a +
+    trans_interaction$transformation_arguments$b * coef_scaled["scale(x1):f1b"]
+
+  expect_equal(unname(coef_int_transformed), unname(coef_unscaled["x1:f1b"]), tolerance = 1e-10)
+})

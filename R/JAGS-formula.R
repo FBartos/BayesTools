@@ -1458,6 +1458,275 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
 }
 
 
+#' @title Get scale transformation for plotting
+#'
+#' @description Extracts linear transformation parameters from scaling information
+#' that can be used with plotting functions via \code{transformation} and
+#' \code{transformation_arguments} parameters.
+#'
+#' @param parameter_name The full name of the parameter (e.g., \code{"mu_x1"},
+#' \code{"mu_intercept"}, or \code{"mu_x1__xXx__x2"} for interaction)
+#' @param formula_scale Nested list containing standardization information keyed by
+#' parameter name. Each parameter entry contains scaling info (mean and sd) for
+#' each standardized predictor, e.g., \code{list(mu = list(mu_x1 = list(mean = 0, sd = 1)))}.
+#' @param fit A fitted model object (e.g., from \code{JAGS_fit}) containing posterior
+#' samples. Required for computing the transformation, as the offset depends on
+#' posterior means of other coefficients when there are interactions in the model.
+#'
+#' @details
+#' For a simple coefficient (single predictor, no interactions), the transformation is:
+#' \deqn{\beta_{orig} = \beta_z / \sigma_x}
+#' which corresponds to \code{transformation = "lin"} with \code{a = 0, b = 1/sd}.
+#'
+#' For the highest-order interaction term (which receives no contributions from
+#' higher-order terms), the transformation is similar:
+#' \deqn{\beta_{orig} = \beta_z / (\sigma_{x1} \times \sigma_{x2} \times ...)}
+#'
+#' For main effects when interactions are present, or for the intercept, the
+#' transformation includes contributions from other coefficients:
+#' \deqn{\beta_{orig} = a + b \times \beta_z}
+#' where \code{a} is computed from the posterior means of other coefficients.
+#' This requires the \code{fit} argument to access posterior samples.
+#'
+#' For intercepts with \code{log_intercept = TRUE}, the transformation is:
+#' \deqn{intercept_{orig} = \exp(a + b \times \log(intercept_z))}
+#' which uses the \code{"exp_lin"} transformation type.
+#'
+#' @return A list with elements:
+#' \describe{
+#'   \item{\code{transformation}}{Character string (\code{"lin"} or \code{"exp_lin"}).}
+#'   \item{\code{transformation_arguments}}{A named list with \code{a} (offset) and
+#'     \code{b} (scale factor).}
+#' }
+#' Returns \code{NULL} if no transformation is needed (parameter not affected by scaling).
+#'
+#' @seealso [transform_scale_samples()] [plot_posterior()] [plot_prior_list()]
+#'
+#' @examples
+#' # With a fitted model
+#' # trans <- get_scale_transformation(fit, "mu_x1")
+#' # Returns: list(transformation = "lin", transformation_arguments = list(a = offset, b = scale))
+#'
+#' @export
+get_scale_transformation <- function(fit, parameter_name, formula_scale = NULL){
+
+  # fit is required
+  if(missing(fit) || is.null(fit)){
+    stop("'fit' argument is required to compute the scale transformation.")
+  }
+
+  # Extract formula_scale from fit if not provided
+  if(is.null(formula_scale)){
+    if(!is.null(attr(fit, "formula_scale"))){
+      formula_scale <- attr(fit, "formula_scale")
+    }
+  }
+
+  check_char(parameter_name, "parameter_name", check_length = 1)
+
+  if(is.null(formula_scale) || length(formula_scale) == 0){
+    return(NULL)
+  }
+
+  check_list(formula_scale, "formula_scale")
+
+  # Identify the parameter prefix (e.g., "mu" from "mu_x1")
+  prefix <- NULL
+  for(param_name in names(formula_scale)){
+    if(startsWith(parameter_name, paste0(param_name, "_"))){
+      prefix <- param_name
+      break
+    }
+  }
+
+  if(is.null(prefix)){
+    # Parameter not affected by any scaling
+    return(NULL)
+  }
+
+  param_scale <- formula_scale[[prefix]]
+
+  if(is.null(param_scale) || length(param_scale) == 0){
+    return(NULL)
+  }
+
+  # Get transformation using internal helper
+  result <- .get_scale_transformation_single(parameter_name, param_scale, prefix, fit)
+
+  return(result)
+}
+
+
+# Internal helper to get transformation for a single parameter
+# @param parameter_name The parameter name (e.g., "mu_x1" or "mu_intercept")
+# @param formula_scale Flat list of scaling info for this prefix
+# @param prefix The parameter prefix (e.g., "mu")
+# @param fit Optional fit object containing posterior samples
+# @return List with transformation and transformation_arguments, or NULL
+.get_scale_transformation_single <- function(parameter_name, formula_scale, prefix, fit = NULL){
+
+  if(is.null(formula_scale) || length(formula_scale) == 0){
+    return(NULL)
+  }
+
+  # Check if this parameter uses log(intercept)
+  log_intercept <- isTRUE(attr(formula_scale, "log_intercept"))
+  intercept_col <- paste0(prefix, "_intercept")
+  is_intercept <- (parameter_name == intercept_col)
+
+  # Get scaled variable names (without prefix)
+  scaled_vars <- sub(paste0("^", prefix, "_"), "", names(formula_scale))
+
+  # Parse the parameter to understand its components
+  term_components <- .parse_term_components(parameter_name, prefix)
+
+  # Check if parameter is affected by scaling
+  if(length(term_components) == 0){
+    # Intercept case
+    if(!is_intercept){
+      return(NULL)
+    }
+  }else{
+    # Check if any components are scaled
+    if(!any(term_components %in% scaled_vars)){
+      return(NULL)
+    }
+  }
+
+  # For the highest-order terms (interaction terms that don't receive contributions
+  # from any higher-order terms), we can compute the scale factor directly
+  # Check if there are any higher-order terms that could contribute to this term
+  has_higher_order_contributions <- FALSE
+  if(length(term_components) > 0 && !is_intercept){
+    # This term could receive contributions from terms with MORE components
+    # that include all of this term's components
+    # For now, we check if fit is NULL - if so, we can only return marginal transformation
+    if(!is.null(fit)){
+      # We'll use the full matrix approach to check for contributions
+      affected_cols <- c(intercept_col, names(formula_scale))
+
+      # Get posterior to find all available columns
+      posterior <- as.matrix(coda::as.mcmc.list(fit))
+      available_cols <- intersect(affected_cols, colnames(posterior))
+
+      # Also include interaction terms from posterior
+      all_posterior_cols <- colnames(posterior)
+      prefix_pattern <- paste0("^", prefix, "_")
+      param_cols <- all_posterior_cols[grepl(prefix_pattern, all_posterior_cols)]
+      affected_cols <- union(affected_cols, param_cols)
+      affected_cols <- intersect(affected_cols, all_posterior_cols)
+
+      if(length(affected_cols) > 1){
+        # Build the transformation matrix
+        M <- .build_unscale_matrix(affected_cols, formula_scale, prefix)
+
+        # Find row for our parameter
+        param_row <- which(rownames(M) == parameter_name)
+        if(length(param_row) > 0){
+          transform_row <- M[param_row, , drop = TRUE]
+
+          # Check if there are non-zero off-diagonal entries
+          other_cols <- setdiff(names(transform_row), parameter_name)
+          other_coeffs <- transform_row[other_cols]
+          if(any(!is.na(other_coeffs) & other_coeffs != 0)){
+            has_higher_order_contributions <- TRUE
+          }
+        }
+      }
+    }
+  }
+
+  # For interaction terms without higher-order contributions, use simple formula
+  if(length(term_components) > 0 && !is_intercept && !has_higher_order_contributions){
+    # Identify which components are scaled
+    scaled_components <- term_components[term_components %in% scaled_vars]
+
+    if(length(scaled_components) > 0){
+      # The scale factor is the product of 1/sd for all scaled components
+      sd_product <- 1
+      for(comp in scaled_components){
+        comp_name <- paste0(prefix, "_", comp)
+        if(comp_name %in% names(formula_scale)){
+          sd_product <- sd_product * formula_scale[[comp_name]]$sd
+        }
+      }
+      scale_factor <- 1 / sd_product
+
+      return(list(
+        transformation = "lin",
+        transformation_arguments = list(a = 0, b = unname(scale_factor))
+      ))
+    }
+  }
+
+  # For terms with contributions from higher-order terms (or intercept),
+  # we need the full transformation matrix
+  # Build affected_cols including all scaled predictors and the intercept
+  affected_cols <- c(intercept_col, names(formula_scale))
+
+  # If fit is available, also include interaction terms from posterior
+  if(!is.null(fit)){
+    posterior <- as.matrix(coda::as.mcmc.list(fit))
+    all_posterior_cols <- colnames(posterior)
+    prefix_pattern <- paste0("^", prefix, "_")
+    param_cols <- all_posterior_cols[grepl(prefix_pattern, all_posterior_cols)]
+    affected_cols <- union(affected_cols, param_cols)
+    affected_cols <- intersect(affected_cols, all_posterior_cols)
+  }
+
+  # Build the transformation matrix
+  M <- .build_unscale_matrix(affected_cols, formula_scale, prefix)
+
+  # Find row for our parameter
+  param_row <- which(rownames(M) == parameter_name)
+  if(length(param_row) == 0){
+    return(NULL)
+  }
+
+  # Extract the transformation coefficients
+  transform_row <- M[param_row, , drop = TRUE]
+
+  # The self-coefficient is the diagonal entry
+  self_coef <- unname(transform_row[parameter_name])
+  if(is.na(self_coef)) self_coef <- 1
+
+  # Compute offset from other coefficients' posterior means
+  # offset = Σ(transform_row[j] * posterior_mean[j]) for j != self
+  offset <- 0
+
+  if(!is.null(fit)){
+    # Get posterior samples (already have it if we entered this branch)
+    if(!exists("posterior")){
+      posterior <- as.matrix(coda::as.mcmc.list(fit))
+    }
+    other_cols <- setdiff(names(transform_row), parameter_name)
+    other_cols <- other_cols[other_cols %in% colnames(posterior)]
+
+    if(length(other_cols) > 0){
+      # Compute offset as sum of (coefficient * posterior_mean)
+      for(col in other_cols){
+        coef_val <- transform_row[col]
+        if(!is.na(coef_val) && coef_val != 0){
+          offset <- offset + coef_val * mean(posterior[, col])
+        }
+      }
+    }
+  }
+
+  if(is_intercept && log_intercept){
+    return(list(
+      transformation = "exp_lin",
+      transformation_arguments = list(a = offset, b = unname(self_coef))
+    ))
+  }else{
+    return(list(
+      transformation = "lin",
+      transformation_arguments = list(a = offset, b = unname(self_coef))
+    ))
+  }
+}
+
+
 #' @title BayesTools Contrast Matrices
 #'
 #' @description BayesTools provides several contrast matrix functions for Bayesian factor analysis.

@@ -536,3 +536,236 @@ test_that(".plot_prior_list.factor handles transformation", {
   })
 
 })
+
+# ============================================================================ #
+# SECTION: get_scale_transformation with plotting
+# ============================================================================ #
+
+test_that("exp_lin transformation functions are defined correctly", {
+  # Test that exp_lin transformation is correctly defined
+  # (used for log-intercept unscaling)
+
+  # Get the transformation functions
+  trans_funcs <- BayesTools:::.density.prior_transformation_functions("exp_lin")
+
+  # Verify the functions exist
+  expect_true(is.function(trans_funcs$fun))
+  expect_true(is.function(trans_funcs$inv))
+  expect_true(is.function(trans_funcs$jac))
+
+  # Test the transformation: exp(a + b * log(x))
+  x <- 2
+  a <- 0.5
+  b <- 1
+
+  # fun: exp(0.5 + 1 * log(2)) = exp(0.5 + 0.693) = exp(1.193) ≈ 3.30
+  expected <- exp(a + b * log(x))
+  expect_equal(trans_funcs$fun(x, a, b), expected)
+
+  # inv: should reverse the transformation
+  y <- trans_funcs$fun(x, a, b)
+  expect_equal(trans_funcs$inv(y, a, b), x, tolerance = 1e-10)
+
+  # jac: 1 / (b * x)
+  expect_equal(trans_funcs$jac(x, a, b), 1 / (b * x))
+})
+
+
+test_that("get_scale_transformation with cached fit plots correctly", {
+  set.seed(1)
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+  skip_if_no_fits()
+
+  # Load the auto-scaled fit
+  fit <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS"))
+  formula_scale <- attr(fit, "formula_scale")
+
+  # Create priors matching those used in test-00-model-fits.R
+  prior_x_cont   <- prior("normal", list(0, 1))
+  prior_x_int    <- prior("normal", list(0, 1))
+
+  # Get transformations for the scaled parameters
+  trans_x1 <- get_scale_transformation("mu_x_cont1", formula_scale, fit = fit)
+  trans_x2 <- get_scale_transformation("mu_x_cont2", formula_scale, fit = fit)
+  trans_int <- get_scale_transformation("mu_x_cont1__xXx__x_cont2", formula_scale, fit = fit)
+  trans_intercept <- get_scale_transformation("mu_intercept", formula_scale, fit = fit)
+
+  # Side-by-side: Standardized prior (left) vs Unscaled prior (right) for x_cont1
+  vdiffr::expect_doppelganger("scale-transform-x1-standardized", function() {
+    plot(prior_x_cont, main = "x_cont1 (standardized)")
+  })
+
+  vdiffr::expect_doppelganger("scale-transform-x1-unscaled", function() {
+    plot(prior_x_cont,
+         transformation = trans_x1$transformation,
+         transformation_arguments = trans_x1$transformation_arguments,
+         main = "x_cont1 (unscaled)")
+  })
+
+  # Side-by-side: Standardized prior (left) vs Unscaled prior (right) for interaction
+  vdiffr::expect_doppelganger("scale-transform-interaction-standardized", function() {
+    plot(prior_x_int, main = "x1:x2 (standardized)")
+  })
+
+  vdiffr::expect_doppelganger("scale-transform-interaction-unscaled", function() {
+    plot(prior_x_int,
+         transformation = trans_int$transformation,
+         transformation_arguments = trans_int$transformation_arguments,
+         main = "x1:x2 (unscaled)")
+  })
+})
+
+
+test_that("get_scale_transformation posterior plots with cached fit", {
+  set.seed(1)
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+  skip_if_no_fits()
+
+  # Load the auto-scaled fit
+  fit <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS"))
+  formula_scale <- attr(fit, "formula_scale")
+
+  # Create priors matching those used in test-00-model-fits.R
+  prior_x_cont <- prior("normal", list(0, 1))
+  prior_x_int  <- prior("normal", list(0, 1))
+
+  # Get transformations
+  trans_x1 <- get_scale_transformation("mu_x_cont1", formula_scale, fit = fit)
+  trans_int <- get_scale_transformation("mu_x_cont1__xXx__x_cont2", formula_scale, fit = fit)
+
+  # Extract posterior samples
+  posterior <- as.matrix(coda::as.mcmc.list(fit))
+
+  # Side-by-side posterior plots: Standardized vs Unscaled
+  vdiffr::expect_doppelganger("scale-posterior-x1-standardized", function() {
+    hist(posterior[, "mu_x_cont1"], breaks = 30, probability = TRUE,
+         main = "mu_x_cont1 posterior (standardized)", xlab = "")
+    lines(prior_x_cont, col = "red", lwd = 2)
+  })
+
+  # Apply transformation to posterior for unscaled plot
+  posterior_x1_unscaled <- trans_x1$transformation_arguments$a +
+    trans_x1$transformation_arguments$b * posterior[, "mu_x_cont1"]
+
+  vdiffr::expect_doppelganger("scale-posterior-x1-unscaled", function() {
+    hist(posterior_x1_unscaled, breaks = 30, probability = TRUE,
+         main = "mu_x_cont1 posterior (unscaled)", xlab = "")
+    lines(prior_x_cont,
+          transformation = trans_x1$transformation,
+          transformation_arguments = trans_x1$transformation_arguments,
+          col = "red", lwd = 2)
+  })
+
+  # Interaction term
+  posterior_int_unscaled <- trans_int$transformation_arguments$a +
+    trans_int$transformation_arguments$b * posterior[, "mu_x_cont1__xXx__x_cont2"]
+
+  vdiffr::expect_doppelganger("scale-posterior-interaction-standardized", function() {
+    hist(posterior[, "mu_x_cont1__xXx__x_cont2"], breaks = 30, probability = TRUE,
+         main = "interaction posterior (standardized)", xlab = "")
+    lines(prior_x_int, col = "red", lwd = 2)
+  })
+
+  vdiffr::expect_doppelganger("scale-posterior-interaction-unscaled", function() {
+    hist(posterior_int_unscaled, breaks = 30, probability = TRUE,
+         main = "interaction posterior (unscaled)", xlab = "")
+    lines(prior_x_int,
+          transformation = trans_int$transformation,
+          transformation_arguments = trans_int$transformation_arguments,
+          col = "red", lwd = 2)
+  })
+})
+
+
+test_that("get_scale_transformation with dual parameter model (log intercept)", {
+  set.seed(1)
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+  skip_if_no_fits()
+
+  # Load the dual parameter regression fit (has log(intercept) for log_sigma)
+  fit <- readRDS(file.path(temp_fits_dir, "fit_dual_param_regression.RDS"))
+  formula_scale <- attr(fit, "formula_scale")
+
+  # Create priors matching those used in test-00-model-fits.R
+  prior_mu_x      <- prior("normal", list(0, 1))
+  prior_ls_x      <- prior("normal", list(0, 0.5))
+
+  # Get transformations for mu (standard intercept)
+  trans_mu_x <- get_scale_transformation("mu_x_mu", formula_scale, fit = fit)
+  trans_mu_int <- get_scale_transformation("mu_intercept", formula_scale, fit = fit)
+
+  # Get transformations for log_sigma (log intercept)
+  trans_ls_x <- get_scale_transformation("log_sigma_x_sigma", formula_scale, fit = fit)
+  trans_ls_int <- get_scale_transformation("log_sigma_intercept", formula_scale, fit = fit)
+
+  # Verify log_sigma intercept uses exp_lin transformation
+  expect_equal(trans_ls_int$transformation, "exp_lin")
+
+  # Extract posterior samples
+  posterior <- as.matrix(coda::as.mcmc.list(fit))
+
+  # Plot mu coefficient: standardized vs unscaled
+  vdiffr::expect_doppelganger("dual-mu-x-standardized", function() {
+    hist(posterior[, "mu_x_mu"], breaks = 30, probability = TRUE,
+         main = "mu_x_mu (standardized)", xlab = "")
+    lines(prior_mu_x, col = "red", lwd = 2)
+  })
+
+  posterior_mu_x_unscaled <- trans_mu_x$transformation_arguments$a +
+    trans_mu_x$transformation_arguments$b * posterior[, "mu_x_mu"]
+
+  vdiffr::expect_doppelganger("dual-mu-x-unscaled", function() {
+    hist(posterior_mu_x_unscaled, breaks = 30, probability = TRUE,
+         main = "mu_x_mu (unscaled)", xlab = "")
+    lines(prior_mu_x,
+          transformation = trans_mu_x$transformation,
+          transformation_arguments = trans_mu_x$transformation_arguments,
+          col = "red", lwd = 2)
+  })
+
+  # Plot log_sigma coefficient: standardized vs unscaled
+  vdiffr::expect_doppelganger("dual-log-sigma-x-standardized", function() {
+    hist(posterior[, "log_sigma_x_sigma"], breaks = 30, probability = TRUE,
+         main = "log_sigma_x_sigma (standardized)", xlab = "")
+    lines(prior_ls_x, col = "red", lwd = 2)
+  })
+
+  posterior_ls_x_unscaled <- trans_ls_x$transformation_arguments$a +
+    trans_ls_x$transformation_arguments$b * posterior[, "log_sigma_x_sigma"]
+
+  vdiffr::expect_doppelganger("dual-log-sigma-x-unscaled", function() {
+    hist(posterior_ls_x_unscaled, breaks = 30, probability = TRUE,
+         main = "log_sigma_x_sigma (unscaled)", xlab = "")
+    lines(prior_ls_x,
+          transformation = trans_ls_x$transformation,
+          transformation_arguments = trans_ls_x$transformation_arguments,
+          col = "red", lwd = 2)
+  })
+})
+
+
+test_that("linear transformation matches expected behavior", {
+  set.seed(1)
+
+  # Create a normal prior
+  prior_list <- list(p1 = prior("normal", list(0, 1)))
+
+  # Apply linear transformation: a + b*x with a=0, b=0.5
+  # This should compress the distribution by half
+  vdiffr::expect_doppelganger("plot-normal-lin-compress", function() {
+    plot_prior_list(prior_list,
+                    transformation = "lin",
+                    transformation_arguments = list(a = 0, b = 0.5))
+  })
+
+  # Apply linear transformation with offset: a + b*x with a=2, b=0.5
+  # This should compress and shift
+  vdiffr::expect_doppelganger("plot-normal-lin-shift-compress", function() {
+    plot_prior_list(prior_list,
+                    transformation = "lin",
+                    transformation_arguments = list(a = 2, b = 0.5))
+  })
+})

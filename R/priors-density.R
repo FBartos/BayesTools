@@ -619,6 +619,14 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
         inv = function(x, a = 0, b = 1)(x - a) / b,
         jac = function(x, a = 0, b = 1)1 / b
       ),
+      "exp_lin" = list(
+        # Exponential-linear transformation: exp(a + b * log(x))
+        # Used for log-intercept unscaling where: intercept_orig = exp(log(intercept_z) * b + a)
+        # When a = 0 and b = 1, this is identity: exp(log(x)) = x
+        fun = function(x, a = 0, b = 1) exp(a + b * log(x)),
+        inv = function(x, a = 0, b = 1) exp((log(x) - a) / b),
+        jac = function(x, a = 0, b = 1) 1 / (b * x)
+      ),
       "tanh" = list(
         fun = tanh,
         inv = atanh,
@@ -637,7 +645,7 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
 
   }else{
 
-    stop("Transformation must be either a character vector of length 1 corresponding to one of known transformations ('lin' = linear, 'tanh' = Fisher's z, 'exp' = exponential) or a list of three functions (fun = transformation function, inv = inverse transformation, jac = jacobian adjustment).")
+    stop("Transformation must be either a character vector of length 1 corresponding to one of known transformations ('lin' = linear, 'exp_lin' = exponential-linear for log-intercept, 'tanh' = Fisher's z, 'exp' = exponential) or a list of three functions (fun = transformation function, inv = inverse transformation, jac = jacobian adjustment).")
 
   }
 
