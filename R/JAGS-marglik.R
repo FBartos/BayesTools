@@ -129,22 +129,22 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
 
     # prepare object for holding the parameters, later accessible to the user specified 'log_posterior'
     parameters <- list()
-    if(!is.null(prior_list)){
+    if(length(prior_list) > 0){
       parameters <- c(parameters, JAGS_marglik_parameters(samples.row, prior_list))
     }
-    if(!is.null(formula_prior_list)){
+    if(length(formula_prior_list) > 0){
       parameters <- c(parameters, JAGS_marglik_parameters_formula(samples.row, formula_list, formula_data_list, formula_prior_list, parameters))
     }
-    if(!is.null(add_parameters)){
+    if(length(add_parameters) > 0){
       parameters <- c(parameters, samples.row[add_parameters])
     }
 
     # compute the marginal likelihoods
     marglik <- 0
-    if(!is.null(prior_list)){
+    if(length(prior_list) > 0){
       marglik <- marglik + JAGS_marglik_priors(samples.row, prior_list)
     }
-    if(!is.null(formula_prior_list)){
+    if(length(formula_prior_list) > 0){
       marglik <- marglik + JAGS_marglik_priors_formula(samples.row, formula_prior_list)
     }
     marglik   <- marglik + log_posterior(parameters = parameters, data = data, ...)

@@ -4,19 +4,19 @@
 \alias{get_scale_transformation}
 \title{Get scale transformation for plotting}
 \usage{
-get_scale_transformation(parameter_name, formula_scale = NULL, fit)
+get_scale_transformation(fit, parameter_name, formula_scale = NULL)
 }
 \arguments{
+\item{fit}{A fitted model object (e.g., from \code{JAGS_fit}) containing posterior
+samples. Required for computing the transformation, as the offset depends on
+posterior means of other coefficients when there are interactions in the model.}
+
 \item{parameter_name}{The full name of the parameter (e.g., \code{"mu_x1"},
 \code{"mu_intercept"}, or \code{"mu_x1__xXx__x2"} for interaction)}
 
 \item{formula_scale}{Nested list containing standardization information keyed by
 parameter name. Each parameter entry contains scaling info (mean and sd) for
 each standardized predictor, e.g., \code{list(mu = list(mu_x1 = list(mean = 0, sd = 1)))}.}
-
-\item{fit}{A fitted model object (e.g., from \code{JAGS_fit}) containing posterior
-samples. Required for computing the transformation, as the offset depends on
-posterior means of other coefficients when there are interactions in the model.}
 }
 \value{
 A list with elements:
@@ -33,6 +33,11 @@ that can be used with plotting functions via \code{transformation} and
 \code{transformation_arguments} parameters.
 }
 \details{
+This function returns the \strong{marginal} transformation for visualizing priors
+on the original (unscaled) parameter scale. When a main effect has interactions,
+the marginal prior on the unscaled coefficient is a convolution of independent
+priors, with variance equal to the sum of squared transformation coefficients.
+
 For a simple coefficient (single predictor, no interactions), the transformation is:
 \deqn{\beta_{orig} = \beta_z / \sigma_x}
 which corresponds to \code{transformation = "lin"} with \code{a = 0, b = 1/sd}.
@@ -41,11 +46,15 @@ For the highest-order interaction term (which receives no contributions from
 higher-order terms), the transformation is similar:
 \deqn{\beta_{orig} = \beta_z / (\sigma_{x1} \times \sigma_{x2} \times ...)}
 
-For main effects when interactions are present, or for the intercept, the
-transformation includes contributions from other coefficients:
-\deqn{\beta_{orig} = a + b \times \beta_z}
-where \code{a} is computed from the posterior means of other coefficients.
-This requires the \code{fit} argument to access posterior samples.
+For main effects when interactions are present, the marginal transformation
+uses the L2 norm of the transformation matrix row coefficients:
+\deqn{b = \sqrt{\sum_j M_{ij}^2}}
+where \eqn{M_{ij}} are the coefficients from the unscaling matrix for terms
+with the same prior distribution (typically all regression coefficients).
+This correctly captures the variance of the convolution of independent priors.
+
+For intercepts, the transformation includes contributions from other coefficients
+using their posterior means, since the intercept typically has a different prior.
 
 For intercepts with \code{log_intercept = TRUE}, the transformation is:
 \deqn{intercept_{orig} = \exp(a + b \times \log(intercept_z))}
@@ -53,7 +62,7 @@ which uses the \code{"exp_lin"} transformation type.
 }
 \examples{
 # With a fitted model
-# trans <- get_scale_transformation("mu_x1", fit = fit)
+# trans <- get_scale_transformation(fit, "mu_x1")
 # Returns: list(transformation = "lin", transformation_arguments = list(a = offset, b = scale))
 
 }

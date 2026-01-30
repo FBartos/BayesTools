@@ -571,7 +571,7 @@ test_that("exp_lin transformation functions are defined correctly", {
 })
 
 
-test_that("get_scale_transformation with cached fit plots correctly", {
+test_that("get_scale_transformation prior/posterior plots with cached fit", {
   set.seed(1)
   skip_if_not_installed("rjags")
   skip_on_cran()
@@ -584,96 +584,91 @@ test_that("get_scale_transformation with cached fit plots correctly", {
   # Create priors matching those used in test-00-model-fits.R
   prior_x_cont   <- prior("normal", list(0, 1))
   prior_x_int    <- prior("normal", list(0, 1))
+  prior_intercept <- prior("normal", list(0, 5))
 
   # Get transformations for the scaled parameters
-  trans_x1 <- get_scale_transformation("mu_x_cont1", formula_scale, fit = fit)
-  trans_x2 <- get_scale_transformation("mu_x_cont2", formula_scale, fit = fit)
-  trans_int <- get_scale_transformation("mu_x_cont1__xXx__x_cont2", formula_scale, fit = fit)
-  trans_intercept <- get_scale_transformation("mu_intercept", formula_scale, fit = fit)
+  # get_scale_transformation now returns MARGINAL transformation by default,
 
-  # Side-by-side: Standardized prior (left) vs Unscaled prior (right) for x_cont1
-  vdiffr::expect_doppelganger("scale-transform-x1-standardized", function() {
-    plot(prior_x_cont, main = "x_cont1 (standardized)")
-  })
+  # using L2 norm of transformation coefficients for correct prior visualization
+  trans_x1  <- get_scale_transformation(fit, "mu_x_cont1", formula_scale)
+  trans_int <- get_scale_transformation(fit, "mu_x_cont1__xXx__x_cont2", formula_scale)
+  trans_intercept <- get_scale_transformation(fit, "mu_intercept", formula_scale)
 
-  vdiffr::expect_doppelganger("scale-transform-x1-unscaled", function() {
-    plot(prior_x_cont,
-         transformation = trans_x1$transformation,
-         transformation_arguments = trans_x1$transformation_arguments,
-         main = "x_cont1 (unscaled)")
-  })
-
-  # Side-by-side: Standardized prior (left) vs Unscaled prior (right) for interaction
-  vdiffr::expect_doppelganger("scale-transform-interaction-standardized", function() {
-    plot(prior_x_int, main = "x1:x2 (standardized)")
-  })
-
-  vdiffr::expect_doppelganger("scale-transform-interaction-unscaled", function() {
-    plot(prior_x_int,
-         transformation = trans_int$transformation,
-         transformation_arguments = trans_int$transformation_arguments,
-         main = "x1:x2 (unscaled)")
-  })
-})
-
-
-test_that("get_scale_transformation posterior plots with cached fit", {
-  set.seed(1)
-  skip_if_not_installed("rjags")
-  skip_on_cran()
-  skip_if_no_fits()
-
-  # Load the auto-scaled fit
-  fit <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS"))
-  formula_scale <- attr(fit, "formula_scale")
-
-  # Create priors matching those used in test-00-model-fits.R
-  prior_x_cont <- prior("normal", list(0, 1))
-  prior_x_int  <- prior("normal", list(0, 1))
-
-  # Get transformations
-  trans_x1 <- get_scale_transformation("mu_x_cont1", formula_scale, fit = fit)
-  trans_int <- get_scale_transformation("mu_x_cont1__xXx__x_cont2", formula_scale, fit = fit)
-
-  # Extract posterior samples
+  # Extract posterior samples and transform back to original scale
   posterior <- as.matrix(coda::as.mcmc.list(fit))
+  posterior_transformed <- transform_scale_samples(posterior, formula_scale)
 
-  # Side-by-side posterior plots: Standardized vs Unscaled
-  vdiffr::expect_doppelganger("scale-posterior-x1-standardized", function() {
-    hist(posterior[, "mu_x_cont1"], breaks = 30, probability = TRUE,
-         main = "mu_x_cont1 posterior (standardized)", xlab = "")
+  posterior_x1_unscaled <- posterior_transformed[, "mu_x_cont1"]
+  posterior_int_unscaled <- posterior_transformed[, "mu_x_cont1__xXx__x_cont2"]
+  posterior_intercept_unscaled <- posterior_transformed[, "mu_intercept"]
+
+  # 1x2 layout for x_cont1: scaled | unscaled
+  vdiffr::expect_doppelganger("scale-transform-x1-1x2", function() {
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(oldpar))
+    par(mfrow = c(1, 2), mar = c(4, 4, 2, 1))
+
+    # Scaled panel: histogram of scaled posterior with posterior density and prior
+    hist(posterior[, "mu_x_cont1"], breaks = 50, probability = TRUE,
+         main = "x_cont1 (scaled)", xlab = "")
+    lines(stats::density(posterior[, "mu_x_cont1"]), col = "blue", lwd = 2)
     lines(prior_x_cont, col = "red", lwd = 2)
-  })
 
-  # Apply transformation to posterior for unscaled plot
-  posterior_x1_unscaled <- trans_x1$transformation_arguments$a +
-    trans_x1$transformation_arguments$b * posterior[, "mu_x_cont1"]
-
-  vdiffr::expect_doppelganger("scale-posterior-x1-unscaled", function() {
-    hist(posterior_x1_unscaled, breaks = 30, probability = TRUE,
-         main = "mu_x_cont1 posterior (unscaled)", xlab = "")
+    # Unscaled panel: histogram of unscaled posterior with density and transformed prior
+    hist(posterior_x1_unscaled, breaks = 50, probability = TRUE,
+         main = "x_cont1 (unscaled)", xlab = "")
+    lines(stats::density(posterior_x1_unscaled), col = "blue", lwd = 2)  # Use transformed posterior
+    lines(stats::density(
+      trans_x1$transformation_arguments$a + trans_x1$transformation_arguments$b * posterior[, "mu_x_cont1"]),
+      col = "blue", lwd = 2, lty = 2)
     lines(prior_x_cont,
           transformation = trans_x1$transformation,
           transformation_arguments = trans_x1$transformation_arguments,
           col = "red", lwd = 2)
   })
 
-  # Interaction term
-  posterior_int_unscaled <- trans_int$transformation_arguments$a +
-    trans_int$transformation_arguments$b * posterior[, "mu_x_cont1__xXx__x_cont2"]
+  # 1x2 layout for interaction: scaled | unscaled
+  vdiffr::expect_doppelganger("scale-transform-interaction-1x2", function() {
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(oldpar))
+    par(mfrow = c(1, 2), mar = c(4, 4, 2, 1))
 
-  vdiffr::expect_doppelganger("scale-posterior-interaction-standardized", function() {
+    # Scaled panel: histogram of scaled posterior with posterior density and prior
     hist(posterior[, "mu_x_cont1__xXx__x_cont2"], breaks = 30, probability = TRUE,
-         main = "interaction posterior (standardized)", xlab = "")
+         main = "x1:x2 (scaled)", xlab = "")
+    lines(stats::density(posterior[, "mu_x_cont1__xXx__x_cont2"]), col = "blue", lwd = 2)
     lines(prior_x_int, col = "red", lwd = 2)
-  })
 
-  vdiffr::expect_doppelganger("scale-posterior-interaction-unscaled", function() {
+    # Unscaled panel: histogram of unscaled posterior with density and transformed prior
     hist(posterior_int_unscaled, breaks = 30, probability = TRUE,
-         main = "interaction posterior (unscaled)", xlab = "")
+         main = "x1:x2 (unscaled)", xlab = "")
+    lines(stats::density(posterior_int_unscaled), col = "blue", lwd = 2)
     lines(prior_x_int,
           transformation = trans_int$transformation,
           transformation_arguments = trans_int$transformation_arguments,
+          col = "red", lwd = 2)
+  })
+
+  # 1x2 layout for intercept: scaled | unscaled
+  # Intercept uses MARGINAL transformation (L2 norm of entire row)
+  vdiffr::expect_doppelganger("scale-transform-intercept-1x2", function() {
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(oldpar))
+    par(mfrow = c(1, 2), mar = c(4, 4, 2, 1))
+
+    # Scaled panel: histogram of scaled posterior with posterior density and prior
+    hist(posterior[, "mu_intercept"], breaks = 30, probability = TRUE,
+         main = "intercept (scaled)", xlab = "")
+    lines(stats::density(posterior[, "mu_intercept"]), col = "blue", lwd = 2)
+    lines(prior_intercept, col = "red", lwd = 2)
+
+    # Unscaled panel: histogram of unscaled posterior with density and transformed prior
+    hist(posterior_intercept_unscaled, breaks = 30, probability = TRUE,
+         main = "intercept (unscaled)", xlab = "")
+    lines(stats::density(posterior_intercept_unscaled), col = "blue", lwd = 2)
+    lines(prior_intercept,
+          transformation = trans_intercept$transformation,
+          transformation_arguments = trans_intercept$transformation_arguments,
           col = "red", lwd = 2)
   })
 })
@@ -693,13 +688,13 @@ test_that("get_scale_transformation with dual parameter model (log intercept)", 
   prior_mu_x      <- prior("normal", list(0, 1))
   prior_ls_x      <- prior("normal", list(0, 0.5))
 
-  # Get transformations for mu (standard intercept)
-  trans_mu_x <- get_scale_transformation("mu_x_mu", formula_scale, fit = fit)
-  trans_mu_int <- get_scale_transformation("mu_intercept", formula_scale, fit = fit)
+  # Get transformations for mu (standard intercept) - fit must be first argument
+  trans_mu_x <- get_scale_transformation(fit, "mu_x_mu", formula_scale)
+  trans_mu_int <- get_scale_transformation(fit, "mu_intercept", formula_scale)
 
   # Get transformations for log_sigma (log intercept)
-  trans_ls_x <- get_scale_transformation("log_sigma_x_sigma", formula_scale, fit = fit)
-  trans_ls_int <- get_scale_transformation("log_sigma_intercept", formula_scale, fit = fit)
+  trans_ls_x <- get_scale_transformation(fit, "log_sigma_x_sigma", formula_scale)
+  trans_ls_int <- get_scale_transformation(fit, "log_sigma_intercept", formula_scale)
 
   # Verify log_sigma intercept uses exp_lin transformation
   expect_equal(trans_ls_int$transformation, "exp_lin")
