@@ -1401,12 +1401,23 @@ test_that("lm validation: factor interactions with multiple scaled continuous", 
 
 # Helper: Create a mock fit object from coefficient matrix
 # This mimics the structure expected by get_scale_transformation
-.make_mock_fit <- function(posterior_matrix) {
+.make_mock_fit <- function(posterior_matrix, prefix = "mu") {
   # Create a simple coda mcmc object
   mcmc_obj <- coda::mcmc(posterior_matrix)
   fit <- list(mcmc = mcmc_obj)
   class(fit) <- "runjags"
   attr(fit, "mcmc") <- coda::mcmc.list(mcmc_obj)
+
+  # Create prior_list with "parameter" attribute for each column
+  # This is needed by get_scale_transformation to determine the prefix
+  prior_list <- lapply(colnames(posterior_matrix), function(param_name) {
+    p <- prior("normal", list(mean = 0, sd = 1))
+    attr(p, "parameter") <- prefix
+    p
+  })
+  names(prior_list) <- colnames(posterior_matrix)
+  attr(fit, "prior_list") <- prior_list
+
   fit
 }
 
@@ -1434,11 +1445,11 @@ test_that("get_scale_transformation requires fit argument", {
 })
 
 
-test_that("get_scale_transformation returns NULL for unscaled parameters", {
+test_that("get_scale_transformation returns NULL for unscaled parameters and errors for missing", {
 
-  # Create a minimal mock fit
-  posterior <- matrix(c(0, 0.5), nrow = 10, ncol = 2, byrow = TRUE)
-  colnames(posterior) <- c("mu_intercept", "mu_x1")
+  # Create a minimal mock fit with mu_x1 and mu_x2 but only x1 is scaled
+  posterior <- matrix(c(0, 0.5, 0.3), nrow = 10, ncol = 3, byrow = TRUE)
+  colnames(posterior) <- c("mu_intercept", "mu_x1", "mu_x2")
   mock_fit <- .make_mock_fit(posterior)
 
   formula_scale <- list(
@@ -1447,15 +1458,17 @@ test_that("get_scale_transformation returns NULL for unscaled parameters", {
     )
   )
 
-  # Parameter not in formula_scale
+  # Parameter in prior_list but not in formula_scale -> returns NULL
   result <- get_scale_transformation(fit = mock_fit, "mu_x2", formula_scale)
   expect_null(result)
 
-  # Parameter with different prefix
-  result <- get_scale_transformation(fit = mock_fit, "sigma_x1", formula_scale)
-  expect_null(result)
+  # Parameter not in prior_list -> error
+  expect_error(
+    get_scale_transformation(fit = mock_fit, "sigma_x1", formula_scale),
+    "not found in prior_list"
+  )
 
-  # Empty formula_scale
+  # Empty formula_scale -> NULL (no scaling to apply)
   result <- get_scale_transformation(fit = mock_fit, "mu_x1", NULL)
   expect_null(result)
 
@@ -1517,14 +1530,24 @@ test_that("lm validation: get_scale_transformation for intercept (one predictor)
   posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
   mock_fit <- .make_mock_fit(posterior_scaled)
 
-  # Get transformation for intercept (requires fit for offset computation)
+  # Get transformation for intercept
   trans <- get_scale_transformation(fit = mock_fit, "mu_intercept", formula_scale)
 
-  # Apply transformation
-  coef_int_transformed <- trans$transformation_arguments$a +
-    trans$transformation_arguments$b * coef_scaled["(Intercept)"]
+  # Intercept uses a = 0, b = L2 norm of ENTIRE row (all columns)
+  # The variance includes contributions from coefficient priors via off-diagonal terms
+  M <- .build_unscale_matrix(c("mu_intercept", "mu_x1"), formula_scale[["mu"]], "mu")
+  expected_b_int <- sqrt(sum(M["mu_intercept", ]^2))
 
-  expect_equal(unname(coef_int_transformed), unname(coef_unscaled["(Intercept)"]), tolerance = 1e-10)
+  expect_equal(trans$transformation_arguments$a, 0)
+  expect_equal(trans$transformation_arguments$b, expected_b_int, tolerance = 1e-10)
+
+  # For point transformation, use transform_scale_samples
+  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+  expect_equal(
+    unname(posterior_transformed[1, "mu_intercept"]),
+    unname(coef_unscaled["(Intercept)"]),
+    tolerance = 1e-10
+  )
 })
 
 
@@ -1559,12 +1582,24 @@ test_that("lm validation: get_scale_transformation for multiple predictors", {
     trans_x1$transformation_arguments$b * coef_scaled["scale(x1)"]
   coef_x2_transformed <- trans_x2$transformation_arguments$a +
     trans_x2$transformation_arguments$b * coef_scaled["scale(x2)"]
-  coef_int_transformed <- trans_int$transformation_arguments$a +
-    trans_int$transformation_arguments$b * coef_scaled["(Intercept)"]
 
   expect_equal(unname(coef_x1_transformed), unname(coef_unscaled["x1"]), tolerance = 1e-10)
   expect_equal(unname(coef_x2_transformed), unname(coef_unscaled["x2"]), tolerance = 1e-10)
-  expect_equal(unname(coef_int_transformed), unname(coef_unscaled["(Intercept)"]), tolerance = 1e-10)
+
+  # Intercept uses a = 0, b = L2 norm of ENTIRE row (all columns)
+  M <- .build_unscale_matrix(c("mu_intercept", "mu_x1", "mu_x2"), formula_scale[["mu"]], "mu")
+  expected_b_int <- sqrt(sum(M["mu_intercept", ]^2))
+
+  expect_equal(trans_int$transformation_arguments$a, 0)
+  expect_equal(trans_int$transformation_arguments$b, expected_b_int, tolerance = 1e-10)
+
+  # For point transformation, use transform_scale_samples
+  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+  expect_equal(
+    unname(posterior_transformed[1, "mu_intercept"]),
+    unname(coef_unscaled["(Intercept)"]),
+    tolerance = 1e-10
+  )
 })
 
 
@@ -1591,7 +1626,7 @@ test_that("lm validation: get_scale_transformation for two-way interaction", {
   posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
   mock_fit <- .make_mock_fit(posterior_scaled)
 
-  # Test interaction coefficient - this works because interaction has no higher-order terms
+  # Test interaction coefficient - highest order term, marginal = conditional
   trans_interaction <- get_scale_transformation(fit = mock_fit, "mu_x1__xXx__x2", formula_scale)
 
   coef_int_transformed <- trans_interaction$transformation_arguments$a +
@@ -1599,20 +1634,31 @@ test_that("lm validation: get_scale_transformation for two-way interaction", {
 
   expect_equal(unname(coef_int_transformed), unname(coef_unscaled["x1:x2"]), tolerance = 1e-10)
 
-  # For main effects with interactions: get_scale_transformation returns the MARGINAL
-  # transformation (b = 1/sd, a = 0). The full transformation requires knowing other
-  # coefficients' values. When we use transform_scale_samples on the full posterior,
-  # the matrix multiplication handles this correctly.
+  # For main effects with interactions: get_scale_transformation returns MARGINAL
+  # transformation for prior visualization. a = 0 (prior is centered), b = L2 norm.
 
-  # Verify that the b-coefficient is correct (1/sd)
   trans_x1 <- get_scale_transformation(fit = mock_fit, "mu_x1", formula_scale)
   trans_x2 <- get_scale_transformation(fit = mock_fit, "mu_x2", formula_scale)
 
-  expect_equal(trans_x1$transformation_arguments$b, 1/sd(df$x1), tolerance = 1e-10)
-  expect_equal(trans_x2$transformation_arguments$b, 1/sd(df$x2), tolerance = 1e-10)
+  # Build the unscale matrix to compute expected L2 norms
+  M <- .build_unscale_matrix(
+    c("mu_intercept", "mu_x1", "mu_x2", "mu_x1__xXx__x2"),
+    formula_scale[["mu"]],
+    "mu"
+  )
 
-  # To get the full transformation for main effects, use transform_scale_samples
-  # and then compare with unscaled coefficients
+  # Expected marginal b = L2 norm of non-intercept coefficients in each row
+  expected_b_x1 <- sqrt(sum(M["mu_x1", c("mu_x1", "mu_x1__xXx__x2")]^2))
+  expected_b_x2 <- sqrt(sum(M["mu_x2", c("mu_x2", "mu_x1__xXx__x2")]^2))
+
+  expect_equal(trans_x1$transformation_arguments$b, expected_b_x1, tolerance = 1e-10)
+  expect_equal(trans_x2$transformation_arguments$b, expected_b_x2, tolerance = 1e-10)
+
+  # Marginal transformation has a = 0 (prior is centered at origin)
+  expect_equal(trans_x1$transformation_arguments$a, 0)
+  expect_equal(trans_x2$transformation_arguments$a, 0)
+
+  # For POINT transformation of coefficients, use transform_scale_samples
   posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
 
   expect_equal(unname(posterior_transformed[1, "mu_x1"]), unname(coef_unscaled["x1"]), tolerance = 1e-10)
@@ -1650,7 +1696,15 @@ test_that("lm validation: get_scale_transformation for three-way interaction", {
   posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
   mock_fit <- .make_mock_fit(posterior_scaled)
 
-  # Test three-way interaction (highest order - no contributions from higher terms)
+  # Validate point transformation produced by transform_scale_samples
+  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
+  expect_equal(
+    unname(posterior_transformed[1, ]),
+    unname(.reorder_lm_coefs(coef_unscaled, posterior_transformed)),
+    tolerance = 1e-10
+  )
+
+  # Test three-way interaction (highest order - marginal = conditional)
   trans_3way <- get_scale_transformation(fit = mock_fit, "mu_x1__xXx__x2__xXx__x3", formula_scale)
 
   coef_3way_transformed <- trans_3way$transformation_arguments$a +
@@ -1658,45 +1712,62 @@ test_that("lm validation: get_scale_transformation for three-way interaction", {
 
   expect_equal(unname(coef_3way_transformed), unname(coef_unscaled["x1:x2:x3"]), tolerance = 1e-10)
 
-  # Test two-way interactions (receive contributions from 3-way interaction)
+  # For lower-order terms: get_scale_transformation returns MARGINAL transformation.
+  # Verify b = L2 norm, a = 0
+
   trans_x1x2 <- get_scale_transformation(fit = mock_fit, "mu_x1__xXx__x2", formula_scale)
   trans_x1x3 <- get_scale_transformation(fit = mock_fit, "mu_x1__xXx__x3", formula_scale)
   trans_x2x3 <- get_scale_transformation(fit = mock_fit, "mu_x2__xXx__x3", formula_scale)
-
-  coef_x1x2_transformed <- trans_x1x2$transformation_arguments$a +
-    trans_x1x2$transformation_arguments$b * coef_scaled["scale(x1):scale(x2)"]
-  coef_x1x3_transformed <- trans_x1x3$transformation_arguments$a +
-    trans_x1x3$transformation_arguments$b * coef_scaled["scale(x1):scale(x3)"]
-  coef_x2x3_transformed <- trans_x2x3$transformation_arguments$a +
-    trans_x2x3$transformation_arguments$b * coef_scaled["scale(x2):scale(x3)"]
-
-  expect_equal(unname(coef_x1x2_transformed), unname(coef_unscaled["x1:x2"]), tolerance = 1e-10)
-  expect_equal(unname(coef_x1x3_transformed), unname(coef_unscaled["x1:x3"]), tolerance = 1e-10)
-  expect_equal(unname(coef_x2x3_transformed), unname(coef_unscaled["x2:x3"]), tolerance = 1e-10)
-
-  # Test main effects (receive contributions from 2-way and 3-way interactions)
   trans_x1 <- get_scale_transformation(fit = mock_fit, "mu_x1", formula_scale)
   trans_x2 <- get_scale_transformation(fit = mock_fit, "mu_x2", formula_scale)
   trans_x3 <- get_scale_transformation(fit = mock_fit, "mu_x3", formula_scale)
 
-  coef_x1_transformed <- trans_x1$transformation_arguments$a +
-    trans_x1$transformation_arguments$b * coef_scaled["scale(x1)"]
-  coef_x2_transformed <- trans_x2$transformation_arguments$a +
-    trans_x2$transformation_arguments$b * coef_scaled["scale(x2)"]
-  coef_x3_transformed <- trans_x3$transformation_arguments$a +
-    trans_x3$transformation_arguments$b * coef_scaled["scale(x3)"]
+  # Build the unscale matrix to compute expected L2 norms
+  all_terms <- c("mu_intercept", "mu_x1", "mu_x2", "mu_x3",
+                 "mu_x1__xXx__x2", "mu_x1__xXx__x3", "mu_x2__xXx__x3",
+                 "mu_x1__xXx__x2__xXx__x3")
+  M <- .build_unscale_matrix(all_terms, formula_scale[["mu"]], "mu")
 
-  expect_equal(unname(coef_x1_transformed), unname(coef_unscaled["x1"]), tolerance = 1e-10)
-  expect_equal(unname(coef_x2_transformed), unname(coef_unscaled["x2"]), tolerance = 1e-10)
-  expect_equal(unname(coef_x3_transformed), unname(coef_unscaled["x3"]), tolerance = 1e-10)
+  # Non-intercept columns for L2 norm calculation
+  non_int_cols <- setdiff(all_terms, "mu_intercept")
 
-  # Test intercept
+  # Validate L2 norms for two-way interactions
+  expected_b_x1x2 <- sqrt(sum(M["mu_x1__xXx__x2", non_int_cols]^2))
+  expected_b_x1x3 <- sqrt(sum(M["mu_x1__xXx__x3", non_int_cols]^2))
+  expected_b_x2x3 <- sqrt(sum(M["mu_x2__xXx__x3", non_int_cols]^2))
+
+  expect_equal(trans_x1x2$transformation_arguments$b, expected_b_x1x2, tolerance = 1e-10)
+  expect_equal(trans_x1x3$transformation_arguments$b, expected_b_x1x3, tolerance = 1e-10)
+  expect_equal(trans_x2x3$transformation_arguments$b, expected_b_x2x3, tolerance = 1e-10)
+
+  # Validate L2 norms for main effects
+  expected_b_x1 <- sqrt(sum(M["mu_x1", non_int_cols]^2))
+  expected_b_x2 <- sqrt(sum(M["mu_x2", non_int_cols]^2))
+  expected_b_x3 <- sqrt(sum(M["mu_x3", non_int_cols]^2))
+
+  expect_equal(trans_x1$transformation_arguments$b, expected_b_x1, tolerance = 1e-10)
+  expect_equal(trans_x2$transformation_arguments$b, expected_b_x2, tolerance = 1e-10)
+  expect_equal(trans_x3$transformation_arguments$b, expected_b_x3, tolerance = 1e-10)
+
+  # All non-intercept terms should have a = 0 (marginal transformation is centered)
+  expect_equal(trans_x1x2$transformation_arguments$a, 0)
+  expect_equal(trans_x1x3$transformation_arguments$a, 0)
+  expect_equal(trans_x2x3$transformation_arguments$a, 0)
+  expect_equal(trans_x1$transformation_arguments$a, 0)
+  expect_equal(trans_x2$transformation_arguments$a, 0)
+  expect_equal(trans_x3$transformation_arguments$a, 0)
+
+  # Test intercept: uses L2 norm of ENTIRE row (all columns)
+  # The variance includes contributions from coefficient priors via off-diagonal terms
   trans_intercept <- get_scale_transformation(fit = mock_fit, "mu_intercept", formula_scale)
 
-  coef_intercept_transformed <- trans_intercept$transformation_arguments$a +
-    trans_intercept$transformation_arguments$b * coef_scaled["(Intercept)"]
+  # Intercept should have a = 0, b = L2 norm of full row
+  expected_b_int <- sqrt(sum(M["mu_intercept", ]^2))
+  expect_equal(trans_intercept$transformation_arguments$a, 0)
+  expect_equal(trans_intercept$transformation_arguments$b, expected_b_int, tolerance = 1e-10)
 
-  expect_equal(unname(coef_intercept_transformed), unname(coef_unscaled["(Intercept)"]), tolerance = 1e-10)
+  # NOTE: For point transformation of posterior samples (including intercept),
+  # use transform_scale_samples() which applies the full matrix multiplication.
 })
 
 
@@ -1724,19 +1795,15 @@ test_that("lm validation: get_scale_transformation for partial scaling", {
   posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
   mock_fit <- .make_mock_fit(posterior_scaled)
 
-  # Test x1 coefficient
+  # Test x1 coefficient - marginal transformation has a = 0
   trans_x1 <- get_scale_transformation(fit = mock_fit, "mu_x1", formula_scale)
-
-  coef_x1_transformed <- trans_x1$transformation_arguments$a +
-    trans_x1$transformation_arguments$b * coef_scaled["scale(x1)"]
-
-  expect_equal(unname(coef_x1_transformed), unname(coef_unscaled["x1"]), tolerance = 1e-10)
+  expect_equal(trans_x1$transformation_arguments$a, 0)
 
   # x2 is not scaled, so transformation should return NULL
   trans_x2 <- get_scale_transformation(fit = mock_fit, "mu_x2", formula_scale)
   expect_null(trans_x2)
 
-  # Interaction involves x1 which is scaled
+  # Interaction involves x1 which is scaled - highest order, so marginal = conditional
   trans_interaction <- get_scale_transformation(fit = mock_fit, "mu_x1__xXx__x2", formula_scale)
 
   coef_int_transformed <- trans_interaction$transformation_arguments$a +
@@ -1746,10 +1813,10 @@ test_that("lm validation: get_scale_transformation for partial scaling", {
 })
 
 
-test_that("lm validation: get_scale_transformation matches transform_scale_samples", {
+test_that("lm validation: get_scale_transformation returns marginal transformation", {
 
-  # This test verifies that applying get_scale_transformation to each coefficient
-  # produces the same result as transform_scale_samples for the full posterior
+  # This test verifies that get_scale_transformation returns the MARGINAL transformation
+  # for prior visualization. For posterior sample transformation, use transform_scale_samples.
 
   set.seed(789)
   df <- data.frame(
@@ -1772,59 +1839,47 @@ test_that("lm validation: get_scale_transformation matches transform_scale_sampl
   posterior_scaled <- .lm_coefs_to_posterior(coef_scaled, n_rep = 50)
   mock_fit <- .make_mock_fit(posterior_scaled)
 
-  # Apply transform_scale_samples (the reference implementation)
-  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
-
-  # Get individual transformations and apply them
-  # For the highest-order term (interaction), transformation is simple
+  # Get individual transformations
   trans_interaction <- get_scale_transformation(fit = mock_fit, "mu_x1__xXx__x2", formula_scale)
-  transformed_interaction <- trans_interaction$transformation_arguments$a +
-    trans_interaction$transformation_arguments$b * posterior_scaled[1, "mu_x1__xXx__x2"]
-
-  expect_equal(
-    unname(transformed_interaction),
-    unname(posterior_transformed[1, "mu_x1__xXx__x2"]),
-    tolerance = 1e-10,
-    info = "Parameter: mu_x1__xXx__x2"
-  )
-
-  # For main effects and intercept, the transformation includes offset from other terms
   trans_x1 <- get_scale_transformation(fit = mock_fit, "mu_x1", formula_scale)
   trans_x2 <- get_scale_transformation(fit = mock_fit, "mu_x2", formula_scale)
   trans_int <- get_scale_transformation(fit = mock_fit, "mu_intercept", formula_scale)
 
-  transformed_x1 <- trans_x1$transformation_arguments$a +
-    trans_x1$transformation_arguments$b * posterior_scaled[1, "mu_x1"]
-  transformed_x2 <- trans_x2$transformation_arguments$a +
-    trans_x2$transformation_arguments$b * posterior_scaled[1, "mu_x2"]
-  transformed_int <- trans_int$transformation_arguments$a +
-    trans_int$transformation_arguments$b * posterior_scaled[1, "mu_intercept"]
+  # For highest-order term (interaction): marginal = conditional, point transform works
+  transformed_interaction <- trans_interaction$transformation_arguments$a +
+    trans_interaction$transformation_arguments$b * posterior_scaled[1, "mu_x1__xXx__x2"]
 
-  expect_equal(
-    unname(transformed_x1),
-    unname(posterior_transformed[1, "mu_x1"]),
-    tolerance = 1e-10,
-    info = "Parameter: mu_x1"
+  expect_equal(unname(transformed_interaction), unname(coef_unscaled["x1:x2"]), tolerance = 1e-10)
+
+  # For main effects: marginal transformation has a = 0 and b = L2 norm
+  expect_equal(trans_x1$transformation_arguments$a, 0)
+  expect_equal(trans_x2$transformation_arguments$a, 0)
+
+  # Build unscale matrix to verify L2 norm calculation
+  M <- .build_unscale_matrix(
+    c("mu_intercept", "mu_x1", "mu_x2", "mu_x1__xXx__x2"),
+    formula_scale[["mu"]],
+    "mu"
   )
 
-  expect_equal(
-    unname(transformed_x2),
-    unname(posterior_transformed[1, "mu_x2"]),
-    tolerance = 1e-10,
-    info = "Parameter: mu_x2"
-  )
+  expected_b_x1 <- sqrt(sum(M["mu_x1", c("mu_x1", "mu_x1__xXx__x2")]^2))
+  expected_b_x2 <- sqrt(sum(M["mu_x2", c("mu_x2", "mu_x1__xXx__x2")]^2))
 
+  expect_equal(trans_x1$transformation_arguments$b, expected_b_x1, tolerance = 1e-10)
+  expect_equal(trans_x2$transformation_arguments$b, expected_b_x2, tolerance = 1e-10)
+
+  # For intercept: uses L2 norm of ENTIRE row (all columns)
+  expected_b_int <- sqrt(sum(M["mu_intercept", ]^2))
+  expect_equal(trans_int$transformation_arguments$a, 0)
+  expect_equal(trans_int$transformation_arguments$b, expected_b_int, tolerance = 1e-10)
+
+  # NOTE: For point transformation of posterior samples, use transform_scale_samples()
+  posterior_transformed <- transform_scale_samples(posterior_scaled, formula_scale)
   expect_equal(
-    unname(transformed_int),
     unname(posterior_transformed[1, "mu_intercept"]),
-    tolerance = 1e-10,
-    info = "Parameter: mu_intercept"
+    unname(coef_unscaled["(Intercept)"]),
+    tolerance = 1e-10
   )
-
-  # Also verify against unscaled lm coefficients
-  expect_equal(unname(transformed_x1), unname(coef_unscaled["x1"]), tolerance = 1e-10)
-  expect_equal(unname(transformed_x2), unname(coef_unscaled["x2"]), tolerance = 1e-10)
-  expect_equal(unname(transformed_int), unname(coef_unscaled["(Intercept)"]), tolerance = 1e-10)
 })
 
 
@@ -1853,15 +1908,11 @@ test_that("lm validation: get_scale_transformation with factor + continuous inte
   posterior_scaled <- .lm_coefs_to_posterior(coef_scaled)
   mock_fit <- .make_mock_fit(posterior_scaled)
 
-  # Test main effect of x1
+  # Test main effect of x1 - marginal transformation has a = 0
   trans_x1 <- get_scale_transformation(fit = mock_fit, "mu_x1", formula_scale)
+  expect_equal(trans_x1$transformation_arguments$a, 0)
 
-  coef_x1_transformed <- trans_x1$transformation_arguments$a +
-    trans_x1$transformation_arguments$b * coef_scaled["scale(x1)"]
-
-  expect_equal(unname(coef_x1_transformed), unname(coef_unscaled["x1"]), tolerance = 1e-10)
-
-  # Test interaction (x1:f1b involves scaled x1)
+  # Test interaction (x1:f1b involves scaled x1) - highest order, marginal = conditional
   trans_interaction <- get_scale_transformation(fit = mock_fit, "mu_x1__xXx__f1b", formula_scale)
 
   coef_int_transformed <- trans_interaction$transformation_arguments$a +

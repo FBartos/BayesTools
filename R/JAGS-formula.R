@@ -1474,6 +1474,10 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
 #' posterior means of other coefficients when there are interactions in the model.
 #'
 #' @details
+#' This function returns a \strong{marginal} transformation for visualizing
+#' prior distributions on the original (unscaled) scale. The transformation
+#' accounts for the variance contribution from interaction terms.
+#'
 #' For a simple coefficient (single predictor, no interactions), the transformation is:
 #' \deqn{\beta_{orig} = \beta_z / \sigma_x}
 #' which corresponds to \code{transformation = "lin"} with \code{a = 0, b = 1/sd}.
@@ -1482,15 +1486,26 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
 #' higher-order terms), the transformation is similar:
 #' \deqn{\beta_{orig} = \beta_z / (\sigma_{x1} \times \sigma_{x2} \times ...)}
 #'
-#' For main effects when interactions are present, or for the intercept, the
-#' transformation includes contributions from other coefficients:
-#' \deqn{\beta_{orig} = a + b \times \beta_z}
-#' where \code{a} is computed from the posterior means of other coefficients.
-#' This requires the \code{fit} argument to access posterior samples.
+#' For main effects when interactions are present, the \code{b} coefficient is the
+#' L2 norm of the transformation matrix row (excluding intercept). This captures
+#' the total variance contribution from all related interaction terms:
+#' \deqn{b = \sqrt{\sum_j M_{ij}^2}}
+#' where the sum is over all non-intercept terms that receive contributions from
+#' the standardized coefficient.
+#'
+#' For intercepts, the diagonal coefficient is used (\code{b = 1}). This is because
+#' the intercept prior itself doesn't get scaled - it's the same on both the
+#' standardized and original scales. The L2 norm approach would be incorrect
+#' because the intercept row mixes contributions from different priors
+#' (intercept prior vs coefficient priors).
 #'
 #' For intercepts with \code{log_intercept = TRUE}, the transformation is:
 #' \deqn{intercept_{orig} = \exp(a + b \times \log(intercept_z))}
 #' which uses the \code{"exp_lin"} transformation type.
+#'
+#' \strong{Important:} For transforming posterior samples, use
+#' \code{\link{transform_scale_samples}} instead, which correctly applies the
+#' full matrix transformation to all parameters simultaneously.
 #'
 #' @return A list with elements:
 #' \describe{
@@ -1515,14 +1530,12 @@ get_scale_transformation <- function(fit, parameter_name, formula_scale = NULL){
     stop("'fit' argument is required to compute the scale transformation.")
   }
 
+  check_char(parameter_name, "parameter_name", check_length = 1)
+
   # Extract formula_scale from fit if not provided
   if(is.null(formula_scale)){
-    if(!is.null(attr(fit, "formula_scale"))){
-      formula_scale <- attr(fit, "formula_scale")
-    }
+    formula_scale <- attr(fit, "formula_scale")
   }
-
-  check_char(parameter_name, "parameter_name", check_length = 1)
 
   if(is.null(formula_scale) || length(formula_scale) == 0){
     return(NULL)
@@ -1530,17 +1543,21 @@ get_scale_transformation <- function(fit, parameter_name, formula_scale = NULL){
 
   check_list(formula_scale, "formula_scale")
 
-  # Identify the parameter prefix (e.g., "mu" from "mu_x1")
-  prefix <- NULL
-  for(param_name in names(formula_scale)){
-    if(startsWith(parameter_name, paste0(param_name, "_"))){
-      prefix <- param_name
-      break
-    }
+  # Get the parameter prefix from prior_list attribute
+  prior_list <- attr(fit, "prior_list")
+
+  if(is.null(prior_list)){
+    stop("'fit' must have a 'prior_list' attribute.")
   }
 
+  if(!parameter_name %in% names(prior_list)){
+    stop("Parameter '", parameter_name, "' not found in prior_list.")
+  }
+
+  prefix <- attr(prior_list[[parameter_name]], "parameter")
+
   if(is.null(prefix)){
-    # Parameter not affected by any scaling
+    # Parameter not part of a formula (no scaling applies)
     return(NULL)
   }
 
@@ -1690,39 +1707,56 @@ get_scale_transformation <- function(fit, parameter_name, formula_scale = NULL){
   self_coef <- unname(transform_row[parameter_name])
   if(is.na(self_coef)) self_coef <- 1
 
-  # Compute offset from other coefficients' posterior means
-  # offset = Σ(transform_row[j] * posterior_mean[j]) for j != self
-  offset <- 0
+  # For non-intercept terms: compute the MARGINAL transformation.
+  # This is for prior visualization where we don't have samples of interaction terms.
+  # The b coefficient is the L2 norm of the transformation matrix row (excluding intercept),
+  # which captures the total variance contribution from all related terms.
+  #
+  # For intercept: use b = 1 (diagonal coefficient). The intercept prior itself
+  # doesn't get scaled - only the offset changes (which is 0 under centered priors).
+  # The L2 norm approach would be wrong because the intercept row mixes contributions
 
-  if(!is.null(fit)){
-    # Get posterior samples (already have it if we entered this branch)
-    if(!exists("posterior")){
-      posterior <- as.matrix(coda::as.mcmc.list(fit))
-    }
-    other_cols <- setdiff(names(transform_row), parameter_name)
-    other_cols <- other_cols[other_cols %in% colnames(posterior)]
+  # from DIFFERENT priors (intercept prior vs coefficient priors).
 
-    if(length(other_cols) > 0){
-      # Compute offset as sum of (coefficient * posterior_mean)
-      for(col in other_cols){
-        coef_val <- transform_row[col]
-        if(!is.na(coef_val) && coef_val != 0){
-          offset <- offset + coef_val * mean(posterior[, col])
-        }
-      }
-    }
-  }
+  if(!is_intercept){
+    # Marginal transformation: a = 0 (prior is centered), b = L2 norm of row
+    # Exclude intercept column from L2 norm calculation since we're looking at
+    # the effect of this coefficient, not the intercept contribution
+    non_intercept_cols <- setdiff(names(transform_row), intercept_col)
+    row_vals <- transform_row[non_intercept_cols]
+    row_vals <- row_vals[!is.na(row_vals)]
 
-  if(is_intercept && log_intercept){
-    return(list(
-      transformation = "exp_lin",
-      transformation_arguments = list(a = offset, b = unname(self_coef))
-    ))
-  }else{
+    b_marginal <- sqrt(sum(row_vals^2))
+
     return(list(
       transformation = "lin",
-      transformation_arguments = list(a = offset, b = unname(self_coef))
+      transformation_arguments = list(a = 0, b = b_marginal)
     ))
+  }else{
+    # Intercept: use L2 norm of ENTIRE row (all columns)
+    # The intercept on the original scale is:
+    #   beta_0 = beta_0* - (mean(x1)/sd(x1)) * beta_1* - (mean(x2)/sd(x2)) * beta_2* - ...
+    #
+    # The variance of the marginal prior for beta_0 includes contributions from
+    # ALL coefficient priors via the off-diagonal terms. The L2 norm captures this:
+    #   Var(beta_0) = Var(beta_0*) * 1^2 + Var(beta_1*) * (mean(x1)/sd(x1))^2 + ...
+    #
+    # For the shift 'a': if priors are centered at 0, the expected value is still 0.
+    # TODO: If priors have non-zero means, compute a = sum(M[i,j] * E[beta_j*])
+    row_vals <- transform_row[!is.na(transform_row)]
+    b_marginal <- sqrt(sum(row_vals^2))
+
+    if(log_intercept){
+      return(list(
+        transformation = "exp_lin",
+        transformation_arguments = list(a = 0, b = b_marginal)
+      ))
+    }else{
+      return(list(
+        transformation = "lin",
+        transformation_arguments = list(a = 0, b = b_marginal)
+      ))
+    }
   }
 }
 
