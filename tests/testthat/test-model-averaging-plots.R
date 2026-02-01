@@ -570,178 +570,6 @@ test_that("exp_lin transformation functions are defined correctly", {
   expect_equal(trans_funcs$jac(x, a, b), 1 / (b * x))
 })
 
-
-test_that("get_scale_transformation prior/posterior plots with cached fit", {
-  set.seed(1)
-  skip_if_not_installed("rjags")
-  skip_on_cran()
-  skip_if_no_fits()
-
-  # Load the auto-scaled fit
-  fit <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS"))
-  formula_scale <- attr(fit, "formula_scale")
-
-  # Create priors matching those used in test-00-model-fits.R
-  prior_x_cont   <- prior("normal", list(0, 1))
-  prior_x_int    <- prior("normal", list(0, 1))
-  prior_intercept <- prior("normal", list(0, 5))
-
-  # Get transformations for the scaled parameters
-  # get_scale_transformation now returns MARGINAL transformation by default,
-
-  # using L2 norm of transformation coefficients for correct prior visualization
-  trans_x1  <- get_scale_transformation(fit, "mu_x_cont1", formula_scale)
-  trans_int <- get_scale_transformation(fit, "mu_x_cont1__xXx__x_cont2", formula_scale)
-  trans_intercept <- get_scale_transformation(fit, "mu_intercept", formula_scale)
-
-  # Extract posterior samples and transform back to original scale
-  posterior <- as.matrix(coda::as.mcmc.list(fit))
-  posterior_transformed <- transform_scale_samples(posterior, formula_scale)
-
-  posterior_x1_unscaled <- posterior_transformed[, "mu_x_cont1"]
-  posterior_int_unscaled <- posterior_transformed[, "mu_x_cont1__xXx__x_cont2"]
-  posterior_intercept_unscaled <- posterior_transformed[, "mu_intercept"]
-
-  # 1x2 layout for x_cont1: scaled | unscaled
-  vdiffr::expect_doppelganger("scale-transform-x1-1x2", function() {
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(oldpar))
-    par(mfrow = c(1, 2), mar = c(4, 4, 2, 1))
-
-    # Scaled panel: histogram of scaled posterior with posterior density and prior
-    hist(posterior[, "mu_x_cont1"], breaks = 50, probability = TRUE,
-         main = "x_cont1 (scaled)", xlab = "")
-    lines(stats::density(posterior[, "mu_x_cont1"]), col = "blue", lwd = 2)
-    lines(prior_x_cont, col = "red", lwd = 2)
-
-    # Unscaled panel: histogram of unscaled posterior with density and transformed prior
-    hist(posterior_x1_unscaled, breaks = 50, probability = TRUE,
-         main = "x_cont1 (unscaled)", xlab = "")
-    lines(stats::density(posterior_x1_unscaled), col = "blue", lwd = 2)  # Use transformed posterior
-    lines(stats::density(
-      trans_x1$transformation_arguments$a + trans_x1$transformation_arguments$b * posterior[, "mu_x_cont1"]),
-      col = "blue", lwd = 2, lty = 2)
-    lines(prior_x_cont,
-          transformation = trans_x1$transformation,
-          transformation_arguments = trans_x1$transformation_arguments,
-          col = "red", lwd = 2)
-  })
-
-  # 1x2 layout for interaction: scaled | unscaled
-  vdiffr::expect_doppelganger("scale-transform-interaction-1x2", function() {
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(oldpar))
-    par(mfrow = c(1, 2), mar = c(4, 4, 2, 1))
-
-    # Scaled panel: histogram of scaled posterior with posterior density and prior
-    hist(posterior[, "mu_x_cont1__xXx__x_cont2"], breaks = 30, probability = TRUE,
-         main = "x1:x2 (scaled)", xlab = "")
-    lines(stats::density(posterior[, "mu_x_cont1__xXx__x_cont2"]), col = "blue", lwd = 2)
-    lines(prior_x_int, col = "red", lwd = 2)
-
-    # Unscaled panel: histogram of unscaled posterior with density and transformed prior
-    hist(posterior_int_unscaled, breaks = 30, probability = TRUE,
-         main = "x1:x2 (unscaled)", xlab = "")
-    lines(stats::density(posterior_int_unscaled), col = "blue", lwd = 2)
-    lines(prior_x_int,
-          transformation = trans_int$transformation,
-          transformation_arguments = trans_int$transformation_arguments,
-          col = "red", lwd = 2)
-  })
-
-  # 1x2 layout for intercept: scaled | unscaled
-  # Intercept uses MARGINAL transformation (L2 norm of entire row)
-  vdiffr::expect_doppelganger("scale-transform-intercept-1x2", function() {
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(oldpar))
-    par(mfrow = c(1, 2), mar = c(4, 4, 2, 1))
-
-    # Scaled panel: histogram of scaled posterior with posterior density and prior
-    hist(posterior[, "mu_intercept"], breaks = 30, probability = TRUE,
-         main = "intercept (scaled)", xlab = "")
-    lines(stats::density(posterior[, "mu_intercept"]), col = "blue", lwd = 2)
-    lines(prior_intercept, col = "red", lwd = 2)
-
-    # Unscaled panel: histogram of unscaled posterior with density and transformed prior
-    hist(posterior_intercept_unscaled, breaks = 30, probability = TRUE,
-         main = "intercept (unscaled)", xlab = "")
-    lines(stats::density(posterior_intercept_unscaled), col = "blue", lwd = 2)
-    lines(prior_intercept,
-          transformation = trans_intercept$transformation,
-          transformation_arguments = trans_intercept$transformation_arguments,
-          col = "red", lwd = 2)
-  })
-})
-
-
-test_that("get_scale_transformation with dual parameter model (log intercept)", {
-  set.seed(1)
-  skip_if_not_installed("rjags")
-  skip_on_cran()
-  skip_if_no_fits()
-
-  # Load the dual parameter regression fit (has log(intercept) for log_sigma)
-  fit <- readRDS(file.path(temp_fits_dir, "fit_dual_param_regression.RDS"))
-  formula_scale <- attr(fit, "formula_scale")
-
-  # Create priors matching those used in test-00-model-fits.R
-  prior_mu_x      <- prior("normal", list(0, 1))
-  prior_ls_x      <- prior("normal", list(0, 0.5))
-
-  # Get transformations for mu (standard intercept) - fit must be first argument
-  trans_mu_x <- get_scale_transformation(fit, "mu_x_mu", formula_scale)
-  trans_mu_int <- get_scale_transformation(fit, "mu_intercept", formula_scale)
-
-  # Get transformations for log_sigma (log intercept)
-  trans_ls_x <- get_scale_transformation(fit, "log_sigma_x_sigma", formula_scale)
-  trans_ls_int <- get_scale_transformation(fit, "log_sigma_intercept", formula_scale)
-
-  # Verify log_sigma intercept uses exp_lin transformation
-  expect_equal(trans_ls_int$transformation, "exp_lin")
-
-  # Extract posterior samples
-  posterior <- as.matrix(coda::as.mcmc.list(fit))
-
-  # Plot mu coefficient: standardized vs unscaled
-  vdiffr::expect_doppelganger("dual-mu-x-standardized", function() {
-    hist(posterior[, "mu_x_mu"], breaks = 30, probability = TRUE,
-         main = "mu_x_mu (standardized)", xlab = "")
-    lines(prior_mu_x, col = "red", lwd = 2)
-  })
-
-  posterior_mu_x_unscaled <- trans_mu_x$transformation_arguments$a +
-    trans_mu_x$transformation_arguments$b * posterior[, "mu_x_mu"]
-
-  vdiffr::expect_doppelganger("dual-mu-x-unscaled", function() {
-    hist(posterior_mu_x_unscaled, breaks = 30, probability = TRUE,
-         main = "mu_x_mu (unscaled)", xlab = "")
-    lines(prior_mu_x,
-          transformation = trans_mu_x$transformation,
-          transformation_arguments = trans_mu_x$transformation_arguments,
-          col = "red", lwd = 2)
-  })
-
-  # Plot log_sigma coefficient: standardized vs unscaled
-  vdiffr::expect_doppelganger("dual-log-sigma-x-standardized", function() {
-    hist(posterior[, "log_sigma_x_sigma"], breaks = 30, probability = TRUE,
-         main = "log_sigma_x_sigma (standardized)", xlab = "")
-    lines(prior_ls_x, col = "red", lwd = 2)
-  })
-
-  posterior_ls_x_unscaled <- trans_ls_x$transformation_arguments$a +
-    trans_ls_x$transformation_arguments$b * posterior[, "log_sigma_x_sigma"]
-
-  vdiffr::expect_doppelganger("dual-log-sigma-x-unscaled", function() {
-    hist(posterior_ls_x_unscaled, breaks = 30, probability = TRUE,
-         main = "log_sigma_x_sigma (unscaled)", xlab = "")
-    lines(prior_ls_x,
-          transformation = trans_ls_x$transformation,
-          transformation_arguments = trans_ls_x$transformation_arguments,
-          col = "red", lwd = 2)
-  })
-})
-
-
 test_that("linear transformation matches expected behavior", {
   set.seed(1)
 
@@ -764,3 +592,164 @@ test_that("linear transformation matches expected behavior", {
                     transformation_arguments = list(a = 2, b = 0.5))
   })
 })
+
+
+# ============================================================================ #
+# SECTION: transform_scaled visual tests
+# ============================================================================ #
+# These tests use pre-fitted regression models with formula_scale to visually
+# verify that the transform_scaled feature correctly transforms priors and
+# posteriors from standardized to original scale.
+
+test_that("transform_scaled is auto-detected from samples attribute", {
+  skip_if_no_fits()
+
+  # Load a model with formula_scale
+  fit_path <- file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS")
+  skip_if_not(file.exists(fit_path), "Pre-fitted model not available")
+
+  fit <- readRDS(fit_path)
+
+  # Extract with transform_scaled = TRUE
+  samples_scaled <- as_mixed_posteriors(fit, parameters = "mu_intercept", transform_scaled = TRUE)
+
+  # Verify the attribute is set
+
+  expect_true(isTRUE(attr(samples_scaled, "transform_scaled")))
+  expect_false(is.null(attr(samples_scaled, "prior_samples")))
+
+  # Extract without transform_scaled
+  samples_unscaled <- as_mixed_posteriors(fit, parameters = "mu_intercept", transform_scaled = FALSE)
+
+  # Verify the attribute is NOT set
+  expect_null(attr(samples_unscaled, "transform_scaled"))
+})
+
+
+test_that("transform_scaled visual: auto-scaled continuous predictors intercept", {
+  skip_on_cran()
+  skip_if_no_fits()
+
+  fit_path <- file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS")
+  skip_if_not(file.exists(fit_path), "Pre-fitted model not available")
+
+  fit <- readRDS(fit_path)
+
+  # Extract posteriors with and without transform_scaled
+  samples_scaled <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_x_cont1", "mu_x_cont2"),
+                                        transform_scaled = TRUE)
+  samples_unscaled <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_x_cont1", "mu_x_cont2"),
+                                          transform_scaled = FALSE)
+
+  # Visual test: intercept - scaled (left) vs original (right)
+  vdiffr::expect_doppelganger("transform-scaled-intercept-comparison", function() {
+    par(mfrow = c(1, 2))
+
+    # Left: Standardized scale
+    plot_posterior(samples_unscaled, "mu_intercept", prior = TRUE,
+                   main = "Intercept (Standardized Scale)", dots_prior = list(col = "grey"))
+
+    # Right: Original scale (auto-detected from samples)
+    plot_posterior(samples_scaled, "mu_intercept", prior = TRUE,
+                   main = "Intercept (Original Scale)", dots_prior = list(col = "grey"))
+  })
+})
+
+
+test_that("transform_scaled visual: auto-scaled continuous predictor coefficient", {
+  skip_on_cran()
+  skip_if_no_fits()
+
+  fit_path <- file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS")
+  skip_if_not(file.exists(fit_path), "Pre-fitted model not available")
+
+  fit      <- readRDS(fit_path)
+
+  samples_scaled <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_x_cont1", "mu_x_cont2"),
+                                        transform_scaled = TRUE, n_prior_samples = 1e5)
+  samples_unscaled <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_x_cont1", "mu_x_cont2"),
+                                          transform_scaled = FALSE)
+
+  # Visual test: coefficient x_cont1 - scaled (left) vs original (right)
+  vdiffr::expect_doppelganger("transform-scaled-coef-x_cont1-comparison", function() {
+    par(mfrow = c(1, 2))
+
+    # Left: Standardized scale
+    plot_posterior(samples_unscaled, "mu_x_cont1", prior = TRUE,
+                   main = "x_cont1 (Standardized Scale)", dots_prior = list(col = "grey"))
+
+    # Right: Original scale (auto-detected from samples)
+    plot_posterior(samples_scaled, "mu_x_cont1", prior = TRUE,
+                   main = "x_cont1 (Original Scale)", dots_prior = list(col = "grey"))
+  })
+
+  # Visual test: coefficient x_cont2
+  vdiffr::expect_doppelganger("transform-scaled-coef-x_cont2-comparison", function() {
+    par(mfrow = c(1, 2))
+
+    plot_posterior(samples_unscaled, "mu_x_cont2", prior = TRUE,
+                   main = "x_cont2 (Standardized Scale)", dots_prior = list(col = "grey"))
+
+    plot_posterior(samples_scaled, "mu_x_cont2", prior = TRUE,
+                   main = "x_cont2 (Original Scale)", dots_prior = list(col = "grey"))
+  })
+})
+
+
+test_that("transform_scaled visual: all parameters side-by-side", {
+  skip_on_cran()
+  skip_if_no_fits()
+
+  fit_path <- file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS")
+  skip_if_not(file.exists(fit_path), "Pre-fitted model not available")
+
+  fit      <- readRDS(fit_path)
+
+  samples_scaled <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_x_cont1", "mu_x_cont2"),
+                                        transform_scaled = TRUE)
+  samples_unscaled <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_x_cont1", "mu_x_cont2"),
+                                          transform_scaled = FALSE)
+
+  # Visual test: 3x2 grid showing all parameters
+  vdiffr::expect_doppelganger("transform-scaled-all-params-grid", function() {
+    par(mfrow = c(3, 2), mar = c(4, 4, 2, 1))
+
+    # Row 1: Intercept
+    plot_posterior(samples_unscaled, "mu_intercept", prior = TRUE, main = "Intercept (Scaled)", dots_prior = list(col = "grey"))
+    plot_posterior(samples_scaled, "mu_intercept", prior = TRUE, main = "Intercept (Original)", dots_prior = list(col = "grey"))
+
+    # Row 2: x_cont1
+    plot_posterior(samples_unscaled, "mu_x_cont1", prior = TRUE, main = "x_cont1 (Scaled)", dots_prior = list(col = "grey"))
+    plot_posterior(samples_scaled, "mu_x_cont1", prior = TRUE, main = "x_cont1 (Original)", dots_prior = list(col = "grey"))
+
+    # Row 3: x_cont2
+    plot_posterior(samples_unscaled, "mu_x_cont2", prior = TRUE, main = "x_cont2 (Scaled)", dots_prior = list(col = "grey"))
+    plot_posterior(samples_scaled, "mu_x_cont2", prior = TRUE, main = "x_cont2 (Original)", dots_prior = list(col = "grey"))
+  })
+})
+
+
+test_that("transform_scaled visual: dual parameter regression with log(intercept)", {
+  skip_on_cran()
+  skip_if_no_fits()
+
+  fit_path <- file.path(temp_fits_dir, "fit_dual_param_regression.RDS")
+  fit <- readRDS(fit_path)
+
+  # Get available mu parameters (those with formula_scale applied)
+  params <- names(attr(fit, "prior_list"))
+  sigma_params <- params[grepl("^log_sigma_", params)]
+
+  samples_scaled <- as_mixed_posteriors(fit, parameters = sigma_params, transform_scaled = TRUE)
+  samples_unscaled <- as_mixed_posteriors(fit, parameters = sigma_params, transform_scaled = FALSE)
+
+  # Visual test: intercept for dual-parameter model
+  vdiffr::expect_doppelganger("transform-scaled-dual-param-intercept", function() {
+    par(mfrow = c(2, 2))
+    plot_posterior(samples_unscaled, "log_sigma_intercept", prior = TRUE, main = "Dual: Intercept (Scaled)", dots_prior = list(col = "grey"), xlim = c(0, 1))
+    plot_posterior(samples_scaled, "log_sigma_intercept", prior = TRUE, main = "Dual: Intercept (Original)", dots_prior = list(col = "grey"), xlim = c(0, 1))
+    plot_posterior(samples_unscaled, "log_sigma_x_sigma", prior = TRUE, main = "Dual: Slope (Scaled)", dots_prior = list(col = "grey"), xlim = c(-1, 1))
+    plot_posterior(samples_scaled, "log_sigma_x_sigma", prior = TRUE, main = "Dual: Slope (Original)", dots_prior = list(col = "grey"), xlim = c(-1, 1))
+  })
+})
+

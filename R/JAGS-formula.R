@@ -1458,306 +1458,203 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
 }
 
 
-#' @title Get scale transformation for plotting
+#' @title Transform prior samples to original scale
 #'
-#' @description Extracts linear transformation parameters from scaling information
-#' that can be used with plotting functions via \code{transformation} and
-#' \code{transformation_arguments} parameters.
+#' @description Generate prior samples and transform them using the same
+#' matrix transformation as posterior samples. This is the correct approach for
+#' visualizing priors on the original (unscaled) scale, especially for the intercept
+#' which depends on contributions from multiple coefficient priors.
 #'
-#' @param parameter_name The full name of the parameter (e.g., \code{"mu_x1"},
-#' \code{"mu_intercept"}, or \code{"mu_x1__xXx__x2"} for interaction)
-#' @param formula_scale Nested list containing standardization information keyed by
-#' parameter name. Each parameter entry contains scaling info (mean and sd) for
-#' each standardized predictor, e.g., \code{list(mu = list(mu_x1 = list(mean = 0, sd = 1)))}.
-#' @param fit A fitted model object (e.g., from \code{JAGS_fit}) containing posterior
-#' samples. Required for computing the transformation, as the offset depends on
-#' posterior means of other coefficients when there are interactions in the model.
+#' @param fit a fitted model object with \code{prior_list} and optionally
+#' \code{formula_scale} attributes
+#' @param n_samples number of samples to generate (default: 10000)
+#' @param seed random seed for reproducibility (optional)
+#' @param formula_scale optional nested list containing standardization information.
+#' If not provided, extracted from \code{fit} attribute.
 #'
-#' @details
-#' This function returns a \strong{marginal} transformation for visualizing
-#' prior distributions on the original (unscaled) scale. The transformation
-#' accounts for the variance contribution from interaction terms.
+#' @details When models use auto-scaling (standardizing predictors), the posterior
+#' samples are on the standardized scale. To correctly visualize priors on the
+#' original scale, we cannot simply apply a linear transformation to individual
+#' priors because the intercept on the original scale is a weighted sum of
+#' multiple priors:
 #'
-#' For a simple coefficient (single predictor, no interactions), the transformation is:
-#' \deqn{\beta_{orig} = \beta_z / \sigma_x}
-#' which corresponds to \code{transformation = "lin"} with \code{a = 0, b = 1/sd}.
+#' \deqn{\beta_0^{orig} = \beta_0^* - \sum_i \frac{\mu_i}{\sigma_i} \beta_i^*}
 #'
-#' For the highest-order interaction term (which receives no contributions from
-#' higher-order terms), the transformation is similar:
-#' \deqn{\beta_{orig} = \beta_z / (\sigma_{x1} \times \sigma_{x2} \times ...)}
+
+#' This function generates samples from ALL priors simultaneously and applies
+#' the same matrix transformation used for posterior samples, which correctly
+#' handles the intercept and all other parameters.
 #'
-#' For main effects when interactions are present, the \code{b} coefficient is the
-#' L2 norm of the transformation matrix row (excluding intercept). This captures
-#' the total variance contribution from all related interaction terms:
-#' \deqn{b = \sqrt{\sum_j M_{ij}^2}}
-#' where the sum is over all non-intercept terms that receive contributions from
-#' the standardized coefficient.
+#' @return A matrix of prior samples on the original (unscaled) scale, with
+#' columns matching the structure of posterior samples.
 #'
-#' For intercepts, the diagonal coefficient is used (\code{b = 1}). This is because
-#' the intercept prior itself doesn't get scaled - it's the same on both the
-#' standardized and original scales. The L2 norm approach would be incorrect
-#' because the intercept row mixes contributions from different priors
-#' (intercept prior vs coefficient priors).
-#'
-#' For intercepts with \code{log_intercept = TRUE}, the transformation is:
-#' \deqn{intercept_{orig} = \exp(a + b \times \log(intercept_z))}
-#' which uses the \code{"exp_lin"} transformation type.
-#'
-#' \strong{Important:} For transforming posterior samples, use
-#' \code{\link{transform_scale_samples}} instead, which correctly applies the
-#' full matrix transformation to all parameters simultaneously.
-#'
-#' @return A list with elements:
-#' \describe{
-#'   \item{\code{transformation}}{Character string (\code{"lin"} or \code{"exp_lin"}).}
-#'   \item{\code{transformation_arguments}}{A named list with \code{a} (offset) and
-#'     \code{b} (scale factor).}
-#' }
-#' Returns \code{NULL} if no transformation is needed (parameter not affected by scaling).
-#'
-#' @seealso [transform_scale_samples()] [plot_posterior()] [plot_prior_list()]
+#' @seealso [transform_scale_samples()] [plot_posterior()]
 #'
 #' @examples
-#' # With a fitted model
-#' # trans <- get_scale_transformation(fit, "mu_x1")
-#' # Returns: list(transformation = "lin", transformation_arguments = list(a = offset, b = scale))
+#' # With a fitted model that used formula_scale:
+#' # prior_samples <- transform_prior_samples(fit, n_samples = 10000)
+#' # This can then be used with density() or for custom plotting
 #'
 #' @export
-get_scale_transformation <- function(fit, parameter_name, formula_scale = NULL){
+transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula_scale = NULL){
 
-  # fit is required
-  if(missing(fit) || is.null(fit)){
-    stop("'fit' argument is required to compute the scale transformation.")
+  check_int(n_samples, "n_samples", lower = 1)
+  check_int(seed, "seed", allow_NULL = TRUE)
+
+  # Extract prior_list from fit
+
+  prior_list <- attr(fit, "prior_list")
+
+  if(is.null(prior_list)){
+    stop("'fit' must have 'prior_list' attribute.")
   }
-
-  check_char(parameter_name, "parameter_name", check_length = 1)
 
   # Extract formula_scale from fit if not provided
   if(is.null(formula_scale)){
     formula_scale <- attr(fit, "formula_scale")
   }
 
-  if(is.null(formula_scale) || length(formula_scale) == 0){
-    return(NULL)
+  # Get posterior column names for structure matching
+  if(inherits(fit, "runjags") || inherits(fit, "BayesTools_fit")){
+    posterior <- as.matrix(.fit_to_posterior(fit))
+  }else{
+    stop("'fit' must be a fitted model object.")
   }
 
-  check_list(formula_scale, "formula_scale")
+  # Generate prior samples matching posterior column structure
+  prior_samples <- .generate_prior_sample_matrix(
+    prior_list     = prior_list,
+    n_samples      = n_samples,
+    column_names   = colnames(posterior),
+    seed           = seed
+  )
 
-  # Get the parameter prefix from prior_list attribute
-  prior_list <- attr(fit, "prior_list")
-
-  if(is.null(prior_list)){
-    stop("'fit' must have a 'prior_list' attribute.")
+  # Apply same transformation as posterior
+  if(!is.null(formula_scale) && length(formula_scale) > 0){
+    prior_samples <- .apply_unscale_transform(prior_samples, formula_scale)
   }
 
-  if(!parameter_name %in% names(prior_list)){
-    stop("Parameter '", parameter_name, "' not found in prior_list.")
-  }
-
-  prefix <- attr(prior_list[[parameter_name]], "parameter")
-
-  if(is.null(prefix)){
-    # Parameter not part of a formula (no scaling applies)
-    return(NULL)
-  }
-
-  param_scale <- formula_scale[[prefix]]
-
-  if(is.null(param_scale) || length(param_scale) == 0){
-    return(NULL)
-  }
-
-  # Get transformation using internal helper
-  result <- .get_scale_transformation_single(parameter_name, param_scale, prefix, fit)
-
-  return(result)
+  return(prior_samples)
 }
 
 
-# Internal helper to get transformation for a single parameter
-# @param parameter_name The parameter name (e.g., "mu_x1" or "mu_intercept")
-# @param formula_scale Flat list of scaling info for this prefix
-# @param prefix The parameter prefix (e.g., "mu")
-# @param fit Optional fit object containing posterior samples
-# @return List with transformation and transformation_arguments, or NULL
-.get_scale_transformation_single <- function(parameter_name, formula_scale, prefix, fit = NULL){
+# Helper: Generate a matrix of prior samples matching posterior structure
+#
+# @param prior_list Named list of prior objects
+# @param n_samples Number of samples to generate
+# @param column_names Optional vector of column names to match (filters output)
+# @param seed Optional random seed
+# @return Matrix with prior samples (rows = samples, columns = parameters)
+.generate_prior_sample_matrix <- function(prior_list, n_samples, column_names = NULL, seed = NULL){
 
-  if(is.null(formula_scale) || length(formula_scale) == 0){
-    return(NULL)
+  if(!is.null(seed)){
+    set.seed(seed)
   }
 
-  # Check if this parameter uses log(intercept)
-  log_intercept <- isTRUE(attr(formula_scale, "log_intercept"))
-  intercept_col <- paste0(prefix, "_intercept")
-  is_intercept <- (parameter_name == intercept_col)
+  # Determine which parameters to sample
+  param_names <- names(prior_list)
 
-  # Get scaled variable names (without prefix)
-  scaled_vars <- sub(paste0("^", prefix, "_"), "", names(formula_scale))
-
-  # Parse the parameter to understand its components
-  term_components <- .parse_term_components(parameter_name, prefix)
-
-  # Check if parameter is affected by scaling
-  if(length(term_components) == 0){
-    # Intercept case
-    if(!is_intercept){
-      return(NULL)
-    }
-  }else{
-    # Check if any components are scaled
-    if(!any(term_components %in% scaled_vars)){
-      return(NULL)
-    }
+  if(is.null(param_names) || length(param_names) == 0){
+    stop("'prior_list' must be a named list of priors.")
   }
 
-  # For the highest-order terms (interaction terms that don't receive contributions
-  # from any higher-order terms), we can compute the scale factor directly
-  # Check if there are any higher-order terms that could contribute to this term
-  has_higher_order_contributions <- FALSE
-  if(length(term_components) > 0 && !is_intercept){
-    # This term could receive contributions from terms with MORE components
-    # that include all of this term's components
-    # For now, we check if fit is NULL - if so, we can only return marginal transformation
-    if(!is.null(fit)){
-      # We'll use the full matrix approach to check for contributions
-      affected_cols <- c(intercept_col, names(formula_scale))
+  # Initialize list to collect samples (handles varying column counts per prior)
+  samples_list <- list()
 
-      # Get posterior to find all available columns
-      posterior <- as.matrix(coda::as.mcmc.list(fit))
-      available_cols <- intersect(affected_cols, colnames(posterior))
+  for(param_name in param_names){
+    prior <- prior_list[[param_name]]
 
-      # Also include interaction terms from posterior
-      all_posterior_cols <- colnames(posterior)
-      prefix_pattern <- paste0("^", prefix, "_")
-      param_cols <- all_posterior_cols[grepl(prefix_pattern, all_posterior_cols)]
-      affected_cols <- union(affected_cols, param_cols)
-      affected_cols <- intersect(affected_cols, all_posterior_cols)
+    if(is.null(prior)){
+      # No prior for this parameter - use zeros
+      samples_list[[param_name]] <- matrix(0, nrow = n_samples, ncol = 1)
+      colnames(samples_list[[param_name]]) <- param_name
 
-      if(length(affected_cols) > 1){
-        # Build the transformation matrix
-        M <- .build_unscale_matrix(affected_cols, formula_scale, prefix)
+    }else if(is.prior.none(prior)){
+      # No effect prior - use zeros
+      samples_list[[param_name]] <- matrix(0, nrow = n_samples, ncol = 1)
+      colnames(samples_list[[param_name]]) <- param_name
 
-        # Find row for our parameter
-        param_row <- which(rownames(M) == parameter_name)
-        if(length(param_row) > 0){
-          transform_row <- M[param_row, , drop = TRUE]
+    }else if(is.prior.point(prior)){
+      # Point prior - constant values
+      samples_list[[param_name]] <- matrix(
+        prior$parameters[["location"]],
+        nrow = n_samples,
+        ncol = 1
+      )
+      colnames(samples_list[[param_name]]) <- param_name
 
-          # Check if there are non-zero off-diagonal entries
-          other_cols <- setdiff(names(transform_row), parameter_name)
-          other_coeffs <- transform_row[other_cols]
-          if(any(!is.na(other_coeffs) & other_coeffs != 0)){
-            has_higher_order_contributions <- TRUE
-          }
-        }
+    }else if(is.prior.factor(prior)){
+      # Factor priors return matrix from rng
+      temp_samples <- rng(prior, n_samples, transform_factor_samples = TRUE)
+      if(is.matrix(temp_samples)){
+        # Multiple columns for factor levels
+        n_levels <- ncol(temp_samples)
+        col_names <- paste0(param_name, "[", 1:n_levels, "]")
+        colnames(temp_samples) <- col_names
+        samples_list[[param_name]] <- temp_samples
+      }else{
+        # Single column
+        samples_list[[param_name]] <- matrix(temp_samples, nrow = n_samples, ncol = 1)
+        colnames(samples_list[[param_name]]) <- param_name
       }
-    }
-  }
 
-  # For interaction terms without higher-order contributions, use simple formula
-  if(length(term_components) > 0 && !is_intercept && !has_higher_order_contributions){
-    # Identify which components are scaled
-    scaled_components <- term_components[term_components %in% scaled_vars]
+    }else if(is.prior.simple(prior)){
+      # Simple priors - single column
+      samples_list[[param_name]] <- matrix(
+        rng(prior, n_samples),
+        nrow = n_samples,
+        ncol = 1
+      )
+      colnames(samples_list[[param_name]]) <- param_name
 
-    if(length(scaled_components) > 0){
-      # The scale factor is the product of 1/sd for all scaled components
-      sd_product <- 1
-      for(comp in scaled_components){
-        comp_name <- paste0(prefix, "_", comp)
-        if(comp_name %in% names(formula_scale)){
-          sd_product <- sd_product * formula_scale[[comp_name]]$sd
-        }
+    }else if(is.prior.vector(prior)){
+      # Vector priors return matrix from rng
+      temp_samples <- rng(prior, n_samples)
+      if(is.matrix(temp_samples)){
+        n_cols <- ncol(temp_samples)
+        col_names <- paste0(param_name, "[", 1:n_cols, "]")
+        colnames(temp_samples) <- col_names
+        samples_list[[param_name]] <- temp_samples
+      }else{
+        samples_list[[param_name]] <- matrix(temp_samples, nrow = n_samples, ncol = 1)
+        colnames(samples_list[[param_name]]) <- param_name
       }
-      scale_factor <- 1 / sd_product
 
-      return(list(
-        transformation = "lin",
-        transformation_arguments = list(a = 0, b = unname(scale_factor))
-      ))
-    }
-  }
-
-  # For terms with contributions from higher-order terms (or intercept),
-  # we need the full transformation matrix
-  # Build affected_cols including all scaled predictors and the intercept
-  affected_cols <- c(intercept_col, names(formula_scale))
-
-  # If fit is available, also include interaction terms from posterior
-  if(!is.null(fit)){
-    posterior <- as.matrix(coda::as.mcmc.list(fit))
-    all_posterior_cols <- colnames(posterior)
-    prefix_pattern <- paste0("^", prefix, "_")
-    param_cols <- all_posterior_cols[grepl(prefix_pattern, all_posterior_cols)]
-    affected_cols <- union(affected_cols, param_cols)
-    affected_cols <- intersect(affected_cols, all_posterior_cols)
-  }
-
-  # Build the transformation matrix
-  M <- .build_unscale_matrix(affected_cols, formula_scale, prefix)
-
-  # Find row for our parameter
-  param_row <- which(rownames(M) == parameter_name)
-  if(length(param_row) == 0){
-    return(NULL)
-  }
-
-  # Extract the transformation coefficients
-  transform_row <- M[param_row, , drop = TRUE]
-
-  # The self-coefficient is the diagonal entry
-  self_coef <- unname(transform_row[parameter_name])
-  if(is.na(self_coef)) self_coef <- 1
-
-  # For non-intercept terms: compute the MARGINAL transformation.
-  # This is for prior visualization where we don't have samples of interaction terms.
-  # The b coefficient is the L2 norm of the transformation matrix row (excluding intercept),
-  # which captures the total variance contribution from all related terms.
-  #
-  # For intercept: use b = 1 (diagonal coefficient). The intercept prior itself
-  # doesn't get scaled - only the offset changes (which is 0 under centered priors).
-  # The L2 norm approach would be wrong because the intercept row mixes contributions
-
-  # from DIFFERENT priors (intercept prior vs coefficient priors).
-
-  if(!is_intercept){
-    # Marginal transformation: a = 0 (prior is centered), b = L2 norm of row
-    # Exclude intercept column from L2 norm calculation since we're looking at
-    # the effect of this coefficient, not the intercept contribution
-    non_intercept_cols <- setdiff(names(transform_row), intercept_col)
-    row_vals <- transform_row[non_intercept_cols]
-    row_vals <- row_vals[!is.na(row_vals)]
-
-    b_marginal <- sqrt(sum(row_vals^2))
-
-    return(list(
-      transformation = "lin",
-      transformation_arguments = list(a = 0, b = b_marginal)
-    ))
-  }else{
-    # Intercept: use L2 norm of ENTIRE row (all columns)
-    # The intercept on the original scale is:
-    #   beta_0 = beta_0* - (mean(x1)/sd(x1)) * beta_1* - (mean(x2)/sd(x2)) * beta_2* - ...
-    #
-    # The variance of the marginal prior for beta_0 includes contributions from
-    # ALL coefficient priors via the off-diagonal terms. The L2 norm captures this:
-    #   Var(beta_0) = Var(beta_0*) * 1^2 + Var(beta_1*) * (mean(x1)/sd(x1))^2 + ...
-    #
-    # For the shift 'a': if priors are centered at 0, the expected value is still 0.
-    # TODO: If priors have non-zero means, compute a = sum(M[i,j] * E[beta_j*])
-    row_vals <- transform_row[!is.na(transform_row)]
-    b_marginal <- sqrt(sum(row_vals^2))
-
-    if(log_intercept){
-      return(list(
-        transformation = "exp_lin",
-        transformation_arguments = list(a = 0, b = b_marginal)
-      ))
     }else{
-      return(list(
-        transformation = "lin",
-        transformation_arguments = list(a = 0, b = b_marginal)
-      ))
+      # Fallback for other prior types - try rng
+      temp_samples <- tryCatch(
+        rng(prior, n_samples),
+        error = function(e){
+          warning(sprintf("Could not generate samples for prior '%s': %s. Using zeros.",
+                          param_name, e$message))
+          rep(0, n_samples)
+        }
+      )
+
+      if(is.matrix(temp_samples)){
+        n_cols <- ncol(temp_samples)
+        col_names <- paste0(param_name, "[", 1:n_cols, "]")
+        colnames(temp_samples) <- col_names
+        samples_list[[param_name]] <- temp_samples
+      }else{
+        samples_list[[param_name]] <- matrix(temp_samples, nrow = n_samples, ncol = 1)
+        colnames(samples_list[[param_name]]) <- param_name
+      }
     }
   }
+
+  # Combine all samples into one matrix
+  samples <- do.call(cbind, samples_list)
+
+  # Filter to match column_names if provided
+  if(!is.null(column_names)){
+    available_cols <- intersect(column_names, colnames(samples))
+    if(length(available_cols) > 0){
+      samples <- samples[, available_cols, drop = FALSE]
+    }
+  }
+
+  return(samples)
 }
 
 
