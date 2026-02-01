@@ -694,8 +694,14 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 #' @param force_plots temporal argument allowing to generate conditional posterior samples
 #' suitable for prior and posterior plots. Only available when conditioning on a
 #' single parameter.
+#' @param transform_scaled whether to transform samples from standardized (scaled) to
+#' original (unscaled) scale. When \code{TRUE}, both posterior and prior samples are
+#' transformed, and the result can be directly passed to [plot_posterior] which will
+#' automatically detect the transformation and use the transformed prior samples.
+#' Requires a model fitted with \code{formula_scale_list}. Defaults to \code{FALSE}.
+#' @param n_prior_samples number of prior samples to generate when
+#' \code{transform_scaled = TRUE}. Defaults to 10000.
 #' @inheritParams ensemble_inference
-#' @inheritParams mix_posteriors
 #'
 #' @return \code{as_mix_posteriors} returns a named list of mixed posterior
 #' distributions (either a vector of matrix).
@@ -704,7 +710,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 #'
 #' @name as_mixed_posteriors
 #' @export
-as_mixed_posteriors <- function(model, parameters, conditional = NULL, conditional_rule = "AND", force_plots = FALSE){
+as_mixed_posteriors <- function(model, parameters, conditional = NULL, conditional_rule = "AND", force_plots = FALSE,
+                                 transform_scaled = FALSE, n_prior_samples = 10000){
 
   # check input
   if(!inherits(model, "BayesTools_fit"))
@@ -712,6 +719,8 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   check_char(parameters, "parameters", check_length = FALSE)
   check_char(conditional, "conditional", check_length = FALSE, allow_values = c(parameters, "PET", "PEESE", "PETPEESE", "omega"), allow_NULL = TRUE)
   check_char(conditional_rule, "conditional_rule", allow_values = c("AND", "OR"))
+  check_bool(transform_scaled, "transform_scaled")
+  check_int(n_prior_samples, "n_prior_samples", lower = 1)
 
   # extract the list of priors
   priors <- attr(model, "prior_list")
@@ -839,6 +848,13 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     }
   }
 
+  # extract formula_scale early for transform_scaled support
+  formula_scale <- attr(model, "formula_scale")
+
+  # apply scale transformation to posterior samples if requested
+  if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
+    model_samples <- transform_scale_samples(model_samples, formula_scale)
+  }
 
   out    <- list()
 
@@ -891,6 +907,19 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   attr(out, "prior_list")       <- priors
   attr(out, "conditional")      <- conditional
   attr(out, "conditional_rule") <- conditional_rule
+
+  # propagate formula_scale attribute for transform_scaled support
+  if(!is.null(formula_scale)){
+    attr(out, "formula_scale") <- formula_scale
+  }
+
+  # generate and store transformed prior samples if requested
+  if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
+    prior_samples <- transform_prior_samples(model, n_samples = n_prior_samples)
+    attr(out, "prior_samples") <- prior_samples
+    attr(out, "transform_scaled") <- TRUE
+  }
+
   class(out) <- c(class(out), "as_mixed_posteriors", "mixed_posteriors")
   return(out)
 }
