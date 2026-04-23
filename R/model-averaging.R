@@ -915,7 +915,12 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
   # generate and store transformed prior samples if requested
   if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
-    prior_samples <- transform_prior_samples(model, n_samples = n_prior_samples)
+    prior_samples <- .generate_transformed_prior_samples(
+      prior_list    = priors,
+      column_names  = colnames(model_samples),
+      n_samples     = n_prior_samples,
+      formula_scale = formula_scale
+    )
     attr(out, "prior_samples") <- prior_samples
     attr(out, "transform_scaled") <- TRUE
   }

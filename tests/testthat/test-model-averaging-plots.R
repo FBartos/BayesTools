@@ -601,6 +601,17 @@ test_that("linear transformation matches expected behavior", {
 # verify that the transform_scaled feature correctly transforms priors and
 # posteriors from standardized to original scale.
 
+.make_fake_scaled_formula_fit <- function(prior_list, posterior_samples, formula_scale) {
+  fit <- coda::mcmc(posterior_samples)
+  class(fit) <- c("BayesTools_fit", class(fit))
+
+  attr(fit, "prior_list") <- prior_list
+  attr(fit, "formula_scale") <- formula_scale
+
+  return(fit)
+}
+
+
 test_that("transform_scaled is auto-detected from samples attribute", {
   skip_if_no_fits()
 
@@ -623,6 +634,137 @@ test_that("transform_scaled is auto-detected from samples attribute", {
 
   # Verify the attribute is NOT set
   expect_null(attr(samples_unscaled, "transform_scaled"))
+})
+
+
+test_that("transform_scaled helper preserves transformed point masses", {
+  plot_data <- BayesTools:::.plot_data_prior_samples_transformed(
+    prior_samples = rep(0, 1000),
+    prior_list = list(prior("spike", list(0))),
+    n_points = 128
+  )
+
+  expect_true(any(vapply(plot_data, inherits, logical(1), what = "density.prior.point")))
+  expect_false(any(vapply(plot_data, inherits, logical(1), what = "density.prior.simple")))
+  expect_equal(plot_data[[1]]$x, 0)
+  expect_equal(plot_data[[1]]$y, 1)
+})
+
+
+test_that("transform_scaled visual: spike prior remains atomic", {
+  skip_on_cran()
+
+  set.seed(123)
+
+  prior_list <- list(
+    mu_intercept = prior("normal", list(0, 1)),
+    mu_x1 = prior("spike", list(0))
+  )
+  for(i in seq_along(prior_list)){
+    attr(prior_list[[i]], "parameter") <- "mu"
+  }
+
+  formula_scale <- list(mu = list(mu_x1 = list(mean = 5, sd = 2)))
+  attr(formula_scale$mu, "log_intercept") <- FALSE
+
+  posterior_samples <- cbind(
+    mu_intercept = rnorm(4000, 0, 1),
+    mu_x1 = rnorm(4000, 0.25, 0.20)
+  )
+
+  fit <- .make_fake_scaled_formula_fit(prior_list, posterior_samples, formula_scale)
+  samples_scaled <- as_mixed_posteriors(
+    fit,
+    parameters = "mu_x1",
+    transform_scaled = TRUE,
+    n_prior_samples = 20000
+  )
+
+  expect_true(all(attr(samples_scaled, "prior_samples")[, "mu_x1"] == 0))
+
+  vdiffr::expect_doppelganger("transform-scaled-spike-only-prior", function() {
+    plot_posterior(
+      samples_scaled,
+      "mu_x1",
+      prior = TRUE,
+      main = "Spike Prior (Original Scale)",
+      dots_prior = list(col = "grey"),
+      xlim = c(-1, 1)
+    )
+  })
+})
+
+
+test_that("transform_scaled visual: conditional mixture prior removes spike", {
+  skip_on_cran()
+
+  set.seed(124)
+
+  prior_list <- list(
+    mu_intercept = prior("normal", list(0, 1)),
+    mu_x1 = prior_mixture(
+      list(
+        prior("spike", list(0), prior_weights = 1),
+        prior("normal", list(0.6, 0.4), prior_weights = 1)
+      ),
+      is_null = c(TRUE, FALSE)
+    )
+  )
+  for(i in seq_along(prior_list)){
+    attr(prior_list[[i]], "parameter") <- "mu"
+  }
+
+  formula_scale <- list(mu = list(mu_x1 = list(mean = 5, sd = 2)))
+  attr(formula_scale$mu, "log_intercept") <- FALSE
+
+  indicator <- sample(c(1L, 2L), size = 4000, replace = TRUE)
+  posterior_samples <- cbind(
+    mu_intercept = rnorm(4000, 0, 1),
+    mu_x1 = ifelse(indicator == 1L, 0, rnorm(4000, 0.6, 0.4)),
+    mu_x1_indicator = indicator
+  )
+
+  fit <- .make_fake_scaled_formula_fit(prior_list, posterior_samples, formula_scale)
+  samples_unconditional <- as_mixed_posteriors(
+    fit,
+    parameters = "mu_x1",
+    transform_scaled = TRUE,
+    n_prior_samples = 20000
+  )
+  samples_conditional <- as_mixed_posteriors(
+    fit,
+    parameters = "mu_x1",
+    conditional = "mu_x1",
+    transform_scaled = TRUE,
+    n_prior_samples = 20000
+  )
+
+  expect_true(any(attr(samples_unconditional, "prior_samples")[, "mu_x1"] == 0))
+  expect_false(any(attr(samples_conditional, "prior_samples")[, "mu_x1"] == 0))
+
+  vdiffr::expect_doppelganger("transform-scaled-conditional-mixture-prior", function() {
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+    par(mfrow = c(1, 2))
+
+    plot_posterior(
+      samples_unconditional,
+      "mu_x1",
+      prior = TRUE,
+      main = "Mixture Prior (Unconditional)",
+      dots_prior = list(col = "grey"),
+      xlim = c(-1, 2)
+    )
+
+    plot_posterior(
+      samples_conditional,
+      "mu_x1",
+      prior = TRUE,
+      main = "Mixture Prior (Conditional Alt)",
+      dots_prior = list(col = "grey"),
+      xlim = c(-1, 2)
+    )
+  })
 })
 
 

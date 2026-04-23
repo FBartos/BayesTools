@@ -1521,15 +1521,36 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
     stop("'fit' must be a fitted model object.")
   }
 
-  # Generate prior samples matching posterior column structure
+  prior_samples <- .generate_transformed_prior_samples(
+    prior_list   = prior_list,
+    column_names = colnames(posterior),
+    n_samples    = n_samples,
+    seed         = seed,
+    formula_scale = formula_scale
+  )
+
+  return(prior_samples)
+}
+
+
+# Helper: Generate prior samples and apply the same unscaling transform used
+# for posterior samples.
+#
+# @param prior_list Named list of prior objects
+# @param column_names Column names to match from the posterior structure
+# @param n_samples Number of samples to generate
+# @param seed Optional random seed
+# @param formula_scale Optional nested scaling information
+# @return Matrix with transformed prior samples
+.generate_transformed_prior_samples <- function(prior_list, column_names, n_samples, seed = NULL, formula_scale = NULL){
+
   prior_samples <- .generate_prior_sample_matrix(
     prior_list     = prior_list,
     n_samples      = n_samples,
-    column_names   = colnames(posterior),
+    column_names   = column_names,
     seed           = seed
   )
 
-  # Apply same transformation as posterior
   if(!is.null(formula_scale) && length(formula_scale) > 0){
     prior_samples <- .apply_unscale_transform(prior_samples, formula_scale)
   }
