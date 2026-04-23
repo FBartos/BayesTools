@@ -155,6 +155,26 @@ test_that("JAGS_formula standardization preserves data correctly", {
   expect_equal(unname(result$data$beta_data_x2), as.numeric(scale(df$x2)))
 })
 
+test_that("JAGS_formula rejects standardizing constant predictors", {
+
+  df <- data.frame(x_const = rep(3, 20))
+  prior_list <- list(
+    "intercept" = prior("normal", list(0, 1)),
+    "x_const"   = prior("normal", list(0, 1))
+  )
+
+  expect_error(
+    JAGS_formula(
+      formula       = ~ x_const,
+      parameter     = "mu",
+      data          = df,
+      prior_list    = prior_list,
+      formula_scale = list(x_const = TRUE)
+    ),
+    "standard deviation must be positive and finite"
+  )
+})
+
 test_that("transform_scale_samples transforms coefficients correctly", {
 
   # Create mock posterior samples
@@ -251,6 +271,104 @@ test_that("transform_scale_samples handles interaction terms correctly", {
   expected_intercept <- posterior[, "mu_intercept"] -
     beta_x1_z_div_sd * 5 - beta_x2_z_div_sd * 10 + beta_int_orig * 5 * 10
   expect_equal(posterior_original[, "mu_intercept"], expected_intercept, tolerance = 1e-10)
+})
+
+test_that("transform_scale_samples validates malformed formula_scale metadata", {
+
+  posterior <- cbind(
+    mu_intercept = c(1, 2),
+    mu_x1 = c(0.5, 0.75)
+  )
+
+  expect_error(
+    transform_scale_samples(posterior, list(mu = list(mu_x1 = list(mean = 0)))),
+    "sd"
+  )
+  expect_error(
+    transform_scale_samples(posterior, list(mu = list(mu_x1 = list(mean = 0, sd = 0)))),
+    "higher than 0"
+  )
+  expect_error(
+    transform_scale_samples(posterior, list(mu = list(mu_x1 = list(mean = NA_real_, sd = 1)))),
+    "NA/NaN"
+  )
+})
+
+test_that("transform_scale_samples warns when formula_scale prefix is unused", {
+
+  posterior <- cbind(
+    mu_intercept = c(1, 2),
+    mu_x1 = c(0.5, 0.75)
+  )
+  formula_scale <- list(
+    beta = list(
+      beta_x1 = list(mean = 5, sd = 2)
+    )
+  )
+
+  expect_warning(
+    posterior_same <- transform_scale_samples(posterior, formula_scale),
+    "none of its parameter prefixes match the posterior columns"
+  )
+  expect_equal(posterior_same, posterior)
+})
+
+test_that("transform_scale_samples warns on unused terms but still applies matched terms", {
+
+  posterior <- cbind(
+    mu_intercept = c(1, 2),
+    mu_x1 = c(0.5, 0.75)
+  )
+  formula_scale <- list(
+    mu = list(
+      mu_x1 = list(mean = 5, sd = 2),
+      mu_x2 = list(mean = 10, sd = 4)
+    )
+  )
+
+  expect_warning(
+    posterior_transformed <- transform_scale_samples(posterior, formula_scale),
+    "Ignoring unused formula_scale"
+  )
+
+  expect_equal(posterior_transformed[, "mu_x1"], posterior[, "mu_x1"] / 2)
+  expect_equal(
+    posterior_transformed[, "mu_intercept"],
+    posterior[, "mu_intercept"] - posterior[, "mu_x1"] / 2 * 5,
+    tolerance = 1e-10
+  )
+})
+
+test_that("transform_prior_samples respects seed and validates formula_scale", {
+
+  set.seed(11)
+  posterior_samples <- cbind(
+    mu_intercept = rnorm(32),
+    mu_x1 = rnorm(32)
+  )
+
+  fit <- coda::mcmc(posterior_samples)
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- list(
+    mu_intercept = prior("normal", list(0, 1)),
+    mu_x1 = prior("normal", list(0.25, 0.5))
+  )
+  attr(fit, "formula_scale") <- list(mu = list(mu_x1 = list(mean = 5, sd = 2)))
+
+  samples_a <- transform_prior_samples(fit, n_samples = 256, seed = 101)
+  samples_b <- transform_prior_samples(fit, n_samples = 256, seed = 101)
+  samples_c <- transform_prior_samples(fit, n_samples = 256, seed = 202)
+
+  expect_equal(samples_a, samples_b)
+  expect_false(isTRUE(all.equal(samples_a, samples_c)))
+
+  bad_fit <- fit
+  attr(bad_fit, "formula_scale") <- list(mu = list(mu_x1 = list(mean = 5, sd = 0)))
+
+  expect_error(
+    transform_prior_samples(bad_fit, n_samples = 32, seed = 1),
+    "higher than 0"
+  )
 })
 
 test_that("Manual and automatic scaling produce equivalent results", {
@@ -561,6 +679,96 @@ test_that("ensemble_estimates_table with transform_scaled unscales coefficients"
   expect_equal(estimates_unscaled["mu_x_cont2", "Mean"], expected_x2, tolerance = 1e-10)
 })
 
+test_that("as_mixed_posteriors transform_scaled matches direct posterior and prior transformations", {
+
+  skip_if_no_fits()
+
+  fit_auto <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS"))
+  formula_scale <- attr(fit_auto, "formula_scale")
+  parameters <- c("mu_intercept", "mu_x_cont1", "mu_x_cont2", "mu_x_cont1__xXx__x_cont2")
+
+  posterior_scaled <- as.matrix(suppressWarnings(coda::as.mcmc(fit_auto)))
+  posterior_expected <- transform_scale_samples(posterior_scaled[, parameters, drop = FALSE], formula_scale)
+
+  set.seed(123)
+  samples_scaled <- as_mixed_posteriors(
+    fit_auto,
+    parameters = parameters,
+    transform_scaled = TRUE,
+    n_prior_samples = 512
+  )
+  prior_expected <- transform_prior_samples(fit_auto, n_samples = 512, seed = 123)
+
+  expect_true(isTRUE(attr(samples_scaled, "transform_scaled")))
+  expect_s3_class(samples_scaled$mu_intercept, "mixed_posteriors.formula")
+  expect_equal(as.numeric(samples_scaled$mu_intercept), as.numeric(posterior_expected[, "mu_intercept"]), tolerance = 1e-10)
+  expect_equal(as.numeric(samples_scaled$mu_x_cont1), as.numeric(posterior_expected[, "mu_x_cont1"]), tolerance = 1e-10)
+  expect_equal(as.numeric(samples_scaled$mu_x_cont2), as.numeric(posterior_expected[, "mu_x_cont2"]), tolerance = 1e-10)
+  expect_equal(
+    as.numeric(samples_scaled$mu_x_cont1__xXx__x_cont2),
+    as.numeric(posterior_expected[, "mu_x_cont1__xXx__x_cont2"]),
+    tolerance = 1e-10
+  )
+  expect_equal(
+    attr(samples_scaled, "prior_samples")[, parameters, drop = FALSE],
+    prior_expected[, parameters, drop = FALSE],
+    tolerance = 1e-10
+  )
+})
+
+test_that("ensemble_estimates_table transform_scaled works on mixed posterior samples", {
+
+  posterior_scaled <- cbind(
+    mu_intercept = c(1.0, 1.2, 1.4, 1.6),
+    mu_x_cont1 = c(0.5, 0.4, 0.3, 0.2),
+    mu_x_cont2 = c(0.8, 0.7, 0.6, 0.5),
+    mu_x_cont1__xXx__x_cont2 = c(0.12, 0.10, 0.08, 0.06)
+  )
+  formula_scale <- list(
+    mu = list(
+      mu_x_cont1 = list(mean = 5, sd = 2),
+      mu_x_cont2 = list(mean = 10, sd = 4)
+    )
+  )
+
+  make_formula_samples <- function(values, parameter_name) {
+    structure(
+      unname(values),
+      class = c("mixed_posteriors.formula", "mixed_posteriors.simple", "mixed_posteriors"),
+      formula_parameter = "mu",
+      sample_ind = seq_along(values),
+      models_ind = rep(1L, length(values)),
+      parameter = parameter_name,
+      prior_list = prior("normal", list(0, 1)),
+      interaction = grepl("__xXx__", parameter_name),
+      interaction_terms = if(grepl("__xXx__", parameter_name)) c("x_cont1", "x_cont2") else NULL
+    )
+  }
+
+  mixed_posteriors <- lapply(colnames(posterior_scaled), function(parameter_name) {
+    make_formula_samples(posterior_scaled[, parameter_name], parameter_name)
+  })
+  names(mixed_posteriors) <- colnames(posterior_scaled)
+  class(mixed_posteriors) <- c("mixed_posteriors")
+
+  posterior_expected <- transform_scale_samples(posterior_scaled, formula_scale)
+  estimates_unscaled <- ensemble_estimates_table(
+    samples = mixed_posteriors,
+    parameters = colnames(posterior_scaled),
+    transform_scaled = TRUE,
+    formula_scale = formula_scale
+  )
+
+  expect_equal(estimates_unscaled["(mu) intercept", "Mean"], mean(posterior_expected[, "mu_intercept"]), tolerance = 1e-10)
+  expect_equal(estimates_unscaled["(mu) x_cont1", "Mean"], mean(posterior_expected[, "mu_x_cont1"]), tolerance = 1e-10)
+  expect_equal(estimates_unscaled["(mu) x_cont2", "Mean"], mean(posterior_expected[, "mu_x_cont2"]), tolerance = 1e-10)
+  expect_equal(
+    estimates_unscaled["(mu) x_cont1:x_cont2", "Mean"],
+    mean(posterior_expected[, "mu_x_cont1__xXx__x_cont2"]),
+    tolerance = 1e-10
+  )
+})
+
 test_that("transform_scaled = FALSE is the default behavior", {
 
   skip_if_no_fits()
@@ -671,6 +879,37 @@ test_that("transform_scale_samples works with dual parameter model", {
   # intercept_orig = intercept_z * exp(-beta_orig * mean)
   expected_log_sigma_intercept <- posterior[, "log_sigma_intercept"] * exp(-expected_log_sigma_x_sigma * log_sigma_scale$mean)
   expect_equal(posterior_transformed[, "log_sigma_intercept"], expected_log_sigma_intercept, tolerance = 1e-10)
+})
+
+test_that("as_mixed_posteriors transform_scaled works for dual parameter models", {
+
+  skip_if_no_fits()
+
+  fit_dual <- readRDS(file.path(temp_fits_dir, "fit_dual_param_regression.RDS"))
+  formula_scale <- attr(fit_dual, "formula_scale")
+  parameters <- c("log_sigma_intercept", "log_sigma_x_sigma")
+
+  posterior_scaled <- as.matrix(suppressWarnings(coda::as.mcmc(fit_dual)))
+  posterior_expected <- transform_scale_samples(posterior_scaled[, parameters, drop = FALSE], formula_scale)
+
+  samples_scaled <- as_mixed_posteriors(
+    fit_dual,
+    parameters = parameters,
+    transform_scaled = TRUE,
+    n_prior_samples = 256
+  )
+
+  expect_true(isTRUE(attr(samples_scaled, "transform_scaled")))
+  expect_equal(
+    as.numeric(samples_scaled$log_sigma_intercept),
+    as.numeric(posterior_expected[, "log_sigma_intercept"]),
+    tolerance = 1e-10
+  )
+  expect_equal(
+    as.numeric(samples_scaled$log_sigma_x_sigma),
+    as.numeric(posterior_expected[, "log_sigma_x_sigma"]),
+    tolerance = 1e-10
+  )
 })
 
 test_that("JAGS_estimates_table with transform_scaled works for dual parameter model", {
