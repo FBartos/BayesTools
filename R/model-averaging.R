@@ -264,7 +264,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
         temp_priors[[i]][["prior_weights"]] <- temp_inference$prior_probs[i]
       }
 
-      out[[temp_parameter]] <- .mix_posteriors.vector(fits, temp_priors, temp_parameter, temp_inference$post_probs, seed, n_samples)
+      out[[temp_parameter]] <- .mix_posteriors.vector(fits, temp_priors, temp_parameter, temp_inference$post_probs, NULL, n_samples)
 
     }else if(all(sapply(temp_priors, is.prior.simple) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.null))){
       # simple priors:
@@ -333,11 +333,10 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 
 
 
-  # set seed at the beginning makes sure that the samples of different parameters from the same models retain their correlation
+  # When seed is NULL, continue using the current RNG state so mix_posteriors()
+  # can coordinate draws across parameters.
   if(!is.null(seed)){
     set.seed(seed)
-  }else{
-    set.seed(1)
   }
 
   # prepare output objects
@@ -403,11 +402,10 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   if(!all(sapply(priors, is.prior.vector) | sapply(priors, is.prior.point)))
     stop("'priors' must be a list of vector priors")
 
-  # set seed at the beginning makes sure that the samples of different parameters from the same models retain their correlation
+  # When seed is NULL, continue using the current RNG state so mix_posteriors()
+  # can coordinate draws across parameters.
   if(!is.null(seed)){
     set.seed(seed)
-  }else{
-    set.seed(1)
   }
 
   # prepare output objects
@@ -620,11 +618,10 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
     stop("'priors' must be a list of weightfunction priors distributions")
 
 
-  # set seed at the beginning makes sure that the samples of different parameters from the same models retain their correlation
+  # When seed is NULL, continue using the current RNG state so mix_posteriors()
+  # can coordinate draws across parameters.
   if(!is.null(seed)){
     set.seed(seed)
-  }else{
-    set.seed(1)
   }
 
   # obtain mapping for the weight coefficients

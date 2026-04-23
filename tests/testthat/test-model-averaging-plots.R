@@ -611,6 +611,10 @@ test_that("linear transformation matches expected behavior", {
   return(fit)
 }
 
+.integrate_density_mass <- function(x, y) {
+  sum(diff(x) * (y[-1] + y[-length(y)]) / 2)
+}
+
 
 test_that("transform_scaled is auto-detected from samples attribute", {
   skip_if_no_fits()
@@ -648,6 +652,65 @@ test_that("transform_scaled helper preserves transformed point masses", {
   expect_false(any(vapply(plot_data, inherits, logical(1), what = "density.prior.simple")))
   expect_equal(plot_data[[1]]$x, 0)
   expect_equal(plot_data[[1]]$y, 1)
+})
+
+test_that("transform_scaled helper preserves total mass for mixed point-continuous priors", {
+  set.seed(125)
+
+  prior_samples <- c(rep(0, 2000), rnorm(8000, mean = 1, sd = 0.25))
+  plot_data <- BayesTools:::.plot_data_prior_samples_transformed(
+    prior_samples = prior_samples,
+    prior_list = list(prior("spike", list(0)), prior("normal", list(1, 0.25))),
+    n_points = 512
+  )
+
+  density_data <- plot_data[[which(vapply(plot_data, inherits, logical(1), what = "density.prior.simple"))]]
+  point_mass <- sum(vapply(
+    plot_data[vapply(plot_data, inherits, logical(1), what = "density.prior.point")],
+    function(item) item$y,
+    numeric(1)
+  ))
+
+  expect_equal(.integrate_density_mass(density_data$x, density_data$y) + point_mass, 1, tolerance = 0.03)
+})
+
+test_that("transform_scaled helper preserves total mass under user transformations", {
+  set.seed(126)
+
+  prior_samples <- c(rep(0, 1500), rnorm(8500, mean = 1.5, sd = 0.4))
+  plot_data <- BayesTools:::.plot_data_prior_samples_transformed(
+    prior_samples = prior_samples,
+    prior_list = list(prior("spike", list(0)), prior("normal", list(1.5, 0.4))),
+    n_points = 512,
+    transformation = "lin",
+    transformation_arguments = list(a = 2, b = 0.5)
+  )
+
+  density_data <- plot_data[[which(vapply(plot_data, inherits, logical(1), what = "density.prior.simple"))]]
+  point_data <- plot_data[vapply(plot_data, inherits, logical(1), what = "density.prior.point")]
+  point_mass <- sum(vapply(point_data, function(item) item$y, numeric(1)))
+
+  expect_equal(point_data[[1]]$x, 2)
+  expect_equal(.integrate_density_mass(density_data$x, density_data$y) + point_mass, 1, tolerance = 0.03)
+})
+
+test_that("plot_posterior errors when transformed prior samples are missing", {
+  sample_entry <- structure(
+    rnorm(64),
+    class = c("mixed_posteriors.formula", "mixed_posteriors.simple", "mixed_posteriors"),
+    formula_parameter = "mu",
+    prior_list = list(prior("normal", list(0, 1)))
+  )
+  samples <- structure(
+    list(mu_x1 = sample_entry),
+    class = c("as_mixed_posteriors", "mixed_posteriors"),
+    transform_scaled = TRUE
+  )
+
+  expect_error(
+    plot_posterior(samples, "mu_x1", prior = TRUE, plot_type = "ggplot"),
+    "no prior samples found"
+  )
 })
 
 

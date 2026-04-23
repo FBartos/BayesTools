@@ -368,6 +368,130 @@ test_that("mix_posteriors handles vector priors", {
 })
 
 
+test_that("mix_posteriors respects seed across prior types", {
+
+  skip_on_cran()
+  skip_if_not_installed("rjags")
+  skip_if_no_fits()
+
+  expect_seed_changes_draws <- function(draw_factory, parameter) {
+    same_seed_a <- draw_factory(11L)
+    same_seed_b <- draw_factory(11L)
+    diff_seed   <- draw_factory(12L)
+
+    expect_equal(
+      attr(same_seed_a[[parameter]], "sample_ind"),
+      attr(same_seed_b[[parameter]], "sample_ind")
+    )
+    expect_false(identical(
+      attr(same_seed_a[[parameter]], "sample_ind"),
+      attr(diff_seed[[parameter]], "sample_ind")
+    ))
+  }
+
+  fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
+  marglik_simple_normal <- readRDS(file.path(temp_marglik_dir, "fit_simple_normal.RDS"))
+  fit_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike.RDS"))
+  marglik_simple_spike <- readRDS(file.path(temp_marglik_dir, "fit_simple_spike.RDS"))
+
+  models_simple <- list(
+    list(fit = fit_simple_normal, marglik = marglik_simple_normal, prior_weights = 1),
+    list(fit = fit_simple_spike, marglik = marglik_simple_spike, prior_weights = 1)
+  )
+
+  expect_seed_changes_draws(
+    draw_factory = function(seed) {
+      mix_posteriors(
+        model_list = models_simple,
+        parameters = c("m", "s"),
+        is_null_list = list("m" = c(FALSE, TRUE), "s" = c(FALSE, FALSE)),
+        seed = seed,
+        n_samples = 500
+      )
+    },
+    parameter = "m"
+  )
+
+  fit_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
+  marglik_summary0 <- readRDS(file.path(temp_marglik_dir, "fit_summary0.RDS"))
+  fit_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1.RDS"))
+  marglik_summary1 <- readRDS(file.path(temp_marglik_dir, "fit_summary1.RDS"))
+  fit_summary2 <- readRDS(file.path(temp_fits_dir, "fit_summary2.RDS"))
+  marglik_summary2 <- readRDS(file.path(temp_marglik_dir, "fit_summary2.RDS"))
+
+  models_wf <- list(
+    list(fit = fit_summary0, marglik = marglik_summary0, prior_weights = 1),
+    list(fit = fit_summary1, marglik = marglik_summary1, prior_weights = 1),
+    list(fit = fit_summary2, marglik = marglik_summary2, prior_weights = 1)
+  )
+
+  expect_seed_changes_draws(
+    draw_factory = function(seed) {
+      mix_posteriors(
+        model_list = models_wf,
+        parameters = c("m", "omega"),
+        is_null_list = list("m" = c(FALSE, FALSE, FALSE), "omega" = c(TRUE, FALSE, FALSE)),
+        seed = seed,
+        n_samples = 500
+      )
+    },
+    parameter = "omega"
+  )
+
+  fit_orthonormal_0 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_0.RDS"))
+  marglik_orthonormal_0 <- readRDS(file.path(temp_marglik_dir, "fit_orthonormal_0.RDS"))
+  fit_orthonormal_1 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_1.RDS"))
+  marglik_orthonormal_1 <- readRDS(file.path(temp_marglik_dir, "fit_orthonormal_1.RDS"))
+
+  models_factor <- list(
+    list(fit = fit_orthonormal_0, marglik = marglik_orthonormal_0, prior_weights = 1),
+    list(fit = fit_orthonormal_1, marglik = marglik_orthonormal_1, prior_weights = 1)
+  )
+
+  factor_prior_list <- attr(fit_orthonormal_1, "prior_list")
+  factor_parameter <- names(factor_prior_list)[sapply(factor_prior_list, is.prior.factor)][1]
+
+  expect_seed_changes_draws(
+    draw_factory = function(seed) {
+      mix_posteriors(
+        model_list = models_factor,
+        parameters = factor_parameter,
+        is_null_list = setNames(list(c(TRUE, FALSE)), factor_parameter),
+        seed = seed,
+        n_samples = 500
+      )
+    },
+    parameter = factor_parameter
+  )
+
+  fit_vector_mnormal <- readRDS(file.path(temp_fits_dir, "fit_vector_mnormal.RDS"))
+  mock_marglik <- structure(
+    list(logml = -100, niter = 1000, method = "warp3"),
+    class = "bridge"
+  )
+  models_vector <- list(
+    list(fit = fit_vector_mnormal, marglik = mock_marglik, prior_weights = 1),
+    list(fit = fit_vector_mnormal, marglik = mock_marglik, prior_weights = 1)
+  )
+
+  vector_prior_list <- attr(fit_vector_mnormal, "prior_list")
+  vector_parameter <- names(vector_prior_list)[sapply(vector_prior_list, is.prior.vector)][1]
+
+  expect_seed_changes_draws(
+    draw_factory = function(seed) {
+      mix_posteriors(
+        model_list = models_vector,
+        parameters = vector_parameter,
+        is_null_list = setNames(list(c(FALSE, FALSE)), vector_parameter),
+        seed = seed,
+        n_samples = 500
+      )
+    },
+    parameter = vector_parameter
+  )
+})
+
+
 # ============================================================================ #
 # SECTION 6: ensemble_inference tests
 # ============================================================================ #

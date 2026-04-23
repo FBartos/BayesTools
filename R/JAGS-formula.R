@@ -246,6 +246,9 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
             mean = mean(data[, continuous], na.rm = TRUE),
             sd   = stats::sd(data[, continuous], na.rm = TRUE)
           )
+          if(is.na(scale_info[[continuous]]$sd) || !is.finite(scale_info[[continuous]]$sd) || scale_info[[continuous]]$sd <= 0){
+            stop(paste0("Cannot standardize predictor '", continuous, "' because its standard deviation must be positive and finite."), call. = FALSE)
+          }
           # standardize the predictor
           data[, continuous] <- (data[, continuous] - scale_info[[continuous]]$mean) / scale_info[[continuous]]$sd
         }
@@ -1238,6 +1241,93 @@ transform_treatment_samples <- function(samples){
 }
 
 
+# Helper: Validate the nested formula_scale structure used for unscaling.
+.check_formula_scale_info <- function(formula_scale, name = "formula_scale") {
+
+  check_list(formula_scale, name)
+
+  if(is.null(names(formula_scale)) || anyNA(names(formula_scale)) || any(names(formula_scale) == ""))
+    stop(paste0("The '", name, "' argument must be a named nested list keyed by parameter name."), call. = FALSE)
+
+  for(param_name in names(formula_scale)){
+    param_scale <- formula_scale[[param_name]]
+    check_list(param_scale, paste0(name, "[['", param_name, "]]"))
+
+    if(length(param_scale) == 0)
+      next
+
+    if(is.null(names(param_scale)) || anyNA(names(param_scale)) || any(names(param_scale) == ""))
+      stop(paste0("The '", name, "[['", param_name, "]]" ,"' entry must be a named list keyed by parameter term."), call. = FALSE)
+
+    for(term_name in names(param_scale)){
+      term_scale <- param_scale[[term_name]]
+
+      check_list(
+        term_scale,
+        paste0(name, "[['", param_name, "]][['", term_name, "]]"),
+        check_names = c("mean", "sd"),
+        all_objects = TRUE,
+        allow_other = TRUE
+      )
+      check_real(
+        term_scale[["mean"]],
+        paste0(name, "[['", param_name, "]][['", term_name, "]][['mean'] ]"),
+        allow_NA = FALSE
+      )
+      check_real(
+        term_scale[["sd"]],
+        paste0(name, "[['", param_name, "]][['", term_name, "]][['sd'] ]"),
+        lower = 0,
+        allow_bound = FALSE,
+        allow_NA = FALSE
+      )
+    }
+  }
+
+  invisible(NULL)
+}
+
+
+# Helper: warn when formula_scale entries do not map to posterior terms.
+.warn_unused_formula_scale_terms <- function(term_names, formula_scale, prefix) {
+
+  scaled_terms <- names(formula_scale)
+  if(length(scaled_terms) == 0)
+    return(invisible(NULL))
+
+  scaled_vars <- sub(paste0("^", prefix, "_"), "", scaled_terms)
+  term_components <- unique(unlist(lapply(term_names, .parse_term_components, prefix = prefix), use.names = FALSE))
+  unused_terms <- scaled_terms[!scaled_vars %in% term_components]
+
+  if(length(unused_terms) == 0)
+    return(invisible(NULL))
+
+  if(length(unused_terms) == length(scaled_terms)){
+    warning(
+      paste0(
+        "Ignoring all formula_scale[['", prefix, "]] entries because none match posterior terms: '",
+        paste0(unused_terms, collapse = "', '"),
+        "'. Samples for this parameter prefix are returned unchanged."
+      ),
+      call. = FALSE,
+      immediate. = TRUE
+    )
+  }else{
+    warning(
+      paste0(
+        "Ignoring unused formula_scale[['", prefix, "]] entries: '",
+        paste0(unused_terms, collapse = "', '"),
+        "'. Matched entries are still applied."
+      ),
+      call. = FALSE,
+      immediate. = TRUE
+    )
+  }
+
+  invisible(NULL)
+}
+
+
 # Helper: Build the transformation matrix for unscaling coefficients
 #
 # For each target term T and source term S, computes the coefficient M[T,S] such that:
@@ -1347,9 +1437,23 @@ transform_treatment_samples <- function(samples){
   }
 
   # Handle nested structure: iterate over each parameter
+  matched_prefix <- FALSE
   for (param_name in names(formula_scale)) {
     param_scale <- formula_scale[[param_name]]
+    affected_cols <- grep(paste0("^", param_name, "_"), colnames(posterior), value = TRUE)
+    if(length(affected_cols) == 0)
+      next
+
+    matched_prefix <- TRUE
     posterior <- .apply_unscale_transform_single(posterior, param_scale, prefix = param_name)
+  }
+
+  if(!matched_prefix){
+    warning(
+      "Ignoring formula_scale because none of its parameter prefixes match the posterior columns.",
+      call. = FALSE,
+      immediate. = TRUE
+    )
   }
 
   return(posterior)
@@ -1376,6 +1480,8 @@ transform_treatment_samples <- function(samples){
   if (length(affected_cols) == 0) {
     return(posterior)
   }
+
+  .warn_unused_formula_scale_terms(affected_cols, formula_scale, prefix)
 
   # For log(intercept): transform to log scale before unscaling, then exp() back
   # This works because: log_sigma = log(intercept) + beta * x_z
@@ -1440,7 +1546,7 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
     return(fit)
   }
 
-  check_list(formula_scale, "formula_scale")
+  .check_formula_scale_info(formula_scale)
 
   # extract posterior samples
   if(inherits(fit, "runjags") || inherits(fit, "BayesTools_fit")){
@@ -1543,6 +1649,10 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
 # @param formula_scale Optional nested scaling information
 # @return Matrix with transformed prior samples
 .generate_transformed_prior_samples <- function(prior_list, column_names, n_samples, seed = NULL, formula_scale = NULL){
+
+  if(!is.null(formula_scale) && length(formula_scale) > 0){
+    .check_formula_scale_info(formula_scale)
+  }
 
   prior_samples <- .generate_prior_sample_matrix(
     prior_list     = prior_list,
