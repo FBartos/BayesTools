@@ -1450,12 +1450,38 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
   x_points <- NULL
   y_points <- NULL
+  samples_density <- NULL
   x_den    <- NULL
   y_den    <- NULL
 
-  # Handle the samples as a simple density
-  if(length(prior_samples) > 0){
-    args <- list(x = prior_samples, n = n_points)
+  prior_samples <- unname(prior_samples)
+
+  # Separate exact repeated values as point masses. This preserves spikes after
+  # scale transformations while keeping the remaining mass smooth.
+  repeated_values <- unique(prior_samples[duplicated(prior_samples)])
+  if(length(repeated_values) > 0){
+    repeated_values <- sort(repeated_values)
+    repeated_frequency <- vapply(repeated_values, function(value) {
+      sum(prior_samples == value)
+    }, numeric(1))
+
+    repeated_values <- repeated_values[repeated_frequency > 1]
+    repeated_frequency <- repeated_frequency[repeated_frequency > 1]
+
+    if(length(repeated_values) > 0){
+      x_points <- repeated_values
+      y_points <- repeated_frequency / length(prior_samples)
+      samples_density <- prior_samples[!prior_samples %in% repeated_values]
+    }
+  }
+
+  if(is.null(samples_density)){
+    samples_density <- prior_samples
+  }
+
+  # Handle the continuous part of the transformed samples as a density
+  if(length(samples_density) > 1){
+    args <- list(x = samples_density, n = n_points)
 
     # Set range if provided
     if(!is.null(x_range) && length(x_range) == 2){
@@ -1466,25 +1492,59 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     # Get the density estimate
     density_estimate <- do.call(stats::density, args)
     x_den <- density_estimate$x
-    y_den <- density_estimate$y
+    y_den <- density_estimate$y * (length(samples_density) / length(prior_samples))
 
     # Apply transformation if specified (for additional user transformations)
     if(!is.null(transformation)){
       x_den <- .density.prior_transformation_x(x_den, transformation, transformation_arguments)
       y_den <- .density.prior_transformation_y(x_den, y_den, transformation, transformation_arguments)
+      samples_density <- .density.prior_transformation_x(samples_density, transformation, transformation_arguments)
     }
   }
 
-  # Create output object matching density.prior.simple structure
-  out <- list(
-    x = x_den,
-    y = y_den
-  )
-  attr(out, "x_range") <- range(x_den, na.rm = TRUE)
-  attr(out, "y_range") <- range(y_den, na.rm = TRUE)
-  class(out) <- c("density.prior.simple", "density.prior")
+  if(!is.null(x_points) && !is.null(transformation)){
+    x_points <- .density.prior_transformation_x(x_points, transformation, transformation_arguments)
+  }
 
-  return(list(out))
+  out <- list()
+
+  if(!is.null(y_den)){
+    out_den <- list(
+      call    = call("density", "transformed prior samples"),
+      bw      = NULL,
+      n       = n_points,
+      x       = x_den,
+      y       = y_den,
+      samples = samples_density
+    )
+
+    class(out_den) <- c("density", "density.prior", "density.prior.simple")
+    attr(out_den, "x_range") <- range(x_den)
+    attr(out_den, "y_range") <- c(0, max(y_den))
+
+    out[["density"]] <- out_den
+  }
+
+  if(!is.null(y_points)){
+    for(i in seq_along(y_points)){
+      temp_points <- list(
+        call    = call("density", paste0("point", i)),
+        bw      = NULL,
+        n       = n_points,
+        x       = x_points[i],
+        y       = y_points[i],
+        samples = prior_samples
+      )
+
+      class(temp_points) <- c("density", "density.prior", "density.prior.point")
+      attr(temp_points, "x_range") <- range(x_points)
+      attr(temp_points, "y_range") <- c(0, max(y_points[i]))
+
+      out[[paste0("points", i)]] <- temp_points
+    }
+  }
+
+  return(out)
 }
 
 .plot_data_samples.simple         <- function(samples, parameter, n_points, transformation, transformation_arguments, transformation_settings){
