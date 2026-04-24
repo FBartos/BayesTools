@@ -51,6 +51,95 @@ test_that("JAGS formula tools work", {
 
 })
 
+test_that("JAGS_formula stores multi-factor contrast metadata", {
+
+  df <- expand.grid(
+    a = factor(c("a1", "a2"), levels = c("a1", "a2")),
+    b = factor(c("b1", "b2", "b3"), levels = c("b1", "b2", "b3")),
+    x = c(-1, 1)
+  )
+
+  formula_result <- JAGS_formula(
+    formula = ~ x * a * b,
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1)),
+      a = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+      b = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+      "x:a" = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+      "x:b" = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+      "a:b" = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+      "x:a:b" = prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+    )
+  )
+
+  interaction_prior <- formula_result$prior_list$mu_x__xXx__a__xXx__b
+  level_grid <- expand.grid(
+    a = c("a1", "a2"),
+    b = c("b1", "b2", "b3"),
+    KEEP.OUT.ATTRS = FALSE,
+    stringsAsFactors = FALSE
+  )
+  a_contrast <- contr.orthonormal(c("a1", "a2"))
+  b_contrast <- contr.meandif(c("b1", "b2", "b3"))
+  a_index <- match(level_grid$a, c("a1", "a2"))
+  b_index <- match(level_grid$b, c("b1", "b2", "b3"))
+  expected_design <- cbind(
+    a_contrast[a_index, 1] * b_contrast[b_index, 1],
+    a_contrast[a_index, 1] * b_contrast[b_index, 2]
+  )
+
+  expect_equal(attr(interaction_prior, "term_components"), c("x", "a", "b"))
+  expect_equal(attr(interaction_prior, "factor_terms"), c("a", "b"))
+  expect_equal(
+    attr(interaction_prior, "factor_contrasts"),
+    c(a = "contr.orthonormal", b = "contr.meandif")
+  )
+  expect_equal(dim(attr(interaction_prior, "factor_design")), c(6L, 2L))
+  expect_equal(
+    attr(interaction_prior, "factor_cell_names"),
+    c("a=a1, b=b1", "a=a2, b=b1", "a=a1, b=b2", "a=a2, b=b2", "a=a1, b=b3", "a=a2, b=b3")
+  )
+  expect_equal(unname(attr(interaction_prior, "factor_design")), unname(expected_design))
+})
+
+test_that(".factor_term_design_from_formula handles no-intercept factor interactions", {
+
+  df <- expand.grid(
+    a = factor(c("a1", "a2"), levels = c("a1", "a2")),
+    b = factor(c("b1", "b2", "b3"), levels = c("b1", "b2", "b3"))
+  )
+  stats::contrasts(df$a) <- "contr.orthonormal"
+  stats::contrasts(df$b) <- "contr.meandif"
+
+  formula <- ~ a + b + a:b - 1
+  predictors <- as.character(attr(stats::terms(formula), "variables"))[-1]
+  model_matrix <- stats::model.matrix(stats::model.frame(formula, data = df), formula = formula, data = df)
+  term_index <- which(attr(stats::terms(formula), "term.labels") == "a:b")
+
+  design_info <- BayesTools:::.factor_term_design_from_formula(
+    formula = formula,
+    data = df,
+    predictors = predictors,
+    predictors_type = c(a = "factor", b = "factor"),
+    term_index = term_index,
+    term_components = c("a", "b"),
+    factor_terms = c("a", "b"),
+    has_intercept = FALSE
+  )
+
+  expect_equal(
+    unname(design_info$design),
+    unname(model_matrix[, attr(model_matrix, "assign") == term_index, drop = FALSE])
+  )
+  expect_equal(
+    design_info$cell_names,
+    c("a=a1, b=b1", "a=a2, b=b1", "a=a1, b=b2", "a=a2, b=b2", "a=a1, b=b3", "a=a2, b=b3")
+  )
+})
+
 # ============================================================================ #
 # SECTION: Tests requiring JAGS (skip conditions per test)
 # ============================================================================ #

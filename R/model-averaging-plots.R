@@ -253,10 +253,20 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   # prepare factor naming & formatting
   level_names <- sapply(plot_data_factors, attr, which = "level_name")
-  if(any(grepl("[dif:", level_names, fixed = TRUE))){
-    level_names <- substr(level_names, regexpr("[dif:", level_names, fixed = TRUE)[[1]] + 5, regexpr("]", level_names, fixed = TRUE) - 1)
-  }else if(any(grepl("[", level_names, fixed = TRUE))){
-    level_names <- substr(level_names, regexpr("[", level_names, fixed = TRUE)[[1]] + 1, regexpr("]", level_names, fixed = TRUE) - 1)
+  dif_matches <- gregexpr("[dif:", level_names, fixed = TRUE)
+  has_dif <- vapply(dif_matches, function(x) x[1] != -1L, logical(1))
+  multi_dif <- vapply(dif_matches, function(x) x[1] != -1L && length(x) > 1, logical(1))
+  if(any(multi_dif)){
+    level_names[multi_dif] <- gsub("__xXx__", ":", level_names[multi_dif], fixed = TRUE)
+  }
+  if(any(has_dif & !multi_dif)){
+    single_dif <- has_dif & !multi_dif
+    level_names[single_dif] <- substr(level_names[single_dif], regexpr("[dif:", level_names[single_dif], fixed = TRUE) + 5, regexpr("]", level_names[single_dif], fixed = TRUE) - 1)
+  }
+  no_dif <- !has_dif
+  if(any(no_dif & grepl("[", level_names, fixed = TRUE))){
+    bracket_names <- no_dif & grepl("[", level_names, fixed = TRUE)
+    level_names[bracket_names] <- substr(level_names[bracket_names], regexpr("[", level_names[bracket_names], fixed = TRUE) + 1, regexpr("]", level_names[bracket_names], fixed = TRUE) - 1)
   }
 
 
@@ -1336,8 +1346,20 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     if(prior){
 
       # use transformed prior samples if available (from transform_scaled)
-      if(transform_scaled && !is.null(prior_samples_transformed) && parameter %in% colnames(prior_samples_transformed)){
-        # Create plot data from transformed prior samples
+      plot_data_prior <- NULL
+      if(transform_scaled && !is.null(prior_samples_transformed) && any(sapply(prior_list, is.prior.factor))){
+        plot_data_prior <- .plot_data_prior_factor_samples_transformed(
+          prior_samples_transformed = prior_samples_transformed,
+          samples                   = samples,
+          parameter                 = parameter,
+          prior_list                = prior_list,
+          n_points                  = n_points,
+          x_range                   = xlim,
+          transformation            = transformation,
+          transformation_arguments  = transformation_arguments,
+          transformation_settings   = transformation_settings
+        )
+      }else if(transform_scaled && !is.null(prior_samples_transformed) && parameter %in% colnames(prior_samples_transformed)){
         plot_data_prior <- .plot_data_prior_samples_transformed(
           prior_samples_transformed[, parameter],
           prior_list = prior_list,
@@ -1347,7 +1369,9 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
           transformation_arguments = transformation_arguments,
           transformation_settings = transformation_settings
         )
-      }else{
+      }
+
+      if(is.null(plot_data_prior)){
         plot_data_prior <- .plot_data_prior_list.simple(prior_list, x_seq = NULL, x_range = xlim, x_range_quant = NULL,
                                                   n_points = n_points, n_samples = n_samples, force_samples = force_samples, individual = individual,
                                                   transformation = transformation, transformation_arguments = transformation_arguments,
@@ -1394,7 +1418,11 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       args_prior$par_name  <- par_name
       args_prior$scale_y2  <- scale_y2
 
-      plot <- do.call(.plot_prior_list.both, args_prior)
+      if(any(sapply(plot_data_prior, inherits, what = "density.prior.factor"))){
+        plot <- do.call(.plot_prior_list.factor, args_prior)
+      }else{
+        plot <- do.call(.plot_prior_list.both, args_prior)
+      }
 
 
       # plot posterior
@@ -1440,6 +1468,81 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   }else{
     return(invisible())
   }
+}
+
+# Helper function to create factor plot data from transformed prior samples.
+# This is used when transform_scaled = TRUE and factor coefficients are stored
+# as indexed raw columns in the original-scale prior sample matrix.
+.plot_data_prior_factor_samples_transformed <- function(prior_samples_transformed, samples, parameter, prior_list, n_points, x_range = NULL,
+                                                        transformation = NULL, transformation_arguments = NULL,
+                                                        transformation_settings = FALSE){
+
+  if(is.null(samples[[parameter]]) || !inherits(samples[[parameter]], "mixed_posteriors.factor")){
+    return(NULL)
+  }
+
+  sample_metadata <- samples[[parameter]]
+  factor_prior <- attr(sample_metadata, "prior_list")
+  if(is.prior.factor(factor_prior)){
+    factor_prior <- factor_prior
+  }else if(is.list(factor_prior)){
+    factor_priors <- factor_prior[sapply(factor_prior, is.prior.factor)]
+    if(length(factor_priors) == 0){
+      return(NULL)
+    }
+    factor_prior <- factor_priors[[1]]
+  }else{
+    return(NULL)
+  }
+
+  prior_columns <- .JAGS_prior_factor_names(parameter, factor_prior)
+  if(!all(prior_columns %in% colnames(prior_samples_transformed))){
+    return(NULL)
+  }
+
+  factor_samples <- prior_samples_transformed[, prior_columns, drop = FALSE]
+  colnames(factor_samples) <- prior_columns
+
+  sample_attributes <- attributes(sample_metadata)
+  sample_attributes <- sample_attributes[!names(sample_attributes) %in% c("dim", "dimnames", "names", "class")]
+  attributes(factor_samples) <- c(attributes(factor_samples), sample_attributes)
+  attr(factor_samples, "prior_list") <- factor_prior
+  attr(factor_samples, "models_ind") <- rep(1, nrow(factor_samples))
+  attr(factor_samples, "sample_ind") <- FALSE
+  class(factor_samples) <- unique(c(class(sample_metadata), "mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector", class(factor_samples)))
+
+  transformed_samples <- setNames(list(factor_samples), parameter)
+  class(transformed_samples) <- c("mixed_posteriors", "as_mixed_posteriors")
+
+  if(isTRUE(attr(factor_samples, "orthonormal")) || isTRUE(attr(factor_samples, "meandif"))){
+    factor_samples <- transform_factor_samples(transformed_samples)[[parameter]]
+  }else if(isTRUE(attr(factor_samples, "treatment")) || isTRUE(attr(factor_samples, "independent"))){
+    factor_samples <- .rename_factor_levels(factor_samples, setNames(list(factor_prior), parameter))
+  }
+
+  plot_data <- list()
+  for(level_i in seq_len(ncol(factor_samples))){
+    level_plot_data <- .plot_data_prior_samples_transformed(
+      factor_samples[, level_i],
+      prior_list = prior_list,
+      n_points = n_points,
+      x_range = x_range,
+      transformation = transformation,
+      transformation_arguments = transformation_arguments,
+      transformation_settings = transformation_settings
+    )
+
+    for(data_i in seq_along(level_plot_data)){
+      attr(level_plot_data[[data_i]], "level") <- level_i
+      attr(level_plot_data[[data_i]], "level_name") <- colnames(factor_samples)[level_i]
+      if(inherits(level_plot_data[[data_i]], "density.prior.simple")){
+        class(level_plot_data[[data_i]]) <- unique(c(class(level_plot_data[[data_i]]), "density.prior.factor"))
+      }
+      plot_data[[paste0("level", level_i, "_", names(level_plot_data)[data_i])]] <- level_plot_data[[data_i]]
+    }
+  }
+
+  return(plot_data)
 }
 
 # Helper function to create plot data from transformed prior samples
@@ -2154,7 +2257,7 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
 
       # transform the samples
       if(ncol(total_samples) == attr(total_samples, "levels")){
-        total_samples <- transform_factor_samples(samples[parameter])[[parameter]]
+        total_samples <- transform_factor_samples(samples)[[parameter]]
       }
       # transform the model summaries
       if(!any(sapply(models_summary, function(m) all(colnames(total_samples) %in% attr(m, "parameters"))))){
