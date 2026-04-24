@@ -336,7 +336,7 @@ NULL
     if (!is.prior.factor(prior_list[[par]])) {
       # non-factor priors
       model_samples[, par] <- do.call(transformations[[par]][["fun"]], c(list(model_samples[, par]), transformations[[par]][["arg"]]))
-    } else if ((!transform_factors && (is.prior.orthonormal(prior_list[[par]]) | is.prior.meandif(prior_list[[par]]))) || is.prior.treatment(prior_list[[par]])) {
+    } else if ((!transform_factors && (is.prior.orthonormal(prior_list[[par]]) || is.prior.meandif(prior_list[[par]]))) || is.prior.treatment(prior_list[[par]])) {
       # treatment priors, or orthonormal/meandif that won't be transformed to differences
       par_names <- .JAGS_prior_factor_names(par, prior_list[[par]])
       
@@ -377,7 +377,7 @@ NULL
     
     # apply transformation if specified
     if (!is.null(transformations[par])) {
-      for (i in 1:ncol(transformed_samples)) {
+      for (i in seq_len(ncol(transformed_samples))) {
         transformed_samples[, i] <- do.call(transformations[[par]][["fun"]], c(list(transformed_samples[, i]), transformations[[par]][["arg"]]))
       }
     }
@@ -405,6 +405,59 @@ NULL
 }
 
 
+# Helper: Attach factor levels to the factor components inside an interaction
+# term instead of appending the level to the full interaction string.
+.format_factor_level_parameter_names <- function(parameter, level_names, n_parameters = NULL) {
+
+  if (!is.list(level_names)) {
+    return(paste0(parameter, "[", level_names, "]"))
+  }
+
+  parameter_terms <- strsplit(parameter, "__xXx__", fixed = TRUE)[[1]]
+  factor_terms <- names(level_names)
+  factor_positions <- vapply(factor_terms, function(factor_term) {
+    factor_position <- which(
+      parameter_terms == factor_term |
+        endsWith(parameter_terms, paste0("_", factor_term))
+    )
+
+    if (length(factor_position) == 1) {
+      return(factor_position)
+    }
+
+    return(NA_integer_)
+  }, integer(1))
+
+  if (all(!is.na(factor_positions))) {
+    level_grid <- expand.grid(level_names, KEEP.OUT.ATTRS = FALSE, stringsAsFactors = FALSE)
+    formatted_names <- vapply(seq_len(nrow(level_grid)), function(i) {
+      formatted_terms <- parameter_terms
+
+      for (factor_term in factor_terms) {
+        formatted_terms[factor_positions[[factor_term]]] <- sub(
+          paste0(factor_term, "$"),
+          paste0(factor_term, "[", level_grid[[factor_term]][i], "]"),
+          formatted_terms[factor_positions[[factor_term]]]
+        )
+      }
+
+      paste0(formatted_terms, collapse = "__xXx__")
+    }, character(1))
+
+    if (is.null(n_parameters) || length(formatted_names) == n_parameters) {
+      return(formatted_names)
+    }
+  }
+
+  fallback_names <- paste0(parameter, "[", unlist(level_names, use.names = FALSE), "]")
+  if (!is.null(n_parameters) && length(fallback_names) != n_parameters) {
+    return(paste0(parameter, "[", seq_len(n_parameters), "]"))
+  }
+
+  return(fallback_names)
+}
+
+
 #' @rdname posterior_extraction_helpers
 #' @return updated model_samples matrix with renamed columns
 .rename_factor_levels <- function(model_samples, prior_list) {
@@ -413,16 +466,23 @@ NULL
   if (any(sapply(prior_list, is.prior.treatment))) {
     for (par in names(prior_list)[sapply(prior_list, is.prior.treatment)]) {
       if (!.is_prior_interaction(prior_list[[par]])) {
+        renamed_levels <- .format_factor_level_parameter_names(
+          par,
+          .get_prior_factor_level_names(prior_list[[par]])[-1],
+          .get_prior_factor_levels(prior_list[[par]])
+        )
         if (.get_prior_factor_levels(prior_list[[par]]) == 1) {
           colnames(model_samples)[colnames(model_samples) == par] <-
-            paste0(par, "[", .get_prior_factor_level_names(prior_list[[par]])[-1], "]")
+            renamed_levels[1]
         } else {
           colnames(model_samples)[colnames(model_samples) %in% paste0(par, "[", 1:.get_prior_factor_levels(prior_list[[par]]), "]")] <-
-            paste0(par, "[", .get_prior_factor_level_names(prior_list[[par]])[-1], "]")
+            renamed_levels
         }
       } else if (length(attr(prior_list[[par]], "levels")) == 1) {
+        interaction_level_names <- .get_prior_factor_level_names(prior_list[[par]])
+        interaction_level_names <- lapply(interaction_level_names, function(level_name) level_name[-1])
         colnames(model_samples)[colnames(model_samples) %in% paste0(par, "[", 1:.get_prior_factor_levels(prior_list[[par]]), "]")] <-
-          paste0(par, "[", .get_prior_factor_level_names(prior_list[[par]])[[1]][-1], "]")
+          .format_factor_level_parameter_names(par, interaction_level_names, .get_prior_factor_levels(prior_list[[par]]))
       }
     }
   }
@@ -431,16 +491,21 @@ NULL
   if (any(sapply(prior_list, is.prior.independent))) {
     for (par in names(prior_list)[sapply(prior_list, is.prior.independent)]) {
       if (!.is_prior_interaction(prior_list[[par]])) {
+        renamed_levels <- .format_factor_level_parameter_names(
+          par,
+          .get_prior_factor_level_names(prior_list[[par]]),
+          .get_prior_factor_levels(prior_list[[par]])
+        )
         if (.get_prior_factor_levels(prior_list[[par]]) == 1) {
           colnames(model_samples)[colnames(model_samples) == par] <-
-            paste0(par, "[", .get_prior_factor_level_names(prior_list[[par]]), "]")
+            renamed_levels[1]
         } else {
           colnames(model_samples)[colnames(model_samples) %in% paste0(par, "[", 1:.get_prior_factor_levels(prior_list[[par]]), "]")] <-
-            paste0(par, "[", .get_prior_factor_level_names(prior_list[[par]]), "]")
+            renamed_levels
         }
       } else if (length(attr(prior_list[[par]], "levels")) == 1) {
         colnames(model_samples)[colnames(model_samples) %in% paste0(par, "[", 1:.get_prior_factor_levels(prior_list[[par]]), "]")] <-
-          paste0(par, "[", .get_prior_factor_level_names(prior_list[[par]])[[1]], "]")
+          .format_factor_level_parameter_names(par, .get_prior_factor_level_names(prior_list[[par]]), .get_prior_factor_levels(prior_list[[par]]))
       }
     }
   }

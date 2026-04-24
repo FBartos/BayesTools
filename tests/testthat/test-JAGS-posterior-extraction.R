@@ -157,6 +157,131 @@ test_that(".rename_factor_levels renames treatment factors", {
 })
 
 
+test_that(".rename_factor_levels keeps interaction level on the factor term", {
+
+  model_samples <- matrix(rnorm(400), ncol = 4)
+  colnames(model_samples) <- c(
+    "mu_alloc[1]",
+    "mu_alloc[2]",
+    "mu_alloc__xXx__year[1]",
+    "mu_alloc__xXx__year[2]"
+  )
+
+  alloc_prior <- prior_factor("normal", list(0, 1), contrast = "independent")
+  attr(alloc_prior, "levels") <- 2
+  attr(alloc_prior, "level_names") <- c("random", "systematic")
+
+  interaction_prior <- prior_factor("normal", list(0, 1), contrast = "independent")
+  attr(interaction_prior, "levels") <- 2
+  attr(interaction_prior, "level_names") <- list(alloc = c("random", "systematic"))
+  attr(interaction_prior, "interaction") <- TRUE
+
+  prior_list <- list(
+    mu_alloc = alloc_prior,
+    mu_alloc__xXx__year = interaction_prior
+  )
+
+  renamed <- BayesTools:::.rename_factor_levels(model_samples, prior_list)
+
+  expect_equal(
+    colnames(renamed),
+    c(
+      "mu_alloc[random]",
+      "mu_alloc[systematic]",
+      "mu_alloc[random]__xXx__year",
+      "mu_alloc[systematic]__xXx__year"
+    )
+  )
+  expect_equal(
+    format_parameter_names(colnames(renamed), formula_parameters = "mu"),
+    c(
+      "(mu) alloc[random]",
+      "(mu) alloc[systematic]",
+      "(mu) alloc[random]:year",
+      "(mu) alloc[systematic]:year"
+    )
+  )
+})
+
+
+test_that(".rename_factor_levels handles multi-factor independent interactions", {
+
+  model_samples <- matrix(rnorm(600), ncol = 6)
+  colnames(model_samples) <- paste0("mu_a__xXx__year__xXx__b[", 1:6, "]")
+
+  interaction_prior <- prior_factor("normal", list(0, 1), contrast = "independent")
+  attr(interaction_prior, "levels") <- 6
+  attr(interaction_prior, "level_names") <- list(
+    a = c("a1", "a2"),
+    b = c("b1", "b2", "b3")
+  )
+  attr(interaction_prior, "interaction") <- TRUE
+
+  renamed <- BayesTools:::.rename_factor_levels(
+    model_samples,
+    list(mu_a__xXx__year__xXx__b = interaction_prior)
+  )
+
+  expect_equal(
+    colnames(renamed),
+    c(
+      "mu_a[a1]__xXx__year__xXx__b[b1]",
+      "mu_a[a2]__xXx__year__xXx__b[b1]",
+      "mu_a[a1]__xXx__year__xXx__b[b2]",
+      "mu_a[a2]__xXx__year__xXx__b[b2]",
+      "mu_a[a1]__xXx__year__xXx__b[b3]",
+      "mu_a[a2]__xXx__year__xXx__b[b3]"
+    )
+  )
+  expect_equal(
+    format_parameter_names(colnames(renamed), formula_parameters = "mu"),
+    c(
+      "(mu) a[a1]:year:b[b1]",
+      "(mu) a[a2]:year:b[b1]",
+      "(mu) a[a1]:year:b[b2]",
+      "(mu) a[a2]:year:b[b2]",
+      "(mu) a[a1]:year:b[b3]",
+      "(mu) a[a2]:year:b[b3]"
+    )
+  )
+})
+
+
+test_that(".rename_factor_levels handles multi-factor treatment interactions", {
+
+  model_samples <- matrix(rnorm(200), ncol = 2)
+  colnames(model_samples) <- paste0("mu_a__xXx__year__xXx__b[", 1:2, "]")
+
+  interaction_prior <- prior_factor("normal", list(0, 1), contrast = "treatment")
+  attr(interaction_prior, "levels") <- 3
+  attr(interaction_prior, "level_names") <- list(
+    a = c("a1", "a2"),
+    b = c("b1", "b2", "b3")
+  )
+  attr(interaction_prior, "interaction") <- TRUE
+
+  renamed <- BayesTools:::.rename_factor_levels(
+    model_samples,
+    list(mu_a__xXx__year__xXx__b = interaction_prior)
+  )
+
+  expect_equal(
+    colnames(renamed),
+    c(
+      "mu_a[a2]__xXx__year__xXx__b[b2]",
+      "mu_a[a2]__xXx__year__xXx__b[b3]"
+    )
+  )
+  expect_equal(
+    format_parameter_names(colnames(renamed), formula_parameters = "mu"),
+    c(
+      "(mu) a[a2]:year:b[b2]",
+      "(mu) a[a2]:year:b[b3]"
+    )
+  )
+})
+
+
 test_that(".transform_factor_contrasts transforms orthonormal to differences", {
   skip_on_cran()
   skip_if_not_installed("rjags")

@@ -1228,9 +1228,55 @@ transform_treatment_samples <- function(samples){
     return(character(0))
   }
 
+  # Indexed factor terms attach the index to the full term name. Strip the
+  # trailing index so scaled continuous components inside interactions are
+  # still detected correctly (e.g., alloc__xXx__year[1] -> alloc, year).
+  term_part <- sub("\\[[^]]+\\]$", "", term_part)
+
   # Split by interaction separator
-  components <- strsplit(term_part, "__xXx__")[[1]]
+  components <- strsplit(term_part, "__xXx__", fixed = TRUE)[[1]]
   return(components)
+}
+
+
+# Helper: Parse a term into scaled components and an unscaled identity string
+# used to determine which coefficients can contribute to each other during
+# de-standardization.
+.parse_unscale_term_structure <- function(term_name, prefix, scaled_vars) {
+
+  term_part <- sub(paste0("^", prefix, "_"), "", term_name)
+
+  if (term_part == "intercept") {
+    return(list(
+      components  = character(0),
+      scaled      = character(0),
+      unscaled_id = ""
+    ))
+  }
+
+  term_index <- ""
+  if (grepl("\\[[^]]+\\]$", term_part)) {
+    term_index <- sub("^.*(\\[[^]]+\\])$", "\\1", term_part)
+    term_core  <- sub("\\[[^]]+\\]$", "", term_part)
+  } else {
+    term_core <- term_part
+  }
+
+  components <- strsplit(term_core, "__xXx__", fixed = TRUE)[[1]]
+  is_scaled  <- components %in% scaled_vars
+
+  unscaled_components <- components[!is_scaled]
+  unscaled_id <- paste(unscaled_components, collapse = "__xXx__")
+
+  if (nzchar(term_index) && length(unscaled_components) > 0) {
+    unscaled_id <- paste0(unscaled_id, term_index)
+  }
+
+  return(list(
+    components  = components,
+    scaled      = components[is_scaled],
+    unscaled_id = unscaled_id
+  ))
 }
 
 
@@ -1354,13 +1400,18 @@ transform_treatment_samples <- function(samples){
   # Extract the variable names that are scaled (without prefix)
   scaled_vars <- sub(paste0("^", prefix, "_"), "", names(formula_scale))
 
-  # Parse all terms into their components
-  term_components <- lapply(term_names, .parse_term_components, prefix = prefix)
-  names(term_components) <- term_names
+  # Parse all terms into their scaled components and unscaled identity.
+  term_structure <- lapply(
+    term_names,
+    .parse_unscale_term_structure,
+    prefix = prefix,
+    scaled_vars = scaled_vars
+  )
+  names(term_structure) <- term_names
 
-  # For each term, identify scaled vs unscaled components
-  term_scaled <- lapply(term_components, function(comps) comps[comps %in% scaled_vars])
-  term_unscaled <- lapply(term_components, function(comps) comps[!comps %in% scaled_vars])
+  term_components <- lapply(term_structure, `[[`, "components")
+  term_scaled <- lapply(term_structure, `[[`, "scaled")
+  term_unscaled <- vapply(term_structure, `[[`, character(1), "unscaled_id")
 
   # Warn about high-order interactions
   max_order <- max(sapply(term_components, length))
@@ -1383,7 +1434,7 @@ transform_treatment_samples <- function(samples){
 
       # Check contribution conditions
       # 1. Unscaled parts must match exactly
-      if (!setequal(T_unscaled, S_unscaled)) next
+      if (!identical(T_unscaled, S_unscaled)) next
 
       # 2. T_scaled must be a subset of S_scaled
       if (!.is_subset(T_scaled, S_scaled)) next

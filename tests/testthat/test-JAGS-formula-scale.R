@@ -273,6 +273,111 @@ test_that("transform_scale_samples handles interaction terms correctly", {
   expect_equal(posterior_original[, "mu_intercept"], expected_intercept, tolerance = 1e-10)
 })
 
+test_that("transform_scale_samples handles indexed factor interactions", {
+
+  posterior <- matrix(
+    c(
+      0.5, 1.0,
+      1.0, 2.0,
+      -1.0, -2.0,
+      0.3, 0.6,
+      0.2, 0.4,
+      -0.1, -0.2
+    ),
+    nrow = 2,
+    byrow = FALSE
+  )
+  colnames(posterior) <- c(
+    "mu_intercept",
+    "mu_alloc[1]",
+    "mu_alloc[2]",
+    "mu_year",
+    "mu_alloc__xXx__year[1]",
+    "mu_alloc__xXx__year[2]"
+  )
+
+  formula_scale <- list(
+    mu = list(
+      mu_year = list(mean = 10, sd = 2)
+    )
+  )
+
+  posterior_original <- transform_scale_samples(posterior, formula_scale)
+
+  expect_equal(posterior_original[, "mu_year"], posterior[, "mu_year"] / 2, tolerance = 1e-10)
+  expect_equal(
+    posterior_original[, "mu_alloc__xXx__year[1]"],
+    posterior[, "mu_alloc__xXx__year[1]"] / 2,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    posterior_original[, "mu_alloc__xXx__year[2]"],
+    posterior[, "mu_alloc__xXx__year[2]"] / 2,
+    tolerance = 1e-10
+  )
+
+  expect_equal(
+    posterior_original[, "mu_alloc[1]"],
+    posterior[, "mu_alloc[1]"] - posterior_original[, "mu_alloc__xXx__year[1]"] * 10,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    posterior_original[, "mu_alloc[2]"],
+    posterior[, "mu_alloc[2]"] - posterior_original[, "mu_alloc__xXx__year[2]"] * 10,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    posterior_original[, "mu_intercept"],
+    posterior[, "mu_intercept"] - posterior_original[, "mu_year"] * 10,
+    tolerance = 1e-10
+  )
+})
+
+test_that("transform_scale_samples handles higher-order indexed factor interactions", {
+
+  posterior <- matrix(1:12, nrow = 1)
+  colnames(posterior) <- c(
+    "mu_intercept",
+    "mu_group[1]",
+    "mu_group[2]",
+    "mu_x1",
+    "mu_x2",
+    "mu_group__xXx__x1[1]",
+    "mu_group__xXx__x1[2]",
+    "mu_group__xXx__x2[1]",
+    "mu_group__xXx__x2[2]",
+    "mu_x1__xXx__x2",
+    "mu_group__xXx__x1__xXx__x2[1]",
+    "mu_group__xXx__x1__xXx__x2[2]"
+  )
+
+  formula_scale <- list(
+    mu = list(
+      mu_x1 = list(mean = 10, sd = 2),
+      mu_x2 = list(mean = 100, sd = 5)
+    )
+  )
+
+  posterior_original <- transform_scale_samples(posterior, formula_scale)
+
+  expected <- cbind(
+    mu_intercept = 881,
+    `mu_group[1]` = 912,
+    `mu_group[2]` = 988,
+    mu_x1 = -98,
+    mu_x2 = -9,
+    `mu_group__xXx__x1[1]` = -107,
+    `mu_group__xXx__x1[2]` = -116.5,
+    `mu_group__xXx__x2[1]` = -9.4,
+    `mu_group__xXx__x2[2]` = -10.2,
+    mu_x1__xXx__x2 = 1,
+    `mu_group__xXx__x1__xXx__x2[1]` = 1.1,
+    `mu_group__xXx__x1__xXx__x2[2]` = 1.2
+  )
+
+  expect_equal(posterior_original, expected, tolerance = 1e-10)
+})
+
 test_that("transform_scale_samples validates malformed formula_scale metadata", {
 
   posterior <- cbind(
