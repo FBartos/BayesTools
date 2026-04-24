@@ -467,31 +467,25 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     if(inherits(samples[[parameter]], "mixed_posteriors.factor")){
 
       # transform factor levels
-      marginal_posterior_samples <- transform_factor_samples(samples[parameter])
+      marginal_posterior_samples <- transform_factor_samples(samples)
       marginal_posterior_samples <- transform_treatment_samples(marginal_posterior_samples)[[parameter]]
+
+      level_names <- attr(marginal_posterior_samples, "level_names")
+      if(is.null(level_names) || is.list(level_names)){
+        level_names <- .factor_cell_labels(.factor_level_list(marginal_posterior_samples))
+      }
 
       # apply transformations
       if(!is.null(transformation)){
         marginal_posterior_samples <- .density.prior_transformation_x(marginal_posterior_samples, transformation, transformation_arguments)
       }
 
-      # TODO: change once dealing with factors interactions is solved
-      if(attr(marginal_posterior_samples, "interaction")){
-        if(length(attr(marginal_posterior_samples, "level_names")) == 1){
-          level_names <- attr(marginal_posterior_samples, "level_names")[[1]]
-        }else{
-          stop("de-transformation for interaction of multiple factors is not implemented.")
-        }
-      }else{
-        level_names <- attr(marginal_posterior_samples, "level_names")
-      }
-
       # create output object
-      marginal_posterior_samples <- lapply(level_names, function(lvl){
-        temp_marginal_posterior_samples <- marginal_posterior_samples[,level_names == lvl]
+      marginal_posterior_samples <- lapply(seq_along(level_names), function(lvl_i){
+        temp_marginal_posterior_samples <- marginal_posterior_samples[,lvl_i]
         class(temp_marginal_posterior_samples) <- c(class(temp_marginal_posterior_samples), "marginal_posterior.factor")
         attr(temp_marginal_posterior_samples, "parameter")  <- parameter
-        attr(temp_marginal_posterior_samples, "level_name") <- lvl
+        attr(temp_marginal_posterior_samples, "level_name") <- level_names[lvl_i]
         return(temp_marginal_posterior_samples)
       })
       names(marginal_posterior_samples) <- level_names
@@ -526,7 +520,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       if(inherits(prior_samples[[parameter]], "mixed_posteriors.factor")){
 
         # transform factor levels
-        marginal_prior_samples <- transform_factor_samples(prior_samples[parameter])
+        marginal_prior_samples <- transform_factor_samples(prior_samples)
         marginal_prior_samples <- transform_treatment_samples(marginal_prior_samples)[[parameter]]
 
         # apply transformations
@@ -535,11 +529,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         }
 
         # create output object
-        marginal_prior_samples <- lapply(level_names, function(lvl){
-          temp_marginal_prior_samples <- marginal_prior_samples[,level_names == lvl]
+        marginal_prior_samples <- lapply(seq_along(level_names), function(lvl_i){
+          temp_marginal_prior_samples <- marginal_prior_samples[,lvl_i]
           class(temp_marginal_prior_samples) <- c(class(temp_marginal_prior_samples), "marginal_posterior.factor")
           attr(temp_marginal_prior_samples, "parameter")  <- parameter
-          attr(temp_marginal_prior_samples, "level_name") <- lvl
+          attr(temp_marginal_prior_samples, "level_name") <- level_names[lvl_i]
           return(temp_marginal_prior_samples)
         })
         names(marginal_prior_samples) <- level_names
@@ -826,6 +820,12 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         "levels"      = .get_prior_factor_levels(p),
         "level_names" = .get_prior_factor_level_names(p),
         "interaction" = .is_prior_interaction(p),
+        "interaction_terms" = attr(p, "interaction_terms"),
+        "term_components"   = attr(p, "term_components"),
+        "factor_terms"      = attr(p, "factor_terms"),
+        "factor_contrasts"  = attr(p, "factor_contrasts"),
+        "factor_design"     = attr(p, "factor_design"),
+        "factor_cell_names" = attr(p, "factor_cell_names"),
         "treatment"   = is.prior.treatment(p),
         "independent" = is.prior.independent(p),
         "orthonormal" = is.prior.orthonormal(p),
@@ -927,6 +927,12 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   attr(samples, "levels")      <- priors_info[["levels"]]
   attr(samples, "level_names") <- priors_info[["level_names"]]
   attr(samples, "interaction") <- priors_info[["interaction"]]
+  attr(samples, "interaction_terms") <- priors_info[["interaction_terms"]]
+  attr(samples, "term_components")   <- priors_info[["term_components"]]
+  attr(samples, "factor_terms")      <- priors_info[["factor_terms"]]
+  attr(samples, "factor_contrasts")  <- priors_info[["factor_contrasts"]]
+  attr(samples, "factor_design")     <- priors_info[["factor_design"]]
+  attr(samples, "factor_cell_names") <- priors_info[["factor_cell_names"]]
   attr(samples, "treatment")   <- priors_info[["treatment"]]
   attr(samples, "independent") <- priors_info[["independent"]]
   attr(samples, "orthonormal") <- priors_info[["orthonormal"]]
@@ -1235,6 +1241,12 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     "levels"      = .get_prior_factor_levels(prior),
     "level_names" = .get_prior_factor_level_names(prior),
     "interaction" = .is_prior_interaction(prior),
+    "interaction_terms" = attr(prior, "interaction_terms"),
+    "term_components"   = attr(prior, "term_components"),
+    "factor_terms"      = attr(prior, "factor_terms"),
+    "factor_contrasts"  = attr(prior, "factor_contrasts"),
+    "factor_design"     = attr(prior, "factor_design"),
+    "factor_cell_names" = attr(prior, "factor_cell_names"),
     "treatment"   = is.prior.treatment(prior),
     "independent" = is.prior.independent(prior),
     "orthonormal" = is.prior.orthonormal(prior),
@@ -1296,6 +1308,12 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   attr(samples, "levels")      <- prior_info[["levels"]]
   attr(samples, "level_names") <- prior_info[["level_names"]]
   attr(samples, "interaction") <- prior_info[["interaction"]]
+  attr(samples, "interaction_terms") <- prior_info[["interaction_terms"]]
+  attr(samples, "term_components")   <- prior_info[["term_components"]]
+  attr(samples, "factor_terms")      <- prior_info[["factor_terms"]]
+  attr(samples, "factor_contrasts")  <- prior_info[["factor_contrasts"]]
+  attr(samples, "factor_design")     <- prior_info[["factor_design"]]
+  attr(samples, "factor_cell_names") <- prior_info[["factor_cell_names"]]
   attr(samples, "treatment")   <- prior_info[["treatment"]]
   attr(samples, "independent") <- prior_info[["independent"]]
   attr(samples, "orthonormal") <- prior_info[["orthonormal"]]

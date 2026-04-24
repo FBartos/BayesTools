@@ -355,43 +355,42 @@ NULL
 #' @return updated model_samples matrix
 .transform_factor_contrasts <- function(model_samples, prior_list, transform_factors = FALSE, transformations = NULL) {
   
-  if (!transform_factors || !any(sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x)))) {
+  factor_parameters <- names(prior_list)[sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x))]
+
+  if (!transform_factors || length(factor_parameters) == 0) {
     return(model_samples)
   }
-  
-  message("The transformation was applied to the differences from the mean. Note that non-linear transformations do not map from the orthonormal/meandif contrasts to the differences from the mean.")
-  
-  for (par in names(prior_list)[sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x))]) {
+
+  if (any(factor_parameters %in% names(transformations))) {
+    message("The transformation was applied to the differences from the mean. Note that non-linear transformations do not map from the orthonormal/meandif contrasts to the differences from the mean.")
+  }
+
+  for (par in factor_parameters) {
     
+    prior_list[[par]] <- .add_factor_metadata_from_named_objects(prior_list[[par]], par, prior_list)
     par_names <- .JAGS_prior_factor_names(par, prior_list[[par]])
     
     temp_position <- min(which(colnames(model_samples) %in% par_names))
     temp_samples  <- model_samples[, colnames(model_samples) %in% par_names, drop = FALSE]
     model_samples <- model_samples[, !colnames(model_samples) %in% par_names, drop = FALSE]
     
-    if (is.prior.orthonormal(prior_list[[par]])) {
-      transformed_samples <- temp_samples %*% t(contr.orthonormal(1:(.get_prior_factor_levels(prior_list[[par]]) + 1)))
-    } else if (is.prior.meandif(prior_list[[par]])) {
-      transformed_samples <- temp_samples %*% t(contr.meandif(1:(.get_prior_factor_levels(prior_list[[par]]) + 1)))
-    }
+    transformed_samples <- .transform_factor_contrast_samples(
+      coefficient_samples = temp_samples,
+      metadata            = prior_list[[par]],
+      parameter           = par,
+      transformed_class   = if(is.prior.orthonormal(prior_list[[par]])) {
+        "mixed_posteriors.orthonormal_transformed"
+      }else{
+        "mixed_posteriors.meandif_transformed"
+      }
+    )
     
     # apply transformation if specified
-    if (!is.null(transformations[par])) {
+    if (!is.null(transformations[[par]])) {
       for (i in seq_len(ncol(transformed_samples))) {
         transformed_samples[, i] <- do.call(transformations[[par]][["fun"]], c(list(transformed_samples[, i]), transformations[[par]][["arg"]]))
       }
     }
-    
-    if (.is_prior_interaction(prior_list[[par]])) {
-      if (length(.get_prior_factor_level_names(prior_list[[par]])) == 1) {
-        transformed_names <- paste0(par, " [dif: ", .get_prior_factor_level_names(prior_list[[par]])[[1]], "]")
-      } else {
-        stop("orthonormal/meandif de-transformation for interaction of multiple factors is not implemented.")
-      }
-    } else {
-      transformed_names <- paste0(par, " [dif: ", .get_prior_factor_level_names(prior_list[[par]]), "]")
-    }
-    colnames(transformed_samples) <- transformed_names
     
     # place the transformed samples back
     model_samples <- cbind(

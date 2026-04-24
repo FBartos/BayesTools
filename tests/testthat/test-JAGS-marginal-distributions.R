@@ -27,6 +27,145 @@ REFERENCE_DIR <<- testthat::test_path("..", "results", "JAGS-marginal-distributi
 # Load common test helpers
 source(testthat::test_path("common-functions.R"))
 
+test_that("marginal_posterior handles direct multi-factor transformed interactions", {
+
+  df <- expand.grid(
+    a = factor(c("a1", "a2"), levels = c("a1", "a2")),
+    b = factor(c("b1", "b2", "b3"), levels = c("b1", "b2", "b3"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ a * b,
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      a         = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+      b         = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+      "a:b"     = prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+    )
+  )
+  interaction_prior <- formula_result$prior_list$mu_a__xXx__b
+
+  interaction_samples <- matrix(seq_len(20), nrow = 10, ncol = 2)
+  colnames(interaction_samples) <- paste0("mu_a__xXx__b[", 1:2, "]")
+  class(interaction_samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
+  attr(interaction_samples, "levels")            <- BayesTools:::.get_prior_factor_levels(interaction_prior)
+  attr(interaction_samples, "level_names")       <- attr(interaction_prior, "level_names")
+  attr(interaction_samples, "interaction")       <- TRUE
+  attr(interaction_samples, "interaction_terms") <- attr(interaction_prior, "interaction_terms")
+  attr(interaction_samples, "term_components")   <- attr(interaction_prior, "term_components")
+  attr(interaction_samples, "factor_terms")      <- attr(interaction_prior, "factor_terms")
+  attr(interaction_samples, "factor_contrasts")  <- attr(interaction_prior, "factor_contrasts")
+  attr(interaction_samples, "factor_design")     <- attr(interaction_prior, "factor_design")
+  attr(interaction_samples, "factor_cell_names") <- attr(interaction_prior, "factor_cell_names")
+  attr(interaction_samples, "orthonormal")       <- TRUE
+  attr(interaction_samples, "meandif")           <- FALSE
+  attr(interaction_samples, "treatment")         <- FALSE
+  attr(interaction_samples, "independent")       <- FALSE
+  attr(interaction_samples, "prior_list")        <- interaction_prior
+
+  samples <- list(mu_a__xXx__b = interaction_samples)
+  class(samples) <- c("as_mixed_posteriors", "mixed_posteriors")
+
+  marginal <- marginal_posterior(samples, "mu_a__xXx__b", use_formula = FALSE)
+  expected <- interaction_samples %*% t(attr(interaction_prior, "factor_design"))
+
+  expect_equal(names(marginal), attr(interaction_prior, "factor_cell_names"))
+  expect_equal(attr(marginal, "level_names"), attr(interaction_prior, "factor_cell_names"))
+  expect_equal(as.numeric(marginal[[1]]), as.numeric(expected[, 1]))
+  expect_equal(as.numeric(marginal[[6]]), as.numeric(expected[, 6]))
+
+  marginal_with_prior <- marginal_posterior(
+    samples = samples,
+    parameter = "mu_a__xXx__b",
+    prior_samples = TRUE,
+    use_formula = FALSE,
+    n_samples = 32
+  )
+
+  expect_equal(names(marginal_with_prior), attr(interaction_prior, "factor_cell_names"))
+  expect_true(all(vapply(marginal_with_prior, function(x) {
+    !is.null(attr(x, "prior_samples")) && length(attr(x, "prior_samples")) == 32
+  }, logical(1))))
+})
+
+test_that("marginal_posterior handles as_mixed_posteriors multi-factor interactions", {
+
+  df <- expand.grid(
+    a = factor(c("a1", "a2"), levels = c("a1", "a2")),
+    b = factor(c("b1", "b2", "b3"), levels = c("b1", "b2", "b3"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ a * b,
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      a         = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+      b         = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+      "a:b"     = prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+    )
+  )
+  interaction_prior <- formula_result$prior_list$mu_a__xXx__b
+
+  posterior <- matrix(seq_len(20), nrow = 10, ncol = 2)
+  colnames(posterior) <- paste0("mu_a__xXx__b[", 1:2, "]")
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- formula_result$prior_list
+
+  samples <- as_mixed_posteriors(fit, parameters = "mu_a__xXx__b")
+  marginal <- marginal_posterior(
+    samples = samples,
+    parameter = "mu_a__xXx__b",
+    prior_samples = TRUE,
+    use_formula = FALSE,
+    n_samples = 32
+  )
+  expected <- posterior %*% t(attr(interaction_prior, "factor_design"))
+
+  expect_equal(names(marginal), attr(interaction_prior, "factor_cell_names"))
+  expect_equal(as.numeric(marginal[[1]]), as.numeric(expected[, 1]))
+  expect_equal(as.numeric(marginal[[6]]), as.numeric(expected[, 6]))
+  expect_true(all(vapply(marginal, function(x) {
+    !is.null(attr(x, "prior_samples")) && length(attr(x, "prior_samples")) == 32
+  }, logical(1))))
+})
+
+test_that("marginal_posterior handles one-coefficient as_mixed_posteriors interactions", {
+
+  df <- expand.grid(
+    a = factor(c("a1", "a2"), levels = c("a1", "a2")),
+    b = factor(c("b1", "b2"), levels = c("b1", "b2"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ a * b,
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      a         = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+      b         = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+      "a:b"     = prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+    )
+  )
+  interaction_prior <- formula_result$prior_list$mu_a__xXx__b
+
+  posterior <- matrix(seq_len(10), nrow = 10, ncol = 1)
+  colnames(posterior) <- "mu_a__xXx__b"
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- formula_result$prior_list
+
+  samples <- as_mixed_posteriors(fit, parameters = "mu_a__xXx__b")
+  marginal <- marginal_posterior(samples, "mu_a__xXx__b", use_formula = FALSE)
+  expected <- posterior %*% t(attr(interaction_prior, "factor_design"))
+
+  expect_equal(names(marginal), attr(interaction_prior, "factor_cell_names"))
+  expect_equal(as.numeric(marginal[[1]]), as.numeric(expected[, 1]))
+  expect_equal(as.numeric(marginal[[4]]), as.numeric(expected[, 4]))
+})
+
 # File-level skips: All tests in this file require pre-fitted models
 skip_if_no_fits()
 skip_if_not_installed("rjags")

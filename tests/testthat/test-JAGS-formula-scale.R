@@ -378,6 +378,111 @@ test_that("transform_scale_samples handles higher-order indexed factor interacti
   expect_equal(posterior_original, expected, tolerance = 1e-10)
 })
 
+test_that("transform_scale_samples handles multi-factor indexed interactions", {
+
+  posterior <- matrix(
+    c(
+      1.0, 1.5,
+      0.4, 0.6,
+      2.0, 3.0,
+      4.0, 5.0,
+      0.8, 1.0,
+      1.2, 1.4
+    ),
+    nrow = 2,
+    byrow = FALSE
+  )
+  colnames(posterior) <- c(
+    "mu_intercept",
+    "mu_x1",
+    "mu_a__xXx__b[1]",
+    "mu_a__xXx__b[2]",
+    "mu_a__xXx__x1__xXx__b[1]",
+    "mu_a__xXx__x1__xXx__b[2]"
+  )
+
+  formula_scale <- list(
+    mu = list(
+      mu_x1 = list(mean = 10, sd = 2)
+    )
+  )
+
+  posterior_original <- transform_scale_samples(posterior, formula_scale)
+
+  expect_equal(posterior_original[, "mu_x1"], posterior[, "mu_x1"] / 2, tolerance = 1e-10)
+  expect_equal(
+    posterior_original[, "mu_a__xXx__x1__xXx__b[1]"],
+    posterior[, "mu_a__xXx__x1__xXx__b[1]"] / 2,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    posterior_original[, "mu_a__xXx__x1__xXx__b[2]"],
+    posterior[, "mu_a__xXx__x1__xXx__b[2]"] / 2,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    posterior_original[, "mu_a__xXx__b[1]"],
+    posterior[, "mu_a__xXx__b[1]"] - posterior_original[, "mu_a__xXx__x1__xXx__b[1]"] * 10,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    posterior_original[, "mu_a__xXx__b[2]"],
+    posterior[, "mu_a__xXx__b[2]"] - posterior_original[, "mu_a__xXx__x1__xXx__b[2]"] * 10,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    posterior_original[, "mu_intercept"],
+    posterior[, "mu_intercept"] - posterior_original[, "mu_x1"] * 10,
+    tolerance = 1e-10
+  )
+
+  samples_list <- list(
+    mu_intercept = posterior[, "mu_intercept"],
+    mu_x1 = posterior[, "mu_x1"],
+    mu_a__xXx__b = posterior[, c("mu_a__xXx__b[1]", "mu_a__xXx__b[2]"), drop = FALSE],
+    mu_a__xXx__x1__xXx__b = posterior[, c("mu_a__xXx__x1__xXx__b[1]", "mu_a__xXx__x1__xXx__b[2]"), drop = FALSE]
+  )
+  samples_list_original <- BayesTools:::.transform_scale_samples_list(samples_list, formula_scale)
+
+  expect_equal(samples_list_original$mu_intercept, posterior_original[, "mu_intercept"], tolerance = 1e-10)
+  expect_equal(samples_list_original$mu_x1, posterior_original[, "mu_x1"], tolerance = 1e-10)
+  expect_equal(samples_list_original$mu_a__xXx__b, posterior_original[, c("mu_a__xXx__b[1]", "mu_a__xXx__b[2]")], tolerance = 1e-10)
+  expect_equal(samples_list_original$mu_a__xXx__x1__xXx__b, posterior_original[, c("mu_a__xXx__x1__xXx__b[1]", "mu_a__xXx__x1__xXx__b[2]")], tolerance = 1e-10)
+})
+
+test_that("transform_scale_samples links unindexed two-level factor terms to indexed interactions", {
+
+  posterior <- matrix(
+    c(
+      1.0, 1.2,
+      0.4, 0.5,
+      2.0, 2.2,
+      0.8, 1.0
+    ),
+    nrow = 2,
+    byrow = FALSE
+  )
+  colnames(posterior) <- c("mu_intercept", "mu_x", "mu_a", "mu_x__xXx__a[1]")
+
+  formula_scale <- list(
+    mu = list(
+      mu_x = list(mean = 10, sd = 2)
+    )
+  )
+  posterior_original <- transform_scale_samples(posterior, formula_scale)
+
+  expect_equal(
+    posterior_original[, "mu_x__xXx__a[1]"],
+    posterior[, "mu_x__xXx__a[1]"] / 2,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    posterior_original[, "mu_a"],
+    posterior[, "mu_a"] - posterior_original[, "mu_x__xXx__a[1]"] * 10,
+    tolerance = 1e-10
+  )
+})
+
 test_that("transform_scale_samples validates malformed formula_scale metadata", {
 
   posterior <- cbind(
@@ -474,6 +579,54 @@ test_that("transform_prior_samples respects seed and validates formula_scale", {
     transform_prior_samples(bad_fit, n_samples = 32, seed = 1),
     "higher than 0"
   )
+})
+
+test_that("transform_prior_samples handles scaled multi-factor interactions", {
+
+  df <- expand.grid(
+    a = factor(c("a1", "a2"), levels = c("a1", "a2")),
+    b = factor(c("b1", "b2", "b3"), levels = c("b1", "b2", "b3")),
+    x = seq_len(4)
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ x * a * b,
+    parameter = "mu",
+    data = df,
+    formula_scale = list(x = TRUE),
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1)),
+      a = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+      b = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+      "x:a" = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+      "x:b" = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+      "a:b" = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+      "x:a:b" = prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+    )
+  )
+  prior_list <- formula_result$prior_list
+  posterior_columns <- unlist(lapply(names(prior_list), function(parameter) {
+    if(is.prior.factor(prior_list[[parameter]])){
+      BayesTools:::.JAGS_prior_factor_names(parameter, prior_list[[parameter]])
+    }else{
+      parameter
+    }
+  }), use.names = FALSE)
+
+  fit <- coda::mcmc(matrix(0, nrow = 4, ncol = length(posterior_columns), dimnames = list(NULL, posterior_columns)))
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+  attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
+
+  prior_samples <- transform_prior_samples(fit, n_samples = 64, seed = 401)
+
+  interaction_columns <- paste0("mu_a__xXx__b[", 1:2, "]")
+  scaled_interaction_columns <- paste0("mu_x__xXx__a__xXx__b[", 1:2, "]")
+  expect_true(all(interaction_columns %in% colnames(prior_samples)))
+  expect_true(all(scaled_interaction_columns %in% colnames(prior_samples)))
+  expect_equal(nrow(prior_samples), 64L)
+  expect_equal(ncol(prior_samples[, interaction_columns, drop = FALSE]), 2L)
+  expect_equal(ncol(prior_samples[, scaled_interaction_columns, drop = FALSE]), 2L)
 })
 
 test_that("Manual and automatic scaling produce equivalent results", {

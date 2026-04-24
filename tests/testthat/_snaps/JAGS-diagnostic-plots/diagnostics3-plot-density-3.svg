@@ -46,7 +46,7 @@
 <text x='52.47' y='21.53' style='font-size: 7.92px; font-family: sans;' textLength='91.58px' lengthAdjust='spacingAndGlyphs'>mean difference contrast: </text>
 <text x='144.05' y='21.53' style='font-size: 7.92px; font-style: italic; font-family: sans;' textLength='32.13px' lengthAdjust='spacingAndGlyphs'>mNormal</text>
 <text x='177.04' y='21.53' style='font-size: 7.92px; font-family: sans;' textLength='29.50px' lengthAdjust='spacingAndGlyphs'>(0, 0.25)</text>
-<text x='129.50' y='563.64' text-anchor='middle' style='font-size: 7.92px; font-family: sans;' textLength='59.00px' lengthAdjust='spacingAndGlyphs'>x_fac3md [dif: A]</text>
+<text x='129.50' y='563.64' text-anchor='middle' style='font-size: 7.92px; font-family: sans;' textLength='56.80px' lengthAdjust='spacingAndGlyphs'>x_fac3md[dif: A]</text>
 <text transform='translate(8.55,283.25) rotate(-90)' text-anchor='middle' style='font-size: 7.92px; font-family: sans;' textLength='26.42px' lengthAdjust='spacingAndGlyphs'>Density</text>
 </g>
 <defs>
@@ -98,7 +98,7 @@
 <text x='292.47' y='21.53' style='font-size: 7.92px; font-family: sans;' textLength='91.58px' lengthAdjust='spacingAndGlyphs'>mean difference contrast: </text>
 <text x='384.05' y='21.53' style='font-size: 7.92px; font-style: italic; font-family: sans;' textLength='32.13px' lengthAdjust='spacingAndGlyphs'>mNormal</text>
 <text x='417.04' y='21.53' style='font-size: 7.92px; font-family: sans;' textLength='29.50px' lengthAdjust='spacingAndGlyphs'>(0, 0.25)</text>
-<text x='369.50' y='563.64' text-anchor='middle' style='font-size: 7.92px; font-family: sans;' textLength='59.00px' lengthAdjust='spacingAndGlyphs'>x_fac3md [dif: B]</text>
+<text x='369.50' y='563.64' text-anchor='middle' style='font-size: 7.92px; font-family: sans;' textLength='56.80px' lengthAdjust='spacingAndGlyphs'>x_fac3md[dif: B]</text>
 <text transform='translate(248.55,283.25) rotate(-90)' text-anchor='middle' style='font-size: 7.92px; font-family: sans;' textLength='26.42px' lengthAdjust='spacingAndGlyphs'>Density</text>
 </g>
 <g clip-path='url(#cpMjc4Ljk3fDQ2MC4wNHwzOC45N3w1MjcuNTM=)'>
@@ -141,7 +141,7 @@
 <text x='532.47' y='21.53' style='font-size: 7.92px; font-family: sans;' textLength='91.58px' lengthAdjust='spacingAndGlyphs'>mean difference contrast: </text>
 <text x='624.05' y='21.53' style='font-size: 7.92px; font-style: italic; font-family: sans;' textLength='32.13px' lengthAdjust='spacingAndGlyphs'>mNormal</text>
 <text x='657.04' y='21.53' style='font-size: 7.92px; font-family: sans;' textLength='29.50px' lengthAdjust='spacingAndGlyphs'>(0, 0.25)</text>
-<text x='609.50' y='563.64' text-anchor='middle' style='font-size: 7.92px; font-family: sans;' textLength='59.43px' lengthAdjust='spacingAndGlyphs'>x_fac3md [dif: C]</text>
+<text x='609.50' y='563.64' text-anchor='middle' style='font-size: 7.92px; font-family: sans;' textLength='57.23px' lengthAdjust='spacingAndGlyphs'>x_fac3md[dif: C]</text>
 <text transform='translate(488.55,283.25) rotate(-90)' text-anchor='middle' style='font-size: 7.92px; font-family: sans;' textLength='26.42px' lengthAdjust='spacingAndGlyphs'>Density</text>
 </g>
 <g clip-path='url(#cpNTE4Ljk3fDcwMC4wNHwzOC45N3w1MjcuNTM=)'>

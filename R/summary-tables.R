@@ -92,14 +92,14 @@ ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95)
   transform_factors <- .depreciate.transform_orthonormal(transform_orthonormal, transform_factors)
 
 
-  # transform meandif/orthonormal posterior
-  if(transform_factors){
-    samples <- transform_factor_samples(samples)
-  }
-
   # transform scaled coefficients back to original scale
   if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
     samples <- .transform_scale_samples_list(samples, formula_scale)
+  }
+
+  # transform meandif/orthonormal posterior
+  if(transform_factors){
+    samples <- transform_factor_samples(samples)
   }
 
 
@@ -793,6 +793,16 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   # get model samples
   model_samples <- .extract_posterior_samples(fit, as_list = FALSE)
 
+  # transform scaled coefficients back to original scale before filtering. Lower
+  # order coefficients can depend on higher-order interaction columns.
+  formula_scale <- NULL
+  if(transform_scaled){
+    formula_scale <- attr(fit, "formula_scale")
+    if(!is.null(formula_scale) && length(formula_scale) > 0){
+      model_samples <- transform_scale_samples(model_samples, formula_scale)
+    }
+  }
+
   ### remove un-wanted estimates (or support values) - spike and slab priors already dealt with later (also remove the item from prior list)
   # compute filtered parameters using the helper function
   remove_params_vec <- .filter_parameters(
@@ -1021,14 +1031,6 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 
   # rename factor levels
   model_samples <- .rename_factor_levels(model_samples, prior_list)
-
-  # transform scaled coefficients back to original scale
-  if(transform_scaled){
-    formula_scale <- attr(fit, "formula_scale")
-    if(!is.null(formula_scale) && length(formula_scale) > 0){
-      model_samples <- transform_scale_samples(model_samples, formula_scale)
-    }
-  }
 
   # store parameter names before removing formula attachments
   parameter_names <- colnames(model_samples)
@@ -1755,77 +1757,52 @@ update.BayesTools_table <- function(object, title = NULL, footnotes = NULL, warn
     return(samples)
   }
   
-  # Get all parameter names that have samples
   sample_names <- names(samples)
-  
-  # Identify which samples are numeric or matrix (can be transformed)
   transformable <- sapply(samples, function(x) is.numeric(x) || is.matrix(x))
   transformable_names <- sample_names[transformable]
   
   if(length(transformable_names) == 0){
     return(samples)
   }
-  
-  # Determine the structure of each sample element
-  # (matrix with multiple columns for factors, or simple numeric/matrix for continuous)
-  # We need to handle each structure appropriately
-  
-  # For simplicity, we'll process each parameter individually using its structure
-  # But the combinatorial algorithm needs all parameters together
-  
-  # Approach: Build a single matrix with all parameters, apply transformation, extract back
-  # This requires handling the case where some parameters are matrices (factor levels)
-  
-  # First, identify simple (non-factor) parameters that can use the matrix approach
-  simple_params <- character(0)
-  factor_params <- character(0)
-  
-  for(name in transformable_names){
-    if(is.matrix(samples[[name]]) && ncol(samples[[name]]) > 1){
-      # Multi-column matrix - likely factor levels, skip for now
-      factor_params <- c(factor_params, name)
-    }else{
-      simple_params <- c(simple_params, name)
-    }
+
+  n_samples <- if(is.matrix(samples[[transformable_names[1]]])){
+    nrow(samples[[transformable_names[1]]])
+  }else{
+    length(samples[[transformable_names[1]]])
   }
-  
-  if(length(simple_params) > 0){
-    # Build a matrix from simple parameters
-    # Each parameter becomes a column, samples are rows
-    n_samples <- if(is.matrix(samples[[simple_params[1]]])){
-      nrow(samples[[simple_params[1]]])
-    }else{
-      length(samples[[simple_params[1]]])
-    }
-    
-    posterior_matrix <- matrix(NA, nrow = n_samples, ncol = length(simple_params))
-    colnames(posterior_matrix) <- simple_params
-    
-    for(i in seq_along(simple_params)){
-      name <- simple_params[i]
-      if(is.matrix(samples[[name]])){
-        posterior_matrix[, i] <- samples[[name]][, 1]
-      }else{
-        posterior_matrix[, i] <- samples[[name]]
+
+  sample_columns <- lapply(transformable_names, function(name){
+    if(is.matrix(samples[[name]])){
+      temp_samples <- samples[[name]]
+      if(is.null(colnames(temp_samples))){
+        colnames(temp_samples) <- if(ncol(temp_samples) == 1) name else paste0(name, "[", seq_len(ncol(temp_samples)), "]")
       }
+      return(temp_samples)
+    }else{
+      temp_samples <- matrix(samples[[name]], ncol = 1)
+      colnames(temp_samples) <- name
+      return(temp_samples)
     }
-    
-    # Apply the combinatorial unscaling transformation
-    posterior_matrix <- .apply_unscale_transform(posterior_matrix, formula_scale)
-    
-    # Extract back to list, preserving class and attributes
-    for(i in seq_along(simple_params)){
-      name <- simple_params[i]
-      if(is.matrix(samples[[name]])){
-        samples[[name]][, 1] <- posterior_matrix[, i]
-      }else{
-        # Preserve class and attributes
-        old_attrs <- attributes(samples[[name]])
-        samples[[name]] <- posterior_matrix[, i]
-        # Restore attributes (except names which may have changed)
-        for(attr_name in setdiff(names(old_attrs), "names")){
-          attr(samples[[name]], attr_name) <- old_attrs[[attr_name]]
-        }
+  })
+  names(sample_columns) <- transformable_names
+
+  posterior_matrix <- do.call(cbind, sample_columns)
+  if(nrow(posterior_matrix) != n_samples){
+    stop("All posterior sample elements must contain the same number of samples.", call. = FALSE)
+  }
+
+  posterior_matrix <- .apply_unscale_transform(posterior_matrix, formula_scale)
+
+  for(name in transformable_names){
+    old_attrs <- attributes(samples[[name]])
+    column_names <- colnames(sample_columns[[name]])
+
+    if(is.matrix(samples[[name]])){
+      samples[[name]][, seq_along(column_names)] <- posterior_matrix[, column_names, drop = FALSE]
+    }else{
+      samples[[name]] <- posterior_matrix[, column_names]
+      for(attr_name in setdiff(names(old_attrs), "names")){
+        attr(samples[[name]], attr_name) <- old_attrs[[attr_name]]
       }
     }
   }

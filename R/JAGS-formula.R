@@ -336,7 +336,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
       if(.is_prior_interaction(this_prior)){
         level_names <- list()
         for(sub_term in strsplit(model_terms[i], "__xXx__")[[1]]){
-          if(model_terms_type[sub_term] == "factor"){
+          if(predictors_type[sub_term] == "factor"){
             level_names[[sub_term]] <- levels(data[,sub_term])
           }
         }
@@ -344,6 +344,34 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
       }else{
         attr(this_prior, "level_names") <- levels(data[,model_terms[i]])
       }
+      attr(this_prior, "term_components") <- strsplit(model_terms[i], "__xXx__", fixed = TRUE)[[1]]
+      attr(this_prior, "factor_terms") <- if(is.list(attr(this_prior, "level_names"))) {
+        names(attr(this_prior, "level_names"))
+      } else {
+        model_terms[i]
+      }
+      attr(this_prior, "factor_contrasts") <- vapply(attr(this_prior, "factor_terms"), function(factor_term) {
+        factor_contrast <- attr(data[[factor_term]], "contrasts")
+        if(is.null(factor_contrast)){
+          "contr.treatment"
+        }else if(is.character(factor_contrast)){
+          factor_contrast[1]
+        }else{
+          stop("Unsupported matrix-valued factor contrast metadata.", call. = FALSE)
+        }
+      }, character(1))
+      factor_design_info <- .factor_term_design_from_formula(
+        formula         = formula,
+        data            = data,
+        predictors      = predictors,
+        predictors_type = predictors_type,
+        term_index      = i,
+        term_components = attr(this_prior, "term_components"),
+        factor_terms    = attr(this_prior, "factor_terms"),
+        has_intercept   = has_intercept
+      )
+      attr(this_prior, "factor_design")     <- factor_design_info[["design"]]
+      attr(this_prior, "factor_cell_names") <- factor_design_info[["cell_names"]]
 
       JAGS_data[[paste0(parameter, "_data_", model_terms[i])]] <- model_matrix[,terms_indexes == i, drop = FALSE]
       formula_syntax <- c(formula_syntax, paste0(
@@ -366,6 +394,11 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
         attr(this_prior, "level_names")       -> attr(this_prior[[p]], "level_names")
         attr(this_prior, "interaction")       -> attr(this_prior[[p]], "interaction")
         attr(this_prior, "interaction_terms") -> attr(this_prior[[p]], "interaction_terms")
+        attr(this_prior, "term_components")   -> attr(this_prior[[p]], "term_components")
+        attr(this_prior, "factor_terms")      -> attr(this_prior[[p]], "factor_terms")
+        attr(this_prior, "factor_contrasts")  -> attr(this_prior[[p]], "factor_contrasts")
+        attr(this_prior, "factor_design")     -> attr(this_prior[[p]], "factor_design")
+        attr(this_prior, "factor_cell_names") -> attr(this_prior[[p]], "factor_cell_names")
       }
       this_prior -> prior_list[[model_terms[i]]]
     }else{
@@ -1065,6 +1098,365 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
   return(temp_multiply_by)
 }
 
+.factor_level_list <- function(x){
+
+  level_names <- attr(x, "level_names")
+  if(is.null(level_names)){
+    factor_terms <- attr(x, "factor_terms")
+    if(!is.null(factor_terms) && length(factor_terms) > 1){
+      return(NULL)
+    }
+
+    n_levels <- attr(x, "levels")
+    if(is.null(n_levels)){
+      return(NULL)
+    }
+
+    if(is.prior.factor(x)){
+      level_names <- .get_prior_factor_level_names(x)
+    }else if(isTRUE(attr(x, "independent"))){
+      level_names <- seq_len(n_levels)
+    }else{
+      level_names <- seq_len(n_levels + 1)
+    }
+  }
+
+  if(is.list(level_names)){
+    factor_terms <- attr(x, "factor_terms")
+    if(is.null(factor_terms)){
+      factor_terms <- names(level_names)
+    }
+    if(is.null(factor_terms) || any(!nzchar(factor_terms))){
+      factor_terms <- paste0("factor", seq_along(level_names))
+    }
+    level_names <- level_names[factor_terms]
+    names(level_names) <- factor_terms
+  }else{
+    factor_terms <- attr(x, "factor_terms")
+    if(is.null(factor_terms) || length(factor_terms) != 1){
+      factor_terms <- ".factor"
+    }
+    level_names <- setNames(list(level_names), factor_terms)
+  }
+
+  level_names <- lapply(level_names, as.character)
+  return(level_names)
+}
+
+.factor_cell_grid <- function(level_names){
+
+  if(is.null(level_names) || length(level_names) == 0){
+    return(data.frame())
+  }
+
+  expand.grid(level_names, KEEP.OUT.ATTRS = FALSE, stringsAsFactors = FALSE)
+}
+
+.factor_cell_labels <- function(level_names){
+
+  level_grid <- .factor_cell_grid(level_names)
+  if(ncol(level_grid) == 0){
+    return(character(0))
+  }
+
+  if(ncol(level_grid) == 1){
+    return(as.character(level_grid[[1]]))
+  }
+
+  apply(level_grid, 1, function(level_row) {
+    paste0(names(level_row), "=", unname(level_row), collapse = ", ")
+  })
+}
+
+.factor_contrast_parameter_names <- function(parameter, level_names, cell_names){
+
+  if(is.null(level_names)){
+    return(paste0(parameter, "[dif: ", cell_names, "]"))
+  }
+
+  level_grid <- .factor_cell_grid(level_names)
+  if(nrow(level_grid) != length(cell_names)){
+    return(paste0(parameter, "[dif: ", cell_names, "]"))
+  }
+
+  if(length(level_names) == 1){
+    return(paste0(parameter, "[dif: ", level_grid[[1]], "]"))
+  }
+
+  parameter_terms <- strsplit(parameter, "__xXx__", fixed = TRUE)[[1]]
+  factor_terms <- names(level_names)
+  factor_positions <- vapply(factor_terms, function(factor_term) {
+    factor_position <- which(
+      parameter_terms == factor_term |
+        endsWith(parameter_terms, paste0("_", factor_term))
+    )
+
+    if(length(factor_position) == 1){
+      return(factor_position)
+    }
+
+    return(NA_integer_)
+  }, integer(1))
+
+  if(!all(!is.na(factor_positions))){
+    return(paste0(parameter, "[dif: ", cell_names, "]"))
+  }
+
+  vapply(seq_len(nrow(level_grid)), function(level_i) {
+    formatted_terms <- parameter_terms
+
+    for(factor_term in factor_terms){
+      factor_position <- factor_positions[[factor_term]]
+      prefix_length <- nchar(formatted_terms[[factor_position]]) - nchar(factor_term)
+      formatted_terms[[factor_position]] <- paste0(
+        substr(formatted_terms[[factor_position]], 1, prefix_length),
+        factor_term,
+        "[dif: ",
+        level_grid[[factor_term]][level_i],
+        "]"
+      )
+    }
+
+    paste0(formatted_terms, collapse = "__xXx__")
+  }, character(1))
+}
+
+.factor_object_contrast_name <- function(x){
+
+  if(is.prior.independent(x) || isTRUE(attr(x, "independent"))){
+    return("contr.independent")
+  }else if(is.prior.treatment(x) || isTRUE(attr(x, "treatment"))){
+    return("contr.treatment")
+  }else if(is.prior.orthonormal(x) || isTRUE(attr(x, "orthonormal"))){
+    return("contr.orthonormal")
+  }else if(is.prior.meandif(x) || isTRUE(attr(x, "meandif"))){
+    return("contr.meandif")
+  }
+
+  return(NULL)
+}
+
+.factor_contrast_matrix <- function(level_names, contrast){
+
+  switch(
+    contrast,
+    "contr.treatment"   = stats::contr.treatment(level_names),
+    "contr.independent" = contr.independent(level_names),
+    "contr.orthonormal" = contr.orthonormal(level_names),
+    "contr.meandif"     = contr.meandif(level_names),
+    stop("Unsupported factor contrast '", contrast, "'.", call. = FALSE)
+  )
+}
+
+.add_factor_metadata_from_named_objects <- function(x, parameter, objects){
+
+  level_names <- .factor_level_list(x)
+  if(is.null(level_names)){
+    return(x)
+  }
+
+  factor_terms <- names(level_names)
+  if(is.null(attr(x, "factor_terms"))){
+    attr(x, "factor_terms") <- factor_terms
+  }
+
+  factor_contrasts <- attr(x, "factor_contrasts")
+  if(is.null(factor_contrasts)){
+    factor_contrasts <- rep(NA_character_, length(factor_terms))
+    names(factor_contrasts) <- factor_terms
+  }else{
+    factor_contrasts <- as.character(factor_contrasts)
+    if(is.null(names(factor_contrasts))){
+      names(factor_contrasts) <- factor_terms[seq_along(factor_contrasts)]
+    }
+    factor_contrasts <- factor_contrasts[factor_terms]
+  }
+
+  formula_parameter <- attr(x, "formula_parameter")
+  if(is.null(formula_parameter)){
+    formula_parameter <- attr(x, "parameter")
+    if(!is.null(formula_parameter) && identical(formula_parameter, parameter)){
+      formula_parameter <- NULL
+    }
+  }
+  if(is.null(formula_parameter) && grepl("_", parameter, fixed = TRUE)){
+    formula_parameter <- sub("_.*$", "", parameter)
+  }
+
+  for(factor_term in factor_terms[is.na(factor_contrasts)]){
+    candidates <- factor_term
+    if(!is.null(formula_parameter)){
+      candidates <- c(paste0(formula_parameter, "_", factor_term), candidates)
+    }
+    candidates <- unique(candidates)
+    candidates <- candidates[candidates %in% names(objects)]
+
+    for(candidate in candidates){
+      contrast <- .factor_object_contrast_name(objects[[candidate]])
+      if(!is.null(contrast)){
+        factor_contrasts[[factor_term]] <- contrast
+        break
+      }
+    }
+  }
+
+  if(any(is.na(factor_contrasts)) && length(factor_terms) == 1){
+    fallback_contrast <- .factor_object_contrast_name(x)
+    if(!is.null(fallback_contrast)){
+      factor_contrasts[is.na(factor_contrasts)] <- fallback_contrast
+    }
+  }
+
+  attr(x, "factor_contrasts") <- factor_contrasts
+  return(x)
+}
+
+.factor_term_design_from_formula <- function(formula, data, predictors, predictors_type, term_index, term_components, factor_terms, has_intercept){
+
+  level_names <- lapply(factor_terms, function(factor_term) levels(data[[factor_term]]))
+  names(level_names) <- factor_terms
+  cell_grid <- .factor_cell_grid(level_names)
+
+  grid_data <- data[rep(1, nrow(cell_grid)), predictors, drop = FALSE]
+  rownames(grid_data) <- NULL
+
+  for(predictor in predictors){
+    if(predictors_type[[predictor]] == "factor"){
+      predictor_values <- if(predictor %in% factor_terms){
+        cell_grid[[predictor]]
+      }else{
+        rep(levels(data[[predictor]])[1], nrow(cell_grid))
+      }
+      grid_data[[predictor]] <- factor(predictor_values, levels = levels(data[[predictor]]))
+      stats::contrasts(grid_data[[predictor]]) <- attr(data[[predictor]], "contrasts")
+    }else{
+      grid_data[[predictor]] <- if(predictor %in% term_components) 1 else 0
+    }
+  }
+
+  grid_model_frame <- stats::model.frame(formula, data = grid_data)
+  grid_model_matrix <- stats::model.matrix(grid_model_frame, formula = formula, data = grid_data)
+  grid_terms_indexes <- attr(grid_model_matrix, "assign")
+  if(has_intercept){
+    grid_terms_indexes <- grid_terms_indexes + 1
+    grid_terms_indexes[1] <- 0
+  }
+
+  design <- grid_model_matrix[, grid_terms_indexes == term_index, drop = FALSE]
+
+  return(list(
+    design     = unname(design),
+    cell_grid  = cell_grid,
+    cell_names = .factor_cell_labels(level_names),
+    level_names = level_names
+  ))
+}
+
+.factor_term_design_from_metadata <- function(x){
+
+  factor_design <- attr(x, "factor_design")
+  if(!is.null(factor_design)){
+    factor_design <- as.matrix(factor_design)
+    cell_names <- attr(x, "factor_cell_names")
+    level_names <- .factor_level_list(x)
+    if(is.null(cell_names)){
+      if(is.null(level_names)){
+        stop("Factor level names are missing and the factor contrast cannot be transformed.", call. = FALSE)
+      }
+      cell_names <- .factor_cell_labels(level_names)
+    }
+    return(list(
+      design     = factor_design,
+      cell_names = cell_names,
+      level_names = level_names
+    ))
+  }
+
+  level_names <- .factor_level_list(x)
+  if(is.null(level_names)){
+    stop("Factor level names are missing and the factor contrast cannot be transformed.", call. = FALSE)
+  }
+
+  factor_terms <- names(level_names)
+  factor_contrasts <- attr(x, "factor_contrasts")
+  if(is.null(factor_contrasts)){
+    fallback_contrast <- .factor_object_contrast_name(x)
+    if(is.null(fallback_contrast) || length(factor_terms) > 1){
+      stop("Factor contrast metadata is missing and cannot be inferred.", call. = FALSE)
+    }
+    factor_contrasts <- rep(fallback_contrast, length(factor_terms))
+    names(factor_contrasts) <- factor_terms
+  }else{
+    factor_contrasts <- as.character(factor_contrasts)
+    if(is.null(names(factor_contrasts))){
+      names(factor_contrasts) <- factor_terms[seq_along(factor_contrasts)]
+    }
+    factor_contrasts <- factor_contrasts[factor_terms]
+  }
+
+  if(any(is.na(factor_contrasts))){
+    stop("Factor contrast metadata is incomplete and cannot be inferred.", call. = FALSE)
+  }
+
+  contrast_matrices <- lapply(factor_terms, function(factor_term) {
+    .factor_contrast_matrix(level_names[[factor_term]], factor_contrasts[[factor_term]])
+  })
+  names(contrast_matrices) <- factor_terms
+
+  level_grid <- expand.grid(lapply(level_names, seq_along), KEEP.OUT.ATTRS = FALSE)
+  coef_grid <- expand.grid(lapply(contrast_matrices, function(contrast_matrix) seq_len(ncol(contrast_matrix))), KEEP.OUT.ATTRS = FALSE)
+
+  design <- matrix(NA_real_, nrow = nrow(level_grid), ncol = nrow(coef_grid))
+  for(row_i in seq_len(nrow(level_grid))){
+    for(col_i in seq_len(nrow(coef_grid))){
+      design[row_i, col_i] <- prod(vapply(factor_terms, function(factor_term) {
+        contrast_matrices[[factor_term]][level_grid[[factor_term]][row_i], coef_grid[[factor_term]][col_i]]
+      }, numeric(1)))
+    }
+  }
+
+  return(list(
+    design     = design,
+    cell_names = .factor_cell_labels(level_names),
+    level_names = level_names
+  ))
+}
+
+.transform_factor_contrast_samples <- function(coefficient_samples, metadata, parameter, transformed_class){
+
+  if(!is.matrix(coefficient_samples)){
+    coefficient_samples <- matrix(coefficient_samples, ncol = 1)
+  }
+
+  design_info <- .factor_term_design_from_metadata(metadata)
+  design <- design_info[["design"]]
+
+  if(ncol(coefficient_samples) != ncol(design)){
+    stop(
+      "The factor contrast design for '", parameter, "' has ", ncol(design),
+      " coefficient columns, but the samples contain ", ncol(coefficient_samples), ".",
+      call. = FALSE
+    )
+  }
+
+  transformed_samples <- coefficient_samples %*% t(design)
+  colnames(transformed_samples) <- .factor_contrast_parameter_names(
+    parameter = parameter,
+    level_names = design_info[["level_names"]],
+    cell_names = design_info[["cell_names"]]
+  )
+
+  old_attributes <- attributes(coefficient_samples)
+  old_class <- class(coefficient_samples)
+  old_attributes <- old_attributes[!names(old_attributes) %in% c("dim", "dimnames", "names", "class", "level_names")]
+  attributes(transformed_samples) <- c(attributes(transformed_samples), old_attributes)
+  attr(transformed_samples, "level_names")       <- design_info[["cell_names"]]
+  attr(transformed_samples, "factor_cell_names") <- design_info[["cell_names"]]
+  class(transformed_samples) <- unique(c(old_class, class(transformed_samples), transformed_class))
+
+  return(transformed_samples)
+}
+
 #' @title Transform factor posterior samples into differences from the mean
 #'
 #' @description Transforms posterior samples from model-averaged posterior
@@ -1110,26 +1502,15 @@ transform_meandif_samples <- function(samples){
   check_list(samples, "samples", allow_NULL = TRUE)
 
   for(i in seq_along(samples)){
-    if(!inherits(samples[[i]],"mixed_posteriors.meandif_transformed") && inherits(samples[[i]], "mixed_posteriors.factor") && attr(samples[[i]], "meandif")){
+    if(!inherits(samples[[i]],"mixed_posteriors.meandif_transformed") && inherits(samples[[i]], "mixed_posteriors.factor") && isTRUE(attr(samples[[i]], "meandif"))){
 
-      meandif_samples     <- samples[[i]]
-      transformed_samples <- meandif_samples %*% t(contr.meandif(1:(attr(samples[[i]], "levels")+1)))
-
-      if(attr(samples[[i]], "interaction")){
-        if(length(attr(samples[[i]], "level_names")) == 1){
-          transformed_names <- paste0(names(samples)[i], " [dif: ", attr(samples[[i]], "level_names")[[1]],"]")
-        }else{
-          stop("meandif de-transformation for interaction of multiple factors is not implemented.")
-        }
-      }else{
-        transformed_names <- paste0(names(samples)[i], " [dif: ", attr(samples[[i]], "level_names"),"]")
-      }
-
-      colnames(transformed_samples)   <- transformed_names
-      attributes(transformed_samples) <- c(attributes(transformed_samples), attributes(meandif_samples)[!names(attributes(meandif_samples)) %in% names(attributes(transformed_samples))])
-      class(transformed_samples)      <- c(class(transformed_samples), "mixed_posteriors.meandif_transformed")
-
-      samples[[i]] <- transformed_samples
+      meandif_samples <- .add_factor_metadata_from_named_objects(samples[[i]], names(samples)[i], samples)
+      samples[[i]] <- .transform_factor_contrast_samples(
+        coefficient_samples = meandif_samples,
+        metadata            = meandif_samples,
+        parameter           = names(samples)[i],
+        transformed_class   = "mixed_posteriors.meandif_transformed"
+      )
     }
   }
 
@@ -1156,26 +1537,15 @@ transform_orthonormal_samples <- function(samples){
   check_list(samples, "samples", allow_NULL = TRUE)
 
   for(i in seq_along(samples)){
-    if(!inherits(samples[[i]],"mixed_posteriors.orthonormal_transformed") && inherits(samples[[i]], "mixed_posteriors.factor") && attr(samples[[i]], "orthonormal")){
+    if(!inherits(samples[[i]],"mixed_posteriors.orthonormal_transformed") && inherits(samples[[i]], "mixed_posteriors.factor") && isTRUE(attr(samples[[i]], "orthonormal"))){
 
-      orthonormal_samples <- samples[[i]]
-      transformed_samples <- orthonormal_samples %*% t(contr.orthonormal(1:(attr(samples[[i]], "levels")+1)))
-
-      if(attr(samples[[i]], "interaction")){
-        if(length(attr(samples[[i]], "level_names")) == 1){
-          transformed_names <- paste0(names(samples)[i], " [dif: ", attr(samples[[i]], "level_names")[[1]],"]")
-        }else{
-          stop("orthonormal de-transformation for interaction of multiple factors is not implemented.")
-        }
-      }else{
-        transformed_names <- paste0(names(samples)[i], " [dif: ", attr(samples[[i]], "level_names"),"]")
-      }
-
-      colnames(transformed_samples)   <- transformed_names
-      attributes(transformed_samples) <- c(attributes(transformed_samples), attributes(orthonormal_samples)[!names(attributes(orthonormal_samples)) %in% names(attributes(transformed_samples))])
-      class(transformed_samples)      <- c(class(transformed_samples), "mixed_posteriors.orthonormal_transformed")
-
-      samples[[i]] <- transformed_samples
+      orthonormal_samples <- .add_factor_metadata_from_named_objects(samples[[i]], names(samples)[i], samples)
+      samples[[i]] <- .transform_factor_contrast_samples(
+        coefficient_samples = orthonormal_samples,
+        metadata            = orthonormal_samples,
+        parameter           = names(samples)[i],
+        transformed_class   = "mixed_posteriors.orthonormal_transformed"
+      )
     }
   }
 
@@ -1188,26 +1558,15 @@ transform_treatment_samples <- function(samples){
   check_list(samples, "samples", allow_NULL = TRUE)
 
   for(i in seq_along(samples)){
-    if(!inherits(samples[[i]],"mixed_posteriors.treatment_transformed") && inherits(samples[[i]], "mixed_posteriors.factor") && attr(samples[[i]], "treatment")){
+    if(!inherits(samples[[i]],"mixed_posteriors.treatment_transformed") && inherits(samples[[i]], "mixed_posteriors.factor") && isTRUE(attr(samples[[i]], "treatment"))){
 
-      treatment_samples   <- samples[[i]]
-      transformed_samples <- treatment_samples %*% t(stats::contr.treatment(1:(attr(samples[[i]], "levels")+1)))
-
-      if(attr(samples[[i]], "interaction")){
-        if(length(attr(samples[[i]], "level_names")) == 1){
-          transformed_names <- paste0(names(samples)[i], " [dif: ", attr(samples[[i]], "level_names")[[1]],"]")
-        }else{
-          stop("orthonormal de-transformation for interaction of multiple factors is not implemented.")
-        }
-      }else{
-        transformed_names <- paste0(names(samples)[i], " [dif: ", attr(samples[[i]], "level_names"),"]")
-      }
-
-      colnames(transformed_samples)   <- transformed_names
-      attributes(transformed_samples) <- c(attributes(transformed_samples), attributes(treatment_samples)[!names(attributes(treatment_samples)) %in% names(attributes(transformed_samples))])
-      class(transformed_samples)      <- c(class(transformed_samples), "mixed_posteriors.treatment_transformed")
-
-      samples[[i]] <- transformed_samples
+      treatment_samples <- .add_factor_metadata_from_named_objects(samples[[i]], names(samples)[i], samples)
+      samples[[i]] <- .transform_factor_contrast_samples(
+        coefficient_samples = treatment_samples,
+        metadata            = treatment_samples,
+        parameter           = names(samples)[i],
+        transformed_class   = "mixed_posteriors.treatment_transformed"
+      )
     }
   }
 
@@ -1284,6 +1643,15 @@ transform_treatment_samples <- function(samples){
 .is_subset <- function(A, B) {
 
   length(A) == 0 || all(A %in% B)
+}
+
+
+# Helper: Compare lower-order unscaled term identities. Two-level factor main
+# effects are stored without [1], while their interactions are indexed.
+.unscale_ids_match <- function(target_id, source_id) {
+
+  identical(target_id, source_id) ||
+    (nzchar(target_id) && !grepl("\\[[^]]+\\]$", target_id) && identical(paste0(target_id, "[1]"), source_id))
 }
 
 
@@ -1382,7 +1750,7 @@ transform_treatment_samples <- function(samples){
 # The formula is based on expanding products of (x_i - mu_i)/sigma_i terms.
 # For S to contribute to T:
 #   1. T_unscaled == S_unscaled (unscaled components must match exactly)
-#   2. T_scaled ⊆ S_scaled (T's scaled components are a subset of S's)
+#   2. T_scaled is a subset of S_scaled
 #
 # The contribution is: (-1)^|extra| * prod(mu_extra) / prod(sigma_S_scaled)
 # where extra = S_scaled \ T_scaled
@@ -1434,7 +1802,7 @@ transform_treatment_samples <- function(samples){
 
       # Check contribution conditions
       # 1. Unscaled parts must match exactly
-      if (!identical(T_unscaled, S_unscaled)) next
+      if (!.unscale_ids_match(T_unscaled, S_unscaled)) next
 
       # 2. T_scaled must be a subset of S_scaled
       if (!.is_subset(T_scaled, S_scaled)) next
@@ -1719,6 +2087,51 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
   return(prior_samples)
 }
 
+.generate_factor_prior_sample_matrix <- function(prior, parameter, n_samples){
+
+  K <- .get_prior_factor_levels(prior)
+  if(is.null(K) || is.na(K)){
+    stop("The number of factor coefficients for prior '", parameter, "' is unknown.", call. = FALSE)
+  }
+
+  if(is.prior.spike_and_slab(prior)){
+    prior_variable  <- .get_spike_and_slab_variable(prior)
+    prior_inclusion <- .get_spike_and_slab_inclusion(prior)
+    samples <- .generate_factor_prior_sample_matrix(prior_variable, parameter, n_samples)
+    inclusion <- stats::rbinom(n_samples, size = 1, prob = rng(prior_inclusion, n_samples))
+    samples <- samples * inclusion
+  }else if(is.prior.mixture(prior)){
+    prior_weights <- attr(prior, "prior_weights")
+    prior_weights <- prior_weights / sum(prior_weights)
+    components <- sample(seq_along(prior_weights), size = n_samples, replace = TRUE, prob = prior_weights)
+    samples <- matrix(NA_real_, nrow = n_samples, ncol = K)
+
+    for(component in unique(components)){
+      samples[components == component, ] <- .generate_factor_prior_sample_matrix(
+        prior      = prior[[component]],
+        parameter  = parameter,
+        n_samples  = sum(components == component)
+      )
+    }
+  }else if(is.prior.point(prior)){
+    location <- prior$parameters[["location"]]
+    samples <- matrix(rep(location, length.out = K), nrow = n_samples, ncol = K, byrow = TRUE)
+  }else if(is.prior.orthonormal(prior) || is.prior.meandif(prior)){
+    prior$parameters[["K"]] <- K
+    samples <- rng(prior, n_samples, transform_factor_samples = FALSE)
+    samples <- matrix(samples, nrow = n_samples, ncol = K)
+  }else if(is.prior.treatment(prior) || is.prior.independent(prior)){
+    samples <- replicate(K, rng(prior, n_samples, transform_factor_samples = FALSE))
+    samples <- matrix(samples, nrow = n_samples, ncol = K)
+  }else{
+    samples <- rng(prior, n_samples, transform_factor_samples = FALSE)
+    samples <- matrix(samples, nrow = n_samples, ncol = K)
+  }
+
+  colnames(samples) <- .JAGS_prior_factor_names(parameter, prior)
+  return(samples)
+}
+
 
 # Helper: Generate a matrix of prior samples matching posterior structure
 #
@@ -1756,6 +2169,9 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
       samples_list[[param_name]] <- matrix(0, nrow = n_samples, ncol = 1)
       colnames(samples_list[[param_name]]) <- param_name
 
+    }else if(is.prior.factor(prior) || inherits(prior, "prior.factor_mixture") || inherits(prior, "prior.factor_spike_and_slab")){
+      samples_list[[param_name]] <- .generate_factor_prior_sample_matrix(prior, param_name, n_samples)
+
     }else if(is.prior.point(prior)){
       # Point prior - constant values
       samples_list[[param_name]] <- matrix(
@@ -1764,21 +2180,6 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
         ncol = 1
       )
       colnames(samples_list[[param_name]]) <- param_name
-
-    }else if(is.prior.factor(prior)){
-      # Factor priors return matrix from rng
-      temp_samples <- rng(prior, n_samples, transform_factor_samples = TRUE)
-      if(is.matrix(temp_samples)){
-        # Multiple columns for factor levels
-        n_levels <- ncol(temp_samples)
-        col_names <- paste0(param_name, "[", 1:n_levels, "]")
-        colnames(temp_samples) <- col_names
-        samples_list[[param_name]] <- temp_samples
-      }else{
-        # Single column
-        samples_list[[param_name]] <- matrix(temp_samples, nrow = n_samples, ncol = 1)
-        colnames(samples_list[[param_name]]) <- param_name
-      }
 
     }else if(is.prior.simple(prior)){
       # Simple priors - single column
@@ -2053,14 +2454,10 @@ JAGS_parameter_names   <- function(parameters, formula_parameter = NULL){
 
 .JAGS_prior_factor_names <- function(parameter, prior){
 
-  if(!.is_prior_interaction(prior)){
-    if(.get_prior_factor_levels(prior) == 1){
-      par_names <- parameter
-    }else{
-      par_names <- paste0(parameter,"[",1:.get_prior_factor_levels(prior),"]")
-    }
-  }else if(length(attr(prior, "levels")) == 1){
-    par_names <-  paste0(parameter,"[",1:.get_prior_factor_levels(prior),"]")
+  if(.get_prior_factor_levels(prior) == 1){
+    par_names <- parameter
+  }else{
+    par_names <- paste0(parameter,"[",1:.get_prior_factor_levels(prior),"]")
   }
 
   return(par_names)

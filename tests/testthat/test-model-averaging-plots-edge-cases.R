@@ -57,4 +57,98 @@ test_that("plot_prior_list rejects prior_list_mu when not needed", {
 
 })
 
+.scaled_multi_factor_interaction_samples <- function(n_posterior = 20, n_prior = 128){
 
+  df <- expand.grid(
+    a = factor(c("a1", "a2"), levels = c("a1", "a2")),
+    b = factor(c("b1", "b2", "b3"), levels = c("b1", "b2", "b3")),
+    x = seq_len(4)
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ x * a * b,
+    parameter = "mu",
+    data = df,
+    formula_scale = list(x = TRUE),
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1)),
+      a = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+      b = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+      "x:a" = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+      "x:b" = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+      "a:b" = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+      "x:a:b" = prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+    )
+  )
+  prior_list <- formula_result$prior_list
+  posterior_columns <- unlist(lapply(names(prior_list), function(parameter) {
+    if(is.prior.factor(prior_list[[parameter]])){
+      BayesTools:::.JAGS_prior_factor_names(parameter, prior_list[[parameter]])
+    }else{
+      parameter
+    }
+  }), use.names = FALSE)
+
+  set.seed(515)
+  posterior <- matrix(rnorm(n_posterior * length(posterior_columns)), nrow = n_posterior)
+  colnames(posterior) <- posterior_columns
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+  attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
+
+  samples <- as_mixed_posteriors(
+    fit,
+    parameters = "mu_x__xXx__a__xXx__b",
+    transform_scaled = TRUE,
+    n_prior_samples = n_prior
+  )
+
+  list(samples = samples, prior_list = prior_list)
+}
+
+test_that("transformed factor prior plot data uses indexed prior sample columns", {
+
+  fixture <- .scaled_multi_factor_interaction_samples()
+  samples <- fixture$samples
+  prior_list <- fixture$prior_list
+
+  plot_data <- BayesTools:::.plot_data_prior_factor_samples_transformed(
+    prior_samples_transformed = attr(samples, "prior_samples"),
+    samples = samples,
+    parameter = "mu_x__xXx__a__xXx__b",
+    prior_list = attr(samples$mu_x__xXx__a__xXx__b, "prior_list"),
+    n_points = 32
+  )
+
+  density_entries <- plot_data[vapply(plot_data, inherits, logical(1), what = "density.prior.factor")]
+  expect_equal(length(density_entries), 6L)
+  expect_equal(
+    unname(vapply(density_entries, attr, character(1), which = "level_name")),
+    paste0(
+      "mu_x__xXx__a[dif: ",
+      rep(c("a1", "a2"), times = 3),
+      "]__xXx__b[dif: ",
+      rep(c("b1", "b2", "b3"), each = 2),
+      "]"
+    )
+  )
+})
+
+test_that("plot_posterior handles transformed scaled factor-interaction priors", {
+
+  skip_if_not_installed("ggplot2")
+
+  fixture <- .scaled_multi_factor_interaction_samples(n_posterior = 24, n_prior = 128)
+
+  plot <- plot_posterior(
+    samples = fixture$samples,
+    parameter = "mu_x__xXx__a__xXx__b",
+    plot_type = "ggplot",
+    prior = TRUE,
+    n_points = 32
+  )
+
+  expect_s3_class(plot, "ggplot")
+  expect_gt(length(plot$layers), 1)
+})

@@ -115,6 +115,130 @@ test_that("ensemble_estimates_table handles transform_factors", {
 
 })
 
+test_that("ensemble_estimates_table handles multi-factor transformed interactions", {
+
+  df <- expand.grid(
+    a = factor(c("a1", "a2"), levels = c("a1", "a2")),
+    b = factor(c("b1", "b2", "b3"), levels = c("b1", "b2", "b3"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ a * b,
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      a         = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+      b         = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+      "a:b"     = prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+    )
+  )
+  interaction_prior <- formula_result$prior_list$mu_a__xXx__b
+
+  interaction_samples <- matrix(seq_len(20), nrow = 10, ncol = 2)
+  colnames(interaction_samples) <- paste0("mu_a__xXx__b[", 1:2, "]")
+  class(interaction_samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector", "mixed_posteriors.formula")
+  attr(interaction_samples, "levels")            <- BayesTools:::.get_prior_factor_levels(interaction_prior)
+  attr(interaction_samples, "level_names")       <- attr(interaction_prior, "level_names")
+  attr(interaction_samples, "interaction")       <- TRUE
+  attr(interaction_samples, "interaction_terms") <- attr(interaction_prior, "interaction_terms")
+  attr(interaction_samples, "term_components")   <- attr(interaction_prior, "term_components")
+  attr(interaction_samples, "factor_terms")      <- attr(interaction_prior, "factor_terms")
+  attr(interaction_samples, "factor_contrasts")  <- attr(interaction_prior, "factor_contrasts")
+  attr(interaction_samples, "factor_design")     <- attr(interaction_prior, "factor_design")
+  attr(interaction_samples, "factor_cell_names") <- attr(interaction_prior, "factor_cell_names")
+  attr(interaction_samples, "orthonormal")       <- TRUE
+  attr(interaction_samples, "meandif")           <- FALSE
+  attr(interaction_samples, "treatment")         <- FALSE
+  attr(interaction_samples, "independent")       <- FALSE
+  attr(interaction_samples, "formula_parameter") <- "mu"
+
+  samples <- list(mu_a__xXx__b = interaction_samples)
+  class(samples) <- "mixed_posteriors"
+
+  estimates_table <- ensemble_estimates_table(
+    samples = samples,
+    parameters = "mu_a__xXx__b",
+    transform_factors = TRUE
+  )
+
+  expect_equal(
+    rownames(estimates_table),
+    paste0(
+      "(mu) a[dif: ",
+      rep(c("a1", "a2"), times = 3),
+      "]:b[dif: ",
+      rep(c("b1", "b2", "b3"), each = 2),
+      "]"
+    )
+  )
+  expect_equal(anyDuplicated(rownames(estimates_table)), 0L)
+})
+
+test_that("runjags_estimates_table unscales before parameter filtering", {
+
+  skip_if_not_installed("runjags")
+
+  posterior <- matrix(
+    c(
+      1.0, 1.2,
+      0.4, 0.5,
+      2.0, 2.2,
+      0.8, 1.0
+    ),
+    nrow = 2,
+    byrow = FALSE
+  )
+  colnames(posterior) <- c("mu_intercept", "mu_x", "mu_a", "mu_x__xXx__a[1]")
+
+  factor_prior <- prior_factor("normal", list(0, 1), contrast = "treatment")
+  attr(factor_prior, "levels") <- 2
+  attr(factor_prior, "level_names") <- c("A", "B")
+  attr(factor_prior, "parameter") <- "mu"
+
+  interaction_prior <- prior_factor("normal", list(0, 1), contrast = "treatment")
+  attr(interaction_prior, "levels") <- 2
+  attr(interaction_prior, "level_names") <- list(a = c("A", "B"))
+  attr(interaction_prior, "interaction") <- TRUE
+  attr(interaction_prior, "interaction_terms") <- c("x", "a")
+  attr(interaction_prior, "term_components") <- c("x", "a")
+  attr(interaction_prior, "factor_terms") <- "a"
+  attr(interaction_prior, "factor_contrasts") <- c(a = "contr.treatment")
+  attr(interaction_prior, "factor_design") <- stats::contr.treatment(c("A", "B"))
+  attr(interaction_prior, "factor_cell_names") <- c("A", "B")
+  attr(interaction_prior, "parameter") <- "mu"
+
+  prior_list <- list(
+    mu_intercept = prior("normal", list(0, 1)),
+    mu_x = prior("normal", list(0, 1)),
+    mu_a = factor_prior,
+    mu_x__xXx__a = interaction_prior
+  )
+  for(parameter in c("mu_intercept", "mu_x")){
+    attr(prior_list[[parameter]], "parameter") <- "mu"
+  }
+
+  fit <- list(
+    mcmc = coda::mcmc.list(coda::mcmc(posterior)),
+    summary.pars = list(mutate = NULL),
+    monitor = colnames(posterior)
+  )
+  class(fit) <- c("runjags", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+  attr(fit, "formula_scale") <- list(mu = list(mu_x = list(mean = 10, sd = 2)))
+
+  samples <- suppressWarnings(runjags_estimates_table(
+    fit,
+    keep_parameters = "mu_a",
+    transform_scaled = TRUE,
+    formula_prefix = FALSE,
+    return_samples = TRUE
+  ))
+  expected <- posterior[, "mu_a"] - (posterior[, "mu_x__xXx__a[1]"] / 2) * 10
+
+  expect_equal(as.numeric(samples[, "a[B]"]), expected, tolerance = 1e-10)
+  expect_false("x:a[B]" %in% colnames(samples))
+})
+
 
 test_that("ensemble_estimates_table handles formula posteriors", {
 

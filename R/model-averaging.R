@@ -201,9 +201,13 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 
   inference  <- ensemble_inference(model_list, parameters, is_null_list, conditional)
 
-  # set seed only once at the beginning -- not in the individual draws as the priors will end up completely correlated
+  # Use one shared sampling seed so formula terms are drawn from aligned
+  # posterior rows across parameters.
   if(!is.null(seed)){
     set.seed(seed)
+    common_sample_seed <- seed
+  }else{
+    common_sample_seed <- sample(.Machine$integer.max, 1)
   }
 
   out <- list()
@@ -230,7 +234,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
         temp_priors[[i]][["prior_weights"]] <- temp_inference$prior_probs[i]
       }
 
-      out[[temp_parameter]] <- .mix_posteriors.weightfunction(fits, temp_priors, temp_parameter, temp_inference$post_probs, NULL, n_samples)
+      out[[temp_parameter]] <- .mix_posteriors.weightfunction(fits, temp_priors, temp_parameter, temp_inference$post_probs, common_sample_seed, n_samples)
 
     }else if(any(sapply(temp_priors, is.prior.factor)) && all(sapply(temp_priors, is.prior.factor) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.null))){
       # factor priors
@@ -247,7 +251,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
         temp_priors[[i]][["prior_weights"]] <- temp_inference$prior_probs[i]
       }
 
-      out[[temp_parameter]] <- .mix_posteriors.factor(fits, temp_priors, temp_parameter, temp_inference$post_probs, NULL, n_samples)
+      out[[temp_parameter]] <- .mix_posteriors.factor(fits, temp_priors, temp_parameter, temp_inference$post_probs, common_sample_seed, n_samples)
 
     }else if(any(sapply(temp_priors, is.prior.vector)) && all(sapply(temp_priors, is.prior.vector) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.null))){
       # vector priors:
@@ -264,7 +268,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
         temp_priors[[i]][["prior_weights"]] <- temp_inference$prior_probs[i]
       }
 
-      out[[temp_parameter]] <- .mix_posteriors.vector(fits, temp_priors, temp_parameter, temp_inference$post_probs, NULL, n_samples)
+      out[[temp_parameter]] <- .mix_posteriors.vector(fits, temp_priors, temp_parameter, temp_inference$post_probs, common_sample_seed, n_samples)
 
     }else if(all(sapply(temp_priors, is.prior.simple) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.null))){
       # simple priors:
@@ -281,7 +285,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
         temp_priors[[i]][["prior_weights"]] <- temp_inference$prior_probs[i]
       }
 
-      out[[temp_parameter]] <- .mix_posteriors.simple(fits, temp_priors, temp_parameter, temp_inference$post_probs, NULL, n_samples)
+      out[[temp_parameter]] <- .mix_posteriors.simple(fits, temp_priors, temp_parameter, temp_inference$post_probs, common_sample_seed, n_samples)
 
     }else{
       stop("The posterior samples cannot be mixed: unsupported mixture of prior distributions.")
@@ -491,6 +495,11 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
         "level_names"       = .get_prior_factor_level_names(p),
         "interaction"       = .is_prior_interaction(p),
         "interaction_terms" = attr(p, "interaction_terms"),
+        "term_components"   = attr(p, "term_components"),
+        "factor_terms"      = attr(p, "factor_terms"),
+        "factor_contrasts"  = attr(p, "factor_contrasts"),
+        "factor_design"     = attr(p, "factor_design"),
+        "factor_cell_names" = attr(p, "factor_cell_names"),
         "treatment"         = is.prior.treatment(p),
         "independent"       = is.prior.independent(p),
         "orthonormal"       = is.prior.orthonormal(p),
@@ -596,6 +605,11 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   attr(samples, "level_names")       <- priors_info[["level_names"]]
   attr(samples, "interaction")       <- if(length(priors_info) == 0) FALSE else priors_info[["interaction"]]
   attr(samples, "interaction_terms") <- priors_info[["interaction_terms"]]
+  attr(samples, "term_components")   <- priors_info[["term_components"]]
+  attr(samples, "factor_terms")      <- priors_info[["factor_terms"]]
+  attr(samples, "factor_contrasts")  <- priors_info[["factor_contrasts"]]
+  attr(samples, "factor_design")     <- priors_info[["factor_design"]]
+  attr(samples, "factor_cell_names") <- priors_info[["factor_cell_names"]]
   attr(samples, "treatment")         <- priors_info[["treatment"]]
   attr(samples, "independent")       <- priors_info[["independent"]]
   attr(samples, "orthonormal")       <- priors_info[["orthonormal"]]
@@ -990,6 +1004,11 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     "level_names"       = .get_prior_factor_level_names(prior),
     "interaction"       = .is_prior_interaction(prior),
     "interaction_terms" = attr(prior, "interaction_terms"),
+    "term_components"   = attr(prior, "term_components"),
+    "factor_terms"      = attr(prior, "factor_terms"),
+    "factor_contrasts"  = attr(prior, "factor_contrasts"),
+    "factor_design"     = attr(prior, "factor_design"),
+    "factor_cell_names" = attr(prior, "factor_cell_names"),
     "treatment"         = is.prior.treatment(prior),
     "independent"       = is.prior.independent(prior),
     "orthonormal"       = is.prior.orthonormal(prior),
@@ -1053,6 +1072,11 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   attr(samples, "level_names")       <- prior_info[["level_names"]]
   attr(samples, "interaction")       <- if(length(prior_info) == 0) FALSE else prior_info[["interaction"]]
   attr(samples, "interaction_terms") <- prior_info[["interaction_terms"]]
+  attr(samples, "term_components")   <- prior_info[["term_components"]]
+  attr(samples, "factor_terms")      <- prior_info[["factor_terms"]]
+  attr(samples, "factor_contrasts")  <- prior_info[["factor_contrasts"]]
+  attr(samples, "factor_design")     <- prior_info[["factor_design"]]
+  attr(samples, "factor_cell_names") <- prior_info[["factor_cell_names"]]
   attr(samples, "treatment")         <- prior_info[["treatment"]]
   attr(samples, "independent")       <- prior_info[["independent"]]
   attr(samples, "orthonormal")       <- prior_info[["orthonormal"]]

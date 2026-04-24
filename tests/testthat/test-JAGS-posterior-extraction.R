@@ -297,16 +297,306 @@ test_that(".transform_factor_contrasts transforms orthonormal to differences", {
   
   prior_list <- list(group = prior_obj)
 
-  expect_message(
+  expect_silent(
     result <- BayesTools:::.transform_factor_contrasts(
       model_samples, prior_list, transform_factors = TRUE
+    )
+  )
+
+  expect_message(
+    BayesTools:::.transform_factor_contrasts(
+      model_samples,
+      prior_list,
+      transform_factors = TRUE,
+      transformations = list(group = list(fun = exp, arg = list()))
     ),
     "transformation was applied"
   )
 
   # Should have 4 columns after transformation (one per level)
   expect_equal(ncol(result), 4)
-  expect_true(any(grepl("dif:", colnames(result))))
+  expect_equal(colnames(result), paste0("group[dif: ", c("A", "B", "C", "D"), "]"))
+})
+
+
+test_that(".transform_factor_contrasts handles multi-factor transformed interactions", {
+
+  df <- expand.grid(
+    a = factor(c("a1", "a2"), levels = c("a1", "a2")),
+    b = factor(c("b1", "b2", "b3"), levels = c("b1", "b2", "b3"))
+  )
+
+  for(interaction_contrast in c("orthonormal", "meandif")){
+    formula_result <- JAGS_formula(
+      formula = ~ a * b,
+      parameter = "mu",
+      data = df,
+      prior_list = list(
+        intercept = prior("normal", list(0, 1)),
+        a         = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+        b         = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+        "a:b"     = prior_factor("mnormal", list(0, 1), contrast = interaction_contrast)
+      )
+    )
+    interaction_prior <- formula_result$prior_list$mu_a__xXx__b
+
+    model_samples <- matrix(seq_len(20), nrow = 10, ncol = 2)
+    colnames(model_samples) <- paste0("mu_a__xXx__b[", 1:2, "]")
+
+    transformed <- suppressMessages(BayesTools:::.transform_factor_contrasts(
+      model_samples,
+      list(mu_a__xXx__b = interaction_prior),
+      transform_factors = TRUE
+    ))
+    expected <- model_samples %*% t(attr(interaction_prior, "factor_design"))
+
+    expect_equal(unname(transformed), unname(expected))
+    expected_names <- paste0(
+      "mu_a[dif: ",
+      rep(c("a1", "a2"), times = 3),
+      "]__xXx__b[dif: ",
+      rep(c("b1", "b2", "b3"), each = 2),
+      "]"
+    )
+    expect_equal(
+      colnames(transformed),
+      expected_names
+    )
+    expect_equal(anyDuplicated(colnames(transformed)), 0L)
+  }
+})
+
+test_that(".transform_factor_contrasts handles one-coefficient interactions", {
+
+  df <- expand.grid(
+    a = factor(c("a1", "a2"), levels = c("a1", "a2")),
+    b = factor(c("b1", "b2"), levels = c("b1", "b2"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ a * b,
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      a         = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+      b         = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+      "a:b"     = prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+    )
+  )
+  interaction_prior <- formula_result$prior_list$mu_a__xXx__b
+
+  expect_equal(BayesTools:::.JAGS_prior_factor_names("mu_a__xXx__b", interaction_prior), "mu_a__xXx__b")
+
+  model_samples <- matrix(seq_len(10), nrow = 10, ncol = 1)
+  colnames(model_samples) <- "mu_a__xXx__b"
+
+  transformed <- suppressMessages(BayesTools:::.transform_factor_contrasts(
+    model_samples,
+    list(mu_a__xXx__b = interaction_prior),
+    transform_factors = TRUE
+  ))
+  expected <- model_samples %*% t(attr(interaction_prior, "factor_design"))
+
+  expect_equal(unname(transformed), unname(expected))
+  expect_equal(ncol(transformed), 4L)
+  expect_equal(
+    colnames(transformed),
+    paste0(
+      "mu_a[dif: ",
+      rep(c("a1", "a2"), times = 2),
+      "]__xXx__b[dif: ",
+      rep(c("b1", "b2"), each = 2),
+      "]"
+    )
+  )
+})
+
+test_that(".transform_factor_contrasts ignores unrelated transformations", {
+
+  df <- expand.grid(
+    a = factor(c("a1", "a2"), levels = c("a1", "a2")),
+    b = factor(c("b1", "b2"), levels = c("b1", "b2"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ a * b,
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      a         = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+      b         = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+      "a:b"     = prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+    )
+  )
+  interaction_prior <- formula_result$prior_list$mu_a__xXx__b
+
+  model_samples <- matrix(seq_len(10), nrow = 5, ncol = 2)
+  colnames(model_samples) <- c("mu_intercept", "mu_a__xXx__b")
+
+  transformed <- suppressMessages(BayesTools:::.transform_factor_contrasts(
+    model_samples,
+    list(
+      mu_intercept = formula_result$prior_list$mu_intercept,
+      mu_a__xXx__b = interaction_prior
+    ),
+    transform_factors = TRUE,
+    transformations = list(mu_intercept = list(fun = exp))
+  ))
+
+  expect_equal(unname(transformed[, -1, drop = FALSE]), unname(model_samples[, 2, drop = FALSE] %*% t(attr(interaction_prior, "factor_design"))))
+})
+
+test_that(".transform_factor_contrasts reconstructs multi-factor designs from metadata", {
+
+  df <- expand.grid(
+    a = factor(c("a1", "a2"), levels = c("a1", "a2")),
+    b = factor(c("b1", "b2", "b3"), levels = c("b1", "b2", "b3"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ a * b,
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      a         = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+      b         = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+      "a:b"     = prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+    )
+  )
+  interaction_prior <- formula_result$prior_list$mu_a__xXx__b
+  expected_design <- attr(interaction_prior, "factor_design")
+
+  model_samples <- matrix(seq_len(20), nrow = 10, ncol = 2)
+  colnames(model_samples) <- paste0("mu_a__xXx__b[", 1:2, "]")
+
+  metadata_only_prior <- interaction_prior
+  attr(metadata_only_prior, "factor_design") <- NULL
+  attr(metadata_only_prior, "factor_cell_names") <- NULL
+  transformed <- suppressMessages(BayesTools:::.transform_factor_contrasts(
+    model_samples,
+    list(mu_a__xXx__b = metadata_only_prior),
+    transform_factors = TRUE
+  ))
+  expect_equal(unname(transformed), unname(model_samples %*% t(expected_design)))
+
+  unnamed_contrast_prior <- metadata_only_prior
+  attr(unnamed_contrast_prior, "factor_contrasts") <- unname(attr(unnamed_contrast_prior, "factor_contrasts"))
+  transformed_unnamed <- suppressMessages(BayesTools:::.transform_factor_contrasts(
+    model_samples,
+    list(mu_a__xXx__b = unnamed_contrast_prior),
+    transform_factors = TRUE
+  ))
+  expect_equal(unname(transformed_unnamed), unname(model_samples %*% t(expected_design)))
+
+  inferred_contrast_prior <- metadata_only_prior
+  attr(inferred_contrast_prior, "factor_contrasts") <- NULL
+  model_samples_full <- cbind(
+    mu_a = seq_len(nrow(model_samples)),
+    `mu_b[1]` = seq_len(nrow(model_samples)) + 10,
+    `mu_b[2]` = seq_len(nrow(model_samples)) + 20,
+    model_samples
+  )
+  transformed_inferred <- suppressMessages(BayesTools:::.transform_factor_contrasts(
+    model_samples_full,
+    list(
+      mu_a = formula_result$prior_list$mu_a,
+      mu_b = formula_result$prior_list$mu_b,
+      mu_a__xXx__b = inferred_contrast_prior
+    ),
+    transform_factors = TRUE
+  ))
+  expected_names <- paste0(
+    "mu_a[dif: ",
+    rep(c("a1", "a2"), times = 3),
+    "]__xXx__b[dif: ",
+    rep(c("b1", "b2", "b3"), each = 2),
+    "]"
+  )
+  expect_equal(unname(transformed_inferred[, expected_names]), unname(model_samples %*% t(expected_design)))
+})
+
+test_that(".transform_factor_contrasts validates multi-factor metadata", {
+
+  prior_obj <- prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+  attr(prior_obj, "levels") <- 3
+  attr(prior_obj, "level_names") <- list(a = c("a1", "a2"), b = c("b1", "b2"))
+  attr(prior_obj, "interaction") <- TRUE
+  attr(prior_obj, "factor_terms") <- c("a", "b")
+  attr(prior_obj, "factor_contrasts") <- c(a = "contr.orthonormal")
+
+  model_samples <- matrix(seq_len(10), nrow = 5, ncol = 2)
+  colnames(model_samples) <- paste0("mu_a__xXx__b[", 1:2, "]")
+
+  expect_error(
+    BayesTools:::.factor_term_design_from_metadata(prior_obj),
+    "incomplete"
+  )
+
+  missing_contrasts_prior <- prior_obj
+  attr(missing_contrasts_prior, "factor_contrasts") <- NULL
+  expect_error(
+    BayesTools:::.factor_term_design_from_metadata(missing_contrasts_prior),
+    "missing"
+  )
+
+  missing_levels_prior <- prior_obj
+  attr(missing_levels_prior, "level_names") <- NULL
+  attr(missing_levels_prior, "levels") <- NULL
+  expect_error(
+    BayesTools:::.factor_term_design_from_metadata(missing_levels_prior),
+    "level names"
+  )
+
+  mismatch_prior <- prior_obj
+  attr(mismatch_prior, "factor_contrasts") <- c(a = "contr.orthonormal", b = "contr.orthonormal")
+  attr(mismatch_prior, "factor_design") <- diag(3)
+  expect_error(
+    BayesTools:::.transform_factor_contrasts(
+      model_samples,
+      list(mu_a__xXx__b = mismatch_prior),
+      transform_factors = TRUE
+    ),
+    "has 3 coefficient columns"
+  )
+})
+
+test_that("as_mixed_posteriors propagates multi-factor contrast metadata", {
+
+  df <- expand.grid(
+    a = factor(c("a1", "a2"), levels = c("a1", "a2")),
+    b = factor(c("b1", "b2", "b3"), levels = c("b1", "b2", "b3"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ a * b,
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      a         = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+      b         = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+      "a:b"     = prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+    )
+  )
+  interaction_prior <- formula_result$prior_list$mu_a__xXx__b
+
+  posterior <- matrix(seq_len(20), nrow = 10, ncol = 2)
+  colnames(posterior) <- paste0("mu_a__xXx__b[", 1:2, "]")
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- formula_result$prior_list
+
+  mixed <- as_mixed_posteriors(fit, parameters = "mu_a__xXx__b")
+
+  expect_equal(attr(mixed$mu_a__xXx__b, "factor_terms"), attr(interaction_prior, "factor_terms"))
+  expect_equal(attr(mixed$mu_a__xXx__b, "factor_contrasts"), attr(interaction_prior, "factor_contrasts"))
+  expect_equal(attr(mixed$mu_a__xXx__b, "factor_design"), attr(interaction_prior, "factor_design"))
+  expect_equal(attr(mixed$mu_a__xXx__b, "factor_cell_names"), attr(interaction_prior, "factor_cell_names"))
+
+  transformed <- transform_factor_samples(mixed)$mu_a__xXx__b
+  expect_equal(
+    as.vector(transformed),
+    as.vector(posterior %*% t(attr(interaction_prior, "factor_design")))
+  )
 })
 
 
