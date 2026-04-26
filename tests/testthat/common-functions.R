@@ -218,6 +218,7 @@ test_weightfunction <- function(prior, skip_moments = FALSE) {
   set.seed(1)
   # tests rng and print function (for plot)
   samples <- rng(prior, 10000)
+  set.seed(1)
   densities <- density(prior, individual = TRUE)
 
   if (!all(names(prior$parameters) %in% c("steps", "alpha1", "alpha2"))) {

@@ -1043,12 +1043,13 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   # auto-detect transform_scaled from samples attribute
   transform_scaled <- isTRUE(attr(samples, "transform_scaled"))
 
-  # handle transform_scaled: check for pre-computed prior samples
-  prior_samples_transformed <- NULL
+  # handle transform_scaled: check for pre-computed prior densities
+  prior_densities_transformed <- NULL
+  prior_density_context <- attr(samples, "prior_density_context")
   if(transform_scaled && prior){
-    prior_samples_transformed <- attr(samples, "prior_samples")
-    if(is.null(prior_samples_transformed)){
-      stop("Samples were prepared with 'transform_scaled = TRUE' but no prior samples found. ",
+    prior_densities_transformed <- attr(samples, "prior_densities")
+    if(is.null(prior_densities_transformed)){
+      stop("Samples were prepared with 'transform_scaled = TRUE' but no prior densities found. ",
            "This should not happen - please report this as a bug.")
     }
   }
@@ -1345,11 +1346,11 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     # add priors, if requested
     if(prior){
 
-      # use transformed prior samples if available (from transform_scaled)
+      # use transformed prior densities if available (from transform_scaled)
       plot_data_prior <- NULL
-      if(transform_scaled && !is.null(prior_samples_transformed) && any(sapply(prior_list, is.prior.factor))){
-        plot_data_prior <- .plot_data_prior_factor_samples_transformed(
-          prior_samples_transformed = prior_samples_transformed,
+      if(transform_scaled && !is.null(prior_density_context) && any(sapply(prior_list, is.prior.factor))){
+        plot_data_prior <- .plot_data_prior_factor_density_transformed(
+          prior_density_context      = prior_density_context,
           samples                   = samples,
           parameter                 = parameter,
           prior_list                = prior_list,
@@ -1359,15 +1360,14 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
           transformation_arguments  = transformation_arguments,
           transformation_settings   = transformation_settings
         )
-      }else if(transform_scaled && !is.null(prior_samples_transformed) && parameter %in% colnames(prior_samples_transformed)){
-        plot_data_prior <- .plot_data_prior_samples_transformed(
-          prior_samples_transformed[, parameter],
-          prior_list = prior_list,
-          n_points = n_points,
-          x_range = xlim,
-          transformation = transformation,
-          transformation_arguments = transformation_arguments,
-          transformation_settings = transformation_settings
+      }else if(transform_scaled && !is.null(prior_densities_transformed) && parameter %in% names(prior_densities_transformed)){
+        plot_data_prior <- .prior_linear_density_to_plot_data(
+          prior_densities_transformed[[parameter]],
+          n_points                  = n_points,
+          x_range                   = xlim,
+          transformation            = transformation,
+          transformation_arguments  = transformation_arguments,
+          transformation_settings   = transformation_settings
         )
       }
 
@@ -1470,10 +1470,8 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   }
 }
 
-# Helper function to create factor plot data from transformed prior samples.
-# This is used when transform_scaled = TRUE and factor coefficients are stored
-# as indexed raw columns in the original-scale prior sample matrix.
-.plot_data_prior_factor_samples_transformed <- function(prior_samples_transformed, samples, parameter, prior_list, n_points, x_range = NULL,
+# Helper function to create factor plot data from transformed prior densities.
+.plot_data_prior_factor_density_transformed <- function(prior_density_context, samples, parameter, prior_list, n_points, x_range = NULL,
                                                         transformation = NULL, transformation_arguments = NULL,
                                                         transformation_settings = FALSE){
 
@@ -1481,173 +1479,37 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     return(NULL)
   }
 
-  sample_metadata <- samples[[parameter]]
-  factor_prior <- attr(sample_metadata, "prior_list")
-  if(is.prior.factor(factor_prior)){
-    factor_prior <- factor_prior
-  }else if(is.list(factor_prior)){
-    factor_priors <- factor_prior[sapply(factor_prior, is.prior.factor)]
-    if(length(factor_priors) == 0){
-      return(NULL)
-    }
-    factor_prior <- factor_priors[[1]]
-  }else{
-    return(NULL)
-  }
-
-  prior_columns <- .JAGS_prior_factor_names(parameter, factor_prior)
-  if(!all(prior_columns %in% colnames(prior_samples_transformed))){
-    return(NULL)
-  }
-
-  factor_samples <- prior_samples_transformed[, prior_columns, drop = FALSE]
-  colnames(factor_samples) <- prior_columns
-
-  sample_attributes <- attributes(sample_metadata)
-  sample_attributes <- sample_attributes[!names(sample_attributes) %in% c("dim", "dimnames", "names", "class")]
-  attributes(factor_samples) <- c(attributes(factor_samples), sample_attributes)
-  attr(factor_samples, "prior_list") <- factor_prior
-  attr(factor_samples, "models_ind") <- rep(1, nrow(factor_samples))
-  attr(factor_samples, "sample_ind") <- FALSE
-  class(factor_samples) <- unique(c(class(sample_metadata), "mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector", class(factor_samples)))
-
-  transformed_samples <- setNames(list(factor_samples), parameter)
-  class(transformed_samples) <- c("mixed_posteriors", "as_mixed_posteriors")
-
-  if(isTRUE(attr(factor_samples, "orthonormal")) || isTRUE(attr(factor_samples, "meandif"))){
-    factor_samples <- transform_factor_samples(transformed_samples)[[parameter]]
-  }else if(isTRUE(attr(factor_samples, "treatment")) || isTRUE(attr(factor_samples, "independent"))){
-    factor_samples <- .rename_factor_levels(factor_samples, setNames(list(factor_prior), parameter))
-  }
+  factor_weights <- .prior_factor_level_weight_matrix(
+    sample_metadata = samples[[parameter]],
+    parameter       = parameter,
+    samples         = samples
+  )
 
   plot_data <- list()
-  for(level_i in seq_len(ncol(factor_samples))){
-    level_plot_data <- .plot_data_prior_samples_transformed(
-      factor_samples[, level_i],
-      prior_list = prior_list,
-      n_points = n_points,
-      x_range = x_range,
-      transformation = transformation,
-      transformation_arguments = transformation_arguments,
-      transformation_settings = transformation_settings
+  for(level_i in seq_len(nrow(factor_weights))){
+    weights <- rep(0, length(prior_density_context$column_names))
+    names(weights) <- prior_density_context$column_names
+    weights[colnames(factor_weights)] <- factor_weights[level_i, ]
+
+    level_density <- .prior_density_from_context(prior_density_context, weights)
+    level_plot_data <- .prior_linear_density_to_plot_data(
+      level_density,
+      n_points                  = n_points,
+      x_range                   = x_range,
+      transformation            = transformation,
+      transformation_arguments  = transformation_arguments,
+      transformation_settings   = transformation_settings,
+      factor                    = TRUE,
+      level                     = level_i,
+      level_name                = rownames(factor_weights)[level_i]
     )
 
     for(data_i in seq_along(level_plot_data)){
-      attr(level_plot_data[[data_i]], "level") <- level_i
-      attr(level_plot_data[[data_i]], "level_name") <- colnames(factor_samples)[level_i]
-      if(inherits(level_plot_data[[data_i]], "density.prior.simple")){
-        class(level_plot_data[[data_i]]) <- unique(c(class(level_plot_data[[data_i]]), "density.prior.factor"))
-      }
       plot_data[[paste0("level", level_i, "_", names(level_plot_data)[data_i])]] <- level_plot_data[[data_i]]
     }
   }
 
   return(plot_data)
-}
-
-# Helper function to create plot data from transformed prior samples
-# This is used when transform_scaled = TRUE to visualize priors on the original scale
-.plot_data_prior_samples_transformed <- function(prior_samples, prior_list, n_points, x_range = NULL,
-                                                   transformation = NULL, transformation_arguments = NULL,
-                                                   transformation_settings = FALSE){
-
-  x_points <- NULL
-  y_points <- NULL
-  samples_density <- NULL
-  x_den    <- NULL
-  y_den    <- NULL
-
-  prior_samples <- unname(prior_samples)
-
-  # Separate exact repeated values as point masses. This preserves spikes after
-  # scale transformations while keeping the remaining mass smooth.
-  repeated_values <- unique(prior_samples[duplicated(prior_samples)])
-  if(length(repeated_values) > 0){
-    repeated_values <- sort(repeated_values)
-    repeated_frequency <- vapply(repeated_values, function(value) {
-      sum(prior_samples == value)
-    }, numeric(1))
-
-    repeated_values <- repeated_values[repeated_frequency > 1]
-    repeated_frequency <- repeated_frequency[repeated_frequency > 1]
-
-    if(length(repeated_values) > 0){
-      x_points <- repeated_values
-      y_points <- repeated_frequency / length(prior_samples)
-      samples_density <- prior_samples[!prior_samples %in% repeated_values]
-    }
-  }
-
-  if(is.null(samples_density)){
-    samples_density <- prior_samples
-  }
-
-  # Handle the continuous part of the transformed samples as a density
-  if(length(samples_density) > 1){
-    args <- list(x = samples_density, n = n_points)
-
-    # Set range if provided
-    if(!is.null(x_range) && length(x_range) == 2){
-      args$from <- x_range[1]
-      args$to   <- x_range[2]
-    }
-
-    # Get the density estimate
-    density_estimate <- do.call(stats::density, args)
-    x_den <- density_estimate$x
-    y_den <- density_estimate$y * (length(samples_density) / length(prior_samples))
-
-    # Apply transformation if specified (for additional user transformations)
-    if(!is.null(transformation)){
-      x_den <- .density.prior_transformation_x(x_den, transformation, transformation_arguments)
-      y_den <- .density.prior_transformation_y(x_den, y_den, transformation, transformation_arguments)
-      samples_density <- .density.prior_transformation_x(samples_density, transformation, transformation_arguments)
-    }
-  }
-
-  if(!is.null(x_points) && !is.null(transformation)){
-    x_points <- .density.prior_transformation_x(x_points, transformation, transformation_arguments)
-  }
-
-  out <- list()
-
-  if(!is.null(y_den)){
-    out_den <- list(
-      call    = call("density", "transformed prior samples"),
-      bw      = NULL,
-      n       = n_points,
-      x       = x_den,
-      y       = y_den,
-      samples = samples_density
-    )
-
-    class(out_den) <- c("density", "density.prior", "density.prior.simple")
-    attr(out_den, "x_range") <- range(x_den)
-    attr(out_den, "y_range") <- c(0, max(y_den))
-
-    out[["density"]] <- out_den
-  }
-
-  if(!is.null(y_points)){
-    for(i in seq_along(y_points)){
-      temp_points <- list(
-        call    = call("density", paste0("point", i)),
-        bw      = NULL,
-        n       = n_points,
-        x       = x_points[i],
-        y       = y_points[i],
-        samples = prior_samples
-      )
-
-      class(temp_points) <- c("density", "density.prior", "density.prior.point")
-      attr(temp_points, "x_range") <- range(x_points)
-      attr(temp_points, "y_range") <- c(0, max(y_points[i]))
-
-      out[[paste0("points", i)]] <- temp_points
-    }
-  }
-
-  return(out)
 }
 
 .plot_data_samples.simple         <- function(samples, parameter, n_points, transformation, transformation_arguments, transformation_settings){
@@ -2714,7 +2576,7 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
   # add priors, if requested
   if(prior){
 
-    plot_data_prior <- lapply(plot_data, attr, which = "prior")
+    plot_data_prior <- unlist(lapply(plot_data, attr, which = "prior"), recursive = FALSE)
 
     # transplant common xlim and ylim
     plot_data_joined <- c(plot_data, plot_data_prior)
@@ -2780,16 +2642,17 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
   if(is.list(samples[[parameter]]) && length(samples[[parameter]]) > 1){
     posterior_samples <- do.call(cbind, samples[[parameter]])
     if(prior){
-      prior_samples <- do.call(cbind, lapply(samples[[parameter]], attr, which = "prior_samples"))
+      prior_densities <- lapply(samples[[parameter]], attr, which = "prior_density")
+      if(any(vapply(prior_densities, is.null, logical(1))))
+        stop("'samples' did not contain prior densities")
     }
   }else{
     posterior_samples  <- matrix(samples[[parameter]][[1]], ncol = 1)
     colnames(posterior_samples) <- names(samples[[parameter]])
     if(prior){
-      prior_samples <- matrix(attr(samples[[parameter]][[1]], "prior_samples"), ncol = 1)
-      if(is.null(prior_samples))
-        stop("'samples' did not contain prior samples")
-      colnames(prior_samples) <- names(samples[[parameter]])
+      prior_densities <- list(attr(samples[[parameter]][[1]], "prior_density"))
+      if(is.null(prior_densities[[1]]))
+        stop("'samples' did not contain prior densities")
     }
   }
 
@@ -2806,9 +2669,16 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
     attr(out_den, "level_name") <- colnames(posterior_samples)[i]
 
     if(prior){
-      out_den.prior <- .plot_data_marginal_samples.den(prior_samples[,i], n_points, transformation, transformation_arguments, transformation_settings)
-      attr(out_den.prior, "level")      <- i
-      attr(out_den.prior, "level_name") <- colnames(prior_samples)[i]
+      out_den.prior <- .prior_linear_density_to_plot_data(
+        prior_densities[[i]],
+        n_points                  = n_points,
+        transformation            = transformation,
+        transformation_arguments  = transformation_arguments,
+        transformation_settings   = transformation_settings,
+        factor                    = TRUE,
+        level                     = i,
+        level_name                = colnames(posterior_samples)[i]
+      )
 
       attr(out_den, "prior") <- out_den.prior
     }

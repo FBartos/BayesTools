@@ -14,8 +14,8 @@
 #' @param prior_samples whether marginal prior distributions should be generated
 #' \code{contrast = "orthonormal"}, and \code{contrast = "independent"} levels
 #' @param use_formula whether the parameter should be evaluated as a part of supplied formula
-#' @param n_samples number of samples to be drawn for the model-averaged
-#' prior distribution
+#' @param n_samples controls the numerical grid used for model-averaged
+#' prior densities
 #' @inheritParams density.prior
 #'
 #' @return \code{marginal_posterior} returns a named list of mixed marginal posterior
@@ -330,118 +330,77 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       # add priors
       if(prior_samples){
 
-        ### generate prior samples matrix in the same format as are the posterior samples
-        if(inherits(samples, "as_mixed_posteriors")){
-          prior_samples <- .as_mixed_priors(prior_list = prior_list, n_samples = n_samples, conditional = attr(samples, "conditional", exact = TRUE), conditional_rule = attr(samples, "conditional_rule"))
-        }else{
-          prior_samples <- .mix_priors(prior_list = prior_list, n_samples = n_samples)
+        if(sum(grepl(":", model_terms, fixed = TRUE)) > 5){
+          warning(
+            "Deterministic marginal prior densities with more than five interaction terms can be slow.",
+            call. = FALSE
+          )
         }
 
-        for(i in seq_along(prior_samples)){
-          # de-name factor levels
-          if(priors_info[[i]][["factor"]]){
-            if(priors_info[[i]][["levels"]] == 1){
-              colnames(prior_samples[[i]]) <- priors_info[[i]][["term"]]
-            }else{
-              colnames(prior_samples[[i]]) <- paste0(priors_info[[i]][["term"]], "[", 1:priors_info[[i]][["levels"]], "]")
-            }
-          }
+        prior_density_context <- attr(samples, "prior_density_context")
+        if(is.null(prior_density_context)){
+          prior_density_context <- .prior_density_build_context(
+            prior_list   = prior_list,
+            column_names = colnames(posterior_samples_matrix),
+            n_grid       = max(16L, n_samples)
+          )
         }
-        prior_samples_matrix <- do.call(cbind, prior_samples)
 
+        linear_weights <- matrix(
+          0,
+          nrow = nrow(data),
+          ncol = length(prior_density_context$column_names),
+          dimnames = list(NULL, prior_density_context$column_names)
+        )
 
-        # obtain prior_samples information
-        models_ind <- do.call(cbind, lapply(c(if(has_intercept) "intercept", model_terms), function(x) attr(prior_samples[[JAGS_parameter_names(x, formula_parameter = formula_parameter)]], "models_ind")))
-        sample_ind <- do.call(cbind, lapply(c(if(has_intercept) "intercept", model_terms), function(x) attr(prior_samples[[JAGS_parameter_names(x, formula_parameter = formula_parameter)]], "sample_ind")))
-        if(!inherits(samples, "as_mixed_posteriors") && (!all(models_ind[,1] == models_ind) || !all(sample_ind[,1] == sample_ind)))
-          stop("the prior prior_samples are not alligned across models/draws")
-        models_ind <- models_ind[,1]
-
-
-        ### evaluate the design matrix on the prior_samples -> output[data, prior]
         if(has_intercept){
-
           terms_indexes    <- attr(model_matrix, "assign") + 1
           terms_indexes[1] <- 0
-
-          # get model/sample indices and check for scaling factors
-          temp_multiply_by  <- .get_combined_parameter_scaling_factor_matrix(
-            JAGS_parameter_names("intercept", formula_parameter = formula_parameter),
-            prior_list  = prior_list,
-            posterior   = prior_samples_matrix,
-            models_ind  = models_ind,
-            nrow        = nrow(data),
-            simple_list = inherits(samples, "as_mixed_posteriors")
-          )
-
-          marginal_prior_samples <- temp_multiply_by * matrix(prior_samples_matrix[,JAGS_parameter_names("intercept", formula_parameter = formula_parameter)],
-                                                         nrow = nrow(data), ncol = nrow(prior_samples_matrix), byrow = TRUE)
-
+          intercept_name <- JAGS_parameter_names("intercept", formula_parameter = formula_parameter)
+          if(intercept_name %in% colnames(linear_weights)){
+            linear_weights[, intercept_name] <- 1
+          }
         }else{
-
-          terms_indexes     <- attr(model_matrix, "assign")
-          marginal_prior_samples <- matrix(0, nrow = nrow(data), ncol = nrow(prior_samples_matrix))
-
+          terms_indexes <- attr(model_matrix, "assign")
         }
 
-        # add remaining terms (omitting the intercept indexed as 0)
         for(i in unique(terms_indexes[terms_indexes > 0])){
-
-          # subset the model matrix
-          temp_data <- model_matrix[,terms_indexes == i,drop = FALSE]
-
-          temp_prior <- prior_samples_matrix[,paste0(
+          temp_data <- model_matrix[, terms_indexes == i, drop = FALSE]
+          temp_all_columns <- paste0(
             JAGS_model_terms[i],
-            if(model_terms_type[i] == "factor" && priors_info[[JAGS_model_terms[i]]][["levels"]] > 1) paste0("[", 1:priors_info[[JAGS_model_terms[i]]][["levels"]], "]"))
-            ,drop = FALSE]
-
-          # check for scaling factors
-          temp_multiply_by <- .get_combined_parameter_scaling_factor_matrix(
-            JAGS_model_terms[i],
-            prior_list   = prior_list,
-            posterior    = prior_samples_matrix,
-            models_ind   = models_ind,
-            nrow         = nrow(data),
-            simple_list  = inherits(samples, "as_mixed_posteriors")
+            if(model_terms_type[i] == "factor" && priors_info[[JAGS_model_terms[i]]][["levels"]] > 1) paste0("[", 1:priors_info[[JAGS_model_terms[i]]][["levels"]], "]")
           )
+          temp_columns_keep <- temp_all_columns %in% colnames(linear_weights)
+          temp_columns <- temp_all_columns[temp_columns_keep]
+          temp_data <- temp_data[, temp_columns_keep, drop = FALSE]
+          if(length(temp_columns) == 0)
+            next
 
-          marginal_prior_samples <- marginal_prior_samples + temp_multiply_by * (temp_data %*% t(temp_prior))
-
+          linear_weights[, temp_columns] <- linear_weights[, temp_columns, drop = FALSE] + temp_data[, seq_along(temp_columns), drop = FALSE]
         }
 
-        # apply transformations
-        if(!is.null(transformation)){
-          marginal_prior_samples <- .density.prior_transformation_x(marginal_prior_samples, transformation, transformation_arguments)
-        }
-
-
-        ### split the output into lists based on specification
         if(length(at_manipulated) == 1 && format_parameter_names(at_manipulated, formula_parameters = formula_parameter, formula_prefix = FALSE) == "intercept"){
 
-          class(marginal_prior_samples)                   <- c(class(marginal_prior_samples), "marginal_posterior.simple")
-          attr(marginal_prior_samples, "parameter")       <- parameter
-          attr(marginal_prior_samples, "level")           <- "intercept"
-          attr(marginal_prior_samples, "data")            <- data
-          attr(marginal_prior_samples, "all_alternative") <- attr(prior_samples, "all_alternative")
-
-          attr(marginal_posterior_samples[["intercept"]], "prior_samples") <- marginal_prior_samples
+          prior_weights <- colMeans(linear_weights)
+          prior_density <- .prior_density_from_context(
+            prior_density_context,
+            prior_weights,
+            output_transformation           = transformation,
+            output_transformation_arguments = transformation_arguments
+          )
+          attr(marginal_posterior_samples[["intercept"]], "prior_density") <- prior_density
 
         }else{
 
-          marginal_prior_samples <- lapply(seq_along(data_split), function(lvl){
-            temp_marginal_prior_samples <- marginal_prior_samples[data_split[[lvl]],]
-            temp_data                       <- data[data_split[[lvl]],]
-            class(temp_marginal_prior_samples)                   <- c(class(temp_marginal_prior_samples), "marginal_posterior.simple")
-            attr(temp_marginal_prior_samples, "parameter")       <- parameter
-            attr(temp_marginal_prior_samples, "level")           <- level_names[lvl]
-            attr(temp_marginal_prior_samples, "data")            <- temp_data
-            attr(temp_marginal_prior_samples, "all_alternative") <- attr(prior_samples, "all_alternative")
-            return(temp_marginal_prior_samples)
-          })
-          names(marginal_prior_samples) <- level_names
-
-          for(lvl in level_names){
-            attr(marginal_posterior_samples[[lvl]], "prior_samples") <- marginal_prior_samples[[lvl]]
+          for(lvl in seq_along(level_names)){
+            prior_weights <- colMeans(linear_weights[data_split[[lvl]], , drop = FALSE])
+            prior_density <- .prior_density_from_context(
+              prior_density_context,
+              prior_weights,
+              output_transformation           = transformation,
+              output_transformation_arguments = transformation_arguments
+            )
+            attr(marginal_posterior_samples[[level_names[lvl]]], "prior_density") <- prior_density
           }
         }
 
@@ -494,68 +453,73 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
     }else if(inherits(samples[[parameter]], "mixed_posteriors.simple")){
 
+      marginal_posterior_samples <- samples[[parameter]]
+
       # apply transformations
       if(!is.null(transformation)){
         marginal_posterior_samples <- .density.prior_transformation_x(marginal_posterior_samples, transformation, transformation_arguments)
       }
 
-      marginal_posterior_samples <- samples[[parameter]]
       class(marginal_posterior_samples) <- c(class(marginal_posterior_samples), "marginal_posterior.simple")
 
     }
 
 
-    # add prior samples
+    # add prior densities
     if(prior_samples){
 
-      if(inherits(samples, "as_mixed_posteriors")){
-        prior_samples <- .as_mixed_priors(prior_list = prior_list, n_samples = n_samples, conditional = attr(samples, "conditional", exact = TRUE), conditional_rule = attr(samples, "conditional_rule"))
-      }else{
-        prior_samples <- .mix_priors(prior_list = prior_list, n_samples = n_samples)
+      prior_density_context <- attr(samples, "prior_density_context")
+      if(is.null(prior_density_context)){
+        context_columns <- unique(unlist(lapply(names(prior_list), function(parameter_name){
+          parameter_prior <- prior_list[[parameter_name]]
+          if(is.prior(parameter_prior)){
+            .prior_linear_prior_columns(parameter_name, parameter_prior)
+          }else{
+            .prior_linear_prior_columns(parameter_name, parameter_prior[[1]])
+          }
+        }), use.names = FALSE))
+        prior_density_context <- .prior_density_build_context(
+          prior_list   = prior_list,
+          column_names = context_columns,
+          n_grid       = max(16L, n_samples)
+        )
       }
-      marginal_prior_samples <- prior_samples[[parameter]]
 
-      # transform if factors
-      ### extract the corresponding samples
-      if(inherits(prior_samples[[parameter]], "mixed_posteriors.factor")){
+      if(inherits(samples[[parameter]], "mixed_posteriors.factor")){
 
-        # transform factor levels
-        marginal_prior_samples <- transform_factor_samples(prior_samples)
-        marginal_prior_samples <- transform_treatment_samples(marginal_prior_samples)[[parameter]]
+        factor_weights <- .prior_factor_level_weight_matrix(
+          sample_metadata = samples[[parameter]],
+          parameter       = parameter,
+          samples         = samples
+        )
 
-        # apply transformations
-        if(!is.null(transformation)){
-          marginal_prior_samples <- .density.prior_transformation_x(marginal_prior_samples, transformation, transformation_arguments)
+        for(lvl_i in seq_along(level_names)){
+          weights <- rep(0, length(prior_density_context$column_names))
+          names(weights) <- prior_density_context$column_names
+          weights[colnames(factor_weights)] <- factor_weights[lvl_i, ]
+
+          prior_density <- .prior_density_from_context(
+            prior_density_context,
+            weights,
+            output_transformation           = transformation,
+            output_transformation_arguments = transformation_arguments
+          )
+          attr(marginal_posterior_samples[[level_names[lvl_i]]], "prior_density") <- prior_density
         }
 
-        # create output object
-        marginal_prior_samples <- lapply(seq_along(level_names), function(lvl_i){
-          temp_marginal_prior_samples <- marginal_prior_samples[,lvl_i]
-          class(temp_marginal_prior_samples) <- c(class(temp_marginal_prior_samples), "marginal_posterior.factor")
-          attr(temp_marginal_prior_samples, "parameter")  <- parameter
-          attr(temp_marginal_prior_samples, "level_name") <- level_names[lvl_i]
-          return(temp_marginal_prior_samples)
-        })
-        names(marginal_prior_samples) <- level_names
-        class(marginal_prior_samples) <- c(class(marginal_prior_samples), "marginal_posterior.factor")
+      }else if(inherits(samples[[parameter]], "mixed_posteriors.simple")){
 
-        for(lvl in level_names){
-          attr(marginal_posterior_samples[[lvl]], "prior_samples") <- marginal_prior_samples[[lvl]]
-        }
+        weights <- rep(0, length(prior_density_context$column_names))
+        names(weights) <- prior_density_context$column_names
+        weights[[parameter]] <- 1
 
-
-      }else if(inherits(prior_samples[[parameter]], "mixed_posteriors.simple")){
-
-        marginal_prior_samples <- prior_samples[[parameter]]
-
-        # apply transformations
-        if(!is.null(transformation)){
-          marginal_prior_samples <- .density.prior_transformation_x(marginal_prior_samples, transformation, transformation_arguments)
-        }
-
-        class(marginal_prior_samples) <- c(class(marginal_prior_samples), "marginal_posterior.simple")
-        attr(marginal_posterior_samples, "prior_samples") <- marginal_prior_samples
-
+        prior_density <- .prior_density_from_context(
+          prior_density_context,
+          weights,
+          output_transformation           = transformation,
+          output_transformation_arguments = transformation_arguments
+        )
+        attr(marginal_posterior_samples, "prior_density") <- prior_density
       }
 
     }
@@ -1494,24 +1458,26 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
 
 .Savage_Dickey_BF.fun    <- function(posterior, null_hypothesis, normal_approximation, silent){
 
-  if(is.null(attr(posterior, "prior_samples")))
-    stop("there are no prior samples for the posterior distribution", call. = FALSE)
+  if(is.null(attr(posterior, "prior_density")))
+    stop("there are no prior densities for the posterior distribution", call. = FALSE)
 
-  if (!is.null(attr(attr(posterior, "prior_samples"),"all_alternative")) && attr(attr(posterior, "prior_samples"),"all_alternative"))
-    return(NA) # all prior samples come from alternative distributions --- there is no hypothesis to test
-
-  prior <- attr(posterior, "prior_samples")
+  prior <- attr(posterior, "prior_density")
 
   warnings <- NULL
 
   if(mean(posterior == null_hypothesis) > 0.05){
     warnings <- c(warnings, "There is a considerable cluster of posterior samples at the exact null hypothesis values. The Savage-Dickey density ratio is likely to be invalid.")
   }
-  if(mean(prior == null_hypothesis) > 0.05){
-    warnings <- c(warnings, "There is a considerable cluster of prior samples at the exact null hypothesis values. The Savage-Dickey density ratio is likely to be invalid.")
+  if(.prior_linear_density_point_mass(prior, null_hypothesis) > 0.05){
+    warnings <- c(warnings, "There is a considerable point mass in the prior at the exact null hypothesis value. The Savage-Dickey density ratio is likely to be invalid.")
   }
-  if(null_hypothesis < min(prior) || null_hypothesis > max(prior)){
-    warnings <- c(warnings, "Prior samples do not span both sides of the null hypothesis. Check whether the prior distribution contain the null hypothesis in the first place. The Savage-Dickey density ratio is likely to be invalid.")
+
+  prior_range <- range(c(
+    if(!is.null(prior$density)) prior$density$x else NULL,
+    if(!is.null(prior$points) && nrow(prior$points) > 0) prior$points$x else NULL
+  ))
+  if(null_hypothesis < prior_range[1] || null_hypothesis > prior_range[2]){
+    warnings <- c(warnings, "Prior density does not span both sides of the null hypothesis. Check whether the prior distribution contains the null hypothesis in the first place. The Savage-Dickey density ratio is likely to be invalid.")
   }
   if(null_hypothesis < min(posterior) || null_hypothesis > max(posterior)){
     warnings <- c(warnings, "Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.")
@@ -1523,11 +1489,10 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
 
   if(normal_approximation){
     posterior_height <- .Savage_Dickey_BF.normal(posterior, null_hypothesis)
-    prior_height     <- .Savage_Dickey_BF.normal(prior, null_hypothesis)
   }else{
     posterior_height <- .Savage_Dickey_BF.kd(posterior, null_hypothesis)
-    prior_height     <- .Savage_Dickey_BF.kd(prior, null_hypothesis)
   }
+  prior_height <- .prior_linear_density_height(prior, null_hypothesis)
 
   BF <- exp(log(prior_height) - log(posterior_height))
 

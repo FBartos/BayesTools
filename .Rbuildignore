@@ -16,3 +16,4 @@
 ^\.vscode$
 ^\.positai$
 ^\.claude$
+^dev$

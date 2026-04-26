@@ -706,12 +706,12 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 #' suitable for prior and posterior plots. Only available when conditioning on a
 #' single parameter.
 #' @param transform_scaled whether to transform samples from standardized (scaled) to
-#' original (unscaled) scale. When \code{TRUE}, both posterior and prior samples are
+#' original (unscaled) scale. When \code{TRUE}, posterior samples are
 #' transformed, and the result can be directly passed to [plot_posterior] which will
-#' automatically detect the transformation and use the transformed prior samples.
+#' automatically detect the transformation and use transformed deterministic prior densities.
 #' Requires a model fitted with \code{formula_scale_list}. Defaults to \code{FALSE}.
-#' @param n_prior_samples number of prior samples to generate when
-#' \code{transform_scaled = TRUE}. Defaults to 10000.
+#' @param n_prior_samples controls the numerical grid used for transformed
+#' prior densities when \code{transform_scaled = TRUE}. Defaults to 10000.
 #' @inheritParams ensemble_inference
 #'
 #' @return \code{as_mix_posteriors} returns a named list of mixed posterior
@@ -924,16 +924,23 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     attr(out, "formula_scale") <- formula_scale
   }
 
-  # generate and store transformed prior samples if requested
+  # generate and store transformed prior densities if requested
   if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
-    prior_samples <- .generate_transformed_prior_samples(
+    prior_densities <- .generate_transformed_prior_densities(
       prior_list    = priors,
       column_names  = colnames(model_samples),
-      n_samples     = n_prior_samples,
+      n_grid        = n_prior_samples,
       formula_scale = formula_scale
     )
-    attr(out, "prior_samples") <- prior_samples
-    attr(out, "transform_scaled") <- TRUE
+    attr(out, "prior_densities")       <- prior_densities
+    attr(out, "prior_density_context") <- attr(prior_densities, "context")
+    attr(out, "transform_scaled")      <- TRUE
+  }else{
+    attr(out, "prior_density_context") <- .prior_density_context(
+      prior_list   = priors,
+      column_names = colnames(model_samples),
+      n_grid       = n_prior_samples
+    )
   }
 
   class(out) <- c(class(out), "as_mixed_posteriors", "mixed_posteriors")
