@@ -107,14 +107,14 @@ test_that("plot_prior_list rejects prior_list_mu when not needed", {
   list(samples = samples, prior_list = prior_list)
 }
 
-test_that("transformed factor prior plot data uses indexed prior sample columns", {
+test_that("transformed factor prior plot data uses indexed prior density columns", {
 
   fixture <- .scaled_multi_factor_interaction_samples()
   samples <- fixture$samples
   prior_list <- fixture$prior_list
 
-  plot_data <- BayesTools:::.plot_data_prior_factor_samples_transformed(
-    prior_samples_transformed = attr(samples, "prior_samples"),
+  plot_data <- BayesTools:::.plot_data_prior_factor_density_transformed(
+    prior_density_context = attr(samples, "prior_density_context"),
     samples = samples,
     parameter = "mu_x__xXx__a__xXx__b",
     prior_list = attr(samples$mu_x__xXx__a__xXx__b, "prior_list"),

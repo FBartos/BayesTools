@@ -47,7 +47,10 @@ test_that("Prior plot (simple) function works", {
   vdiffr::expect_doppelganger("priors-plot-3-2", function()plot(p2, xlim = c(0, 3)))
   vdiffr::expect_doppelganger("priors-plot-3-3", function()plot(p2, x_seq = seq(-1, 2, .01)))
   vdiffr::expect_doppelganger("priors-plot-3-4", function()plot(p2, x_range_quant = .10))
-  vdiffr::expect_doppelganger("priors-plot-3-5", function()plot(p2, force_samples = TRUE, xlim = c(0, 10)))
+  vdiffr::expect_doppelganger("priors-plot-3-5", function(){
+    set.seed(1)
+    plot(p2, force_samples = TRUE, xlim = c(0, 10))
+  })
 
   # check transformations
   vdiffr::expect_doppelganger("priors-plot-4-1", function()plot(p1, transformation = "tanh", main = "tanh(x)"))
@@ -126,19 +129,36 @@ test_that("Prior plot (weightfunction) function works", {
   p9  <- prior_weightfunction("two.sided", list(c(0.05), c(1, 1)))
   p10 <- prior_weightfunction("one.sided.fixed", list(c(0.10), c(1, .7)))
 
-  vdiffr::expect_doppelganger("priors-plot-8-1", function()plot(p7))
-  vdiffr::expect_doppelganger("priors-plot-8-2", function()plot(p8))
-  vdiffr::expect_doppelganger("priors-plot-8-3", function()plot(p9))
+  vdiffr::expect_doppelganger("priors-plot-8-1", function(){
+    set.seed(1)
+    plot(p7)
+  })
+  vdiffr::expect_doppelganger("priors-plot-8-2", function(){
+    set.seed(1)
+    plot(p8)
+  })
+  vdiffr::expect_doppelganger("priors-plot-8-3", function(){
+    set.seed(1)
+    plot(p9)
+  })
   vdiffr::expect_doppelganger("priors-plot-8-4", function()plot(p10))
+  set.seed(1)
   vdiffr::expect_doppelganger("priors-plot-8-5", plot(p7, plot_type = "ggplot"))
-  vdiffr::expect_doppelganger("priors-plot-8-6", function()plot(p7, individual =  T))
+  vdiffr::expect_doppelganger("priors-plot-8-6", function(){
+    set.seed(1)
+    plot(p7, individual =  T)
+  })
   vdiffr::expect_doppelganger("priors-plot-8-7", function(){
+    set.seed(1)
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 2))
     plot(p7, individual =  T, show_figures = NULL)
   })
-  vdiffr::expect_doppelganger("priors-plot-8-8", function()plot(p7, rescale_x = TRUE))
+  vdiffr::expect_doppelganger("priors-plot-8-8", function(){
+    set.seed(1)
+    plot(p7, rescale_x = TRUE)
+  })
 })
 
 test_that("Prior plot (PET-PEESE) function works", {

@@ -631,7 +631,8 @@ test_that("transform_scaled is auto-detected from samples attribute", {
   # Verify the attribute is set
 
   expect_true(isTRUE(attr(samples_scaled, "transform_scaled")))
-  expect_false(is.null(attr(samples_scaled, "prior_samples")))
+  expect_false(is.null(attr(samples_scaled, "prior_densities")))
+  expect_null(attr(samples_scaled, "prior_samples"))
 
   # Extract without transform_scaled
   samples_unscaled <- as_mixed_posteriors(fit, parameters = "mu_intercept", transform_scaled = FALSE)
@@ -641,10 +642,9 @@ test_that("transform_scaled is auto-detected from samples attribute", {
 })
 
 
-test_that("transform_scaled helper preserves transformed point masses", {
-  plot_data <- BayesTools:::.plot_data_prior_samples_transformed(
-    prior_samples = rep(0, 1000),
-    prior_list = list(prior("spike", list(0))),
+test_that("linear prior density helper preserves transformed point masses", {
+  plot_data <- BayesTools:::.prior_linear_density_to_plot_data(
+    BayesTools:::.prior_linear_density_point(0),
     n_points = 128
   )
 
@@ -655,12 +655,19 @@ test_that("transform_scaled helper preserves transformed point masses", {
 })
 
 test_that("transform_scaled helper preserves total mass for mixed point-continuous priors", {
-  set.seed(125)
-
-  prior_samples <- c(rep(0, 2000), rnorm(8000, mean = 1, sd = 0.25))
-  plot_data <- BayesTools:::.plot_data_prior_samples_transformed(
-    prior_samples = prior_samples,
-    prior_list = list(prior("spike", list(0)), prior("normal", list(1, 0.25))),
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(x = prior_mixture(
+      list(
+        prior("spike", list(0), prior_weights = 1),
+        prior("normal", list(1, 0.25), prior_weights = 4)
+      ),
+      is_null = c(TRUE, FALSE)
+    )),
+    weights = c(x = 1),
+    n_grid = 512
+  )
+  plot_data <- BayesTools:::.prior_linear_density_to_plot_data(
+    prior_density,
     n_points = 512
   )
 
@@ -675,12 +682,19 @@ test_that("transform_scaled helper preserves total mass for mixed point-continuo
 })
 
 test_that("transform_scaled helper preserves total mass under user transformations", {
-  set.seed(126)
-
-  prior_samples <- c(rep(0, 1500), rnorm(8500, mean = 1.5, sd = 0.4))
-  plot_data <- BayesTools:::.plot_data_prior_samples_transformed(
-    prior_samples = prior_samples,
-    prior_list = list(prior("spike", list(0)), prior("normal", list(1.5, 0.4))),
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(x = prior_mixture(
+      list(
+        prior("spike", list(0), prior_weights = 3),
+        prior("normal", list(1.5, 0.4), prior_weights = 17)
+      ),
+      is_null = c(TRUE, FALSE)
+    )),
+    weights = c(x = 1),
+    n_grid = 512
+  )
+  plot_data <- BayesTools:::.prior_linear_density_to_plot_data(
+    prior_density,
     n_points = 512,
     transformation = "lin",
     transformation_arguments = list(a = 2, b = 0.5)
@@ -694,7 +708,7 @@ test_that("transform_scaled helper preserves total mass under user transformatio
   expect_equal(.integrate_density_mass(density_data$x, density_data$y) + point_mass, 1, tolerance = 0.03)
 })
 
-test_that("plot_posterior errors when transformed prior samples are missing", {
+test_that("plot_posterior errors when transformed prior densities are missing", {
   sample_entry <- structure(
     rnorm(64),
     class = c("mixed_posteriors.formula", "mixed_posteriors.simple", "mixed_posteriors"),
@@ -709,7 +723,7 @@ test_that("plot_posterior errors when transformed prior samples are missing", {
 
   expect_error(
     plot_posterior(samples, "mu_x1", prior = TRUE, plot_type = "ggplot"),
-    "no prior samples found"
+    "no prior densities found"
   )
 })
 
@@ -743,7 +757,10 @@ test_that("transform_scaled visual: spike prior remains atomic", {
     n_prior_samples = 20000
   )
 
-  expect_true(all(attr(samples_scaled, "prior_samples")[, "mu_x1"] == 0))
+  expect_equal(
+    BayesTools:::.prior_linear_density_point_mass(attr(samples_scaled, "prior_densities")$mu_x1, 0),
+    1
+  )
 
   vdiffr::expect_doppelganger("transform-scaled-spike-only-prior", function() {
     plot_posterior(
@@ -802,8 +819,14 @@ test_that("transform_scaled visual: conditional mixture prior removes spike", {
     n_prior_samples = 20000
   )
 
-  expect_true(any(attr(samples_unconditional, "prior_samples")[, "mu_x1"] == 0))
-  expect_false(any(attr(samples_conditional, "prior_samples")[, "mu_x1"] == 0))
+  expect_gt(
+    BayesTools:::.prior_linear_density_point_mass(attr(samples_unconditional, "prior_densities")$mu_x1, 0),
+    0
+  )
+  expect_equal(
+    BayesTools:::.prior_linear_density_point_mass(attr(samples_conditional, "prior_densities")$mu_x1, 0),
+    0
+  )
 
   vdiffr::expect_doppelganger("transform-scaled-conditional-mixture-prior", function() {
     oldpar <- graphics::par(no.readonly = TRUE)

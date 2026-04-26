@@ -955,8 +955,6 @@ test_that("as_mixed_posteriors transform_scaled matches direct posterior and pri
     transform_scaled = TRUE,
     n_prior_samples = 512
   )
-  prior_expected <- transform_prior_samples(fit_auto, n_samples = 512, seed = 123)
-
   expect_true(isTRUE(attr(samples_scaled, "transform_scaled")))
   expect_s3_class(samples_scaled$mu_intercept, "mixed_posteriors.formula")
   expect_equal(as.numeric(samples_scaled$mu_intercept), as.numeric(posterior_expected[, "mu_intercept"]), tolerance = 1e-10)
@@ -967,11 +965,20 @@ test_that("as_mixed_posteriors transform_scaled matches direct posterior and pri
     as.numeric(posterior_expected[, "mu_x_cont1__xXx__x_cont2"]),
     tolerance = 1e-10
   )
-  expect_equal(
-    attr(samples_scaled, "prior_samples")[, parameters, drop = FALSE],
-    prior_expected[, parameters, drop = FALSE],
-    tolerance = 1e-10
-  )
+  prior_densities <- attr(samples_scaled, "prior_densities")
+  expect_s3_class(prior_densities, "prior_density_list")
+  expect_true(all(parameters %in% names(prior_densities)))
+  expect_null(attr(samples_scaled, "prior_samples"))
+
+  for(parameter in parameters){
+    expect_s3_class(prior_densities[[parameter]], "prior_linear_density")
+    expect_equal(
+      prior_densities[[parameter]]$density$mass +
+        if(!is.null(prior_densities[[parameter]]$points)) sum(prior_densities[[parameter]]$points$p) else 0,
+      1,
+      tolerance = 1e-8
+    )
+  }
 })
 
 test_that("ensemble_estimates_table transform_scaled works on mixed posterior samples", {

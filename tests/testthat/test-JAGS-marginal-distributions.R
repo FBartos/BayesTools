@@ -27,6 +27,45 @@ REFERENCE_DIR <<- testthat::test_path("..", "results", "JAGS-marginal-distributi
 # Load common test helpers
 source(testthat::test_path("common-functions.R"))
 
+.plot_prior_density_for_test <- function(x, main = "", xlim = NULL, ylim = NULL, add = FALSE,
+                                         lty = 1, col = graphics::par("fg"), ...){
+  prior_density <- attr(x, "prior_density")
+  if(is.null(prior_density)){
+    stop("The object does not contain a deterministic prior density.", call. = FALSE)
+  }
+  plot_data <- BayesTools:::.prior_linear_density_to_plot_data(
+    prior_density,
+    n_points = 512,
+    x_range  = xlim
+  )
+
+  if(length(plot_data) == 0){
+    if(is.null(xlim)) xlim <- c(-1, 1)
+    if(is.null(ylim)) ylim <- c(0, 1)
+  }else{
+    if(is.null(xlim)){
+      xlim <- range(unlist(lapply(plot_data, function(d) attr(d, "x_range"))), finite = TRUE)
+      if(!all(is.finite(xlim)) || diff(xlim) <= 0) xlim <- xlim + c(-1, 1)
+    }
+    if(is.null(ylim)){
+      y_max <- max(unlist(lapply(plot_data, function(d) attr(d, "y_range")[2])), na.rm = TRUE)
+      ylim <- c(0, if(is.finite(y_max) && y_max > 0) y_max else 1)
+    }
+  }
+
+  if(!add){
+    graphics::plot(NA, xlim = xlim, ylim = ylim, main = main, xlab = "", ylab = "Density", ...)
+  }
+  for(d in plot_data){
+    if(inherits(d, "density.prior.point")){
+      BayesTools:::.lines.prior.point(d, scale_y2 = 1, lty = lty, col = col)
+    }else{
+      graphics::lines(d$x, d$y, lty = lty, col = col)
+    }
+  }
+  invisible(plot_data)
+}
+
 test_that("marginal_posterior handles direct multi-factor transformed interactions", {
 
   df <- expand.grid(
@@ -85,7 +124,7 @@ test_that("marginal_posterior handles direct multi-factor transformed interactio
 
   expect_equal(names(marginal_with_prior), attr(interaction_prior, "factor_cell_names"))
   expect_true(all(vapply(marginal_with_prior, function(x) {
-    !is.null(attr(x, "prior_samples")) && length(attr(x, "prior_samples")) == 32
+    inherits(attr(x, "prior_density"), "prior_linear_density")
   }, logical(1))))
 })
 
@@ -128,7 +167,7 @@ test_that("marginal_posterior handles as_mixed_posteriors multi-factor interacti
   expect_equal(as.numeric(marginal[[1]]), as.numeric(expected[, 1]))
   expect_equal(as.numeric(marginal[[6]]), as.numeric(expected[, 6]))
   expect_true(all(vapply(marginal, function(x) {
-    !is.null(attr(x, "prior_samples")) && length(attr(x, "prior_samples")) == 32
+    inherits(attr(x, "prior_density"), "prior_linear_density")
   }, logical(1))))
 })
 
@@ -181,7 +220,7 @@ test_that("Marginal distribution prior and posterior functions work", {
   marglik0 <- readRDS(file.path(temp_marglik_dir, "fit_marginal_0.RDS"))
   marglik1 <- readRDS(file.path(temp_marglik_dir, "fit_marginal_1.RDS"))
 
-  # Define prior lists (needed for manual mixing validation and prior_samples)
+  # Define prior lists (needed for manual mixing validation and prior densities)
   prior_list_0 <- list(
     "intercept"        = prior("normal", list(0, 1)),
     "x_cont1"          = prior("normal", list(0, 1)),
@@ -344,7 +383,7 @@ test_that("Marginal distribution prior and posterior functions work", {
   })
 
   vdiffr::expect_doppelganger("marginal-simple-con-p", function(){
-    hist(attr(marg_post_sigma, "prior_samples"), freq = FALSE, main = "marginal prior sigma", breaks = 20)
+    .plot_prior_density_for_test(marg_post_sigma, main = "marginal prior sigma")
     lines(density(prior_list$sigma))
   })
 
@@ -375,9 +414,9 @@ test_that("Marginal distribution prior and posterior functions work", {
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
 
     par(mfrow = c(1, 2))
-    hist(attr(marg_post_simple_x_fac2t[["A"]], "prior_samples"), freq = FALSE, main = "marg_post_x_fac2t = A", breaks = 20)
+    .plot_prior_density_for_test(marg_post_simple_x_fac2t[["A"]], main = "marg_post_x_fac2t = A")
 
-    hist(attr(marg_post_simple_x_fac2t[["B"]], "prior_samples"), freq = FALSE, main = "marg_post_x_fac2t = B", breaks = 20)
+    .plot_prior_density_for_test(marg_post_simple_x_fac2t[["B"]], main = "marg_post_x_fac2t = B")
     curve(dnorm(x, 0, 1)/2, add = T)
 
   })
@@ -396,7 +435,7 @@ test_that("Marginal distribution prior and posterior functions work", {
   })
 
   vdiffr::expect_doppelganger("marginal-form-int-p", function(){
-    hist(attr(marg_post_int[["intercept"]], "prior_samples"), freq = FALSE, main = "marginal prior intercept")
+    .plot_prior_density_for_test(marg_post_int[["intercept"]], main = "marginal prior intercept")
     lines(prior_list_0$intercept)
   })
 
@@ -434,9 +473,9 @@ test_that("Marginal distribution prior and posterior functions work", {
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
 
     par(mfrow = c(1, 3))
-    hist(attr(marg_post_x_cont1[["-1SD"]], "prior_samples"), freq = FALSE, main = "marginal prior x_cont1\n(-1)", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
-    hist(attr(marg_post_x_cont1[["0SD"]], "prior_samples"),  freq = FALSE, main = "marginal prior x_cont1\n(0)",  breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
-    hist(attr(marg_post_x_cont1[["1SD"]], "prior_samples"),  freq = FALSE, main = "marginal prior x_cont1\n(1)",  breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
+    .plot_prior_density_for_test(marg_post_x_cont1[["-1SD"]], main = "marginal prior x_cont1\n(-1)", xlim = c(-10, 10))
+    .plot_prior_density_for_test(marg_post_x_cont1[["0SD"]],  main = "marginal prior x_cont1\n(0)",  xlim = c(-10, 10))
+    .plot_prior_density_for_test(marg_post_x_cont1[["1SD"]],  main = "marginal prior x_cont1\n(1)",  xlim = c(-10, 10))
 
   })
 
@@ -468,9 +507,9 @@ test_that("Marginal distribution prior and posterior functions work", {
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
 
     par(mfrow = c(1, 2))
-    hist(attr(marg_post_x_fac2t[["A"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac2t = A", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_fac2t[["A"]], main = "marginal prior x_fac2t = A", xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x), add = TRUE)
-    hist(attr(marg_post_x_fac2t[["B"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac2t = B",  breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_fac2t[["B"]], main = "marginal prior x_fac2t = B",  xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x, 0, (sqrt(1^2 + 0^2) + sqrt(1^2 + 1^2)) / 2), add = TRUE)
   })
 
@@ -507,11 +546,11 @@ test_that("Marginal distribution prior and posterior functions work", {
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
 
     par(mfrow = c(1, 3))
-    hist(attr(marg_post_x_fac3md[["A"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac3md = A", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_fac3md[["A"]], main = "marginal prior x_fac3md = A", xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x, 0, (sqrt(1^2 + 0^2) + sqrt(1^2 + 0.25^2)) / 2), add = TRUE)
-    hist(attr(marg_post_x_fac3md[["B"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_fac3md[["B"]], main = "marginal prior x_fac3md = B", xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x, 0, (sqrt(1^2 + 0^2) + sqrt(1^2 + 0.25^2)) / 2), add = TRUE)
-    hist(attr(marg_post_x_fac3md[["C"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac3md = C", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_fac3md[["C"]], main = "marginal prior x_fac3md = C", xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x, 0, (sqrt(1^2 + 0^2) + sqrt(1^2 + 0.25^2)) / 2), add = TRUE)
   })
 
@@ -574,31 +613,31 @@ test_that("Marginal distribution prior and posterior functions work", {
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
 
     par(mfrow = c(3, 3))
-    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["-1SD, A"]], "prior_samples"), freq = FALSE, main = "x_cont1 = -1\nmarg_post_x_fac3md = A", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_cont1__xXx__x_fac3md[["-1SD, A"]], main = "x_cont1 = -1\nmarg_post_x_fac3md = A", xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x, 0, sqrt(1^2 + 1^2 + 0.25^2 + 0.25^2)) , add = TRUE)
 
-    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["-1SD, B"]], "prior_samples"), freq = FALSE, main = "x_cont1 = -1\nmarg_post_x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_cont1__xXx__x_fac3md[["-1SD, B"]], main = "x_cont1 = -1\nmarg_post_x_fac3md = B", xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x, 0, sqrt(1^2 + 1^2 + 0.25^2 + 0.25^2)) , add = TRUE)
 
-    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["-1SD, C"]], "prior_samples"), freq = FALSE, main = "x_cont1 = -1\nmarg_post_x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_cont1__xXx__x_fac3md[["-1SD, C"]], main = "x_cont1 = -1\nmarg_post_x_fac3md = B", xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x, 0, sqrt(1^2 + 1^2 + 0.25^2 + 0.25^2)) , add = TRUE)
 
-    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["0SD, A"]], "prior_samples"), freq = FALSE, main = "x_cont1 = 0\nmarg_post_x_fac3md = A", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_cont1__xXx__x_fac3md[["0SD, A"]], main = "x_cont1 = 0\nmarg_post_x_fac3md = A", xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x, 0, sqrt(1^2 + 0 + 0.25^2 + 0)) , add = TRUE)
 
-    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["0SD, B"]], "prior_samples"), freq = FALSE, main = "x_cont1 = 0\nmarg_post_x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_cont1__xXx__x_fac3md[["0SD, B"]], main = "x_cont1 = 0\nmarg_post_x_fac3md = B", xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x, 0, sqrt(1^2 + 0 + 0.25^2 + 0)) , add = TRUE)
 
-    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["0SD, C"]], "prior_samples"), freq = FALSE, main = "x_cont1 = 0\nmarg_post_x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_cont1__xXx__x_fac3md[["0SD, C"]], main = "x_cont1 = 0\nmarg_post_x_fac3md = B", xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x, 0, sqrt(1^2 + 0 + 0.25^2 + 0)) , add = TRUE)
 
-    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["1SD, A"]], "prior_samples"), freq = FALSE, main = "x_cont1 = 1\nmarg_post_x_fac3md = A", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_cont1__xXx__x_fac3md[["1SD, A"]], main = "x_cont1 = 1\nmarg_post_x_fac3md = A", xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x, 0, sqrt(1^2 + 1^2 + 0.25^2 + 0.25^2)) , add = TRUE)
 
-    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["1SD, B"]], "prior_samples"), freq = FALSE, main = "x_cont1 = 1\nmarg_post_x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_cont1__xXx__x_fac3md[["1SD, B"]], main = "x_cont1 = 1\nmarg_post_x_fac3md = B", xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x, 0, sqrt(1^2 + 1^2 + 0.25^2 + 0.25^2)) , add = TRUE)
 
-    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["1SD, C"]], "prior_samples"), freq = FALSE, main = "x_cont1 = 1\nmarg_post_x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_cont1__xXx__x_fac3md[["1SD, C"]], main = "x_cont1 = 1\nmarg_post_x_fac3md = B", xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x, 0, sqrt(1^2 + 1^2 + 0.25^2 + 0.25^2)) , add = TRUE)
 
   })
@@ -682,19 +721,10 @@ test_that("Marginal distribution prior and posterior functions work", {
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
 
-    p.exp1 <- exp(attr(marg_post_x_cont1[["-1SD"]], "prior_samples"))
-    p.exp2 <- exp(attr(marg_post_x_cont1[["0SD"]], "prior_samples"))
-    p.exp3 <- exp(attr(marg_post_x_cont1[["1SD"]], "prior_samples"))
-
     par(mfrow = c(1, 3))
-    hist(attr(marg_post_x_cont1.exp[["-1SD"]], "prior_samples"), freq = FALSE, main = "marginal prior x_cont1\n(-1)", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
-    lines(density(p.exp1[p.exp1 < 10]))
-
-    hist(exp(attr(marg_post_x_cont1[["0SD"]], "prior_samples")),  freq = FALSE, main = "marginal prior x_cont1\n(0)",  breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
-    lines(density(p.exp2[p.exp2 < 10]))
-
-    hist(attr(marg_post_x_cont1.exp[["1SD"]], "prior_samples"),  freq = FALSE, main = "marginal prior x_cont1\n(1)",  breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
-    lines(density(p.exp3[p.exp3 < 10]))
+    .plot_prior_density_for_test(marg_post_x_cont1.exp[["-1SD"]], main = "marginal prior x_cont1\n(-1)", xlim = c(0, 10))
+    .plot_prior_density_for_test(marg_post_x_cont1.exp[["0SD"]],  main = "marginal prior x_cont1\n(0)",  xlim = c(0, 10))
+    .plot_prior_density_for_test(marg_post_x_cont1.exp[["1SD"]],  main = "marginal prior x_cont1\n(1)",  xlim = c(0, 10))
   })
 
   ### Savage-Dickey BFs ----
@@ -704,34 +734,34 @@ test_that("Marginal distribution prior and posterior functions work", {
   expect_error(Savage_Dickey_BF(marginal_posterior(
     samples           = mixed_posteriors,
     parameter         = "sigma",
-    prior_samples     = FALSE)), "there are no prior samples for the posterior distribution")
+    prior_samples     = FALSE)), "there are no prior densities for the posterior distribution")
 
   # simple restricted prior
   suppressWarnings(expect_warning(Savage_Dickey_BF(marg_post_sigma)))
   BF.marg_post_sigma <- suppressWarnings(Savage_Dickey_BF(marg_post_sigma))
-  expect_equal(BF.marg_post_sigma, NaN, ignore_attr = TRUE)
+  expect_equal(BF.marg_post_sigma, Inf, ignore_attr = TRUE)
   expect_equal(attr(BF.marg_post_sigma, "warnings"),
-               c("Prior samples do not span both sides of the null hypothesis. Check whether the prior distribution contain the null hypothesis in the first place. The Savage-Dickey density ratio is likely to be invalid.",
-               "Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated."))
+               "Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.")
 
   # simple factor
   BF.marg_post_x_fac2t <- suppressWarnings(Savage_Dickey_BF(marg_post_simple_x_fac2t))
-  expect_equal(BF.marg_post_x_fac2t, list("A" = 1, "B" = 0.1793), tolerance = 1e-3, ignore_attr = TRUE)
+  expect_equal(BF.marg_post_x_fac2t, list("A" = 0, "B" = 0.0009), tolerance = 1e-3, ignore_attr = TRUE)
   expect_equal(attr(BF.marg_post_x_fac2t[["A"]], "warnings"),
                c("There is a considerable cluster of posterior samples at the exact null hypothesis values. The Savage-Dickey density ratio is likely to be invalid.",
-                 "There is a considerable cluster of prior samples at the exact null hypothesis values. The Savage-Dickey density ratio is likely to be invalid."))
+                 "There is a considerable point mass in the prior at the exact null hypothesis value. The Savage-Dickey density ratio is likely to be invalid."))
 
 
   BF.marg_post_x_fac3md <- Savage_Dickey_BF(marg_post_x_fac3md, silent = TRUE)
   expect_equal(BF.marg_post_x_fac3md, list("A" = Inf, "B" = Inf, "C" = Inf), ignore_attr = TRUE)
 
   BF2.marg_post_x_fac3md <- Savage_Dickey_BF(marg_post_x_fac3md, null_hypothesis = 0.5)
-  expect_equal(BF2.marg_post_x_fac3md, list("A" = 4.5, "B" = 0.1316, "C" = 0.165), tolerance = 1e-3, ignore_attr = TRUE)
+  expect_equal(BF2.marg_post_x_fac3md, list("A" = 4.6855, "B" = 0.1341, "C" = 0.1694), tolerance = 1e-3, ignore_attr = TRUE)
 
   BF2.marg_post_x_fac3md <- Savage_Dickey_BF(marg_post_x_fac3md, null_hypothesis = 0.5, normal_approximation = TRUE)
-  expect_equal(BF2.marg_post_x_fac3md, list("A" = 0.5918, "B" = 0.0996, "C" = 0.1266), tolerance = 1e-3)
+  expect_equal(BF2.marg_post_x_fac3md, list("A" = 0.5881, "B" = 0.0985, "C" = 0.1257), tolerance = 1e-3)
 
   ### marginal_inference ----
+  set.seed(1)
   out <- marginal_inference(
     model_list          = models,
     marginal_parameters = c("mu_intercept", "mu_x_cont1", "mu_x_fac2t", "mu_x_fac3md", "mu_x_cont1__xXx__x_fac3md"),
@@ -771,12 +801,12 @@ test_that("Marginal distribution prior and posterior functions work", {
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
 
     par(mfrow = c(1, 3))
-    hist(attr(marg_post_x_cont1[["-1SD"]], "prior_samples"), freq = FALSE, main = "mu_x_cont1 = -1SD", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
-    lines(density(attr(out$averaged$mu_x_cont1[["-1SD"]], "prior_samples")))
-    hist(attr(marg_post_x_cont1[["0SD"]], "prior_samples"), freq = FALSE, main = "mu_x_cont1 = 0SD", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
-    lines(density(attr(out$averaged$mu_x_cont1[["0SD"]], "prior_samples")))
-    hist(attr(marg_post_x_cont1[["1SD"]], "prior_samples"), freq = FALSE, main = "mu_x_cont1 = 1SD", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
-    lines(density(attr(out$averaged$mu_x_cont1[["1SD"]], "prior_samples")))
+    .plot_prior_density_for_test(marg_post_x_cont1[["-1SD"]], main = "mu_x_cont1 = -1SD", xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(out$averaged$mu_x_cont1[["-1SD"]], add = TRUE, lty = 2)
+    .plot_prior_density_for_test(marg_post_x_cont1[["0SD"]], main = "mu_x_cont1 = 0SD", xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(out$averaged$mu_x_cont1[["0SD"]], add = TRUE, lty = 2)
+    .plot_prior_density_for_test(marg_post_x_cont1[["1SD"]], main = "mu_x_cont1 = 1SD", xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(out$averaged$mu_x_cont1[["1SD"]], add = TRUE, lty = 2)
   })
   vdiffr::expect_doppelganger("marginal_inference-fac.md",   function(){
 
@@ -800,12 +830,12 @@ test_that("Marginal distribution prior and posterior functions work", {
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
 
     par(mfrow = c(1, 3))
-    hist(attr(marg_post_x_fac3md[["A"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac3md = A", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
-    lines(density(attr(out$averaged$mu_x_fac3md$A, "prior_samples")))
-    hist(attr(marg_post_x_fac3md[["B"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
-    lines(density(attr(out$averaged$mu_x_fac3md$B, "prior_samples")))
-    hist(attr(marg_post_x_fac3md[["C"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac3md = C", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
-    lines(density(attr(out$averaged$mu_x_fac3md$C, "prior_samples")))
+    .plot_prior_density_for_test(marg_post_x_fac3md[["A"]], main = "marginal prior x_fac3md = A", xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(out$averaged$mu_x_fac3md$A, add = TRUE, lty = 2)
+    .plot_prior_density_for_test(marg_post_x_fac3md[["B"]], main = "marginal prior x_fac3md = B", xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(out$averaged$mu_x_fac3md$B, add = TRUE, lty = 2)
+    .plot_prior_density_for_test(marg_post_x_fac3md[["C"]], main = "marginal prior x_fac3md = C", xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(out$averaged$mu_x_fac3md$C, add = TRUE, lty = 2)
   })
   # the previous BFs were based on model-averaged posteriors so they won't match
 
@@ -920,7 +950,7 @@ test_that("Marginal distributions with spike and slab and mixture priors work", 
   # Load pre-fitted spike-and-slab model
   fit <- readRDS(file.path(temp_fits_dir, "fit_marginal_ss.RDS"))
 
-  # Define prior lists (needed for prior_samples validation in marginal_posterior)
+  # Define prior lists (needed for prior density validation in marginal_posterior)
   prior_pars <- list(
     "intercept"        = prior("normal", list(0, 1)),
     "x_cont1"          = prior_mixture(list(
@@ -952,7 +982,7 @@ test_that("Marginal distributions with spike and slab and mixture priors work", 
   })
 
   vdiffr::expect_doppelganger("marginal-ss-simple-con-p", function(){
-    hist(attr(marg_post_sigma, "prior_samples"), freq = FALSE, main = "marginal prior sigma", breaks = 20)
+    .plot_prior_density_for_test(marg_post_sigma, main = "marginal prior sigma")
     lines(density(prior_list$sigma))
   })
 
@@ -981,9 +1011,9 @@ test_that("Marginal distributions with spike and slab and mixture priors work", 
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
 
     par(mfrow = c(1, 2))
-    hist(attr(marg_post_simple_x_fac2t[["A"]], "prior_samples"), freq = FALSE, main = "marg_post_x_fac2t = A", breaks = 20)
+    .plot_prior_density_for_test(marg_post_simple_x_fac2t[["A"]], main = "marg_post_x_fac2t = A")
 
-    hist(attr(marg_post_simple_x_fac2t[["B"]], "prior_samples"), freq = FALSE, main = "marg_post_x_fac2t = B", breaks = 20)
+    .plot_prior_density_for_test(marg_post_simple_x_fac2t[["B"]], main = "marg_post_x_fac2t = B")
     curve(dnorm(x, 0, 1)/2, add = T)
 
   })
@@ -1001,7 +1031,7 @@ test_that("Marginal distributions with spike and slab and mixture priors work", 
   })
 
   vdiffr::expect_doppelganger("marginal-ss-form-int-p", function(){
-    hist(attr(marg_post_int[["intercept"]], "prior_samples"), freq = FALSE, main = "marginal prior intercept")
+    .plot_prior_density_for_test(marg_post_int[["intercept"]], main = "marginal prior intercept")
     lines(prior_pars$intercept)
   })
 
@@ -1031,9 +1061,9 @@ test_that("Marginal distributions with spike and slab and mixture priors work", 
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
 
     par(mfrow = c(1, 3))
-    hist(attr(marg_post_x_cont1[["-1SD"]], "prior_samples"), freq = FALSE, main = "marginal prior x_cont1\n(-1)", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
-    hist(attr(marg_post_x_cont1[["0SD"]], "prior_samples"),  freq = FALSE, main = "marginal prior x_cont1\n(0)",  breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
-    hist(attr(marg_post_x_cont1[["1SD"]], "prior_samples"),  freq = FALSE, main = "marginal prior x_cont1\n(1)",  breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
+    .plot_prior_density_for_test(marg_post_x_cont1[["-1SD"]], main = "marginal prior x_cont1\n(-1)", xlim = c(-10, 10))
+    .plot_prior_density_for_test(marg_post_x_cont1[["0SD"]],  main = "marginal prior x_cont1\n(0)",  xlim = c(-10, 10))
+    .plot_prior_density_for_test(marg_post_x_cont1[["1SD"]],  main = "marginal prior x_cont1\n(1)",  xlim = c(-10, 10))
 
   })
 
@@ -1062,9 +1092,9 @@ test_that("Marginal distributions with spike and slab and mixture priors work", 
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
 
     par(mfrow = c(1, 2))
-    hist(attr(marg_post_x_fac2t[["A"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac2t = A", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_fac2t[["A"]], main = "marginal prior x_fac2t = A", xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x), add = TRUE)
-    hist(attr(marg_post_x_fac2t[["B"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac2t = B",  breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_fac2t[["B"]], main = "marginal prior x_fac2t = B",  xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x, 0, (sqrt(1^2 + 0^2) + sqrt(1^2 + 1^2)) / 2), add = TRUE)
   })
 
@@ -1093,11 +1123,11 @@ test_that("Marginal distributions with spike and slab and mixture priors work", 
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
 
     par(mfrow = c(1, 3))
-    hist(attr(marg_post_x_fac3md[["A"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac3md = A", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_fac3md[["A"]], main = "marginal prior x_fac3md = A", xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x, 0, (sqrt(1^2 + 0^2) + sqrt(1^2 + 0.25^2)) / 2), add = TRUE)
-    hist(attr(marg_post_x_fac3md[["B"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_fac3md[["B"]], main = "marginal prior x_fac3md = B", xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x, 0, (sqrt(1^2 + 0^2) + sqrt(1^2 + 0.25^2)) / 2), add = TRUE)
-    hist(attr(marg_post_x_fac3md[["C"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac3md = C", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_fac3md[["C"]], main = "marginal prior x_fac3md = C", xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x, 0, (sqrt(1^2 + 0^2) + sqrt(1^2 + 0.25^2)) / 2), add = TRUE)
   })
 
@@ -1135,31 +1165,31 @@ test_that("Marginal distributions with spike and slab and mixture priors work", 
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
 
     par(mfrow = c(3, 3))
-    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["-1SD, A"]], "prior_samples"), freq = FALSE, main = "x_cont1 = -1\nmarg_post_x_fac3md = A", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_cont1__xXx__x_fac3md[["-1SD, A"]], main = "x_cont1 = -1\nmarg_post_x_fac3md = A", xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x, 0, sqrt(0.5*sqrt(1^2 + 1^2 + 0.25^2 + 0.25^2)^2 + 0.5*sqrt(0.25^2 + 0.25^2))), add = TRUE)
 
-    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["-1SD, B"]], "prior_samples"), freq = FALSE, main = "x_cont1 = -1\nmarg_post_x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_cont1__xXx__x_fac3md[["-1SD, B"]], main = "x_cont1 = -1\nmarg_post_x_fac3md = B", xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x, 0, sqrt(0.5*sqrt(1^2 + 1^2 + 0.25^2 + 0.25^2)^2 + 0.5*sqrt(0.25^2 + 0.25^2))), add = TRUE)
 
-    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["-1SD, C"]], "prior_samples"), freq = FALSE, main = "x_cont1 = -1\nmarg_post_x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_cont1__xXx__x_fac3md[["-1SD, C"]], main = "x_cont1 = -1\nmarg_post_x_fac3md = B", xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x, 0, sqrt(0.5*sqrt(1^2 + 1^2 + 0.25^2 + 0.25^2)^2 + 0.5*sqrt(0.25^2 + 0.25^2))), add = TRUE)
 
-    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["0SD, A"]], "prior_samples"), freq = FALSE, main = "x_cont1 = 0\nmarg_post_x_fac3md = A", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_cont1__xXx__x_fac3md[["0SD, A"]], main = "x_cont1 = 0\nmarg_post_x_fac3md = A", xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x, 0, sqrt(1^2 + 0 + 0.25^2 + 0)) , add = TRUE)
 
-    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["0SD, B"]], "prior_samples"), freq = FALSE, main = "x_cont1 = 0\nmarg_post_x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_cont1__xXx__x_fac3md[["0SD, B"]], main = "x_cont1 = 0\nmarg_post_x_fac3md = B", xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x, 0, sqrt(1^2 + 0 + 0.25^2 + 0)) , add = TRUE)
 
-    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["0SD, C"]], "prior_samples"), freq = FALSE, main = "x_cont1 = 0\nmarg_post_x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_cont1__xXx__x_fac3md[["0SD, C"]], main = "x_cont1 = 0\nmarg_post_x_fac3md = B", xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x, 0, sqrt(1^2 + 0 + 0.25^2 + 0)) , add = TRUE)
 
-    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["1SD, A"]], "prior_samples"), freq = FALSE, main = "x_cont1 = 1\nmarg_post_x_fac3md = A", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_cont1__xXx__x_fac3md[["1SD, A"]], main = "x_cont1 = 1\nmarg_post_x_fac3md = A", xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x, 0, sqrt(0.5*sqrt(1^2 + 1^2 + 0.25^2 + 0.25^2)^2 + 0.5*sqrt(0.25^2 + 0.25^2))), add = TRUE)
 
-    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["1SD, B"]], "prior_samples"), freq = FALSE, main = "x_cont1 = 1\nmarg_post_x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_cont1__xXx__x_fac3md[["1SD, B"]], main = "x_cont1 = 1\nmarg_post_x_fac3md = B", xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x, 0, sqrt(0.5*sqrt(1^2 + 1^2 + 0.25^2 + 0.25^2)^2 + 0.5*sqrt(0.25^2 + 0.25^2))), add = TRUE)
 
-    hist(attr(marg_post_x_cont1__xXx__x_fac3md[["1SD, C"]], "prior_samples"), freq = FALSE, main = "x_cont1 = 1\nmarg_post_x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(marg_post_x_cont1__xXx__x_fac3md[["1SD, C"]], main = "x_cont1 = 1\nmarg_post_x_fac3md = B", xlim = c(-5, 5), ylim = c(0, 0.4))
     curve(dnorm(x, 0, sqrt(0.5*sqrt(1^2 + 1^2 + 0.25^2 + 0.25^2)^2 + 0.5*sqrt(0.25^2 + 0.25^2))), add = TRUE)
 
   })
@@ -1227,19 +1257,10 @@ test_that("Marginal distributions with spike and slab and mixture priors work", 
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
 
-    p.exp1 <- exp(attr(marg_post_x_cont1[["-1SD"]], "prior_samples"))
-    p.exp2 <- exp(attr(marg_post_x_cont1[["0SD"]], "prior_samples"))
-    p.exp3 <- exp(attr(marg_post_x_cont1[["1SD"]], "prior_samples"))
-
     par(mfrow = c(1, 3))
-    hist(attr(marg_post_x_cont1.exp[["-1SD"]], "prior_samples"), freq = FALSE, main = "marginal prior x_cont1\n(-1)", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
-    lines(density(p.exp1[p.exp1 < 10]))
-
-    hist(exp(attr(marg_post_x_cont1[["0SD"]], "prior_samples")),  freq = FALSE, main = "marginal prior x_cont1\n(0)",  breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
-    lines(density(p.exp2[p.exp2 < 10]))
-
-    hist(attr(marg_post_x_cont1.exp[["1SD"]], "prior_samples"),  freq = FALSE, main = "marginal prior x_cont1\n(1)",  breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-10, 10))
-    lines(density(p.exp3[p.exp3 < 10]))
+    .plot_prior_density_for_test(marg_post_x_cont1.exp[["-1SD"]], main = "marginal prior x_cont1\n(-1)", xlim = c(0, 10))
+    .plot_prior_density_for_test(marg_post_x_cont1.exp[["0SD"]],  main = "marginal prior x_cont1\n(0)",  xlim = c(0, 10))
+    .plot_prior_density_for_test(marg_post_x_cont1.exp[["1SD"]],  main = "marginal prior x_cont1\n(1)",  xlim = c(0, 10))
   })
 
   ### conditional marginal samples ----
@@ -1265,11 +1286,11 @@ test_that("Marginal distributions with spike and slab and mixture priors work", 
     hist(marg_post_sigma[["B"]], freq = FALSE, main = "marg_post_x_fac2t = B")
     hist(marg_post_sigma[["C"]], freq = FALSE, main = "marg_post_x_fac2t = C")
 
-    hist(attr(marg_post_sigma[["A"]], "prior"), freq = FALSE, main = "marg_post_x_fac2t = A")
+    .plot_prior_density_for_test(marg_post_sigma[["A"]], main = "marg_post_x_fac2t = A")
     curve(dnorm(x, 0, sqrt(1^2 + 0.25^2)), add = TRUE)
-    hist(attr(marg_post_sigma[["B"]], "prior"), freq = FALSE, main = "marg_post_x_fac2t = B")
+    .plot_prior_density_for_test(marg_post_sigma[["B"]], main = "marg_post_x_fac2t = B")
     curve(dnorm(x, 0, sqrt(1^2 + 0.25^2)), add = TRUE)
-    hist(attr(marg_post_sigma[["C"]], "prior"), freq = FALSE, main = "marg_post_x_fac2t = C")
+    .plot_prior_density_for_test(marg_post_sigma[["C"]], main = "marg_post_x_fac2t = C")
     curve(dnorm(x, 0, sqrt(1^2 + 0.25^2)), add = TRUE)
   })
 
@@ -1313,12 +1334,12 @@ test_that("Marginal distributions with spike and slab and mixture priors work", 
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
 
     par(mfrow = c(1, 3))
-    hist(attr(marg_post_x_cont1[["-1SD"]], "prior_samples"), freq = FALSE, main = "mu_x_cont1 = -1SD", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
-    lines(density(attr(out$averaged$mu_x_cont1[["-1SD"]], "prior_samples")))
-    hist(attr(marg_post_x_cont1[["0SD"]], "prior_samples"), freq = FALSE, main = "mu_x_cont1 = 0SD", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
-    lines(density(attr(out$averaged$mu_x_cont1[["0SD"]], "prior_samples")))
-    hist(attr(marg_post_x_cont1[["1SD"]], "prior_samples"), freq = FALSE, main = "mu_x_cont1 = 1SD", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
-    lines(density(attr(out$averaged$mu_x_cont1[["1SD"]], "prior_samples")))
+    .plot_prior_density_for_test(marg_post_x_cont1[["-1SD"]], main = "mu_x_cont1 = -1SD", xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(out$averaged$mu_x_cont1[["-1SD"]], add = TRUE, lty = 2)
+    .plot_prior_density_for_test(marg_post_x_cont1[["0SD"]], main = "mu_x_cont1 = 0SD", xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(out$averaged$mu_x_cont1[["0SD"]], add = TRUE, lty = 2)
+    .plot_prior_density_for_test(marg_post_x_cont1[["1SD"]], main = "mu_x_cont1 = 1SD", xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(out$averaged$mu_x_cont1[["1SD"]], add = TRUE, lty = 2)
   })
   vdiffr::expect_doppelganger("marginal_inference-ss-fac.md",   function(){
 
@@ -1342,12 +1363,12 @@ test_that("Marginal distributions with spike and slab and mixture priors work", 
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
 
     par(mfrow = c(1, 3))
-    hist(attr(marg_post_x_fac3md[["A"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac3md = A", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
-    lines(density(attr(out$averaged$mu_x_fac3md$A, "prior_samples")))
-    hist(attr(marg_post_x_fac3md[["B"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac3md = B", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
-    lines(density(attr(out$averaged$mu_x_fac3md$B, "prior_samples")))
-    hist(attr(marg_post_x_fac3md[["C"]], "prior_samples"), freq = FALSE, main = "marginal prior x_fac3md = C", breaks = c(-Inf, seq(-10, 10, 0.25), Inf), xlim = c(-5, 5), ylim = c(0, 0.4))
-    lines(density(attr(out$averaged$mu_x_fac3md$C, "prior_samples")))
+    .plot_prior_density_for_test(marg_post_x_fac3md[["A"]], main = "marginal prior x_fac3md = A", xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(out$averaged$mu_x_fac3md$A, add = TRUE, lty = 2)
+    .plot_prior_density_for_test(marg_post_x_fac3md[["B"]], main = "marginal prior x_fac3md = B", xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(out$averaged$mu_x_fac3md$B, add = TRUE, lty = 2)
+    .plot_prior_density_for_test(marg_post_x_fac3md[["C"]], main = "marginal prior x_fac3md = C", xlim = c(-5, 5), ylim = c(0, 0.4))
+    .plot_prior_density_for_test(out$averaged$mu_x_fac3md$C, add = TRUE, lty = 2)
   })
   # the previous BFs were based on model-averaged posteriors so they won't match
 
@@ -1437,13 +1458,13 @@ test_that("Marginal distributions with independent factor model work", {
     par(mfrow = c(1, 3))
     hist(mixed_posteriors$p1[,1], freq = FALSE, main = "p1[1] (level 1)", breaks = 50)
     lines(density(marginal_posteriors[[1]]))
-    lines(density(attr(marginal_posteriors[[3]], "prior_samples")), lty = 2)
+    .plot_prior_density_for_test(marginal_posteriors[[1]], add = TRUE, lty = 2)
     hist(mixed_posteriors$p1[,2], freq = FALSE, main = "p1[2] (level 2)", breaks = 50)
     lines(density(marginal_posteriors[[2]]))
-    lines(density(attr(marginal_posteriors[[2]], "prior_samples")), lty = 2)
+    .plot_prior_density_for_test(marginal_posteriors[[2]], add = TRUE, lty = 2)
     hist(mixed_posteriors$p1[,3], freq = FALSE, main = "p1[3] (level 3)", breaks = 50)
     lines(density(marginal_posteriors[[3]]))
-    lines(density(attr(marginal_posteriors[[3]], "prior_samples")), lty = 2)
+    .plot_prior_density_for_test(marginal_posteriors[[3]], add = TRUE, lty = 2)
   })
 
 })
