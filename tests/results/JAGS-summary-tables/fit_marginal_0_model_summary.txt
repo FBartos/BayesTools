@@ -1,6 +1,6 @@
                                                                        
  Model                1                   Parameter prior distributions
  Prior prob.      1.000             (mu) intercept ~ Normal(0, 1)      
- log(marglik)   -144.46               (mu) x_cont1 ~ Normal(0, 1)      
+ log(marglik)   -144.45               (mu) x_cont1 ~ Normal(0, 1)      
  Post. prob.      1.000                      sigma ~ Cauchy(0, 1)[0, 5]
  Inclusion BF       Inf                                                

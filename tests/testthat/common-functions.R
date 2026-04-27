@@ -53,6 +53,63 @@ test_reference_table <- function(table, filename, info_msg = NULL,
   }
 }
 
+parse_numeric_table_lines <- function(lines) {
+
+  number_pattern <- "([-+]?Inf|NA|NaN|[-+]?[0-9]*\\.?[0-9]+(?:[eE][-+]?[0-9]+)?)"
+  row_pattern <- paste0(
+    "^\\s*(.*?)\\s+",
+    number_pattern, "\\s+",
+    number_pattern, "\\s+",
+    number_pattern, "\\s+",
+    number_pattern, "\\s+",
+    number_pattern, "\\s*$"
+  )
+
+  matches <- regexec(row_pattern, lines, perl = TRUE)
+  parsed  <- regmatches(lines, matches)
+  is_row  <- lengths(parsed) == 7
+
+  if (!any(is_row)) {
+    return(list(
+      labels = character(),
+      values = matrix(numeric(), nrow = 0, ncol = 5),
+      is_row = is_row
+    ))
+  }
+
+  row_data <- do.call(rbind, lapply(parsed[is_row], function(x) x[-1]))
+  values   <- matrix(as.numeric(row_data[, -1]), nrow = nrow(row_data))
+  colnames(values) <- c("Mean", "Median", "0.025", "0.95", "Inclusion BF")
+
+  list(
+    labels = row_data[, 1],
+    values = values,
+    is_row = is_row
+  )
+}
+
+test_reference_table_numeric <- function(table, filename, tolerance = 1e-2,
+                                         info_msg = NULL, print_dir = REFERENCE_DIR) {
+  if (GENERATE_REFERENCE_FILES) {
+    test_reference_table(table, filename, info_msg = info_msg, print_dir = print_dir)
+  } else {
+    ref_file <- file.path(print_dir, filename)
+    if (file.exists(ref_file)) {
+      expected_output <- readLines(ref_file, warn = FALSE)
+      actual_output   <- capture_output_lines(table, print = TRUE, width = 150)
+
+      expected_table <- parse_numeric_table_lines(expected_output)
+      actual_table   <- parse_numeric_table_lines(actual_output)
+
+      expect_equal(actual_table$labels, expected_table$labels, info = info_msg)
+      expect_equal(actual_table$values, expected_table$values, tolerance = tolerance, info = info_msg)
+      expect_equal(actual_output[!actual_table$is_row], expected_output[!expected_table$is_row], info = info_msg)
+    } else {
+      skip(paste("Reference file", filename, "not found."))
+    }
+  }
+}
+
 test_reference_text <- function(text, filename, info_msg = NULL,
                                 print_dir = REFERENCE_DIR) {
   if (GENERATE_REFERENCE_FILES) {

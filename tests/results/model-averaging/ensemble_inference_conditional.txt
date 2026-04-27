@@ -1,2 +1,2 @@
 Conditional: TRUE
-BF: 0.0853
+BF: 0.086

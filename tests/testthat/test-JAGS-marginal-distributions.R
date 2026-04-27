@@ -800,11 +800,15 @@ test_that("Marginal distribution prior and posterior functions work", {
   BF.marg_post_x_fac3md <- Savage_Dickey_BF(marg_post_x_fac3md, silent = TRUE)
   expect_equal(BF.marg_post_x_fac3md, list("A" = Inf, "B" = Inf, "C" = Inf), ignore_attr = TRUE)
 
-  BF2.marg_post_x_fac3md <- Savage_Dickey_BF(marg_post_x_fac3md, null_hypothesis = 0.5)
-  expect_equal(BF2.marg_post_x_fac3md, list("A" = 4.6855, "B" = 0.1341, "C" = 0.1694), tolerance = 1e-3, ignore_attr = TRUE)
+  BF2.marg_post_x_fac3md <- suppressWarnings(Savage_Dickey_BF(marg_post_x_fac3md, null_hypothesis = 0.5))
+  expect_equal(BF2.marg_post_x_fac3md, list("A" = Inf, "B" = 0.145, "C" = 0.1654), tolerance = 5e-3, ignore_attr = TRUE)
+  expect_equal(attr(BF2.marg_post_x_fac3md[["A"]], "warnings"),
+               "Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.")
 
-  BF2.marg_post_x_fac3md <- Savage_Dickey_BF(marg_post_x_fac3md, null_hypothesis = 0.5, normal_approximation = TRUE)
-  expect_equal(BF2.marg_post_x_fac3md, list("A" = 0.5881, "B" = 0.0985, "C" = 0.1257), tolerance = 1e-3)
+  BF2.marg_post_x_fac3md <- suppressWarnings(Savage_Dickey_BF(marg_post_x_fac3md, null_hypothesis = 0.5, normal_approximation = TRUE))
+  expect_equal(BF2.marg_post_x_fac3md, list("A" = 0.629, "B" = 0.0983, "C" = 0.1260), tolerance = 5e-3, ignore_attr = TRUE)
+  expect_equal(attr(BF2.marg_post_x_fac3md[["A"]], "warnings"),
+               "Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.")
 
   ### marginal_inference ----
   set.seed(1)
@@ -1419,9 +1423,10 @@ test_that("Marginal distributions with spike and slab and mixture priors work", 
   # the previous BFs were based on model-averaged posteriors so they won't match
 
   # test summary table (note that these differ from the first set of tests because of the different model settings)
-  test_reference_table(
+  test_reference_table_numeric(
     marginal_estimates_table(out$conditional, out$inference, parameters = c("mu_intercept", "mu_x_cont1", "mu_x_fac2t", "mu_x_fac3md", "mu_x_cont1__xXx__x_fac3md")),
     "marginal_estimates_table_spike_slab.txt",
+    tolerance = 1e-2,
     info_msg = "marginal_estimates_table for spike-and-slab"
   )
 

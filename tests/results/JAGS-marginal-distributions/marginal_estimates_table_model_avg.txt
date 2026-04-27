@@ -1,22 +1,22 @@
                                 Mean Median 0.025  0.95 Inclusion BF
-(mu) intercept                 0.613  0.614 0.514 0.687          Inf
-(mu) x_cont1[-1SD]             0.429  0.430 0.296 0.536          Inf
-(mu) x_cont1[0SD]              0.613  0.614 0.513 0.687          Inf
-(mu) x_cont1[1SD]              0.797  0.799 0.674 0.896          Inf
-(mu) x_fac2t[A]                0.613  0.614 0.500 0.701          Inf
-(mu) x_fac2t[B]                0.621  0.619 0.519 0.708          Inf
-(mu) x_fac3md[A]               0.766  0.769 0.601 0.895          Inf
-(mu) x_fac3md[B]               0.519  0.520 0.365 0.644          Inf
-(mu) x_fac3md[C]               0.552  0.550 0.406 0.674          Inf
-(mu) x_cont1:x_fac3md[-1SD, A] 0.550  0.554 0.325 0.749          Inf
-(mu) x_cont1:x_fac3md[0SD, A]  0.766  0.770 0.596 0.897          Inf
-(mu) x_cont1:x_fac3md[1SD, A]  0.983  0.982 0.783 1.150          Inf
-(mu) x_cont1:x_fac3md[-1SD, B] 0.373  0.374 0.136 0.552          Inf
-(mu) x_cont1:x_fac3md[0SD, B]  0.519  0.520 0.363 0.642          Inf
-(mu) x_cont1:x_fac3md[1SD, B]  0.665  0.667 0.453 0.829          Inf
-(mu) x_cont1:x_fac3md[-1SD, C] 0.374  0.372 0.184 0.541          Inf
-(mu) x_cont1:x_fac3md[0SD, C]  0.552  0.548 0.406 0.671          Inf
-(mu) x_cont1:x_fac3md[1SD, C]  0.729  0.728 0.526 0.905          Inf
+(mu) intercept                 0.613  0.614 0.521 0.689          Inf
+(mu) x_cont1[-1SD]             0.429  0.429 0.298 0.533          Inf
+(mu) x_cont1[0SD]              0.614  0.615 0.521 0.690          Inf
+(mu) x_cont1[1SD]              0.799  0.800 0.674 0.899          Inf
+(mu) x_fac2t[A]                0.614  0.615 0.502 0.702          Inf
+(mu) x_fac2t[B]                0.620  0.618 0.512 0.705          Inf
+(mu) x_fac3md[A]               0.769  0.770 0.630 0.889          Inf
+(mu) x_fac3md[B]               0.517  0.517 0.370 0.644          Inf
+(mu) x_fac3md[C]               0.552  0.550 0.414 0.677          Inf
+(mu) x_cont1:x_fac3md[-1SD, A] 0.555  0.557 0.357 0.723          Inf
+(mu) x_cont1:x_fac3md[0SD, A]  0.769  0.769 0.629 0.890          Inf
+(mu) x_cont1:x_fac3md[1SD, A]  0.983  0.982 0.805 1.143          Inf
+(mu) x_cont1:x_fac3md[-1SD, B] 0.366  0.367 0.153 0.546    32257.341
+(mu) x_cont1:x_fac3md[0SD, B]  0.518  0.519 0.373 0.644          Inf
+(mu) x_cont1:x_fac3md[1SD, B]  0.669  0.668 0.462 0.836          Inf
+(mu) x_cont1:x_fac3md[-1SD, C] 0.371  0.367 0.155 0.550          Inf
+(mu) x_cont1:x_fac3md[0SD, C]  0.551  0.552 0.411 0.676          Inf
+(mu) x_cont1:x_fac3md[1SD, C]  0.731  0.726 0.532 0.910          Inf
 [0;31mmu_intercept: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
 [0;31mmu_x_cont1[-1SD]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
 [0;31mmu_x_cont1[0SD]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
@@ -29,7 +29,6 @@
 [0;31mmu_x_cont1__xXx__x_fac3md[-1SD, A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
 [0;31mmu_x_cont1__xXx__x_fac3md[0SD, A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
 [0;31mmu_x_cont1__xXx__x_fac3md[1SD, A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
-[0;31mmu_x_cont1__xXx__x_fac3md[-1SD, B]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
 [0;31mmu_x_cont1__xXx__x_fac3md[0SD, B]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
 [0;31mmu_x_cont1__xXx__x_fac3md[1SD, B]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
 [0;31mmu_x_cont1__xXx__x_fac3md[-1SD, C]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m

@@ -1037,8 +1037,15 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
     }
 
+    level_names <- prior_info[["level_names"]]
+    if(is.list(level_names)){
+      level_names <- lapply(level_names, function(x) x[-1])
+    }else{
+      level_names <- level_names[-1]
+    }
+
     rownames(samples) <- NULL
-    colnames(samples) <- paste0(parameter,"[",prior_info[["level_names"]][-1],"]")
+    colnames(samples) <- .format_factor_level_parameter_names(parameter, level_names, ncol(samples))
     attr(samples, "sample_ind") <- FALSE
     attr(samples, "models_ind") <- rep(1, nrow(samples))
     attr(samples, "parameter")  <- parameter
@@ -1060,7 +1067,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     }
 
     rownames(samples) <- NULL
-    colnames(samples) <- paste0(parameter,"[",prior_info[["level_names"]],"]")
+    colnames(samples) <- .format_factor_level_parameter_names(parameter, prior_info[["level_names"]], ncol(samples))
     attr(samples, "sample_ind") <- FALSE
     attr(samples, "models_ind") <- rep(1, nrow(samples))
     attr(samples, "parameter")  <- parameter

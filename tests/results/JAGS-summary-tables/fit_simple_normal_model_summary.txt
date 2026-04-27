@@ -1,6 +1,6 @@
                                                                 
  Model               1             Parameter prior distributions
  Prior prob.     1.000                  m ~ Normal(0, 1)        
- log(marglik)   -31.95                  s ~ Normal(0, 1)[0, Inf]
+ log(marglik)   -31.94                  s ~ Normal(0, 1)[0, Inf]
  Post. prob.     1.000                                          
  Inclusion BF      Inf                                          
