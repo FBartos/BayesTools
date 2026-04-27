@@ -18,9 +18,9 @@
   </clipPath>
 </defs>
 <g clip-path='url(#cpMC4wMHw3MjAuMDB8MC4wMHw1NzYuMDA=)'>
-<text x='315.98' y='32.36' style='font-size: 14.40px; font-style: italic; font-family: sans;' textLength='75.26px' lengthAdjust='spacingAndGlyphs'>Exponential</text>
-<text x='392.81' y='32.36' style='font-size: 14.40px; font-family: sans;' textLength='17.60px' lengthAdjust='spacingAndGlyphs'>(2)</text>
-<text x='410.41' y='35.02' style='font-size: 10.08px; font-family: sans;' textLength='22.41px' lengthAdjust='spacingAndGlyphs'>[1, 3]</text>
+<text x='315.98' y='32.17' style='font-size: 14.40px; font-style: italic; font-family: sans;' textLength='75.26px' lengthAdjust='spacingAndGlyphs'>Exponential</text>
+<text x='392.81' y='32.17' style='font-size: 14.40px; font-family: sans;' textLength='17.60px' lengthAdjust='spacingAndGlyphs'>(2)</text>
+<text x='410.41' y='35.21' style='font-size: 10.08px; font-family: sans;' textLength='22.41px' lengthAdjust='spacingAndGlyphs'>[1, 3]</text>
 <text x='374.40' y='557.28' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='44.70px' lengthAdjust='spacingAndGlyphs'>samples</text>
 <text transform='translate(12.96,280.80) rotate(-90)' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='40.02px' lengthAdjust='spacingAndGlyphs'>Density</text>
 <line x1='82.40' y1='502.56' x2='666.40' y2='502.56' style='stroke-width: 0.75;' />

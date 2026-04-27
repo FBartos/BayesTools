@@ -18,13 +18,13 @@
   </clipPath>
 </defs>
 <g clip-path='url(#cpMC4wMHw3MjAuMDB8MC4wMHw1NzYuMDA=)'>
-<text x='303.34' y='32.36' style='font-size: 14.40px; font-style: italic; font-family: sans;' textLength='68.05px' lengthAdjust='spacingAndGlyphs'>Lognormal</text>
-<text x='372.95' y='32.36' style='font-size: 14.40px; font-family: sans;' textLength='45.62px' lengthAdjust='spacingAndGlyphs'>(1, 0.3)</text>
-<text x='418.57' y='35.02' style='font-size: 10.08px; font-family: sans;' textLength='2.80px' lengthAdjust='spacingAndGlyphs'>[</text>
-<text x='421.37' y='35.02' style='font-size: 10.08px; font-family: sans;' textLength='5.61px' lengthAdjust='spacingAndGlyphs'>1</text>
-<text x='426.98' y='35.02' style='font-size: 10.08px; font-family: sans;' textLength='5.60px' lengthAdjust='spacingAndGlyphs'>, </text>
-<text x='432.58' y='35.02' style='font-size: 10.08px; font-family: sans;' textLength='10.08px' lengthAdjust='spacingAndGlyphs'>∞</text>
-<text x='442.66' y='35.02' style='font-size: 10.08px; font-family: sans;' textLength='2.80px' lengthAdjust='spacingAndGlyphs'>]</text>
+<text x='303.34' y='32.17' style='font-size: 14.40px; font-style: italic; font-family: sans;' textLength='68.05px' lengthAdjust='spacingAndGlyphs'>Lognormal</text>
+<text x='372.95' y='32.17' style='font-size: 14.40px; font-family: sans;' textLength='45.62px' lengthAdjust='spacingAndGlyphs'>(1, 0.3)</text>
+<text x='418.57' y='35.21' style='font-size: 10.08px; font-family: sans;' textLength='2.80px' lengthAdjust='spacingAndGlyphs'>[</text>
+<text x='421.37' y='35.21' style='font-size: 10.08px; font-family: sans;' textLength='5.61px' lengthAdjust='spacingAndGlyphs'>1</text>
+<text x='426.98' y='35.21' style='font-size: 10.08px; font-family: sans;' textLength='5.60px' lengthAdjust='spacingAndGlyphs'>, </text>
+<text x='432.58' y='35.21' style='font-size: 10.08px; font-family: sans;' textLength='10.08px' lengthAdjust='spacingAndGlyphs'>∞</text>
+<text x='442.66' y='35.21' style='font-size: 10.08px; font-family: sans;' textLength='2.80px' lengthAdjust='spacingAndGlyphs'>]</text>
 <text x='374.40' y='557.28' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='44.70px' lengthAdjust='spacingAndGlyphs'>samples</text>
 <text transform='translate(12.96,280.80) rotate(-90)' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='40.02px' lengthAdjust='spacingAndGlyphs'>Density</text>
 <line x1='147.29' y1='502.56' x2='666.40' y2='502.56' style='stroke-width: 0.75;' />
