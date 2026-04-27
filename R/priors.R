@@ -1195,33 +1195,7 @@ rng.prior   <- function(x, n, ...){
 
   }else if(is.prior.simple(prior)){
 
-    x <- NULL
-    # guesstimate the number of samples needed before the truncation
-    nn <- round(n * 1/.prior_C(prior) * 1.10)
-
-    while(length(x) < n){
-      temp_x <- switch(
-        prior[["distribution"]],
-        "normal"    = stats::rnorm(nn, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]]),
-        "lognormal" = stats::rlnorm(nn, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]]),
-        "t"         = extraDistr::rlst(nn, df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]]),
-        "gamma"     = stats::rgamma(nn, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]]),
-        "invgamma"  = extraDistr::rinvgamma(nn, alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]]),
-        "beta"      = stats::rbeta(nn, shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]]),
-        "bernoulli" = stats::rbinom(nn, size = 1, prob = prior$parameters[["probability"]]),
-        "exp"       = stats::rexp(nn, rate = prior$parameters[["rate"]]),
-        "uniform"   = stats::runif(nn, min = prior$parameters[["a"]], max = prior$parameters[["b"]]),
-        "point"     = rpoint(n, location = prior$parameters[["location"]])
-      )
-      x <- c(x, temp_x[temp_x >= prior$truncation[["lower"]] & temp_x <= prior$truncation[["upper"]]])
-    }
-
-    # make sure the enough samples were generated
-    if(length(x) < n){
-      x <- rng(prior, n)
-    }
-
-    x <- x[1:n]
+    x <- .prior_simple_rng(prior, n)
 
   }else if(transform_factor_samples && (is.prior.orthonormal(prior) | is.prior.meandif(prior))){
 
@@ -1334,31 +1308,7 @@ cdf.prior   <- function(x, q, ...){
 
   }else if(is.prior.simple(prior)){
 
-    p <- rep(NA, length(q))
-
-    # deal with values below the truncation point
-    q_lower    <- q < prior$truncation[["lower"]]
-    p[q_lower] <- 0
-
-    # compute for the values above truncation point
-    p[!q_lower] <- switch(
-      prior[["distribution"]],
-      "normal"    = stats::pnorm(q[!q_lower], mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], lower.tail = TRUE, log.p = FALSE),
-      "lognormal" = stats::plnorm(q[!q_lower], meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], lower.tail = TRUE, log.p = FALSE),
-      "t"         = extraDistr::plst(q[!q_lower], df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
-      "gamma"     = stats::pgamma(q[!q_lower], shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
-      "invgamma"  = extraDistr::pinvgamma(q[!q_lower], alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
-      "beta"      = stats::pbeta(q[!q_lower], shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = TRUE, log.p = FALSE),
-      "bernoulli" = stats::pbinom(q[!q_lower], size = 1, prob = prior$parameters[["probability"]], lower.tail = TRUE, log.p = FALSE),
-      "exp"       = stats::pexp(q[!q_lower], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
-      "uniform"   = stats::punif(q[!q_lower], min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = TRUE, log.p = FALSE),
-      "point"     = ppoint(q[!q_lower], location = prior$parameters[["location"]], lower.tail = TRUE, log.p = FALSE)
-    )
-
-    # deal with truncation
-    if(prior[["distribution"]] != "point"){
-      p[!q_lower] <- (p[!q_lower] - .prior_C1(prior)) /.prior_C(prior)
-    }
+    p <- .prior_simple_cdf(prior, q)
 
   }else if(is.prior.vector(prior)){
 
@@ -1390,31 +1340,7 @@ ccdf.prior  <- function(x, q, ...){
 
   }else if(is.prior.simple(prior)){
 
-    p <- rep(NA, length(q))
-
-    # deal with values above the truncation point
-    q_higher    <- q > prior$truncation[["upper"]]
-    p[q_higher] <- 0
-
-    # compute for the values belove truncation point
-    p[!q_higher] <- switch(
-      prior[["distribution"]],
-      "normal"    = stats::pnorm(q[!q_higher], mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], lower.tail = FALSE, log.p = FALSE),
-      "lognormal" = stats::plnorm(q[!q_higher], meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], lower.tail = FALSE, log.p = FALSE),
-      "t"         = extraDistr::plst(q[!q_higher], df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]], lower.tail = FALSE, log.p = FALSE),
-      "gamma"     = stats::pgamma(q[!q_higher], shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = FALSE, log.p = FALSE),
-      "invgamma"  = extraDistr::pinvgamma(q[!q_higher], alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], lower.tail = FALSE, log.p = FALSE),
-      "beta"      = stats::pbeta(q[!q_higher], shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = FALSE, log.p = FALSE),
-      "bernoulli" = stats::pbinom(q[!q_higher], size = 1, prob = prior$parameters[["probability"]], lower.tail = FALSE, log.p = FALSE),
-      "exp"       = stats::pexp(q[!q_higher], rate = prior$parameters[["rate"]], lower.tail = FALSE, log.p = FALSE),
-      "uniform"   = stats::punif(q[!q_higher], min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = FALSE, log.p = FALSE),
-      "point"     = ppoint(q[!q_higher], location = prior$parameters[["location"]], lower.tail = FALSE, log.p = FALSE)
-    )
-
-    # deal with truncation
-    if(prior[["distribution"]] != "point"){
-      p[!q_higher] <- (p[!q_higher] - (1 - .prior_C2(prior))) /.prior_C(prior)
-    }
+    p <- .prior_simple_ccdf(prior, q)
 
   }else if(is.prior.vector(prior)){
 
@@ -1447,24 +1373,7 @@ lpdf.prior  <- function(x, y, ...){
 
   }else if(is.prior.simple(prior)){
 
-    log_lik <- switch(
-      prior[["distribution"]],
-      "normal"    = stats::dnorm(x, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], log = TRUE),
-      "lognormal" = stats::dlnorm(x, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], log = TRUE),
-      "t"         = extraDistr::dlst(x, df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]], log = TRUE),
-      "gamma"     = stats::dgamma(x, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], log = TRUE),
-      "invgamma"  = extraDistr::dinvgamma(x, alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], log = TRUE),
-      "beta"      = stats::dbeta(x, shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], log = TRUE),
-      "bernoulli" = stats::dbinom(x, size = 1, prob = prior$parameters[["probability"]], log = TRUE),
-      "exp"       = stats::dexp(x, rate = prior$parameters[["rate"]], log = TRUE),
-      "uniform"   = stats::dunif(x, min = prior$parameters[["a"]], max = prior$parameters[["b"]], log = TRUE),
-      "point"     = dpoint(x, location = prior$parameters[["location"]], log = TRUE)
-    )
-
-    log_lik[x < prior$truncation[["lower"]] | x > prior$truncation[["upper"]]] <- -Inf
-    if(prior[["distribution"]] != "point"){
-      log_lik <- log_lik - log(.prior_C(prior))
-    }
+    log_lik <- .prior_simple_lpdf(prior, x)
 
   }else if(is.prior.vector(prior)){
 
@@ -1510,8 +1419,12 @@ pdf.prior   <- function(x, y, ...){
   .check_x(x)
   .check_prior(prior)
 
-  log_lik <- lpdf(prior, x)
-  lik     <- exp(log_lik)
+  if(is.prior.simple(prior)){
+    lik <- .prior_simple_pdf(prior, x)
+  }else{
+    log_lik <- lpdf.prior(prior, x)
+    lik     <- exp(log_lik)
+  }
 
   return(lik)
 }
@@ -1533,51 +1446,7 @@ quant.prior <- function(x, p, ...){
 
   }else if(is.prior.simple(prior)){
 
-    if(.is_prior_default_range(prior)){
-
-      q <- switch(
-        prior[["distribution"]],
-        "normal"    = stats::qnorm(p, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], lower.tail = TRUE, log.p = FALSE),
-        "lognormal" = stats::qlnorm(p, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], lower.tail = TRUE, log.p = FALSE),
-        "t"         = extraDistr::qlst(p, df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
-        "gamma"     = stats::qgamma(p, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
-        "invgamma"  = extraDistr::qinvgamma(p, alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
-        "beta"      = stats::qbeta(p, shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = TRUE, log.p = FALSE),
-        "bernoulli" = stats::qbinom(p, size = 1, prob = prior$parameters[["probability"]], lower.tail = TRUE, log.p = FALSE),
-        "exp"       = stats::qexp(p, rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
-        "uniform"   = stats::qunif(p, min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = TRUE, log.p = FALSE),
-        "point"     = qpoint(p, location = prior$parameters[["location"]], lower.tail = TRUE, log.p = FALSE)
-      )
-
-    }else{
-
-      if(!is.infinite(prior$truncation[["lower"]]) & !is.infinite(prior$truncation[["upper"]])){
-        start_value <- prior$truncation[["lower"]] + (prior$truncation[["upper"]]  - prior$truncation[["lower"]]) / 2
-      }else if(!is.infinite(prior$truncation[["upper"]])){
-        start_value <- prior$truncation[["upper"]] - 1
-      }else if(!is.infinite(prior$truncation[["lower"]])){
-        start_value <- prior$truncation[["lower"]] + 1
-      }else{
-        start_value <- 0
-      }
-
-      q <- sapply(p, function(p_i){
-        stats::optim(
-          par     = start_value,
-          fn      = function(x, prior, p_i)(cdf(prior, x) - p_i)^2,
-          lower   = prior$truncation[["lower"]],
-          upper   = prior$truncation[["upper"]],
-          prior   = prior,
-          p_i     = p_i,
-          method  = "L-BFGS-B",
-          control = list(
-            factr = 1e3
-          )
-        )$par
-      })
-
-    }
-
+    q <- .prior_simple_quant(prior, p)
 
   }else if(is.prior.weightfunction(prior)){
 
@@ -1587,6 +1456,228 @@ quant.prior <- function(x, p, ...){
 
   return(q)
 }
+
+.prior_simple_base_d <- function(prior, x, log = FALSE){
+
+  switch(
+    prior[["distribution"]],
+    "normal"    = stats::dnorm(x, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], log = log),
+    "lognormal" = stats::dlnorm(x, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], log = log),
+    "t"         = extraDistr::dlst(x, df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]], log = log),
+    "gamma"     = stats::dgamma(x, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], log = log),
+    "invgamma"  = extraDistr::dinvgamma(x, alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], log = log),
+    "beta"      = stats::dbeta(x, shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], log = log),
+    "bernoulli" = stats::dbinom(x, size = 1, prob = prior$parameters[["probability"]], log = log),
+    "exp"       = stats::dexp(x, rate = prior$parameters[["rate"]], log = log),
+    "uniform"   = stats::dunif(x, min = prior$parameters[["a"]], max = prior$parameters[["b"]], log = log),
+    "point"     = dpoint(x, location = prior$parameters[["location"]], log = log)
+  )
+}
+
+.prior_simple_base_p <- function(prior, q, lower.tail = TRUE){
+
+  switch(
+    prior[["distribution"]],
+    "normal"    = stats::pnorm(q, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], lower.tail = lower.tail, log.p = FALSE),
+    "lognormal" = stats::plnorm(q, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], lower.tail = lower.tail, log.p = FALSE),
+    "t"         = extraDistr::plst(q, df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]], lower.tail = lower.tail, log.p = FALSE),
+    "gamma"     = stats::pgamma(q, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = lower.tail, log.p = FALSE),
+    "invgamma"  = extraDistr::pinvgamma(q, alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], lower.tail = lower.tail, log.p = FALSE),
+    "beta"      = stats::pbeta(q, shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = lower.tail, log.p = FALSE),
+    "bernoulli" = stats::pbinom(q, size = 1, prob = prior$parameters[["probability"]], lower.tail = lower.tail, log.p = FALSE),
+    "exp"       = stats::pexp(q, rate = prior$parameters[["rate"]], lower.tail = lower.tail, log.p = FALSE),
+    "uniform"   = stats::punif(q, min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = lower.tail, log.p = FALSE),
+    "point"     = ppoint(q, location = prior$parameters[["location"]], lower.tail = lower.tail, log.p = FALSE)
+  )
+}
+
+.prior_simple_base_q <- function(prior, p){
+
+  switch(
+    prior[["distribution"]],
+    "normal"    = stats::qnorm(p, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], lower.tail = TRUE, log.p = FALSE),
+    "lognormal" = stats::qlnorm(p, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], lower.tail = TRUE, log.p = FALSE),
+    "t"         = extraDistr::qlst(p, df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
+    "gamma"     = stats::qgamma(p, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
+    "invgamma"  = extraDistr::qinvgamma(p, alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
+    "beta"      = stats::qbeta(p, shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = TRUE, log.p = FALSE),
+    "bernoulli" = stats::qbinom(p, size = 1, prob = prior$parameters[["probability"]], lower.tail = TRUE, log.p = FALSE),
+    "exp"       = stats::qexp(p, rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
+    "uniform"   = stats::qunif(p, min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = TRUE, log.p = FALSE),
+    "point"     = qpoint(p, location = prior$parameters[["location"]], lower.tail = TRUE, log.p = FALSE)
+  )
+}
+
+.prior_simple_base_r <- function(prior, n){
+
+  switch(
+    prior[["distribution"]],
+    "normal"    = stats::rnorm(n, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]]),
+    "lognormal" = stats::rlnorm(n, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]]),
+    "t"         = extraDistr::rlst(n, df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]]),
+    "gamma"     = stats::rgamma(n, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]]),
+    "invgamma"  = extraDistr::rinvgamma(n, alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]]),
+    "beta"      = stats::rbeta(n, shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]]),
+    "bernoulli" = stats::rbinom(n, size = 1, prob = prior$parameters[["probability"]]),
+    "exp"       = stats::rexp(n, rate = prior$parameters[["rate"]]),
+    "uniform"   = stats::runif(n, min = prior$parameters[["a"]], max = prior$parameters[["b"]]),
+    "point"     = rpoint(n, location = prior$parameters[["location"]])
+  )
+}
+
+.prior_simple_cdf <- function(prior, q){
+
+  if(.is_prior_default_range(prior)){
+    return(.prior_simple_base_p(prior, q, lower.tail = TRUE))
+  }
+
+  p        <- numeric(length(q))
+  q_lower  <- q < prior$truncation[["lower"]]
+  q_higher <- q > prior$truncation[["upper"]]
+  q_inside <- !q_lower & !q_higher
+
+  p[q_lower]  <- 0
+  p[q_higher] <- 1
+
+  if(any(q_inside)){
+    p[q_inside] <- .prior_simple_base_p(prior, q[q_inside], lower.tail = TRUE)
+
+    if(prior[["distribution"]] != "point"){
+      C1          <- .prior_C1(prior)
+      p[q_inside] <- (p[q_inside] - C1) / (.prior_C2(prior) - C1)
+    }
+  }
+
+  return(p)
+}
+
+.prior_simple_ccdf <- function(prior, q){
+
+  if(.is_prior_default_range(prior)){
+    return(.prior_simple_base_p(prior, q, lower.tail = FALSE))
+  }
+
+  p        <- numeric(length(q))
+  q_lower  <- q < prior$truncation[["lower"]]
+  q_higher <- q > prior$truncation[["upper"]]
+  q_inside <- !q_lower & !q_higher
+
+  p[q_lower]  <- 1
+  p[q_higher] <- 0
+
+  if(any(q_inside)){
+    p[q_inside] <- .prior_simple_base_p(prior, q[q_inside], lower.tail = FALSE)
+
+    if(prior[["distribution"]] != "point"){
+      C2          <- .prior_C2(prior)
+      p[q_inside] <- (p[q_inside] - (1 - C2)) / (C2 - .prior_C1(prior))
+    }
+  }
+
+  return(p)
+}
+
+.prior_simple_lpdf <- function(prior, x){
+
+  if(.is_prior_default_range(prior)){
+    return(.prior_simple_base_d(prior, x, log = TRUE))
+  }
+
+  log_lik <- .prior_simple_base_d(prior, x, log = TRUE)
+  log_lik[x < prior$truncation[["lower"]] | x > prior$truncation[["upper"]]] <- -Inf
+
+  if(prior[["distribution"]] != "point"){
+    log_lik <- log_lik - log(.prior_C(prior))
+  }
+
+  return(log_lik)
+}
+
+.prior_simple_pdf <- function(prior, x){
+
+  if(.is_prior_default_range(prior)){
+    return(.prior_simple_base_d(prior, x, log = FALSE))
+  }
+
+  lik <- .prior_simple_base_d(prior, x, log = FALSE)
+  lik[x < prior$truncation[["lower"]] | x > prior$truncation[["upper"]]] <- 0
+
+  if(prior[["distribution"]] != "point"){
+    lik <- lik / .prior_C(prior)
+  }
+
+  return(lik)
+}
+
+.prior_simple_quant <- function(prior, p){
+
+  if(.is_prior_default_range(prior)){
+    return(.prior_simple_base_q(prior, p))
+  }
+
+  if(is.prior.discrete(prior)){
+    return(.prior_simple_quant_optim(prior, p))
+  }
+
+  C1 <- .prior_C1(prior)
+  .prior_simple_base_q(prior, C1 + p * (.prior_C2(prior) - C1))
+}
+
+.prior_simple_quant_optim <- function(prior, p){
+
+  if(!is.infinite(prior$truncation[["lower"]]) & !is.infinite(prior$truncation[["upper"]])){
+    start_value <- prior$truncation[["lower"]] + (prior$truncation[["upper"]]  - prior$truncation[["lower"]]) / 2
+  }else if(!is.infinite(prior$truncation[["upper"]])){
+    start_value <- prior$truncation[["upper"]] - 1
+  }else if(!is.infinite(prior$truncation[["lower"]])){
+    start_value <- prior$truncation[["lower"]] + 1
+  }else{
+    start_value <- 0
+  }
+
+  sapply(p, function(p_i){
+    stats::optim(
+      par     = start_value,
+      fn      = function(x, prior, p_i)(.prior_simple_cdf(prior, x) - p_i)^2,
+      lower   = prior$truncation[["lower"]],
+      upper   = prior$truncation[["upper"]],
+      prior   = prior,
+      p_i     = p_i,
+      method  = "L-BFGS-B",
+      control = list(
+        factr = 1e3
+      )
+    )$par
+  })
+}
+
+.prior_simple_rng <- function(prior, n){
+
+  if(.is_prior_default_range(prior)){
+    return(.prior_simple_base_r(prior, n))
+  }
+
+  if(is.prior.discrete(prior)){
+    return(.prior_simple_rng_rejection(prior, n))
+  }
+
+  C1 <- .prior_C1(prior)
+  .prior_simple_base_q(prior, stats::runif(n, min = C1, max = .prior_C2(prior)))
+}
+
+.prior_simple_rng_rejection <- function(prior, n){
+
+  x  <- NULL
+  nn <- round(n * 1 / .prior_C(prior) * 1.10)
+
+  while(length(x) < n){
+    temp_x <- .prior_simple_base_r(prior, nn)
+    x      <- c(x, temp_x[temp_x >= prior$truncation[["lower"]] & temp_x <= prior$truncation[["upper"]]])
+  }
+
+  x[1:n]
+}
+
 .prior_C1 <- function(prior){
 
   if(is.prior.simple(prior)){
@@ -1686,7 +1777,7 @@ mcdf.prior   <- function(x, q, ...){
 
   }else if(is.prior.simple(prior)){
 
-    p <- cdf(prior, q)
+    p <- .prior_simple_cdf(prior, q)
 
   }else if(is.prior.weightfunction(prior)){
 
@@ -1765,7 +1856,7 @@ mccdf.prior  <- function(x, q, ...){
 
   }else if(is.prior.simple(prior)){
 
-    p <- ccdf(prior, q)
+    p <- .prior_simple_ccdf(prior, q)
 
   }else if(is.prior.weightfunction(prior)){
 
@@ -1845,7 +1936,7 @@ mlpdf.prior  <- function(x, y, ...){
 
   }else if(is.prior.simple(prior)){
 
-    log_lik <- lpdf(prior, x)
+    log_lik <- .prior_simple_lpdf(prior, x)
 
   }else if(is.prior.weightfunction(prior)){
 
@@ -1915,8 +2006,12 @@ mpdf.prior   <- function(x, y, ...){
   .check_x(x)
   .check_prior(prior)
 
-  log_lik <- mlpdf(prior, x)
-  lik     <- exp(log_lik)
+  if(is.prior.simple(prior)){
+    lik <- .prior_simple_pdf(prior, x)
+  }else{
+    log_lik <- mlpdf.prior(prior, x)
+    lik     <- exp(log_lik)
+  }
 
   return(lik)
 }
@@ -1938,7 +2033,7 @@ mquant.prior <- function(x, p, ...){
 
   }else if(is.prior.simple(prior)){
 
-    q <- quant(prior, p)
+    q <- .prior_simple_quant(prior, p)
 
   }else if(is.prior.weightfunction(prior)){
 

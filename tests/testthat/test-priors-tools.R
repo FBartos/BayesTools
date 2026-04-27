@@ -60,6 +60,18 @@ test_that("Prior handling works", {
 })
 
 
+test_that("Truncated simple prior distribution functions respect support", {
+
+  p <- prior("normal", list(0, 1), list(0, 2))
+
+  expect_equal(cdf(p, c(-1, 0, 2, 3)), c(0, 0, 1, 1), tolerance = 1e-12)
+  expect_equal(ccdf(p, c(-1, 0, 2, 3)), c(1, 1, 0, 0), tolerance = 1e-12)
+
+  probabilities <- c(.1, .5, .9)
+  expect_equal(cdf(p, quant(p, probabilities)), probabilities, tolerance = 1e-10)
+})
+
+
 test_that("is.prior functions work correctly", {
 
   # Create priors for testing
