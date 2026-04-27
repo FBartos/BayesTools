@@ -21,24 +21,25 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up R
+        id: setup-r
         uses: r-lib/actions/setup-r@v2
         with:
-          r-version: 'release'
+          r-version: '4.6'
           use-public-rspm: true
 
       # Cache R packages
       - name: Cache R packages
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ${{ env.R_LIBS_USER }}
-          key: ${{ runner.os }}-r-${{ hashFiles('**/DESCRIPTION') }}
+          key: ${{ runner.os }}-r-${{ steps.setup-r.outputs.installed-r-version }}-cache-v2-${{ hashFiles('**/DESCRIPTION') }}
           restore-keys: |
-            ${{ runner.os }}-r-
+            ${{ runner.os }}-r-${{ steps.setup-r.outputs.installed-r-version }}-cache-v2-
 
       # Cache system dependencies
       - name: Cache system dependencies
         if: runner.os == 'Linux'
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: /var/cache/apt
           key: ${{ runner.os }}-apt-${{ hashFiles('.github/workflows/copilot-setup-steps.yml') }}

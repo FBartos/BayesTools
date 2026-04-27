@@ -38,14 +38,14 @@
 <text x='44.64' y='382.55' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>0.2</text>
 <text x='44.64' y='274.78' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>0.4</text>
 <text x='44.64' y='167.00' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>0.6</text>
-<text x='305.69' y='31.89' style='font-size: 12.00px; font-family: sans;' textLength='37.02px' lengthAdjust='spacingAndGlyphs'>PET ~ </text>
-<text x='342.71' y='31.89' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='38.68px' lengthAdjust='spacingAndGlyphs'>Normal</text>
-<text x='382.69' y='31.89' style='font-size: 12.00px; font-family: sans;' textLength='38.02px' lengthAdjust='spacingAndGlyphs'>(0, 0.2)</text>
-<text x='420.71' y='34.11' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>[</text>
-<text x='423.04' y='34.11' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>0</text>
-<text x='427.71' y='34.11' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>, </text>
-<text x='432.38' y='34.11' style='font-size: 8.40px; font-family: sans;' textLength='8.40px' lengthAdjust='spacingAndGlyphs'>∞</text>
-<text x='440.78' y='34.11' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>]</text>
+<text x='305.69' y='31.73' style='font-size: 12.00px; font-family: sans;' textLength='37.02px' lengthAdjust='spacingAndGlyphs'>PET ~ </text>
+<text x='342.71' y='31.73' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='38.68px' lengthAdjust='spacingAndGlyphs'>Normal</text>
+<text x='382.69' y='31.73' style='font-size: 12.00px; font-family: sans;' textLength='38.02px' lengthAdjust='spacingAndGlyphs'>(0, 0.2)</text>
+<text x='420.71' y='34.26' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>[</text>
+<text x='423.04' y='34.26' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>0</text>
+<text x='427.71' y='34.26' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>, </text>
+<text x='432.38' y='34.26' style='font-size: 8.40px; font-family: sans;' textLength='8.40px' lengthAdjust='spacingAndGlyphs'>∞</text>
+<text x='440.78' y='34.26' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>]</text>
 <text x='374.40' y='557.28' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='43.36px' lengthAdjust='spacingAndGlyphs'>Iteration</text>
 <text transform='translate(12.96,280.80) rotate(-90)' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='23.34px' lengthAdjust='spacingAndGlyphs'>PET</text>
 </g>

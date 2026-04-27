@@ -46,15 +46,15 @@
 <text x='44.64' y='216.52' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>0.8</text>
 <text x='44.64' y='148.09' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>1.0</text>
 <text x='44.64' y='79.66' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>1.2</text>
-<text x='309.19' y='31.89' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
-<text x='312.19' y='31.89' style='font-size: 12.00px; font-family: sans;' textLength='37.02px' lengthAdjust='spacingAndGlyphs'>PET ~ </text>
-<text x='349.21' y='31.89' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='38.68px' lengthAdjust='spacingAndGlyphs'>Normal</text>
-<text x='389.20' y='31.89' style='font-size: 12.00px; font-family: sans;' textLength='28.01px' lengthAdjust='spacingAndGlyphs'>(1, 1)</text>
-<text x='417.20' y='34.11' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>[</text>
-<text x='419.54' y='34.11' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>0</text>
-<text x='424.21' y='34.11' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>, </text>
-<text x='428.88' y='34.11' style='font-size: 8.40px; font-family: sans;' textLength='8.40px' lengthAdjust='spacingAndGlyphs'>∞</text>
-<text x='437.28' y='34.11' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>]</text>
+<text x='309.19' y='31.73' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
+<text x='312.19' y='31.73' style='font-size: 12.00px; font-family: sans;' textLength='37.02px' lengthAdjust='spacingAndGlyphs'>PET ~ </text>
+<text x='349.21' y='31.73' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='38.68px' lengthAdjust='spacingAndGlyphs'>Normal</text>
+<text x='389.20' y='31.73' style='font-size: 12.00px; font-family: sans;' textLength='28.01px' lengthAdjust='spacingAndGlyphs'>(1, 1)</text>
+<text x='417.20' y='34.26' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>[</text>
+<text x='419.54' y='34.26' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>0</text>
+<text x='424.21' y='34.26' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>, </text>
+<text x='428.88' y='34.26' style='font-size: 8.40px; font-family: sans;' textLength='8.40px' lengthAdjust='spacingAndGlyphs'>∞</text>
+<text x='437.28' y='34.26' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>]</text>
 <text x='374.40' y='557.28' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='77.38px' lengthAdjust='spacingAndGlyphs'>Standard error</text>
 <text transform='translate(12.96,280.80) rotate(-90)' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='55.37px' lengthAdjust='spacingAndGlyphs'>Effect size</text>
 </g>

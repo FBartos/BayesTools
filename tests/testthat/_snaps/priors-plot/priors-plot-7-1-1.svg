@@ -44,15 +44,15 @@
 <text x='44.64' y='243.86' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='23.36px' lengthAdjust='spacingAndGlyphs'>0.06</text>
 <text x='44.64' y='161.73' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='23.36px' lengthAdjust='spacingAndGlyphs'>0.08</text>
 <text x='44.64' y='79.60' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='23.36px' lengthAdjust='spacingAndGlyphs'>0.10</text>
-<text x='295.00' y='31.89' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
-<text x='298.01' y='31.89' style='font-size: 12.00px; font-family: sans;' textLength='53.71px' lengthAdjust='spacingAndGlyphs'>PEESE ~ </text>
-<text x='351.72' y='31.89' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='40.70px' lengthAdjust='spacingAndGlyphs'>Cauchy</text>
-<text x='393.37' y='31.89' style='font-size: 12.00px; font-family: sans;' textLength='38.02px' lengthAdjust='spacingAndGlyphs'>(0, 0.1)</text>
-<text x='431.39' y='34.11' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>[</text>
-<text x='433.72' y='34.11' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>0</text>
-<text x='438.39' y='34.11' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>, </text>
-<text x='443.06' y='34.11' style='font-size: 8.40px; font-family: sans;' textLength='8.40px' lengthAdjust='spacingAndGlyphs'>∞</text>
-<text x='451.46' y='34.11' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>]</text>
+<text x='295.00' y='31.73' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
+<text x='298.01' y='31.73' style='font-size: 12.00px; font-family: sans;' textLength='53.71px' lengthAdjust='spacingAndGlyphs'>PEESE ~ </text>
+<text x='351.72' y='31.73' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='40.70px' lengthAdjust='spacingAndGlyphs'>Cauchy</text>
+<text x='393.37' y='31.73' style='font-size: 12.00px; font-family: sans;' textLength='38.02px' lengthAdjust='spacingAndGlyphs'>(0, 0.1)</text>
+<text x='431.39' y='34.26' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>[</text>
+<text x='433.72' y='34.26' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>0</text>
+<text x='438.39' y='34.26' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>, </text>
+<text x='443.06' y='34.26' style='font-size: 8.40px; font-family: sans;' textLength='8.40px' lengthAdjust='spacingAndGlyphs'>∞</text>
+<text x='451.46' y='34.26' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>]</text>
 <text x='374.40' y='557.28' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='77.38px' lengthAdjust='spacingAndGlyphs'>Standard error</text>
 <text transform='translate(12.96,280.80) rotate(-90)' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='55.37px' lengthAdjust='spacingAndGlyphs'>Effect size</text>
 </g>
