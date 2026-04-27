@@ -1,28 +1,28 @@
                                Mean    SD  0.025    0.5  0.975
-(mu) intercept (inclusion)    0.738    NA     NA     NA     NA
-(mu) intercept               -0.140 0.049 -0.228 -0.143 -0.034
+(mu) intercept (inclusion)    0.618    NA     NA     NA     NA
+(mu) intercept               -0.144 0.047 -0.229 -0.145 -0.045
 (mu) x_cont1 (inclusion)      1.000    NA     NA     NA     NA
-(mu) x_cont1                  0.273 0.063  0.150  0.273  0.398
-(mu) x_fac2t (inclusion)      0.128    NA     NA     NA     NA
-(mu) x_fac2t                  0.068 0.062 -0.052  0.068  0.171
-(mu) x_fac3t (inclusion)      0.732    NA     NA     NA     NA
-(mu) x_fac3t[1]               0.298 0.075  0.156  0.298  0.441
-(mu) x_fac3t[2]              -0.014 0.076 -0.153 -0.011  0.134
-sigma (inclusion: normal)     0.422    NA     NA     NA     NA
-sigma (inclusion: lognormal)  0.578    NA     NA     NA     NA
-sigma[normal]                 0.800 0.035  0.729  0.800  0.868
-sigma[lognormal]              0.806 0.033  0.745  0.805  0.877
-bias (inclusion)              0.476    NA     NA     NA     NA
-PET                           0.667 0.570  0.040  0.453  1.921
+(mu) x_cont1                  0.280 0.064  0.154  0.281  0.410
+(mu) x_fac2t (inclusion)      0.116    NA     NA     NA     NA
+(mu) x_fac2t                  0.079 0.071 -0.027  0.067  0.210
+(mu) x_fac3t (inclusion)      0.984    NA     NA     NA     NA
+(mu) x_fac3t[1]               0.293 0.083  0.128  0.293  0.465
+(mu) x_fac3t[2]              -0.013 0.080 -0.168 -0.019  0.141
+sigma (inclusion: normal)     0.420    NA     NA     NA     NA
+sigma (inclusion: lognormal)  0.580    NA     NA     NA     NA
+sigma[normal]                 0.802 0.034  0.737  0.799  0.867
+sigma[lognormal]              0.804 0.036  0.736  0.806  0.876
+bias (inclusion)              0.516    NA     NA     NA     NA
+PET                           0.744 0.653  0.010  0.577  2.323
 omega[0,0.025]                1.000 0.000  1.000  1.000  1.000
-omega[0.025,0.05]             0.593 0.285  0.020  0.659  0.983
-omega[0.05,0.975]             0.419 0.284  0.017  0.363  0.947
-omega[0.975,1]                0.670 0.376  0.035  1.000  1.000
-[0;31mConditional summary for mu_intercept is based on 369 samples.[0m
+omega[0.025,0.05]             0.600 0.266  0.050  0.616  0.989
+omega[0.05,0.975]             0.418 0.278  0.013  0.400  0.982
+omega[0.975,1]                0.653 0.379  0.022  0.832  1.000
+[0;31mConditional summary for mu_intercept is based on 309 samples.[0m
 [0;31mConditional summary for mu_x_cont1 is based on 500 samples.[0m
-[0;31mConditional summary for mu_x_fac2t is based on 64 samples.[0m
-[0;31mConditional summary for mu_x_fac3t[1], mu_x_fac3t[2] is based on 366 samples.[0m
-[0;31mConditional summary for sigma[normal] is based on 211 samples.[0m
-[0;31mConditional summary for sigma[lognormal] is based on 289 samples.[0m
-[0;31mConditional summary for PET is based on 79 samples.[0m
-[0;31mConditional summary for omega is based on 159 samples.[0m
+[0;31mConditional summary for mu_x_fac2t is based on 58 samples.[0m
+[0;31mConditional summary for mu_x_fac3t[1], mu_x_fac3t[2] is based on 492 samples.[0m
+[0;31mConditional summary for sigma[normal] is based on 210 samples.[0m
+[0;31mConditional summary for sigma[lognormal] is based on 290 samples.[0m
+[0;31mConditional summary for PET is based on 89 samples.[0m
+[0;31mConditional summary for omega is based on 169 samples.[0m

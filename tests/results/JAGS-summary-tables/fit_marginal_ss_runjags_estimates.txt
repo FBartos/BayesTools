@@ -1,13 +1,13 @@
                                    Mean    SD  0.025   0.5 0.975 error(MCMC) error(MCMC)/SD  ESS R-hat
-(mu) intercept                    0.618 0.038  0.545 0.618 0.690     0.00132          0.035  853 0.999
+(mu) intercept                    0.618 0.038  0.542 0.618 0.696     0.00127          0.033  907 1.001
 (mu) x_cont1 (inclusion)          1.000    NA     NA    NA    NA          NA             NA   NA    NA
-(mu) x_cont1                      0.358 0.084  0.197 0.357 0.518     0.00282          0.034  897 1.003
-(mu) x_fac2t (inclusion)          0.056    NA     NA    NA    NA          NA             NA   NA    NA
-(mu) x_fac2t[B]                   0.000 0.018 -0.009 0.000 0.009     0.00086          0.048  469 1.003
-(mu) x_fac3md (inclusion)         0.827    NA     NA    NA    NA          NA             NA   NA    NA
-(mu) x_fac3md[1]                  0.016 0.050 -0.083 0.004 0.129     0.00161          0.032  958 1.002
-(mu) x_fac3md[2]                  0.135 0.078  0.000 0.150 0.262     0.00520          0.067  225 1.004
-(mu) x_cont1:x_fac3md (inclusion) 0.075    NA     NA    NA    NA          NA             NA   NA    NA
-(mu) x_cont1:x_fac3md[1]          0.002 0.016  0.000 0.000 0.039     0.00048          0.031 1092 1.046
-(mu) x_cont1:x_fac3md[2]          0.003 0.018  0.000 0.000 0.062     0.00056          0.031 1107 1.027
-sigma                             0.509 0.028  0.459 0.507 0.564     0.00119          0.043  535 1.001
+(mu) x_cont1                      0.359 0.082  0.195 0.357 0.522     0.00270          0.033  925 1.002
+(mu) x_fac2t (inclusion)          0.068    NA     NA    NA    NA          NA             NA   NA    NA
+(mu) x_fac2t[B]                   0.001 0.020 -0.012 0.000 0.033     0.00077          0.038  687 0.999
+(mu) x_fac3md (inclusion)         0.830    NA     NA    NA    NA          NA             NA   NA    NA
+(mu) x_fac3md[1]                  0.015 0.050 -0.080 0.003 0.119     0.00157          0.032 1000 0.999
+(mu) x_fac3md[2]                  0.136 0.080  0.000 0.149 0.268     0.00589          0.074  207 1.030
+(mu) x_cont1:x_fac3md (inclusion) 0.072    NA     NA    NA    NA          NA             NA   NA    NA
+(mu) x_cont1:x_fac3md[1]          0.003 0.017  0.000 0.000 0.051     0.00071          0.042  665 1.005
+(mu) x_cont1:x_fac3md[2]          0.003 0.017  0.000 0.000 0.060     0.00061          0.036  794 1.003
+sigma                             0.509 0.028  0.456 0.508 0.565     0.00114          0.041  607 1.002

@@ -98,11 +98,14 @@ jobs:
           # Run the full non-CRAN test suite so slow model-fitting tests
           # contribute to coverage.
           Sys.setenv(NOT_CRAN = "true")
-          # Use a persistent directory for install_path to allow debugging
-          install_path <- file.path(Sys.getenv("RUNNER_TEMP"), "R_LIBS")
-          dir.create(install_path, showWarnings = FALSE, recursive = TRUE)
+          # Use forward-slash paths on Windows; covr injects these paths into
+          # instrumented R code, where backslashes can become invalid escapes.
+          repo_path <- normalizePath(".", winslash = "/", mustWork = TRUE)
+          install_path <- normalizePath(file.path(Sys.getenv("RUNNER_TEMP"), "R_LIBS"), winslash = "/", mustWork = FALSE)
+          unlink(install_path, recursive = TRUE, force = TRUE)
           
           coverage <- covr::package_coverage(
+            path = repo_path,
             quiet = FALSE,
             clean = FALSE,
             install_path = install_path

@@ -1,10 +1,10 @@
-                             Mean    SD 0.025   0.5 0.975 error(MCMC) error(MCMC)/SD  ESS R-hat
-(mu) intercept (inclusion)  0.027    NA    NA    NA    NA          NA             NA   NA    NA
-(mu) intercept             -0.001 0.017 0.000 0.000 0.000     0.00052          0.030 1085 1.062
-(mu) x_cont1 (inclusion)    0.363    NA    NA    NA    NA          NA             NA   NA    NA
-(mu) x_cont1                0.077 0.124 0.000 0.000 0.390     0.00569          0.046  471 1.009
-(mu) x_fac3t (inclusion)    0.066    NA    NA    NA    NA          NA             NA   NA    NA
-(mu) x_fac3t[1]             0.007 0.049 0.000 0.000 0.126     0.00261          0.053  467 1.000
-(mu) x_fac3t[2]             0.008 0.051 0.000 0.000 0.167     0.00216          0.042  638 1.034
-sigma (inclusion)           0.495    NA    NA    NA    NA          NA             NA   NA    NA
-sigma                       0.972 0.070 0.843 0.969 1.125     0.00250          0.036  815 1.005
+                             Mean    SD 0.025   0.5 0.975 error(MCMC) error(MCMC)/SD ESS R-hat
+(mu) intercept (inclusion)  0.028    NA    NA    NA    NA          NA             NA  NA    NA
+(mu) intercept             -0.001 0.021 0.000 0.000 0.000     0.00081          0.038 816 1.125
+(mu) x_cont1 (inclusion)    0.360    NA    NA    NA    NA          NA             NA  NA    NA
+(mu) x_cont1                0.076 0.119 0.000 0.000 0.358     0.00694          0.058 293 1.021
+(mu) x_fac3t (inclusion)    0.059    NA    NA    NA    NA          NA             NA  NA    NA
+(mu) x_fac3t[1]             0.009 0.053 0.000 0.000 0.179     0.00265          0.050 476 1.005
+(mu) x_fac3t[2]             0.008 0.052 0.000 0.000 0.156     0.00194          0.037 743 1.003
+sigma (inclusion)           0.445    NA    NA    NA    NA          NA             NA  NA    NA
+sigma                       0.967 0.068 0.836 0.966 1.109     0.00266          0.039 666 1.001
