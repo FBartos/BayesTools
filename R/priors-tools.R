@@ -264,7 +264,19 @@
   }
 }
 .is_prior_expression           <- function(prior){
-  return(any(sapply(prior[["parameters"]], is.expression)))
+
+  parameters <- prior[["parameters"]]
+  if(is.null(parameters)){
+    return(FALSE)
+  }
+
+  for(i in seq_along(parameters)){
+    if(is.expression(parameters[[i]])){
+      return(TRUE)
+    }
+  }
+
+  return(FALSE)
 }
 .prior_expression_to_character <- function(prior){
   prior[["parameters"]] <- lapply(prior[["parameters"]], function(x){

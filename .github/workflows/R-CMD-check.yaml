@@ -15,7 +15,7 @@ jobs:
         config:
           - {os: windows-latest, r: '4.6'}
           - {os: ubuntu-latest, r: '4.6'}
-          - {os: macOS-latest, r: '4.6'}
+          - {os: macos-15-intel, r: '4.6'}
     steps:
       - uses: actions/checkout@v4
 
