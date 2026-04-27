@@ -428,6 +428,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       # transform factor levels
       marginal_posterior_samples <- transform_factor_samples(samples)
       marginal_posterior_samples <- transform_treatment_samples(marginal_posterior_samples)[[parameter]]
+      marginal_factor_metadata <- marginal_posterior_samples
 
       level_names <- attr(marginal_posterior_samples, "level_names")
       if(is.null(level_names) || is.list(level_names)){
@@ -488,7 +489,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       if(inherits(samples[[parameter]], "mixed_posteriors.factor")){
 
         factor_weights <- .prior_factor_level_weight_matrix(
-          sample_metadata = samples[[parameter]],
+          sample_metadata = marginal_factor_metadata,
           parameter       = parameter,
           samples         = samples
         )

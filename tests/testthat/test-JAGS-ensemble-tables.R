@@ -365,6 +365,7 @@ test_that("Simplified interpret2 function", {
 
 test_that("as_mixed_posteriors works with ensemble tables", {
 
+  skip_if_no_fits()
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")
 

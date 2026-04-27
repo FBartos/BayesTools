@@ -107,6 +107,52 @@ test_that("plot_prior_list rejects prior_list_mu when not needed", {
   list(samples = samples, prior_list = prior_list)
 }
 
+.scaled_default_treatment_interaction_samples <- function(n_posterior = 20, n_prior = 128){
+
+  df <- data.frame(
+    alloc = factor(
+      rep(c("alternate", "random", "systematic"), each = 4),
+      levels = c("alternate", "random", "systematic")
+    ),
+    year = seq(1960, 1971, length.out = 12)
+  )
+  formula_result <- JAGS_formula(
+    formula       = ~ alloc * year,
+    parameter     = "mu",
+    data          = df,
+    formula_scale = list(year = TRUE),
+    prior_list    = list(
+      "__default_continuous" = prior("normal", list(0, 1)),
+      "__default_factor"     = prior_factor("normal", list(0, 1), contrast = "treatment")
+    )
+  )
+  prior_list <- formula_result$prior_list
+  posterior_columns <- unlist(lapply(names(prior_list), function(parameter) {
+    if(is.prior.factor(prior_list[[parameter]])){
+      BayesTools:::.JAGS_prior_factor_names(parameter, prior_list[[parameter]])
+    }else{
+      parameter
+    }
+  }), use.names = FALSE)
+
+  set.seed(616)
+  posterior <- matrix(rnorm(n_posterior * length(posterior_columns)), nrow = n_posterior)
+  colnames(posterior) <- posterior_columns
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- prior_list
+  attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
+
+  samples <- as_mixed_posteriors(
+    fit,
+    parameters = "mu_alloc",
+    transform_scaled = TRUE,
+    n_prior_samples = n_prior
+  )
+
+  list(samples = samples, prior_list = prior_list)
+}
+
 test_that("transformed factor prior plot data uses indexed prior density columns", {
 
   fixture <- .scaled_multi_factor_interaction_samples()
@@ -132,6 +178,36 @@ test_that("transformed factor prior plot data uses indexed prior density columns
       rep(c("b1", "b2", "b3"), each = 2),
       "]"
     )
+  )
+})
+
+test_that("transformed treatment factor prior plot data omits reference coefficient", {
+
+  fixture <- .scaled_default_treatment_interaction_samples()
+  samples <- fixture$samples
+
+  factor_weights <- BayesTools:::.prior_factor_level_weight_matrix(
+    sample_metadata = samples$mu_alloc,
+    parameter       = "mu_alloc",
+    samples         = samples
+  )
+  expect_equal(rownames(factor_weights), colnames(samples$mu_alloc))
+  expect_equal(colnames(factor_weights), c("mu_alloc[1]", "mu_alloc[2]"))
+  expect_false(any(rowSums(abs(factor_weights)) == 0))
+
+  plot_data <- BayesTools:::.plot_data_prior_factor_density_transformed(
+    prior_density_context = attr(samples, "prior_density_context"),
+    samples               = samples,
+    parameter             = "mu_alloc",
+    prior_list            = attr(samples$mu_alloc, "prior_list"),
+    n_points              = 32
+  )
+
+  expect_equal(length(plot_data), 2L)
+  expect_false(any(vapply(plot_data, inherits, logical(1), what = "density.prior.point")))
+  expect_equal(
+    unname(vapply(plot_data, attr, character(1), which = "level_name")),
+    colnames(samples$mu_alloc)
   )
 })
 
