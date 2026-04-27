@@ -463,13 +463,15 @@ test_that("plot_posterior handles transformed scaled factor-interaction priors",
 
   fixture <- .scaled_multi_factor_interaction_samples(n_posterior = 24, n_prior = 128)
 
-  plot <- plot_posterior(
-    samples = fixture$samples,
-    parameter = "mu_x__xXx__a__xXx__b",
-    plot_type = "ggplot",
-    prior = TRUE,
-    n_points = 32
-  )
+  expect_silent({
+    plot <- plot_posterior(
+      samples = fixture$samples,
+      parameter = "mu_x__xXx__a__xXx__b",
+      plot_type = "ggplot",
+      prior = TRUE,
+      n_points = 32
+    )
+  })
 
   expect_s3_class(plot, "ggplot")
   expect_gt(length(plot$layers), 1)

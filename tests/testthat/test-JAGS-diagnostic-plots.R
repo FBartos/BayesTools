@@ -271,7 +271,7 @@ test_that("JAGS diagnostics work (spike priors)", {
   fit_simple <- readRDS(file.path(temp_fits_dir, "fit_spike_slab_simple.RDS"))
 
   ### density plots
-  vdiffr::expect_doppelganger("diagnostics4-ggplot-density-fit_simple",JAGS_diagnostics_density(fit_simple, parameter = "mu"))
+  vdiffr::expect_doppelganger("diagnostics4-ggplot-density-fit_simple", JAGS_diagnostics_density(fit_simple, parameter = "mu", plot_type = "ggplot"))
 
   # fit_spike_factors has factor spikes
   expect_message(JAGS_diagnostics_density(fit, parameter = "mu_x_fac2i"),         "No diagnostic plots are produced for a spike prior distribution")

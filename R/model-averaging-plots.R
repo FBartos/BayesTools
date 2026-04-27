@@ -2005,6 +2005,9 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       args_prior$plot_type <- plot_type
       args_prior$par_name  <- par_name
       args_prior$scale_y2  <- scale_y2
+      if(plot_type == "ggplot"){
+        args_prior$hardcode <- TRUE
+      }
 
       if(any(sapply(plot_data_prior, inherits, what = "density.prior.factor"))){
         plot <- do.call(.plot_prior_list.factor, args_prior)
