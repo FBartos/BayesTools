@@ -1538,7 +1538,7 @@
 
   if(isTRUE(attr(metadata, "orthonormal")) ||
      isTRUE(attr(metadata, "meandif")) ||
-     isTRUE(attr(metadata, "treatment"))){
+     inherits(metadata, "mixed_posteriors.treatment_transformed")){
     design_info <- .factor_term_design_from_metadata(metadata)
     weights <- design_info$design
     rownames(weights) <- .factor_contrast_parameter_names(
@@ -1567,6 +1567,20 @@
   raw_columns <- colnames(as.matrix(sample_metadata))
   weights <- diag(length(raw_columns))
   rownames(weights) <- raw_columns
-  colnames(weights) <- raw_columns
+  prior <- attr(metadata, "prior_list")
+  if(!is.null(prior) && !is.prior(prior)){
+    prior_candidates <- prior[vapply(prior, is.prior, logical(1))]
+    prior <- if(length(prior_candidates) > 0) prior_candidates[[1]] else NULL
+  }
+  prior_columns <- if(!is.null(prior) && is.prior(prior)){
+    .prior_linear_prior_columns(parameter, prior)
+  }else{
+    NULL
+  }
+  colnames(weights) <- if(length(prior_columns) == ncol(weights)){
+    prior_columns
+  }else{
+    raw_columns
+  }
   return(weights)
 }

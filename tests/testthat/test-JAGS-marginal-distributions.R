@@ -128,6 +128,52 @@ test_that("marginal_posterior handles direct multi-factor transformed interactio
   }, logical(1))))
 })
 
+test_that("marginal_posterior uses transformed treatment metadata for simple factor priors", {
+
+  df <- data.frame(
+    x_fac2t = factor(c("A", "B", "A", "B"), levels = c("A", "B"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ x_fac2t,
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x_fac2t   = prior_factor("normal", list(0, 1), contrast = "treatment")
+    )
+  )
+
+  posterior <- matrix(rnorm(20), ncol = 1)
+  colnames(posterior) <- "mu_x_fac2t"
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- formula_result$prior_list
+
+  samples <- as_mixed_posteriors(
+    fit,
+    parameters = "mu_x_fac2t"
+  )
+  marginal <- marginal_posterior(
+    samples       = samples,
+    parameter     = "mu_x_fac2t",
+    prior_samples = TRUE,
+    use_formula   = FALSE,
+    n_samples     = 32
+  )
+
+  expect_equal(names(marginal), c("A", "B"))
+  expect_true(inherits(attr(marginal[["A"]], "prior_density"), "prior_linear_density"))
+  expect_true(inherits(attr(marginal[["B"]], "prior_density"), "prior_linear_density"))
+  expect_equal(
+    BayesTools:::.prior_linear_density_point_mass(attr(marginal[["A"]], "prior_density"), 0),
+    1
+  )
+  expect_equal(
+    BayesTools:::.prior_linear_density_point_mass(attr(marginal[["B"]], "prior_density"), 0),
+    0
+  )
+})
+
 test_that("marginal_posterior handles as_mixed_posteriors multi-factor interactions", {
 
   df <- expand.grid(

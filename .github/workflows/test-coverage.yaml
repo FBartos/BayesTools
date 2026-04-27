@@ -95,8 +95,9 @@ jobs:
           JAGS_ROOT: "/c/progra~1/JAGS/JAGS-4.3.1"
           JAGS_MAJOR_VERSION: 4
         run: |
-          # Keep coverage focused on code execution; vdiffr snapshots are platform-sensitive.
-          Sys.setenv(NOT_CRAN = "false")
+          # Run the full non-CRAN test suite so slow model-fitting tests
+          # contribute to coverage.
+          Sys.setenv(NOT_CRAN = "true")
           # Use a persistent directory for install_path to allow debugging
           install_path <- file.path(Sys.getenv("RUNNER_TEMP"), "R_LIBS")
           dir.create(install_path, showWarnings = FALSE, recursive = TRUE)
