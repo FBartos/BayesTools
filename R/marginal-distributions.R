@@ -536,11 +536,13 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
 .marginal_posterior_parameter_samples <- function(samples, parameter){
 
-  if(is.list(samples[[parameter]]) && length(samples[[parameter]]) > 1){
-    out <- lapply(samples[[parameter]], as.numeric)
+  parameter_samples <- samples[[parameter]]
+
+  if(is.list(parameter_samples)){
+    out <- lapply(parameter_samples, as.numeric)
   }else{
-    out <- list(as.numeric(samples[[parameter]][[1]]))
-    names(out) <- names(samples[[parameter]])[1]
+    out <- list(as.numeric(parameter_samples))
+    names(out) <- parameter
   }
 
   out

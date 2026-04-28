@@ -331,7 +331,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     for(i in seq_along(plot_data_points)){
       args           <- dots
       args$scale_y2  <- scale_y2
-      args$plot_data <- plot_data[[i]]
+      args$plot_data <- plot_data_points[[i]]
       args$col       <- if(unique(length(dots[["col"]])) > 1)      .plot.prior_settings()[["col"]]
       args$lty       <- if(unique(length(dots[["linetype"]])) > 1) .plot.prior_settings()[["linetype"]]
       plot           <- c(plot, do.call(.geom_prior.point, args))

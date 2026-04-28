@@ -25,6 +25,7 @@
 - fixes incorrect ordering the printed mixture priors
 - fixes formula with no intercepts coded as `0` (instead of only `-1`)
 - fixes bug in `.is.wholenumber` with NAs and `na.rm = TRUE`
+- fixes ggplot prior spike layers for marginal factor plots with density and point components
 
 # version 0.2.23
 ### Fixes

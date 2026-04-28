@@ -85,6 +85,46 @@ test_that("PET-PEESE prior plot data uses deterministic linear-combination summa
   expect_equal(plot_data$y_uCI, stats::qnorm(.975) * c(0, 0.5, 1), tolerance = 0.02)
 })
 
+test_that("factor ggplot prior point layers use point plot data", {
+
+  prior_list <- list(
+    beta = prior_mixture(
+      list(
+        prior("spike", list(0), prior_weights = 1),
+        prior("normal", list(0, 1), prior_weights = 1)
+      ),
+      is_null = c(TRUE, FALSE)
+    )
+  )
+  density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = prior_list,
+    weights    = c(beta = 1),
+    n_grid     = 256
+  )
+  plot_data <- BayesTools:::.prior_linear_density_to_plot_data(
+    density,
+    n_points   = 64,
+    factor     = TRUE,
+    level      = 1,
+    level_name = "A"
+  )
+  plot <- BayesTools:::.plot_prior_list.factor(
+    plot_data = plot_data,
+    plot_type = "ggplot",
+    hardcode  = TRUE,
+    legend    = FALSE
+  )
+
+  segment_layers <- vapply(plot[["layers"]], function(layer) {
+    inherits(layer[["geom"]], "GeomSegment")
+  }, logical(1))
+  segment_data <- plot[["layers"]][[which(segment_layers)]][["data"]]
+
+  expect_equal(sum(segment_layers), 1)
+  expect_equal(NROW(segment_data), 1)
+  expect_equal(segment_data[["x"]], 0, tolerance = 1e-8)
+})
+
 test_that("PET-PEESE prior plot data uses CDF quantiles for half-Cauchy PET", {
 
   x_seq <- c(0, 0.25, 0.5, 1)
