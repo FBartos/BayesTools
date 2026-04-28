@@ -347,8 +347,10 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
 
   prior_components <- attr(x, "components")
   if(all(prior_components %in% c("null", "alternative"))){
-    prior_names      <- prior_names[order(prior_components)]
-    prior_components <- prior_components[order(prior_components)]
+    prior_order      <- order(prior_components)
+    prior_names      <- prior_names[prior_order]
+    prior_weights    <- prior_weights[prior_order]
+    prior_components <- prior_components[prior_order]
   }
 
   if(!plot){
