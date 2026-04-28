@@ -110,3 +110,114 @@ test_that("marginal inference conditions formula levels by active weights", {
   expect_true(is.numeric(zero_level_mu_only))
   expect_gt(length(zero_level_mu_only), 0)
 })
+
+
+test_that("marginal inference conditions treatment factor levels by active weights", {
+
+  formula_result <- JAGS_formula(
+    formula    = ~ fac,
+    parameter  = "mu",
+    data       = data.frame(
+      fac = factor(c("A", "B", "C"), levels = c("A", "B", "C"))
+    ),
+    prior_list = list(
+      intercept = prior_spike_and_slab(
+        prior("normal", list(mean = 1, sd = 0.2)),
+        prior_inclusion = prior("point", list(location = 0.5))
+      ),
+      fac = prior_spike_and_slab(
+        prior_factor("normal", list(mean = 0.5, sd = 0.2), contrast = "treatment"),
+        prior_inclusion = prior("point", list(location = 0.5))
+      )
+    )
+  )
+
+  indicators <- expand.grid(
+    mu_intercept_indicator = c(0, 1),
+    mu_fac_indicator       = c(0, 1)
+  )
+  indicators <- indicators[rep(seq_len(nrow(indicators)), each = 50), ]
+  posterior <- cbind(
+    mu_intercept = ifelse(
+      indicators[["mu_intercept_indicator"]] == 1,
+      seq(0.75, 1.25, length.out = nrow(indicators)),
+      0
+    ),
+    "mu_fac[1]" = ifelse(
+      indicators[["mu_fac_indicator"]] == 1,
+      seq(0.25, 0.75, length.out = nrow(indicators)),
+      0
+    ),
+    "mu_fac[2]" = ifelse(
+      indicators[["mu_fac_indicator"]] == 1,
+      seq(0.50, 1.00, length.out = nrow(indicators)),
+      0
+    ),
+    indicators
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- formula_result[["prior_list"]]
+
+  inference <- as_marginal_inference(
+    model                = fit,
+    marginal_parameters = "mu_fac",
+    parameters          = c("mu_intercept", "mu_fac"),
+    conditional_list    = list(mu_fac = c("mu_intercept", "mu_fac")),
+    conditional_rule    = "OR",
+    formula             = ~ fac,
+    n_samples           = 128,
+    silent              = TRUE
+  )
+
+  factor_levels <- inference[["conditional"]][["mu_fac"]]
+
+  expect_equal(attr(factor_levels[["A"]], "effective_conditional"), "mu_intercept")
+  expect_equal(attr(factor_levels[["B"]], "effective_conditional"), c("mu_intercept", "mu_fac"))
+  expect_equal(attr(factor_levels[["C"]], "effective_conditional"), c("mu_intercept", "mu_fac"))
+  expect_equal(mean(as.numeric(factor_levels[["A"]]) == 0), 0)
+  expect_equal(mean(as.numeric(factor_levels[["B"]]) == 0), 0)
+  expect_equal(mean(as.numeric(factor_levels[["C"]]) == 0), 0)
+  expect_equal(.prior_linear_density_point_mass(attr(factor_levels[["A"]], "prior_density"), 0), 0)
+  expect_equal(.prior_linear_density_point_mass(attr(factor_levels[["B"]], "prior_density"), 0), 0)
+  expect_equal(.prior_linear_density_point_mass(attr(factor_levels[["C"]], "prior_density"), 0), 0)
+  expect_false(length(factor_levels[["A"]]) == length(factor_levels[["B"]]))
+
+  expect_warning(
+    marginal_estimates_table(
+      samples    = inference[["conditional"]],
+      inference  = inference[["inference"]],
+      parameters = "mu_fac"
+    ),
+    NA
+  )
+  expect_warning(
+    .plot_data_marginal_samples(
+      samples                 = inference[["conditional"]],
+      parameter               = "mu_fac",
+      prior                   = TRUE,
+      n_points                = 32,
+      transformation          = NULL,
+      transformation_arguments = NULL,
+      transformation_settings = FALSE
+    ),
+    NA
+  )
+
+  inference_factor_only <- as_marginal_inference(
+    model                = fit,
+    marginal_parameters = "mu_fac",
+    parameters          = c("mu_intercept", "mu_fac"),
+    conditional_list    = list(mu_fac = "mu_fac"),
+    conditional_rule    = "OR",
+    formula             = ~ fac,
+    n_samples           = 128,
+    silent              = TRUE
+  )
+
+  factor_only_levels <- inference_factor_only[["conditional"]][["mu_fac"]]
+
+  expect_equal(attr(factor_only_levels[["A"]], "effective_conditional"), character())
+  expect_equal(attr(factor_only_levels[["B"]], "effective_conditional"), "mu_fac")
+  expect_equal(attr(factor_only_levels[["C"]], "effective_conditional"), "mu_fac")
+})
