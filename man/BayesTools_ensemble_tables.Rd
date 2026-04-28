@@ -80,7 +80,7 @@ marginal_estimates_table(
   samples,
   inference,
   parameters,
-  probs = c(0.025, 0.95),
+  probs = c(0.025, 0.5, 0.975),
   logBF = FALSE,
   BF01 = FALSE,
   title = NULL,

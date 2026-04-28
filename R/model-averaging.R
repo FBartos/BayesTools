@@ -735,6 +735,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
   # extract the list of priors
   priors <- attr(model, "prior_list")
+  prior_density_priors <- priors
 
   # extract the samples
   model_samples <- suppressWarnings(coda::as.mcmc(model))
@@ -924,22 +925,36 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     attr(out, "formula_scale") <- formula_scale
   }
 
+  prior_context_priors      <- prior_density_priors
+  prior_context_conditional <- conditional
+  special_conditionals      <- c("PET", "PEESE", "PETPEESE", "omega")
+  if(length(conditional) == 1 &&
+     conditional %in% special_conditionals &&
+     !conditional %in% names(prior_density_priors)){
+    prior_context_priors      <- priors
+    prior_context_conditional <- NULL
+  }
+
   # generate and store transformed prior densities if requested
   if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
     prior_densities <- .generate_transformed_prior_densities(
-      prior_list    = priors,
-      column_names  = colnames(model_samples),
-      n_grid        = n_prior_samples,
-      formula_scale = formula_scale
+      prior_list       = prior_context_priors,
+      column_names     = colnames(model_samples),
+      n_grid           = n_prior_samples,
+      formula_scale    = formula_scale,
+      conditional      = prior_context_conditional,
+      conditional_rule = conditional_rule
     )
     attr(out, "prior_densities")       <- prior_densities
     attr(out, "prior_density_context") <- attr(prior_densities, "context")
     attr(out, "transform_scaled")      <- TRUE
   }else{
-    attr(out, "prior_density_context") <- .prior_density_context(
-      prior_list   = priors,
-      column_names = colnames(model_samples),
-      n_grid       = n_prior_samples
+    attr(out, "prior_density_context") <- .prior_density_build_context(
+      prior_list       = prior_context_priors,
+      column_names     = colnames(model_samples),
+      n_grid           = n_prior_samples,
+      conditional      = prior_context_conditional,
+      conditional_rule = conditional_rule
     )
   }
 
