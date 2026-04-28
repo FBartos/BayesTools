@@ -2615,7 +2615,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
         # get the density estimate
         density_continuous <- do.call(stats::density, args)
         x_den    <- density_continuous$x
-        y_den    <- density_continuous$y * (length(samples_density[,i]) / length(samples))
+        y_den    <- density_continuous$y * (nrow(samples_density) / nrow(samples))
 
         # check for truncation
         if(isTRUE(all.equal(prior_list_simple_lower, x_den[1])) | prior_list_simple_lower >= x_den[1]){
