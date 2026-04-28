@@ -183,7 +183,7 @@ test_that("Prior print function works", {
     "alternative:", "  (1/3) * Normal(mean = 0, sd = 1)", "  (1/3) * Normal(mean = -3, sd = 1)", "  (1/3) * Gamma(shape = 5, rate = 10)"
   ))
   expect_equal(utils::capture.output(print(p23, short_name = TRUE)), c(
-    "alternative:", "  (1/7) * N(-3, 1)", "null:", "  (5/7) * N(0, 1)", "  (1/7) * G(5, 10)"
+    "alternative:", "  (5/7) * N(-3, 1)", "null:", "  (1/7) * N(0, 1)", "  (1/7) * G(5, 10)"
   ))
   expect_equal(utils::capture.output(print(p24)), c(
     "b:", "  (1/6) * Normal(0, 1)",  "a:", "  (5/6) * Normal(-3, 1)"
