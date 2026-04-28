@@ -427,7 +427,7 @@ ensemble_diagnostics_empty_table <- function(title = NULL, footnotes = NULL, war
 }
 
 #' @rdname BayesTools_ensemble_tables
-marginal_estimates_table <- function(samples, inference, parameters, probs = c(0.025, 0.95), logBF = FALSE, BF01 = FALSE, title = NULL, footnotes = NULL, warnings = NULL, formula_prefix = TRUE, transform_scaled = FALSE, formula_scale = NULL){
+marginal_estimates_table <- function(samples, inference, parameters, probs = c(0.025, 0.5, 0.975), logBF = FALSE, BF01 = FALSE, title = NULL, footnotes = NULL, warnings = NULL, formula_prefix = TRUE, transform_scaled = FALSE, formula_scale = NULL){
 
   # check input
   check_char(parameters, "parameters", check_length = 0)
@@ -455,7 +455,7 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
 
     # extract the relevant information
     if(is.list(samples[[parameter]]) && length(samples[[parameter]]) > 1){
-      temp_samples  <- do.call(cbind, samples[[parameter]])
+      temp_samples  <- .marginal_posterior_parameter_samples(samples, parameter)
       temp_BF       <- do.call(c, inference[[parameter]])
       temp_warnings <- do.call(c, lapply(names(inference[[parameter]]), function(lvl) {
         if(is.null(attr(inference[[parameter]][[lvl]], "warnings"))){
@@ -465,7 +465,7 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
         }
       }))
     }else{
-      temp_samples  <- matrix(samples[[parameter]][[1]], ncol = 1)
+      temp_samples  <- .marginal_posterior_parameter_samples(samples, parameter)
       temp_BF       <- inference[[parameter]][[1]]
       if(is.null(attr(inference[[parameter]][[1]], "warnings"))){
         temp_warnings <- NULL
@@ -476,11 +476,11 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
 
     # add estimates
     par_summary <- cbind(
-      "Mean"   = apply(temp_samples, 2, mean),
-      "Median" = apply(temp_samples, 2, stats::median)
+      "Mean" = vapply(temp_samples, mean, numeric(1)),
+      "SD"   = vapply(temp_samples, stats::sd, numeric(1))
     )
     for(i in seq_along(probs)){
-      par_summary <- cbind(par_summary, apply(temp_samples, 2, stats::quantile, probs = probs[i]))
+      par_summary <- cbind(par_summary, vapply(temp_samples, stats::quantile, numeric(1), probs = probs[i]))
       colnames(par_summary)[ncol(par_summary)] <- probs[i]
     }
 

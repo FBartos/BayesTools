@@ -62,24 +62,25 @@ parse_numeric_table_lines <- function(lines) {
     number_pattern, "\\s+",
     number_pattern, "\\s+",
     number_pattern, "\\s+",
+    number_pattern, "\\s+",
     number_pattern, "\\s*$"
   )
 
   matches <- regexec(row_pattern, lines, perl = TRUE)
   parsed  <- regmatches(lines, matches)
-  is_row  <- lengths(parsed) == 7
+  is_row  <- lengths(parsed) == 8
 
   if (!any(is_row)) {
     return(list(
       labels = character(),
-      values = matrix(numeric(), nrow = 0, ncol = 5),
+      values = matrix(numeric(), nrow = 0, ncol = 6),
       is_row = is_row
     ))
   }
 
   row_data <- do.call(rbind, lapply(parsed[is_row], function(x) x[-1]))
   values   <- matrix(as.numeric(row_data[, -1]), nrow = nrow(row_data))
-  colnames(values) <- c("Mean", "Median", "0.025", "0.95", "Inclusion BF")
+  colnames(values) <- c("Mean", "SD", "0.025", "0.5", "0.975", "Inclusion BF")
 
   list(
     labels = row_data[, 1],

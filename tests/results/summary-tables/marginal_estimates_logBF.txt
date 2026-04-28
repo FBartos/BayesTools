@@ -1,2 +1,2 @@
-       Mean Median  0.025   0.95 Inclusion BF
-mu[] -0.626 -0.626 -0.626 -0.626        0.916
+       Mean SD  0.025    0.5  0.975 Inclusion BF
+mu[] -0.626 NA -0.626 -0.626 -0.626        0.916

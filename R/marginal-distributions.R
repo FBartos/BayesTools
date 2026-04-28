@@ -388,6 +388,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
             output_transformation           = transformation,
             output_transformation_arguments = transformation_arguments
           )
+          attr(marginal_posterior_samples[["intercept"]], "linear_weights") <- prior_weights
           attr(marginal_posterior_samples[["intercept"]], "prior_density") <- prior_density
 
         }else{
@@ -400,6 +401,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
               output_transformation           = transformation,
               output_transformation_arguments = transformation_arguments
             )
+            attr(marginal_posterior_samples[[level_names[lvl]]], "linear_weights") <- prior_weights
             attr(marginal_posterior_samples[[level_names[lvl]]], "prior_density") <- prior_density
           }
         }
@@ -505,6 +507,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
             output_transformation           = transformation,
             output_transformation_arguments = transformation_arguments
           )
+          attr(marginal_posterior_samples[[level_names[lvl_i]]], "linear_weights") <- weights
           attr(marginal_posterior_samples[[level_names[lvl_i]]], "prior_density") <- prior_density
         }
 
@@ -520,6 +523,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           output_transformation           = transformation,
           output_transformation_arguments = transformation_arguments
         )
+        attr(marginal_posterior_samples, "linear_weights") <- weights
         attr(marginal_posterior_samples, "prior_density") <- prior_density
       }
 
@@ -528,6 +532,18 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
   class(marginal_posterior_samples) <- c(class(marginal_posterior_samples), "marginal_posterior")
   return(marginal_posterior_samples)
+}
+
+.marginal_posterior_parameter_samples <- function(samples, parameter){
+
+  if(is.list(samples[[parameter]]) && length(samples[[parameter]]) > 1){
+    out <- lapply(samples[[parameter]], as.numeric)
+  }else{
+    out <- list(as.numeric(samples[[parameter]][[1]]))
+    names(out) <- names(samples[[parameter]])[1]
+  }
+
+  out
 }
 
 .get_combined_parameter_scaling_factor_matrix <- function(term, prior_list, posterior, models_ind, nrow, simple_list = FALSE){
@@ -1700,20 +1716,6 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
 
     check_char(conditional_list[[marginal_parameters[i]]], sprintf("conditional_list[[%1$s]]", marginal_parameters[i]), check_length = FALSE, allow_values = parameters, allow_NULL = TRUE)
 
-    # obtain model-averaged posterior conditional on including the parameter of interest
-    # (different from individual conditionals)
-    temp_conditional_posterior <- as_mixed_posteriors(
-      model            = model,
-      parameters       = parameters,
-      conditional      = conditional_list[[marginal_parameters[i]]],
-      conditional_rule = conditional_rule,
-      force_plots       = force_plots
-    )
-
-    # skip the rest of the parameter because of impossibility of obtaining conditional samples
-    if (length(temp_conditional_posterior) == 0)
-      next
-
     # compute the marginals
     out[["averaged"]][[marginal_parameters[i]]] <- marginal_posterior(
       samples           = averaged_posterior,
@@ -1722,13 +1724,24 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
       prior_samples     = TRUE,
       n_samples         = n_samples
     )
-    out[["conditional"]][[marginal_parameters[i]]] <- marginal_posterior(
-      samples           = temp_conditional_posterior,
-      parameter         = marginal_parameters[i],
-      formula           = formula,
-      prior_samples     = TRUE,
-      n_samples         = n_samples
+
+    out[["conditional"]][[marginal_parameters[i]]] <- .marginal_inference_conditional_posterior(
+      model              = model,
+      parameters         = parameters,
+      marginal_parameter = marginal_parameters[i],
+      formula            = formula,
+      averaged_marginal  = out[["averaged"]][[marginal_parameters[i]]],
+      prior_list         = attr(averaged_posterior, "prior_list"),
+      conditional        = conditional_list[[marginal_parameters[i]]],
+      conditional_rule   = conditional_rule,
+      n_samples          = n_samples,
+      force_plots        = force_plots
     )
+
+    if(length(out[["conditional"]][[marginal_parameters[i]]]) == 0){
+      out[["averaged"]][[marginal_parameters[i]]] <- NULL
+      next
+    }
 
     # and inclusion Bayes factor
     out[["inference"]][[marginal_parameters[i]]] <- Savage_Dickey_BF(
@@ -1743,4 +1756,79 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
   attr(out, "normal_approximation") <- normal_approximation
   class(out) <- c(class(out), "marginal_inference")
   return(out)
+}
+
+.marginal_inference_condition_key <- function(conditional){
+
+  paste0(c(length(conditional), conditional), collapse = "\r")
+}
+
+.marginal_inference_level_conditionals <- function(marginal, prior_list, conditional){
+
+  levels <- names(marginal)
+  conditionals <- lapply(levels, function(level){
+    weights <- attr(marginal[[level]], "linear_weights")
+    if(is.null(weights)){
+      return(conditional)
+    }
+    .prior_linear_active_conditionals(
+      prior_list   = prior_list,
+      weights      = weights,
+      conditional  = conditional
+    )
+  })
+  names(conditionals) <- levels
+
+  conditionals
+}
+
+.marginal_inference_conditional_posterior <- function(model, parameters, marginal_parameter,
+                                                      formula, averaged_marginal, prior_list,
+                                                      conditional, conditional_rule, n_samples,
+                                                      force_plots){
+
+  level_conditionals <- .marginal_inference_level_conditionals(
+    marginal    = averaged_marginal,
+    prior_list  = prior_list,
+    conditional = conditional
+  )
+
+  conditional_marginal <- averaged_marginal
+  marginal_cache <- list()
+
+  for(level in names(level_conditionals)){
+    level_conditional <- level_conditionals[[level]]
+    key <- .marginal_inference_condition_key(level_conditional)
+
+    if(is.null(marginal_cache[[key]])){
+      conditional_posterior <- as_mixed_posteriors(
+        model            = model,
+        parameters       = parameters,
+        conditional      = if(length(level_conditional) == 0) NULL else level_conditional,
+        conditional_rule = conditional_rule,
+        force_plots      = force_plots
+      )
+
+      if(length(conditional_posterior) == 0){
+        return(list())
+      }else{
+        marginal_cache[[key]] <- marginal_posterior(
+          samples       = conditional_posterior,
+          parameter     = marginal_parameter,
+          formula       = formula,
+          prior_samples = TRUE,
+          n_samples     = n_samples
+        )
+      }
+    }
+
+    if(length(marginal_cache[[key]]) == 0){
+      return(list())
+    }
+
+    conditional_marginal[[level]] <- marginal_cache[[key]][[level]]
+    attr(conditional_marginal[[level]], "effective_conditional") <- level_conditional
+  }
+
+  conditional_marginal
 }

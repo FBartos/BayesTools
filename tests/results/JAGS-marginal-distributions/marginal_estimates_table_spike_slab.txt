@@ -1,22 +1,22 @@
-                                Mean Median 0.025  0.95 Inclusion BF
-(mu) intercept                 0.618  0.618 0.545 0.678          Inf
-(mu) x_cont1[-1SD]             0.436  0.434 0.323 0.535          Inf
-(mu) x_cont1[0SD]              0.618  0.618 0.545 0.678          Inf
-(mu) x_cont1[1SD]              0.799  0.799 0.696 0.885          Inf
-(mu) x_fac2t[A]                0.618  0.618 0.545 0.678          Inf
-(mu) x_fac2t[B]                0.618  0.618 0.546 0.680          Inf
-(mu) x_fac3md[A]               0.781  0.780 0.656 0.891          Inf
-(mu) x_fac3md[B]               0.519  0.519 0.390 0.621          Inf
-(mu) x_fac3md[C]               0.553  0.553 0.425 0.659          Inf
-(mu) x_cont1:x_fac3md[-1SD, A] 0.593  0.594 0.406 0.744          Inf
-(mu) x_cont1:x_fac3md[0SD, A]  0.776  0.778 0.632 0.890          Inf
-(mu) x_cont1:x_fac3md[1SD, A]  0.959  0.964 0.812 1.075          Inf
-(mu) x_cont1:x_fac3md[-1SD, B] 0.345  0.342 0.178 0.487          Inf
-(mu) x_cont1:x_fac3md[0SD, B]  0.522  0.521 0.391 0.625          Inf
-(mu) x_cont1:x_fac3md[1SD, B]  0.698  0.701 0.543 0.822          Inf
-(mu) x_cont1:x_fac3md[-1SD, C] 0.375  0.374 0.215 0.503          Inf
-(mu) x_cont1:x_fac3md[0SD, C]  0.555  0.555 0.426 0.662          Inf
-(mu) x_cont1:x_fac3md[1SD, C]  0.735  0.736 0.577 0.865          Inf
+                                Mean    SD 0.025   0.5 0.975 Inclusion BF
+(mu) intercept                 0.618 0.038 0.542 0.618 0.696          Inf
+(mu) x_cont1[-1SD]             0.436 0.058 0.324 0.435 0.547          Inf
+(mu) x_cont1[0SD]              0.618 0.038 0.542 0.618 0.696          Inf
+(mu) x_cont1[1SD]              0.800 0.054 0.702 0.799 0.912          Inf
+(mu) x_fac2t[A]                0.618 0.038 0.542 0.618 0.696          Inf
+(mu) x_fac2t[B]                0.629 0.064 0.490 0.625 0.767          Inf
+(mu) x_fac3md[A]               0.782 0.067 0.652 0.783 0.919          Inf
+(mu) x_fac3md[B]               0.521 0.064 0.396 0.521 0.643          Inf
+(mu) x_fac3md[C]               0.552 0.069 0.423 0.553 0.691          Inf
+(mu) x_cont1:x_fac3md[-1SD, A] 0.595 0.088 0.417 0.596 0.766          Inf
+(mu) x_cont1:x_fac3md[0SD, A]  0.781 0.067 0.649 0.782 0.918          Inf
+(mu) x_cont1:x_fac3md[1SD, A]  0.962 0.076 0.827 0.962 1.113          Inf
+(mu) x_cont1:x_fac3md[-1SD, B] 0.346 0.084 0.183 0.340 0.530          Inf
+(mu) x_cont1:x_fac3md[0SD, B]  0.521 0.064 0.397 0.521 0.643          Inf
+(mu) x_cont1:x_fac3md[1SD, B]  0.699 0.076 0.548 0.699 0.844          Inf
+(mu) x_cont1:x_fac3md[-1SD, C] 0.372 0.080 0.217 0.371 0.527          Inf
+(mu) x_cont1:x_fac3md[0SD, C]  0.552 0.069 0.423 0.552 0.691          Inf
+(mu) x_cont1:x_fac3md[1SD, C]  0.735 0.084 0.574 0.735 0.899          Inf
 [0;31mmu_intercept: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
 [0;31mmu_x_cont1[-1SD]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
 [0;31mmu_x_cont1[0SD]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m

@@ -532,6 +532,60 @@
   paste0(parameter, "[", seq_len(K), "]")
 }
 
+.prior_linear_representative_prior <- function(prior){
+
+  if(is.prior(prior)){
+    return(prior)
+  }
+
+  if(is.list(prior)){
+    prior <- prior[vapply(prior, is.prior, logical(1))]
+    if(length(prior) > 0){
+      return(prior[[1]])
+    }
+  }
+
+  NULL
+}
+
+.prior_linear_active_parameters <- function(prior_list, weights){
+
+  active <- character()
+  if(is.null(names(weights))){
+    return(active)
+  }
+
+  weights <- weights[is.finite(weights)]
+  weights <- weights[abs(weights) > .prior_linear_density_zero_tol()]
+  if(length(weights) == 0){
+    return(active)
+  }
+
+  for(parameter in names(prior_list)){
+    prior <- .prior_linear_representative_prior(prior_list[[parameter]])
+    if(is.null(prior)){
+      next
+    }
+    columns <- .prior_linear_prior_columns(parameter, prior)
+    present <- intersect(columns, names(weights))
+    if(length(present) > 0){
+      active <- c(active, parameter)
+    }
+  }
+
+  active
+}
+
+.prior_linear_active_conditionals <- function(prior_list, weights, conditional){
+
+  if(length(conditional) == 0){
+    return(character())
+  }
+
+  active <- .prior_linear_active_parameters(prior_list, weights)
+  conditional[conditional %in% active]
+}
+
 .prior_linear_weight_groups <- function(prior_list, weights){
 
   if(is.null(names(weights))){
@@ -1334,8 +1388,8 @@
 }
 
 .prior_density_model_mixture_context <- function(prior_list, column_names,
-                                                 n_grid = .prior_linear_density_default_grid(),
-                                                 tail_prob = .prior_linear_density_tail_prob()){
+                                                  n_grid = .prior_linear_density_default_grid(),
+                                                  tail_prob = .prior_linear_density_tail_prob()){
 
   check_list(prior_list, "prior_list")
   check_char(column_names, "column_names", check_length = FALSE)
@@ -1365,9 +1419,148 @@
   return(out)
 }
 
+.prior_density_condition_component <- function(prior){
+
+  if(is.prior.spike_and_slab(prior)){
+    components <- attr(prior, "components")
+    if(!all(components %in% c("null", "alternative"))){
+      stop("conditional mixture posterior distributions are available only for 'null' and 'alternative' components", call. = FALSE)
+    }
+
+    inclusion <- mean(.get_spike_and_slab_inclusion(prior))
+    inclusion <- min(max(inclusion, 0), 1)
+    probabilities <- ifelse(components == "alternative", inclusion, 1 - inclusion)
+
+    return(lapply(seq_along(prior), function(i){
+      list(
+        prior       = prior[[i]],
+        probability = probabilities[i],
+        alternative = components[i] == "alternative"
+      )
+    }))
+  }
+
+  if(is.prior.mixture(prior)){
+    components <- attr(prior, "components")
+    if(!all(components %in% c("null", "alternative"))){
+      stop("conditional mixture posterior distributions are available only for 'null' and 'alternative' components", call. = FALSE)
+    }
+
+    prior_weights <- attr(prior, "prior_weights")
+    prior_weights <- prior_weights / sum(prior_weights)
+
+    return(lapply(seq_along(prior), function(i){
+      list(
+        prior       = prior[[i]],
+        probability = prior_weights[i],
+        alternative = components[i] == "alternative"
+      )
+    }))
+  }
+
+  list(list(
+    prior       = prior,
+    probability = 1,
+    alternative = TRUE
+  ))
+}
+
+.prior_density_copy_parent_attributes <- function(component, parent){
+
+  parent_attributes <- attributes(parent)
+  skip <- c("class", "names", "components", "prior_weights", "inclusion_prior")
+
+  for(attribute in setdiff(names(parent_attributes), skip)){
+    if(is.null(attr(component, attribute, exact = TRUE))){
+      attr(component, attribute) <- parent_attributes[[attribute]]
+    }
+  }
+
+  component
+}
+
+.prior_density_condition_models <- function(prior_list, conditional, conditional_rule){
+
+  conditional <- unique(conditional[conditional %in% names(prior_list)])
+  if(length(conditional) == 0){
+    return(NULL)
+  }
+
+  options <- lapply(conditional, function(parameter){
+    .prior_density_condition_component(prior_list[[parameter]])
+  })
+  names(options) <- conditional
+
+  option_grid <- expand.grid(lapply(options, seq_along))
+  keep <- logical(nrow(option_grid))
+  model_weights <- numeric(nrow(option_grid))
+
+  for(i in seq_len(nrow(option_grid))){
+    alternatives <- logical(length(conditional))
+    probabilities <- numeric(length(conditional))
+
+    for(j in seq_along(conditional)){
+      option <- options[[j]][[option_grid[i, j]]]
+      alternatives[j] <- option$alternative
+      probabilities[j] <- option$probability
+    }
+
+    keep[i] <- if(conditional_rule == "AND") all(alternatives) else any(alternatives)
+    model_weights[i] <- prod(probabilities)
+  }
+
+  option_grid <- option_grid[keep & model_weights > 0, , drop = FALSE]
+  model_weights <- model_weights[keep & model_weights > 0]
+
+  if(nrow(option_grid) == 0){
+    return(list(prior_lists = list(), weights = numeric()))
+  }
+
+  prior_lists <- lapply(seq_len(nrow(option_grid)), function(i){
+    model_prior_list <- prior_list
+    for(j in seq_along(conditional)){
+      parameter <- conditional[j]
+      component <- options[[j]][[option_grid[i, j]]]$prior
+      model_prior_list[[parameter]] <- .prior_density_copy_parent_attributes(
+        component = component,
+        parent    = prior_list[[parameter]]
+      )
+    }
+    model_prior_list
+  })
+
+  list(
+    prior_lists = prior_lists,
+    weights     = model_weights / sum(model_weights)
+  )
+}
+
+.prior_density_conditional_context <- function(prior_list, column_names, conditional,
+                                               conditional_rule = "AND", formula_scale = NULL,
+                                               n_grid = .prior_linear_density_default_grid(),
+                                               tail_prob = .prior_linear_density_tail_prob()){
+
+  condition_models <- .prior_density_condition_models(prior_list, conditional, conditional_rule)
+  if(is.null(condition_models)){
+    return(.prior_density_context(prior_list, column_names, formula_scale, n_grid, tail_prob))
+  }
+
+  out <- list(
+    prior_list      = prior_list,
+    column_names    = column_names,
+    formula_scale   = formula_scale,
+    prior_lists     = condition_models$prior_lists,
+    model_weights   = condition_models$weights,
+    n_grid          = n_grid,
+    tail_prob       = tail_prob
+  )
+  class(out) <- "prior_density_conditional_context"
+  return(out)
+}
+
 .prior_density_model_mixture_density <- function(context, weights,
-                                                 output_transformation = NULL,
-                                                 output_transformation_arguments = NULL){
+                                                  output_transformation = NULL,
+                                                  output_transformation_arguments = NULL){
 
   if(!inherits(context, "prior_density_model_mixture_context")){
     stop("'context' must be a prior density model-mixture context.", call. = FALSE)
@@ -1419,9 +1612,83 @@
                                   n_grid = context$n_grid)
 }
 
+.prior_density_conditional_context_density <- function(context, weights,
+                                                       source_transforms = NULL,
+                                                       output_transformation = NULL,
+                                                       output_transformation_arguments = NULL){
+
+  if(!inherits(context, "prior_density_conditional_context")){
+    stop("'context' must be a conditional prior density context.", call. = FALSE)
+  }
+
+  if(length(context$prior_lists) == 0){
+    return(.prior_linear_density_point(0))
+  }
+
+  dists <- lapply(context$prior_lists, function(prior_list){
+    if(!is.null(context$formula_scale) && length(context$formula_scale) > 0){
+      component_context <- .prior_density_context(
+        prior_list    = prior_list,
+        column_names  = context$column_names,
+        formula_scale = context$formula_scale,
+        n_grid        = context$n_grid,
+        tail_prob     = context$tail_prob
+      )
+      return(.prior_density_context_density(
+        context           = component_context,
+        weights           = weights,
+        source_transforms = source_transforms
+      ))
+    }
+
+    .prior_linear_combination_density(
+      prior_list        = prior_list,
+      weights           = weights,
+      n_grid            = context$n_grid,
+      tail_prob         = context$tail_prob,
+      source_transforms = source_transforms
+    )
+  })
+
+  dx <- min(vapply(dists, function(dist){
+    if(!is.null(dist$density) && length(dist$density$x) > 1){
+      return(dist$density$x[2] - dist$density$x[1])
+    }
+    Inf
+  }, numeric(1)))
+  if(!is.finite(dx)){
+    dx <- NA_real_
+  }
+
+  dist <- .prior_linear_density_mix(
+    dists   = dists,
+    weights = context$model_weights,
+    dx      = dx,
+    n_grid  = context$n_grid
+  )
+
+  .prior_linear_density_transform(dist, output_transformation,
+                                  output_transformation_arguments,
+                                  n_grid = context$n_grid)
+}
+
 .prior_density_build_context <- function(prior_list, column_names, formula_scale = NULL,
                                          n_grid = .prior_linear_density_default_grid(),
-                                         tail_prob = .prior_linear_density_tail_prob()){
+                                         tail_prob = .prior_linear_density_tail_prob(),
+                                         conditional = NULL,
+                                         conditional_rule = "AND"){
+
+  if(length(conditional) > 0){
+    return(.prior_density_conditional_context(
+      prior_list       = prior_list,
+      column_names     = column_names,
+      conditional      = conditional,
+      conditional_rule = conditional_rule,
+      formula_scale    = formula_scale,
+      n_grid           = n_grid,
+      tail_prob        = tail_prob
+    ))
+  }
 
   if(all(vapply(prior_list, is.prior, logical(1)))){
     return(.prior_density_context(prior_list, column_names, formula_scale, n_grid, tail_prob))
@@ -1461,6 +1728,16 @@
     ))
   }
 
+  if(inherits(context, "prior_density_conditional_context")){
+    return(.prior_density_conditional_context_density(
+      context                         = context,
+      weights                         = weights,
+      source_transforms               = source_transforms,
+      output_transformation           = output_transformation,
+      output_transformation_arguments = output_transformation_arguments
+    ))
+  }
+
   stop("Unknown prior density context.", call. = FALSE)
 }
 
@@ -1475,10 +1752,19 @@
 }
 
 .generate_transformed_prior_densities <- function(prior_list, column_names, formula_scale = NULL,
+                                                  conditional = NULL, conditional_rule = "AND",
                                                   n_grid = .prior_linear_density_default_grid(),
                                                   tail_prob = .prior_linear_density_tail_prob()){
 
-  context <- .prior_density_context(prior_list, column_names, formula_scale, n_grid, tail_prob)
+  context <- .prior_density_build_context(
+    prior_list       = prior_list,
+    column_names     = column_names,
+    formula_scale    = formula_scale,
+    n_grid           = n_grid,
+    tail_prob        = tail_prob,
+    conditional      = conditional,
+    conditional_rule = conditional_rule
+  )
 
   prior_columns <- unlist(lapply(names(prior_list), function(parameter){
     .prior_linear_prior_columns(parameter, prior_list[[parameter]])

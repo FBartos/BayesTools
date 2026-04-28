@@ -3253,15 +3253,14 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
 
   # extract the relevant information
   if(is.list(samples[[parameter]]) && length(samples[[parameter]]) > 1){
-    posterior_samples <- do.call(cbind, samples[[parameter]])
+    posterior_samples <- .marginal_posterior_parameter_samples(samples, parameter)
     if(prior){
       prior_densities <- lapply(samples[[parameter]], attr, which = "prior_density")
       if(any(vapply(prior_densities, is.null, logical(1))))
         stop("'samples' did not contain prior densities")
     }
   }else{
-    posterior_samples  <- matrix(samples[[parameter]][[1]], ncol = 1)
-    colnames(posterior_samples) <- names(samples[[parameter]])
+    posterior_samples <- .marginal_posterior_parameter_samples(samples, parameter)
     if(prior){
       prior_densities <- list(attr(samples[[parameter]][[1]], "prior_density"))
       if(is.null(prior_densities[[1]]))
@@ -3275,11 +3274,11 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
 
 
   # deal with the densities
-  for(i in 1:ncol(posterior_samples)){
+  for(i in seq_along(posterior_samples)){
 
-    out_den <- .plot_data_marginal_samples.den(posterior_samples[,i], n_points, transformation, transformation_arguments, transformation_settings)
+    out_den <- .plot_data_marginal_samples.den(posterior_samples[[i]], n_points, transformation, transformation_arguments, transformation_settings)
     attr(out_den, "level")      <- i
-    attr(out_den, "level_name") <- colnames(posterior_samples)[i]
+    attr(out_den, "level_name") <- names(posterior_samples)[i]
 
     if(prior){
       out_den.prior <- .prior_linear_density_to_plot_data(
@@ -3290,7 +3289,7 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
         transformation_settings   = transformation_settings,
         factor                    = TRUE,
         level                     = i,
-        level_name                = colnames(posterior_samples)[i]
+        level_name                = names(posterior_samples)[i]
       )
 
       attr(out_den, "prior") <- out_den.prior
