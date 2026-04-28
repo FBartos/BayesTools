@@ -37,15 +37,19 @@
 <text x='632.29' y='544.32' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>3.5</text>
 <line x1='57.60' y1='499.73' x2='57.60' y2='36.98' style='stroke-width: 0.75;' />
 <line x1='57.60' y1='499.73' x2='50.40' y2='499.73' style='stroke-width: 0.75;' />
-<line x1='57.60' y1='384.04' x2='50.40' y2='384.04' style='stroke-width: 0.75;' />
+<line x1='57.60' y1='422.61' x2='50.40' y2='422.61' style='stroke-width: 0.75;' />
+<line x1='57.60' y1='345.48' x2='50.40' y2='345.48' style='stroke-width: 0.75;' />
 <line x1='57.60' y1='268.36' x2='50.40' y2='268.36' style='stroke-width: 0.75;' />
-<line x1='57.60' y1='152.67' x2='50.40' y2='152.67' style='stroke-width: 0.75;' />
+<line x1='57.60' y1='191.23' x2='50.40' y2='191.23' style='stroke-width: 0.75;' />
+<line x1='57.60' y1='114.10' x2='50.40' y2='114.10' style='stroke-width: 0.75;' />
 <line x1='57.60' y1='36.98' x2='50.40' y2='36.98' style='stroke-width: 0.75;' />
 <text x='43.20' y='503.86' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>0.0</text>
-<text x='43.20' y='388.17' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>0.1</text>
-<text x='43.20' y='272.48' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>0.2</text>
-<text x='43.20' y='156.80' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>0.3</text>
-<text x='43.20' y='41.11' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>0.4</text>
+<text x='43.20' y='426.74' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>0.2</text>
+<text x='43.20' y='349.61' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>0.4</text>
+<text x='43.20' y='272.48' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>0.6</text>
+<text x='43.20' y='195.36' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>0.8</text>
+<text x='43.20' y='118.23' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>1.0</text>
+<text x='43.20' y='41.11' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>1.2</text>
 <text transform='translate(11.52,266.40) rotate(-90)' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='40.02px' lengthAdjust='spacingAndGlyphs'>Density</text>
 </g>
 <defs>

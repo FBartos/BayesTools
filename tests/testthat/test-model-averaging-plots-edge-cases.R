@@ -303,6 +303,40 @@ test_that("PET-PEESE posterior plot data does not recycle coefficient rows", {
   expect_equal(plot_data$y, c(0.5, 3))
 })
 
+test_that("factor posterior density curves keep continuous mass scale", {
+
+  set.seed(1)
+  n_samples <- 5000
+  samples <- cbind(
+    `mu_alloc[random]`     = stats::rnorm(n_samples, -0.5, 0.8),
+    `mu_alloc[systematic]` = stats::rnorm(n_samples,  0.5, 0.8)
+  )
+
+  prior <- prior_factor("normal", list(0, 1), contrast = "treatment")
+  attr(prior, "levels") <- 3
+  attr(prior, "level_names") <- c("alternate", "random", "systematic")
+
+  attr(samples, "prior_list") <- prior
+  attr(samples, "models_ind") <- rep(1, nrow(samples))
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
+
+  plot_data <- BayesTools:::.plot_data_samples.factor(
+    samples = list(mu_alloc = samples),
+    parameter = "mu_alloc",
+    n_points = 512,
+    transformation = NULL,
+    transformation_arguments = NULL,
+    transformation_settings = FALSE
+  )
+
+  density_entries <- plot_data[vapply(plot_data, inherits, logical(1), what = "density.prior.simple")]
+  areas <- vapply(density_entries, function(density){
+    sum(density$y) * (density$x[2] - density$x[1])
+  }, numeric(1))
+
+  expect_equal(unname(areas), c(1, 1), tolerance = 0.08)
+})
+
 .scaled_multi_factor_interaction_samples <- function(n_posterior = 20, n_prior = 128){
 
   df <- expand.grid(
