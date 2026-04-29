@@ -76,7 +76,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   if(prior_type == "weightfunction" && !individual){
     # special dispatching for visualizing the whole weightfunction
 
-    # use samples (not sure how to provide analytic solution for this yes)
+    # use analytical marginal summaries of the mapped cumulative Dirichlet weights
     plot_data <- .plot_data_prior_list.weightfunction(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                                                       n_points = n_points, n_samples = n_samples)
     plot <- .plot.prior.weightfunction(prior_list, plot_type = plot_type, plot_data = plot_data, rescale_x = rescale_x, par_name = par_name, ...)
@@ -550,56 +550,29 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
 .plot_data_prior_list.weightfunction <- function(prior_list, x_seq, x_range, x_range_quant, n_points, n_samples){
 
-  # join the same priors
-  prior_list <- .simplify_prior_list(prior_list)
+  context <- .weightfunction_prior_list_context(prior_list)
 
-  prior_weights  <- sapply(prior_list, function(p)p$prior_weights)
-  mixing_prop    <- prior_weights / sum(prior_weights)
+  omega_cuts <- context$omega_cuts
+  x_mean     <- numeric(length(omega_cuts) - 1)
+  x_lCI      <- numeric(length(omega_cuts) - 1)
+  x_uCI      <- numeric(length(omega_cuts) - 1)
 
-  prior_list     <- prior_list[round(n_samples * mixing_prop) > 0]
-  mixing_prop    <- mixing_prop[round(n_samples * mixing_prop) > 0]
+  for(i in seq_len(length(omega_cuts) - 1)){
+    components <- .weightfunction_prior_marginal_components(context, i)
 
-  # replace non-weighfunctions from prior mixture feneration
-  if(any(!c(sapply(prior_list, is.prior.weightfunction) | sapply(prior_list, is.prior.none)))){
-    for(i in seq_along(prior_list)){
-      if(!(is.prior.weightfunction(prior_list[[i]]) | is.prior.none(prior_list[[i]]))){
-        prior_list[[i]] <- prior_none(prior_weights = prior_weights[i])
-      }
-    }
+    x_mean[i] <- .weightfunction_mixture_mean(components)
+    x_lCI[i]  <- .weightfunction_mixture_quantile(components, .025)
+    x_uCI[i]  <- .weightfunction_mixture_quantile(components, .975)
   }
-
-  # get the samples
-  samples_list <- list()
-  for(i in seq_along(prior_list)){
-    if(is.prior.weightfunction(prior_list[[i]])){
-      samples_list[[i]] <- rng(prior_list[[i]], round(n_samples * mixing_prop[i]))
-    }else{
-      samples_list[[i]] <- list()
-    }
-
-  }
-
-  # merge the samples
-  omega_mapping <- weightfunctions_mapping(prior_list)
-  omega_cuts    <- weightfunctions_mapping(prior_list, cuts_only = TRUE)
-
-  # join samples
-  samples    <- matrix(nrow = 0, ncol = length(omega_cuts) - 1)
-  for(i in seq_along(samples_list)){
-    if(is.prior.weightfunction(prior_list[[i]])){
-      samples <- rbind(samples, samples_list[[i]][,omega_mapping[[i]]])
-    }else{
-      samples <- rbind(samples, matrix(1, ncol = length(omega_cuts) - 1, nrow = round(n_samples * mixing_prop[i])))
-    }
-  }
-
-  x_lCI  <- apply(samples, 2, stats::quantile, probs = .025)
-  x_uCI  <- apply(samples, 2, stats::quantile, probs = .975)
-  x_mean <- apply(samples, 2, mean)
 
   x_seq     <- omega_cuts
-  x_seq_rep <- c(1, sort(rep(2:(length(x_seq)-1), 2)) ,length(x_seq))
-  x_val_rep <- sort(rep(1:(length(x_seq)-1), 2))
+  if(length(x_seq) > 2){
+    x_seq_rep <- c(1, sort(rep(2:(length(x_seq)-1), 2)) ,length(x_seq))
+    x_val_rep <- sort(rep(1:(length(x_seq)-1), 2))
+  }else{
+    x_seq_rep <- c(1, 2)
+    x_val_rep <- c(1, 1)
+  }
 
 
   out <- list(
@@ -610,7 +583,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     y       = x_mean[x_val_rep],
     y_lCI   = x_lCI[x_val_rep],
     y_uCI   = x_uCI[x_val_rep],
-    samples = samples
+    samples = NULL
   )
 
 
@@ -622,64 +595,354 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 }
 .plot_data_prior_list.weightparameter<- function(prior_list, parameter, n_points, n_samples){
 
-  # join the same priors
-  prior_list <- .simplify_prior_list(prior_list)
+  context       <- .weightfunction_prior_list_context(prior_list)
+  parameter_ind <- match(parameter, context$omega_names)
 
-  prior_weights  <- sapply(prior_list, function(p)p$prior_weights)
-  mixing_prop    <- prior_weights / sum(prior_weights)
-
-  prior_list     <- prior_list[round(n_samples * mixing_prop) > 0]
-  mixing_prop    <- mixing_prop[round(n_samples * mixing_prop) > 0]
-
-  # replace non-weighfunctions from prior mixture
-  if(any(!c(sapply(prior_list, is.prior.weightfunction) | sapply(prior_list, is.prior.none)))){
-    for(i in seq_along(prior_list)){
-      if(!(is.prior.weightfunction(prior_list[[i]]) | is.prior.none(prior_list[[i]]))){
-        prior_list[[i]] <- prior_none(prior_weights = prior_weights[i])
-      }
-    }
+  if(is.na(parameter_ind)){
+    stop(paste0("Parameter '", parameter, "' not found in the weightfunction prior."), call. = FALSE)
   }
 
-  # get the samples
-  samples_list <- list()
-  for(i in seq_along(prior_list)){
-    if(is.prior.weightfunction(prior_list[[i]])){
-      samples_list[[i]] <- rng(prior_list[[i]], round(n_samples * mixing_prop[i]))
-    }else{
-      samples_list[[i]] <- list()
-    }
-
-  }
-
-  # merge the samples
-  omega_mapping <- weightfunctions_mapping(prior_list)
-  omega_cuts    <- weightfunctions_mapping(prior_list, cuts_only = TRUE)
-
-  # join samples
-  samples    <- matrix(nrow = 0, ncol = length(omega_cuts) - 1)
-  models_ind <- NULL
-  for(i in seq_along(samples_list)){
-    if(is.prior.weightfunction(prior_list[[i]])){
-      samples    <- rbind(samples, samples_list[[i]][,omega_mapping[[i]]])
-      models_ind <- c(models_ind, rep(i, nrow(samples_list[[i]])))
-    }else{
-      samples    <- rbind(samples, matrix(1, ncol = length(omega_cuts) - 1, nrow = round(n_samples * mixing_prop[i])))
-      models_ind <- c(models_ind, rep(i,round(n_samples * mixing_prop[i])))
-    }
-  }
-
-  x_seq             <- omega_cuts
-  omega_names       <- sapply(1:(length(omega_cuts)-1), function(i)paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
-  colnames(samples) <- omega_names
-  attr(samples, "prior_list") <- prior_list
-  attr(samples, "models_ind") <- models_ind
-
-  samples <- list("omega" = samples)
-
-  # re-use the posterior function with prior samples
-  out <- .plot_data_samples.weightparameter(samples, parameter = parameter, n_points = n_points)
+  components <- .weightfunction_prior_marginal_components(context, parameter_ind)
+  out        <- .plot_data_prior_weightparameter_components(components, parameter, n_points)
 
   return(out)
+}
+.weightfunction_prior_list_context <- function(prior_list){
+
+  prior_list <- .simplify_prior_list(prior_list)
+
+  prior_weights <- sapply(prior_list, function(p)p$prior_weights)
+  keep          <- is.finite(prior_weights) & prior_weights > 0
+  prior_list    <- prior_list[keep]
+  prior_weights <- prior_weights[keep]
+
+  if(length(prior_list) == 0){
+    stop("At least one weightfunction prior must have positive prior weight.", call. = FALSE)
+  }
+
+  # Non-weightfunction bias components imply no selection adjustment and
+  # therefore correspond to publication weights fixed at one.
+  for(i in seq_along(prior_list)){
+    if(!(is.prior.weightfunction(prior_list[[i]]) | is.prior.none(prior_list[[i]]))){
+      prior_list[[i]] <- prior_none(prior_weights = prior_weights[i])
+    }
+  }
+
+  prior_weights <- sapply(prior_list, function(p)p$prior_weights)
+  model_weights <- prior_weights / sum(prior_weights)
+  omega_mapping <- weightfunctions_mapping(prior_list)
+  omega_cuts    <- weightfunctions_mapping(prior_list, cuts_only = TRUE)
+  omega_names   <- sapply(1:(length(omega_cuts)-1), function(i)paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
+
+  list(
+    prior_list    = prior_list,
+    model_weights = model_weights,
+    omega_mapping = omega_mapping,
+    omega_cuts    = omega_cuts,
+    omega_names   = omega_names
+  )
+}
+.weightfunction_prior_marginal_components <- function(context, parameter_ind){
+
+  components <- list()
+
+  for(i in seq_along(context$prior_list)){
+    prior <- context$prior_list[[i]]
+
+    if(is.prior.weightfunction(prior)){
+      component <- .weightfunction_prior_component(
+        prior  = prior,
+        index  = context$omega_mapping[[i]][parameter_ind],
+        weight = context$model_weights[i]
+      )
+    }else{
+      component <- list(
+        type     = "point",
+        weight   = context$model_weights[i],
+        location = 1
+      )
+    }
+
+    components[[length(components) + 1L]] <- component
+  }
+
+  components <- components[vapply(components, function(component){
+    is.finite(component$weight) && component$weight > 0
+  }, logical(1))]
+  total_weight <- sum(vapply(components, function(component) component$weight, numeric(1)))
+
+  lapply(components, function(component){
+    component$weight <- component$weight / total_weight
+    component
+  })
+}
+.weightfunction_prior_component <- function(prior, index, weight){
+
+  if(prior[["distribution"]] %in% c("one.sided.fixed", "two.sided.fixed")){
+    return(list(
+      type     = "point",
+      weight   = weight,
+      location = prior$parameters[["omega"]][index]
+    ))
+  }
+
+  if(all(names(prior$parameters) %in% c("steps", "alpha"))){
+    return(.weightfunction_prior_component_cumdirichlet(prior$parameters[["alpha"]], index, weight))
+  }
+
+  alpha1 <- prior$parameters[["alpha1"]]
+  alpha2 <- prior$parameters[["alpha2"]]
+
+  if(is.null(alpha1) || is.null(alpha2)){
+    stop("Unsupported weightfunction prior specification.", call. = FALSE)
+  }
+
+  n_unexpected <- length(alpha2)
+
+  if(index >= n_unexpected){
+    alpha1_index <- index - n_unexpected + 1
+    return(.weightfunction_prior_component_cumdirichlet(alpha1, alpha1_index, weight))
+  }
+
+  # For the unexpected direction, omega = 1 - U * V where U and V are
+  # independent beta variables induced by the two cumulative Dirichlets.
+  list(
+    type     = "one_minus_product_beta",
+    weight   = weight,
+    u_alpha  = sum(alpha1[-1]),
+    u_beta   = alpha1[1],
+    v_alpha  = sum(alpha2[seq_len(index)]),
+    v_beta   = sum(alpha2[(index + 1):length(alpha2)])
+  )
+}
+.weightfunction_prior_component_cumdirichlet <- function(alpha, index, weight){
+
+  if(index >= length(alpha)){
+    return(list(
+      type     = "point",
+      weight   = weight,
+      location = 1
+    ))
+  }
+
+  list(
+    type   = "beta",
+    weight = weight,
+    alpha  = sum(alpha[seq_len(index)]),
+    beta   = sum(alpha[(index + 1):length(alpha)])
+  )
+}
+.weightfunction_component_mean <- function(component){
+
+  switch(
+    component$type,
+    "point" = component$location,
+    "beta"  = component$alpha / (component$alpha + component$beta),
+    "one_minus_product_beta" = {
+      1 - (component$u_alpha / (component$u_alpha + component$u_beta)) *
+        (component$v_alpha / (component$v_alpha + component$v_beta))
+    }
+  )
+}
+.weightfunction_component_cdf <- function(component, q){
+
+  switch(
+    component$type,
+    "point" = as.numeric(q >= component$location),
+    "beta"  = stats::pbeta(q, shape1 = component$alpha, shape2 = component$beta),
+    "one_minus_product_beta" = .weightfunction_one_minus_product_beta_cdf(
+      q       = q,
+      u_alpha = component$u_alpha,
+      u_beta  = component$u_beta,
+      v_alpha = component$v_alpha,
+      v_beta  = component$v_beta
+    )
+  )
+}
+.weightfunction_component_pdf <- function(component, x){
+
+  switch(
+    component$type,
+    "point" = rep(0, length(x)),
+    "beta"  = stats::dbeta(x, shape1 = component$alpha, shape2 = component$beta),
+    "one_minus_product_beta" = .weightfunction_one_minus_product_beta_pdf(
+      x       = x,
+      u_alpha = component$u_alpha,
+      u_beta  = component$u_beta,
+      v_alpha = component$v_alpha,
+      v_beta  = component$v_beta
+    )
+  )
+}
+.weightfunction_mixture_mean <- function(components){
+
+  sum(vapply(components, function(component){
+    component$weight * .weightfunction_component_mean(component)
+  }, numeric(1)))
+}
+.weightfunction_mixture_cdf <- function(components, q){
+
+  p <- sum(vapply(components, function(component){
+    component$weight * .weightfunction_component_cdf(component, q)
+  }, numeric(1)))
+
+  pmin(pmax(p, 0), 1)
+}
+.weightfunction_mixture_quantile <- function(components, p){
+
+  if(p <= 0){
+    return(0)
+  }
+  if(p >= 1){
+    return(1)
+  }
+
+  lower <- 0
+  upper <- 1
+
+  for(iter in seq_len(100L)){
+    mid <- lower / 2 + upper / 2
+    if(.weightfunction_mixture_cdf(components, mid) >= p){
+      upper <- mid
+    }else{
+      lower <- mid
+    }
+
+    if(abs(upper - lower) <= 1e-8){
+      break
+    }
+  }
+
+  upper
+}
+.plot_data_prior_weightparameter_components <- function(components, parameter, n_points){
+
+  x_den <- seq(0, 1, length.out = n_points)
+  y_den <- rep(0, length(x_den))
+
+  for(component in components){
+    if(component$type != "point"){
+      y_component <- .weightfunction_component_pdf(component, x_den)
+      y_component[!is.finite(y_component)] <- 0
+      y_den <- y_den + component$weight * y_component
+    }
+  }
+
+  point_components <- components[vapply(components, function(component){
+    component$type == "point"
+  }, logical(1))]
+
+  x_points <- NULL
+  y_points <- NULL
+  if(length(point_components) > 0){
+    point_locations <- vapply(point_components, function(component) component$location, numeric(1))
+    point_keys      <- as.character(signif(point_locations, 15))
+    point_groups    <- split(seq_along(point_components), point_keys)
+
+    x_points <- unname(vapply(point_groups, function(ind) point_locations[ind[1]], numeric(1)))
+    y_points <- unname(vapply(point_groups, function(ind){
+      sum(vapply(point_components[ind], function(component) component$weight, numeric(1)))
+    }, numeric(1)))
+  }
+
+  out <- list()
+
+  if(any(y_den > 0)){
+    out_den <- list(
+      call    = call("density", "weightfunction prior"),
+      bw      = NULL,
+      n       = n_points,
+      x       = x_den,
+      y       = y_den,
+      samples = NULL
+    )
+
+    class(out_den) <- c("density", "density.prior", "density.prior.simple")
+    attr(out_den, "x_range") <- c(0, 1)
+    attr(out_den, "y_range") <- c(0, max(y_den))
+    attr(out_den, "parameter") <- parameter
+
+    out[["density"]] <- out_den
+  }
+
+  if(!is.null(y_points)){
+    for(i in seq_along(y_points)){
+      temp_points <- list(
+        call    = call("density", paste0("point", i)),
+        bw      = NULL,
+        n       = n_points,
+        x       = x_points[i],
+        y       = y_points[i],
+        samples = NULL
+      )
+
+      class(temp_points) <- c("density", "density.prior", "density.prior.point")
+      attr(temp_points, "x_range") <- c(0, 1)
+      attr(temp_points, "y_range") <- c(0, max(y_points[i]))
+      attr(temp_points, "parameter") <- parameter
+
+      out[[paste0("points",i)]] <- temp_points
+    }
+  }
+
+  out
+}
+.weightfunction_one_minus_product_beta_cdf <- function(q, u_alpha, u_beta, v_alpha, v_beta){
+
+  vapply(q, function(q_i){
+    if(q_i <= 0){
+      return(0)
+    }
+    if(q_i >= 1){
+      return(1)
+    }
+
+    product_lower <- 1 - q_i
+    integration <- stats::integrate(
+      f = function(u){
+        stats::dbeta(u, shape1 = u_alpha, shape2 = u_beta) *
+          stats::pbeta(product_lower / u, shape1 = v_alpha, shape2 = v_beta, lower.tail = FALSE)
+      },
+      lower         = product_lower,
+      upper         = 1,
+      subdivisions  = 200L,
+      rel.tol       = 1e-7,
+      stop.on.error = FALSE
+    )
+
+    if(!is.finite(integration$value)){
+      stop("Weightfunction prior CDF integration failed.", call. = FALSE)
+    }
+
+    pmin(pmax(integration$value, 0), 1)
+  }, numeric(1))
+}
+.weightfunction_one_minus_product_beta_pdf <- function(x, u_alpha, u_beta, v_alpha, v_beta){
+
+  vapply(x, function(x_i){
+    if(x_i <= 0 || x_i >= 1){
+      return(0)
+    }
+
+    product_value <- 1 - x_i
+    integration <- stats::integrate(
+      f = function(u){
+        stats::dbeta(u, shape1 = u_alpha, shape2 = u_beta) *
+          stats::dbeta(product_value / u, shape1 = v_alpha, shape2 = v_beta) / u
+      },
+      lower         = product_value,
+      upper         = 1,
+      subdivisions  = 200L,
+      rel.tol       = 1e-7,
+      stop.on.error = FALSE
+    )
+
+    if(!is.finite(integration$value)){
+      return(NA_real_)
+    }
+
+    pmax(integration$value, 0)
+  }, numeric(1))
 }
 .plot_data_prior_list.PETPEESE       <- function(prior_list, x_seq, x_range, x_range_quant, n_points, n_samples,
                                                  transformation, transformation_arguments, transformation_settings, prior_list_mu,
@@ -1605,14 +1868,14 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
   # get the plotting data
   if(prior_type == "weightfunction"){
 
-    # use samples (not sure how to provide analytic solution for this yes)
+    # use analytical marginal summaries of the mapped cumulative Dirichlet weights
     plot_data <- .plot_data_prior_list.weightfunction(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                                                       n_points = n_points, n_samples = n_samples)
     .lines.prior.weightfunction(prior_list, plot_data = plot_data, rescale_x = rescale_x, ...)
 
   }else if(prior_type == "PETPEESE"){
 
-    # use samples (not sure how to provide analytic solution for this yes)
+    # use deterministic linear-combination summaries when supported, with a sampling fallback
     plot_data <- .plot_data_prior_list.PETPEESE(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                                                 n_points = n_points, n_samples = n_samples,
                                                 transformation = transformation, transformation_arguments = transformation_arguments,
@@ -1704,14 +1967,14 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
   # get the plotting data
   if(prior_type == "weightfunction"){
 
-    # use samples (not sure how to provide analytic solution for this yes)
+    # use analytical marginal summaries of the mapped cumulative Dirichlet weights
     plot_data <- .plot_data_prior_list.weightfunction(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                                                       n_points = n_points, n_samples = n_samples)
     geom <- .geom_prior.weightfunction(prior_list, plot_data = plot_data, rescale_x = rescale_x, ...)
 
   }else if(prior_type == "PETPEESE"){
 
-    # use samples (not sure how to provide analytic solution for this yes)
+    # use deterministic linear-combination summaries when supported, with a sampling fallback
     plot_data <- .plot_data_prior_list.PETPEESE(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                                                 n_points = n_points, n_samples = n_samples,
                                                 transformation = transformation, transformation_arguments = transformation_arguments,
@@ -2592,6 +2855,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   prior_list <- attr(samples, "prior_list")
   models_ind <- attr(samples, "models_ind")
   samples    <- samples[,parameter]
+  n_samples_total <- length(samples)
   if (!(is.prior.mixture(prior_list) || is.prior.spike_and_slab(prior_list)) && is.prior(prior_list))
     prior_list <- list(prior_list)
 
@@ -2645,7 +2909,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       # get the density estimate
       density_continuous <- do.call(stats::density, args)
       x_den    <- density_continuous$x
-      y_den    <- density_continuous$y * (length(samples_density) / length(samples))
+      y_den    <- density_continuous$y * (length(samples_density) / n_samples_total)
 
       # check for truncation
       if(isTRUE(all.equal(prior_list_simple_lower, x_den[1])) | prior_list_simple_lower >= x_den[1]){

@@ -810,7 +810,19 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       if (conditional %in% c("bias", "PET", "PEESE", "PETPEESE", "omega") && !is.null(priors[["bias"]]) && is.prior.mixture(priors[["bias"]])) {
 
         # special cases for PET / PEESE / PET-PEESE / weightfunctions
-        if(conditional == "PET"){
+        if(conditional == "bias"){
+          components <- attr(priors[["bias"]], "components")
+          if(is.null(components) || length(components) != length(priors[["bias"]])){
+            is_null <- sapply(priors[["bias"]], is.prior.none)
+          }else{
+            is_null <- components == "null"
+          }
+          for(i in seq(along = is_null)){
+            if(is_null[i]){
+              priors[["bias"]][[i]][["prior_weights"]] <- 0
+            }
+          }
+        }else if(conditional == "PET"){
           is_PET <- sapply(priors[["bias"]], is.prior.PET)
           for(i in seq(along = is_PET)){
             if(!is_PET[i]){
