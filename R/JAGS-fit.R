@@ -34,7 +34,7 @@
 #'   \item{max_Rhat}{maximum R-hat error for the autofit function.
 #'   Defaults to \code{1.05}.}
 #'   \item{min_ESS}{minimum effective sample size. Defaults to \code{500}.}
-#'   \item{max_error}{maximum MCMC error. Defaults to \code{1.01}.}
+#'   \item{max_error}{maximum MCMC error. Defaults to \code{0.01}.}
 #'   \item{max_SD_error}{maximum MCMC error as the proportion of standard
 #'   deviation of the parameters. Defaults to \code{0.05}.}
 #'   \item{max_time}{list specifying the time \code{time} and \code{units}
@@ -45,6 +45,8 @@
 #'   \code{1000}.}
 #'   \item{restarts}{number of times new initial values should be generated in case the model
 #'   fails to initialize. Defaults to \code{10}.}
+#'   \item{check_indicators}{whether model indicator variables should be included
+#'   in convergence checks. Defaults to \code{FALSE}.}
 #' }
 #' @param parallel whether the chains should be run in parallel \code{FALSE}
 #' @param cores number of cores used for multithreading if \code{parallel = TRUE},
@@ -96,7 +98,7 @@ NULL
 #' @rdname JAGS_fit
 JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL, formula_scale_list = NULL,
                      chains = 4, adapt = 500, burnin = 1000, sample = 4000, thin = 1,
-                     autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10),
+                     autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE),
                      parallel = FALSE, cores = chains, silent = TRUE, seed = NULL,
                      add_parameters = NULL, required_packages = NULL, ...){
 
@@ -106,7 +108,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   ### check input
   .check_JAGS_syntax(model_syntax)
   JAGS_check_and_list_fit_settings(chains, adapt, burnin, sample, thin, autofit, parallel, cores, silent, seed)
-  JAGS_check_and_list_autofit_settings(autofit_control)
+  autofit_control <- JAGS_check_and_list_autofit_settings(autofit_control)
   check_char(add_parameters, "add_parameters", check_length = 0, allow_NULL = TRUE)
   check_char(required_packages, "required_packages", check_length = 0, allow_NULL = TRUE)
   check_list(formula_list, "formula_list", allow_NULL = TRUE)
@@ -242,7 +244,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 
   if(autofit && !inherits(fit, "error")){
 
-    converged  <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], fail_fast = TRUE)
+    converged  <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], check_indicators = autofit_control[["check_indicators"]], fail_fast = TRUE)
     itteration <- 1
 
     if(!converged && isTRUE(dots[["is_JASP"]]))
@@ -275,7 +277,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 
       fit <- runjags::add.summary(fit)
 
-      converged  <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], fail_fast = TRUE)
+      converged  <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], check_indicators = autofit_control[["check_indicators"]], fail_fast = TRUE)
       itteration <- itteration + 1
 
       if(isTRUE(dots[["is_JASP"]]))
@@ -299,7 +301,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 }
 
 #' @rdname JAGS_fit
-JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10),
+JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE),
                         parallel = FALSE, cores = NULL, silent = TRUE, seed = NULL){
 
   if(!inherits(fit, "BayesTools_fit"))
@@ -309,7 +311,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   prior_list        <- attr(fit, "prior_list")
   model_syntax      <- attr(fit, "model_syntax")
   required_packages <- attr(fit, "required_packages")
-  JAGS_check_and_list_autofit_settings(autofit_control)
+  autofit_control <- JAGS_check_and_list_autofit_settings(autofit_control)
 
   # parallel vs. not
   if(parallel){
@@ -357,7 +359,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   itteration <- 0
   converged  <- FALSE
 
-  while(!converged & itteration < autofit_control[["restarts"]]){
+  while(!converged){
 
     if(!is.null(autofit_control[["max_time"]]) && difftime(Sys.time(), start_time, units = autofit_control[["max_time"]][["unit"]]) > autofit_control[["max_time"]][["time"]]){
       if(!silent){
@@ -366,7 +368,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
       }
       break
     }
-    if(!is.null(autofit_control[["max_extend"]]) && itteration > autofit_control[["max_extend"]]){
+    if(!is.null(autofit_control[["max_extend"]]) && itteration >= autofit_control[["max_extend"]]){
       if(!silent){
         attr(fit, "warning") <- "The automatic model fitting was terminated due to the 'max_extend' constraint."
         warning(attr(fit, "warning"), immediate. = TRUE)
@@ -383,7 +385,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
       break
     }
 
-    converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], fail_fast = TRUE)
+    converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], check_indicators = autofit_control[["check_indicators"]], fail_fast = TRUE)
 
     # update the refit call
     if(!converged){
@@ -413,12 +415,14 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
 #' @param max_Rhat maximum R-hat error for the autofit function.
 #'   Defaults to \code{1.05}.
 #' @param min_ESS minimum effective sample size. Defaults to \code{500}.
-#' @param max_error maximum MCMC error. Defaults to \code{1.01}.
+#' @param max_error maximum MCMC error. Defaults to \code{0.01}.
 #' @param max_SD_error maximum MCMC error as the proportion of standard
 #'   deviation of the parameters. Defaults to \code{0.05}.
 #' @param add_parameters vector of additional parameter names that should be used
 #' (only allows removing last, fixed, omega element if omega is tracked manually).
 #' @param fail_fast whether the function should stop after the first failed convergence check.
+#' @param check_indicators whether model indicator variables should be included
+#' in convergence checks. Defaults to \code{FALSE}.
 #'
 #' @examples \dontrun{
 #' # simulate data
@@ -450,7 +454,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
 #'
 #' @seealso [JAGS_fit()]
 #' @export
-JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, add_parameters = NULL, fail_fast = FALSE){
+JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, add_parameters = NULL, fail_fast = FALSE, check_indicators = FALSE){
 
   # check input
   if(!inherits(fit, "runjags"))
@@ -463,6 +467,7 @@ JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 5
   check_real(max_error,    "max_error",    lower = 0, allow_NULL = TRUE)
   check_real(max_SD_error, "max_SD_error", lower = 0, upper = 1, allow_NULL = TRUE)
   check_char(add_parameters, "add_parameters", check_length = 0, allow_NULL = TRUE)
+  check_bool(check_indicators, "check_indicators")
 
   # extract samples and parameter information
   mcmc_samples_list <- coda::as.mcmc.list(fit)
@@ -484,9 +489,10 @@ JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 5
   cleaned <- .remove_auxiliary_parameters(mcmc_samples, prior_list, remove_params)
   mcmc_samples <- cleaned$model_samples
   
-  # remove indicators/inclusions (not handled by helper since they're not in prior_list)
-  indicator_cols <- grepl("_indicator|_inclusion", colnames(mcmc_samples))
-  mcmc_samples <- mcmc_samples[, !indicator_cols, drop = FALSE]
+  # remove auxiliary inclusion probabilities and, by default, model indicators
+  indicator_cols <- grepl("_indicator", colnames(mcmc_samples))
+  inclusion_cols <- grepl("_inclusion", colnames(mcmc_samples))
+  mcmc_samples <- mcmc_samples[, !(inclusion_cols | (!check_indicators & indicator_cols)), drop = FALSE]
   
   if(ncol(mcmc_samples) == 0){
     return(TRUE)
@@ -1637,11 +1643,15 @@ JAGS_check_and_list_fit_settings     <- function(chains, adapt, burnin, sample, 
 #' @rdname JAGS_check_and_list
 JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_extend = FALSE, call = ""){
 
-  check_list(autofit_control, "autofit_control", check_names = c("max_Rhat", "min_ESS", "max_error", "max_SD_error",  "max_time", "sample_extend", "restarts", "max_extend"), call = call)
+  check_list(autofit_control, "autofit_control", check_names = c("max_Rhat", "min_ESS", "max_error", "max_SD_error",  "max_time", "sample_extend", "restarts", "max_extend", "check_indicators"), call = call)
+  if(is.null(autofit_control[["check_indicators"]])){
+    autofit_control[["check_indicators"]] <- FALSE
+  }
   check_real(autofit_control[["max_Rhat"]],     "max_Rhat",     lower = 1, allow_NULL = TRUE, call = call)
   check_real(autofit_control[["min_ESS"]],      "min_ESS",      lower = 0, allow_NULL = TRUE, call = call)
   check_real(autofit_control[["max_error"]],    "max_error",    lower = 0, allow_NULL = TRUE, call = call)
   check_real(autofit_control[["max_SD_error"]], "max_SD_error", lower = 0, upper = 1, allow_NULL = TRUE, call = call)
+  check_bool(autofit_control[["check_indicators"]], "check_indicators", call = call)
   check_list(autofit_control[["max_time"]],     "max_time", check_names = c("time", "unit"), check_length = 2, allow_NULL = TRUE, call = call)
   if(!is.null(autofit_control[["max_time"]])){
     if(is.null(names(autofit_control[["max_time"]]))){
