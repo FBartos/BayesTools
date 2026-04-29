@@ -171,6 +171,7 @@ test_that("marginal inference conditions treatment factor levels by active weigh
   )
 
   factor_levels <- inference[["conditional"]][["mu_fac"]]
+  averaged_levels <- inference[["averaged"]][["mu_fac"]]
 
   expect_equal(attr(factor_levels[["A"]], "effective_conditional"), "mu_intercept")
   expect_equal(attr(factor_levels[["B"]], "effective_conditional"), c("mu_intercept", "mu_fac"))
@@ -182,6 +183,31 @@ test_that("marginal inference conditions treatment factor levels by active weigh
   expect_equal(.prior_linear_density_point_mass(attr(factor_levels[["B"]], "prior_density"), 0), 0)
   expect_equal(.prior_linear_density_point_mass(attr(factor_levels[["C"]], "prior_density"), 0), 0)
   expect_false(length(factor_levels[["A"]]) == length(factor_levels[["B"]]))
+
+  averaged_plot_data <- .plot_data_marginal_samples(
+    samples                  = inference[["averaged"]],
+    parameter                = "mu_fac",
+    prior                    = TRUE,
+    n_points                 = 32,
+    transformation           = NULL,
+    transformation_arguments = NULL,
+    transformation_settings  = FALSE
+  )
+  averaged_points <- averaged_plot_data[vapply(averaged_plot_data, inherits, logical(1), what = "density.prior.point")]
+  averaged_density <- averaged_plot_data[vapply(averaged_plot_data, inherits, logical(1), what = "density.prior.simple")]
+
+  expect_equal(length(averaged_points), 3L)
+  expect_equal(length(averaged_density), 3L)
+  for(level in names(averaged_levels)){
+    level_points <- averaged_points[vapply(averaged_points, function(x) identical(attr(x, "level_name"), level), logical(1))]
+    level_density <- averaged_density[vapply(averaged_density, function(x) identical(attr(x, "level_name"), level), logical(1))]
+
+    expect_equal(length(level_points), 1L)
+    expect_equal(length(level_density), 1L)
+    expect_equal(level_points[[1]][["x"]], 0)
+    expect_equal(level_points[[1]][["y"]], mean(as.numeric(averaged_levels[[level]]) == 0))
+    expect_false(any(level_density[[1]][["samples"]] == 0))
+  }
 
   expect_warning(
     marginal_estimates_table(

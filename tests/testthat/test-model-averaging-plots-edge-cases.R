@@ -125,6 +125,189 @@ test_that("factor ggplot prior point layers use point plot data", {
   expect_equal(segment_data[["x"]], 0, tolerance = 1e-8)
 })
 
+test_that("factor plot data normalization preserves unnamed points", {
+
+  density_data <- BayesTools:::.prior_linear_density_to_plot_data(
+    BayesTools:::.prior_linear_density_point(1),
+    n_points   = 64,
+    factor     = TRUE,
+    level      = 1,
+    level_name = "A"
+  )[["points1"]]
+  class(density_data) <- setdiff(class(density_data), "density.prior.point")
+
+  point_data <- list(
+    call    = call("density", "point"),
+    bw      = NULL,
+    n       = 64,
+    x       = 0,
+    y       = 0.5,
+    samples = NULL
+  )
+  class(point_data) <- c("density", "density.prior", "density.prior.point")
+  attr(point_data, "x_range") <- 0
+  attr(point_data, "y_range") <- c(0, 0.5)
+
+  normalized <- BayesTools:::.plot_prior_factor_normalize_data(
+    list(density = density_data, point = point_data)
+  )
+
+  expect_equal(normalized[["level_names"]], "A")
+  expect_equal(attr(normalized[["densities"]][[1]], "level_id"), 1)
+  expect_equal(attr(normalized[["points"]][[1]], "level_id"), NA_integer_)
+})
+
+test_that("factor point layers use matching level colors when metadata is present", {
+
+  plot_data <- c(
+    BayesTools:::.prior_linear_density_to_plot_data(
+      BayesTools:::.prior_linear_density_point(0),
+      n_points   = 64,
+      factor     = TRUE,
+      level      = 1,
+      level_name = "A"
+    ),
+    BayesTools:::.prior_linear_density_to_plot_data(
+      BayesTools:::.prior_linear_density_point(1),
+      n_points   = 64,
+      factor     = TRUE,
+      level      = 2,
+      level_name = "B"
+    )
+  )
+  plot <- BayesTools:::.plot_prior_list.factor(
+    plot_data = plot_data,
+    plot_type = "ggplot",
+    col       = c("red", "blue"),
+    hardcode  = TRUE
+  )
+
+  segment_layers <- vapply(plot[["layers"]], function(layer) {
+    inherits(layer[["geom"]], "GeomSegment")
+  }, logical(1))
+  segments <- plot[["layers"]][segment_layers]
+
+  expect_equal(length(segments), 2L)
+  expect_equal(
+    unname(vapply(segments, function(layer) layer[["aes_params"]][["colour"]], character(1))),
+    c("red", "blue")
+  )
+  expect_equal(
+    unname(vapply(segments, function(layer) layer[["data"]][["x"]], numeric(1))),
+    c(0, 1),
+    tolerance = 1e-8
+  )
+})
+
+test_that("factor point layers reuse single style values for all levels", {
+
+  plot_data <- c(
+    BayesTools:::.prior_linear_density_to_plot_data(
+      BayesTools:::.prior_linear_density_point(0),
+      n_points   = 64,
+      factor     = TRUE,
+      level      = 1,
+      level_name = "A"
+    ),
+    BayesTools:::.prior_linear_density_to_plot_data(
+      BayesTools:::.prior_linear_density_point(1),
+      n_points   = 64,
+      factor     = TRUE,
+      level      = 2,
+      level_name = "B"
+    )
+  )
+  plot <- BayesTools:::.plot_prior_list.factor(
+    plot_data = plot_data,
+    plot_type = "ggplot",
+    col       = "red",
+    lty       = 2,
+    hardcode  = TRUE
+  )
+
+  segment_layers <- vapply(plot[["layers"]], function(layer) {
+    inherits(layer[["geom"]], "GeomSegment")
+  }, logical(1))
+  segments <- plot[["layers"]][segment_layers]
+
+  expect_equal(length(segments), 2L)
+  expect_equal(
+    unname(vapply(segments, function(layer) layer[["aes_params"]][["colour"]], character(1))),
+    c("red", "red")
+  )
+  expect_equal(
+    unname(vapply(segments, function(layer) layer[["aes_params"]][["linetype"]], numeric(1))),
+    c(2, 2)
+  )
+})
+
+test_that("factor plots map component-expanded prior styles back to levels", {
+
+  prior_list <- list(
+    beta = prior_mixture(
+      list(
+        prior("spike", list(0), prior_weights = 1),
+        prior("normal", list(0, 1), prior_weights = 1)
+      ),
+      is_null = c(TRUE, FALSE)
+    )
+  )
+  density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = prior_list,
+    weights    = c(beta = 1),
+    n_grid     = 256
+  )
+  plot_data <- c(
+    BayesTools:::.prior_linear_density_to_plot_data(
+      density,
+      n_points   = 64,
+      factor     = TRUE,
+      level      = 1,
+      level_name = "A"
+    ),
+    BayesTools:::.prior_linear_density_to_plot_data(
+      density,
+      n_points   = 64,
+      factor     = TRUE,
+      level      = 2,
+      level_name = "B"
+    )
+  )
+  plot <- BayesTools:::.plot_prior_list.factor(
+    plot_data = plot_data,
+    plot_type = "ggplot",
+    col       = c("red", "red", "blue", "blue"),
+    lty       = c(2, 2, 3, 3),
+    hardcode  = TRUE
+  )
+
+  segment_layers <- vapply(plot[["layers"]], function(layer) {
+    inherits(layer[["geom"]], "GeomSegment")
+  }, logical(1))
+  line_layers <- vapply(plot[["layers"]], function(layer) {
+    inherits(layer[["geom"]], "GeomLine")
+  }, logical(1))
+  segments <- plot[["layers"]][segment_layers]
+  lines    <- plot[["layers"]][line_layers]
+
+  expect_equal(
+    unname(vapply(segments, function(layer) layer[["aes_params"]][["colour"]], character(1))),
+    c("red", "blue")
+  )
+  expect_equal(
+    unname(vapply(segments, function(layer) layer[["aes_params"]][["linetype"]], numeric(1))),
+    c(2, 3)
+  )
+  expect_equal(
+    unname(vapply(lines, function(layer) layer[["aes_params"]][["colour"]], character(1))),
+    c("red", "blue")
+  )
+  expect_equal(
+    unname(vapply(lines, function(layer) layer[["aes_params"]][["linetype"]], numeric(1))),
+    c(2, 3)
+  )
+})
+
 test_that("PET-PEESE prior plot data uses CDF quantiles for half-Cauchy PET", {
 
   x_seq <- c(0, 0.25, 0.5, 1)
