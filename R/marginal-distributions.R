@@ -548,6 +548,20 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   out
 }
 
+.marginal_posterior_parameter_prior_densities <- function(samples, parameter){
+
+  parameter_samples <- samples[[parameter]]
+
+  if(is.list(parameter_samples)){
+    out <- lapply(parameter_samples, attr, which = "prior_density")
+  }else{
+    out <- list(attr(parameter_samples, "prior_density"))
+    names(out) <- parameter
+  }
+
+  out
+}
+
 .get_combined_parameter_scaling_factor_matrix <- function(term, prior_list, posterior, models_ind, nrow, simple_list = FALSE){
 
   if(simple_list){

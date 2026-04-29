@@ -205,6 +205,137 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     return(plot)
   }
 }
+.plot_prior_factor_component_level_name <- function(component){
+
+  level_name <- attr(component, "level_name")
+  if(!is.null(level_name) && length(level_name) == 1L && !is.na(level_name)){
+    return(as.character(level_name))
+  }
+
+  if(inherits(component, "density.prior.factor")){
+    level <- attr(component, "level")
+    if(!is.null(level) && length(level) == 1L && !is.na(level)){
+      return(as.character(level))
+    }
+  }
+
+  NA_character_
+}
+.plot_prior_factor_format_level_names <- function(level_names){
+
+  if(length(level_names) == 0L){
+    return(character())
+  }
+
+  level_labels <- level_names
+  dif_matches  <- gregexpr("[dif:", level_labels, fixed = TRUE)
+  has_dif       <- vapply(dif_matches, function(x) x[1] != -1L, logical(1))
+  multi_dif     <- vapply(dif_matches, function(x) x[1] != -1L && length(x) > 1, logical(1))
+  if(any(multi_dif)){
+    level_labels[multi_dif] <- gsub("__xXx__", ":", level_labels[multi_dif], fixed = TRUE)
+  }
+  if(any(has_dif & !multi_dif)){
+    single_dif <- has_dif & !multi_dif
+    level_labels[single_dif] <- substr(
+      level_labels[single_dif],
+      regexpr("[dif:", level_labels[single_dif], fixed = TRUE) + 5,
+      regexpr("]", level_labels[single_dif], fixed = TRUE) - 1
+    )
+  }
+  no_dif <- !has_dif
+  if(any(no_dif & grepl("[", level_labels, fixed = TRUE))){
+    bracket_names <- no_dif & grepl("[", level_labels, fixed = TRUE)
+    level_labels[bracket_names] <- substr(
+      level_labels[bracket_names],
+      regexpr("[", level_labels[bracket_names], fixed = TRUE) + 1,
+      regexpr("]", level_labels[bracket_names], fixed = TRUE) - 1
+    )
+  }
+
+  level_labels
+}
+.plot_prior_factor_normalize_data <- function(plot_data){
+
+  is_point  <- vapply(plot_data, inherits, logical(1), what = "density.prior.point")
+  is_factor <- vapply(plot_data, inherits, logical(1), what = "density.prior.factor")
+
+  component_levels <- vapply(plot_data, .plot_prior_factor_component_level_name, character(1))
+  level_names_raw  <- unique(component_levels[is_factor & !is.na(component_levels)])
+  level_names      <- .plot_prior_factor_format_level_names(level_names_raw)
+
+  plot_data <- lapply(seq_along(plot_data), function(i){
+    component <- plot_data[[i]]
+    level_id  <- match(component_levels[i], level_names_raw)
+
+    if(is.na(level_id)){
+      level_id <- NA_integer_
+    }
+
+    attr(component, "plot_component") <- if(is_point[i]) "point" else if(is_factor[i]) "density" else "other"
+    attr(component, "component_id")    <- i
+    attr(component, "level_id")       <- level_id
+    attr(component, "level_label")    <- if(!is.na(level_id)) level_names[level_id] else NA_character_
+
+    component
+  })
+  names(plot_data) <- names(is_point)
+
+  list(
+    plot_data       = plot_data,
+    points          = plot_data[is_point],
+    densities       = plot_data[is_factor & !is_point],
+    level_names_raw = level_names_raw,
+    level_names     = level_names
+  )
+}
+.plot_prior_factor_style_value <- function(values, level_id, component_id, n_levels, default = NULL){
+
+  if(is.null(values)){
+    return(default)
+  }
+
+  if(length(values) == 1L){
+    value <- values[[1L]]
+  }else if(length(values) == n_levels && length(level_id) == 1L && !is.na(level_id) && is.finite(level_id) && level_id >= 1L && length(values) >= level_id){
+    value <- values[[level_id]]
+  }else if(length(component_id) == 1L && !is.na(component_id) && is.finite(component_id) && component_id >= 1L && length(values) >= component_id){
+    value <- values[[component_id]]
+  }else if(length(level_id) == 1L && !is.na(level_id) && is.finite(level_id) && level_id >= 1L && length(values) >= level_id){
+    value <- values[[level_id]]
+  }else{
+    return(default)
+  }
+
+  if(is.null(value) || length(value) == 0L || all(is.na(value))){
+    return(default)
+  }
+
+  value
+}
+.plot_prior_factor_level_style_values <- function(values, plot_data, n_levels, default = NULL){
+
+  out <- rep(default, n_levels)
+  if(n_levels == 0L){
+    return(out)
+  }
+
+  for(level_id in seq_len(n_levels)){
+    component_ind <- which(vapply(plot_data, function(component){
+      identical(attr(component, "level_id"), level_id)
+    }, logical(1)))[1]
+
+    component_id <- if(!is.na(component_ind)) attr(plot_data[[component_ind]], "component_id") else NA_integer_
+    out[level_id] <- .plot_prior_factor_style_value(
+      values       = values,
+      level_id     = level_id,
+      component_id = component_id,
+      n_levels     = n_levels,
+      default      = default
+    )
+  }
+
+  out
+}
 .plot_prior_list.factor           <- function(plot_data, plot_type, par_name = NULL, scale_y2 = NULL, add = FALSE, ...){
 
   # get default plot settings
@@ -247,27 +378,12 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   if(is.null(dots[["ylim"]]))  dots$ylim  <-  ylim
   if(is.null(dots[["ylim2"]])) dots$ylim2 <-  ylim2
 
-  # split on points and factors
-  plot_data_points  <- plot_data[sapply(plot_data, inherits, what = "density.prior.point")]
-  plot_data_factors <- plot_data[sapply(plot_data, inherits, what = "density.prior.factor")]
-
-  # prepare factor naming & formatting
-  level_names <- sapply(plot_data_factors, attr, which = "level_name")
-  dif_matches <- gregexpr("[dif:", level_names, fixed = TRUE)
-  has_dif <- vapply(dif_matches, function(x) x[1] != -1L, logical(1))
-  multi_dif <- vapply(dif_matches, function(x) x[1] != -1L && length(x) > 1, logical(1))
-  if(any(multi_dif)){
-    level_names[multi_dif] <- gsub("__xXx__", ":", level_names[multi_dif], fixed = TRUE)
-  }
-  if(any(has_dif & !multi_dif)){
-    single_dif <- has_dif & !multi_dif
-    level_names[single_dif] <- substr(level_names[single_dif], regexpr("[dif:", level_names[single_dif], fixed = TRUE) + 5, regexpr("]", level_names[single_dif], fixed = TRUE) - 1)
-  }
-  no_dif <- !has_dif
-  if(any(no_dif & grepl("[", level_names, fixed = TRUE))){
-    bracket_names <- no_dif & grepl("[", level_names, fixed = TRUE)
-    level_names[bracket_names] <- substr(level_names[bracket_names], regexpr("[", level_names[bracket_names], fixed = TRUE) + 1, regexpr("]", level_names[bracket_names], fixed = TRUE) - 1)
-  }
+  # normalize factor component metadata before rendering
+  plot_data_normalized <- .plot_prior_factor_normalize_data(plot_data)
+  plot_data_points     <- plot_data_normalized[["points"]]
+  plot_data_factors    <- plot_data_normalized[["densities"]]
+  level_names          <- plot_data_normalized[["level_names"]]
+  style_components     <- if(length(plot_data_factors) > 0L) plot_data_factors else plot_data_points
 
 
   # prepare legend information
@@ -286,6 +402,25 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     if(is.null(dots[["legend"]]))       dots[["legend"]]   <- TRUE
   }
 
+  level_col <- .plot_prior_factor_level_style_values(
+    dots[["col"]],
+    style_components,
+    length(level_names),
+    .plot.prior_settings()[["col"]]
+  )
+  level_lty <- .plot_prior_factor_level_style_values(
+    dots[["lty"]],
+    style_components,
+    length(level_names),
+    .plot.prior_settings()[["lty"]]
+  )
+  level_linetype <- .plot_prior_factor_level_style_values(
+    dots[["linetype"]],
+    style_components,
+    length(level_names),
+    .plot.prior_settings()[["lty"]]
+  )
+
 
   if(plot_type == "base"){
 
@@ -298,8 +433,22 @@ plot_prior_list <- function(prior_list, plot_type = "base",
       args           <- dots
       args$scale_y2  <- scale_y2
       args$plot_data <- plot_data_points[[i]]
-      args$col       <- if(unique(length(dots[["col"]])) > 1) .plot.prior_settings()[["col"]]
-      args$lty       <- if(unique(length(dots[["lty"]])) > 1) .plot.prior_settings()[["lty"]]
+      point_level    <- attr(plot_data_points[[i]], "level_id")
+      point_component <- attr(plot_data_points[[i]], "component_id")
+      args$col       <- .plot_prior_factor_style_value(
+        values       = dots[["col"]],
+        level_id     = point_level,
+        component_id = point_component,
+        n_levels     = length(level_names),
+        default      = if(length(dots[["col"]]) > 1) .plot.prior_settings()[["col"]]
+      )
+      args$lty <- .plot_prior_factor_style_value(
+        values       = dots[["lty"]],
+        level_id     = point_level,
+        component_id = point_component,
+        n_levels     = length(level_names),
+        default      = if(length(dots[["lty"]]) > 1) .plot.prior_settings()[["lty"]]
+      )
       do.call(.lines.prior.point, args)
     }
 
@@ -307,16 +456,19 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     for(i in seq_along(plot_data_factors)){
       args           <- dots
       args$plot_data <- plot_data_factors[[i]]
-      args$level     <- i
+      args$level     <- attr(plot_data_factors[[i]], "level_id")
+      if(is.na(args$level)) args$level <- i
+      args$col       <- level_col
+      args$lty       <- level_lty
       do.call(.lines.prior.factor, args)
     }
 
-    if(dots[["legend"]]){
+    if(dots[["legend"]] && length(level_names) > 0){
       graphics::legend(
         if(is.null(dots[["legend_position"]])) "topright" else dots[["legend_position"]],
         legend = level_names,
-        col    = if(!is.null(dots[["col"]])) dots[["col"]] else rep(.plot.prior_settings()[["col"]], length(level_names)),
-        lty    = if(!is.null(dots[["lty"]])) dots[["lty"]] else rep(.plot.prior_settings()[["lty"]], length(level_names)),
+        col    = level_col,
+        lty    = level_lty,
         lwd    = if(!is.null(dots[["lwd"]])) dots[["lwd"]] else rep(.plot.prior_settings()[["lwd"]], length(level_names)),
         bty    = "n")
     }
@@ -332,26 +484,51 @@ plot_prior_list <- function(prior_list, plot_type = "base",
       args           <- dots
       args$scale_y2  <- scale_y2
       args$plot_data <- plot_data_points[[i]]
-      args$col       <- if(unique(length(dots[["col"]])) > 1)      .plot.prior_settings()[["col"]]
-      args$lty       <- if(unique(length(dots[["linetype"]])) > 1) .plot.prior_settings()[["linetype"]]
+      point_level    <- attr(plot_data_points[[i]], "level_id")
+      point_component <- attr(plot_data_points[[i]], "component_id")
+      args$col       <- .plot_prior_factor_style_value(
+        values       = dots[["col"]],
+        level_id     = point_level,
+        component_id = point_component,
+        n_levels     = length(level_names),
+        default      = if(length(dots[["col"]]) > 1) .plot.prior_settings()[["col"]]
+      )
+      args$lty <- .plot_prior_factor_style_value(
+        values       = if(!is.null(dots[["linetype"]])) dots[["linetype"]] else dots[["lty"]],
+        level_id     = point_level,
+        component_id = point_component,
+        n_levels     = length(level_names),
+        default      = .plot.prior_settings()[["lty"]]
+      )
       plot           <- c(plot, do.call(.geom_prior.point, args))
     }
 
     # plot factor levels
-    plot_data_factors <- data.frame(
-      x     = do.call(c, lapply(plot_data_factors, function(x) x$x)),
-      y     = do.call(c, lapply(plot_data_factors, function(x) x$y)),
-      level = do.call(c, lapply(seq_along(plot_data_factors), function(i) rep(level_names[i], length(plot_data_factors[[i]]$x))))
-    )
+    if(length(plot_data_factors) > 0){
+      plot_data_factors <- data.frame(
+        x     = do.call(c, lapply(plot_data_factors, function(x) x$x)),
+        y     = do.call(c, lapply(plot_data_factors, function(x) x$y)),
+        level = do.call(c, lapply(seq_along(plot_data_factors), function(i) {
+          level <- attr(plot_data_factors[[i]], "level_label")
+          if(length(level) != 1L || is.na(level)){
+            level <- as.character(i)
+          }
+          rep(level, length(plot_data_factors[[i]]$x))
+        }))
+      )
 
-    args             <- dots
-    args$level_names <- level_names
-    args$plot_data   <- plot_data_factors
+      args             <- dots
+      args$level_names <- level_names
+      args$plot_data   <- plot_data_factors
+      args$col         <- level_col
+      args$lty         <- if(!is.null(dots[["linetype"]])) level_linetype else level_lty
+      args$linetype    <- if(!is.null(dots[["linetype"]])) level_linetype else NULL
 
-    plot <- c(plot, do.call(.geom_prior.factors, args))
+      plot <- c(plot, do.call(.geom_prior.factors, args))
+    }
 
 
-    if(dots[["legend"]]){
+    if(dots[["legend"]] && length(level_names) > 0){
       plot <- c(plot, list(ggplot2::theme(
         legend.title    = ggplot2::element_blank(),
         legend.position = if(is.null(dots[["legend_position"]])) "right" else dots[["legend_position"]])))
@@ -3246,23 +3423,18 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
 
   check_list(samples, "samples", check_names = parameter, allow_other = TRUE)
 
-  x_points <- NULL
-  y_points <- NULL
-  x_den    <- NULL
-  y_den    <- NULL
-
   # extract the relevant information
   if(is.list(samples[[parameter]]) && length(samples[[parameter]]) > 1){
     posterior_samples <- .marginal_posterior_parameter_samples(samples, parameter)
+    prior_densities   <- .marginal_posterior_parameter_prior_densities(samples, parameter)
     if(prior){
-      prior_densities <- lapply(samples[[parameter]], attr, which = "prior_density")
       if(any(vapply(prior_densities, is.null, logical(1))))
         stop("'samples' did not contain prior densities")
     }
   }else{
     posterior_samples <- .marginal_posterior_parameter_samples(samples, parameter)
+    prior_densities   <- .marginal_posterior_parameter_prior_densities(samples, parameter)
     if(prior){
-      prior_densities <- list(attr(samples[[parameter]][[1]], "prior_density"))
       if(is.null(prior_densities[[1]]))
         stop("'samples' did not contain prior densities")
     }
@@ -3276,9 +3448,19 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
   # deal with the densities
   for(i in seq_along(posterior_samples)){
 
-    out_den <- .plot_data_marginal_samples.den(posterior_samples[[i]], n_points, transformation, transformation_arguments, transformation_settings)
-    attr(out_den, "level")      <- i
-    attr(out_den, "level_name") <- names(posterior_samples)[i]
+    out_level <- .plot_data_marginal_samples.den(
+      posterior_samples[[i]],
+      n_points,
+      transformation,
+      transformation_arguments,
+      transformation_settings,
+      prior_density = prior_densities[[i]]
+    )
+
+    for(j in seq_along(out_level)){
+      attr(out_level[[j]], "level")      <- i
+      attr(out_level[[j]], "level_name") <- names(posterior_samples)[i]
+    }
 
     if(prior){
       out_den.prior <- .prior_linear_density_to_plot_data(
@@ -3292,44 +3474,115 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
         level_name                = names(posterior_samples)[i]
       )
 
-      attr(out_den, "prior") <- out_den.prior
+      attr(out_level[[1]], "prior") <- out_den.prior
     }
 
-    out[[paste0("density", i)]] <- out_den
+    for(j in seq_along(out_level)){
+      out[[paste0(names(out_level)[j], i)]] <- out_level[[j]]
+    }
 
   }
 
   return(out)
 }
-.plot_data_marginal_samples.den <- function(x, n_points, transformation, transformation_arguments, transformation_settings){
+.plot_data_marginal_samples.den <- function(x, n_points, transformation, transformation_arguments, transformation_settings,
+                                            prior_density = NULL){
 
-  args <- list(x = x, n = n_points)
+  point_locations <- .plot_data_marginal_samples_point_locations(prior_density)
+  point_samples   <- rep(FALSE, length(x))
+  x_points        <- NULL
+  y_points        <- NULL
 
-  # get the density estimate
-  density_continuous <- do.call(stats::density, args)
-  x_den    <- density_continuous$x
-  y_den    <- density_continuous$y
+  if(length(point_locations) > 0){
+    point_counts <- numeric(length(point_locations))
+    for(i in seq_along(point_locations)){
+      tol <- sqrt(.Machine$double.eps) * max(1, abs(point_locations[i]))
+      point_matches <- !point_samples & abs(x - point_locations[i]) <= tol
+      point_counts[i] <- sum(point_matches)
+      point_samples <- point_samples | point_matches
+    }
 
-
-  # apply transformations
-  if(!is.null(transformation)){
-    x_den <- .density.prior_transformation_x(x_den, transformation, transformation_arguments)
-    y_den <- .density.prior_transformation_y(x_den, y_den, transformation, transformation_arguments)
-    x     <- .density.prior_transformation_x(x, transformation, transformation_arguments)
+    point_keep <- point_counts > 0
+    x_points <- point_locations[point_keep]
+    y_points <- point_counts[point_keep] / length(x)
   }
 
-  out_den <- list(
-    call    = call("density", "mixed samples"),
-    bw      = NULL,
-    n       = n_points,
-    x       = x_den,
-    y       = y_den,
-    samples = x
-  )
+  samples_density <- x[!point_samples]
 
-  class(out_den) <- c("density", "density.prior", "density.prior.factor", "density.prior.simple")
-  attr(out_den, "x_range")    <- range(x_den)
-  attr(out_den, "y_range")    <- c(0, max(y_den))
+  # create the output object
+  out <- list()
 
-  return(out_den)
+  # get the density estimate
+  if(length(samples_density) > 1 && diff(range(samples_density)) > 0){
+    args <- list(x = samples_density, n = n_points)
+
+    density_continuous <- do.call(stats::density, args)
+    x_den    <- density_continuous$x
+    y_den    <- density_continuous$y * (length(samples_density) / length(x))
+
+    # apply transformations
+    if(!is.null(transformation)){
+      x_den           <- .density.prior_transformation_x(x_den, transformation, transformation_arguments)
+      y_den           <- .density.prior_transformation_y(x_den, y_den, transformation, transformation_arguments)
+      samples_density <- .density.prior_transformation_x(samples_density, transformation, transformation_arguments)
+    }
+
+    out_den <- list(
+      call    = call("density", "mixed samples"),
+      bw      = NULL,
+      n       = n_points,
+      x       = x_den,
+      y       = y_den,
+      samples = samples_density
+    )
+
+    class(out_den) <- c("density", "density.prior", "density.prior.factor", "density.prior.simple")
+    attr(out_den, "x_range")    <- range(x_den)
+    attr(out_den, "y_range")    <- c(0, max(y_den))
+
+    out[["density"]] <- out_den
+
+  }else if(length(samples_density) > 0){
+    x_points <- c(x_points, unique(samples_density))
+    y_points <- c(y_points, tabulate(match(samples_density, unique(samples_density))) / length(x))
+  }
+
+  if(!is.null(y_points)){
+    if(!is.null(transformation)){
+      x_points <- .density.prior_transformation_x(x_points, transformation, transformation_arguments)
+    }
+
+    for(i in seq_along(y_points)){
+      temp_points <- list(
+        call    = call("density", paste0("point", i)),
+        bw      = NULL,
+        n       = n_points,
+        x       = x_points[i],
+        y       = y_points[i],
+        samples = NULL
+      )
+
+      class(temp_points) <- c("density", "density.prior", "density.prior.point", "density.prior.factor")
+      attr(temp_points, "x_range") <- range(x_points)
+      attr(temp_points, "y_range") <- c(0, max(y_points))
+
+      out[[paste0("points", i)]] <- temp_points
+    }
+  }
+
+  return(out)
+}
+.plot_data_marginal_samples_point_locations <- function(prior_density){
+
+  if(!inherits(prior_density, "prior_linear_density") || is.null(prior_density$points) || nrow(prior_density$points) == 0){
+    return(numeric())
+  }
+
+  points <- prior_density$points
+  points <- points[points$p > .prior_linear_density_zero_tol(), , drop = FALSE]
+  if(nrow(points) == 0){
+    return(numeric())
+  }
+
+  points$x
 }

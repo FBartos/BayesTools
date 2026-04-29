@@ -334,10 +334,12 @@ test_that("prior plot functions (weightfunctions) work", {
     p1 = prior_weightfunction("one.sided", list(c(.05, 0.10), c(1, 1, 1)))
   )
 
+  set.seed(1)
   vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-1", function(){
     plot_prior_list(prior_list, col = "red", lwd = 4, col.fill = scales::alpha("red", .20))
     lines(prior_list$p1, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20))
   })
+  set.seed(1)
   vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-2", {
     plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, col.fill = scales::alpha("red", .20)) + geom_prior(prior_list$p1, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20))
   })
@@ -347,10 +349,12 @@ test_that("prior plot functions (weightfunctions) work", {
     p1 = prior_weightfunction("one.sided.fixed", list(c(.05), c(1, .5)))
   )
 
+  set.seed(1)
   vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-3", function(){
     plot_prior_list(prior_list, col = "red", lwd = 4)
     lines(prior_list$p1, col = "blue", lwd = 3, lty = 2)
   })
+  set.seed(1)
   vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-4", {
     plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4) + geom_prior(prior_list$p1, col = "blue", lwd = 3, lty = 2)
   })
@@ -361,10 +365,12 @@ test_that("prior plot functions (weightfunctions) work", {
     p1 = prior_weightfunction("one.sided", list(c(.05, 0.10), c(1, 1, 1))),
     p2 = prior_weightfunction("one.sided", list(c(.05, 0.10), c(1, 1, 1.0001)))
   )
+  set.seed(1)
   vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-5", function(){
     plot_prior_list(prior_list, col = "red", lwd = 4, col.fill = scales::alpha("red", .20))
     lines(prior_list$p1, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20))
   })
+  set.seed(1)
   vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-6", function(){
     plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, col.fill = scales::alpha("red", .20)) + geom_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20))
   })
@@ -376,18 +382,22 @@ test_that("prior plot functions (weightfunctions) work", {
     p2 = prior_weightfunction("two.sided", list(c(.05),  c(1, 1))),
     p3 = prior_weightfunction("one.sided.fixed", list(c(.05), c(1, .5)), prior_weights = 10)
   )
+  set.seed(1)
   vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-7", function(){
     plot_prior_list(prior_list, col = "red", lwd = 4, col.fill = scales::alpha("red", .20), rescale_x = TRUE)
     lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), rescale_x = TRUE)
   })
+  set.seed(1)
   vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-8", function(){
     plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, col.fill = scales::alpha("red", .20), rescale_x = TRUE) + geom_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), rescale_x = TRUE)
   })
 
   # with additional settings
+  set.seed(1)
   vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-9", function(){
     plot_prior_list(prior_list, xlab = "xlab", ylab = "ylab", main = "main")
   })
+  set.seed(1)
   vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-10", function(){
     plot_prior_list(prior_list, plot_type = "ggplot", xlab = "xlab", ylab = "ylab", main = "main")
   })
@@ -399,10 +409,12 @@ test_that("prior plot functions (weightfunctions) work", {
     p2 = prior_none(),
     p3 = prior_none()
   )
+  set.seed(1)
   vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-11", function(){
     plot_prior_list(prior_list, col = "red", lwd = 4, col.fill = scales::alpha("red", .20), rescale_x = TRUE)
     lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), rescale_x = TRUE)
   })
+  set.seed(1)
   vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-12", function(){
     plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, col.fill = scales::alpha("red", .20), rescale_x = TRUE) + geom_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), rescale_x = TRUE)
   })
