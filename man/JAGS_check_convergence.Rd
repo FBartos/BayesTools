@@ -12,7 +12,8 @@ JAGS_check_convergence(
   max_error = 0.01,
   max_SD_error = 0.05,
   add_parameters = NULL,
-  fail_fast = FALSE
+  fail_fast = FALSE,
+  check_indicators = FALSE
 )
 }
 \arguments{
@@ -26,7 +27,7 @@ Defaults to \code{1.05}.}
 
 \item{min_ESS}{minimum effective sample size. Defaults to \code{500}.}
 
-\item{max_error}{maximum MCMC error. Defaults to \code{1.01}.}
+\item{max_error}{maximum MCMC error. Defaults to \code{0.01}.}
 
 \item{max_SD_error}{maximum MCMC error as the proportion of standard
 deviation of the parameters. Defaults to \code{0.05}.}
@@ -35,6 +36,9 @@ deviation of the parameters. Defaults to \code{0.05}.}
 (only allows removing last, fixed, omega element if omega is tracked manually).}
 
 \item{fail_fast}{whether the function should stop after the first failed convergence check.}
+
+\item{check_indicators}{whether model indicator variables should be included
+in convergence checks. Defaults to \code{FALSE}.}
 }
 \value{
 \code{JAGS_check_convergence} returns a boolean

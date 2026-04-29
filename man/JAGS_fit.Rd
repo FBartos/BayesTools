@@ -21,7 +21,7 @@ JAGS_fit(
   autofit = FALSE,
   autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error =
     0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10,
-    max_extend = 10),
+    max_extend = 10, check_indicators = FALSE),
   parallel = FALSE,
   cores = chains,
   silent = TRUE,
@@ -35,7 +35,7 @@ JAGS_extend(
   fit,
   autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error =
     0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10,
-    max_extend = 10),
+    max_extend = 10, check_indicators = FALSE),
   parallel = FALSE,
   cores = NULL,
   silent = TRUE,
@@ -86,7 +86,7 @@ Possible options are:
 \item{max_Rhat}{maximum R-hat error for the autofit function.
 Defaults to \code{1.05}.}
 \item{min_ESS}{minimum effective sample size. Defaults to \code{500}.}
-\item{max_error}{maximum MCMC error. Defaults to \code{1.01}.}
+\item{max_error}{maximum MCMC error. Defaults to \code{0.01}.}
 \item{max_SD_error}{maximum MCMC error as the proportion of standard
 deviation of the parameters. Defaults to \code{0.05}.}
 \item{max_time}{list specifying the time \code{time} and \code{units}
@@ -97,6 +97,8 @@ need to correspond to \code{units} passed to \link[base]{difftime} function.}
 \code{1000}.}
 \item{restarts}{number of times new initial values should be generated in case the model
 fails to initialize. Defaults to \code{10}.}
+\item{check_indicators}{whether model indicator variables should be included
+in convergence checks. Defaults to \code{FALSE}.}
 }}
 
 \item{parallel}{whether the chains should be run in parallel \code{FALSE}}

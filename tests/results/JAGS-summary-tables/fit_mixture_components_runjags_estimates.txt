@@ -1,4 +1,4 @@
                       Mean    SD  0.025    0.5 0.975 error(MCMC) error(MCMC)/SD  ESS R-hat
-beta (inclusion: b)  0.171    NA     NA     NA    NA          NA             NA   NA    NA
-beta (inclusion: a)  0.829    NA     NA     NA    NA          NA             NA   NA    NA
+beta (inclusion: b)  0.171    NA     NA     NA    NA     0.01191          0.032 1000 1.001
+beta (inclusion: a)  0.829    NA     NA     NA    NA     0.01191          0.032 1000 1.001
 beta                -2.532 1.502 -4.985 -2.755 0.888     0.04607          0.031 1073 1.002

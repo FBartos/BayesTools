@@ -113,6 +113,74 @@ test_that("JAGS_extend error handling", {
 # ============================================================================ #
 # SECTION 2: Convergence edge cases
 # ============================================================================ #
+test_that("autofit settings keep indicator checks off by default", {
+
+  settings <- JAGS_check_and_list_autofit_settings(list(
+    max_Rhat = 1.05,
+    min_ESS = 500,
+    max_error = 0.01,
+    max_SD_error = 0.05,
+    max_time = list(time = 60, unit = "mins"),
+    sample_extend = 1000,
+    restarts = 10,
+    max_extend = 10
+  ))
+  expect_false(settings$check_indicators)
+
+  settings <- JAGS_check_and_list_autofit_settings(list(
+    max_Rhat = 1.05,
+    min_ESS = 500,
+    max_error = 0.01,
+    max_SD_error = 0.05,
+    max_time = list(time = 60, unit = "mins"),
+    sample_extend = 1000,
+    restarts = 10,
+    max_extend = 10,
+    check_indicators = TRUE
+  ))
+  expect_true(settings$check_indicators)
+
+})
+
+
+test_that("JAGS_check_convergence ignores indicator variables unless requested", {
+
+  set.seed(1)
+  chain_1 <- cbind(mu = rnorm(100), mu_indicator = rep(0, 100))
+  chain_2 <- cbind(mu = rnorm(100), mu_indicator = rep(1, 100))
+  fit <- list(
+    mcmc         = coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2)),
+    summary.pars = list(mutate = NULL)
+  )
+  class(fit) <- "runjags"
+
+  prior_list <- list(mu = prior("normal", list(0, 1)))
+
+  expect_true(JAGS_check_convergence(
+    fit,
+    prior_list       = prior_list,
+    max_Rhat        = 1.05,
+    min_ESS         = NULL,
+    max_error       = NULL,
+    max_SD_error    = NULL,
+    check_indicators = FALSE
+  ))
+
+  with_indicators <- JAGS_check_convergence(
+    fit,
+    prior_list       = prior_list,
+    max_Rhat        = 1.05,
+    min_ESS         = NULL,
+    max_error       = NULL,
+    max_SD_error    = NULL,
+    check_indicators = TRUE
+  )
+  expect_false(with_indicators)
+  expect_match(attr(with_indicators, "errors"), "R-hat")
+
+})
+
+
 test_that("JAGS_check_convergence handles single chain (R-hat warning)", {
 
   skip_if_not_installed("rjags")

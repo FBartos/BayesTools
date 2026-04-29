@@ -1,6 +1,6 @@
                    Mean    SD 0.025   0.5 0.975 error(MCMC) error(MCMC)/SD ESS R-hat
 mu                0.999 0.584 0.195 0.870 2.577     0.03178          0.054 338    NA
-bias (inclusion)  0.578    NA    NA    NA    NA          NA             NA  NA    NA
+bias (inclusion)  0.578    NA    NA    NA    NA     0.02211          0.045 500    NA
 PET               0.105 0.343 0.000 0.000 1.304     0.01533          0.045 500    NA
 PEESE             0.200 0.710 0.000 0.000 2.919     0.03174          0.045 500    NA
 omega[0,0.025]    1.000 0.000 1.000 1.000 1.000          NA             NA  NA    NA

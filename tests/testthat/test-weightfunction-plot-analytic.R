@@ -294,3 +294,107 @@ test_that("posterior weightfunction plotting ranges include omega samples above 
   expect_gt(weightfunction_data$y_uCI[3], 1)
   expect_gt(attr(weightfunction_data, "y_range")[2], 1)
 })
+
+test_that("analytical plotting handles heterogeneous weightfunction mixtures", {
+
+  prior_list <- list(
+    prior_none(prior_weights = 1),
+    prior_weightfunction("one-sided", c(.025, .05), wf_cumulative(c(1, 2, 3)), prior_weights = 2),
+    prior_weightfunction("one-sided", c(.05, .10), wf_independent(prior("gamma", list(shape = 9, rate = 3))), prior_weights = 3),
+    prior_weightfunction("one-sided", c(.025), wf_independent(prior("normal", list(mean = log(1.5), sd = .15)), "log_omega"), prior_weights = 4),
+    prior_weightfunction("two-sided", c(.05), wf_fixed(c(1, .4)), prior_weights = 5),
+    prior_PET("normal", list(0, 1), prior_weights = 6),
+    prior_PEESE("normal", list(0, 1), prior_weights = 7)
+  )
+
+  context <- .weightfunction_prior_list_context(prior_list)
+  expect_equal(context$omega_names, c("omega[0,0.025]", "omega[0.025,0.05]", "omega[0.05,0.1]", "omega[0.1,0.975]", "omega[0.975,1]"))
+
+  parameter_ind <- match("omega[0.05,0.1]", context$omega_names)
+  components <- .weightfunction_prior_marginal_components(context, parameter_ind)
+  weights <- vapply(components, `[[`, numeric(1), "weight")
+
+  expected_cdf_1_5 <- sum(weights * c(
+    1,
+    stats::pbeta(1.5, 3, 3),
+    stats::pgamma(1.5, shape = 9, rate = 3),
+    stats::pnorm(log(1.5), mean = log(1.5), sd = .15),
+    1,
+    1,
+    1
+  ))
+  expected_pdf_1_5 <- sum(weights * c(
+    0,
+    0,
+    stats::dgamma(1.5, shape = 9, rate = 3),
+    stats::dnorm(log(1.5), mean = log(1.5), sd = .15) / 1.5,
+    0,
+    0,
+    0
+  ))
+
+  expect_equal(.weightfunction_mixture_cdf(components, 1.5), expected_cdf_1_5, tolerance = 1e-8)
+  expect_equal(
+    sum(vapply(components, function(component) component$weight * .weightfunction_component_pdf(component, 1.5), numeric(1))),
+    expected_pdf_1_5,
+    tolerance = 1e-8
+  )
+  expect_gt(.weightfunction_mixture_mean(components), 1)
+  expect_gt(.weightfunction_mixture_quantile(components, .975), 1)
+
+  parameter_plot_data <- .plot_data_prior_list.weightparameter(
+    prior_list,
+    parameter = "omega[0.05,0.1]",
+    n_points = 400,
+    n_samples = 1
+  )
+  point_mass <- sum(vapply(parameter_plot_data, function(component){
+    if(inherits(component, "density.prior.point")) component$y else 0
+  }, numeric(1)))
+
+  expect_null(parameter_plot_data$density$samples)
+  expect_gt(max(parameter_plot_data$density$x), 1)
+  expect_equal(point_mass, (1 + 5 + 6 + 7) / 28, tolerance = 1e-8)
+
+  weightfunction_plot_data <- .plot_data_prior_list.weightfunction(
+    prior_list,
+    x_seq = NULL,
+    x_range = c(0, 1),
+    x_range_quant = NULL,
+    n_points = 400,
+    n_samples = 1
+  )
+
+  expect_null(weightfunction_plot_data$samples)
+  expect_gt(max(weightfunction_plot_data$y), 1)
+  expect_gt(max(weightfunction_plot_data$y_uCI), 1)
+  expect_gt(attr(weightfunction_plot_data, "y_range")[2], 1)
+
+  model <- matrix(
+    c(
+      1, 1.00, 1.00, 1.00, 1.00, 1.00, 0, 0,
+      2, 1.00, 0.70, 0.50, 0.50, 0.50, 0, 0,
+      3, 1.00, 1.00, 2.00, 2.50, 2.50, 0, 0,
+      4, 1.00, 1.80, 1.80, 1.80, 1.80, 0, 0,
+      5, 1.00, 0.40, 0.40, 0.40, 1.00, 0, 0,
+      6, 1.00, 1.00, 1.00, 1.00, 1.00, 0, 0,
+      7, 1.00, 1.00, 1.00, 1.00, 1.00, 0, 0
+    ),
+    nrow = 7,
+    byrow = TRUE
+  )
+  colnames(model) <- c("bias_indicator", paste0("omega[", 1:5, "]"), "PET", "PEESE")
+  class(model) <- c("matrix", "BayesTools_fit")
+  attr(model, "prior_list") <- list(bias = prior_mixture(prior_list))
+
+  mixed <- as_mixed_posteriors(model, parameters = "bias", conditional = "omega")
+  posterior_plot_data <- .plot_data_samples.weightparameter(
+    list(bias = mixed$bias),
+    parameter = "omega[0.05,0.1]",
+    n_points = 100
+  )
+
+  expect_true(all(attr(mixed$bias, "models_ind") %in% 2:5))
+  expect_gt(max(posterior_plot_data$density$x), 1)
+  expect_s3_class(plot_posterior(mixed, "omega", prior = TRUE, plot_type = "ggplot"), "ggplot")
+})

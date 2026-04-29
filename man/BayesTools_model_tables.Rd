@@ -55,7 +55,11 @@ runjags_inference_table(
   title = NULL,
   footnotes = NULL,
   warnings = NULL,
-  formula_prefix = TRUE
+  formula_prefix = TRUE,
+  logBF = FALSE,
+  BF01 = FALSE,
+  BF_diagnostics = FALSE,
+  BF_error_level = 0.95
 )
 
 JAGS_estimates_table(
@@ -85,7 +89,11 @@ JAGS_inference_table(
   title = NULL,
   footnotes = NULL,
   warnings = NULL,
-  formula_prefix = TRUE
+  formula_prefix = TRUE,
+  logBF = FALSE,
+  BF01 = FALSE,
+  BF_diagnostics = FALSE,
+  BF_error_level = 0.95
 )
 
 JAGS_summary_table(
@@ -114,7 +122,15 @@ runjags_estimates_empty_table(
   warnings = NULL
 )
 
-runjags_inference_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
+runjags_inference_empty_table(
+  title = NULL,
+  footnotes = NULL,
+  warnings = NULL,
+  logBF = FALSE,
+  BF01 = FALSE,
+  BF_diagnostics = FALSE,
+  BF_error_level = 0.95
+)
 
 JAGS_estimates_empty_table(
   probs = c(0.025, 0.5, 0.975),
@@ -123,7 +139,15 @@ JAGS_estimates_empty_table(
   warnings = NULL
 )
 
-JAGS_inference_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
+JAGS_inference_empty_table(
+  title = NULL,
+  footnotes = NULL,
+  warnings = NULL,
+  logBF = FALSE,
+  BF01 = FALSE,
+  BF_diagnostics = FALSE,
+  BF_error_level = 0.95
+)
 
 stan_estimates_table(
   fit,
@@ -158,6 +182,17 @@ shortened. Defaults to \code{FALSE}.}
 
 \item{formula_prefix}{whether the parameter prefix from formula should
 be printed. Defaults to \code{TRUE}.}
+
+\item{logBF}{whether the Bayes factor should be on log scale}
+
+\item{BF01}{whether the Bayes factor should be inverted}
+
+\item{BF_diagnostics}{whether to add MCMC diagnostics for Bayes factors
+computed from model indicator frequencies. Defaults to \code{FALSE}.}
+
+\item{BF_error_level}{probability level for the Monte Carlo error interval
+of Bayes factors computed from model indicator frequencies. Defaults to
+\code{0.95}.}
 
 \item{remove_parameters}{parameters to be removed from the summary.
 Can be \code{NULL} (default, no removal), a character vector of parameter
