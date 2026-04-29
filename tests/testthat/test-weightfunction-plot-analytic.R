@@ -10,7 +10,7 @@
 
 test_that("mixed weightfunction plot data uses analytical cumulative-Dirichlet marginals", {
 
-  wf_prior <- prior_weightfunction("one.sided", list(c(.05), c(2, 4)), prior_weights = 3)
+  wf_prior <- prior_weightfunction("one-sided", c(.05), wf_cumulative(c(2, 4)), prior_weights = 3)
   no_bias  <- prior_none(prior_weights = 1)
 
   plot_data_1 <- .plot_data_prior_list.weightfunction(
@@ -43,7 +43,7 @@ test_that("mixed weightfunction plot data uses analytical cumulative-Dirichlet m
 
 test_that("individual omega prior plot data is analytical for mixtures and points", {
 
-  wf_prior <- prior_weightfunction("one.sided", list(c(.05), c(2, 4)), prior_weights = 3)
+  wf_prior <- prior_weightfunction("one-sided", c(.05), wf_cumulative(c(2, 4)), prior_weights = 3)
   no_bias  <- prior_none(prior_weights = 1)
 
   plot_data <- .plot_data_prior_list.weightparameter(
@@ -65,8 +65,8 @@ test_that("mixed omega prior components preserve total probability mass", {
 
   prior_list <- list(
     prior_none(prior_weights = 1),
-    prior_weightfunction("two.sided", list(alpha = c(1, 1), steps = c(.05)), prior_weights = 1/3),
-    prior_weightfunction("one.sided", list(alpha = c(1, 1, 1), steps = c(.025, .05)), prior_weights = 1/3),
+    prior_weightfunction("two-sided", c(.05), wf_cumulative(c(1, 1)), prior_weights = 1/3),
+    prior_weightfunction("one-sided", c(.025, .05), wf_cumulative(c(1, 1, 1)), prior_weights = 1/3),
     prior_PET("normal", list(0, 1), prior_weights = 1/3)
   )
 
@@ -100,7 +100,7 @@ test_that("posterior omega parameter densities are scaled by all samples", {
 
   prior_list <- list(
     prior_none(prior_weights = 3),
-    prior_weightfunction("one.sided", list(c(.05), c(1, 1)), prior_weights = 1)
+    prior_weightfunction("one-sided", c(.05), wf_cumulative(c(1, 1)), prior_weights = 1)
   )
 
   samples <- matrix(
@@ -129,7 +129,7 @@ test_that("conditional bias posteriors zero null bias prior weights", {
   bias_prior <- prior_mixture(
     list(
       prior_none(prior_weights = 1),
-      prior_weightfunction("one.sided", list(c(.05), c(1, 1)), prior_weights = 1),
+      prior_weightfunction("one-sided", c(.05), wf_cumulative(c(1, 1)), prior_weights = 1),
       prior_PET("normal", list(0, 1), prior_weights = 1)
     ),
     is_null = c(TRUE, FALSE, FALSE)
@@ -144,7 +144,7 @@ test_that("conditional bias posteriors zero null bias prior weights", {
     nrow = 3,
     byrow = TRUE
   )
-  colnames(model) <- c("bias_indicator", "omega[2]", "omega[1]", "PET")
+  colnames(model) <- c("bias_indicator", "omega[1]", "omega[2]", "PET")
   class(model) <- c("matrix", "BayesTools_fit")
   attr(model, "prior_list") <- list(bias = bias_prior)
 
@@ -155,42 +155,142 @@ test_that("conditional bias posteriors zero null bias prior weights", {
   expect_equal(attr(mixed$bias, "models_ind"), c(2, 3))
 })
 
-test_that("non-monotone one-sided weightfunction marginals use product-beta CDFs", {
+test_that("independent and log-independent weightfunction marginals are analytical", {
 
-  wf_prior <- prior_weightfunction("one.sided", list(c(.05, .60), c(1, 1), c(1, 1)))
-  context  <- .weightfunction_prior_list_context(list(wf_prior))
+  beta_prior <- prior_weightfunction(
+    "one-sided", c(.05),
+    wf_independent(prior("beta", list(2, 3))),
+    prior_weights = 1
+  )
+  log_prior <- prior_weightfunction(
+    "one-sided", c(.05),
+    wf_independent(prior("normal", list(0, 1), truncation = list(lower = -Inf, upper = 0)), "log_omega"),
+    prior_weights = 1
+  )
 
-  expect_equal(context$omega_names, c("omega[0,0.05]", "omega[0.05,0.6]", "omega[0.6,1]"))
+  beta_component <- .weightfunction_prior_marginal_components(
+    .weightfunction_prior_list_context(list(beta_prior)), 2
+  )[[1]]
+  log_component <- .weightfunction_prior_marginal_components(
+    .weightfunction_prior_list_context(list(log_prior)), 2
+  )[[1]]
 
-  components <- lapply(seq_along(context$omega_names), function(i){
-    .weightfunction_prior_marginal_components(context, i)[[1]]
-  })
+  expect_equal(beta_component$type, "prior")
+  expect_equal(.weightfunction_component_pdf(beta_component, .5), stats::dbeta(.5, 2, 3), tolerance = 1e-8)
+  expect_equal(.weightfunction_component_cdf(beta_component, .5), stats::pbeta(.5, 2, 3), tolerance = 1e-8)
 
-  expect_equal(vapply(components, `[[`, character(1), "type"), c("point", "beta", "one_minus_product_beta"))
-  expect_equal(vapply(components, .weightfunction_component_mean, numeric(1)), c(1, .5, .75), tolerance = 1e-8)
+  expect_equal(log_component$type, "prior")
+  expect_equal(
+    .weightfunction_component_pdf(log_component, .5),
+    pdf(log_component$prior, log(.5)) / .5,
+    tolerance = 1e-8
+  )
+  expect_equal(
+    .weightfunction_component_cdf(log_component, .5),
+    mcdf(log_component$prior, log(.5)),
+    tolerance = 1e-8
+  )
+})
 
-  product_cdf <- 1 - .5 + .5 * log(.5)
-  expect_equal(.weightfunction_component_cdf(components[[3]], .5), product_cdf, tolerance = 1e-6)
+test_that("analytical weightfunction plotting supports independent weights above one", {
 
-  plot_data_1 <- .plot_data_prior_list.weightfunction(
-    list(wf_prior),
-    x_seq = NULL,
-    x_range = c(0, 1),
-    x_range_quant = NULL,
-    n_points = 20,
+  omega_prior <- prior_weightfunction(
+    "one-sided", c(.05),
+    wf_independent(prior("gamma", list(shape = 9, rate = 3))),
+    prior_weights = 1
+  )
+  log_prior <- prior_weightfunction(
+    "one-sided", c(.05),
+    wf_independent(prior("normal", list(mean = log(2), sd = .2)), "log_omega"),
+    prior_weights = 1
+  )
+
+  omega_component <- .weightfunction_prior_marginal_components(
+    .weightfunction_prior_list_context(list(omega_prior)), 2
+  )[[1]]
+  log_component <- .weightfunction_prior_marginal_components(
+    .weightfunction_prior_list_context(list(log_prior)), 2
+  )[[1]]
+
+  expect_equal(.weightfunction_component_pdf(omega_component, 1.5), stats::dgamma(1.5, shape = 9, rate = 3), tolerance = 1e-8)
+  expect_equal(.weightfunction_component_cdf(omega_component, 1.5), stats::pgamma(1.5, shape = 9, rate = 3), tolerance = 1e-8)
+  expect_equal(.weightfunction_component_pdf(log_component, 2), stats::dnorm(log(2), mean = log(2), sd = .2) / 2, tolerance = 1e-8)
+  expect_equal(.weightfunction_component_cdf(log_component, 2), stats::pnorm(log(2), mean = log(2), sd = .2), tolerance = 1e-8)
+  expect_equal(mlpdf(log_prior, 2)[,2], stats::dnorm(log(2), mean = log(2), sd = .2, log = TRUE) - log(2), tolerance = 1e-8)
+  expect_equal(mcdf(log_prior, 2)[,2], .5, tolerance = 1e-8)
+  expect_gt(mquant(log_prior, .75)[,2], 1)
+  expect_gt(range(log_prior)[2], 1)
+
+  omega_parameter_data <- .plot_data_prior_list.weightparameter(
+    list(omega_prior),
+    parameter = "omega[0.05,1]",
+    n_points = 100,
     n_samples = 1
   )
-  plot_data_2 <- .plot_data_prior_list.weightfunction(
-    list(wf_prior),
+  log_parameter_data <- .plot_data_prior_list.weightparameter(
+    list(log_prior),
+    parameter = "omega[0.05,1]",
+    n_points = 100,
+    n_samples = 1
+  )
+  log_weightfunction_data <- .plot_data_prior_list.weightfunction(
+    list(log_prior),
     x_seq = NULL,
     x_range = c(0, 1),
     x_range_quant = NULL,
-    n_points = 20,
-    n_samples = 10000
+    n_points = 100,
+    n_samples = 1
   )
 
-  expect_null(plot_data_1$samples)
-  expect_equal(plot_data_1$y, plot_data_2$y)
-  expect_equal(plot_data_1$y_lCI, plot_data_2$y_lCI)
-  expect_equal(plot_data_1$y_uCI, plot_data_2$y_uCI)
+  expect_gt(max(omega_parameter_data$density$x), 1)
+  expect_gt(max(log_parameter_data$density$x), 1)
+  expect_gt(attr(omega_parameter_data$density, "x_range")[2], 1)
+  expect_gt(attr(log_parameter_data$density, "x_range")[2], 1)
+  expect_gt(log_weightfunction_data$y[3], 1)
+  expect_gt(log_weightfunction_data$y_uCI[3], 1)
+  expect_gt(attr(log_weightfunction_data, "y_range")[2], 1)
+
+  log_density <- density(log_prior, individual = TRUE, n_points = 100)
+  log_weightfunction_density <- density(log_prior, n_points = 100)
+
+  expect_gt(max(log_density[[2]]$x), 1)
+  expect_gt(attr(log_density[[2]], "x_range")[2], 1)
+  expect_gt(attr(log_weightfunction_density, "y_range")[2], 1)
+  expect_s3_class(plot(log_prior, plot_type = "ggplot"), "ggplot")
+})
+
+test_that("posterior weightfunction plotting ranges include omega samples above one", {
+
+  log_prior <- prior_weightfunction(
+    "one-sided", c(.05),
+    wf_independent(prior("normal", list(mean = log(1.5), sd = .15)), "log_omega"),
+    prior_weights = 1
+  )
+
+  omega_samples <- matrix(
+    c(rep(1, 200), seq(1.05, 2.25, length.out = 200)),
+    ncol = 2
+  )
+  colnames(omega_samples) <- c("omega[0,0.05]", "omega[0.05,1]")
+  attr(omega_samples, "prior_list") <- list(log_prior)
+  attr(omega_samples, "models_ind") <- rep(1, nrow(omega_samples))
+
+  parameter_data <- .plot_data_samples.weightparameter(
+    list(omega = omega_samples),
+    parameter = "omega[0.05,1]",
+    n_points = 100
+  )
+  weightfunction_data <- .plot_data_samples.weightfunction(
+    list(omega = omega_samples),
+    x_seq = NULL,
+    x_range = c(0, 1),
+    x_range_quant = NULL,
+    n_points = 100
+  )
+
+  expect_gt(max(parameter_data$density$x), 1)
+  expect_gt(attr(parameter_data$density, "x_range")[2], 1)
+  expect_gt(weightfunction_data$y[3], 1)
+  expect_gt(weightfunction_data$y_uCI[3], 1)
+  expect_gt(attr(weightfunction_data, "y_range")[2], 1)
 })

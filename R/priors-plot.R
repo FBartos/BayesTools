@@ -333,7 +333,7 @@ plot.prior <- function(x, plot_type = "base",
   ylab      <- if(!is.null(dots[["ylab"]])) dots[["ylab"]] else "Probability"
 
   xlim      <- attr(plot_data, "x_range")
-  ylim      <- if(!is.null(dots[["ylim"]])) dots[["ylim"]] else c(0, 1)
+  ylim      <- if(!is.null(dots[["ylim"]])) dots[["ylim"]] else attr(plot_data, "y_range")
 
   # weightfunction specific stuff (required for axes)
   x_cuts <- plot_data$x

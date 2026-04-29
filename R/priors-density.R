@@ -274,9 +274,9 @@ density.prior <- function(x,
 
 
       class(temp_out) <- c("density", "density.prior", paste0("density.prior.",out_types[i]))
-      attr(temp_out, "x_range") <- c(0, 1)
+      attr(temp_out, "x_range") <- x_range
       attr(temp_out, "y_range") <- c(0, max(x_den[,i]))
-      attr(temp_out, "steps")   <- c(1, x$parameters[["steps"]], 0)[c(i+1, i)]
+      attr(temp_out, "steps")   <- c(x$bins$lower[i], x$bins$upper[i])
 
       out[[i]] <- temp_out
     }
@@ -284,19 +284,19 @@ density.prior <- function(x,
   }else{
 
     # weightfunction specific stuff
-    x_seq     <- c(0, rev(x$parameters[["steps"]]), 1)
+    x_seq     <- .weightfunction_local_cuts(x)
     x_seq_rep <- c(1, sort(rep(2:(length(x_seq)-1), 2)) ,length(x_seq))
     x_val_rep <- sort(rep(1:(length(x_seq)-1), 2))
     if(force_samples | .density.prior_need_samples(x)){
       x_sam  <- rng(x, n_samples)
-      x_lCI  <- rev(apply(x_sam, 2, stats::quantile, probs = .025))
-      x_uCI  <- rev(apply(x_sam, 2, stats::quantile, probs = .975))
-      x_mean <- rev(apply(x_sam, 2, mean))
+      x_lCI  <- apply(x_sam, 2, stats::quantile, probs = .025)
+      x_uCI  <- apply(x_sam, 2, stats::quantile, probs = .975)
+      x_mean <- apply(x_sam, 2, mean)
     }else{
       x_sam  <- NULL
-      x_lCI  <- rev(mquant(x, .025))
-      x_uCI  <- rev(mquant(x, .975))
-      x_mean <- rev(mean(x))
+      x_lCI  <- mquant(x, .025)
+      x_uCI  <- mquant(x, .975)
+      x_mean <- mean(x)
     }
 
     out <- list(
@@ -313,7 +313,7 @@ density.prior <- function(x,
 
     class(out) <- c("density", "density.prior", "density.prior.weightfunction")
     attr(out, "x_range") <- c(0, 1)
-    attr(out, "y_range") <- c(0, 1)
+    attr(out, "y_range") <- c(0, max(1, x_mean, x_lCI, x_uCI, na.rm = TRUE))
   }
 
   return(out)
@@ -512,6 +512,10 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
 
   x_range <- c(NA, NA)
 
+  if(is.prior.weightfunction(x)){
+    return(.weightfunction_range(x, quantiles))
+  }
+
   if(is.infinite(x[["truncation"]][["lower"]])){
     x_range[1] <- mquant(x, quantiles)
   }else{
@@ -532,12 +536,6 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
 # helper functions
 .density.prior_need_samples   <- function(prior){
 
-  if(is.prior.weightfunction(prior)){
-    if(all(names(prior$parameters) %in% c("alpha1", "alpha2", "steps"))){
-      return(TRUE)
-    }
-  }
-
   return(FALSE)
 }
 .density.prior_type           <- function(prior){
@@ -546,11 +544,10 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
   }else if(is.prior.simple(prior)){
     return("simple")
   }else if(is.prior.weightfunction(prior)){
-    if(prior[["distribution"]] %in% c("one.sided.fixed", "two.sided.fixed")){
-      return(rep("point", length(prior[["parameters"]][["steps"]]) + 1))
-    }else{
-      return(c(rep("simple", length(prior[["parameters"]][["steps"]])), "point"))
-    }
+    components <- .weightfunction_marginal_components(prior)
+    return(vapply(components, function(component){
+      if(component$type == "point") "point" else "simple"
+    }, character(1)))
   }else if(is.prior.orthonormal(prior)){
     return("orthonormal")
   }else if(is.prior.meandif(prior)){
@@ -570,10 +567,7 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
     "exp"       = .005,
     "uniform"   = .005,
     "point"     = .005,
-    "one.sided" = .005,
-    "one.sided" = .005,
-    "two.sided.fixed" = .005,
-    "two.sided.fixed" = .005,
+    "weightfunction" = .005,
     "mnormal"    = .005,
     "mt"         = .010
   )

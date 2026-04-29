@@ -39,8 +39,8 @@ test_that("Prior density function density", {
   vdiffr::expect_doppelganger("prior-density-2-8", function()plot(density(prior("normal", list(0, 1), list(0, Inf)), transformation = "lin", transformation_arguments = list(b = 0.5))))
 
   # weightfunctions
-  vdiffr::expect_doppelganger("prior-density-3-1", function()plot(density(prior_weightfunction("one.sided", list(c(.05), c(1, 1))))))
-  vdiffr::expect_doppelganger("prior-density-3-2", function()plot(density(prior_weightfunction("one.sided.fixed", list(c(.05), c(1, .25))))))
+  vdiffr::expect_doppelganger("prior-density-3-1", function()plot(density(prior_weightfunction("one-sided", c(.05), wf_cumulative(c(1, 1))))))
+  vdiffr::expect_doppelganger("prior-density-3-2", function()plot(density(prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .25))))))
 
   # factor priors
   vdiffr::expect_doppelganger("prior-density-4-1", function()plot(density(prior_factor("normal", list(0, 1), list(0, Inf), contrast = "independent"))))

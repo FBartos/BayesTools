@@ -589,7 +589,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   class(out) <- c("density", "density.prior", "density.prior.weightfunction")
   attr(out, "x_range") <- c(0, 1)
-  attr(out, "y_range") <- c(0, 1)
+  attr(out, "y_range") <- c(0, max(1, x_mean, x_lCI, x_uCI, na.rm = TRUE))
 
   return(out)
 }
@@ -678,46 +678,39 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 }
 .weightfunction_prior_component <- function(prior, index, weight){
 
-  if(prior[["distribution"]] %in% c("one.sided.fixed", "two.sided.fixed")){
+  if(prior$weights$type == "fixed"){
     return(list(
       type     = "point",
       weight   = weight,
-      location = prior$parameters[["omega"]][index]
+      location = prior$weights[["omega"]][index]
     ))
   }
 
-  if(all(names(prior$parameters) %in% c("steps", "alpha"))){
-    return(.weightfunction_prior_component_cumdirichlet(prior$parameters[["alpha"]], index, weight))
+  if(prior$weights$type == "cumulative"){
+    return(.weightfunction_prior_component_cumdirichlet(prior$weights[["alpha"]], index, weight))
   }
 
-  alpha1 <- prior$parameters[["alpha1"]]
-  alpha2 <- prior$parameters[["alpha2"]]
-
-  if(is.null(alpha1) || is.null(alpha2)){
-    stop("Unsupported weightfunction prior specification.", call. = FALSE)
+  if(prior$weights$type == "independent"){
+    if(index == 1L){
+      return(list(
+        type     = "point",
+        weight   = weight,
+        location = 1
+      ))
+    }
+    return(list(
+      type   = "prior",
+      weight = weight,
+      prior  = prior$weights$prior,
+      scale  = prior$weights$scale
+    ))
   }
 
-  n_unexpected <- length(alpha2)
-
-  if(index >= n_unexpected){
-    alpha1_index <- index - n_unexpected + 1
-    return(.weightfunction_prior_component_cumdirichlet(alpha1, alpha1_index, weight))
-  }
-
-  # For the unexpected direction, omega = 1 - U * V where U and V are
-  # independent beta variables induced by the two cumulative Dirichlets.
-  list(
-    type     = "one_minus_product_beta",
-    weight   = weight,
-    u_alpha  = sum(alpha1[-1]),
-    u_beta   = alpha1[1],
-    v_alpha  = sum(alpha2[seq_len(index)]),
-    v_beta   = sum(alpha2[(index + 1):length(alpha2)])
-  )
+  stop("Unsupported weightfunction prior specification.", call. = FALSE)
 }
 .weightfunction_prior_component_cumdirichlet <- function(alpha, index, weight){
 
-  if(index >= length(alpha)){
+  if(index <= 1L){
     return(list(
       type     = "point",
       weight   = weight,
@@ -728,8 +721,8 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   list(
     type   = "beta",
     weight = weight,
-    alpha  = sum(alpha[seq_len(index)]),
-    beta   = sum(alpha[(index + 1):length(alpha)])
+    alpha  = sum(alpha[index:length(alpha)]),
+    beta   = sum(alpha[seq_len(index - 1L)])
   )
 }
 .weightfunction_component_mean <- function(component){
@@ -738,6 +731,20 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     component$type,
     "point" = component$location,
     "beta"  = component$alpha / (component$alpha + component$beta),
+    "prior" = if(component$scale == "omega"){
+      mean(component$prior)
+    }else{
+      stats::integrate(
+        f     = function(x, prior) {
+          y <- exp(x) * pdf(prior, x)
+          y[!is.finite(y)] <- 0
+          y
+        },
+        lower = component$prior$truncation[["lower"]],
+        upper = component$prior$truncation[["upper"]],
+        prior = component$prior
+      )$value
+    },
     "one_minus_product_beta" = {
       1 - (component$u_alpha / (component$u_alpha + component$u_beta)) *
         (component$v_alpha / (component$v_alpha + component$v_beta))
@@ -750,6 +757,15 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     component$type,
     "point" = as.numeric(q >= component$location),
     "beta"  = stats::pbeta(q, shape1 = component$alpha, shape2 = component$beta),
+    "prior" = if(component$scale == "omega"){
+      mcdf(component$prior, q)
+    }else{
+      p <- numeric(length(q))
+      p[q <= 0] <- 0
+      inside <- q > 0
+      p[inside] <- mcdf(component$prior, log(q[inside]))
+      p
+    },
     "one_minus_product_beta" = .weightfunction_one_minus_product_beta_cdf(
       q       = q,
       u_alpha = component$u_alpha,
@@ -765,6 +781,14 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     component$type,
     "point" = rep(0, length(x)),
     "beta"  = stats::dbeta(x, shape1 = component$alpha, shape2 = component$beta),
+    "prior" = if(component$scale == "omega"){
+      mpdf(component$prior, x)
+    }else{
+      y <- numeric(length(x))
+      inside <- x > 0
+      y[inside] <- mpdf(component$prior, log(x[inside])) / x[inside]
+      y
+    },
     "one_minus_product_beta" = .weightfunction_one_minus_product_beta_pdf(
       x       = x,
       u_alpha = component$u_alpha,
@@ -772,6 +796,80 @@ plot_prior_list <- function(prior_list, plot_type = "base",
       v_alpha = component$v_alpha,
       v_beta  = component$v_beta
     )
+  )
+}
+.weightfunction_component_range <- function(component, quantiles = .005){
+
+  switch(
+    component$type,
+    "point" = c(component$location, component$location),
+    "beta"  = c(0, 1),
+    "prior" = {
+      if(component$scale == "omega"){
+        lower <- component$prior$truncation[["lower"]]
+        upper <- component$prior$truncation[["upper"]]
+
+        lower <- if(is.infinite(lower)) mquant(component$prior, quantiles) else lower
+        upper <- if(is.infinite(upper)) mquant(component$prior, 1 - quantiles) else upper
+        c(lower, upper)
+      }else{
+        lower <- component$prior$truncation[["lower"]]
+        upper <- component$prior$truncation[["upper"]]
+
+        lower <- if(is.infinite(lower)) 0 else exp(lower)
+        upper <- if(is.infinite(upper)) exp(mquant(component$prior, 1 - quantiles)) else exp(upper)
+        c(lower, upper)
+      }
+    },
+    "one_minus_product_beta" = c(0, 1)
+  )
+}
+.weightfunction_components_range <- function(components, samples = NULL, quantiles = .005){
+
+  ranges <- do.call(rbind, lapply(components, .weightfunction_component_range, quantiles = quantiles))
+  values <- as.vector(ranges)
+  if(!is.null(samples)){
+    values <- c(values, samples)
+  }
+
+  x_range <- range(values, finite = TRUE)
+  if(!all(is.finite(x_range))){
+    x_range <- c(0, 1)
+  }
+  if(x_range[1] == x_range[2]){
+    x_range <- range(c(0, 1, values), finite = TRUE)
+  }
+  x_range[1] <- max(0, x_range[1])
+
+  x_range
+}
+.weightfunction_component_quantile <- function(component, p){
+
+  switch(
+    component$type,
+    "point" = component$location,
+    "beta"  = stats::qbeta(p, shape1 = component$alpha, shape2 = component$beta),
+    "prior" = if(component$scale == "omega"){
+      mquant(component$prior, p)
+    }else{
+      exp(mquant(component$prior, p))
+    },
+    "one_minus_product_beta" = {
+      lower <- 0
+      upper <- 1
+      for(iter in seq_len(100L)){
+        mid <- lower / 2 + upper / 2
+        if(.weightfunction_component_cdf(component, mid) >= p){
+          upper <- mid
+        }else{
+          lower <- mid
+        }
+        if(abs(upper - lower) <= 1e-8){
+          break
+        }
+      }
+      upper
+    }
   )
 }
 .weightfunction_mixture_mean <- function(components){
@@ -794,11 +892,14 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     return(0)
   }
   if(p >= 1){
-    return(1)
+    return(max(.weightfunction_components_range(components)))
   }
 
   lower <- 0
-  upper <- 1
+  upper <- max(vapply(components, .weightfunction_component_quantile, numeric(1), p = p))
+  if(!is.finite(upper) || upper <= lower){
+    upper <- max(.weightfunction_components_range(components))
+  }
 
   for(iter in seq_len(100L)){
     mid <- lower / 2 + upper / 2
@@ -817,7 +918,8 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 }
 .plot_data_prior_weightparameter_components <- function(components, parameter, n_points){
 
-  x_den <- seq(0, 1, length.out = n_points)
+  x_range <- .weightfunction_components_range(components)
+  x_den <- seq(x_range[1], x_range[2], length.out = n_points)
   y_den <- rep(0, length(x_den))
 
   for(component in components){
@@ -858,7 +960,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     )
 
     class(out_den) <- c("density", "density.prior", "density.prior.simple")
-    attr(out_den, "x_range") <- c(0, 1)
+    attr(out_den, "x_range") <- x_range
     attr(out_den, "y_range") <- c(0, max(y_den))
     attr(out_den, "parameter") <- parameter
 
@@ -877,7 +979,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
       )
 
       class(temp_points) <- c("density", "density.prior", "density.prior.point")
-      attr(temp_points, "x_range") <- c(0, 1)
+      attr(temp_points, "x_range") <- x_range
       attr(temp_points, "y_range") <- c(0, max(y_points[i]))
       attr(temp_points, "parameter") <- parameter
 
@@ -2831,7 +2933,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
   class(out) <- c("density", "density.prior", "density.prior.weightfunction")
   attr(out, "x_range") <- c(0, 1)
-  attr(out, "y_range") <- c(0, 1)
+  attr(out, "y_range") <- c(0, max(1, x_mean, x_lCI, x_uCI, na.rm = TRUE))
 
   return(out)
 }
@@ -2896,8 +2998,17 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
       # set the endpoints for possible truncation
       prior_list_simple <- prior_list[!sapply(prior_list, is.prior.point)]
-      prior_list_simple_lower <- 0
-      prior_list_simple_upper <- 1
+      context <- .weightfunction_prior_list_context(prior_list)
+      parameter_ind <- match(parameter, context$omega_names)
+      if(is.na(parameter_ind)){
+        prior_list_simple_lower <- min(c(0, samples_density), na.rm = TRUE)
+        prior_list_simple_upper <- max(c(1, samples_density), na.rm = TRUE)
+      }else{
+        components <- .weightfunction_prior_marginal_components(context, parameter_ind)
+        prior_range <- .weightfunction_components_range(components, samples = samples_density)
+        prior_list_simple_lower <- prior_range[1]
+        prior_list_simple_upper <- prior_range[2]
+      }
 
       if(!is.infinite(prior_list_simple_lower)){
         args <- c(args, from = prior_list_simple_lower)
@@ -2959,7 +3070,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       )
 
       class(temp_points) <- c("density", "density.prior", "density.prior.point")
-      attr(temp_points, "x_range") <- c(0, 1)
+      attr(temp_points, "x_range") <- if(!is.null(x_den)) range(x_den) else range(c(0, 1, x_points[i]))
       attr(temp_points, "y_range") <- c(0, max(y_points[i]))
       attr(temp_points, "parameter") <- parameter
 

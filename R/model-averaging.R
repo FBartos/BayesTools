@@ -219,7 +219,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
     temp_inference    <- inference[[temp_parameter]]
     temp_priors       <- lapply(priors, function(p) p[[temp_parameter]])
 
-    if(any(sapply(temp_priors, is.prior.weightfunction)) && all(sapply(temp_priors, is.prior.weightfunction) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.prior.none) | sapply(temp_priors, is.null))){
+    if(any(sapply(temp_priors, is.prior.weightfunction)) && all(sapply(temp_priors, is.prior.weightfunction) | sapply(temp_priors, .is_prior_weightfunction_null) | sapply(temp_priors, is.null))){
       # weightfunctions:
 
       # replace missing priors with default prior: none
@@ -628,8 +628,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   check_int(n_samples, "n_samples")
   if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "stanfit") | sapply(fits, inherits, what = "null_model")))
     stop("'fits' must be a list of 'runjags' or 'rstan' models")
-  if(!all(sapply(priors, is.prior.weightfunction) | sapply(priors, is.prior.point) | sapply(priors, is.prior.none)))
-    stop("'priors' must be a list of weightfunction priors distributions")
+  if(!all(sapply(priors, is.prior.weightfunction) | sapply(priors, .is_prior_weightfunction_null)))
+    stop("'priors' must be a list of weightfunction priors or point(1)/none null priors")
 
 
   # When seed is NULL, continue using the current RNG state so mix_posteriors()
@@ -670,7 +670,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
     # sample indexes
     temp_ind <- sample(nrow(model_samples), round(n_samples * post_probs[i]), replace = TRUE)
 
-    if(is.prior.none(priors[[i]])){
+    if(.is_prior_weightfunction_null(priors[[i]])){
       samples <- rbind(samples, matrix(1, ncol = length(omega_cuts) - 1, nrow = length(temp_ind)))
     }else{
       samples <- rbind(samples, model_samples[temp_ind, paste0("omega[",omega_mapping[[i]],"]")])
@@ -1135,8 +1135,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   omega_mapping <- weightfunctions_mapping(list(prior))
   omega_cuts    <- weightfunctions_mapping(list(prior), cuts_only = TRUE)
   omega_names   <- sapply(1:(length(omega_cuts)-1), function(i) paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
-  # need to reverse the order since JAGS stores omega in reverse order (from largest p-value to smallest)
-  omega_par     <- rev(sapply(1:(length(omega_cuts)-1), function(i) paste0("omega[",i,"]")))
+  omega_par     <- sapply(1:(length(omega_cuts)-1), function(i) paste0("omega[",i,"]"))
 
   # prepare output objects
   samples <- model_samples[, omega_par, drop = FALSE]
@@ -1194,7 +1193,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       omega_mapping <- weightfunctions_mapping(prior[is_weightfunction], one_sided = TRUE)
       omega_cuts    <- weightfunctions_mapping(prior[is_weightfunction], cuts_only = TRUE, one_sided = TRUE)
       omega_names   <- sapply(1:(length(omega_cuts)-1), function(i) paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
-      omega_par     <- rev(sapply(1:(length(omega_cuts)-1), function(i) paste0("omega[",i,"]")))
+      omega_par     <- sapply(1:(length(omega_cuts)-1), function(i) paste0("omega[",i,"]"))
     }
 
     # deal with conditional parameters
@@ -1355,72 +1354,68 @@ inclusion_BF         <- function(prior_probs, post_probs, margliks, is_null){
 weightfunctions_mapping <- function(prior_list, cuts_only = FALSE, one_sided = FALSE){
 
   # check input
-  if(!all(sapply(prior_list, is.prior.weightfunction) | sapply(prior_list, is.prior.point) | sapply(prior_list, is.prior.none)))
-    stop("'priors' must be a list of weightfunction priors distributions")
+  if(!all(sapply(prior_list, is.prior.weightfunction) | sapply(prior_list, .is_prior_weightfunction_null)))
+    stop("'priors' must be a list of weightfunction priors or point(1)/none null priors")
   check_bool(cuts_only, "cuts_only")
   check_bool(one_sided, "one_sided")
 
-  # extract cuts and types
-  priors_cuts <- lapply(prior_list, function(prior)rev(prior[["parameters"]][["steps"]]))
-  priors_type <- sapply(prior_list, function(prior)prior[["distribution"]])
+  force_one_sided <- one_sided || any(sapply(prior_list, function(prior){
+    is.prior.weightfunction(prior) && prior$side == "one-sided"
+  }))
 
-
-  # get new cutpoint appropriate cut-points
-  priors_cuts_new <- priors_cuts
-  if(one_sided || any(grepl("one.sided", priors_type))){
-
-    # translate two.sided into one.sided
-    for(p in seq_along(priors_type)){
-      if(grepl("two.sided", priors_type[p])){
-        priors_cuts_new[[p]] <- c(priors_cuts[[p]]/2, 1 - rev(priors_cuts[[p]])/2)
-      }
+  prior_expansions <- lapply(prior_list, function(prior){
+    if(!is.prior.weightfunction(prior)){
+      return(NULL)
     }
-  }
+    .weightfunction_mapping_expansion(prior, force_one_sided)
+  })
 
-  # combine the steps
-  all_cuts <- c(0, sort(unique(unlist(priors_cuts_new))), 1)
+  all_cuts <- sort(unique(unlist(lapply(prior_expansions, function(expansion){
+    if(is.null(expansion)) NULL else expansion$cuts
+  }))))
+  if(length(all_cuts) == 0L){
+    all_cuts <- c(0, 1)
+  }
 
   # return the naming for summary function if only asked for labels
   if(cuts_only){
     return(all_cuts)
   }
 
-
-  # get lower and upper bounds + indicies
-  omega_ind <- list()
-  p_bound   <- list()
-  for(p in seq_along(priors_type)){
-    if(!is.null(priors_cuts_new[[p]])){
-
-      p_bound[[p]] <- list(
-        l = c(0, priors_cuts_new[[p]]),
-        u = c(priors_cuts_new[[p]], 1))
-
-      if(one_sided || any(grepl("one.sided", priors_type))){
-        if(grepl("two.sided", priors_type[p])){
-          omega_ind[[p]] <- rev(c( (length(priors_cuts[[p]]) + 1):2, 1:(length(priors_cuts[[p]]) + 1) ))
-        }else if(grepl("one.sided", priors_type[p])){
-          omega_ind[[p]] <- rev(1:(length(priors_cuts[[p]]) + 1))
-        }
-      }else{
-        if(grepl("two.sided", priors_type[p])){
-          omega_ind[[p]] <- rev(1:(length(priors_cuts[[p]]) + 1))
-        }
-      }
-
-    }
-  }
-
   # create mapping to weights
   omega_mapping <- list()
-  for(p in seq_along(priors_type)){
+  for(p in seq_along(prior_list)){
     if(is.prior.weightfunction(prior_list[[p]])){
-      omega_mapping[[p]] <- sapply(1:(length(all_cuts)-1), function(i)
-        omega_ind[[p]][all_cuts[i] >= p_bound[[p]]$l & all_cuts[i+1] <= p_bound[[p]]$u]
-      )
+      expansion <- prior_expansions[[p]]
+      omega_mapping[[p]] <- vapply(seq_len(length(all_cuts) - 1L), function(i){
+        ind <- which(all_cuts[i] >= expansion$lower & all_cuts[i + 1L] <= expansion$upper)
+        if(length(ind) != 1L){
+          stop("Could not map global weightfunction bin to a local bin.", call. = FALSE)
+        }
+        expansion$index[ind]
+      }, integer(1))
     }
   }
 
 
   return(omega_mapping)
+}
+
+.weightfunction_mapping_expansion <- function(prior, force_one_sided = FALSE){
+
+  if(prior$side == "two-sided" && force_one_sided){
+    J <- .weightfunction_n_bins(prior)
+    cuts <- c(0, prior$steps / 2, 1 - rev(prior$steps) / 2, 1)
+    index <- c(seq_len(J), seq.int(J - 1L, 1L))
+  }else{
+    cuts <- .weightfunction_local_cuts(prior)
+    index <- seq_len(.weightfunction_n_bins(prior))
+  }
+
+  list(
+    cuts  = cuts,
+    lower = cuts[-length(cuts)],
+    upper = cuts[-1],
+    index = index
+  )
 }

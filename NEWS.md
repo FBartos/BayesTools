@@ -1,4 +1,4 @@
-# version 0.2.24
+# version 0.3.0
 ### Features
 - major refactoring and speed-up of unit tests
 - adds support for `__default_factor` and `__default_continuous` priors in `JAGS_formula()` - when specified in the `prior_list`, these are used as default priors for factor and continuous predictors that are not explicitly specified
@@ -16,10 +16,14 @@
   - when `bias` is specified in `remove_parameters` or `keep_parameters`, the corresponding bias-related parameters (`PET`, `PEESE`, `omega`) are automatically included based on the bias prior type
 - adds `probs` argument to `runjags_estimates_table()` and `runjags_estimates_empty_table()` for custom quantiles (default: `c(0.025, 0.5, 0.975)`)
 - adds `effect_direction` argument to `plot_posterior()`, `plot_prior_list()`, `lines_prior_list()`, and `geom_prior_list()` for PET-PEESE regression plots - use `"positive"` (default) for `mu + PET*se + PEESE*se^2` or `"negative"` for `mu - PET*se - PEESE*se^2`
+- redesigns `prior_weightfunction()` around a unified `side`, `steps`, and `weights` specification, with `wf_cumulative()`, `wf_fixed()`, and `wf_independent()` constructors for cumulative Dirichlet, fixed, independent, and log-independent weightfunction priors
 
 ### Changes
 - changes quantile column names in `runjags_estimates_table()` and `stan_estimates_table()` from `lCI`/`Median`/`uCI` to numeric values (e.g., `0.025`/`0.5`/`0.975`) for consistency with ensemble summary tables
 - implied prior distributions for estimated marginal means, unstandardized coefficients, and PET-PEESE no longer require prior samples 
+- implied prior distributions for weightfunction weights now use analytical forms for cumulative Dirichlet, fixed, independent, and log-independent priors, including mixture and model-averaged weightfunctions where possible
+- independent weightfunction priors now allow non-reference weights above one via non-negative omega-scale priors or unrestricted log-omega priors
+- replaces the legacy dot-named weightfunction prior specifications with the unified weightfunction prior API and updates JAGS generation, marginal likelihood computation, posterior extraction, diagnostics, and summary tables to use the new component-local `omega` representation
 
 ### Fixes
 - fixes incorrect ordering the printed mixture priors

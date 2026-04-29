@@ -971,8 +971,8 @@ test_that("Marginal distribution prior functions work", {
 
   ### weightfunction prior distribution ----
   priors <- list(
-    prior_weightfunction("one-sided-fixed",  list(c(0.05, 0.50), c(1, 1, 1))),
-    prior_weightfunction("one-sided", list(c(0.10), c(1, 1)))
+    prior_weightfunction("one-sided", c(0.05, 0.50), wf_fixed(c(1, 1, 1))),
+    prior_weightfunction("one-sided", c(0.10), wf_cumulative(c(1, 1)))
   )
   temp_prior <- BayesTools:::.mix_priors.weightfunction(priors, "mu", seed = NULL, n_samples = 10000)
 

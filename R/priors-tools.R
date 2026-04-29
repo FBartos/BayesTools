@@ -129,58 +129,6 @@
       stop(paste0(call, "The '", name ,"' must be an integer"), call. = FALSE)
   }
 }
-.check_parameter_weigthfunction <- function(steps, alpha = NULL, alpha1 = NULL, alpha2 = NULL, omega = NULL){
-
-  if(!is.null(alpha)){
-
-    .check_parameter(steps, "steps", length = 0)
-    .check_parameter(alpha, "alpha", length = 0)
-
-    if(any(steps >= 1) | any(steps <= 0))
-      stop("Parameter 'steps' must be higher than 0 and lower than 1.", call. = FALSE)
-    if(!(all(steps == cummax(steps))))
-      stop("Parameters 'steps' must be monotonically increasing.", call. = FALSE)
-    if(length(steps) != length(alpha) - 1)
-      stop("The parameter alpha needs to have one more argument then there are steps.", call. = FALSE)
-
-    .check_parameter_positive(alpha, "alpha")
-
-  }else if(!is.null(alpha1) & !is.null(alpha2)){
-
-    .check_parameter(steps,  "steps",  length = 0)
-    .check_parameter(alpha1, "alpha1", length = 0)
-    .check_parameter(alpha2, "alpha2", length = 0)
-
-    if(any(steps >= 1) | any(steps <= 0))
-      stop("Parameter 'steps' must be higher than 0 and lower than 1.", call. = FALSE)
-    if(!(all(steps == cummax(steps))))
-      stop("Parameters 'steps' must be monotonically increasing.", call. = FALSE)
-    if(sum(steps <= .5) != length(alpha1) - 1)
-      stop("The parameter alpha1 needs to have one more argument then there are steps <= .5.", call. = FALSE)
-    if(sum(steps > .5)  != length(alpha2) - 1)
-      stop("The parameter alpha2 needs to have one more argument then there are steps > .5.", call. = FALSE)
-
-    .check_parameter_positive(alpha1, "alpha1")
-    .check_parameter_positive(alpha2, "alpha2")
-
-  }else if(!is.null(omega)){
-
-    .check_parameter(steps, "steps", length = 0)
-    .check_parameter(omega, "omega", length = 0)
-
-    if(any(steps >= 1) | any(steps <= 0))
-      stop("Parameter 'steps' must be higher than 0 and lower than 1.", call. = FALSE)
-    if(!(all(steps == cummax(steps))))
-      stop("Parameters 'steps' must be monotonically increasing.", call. = FALSE)
-    if(length(steps) != length(omega) - 1)
-      stop("The parameter omega needs to have one more argument then there are steps.", call. = FALSE)
-    if(any(omega < 0) | any(omega > 1))
-      stop("Parameter 'omega' must be within 0 to 1 range.", call. = FALSE)
-    if(!any(sapply(omega, function(omega_i)isTRUE(all.equal(omega_i, 1)))))
-      stop("At least one 'omega' parameter must be equal to 1.", call. = FALSE)
-
-  }
-}
 .check_parameter_range          <- function(parameter, name, lower, upper, include_bounds = FALSE){
 
   # allow expressions to be forwarded through the construction functions
@@ -368,6 +316,12 @@ is.prior.PEESE           <- function(x){
 #' @rdname is.prior
 is.prior.weightfunction  <- function(x){
   inherits(x, "prior.weightfunction")
+}
+.is_prior_weightfunction_null <- function(x){
+  is.prior.none(x) ||
+    (is.prior.point(x) &&
+       length(x$parameters[["location"]]) == 1L &&
+       isTRUE(all.equal(x$parameters[["location"]], 1)))
 }
 #' @rdname is.prior
 is.prior.factor          <- function(x){

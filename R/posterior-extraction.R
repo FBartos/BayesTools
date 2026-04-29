@@ -46,9 +46,10 @@ NULL
     
     # weightfunction parameters
     if (is.prior.weightfunction(prior_list[[i]])) {
-      # remove etas
-      if (prior_list[[i]][["distribution"]] %in% c("one.sided", "two.sided")) {
-        model_samples <- model_samples[, !grepl("eta", colnames(model_samples)), drop = FALSE]
+      private_parameters <- .JAGS_monitor_private.weightfunction(prior_list[[i]])
+      if(length(private_parameters) > 0){
+        private_pattern <- paste0("^(", paste(private_parameters, collapse = "|"), ")(\\[|$)")
+        model_samples <- model_samples[, !grepl(private_pattern, colnames(model_samples)), drop = FALSE]
       }
       
       # rename the omegas
@@ -56,8 +57,6 @@ NULL
       omega_names_old <- paste0("omega[", 1:(length(omega_cuts) - 1), "]")
       omega_names     <- sapply(1:(length(omega_cuts) - 1), function(j) paste0("omega[", omega_cuts[j], ",", omega_cuts[j + 1], "]"))
       
-      # change the order of omegas
-      model_samples[, which(colnames(model_samples) %in% omega_names_old)] <- model_samples[, rev(which(colnames(model_samples) %in% omega_names_old)), drop = FALSE]
       colnames(model_samples)[which(colnames(model_samples) %in% omega_names_old)] <- omega_names
       
       # remove omegas if requested

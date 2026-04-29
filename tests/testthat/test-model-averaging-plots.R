@@ -137,7 +137,7 @@ test_that("plot_prior_list handles weightfunction priors", {
   set.seed(1)
 
   # Create one-sided weightfunction prior
-  wf_prior <- prior_weightfunction("one.sided", list(c(0.05), c(1, 1)))
+  wf_prior <- prior_weightfunction("one-sided", c(0.05), wf_cumulative(c(1, 1)))
 
   prior_list_wf <- list(p1 = wf_prior)
 

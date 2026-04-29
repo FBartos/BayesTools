@@ -806,7 +806,7 @@ test_that(".filter_parameters removes bias-related parameters when bias contains
   # Create a mixture prior with weightfunction component
   bias_prior <- prior_mixture(list(
     prior_none(prior_weights = 1),
-    prior_weightfunction("one.sided", list(c(0.05), c(1, 1)), prior_weights = 1)
+    prior_weightfunction("one-sided", c(0.05), wf_cumulative(c(1, 1)), prior_weights = 1)
   ))
   
   prior_list <- list(

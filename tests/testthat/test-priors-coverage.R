@@ -127,7 +127,7 @@ test_that("prior_mixture() handles prior_none in factor mixtures", {
 
 test_that("prior_mixture() creates bias_mixture for PET/PEESE/weightfunction", {
   p_pet <- prior_PET("normal", list(0, 1))
-  p_wf  <- prior_weightfunction("one.sided", list(steps = c(0.05), alpha = c(1, 1)))
+  p_wf  <- prior_weightfunction("one-sided", c(0.05), wf_cumulative(c(1, 1)))
 
   p_mix <- prior_mixture(list(p_pet, p_wf), components = c("a", "b"))
 

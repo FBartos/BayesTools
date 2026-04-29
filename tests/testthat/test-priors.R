@@ -143,36 +143,36 @@ test_that("PET & PEESE prior distribution works", {
 
 test_that("One-sided weigthfunction prior distribution works", {
 
-  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-1", function()test_weightfunction(prior_weightfunction("one.sided", list(c(.05), c(1, 1)))))
-  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-2", function()test_weightfunction(prior_weightfunction("one.sided", list(c(.05, 0.10), c(1, 1, 1)))))
-  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-3", function()test_weightfunction(prior_weightfunction("one.sided", list(c(.05), c(5, .5)))))
-  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-4", function()test_weightfunction(prior_weightfunction("one.sided", list(c(.05, 0.10), c(5, 5, 1)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-1", function()test_weightfunction(prior_weightfunction("one-sided", c(.05), wf_cumulative(c(1, 1)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-2", function()test_weightfunction(prior_weightfunction("one-sided", c(.05, 0.10), wf_cumulative(c(1, 1, 1)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-3", function()test_weightfunction(prior_weightfunction("one-sided", c(.05), wf_cumulative(c(5, .5)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-4", function()test_weightfunction(prior_weightfunction("one-sided", c(.05, 0.10), wf_cumulative(c(5, 5, 1)))))
 
   # non-monotonic one-sided requires sampling
-  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-5", function()test_weightfunction(prior_weightfunction("one.sided", list(c(.05, 0.60), c(1, 1), c(1, 1))), skip_moments = TRUE))
-  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-6", function()test_weightfunction(prior_weightfunction("one.sided", list(c(.05, 0.10, 0.60), c(1, 1, 1), c(1, 1))), skip_moments = TRUE))
+  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-5", function()test_weightfunction(prior_weightfunction("one-sided", c(.05, 0.60), wf_independent(prior("beta", list(1, 1)))), skip_moments = TRUE))
+  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-6", function()test_weightfunction(prior_weightfunction("one-sided", c(.05, 0.10, 0.60), wf_independent(prior("beta", list(1, 1)))), skip_moments = TRUE))
 })
 
 test_that("Two-sided weigthfunction prior distribution works", {
 
-  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided-1", function()test_weightfunction(prior_weightfunction("two.sided", list(c(.05), c(1, 1)))))
-  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided-2", function()test_weightfunction(prior_weightfunction("two.sided", list(c(.05, 0.10), c(1, 1, 1)))))
-  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided-3", function()test_weightfunction(prior_weightfunction("two.sided", list(c(.05), c(5, .5)))))
-  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided-4", function()test_weightfunction(prior_weightfunction("two.sided", list(c(.05, 0.10), c(5, 5, 1)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided-1", function()test_weightfunction(prior_weightfunction("two-sided", c(.05), wf_cumulative(c(1, 1)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided-2", function()test_weightfunction(prior_weightfunction("two-sided", c(.05, 0.10), wf_cumulative(c(1, 1, 1)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided-3", function()test_weightfunction(prior_weightfunction("two-sided", c(.05), wf_cumulative(c(5, .5)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided-4", function()test_weightfunction(prior_weightfunction("two-sided", c(.05, 0.10), wf_cumulative(c(5, 5, 1)))))
 
 })
 
 test_that("One-sided.fixed weigthfunction prior distribution works", {
 
-  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided.fixed-1", function()test_weightfunction(prior_weightfunction("one.sided.fixed", list(c(.05), c(1, .5)))))
-  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided.fixed-2", function()test_weightfunction(prior_weightfunction("one.sided.fixed", list(c(.05, 0.10), c(1, .2, .5)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided.fixed-1", function()test_weightfunction(prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .5)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided.fixed-2", function()test_weightfunction(prior_weightfunction("one-sided", c(.05, 0.10), wf_fixed(c(1, .2, .5)))))
 
 })
 
 test_that("Two-sided.fixed weigthfunction prior distribution works", {
 
-  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided.fixed-1", function()test_weightfunction(prior_weightfunction("two.sided.fixed", list(c(.05), c(1, .5)))))
-  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided.fixed-2", function()test_weightfunction(prior_weightfunction("two.sided.fixed", list(c(.05, 0.10), c(1, .2, .5)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided.fixed-1", function()test_weightfunction(prior_weightfunction("two-sided", c(.05), wf_fixed(c(1, .5)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided.fixed-2", function()test_weightfunction(prior_weightfunction("two-sided", c(.05, 0.10), wf_fixed(c(1, .2, .5)))))
 
 })
 

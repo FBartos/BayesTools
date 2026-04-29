@@ -827,44 +827,83 @@ JAGS_add_priors           <- function(syntax, prior_list){
   if(!is.prior.weightfunction(prior))
     stop("improper prior provided")
 
-  # creating cummulative dirichlet distribution using gammas (in order to bypass bugs in bridgesampling)
-  if(all(names(prior[["parameters"]]) %in% c("alpha", "steps"))){
-    syntax <- character()
-    for(i in 1:length(prior$parameters[["alpha"]])){
-      syntax <- paste0(syntax, "eta[",i,"] ~ dgamma(",prior$parameters[["alpha"]][i],", 1)\n")
+  return(.JAGS_weightfunction_component_syntax(prior, component_id = NULL))
+}
+
+.JAGS_weightfunction_component_syntax <- function(prior, component_id = NULL, global_cuts = NULL, force_one_sided = FALSE){
+
+  J <- .weightfunction_n_bins(prior)
+  syntax <- character()
+
+  omega_local <- if(is.null(component_id)) "omega" else paste0("omega_local_component_", component_id)
+  omega_target <- if(is.null(component_id)) "omega" else paste0("omega_component_", component_id)
+
+  if(prior$weights$type == "cumulative"){
+    eta_name <- if(is.null(component_id)) "eta" else paste0("eta_component_", component_id)
+    std_eta_name <- if(is.null(component_id)) "std_eta" else paste0("std_eta_component_", component_id)
+
+    for(i in seq_len(J)){
+      syntax <- paste0(syntax, eta_name, "[", i, "] ~ dgamma(", prior$weights$alpha[i], ", 1)\n")
     }
     syntax <- paste0(syntax,
-                     "for(j in 1:",length(prior$parameters[["alpha"]]),"){\n",
-                     "  std_eta[j]  = eta[j] / sum(eta)\n",
-                     "  omega[j]    = sum(std_eta[1:j])\n",
-                     "}\n")
-  }else if(all(names(prior[["parameters"]]) %in% c("alpha1", "alpha2", "steps"))){
-    syntax <- character()
-    for(i in 1:length(prior$parameters[["alpha1"]])){
-      syntax <- paste0(syntax, "eta1[",i,"] ~ dgamma(",prior$parameters[["alpha1"]][i],", 1)\n")
+      "for(j in 1:", J, "){\n",
+      "  ", std_eta_name, "[j] <- ", eta_name, "[j] / sum(", eta_name, ")\n",
+      "}\n",
+      omega_local, "[1] <- 1\n"
+    )
+    if(J > 1L){
+      syntax <- paste0(syntax,
+        "for(j in 2:", J, "){\n",
+        "  ", omega_local, "[j] <- sum(", std_eta_name, "[j:", J, "])\n",
+        "}\n"
+      )
     }
-    for(i in 1:length(prior$parameters[["alpha2"]])){
-      syntax <- paste0(syntax, "eta2[",i,"] ~ dgamma(",prior$parameters[["alpha2"]][i],", 1)\n")
+
+  }else if(prior$weights$type == "fixed"){
+    for(i in seq_len(J)){
+      syntax <- paste0(syntax, omega_local, "[", i, "] <- ", prior$weights$omega[i], "\n")
     }
-    syntax <- paste0(syntax,
-                     "for(j1 in 1:",length(prior$parameters[["alpha1"]]),"){\n",
-                     "  std_eta1[j1]      = eta1[j1] / sum(eta1)\n",
-                     "  omega[",length(prior$parameters[["alpha2"]])," - 1 + j1] = sum(std_eta1[1:j1])\n",
-                     "}\n",
-                     "for(j2 in 1:",length(prior$parameters[["alpha2"]]),"){\n",
-                     "  std_eta2[j2]  = (eta2[j2] / sum(eta2)) * (1 - std_eta1[1])\n",
-                     "}\n",
-                     "for(j2 in 2:",length(prior$parameters[["alpha2"]]),"){\n",
-                      "  omega[j2-1] = sum(std_eta2[j2:",length(prior$parameters[["alpha2"]]),"]) + std_eta1[1]\n",
-                     "}\n")
-  }else if(prior[["distribution"]] %in% c("one.sided.fixed", "two.sided.fixed")){
-    syntax <- character()
-    for(i in 1:length(prior$parameters[["omega"]])){
-      syntax <- paste0(syntax, "omega[",i,"] = ",prior$parameters[["omega"]][i],"\n")
+
+  }else if(prior$weights$type == "independent"){
+    syntax <- paste0(syntax, omega_local, "[1] <- 1\n")
+    if(J > 1L){
+      for(i in 2:J){
+        if(prior$weights$scale == "omega"){
+          syntax <- paste0(syntax, .JAGS_prior.simple(prior$weights$prior, paste0(omega_local, "[", i, "]")))
+        }else if(prior$weights$scale == "log_omega"){
+          log_omega_name <- if(is.null(component_id)) "log_omega" else paste0("log_omega_component_", component_id)
+          syntax <- paste0(
+            syntax,
+            .JAGS_prior.simple(prior$weights$prior, paste0(log_omega_name, "[", i, "]")),
+            omega_local, "[", i, "] <- exp(", log_omega_name, "[", i, "])\n"
+          )
+        }
+      }
     }
   }
 
-  return(syntax)
+  if(!is.null(component_id)){
+    expansion <- .weightfunction_mapping_expansion(prior, force_one_sided)
+    all_cuts <- if(is.null(global_cuts)) expansion$cuts else global_cuts
+    for(i in seq_len(length(all_cuts) - 1L)){
+      ind <- which(all_cuts[i] >= expansion$lower & all_cuts[i + 1L] <= expansion$upper)
+      if(length(ind) != 1L){
+        stop("Could not map global weightfunction bin to a local bin.", call. = FALSE)
+      }
+      syntax <- paste0(syntax, omega_target, "[", i, "] <- ", omega_local, "[", expansion$index[ind], "]\n")
+    }
+  }
+
+  syntax
+}
+.JAGS_weightfunction_none_component_syntax <- function(component_id, n_bins){
+
+  syntax <- character()
+  omega_target <- paste0("omega_component_", component_id)
+  for(i in seq_len(n_bins)){
+    syntax <- paste0(syntax, omega_target, "[", i, "] <- 1\n")
+  }
+  syntax
 }
 .JAGS_prior.spike_and_slab <- function(prior, parameter_name){
 
@@ -919,7 +958,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
       syntax <- paste0(
         syntax,
         .JAGS_add_priors.fun(named_prior_PET),
-        " PET = PET_1 * (bias_indicator == ", which(is_PET), ")\n"
+        " PET <- PET_1 * equals(bias_indicator, ", which(is_PET), ")\n"
       )
     }
     if(any(is_PEESE)){
@@ -932,92 +971,43 @@ JAGS_add_priors           <- function(syntax, prior_list){
       syntax <- paste0(
         syntax,
         .JAGS_add_priors.fun(named_prior_PEESE),
-        " PEESE = PEESE_1 * (bias_indicator == ", which(is_PEESE), ")\n"
+        " PEESE <- PEESE_1 * equals(bias_indicator, ", which(is_PEESE), ")\n"
       )
     }
     if(any(is_weightfunction)){
-      # we cannot simulate weights from the mixture distribution directly because
-      # JAGS does not allow complex support for the cumulative simplex parameter
-      # (we could make it on the non-cumulative simplex but it does not give more advantage)
+      omega_cuts <- weightfunctions_mapping(prior_list[is_weightfunction], cuts_only = TRUE, one_sided = TRUE)
+      n_omega    <- length(omega_cuts) - 1L
 
-      # create a vector of the alpha parameters
-      alpha <- lapply(prior_list[is_weightfunction], function(x){
-        if(grepl("fixed", x[["distribution"]])){
-          return(x$parameters[["omega"]])
+      for(i in seq_along(prior_list)){
+        if(is.prior.weightfunction(prior_list[[i]])){
+          syntax <- paste0(
+            syntax,
+            .JAGS_weightfunction_component_syntax(
+              prior           = prior_list[[i]],
+              component_id    = i,
+              global_cuts     = omega_cuts,
+              force_one_sided = TRUE
+            )
+          )
         }else{
-          return(x$parameters[["alpha"]])
-        }
-      })
-
-      # dispatch the prior distribution on weight parameters
-      syntax <- paste0(
-        syntax,
-        " for(i in 1:", max(lengths(alpha)), "){\n",
-        "   eta[i] ~ dgamma(eta_shape[i, bias_indicator], 1)\n",
-        " }\n"
-      )
-
-      # transform etas into weights (eta2omega JAGS function is in the RoBMA package)
-      syntax <- paste0(syntax, " omega = eta2omega(eta, omega_index[,bias_indicator], eta_index[,bias_indicator], eta_index_max[bias_indicator])\n")
-
-      # add the necessary auxiliary data: omega_index, eta_index, eta_index_max, eta_shape
-      # create the weightfunction mapping for weights
-      omega_index_weighfunction <- weightfunctions_mapping(prior_list[is_weightfunction], one_sided = TRUE)
-      omega_index_weighfunction <- lapply(omega_index_weighfunction, rev)
-      omega_index_weighfunction <- do.call(rbind, omega_index_weighfunction)
-      omega_index <- matrix(0, ncol = ncol(omega_index_weighfunction), length(prior_list))
-      omega_index[is_weightfunction,] <- omega_index_weighfunction
-
-      # in case of fixed weight functions, the omega_index direly corresponds to the fixed weights
-      for(i in seq_along(prior_list)){
-        if(is.prior.weightfunction(prior_list[[i]])){
-          if(grepl("fixed", prior_list[[i]]$distribution)){
-            omega_index[i,] <- prior_list[[i]]$parameters[["omega"]][omega_index[i,]]
-          }
+          syntax <- paste0(
+            syntax,
+            .JAGS_weightfunction_none_component_syntax(component_id = i, n_bins = n_omega)
+          )
         }
       }
 
-      # create the eta to omega mapping
-      # eta_index_max helps dispatching within the eta2omega function
-      # 0  = non-weightfunction, all weights are set to 0
-      # >1 = indicates how many alpha parameters are needed to construct the weightfunction based on the eta_index
-      # -1 = indicates fixed weightfunction, omega index already encoded all weights
-      eta_index     <- matrix(0, nrow = length(prior_list), ncol = max(lengths(alpha)))
-      eta_index_max <- rep(0, length(prior_list))
-      for(i in seq_along(prior_list)){
-        if(is.prior.weightfunction(prior_list[[i]])){
-          if(grepl("fixed", prior_list[[i]]$distribution)){
-            eta_index_max[i] <- -1
-            eta_index[i,]    <- -1
-          }else{
-            temp_index       <- unique(omega_index[i,])
-            eta_index[i,1:length(temp_index)] <- sort(temp_index)
-            eta_index_max[i] <- length(temp_index)
-          }
-        }else{
-          eta_index_max[i] <- 0
-        }
+      for(j in seq_len(n_omega)){
+        syntax <- paste0(
+          syntax,
+          " omega[", j, "] <- ",
+          paste0(
+            "omega_component_", seq_along(prior_list), "[", j, "] * equals(bias_indicator, ", seq_along(prior_list), ")",
+            collapse = " + "
+          ),
+          "\n"
+        )
       }
-
-      # create priors for eta (set alpha to 1 for non-weightfunctions to keep the sampling in the expected area)
-      eta_shape <- matrix(1, nrow = length(prior_list), ncol = max(lengths(alpha)))
-      for(i in seq_along(prior_list)){
-        if(is.prior.weightfunction(prior_list[[i]])){
-          if(!grepl("fixed", prior_list[[i]]$distribution)){
-            temp_shape <- prior_list[[i]]$parameters[["alpha"]]
-            eta_shape[i,1:length(temp_shape)] <- temp_shape
-          }
-        }
-      }
-
-      # paste the matricies directly into JAGS code (simplifies data handling)
-      syntax <- paste0(
-        syntax,
-        .add_JAGS_matrix("omega_index",   t(omega_index)),
-        .add_JAGS_matrix("eta_index",     t(eta_index)),
-        .add_JAGS_vector("eta_index_max", eta_index_max),
-        .add_JAGS_matrix("eta_shape",     t(eta_shape))
-      )
     }
 
   }else{
@@ -1297,25 +1287,21 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 
   return(init)
 }
-.JAGS_init.weightfunction  <- function(prior){
+.JAGS_init.weightfunction  <- function(prior, component_id = NULL){
 
   .check_prior(prior)
   if(!is.prior.weightfunction(prior))
     stop("improper prior provided")
 
   init <- list()
-  if(prior[["distribution"]] %in% c("one.sided.fixed", "two.sided.fixed")){
+  if(prior$weights$type == "fixed"){
 
     return()
 
-  }else if(all(names(prior[["parameters"]]) %in% c("alpha", "steps"))){
+  }else if(prior$weights$type == "cumulative"){
 
-    init[["eta"]] <- stats::rgamma(length(prior$parameters[["alpha"]]), shape = prior$parameters[["alpha"]], rate = 1)
-
-  }else if(all(names(prior[["parameters"]]) %in% c("alpha1", "alpha2", "steps"))){
-
-    init[["eta1"]] <- stats::rgamma(length(prior$parameters[["alpha1"]]), shape = prior$parameters[["alpha1"]], rate = 1)
-    init[["eta2"]] <- stats::rgamma(length(prior$parameters[["alpha2"]]), shape = prior$parameters[["alpha2"]], rate = 1)
+    eta_name <- if(is.null(component_id)) "eta" else paste0("eta_component_", component_id)
+    init[[eta_name]] <- stats::rgamma(length(prior$weights[["alpha"]]), shape = prior$weights[["alpha"]], rate = 1)
 
   }
 
@@ -1379,16 +1365,9 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
     }
     if(any(is_weightfunction)){
 
-      # find prior with the most alpha parameters and simulate initial values from it
-      alpha <- sapply(prior_list[is_weightfunction], function(x){
-        if(grepl("fixed", x[["distribution"]])){
-          return(length(x$parameters[["omega"]]))
-        }else{
-          return(length(x$parameters[["alpha"]]))
-        }
-      })
-
-      init <- c(init, .JAGS_get_inits.fun(prior_list[is_weightfunction][which.max(alpha)]))
+      for(i in which(is_weightfunction)){
+        init <- c(init, .JAGS_init.weightfunction(prior_list[[i]], component_id = i))
+      }
     }
 
     init[["bias_indicator"]] <- rng(prior_list, 1, sample_components = TRUE)
@@ -1517,14 +1496,20 @@ JAGS_to_monitor             <- function(prior_list){
   if(!is.prior.weightfunction(prior))
     stop("improper prior provided")
 
-  monitor <- "omega"
-  if(all(names(prior[["parameters"]]) %in% c("alpha", "steps"))){
-    monitor <- c(monitor, "eta")
-  }else if(all(names(prior[["parameters"]]) %in% c("alpha1", "alpha2", "steps"))){
-    monitor <- c(monitor, "eta1", "eta2")
-  }
+  monitor <- c("omega", .JAGS_monitor_private.weightfunction(prior))
 
   return(monitor)
+}
+.JAGS_monitor_private.weightfunction <- function(prior){
+
+  if(prior$weights$type == "cumulative"){
+    return("eta")
+  }
+  if(prior$weights$type == "independent" && prior$weights$scale == "log_omega"){
+    return("log_omega")
+  }
+
+  character()
 }
 .JAGS_monitor.spike_and_slab <- function(prior, parameter_name){
 

@@ -882,10 +882,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
         # re-format the weightfunctions
         if(any(is_weightfunction)){
 
-          # reorder
-          model_samples[,grep("omega", colnames(model_samples))] <- model_samples[,rev(grep("omega", colnames(model_samples))),drop=FALSE]
-
-          # rename (the order does not need to be changed since the mixture combination returs oposite order to single priors)
+          # rename
           omega_cuts      <- weightfunctions_mapping(prior_list[[par]][is_weightfunction], cuts_only = TRUE, one_sided = TRUE)
           omega_names_old <- paste0("omega[", 1:(length(omega_cuts)-1),"]")
           omega_names     <- sapply(1:(length(omega_cuts)-1), function(i)paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))

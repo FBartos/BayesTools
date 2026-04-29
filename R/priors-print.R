@@ -234,29 +234,25 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
   # type of steps
   if(short_name){
     steps_name <- switch(
-      x[["distribution"]],
-      "two.sided"    = "2s: ",
-      "one.sided"    = "1s: ",
-      "two.sided.fixed" = "2s: ",
-      "one.sided.fixed" = "1s: "
+      x[["side"]],
+      "two-sided" = "2s: ",
+      "one-sided" = "1s: "
     )
   }else{
     steps_name <- switch(
-      x[["distribution"]],
-      "two.sided"    = "two-sided: ",
-      "one.sided"    = "one-sided: ",
-      "two.sided.fixed" = "two-sided: ",
-      "one.sided.fixed" = "one-sided: "
+      x[["side"]],
+      "two-sided" = "two-sided: ",
+      "one-sided" = "one-sided: "
     )
   }
 
   # add steps
-  out_steps  <- paste(trimws(x$parameters[["steps"]], which = "left", whitespace = "0"), collapse = ", ")
+  out_steps  <- paste(trimws(x$steps, which = "left", whitespace = "0"), collapse = ", ")
 
   # distribution
-  if(all(names(x[["parameters"]]) %in% c("alpha", "steps"))){
+  if(x$weights$type == "cumulative"){
 
-    out_parameters <- paste(round(x$parameters[["alpha"]], digits_estimates), collapse = ", ")
+    out_parameters <- paste(round(x$weights[["alpha"]], digits_estimates), collapse = ", ")
     if(parameter_names){
       out_parameters <- paste0("alpha = ", out_parameters)
     }
@@ -272,36 +268,26 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
       output <- bquote(italic(.(out_prefix))[.(steps_name)*.(out_steps)]~"~"~italic(.(out_distribution))*(.(out_parameters)))
     }
 
-  }else if(all(names(x[["parameters"]]) %in% c("alpha1", "alpha2", "steps"))){
+  }else if(x$weights$type == "fixed"){
 
-    out_parameters1 <- paste(round(x$parameters[["alpha1"]],      digits_estimates), collapse = ", ")
-    out_parameters2 <- paste(round(rev(x$parameters[["alpha2"]]), digits_estimates), collapse = ", ")
-    if(parameter_names){
-      out_parameters1 <- paste0("alpha1 = ", out_parameters1)
-      out_parameters2 <- paste0("alpha2 = ", out_parameters2)
-    }
-    if(short_name){
-      out_distribution1 <- paste0("CumD")
-      out_distribution2 <- paste0("rCumD")
-    }else{
-      out_distribution1 <- paste0("CumDirichlet")
-      out_distribution2 <- paste0("revCumDirichlet")
-    }
-
-    if(!plot){
-      output <- paste0(out_prefix, "[", steps_name, out_steps, "]", " ~ ", out_distribution1, "(", out_parameters1, "), ", out_distribution2, "(", out_parameters2, ")")
-    }else{
-      output <- bquote(italic(.(out_prefix))[.(steps_name)*.(out_steps)]~"~"~italic(.(out_distribution1))*(.(out_parameters1))~","~~italic(.(out_distribution2))*(.(out_parameters2)))
-    }
-
-  }else if(all(names(x[["distribution"]]) %in% c("one.sided.fixed", "two.sided.fixed"))){
-
-    out_parameters <- paste0(round(x$parameters[["omega"]], digits_estimates), collapse = ", ")
+    out_parameters <- paste0(round(x$weights[["omega"]], digits_estimates), collapse = ", ")
 
     if(!plot){
       output <- paste0(out_prefix, "[", steps_name, out_steps, "]", " = ", "(", out_parameters, ")")
     }else{
       output <- bquote(italic(.(out_prefix))[.(steps_name)*.(out_steps)]~"="~(.(out_parameters)))
+    }
+
+  }else if(x$weights$type == "independent"){
+
+    out_distribution <- if(x$weights$scale == "omega") "Independent" else "IndependentLog"
+    out_parameters <- print(x$weights$prior, short_name = short_name, parameter_names = parameter_names,
+                            plot = FALSE, digits_estimates = digits_estimates, silent = TRUE)
+
+    if(!plot){
+      output <- paste0(out_prefix, "[", steps_name, out_steps, "]", " ~ ", out_distribution, "(", out_parameters, ")")
+    }else{
+      output <- bquote(italic(.(out_prefix))[.(steps_name)*.(out_steps)]~"~"~italic(.(out_distribution))*(.(out_parameters)))
     }
   }
 

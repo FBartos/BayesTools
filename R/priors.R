@@ -140,86 +140,126 @@ prior_none <- function(prior_weights = 1){
 
 #' @title Creates a prior distribution for a weight function
 #'
-#' @description \code{prior_weightfunction} creates a prior distribution for fitting
-#' a RoBMA selection model. The prior can be visualized by the \code{plot} function.
+#' @description \code{prior_weightfunction} creates a prior distribution for
+#' fitting a RoBMA selection model. The \code{side} and \code{steps} arguments
+#' define the p-value bins, and the \code{weights} argument defines the prior on
+#' the publication weights in those bins.
 #'
-#' @param distribution name of the prior distribution. The
-#' possible options are
-#' \describe{
-#'   \item{\code{"two.sided"}}{for a two-sided weight function
-#'   characterized by a vector \code{steps} and vector \code{alpha}
-#'   parameters. The \code{alpha} parameter determines an alpha
-#'   parameter of Dirichlet distribution which cumulative sum
-#'   is used for the weights omega.}
-#'   \item{\code{"one.sided"}}{for a one-sided weight function
-#'   characterized by either a vector \code{steps} and vector
-#'   \code{alpha} parameter, leading to a monotonic one-sided
-#'   function, or by a vector \code{steps}, vector \code{alpha1},
-#'   and vector \code{alpha2} parameters leading non-monotonic
-#'   one-sided weight function. The \code{alpha} / \code{alpha1} and
-#'   \code{alpha2} parameters determine an alpha parameter of
-#'   Dirichlet distribution which cumulative sum is used for
-#'   the weights omega.}
-#' }
-#' @param parameters list of appropriate parameters for a given
-#' \code{distribution}.
+#' @param side side geometry. Either \code{"one-sided"} or \code{"two-sided"}.
+#' @param steps increasing p-value cut points between 0 and 1.
+#' @param weights a weight-prior object created by \code{wf_cumulative()},
+#' \code{wf_fixed()}, or \code{wf_independent()}.
+#' @param reference reference bin. Currently only \code{"most_significant"} is
+#' supported and fixes the most significant bin to \code{omega = 1}.
 #' @param prior_weights prior odds associated with a given distribution.
-#' The model fitting function usually creates models corresponding to
-#' all combinations of prior distributions for each of the model
-#' parameters, and sets the model priors odds to the product of
-#' its prior distributions.
-#'
-#' @details Constrained cases of weight functions can be specified by adding
-#' ".fixed" after the distribution name, i.e., \code{"two.sided.fixed"} and
-#' \code{"one.sided.fixed"}. In these cases, the functions are specified using
-#' \code{steps} and \code{omega} parameters, where the \code{omega} parameter
-#' is a vector of weights that corresponds to the relative publication probability
-#' (i.e., no parameters are estimated).
-#'
 #'
 #' @examples
-#' p1 <- prior_weightfunction("one-sided", parameters = list(steps = c(.05, .10), alpha = c(1, 1, 1)))
+#' p1 <- prior_weightfunction(
+#'   side = "one-sided",
+#'   steps = c(.05, .10),
+#'   weights = wf_cumulative(alpha = c(1, 1, 1))
+#' )
 #'
-#' # the prior distribution can be visualized using the plot function
-#' # (see ?plot.prior for all options)
-#' plot(p1)
+#' p2 <- prior_weightfunction(
+#'   side = "one-sided",
+#'   steps = c(.05),
+#'   weights = wf_independent(prior("beta", list(1, 1)))
+#' )
 #'
 #' @return \code{prior_weightfunction} returns an object of class 'prior'.
 #'
-#' @export  prior_weightfunction
+#' @export prior_weightfunction
 #' @seealso [plot.prior()]
-prior_weightfunction <- function(distribution, parameters, prior_weights = 1){
+prior_weightfunction <- function(side = "one-sided", steps = c(.025, .05),
+                                 weights = wf_cumulative(),
+                                 reference = "most_significant",
+                                 prior_weights = 1){
 
-  # general input check
-  check_char(distribution, "distribution")
-  check_list(parameters, "parameters")
-  sapply(seq_along(parameters), function(i)check_real(parameters[[i]], names(parameters[[i]]), check_length = 0))
+  check_char(side, "side")
+  check_real(steps, "steps", check_length = 0)
+  check_char(reference, "reference", allow_values = "most_significant")
   check_real(prior_weights, "prior_weights", lower = 0, allow_bound = FALSE)
 
-  # clean the input name
-  distribution <- .prior_clean_input_name(distribution)
+  side <- .weightfunction_normalize_side(side)
+  steps <- .weightfunction_validate_steps(steps)
+  bins <- .weightfunction_bins(steps)
+  weights <- .weightfunction_validate_weights(weights, n_bins = nrow(bins), reference = reference)
+  truncation <- .weightfunction_weights_truncation(weights)
 
-  if(distribution == "twosided"){
-    distribution <- "two.sided"
-  }else if(distribution == "onesided"){
-    distribution <- "one.sided"
-  }else if(distribution == "twosidedfixed"){
-    distribution <- "two.sided.fixed"
-  }else if(distribution == "onesidedfixed"){
-    distribution <- "one.sided.fixed"
-  }else{
-    stop(paste0("The specified distribution name '", distribution,"' is not known. Please, see '?prior_weightfunction' for more information about supported prior distributions for weight functions."))
-  }
-
-  # check the passed settings
-  output <- do.call(paste0(".prior_weightfunction_", distribution), list(parameters = parameters))
-
-  # add the prior odds
-  output$prior_weights <- prior_weights
+  output <- list(
+    distribution  = "weightfunction",
+    side          = side,
+    steps         = steps,
+    bins          = bins,
+    reference     = reference,
+    weights       = weights,
+    parameters    = list(steps = steps),
+    truncation    = truncation,
+    prior_weights = prior_weights
+  )
 
   class(output) <- c("prior", "prior.weightfunction")
 
   return(output)
+}
+
+#' @rdname prior_weightfunction
+#' @param alpha positive cumulative-Dirichlet concentration parameters. If
+#' omitted, a flat Dirichlet prior is used with one concentration parameter per
+#' bin.
+#' @export
+wf_cumulative <- function(alpha = NULL){
+
+  if(!is.null(alpha)){
+    check_real(alpha, "alpha", lower = 0, allow_bound = FALSE, check_length = 0)
+  }
+
+  out <- list(type = "cumulative", alpha = alpha)
+  class(out) <- c("weightfunction_weights", "weightfunction_weights.cumulative")
+  return(out)
+}
+
+#' @rdname prior_weightfunction
+#' @param omega fixed publication weights, one per bin.
+#' @export
+wf_fixed <- function(omega){
+
+  check_real(omega, "omega", lower = 0, upper = 1, check_length = 0)
+
+  out <- list(type = "fixed", omega = omega)
+  class(out) <- c("weightfunction_weights", "weightfunction_weights.fixed")
+  return(out)
+}
+
+#' @rdname prior_weightfunction
+#' @param prior prior distribution for each non-reference weight.
+#' @param scale latent scale for independent weights. \code{"omega"} places the
+#' prior directly on the non-negative publication weight. \code{"log_omega"}
+#' places the prior on \code{log(omega)} and transforms with
+#' \code{omega = exp(log_omega)}, allowing weights above one whenever the log
+#' prior assigns mass above zero.
+#' @export
+wf_independent <- function(prior, scale = "omega"){
+
+  .check_prior(prior)
+  if(!is.prior.simple(prior) || is.prior.point(prior) || is.prior.discrete(prior)){
+    stop("'prior' must be a continuous simple prior distribution.", call. = FALSE)
+  }
+
+  check_char(scale, "scale", allow_values = c("omega", "log_omega", "log"))
+  if(scale == "log"){
+    scale <- "log_omega"
+  }
+
+  if(scale == "omega"){
+    if(prior$truncation[["lower"]] < 0){
+      stop("Independent omega-scale weight priors must have non-negative support.", call. = FALSE)
+    }
+  }
+
+  out <- list(type = "independent", scale = scale, prior = prior)
+  class(out) <- c("weightfunction_weights", "weightfunction_weights.independent")
+  return(out)
 }
 
 #' @title Creates a prior distribution for PET or PEESE models
@@ -964,110 +1004,333 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
 
   return(output)
 }
-.prior_weightfunction_two.sided <- function(parameters){
+.weightfunction_normalize_side <- function(side){
 
-  output <- list()
-
-  # check overall settings
-  parameters <- .check_and_name_parameters(parameters, c("steps", "alpha"), "two-sided weightfunction")
-
-  # check individual parameters
-  .check_parameter_weigthfunction(parameters$steps, parameters$alpha)
-
-  # reverse the ordering of alpha and weights - to correspond to ordering on t-statistics
-  parameters$steps <- rev(parameters$steps)
-  parameters$alpha <- rev(parameters$alpha)
-
-  # add the values to the output
-  output$distribution <- "two.sided"
-  output$parameters   <- parameters
-  output$truncation   <- list(lower = 0, upper = 1)
-
-  return(output)
-}
-.prior_weightfunction_one.sided <- function(parameters){
-
-  output <- list()
-
-  if(length(parameters) == 2){
-
-    # check overall settings
-    parameters <- .check_and_name_parameters(parameters, c("steps", "alpha"), "one-sided weightfunction")
-
-    # check individual parameters
-    .check_parameter_weigthfunction(parameters$steps, parameters$alpha)
-
-    # reverse the ordering of alpha and weights - to correspond to ordering on t-statistics
-    parameters$steps <- rev(parameters$steps)
-    parameters$alpha <- rev(parameters$alpha)
-
-    # add the values to the output
-    output$distribution <- "one.sided"
-    output$parameters   <- parameters
-    output$truncation   <- list(lower = 0, upper = 1)
-
-  }else{
-
-    # check overall settings
-    parameters <- .check_and_name_parameters(parameters, c("steps", "alpha1", "alpha2"), "one-sided weightfunction")
-
-    # check individual parameters
-    .check_parameter_weigthfunction(parameters$steps, alpha1 = parameters$alpha1, alpha2 = parameters$alpha2)
-
-    # reverse the ordering of alpha and weights - to correspond to ordering on t-statistics
-    parameters$steps  <- rev(parameters$steps)
-    parameters$alpha1 <- rev(parameters$alpha1)
-
-    # add the values to the output
-    output$distribution <- "one.sided"
-    output$parameters   <- parameters
-    output$truncation   <- list(lower = 0, upper = 1)
-
+  side_clean <- .prior_clean_input_name(side)
+  if(side_clean %in% c("onesided", "one")){
+    return("one-sided")
+  }
+  if(side_clean %in% c("twosided", "two")){
+    return("two-sided")
   }
 
-  return(output)
+  stop("'side' must be either 'one-sided' or 'two-sided'.", call. = FALSE)
 }
-.prior_weightfunction_two.sided.fixed <- function(parameters){
+.weightfunction_validate_steps <- function(steps){
 
-  output <- list()
+  check_real(steps, "steps", check_length = 0)
 
-  # check overall settings
-  parameters <- .check_and_name_parameters(parameters, c("steps", "omega"), "two-sided.fixed weightfunction")
+  if(length(steps) == 0){
+    stop("'steps' must contain at least one p-value cut point.", call. = FALSE)
+  }
+  if(any(steps >= 1) || any(steps <= 0)){
+    stop("'steps' must be higher than 0 and lower than 1.", call. = FALSE)
+  }
+  if(anyDuplicated(steps)){
+    stop("'steps' must not contain duplicate cut points.", call. = FALSE)
+  }
+  if(!all(steps == cummax(steps))){
+    stop("'steps' must be monotonically increasing.", call. = FALSE)
+  }
 
-  # check individual parameters
-  .check_parameter_weigthfunction(parameters$steps, omega = parameters$omega)
-
-  # reverse the ordering of alpha and weights - to correspond to ordering on t-statistics
-  parameters$steps <- rev(parameters$steps)
-  parameters$omega <- rev(parameters$omega)
-
-  # add the values to the output
-  output$distribution <- "two.sided.fixed"
-  output$parameters   <- parameters
-  output$truncation   <- list(lower = 0, upper = 1)
-
-  return(output)
+  steps
 }
-.prior_weightfunction_one.sided.fixed <- function(parameters){
+.weightfunction_bins <- function(steps){
 
-  output <- list()
+  cuts <- c(0, steps, 1)
+  data.frame(
+    lower     = cuts[-length(cuts)],
+    upper     = cuts[-1],
+    reference = c(TRUE, rep(FALSE, length(cuts) - 2L))
+  )
+}
+.weightfunction_validate_weights <- function(weights, n_bins, reference){
 
-  # check overall settings
-  parameters <- .check_and_name_parameters(parameters, c("steps", "omega"), "one-sided.fixed weightfunction")
+  if(!inherits(weights, "weightfunction_weights")){
+    stop("'weights' must be created by wf_cumulative(), wf_fixed(), or wf_independent().", call. = FALSE)
+  }
 
-  # check individual parameters
-  .check_parameter_weigthfunction(parameters$steps, omega = parameters$omega)
+  if(weights$type == "cumulative"){
+    if(is.null(weights$alpha)){
+      weights$alpha <- rep(1, n_bins)
+    }
+    check_real(weights$alpha, "alpha", lower = 0, allow_bound = FALSE, check_length = n_bins)
 
-  # reverse the ordering of alpha and weights - to correspond to ordering on t-statistics
-  parameters$steps <- rev(parameters$steps)
-  parameters$omega <- rev(parameters$omega)
+  }else if(weights$type == "fixed"){
+    check_real(weights$omega, "omega", lower = 0, upper = 1, check_length = n_bins)
+    if(reference == "most_significant" && !isTRUE(all.equal(weights$omega[1], 1))){
+      stop("The reference-bin fixed weight must be exactly 1.", call. = FALSE)
+    }
 
-  # add the values to the output
-  output$distribution <- "one.sided.fixed"
-  output$parameters   <- parameters
-  output$truncation   <- list(lower = 0, upper = 1)
+  }else if(weights$type == "independent"){
+    .check_prior(weights$prior)
+    if(!is.prior.simple(weights$prior) || is.prior.point(weights$prior) || is.prior.discrete(weights$prior)){
+      stop("'weights$prior' must be a continuous simple prior distribution.", call. = FALSE)
+    }
+    if(weights$scale == "omega"){
+      if(weights$prior$truncation[["lower"]] < 0){
+        stop("Independent omega-scale weight priors must have non-negative support.", call. = FALSE)
+      }
+    }else if(weights$scale != "log_omega"){
+      stop("Unsupported independent weight prior scale.", call. = FALSE)
+    }
 
-  return(output)
+  }else{
+    stop("Unsupported weightfunction weight prior type.", call. = FALSE)
+  }
+
+  weights
+}
+.weightfunction_weights_truncation <- function(weights){
+
+  if(weights$type %in% c("fixed", "cumulative")){
+    return(list(lower = 0, upper = 1))
+  }
+
+  if(weights$type == "independent"){
+    if(weights$scale == "omega"){
+      upper <- weights$prior$truncation[["upper"]]
+    }else if(weights$scale == "log_omega"){
+      upper <- weights$prior$truncation[["upper"]]
+      upper <- if(is.infinite(upper)) Inf else exp(upper)
+    }else{
+      stop("Unsupported independent weight prior scale.", call. = FALSE)
+    }
+
+    return(list(lower = 0, upper = max(1, upper)))
+  }
+
+  stop("Unsupported weightfunction weight prior type.", call. = FALSE)
+}
+.weightfunction_n_bins <- function(prior){
+
+  if(!is.prior.weightfunction(prior)){
+    stop("'prior' must be a weightfunction prior.", call. = FALSE)
+  }
+
+  nrow(prior$bins)
+}
+.weightfunction_is_fixed <- function(prior){
+  prior$weights$type == "fixed"
+}
+.weightfunction_local_cuts <- function(prior){
+
+  c(prior$bins$lower[1], prior$bins$upper)
+}
+.weightfunction_reference_index <- function(prior){
+  which(prior$bins$reference)
+}
+.weightfunction_alpha_marginal <- function(alpha, index){
+
+  if(index <= 1L){
+    return(list(type = "point", location = 1))
+  }
+
+  list(
+    type  = "beta",
+    alpha = sum(alpha[index:length(alpha)]),
+    beta  = sum(alpha[seq_len(index - 1L)])
+  )
+}
+.weightfunction_rng <- function(prior, n){
+
+  J <- .weightfunction_n_bins(prior)
+
+  if(prior$weights$type == "fixed"){
+    out <- matrix(rep(prior$weights$omega, each = n), nrow = n)
+
+  }else if(prior$weights$type == "cumulative"){
+    theta <- extraDistr::rdirichlet(n, alpha = prior$weights$alpha)
+    out   <- t(apply(theta[,J:1, drop = FALSE], 1, cumsum))[,J:1, drop = FALSE]
+
+  }else if(prior$weights$type == "independent"){
+    out <- matrix(1, nrow = n, ncol = J)
+    if(J > 1L){
+      draws <- matrix(rng(prior$weights$prior, n * (J - 1L)), nrow = n, ncol = J - 1L)
+      if(prior$weights$scale == "log_omega"){
+        draws <- exp(draws)
+      }
+      out[,2:J] <- draws
+    }
+  }
+
+  colnames(out) <- paste0("omega[", seq_len(J), "]")
+  out
+}
+.weightfunction_marginal_components <- function(prior){
+
+  J <- .weightfunction_n_bins(prior)
+
+  if(prior$weights$type == "fixed"){
+    return(lapply(prior$weights$omega, function(x){
+      list(type = "point", location = x)
+    }))
+  }
+
+  if(prior$weights$type == "cumulative"){
+    return(lapply(seq_len(J), function(j){
+      .weightfunction_alpha_marginal(prior$weights$alpha, j)
+    }))
+  }
+
+  if(prior$weights$type == "independent"){
+    return(lapply(seq_len(J), function(j){
+      if(j == 1L){
+        list(type = "point", location = 1)
+      }else{
+        list(type = "prior", prior = prior$weights$prior, scale = prior$weights$scale)
+      }
+    }))
+  }
+}
+.prior_weightfunction_component_range <- function(component, quantiles = .005){
+
+  switch(
+    component$type,
+    "point" = c(component$location, component$location),
+    "beta"  = c(0, 1),
+    "prior" = {
+      if(component$scale == "omega"){
+        lower <- component$prior$truncation[["lower"]]
+        upper <- component$prior$truncation[["upper"]]
+
+        lower <- if(is.infinite(lower)) mquant(component$prior, quantiles) else lower
+        upper <- if(is.infinite(upper)) mquant(component$prior, 1 - quantiles) else upper
+        c(lower, upper)
+      }else{
+        lower <- component$prior$truncation[["lower"]]
+        upper <- component$prior$truncation[["upper"]]
+
+        lower <- if(is.infinite(lower)) 0 else exp(lower)
+        upper <- if(is.infinite(upper)) exp(mquant(component$prior, 1 - quantiles)) else exp(upper)
+        c(lower, upper)
+      }
+    }
+  )
+}
+.weightfunction_range <- function(prior, quantiles = .005){
+
+  ranges <- do.call(rbind, lapply(
+    .weightfunction_marginal_components(prior),
+    .prior_weightfunction_component_range,
+    quantiles = quantiles
+  ))
+
+  x_range <- range(as.vector(ranges), finite = TRUE)
+  if(x_range[1] == x_range[2]){
+    x_range <- range(c(0, 1, x_range), finite = TRUE)
+  }
+
+  x_range
+}
+.prior_weightfunction_component_cdf <- function(component, q){
+
+  switch(
+    component$type,
+    "point" = ppoint(q, location = component$location),
+    "beta"  = stats::pbeta(q, shape1 = component$alpha, shape2 = component$beta),
+    "prior" = {
+      if(component$scale == "omega"){
+        mcdf(component$prior, q)
+      }else{
+        p <- numeric(length(q))
+        p[q <= 0] <- 0
+        inside <- q > 0
+        p[inside] <- mcdf(component$prior, log(q[inside]))
+        p
+      }
+    }
+  )
+}
+.prior_weightfunction_component_ccdf <- function(component, q){
+  if(component$type == "point"){
+    return(ppoint(q, location = component$location, lower.tail = FALSE))
+  }
+  1 - .prior_weightfunction_component_cdf(component, q)
+}
+.prior_weightfunction_component_lpdf <- function(component, x){
+
+  switch(
+    component$type,
+    "point" = dpoint(x, location = component$location, log = TRUE),
+    "beta"  = stats::dbeta(x, shape1 = component$alpha, shape2 = component$beta, log = TRUE),
+    "prior" = {
+      if(component$scale == "omega"){
+        mlpdf(component$prior, x)
+      }else{
+        out <- rep(-Inf, length(x))
+        inside <- x > 0
+        out[inside] <- mlpdf(component$prior, log(x[inside])) - log(x[inside])
+        out
+      }
+    }
+  )
+}
+.prior_weightfunction_component_quant <- function(component, p){
+
+  switch(
+    component$type,
+    "point" = qpoint(p, location = component$location),
+    "beta"  = stats::qbeta(p, shape1 = component$alpha, shape2 = component$beta),
+    "prior" = {
+      if(component$scale == "omega"){
+        mquant(component$prior, p)
+      }else{
+        exp(mquant(component$prior, p))
+      }
+    }
+  )
+}
+.prior_weightfunction_component_mean <- function(component){
+
+  switch(
+    component$type,
+    "point" = component$location,
+    "beta"  = component$alpha / (component$alpha + component$beta),
+    "prior" = {
+      if(component$scale == "omega"){
+        mean(component$prior)
+      }else{
+        stats::integrate(
+          f     = function(x, prior) {
+            y <- exp(x) * pdf(prior, x)
+            y[!is.finite(y)] <- 0
+            y
+          },
+          lower = component$prior$truncation[["lower"]],
+          upper = component$prior$truncation[["upper"]],
+          prior = component$prior
+        )$value
+      }
+    }
+  )
+}
+.prior_weightfunction_component_var <- function(component){
+
+  switch(
+    component$type,
+    "point" = 0,
+    "beta"  = (component$alpha * component$beta) /
+      ((component$alpha + component$beta)^2 * (component$alpha + component$beta + 1)),
+    "prior" = {
+      if(component$scale == "omega"){
+        var(component$prior)
+      }else{
+        m1 <- .prior_weightfunction_component_mean(component)
+        m2 <- stats::integrate(
+          f     = function(x, prior) {
+            y <- exp(2 * x) * pdf(prior, x)
+            y[!is.finite(y)] <- 0
+            y
+          },
+          lower = component$prior$truncation[["lower"]],
+          upper = component$prior$truncation[["upper"]],
+          prior = component$prior
+        )$value
+        m2 - m1^2
+      }
+    }
+  )
 }
 
 #### elementary prior related functions ####
@@ -1278,13 +1541,7 @@ rng.prior   <- function(x, n, ...){
 
   }else if(is.prior.weightfunction(prior)){
 
-    x <- switch(
-      prior[["distribution"]],
-      "one.sided" = rone.sided(n, alpha = if(!is.null(prior$parameters[["alpha"]])) prior$parameters[["alpha"]], alpha1 = if(!is.null(prior$parameters[["alpha1"]])) prior$parameters[["alpha1"]], alpha2 = if(!is.null(prior$parameters[["alpha2"]])) prior$parameters[["alpha2"]]),
-      "two.sided" = rtwo.sided(n, alpha = prior$parameters[["alpha"]]),
-      "one.sided.fixed" = rone.sided_fixed(n, omega = prior$parameters[["omega"]]),
-      "two.sided.fixed" = rtwo.sided_fixed(n, omega = prior$parameters[["omega"]])
-    )
+    x <- .weightfunction_rng(prior, n)
 
   }
 
@@ -1747,11 +2004,8 @@ quant.prior <- function(x, p, ...){
     "exp"       = isTRUE(all.equal(prior$truncation[["lower"]], 0)) & is.infinite(prior$truncation[["upper"]]),
     "uniform"   = TRUE,
     "point"     = TRUE,
-    "mpoint"    = TRUE,
-    "one.sided" = TRUE,
-    "two.sided" = TRUE,
-    "one.sided.fixed" = TRUE,
-    "two.sided.fixed" = TRUE,
+    "mpoint"          = TRUE,
+    "weightfunction"  = TRUE,
     "none"            = TRUE
   )
 }
@@ -1781,13 +2035,8 @@ mcdf.prior   <- function(x, q, ...){
 
   }else if(is.prior.weightfunction(prior)){
 
-    p <- switch(
-      prior[["distribution"]],
-      "one.sided" = mpone.sided(q, alpha = if(!is.null(prior$parameters[["alpha"]])) prior$parameters[["alpha"]], alpha1 = if(!is.null(prior$parameters[["alpha1"]])) prior$parameters[["alpha1"]], alpha2 = if(!is.null(prior$parameters[["alpha2"]])) prior$parameters[["alpha2"]]),
-      "two.sided" = mptwo.sided(q, alpha = prior$parameters[["alpha"]]),
-      "one.sided.fixed" = mpone.sided_fixed(q, omega = prior$parameters[["omega"]]),
-      "two.sided.fixed" = mptwo.sided_fixed(q, omega = prior$parameters[["omega"]])
-    )
+    components <- .weightfunction_marginal_components(prior)
+    p <- do.call(cbind, lapply(components, .prior_weightfunction_component_cdf, q = q))
 
   }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
 
@@ -1860,13 +2109,8 @@ mccdf.prior  <- function(x, q, ...){
 
   }else if(is.prior.weightfunction(prior)){
 
-    p <- switch(
-      prior[["distribution"]],
-      "one.sided" = mpone.sided(q, alpha = if(!is.null(prior$parameters[["alpha"]])) prior$parameters[["alpha"]], alpha1 = if(!is.null(prior$parameters[["alpha1"]])) prior$parameters[["alpha1"]], alpha2 = if(!is.null(prior$parameters[["alpha2"]])) prior$parameters[["alpha2"]], lower.tail = FALSE),
-      "two.sided" = mptwo.sided(q, alpha = prior$parameters[["alpha"]], lower.tail = FALSE),
-      "one.sided.fixed" = mpone.sided_fixed(q, omega = prior$parameters[["omega"]], lower.tail = FALSE),
-      "two.sided.fixed" = mptwo.sided_fixed(q, omega = prior$parameters[["omega"]], lower.tail = FALSE)
-    )
+    components <- .weightfunction_marginal_components(prior)
+    p <- do.call(cbind, lapply(components, .prior_weightfunction_component_ccdf, q = q))
 
   }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
 
@@ -1940,13 +2184,8 @@ mlpdf.prior  <- function(x, y, ...){
 
   }else if(is.prior.weightfunction(prior)){
 
-    log_lik <- switch(
-      prior[["distribution"]],
-      "one.sided" = mdone.sided(x, alpha = if(!is.null(prior$parameters[["alpha"]])) prior$parameters[["alpha"]], alpha1 = if(!is.null(prior$parameters[["alpha1"]])) prior$parameters[["alpha1"]], alpha2 = if(!is.null(prior$parameters[["alpha2"]])) prior$parameters[["alpha2"]], log = TRUE),
-      "two.sided" = mdtwo.sided(x, alpha = prior$parameters[["alpha"]], log = TRUE),
-      "one.sided.fixed" = mdone.sided_fixed(x, omega = prior$parameters[["omega"]], log = TRUE),
-      "two.sided.fixed" = mdtwo.sided_fixed(x, omega = prior$parameters[["omega"]], log = TRUE),
-    )
+    components <- .weightfunction_marginal_components(prior)
+    log_lik <- do.call(cbind, lapply(components, .prior_weightfunction_component_lpdf, x = x))
 
   }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
 
@@ -2037,13 +2276,8 @@ mquant.prior <- function(x, p, ...){
 
   }else if(is.prior.weightfunction(prior)){
 
-    q <- switch(
-      prior[["distribution"]],
-      "one.sided" = mqone.sided(p, alpha = if(!is.null(prior$parameters[["alpha"]])) prior$parameters[["alpha"]], alpha1 = if(!is.null(prior$parameters[["alpha1"]])) prior$parameters[["alpha1"]], alpha2 = if(!is.null(prior$parameters[["alpha2"]])) prior$parameters[["alpha2"]]),
-      "two.sided" = mqtwo.sided(p, alpha = prior$parameters[["alpha"]]),
-      "one.sided.fixed" = mqone.sided_fixed(p, omega = prior$parameters[["omega"]]),
-      "two.sided.fixed" = mqtwo.sided_fixed(p, omega = prior$parameters[["omega"]])
-    )
+    components <- .weightfunction_marginal_components(prior)
+    q <- do.call(cbind, lapply(components, .prior_weightfunction_component_quant, p = p))
 
   }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
 
@@ -2520,45 +2754,15 @@ sd.prior     <- function(x, ...){
 
 .mean.weightfunction <- function(prior){
 
-  if(prior[["distribution"]] %in% c("one.sided.fixed", "two.sided.fixed")){
-
-    m <- prior$parameters[["omega"]]
-
-  }else if(all(names(prior[["parameters"]]) %in% c("steps", "alpha"))){
-
-    alpha       <- prior$parameters[["alpha"]]
-    alpha_alpha <- cumsum(alpha)[-length(alpha)]
-    alpha_beta  <- cumsum(alpha[length(alpha):1])[(length(alpha)-1):1]
-
-    m <- c(alpha_alpha/(alpha_alpha + alpha_beta), 1)
-
-  }else{
-
-    stop("Analytical solutions for the mean of one-sided non-monotonic weights are not implemented.")
-
-  }
+  components <- .weightfunction_marginal_components(prior)
+  m <- vapply(components, .prior_weightfunction_component_mean, numeric(1))
 
   return(m)
 }
 .var.weightfunction  <- function(prior){
 
-  if(prior[["distribution"]] %in% c("one.sided.fixed", "two.sided.fixed")){
-
-    m <- rep(0, length(prior$parameters[["omega"]]))
-
-  }else if(all(names(prior[["parameters"]]) %in% c("steps", "alpha"))){
-
-    alpha       <- prior$parameters[["alpha"]]
-    alpha_alpha <- cumsum(alpha)[-length(alpha)]
-    alpha_beta  <- cumsum(alpha[length(alpha):1])[(length(alpha)-1):1]
-
-    m <- c((alpha_alpha * alpha_beta) / ((alpha_alpha + alpha_beta)^2 * (alpha_alpha + alpha_beta + 1)), 0)
-
-  }else{
-
-    stop("Analytical solutions for the var/sd of one-sided non-monotonic weights are not implemented.")
-
-  }
+  components <- .weightfunction_marginal_components(prior)
+  m <- vapply(components, .prior_weightfunction_component_var, numeric(1))
 
   return(m)
 }
