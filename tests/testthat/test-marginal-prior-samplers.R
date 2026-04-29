@@ -126,7 +126,7 @@ test_that(".mix_priors helpers preserve mixture structure and prior attributes",
   weightfunction <- .mix_priors.weightfunction(
     list(
       prior_none(prior_weights = 1),
-      prior_weightfunction("one-sided", list(c(0.05), c(2, 4)), prior_weights = 3)
+      prior_weightfunction("one-sided", c(0.05), wf_cumulative(c(2, 4)), prior_weights = 3)
     ),
     parameter = "omega",
     seed = 16,
@@ -152,7 +152,7 @@ test_that(".mix_priors dispatches supported prior families", {
       theta = list(null_prior, prior("normal", list(2, 0.25), prior_weights = 3)),
       beta  = list(prior("point", list(0), prior_weights = 1), prior("mnormal", list(mean = 1, sd = 0.2, K = 2), prior_weights = 3)),
       fac   = list(null_prior, make_treatment_prior(mean = 0, sd = 0.2, prior_weights = 3)),
-      omega = list(prior_none(prior_weights = 1), prior_weightfunction("one-sided", list(c(0.05), c(2, 4)), prior_weights = 3))
+      omega = list(prior_none(prior_weights = 1), prior_weightfunction("one-sided", c(0.05), wf_cumulative(c(2, 4)), prior_weights = 3))
     ),
     seed = 21,
     n_samples = n_samples
@@ -194,7 +194,7 @@ test_that(".mix_priors dispatches supported prior families", {
   expect_equal(attr(formula_out$mu_x, "level_names"), c("A", "B"))
 
   expect_error(
-    .mix_priors(list(bad = list(prior("normal", list(0, 1)), prior_weightfunction("one-sided", list(c(0.05), c(1, 1)))))),
+    .mix_priors(list(bad = list(prior("normal", list(0, 1)), prior_weightfunction("one-sided", c(0.05), wf_cumulative(c(1, 1)))))),
     "unsupported mixture of prior distributions"
   )
 })
@@ -231,7 +231,7 @@ test_that(".as_mixed_priors helpers evaluate single-model prior families", {
   expect_true(isTRUE(attr(meandif, "meandif")))
 
   weightfunction <- .as_mixed_priors.weightfunction(
-    prior_weightfunction("one-sided", list(c(0.05), c(2, 4))),
+    prior_weightfunction("one-sided", c(0.05), wf_cumulative(c(2, 4))),
     "omega",
     seed = 36,
     n_samples = n_samples
@@ -391,7 +391,7 @@ test_that("marginal prior sampler visuals show the expected mixture shapes", {
   weightfunction <- .mix_priors.weightfunction(
     list(
       prior_none(prior_weights = 1),
-      prior_weightfunction("one-sided", list(c(0.05), c(2, 4)), prior_weights = 3)
+      prior_weightfunction("one-sided", c(0.05), wf_cumulative(c(2, 4)), prior_weights = 3)
     ),
     "omega",
     seed = 53,

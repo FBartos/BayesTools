@@ -99,12 +99,12 @@ test_that("inclusion_BF works with marginal likelihoods only", {
 test_that("weightfunctions_mapping handles one-sided priors", {
 
   # Create one-sided weightfunction prior
-  wf_onesided <- prior_weightfunction("one.sided", list(c(0.05), c(1, 1)))
+  wf_onesided <- prior_weightfunction("one-sided", c(0.05), wf_cumulative(c(1, 1)))
 
   mapping <- weightfunctions_mapping(list(wf_onesided))
 
   expect_true(is.list(mapping))
-  expect_equal(mapping[[1]], c(2, 1))
+  expect_equal(mapping[[1]], c(1, 2))
 
 })
 
@@ -112,12 +112,12 @@ test_that("weightfunctions_mapping handles one-sided priors", {
 test_that("weightfunctions_mapping handles two-sided priors", {
 
   # Create two-sided weightfunction prior
-  wf_twosided <- prior_weightfunction("two.sided", list(c(0.05), c(1, 1)))
+  wf_twosided <- prior_weightfunction("two-sided", c(0.05), wf_cumulative(c(1, 1)))
 
   mapping <- weightfunctions_mapping(list(wf_twosided))
 
   expect_true(is.list(mapping))
-  expect_equal(mapping[[1]], c(2, 1))
+  expect_equal(mapping[[1]], c(1, 2))
 
 })
 
@@ -125,13 +125,13 @@ test_that("weightfunctions_mapping handles two-sided priors", {
 test_that("weightfunctions_mapping handles one_sided argument", {
 
   # Create two-sided weightfunction prior
-  wf_twosided <- prior_weightfunction("two.sided", list(c(0.05), c(1, 1)))
+  wf_twosided <- prior_weightfunction("two-sided", c(0.05), wf_cumulative(c(1, 1)))
 
   # Test with one_sided = TRUE
   mapping_one <- weightfunctions_mapping(list(wf_twosided), one_sided = TRUE)
 
   expect_true(is.list(mapping_one))
-  expect_equal(mapping_one[[1]], c(2, 1, 2))
+  expect_equal(mapping_one[[1]], c(1, 2, 1))
 
 })
 
@@ -139,7 +139,7 @@ test_that("weightfunctions_mapping handles one_sided argument", {
 test_that("weightfunctions_mapping cuts_only option works", {
 
   # Create one-sided weightfunction prior
-  wf_onesided <- prior_weightfunction("one.sided", list(c(0.05), c(1, 1)))
+  wf_onesided <- prior_weightfunction("one-sided", c(0.05), wf_cumulative(c(1, 1)))
 
   # Test cuts_only = TRUE
   cuts <- weightfunctions_mapping(list(wf_onesided), cuts_only = TRUE)
@@ -151,8 +151,8 @@ test_that("weightfunctions_mapping cuts_only option works", {
 test_that("weightfunctions_mapping handles mixed prior list", {
 
   # Multiple weightfunction priors with different configurations
-  wf_onesided <- prior_weightfunction("one.sided", list(c(0.05), c(1, 1)))
-  wf_twosided <- prior_weightfunction("two.sided", list(c(0.05, 0.10), c(1, 1, 1)))
+  wf_onesided <- prior_weightfunction("one-sided", c(0.05), wf_cumulative(c(1, 1)))
+  wf_twosided <- prior_weightfunction("two-sided", c(0.05, 0.10), wf_cumulative(c(1, 1, 1)))
 
   mapping <- weightfunctions_mapping(list(wf_onesided, wf_twosided))
 

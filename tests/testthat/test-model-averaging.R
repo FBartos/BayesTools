@@ -168,8 +168,8 @@ test_that(".inclusion_BF.probs edge cases work", {
 test_that("weightfunctions_mapping works correctly", {
 
   # Create weightfunction priors
-  wf_onesided <- prior_weightfunction("one.sided", list(c(0.05), c(1, 1)))
-  wf_twosided <- prior_weightfunction("two.sided", list(c(0.05), c(1, 1)))
+  wf_onesided <- prior_weightfunction("one-sided", c(0.05), wf_cumulative(c(1, 1)))
+  wf_twosided <- prior_weightfunction("two-sided", c(0.05), wf_cumulative(c(1, 1)))
 
   # Test with single weightfunction
   mapping1 <- weightfunctions_mapping(list(wf_onesided))

@@ -39,24 +39,16 @@
 <text x='416.95' y='132.24' style='font-size: 15.00px; font-family: sans;' textLength='5.00px' lengthAdjust='spacingAndGlyphs'>(</text>
 <text x='421.94' y='132.24' style='font-size: 12.00px; font-family: sans;' textLength='20.02px' lengthAdjust='spacingAndGlyphs'>1, 1</text>
 <text x='441.96' y='132.24' style='font-size: 15.00px; font-family: sans;' textLength='4.99px' lengthAdjust='spacingAndGlyphs'>)</text>
-<text x='200.45' y='185.07' style='font-size: 12.00px; font-family: sans;' textLength='7.78px' lengthAdjust='spacingAndGlyphs'>ω</text>
-<text x='208.23' y='187.61' style='font-size: 8.40px; font-family: sans;' textLength='41.56px' lengthAdjust='spacingAndGlyphs'>one-sided: </text>
-<text x='249.79' y='187.61' style='font-size: 8.40px; font-family: sans;' textLength='28.02px' lengthAdjust='spacingAndGlyphs'>.95, .05</text>
-<text x='277.82' y='185.07' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
-<text x='280.82' y='185.07' style='font-size: 12.00px; font-family: sans;' textLength='7.01px' lengthAdjust='spacingAndGlyphs'>~</text>
-<text x='287.83' y='185.07' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
-<text x='290.83' y='185.07' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='68.69px' lengthAdjust='spacingAndGlyphs'>CumDirichlet</text>
-<text x='360.69' y='185.07' style='font-size: 15.00px; font-family: sans;' textLength='5.00px' lengthAdjust='spacingAndGlyphs'>(</text>
-<text x='365.68' y='185.07' style='font-size: 12.00px; font-family: sans;' textLength='20.02px' lengthAdjust='spacingAndGlyphs'>1, 1</text>
-<text x='385.70' y='185.07' style='font-size: 15.00px; font-family: sans;' textLength='4.99px' lengthAdjust='spacingAndGlyphs'>)</text>
-<text x='390.68' y='185.07' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
-<text x='393.68' y='185.07' style='font-size: 12.00px; font-family: sans;' textLength='3.33px' lengthAdjust='spacingAndGlyphs'>,</text>
-<text x='397.02' y='185.07' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
-<text x='400.02' y='185.07' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
-<text x='403.02' y='185.07' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='85.36px' lengthAdjust='spacingAndGlyphs'>revCumDirichlet</text>
-<text x='489.55' y='185.07' style='font-size: 15.00px; font-family: sans;' textLength='5.00px' lengthAdjust='spacingAndGlyphs'>(</text>
-<text x='494.55' y='185.07' style='font-size: 12.00px; font-family: sans;' textLength='20.02px' lengthAdjust='spacingAndGlyphs'>1, 1</text>
-<text x='514.56' y='185.07' style='font-size: 15.00px; font-family: sans;' textLength='4.99px' lengthAdjust='spacingAndGlyphs'>)</text>
+<text x='249.52' y='185.07' style='font-size: 12.00px; font-family: sans;' textLength='7.78px' lengthAdjust='spacingAndGlyphs'>ω</text>
+<text x='257.30' y='187.61' style='font-size: 8.40px; font-family: sans;' textLength='41.56px' lengthAdjust='spacingAndGlyphs'>one-sided: </text>
+<text x='298.86' y='187.61' style='font-size: 8.40px; font-family: sans;' textLength='28.02px' lengthAdjust='spacingAndGlyphs'>.05, .95</text>
+<text x='326.88' y='185.07' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
+<text x='329.89' y='185.07' style='font-size: 12.00px; font-family: sans;' textLength='7.01px' lengthAdjust='spacingAndGlyphs'>~</text>
+<text x='336.90' y='185.07' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
+<text x='339.90' y='185.07' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='66.74px' lengthAdjust='spacingAndGlyphs'>Independent</text>
+<text x='407.80' y='185.07' style='font-size: 15.00px; font-family: sans;' textLength='5.00px' lengthAdjust='spacingAndGlyphs'>(</text>
+<text x='412.80' y='185.07' style='font-size: 12.00px; font-family: sans;' textLength='52.70px' lengthAdjust='spacingAndGlyphs'>Beta(1, 1)</text>
+<text x='465.49' y='185.07' style='font-size: 15.00px; font-family: sans;' textLength='4.99px' lengthAdjust='spacingAndGlyphs'>)</text>
 <text x='273.53' y='238.90' style='font-size: 12.00px; font-family: sans;' textLength='7.78px' lengthAdjust='spacingAndGlyphs'>ω</text>
 <text x='281.30' y='241.44' style='font-size: 8.40px; font-family: sans;' textLength='40.62px' lengthAdjust='spacingAndGlyphs'>two-sided: </text>
 <text x='321.93' y='241.44' style='font-size: 8.40px; font-family: sans;' textLength='11.68px' lengthAdjust='spacingAndGlyphs'>.05</text>
@@ -86,24 +78,16 @@
 <text x='395.42' y='345.57' style='font-size: 15.00px; font-family: sans;' textLength='5.00px' lengthAdjust='spacingAndGlyphs'>(</text>
 <text x='400.42' y='345.57' style='font-size: 12.00px; font-family: sans;' textLength='63.06px' lengthAdjust='spacingAndGlyphs'>alpha = 1, 1</text>
 <text x='463.48' y='345.57' style='font-size: 15.00px; font-family: sans;' textLength='4.99px' lengthAdjust='spacingAndGlyphs'>)</text>
-<text x='150.74' y='398.40' style='font-size: 12.00px; font-family: sans;' textLength='7.78px' lengthAdjust='spacingAndGlyphs'>ω</text>
-<text x='158.51' y='400.94' style='font-size: 8.40px; font-family: sans;' textLength='41.56px' lengthAdjust='spacingAndGlyphs'>one-sided: </text>
-<text x='200.08' y='400.94' style='font-size: 8.40px; font-family: sans;' textLength='28.02px' lengthAdjust='spacingAndGlyphs'>.95, .05</text>
-<text x='228.10' y='398.40' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
-<text x='231.10' y='398.40' style='font-size: 12.00px; font-family: sans;' textLength='7.01px' lengthAdjust='spacingAndGlyphs'>~</text>
-<text x='238.11' y='398.40' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
-<text x='241.12' y='398.40' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='68.69px' lengthAdjust='spacingAndGlyphs'>CumDirichlet</text>
-<text x='310.97' y='398.40' style='font-size: 15.00px; font-family: sans;' textLength='5.00px' lengthAdjust='spacingAndGlyphs'>(</text>
-<text x='315.96' y='398.40' style='font-size: 12.00px; font-family: sans;' textLength='69.73px' lengthAdjust='spacingAndGlyphs'>alpha1 = 1, 1</text>
-<text x='385.70' y='398.40' style='font-size: 15.00px; font-family: sans;' textLength='4.99px' lengthAdjust='spacingAndGlyphs'>)</text>
-<text x='390.68' y='398.40' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
-<text x='393.68' y='398.40' style='font-size: 12.00px; font-family: sans;' textLength='3.33px' lengthAdjust='spacingAndGlyphs'>,</text>
-<text x='397.02' y='398.40' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
-<text x='400.02' y='398.40' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
-<text x='403.02' y='398.40' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='85.36px' lengthAdjust='spacingAndGlyphs'>revCumDirichlet</text>
-<text x='489.55' y='398.40' style='font-size: 15.00px; font-family: sans;' textLength='5.00px' lengthAdjust='spacingAndGlyphs'>(</text>
-<text x='494.55' y='398.40' style='font-size: 12.00px; font-family: sans;' textLength='69.73px' lengthAdjust='spacingAndGlyphs'>alpha2 = 1, 1</text>
-<text x='564.28' y='398.40' style='font-size: 15.00px; font-family: sans;' textLength='4.99px' lengthAdjust='spacingAndGlyphs'>)</text>
+<text x='209.48' y='398.40' style='font-size: 12.00px; font-family: sans;' textLength='7.78px' lengthAdjust='spacingAndGlyphs'>ω</text>
+<text x='217.26' y='400.94' style='font-size: 8.40px; font-family: sans;' textLength='41.56px' lengthAdjust='spacingAndGlyphs'>one-sided: </text>
+<text x='258.82' y='400.94' style='font-size: 8.40px; font-family: sans;' textLength='28.02px' lengthAdjust='spacingAndGlyphs'>.05, .95</text>
+<text x='286.84' y='398.40' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
+<text x='289.85' y='398.40' style='font-size: 12.00px; font-family: sans;' textLength='7.01px' lengthAdjust='spacingAndGlyphs'>~</text>
+<text x='296.86' y='398.40' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
+<text x='299.86' y='398.40' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='66.74px' lengthAdjust='spacingAndGlyphs'>Independent</text>
+<text x='367.76' y='398.40' style='font-size: 15.00px; font-family: sans;' textLength='5.00px' lengthAdjust='spacingAndGlyphs'>(</text>
+<text x='372.76' y='398.40' style='font-size: 12.00px; font-family: sans;' textLength='132.78px' lengthAdjust='spacingAndGlyphs'>Beta(alpha = 1, beta = 1)</text>
+<text x='505.53' y='398.40' style='font-size: 15.00px; font-family: sans;' textLength='4.99px' lengthAdjust='spacingAndGlyphs'>)</text>
 <text x='252.01' y='452.24' style='font-size: 12.00px; font-family: sans;' textLength='7.78px' lengthAdjust='spacingAndGlyphs'>ω</text>
 <text x='259.78' y='454.77' style='font-size: 8.40px; font-family: sans;' textLength='40.62px' lengthAdjust='spacingAndGlyphs'>two-sided: </text>
 <text x='300.41' y='454.77' style='font-size: 8.40px; font-family: sans;' textLength='11.68px' lengthAdjust='spacingAndGlyphs'>.05</text>

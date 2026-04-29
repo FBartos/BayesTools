@@ -279,28 +279,23 @@ test_weightfunction <- function(prior, skip_moments = FALSE) {
   set.seed(1)
   densities <- density(prior, individual = TRUE)
 
-  if (!all(names(prior$parameters) %in% c("steps", "alpha1", "alpha2"))) {
-    quantiles <- mquant(prior, 0.5)
-  }
+  quantiles <- mquant(prior, 0.5)
 
   oldpar <- graphics::par(no.readonly = TRUE)
   on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
   par(mfcol = c(1, ncol(samples) - 1))
 
-  for (i in 1:(ncol(samples) - 1)) {
+  for (i in 2:ncol(samples)) {
     hist(samples[, i], main = print(prior, plot = TRUE), breaks = 50, freq = FALSE)
     lines(densities[[i]])
-    if (!all(names(prior$parameters) %in% c("steps", "alpha1", "alpha2"))) {
-      abline(v = quantiles[i], col = "blue", lwd = 2)
-    }
-    if (!grepl("fixed", prior$distribution) &&
-        !all(names(prior$parameters) %in% c("steps", "alpha1", "alpha2"))) {
+    abline(v = quantiles[i], col = "blue", lwd = 2)
+    if (prior$weights$type != "fixed") {
       expect_equal(.25, mcdf(prior, mquant(prior, 0.25)[, i])[, i], tolerance = 1e-5)
       expect_equal(.25, mccdf(prior, mquant(prior, 0.75)[, i])[, i], tolerance = 1e-5)
     }
     if (!skip_moments) {
-      expect_equal(apply(samples, 2, mean), mean(prior), tolerance = 1e-2)
-      expect_equal(apply(samples, 2, sd), sd(prior), tolerance = 1e-2)
+      expect_equal(unname(apply(samples, 2, mean)), unname(mean(prior)), tolerance = 1e-2)
+      expect_equal(unname(apply(samples, 2, sd)), unname(sd(prior)), tolerance = 1e-2)
     }
   }
   return(invisible())

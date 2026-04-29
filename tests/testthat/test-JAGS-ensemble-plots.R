@@ -331,7 +331,7 @@ test_that("prior plot functions (weightfunctions) work", {
   ### simple cases
   # continuous
   prior_list       <- list(
-    p1 = prior_weightfunction("one.sided", list(c(.05, 0.10), c(1, 1, 1)))
+    p1 = prior_weightfunction("one-sided", c(.05, 0.10), wf_cumulative(c(1, 1, 1)))
   )
 
   set.seed(1)
@@ -346,7 +346,7 @@ test_that("prior plot functions (weightfunctions) work", {
 
   # spike
   prior_list       <- list(
-    p1 = prior_weightfunction("one.sided.fixed", list(c(.05), c(1, .5)))
+    p1 = prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .5)))
   )
 
   set.seed(1)
@@ -362,8 +362,8 @@ test_that("prior plot functions (weightfunctions) work", {
 
   ### the prior joining should give the same prior
   prior_list       <- list(
-    p1 = prior_weightfunction("one.sided", list(c(.05, 0.10), c(1, 1, 1))),
-    p2 = prior_weightfunction("one.sided", list(c(.05, 0.10), c(1, 1, 1.0001)))
+    p1 = prior_weightfunction("one-sided", c(.05, 0.10), wf_cumulative(c(1, 1, 1))),
+    p2 = prior_weightfunction("one-sided", c(.05, 0.10), wf_cumulative(c(1, 1, 1.0001)))
   )
   set.seed(1)
   vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-5", function(){
@@ -378,9 +378,9 @@ test_that("prior plot functions (weightfunctions) work", {
 
   ### mixtures
   prior_list       <- list(
-    p1 = prior_weightfunction("one.sided", list(c(.025), c(1, 1))),
-    p2 = prior_weightfunction("two.sided", list(c(.05),  c(1, 1))),
-    p3 = prior_weightfunction("one.sided.fixed", list(c(.05), c(1, .5)), prior_weights = 10)
+    p1 = prior_weightfunction("one-sided", c(.025), wf_cumulative(c(1, 1))),
+    p2 = prior_weightfunction("two-sided", c(.05), wf_cumulative(c(1, 1))),
+    p3 = prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .5)), prior_weights = 10)
   )
   set.seed(1)
   vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-7", function(){
@@ -405,7 +405,7 @@ test_that("prior plot functions (weightfunctions) work", {
 
   ### dealing with other type of priors
   prior_list       <- list(
-    p1 = prior_weightfunction("one.sided", list(c(.5), c(1, 1))),
+    p1 = prior_weightfunction("one-sided", c(.5), wf_cumulative(c(1, 1))),
     p2 = prior_none(),
     p3 = prior_none()
   )
@@ -821,10 +821,10 @@ test_that("posterior plot functions (weightfunctions) work", {
 
   # Reconstruct priors
   priors_list0 <- list(
-    omega = prior_weightfunction("one.sided", list(c(.025), c(1, 1)))
+    omega = prior_weightfunction("one-sided", c(.025), wf_cumulative(c(1, 1)))
   )
   priors_list1 <- list(
-    omega = prior_weightfunction("two.sided", list(c(.05),  c(1, 1)))
+    omega = prior_weightfunction("two-sided", c(.05), wf_cumulative(c(1, 1)))
   )
 
   vdiffr::expect_doppelganger("model-averaging-plot-posterior-wf-1", function(){

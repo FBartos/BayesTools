@@ -58,16 +58,16 @@ test_that("Prior print function works", {
   expect_equal(utils::capture.output(print(p6)), "PEESE ~ Gamma(1, 1)")
 
   # check weightfunctions
-  p7  <- prior_weightfunction("one.sided", list(c(0.05), c(1, 1)))
-  p8  <- prior_weightfunction("one.sided", list(c(0.05, .95), c(1, 1), c(1, 1)))
-  p9  <- prior_weightfunction("two.sided", list(c(0.05), c(1, 1)))
-  p10 <- prior_weightfunction("one.sided.fixed", list(c(0.10), c(.7, 1)))
+  p7  <- prior_weightfunction("one-sided", c(0.05), wf_cumulative(c(1, 1)))
+  p8  <- prior_weightfunction("one-sided", c(0.05, .95), wf_independent(prior("beta", list(1, 1))))
+  p9  <- prior_weightfunction("two-sided", c(0.05), wf_cumulative(c(1, 1)))
+  p10 <- prior_weightfunction("one-sided", c(0.10), wf_fixed(c(1, .7)))
   expect_equal(utils::capture.output(print(p7)),  "omega[one-sided: .05] ~ CumDirichlet(1, 1)")
-  expect_equal(utils::capture.output(print(p8)),  "omega[one-sided: .95, .05] ~ CumDirichlet(1, 1), revCumDirichlet(1, 1)")
+  expect_equal(utils::capture.output(print(p8)),  "omega[one-sided: .05, .95] ~ Independent(Beta(1, 1))")
   expect_equal(utils::capture.output(print(p9)),  "omega[two-sided: .05] ~ CumDirichlet(1, 1)")
   expect_equal(utils::capture.output(print(p10)), "omega[one-sided: .1] = (1, 0.7)")
   expect_equal(utils::capture.output(print(p7,  parameter_names = TRUE)), "omega[one-sided: .05] ~ CumDirichlet(alpha = 1, 1)")
-  expect_equal(utils::capture.output(print(p8,  parameter_names = TRUE)), "omega[one-sided: .95, .05] ~ CumDirichlet(alpha1 = 1, 1), revCumDirichlet(alpha2 = 1, 1)")
+  expect_equal(utils::capture.output(print(p8,  parameter_names = TRUE)), "omega[one-sided: .05, .95] ~ Independent(Beta(alpha = 1, beta = 1))")
   expect_equal(utils::capture.output(print(p9,  parameter_names = TRUE)), "omega[two-sided: .05] ~ CumDirichlet(alpha = 1, 1)")
   expect_equal(utils::capture.output(print(p10, parameter_names = TRUE)), "omega[one-sided: .1] = (1, 0.7)")
 

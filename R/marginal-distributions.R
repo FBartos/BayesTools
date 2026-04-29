@@ -615,7 +615,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     temp_parameter    <- parameters[p]
     temp_priors       <- prior_list[[temp_parameter]]
 
-    if(any(sapply(temp_priors, is.prior.weightfunction)) && all(sapply(temp_priors, is.prior.weightfunction) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.prior.none) | sapply(temp_priors, is.null))){
+    if(any(sapply(temp_priors, is.prior.weightfunction)) && all(sapply(temp_priors, is.prior.weightfunction) | sapply(temp_priors, .is_prior_weightfunction_null) | sapply(temp_priors, is.null))){
       # weightfunctions:
 
       # replace missing priors with default prior: none
@@ -944,8 +944,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   check_char(parameter, "parameter")
   check_real(seed, "seed", allow_NULL = TRUE)
   check_int(n_samples, "n_samples")
-  if(!all(sapply(priors, is.prior.weightfunction) | sapply(priors, is.prior.point) | sapply(priors, is.prior.none)))
-    stop("'priors' must be a list of weightfunction priors distributions")
+  if(!all(sapply(priors, is.prior.weightfunction) | sapply(priors, .is_prior_weightfunction_null)))
+    stop("'priors' must be a list of weightfunction priors or point(1)/none null priors")
 
   # get prior model probabilities
   prior_probs <- sapply(priors, function(prior) prior[["prior_weights"]])
@@ -972,7 +972,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     # sample indexes
     temp_ind <- 1:ceiling(n_samples * prior_probs[i])
 
-    if(is.prior.none(priors[[i]])){
+    if(.is_prior_weightfunction_null(priors[[i]])){
       samples <- rbind(samples, matrix(1, ncol = length(omega_cuts) - 1, nrow = length(temp_ind)))
     }else{
       # create temp samples so names can be matched by mapping

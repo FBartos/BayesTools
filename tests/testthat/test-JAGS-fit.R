@@ -70,7 +70,7 @@ test_that("JAGS_add_priors handles various prior types", {
 
   # Test with weightfunction priors
   priors_wf <- list(
-    omega = prior_weightfunction("one.sided", list(c(0.05), c(1, 1)))
+    omega = prior_weightfunction("one-sided", c(0.05), wf_cumulative(c(1, 1)))
   )
 
   result_wf <- JAGS_add_priors(syntax_simple, priors_wf)
@@ -427,27 +427,24 @@ test_that("JAGS handles invgamma prior", {
 })
 
 
-test_that("JAGS handles weightfunction one.sided with alpha1/alpha2", {
+test_that("JAGS handles independent weightfunction priors", {
 
   skip_if_not_installed("rjags")
 
-  # One-sided with steps crossing 0.5 uses alpha1/alpha2 parametrization
-  priors_wf2 <- list(omega = prior_weightfunction("one.sided", list(c(0.05, 0.60), c(1, 1), c(1, 1))))
+  priors_wf2 <- list(omega = prior_weightfunction("one-sided", c(0.05, 0.60), wf_independent(prior("beta", list(1, 1)))))
 
   # Test syntax
   result <- JAGS_add_priors("model{}", priors_wf2)
-  expect_true(grepl("eta1", result))
-  expect_true(grepl("eta2", result))
+  expect_true(grepl("omega\\[2\\] ~ dbeta", result))
+  expect_true(grepl("omega\\[3\\] ~ dbeta", result))
 
   # Test inits
   inits <- JAGS_get_inits(priors_wf2, chains = 2, seed = 1)
-  expect_true("eta1" %in% names(inits[[1]]))
-  expect_true("eta2" %in% names(inits[[1]]))
+  expect_false("eta" %in% names(inits[[1]]))
 
   # Test monitor
   monitor <- JAGS_to_monitor(priors_wf2)
-  expect_true("eta1" %in% monitor)
-  expect_true("eta2" %in% monitor)
+  expect_true("omega" %in% monitor)
 
 })
 
@@ -456,7 +453,7 @@ test_that("JAGS handles weightfunction fixed prior", {
 
   skip_if_not_installed("rjags")
 
-  priors_wf_fixed <- list(omega = prior_weightfunction("one.sided.fixed", list(steps = c(0.05), omega = c(1, 0.5))))
+  priors_wf_fixed <- list(omega = prior_weightfunction("one-sided", c(0.05), wf_fixed(c(1, 0.5))))
 
   # Test syntax - fixed weightfunction has no eta parameters to sample
   result <- JAGS_add_priors("model{}", priors_wf_fixed)
@@ -523,7 +520,7 @@ test_that("JAGS handles bias mixture with weightfunction", {
 
   bias_mix_wf <- prior_mixture(list(
     prior_none(prior_weights = 1),
-    prior_weightfunction("one.sided", list(c(0.05), c(1, 1)), prior_weights = 1)
+    prior_weightfunction("one-sided", c(0.05), wf_cumulative(c(1, 1)), prior_weights = 1)
   ))
 
   priors_bias_wf <- list(bias = bias_mix_wf)

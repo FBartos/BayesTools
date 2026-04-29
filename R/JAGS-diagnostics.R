@@ -54,6 +54,8 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   check_char(parameter, "parameter", allow_values = c(names(prior_list), if(any(names(prior_list) == "bias")) c("PET", "PEESE", "omega")))
   if(!is.null(transformations))
     check_char(names(transformations), "names(transformations)", allow_values = parameter)
+  if(parameter == "omega" && !is.null(prior_list[["bias"]]) && !any(sapply(prior_list[["bias"]], is.prior.weightfunction)))
+    stop("'omega' diagnostics require at least one weightfunction component in the 'bias' prior.", call. = FALSE)
 
   # do not produce diagnostics for a spike prior
   if(is.prior.point(prior_list[[parameter]])){
@@ -250,7 +252,8 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
       model_samples <- model_samples[,parameter,drop = FALSE]
     }
   }else if(is.prior.weightfunction(prior_list[[parameter]])){
-    model_samples <- model_samples[,paste0("omega", "[", (length(weightfunctions_mapping(list(prior_list[[parameter]]), cuts_only = TRUE)) - 2):1, "]"),drop = FALSE]
+    omega_cuts <- weightfunctions_mapping(list(prior_list[[parameter]]), cuts_only = TRUE)
+    model_samples <- model_samples[,paste0("omega", "[", 2:(length(omega_cuts) - 1), "]"),drop = FALSE]
   }else if(parameter == "omega" && !is.null(prior_list[["bias"]])){
     model_samples <- model_samples[,paste0("omega", "[", 2:(length(weightfunctions_mapping(prior_list[["bias"]][sapply(prior_list[["bias"]], is.prior.weightfunction)], cuts_only = TRUE, one_sided = TRUE)) - 1), "]"),drop = FALSE]
   }else if(is.prior.vector(prior_list[[parameter]])){

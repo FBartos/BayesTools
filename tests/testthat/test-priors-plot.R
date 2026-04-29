@@ -124,10 +124,10 @@ test_that("Prior plot (weightfunction) function works", {
 
   set.seed(1)
   # check weightfunctions
-  p7  <- prior_weightfunction("one.sided", list(c(0.05), c(1, 1)))
-  p8  <- prior_weightfunction("one.sided", list(c(0.05, .95), c(1, 1), c(1, 1)))
-  p9  <- prior_weightfunction("two.sided", list(c(0.05), c(1, 1)))
-  p10 <- prior_weightfunction("one.sided.fixed", list(c(0.10), c(1, .7)))
+  p7  <- prior_weightfunction("one-sided", c(0.05), wf_cumulative(c(1, 1)))
+  p8  <- prior_weightfunction("one-sided", c(0.05, .95), wf_independent(prior("beta", list(1, 1))))
+  p9  <- prior_weightfunction("two-sided", c(0.05), wf_cumulative(c(1, 1)))
+  p10 <- prior_weightfunction("one-sided", c(0.10), wf_fixed(c(1, .7)))
 
   vdiffr::expect_doppelganger("priors-plot-8-1", function(){
     set.seed(1)

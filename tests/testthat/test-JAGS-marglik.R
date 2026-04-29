@@ -163,10 +163,10 @@ test_that("JAGS model functions work (weightfunctions)", {
 
   skip_if_not_installed("rjags")
   all_priors  <- list(
-    prior_weightfunction("one.sided", list(c(.05), c(1, 1))),
-    prior_weightfunction("one.sided", list(c(.05, 0.10), c(1, 2, 3))),
-    prior_weightfunction("one.sided", list(c(.05, 0.60), c(1, 1), c(1, 5))),
-    prior_weightfunction("two.sided", list(c(.05), c(1, 1)))
+    prior_weightfunction("one-sided", c(.05), wf_cumulative(c(1, 1))),
+    prior_weightfunction("one-sided", c(.05, 0.10), wf_cumulative(c(1, 2, 3))),
+    prior_weightfunction("one-sided", c(.05, 0.60), wf_independent(prior("beta", list(1, 1)))),
+    prior_weightfunction("two-sided", c(.05), wf_cumulative(c(1, 1)))
   )
   log_posterior <- STANDARD_LOG_POSTERIOR
 

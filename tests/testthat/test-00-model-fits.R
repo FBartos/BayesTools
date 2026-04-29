@@ -208,7 +208,7 @@ test_that("Summary tables models fit correctly", {
   # Model 2: Normal prior with one-sided weightfunction (2 intervals)
   priors_summary1 <- list(
     m  = prior("normal", list(0, .5)),
-    omega = prior_weightfunction("one.sided", list(c(0.05), c(1, 1)))
+    omega = prior_weightfunction("one-sided", c(0.05), wf_cumulative(c(1, 1)))
   )
 
   fit_summary1 <- JAGS_fit(model_syntax_summary, data_summary, priors_summary1,
@@ -228,7 +228,7 @@ test_that("Summary tables models fit correctly", {
   # Model 3: Normal prior with one-sided weightfunction (3 intervals)
   priors_summary2 <- list(
     m  = prior("normal", list(0, .3)),
-    omega = prior_weightfunction("one.sided", list(c(0.05, 0.50), c(1, 1, 1)))
+    omega = prior_weightfunction("one-sided", c(0.05, 0.50), wf_cumulative(c(1, 1, 1)))
   )
 
   fit_summary2 <- JAGS_fit(model_syntax_summary, data_summary, priors_summary2,
@@ -248,7 +248,7 @@ test_that("Summary tables models fit correctly", {
   # Model 4: Normal prior with fixed weightfunction
   priors_summary3 <- list(
     m  = prior("normal", list(0, .3)),
-    omega = prior_weightfunction("two.sided.fixed", list(0.20, c(.3, 1)))
+    omega = prior_weightfunction("two-sided", 0.20, wf_fixed(c(1, .3)))
   )
 
   fit_summary3 <- JAGS_fit(model_syntax_summary, data_summary, priors_summary3,
@@ -404,7 +404,7 @@ test_that("Weightfunction prior models fit correctly", {
 
   # One-sided weightfunction (2 intervals)
   priors_wf_onesided2 <- list(
-    prior_weightfunction("one.sided", list(c(.05), c(1, 1)))
+    prior_weightfunction("one-sided", c(.05), wf_cumulative(c(1, 1)))
   )
 
   model_syntax_wf1 <- "model{}"
@@ -419,7 +419,7 @@ test_that("Weightfunction prior models fit correctly", {
 
   # One-sided weightfunction (3 intervals)
   priors_wf_onesided3 <- list(
-    prior_weightfunction("one.sided", list(c(.05, 0.10), c(1, 2, 3)))
+    prior_weightfunction("one-sided", c(.05, 0.10), wf_cumulative(c(1, 2, 3)))
   )
 
   model_syntax_wf2 <- "model{}"
@@ -434,7 +434,7 @@ test_that("Weightfunction prior models fit correctly", {
 
   # Two-sided weightfunction
   priors_wf_twosided <- list(
-    prior_weightfunction("two.sided", list(c(.05), c(1, 1)))
+    prior_weightfunction("two-sided", c(.05), wf_cumulative(c(1, 1)))
   )
 
   model_syntax_wf3 <- "model{}"
@@ -449,7 +449,7 @@ test_that("Weightfunction prior models fit correctly", {
 
   # One-sided fixed weightfunction
   priors_wf_fixed <- list(
-    prior_weightfunction("one.sided.fixed", list(c(.05), c(1, .5)))
+    prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .5)))
   )
 
   model_syntax_wf4 <- "model{}"
@@ -1663,7 +1663,7 @@ test_that("Weightfunction models fit correctly", {
 
   # One-sided
   priors_wf_onesided <- list(
-    omega = prior_weightfunction("one.sided", list(c(.025), c(1, 1)))
+    omega = prior_weightfunction("one-sided", c(.025), wf_cumulative(c(1, 1)))
   )
   fit_wf_onesided <- suppressWarnings(JAGS_fit(model_syntax, data, priors_wf_onesided, chains = 1, adapt = 100, burnin = 150, sample = 2000, seed = 0))
   marglik_wf_onesided <- JAGS_bridgesampling(fit_wf_onesided, log_posterior = log_posterior, data = data, prior_list = priors_wf_onesided)
@@ -1672,7 +1672,7 @@ test_that("Weightfunction models fit correctly", {
 
   # Two-sided
   priors_wf_twosided <- list(
-    omega = prior_weightfunction("two.sided", list(c(.05),  c(1, 1)))
+    omega = prior_weightfunction("two-sided", c(.05), wf_cumulative(c(1, 1)))
   )
   fit_wf_twosided <- suppressWarnings(JAGS_fit(model_syntax, data, priors_wf_twosided, chains = 1, adapt = 100, burnin = 150, sample = 2000, seed = 1))
   marglik_wf_twosided <- JAGS_bridgesampling(fit_wf_twosided, log_posterior = log_posterior, data = data, prior_list = priors_wf_twosided)
@@ -1761,7 +1761,7 @@ test_that("Complex models for plotting fit correctly", {
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")
   skip_if_not_installed("RoBMA")
-  require("RoBMA")
+  requireNamespace("RoBMA", quietly = TRUE)
 
   set.seed(1)
 
@@ -1819,8 +1819,8 @@ test_that("Complex models for plotting fit correctly", {
     ),
     "bias"  = prior_mixture(list(
       prior_none(prior_weights = 1),
-      prior_weightfunction(distribution = "two.sided", parameters = list(alpha = c(1, 1), steps = c(0.05)), prior_weights = 1/3),
-      prior_weightfunction(distribution = "one.sided", parameters = list(alpha = c(1, 1, 1), steps = c(0.025, 0.05)), prior_weights = 1/3),
+      prior_weightfunction("two-sided", c(0.05), wf_cumulative(c(1, 1)), prior_weights = 1/3),
+      prior_weightfunction("one-sided", c(0.025, 0.05), wf_cumulative(c(1, 1, 1)), prior_weights = 1/3),
       prior_PET("normal", list(0, 1), prior_weights = 1/3)
     ), is_null = c(TRUE, FALSE, FALSE, FALSE))
   )
@@ -1894,7 +1894,7 @@ test_that("Complex models for plotting fit correctly", {
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")
   skip_if_not_installed("RoBMA")
-  require("RoBMA")
+  requireNamespace("RoBMA", quietly = TRUE)
 
   set.seed(1)
 
@@ -1902,8 +1902,8 @@ test_that("Complex models for plotting fit correctly", {
     "mu"    = prior("gamma", list(3, 3)),
     "bias"  = prior_mixture(list(
       prior_none(prior_weights = 1),
-      prior_weightfunction(distribution = "two.sided", parameters = list(alpha = c(1, 1), steps = c(0.05)), prior_weights = 1/3),
-      prior_weightfunction(distribution = "one.sided", parameters = list(alpha = c(1, 1, 1), steps = c(0.025, 0.05)), prior_weights = 1/3),
+      prior_weightfunction("two-sided", c(0.05), wf_cumulative(c(1, 1)), prior_weights = 1/3),
+      prior_weightfunction("one-sided", c(0.025, 0.05), wf_cumulative(c(1, 1, 1)), prior_weights = 1/3),
       prior_PET("normal", list(0, 1), prior_weights = 1/3),
       prior_PEESE("normal", list(0, 2), prior_weights = 1/3)
     ), is_null = c(TRUE, FALSE, FALSE, FALSE, FALSE))

@@ -484,27 +484,36 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
   if(!is.prior.weightfunction(prior))
     stop("improper prior provided")
 
+  J <- .weightfunction_n_bins(prior)
 
-  if(all(names(prior[["parameters"]]) %in% c("alpha", "steps"))){
+  if(prior$weights$type == "cumulative"){
 
-    parameter <- paste0("eta[",1:length(prior$parameters[["alpha"]]),"]")
+    parameter <- paste0("eta[", seq_len(J), "]")
     attr(parameter, "lb") <- rep(0,   length(parameter))
     attr(parameter, "ub") <- rep(Inf, length(parameter))
 
-  }else if(all(names(prior[["parameters"]]) %in% c("alpha1", "alpha2", "steps"))){
+  }else if(prior$weights$type == "independent" && prior$weights$scale == "omega"){
 
-    parameter <- c(paste0("eta1[",1:length(prior$parameters[["alpha1"]]),"]"), paste0("eta2[",1:length(prior$parameters[["alpha2"]]),"]"))
-    attr(parameter, "lb") <- rep(0,   length(parameter))
-    attr(parameter, "ub") <- rep(Inf, length(parameter))
+    parameter <- if(J > 1L) paste0("omega[", 2:J, "]") else NULL
+    attr(parameter, "lb") <- rep(prior$weights$prior$truncation[["lower"]], length(parameter))
+    attr(parameter, "ub") <- rep(prior$weights$prior$truncation[["upper"]], length(parameter))
 
-  }else if(prior[["distribution"]] %in% c("one.sided.fixed", "two.sided.fixed")){
+  }else if(prior$weights$type == "independent" && prior$weights$scale == "log_omega"){
+
+    parameter <- if(J > 1L) paste0("log_omega[", 2:J, "]") else NULL
+    attr(parameter, "lb") <- rep(prior$weights$prior$truncation[["lower"]], length(parameter))
+    attr(parameter, "ub") <- rep(prior$weights$prior$truncation[["upper"]], length(parameter))
+
+  }else if(prior$weights$type == "fixed"){
 
     parameter <- NULL
 
   }
 
-  names(attr(parameter, "lb")) <- parameter
-  names(attr(parameter, "ub")) <- parameter
+  if(!is.null(parameter)){
+    names(attr(parameter, "lb")) <- parameter
+    names(attr(parameter, "ub")) <- parameter
+  }
 
   return(parameter)
 }
@@ -693,19 +702,25 @@ JAGS_marglik_priors                <- function(samples, prior_list){
   if(!is.prior.weightfunction(prior))
     stop("improper prior provided")
 
-  if(prior[["distribution"]] %in% c("one.sided.fixed", "two.sided.fixed")){
+  J <- .weightfunction_n_bins(prior)
+
+  if(prior$weights$type == "fixed"){
 
     marglik <- 0
 
-  }else if(all(names(prior[["parameters"]]) %in% c("alpha", "steps"))){
+  }else if(prior$weights$type == "cumulative"){
 
-    marglik <- sum(stats::dgamma(samples[ paste0("eta[",1:length(prior$parameters[["alpha"]]),"]") ], shape = prior$parameters[["alpha"]], rate = 1, log = TRUE))
+    marglik <- sum(stats::dgamma(samples[paste0("eta[", seq_len(J), "]")], shape = prior$weights$alpha, rate = 1, log = TRUE))
 
-  }else if(all(names(prior[["parameters"]]) %in% c("alpha1", "alpha2", "steps"))){
+  }else if(prior$weights$type == "independent"){
 
-    marglik <-
-      sum(stats::dgamma(samples[ paste0("eta1[",1:length(prior$parameters[["alpha1"]]),"]") ], shape = prior$parameters[["alpha1"]], rate = 1, log = TRUE)) +
-      sum(stats::dgamma(samples[ paste0("eta2[",1:length(prior$parameters[["alpha2"]]),"]") ], shape = prior$parameters[["alpha2"]], rate = 1, log = TRUE))
+    if(J == 1L){
+      marglik <- 0
+    }else if(prior$weights$scale == "omega"){
+      marglik <- sum(mlpdf(prior$weights$prior, samples[paste0("omega[", 2:J, "]")]))
+    }else if(prior$weights$scale == "log_omega"){
+      marglik <- sum(mlpdf(prior$weights$prior, samples[paste0("log_omega[", 2:J, "]")]))
+    }
 
   }
 
@@ -900,30 +915,30 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
   if(!is.prior.weightfunction(prior))
     stop("improper prior provided")
 
-
   parameter <- list()
-  if(all(names(prior[["parameters"]]) %in% c("alpha", "steps"))){
+  J <- .weightfunction_n_bins(prior)
 
-    eta     <- samples[ paste0("eta[",1:length(prior$parameters[["alpha"]]),"]") ]
+  if(prior$weights$type == "cumulative"){
+
+    eta     <- samples[paste0("eta[", seq_len(J), "]")]
     std_eta <- eta / sum(eta)
-    parameter[["omega"]] <- cumsum(std_eta)
+    parameter[["omega"]] <- unname(rev(cumsum(rev(std_eta))))
 
-  }else if(all(names(prior[["parameters"]]) %in% c("alpha1", "alpha2", "steps"))){
+  }else if(prior$weights$type == "independent"){
 
-    J1 <- length(prior$parameters[["alpha1"]])
-    J2 <- length(prior$parameters[["alpha2"]])
-    omega    <- rep(NA, J1 + J2 - 1)
-    eta1     <- samples[ paste0("eta1[",1:J1,"]") ]
-    std_eta1 <- eta1 / sum(eta1)
-    omega[J2:length(omega)] <- cumsum(std_eta1)
-    eta2     <- samples[ paste0("eta2[",1:J2,"]") ]
-    std_eta2 <- (eta2 / sum(eta2)) * (1 - std_eta1[1])
-    omega[1:(J2-1)] <- rev(cumsum(std_eta2[J2:2])) + std_eta1[1]
-    parameter[["omega"]] <- omega
+    omega <- rep(1, J)
+    if(J > 1L){
+      if(prior$weights$scale == "omega"){
+        omega[2:J] <- samples[paste0("omega[", 2:J, "]")]
+      }else if(prior$weights$scale == "log_omega"){
+        omega[2:J] <- exp(samples[paste0("log_omega[", 2:J, "]")])
+      }
+    }
+    parameter[["omega"]] <- unname(omega)
 
-  }else if(prior[["distribution"]] %in% c("one.sided.fixed", "two.sided.fixed")){
+  }else if(prior$weights$type == "fixed"){
 
-    parameter[["omega"]] <- prior$parameters[["omega"]]
+    parameter[["omega"]] <- unname(prior$weights$omega)
 
   }
 
