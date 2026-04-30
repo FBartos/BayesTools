@@ -9,6 +9,8 @@
 # TAGS: @priors, @jags, @weightfunctions
 # ============================================================================ #
 
+source(testthat::test_path("common-functions.R"))
+
 test_that("prior_weightfunction stores canonical geometry and weight priors", {
 
   wf <- prior_weightfunction(
@@ -189,6 +191,7 @@ test_that("heterogeneous bias mixtures map cumulative, omega, log-omega, fixed, 
 test_that("JAGS syntax and fitting allow independent omega weights above one", {
 
   skip_if_not_installed("rjags")
+  skip_if_missing_fits(c("fit_wf_independent_gamma", "fit_wf_independent_log"))
 
   omega_prior <- prior_weightfunction(
     "one-sided", c(.05),
@@ -206,26 +209,8 @@ test_that("JAGS syntax and fitting allow independent omega weights above one", {
   expect_match(log_syntax, "log_omega\\[2\\] ~ dnorm")
   expect_match(log_syntax, "omega\\[2\\] <- exp\\(log_omega\\[2\\]\\)")
 
-  omega_fit <- suppressWarnings(JAGS_fit(
-    "model{}",
-    data       = NULL,
-    prior_list = list(omega = omega_prior),
-    chains     = 1,
-    adapt      = 50,
-    burnin     = 50,
-    sample     = 300,
-    seed       = 11
-  ))
-  log_fit <- suppressWarnings(JAGS_fit(
-    "model{}",
-    data       = NULL,
-    prior_list = list(omega = log_prior),
-    chains     = 1,
-    adapt      = 50,
-    burnin     = 50,
-    sample     = 300,
-    seed       = 12
-  ))
+  omega_fit <- readRDS(file.path(temp_fits_dir, "fit_wf_independent_gamma.RDS"))
+  log_fit   <- readRDS(file.path(temp_fits_dir, "fit_wf_independent_log.RDS"))
 
   omega_samples <- as.matrix(.fit_to_posterior(omega_fit))
   log_samples   <- as.matrix(.fit_to_posterior(log_fit))
@@ -245,25 +230,9 @@ test_that("JAGS syntax and fitting allow independent omega weights above one", {
 test_that("JAGS fits heterogeneous bias mixtures with omega and log-omega weights above one", {
 
   skip_if_not_installed("rjags")
+  skip_if_missing_fits("fit_bias_heterogeneous_wf")
 
-  bias <- prior_mixture(list(
-    prior_none(prior_weights = 1),
-    prior_weightfunction("one-sided", c(.025, .05), wf_cumulative(c(1, 2, 3)), prior_weights = 1),
-    prior_weightfunction("one-sided", c(.05, .10), wf_independent(prior("gamma", list(shape = 9, rate = 3))), prior_weights = 1),
-    prior_weightfunction("one-sided", c(.025), wf_independent(prior("normal", list(mean = log(1.5), sd = .15)), "log_omega"), prior_weights = 1),
-    prior_weightfunction("two-sided", c(.05), wf_fixed(c(1, .4)), prior_weights = 1)
-  ))
-
-  fit <- suppressWarnings(JAGS_fit(
-    "model{}",
-    data       = NULL,
-    prior_list = list(bias = bias),
-    chains     = 1,
-    adapt      = 50,
-    burnin     = 50,
-    sample     = 1000,
-    seed       = 14
-  ))
+  fit <- readRDS(file.path(temp_fits_dir, "fit_bias_heterogeneous_wf.RDS"))
 
   posterior <- as.matrix(.fit_to_posterior(fit))
   expect_true(all(c("bias_indicator", paste0("omega[", 1:5, "]")) %in% colnames(posterior)))
@@ -287,6 +256,7 @@ test_that("JAGS fits heterogeneous bias mixtures with omega and log-omega weight
 test_that("JAGS fits full bias mixtures with PET, PEESE, and heterogeneous weightfunctions", {
 
   skip_if_not_installed("rjags")
+  skip_if_missing_fits("fit_bias_petpeese_heterogeneous_wf")
 
   bias <- prior_mixture(list(
     prior_none(prior_weights = 1),
@@ -311,16 +281,7 @@ test_that("JAGS fits full bias mixtures with PET, PEESE, and heterogeneous weigh
   expect_match(syntax, "omega_component_5\\[3\\] <- 1")
   expect_match(syntax, "omega\\[3\\] <- omega_component_1\\[3\\] \\* equals\\(bias_indicator, 1\\) \\+ omega_component_2\\[3\\] \\* equals\\(bias_indicator, 2\\)")
 
-  fit <- suppressWarnings(JAGS_fit(
-    "model{}",
-    data       = NULL,
-    prior_list = list(bias = bias),
-    chains     = 1,
-    adapt      = 50,
-    burnin     = 50,
-    sample     = 1200,
-    seed       = 15
-  ))
+  fit <- readRDS(file.path(temp_fits_dir, "fit_bias_petpeese_heterogeneous_wf.RDS"))
 
   posterior <- as.matrix(.fit_to_posterior(fit))
   indicator <- posterior[, "bias_indicator"]

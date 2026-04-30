@@ -609,7 +609,9 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 }
 .weightfunction_prior_list_context <- function(prior_list){
 
+  prior_list <- .weightfunction_expand_bias_mixture_priors(prior_list)
   prior_list <- .simplify_prior_list(prior_list)
+  prior_list <- .weightfunction_expand_bias_mixture_priors(prior_list)
 
   prior_weights <- sapply(prior_list, function(p)p$prior_weights)
   keep          <- is.finite(prior_weights) & prior_weights > 0
@@ -623,7 +625,12 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   # Non-weightfunction bias components imply no selection adjustment and
   # therefore correspond to publication weights fixed at one.
   for(i in seq_along(prior_list)){
-    if(!(is.prior.weightfunction(prior_list[[i]]) | is.prior.none(prior_list[[i]]))){
+    if(.weightfunction_prior_has_selection(prior_list[[i]])){
+      selection_priors <- .selection_prior_selection_priors(prior_list[[i]])
+      selection_prior  <- selection_priors[[1L]]
+      selection_prior$prior_weights <- prior_weights[i]
+      prior_list[[i]] <- selection_prior
+    }else if(!(is.prior.weightfunction(prior_list[[i]]) | is.prior.none(prior_list[[i]]))){
       prior_list[[i]] <- prior_none(prior_weights = prior_weights[i])
     }
   }
@@ -641,6 +648,37 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     omega_cuts    = omega_cuts,
     omega_names   = omega_names
   )
+}
+.weightfunction_expand_bias_mixture_priors <- function(prior_list){
+
+  if(is.prior.mixture(prior_list)){
+    class(prior_list) <- NULL
+    return(prior_list)
+  }
+  if(is.prior(prior_list)){
+    return(list(prior_list))
+  }
+
+  expanded <- list()
+  for(i in seq_along(prior_list)){
+    if(inherits(prior_list[[i]], "prior.bias_mixture")){
+      prior_mixture_components <- prior_list[[i]]
+      class(prior_mixture_components) <- NULL
+      expanded <- c(expanded, prior_mixture_components)
+    }else{
+      expanded[[length(expanded) + 1L]] <- prior_list[[i]]
+    }
+  }
+
+  expanded
+}
+.weightfunction_prior_has_selection <- function(prior){
+
+  if(is.prior.weightfunction(prior) || is_prior_bias(prior) || inherits(prior, "prior.bias_mixture")){
+    return(.selection_prior_has_selection(prior))
+  }
+
+  FALSE
 }
 .weightfunction_prior_marginal_components <- function(context, parameter_ind){
 
@@ -2906,9 +2944,13 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     x_seq   <- seq(x_range[1], x_range[2], length.out = n_points)
   }
 
-  # merge the samples
-  omega_mapping <- weightfunctions_mapping(prior_list[sapply(prior_list, is.prior.weightfunction)])
-  omega_cuts    <- weightfunctions_mapping(prior_list[sapply(prior_list, is.prior.weightfunction)], cuts_only = TRUE)
+  context    <- .weightfunction_prior_list_context(prior_list)
+  omega_cuts <- context$omega_cuts
+
+  omega_columns <- grepl("^omega\\[", colnames(samples))
+  if(any(omega_columns)){
+    samples <- samples[, omega_columns, drop = FALSE]
+  }
 
   x_lCI  <- apply(samples, 2, stats::quantile, probs = .025)
   x_uCI  <- apply(samples, 2, stats::quantile, probs = .975)
@@ -3659,12 +3701,14 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
 
   ### replace all remaining priors by null prior
   prior_list <- attr(samples[["bias"]], "prior_list")
+  prior_list <- .weightfunction_expand_bias_mixture_priors(prior_list)
+
   if (parameter == "PET") {
     prior_ind <- which(sapply(prior_list, \(x) !is.prior.PET(x)))
   } else if (parameter == "PEESE") {
     prior_ind <- which(sapply(prior_list, \(x) !is.prior.PEESE(x)))
   } else if (parameter == "omega") {
-    prior_ind <- which(sapply(prior_list, \(x) !is.prior.weightfunction(x)))
+    prior_ind <- which(sapply(prior_list, \(x) !.weightfunction_prior_has_selection(x)))
   }
   if (length(prior_ind) > 0) {
     for (i in prior_ind) {

@@ -31,15 +31,19 @@
 <text x='80.00' y='544.32' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='6.67px' lengthAdjust='spacingAndGlyphs'>0</text>
 <text x='108.00' y='544.32' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='23.36px' lengthAdjust='spacingAndGlyphs'>0.05</text>
 <text x='626.00' y='544.32' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='30.03px' lengthAdjust='spacingAndGlyphs'>0.975</text>
-<line x1='57.60' y1='499.73' x2='57.60' y2='23.20' style='stroke-width: 0.75;' />
+<line x1='57.60' y1='499.73' x2='57.60' y2='33.07' style='stroke-width: 0.75;' />
 <line x1='57.60' y1='499.73' x2='50.40' y2='499.73' style='stroke-width: 0.75;' />
-<line x1='57.60' y1='340.89' x2='50.40' y2='340.89' style='stroke-width: 0.75;' />
-<line x1='57.60' y1='182.05' x2='50.40' y2='182.05' style='stroke-width: 0.75;' />
-<line x1='57.60' y1='23.20' x2='50.40' y2='23.20' style='stroke-width: 0.75;' />
+<line x1='57.60' y1='406.40' x2='50.40' y2='406.40' style='stroke-width: 0.75;' />
+<line x1='57.60' y1='313.07' x2='50.40' y2='313.07' style='stroke-width: 0.75;' />
+<line x1='57.60' y1='219.73' x2='50.40' y2='219.73' style='stroke-width: 0.75;' />
+<line x1='57.60' y1='126.40' x2='50.40' y2='126.40' style='stroke-width: 0.75;' />
+<line x1='57.60' y1='33.07' x2='50.40' y2='33.07' style='stroke-width: 0.75;' />
 <text x='43.20' y='503.86' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>0.0</text>
-<text x='43.20' y='345.02' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>0.5</text>
-<text x='43.20' y='186.18' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>1.0</text>
-<text x='43.20' y='27.33' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>1.5</text>
+<text x='43.20' y='410.53' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>0.2</text>
+<text x='43.20' y='317.20' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>0.4</text>
+<text x='43.20' y='223.86' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>0.6</text>
+<text x='43.20' y='130.53' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>0.8</text>
+<text x='43.20' y='37.20' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>1.0</text>
 </g>
 <defs>
   <clipPath id='cpNTcuNjB8NjYyLjQwfDE0LjQwfDUxOC40MA=='>
@@ -47,9 +51,9 @@
   </clipPath>
 </defs>
 <g clip-path='url(#cpNTcuNjB8NjYyLjQwfDE0LjQwfDUxOC40MA==)'>
-<polygon points='80.00,182.05 94.00,182.05 94.00,457.65 108.00,457.65 108.00,483.58 626.00,483.58 626.00,474.94 640.00,474.94 640.00,182.05 626.00,182.05 626.00,182.05 108.00,182.05 108.00,182.05 94.00,182.05 94.00,182.05 80.00,182.05 ' style='stroke-width: 0.75; stroke: none; fill: #FF0000; fill-opacity: 0.50;' />
-<polyline points='80.00,182.05 94.00,182.05 94.00,226.17 108.00,226.17 108.00,243.82 626.00,243.82 626.00,217.35 640.00,217.35 ' style='stroke-width: 0.75; stroke: #FF0000;' />
-<polygon points='80.00,182.05 94.00,182.05 94.00,458.53 108.00,458.53 108.00,475.63 626.00,475.63 626.00,472.29 640.00,472.29 640.00,182.05 626.00,182.05 626.00,182.05 108.00,182.05 108.00,182.05 94.00,182.05 94.00,182.05 80.00,182.05 ' style='stroke-width: 0.75; stroke: none; fill: #BEBEBE; fill-opacity: 0.20;' />
-<polyline points='80.00,182.05 94.00,182.05 94.00,224.28 108.00,224.28 108.00,241.97 626.00,241.97 626.00,215.94 640.00,215.94 ' style='stroke-width: 0.75;' />
+<polygon points='80.00,33.07 94.00,33.07 94.00,437.92 108.00,437.92 108.00,476.00 626.00,476.00 626.00,463.31 640.00,463.31 640.00,33.07 626.00,33.07 626.00,33.07 108.00,33.07 108.00,33.07 94.00,33.07 94.00,33.07 80.00,33.07 ' style='stroke-width: 0.75; stroke: none; fill: #FF0000; fill-opacity: 0.50;' />
+<polyline points='80.00,33.07 94.00,33.07 94.00,97.88 108.00,97.88 108.00,123.81 626.00,123.81 626.00,84.92 640.00,84.92 ' style='stroke-width: 0.75; stroke: #FF0000;' />
+<polygon points='80.00,33.07 94.00,33.07 94.00,437.89 108.00,437.89 108.00,479.96 626.00,479.96 626.00,468.43 640.00,468.43 640.00,33.07 626.00,33.07 626.00,33.07 108.00,33.07 108.00,33.07 94.00,33.07 94.00,33.07 80.00,33.07 ' style='stroke-width: 0.75; stroke: none; fill: #BEBEBE; fill-opacity: 0.20;' />
+<polyline points='80.00,33.07 94.00,33.07 94.00,103.88 108.00,103.88 108.00,133.42 626.00,133.42 626.00,93.52 640.00,93.52 ' style='stroke-width: 0.75;' />
 </g>
 </svg>

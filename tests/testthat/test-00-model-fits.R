@@ -31,7 +31,16 @@ skip_if_not_installed("rjags")
 
 # Load common test helpers
 source(testthat::test_path("common-functions.R"))
-skip_refit_if_cached("model-fit")
+skip_refit_if_cached(
+  "model-fit",
+  required_fits = c(
+    "fit_wf_independent_gamma",
+    "fit_wf_independent_log",
+    "fit_bias_heterogeneous_wf",
+    "fit_bias_petpeese_heterogeneous_wf",
+    "fit_selection_kernel_summary"
+  )
+)
 
 # Initialize model registry to track metadata about each fitted model
 model_registry <- list()
@@ -461,6 +470,135 @@ test_that("Weightfunction prior models fit correctly", {
                      note = "One-sided fixed weightfunction (weights: 1, .5)")
   model_registry[["fit_weightfunction_fixed"]] <<- result$registry_entry
   fit_weightfunction_fixed <- result$fit
+})
+
+
+# ============================================================================ #
+# SECTION 4B: WEIGHTFUNCTION REDESIGN AND SELECTION KERNELS
+# ============================================================================ #
+test_that("Weightfunction redesign and selection-kernel models fit correctly", {
+
+  skip_if_not_installed("rjags")
+
+  # Independent gamma weightfunction
+  omega_prior <- prior_weightfunction(
+    "one-sided", c(.05),
+    wf_independent(prior("gamma", list(shape = 9, rate = 3)))
+  )
+  fit_wf_independent_gamma <- suppressWarnings(JAGS_fit(
+    "model{}",
+    data       = NULL,
+    prior_list = list(omega = omega_prior),
+    chains     = 1,
+    adapt      = 50,
+    burnin     = 50,
+    sample     = 300,
+    seed       = 11
+  ))
+  result <- save_fit(fit_wf_independent_gamma, "fit_wf_independent_gamma",
+                     weightfunction_priors = TRUE,
+                     note = "Independent gamma weightfunction for redesigned API tests")
+  model_registry[["fit_wf_independent_gamma"]] <<- result$registry_entry
+  fit_wf_independent_gamma <- result$fit
+
+  # Independent log-omega weightfunction
+  log_prior <- prior_weightfunction(
+    "one-sided", c(.05),
+    wf_independent(prior("normal", list(mean = log(1.5), sd = .15)), "log_omega")
+  )
+  fit_wf_independent_log <- suppressWarnings(JAGS_fit(
+    "model{}",
+    data       = NULL,
+    prior_list = list(omega = log_prior),
+    chains     = 1,
+    adapt      = 50,
+    burnin     = 50,
+    sample     = 300,
+    seed       = 12
+  ))
+  result <- save_fit(fit_wf_independent_log, "fit_wf_independent_log",
+                     weightfunction_priors = TRUE,
+                     note = "Independent log-omega weightfunction for redesigned API tests")
+  model_registry[["fit_wf_independent_log"]] <<- result$registry_entry
+  fit_wf_independent_log <- result$fit
+
+  # Heterogeneous bias mixture with cumulative, omega, log-omega, fixed, and null components
+  bias_heterogeneous_wf <- prior_mixture(list(
+    prior_none(prior_weights = 1),
+    prior_weightfunction("one-sided", c(.025, .05), wf_cumulative(c(1, 2, 3)), prior_weights = 1),
+    prior_weightfunction("one-sided", c(.05, .10), wf_independent(prior("gamma", list(shape = 9, rate = 3))), prior_weights = 1),
+    prior_weightfunction("one-sided", c(.025), wf_independent(prior("normal", list(mean = log(1.5), sd = .15)), "log_omega"), prior_weights = 1),
+    prior_weightfunction("two-sided", c(.05), wf_fixed(c(1, .4)), prior_weights = 1)
+  ))
+  fit_bias_heterogeneous_wf <- suppressWarnings(JAGS_fit(
+    "model{}",
+    data       = NULL,
+    prior_list = list(bias = bias_heterogeneous_wf),
+    chains     = 1,
+    adapt      = 50,
+    burnin     = 50,
+    sample     = 1000,
+    seed       = 14
+  ))
+  result <- save_fit(fit_bias_heterogeneous_wf, "fit_bias_heterogeneous_wf",
+                     pub_bias_priors = TRUE, weightfunction_priors = TRUE,
+                     mixture_priors = TRUE,
+                     note = "Heterogeneous bias mixture with cumulative, omega, log-omega, fixed, and null components")
+  model_registry[["fit_bias_heterogeneous_wf"]] <<- result$registry_entry
+  fit_bias_heterogeneous_wf <- result$fit
+
+  # Full bias mixture with PET, PEESE, and heterogeneous weightfunctions
+  bias_petpeese_heterogeneous_wf <- prior_mixture(list(
+    prior_none(prior_weights = 1),
+    prior_PET("normal", list(0, .4), prior_weights = 1),
+    prior_weightfunction("one-sided", c(.025, .05), wf_cumulative(c(1, 2, 3)), prior_weights = 1),
+    prior_weightfunction("one-sided", c(.05, .10), wf_independent(prior("gamma", list(shape = 9, rate = 3))), prior_weights = 1),
+    prior_PEESE("gamma", list(shape = 3, rate = 2), prior_weights = 1),
+    prior_weightfunction("one-sided", c(.025), wf_independent(prior("normal", list(mean = log(1.5), sd = .15)), "log_omega"), prior_weights = 1),
+    prior_weightfunction("two-sided", c(.05), wf_fixed(c(1, .4)), prior_weights = 1)
+  ))
+  fit_bias_petpeese_heterogeneous_wf <- suppressWarnings(JAGS_fit(
+    "model{}",
+    data       = NULL,
+    prior_list = list(bias = bias_petpeese_heterogeneous_wf),
+    chains     = 1,
+    adapt      = 50,
+    burnin     = 50,
+    sample     = 1200,
+    seed       = 15
+  ))
+  result <- save_fit(fit_bias_petpeese_heterogeneous_wf, "fit_bias_petpeese_heterogeneous_wf",
+                     pub_bias_priors = TRUE, weightfunction_priors = TRUE,
+                     mixture_priors = TRUE,
+                     note = "Full bias mixture with PET, PEESE, and heterogeneous weightfunctions")
+  model_registry[["fit_bias_petpeese_heterogeneous_wf"]] <<- result$registry_entry
+  fit_bias_petpeese_heterogeneous_wf <- result$fit
+
+  # Ordinary mixture plus selection-kernel bias mixture for summary table tests
+  selection <- prior_weightfunction("one-sided", c(.025), wf_fixed(c(1, .5)))
+  phacking  <- prior_phacking(form = "linear")
+  bias_selection_kernel <- prior_mixture(list(prior_none(), phacking, prior_bias(selection, phacking)))
+  mu_prior  <- prior_mixture(list(
+    prior("point", list(0)),
+    prior("normal", list(0, 1))
+  ))
+  fit_selection_kernel_summary <- suppressWarnings(JAGS_fit(
+    "model{ y ~ dnorm(mu, 1) }",
+    data       = list(y = 0),
+    prior_list = list(mu = mu_prior, bias = bias_selection_kernel),
+    chains     = 1,
+    adapt      = 50,
+    burnin     = 50,
+    sample     = 100,
+    seed       = 16,
+    silent     = TRUE
+  ))
+  result <- save_fit(fit_selection_kernel_summary, "fit_selection_kernel_summary",
+                     simple_priors = TRUE, pub_bias_priors = TRUE,
+                     mixture_priors = TRUE, weightfunction_priors = TRUE,
+                     note = "Summary table fixture with ordinary mixture and selection-kernel bias mixture")
+  model_registry[["fit_selection_kernel_summary"]] <<- result$registry_entry
+  fit_selection_kernel_summary <- result$fit
 })
 
 

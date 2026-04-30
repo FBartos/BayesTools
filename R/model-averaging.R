@@ -728,7 +728,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   if(!inherits(model, "BayesTools_fit"))
     stop("'model' must be a 'BayesTools_fit'")
   check_char(parameters, "parameters", check_length = FALSE)
-  check_char(conditional, "conditional", check_length = FALSE, allow_values = c(parameters, "PET", "PEESE", "PETPEESE", "omega"), allow_NULL = TRUE)
+  check_char(conditional, "conditional", check_length = FALSE, allow_values = c(parameters, "PET", "PEESE", "PETPEESE", "omega", "phacking", "alpha", "pi_null"), allow_NULL = TRUE)
   check_char(conditional_rule, "conditional_rule", allow_values = c("AND", "OR"))
   check_bool(transform_scaled, "transform_scaled")
   check_int(n_prior_samples, "n_prior_samples", lower = 1)
@@ -751,8 +751,9 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     # subset the posterior distribution
     conditioning_samples <- do.call(cbind, lapply(conditional, function(parameter){
 
-      # special cases for PET / PEESE / PET-PEESE / weightfunctions within the bias parameter
+      # special cases for PET / PEESE / PET-PEESE / selection / p-hacking within the bias parameter
       if (!is.null(priors[["bias"]]) && is.prior.mixture(priors[["bias"]])) {
+        bias_branch_info <- .selection_prior_branch_info(priors[["bias"]])
         if(parameter == "PET"){
           is_PET <- sapply(priors[["bias"]], is.prior.PET)
           return(model_samples[, "bias_indicator"] %in% which(is_PET))
@@ -767,9 +768,25 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
           return(model_samples[, "bias_indicator"] %in% which(is_PET | is_PEESE))
         }
         if(parameter == "omega"){
-          is_weightfunction <- sapply(priors[["bias"]], is.prior.weightfunction)
-          return(model_samples[, "bias_indicator"] %in% which(is_weightfunction))
+          has_selection <- vapply(bias_branch_info, function(x) !is.null(x$selection), logical(1))
+          return(model_samples[, "bias_indicator"] %in% which(has_selection))
         }
+        if(parameter %in% c("phacking", "alpha", "pi_null")){
+          has_phacking <- vapply(bias_branch_info, function(x) !is.null(x$phacking), logical(1))
+          return(model_samples[, "bias_indicator"] %in% which(has_phacking))
+        }
+      }
+
+      if(parameter == "omega" && any(vapply(priors, function(x){
+        is.prior.weightfunction(x) || (is_prior_bias(x) && !is.null(x$selection))
+      }, logical(1)))){
+        return(rep(TRUE, nrow(model_samples)))
+      }
+
+      if(parameter %in% c("phacking", "alpha", "pi_null") && any(vapply(priors, function(x){
+        is_prior_phacking(x) || (is_prior_bias(x) && !is.null(x$phacking))
+      }, logical(1)))){
+        return(rep(TRUE, nrow(model_samples)))
       }
 
       # normal cases
@@ -807,9 +824,10 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     # set prior weights to 0 for null distributions
     if(length(conditional) == 1){
 
-      if (conditional %in% c("bias", "PET", "PEESE", "PETPEESE", "omega") && !is.null(priors[["bias"]]) && is.prior.mixture(priors[["bias"]])) {
+      if (conditional %in% c("bias", "PET", "PEESE", "PETPEESE", "omega", "phacking", "alpha", "pi_null") && !is.null(priors[["bias"]]) && is.prior.mixture(priors[["bias"]])) {
 
-        # special cases for PET / PEESE / PET-PEESE / weightfunctions
+        # special cases for PET / PEESE / PET-PEESE / selection / p-hacking
+        bias_branch_info <- .selection_prior_branch_info(priors[["bias"]])
         if(conditional == "bias"){
           components <- attr(priors[["bias"]], "components")
           if(is.null(components) || length(components) != length(priors[["bias"]])){
@@ -845,9 +863,16 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
             }
           }
         }else if(conditional == "omega"){
-          is_weightfunction <- sapply(priors[["bias"]], is.prior.weightfunction)
-          for(i in seq(along = is_weightfunction)){
-            if(!is_weightfunction[i]){
+          has_selection <- vapply(bias_branch_info, function(x) !is.null(x$selection), logical(1))
+          for(i in seq(along = has_selection)){
+            if(!has_selection[i]){
+              priors[["bias"]][[i]][["prior_weights"]] <- 0
+            }
+          }
+        }else if(conditional %in% c("phacking", "alpha", "pi_null")){
+          has_phacking <- vapply(bias_branch_info, function(x) !is.null(x$phacking), logical(1))
+          for(i in seq(along = has_phacking)){
+            if(!has_phacking[i]){
               priors[["bias"]][[i]][["prior_weights"]] <- 0
             }
           }
@@ -896,6 +921,14 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       # mixture priors
       out[[temp_parameter]] <- .as_mixed_posteriors.mixture(model_samples, temp_prior, temp_parameter, conditional)
 
+    }else if(is_prior_phacking(temp_prior)){
+      # p-hacking priors
+      out[[temp_parameter]] <- .as_mixed_posteriors.phacking(model_samples, temp_prior, temp_parameter)
+
+    }else if(is_prior_bias(temp_prior)){
+      # composed publication-bias priors
+      out[[temp_parameter]] <- .as_mixed_posteriors.bias(model_samples, temp_prior, temp_parameter, conditional)
+
     }else if(is.prior.weightfunction(temp_prior)){
       # weight functions
       out[[temp_parameter]] <- .as_mixed_posteriors.weightfunction(model_samples, temp_prior, temp_parameter)
@@ -939,7 +972,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
   prior_context_priors      <- prior_density_priors
   prior_context_conditional <- conditional
-  special_conditionals      <- c("PET", "PEESE", "PETPEESE", "omega")
+  special_conditionals      <- c("PET", "PEESE", "PETPEESE", "omega", "phacking", "alpha", "pi_null")
   if(length(conditional) == 1 &&
      conditional %in% special_conditionals &&
      !conditional %in% names(prior_density_priors)){
@@ -1150,6 +1183,94 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
   return(samples)
 }
+.as_mixed_posteriors.phacking      <- function(model_samples, prior, parameter){
+
+  # check input
+  check_char(parameter, "parameter", check_length = FALSE)
+
+  par_names <- intersect(c("alpha", "pi_null"), colnames(model_samples))
+  samples   <- model_samples[, par_names, drop = FALSE]
+
+  rownames(samples) <- NULL
+  attr(samples, "sample_ind") <- FALSE
+  attr(samples, "models_ind") <- rep(1, nrow(samples))
+  attr(samples, "parameter")  <- parameter
+  attr(samples, "prior_list") <- prior
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.phacking")
+
+  return(samples)
+}
+.as_mixed_posteriors.bias          <- function(model_samples, prior, parameter, conditional){
+
+  # check input
+  check_char(parameter, "parameter", check_length = FALSE)
+
+  branch_info   <- .selection_prior_branch_info(prior)
+  has_selection <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
+  has_phacking  <- vapply(branch_info, function(x) !is.null(x$phacking),  logical(1))
+
+  out_names <- NULL
+  par_names <- NULL
+
+  if(any(has_selection)){
+    selection_priors <- lapply(branch_info[has_selection], function(x) x$selection)
+    omega_cuts       <- weightfunctions_mapping(selection_priors, cuts_only = TRUE, one_sided = TRUE)
+    omega_names      <- sapply(1:(length(omega_cuts)-1), function(i) paste0("omega[", omega_cuts[i], ",", omega_cuts[i+1], "]"))
+    omega_par        <- sapply(1:(length(omega_cuts)-1), function(i) paste0("omega[", i, "]"))
+  }
+  phacking_par   <- c("alpha", "pi_null")
+  phacking_names <- phacking_par
+
+  if(length(conditional) > 0 && any(c("omega", "phacking", "alpha", "pi_null") %in% conditional)){
+    if("omega" %in% conditional && any(has_selection)){
+      out_names <- c(out_names, omega_names)
+      par_names <- c(par_names, omega_par)
+    }
+    if("phacking" %in% conditional && any(has_phacking)){
+      out_names <- c(out_names, phacking_names)
+      par_names <- c(par_names, phacking_par)
+    }
+    if("alpha" %in% conditional && any(has_phacking)){
+      out_names <- c(out_names, "alpha")
+      par_names <- c(par_names, "alpha")
+    }
+    if("pi_null" %in% conditional && any(has_phacking)){
+      out_names <- c(out_names, "pi_null")
+      par_names <- c(par_names, "pi_null")
+    }
+  }else{
+    if(any(has_selection)){
+      out_names <- c(out_names, omega_names)
+      par_names <- c(par_names, omega_par)
+    }
+    if(any(has_phacking)){
+      out_names <- c(out_names, phacking_names)
+      par_names <- c(par_names, phacking_par)
+    }
+  }
+
+  if(is.null(par_names)){
+    par_names <- character()
+    out_names <- character()
+  }
+  keep_unique <- !duplicated(par_names)
+  par_names <- par_names[keep_unique]
+  out_names <- out_names[keep_unique]
+  keep_par <- par_names %in% colnames(model_samples)
+  par_names <- par_names[keep_par]
+  out_names <- out_names[keep_par]
+  samples   <- model_samples[, par_names, drop = FALSE]
+
+  rownames(samples) <- NULL
+  colnames(samples) <- out_names
+  attr(samples, "sample_ind") <- FALSE
+  attr(samples, "models_ind") <- rep(1, nrow(samples))
+  attr(samples, "parameter")  <- parameter
+  attr(samples, "prior_list") <- prior
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.bias")
+
+  return(samples)
+}
 .as_mixed_posteriors.spike_and_slab <- function(model_samples, prior, parameter){
 
   # check input
@@ -1186,29 +1307,55 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
     is_PET            <- sapply(prior, is.prior.PET)
     is_PEESE          <- sapply(prior, is.prior.PEESE)
-    is_weightfunction <- sapply(prior, is.prior.weightfunction)
+    branch_info       <- .selection_prior_branch_info(prior)
+    has_selection     <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
+    has_phacking      <- vapply(branch_info, function(x) !is.null(x$phacking), logical(1))
 
     # prepare weightfunction parameter names
-    if(any(is_weightfunction)){
-      omega_mapping <- weightfunctions_mapping(prior[is_weightfunction], one_sided = TRUE)
-      omega_cuts    <- weightfunctions_mapping(prior[is_weightfunction], cuts_only = TRUE, one_sided = TRUE)
+    if(any(has_selection)){
+      selection_priors <- lapply(branch_info[has_selection], function(x) x$selection)
+      omega_mapping <- weightfunctions_mapping(selection_priors, one_sided = TRUE)
+      omega_cuts    <- weightfunctions_mapping(selection_priors, cuts_only = TRUE, one_sided = TRUE)
       omega_names   <- sapply(1:(length(omega_cuts)-1), function(i) paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
       omega_par     <- sapply(1:(length(omega_cuts)-1), function(i) paste0("omega[",i,"]"))
     }
+    phacking_par <- c("alpha", "pi_null")
+    phacking_names <- phacking_par
 
     # deal with conditional parameters
-    if(length(conditional) > 0 && any(c("PET", "PEESE", "PETPEESE", "omega") %in% conditional)){
+    if(length(conditional) > 0 && any(c("PET", "PEESE", "PETPEESE", "omega", "phacking", "alpha", "pi_null") %in% conditional)){
 
-      if("omega" %in% conditional){
-        out_names <- omega_names
-        par_names <- omega_par
-      }else if("PETPEESE" %in% conditional){
+      out_names <- NULL
+      par_names <- NULL
+
+      if("omega" %in% conditional && any(has_selection)){
+        out_names <- c(out_names, omega_names)
+        par_names <- c(par_names, omega_par)
+      }
+      if("phacking" %in% conditional && any(has_phacking)){
+        out_names <- c(out_names, phacking_names)
+        par_names <- c(par_names, phacking_par)
+      }
+      if("alpha" %in% conditional && any(has_phacking)){
+        out_names <- c(out_names, "alpha")
+        par_names <- c(par_names, "alpha")
+      }
+      if("pi_null" %in% conditional && any(has_phacking)){
+        out_names <- c(out_names, "pi_null")
+        par_names <- c(par_names, "pi_null")
+      }
+      if("PETPEESE" %in% conditional){
         # subset in case only PET/PEESE is supplied
-        out_names <- par_names <- colnames(model_samples)[colnames(model_samples) %in% c("PET", "PEESE")]
-      }else if("PET" %in% conditional){
-        out_names <- par_names <- "PET"
-      }else if("PEESE" %in% conditional){
-        out_names <- par_names <- "PEESE"
+        out_names <- c(out_names, colnames(model_samples)[colnames(model_samples) %in% c("PET", "PEESE")])
+        par_names <- c(par_names, colnames(model_samples)[colnames(model_samples) %in% c("PET", "PEESE")])
+      }
+      if("PET" %in% conditional && any(is_PET)){
+        out_names <- c(out_names, "PET")
+        par_names <- c(par_names, "PET")
+      }
+      if("PEESE" %in% conditional && any(is_PEESE)){
+        out_names <- c(out_names, "PEESE")
+        par_names <- c(par_names, "PEESE")
       }
 
     }else{
@@ -1216,9 +1363,13 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       out_names <- NULL
       par_names <- NULL
 
-      if(any(is_weightfunction)){
+      if(any(has_selection)){
         out_names <- c(out_names, omega_names)
         par_names <- c(par_names, omega_par)
+      }
+      if(any(has_phacking)){
+        out_names <- c(out_names, phacking_names)
+        par_names <- c(par_names, phacking_par)
       }
       if(any(is_PET)){
         out_names <- c(out_names, "PET")
@@ -1231,6 +1382,16 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     }
 
     # select samples
+    if(is.null(par_names)){
+      par_names <- character()
+      out_names <- character()
+    }
+    keep_unique <- !duplicated(par_names)
+    par_names <- par_names[keep_unique]
+    out_names <- out_names[keep_unique]
+    keep_par <- par_names %in% colnames(model_samples)
+    par_names <- par_names[keep_par]
+    out_names <- out_names[keep_par]
     samples   <- model_samples[, par_names,drop=FALSE]
     indicator <- model_samples[,paste0(parameter, "_indicator")]
 

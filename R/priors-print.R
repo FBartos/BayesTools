@@ -67,6 +67,10 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
     output <- .print.prior.simple(x, short_name, parameter_names, plot, digits_estimates, silent)
   }else if(is.prior.weightfunction(x)){
     output <- .print.prior.weightfunction(x, short_name, parameter_names, plot, digits_estimates, silent)
+  }else if(is_prior_phacking(x)){
+    output <- .print.prior.phacking(x, short_name, parameter_names, plot, digits_estimates, silent)
+  }else if(is_prior_bias(x)){
+    output <- .print.prior.bias(x, short_name, parameter_names, plot, digits_estimates, silent)
   }else if(is.prior.spike_and_slab(x)){
     output <- .print.prior.spike_and_slab(x, short_name, parameter_names, plot, digits_estimates, silent)
   }else if(is.prior.mixture(x)){
@@ -304,6 +308,48 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
     output <- out_name
   }else{
     output <- bquote(italic(.(out_name)))
+  }
+
+  return(output)
+}
+.print.prior.phacking       <- function(x, short_name, parameter_names, plot, digits_estimates, silent){
+
+  out_prefix <- if(plot) bquote(alpha) else "alpha"
+  form_name <- if(short_name) substr(x$form, 1, 1) else x$form
+  alpha_prior <- print(x$alpha, short_name = short_name, parameter_names = parameter_names,
+                       plot = FALSE, digits_estimates = digits_estimates, silent = TRUE)
+  format_p <- function(value) format(value, scientific = FALSE, digits = max(digits_estimates, 2), trim = TRUE)
+  out_parameters <- paste0(
+    "target = ", format_p(x$target), ", ",
+    "source = ", format_p(x$source), ", ",
+    "destination = ", format_p(x$destination), ", ",
+    "form = ", form_name
+  )
+
+  if(!plot){
+    output <- paste0(out_prefix, "[phacking: ", out_parameters, "] ~ ", alpha_prior)
+  }else{
+    output <- bquote(italic(.(out_prefix))[.(out_parameters)]~"~"~.(alpha_prior))
+  }
+
+  return(output)
+}
+.print.prior.bias           <- function(x, short_name, parameter_names, plot, digits_estimates, silent){
+
+  parts <- character()
+  if(!is.null(x$selection)){
+    parts <- c(parts, print(x$selection, short_name = short_name, parameter_names = parameter_names,
+                            plot = FALSE, digits_estimates = digits_estimates, silent = TRUE))
+  }
+  if(!is.null(x$phacking)){
+    parts <- c(parts, print(x$phacking, short_name = short_name, parameter_names = parameter_names,
+                            plot = FALSE, digits_estimates = digits_estimates, silent = TRUE))
+  }
+
+  if(!plot){
+    output <- paste(parts, collapse = " * ")
+  }else{
+    output <- bquote(.(paste(parts, collapse = " * ")))
   }
 
   return(output)

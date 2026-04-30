@@ -1088,6 +1088,14 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       # weightfunctions:
       out[[temp_parameter]] <- .as_mixed_priors.weightfunction(temp_prior, temp_parameter, NULL, n_samples)
 
+    }else if(is_prior_phacking(temp_prior)){
+      # p-hacking priors:
+      out[[temp_parameter]] <- .as_mixed_priors.phacking(temp_prior, temp_parameter, NULL, n_samples)
+
+    }else if(is_prior_bias(temp_prior)){
+      # composed publication-bias priors:
+      out[[temp_parameter]] <- .as_mixed_priors.bias(temp_prior, temp_parameter, NULL, n_samples)
+
     }else if(is.prior.factor(temp_prior)){
       # factor priors
       out[[temp_parameter]] <- .as_mixed_priors.factor(temp_prior, temp_parameter, NULL, n_samples)
@@ -1349,6 +1357,76 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
   return(samples)
 }
+.as_mixed_priors.phacking <- function(prior, parameter, seed = NULL, n_samples = 10000){
+
+  # check input
+  check_list(prior, "prior")
+  check_char(parameter, "parameter")
+  check_real(seed, "seed", allow_NULL = TRUE)
+  check_int(n_samples, "n_samples")
+
+  if(!is.null(seed)){
+    set.seed(seed)
+  }
+
+  samples <- rng(prior, n_samples)
+
+  rownames(samples) <- NULL
+  attr(samples, "sample_ind") <- FALSE
+  attr(samples, "models_ind") <- FALSE
+  attr(samples, "parameter")  <- parameter
+  attr(samples, "prior_list") <- prior
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.phacking")
+
+  return(samples)
+}
+.as_mixed_priors.bias <- function(prior, parameter, seed = NULL, n_samples = 10000){
+
+  # check input
+  check_list(prior, "prior")
+  check_char(parameter, "parameter")
+  check_real(seed, "seed", allow_NULL = TRUE)
+  check_int(n_samples, "n_samples")
+
+  if(!is.null(seed)){
+    set.seed(seed)
+  }
+
+  spec          <- selection_backend_spec(prior)
+  branch_info   <- .selection_prior_branch_info(prior)
+  has_selection <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
+  has_phacking  <- vapply(branch_info, function(x) !is.null(x$phacking),  logical(1))
+
+  samples <- rng(prior, n_samples)
+
+  out_names <- character()
+  par_names <- character()
+
+  if(any(has_selection)){
+    omega_cuts  <- spec$step$breaks
+    omega_names <- sapply(seq_len(length(omega_cuts) - 1L), function(i) paste0("omega[", omega_cuts[i], ",", omega_cuts[i + 1L], "]"))
+    omega_par   <- paste0("omega[", seq_len(length(omega_cuts) - 1L), "]")
+    out_names   <- c(out_names, omega_names)
+    par_names   <- c(par_names, omega_par)
+  }
+  if(any(has_phacking)){
+    out_names <- c(out_names, "alpha", "pi_null")
+    par_names <- c(par_names, "alpha", "pi_null")
+  }
+
+  keep <- par_names %in% colnames(samples)
+  samples <- samples[, par_names[keep], drop = FALSE]
+  colnames(samples) <- out_names[keep]
+
+  rownames(samples) <- NULL
+  attr(samples, "sample_ind") <- FALSE
+  attr(samples, "models_ind") <- FALSE
+  attr(samples, "parameter")  <- parameter
+  attr(samples, "prior_list") <- prior
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.bias")
+
+  return(samples)
+}
 .as_mixed_priors.spike_and_slab <- function(prior, parameter, seed = NULL, n_samples = 10000){
 
   # check input
@@ -1398,26 +1476,12 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   is_PET            <- sapply(prior, is.prior.PET)
   is_PEESE          <- sapply(prior, is.prior.PEESE)
   is_weightfunction <- sapply(prior, is.prior.weightfunction)
+  is_phacking       <- sapply(prior, is_prior_phacking)
+  is_bias           <- sapply(prior, is_prior_bias)
 
-  if(any(is_PET | is_PEESE | is_weightfunction)){
+  if(any(is_PET | is_PEESE | is_weightfunction | is_phacking | is_bias)){
 
-    stop("not implemented yet")  # probably not needed
-    # samples <- NULL
-    #
-    # if(any(is_PET)){
-    #   samples <- cbind(samples, .as_mixed_posteriors.simple(fit, prior[is_PET][[1]], "PET"))
-    # }
-    # if(any(is_PEESE)){
-    #   samples <- cbind(.as_mixed_posteriors.simple(fit, prior[is_PEESE][[1]], "PEESE"))
-    # }
-    # if(any(is_weightfunction)){
-    #   # create a dummy prior with all the cuts
-    #   dummy_prior <- #TODO:
-    #   samples     <- cbind(.as_mixed_posteriors.weightfunction(fit, dummy_prior, "omega"))
-    # }
-    #
-    # samples <- .as_mixed_posteriors.factor(fit, prior_variable, parameter)
-    # attr(samples, "models_ind") <- as.vector(model_samples[,paste0(parameter, "_indicator")])
+    temp_samples <- .mix_priors.bias(prior, parameter = parameter, seed = seed, n_samples = n_samples)
 
   }else{
 
@@ -1448,6 +1512,108 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   # append classes and priors
   class(samples) <- c(class(samples), "mixed_posteriors.mixture")
   attr(samples, "prior_list") <- prior
+
+  return(samples)
+}
+.mix_priors.bias <- function(priors, parameter, seed = NULL, n_samples = 10000){
+
+  # check input
+  check_list(priors, "priors")
+  check_char(parameter, "parameter")
+  check_real(seed, "seed", allow_NULL = TRUE)
+  check_int(n_samples, "n_samples")
+
+  allowed <- sapply(priors, function(prior){
+    is.prior.none(prior) || is.prior.PET(prior) || is.prior.PEESE(prior) ||
+      is.prior.weightfunction(prior) || is_prior_phacking(prior) || is_prior_bias(prior)
+  })
+  if(!all(allowed)){
+    stop("'priors' must be a list of publication-bias priors.", call. = FALSE)
+  }
+
+  spec        <- selection_backend_spec(priors)
+  branch_info <- lapply(priors, .selection_branch_info)
+
+  is_PET       <- sapply(priors, is.prior.PET)
+  is_PEESE     <- sapply(priors, is.prior.PEESE)
+  has_selection <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
+  has_phacking  <- vapply(branch_info, function(x) !is.null(x$phacking),  logical(1))
+
+  prior_probs <- sapply(priors, function(prior) prior[["prior_weights"]])
+  prior_probs <- prior_probs / sum(prior_probs)
+
+  if(!is.null(seed)){
+    set.seed(seed)
+  }
+
+  out_names <- character()
+  if(any(has_selection)){
+    omega_cuts  <- spec$step$breaks
+    omega_names <- sapply(seq_len(length(omega_cuts) - 1L), function(i) paste0("omega[", omega_cuts[i], ",", omega_cuts[i + 1L], "]"))
+    out_names   <- c(out_names, omega_names)
+
+    selection_priors <- lapply(branch_info[has_selection], function(x) x$selection)
+    omega_mapping    <- weightfunctions_mapping(selection_priors, one_sided = TRUE)
+    selection_index  <- which(has_selection)
+  }
+  if(any(has_phacking)){
+    out_names <- c(out_names, "alpha", "pi_null")
+  }
+  if(any(is_PET)){
+    out_names <- c(out_names, "PET")
+  }
+  if(any(is_PEESE)){
+    out_names <- c(out_names, "PEESE")
+  }
+
+  samples    <- matrix(nrow = 0, ncol = length(out_names))
+  colnames(samples) <- out_names
+  sample_ind <- NULL
+  models_ind <- NULL
+
+  for(i in seq_along(priors)[ceiling(prior_probs * n_samples) >= 1]){
+
+    temp_ind <- seq_len(ceiling(n_samples * prior_probs[i]))
+    temp_samples <- matrix(0, nrow = length(temp_ind), ncol = length(out_names))
+    colnames(temp_samples) <- out_names
+
+    if(any(has_selection)){
+      temp_samples[, omega_names] <- 1
+    }
+
+    if(has_selection[i]){
+      selection_i <- match(i, selection_index)
+      selection_samples <- rng(branch_info[[i]]$selection, length(temp_ind))
+      temp_samples[, omega_names] <- selection_samples[, paste0("omega[", omega_mapping[[selection_i]], "]"), drop = FALSE]
+    }
+
+    if(has_phacking[i]){
+      phacking_samples <- rng(branch_info[[i]]$phacking, length(temp_ind))
+      temp_samples[, c("alpha", "pi_null")] <- phacking_samples[, c("alpha", "pi_null"), drop = FALSE]
+    }
+
+    if(is_PET[i]){
+      temp_samples[, "PET"] <- rng(priors[[i]], length(temp_ind), transform_factor_samples = FALSE)
+    }
+    if(is_PEESE[i]){
+      temp_samples[, "PEESE"] <- rng(priors[[i]], length(temp_ind), transform_factor_samples = FALSE)
+    }
+
+    samples    <- rbind(samples, temp_samples)
+    sample_ind <- c(sample_ind, temp_ind)
+    models_ind <- c(models_ind, rep(i, length(temp_ind)))
+  }
+
+  samples    <- samples[seq_len(n_samples), , drop = FALSE]
+  sample_ind <- sample_ind[seq_len(n_samples)]
+  models_ind <- models_ind[seq_len(n_samples)]
+
+  rownames(samples) <- NULL
+  attr(samples, "sample_ind") <- sample_ind
+  attr(samples, "models_ind") <- models_ind
+  attr(samples, "parameter")  <- parameter
+  attr(samples, "prior_list") <- priors
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.bias")
 
   return(samples)
 }

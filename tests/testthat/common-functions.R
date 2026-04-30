@@ -140,6 +140,21 @@ skip_if_no_fits <- function() {
   }
 }
 
+skip_if_missing_fits <- function(names) {
+  skip_if_no_fits()
+
+  fit_files <- file.path(temp_fits_dir, paste0(names, ".RDS"))
+  missing <- names[!file.exists(fit_files)]
+
+  if (length(missing) > 0L) {
+    skip(paste0(
+      "Required pre-fitted models not found: ",
+      paste(missing, collapse = ", "),
+      ". Run test-00-model-fits.R first."
+    ))
+  }
+}
+
 # ============================================================================ #
 # STANDARD TEST FIXTURES: Reusable Prior Definitions
 # ============================================================================ #
@@ -408,15 +423,19 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
 }
 
 # Skip model fitting if cached fits exist and ROBMA_TEST_SKIP_REFIT is TRUE
-skip_refit_if_cached <- function(name) {
+skip_refit_if_cached <- function(name, required_fits = NULL) {
   # refitting settings
   skip_refit <- Sys.getenv("BAYESTOOLS_TEST_SKIP_REFIT")
-  skip_refit <- skip_refit != "" && as.logical(skip_refit)
+  skip_refit <- if (skip_refit == "") TRUE else as.logical(skip_refit)
 
   # fitted indicator
   fitted_indicator <- file.exists(file.path(temp_temp_dir, paste0(name, ".txt")))
+  required_fits_available <- TRUE
+  if (!is.null(required_fits)) {
+    required_fits_available <- all(file.exists(file.path(temp_fits_dir, paste0(required_fits, ".RDS"))))
+  }
 
-  if (skip_refit && fitted_indicator) {
+  if (skip_refit && fitted_indicator && required_fits_available) {
     skip("Skipping model refitting: cached fits exist and BAYESTOOLS_TEST_SKIP_REFIT=TRUE.")
   }
 
