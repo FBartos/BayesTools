@@ -23,6 +23,71 @@
 
 # Load common test helpers
 source(testthat::test_path("common-functions.R"))
+
+test_that("direct composed bias priors support bridge-sampling helpers", {
+
+  selection <- prior_weightfunction("one-sided", c(.025), wf_cumulative(c(1, 2)))
+  phacking  <- prior_phacking(form = "linear", alpha = prior("beta", list(2, 3)))
+  bias      <- prior_bias(selection = selection, phacking = phacking)
+
+  posterior <- matrix(
+    c(
+      1.5, 2.5, .2,
+      1.1, 2.1, .4
+    ),
+    ncol = 3,
+    byrow = TRUE
+  )
+  colnames(posterior) <- c("eta[1]", "eta[2]", "alpha")
+
+  prepared <- JAGS_bridgesampling_posterior(posterior, list(bias = bias))
+  expect_equal(colnames(prepared), c("eta[1]", "eta[2]", "alpha"))
+  expect_equal(attr(prepared, "lb"), c("eta[1]" = 0, "eta[2]" = 0, "alpha" = 0))
+  expect_equal(attr(prepared, "ub"), c("eta[1]" = Inf, "eta[2]" = Inf, "alpha" = 1))
+
+  samples <- posterior[1, ]
+  expected_prior_density <-
+    sum(stats::dgamma(samples[c("eta[1]", "eta[2]")], shape = c(1, 2), rate = 1, log = TRUE)) +
+    stats::dbeta(samples[["alpha"]], 2, 3, log = TRUE)
+  expect_equal(
+    JAGS_marglik_priors(samples, list(bias = bias)),
+    expected_prior_density,
+    tolerance = 1e-12
+  )
+
+  parameters <- JAGS_marglik_parameters(samples, list(bias = bias))
+  expect_equal(parameters$omega, c(1, samples[["eta[2]"]] / sum(samples[c("eta[1]", "eta[2]")])))
+  expect_equal(parameters$alpha, samples[["alpha"]])
+  expect_equal(
+    parameters$pi_null,
+    phack_pi_null(samples[["alpha"]], phacking$form, phacking$source, phacking$destination, target = phacking$target),
+    tolerance = 1e-12
+  )
+})
+
+test_that("bias mixtures fail explicitly in bridge-sampling helpers", {
+
+  bias <- prior_mixture(list(
+    prior_none(),
+    prior_phacking(form = "linear")
+  ))
+  samples <- c("bias_indicator" = 1, "alpha" = .2)
+  posterior <- matrix(samples, nrow = 1)
+
+  expect_error(
+    JAGS_bridgesampling_posterior(posterior, list(bias = bias)),
+    "bias mixture priors"
+  )
+  expect_error(
+    JAGS_marglik_priors(samples, list(bias = bias)),
+    "bias mixture priors"
+  )
+  expect_error(
+    JAGS_marglik_parameters(samples, list(bias = bias)),
+    "bias mixture priors"
+  )
+})
+
 skip_refit_if_cached("JAGS-marglik")
 
 # This file tests the JAGS marginal likelihood computation functions

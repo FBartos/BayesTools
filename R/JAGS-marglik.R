@@ -289,8 +289,9 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
   # package cannot currently deal with them
   if(any(sapply(prior_list, is.prior.spike_and_slab)))
     stop("Marginal likelihood computation for spike and slab priors is not implemented.")
-  if(any(sapply(prior_list, is.prior.mixture)))
-    stop("Marginal likelihood computation for prior mixture priors is not implemented.")
+  if(any(sapply(prior_list, is.prior.mixture))){
+    .JAGS_marglik_stop_unsupported_mixture(prior_list[[which(sapply(prior_list, is.prior.mixture))[1L]]])
+  }
 
   # get information about the specified parameters
   parameters_names <- .JAGS_bridgesampling_posterior_info(prior_list)
@@ -314,6 +315,19 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
   attr(posterior, "ub") <- attr(parameters_names, "ub")
 
   return(posterior)
+}
+
+.JAGS_marglik_stop_unsupported_mixture <- function(prior){
+
+  if(inherits(prior, "prior.bias_mixture")){
+    selection_backend_spec(prior)
+    stop(
+      "Marginal likelihood computation for bias mixture priors is not implemented because bridge sampling does not support discrete bias indicators.",
+      call. = FALSE
+    )
+  }
+
+  stop("Marginal likelihood computation for prior mixture priors is not implemented.", call. = FALSE)
 }
 
 .JAGS_bridgesampling_posterior_info                <- function(prior_list){
@@ -340,6 +354,18 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
     if(is.prior.weightfunction(prior_list[[i]])){
 
       add_parameter <- .JAGS_bridgesampling_posterior_info.weightfunction(prior_list[[i]])
+
+    }else if(is_prior_phacking(prior_list[[i]])){
+
+      add_parameter <- .JAGS_bridgesampling_posterior_info.phacking(prior_list[[i]])
+
+    }else if(is_prior_bias(prior_list[[i]])){
+
+      add_parameter <- .JAGS_bridgesampling_posterior_info.bias(prior_list[[i]])
+
+    }else if(is.prior.mixture(prior_list[[i]])){
+
+      .JAGS_marglik_stop_unsupported_mixture(prior_list[[i]])
 
     }else if(is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
 
@@ -517,6 +543,45 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
 
   return(parameter)
 }
+.JAGS_bridgesampling_posterior_info.phacking <- function(prior){
+
+  .check_prior(prior)
+  if(!is_prior_phacking(prior))
+    stop("improper prior provided")
+
+  parameter <- .JAGS_bridgesampling_posterior_info.simple(prior$alpha, "alpha")
+
+  return(parameter)
+}
+.JAGS_bridgesampling_posterior_info.bias <- function(prior){
+
+  .check_prior(prior)
+  if(!is_prior_bias(prior))
+    stop("improper prior provided")
+
+  selection_backend_spec(prior)
+
+  parameter <- NULL
+  parameter_lb <- NULL
+  parameter_ub <- NULL
+
+  if(!is.null(prior$selection)){
+    selection_parameter <- .JAGS_bridgesampling_posterior_info.weightfunction(prior$selection)
+    parameter <- c(parameter, selection_parameter)
+    parameter_lb <- c(parameter_lb, attr(selection_parameter, "lb"))
+    parameter_ub <- c(parameter_ub, attr(selection_parameter, "ub"))
+  }
+  if(!is.null(prior$phacking)){
+    phacking_parameter <- .JAGS_bridgesampling_posterior_info.phacking(prior$phacking)
+    parameter <- c(parameter, phacking_parameter)
+    parameter_lb <- c(parameter_lb, attr(phacking_parameter, "lb"))
+    parameter_ub <- c(parameter_ub, attr(phacking_parameter, "ub"))
+  }
+
+  attr(parameter, "lb") <- parameter_lb
+  attr(parameter, "ub") <- parameter_ub
+  return(parameter)
+}
 # .JAGS_bridgesampling_posterior_info.spike_and_slab <- function(prior, parameter_name){
 #
 #   .check_prior(prior)
@@ -585,6 +650,18 @@ JAGS_marglik_priors                <- function(samples, prior_list){
     if(is.prior.weightfunction(prior_list[[i]])){
 
       marglik <- marglik + .JAGS_marglik_priors.weightfunction(samples, prior_list[[i]])
+
+    }else if(is_prior_phacking(prior_list[[i]])){
+
+      marglik <- marglik + .JAGS_marglik_priors.phacking(samples, prior_list[[i]])
+
+    }else if(is_prior_bias(prior_list[[i]])){
+
+      marglik <- marglik + .JAGS_marglik_priors.bias(samples, prior_list[[i]])
+
+    }else if(is.prior.mixture(prior_list[[i]])){
+
+      .JAGS_marglik_stop_unsupported_mixture(prior_list[[i]])
 
     }else if(is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
 
@@ -726,6 +803,32 @@ JAGS_marglik_priors                <- function(samples, prior_list){
 
   return(marglik)
 }
+.JAGS_marglik_priors.phacking <- function(samples, prior){
+
+  .check_prior(prior)
+  if(!is_prior_phacking(prior))
+    stop("improper prior provided")
+
+  .JAGS_marglik_priors.simple(samples, prior$alpha, "alpha")
+}
+.JAGS_marglik_priors.bias <- function(samples, prior){
+
+  .check_prior(prior)
+  if(!is_prior_bias(prior))
+    stop("improper prior provided")
+
+  selection_backend_spec(prior)
+
+  marglik <- 0
+  if(!is.null(prior$selection)){
+    marglik <- marglik + .JAGS_marglik_priors.weightfunction(samples, prior$selection)
+  }
+  if(!is.null(prior$phacking)){
+    marglik <- marglik + .JAGS_marglik_priors.phacking(samples, prior$phacking)
+  }
+
+  return(marglik)
+}
 # .JAGS_marglik_priors.spike_and_slab <- function(samples, prior, parameter_name){
 #
 #   .check_prior(prior)
@@ -798,6 +901,18 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
     if(is.prior.weightfunction(prior_list[[i]])){
 
       parameters <- c(parameters, .JAGS_marglik_parameters.weightfunction(samples, prior_list[[i]]))
+
+    }else if(is_prior_phacking(prior_list[[i]])){
+
+      parameters <- c(parameters, .JAGS_marglik_parameters.phacking(samples, prior_list[[i]]))
+
+    }else if(is_prior_bias(prior_list[[i]])){
+
+      parameters <- c(parameters, .JAGS_marglik_parameters.bias(samples, prior_list[[i]]))
+
+    }else if(is.prior.mixture(prior_list[[i]])){
+
+      .JAGS_marglik_stop_unsupported_mixture(prior_list[[i]])
 
     }else if(is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
 
@@ -940,6 +1055,36 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
     parameter[["omega"]] <- unname(prior$weights$omega)
 
+  }
+
+  return(parameter)
+}
+.JAGS_marglik_parameters.phacking <- function(samples, prior){
+
+  .check_prior(prior)
+  if(!is_prior_phacking(prior))
+    stop("improper prior provided")
+
+  alpha <- samples[["alpha"]]
+  list(
+    alpha   = alpha,
+    pi_null = phack_pi_null(alpha, prior$form, prior$source, prior$destination, target = prior$target)
+  )
+}
+.JAGS_marglik_parameters.bias <- function(samples, prior){
+
+  .check_prior(prior)
+  if(!is_prior_bias(prior))
+    stop("improper prior provided")
+
+  selection_backend_spec(prior)
+
+  parameter <- list()
+  if(!is.null(prior$selection)){
+    parameter <- c(parameter, .JAGS_marglik_parameters.weightfunction(samples, prior$selection))
+  }
+  if(!is.null(prior$phacking)){
+    parameter <- c(parameter, .JAGS_marglik_parameters.phacking(samples, prior$phacking))
   }
 
   return(parameter)

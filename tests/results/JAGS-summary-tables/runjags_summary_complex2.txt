@@ -1,12 +1,12 @@
                    Mean    SD 0.025   0.5 0.975
-mu                0.999 0.584 0.195 0.870 2.577
-bias (inclusion)  0.578    NA    NA    NA    NA
-PET               0.710 0.607 0.026 0.484 2.007
-PEESE             1.818 1.288 0.030 1.562 4.210
+mu                1.024 0.631 0.208 0.894 2.639
+bias (inclusion)  0.526    NA    NA    NA    NA
 omega[0,0.025]    1.000 0.000 1.000 1.000 1.000
-omega[0.025,0.05] 0.565 0.288 0.027 0.594 0.982
-omega[0.05,0.975] 0.405 0.265 0.022 0.393 0.922
-omega[0.975,1]    0.674 0.362 0.032 0.868 1.000
-[0;31mConditional summary for PET is based on 74 samples.[0m
-[0;31mConditional summary for PEESE is based on 55 samples.[0m
-[0;31mConditional summary for omega is based on 160 samples.[0m
+omega[0.025,0.05] 0.581 0.262 0.029 0.603 0.960
+omega[0.05,0.975] 0.438 0.274 0.027 0.399 0.952
+omega[0.975,1]    0.683 0.360 0.069 1.000 1.000
+PET               0.816 0.659 0.063 0.583 2.295
+PEESE             1.434 1.318 0.031 1.043 4.889
+[0;31mConditional summary for PET is based on 79 samples.[0m
+[0;31mConditional summary for PEESE is based on 64 samples.[0m
+[0;31mConditional summary for omega is based on 120 samples.[0m

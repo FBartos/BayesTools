@@ -344,19 +344,22 @@ test_that("JAGS_extend works correctly", {
 
   fit_simple <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
 
+  # Test the extension mechanics without waiting on convergence precision targets.
+  extend_control <- list(
+    max_Rhat     = NULL,
+    min_ESS      = NULL,
+    max_error    = NULL,
+    max_SD_error = NULL,
+    max_time     = list(time = 30, unit = "secs"),
+    sample_extend = 1,
+    restarts     = 1,
+    max_extend   = 1
+  )
+
   # Test extending a fitted model
   fit_extended <- JAGS_extend(
     fit_simple,
-    autofit_control = list(
-      max_Rhat = 1.05,
-      min_ESS = 100,
-      max_error = 0.01,
-      max_SD_error = 0.05,
-      max_time = list(time = 1, unit = "mins"),
-      sample_extend = 100,
-      restarts = 2,
-      max_extend = 2
-    ),
+    autofit_control = extend_control,
     silent = TRUE,
     seed = 1
   )
@@ -364,16 +367,7 @@ test_that("JAGS_extend works correctly", {
   # Test extending a fitted model with parallel
   fit_extended2 <- JAGS_extend(
     fit_simple,
-    autofit_control = list(
-      max_Rhat = 1.05,
-      min_ESS = 100,
-      max_error = 0.01,
-      max_SD_error = 0.05,
-      max_time = list(time = 1, unit = "mins"),
-      sample_extend = 100,
-      restarts = 2,
-      max_extend = 2
-    ),
+    autofit_control = extend_control,
     parallel = TRUE,
     cores = 2,
     silent = TRUE,

@@ -609,11 +609,16 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
     class(prior_list)      <- c("prior", "prior.factor_mixture", "prior.mixture", priors_type[["class"]])
 
 
-  }else if(any(sapply(prior_list, is.prior.PET)) || any(sapply(prior_list, is.prior.PEESE)) || any(sapply(prior_list, is.prior.weightfunction))){
+  }else if(any(sapply(prior_list, is.prior.PET)) || any(sapply(prior_list, is.prior.PEESE)) ||
+           any(sapply(prior_list, is.prior.weightfunction)) || any(sapply(prior_list, is_prior_phacking)) ||
+           any(sapply(prior_list, is_prior_bias))){
 
-    # test that the prior is either a PET, PEESE, or weightfunction prior
-    if(!all(sapply(prior_list, is.prior.PET) | sapply(prior_list, is.prior.PEESE) | sapply(prior_list, is.prior.weightfunction) | sapply(prior_list, is.prior.none)))
-      stop("PET/PEESE/weightfunction prior mixture requires that all priors are either PET, PEESE, or weightfunction prior distributions")
+    # test that the prior is either a PET, PEESE, weightfunction, p-hacking,
+    # composed bias, or none prior
+    if(!all(sapply(prior_list, is.prior.PET) | sapply(prior_list, is.prior.PEESE) |
+            sapply(prior_list, is.prior.weightfunction) | sapply(prior_list, is_prior_phacking) |
+            sapply(prior_list, is_prior_bias) | sapply(prior_list, is.prior.none)))
+      stop("Publication-bias prior mixtures require PET, PEESE, weightfunction, p-hacking, composed bias, or none prior distributions.")
 
     class(prior_list) <- c("prior", "prior.bias_mixture", "prior.mixture")
 
@@ -1430,7 +1435,65 @@ rng.prior   <- function(x, n, ...){
     if(sample_components)
       return(components)
 
-    if(inherits(prior, "prior.factor_mixture")){
+    if(inherits(prior, "prior.bias_mixture")){
+
+      branch_info <- lapply(prior, .selection_branch_info)
+      spec        <- selection_backend_spec(prior)
+
+      is_PET        <- sapply(prior, is.prior.PET)
+      is_PEESE      <- sapply(prior, is.prior.PEESE)
+      has_selection <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
+      has_phacking  <- vapply(branch_info, function(x) !is.null(x$phacking),  logical(1))
+
+      out_names <- character()
+      if(any(has_selection)){
+        omega_names <- paste0("omega[", seq_len(spec$step$n_bins), "]")
+        out_names   <- c(out_names, omega_names)
+
+        selection_priors <- lapply(branch_info[has_selection], function(x) x$selection)
+        omega_mapping    <- weightfunctions_mapping(selection_priors, one_sided = TRUE)
+        selection_index  <- which(has_selection)
+      }
+      if(any(has_phacking)){
+        out_names <- c(out_names, "alpha", "pi_null")
+      }
+      if(any(is_PET)){
+        out_names <- c(out_names, "PET")
+      }
+      if(any(is_PEESE)){
+        out_names <- c(out_names, "PEESE")
+      }
+
+      x <- matrix(0, nrow = n, ncol = length(out_names))
+      colnames(x) <- out_names
+      if(any(has_selection)){
+        x[, omega_names] <- 1
+      }
+
+      for(component in unique(components)){
+        component_rows <- component == components
+        n_component    <- sum(component_rows)
+
+        if(has_selection[component]){
+          selection_i <- match(component, selection_index)
+          selection_samples <- rng(branch_info[[component]]$selection, n_component)
+          x[component_rows, omega_names] <- selection_samples[, paste0("omega[", omega_mapping[[selection_i]], "]"), drop = FALSE]
+        }
+
+        if(has_phacking[component]){
+          phacking_samples <- rng(branch_info[[component]]$phacking, n_component)
+          x[component_rows, c("alpha", "pi_null")] <- phacking_samples[, c("alpha", "pi_null"), drop = FALSE]
+        }
+
+        if(is_PET[component]){
+          x[component_rows, "PET"] <- rng(prior[[component]], n_component, transform_factor_samples = FALSE)
+        }
+        if(is_PEESE[component]){
+          x[component_rows, "PEESE"] <- rng(prior[[component]], n_component, transform_factor_samples = FALSE)
+        }
+      }
+
+    }else if(inherits(prior, "prior.factor_mixture")){
 
       prior_type <- .get_prior_factor_list_type(prior)
 
@@ -1545,6 +1608,26 @@ rng.prior   <- function(x, n, ...){
 
     x <- .weightfunction_rng(prior, n)
 
+  }else if(is_prior_phacking(prior)){
+
+    alpha <- rng(prior$alpha, n)
+    x <- cbind(
+      alpha   = alpha,
+      pi_null = phack_pi_null(alpha, prior$form, prior$source, prior$destination, target = prior$target)
+    )
+
+  }else if(is_prior_bias(prior)){
+
+    selection_backend_spec(prior)
+
+    x <- NULL
+    if(!is.null(prior$selection)){
+      x <- cbind(x, rng(prior$selection, n))
+    }
+    if(!is.null(prior$phacking)){
+      x <- cbind(x, rng(prior$phacking, n))
+    }
+
   }
 
   return(x)
@@ -1577,6 +1660,10 @@ cdf.prior   <- function(x, q, ...){
 
     stop("Only marginal cdfs are implemented for prior weightfunctions.")
 
+  }else if(is_prior_phacking(prior) || is_prior_bias(prior)){
+
+    .selection_prior_stop_unsupported_generic("cdf", prior)
+
   }
 
   return(p)
@@ -1608,6 +1695,10 @@ ccdf.prior  <- function(x, q, ...){
   }else if(is.prior.weightfunction(prior)){
 
     stop("Only marginal ccdf functions are implemented for prior weightfunctions.")
+
+  }else if(is_prior_phacking(prior) || is_prior_bias(prior)){
+
+    .selection_prior_stop_unsupported_generic("ccdf", prior)
 
   }
 
@@ -1665,6 +1756,10 @@ lpdf.prior  <- function(x, y, ...){
 
     stop("Only marginal lpdf are implemented for prior weightfunctions.")
 
+  }else if(is_prior_phacking(prior) || is_prior_bias(prior)){
+
+    .selection_prior_stop_unsupported_generic("lpdf", prior)
+
   }
 
   return(log_lik)
@@ -1710,6 +1805,10 @@ quant.prior <- function(x, p, ...){
   }else if(is.prior.weightfunction(prior)){
 
     stop("Only marginal quantile functions are implemented for prior weightfunctions.")
+
+  }else if(is_prior_phacking(prior) || is_prior_bias(prior)){
+
+    .selection_prior_stop_unsupported_generic("quantile functions", prior)
 
   }
 
@@ -2499,6 +2598,10 @@ mean.prior   <- function(x, ...){
 
     m <- .mean.weightfunction(x)
 
+  }else if(is_prior_phacking(x) || is_prior_bias(x)){
+
+    .selection_prior_stop_unsupported_generic("mean", x)
+
   }else if(is.prior.orthonormal(x) | is.prior.meandif(x)){
 
     par1 <- switch(
@@ -2667,6 +2770,10 @@ var.prior   <- function(x, ...){
   }else if(is.prior.weightfunction(x)){
 
     var <- .var.weightfunction(x)
+
+  }else if(is_prior_phacking(x) || is_prior_bias(x)){
+
+    .selection_prior_stop_unsupported_generic("variance", x)
 
   }else if(is.prior.orthonormal(x) | is.prior.meandif(x)){
 

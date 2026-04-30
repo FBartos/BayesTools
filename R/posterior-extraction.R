@@ -64,6 +64,36 @@ NULL
         model_samples <- model_samples[, !colnames(model_samples) %in% omega_names, drop = FALSE]
         prior_list[i] <- NULL
       }
+
+    } else if (is_prior_phacking(prior_list[[i]])) {
+      if ("omega" %in% remove_parameters) {
+        omega_names <- colnames(model_samples)[grepl("^omega\\[", colnames(model_samples))]
+        model_samples <- model_samples[, !colnames(model_samples) %in% omega_names, drop = FALSE]
+      }
+
+      if (par_name %in% remove_parameters) {
+        model_samples <- .remove_parameter_columns(model_samples, prior_list[[i]], par_name)
+        prior_list[i] <- NULL
+      }
+
+    } else if (is_prior_bias(prior_list[[i]])) {
+      if (.selection_prior_has_selection(prior_list[[i]])) {
+        omega_cuts      <- weightfunctions_mapping(.selection_prior_selection_priors(prior_list[[i]]), cuts_only = TRUE, one_sided = TRUE)
+        omega_names_old <- paste0("omega[", 1:(length(omega_cuts) - 1), "]")
+        omega_names     <- sapply(1:(length(omega_cuts) - 1), function(j) paste0("omega[", omega_cuts[j], ",", omega_cuts[j + 1], "]"))
+        colnames(model_samples)[which(colnames(model_samples) %in% omega_names_old)] <- omega_names
+      } else {
+        omega_names <- colnames(model_samples)[grepl("^omega\\[", colnames(model_samples))]
+      }
+
+      if ("omega" %in% remove_parameters) {
+        model_samples <- model_samples[, !colnames(model_samples) %in% omega_names, drop = FALSE]
+      }
+
+      if (par_name %in% remove_parameters) {
+        model_samples <- .remove_parameter_columns(model_samples, prior_list[[i]], par_name)
+        prior_list[i] <- NULL
+      }
       
     } else if (par_name %in% remove_parameters) {
       # remove parameters to be excluded (note: spike_0 removal is handled by caller)
@@ -112,15 +142,26 @@ NULL
       colnames(model_samples)[grepl(paste0("^", par_name, "\\["), colnames(model_samples))]
     )
     
-    # check for bias mixture (PET, PEESE, omega)
+    # check for bias mixture (PET, PEESE, omega, p-hacking)
     if (inherits(prior, "prior.bias_mixture")) {
-      # remove PET, PEESE, and all omega columns
-      cols_to_remove <- c(cols_to_remove, "PET", "PEESE")
+      cols_to_remove <- c(cols_to_remove, .selection_bias_parameter_names(prior))
       cols_to_remove <- c(cols_to_remove,
         colnames(model_samples)[grepl("^omega\\[", colnames(model_samples))]
       )
     }
     
+  } else if (is_prior_phacking(prior)) {
+    cols_to_remove <- c(par_name, "omega", "alpha", "pi_null", "phack_kind")
+    cols_to_remove <- c(cols_to_remove,
+      colnames(model_samples)[grepl("^omega\\[", colnames(model_samples))]
+    )
+
+  } else if (is_prior_bias(prior)) {
+    cols_to_remove <- c(par_name, .selection_bias_parameter_names(prior))
+    cols_to_remove <- c(cols_to_remove,
+      colnames(model_samples)[grepl("^omega\\[", colnames(model_samples))]
+    )
+
   } else if (is.prior.factor(prior)) {
     # factor prior: remove all indexed columns
     cols_to_remove <- .JAGS_prior_factor_names(par_name, prior)
@@ -169,32 +210,11 @@ NULL
 
   })
   
-  # helper function to get bias-related parameters (PET, PEESE, omega) from a bias prior
+  # helper function to get bias-related parameters from a bias prior
   .get_bias_params <- function(prior_list, bias_name = "bias") {
     bias_params <- character(0)
     if (bias_name %in% names(prior_list)) {
-      bias_prior <- prior_list[[bias_name]]
-      if (is.prior.mixture(bias_prior)) {
-        if (any(sapply(bias_prior, is.prior.PET))) {
-          bias_params <- c(bias_params, "PET")
-        }
-        if (any(sapply(bias_prior, is.prior.PEESE))) {
-          bias_params <- c(bias_params, "PEESE")
-        }
-        if (any(sapply(bias_prior, is.prior.weightfunction))) {
-          bias_params <- c(bias_params, "omega")
-        }
-      } else {
-        if (is.prior.PET(bias_prior)) {
-          bias_params <- c(bias_params, "PET")
-        }
-        if (is.prior.PEESE(bias_prior)) {
-          bias_params <- c(bias_params, "PEESE")
-        }
-        if (is.prior.weightfunction(bias_prior)) {
-          bias_params <- c(bias_params, "omega")
-        }
-      }
+      bias_params <- .selection_bias_parameter_names(prior_list[[bias_name]])
     }
     return(bias_params)
   }

@@ -76,7 +76,9 @@ density.prior <- function(x,
     if(!is.null(x_seq)){
       x_range <- range(x_seq)
     }else{
-      if(!individual & (is.prior.PET(x) | is.prior.PEESE(x))){
+      if(is_prior_phacking(x) || is_prior_bias(x)){
+        .selection_prior_stop_unsupported_generic("density", x)
+      }else if(!individual & (is.prior.PET(x) | is.prior.PEESE(x))){
         x_range <- c(0, 1)
       }else if(!individual & is.prior.weightfunction(x)){
         x_range <- c(0, 1)
@@ -109,6 +111,8 @@ density.prior <- function(x,
   # use the corresponding density subfunction
   if(is.prior.weightfunction(x)){
     out <- .density.prior.weightfunction(x, x_seq, x_range, n_points, n_samples, force_samples, individual)
+  }else if(is_prior_phacking(x) || is_prior_bias(x)){
+    .selection_prior_stop_unsupported_generic("density", x)
   }else if(is.prior.PET(x) | is.prior.PEESE(x)){
     out <- .density.prior.PETPEESE(x, x_seq, x_range, n_points, n_samples, force_samples, individual, transformation, transformation_arguments, truncate_end)
   }else if(is.prior.spike_and_slab(x)){
@@ -515,6 +519,9 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
   if(is.prior.weightfunction(x)){
     return(.weightfunction_range(x, quantiles))
   }
+  if(is_prior_phacking(x) || is_prior_bias(x)){
+    .selection_prior_stop_unsupported_generic("range", x)
+  }
 
   if(is.infinite(x[["truncation"]][["lower"]])){
     x_range[1] <- mquant(x, quantiles)
@@ -548,6 +555,8 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
     return(vapply(components, function(component){
       if(component$type == "point") "point" else "simple"
     }, character(1)))
+  }else if(is_prior_phacking(prior) || is_prior_bias(prior)){
+    .selection_prior_stop_unsupported_generic("density", prior)
   }else if(is.prior.orthonormal(prior)){
     return("orthonormal")
   }else if(is.prior.meandif(prior)){

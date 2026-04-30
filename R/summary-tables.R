@@ -704,7 +704,8 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
       next
     }else if(remove_spike_0 && is.prior.point(prior_list[[i]]) && prior_list[[i]][["parameters"]][["location"]] == 0 || (names(prior_list)[[i]] %in% remove_parameters)){
       next
-    }else if(is.prior.weightfunction(prior_list[[i]]) | is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
+    }else if(is.prior.weightfunction(prior_list[[i]]) | is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]]) |
+             is_prior_phacking(prior_list[[i]]) | is_prior_bias(prior_list[[i]])){
       temp_prior <- print(prior_list[[i]], silent = TRUE, short_name = short_name)
     }else if(is.prior.simple(prior_list[[i]]) | is.prior.vector(prior_list[[i]]) | is.prior.factor(prior_list[[i]]) | is.prior.spike_and_slab(prior_list[[i]]) | is.prior.mixture(prior_list[[i]])){
       temp_prior <- paste0(names(prior_list)[i], " ~ " , print(prior_list[[i]], silent = TRUE, short_name = short_name, inline = TRUE))
@@ -836,14 +837,23 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     }else if(is.prior.mixture(prior_list[[par]])){
 
       # check for publication bias component
-      is_PET            <- sapply(prior_list[[par]], is.prior.PET)
-      is_PEESE          <- sapply(prior_list[[par]], is.prior.PEESE)
-      is_weightfunction <- sapply(prior_list[[par]], is.prior.weightfunction)
+      is_bias_mixture <- inherits(prior_list[[par]], "prior.bias_mixture")
+      is_PET          <- sapply(prior_list[[par]], is.prior.PET)
+      is_PEESE        <- sapply(prior_list[[par]], is.prior.PEESE)
+      if(is_bias_mixture){
+        branch_info   <- .selection_prior_branch_info(prior_list[[par]])
+        has_selection <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
+        has_phacking  <- vapply(branch_info, function(x) !is.null(x$phacking), logical(1))
+      }else{
+        branch_info   <- vector("list", length(prior_list[[par]]))
+        has_selection <- rep(FALSE, length(prior_list[[par]]))
+        has_phacking  <- rep(FALSE, length(prior_list[[par]]))
+      }
 
       # distinguish between null/alternative and component type notations
       components <- attr(prior_list[[par]], "components")
 
-      if(any(is_PET | is_PEESE | is_weightfunction)){
+      if(any(is_PET | is_PEESE | has_selection | has_phacking)){
 
         # change the samples between conditional/averaged based on the preferences
         if(conditional){
@@ -870,24 +880,46 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
             warnings <- c(warnings, .runjags_conditional_warning("PEESE", n_conditional_samples))
           }
 
-          if(any(is_weightfunction)){
+          if(any(has_selection)){
             # compute the number of conditional samples
-            n_conditional_samples <- sum(model_samples[,colnames(model_samples) == paste0(par, "_indicator")] %in% which(is_weightfunction))
+            n_conditional_samples <- sum(model_samples[,colnames(model_samples) == paste0(par, "_indicator")] %in% which(has_selection))
 
             # replace null samples with NAs (important for later transformations)
-            model_samples[!model_samples[,colnames(model_samples) == paste0(par, "_indicator")] %in% which(is_weightfunction), grepl("omega", colnames(model_samples))] <- NA
+            model_samples[!model_samples[,colnames(model_samples) == paste0(par, "_indicator")] %in% which(has_selection), grepl("omega", colnames(model_samples))] <- NA
 
             # add warnings about conditional summary
             warnings <- c(warnings, .runjags_conditional_warning("omega", n_conditional_samples))
           }
 
+          if(any(has_phacking)){
+            # compute the number of conditional samples
+            n_conditional_samples <- sum(model_samples[,colnames(model_samples) == paste0(par, "_indicator")] %in% which(has_phacking))
+
+            # replace non-p-hacking samples with NAs
+            phacking_columns <- intersect(c("alpha", "pi_null", "phack_kind"), colnames(model_samples))
+            if(length(phacking_columns) > 0){
+              model_samples[!model_samples[,colnames(model_samples) == paste0(par, "_indicator")] %in% which(has_phacking), phacking_columns] <- NA
+            }
+
+            # add warnings about conditional summary
+            warning_columns <- intersect(c("alpha", "pi_null"), phacking_columns)
+            if(length(warning_columns) > 0){
+              warnings <- c(warnings, .runjags_conditional_warning(warning_columns, n_conditional_samples))
+            }
+          }
+
         }
 
         # re-format the weightfunctions
-        if(any(is_weightfunction)){
+        if(any(has_selection) || any(has_phacking)){
 
           # rename
-          omega_cuts      <- weightfunctions_mapping(prior_list[[par]][is_weightfunction], cuts_only = TRUE, one_sided = TRUE)
+          omega_cuts      <- if(any(has_selection)){
+            selection_priors <- lapply(branch_info[has_selection], function(x) x$selection)
+            weightfunctions_mapping(selection_priors, cuts_only = TRUE, one_sided = TRUE)
+          }else{
+            c(0, 1)
+          }
           omega_names_old <- paste0("omega[", 1:(length(omega_cuts)-1),"]")
           omega_names     <- sapply(1:(length(omega_cuts)-1), function(i)paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
           colnames(model_samples)[which(colnames(model_samples) %in% omega_names_old)] <- omega_names
@@ -895,7 +927,9 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
           # remove if requested
           if("omega" %in% remove_parameters){
             model_samples <- model_samples[,!colnames(model_samples) %in% omega_names,drop=FALSE]
-            prior_list[[par]][is_weightfunction] <- NULL
+            if(any(has_selection)){
+              prior_list[[par]][has_selection] <- NULL
+            }
           }
         }
 
@@ -906,8 +940,12 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
         if(any(is_PEESE)){
           prior_list[["PEESE"]] <- prior_list[[par]][is_PEESE][1]
         }
-        if(any(is_weightfunction)){
-          prior_list[["omega"]] <- prior_list[[par]][is_weightfunction][1]
+        if(any(has_selection)){
+          prior_list[["omega"]] <- branch_info[has_selection][[1]]$selection
+        }
+        if(any(has_phacking)){
+          phacking_prior <- branch_info[has_phacking][[1]]$phacking
+          prior_list[["alpha"]] <- phacking_prior$alpha
         }
 
       }else{

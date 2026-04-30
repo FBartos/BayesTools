@@ -308,6 +308,89 @@ test_that("factor plots map component-expanded prior styles back to levels", {
   )
 })
 
+test_that("omega plot helpers use selection components from composed bias priors", {
+
+  selection <- prior_weightfunction("one-sided", c(.025), wf_fixed(c(1, .5)))
+  phacking  <- prior_phacking(form = "linear")
+  bias      <- prior_bias(selection = selection, phacking = phacking)
+
+  model <- matrix(
+    c(
+      1.0, .5, .2, .010, 1,
+      1.0, .5, .4, .020, 1
+    ),
+    nrow = 2,
+    byrow = TRUE
+  )
+  colnames(model) <- c("omega[1]", "omega[2]", "alpha", "pi_null", "phack_kind")
+  class(model) <- c("matrix", "BayesTools_fit")
+  attr(model, "prior_list") <- list(bias = bias)
+
+  mixed <- as_mixed_posteriors(model, parameters = "bias")
+
+  plot_data <- BayesTools:::.plot_data_samples.weightfunction(
+    mixed,
+    x_seq         = NULL,
+    x_range       = NULL,
+    x_range_quant = NULL,
+    n_points      = 32
+  )
+  expect_equal(plot_data$x, c(0, .025, .025, 1))
+  expect_equal(unname(plot_data$y), c(1, 1, .5, .5), tolerance = 1e-8)
+
+  omega_samples <- BayesTools:::.simplify_as_mixed_posterior_bias(mixed, "omega")
+  prior_data <- BayesTools:::.plot_data_prior_list.weightparameter(
+    attr(omega_samples$omega, "prior_list"),
+    parameter = "omega[0.025,1]",
+    n_points  = 32,
+    n_samples = 100
+  )
+  expect_equal(prior_data$points1$x, .5, tolerance = 1e-8)
+})
+
+test_that("omega plot helpers preserve composed selection branches in bias mixtures", {
+
+  selection <- prior_weightfunction("one-sided", c(.025), wf_fixed(c(1, .5)))
+  phacking  <- prior_phacking(form = "linear")
+  bias      <- prior_mixture(
+    list(prior_none(), phacking, prior_bias(selection = selection, phacking = phacking)),
+    is_null = c(TRUE, FALSE, FALSE)
+  )
+
+  model <- matrix(
+    c(
+      1, 1.0, 1.0, 0.0, 0.000, 0,
+      2, 1.0, 1.0, 0.2, 0.010, 1,
+      3, 1.0, 0.5, 0.4, 0.020, 1
+    ),
+    nrow = 3,
+    byrow = TRUE
+  )
+  colnames(model) <- c("bias_indicator", "omega[1]", "omega[2]", "alpha", "pi_null", "phack_kind")
+  class(model) <- c("matrix", "BayesTools_fit")
+  attr(model, "prior_list") <- list(bias = bias)
+
+  mixed <- as_mixed_posteriors(model, parameters = "bias")
+  omega_samples <- BayesTools:::.simplify_as_mixed_posterior_bias(mixed, "omega")
+
+  plot_data <- BayesTools:::.plot_data_samples.weightfunction(
+    omega_samples,
+    x_seq         = NULL,
+    x_range       = NULL,
+    x_range_quant = NULL,
+    n_points      = 32
+  )
+  expect_equal(plot_data$x, c(0, .025, .025, 1))
+
+  prior_data <- BayesTools:::.plot_data_prior_list.weightparameter(
+    attr(omega_samples$omega, "prior_list"),
+    parameter = "omega[0.025,1]",
+    n_points  = 32,
+    n_samples = 100
+  )
+  expect_equal(prior_data$points1$x, .5, tolerance = 1e-8)
+})
+
 test_that("PET-PEESE prior plot data uses CDF quantiles for half-Cauchy PET", {
 
   x_seq <- c(0, 0.25, 0.5, 1)
