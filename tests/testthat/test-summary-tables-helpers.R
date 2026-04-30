@@ -75,32 +75,10 @@ test_that("format_BF input validation works", {
 })
 
 
-test_that("BF MC error helper formats interval columns on selected scale", {
+test_that("BF MC error helper formats relative percentage column", {
 
-  expect_equal(.BF_error_column_names(logBF = FALSE, BF_error_level = 0.95), c("BF MC 2.5%", "BF MC 97.5%"))
-  expect_equal(.BF_error_column_names(logBF = TRUE,  BF_error_level = 0.90), c("log(BF) MC 5%", "log(BF) MC 95%"))
-  expect_equal(.BF_error_column_names(logBF = FALSE, BF_error_level = 0.95, BF01 = TRUE), c("Exclusion BF MC 2.5%", "Exclusion BF MC 97.5%"))
-  expect_equal(.BF_error_column_names(logBF = TRUE,  BF_error_level = 0.90, BF01 = TRUE), c("log(Exclusion BF) MC 5%", "log(Exclusion BF) MC 95%"))
-
-  BF_error <- .format_BF_error_bounds(2, 8, logBF = FALSE, BF01 = FALSE, BF_error_level = 0.95)
-  expect_equal(as.numeric(BF_error[["BF_error_lower"]]), 2)
-  expect_equal(as.numeric(BF_error[["BF_error_upper"]]), 8)
-  expect_equal(attr(BF_error[["BF_error_lower"]], "name"), "BF MC 2.5%")
-
-  log_BF_error <- .format_BF_error_bounds(2, 8, logBF = TRUE, BF01 = FALSE, BF_error_level = 0.95)
-  expect_equal(as.numeric(log_BF_error[["BF_error_lower"]]), log(2))
-  expect_equal(as.numeric(log_BF_error[["BF_error_upper"]]), log(8))
-  expect_equal(attr(log_BF_error[["BF_error_lower"]], "name"), "log(BF) MC 2.5%")
-
-  BF01_error <- .format_BF_error_bounds(2, 8, logBF = FALSE, BF01 = TRUE, BF_error_level = 0.95)
-  expect_equal(as.numeric(BF01_error[["BF_error_lower"]]), 1/8)
-  expect_equal(as.numeric(BF01_error[["BF_error_upper"]]), 1/2)
-  expect_equal(attr(BF01_error[["BF_error_lower"]], "name"), "Exclusion BF MC 2.5%")
-
-  log_BF01_error <- .format_BF_error_bounds(2, 8, logBF = TRUE, BF01 = TRUE, BF_error_level = 0.95)
-  expect_equal(as.numeric(log_BF01_error[["BF_error_lower"]]), log(1/8))
-  expect_equal(as.numeric(log_BF01_error[["BF_error_upper"]]), log(1/2))
-  expect_equal(attr(log_BF01_error[["BF_error_lower"]], "name"), "log(Exclusion BF) MC 2.5%")
+  expect_equal(.BF_error_column_name(), "error%(Inclusion BF)")
+  expect_equal(.BF_error_column_name(BF01 = TRUE), "error%(Exclusion BF)")
 
 })
 
@@ -108,85 +86,73 @@ test_that("BF MC error helper formats interval columns on selected scale", {
 test_that("indicator BF diagnostics use indicator MCSE and handle boundaries", {
 
   indicator <- list(c(rep(0, 50), rep(1, 50)), c(rep(0, 50), rep(1, 50)))
-  diagnostics <- .indicator_BF_diagnostics(indicator, prior_prob = 0.5, BF = 1, BF_error_level = 0.95)
+  diagnostics <- .indicator_BF_diagnostics(indicator, prior_prob = 0.5, BF = 1)
 
   expect_equal(diagnostics$post_prob, 0.5)
   expect_equal(diagnostics$visits, 100)
   expect_equal(diagnostics$n_samples, 200)
   expect_true(is.finite(diagnostics$MCMC_error))
   expect_true(is.finite(diagnostics$ESS))
-  expect_lt(diagnostics$BF_error_lower, 1)
-  expect_gt(diagnostics$BF_error_upper, 1)
+  expect_equal(diagnostics$BF_error_percent, 100 * diagnostics$MCMC_error / (diagnostics$post_prob * (1 - diagnostics$post_prob)))
+  expect_gt(diagnostics$BF_error_percent, 0)
 
-  boundary <- .indicator_BF_diagnostics(list(rep(0, 20), rep(0, 20)), prior_prob = 0.5, BF = 0, BF_error_level = 0.95)
-  expect_true(is.na(boundary$BF_error_lower))
-  expect_true(is.na(boundary$BF_error_upper))
+  boundary <- .indicator_BF_diagnostics(list(rep(0, 20), rep(0, 20)), prior_prob = 0.5, BF = 0)
+  expect_true(is.na(boundary$BF_error_percent))
   expect_match(.indicator_BF_warnings("x", boundary), "no posterior samples")
 
-  boundary_one <- .indicator_BF_diagnostics(list(rep(1, 20), rep(1, 20)), prior_prob = 0.5, BF = Inf, BF_error_level = 0.95)
-  expect_true(is.na(boundary_one$BF_error_lower))
-  expect_true(is.na(boundary_one$BF_error_upper))
+  boundary_one <- .indicator_BF_diagnostics(list(rep(1, 20), rep(1, 20)), prior_prob = 0.5, BF = Inf)
+  expect_true(is.na(boundary_one$BF_error_percent))
   expect_match(.indicator_BF_warnings("x", boundary_one), "no posterior samples")
 
-  prior_boundary <- .indicator_BF_diagnostics(indicator, prior_prob = 1, BF = 0, BF_error_level = 0.95)
-  expect_true(is.na(prior_boundary$BF_error_lower))
-  expect_true(is.na(prior_boundary$BF_error_upper))
+  prior_boundary <- .indicator_BF_diagnostics(indicator, prior_prob = 1, BF = 0)
+  expect_true(is.na(prior_boundary$BF_error_percent))
 
 })
 
 
-test_that("update transforms BF MC error columns with BF scale", {
+test_that("update preserves relative BF MC error percentage across BF scales", {
 
   table <- data.frame(
-    prior_prob     = 0.5,
-    post_prob      = 0.75,
-    inclusion_BF   = format_BF(3, inclusion = TRUE),
-    ESS            = 100,
-    MCMC_error     = 0.02,
-    BF_error_lower = 2,
-    BF_error_upper = 8
+    prior_prob       = 0.5,
+    post_prob        = 0.75,
+    inclusion_BF     = format_BF(3, inclusion = TRUE),
+    ESS              = 100,
+    MCMC_error       = 0.02,
+    BF_error_percent = 8
   )
   class(table) <- c("BayesTools_table", class(table))
-  attr(table, "type") <- c("prior_prob", "post_prob", "inclusion_BF", "ESS", "MCMC_error", "BF_error", "BF_error")
-  attr(table, "BF_error_logBF") <- FALSE
-  attr(table, "BF_error_BF01")  <- FALSE
-  attr(table, "BF_error_level") <- 0.95
-  attr(table[["BF_error_lower"]], "name") <- "BF MC 2.5%"
-  attr(table[["BF_error_upper"]], "name") <- "BF MC 97.5%"
+  attr(table, "type") <- c("prior_prob", "post_prob", "inclusion_BF", "ESS", "MCMC_error", "BF_error")
+  attr(table[["BF_error_percent"]], "name") <- "error%(Inclusion BF)"
 
   log_table <- update(table, logBF = TRUE)
   expect_equal(as.numeric(log_table[["inclusion_BF"]]), log(3))
-  expect_equal(as.numeric(log_table[["BF_error_lower"]]), log(2))
-  expect_equal(as.numeric(log_table[["BF_error_upper"]]), log(8))
-  expect_equal(attr(log_table[["BF_error_lower"]], "name"), "log(BF) MC 2.5%")
+  expect_equal(as.numeric(log_table[["BF_error_percent"]]), 8)
+  expect_equal(attr(log_table[["BF_error_percent"]], "name"), "error%(Inclusion BF)")
 
   default_again <- update(log_table)
   expect_equal(as.numeric(default_again[["inclusion_BF"]]), 3)
-  expect_equal(as.numeric(default_again[["BF_error_lower"]]), 2)
-  expect_equal(as.numeric(default_again[["BF_error_upper"]]), 8)
-  expect_equal(attr(default_again[["BF_error_lower"]], "name"), "BF MC 2.5%")
+  expect_equal(as.numeric(default_again[["BF_error_percent"]]), 8)
+  expect_equal(attr(default_again[["BF_error_percent"]], "name"), "error%(Inclusion BF)")
 
   BF01_table <- update(table, BF01 = TRUE)
   expect_equal(as.numeric(BF01_table[["inclusion_BF"]]), 1/3)
-  expect_equal(as.numeric(BF01_table[["BF_error_lower"]]), 1/8)
-  expect_equal(as.numeric(BF01_table[["BF_error_upper"]]), 1/2)
-  expect_equal(attr(BF01_table[["BF_error_lower"]], "name"), "Exclusion BF MC 2.5%")
+  expect_equal(as.numeric(BF01_table[["BF_error_percent"]]), 8)
+  expect_equal(attr(BF01_table[["BF_error_percent"]], "name"), "error%(Exclusion BF)")
 
   BF01_from_log <- update(log_table, BF01 = TRUE)
   expect_equal(as.numeric(BF01_from_log[["inclusion_BF"]]), 1/3)
-  expect_equal(as.numeric(BF01_from_log[["BF_error_lower"]]), 1/8)
-  expect_equal(as.numeric(BF01_from_log[["BF_error_upper"]]), 1/2)
+  expect_equal(as.numeric(BF01_from_log[["BF_error_percent"]]), 8)
+  expect_equal(attr(BF01_from_log[["BF_error_percent"]], "name"), "error%(Exclusion BF)")
 
   log_BF01_table <- update(table, logBF = TRUE, BF01 = TRUE)
   expect_equal(as.numeric(log_BF01_table[["inclusion_BF"]]), log(1/3))
-  expect_equal(as.numeric(log_BF01_table[["BF_error_lower"]]), log(1/8))
-  expect_equal(as.numeric(log_BF01_table[["BF_error_upper"]]), log(1/2))
-  expect_equal(attr(log_BF01_table[["BF_error_lower"]], "name"), "log(Exclusion BF) MC 2.5%")
+  expect_equal(as.numeric(log_BF01_table[["BF_error_percent"]]), 8)
+  expect_equal(attr(log_BF01_table[["BF_error_percent"]], "name"), "error%(Exclusion BF)")
 
   default_from_log_BF01 <- update(log_BF01_table)
   expect_equal(as.numeric(default_from_log_BF01[["inclusion_BF"]]), 3)
-  expect_equal(as.numeric(default_from_log_BF01[["BF_error_lower"]]), 2)
-  expect_equal(as.numeric(default_from_log_BF01[["BF_error_upper"]]), 8)
+  expect_equal(as.numeric(default_from_log_BF01[["BF_error_percent"]]), 8)
+  expect_equal(attr(default_from_log_BF01[["BF_error_percent"]], "name"), "error%(Inclusion BF)")
 
 })
 

@@ -1479,7 +1479,10 @@ test_that("Marginal distributions with one-sided weightfunction model work", {
 
     par(mfrow = c(1, 2))
     hist(mixed_posteriors$omega[,1], freq = FALSE, main = "omega[0,0.025]", breaks = 50, xlim = c(0, 1))
-    lines(density(temp_samples[,1]))
+    # The first one-sided weight is the fixed reference bin; do not smooth a point mass.
+    if(stats::sd(temp_samples[,1]) > sqrt(.Machine$double.eps)){
+      lines(density(temp_samples[,1]))
+    }
     hist(mixed_posteriors$omega[,2], freq = FALSE, main = "omega[0.025,1]", breaks = 50, xlim = c(0, 1))
   })
 

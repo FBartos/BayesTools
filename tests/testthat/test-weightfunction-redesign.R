@@ -28,6 +28,9 @@ test_that("prior_weightfunction stores canonical geometry and weight priors", {
   expect_equal(wf$weights$type, "cumulative")
   expect_equal(wf$weights$alpha, c(1, 2, 3))
   expect_equal(wf$prior_weights, 2)
+
+  samples <- rng(wf, 1000)
+  expect_true(all(samples[,1] == 1))
 })
 
 test_that("weightfunction constructors validate independent scales", {

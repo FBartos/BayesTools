@@ -58,8 +58,7 @@ runjags_inference_table(
   formula_prefix = TRUE,
   logBF = FALSE,
   BF01 = FALSE,
-  BF_diagnostics = FALSE,
-  BF_error_level = 0.95
+  BF_diagnostics = FALSE
 )
 
 JAGS_estimates_table(
@@ -92,8 +91,7 @@ JAGS_inference_table(
   formula_prefix = TRUE,
   logBF = FALSE,
   BF01 = FALSE,
-  BF_diagnostics = FALSE,
-  BF_error_level = 0.95
+  BF_diagnostics = FALSE
 )
 
 JAGS_summary_table(
@@ -128,8 +126,7 @@ runjags_inference_empty_table(
   warnings = NULL,
   logBF = FALSE,
   BF01 = FALSE,
-  BF_diagnostics = FALSE,
-  BF_error_level = 0.95
+  BF_diagnostics = FALSE
 )
 
 JAGS_estimates_empty_table(
@@ -145,8 +142,7 @@ JAGS_inference_empty_table(
   warnings = NULL,
   logBF = FALSE,
   BF01 = FALSE,
-  BF_diagnostics = FALSE,
-  BF_error_level = 0.95
+  BF_diagnostics = FALSE
 )
 
 stan_estimates_table(
@@ -188,11 +184,9 @@ be printed. Defaults to \code{TRUE}.}
 \item{BF01}{whether the Bayes factor should be inverted}
 
 \item{BF_diagnostics}{whether to add MCMC diagnostics for Bayes factors
-computed from model indicator frequencies. Defaults to \code{FALSE}.}
-
-\item{BF_error_level}{probability level for the Monte Carlo error interval
-of Bayes factors computed from model indicator frequencies. Defaults to
-\code{0.95}.}
+computed from model indicator frequencies. The Bayes factor error is
+reported as a relative Monte Carlo standard error percentage. Defaults to
+\code{FALSE}.}
 
 \item{remove_parameters}{parameters to be removed from the summary.
 Can be \code{NULL} (default, no removal), a character vector of parameter

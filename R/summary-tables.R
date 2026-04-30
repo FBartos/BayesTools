@@ -627,10 +627,9 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
 #' \code{TRUE} will exclude diagnostics columns regardless of the
 #' \code{conditional} setting.
 #' @param BF_diagnostics whether to add MCMC diagnostics for Bayes factors
-#' computed from model indicator frequencies. Defaults to \code{FALSE}.
-#' @param BF_error_level probability level for the Monte Carlo error interval
-#' of Bayes factors computed from model indicator frequencies. Defaults to
-#' \code{0.95}.
+#' computed from model indicator frequencies. The Bayes factor error is
+#' reported as a relative Monte Carlo standard error percentage. Defaults to
+#' \code{FALSE}.
 #' @inheritParams BayesTools_ensemble_tables
 #'
 #'
@@ -1075,7 +1074,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 
 #' @rdname BayesTools_model_tables
 runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnings = NULL, formula_prefix = TRUE,
-                                     logBF = FALSE, BF01 = FALSE, BF_diagnostics = FALSE, BF_error_level = 0.95){
+                                     logBF = FALSE, BF01 = FALSE, BF_diagnostics = FALSE){
 
   # check fits
   if(!inherits(fit, "runjags"))
@@ -1093,7 +1092,6 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   check_bool(logBF, "logBF")
   check_bool(BF01,  "BF01")
   check_bool(BF_diagnostics, "BF_diagnostics")
-  check_real(BF_error_level, "BF_error_level", lower = 0, upper = 1, allow_bound = FALSE)
 
   # return empty table if none of the priors is spike and slab
   if(!any(sapply(prior_list, function(p) is.prior.spike_and_slab(p) | is.prior.mixture(p)))){
@@ -1103,8 +1101,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
       warnings       = warnings,
       logBF          = logBF,
       BF01           = BF01,
-      BF_diagnostics = BF_diagnostics,
-      BF_error_level = BF_error_level
+      BF_diagnostics = BF_diagnostics
     )
     return(runjags_summary)
   }
@@ -1117,7 +1114,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   }else{
     model_samples_list <- NULL
   }
-  runjags_summary <- data.frame(matrix(nrow = 0, ncol = if(BF_diagnostics) 8 else 4))
+  runjags_summary <- data.frame(matrix(nrow = 0, ncol = if(BF_diagnostics) 7 else 4))
 
   for(par in names(prior_list)){
     if(is.prior.spike_and_slab(prior_list[[par]])){
@@ -1133,7 +1130,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
       )
       if(BF_diagnostics){
         temp_indicator_list <- .runjags_indicator_list(model_samples_list, paste0(par, "_indicator"), 1)
-        temp_diagnostics    <- .indicator_BF_diagnostics(temp_indicator_list, temp_prior_prob, temp_BF, BF_error_level)
+        temp_diagnostics    <- .indicator_BF_diagnostics(temp_indicator_list, temp_prior_prob, temp_BF)
         temp_row            <- cbind(temp_row, .indicator_BF_diagnostic_row(temp_diagnostics))
         warnings            <- c(warnings, .indicator_BF_warnings(par, temp_diagnostics))
       }
@@ -1168,7 +1165,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
         )
         if(BF_diagnostics){
           temp_indicator_list <- .runjags_indicator_list(model_samples_list, paste0(par, "_indicator"), which(components == "alternative"))
-          temp_diagnostics    <- .indicator_BF_diagnostics(temp_indicator_list, temp_prior_prob[["alternative"]], temp_BF, BF_error_level)
+          temp_diagnostics    <- .indicator_BF_diagnostics(temp_indicator_list, temp_prior_prob[["alternative"]], temp_BF)
           temp_row            <- cbind(temp_row, .indicator_BF_diagnostic_row(temp_diagnostics))
           warnings            <- c(warnings, .indicator_BF_warnings(par, temp_diagnostics))
         }
@@ -1189,7 +1186,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
           )
           if(BF_diagnostics){
             temp_indicator_list <- .runjags_indicator_list(model_samples_list, paste0(par, "_indicator"), which(components == component))
-            temp_diagnostics    <- .indicator_BF_diagnostics(temp_indicator_list, temp_prior_prob[[component]], temp_BF, BF_error_level)
+            temp_diagnostics    <- .indicator_BF_diagnostics(temp_indicator_list, temp_prior_prob[[component]], temp_BF)
             temp_row            <- cbind(temp_row, .indicator_BF_diagnostic_row(temp_diagnostics))
             warnings            <- c(warnings, .indicator_BF_warnings(temp_parameter, temp_diagnostics))
           }
@@ -1206,21 +1203,11 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   rownames(runjags_summary) <- parameter_names
   runjags_summary           <- runjags_summary[,-1]
 
-  # format BF and BF MC interval on the requested scale
+  # format BF and BF MC error on the requested scale
   runjags_summary[,"inclusion_BF"] <- format_BF(runjags_summary[,"inclusion_BF"], logBF = logBF, BF01 = BF01, inclusion = TRUE)
   if(BF_diagnostics){
     attr(runjags_summary[["MCMC_error"]], "name") <- "error(Post. prob.)"
-    temp_BF_error <- .format_BF_error_bounds(
-      BF_error_lower = runjags_summary[,"BF_error_lower"],
-      BF_error_upper = runjags_summary[,"BF_error_upper"],
-      logBF          = logBF,
-      BF01           = BF01,
-      BF_error_level = BF_error_level
-    )
-    runjags_summary[,"BF_error_lower"] <- temp_BF_error[["BF_error_lower"]]
-    runjags_summary[,"BF_error_upper"] <- temp_BF_error[["BF_error_upper"]]
-    attr(runjags_summary[["BF_error_lower"]], "name") <- attr(temp_BF_error[["BF_error_lower"]], "name")
-    attr(runjags_summary[["BF_error_upper"]], "name") <- attr(temp_BF_error[["BF_error_upper"]], "name")
+    attr(runjags_summary[["BF_error_percent"]], "name") <- .BF_error_column_name(BF01)
   }
 
   # rename formula parameters
@@ -1234,15 +1221,12 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   }
 
   class(runjags_summary)               <- c("BayesTools_table", "BayesTools_runjags_inference", class(runjags_summary))
-  attr(runjags_summary, "type")        <- c("prior_prob", "post_prob", "inclusion_BF", if(BF_diagnostics) c("ESS", "MCMC_error", "BF_error", "BF_error"))
+  attr(runjags_summary, "type")        <- c("prior_prob", "post_prob", "inclusion_BF", if(BF_diagnostics) c("ESS", "MCMC_error", "BF_error"))
   attr(runjags_summary, "parameters")  <- parameter_names
   attr(runjags_summary, "rownames")    <- TRUE
   attr(runjags_summary, "title")       <- title
   attr(runjags_summary, "footnotes")   <- footnotes
   attr(runjags_summary, "warnings")    <- warnings
-  attr(runjags_summary, "BF_error_logBF") <- logBF
-  attr(runjags_summary, "BF_error_BF01")  <- BF01
-  attr(runjags_summary, "BF_error_level") <- BF_error_level
 
   return(runjags_summary)
 }
@@ -1311,8 +1295,7 @@ runjags_estimates_empty_table <- function(probs = c(0.025, 0.5, 0.975), title = 
 
 #' @rdname BayesTools_model_tables
 runjags_inference_empty_table <- function(title = NULL, footnotes = NULL, warnings = NULL,
-                                          logBF = FALSE, BF01 = FALSE, BF_diagnostics = FALSE,
-                                          BF_error_level = 0.95){
+                                          logBF = FALSE, BF01 = FALSE, BF_diagnostics = FALSE){
 
   check_char(title, "title", allow_NULL = TRUE)
   check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
@@ -1320,30 +1303,25 @@ runjags_inference_empty_table <- function(title = NULL, footnotes = NULL, warnin
   check_bool(logBF, "logBF")
   check_bool(BF01,  "BF01")
   check_bool(BF_diagnostics, "BF_diagnostics")
-  check_real(BF_error_level, "BF_error_level", lower = 0, upper = 1, allow_bound = FALSE)
 
   if(BF_diagnostics){
     footnotes <- c(footnotes, .BF_error_footnote())
   }
 
-  empty_table <- data.frame(matrix(nrow = 0, ncol = if(BF_diagnostics) 7 else 3))
-  colnames(empty_table) <- c("prior_prob", "post_prob", "inclusion_BF", if(BF_diagnostics) c("ESS", "MCMC_error", "BF_error_lower", "BF_error_upper"))
+  empty_table <- data.frame(matrix(nrow = 0, ncol = if(BF_diagnostics) 6 else 3))
+  colnames(empty_table) <- c("prior_prob", "post_prob", "inclusion_BF", if(BF_diagnostics) c("ESS", "MCMC_error", "BF_error_percent"))
   attr(empty_table[["inclusion_BF"]], "name") <- .BF_column_name(logBF = logBF, BF01 = BF01, inclusion = TRUE)
   if(BF_diagnostics){
     attr(empty_table[["MCMC_error"]], "name") <- "error(Post. prob.)"
-    attr(empty_table[["BF_error_lower"]], "name") <- .BF_error_column_names(logBF, BF_error_level, BF01)[1]
-    attr(empty_table[["BF_error_upper"]], "name") <- .BF_error_column_names(logBF, BF_error_level, BF01)[2]
+    attr(empty_table[["BF_error_percent"]], "name") <- .BF_error_column_name(BF01)
   }
 
   class(empty_table)             <- c("BayesTools_table", "BayesTools_runjags_inference", class(empty_table))
-  attr(empty_table, "type")      <- c("prior_prob", "post_prob", "inclusion_BF", if(BF_diagnostics) c("ESS", "MCMC_error", "BF_error", "BF_error"))
+  attr(empty_table, "type")      <- c("prior_prob", "post_prob", "inclusion_BF", if(BF_diagnostics) c("ESS", "MCMC_error", "BF_error"))
   attr(empty_table, "rownames")  <- FALSE
   attr(empty_table, "title")     <- title
   attr(empty_table, "footnotes") <- footnotes
   attr(empty_table, "warnings")  <- warnings
-  attr(empty_table, "BF_error_logBF") <- logBF
-  attr(empty_table, "BF_error_BF01")  <- BF01
-  attr(empty_table, "BF_error_level") <- BF_error_level
 
   return(empty_table)
 }
@@ -1560,21 +1538,20 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
   ))
 }
 
-.indicator_BF_diagnostics <- function(indicator_list, prior_prob, BF, BF_error_level = 0.95){
+.indicator_BF_diagnostics <- function(indicator_list, prior_prob, BF){
 
   diagnostics <- .indicator_MCMC_summary(indicator_list)
 
   if(diagnostics$post_prob <= 0 || diagnostics$post_prob >= 1 ||
      prior_prob <= 0 || prior_prob >= 1 ||
      !is.finite(BF) || !is.finite(diagnostics$MCMC_error)){
-    BF_error <- c(NA_real_, NA_real_)
+    BF_error_percent <- NA_real_
   }else{
     log_BF_error <- diagnostics$MCMC_error / (diagnostics$post_prob * (1 - diagnostics$post_prob))
-    BF_error     <- exp(log(BF) + stats::qnorm(.BF_error_probs(BF_error_level)) * log_BF_error)
+    BF_error_percent <- 100 * log_BF_error
   }
 
-  diagnostics$BF_error_lower <- BF_error[1]
-  diagnostics$BF_error_upper <- BF_error[2]
+  diagnostics$BF_error_percent <- BF_error_percent
 
   return(diagnostics)
 }
@@ -1582,10 +1559,9 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
 .indicator_BF_diagnostic_row <- function(diagnostics){
 
   data.frame(
-    ESS            = diagnostics$ESS,
-    MCMC_error     = diagnostics$MCMC_error,
-    BF_error_lower = diagnostics$BF_error_lower,
-    BF_error_upper = diagnostics$BF_error_upper
+    ESS              = diagnostics$ESS,
+    MCMC_error       = diagnostics$MCMC_error,
+    BF_error_percent = diagnostics$BF_error_percent
   )
 }
 
@@ -1604,51 +1580,15 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
   }
 }
 
-.BF_error_probs <- function(BF_error_level){
+.BF_error_column_name <- function(BF01 = FALSE){
 
-  alpha <- (1 - BF_error_level) / 2
-  c(alpha, 1 - alpha)
-}
-
-.BF_error_column_names <- function(logBF, BF_error_level, BF01 = FALSE){
-
-  probs  <- .BF_error_probs(BF_error_level)
-  scale  <- if(BF01) "Exclusion BF" else "BF"
-  prefix <- if(logBF) paste0("log(", scale, ") MC ") else paste0(scale, " MC ")
-  paste0(prefix, .format_percent(probs))
-}
-
-.format_BF_error_bounds <- function(BF_error_lower, BF_error_upper, logBF = FALSE, BF01 = FALSE, BF_error_level = 0.95){
-
-  BF_error <- cbind(BF_error_lower, BF_error_upper)
-
-  if(BF01){
-    BF_error <- cbind(1 / BF_error[,2], 1 / BF_error[,1])
-  }
-  if(logBF){
-    BF_error <- log(BF_error)
-  }
-
-  BF_error <- data.frame(
-    BF_error_lower = BF_error[,1],
-    BF_error_upper = BF_error[,2],
-    check.names    = FALSE
-  )
-  attr(BF_error[["BF_error_lower"]], "name") <- .BF_error_column_names(logBF, BF_error_level, BF01)[1]
-  attr(BF_error[["BF_error_upper"]], "name") <- .BF_error_column_names(logBF, BF_error_level, BF01)[2]
-
-  return(BF_error)
+  scale <- if(BF01) "Exclusion BF" else "Inclusion BF"
+  paste0("error%(", scale, ")")
 }
 
 .BF_error_footnote <- function(){
-  "BF MC columns are Monte Carlo error interval bounds; they are computed on a log Bayes-factor scale and shown on the selected BF scale."
+  "BF MC error is a delta-method relative Monte Carlo standard error on the log Bayes-factor scale, reported as a percentage of the Bayes factor."
 }
-
-.format_percent <- function(x){
-
-  paste0(sub("\\.?0+$", "", format(round(100 * x, 3), trim = TRUE, scientific = FALSE)), "%")
-}
-
 
 #' @title Adds column to BayesTools table
 #'
@@ -1816,31 +1756,8 @@ update.BayesTools_table <- function(object, title = NULL, footnotes = NULL, warn
   }
   if(any(attr(object, "type") == "BF_error")){
     BF_error_cols <- which(attr(object, "type") == "BF_error")
-    if(length(BF_error_cols) == 2){
-      old_logBF <- isTRUE(attr(object, "BF_error_logBF"))
-      old_BF01  <- isTRUE(attr(object, "BF_error_BF01"))
-      BF_error  <- as.matrix(object[,BF_error_cols,drop=FALSE])
-
-      if(old_logBF){
-        BF_error <- exp(BF_error)
-      }
-      if(old_BF01){
-        BF_error <- cbind(1 / BF_error[,2], 1 / BF_error[,1])
-      }
-
-      BF_error <- .format_BF_error_bounds(
-        BF_error_lower = BF_error[,1],
-        BF_error_upper = BF_error[,2],
-        logBF          = logBF,
-        BF01           = BF01,
-        BF_error_level = if(is.null(attr(object, "BF_error_level"))) 0.95 else attr(object, "BF_error_level")
-      )
-      object[,BF_error_cols[1]] <- BF_error[["BF_error_lower"]]
-      object[,BF_error_cols[2]] <- BF_error[["BF_error_upper"]]
-      attr(object[[BF_error_cols[1]]], "name") <- attr(BF_error[["BF_error_lower"]], "name")
-      attr(object[[BF_error_cols[2]]], "name") <- attr(BF_error[["BF_error_upper"]], "name")
-      attr(object, "BF_error_logBF") <- logBF
-      attr(object, "BF_error_BF01")  <- BF01
+    if(length(BF_error_cols) == 1){
+      attr(object[[BF_error_cols]], "name") <- .BF_error_column_name(BF01)
     }
   }
 

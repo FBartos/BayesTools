@@ -24,6 +24,28 @@
 REFERENCE_DIR <<- testthat::test_path("..", "results", "JAGS-summary-tables")
 source(testthat::test_path("common-functions.R"))
 
+make_adversarial_indicator_fit <- function(indicator = c(rep(1, 9900), rep(0, 100))){
+
+  samples <- coda::mcmc(
+    cbind(theta = indicator, theta_indicator = indicator),
+    start = 1,
+    end   = length(indicator),
+    thin  = 1
+  )
+  fit <- structure(
+    list(mcmc = coda::mcmc.list(samples), sample = length(indicator)),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- list(
+    theta = prior_spike_and_slab(
+      prior("normal", list(0, 1)),
+      prior_inclusion = prior("point", list(0.5))
+    )
+  )
+
+  fit
+}
+
 # ============================================================================ #
 # SECTION 1: Test Empty Tables
 # ============================================================================ #
@@ -38,6 +60,67 @@ test_that("Empty summary tables work correctly", {
 
   test_reference_table(runjags_summary_empty, "empty_runjags_estimates.txt", "Empty runjags_estimates table mismatch")
 })
+
+
+test_that("runjags_inference_table reports known BF error percent in adversarial near-boundary case", {
+
+  fit <- make_adversarial_indicator_fit()
+
+  known_post_prob <- 0.99
+  known_mcse      <- 0.0025
+  expected_BF     <- (known_post_prob / (1 - known_post_prob)) / (0.5 / (1 - 0.5))
+  expected_error  <- 100 * known_mcse / (known_post_prob * (1 - known_post_prob))
+
+  testthat::local_mocked_bindings(
+    .indicator_MCMC_summary = function(indicator_list){
+      list(
+        post_prob     = known_post_prob,
+        MCMC_error    = known_mcse,
+        MCMC_SD_error = NA_real_,
+        ESS           = 1600,
+        visits        = sum(unlist(indicator_list)),
+        n_samples     = length(unlist(indicator_list))
+      )
+    },
+    .package = "BayesTools"
+  )
+
+  inference <- runjags_inference_table(fit, BF_diagnostics = TRUE)
+
+  expect_equal(as.numeric(inference["theta", "prior_prob"]), 0.5)
+  expect_equal(as.numeric(inference["theta", "post_prob"]), known_post_prob)
+  expect_equal(as.numeric(inference["theta", "inclusion_BF"]), expected_BF)
+  expect_equal(as.numeric(inference["theta", "MCMC_error"]), known_mcse)
+  expect_equal(as.numeric(inference["theta", "BF_error_percent"]), expected_error)
+  expect_gt(as.numeric(inference["theta", "BF_error_percent"]), 25)
+
+  inference_BF01 <- runjags_inference_table(fit, BF_diagnostics = TRUE, BF01 = TRUE)
+  expect_equal(as.numeric(inference_BF01["theta", "inclusion_BF"]), 1 / expected_BF)
+  expect_equal(as.numeric(inference_BF01["theta", "BF_error_percent"]), expected_error)
+  expect_equal(attr(inference_BF01[["BF_error_percent"]], "name"), "error%(Exclusion BF)")
+
+  test_reference_table(inference, "runjags_inference_adversarial_diagnostics.txt", "Adversarial BF diagnostics table mismatch")
+  test_reference_table(inference_BF01, "runjags_inference_adversarial_diagnostics_BF01.txt", "Adversarial BF01 diagnostics table mismatch")
+})
+
+
+test_that("runjags_inference_table propagates real indicator MCSE to BF error percent", {
+
+  fit       <- make_adversarial_indicator_fit()
+  inference <- runjags_inference_table(fit, BF_diagnostics = TRUE)
+
+  post_prob      <- as.numeric(inference["theta", "post_prob"])
+  prior_prob     <- as.numeric(inference["theta", "prior_prob"])
+  expected_BF    <- (post_prob / (1 - post_prob)) / (prior_prob / (1 - prior_prob))
+  expected_error <- 100 * as.numeric(inference["theta", "MCMC_error"]) / (post_prob * (1 - post_prob))
+
+  expect_equal(post_prob, 0.99)
+  expect_equal(prior_prob, 0.5)
+  expect_equal(as.numeric(inference["theta", "inclusion_BF"]), expected_BF)
+  expect_true(is.finite(as.numeric(inference["theta", "MCMC_error"])))
+  expect_equal(as.numeric(inference["theta", "BF_error_percent"]), expected_error, tolerance = 1e-12)
+})
+
 
 # ============================================================================ #
 # SECTION 2: Test Advanced Features (Transformations, Formula Handling, etc.)
@@ -77,20 +160,18 @@ test_that("Summary table advanced features work correctly", {
   runjags_summary_spike <- runjags_estimates_table(fit_spike)
   runjags_inference_spike <- runjags_inference_table(fit_spike)
   runjags_inference_spike_diagnostics <- runjags_inference_table(fit_spike, BF_diagnostics = TRUE)
-  runjags_inference_spike_diagnostics_90 <- runjags_inference_table(fit_spike, BF_diagnostics = TRUE, BF_error_level = 0.90)
   inclusion_rows <- grepl("(inclusion)", rownames(runjags_summary_spike), fixed = TRUE)
   expect_true(any(inclusion_rows))
   expect_true(any(is.finite(runjags_summary_spike[inclusion_rows, "MCMC_error"])))
   expect_true(any(is.finite(runjags_summary_spike[inclusion_rows, "ESS"])))
-  expect_equal(colnames(runjags_inference_spike_diagnostics), c("prior_prob", "post_prob", "inclusion_BF", "ESS", "MCMC_error", "BF_error_lower", "BF_error_upper"))
-  expect_equal(attr(runjags_inference_spike_diagnostics_90[["BF_error_lower"]], "name"), "BF MC 5%")
-  expect_equal(attr(runjags_inference_spike_diagnostics_90[["BF_error_upper"]], "name"), "BF MC 95%")
-  expect_match(attr(runjags_inference_spike_diagnostics, "footnotes"), "Monte Carlo error interval")
+  expect_equal(colnames(runjags_inference_spike_diagnostics), c("prior_prob", "post_prob", "inclusion_BF", "ESS", "MCMC_error", "BF_error_percent"))
+  expect_equal(attr(runjags_inference_spike_diagnostics[["BF_error_percent"]], "name"), "error%(Inclusion BF)")
+  expect_match(attr(runjags_inference_spike_diagnostics, "footnotes"), "relative Monte Carlo standard error")
 
   runjags_inference_spike_log_BF01 <- runjags_inference_table(fit_spike, BF_diagnostics = TRUE, logBF = TRUE, BF01 = TRUE)
   expect_equal(as.numeric(runjags_inference_spike_log_BF01[["inclusion_BF"]]), log(1 / as.numeric(runjags_inference_spike_diagnostics[["inclusion_BF"]])), tolerance = 1e-10)
-  expect_equal(as.numeric(runjags_inference_spike_log_BF01[["BF_error_lower"]]), log(1 / as.numeric(runjags_inference_spike_diagnostics[["BF_error_upper"]])), tolerance = 1e-10)
-  expect_equal(attr(runjags_inference_spike_log_BF01[["BF_error_lower"]], "name"), "log(Exclusion BF) MC 2.5%")
+  expect_equal(as.numeric(runjags_inference_spike_log_BF01[["BF_error_percent"]]), as.numeric(runjags_inference_spike_diagnostics[["BF_error_percent"]]), tolerance = 1e-10)
+  expect_equal(attr(runjags_inference_spike_log_BF01[["BF_error_percent"]], "name"), "error%(Exclusion BF)")
 
   # Test 6: Orthonormal contrast transformations to differences from the mean
   fit_orthonormal <- readRDS(file.path(temp_fits_dir, "fit_factor_orthonormal.RDS"))
@@ -299,29 +380,25 @@ test_that("runjags_inference_table with mixture priors", {
   test_reference_table(runjags_mixture_inference, "runjags_mixture_inference.txt")
 
   runjags_mixture_inference_diagnostics <- runjags_inference_table(fit_mixture, BF_diagnostics = TRUE)
-  expect_equal(attr(runjags_mixture_inference_diagnostics, "type"), c("prior_prob", "post_prob", "inclusion_BF", "ESS", "MCMC_error", "BF_error", "BF_error"))
-  expect_equal(colnames(runjags_mixture_inference_diagnostics), c("prior_prob", "post_prob", "inclusion_BF", "ESS", "MCMC_error", "BF_error_lower", "BF_error_upper"))
+  expect_equal(attr(runjags_mixture_inference_diagnostics, "type"), c("prior_prob", "post_prob", "inclusion_BF", "ESS", "MCMC_error", "BF_error"))
+  expect_equal(colnames(runjags_mixture_inference_diagnostics), c("prior_prob", "post_prob", "inclusion_BF", "ESS", "MCMC_error", "BF_error_percent"))
   expect_equal(attr(runjags_mixture_inference_diagnostics[["MCMC_error"]], "name"), "error(Post. prob.)")
-  expect_match(attr(runjags_mixture_inference_diagnostics, "footnotes"), "Monte Carlo error interval")
-  expect_true(all(c("ESS", "MCMC_error", "BF_error_lower", "BF_error_upper") %in% colnames(runjags_mixture_inference_diagnostics)))
+  expect_match(attr(runjags_mixture_inference_diagnostics, "footnotes"), "relative Monte Carlo standard error")
+  expect_true(all(c("ESS", "MCMC_error", "BF_error_percent") %in% colnames(runjags_mixture_inference_diagnostics)))
 
   runjags_mixture_inference_log <- runjags_inference_table(fit_mixture, BF_diagnostics = TRUE, logBF = TRUE)
   expect_equal(as.numeric(runjags_mixture_inference_log[["inclusion_BF"]]), log(as.numeric(runjags_mixture_inference_diagnostics[["inclusion_BF"]])), tolerance = 1e-10)
-  expect_equal(as.numeric(runjags_mixture_inference_log[["BF_error_lower"]]), log(as.numeric(runjags_mixture_inference_diagnostics[["BF_error_lower"]])), tolerance = 1e-10)
+  expect_equal(as.numeric(runjags_mixture_inference_log[["BF_error_percent"]]), as.numeric(runjags_mixture_inference_diagnostics[["BF_error_percent"]]), tolerance = 1e-10)
 
   runjags_mixture_inference_BF01 <- runjags_inference_table(fit_mixture, BF_diagnostics = TRUE, BF01 = TRUE)
   expect_equal(as.numeric(runjags_mixture_inference_BF01[["inclusion_BF"]]), 1 / as.numeric(runjags_mixture_inference_diagnostics[["inclusion_BF"]]), tolerance = 1e-10)
-  expect_equal(as.numeric(runjags_mixture_inference_BF01[["BF_error_lower"]]), 1 / as.numeric(runjags_mixture_inference_diagnostics[["BF_error_upper"]]), tolerance = 1e-10)
-  expect_equal(attr(runjags_mixture_inference_BF01[["BF_error_lower"]], "name"), "Exclusion BF MC 2.5%")
+  expect_equal(as.numeric(runjags_mixture_inference_BF01[["BF_error_percent"]]), as.numeric(runjags_mixture_inference_diagnostics[["BF_error_percent"]]), tolerance = 1e-10)
+  expect_equal(attr(runjags_mixture_inference_BF01[["BF_error_percent"]], "name"), "error%(Exclusion BF)")
 
   runjags_mixture_inference_log_BF01 <- runjags_inference_table(fit_mixture, BF_diagnostics = TRUE, logBF = TRUE, BF01 = TRUE)
   expect_equal(as.numeric(runjags_mixture_inference_log_BF01[["inclusion_BF"]]), log(1 / as.numeric(runjags_mixture_inference_diagnostics[["inclusion_BF"]])), tolerance = 1e-10)
-  expect_equal(as.numeric(runjags_mixture_inference_log_BF01[["BF_error_lower"]]), log(1 / as.numeric(runjags_mixture_inference_diagnostics[["BF_error_upper"]])), tolerance = 1e-10)
-  expect_equal(attr(runjags_mixture_inference_log_BF01[["BF_error_lower"]], "name"), "log(Exclusion BF) MC 2.5%")
-
-  runjags_mixture_inference_90 <- runjags_inference_table(fit_mixture, BF_diagnostics = TRUE, BF_error_level = 0.90)
-  expect_equal(attr(runjags_mixture_inference_90[["BF_error_lower"]], "name"), "BF MC 5%")
-  expect_equal(attr(runjags_mixture_inference_90[["BF_error_upper"]], "name"), "BF MC 95%")
+  expect_equal(as.numeric(runjags_mixture_inference_log_BF01[["BF_error_percent"]]), as.numeric(runjags_mixture_inference_diagnostics[["BF_error_percent"]]), tolerance = 1e-10)
+  expect_equal(attr(runjags_mixture_inference_log_BF01[["BF_error_percent"]], "name"), "error%(Exclusion BF)")
 
   # Test with mixture containing spike
   fit_mixture_spike <- readRDS(file.path(temp_fits_dir, "fit_mixture_spike.RDS"))
@@ -339,8 +416,7 @@ test_that("runjags_inference_table with mixture priors", {
   names(expected_post) <- paste0("beta [", names(expected_post), "]")
   expect_equal(as.numeric(runjags_components_inference[names(expected_post), "post_prob"]), as.numeric(expected_post), tolerance = 1e-10)
   expect_true(all(is.finite(runjags_components_inference[,"MCMC_error"])))
-  expect_true(all(is.finite(runjags_components_inference[,"BF_error_lower"])))
-  expect_true(all(is.finite(runjags_components_inference[,"BF_error_upper"])))
+  expect_true(all(is.finite(runjags_components_inference[,"BF_error_percent"])))
 
 })
 
@@ -387,12 +463,12 @@ test_that("runjags_inference_empty_table works correctly", {
   expect_true(ncol(empty_table) > 0)
   test_reference_table(empty_table, "runjags_inference_empty.txt")
 
-  empty_diagnostics <- runjags_inference_empty_table(BF_diagnostics = TRUE, logBF = TRUE, BF01 = TRUE, BF_error_level = 0.90)
+  empty_diagnostics <- runjags_inference_empty_table(BF_diagnostics = TRUE, logBF = TRUE, BF01 = TRUE)
   expect_s3_class(empty_diagnostics, "BayesTools_table")
-  expect_equal(colnames(empty_diagnostics), c("prior_prob", "post_prob", "inclusion_BF", "ESS", "MCMC_error", "BF_error_lower", "BF_error_upper"))
+  expect_equal(colnames(empty_diagnostics), c("prior_prob", "post_prob", "inclusion_BF", "ESS", "MCMC_error", "BF_error_percent"))
   expect_equal(attr(empty_diagnostics[["inclusion_BF"]], "name"), "log(Exclusion BF)")
-  expect_equal(attr(empty_diagnostics[["BF_error_lower"]], "name"), "log(Exclusion BF) MC 5%")
-  expect_match(attr(empty_diagnostics, "footnotes"), "Monte Carlo error interval")
+  expect_equal(attr(empty_diagnostics[["BF_error_percent"]], "name"), "error%(Exclusion BF)")
+  expect_match(attr(empty_diagnostics, "footnotes"), "relative Monte Carlo standard error")
 
 })
 
