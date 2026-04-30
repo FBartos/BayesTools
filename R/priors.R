@@ -1142,6 +1142,8 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
   }else if(prior$weights$type == "cumulative"){
     theta <- extraDistr::rdirichlet(n, alpha = prior$weights$alpha)
     out   <- t(apply(theta[,J:1, drop = FALSE], 1, cumsum))[,J:1, drop = FALSE]
+    # Keep the reference bin exact; row-wise cumulative sums can leave 1 +/- eps.
+    out[,1L] <- 1
 
   }else if(prior$weights$type == "independent"){
     out <- matrix(1, nrow = n, ncol = J)
