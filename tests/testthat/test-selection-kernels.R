@@ -132,6 +132,56 @@ test_that("phack_backend_constants returns z-domain power constants", {
   expect_true(constants$beta_null_per_alpha > 0)
 })
 
+test_that("p-hacking source depletion and destination inflation preserve null mass", {
+
+  geometries <- list(
+    c(source = .25, destination = .005, target = .025),
+    c(source = .10, destination = .001, target = .01)
+  )
+
+  for(form in c("linear", "quadratic")){
+    for(geometry in geometries){
+      constants <- phack_backend_constants(
+        form,
+        source      = geometry[["source"]],
+        destination = geometry[["destination"]],
+        target      = geometry[["target"]]
+      )
+      alpha <- .73
+      beta_null <- alpha * constants$beta_null_per_alpha
+
+      source_integral <- stats::integrate(
+        function(z){
+          ((z - constants$z_source[1]) / diff(constants$z_source))^constants$q * stats::dnorm(z)
+        },
+        lower = constants$z_source[1],
+        upper = constants$z_source[2]
+      )$value
+      destination_integral <- stats::integrate(
+        function(z){
+          ((constants$z_destination[2] - z) / diff(constants$z_destination))^constants$q * stats::dnorm(z)
+        },
+        lower = constants$z_destination[1],
+        upper = constants$z_destination[2]
+      )$value
+
+      expect_equal(constants$source_null_mass, constants$pi_null_per_alpha, tolerance = 1e-12)
+      expect_equal(source_integral, constants$source_null_mass, tolerance = 1e-12)
+      expect_equal(destination_integral, constants$destination_null_mass, tolerance = 1e-12)
+      expect_equal(
+        constants$source_null_mass,
+        constants$beta_null_per_alpha * constants$destination_null_mass,
+        tolerance = 1e-12
+      )
+      expect_equal(
+        1 - alpha * constants$source_null_mass + beta_null * constants$destination_null_mass,
+        1,
+        tolerance = 1e-12
+      )
+    }
+  }
+})
+
 test_that("selection_backend_spec compiles none, step, phack, and combined priors", {
 
   selection <- prior_weightfunction("one-sided", c(.025, .05), wf_fixed(c(1, .5, .25)))
@@ -151,16 +201,33 @@ test_that("selection_backend_spec compiles none, step, phack, and combined prior
   expect_false(grepl("alpha", step_spec$prior_code, fixed = TRUE))
   expect_false(grepl("phack_z_source\\[1\\]", step_spec$transform_code, fixed = TRUE))
 
+  two_sided <- prior_weightfunction(
+    "two-sided", c(.05, .10), wf_fixed(c(1, .5, .25))
+  )
+  two_sided_spec <- selection_backend_spec(two_sided)
+  expect_equal(two_sided_spec$mode, "step")
+  expect_equal(two_sided_spec$step$breaks, c(0, .025, .05, .95, .975, 1))
+  expect_equal(two_sided_spec$step$coefficient_ids, paste0("omega[", 1:5, "]"))
+  expect_match(two_sided_spec$prior_code, "omega_local\\[2\\] <- 0.5")
+  expect_match(two_sided_spec$prior_code, "omega\\[4\\] <- omega_local\\[2\\]")
+  expect_match(two_sided_spec$prior_code, "omega\\[5\\] <- omega_local\\[1\\]")
+
   phack_spec <- selection_backend_spec(phacking)
   expect_equal(phack_spec$mode, "phack_power")
   expect_equal(phack_spec$step$breaks, c(0, 1))
   expect_equal(phack_spec$phacking$form, "linear")
   expect_equal(phack_spec$phacking$q, 1L)
+  expect_equal(
+    phack_spec$phacking$branch_beta_null_per_alpha,
+    phack_backend_constants("linear", .25, .005, target = .025)$beta_null_per_alpha
+  )
   expect_match(phack_spec$prior_code, "alpha ~ dbeta\\(1,1\\)")
   expect_match(phack_spec$prior_code, "phack_kind <- 1")
+  expect_match(phack_spec$prior_code, "beta_null <- alpha \\*")
   expect_match(phack_spec$prior_code, "omega\\[1\\] <- 1")
   expect_true(all(c("omega", "alpha", "phack_kind", "pi_null") %in% phack_spec$monitor))
   expect_false("phack_z_source" %in% names(phack_spec$data))
+  expect_true("phack_component_beta_null_per_alpha" %in% names(phack_spec$data))
   expect_equal(phack_spec$transform_code, "")
 
   combined_spec <- selection_backend_spec(combined)
@@ -198,11 +265,14 @@ test_that("selection_backend_spec compiles mixtures with active identity transfo
   expect_match(spec$prior_code, "alpha_component_1 <- 0")
   expect_match(spec$prior_code, "alpha_component_2 <- 0")
   expect_match(spec$prior_code, "phack_kind_component_1 <- 0")
+  expect_match(spec$prior_code, "beta_null_component_1 <- 0")
   expect_match(spec$prior_code, "phack_kind_component_2 <- 0")
   expect_match(spec$prior_code, "phack_kind_component_3 <- 1")
+  expect_match(spec$prior_code, "beta_null_component_3 <- alpha_component_3 \\*")
   expect_match(spec$prior_code, "phack_kind_component_4 <- 2")
   expect_match(spec$transform_code, "omega\\[2\\] <- omega_component_1\\[2\\] \\* equals\\(bias_indicator, 1\\)")
   expect_match(spec$transform_code, "alpha <- alpha_component_1 \\* equals\\(bias_indicator, 1\\)")
+  expect_match(spec$transform_code, "beta_null <- beta_null_component_1 \\* equals\\(bias_indicator, 1\\)")
   expect_match(spec$transform_code, "phack_kind <- phack_kind_component_1 \\* equals\\(bias_indicator, 1\\)")
 })
 

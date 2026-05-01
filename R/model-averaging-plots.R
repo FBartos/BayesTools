@@ -607,13 +607,24 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   return(out)
 }
-.weightfunction_prior_list_context <- function(prior_list){
+.weightfunction_prior_list_context <- function(prior_list, one_sided = NULL){
+
+  omega_context <- attr(prior_list, "omega_context")
+  if(is.null(one_sided)){
+    one_sided <- if(!is.null(omega_context) && !is.null(omega_context$one_sided)){
+      isTRUE(omega_context$one_sided)
+    }else{
+      .weightfunction_prior_context_uses_selection_mapping(prior_list)
+    }
+  }else{
+    check_bool(one_sided, "one_sided")
+  }
 
   prior_list <- .weightfunction_expand_bias_mixture_priors(prior_list)
   prior_list <- .simplify_prior_list(prior_list)
   prior_list <- .weightfunction_expand_bias_mixture_priors(prior_list)
 
-  prior_weights <- sapply(prior_list, function(p)p$prior_weights)
+  prior_weights <- sapply(prior_list, .prior_model_weight)
   keep          <- is.finite(prior_weights) & prior_weights > 0
   prior_list    <- prior_list[keep]
   prior_weights <- prior_weights[keep]
@@ -635,11 +646,12 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     }
   }
 
-  prior_weights <- sapply(prior_list, function(p)p$prior_weights)
+  prior_weights <- sapply(prior_list, .prior_model_weight)
   model_weights <- prior_weights / sum(prior_weights)
-  omega_mapping <- weightfunctions_mapping(prior_list)
-  omega_cuts    <- weightfunctions_mapping(prior_list, cuts_only = TRUE)
-  omega_names   <- sapply(1:(length(omega_cuts)-1), function(i)paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
+  omega_info    <- .weightfunction_mapping_info(prior_list, one_sided = one_sided)
+  omega_mapping <- omega_info$mapping
+  omega_cuts    <- omega_info$cuts
+  omega_names   <- omega_info$names
 
   list(
     prior_list    = prior_list,
@@ -648,6 +660,22 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     omega_cuts    = omega_cuts,
     omega_names   = omega_names
   )
+}
+.weightfunction_prior_context_uses_selection_mapping <- function(prior_list){
+
+  if(inherits(prior_list, "prior.bias_mixture") || is_prior_bias(prior_list)){
+    return(TRUE)
+  }
+  if(is.prior(prior_list)){
+    return(FALSE)
+  }
+  if(is.list(prior_list)){
+    return(any(vapply(prior_list, function(prior){
+      inherits(prior, "prior.bias_mixture") || is_prior_bias(prior)
+    }, logical(1))))
+  }
+
+  FALSE
 }
 .weightfunction_expand_bias_mixture_priors <- function(prior_list){
 
@@ -1133,7 +1161,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     stop("Custom transformations are handled by sampled PET-PEESE prior summaries.", call. = FALSE)
   }
 
-  prior_weights <- sapply(prior_list, function(p) p$prior_weights)
+  prior_weights <- sapply(prior_list, .prior_model_weight)
   keep <- is.finite(prior_weights) & prior_weights > 0
   prior_list    <- prior_list[keep]
   prior_list_mu <- prior_list_mu[keep]
@@ -1237,7 +1265,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   if(is.prior.mixture(prior)){
     weights <- attr(prior, "prior_weights")
     if(is.null(weights)){
-      weights <- sapply(prior, function(p) p$prior_weights)
+      weights <- sapply(prior, .prior_model_weight)
     }
     weights <- weights / sum(weights)
 
@@ -1695,7 +1723,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
                                                    transformation, transformation_arguments, prior_list_mu,
                                                    effect_direction = "positive"){
 
-  prior_weights  <- sapply(prior_list, function(p)p$prior_weights)
+  prior_weights  <- sapply(prior_list, .prior_model_weight)
   mixing_prop    <- prior_weights / sum(prior_weights)
 
   prior_list     <- prior_list[round(n_samples * mixing_prop) > 0]
@@ -1782,7 +1810,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     }
   }
 
-  prior_weights  <- sapply(prior_list, function(p)p$prior_weights)
+  prior_weights  <- sapply(prior_list, .prior_model_weight)
   mixing_prop    <- prior_weights / sum(prior_weights)
 
   prior_list  <- prior_list[round(n_samples * mixing_prop) > 1]
@@ -1925,7 +1953,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   }
 
   # find the duplicates and collect prior odds
-  prior_weights <- unname(sapply(prior_list, function(p)p$prior_weights))
+  prior_weights <- unname(sapply(prior_list, .prior_model_weight))
   to_remove  <- NULL
   for(i in 1:nrow(are_equal)){
     this_ind    <- c(1:ncol(are_equal))[are_equal[i,]]
@@ -1936,7 +1964,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   # return prior odds
   for(i in seq_along(prior_list)){
-    prior_list[[i]][["prior_weights"]] <- prior_weights[i]
+    prior_list[[i]] <- .set_prior_model_weight(prior_list[[i]], prior_weights[i])
   }
 
   # remove the duplicates
@@ -3735,6 +3763,7 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
   class(new_samples) <- class(new_samples)[!class(new_samples) %in% "mixed_posteriors.bias"]
 
   ### assign prior list and model indicator
+  attr(prior_list, "omega_context") <- attr(samples[["bias"]], "omega_context")
   attr(new_samples, "prior_list") <- prior_list
 
   ### remove the old samples & store new samples

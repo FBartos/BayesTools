@@ -59,13 +59,17 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL, condition
     is_null <- rep(FALSE, length(prior_weights))
   }
 
-  prior_probs <- prior_weights / sum(prior_weights)
-  post_probs  <- unname(bridgesampling::post_prob(margliks, prior_prob = prior_probs))
+  prior_probs <- .model_averaging_prior_probs(prior_weights)
+  margliks    <- .model_averaging_margliks(margliks, prior_probs)
+  post_probs  <- .model_averaging_post_probs(margliks, prior_probs)
   BF          <- inclusion_BF(prior_probs = prior_probs, margliks = margliks, is_null = is_null)
 
   if(conditional){
-    prior_probs <- ifelse(is_null, 0, prior_weights) / sum(prior_weights[!is_null])
-    post_probs  <- unname(bridgesampling::post_prob(margliks, prior_prob = prior_probs))
+    if(all(is_null))
+      stop("Conditional inference requires at least one non-null model.", call. = FALSE)
+    prior_probs <- .model_averaging_prior_probs(ifelse(is_null, 0, prior_weights))
+    margliks    <- .model_averaging_margliks(margliks, prior_probs)
+    post_probs  <- .model_averaging_post_probs(margliks, prior_probs)
   }
 
   output <- list(
@@ -79,6 +83,93 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL, condition
   class(output) <- c(class(output), "inference")
 
   return(output)
+}
+
+.model_averaging_prior_probs <- function(prior_weights){
+
+  if(any(!is.finite(prior_weights))){
+    stop("'prior_weights' must be finite.", call. = FALSE)
+  }
+  if(sum(prior_weights) <= 0){
+    stop("At least one prior model weight must be positive.", call. = FALSE)
+  }
+
+  prior_weights / sum(prior_weights)
+}
+
+.model_averaging_margliks <- function(margliks, prior_probs){
+
+  if(any(is.infinite(margliks) & margliks > 0, na.rm = TRUE)){
+    stop("Infinite positive marginal likelihoods are not supported.", call. = FALSE)
+  }
+
+  margliks[is.na(margliks)] <- -Inf
+
+  if(!any(is.finite(margliks) & prior_probs > 0)){
+    stop("No finite marginal likelihoods are available for models with positive prior probability.", call. = FALSE)
+  }
+
+  margliks
+}
+
+.model_averaging_post_probs <- function(margliks, prior_probs){
+
+  unname(bridgesampling::post_prob(margliks, prior_prob = prior_probs))
+}
+
+.posterior_mixture_sample_counts <- function(post_probs, n_samples){
+
+  .mixture_sample_counts(post_probs, n_samples)
+}
+
+.mixture_sample_counts <- function(probs, n_samples, preserve_positive = TRUE){
+
+  probs <- as.numeric(probs)
+  if(length(probs) == 0L){
+    return(integer())
+  }
+
+  if(length(n_samples) != 1L || !is.finite(n_samples) || n_samples < 0 || !.is.wholenumber(n_samples)){
+    stop("'n_samples' must be a non-negative integer.", call. = FALSE)
+  }
+  n_samples <- as.integer(n_samples)
+
+  if(any(!is.finite(probs)) || any(probs < 0)){
+    stop("'probs' must contain non-negative finite values.", call. = FALSE)
+  }
+  if(sum(probs) <= 0){
+    stop("At least one mixture probability must be positive.", call. = FALSE)
+  }
+
+  probs <- probs / sum(probs)
+  raw_counts <- probs * n_samples
+  counts <- floor(raw_counts)
+
+  remaining <- n_samples - sum(counts)
+  if(remaining > 0L){
+    add_order <- order(-(raw_counts - counts), -probs, seq_along(probs))
+    counts[add_order[seq_len(remaining)]] <- counts[add_order[seq_len(remaining)]] + 1L
+  }
+
+  if(preserve_positive && n_samples > 0L){
+    positive <- probs > 0
+    missing <- which(positive & counts == 0L)
+    if(length(missing) > 0L && sum(positive) <= n_samples){
+      for(m in missing){
+        donors <- which(counts > 1L)
+        if(length(donors) == 0L){
+          break
+        }
+
+        donor_cost <- abs((counts[donors] - 1L) - raw_counts[donors]) - abs(counts[donors] - raw_counts[donors])
+        donor <- donors[order(donor_cost, -counts[donors], -probs[donors], donors)[1L]]
+        counts[donor] <- counts[donor] - 1L
+        counts[m] <- 1L
+      }
+    }
+  }
+
+  as.integer(counts)
 }
 
 #' @rdname ensemble_inference
@@ -131,10 +222,10 @@ models_inference   <- function(model_list){
   sapply(model_list, function(m)check_real(m[["prior_weights"]], "model_list:prior_weights", lower = 0))
 
   margliks    <- sapply(model_list, function(model)model[["marglik"]][["logml"]])
-  margliks    <- ifelse(is.na(margliks), -Inf, margliks)
   prior_weights  <- sapply(model_list, function(model)model[["prior_weights"]])
-  prior_probs <- prior_weights / sum(prior_weights)
-  post_probs  <- unname(bridgesampling::post_prob(margliks, prior_prob = prior_probs))
+  prior_probs <- .model_averaging_prior_probs(prior_weights)
+  margliks    <- .model_averaging_margliks(margliks, prior_probs)
+  post_probs  <- .model_averaging_post_probs(margliks, prior_probs)
   incl_BF     <- sapply(seq_along(model_list), function(i){
     is_null <- rep(TRUE, length(model_list))
     is_null[i] <- FALSE
@@ -231,7 +322,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 
       # replace prior odds with the corresponding prior model odds
       for(i in seq_along(temp_priors)){
-        temp_priors[[i]][["prior_weights"]] <- temp_inference$prior_probs[i]
+        temp_priors[[i]] <- .set_prior_model_weight(temp_priors[[i]], temp_inference$prior_probs[i])
       }
 
       out[[temp_parameter]] <- .mix_posteriors.weightfunction(fits, temp_priors, temp_parameter, temp_inference$post_probs, common_sample_seed, n_samples)
@@ -248,7 +339,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 
       # replace prior odds with the corresponding prior model odds
       for(i in seq_along(temp_priors)){
-        temp_priors[[i]][["prior_weights"]] <- temp_inference$prior_probs[i]
+        temp_priors[[i]] <- .set_prior_model_weight(temp_priors[[i]], temp_inference$prior_probs[i])
       }
 
       out[[temp_parameter]] <- .mix_posteriors.factor(fits, temp_priors, temp_parameter, temp_inference$post_probs, common_sample_seed, n_samples)
@@ -265,7 +356,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 
       # replace prior odds with the corresponding prior model odds
       for(i in seq_along(temp_priors)){
-        temp_priors[[i]][["prior_weights"]] <- temp_inference$prior_probs[i]
+        temp_priors[[i]] <- .set_prior_model_weight(temp_priors[[i]], temp_inference$prior_probs[i])
       }
 
       out[[temp_parameter]] <- .mix_posteriors.vector(fits, temp_priors, temp_parameter, temp_inference$post_probs, common_sample_seed, n_samples)
@@ -282,7 +373,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 
       # replace prior odds with the corresponding prior model odds
       for(i in seq_along(temp_priors)){
-        temp_priors[[i]][["prior_weights"]] <- temp_inference$prior_probs[i]
+        temp_priors[[i]] <- .set_prior_model_weight(temp_priors[[i]], temp_inference$prior_probs[i])
       }
 
       out[[temp_parameter]] <- .mix_posteriors.simple(fits, temp_priors, temp_parameter, temp_inference$post_probs, common_sample_seed, n_samples)
@@ -349,7 +440,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   models_ind <- NULL
 
   # mix samples
-  for(i in seq_along(fits)[round(post_probs * n_samples) > 1]){
+  sample_counts <- .posterior_mixture_sample_counts(post_probs, n_samples)
+  for(i in seq_along(fits)[sample_counts > 0]){
 
     # obtain posterior samples
     if(inherits(fits[[i]], "null_model")){
@@ -368,7 +460,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
     }
 
     # sample indexes
-    temp_ind <- sample(nrow(model_samples), round(n_samples * post_probs[i]), replace = TRUE)
+    temp_ind <- sample(nrow(model_samples), sample_counts[i], replace = TRUE)
 
     if(is.prior.point(priors[[i]])){
       # not sampling the priors as the samples would be already transformed
@@ -422,7 +514,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   models_ind <- NULL
 
   # mix samples
-  for(i in seq_along(fits)[round(post_probs * n_samples) > 1]){
+  sample_counts <- .posterior_mixture_sample_counts(post_probs, n_samples)
+  for(i in seq_along(fits)[sample_counts > 0]){
 
     # obtain posterior samples
     if(inherits(fits[[i]], "null_model")){
@@ -441,7 +534,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
     }
 
     # sample indexes
-    temp_ind <- sample(nrow(model_samples), round(n_samples * post_probs[i]), replace = TRUE)
+    temp_ind <- sample(nrow(model_samples), sample_counts[i], replace = TRUE)
 
     if(is.prior.point(priors[[i]])){
       # not sampling the priors as the samples would be already transformed
@@ -649,7 +742,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   models_ind <- NULL
 
   # mix samples
-  for(i in seq_along(fits)[round(post_probs * n_samples) > 1]){
+  sample_counts <- .posterior_mixture_sample_counts(post_probs, n_samples)
+  for(i in seq_along(fits)[sample_counts > 0]){
 
     # obtain posterior samples
     if(inherits(fits[[i]], "null_model")){
@@ -668,7 +762,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
     }
 
     # sample indexes
-    temp_ind <- sample(nrow(model_samples), round(n_samples * post_probs[i]), replace = TRUE)
+    temp_ind <- sample(nrow(model_samples), sample_counts[i], replace = TRUE)
 
     if(.is_prior_weightfunction_null(priors[[i]])){
       samples <- rbind(samples, matrix(1, ncol = length(omega_cuts) - 1, nrow = length(temp_ind)))
@@ -1165,10 +1259,10 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
 
   # obtain mapping for the weight coefficients
-  omega_mapping <- weightfunctions_mapping(list(prior))
-  omega_cuts    <- weightfunctions_mapping(list(prior), cuts_only = TRUE)
-  omega_names   <- sapply(1:(length(omega_cuts)-1), function(i) paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
-  omega_par     <- sapply(1:(length(omega_cuts)-1), function(i) paste0("omega[",i,"]"))
+  omega_info    <- .weightfunction_mapping_info(list(prior))
+  omega_mapping <- omega_info$mapping
+  omega_names   <- omega_info$names
+  omega_par     <- omega_info$pars
 
   # prepare output objects
   samples <- model_samples[, omega_par, drop = FALSE]
@@ -1179,6 +1273,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   attr(samples, "models_ind") <- rep(1, nrow(samples))
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- prior
+  samples <- .weightfunction_set_omega_context(samples, omega_info)
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.weightfunction")
 
   return(samples)
@@ -1214,9 +1309,9 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
   if(any(has_selection)){
     selection_priors <- lapply(branch_info[has_selection], function(x) x$selection)
-    omega_cuts       <- weightfunctions_mapping(selection_priors, cuts_only = TRUE, one_sided = TRUE)
-    omega_names      <- sapply(1:(length(omega_cuts)-1), function(i) paste0("omega[", omega_cuts[i], ",", omega_cuts[i+1], "]"))
-    omega_par        <- sapply(1:(length(omega_cuts)-1), function(i) paste0("omega[", i, "]"))
+    omega_info       <- .weightfunction_mapping_info(selection_priors, one_sided = TRUE)
+    omega_names      <- omega_info$names
+    omega_par        <- omega_info$pars
   }
   phacking_par   <- c("alpha", "pi_null")
   phacking_names <- phacking_par
@@ -1267,6 +1362,9 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   attr(samples, "models_ind") <- rep(1, nrow(samples))
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- prior
+  if(any(has_selection)){
+    samples <- .weightfunction_set_omega_context(samples, omega_info)
+  }
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.bias")
 
   return(samples)
@@ -1314,10 +1412,10 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     # prepare weightfunction parameter names
     if(any(has_selection)){
       selection_priors <- lapply(branch_info[has_selection], function(x) x$selection)
-      omega_mapping <- weightfunctions_mapping(selection_priors, one_sided = TRUE)
-      omega_cuts    <- weightfunctions_mapping(selection_priors, cuts_only = TRUE, one_sided = TRUE)
-      omega_names   <- sapply(1:(length(omega_cuts)-1), function(i) paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
-      omega_par     <- sapply(1:(length(omega_cuts)-1), function(i) paste0("omega[",i,"]"))
+      omega_info    <- .weightfunction_mapping_info(selection_priors, one_sided = TRUE)
+      omega_mapping <- omega_info$mapping
+      omega_names   <- omega_info$names
+      omega_par     <- omega_info$pars
     }
     phacking_par <- c("alpha", "pi_null")
     phacking_names <- phacking_par
@@ -1401,6 +1499,9 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     attr(samples, "models_ind") <- as.vector(indicator)
     attr(samples, "parameter")  <- parameter
     attr(samples, "prior_list") <- prior
+    if(any(has_selection)){
+      samples <- .weightfunction_set_omega_context(samples, omega_info)
+    }
     class(samples) <- c("mixed_posteriors", "mixed_posteriors.bias")
 
   }else{
@@ -1489,6 +1590,8 @@ inclusion_BF         <- function(prior_probs, post_probs, margliks, is_null){
   check_real(prior_probs, "prior_probs", lower = 0, upper = 1, check_length = 0)
   check_real(margliks,  "margliks", check_length = length(prior_probs))
 
+  margliks <- .model_averaging_margliks(margliks, prior_probs)
+
   # substract the max marglikto remove problems with overflow
   margliks <- margliks - max(margliks)
 
@@ -1531,9 +1634,9 @@ weightfunctions_mapping <- function(prior_list, cuts_only = FALSE, one_sided = F
     .weightfunction_mapping_expansion(prior, force_one_sided)
   })
 
-  all_cuts <- sort(unique(unlist(lapply(prior_expansions, function(expansion){
+  all_cuts <- .weightfunction_unique_cuts(unlist(lapply(prior_expansions, function(expansion){
     if(is.null(expansion)) NULL else expansion$cuts
-  }))))
+  })))
   if(length(all_cuts) == 0L){
     all_cuts <- c(0, 1)
   }
@@ -1548,18 +1651,85 @@ weightfunctions_mapping <- function(prior_list, cuts_only = FALSE, one_sided = F
   for(p in seq_along(prior_list)){
     if(is.prior.weightfunction(prior_list[[p]])){
       expansion <- prior_expansions[[p]]
-      omega_mapping[[p]] <- vapply(seq_len(length(all_cuts) - 1L), function(i){
-        ind <- which(all_cuts[i] >= expansion$lower & all_cuts[i + 1L] <= expansion$upper)
-        if(length(ind) != 1L){
-          stop("Could not map global weightfunction bin to a local bin.", call. = FALSE)
-        }
-        expansion$index[ind]
-      }, integer(1))
+      omega_mapping[[p]] <- expansion$index[.weightfunction_global_bin_indices(all_cuts, expansion)]
     }
   }
 
 
   return(omega_mapping)
+}
+
+.weightfunction_mapping_info <- function(prior_list, one_sided = FALSE){
+
+  cuts <- weightfunctions_mapping(prior_list, cuts_only = TRUE, one_sided = one_sided)
+  list(
+    mapping = weightfunctions_mapping(prior_list, one_sided = one_sided),
+    cuts    = cuts,
+    names   = .weightfunction_omega_names(cuts),
+    pars    = paste0("omega[", seq_len(length(cuts) - 1L), "]"),
+    one_sided = one_sided
+  )
+}
+
+.weightfunction_set_omega_context <- function(samples, omega_context){
+
+  if(is.null(omega_context)){
+    return(samples)
+  }
+
+  attr(samples, "omega_context") <- omega_context
+  prior_list <- attr(samples, "prior_list")
+  if(!is.null(prior_list)){
+    attr(prior_list, "omega_context") <- omega_context
+    attr(samples, "prior_list") <- prior_list
+  }
+
+  samples
+}
+
+.weightfunction_omega_names <- function(cuts){
+  sapply(seq_len(length(cuts) - 1L), function(i){
+    paste0("omega[", cuts[i], ",", cuts[i + 1L], "]")
+  })
+}
+
+.weightfunction_unique_cuts <- function(cuts, tolerance = sqrt(.Machine$double.eps)){
+
+  cuts <- sort(cuts)
+  if(length(cuts) <= 1L){
+    return(cuts)
+  }
+
+  out <- cuts[1L]
+  for(cut in cuts[-1L]){
+    if(abs(cut - out[length(out)]) <= tolerance){
+      if(abs(cut) <= tolerance || abs(out[length(out)]) <= tolerance){
+        out[length(out)] <- 0
+      }else if(abs(cut - 1) <= tolerance || abs(out[length(out)] - 1) <= tolerance){
+        out[length(out)] <- 1
+      }else{
+        out[length(out)] <- min(cut, out[length(out)])
+      }
+    }else{
+      out <- c(out, cut)
+    }
+  }
+
+  out
+}
+
+.weightfunction_global_bin_indices <- function(global_cuts, expansion, tolerance = sqrt(.Machine$double.eps)){
+
+  vapply(seq_len(length(global_cuts) - 1L), function(i){
+    ind <- which(
+      global_cuts[i] >= expansion$lower - tolerance &
+        global_cuts[i + 1L] <= expansion$upper + tolerance
+    )
+    if(length(ind) != 1L){
+      stop("Could not map global weightfunction bin to a local bin.", call. = FALSE)
+    }
+    ind
+  }, integer(1))
 }
 
 .weightfunction_mapping_expansion <- function(prior, force_one_sided = FALSE){

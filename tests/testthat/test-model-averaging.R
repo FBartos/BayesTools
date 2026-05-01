@@ -95,6 +95,26 @@ test_that("compute_inference input validation works", {
     "must have length"
   )
 
+  expect_error(
+    compute_inference(c(1, 1), c(-Inf, NaN)),
+    "No finite marginal likelihoods"
+  )
+
+  expect_error(
+    compute_inference(c(1, 1), c(-10, -11), is_null = c(TRUE, TRUE), conditional = TRUE),
+    "at least one non-null model"
+  )
+
+})
+
+
+test_that("mixture sample counts are deterministic, exact length, and retain positive components", {
+  counts <- BayesTools:::.posterior_mixture_sample_counts(c(.999, .001), 1000)
+
+  expect_equal(sum(counts), 1000)
+  expect_equal(counts, c(999L, 1L))
+  expect_equal(BayesTools:::.posterior_mixture_sample_counts(c(1, 3), 400), c(100L, 300L))
+  expect_equal(BayesTools:::.posterior_mixture_sample_counts(c(.9999, .0001), 1000), c(999L, 1L))
 })
 
 
@@ -126,6 +146,11 @@ test_that("inclusion_BF works correctly", {
   # Test all alternative scenario
   BF_all_alt <- inclusion_BF(prior_probs = prior_probs, post_probs = post_probs, is_null = c(FALSE, FALSE))
   expect_equal(BF_all_alt, Inf)
+
+  expect_error(
+    inclusion_BF(prior_probs = prior_probs, margliks = c(-Inf, -Inf), is_null = is_null),
+    "No finite marginal likelihoods"
+  )
 
 })
 

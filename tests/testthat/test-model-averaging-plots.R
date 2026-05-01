@@ -556,9 +556,9 @@ test_that("exp_lin transformation functions are defined correctly", {
   # Test the transformation: exp(a + b * log(x))
   x <- 2
   a <- 0.5
-  b <- 1
+  b <- 1.3
 
-  # fun: exp(0.5 + 1 * log(2)) = exp(0.5 + 0.693) = exp(1.193) ≈ 3.30
+  # fun: compare against the closed form
   expected <- exp(a + b * log(x))
   expect_equal(trans_funcs$fun(x, a, b), expected)
 
@@ -566,8 +566,9 @@ test_that("exp_lin transformation functions are defined correctly", {
   y <- trans_funcs$fun(x, a, b)
   expect_equal(trans_funcs$inv(y, a, b), x, tolerance = 1e-10)
 
-  # jac: 1 / (b * x)
-  expect_equal(trans_funcs$jac(x, a, b), 1 / (b * x))
+  # jac: derivative of the inverse transformation at the transformed value
+  expect_equal(trans_funcs$jac(y, a, b), trans_funcs$inv(y, a, b) / (abs(b) * y))
+  expect_equal(trans_funcs$jac(x, 0, 1), 1)
 })
 
 test_that("linear transformation matches expected behavior", {

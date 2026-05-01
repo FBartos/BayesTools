@@ -1,1 +1,1 @@
-Test found strong evidence in favor of the effect, BF_10 = Inf, with mean model-averaged estimate y = 0.153, 95% CI [-0.220,  0.525].
+Test found strong evidence in favor of the effect, BF_10 = Inf, with mean model-averaged estimate y = 0.153, 95% CI [-0.220,  0.526].

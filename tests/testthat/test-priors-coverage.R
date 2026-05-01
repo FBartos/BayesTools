@@ -72,6 +72,23 @@ test_that("prior_spike_and_slab() works with factor priors", {
 })
 
 
+test_that("prior_spike_and_slab() preserves model prior weights", {
+  p_ss <- prior_spike_and_slab(
+    prior_parameter = prior("normal", list(0, 1)),
+    prior_inclusion = prior("point", list(0.25)),
+    prior_weights = 7
+  )
+  p_plain <- prior("normal", list(0, 1), prior_weights = 2)
+
+  expect_equal(BayesTools:::.prior_model_weight(p_ss), 7)
+  expect_equal(sapply(list(p_ss, p_plain), BayesTools:::.prior_model_weight), c(7, 2))
+
+  p_ss <- BayesTools:::.set_prior_model_weight(p_ss, 3)
+  expect_equal(BayesTools:::.prior_model_weight(p_ss), 3)
+  expect_false("prior_weights" %in% names(p_ss))
+})
+
+
 test_that(".set_spike_and_slab_variable_attr() sets attributes correctly", {
   p_ss <- prior_spike_and_slab(
     prior_parameter = prior("normal", list(0, 1)),
@@ -142,6 +159,55 @@ test_that("prior_mixture() creates bias_mixture for PET/PEESE/weightfunction", {
 test_that("uniform prior requires a < b", {
   expect_error(prior("uniform", list(a = 5, b = 1)),
                "lower than")
+})
+
+
+test_that("uniform prior honors truncation", {
+  p <- prior("uniform", list(a = 0, b = 10), truncation = list(2, 5))
+
+  expect_equal(p$truncation, list(lower = 2, upper = 5))
+  expect_equal(pdf(p, c(1, 3, 6)), c(0, 1 / 3, 0))
+  expect_equal(cdf(p, c(1, 2, 3.5, 5, 6)), c(0, 0, .5, 1, 1))
+  samples <- rng(p, 100)
+  expect_true(all(samples >= 2 & samples <= 5))
+
+  syntax <- JAGS_add_priors("model{}", list(theta = p))
+  expect_match(syntax, "theta ~ dunif\\(0,10\\)T\\(2,5\\)")
+
+  posterior <- matrix(c(2.5, 3.5), ncol = 1)
+  colnames(posterior) <- "theta"
+  prepared <- JAGS_bridgesampling_posterior(posterior, list(theta = p))
+  expect_equal(attr(prepared, "lb"), c(theta = 2))
+  expect_equal(attr(prepared, "ub"), c(theta = 5))
+})
+
+
+test_that("vector priors reject unsupported truncation", {
+  expect_error(
+    prior("mnormal", list(mean = 0, sd = 1, K = 2), truncation = list(0, Inf)),
+    "Vector priors do not support truncation"
+  )
+  expect_error(
+    prior("mcauchy", list(location = 0, scale = 1, K = 2), truncation = list(-1, 1)),
+    "Vector priors do not support truncation"
+  )
+  expect_error(
+    prior("mt", list(location = 0, scale = 1, df = 3, K = 2), truncation = list(-1, Inf)),
+    "Vector priors do not support truncation"
+  )
+
+  p <- prior("mnormal", list(mean = 0, sd = 1, K = 2))
+  p$truncation <- list(lower = 0, upper = Inf)
+
+  expect_error(lpdf(p, c(0, 0)), "Vector priors do not support truncation")
+  expect_error(JAGS_add_priors("model{}", list(theta = p)), "Vector priors do not support truncation")
+
+  posterior <- matrix(c(0, 0, 1, 1), ncol = 2, byrow = TRUE)
+  colnames(posterior) <- c("theta[1]", "theta[2]")
+  expect_error(
+    JAGS_bridgesampling_posterior(posterior, list(theta = p)),
+    "Vector priors do not support truncation"
+  )
 })
 
 
@@ -407,10 +473,17 @@ test_that("mean() handles truncated distributions and undefined moments", {
   m <- mean(p)
   expect_true(m > 0)
 
-  # Truncated t with df <= 1 returns NaN
+  # Bounded truncation makes otherwise undefined heavy-tailed means finite
   p_t <- prior("t", list(0, 1, 1), truncation = list(-1, 1))
   m_t <- mean(p_t)
-  expect_true(is.nan(m_t))
+  expect_false(is.nan(m_t))
+
+  p_ig <- prior("invgamma", list(.5, 1), truncation = list(.1, 10))
+  expect_false(is.nan(mean(p_ig)))
+
+  # Unbounded problematic tails still have undefined means
+  expect_true(is.nan(mean(prior("t", list(0, 1, 1), truncation = list(0, Inf)))))
+  expect_true(is.nan(mean(prior("invgamma", list(.5, 1)))))
 })
 
 
@@ -440,8 +513,7 @@ test_that("var() works for spike_and_slab priors", {
     prior_inclusion = prior("beta", list(1, 1))
   )
   v <- var(p_ss)
-  expect_true(is.numeric(v))
-  expect_true(v > 0)
+  expect_equal(v, 0.5)
 
   # spike_and_slab with point inclusion
   p_ss2 <- prior_spike_and_slab(
@@ -449,20 +521,45 @@ test_that("var() works for spike_and_slab priors", {
     prior_inclusion = prior("point", list(0.5))
   )
   v2 <- var(p_ss2)
-  expect_true(is.numeric(v2))
+  expect_equal(v2, 0.5)
 })
 
 
 test_that("var() returns NaN for distributions with undefined variance", {
-  # t with df <= 2 returns NaN for variance
-  p_t <- prior("t", list(0, 1, 2), truncation = list(-1, 1))
-  v <- var(p_t)
-  expect_true(is.nan(v))
+  expect_equal(
+    var(prior("invgamma", list(4, 2))),
+    2^2 / ((4 - 1)^2 * (4 - 2))
+  )
 
-  # invgamma with shape <= 2 returns NaN
-  p_ig <- prior("invgamma", list(2, 1), truncation = list(0.1, 10))
-  v_ig <- var(p_ig)
-  expect_true(is.nan(v_ig))
+  # Bounded truncation makes otherwise undefined heavy-tailed variances finite
+  expect_false(is.nan(var(prior("t", list(0, 1, 2), truncation = list(-1, 1)))))
+  expect_false(is.nan(var(prior("invgamma", list(2, 1), truncation = list(0.1, 10)))))
+
+  # Unbounded problematic tails still have undefined variances
+  expect_true(is.nan(var(prior("t", list(0, 1, 2), truncation = list(0, Inf)))))
+  expect_true(is.nan(var(prior("invgamma", list(2, 1)))))
+})
+
+
+test_that("Bernoulli truncation conditions on included atoms", {
+  p <- prior("bernoulli", list(0.25), truncation = list(0.5, 1))
+
+  expect_equal(pdf(p, 1), 1)
+  expect_equal(pdf(p, 0), 0)
+  expect_equal(cdf(p, 0.75), 0)
+  expect_equal(cdf(p, 1), 1)
+  expect_equal(mean(p), 1)
+  expect_equal(var(p), 0)
+  expect_equal(quant(p, c(0, .5, 1)), c(1, 1, 1))
+  expect_equal(unique(rng(p, 20)), 1)
+  expect_error(
+    prior("bernoulli", list(0.25), truncation = list(0.25, 0.75)),
+    "support point"
+  )
+  expect_error(
+    prior("bernoulli", list(0), truncation = list(0.5, 1)),
+    "positive probability mass"
+  )
 })
 
 

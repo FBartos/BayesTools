@@ -56,9 +56,17 @@ NULL
       omega_cuts      <- weightfunctions_mapping(prior_list[i], cuts_only = TRUE)
       omega_names_old <- paste0("omega[", 1:(length(omega_cuts) - 1), "]")
       omega_names     <- sapply(1:(length(omega_cuts) - 1), function(j) paste0("omega[", omega_cuts[j], ",", omega_cuts[j + 1], "]"))
-      
+      omega_raw_names <- grep("^omega\\[[0-9]+\\]$", colnames(model_samples), value = TRUE)
+
       colnames(model_samples)[which(colnames(model_samples) %in% omega_names_old)] <- omega_names
-      
+
+      # Two-sided weightfunctions are expanded internally to mirrored one-sided
+      # coefficients for JAGS. Only the public local bins belong in summaries.
+      omega_extra_names <- setdiff(omega_raw_names, omega_names_old)
+      if(length(omega_extra_names) > 0L){
+        model_samples <- model_samples[, !colnames(model_samples) %in% omega_extra_names, drop = FALSE]
+      }
+
       # remove omegas if requested
       if ("omega" %in% remove_parameters) {
         model_samples <- model_samples[, !colnames(model_samples) %in% omega_names, drop = FALSE]

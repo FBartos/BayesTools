@@ -211,7 +211,7 @@ prior_weightfunction <- function(side = "one-sided", steps = c(.025, .05),
 wf_cumulative <- function(alpha = NULL){
 
   if(!is.null(alpha)){
-    check_real(alpha, "alpha", lower = 0, allow_bound = FALSE, check_length = 0)
+    check_real(alpha, "alpha", lower = 0, allow_bound = FALSE, check_length = 0, allow_NA = FALSE)
   }
 
   out <- list(type = "cumulative", alpha = alpha)
@@ -220,11 +220,12 @@ wf_cumulative <- function(alpha = NULL){
 }
 
 #' @rdname prior_weightfunction
-#' @param omega fixed publication weights, one per bin.
+#' @param omega fixed non-negative relative publication weights, one per bin.
+#' The reference-bin weight must be exactly 1.
 #' @export
 wf_fixed <- function(omega){
 
-  check_real(omega, "omega", lower = 0, upper = 1, check_length = 0)
+  check_real(omega, "omega", lower = 0, check_length = 0, allow_NA = FALSE)
 
   out <- list(type = "fixed", omega = omega)
   class(out) <- c("weightfunction_weights", "weightfunction_weights.fixed")
@@ -442,6 +443,7 @@ prior_spike_and_slab <- function(prior_parameter,
     stop("'prior_parameter' must be a prior distribution")
   if(!is.prior(prior_inclusion))
     stop("'prior_inclusion' must be a prior distribution")
+  check_real(prior_weights, "prior_weights", lower = 0, allow_bound = FALSE)
   if(is.prior.point(prior_inclusion) && (prior_inclusion$parameters[["location"]] < 0 | prior_inclusion$parameters[["location"]] > 1))
     stop("The probability parameter of 'prior_inclusion' must be within 0 and 1.")
   if(!is.prior.point(prior_inclusion) && (prior_inclusion$truncation[["lower"]] < 0 | prior_inclusion$truncation[["upper"]] > 1))
@@ -474,6 +476,7 @@ prior_spike_and_slab <- function(prior_parameter,
   
   # Store inclusion prior as attribute so it can be retrieved by helper functions
   attr(mixture_output, "inclusion_prior") <- prior_inclusion
+  attr(mixture_output, "model_prior_weights") <- prior_weights
   
   # Add spike_and_slab classes for specialized behavior while keeping mixture functionality
   if(is.prior.factor(prior_parameter)){
@@ -646,7 +649,7 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
   }
 
   attr(prior_list, "components")    <- components
-  attr(prior_list, "prior_weights") <- sapply(prior_list, function(p) p[["prior_weights"]])
+  attr(prior_list, "prior_weights") <- sapply(prior_list, .prior_model_weight)
 
   return(prior_list)
 }
@@ -863,6 +866,15 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
   # check individual parameters
   .check_parameter(parameters$probability, "probability")
   .check_parameter_range(parameters$probability, "probability", lower = 0, upper = 1, include_bounds = TRUE)
+  bernoulli_support <- c(0, 1)
+  bernoulli_keep    <- bernoulli_support >= truncation[["lower"]] & bernoulli_support <= truncation[["upper"]]
+  if(!any(bernoulli_keep))
+    stop("Bernoulli truncation must contain at least one support point: 0 or 1.", call. = FALSE)
+  if(!is.expression(parameters$probability)){
+    bernoulli_prob <- c(1 - parameters$probability, parameters$probability)
+    if(sum(bernoulli_prob[bernoulli_keep]) <= 0)
+      stop("Bernoulli truncation must retain positive probability mass.", call. = FALSE)
+  }
 
   # add the values to the output
   output$distribution <- "bernoulli"
@@ -887,10 +899,12 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
   if(parameters$a >= parameters$b)
     stop("Parameter 'a' must be lower than the parameter 'b'.")
 
+  truncation <- .check_and_set_truncation(truncation, lower = parameters$a, upper = parameters$b)
+
   # add the values to the output
   output$distribution <- "uniform"
   output$parameters   <- parameters
-  output$truncation   <- list(lower = parameters$a, upper = parameters$b)
+  output$truncation   <- truncation
 
   class(output) <- c("prior", "prior.simple")
 
@@ -922,6 +936,7 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
   # check overall settings
   parameters <- .check_and_name_parameters(parameters, c("mean", "sd", "K"), "multivariate normal")
   truncation <- .check_and_set_truncation(truncation)
+  .check_vector_truncation_unsupported(truncation)
 
   # check individual parameters
   .check_parameter(parameters$mean, "mean")
@@ -945,6 +960,7 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
   # check overall settings
   parameters <- .check_and_name_parameters(parameters, c("location", "scale", "K"), "multivariate Cauchy")
   truncation <- .check_and_set_truncation(truncation)
+  .check_vector_truncation_unsupported(truncation)
 
   # check individual parameters
   .check_parameter(parameters$location, "location")
@@ -970,6 +986,7 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
   # check overall settings
   parameters <- .check_and_name_parameters(parameters, c("location", "scale", "df", "K"), "multivariate student-t")
   truncation <- .check_and_set_truncation(truncation)
+  .check_vector_truncation_unsupported(truncation)
 
   # check individual parameters
   .check_parameter(parameters$location, "location")
@@ -1009,6 +1026,12 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
 
   return(output)
 }
+.check_vector_truncation_unsupported <- function(truncation){
+
+  if(!is.infinite(truncation[["lower"]]) || !is.infinite(truncation[["upper"]])){
+    stop("Vector priors do not support truncation.", call. = FALSE)
+  }
+}
 .weightfunction_normalize_side <- function(side){
 
   side_clean <- .prior_clean_input_name(side)
@@ -1023,7 +1046,7 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
 }
 .weightfunction_validate_steps <- function(steps){
 
-  check_real(steps, "steps", check_length = 0)
+  check_real(steps, "steps", check_length = 0, allow_NA = FALSE)
 
   if(length(steps) == 0){
     stop("'steps' must contain at least one p-value cut point.", call. = FALSE)
@@ -1059,10 +1082,10 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
     if(is.null(weights$alpha)){
       weights$alpha <- rep(1, n_bins)
     }
-    check_real(weights$alpha, "alpha", lower = 0, allow_bound = FALSE, check_length = n_bins)
+    check_real(weights$alpha, "alpha", lower = 0, allow_bound = FALSE, check_length = n_bins, allow_NA = FALSE)
 
   }else if(weights$type == "fixed"){
-    check_real(weights$omega, "omega", lower = 0, upper = 1, check_length = n_bins)
+    check_real(weights$omega, "omega", lower = 0, check_length = n_bins, allow_NA = FALSE)
     if(reference == "most_significant" && !isTRUE(all.equal(weights$omega[1], 1))){
       stop("The reference-bin fixed weight must be exactly 1.", call. = FALSE)
     }
@@ -1088,8 +1111,12 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
 }
 .weightfunction_weights_truncation <- function(weights){
 
-  if(weights$type %in% c("fixed", "cumulative")){
+  if(weights$type == "cumulative"){
     return(list(lower = 0, upper = 1))
+  }
+
+  if(weights$type == "fixed"){
+    return(list(lower = 0, upper = max(1, weights$omega, na.rm = TRUE)))
   }
 
   if(weights$type == "independent"){
@@ -1223,7 +1250,7 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
     quantiles = quantiles
   ))
 
-  x_range <- range(as.vector(ranges), finite = TRUE)
+  x_range <- range(c(0, 1, as.vector(ranges)), finite = TRUE)
   if(x_range[1] == x_range[2]){
     x_range <- range(c(0, 1, x_range), finite = TRUE)
   }
@@ -1575,6 +1602,9 @@ rng.prior   <- function(x, n, ...){
 
   }else if(is.prior.vector(prior)){
 
+    if(prior[["distribution"]] != "mpoint")
+      .check_vector_truncation_unsupported(prior$truncation)
+
     par1 <- switch(
       prior[["distribution"]],
       "mnormal" = prior$parameter[["mean"]],
@@ -1726,6 +1756,9 @@ lpdf.prior  <- function(x, y, ...){
     log_lik <- .prior_simple_lpdf(prior, x)
 
   }else if(is.prior.vector(prior)){
+
+    if(prior[["distribution"]] != "mpoint")
+      .check_vector_truncation_unsupported(prior$truncation)
 
     par1 <- switch(
       prior[["distribution"]],
@@ -1883,6 +1916,41 @@ quant.prior <- function(x, p, ...){
   )
 }
 
+.prior_simple_discrete_support <- function(prior){
+
+  switch(
+    prior[["distribution"]],
+    "bernoulli" = c(0, 1)
+  )
+}
+
+.prior_simple_discrete_prob <- function(prior){
+
+  switch(
+    prior[["distribution"]],
+    "bernoulli" = c(1 - prior$parameters[["probability"]], prior$parameters[["probability"]])
+  )
+}
+
+.prior_simple_truncated_discrete <- function(prior){
+
+  support <- .prior_simple_discrete_support(prior)
+  prob    <- .prior_simple_discrete_prob(prior)
+  keep    <- support >= prior$truncation[["lower"]] & support <= prior$truncation[["upper"]]
+
+  support <- support[keep]
+  prob    <- prob[keep]
+
+  if(length(support) == 0 || sum(prob) <= 0){
+    stop("The truncated discrete prior has no probability mass in its support.", call. = FALSE)
+  }
+
+  list(
+    support = support,
+    prob    = prob / sum(prob)
+  )
+}
+
 .prior_simple_cdf <- function(prior, q){
 
   if(.is_prior_default_range(prior)){
@@ -1974,7 +2042,9 @@ quant.prior <- function(x, p, ...){
   }
 
   if(is.prior.discrete(prior)){
-    return(.prior_simple_quant_optim(prior, p))
+    discrete <- .prior_simple_truncated_discrete(prior)
+    cdf      <- cumsum(discrete[["prob"]])
+    return(vapply(p, function(p_i) discrete[["support"]][which(cdf >= p_i)[1]], numeric(1)))
   }
 
   C1 <- .prior_C1(prior)
@@ -2016,7 +2086,8 @@ quant.prior <- function(x, p, ...){
   }
 
   if(is.prior.discrete(prior)){
-    return(.prior_simple_rng_rejection(prior, n))
+    discrete <- .prior_simple_truncated_discrete(prior)
+    return(sample(discrete[["support"]], size = n, replace = TRUE, prob = discrete[["prob"]]))
   }
 
   C1 <- .prior_C1(prior)
@@ -2048,7 +2119,7 @@ quant.prior <- function(x, p, ...){
       "gamma"     = stats::pgamma(prior$truncation[["lower"]], shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
       "invgamma"  = extraDistr::pinvgamma(prior$truncation[["lower"]], alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
       "beta"      = stats::pbeta(prior$truncation[["lower"]], shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = TRUE, log.p = FALSE),
-      "bernoulli" = stats::pbinom(prior$truncation[["lower"]] - 1, size = 1, prob = prior$parameters[["probability"]], lower.tail = TRUE, log.p = FALSE),
+      "bernoulli" = stats::pbinom(ceiling(prior$truncation[["lower"]]) - 1, size = 1, prob = prior$parameters[["probability"]], lower.tail = TRUE, log.p = FALSE),
       "exp"       = stats::pexp(prior$truncation[["lower"]], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
       "uniform"   = stats::punif(prior$truncation[["lower"]], min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = TRUE, log.p = FALSE),
       "point"     = ppoint(prior$truncation[["lower"]], location = prior$parameters[["location"]], lower.tail = TRUE, log.p = FALSE)
@@ -2070,7 +2141,7 @@ quant.prior <- function(x, p, ...){
       "gamma"     = stats::pgamma(prior$truncation[["upper"]], shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
       "invgamma"  = extraDistr::pinvgamma(prior$truncation[["upper"]], alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
       "beta"      = stats::pbeta(prior$truncation[["upper"]], shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = TRUE, log.p = FALSE),
-      "bernoulli" = stats::pbinom(prior$truncation[["upper"]] + 1, size = 1, prob = prior$parameters[["probability"]], lower.tail = TRUE, log.p = FALSE),
+      "bernoulli" = stats::pbinom(prior$truncation[["upper"]], size = 1, prob = prior$parameters[["probability"]], lower.tail = TRUE, log.p = FALSE),
       "exp"       = stats::pexp(prior$truncation[["upper"]], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
       "uniform"   = stats::punif(prior$truncation[["upper"]], min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = TRUE, log.p = FALSE),
       "point"     = ppoint(prior$truncation[["upper"]], location = prior$parameters[["location"]], lower.tail = TRUE, log.p = FALSE)
@@ -2103,7 +2174,8 @@ quant.prior <- function(x, p, ...){
     "beta"      = isTRUE(all.equal(prior$truncation[["lower"]], 0)) & isTRUE(all.equal(prior$truncation[["upper"]], 1)),
     "bernoulli" = isTRUE(all.equal(prior$truncation[["lower"]], 0)) & isTRUE(all.equal(prior$truncation[["upper"]], 1)),
     "exp"       = isTRUE(all.equal(prior$truncation[["lower"]], 0)) & is.infinite(prior$truncation[["upper"]]),
-    "uniform"   = TRUE,
+    "uniform"   = isTRUE(all.equal(prior$truncation[["lower"]], prior$parameters[["a"]])) &
+      isTRUE(all.equal(prior$truncation[["upper"]], prior$parameters[["b"]])),
     "point"     = TRUE,
     "mpoint"          = TRUE,
     "weightfunction"  = TRUE,
@@ -2572,14 +2644,20 @@ mean.prior   <- function(x, ...){
 
     }else{
 
-      # check for undefined values
+      if(is.prior.discrete(x)){
+        discrete <- .prior_simple_truncated_discrete(x)
+        return(sum(discrete[["support"]] * discrete[["prob"]]))
+      }
+
+      # check for undefined values when the problematic tail is still unbounded
       if(x[["distribution"]] == "t"){
-        if(x$parameters[["df"]] <= 1){
+        if(x$parameters[["df"]] <= 1 &&
+           (is.infinite(x$truncation[["lower"]]) || is.infinite(x$truncation[["upper"]]))){
           return(NaN)
         }
       }
       if(x[["distribution"]] == "invgamma"){
-        if(x$parameters[["shape"]] <= 1){
+        if(x$parameters[["shape"]] <= 1 && is.infinite(x$truncation[["upper"]])){
           return(NaN)
         }
       }
@@ -2700,25 +2778,11 @@ var.prior   <- function(x, ...){
 
   if(is.prior.spike_and_slab(x)){
 
-    inclusion_prior <- .get_spike_and_slab_inclusion(x)
-    variable_prior <- .get_spike_and_slab_variable(x)
-    
-    # Handle different inclusion prior types
-    if(inclusion_prior[["distribution"]] == "beta") {
-      # the inclusion is beta -> indicators are betabinom
-      var_inclusion <- with(inclusion_prior[["parameters"]], (alpha * beta * (alpha + beta + 1) ) / ( (alpha + beta)^2 * (alpha + beta + 1)  ) )
-    } else if(inclusion_prior[["distribution"]] == "point") {
-      # the inclusion is a spike (point) -> no variance
-      var_inclusion <- 0
-    } else {
-      # for other distributions, compute variance directly
-      var_inclusion <- var(inclusion_prior)
-    }
-    
-    var <-
-      (var(variable_prior)  + mean(variable_prior)^2) *
-      (var_inclusion         + mean(inclusion_prior)^2) -
-      (mean(variable_prior)^2 * mean(inclusion_prior)^2)
+    inclusion_mean <- mean(.get_spike_and_slab_inclusion(x))
+    variable_mean  <- mean(.get_spike_and_slab_variable(x))
+    variable_E2    <- var(.get_spike_and_slab_variable(x)) + variable_mean^2
+
+    var <- inclusion_mean * variable_E2 - (inclusion_mean * variable_mean)^2
 
   }else if(is.prior.mixture(x)){
 
@@ -2734,7 +2798,7 @@ var.prior   <- function(x, ...){
         "lognormal" = (exp(x$parameters[["sdlog"]]^2) - 1) * exp(2 * x$parameters[["meanlog"]] + x$parameters[["sdlog"]]^2),
         "t"         = ifelse(x$parameters[["df"]] > 2, x$parameters[["scale"]]^2 * x$parameters[["df"]] / (x$parameters[["df"]] - 2), NaN),
         "gamma"     = x$parameters[["shape"]] / x$parameters[["rate"]]^2,
-        "invgamma"  = ifelse(x$parameters[["shape"]] > 2, x$parameters[["scale"]]^2 / (x$parameters[["shape"]] - 1)^2 * (x$parameters[["shape"]] - 2), NaN),
+        "invgamma"  = ifelse(x$parameters[["shape"]] > 2, x$parameters[["scale"]]^2 / ((x$parameters[["shape"]] - 1)^2 * (x$parameters[["shape"]] - 2)), NaN),
         "beta"      = (x$parameters[["alpha"]] * x$parameters[["beta"]]) / ((x$parameters[["alpha"]] + x$parameters[["beta"]])^2 * (x$parameters[["alpha"]] + x$parameters[["beta"]] + 1)),
         "bernoulli" = (x$parameters[["probability"]] * (1 - x$parameters[["probability"]]) ),
         "exp"       = 1 / x$parameters[["rate"]]^2,
@@ -2744,14 +2808,21 @@ var.prior   <- function(x, ...){
 
     }else{
 
-      # check for undefined values
+      if(is.prior.discrete(x)){
+        discrete <- .prior_simple_truncated_discrete(x)
+        E2       <- sum(discrete[["support"]]^2 * discrete[["prob"]])
+        return(E2 - mean(x)^2)
+      }
+
+      # check for undefined values when the problematic tail is still unbounded
       if(x[["distribution"]] == "t"){
-        if(x$parameters[["df"]] <= 2){
+        if(x$parameters[["df"]] <= 2 &&
+           (is.infinite(x$truncation[["lower"]]) || is.infinite(x$truncation[["upper"]]))){
           return(NaN)
         }
       }
       if(x[["distribution"]] == "invgamma"){
-        if(x$parameters[["shape"]] <= 2){
+        if(x$parameters[["shape"]] <= 2 && is.infinite(x$truncation[["upper"]])){
           return(NaN)
         }
       }
