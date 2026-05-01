@@ -259,6 +259,68 @@ test_that("analytical weightfunction plotting supports independent weights above
   expect_s3_class(plot(log_prior, plot_type = "ggplot"), "ggplot")
 })
 
+test_that("fixed weightfunction individual densities use actual point locations", {
+
+  fixed_prior <- prior_weightfunction(
+    "one-sided", c(.05),
+    wf_fixed(c(1, .4))
+  )
+
+  fixed_density <- density(fixed_prior, individual = TRUE, n_points = 100)
+
+  expect_equal(vapply(fixed_density, function(x) x$x, numeric(1)), c(1, .4))
+  expect_true(all(vapply(fixed_density, function(x) inherits(x, "density.prior.point"), logical(1))))
+  expect_true(all(vapply(fixed_density, function(x) is.null(x$samples), logical(1))))
+})
+
+test_that("two-sided-only bias mixtures keep one-sided omega context for priors and posteriors", {
+
+  two_sided <- prior_weightfunction(
+    "two-sided", c(.05),
+    wf_fixed(c(1, .4)),
+    prior_weights = 1
+  )
+  bias_prior <- prior_mixture(list(
+    prior_none(prior_weights = 1),
+    two_sided
+  ))
+  omega_names <- c("omega[0,0.025]", "omega[0.025,0.975]", "omega[0.975,1]")
+
+  standalone_context <- .weightfunction_prior_list_context(list(two_sided))
+  expect_equal(standalone_context$omega_names, c("omega[0,0.05]", "omega[0.05,1]"))
+
+  model <- matrix(
+    c(
+      1, 1, 1, 1,
+      2, 1, .4, 1
+    ),
+    nrow = 2,
+    byrow = TRUE
+  )
+  colnames(model) <- c("bias_indicator", "omega[1]", "omega[2]", "omega[3]")
+  class(model) <- c("matrix", "BayesTools_fit")
+  attr(model, "prior_list") <- list(bias = bias_prior)
+
+  mixed <- as_mixed_posteriors(model, parameters = "bias", conditional = "omega")
+  expect_equal(colnames(mixed$bias), omega_names)
+
+  prior_context <- .weightfunction_prior_list_context(attr(mixed$bias, "prior_list"))
+  expect_equal(prior_context$omega_names, omega_names)
+
+  simplified <- .simplify_as_mixed_posterior_bias(mixed, "omega")
+  simplified_context <- .weightfunction_prior_list_context(attr(simplified$omega, "prior_list"))
+  expect_equal(simplified_context$omega_names, omega_names)
+
+  parameter_data <- .plot_data_prior_list.weightparameter(
+    attr(simplified$omega, "prior_list"),
+    parameter = "omega[0,0.025]",
+    n_points = 100,
+    n_samples = 1
+  )
+  expect_true(length(parameter_data) > 0)
+  expect_s3_class(plot_posterior(mixed, "omega", prior = TRUE, plot_type = "ggplot"), "ggplot")
+})
+
 test_that("posterior weightfunction plotting ranges include omega samples above one", {
 
   log_prior <- prior_weightfunction(

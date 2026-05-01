@@ -1411,10 +1411,8 @@ stan_estimates_table  <- function(fit, transformations = NULL, title = NULL, foo
   if(!is.null(transformations)){
     for(par in names(transformations)){
       model_samples[,par] <- do.call(transformations[[par]][["fun"]], c(list(model_samples[,par]), transformations[[par]][["arg"]]))
-      stan_summary[par, "Mean"]    <- mean(model_samples[,par], na.rm = TRUE)
-      stan_summary[par, "SD"]      <- sd(model_samples[,par], na.rm = TRUE)
-      stan_summary[par, "Median"]  <- do.call(transformations[[par]][["fun"]], c(list(stan_summary[par, "Median"]), transformations[[par]][["arg"]]))
-      stan_summary[par, "MCerr"]   <- do.call(transformations[[par]][["fun"]], c(list(stan_summary[par, "MCerr"]), transformations[[par]][["arg"]]))
+      transformed_summary <- .stan_transformed_summary(model_samples[,par], stan_summary[par, "SSeff"])
+      stan_summary[par, names(transformed_summary)] <- transformed_summary
       stan_summary[par, "MC.ofSD"] <- stan_summary[par, "MCerr"] / stan_summary[par, "SD"]
     }
   }
@@ -1445,6 +1443,23 @@ stan_estimates_table  <- function(fit, transformations = NULL, title = NULL, foo
   attr(stan_summary, "warnings")   <- warnings
 
   return(stan_summary)
+}
+
+.stan_transformed_summary <- function(samples, SSeff){
+
+  samples <- as.numeric(samples)
+  qs      <- stats::quantile(samples, probs = c(0.025, 0.5, 0.975), na.rm = TRUE, names = FALSE)
+  sd      <- stats::sd(samples, na.rm = TRUE)
+  MCerr   <- if(is.finite(SSeff) && SSeff > 0) sd / sqrt(SSeff) else NA_real_
+
+  c(
+    "Mean"    = mean(samples, na.rm = TRUE),
+    "MCerr"   = MCerr,
+    "SD"      = sd,
+    "Lower95" = qs[1],
+    "Median"  = qs[2],
+    "Upper95" = qs[3]
+  )
 }
 
 #' @title Print a BayesTools table

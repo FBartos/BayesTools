@@ -258,7 +258,7 @@ selection_backend_spec <- function(priors,
                                    global_breaks = NULL){
 
   check_char(backend, "backend", allow_values = "jags")
-  check_list(names, "names", check_names = c("omega", "alpha", "pi_null", "phack_kind", "phack_z_source", "phack_z_dest", "phack_z_destination"), allow_other = FALSE)
+  check_list(names, "names", check_names = c("omega", "alpha", "pi_null", "beta_null", "phack_kind", "phack_z_source", "phack_z_dest", "phack_z_destination"), allow_other = FALSE)
   names <- .selection_backend_names(names)
 
   branches <- .selection_normalize_priors(priors)
@@ -337,7 +337,8 @@ selection_backend_spec <- function(priors,
       transform_code,
       .selection_jags_active_scalar("alpha_component_", names$alpha, indicator_terms, seq_along(branches)),
       .selection_jags_active_scalar("phack_kind_component_", names$phack_kind, indicator_terms, seq_along(branches)),
-      .selection_jags_active_scalar("pi_null_component_", names$pi_null, indicator_terms, seq_along(branches))
+      .selection_jags_active_scalar("pi_null_component_", names$pi_null, indicator_terms, seq_along(branches)),
+      .selection_jags_active_scalar("beta_null_component_", names$beta_null, indicator_terms, seq_along(branches))
     )
 
     if(any(has_phacking)){
@@ -395,6 +396,7 @@ selection_backend_spec <- function(priors,
       phack_component_z_source = phacking$branch_z_source,
       phack_component_z_dest   = phacking$branch_z_destination,
       phack_component_q        = phacking$branch_q,
+      phack_component_beta_null_per_alpha = phacking$branch_beta_null_per_alpha,
       kernel_mode      = .selection_mode_code(mode)
     )
   ))
@@ -466,6 +468,7 @@ selection_backend_spec <- function(priors,
     omega               = "omega",
     alpha               = "alpha",
     pi_null             = "pi_null",
+    beta_null           = "beta_null",
     phack_kind          = "phack_kind",
     phack_z_source      = "phack_z_source",
     phack_z_dest        = "phack_z_dest"
@@ -634,6 +637,7 @@ selection_backend_spec <- function(priors,
       branch_form          = character(),
       branch_q             = integer(),
       branch_phack_kind    = integer(),
+      branch_beta_null_per_alpha = numeric(),
       branch_z_source      = matrix(nrow = 0L, ncol = 2L),
       branch_z_destination = matrix(nrow = 0L, ncol = 2L)
     ))
@@ -658,6 +662,7 @@ selection_backend_spec <- function(priors,
     branch_form          = forms,
     branch_q             = q,
     branch_phack_kind    = vapply(constants, function(x) x$phack_kind, integer(1)),
+    branch_beta_null_per_alpha = vapply(constants, function(x) x$beta_null_per_alpha, numeric(1)),
     branch_z_source      = z_source,
     branch_z_destination = z_destination
   ))
@@ -789,7 +794,7 @@ selection_backend_spec <- function(priors,
     if(.selection_prior_has_PET(prior)) "PET",
     if(.selection_prior_has_PEESE(prior)) "PEESE",
     if(.selection_prior_has_selection(prior)) "omega",
-    if(.selection_prior_has_phacking(prior)) c("alpha", "pi_null", if(include_kind) "phack_kind")
+    if(.selection_prior_has_phacking(prior)) c("alpha", "pi_null", if(include_kind) c("beta_null", "phack_kind"))
   )
 }
 
@@ -797,12 +802,10 @@ selection_backend_spec <- function(priors,
 
   local <- .selection_weightfunction_mean(selection)
   expansion <- .weightfunction_mapping_expansion(selection, force_one_sided = TRUE)
+  global_bin_indices <- .weightfunction_global_bin_indices(breaks, expansion)
 
   vapply(seq_len(length(breaks) - 1L), function(i){
-    ind <- which(breaks[i] >= expansion$lower & breaks[i + 1L] <= expansion$upper)
-    if(length(ind) != 1L){
-      stop("Could not map global weightfunction bin to a local bin.", call. = FALSE)
-    }
+    ind <- global_bin_indices[i]
     local[expansion$index[ind]]
   }, numeric(1))
 }
@@ -831,6 +834,7 @@ selection_backend_spec <- function(priors,
   alpha_name <- if(is.null(component_id)) "alpha" else paste0("alpha_component_", component_id)
   kind_name <- if(is.null(component_id)) "phack_kind" else paste0("phack_kind_component_", component_id)
   pi_null_name <- if(is.null(component_id)) "pi_null" else paste0("pi_null_component_", component_id)
+  beta_null_name <- if(is.null(component_id)) "beta_null" else paste0("beta_null_component_", component_id)
   z_source_name <- if(is.null(component_id)) "phack_z_source" else paste0("phack_z_source_component_", component_id)
   z_destination_name <- if(is.null(component_id)) "phack_z_dest" else paste0("phack_z_dest_component_", component_id)
 
@@ -839,6 +843,7 @@ selection_backend_spec <- function(priors,
       alpha_name, " <- 0\n",
       kind_name, " <- 0\n",
       pi_null_name, " <- 0\n",
+      beta_null_name, " <- 0\n",
       z_source_name, "[1] <- 0\n",
       z_source_name, "[2] <- 0\n",
       z_destination_name, "[1] <- 0\n",
@@ -856,6 +861,7 @@ selection_backend_spec <- function(priors,
     .JAGS_prior.simple(prior$alpha, alpha_name),
     kind_name, " <- ", constants$phack_kind, "\n",
     pi_null_name, " <- ", alpha_name, " * ", .selection_format_number(constants$pi_null_per_alpha), "\n",
+    beta_null_name, " <- ", alpha_name, " * ", .selection_format_number(constants$beta_null_per_alpha), "\n",
     z_source_name, "[1] <- ", .selection_format_number(constants$z_source[1]), "\n",
     z_source_name, "[2] <- ", .selection_format_number(constants$z_source[2]), "\n",
     z_destination_name, "[1] <- ", .selection_format_number(constants$z_destination[1]), "\n",

@@ -56,11 +56,17 @@ test_that("direct composed bias priors support bridge-sampling helpers", {
   )
 
   parameters <- JAGS_marglik_parameters(samples, list(bias = bias))
+  constants <- phack_backend_constants(phacking$form, phacking$source, phacking$destination, target = phacking$target)
   expect_equal(parameters$omega, c(1, samples[["eta[2]"]] / sum(samples[c("eta[1]", "eta[2]")])))
   expect_equal(parameters$alpha, samples[["alpha"]])
   expect_equal(
     parameters$pi_null,
-    phack_pi_null(samples[["alpha"]], phacking$form, phacking$source, phacking$destination, target = phacking$target),
+    samples[["alpha"]] * constants$pi_null_per_alpha,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    parameters$beta_null,
+    samples[["alpha"]] * constants$beta_null_per_alpha,
     tolerance = 1e-12
   )
 })
@@ -396,6 +402,80 @@ test_that("JAGS marglik with exp(intercept) formula works", {
   )
 
   expect_equal(marglik$logml, 0, tolerance = 1e-3)
+})
+
+test_that("JAGS bridgesampling infers formula scaling metadata from fits", {
+
+  df_test <- data.frame(x = c(10, 20, 30))
+  prior_list <- list(
+    "intercept" = prior("normal", list(0, 1)),
+    "x"         = prior("normal", list(0, 1))
+  )
+
+  scaled_formula <- JAGS_formula(
+    ~ 1 + x,
+    parameter = "mu",
+    data = df_test,
+    prior_list = prior_list,
+    formula_scale = list(x = TRUE)
+  )
+  fit <- matrix(c(0, 1), ncol = 2)
+  attr(fit, "formula_scale") <- list(mu = scaled_formula$formula_scale)
+
+  inferred_scale <- BayesTools:::.JAGS_formula_scale_list_from_fit(fit, "mu")
+  expect_equal(inferred_scale, list(mu = list(x = TRUE)))
+
+  bridge_formula <- JAGS_formula(
+    ~ 1 + x,
+    parameter = "mu",
+    data = df_test,
+    prior_list = prior_list,
+    formula_scale = inferred_scale$mu
+  )
+
+  expect_equal(bridge_formula$data$mu_data_x, scaled_formula$data$mu_data_x)
+})
+
+test_that("JAGS formula marglik reconstructs inverse-gamma terms on original scale", {
+
+  samples <- c(
+    "inv_mu_intercept" = 2,
+    "inv_mu_x"         = 4
+  )
+  formula_data_list <- list(
+    mu = list(
+      N_mu      = 2,
+      mu_data_x = c(10, 20)
+    )
+  )
+  formula_prior_list <- list(
+    mu = list(
+      mu_intercept = prior("invgamma", list(2, 1)),
+      mu_x         = prior("invgamma", list(2, 1))
+    )
+  )
+
+  parameters <- JAGS_marglik_parameters_formula(
+    samples            = samples,
+    formula_list       = list(mu = ~ 1 + x),
+    formula_data_list  = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    prior_list_parameters = list()
+  )
+
+  expect_equal(parameters$mu, c(0.5 + 0.25 * 10, 0.5 + 0.25 * 20))
+
+  formula_log_intercept <- ~ 1 + x
+  attr(formula_log_intercept, "log(intercept)") <- TRUE
+  parameters_log <- JAGS_marglik_parameters_formula(
+    samples            = samples,
+    formula_list       = list(mu = formula_log_intercept),
+    formula_data_list  = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    prior_list_parameters = list()
+  )
+
+  expect_equal(parameters_log$mu, c(log(0.5) + 0.25 * 10, log(0.5) + 0.25 * 20))
 })
 
 

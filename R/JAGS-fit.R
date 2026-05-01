@@ -311,6 +311,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   prior_list        <- attr(fit, "prior_list")
   model_syntax      <- attr(fit, "model_syntax")
   required_packages <- attr(fit, "required_packages")
+  formula_scale     <- attr(fit, "formula_scale")
   autofit_control <- JAGS_check_and_list_autofit_settings(autofit_control)
 
   # parallel vs. not
@@ -398,6 +399,9 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   attr(fit, "prior_list")   <- prior_list
   attr(fit, "model_syntax") <- model_syntax
   attr(fit, "required_packages") <- required_packages
+  if(!is.null(formula_scale)){
+    attr(fit, "formula_scale") <- formula_scale
+  }
 
   class(fit) <- c(class(fit), "BayesTools_fit")
 
@@ -725,6 +729,8 @@ JAGS_add_priors           <- function(syntax, prior_list){
   if(!is.prior.vector(prior))
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
+  if(prior[["distribution"]] != "mpoint")
+    .check_vector_truncation_unsupported(prior$truncation)
 
   # parse expressions to test
   if(.is_prior_expression(prior)){
@@ -880,7 +886,12 @@ JAGS_add_priors           <- function(syntax, prior_list){
   J <- .weightfunction_n_bins(prior)
   syntax <- character()
 
-  omega_local <- if(is.null(component_id)) "omega" else paste0("omega_local_component_", component_id)
+  expansion     <- .weightfunction_mapping_expansion(prior, force_one_sided)
+  all_cuts      <- if(is.null(global_cuts)) expansion$cuts else global_cuts
+  needs_mapping <- !identical(all_cuts, .weightfunction_local_cuts(prior)) ||
+    !identical(expansion$index, seq_len(J))
+
+  omega_local <- if(is.null(component_id) && !needs_mapping) "omega" else if(is.null(component_id)) "omega_local" else paste0("omega_local_component_", component_id)
   omega_target <- if(is.null(component_id)) "omega" else paste0("omega_component_", component_id)
 
   if(prior$weights$type == "cumulative"){
@@ -927,14 +938,10 @@ JAGS_add_priors           <- function(syntax, prior_list){
     }
   }
 
-  if(!is.null(component_id)){
-    expansion <- .weightfunction_mapping_expansion(prior, force_one_sided)
-    all_cuts <- if(is.null(global_cuts)) expansion$cuts else global_cuts
+  if(!is.null(component_id) || needs_mapping){
+    global_bin_indices <- .weightfunction_global_bin_indices(all_cuts, expansion)
     for(i in seq_len(length(all_cuts) - 1L)){
-      ind <- which(all_cuts[i] >= expansion$lower & all_cuts[i + 1L] <= expansion$upper)
-      if(length(ind) != 1L){
-        stop("Could not map global weightfunction bin to a local bin.", call. = FALSE)
-      }
+      ind <- global_bin_indices[i]
       syntax <- paste0(syntax, omega_target, "[", i, "] <- ", omega_local, "[", expansion$index[ind], "]\n")
     }
   }

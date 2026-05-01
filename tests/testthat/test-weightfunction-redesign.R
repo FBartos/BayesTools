@@ -35,6 +35,35 @@ test_that("prior_weightfunction stores canonical geometry and weight priors", {
   expect_true(all(samples[,1] == 1))
 })
 
+test_that("legacy monotone weightfunction helpers use the canonical reference-first orientation", {
+
+  alpha <- c(2, 4)
+  q <- .5
+
+  expect_equal(
+    mdone.sided(q, alpha = alpha),
+    matrix(c(0, stats::dbeta(q, 4, 2)), nrow = 1)
+  )
+  expect_equal(
+    mpone.sided(q, alpha = alpha),
+    matrix(c(0, stats::pbeta(q, 4, 2)), nrow = 1)
+  )
+  expect_equal(
+    mqone.sided(q, alpha = alpha),
+    matrix(c(1, stats::qbeta(q, 4, 2)), nrow = 1)
+  )
+
+  set.seed(11)
+  helper_samples <- rone.sided(5000, alpha = alpha)
+  expect_true(all(helper_samples[,1] == 1))
+  expect_equal(mean(helper_samples[,2]), 4 / 6, tolerance = .02)
+
+  prior <- prior_weightfunction("one-sided", c(.05), wf_cumulative(alpha))
+  set.seed(11)
+  prior_samples <- rng(prior, 5000)
+  expect_equal(unname(helper_samples), unname(prior_samples), tolerance = 1e-12)
+})
+
 test_that("weightfunction constructors validate independent scales", {
 
   expect_silent(wf_independent(prior("beta", list(1, 1))))
@@ -53,6 +82,12 @@ test_that("weightfunction constructors validate independent scales", {
     prior_weightfunction("one-sided", c(.05), wf_fixed(c(.9, .5))),
     "reference-bin"
   )
+  expect_silent(prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, 0))))
+
+  fixed_above_one <- prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, 1.5)))
+  expect_equal(range(fixed_above_one), c(0, 1.5))
+  expect_equal(unname(rng(fixed_above_one, 2)), matrix(c(1, 1, 1.5, 1.5), nrow = 2))
+  expect_equal(rone.sided_fixed(2, omega = c(1, 1.5)), matrix(c(1, 1, 1.5, 1.5), nrow = 2))
 })
 
 test_that("weightfunctions_mapping expands two-sided priors onto one-sided cuts", {
@@ -118,6 +153,11 @@ test_that("JAGS bridge helpers use natural latent weight parameters", {
       "log_omega"
     )
   )
+  two_sided <- prior_weightfunction(
+    "two-sided",
+    c(.05, .10),
+    wf_cumulative(c(1, 2, 3))
+  )
 
   expect_equal(as.vector(.JAGS_bridgesampling_posterior_info.weightfunction(cumulative)), paste0("eta[", 1:3, "]"))
   expect_equal(as.vector(.JAGS_bridgesampling_posterior_info.weightfunction(independent)), paste0("omega[", 2:3, "]"))
@@ -139,6 +179,13 @@ test_that("JAGS bridge helpers use natural latent weight parameters", {
   expect_equal(
     JAGS_marglik_priors(samples, list(omega = log_independent)),
     mlpdf(log_independent$weights$prior, .5),
+    tolerance = 1e-12
+  )
+
+  samples_two_sided <- c("eta[1]" = 1, "eta[2]" = 2, "eta[3]" = 3)
+  expect_equal(
+    JAGS_marglik_parameters(samples_two_sided, list(omega = two_sided))$omega,
+    c(1, 5/6, 1/2, 5/6, 1),
     tolerance = 1e-12
   )
 })
@@ -363,6 +410,22 @@ test_that("point(1) weightfunction null components are handled explicitly", {
     ),
     "point\\(1\\)/none null priors"
   )
+})
+
+test_that("weightfunction prior mixing retains tiny positive components", {
+
+  dominant <- prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .5)), prior_weights = 999)
+  tiny     <- prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .2)), prior_weights = 1)
+
+  mixed <- .mix_priors.weightfunction(
+    list(dominant, tiny),
+    parameter = "omega",
+    seed = 4,
+    n_samples = 1000
+  )
+
+  expect_true(2 %in% attr(mixed, "models_ind"))
+  expect_equal(unname(mixed[attr(mixed, "models_ind") == 2, "omega[0.05,1]"]), .2)
 })
 
 test_that("omega diagnostics reject bias mixtures without weightfunctions", {

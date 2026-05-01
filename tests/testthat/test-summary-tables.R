@@ -24,6 +24,20 @@
 REFERENCE_DIR <<- testthat::test_path("..", "results", "summary-tables")
 source(testthat::test_path("common-functions.R"))
 
+test_that("Stan transformed summaries are recomputed from transformed draws", {
+
+  transformed_samples <- c(1, 2, 4, 8)
+  transformed_summary <- BayesTools:::.stan_transformed_summary(transformed_samples, SSeff = 4)
+
+  expect_equal(unname(transformed_summary["Mean"]), mean(transformed_samples))
+  expect_equal(unname(transformed_summary["SD"]), stats::sd(transformed_samples))
+  expect_equal(
+    unname(transformed_summary[c("Lower95", "Median", "Upper95")]),
+    unname(stats::quantile(transformed_samples, probs = c(0.025, 0.5, 0.975), names = FALSE))
+  )
+  expect_equal(unname(transformed_summary["MCerr"]), stats::sd(transformed_samples) / sqrt(4))
+})
+
 
 # ============================================================================ #
 # SECTION 1: ensemble_estimates_table tests

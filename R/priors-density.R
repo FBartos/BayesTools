@@ -252,8 +252,11 @@ density.prior <- function(x,
 
     out <- list()
     out_types <- .density.prior_type(x)
+    components <- .weightfunction_marginal_components(x)
 
     for(i in 1:ncol(x_den)){
+
+      temp_samples <- if(is.null(x_sam)) NULL else x_sam[,i]
 
       # create the output object
       if(out_types[i] == "point"){
@@ -261,9 +264,9 @@ density.prior <- function(x,
           call    = call("density", print(x, silent = TRUE)),
           bw      = NULL,
           n       = n_points,
-          x       = 1,
+          x       = components[[i]]$location,
           y       = 1,
-          samples = x_sam[,i]
+          samples = temp_samples
         )
       }else{
         temp_out <- list(
@@ -272,14 +275,14 @@ density.prior <- function(x,
           n       = n_points,
           x       = x_seq,
           y       = x_den[,i],
-          samples = x_sam[,i]
+          samples = temp_samples
         )
       }
 
 
       class(temp_out) <- c("density", "density.prior", paste0("density.prior.",out_types[i]))
       attr(temp_out, "x_range") <- x_range
-      attr(temp_out, "y_range") <- c(0, max(x_den[,i]))
+      attr(temp_out, "y_range") <- if(out_types[i] == "point") c(0, 1) else c(0, max(x_den[,i]))
       attr(temp_out, "steps")   <- c(x$bins$lower[i], x$bins$upper[i])
 
       out[[i]] <- temp_out
@@ -398,7 +401,7 @@ density.prior <- function(x,
   if(force_samples | .density.prior_need_samples(x)){
 
     if(is.na(x$parameters[["K"]]) && !is.null(attr(x, "levels"))){
-      x$parameters[["K"]] <- .get_prior_factor_levels(prior)
+      x$parameters[["K"]] <- .get_prior_factor_levels(x)
     }else if(is.na(x$parameters[["K"]])){
       x$parameters[["K"]] <- 1
       warning("number of factor levels / dimensionality of the prior distribution was not specified -- assuming two factor levels")
@@ -620,7 +623,7 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
       "lin" = list(
         fun = function(x, a = 0, b = 1)a + b * x,
         inv = function(x, a = 0, b = 1)(x - a) / b,
-        jac = function(x, a = 0, b = 1)1 / b
+        jac = function(x, a = 0, b = 1)1 / abs(b)
       ),
       "exp_lin" = list(
         # Exponential-linear transformation: exp(a + b * log(x))
@@ -628,7 +631,7 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
         # When a = 0 and b = 1, this is identity: exp(log(x)) = x
         fun = function(x, a = 0, b = 1) exp(a + b * log(x)),
         inv = function(x, a = 0, b = 1) exp((log(x) - a) / b),
-        jac = function(x, a = 0, b = 1) 1 / (b * x)
+        jac = function(x, a = 0, b = 1) exp((log(x) - a) / b) / (abs(b) * x)
       ),
       "tanh" = list(
         fun = tanh,

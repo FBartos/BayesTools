@@ -1396,9 +1396,9 @@
 
   prior_weights <- do.call(cbind, lapply(prior_list, function(parameter_priors){
     if(is.prior(parameter_priors)){
-      return(parameter_priors[["prior_weights"]])
+      return(.prior_model_weight(parameter_priors))
     }
-    sapply(parameter_priors, function(prior) prior[["prior_weights"]])
+    sapply(parameter_priors, .prior_model_weight)
   }))
 
   if(!all(prior_weights[, 1] == prior_weights)){

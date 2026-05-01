@@ -167,6 +167,9 @@ test_that(".mix_priors dispatches supported prior families", {
   expect_model_counts(out$beta, c(60, 180))
   expect_model_counts(out$fac, c(60, 180))
   expect_model_counts(out$omega, c(60, 180))
+  expect_equal(attr(out$theta, "models_ind"), attr(out$beta, "models_ind"))
+  expect_equal(attr(out$theta, "models_ind"), attr(out$fac, "models_ind"))
+  expect_equal(attr(out$theta, "models_ind"), attr(out$omega, "models_ind"))
 
   formula_data <- data.frame(
     x = factor(c("A", "B", "A", "B"), levels = c("A", "B"))

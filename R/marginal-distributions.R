@@ -591,7 +591,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
   ### get model indices
   prior_weights <- do.call(cbind, lapply(seq_along(prior_list), function(i){
-    prior_weights <- sapply(prior_list[[i]], function(prior) prior[["prior_weights"]])
+    prior_weights <- sapply(prior_list[[i]], .prior_model_weight)
     prior_weights <- prior_weights / sum(prior_weights)
     return(prior_weights)
   }))
@@ -687,7 +687,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     stop("'priors' must be a list of simple priors")
 
   # get prior model probabilities
-  prior_probs <- sapply(priors, function(prior) prior[["prior_weights"]])
+  prior_probs <- sapply(priors, .prior_model_weight)
   prior_probs <- prior_probs / sum(prior_probs)
 
   # do not set seed when sampling multiple priors for the same model -- they will end up completely correlated
@@ -701,10 +701,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   models_ind <- NULL
 
   # mix samples
-  for(i in seq_along(priors)[ceiling(prior_probs * n_samples) >= 1]){
+  sample_counts <- .prior_mixture_sample_counts(prior_probs, n_samples)
+  for(i in seq_along(priors)[sample_counts > 0]){
 
     # sample indexes
-    temp_ind <- 1:ceiling(n_samples * prior_probs[i])
+    temp_ind <- seq_len(sample_counts[i])
 
     # sample prior
     samples <- c(samples, rng(priors[[i]], length(temp_ind), transform_factor_samples = FALSE))
@@ -738,7 +739,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     stop("'priors' must be a list of vector priors")
 
   # get prior model probabilities
-  prior_probs <- sapply(priors, function(prior) prior[["prior_weights"]])
+  prior_probs <- sapply(priors, .prior_model_weight)
   prior_probs <- prior_probs / sum(prior_probs)
 
   # do not set seed when sampling multiple priors for the same model -- they will end up completely correlated
@@ -756,10 +757,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   models_ind <- NULL
 
   # mix samples
-  for(i in seq_along(priors)[ceiling(prior_probs * n_samples) > 1]){
+  sample_counts <- .prior_mixture_sample_counts(prior_probs, n_samples)
+  for(i in seq_along(priors)[sample_counts > 0]){
 
     # sample indexes
-    temp_ind <- 1:ceiling(n_samples * prior_probs[i])
+    temp_ind <- seq_len(sample_counts[i])
 
     if(is.prior.point(priors[[i]]) & is.prior.simple(priors[[i]])){
       # not sampling the priors in case they were imputed (missing dimensions)
@@ -800,7 +802,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     stop("'priors' must be a list of factor priors")
 
   # get prior model probabilities
-  prior_probs <- sapply(priors, function(prior) prior[["prior_weights"]])
+  prior_probs <- sapply(priors, .prior_model_weight)
   prior_probs <- prior_probs / sum(prior_probs)
 
   # check the prior levels
@@ -937,6 +939,12 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
   return(samples)
 }
+
+.prior_mixture_sample_counts <- function(prior_probs, n_samples){
+
+  .mixture_sample_counts(prior_probs, n_samples)
+}
+
 .mix_priors.weightfunction <- function(priors, parameter, seed = NULL, n_samples = 10000){
 
   # check input
@@ -948,7 +956,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     stop("'priors' must be a list of weightfunction priors or point(1)/none null priors")
 
   # get prior model probabilities
-  prior_probs <- sapply(priors, function(prior) prior[["prior_weights"]])
+  prior_probs <- sapply(priors, .prior_model_weight)
   prior_probs <- prior_probs / sum(prior_probs)
 
   # do not set seed when sampling multiple priors for the same model -- they will end up completely correlated
@@ -957,9 +965,10 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   }
 
   # obtain mapping for the weight coefficients
-  omega_mapping <- weightfunctions_mapping(priors)
-  omega_cuts    <- weightfunctions_mapping(priors, cuts_only = TRUE)
-  omega_names   <- sapply(1:(length(omega_cuts)-1), function(i)paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
+  omega_info    <- .weightfunction_mapping_info(priors)
+  omega_mapping <- omega_info$mapping
+  omega_cuts    <- omega_info$cuts
+  omega_names   <- omega_info$names
 
   # prepare output objects
   samples    <- matrix(nrow = 0, ncol = length(omega_cuts) - 1)
@@ -967,10 +976,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   models_ind <- NULL
 
   # mix samples
-  for(i in seq_along(priors)[ceiling(prior_probs * n_samples) > 1]){
+  sample_counts <- .prior_mixture_sample_counts(prior_probs, n_samples)
+  for(i in seq_along(priors)[sample_counts > 0]){
 
     # sample indexes
-    temp_ind <- 1:ceiling(n_samples * prior_probs[i])
+    temp_ind <- seq_len(sample_counts[i])
 
     if(.is_prior_weightfunction_null(priors[[i]])){
       samples <- rbind(samples, matrix(1, ncol = length(omega_cuts) - 1, nrow = length(temp_ind)))
@@ -986,9 +996,9 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   }
 
   # assure the correct number of samples
-  samples    <- samples[1:n_samples,,drop=FALSE]
-  sample_ind <- sample_ind[1:n_samples]
-  models_ind <- models_ind[1:n_samples]
+  samples    <- samples[seq_len(n_samples),,drop=FALSE]
+  sample_ind <- sample_ind[seq_len(n_samples)]
+  models_ind <- models_ind[seq_len(n_samples)]
 
   rownames(samples) <- NULL
   colnames(samples) <- omega_names
@@ -996,6 +1006,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   attr(samples, "models_ind") <- models_ind
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- priors
+  samples <- .weightfunction_set_omega_context(samples, omega_info)
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.weightfunction")
 
   return(samples)
@@ -1539,7 +1550,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   has_selection <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
   has_phacking  <- vapply(branch_info, function(x) !is.null(x$phacking),  logical(1))
 
-  prior_probs <- sapply(priors, function(prior) prior[["prior_weights"]])
+  prior_probs <- sapply(priors, .prior_model_weight)
   prior_probs <- prior_probs / sum(prior_probs)
 
   if(!is.null(seed)){
@@ -1549,11 +1560,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   out_names <- character()
   if(any(has_selection)){
     omega_cuts  <- spec$step$breaks
-    omega_names <- sapply(seq_len(length(omega_cuts) - 1L), function(i) paste0("omega[", omega_cuts[i], ",", omega_cuts[i + 1L], "]"))
+    omega_names <- .weightfunction_omega_names(omega_cuts)
     out_names   <- c(out_names, omega_names)
 
     selection_priors <- lapply(branch_info[has_selection], function(x) x$selection)
-    omega_mapping    <- weightfunctions_mapping(selection_priors, one_sided = TRUE)
+    omega_mapping    <- .weightfunction_mapping_info(selection_priors, one_sided = TRUE)$mapping
     selection_index  <- which(has_selection)
   }
   if(any(has_phacking)){
@@ -1571,9 +1582,10 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   sample_ind <- NULL
   models_ind <- NULL
 
-  for(i in seq_along(priors)[ceiling(prior_probs * n_samples) >= 1]){
+  sample_counts <- .prior_mixture_sample_counts(prior_probs, n_samples)
+  for(i in seq_along(priors)[sample_counts > 0]){
 
-    temp_ind <- seq_len(ceiling(n_samples * prior_probs[i]))
+    temp_ind <- seq_len(sample_counts[i])
     temp_samples <- matrix(0, nrow = length(temp_ind), ncol = length(out_names))
     colnames(temp_samples) <- out_names
 
@@ -1613,6 +1625,15 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   attr(samples, "models_ind") <- models_ind
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- priors
+  if(any(has_selection)){
+    samples <- .weightfunction_set_omega_context(samples, list(
+      mapping   = NULL,
+      cuts      = omega_cuts,
+      names     = omega_names,
+      pars      = paste0("omega[", seq_len(length(omega_cuts) - 1L), "]"),
+      one_sided = TRUE
+    ))
+  }
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.bias")
 
   return(samples)

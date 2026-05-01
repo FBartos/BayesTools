@@ -362,6 +362,25 @@ is.prior.mixture         <- function(x){
 
   return()
 }
+.prior_model_weight <- function(prior){
+
+  prior_weight <- attr(prior, "model_prior_weights", exact = TRUE)
+  if(!is.null(prior_weight)){
+    return(prior_weight)
+  }
+
+  prior[["prior_weights"]]
+}
+.set_prior_model_weight <- function(prior, prior_weight){
+
+  if(is.prior.mixture(prior)){
+    attr(prior, "model_prior_weights") <- prior_weight
+  }else{
+    prior[["prior_weights"]] <- prior_weight
+  }
+
+  prior
+}
 .check_prior_list <- function(prior_list, name = "prior_list", check_length = 0, allow_NULL = FALSE,
                               allow_prior.point = TRUE, allow_prior.simple = TRUE, allow_prior.discrete = TRUE, allow_prior.vector = TRUE,
                               allow_prior.PET = TRUE, allow_prior.PEESE = TRUE, allow_prior.weightfunction = TRUE, allow_prior.factor = TRUE,

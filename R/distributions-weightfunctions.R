@@ -15,8 +15,9 @@
 #' @param alpha2 vector or matrix with concentration parameters for
 #' the Dirichlet distribution for the unexpected direction of non-monotonic
 #' one.sided of weight function.
-#' @param omega vector or matrix of fixed probabilities for a one.sided or
-#' a two.sided weight function.
+#' @param omega vector or matrix of fixed non-negative relative weights for a
+#' one.sided or a two.sided weight function. The first/reference weight must be
+#' exactly 1.
 #' @param log,log.p logical; if \code{TRUE}, probabilities
 #' \code{p} are given as \code{log(p)}.
 #' @param lower.tail logical; if \code{TRUE} (default), probabilities
@@ -93,7 +94,7 @@ mdone.sided_fixed <- function(x, omega, log = FALSE){
 
   # common input check
   .check_log(log)
-  .check_x(x, lower = 0, upper = 1)
+  .check_x(x, lower = 0)
 
   lik <- .mdone.sided_fixed(x, omega, log)
 
@@ -104,7 +105,7 @@ mdtwo.sided_fixed <- function(x, omega, log = FALSE){
 
   # common input check
   .check_log(log)
-  .check_x(x, lower = 0, upper = 1)
+  .check_x(x, lower = 0)
 
   lik <- mdone.sided_fixed(x, omega = omega, log = log)
 
@@ -190,7 +191,7 @@ mpone.sided_fixed <- function(q, omega, lower.tail = TRUE, log.p = FALSE){
   # common input check
   .check_log.p(log.p)
   .check_lower.tail(lower.tail)
-  .check_q(q, lower = 0, upper = 1)
+  .check_q(q, lower = 0)
 
   p <- .mpone.sided_fixed(q, omega, lower.tail, log.p)
 
@@ -202,7 +203,7 @@ mptwo.sided_fixed <- function(q, omega, lower.tail = TRUE, log.p = FALSE){
   # common input check
   .check_log.p(log.p)
   .check_lower.tail(lower.tail)
-  .check_q(q, lower = 0, upper = 1)
+  .check_q(q, lower = 0)
 
   p <- mpone.sided_fixed(q, omega = omega, lower.tail = lower.tail, log.p = log.p)
 
@@ -326,12 +327,17 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
     alpha <- do.call(rbind, lapply(1:length(x), function(i)alpha))
   }
 
-  # marginals of sums of Dirichlet distributed variables are beta distributed
-  alpha_alpha <- t(apply(alpha, 1, cumsum))
-  alpha_beta  <- t(apply(alpha[,ncol(alpha):1, drop = FALSE], 1, cumsum))[,(ncol(alpha)-1):1, drop = FALSE]
+  # marginals of reversed cumulative sums of Dirichlet variables are beta
+  # distributed; the first/reference publication weight is fixed to one.
+  alpha_alpha <- t(apply(alpha[,ncol(alpha):1, drop = FALSE], 1, cumsum))[, ncol(alpha):1, drop = FALSE]
+  alpha_beta  <- cbind(0, t(apply(alpha, 1, cumsum))[, -ncol(alpha), drop = FALSE])
 
-  lik <- do.call(cbind, lapply(1:(ncol(alpha) - 1), function(i)stats::dbeta(x, shape1 = alpha_alpha[,i], shape2 = alpha_beta[,i], log = log)))
-  lik <- cbind(lik, dpoint(x, location = 1))
+  lik <- cbind(
+    dpoint(x, location = 1, log = log),
+    do.call(cbind, lapply(2:ncol(alpha), function(i){
+      stats::dbeta(x, shape1 = alpha_alpha[,i], shape2 = alpha_beta[,i], log = log)
+    }))
+  )
 
   return(lik)
 }
@@ -392,7 +398,7 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
     x[,i-1] = apply(x2[,i:ncol(alpha2), drop = FALSE], 1, sum) + x1[,1]
   }
 
-  return(x)
+  return(x[,ncol(x):1,drop = FALSE])
 }
 .rone.sided_monotonic <- function(n, alpha){
 
@@ -412,7 +418,8 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
   }
 
   x <- extraDistr::rdirichlet(n, alpha = alpha)
-  x <- t(apply(x, 1, cumsum))
+  x <- t(apply(x[,ncol(x):1, drop = FALSE], 1, cumsum))[,ncol(x):1, drop = FALSE]
+  x[,1] <- 1
 
   return(x)
 }
@@ -484,12 +491,17 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
     alpha <- do.call(rbind, lapply(1:length(q), function(i)alpha))
   }
 
-  # marginals of sums of Dirichlet distributed variables are beta distributed
-  alpha_alpha <- t(apply(alpha, 1, cumsum))
-  alpha_beta  <- t(apply(alpha[,ncol(alpha):1, drop = FALSE], 1, cumsum))[,(ncol(alpha)-1):1, drop = FALSE]
+  # marginals of reversed cumulative sums of Dirichlet variables are beta
+  # distributed; the first/reference publication weight is fixed to one.
+  alpha_alpha <- t(apply(alpha[,ncol(alpha):1, drop = FALSE], 1, cumsum))[, ncol(alpha):1, drop = FALSE]
+  alpha_beta  <- cbind(0, t(apply(alpha, 1, cumsum))[, -ncol(alpha), drop = FALSE])
 
-  p <- do.call(cbind, lapply(1:(ncol(alpha) - 1), function(i)stats::pbeta(q, shape1 = alpha_alpha[,i], shape2 = alpha_beta[,i], log.p = log.p, lower.tail = lower.tail)))
-  p <- cbind(p, ppoint(q, location = 1, lower.tail = lower.tail, log.p = log.p))
+  p <- cbind(
+    ppoint(q, location = 1, lower.tail = lower.tail, log.p = log.p),
+    do.call(cbind, lapply(2:ncol(alpha), function(i){
+      stats::pbeta(q, shape1 = alpha_alpha[,i], shape2 = alpha_beta[,i], log.p = log.p, lower.tail = lower.tail)
+    }))
+  )
 
   return(p)
 }
@@ -559,7 +571,7 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
   if(!is.matrix(alpha)){
     alpha <- matrix(alpha, nrow = 1)
   }
-  if(length(q) == 1){
+  if(length(p) == 1){
     p <- rep(p, nrow(alpha))
   }
 
@@ -570,12 +582,17 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
     alpha <- do.call(rbind, lapply(1:length(p), function(i)alpha))
   }
 
-  # marginals of sums of Dirichlet distributed variables are beta distributed
-  alpha_alpha <- t(apply(alpha, 1, cumsum))
-  alpha_beta  <- t(apply(alpha[,ncol(alpha):1, drop = FALSE], 1, cumsum))[,(ncol(alpha)-1):1, drop = FALSE]
+  # marginals of reversed cumulative sums of Dirichlet variables are beta
+  # distributed; the first/reference publication weight is fixed to one.
+  alpha_alpha <- t(apply(alpha[,ncol(alpha):1, drop = FALSE], 1, cumsum))[, ncol(alpha):1, drop = FALSE]
+  alpha_beta  <- cbind(0, t(apply(alpha, 1, cumsum))[, -ncol(alpha), drop = FALSE])
 
-  q <- do.call(cbind, lapply(1:(ncol(alpha) - 1), function(i)stats::qbeta(p, shape1 = alpha_alpha[,i], shape2 = alpha_beta[,i], lower.tail = lower.tail, log.p = log.p)))
-  q <- cbind(q, qpoint(p, location = 1, lower.tail = lower.tail, log.p = log.p))
+  q <- cbind(
+    qpoint(p, location = 1, lower.tail = lower.tail, log.p = log.p),
+    do.call(cbind, lapply(2:ncol(alpha), function(i){
+      stats::qbeta(p, shape1 = alpha_alpha[,i], shape2 = alpha_beta[,i], lower.tail = lower.tail, log.p = log.p)
+    }))
+  )
 
   # make sure that the range is correct qpoint operates on unrestricted range
   q <- ifelse(q == -Inf, 0, q)
@@ -590,7 +607,7 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
   if(!is.matrix(omega)){
     omega <- matrix(omega, nrow = 1)
   }
-  if(length(q) == 1){
+  if(length(p) == 1){
     p <- rep(p, nrow(omega))
   }
 
@@ -627,6 +644,10 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
     stop(paste0("'", name, "' must be a vector of length at least 2."))
   if(is.matrix(omega))if(ncol(omega) < 2)
     stop(paste0("'", name, "' must be a matrix with at least 2 columns."))
-  if(!all(omega >= 0 & omega <= 1))
-    stop(paste0("'", name, "' must be between 0 and 1."))
+  if(!all(omega >= 0))
+    stop(paste0("'", name, "' must be non-negative."))
+  if(is.vector(omega) && !isTRUE(all.equal(omega[1], 1)))
+    stop(paste0("The reference-bin '", name, "' weight must be exactly 1."))
+  if(is.matrix(omega) && !all(vapply(seq_len(nrow(omega)), function(i) isTRUE(all.equal(omega[i,1], 1)), logical(1))))
+    stop(paste0("The reference-bin '", name, "' weight must be exactly 1."))
 }
