@@ -1,3 +1,5 @@
+skip_if_not_test_profile("fit")
+
 # ============================================================================ #
 # TEST FILE: JAGS Fit Edge Cases
 # ============================================================================ #
@@ -110,6 +112,39 @@ test_that("JAGS_extend error handling", {
 })
 
 
+test_that("required packages are checked locally and on parallel workers", {
+
+  expect_silent({
+    local_loaded <- .JAGS_require_packages("stats")
+  })
+  expect_equal(unname(local_loaded), TRUE)
+  expect_error(
+    .JAGS_require_packages("BayesToolsMissingPackageForTest"),
+    "Required packages are not available: 'BayesToolsMissingPackageForTest'.",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_fit("model{}", required_packages = NA_character_),
+    "The 'required_packages' argument cannot contain NA/NaN values.",
+    fixed = TRUE
+  )
+
+  cl <- parallel::makePSOCKcluster(2)
+  on.exit(parallel::stopCluster(cl), add = TRUE)
+
+  expect_silent({
+    worker_loaded <- .JAGS_require_packages("stats", cl)
+  })
+  expect_equal(unname(worker_loaded), TRUE)
+  expect_error(
+    .JAGS_require_packages(c("stats", "BayesToolsMissingPackageForTest"), cl),
+    "Required packages are not available: 'BayesToolsMissingPackageForTest'.",
+    fixed = TRUE
+  )
+
+})
+
+
 # ============================================================================ #
 # SECTION 2: Convergence edge cases
 # ============================================================================ #
@@ -188,6 +223,9 @@ test_that("JAGS_check_convergence handles single chain (R-hat warning)", {
 
   prior_list <- list(mu = prior("normal", list(0, 1)))
   model_syntax <- JAGS_add_priors("model{}", prior_list)
+  old_silent.runjags <- runjags::runjags.getOption("silent.runjags")
+  on.exit(runjags::runjags.options(silent.runjags = old_silent.runjags), add = TRUE)
+  runjags::runjags.options(silent.runjags = TRUE)
 
   set.seed(1)
   fit <- suppressWarnings(runjags::run.jags(
@@ -216,6 +254,9 @@ test_that("JAGS_check_convergence handles ESS and error checks", {
 
   prior_list <- list(mu = prior("normal", list(0, 1)))
   model_syntax <- JAGS_add_priors("model{}", prior_list)
+  old_silent.runjags <- runjags::runjags.getOption("silent.runjags")
+  on.exit(runjags::runjags.options(silent.runjags = old_silent.runjags), add = TRUE)
+  runjags::runjags.options(silent.runjags = TRUE)
 
   set.seed(1)
   fit <- suppressWarnings(runjags::run.jags(

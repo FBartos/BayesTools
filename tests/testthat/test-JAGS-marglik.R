@@ -1,3 +1,5 @@
+skip_if_not_test_profile("fit")
+
 # ============================================================================ #
 # TEST FILE: JAGS Marginal Likelihood Functions
 # ============================================================================ #
@@ -678,6 +680,9 @@ test_that("JAGS_bridgesampling handles runjags output", {
   prior_list <- list(mu = prior("normal", list(0, 1)))
   model_syntax <- JAGS_add_priors("model{}", prior_list)
   log_posterior <- STANDARD_LOG_POSTERIOR
+  old_silent.runjags <- runjags::runjags.getOption("silent.runjags")
+  on.exit(runjags::runjags.options(silent.runjags = old_silent.runjags), add = TRUE)
+  runjags::runjags.options(silent.runjags = TRUE)
 
   set.seed(1)
   fit <- suppressWarnings(runjags::run.jags(

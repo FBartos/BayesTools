@@ -66,13 +66,15 @@ NULL
 #' @rdname weightfunctions
 mdone.sided <- function(x, alpha = NULL, alpha1 = NULL, alpha2 = NULL, log = FALSE){
 
+  parameterization <- .weightfunctions_one_sided_parameterization(alpha, alpha1, alpha2)
+
   # common input check
   .check_log(log)
   .check_x(x, lower = 0, upper = 1)
 
-  if(!is.null(alpha)){
+  if(parameterization == "monotonic"){
     lik <- .mdone.sided_monotonic(x, alpha, log)
-  }else if(!is.null(alpha1) & !is.null(alpha2)){
+  }else{
     lik <- .mdone.sided_general(x, alpha1, alpha2, log)
   }
 
@@ -115,12 +117,14 @@ mdtwo.sided_fixed <- function(x, omega, log = FALSE){
 #' @rdname weightfunctions
 rone.sided <- function(n, alpha = NULL, alpha1 = NULL, alpha2 = NULL){
 
+  parameterization <- .weightfunctions_one_sided_parameterization(alpha, alpha1, alpha2)
+
   # common input check
   .check_n(n)
 
-  if(!is.null(alpha)){
+  if(parameterization == "monotonic"){
     x <- .rone.sided_monotonic(n, alpha)
-  }else if(!is.null(alpha1) & !is.null(alpha2)){
+  }else{
     x <- .rone.sided_general(n, alpha1, alpha2)
   }
 
@@ -160,14 +164,16 @@ rtwo.sided_fixed <- function(n, omega){
 #' @rdname weightfunctions
 mpone.sided <- function(q, alpha = NULL, alpha1 = NULL, alpha2 = NULL, lower.tail = TRUE, log.p = FALSE){
 
+  parameterization <- .weightfunctions_one_sided_parameterization(alpha, alpha1, alpha2)
+
   # common input check
   .check_log.p(log.p)
   .check_lower.tail(lower.tail)
   .check_q(q, lower = 0, upper = 1)
 
-  if(!is.null(alpha)){
+  if(parameterization == "monotonic"){
     p <- .mpone.sided_monotonic(q, alpha, lower.tail, log.p)
-  }else if(!is.null(alpha1) & !is.null(alpha2)){
+  }else{
     p <- .mpone.sided_general(q, alpha1, alpha2, lower.tail, log.p)
   }
 
@@ -213,14 +219,16 @@ mptwo.sided_fixed <- function(q, omega, lower.tail = TRUE, log.p = FALSE){
 #' @rdname weightfunctions
 mqone.sided <- function(p, alpha = NULL, alpha1 = NULL, alpha2 = NULL, lower.tail = TRUE, log.p = FALSE){
 
+  parameterization <- .weightfunctions_one_sided_parameterization(alpha, alpha1, alpha2)
+
   # common input check
   .check_log.p(log.p)
   .check_lower.tail(lower.tail)
   .check_p(p, log.p)
 
-  if(!is.null(alpha)){
+  if(parameterization == "monotonic"){
     q <- .mqone.sided_monotonic(p, alpha, lower.tail, log.p)
-  }else if(!is.null(alpha1) & !is.null(alpha2)){
+  }else{
     q <- .mqone.sided_general(p, alpha1, alpha2, lower.tail, log.p)
   }
 
@@ -627,6 +635,22 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
 }
 
 ### helper functions
+.weightfunctions_one_sided_parameterization <- function(alpha, alpha1, alpha2){
+  has_alpha  <- !is.null(alpha)
+  has_alpha1 <- !is.null(alpha1)
+  has_alpha2 <- !is.null(alpha2)
+
+  if(has_alpha && (has_alpha1 || has_alpha2))
+    stop("Use exactly one one-sided weightfunction parameterization: either 'alpha' or both 'alpha1' and 'alpha2'.")
+  if(has_alpha)
+    return("monotonic")
+  if(has_alpha1 && has_alpha2)
+    return("general")
+  if(has_alpha1 || has_alpha2)
+    stop("The general one-sided weightfunction parameterization requires both 'alpha1' and 'alpha2'.")
+
+  stop("A one-sided weightfunction parameterization is required: use either 'alpha' or both 'alpha1' and 'alpha2'.")
+}
 .weightfunctions_check_alpha <- function(alpha, name = "alpha"){
   if(!is.numeric(alpha) | !(is.vector(alpha) | is.matrix(alpha)))
     stop(paste0("'", name, "' must be a numeric vector or a matrix."))

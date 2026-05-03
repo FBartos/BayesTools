@@ -659,6 +659,10 @@ plot.prior <- function(x, plot_type = "base",
 
 .plot.prior_label <- function(x, plot_data, short_name = FALSE, parameter_names = FALSE){
 
+  if(!is.prior(x)){
+    return(NULL)
+  }
+
   label <- print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names)
   transformation <- attr(plot_data, "transformation")
 

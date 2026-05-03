@@ -1,3 +1,5 @@
+skip_if_not_test_profile("unit")
+
 test_that("conditional spike-and-slab prior densities use the slab", {
 
   prior_list <- list(

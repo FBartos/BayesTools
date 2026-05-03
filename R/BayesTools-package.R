@@ -14,4 +14,6 @@
 ##' @keywords package
 ##' @importFrom rlang .data
 ##' @importFrom Rdpack reprompt
+##' @importFrom stats fft median setNames
+##' @importFrom utils head tail
 "_PACKAGE"

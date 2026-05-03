@@ -10,9 +10,10 @@
 ^docs$
 ^pkgdown$
 ^BayesTools.Rcheck$
+^BayesTools_.*\.tar\.gz$
+^\.StatsVault$
 ^doc$
 ^Meta$
-^tests
 ^\.vscode$
 ^\.positai$
 ^\.claude$

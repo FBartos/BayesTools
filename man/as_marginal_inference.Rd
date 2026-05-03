@@ -41,8 +41,8 @@ Either "AND" or "OR". Defaults to "AND".}
 \item{normal_approximation}{whether the height of prior and posterior density should be
 approximated via a normal distribution (rather than kernel density). Defaults to \code{FALSE}.}
 
-\item{n_samples}{number of samples to be drawn for the model-averaged
-prior distribution}
+\item{n_samples}{controls the numerical grid used for model-averaged
+prior densities}
 
 \item{silent}{whether warnings should be returned silently. Defaults to \code{FALSE}}
 

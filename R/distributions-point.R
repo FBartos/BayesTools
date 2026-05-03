@@ -43,13 +43,11 @@ dpoint <- function(x, location, log = FALSE){
     location <- rep(location, length(x))
   }
 
-  lik <- sapply(1:length(x), function(i){
-    if(isTRUE(all.equal(location[i], x[i]))){
-      return(Inf)
-    }else{
-      return(0)
-    }
-  })
+  lik <- ifelse(
+    is.na(location) | is.na(x),
+    NA_real_,
+    ifelse(location == x, Inf, 0)
+  )
 
   if(log){
     lik <- log(lik)

@@ -1,3 +1,5 @@
+skip_if_not_test_profile("unit")
+
 # ============================================================================ #
 # TEST FILE: Distributions - Weight Functions
 # ============================================================================ #
@@ -152,6 +154,36 @@ test_that("non-monotonic one-sided density, cdf, and quantile helpers remain exp
   expect_error(mdone.sided(0.5, alpha1 = c(1, 1), alpha2 = c(1, 1)), "Not implemented")
   expect_error(mpone.sided(0.5, alpha1 = c(1, 1), alpha2 = c(1, 1)), "Not implemented")
   expect_error(mqone.sided(0.5, alpha1 = c(1, 1), alpha2 = c(1, 1)), "Not implemented")
+})
+
+test_that("one-sided weightfunction wrappers require exactly one public parameterization", {
+
+  expect_error(mdone.sided(0.5), "parameterization is required")
+  expect_error(rone.sided(1), "parameterization is required")
+  expect_error(mpone.sided(0.5), "parameterization is required")
+  expect_error(mqone.sided(0.5), "parameterization is required")
+
+  expect_error(mdone.sided(0.5, alpha = c(1, 1), alpha1 = c(1, 1)), "exactly one")
+  expect_error(rone.sided(1, alpha = c(1, 1), alpha1 = c(1, 1), alpha2 = c(1, 1)), "exactly one")
+  expect_error(mpone.sided(0.5, alpha = c(1, 1), alpha2 = c(1, 1)), "exactly one")
+  expect_error(mqone.sided(0.5, alpha = c(1, 1), alpha1 = c(1, 1), alpha2 = c(1, 1)), "exactly one")
+
+  expect_error(mdone.sided(0.5, alpha1 = c(1, 1)), "requires both 'alpha1' and 'alpha2'")
+  expect_error(rone.sided(1, alpha2 = c(1, 1)), "requires both 'alpha1' and 'alpha2'")
+  expect_error(mpone.sided(0.5, alpha1 = c(1, 1)), "requires both 'alpha1' and 'alpha2'")
+  expect_error(mqone.sided(0.5, alpha2 = c(1, 1)), "requires both 'alpha1' and 'alpha2'")
+})
+
+test_that("one-sided weightfunction wrappers accept monotonic and general parameterizations", {
+
+  expect_equal(dim(mdone.sided(0.5, alpha = c(1, 1))), c(1, 2))
+  expect_equal(nrow(rone.sided(1, alpha = c(1, 1))), 1)
+  expect_equal(dim(mpone.sided(0.5, alpha = c(1, 1))), c(1, 2))
+  expect_equal(dim(mqone.sided(0.5, alpha = c(1, 1))), c(1, 2))
+
+  general <- rone.sided(1, alpha1 = c(1, 1), alpha2 = c(1, 1))
+  expect_equal(dim(general), c(1, 3))
+  expect_equal(general[,1], 1)
 })
 
 test_that("weightfunction helper input validation is explicit", {

@@ -56,13 +56,15 @@ dmpoint <- function(x, location, log = FALSE){
     location <- matrix(location, nrow = nrow(x), ncol = ncol(location), byrow = TRUE)
   }
 
-  lik <- sapply(1:nrow(x), function(i){
-    if(isTRUE(all.equal(location[i,], x[i,]))){
+  lik <- vapply(seq_len(nrow(x)), function(i){
+    if(anyNA(location[i,]) || anyNA(x[i,])){
+      return(NA_real_)
+    }else if(all(location[i,] == x[i,])){
       return(Inf)
     }else{
       return(0)
     }
-  })
+  }, numeric(1))
 
   if(log){
     lik <- log(lik)
@@ -158,8 +160,10 @@ qmpoint <- function(p, location, lower.tail = TRUE, log.p = FALSE){
     p <- exp(p)
   }
 
-  q <- do.call(rbind, lapply(1:length(p), function(i){
-    if(all(p[i] > 0)){
+  q <- do.call(rbind, lapply(seq_along(p), function(i){
+    if(is.na(p[i])){
+      return(matrix(NA_real_, nrow = 1, ncol = ncol(location)))
+    }else if(all(p[i] > 0)){
       return(location[i,])
     }else{
       return(matrix(ifelse(lower.tail, -Inf, Inf), nrow = 1, ncol = ncol(location)))

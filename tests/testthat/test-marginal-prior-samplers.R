@@ -1,3 +1,5 @@
+skip_if_not_test_profile(c("unit", "visual"))
+
 # ============================================================================ #
 # TEST FILE: Marginal Prior Samplers
 # ============================================================================ #
@@ -379,6 +381,7 @@ test_that(".as_mixed_priors applies conditional sampling rules", {
 })
 
 test_that("marginal prior sampler visuals show the expected mixture shapes", {
+  skip_if_not_visual_tests()
 
   n_samples <- 2000
   null_prior <- prior("spike", list(0), prior_weights = 1)
@@ -438,6 +441,7 @@ test_that("marginal prior sampler visuals show the expected mixture shapes", {
 })
 
 test_that("conditional marginal prior visuals remove the excluded components", {
+  skip_if_not_visual_tests()
 
   spike_and_slab <- prior_spike_and_slab(
     prior("normal", list(2, 0.2)),

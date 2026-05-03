@@ -22,6 +22,7 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 SystemRequirements: JAGS >= 4.3.0 (https://mcmc-jags.sourceforge.io/)
 Depends:
+    R (>= 4.1.0),
     stats
 Imports:
     graphics,
