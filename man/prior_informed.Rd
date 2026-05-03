@@ -24,8 +24,9 @@ who developed empirical prior distributions for the effect size and heterogeneit
 continuous outcomes (standardized mean differences), dichotomous outcomes (logOR, logRR, and risk differences),
 and time to event outcomes (logHR) based on the Cochrane database of systematic reviews.
 Use \code{"Cochrane"} for a prior distribution based on the whole database or call
-\code{print(prior_informed_medicine_names)} to inspect the names of
-all 46 subfields and set the appropriate \code{parameter} and \code{type}.}
+\code{print(prior_informed_medicine_names)} to inspect the available names and
+set the appropriate \code{parameter} and \code{type}. Availability of
+subfield-specific priors depends on the selected \code{type}.}
 
 \item{parameter}{parameter name describing what prior distribution is supposed to be produced in cases
 where the \code{name} corresponds to multiple prior distributions. Relevant only for the empirical medical
@@ -39,7 +40,7 @@ the empirical medical prior distributions with the following options
 \item{\code{"logOR"}}{for log odds ratios}
 \item{\code{"logRR"}}{for log risk ratios}
 \item{\code{"RD"}}{for risk differences}
-\item{\code{"logHR"}}{for hazard ratios}
+\item{\code{"logHR"}}{for log hazard ratios}
 }}
 }
 \value{

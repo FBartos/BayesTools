@@ -72,6 +72,61 @@ test_that("Truncated simple prior distribution functions respect support", {
 })
 
 
+test_that("point priors validate explicit truncation against their actual support", {
+  expect_silent(prior("point", list(1), truncation = list(0, 2)))
+  expect_error(
+    prior("point", list(1), truncation = list(2, 3)),
+    "must contain the point location"
+  )
+
+  expect_silent(prior("mpoint", list(1, 2), truncation = list(0, 2)))
+  expect_error(
+    prior("mpoint", list(1, 2), truncation = list(2, 3)),
+    "must contain the point location"
+  )
+})
+
+
+test_that("vector prior K validation allows deferred dimensions but rejects invalid values", {
+  expect_silent(prior_factor("mnormal", list(0, 1), contrast = "orthonormal"))
+  expect_error(prior("mnormal", list(0, 1, 2.5)), "integer")
+  expect_error(prior("mt", list(0, 1, 3, -2)), "positive integer")
+})
+
+
+test_that("mixture coercion preserves component prior weights", {
+  simple <- prior_mixture(list(
+    prior_none(prior_weights = 2),
+    prior("normal", list(0, 1), prior_weights = 7)
+  ))
+  expect_equal(attr(simple, "prior_weights"), c(2, 7))
+  expect_equal(vapply(simple, function(x) x$prior_weights, numeric(1)), c(2, 7))
+
+  factor <- prior_mixture(list(
+    prior("point", list(0), prior_weights = 9),
+    prior_factor("mnormal", list(0, 1), contrast = "orthonormal", prior_weights = 1)
+  ))
+  expect_equal(attr(factor, "prior_weights"), c(9, 1))
+  expect_equal(vapply(factor, function(x) x$prior_weights, numeric(1)), c(9, 1))
+})
+
+
+test_that("raw vector-prior marginal generics return numeric arrays", {
+  p_mnormal <- prior("mnormal", list(0, 1, 2))
+  expect_equal(quant(p_mnormal, .5), matrix(0, nrow = 1, ncol = 2))
+  expect_equal(mcdf(p_mnormal, 0), matrix(.5, nrow = 1, ncol = 2))
+  expect_equal(mccdf(p_mnormal, 0), matrix(.5, nrow = 1, ncol = 2))
+  expect_equal(mlpdf(p_mnormal, 0), matrix(stats::dnorm(0, log = TRUE), nrow = 1, ncol = 2))
+  expect_equal(mean(p_mnormal), c(0, 0))
+  expect_equal(var(p_mnormal), c(1, 1))
+  expect_equal(sd(p_mnormal), c(1, 1))
+
+  p_mpoint <- prior("mpoint", list(2, 3))
+  expect_equal(mquant(p_mpoint, .5), matrix(2, nrow = 1, ncol = 3))
+  expect_equal(mcdf(p_mpoint, 2), matrix(1, nrow = 1, ncol = 3))
+})
+
+
 test_that("is.prior functions work correctly", {
 
   # Create priors for testing

@@ -1057,16 +1057,13 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
   if(is.prior.treatment(prior) | is.prior.independent(prior)){
 
+    parameter <- list()
     if(.get_prior_factor_levels(prior) == 1){
-
-      parameter <- .JAGS_marglik_parameters.simple(samples, prior, parameter_name)
-
+      parameter_names <- parameter_name
     }else{
-
-      parameter <- list()
-      parameter[[parameter_name]] <- samples[ paste0(parameter_name, "[", 1:.get_prior_factor_levels(prior), "]") ]
-
+      parameter_names <- paste0(parameter_name, "[", 1:.get_prior_factor_levels(prior), "]")
     }
+    parameter[[parameter_name]] <- .JAGS_marglik_parameter_values(samples, prior, parameter_names)
 
   }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
 
@@ -1198,7 +1195,7 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
 .JAGS_marglik_parameters_formula_get <- function(samples, parameter, formula_data_list, formula_prior_list, prior_list_parameters, log_intercept = FALSE){
 
   formula_terms            <- names(formula_prior_list)
-  names(formula_data_list) <- gsub("_data", "", names(formula_data_list))
+  names(formula_data_list) <- sub(paste0("^", parameter, "_data_"), paste0(parameter, "_"), names(formula_data_list))
 
   # start with intercept
   if(sum(formula_terms == paste0(parameter, "_intercept")) == 1){

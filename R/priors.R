@@ -586,24 +586,26 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
     # change prior none/spikes into factor prior spikes
     for(i in seq_along(prior_list)){
       if(is.prior.point(prior_list[[i]])){
-        # Save the component attribute before recreating
+        # Save mixture metadata before recreating the factor-compatible prior.
         component_attr <- attr(prior_list[[i]], "component")
+        prior_weight   <- .prior_model_weight(prior_list[[i]])
         prior_list[[i]] <- prior_factor(
           distribution = "point",
           parameters   = list(location = prior_list[[i]][["parameters"]][["location"]]),
+          prior_weights = prior_weight,
           contrast     = gsub("prior.", "", priors_type[["class"]], fixed = TRUE)
         )
-        # Restore the component attribute
         attr(prior_list[[i]], "component") <- component_attr
       }else if(is.prior.none(prior_list[[i]])){
-        # Save the component attribute before recreating
+        # Save mixture metadata before recreating the factor-compatible prior.
         component_attr <- attr(prior_list[[i]], "component")
+        prior_weight   <- .prior_model_weight(prior_list[[i]])
         prior_list[[i]] <- prior_factor(
           distribution = "point",
           parameters   = list(location = 0),
+          prior_weights = prior_weight,
           contrast     = gsub("prior.", "", priors_type[["class"]], fixed = TRUE)
         )
-        # Restore the component attribute
         attr(prior_list[[i]], "component") <- component_attr
       }
     }
@@ -635,9 +637,11 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
     # change none into prior spikes
     for(i in seq_along(prior_list)){
       if(is.prior.none(prior_list[[i]])){
+        prior_weight <- .prior_model_weight(prior_list[[i]])
         prior_list[[i]] <- prior(
           distribution = "point",
-          parameters   = list(location = 0)
+          parameters   = list(location = 0),
+          prior_weights = prior_weight
         )
       }
     }
@@ -919,6 +923,7 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
 
   # check individual parameters
   .check_parameter(parameters$location, "location")
+  .check_point_truncation(truncation, parameters$location, "point")
 
   # add the values to the output
   output$distribution <- "point"
@@ -1016,6 +1021,7 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
   # check individual parameters
   .check_parameter(parameters$location, "location")
   .check_parameter_dimensions(parameters$K, "K", allow_NA = TRUE)   # allow undetermined dimensions if called by prior_factor
+  .check_point_truncation(truncation, parameters$location, "multivariate point")
 
   # add the values to the output
   output$distribution <- "mpoint"
@@ -1025,6 +1031,53 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
   class(output) <- c("prior", "prior.vector", "prior.point")
 
   return(output)
+}
+.check_point_truncation <- function(truncation, location, distribution){
+
+  if(is.expression(location)){
+    return(invisible(NULL))
+  }
+
+  if(length(truncation) > 2)
+    stop("More than two truncation points were supplied.", call. = FALSE)
+
+  if(!is.null(names(truncation))){
+    if(!all(names(truncation) %in% c("lower", "upper")))
+      stop("Truncation points must be named 'lower' and 'upper'.", call. = FALSE)
+    if(length(truncation) == 1){
+      if(names(truncation) == "lower"){
+        truncation$upper <- Inf
+      }else if(names(truncation) == "upper"){
+        truncation$lower <- -Inf
+      }
+    }
+  }else{
+    if(length(truncation) == 2){
+      names(truncation) <- c("lower", "upper")
+    }else if(length(truncation) == 1){
+      names(truncation) <- "lower"
+      truncation$upper <- Inf
+    }else{
+      truncation <- list(lower = -Inf, upper = Inf)
+    }
+  }
+
+  truncation <- truncation[c("lower", "upper")]
+
+  if(!is.numeric(truncation[["lower"]]) || length(truncation[["lower"]]) != 1 ||
+     !is.numeric(truncation[["upper"]]) || length(truncation[["upper"]]) != 1){
+    stop("Truncation points must be numeric values.", call. = FALSE)
+  }
+
+  if(truncation[["lower"]] > truncation[["upper"]]){
+    stop("The lower truncation point must be lower or equal to the upper truncation point.", call. = FALSE)
+  }
+
+  if(truncation[["lower"]] > location || truncation[["upper"]] < location){
+    stop(paste0("The ", distribution, " prior truncation must contain the point location."), call. = FALSE)
+  }
+
+  invisible(NULL)
 }
 .check_vector_truncation_unsupported <- function(truncation){
 
@@ -1667,7 +1720,7 @@ cdf.prior   <- function(x, q, ...){
 
   prior <- x
 
-  .check_q(q)
+  .check_q(as.vector(q))
   .check_prior(prior)
 
   if(is.prior.spike_and_slab(prior)){
@@ -1703,7 +1756,7 @@ ccdf.prior  <- function(x, q, ...){
 
   prior <- x
 
-  .check_q(q)
+  .check_q(as.vector(q))
   .check_prior(prior)
 
   if(is.prior.spike_and_slab(prior)){
@@ -1740,7 +1793,7 @@ lpdf.prior  <- function(x, y, ...){
   prior <- x
   x     <- y
 
-  .check_x(x)
+  .check_x(as.vector(x))
   .check_prior(prior)
 
   if(is.prior.spike_and_slab(prior)){
@@ -1803,7 +1856,7 @@ pdf.prior   <- function(x, y, ...){
   prior <- x
   x     <- y
 
-  .check_x(x)
+  .check_x(as.vector(x))
   .check_prior(prior)
 
   if(is.prior.simple(prior)){
@@ -1834,6 +1887,10 @@ quant.prior <- function(x, p, ...){
   }else if(is.prior.simple(prior)){
 
     q <- .prior_simple_quant(prior, p)
+
+  }else if(is.prior.vector(prior) && !is.prior.factor(prior)){
+
+    q <- mquant(prior, p)
 
   }else if(is.prior.weightfunction(prior)){
 
@@ -2162,6 +2219,110 @@ quant.prior <- function(x, p, ...){
   return(C)
 }
 
+.prior_vector_dimension <- function(prior){
+
+  K <- prior$parameters[["K"]]
+  .check_parameter_dimensions(K, "K", allow_NA = FALSE)
+  as.integer(K)
+}
+.prior_vector_primary_location <- function(prior){
+
+  location <- switch(
+    prior[["distribution"]],
+    "mnormal" = prior$parameters[["mean"]],
+    "mt"      = prior$parameters[["location"]],
+    "mpoint"  = prior$parameters[["location"]]
+  )
+
+  if(length(location) != 1){
+    stop("Only exchangeable vector prior distributions with scalar location parameters are supported.", call. = FALSE)
+  }
+
+  location
+}
+.prior_vector_x_matrix <- function(x, K, name = "x"){
+
+  if(is.matrix(x)){
+    if(ncol(x) != K){
+      stop(paste0("The '", name, "' argument must have ", K, " columns."), call. = FALSE)
+    }
+    return(x)
+  }
+
+  matrix(rep(x, times = K), ncol = K)
+}
+.prior_vector_marginal_cdf <- function(prior, q, lower.tail = TRUE){
+
+  K     <- .prior_vector_dimension(prior)
+  q_mat <- .prior_vector_x_matrix(q, K, "q")
+  loc   <- .prior_vector_primary_location(prior)
+
+  out <- switch(
+    prior[["distribution"]],
+    "mnormal" = apply(q_mat, 2, stats::pnorm, mean = loc, sd = prior$parameters[["sd"]], lower.tail = lower.tail),
+    "mt"      = apply(q_mat, 2, extraDistr::plst, df = prior$parameters[["df"]], mu = loc, sigma = prior$parameters[["scale"]], lower.tail = lower.tail),
+    "mpoint"  = apply(q_mat, 2, ppoint, location = loc, lower.tail = lower.tail)
+  )
+
+  matrix(out, nrow = nrow(q_mat), ncol = K)
+}
+.prior_vector_marginal_lpdf <- function(prior, x){
+
+  K     <- .prior_vector_dimension(prior)
+  x_mat <- .prior_vector_x_matrix(x, K, "x")
+  loc   <- .prior_vector_primary_location(prior)
+
+  out <- switch(
+    prior[["distribution"]],
+    "mnormal" = apply(x_mat, 2, stats::dnorm, mean = loc, sd = prior$parameters[["sd"]], log = TRUE),
+    "mt"      = apply(x_mat, 2, extraDistr::dlst, df = prior$parameters[["df"]], mu = loc, sigma = prior$parameters[["scale"]], log = TRUE),
+    "mpoint"  = apply(x_mat, 2, dpoint, location = loc, log = TRUE)
+  )
+
+  matrix(out, nrow = nrow(x_mat), ncol = K)
+}
+.prior_vector_marginal_quant <- function(prior, p){
+
+  K   <- .prior_vector_dimension(prior)
+  loc <- .prior_vector_primary_location(prior)
+
+  q <- switch(
+    prior[["distribution"]],
+    "mnormal" = stats::qnorm(p, mean = loc, sd = prior$parameters[["sd"]]),
+    "mt"      = extraDistr::qlst(p, df = prior$parameters[["df"]], mu = loc, sigma = prior$parameters[["scale"]]),
+    "mpoint"  = qpoint(p, location = loc)
+  )
+
+  matrix(rep(q, times = K), ncol = K)
+}
+.prior_vector_mean <- function(prior){
+
+  K   <- .prior_vector_dimension(prior)
+  loc <- .prior_vector_primary_location(prior)
+
+  m <- switch(
+    prior[["distribution"]],
+    "mnormal" = loc,
+    "mt"      = ifelse(prior$parameters[["df"]] > 1, loc, NaN),
+    "mpoint"  = loc
+  )
+
+  rep(m, K)
+}
+.prior_vector_var <- function(prior){
+
+  K <- .prior_vector_dimension(prior)
+
+  v <- switch(
+    prior[["distribution"]],
+    "mnormal" = prior$parameters[["sd"]]^2,
+    "mt"      = ifelse(prior$parameters[["df"]] > 2, prior$parameters[["scale"]]^2 * prior$parameters[["df"]] / (prior$parameters[["df"]] - 2), NaN),
+    "mpoint"  = 0
+  )
+
+  rep(v, K)
+}
+
 # tools
 .is_prior_default_range   <- function(prior){
   default_range <- switch(
@@ -2191,7 +2352,7 @@ mcdf.prior   <- function(x, q, ...){
 
   prior <- x
 
-  .check_q(q)
+  .check_q(as.vector(q))
   .check_prior(prior)
 
   if(is.prior.spike_and_slab(prior)){
@@ -2210,6 +2371,10 @@ mcdf.prior   <- function(x, q, ...){
 
     components <- .weightfunction_marginal_components(prior)
     p <- do.call(cbind, lapply(components, .prior_weightfunction_component_cdf, q = q))
+
+  }else if(is.prior.vector(prior) && !is.prior.factor(prior)){
+
+    p <- .prior_vector_marginal_cdf(prior, q, lower.tail = TRUE)
 
   }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
 
@@ -2265,7 +2430,7 @@ mccdf.prior  <- function(x, q, ...){
 
   prior <- x
 
-  .check_q(q)
+  .check_q(as.vector(q))
   .check_prior(prior)
 
   if(is.prior.spike_and_slab(prior)){
@@ -2284,6 +2449,10 @@ mccdf.prior  <- function(x, q, ...){
 
     components <- .weightfunction_marginal_components(prior)
     p <- do.call(cbind, lapply(components, .prior_weightfunction_component_ccdf, q = q))
+
+  }else if(is.prior.vector(prior) && !is.prior.factor(prior)){
+
+    p <- .prior_vector_marginal_cdf(prior, q, lower.tail = FALSE)
 
   }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
 
@@ -2340,7 +2509,7 @@ mlpdf.prior  <- function(x, y, ...){
   prior <- x
   x     <- y
 
-  .check_x(x)
+  .check_x(as.vector(x))
   .check_prior(prior)
 
   if(is.prior.spike_and_slab(prior)){
@@ -2359,6 +2528,10 @@ mlpdf.prior  <- function(x, y, ...){
 
     components <- .weightfunction_marginal_components(prior)
     log_lik <- do.call(cbind, lapply(components, .prior_weightfunction_component_lpdf, x = x))
+
+  }else if(is.prior.vector(prior) && !is.prior.factor(prior)){
+
+    log_lik <- .prior_vector_marginal_lpdf(prior, x)
 
   }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
 
@@ -2415,7 +2588,7 @@ mpdf.prior   <- function(x, y, ...){
   prior <- x
   x     <- y
 
-  .check_x(x)
+  .check_x(as.vector(x))
   .check_prior(prior)
 
   if(is.prior.simple(prior)){
@@ -2451,6 +2624,10 @@ mquant.prior <- function(x, p, ...){
 
     components <- .weightfunction_marginal_components(prior)
     q <- do.call(cbind, lapply(components, .prior_weightfunction_component_quant, p = p))
+
+  }else if(is.prior.vector(prior) && !is.prior.factor(prior)){
+
+    q <- .prior_vector_marginal_quant(prior, p)
 
   }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
 
@@ -2680,6 +2857,10 @@ mean.prior   <- function(x, ...){
 
     .selection_prior_stop_unsupported_generic("mean", x)
 
+  }else if(is.prior.vector(x) && !is.prior.factor(x)){
+
+    m <- .prior_vector_mean(x)
+
   }else if(is.prior.orthonormal(x) | is.prior.meandif(x)){
 
     par1 <- switch(
@@ -2845,6 +3026,10 @@ var.prior   <- function(x, ...){
   }else if(is_prior_phacking(x) || is_prior_bias(x)){
 
     .selection_prior_stop_unsupported_generic("variance", x)
+
+  }else if(is.prior.vector(x) && !is.prior.factor(x)){
+
+    var <- .prior_vector_var(x)
 
   }else if(is.prior.orthonormal(x) | is.prior.meandif(x)){
 

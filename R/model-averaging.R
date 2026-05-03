@@ -99,7 +99,7 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL, condition
 
 .model_averaging_margliks <- function(margliks, prior_probs){
 
-  if(any(is.infinite(margliks) & margliks > 0, na.rm = TRUE)){
+  if(any(is.infinite(margliks) & margliks > 0 & prior_probs > 0, na.rm = TRUE)){
     stop("Infinite positive marginal likelihoods are not supported.", call. = FALSE)
   }
 
@@ -1283,7 +1283,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   # check input
   check_char(parameter, "parameter", check_length = FALSE)
 
-  par_names <- intersect(c("alpha", "pi_null"), colnames(model_samples))
+  par_names <- intersect(.phacking_report_parameter(prior), colnames(model_samples))
   samples   <- model_samples[, par_names, drop = FALSE]
 
   rownames(samples) <- NULL
@@ -1313,8 +1313,11 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     omega_names      <- omega_info$names
     omega_par        <- omega_info$pars
   }
-  phacking_par   <- c("alpha", "pi_null")
-  phacking_names <- phacking_par
+  if(any(has_phacking)){
+    phacking_priors <- lapply(branch_info[has_phacking], function(x) x$phacking)
+    phacking_par    <- .selection_phacking_report_parameters(phacking_priors)
+    phacking_names  <- phacking_par
+  }
 
   if(length(conditional) > 0 && any(c("omega", "phacking", "alpha", "pi_null") %in% conditional)){
     if("omega" %in% conditional && any(has_selection)){
@@ -1417,8 +1420,11 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       omega_names   <- omega_info$names
       omega_par     <- omega_info$pars
     }
-    phacking_par <- c("alpha", "pi_null")
-    phacking_names <- phacking_par
+    if(any(has_phacking)){
+      phacking_priors <- lapply(branch_info[has_phacking], function(x) x$phacking)
+      phacking_par    <- .selection_phacking_report_parameters(phacking_priors)
+      phacking_names  <- phacking_par
+    }
 
     # deal with conditional parameters
     if(length(conditional) > 0 && any(c("PET", "PEESE", "PETPEESE", "omega", "phacking", "alpha", "pi_null") %in% conditional)){
@@ -1590,13 +1596,44 @@ inclusion_BF         <- function(prior_probs, post_probs, margliks, is_null){
   check_real(prior_probs, "prior_probs", lower = 0, upper = 1, check_length = 0)
   check_real(margliks,  "margliks", check_length = length(prior_probs))
 
+  if(isTRUE(all.equal(sum(prior_probs[!is_null]), 1))){
+    return(Inf)
+  }
+  if(isTRUE(all.equal(sum(prior_probs[is_null]), 1))){
+    return(0)
+  }
+
   margliks <- .model_averaging_margliks(margliks, prior_probs)
 
-  # substract the max marglikto remove problems with overflow
-  margliks <- margliks - max(margliks)
+  active <- prior_probs > 0 & is.finite(margliks)
+  if(!any(active & !is_null)){
+    return(0)
+  }
+  if(!any(active & is_null)){
+    return(Inf)
+  }
+
+  # subtract the max among positive-prior finite models to avoid overflow.
+  margliks <- margliks - max(margliks[active])
+
+  alt_ind  <- active & !is_null
+  null_ind <- active & is_null
+
+  alt_marginal  <- sum(exp(margliks[alt_ind])  * prior_probs[alt_ind])
+  null_marginal <- sum(exp(margliks[null_ind]) * prior_probs[null_ind])
+
+  if(alt_marginal == 0 && null_marginal == 0){
+    return(NaN)
+  }
+  if(alt_marginal == 0){
+    return(0)
+  }
+  if(null_marginal == 0){
+    return(Inf)
+  }
 
   return(
-    (sum(exp(margliks[!is_null]) * prior_probs[!is_null]) / sum(exp(margliks[is_null]) * prior_probs[is_null])) /
+    (alt_marginal / null_marginal) /
       (sum(prior_probs[!is_null]) / sum(prior_probs[is_null]))
   )
 }

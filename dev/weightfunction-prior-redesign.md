@@ -95,7 +95,8 @@ declared reference bin to be exactly `1`.
 
 Independent and exchangeable priors on all non-reference bin weights.
 
-For `scale = "omega"`, the prior lives directly on `[0, 1]`, for example:
+For `scale = "omega"`, the prior lives directly on the non-negative relative
+weight scale, for example:
 
 ```r
 wf_independent(prior("beta", list(1, 1)), scale = "omega")
@@ -108,8 +109,9 @@ log_omega[j] ~ prior
 omega[j] = exp(log_omega[j])
 ```
 
-The prior must be constrained to `(-Inf, 0]` so that `omega <= 1` when the
-reference bin is fixed to `1`.
+The prior must be constrained only as needed by the modeling choice. The
+implementation maps `omega = exp(log_omega)`, so unrestricted log-scale priors
+can represent relative weights above `1`.
 
 ### Future: `wf_branching(...)`
 

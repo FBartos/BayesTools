@@ -566,8 +566,8 @@ test_that("exp_lin transformation functions are defined correctly", {
   y <- trans_funcs$fun(x, a, b)
   expect_equal(trans_funcs$inv(y, a, b), x, tolerance = 1e-10)
 
-  # jac: derivative of the inverse transformation at the transformed value
-  expect_equal(trans_funcs$jac(y, a, b), trans_funcs$inv(y, a, b) / (abs(b) * y))
+  # jac: derivative of the transformation at the original value
+  expect_equal(trans_funcs$jac(x, a, b), b * y / x)
   expect_equal(trans_funcs$jac(x, 0, 1), 1)
 })
 

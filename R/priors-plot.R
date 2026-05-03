@@ -200,9 +200,10 @@ plot.prior <- function(x, plot_type = "base",
 
   short_name      <- if(is.null(dots[["short_name"]]))      FALSE else dots[["short_name"]]
   parameter_names <- if(is.null(dots[["parameter_names"]])) FALSE else dots[["parameter_names"]]
+  prior_label     <- .plot.prior_label(x, plot_data, short_name, parameter_names)
 
-  main      <- if(!is.null(attr(plot_data, "steps"))) print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names) else ""
-  xlab      <- if(!is.null(attr(plot_data, "steps"))) bquote(omega["["*.(attr(plot_data, "steps")[1])*","~.(attr(plot_data, "steps")[2])*"]"]) else bquote(.(if(is.prior.orthonormal(x) | is.prior.meandif(x))"dif")*.(if(!is.null(par_name)){bquote(.(par_name)~"~")})~.(print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names)))
+  main      <- if(!is.null(attr(plot_data, "steps"))) prior_label else ""
+  xlab      <- if(!is.null(attr(plot_data, "steps"))) bquote(omega["["*.(attr(plot_data, "steps")[1])*","~.(attr(plot_data, "steps")[2])*"]"]) else bquote(.(if(is.prior.orthonormal(x) | is.prior.meandif(x))"dif")*.(if(!is.null(par_name)){bquote(.(par_name)~"~")})~.(prior_label))
   ylab      <- if(!is.null(dots[["ylab"]])) dots[["ylab"]] else "Probability"
 
   # add it to the user input if desired
@@ -244,9 +245,10 @@ plot.prior <- function(x, plot_type = "base",
 
   short_name      <- if(is.null(dots[["short_name"]]))      FALSE else dots[["short_name"]]
   parameter_names <- if(is.null(dots[["parameter_names"]])) FALSE else dots[["parameter_names"]]
+  prior_label     <- .plot.prior_label(x, plot_data, short_name, parameter_names)
 
-  main      <- if(!is.null(attr(plot_data, "steps"))) print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names) else ""
-  xlab      <- if(!is.null(attr(plot_data, "steps"))) bquote(omega["["*.(attr(plot_data, "steps")[1])*","~.(attr(plot_data, "steps")[2])*"]"])  else bquote(.(if(!is.null(par_name)){bquote(.(par_name)~"~")})~.(print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names)))
+  main      <- if(!is.null(attr(plot_data, "steps"))) prior_label else ""
+  xlab      <- if(!is.null(attr(plot_data, "steps"))) bquote(omega["["*.(attr(plot_data, "steps")[1])*","~.(attr(plot_data, "steps")[2])*"]"])  else bquote(.(if(!is.null(par_name)){bquote(.(par_name)~"~")})~.(prior_label))
   ylab      <- "Density"
 
   # add it to the user input if desired
@@ -287,9 +289,10 @@ plot.prior <- function(x, plot_type = "base",
 
   short_name      <- if(is.null(dots[["short_name"]]))      FALSE else dots[["short_name"]]
   parameter_names <- if(is.null(dots[["parameter_names"]])) FALSE else dots[["parameter_names"]]
+  prior_label     <- .plot.prior_label(x, plot_data, short_name, parameter_names)
 
-  main      <- if(!is.null(attr(plot_data, "steps"))) print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names) else ""
-  xlab      <- if(!is.null(attr(plot_data, "steps"))) bquote(omega["["*.(attr(plot_data, "steps")[1])*","~.(attr(plot_data, "steps")[2])*"]"])  else bquote(.(if(!is.null(par_name)){bquote(.(par_name)~"~")})~.(print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names)))
+  main      <- if(!is.null(attr(plot_data, "steps"))) prior_label else ""
+  xlab      <- if(!is.null(attr(plot_data, "steps"))) bquote(omega["["*.(attr(plot_data, "steps")[1])*","~.(attr(plot_data, "steps")[2])*"]"])  else bquote(.(if(!is.null(par_name)){bquote(.(par_name)~"~")})~.(prior_label))
   ylab      <- "Probability"
 
   # add it to the user input if desired
@@ -327,9 +330,10 @@ plot.prior <- function(x, plot_type = "base",
 
   short_name      <- if(is.null(dots[["short_name"]]))      FALSE else dots[["short_name"]]
   parameter_names <- if(is.null(dots[["parameter_names"]])) FALSE else dots[["parameter_names"]]
+  prior_label     <- .plot.prior_label(x, plot_data, short_name, parameter_names)
 
   xlab      <- if(!is.null(dots[["xlab"]])) dots[["xlab"]] else bquote(italic(p)*"-value")
-  main      <- if(!is.null(dots[["main"]])) dots[["main"]] else if(is.prior(x)) bquote(.(if(!is.null(par_name)){bquote(.(par_name)~"~")})~.(print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names))) else if(!is.null(par_name)) bquote(.(par_name)) else "Selection Models"
+  main      <- if(!is.null(dots[["main"]])) dots[["main"]] else if(is.prior(x)) bquote(.(if(!is.null(par_name)){bquote(.(par_name)~"~")})~.(prior_label)) else if(!is.null(par_name)) bquote(.(par_name)) else "Selection Models"
   ylab      <- if(!is.null(dots[["ylab"]])) dots[["ylab"]] else "Probability"
 
   xlim      <- attr(plot_data, "x_range")
@@ -383,9 +387,10 @@ plot.prior <- function(x, plot_type = "base",
 
   short_name      <- if(is.null(dots[["short_name"]]))      FALSE else dots[["short_name"]]
   parameter_names <- if(is.null(dots[["parameter_names"]])) FALSE else dots[["parameter_names"]]
+  prior_label     <- .plot.prior_label(x, plot_data, short_name, parameter_names)
 
   xlab      <- if(!is.null(dots[["xlab"]])) dots[["xlab"]] else "Standard error"
-  main      <- if(!is.null(dots[["main"]])) dots[["main"]] else if(is.prior(x)) bquote(.(if(!is.null(par_name)){bquote(.(par_name)~"~")})~.(print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names))) else if(!is.null(par_name)) bquote(.(par_name)) else "PET-PEESE"
+  main      <- if(!is.null(dots[["main"]])) dots[["main"]] else if(is.prior(x)) bquote(.(if(!is.null(par_name)){bquote(.(par_name)~"~")})~.(prior_label)) else if(!is.null(par_name)) bquote(.(par_name)) else "PET-PEESE"
   ylab      <- if(!is.null(dots[["ylab"]])) dots[["ylab"]] else "Effect size"
 
   xlim      <- attr(plot_data, "x_range")
@@ -431,9 +436,10 @@ plot.prior <- function(x, plot_type = "base",
 
   short_name      <- if(is.null(dots[["short_name"]]))      FALSE else dots[["short_name"]]
   parameter_names <- if(is.null(dots[["parameter_names"]])) FALSE else dots[["parameter_names"]]
+  prior_label     <- .plot.prior_label(x, plot_data, short_name, parameter_names)
 
-  main      <- if(!is.null(attr(plot_data, "steps"))) print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names) else ""
-  xlab      <- if(!is.null(attr(plot_data, "steps"))) bquote(omega["["*.(attr(plot_data, "steps")[1])*","~.(attr(plot_data, "steps")[2])*"]"])  else bquote("dif"*.(if(!is.null(par_name)){" "*bquote(.(par_name)~"~")})~.(print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names)))
+  main      <- if(!is.null(attr(plot_data, "steps"))) prior_label else ""
+  xlab      <- if(!is.null(attr(plot_data, "steps"))) bquote(omega["["*.(attr(plot_data, "steps")[1])*","~.(attr(plot_data, "steps")[2])*"]"])  else bquote("dif"*.(if(!is.null(par_name)){" "*bquote(.(par_name)~"~")})~.(prior_label))
   ylab      <- "Density"
 
   # add it to the user input if desired
@@ -474,9 +480,10 @@ plot.prior <- function(x, plot_type = "base",
 
   short_name      <- if(is.null(dots[["short_name"]]))      FALSE else dots[["short_name"]]
   parameter_names <- if(is.null(dots[["parameter_names"]])) FALSE else dots[["parameter_names"]]
+  prior_label     <- .plot.prior_label(x, plot_data, short_name, parameter_names)
 
-  main      <- if(!is.null(attr(plot_data, "steps"))) print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names) else ""
-  xlab      <- if(!is.null(attr(plot_data, "steps"))) bquote(omega["["*.(attr(plot_data, "steps")[1])*","~.(attr(plot_data, "steps")[2])*"]"])  else bquote(.(if(!is.null(par_name)){bquote(.(par_name)~"~")})~.(print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names)))
+  main      <- if(!is.null(attr(plot_data, "steps"))) prior_label else ""
+  xlab      <- if(!is.null(attr(plot_data, "steps"))) bquote(omega["["*.(attr(plot_data, "steps")[1])*","~.(attr(plot_data, "steps")[2])*"]"])  else bquote(.(if(!is.null(par_name)){bquote(.(par_name)~"~")})~.(prior_label))
   ylab      <- "Density"
 
   # add it to the user input if desired
@@ -648,6 +655,33 @@ plot.prior <- function(x, plot_type = "base",
     title      = ggplot2::element_text(size = 10 * cex.main, color = col.main))
 
   return(plot)
+}
+
+.plot.prior_label <- function(x, plot_data, short_name = FALSE, parameter_names = FALSE){
+
+  label <- print(x, plot = TRUE, short_name = short_name, parameter_names = parameter_names)
+  transformation <- attr(plot_data, "transformation")
+
+  if(is.null(transformation)){
+    return(label)
+  }
+
+  paste0(.plot.prior_transformation_label(transformation), "(", print(x, silent = TRUE), ")")
+}
+.plot.prior_transformation_label <- function(transformation){
+
+  if(is.character(transformation) && length(transformation) == 1){
+    return(switch(
+      transformation,
+      "lin"     = "linear",
+      "exp_lin" = "exp-linear",
+      "tanh"    = "tanh",
+      "exp"     = "exp",
+      "transformed"
+    ))
+  }
+
+  "transformed"
 }
 
 .plot.prior_settings <- function(){

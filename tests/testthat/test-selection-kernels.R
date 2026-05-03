@@ -368,14 +368,14 @@ test_that("bias posterior extraction recognizes composed selection and phacking 
   attr(model, "prior_list") <- list(bias = bias)
 
   mixed_all <- as_mixed_posteriors(model, parameters = "bias")
-  expect_equal(colnames(mixed_all$bias), c("omega[0,0.025]", "omega[0.025,1]", "alpha", "pi_null"))
+  expect_equal(colnames(mixed_all$bias), c("omega[0,0.025]", "omega[0.025,1]", "pi_null"))
 
   mixed_omega <- as_mixed_posteriors(model, parameters = "bias", conditional = "omega")
   expect_equal(colnames(mixed_omega$bias), c("omega[0,0.025]", "omega[0.025,1]"))
   expect_equal(attr(mixed_omega$bias, "models_ind"), c(2, 4))
 
   mixed_phacking <- as_mixed_posteriors(model, parameters = "bias", conditional = "phacking")
-  expect_equal(colnames(mixed_phacking$bias), c("alpha", "pi_null"))
+  expect_equal(colnames(mixed_phacking$bias), "pi_null")
   expect_equal(attr(mixed_phacking$bias, "models_ind"), c(3, 4))
 
   mixed_bias <- as_mixed_posteriors(model, parameters = "bias", conditional = "bias")
@@ -402,7 +402,7 @@ test_that("direct p-hacking and bias priors unpack mixed posteriors", {
   attr(ph_model, "prior_list") <- list(ph = phacking)
 
   mixed_phacking <- as_mixed_posteriors(ph_model, parameters = "ph")
-  expect_equal(colnames(mixed_phacking$ph), c("alpha", "pi_null"))
+  expect_equal(colnames(mixed_phacking$ph), "pi_null")
 
   bias_model <- matrix(
     c(
@@ -417,13 +417,40 @@ test_that("direct p-hacking and bias priors unpack mixed posteriors", {
   attr(bias_model, "prior_list") <- list(pub_bias = bias)
 
   mixed_bias <- as_mixed_posteriors(bias_model, parameters = "pub_bias")
-  expect_equal(colnames(mixed_bias$pub_bias), c("omega[0,0.025]", "omega[0.025,1]", "alpha", "pi_null"))
+  expect_equal(colnames(mixed_bias$pub_bias), c("omega[0,0.025]", "omega[0.025,1]", "pi_null"))
 
   mixed_bias_omega <- as_mixed_posteriors(bias_model, parameters = "pub_bias", conditional = "omega")
   expect_equal(colnames(mixed_bias_omega$pub_bias), c("omega[0,0.025]", "omega[0.025,1]"))
 
   mixed_bias_phacking <- as_mixed_posteriors(bias_model, parameters = "pub_bias", conditional = "phacking")
-  expect_equal(colnames(mixed_bias_phacking$pub_bias), c("alpha", "pi_null"))
+  expect_equal(colnames(mixed_bias_phacking$pub_bias), "pi_null")
+})
+
+
+test_that("p-hacking report_scale controls public summary coordinates", {
+  ph_alpha <- prior_phacking(form = "linear", report_scale = "alpha")
+  ph_pi <- prior_phacking(form = "linear", report_scale = "pi_null")
+
+  model <- matrix(
+    c(
+      .2, .010,
+      .4, .020
+    ),
+    nrow = 2,
+    byrow = TRUE
+  )
+  colnames(model) <- c("alpha", "pi_null")
+  class(model) <- c("matrix", "BayesTools_fit")
+
+  attr(model, "prior_list") <- list(ph = ph_alpha)
+  expect_equal(colnames(as_mixed_posteriors(model, parameters = "ph")$ph), "alpha")
+  expect_equal(colnames(.as_mixed_priors(list(ph = ph_alpha), seed = 1, n_samples = 10)$ph), "alpha")
+  expect_match(print(ph_alpha, silent = TRUE), "^alpha\\[phacking:")
+
+  attr(model, "prior_list") <- list(ph = ph_pi)
+  expect_equal(colnames(as_mixed_posteriors(model, parameters = "ph")$ph), "pi_null")
+  expect_equal(colnames(.as_mixed_priors(list(ph = ph_pi), seed = 1, n_samples = 10)$ph), "pi_null")
+  expect_match(print(ph_pi, silent = TRUE), "^pi_null\\[phacking:")
 })
 
 test_that("bias priors sample direct and mixture prior draws", {
@@ -442,12 +469,12 @@ test_that("bias priors sample direct and mixture prior draws", {
 
   mixed_direct <- .as_mixed_priors(list(pub_bias = bias), seed = 20, n_samples = 20)
   expect_s3_class(mixed_direct$pub_bias, "mixed_posteriors.bias")
-  expect_equal(colnames(mixed_direct$pub_bias), c("omega[0,0.025]", "omega[0.025,1]", "alpha", "pi_null"))
+  expect_equal(colnames(mixed_direct$pub_bias), c("omega[0,0.025]", "omega[0.025,1]", "pi_null"))
 
   phacking_only <- prior_bias(phacking = phacking)
   expect_equal(colnames(rng(phacking_only, 10)), c("alpha", "pi_null"))
   mixed_phacking <- .as_mixed_priors(list(pub_bias = phacking_only), seed = 21, n_samples = 10)
-  expect_equal(colnames(mixed_phacking$pub_bias), c("alpha", "pi_null"))
+  expect_equal(colnames(mixed_phacking$pub_bias), "pi_null")
 
   bias_mixture <- prior_mixture(list(
     prior_none(prior_weights = 1),
@@ -464,15 +491,15 @@ test_that("bias priors sample direct and mixture prior draws", {
   mixed <- .as_mixed_priors(list(pub_bias = bias_mixture), seed = 22, n_samples = 40)
   expect_s3_class(mixed$pub_bias, "mixed_posteriors.bias")
   expect_s3_class(mixed$pub_bias, "mixed_posteriors.mixture")
-  expect_equal(colnames(mixed$pub_bias), c("omega[0,0.025]", "omega[0.025,1]", "alpha", "pi_null", "PET"))
+  expect_equal(colnames(mixed$pub_bias), c("omega[0,0.025]", "omega[0.025,1]", "pi_null", "PET"))
   expect_setequal(attr(mixed$pub_bias, "models_ind"), 1:4)
   expect_true(all(mixed$pub_bias[attr(mixed$pub_bias, "models_ind") == 1, c("omega[0,0.025]", "omega[0.025,1]")] == 1))
-  expect_true(all(mixed$pub_bias[attr(mixed$pub_bias, "models_ind") == 1, c("alpha", "pi_null", "PET")] == 0))
+  expect_true(all(mixed$pub_bias[attr(mixed$pub_bias, "models_ind") == 1, c("pi_null", "PET")] == 0))
   expect_equal(
     mixed$pub_bias[attr(mixed$pub_bias, "models_ind") == 2, "omega[0.025,1]"],
     rep(.5, sum(attr(mixed$pub_bias, "models_ind") == 2))
   )
-  expect_true(all(mixed$pub_bias[attr(mixed$pub_bias, "models_ind") == 3, "alpha"] > 0))
+  expect_true(all(mixed$pub_bias[attr(mixed$pub_bias, "models_ind") == 3, "pi_null"] > 0))
   expect_true(all(mixed$pub_bias[attr(mixed$pub_bias, "models_ind") != 4, "PET"] == 0))
 })
 
@@ -526,10 +553,8 @@ test_that("diagnostics density handles p-hacking and composed bias priors", {
   attr(omega_data, "parameter") <- "omega"
   attr(omega_data, "prior") <- bias
 
-  direct_data <- cbind(
-    alpha = seq(.05, .95, length.out = 30),
-    pi_null = seq(.001, .01, length.out = 30)
-  )
+  direct_data <- matrix(seq(.001, .01, length.out = 30), ncol = 1)
+  colnames(direct_data) <- "pi_null"
   attr(direct_data, "chain") <- rep(1, nrow(direct_data))
   attr(direct_data, "parameter") <- "phacking"
   attr(direct_data, "prior") <- phacking
@@ -537,6 +562,15 @@ test_that("diagnostics density handles p-hacking and composed bias priors", {
   expect_silent(.diagnostics_plot_data_density(alpha_data, n_points = 32, xlim = NULL))
   expect_silent(.diagnostics_plot_data_density(omega_data, n_points = 32, xlim = NULL))
   expect_silent(.diagnostics_plot_data_density(direct_data, n_points = 32, xlim = NULL))
+})
+
+
+test_that("diagnostic prior bounds use weightfunction relative-weight support", {
+  selection <- prior_weightfunction("one-sided", c(.025), wf_fixed(c(1, 1.5)))
+  bias <- prior_bias(selection = selection)
+
+  expect_equal(.diagnostics_prior_bounds(selection, "omega"), list(lower = 0, upper = 1.5))
+  expect_equal(.diagnostics_prior_bounds(bias, "omega"), list(lower = 0, upper = 1.5))
 })
 
 test_that("summary tables handle ordinary mixtures next to selection kernels", {
@@ -547,5 +581,5 @@ test_that("summary tables handle ordinary mixtures next to selection kernels", {
   fit <- readRDS(file.path(temp_fits_dir, "fit_selection_kernel_summary.RDS"))
 
   table <- suppressWarnings(runjags_estimates_table(fit, remove_diagnostics = TRUE))
-  expect_true(all(c("mu (inclusion)", "bias (inclusion)", "alpha", "pi_null") %in% rownames(table)))
+  expect_true(all(c("mu (inclusion)", "bias (inclusion)", "pi_null") %in% rownames(table)))
 })

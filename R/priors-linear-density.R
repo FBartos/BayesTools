@@ -13,6 +13,14 @@
 .prior_linear_density_zero_tol <- function(){
   sqrt(.Machine$double.eps)
 }
+.prior_linear_source_transform <- function(source_transform){
+
+  if(is.null(source_transform) || length(source_transform) == 0 || is.na(source_transform)){
+    return(NULL)
+  }
+
+  unname(source_transform)
+}
 
 .prior_linear_density_empty_points <- function(){
   data.frame(x = numeric(), p = numeric())
@@ -636,6 +644,8 @@
 
 .prior_linear_scalar_range <- function(prior, weight, tail_prob, source_transform = NULL){
 
+  source_transform <- .prior_linear_source_transform(source_transform)
+
   if(abs(weight) <= .prior_linear_density_zero_tol() || is.prior.none(prior)){
     return(c(0, 0))
   }
@@ -765,6 +775,8 @@
 }
 
 .prior_linear_scalar_distribution <- function(prior, weight, dx, tail_prob, source_transform = NULL, n_grid = NULL){
+
+  source_transform <- .prior_linear_source_transform(source_transform)
 
   if(abs(weight) <= .prior_linear_density_zero_tol() || is.prior.none(prior)){
     return(.prior_linear_density_point(0))
@@ -1739,6 +1751,68 @@
   }
 
   stop("Unknown prior density context.", call. = FALSE)
+}
+
+.prior_density_from_context_rows <- function(context, weights,
+                                             source_transforms = NULL,
+                                             output_transformation = NULL,
+                                             output_transformation_arguments = NULL){
+
+  if(is.null(dim(weights))){
+    return(.prior_density_from_context(
+      context                         = context,
+      weights                         = weights,
+      source_transforms               = source_transforms,
+      output_transformation           = output_transformation,
+      output_transformation_arguments = output_transformation_arguments
+    ))
+  }
+
+  weights <- as.matrix(weights)
+  if(nrow(weights) == 0){
+    return(.prior_linear_density_point(0))
+  }
+  if(nrow(weights) == 1){
+    return(.prior_density_from_context(
+      context                         = context,
+      weights                         = weights[1, ],
+      source_transforms               = source_transforms,
+      output_transformation           = output_transformation,
+      output_transformation_arguments = output_transformation_arguments
+    ))
+  }
+
+  row_keys <- apply(signif(weights, 15), 1, paste0, collapse = "\r")
+  unique_keys <- unique(row_keys)
+  row_counts <- tabulate(match(row_keys, unique_keys), nbins = length(unique_keys))
+  row_indices <- match(unique_keys, row_keys)
+
+  dists <- lapply(row_indices, function(row_i){
+    .prior_density_from_context(
+      context                         = context,
+      weights                         = weights[row_i, ],
+      source_transforms               = source_transforms,
+      output_transformation           = output_transformation,
+      output_transformation_arguments = output_transformation_arguments
+    )
+  })
+
+  dx <- min(vapply(dists, function(dist){
+    if(!is.null(dist$density) && length(dist$density$x) > 1){
+      return(dist$density$x[2] - dist$density$x[1])
+    }
+    Inf
+  }, numeric(1)))
+  if(!is.finite(dx)){
+    dx <- NA_real_
+  }
+
+  .prior_linear_density_mix(
+    dists   = dists,
+    weights = row_counts,
+    dx      = dx,
+    n_grid  = if(!is.null(context$n_grid)) context$n_grid else NULL
+  )
 }
 
 .prior_density_coefficient_weights <- function(column_names, parameter){

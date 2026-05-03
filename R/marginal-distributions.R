@@ -381,8 +381,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
         if(length(at_manipulated) == 1 && format_parameter_names(at_manipulated, formula_parameters = formula_parameter, formula_prefix = FALSE) == "intercept"){
 
-          prior_weights <- colMeans(linear_weights)
-          prior_density <- .prior_density_from_context(
+          prior_weights <- linear_weights
+          prior_density <- .prior_density_from_context_rows(
             prior_density_context,
             prior_weights,
             output_transformation           = transformation,
@@ -394,8 +394,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         }else{
 
           for(lvl in seq_along(level_names)){
-            prior_weights <- colMeans(linear_weights[data_split[[lvl]], , drop = FALSE])
-            prior_density <- .prior_density_from_context(
+            prior_weights <- linear_weights[data_split[[lvl]], , drop = FALSE]
+            prior_density <- .prior_density_from_context_rows(
               prior_density_context,
               prior_weights,
               output_transformation           = transformation,
@@ -1381,6 +1381,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   }
 
   samples <- rng(prior, n_samples)
+  par_names <- intersect(.phacking_report_parameter(prior), colnames(samples))
+  samples <- samples[, par_names, drop = FALSE]
 
   rownames(samples) <- NULL
   attr(samples, "sample_ind") <- FALSE
@@ -1421,8 +1423,10 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     par_names   <- c(par_names, omega_par)
   }
   if(any(has_phacking)){
-    out_names <- c(out_names, "alpha", "pi_null")
-    par_names <- c(par_names, "alpha", "pi_null")
+    phacking_priors <- lapply(branch_info[has_phacking], function(x) x$phacking)
+    phacking_names <- .selection_phacking_report_parameters(phacking_priors)
+    out_names <- c(out_names, phacking_names)
+    par_names <- c(par_names, phacking_names)
   }
 
   keep <- par_names %in% colnames(samples)
@@ -1568,7 +1572,9 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     selection_index  <- which(has_selection)
   }
   if(any(has_phacking)){
-    out_names <- c(out_names, "alpha", "pi_null")
+    phacking_priors <- lapply(branch_info[has_phacking], function(x) x$phacking)
+    phacking_names  <- .selection_phacking_report_parameters(phacking_priors)
+    out_names <- c(out_names, phacking_names)
   }
   if(any(is_PET)){
     out_names <- c(out_names, "PET")
@@ -1601,7 +1607,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
     if(has_phacking[i]){
       phacking_samples <- rng(branch_info[[i]]$phacking, length(temp_ind))
-      temp_samples[, c("alpha", "pi_null")] <- phacking_samples[, c("alpha", "pi_null"), drop = FALSE]
+      phacking_names <- .phacking_report_parameter(branch_info[[i]]$phacking)
+      temp_samples[, phacking_names] <- phacking_samples[, phacking_names, drop = FALSE]
     }
 
     if(is_PET[i]){
@@ -1973,6 +1980,16 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
     weights <- attr(marginal[[level]], "linear_weights")
     if(is.null(weights)){
       return(conditional)
+    }
+    if(!is.null(dim(weights))){
+      active <- unique(unlist(apply(weights, 1, function(row_weights){
+        .prior_linear_active_conditionals(
+          prior_list  = prior_list,
+          weights     = row_weights,
+          conditional = conditional
+        )
+      }), use.names = FALSE))
+      return(conditional[conditional %in% active])
     }
     .prior_linear_active_conditionals(
       prior_list   = prior_list,

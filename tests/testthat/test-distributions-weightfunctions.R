@@ -135,6 +135,10 @@ test_that("fixed weightfunction helpers support non-negative relative weights", 
     matrix(c(0, 1, 1, 0, .5, .5, 0, 1.5, 1.5), ncol = 3)
   )
   expect_equal(
+    mqone.sided_fixed(c(0, .5, 1), omega = omega, lower.tail = FALSE),
+    matrix(c(1, 1, 1, .5, .5, .5, 1.5, 1.5, 1.5), ncol = 3)
+  )
+  expect_equal(
     rone.sided_fixed(2, omega = omega),
     matrix(c(1, 1, .5, .5, 1.5, 1.5), nrow = 2)
   )

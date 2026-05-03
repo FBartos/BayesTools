@@ -84,13 +84,14 @@ one.sided of weight function.}
 \item{log, log.p}{logical; if \code{TRUE}, probabilities
 \code{p} are given as \code{log(p)}.}
 
-\item{omega}{vector or matrix of fixed probabilities for a one.sided or
-a two.sided weight function.}
+\item{omega}{vector or matrix of fixed non-negative relative weights for a
+one.sided or a two.sided weight function. The first/reference weight must be
+exactly 1.}
 
 \item{n}{number of observations.}
 
 \item{lower.tail}{logical; if \code{TRUE} (default), probabilities
-are \eqn{P[X \le x]}, otherwise, \eqn{P[X \ge x]}.}
+are \eqn{P[X \le x]}, otherwise, \eqn{P[X > x]}.}
 
 \item{p}{vector of probabilities.}
 }

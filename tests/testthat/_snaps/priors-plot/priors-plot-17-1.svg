@@ -40,10 +40,8 @@
 <text x='44.64' y='266.09' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>0.6</text>
 <text x='44.64' y='191.36' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>0.8</text>
 <text x='44.64' y='116.64' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>1.0</text>
-<text x='271.02' y='554.79' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
-<text x='274.02' y='554.79' style='font-size: 12.00px; font-family: sans;' textLength='118.76px' lengthAdjust='spacingAndGlyphs'>independent contrast: </text>
-<text x='392.79' y='554.79' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='42.01px' lengthAdjust='spacingAndGlyphs'>Uniform</text>
-<text x='435.77' y='554.79' style='font-size: 12.00px; font-family: sans;' textLength='42.01px' lengthAdjust='spacingAndGlyphs'>(-0.5, 1)</text>
+<text x='257.83' y='554.79' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
+<text x='260.83' y='554.79' style='font-size: 12.00px; font-family: sans;' textLength='230.13px' lengthAdjust='spacingAndGlyphs'>exp(independent contrast: Uniform(-0.5, 1))</text>
 <text transform='translate(12.96,280.80) rotate(-90)' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='40.02px' lengthAdjust='spacingAndGlyphs'>Density</text>
 </g>
 <defs>
