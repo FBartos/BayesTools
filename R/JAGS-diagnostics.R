@@ -269,7 +269,7 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
     selection_priors <- .selection_prior_selection_priors(prior_list[["bias"]])
     model_samples <- model_samples[,paste0("omega", "[", 2:(length(weightfunctions_mapping(selection_priors, cuts_only = TRUE, one_sided = TRUE)) - 1), "]"),drop = FALSE]
   }else if(is_prior_phacking(prior_list[[parameter]])){
-    model_samples <- model_samples[,intersect(c("alpha", "pi_null"), colnames(model_samples)),drop = FALSE]
+    model_samples <- model_samples[,intersect(.phacking_report_parameter(prior_list[[parameter]]), colnames(model_samples)),drop = FALSE]
   }else if(is_prior_bias(prior_list[[parameter]])){
     bias_parameters <- .selection_bias_parameter_names(prior_list[[parameter]], include_kind = FALSE)
     bias_parameters <- bias_parameters[bias_parameters != "omega"]
@@ -424,16 +424,27 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
 
   is_selection_prior <- .diagnostics_is_selection_prior(prior)
 
-  if(is.prior.weightfunction(prior) || (is_selection_prior && parameter == "omega")){
-    return(list(lower = 0, upper = 1))
+  if(is.prior.weightfunction(prior)){
+    return(.weightfunction_weights_truncation(prior$weights))
   }
 
-  if(is_prior_phacking(prior) || is_prior_bias(prior)){
-    return(list(lower = 0, upper = 1))
+  if(is_selection_prior && parameter == "omega"){
+    selection_priors <- .selection_prior_selection_priors(prior)
+    if(length(selection_priors) == 0L){
+      return(list(lower = 1, upper = 1))
+    }
+    upper <- max(vapply(selection_priors, function(x){
+      .weightfunction_weights_truncation(x$weights)$upper
+    }, numeric(1)))
+    return(list(lower = 0, upper = upper))
   }
 
   if(is_selection_prior && parameter == "alpha"){
     return(list(lower = 0, upper = 1))
+  }
+
+  if(is_prior_phacking(prior) && !parameter %in% c("alpha", "pi_null")){
+    parameter <- .phacking_report_parameter(prior)
   }
 
   if(is_selection_prior && parameter == "pi_null"){
@@ -445,6 +456,10 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
       return(list(lower = 0, upper = upper))
     }
     return(list(lower = 0, upper = Inf))
+  }
+
+  if(is_prior_phacking(prior) || is_prior_bias(prior)){
+    return(list(lower = 0, upper = 1))
   }
 
   if(is.prior.mixture(prior)){

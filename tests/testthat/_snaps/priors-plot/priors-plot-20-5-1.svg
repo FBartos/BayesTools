@@ -85,11 +85,9 @@
 <text x='507.44' y='554.30' text-anchor='middle' style='font-size: 10.00px; font-family: sans;' textLength='13.90px' lengthAdjust='spacingAndGlyphs'>0.8</text>
 <text x='595.56' y='554.30' text-anchor='middle' style='font-size: 10.00px; font-family: sans;' textLength='13.90px' lengthAdjust='spacingAndGlyphs'>0.9</text>
 <text x='683.68' y='554.30' text-anchor='middle' style='font-size: 10.00px; font-family: sans;' textLength='13.90px' lengthAdjust='spacingAndGlyphs'>1.0</text>
-<text x='296.90' y='566.37' style='font-size: 10.00px; font-family: sans;' textLength='10.56px' lengthAdjust='spacingAndGlyphs'>dif</text>
-<text x='307.46' y='566.37' style='font-size: 10.00px; font-family: sans;' textLength='2.50px' lengthAdjust='spacingAndGlyphs'> </text>
-<text x='309.97' y='566.37' style='font-size: 10.00px; font-family: sans;' textLength='97.28px' lengthAdjust='spacingAndGlyphs'>orthonormal contrast: </text>
-<text x='407.24' y='566.37' style='font-size: 10.00px; font-style: italic; font-family: sans;' textLength='33.35px' lengthAdjust='spacingAndGlyphs'>mSpike</text>
-<text x='441.41' y='566.37' style='font-size: 10.00px; font-family: sans;' textLength='12.22px' lengthAdjust='spacingAndGlyphs'>(0)</text>
+<text x='285.91' y='566.37' style='font-size: 10.00px; font-family: sans;' textLength='10.56px' lengthAdjust='spacingAndGlyphs'>dif</text>
+<text x='296.47' y='566.37' style='font-size: 10.00px; font-family: sans;' textLength='2.50px' lengthAdjust='spacingAndGlyphs'> </text>
+<text x='298.98' y='566.37' style='font-size: 10.00px; font-family: sans;' textLength='165.64px' lengthAdjust='spacingAndGlyphs'>exp(orthonormal contrast: mSpike(0))</text>
 <text transform='translate(12.36,282.10) rotate(-90)' text-anchor='middle' style='font-size: 10.00px; font-family: sans;' textLength='46.69px' lengthAdjust='spacingAndGlyphs'>Probability</text>
 </g>
 </svg>

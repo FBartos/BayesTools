@@ -78,3 +78,47 @@ test_that("linear prior density treats zero-weight combinations as point priors"
   expect_equal(BayesTools:::.prior_linear_density_point_mass(context_density, 0), 1)
   expect_null(context_density$density)
 })
+
+
+test_that("linear prior density honors named scalar source transforms", {
+  p <- prior("lognormal", list(0, 1))
+
+  expect_equal(
+    BayesTools:::.prior_linear_scalar_range(
+      p,
+      weight = 1,
+      tail_prob = .025,
+      source_transform = c(beta = "log")
+    ),
+    stats::qnorm(c(.025, .975)),
+    tolerance = 1e-8
+  )
+})
+
+
+test_that("row-wise prior densities mix row predictions, not averaged weights", {
+  context <- BayesTools:::.prior_density_context(
+    prior_list   = list(beta = prior("normal", list(0, 1))),
+    column_names = "beta",
+    n_grid       = 1024
+  )
+
+  row_density <- BayesTools:::.prior_density_from_context_rows(
+    context,
+    weights = matrix(c(1, 2), ncol = 1, dimnames = list(NULL, "beta"))
+  )
+  averaged_density <- BayesTools:::.prior_density_from_context(
+    context,
+    weights = c(beta = 1.5)
+  )
+
+  density_second_moment <- function(d){
+    x <- d$density$x
+    y <- d$density$y
+    dx <- x[2] - x[1]
+    sum(x^2 * y) * dx + sum(d$points$x^2 * d$points$p)
+  }
+
+  expect_equal(density_second_moment(row_density), mean(c(1^2, 2^2)), tolerance = .08)
+  expect_equal(density_second_moment(averaged_density), 1.5^2, tolerance = .08)
+})

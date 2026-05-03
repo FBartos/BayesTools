@@ -149,6 +149,43 @@ is.prior.bias <- function(x){
   is_prior_bias(x)
 }
 
+.phacking_report_parameter <- function(prior){
+
+  if(!is_prior_phacking(prior)){
+    stop("'prior' must be a p-hacking prior.", call. = FALSE)
+  }
+
+  if(is.null(prior$report_scale)){
+    return("pi_null")
+  }
+
+  prior$report_scale
+}
+
+.phacking_unreported_parameters <- function(prior){
+
+  setdiff(c("alpha", "pi_null"), .phacking_report_parameter(prior))
+}
+
+.selection_phacking_report_parameters <- function(phacking_priors){
+
+  if(length(phacking_priors) == 0L){
+    return(character())
+  }
+
+  unique(vapply(phacking_priors, .phacking_report_parameter, character(1)))
+}
+
+.selection_phacking_unreported_parameters <- function(phacking_priors){
+
+  setdiff(c("alpha", "pi_null"), .selection_phacking_report_parameters(phacking_priors))
+}
+
+.selection_prior_phacking_report_parameters <- function(prior){
+
+  .selection_phacking_report_parameters(.selection_prior_phacking_priors(prior))
+}
+
 #' @title P-hacking calibration helpers
 #'
 #' @description \code{phack_pi_null()} converts the sampled severity
@@ -794,7 +831,10 @@ selection_backend_spec <- function(priors,
     if(.selection_prior_has_PET(prior)) "PET",
     if(.selection_prior_has_PEESE(prior)) "PEESE",
     if(.selection_prior_has_selection(prior)) "omega",
-    if(.selection_prior_has_phacking(prior)) c("alpha", "pi_null", if(include_kind) c("beta_null", "phack_kind"))
+    if(.selection_prior_has_phacking(prior)) c(
+      .selection_prior_phacking_report_parameters(prior),
+      if(include_kind) c("beta_null", "phack_kind")
+    )
   )
 }
 

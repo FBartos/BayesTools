@@ -73,7 +73,7 @@
 NULL
 
 #' @rdname BayesTools_ensemble_tables
-ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.95), title = NULL, footnotes = NULL, warnings = NULL, transform_factors = FALSE, transform_orthonormal = FALSE, formula_prefix = TRUE, transform_scaled = FALSE, formula_scale = NULL){
+ensemble_estimates_table <- function(samples, parameters, probs = c(0.025, 0.975), title = NULL, footnotes = NULL, warnings = NULL, transform_factors = FALSE, transform_orthonormal = FALSE, formula_prefix = TRUE, transform_scaled = FALSE, formula_scale = NULL){
 
   # check input
   check_char(parameters, "parameters", check_length = 0)
@@ -361,7 +361,7 @@ ensemble_diagnostics_table <- function(models, parameters, title = NULL, footnot
 }
 
 #' @rdname BayesTools_ensemble_tables
-ensemble_estimates_empty_table   <- function(probs = c(0.025, 0.95), title = NULL, footnotes = NULL, warnings = NULL){
+ensemble_estimates_empty_table   <- function(probs = c(0.025, 0.975), title = NULL, footnotes = NULL, warnings = NULL){
 
   empty_table <- data.frame(matrix(nrow = 0, ncol = 2 + length(probs)))
   colnames(empty_table) <- c("Mean", "Median", probs)
@@ -896,13 +896,14 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
             n_conditional_samples <- sum(model_samples[,colnames(model_samples) == paste0(par, "_indicator")] %in% which(has_phacking))
 
             # replace non-p-hacking samples with NAs
-            phacking_columns <- intersect(c("alpha", "pi_null", "phack_kind"), colnames(model_samples))
+            phacking_report_columns <- .selection_phacking_report_parameters(lapply(branch_info[has_phacking], function(x) x$phacking))
+            phacking_columns <- intersect(c(phacking_report_columns, "phack_kind"), colnames(model_samples))
             if(length(phacking_columns) > 0){
               model_samples[!model_samples[,colnames(model_samples) == paste0(par, "_indicator")] %in% which(has_phacking), phacking_columns] <- NA
             }
 
             # add warnings about conditional summary
-            warning_columns <- intersect(c("alpha", "pi_null"), phacking_columns)
+            warning_columns <- intersect(phacking_report_columns, phacking_columns)
             if(length(warning_columns) > 0){
               warnings <- c(warnings, .runjags_conditional_warning(warning_columns, n_conditional_samples))
             }
@@ -944,8 +945,14 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
           prior_list[["omega"]] <- branch_info[has_selection][[1]]$selection
         }
         if(any(has_phacking)){
-          phacking_prior <- branch_info[has_phacking][[1]]$phacking
-          prior_list[["alpha"]] <- phacking_prior$alpha
+          phacking_priors <- lapply(branch_info[has_phacking], function(x) x$phacking)
+          drop_phacking <- .selection_phacking_unreported_parameters(phacking_priors)
+          model_samples <- model_samples[, !colnames(model_samples) %in% drop_phacking, drop = FALSE]
+
+          phacking_report_columns <- .selection_phacking_report_parameters(phacking_priors)
+          for(phacking_report_column in phacking_report_columns){
+            prior_list[[phacking_report_column]] <- phacking_priors[[1]]$alpha
+          }
         }
 
       }else{
@@ -1159,7 +1166,11 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
 
       temp_prior_prob <- mean(.get_spike_and_slab_inclusion(prior_list[[par]]))
       temp_post_prob  <- mean(model_samples[,paste0(par, "_indicator")])
-      temp_BF         <- (temp_post_prob / (1-temp_post_prob))  /  (temp_prior_prob / (1-temp_prior_prob))
+      temp_BF         <- inclusion_BF(
+        prior_probs = c(null = 1 - temp_prior_prob, alternative = temp_prior_prob),
+        post_probs  = c(null = 1 - temp_post_prob,  alternative = temp_post_prob),
+        is_null     = c(TRUE, FALSE)
+      )
       temp_row        <- data.frame(
         Parameter    = par,
         prior_prob   = temp_prior_prob,
@@ -1774,7 +1785,7 @@ update.BayesTools_table <- function(object, title = NULL, footnotes = NULL, warn
   check_char(title, "title", allow_NULL = TRUE)
   check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
   check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
-  check_list(remove_parameters, "remove_parameters", allow_NULL = TRUE)
+  check_char(remove_parameters, "remove_parameters", check_length = 0, allow_NULL = TRUE)
   check_bool(logBF, "logBF")
   check_bool(BF01,  "BF01")
 
@@ -1787,7 +1798,7 @@ update.BayesTools_table <- function(object, title = NULL, footnotes = NULL, warn
   }
 
   if(!is.null(remove_parameters)){
-    object <- object[rownames(object) %in% remove_parameters,,drop=FALSE]
+    object <- object[!rownames(object) %in% remove_parameters,,drop=FALSE]
   }
 
   if(!is.null(title)){

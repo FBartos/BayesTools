@@ -479,6 +479,50 @@ test_that("JAGS formula marglik reconstructs inverse-gamma terms on original sca
 })
 
 
+test_that("JAGS marglik reconstructs indexed factor inverse-gamma auxiliaries", {
+  theta_prior <- prior_factor("invgamma", list(2, 1), contrast = "independent")
+  theta_prior$parameters$K <- 2
+
+  parameters <- BayesTools:::.JAGS_marglik_parameters.factor(
+    samples = c("inv_theta[1]" = 2, "inv_theta[2]" = 4),
+    prior = theta_prior,
+    parameter_name = "theta"
+  )
+
+  expect_equal(parameters$theta, c(0.5, 0.25))
+})
+
+
+test_that("JAGS formula marglik preserves predictor names containing _data", {
+  samples <- c(
+    "mu_intercept" = 1,
+    "mu_x_data"   = 2
+  )
+  formula_data_list <- list(
+    mu = list(
+      N_mu           = 2,
+      mu_data_x_data = c(10, 20)
+    )
+  )
+  formula_prior_list <- list(
+    mu = list(
+      mu_intercept = prior("normal", list(0, 1)),
+      mu_x_data    = prior("normal", list(0, 1))
+    )
+  )
+
+  parameters <- JAGS_marglik_parameters_formula(
+    samples            = samples,
+    formula_list       = list(mu = ~ 1 + x_data),
+    formula_data_list  = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    prior_list_parameters = list()
+  )
+
+  expect_equal(parameters$mu, c(1 + 2 * 10, 1 + 2 * 20))
+})
+
+
 # Targeted tests for uncovered code paths in JAGS-marglik.R
 
 test_that("JAGS_bridgesampling_posterior input validation works", {

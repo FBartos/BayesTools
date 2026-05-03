@@ -38,10 +38,8 @@
 <text x='44.64' y='286.97' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>1.0</text>
 <text x='44.64' y='185.32' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>1.5</text>
 <text x='44.64' y='83.68' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>2.0</text>
-<text x='294.37' y='554.80' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
-<text x='297.37' y='554.80' style='font-size: 12.00px; font-family: sans;' textLength='103.39px' lengthAdjust='spacingAndGlyphs'>treatment contrast: </text>
-<text x='400.76' y='554.80' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='24.69px' lengthAdjust='spacingAndGlyphs'>Beta</text>
-<text x='426.42' y='554.80' style='font-size: 12.00px; font-family: sans;' textLength='28.01px' lengthAdjust='spacingAndGlyphs'>(2, 3)</text>
+<text x='279.18' y='554.80' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
+<text x='282.18' y='554.80' style='font-size: 12.00px; font-family: sans;' textLength='187.44px' lengthAdjust='spacingAndGlyphs'>tanh(treatment contrast: Beta(2, 3))</text>
 <text transform='translate(12.96,280.80) rotate(-90)' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='40.02px' lengthAdjust='spacingAndGlyphs'>Density</text>
 </g>
 <defs>

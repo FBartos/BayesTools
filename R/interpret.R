@@ -112,7 +112,9 @@ interpret2                <- function(specification, method = NULL){
 }
 .interpret.BF             <- function(BF, name, BF_name){
 
-  if(abs(log(BF)) > log(10)){
+  if(isTRUE(all.equal(BF, 1))){
+    text <- paste0("no evidence for or against the ", name)
+  }else if(abs(log(BF)) > log(10)){
     text <- "strong evidence"
   }else if(abs(log(BF)) > log(3)){
     text <- "moderate evidence"
@@ -120,10 +122,12 @@ interpret2                <- function(specification, method = NULL){
     text <- "weak evidence"
   }
 
-  if(BF > 1){
-    text <- paste0(text, " in favor of the ", name)
-  }else{
-    text <- paste0(text, " against the ", name)
+  if(!isTRUE(all.equal(BF, 1))){
+    if(BF > 1){
+      text <- paste0(text, " in favor of the ", name)
+    }else{
+      text <- paste0(text, " against the ", name)
+    }
   }
 
   BF <- format(round(BF, if(BF < 1) 3 else 2), nsmall = if(BF < 1) 3 else 2)

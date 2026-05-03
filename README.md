@@ -288,7 +288,7 @@ ensemble_inference_table(inference, parameters = "mu")
 #>    Models Prior prob. Post. prob. Inclusion BF
 #> mu    2/3       0.667       0.430        0.377
 ensemble_estimates_table(mixed_posteriors,  parameters = "mu")
-#>     Mean Median  0.025  0.95
+#>     Mean Median  0.025 0.975
 #> mu 0.091  0.000 -0.218 0.523
 ensemble_summary_table(models, parameters = "mu")
 #>  Model       Prior mu       Prior prob. log(marglik) Post. prob. Inclusion BF

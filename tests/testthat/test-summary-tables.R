@@ -39,6 +39,26 @@ test_that("Stan transformed summaries are recomputed from transformed draws", {
 })
 
 
+test_that("ensemble estimates use equal-tailed 95 percent defaults", {
+  estimates <- ensemble_estimates_table(
+    list(theta = c(1, 2, 3, 4)),
+    parameters = "theta"
+  )
+
+  expect_equal(colnames(estimates), c("Mean", "Median", "0.025", "0.975"))
+})
+
+
+test_that("update.BayesTools_table remove_parameters removes matching rows", {
+  table <- data.frame(value = c("1.000", "2.000"), row.names = c("keep", "drop"))
+  class(table) <- c("BayesTools_table", class(table))
+  attr(table, "type") <- "estimate"
+
+  updated <- update(table, remove_parameters = "drop")
+  expect_equal(rownames(updated), "keep")
+})
+
+
 # ============================================================================ #
 # SECTION 1: ensemble_estimates_table tests
 # ============================================================================ #

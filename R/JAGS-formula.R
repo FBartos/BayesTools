@@ -94,7 +94,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
 
   if(!is.language(formula))
     stop("'formula' must be a formula")
-  check_char("parameter", parameter)
+  check_char(parameter, "parameter")
   if(!is.data.frame(data))
     stop("'data' must be a data.frame")
   check_list(prior_list, "prior_list")
@@ -413,6 +413,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   }
 
   # add random effects back to the formula
+  random_scale_terms <- character()
   for(i in seq_along(random_effects)){
     temp_random   <- .JAGS_random_effect_formula(random_effects[[i]], parameter, data, prior_list_random_effects[[i]])
 
@@ -423,6 +424,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     random_syntax  <- c(random_syntax,  temp_random[["random_syntax"]])
     formula_syntax <- c(formula_syntax, temp_random[["formula_term"]])
     prior_list     <- c(prior_list, temp_random[["prior_list"]])
+    random_scale_terms <- c(random_scale_terms, temp_random[["random_scale_terms"]])
   }
 
   # finish the syntax
@@ -458,6 +460,10 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     attr(scale_info, "parameter") <- parameter
     # store log_intercept attribute for proper unscaling transformation
     attr(scale_info, "log_intercept") <- log_intercept
+    if(length(random_scale_terms) > 0){
+      names(random_scale_terms) <- paste0(parameter, "_", names(random_scale_terms))
+      attr(scale_info, "random_effect_terms") <- random_scale_terms
+    }
     output$formula_scale <- scale_info
   }
 
@@ -555,6 +561,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   random_syntax    <- NULL
   JAGS_data        <- list()
   new_prior_list   <- list()
+  random_scale_terms <- character()
 
   ### in essence, the following prepares constructors that:
   # 1) samples standardized random effects xRE_Zx[ids, predictors] from a multivariate normal distribution
@@ -581,6 +588,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     terms_indexes[1] <- 0
 
     new_prior_list[[paste0(parameter_suffix, "_intercept")]] <- prior_list[["intercept"]]
+    random_scale_terms[[paste0(parameter_suffix, "_intercept")]] <- "intercept"
     attr(new_prior_list[[paste0(parameter_suffix, "_intercept")]], "random_factor") <- grouping_factor
     random_syntax   <- c(random_syntax, paste0(
       parameter, "_xRE_STDx[1] = ", parameter, "_", "intercept"
@@ -696,8 +704,10 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
         attr(this_prior, "interaction_terms") -> attr(this_prior[[p]], "interaction_terms")
       }
       this_prior -> new_prior_list[[paste0(parameter_suffix, "_", model_terms[i])]]
+      random_scale_terms[[paste0(parameter_suffix, "_", model_terms[i])]] <- model_terms[i]
     }else{
       this_prior -> new_prior_list[[paste0(parameter_suffix, "_", model_terms[i])]]
+      random_scale_terms[[paste0(parameter_suffix, "_", model_terms[i])]] <- model_terms[i]
     }
 
   }
@@ -725,6 +735,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     formula_term   = paste0(parameter,"[i]"),
     data           = JAGS_data,
     prior_list     = new_prior_list,
+    random_scale_terms = random_scale_terms,
     formula        = formula
   ))
 }
@@ -917,6 +928,13 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
 
   # remove the specified response (would crash the model.frame if not included)
   formula <- .remove_response(formula)
+  log_intercept <- isTRUE(attr(formula, "log(intercept)"))
+  if(attr(stats::terms(formula), "intercept") == 0){
+    formula <- .add_intercept_to_formula(formula)
+    if(log_intercept){
+      attr(formula, "log(intercept)") <- TRUE
+    }
+  }
 
   # select priors corresponding to the prior distribution
   prior_parameter <- sapply(prior_list, function(p) if(is.null(attr(p, "parameter"))) "__none" else attr(p, "parameter"))
@@ -1027,9 +1045,6 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
   model_matrix <- stats::model.matrix(model_frame, formula = formula, data = data)
 
   ### evaluate the design matrix on the samples -> output[data, posterior]
-  # check for log(intercept) attribute
-  log_intercept <- isTRUE(attr(formula, "log(intercept)"))
-
   if(has_intercept){
 
     terms_indexes    <- attr(model_matrix, "assign") + 1
@@ -1895,31 +1910,118 @@ transform_treatment_samples <- function(samples){
 
   # Identify which columns are affected by the transformation
   affected_cols <- grep(paste0("^", prefix, "_"), colnames(posterior), value = TRUE)
+  random_sd_cols <- grep(paste0("^", prefix, "__xREx__"), affected_cols, value = TRUE)
+  fixed_cols     <- setdiff(affected_cols, random_sd_cols)
 
   if (length(affected_cols) == 0) {
     return(posterior)
   }
 
-  .warn_unused_formula_scale_terms(affected_cols, formula_scale, prefix)
+  if(length(fixed_cols) > 0){
+    .warn_unused_formula_scale_terms(fixed_cols, formula_scale, prefix)
+  }
 
   # For log(intercept): transform to log scale before unscaling, then exp() back
   # This works because: log_sigma = log(intercept) + beta * x_z
   # is equivalent to: log_sigma = log_int + beta * x_z (standard additive form)
   # where log_int = log(intercept)
-  if (log_intercept && intercept_col %in% colnames(posterior)) {
+  if (length(fixed_cols) > 0 && log_intercept && intercept_col %in% colnames(posterior)) {
     posterior[, intercept_col] <- log(posterior[, intercept_col])
   }
 
   # Build and apply standard transformation matrix
-  M <- .build_unscale_matrix(affected_cols, formula_scale, prefix)
-  posterior[, affected_cols] <- posterior[, affected_cols, drop = FALSE] %*% t(M)
+  if(length(fixed_cols) > 0){
+    M <- .build_unscale_matrix(fixed_cols, formula_scale, prefix)
+    posterior[, fixed_cols] <- posterior[, fixed_cols, drop = FALSE] %*% t(M)
+  }
 
   # Transform intercept back from log scale
-  if (log_intercept && intercept_col %in% colnames(posterior)) {
+  if (length(fixed_cols) > 0 && log_intercept && intercept_col %in% colnames(posterior)) {
     posterior[, intercept_col] <- exp(posterior[, intercept_col])
   }
 
+  posterior <- .apply_random_sd_unscale(posterior, random_sd_cols, formula_scale, prefix)
+
   return(posterior)
+}
+
+.apply_random_sd_unscale <- function(posterior, random_sd_cols, formula_scale, prefix){
+
+  if(length(random_sd_cols) == 0){
+    return(posterior)
+  }
+
+  term_map <- .random_sd_term_map(random_sd_cols, formula_scale, prefix)
+  if(length(term_map) == 0){
+    return(posterior)
+  }
+
+  random_sd_cols <- names(term_map)
+  group_keys <- vapply(random_sd_cols, .random_sd_group_key,
+                       character(1), term_map = term_map, prefix = prefix)
+
+  for(group_key in unique(group_keys)){
+    group_cols <- random_sd_cols[group_keys == group_key]
+    group_terms <- unname(term_map[group_cols])
+
+    if(any(duplicated(group_terms))){
+      next
+    }
+
+    pseudo_terms <- paste0(prefix, "_", group_terms)
+    names(pseudo_terms) <- group_cols
+    M <- .build_unscale_matrix(unname(pseudo_terms), formula_scale, prefix)
+
+    source_sd <- posterior[, group_cols, drop = FALSE]
+    transformed_sd <- matrix(NA_real_, nrow = nrow(source_sd), ncol = ncol(source_sd))
+    colnames(transformed_sd) <- group_cols
+
+    for(target_i in seq_along(group_cols)){
+      transformed_var <- rowSums(t(t(source_sd^2) * (M[target_i, ]^2)))
+      transformed_sd[, target_i] <- sqrt(transformed_var)
+    }
+
+    posterior[, group_cols] <- transformed_sd
+  }
+
+  posterior
+}
+.random_sd_term_map <- function(random_sd_cols, formula_scale, prefix){
+
+  metadata <- attr(formula_scale, "random_effect_terms")
+  if(!is.null(metadata) && length(metadata) > 0){
+    base_cols <- sub("\\[[^]]+\\]$", "", random_sd_cols)
+    term_map <- metadata[base_cols]
+    names(term_map) <- random_sd_cols
+    term_map <- term_map[!is.na(term_map)]
+    if(length(term_map) > 0){
+      return(term_map)
+    }
+  }
+
+  scaled_vars <- sub(paste0("^", prefix, "_"), "", names(formula_scale))
+  possible_terms <- c("intercept", scaled_vars)
+  names(possible_terms) <- possible_terms
+
+  term_map <- vapply(random_sd_cols, function(col){
+    rest <- sub(paste0("^", prefix, "__xREx__"), "", sub("\\[[^]]+\\]$", "", col))
+    candidates <- possible_terms[vapply(possible_terms, function(term){
+      endsWith(rest, paste0("_", term))
+    }, logical(1))]
+    if(length(candidates) == 0){
+      return(NA_character_)
+    }
+    candidates[which.max(nchar(candidates))]
+  }, character(1))
+
+  term_map[!is.na(term_map)]
+}
+.random_sd_group_key <- function(col, term_map, prefix){
+
+  base_col <- sub("\\[[^]]+\\]$", "", col)
+  rest <- sub(paste0("^", prefix, "__xREx__"), "", base_col)
+  term <- unname(term_map[[col]])
+  sub(paste0("_", term, "$"), "", rest)
 }
 
 
@@ -2454,10 +2556,18 @@ JAGS_parameter_names   <- function(parameters, formula_parameter = NULL){
 
 .JAGS_prior_factor_names <- function(parameter, prior){
 
-  if(.get_prior_factor_levels(prior) == 1){
+  levels <- .get_prior_factor_levels(prior)
+  if((is.null(levels) || length(levels) == 0L || is.na(levels)) && "K" %in% names(prior[["parameters"]])){
+    levels <- prior[["parameters"]][["K"]]
+  }
+  if(is.null(levels) || length(levels) == 0L || is.na(levels)){
+    stop("Factor-prior dimensions must be available before constructing JAGS parameter names.", call. = FALSE)
+  }
+
+  if(levels == 1){
     par_names <- parameter
   }else{
-    par_names <- paste0(parameter,"[",1:.get_prior_factor_levels(prior),"]")
+    par_names <- paste0(parameter, "[", 1:levels, "]")
   }
 
   return(par_names)

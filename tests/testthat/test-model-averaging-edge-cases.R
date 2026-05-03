@@ -93,6 +93,45 @@ test_that("inclusion_BF works with marginal likelihoods only", {
 })
 
 
+test_that("inclusion_BF ignores zero-prior marginal likelihoods in stability algebra", {
+  expect_equal(
+    inclusion_BF(
+      prior_probs = c(0, 0.5, 0.5),
+      margliks    = c(1000, 0, 0),
+      is_null     = c(FALSE, TRUE, FALSE)
+    ),
+    1
+  )
+
+  expect_equal(
+    inclusion_BF(
+      prior_probs = c(0, 1),
+      margliks    = c(1000, 0),
+      is_null     = c(FALSE, TRUE)
+    ),
+    0
+  )
+
+  expect_equal(
+    inclusion_BF(
+      prior_probs = c(1, 0),
+      margliks    = c(0, 1000),
+      is_null     = c(FALSE, TRUE)
+    ),
+    Inf
+  )
+
+  expect_equal(
+    inclusion_BF(
+      prior_probs = c(0, 0.5, 0.5),
+      margliks    = c(Inf, 0, 0),
+      is_null     = c(FALSE, TRUE, FALSE)
+    ),
+    1
+  )
+})
+
+
 # ============================================================================ #
 # SECTION 2: weightfunctions_mapping edge cases
 # ============================================================================ #

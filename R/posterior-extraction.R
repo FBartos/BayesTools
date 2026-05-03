@@ -41,7 +41,12 @@ NULL
     
     # invgamma support parameter
     if (is.prior.simple(prior_list[[i]]) && prior_list[[i]][["distribution"]] == "invgamma") {
-      model_samples <- model_samples[, colnames(model_samples) != paste0("inv_", par_name), drop = FALSE]
+      aux_names <- if(is.prior.factor(prior_list[[i]])){
+        paste0("inv_", .JAGS_prior_factor_names(par_name, prior_list[[i]]))
+      }else{
+        paste0("inv_", par_name)
+      }
+      model_samples <- model_samples[, !colnames(model_samples) %in% aux_names, drop = FALSE]
     }
     
     # weightfunction parameters
@@ -74,6 +79,9 @@ NULL
       }
 
     } else if (is_prior_phacking(prior_list[[i]])) {
+      drop_phacking <- .phacking_unreported_parameters(prior_list[[i]])
+      model_samples <- model_samples[, !colnames(model_samples) %in% drop_phacking, drop = FALSE]
+
       if ("omega" %in% remove_parameters) {
         omega_names <- colnames(model_samples)[grepl("^omega\\[", colnames(model_samples))]
         model_samples <- model_samples[, !colnames(model_samples) %in% omega_names, drop = FALSE]
@@ -85,6 +93,9 @@ NULL
       }
 
     } else if (is_prior_bias(prior_list[[i]])) {
+      drop_phacking <- .selection_phacking_unreported_parameters(.selection_prior_phacking_priors(prior_list[[i]]))
+      model_samples <- model_samples[, !colnames(model_samples) %in% drop_phacking, drop = FALSE]
+
       if (.selection_prior_has_selection(prior_list[[i]])) {
         omega_cuts      <- weightfunctions_mapping(.selection_prior_selection_priors(prior_list[[i]]), cuts_only = TRUE, one_sided = TRUE)
         omega_names_old <- paste0("omega[", 1:(length(omega_cuts) - 1), "]")
@@ -165,7 +176,7 @@ NULL
     )
 
   } else if (is_prior_bias(prior)) {
-    cols_to_remove <- c(par_name, .selection_bias_parameter_names(prior))
+    cols_to_remove <- c(par_name, .selection_bias_parameter_names(prior), "alpha", "pi_null")
     cols_to_remove <- c(cols_to_remove,
       colnames(model_samples)[grepl("^omega\\[", colnames(model_samples))]
     )

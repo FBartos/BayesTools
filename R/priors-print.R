@@ -314,7 +314,8 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
 }
 .print.prior.phacking       <- function(x, short_name, parameter_names, plot, digits_estimates, silent){
 
-  out_prefix <- if(plot) bquote(alpha) else "alpha"
+  report_parameter <- .phacking_report_parameter(x)
+  out_prefix <- if(plot) as.name(report_parameter) else report_parameter
   form_name <- if(short_name) substr(x$form, 1, 1) else x$form
   alpha_prior <- print(x$alpha, short_name = short_name, parameter_names = parameter_names,
                        plot = FALSE, digits_estimates = digits_estimates, silent = TRUE)
@@ -327,9 +328,17 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
   )
 
   if(!plot){
-    output <- paste0(out_prefix, "[phacking: ", out_parameters, "] ~ ", alpha_prior)
+    if(report_parameter == "alpha"){
+      output <- paste0(out_prefix, "[phacking: ", out_parameters, "] ~ ", alpha_prior)
+    }else{
+      output <- paste0(out_prefix, "[phacking: ", out_parameters, "] derived from alpha ~ ", alpha_prior)
+    }
   }else{
-    output <- bquote(italic(.(out_prefix))[.(out_parameters)]~"~"~.(alpha_prior))
+    if(report_parameter == "alpha"){
+      output <- bquote(italic(.(out_prefix))[.(out_parameters)]~"~"~.(alpha_prior))
+    }else{
+      output <- bquote(italic(.(out_prefix))[.(out_parameters)]~" derived from "~alpha~"~"~.(alpha_prior))
+    }
   }
 
   return(output)

@@ -78,6 +78,20 @@ test_that(".remove_auxiliary_parameters removes invgamma support", {
 })
 
 
+test_that(".remove_auxiliary_parameters removes indexed factor invgamma support", {
+  model_samples <- matrix(rnorm(400), ncol = 4)
+  colnames(model_samples) <- c("theta[1]", "theta[2]", "inv_theta[1]", "inv_theta[2]")
+
+  theta_prior <- prior_factor("invgamma", list(2, 1), contrast = "independent")
+  theta_prior$parameters$K <- 2
+  prior_list <- list(theta = theta_prior)
+
+  result <- BayesTools:::.remove_auxiliary_parameters(model_samples, prior_list, NULL)
+
+  expect_equal(colnames(result$model_samples), c("theta[1]", "theta[2]"))
+})
+
+
 test_that(".process_spike_and_slab handles conditional samples", {
   skip_on_cran()
   skip_if_not_installed("rjags")

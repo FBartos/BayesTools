@@ -21,7 +21,8 @@
 #' and time to event outcomes (logHR) based on the Cochrane database of systematic reviews.
 #' Use \code{"Cochrane"} for a prior distribution based on the whole database or call
 #' \code{print(prior_informed_medicine_names)} to inspect the names of
-#' all 46 subfields and set the appropriate \code{parameter} and \code{type}.
+#' available subfields and set the appropriate \code{parameter} and \code{type};
+#' availability of subfield-specific priors depends on the selected \code{type}.
 #' @param parameter parameter name describing what prior distribution is supposed to be produced in cases
 #' where the \code{name} corresponds to multiple prior distributions. Relevant only for the empirical medical
 #' prior distributions.
@@ -33,7 +34,7 @@
 #'   \item{\code{"logOR"}}{for log odds ratios}
 #'   \item{\code{"logRR"}}{for log risk ratios}
 #'   \item{\code{"RD"}}{for risk differences}
-#'   \item{\code{"logHR"}}{for hazard ratios}
+#'   \item{\code{"logHR"}}{for log hazard ratios}
 #' }
 #'
 #' @examples
@@ -68,8 +69,20 @@ prior_informed <- function(name, parameter = NULL, type ="smd"){
 
   if(name %in% .prior_clean_input_name(prior_informed_medicine_names)){
     # check for implemented metrics
-    type <- tolower(type)
+    if(is.null(type)){
+      type <- "smd"
+    }
+    type <- .prior_clean_input_name(type)
     check_char(type,"type", allow_values = c("smd","logor","logrr","loghr","rd"))
+
+    if(!name %in% .prior_clean_input_name(.prior_informed_medicine_names_by_type(type))){
+      stop(paste0("The requested medicine prior 'name' is not available for type '", type, "'."), call. = FALSE)
+    }
+    if(is.null(parameter)){
+      stop("The 'parameter' argument must be specified for informed prior distributions from medicine.", call. = FALSE)
+    }
+    parameter <- .prior_clean_input_name(parameter)
+    check_char(parameter, "parameter", allow_values = c("effect", "heterogeneity"))
 
     p <- switch(
       parameter,
@@ -89,6 +102,46 @@ prior_informed <- function(name, parameter = NULL, type ="smd"){
   }else{
     stop("unknown prior 'name'. See '?prior_informed' for help.")
   }
+}
+
+.prior_informed_medicine_names_by_type <- function(type = NULL){
+
+  names_by_type <- list(
+    smd = setdiff(prior_informed_medicine_names, c(
+      "Breast Cancer",
+      "Childhood Cancer",
+      "Epilepsy",
+      "Fertility Regulation",
+      "Gut",
+      "Haematology",
+      "Heart; Vascular",
+      "Lung Cancer",
+      "Multiple Sclerosis and Rare Diseases of the CNS",
+      "Neuromuscular"
+    )),
+    logor = setdiff(prior_informed_medicine_names, c(
+      "Inflammatory Bowel Disease",
+      "Public Health",
+      "Upper GI and Pancreatic Diseases"
+    )),
+    logrr = setdiff(prior_informed_medicine_names, c(
+      "Inflammatory Bowel Disease",
+      "Public Health",
+      "Upper GI and Pancreatic Diseases"
+    )),
+    rd = setdiff(prior_informed_medicine_names, c(
+      "Inflammatory Bowel Disease",
+      "Public Health",
+      "Upper GI and Pancreatic Diseases"
+    )),
+    loghr = "Cochrane"
+  )
+
+  if(is.null(type)){
+    return(names_by_type)
+  }
+
+  names_by_type[[type]]
 }
 
 
@@ -1041,9 +1094,9 @@ prior_informed <- function(name, parameter = NULL, type ="smd"){
 
 #' @title Names of medical subfields from the Cochrane database of systematic reviews
 #'
-#' @description Contain names identifying the individual subfields from the Cochrane database
-#' of systematic reviews. The individual elements correspond to valid \code{name} arguments
-#' for the [prior_informed()] function.
+#' @description Contains the union of names identifying the individual subfields from
+#' the Cochrane database of systematic reviews. Type-specific availability depends on
+#' the \code{type} argument passed to [prior_informed()].
 #'
 #' @examples
 #' print(prior_informed_medicine_names)

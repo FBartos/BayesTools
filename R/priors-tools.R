@@ -120,14 +120,23 @@
   if(is.expression(parameter))
     return()
 
-  if(!allow_NA && is.na(parameter)){
+  if(length(parameter) != 1)
+    stop(paste0("The '", name, "' must be a numeric vector of length 1."), call. = FALSE)
+
+  if(is.na(parameter)){
+    if(allow_NA)
+      return()
     stop(paste0("The '", name, "' must be defined."), call. = FALSE)
-  }else if(!allow_NA){
-    if(length(parameter) != 1 || !is.numeric(parameter))
-      stop(paste0("The '", name, "' must be a numeric vector of length 1."), call. = FALSE)
-    if(!.is.wholenumber(parameter))
-      stop(paste0(call, "The '", name ,"' must be an integer"), call. = FALSE)
   }
+
+  if(!is.numeric(parameter))
+    stop(paste0("The '", name, "' must be a numeric vector of length 1."), call. = FALSE)
+
+  if(!.is.wholenumber(parameter))
+    stop(paste0("The '", name ,"' must be an integer"), call. = FALSE)
+
+  if(parameter < 1)
+    stop(paste0("The '", name ,"' must be a positive integer"), call. = FALSE)
 }
 .check_parameter_range          <- function(parameter, name, lower, upper, include_bounds = FALSE){
 

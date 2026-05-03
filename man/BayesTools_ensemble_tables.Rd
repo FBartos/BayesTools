@@ -16,7 +16,7 @@
 ensemble_estimates_table(
   samples,
   parameters,
-  probs = c(0.025, 0.95),
+  probs = c(0.025, 0.975),
   title = NULL,
   footnotes = NULL,
   warnings = NULL,
@@ -60,7 +60,7 @@ ensemble_diagnostics_table(
 )
 
 ensemble_estimates_empty_table(
-  probs = c(0.025, 0.95),
+  probs = c(0.025, 0.975),
   title = NULL,
   footnotes = NULL,
   warnings = NULL

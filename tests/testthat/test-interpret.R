@@ -190,6 +190,10 @@ test_that(".interpret.BF helper function works", {
   test_reference_text(result_weak_against, "interpret_BF_weak_against.txt")
   expect_match(result_weak_against, "weak evidence against")
 
+  result_none <- BayesTools:::.interpret.BF(1, "effect", NULL)
+  expect_match(result_none, "no evidence for or against the effect")
+  expect_match(result_none, "BF = 1.00")
+
 })
 
 
