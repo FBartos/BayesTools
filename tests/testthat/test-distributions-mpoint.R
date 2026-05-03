@@ -1,3 +1,5 @@
+skip_if_not_test_profile("unit")
+
 # ============================================================================ #
 # TEST FILE: Distributions - Multivariate Point
 # ============================================================================ #
@@ -19,6 +21,9 @@ test_that("Density function works", {
 
   expect_equal(dmpoint(1, 1), Inf)
   expect_equal(dmpoint(0, 1),   0)
+  expect_equal(dmpoint(1 + 1e-9, 1), 0)
+  expect_equal(dmpoint(NA_real_, 1), NA_real_)
+  expect_equal(dmpoint(matrix(c(0, NA_real_), nrow = 1), c(0, 1)), NA_real_)
 
   expect_equal(dmpoint(matrix(c(0, 1), ncol = 1), 1), c(0,   Inf))
   expect_equal(dmpoint(c(0, 1), c(0, 1)), Inf)
@@ -66,6 +71,7 @@ test_that("Quantile function works", {
   expect_equal(qmpoint(0, 1), matrix(-Inf))
   expect_equal(qmpoint(c(1, 1, 1), c(1, 1, 1)), matrix(1, ncol = 3, nrow = 3))
   expect_equal(qmpoint(c(1, 1), matrix(1:6, ncol = 3)), matrix(1:6, ncol = 3))
+  expect_equal(qmpoint(NA_real_, c(1, 2)), matrix(c(NA_real_, NA_real_), nrow = 1))
 
   expect_equal(qmpoint(c(0, 1), matrix(1:6, ncol = 3, byrow = TRUE), lower.tail = TRUE), matrix(c(-Inf, -Inf, -Inf, 4:6), byrow = 3, ncol = 3))
   expect_equal(qmpoint(log(c(0.5, 1)), matrix(1:6, ncol = 3), log.p = TRUE), matrix(1:6, ncol = 3))

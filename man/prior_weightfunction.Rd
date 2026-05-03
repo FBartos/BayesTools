@@ -38,7 +38,8 @@ supported and fixes the most significant bin to \code{omega = 1}.}
 omitted, a flat Dirichlet prior is used with one concentration parameter per
 bin.}
 
-\item{omega}{fixed publication weights, one per bin.}
+\item{omega}{fixed non-negative relative publication weights, one per bin.
+The reference-bin weight must be exactly 1.}
 
 \item{prior}{prior distribution for each non-reference weight.}
 
@@ -52,10 +53,10 @@ prior assigns mass above zero.}
 \code{prior_weightfunction} returns an object of class 'prior'.
 }
 \description{
-\code{prior_weightfunction} creates a prior distribution for fitting a RoBMA
-selection model. The \code{side} and \code{steps} arguments define the p-value
-bins, and the \code{weights} argument defines the prior on the publication
-weights in those bins.
+\code{prior_weightfunction} creates a prior distribution for
+fitting a RoBMA selection model. The \code{side} and \code{steps} arguments
+define the p-value bins, and the \code{weights} argument defines the prior on
+the publication weights in those bins.
 }
 \examples{
 p1 <- prior_weightfunction(
@@ -69,8 +70,6 @@ p2 <- prior_weightfunction(
   steps = c(.05),
   weights = wf_independent(prior("beta", list(1, 1)))
 )
-
-plot(p1)
 
 }
 \seealso{

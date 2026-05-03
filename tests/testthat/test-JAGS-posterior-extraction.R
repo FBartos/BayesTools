@@ -1,3 +1,5 @@
+skip_if_not_test_profile("unit")
+
 # ============================================================================ #
 # TEST FILE: Posterior Density Extraction Functions
 # ============================================================================ #
@@ -26,7 +28,7 @@ test_that(".extract_posterior_samples extracts samples correctly", {
   skip_if_not_installed("runjags")
   
   # Load runjags to ensure S3 methods are registered
-  library(runjags)
+  suppressPackageStartupMessages(library(runjags))
 
   # Create a proper runjags object structure for testing
   # The runjags package has an as.mcmc method that handles mcmc.list objects

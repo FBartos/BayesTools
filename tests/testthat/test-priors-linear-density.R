@@ -1,3 +1,5 @@
+skip_if_not_test_profile("unit")
+
 test_that("linear prior density matches analytic normal sums", {
 
   density <- BayesTools:::.prior_linear_combination_density(

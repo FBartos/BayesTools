@@ -2039,7 +2039,7 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
     # use analytical marginal summaries of the mapped cumulative Dirichlet weights
     plot_data <- .plot_data_prior_list.weightfunction(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                                                       n_points = n_points, n_samples = n_samples)
-    .lines.prior.weightfunction(prior_list, plot_data = plot_data, rescale_x = rescale_x, ...)
+    .lines.prior.weightfunction(plot_data = plot_data, rescale_x = rescale_x, ...)
 
   }else if(prior_type == "PETPEESE"){
 
@@ -2049,7 +2049,7 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
                                                 transformation = transformation, transformation_arguments = transformation_arguments,
                                                 transformation_settings = transformation_settings, prior_list_mu = prior_list_mu,
                                                 effect_direction = effect_direction)
-    .lines.prior.PETPEESE(prior_list, plot_data = plot_data, ...)
+    .lines.prior.PETPEESE(plot_data = plot_data, ...)
 
   }else if(prior_type == "simple"){
 
@@ -2138,7 +2138,7 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
     # use analytical marginal summaries of the mapped cumulative Dirichlet weights
     plot_data <- .plot_data_prior_list.weightfunction(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                                                       n_points = n_points, n_samples = n_samples)
-    geom <- .geom_prior.weightfunction(prior_list, plot_data = plot_data, rescale_x = rescale_x, ...)
+    geom <- .geom_prior.weightfunction(plot_data = plot_data, rescale_x = rescale_x, ...)
 
   }else if(prior_type == "PETPEESE"){
 
@@ -2148,7 +2148,7 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
                                                 transformation = transformation, transformation_arguments = transformation_arguments,
                                                 transformation_settings = transformation_settings, prior_list_mu = prior_list_mu,
                                                 effect_direction = effect_direction)
-    geom <- .geom_prior.PETPEESE(prior_list, plot_data = plot_data, ...)
+    geom <- .geom_prior.PETPEESE(plot_data = plot_data, ...)
 
   }else if(prior_type == "simple"){
 

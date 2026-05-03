@@ -179,15 +179,6 @@ shortened. Defaults to \code{FALSE}.}
 \item{formula_prefix}{whether the parameter prefix from formula should
 be printed. Defaults to \code{TRUE}.}
 
-\item{logBF}{whether the Bayes factor should be on log scale}
-
-\item{BF01}{whether the Bayes factor should be inverted}
-
-\item{BF_diagnostics}{whether to add MCMC diagnostics for Bayes factors
-computed from model indicator frequencies. The Bayes factor error is
-reported as a relative Monte Carlo standard error percentage. Defaults to
-\code{FALSE}.}
-
 \item{remove_parameters}{parameters to be removed from the summary.
 Can be \code{NULL} (default, no removal), a character vector of parameter
 names to remove, or \code{TRUE} to remove all parameters that are not
@@ -236,6 +227,15 @@ scale. Defaults to \code{FALSE}.}
 ESS, R-hat) from the output table. Defaults to \code{FALSE}. Setting to
 \code{TRUE} will exclude diagnostics columns regardless of the
 \code{conditional} setting.}
+
+\item{logBF}{whether the Bayes factor should be on log scale}
+
+\item{BF01}{whether the Bayes factor should be inverted}
+
+\item{BF_diagnostics}{whether to add MCMC diagnostics for Bayes factors
+computed from model indicator frequencies. The Bayes factor error is
+reported as a relative Monte Carlo standard error percentage. Defaults to
+\code{FALSE}.}
 }
 \value{
 \code{model_summary_table} returns a table with

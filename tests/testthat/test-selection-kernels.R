@@ -1,3 +1,5 @@
+skip_if_not_test_profile(c("unit", "fixture"))
+
 # TEST FILE: Selection kernel backend priors
 # ============================================================================ #
 
@@ -575,6 +577,7 @@ test_that("diagnostic prior bounds use weightfunction relative-weight support", 
 
 test_that("summary tables handle ordinary mixtures next to selection kernels", {
 
+  skip_if_not_test_profile("fixture")
   skip_if_not_installed("rjags")
   skip_if_missing_fits("fit_selection_kernel_summary")
 

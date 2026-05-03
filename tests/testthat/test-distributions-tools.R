@@ -1,3 +1,5 @@
+skip_if_not_test_profile("unit")
+
 # ============================================================================ #
 # TEST FILE: Distribution Tools Helpers
 # ============================================================================ #
@@ -24,6 +26,7 @@ test_that(".check_log works", {
   expect_error(BayesTools:::.check_log("TRUE"), "must be a logical")
   expect_error(BayesTools:::.check_log(1), "must be a logical")
   expect_error(BayesTools:::.check_log(NULL), "cannot be NULL")
+  expect_error(BayesTools:::.check_log(NA), "cannot contain NA")
 
 })
 
@@ -35,6 +38,7 @@ test_that(".check_log.p works", {
 
   expect_error(BayesTools:::.check_log.p("TRUE"), "must be a logical")
   expect_error(BayesTools:::.check_log.p(1), "must be a logical")
+  expect_error(BayesTools:::.check_log.p(NA), "cannot contain NA")
 
 })
 
@@ -46,6 +50,7 @@ test_that(".check_lower.tail works", {
 
   expect_error(BayesTools:::.check_lower.tail("TRUE"), "must be a logical")
   expect_error(BayesTools:::.check_lower.tail(1), "must be a logical")
+  expect_error(BayesTools:::.check_lower.tail(NA), "cannot contain NA")
 
 })
 
@@ -72,6 +77,7 @@ test_that(".check_n works", {
   expect_error(BayesTools:::.check_n(-1), "must be equal or higher than 1")
   expect_error(BayesTools:::.check_n(c(1, 2)), "must have length '1'")
   expect_error(BayesTools:::.check_n("a"), "must be a numeric")
+  expect_error(BayesTools:::.check_n(NA), "cannot contain NA")
 
 })
 

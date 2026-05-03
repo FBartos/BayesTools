@@ -11,7 +11,7 @@
 \usage{
 check_bool(
   x,
-  name,
+  name = deparse(substitute(x)),
   check_length = 1,
   allow_NULL = FALSE,
   allow_NA = TRUE,
@@ -20,7 +20,7 @@ check_bool(
 
 check_char(
   x,
-  name,
+  name = deparse(substitute(x)),
   check_length = 1,
   allow_values = NULL,
   allow_NULL = FALSE,
@@ -30,7 +30,7 @@ check_char(
 
 check_real(
   x,
-  name,
+  name = deparse(substitute(x)),
   lower = -Inf,
   upper = Inf,
   allow_bound = TRUE,
@@ -42,7 +42,7 @@ check_real(
 
 check_int(
   x,
-  name,
+  name = deparse(substitute(x)),
   lower = -Inf,
   upper = Inf,
   allow_bound = TRUE,
@@ -54,7 +54,7 @@ check_int(
 
 check_list(
   x,
-  name,
+  name = deparse(substitute(x)),
   check_length = 0,
   check_names = NULL,
   all_objects = FALSE,

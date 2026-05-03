@@ -11,14 +11,13 @@ An object of class \code{character} of length 57.
 prior_informed_medicine_names
 }
 \value{
-returns a character vector with the union of medical subfield names from the
-Cochrane database of systematic reviews.
+returns a character vector with names of medical subfields from Cochrane database of
+systematic reviews.
 }
 \description{
-Contains the union of names identifying the individual subfields from the
-Cochrane database of systematic reviews. Type-specific availability depends on
-the \code{type} argument passed to
-\code{\link[=prior_informed]{prior_informed()}}.
+Contains the union of names identifying the individual subfields from
+the Cochrane database of systematic reviews. Type-specific availability depends on
+the \code{type} argument passed to \code{\link[=prior_informed]{prior_informed()}}.
 }
 \examples{
 print(prior_informed_medicine_names)

@@ -1,3 +1,5 @@
+skip_if_not_test_profile(c("unit", "visual"))
+
 # ============================================================================ #
 # TEST FILE: Prior Print Function
 # ============================================================================ #
@@ -101,56 +103,60 @@ test_that("Prior print function works", {
   empty_plot <- function(){
     plot(NULL, xlim = c(0, 1), ylim = c(0, 1), axes = FALSE, ann = FALSE)
   }
-  vdiffr::expect_doppelganger("priors-print-1", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(0, 0, 0, 0))
-    empty_plot()
-    text(0.5, 1,   print(p1, plot = TRUE))
-    text(0.5, 0.9, print(p1, short_name = TRUE, plot = TRUE))
-    text(0.5, 0.8, print(p1, parameter_names = TRUE, plot = TRUE))
-    text(0.5, 0.7, print(p1, silent = TRUE, plot = TRUE))
-    text(0.5, 0.6, print(p2, plot = TRUE))
-    text(0.5, 0.5, print(p2, short_name = TRUE, plot = TRUE))
-    text(0.5, 0.4, print(p2, parameter_names = TRUE, plot = TRUE))
-    text(0.5, 0.3, print(p2, silent = TRUE, plot = TRUE))
-    text(0.5, 0.2, print(p3, silent = TRUE, plot = TRUE))
-    text(0.5, 0.1, print(p4, silent = TRUE, plot = TRUE))
-  })
+  if (bayestools_test_profile_includes("visual")) {
+    testthat::skip_if_not_installed("vdiffr")
 
-  vdiffr::expect_doppelganger("priors-print-2", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(0, 0, 0, 0))
-    empty_plot()
-    text(0.5, 1,   print(p5,  plot = TRUE))
-    text(0.5, 0.9, print(p6,  plot = TRUE))
-    text(0.5, 0.8, print(p7,  plot = TRUE))
-    text(0.5, 0.7, print(p8,  plot = TRUE))
-    text(0.5, 0.6, print(p9,  plot = TRUE))
-    text(0.5, 0.5, print(p10, plot = TRUE))
-    text(0.5, 0.4, print(p7,  parameter_names = TRUE, plot = TRUE))
-    text(0.5, 0.3, print(p8,  parameter_names = TRUE, plot = TRUE))
-    text(0.5, 0.2, print(p9,  parameter_names = TRUE, plot = TRUE))
-    text(0.5, 0.1, print(p10, parameter_names = TRUE, plot = TRUE))
-  })
+    vdiffr::expect_doppelganger("priors-print-1", function(){
+      oldpar <- graphics::par(no.readonly = TRUE)
+      on.exit(graphics::par(mar = oldpar[["mar"]]))
+      par(mar = c(0, 0, 0, 0))
+      empty_plot()
+      text(0.5, 1,   print(p1, plot = TRUE))
+      text(0.5, 0.9, print(p1, short_name = TRUE, plot = TRUE))
+      text(0.5, 0.8, print(p1, parameter_names = TRUE, plot = TRUE))
+      text(0.5, 0.7, print(p1, silent = TRUE, plot = TRUE))
+      text(0.5, 0.6, print(p2, plot = TRUE))
+      text(0.5, 0.5, print(p2, short_name = TRUE, plot = TRUE))
+      text(0.5, 0.4, print(p2, parameter_names = TRUE, plot = TRUE))
+      text(0.5, 0.3, print(p2, silent = TRUE, plot = TRUE))
+      text(0.5, 0.2, print(p3, silent = TRUE, plot = TRUE))
+      text(0.5, 0.1, print(p4, silent = TRUE, plot = TRUE))
+    })
 
-  vdiffr::expect_doppelganger("priors-print-3", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(0, 0, 0, 0))
-    empty_plot()
-    text(0.5, 1,   print(p11, plot = TRUE))
-    text(0.5, 0.9, print(p12, plot = TRUE))
-    text(0.5, 0.8, print(p13, plot = TRUE))
-    text(0.5, 0.7, print(p14, plot = TRUE))
-    text(0.5, 0.6, print(p15, plot = TRUE))
-    text(0.5, 0.5, print(p16, plot = TRUE))
-    text(0.5, 0.4, print(p17, plot = TRUE))
-    text(0.5, 0.3, print(p18, plot = TRUE))
-    text(0.5, 0.2, print(p19, plot = TRUE))
-    text(0.5, 0.1, print(p20, plot = TRUE))
-  })
+    vdiffr::expect_doppelganger("priors-print-2", function(){
+      oldpar <- graphics::par(no.readonly = TRUE)
+      on.exit(graphics::par(mar = oldpar[["mar"]]))
+      par(mar = c(0, 0, 0, 0))
+      empty_plot()
+      text(0.5, 1,   print(p5,  plot = TRUE))
+      text(0.5, 0.9, print(p6,  plot = TRUE))
+      text(0.5, 0.8, print(p7,  plot = TRUE))
+      text(0.5, 0.7, print(p8,  plot = TRUE))
+      text(0.5, 0.6, print(p9,  plot = TRUE))
+      text(0.5, 0.5, print(p10, plot = TRUE))
+      text(0.5, 0.4, print(p7,  parameter_names = TRUE, plot = TRUE))
+      text(0.5, 0.3, print(p8,  parameter_names = TRUE, plot = TRUE))
+      text(0.5, 0.2, print(p9,  parameter_names = TRUE, plot = TRUE))
+      text(0.5, 0.1, print(p10, parameter_names = TRUE, plot = TRUE))
+    })
+
+    vdiffr::expect_doppelganger("priors-print-3", function(){
+      oldpar <- graphics::par(no.readonly = TRUE)
+      on.exit(graphics::par(mar = oldpar[["mar"]]))
+      par(mar = c(0, 0, 0, 0))
+      empty_plot()
+      text(0.5, 1,   print(p11, plot = TRUE))
+      text(0.5, 0.9, print(p12, plot = TRUE))
+      text(0.5, 0.8, print(p13, plot = TRUE))
+      text(0.5, 0.7, print(p14, plot = TRUE))
+      text(0.5, 0.6, print(p15, plot = TRUE))
+      text(0.5, 0.5, print(p16, plot = TRUE))
+      text(0.5, 0.4, print(p17, plot = TRUE))
+      text(0.5, 0.3, print(p18, plot = TRUE))
+      text(0.5, 0.2, print(p19, plot = TRUE))
+      text(0.5, 0.1, print(p20, plot = TRUE))
+    })
+  }
 
   p21 <- prior_spike_and_slab(prior("gamma", list(1, 2), list(0, Inf)),
                               prior_inclusion = prior("beta", list(3, 2)))
@@ -188,22 +194,30 @@ test_that("Prior print function works", {
   expect_equal(utils::capture.output(print(p24)), c(
     "b:", "  (1/6) * Normal(0, 1)",  "a:", "  (5/6) * Normal(-3, 1)"
   ))
-  vdiffr::expect_doppelganger("priors-print-4", function(){
-    empty_plot()
-    text(0.5, 1, print(p21, plot = TRUE))
-    text(0.5, 0.9, print(p22, plot = TRUE))
-    text(0.5, 0.8, print(p23, plot = TRUE))
-    text(0.5, 0.7, print(p24, plot = TRUE))
-  })
+  if (bayestools_test_profile_includes("visual")) {
+    testthat::skip_if_not_installed("vdiffr")
+
+    vdiffr::expect_doppelganger("priors-print-4", function(){
+      empty_plot()
+      text(0.5, 1, print(p21, plot = TRUE))
+      text(0.5, 0.9, print(p22, plot = TRUE))
+      text(0.5, 0.8, print(p23, plot = TRUE))
+      text(0.5, 0.7, print(p24, plot = TRUE))
+    })
+  }
 
   # prior expressions
   pe1 <- prior("normal", parameters = list(0, expression(x)))
   expect_equal(utils::capture.output(print(pe1)), "Normal(0, x)")
 
-  vdiffr::expect_doppelganger("priors-print-e1", function(){
-    empty_plot()
-    text(0.5, 1, print(pe1, plot = TRUE))
-  })
+  if (bayestools_test_profile_includes("visual")) {
+    testthat::skip_if_not_installed("vdiffr")
+
+    vdiffr::expect_doppelganger("priors-print-e1", function(){
+      empty_plot()
+      text(0.5, 1, print(pe1, plot = TRUE))
+    })
+  }
 })
 
 

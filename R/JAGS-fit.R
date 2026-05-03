@@ -95,6 +95,39 @@
 #' @name JAGS_fit
 NULL
 
+.JAGS_require_packages <- function(required_packages, cl = NULL){
+
+  if(length(required_packages) == 0)
+    return(invisible(logical(0)))
+
+  required_packages <- unique(required_packages)
+
+  if(is.null(cl)){
+    package_loaded <- vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)
+  }else{
+    package_loaded <- vapply(required_packages, function(package){
+      all(unlist(parallel::clusterCall(
+        cl,
+        function(package) requireNamespace(package, quietly = TRUE),
+        package
+      ), use.names = FALSE))
+    }, logical(1))
+  }
+
+  missing_packages <- names(package_loaded)[!package_loaded]
+  if(length(missing_packages) > 0)
+    stop(
+      paste0(
+        "Required packages are not available: '",
+        paste0(missing_packages, collapse = "', '"),
+        "'."
+      ),
+      call. = FALSE
+    )
+
+  invisible(package_loaded)
+}
+
 #' @rdname JAGS_fit
 JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL, formula_scale_list = NULL,
                      chains = 4, adapt = 500, burnin = 1000, sample = 4000, thin = 1,
@@ -110,7 +143,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   JAGS_check_and_list_fit_settings(chains, adapt, burnin, sample, thin, autofit, parallel, cores, silent, seed)
   autofit_control <- JAGS_check_and_list_autofit_settings(autofit_control)
   check_char(add_parameters, "add_parameters", check_length = 0, allow_NULL = TRUE)
-  check_char(required_packages, "required_packages", check_length = 0, allow_NULL = TRUE)
+  check_char(required_packages, "required_packages", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   check_list(formula_list, "formula_list", allow_NULL = TRUE)
   check_list(formula_data_list, "formula_data_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
   check_list(formula_prior_list, "formula_prior_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
@@ -167,19 +200,15 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   # parallel vs. not
   if(parallel){
     cl <- parallel::makePSOCKcluster(cores)
-    on.exit(try(parallel::stopCluster(cl)))
-    for(i in seq_along(required_packages)){
-      parallel::clusterCall(cl, function(x) requireNamespace(required_packages[i]))
-    }
+    on.exit(try(parallel::stopCluster(cl), silent = TRUE), add = TRUE)
+    .JAGS_require_packages(required_packages, cl)
     model_call <- c(
       model_call,
       method = "rjparallel",
       cl     = list(cl)
     )
   }else{
-    for(i in seq_along(required_packages)){
-      requireNamespace(required_packages[i])
-    }
+    .JAGS_require_packages(required_packages)
     model_call <- c(
       model_call,
       method = "rjags"
@@ -195,7 +224,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   if(silent){
     user_silent.jags    <- runjags::runjags.getOption("silent.jags")
     user_silent.runjags <- runjags::runjags.getOption("silent.runjags")
-    on.exit(runjags::runjags.options(silent.jags = user_silent.jags, silent.runjags = user_silent.runjags))
+    on.exit(runjags::runjags.options(silent.jags = user_silent.jags, silent.runjags = user_silent.runjags), add = TRUE)
     runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
   }
 
@@ -320,10 +349,8 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
       cores <- length(fit[["mcmc"]])
     }
     cl <- parallel::makePSOCKcluster(cores)
-    on.exit(try(parallel::stopCluster(cl)))
-    for(i in seq_along(required_packages)){
-      parallel::clusterCall(cl, function(x) requireNamespace(required_packages[i]))
-    }
+    on.exit(try(parallel::stopCluster(cl), silent = TRUE), add = TRUE)
+    .JAGS_require_packages(required_packages, cl)
     refit_call <- list(
       runjags.object = fit,
       sample         = autofit_control[["sample_extend"]],
@@ -332,9 +359,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
       summarise      = FALSE
     )
   }else{
-    for(i in seq_along(required_packages)){
-      requireNamespace(required_packages[i])
-    }
+    .JAGS_require_packages(required_packages)
     refit_call <- list(
       runjags.object = fit,
       sample         = autofit_control[["sample_extend"]],
@@ -352,7 +377,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   if(silent){
     user_silent.jags    <- runjags::runjags.getOption("silent.jags")
     user_silent.runjags <- runjags::runjags.getOption("silent.runjags")
-    on.exit(runjags::runjags.options(silent.jags = user_silent.jags, silent.runjags = user_silent.runjags))
+    on.exit(runjags::runjags.options(silent.jags = user_silent.jags, silent.runjags = user_silent.runjags), add = TRUE)
     runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
   }
 

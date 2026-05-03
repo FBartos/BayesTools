@@ -28,7 +28,6 @@ Sys.setenv(BAYESTOOLS_TEST_FILES_DIR = test_files_dir)
 # ============================================================================ #
 # HELPER FUNCTIONS: Reference File Testing
 # ============================================================================ #
-require("runjags")
 
 # Process reference file: save if GENERATE_REFERENCE_FILES=TRUE, test otherwise
 test_reference_table <- function(table, filename, info_msg = NULL,
@@ -153,6 +152,10 @@ skip_if_missing_fits <- function(names) {
       ". Run test-00-model-fits.R first."
     ))
   }
+}
+
+skip_if_no_fit_cache <- function() {
+  skip_if_no_fits()
 }
 
 # ============================================================================ #

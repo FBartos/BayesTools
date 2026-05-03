@@ -1,3 +1,5 @@
+skip_if_not_test_profile("unit")
+
 # ============================================================================ #
 # TEST FILE: Input Validation Tests for Tools
 # ============================================================================ #
@@ -79,6 +81,7 @@ test_that("check_char validates character inputs", {
   expect_null(check_char(as.character(stats::rbinom(5, 1, .5)), "", check_length = 5))
   expect_null(check_char(c("string", "string1"),  "", check_length = 0, allow_values = c("string", "string1")))
   expect_null(check_char(c(NA, ""),  "", check_length = 2))
+  expect_null(check_char(c("string", NA), "", check_length = 0, allow_values = "string"))
 
   # Invalid type: matrix
   expect_error(
@@ -120,6 +123,11 @@ test_that("check_char validates character inputs", {
     check_char(c("a", NA), "test object", allow_NA = FALSE, check_length = FALSE),
     "The 'test object' argument cannot contain NA/NaN values."
   )
+  # Missing names are inferred for better diagnostics in internal checks
+  expect_error(
+    check_char(1),
+    "The '1' argument must be a character vector."
+  )
 })
 
 
@@ -134,6 +142,8 @@ test_that("check_real validates numeric inputs", {
   expect_null(check_real(stats::rbeta(1, 1, 1), "",  upper = 1))
   expect_null(check_real(c(0, 1), "", lower = 0, upper = 1, check_length = 2))
   expect_null(check_real(c(NA, NaN),  "", check_length = 2))
+  expect_null(check_real(c(NA_real_, 0), "", upper = 1, check_length = 0))
+  expect_null(check_real(c(NA_real_, 0), "", upper = 1, allow_bound = FALSE, check_length = 0))
 
   # Invalid type: matrix
   expect_error(

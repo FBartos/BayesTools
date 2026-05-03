@@ -1,3 +1,5 @@
+skip_if_not_test_profile("unit")
+
 # ============================================================================ #
 # TEST FILE: Distributions - Point
 # ============================================================================ #
@@ -18,6 +20,9 @@ test_that("Density function works", {
 
   expect_equal(dpoint(1, 1), Inf)
   expect_equal(dpoint(0, 1),   0)
+  expect_equal(dpoint(1 + 1e-9, 1), 0)
+  expect_equal(dpoint(NA_real_, 1), NA_real_)
+  expect_equal(dpoint(1, NA_real_), NA_real_)
 
   expect_equal(dpoint(c(0, 1), 1),       c(0,   Inf))
   expect_equal(dpoint(c(0, 1), c(0, 1)), c(Inf, Inf))

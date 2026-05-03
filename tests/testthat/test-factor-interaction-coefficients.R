@@ -1,3 +1,5 @@
+skip_if_not_test_profile("unit")
+
 test_that("as_mixed_posteriors handles treatment factor-continuous interaction coefficients", {
 
   df <- data.frame(

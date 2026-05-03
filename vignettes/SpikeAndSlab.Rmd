@@ -15,9 +15,8 @@ vignette: >
 
 
 ```{r setup, include = FALSE}
-# is_check <- ("CheckExEnv" %in% search()) ||
-#              any(c("_R_CHECK_TIMINGS_", "_R_CHECK_LICENSE_") %in% names(Sys.getenv()))
-is_check <- F
+is_check <- ("CheckExEnv" %in% search()) ||
+             any(c("_R_CHECK_TIMINGS_", "_R_CHECK_LICENSE_") %in% names(Sys.getenv()))
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment  = "#>",
@@ -260,7 +259,7 @@ JAGS_estimates_table(MS, conditional = TRUE)
 The estimates are essentially identical to the estimates from the previous models. Finally, we can also obtain summary of the inclusion probabilities via the `JAGS_inference_table` function
 
 ```{r}
-JAGS_inference_table(MS)
+JAGS_inference_table(MS, BF_diagnostics = TRUE)
 ```
 
 As before, we find absence of evidence for either of the hypotheses, $\text{BF}_{10} = 1.157$, with posterior probability of $P(\mathcal{M}_{1} \mid \text{data}) = 0.536$.

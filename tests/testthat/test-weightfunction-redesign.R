@@ -1,3 +1,5 @@
+skip_if_not_test_profile(c("unit", "fixture"))
+
 # TEST FILE: Weightfunction prior redesign
 # ============================================================================ #
 #
@@ -237,6 +239,7 @@ test_that("heterogeneous bias mixtures map cumulative, omega, log-omega, fixed, 
 
 test_that("JAGS syntax and fitting allow independent omega weights above one", {
 
+  skip_if_not_test_profile("fixture")
   skip_if_not_installed("rjags")
   skip_if_missing_fits(c("fit_wf_independent_gamma", "fit_wf_independent_log"))
 
@@ -276,6 +279,7 @@ test_that("JAGS syntax and fitting allow independent omega weights above one", {
 
 test_that("JAGS fits heterogeneous bias mixtures with omega and log-omega weights above one", {
 
+  skip_if_not_test_profile("fixture")
   skip_if_not_installed("rjags")
   skip_if_missing_fits("fit_bias_heterogeneous_wf")
 
@@ -302,6 +306,7 @@ test_that("JAGS fits heterogeneous bias mixtures with omega and log-omega weight
 
 test_that("JAGS fits full bias mixtures with PET, PEESE, and heterogeneous weightfunctions", {
 
+  skip_if_not_test_profile("fixture")
   skip_if_not_installed("rjags")
   skip_if_missing_fits("fit_bias_petpeese_heterogeneous_wf")
 

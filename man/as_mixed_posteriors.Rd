@@ -36,8 +36,7 @@ automatically detect the transformation and use transformed deterministic prior 
 Requires a model fitted with \code{formula_scale_list}. Defaults to \code{FALSE}.}
 
 \item{n_prior_samples}{controls the numerical grid used for transformed
-prior densities when
-\code{transform_scaled = TRUE}. Defaults to 10000.}
+prior densities when \code{transform_scaled = TRUE}. Defaults to 10000.}
 }
 \value{
 \code{as_mix_posteriors} returns a named list of mixed posterior
