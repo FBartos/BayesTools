@@ -228,7 +228,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   if(inherits(fit, "runjags")){
 
     # get posterior and merge chains
-    posterior <- suppressWarnings(coda::as.mcmc(fit))
+    posterior <- .extract_posterior_samples(fit, as_list = FALSE)
 
   }else if(is.list(fit) & all(sapply(fit, inherits, what = "mcarray"))){
 

@@ -1,4 +1,4 @@
-skip_if_not_test_profile("visual")
+skip_if_not_test_profile(c("visual", "visual-fixture"))
 
 # ============================================================================ #
 # TEST FILE: JAGS Ensemble Plot Functions
@@ -15,7 +15,7 @@ skip_if_not_test_profile("visual")
 #
 # SKIP CONDITIONS:
 #   - First section (prior plots): Can run on CRAN (pure R)
-#   - Second section (posterior plots): skip_if_no_fits(), skip_if_not_installed()
+#   - Second section (posterior plots): visual-fixture profile, skip_if_no_fits(), skip_if_not_installed()
 #   - skip_on_os(): Multivariate sampling differs across OSes
 #
 # MODELS/FIXTURES:
@@ -28,6 +28,7 @@ REFERENCE_DIR <<- testthat::test_path("..", "results", "JAGS-ensemble-plots")
 source(testthat::test_path("common-functions.R"))
 
 test_that("helper functions work", {
+  skip_if_not_visual_tests()
 
   # join duplicate
   prior_list       <- list(
@@ -83,6 +84,7 @@ test_that("helper functions work", {
 
 
 test_that("prior plot functions (simple) work", {
+  skip_if_not_visual_tests()
 
   ### simple cases
   # continuous
@@ -185,14 +187,8 @@ test_that("prior plot functions (simple) work", {
   })
 })
 
-# ============================================================================ #
-# SECTION: Tests requiring pre-fitted models (skip on CRAN)
-# ============================================================================ #
-skip_on_cran()
-skip_if_no_fits()
-skip_if_not_installed("vdiffr")
-
 test_that("prior plot functions (PET-PEESE) work", {
+  skip_if_not_visual_tests()
 
   ### simple cases
   # continuous
@@ -295,6 +291,7 @@ test_that("prior plot functions (PET-PEESE) work", {
 })
 
 test_that("prior plot functions (PET-PEESE) effect_direction works", {
+  skip_if_not_visual_tests()
 
   ### Test effect_direction parameter for PET-PEESE prior plots
   prior_list <- list(
@@ -329,6 +326,7 @@ test_that("prior plot functions (PET-PEESE) effect_direction works", {
 })
 
 test_that("prior plot functions (weightfunctions) work", {
+  skip_if_not_visual_tests()
 
   ### simple cases
   # continuous
@@ -424,6 +422,7 @@ test_that("prior plot functions (weightfunctions) work", {
 })
 
 test_that("prior plot functions (orthonormal) work", {
+  skip_if_not_visual_tests()
 
   ### simple cases
   prior_list       <- list(
@@ -477,6 +476,7 @@ test_that("prior plot functions (orthonormal) work", {
 })
 
 test_that("prior plot functions (treatment) work", {
+  skip_if_not_visual_tests()
 
   ### simple cases
   prior_list       <- list(
@@ -526,6 +526,7 @@ test_that("prior plot functions (treatment) work", {
 })
 
 test_that("prior plot functions (independent) work", {
+  skip_if_not_visual_tests()
 
   ### simple cases
   prior_list       <- list(
@@ -566,6 +567,7 @@ test_that("prior plot functions (independent) work", {
 })
 
 test_that("prior plot functions (meandif) work", {
+  skip_if_not_visual_tests()
 
   ### simple cases
   prior_list       <- list(
@@ -617,6 +619,14 @@ test_that("prior plot functions (meandif) work", {
   })
 
 })
+
+# ============================================================================ #
+# SECTION: Tests requiring pre-fitted models (skip on CRAN)
+# ============================================================================ #
+skip_if_not_visual_fixture_tests()
+skip_on_cran()
+skip_if_no_fits()
+skip_if_not_installed("vdiffr")
 
 test_that("posterior plot functions (simple) work", {
 

@@ -7,9 +7,13 @@ if (!exists("GENERATE_REFERENCE_FILES")) {
 
 
 test_files_dir <- Sys.getenv("BAYESTOOLS_TEST_FILES_DIR")
-if (test_files_dir == "" || !dir.exists(test_files_dir)) {
+if (test_files_dir == "") {
   test_files_dir <- file.path(tempdir(), "BayesTools_test_files")
 }
+if (!dir.exists(test_files_dir)) {
+  dir.create(test_files_dir, showWarnings = FALSE, recursive = TRUE)
+}
+test_files_dir <- normalizePath(test_files_dir, winslash = "/", mustWork = TRUE)
 
 # Setup directory for saving fitted models
 temp_fits_dir    <- file.path(test_files_dir, "fits")
@@ -425,25 +429,121 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
   )
 }
 
-# Skip model fitting if cached fits exist and ROBMA_TEST_SKIP_REFIT is TRUE
-skip_refit_if_cached <- function(name, required_fits = NULL) {
-  # refitting settings
-  skip_refit <- Sys.getenv("BAYESTOOLS_TEST_SKIP_REFIT")
-  skip_refit <- if (skip_refit == "") TRUE else as.logical(skip_refit)
+# Fit-cache helpers. The marker is written only after the cache has been
+# validated, so a failed fit run cannot make the next run skip refitting.
+.test_cache_indicator_file <- function(name) {
+  file.path(temp_temp_dir, paste0(name, ".txt"))
+}
 
-  # fitted indicator
-  fitted_indicator <- file.exists(file.path(temp_temp_dir, paste0(name, ".txt")))
-  required_fits_available <- TRUE
-  if (!is.null(required_fits)) {
-    required_fits_available <- all(file.exists(file.path(temp_fits_dir, paste0(required_fits, ".RDS"))))
+.test_cache_bool_env <- function(name, default) {
+  value <- Sys.getenv(name)
+  if (value == "") {
+    return(default)
   }
 
-  if (skip_refit && fitted_indicator && required_fits_available) {
-    skip("Skipping model refitting: cached fits exist and BAYESTOOLS_TEST_SKIP_REFIT=TRUE.")
+  value <- tolower(value)
+  if (value %in% c("true", "t", "1", "yes", "y")) {
+    return(TRUE)
+  }
+  if (value %in% c("false", "f", "0", "no", "n")) {
+    return(FALSE)
   }
 
-  # tests are not going to be skipped -- add fits done indicator into `temp_temp_dir`
-  file.create(file.path(temp_temp_dir, paste0(name, ".txt")))
+  stop(name, " must be TRUE or FALSE.", call. = FALSE)
+}
+
+.test_cache_paths_complete <- function(paths) {
+  length(paths) == 0L || all(file.exists(paths))
+}
+
+.test_cache_registry_requirements <- function(registry_file = NULL) {
+  if (is.null(registry_file)) {
+    return(list(fits = character(), margliks = character(), files = character()))
+  }
+
+  if (!file.exists(registry_file)) {
+    return(list(fits = character(), margliks = character(), files = registry_file))
+  }
+
+  registry <- readRDS(registry_file)
+  fit_names <- unique(registry$model_name)
+  has_marglik <- registry$has_marglik
+  has_marglik[is.na(has_marglik)] <- FALSE
+  marglik_names <- unique(registry$model_name[has_marglik])
+
+  list(
+    fits = fit_names,
+    margliks = marglik_names,
+    files = registry_file
+  )
+}
+
+.test_cache_requirements_complete <- function(required_fits = NULL,
+                                              required_margliks = NULL,
+                                              required_files = NULL,
+                                              registry_file = NULL) {
+  registry_requirements <- .test_cache_registry_requirements(registry_file)
+
+  required_fits <- unique(c(required_fits, registry_requirements$fits))
+  required_margliks <- unique(c(required_margliks, registry_requirements$margliks))
+  required_files <- unique(c(required_files, registry_requirements$files))
+
+  fit_files <- file.path(temp_fits_dir, paste0(required_fits, ".RDS"))
+  marglik_files <- file.path(temp_marglik_dir, paste0(required_margliks, ".RDS"))
+
+  .test_cache_paths_complete(fit_files) &&
+    .test_cache_paths_complete(marglik_files) &&
+    .test_cache_paths_complete(required_files)
+}
+
+# Skip model fitting if a validated cache exists and BAYESTOOLS_TEST_SKIP_REFIT is TRUE.
+skip_refit_if_cached <- function(name, required_fits = NULL, required_margliks = NULL,
+                                 required_files = NULL, registry_file = NULL) {
+  skip_refit <- .test_cache_bool_env("BAYESTOOLS_TEST_SKIP_REFIT", TRUE)
+  indicator_file <- .test_cache_indicator_file(name)
+
+  cache_complete <- file.exists(indicator_file) &&
+    .test_cache_requirements_complete(
+      required_fits = required_fits,
+      required_margliks = required_margliks,
+      required_files = required_files,
+      registry_file = registry_file
+    )
+
+  if (skip_refit && cache_complete) {
+    skip("Skipping model refitting: validated cache exists and BAYESTOOLS_TEST_SKIP_REFIT=TRUE.")
+  }
+
+  if (file.exists(indicator_file)) {
+    unlink(indicator_file)
+  }
+
+  invisible(FALSE)
+}
+
+mark_refit_cache_complete <- function(name, required_fits = NULL, required_margliks = NULL,
+                                      required_files = NULL, registry_file = NULL) {
+  cache_complete <- .test_cache_requirements_complete(
+    required_fits = required_fits,
+    required_margliks = required_margliks,
+    required_files = required_files,
+    registry_file = registry_file
+  )
+
+  if (!cache_complete) {
+    stop("Cannot mark cache complete because required cache artifacts are missing.", call. = FALSE)
+  }
+
+  writeLines(
+    c(
+      paste("name:", name),
+      paste("completed_at:", format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")),
+      paste("test_files_dir:", test_files_dir)
+    ),
+    .test_cache_indicator_file(name)
+  )
+
+  invisible(TRUE)
 }
 
 # Clean cached fitted models and margliks

@@ -499,7 +499,7 @@ JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 5
   check_bool(check_indicators, "check_indicators")
 
   # extract samples and parameter information
-  mcmc_samples_list <- coda::as.mcmc.list(fit)
+  mcmc_samples_list <- .extract_posterior_samples(fit, as_list = TRUE)
   mcmc_samples      <- do.call(rbind, mcmc_samples_list)
   
   # build remove_parameters list: point priors, spike priors, indicators, inclusions

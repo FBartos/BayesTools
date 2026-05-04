@@ -5,6 +5,20 @@ on:
     branches: [main, master, pre-release]
   pull_request:
     branches: [main, master, pre-release]
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Test profile to run
+        required: true
+        default: unit
+        type: choice
+        options:
+          - unit
+          - fixture
+          - visual
+          - visual-fixture
+          - fit
+          - all
 
 jobs:
   test:
@@ -130,7 +144,6 @@ jobs:
           devtools::install()
         shell: Rscript {0}
 
-      - name: Run Unit Tests
+      - name: Run Test Profile
         run: |
-          devtools::test(stop_on_failure = TRUE)
-        shell: Rscript {0}
+          Rscript tools/test-profile.R "${{ github.event_name == 'workflow_dispatch' && inputs.profile || 'unit' }}"

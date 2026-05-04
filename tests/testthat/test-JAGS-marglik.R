@@ -96,8 +96,6 @@ test_that("bias mixtures fail explicitly in bridge-sampling helpers", {
   )
 })
 
-skip_refit_if_cached("JAGS-marglik")
-
 # This file tests the JAGS marginal likelihood computation functions
 # It uses simple models where the log marginal likelihood is known to be 0
 # (for prior samples, the marginal likelihood for any proper prior is 1, log(1) = 0)
@@ -483,7 +481,7 @@ test_that("JAGS formula marglik reconstructs inverse-gamma terms on original sca
 
 test_that("JAGS marglik reconstructs indexed factor inverse-gamma auxiliaries", {
   theta_prior <- prior_factor("invgamma", list(2, 1), contrast = "independent")
-  theta_prior$parameters$K <- 2
+  attr(theta_prior, "levels") <- 2
 
   parameters <- BayesTools:::.JAGS_marglik_parameters.factor(
     samples = c("inv_theta[1]" = 2, "inv_theta[2]" = 4),

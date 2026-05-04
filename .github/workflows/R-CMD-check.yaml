@@ -168,7 +168,7 @@ jobs:
             build_args  = c("--no-build-vignettes"),
             error_on    = "warning",
             check_dir   = "check")
-        shell: Rscript {0}"
+        shell: Rscript {0}
 
       - name: Check
         if: runner.os == 'Windows'
