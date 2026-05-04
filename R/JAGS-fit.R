@@ -172,6 +172,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     formula_scale_info <- lapply(formula_output, function(output) output[["formula_scale"]])
     formula_scale_info <- formula_scale_info[!sapply(formula_scale_info, is.null)]
     if(length(formula_scale_info) == 0) formula_scale_info <- NULL
+    formula_design_info <- lapply(formula_output, function(output) output[["formula_design"]])
 
     # add the formula syntax to the model syntax
     opening_bracket <- regexpr("{", model_syntax, fixed = TRUE)[1]
@@ -180,6 +181,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     model_syntax    <- paste0(syntax_start, "\n", formula_syntax, "\n", syntax_end)
   }else{
     formula_scale_info <- NULL
+    formula_design_info <- NULL
   }
 
 
@@ -323,6 +325,9 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     # Each element contains the scaling info for that parameter's predictors
     attr(fit, "formula_scale") <- formula_scale_info
   }
+  if(!is.null(formula_design_info)){
+    attr(fit, "formula_design") <- formula_design_info
+  }
 
   class(fit) <- c(class(fit), "BayesTools_fit")
 
@@ -341,6 +346,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   model_syntax      <- attr(fit, "model_syntax")
   required_packages <- attr(fit, "required_packages")
   formula_scale     <- attr(fit, "formula_scale")
+  formula_design    <- attr(fit, "formula_design")
   autofit_control <- JAGS_check_and_list_autofit_settings(autofit_control)
 
   # parallel vs. not
@@ -426,6 +432,9 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   attr(fit, "required_packages") <- required_packages
   if(!is.null(formula_scale)){
     attr(fit, "formula_scale") <- formula_scale
+  }
+  if(!is.null(formula_design)){
+    attr(fit, "formula_design") <- formula_design
   }
 
   class(fit) <- c(class(fit), "BayesTools_fit")

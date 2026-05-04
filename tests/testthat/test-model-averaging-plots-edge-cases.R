@@ -393,6 +393,95 @@ test_that("omega plot helpers preserve composed selection branches in bias mixtu
   expect_equal(prior_data$points1$x, .5, tolerance = 1e-8)
 })
 
+.test_weightfunction_posterior_samples <- function(){
+
+  weight_prior <- prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .5)))
+  omega_samples <- matrix(c(rep(1, 20), rep(.5, 20)), ncol = 2)
+  colnames(omega_samples) <- c("omega[0,0.05]", "omega[0.05,1]")
+  attr(omega_samples, "prior_list") <- list(weight_prior)
+  attr(omega_samples, "models_ind") <- rep(1, nrow(omega_samples))
+  class(omega_samples) <- c("matrix", "mixed_posteriors")
+
+  samples <- list(omega = omega_samples)
+  class(samples) <- c("as_mixed_posteriors", "mixed_posteriors")
+  samples
+}
+
+test_that("plot_posterior draws observed p-values on ggplot weightfunction plots", {
+
+  samples <- .test_weightfunction_posterior_samples()
+  p <- c(.025, .05, .8)
+
+  plot <- plot_posterior(
+    samples,
+    "weightfunction",
+    plot_type = "ggplot",
+    data = data.frame(p = p),
+    show_data = TRUE,
+    rescale_x = TRUE,
+    dots_data = list(color = "red", alpha = .5, linewidth = .4, rug_side = "top", rug_height = .02)
+  )
+
+  rug_layers <- vapply(plot$layers, function(layer) inherits(layer$geom, "GeomRug"), logical(1))
+  rug_layer <- plot$layers[[which(rug_layers)]]
+  expected_p <- stats::approx(c(0, .05, 1), c(0, .5, 1), xout = p, rule = 2)$y
+
+  expect_s3_class(plot, "ggplot")
+  expect_equal(sum(rug_layers), 1L)
+  expect_equal(rug_layer$data$p, expected_p, tolerance = 1e-8)
+  expect_equal(rug_layer$geom_params$sides, "t")
+})
+
+test_that("plot_posterior draws observed p-values on base weightfunction plots", {
+
+  samples <- .test_weightfunction_posterior_samples()
+
+  device_file <- tempfile(fileext = ".pdf")
+  grDevices::pdf(device_file)
+  on.exit(grDevices::dev.off(), add = TRUE)
+
+  expect_silent(plot_posterior(
+    samples,
+    "weightfunction",
+    plot_type = "base",
+    data = c(.01, .2, .8),
+    show_data = TRUE,
+    rescale_x = FALSE,
+    dots_data = list(col = "blue", lwd = 2, side = "top", height = .02)
+  ))
+})
+
+test_that("plot_posterior validates observed p-value rug inputs", {
+
+  samples <- .test_weightfunction_posterior_samples()
+
+  expect_error(
+    plot_posterior(samples, "weightfunction", show_data = TRUE),
+    "'data' must be supplied when 'show_data = TRUE'.",
+    fixed = TRUE
+  )
+  expect_error(
+    plot_posterior(samples, "mu", show_data = TRUE, data = .1),
+    "'show_data' is currently supported only for weightfunction posterior plots.",
+    fixed = TRUE
+  )
+  expect_error(
+    plot_posterior(samples, "weightfunction", show_data = TRUE, data = .1, individual = TRUE),
+    "'show_data' is supported only for the full weightfunction posterior plot.",
+    fixed = TRUE
+  )
+  expect_error(
+    plot_posterior(samples, "weightfunction", show_data = TRUE, data = data.frame(q = .1)),
+    "'data' must be a numeric vector of p-values or a data frame with a 'p' column.",
+    fixed = TRUE
+  )
+  expect_error(
+    plot_posterior(samples, "weightfunction", show_data = TRUE, data = c(.1, 1.2)),
+    "The 'data' must be equal or lower than 1.",
+    fixed = TRUE
+  )
+})
+
 test_that("PET-PEESE prior plot data uses CDF quantiles for half-Cauchy PET", {
 
   x_seq <- c(0, 0.25, 0.5, 1)

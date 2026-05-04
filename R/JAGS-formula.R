@@ -123,7 +123,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   no_intercept_specified <- attr(stats::terms(formula), "intercept") == 0
   if(no_intercept_specified){
     # remove -1 from formula and add intercept back
-    formula <- .add_intercept_to_formula(formula)
+    formula <- formula_add_intercept(formula)
     # add spike(0) prior for intercept if not already specified
     if(!"intercept" %in% names(prior_list)){
       prior_list[["intercept"]] <- prior("spike", list(0))
@@ -259,6 +259,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   # get the default design matrix
   model_frame  <- stats::model.frame(formula, data = data)
   model_matrix <- stats::model.matrix(model_frame, formula = formula, data = data)
+  raw_column_names <- colnames(model_matrix)
 
   # check whether intercept is unique parameter
   if(sum(grepl("intercept", names(prior_list))) > 1)
@@ -273,6 +274,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
 
   # replace interaction signs (due to JAGS incompatibility)
   colnames(model_matrix)  <- gsub(":", "__xXx__", colnames(model_matrix))
+  column_names            <- colnames(model_matrix)
   names(prior_list)       <- gsub(":", "__xXx__", names(prior_list))
   names(model_terms_type) <- gsub(":", "__xXx__", names(model_terms_type))
   model_terms             <- gsub(":", "__xXx__", model_terms)
@@ -281,6 +283,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   formula_syntax <- NULL
   random_syntax  <- NULL
   JAGS_data      <- list()
+  jags_data_names <- list()
   JAGS_data[[paste0("N_", parameter)]] <- nrow(data)
 
   # add intercept and prepare the indexing vector
@@ -314,7 +317,9 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     if(model_terms_type[i] == "continuous"){
 
       # continuous variables or interactions of continuous variables are simple predictors
-      JAGS_data[[paste0(parameter, "_data_", model_terms[i])]] <- model_matrix[,terms_indexes == i]
+      data_name <- paste0(parameter, "_data_", model_terms[i])
+      JAGS_data[[data_name]] <- model_matrix[,terms_indexes == i]
+      jags_data_names[[model_terms[i]]] <- data_name
 
       formula_syntax <- c(formula_syntax, paste0(
         if(!is.null(attr(this_prior, "multiply_by"))) paste0(attr(this_prior, "multiply_by"), " * "),
@@ -373,7 +378,9 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
       attr(this_prior, "factor_design")     <- factor_design_info[["design"]]
       attr(this_prior, "factor_cell_names") <- factor_design_info[["cell_names"]]
 
-      JAGS_data[[paste0(parameter, "_data_", model_terms[i])]] <- model_matrix[,terms_indexes == i, drop = FALSE]
+      data_name <- paste0(parameter, "_data_", model_terms[i])
+      JAGS_data[[data_name]] <- model_matrix[,terms_indexes == i, drop = FALSE]
+      jags_data_names[[model_terms[i]]] <- data_name
       formula_syntax <- c(formula_syntax, paste0(
         if(!is.null(attr(this_prior, "multiply_by"))) paste0(attr(this_prior, "multiply_by"), " * "),
         "inprod(",
@@ -414,12 +421,14 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
 
   # add random effects back to the formula
   random_scale_terms <- character()
-  for(i in seq_along(random_effects)){
-    temp_random   <- .JAGS_random_effect_formula(random_effects[[i]], parameter, data, prior_list_random_effects[[i]])
+  for(random_i in seq_along(random_effects)){
+    temp_random   <- .JAGS_random_effect_formula(random_effects[[random_i]], parameter, data, prior_list_random_effects[[random_i]])
 
-    for(i in seq_along(temp_random[["data"]])){
-      JAGS_data[[names(temp_random[["data"]])[i]]] <- temp_random[["data"]][[i]]
+    for(data_i in seq_along(temp_random[["data"]])){
+      JAGS_data[[names(temp_random[["data"]])[data_i]]] <- temp_random[["data"]][[data_i]]
     }
+    random_key <- paste0("__xREx__", attr(random_effects[[random_i]], "grouping_factor"))
+    jags_data_names[[random_key]] <- names(temp_random[["data"]])
 
     random_syntax  <- c(random_syntax,  temp_random[["random_syntax"]])
     formula_syntax <- c(formula_syntax, temp_random[["formula_term"]])
@@ -467,7 +476,128 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     output$formula_scale <- scale_info
   }
 
+  design_formula <- formula
+  attr(design_formula, "log(intercept)") <- NULL
+
+  output$formula_design <- .JAGS_formula_design_object(
+    parameter         = parameter,
+    formula           = design_formula,
+    model_frame       = model_frame,
+    model_matrix      = model_matrix,
+    raw_column_names  = raw_column_names,
+    column_names      = column_names,
+    predictors        = predictors,
+    predictors_type   = predictors_type,
+    model_terms       = model_terms,
+    model_terms_type  = model_terms_type,
+    prior_list        = prior_list,
+    formula_scale     = output$formula_scale,
+    expressions       = expressions,
+    random_effects    = random_effects,
+    jags_data_names   = jags_data_names
+  )
+
   return(output)
+}
+
+.JAGS_formula_design_object <- function(parameter, formula, model_frame, model_matrix,
+                                        raw_column_names, column_names,
+                                        predictors, predictors_type,
+                                        model_terms, model_terms_type,
+                                        prior_list, formula_scale,
+                                        expressions, random_effects,
+                                        jags_data_names){
+
+  formula_terms <- stats::terms(formula)
+  attr(formula_terms, ".Environment") <- emptyenv()
+  formula_output <- formula
+  environment(formula_output) <- emptyenv()
+  model_frame_output <- model_frame
+  attr(model_frame_output, "terms") <- formula_terms
+
+  qr_info <- qr(model_matrix)
+  aliased <- rep(FALSE, ncol(model_matrix))
+  if(qr_info$rank < ncol(model_matrix)){
+    aliased[qr_info$pivot[(qr_info$rank + 1L):ncol(model_matrix)]] <- TRUE
+  }
+  names(aliased) <- colnames(model_matrix)
+
+  factor_predictors <- names(predictors_type)[predictors_type == "factor"]
+  xlevels <- lapply(factor_predictors, function(predictor){
+    if(predictor %in% names(model_frame) && is.factor(model_frame[[predictor]])){
+      levels(model_frame[[predictor]])
+    }else{
+      NULL
+    }
+  })
+  names(xlevels) <- factor_predictors
+  xlevels <- xlevels[!vapply(xlevels, is.null, logical(1))]
+
+  out <- list(
+    parameter          = parameter,
+    formula            = formula_output,
+    model_frame        = model_frame_output,
+    model_matrix       = model_matrix,
+    column_names       = column_names,
+    raw_column_names   = raw_column_names,
+    assign             = attr(model_matrix, "assign"),
+    terms              = formula_terms,
+    contrasts          = attr(model_matrix, "contrasts"),
+    xlevels            = xlevels,
+    predictors         = predictors,
+    predictor_types    = predictors_type,
+    model_terms        = model_terms,
+    model_terms_type   = model_terms_type,
+    prior_list         = prior_list,
+    formula_scale      = formula_scale,
+    rank               = qr_info$rank,
+    qr_pivot           = qr_info$pivot,
+    aliased            = aliased,
+    transformed_terms  = expressions,
+    random_effects     = random_effects,
+    jags_data_names    = jags_data_names
+  )
+  class(out) <- c("BayesTools_formula_design", "list")
+
+  return(out)
+}
+
+#' @title Extract Fitted JAGS Formula Design Metadata
+#'
+#' @description Returns the fitted formula design metadata stored by
+#' [JAGS_fit()]. The design contains the processed formula, fitted model frame,
+#' exact model matrix used for JAGS data construction, JAGS-safe coefficient
+#' names, contrast and factor-level metadata, rank diagnostics, prior metadata,
+#' and formula-scale information.
+#'
+#' @param fit a fitted object returned by [JAGS_fit()].
+#' @param parameter optional formula parameter name. If \code{NULL}, all stored
+#' formula designs are returned.
+#'
+#' @return A named list of formula designs, or one formula design when
+#' \code{parameter} is supplied. Returns \code{NULL} when no formula design
+#' metadata is stored on \code{fit}.
+#'
+#' @seealso [JAGS_fit()] [JAGS_formula()]
+#' @export
+JAGS_formula_design <- function(fit, parameter = NULL){
+
+  check_char(parameter, "parameter", allow_NULL = TRUE)
+
+  formula_design <- attr(fit, "formula_design")
+  if(is.null(formula_design)){
+    return(NULL)
+  }
+
+  if(is.null(parameter)){
+    return(formula_design)
+  }
+
+  if(!parameter %in% names(formula_design)){
+    stop("Formula design for parameter '", parameter, "' was not found.", call. = FALSE)
+  }
+
+  return(formula_design[[parameter]])
 }
 
 .JAGS_random_effect_formula <- function(formula, parameter, data, prior_list){
@@ -865,29 +995,101 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
 .remove_grouping_factor <- function(formula){
   return(trimws(sub("\\|.*$", "", formula)))
 }
-.add_intercept_to_formula <- function(formula){
-  # converts formula with -1 or 0 (no intercept) back to formula with intercept
-  # by removing the -1 or 0 term
-  formula_str <- paste(deparse(formula), collapse = " ")
-  # Remove various forms of -1, + -1, 0, or + 0
-  formula_str <- gsub("\\s*\\-\\s*1\\s*", "", formula_str)
-  formula_str <- gsub("\\s*\\+\\s*\\-\\s*1\\s*", "", formula_str)
-  formula_str <- gsub("\\s*\\+\\s*0\\s*", "", formula_str)
-  # Handle 0 at the start (e.g., "~ 0 + x")
-  formula_str <- gsub("~\\s*0\\s*\\+\\s*", "~ ", formula_str)
-  # Handle 0 alone (e.g., "~ 0")
-  formula_str <- gsub("~\\s*0\\s*$", "~ 1", formula_str)
+#' @title Add an Intercept to a Formula
+#'
+#' @description Converts a no-intercept formula to the corresponding formula
+#' with an intercept while preserving the formula environment. Top-level
+#' no-intercept encodings such as \code{- 1}, \code{+ 0}, and \code{0 +} are
+#' removed without editing transformed calls such as \code{I(x - 1)} or
+#' \code{offset(x - 1)}.
+#'
+#' @param formula a formula object.
+#'
+#' @return A formula object with an intercept.
+#'
+#' @export
+formula_add_intercept <- function(formula){
 
-  # Handle case where formula becomes empty (just "~")
-  if(grepl("^\\s*~\\s*$", formula_str)){
-    formula_str <- "~ 1"
+  if(!inherits(formula, "formula")){
+    stop("'formula' must be a formula.", call. = FALSE)
   }
 
-  # Clean up any double spaces
-  formula_str <- gsub("\\s{2,}", " ", formula_str)
-  formula_str <- trimws(formula_str)
+  if(attr(stats::terms(formula), "intercept") == 1L){
+    return(formula)
+  }
 
-  return(stats::as.formula(formula_str))
+  formula_env   <- environment(formula)
+  formula_attrs <- attributes(formula)
+  rhs_index     <- if(length(formula) == 3L) 3L else 2L
+  rhs           <- .formula_strip_no_intercept(formula[[rhs_index]])
+
+  if(is.null(rhs)){
+    rhs <- 1
+  }
+
+  out <- formula
+  out[[rhs_index]] <- rhs
+  environment(out) <- formula_env
+
+  for(attribute in setdiff(names(formula_attrs), c("class", ".Environment", "names"))){
+    attr(out, attribute) <- formula_attrs[[attribute]]
+  }
+
+  if(attr(stats::terms(out), "intercept") == 0L){
+    out[[rhs_index]] <- call("+", 1, out[[rhs_index]])
+    environment(out) <- formula_env
+  }
+
+  return(out)
+}
+.add_intercept_to_formula <- formula_add_intercept
+
+.formula_strip_no_intercept <- function(expr){
+
+  if(.formula_is_no_intercept_additive_term(expr)){
+    return(NULL)
+  }
+
+  if(is.call(expr) && identical(expr[[1L]], as.name("+")) && length(expr) == 3L){
+    lhs <- .formula_strip_no_intercept(expr[[2L]])
+    rhs <- .formula_strip_no_intercept(expr[[3L]])
+
+    if(is.null(lhs)){
+      return(rhs)
+    }
+    if(is.null(rhs)){
+      return(lhs)
+    }
+    return(call("+", lhs, rhs))
+  }
+
+  if(is.call(expr) && identical(expr[[1L]], as.name("-")) && length(expr) == 3L &&
+     .formula_is_numeric_constant(expr[[3L]], 1)){
+    return(.formula_strip_no_intercept(expr[[2L]]))
+  }
+
+  return(expr)
+}
+
+.formula_is_no_intercept_additive_term <- function(expr){
+
+  .formula_is_numeric_constant(expr, 0) || .formula_is_negative_one(expr)
+}
+
+.formula_is_negative_one <- function(expr){
+
+  (is.numeric(expr) && length(expr) == 1L && identical(as.numeric(expr), -1)) ||
+    (is.call(expr) && identical(expr[[1L]], as.name("-")) && length(expr) == 2L &&
+       .formula_is_numeric_constant(expr[[2L]], 1))
+}
+
+.formula_is_numeric_constant <- function(expr, value){
+
+  if(is.call(expr) && identical(expr[[1L]], as.name("(")) && length(expr) == 2L){
+    return(.formula_is_numeric_constant(expr[[2L]], value))
+  }
+
+  is.numeric(expr) && length(expr) == 1L && identical(as.numeric(expr), as.numeric(value))
 }
 
 #' @title Evaluate JAGS formula using posterior samples
@@ -930,7 +1132,7 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
   formula <- .remove_response(formula)
   log_intercept <- isTRUE(attr(formula, "log(intercept)"))
   if(attr(stats::terms(formula), "intercept") == 0){
-    formula <- .add_intercept_to_formula(formula)
+    formula <- formula_add_intercept(formula)
     if(log_intercept){
       attr(formula, "log(intercept)") <- TRUE
     }

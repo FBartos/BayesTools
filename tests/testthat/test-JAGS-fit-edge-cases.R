@@ -144,6 +144,82 @@ test_that("required packages are checked locally and on parallel workers", {
 
 })
 
+test_that("JAGS_fit stores formula design metadata on fitted formula models", {
+
+  skip_if_not_installed("runjags")
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+
+  df <- data.frame(
+    y = c(-0.2, 0.1, 0.4, 0.7),
+    x = c(-1, 0, 1, 2)
+  )
+
+  fit <- JAGS_fit(
+    model_syntax = "model{
+      for(i in 1:N_mu){
+        y[i] ~ dnorm(mu[i], 1)
+      }
+    }",
+    data = list(y = df$y),
+    formula_list = list(mu = ~ x),
+    formula_data_list = list(mu = df),
+    formula_prior_list = list(mu = list(
+      intercept = prior("normal", list(0, 1)),
+      x         = prior("normal", list(0, 1))
+    )),
+    chains = 1,
+    adapt = 50,
+    burnin = 50,
+    sample = 100,
+    silent = TRUE,
+    seed = 123
+  )
+
+  design <- JAGS_formula_design(fit, "mu")
+
+  expect_s3_class(fit, "BayesTools_fit")
+  expect_s3_class(design, "BayesTools_formula_design")
+  expect_equal(colnames(design$model_matrix), c("(Intercept)", "x"))
+  expect_equal(unname(design$model_matrix[, "x"]), df$x)
+  expect_equal(design$jags_data_names$x, "mu_data_x")
+  expect_identical(JAGS_formula_design(fit), list(mu = design))
+})
+
+test_that("JAGS_fit stores formula design metadata on failed sampling objects", {
+
+  skip_if_not_installed("runjags")
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+
+  df <- data.frame(x = c(-1, 0, 1))
+
+  fit <- suppressWarnings(JAGS_fit(
+    model_syntax = "model{
+      broken_node <- missing_node
+    }",
+    formula_list = list(mu = ~ x),
+    formula_data_list = list(mu = df),
+    formula_prior_list = list(mu = list(
+      intercept = prior("normal", list(0, 1)),
+      x         = prior("normal", list(0, 1))
+    )),
+    chains = 1,
+    adapt = 50,
+    burnin = 50,
+    sample = 100,
+    silent = TRUE,
+    seed = 123
+  ))
+
+  design <- JAGS_formula_design(fit, "mu")
+
+  expect_s3_class(fit, "BayesTools_fit")
+  expect_s3_class(fit, "error")
+  expect_s3_class(design, "BayesTools_formula_design")
+  expect_equal(unname(design$model_matrix[, "x"]), df$x)
+})
+
 
 # ============================================================================ #
 # SECTION 2: Convergence edge cases

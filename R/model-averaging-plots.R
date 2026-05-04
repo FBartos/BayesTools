@@ -2191,6 +2191,13 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
 #' \code{mu + PET*se + PEESE*se^2} or \code{"negative"} for
 #' \code{mu - PET*se - PEESE*se^2}.
 #' @param dots_prior additional arguments for the prior distribution plot
+#' @param data optional numeric vector of observed p-values in \code{[0, 1]}, or
+#' a data frame with a \code{p} column. Used only for weightfunction plots.
+#' @param show_data whether observed p-values should be shown as rug marks on
+#' the weightfunction x-axis.
+#' @param dots_data additional styling arguments for observed p-value rug marks.
+#' Supports \code{col}/\code{color}, \code{alpha}, \code{lwd}/\code{linewidth},
+#' \code{side}/\code{rug_side}, and \code{height}/\code{rug_height}.
 #' @param ... additional arguments
 #' @inheritParams density.prior
 #' @inheritParams plot.prior
@@ -2211,7 +2218,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
                            individual   = FALSE, show_figures = NULL,
                            transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
                            rescale_x = FALSE, par_name = NULL, effect_direction = "positive",
-                           dots_prior = list(), ...){
+                           dots_prior = list(), data = NULL, show_data = FALSE, dots_data = list(), ...){
 
   # check input
   check_list(samples, "prior_list")
@@ -2221,6 +2228,8 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   check_char(plot_type, "plot_type", allow_values = c("base", "ggplot"))
   check_bool(individual, "individual")
   check_bool(rescale_x, "rescale_x")
+  check_bool(show_data, "show_data")
+  check_list(dots_data, "dots_data", allow_NULL = TRUE)
   check_int(show_figures, "show_figures", allow_NULL = TRUE, lower = 0)
   check_char(effect_direction, "effect_direction", allow_values = c("positive", "negative"))
   .check_transformation_input(transformation, transformation_arguments, transformation_settings)
@@ -2235,6 +2244,14 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   }else if(tolower(gsub("-", "", gsub("_", "", gsub(".", "", parameter, fixed = TRUE),fixed = TRUE), fixed = TRUE)) %in% "peese"){
     parameter <- "PEESE"
   }
+
+  if(show_data && !identical(parameter, "omega")){
+    stop("'show_data' is currently supported only for weightfunction posterior plots.", call. = FALSE)
+  }
+  if(show_data && individual){
+    stop("'show_data' is supported only for the full weightfunction posterior plot.", call. = FALSE)
+  }
+  data_p <- .weightfunction_plot_data_pvalues(data, show_data)
 
   # auto-detect transform_scaled from samples attribute
   transform_scaled <- isTRUE(attr(samples, "transform_scaled"))
@@ -2411,14 +2428,27 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
         if(plot_type == "ggplot"){
           plot <- plot + .geom_prior.weightfunction(plot_data, rescale_x = rescale_x, ...)
+          if(show_data){
+            plot <- plot + .geom.weightfunction_data(data_p, plot_data, rescale_x, dots_data)
+          }
         }else{
           .lines.prior.weightfunction(plot_data, rescale_x = rescale_x, ...)
+          if(show_data){
+            .lines.weightfunction_data(data_p, plot_data, rescale_x, dots_data)
+          }
         }
 
       }else{
 
         # plot just posterior otherwise
         plot <- .plot.prior.weightfunction(NULL, plot_data = plot_data, plot_type = plot_type, rescale_x = rescale_x, par_name = par_name, ...)
+        if(show_data){
+          if(plot_type == "ggplot"){
+            plot <- plot + .geom.weightfunction_data(data_p, plot_data, rescale_x, dots_data)
+          }else{
+            .lines.weightfunction_data(data_p, plot_data, rescale_x, dots_data)
+          }
+        }
 
       }
     }
@@ -3006,6 +3036,160 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   attr(out, "y_range") <- c(0, max(1, x_mean, x_lCI, x_uCI, na.rm = TRUE))
 
   return(out)
+}
+
+.weightfunction_plot_data_pvalues <- function(data, show_data){
+
+  if(!show_data){
+    return(numeric())
+  }
+  if(is.null(data)){
+    stop("'data' must be supplied when 'show_data = TRUE'.", call. = FALSE)
+  }
+
+  if(is.data.frame(data)){
+    if(!"p" %in% names(data)){
+      stop("'data' must be a numeric vector of p-values or a data frame with a 'p' column.", call. = FALSE)
+    }
+    data <- data[["p"]]
+  }
+
+  check_real(data, "data", lower = 0, upper = 1, check_length = 0, allow_NA = FALSE)
+  data <- data[is.finite(data)]
+
+  return(data)
+}
+
+.weightfunction_plot_data_x <- function(p, plot_data, rescale_x){
+
+  if(length(p) == 0L || !rescale_x){
+    return(p)
+  }
+
+  cuts <- unique(plot_data$x)
+  scaled_cuts <- seq(0, 1, length.out = length(cuts))
+
+  stats::approx(
+    x    = cuts,
+    y    = scaled_cuts,
+    xout = p,
+    rule = 2,
+    ties = "ordered"
+  )$y
+}
+
+.weightfunction_data_col <- function(dots_data){
+
+  col <- if(!is.null(dots_data[["col"]])){
+    dots_data[["col"]]
+  }else if(!is.null(dots_data[["color"]])){
+    dots_data[["color"]]
+  }else{
+    "black"
+  }
+
+  if(!is.null(dots_data[["alpha"]])){
+    col <- grDevices::adjustcolor(col, alpha.f = dots_data[["alpha"]])
+  }
+
+  col
+}
+
+.weightfunction_data_lwd <- function(dots_data){
+
+  if(!is.null(dots_data[["lwd"]])){
+    dots_data[["lwd"]]
+  }else if(!is.null(dots_data[["linewidth"]])){
+    dots_data[["linewidth"]]
+  }else if(!is.null(dots_data[["size"]])){
+    dots_data[["size"]]
+  }else{
+    .5
+  }
+}
+
+.weightfunction_data_side <- function(dots_data, ggplot = FALSE){
+
+  side <- if(!is.null(dots_data[["side"]])){
+    dots_data[["side"]]
+  }else if(!is.null(dots_data[["rug_side"]])){
+    dots_data[["rug_side"]]
+  }else{
+    if(ggplot) "b" else 1
+  }
+
+  if(ggplot){
+    side <- as.character(side)
+    if(side %in% c("1", "bottom", "b")){
+      return("b")
+    }
+    if(side %in% c("3", "top", "t")){
+      return("t")
+    }
+    return(side)
+  }
+
+  if(is.character(side)){
+    if(side %in% c("bottom", "b")){
+      return(1)
+    }
+    if(side %in% c("top", "t")){
+      return(3)
+    }
+  }
+
+  side
+}
+
+.weightfunction_data_height <- function(dots_data){
+
+  if(!is.null(dots_data[["height"]])){
+    dots_data[["height"]]
+  }else if(!is.null(dots_data[["rug_height"]])){
+    dots_data[["rug_height"]]
+  }else if(!is.null(dots_data[["ticksize"]])){
+    dots_data[["ticksize"]]
+  }else{
+    .03
+  }
+}
+
+.lines.weightfunction_data <- function(p, plot_data, rescale_x, dots_data = list()){
+
+  if(length(p) == 0L){
+    return(invisible())
+  }
+
+  p <- .weightfunction_plot_data_x(p, plot_data, rescale_x)
+
+  graphics::rug(
+    p,
+    side     = .weightfunction_data_side(dots_data, ggplot = FALSE),
+    ticksize = .weightfunction_data_height(dots_data),
+    col      = .weightfunction_data_col(dots_data),
+    lwd      = .weightfunction_data_lwd(dots_data)
+  )
+
+  return(invisible())
+}
+
+.geom.weightfunction_data <- function(p, plot_data, rescale_x, dots_data = list()){
+
+  if(length(p) == 0L){
+    return(NULL)
+  }
+
+  p <- .weightfunction_plot_data_x(p, plot_data, rescale_x)
+
+  ggplot2::geom_rug(
+    data        = data.frame(p = p),
+    mapping     = ggplot2::aes(x = .data[["p"]]),
+    inherit.aes = FALSE,
+    sides       = .weightfunction_data_side(dots_data, ggplot = TRUE),
+    length      = grid::unit(.weightfunction_data_height(dots_data), "npc"),
+    color       = .weightfunction_data_col(dots_data),
+    linewidth   = .weightfunction_data_lwd(dots_data)
+  )
 }
 .plot_data_samples.weightparameter<- function(samples, parameter, n_points){
 

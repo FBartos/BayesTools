@@ -26,6 +26,7 @@ Depends:
     stats
 Imports:
     graphics,
+    grid,
     extraDistr,
     mvtnorm,
     coda,
