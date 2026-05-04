@@ -448,7 +448,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
       # deal with a possibility of completely null model
       model_samples <- matrix()
     }else if(inherits(fits[[i]], "runjags")){
-      model_samples <- suppressWarnings(coda::as.mcmc(fits[[i]]))
+      model_samples <- .extract_posterior_samples(fits[[i]], as_list = FALSE)
       if(!is.matrix(model_samples)){
         # deal with automatic coercion into a vector in case of a single predictor
         model_samples <- matrix(model_samples, ncol = 1)
@@ -522,7 +522,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
       # deal with a possibility of completely null model
       model_samples <- matrix()
     }else if(inherits(fits[[i]], "runjags")){
-      model_samples <- suppressWarnings(coda::as.mcmc(fits[[i]]))
+      model_samples <- .extract_posterior_samples(fits[[i]], as_list = FALSE)
       if(!is.matrix(model_samples)){
         # deal with automatic coercion into a vector in case of a single predictor
         model_samples <- matrix(model_samples, ncol = 1)
@@ -750,7 +750,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
       # deal with a possibility of completely null model
       model_samples <- matrix()
     }else if(inherits(fits[[i]], "runjags")){
-      model_samples <- suppressWarnings(coda::as.mcmc(fits[[i]]))
+      model_samples <- .extract_posterior_samples(fits[[i]], as_list = FALSE)
       if(!is.matrix(model_samples)){
         # deal with automatic coercion into a vector in case of a single predictor
         model_samples <- matrix(model_samples, ncol = 1)

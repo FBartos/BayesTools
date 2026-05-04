@@ -1,4 +1,4 @@
-skip_if_not_test_profile("visual")
+skip_if_not_test_profile(c("visual", "visual-fixture"))
 
 # ============================================================================ #
 # TEST FILE: Model Averaging Plots
@@ -15,6 +15,7 @@ skip_if_not_test_profile("visual")
 #
 # SKIP CONDITIONS:
 #   - skip_if_not_installed("vdiffr"): For visual tests
+#   - skip_if_not_visual_fixture_tests(): For visual tests using pre-fitted models
 #   - skip_if_no_fits(): For tests using pre-fitted models
 #
 # MODELS/FIXTURES:
@@ -32,6 +33,7 @@ skip_if_not_installed("vdiffr")
 # SECTION 1: plot_prior_list basic tests
 # ============================================================================ #
 test_that("plot_prior_list handles simple cases", {
+  skip_if_not_visual_tests()
   set.seed(1)
 
   # Test with a single normal prior
@@ -67,6 +69,7 @@ test_that("plot_prior_list handles simple cases", {
 
 
 test_that("plot_prior_list handles orthonormal priors", {
+  skip_if_not_visual_tests()
   set.seed(1)
 
   # Create orthonormal factor prior
@@ -114,6 +117,7 @@ test_that("plot_prior_list handles orthonormal priors", {
 
 
 test_that("plot_prior_list handles meandif priors", {
+  skip_if_not_visual_tests()
   set.seed(1)
 
   # Create meandif factor prior
@@ -136,6 +140,7 @@ test_that("plot_prior_list handles meandif priors", {
 
 
 test_that("plot_prior_list handles weightfunction priors", {
+  skip_if_not_visual_tests()
   set.seed(1)
 
   # Create one-sided weightfunction prior
@@ -156,6 +161,7 @@ test_that("plot_prior_list handles weightfunction priors", {
 
 
 test_that("scale_y2 is handled correctly for mixed distributions", {
+  skip_if_not_visual_tests()
   set.seed(1)
 
   # Create a list with both continuous and point priors
@@ -184,6 +190,7 @@ test_that("scale_y2 is handled correctly for mixed distributions", {
 # SECTION 2: lines_prior_list tests
 # ============================================================================ #
 test_that("lines_prior_list handles various configurations", {
+  skip_if_not_visual_tests()
   set.seed(1)
   prior_list <- list(
     p1 = prior("normal", list(0, 1)),
@@ -209,6 +216,7 @@ test_that("lines_prior_list handles various configurations", {
 # SECTION 3: geom_prior_list tests
 # ============================================================================ #
 test_that("geom_prior_list handles various configurations", {
+  skip_if_not_visual_tests()
   set.seed(1)
   prior_list <- list(
     p1 = prior("normal", list(0, 1)),
@@ -231,6 +239,7 @@ test_that("geom_prior_list handles various configurations", {
 # ============================================================================ #
 test_that("plot_posterior handles various sample types", {
   set.seed(1)
+  skip_if_not_visual_fixture_tests()
   skip_if_not_installed("rjags")
   skip_on_cran()
   skip_if_no_fits()
@@ -280,6 +289,7 @@ test_that("plot_posterior handles various sample types", {
 
 test_that("plot_posterior handles weightfunction posteriors", {
   set.seed(1)
+  skip_if_not_visual_fixture_tests()
   skip_if_not_installed("rjags")
   skip_on_cran()
   skip_if_no_fits()
@@ -317,6 +327,7 @@ test_that("plot_posterior handles weightfunction posteriors", {
 # ============================================================================ #
 test_that("plot_models handles various configurations", {
   set.seed(1)
+  skip_if_not_visual_fixture_tests()
   skip_if_not_installed("rjags")
   skip_on_cran()
   skip_if_no_fits()
@@ -363,6 +374,7 @@ test_that("plot_models handles various configurations", {
 
 test_that("plot_models handles order argument", {
   set.seed(1)
+  skip_if_not_visual_fixture_tests()
   skip_if_not_installed("rjags")
   skip_on_cran()
   skip_if_no_fits()
@@ -434,6 +446,7 @@ test_that("plot_models handles order argument", {
 
 test_that("plot_models handles orthonormal priors", {
   set.seed(1)
+  skip_if_not_visual_fixture_tests()
   skip_if_not_installed("rjags")
   skip_on_cran()
   skip_if_no_fits()
@@ -500,6 +513,7 @@ test_that("plot_models handles orthonormal priors", {
 # SECTION 6: .plot_prior_list.factor tests
 # ============================================================================ #
 test_that(".plot_prior_list.factor handles point priors within factor", {
+  skip_if_not_visual_tests()
   set.seed(1)
 
   # Test factor prior with spike
@@ -525,6 +539,7 @@ test_that(".plot_prior_list.factor handles point priors within factor", {
 
 
 test_that(".plot_prior_list.factor handles transformation", {
+  skip_if_not_visual_tests()
   set.seed(1)
 
   # Create treatment factor prior with normal distribution
@@ -544,6 +559,7 @@ test_that(".plot_prior_list.factor handles transformation", {
 # ============================================================================ #
 
 test_that("exp_lin transformation functions are defined correctly", {
+  skip_if_not_visual_tests()
   # Test that exp_lin transformation is correctly defined
   # (used for log-intercept unscaling)
 
@@ -574,6 +590,7 @@ test_that("exp_lin transformation functions are defined correctly", {
 })
 
 test_that("linear transformation matches expected behavior", {
+  skip_if_not_visual_tests()
   set.seed(1)
 
   # Create a normal prior
@@ -620,6 +637,7 @@ test_that("linear transformation matches expected behavior", {
 
 
 test_that("transform_scaled is auto-detected from samples attribute", {
+  skip_if_not_visual_fixture_tests()
   skip_if_no_fits()
 
   # Load a model with formula_scale
@@ -646,6 +664,7 @@ test_that("transform_scaled is auto-detected from samples attribute", {
 
 
 test_that("linear prior density helper preserves transformed point masses", {
+  skip_if_not_visual_tests()
   plot_data <- BayesTools:::.prior_linear_density_to_plot_data(
     BayesTools:::.prior_linear_density_point(0),
     n_points = 128
@@ -658,6 +677,7 @@ test_that("linear prior density helper preserves transformed point masses", {
 })
 
 test_that("transform_scaled helper preserves total mass for mixed point-continuous priors", {
+  skip_if_not_visual_tests()
   prior_density <- BayesTools:::.prior_linear_combination_density(
     prior_list = list(x = prior_mixture(
       list(
@@ -685,6 +705,7 @@ test_that("transform_scaled helper preserves total mass for mixed point-continuo
 })
 
 test_that("transform_scaled helper preserves total mass under user transformations", {
+  skip_if_not_visual_tests()
   prior_density <- BayesTools:::.prior_linear_combination_density(
     prior_list = list(x = prior_mixture(
       list(
@@ -712,6 +733,7 @@ test_that("transform_scaled helper preserves total mass under user transformatio
 })
 
 test_that("plot_posterior errors when transformed prior densities are missing", {
+  skip_if_not_visual_tests()
   sample_entry <- structure(
     rnorm(64),
     class = c("mixed_posteriors.formula", "mixed_posteriors.simple", "mixed_posteriors"),
@@ -732,6 +754,7 @@ test_that("plot_posterior errors when transformed prior densities are missing", 
 
 
 test_that("transform_scaled visual: spike prior remains atomic", {
+  skip_if_not_visual_tests()
   skip_on_cran()
 
   set.seed(123)
@@ -779,6 +802,7 @@ test_that("transform_scaled visual: spike prior remains atomic", {
 
 
 test_that("transform_scaled visual: conditional mixture prior removes spike", {
+  skip_if_not_visual_tests()
   skip_on_cran()
 
   set.seed(124)
@@ -858,6 +882,7 @@ test_that("transform_scaled visual: conditional mixture prior removes spike", {
 
 
 test_that("transform_scaled visual: auto-scaled continuous predictors intercept", {
+  skip_if_not_visual_fixture_tests()
   skip_on_cran()
   skip_if_no_fits()
 
@@ -888,6 +913,7 @@ test_that("transform_scaled visual: auto-scaled continuous predictors intercept"
 
 
 test_that("transform_scaled visual: auto-scaled continuous predictor coefficient", {
+  skip_if_not_visual_fixture_tests()
   skip_on_cran()
   skip_if_no_fits()
 
@@ -928,6 +954,7 @@ test_that("transform_scaled visual: auto-scaled continuous predictor coefficient
 
 
 test_that("transform_scaled visual: all parameters side-by-side", {
+  skip_if_not_visual_fixture_tests()
   skip_on_cran()
   skip_if_no_fits()
 
@@ -961,6 +988,7 @@ test_that("transform_scaled visual: all parameters side-by-side", {
 
 
 test_that("transform_scaled visual: dual parameter regression with log(intercept)", {
+  skip_if_not_visual_fixture_tests()
   skip_on_cran()
   skip_if_no_fits()
 

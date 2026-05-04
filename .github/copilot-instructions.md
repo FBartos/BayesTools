@@ -36,14 +36,20 @@ BayesTools is an R package for Bayesian analyses, JAGS model automation, and Bay
 
 ### Build & Test
 - **Install**: `devtools::install()` (Timeout: 5m+)
-- **Test**: `devtools::test()` (Timeout: 5m+)
-- **Targeted Test**: `devtools::test(filter = 'priors')` (Recommended for dev)
+- **Package-critical tests**: `Rscript tools/test-profile.R unit`
+- **Cached-fit tests**: `Rscript tools/test-profile.R fixture`
+- **Pure visual tests**: `Rscript tools/test-profile.R visual`
+- **Cached-JAGS visual tests**: `Rscript tools/test-profile.R visual-fixture`
+- **Fit/marglik tests**: `Rscript tools/test-profile.R fit` refreshes cached fits by default; set `BAYESTOOLS_TEST_SKIP_REFIT=TRUE` only to reuse a validated cache.
+- **Full developer verification**: `Rscript tools/test-profile.R all`
+- **Targeted Test**: `devtools::test(filter = 'priors')` only for ad hoc local iteration after choosing the relevant profile
 - **Check**: `rcmdcheck::rcmdcheck(args = c('--no-manual', '--as-cran'), error_on = 'never')` 
 - **Docs**: `devtools::document()` 
 
 ### Testing Strategy (`tests/testthat/`)
 - **Priors**: Use the `test_prior(prior)` helper in `tests/testthat/test-priors.R` to validate new priors (checks rng, pdf, cdf, quant consistency).
 - **Visual Regression**: Use `vdiffr::expect_doppelganger` for plot tests.
+- **Profiles**: Add `skip_if_not_test_profile()` at the top of every `test-*.R` file. Use `visual-fixture` for plot tests that load cached JAGS fits.
 - **Performance**: Use `skip_on_cran()` for computationally intensive tests (JAGS fitting).
 - **JAGS**: Ensure `JAGS >= 4.3.0` is installed.
 
@@ -57,8 +63,9 @@ BayesTools is an R package for Bayesian analyses, JAGS model automation, and Bay
 
 ### Modifying JAGS Fitting
 1.  Edit `R/JAGS-fit.R` for general fitting logic or `R/JAGS-formula.R` for formula handling.
-2.  Verify with `devtools::test(filter = 'JAGS')`.
-3.  Ensure backward compatibility with `runjags` objects. 
+2.  Verify package-critical code with `Rscript tools/test-profile.R unit`.
+3.  Rebuild and verify fit fixtures with `Rscript tools/test-profile.R fit`.
+4.  Verify cached-fit consumers with `Rscript tools/test-profile.R fixture` and `Rscript tools/test-profile.R visual-fixture`.
 
 ## Feature Addition Steps
 1. Create unit tests verifying the desired behavior.

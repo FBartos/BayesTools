@@ -92,15 +92,18 @@ jobs:
       - name: Test coverage
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          BAYESTOOLS_TEST_PROFILE: "all"
+          VDIFFR_RUN_TESTS: "true"
           JAGS_ROOT: "/c/progra~1/JAGS/JAGS-4.3.1"
           JAGS_MAJOR_VERSION: 4
         run: |
-          # Run the full non-CRAN test suite so slow model-fitting tests
-          # contribute to coverage.
+          # Run every developer profile so slow model-fitting and figure tests
+          # both contribute to coverage.
           Sys.setenv(NOT_CRAN = "true")
           # Use forward-slash paths on Windows; covr injects these paths into
           # instrumented R code, where backslashes can become invalid escapes.
           repo_path <- normalizePath(".", winslash = "/", mustWork = TRUE)
+          on.exit(unlink(file.path(repo_path, "tests/testthat/_snaps"), recursive = TRUE, force = TRUE), add = TRUE)
           install_path <- normalizePath(file.path(Sys.getenv("RUNNER_TEMP"), "R_LIBS"), winslash = "/", mustWork = FALSE)
           unlink(install_path, recursive = TRUE, force = TRUE)
           

@@ -1,4 +1,4 @@
-skip_if_not_test_profile("visual")
+skip_if_not_test_profile(c("unit", "visual-fixture"))
 
 # ============================================================================ #
 # TEST FILE: JAGS Marginal Distributions
@@ -253,7 +253,8 @@ test_that("marginal_posterior handles one-coefficient as_mixed_posteriors intera
   expect_equal(as.numeric(marginal[[4]]), as.numeric(expected[, 4]))
 })
 
-# File-level skips: All tests in this file require pre-fitted models
+# File-level skips: All remaining tests in this file require pre-fitted models
+skip_if_not_visual_fixture_tests()
 skip_if_no_fits()
 skip_if_not_installed("rjags")
 skip_if_not_installed("bridgesampling")

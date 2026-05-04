@@ -1,24 +1,41 @@
 args <- commandArgs(trailingOnly = TRUE)
 profile <- if (length(args) > 0L && nzchar(args[[1L]])) args[[1L]] else Sys.getenv("BAYESTOOLS_TEST_PROFILE", "unit")
 
-known_profiles <- c("unit", "fixture", "visual", "fit", "all")
-if (!profile %in% known_profiles && !grepl("[,;[:space:]]", profile)) {
-  stop("Unknown profile '", profile, "'. Expected one of: ", paste(known_profiles, collapse = ", "), call. = FALSE)
-}
+source(file.path("tests", "testthat", "helper-test-profiles.R"))
 
 Sys.setenv(BAYESTOOLS_TEST_PROFILE = profile)
 
-profile_parts <- unique(unlist(strsplit(tolower(profile), "[,;[:space:]]+")))
-if ("all" %in% profile_parts || "fit" %in% profile_parts || "heavy" %in% profile_parts || "slow" %in% profile_parts) {
+requested_profile_parts <- unique(unlist(strsplit(tolower(profile), "[,;[:space:]]+")))
+selected_profiles <- bayestools_normalize_test_profiles(profile)
+run_all_profiles <- "all" %in% requested_profile_parts
+
+resolve_test_files_dir <- function() {
+  test_files_dir <- Sys.getenv("BAYESTOOLS_TEST_FILES_DIR")
+  if (test_files_dir == "") {
+    test_files_dir <- file.path(tempdir(), "BayesTools_test_files")
+  }
+  if (!dir.exists(test_files_dir)) {
+    dir.create(test_files_dir, showWarnings = FALSE, recursive = TRUE)
+  }
+  normalizePath(test_files_dir, winslash = "/", mustWork = TRUE)
+}
+
+Sys.setenv(BAYESTOOLS_TEST_FILES_DIR = resolve_test_files_dir())
+
+if (any(c("fit", "visual-fixture") %in% selected_profiles)) {
   Sys.setenv(NOT_CRAN = "true")
 }
-if ("all" %in% profile_parts || "visual" %in% profile_parts || "plot" %in% profile_parts ||
-    "plots" %in% profile_parts || "snapshot" %in% profile_parts || "snapshots" %in% profile_parts) {
+if (any(c("visual", "visual-fixture") %in% selected_profiles)) {
   Sys.setenv(VDIFFR_RUN_TESTS = "true")
+}
+if ("fit" %in% selected_profiles && Sys.getenv("BAYESTOOLS_TEST_SKIP_REFIT") == "") {
+  Sys.setenv(BAYESTOOLS_TEST_SKIP_REFIT = "false")
 }
 
 message("Running BayesTools test profile: ", Sys.getenv("BAYESTOOLS_TEST_PROFILE"))
-message("BAYESTOOLS_TEST_FILES_DIR: ", Sys.getenv("BAYESTOOLS_TEST_FILES_DIR", unset = "<test helper default>"))
+message("Selected profile lane(s): ", paste(selected_profiles, collapse = ", "))
+message("BAYESTOOLS_TEST_FILES_DIR: ", Sys.getenv("BAYESTOOLS_TEST_FILES_DIR"))
+message("BAYESTOOLS_TEST_SKIP_REFIT: ", Sys.getenv("BAYESTOOLS_TEST_SKIP_REFIT", unset = "<unset>"))
 message("NOT_CRAN: ", Sys.getenv("NOT_CRAN", unset = "<unset>"))
 message("VDIFFR_RUN_TESTS: ", Sys.getenv("VDIFFR_RUN_TESTS", unset = "<unset>"))
 
@@ -32,4 +49,10 @@ if (!requireNamespace("devtools", quietly = TRUE)) {
   stop("The devtools package is required to run tools/test-profile.R.", call. = FALSE)
 }
 
-devtools::test(stop_on_failure = TRUE)
+test_filter <- if (run_all_profiles) NULL else bayestools_test_profile_filter(selected_profiles)
+
+if (!is.null(test_filter)) {
+  message("testthat filter selects ", length(bayestools_test_profile_selected_contexts(selected_profiles)), " context(s).")
+}
+
+devtools::test(filter = test_filter, stop_on_failure = TRUE)

@@ -15,6 +15,10 @@ NULL
 #' @param as_list whether to return samples as mcmc.list (TRUE) or merged matrix (FALSE)
 #' @return matrix or mcmc.list of posterior samples
 .extract_posterior_samples <- function(fit, as_list = FALSE) {
+
+  if (inherits(fit, "runjags")) {
+    .check_runjags()
+  }
   
   if (as_list) {
     # Use generic function to allow S3 method dispatch (runjags has its own as.mcmc.list method)

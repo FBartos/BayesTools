@@ -35,13 +35,7 @@ skip_if_not_installed("rjags")
 source(testthat::test_path("common-functions.R"))
 skip_refit_if_cached(
   "model-fit",
-  required_fits = c(
-    "fit_wf_independent_gamma",
-    "fit_wf_independent_log",
-    "fit_bias_heterogeneous_wf",
-    "fit_bias_petpeese_heterogeneous_wf",
-    "fit_selection_kernel_summary"
-  )
+  registry_file = file.path(test_files_dir, "model_registry.RDS")
 )
 
 # Initialize model registry to track metadata about each fitted model
@@ -2191,4 +2185,18 @@ test_that("Model registry is created and saved", {
   expect_true(file.exists(registry_file))
   expect_s3_class(model_registry_df, "data.frame")
   expect_true(nrow(model_registry_df) > 0)
+
+  expected_fit_files <- file.path(temp_fits_dir, paste0(model_registry_df$model_name, ".RDS"))
+  expect_true(all(file.exists(expected_fit_files)))
+
+  marglik_names <- model_registry_df$model_name[model_registry_df$has_marglik]
+  expected_marglik_files <- file.path(temp_marglik_dir, paste0(marglik_names, ".RDS"))
+  expect_true(all(file.exists(expected_marglik_files)))
+
+  mark_refit_cache_complete(
+    "model-fit",
+    required_fits = model_registry_df$model_name,
+    required_margliks = marglik_names,
+    registry_file = registry_file
+  )
 })

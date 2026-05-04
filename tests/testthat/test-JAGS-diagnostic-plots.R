@@ -1,4 +1,4 @@
-skip_if_not_test_profile("visual")
+skip_if_not_test_profile("visual-fixture")
 
 # ============================================================================ #
 # TEST FILE: JAGS Diagnostic Plot Functions

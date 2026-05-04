@@ -1,4 +1,64 @@
-bayestools_known_test_profiles <- c("unit", "fixture", "visual", "fit")
+bayestools_known_test_profiles <- c("unit", "fixture", "visual", "visual-fixture", "fit")
+
+bayestools_test_profile_contexts <- list(
+  unit = c(
+    "distributions-mpoint",
+    "distributions-point",
+    "distributions-tools",
+    "distributions-weightfunctions",
+    "factor-interaction-coefficients",
+    "interpret",
+    "JAGS-marginal-distributions",
+    "JAGS-posterior-extraction",
+    "marginal-inference-conditioning",
+    "marginal-prior-samplers",
+    "model-averaging-edge-cases",
+    "model-averaging-plots-edge-cases",
+    "priors-coverage",
+    "priors-density-numeric",
+    "priors-informed",
+    "priors-linear-density",
+    "priors-print",
+    "priors-tools",
+    "selection-kernels",
+    "summary-tables-helpers",
+    "tools-evaluation",
+    "tools-input",
+    "weightfunction-plot-analytic",
+    "weightfunction-redesign"
+  ),
+  fixture = c(
+    "JAGS-ensemble-tables",
+    "JAGS-fit",
+    "JAGS-formula-scale",
+    "JAGS-formula",
+    "JAGS-summary-tables",
+    "model-averaging",
+    "selection-kernels",
+    "summary-tables",
+    "weightfunction-redesign"
+  ),
+  visual = c(
+    "JAGS-ensemble-plots",
+    "marginal-prior-samplers",
+    "model-averaging-plots",
+    "priors",
+    "priors-density",
+    "priors-plot",
+    "priors-print"
+  ),
+  `visual-fixture` = c(
+    "JAGS-diagnostic-plots",
+    "JAGS-ensemble-plots",
+    "JAGS-marginal-distributions",
+    "model-averaging-plots"
+  ),
+  fit = c(
+    "00-model-fits",
+    "JAGS-fit-edge-cases",
+    "JAGS-marglik"
+  )
+)
 
 bayestools_normalize_test_profiles <- function(profiles = NULL) {
   if (is.null(profiles) || length(profiles) == 0L) {
@@ -18,8 +78,15 @@ bayestools_normalize_test_profiles <- function(profiles = NULL) {
     plots = "visual",
     snapshot = "visual",
     snapshots = "visual",
+    `cached-visual` = "visual-fixture",
+    cached_visual = "visual-fixture",
     heavy = "fit",
-    slow = "fit"
+    `jags-visual` = "visual-fixture",
+    jags_visual = "visual-fixture",
+    slow = "fit",
+    visual_fixture = "visual-fixture",
+    `visual-fixtures` = "visual-fixture",
+    visual_fixtures = "visual-fixture"
   )
 
   alias_matches <- profiles %in% names(aliases)
@@ -41,6 +108,19 @@ bayestools_normalize_test_profiles <- function(profiles = NULL) {
   }
 
   unique(profiles)
+}
+
+bayestools_test_profile_selected_contexts <- function(profiles = NULL) {
+  unique(unlist(bayestools_test_profile_contexts[bayestools_normalize_test_profiles(profiles)]))
+}
+
+bayestools_escape_regex <- function(x) {
+  gsub("([][{}()+*^$|\\\\?.])", "\\\\\\1", x, perl = TRUE)
+}
+
+bayestools_test_profile_filter <- function(profiles = NULL) {
+  contexts <- bayestools_test_profile_selected_contexts(profiles)
+  paste0("^(", paste(bayestools_escape_regex(contexts), collapse = "|"), ")$")
 }
 
 bayestools_test_profile <- function() {
@@ -71,6 +151,12 @@ skip_if_not_test_profile <- function(profiles) {
 
 skip_if_not_visual_tests <- function() {
   skip_if_not_test_profile("visual")
+  testthat::skip_if_not_installed("vdiffr")
+  invisible(TRUE)
+}
+
+skip_if_not_visual_fixture_tests <- function() {
+  skip_if_not_test_profile("visual-fixture")
   testthat::skip_if_not_installed("vdiffr")
   invisible(TRUE)
 }

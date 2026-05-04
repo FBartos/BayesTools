@@ -1152,7 +1152,7 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   }
 
   # extract samples
-  model_samples   <- suppressWarnings(coda::as.mcmc(fit))
+  model_samples   <- .extract_posterior_samples(fit, as_list = FALSE)
   if(BF_diagnostics){
     model_samples_list <- .extract_posterior_samples(fit, as_list = TRUE)
     footnotes <- c(footnotes, .BF_error_footnote())
