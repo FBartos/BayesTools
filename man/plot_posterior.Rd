@@ -21,6 +21,9 @@ plot_posterior(
   par_name = NULL,
   effect_direction = "positive",
   dots_prior = list(),
+  data = NULL,
+  show_data = FALSE,
+  dots_data = list(),
   ...
 )
 }
@@ -90,6 +93,16 @@ regression. Use \code{"positive"} (default) for
 \code{mu - PET*se - PEESE*se^2}.}
 
 \item{dots_prior}{additional arguments for the prior distribution plot}
+
+\item{data}{optional numeric vector of observed p-values in \code{[0, 1]}, or
+a data frame with a \code{p} column. Used only for weightfunction plots.}
+
+\item{show_data}{whether observed p-values should be shown as rug marks on
+the weightfunction x-axis.}
+
+\item{dots_data}{additional styling arguments for observed p-value rug marks.
+Supports \code{col}/\code{color}, \code{alpha}, \code{lwd}/\code{linewidth},
+\code{side}/\code{rug_side}, and \code{height}/\code{rug_height}.}
 
 \item{...}{additional arguments}
 }

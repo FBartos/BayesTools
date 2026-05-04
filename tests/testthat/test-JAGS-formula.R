@@ -53,6 +53,101 @@ test_that("JAGS formula tools work", {
 
 })
 
+test_that("formula_add_intercept repairs only top-level no-intercept terms", {
+
+  env <- new.env(parent = emptyenv())
+  formula <- stats::as.formula("~ I(x - 1) + offset(z - 1) - 1", env = env)
+  attr(formula, "custom") <- "metadata"
+
+  out <- formula_add_intercept(formula)
+
+  expect_identical(environment(out), env)
+  expect_identical(attr(out, "custom"), "metadata")
+  expect_equal(attr(stats::terms(out), "intercept"), 1)
+  expect_equal(attr(stats::terms(out), "term.labels"), "I(x - 1)")
+  expect_equal(attr(stats::terms(out), "offset"), 2)
+
+  expect_equal(formula_add_intercept(~ x - 1), ~ x, ignore_formula_env = TRUE)
+  expect_equal(formula_add_intercept(~ 0 + x), ~ x, ignore_formula_env = TRUE)
+  expect_equal(formula_add_intercept(~ x + 0), ~ x, ignore_formula_env = TRUE)
+  expect_equal(formula_add_intercept(~ x + -1), ~ x, ignore_formula_env = TRUE)
+  expect_equal(formula_add_intercept(y ~ 0 + x), y ~ x, ignore_formula_env = TRUE)
+  expect_equal(formula_add_intercept(~ -1), ~ 1, ignore_formula_env = TRUE)
+
+  intercept_formula <- ~ x + y
+  expect_identical(formula_add_intercept(intercept_formula), intercept_formula)
+
+  expect_error(formula_add_intercept("~ x - 1"), "'formula' must be a formula.", fixed = TRUE)
+})
+
+test_that("JAGS_formula stores exact fitted formula design metadata", {
+
+  df <- data.frame(
+    x  = c(-1, 0, 1, 2),
+    x2 = c(-1, 0, 1, 2),
+    f  = factor(c("a", "b", "a", "b"), levels = c("a", "b"))
+  )
+
+  result <- JAGS_formula(
+    formula = ~ x + x2 + f,
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x         = prior("normal", list(0, 1)),
+      x2        = prior("normal", list(0, 1)),
+      f         = prior_factor("normal", list(0, 1), contrast = "treatment")
+    ),
+    formula_scale = list(x = TRUE)
+  )
+
+  design <- result$formula_design
+
+  expect_s3_class(design, "BayesTools_formula_design")
+  expect_identical(design$parameter, "mu")
+  expect_equal(design$formula, ~ x + x2 + f, ignore_formula_env = TRUE)
+  expect_equal(nrow(design$model_frame), nrow(df))
+  expect_equal(colnames(design$model_matrix), c("(Intercept)", "x", "x2", "fb"))
+  expect_equal(design$column_names, colnames(design$model_matrix))
+  expect_equal(design$raw_column_names, c("(Intercept)", "x", "x2", "fb"))
+  expect_equal(design$assign, attr(design$model_matrix, "assign"))
+  expect_equal(attr(design$terms, "term.labels"), c("x", "x2", "f"))
+  expect_equal(design$contrasts$f, "contr.treatment")
+  expect_equal(design$xlevels$f, c("a", "b"))
+  expect_equal(design$predictors, c("x", "x2", "f"))
+  expect_equal(design$predictor_types, c(x = "continuous", x2 = "continuous", f = "factor"))
+  expect_equal(design$model_terms, c("intercept", "x", "x2", "f"))
+  expect_equal(design$model_terms_type, c(intercept = "continuous", x = "continuous", x2 = "continuous", f = "factor"))
+
+  expect_equal(unname(design$model_matrix[, "x"]), unname(result$data$mu_data_x))
+  expect_equal(unname(design$model_matrix[, "x2"]), unname(result$data$mu_data_x2))
+  expect_equal(unname(design$model_matrix[, "fb", drop = FALSE]), unname(result$data$mu_data_f))
+  expect_equal(design$jags_data_names$x, "mu_data_x")
+  expect_equal(design$jags_data_names$x2, "mu_data_x2")
+  expect_equal(design$jags_data_names$f, "mu_data_f")
+  expect_equal(design$formula_scale$mu_x$mean, mean(df$x))
+  expect_equal(design$formula_scale$mu_x$sd, stats::sd(df$x))
+  expect_equal(names(design$prior_list), names(result$prior_list))
+
+  expect_lt(design$rank, ncol(design$model_matrix))
+  expect_named(design$aliased, colnames(design$model_matrix))
+  expect_true(any(design$aliased))
+})
+
+test_that("JAGS_formula_design accessor returns stored designs predictably", {
+
+  design_mu <- structure(list(parameter = "mu"), class = c("BayesTools_formula_design", "list"))
+  design_tau <- structure(list(parameter = "log_tau"), class = c("BayesTools_formula_design", "list"))
+  fit <- structure(list(), class = "BayesTools_fit")
+  attr(fit, "formula_design") <- list(mu = design_mu, log_tau = design_tau)
+
+  expect_identical(JAGS_formula_design(fit), list(mu = design_mu, log_tau = design_tau))
+  expect_identical(JAGS_formula_design(fit, "mu"), design_mu)
+  expect_identical(JAGS_formula_design(fit, "log_tau"), design_tau)
+  expect_null(JAGS_formula_design(structure(list(), class = "BayesTools_fit")))
+  expect_error(JAGS_formula_design(fit, "sigma"), "Formula design for parameter 'sigma' was not found.", fixed = TRUE)
+})
+
 test_that("JAGS_formula stores multi-factor contrast metadata", {
 
   df <- expand.grid(

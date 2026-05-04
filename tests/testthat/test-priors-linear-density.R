@@ -124,3 +124,81 @@ test_that("row-wise prior densities mix row predictions, not averaged weights", 
   expect_equal(density_second_moment(row_density), mean(c(1^2, 2^2)), tolerance = .08)
   expect_equal(density_second_moment(averaged_density), 1.5^2, tolerance = .08)
 })
+
+test_that("plot_transformed_prior exposes transformed prior plotting as a public wrapper", {
+
+  prior_list <- list(
+    mu_intercept = prior("normal", list(0, 1)),
+    mu_x = prior_mixture(
+      list(
+        prior("spike", list(0), prior_weights = 1),
+        prior("normal", list(1, .25), prior_weights = 3)
+      ),
+      is_null = c(TRUE, FALSE)
+    )
+  )
+  formula_scale <- list(mu = list(mu_x = list(mean = 5, sd = 2)))
+  attr(formula_scale$mu, "log_intercept") <- FALSE
+
+  plot <- plot_transformed_prior(
+    prior_list    = prior_list,
+    column_names  = c("mu_intercept", "mu_x"),
+    formula_scale = formula_scale,
+    parameter     = "mu_x",
+    n_points      = 128,
+    plot_type     = "ggplot",
+    par_name      = "x"
+  )
+
+  expect_s3_class(plot, "ggplot")
+  expect_true(any(vapply(plot$layers, function(layer) inherits(layer$geom, "GeomLine"), logical(1))))
+  expect_true(any(vapply(plot$layers, function(layer) inherits(layer$geom, "GeomSegment"), logical(1))))
+
+  device_file <- tempfile(fileext = ".pdf")
+  grDevices::pdf(device_file)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  expect_silent(plot_transformed_prior(
+    prior_list    = prior_list,
+    column_names  = c("mu_intercept", "mu_x"),
+    formula_scale = formula_scale,
+    parameter     = "mu_x",
+    n_points      = 64,
+    plot_type     = "base"
+  ))
+})
+
+test_that("plot_transformed_prior returns NULL only for untransformed identity parameters", {
+
+  prior_list <- list(
+    mu_intercept = prior("normal", list(0, 1)),
+    mu_x         = prior("normal", list(0, 1))
+  )
+
+  expect_null(plot_transformed_prior(
+    prior_list   = prior_list,
+    column_names = c("mu_intercept", "mu_x"),
+    parameter    = "mu_x",
+    plot_type    = "ggplot"
+  ))
+
+  transformed_plot <- plot_transformed_prior(
+    prior_list     = prior_list,
+    column_names   = c("mu_intercept", "mu_x"),
+    parameter      = "mu_x",
+    transformation = "exp",
+    x_range        = c(-2, 2),
+    n_points       = 64,
+    plot_type      = "ggplot"
+  )
+
+  expect_s3_class(transformed_plot, "ggplot")
+  expect_error(
+    plot_transformed_prior(
+      prior_list   = prior_list,
+      column_names = c("mu_intercept", "mu_x"),
+      parameter    = "mu_z"
+    ),
+    "Parameter 'mu_z' was not found in 'column_names'.",
+    fixed = TRUE
+  )
+})

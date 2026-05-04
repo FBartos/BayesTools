@@ -345,6 +345,8 @@ test_that("JAGS_extend works correctly", {
   skip_if_no_fits()
 
   fit_simple <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
+  formula_design <- list(mu = structure(list(parameter = "mu"), class = c("BayesTools_formula_design", "list")))
+  attr(fit_simple, "formula_design") <- formula_design
 
   # Test the extension mechanics without waiting on convergence precision targets.
   extend_control <- list(
@@ -387,6 +389,8 @@ test_that("JAGS_extend works correctly", {
   expect_true(!is.null(attr(fit_extended, "model_syntax")))
   expect_true(!is.null(attr(fit_extended2, "prior_list")))
   expect_true(!is.null(attr(fit_extended2, "model_syntax")))
+  expect_identical(attr(fit_extended, "formula_design"), formula_design)
+  expect_identical(attr(fit_extended2, "formula_design"), formula_design)
 
   # Check that the extended fit has more samples
   original_samples  <- nrow(suppressWarnings(coda::as.mcmc(fit_simple)))
