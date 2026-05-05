@@ -6,11 +6,31 @@
 do-not-share
 docs
 BayesTools.Rcheck
+BayesTools_*.tar.gz
 /doc/
 /Meta/
 ..Rcheck/
 Rplots.pdf
 check/
-/.StatsVault
+
+# Commit the small StatsVault coordination files used by Codex, but keep
+# bulky local caches, PDFs, query caches, and contribution artifacts ignored.
+.StatsVault/*
+!.StatsVault/
+!.StatsVault/README.md
+!.StatsVault/AGENT_INSTRUCTIONS.md
+!.StatsVault/AGENTS.additions.md
+!.StatsVault/project-memory.md
+!.StatsVault/key-papers.md
+!.StatsVault/ACTION_REQUIRED.md
+!.StatsVault/references.bib
+!.StatsVault/research-log.md
+!.StatsVault/manifest.json
+!.StatsVault/pending-markers.json
+!.StatsVault/provenance.jsonl
+!.StatsVault/tex/
+!.StatsVault/tex/statsvault-macros.tex
+!.StatsVault/notes/
+!.StatsVault/notes/*.md
+
 CLAUDE.md
-AGENTS.md
