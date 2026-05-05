@@ -94,12 +94,17 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
           # This workflow is coverage-only and runs the full developer profile.
           BAYESTOOLS_TEST_PROFILE: "all"
+          BAYESTOOLS_TEST_SKIP_REFIT: "false"
+          NOT_CRAN: "true"
+          VDIFFR_RUN_TESTS: "true"
+          AGENT: "1"
           JAGS_ROOT: "/c/progra~1/JAGS/JAGS-4.3.1"
           JAGS_MAJOR_VERSION: 4
         run: |
-          # Run every developer profile so slow model-fitting and figure tests
-          # both contribute to coverage. tools/test-profile.R owns profile
-          # environment setup and the LLM-oriented testthat reporter.
+          # Run the installed-package test suite so covr's instrumented
+          # package is the package under test. Running devtools::test() from
+          # a custom command loads the source tree through pkgload and can
+          # produce an empty coverage trace even when all tests pass.
           # Use forward-slash paths on Windows; covr injects these paths into
           # instrumented R code, where backslashes can become invalid escapes.
           repo_path <- normalizePath(".", winslash = "/", mustWork = TRUE)
@@ -109,16 +114,14 @@ jobs:
           
           coverage <- covr::package_coverage(
             path = repo_path,
-            type = "none",
+            type = "tests",
             quiet = FALSE,
             clean = FALSE,
-            install_path = install_path,
-            code = c(
-              "repo_path <- normalizePath('.', winslash = '/', mustWork = TRUE)",
-              "setwd(repo_path)",
-              "source(file.path(repo_path, 'tools', 'test-profile.R'))"
-            )
+            install_path = install_path
           )
+          if (covr::percent_coverage(coverage) == 0) {
+            stop("Coverage trace is empty; refusing to upload 0% coverage.", call. = FALSE)
+          }
           covr::codecov(coverage = coverage)
         shell: Rscript {0}
       
