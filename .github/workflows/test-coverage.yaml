@@ -94,6 +94,7 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
           # This workflow is coverage-only and runs the full developer profile.
           BAYESTOOLS_TEST_PROFILE: "all"
+          BAYESTOOLS_TEST_FILES_DIR: ${{ runner.temp }}/BayesTools_test_files
           BAYESTOOLS_TEST_SKIP_REFIT: "false"
           NOT_CRAN: "true"
           VDIFFR_RUN_TESTS: "true"
@@ -101,10 +102,11 @@ jobs:
           JAGS_ROOT: "/c/progra~1/JAGS/JAGS-4.3.1"
           JAGS_MAJOR_VERSION: 4
         run: |
-          # Run the installed-package test suite so covr's instrumented
-          # package is the package under test. Running devtools::test() from
-          # a custom command loads the source tree through pkgload and can
-          # produce an empty coverage trace even when all tests pass.
+          # Run source-tree tests against covr's already-loaded instrumented
+          # package. Using devtools::test() here reloads the source tree through
+          # pkgload and can produce an empty trace, while type = "tests" runs
+          # copied installed tests without the original R/*.R files that the
+          # fixture-cache metadata hashes intentionally inspect.
           # Use forward-slash paths on Windows; covr injects these paths into
           # instrumented R code, where backslashes can become invalid escapes.
           repo_path <- normalizePath(".", winslash = "/", mustWork = TRUE)
@@ -114,10 +116,20 @@ jobs:
           
           coverage <- covr::package_coverage(
             path = repo_path,
-            type = "tests",
+            type = "none",
             quiet = FALSE,
             clean = FALSE,
-            install_path = install_path
+            install_path = install_path,
+            code = c(
+              "repo_path <- normalizePath('.', winslash = '/', mustWork = TRUE)",
+              "setwd(repo_path)",
+              "test_files_dir <- Sys.getenv('BAYESTOOLS_TEST_FILES_DIR')",
+              "if (test_files_dir == '') test_files_dir <- file.path(tempdir(), 'BayesTools_test_files')",
+              "dir.create(test_files_dir, showWarnings = FALSE, recursive = TRUE)",
+              "Sys.setenv(BAYESTOOLS_TEST_FILES_DIR = normalizePath(test_files_dir, winslash = '/', mustWork = TRUE))",
+              "reporter <- if (identical(Sys.getenv('AGENT'), '1') && exists('LlmReporter', envir = asNamespace('testthat'), inherits = FALSE)) testthat::LlmReporter$new() else NULL",
+              "testthat::test_dir(file.path(repo_path, 'tests', 'testthat'), reporter = reporter, package = 'BayesTools', load_package = 'installed', stop_on_failure = TRUE)"
+            )
           )
           if (covr::percent_coverage(coverage) == 0) {
             stop("Coverage trace is empty; refusing to upload 0% coverage.", call. = FALSE)
@@ -130,12 +142,12 @@ jobs:
         if: failure()
         shell: pwsh
         run: |
-          $failFiles = Get-ChildItem -Path $env:RUNNER_TEMP -Recurse -Filter "testthat.Rout.fail" -ErrorAction SilentlyContinue
+          $failFiles = Get-ChildItem -Path $env:RUNNER_TEMP -Recurse -Filter "*.Rout.fail" -ErrorAction SilentlyContinue
           if ($failFiles) {
             foreach ($file in $failFiles) {
               Write-Host "`n=== Contents of $($file.FullName) ===`n"
               Get-Content $file.FullName
             }
           } else {
-            Write-Host "No testthat.Rout.fail files found in $env:RUNNER_TEMP"
+            Write-Host "No *.Rout.fail files found in $env:RUNNER_TEMP"
           }
