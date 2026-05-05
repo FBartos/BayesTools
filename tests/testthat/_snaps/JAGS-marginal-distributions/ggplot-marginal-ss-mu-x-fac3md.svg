@@ -84,19 +84,10 @@
 <text transform='translate(12.36,283.32) rotate(-90)' text-anchor='middle' style='font-size: 10.00px; font-family: sans;' textLength='33.35px' lengthAdjust='spacingAndGlyphs'>Density</text>
 <rect x='674.45' y='251.92' width='40.08' height='62.80' style='stroke-width: 1.07; stroke: none; fill: #FFFFFF;' />
 <rect x='679.92' y='257.40' width='17.28' height='17.28' style='stroke-width: 1.07; stroke: none; fill: #EBEBEB;' />
-<line x1='681.65' y1='266.04' x2='695.48' y2='266.04' style='stroke-width: 2.13; stroke: #E69F00; stroke-dasharray: 11.38,11.38; stroke-linecap: butt;' />
-<line x1='681.65' y1='266.04' x2='695.48' y2='266.04' style='stroke-width: 2.13; stroke: #56B4E9; stroke-dasharray: 11.38,11.38; stroke-linecap: butt;' />
-<line x1='681.65' y1='266.04' x2='695.48' y2='266.04' style='stroke-width: 2.13; stroke: #009E73; stroke-dasharray: 11.38,11.38; stroke-linecap: butt;' />
 <line x1='681.65' y1='266.04' x2='695.48' y2='266.04' style='stroke-width: 2.13; stroke: #E69F00; stroke-linecap: butt;' />
 <rect x='679.92' y='274.68' width='17.28' height='17.28' style='stroke-width: 1.07; stroke: none; fill: #EBEBEB;' />
-<line x1='681.65' y1='283.32' x2='695.48' y2='283.32' style='stroke-width: 2.13; stroke: #E69F00; stroke-dasharray: 11.38,11.38; stroke-linecap: butt;' />
-<line x1='681.65' y1='283.32' x2='695.48' y2='283.32' style='stroke-width: 2.13; stroke: #56B4E9; stroke-dasharray: 11.38,11.38; stroke-linecap: butt;' />
-<line x1='681.65' y1='283.32' x2='695.48' y2='283.32' style='stroke-width: 2.13; stroke: #009E73; stroke-dasharray: 11.38,11.38; stroke-linecap: butt;' />
 <line x1='681.65' y1='283.32' x2='695.48' y2='283.32' style='stroke-width: 2.13; stroke: #56B4E9; stroke-linecap: butt;' />
 <rect x='679.92' y='291.96' width='17.28' height='17.28' style='stroke-width: 1.07; stroke: none; fill: #EBEBEB;' />
-<line x1='681.65' y1='300.60' x2='695.48' y2='300.60' style='stroke-width: 2.13; stroke: #E69F00; stroke-dasharray: 11.38,11.38; stroke-linecap: butt;' />
-<line x1='681.65' y1='300.60' x2='695.48' y2='300.60' style='stroke-width: 2.13; stroke: #56B4E9; stroke-dasharray: 11.38,11.38; stroke-linecap: butt;' />
-<line x1='681.65' y1='300.60' x2='695.48' y2='300.60' style='stroke-width: 2.13; stroke: #009E73; stroke-dasharray: 11.38,11.38; stroke-linecap: butt;' />
 <line x1='681.65' y1='300.60' x2='695.48' y2='300.60' style='stroke-width: 2.13; stroke: #009E73; stroke-linecap: butt;' />
 <text x='702.68' y='269.07' style='font-size: 8.80px; font-family: sans;' textLength='5.87px' lengthAdjust='spacingAndGlyphs'>A</text>
 <text x='702.68' y='286.35' style='font-size: 8.80px; font-family: sans;' textLength='5.87px' lengthAdjust='spacingAndGlyphs'>B</text>

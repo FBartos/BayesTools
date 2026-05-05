@@ -3,4 +3,4 @@
  Prior prob.    1.000                                m ~ Normal(0, 0.3)
  log(marglik)   -0.34             omega[two-sided: .2] = (1, 0.3)      
  Post. prob.    1.000                                                  
- Inclusion BF     Inf                                                  
+ Inclusion BF      NA                                                  

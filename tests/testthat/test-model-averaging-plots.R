@@ -7,6 +7,9 @@ skip_if_not_test_profile(c("visual", "visual-fixture"))
 # PURPOSE:
 #   Tests for plot_prior_list, plot_posterior, plot_models, and related
 #   visualization functions in model averaging.
+#   Semantic plot-data companions live in
+#   test-model-averaging-plots-edge-cases.R; this file is for presentation
+#   regressions that still need rendered visual coverage.
 #
 # DEPENDENCIES:
 #   - vdiffr: Visual regression testing

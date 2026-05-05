@@ -25,6 +25,136 @@ skip_if_not_test_profile("fixture")
 REFERENCE_DIR <<- testthat::test_path("..", "results", "JAGS-ensemble-tables")
 source(testthat::test_path("common-functions.R"))
 
+.ensemble_estimate_row_names_for_test <- function(samples, parameter, formula_prefix = TRUE) {
+
+  if (is.matrix(samples[[parameter]])) {
+    if (inherits(samples[[parameter]], "mixed_posteriors.formula")) {
+      return(format_parameter_names(
+        colnames(samples[[parameter]]),
+        formula_parameters = attr(samples[[parameter]], "formula_parameter"),
+        formula_prefix = formula_prefix
+      ))
+    }
+    return(colnames(samples[[parameter]]))
+  }
+
+  if (inherits(samples[[parameter]], "mixed_posteriors.formula")) {
+    parameter_name <- gsub(
+      paste0(attr(samples[[parameter]], "formula_parameter"), "_"),
+      if (formula_prefix) paste0("(", attr(samples[[parameter]], "formula_parameter"), ") ") else "",
+      parameter
+    )
+    return(gsub("__xXx__", ":", parameter_name))
+  }
+
+  parameter
+}
+
+.expect_ensemble_estimates_semantics <- function(table, samples, parameters, probs) {
+
+  expected <- NULL
+  for (parameter in parameters) {
+    if (is.matrix(samples[[parameter]])) {
+      par_expected <- cbind(
+        "Mean"   = apply(samples[[parameter]], 2, mean),
+        "Median" = apply(samples[[parameter]], 2, stats::median)
+      )
+      for (prob in probs) {
+        par_expected <- cbind(par_expected, apply(samples[[parameter]], 2, stats::quantile, probs = prob))
+        colnames(par_expected)[ncol(par_expected)] <- prob
+      }
+      rownames(par_expected) <- .ensemble_estimate_row_names_for_test(samples, parameter)
+    } else {
+      par_expected <- c(
+        "Mean"   = mean(samples[[parameter]]),
+        "Median" = stats::median(samples[[parameter]])
+      )
+      for (prob in probs) {
+        par_expected <- c(par_expected, stats::quantile(samples[[parameter]], probs = prob))
+        names(par_expected)[length(par_expected)] <- prob
+      }
+      par_expected <- matrix(par_expected, nrow = 1, dimnames = list(parameter, names(par_expected)))
+      rownames(par_expected) <- .ensemble_estimate_row_names_for_test(samples, parameter)
+    }
+    expected <- rbind(expected, par_expected)
+  }
+
+  expect_equal(rownames(table), rownames(expected))
+  expect_equal(colnames(table), colnames(expected))
+  expect_equal(unname(as.matrix(table)), unname(expected), tolerance = 1e-12)
+  expect_equal(attr(table, "type"), rep("estimate", ncol(table)))
+  expect_true(attr(table, "rownames"))
+}
+
+.expect_ensemble_inference_semantics <- function(table, inference, parameters, is_null_list) {
+
+  expect_equal(rownames(table), unname(vapply(inference[parameters], attr, character(1), "parameter_name")))
+  expect_equal(table$models, unname(vapply(inference[parameters], function(x) sum(!attr(x, "is_null")), numeric(1))))
+  expect_equal(attr(table, "n_models"), unname(vapply(inference[parameters], function(x) length(attr(x, "is_null")), integer(1))))
+
+  for (parameter in parameters) {
+    is_null <- attr(inference[[parameter]], "is_null")
+    parameter_name <- attr(inference[[parameter]], "parameter_name")
+    expect_equal(sum(inference[[parameter]]$prior_probs), 1, tolerance = 1e-12)
+    expect_equal(sum(inference[[parameter]]$post_probs), 1, tolerance = 1e-12)
+    expect_equal(table[parameter_name, "prior_prob"], sum(inference[[parameter]]$prior_probs[!is_null]), tolerance = 1e-12)
+    expect_equal(table[parameter_name, "post_prob"], sum(inference[[parameter]]$post_probs[!is_null]), tolerance = 1e-12)
+    expect_equal(as.numeric(table[parameter_name, "inclusion_BF"]), inference[[parameter]]$BF, tolerance = 1e-12)
+  }
+
+  expect_equal(attr(table, "type"), c("n_models", "prior_prob", "post_prob", "inclusion_BF"))
+  expect_true(attr(table, "rownames"))
+}
+
+.expect_ensemble_model_table_semantics <- function(summary_table, diagnostics_table, models, parameters) {
+
+  max_or_na <- function(x) {
+    if (all(is.na(x))) {
+      NA_real_
+    } else {
+      max(x, na.rm = TRUE)
+    }
+  }
+
+  min_or_na <- function(x) {
+    if (all(is.na(x))) {
+      NA_real_
+    } else {
+      min(x, na.rm = TRUE)
+    }
+  }
+
+  expect_equal(summary_table$Model, seq_along(models))
+  expect_equal(diagnostics_table$Model, seq_along(models))
+  expect_equal(summary_table$prior_prob, vapply(models, function(model) model$inference$prior_prob, numeric(1)), tolerance = 1e-12)
+  expect_equal(summary_table$marglik, vapply(models, function(model) model$inference$marglik, numeric(1)), tolerance = 1e-12)
+  expect_equal(summary_table$post_prob, vapply(models, function(model) model$inference$post_prob, numeric(1)), tolerance = 1e-12)
+  expect_equal(as.numeric(summary_table$inclusion_BF), vapply(models, function(model) model$inference$inclusion_BF, numeric(1)), tolerance = 1e-12)
+  expect_equal(sum(summary_table$prior_prob), 1, tolerance = 1e-12)
+  expect_equal(sum(summary_table$post_prob), 1, tolerance = 1e-12)
+
+  expected_diagnostics <- data.frame(
+    max_MCMC_error = vapply(models, function(model) max_or_na(model$fit_summary[, "MCMC_error"]), numeric(1)),
+    max_MCMC_SD_error = vapply(models, function(model) max_or_na(model$fit_summary[, "MCMC_SD_error"]), numeric(1)),
+    min_ESS = vapply(models, function(model) min_or_na(model$fit_summary[, "ESS"]), numeric(1)),
+    max_R_hat = vapply(models, function(model) max_or_na(model$fit_summary[, "R_hat"]), numeric(1))
+  )
+  actual_diagnostics <- diagnostics_table[, names(expected_diagnostics)]
+  actual_diagnostics[] <- lapply(actual_diagnostics, as.numeric)
+  expect_equal(actual_diagnostics, expected_diagnostics, tolerance = 1e-12, ignore_attr = TRUE)
+
+  expect_equal(
+    attr(summary_table, "type"),
+    c("integer", rep("prior", length(parameters)), "prior_prob", "marglik", "post_prob", "inclusion_BF")
+  )
+  expect_equal(
+    attr(diagnostics_table, "type"),
+    c("integer", rep("prior", length(parameters)), "max_MCMC_error", "max_MCMC_SD_error", "min_ESS", "max_R_hat")
+  )
+  expect_false(attr(summary_table, "rownames"))
+  expect_false(attr(diagnostics_table, "rownames"))
+}
+
 # ============================================================================ #
 # SECTION 1: Test Empty Tables (Can run on CRAN - pure R)
 # ============================================================================ #
@@ -37,6 +167,12 @@ test_that("Empty summary tables work correctly", {
   expect_equal(nrow(ensemble_estimates_empty), 0, ignore_attr = TRUE)
   expect_equal(nrow(ensemble_inference_empty), 0, ignore_attr = TRUE)
   expect_equal(nrow(ensemble_diagnostics_empty), 0, ignore_attr = TRUE)
+  expect_equal(colnames(ensemble_estimates_empty), c("Mean", "Median", "0.025", "0.975"))
+  expect_equal(colnames(ensemble_inference_empty), c("models", "prior_prob", "post_prob", "inclusion_BF"))
+  expect_equal(colnames(ensemble_diagnostics_empty), c("Model", "max_MCMC_error", "max_MCMC_SD_error", "min_ESS", "max_R_hat"))
+  expect_equal(attr(ensemble_estimates_empty, "type"), rep("estimate", 4))
+  expect_equal(attr(ensemble_inference_empty, "type"), c("n_models", "prior_prob", "post_prob", "inclusion_BF"))
+  expect_equal(attr(ensemble_diagnostics_empty, "type"), c("integer", "max_MCMC_error", "max_MCMC_SD_error", "min_ESS", "max_R_hat"))
 
   # Test that empty tables have correct structure
   expect_s3_class(ensemble_estimates_empty, "BayesTools_table")
@@ -91,6 +227,57 @@ test_that("Summary table advanced features work correctly", {
   expect_s3_class(summary_table, "BayesTools_table")
   expect_s3_class(diagnostics_table, "BayesTools_table")
 
+  # Check semantic table content directly, not just the printed table snapshots
+  .expect_ensemble_estimates_semantics(estimates_table, mixed_posteriors, c("m", "omega"), c(.025, 0.95))
+  .expect_ensemble_inference_semantics(inference_table, inference, c("m", "omega"), list("m" = c(FALSE, FALSE, FALSE), "omega" = c(TRUE, FALSE, FALSE)))
+  .expect_ensemble_model_table_semantics(summary_table, diagnostics_table, models, c("m", "omega"))
+
+  inference_conditional <- ensemble_inference(
+    model_list = models,
+    parameters = c("m", "omega"),
+    is_null_list = list("m" = c(FALSE, FALSE, FALSE), "omega" = c(TRUE, FALSE, FALSE)),
+    conditional = TRUE
+  )
+  expect_true(attr(inference_conditional, "conditional"))
+  expect_equal(inference_conditional$m$prior_probs, inference$m$prior_probs, tolerance = 1e-12)
+  expect_equal(inference_conditional$m$post_probs, inference$m$post_probs, tolerance = 1e-12)
+  expect_equal(inference_conditional$omega$prior_probs[1], 0, tolerance = 1e-12)
+  expect_equal(inference_conditional$omega$post_probs[1], 0, tolerance = 1e-12)
+  expect_equal(sum(inference_conditional$omega$prior_probs[-1]), 1, tolerance = 1e-12)
+  expect_equal(sum(inference_conditional$omega$post_probs[-1]), 1, tolerance = 1e-12)
+  expect_equal(inference_conditional$omega$BF, inference$omega$BF, tolerance = 1e-12)
+  expect_error(
+    ensemble_inference_table(inference_conditional, names(inference_conditional)),
+    "cannot be 'conditional'",
+    fixed = TRUE
+  )
+
+  mixed_posteriors_conditional <- mix_posteriors(
+    model_list = models,
+    parameters = "omega",
+    is_null_list = list("omega" = c(TRUE, FALSE, FALSE)),
+    conditional = TRUE,
+    seed = 1,
+    n_samples = 1000
+  )
+  estimates_conditional <- ensemble_estimates_table(mixed_posteriors_conditional, parameters = "omega", probs = c(.025, 0.95))
+  expect_equal(rownames(estimates_conditional), rownames(estimates_table)[grepl("^omega\\[", rownames(estimates_table))])
+  expect_false(any(attr(mixed_posteriors_conditional$omega, "models_ind") == 1))
+  expect_true(any(attr(mixed_posteriors$omega, "models_ind") == 1))
+
+  malformed_model <- models[[1]]
+  malformed_model$fit_summary <- data.frame(MCMC_error = 0)
+  expect_error(
+    ensemble_diagnostics_table(list(malformed_model), c("m", "omega")),
+    "fit_summary",
+    fixed = TRUE
+  )
+  expect_error(
+    ensemble_summary_table(list(list(fit = fit_summary0)), c("m", "omega")),
+    "inference",
+    fixed = TRUE
+  )
+
   # Check content with reference files
   test_reference_table(estimates_table, "simple_ensemble_estimates.txt")
   test_reference_table(inference_table, "simple_ensemble_inference.txt")
@@ -108,7 +295,10 @@ test_that("Summary table advanced features work correctly", {
   expect_equal(capture_output_lines(ensemble_diagnostics_empty, width = 150)[1], capture_output_lines(diagnostics_table.trimmed, width = 150)[1])
 
   # # Test interpret
-  interpretation <- interpret(inference, mixed_posteriors, list(
+  inference_for_interpret <- inference
+  inference_for_interpret[["m"]][["BF"]] <- 100
+  interpretation_samples <- list(m = as.numeric(mixed_posteriors[["m"]]))
+  interpretation <- interpret(inference_for_interpret, interpretation_samples, list(
     list(
       inference         = "m",
       samples           = "m",
@@ -123,7 +313,7 @@ test_that("Summary table advanced features work correctly", {
 
   # Test interpret 2 (modified inference)
   inference[["m"]][["BF"]] <- 1/5
-  interpretation2 <- interpret(inference, mixed_posteriors, list(
+  interpretation2 <- interpret(inference, interpretation_samples, list(
     list(
       inference           = "m",
       samples             = "m",
@@ -188,6 +378,10 @@ test_that("Summary table advanced features work correctly", {
   summary_table_complex   <- ensemble_summary_table(models_complex, parameters_complex)
   diagnostics_table_complex <- ensemble_diagnostics_table(models_complex, parameters_complex)
 
+  .expect_ensemble_estimates_semantics(estimates_table_complex, mixed_posteriors_complex, parameters_complex, c(.025, 0.95))
+  .expect_ensemble_inference_semantics(inference_table_complex, inference_complex, parameters_complex, is_null_list_complex)
+  .expect_ensemble_model_table_semantics(summary_table_complex, diagnostics_table_complex, models_complex, parameters_complex)
+
   test_reference_table(estimates_table_complex, "complex_ensemble_estimates.txt")
   test_reference_table(inference_table_complex, "complex_ensemble_inference.txt")
   test_reference_table(summary_table_complex, "complex_ensemble_summary.txt")
@@ -224,6 +418,9 @@ test_that("Summary table advanced features work correctly", {
   estimates_simple_ma <- ensemble_estimates_table(mixed_posteriors_simple_ma, parameters = c("m", "s"))
   inference_simple_ma_table <- ensemble_inference_table(inference_simple_ma, names(inference_simple_ma))
 
+  .expect_ensemble_estimates_semantics(estimates_simple_ma, mixed_posteriors_simple_ma, c("m", "s"), c(.025, .975))
+  .expect_ensemble_inference_semantics(inference_simple_ma_table, inference_simple_ma, c("m", "s"), list("m" = 1, "s" = 0))
+
   test_reference_table(estimates_simple_ma, "simple_ma_estimates.txt")
   test_reference_table(inference_simple_ma_table, "simple_ma_inference.txt")
 
@@ -258,6 +455,9 @@ test_that("Summary table advanced features work correctly", {
 
   estimates_fixed_wf <- ensemble_estimates_table(mixed_posteriors_fixed_wf, parameters = c("m", "omega"))
   inference_fixed_wf_table <- ensemble_inference_table(inference_fixed_wf, names(inference_fixed_wf))
+
+  .expect_ensemble_estimates_semantics(estimates_fixed_wf, mixed_posteriors_fixed_wf, c("m", "omega"), c(.025, .975))
+  .expect_ensemble_inference_semantics(inference_fixed_wf_table, inference_fixed_wf, c("m", "omega"), list("m" = 0, "omega" = 1))
 
   test_reference_table(estimates_fixed_wf, "fixed_wf_estimates.txt")
   test_reference_table(inference_fixed_wf_table, "fixed_wf_inference.txt")
@@ -300,6 +500,11 @@ test_that("Summary table advanced features work correctly", {
   estimates_interaction <- ensemble_estimates_table(mixed_posteriors_interaction, parameters = parameters_int)
   inference_interaction_table <- ensemble_inference_table(inference_interaction, names(inference_interaction))
   summary_interaction_table <- ensemble_summary_table(models_interaction, parameters_int)
+  diagnostics_interaction_table <- ensemble_diagnostics_table(models_interaction, parameters_int)
+
+  .expect_ensemble_estimates_semantics(estimates_interaction, mixed_posteriors_interaction, parameters_int, c(.025, .975))
+  .expect_ensemble_inference_semantics(inference_interaction_table, inference_interaction, parameters_int, is_null_list_int)
+  .expect_ensemble_model_table_semantics(summary_interaction_table, diagnostics_interaction_table, models_interaction, parameters_int)
 
   test_reference_table(estimates_interaction, "interaction_ensemble_estimates.txt")
   test_reference_table(inference_interaction_table, "interaction_ensemble_inference.txt")
@@ -337,6 +542,9 @@ test_that("Summary table advanced features work correctly", {
   estimates_spike_factors <- ensemble_estimates_table(mixed_posteriors_spike_factors, parameters = c("mu_x_fac3md"))
   inference_spike_factors_table <- ensemble_inference_table(inference_spike_factors, names(inference_spike_factors))
 
+  .expect_ensemble_estimates_semantics(estimates_spike_factors, mixed_posteriors_spike_factors, c("mu_x_fac3md"), c(.025, .975))
+  .expect_ensemble_inference_semantics(inference_spike_factors_table, inference_spike_factors, c("mu_x_fac3md"), list("mu_x_fac3md" = c(TRUE, FALSE)))
+
   test_reference_table(estimates_spike_factors, "spike_factors_estimates.txt")
   test_reference_table(inference_spike_factors_table, "spike_factors_inference.txt")
 
@@ -368,6 +576,8 @@ test_that("Simplified interpret2 function", {
 test_that("as_mixed_posteriors works with ensemble tables", {
 
   skip_if_no_fits()
+  skip_if_not_installed("RoBMA")
+  skip_if_missing_fits(c("fit_complex_mixed", "fit_simple_formula_mixed"))
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")
 

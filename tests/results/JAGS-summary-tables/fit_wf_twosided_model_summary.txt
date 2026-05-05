@@ -3,4 +3,4 @@
  Prior prob.    1.000             omega[two-sided: .05] ~ CumDirichlet(1, 1)
  log(marglik)    0.00                                                       
  Post. prob.    1.000                                                       
- Inclusion BF     Inf                                                       
+ Inclusion BF      NA                                                       

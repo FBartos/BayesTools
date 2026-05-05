@@ -58,38 +58,47 @@ test_reference_table <- function(table, filename, info_msg = NULL,
 
 parse_numeric_table_lines <- function(lines) {
 
-  number_pattern <- "([-+]?Inf|NA|NaN|[-+]?[0-9]*\\.?[0-9]+(?:[eE][-+]?[0-9]+)?)"
+  number_pattern <- "(?:<?[-+]?Inf|NA|NaN|<?[-+]?[0-9]*\\.?[0-9]+(?:[eE][-+]?[0-9]+)?)"
   row_pattern <- paste0(
     "^\\s*(.*?)\\s+",
-    number_pattern, "\\s+",
-    number_pattern, "\\s+",
-    number_pattern, "\\s+",
-    number_pattern, "\\s+",
-    number_pattern, "\\s+",
-    number_pattern, "\\s*$"
+    "(", number_pattern, "(?:\\s+", number_pattern, ")+)",
+    "\\s*$"
   )
 
   matches <- regexec(row_pattern, lines, perl = TRUE)
   parsed  <- regmatches(lines, matches)
-  is_row  <- lengths(parsed) == 8
+  is_row  <- lengths(parsed) == 3
 
   if (!any(is_row)) {
     return(list(
       labels = character(),
-      values = matrix(numeric(), nrow = 0, ncol = 6),
+      values = matrix(numeric(), nrow = 0, ncol = 0),
       is_row = is_row
     ))
   }
 
   row_data <- do.call(rbind, lapply(parsed[is_row], function(x) x[-1]))
-  values   <- matrix(as.numeric(row_data[, -1]), nrow = nrow(row_data))
-  colnames(values) <- c("Mean", "SD", "0.025", "0.5", "0.975", "Inclusion BF")
+  row_values <- lapply(strsplit(trimws(row_data[, 2]), "\\s+"), function(tokens) {
+    tokens <- sub("^<", "", tokens)
+    tokens[tokens == "NA"] <- NA_character_
+    suppressWarnings(as.numeric(tokens))
+  })
+  value_widths <- lengths(row_values)
+  if (length(unique(value_widths)) != 1L) {
+    stop("Parsed numeric table rows have inconsistent widths.", call. = FALSE)
+  }
+  values <- do.call(rbind, row_values)
+  colnames(values) <- paste0("V", seq_len(ncol(values)))
 
   list(
     labels = row_data[, 1],
     values = values,
     is_row = is_row
   )
+}
+
+normalize_reference_non_table_lines <- function(lines) {
+  gsub("\\s+", " ", trimws(lines))
 }
 
 test_reference_table_numeric <- function(table, filename, tolerance = 1e-2,
@@ -107,7 +116,11 @@ test_reference_table_numeric <- function(table, filename, tolerance = 1e-2,
 
       expect_equal(actual_table$labels, expected_table$labels, info = info_msg)
       expect_equal(actual_table$values, expected_table$values, tolerance = tolerance, info = info_msg)
-      expect_equal(actual_output[!actual_table$is_row], expected_output[!expected_table$is_row], info = info_msg)
+      expect_equal(
+        normalize_reference_non_table_lines(actual_output[!actual_table$is_row]),
+        normalize_reference_non_table_lines(expected_output[!expected_table$is_row]),
+        info = info_msg
+      )
     } else {
       skip(paste("Reference file", filename, "not found."))
     }
@@ -135,11 +148,58 @@ test_reference_text <- function(text, filename, info_msg = NULL,
   }
 }
 
-# Skip if pre-fitted models are not available
+# Skip if pre-fitted models are not available in lightweight profiles. Explicit
+# fixture-bearing profiles fail so missing or stale caches cannot be bypassed.
+.test_cache_required_for_active_profile <- function() {
+  if (exists("bayestools_test_profile_includes", mode = "function")) {
+    return(bayestools_test_profile_includes(c("fixture", "fit", "visual-fixture")))
+  }
+
+  profiles <- tolower(Sys.getenv("BAYESTOOLS_TEST_PROFILE", "unit"))
+  profiles <- unlist(strsplit(profiles, "[,;[:space:]]+"))
+  any(profiles %in% c("fixture", "fixtures", "fit", "heavy", "slow", "visual-fixture", "visual_fixture"))
+}
+
+.test_cache_unavailable <- function(message) {
+  if (.test_cache_required_for_active_profile()) {
+    testthat::fail(message)
+  } else {
+    skip(message)
+  }
+}
+
+.test_cache_required_catalog <- function() {
+  if (exists("bayestools_required_fit_catalog", mode = "function")) {
+    return(bayestools_required_fit_catalog())
+  }
+
+  NULL
+}
+
 skip_if_no_fits <- function() {
   model_registry_file <- file.path(test_files_dir, "model_registry.RDS")
   if (!file.exists(model_registry_file)) {
-    skip("Pre-fitted models not found. Run test-00-model-fits.R first.")
+    .test_cache_unavailable("Pre-fitted models not found. Run test-00-model-fits.R first.")
+  }
+
+  catalog <- .test_cache_required_catalog()
+  required_fits <- if (is.null(catalog)) NULL else catalog$model_name
+  required_margliks <- if (is.null(catalog)) NULL else catalog$model_name[catalog$has_marglik]
+
+  cache_complete <- .test_cache_requirements_complete(
+    required_fits = required_fits,
+    required_margliks = required_margliks,
+    registry_file = model_registry_file
+  )
+  cache_current <- .test_cache_metadata_current(
+    "model-fit",
+    required_fits = required_fits,
+    required_margliks = required_margliks,
+    registry_file = model_registry_file
+  )
+
+  if (!cache_complete || !cache_current) {
+    .test_cache_unavailable("Pre-fitted model cache is missing required artifacts or has stale metadata. Run test-00-model-fits.R first.")
   }
 }
 
@@ -150,7 +210,7 @@ skip_if_missing_fits <- function(names) {
   missing <- names[!file.exists(fit_files)]
 
   if (length(missing) > 0L) {
-    skip(paste0(
+    .test_cache_unavailable(paste0(
       "Required pre-fitted models not found: ",
       paste(missing, collapse = ", "),
       ". Run test-00-model-fits.R first."
@@ -383,6 +443,54 @@ test_meandif <- function(prior, skip_moments = FALSE) {
   return(invisible())
 }
 
+.fixture_metadata_from_catalog <- function(name) {
+  if (!exists("bayestools_expected_fit_catalog", mode = "function")) {
+    return(list())
+  }
+
+  catalog <- bayestools_expected_fit_catalog()
+  row_index <- match(name, catalog$model_name)
+  if (is.na(row_index)) {
+    return(list())
+  }
+
+  row <- catalog[row_index, , drop = FALSE]
+  list(
+    profile = row$profile,
+    model_family = row$model_family,
+    formula = row$formula,
+    scale_policy = row$scale_policy,
+    prior_features = row$prior_features,
+    oracle_type = row$oracle_type,
+    expected_chains = row$expected_chains,
+    expected_iterations = row$expected_iterations,
+    expected_parameter_count = row$expected_parameter_count,
+    expected_monitor = row$expected_monitor[[1]],
+    expected_formula_parameters = row$expected_formula_parameters[[1]],
+    expected_formula_scale = row$expected_formula_scale[[1]]
+  )
+}
+
+.fixture_metadata_from_registry_entry <- function(registry_entry) {
+  flag_columns <- setdiff(
+    names(registry_entry),
+    c("model_name", "has_marglik", "note")
+  )
+  flags <- as.list(registry_entry[flag_columns])
+  flags <- lapply(flags, isTRUE)
+
+  list(
+    schema_version = 1L,
+    generated_by = "save_fit",
+    cache_scope = "model-fit",
+    model_name = registry_entry$model_name,
+    has_marglik = isTRUE(registry_entry$has_marglik),
+    flags = flags,
+    note = registry_entry$note,
+    catalog = .fixture_metadata_from_catalog(registry_entry$model_name)
+  )
+}
+
 # Helper function to save fitted models and register metadata
 save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_priors = FALSE,
                      factor_priors = FALSE, pub_bias_priors = FALSE,
@@ -393,6 +501,30 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
                      autofit = FALSE, parallel = FALSE, thinning = FALSE,
                      add_parameters = FALSE, note = "") {
 
+  registry_entry <- data.frame(
+    model_name = name,
+    has_marglik = !is.null(marglik),
+    simple_priors = simple_priors,
+    vector_priors = vector_priors,
+    factor_priors = factor_priors,
+    pub_bias_priors = pub_bias_priors,
+    weightfunction_priors = weightfunction_priors,
+    spike_and_slab_priors = spike_and_slab_priors,
+    mixture_priors = mixture_priors,
+    formulas = formulas,
+    random_effects = random_effects,
+    interactions = interactions,
+    expression_priors = expression_priors,
+    multi_formula = multi_formula,
+    autofit = autofit,
+    parallel = parallel,
+    thinning = thinning,
+    add_parameters = add_parameters,
+    note = note,
+    stringsAsFactors = FALSE
+  )
+
+  attr(fit, "fixture_metadata") <- .fixture_metadata_from_registry_entry(registry_entry)
   saveRDS(fit, file = file.path(temp_fits_dir, paste0(name, ".RDS")))
 
   # Save marglik if provided
@@ -404,28 +536,7 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
   list(
     fit = fit,
     marglik = marglik,
-    registry_entry = data.frame(
-      model_name = name,
-      has_marglik = !is.null(marglik),
-      simple_priors = simple_priors,
-      vector_priors = vector_priors,
-      factor_priors = factor_priors,
-      pub_bias_priors = pub_bias_priors,
-      weightfunction_priors = weightfunction_priors,
-      spike_and_slab_priors = spike_and_slab_priors,
-      mixture_priors = mixture_priors,
-      formulas = formulas,
-      random_effects = random_effects,
-      interactions = interactions,
-      expression_priors = expression_priors,
-      multi_formula = multi_formula,
-      autofit = autofit,
-      parallel = parallel,
-      thinning = thinning,
-      add_parameters = add_parameters,
-      note = note,
-      stringsAsFactors = FALSE
-    )
+    registry_entry = registry_entry
   )
 }
 
@@ -478,22 +589,293 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
   )
 }
 
-.test_cache_requirements_complete <- function(required_fits = NULL,
+.test_cache_expected_requirements <- function(required_fits = NULL,
                                               required_margliks = NULL,
                                               required_files = NULL,
                                               registry_file = NULL) {
   registry_requirements <- .test_cache_registry_requirements(registry_file)
 
-  required_fits <- unique(c(required_fits, registry_requirements$fits))
-  required_margliks <- unique(c(required_margliks, registry_requirements$margliks))
-  required_files <- unique(c(required_files, registry_requirements$files))
+  list(
+    fits = sort(unique(c(required_fits, registry_requirements$fits))),
+    margliks = sort(unique(c(required_margliks, registry_requirements$margliks))),
+    files = sort(unique(c(required_files, registry_requirements$files)))
+  )
+}
 
-  fit_files <- file.path(temp_fits_dir, paste0(required_fits, ".RDS"))
-  marglik_files <- file.path(temp_marglik_dir, paste0(required_margliks, ".RDS"))
+.test_cache_package_r_files <- function(files = character(), patterns = character()) {
+  package_r_dir <- file.path(testthat::test_path("..", ".."), "R")
+  package_source_files <- file.path(package_r_dir, files)
+  for (pattern in patterns) {
+    package_source_files <- c(
+      package_source_files,
+      list.files(package_r_dir, pattern = pattern, full.names = TRUE)
+    )
+  }
+  package_source_files <- unique(package_source_files)
+  package_source_files <- package_source_files[file.exists(package_source_files)]
+  names(package_source_files) <- paste0(
+    "package_R_",
+    tools::file_path_sans_ext(basename(package_source_files))
+  )
+  package_source_files
+}
+
+.test_cache_existing_test_files <- function(files) {
+  paths <- testthat::test_path(files)
+  paths <- paths[file.exists(paths)]
+  names(paths) <- paste0(
+    "test_",
+    gsub("[^A-Za-z0-9]+", "_", tools::file_path_sans_ext(basename(paths)))
+  )
+  paths
+}
+
+.test_cache_source_files <- function(name) {
+  generator_sources <- c(
+    description = testthat::test_path("..", "..", "DESCRIPTION"),
+    .test_cache_package_r_files(
+      files = c(
+        "JAGS-fit.R",
+        "JAGS-formula.R",
+        "JAGS-marglik.R",
+        "priors.R",
+        "priors-tools.R",
+        "priors-informed.R",
+        "selection-kernels.R",
+        "tools.R"
+      ),
+      patterns = "^distributions-.*\\.R$"
+    ),
+    test_00_model_fits = testthat::test_path("test-00-model-fits.R")
+  )
+
+  fixture_consumer_sources <- c(
+    .test_cache_package_r_files(
+      files = c(
+        "JAGS-fit.R",
+        "JAGS-formula.R",
+        "model-averaging.R",
+        "selection-kernels.R",
+        "summary-tables.R",
+        "interpret.R"
+      )
+    ),
+    common_functions = testthat::test_path("common-functions.R"),
+    expected_fit_catalog = testthat::test_path("helper-expected-fit-catalog.R"),
+    semantic_oracles = testthat::test_path("helper-semantic-oracles.R"),
+    .test_cache_existing_test_files(c(
+      "test-fixture-integrity.R",
+      "test-JAGS-ensemble-tables.R",
+      "test-JAGS-fit.R",
+      "test-JAGS-formula-scale.R",
+      "test-JAGS-formula.R",
+      "test-JAGS-summary-tables.R",
+      "test-model-averaging.R",
+      "test-selection-kernels.R",
+      "test-summary-tables.R",
+      "test-weightfunction-redesign.R"
+    ))
+  )
+
+  visual_fixture_consumer_sources <- c(
+    .test_cache_package_r_files(
+      files = c(
+        "JAGS-fit.R",
+        "model-averaging.R",
+        "model-averaging-plots.R",
+        "priors-plot.R",
+        "summary-tables.R"
+      )
+    ),
+    common_functions = testthat::test_path("common-functions.R"),
+    expected_fit_catalog = testthat::test_path("helper-expected-fit-catalog.R"),
+    .test_cache_existing_test_files(c(
+      "test-JAGS-diagnostic-plots.R",
+      "test-JAGS-ensemble-plots.R",
+      "test-JAGS-marginal-distributions.R",
+      "test-model-averaging-plots.R"
+    ))
+  )
+
+  sources <- switch(
+    name,
+    `model-fit` = generator_sources,
+    `fixture-consumer` = fixture_consumer_sources,
+    `visual-fixture-consumer` = visual_fixture_consumer_sources,
+    character()
+  )
+
+  sources[file.exists(sources)]
+}
+
+.test_cache_file_md5 <- function(path) {
+  if (!file.exists(path)) {
+    return(NA_character_)
+  }
+
+  unname(tools::md5sum(path))
+}
+
+.test_cache_text_md5 <- function(text) {
+  hash_file <- tempfile()
+  on.exit(unlink(hash_file), add = TRUE)
+  writeLines(text, hash_file, useBytes = TRUE)
+  .test_cache_file_md5(hash_file)
+}
+
+.test_cache_source_functions <- function(name) {
+  switch(
+    name,
+    `model-fit` = c(
+      test_helper_fixture_metadata_from_catalog = ".fixture_metadata_from_catalog",
+      test_helper_fixture_metadata_from_registry_entry = ".fixture_metadata_from_registry_entry",
+      test_helper_save_fit = "save_fit",
+      catalog_registry_flag_columns = "bayestools_registry_flag_columns",
+      catalog_registry_schema_columns = "bayestools_registry_schema_columns",
+      catalog_optional_fit_requirements = "bayestools_optional_fit_requirements",
+      catalog_find_calls = ".bayestools_find_calls",
+      catalog_static_string = ".bayestools_static_string",
+      catalog_static_logical = ".bayestools_static_logical",
+      catalog_save_fit_rows = ".bayestools_save_fit_catalog_rows",
+      catalog_semantic_fit_overrides = "bayestools_semantic_fit_catalog_overrides",
+      catalog_expected_fit = "bayestools_expected_fit_catalog",
+      catalog_required_fit = "bayestools_required_fit_catalog"
+    ),
+    character()
+  )
+}
+
+.test_cache_function_hashes <- function(name) {
+  source_functions <- .test_cache_source_functions(name)
+  if (length(source_functions) == 0L) {
+    return(character())
+  }
+
+  vapply(source_functions, function(function_name) {
+    if (!exists(function_name, mode = "function")) {
+      return(NA_character_)
+    }
+
+    function_object <- get(function_name, mode = "function")
+    .test_cache_text_md5(paste(deparse(function_object), collapse = "\n"))
+  }, character(1))
+}
+
+.test_cache_source_hashes <- function(name) {
+  source_files <- .test_cache_source_files(name)
+  file_hashes <- vapply(source_files, .test_cache_file_md5, character(1))
+  c(file_hashes, .test_cache_function_hashes(name))
+}
+
+.test_cache_marker_values <- function(indicator_file) {
+  if (!file.exists(indicator_file)) {
+    return(character())
+  }
+
+  lines <- readLines(indicator_file, warn = FALSE)
+  pieces <- regmatches(lines, regexec("^([^:]+):\\s*(.*)$", lines))
+  pieces <- pieces[lengths(pieces) == 3L]
+  if (length(pieces) == 0L) {
+    return(character())
+  }
+
+  values <- vapply(pieces, `[[`, character(1), 3L)
+  names(values) <- vapply(pieces, `[[`, character(1), 2L)
+  values
+}
+
+.test_cache_name_line <- function(names) {
+  paste(sort(unique(names)), collapse = ",")
+}
+
+.test_cache_metadata_current <- function(name, required_fits = NULL,
+                                         required_margliks = NULL,
+                                         required_files = NULL,
+                                         registry_file = NULL) {
+  indicator_file <- .test_cache_indicator_file(name)
+  marker <- .test_cache_marker_values(indicator_file)
+  if (length(marker) == 0L) {
+    return(FALSE)
+  }
+
+  marker_value <- function(key) {
+    if (!key %in% names(marker)) {
+      return(NA_character_)
+    }
+
+    unname(marker[[key]])
+  }
+
+  marker_test_files_dir <- marker_value("test_files_dir")
+  if (is.na(marker_test_files_dir) ||
+      !identical(
+        normalizePath(marker_test_files_dir, winslash = "/", mustWork = FALSE),
+        normalizePath(test_files_dir, winslash = "/", mustWork = TRUE)
+      )) {
+    return(FALSE)
+  }
+
+  requirements <- .test_cache_expected_requirements(
+    required_fits = required_fits,
+    required_margliks = required_margliks,
+    required_files = required_files,
+    registry_file = registry_file
+  )
+
+  if (!identical(marker_value("required_fits"), .test_cache_name_line(requirements$fits)) ||
+      !identical(marker_value("required_margliks"), .test_cache_name_line(requirements$margliks))) {
+    return(FALSE)
+  }
+
+  if (!is.null(registry_file) && file.exists(registry_file)) {
+    registry_md5 <- .test_cache_file_md5(registry_file)
+    if (!identical(marker_value("registry_md5"), registry_md5)) {
+      return(FALSE)
+    }
+  }
+
+  source_hashes <- .test_cache_source_hashes(name)
+  for (source_name in names(source_hashes)) {
+    key <- paste0("source_md5_", source_name)
+    if (!identical(marker_value(key), unname(source_hashes[[source_name]]))) {
+      return(FALSE)
+    }
+  }
+
+  TRUE
+}
+
+.test_cache_requirements_complete <- function(required_fits = NULL,
+                                              required_margliks = NULL,
+                                              required_files = NULL,
+                                              registry_file = NULL) {
+  requirements <- .test_cache_expected_requirements(
+    required_fits = required_fits,
+    required_margliks = required_margliks,
+    required_files = required_files,
+    registry_file = registry_file
+  )
+
+  fit_files <- file.path(temp_fits_dir, paste0(requirements$fits, ".RDS"))
+  marglik_files <- file.path(temp_marglik_dir, paste0(requirements$margliks, ".RDS"))
 
   .test_cache_paths_complete(fit_files) &&
     .test_cache_paths_complete(marglik_files) &&
-    .test_cache_paths_complete(required_files)
+    .test_cache_paths_complete(requirements$files)
+}
+
+.test_cache_prune_extra_artifacts <- function(requirements) {
+  prune_dir <- function(directory, expected_files) {
+    actual_files <- list.files(directory, pattern = "\\.RDS$", full.names = TRUE)
+    extra_files <- actual_files[!basename(actual_files) %in% expected_files]
+    if (length(extra_files) > 0L) {
+      unlink(extra_files)
+    }
+  }
+
+  prune_dir(temp_fits_dir, paste0(requirements$fits, ".RDS"))
+  prune_dir(temp_marglik_dir, paste0(requirements$margliks, ".RDS"))
+  invisible(TRUE)
 }
 
 # Skip model fitting if a validated cache exists and BAYESTOOLS_TEST_SKIP_REFIT is TRUE.
@@ -504,6 +886,13 @@ skip_refit_if_cached <- function(name, required_fits = NULL, required_margliks =
 
   cache_complete <- file.exists(indicator_file) &&
     .test_cache_requirements_complete(
+      required_fits = required_fits,
+      required_margliks = required_margliks,
+      required_files = required_files,
+      registry_file = registry_file
+    ) &&
+    .test_cache_metadata_current(
+      name = name,
       required_fits = required_fits,
       required_margliks = required_margliks,
       required_files = required_files,
@@ -534,11 +923,31 @@ mark_refit_cache_complete <- function(name, required_fits = NULL, required_margl
     stop("Cannot mark cache complete because required cache artifacts are missing.", call. = FALSE)
   }
 
+  requirements <- .test_cache_expected_requirements(
+    required_fits = required_fits,
+    required_margliks = required_margliks,
+    required_files = required_files,
+    registry_file = registry_file
+  )
+  source_hashes <- .test_cache_source_hashes(name)
+  source_hash_lines <- paste0("source_md5_", names(source_hashes), ": ", unname(source_hashes))
+  registry_hash_line <- if (!is.null(registry_file) && file.exists(registry_file)) {
+    paste("registry_md5:", .test_cache_file_md5(registry_file))
+  } else {
+    NULL
+  }
+
+  .test_cache_prune_extra_artifacts(requirements)
+
   writeLines(
     c(
       paste("name:", name),
       paste("completed_at:", format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")),
-      paste("test_files_dir:", test_files_dir)
+      paste("test_files_dir:", test_files_dir),
+      paste("required_fits:", .test_cache_name_line(requirements$fits)),
+      paste("required_margliks:", .test_cache_name_line(requirements$margliks)),
+      registry_hash_line,
+      source_hash_lines
     ),
     .test_cache_indicator_file(name)
   )

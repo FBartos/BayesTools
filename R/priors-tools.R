@@ -390,6 +390,31 @@ is.prior.mixture         <- function(x){
 
   prior
 }
+.check_prior_weight <- function(prior_weights, name = "prior_weights"){
+
+  check_real(prior_weights, name, lower = 0, allow_bound = FALSE, allow_NA = FALSE)
+
+  if(any(!is.finite(prior_weights)))
+    stop(paste0("The '", name, "' must be finite."), call. = FALSE)
+
+  return()
+}
+.check_prior_list_unique_names <- function(prior_list, name = "prior_list"){
+
+  prior_names <- names(prior_list)
+  if(!is.null(prior_names) && anyDuplicated(prior_names)){
+    duplicate_names <- unique(prior_names[duplicated(prior_names)])
+    stop(
+      paste0(
+        "The '", name, "' argument must not contain duplicate names ('",
+        paste0(duplicate_names, collapse = "', '"), "')."
+      ),
+      call. = FALSE
+    )
+  }
+
+  return()
+}
 .check_prior_list <- function(prior_list, name = "prior_list", check_length = 0, allow_NULL = FALSE,
                               allow_prior.point = TRUE, allow_prior.simple = TRUE, allow_prior.discrete = TRUE, allow_prior.vector = TRUE,
                               allow_prior.PET = TRUE, allow_prior.PEESE = TRUE, allow_prior.weightfunction = TRUE, allow_prior.factor = TRUE,

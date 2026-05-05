@@ -7,7 +7,10 @@ bayestools_test_profile_contexts <- list(
     "distributions-tools",
     "distributions-weightfunctions",
     "factor-interaction-coefficients",
+    "fixture-catalog-static",
     "interpret",
+    "JAGS-diagnostic-plot-data",
+    "JAGS-formula-design-oracles",
     "JAGS-marginal-distributions",
     "JAGS-posterior-extraction",
     "marginal-inference-conditioning",
@@ -18,6 +21,7 @@ bayestools_test_profile_contexts <- list(
     "priors-density-numeric",
     "priors-informed",
     "priors-linear-density",
+    "priors-plot-data",
     "priors-print",
     "priors-tools",
     "selection-kernels",
@@ -28,6 +32,7 @@ bayestools_test_profile_contexts <- list(
     "weightfunction-redesign"
   ),
   fixture = c(
+    "fixture-integrity",
     "JAGS-ensemble-tables",
     "JAGS-fit",
     "JAGS-formula-scale",
@@ -55,7 +60,9 @@ bayestools_test_profile_contexts <- list(
   ),
   fit = c(
     "00-model-fits",
+    "fixture-integrity",
     "JAGS-fit-edge-cases",
+    "JAGS-fit-lm-oracles",
     "JAGS-marglik"
   )
 )

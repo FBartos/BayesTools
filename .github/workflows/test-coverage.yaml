@@ -92,14 +92,15 @@ jobs:
       - name: Test coverage
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          # This workflow is coverage-only. It intentionally runs the full
+          # developer profile on push/PR; ordinary CI defaults to unit tests.
           BAYESTOOLS_TEST_PROFILE: "all"
-          VDIFFR_RUN_TESTS: "true"
           JAGS_ROOT: "/c/progra~1/JAGS/JAGS-4.3.1"
           JAGS_MAJOR_VERSION: 4
         run: |
           # Run every developer profile so slow model-fitting and figure tests
-          # both contribute to coverage.
-          Sys.setenv(NOT_CRAN = "true")
+          # both contribute to coverage. tools/test-profile.R owns profile
+          # environment setup and the LLM-oriented testthat reporter.
           # Use forward-slash paths on Windows; covr injects these paths into
           # instrumented R code, where backslashes can become invalid escapes.
           repo_path <- normalizePath(".", winslash = "/", mustWork = TRUE)
@@ -109,9 +110,15 @@ jobs:
           
           coverage <- covr::package_coverage(
             path = repo_path,
+            type = "none",
             quiet = FALSE,
             clean = FALSE,
-            install_path = install_path
+            install_path = install_path,
+            code = c(
+              "repo_path <- normalizePath('.', winslash = '/', mustWork = TRUE)",
+              "setwd(repo_path)",
+              "source(file.path(repo_path, 'tools', 'test-profile.R'))"
+            )
           )
           covr::codecov(coverage = coverage)
         shell: Rscript {0}

@@ -199,6 +199,108 @@ test_that(".interpret.BF helper function works", {
 })
 
 
+test_that(".interpret.BF preserves threshold boundary semantics", {
+
+  boundary_cases <- list(
+    list(BF = 1 / 10, expected = "moderate evidence against the effect, BF = 0.100"),
+    list(BF = 1 / 3,  expected = "weak evidence against the effect, BF = 0.333"),
+    list(BF = 1,      expected = "no evidence for or against the effect, BF = 1.00"),
+    list(BF = 3,      expected = "weak evidence in favor of the effect, BF = 3.00"),
+    list(BF = 10,     expected = "moderate evidence in favor of the effect, BF = 10.00")
+  )
+
+  for(case in boundary_cases){
+    expect_identical(
+      BayesTools:::.interpret.BF(case$BF, "effect", NULL),
+      case$expected
+    )
+  }
+
+})
+
+
+test_that(".interpret.BF reports finite-sample BF bounds", {
+
+  inclusion_BF <- 9
+  attr(inclusion_BF, "bound_operator") <- ">"
+  expect_identical(
+    BayesTools:::.interpret.BF(inclusion_BF, "effect", "Inclusion BF"),
+    "at least moderate evidence in favor of the effect, Inclusion BF > 9.00"
+  )
+
+  bounded_raw <- c(9, 1 / 9)
+  attr(bounded_raw, "bound_operator") <- c(">", "<")
+  bounded_column <- format_BF(bounded_raw, inclusion = TRUE)
+  expect_identical(
+    BayesTools:::.interpret.BF(bounded_column[1], "effect", attr(bounded_column, "name")),
+    "at least moderate evidence in favor of the effect, Inclusion BF > 9.00"
+  )
+
+  exclusion_BF <- 1 / 9
+  attr(exclusion_BF, "bound_operator") <- "<"
+  expect_identical(
+    BayesTools:::.interpret.BF(exclusion_BF, "effect", "Inclusion BF"),
+    "at least moderate evidence against the effect, Inclusion BF < 0.111"
+  )
+
+  expect_identical(
+    interpret2(
+      list(list(
+        inference_name = "effect",
+        inference_BF = 9,
+        inference_BF_name = "Inclusion BF",
+        inference_BF_bound_operator = ">"
+      )),
+      "Method"
+    ),
+    "Method found at least moderate evidence in favor of the effect, Inclusion BF > 9.00."
+  )
+
+  expect_identical(
+    interpret(
+      list(effect = list(BF = 9, BF_bound_operator = ">")),
+      list(dummy = 1),
+      list(list(inference = "effect", inference_name = "effect", inference_BF_name = "Inclusion BF")),
+      "Method"
+    ),
+    "Method found at least moderate evidence in favor of the effect, Inclusion BF > 9.00."
+  )
+
+})
+
+
+test_that(".interpret.BF rejects invalid Bayes factors before formatting", {
+
+  invalid_BFs <- list(0, Inf, NA_real_, NaN, -1)
+
+  for(BF in invalid_BFs){
+    expect_error(
+      BayesTools:::.interpret.BF(BF, "effect", NULL),
+      "inference_BF"
+    )
+  }
+
+  expect_error(
+    BayesTools:::.interpret.BF("2", "effect", NULL),
+    "numeric vector"
+  )
+  expect_error(
+    interpret2(list(list(inference_name = "effect", inference_BF = "2")), "Method"),
+    "numeric vector"
+  )
+  expect_error(
+    interpret(
+      list(effect = list(BF = "2")),
+      list(dummy = 1),
+      list(list(inference = "effect", inference_name = "effect")),
+      "Method"
+    ),
+    "numeric vector"
+  )
+
+})
+
+
 test_that(".interpret.par helper function works", {
 
   set.seed(42)
@@ -225,6 +327,265 @@ test_that(".interpret.par helper function works", {
   result4 <- BayesTools:::.interpret.par(samples, "weight", "kg", FALSE)
   test_reference_text(result4, "interpret_par_with_units.txt")
   expect_match(result4, "kg")
+
+})
+
+
+test_that(".interpret.par rejects empty and malformed estimate samples", {
+
+  expect_error(
+    BayesTools:::.interpret.par(numeric(0), "mu", NULL, FALSE),
+    "estimate_samples"
+  )
+  expect_error(
+    BayesTools:::.interpret.par(c(NA_real_, NA_real_), "mu", NULL, FALSE),
+    "estimate_samples"
+  )
+  expect_error(
+    BayesTools:::.interpret.par(c(1, Inf), "mu", NULL, FALSE),
+    "estimate_samples"
+  )
+  expect_error(
+    BayesTools:::.interpret.par(c(1, NaN), "mu", NULL, FALSE),
+    "estimate_samples"
+  )
+  expect_error(
+    BayesTools:::.interpret.par("not numeric", "mu", NULL, FALSE),
+    "estimate_samples"
+  )
+  expect_error(
+    BayesTools:::.interpret.par(c(1, 2), NULL, NULL, FALSE),
+    "estimate_name"
+  )
+
+})
+
+
+test_that("interpret2 maps wrappers to core helpers and validates missing fields", {
+
+  info <- list(
+    list(
+      inference_name        = "Effect",
+      inference_BF_name     = "BF10",
+      inference_BF          = 3,
+      estimate_name         = "mu",
+      estimate_samples      = c(1, 2, 3),
+      estimate_units        = "kg",
+      estimate_conditional  = TRUE
+    )
+  )
+
+  expected <- paste0(
+    "Method found ",
+    BayesTools:::.interpret.BF(3, "Effect", "BF10"),
+    ", ",
+    BayesTools:::.interpret.par(c(1, 2, 3), "mu", "kg", TRUE),
+    "."
+  )
+  expect_identical(interpret2(info, "Method"), expected)
+
+  inference_only <- list(list(inference_name = "Effect", inference_BF = 2))
+  expect_identical(
+    interpret2(inference_only, NULL),
+    paste0(" found ", BayesTools:::.interpret.BF(2, "Effect", NULL), ".")
+  )
+
+  expect_error(
+    interpret2(list(list(inference_name = "Effect")), "Method"),
+    "inference_BF"
+  )
+  expect_error(
+    interpret2(list(list(inference_name = "Effect", inference_BF = 2, estimate_samples = c(1, 2))), "Method"),
+    "estimate_name"
+  )
+
+})
+
+
+test_that("interpret wrapper maps named inference and samples to core helpers", {
+
+  inference <- list(effect = list(BF = 10))
+  samples <- list(theta = c(1, 2, 3))
+  specification <- list(
+    list(
+      inference              = "effect",
+      inference_name         = "Effect",
+      inference_BF_name      = "BF10",
+      samples                = "theta",
+      samples_name           = "mu",
+      samples_units          = NULL,
+      samples_conditional    = FALSE
+    )
+  )
+
+  expected <- paste0(
+    "Method found ",
+    BayesTools:::.interpret.BF(10, "Effect", "BF10"),
+    ", ",
+    BayesTools:::.interpret.par(c(1, 2, 3), "mu", NULL, FALSE),
+    "."
+  )
+  expect_identical(interpret(inference, samples, specification, "Method"), expected)
+
+  expect_error(
+    interpret(list(effect = list()), list(dummy = 1), list(list(inference = "effect")), "Method"),
+    "inference_BF"
+  )
+  expect_error(
+    interpret(list(effect = list(BF = 2)), list(dummy = 1), list(list(inference = "effect", samples = "theta")), "Method"),
+    "theta.*missing|missing.*theta"
+  )
+
+})
+
+
+test_that("interpret_records normalizes ordered table and direct-record sources", {
+
+  effect_BF <- 9
+  attr(effect_BF, "bound_operator") <- ">"
+  effect_BF <- format_BF(effect_BF, logBF = TRUE, BF01 = TRUE, inclusion = TRUE)
+
+  component_tests <- data.frame(
+    prior_prob = 0.5,
+    post_prob = 1,
+    check.names = FALSE
+  )
+  component_tests[["inclusion_BF"]] <- effect_BF
+  rownames(component_tests) <- "Effect"
+  class(component_tests) <- c("BayesTools_table", "data.frame")
+  attr(component_tests, "type") <- c("prior_prob", "post_prob", "inclusion_BF")
+
+  moderator_BF <- format_BF(c(2, 1 / 4), inclusion = TRUE)
+  moderator_tests <- data.frame(
+    prior_prob = c(0.5, 0.5),
+    post_prob = c(2 / 3, 0.2),
+    check.names = FALSE
+  )
+  moderator_tests[["inclusion_BF"]] <- moderator_BF
+  rownames(moderator_tests) <- c("x1", "x2")
+  class(moderator_tests) <- c("BayesTools_table", "data.frame")
+  attr(moderator_tests, "type") <- c("prior_prob", "post_prob", "inclusion_BF")
+
+  moderator_estimates <- data.frame(
+    Mean = c(0.20, -0.10),
+    "0.025" = c(0.05, -0.30),
+    "0.975" = c(0.35, 0.10),
+    check.names = FALSE
+  )
+  rownames(moderator_estimates) <- c("x1", "x2")
+
+  sources <- list(
+    component_tests = component_tests,
+    pooled_effect = list(
+      type = "record",
+      data = list(
+        kind = "estimate",
+        parameter = "effect odds ratio",
+        central_name = "mode",
+        central_value = 1.25,
+        lower_value = 1.05,
+        upper_value = 1.50,
+        lower_prob = 0.025,
+        upper_prob = 0.975,
+        interval_level = 0.95,
+        conditioning = "conditional on effect inclusion"
+      )
+    ),
+    moderator_tests = moderator_tests,
+    moderator_estimates = list(
+      data = moderator_estimates,
+      schema = list(
+        central = "Mean",
+        lower = "0.025",
+        upper = "0.975",
+        units = "d",
+        conditioning = "model-averaged"
+      )
+    )
+  )
+
+  plan <- list(
+    list(kind = "header", section = "model", item_id = "header", order = 0, text = "RoBMA model."),
+    list(
+      kind = "pair",
+      section = "primary",
+      item_id = "effect",
+      order = 10,
+      evidence = list(source = "component_tests", row = "Effect", label = "the effect"),
+      estimate = list(source = "pooled_effect", label = "pooled effect")
+    ),
+    list(
+      kind = "for_each",
+      section = "moderators",
+      item_id = "moderator",
+      order = 100,
+      source = "moderator_tests",
+      pair_with = "moderator_estimates",
+      rows = "source_order"
+    )
+  )
+
+  records <- interpret_records(sources, plan)
+
+  expect_s3_class(records, "BayesTools_interpret_records")
+  expect_equal(records$kind, c("header", "evidence", "estimate", "evidence", "estimate", "evidence", "estimate"))
+  expect_equal(records$record_id[1:3], c("model.header.header", "primary.effect.evidence", "primary.effect.estimate"))
+  expect_equal(records$source[2:3], c("component_tests", "pooled_effect"))
+  expect_equal(records$row[4:7], c("x1", "x1", "x2", "x2"))
+
+  effect <- records[records$record_id == "primary.effect.evidence", ]
+  expect_equal(effect$BF_value, log(1 / 9), tolerance = 1e-12)
+  expect_equal(effect$BF_scale, "log")
+  expect_equal(effect$BF_orientation, "exclusion_over_inclusion")
+  expect_equal(effect$BF_bound_operator, "<")
+  expect_equal(effect$BF_canonical_value, 9, tolerance = 1e-12)
+  expect_equal(effect$BF_canonical_bound_operator, ">")
+
+  estimate <- records[records$record_id == "primary.effect.estimate", ]
+  expect_equal(estimate$central_name, "mode")
+  expect_equal(estimate$central_value, 1.25)
+  expect_equal(estimate$conditioning, "conditional on effect inclusion")
+
+  moderator_estimate <- records[records$record_id == "moderators.moderator.x1.estimate", ]
+  expect_equal(moderator_estimate$central_name, "mean")
+  expect_equal(moderator_estimate$lower_prob, 0.025)
+  expect_equal(moderator_estimate$upper_prob, 0.975)
+  expect_equal(moderator_estimate$interval_level, 0.95)
+  expect_equal(moderator_estimate$units, "d")
+
+  text <- interpret_records(sources, plan, output = "text")
+  expect_match(paste(text, collapse = "\n"), "Inclusion BF > 9.00", fixed = TRUE)
+  expect_match(paste(text, collapse = "\n"), "conditional on effect inclusion", fixed = TRUE)
+
+})
+
+
+test_that("interpret_tables aliases interpret_records and supports optional missing entries", {
+
+  table <- data.frame(
+    BF = 4,
+    check.names = FALSE
+  )
+  rownames(table) <- "joint"
+
+  sources <- list(joint = list(
+    data = table,
+    schema = list(
+      BF = "BF",
+      BF_orientation = "alternative_over_null",
+      BF_scale = "linear"
+    )
+  ))
+  spec <- list(
+    list(kind = "evidence", source = "joint", row = "joint", section = "moderators", item_id = "joint", label = "moderators"),
+    list(kind = "evidence", source = "missing_joint", optional = TRUE, section = "moderators", item_id = "optional")
+  )
+
+  records <- interpret_tables(sources, spec)
+
+  expect_equal(nrow(records), 1)
+  expect_equal(records$record_id, "moderators.joint.evidence")
+  expect_equal(records$BF_canonical_value, 4)
 
 })
 

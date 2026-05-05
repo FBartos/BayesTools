@@ -48,6 +48,29 @@ make_adversarial_indicator_fit <- function(indicator = c(rep(1, 9900), rep(0, 10
   fit
 }
 
+expect_summary_row_order <- function(table, rows) {
+  expect_equal(rownames(table), rows)
+}
+
+expect_summary_values <- function(table, expected, tolerance = 5e-3) {
+  missing_rows <- setdiff(rownames(expected), rownames(table))
+  missing_cols <- setdiff(colnames(expected), colnames(table))
+
+  expect_equal(missing_rows, character())
+  expect_equal(missing_cols, character())
+
+  actual_values <- as.matrix(table[rownames(expected), colnames(expected), drop = FALSE])
+  storage.mode(actual_values) <- "numeric"
+
+  expect_equal(unname(actual_values), unname(expected), tolerance = tolerance)
+}
+
+summary_values <- function(..., columns = c("Mean", "SD", "0.025", "0.5", "0.975")) {
+  values <- rbind(...)
+  colnames(values) <- columns
+  values
+}
+
 # ============================================================================ #
 # SECTION 1: Test Empty Tables
 # ============================================================================ #
@@ -99,10 +122,36 @@ test_that("runjags_inference_table reports known BF error percent in adversarial
   inference_BF01 <- runjags_inference_table(fit, BF_diagnostics = TRUE, BF01 = TRUE)
   expect_equal(as.numeric(inference_BF01["theta", "inclusion_BF"]), 1 / expected_BF)
   expect_equal(as.numeric(inference_BF01["theta", "BF_error_percent"]), expected_error)
-  expect_equal(attr(inference_BF01[["BF_error_percent"]], "name"), "error%(Exclusion BF)")
+  expect_equal(attr(inference_BF01[["BF_error_percent"]], "name"), "error%(Inclusion BF)")
 
   test_reference_table(inference, "runjags_inference_adversarial_diagnostics.txt", "Adversarial BF diagnostics table mismatch")
   test_reference_table(inference_BF01, "runjags_inference_adversarial_diagnostics_BF01.txt", "Adversarial BF01 diagnostics table mismatch")
+})
+
+
+test_that("runjags_inference_table supports selected BF diagnostics from arguments and options", {
+
+  fit <- make_adversarial_indicator_fit()
+
+  inference_ess <- runjags_inference_table(fit, BF_diagnostic_columns = "ESS")
+  expect_equal(colnames(inference_ess), c("prior_prob", "post_prob", "inclusion_BF", "ESS"))
+  expect_equal(attr(inference_ess, "type"), c("prior_prob", "post_prob", "inclusion_BF", "ESS"))
+  expect_null(attr(inference_ess, "footnotes"))
+  expect_true(is.finite(as.numeric(inference_ess["theta", "ESS"])))
+
+  inference_none <- runjags_inference_table(fit, BF_diagnostic_columns = FALSE)
+  expect_equal(colnames(inference_none), c("prior_prob", "post_prob", "inclusion_BF"))
+  expect_equal(attr(inference_none, "type"), c("prior_prob", "post_prob", "inclusion_BF"))
+
+  old_options <- options(BayesTools.JAGS_BF_diagnostic_columns = c("MCMC_error", "BF_error_percent"))
+  on.exit(options(old_options), add = TRUE)
+
+  inference_option <- runjags_inference_table(fit)
+  expect_equal(colnames(inference_option), c("prior_prob", "post_prob", "inclusion_BF", "MCMC_error", "BF_error_percent"))
+  expect_equal(attr(inference_option, "type"), c("prior_prob", "post_prob", "inclusion_BF", "MCMC_error", "BF_error"))
+  expect_equal(attr(inference_option[["MCMC_error"]], "name"), "error(Post. prob.)")
+  expect_equal(attr(inference_option[["BF_error_percent"]], "name"), "error%(Inclusion BF)")
+  expect_null(attr(inference_option, "footnotes"))
 })
 
 
@@ -168,12 +217,12 @@ test_that("Summary table advanced features work correctly", {
   expect_true(any(is.finite(runjags_summary_spike[inclusion_rows, "ESS"])))
   expect_equal(colnames(runjags_inference_spike_diagnostics), c("prior_prob", "post_prob", "inclusion_BF", "ESS", "MCMC_error", "BF_error_percent"))
   expect_equal(attr(runjags_inference_spike_diagnostics[["BF_error_percent"]], "name"), "error%(Inclusion BF)")
-  expect_match(attr(runjags_inference_spike_diagnostics, "footnotes"), "relative Monte Carlo standard error")
+  expect_null(attr(runjags_inference_spike_diagnostics, "footnotes"))
 
   runjags_inference_spike_log_BF01 <- runjags_inference_table(fit_spike, BF_diagnostics = TRUE, logBF = TRUE, BF01 = TRUE)
   expect_equal(as.numeric(runjags_inference_spike_log_BF01[["inclusion_BF"]]), log(1 / as.numeric(runjags_inference_spike_diagnostics[["inclusion_BF"]])), tolerance = 1e-10)
   expect_equal(as.numeric(runjags_inference_spike_log_BF01[["BF_error_percent"]]), as.numeric(runjags_inference_spike_diagnostics[["BF_error_percent"]]), tolerance = 1e-10)
-  expect_equal(attr(runjags_inference_spike_log_BF01[["BF_error_percent"]], "name"), "error%(Exclusion BF)")
+  expect_equal(attr(runjags_inference_spike_log_BF01[["BF_error_percent"]], "name"), "error%(Inclusion BF)")
 
   # Test 6: Orthonormal contrast transformations to differences from the mean
   fit_orthonormal <- readRDS(file.path(temp_fits_dir, "fit_factor_orthonormal.RDS"))
@@ -199,10 +248,17 @@ test_that("Summary table advanced features work correctly", {
   ))
 
   # Test 9: Conditional estimates with mixture priors
-  fit_complex_bias  <- readRDS(file.path(temp_fits_dir, "fit_complex_bias.RDS"))
-  fit_complex_mixed <- readRDS(file.path(temp_fits_dir, "fit_complex_mixed.RDS"))
-  runjags_summary_complex2 <- runjags_estimates_table(fit_complex_bias, conditional = TRUE)
-  runjags_summary_complex3 <- runjags_estimates_table(fit_complex_mixed, conditional = TRUE)
+  complex_optional_fit_files <- file.path(
+    temp_fits_dir,
+    c("fit_complex_bias.RDS", "fit_complex_mixed.RDS")
+  )
+  has_complex_optional_fits <- all(file.exists(complex_optional_fit_files))
+  if (has_complex_optional_fits) {
+    fit_complex_bias  <- readRDS(complex_optional_fit_files[[1]])
+    fit_complex_mixed <- readRDS(complex_optional_fit_files[[2]])
+    runjags_summary_complex2 <- runjags_estimates_table(fit_complex_bias, conditional = TRUE)
+    runjags_summary_complex3 <- runjags_estimates_table(fit_complex_mixed, conditional = TRUE)
+  }
 
   # Test basic properties
   expect_s3_class(runjags_summary_transform, "BayesTools_table")
@@ -217,8 +273,10 @@ test_that("Summary table advanced features work correctly", {
   expect_s3_class(runjags_summary_orthonormal2, "BayesTools_table")
   expect_s3_class(runjags_summary_custom_transform, "BayesTools_table")
   expect_s3_class(runjags_summary_remove_inclusion, "BayesTools_table")
-  expect_s3_class(runjags_summary_complex2, "BayesTools_table")
-  expect_s3_class(runjags_summary_complex3, "BayesTools_table")
+  if (has_complex_optional_fits) {
+    expect_s3_class(runjags_summary_complex2, "BayesTools_table")
+    expect_s3_class(runjags_summary_complex3, "BayesTools_table")
+  }
 
   # Test that row names differ with different formula_prefix settings
   expect_false(identical(rownames(runjags_summary_prefix_true),
@@ -226,6 +284,79 @@ test_that("Summary table advanced features work correctly", {
 
   # Test that remove_inclusion reduces the number of rows
   expect_true(nrow(runjags_summary_remove_inclusion) <= nrow(runjags_summary_spike))
+
+  # Semantic companions for the presentation snapshots below.
+  expected_formula_rows_prefixed <- c(
+    "(mu) intercept",
+    "(mu) x_cont1",
+    "(mu) x_cont2",
+    "(mu) x_cont1:x_cont2",
+    "sigma"
+  )
+  expected_formula_rows_unprefixed <- c(
+    "intercept",
+    "x_cont1",
+    "x_cont2",
+    "x_cont1:x_cont2",
+    "sigma"
+  )
+  expected_formula_values <- summary_values(
+    "(mu) intercept"        = c( 0.035, 0.104, -0.178,  0.040,  0.243),
+    "(mu) x_cont1"          = c( 0.361, 0.123,  0.124,  0.365,  0.587),
+    "(mu) x_cont2"          = c(-0.029, 0.109, -0.241, -0.028,  0.190),
+    "(mu) x_cont1:x_cont2"  = c(-0.391, 0.149, -0.685, -0.390, -0.104),
+    "sigma"                 = c( 1.040, 0.077,  0.905,  1.033,  1.203)
+  )
+  expected_transform_values <- expected_formula_values
+  expected_transform_values["(mu) intercept", ] <- c(1.041, 0.109, 0.837, 1.040, 1.276)
+
+  expect_summary_row_order(runjags_summary_prefix_true, expected_formula_rows_prefixed)
+  expect_summary_row_order(runjags_summary_prefix_false, expected_formula_rows_unprefixed)
+  expect_summary_row_order(runjags_summary_transform, expected_formula_rows_prefixed)
+  expect_summary_values(runjags_summary_prefix_true, expected_formula_values)
+  expect_summary_values(runjags_summary_transform, expected_transform_values)
+  expect_equal(attr(runjags_summary_prefix_true, "parameters"),
+               c("mu_intercept", "mu_x_cont1", "mu_x_cont2", "mu_x_cont1__xXx__x_cont2", "sigma"))
+
+  expect_equal(colnames(runjags_summary_conditional), c("Mean", "SD", "0.025", "0.5", "0.975"))
+  expect_equal(attr(runjags_summary_conditional, "type"), rep("estimate", 5))
+  expect_summary_values(runjags_summary_conditional, expected_formula_values)
+  expect_true(all(c("MCMC_error", "MCMC_SD_error", "ESS", "R_hat") %in% colnames(runjags_summary_unconditional)))
+  expect_equal(attr(runjags_summary_unconditional, "type"),
+               c(rep("estimate", 5), "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
+
+  expect_summary_row_order(runjags_summary_factor, "p1[2]")
+  expect_summary_values(runjags_summary_factor, summary_values("p1[2]" = c(0.497, 0.291, 0.022, 0.491, 0.973)))
+
+  expect_summary_row_order(runjags_summary_spike, c("beta (inclusion)", "beta[1]", "beta[2]"))
+  expect_summary_values(
+    runjags_summary_spike,
+    summary_values(
+      "beta[1]" = c(0.034, 0.747, -1.569, 0.000, 1.759),
+      "beta[2]" = c(0.005, 0.721, -1.680, 0.000, 1.639)
+    )
+  )
+  expect_equal(as.numeric(runjags_summary_spike["beta (inclusion)", "Mean"]), 0.527, tolerance = 5e-3)
+  expect_equal(rownames(runjags_inference_spike), "beta")
+  expect_equal(as.numeric(runjags_inference_spike["beta", "prior_prob"]), 0.5)
+  expect_equal(as.numeric(runjags_inference_spike["beta", "post_prob"]),
+               as.numeric(runjags_summary_spike["beta (inclusion)", "Mean"]), tolerance = 5e-3)
+  expect_equal(as.numeric(runjags_inference_spike["beta", "inclusion_BF"]), 1.114, tolerance = 5e-3)
+
+  expect_summary_row_order(runjags_summary_orthonormal, c("p1[dif: 1]", "p1[dif: 2]", "p1[dif: 3]"))
+  expect_summary_values(
+    runjags_summary_orthonormal,
+    summary_values(
+      "p1[dif: 1]" = c( 0.041, 0.818, -1.631,  0.060, 1.605),
+      "p1[dif: 2]" = c(-0.033, 0.796, -1.612, -0.029, 1.527),
+      "p1[dif: 3]" = c(-0.008, 0.811, -1.550, -0.009, 1.564)
+    )
+  )
+  expect_equal(sum(runjags_summary_orthonormal[,"Mean"]), 0, tolerance = 1e-12)
+
+  expect_summary_row_order(runjags_summary_remove_inclusion, c("beta[dif: 1]", "beta[dif: 2]", "beta[dif: 3]"))
+  expect_false(any(grepl("inclusion", rownames(runjags_summary_remove_inclusion), fixed = TRUE)))
+  expect_equal(colnames(runjags_summary_remove_inclusion), c("Mean", "SD", "0.025", "0.5", "0.975"))
 
   test_reference_table(runjags_summary_transform, "advanced_transform.txt", "Transform table mismatch")
   test_reference_table(runjags_summary_prefix_true, "advanced_formula_prefix_true.txt", "Formula prefix true table mismatch")
@@ -239,8 +370,46 @@ test_that("Summary table advanced features work correctly", {
   test_reference_table(runjags_summary_orthonormal2, "advanced_orthonormal_transform2.txt", "Orthonormal transform2 table mismatch")
   test_reference_table(runjags_summary_custom_transform, "advanced_custom_transform.txt", "Custom transform table mismatch")
   test_reference_table(runjags_summary_remove_inclusion, "advanced_remove_inclusion.txt", "Remove inclusion table mismatch")
-  test_reference_table(runjags_summary_complex2, "runjags_summary_complex2.txt", "Custom probs table mismatch")
-  test_reference_table(runjags_summary_complex3, "runjags_summary_complex3.txt", "Custom probs table mismatch")
+  if (has_complex_optional_fits) {
+    expect_summary_row_order(
+      runjags_summary_complex2,
+      c("mu", "bias (inclusion)", "omega[0,0.025]", "omega[0.025,0.05]",
+        "omega[0.05,0.975]", "omega[0.975,1]", "PET", "PEESE")
+    )
+    expect_summary_values(
+      runjags_summary_complex2,
+      summary_values(
+        "mu"                = c(1.024, 0.631, 0.208, 0.894, 2.639),
+        "omega[0,0.025]"   = c(1.000, 0.000, 1.000, 1.000, 1.000),
+        "PET"               = c(0.816, 0.659, 0.063, 0.583, 2.295),
+        "PEESE"             = c(1.434, 1.318, 0.031, 1.043, 4.889)
+      )
+    )
+    expect_equal(as.numeric(runjags_summary_complex2["bias (inclusion)", "Mean"]), 0.526, tolerance = 5e-3)
+    expect_true(any(grepl("Conditional summary for PET is based on 79 samples.",
+                          attr(runjags_summary_complex2, "warnings"), fixed = TRUE)))
+
+    expect_summary_row_order(
+      runjags_summary_complex3,
+      c("(mu) intercept (inclusion)", "(mu) intercept",
+        "(mu) x_cont1 (inclusion)", "(mu) x_cont1",
+        "(mu) x_fac2t (inclusion)", "(mu) x_fac2t",
+        "(mu) x_fac3t (inclusion)", "(mu) x_fac3t[1]", "(mu) x_fac3t[2]",
+        "sigma (inclusion: normal)", "sigma (inclusion: lognormal)",
+        "sigma[normal]", "sigma[lognormal]", "bias (inclusion)",
+        "omega[0,0.025]", "omega[0.025,0.05]", "omega[0.05,0.975]",
+        "omega[0.975,1]", "PET")
+    )
+    expect_equal(as.numeric(runjags_summary_complex3["(mu) x_cont1 (inclusion)", "Mean"]), 1)
+    expect_equal(
+      sum(as.numeric(runjags_summary_complex3[c("sigma (inclusion: normal)", "sigma (inclusion: lognormal)"), "Mean"])),
+      1,
+      tolerance = 5e-3
+    )
+
+    test_reference_table(runjags_summary_complex2, "runjags_summary_complex2.txt", "Custom probs table mismatch")
+    test_reference_table(runjags_summary_complex3, "runjags_summary_complex3.txt", "Custom probs table mismatch")
+  }
 
   # Removal of formula and parameter names
   fit_dual_param  <- readRDS(file.path(temp_fits_dir, "fit_dual_param_regression.RDS"))
@@ -248,27 +417,69 @@ test_that("Summary table advanced features work correctly", {
   runjags_summary_removal_01 <- JAGS_estimates_table(fit_dual_param)
   runjags_summary_removal_02 <- JAGS_estimates_table(fit_dual_param, remove_formulas = "mu")
   runjags_summary_removal_03 <- JAGS_estimates_table(fit_dual_param, keep_formulas = "log_sigma")
-  runjags_summary_removal_04 <- JAGS_estimates_table(fit_complex_mixed)
-  runjags_summary_removal_05 <- JAGS_estimates_table(fit_complex_mixed, remove_parameters = TRUE)
-  runjags_summary_removal_06 <- JAGS_estimates_table(fit_complex_mixed, remove_parameters = TRUE, remove_inclusion = TRUE)
-  runjags_summary_removal_07 <- JAGS_estimates_table(fit_complex_mixed, remove_parameters = "bias")
-  runjags_summary_removal_08 <- JAGS_estimates_table(fit_complex_mixed, remove_parameters = "sigma")
-  runjags_summary_removal_09 <- JAGS_estimates_table(fit_complex_mixed, remove_formulas = "mu")
+
+  expected_dual_rows <- c("(mu) intercept", "(mu) x_mu", "(log_sigma) intercept", "(log_sigma) x_sigma")
+  expected_log_sigma_rows <- c("(log_sigma) intercept", "(log_sigma) x_sigma")
+  expected_dual_values <- summary_values(
+    "(mu) intercept"        = c( 2.498, 0.008,  2.482,  2.498,  2.514),
+    "(mu) x_mu"             = c( 0.631, 0.008,  0.617,  0.631,  0.646),
+    "(log_sigma) intercept" = c( 0.285, 0.006,  0.273,  0.285,  0.298),
+    "(log_sigma) x_sigma"   = c(-0.324, 0.024, -0.370, -0.325, -0.280)
+  )
+  expect_summary_row_order(runjags_summary_removal_01, expected_dual_rows)
+  expect_summary_row_order(runjags_summary_removal_02, expected_log_sigma_rows)
+  expect_summary_row_order(runjags_summary_removal_03, expected_log_sigma_rows)
+  expect_summary_values(runjags_summary_removal_01, expected_dual_values)
+  expect_summary_values(runjags_summary_removal_02, expected_dual_values[expected_log_sigma_rows,, drop = FALSE])
+  expect_equal(runjags_summary_removal_02, runjags_summary_removal_03, ignore_attr = TRUE)
 
   test_reference_table(runjags_summary_removal_01, "summary_parameter_or_formula_removal01.txt", "Parameter/formula removal")
   test_reference_table(runjags_summary_removal_02, "summary_parameter_or_formula_removal02.txt", "Parameter/formula removal")
   test_reference_table(runjags_summary_removal_03, "summary_parameter_or_formula_removal03.txt", "Parameter/formula removal")
-  test_reference_table(runjags_summary_removal_04, "summary_parameter_or_formula_removal04.txt", "Parameter/formula removal")
-  test_reference_table(runjags_summary_removal_05, "summary_parameter_or_formula_removal05.txt", "Parameter/formula removal")
-  test_reference_table(runjags_summary_removal_06, "summary_parameter_or_formula_removal06.txt", "Parameter/formula removal")
-  test_reference_table(runjags_summary_removal_07, "summary_parameter_or_formula_removal07.txt", "Parameter/formula removal")
-  test_reference_table(runjags_summary_removal_08, "summary_parameter_or_formula_removal08.txt", "Parameter/formula removal")
-  test_reference_table(runjags_summary_removal_09, "summary_parameter_or_formula_removal09.txt", "Parameter/formula removal")
+  if (has_complex_optional_fits) {
+    runjags_summary_removal_04 <- JAGS_estimates_table(fit_complex_mixed)
+    runjags_summary_removal_05 <- JAGS_estimates_table(fit_complex_mixed, remove_parameters = TRUE)
+    runjags_summary_removal_06 <- JAGS_estimates_table(fit_complex_mixed, remove_parameters = TRUE, remove_inclusion = TRUE)
+    runjags_summary_removal_07 <- JAGS_estimates_table(fit_complex_mixed, remove_parameters = "bias")
+    runjags_summary_removal_08 <- JAGS_estimates_table(fit_complex_mixed, remove_parameters = "sigma")
+    runjags_summary_removal_09 <- JAGS_estimates_table(fit_complex_mixed, remove_formulas = "mu")
+
+    expect_true(any(grepl("inclusion", rownames(runjags_summary_removal_04), fixed = TRUE)))
+    expect_false(any(grepl("inclusion", rownames(runjags_summary_removal_06), fixed = TRUE)))
+    expect_false(any(grepl("^bias", rownames(runjags_summary_removal_07))))
+    expect_false(any(grepl("^sigma", rownames(runjags_summary_removal_08))))
+    expect_false(any(grepl("^\\(mu\\)", rownames(runjags_summary_removal_09))))
+
+    test_reference_table(runjags_summary_removal_04, "summary_parameter_or_formula_removal04.txt", "Parameter/formula removal")
+    test_reference_table(runjags_summary_removal_05, "summary_parameter_or_formula_removal05.txt", "Parameter/formula removal")
+    test_reference_table(runjags_summary_removal_06, "summary_parameter_or_formula_removal06.txt", "Parameter/formula removal")
+    test_reference_table(runjags_summary_removal_07, "summary_parameter_or_formula_removal07.txt", "Parameter/formula removal")
+    test_reference_table(runjags_summary_removal_08, "summary_parameter_or_formula_removal08.txt", "Parameter/formula removal")
+    test_reference_table(runjags_summary_removal_09, "summary_parameter_or_formula_removal09.txt", "Parameter/formula removal")
+  }
 
   # Custom probs
   runjags_summary_probs_01 <- JAGS_estimates_table(fit_dual_param)
   runjags_summary_probs_02 <- JAGS_estimates_table(fit_dual_param, probs = c(0.5))
   runjags_summary_probs_03 <- JAGS_estimates_table(fit_dual_param, probs = c(0.25, 0.20, 0.99))
+
+  expect_summary_row_order(runjags_summary_probs_01, expected_dual_rows)
+  expect_summary_row_order(runjags_summary_probs_02, expected_dual_rows)
+  expect_summary_row_order(runjags_summary_probs_03, expected_dual_rows)
+  expect_equal(colnames(runjags_summary_probs_02),
+               c("Mean", "SD", "0.5", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
+  expect_equal(colnames(runjags_summary_probs_03),
+               c("Mean", "SD", "0.25", "0.2", "0.99", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
+  expect_summary_values(
+    runjags_summary_probs_02,
+    summary_values(
+      "(mu) intercept"        = c( 2.498, 0.008,  2.498),
+      "(mu) x_mu"             = c( 0.631, 0.008,  0.631),
+      "(log_sigma) intercept" = c( 0.285, 0.006,  0.285),
+      "(log_sigma) x_sigma"   = c(-0.324, 0.024, -0.325),
+      columns = c("Mean", "SD", "0.5")
+    )
+  )
 
   test_reference_table(runjags_summary_probs_01, "summary_parameter_probs1.txt", "Parameter/formula removal")
   test_reference_table(runjags_summary_probs_02, "summary_parameter_probs2.txt", "Parameter/formula removal")
@@ -276,7 +487,24 @@ test_that("Summary table advanced features work correctly", {
 
   # Remove diagnostics
   runjags_remove_diagnostics <- JAGS_estimates_table(fit_dual_param, remove_diagnostics = TRUE)
+  expect_summary_row_order(runjags_remove_diagnostics, expected_dual_rows)
+  expect_equal(colnames(runjags_remove_diagnostics), c("Mean", "SD", "0.025", "0.5", "0.975"))
+  expect_summary_values(runjags_remove_diagnostics, expected_dual_values)
   test_reference_table(runjags_remove_diagnostics, "runjags_remove_diagnostics.txt", "Diagnostics removal")
+
+  # Selected diagnostics
+  runjags_selected_diagnostics <- JAGS_estimates_table(fit_dual_param, diagnostic_columns = c("ESS", "R_hat"))
+  expect_summary_row_order(runjags_selected_diagnostics, expected_dual_rows)
+  expect_equal(colnames(runjags_selected_diagnostics), c("Mean", "SD", "0.025", "0.5", "0.975", "ESS", "R_hat"))
+  expect_equal(attr(runjags_selected_diagnostics, "type"), c(rep("estimate", 5), "ESS", "R_hat"))
+  expect_summary_values(runjags_selected_diagnostics, expected_dual_values)
+
+  old_options <- options(BayesTools.JAGS_estimates_diagnostic_columns = "ESS")
+  on.exit(options(old_options), add = TRUE)
+
+  runjags_option_diagnostics <- JAGS_estimates_table(fit_dual_param)
+  expect_equal(colnames(runjags_option_diagnostics), c("Mean", "SD", "0.025", "0.5", "0.975", "ESS"))
+  expect_equal(attr(runjags_option_diagnostics, "type"), c(rep("estimate", 5), "ESS"))
 })
 
 # ============================================================================ #
@@ -323,8 +551,11 @@ test_that("Summary tables for all saved models", {
 
     # Process runjags estimates table
     runjags_summary <- runjags_estimates_table(fit)
-    test_reference_table(runjags_summary, paste0(model_name, "_runjags_estimates.txt"),
-                     paste0("Runjags estimates mismatch for ", model_name))
+    test_reference_table_numeric(
+      runjags_summary,
+      paste0(model_name, "_runjags_estimates.txt"),
+      info_msg = paste0("Runjags estimates mismatch for ", model_name)
+    )
 
   }
 })
@@ -385,7 +616,7 @@ test_that("runjags_inference_table with mixture priors", {
   expect_equal(attr(runjags_mixture_inference_diagnostics, "type"), c("prior_prob", "post_prob", "inclusion_BF", "ESS", "MCMC_error", "BF_error"))
   expect_equal(colnames(runjags_mixture_inference_diagnostics), c("prior_prob", "post_prob", "inclusion_BF", "ESS", "MCMC_error", "BF_error_percent"))
   expect_equal(attr(runjags_mixture_inference_diagnostics[["MCMC_error"]], "name"), "error(Post. prob.)")
-  expect_match(attr(runjags_mixture_inference_diagnostics, "footnotes"), "relative Monte Carlo standard error")
+  expect_null(attr(runjags_mixture_inference_diagnostics, "footnotes"))
   expect_true(all(c("ESS", "MCMC_error", "BF_error_percent") %in% colnames(runjags_mixture_inference_diagnostics)))
 
   runjags_mixture_inference_log <- runjags_inference_table(fit_mixture, BF_diagnostics = TRUE, logBF = TRUE)
@@ -395,12 +626,12 @@ test_that("runjags_inference_table with mixture priors", {
   runjags_mixture_inference_BF01 <- runjags_inference_table(fit_mixture, BF_diagnostics = TRUE, BF01 = TRUE)
   expect_equal(as.numeric(runjags_mixture_inference_BF01[["inclusion_BF"]]), 1 / as.numeric(runjags_mixture_inference_diagnostics[["inclusion_BF"]]), tolerance = 1e-10)
   expect_equal(as.numeric(runjags_mixture_inference_BF01[["BF_error_percent"]]), as.numeric(runjags_mixture_inference_diagnostics[["BF_error_percent"]]), tolerance = 1e-10)
-  expect_equal(attr(runjags_mixture_inference_BF01[["BF_error_percent"]], "name"), "error%(Exclusion BF)")
+  expect_equal(attr(runjags_mixture_inference_BF01[["BF_error_percent"]], "name"), "error%(Inclusion BF)")
 
   runjags_mixture_inference_log_BF01 <- runjags_inference_table(fit_mixture, BF_diagnostics = TRUE, logBF = TRUE, BF01 = TRUE)
   expect_equal(as.numeric(runjags_mixture_inference_log_BF01[["inclusion_BF"]]), log(1 / as.numeric(runjags_mixture_inference_diagnostics[["inclusion_BF"]])), tolerance = 1e-10)
   expect_equal(as.numeric(runjags_mixture_inference_log_BF01[["BF_error_percent"]]), as.numeric(runjags_mixture_inference_diagnostics[["BF_error_percent"]]), tolerance = 1e-10)
-  expect_equal(attr(runjags_mixture_inference_log_BF01[["BF_error_percent"]], "name"), "error%(Exclusion BF)")
+  expect_equal(attr(runjags_mixture_inference_log_BF01[["BF_error_percent"]], "name"), "error%(Inclusion BF)")
 
   # Test with mixture containing spike
   fit_mixture_spike <- readRDS(file.path(temp_fits_dir, "fit_mixture_spike.RDS"))
@@ -469,8 +700,8 @@ test_that("runjags_inference_empty_table works correctly", {
   expect_s3_class(empty_diagnostics, "BayesTools_table")
   expect_equal(colnames(empty_diagnostics), c("prior_prob", "post_prob", "inclusion_BF", "ESS", "MCMC_error", "BF_error_percent"))
   expect_equal(attr(empty_diagnostics[["inclusion_BF"]], "name"), "log(Exclusion BF)")
-  expect_equal(attr(empty_diagnostics[["BF_error_percent"]], "name"), "error%(Exclusion BF)")
-  expect_match(attr(empty_diagnostics, "footnotes"), "relative Monte Carlo standard error")
+  expect_equal(attr(empty_diagnostics[["BF_error_percent"]], "name"), "error%(Inclusion BF)")
+  expect_null(attr(empty_diagnostics, "footnotes"))
 
 })
 

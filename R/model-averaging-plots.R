@@ -7,6 +7,10 @@
 #' regression. Use \code{"positive"} (default) for
 #' \code{mu + PET*se + PEESE*se^2} or \code{"negative"} for
 #' \code{mu - PET*se - PEESE*se^2}.
+#' @param legend whether factor legends should be drawn.
+#' @param legend_title optional title for factor legends.
+#' @param legend_labels optional labels for factor legend levels.
+#' @param legend_position optional legend position for factor legends.
 #' @param ... additional arguments
 #' @inheritParams density.prior
 #' @inheritParams plot.prior
@@ -21,7 +25,8 @@ plot_prior_list <- function(prior_list, plot_type = "base",
                             n_samples = 10000, force_samples = FALSE,
                             individual = FALSE, show_figures = if(individual) 1 else NULL,
                             transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
-                            rescale_x = FALSE, par_name = NULL, prior_list_mu = NULL, effect_direction = "positive", ...){
+                            rescale_x = FALSE, par_name = NULL, prior_list_mu = NULL, effect_direction = "positive",
+                            legend = TRUE, legend_title = NULL, legend_labels = NULL, legend_position = NULL, ...){
 
   # check input (most arguments are checked within density)
   check_list(prior_list, "prior_list")
@@ -30,6 +35,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   check_char(plot_type, "plot_type", allow_values = c("base", "ggplot"))
   check_bool(individual, "individual")
   check_bool(rescale_x, "rescale_x")
+  check_bool(legend, "legend", allow_NA = FALSE)
   check_int(show_figures, "show_figures", allow_NULL = TRUE)
   check_char(effect_direction, "effect_direction", allow_values = c("positive", "negative"))
   # check that there is no mixing of PET-PEESE and weightfunctions
@@ -100,7 +106,15 @@ plot_prior_list <- function(prior_list, plot_type = "base",
                                               n_points = n_points, n_samples = n_samples, force_samples = force_samples, individual = individual,
                                               transformation = transformation, transformation_arguments = transformation_arguments,
                                               transformation_settings = transformation_settings)
-    plot <- .plot_prior_list.both(plot_data = plot_data, plot_type = plot_type, par_name = par_name, ...)
+    if(any(sapply(plot_data, inherits, what = "density.prior.factor"))){
+      plot <- .plot_prior_list.factor(
+        plot_data = plot_data, plot_type = plot_type, par_name = par_name,
+        legend = legend, legend_title = legend_title, legend_labels = legend_labels,
+        legend_position = legend_position, ...
+      )
+    }else{
+      plot <- .plot_prior_list.both(plot_data = plot_data, plot_type = plot_type, par_name = par_name, ...)
+    }
 
   }
 
@@ -380,27 +394,52 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   # normalize factor component metadata before rendering
   plot_data_normalized <- .plot_prior_factor_normalize_data(plot_data)
+  level_names          <- plot_data_normalized[["level_names"]]
+  if(!is.null(dots[["legend_labels"]])){
+    if(length(dots[["legend_labels"]]) != length(level_names)){
+      stop("'legend_labels' must have the same length as the number of factor levels.", call. = FALSE)
+    }
+    level_names <- as.character(dots[["legend_labels"]])
+    plot_data_normalized[["level_names"]] <- level_names
+    plot_data_normalized[["plot_data"]] <- lapply(plot_data_normalized[["plot_data"]], function(component){
+      level_id <- attr(component, "level_id")
+      if(length(level_id) == 1L && !is.na(level_id)){
+        attr(component, "level_label") <- level_names[level_id]
+      }
+      component
+    })
+    plot_data_normalized[["points"]] <- plot_data_normalized[["plot_data"]][
+      vapply(plot_data_normalized[["plot_data"]], inherits, logical(1), what = "density.prior.point")
+    ]
+    plot_data_normalized[["densities"]] <- plot_data_normalized[["plot_data"]][
+      vapply(plot_data_normalized[["plot_data"]], function(component){
+        inherits(component, "density.prior.factor") && !inherits(component, "density.prior.point")
+      }, logical(1))
+    ]
+  }
   plot_data_points     <- plot_data_normalized[["points"]]
   plot_data_factors    <- plot_data_normalized[["densities"]]
-  level_names          <- plot_data_normalized[["level_names"]]
   style_components     <- if(length(plot_data_factors) > 0L) plot_data_factors else plot_data_points
 
 
   # prepare legend information
-  if(!is.null(dots[["legend"]]) && !dots[["legend"]]){
-    if(!is.null(dots[["col"]]))      dots[["col"]]      <- rep(dots[["col"]][1], length(level_names))
-    if(!is.null(dots[["lty"]]))      dots[["lty"]]      <- rep(dots[["lty"]][1], length(level_names))
-    if(!is.null(dots[["linetype"]])) dots[["linetype"]] <- rep(dots[["linetype"]][1], length(level_names))
+  if(is.null(dots[["legend"]])){
+    dots[["legend"]] <- TRUE
   }else{
-    if(is.null(dots[["col"]]) & (is.null(dots[["lty"]]) | is.null(dots[["linetype"]]))){
-      dots$col <- grDevices::palette.colors(n = length(level_names) + 1)[-1]
-    }
-    if(length(dots[["col"]]) == 1)      dots[["col"]]      <- rep(dots[["col"]],      length(level_names))
-    if(length(dots[["lty"]]) == 1)      dots[["lty"]]      <- rep(dots[["lty"]],      length(level_names))
-    if(length(dots[["linetype"]]) == 1) dots[["linetype"]] <- rep(dots[["linetype"]], length(level_names))
-
-    if(is.null(dots[["legend"]]))       dots[["legend"]]   <- TRUE
+    check_bool(dots[["legend"]], "legend", allow_NA = FALSE)
   }
+  draw_legend <- isTRUE(dots[["legend"]])
+  if(identical(dots[["legend_position"]], "none")){
+    draw_legend <- FALSE
+  }
+  dots[["legend"]] <- draw_legend
+
+  if(is.null(dots[["col"]]) & (is.null(dots[["lty"]]) | is.null(dots[["linetype"]]))){
+    dots$col <- grDevices::palette.colors(n = length(level_names) + 1)[-1]
+  }
+  if(length(dots[["col"]]) == 1)      dots[["col"]]      <- rep(dots[["col"]],      length(level_names))
+  if(length(dots[["lty"]]) == 1)      dots[["lty"]]      <- rep(dots[["lty"]],      length(level_names))
+  if(length(dots[["linetype"]]) == 1) dots[["linetype"]] <- rep(dots[["linetype"]], length(level_names))
 
   level_col <- .plot_prior_factor_level_style_values(
     dots[["col"]],
@@ -463,13 +502,14 @@ plot_prior_list <- function(prior_list, plot_type = "base",
       do.call(.lines.prior.factor, args)
     }
 
-    if(dots[["legend"]] && length(level_names) > 0){
+    if(draw_legend && length(level_names) > 0){
       graphics::legend(
         if(is.null(dots[["legend_position"]])) "topright" else dots[["legend_position"]],
         legend = level_names,
         col    = level_col,
         lty    = level_lty,
         lwd    = if(!is.null(dots[["lwd"]])) dots[["lwd"]] else rep(.plot.prior_settings()[["lwd"]], length(level_names)),
+        title  = dots[["legend_title"]],
         bty    = "n")
     }
 
@@ -528,9 +568,8 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     }
 
 
-    if(dots[["legend"]] && length(level_names) > 0){
+    if(draw_legend && length(level_names) > 0){
       plot <- c(plot, list(ggplot2::theme(
-        legend.title    = ggplot2::element_blank(),
         legend.position = if(is.null(dots[["legend_position"]])) "right" else dots[["legend_position"]])))
     }
 
@@ -2198,6 +2237,10 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
 #' @param dots_data additional styling arguments for observed p-value rug marks.
 #' Supports \code{col}/\code{color}, \code{alpha}, \code{lwd}/\code{linewidth},
 #' \code{side}/\code{rug_side}, and \code{height}/\code{rug_height}.
+#' @param legend whether factor legends should be drawn.
+#' @param legend_title optional title for factor legends.
+#' @param legend_labels optional labels for factor legend levels.
+#' @param legend_position optional legend position for factor legends.
 #' @param ... additional arguments
 #' @inheritParams density.prior
 #' @inheritParams plot.prior
@@ -2218,7 +2261,8 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
                            individual   = FALSE, show_figures = NULL,
                            transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
                            rescale_x = FALSE, par_name = NULL, effect_direction = "positive",
-                           dots_prior = list(), data = NULL, show_data = FALSE, dots_data = list(), ...){
+                           dots_prior = list(), data = NULL, show_data = FALSE, dots_data = list(),
+                           legend = TRUE, legend_title = NULL, legend_labels = NULL, legend_position = NULL, ...){
 
   # check input
   check_list(samples, "prior_list")
@@ -2228,6 +2272,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   check_char(plot_type, "plot_type", allow_values = c("base", "ggplot"))
   check_bool(individual, "individual")
   check_bool(rescale_x, "rescale_x")
+  check_bool(legend, "legend", allow_NA = FALSE)
   check_bool(show_data, "show_data")
   check_list(dots_data, "dots_data", allow_NULL = TRUE)
   check_int(show_figures, "show_figures", allow_NULL = TRUE, lower = 0)
@@ -2646,6 +2691,10 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       if(plot_type == "ggplot"){
         args_prior$hardcode <- TRUE
       }
+      args_prior$legend <- FALSE
+      args_prior$legend_title <- legend_title
+      args_prior$legend_labels <- legend_labels
+      args_prior$legend_position <- legend_position
 
       if(any(sapply(plot_data_prior, inherits, what = "density.prior.factor"))){
         plot <- do.call(.plot_prior_list.factor, args_prior)
@@ -2661,6 +2710,10 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       args$par_name  <- par_name
       args$scale_y2  <- scale_y2
       args$add       <- TRUE
+      args$legend    <- legend
+      args$legend_title <- legend_title
+      args$legend_labels <- legend_labels
+      args$legend_position <- legend_position
 
       if(plot_type == "base"){
         if(any(sapply(prior_list, is.prior.factor))){
@@ -2681,7 +2734,11 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
       # plot just posterior otherwise
       if(any(sapply(prior_list, is.prior.factor))){
-        plot <- .plot_prior_list.factor(plot_data = plot_data, plot_type = plot_type, par_name = par_name, ...)
+        plot <- .plot_prior_list.factor(
+          plot_data = plot_data, plot_type = plot_type, par_name = par_name,
+          legend = legend, legend_title = legend_title, legend_labels = legend_labels,
+          legend_position = legend_position, ...
+        )
       }else{
         plot <- .plot_prior_list.both(plot_data = plot_data, plot_type = plot_type, par_name = par_name, ...)
       }
@@ -3975,13 +4032,15 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
 plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
                           n_points = 1000,
                           transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
-                          rescale_x = FALSE, par_name = NULL, dots_prior = list(), ...){
+                          rescale_x = FALSE, par_name = NULL, dots_prior = list(),
+                          legend = TRUE, legend_title = NULL, legend_labels = NULL, legend_position = NULL, ...){
 
   # check input
   if(any(!sapply(samples, inherits, what = "marginal_posterior")))
     stop("'samples' must be a be an object generated by 'marginal_posterior' function.")
   check_char(parameter, "parameter")
   check_char(plot_type, "plot_type", allow_values = c("base", "ggplot"))
+  check_bool(legend, "legend", allow_NA = FALSE)
   .check_transformation_input(transformation, transformation_arguments, transformation_settings)
 
 
@@ -4018,6 +4077,10 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
     args_prior$plot_type <- plot_type
     args_prior$par_name  <- par_name
     args_prior$hardcode  <- TRUE
+    args_prior$legend    <- FALSE
+    args_prior$legend_title <- legend_title
+    args_prior$legend_labels <- legend_labels
+    args_prior$legend_position <- legend_position
 
     plot <- do.call(.plot_prior_list.factor, args_prior)
 
@@ -4028,6 +4091,10 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
     args$plot_type <- plot_type
     args$par_name  <- par_name
     args$add       <- TRUE
+    args$legend    <- legend
+    args$legend_title <- legend_title
+    args$legend_labels <- legend_labels
+    args$legend_position <- legend_position
 
     if(plot_type == "base"){
       plot <- do.call(.plot_prior_list.factor, args)
@@ -4038,7 +4105,11 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
   }else{
 
     # plot just posterior otherwise
-    plot <- .plot_prior_list.factor(plot_data = plot_data, plot_type = plot_type, par_name = par_name, ...)
+    plot <- .plot_prior_list.factor(
+      plot_data = plot_data, plot_type = plot_type, par_name = par_name,
+      legend = legend, legend_title = legend_title, legend_labels = legend_labels,
+      legend_position = legend_position, ...
+    )
 
   }
 

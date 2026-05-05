@@ -106,7 +106,7 @@ test_that("Beta prior distribution works", {
 
 })
 
-test_that("Beta prior distribution works", {
+test_that("Bernoulli prior distribution works", {
 
   vdiffr::expect_doppelganger("prior-bernoulli-1", function()test_prior(prior("bernoulli", list(.50))))
   vdiffr::expect_doppelganger("prior-bernoulli-2", function()test_prior(prior("bernoulli", list(.66))))
@@ -176,10 +176,6 @@ test_that("Two-sided.fixed weigthfunction prior distribution works", {
   vdiffr::expect_doppelganger("prior-weigthfunction-two.sided.fixed-1", function()test_weightfunction(prior_weightfunction("two-sided", c(.05), wf_fixed(c(1, .5)))))
   vdiffr::expect_doppelganger("prior-weigthfunction-two.sided.fixed-2", function()test_weightfunction(prior_weightfunction("two-sided", c(.05, 0.10), wf_fixed(c(1, .2, .5)))))
 
-})
-
-test_that("Vector prior distribution works", {
-  # TODO
 })
 
 test_that("Orthonormal prior distribution works", {

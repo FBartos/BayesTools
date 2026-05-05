@@ -29,6 +29,7 @@
 - composed selection-bias priors and publication-bias mixtures now support prior sampling and explicit unsupported-operation errors for ambiguous scalar prior generics
 
 ### Fixes
+- reports inclusion Bayes factors as `NA` when the prior assigns probability 0 or 1 to inclusion, while keeping finite-sample bounds for posterior inclusion probabilities of 0 or 1
 - fixes incorrect ordering the printed mixture priors
 - fixes formula with no intercepts coded as `0` (instead of only `-1`)
 - fixes bug in `.is.wholenumber` with NAs and `na.rm = TRUE`

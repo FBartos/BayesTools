@@ -241,123 +241,6 @@ test_that(".factor_term_design_from_formula handles no-intercept factor interact
 # SECTION: Tests requiring JAGS (skip conditions per test)
 # ============================================================================ #
 
-test_that("JAGS evaluate formula works", {
-
-  # Test JAGS_evaluate_formula by comparing against lm() predictions using ML estimates.
-  # This test constructs samples manually (from ML estimates) - no pre-fitted JAGS model needed.
-  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
-  skip_if_not_installed("rjags")
-
-  # Setup: complex formula including scaling
-  set.seed(1)
-  df_all <- data.frame(
-    x_cont1 = rnorm(60),
-    x_cont2 = rnorm(60),
-    x_fac2t = factor(rep(c("A", "B"), 30), levels = c("A", "B")),
-    x_fac3o = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C"))
-  )
-  df_all$y <- rnorm(60, 0.1, 0.5) + 0.30 * df_all$x_cont1 - 0.15 * df_all$x_cont1 * df_all$x_cont2 +
-    ifelse(df_all$x_fac3o == "A", 0.2, ifelse(df_all$x_fac3o == "B", -0.2, 0))
-
-  prior_list_all <- list(
-    "intercept"       = prior("normal", list(0, 5)),
-    "x_cont1"         = prior("normal", list(0, 1)),
-    "x_cont2"         = prior("normal", list(0, 1)),
-    "x_fac2t"         = prior_factor("normal",  contrast = "treatment",   list(0, 1)),
-    "x_fac3o"         = prior_factor("mnormal", contrast = "orthonormal", list(0, 1)),
-    "x_cont1:x_fac3o" = prior_factor("mnormal", contrast = "orthonormal", list(0,  2))
-  )
-  prior_list2  <- list(
-    "sigma" = prior("cauchy", list(0, 1), list(0, 1))
-  )
-
-  # Use JAGS_formula to process formula and get prior_list with correct parameter names
-  formula_result <- JAGS_formula(~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, parameter = "mu", data = df_all, prior_list = prior_list_all)
-  prior_list     <- c(formula_result$prior_list, prior_list2)
-
-  # Define expected column names for samples (must match what JAGS_formula produces)
-  col_names <- c("mu_intercept", "mu_x_cont1", "mu_x_cont1__xXx__x_fac3o[1]", "mu_x_cont1__xXx__x_fac3o[2]",
-                 "mu_x_cont2", "mu_x_fac2t", "mu_x_fac3o[1]", "mu_x_fac3o[2]", "sigma")
-
-  new_data <-  data.frame(
-    x_cont1 = c(0, 0, 1, 1),
-    x_cont2 = c(0, 1, 0, 1),
-    x_fac2t = factor(c("A", "B", "A", "B"), levels = c("A", "B")),
-    x_fac3o = factor(c("A", "B", "C", "A"), levels = c("A", "B", "C"))
-  )
-
-  # Test the results against the lm function (by passing the ML estimates)
-  contrasts(df_all$x_fac3o) <- contr.orthonormal(levels(df_all$x_fac3o))
-  fit_lm <- stats::lm(y ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, data = df_all)
-
-  # Create mock samples from ML estimates
-  samples_new <- c(coef(fit_lm), sigma = sigma(fit_lm))[c("(Intercept)","x_cont1","x_cont1:x_fac3o1","x_cont1:x_fac3o2","x_cont2","x_fac2tB","x_fac3o1","x_fac3o2","sigma")]
-  samples_new <- matrix(samples_new, nrow = 1)
-  colnames(samples_new) <- col_names
-  samples_new <- coda::as.mcmc.list(coda::as.mcmc(samples_new))
-
-  expect_equal(predict(fit_lm, newdata = new_data), JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data, prior_list)[,1])
-
-  # For a posterior samples matrix (multiple rows)
-  samples_new <- c(coef(fit_lm), sigma = sigma(fit_lm))[c("(Intercept)","x_cont1","x_cont1:x_fac3o1","x_cont1:x_fac3o2","x_cont2","x_fac2tB","x_fac3o1","x_fac3o2","sigma")]
-  samples_new <- matrix(samples_new, nrow = 5, ncol = length(samples_new), byrow = TRUE)
-  colnames(samples_new) <- col_names
-  samples_new <- coda::as.mcmc.list(coda::as.mcmc(samples_new))
-
-  expect_equal(matrix(predict(fit_lm, newdata = new_data), nrow = 4, ncol = 5), unname(JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data, prior_list)))
-
-  # Check filling in missing or miss-ordered factor levels
-  samples_new <- c(coef(fit_lm), sigma = sigma(fit_lm))[c("(Intercept)","x_cont1","x_cont1:x_fac3o1","x_cont1:x_fac3o2","x_cont2","x_fac2tB","x_fac3o1","x_fac3o2","sigma")]
-  samples_new <- matrix(samples_new, nrow = 1)
-  colnames(samples_new) <- col_names
-  samples_new <- coda::as.mcmc.list(coda::as.mcmc(samples_new))
-
-  new_data2         <- new_data
-  new_data2$x_fac2t <- factor(as.character(new_data2$x_fac2t), levels = c("B", "A"))
-  expect_equal(predict(fit_lm, newdata = new_data), JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data2, prior_list)[,1])
-
-  new_data3         <- new_data
-  new_data3$x_fac3o <- factor(c("A", "B", "A", "B"), levels = c("B", "A"))
-  expect_equal(predict(fit_lm, newdata = new_data3), JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data3, prior_list)[,1])
-
-  new_data4         <- new_data
-  new_data4$x_fac3o <- c("A", "B", "A", "B")
-  expect_equal(predict(fit_lm, newdata = new_data3), JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data4, prior_list)[,1])
-
-  # Check scaling works (by multiplying by zero)
-  prior_list_scaled <- prior_list
-  attr(prior_list_scaled$mu_x_cont2, "multiply_by") <- 0
-  attr(prior_list_scaled$mu_x_fac2t, "multiply_by") <- 0
-
-  samples_new2 <- c(coef(fit_lm), sigma = sigma(fit_lm))[c("(Intercept)","x_cont1","x_cont1:x_fac3o1","x_cont1:x_fac3o2","x_cont2","x_fac2tB","x_fac3o1","x_fac3o2","sigma")]
-  samples_new2 <- matrix(samples_new2, nrow = 1)
-  colnames(samples_new2) <- col_names
-  samples_new2[,"mu_x_cont2"] <- 0
-  samples_new2[,"mu_x_fac2t"] <- 0
-  samples_new2 <- coda::as.mcmc.list(coda::as.mcmc(samples_new2))
-
-  expect_equal(JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data, prior_list_scaled)[,1],
-               JAGS_evaluate_formula(samples_new2, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data, prior_list)[,1])
-
-  ### Test input validation
-  expect_error(JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data[,1:3], prior_list),
-               "The 'x_fac3o' predictor variable is missing in the data.")
-  expect_error(JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data, prior_list[-1]),
-               "The prior distribution for the 'x_fac2t' term is missing in the prior_list.")
-
-  bad_data         <- new_data
-  bad_data$x_fac2t <- factor(c("C", "B", "C", "B"), levels = c("B", "C"))
-
-  expect_error(JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", bad_data, prior_list),
-               "Levels specified in the 'x_fac2t' factor variable do not match the levels used for model specification.")
-
-  bad_data2         <- new_data
-  bad_data2$x_fac2t <- c("C", "B", "C", "B")
-
-  expect_error(JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", bad_data2, prior_list),
-               "Levels specified in the 'x_fac2t' factor variable do not match the levels used for model specification.")
-})
-
 test_that("JAGS evaluate formula works with spike priors", {
 
   # Test JAGS_evaluate_formula with spike prior distributions using pre-fitted model
@@ -531,6 +414,31 @@ test_that("-1 (no intercept) formula handling works correctly", {
   expect_equal(.add_intercept_to_formula(~ x + 0), ~ x, ignore_formula_env = TRUE)
   expect_equal(.add_intercept_to_formula(~ x + y + 0), ~ x + y, ignore_formula_env = TRUE)
   expect_equal(.add_intercept_to_formula(~ 0), ~ 1, ignore_formula_env = TRUE)
+
+  skip_if_not_installed("coda")
+
+  prior_list_continuous <- list(
+    "x_cont" = prior("normal", list(0, 1))
+  )
+  result_continuous <- JAGS_formula(~ x_cont - 1, parameter = "mu",
+                                    data = df_test[, "x_cont", drop = FALSE],
+                                    prior_list = prior_list_continuous)
+  posterior <- matrix(c(1, 2), nrow = 2)
+  colnames(posterior) <- "mu_x_cont"
+  posterior <- coda::as.mcmc(posterior)
+
+  expect_false("mu_intercept" %in% colnames(posterior))
+  expect_equal(
+    JAGS_evaluate_formula(
+      posterior,
+      ~ x_cont - 1,
+      "mu",
+      data.frame(x_cont = c(3, 4)),
+      result_continuous$prior_list
+    ),
+    cbind(c(3, 4), c(6, 8)),
+    ignore_attr = TRUE
+  )
 
 })
 

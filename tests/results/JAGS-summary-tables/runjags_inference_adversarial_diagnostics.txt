@@ -1,3 +1,2 @@
       Prior prob. Post. prob. Inclusion BF  ESS error(Post. prob.) error%(Inclusion BF)
 theta       0.500       0.990       99.000 1600            0.00250               25.253
-BF MC error is a delta-method relative Monte Carlo standard error on the log Bayes-factor scale, reported as a percentage of the Bayes factor.

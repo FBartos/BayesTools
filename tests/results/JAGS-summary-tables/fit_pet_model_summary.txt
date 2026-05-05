@@ -3,4 +3,4 @@
  Prior prob.    1.000              PET ~ Normal(0, 0.2)[0, Inf]
  log(marglik)   -0.01                                          
  Post. prob.    1.000                                          
- Inclusion BF     Inf                                          
+ Inclusion BF      NA                                          

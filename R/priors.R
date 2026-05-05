@@ -76,7 +76,7 @@ prior <- function(distribution, parameters, truncation = list(lower = -Inf, uppe
   check_list(parameters, "parameters")
   #sapply(seq_along(parameters), function(i)check_real(parameters[[i]], names(parameters[[i]]), check_length = 0))
   check_list(truncation, "truncation")
-  check_real(prior_weights, "prior_weights", lower = 0, allow_bound = FALSE)
+  .check_prior_weight(prior_weights)
 
   # clean the input name
   distribution <- .prior_clean_input_name(distribution)
@@ -127,7 +127,7 @@ prior <- function(distribution, parameters, truncation = list(lower = -Inf, uppe
 #' @rdname prior
 prior_none <- function(prior_weights = 1){
 
-  check_real(prior_weights, "prior_weights", lower = 0, allow_bound = FALSE)
+  .check_prior_weight(prior_weights)
 
   out <- list()
   out$distribution <- "none"
@@ -178,7 +178,7 @@ prior_weightfunction <- function(side = "one-sided", steps = c(.025, .05),
   check_char(side, "side")
   check_real(steps, "steps", check_length = 0)
   check_char(reference, "reference", allow_values = "most_significant")
-  check_real(prior_weights, "prior_weights", lower = 0, allow_bound = FALSE)
+  .check_prior_weight(prior_weights)
 
   side <- .weightfunction_normalize_side(side)
   steps <- .weightfunction_validate_steps(steps)
@@ -443,7 +443,7 @@ prior_spike_and_slab <- function(prior_parameter,
     stop("'prior_parameter' must be a prior distribution")
   if(!is.prior(prior_inclusion))
     stop("'prior_inclusion' must be a prior distribution")
-  check_real(prior_weights, "prior_weights", lower = 0, allow_bound = FALSE)
+  .check_prior_weight(prior_weights)
   if(is.prior.point(prior_inclusion) && (prior_inclusion$parameters[["location"]] < 0 | prior_inclusion$parameters[["location"]] > 1))
     stop("The probability parameter of 'prior_inclusion' must be within 0 and 1.")
   if(!is.prior.point(prior_inclusion) && (prior_inclusion$truncation[["lower"]] < 0 | prior_inclusion$truncation[["upper"]] > 1))

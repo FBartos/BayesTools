@@ -7,6 +7,8 @@ skip_if_not_test_profile("visual-fixture")
 # PURPOSE:
 #   Visual regression tests for JAGS diagnostic plots (density, trace,
 #   autocorrelation plots).
+#   Semantic plot-data companions live in test-JAGS-diagnostic-plot-data.R;
+#   this file is retained for fixture-backed rendered presentation regressions.
 #
 # DEPENDENCIES:
 #   - vdiffr: Visual regression testing
@@ -167,6 +169,8 @@ test_that("JAGS diagnostics work", {
 
 test_that("JAGS diagnostics work (spike and slab)", {
 
+  skip_if_not_installed("RoBMA")
+  skip_if_missing_fits("fit_complex_mixed")
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
 
   # Use fit_complex_mixed which has spike and slab on x_cont1
@@ -180,6 +184,8 @@ test_that("JAGS diagnostics work (spike and slab)", {
 
 test_that("JAGS diagnostics work (mixture priors)", {
 
+  skip_if_not_installed("RoBMA")
+  skip_if_missing_fits("fit_complex_mixed")
   skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
 
   # Use fit_complex_mixed which has mixture on intercept and x_fac3t

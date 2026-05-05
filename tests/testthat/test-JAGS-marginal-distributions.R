@@ -68,6 +68,155 @@ source(testthat::test_path("common-functions.R"))
   invisible(plot_data)
 }
 
+.marginal_posterior_with_prior_density_for_test <- function(samples, prior_density) {
+  class(samples) <- c("marginal_posterior.simple", "marginal_posterior", class(samples))
+  attr(samples, "prior_density") <- prior_density
+  samples
+}
+
+.marginal_semantic_fixture_for_test <- function(){
+
+  df <- expand.grid(
+    x_cont1  = c(-1, 0, 1),
+    x_fac2t  = factor(c("A", "B"), levels = c("A", "B")),
+    x_fac3md = factor(c("A", "B", "C"), levels = c("A", "B", "C"))
+  )
+
+  formula_result <- JAGS_formula(
+    formula = ~ x_cont1 + x_fac2t + x_cont1 * x_fac3md,
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept        = prior("normal", list(0, 1)),
+      x_cont1          = prior("normal", list(0, 1)),
+      x_fac2t          = prior_factor("normal", list(0, 1), contrast = "treatment"),
+      x_fac3md         = prior_factor("mnormal", list(0, 0.25), contrast = "meandif"),
+      "x_cont1:x_fac3md" = prior_factor("mnormal", list(0, 0.25), contrast = "meandif")
+    )
+  )
+
+  posterior <- cbind(
+    mu_intercept = seq(-0.4, 0.5, length.out = 10),
+    mu_x_cont1 = seq(-0.2, 0.7, length.out = 10),
+    mu_x_fac2t = seq(0.1, 1.0, length.out = 10),
+    `mu_x_fac3md[1]` = seq(-0.6, 0.3, length.out = 10),
+    `mu_x_fac3md[2]` = seq(0.2, 1.1, length.out = 10),
+    `mu_x_cont1__xXx__x_fac3md[1]` = seq(-1.0, -0.1, length.out = 10),
+    `mu_x_cont1__xXx__x_fac3md[2]` = seq(0.3, 1.2, length.out = 10)
+  )
+
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("BayesTools_fit", class(fit))
+  attr(fit, "prior_list") <- formula_result$prior_list
+
+  samples <- as_mixed_posteriors(
+    fit,
+    parameters = c(
+      "mu_intercept",
+      "mu_x_cont1",
+      "mu_x_fac2t",
+      "mu_x_fac3md",
+      "mu_x_cont1__xXx__x_fac3md"
+    ),
+    n_prior_samples = 128
+  )
+
+  list(
+    data = df,
+    posterior = posterior,
+    prior_list = formula_result$prior_list,
+    samples = samples
+  )
+}
+
+.expect_density_area_for_test <- function(plot_data, expected = 1, tolerance = 0.08){
+  dx <- diff(plot_data$x)
+  area <- sum(dx * (plot_data$y[-1] + plot_data$y[-length(plot_data$y)]) / 2)
+  expect_equal(area, expected, tolerance = tolerance)
+}
+
+.density_component_mass_for_test <- function(plot_data) {
+  if(inherits(plot_data, "density.prior.point")){
+    return(sum(plot_data$y))
+  }
+
+  dx <- diff(plot_data$x)
+  sum(dx * (plot_data$y[-1] + plot_data$y[-length(plot_data$y)]) / 2)
+}
+
+.density_mass_by_level_for_test <- function(plot_data) {
+  level_names <- vapply(plot_data, function(component) {
+    level_name <- attr(component, "level_name")
+    if(is.null(level_name)) "__all__" else level_name
+  }, character(1))
+
+  vapply(unique(level_names), function(level_name) {
+    sum(vapply(
+      plot_data[level_names == level_name],
+      .density_component_mass_for_test,
+      numeric(1)
+    ))
+  }, numeric(1))
+}
+
+.expect_density_mass_by_level_for_test <- function(plot_data, expected = 1, tolerance = 0.08) {
+  masses <- .density_mass_by_level_for_test(plot_data)
+  expect_true(all(is.finite(masses)))
+  expect_true(all(masses >= 0))
+  expect_equal(unname(masses), rep(expected, length(masses)), tolerance = tolerance)
+  invisible(masses)
+}
+
+test_that("Savage_Dickey_BF uses prior density over normal posterior height", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior_z <- seq(-4, 4, length.out = 1001)
+  posterior <- 0.4 + (posterior_z - mean(posterior_z)) / stats::sd(posterior_z) * 1.3
+  posterior <- .marginal_posterior_with_prior_density_for_test(posterior, prior_density)
+
+  expected <- BayesTools:::.prior_linear_density_height(prior_density, 0) /
+    stats::dnorm(0, mean = mean(posterior), sd = stats::sd(posterior))
+
+  expect_equal(
+    Savage_Dickey_BF(posterior, null_hypothesis = 0, normal_approximation = TRUE, silent = TRUE),
+    expected,
+    tolerance = 1e-12
+  )
+})
+
+test_that("Savage_Dickey_BF warns for point mass and posterior-null clusters", {
+
+  continuous_prior <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 1024
+  )
+  posterior_cluster <- .marginal_posterior_with_prior_density_for_test(
+    c(rep(0, 8), seq(-2, 2, length.out = 92)),
+    continuous_prior
+  )
+
+  expect_warning(
+    Savage_Dickey_BF(posterior_cluster, null_hypothesis = 0, normal_approximation = TRUE),
+    "posterior samples at the exact null hypothesis"
+  )
+
+  point_prior <- BayesTools:::.prior_linear_density_point(0)
+  posterior_continuous <- .marginal_posterior_with_prior_density_for_test(
+    seq(-2, 2, length.out = 101),
+    point_prior
+  )
+
+  expect_warning(
+    Savage_Dickey_BF(posterior_continuous, null_hypothesis = 0, normal_approximation = TRUE),
+    "point mass in the prior"
+  )
+})
+
 test_that("marginal_posterior handles direct multi-factor transformed interactions", {
 
   df <- expand.grid(
@@ -253,6 +402,285 @@ test_that("marginal_posterior handles one-coefficient as_mixed_posteriors intera
   expect_equal(as.numeric(marginal[[4]]), as.numeric(expected[, 4]))
 })
 
+test_that("marginal_posterior aligns selected formula levels and at expansions", {
+
+  fixture <- .marginal_semantic_fixture_for_test()
+
+  marginal <- marginal_posterior(
+    samples       = fixture$samples,
+    parameter     = "mu_x_fac3md",
+    at            = list(x_cont1 = 1, x_fac2t = c("A", "B")),
+    formula       = ~ x_cont1 + x_fac2t + x_cont1 * x_fac3md,
+    prior_samples = TRUE,
+    n_samples     = 128
+  )
+
+  expect_s3_class(marginal, "marginal_posterior")
+  expect_equal(attr(marginal, "parameter"), "mu_x_fac3md")
+  expect_equal(names(marginal), c("A", "B", "C"))
+  expect_equal(attr(marginal, "level_names"), c("A", "B", "C"))
+  expected_level_at <- data.frame(x_fac3md = factor(c("A", "B", "C"), levels = c("A", "B", "C")))
+  actual_level_at <- attr(marginal, "level_at")
+  attr(actual_level_at, "out.attrs") <- NULL
+  expect_equal(actual_level_at, expected_level_at)
+
+  expected_meandif <- fixture$posterior[, c("mu_x_fac3md[1]", "mu_x_fac3md[2]")] %*% t(contr.meandif(1:3))
+  expected_interaction <- fixture$posterior[, c(
+    "mu_x_cont1__xXx__x_fac3md[1]",
+    "mu_x_cont1__xXx__x_fac3md[2]"
+  )] %*% t(contr.meandif(1:3))
+
+  for(i in seq_along(marginal)){
+    expected_a <- fixture$posterior[, "mu_intercept"] +
+      fixture$posterior[, "mu_x_cont1"] +
+      expected_meandif[, i] +
+      expected_interaction[, i]
+    expected_b <- expected_a + fixture$posterior[, "mu_x_fac2t"]
+
+    expect_equal(dim(marginal[[i]]), c(2, nrow(fixture$posterior)))
+    expect_equal(as.numeric(marginal[[i]][1, ]), as.numeric(expected_a))
+    expect_equal(as.numeric(marginal[[i]][2, ]), as.numeric(expected_b))
+    expect_equal(attr(marginal[[i]], "data")$x_cont1, c(1, 1))
+    expect_equal(as.character(attr(marginal[[i]], "data")$x_fac2t), c("A", "B"))
+    expect_equal(as.character(attr(marginal[[i]], "data")$x_fac3md), rep(names(marginal)[i], 2))
+    expect_s3_class(attr(marginal[[i]], "prior_density"), "prior_linear_density")
+  }
+})
+
+test_that("marginal_posterior transformation preserves level names and transformed values", {
+
+  fixture <- .marginal_semantic_fixture_for_test()
+
+  marginal_raw <- marginal_posterior(
+    samples       = fixture$samples,
+    parameter     = "mu_x_cont1",
+    formula       = ~ x_cont1 + x_fac2t + x_cont1 * x_fac3md,
+    prior_samples = TRUE,
+    n_samples     = 128
+  )
+  marginal_exp <- marginal_posterior(
+    samples        = fixture$samples,
+    parameter      = "mu_x_cont1",
+    formula        = ~ x_cont1 + x_fac2t + x_cont1 * x_fac3md,
+    transformation = "exp",
+    prior_samples  = TRUE,
+    n_samples      = 128
+  )
+
+  expect_equal(names(marginal_exp), names(marginal_raw))
+  expect_equal(attr(marginal_exp, "level_at"), attr(marginal_raw, "level_at"))
+  for(level in names(marginal_raw)){
+    expect_equal(as.numeric(marginal_exp[[level]]), exp(as.numeric(marginal_raw[[level]])))
+
+    exp_prior_data <- BayesTools:::.prior_linear_density_to_plot_data(
+      attr(marginal_exp[[level]], "prior_density"),
+      n_points = 128
+    )
+    expect_true(all(vapply(exp_prior_data, function(d) all(d$x > 0), logical(1))))
+  }
+})
+
+test_that("marginal posterior plot data separates densities, point masses, labels, and selected parameters", {
+
+  fixture <- .marginal_semantic_fixture_for_test()
+  marginal <- marginal_posterior(
+    samples       = fixture$samples,
+    parameter     = "mu_x_fac2t",
+    prior_samples = TRUE,
+    use_formula   = FALSE,
+    n_samples     = 128
+  )
+  samples <- list(mu_x_fac2t = marginal)
+
+  expect_error(suppressWarnings(plot_marginal(samples, parameter = "not_here")))
+
+  plot_data <- BayesTools:::.plot_data_marginal_samples(
+    samples,
+    parameter = "mu_x_fac2t",
+    prior = TRUE,
+    n_points = 128,
+    transformation = NULL,
+    transformation_arguments = NULL,
+    transformation_settings = FALSE
+  )
+
+  expect_equal(sort(unique(vapply(plot_data, attr, character(1), which = "level_name"))), c("A", "B"))
+
+  point_data <- plot_data[vapply(plot_data, inherits, logical(1), what = "density.prior.point")]
+  density_data <- plot_data[vapply(plot_data, inherits, logical(1), what = "density.prior.simple")]
+  expect_length(point_data, 1)
+  expect_equal(attr(point_data[[1]], "level_name"), "A")
+  expect_equal(point_data[[1]]$x, 0)
+  expect_equal(point_data[[1]]$y, 1)
+  expect_length(density_data, 1)
+  expect_equal(attr(density_data[[1]], "level_name"), "B")
+  .expect_density_area_for_test(density_data[[1]])
+
+  prior_data <- unlist(lapply(plot_data, attr, which = "prior"), recursive = FALSE)
+  expect_true(any(vapply(prior_data, inherits, logical(1), what = "density.prior.point")))
+  expect_true(any(vapply(prior_data, inherits, logical(1), what = "density.prior.simple")))
+
+  expect_error(
+    plot_marginal(samples, parameter = "mu_x_fac2t", prior = TRUE, transformation = "not-a-transformation"),
+    "not recognized|must be"
+  )
+  expect_error(
+    plot_marginal(list(mu_x_fac2t = marginal_posterior(fixture$samples, "mu_x_fac2t", use_formula = FALSE)),
+                  parameter = "mu_x_fac2t", prior = TRUE),
+    "'samples' did not contain prior densities"
+  )
+  expect_error(
+    plot_marginal(samples, parameter = "mu_x_fac2t", plot_type = "lattice"),
+    "'plot_type'"
+  )
+})
+
+test_that("marginal density plot data preserves probability mass by level", {
+
+  fixture <- .marginal_semantic_fixture_for_test()
+
+  factor_marginal <- marginal_posterior(
+    samples       = fixture$samples,
+    parameter     = "mu_x_fac2t",
+    prior_samples = TRUE,
+    use_formula   = FALSE,
+    n_samples     = 512
+  )
+  factor_plot_data <- BayesTools:::.plot_data_marginal_samples(
+    list(mu_x_fac2t = factor_marginal),
+    parameter = "mu_x_fac2t",
+    prior = TRUE,
+    n_points = 512,
+    transformation = NULL,
+    transformation_arguments = NULL,
+    transformation_settings = FALSE
+  )
+  factor_prior_data <- unlist(lapply(factor_plot_data, attr, which = "prior"), recursive = FALSE)
+
+  expect_equal(sort(names(.expect_density_mass_by_level_for_test(factor_plot_data))), c("A", "B"))
+  expect_equal(sort(names(.expect_density_mass_by_level_for_test(factor_prior_data))), c("A", "B"))
+
+  conditional_marginal <- marginal_posterior(
+    samples       = fixture$samples,
+    parameter     = "mu_x_fac3md",
+    at            = list(x_cont1 = 1, x_fac2t = c("A", "B")),
+    formula       = ~ x_cont1 + x_fac2t + x_cont1 * x_fac3md,
+    prior_samples = TRUE,
+    n_samples     = 512
+  )
+  conditional_prior_data <- unlist(lapply(names(conditional_marginal), function(level_name) {
+    BayesTools:::.prior_linear_density_to_plot_data(
+      attr(conditional_marginal[[level_name]], "prior_density"),
+      n_points = 512,
+      factor = TRUE,
+      level_name = level_name
+    )
+  }), recursive = FALSE)
+
+  expect_equal(sort(names(.expect_density_mass_by_level_for_test(conditional_prior_data))), c("A", "B", "C"))
+
+  transformed_marginal <- .marginal_posterior_with_prior_density_for_test(
+    stats::qnorm(seq(0.001, 0.999, length.out = 1000)),
+    BayesTools:::.prior_linear_combination_density(
+      prior_list = list(theta = prior("normal", list(0, 1))),
+      weights    = c(theta = 1),
+      n_grid     = 2048
+    )
+  )
+  transformed_plot_data <- BayesTools:::.plot_data_marginal_samples(
+    list(theta = transformed_marginal),
+    parameter = "theta",
+    prior = TRUE,
+    n_points = 512,
+    transformation = "exp",
+    transformation_arguments = NULL,
+    transformation_settings = FALSE
+  )
+  transformed_prior_data <- unlist(lapply(transformed_plot_data, attr, which = "prior"), recursive = FALSE)
+
+  .expect_density_mass_by_level_for_test(transformed_plot_data, tolerance = 0.15)
+  .expect_density_mass_by_level_for_test(transformed_prior_data, tolerance = 0.15)
+})
+
+test_that("ggplot marginal output carries selected levels in rendered data", {
+
+  skip_if_not_installed("ggplot2")
+
+  fixture <- .marginal_semantic_fixture_for_test()
+  marginal <- marginal_posterior(
+    samples       = fixture$samples,
+    parameter     = "mu_x_fac2t",
+    prior_samples = TRUE,
+    use_formula   = FALSE,
+    n_samples     = 128
+  )
+
+  plot <- plot_marginal(
+    list(mu_x_fac2t = marginal),
+    parameter = "mu_x_fac2t",
+    plot_type = "ggplot",
+    prior = TRUE,
+    par_name = "fac2t",
+    n_points = 128
+  )
+  built <- ggplot2::ggplot_build(plot)
+  layer_data <- do.call(rbind, lapply(built$data, function(x) {
+    if(all(c("x", "y") %in% names(x))) x[, intersect(c("x", "y", "colour", "linetype", "group"), names(x)), drop = FALSE]
+  }))
+
+  expect_s3_class(plot, "ggplot")
+  expect_true(length(built$data) >= 2)
+  expect_true(any(abs(layer_data$x) < sqrt(.Machine$double.eps)))
+  expect_true(length(unique(stats::na.omit(layer_data$colour))) >= 2)
+})
+
+test_that("marginal_estimates_table reports exact level summaries and Bayes factors", {
+
+  samples <- list(
+    theta = list(
+      low  = c(1, 2, 3, 4),
+      high = c(10, 20, 30, 40)
+    )
+  )
+  inference <- list(theta = list(low = 2, high = 0.5))
+
+  table <- marginal_estimates_table(
+    samples    = samples,
+    inference  = inference,
+    parameters = "theta",
+    probs      = c(0.25, 0.5, 0.75)
+  )
+
+  expected_samples <- do.call(rbind, lapply(samples$theta, function(x) {
+    c(
+      Mean = mean(x),
+      SD = stats::sd(x),
+      "0.25" = unname(stats::quantile(x, 0.25)),
+      "0.5" = unname(stats::quantile(x, 0.5)),
+      "0.75" = unname(stats::quantile(x, 0.75))
+    )
+  }))
+
+  expect_s3_class(table, "BayesTools_table")
+  expect_equal(rownames(table), c("theta[low]", "theta[high]"))
+  expect_equal(colnames(table), c("Mean", "SD", "0.25", "0.5", "0.75", "inclusion_BF"))
+  expect_equal(unname(as.matrix(table[, 1:5])), unname(expected_samples), tolerance = 1e-12)
+  expect_equal(as.numeric(table$inclusion_BF), c(2, 0.5), tolerance = 1e-12)
+  expect_equal(attr(table, "type"), c(rep("estimate", 5), "inclusion_BF"))
+  expect_true(attr(table, "rownames"))
+
+  log_table <- marginal_estimates_table(
+    samples    = samples,
+    inference  = inference,
+    parameters = "theta",
+    probs      = c(0.25),
+    logBF      = TRUE,
+    BF01       = TRUE
+  )
+  expect_equal(as.numeric(log_table$inclusion_BF), log(c(1 / 2, 1 / 0.5)), tolerance = 1e-12)
+  expect_equal(attr(log_table$inclusion_BF, "name"), "log(Exclusion BF)")
+})
+
 # File-level skips: All remaining tests in this file require pre-fitted models
 skip_if_not_visual_fixture_tests()
 skip_if_no_fits()
@@ -327,6 +755,31 @@ test_that("Marginal distribution prior and posterior functions work", {
   # manual mixing
   posterior_manual0 <- suppressWarnings(coda::as.mcmc(fit0))
   posterior_manual1 <- suppressWarnings(coda::as.mcmc(fit1))
+  add_missing_null_columns <- function(posterior, columns) {
+    posterior <- as.matrix(posterior)
+    missing <- setdiff(columns, colnames(posterior))
+    if (length(missing) > 0L) {
+      posterior <- cbind(
+        posterior,
+        matrix(
+          0,
+          nrow = nrow(posterior),
+          ncol = length(missing),
+          dimnames = list(NULL, missing)
+        )
+      )
+    }
+    posterior
+  }
+  null_formula_columns <- c(
+    "mu_x_fac2t",
+    "mu_x_fac3md[1]",
+    "mu_x_fac3md[2]",
+    "mu_x_cont1__xXx__x_fac3md[1]",
+    "mu_x_cont1__xXx__x_fac3md[2]"
+  )
+  posterior_manual0 <- add_missing_null_columns(posterior_manual0, null_formula_columns)
+  posterior_manual1 <- add_missing_null_columns(posterior_manual1, null_formula_columns)
 
   ### test error checks ----
   expect_error(marginal_posterior(

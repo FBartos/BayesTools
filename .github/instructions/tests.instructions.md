@@ -12,6 +12,10 @@ applyTo: "**/tests/testthat/*.R"
 - Tests use `common-functions.R` for shared helpers
 - Tests are split into package-critical, fixture/cache, pure visual, cached-JAGS visual, and model-fit profiles
 
+## LLM Reporter Requirement
+
+Always run tests with LLM-oriented reporting. Prefer `Rscript tools/test-profile.R <profile>`; the runner sets `AGENT=1` and passes `testthat::LlmReporter$new()`. For ad hoc `devtools::test()` calls, set `Sys.setenv(AGENT = "1")` and pass `reporter = testthat::LlmReporter$new()`.
+
 ## Test Profiles
 
 Use `tools/test-profile.R` instead of calling `devtools::test()` directly for profiled test runs. The runner sets the right environment variables and passes a testthat file filter, which prevents skipped visual files from pruning local vdiffr snapshots.
@@ -27,6 +31,36 @@ Use `tools/test-profile.R` instead of calling `devtools::test()` directly for pr
 
 Supported aliases include `fixtures`, `plots`, `snapshot`, `snapshots`, `jags-visual`, `jags_visual`, `cached-visual`, `cached_visual`, `visual_fixture`, `visual-fixtures`, `visual_fixtures`, `heavy`, and `slow`.
 
+## CI Profile Policy
+
+Pull requests and ordinary pushes run the `unit` profile. Keep that lane deterministic and free of real JAGS fitting, cached-fit requirements, and visual snapshot execution.
+
+The `test-coverage` workflow is the documented coverage-only exception: it may run the `all` profile on push and pull request events, but it must invoke `tools/test-profile.R` so profile setup and LLM reporting stay centralized.
+
+Manual CI runs expose the same profile choices as `tools/test-profile.R`. Scheduled and release CI runs execute `all`, which covers `fit`, `visual`, and `visual-fixture`; those runs upload the test artifact directory so fixture diagnostics, saved fits, JAGS output, and visual outputs are available when generated.
+
+Use the heavier profiles as change-triggered or release/pre-release verification:
+
+- Run `fixture` after a validated fit cache exists in the same `BAYESTOOLS_TEST_FILES_DIR`.
+- Run `visual` when pure plotting code, plot snapshots, or graphics helpers changed.
+- Run `visual-fixture` only after the fit cache has been generated or restored in the same environment.
+- Run `fit` when JAGS fitting, formula construction, marginal-likelihood code, cached model definitions, or their dependencies changed. The fit profile refreshes cache artifacts by default.
+- Run `all` before large releases or broad test-infrastructure changes.
+
+Do not move `fit`, `fixture`, `visual-fixture`, or `all` into the pull-request lane without first measuring runtime/flakiness and confirming artifact/cache behavior. A protected-branch fixture lane is acceptable only when the cached-fit dependency is explicit and diagnostics are uploaded on failure.
+
+## Required Profiles Before Sensitive Changes
+
+Run these profiles before merging changes in the corresponding areas:
+
+| Touched Area | Required Profile(s) |
+|--------------|---------------------|
+| JAGS fitting, `JAGS_fit()`, generated model syntax, marginal likelihoods, or `test-00-model-fits.R` | `unit`, then `fit`, then `fixture`; add `visual-fixture` if plotted fitted objects can change |
+| Formula parsing, formula scaling, design matrices, standardization metadata, or factor contrasts | `unit` and `fit`; add `fixture` when cached fitted objects or reference tables are affected |
+| Fixture registry, cached fit files, reference tables/text, or fixture helper logic | `unit`, `fit`, and `fixture` |
+| Pure plotting helpers, priors plots, model-averaging plots, or visual snapshots without cached JAGS fits | `unit` and `visual` |
+| Plotting that loads cached JAGS fits or diagnostics | `unit`, `fit`, and `visual-fixture`; run `fixture` when fixture metadata or tables also change |
+
 ## Test Caching
 
 Model fitting is slow. The caching system lets you run the full suite once and reuse fits.
@@ -40,6 +74,7 @@ Model fitting is slow. The caching system lets you run the full suite once and r
 | `BAYESTOOLS_TEST_PROFILE` | Active test profile when not using `tools/test-profile.R` | `all` in helpers, `unit` in runner |
 | `VDIFFR_RUN_TESTS` | Enables vdiffr visual regression checks | unset |
 | `NOT_CRAN` | Enables slow/heavy checks | unset |
+| `AGENT` | Enables testthat's coding-agent behavior, including LLM-oriented reporting defaults | `1` in `tools/test-profile.R` |
 
 ### Recommended TDD Workflow
 
@@ -139,6 +174,7 @@ clean_cached_fits()
 3. **Never fit models** outside `test-00-model-fits.R`
 4. **Never modify** `GENERATE_REFERENCE_FILES` flag (maintainer only)
 5. **Use `tools/test-profile.R`** for profile runs; do not rely on plain `devtools::test()` for non-all profiles
+6. **Use LlmReporter** for every test run; the profile runner does this automatically
 
 ## Troubleshooting
 

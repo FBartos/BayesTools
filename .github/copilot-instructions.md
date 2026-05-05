@@ -35,6 +35,7 @@ BayesTools is an R package for Bayesian analyses, JAGS model automation, and Bay
 ## Development Workflow
 
 ### Build & Test
+- **Test reporting**: Always use LLM-oriented reporting. `tools/test-profile.R` sets `AGENT=1` and passes `testthat::LlmReporter$new()`. For ad hoc `devtools::test()` calls, set `Sys.setenv(AGENT = "1")` and pass `reporter = testthat::LlmReporter$new()`.
 - **Install**: `devtools::install()` (Timeout: 5m+)
 - **Package-critical tests**: `Rscript tools/test-profile.R unit`
 - **Cached-fit tests**: `Rscript tools/test-profile.R fixture`
@@ -45,6 +46,18 @@ BayesTools is an R package for Bayesian analyses, JAGS model automation, and Bay
 - **Targeted Test**: `devtools::test(filter = 'priors')` only for ad hoc local iteration after choosing the relevant profile
 - **Check**: `rcmdcheck::rcmdcheck(args = c('--no-manual', '--as-cran'), error_on = 'never')` 
 - **Docs**: `devtools::document()` 
+
+### Profile Policy
+- Push/PR CI is expected to run `unit`; keep that lane deterministic and cache-free.
+- Manual CI exposes the same profile choices as `tools/test-profile.R`.
+- Scheduled and release CI run `all` and upload the test artifact directory when outputs are generated.
+- Run `fixture` and `visual-fixture` only after a validated fit cache exists in the same `BAYESTOOLS_TEST_FILES_DIR`.
+- Run `fit` after JAGS fitting, formula, marginal-likelihood, or fixture-generation changes; it refreshes cached fits unless `BAYESTOOLS_TEST_SKIP_REFIT=TRUE` is set intentionally.
+- Treat `visual`, `visual-fixture`, `fit`, and `all` as release/pre-release or change-triggered verification lanes unless CI cache artifacts are explicitly configured.
+- Before touching JAGS fitting, run `unit`, `fit`, and `fixture`; add `visual-fixture` if fitted-object plots can change.
+- Before touching formula scaling, formula parsing, design matrices, or contrasts, run `unit` and `fit`; add `fixture` when cached objects or reference outputs are affected.
+- Before touching fixtures, cached fits, registry metadata, or reference files, run `unit`, `fit`, and `fixture`.
+- Before touching plotting, run `unit` and `visual`; use `visual-fixture` instead of or in addition to `visual` when plots load cached JAGS fits.
 
 ### Testing Strategy (`tests/testthat/`)
 - **Priors**: Use the `test_prior(prior)` helper in `tests/testthat/test-priors.R` to validate new priors (checks rng, pdf, cdf, quant consistency).

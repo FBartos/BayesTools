@@ -383,6 +383,7 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
     stop("'prior_list' must be a list.")
   if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
+  .check_prior_list_unique_names(prior_list)
 
 
   # add the resulting parameters
@@ -470,6 +471,7 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
   if(!is.prior.vector(prior))
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
+  check_int(prior$parameters[["K"]], "K", lower = 1)
   if(prior[["distribution"]] != "mpoint")
     .check_vector_truncation_unsupported(prior$truncation)
 
@@ -685,6 +687,7 @@ JAGS_marglik_priors                <- function(samples, prior_list){
     stop("'prior_list' must be a list.")
   if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
+  .check_prior_list_unique_names(prior_list)
 
 
   # add the resulting parameters
@@ -763,6 +766,7 @@ JAGS_marglik_priors                <- function(samples, prior_list){
   if(!is.prior.vector(prior))
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
+  check_int(prior$parameters[["K"]], "K", lower = 1)
   if(prior[["distribution"]] != "mpoint")
     .check_vector_truncation_unsupported(prior$truncation)
 
