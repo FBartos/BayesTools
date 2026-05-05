@@ -161,6 +161,8 @@ jobs:
         if: runner.os != 'Windows'
         env:
           _R_CHECK_CRAN_INCOMING_REMOTE_: false
+          BAYESTOOLS_TEST_PROFILE: unit
+          AGENT: 1
         run: |
           options(crayon.enabled = TRUE)
           rcmdcheck::rcmdcheck(
@@ -174,6 +176,8 @@ jobs:
         if: runner.os == 'Windows'
         env:
           _R_CHECK_CRAN_INCOMING_REMOTE_: false
+          BAYESTOOLS_TEST_PROFILE: unit
+          AGENT: 1
           JAGS_ROOT: "/c/progra~1/JAGS/JAGS-4.3.1"
           JAGS_MAJOR_VERSION: 4
         run: |

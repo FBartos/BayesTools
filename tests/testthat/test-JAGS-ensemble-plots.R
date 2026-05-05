@@ -7,6 +7,10 @@ skip_if_not_test_profile(c("visual", "visual-fixture"))
 # PURPOSE:
 #   Visual regression tests for ensemble plot functions (plot_prior_list,
 #   plot_posterior, plot_models, etc.).
+#   Semantic plot-data companions live in
+#   test-model-averaging-plots-edge-cases.R, test-priors-plot-data.R, and
+#   test-JAGS-marginal-distributions.R; this file keeps rendered presentation
+#   checks for broad fixture-backed plot surfaces.
 #
 # DEPENDENCIES:
 #   - vdiffr: Visual regression testing
@@ -1111,6 +1115,8 @@ test_that("posterior plot functions (meandif) work", {
 
 test_that("posterior plot model averaging based on complex single JAGS models (formulas + spike factors + mixture)", {
 
+  skip_if_not_installed("RoBMA")
+  skip_if_missing_fits("fit_complex_mixed")
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")
 
@@ -1336,6 +1342,8 @@ test_that("posterior plot model averaging based on complex single JAGS models (f
 
 test_that("posterior plot model averaging based on simple single JAGS models  (formulas)", {
 
+  skip_if_not_installed("RoBMA")
+  skip_if_missing_fits("fit_simple_formula_mixed")
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")
 
@@ -1384,6 +1392,8 @@ test_that("posterior plot model averaging based on simple single JAGS models  (f
 
 test_that("posterior plot model averaging based on complex bias mixture model (PET + PEESE + weightfunction)", {
 
+  skip_if_not_installed("RoBMA")
+  skip_if_missing_fits("fit_complex_bias")
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")
 
@@ -1476,12 +1486,12 @@ test_that("posterior plot based on as_mixed_posteriors (PET-PEESE) work", {
 
   mixed_posteriors0 <- as_mixed_posteriors(
     mode        = fit0,
-    parameters  = names(attr(fit0, "prior_list")),
+    parameters  = "PET",
     force_plots = TRUE
   )
   mixed_posteriors1 <- as_mixed_posteriors(
     mode        = fit1,
-    parameters  = names(attr(fit1, "prior_list")),
+    parameters  = "PEESE",
     force_plots = TRUE
   )
 
@@ -1492,12 +1502,10 @@ test_that("posterior plot based on as_mixed_posteriors (PET-PEESE) work", {
     plot_posterior(mixed_posteriors0, "PET", individual = T)
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-PET-no-prior", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors0, "PET")
-  })
+  expect_error(
+    plot_posterior(mixed_posteriors0, "PET"),
+    "mu.*mu_intercept"
+  )
 
   vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-PET-ind", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
@@ -1506,12 +1514,10 @@ test_that("posterior plot based on as_mixed_posteriors (PET-PEESE) work", {
     plot_posterior(mixed_posteriors0, "PET", prior = TRUE, dots_prior = list(col = "grey"), individual = T)
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-PET", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors0, "PET", prior = TRUE, dots_prior = list(col = "orange"))
-  })
+  expect_error(
+    plot_posterior(mixed_posteriors0, "PET", prior = TRUE, dots_prior = list(col = "orange")),
+    "mu.*mu_intercept"
+  )
 
 
   vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-PEESE-ind-no-prior", function(){
@@ -1521,12 +1527,10 @@ test_that("posterior plot based on as_mixed_posteriors (PET-PEESE) work", {
     plot_posterior(mixed_posteriors1, "PEESE", individual = T)
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-PEESE-no-prior", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors1, "PEESE")
-  })
+  expect_error(
+    plot_posterior(mixed_posteriors1, "PEESE"),
+    "mu.*mu_intercept"
+  )
 
   vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-PEESE-ind", function(){
     oldpar <- graphics::par(no.readonly = TRUE)
@@ -1535,16 +1539,16 @@ test_that("posterior plot based on as_mixed_posteriors (PET-PEESE) work", {
     plot_posterior(mixed_posteriors1, "PEESE", prior = TRUE, dots_prior = list(col = "grey"), individual = T)
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-simple-posterior-PEESE", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors1, "PEESE", prior = TRUE, col.fill = scales::alpha("grey", .50), dots_prior = list(col.fill = "orange"))
-  })
+  expect_error(
+    plot_posterior(mixed_posteriors1, "PEESE", prior = TRUE, col.fill = scales::alpha("grey", .50), dots_prior = list(col.fill = "orange")),
+    "mu.*mu_intercept"
+  )
 })
 
 test_that("posterior plot based on as_mixed_posteriors (weightfunction) work", {
 
+  skip_if_not_installed("RoBMA")
+  skip_if_missing_fits("fit_complex_mixed")
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")
 

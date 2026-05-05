@@ -638,6 +638,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
   check_list(prior_list, "prior_list")
   if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
+  .check_prior_list_unique_names(prior_list)
   .check_JAGS_syntax(syntax)
 
   # identify parts of the syntax
@@ -763,6 +764,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
   if(!is.prior.vector(prior))
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
+  check_int(prior$parameters[["K"]], "K", lower = 1)
   if(prior[["distribution"]] != "mpoint")
     .check_vector_truncation_unsupported(prior$truncation)
 
@@ -1168,6 +1170,7 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
   check_list(prior_list, "prior_list")
   if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
+  .check_prior_list_unique_names(prior_list)
 
 
   # select seed at random if none was specified
@@ -1502,6 +1505,7 @@ JAGS_to_monitor             <- function(prior_list){
   check_list(prior_list, "prior_list")
   if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
+  .check_prior_list_unique_names(prior_list)
 
 
   # add the monitored parameters
@@ -1547,6 +1551,10 @@ JAGS_to_monitor             <- function(prior_list){
     }
   }
 
+  if(length(monitor) == 0L){
+    return("")
+  }
+
   return(monitor)
 }
 
@@ -1558,7 +1566,9 @@ JAGS_to_monitor             <- function(prior_list){
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
 
-  if(prior[["distribution"]] == "invgamma"){
+  if(prior[["distribution"]] %in% c("point", "mpoint")){
+    monitor <- character()
+  }else if(prior[["distribution"]] == "invgamma"){
     monitor <- c(parameter_name, paste0("inv_", parameter_name))
   }else{
     monitor <- parameter_name

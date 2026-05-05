@@ -113,6 +113,39 @@ test_that("mixture coercion preserves component prior weights", {
 })
 
 
+test_that("prior constructors reject invalid model weights", {
+  expect_error(
+    prior("normal", list(0, 1), prior_weights = 0),
+    "higher than 0"
+  )
+  expect_error(
+    prior("normal", list(0, 1), prior_weights = Inf),
+    "must be finite"
+  )
+  expect_error(
+    prior_none(prior_weights = NA_real_),
+    "cannot contain NA/NaN"
+  )
+  expect_error(
+    prior_weightfunction(
+      side = "one-sided",
+      steps = c(.05),
+      weights = wf_cumulative(c(1, 1)),
+      prior_weights = NaN
+    ),
+    "cannot contain NA/NaN"
+  )
+  expect_error(
+    prior_spike_and_slab(
+      prior_parameter = prior("normal", list(0, 1)),
+      prior_inclusion = prior("point", list(.5)),
+      prior_weights = Inf
+    ),
+    "must be finite"
+  )
+})
+
+
 test_that("raw vector-prior marginal generics return numeric arrays", {
   p_mnormal <- prior("mnormal", list(0, 1, 2))
   expect_equal(quant(p_mnormal, .5), matrix(0, nrow = 1, ncol = 2))
@@ -259,6 +292,42 @@ test_that(".check_prior_list works correctly", {
     "must not contain weightfunction priors"
   )
 
+})
+
+
+test_that("prior-like objects missing classes or fields are rejected at public boundaries", {
+  p_normal <- prior("normal", list(0, 1))
+
+  classless_prior <- p_normal
+  class(classless_prior) <- "list"
+  expect_error(
+    prior_mixture(list(classless_prior, p_normal)),
+    "must be a valid prior object"
+  )
+  expect_error(
+    prior_spike_and_slab(classless_prior),
+    "must be a prior distribution"
+  )
+
+  classless_weights <- unclass(wf_cumulative(c(1, 1)))
+  expect_error(
+    prior_weightfunction("one-sided", c(.05), classless_weights),
+    "created by wf_cumulative\\(\\), wf_fixed\\(\\), or wf_independent\\(\\)"
+  )
+
+  missing_omega <- wf_fixed(c(1, 1))
+  missing_omega$omega <- NULL
+  expect_error(
+    prior_weightfunction("one-sided", c(.05), missing_omega),
+    "omega.*cannot be NULL"
+  )
+
+  unsupported_type <- wf_fixed(c(1, 1))
+  unsupported_type$type <- "unsupported"
+  expect_error(
+    prior_weightfunction("one-sided", c(.05), unsupported_type),
+    "Unsupported weightfunction weight prior type"
+  )
 })
 
 

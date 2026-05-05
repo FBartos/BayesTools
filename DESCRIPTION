@@ -37,13 +37,14 @@ Imports:
     rlang
 Suggests: 
     scales,
-    testthat (>= 3.0.0),
+    testthat (>= 3.3.0),
     vdiffr,
     covr,
     knitr,
     rstan,
     rjags,
     runjags,
+    lme4,
     BayesFactor,
     RoBMA,
     rmarkdown

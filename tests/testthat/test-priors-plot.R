@@ -7,6 +7,9 @@ skip_if_not_test_profile("visual")
 # PURPOSE:
 #   Visual regression tests for the plot.prior S3 method including
 #   base graphics and ggplot2 output.
+#   Semantic plot-data companions live in test-priors-plot-data.R and
+#   test-priors-coverage.R; this file is retained for rendered presentation
+#   regressions.
 #
 # DEPENDENCIES:
 #   - vdiffr: Visual regression testing

@@ -1,5 +1,84 @@
 skip_if_not_test_profile("unit")
 
+.mock_marginal_fit <- function(posterior, prior_list) {
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+  fit
+}
+
+test_that("as_mixed_posteriors applies AND and OR conditioning exactly", {
+
+  prior_list <- list(
+    mu_a = prior_spike_and_slab(
+      prior("normal", list(0, 1)),
+      prior_inclusion = prior("point", list(0.5))
+    ),
+    mu_b = prior_spike_and_slab(
+      prior("normal", list(0, 1)),
+      prior_inclusion = prior("point", list(0.5))
+    )
+  )
+  posterior <- cbind(
+    mu_a = c(0, 10, 0, 30, 31),
+    mu_b = c(0, 0, 20, 40, 41),
+    mu_a_indicator = c(0, 1, 0, 1, 1),
+    mu_b_indicator = c(0, 0, 1, 1, 1)
+  )
+  fit <- .mock_marginal_fit(posterior, prior_list)
+
+  and_samples <- as_mixed_posteriors(
+    fit,
+    parameters = c("mu_a", "mu_b"),
+    conditional = c("mu_a", "mu_b"),
+    conditional_rule = "AND"
+  )
+
+  expect_equal(as.numeric(and_samples$mu_a), c(30, 31))
+  expect_equal(as.numeric(and_samples$mu_b), c(40, 41))
+  expect_equal(attr(and_samples$mu_a, "models_ind"), c(1, 1))
+  expect_equal(attr(and_samples$mu_b, "models_ind"), c(1, 1))
+
+  or_samples <- as_mixed_posteriors(
+    fit,
+    parameters = c("mu_a", "mu_b"),
+    conditional = c("mu_a", "mu_b"),
+    conditional_rule = "OR"
+  )
+
+  expect_equal(as.numeric(or_samples$mu_a), c(10, 0, 30, 31))
+  expect_equal(as.numeric(or_samples$mu_b), c(0, 20, 40, 41))
+  expect_equal(attr(or_samples$mu_a, "models_ind"), c(1, 0, 1, 1))
+  expect_equal(attr(or_samples$mu_b, "models_ind"), c(0, 1, 1, 1))
+})
+
+test_that("marginal_posterior evaluates formula terms exactly on default grid", {
+
+  prior_list <- list(
+    mu_intercept = prior("normal", list(0, 1)),
+    mu_x = prior("normal", list(0, 1))
+  )
+  attr(prior_list$mu_intercept, "parameter") <- "mu"
+  attr(prior_list$mu_x, "parameter") <- "mu"
+
+  fit <- .mock_marginal_fit(
+    cbind(mu_intercept = c(10, 20), mu_x = c(1, 2)),
+    prior_list
+  )
+  samples <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_x"))
+  marginal <- marginal_posterior(
+    samples = samples,
+    parameter = "mu_x",
+    formula = ~ x,
+    prior_samples = FALSE
+  )
+
+  expect_equal(names(marginal), c("-1SD", "0SD", "1SD"))
+  expect_equal(as.numeric(marginal[["-1SD"]]), c(9, 18))
+  expect_equal(as.numeric(marginal[["0SD"]]), c(10, 20))
+  expect_equal(as.numeric(marginal[["1SD"]]), c(11, 22))
+})
+
 test_that("conditional spike-and-slab prior densities use the slab", {
 
   prior_list <- list(

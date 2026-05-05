@@ -24,6 +24,10 @@ plot_posterior(
   data = NULL,
   show_data = FALSE,
   dots_data = list(),
+  legend = TRUE,
+  legend_title = NULL,
+  legend_labels = NULL,
+  legend_position = NULL,
   ...
 )
 }
@@ -103,6 +107,14 @@ the weightfunction x-axis.}
 \item{dots_data}{additional styling arguments for observed p-value rug marks.
 Supports \code{col}/\code{color}, \code{alpha}, \code{lwd}/\code{linewidth},
 \code{side}/\code{rug_side}, and \code{height}/\code{rug_height}.}
+
+\item{legend}{whether factor legends should be drawn.}
+
+\item{legend_title}{optional title for factor legends.}
+
+\item{legend_labels}{optional labels for factor legend levels.}
+
+\item{legend_position}{optional legend position for factor legends.}
 
 \item{...}{additional arguments}
 }

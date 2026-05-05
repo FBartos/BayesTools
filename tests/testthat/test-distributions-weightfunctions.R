@@ -240,3 +240,79 @@ test_that("weightfunction helper matrix broadcasting works", {
   expect_equal(nrow(rone.sided_fixed(2, omega = matrix(c(1, .3, 1, .5), nrow = 2, byrow = TRUE))), 2)
   expect_equal(nrow(rone.sided(5, alpha1 = matrix(c(1, 1), nrow = 1), alpha2 = matrix(c(1, 1), nrow = 1))), 5)
 })
+
+test_that("monotone weightfunction matrix parameters use row-specific beta shapes", {
+
+  alpha <- matrix(c(
+    1, 2, 3,
+    2, 3, 5
+  ), nrow = 2, byrow = TRUE)
+  q <- c(.25, .75)
+  p <- c(.2, .8)
+
+  expected_density <- cbind(
+    dpoint(q, 1),
+    stats::dbeta(q, c(5, 8), c(1, 2)),
+    stats::dbeta(q, c(3, 5), c(3, 5))
+  )
+  expected_cdf <- cbind(
+    ppoint(q, 1),
+    stats::pbeta(q, c(5, 8), c(1, 2)),
+    stats::pbeta(q, c(3, 5), c(3, 5))
+  )
+  expected_quantile <- cbind(
+    1,
+    stats::qbeta(p, c(5, 8), c(1, 2)),
+    stats::qbeta(p, c(3, 5), c(3, 5))
+  )
+
+  expect_equal(mdone.sided(q, alpha = alpha), expected_density, tolerance = 1e-12)
+  expect_equal(mdtwo.sided(q, alpha = alpha), expected_density, tolerance = 1e-12)
+  expect_equal(mpone.sided(q, alpha = alpha), expected_cdf, tolerance = 1e-12)
+  expect_equal(mptwo.sided(q, alpha = alpha), expected_cdf, tolerance = 1e-12)
+  expect_equal(mqone.sided(p, alpha = alpha), expected_quantile, tolerance = 1e-12)
+  expect_equal(mqtwo.sided(p, alpha = alpha), expected_quantile, tolerance = 1e-12)
+})
+
+test_that("fixed weightfunction matrix parameters use row-specific point locations", {
+
+  omega <- matrix(c(
+    1, 0, 2,
+    1, .5, 1.5
+  ), nrow = 2, byrow = TRUE)
+  q <- c(0, 1.5)
+  p <- c(.25, .75)
+
+  expected_density <- cbind(
+    dpoint(q, c(1, 1)),
+    dpoint(q, c(0, .5)),
+    dpoint(q, c(2, 1.5))
+  )
+  expected_cdf <- cbind(
+    ppoint(q, c(1, 1)),
+    ppoint(q, c(0, .5)),
+    ppoint(q, c(2, 1.5))
+  )
+  expected_upper_tail_log <- cbind(
+    ppoint(q, c(1, 1), lower.tail = FALSE, log.p = TRUE),
+    ppoint(q, c(0, .5), lower.tail = FALSE, log.p = TRUE),
+    ppoint(q, c(2, 1.5), lower.tail = FALSE, log.p = TRUE)
+  )
+  expected_quantile <- cbind(
+    qpoint(p, c(1, 1)),
+    qpoint(p, c(0, .5)),
+    qpoint(p, c(2, 1.5))
+  )
+
+  expect_equal(mdone.sided_fixed(q, omega = omega), expected_density)
+  expect_equal(mdtwo.sided_fixed(q, omega = omega), expected_density)
+  expect_equal(mdone.sided_fixed(q, omega = omega, log = TRUE), log(expected_density))
+  expect_equal(mpone.sided_fixed(q, omega = omega), expected_cdf)
+  expect_equal(mptwo.sided_fixed(q, omega = omega), expected_cdf)
+  expect_equal(
+    mpone.sided_fixed(q, omega = omega, lower.tail = FALSE, log.p = TRUE),
+    expected_upper_tail_log
+  )
+  expect_equal(mqone.sided_fixed(p, omega = omega), expected_quantile)
+  expect_equal(mqtwo.sided_fixed(p, omega = omega), expected_quantile)
+})

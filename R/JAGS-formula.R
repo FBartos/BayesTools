@@ -1256,7 +1256,14 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
     temp_multiply_by <- .get_parameter_scaling_factor_matrix(term = "intercept", prior_list = prior_list_formula, posterior = posterior, nrow = nrow(data), ncol = nrow(posterior))
 
     # get intercept values and apply log() transformation if log(intercept) attribute is set
-    intercept_values <- posterior[,JAGS_parameter_names("intercept", formula_parameter = parameter)]
+    if(is.prior.point(prior_list_formula[["intercept"]])){
+      intercept_values <- rep(
+        prior_list_formula[["intercept"]]$parameters[["location"]],
+        nrow(posterior)
+      )
+    }else{
+      intercept_values <- posterior[, JAGS_parameter_names("intercept", formula_parameter = parameter)]
+    }
     if(log_intercept){
       intercept_values <- log(intercept_values)
     }

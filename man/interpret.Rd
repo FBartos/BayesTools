@@ -18,7 +18,10 @@ interpret2(specification, method = NULL)
 Each inner list carries: (1) \code{inference} specifying the name of
 in the \code{inference} entry and optionally \code{inference_name}
 as a name to use in the text and \code{inference_BF_name} as a
-symbol to be used instead of the default \code{"BF"}, (2) \code{samples}
+symbol to be used instead of the default \code{"BF"}. Finite-sample
+BF bounds can be supplied either as a \code{bound_operator} attribute
+on the numeric BF or as \code{inference_BF_bound_operator} /
+\code{BF_bound_operator} with value \code{"<"} or \code{">"}. (2) \code{samples}
 specifying the name of in the \code{samples} entry and optionally
 \code{samples_name} as a name to use in the text, \code{samples_units} as
 a unit text to be appended after the estimate, and \code{samples_conditional}

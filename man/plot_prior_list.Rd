@@ -22,6 +22,10 @@ plot_prior_list(
   par_name = NULL,
   prior_list_mu = NULL,
   effect_direction = "positive",
+  legend = TRUE,
+  legend_title = NULL,
+  legend_labels = NULL,
+  legend_position = NULL,
   ...
 )
 }
@@ -94,6 +98,14 @@ required when plotting PET-PEESE}
 regression. Use \code{"positive"} (default) for
 \code{mu + PET*se + PEESE*se^2} or \code{"negative"} for
 \code{mu - PET*se - PEESE*se^2}.}
+
+\item{legend}{whether factor legends should be drawn.}
+
+\item{legend_title}{optional title for factor legends.}
+
+\item{legend_labels}{optional labels for factor legend levels.}
+
+\item{legend_position}{optional legend position for factor legends.}
 
 \item{...}{additional arguments}
 }

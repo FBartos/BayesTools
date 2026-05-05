@@ -3,4 +3,4 @@
  Prior prob.      1.000             (mu) intercept ~ Normal(0, 5)                    
  log(marglik)   -147.65               (mu) x_cont1 ~ Normal(0, 1)                    
  Post. prob.      1.000               (mu) x_fac2t ~ treatment contrast: Normal(0, 1)
- Inclusion BF       Inf                      sigma ~ Lognormal(0, 1)                 
+ Inclusion BF        NA                      sigma ~ Lognormal(0, 1)                 

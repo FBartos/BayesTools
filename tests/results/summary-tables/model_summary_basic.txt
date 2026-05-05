@@ -3,4 +3,4 @@
  Prior prob.     1.000                  s ~ Normal(0, 1)[0, Inf]
  log(marglik)   -29.48                                          
  Post. prob.     1.000                                          
- Inclusion BF      Inf                                          
+ Inclusion BF       NA                                          

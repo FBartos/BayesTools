@@ -16,6 +16,10 @@ plot_marginal(
   rescale_x = FALSE,
   par_name = NULL,
   dots_prior = list(),
+  legend = TRUE,
+  legend_title = NULL,
+  legend_labels = NULL,
+  legend_position = NULL,
   ...
 )
 }
@@ -62,6 +66,14 @@ specified. Only relevant if the prior corresponds to a mu
 parameter that needs to be transformed.}
 
 \item{dots_prior}{additional arguments for the prior distribution plot}
+
+\item{legend}{whether factor legends should be drawn.}
+
+\item{legend_title}{optional title for factor legends.}
+
+\item{legend_labels}{optional labels for factor legend levels.}
+
+\item{legend_position}{optional legend position for factor legends.}
 
 \item{...}{additional arguments}
 }

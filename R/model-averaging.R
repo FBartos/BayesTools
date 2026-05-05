@@ -1543,6 +1543,8 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 #' @details Supplying \code{margliks} as the input is preferred since it is better at dealing with
 #' under/overflow (posterior probabilities are very close to either 0 or 1). In case that both the
 #' \code{post_probs} and \code{margliks} are supplied, the results are based on \code{margliks}.
+#' If the prior probability of either the null or alternative hypothesis is
+#' zero, the Bayes factor is undefined and \code{NA} is returned.
 #'
 #' @return \code{inclusion_BF} returns a Bayes factor.
 #'
@@ -1559,13 +1561,6 @@ inclusion_BF         <- function(prior_probs, post_probs, margliks, is_null){
     stop("'is_null' argument must be either logical vector, integer vector, or NULL.")
   }
 
-  # deal with all null or alternative scenarios
-  if(all(!is_null)){
-    return(Inf)
-  }else if(all(is_null)){
-    return(0)
-  }
-
   if(!missing(prior_probs) && !missing(margliks)){
     return(.inclusion_BF.margliks(prior_probs = prior_probs, margliks = margliks, is_null = is_null))
   }else if(!missing(prior_probs) && !missing(post_probs)){
@@ -1580,14 +1575,22 @@ inclusion_BF         <- function(prior_probs, post_probs, margliks, is_null){
   check_real(prior_probs, "prior_probs", lower = 0, upper = 1, check_length = 0)
   check_real(post_probs,  "post_probs", lower = 0, upper = 1, check_length = length(prior_probs))
 
-  if(isTRUE(all.equal(sum(post_probs[!is_null]), 1)) | isTRUE(all.equal(sum(prior_probs[!is_null]), 1))){
+  prior_alt  <- sum(prior_probs[!is_null])
+  prior_null <- sum(prior_probs[is_null])
+  post_alt   <- sum(post_probs[!is_null])
+  post_null  <- sum(post_probs[is_null])
+
+  if(isTRUE(all.equal(prior_alt, 0)) || isTRUE(all.equal(prior_null, 0))){
+    return(NA_real_)
+  }
+
+  if(isTRUE(all.equal(post_alt, 1))){
     return(Inf)
-  }else if(isTRUE(all.equal(sum(post_probs[is_null]), 1)) | isTRUE(all.equal(sum(prior_probs[is_null]), 1))){
+  }else if(isTRUE(all.equal(post_null, 1))){
     return(0)
   }else{
     return(
-      (sum(post_probs[!is_null]) / sum(post_probs[is_null]))  /
-        (sum(prior_probs[!is_null]) / sum(prior_probs[is_null]))
+      (post_alt / post_null) / (prior_alt / prior_null)
     )
   }
 }
@@ -1596,11 +1599,11 @@ inclusion_BF         <- function(prior_probs, post_probs, margliks, is_null){
   check_real(prior_probs, "prior_probs", lower = 0, upper = 1, check_length = 0)
   check_real(margliks,  "margliks", check_length = length(prior_probs))
 
-  if(isTRUE(all.equal(sum(prior_probs[!is_null]), 1))){
-    return(Inf)
-  }
-  if(isTRUE(all.equal(sum(prior_probs[is_null]), 1))){
-    return(0)
+  prior_alt  <- sum(prior_probs[!is_null])
+  prior_null <- sum(prior_probs[is_null])
+
+  if(isTRUE(all.equal(prior_alt, 0)) || isTRUE(all.equal(prior_null, 0))){
+    return(NA_real_)
   }
 
   margliks <- .model_averaging_margliks(margliks, prior_probs)
@@ -1633,8 +1636,7 @@ inclusion_BF         <- function(prior_probs, post_probs, margliks, is_null){
   }
 
   return(
-    (alt_marginal / null_marginal) /
-      (sum(prior_probs[!is_null]) / sum(prior_probs[is_null]))
+    (alt_marginal / null_marginal) / (prior_alt / prior_null)
   )
 }
 

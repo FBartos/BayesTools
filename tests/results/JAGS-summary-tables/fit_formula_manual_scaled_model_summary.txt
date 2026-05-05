@@ -3,5 +3,5 @@
  Prior prob.         1.000                   (mu) intercept ~ Normal(0, 5)   
  log(marglik)   -100363.19                     (mu) x_cont1 ~ Normal(0, 1)   
  Post. prob.         1.000                     (mu) x_cont2 ~ Normal(0, 1)   
- Inclusion BF          Inf             (mu) x_cont1:x_cont2 ~ Normal(0, 1)   
+ Inclusion BF           NA             (mu) x_cont1:x_cont2 ~ Normal(0, 1)   
                                                       sigma ~ Lognormal(0, 1)

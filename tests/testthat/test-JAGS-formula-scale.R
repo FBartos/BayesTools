@@ -714,15 +714,112 @@ test_that("Downstream functions work with scaled models", {
 
 test_that("Marginal likelihoods match for manual and automatic scaling", {
 
-  skip_if_no_fits()
-  skip("no margliks")
-  # Load pre-fitted marginal likelihoods
-  marglik_manual <- readRDS(file.path(temp_fits_dir, "fit_formula_manual_scaled_marglik.RDS"))
-  marglik_auto   <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled_marglik.RDS"))
+  marglik_files <- file.path(
+    temp_marglik_dir,
+    c("fit_formula_manual_scaled.RDS", "fit_formula_auto_scaled.RDS")
+  )
 
-  # The log marginal likelihoods should be very similar
-  # (both models use same scaled data internally)
-  expect_equal(marglik_manual$logml, marglik_auto$logml, tolerance = 0.1)
+  if (any(file.exists(marglik_files))) {
+    marglik_files_present <- file.exists(marglik_files)
+    expect_true(
+      all(marglik_files_present),
+      info = paste("Missing cached marginal likelihood file(s):", paste(basename(marglik_files[!marglik_files_present]), collapse = ", "))
+    )
+    if (!all(marglik_files_present)) {
+      return(invisible())
+    }
+
+    # Load pre-fitted marginal likelihoods when the optional cache is present.
+    marglik_manual <- readRDS(marglik_files[[1]])
+    marglik_auto   <- readRDS(marglik_files[[2]])
+
+    expect_false(inherits(marglik_manual, "error"))
+    expect_false(inherits(marglik_auto, "error"))
+    expect_true(is.numeric(marglik_manual$logml))
+    expect_true(is.numeric(marglik_auto$logml))
+
+    # The log marginal likelihoods should be very similar
+    # (both models use same scaled data internally)
+    expect_equal(marglik_manual$logml, marglik_auto$logml, tolerance = 0.1)
+    return(invisible())
+  }
+
+  set.seed(10)
+  data_unscaled <- data.frame(
+    x_cont1 = rnorm(20, mean = 1000, sd = 1000),
+    x_cont2 = rnorm(20, mean = 0.5,  sd = 0.01)
+  )
+
+  data_manual_scaled <- data_unscaled
+  data_manual_scaled$x_cont1 <- as.numeric(scale(data_unscaled$x_cont1))
+  data_manual_scaled$x_cont2 <- as.numeric(scale(data_unscaled$x_cont2))
+
+  formula_prior_list <- list(
+    "intercept"       = prior("normal", list(0, 5)),
+    "x_cont1"         = prior("normal", list(0, 1)),
+    "x_cont2"         = prior("normal", list(0, 1)),
+    "x_cont1:x_cont2" = prior("normal", list(0, 1))
+  )
+
+  formula_manual <- JAGS_formula(
+    formula       = ~ x_cont1 * x_cont2,
+    parameter     = "mu",
+    data          = data_manual_scaled,
+    prior_list    = formula_prior_list,
+    formula_scale = NULL
+  )
+
+  formula_auto <- JAGS_formula(
+    formula       = ~ x_cont1 * x_cont2,
+    parameter     = "mu",
+    data          = data_unscaled,
+    prior_list    = formula_prior_list,
+    formula_scale = list(x_cont1 = TRUE, x_cont2 = TRUE)
+  )
+
+  expect_equal(formula_manual$formula_syntax, formula_auto$formula_syntax)
+  expect_equal(names(formula_manual$prior_list), names(formula_auto$prior_list))
+  expect_equal(formula_manual$data, formula_auto$data, tolerance = 1e-12)
+
+  expect_equal(
+    formula_auto$formula_scale$mu_x_cont1,
+    list(mean = mean(data_unscaled$x_cont1), sd = sd(data_unscaled$x_cont1)),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    formula_auto$formula_scale$mu_x_cont2,
+    list(mean = mean(data_unscaled$x_cont2), sd = sd(data_unscaled$x_cont2)),
+    tolerance = 1e-12
+  )
+
+  samples <- c(
+    mu_intercept = 0.25,
+    mu_x_cont1 = -0.5,
+    mu_x_cont2 = 0.75,
+    mu_x_cont1__xXx__x_cont2 = 0.2
+  )
+
+  parameters_manual <- JAGS_marglik_parameters_formula(
+    samples,
+    formula_list = list(mu = formula_manual$formula),
+    formula_data_list = list(mu = formula_manual$data),
+    formula_prior_list = list(mu = formula_manual$prior_list),
+    prior_list_parameters = list()
+  )
+  parameters_auto <- JAGS_marglik_parameters_formula(
+    samples,
+    formula_list = list(mu = formula_auto$formula),
+    formula_data_list = list(mu = formula_auto$data),
+    formula_prior_list = list(mu = formula_auto$prior_list),
+    prior_list_parameters = list()
+  )
+
+  expect_equal(parameters_manual, parameters_auto, tolerance = 1e-12)
+  expect_equal(
+    JAGS_marglik_priors_formula(samples, list(mu = formula_manual$prior_list)),
+    JAGS_marglik_priors_formula(samples, list(mu = formula_auto$prior_list)),
+    tolerance = 1e-12
+  )
 })
 
 test_that("JAGS_evaluate_formula applies scaling correctly", {
@@ -789,7 +886,6 @@ test_that("JAGS_evaluate_formula applies scaling correctly", {
 })
 
 test_that("runjags_estimates_table with transform_scaled unscales coefficients", {
-  # TODO: something is wrong here with the intercept handling
   skip_if_no_fits()
 
   # Load pre-fitted model with automatic scaling
@@ -804,6 +900,22 @@ test_that("runjags_estimates_table with transform_scaled unscales coefficients",
 
   # Get estimates with unscaling
   estimates_unscaled <- JAGS_estimates_table(fit_auto, transform_scaled = TRUE)
+
+  parameters <- c("mu_intercept", "mu_x_cont1", "mu_x_cont2", "mu_x_cont1__xXx__x_cont2")
+  posterior_scaled <- as.matrix(suppressWarnings(coda::as.mcmc(fit_auto)))
+  posterior_expected <- transform_scale_samples(posterior_scaled[, parameters, drop = FALSE], formula_scale)
+  expected_means <- colMeans(posterior_expected)
+  names(expected_means) <- c(
+    "(mu) intercept",
+    "(mu) x_cont1",
+    "(mu) x_cont2",
+    "(mu) x_cont1:x_cont2"
+  )
+  expect_equal(
+    unname(estimates_unscaled[names(expected_means), "Mean"]),
+    unname(expected_means),
+    tolerance = 1e-10
+  )
 
   # The scaled coefficient for x_cont1 should be divided by sd
   # to get the unscaled coefficient (nested structure: formula_scale$mu$...)

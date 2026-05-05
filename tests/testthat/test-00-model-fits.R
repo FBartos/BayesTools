@@ -33,10 +33,14 @@ skip_if_not_installed("rjags")
 
 # Load common test helpers
 source(testthat::test_path("common-functions.R"))
+fit_cache_catalog <- bayestools_required_fit_catalog()
 skip_refit_if_cached(
   "model-fit",
+  required_fits = fit_cache_catalog$model_name,
+  required_margliks = fit_cache_catalog$model_name[fit_cache_catalog$has_marglik],
   registry_file = file.path(test_files_dir, "model_registry.RDS")
 )
+rm(fit_cache_catalog)
 
 # Initialize model registry to track metadata about each fitted model
 model_registry <- list()

@@ -5,10 +5,15 @@ on:
     branches: [main, master, pre-release]
   pull_request:
     branches: [main, master, pre-release]
+  schedule:
+    # Weekly full profile verification. Pull requests stay on the fast unit lane.
+    - cron: '23 3 * * 1'
+  release:
+    types: [published, prereleased]
   workflow_dispatch:
     inputs:
       profile:
-        description: Test profile to run
+        description: Test profile to run. PR/push defaults to unit; schedule/release runs all.
         required: true
         default: unit
         type: choice
@@ -126,12 +131,26 @@ jobs:
           echo "PATH=$JAGS_BIN:$PATH" >> $GITHUB_ENV
           echo "PKG_CONFIG_PATH=$(brew --prefix jags)/lib/pkgconfig" >> $GITHUB_ENV
 
+      - name: Select Test Profile
+        shell: pwsh
+        run: |
+          $profile = "unit"
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $profile = "${{ inputs.profile }}"
+          } elseif ("${{ github.event_name }}" -eq "schedule" -or "${{ github.event_name }}" -eq "release") {
+            $profile = "all"
+          }
+
+          "BAYESTOOLS_CI_PROFILE=$profile" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "BAYESTOOLS_TEST_FILES_DIR=$env:RUNNER_TEMP\BayesTools_test_files" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Selected BayesTools test profile: $profile"
+
       - name: Install the required packages
         run: |
           options(repos = c(CRAN = "https://cloud.r-project.org"))
           
           # Check if packages are already installed before installing
-          required_packages <- c('devtools', 'testthat', 'vdiffr', 'BayesFactor', 'RoBMA', 'runjags', 'rjags', 'rstan')
+          required_packages <- c('devtools', 'testthat', 'vdiffr', 'lme4', 'BayesFactor', 'RoBMA', 'runjags', 'rjags', 'rstan')
           missing_packages <- required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)]
           
           if (length(missing_packages) > 0) {
@@ -145,5 +164,15 @@ jobs:
         shell: Rscript {0}
 
       - name: Run Test Profile
+        shell: pwsh
         run: |
-          Rscript tools/test-profile.R "${{ github.event_name == 'workflow_dispatch' && inputs.profile || 'unit' }}"
+          Rscript tools/test-profile.R "$env:BAYESTOOLS_CI_PROFILE"
+
+      - name: Upload Test Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bayestools-test-artifacts-${{ github.event_name }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/BayesTools_test_files
+          if-no-files-found: ignore
+          retention-days: 14

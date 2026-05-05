@@ -1270,6 +1270,7 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   else  if(!is.null(dots[["lty"]]))        dots[["lty"]]      else rep(.plot.prior_settings()[["lty"]], length(dots[["level_names"]]))
   lwd  <- if(!is.null(dots[["size"]]))     dots[["size"]]
   else  if(!is.null(dots[["lwd"]]))        dots[["lwd"]]      else .plot.prior_settings()[["lwd"]]
+  legend_title <- if(!is.null(dots[["legend_title"]])) dots[["legend_title"]] else NULL
 
   names(col) <- dots[["level_names"]]
   names(lty) <- dots[["level_names"]]
@@ -1294,8 +1295,16 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
           linetype = .data[["level"]],
           group    = .data[["level"]]),
         linewidth = 1, show.legend = dots[["legend"]]),
-      ggplot2::scale_linetype_manual(name = "level", values = lty),
-      ggplot2::scale_color_manual(name = "level", values = col))
+      ggplot2::scale_linetype_manual(
+        name   = legend_title,
+        values = lty,
+        breaks = dots[["level_names"]],
+        labels = dots[["level_names"]]),
+      ggplot2::scale_color_manual(
+        name   = legend_title,
+        values = col,
+        breaks = dots[["level_names"]],
+        labels = dots[["level_names"]]))
   }
 
 
