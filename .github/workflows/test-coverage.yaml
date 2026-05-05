@@ -92,8 +92,7 @@ jobs:
       - name: Test coverage
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-          # This workflow is coverage-only. It intentionally runs the full
-          # developer profile on push/PR; ordinary CI defaults to unit tests.
+          # This workflow is coverage-only and runs the full developer profile.
           BAYESTOOLS_TEST_PROFILE: "all"
           JAGS_ROOT: "/c/progra~1/JAGS/JAGS-4.3.1"
           JAGS_MAJOR_VERSION: 4

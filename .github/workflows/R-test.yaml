@@ -1,4 +1,4 @@
-name: R-unit-tests
+name: R-tests
 
 on:
   push:
@@ -6,24 +6,11 @@ on:
   pull_request:
     branches: [main, master, pre-release]
   schedule:
-    # Weekly full profile verification. Pull requests stay on the fast unit lane.
+    # Weekly full profile verification.
     - cron: '23 3 * * 1'
   release:
     types: [published, prereleased]
   workflow_dispatch:
-    inputs:
-      profile:
-        description: Test profile to run. PR/push defaults to unit; schedule/release runs all.
-        required: true
-        default: unit
-        type: choice
-        options:
-          - unit
-          - fixture
-          - visual
-          - visual-fixture
-          - fit
-          - all
 
 jobs:
   test:
@@ -134,12 +121,7 @@ jobs:
       - name: Select Test Profile
         shell: pwsh
         run: |
-          $profile = "unit"
-          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
-            $profile = "${{ inputs.profile }}"
-          } elseif ("${{ github.event_name }}" -eq "schedule" -or "${{ github.event_name }}" -eq "release") {
-            $profile = "all"
-          }
+          $profile = "all"
 
           "BAYESTOOLS_CI_PROFILE=$profile" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "BAYESTOOLS_TEST_FILES_DIR=$env:RUNNER_TEMP\BayesTools_test_files" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8

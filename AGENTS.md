@@ -1,7 +1,3 @@
-# Codex Operating Guide
-
-BayesTools is Codex-first. Treat this file as the canonical agent entry point for repository work. Do not add GitHub Copilot instruction files under `.github/copilot-instructions.md`, `.github/instructions/`, `.github/skills/`, or a Copilot setup workflow; update this file instead. Keep normal GitHub Actions CI under `.github/workflows/`.
-
 ## Project Map
 
 BayesTools is an R package for Bayesian analyses, JAGS model automation, and Bayesian model averaging.
@@ -39,8 +35,8 @@ Test profiles:
 
 Profile policy:
 
-- Push and pull-request CI should keep using `unit`.
-- Use heavier profiles as change-triggered or release verification lanes.
+- GitHub Actions test workflows should run the `all` profile by default, including coverage.
+- Local iteration may still use narrower profiles when that is the right feedback loop.
 - For JAGS fitting, generated syntax, marginal likelihoods, or `test-00-model-fits.R`, run `unit`, then `fit`, then `fixture`; add `visual-fixture` if fitted-object plots can change.
 - For formula parsing, scaling, design matrices, or contrasts, run `unit` and `fit`; add `fixture` if cached objects or reference outputs are affected.
 - For fixture registries, cached fits, reference files, or fixture helpers, run `unit`, `fit`, and `fixture`.
@@ -83,28 +79,10 @@ Vignettes live in `vignettes/*.Rmd` and use precomputed model objects to avoid C
 - Use fixed seeds in documented model-generation code.
 - Keep prose concise, direct, and scientifically precise. Preserve references, results, mathematical notation, argument names, function names, parameter names, and defined abbreviations.
 
-## Literature-Backed Writing
-
-This project uses a manuscript-local StatsVault workspace. Before writing literature-backed prose, read `.StatsVault/AGENT_INSTRUCTIONS.md` and follow that workflow.
-
-Key workspace files:
-
-- `.StatsVault/AGENT_INSTRUCTIONS.md`: full source-grounding protocol.
-- `.StatsVault/project-memory.md`: persistent working memory.
-- `.StatsVault/key-papers.md`: core papers for this project.
-- `.StatsVault/ACTION_REQUIRED.md`: missing PDFs or unresolved items.
-- `.StatsVault/references.bib`: StatsVault-managed bibliography.
-
-Hard rules for literature-backed writing:
-
-- Cite only keys present in `.StatsVault/references.bib`.
-- Materialize every paper you rely on before drafting from it.
-- Do not invent support. Use `\SV{...}` markers for unresolved evidence gaps.
-- Validate manuscript sources before considering a literature-backed draft complete.
 
 ## Repository Hygiene
 
 - Agent and workspace coordination files should be committed so the same Codex setup works across development machines.
 - Agent-only files must stay out of R source packages through `.Rbuildignore`.
-- The small StatsVault coordination files are Git-trackable; bulky local caches, PDFs, query caches, and contribution artifacts remain ignored unless the maintainer explicitly asks to commit them.
 - Keep CI workflows in `.github/workflows/`; do not use `.github/` as the place for agent instructions.
+- Do not run Git operations, including status, diff, add, commit, branch, checkout, merge, rebase, reset, tag, push, or pull, unless the maintainer explicitly asks for that Git operation in the current turn.
