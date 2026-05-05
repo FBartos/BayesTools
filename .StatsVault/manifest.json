@@ -1,0 +1,2161 @@
+{
+  "claims": {
+    "claim_6bf76f2c5fca": {
+      "activity": [],
+      "cited_work_ids": [
+        "work_7902a08329614ea28b2b7e50e87ba59a",
+        "work_02515e864f59476fad9d2fa379d90d2c",
+        "work_2d2fae74e35c408ca1b7850d49fed4f5"
+      ],
+      "claim": "Monte Carlo uncertainty for Bayes factors is naturally propagated on the log Bayes-factor scale, and a one-column relative/percentage error is a reasonable scale-invariant display for multiplicative Bayes-factor uncertainty when the underlying standard error is for log probabilities or log marginal likelihoods",
+      "claim_id": "claim_6bf76f2c5fca",
+      "created_at": "2026-04-30T05:31:59.042460+00:00",
+      "marker_ids": [],
+      "marker_refs": [],
+      "origins": [
+        "prepare_writing_context"
+      ],
+      "output_files": [],
+      "planner": {
+        "filters": {},
+        "kind": "claim_support",
+        "query_variants": [
+          "support",
+          "foundational",
+          "contrastive"
+        ],
+        "related_modes": [
+          "references",
+          "cited_by",
+          "same_method",
+          "same_author"
+        ],
+        "result_count": 8,
+        "results": [
+          {
+            "bibtex_key": "johnstone2009aoas_approximate",
+            "brief": "The greatest root distribution occurs everywhere in classical multivariate analysis, but even under the null hypothesis the exact distribution has required extensive tables or special purpose software",
+            "claim_id": "",
+            "claim_queries": [
+              "contrastive",
+              "foundational",
+              "support"
+            ],
+            "claim_roles": [
+              "support",
+              "foundational"
+            ],
+            "doi": "10.1214/08-aoas220",
+            "has_summary": true,
+            "match_reasons": [
+              "semantic chunk match"
+            ],
+            "match_section": "6. Simulation Evidence",
+            "match_snippet": "## 6.",
+            "matched_fields": [
+              "semantic"
+            ],
+            "method_family": [
+              "multivariate",
+              "hypothesis_testing",
+              "nonparametric"
+            ],
+            "related_from": [],
+            "relation_modes": [],
+            "relation_role_hints": [],
+            "retrieval_kind": "vector",
+            "score": 3.1842,
+            "title": "Approximate null distribution of the largest root in multivariate analysis",
+            "work_id": "work_02515e864f59476fad9d2fa379d90d2c",
+            "workspace_feedback_status": "",
+            "workspace_feedback_summary": "",
+            "year": 2009
+          },
+          {
+            "bibtex_key": "gronau2020tas_informed",
+            "brief": "Across the empirical sciences, few statistical procedures rival the\\npopularity of the frequentist t-test. In contrast, the Bayesian versions of the\\nt-test have languished in obscurity.",
+            "claim_id": "",
+            "claim_queries": [
+              "contrastive",
+              "foundational",
+              "support"
+            ],
+            "claim_roles": [
+              "support",
+              "contrastive"
+            ],
+            "doi": "10.1080/00031305.2018.1562983",
+            "has_summary": true,
+            "match_reasons": [
+              "semantic chunk match"
+            ],
+            "match_section": "3. Methodological Detail > 3.4 Computational Approach",
+            "match_snippet": "### 3.4 Computational Approach\n\nThe Bayes factor requires evaluating a **single one-dimensional numerical integral** (Eq.",
+            "matched_fields": [
+              "semantic"
+            ],
+            "method_family": [],
+            "related_from": [],
+            "relation_modes": [],
+            "relation_role_hints": [],
+            "retrieval_kind": "vector",
+            "score": 3.1786,
+            "title": "Informed Bayesian t -Tests",
+            "work_id": "work_2d2fae74e35c408ca1b7850d49fed4f5",
+            "workspace_feedback_status": "",
+            "workspace_feedback_summary": "",
+            "year": 2020
+          },
+          {
+            "bibtex_key": "sellke2001tas_calibration",
+            "brief": "P values are the most commonly used tool to measure evidence against a hypothesis or hypothesized model.",
+            "claim_id": "",
+            "claim_queries": [
+              "contrastive",
+              "foundational",
+              "support"
+            ],
+            "claim_roles": [
+              "support"
+            ],
+            "doi": "10.1198/000313001300339950",
+            "has_summary": true,
+            "match_reasons": [
+              "semantic chunk match"
+            ],
+            "match_section": "5. Statistical Properties",
+            "match_snippet": "## 5.",
+            "matched_fields": [
+              "semantic"
+            ],
+            "method_family": [
+              "hypothesis_testing"
+            ],
+            "related_from": [],
+            "relation_modes": [],
+            "relation_role_hints": [],
+            "retrieval_kind": "vector",
+            "score": 2.9782,
+            "title": "Calibration of ρ Values for Testing Precise Null Hypotheses",
+            "work_id": "work_7902a08329614ea28b2b7e50e87ba59a",
+            "workspace_feedback_status": "",
+            "workspace_feedback_summary": "",
+            "year": 2001
+          },
+          {
+            "bibtex_key": "gronau2021jss_informed",
+            "brief": "Booming in business and a staple analysis in medical trials, the A/B test assesses the effect of an intervention or treatment by comparing its success rate with that of a control condition.",
+            "claim_id": "",
+            "claim_queries": [
+              "contrastive",
+              "foundational",
+              "support"
+            ],
+            "claim_roles": [
+              "support"
+            ],
+            "doi": "10.18637/jss.v100.i17",
+            "has_summary": true,
+            "match_reasons": [
+              "semantic chunk match"
+            ],
+            "match_section": "5. Statistical Properties",
+            "match_snippet": "## 5.",
+            "matched_fields": [
+              "semantic"
+            ],
+            "method_family": [],
+            "related_from": [],
+            "relation_modes": [],
+            "relation_role_hints": [],
+            "retrieval_kind": "vector",
+            "score": 2.9662,
+            "title": "Informed Bayesian Inference for the A/B Test",
+            "work_id": "work_255faf4439934a5b857ce737971da3a0",
+            "workspace_feedback_status": "",
+            "workspace_feedback_summary": "",
+            "year": 2021
+          },
+          {
+            "bibtex_key": "anonndmisc_1023072291091",
+            "brief": "Abstract In a 1935 paper and in his book Theory of Probability, Jeffreys developed a methodology for quantifying the evidence in favor of a scientific theory.",
+            "claim_id": "",
+            "claim_queries": [
+              "related"
+            ],
+            "claim_roles": [
+              "support",
+              "foundational",
+              "contrastive"
+            ],
+            "doi": "10.1080/01621459.1995.10476572",
+            "has_summary": true,
+            "match_reasons": [
+              "referenced by sellke2001tas_calibration",
+              "referenced by lee2003psychometrika_model",
+              "shared method family: hypothesis_testing, model_selection",
+              "claim follow-up via related-work expansion"
+            ],
+            "match_section": "",
+            "match_snippet": "",
+            "matched_fields": [
+              "references",
+              "same_method"
+            ],
+            "method_family": [
+              "bayesian",
+              "model_selection",
+              "hypothesis_testing"
+            ],
+            "related_from": [
+              "lee2003psychometrika_model",
+              "sellke2001tas_calibration"
+            ],
+            "relation_modes": [
+              "references",
+              "same_method"
+            ],
+            "relation_role_hints": [
+              "alternative",
+              "theoretical basis"
+            ],
+            "retrieval_kind": "graph",
+            "score": 2.9553,
+            "title": "Bayes Factors",
+            "work_id": "work_fce1f413f0a64f6fa7e1de631044f2c5",
+            "workspace_feedback_status": "",
+            "workspace_feedback_summary": "",
+            "year": 1995
+          },
+          {
+            "bibtex_key": "lindley1977biometrika_problem",
+            "brief": "SUMMARY The problem of deciding whether two sets of fragments have come from a common source frequently arises in forensic science.",
+            "claim_id": "",
+            "claim_queries": [
+              "contrastive",
+              "foundational",
+              "support"
+            ],
+            "claim_roles": [
+              "support"
+            ],
+            "doi": "10.1093/biomet/64.2.207",
+            "has_summary": true,
+            "match_reasons": [
+              "semantic chunk match"
+            ],
+            "match_section": "6. Simulation Evidence",
+            "match_snippet": "## 6.",
+            "matched_fields": [
+              "semantic"
+            ],
+            "method_family": [
+              "bayesian"
+            ],
+            "related_from": [],
+            "relation_modes": [],
+            "relation_role_hints": [],
+            "retrieval_kind": "vector",
+            "score": 2.943,
+            "title": "A problem in forensic science",
+            "work_id": "work_c4f9267a199847c2ac48dd7cb06052f4",
+            "workspace_feedback_status": "",
+            "workspace_feedback_summary": "",
+            "year": 1977
+          },
+          {
+            "bibtex_key": "butler1993as_asymptotics",
+            "brief": "The paper establishes the theoretical asymptotic properties of the Minimum Covariance Determinant (MCD) estimator proposed by Rousseeuw (1983).",
+            "claim_id": "",
+            "claim_queries": [
+              "contrastive",
+              "foundational",
+              "support"
+            ],
+            "claim_roles": [
+              "support"
+            ],
+            "doi": "10.1214/aos/1176349264",
+            "has_summary": true,
+            "match_reasons": [
+              "semantic chunk match"
+            ],
+            "match_section": "6. Simulation Evidence",
+            "match_snippet": "## 6.",
+            "matched_fields": [
+              "semantic"
+            ],
+            "method_family": [
+              "robust_methods",
+              "multivariate"
+            ],
+            "related_from": [],
+            "relation_modes": [],
+            "relation_role_hints": [],
+            "retrieval_kind": "vector",
+            "score": 2.9406,
+            "title": "Asymptotics for the Minimum Covariance Determinant Estimator",
+            "work_id": "work_991272b383614e9ea70c470639fd9b6e",
+            "workspace_feedback_status": "",
+            "workspace_feedback_summary": "",
+            "year": 1993
+          },
+          {
+            "bibtex_key": "shmueli2005jrssscas_useful",
+            "brief": "A useful discrete distribution (the Conway–Maxwell–Poisson distribution) is revived and its statistical and probabilistic properties are introduced and explored.",
+            "claim_id": "",
+            "claim_queries": [
+              "contrastive",
+              "foundational",
+              "support"
+            ],
+            "claim_roles": [
+              "support"
+            ],
+            "doi": "10.1111/j.1467-9876.2005.00474.x",
+            "has_summary": true,
+            "match_reasons": [
+              "semantic chunk match"
+            ],
+            "match_section": "6. Simulation Evidence",
+            "match_snippet": "## 6.",
+            "matched_fields": [
+              "semantic"
+            ],
+            "method_family": [
+              "regression",
+              "computational"
+            ],
+            "related_from": [],
+            "relation_modes": [],
+            "relation_role_hints": [],
+            "retrieval_kind": "vector",
+            "score": 2.9351,
+            "title": "A Useful Distribution for Fitting Discrete Data: Revival of the Conway–Maxwell–Poisson Distribution",
+            "work_id": "work_ebc12d79899c4a468ec7eb31d0ae9181",
+            "workspace_feedback_status": "",
+            "workspace_feedback_summary": "",
+            "year": 2005
+          }
+        ],
+        "seed_work_ids": [
+          "work_7902a08329614ea28b2b7e50e87ba59a",
+          "work_07fe5efc35e944efa38f910fe1aff618"
+        ],
+        "selected_work_ids": [
+          "work_7902a08329614ea28b2b7e50e87ba59a",
+          "work_02515e864f59476fad9d2fa379d90d2c",
+          "work_2d2fae74e35c408ca1b7850d49fed4f5"
+        ],
+        "updated_at": "2026-04-30T05:32:21.886268+00:00"
+      },
+      "sections": [],
+      "status": "planned",
+      "task": "Bayes factor Monte Carlo uncertainty representation in BayesTools tables",
+      "updated_at": "2026-04-30T05:32:21.886268+00:00"
+    }
+  },
+  "claims_version": 1,
+  "created_at": "2026-04-26T09:20:46.988341+00:00",
+  "instruction_bridge": ".StatsVault/AGENTS.additions.md",
+  "manuscript_title": "BayesTools",
+  "papers": {
+    "contrib_clyde2012biometrika_finite": {
+      "actions_needed": [],
+      "added_at": "2026-05-05T06:55:44.856094+00:00",
+      "authors": [
+        "Clyde, M.A.",
+        "Ghosh, J."
+      ],
+      "bib_type": "article",
+      "bibkey_base": "clyde2012biometrika_finite",
+      "bibkey_provisional": true,
+      "bibtex_key": "unverified.clyde2012biometrika_finite",
+      "citation_ready": true,
+      "classification": null,
+      "contribution_id": "",
+      "doi": "10.1093/biomet/ass040",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "bib": null,
+        "local_summary": null,
+        "metadata": null,
+        "pdf": ".StatsVault/contributions/unverified.clyde2012biometrika_finite.pdf",
+        "summary": ".StatsVault/contributions/unverified.clyde2012biometrika_finite_summary.md"
+      },
+      "journal": "Biometrika",
+      "paper_type": "new_method",
+      "provenance": [
+        {
+          "contributed_at": "2026-05-05T06:08:36.877763+00:00",
+          "event_type": "contribution_discovered",
+          "source_pdf": "C:\\R-Packages\\BayesTools\\.StatsVault\\contributions\\ass040.pdf",
+          "timestamp": "2026-05-05T06:55:44.856094+00:00"
+        }
+      ],
+      "readiness": "ready_contributed",
+      "source_origin": "contribution",
+      "status": {
+        "bib": "suggestion_only",
+        "local_summary": "not_created",
+        "metadata": "contributed",
+        "pdf": "contributed",
+        "summary": "contributed"
+      },
+      "summary_origin": "contributed",
+      "tasks": [
+        "general"
+      ],
+      "title": "Finite population estimators in stochastic search variable selection",
+      "updated_at": "2026-05-05T06:55:44.856094+00:00",
+      "work_id": "contrib_clyde2012biometrika_finite",
+      "year": 2012
+    },
+    "contrib_gambaro2025mbae_navigating": {
+      "actions_needed": [],
+      "added_at": "2026-05-05T06:55:44.856633+00:00",
+      "authors": [
+        "Gámbaro, F.",
+        "Layan, M.",
+        "Baele, G.",
+        "Vrancken, B.",
+        "Dellicour, S."
+      ],
+      "bib_type": "article",
+      "bibkey_base": "gambaro2025mbae_navigating",
+      "bibkey_provisional": true,
+      "bibtex_key": "unverified.gambaro2025mbae_navigating",
+      "citation_ready": true,
+      "classification": null,
+      "contribution_id": "",
+      "doi": "10.1093/molbev/msaf253",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "bib": null,
+        "local_summary": null,
+        "metadata": null,
+        "pdf": ".StatsVault/contributions/unverified.gambaro2025mbae_navigating.pdf",
+        "summary": ".StatsVault/contributions/unverified.gambaro2025mbae_navigating_summary.md"
+      },
+      "journal": "Molecular Biology and Evolution",
+      "paper_type": "comparison",
+      "provenance": [
+        {
+          "contributed_at": "2026-05-05T06:09:07.821860+00:00",
+          "event_type": "contribution_discovered",
+          "source_pdf": "C:\\R-Packages\\BayesTools\\.StatsVault\\contributions\\msaf253.pdf",
+          "timestamp": "2026-05-05T06:55:44.856633+00:00"
+        }
+      ],
+      "readiness": "ready_contributed",
+      "source_origin": "contribution",
+      "status": {
+        "bib": "suggestion_only",
+        "local_summary": "not_created",
+        "metadata": "contributed",
+        "pdf": "contributed",
+        "summary": "contributed"
+      },
+      "summary_origin": "contributed",
+      "tasks": [
+        "general"
+      ],
+      "title": "Navigating Sampling Bias in Discrete Phylogeographic Analysis: Assessing the Performance of an Adjusted Bayes Factor",
+      "updated_at": "2026-05-05T06:55:44.856633+00:00",
+      "work_id": "contrib_gambaro2025mbae_navigating",
+      "year": 2025
+    },
+    "contrib_heck2019statcomp_quantifying": {
+      "actions_needed": [],
+      "added_at": "2026-05-05T06:55:44.857194+00:00",
+      "authors": [
+        "Heck, D.W.",
+        "Overstall, A.M.",
+        "Gronau, Q.F.",
+        "Wagenmakers, E.-J."
+      ],
+      "bib_type": "article",
+      "bibkey_base": "heck2019statcomp_quantifying",
+      "bibkey_provisional": true,
+      "bibtex_key": "unverified.heck2019statcomp_quantifying",
+      "citation_ready": true,
+      "classification": null,
+      "contribution_id": "",
+      "doi": "10.1007/s11222-018-9828-0",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "bib": null,
+        "local_summary": null,
+        "metadata": null,
+        "pdf": ".StatsVault/contributions/unverified.heck2019statcomp_quantifying.pdf",
+        "summary": ".StatsVault/contributions/unverified.heck2019statcomp_quantifying_summary.md"
+      },
+      "journal": "Statistics and Computing",
+      "paper_type": "new_method",
+      "provenance": [
+        {
+          "contributed_at": "2026-05-05T06:09:11.378116+00:00",
+          "event_type": "contribution_discovered",
+          "source_pdf": "C:\\R-Packages\\BayesTools\\.StatsVault\\contributions\\s11222-018-9828-0.pdf",
+          "timestamp": "2026-05-05T06:55:44.857194+00:00"
+        }
+      ],
+      "readiness": "ready_contributed",
+      "source_origin": "contribution",
+      "status": {
+        "bib": "suggestion_only",
+        "local_summary": "not_created",
+        "metadata": "contributed",
+        "pdf": "contributed",
+        "summary": "contributed"
+      },
+      "summary_origin": "contributed",
+      "tasks": [
+        "general"
+      ],
+      "title": "Quantifying uncertainty in transdimensional Markov chain Monte Carlo using discrete Markov models",
+      "updated_at": "2026-05-05T06:55:44.857194+00:00",
+      "work_id": "contrib_heck2019statcomp_quantifying",
+      "year": 2019
+    },
+    "contrib_lemey2009pcb_bayesian": {
+      "actions_needed": [],
+      "added_at": "2026-05-05T06:55:44.857194+00:00",
+      "authors": [
+        "Lemey, P.",
+        "Rambaut, A.",
+        "Drummond, A.J.",
+        "Suchard, M.A."
+      ],
+      "bib_type": "article",
+      "bibkey_base": "lemey2009pcb_bayesian",
+      "bibkey_provisional": true,
+      "bibtex_key": "unverified.lemey2009pcb_bayesian",
+      "citation_ready": true,
+      "classification": null,
+      "contribution_id": "",
+      "doi": "10.1371/journal.pcbi.1000520",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "bib": null,
+        "local_summary": null,
+        "metadata": null,
+        "pdf": ".StatsVault/contributions/unverified.lemey2009pcb_bayesian.pdf",
+        "summary": ".StatsVault/contributions/unverified.lemey2009pcb_bayesian_summary.md"
+      },
+      "journal": "PLoS Computational Biology",
+      "paper_type": "new_method",
+      "provenance": [
+        {
+          "contributed_at": "2026-05-05T06:09:20.112193+00:00",
+          "event_type": "contribution_discovered",
+          "source_pdf": "C:\\R-Packages\\BayesTools\\.StatsVault\\contributions\\file.pdf",
+          "timestamp": "2026-05-05T06:55:44.857194+00:00"
+        }
+      ],
+      "readiness": "ready_contributed",
+      "source_origin": "contribution",
+      "status": {
+        "bib": "suggestion_only",
+        "local_summary": "not_created",
+        "metadata": "contributed",
+        "pdf": "contributed",
+        "summary": "contributed"
+      },
+      "summary_origin": "contributed",
+      "tasks": [
+        "general"
+      ],
+      "title": "Bayesian Phylogeography Finds Its Roots",
+      "updated_at": "2026-05-05T06:55:44.857194+00:00",
+      "work_id": "contrib_lemey2009pcb_bayesian",
+      "year": 2009
+    },
+    "work_02515e864f59476fad9d2fa379d90d2c": {
+      "actions_needed": [],
+      "added_at": "2026-04-30T05:32:29.329505+00:00",
+      "authors": [
+        "Johnstone, I.M."
+      ],
+      "bib_type": "article",
+      "bibtex_key": "johnstone2009aoas_approximate",
+      "brief": "The greatest root distribution occurs everywhere in classical multivariate analysis, but even under the null hypothesis the exact distribution has required extensive tables or special purpose software",
+      "citation_ready": true,
+      "classification": null,
+      "doi": "10.1214/08-aoas220",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "bib": ".StatsVault/resources/johnstone2009aoas_approximate.bib",
+        "local_summary": null,
+        "metadata": ".StatsVault/resources/johnstone2009aoas_approximate.json",
+        "pdf": ".StatsVault/resources/johnstone2009aoas_approximate.pdf",
+        "summary": ".StatsVault/resources/johnstone2009aoas_approximate_summary.md"
+      },
+      "isbn": null,
+      "issn": "1932-6157",
+      "journal": "The Annals of Applied Statistics",
+      "method_family": [
+        "multivariate",
+        "hypothesis_testing",
+        "nonparametric"
+      ],
+      "number": "4",
+      "pages": null,
+      "paper_type": "extension",
+      "provenance": [],
+      "publisher": "Institute of Mathematical Statistics",
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [
+        "frequentist",
+        "nonparametric"
+      ],
+      "status": {
+        "bib": "written",
+        "local_summary": "not_created",
+        "metadata": "written",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Bayes factor Monte Carlo uncertainty representation in BayesTools tables"
+      ],
+      "title": "Approximate null distribution of the largest root in multivariate analysis",
+      "updated_at": "2026-04-30T05:32:29.329505+00:00",
+      "url": "https://doi.org/10.1214/08-aoas220",
+      "volume": "3",
+      "work_id": "work_02515e864f59476fad9d2fa379d90d2c",
+      "year": 2009
+    },
+    "work_02fc821f8a9342949d01a111585fd232": {
+      "actions_needed": [],
+      "added_at": "2026-04-30T05:32:29.329505+00:00",
+      "authors": [
+        "Fernández, C.",
+        "Ley, E.",
+        "Steel, M.F.J."
+      ],
+      "bib_type": "article",
+      "bibtex_key": "fernandez2001jae_model",
+      "brief": "We investigate the issue of model uncertainty in cross‐country growth regressions using Bayesian Model Averaging (BMA).",
+      "citation_ready": true,
+      "classification": null,
+      "doi": "10.1002/jae.623",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "bib": ".StatsVault/resources/fernandez2001jae_model.bib",
+        "local_summary": null,
+        "metadata": ".StatsVault/resources/fernandez2001jae_model.json",
+        "pdf": ".StatsVault/resources/fernandez2001jae_model.pdf",
+        "summary": ".StatsVault/resources/fernandez2001jae_model_summary.md"
+      },
+      "isbn": null,
+      "issn": "0883-7252",
+      "journal": "Journal of Applied Econometrics",
+      "method_family": [
+        "bayesian",
+        "model_selection"
+      ],
+      "number": "5",
+      "pages": "563-576",
+      "paper_type": "application_showcase",
+      "provenance": [],
+      "publisher": "Wiley",
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [
+        "bayesian"
+      ],
+      "status": {
+        "bib": "written",
+        "local_summary": "not_created",
+        "metadata": "written",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Bayes factor Monte Carlo uncertainty representation in BayesTools tables"
+      ],
+      "title": "Model uncertainty in cross‐country growth regressions",
+      "updated_at": "2026-04-30T05:32:29.329505+00:00",
+      "url": "https://doi.org/10.1002/jae.623",
+      "volume": "16",
+      "work_id": "work_02fc821f8a9342949d01a111585fd232",
+      "year": 2001
+    },
+    "work_08fd3125b436443994424d94db4260d5": {
+      "actions_needed": [],
+      "added_at": "2026-04-30T05:36:17.379557+00:00",
+      "authors": [
+        "Llorente, F.",
+        "Martino, L.",
+        "Delgado, D.",
+        "López-Santiago, J."
+      ],
+      "bib_type": "article",
+      "bibtex_key": "llorente2023sr_marginal",
+      "brief": "This is an up-to-date introduction to, and overview of, marginal likelihood computation for model selection and hypothesis testing.",
+      "citation_ready": true,
+      "classification": "STAT_METHODOLOGY",
+      "doi": "10.1137/20m1310849",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "local_summary": null,
+        "pdf": ".StatsVault/resources/llorente2023sr_marginal.pdf",
+        "summary": ".StatsVault/resources/llorente2023sr_marginal_summary.md"
+      },
+      "isbn": null,
+      "issn": "0036-1445",
+      "journal": "SIAM Review",
+      "method_family": [
+        "bayesian",
+        "computational",
+        "model_selection"
+      ],
+      "number": "1",
+      "pages": "3-58",
+      "paper_type": "review",
+      "provenance": [],
+      "publisher": "Society for Industrial & Applied Mathematics (SIAM)",
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [
+        "bayesian",
+        "likelihood",
+        "information_theoretic"
+      ],
+      "status": {
+        "local_summary": "not_created",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Bayes factor bridge-sampling numerical uncertainty representation"
+      ],
+      "title": "Marginal Likelihood Computation for Model Selection and Hypothesis Testing: An Extensive Review",
+      "updated_at": "2026-04-30T05:36:17.379557+00:00",
+      "url": "https://doi.org/10.1137/20m1310849",
+      "volume": "65",
+      "work_id": "work_08fd3125b436443994424d94db4260d5",
+      "year": 2023
+    },
+    "work_12b506e08f0c4b2fb2ca6a6d277ccc88": {
+      "actions_needed": [],
+      "added_at": "2026-05-05T07:21:00.466500+00:00",
+      "authors": [
+        "Heck, D.W.",
+        "Wagenmakers, E.-J."
+      ],
+      "bib_type": "article",
+      "bibtex_key": "heck2016jmp_adjusted",
+      "brief": "Many psychological theories that are instantiated as statistical models imply order constraints on the model parameters.",
+      "citation_ready": true,
+      "classification": "STAT_METHODOLOGY",
+      "doi": "10.1016/j.jmp.2016.05.004",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "bib": ".StatsVault/resources/heck2016jmp_adjusted.bib",
+        "local_summary": null,
+        "pdf": ".StatsVault/resources/heck2016jmp_adjusted.pdf",
+        "summary": ".StatsVault/resources/heck2016jmp_adjusted_summary.md"
+      },
+      "isbn": null,
+      "issn": "0022-2496",
+      "journal": "Journal of Mathematical Psychology",
+      "method_family": [],
+      "number": null,
+      "pages": "110-116",
+      "paper_type": null,
+      "provenance": [],
+      "publisher": "Elsevier BV",
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [],
+      "status": {
+        "bib": "written",
+        "local_summary": "not_created",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Assess informative/encompassing-prior BF all posterior draws satisfy constraint and transfer to product-space inclusion BF"
+      ],
+      "title": "Adjusted priors for Bayes factors involving reparameterized order constraints",
+      "updated_at": "2026-05-05T07:21:00.466500+00:00",
+      "url": "https://doi.org/10.1016/j.jmp.2016.05.004",
+      "volume": "73",
+      "work_id": "work_12b506e08f0c4b2fb2ca6a6d277ccc88",
+      "year": 2016
+    },
+    "work_13087b5e3a414a41b9a72b3f83184fb6": {
+      "actions_needed": [],
+      "added_at": "2026-04-30T05:32:29.329505+00:00",
+      "authors": [
+        "Bartoš, F.",
+        "Aust, F.",
+        "Haaf, J.M."
+      ],
+      "bib_type": "article",
+      "bibtex_key": "anon2022bmcmrm_informed",
+      "brief": "We provide an overview of Bayesian estimation, hypothesis testing, and model-averaging and illustrate how they benefit parametric survival analysis.",
+      "citation_ready": true,
+      "classification": "STAT_METHODOLOGY",
+      "doi": "10.1186/s12874-022-01676-9",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "bib": ".StatsVault/resources/anon2022bmcmrm_informed.bib",
+        "local_summary": null,
+        "metadata": ".StatsVault/resources/anon2022bmcmrm_informed.json",
+        "pdf": ".StatsVault/resources/anon2022bmcmrm_informed.pdf",
+        "summary": ".StatsVault/resources/anon2022bmcmrm_informed_summary.md"
+      },
+      "isbn": null,
+      "issn": "1471-2288",
+      "journal": "BMC Medical Research Methodology",
+      "method_family": [],
+      "number": "1",
+      "pages": null,
+      "paper_type": null,
+      "provenance": [],
+      "publisher": "Springer Science and Business Media LLC",
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [],
+      "status": {
+        "bib": "written",
+        "local_summary": "not_created",
+        "metadata": "written",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Bayes factor Monte Carlo uncertainty representation in BayesTools tables"
+      ],
+      "title": "Informed Bayesian survival analysis",
+      "updated_at": "2026-04-30T05:32:29.329505+00:00",
+      "url": "https://doi.org/10.1186/s12874-022-01676-9",
+      "volume": "22",
+      "work_id": "work_13087b5e3a414a41b9a72b3f83184fb6",
+      "year": 2022
+    },
+    "work_17b961e8f60c43e79b55f766cf94b473": {
+      "actions_needed": [],
+      "added_at": "2026-05-05T07:21:00.466500+00:00",
+      "authors": [
+        "Mulder, J."
+      ],
+      "bib_type": "article",
+      "bibtex_key": "mulder2014csada_prior",
+      "brief": "A new method is proposed for testing multiple hypotheses with equality and inequality constraints on the parameters of interest.",
+      "citation_ready": true,
+      "classification": "STAT_METHODOLOGY",
+      "doi": "10.1016/j.csda.2013.07.017",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "bib": ".StatsVault/resources/mulder2014csada_prior.bib",
+        "local_summary": null,
+        "pdf": ".StatsVault/resources/mulder2014csada_prior.pdf",
+        "summary": ".StatsVault/resources/mulder2014csada_prior_summary.md"
+      },
+      "isbn": null,
+      "issn": "0167-9473",
+      "journal": "Computational Statistics & Data Analysis",
+      "method_family": [],
+      "number": null,
+      "pages": "448-463",
+      "paper_type": null,
+      "provenance": [],
+      "publisher": "Elsevier BV",
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [],
+      "status": {
+        "bib": "written",
+        "local_summary": "not_created",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Assess informative/encompassing-prior BF all posterior draws satisfy constraint and transfer to product-space inclusion BF"
+      ],
+      "title": "Prior adjusted default Bayes factors for testing (in)equality constrained hypotheses",
+      "updated_at": "2026-05-05T07:21:00.466500+00:00",
+      "url": "https://doi.org/10.1016/j.csda.2013.07.017",
+      "volume": "71",
+      "work_id": "work_17b961e8f60c43e79b55f766cf94b473",
+      "year": 2014
+    },
+    "work_237fe060bf8d4124839a4995e36d91ee": {
+      "actions_needed": [],
+      "added_at": "2026-05-05T07:21:00.466500+00:00",
+      "authors": [
+        "Laudy, O",
+        "Hoijtink, H"
+      ],
+      "bib_type": "article",
+      "bibtex_key": "laudy2007smmr_bayesian",
+      "brief": "A Bayesian methodology for the analysis of inequality constrained models for contingency tables is presented.",
+      "citation_ready": true,
+      "classification": null,
+      "doi": "10.1177/0962280206071925",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "bib": ".StatsVault/resources/laudy2007smmr_bayesian.bib",
+        "local_summary": null,
+        "pdf": ".StatsVault/resources/laudy2007smmr_bayesian.pdf",
+        "summary": ".StatsVault/resources/laudy2007smmr_bayesian_summary.md"
+      },
+      "isbn": null,
+      "issn": "0962-2802",
+      "journal": "Statistical methods in medical research",
+      "method_family": [
+        "bayesian",
+        "hypothesis_testing",
+        "model_selection"
+      ],
+      "number": "2",
+      "pages": "123-138",
+      "paper_type": "new_method",
+      "provenance": [],
+      "publisher": "SAGE Publications",
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [
+        "bayesian",
+        "likelihood"
+      ],
+      "status": {
+        "bib": "written",
+        "local_summary": "not_created",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Assess informative/encompassing-prior BF all posterior draws satisfy constraint and transfer to product-space inclusion BF"
+      ],
+      "title": "Bayesian methods for the analysis of inequality constrained contingency tables.",
+      "updated_at": "2026-05-05T07:21:00.466500+00:00",
+      "url": "https://doi.org/10.1177/0962280206071925",
+      "volume": "16",
+      "work_id": "work_237fe060bf8d4124839a4995e36d91ee",
+      "year": 2007
+    },
+    "work_2d2fae74e35c408ca1b7850d49fed4f5": {
+      "actions_needed": [],
+      "added_at": "2026-04-30T05:32:29.329505+00:00",
+      "authors": [
+        "Gronau, Q.F.",
+        "Ly, A.",
+        "Wagenmakers, E.-J."
+      ],
+      "bib_type": "article",
+      "bibtex_key": "gronau2020tas_informed",
+      "brief": "Across the empirical sciences, few statistical procedures rival the\\npopularity of the frequentist t-test. In contrast, the Bayesian versions of the\\nt-test have languished in obscurity.",
+      "citation_ready": true,
+      "classification": "STAT_METHODOLOGY",
+      "doi": "10.1080/00031305.2018.1562983",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "bib": ".StatsVault/resources/gronau2020tas_informed.bib",
+        "local_summary": null,
+        "metadata": ".StatsVault/resources/gronau2020tas_informed.json",
+        "pdf": ".StatsVault/resources/gronau2020tas_informed.pdf",
+        "summary": ".StatsVault/resources/gronau2020tas_informed_summary.md"
+      },
+      "isbn": null,
+      "issn": "0003-1305",
+      "journal": "The American Statistician",
+      "method_family": [],
+      "number": "2",
+      "pages": "137-143",
+      "paper_type": null,
+      "provenance": [],
+      "publisher": "Informa UK Limited",
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [],
+      "status": {
+        "bib": "written",
+        "local_summary": "not_created",
+        "metadata": "written",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Bayes factor Monte Carlo uncertainty representation in BayesTools tables"
+      ],
+      "title": "Informed Bayesian t -Tests",
+      "updated_at": "2026-04-30T05:32:29.329505+00:00",
+      "url": "https://doi.org/10.1080/00031305.2018.1562983",
+      "volume": "74",
+      "work_id": "work_2d2fae74e35c408ca1b7850d49fed4f5",
+      "year": 2020
+    },
+    "work_2d6a6268ab864080a253715ed36f9ec7": {
+      "actions_needed": [],
+      "added_at": "2026-04-30T05:36:57.531400+00:00",
+      "authors": [
+        "Frühwirth‐Schnatter, S."
+      ],
+      "bib_type": "article",
+      "bibtex_key": "fruhwirthschnatter2004ej_estimating",
+      "brief": "This paper discusses the problem of estimating marginal likelihoods for mixture and Markov switching model.",
+      "citation_ready": true,
+      "classification": "STAT_METHODOLOGY",
+      "doi": "10.1111/j.1368-423x.2004.00125.x",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "local_summary": null,
+        "pdf": ".StatsVault/resources/fruhwirthschnatter2004ej_estimating.pdf",
+        "summary": ".StatsVault/resources/fruhwirthschnatter2004ej_estimating_summary.md"
+      },
+      "isbn": null,
+      "issn": "1368-4221",
+      "journal": "The Econometrics Journal",
+      "method_family": [
+        "bayesian",
+        "computational",
+        "latent_variable"
+      ],
+      "number": "1",
+      "pages": "143-167",
+      "paper_type": "new_method",
+      "provenance": [],
+      "publisher": "Oxford University Press (OUP)",
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [
+        "bayesian"
+      ],
+      "status": {
+        "local_summary": "not_created",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Bayes factor bridge-sampling numerical uncertainty representation"
+      ],
+      "title": "Estimating marginal likelihoods for mixture and Markov switching models using bridge sampling techniques*",
+      "updated_at": "2026-04-30T05:36:57.531400+00:00",
+      "url": "https://doi.org/10.1111/j.1368-423x.2004.00125.x",
+      "volume": "7",
+      "work_id": "work_2d6a6268ab864080a253715ed36f9ec7",
+      "year": 2004
+    },
+    "work_472a7a3131f44d968b56e63bab2c96e7": {
+      "actions_needed": [],
+      "added_at": "2026-04-30T05:36:17.379557+00:00",
+      "authors": [
+        "Gelman, A.",
+        "Meng, X.-L."
+      ],
+      "bib_type": "article",
+      "bibtex_key": "gelman1998statscience_simulating",
+      "brief": ". Computing (ratios of) normalizing constants of probability models is a fundamental computational problem for many statistical and scienti c studies.",
+      "citation_ready": true,
+      "classification": null,
+      "doi": "10.1214/ss/1028905934",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "local_summary": null,
+        "pdf": ".StatsVault/resources/gelman1998statscience_simulating.pdf",
+        "summary": ".StatsVault/resources/gelman1998statscience_simulating_summary.md"
+      },
+      "isbn": null,
+      "issn": "0883-4237",
+      "journal": "Statistical Science",
+      "method_family": [
+        "bayesian",
+        "computational"
+      ],
+      "number": "2",
+      "pages": null,
+      "paper_type": "framework",
+      "provenance": [],
+      "publisher": "Institute of Mathematical Statistics",
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [
+        "bayesian",
+        "likelihood"
+      ],
+      "status": {
+        "local_summary": "not_created",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Bayes factor bridge-sampling numerical uncertainty representation"
+      ],
+      "title": "Simulating normalizing constants: from importance sampling to bridge sampling to path sampling",
+      "updated_at": "2026-04-30T05:36:17.379557+00:00",
+      "url": "https://doi.org/10.1214/ss/1028905934",
+      "volume": "13",
+      "work_id": "work_472a7a3131f44d968b56e63bab2c96e7",
+      "year": 1998
+    },
+    "work_49cbffa4d7e84f91a7d8c28c18a77bd1": {
+      "actions_needed": [],
+      "added_at": "2026-04-30T05:36:57.531400+00:00",
+      "authors": [
+        "Meng",
+        "Xiao-Li",
+        "Wong",
+        "Wing Hung"
+      ],
+      "bib_type": null,
+      "bibtex_key": "meng1996sinica_simulating",
+      "brief": "Abstract: Let pi(w),i =1, 2, be two densities with common support where each density is known up to a normalizing constant: pi(w) =qi(w)/ci.",
+      "citation_ready": true,
+      "classification": "STAT_METHODOLOGY",
+      "doi": null,
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "local_summary": null,
+        "pdf": ".StatsVault/resources/meng1996sinica_simulating.pdf",
+        "summary": ".StatsVault/resources/meng1996sinica_simulating_summary.md"
+      },
+      "isbn": null,
+      "issn": null,
+      "journal": "Statistica Sinica",
+      "method_family": [
+        "computational",
+        "bayesian"
+      ],
+      "number": null,
+      "pages": null,
+      "paper_type": "new_method",
+      "provenance": [],
+      "publisher": null,
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [
+        "bayesian",
+        "likelihood",
+        "frequentist"
+      ],
+      "status": {
+        "local_summary": "not_created",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Bayes factor bridge-sampling numerical uncertainty representation"
+      ],
+      "title": "Simulating ratios of normalizing constants via a simple identity: A theoretical exploration",
+      "updated_at": "2026-04-30T05:36:57.531400+00:00",
+      "url": null,
+      "volume": null,
+      "work_id": "work_49cbffa4d7e84f91a7d8c28c18a77bd1",
+      "year": 1996
+    },
+    "work_54d984afeea24b0991f6481d0df72539": {
+      "actions_needed": [],
+      "added_at": "2026-04-30T05:32:29.329505+00:00",
+      "authors": [
+        "Scheibehenne, B.",
+        "Rieskamp, J.",
+        "Wagenmakers, E.-J."
+      ],
+      "bib_type": "article",
+      "bibtex_key": "scheibehenne2013pr_testing",
+      "brief": "Many theories of human cognition postulate that people are equipped with a repertoire of strategies to solve the tasks they face.",
+      "citation_ready": true,
+      "classification": "STAT_METHODOLOGY",
+      "doi": "10.1037/a0030777",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "bib": ".StatsVault/resources/scheibehenne2013pr_testing.bib",
+        "local_summary": null,
+        "metadata": ".StatsVault/resources/scheibehenne2013pr_testing.json",
+        "pdf": ".StatsVault/resources/scheibehenne2013pr_testing.pdf",
+        "summary": ".StatsVault/resources/scheibehenne2013pr_testing_summary.md"
+      },
+      "isbn": null,
+      "issn": "1939-1471",
+      "journal": "Psychological Review",
+      "method_family": [
+        "bayesian",
+        "model_selection"
+      ],
+      "number": "1",
+      "pages": "39-64",
+      "paper_type": "new_method",
+      "provenance": [],
+      "publisher": "American Psychological Association (APA)",
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [
+        "bayesian"
+      ],
+      "status": {
+        "bib": "written",
+        "local_summary": "not_created",
+        "metadata": "written",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Bayes factor Monte Carlo uncertainty representation in BayesTools tables"
+      ],
+      "title": "Testing adaptive toolbox models: A Bayesian hierarchical approach.",
+      "updated_at": "2026-04-30T05:32:29.329505+00:00",
+      "url": "https://doi.org/10.1037/a0030777",
+      "volume": "120",
+      "work_id": "work_54d984afeea24b0991f6481d0df72539",
+      "year": 2013
+    },
+    "work_6a34fa93404e40ef84fe1269cddc3536": {
+      "actions_needed": [],
+      "added_at": "2026-04-30T05:32:29.329505+00:00",
+      "authors": [
+        "Wagenmakers, E.-J.",
+        "Lodewyckx, T.",
+        "Kuriyal, H.",
+        "Grasman, R."
+      ],
+      "bib_type": "article",
+      "bibtex_key": "wagenmakers2010cp_bayesian",
+      "brief": "In the field of cognitive psychology, the p-value hypothesis test has established a stranglehold on statistical reporting.",
+      "citation_ready": true,
+      "classification": "STAT_METHODOLOGY",
+      "doi": "10.1016/j.cogpsych.2009.12.001",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "bib": ".StatsVault/resources/wagenmakers2010cp_bayesian.bib",
+        "local_summary": null,
+        "metadata": ".StatsVault/resources/wagenmakers2010cp_bayesian.json",
+        "pdf": ".StatsVault/resources/wagenmakers2010cp_bayesian.pdf",
+        "summary": ".StatsVault/resources/wagenmakers2010cp_bayesian_summary.md"
+      },
+      "isbn": null,
+      "issn": "0010-0285",
+      "journal": "Cognitive Psychology",
+      "method_family": [],
+      "number": "3",
+      "pages": "158-189",
+      "paper_type": null,
+      "provenance": [],
+      "publisher": "Elsevier BV",
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [],
+      "status": {
+        "bib": "written",
+        "local_summary": "not_created",
+        "metadata": "written",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Bayes factor Monte Carlo uncertainty representation in BayesTools tables"
+      ],
+      "title": "Bayesian hypothesis testing for psychologists: A tutorial on the Savage–Dickey method",
+      "updated_at": "2026-04-30T05:32:29.329505+00:00",
+      "url": "https://doi.org/10.1016/j.cogpsych.2009.12.001",
+      "volume": "60",
+      "work_id": "work_6a34fa93404e40ef84fe1269cddc3536",
+      "year": 2010
+    },
+    "work_7902a08329614ea28b2b7e50e87ba59a": {
+      "actions_needed": [],
+      "added_at": "2026-04-30T05:32:29.329505+00:00",
+      "authors": [
+        "Sellke, T.",
+        "Bayarri, M.J.",
+        "Berger, J.O."
+      ],
+      "bib_type": "article",
+      "bibtex_key": "sellke2001tas_calibration",
+      "brief": "P values are the most commonly used tool to measure evidence against a hypothesis or hypothesized model.",
+      "citation_ready": true,
+      "classification": null,
+      "doi": "10.1198/000313001300339950",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "bib": ".StatsVault/resources/sellke2001tas_calibration.bib",
+        "local_summary": null,
+        "metadata": ".StatsVault/resources/sellke2001tas_calibration.json",
+        "pdf": ".StatsVault/resources/sellke2001tas_calibration.pdf",
+        "summary": ".StatsVault/resources/sellke2001tas_calibration_summary.md"
+      },
+      "isbn": null,
+      "issn": null,
+      "journal": "The American Statistician",
+      "method_family": [
+        "hypothesis_testing"
+      ],
+      "number": null,
+      "pages": null,
+      "paper_type": "framework",
+      "provenance": [],
+      "publisher": "Informa UK Limited",
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [
+        "frequentist",
+        "bayesian"
+      ],
+      "status": {
+        "bib": "written",
+        "local_summary": "not_created",
+        "metadata": "written",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Bayes factor Monte Carlo uncertainty representation in BayesTools tables"
+      ],
+      "title": "Calibration of ρ Values for Testing Precise Null Hypotheses",
+      "updated_at": "2026-04-30T05:32:29.329505+00:00",
+      "url": null,
+      "volume": null,
+      "work_id": "work_7902a08329614ea28b2b7e50e87ba59a",
+      "year": 2001
+    },
+    "work_844761c1a04942598f40d079078e9f35": {
+      "actions_needed": [],
+      "added_at": "2026-04-30T05:36:17.379557+00:00",
+      "authors": [
+        "Gronau, Q.F.",
+        "Sarafoglou, A.",
+        "Matzke, D.",
+        "Ly, A.",
+        "Boehm, U.",
+        "Marsman, M.",
+        "Leslie, D.S.",
+        "Forster, J.J.",
+        "Wagenmakers, E.-J.",
+        "Steingroever, H."
+      ],
+      "bib_type": "article",
+      "bibtex_key": "gronau2017jmp_tutorial",
+      "brief": "The marginal likelihood plays an important role in many areas of Bayesian statistics such as parameter estimation, model comparison, and model averaging.",
+      "citation_ready": true,
+      "classification": "STAT_METHODOLOGY",
+      "doi": "10.1016/j.jmp.2017.09.005",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "local_summary": null,
+        "pdf": ".StatsVault/resources/gronau2017jmp_tutorial.pdf",
+        "summary": ".StatsVault/resources/gronau2017jmp_tutorial_summary.md"
+      },
+      "isbn": null,
+      "issn": "0022-2496",
+      "journal": "Journal of Mathematical Psychology",
+      "method_family": [],
+      "number": null,
+      "pages": "80-97",
+      "paper_type": null,
+      "provenance": [],
+      "publisher": "Elsevier BV",
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [],
+      "status": {
+        "local_summary": "not_created",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Bayes factor bridge-sampling numerical uncertainty representation"
+      ],
+      "title": "A tutorial on bridge sampling",
+      "updated_at": "2026-04-30T05:36:17.379557+00:00",
+      "url": "https://doi.org/10.1016/j.jmp.2017.09.005",
+      "volume": "81",
+      "work_id": "work_844761c1a04942598f40d079078e9f35",
+      "year": 2017
+    },
+    "work_8deec9d5cd5247938f492e45b1faafa0": {
+      "actions_needed": [],
+      "added_at": "2026-04-30T05:32:29.329505+00:00",
+      "authors": [
+        "Overstall, A.M.",
+        "Forster, J.J."
+      ],
+      "bib_type": "article",
+      "bibtex_key": "overstall2010csda_default",
+      "brief": "A default strategy for fully Bayesian model determination for generalised linear mixed models (GLMMs) is considered which addresses the two key issues of default prior specification and computation.",
+      "citation_ready": true,
+      "classification": "STAT_METHODOLOGY",
+      "doi": "10.1016/j.csda.2010.03.008",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "bib": ".StatsVault/resources/overstall2010csda_default.bib",
+        "local_summary": null,
+        "metadata": ".StatsVault/resources/overstall2010csda_default.json",
+        "pdf": ".StatsVault/resources/overstall2010csda_default.pdf",
+        "summary": ".StatsVault/resources/overstall2010csda_default_summary.md"
+      },
+      "isbn": null,
+      "issn": "0167-9473",
+      "journal": "Computational Statistics & Data Analysis",
+      "method_family": [],
+      "number": "12",
+      "pages": "3269-3288",
+      "paper_type": null,
+      "provenance": [],
+      "publisher": "Elsevier BV",
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [],
+      "status": {
+        "bib": "written",
+        "local_summary": "not_created",
+        "metadata": "written",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Bayes factor Monte Carlo uncertainty representation in BayesTools tables",
+        "Bayes factor bridge-sampling numerical uncertainty representation"
+      ],
+      "title": "Default Bayesian model determination methods for generalised linear mixed models",
+      "updated_at": "2026-04-30T05:36:17.379557+00:00",
+      "url": "https://doi.org/10.1016/j.csda.2010.03.008",
+      "volume": "54",
+      "work_id": "work_8deec9d5cd5247938f492e45b1faafa0",
+      "year": 2010
+    },
+    "work_91a225604be6459fb37ef7aa8a8dac66": {
+      "actions_needed": [],
+      "added_at": "2026-04-30T05:32:29.329505+00:00",
+      "authors": [
+        "Smith, A.F.M.",
+        "Spiegelhalter, D.J."
+      ],
+      "bib_type": "article",
+      "bibtex_key": "smith1980jrsssbsm_bayes",
+      "brief": "Global and local Bayes factors are defined and their respective roles examined as choice criteria among alternative linear models.",
+      "citation_ready": true,
+      "classification": null,
+      "doi": "10.1111/j.2517-6161.1980.tb01122.x",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "bib": ".StatsVault/resources/smith1980jrsssbsm_bayes.bib",
+        "local_summary": null,
+        "metadata": ".StatsVault/resources/smith1980jrsssbsm_bayes.json",
+        "pdf": ".StatsVault/resources/smith1980jrsssbsm_bayes.pdf",
+        "summary": ".StatsVault/resources/smith1980jrsssbsm_bayes_summary.md"
+      },
+      "isbn": null,
+      "issn": null,
+      "journal": "Journal of the Royal Statistical Society Series B: Statistical Methodology",
+      "method_family": [
+        "bayesian",
+        "model_selection"
+      ],
+      "number": null,
+      "pages": null,
+      "paper_type": "framework",
+      "provenance": [],
+      "publisher": "Oxford University Press (OUP)",
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [
+        "bayesian",
+        "likelihood"
+      ],
+      "status": {
+        "bib": "written",
+        "local_summary": "not_created",
+        "metadata": "written",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Bayes factor Monte Carlo uncertainty representation in BayesTools tables"
+      ],
+      "title": "Bayes Factors and Choice Criteria for Linear Models",
+      "updated_at": "2026-04-30T05:32:29.329505+00:00",
+      "url": null,
+      "volume": null,
+      "work_id": "work_91a225604be6459fb37ef7aa8a8dac66",
+      "year": 1980
+    },
+    "work_962c93a36c0c481d9218a4296f40db73": {
+      "actions_needed": [],
+      "added_at": "2026-05-05T07:21:00.466500+00:00",
+      "authors": [
+        "Gu, X",
+        "Mulder, J",
+        "Hoijtink, H"
+      ],
+      "bib_type": "article",
+      "bibtex_key": "gu2018bjmsp_approximated",
+      "brief": "Informative hypotheses are increasingly being used in psychological sciences because they adequately capture researchers’ theories and expectations.",
+      "citation_ready": true,
+      "classification": "STAT_METHODOLOGY",
+      "doi": "10.1111/bmsp.12110",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "bib": ".StatsVault/resources/gu2018bjmsp_approximated.bib",
+        "local_summary": null,
+        "pdf": ".StatsVault/resources/gu2018bjmsp_approximated.pdf",
+        "summary": ".StatsVault/resources/gu2018bjmsp_approximated_summary.md"
+      },
+      "isbn": null,
+      "issn": "2044-8317",
+      "journal": "The British journal of mathematical and statistical psychology",
+      "method_family": [],
+      "number": "2",
+      "pages": "229-261",
+      "paper_type": null,
+      "provenance": [],
+      "publisher": "Wiley",
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [],
+      "status": {
+        "bib": "written",
+        "local_summary": "not_created",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Assess informative/encompassing-prior BF all posterior draws satisfy constraint and transfer to product-space inclusion BF"
+      ],
+      "title": "Approximated adjusted fractional Bayes factors: A general method for testing informative hypotheses.",
+      "updated_at": "2026-05-05T07:21:00.466500+00:00",
+      "url": "https://doi.org/10.1111/bmsp.12110",
+      "volume": "71",
+      "work_id": "work_962c93a36c0c481d9218a4296f40db73",
+      "year": 2017
+    },
+    "work_994efe365faa4f3db46c1a6aa1a09ca8": {
+      "actions_needed": [],
+      "added_at": "2026-05-05T07:21:00.466500+00:00",
+      "authors": [
+        "Gu, X",
+        "Mulder, J",
+        "Deković, M",
+        "Hoijtink, H"
+      ],
+      "bib_type": "article",
+      "bibtex_key": "gu2014psychmethods_bayesian",
+      "brief": "Bayesian evaluation of inequality constrained hypotheses enables researchers to investigate their expectations with respect to the structure among model parameters.",
+      "citation_ready": true,
+      "classification": "STAT_METHODOLOGY",
+      "doi": "10.1037/met0000017",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "bib": ".StatsVault/resources/gu2014psychmethods_bayesian.bib",
+        "local_summary": null,
+        "pdf": ".StatsVault/resources/gu2014psychmethods_bayesian.pdf",
+        "summary": ".StatsVault/resources/gu2014psychmethods_bayesian_summary.md"
+      },
+      "isbn": null,
+      "issn": "1939-1463",
+      "journal": "Psychological methods",
+      "method_family": [],
+      "number": "4",
+      "pages": "511-527",
+      "paper_type": null,
+      "provenance": [],
+      "publisher": "American Psychological Association (APA)",
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [],
+      "status": {
+        "bib": "written",
+        "local_summary": "not_created",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Assess informative/encompassing-prior BF all posterior draws satisfy constraint and transfer to product-space inclusion BF"
+      ],
+      "title": "Bayesian evaluation of inequality constrained hypotheses.",
+      "updated_at": "2026-05-05T07:21:00.466500+00:00",
+      "url": "https://doi.org/10.1037/met0000017",
+      "volume": "19",
+      "work_id": "work_994efe365faa4f3db46c1a6aa1a09ca8",
+      "year": 2014
+    },
+    "work_9a6e1afe11d0472b9cbba922c5fe736b": {
+      "actions_needed": [],
+      "added_at": "2026-05-05T07:21:00.466500+00:00",
+      "authors": [
+        "Mulder, J."
+      ],
+      "bib_type": "article",
+      "bibtex_key": "mulder2016jmp_bayes",
+      "brief": "Correlation coefficients play a key role in the social and behavioral sciences for quantifying the degree of linear association between variables.",
+      "citation_ready": true,
+      "classification": "STAT_METHODOLOGY",
+      "doi": "10.1016/j.jmp.2014.09.004",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "bib": ".StatsVault/resources/mulder2016jmp_bayes.bib",
+        "local_summary": null,
+        "pdf": ".StatsVault/resources/mulder2016jmp_bayes.pdf",
+        "summary": ".StatsVault/resources/mulder2016jmp_bayes_summary.md"
+      },
+      "isbn": null,
+      "issn": "0022-2496",
+      "journal": "Journal of Mathematical Psychology",
+      "method_family": [],
+      "number": null,
+      "pages": "104-115",
+      "paper_type": null,
+      "provenance": [],
+      "publisher": "Elsevier BV",
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [],
+      "status": {
+        "bib": "written",
+        "local_summary": "not_created",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Assess informative/encompassing-prior BF all posterior draws satisfy constraint and transfer to product-space inclusion BF"
+      ],
+      "title": "Bayes factors for testing order-constrained hypotheses on correlations",
+      "updated_at": "2026-05-05T07:21:00.466500+00:00",
+      "url": "https://doi.org/10.1016/j.jmp.2014.09.004",
+      "volume": "72",
+      "work_id": "work_9a6e1afe11d0472b9cbba922c5fe736b",
+      "year": 2016
+    },
+    "work_a4bdc3b0873c4b7d9b1d4379177cd6bc": {
+      "actions_needed": [],
+      "added_at": "2026-04-30T05:36:17.379557+00:00",
+      "authors": [
+        "Sinharay, S.",
+        "Stern, H.S."
+      ],
+      "bib_type": "article",
+      "bibtex_key": "sinharay2005jcgs_empirical",
+      "brief": "Generalized linear mixed models (GLMM) are used in situations where a number of characteristics (covariates) affect a nonnormal response variable and the responses are correlated due to the existence",
+      "citation_ready": true,
+      "classification": "STAT_METHODOLOGY",
+      "doi": "10.1198/106186005x47471",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "local_summary": null,
+        "pdf": ".StatsVault/resources/sinharay2005jcgs_empirical.pdf",
+        "summary": ".StatsVault/resources/sinharay2005jcgs_empirical_summary.md"
+      },
+      "isbn": null,
+      "issn": "1061-8600",
+      "journal": "Journal of Computational and Graphical Statistics",
+      "method_family": [],
+      "number": "2",
+      "pages": "415-435",
+      "paper_type": null,
+      "provenance": [],
+      "publisher": "Informa UK Limited",
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [],
+      "status": {
+        "local_summary": "not_created",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Bayes factor bridge-sampling numerical uncertainty representation"
+      ],
+      "title": "An Empirical Comparison of Methods for Computing Bayes Factors in Generalized Linear Mixed Models",
+      "updated_at": "2026-04-30T05:36:17.379557+00:00",
+      "url": "https://doi.org/10.1198/106186005x47471",
+      "volume": "14",
+      "work_id": "work_a4bdc3b0873c4b7d9b1d4379177cd6bc",
+      "year": 2005
+    },
+    "work_afa76afe7ebb4c17b4f7e4e8e2e6476e": {
+      "actions_needed": [],
+      "added_at": "2026-05-05T07:24:05.191220+00:00",
+      "authors": [
+        "Heck, D.W.",
+        "Davis-Stober, C.P."
+      ],
+      "bib_type": "article",
+      "bibtex_key": "heck2019jmp_multinomial",
+      "brief": "Many psychological theories can be operationalized as linear inequality constraints on the parameters of multinomial distributions (e.g., discrete choice analysis).",
+      "citation_ready": true,
+      "classification": "STAT_METHODOLOGY",
+      "doi": "10.1016/j.jmp.2019.03.004",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "bib": ".StatsVault/resources/heck2019jmp_multinomial.bib",
+        "local_summary": null,
+        "pdf": ".StatsVault/resources/heck2019jmp_multinomial.pdf",
+        "summary": ".StatsVault/resources/heck2019jmp_multinomial_summary.md"
+      },
+      "isbn": null,
+      "issn": "0022-2496",
+      "journal": "Journal of Mathematical Psychology",
+      "method_family": [],
+      "number": null,
+      "pages": "70-87",
+      "paper_type": null,
+      "provenance": [],
+      "publisher": "Elsevier BV",
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [],
+      "status": {
+        "bib": "written",
+        "local_summary": "not_created",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Assess reporting conventions for inclusion Bayes factors from product-space/model-index MCMC when all indicator samples are 0 or 1"
+      ],
+      "title": "Multinomial models with linear inequality constraints: Overview and improvements of computational methods for Bayesian inference",
+      "updated_at": "2026-05-05T07:24:05.191220+00:00",
+      "url": "https://doi.org/10.1016/j.jmp.2019.03.004",
+      "volume": "91",
+      "work_id": "work_afa76afe7ebb4c17b4f7e4e8e2e6476e",
+      "year": 2019
+    },
+    "work_b273040c10a84f2a87b963e1f21f9759": {
+      "actions_needed": [],
+      "added_at": "2026-05-05T07:21:00.466500+00:00",
+      "authors": [
+        "Wetzels, R.",
+        "Grasman, R.P.",
+        "Wagenmakers, E.-J."
+      ],
+      "bib_type": "article",
+      "bibtex_key": "wetzels2010csda_encompassing",
+      "brief": "An encompassing prior (EP) approach to facilitate Bayesian model selection for nested models with inequality constraints has been previously proposed.",
+      "citation_ready": true,
+      "classification": "STAT_METHODOLOGY",
+      "doi": "10.1016/j.csda.2010.03.016",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "bib": ".StatsVault/resources/wetzels2010csda_encompassing.bib",
+        "local_summary": null,
+        "pdf": ".StatsVault/resources/wetzels2010csda_encompassing.pdf",
+        "summary": ".StatsVault/resources/wetzels2010csda_encompassing_summary.md"
+      },
+      "isbn": null,
+      "issn": "0167-9473",
+      "journal": "Computational Statistics & Data Analysis",
+      "method_family": [],
+      "number": "9",
+      "pages": "2094-2102",
+      "paper_type": null,
+      "provenance": [],
+      "publisher": "Elsevier BV",
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [],
+      "status": {
+        "bib": "written",
+        "local_summary": "not_created",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Assess informative/encompassing-prior BF all posterior draws satisfy constraint and transfer to product-space inclusion BF"
+      ],
+      "title": "An encompassing prior generalization of the Savage–Dickey density ratio",
+      "updated_at": "2026-05-05T07:21:00.466500+00:00",
+      "url": "https://doi.org/10.1016/j.csda.2010.03.016",
+      "volume": "54",
+      "work_id": "work_b273040c10a84f2a87b963e1f21f9759",
+      "year": 2010
+    },
+    "work_d4b0ef4a42ad49db9cd84818910be27a": {
+      "actions_needed": [],
+      "added_at": "2026-05-05T07:21:00.466500+00:00",
+      "authors": [
+        "Klugkist, I.",
+        "Hoijtink, H."
+      ],
+      "bib_type": "article",
+      "bibtex_key": "klugkist2007csada_bayes",
+      "brief": "The Bayes factor is a useful tool for evaluating sets of inequality and about equality constrained models.",
+      "citation_ready": true,
+      "classification": "STAT_METHODOLOGY",
+      "doi": "10.1016/j.csda.2007.01.024",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "bib": ".StatsVault/resources/klugkist2007csada_bayes.bib",
+        "local_summary": null,
+        "pdf": ".StatsVault/resources/klugkist2007csada_bayes.pdf",
+        "summary": ".StatsVault/resources/klugkist2007csada_bayes_summary.md"
+      },
+      "isbn": null,
+      "issn": "0167-9473",
+      "journal": "Computational Statistics & Data Analysis",
+      "method_family": [],
+      "number": "12",
+      "pages": "6367-6379",
+      "paper_type": null,
+      "provenance": [],
+      "publisher": "Elsevier BV",
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [],
+      "status": {
+        "bib": "written",
+        "local_summary": "not_created",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Assess informative/encompassing-prior BF all posterior draws satisfy constraint and transfer to product-space inclusion BF"
+      ],
+      "title": "The Bayes factor for inequality and about equality constrained models",
+      "updated_at": "2026-05-05T07:21:00.466500+00:00",
+      "url": "https://doi.org/10.1016/j.csda.2007.01.024",
+      "volume": "51",
+      "work_id": "work_d4b0ef4a42ad49db9cd84818910be27a",
+      "year": 2007
+    },
+    "work_d6a5f157392641b9bebd41d7ed096e7e": {
+      "actions_needed": [],
+      "added_at": "2026-04-30T05:36:17.379557+00:00",
+      "authors": [
+        "Robert, C.P.",
+        "Wraith, D.",
+        "Goggans, P.M.",
+        "Chan, C.-Y."
+      ],
+      "bib_type": "inproceedings",
+      "bibtex_key": "robert2009acp_computational",
+      "brief": "In this note, we shortly survey some recent approaches on the approx- imation of the Bayes factor used in Bayesian hypothesis testing and in Bayesian model choice.",
+      "citation_ready": true,
+      "classification": null,
+      "doi": "10.1063/1.3275622",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "local_summary": null,
+        "pdf": ".StatsVault/resources/robert2009acp_computational.pdf",
+        "summary": ".StatsVault/resources/robert2009acp_computational_summary.md"
+      },
+      "isbn": null,
+      "issn": "0094-243X",
+      "journal": "AIP Conference Proceedings",
+      "method_family": [
+        "bayesian",
+        "model_selection",
+        "computational"
+      ],
+      "number": null,
+      "pages": "251-262",
+      "paper_type": "tutorial",
+      "provenance": [],
+      "publisher": "AIP",
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [
+        "bayesian",
+        "likelihood"
+      ],
+      "status": {
+        "local_summary": "not_created",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Bayes factor bridge-sampling numerical uncertainty representation"
+      ],
+      "title": "Computational methods for Bayesian model choice",
+      "updated_at": "2026-04-30T05:36:17.379557+00:00",
+      "url": "https://doi.org/10.1063/1.3275622",
+      "volume": null,
+      "work_id": "work_d6a5f157392641b9bebd41d7ed096e7e",
+      "year": 2009
+    },
+    "work_f01aa0ae776646ea914ec112cc00d539": {
+      "actions_needed": [],
+      "added_at": "2026-05-04T20:10:37.029293+00:00",
+      "authors": [
+        "Han, C.",
+        "Carlin, B.P."
+      ],
+      "bib_type": "article",
+      "bibtex_key": "han2001jasa_markov",
+      "brief": "The problem of calculating posterior probabilities for a collection of competing models and associated Bayes factors continues to be a formidable challenge for applied Bayesian statisticians.",
+      "citation_ready": true,
+      "classification": "STAT_METHODOLOGY",
+      "doi": "10.1198/016214501753208780",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "bib": ".StatsVault/resources/han2001jasa_markov.bib",
+        "local_summary": null,
+        "pdf": ".StatsVault/resources/han2001jasa_markov.pdf",
+        "summary": ".StatsVault/resources/han2001jasa_markov_summary.md"
+      },
+      "isbn": null,
+      "issn": "0162-1459",
+      "journal": "Journal of the American Statistical Association",
+      "method_family": [
+        "bayesian",
+        "computational",
+        "model_selection"
+      ],
+      "number": "455",
+      "pages": "1122-1132",
+      "paper_type": "comparison",
+      "provenance": [],
+      "publisher": "Informa UK Limited",
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [
+        "bayesian"
+      ],
+      "status": {
+        "bib": "written",
+        "local_summary": "not_created",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Identify product-space Bayes factor boundary/min-max/adjusted paper"
+      ],
+      "title": "Markov Chain Monte Carlo Methods for Computing Bayes Factors",
+      "updated_at": "2026-05-04T20:10:37.029293+00:00",
+      "url": "https://doi.org/10.1198/016214501753208780",
+      "volume": "96",
+      "work_id": "work_f01aa0ae776646ea914ec112cc00d539",
+      "year": 2001
+    },
+    "work_fce1f413f0a64f6fa7e1de631044f2c5": {
+      "actions_needed": [],
+      "added_at": "2026-04-30T05:32:29.329505+00:00",
+      "authors": [
+        "Kass, R.E.",
+        "Raftery, A.E."
+      ],
+      "bib_type": "article",
+      "bibtex_key": "anonndmisc_1023072291091",
+      "brief": "Abstract In a 1935 paper and in his book Theory of Probability, Jeffreys developed a methodology for quantifying the evidence in favor of a scientific theory.",
+      "citation_ready": true,
+      "classification": "STAT_METHODOLOGY",
+      "doi": "10.1080/01621459.1995.10476572",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "bib": ".StatsVault/resources/anonndmisc_1023072291091.bib",
+        "local_summary": null,
+        "metadata": ".StatsVault/resources/anonndmisc_1023072291091.json",
+        "pdf": ".StatsVault/resources/anonndmisc_1023072291091.pdf",
+        "summary": ".StatsVault/resources/anonndmisc_1023072291091_summary.md"
+      },
+      "isbn": null,
+      "issn": "0162-1459",
+      "journal": "Journal of the American Statistical Association",
+      "method_family": [
+        "bayesian",
+        "model_selection",
+        "hypothesis_testing"
+      ],
+      "number": "430",
+      "pages": "773-795",
+      "paper_type": "review",
+      "provenance": [],
+      "publisher": "Informa UK Limited",
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [
+        "bayesian",
+        "likelihood"
+      ],
+      "status": {
+        "bib": "written",
+        "local_summary": "not_created",
+        "metadata": "written",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Bayes factor Monte Carlo uncertainty representation in BayesTools tables",
+        "Bayes factor bridge-sampling numerical uncertainty representation"
+      ],
+      "title": "Bayes Factors",
+      "updated_at": "2026-04-30T05:36:17.379557+00:00",
+      "url": "https://doi.org/10.1080/01621459.1995.10476572",
+      "volume": "90",
+      "work_id": "work_fce1f413f0a64f6fa7e1de631044f2c5",
+      "year": 1995
+    },
+    "work_fd28ba0aff514b1293c948a11d59ee7d": {
+      "actions_needed": [],
+      "added_at": "2026-05-04T20:04:52.399767+00:00",
+      "authors": [
+        "Lodewyckx, T.",
+        "Kim, W.",
+        "Lee, M.D.",
+        "Tuerlinckx, F.",
+        "Kuppens, P.",
+        "Wagenmakers, E.-J."
+      ],
+      "bib_type": "article",
+      "bibtex_key": "lodewyckx2011jmp_tutorial",
+      "brief": "The Bayes factor is an intuitive and principled model selection tool from Bayesian statistics.",
+      "citation_ready": true,
+      "classification": "STAT_METHODOLOGY",
+      "doi": "10.1016/j.jmp.2011.06.001",
+      "feedback": {
+        "by_task": {},
+        "overall": {}
+      },
+      "files": {
+        "bib": ".StatsVault/resources/lodewyckx2011jmp_tutorial.bib",
+        "local_summary": null,
+        "pdf": ".StatsVault/resources/lodewyckx2011jmp_tutorial.pdf",
+        "summary": ".StatsVault/resources/lodewyckx2011jmp_tutorial_summary.md"
+      },
+      "isbn": null,
+      "issn": "0022-2496",
+      "journal": "Journal of Mathematical Psychology",
+      "method_family": [],
+      "number": "5",
+      "pages": "331-347",
+      "paper_type": null,
+      "provenance": [],
+      "publisher": "Elsevier BV",
+      "readiness": "ready_canonical",
+      "source_origin": "library",
+      "statistical_framework": [],
+      "status": {
+        "bib": "written",
+        "local_summary": "not_created",
+        "pdf": "copied",
+        "summary": "copied"
+      },
+      "summary_origin": "canonical",
+      "tasks": [
+        "Identify product-space Bayes factor finite-bound/boundary paper"
+      ],
+      "title": "A tutorial on Bayes factor estimation with the product space method",
+      "updated_at": "2026-05-04T20:04:52.399767+00:00",
+      "url": "https://doi.org/10.1016/j.jmp.2011.06.001",
+      "volume": "55",
+      "work_id": "work_fd28ba0aff514b1293c948a11d59ee7d",
+      "year": 2011
+    }
+  },
+  "project_root": "C:\\R-Packages\\BayesTools",
+  "updated_at": "2026-05-05T09:23:37.259541+00:00",
+  "workspace_version": 4
+}

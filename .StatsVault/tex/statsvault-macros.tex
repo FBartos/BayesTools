@@ -1,0 +1,12 @@
+% StatsVault manuscript support macros
+\usepackage{xcolor}
+\newif\ifStatsVaultDraft
+\StatsVaultDrafttrue
+
+\newcommand{\SV}[1]{%
+  \ifStatsVaultDraft
+    \par\noindent\colorbox{yellow!20}{\parbox{0.97\linewidth}{\textbf{SV:} #1}}%
+  \else
+    \PackageError{statsvault}{Unresolved \string\SV marker left in manuscript}{Remove all \string\SV markers before final build.}%
+  \fi
+}

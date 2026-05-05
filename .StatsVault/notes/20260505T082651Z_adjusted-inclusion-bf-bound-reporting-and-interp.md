@@ -1,0 +1,6 @@
+# Adjusted inclusion BF bound reporting and interpretation
+
+Timestamp: 2026-05-05T08:26:51.031055+00:00
+Type: implementation-progress
+
+Follow-up implementation for product-space inclusion BF boundary reporting: removed the automatic finite-sample-bound explanatory footnote from default `runjags_inference_table()` output and moved the explanation into documentation (`R/summary-tables.R` roxygen and `man/BayesTools_model_tables.Rd`). Fixed table printing to format columns from the original vector so `<`/`>` bound metadata is visible in printed summaries. Added a small `BayesTools_BF` S3 vector subset method so single-row extraction preserves `bound_operator` metadata. Extended `.interpret.BF()`, `interpret()`, and `interpret2()` to report finite-sample inequalities when a BF carries `bound_operator` metadata or an explicit `BF_bound_operator` / `inference_BF_bound_operator` field. Added tests for printed signs, absence of default footnote, scalar extraction metadata, and interpretation output. Verification: unit profile passed; targeted fixture tests for summary/JAGS tables passed; full fixture profile still fails only in fixture-integrity/catalog metadata expectations unrelated to this change.
