@@ -32,7 +32,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.23</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
       </span>
     </div>
 
@@ -84,9 +84,9 @@
                         <h4 data-toc-skip class="author">František
 Bartoš</h4>
             
-            <h4 data-toc-skip class="date">2025-12-08</h4>
+            <h4 data-toc-skip class="date">2026-05-06</h4>
       
-      <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/v0.2.23/vignettes/ComparisonR.Rmd" class="external-link"><code>vignettes/ComparisonR.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/vignettes/ComparisonR.Rmd" class="external-link"><code>vignettes/ComparisonR.Rmd</code></a></small>
       <div class="hidden name"><code>ComparisonR.Rmd</code></div>
 
     </div>
@@ -102,7 +102,7 @@ output from other, more specialized, R packages.</p>
 </h2>
 <p>Bayesian two-sample t-test is one of the most commonly used tests. It
 compares means of two independent groups and the underlying model is
-usually defined as<br><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>x</mi><mi>i</mi></msub><mo>∼</mo><mtext mathvariant="normal">Normal</mtext><mrow><mo stretchy="true" form="prefix">(</mo><mi>μ</mi><mo>−</mo><mfrac><mi>α</mi><mn>2</mn></mfrac><mo>,</mo><msup><mi>σ</mi><mn>2</mn></msup><mo stretchy="true" form="postfix">)</mo></mrow><mo>,</mo><mi>i</mi><mo>=</mo><mn>1</mn><mo>,</mo><mi>…</mi><mo>,</mo><msub><mi>N</mi><mi>x</mi></msub></mrow><annotation encoding="application/x-tex">x_i \sim \text{Normal}(\mu - \frac{\alpha}{2}, \sigma^2), i = 1,\dots,N_x</annotation></semantics></math>,<br><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>y</mi><mi>i</mi></msub><mo>∼</mo><mtext mathvariant="normal">Normal</mtext><mrow><mo stretchy="true" form="prefix">(</mo><mi>μ</mi><mo>+</mo><mfrac><mi>α</mi><mn>2</mn></mfrac><mo>,</mo><msup><mi>σ</mi><mn>2</mn></msup><mo stretchy="true" form="postfix">)</mo></mrow><mo>,</mo><mi>i</mi><mo>=</mo><mn>1</mn><mo>,</mo><mi>…</mi><mo>,</mo><msub><mi>N</mi><mi>y</mi></msub></mrow><annotation encoding="application/x-tex">y_i \sim \text{Normal}(\mu + \frac{\alpha}{2}, \sigma^2), i = 1,\dots,N_y</annotation></semantics></math>.<br>
+usually defined as<br><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>x</mi><mi>i</mi></msub><mo>∼</mo><mtext mathvariant="normal">Normal</mtext><mo stretchy="false" form="prefix">(</mo><mi>μ</mi><mo>−</mo><mfrac><mi>α</mi><mn>2</mn></mfrac><mo>,</mo><msup><mi>σ</mi><mn>2</mn></msup><mo stretchy="false" form="postfix">)</mo><mo>,</mo><mi>i</mi><mo>=</mo><mn>1</mn><mo>,</mo><mi>…</mi><mo>,</mo><msub><mi>N</mi><mi>x</mi></msub></mrow><annotation encoding="application/x-tex">x_i \sim \text{Normal}(\mu - \frac{\alpha}{2}, \sigma^2), i = 1,\dots,N_x</annotation></semantics></math>,<br><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>y</mi><mi>i</mi></msub><mo>∼</mo><mtext mathvariant="normal">Normal</mtext><mo stretchy="false" form="prefix">(</mo><mi>μ</mi><mo>+</mo><mfrac><mi>α</mi><mn>2</mn></mfrac><mo>,</mo><msup><mi>σ</mi><mn>2</mn></msup><mo stretchy="false" form="postfix">)</mo><mo>,</mo><mi>i</mi><mo>=</mo><mn>1</mn><mo>,</mo><mi>…</mi><mo>,</mo><msub><mi>N</mi><mi>y</mi></msub></mrow><annotation encoding="application/x-tex">y_i \sim \text{Normal}(\mu + \frac{\alpha}{2}, \sigma^2), i = 1,\dots,N_y</annotation></semantics></math>.<br>
 where
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>μ</mi><annotation encoding="application/x-tex">\mu</annotation></semantics></math>
 corresponds to the grand mean,
@@ -120,10 +120,10 @@ can be then obtained as
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>ℋ</mi><mn>0</mn></msub><mo>:</mo><mi>δ</mi><mo>=</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">\mathcal{H}_0: \delta = 0</annotation></semantics></math>
 assuming that the standardized effect size is zero,</li>
 <li>and the alternative hypothesis
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>ℋ</mi><mn>1</mn></msub><mo>:</mo><mi>δ</mi><mo>∼</mo><mi>g</mi><mrow><mo stretchy="true" form="prefix">(</mo><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\mathcal{H}_1: \delta \sim g()</annotation></semantics></math>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>ℋ</mi><mn>1</mn></msub><mo>:</mo><mi>δ</mi><mo>∼</mo><mi>g</mi><mo stretchy="false" form="prefix">(</mo><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">\mathcal{H}_1: \delta \sim g()</annotation></semantics></math>
 assuming that the standardized effect size is non-zero and prior
 distribution
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>g</mi><mrow><mo stretchy="true" form="prefix">(</mo><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">g()</annotation></semantics></math>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>g</mi><mo stretchy="false" form="prefix">(</mo><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">g()</annotation></semantics></math>
 characterizes our hypothesis about the possible values of the
 standardized effect size.</li>
 </ul>
@@ -131,17 +131,19 @@ standardized effect size.</li>
 <h3 id="kitchen-rolls-data-set">Kitchen Rolls Data Set<a class="anchor" aria-label="anchor" href="#kitchen-rolls-data-set"></a>
 </h3>
 <p>To illustrate the two-sample t-test specification with BayesTools, I
-use a data set from a replication study conducted by <span class="citation">(Wagenmakers et al., 2015)</span>. <span class="citation">Wagenmakers et al. (2015)</span> replicated the 2nd
-experiment from a study by <span class="citation">Topolinski &amp;
-Sparenberg (2012)</span> who claimed that clockwise movements induce
-psychological states of progression in time and increases orientation
-toward the future and novelty. In their second experiment, <span class="citation">Topolinski &amp; Sparenberg (2012)</span> let 60
-participants to rotate kitchen rolls either clock or counter-clock wise,
-inducing the progression in time, and increasing their mean score in NEO
-PI-R items measuring openness to experience <em>t</em>(58) = 2.21,
-<em>p</em> = 0.031, Cohen’s <em>d</em> = 0.58. In the replication study,
-<span class="citation">Wagenmakers et al. (2015)</span> collected data
-from 102 participants and found a
+use a data set from a replication study conducted by <span class="citation">(<span class="nocase">Wagenmakers et al.</span>,
+2015)</span>. <span class="citation"><span class="nocase">Wagenmakers et
+al.</span> (2015)</span> replicated the 2nd experiment from a study by
+<span class="citation">Topolinski &amp; Sparenberg (2012)</span> who
+claimed that clockwise movements induce psychological states of
+progression in time and increases orientation toward the future and
+novelty. In their second experiment, <span class="citation">Topolinski
+&amp; Sparenberg (2012)</span> let 60 participants to rotate kitchen
+rolls either clock or counter-clock wise, inducing the progression in
+time, and increasing their mean score in NEO PI-R items measuring
+openness to experience <em>t</em>(58) = 2.21, <em>p</em> = 0.031,
+Cohen’s <em>d</em> = 0.58. In the replication study, <span class="citation"><span class="nocase">Wagenmakers et al.</span>
+(2015)</span> collected data from 102 participants and found a
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mtext mathvariant="normal">BF</mtext><mrow><mn>0</mn><mo>+</mo></mrow></msub><annotation encoding="application/x-tex">\text{BF}_{0+}</annotation></semantics></math>
 = 10.76 in the favor of null hypothesis of no effect against a positive
 effect in the direction of the original study.</p>
@@ -167,7 +169,7 @@ two groups.</p>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">h1</span>, col <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/grDevices/rgb.html" class="external-link">rgb</a></span><span class="op">(</span><span class="fl">0</span>,<span class="fl">0</span>,<span class="fl">1</span>,<span class="fl">1</span><span class="op">/</span><span class="fl">4</span><span class="op">)</span>, xlim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">1</span>, <span class="fl">2</span><span class="op">)</span>, ylim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">16</span><span class="op">)</span>, las <span class="op">=</span> <span class="fl">1</span>, main <span class="op">=</span> <span class="st">""</span>, xlab <span class="op">=</span> <span class="st">"mean NEO PI-R"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">h2</span>, col <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/grDevices/rgb.html" class="external-link">rgb</a></span><span class="op">(</span><span class="fl">1</span>,<span class="fl">0</span>,<span class="fl">0</span>,<span class="fl">1</span><span class="op">/</span><span class="fl">4</span><span class="op">)</span>, add <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/legend.html" class="external-link">legend</a></span><span class="op">(</span><span class="st">"topright"</span>, legend <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Counter"</span>, <span class="st">"Clock"</span><span class="op">)</span>, fill <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/grDevices/rgb.html" class="external-link">rgb</a></span><span class="op">(</span><span class="fl">0</span>,<span class="fl">0</span>,<span class="fl">1</span>,<span class="fl">1</span><span class="op">/</span><span class="fl">4</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/grDevices/rgb.html" class="external-link">rgb</a></span><span class="op">(</span><span class="fl">1</span>,<span class="fl">0</span>,<span class="fl">0</span>,<span class="fl">1</span><span class="op">/</span><span class="fl">4</span><span class="op">)</span><span class="op">)</span>, bty <span class="op">=</span> <span class="st">"n"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="ComparisonR_files/figure-html/fig_dist-1.png" class="r-plt" width="60%" style="display: block; margin: auto;"></p>
+<p><img src="ComparisonR_files/figure-html/fig_dist-1.png" class="r-plt" alt="" width="60%" style="display: block; margin: auto;"></p>
 </div>
 <div class="section level3">
 <h3 id="implementation-with-bayestools">Implementation with BayesTools<a class="anchor" aria-label="anchor" href="#implementation-with-bayestools"></a>
@@ -206,8 +208,8 @@ prior distributions, the first one for the null hypothesis
 of no effect and second for the alternative hypothesis of a positive
 effect
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>ℋ</mi><mo>+</mo></msub><annotation encoding="application/x-tex">\mathcal{H}_+</annotation></semantics></math>.
-As in <span class="citation">Wagenmakers et al. (2015)</span>, I use a
-point null hypothesis for the
+As in <span class="citation"><span class="nocase">Wagenmakers et
+al.</span> (2015)</span>, I use a point null hypothesis for the
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>δ</mi><annotation encoding="application/x-tex">\delta</annotation></semantics></math>
 for
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>ℋ</mi><mn>0</mn></msub><annotation encoding="application/x-tex">\mathcal{H}_0</annotation></semantics></math>
@@ -245,7 +247,7 @@ highest.<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><seman
 <span>     xlim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">1</span>, <span class="fl">1</span><span class="op">)</span>, main <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/bquote.html" class="external-link">bquote</a></span><span class="op">(</span><span class="va">H</span><span class="op">[</span><span class="fl">0</span><span class="op">]</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ttest_priors_Hp</span><span class="op">$</span><span class="va">delta</span>, par_name <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/bquote.html" class="external-link">bquote</a></span><span class="op">(</span><span class="va">delta</span><span class="op">)</span>, </span>
 <span>     xlim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">5</span><span class="op">)</span>, main <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/bquote.html" class="external-link">bquote</a></span><span class="op">(</span><span class="va">H</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
-<p><img src="ComparisonR_files/figure-html/fig_priors-1.png" class="r-plt" width="100%" style="display: block; margin: auto;"></p>
+<p><img src="ComparisonR_files/figure-html/fig_priors-1.png" class="r-plt" alt="" width="100%" style="display: block; margin: auto;"></p>
 <p>The last step needed before actually fitting the models is specifying
 a list with the data set. Here, I need to pass both the observations for
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>x</mi><annotation encoding="application/x-tex">x</annotation></semantics></math>
@@ -274,7 +276,6 @@ values, etc…</p>
 <span>  prior_list   <span class="op">=</span> <span class="va">ttest_priors_H0</span>,</span>
 <span>  seed         <span class="op">=</span> <span class="fl">0</span></span>
 <span><span class="op">)</span> </span>
-<span><span class="co">#&gt; Loading required namespace: runjags</span></span>
 <span><span class="co">#&gt; Loading required namespace: rjags</span></span>
 <span></span>
 <span><span class="va">ttest_model_Hp</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/JAGS_fit.html">JAGS_fit</a></span><span class="op">(</span></span>
@@ -287,10 +288,10 @@ values, etc…</p>
 <code><a href="../reference/BayesTools_model_tables.html">runjags_estimates_table()</a></code> function.</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/BayesTools_model_tables.html">runjags_estimates_table</a></span><span class="op">(</span><span class="va">ttest_model_Hp</span><span class="op">)</span></span>
-<span><span class="co">#&gt;        Mean    SD   lCI Median   uCI error(MCMC) error(MCMC)/SD  ESS R-hat</span></span>
-<span><span class="co">#&gt; mu    0.681 0.048 0.585  0.681 0.774     0.00049          0.010 9784 1.000</span></span>
-<span><span class="co">#&gt; sigma 0.488 0.035 0.425  0.486 0.562     0.00036          0.010 9246 1.000</span></span>
-<span><span class="co">#&gt; delta 0.113 0.094 0.004  0.091 0.345     0.00139          0.015 4526 1.001</span></span></code></pre></div>
+<span><span class="co">#&gt;        Mean    SD 0.025   0.5 0.975 error(MCMC) error(MCMC)/SD   ESS R-hat</span></span>
+<span><span class="co">#&gt; mu    0.680 0.048 0.586 0.680 0.773     0.00048          0.010 10373 1.000</span></span>
+<span><span class="co">#&gt; sigma 0.487 0.035 0.425 0.485 0.562     0.00037          0.011  9024 1.000</span></span>
+<span><span class="co">#&gt; delta 0.113 0.093 0.004 0.090 0.344     0.00140          0.015  4533 1.000</span></span></code></pre></div>
 <p>To compute the Bayes factor in favor of
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>ℋ</mi><mo>+</mo></msub><annotation encoding="application/x-tex">\mathcal{H}_+</annotation></semantics></math>
 over
@@ -341,7 +342,7 @@ I can use the <code>bf()</code> function from the bridgesampling R
 package</p>
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">bridgesampling</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/bridgesampling/man/bf.html" class="external-link">bf</a></span><span class="op">(</span><span class="va">marglik_model_H0</span>, <span class="va">marglik_model_Hp</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Estimated Bayes factor in favor of marglik_model_H0 over marglik_model_Hp: 10.69726</span></span></code></pre></div>
+<span><span class="co">#&gt; Estimated Bayes factor in favor of marglik_model_H0 over marglik_model_Hp: 10.64814</span></span></code></pre></div>
 <p>or specify a BayesTools model ensemble object that can be further
 inspected by a variety of functions.</p>
 <div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
@@ -353,7 +354,7 @@ inspected by a variety of functions.</p>
 <span></span>
 <span><span class="fu"><a href="../reference/BayesTools_ensemble_tables.html">ensemble_inference_table</a></span><span class="op">(</span><span class="va">ensemble_info</span>, <span class="st">"delta"</span>, BF01 <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="co">#&gt;       Models Prior prob. Post. prob. Exclusion BF</span></span>
-<span><span class="co">#&gt; delta    1/2       0.500       0.085       10.697</span></span></code></pre></div>
+<span><span class="co">#&gt; delta    1/2       0.500       0.086       10.648</span></span></code></pre></div>
 <p>The corresponding results can be also obtained numerically with the
 <code>ttestBF()</code> function from the BayesFactor R package <span class="citation">(Morey et al., 2015)</span>.</p>
 <div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
@@ -422,11 +423,12 @@ Topolinski, S., &amp; Sparenberg, P. (2012). Turning the hands of time:
 308–314. <a href="https://doi.org/10.1177/1948550611419266" class="external-link">https://doi.org/10.1177/1948550611419266</a>
 </div>
 <div id="ref-wagenmakers2015turning" class="csl-entry">
-Wagenmakers, E.-J., Beek, T. F., Rotteveel, M., Gierholz, A., Matzke,
-D., Steingroever, H., Ly, A., Verhagen, J., Selker, R., Sasiadek, A., et
-al. (2015). Turning the hands of time again: A purely confirmatory
-replication study and a <span>B</span>ayesian analysis. <em>Frontiers in
-Psychology</em>, <em>6</em>, 1–6. <a href="https://doi.org/10.3389/fpsyg.2015.00494" class="external-link">https://doi.org/10.3389/fpsyg.2015.00494</a>
+<span class="nocase">Wagenmakers, E.-J., Beek, T. F., Rotteveel, M.,
+Gierholz, A., Matzke, D., Steingroever, H., Ly, A., Verhagen, J.,
+Selker, R., Sasiadek, A., et al.</span> (2015). Turning the hands of
+time again: A purely confirmatory replication study and a
+<span>B</span>ayesian analysis. <em>Frontiers in Psychology</em>,
+<em>6</em>, 1–6. <a href="https://doi.org/10.3389/fpsyg.2015.00494" class="external-link">https://doi.org/10.3389/fpsyg.2015.00494</a>
 </div>
 </div>
 </div>

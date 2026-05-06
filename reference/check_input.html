@@ -18,7 +18,7 @@ objects/arguments to a function passed by a user."><!-- mathjax --><script src="
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.23</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
       </span>
     </div>
 
@@ -58,7 +58,7 @@ objects/arguments to a function passed by a user."><!-- mathjax --><script src="
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Check input</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/v0.2.23/R/tools.R" class="external-link"><code>R/tools.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/tools.R" class="external-link"><code>R/tools.R</code></a></small>
     <div class="hidden name"><code>check_input.Rd</code></div>
     </div>
 
@@ -70,7 +70,7 @@ objects/arguments to a function passed by a user.</p>
     <div id="ref-usage">
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">check_bool</span><span class="op">(</span></span>
 <span>  <span class="va">x</span>,</span>
-<span>  <span class="va">name</span>,</span>
+<span>  name <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/deparse.html" class="external-link">deparse</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/substitute.html" class="external-link">substitute</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>  check_length <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  allow_NULL <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  allow_NA <span class="op">=</span> <span class="cn">TRUE</span>,</span>
@@ -79,7 +79,7 @@ objects/arguments to a function passed by a user.</p>
 <span></span>
 <span><span class="fu">check_char</span><span class="op">(</span></span>
 <span>  <span class="va">x</span>,</span>
-<span>  <span class="va">name</span>,</span>
+<span>  name <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/deparse.html" class="external-link">deparse</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/substitute.html" class="external-link">substitute</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>  check_length <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  allow_values <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  allow_NULL <span class="op">=</span> <span class="cn">FALSE</span>,</span>
@@ -89,7 +89,7 @@ objects/arguments to a function passed by a user.</p>
 <span></span>
 <span><span class="fu">check_real</span><span class="op">(</span></span>
 <span>  <span class="va">x</span>,</span>
-<span>  <span class="va">name</span>,</span>
+<span>  name <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/deparse.html" class="external-link">deparse</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/substitute.html" class="external-link">substitute</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>  lower <span class="op">=</span> <span class="op">-</span><span class="cn">Inf</span>,</span>
 <span>  upper <span class="op">=</span> <span class="cn">Inf</span>,</span>
 <span>  allow_bound <span class="op">=</span> <span class="cn">TRUE</span>,</span>
@@ -101,7 +101,7 @@ objects/arguments to a function passed by a user.</p>
 <span></span>
 <span><span class="fu">check_int</span><span class="op">(</span></span>
 <span>  <span class="va">x</span>,</span>
-<span>  <span class="va">name</span>,</span>
+<span>  name <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/deparse.html" class="external-link">deparse</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/substitute.html" class="external-link">substitute</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>  lower <span class="op">=</span> <span class="op">-</span><span class="cn">Inf</span>,</span>
 <span>  upper <span class="op">=</span> <span class="cn">Inf</span>,</span>
 <span>  allow_bound <span class="op">=</span> <span class="cn">TRUE</span>,</span>
@@ -113,7 +113,7 @@ objects/arguments to a function passed by a user.</p>
 <span></span>
 <span><span class="fu">check_list</span><span class="op">(</span></span>
 <span>  <span class="va">x</span>,</span>
-<span>  <span class="va">name</span>,</span>
+<span>  name <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/deparse.html" class="external-link">deparse</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/substitute.html" class="external-link">substitute</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>  check_length <span class="op">=</span> <span class="fl">0</span>,</span>
 <span>  check_names <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  all_objects <span class="op">=</span> <span class="cn">FALSE</span>,</span>

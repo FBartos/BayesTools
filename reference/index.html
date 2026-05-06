@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.23</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
       </span>
     </div>
 
@@ -112,6 +112,10 @@
         </td>
         <td><p>Format Bayes factor</p></td>
       </tr><tr><td>
+          <p><code><a href="formula_add_intercept.html">formula_add_intercept()</a></code> </p>
+        </td>
+        <td><p>Add an Intercept to a Formula</p></td>
+      </tr><tr><td>
           <p><code><a href="geom_prior.html">geom_prior()</a></code> </p>
         </td>
         <td><p>Add prior object to a ggplot</p></td>
@@ -128,9 +132,21 @@
         </td>
         <td><p>Interpret ensemble inference and estimates</p></td>
       </tr><tr><td>
+          <p><code><a href="interpret_records.html">interpret_records()</a></code> <code><a href="interpret_records.html">interpret_tables()</a></code> </p>
+        </td>
+        <td><p>Normalize structured interpretation sources</p></td>
+      </tr><tr><td>
           <p><code><a href="is.prior.html">is.prior()</a></code> <code><a href="is.prior.html">is.prior.point()</a></code> <code><a href="is.prior.html">is.prior.none()</a></code> <code><a href="is.prior.html">is.prior.simple()</a></code> <code><a href="is.prior.html">is.prior.discrete()</a></code> <code><a href="is.prior.html">is.prior.vector()</a></code> <code><a href="is.prior.html">is.prior.PET()</a></code> <code><a href="is.prior.html">is.prior.PEESE()</a></code> <code><a href="is.prior.html">is.prior.weightfunction()</a></code> <code><a href="is.prior.html">is.prior.factor()</a></code> <code><a href="is.prior.html">is.prior.orthonormal()</a></code> <code><a href="is.prior.html">is.prior.treatment()</a></code> <code><a href="is.prior.html">is.prior.independent()</a></code> <code><a href="is.prior.html">is.prior.spike_and_slab()</a></code> <code><a href="is.prior.html">is.prior.meandif()</a></code> <code><a href="is.prior.html">is.prior.mixture()</a></code> </p>
         </td>
         <td><p>Reports whether x is a a prior object</p></td>
+      </tr><tr><td>
+          <p><code><a href="is_prior_bias.html">is_prior_bias()</a></code> </p>
+        </td>
+        <td><p>Reports whether x is a composed publication-bias prior</p></td>
+      </tr><tr><td>
+          <p><code><a href="is_prior_phacking.html">is_prior_phacking()</a></code> </p>
+        </td>
+        <td><p>Reports whether x is a p-hacking prior</p></td>
       </tr><tr><td>
           <p><code><a href="JAGS_add_priors.html">JAGS_add_priors()</a></code> </p>
         </td>
@@ -167,6 +183,10 @@
           <p><code><a href="JAGS_formula.html">JAGS_formula()</a></code> </p>
         </td>
         <td><p>Create JAGS formula syntax and data object</p></td>
+      </tr><tr><td>
+          <p><code><a href="JAGS_formula_design.html">JAGS_formula_design()</a></code> </p>
+        </td>
+        <td><p>Extract Fitted JAGS Formula Design Metadata</p></td>
       </tr><tr><td>
           <p><code><a href="JAGS_get_inits.html">JAGS_get_inits()</a></code> </p>
         </td>
@@ -220,6 +240,10 @@
         </td>
         <td><p>Clean parameter names from JAGS</p></td>
       </tr><tr><td>
+          <p><code><a href="phack_pi_null.html">phack_pi_null()</a></code> <code><a href="phack_pi_null.html">phack_alpha_from_pi_null()</a></code> <code><a href="phack_pi_null.html">phack_backend_constants()</a></code> </p>
+        </td>
+        <td><p>P-hacking calibration helpers</p></td>
+      </tr><tr><td>
           <p><code><a href="plot.prior.html">plot(<i>&lt;prior&gt;</i>)</a></code> </p>
         </td>
         <td><p>Plots a prior object</p></td>
@@ -240,6 +264,10 @@
         </td>
         <td><p>Plot a list of prior distributions</p></td>
       </tr><tr><td>
+          <p><code><a href="plot_transformed_prior.html">plot_transformed_prior()</a></code> </p>
+        </td>
+        <td><p>Plot Transformed Prior Densities</p></td>
+      </tr><tr><td>
           <p><code><a href="point.html">dpoint()</a></code> <code><a href="point.html">rpoint()</a></code> <code><a href="point.html">ppoint()</a></code> <code><a href="point.html">qpoint()</a></code> </p>
         </td>
         <td><p>Point mass distribution</p></td>
@@ -255,6 +283,10 @@
           <p><code><a href="prior.html">prior()</a></code> <code><a href="prior.html">prior_none()</a></code> </p>
         </td>
         <td><p>Creates a prior distribution</p></td>
+      </tr><tr><td>
+          <p><code><a href="prior_bias.html">prior_bias()</a></code> </p>
+        </td>
+        <td><p>Creates a composed publication-bias prior</p></td>
       </tr><tr><td>
           <p><code><a href="prior_factor.html">prior_factor()</a></code> </p>
         </td>
@@ -280,6 +312,10 @@
         </td>
         <td><p>Creates a mixture of prior distributions</p></td>
       </tr><tr><td>
+          <p><code><a href="prior_phacking.html">prior_phacking()</a></code> </p>
+        </td>
+        <td><p>Creates a prior distribution for a p-hacking selection kernel</p></td>
+      </tr><tr><td>
           <p><code><a href="prior_PP.html">prior_PET()</a></code> <code><a href="prior_PP.html">prior_PEESE()</a></code> </p>
         </td>
         <td><p>Creates a prior distribution for PET or PEESE models</p></td>
@@ -288,7 +324,7 @@
         </td>
         <td><p>Creates a spike and slab prior distribution</p></td>
       </tr><tr><td>
-          <p><code><a href="prior_weightfunction.html">prior_weightfunction()</a></code> </p>
+          <p><code><a href="prior_weightfunction.html">prior_weightfunction()</a></code> <code><a href="prior_weightfunction.html">wf_cumulative()</a></code> <code><a href="prior_weightfunction.html">wf_fixed()</a></code> <code><a href="prior_weightfunction.html">wf_independent()</a></code> </p>
         </td>
         <td><p>Creates a prior distribution for a weight function</p></td>
       </tr><tr><td>
@@ -312,6 +348,10 @@
         </td>
         <td><p>Creates generic for sd function</p></td>
       </tr><tr><td>
+          <p><code><a href="selection_backend_spec.html">selection_backend_spec()</a></code> </p>
+        </td>
+        <td><p>Compile selection priors for backend consumers</p></td>
+      </tr><tr><td>
           <p><code><a href="transform_factor_samples.html">transform_factor_samples()</a></code> </p>
         </td>
         <td><p>Transform factor posterior samples into differences from the mean</p></td>
@@ -323,6 +363,14 @@
           <p><code><a href="transform_orthonormal_samples.html">transform_orthonormal_samples()</a></code> </p>
         </td>
         <td><p>Transform orthonomal posterior samples into differences from the mean</p></td>
+      </tr><tr><td>
+          <p><code><a href="transform_prior_samples.html">transform_prior_samples()</a></code> </p>
+        </td>
+        <td><p>Transform prior samples to original scale</p></td>
+      </tr><tr><td>
+          <p><code><a href="transform_scale_samples.html">transform_scale_samples()</a></code> </p>
+        </td>
+        <td><p>Transform standardized posterior samples back to original scale</p></td>
       </tr><tr><td>
           <p><code><a href="update.BayesTools_table.html">update(<i>&lt;BayesTools_table&gt;</i>)</a></code> </p>
         </td>

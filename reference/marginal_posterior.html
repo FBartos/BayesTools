@@ -19,7 +19,7 @@ parameter based on model-averaged posterior samples and parameter name
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.23</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
       </span>
     </div>
 
@@ -59,7 +59,7 @@ parameter based on model-averaged posterior samples and parameter name
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Model-average marginal posterior distributions</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/v0.2.23/R/marginal-distributions.R" class="external-link"><code>R/marginal-distributions.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/marginal-distributions.R" class="external-link"><code>R/marginal-distributions.R</code></a></small>
     <div class="hidden name"><code>marginal_posterior.Rd</code></div>
     </div>
 
@@ -124,15 +124,16 @@ specifying one of the prepared transformations:</p><dl><dt>lin</dt>
 <dd><p>linear transformation in form of <code>a + b*x</code></p></dd>
 
 <dt>tanh</dt>
-<dd><p>also known as Fisher's z transformation</p></dd>
+<dd><p>hyperbolic tangent transformation</p></dd>
 
 <dt>exp</dt>
 <dd><p>exponential transformation</p></dd>
 
 
 </dl><p>, or a list containing the transformation function <code>fun</code>,
-inverse transformation function <code>inv</code>, and the Jacobian of
-the transformation <code>jac</code>. See examples for details.</p></dd>
+inverse transformation function <code>inv</code>, and derivative of the
+transformation <code>jac</code>, evaluated on the original support. See examples
+for details.</p></dd>
 
 
 <dt id="arg-transformation-arguments">transformation_arguments<a class="anchor" aria-label="anchor" href="#arg-transformation-arguments"></a></dt>
@@ -147,8 +148,8 @@ the transformed support</p></dd>
 
 
 <dt id="arg-n-samples">n_samples<a class="anchor" aria-label="anchor" href="#arg-n-samples"></a></dt>
-<dd><p>number of samples to be drawn for the model-averaged
-prior distribution</p></dd>
+<dd><p>controls the numerical grid used for model-averaged
+prior densities</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>

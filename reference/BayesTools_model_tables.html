@@ -18,7 +18,7 @@ provides estimates table for a runjags fit."><!-- mathjax --><script src="https:
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.23</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
       </span>
     </div>
 
@@ -58,7 +58,7 @@ provides estimates table for a runjags fit."><!-- mathjax --><script src="https:
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Create BayesTools model tables</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/v0.2.23/R/summary-tables.R" class="external-link"><code>R/summary-tables.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/summary-tables.R" class="external-link"><code>R/summary-tables.R</code></a></small>
     <div class="hidden name"><code>BayesTools_model_tables.Rd</code></div>
     </div>
 
@@ -87,13 +87,21 @@ provides estimates table for a runjags fit.</p>
 <span>  footnotes <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  warnings <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  conditional <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  probs <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.025</span>, <span class="fl">0.5</span>, <span class="fl">0.975</span><span class="op">)</span>,</span>
 <span>  remove_spike_0 <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  transform_factors <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  transform_orthonormal <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  remove_inclusion <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  remove_parameters <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  return_samples <span class="op">=</span> <span class="cn">FALSE</span></span>
+<span>  remove_formulas <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  keep_parameters <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  keep_formulas <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  return_samples <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  transform_scaled <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  remove_diagnostics <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  diagnostic_columns <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"BayesTools.JAGS_estimates_diagnostic_columns"</span>, <span class="kw">if</span></span>
+<span>    <span class="op">(</span><span class="va">remove_diagnostics</span><span class="op">)</span> <span class="st">"none"</span> <span class="kw">else</span> <span class="st">"all"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">runjags_inference_table</span><span class="op">(</span></span>
@@ -101,7 +109,12 @@ provides estimates table for a runjags fit.</p>
 <span>  title <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  footnotes <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  warnings <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span>  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  logBF <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  BF01 <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  BF_diagnostics <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  BF_diagnostic_columns <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"BayesTools.JAGS_BF_diagnostic_columns"</span>, <span class="kw">if</span></span>
+<span>    <span class="op">(</span><span class="va">BF_diagnostics</span><span class="op">)</span> <span class="st">"all"</span> <span class="kw">else</span> <span class="st">"none"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">JAGS_estimates_table</span><span class="op">(</span></span>
@@ -111,13 +124,21 @@ provides estimates table for a runjags fit.</p>
 <span>  footnotes <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  warnings <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  conditional <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  probs <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.025</span>, <span class="fl">0.5</span>, <span class="fl">0.975</span><span class="op">)</span>,</span>
 <span>  remove_spike_0 <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  transform_factors <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  transform_orthonormal <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  remove_inclusion <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  remove_parameters <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  return_samples <span class="op">=</span> <span class="cn">FALSE</span></span>
+<span>  remove_formulas <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  keep_parameters <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  keep_formulas <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  return_samples <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  transform_scaled <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  remove_diagnostics <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  diagnostic_columns <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"BayesTools.JAGS_estimates_diagnostic_columns"</span>, <span class="kw">if</span></span>
+<span>    <span class="op">(</span><span class="va">remove_diagnostics</span><span class="op">)</span> <span class="st">"none"</span> <span class="kw">else</span> <span class="st">"all"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">JAGS_inference_table</span><span class="op">(</span></span>
@@ -125,7 +146,12 @@ provides estimates table for a runjags fit.</p>
 <span>  title <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  footnotes <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  warnings <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span>  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  logBF <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  BF01 <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  BF_diagnostics <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  BF_diagnostic_columns <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"BayesTools.JAGS_BF_diagnostic_columns"</span>, <span class="kw">if</span></span>
+<span>    <span class="op">(</span><span class="va">BF_diagnostics</span><span class="op">)</span> <span class="st">"all"</span> <span class="kw">else</span> <span class="st">"none"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">JAGS_summary_table</span><span class="op">(</span></span>
@@ -147,13 +173,47 @@ provides estimates table for a runjags fit.</p>
 <span>  warnings <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu">runjags_estimates_empty_table</span><span class="op">(</span>title <span class="op">=</span> <span class="cn">NULL</span>, footnotes <span class="op">=</span> <span class="cn">NULL</span>, warnings <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span>
+<span><span class="fu">runjags_estimates_empty_table</span><span class="op">(</span></span>
+<span>  probs <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.025</span>, <span class="fl">0.5</span>, <span class="fl">0.975</span><span class="op">)</span>,</span>
+<span>  title <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  footnotes <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  warnings <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  remove_diagnostics <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  diagnostic_columns <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"BayesTools.JAGS_estimates_diagnostic_columns"</span>, <span class="kw">if</span></span>
+<span>    <span class="op">(</span><span class="va">remove_diagnostics</span><span class="op">)</span> <span class="st">"none"</span> <span class="kw">else</span> <span class="st">"all"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu">runjags_inference_empty_table</span><span class="op">(</span>title <span class="op">=</span> <span class="cn">NULL</span>, footnotes <span class="op">=</span> <span class="cn">NULL</span>, warnings <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span>
+<span><span class="fu">runjags_inference_empty_table</span><span class="op">(</span></span>
+<span>  title <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  footnotes <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  warnings <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  logBF <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  BF01 <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  BF_diagnostics <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  BF_diagnostic_columns <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"BayesTools.JAGS_BF_diagnostic_columns"</span>, <span class="kw">if</span></span>
+<span>    <span class="op">(</span><span class="va">BF_diagnostics</span><span class="op">)</span> <span class="st">"all"</span> <span class="kw">else</span> <span class="st">"none"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu">JAGS_estimates_empty_table</span><span class="op">(</span>title <span class="op">=</span> <span class="cn">NULL</span>, footnotes <span class="op">=</span> <span class="cn">NULL</span>, warnings <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span>
+<span><span class="fu">JAGS_estimates_empty_table</span><span class="op">(</span></span>
+<span>  probs <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.025</span>, <span class="fl">0.5</span>, <span class="fl">0.975</span><span class="op">)</span>,</span>
+<span>  title <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  footnotes <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  warnings <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  remove_diagnostics <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  diagnostic_columns <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"BayesTools.JAGS_estimates_diagnostic_columns"</span>, <span class="kw">if</span></span>
+<span>    <span class="op">(</span><span class="va">remove_diagnostics</span><span class="op">)</span> <span class="st">"none"</span> <span class="kw">else</span> <span class="st">"all"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu">JAGS_inference_empty_table</span><span class="op">(</span>title <span class="op">=</span> <span class="cn">NULL</span>, footnotes <span class="op">=</span> <span class="cn">NULL</span>, warnings <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span>
+<span><span class="fu">JAGS_inference_empty_table</span><span class="op">(</span></span>
+<span>  title <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  footnotes <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  warnings <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  logBF <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  BF01 <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  BF_diagnostics <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  BF_diagnostic_columns <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"BayesTools.JAGS_BF_diagnostic_columns"</span>, <span class="kw">if</span></span>
+<span>    <span class="op">(</span><span class="va">BF_diagnostics</span><span class="op">)</span> <span class="st">"all"</span> <span class="kw">else</span> <span class="st">"none"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">stan_estimates_table</span><span class="op">(</span></span>
 <span>  <span class="va">fit</span>,</span>
@@ -210,8 +270,10 @@ be printed. Defaults to <code>TRUE</code>.</p></dd>
 
 
 <dt id="arg-remove-parameters">remove_parameters<a class="anchor" aria-label="anchor" href="#arg-remove-parameters"></a></dt>
-<dd><p>parameters to be removed from the summary. Defaults
-to <code>NULL</code>, i.e., including all parameters.</p></dd>
+<dd><p>parameters to be removed from the summary.
+Can be <code>NULL</code> (default, no removal), a character vector of parameter
+names to remove, or <code>TRUE</code> to remove all parameters that are not
+part of any formula.</p></dd>
 
 
 <dt id="arg-fit">fit<a class="anchor" aria-label="anchor" href="#arg-fit"></a></dt>
@@ -226,6 +288,10 @@ to specific parameters</p></dd>
 <dt id="arg-conditional">conditional<a class="anchor" aria-label="anchor" href="#arg-conditional"></a></dt>
 <dd><p>summarizes estimates conditional on being included
 in the model for spike and slab priors. Defaults to <code>FALSE</code>.</p></dd>
+
+
+<dt id="arg-probs">probs<a class="anchor" aria-label="anchor" href="#arg-probs"></a></dt>
+<dd><p>quantiles for parameter estimates</p></dd>
 
 
 <dt id="arg-transform-factors">transform_factors<a class="anchor" aria-label="anchor" href="#arg-transform-factors"></a></dt>
@@ -245,9 +311,73 @@ differences from the grand mean</p></dd>
 should be excluded from the summary table. Defaults to <code>FALSE</code>.</p></dd>
 
 
+<dt id="arg-remove-formulas">remove_formulas<a class="anchor" aria-label="anchor" href="#arg-remove-formulas"></a></dt>
+<dd><p>character vector of formula names whose parameters
+should be removed from the summary. Defaults to <code>NULL</code>.</p></dd>
+
+
+<dt id="arg-keep-parameters">keep_parameters<a class="anchor" aria-label="anchor" href="#arg-keep-parameters"></a></dt>
+<dd><p>character vector of parameter names to keep.
+All other parameters will be removed unless they belong to formulas
+specified in <code>keep_formulas</code>. Defaults to <code>NULL</code>.</p></dd>
+
+
+<dt id="arg-keep-formulas">keep_formulas<a class="anchor" aria-label="anchor" href="#arg-keep-formulas"></a></dt>
+<dd><p>character vector of formula names whose parameters
+should be kept. All other parameters will be removed unless they are
+specified in <code>keep_parameters</code>. Defaults to <code>NULL</code>.</p></dd>
+
+
 <dt id="arg-return-samples">return_samples<a class="anchor" aria-label="anchor" href="#arg-return-samples"></a></dt>
 <dd><p>whether to return the transoformed and formated samples
 instead of the table. Defaults to <code>FALSE</code>.</p></dd>
+
+
+<dt id="arg-transform-scaled">transform_scaled<a class="anchor" aria-label="anchor" href="#arg-transform-scaled"></a></dt>
+<dd><p>whether coefficients from standardized
+continuous predictors should be transformed back to the original
+scale. Defaults to <code>FALSE</code>.</p></dd>
+
+
+<dt id="arg-remove-diagnostics">remove_diagnostics<a class="anchor" aria-label="anchor" href="#arg-remove-diagnostics"></a></dt>
+<dd><p>whether to exclude MCMC diagnostics (MCMC error,
+ESS, R-hat) from the output table. Defaults to <code>FALSE</code>. Setting to
+<code>TRUE</code> will exclude diagnostics columns regardless of the
+<code>conditional</code> setting.</p></dd>
+
+
+<dt id="arg-diagnostic-columns">diagnostic_columns<a class="anchor" aria-label="anchor" href="#arg-diagnostic-columns"></a></dt>
+<dd><p>MCMC diagnostic columns to display in JAGS
+estimates tables. Can be <code>"all"</code>, <code>"none"</code>, <code>TRUE</code>,
+<code>FALSE</code>, or a character vector containing any subset of
+<code>"MCMC_error"</code>, <code>"MCMC_SD_error"</code>, <code>"ESS"</code>, and
+<code>"R_hat"</code>. Defaults to the
+<code>BayesTools.JAGS_estimates_diagnostic_columns</code> option, or all
+diagnostics unless <code>remove_diagnostics = TRUE</code>.</p></dd>
+
+
+<dt id="arg-logbf">logBF<a class="anchor" aria-label="anchor" href="#arg-logbf"></a></dt>
+<dd><p>whether the Bayes factor should be on log scale</p></dd>
+
+
+<dt id="arg-bf-">BF01<a class="anchor" aria-label="anchor" href="#arg-bf-"></a></dt>
+<dd><p>whether the Bayes factor should be inverted</p></dd>
+
+
+<dt id="arg-bf-diagnostics">BF_diagnostics<a class="anchor" aria-label="anchor" href="#arg-bf-diagnostics"></a></dt>
+<dd><p>whether to add MCMC diagnostics for Bayes factors
+computed from model indicator frequencies. The Bayes factor error is
+reported as a relative Monte Carlo standard error percentage. Defaults to
+<code>FALSE</code>.</p></dd>
+
+
+<dt id="arg-bf-diagnostic-columns">BF_diagnostic_columns<a class="anchor" aria-label="anchor" href="#arg-bf-diagnostic-columns"></a></dt>
+<dd><p>MCMC diagnostic columns to display in JAGS
+inclusion Bayes factor tables. Can be <code>"all"</code>, <code>"none"</code>,
+<code>TRUE</code>, <code>FALSE</code>, or a character vector containing any subset of
+<code>"ESS"</code>, <code>"MCMC_error"</code>, and <code>"BF_error_percent"</code>.
+Defaults to the <code>BayesTools.JAGS_BF_diagnostic_columns</code> option, or all
+diagnostics when <code>BF_diagnostics = TRUE</code> and none otherwise.</p></dd>
 
 </dl></div>
     <div id="value">
@@ -257,6 +387,19 @@ overview of the fitted model, <code>runjags_estimates_table</code> returns
 a table with MCMC estimates, and <code>runjags_estimates_empty_table</code>
 returns an empty estimates table. All of the tables are objects of
 class 'BayesTools_table'.</p>
+    </div>
+    <div id="details">
+    <h2>Details</h2>
+    <p>For product-space JAGS inclusion Bayes factors, posterior inclusion
+probabilities of exactly 0 or 1 cannot produce a finite point estimate of
+the model odds ratio. In that case, inclusion BFs marked with <code>"&lt;"</code> or
+<code>"&gt;"</code> are finite-sample bounds: posterior inclusion probabilities of
+0 or 1 were replaced by <code>1/S</code> or <code>(S - 1)/S</code>, where <code>S</code> is
+the number of posterior samples. This is a reporting convention, not an
+unbiased finite Bayes-factor estimate. If the prior inclusion probability
+is exactly 0 or 1, the inclusion Bayes factor is undefined and reported as
+<code>NA</code>, because the corresponding inclusion/exclusion comparison was not
+tested.</p>
     </div>
     <div id="see-also">
     <h2>See also</h2>

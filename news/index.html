@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.23</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
       </span>
     </div>
 
@@ -57,11 +57,61 @@
   <div class="col-md-9 contents">
     <div class="page-header">
       <h1 data-toc-skip>Changelog <small></small></h1>
-      <small>Source: <a href="https://github.com/FBartos/BayesTools/blob/v0.2.23/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
+      <small>Source: <a href="https://github.com/FBartos/BayesTools/blob/master/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
     <div class="section level2">
-<h2 class="page-header" data-toc-text="0.2.23" id="version-0223">version 0.2.23<a class="anchor" aria-label="anchor" href="#version-0223"></a></h2>
+<h2 class="page-header" data-toc-text="0.3.0" id="version-030">version 0.3.0<small>2026-05-06</small><a class="anchor" aria-label="anchor" href="#version-030"></a></h2>
+<div class="section level4">
+<h4 id="features-0-3-0">Features<a class="anchor" aria-label="anchor" href="#features-0-3-0"></a></h4>
+<ul><li>major refactoring and speed-up of unit tests</li>
+<li>adds support for <code>__default_factor</code> and <code>__default_continuous</code> priors in <code><a href="../reference/JAGS_formula.html">JAGS_formula()</a></code> - when specified in the <code>prior_list</code>, these are used as default priors for factor and continuous predictors that are not explicitly specified</li>
+<li>adds automatic standardization of continuous predictors via <code>formula_scale</code> parameter in <code><a href="../reference/JAGS_formula.html">JAGS_formula()</a></code> and <code><a href="../reference/JAGS_fit.html">JAGS_fit()</a></code> - improves MCMC sampling efficiency and numerical stability</li>
+<li>adds <code><a href="../reference/transform_scale_samples.html">transform_scale_samples()</a></code> function to transform posterior samples back to original scale after standardization</li>
+<li>adds <code><a href="../reference/transform_prior_samples.html">transform_prior_samples()</a></code> function to generate and transform prior samples using the same matrix transformation as posterior samples - enables correct visualization of priors on the original (unscaled) predictor scale, including proper handling of the intercept which depends on multiple coefficient priors</li>
+<li>adds <code>transform_scaled</code> argument to <code><a href="../reference/plot_posterior.html">plot_posterior()</a></code> for visualizing prior and posterior distributions on the original (unscaled) scale when using formula-based models with auto-scaling</li>
+<li>adds <code>exp_lin</code> transformation type for log-intercept unscaling in density/plotting functions: <code>exp(a + b * log(x))</code>
+</li>
+<li>adds <code>log(intercept)</code> formula attribute for specifying models of the form <code>log(intercept) + sum(beta_i * x_i)</code> - useful for parameters that must be positive (e.g., standard deviation) while keeping the intercept on the original scale. Set via <code>attr(formula, "log(intercept)") &lt;- TRUE</code>. Supported in <code><a href="../reference/JAGS_formula.html">JAGS_formula()</a></code>, <code><a href="../reference/JAGS_evaluate_formula.html">JAGS_evaluate_formula()</a></code>, and marginal likelihood computation</li>
+<li>adds advanced parameter filtering options to <code><a href="../reference/BayesTools_model_tables.html">runjags_estimates_table()</a></code>:
+<ul><li>
+<code>remove_parameters = TRUE</code> to remove all non-formula parameters</li>
+<li>
+<code>remove_formulas</code> to remove all parameters from specific formulas</li>
+<li>
+<code>keep_parameters</code> to keep only specified parameters</li>
+<li>
+<code>keep_formulas</code> to keep only parameters from specified formulas</li>
+<li>when <code>bias</code> is specified in <code>remove_parameters</code> or <code>keep_parameters</code>, the corresponding bias-related parameters (<code>PET</code>, <code>PEESE</code>, <code>omega</code>, <code>alpha</code>, <code>pi_null</code>, and <code>phack_kind</code>) are automatically included based on the bias prior type</li>
+</ul></li>
+<li>adds <code>probs</code> argument to <code><a href="../reference/BayesTools_model_tables.html">runjags_estimates_table()</a></code> and <code><a href="../reference/BayesTools_model_tables.html">runjags_estimates_empty_table()</a></code> for custom quantiles (default: <code>c(0.025, 0.5, 0.975)</code>)</li>
+<li>adds <code>effect_direction</code> argument to <code><a href="../reference/plot_posterior.html">plot_posterior()</a></code>, <code><a href="../reference/plot_prior_list.html">plot_prior_list()</a></code>, <code><a href="../reference/lines_prior_list.html">lines_prior_list()</a></code>, and <code><a href="../reference/geom_prior_list.html">geom_prior_list()</a></code> for PET-PEESE regression plots - use <code>"positive"</code> (default) for <code>mu + PET*se + PEESE*se^2</code> or <code>"negative"</code> for <code>mu - PET*se - PEESE*se^2</code>
+</li>
+<li>redesigns <code><a href="../reference/prior_weightfunction.html">prior_weightfunction()</a></code> around a unified <code>side</code>, <code>steps</code>, and <code>weights</code> specification, with <code><a href="../reference/prior_weightfunction.html">wf_cumulative()</a></code>, <code><a href="../reference/prior_weightfunction.html">wf_fixed()</a></code>, and <code><a href="../reference/prior_weightfunction.html">wf_independent()</a></code> constructors for cumulative Dirichlet, fixed, independent, and log-independent weightfunction priors</li>
+<li>adds p-hacking and composed selection-bias priors via <code><a href="../reference/prior_phacking.html">prior_phacking()</a></code>, <code><a href="../reference/prior_bias.html">prior_bias()</a></code>, calibration helpers, and <code><a href="../reference/selection_backend_spec.html">selection_backend_spec()</a></code> for compiling active step/p-hacking backend parameters</li>
+<li>adds error % for inclusion BF calculation</li>
+</ul></div>
+<div class="section level4">
+<h4 id="changes-0-3-0">Changes<a class="anchor" aria-label="anchor" href="#changes-0-3-0"></a></h4>
+<ul><li>changes quantile column names in <code><a href="../reference/BayesTools_model_tables.html">runjags_estimates_table()</a></code> and <code><a href="../reference/BayesTools_model_tables.html">stan_estimates_table()</a></code> from <code>lCI</code>/<code>Median</code>/<code>uCI</code> to numeric values (e.g., <code>0.025</code>/<code>0.5</code>/<code>0.975</code>) for consistency with ensemble summary tables</li>
+<li>implied prior distributions for estimated marginal means, unstandardized coefficients, and PET-PEESE no longer require prior samples</li>
+<li>implied prior distributions for weightfunction weights now use analytical forms for cumulative Dirichlet, fixed, independent, and log-independent priors, including mixture and model-averaged weightfunctions where possible</li>
+<li>independent weightfunction priors now allow non-reference weights above one via non-negative omega-scale priors or unrestricted log-omega priors</li>
+<li>replaces the legacy dot-named weightfunction prior specifications with the unified weightfunction prior API and updates JAGS generation, marginal likelihood computation, posterior extraction, diagnostics, and summary tables to use the new component-local <code>omega</code> representation</li>
+<li>composed selection-bias priors and publication-bias mixtures now support prior sampling and explicit unsupported-operation errors for ambiguous scalar prior generics</li>
+</ul></div>
+<div class="section level4">
+<h4 id="fixes-0-3-0">Fixes<a class="anchor" aria-label="anchor" href="#fixes-0-3-0"></a></h4>
+<ul><li>reports inclusion Bayes factors as <code>NA</code> when the prior assigns probability 0 or 1 to inclusion, while keeping finite-sample bounds for posterior inclusion probabilities of 0 or 1</li>
+<li>fixes incorrect ordering the printed mixture priors</li>
+<li>fixes formula with no intercepts coded as <code>0</code> (instead of only <code>-1</code>)</li>
+<li>fixes bug in <code>.is.wholenumber</code> with NAs and <code>na.rm = TRUE</code>
+</li>
+<li>fixes ggplot prior spike layers for marginal factor plots with density and point components</li>
+</ul></div>
+</div>
+    <div class="section level2">
+<h2 class="page-header" data-toc-text="0.2.23" id="version-0223">version 0.2.23<small>2025-12-08</small><a class="anchor" aria-label="anchor" href="#version-0223"></a></h2>
 <div class="section level4">
 <h4 id="fixes-0-2-23">Fixes<a class="anchor" aria-label="anchor" href="#fixes-0-2-23"></a></h4>
 <ul><li>

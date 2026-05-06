@@ -19,7 +19,7 @@ the models represent the null or alternative hypothesis."><!-- mathjax --><scrip
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.23</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
       </span>
     </div>
 
@@ -59,7 +59,7 @@ the models represent the null or alternative hypothesis."><!-- mathjax --><scrip
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Compute inclusion Bayes factors</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/v0.2.23/R/model-averaging.R" class="external-link"><code>R/model-averaging.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/model-averaging.R" class="external-link"><code>R/model-averaging.R</code></a></small>
     <div class="hidden name"><code>inclusion_BF.Rd</code></div>
     </div>
 
@@ -103,7 +103,9 @@ corresponding to the null hypothesis)</p></dd>
     <h2>Details</h2>
     <p>Supplying <code>margliks</code> as the input is preferred since it is better at dealing with
 under/overflow (posterior probabilities are very close to either 0 or 1). In case that both the
-<code>post_probs</code> and <code>margliks</code> are supplied, the results are based on <code>margliks</code>.</p>
+<code>post_probs</code> and <code>margliks</code> are supplied, the results are based on <code>margliks</code>.
+If the prior probability of either the null or alternative hypothesis is
+zero, the Bayes factor is undefined and <code>NA</code> is returned.</p>
     </div>
 
   </div>

@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.23</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
       </span>
     </div>
 
@@ -57,7 +57,7 @@
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Add list of prior objects to a plot</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/v0.2.23/R/model-averaging-plots.R" class="external-link"><code>R/model-averaging-plots.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/model-averaging-plots.R" class="external-link"><code>R/model-averaging-plots.R</code></a></small>
     <div class="hidden name"><code>lines_prior_list.Rd</code></div>
     </div>
 
@@ -74,12 +74,15 @@
 <span>  n_points <span class="op">=</span> <span class="fl">500</span>,</span>
 <span>  n_samples <span class="op">=</span> <span class="fl">10000</span>,</span>
 <span>  force_samples <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  individual <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  show_figures <span class="op">=</span> <span class="kw">if</span> <span class="op">(</span><span class="va">individual</span><span class="op">)</span> <span class="fl">1</span> <span class="kw">else</span> <span class="cn">NULL</span>,</span>
 <span>  transformation <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  transformation_arguments <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  transformation_settings <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  rescale_x <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  scale_y2 <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  prior_list_mu <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  effect_direction <span class="op">=</span> <span class="st">"positive"</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -127,6 +130,17 @@ analytically (or if samples are forced with
 of obtaining analytic solution whenever possible</p></dd>
 
 
+<dt id="arg-individual">individual<a class="anchor" aria-label="anchor" href="#arg-individual"></a></dt>
+<dd><p>should individual densities be returned
+(e.g., in case of weightfunction)</p></dd>
+
+
+<dt id="arg-show-figures">show_figures<a class="anchor" aria-label="anchor" href="#arg-show-figures"></a></dt>
+<dd><p>which figures should be returned in case of
+multiple plots are generated. Useful when priors for the omega
+parameter are plotted and <code>individual = TRUE</code>.</p></dd>
+
+
 <dt id="arg-transformation">transformation<a class="anchor" aria-label="anchor" href="#arg-transformation"></a></dt>
 <dd><p>transformation to be applied
 to the prior distribution. Either a character
@@ -134,15 +148,16 @@ specifying one of the prepared transformations:</p><dl><dt>lin</dt>
 <dd><p>linear transformation in form of <code>a + b*x</code></p></dd>
 
 <dt>tanh</dt>
-<dd><p>also known as Fisher's z transformation</p></dd>
+<dd><p>hyperbolic tangent transformation</p></dd>
 
 <dt>exp</dt>
 <dd><p>exponential transformation</p></dd>
 
 
 </dl><p>, or a list containing the transformation function <code>fun</code>,
-inverse transformation function <code>inv</code>, and the Jacobian of
-the transformation <code>jac</code>. See examples for details.</p></dd>
+inverse transformation function <code>inv</code>, and derivative of the
+transformation <code>jac</code>, evaluated on the original support. See examples
+for details.</p></dd>
 
 
 <dt id="arg-transformation-arguments">transformation_arguments<a class="anchor" aria-label="anchor" href="#arg-transformation-arguments"></a></dt>
@@ -168,6 +183,13 @@ weightfunction is plotted.</p></dd>
 <dt id="arg-prior-list-mu">prior_list_mu<a class="anchor" aria-label="anchor" href="#arg-prior-list-mu"></a></dt>
 <dd><p>list of priors for the mu parameter
 required when plotting PET-PEESE</p></dd>
+
+
+<dt id="arg-effect-direction">effect_direction<a class="anchor" aria-label="anchor" href="#arg-effect-direction"></a></dt>
+<dd><p>direction of the effect for PET-PEESE
+regression. Use <code>"positive"</code> (default) for
+<code>mu + PET*se + PEESE*se^2</code> or <code>"negative"</code> for
+<code>mu - PET*se - PEESE*se^2</code>.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>

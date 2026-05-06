@@ -17,7 +17,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.23</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
       </span>
     </div>
 
@@ -57,7 +57,7 @@
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Plot samples from the marginal posterior distributions</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/v0.2.23/R/model-averaging-plots.R" class="external-link"><code>R/model-averaging-plots.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/model-averaging-plots.R" class="external-link"><code>R/model-averaging-plots.R</code></a></small>
     <div class="hidden name"><code>plot_marginal.Rd</code></div>
     </div>
 
@@ -78,6 +78,10 @@
 <span>  rescale_x <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  par_name <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  dots_prior <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>  legend <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  legend_title <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  legend_labels <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  legend_position <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -101,7 +105,9 @@ or ggplot2 <code>"ggplot"</code> for plotting.</p></dd>
 
 
 <dt id="arg-prior">prior<a class="anchor" aria-label="anchor" href="#arg-prior"></a></dt>
-<dd><p>whether prior distribution should be added to the figure</p></dd>
+<dd><p>whether prior distribution should be added to the figure.
+When samples were prepared with <code>as_mixed_posteriors(..., transform_scaled = TRUE)</code>,
+the transformed prior samples are automatically used.</p></dd>
 
 
 <dt id="arg-n-points">n_points<a class="anchor" aria-label="anchor" href="#arg-n-points"></a></dt>
@@ -116,15 +122,16 @@ specifying one of the prepared transformations:</p><dl><dt>lin</dt>
 <dd><p>linear transformation in form of <code>a + b*x</code></p></dd>
 
 <dt>tanh</dt>
-<dd><p>also known as Fisher's z transformation</p></dd>
+<dd><p>hyperbolic tangent transformation</p></dd>
 
 <dt>exp</dt>
 <dd><p>exponential transformation</p></dd>
 
 
 </dl><p>, or a list containing the transformation function <code>fun</code>,
-inverse transformation function <code>inv</code>, and the Jacobian of
-the transformation <code>jac</code>. See examples for details.</p></dd>
+inverse transformation function <code>inv</code>, and derivative of the
+transformation <code>jac</code>, evaluated on the original support. See examples
+for details.</p></dd>
 
 
 <dt id="arg-transformation-arguments">transformation_arguments<a class="anchor" aria-label="anchor" href="#arg-transformation-arguments"></a></dt>
@@ -151,6 +158,22 @@ parameter that needs to be transformed.</p></dd>
 
 <dt id="arg-dots-prior">dots_prior<a class="anchor" aria-label="anchor" href="#arg-dots-prior"></a></dt>
 <dd><p>additional arguments for the prior distribution plot</p></dd>
+
+
+<dt id="arg-legend">legend<a class="anchor" aria-label="anchor" href="#arg-legend"></a></dt>
+<dd><p>whether factor legends should be drawn.</p></dd>
+
+
+<dt id="arg-legend-title">legend_title<a class="anchor" aria-label="anchor" href="#arg-legend-title"></a></dt>
+<dd><p>optional title for factor legends.</p></dd>
+
+
+<dt id="arg-legend-labels">legend_labels<a class="anchor" aria-label="anchor" href="#arg-legend-labels"></a></dt>
+<dd><p>optional labels for factor legend levels.</p></dd>
+
+
+<dt id="arg-legend-position">legend_position<a class="anchor" aria-label="anchor" href="#arg-legend-position"></a></dt>
+<dd><p>optional legend position for factor legends.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>

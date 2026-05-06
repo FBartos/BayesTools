@@ -23,7 +23,7 @@ log likelihood of the model part."><!-- mathjax --><script src="https://cdnjs.cl
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.23</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
       </span>
     </div>
 
@@ -63,7 +63,7 @@ log likelihood of the model part."><!-- mathjax --><script src="https://cdnjs.cl
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Compute marginal likelihood of a 'JAGS' model</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/v0.2.23/R/JAGS-marglik.R" class="external-link"><code>R/JAGS-marglik.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/JAGS-marglik.R" class="external-link"><code>R/JAGS-marglik.R</code></a></small>
     <div class="hidden name"><code>JAGS_bridgesampling.Rd</code></div>
     </div>
 
@@ -86,6 +86,7 @@ log likelihood of the model part.</p>
 <span>  formula_list <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  formula_data_list <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  formula_prior_list <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  formula_scale_list <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  add_parameters <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  add_bounds <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  maxiter <span class="op">=</span> <span class="fl">10000</span>,</span>
@@ -134,6 +135,13 @@ returns the log of the unnormalized posterior density of the model part</p></dd>
 (names of the lists correspond to the parameter name created by each of the formula and
 the names of the prior distribution correspond to the parameter names) of parameters specified
 within the <code>formula</code></p></dd>
+
+
+<dt id="arg-formula-scale-list">formula_scale_list<a class="anchor" aria-label="anchor" href="#arg-formula-scale-list"></a></dt>
+<dd><p>named list of named lists for standardizing continuous predictors
+(names of the lists correspond to the parameter name created by each of the formula).
+Each entry should be a named list where continuous predictors with <code>TRUE</code> values will
+be standardized. Defaults to <code>NULL</code> (no standardization).</p></dd>
 
 
 <dt id="arg-add-parameters">add_parameters<a class="anchor" aria-label="anchor" href="#arg-add-parameters"></a></dt>

@@ -32,7 +32,7 @@
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.23</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
       </span>
     </div>
 
@@ -85,9 +85,9 @@ vs. bridge sampling</h1>
                         <h4 data-toc-skip class="author">František
 Bartoš</h4>
             
-            <h4 data-toc-skip class="date">2025-12-08</h4>
+            <h4 data-toc-skip class="date">2026-05-06</h4>
       
-      <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/v0.2.23/vignettes/SpikeAndSlab.Rmd" class="external-link"><code>vignettes/SpikeAndSlab.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/vignettes/SpikeAndSlab.Rmd" class="external-link"><code>vignettes/SpikeAndSlab.Rmd</code></a></small>
       <div class="hidden name"><code>SpikeAndSlab.Rmd</code></div>
 
     </div>
@@ -98,9 +98,9 @@ Bartoš</h4>
 JAGS <span class="citation">(Plummer, 2003)</span> code based on
 formulas and prior distribution objects and subsequent estimation of
 marginal likelihoods with the bridgesampling R package <span class="citation">(Gronau et al., 2020)</span>. Marginal likelihoods,
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>p</mi><mrow><mo stretchy="true" form="prefix">(</mo><mtext mathvariant="normal">data</mtext><mo>∣</mo><mi>ℳ</mi><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">p(\text{data} \mid \mathcal{M})</annotation></semantics></math>,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>p</mi><mo stretchy="false" form="prefix">(</mo><mtext mathvariant="normal">data</mtext><mo>∣</mo><mi>ℳ</mi><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">p(\text{data} \mid \mathcal{M})</annotation></semantics></math>,
 are the key ingredient for computing Bayes factors,</p>
-<p><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mtext mathvariant="normal">BF</mtext><mn>10</mn></msub><mo>=</mo><mfrac><mrow><mi>p</mi><mrow><mo stretchy="true" form="prefix">(</mo><mtext mathvariant="normal">data</mtext><mo>∣</mo><msub><mi>ℳ</mi><mn>1</mn></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><mrow><mi>p</mi><mrow><mo stretchy="true" form="prefix">(</mo><mtext mathvariant="normal">data</mtext><mo>∣</mo><msub><mi>ℳ</mi><mn>0</mn></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow></mfrac></mrow><annotation encoding="application/x-tex">\text{BF}_{10} = \frac{p(\text{data} \mid \mathcal{M}_{1})}{p(\text{data} \mid \mathcal{M}_{0})}</annotation></semantics></math>,</p>
+<p><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mtext mathvariant="normal">BF</mtext><mn>10</mn></msub><mo>=</mo><mfrac><mrow><mi>p</mi><mo stretchy="false" form="prefix">(</mo><mtext mathvariant="normal">data</mtext><mo>∣</mo><msub><mi>ℳ</mi><mn>1</mn></msub><mo stretchy="false" form="postfix">)</mo></mrow><mrow><mi>p</mi><mo stretchy="false" form="prefix">(</mo><mtext mathvariant="normal">data</mtext><mo>∣</mo><msub><mi>ℳ</mi><mn>0</mn></msub><mo stretchy="false" form="postfix">)</mo></mrow></mfrac></mrow><annotation encoding="application/x-tex">\text{BF}_{10} = \frac{p(\text{data} \mid \mathcal{M}_{1})}{p(\text{data} \mid \mathcal{M}_{0})}</annotation></semantics></math>,</p>
 <p>which quantify relative predictive performance of two competing
 models <span class="citation">(Kass &amp; Raftery, 1995; Rouder &amp;
 Morey, 2019; Wrinch &amp; Jeffreys, 1921)</span>. Convenient model
@@ -195,14 +195,14 @@ settings (up to a random error) with the <code>lm</code> function.</p>
 </li>
 <li>and
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>ℳ</mi><mn>1</mn></msub><annotation encoding="application/x-tex">\mathcal{M}_1</annotation></semantics></math>:
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>β</mi><mo>∼</mo><mi>g</mi><mrow><mo stretchy="true" form="prefix">(</mo><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\beta \sim g()</annotation></semantics></math>,</li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>β</mi><mo>∼</mo><mi>g</mi><mo stretchy="false" form="prefix">(</mo><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">\beta \sim g()</annotation></semantics></math>,</li>
 </ul>
 <p>where
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>g</mi><mrow><mo stretchy="true" form="prefix">(</mo><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">g()</annotation></semantics></math>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>g</mi><mo stretchy="false" form="prefix">(</mo><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">g()</annotation></semantics></math>
 characterizes our hypothesis about the degree of the effect. In our
 example, we specify a simple two-sided hypothesis represented by a
 normal distribution with mean 0 and standard deviation 0.5, e.g.,
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>β</mi><mo>∼</mo><mtext mathvariant="normal">Normal</mtext><mrow><mo stretchy="true" form="prefix">(</mo><mn>0</mn><mo>,</mo><msup><mn>0.5</mn><mn>2</mn></msup><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\beta \sim \text{Normal}(0, 0.5^2)</annotation></semantics></math>.</p>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>β</mi><mo>∼</mo><mtext mathvariant="normal">Normal</mtext><mo stretchy="false" form="prefix">(</mo><mn>0</mn><mo>,</mo><msup><mn>0.5</mn><mn>2</mn></msup><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">\beta \sim \text{Normal}(0, 0.5^2)</annotation></semantics></math>.</p>
 </div>
 <div class="section level2">
 <h2 id="maginal-likelihoods">Maginal Likelihoods<a class="anchor" aria-label="anchor" href="#maginal-likelihoods"></a>
@@ -273,7 +273,6 @@ named lists,</p>
 <span>  <span class="co"># seed for reproducibility</span></span>
 <span>  seed         <span class="op">=</span> <span class="fl">0</span></span>
 <span><span class="op">)</span></span>
-<span><span class="co">#&gt; Loading required namespace: runjags</span></span>
 <span><span class="co">#&gt; Loading required namespace: rjags</span></span>
 <span></span>
 <span><span class="va">M1</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/JAGS_fit.html">JAGS_fit</a></span><span class="op">(</span></span>
@@ -290,14 +289,14 @@ are similar to the frequentist results obtained via <code>lm</code>
 function earlier.</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/BayesTools_model_tables.html">JAGS_estimates_table</a></span><span class="op">(</span><span class="va">M1</span><span class="op">)</span></span>
-<span><span class="co">#&gt;                  Mean    SD    lCI Median    uCI error(MCMC) error(MCMC)/SD</span></span>
-<span><span class="co">#&gt; (mu) intercept -0.547 0.104 -0.753 -0.548 -0.341     0.00081          0.008</span></span>
-<span><span class="co">#&gt; (mu) x          0.188 0.101 -0.012  0.189  0.385     0.00080          0.008</span></span>
-<span><span class="co">#&gt; sigma           1.042 0.076  0.905  1.037  1.205     0.00078          0.010</span></span>
+<span><span class="co">#&gt;                  Mean    SD  0.025    0.5  0.975 error(MCMC) error(MCMC)/SD</span></span>
+<span><span class="co">#&gt; (mu) intercept -0.546 0.104 -0.753 -0.546 -0.338     0.00084          0.008</span></span>
+<span><span class="co">#&gt; (mu) x          0.188 0.101 -0.012  0.188  0.386     0.00080          0.008</span></span>
+<span><span class="co">#&gt; sigma           1.042 0.076  0.907  1.037  1.205     0.00081          0.011</span></span>
 <span><span class="co">#&gt;                  ESS R-hat</span></span>
-<span><span class="co">#&gt; (mu) intercept 16408 1.000</span></span>
-<span><span class="co">#&gt; (mu) x         15964 1.000</span></span>
-<span><span class="co">#&gt; sigma           9502 1.000</span></span></code></pre></div>
+<span><span class="co">#&gt; (mu) intercept 15488 1.000</span></span>
+<span><span class="co">#&gt; (mu) x         15708 1.000</span></span>
+<span><span class="co">#&gt; sigma           9004 1.000</span></span></code></pre></div>
 <p>To obtain the marginal likelihoods and compute Bayes factors, we only
 need to write the likelihood function corresponding to the JAGS model.
 Importantly, BayesTools handles all priors and formula related
@@ -359,7 +358,7 @@ about the test for the beta parameter.</p>
 <p>We find absence of evidence for either of the hypotheses,
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mtext mathvariant="normal">BF</mtext><mn>10</mn></msub><mo>=</mo><mn>1.181</mn></mrow><annotation encoding="application/x-tex">\text{BF}_{10} = 1.181</annotation></semantics></math>,
 with posterior probability of
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>P</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>ℳ</mi><mn>1</mn></msub><mo>∣</mo><mtext mathvariant="normal">data</mtext><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mn>0.542</mn></mrow><annotation encoding="application/x-tex">P(\mathcal{M}_{1} \mid \text{data}) = 0.542</annotation></semantics></math>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>P</mi><mo stretchy="false" form="prefix">(</mo><msub><mi>ℳ</mi><mn>1</mn></msub><mo>∣</mo><mtext mathvariant="normal">data</mtext><mo stretchy="false" form="postfix">)</mo><mo>=</mo><mn>0.542</mn></mrow><annotation encoding="application/x-tex">P(\mathcal{M}_{1} \mid \text{data}) = 0.542</annotation></semantics></math>
 (asuming equal prior probability specified via
 <code>prior_weights</code> in the <code>models_inference</code> function
 previously).</p>
@@ -373,11 +372,11 @@ distributions. A spike, a parameter value of zero corresponding to no
 effect, and a slab, a parameter value sampled from a continuous density
 corresponding to the alternative hypothesis. The parametrization uses
 two independent prior distributions: one for the parameter value,
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>β</mi><mo>∼</mo><mi>g</mi><mrow><mo stretchy="true" form="prefix">(</mo><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\beta \sim g()</annotation></semantics></math>,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>β</mi><mo>∼</mo><mi>g</mi><mo stretchy="false" form="prefix">(</mo><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">\beta \sim g()</annotation></semantics></math>,
 and one for the inclusion indicator,
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>I</mi><mi>β</mi></msub><mo>∼</mo><mi>f</mi><mrow><mo stretchy="true" form="prefix">(</mo><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">I_\beta \sim f()</annotation></semantics></math>,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>I</mi><mi>β</mi></msub><mo>∼</mo><mi>f</mi><mo stretchy="false" form="prefix">(</mo><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">I_\beta \sim f()</annotation></semantics></math>,
 which assigns the prior model probability
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>P</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>ℳ</mi><mn>1</mn></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">P(\mathcal{M}_{1})</annotation></semantics></math>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>P</mi><mo stretchy="false" form="prefix">(</mo><msub><mi>ℳ</mi><mn>1</mn></msub><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">P(\mathcal{M}_{1})</annotation></semantics></math>
 of inclusion.</p>
 <p>The inclusion indicator can attain one of two values: either zero or
 one. Multiplying the parameter with the inclusion indicator,
@@ -386,10 +385,10 @@ then results in setting the parameter to zero when the indicator is
 zero, or keeping its original value when the indicator is one. The
 proportion of times the indicator attains the value of one then
 corresponds to the posterior inclusion probability of the predictor,
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>P</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>ℳ</mi><mn>1</mn></msub><mo>∣</mo><mtext mathvariant="normal">data</mtext><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">P(\mathcal{M}_{1} \mid \text{data})</annotation></semantics></math>.
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>P</mi><mo stretchy="false" form="prefix">(</mo><msub><mi>ℳ</mi><mn>1</mn></msub><mo>∣</mo><mtext mathvariant="normal">data</mtext><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">P(\mathcal{M}_{1} \mid \text{data})</annotation></semantics></math>.
 Since Bayes factor can be written as the change from prior to posterior
 odds,</p>
-<p><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mtext mathvariant="normal">BF</mtext><mn>10</mn></msub><mo>=</mo><mfrac><mrow><mi>p</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>ℳ</mi><mn>1</mn></msub><mo>∣</mo><mtext mathvariant="normal">data</mtext><mo stretchy="true" form="postfix">)</mo></mrow></mrow><mrow><mi>p</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>ℳ</mi><mn>0</mn></msub><mo>∣</mo><mtext mathvariant="normal">data</mtext><mo stretchy="true" form="postfix">)</mo></mrow></mrow></mfrac><mi>/</mi><mfrac><mrow><mi>p</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>ℳ</mi><mn>1</mn></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow><mrow><mi>p</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>ℳ</mi><mn>0</mn></msub><mo stretchy="true" form="postfix">)</mo></mrow></mrow></mfrac></mrow><annotation encoding="application/x-tex">\text{BF}_{10} = \frac{p(\mathcal{M}_{1} \mid \text{data})}{p(\mathcal{M}_{0} \mid \text{data})} / \frac{p(\mathcal{M}_{1})}{p(\mathcal{M}_{0})}</annotation></semantics></math>,</p>
+<p><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mtext mathvariant="normal">BF</mtext><mn>10</mn></msub><mo>=</mo><mfrac><mrow><mi>p</mi><mo stretchy="false" form="prefix">(</mo><msub><mi>ℳ</mi><mn>1</mn></msub><mo>∣</mo><mtext mathvariant="normal">data</mtext><mo stretchy="false" form="postfix">)</mo></mrow><mrow><mi>p</mi><mo stretchy="false" form="prefix">(</mo><msub><mi>ℳ</mi><mn>0</mn></msub><mo>∣</mo><mtext mathvariant="normal">data</mtext><mo stretchy="false" form="postfix">)</mo></mrow></mfrac><mi>/</mi><mfrac><mrow><mi>p</mi><mo stretchy="false" form="prefix">(</mo><msub><mi>ℳ</mi><mn>1</mn></msub><mo stretchy="false" form="postfix">)</mo></mrow><mrow><mi>p</mi><mo stretchy="false" form="prefix">(</mo><msub><mi>ℳ</mi><mn>0</mn></msub><mo stretchy="false" form="postfix">)</mo></mrow></mfrac></mrow><annotation encoding="application/x-tex">\text{BF}_{10} = \frac{p(\mathcal{M}_{1} \mid \text{data})}{p(\mathcal{M}_{0} \mid \text{data})} / \frac{p(\mathcal{M}_{1})}{p(\mathcal{M}_{0})}</annotation></semantics></math>,</p>
 <p>we can also estimate the Bayes factor via the inclusion
 indicator.</p>
 <p>Now, we compare the two models using the spike and slab prior. We
@@ -403,7 +402,7 @@ specify the distribution, the parameters (and we could also set
 truncation if needed) corresponding to the alternative hypothesis.
 Furthermore, we need to specify the prior distribution for the inclusion
 via the <code>prior_inclusion</code> argument. Here, we use a
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mtext mathvariant="normal">Spike</mtext><mrow><mo stretchy="true" form="prefix">(</mo><mn>0.5</mn><mo stretchy="true" form="postfix">)</mo></mrow></mrow><annotation encoding="application/x-tex">\text{Spike}(0.5)</annotation></semantics></math>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mtext mathvariant="normal">Spike</mtext><mo stretchy="false" form="prefix">(</mo><mn>0.5</mn><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">\text{Spike}(0.5)</annotation></semantics></math>
 prior which sets the prior inclusion probability to 1/2.</p>
 <div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">prior_beta_spike_and_slab</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/prior_spike_and_slab.html">prior_spike_and_slab</a></span><span class="op">(</span></span>
@@ -434,22 +433,24 @@ i.e., parameter estimates model-averaged across the spike and the
 slab.)</p>
 <div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/BayesTools_model_tables.html">JAGS_estimates_table</a></span><span class="op">(</span><span class="va">MS</span>, conditional <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
-<span><span class="co">#&gt;                      Mean    SD    lCI Median    uCI</span></span>
-<span><span class="co">#&gt; (mu) intercept     -0.540 0.106 -0.749 -0.540 -0.333</span></span>
-<span><span class="co">#&gt; (mu) x (inclusion)  0.536    NA     NA     NA     NA</span></span>
-<span><span class="co">#&gt; (mu) x              0.189 0.100 -0.009  0.190  0.385</span></span>
-<span><span class="co">#&gt; sigma               1.050 0.076  0.912  1.047  1.211</span></span></code></pre></div>
+<span><span class="co">#&gt;                      Mean    SD  0.025    0.5  0.975</span></span>
+<span><span class="co">#&gt; (mu) intercept     -0.542 0.105 -0.750 -0.543 -0.337</span></span>
+<span><span class="co">#&gt; (mu) x (inclusion)  0.553    NA     NA     NA     NA</span></span>
+<span><span class="co">#&gt; (mu) x              0.189 0.100 -0.005  0.190  0.384</span></span>
+<span><span class="co">#&gt; sigma               1.049 0.077  0.911  1.045  1.212</span></span></code></pre></div>
 <p>The estimates are essentially identical to the estimates from the
 previous models. Finally, we can also obtain summary of the inclusion
 probabilities via the <code>JAGS_inference_table</code> function</p>
 <div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="../reference/BayesTools_model_tables.html">JAGS_inference_table</a></span><span class="op">(</span><span class="va">MS</span><span class="op">)</span></span>
-<span><span class="co">#&gt;        Prior prob. Post. prob. Inclusion BF</span></span>
-<span><span class="co">#&gt; (mu) x       0.500       0.536        1.157</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/BayesTools_model_tables.html">JAGS_inference_table</a></span><span class="op">(</span><span class="va">MS</span>, BF_diagnostics <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<span><span class="co">#&gt;        Prior prob. Post. prob. Inclusion BF  ESS error(Post. prob.)</span></span>
+<span><span class="co">#&gt; (mu) x       0.500       0.553        1.235 4886            0.00711</span></span>
+<span><span class="co">#&gt;        error%(Inclusion BF)</span></span>
+<span><span class="co">#&gt; (mu) x                2.877</span></span></code></pre></div>
 <p>As before, we find absence of evidence for either of the hypotheses,
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mtext mathvariant="normal">BF</mtext><mn>10</mn></msub><mo>=</mo><mn>1.157</mn></mrow><annotation encoding="application/x-tex">\text{BF}_{10} = 1.157</annotation></semantics></math>,
 with posterior probability of
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>P</mi><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>ℳ</mi><mn>1</mn></msub><mo>∣</mo><mtext mathvariant="normal">data</mtext><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mn>0.536</mn></mrow><annotation encoding="application/x-tex">P(\mathcal{M}_{1} \mid \text{data}) = 0.536</annotation></semantics></math>.</p>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>P</mi><mo stretchy="false" form="prefix">(</mo><msub><mi>ℳ</mi><mn>1</mn></msub><mo>∣</mo><mtext mathvariant="normal">data</mtext><mo stretchy="false" form="postfix">)</mo><mo>=</mo><mn>0.536</mn></mrow><annotation encoding="application/x-tex">P(\mathcal{M}_{1} \mid \text{data}) = 0.536</annotation></semantics></math>.</p>
 <div class="section level3 unnumbered">
 <h3 class="unnumbered" id="references">References<a class="anchor" aria-label="anchor" href="#references"></a>
 </h3>

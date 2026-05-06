@@ -18,7 +18,7 @@ obtained from a fitted model."><!-- mathjax --><script src="https://cdnjs.cloudf
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.23</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
       </span>
     </div>
 
@@ -58,7 +58,7 @@ obtained from a fitted model."><!-- mathjax --><script src="https://cdnjs.cloudf
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Evaluate JAGS formula using posterior samples</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/v0.2.23/R/JAGS-formula.R" class="external-link"><code>R/JAGS-formula.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/JAGS-formula.R" class="external-link"><code>R/JAGS-formula.R</code></a></small>
     <div class="hidden name"><code>JAGS_evaluate_formula.Rd</code></div>
     </div>
 
@@ -82,7 +82,9 @@ samples obtained with <a href="https://rdrr.io/pkg/rjags/man/rjags-package.html"
 
 <dt id="arg-formula">formula<a class="anchor" aria-label="anchor" href="#arg-formula"></a></dt>
 <dd><p>formula specifying the right hand side of the assignment (the
-left hand side is ignored)</p></dd>
+left hand side is ignored). If the formula has a <code>"log(intercept)"</code>
+attribute set to <code>TRUE</code>, the intercept values will be log-transformed
+before computing the linear predictor.</p></dd>
 
 
 <dt id="arg-parameter">parameter<a class="anchor" aria-label="anchor" href="#arg-parameter"></a></dt>

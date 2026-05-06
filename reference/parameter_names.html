@@ -18,7 +18,7 @@ JAGS."><!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/libs/mathj
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.23</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
       </span>
     </div>
 
@@ -58,7 +58,7 @@ JAGS."><!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/libs/mathj
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Clean parameter names from JAGS</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/v0.2.23/R/JAGS-formula.R" class="external-link"><code>R/JAGS-formula.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/JAGS-formula.R" class="external-link"><code>R/JAGS-formula.R</code></a></small>
     <div class="hidden name"><code>parameter_names.Rd</code></div>
     </div>
 
@@ -72,7 +72,8 @@ JAGS.</p>
 <span>  <span class="va">parameters</span>,</span>
 <span>  formula_parameters <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  formula_random <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span>  formula_prefix <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  formula_scale <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">JAGS_parameter_names</span><span class="op">(</span><span class="va">parameters</span>, formula_parameter <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div>
@@ -97,6 +98,12 @@ JAGS.</p>
 <dt id="arg-formula-prefix">formula_prefix<a class="anchor" aria-label="anchor" href="#arg-formula-prefix"></a></dt>
 <dd><p>whether the <code>formula_parameters</code> names should be
 kept. Defaults to <code>TRUE</code>.</p></dd>
+
+
+<dt id="arg-formula-scale">formula_scale<a class="anchor" aria-label="anchor" href="#arg-formula-scale"></a></dt>
+<dd><p>optional nested list containing scaling info. When provided,
+intercepts from parameters with <code>log_intercept = TRUE</code> attribute will be
+renamed to <code>exp(intercept)</code>.</p></dd>
 
 
 <dt id="arg-formula-parameter">formula_parameter<a class="anchor" aria-label="anchor" href="#arg-formula-parameter"></a></dt>

@@ -18,7 +18,7 @@ research. The prior can be visualized by the plot function."><!-- mathjax --><sc
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.23</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
       </span>
     </div>
 
@@ -58,7 +58,7 @@ research. The prior can be visualized by the plot function."><!-- mathjax --><sc
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Creates an informed prior distribution based on research</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/v0.2.23/R/priors-informed.R" class="external-link"><code>R/priors-informed.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/priors-informed.R" class="external-link"><code>R/priors-informed.R</code></a></small>
     <div class="hidden name"><code>prior_informed.Rd</code></div>
     </div>
 
@@ -100,7 +100,8 @@ continuous outcomes (standardized mean differences), dichotomous outcomes (logOR
 and time to event outcomes (logHR) based on the Cochrane database of systematic reviews.
 Use <code>"Cochrane"</code> for a prior distribution based on the whole database or call
 <code>print(prior_informed_medicine_names)</code> to inspect the names of
-all 46 subfields and set the appropriate <code>parameter</code> and <code>type</code>.</p></dd>
+available subfields and set the appropriate <code>parameter</code> and <code>type</code>;
+availability of subfield-specific priors depends on the selected <code>type</code>.</p></dd>
 
 
 <dt id="arg-parameter">parameter<a class="anchor" aria-label="anchor" href="#arg-parameter"></a></dt>
@@ -125,7 +126,7 @@ the empirical medical prior distributions with the following options</p><dl><dt>
 <dd><p>for risk differences</p></dd>
 
 <dt><code>"logHR"</code></dt>
-<dd><p>for hazard ratios</p></dd>
+<dd><p>for log hazard ratios</p></dd>
 
 
 </dl></dd>
@@ -144,7 +145,8 @@ the empirical medical prior distributions with the following options</p><dl><dt>
 .<br><br> Bartoš F, Otte WM, Gronau QF, Timmers B, Ly A, Wagenmakers E (2023).
 “Empirical prior distributions for Bayesian meta-analyses of binary and time-to-event outcomes.”
 <a href="https://doi.org/10.48550/arXiv.2306.11468" class="external-link">doi:10.48550/arXiv.2306.11468</a>
-, preprint at <a href="https://doi.org/10.48550/arXiv.2306.11468" class="external-link">https://doi.org/10.48550/arXiv.2306.11468</a>.<br><br> Gronau QF, Van Erp S, Heck DW, Cesario J, Jonas KJ, Wagenmakers E (2017).
+.
+preprint at <a href="https://doi.org/10.48550/arXiv.2306.11468" class="external-link">https://doi.org/10.48550/arXiv.2306.11468</a>.<br><br> Gronau QF, Van Erp S, Heck DW, Cesario J, Jonas KJ, Wagenmakers E (2017).
 “A Bayesian model-averaged meta-analysis of the power pose effect with informed and default priors: The case of felt power.”
 <em>Comprehensive Results in Social Psychology</em>, <b>2</b>(1), 123–138.
 <a href="https://doi.org/10.1080/23743603.2017.1326760" class="external-link">doi:10.1080/23743603.2017.1326760</a>

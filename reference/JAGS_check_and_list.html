@@ -18,7 +18,7 @@ JAGS_fit function."><!-- mathjax --><script src="https://cdnjs.cloudflare.com/aj
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.23</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
       </span>
     </div>
 
@@ -58,7 +58,7 @@ JAGS_fit function."><!-- mathjax --><script src="https://cdnjs.cloudflare.com/aj
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Check and list 'JAGS' fitting settings</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/v0.2.23/R/JAGS-fit.R" class="external-link"><code>R/JAGS-fit.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/JAGS-fit.R" class="external-link"><code>R/JAGS-fit.R</code></a></small>
     <div class="hidden name"><code>JAGS_check_and_list.Rd</code></div>
     </div>
 
@@ -171,7 +171,7 @@ Defaults to <code>1.05</code>.</p></dd>
 <dd><p>minimum effective sample size. Defaults to <code>500</code>.</p></dd>
 
 <dt>max_error</dt>
-<dd><p>maximum MCMC error. Defaults to <code>1.01</code>.</p></dd>
+<dd><p>maximum MCMC error. Defaults to <code>0.01</code>.</p></dd>
 
 <dt>max_SD_error</dt>
 <dd><p>maximum MCMC error as the proportion of standard
@@ -192,6 +192,10 @@ need to correspond to <code>units</code> passed to <a href="https://rdrr.io/r/ba
 <dt>restarts</dt>
 <dd><p>number of times new initial values should be generated in case the model
 fails to initialize. Defaults to <code>10</code>.</p></dd>
+
+<dt>check_indicators</dt>
+<dd><p>whether model indicator variables should be included
+in convergence checks. Defaults to <code>FALSE</code>.</p></dd>
 
 
 </dl></dd>

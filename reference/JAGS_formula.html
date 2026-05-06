@@ -19,7 +19,7 @@ function."><!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/libs/m
       </button>
       <span class="navbar-brand">
         <a class="navbar-link" href="../index.html">BayesTools</a>
-        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.2.23</span>
+        <span class="version label label-default" data-toggle="tooltip" data-placement="bottom" title="">0.3.0</span>
       </span>
     </div>
 
@@ -59,7 +59,7 @@ function."><!-- mathjax --><script src="https://cdnjs.cloudflare.com/ajax/libs/m
   <div class="col-md-9 contents">
     <div class="page-header">
     <h1>Create JAGS formula syntax and data object</h1>
-    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/v0.2.23/R/JAGS-formula.R" class="external-link"><code>R/JAGS-formula.R</code></a></small>
+    <small class="dont-index">Source: <a href="https://github.com/FBartos/BayesTools/blob/master/R/JAGS-formula.R" class="external-link"><code>R/JAGS-formula.R</code></a></small>
     <div class="hidden name"><code>JAGS_formula.Rd</code></div>
     </div>
 
@@ -70,7 +70,7 @@ function.</p>
     </div>
 
     <div id="ref-usage">
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">JAGS_formula</span><span class="op">(</span><span class="va">formula</span>, <span class="va">parameter</span>, <span class="va">data</span>, <span class="va">prior_list</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">JAGS_formula</span><span class="op">(</span><span class="va">formula</span>, <span class="va">parameter</span>, <span class="va">data</span>, <span class="va">prior_list</span>, formula_scale <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div id="arguments">
@@ -80,7 +80,10 @@ function.</p>
 <dl><dt id="arg-formula">formula<a class="anchor" aria-label="anchor" href="#arg-formula"></a></dt>
 <dd><p>formula specifying the right hand side of the assignment (the
 left hand side is ignored). If the formula contains <code>-1</code>, it will be
-automatically converted to include an intercept with a spike(0) prior.</p></dd>
+automatically converted to include an intercept with a spike(0) prior.
+The formula can also have a <code>"log(intercept)"</code> attribute set to <code>TRUE</code>
+to generate syntax of the form <code>log(intercept) + sum(beta_i * x_i)</code>, which
+is useful for parameters that must be positive (e.g., standard deviation).</p></dd>
 
 
 <dt id="arg-parameter">parameter<a class="anchor" aria-label="anchor" href="#arg-parameter"></a></dt>
@@ -95,13 +98,32 @@ automatically converted to include an intercept with a spike(0) prior.</p></dd>
 <dd><p>named list of prior distribution of parameters specified within
 the <code>formula</code>. When using <code>-1</code> in the formula, an "intercept" prior
 can be explicitly specified; otherwise, <code>prior("spike", list(0))</code> is
-automatically added.</p></dd>
+automatically added. The list can also include two special entries:</p></dd>
+
+
+<dt id="arg-formula-scale">formula_scale<a class="anchor" aria-label="anchor" href="#arg-formula-scale"></a></dt>
+<dd><p>named list specifying whether to standardize continuous predictors.
+If <code>NULL</code> (default), no standardization is applied. If a named list is provided,
+continuous predictors with <code>TRUE</code> values will be standardized (mean-centered and
+scaled by standard deviation). The intercept is never standardized.</p><dl><dt><code>"__default_continuous"</code></dt>
+<dd><p>A prior to use for any continuous predictors
+(including the intercept) that are not explicitly specified in the prior list.</p></dd>
+
+<dt><code>"__default_factor"</code></dt>
+<dd><p>A prior to use for any factor predictors
+(including interactions involving factors) that are not explicitly specified
+in the prior list.</p></dd>
+
+
+</dl><p>These default priors allow for more concise specification when many predictors
+share the same prior distribution.</p></dd>
 
 </dl></div>
     <div id="value">
     <h2>Value</h2>
     <p><code>JAGS_formula</code> returns a list containing the formula JAGS syntax,
-JAGS data object, and modified prior_list.</p>
+JAGS data object, modified prior_list, and (if standardization was applied) a
+<code>formula_scale</code> list with standardization information for back-transformation.</p>
     </div>
     <div id="details">
     <h2>Details</h2>
@@ -109,6 +131,9 @@ JAGS data object, and modified prior_list.</p>
 function automatically removes the <code>-1</code>, adds an intercept back to the
 formula, and includes a spike(0) prior for the intercept to ensure equivalent
 model behavior while maintaining consistent formula parsing.</p>
+<p>When using default priors (<code>"__default_continuous"</code> or <code>"__default_factor"</code>),
+explicitly specified priors for individual terms take precedence over the defaults.
+The defaults are only applied to terms that are not already in the prior list.</p>
     </div>
     <div id="see-also">
     <h2>See also</h2>
@@ -149,6 +174,17 @@ model behavior while maintaining consistent formula parsing.</p>
 <span class="r-in"><span>  formula <span class="op">=</span> <span class="op">~</span> <span class="va">x_fac3</span> <span class="op">-</span> <span class="fl">1</span>,</span></span>
 <span class="r-in"><span>  parameter <span class="op">=</span> <span class="st">"mu"</span>, data <span class="op">=</span> <span class="va">df</span>, prior_list <span class="op">=</span> <span class="va">prior_list_no_intercept</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="co"># Equivalent to specifying intercept = prior("spike", list(0))</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># using default priors for simpler specification</span></span></span>
+<span class="r-in"><span><span class="va">prior_list_defaults</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span></span>
+<span class="r-in"><span>  <span class="st">"__default_continuous"</span> <span class="op">=</span> <span class="fu"><a href="prior.html">prior</a></span><span class="op">(</span><span class="st">"normal"</span>, <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span>,</span></span>
+<span class="r-in"><span>  <span class="st">"__default_factor"</span>     <span class="op">=</span> <span class="fu"><a href="prior_factor.html">prior_factor</a></span><span class="op">(</span><span class="st">"normal"</span>, <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">0.5</span><span class="op">)</span>, contrast <span class="op">=</span> <span class="st">"treatment"</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">formula_defaults</span> <span class="op">&lt;-</span> <span class="fu">JAGS_formula</span><span class="op">(</span></span></span>
+<span class="r-in"><span>  formula <span class="op">=</span> <span class="op">~</span> <span class="va">x_cont</span> <span class="op">+</span> <span class="va">x_fac3</span>,</span></span>
+<span class="r-in"><span>  parameter <span class="op">=</span> <span class="st">"mu"</span>, data <span class="op">=</span> <span class="va">df</span>, prior_list <span class="op">=</span> <span class="va">prior_list_defaults</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="co"># intercept and x_cont get the default continuous prior</span></span></span>
+<span class="r-in"><span><span class="co"># x_fac3 gets the default factor prior</span></span></span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
     </div>
