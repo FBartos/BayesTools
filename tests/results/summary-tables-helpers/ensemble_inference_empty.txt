@@ -1,0 +1,2 @@
+[1] Models       Prior prob.  Post. prob.  Inclusion BF
+<0 rows> (or 0-length row.names)

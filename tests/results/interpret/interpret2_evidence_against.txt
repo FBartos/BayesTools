@@ -1,0 +1,1 @@
+Method found moderate evidence against the Effect, BF01 = 0.100, with mean model-averaged estimate mu = 0.001, 95% CI [-0.103,  0.099].

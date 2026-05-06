@@ -25,6 +25,10 @@
 #' (names of the lists correspond to the parameter name created by each of the formula and
 #' the names of the prior distribution correspond to the parameter names) of parameters specified
 #' within the \code{formula}
+#' @param formula_scale_list named list of named lists for standardizing continuous predictors
+#' (names of the lists correspond to the parameter name created by each of the formula).
+#' Each entry should be a named list where continuous predictors with \code{TRUE} values will
+#' be standardized. Defaults to \code{NULL} (no standardization).
 #' @param add_parameters vector of additional parameter names that should be used
 #' in bridgesampling but were not specified in the \code{prior_list}
 #' @param add_bounds list with two name vectors (\code{"lb"} and \code{"up"})
@@ -70,7 +74,7 @@
 #' @return \code{JAGS_bridgesampling} returns an object of class 'bridge'.
 #'
 #' @export
-JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL,
+JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL, formula_scale_list = NULL,
                                 add_parameters = NULL, add_bounds = NULL,
                                 maxiter = 10000, silent = TRUE, ...){
 
@@ -80,7 +84,11 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   check_list(formula_list, "formula_list", allow_NULL = TRUE)
   check_list(formula_data_list, "formula_data_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
   check_list(formula_prior_list, "formula_prior_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
+  check_list(formula_scale_list, "formula_scale_list", allow_NULL = TRUE)
 
+  if(is.null(formula_scale_list) && !is.null(formula_list)){
+    formula_scale_list <- .JAGS_formula_scale_list_from_fit(fit, names(formula_list))
+  }
 
   # extract the posterior distribution
   posterior <- .fit_to_posterior(fit)
@@ -92,10 +100,11 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     formula_output <- list()
     for(parameter in names(formula_list)){
       formula_output[[parameter]] <- JAGS_formula(
-        formula    = formula_list[[parameter]],
-        parameter  = parameter,
-        data       = formula_data_list[[parameter]],
-        prior_list = formula_prior_list[[parameter]])
+        formula       = formula_list[[parameter]],
+        parameter     = parameter,
+        data          = formula_data_list[[parameter]],
+        prior_list    = formula_prior_list[[parameter]],
+        formula_scale = if(!is.null(formula_scale_list)) formula_scale_list[[parameter]] else NULL)
     }
 
     # merge with the rest of the input
@@ -119,26 +128,26 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
 
 
   ### define the marglik function
-  full_log_posterior <- function(samples.row, data, prior_list, formula_data_list, formula_prior_list, add_parameters, ...){
+  full_log_posterior <- function(samples.row, data, prior_list, formula_list, formula_data_list, formula_prior_list, add_parameters, ...){
 
     # prepare object for holding the parameters, later accessible to the user specified 'log_posterior'
     parameters <- list()
-    if(!is.null(prior_list)){
+    if(length(prior_list) > 0){
       parameters <- c(parameters, JAGS_marglik_parameters(samples.row, prior_list))
     }
-    if(!is.null(formula_prior_list)){
-      parameters <- c(parameters, JAGS_marglik_parameters_formula(samples.row, formula_data_list, formula_prior_list, parameters))
+    if(length(formula_prior_list) > 0){
+      parameters <- c(parameters, JAGS_marglik_parameters_formula(samples.row, formula_list, formula_data_list, formula_prior_list, parameters))
     }
-    if(!is.null(add_parameters)){
+    if(length(add_parameters) > 0){
       parameters <- c(parameters, samples.row[add_parameters])
     }
 
     # compute the marginal likelihoods
     marglik <- 0
-    if(!is.null(prior_list)){
+    if(length(prior_list) > 0){
       marglik <- marglik + JAGS_marglik_priors(samples.row, prior_list)
     }
-    if(!is.null(formula_prior_list)){
+    if(length(formula_prior_list) > 0){
       marglik <- marglik + JAGS_marglik_priors_formula(samples.row, formula_prior_list)
     }
     marglik   <- marglik + log_posterior(parameters = parameters, data = data, ...)
@@ -153,6 +162,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
       data               = data,
       log_posterior      = full_log_posterior,
       prior_list         = prior_list,
+      formula_list       = formula_list,
       formula_data_list  = formula_data_list,
       formula_prior_list = formula_prior_list,
       lb                 = attr(bridgesampling_posterior, "lb"),
@@ -173,13 +183,52 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   return(marglik)
 }
 
+.JAGS_formula_scale_list_from_fit <- function(fit, formula_parameters){
+
+  formula_scale <- attr(fit, "formula_scale")
+  if(is.null(formula_scale) || length(formula_scale) == 0L){
+    return(NULL)
+  }
+
+  scale_list <- vector("list", length(formula_parameters))
+  names(scale_list) <- formula_parameters
+
+  for(parameter in intersect(formula_parameters, names(formula_scale))){
+    parameter_scale <- formula_scale[[parameter]]
+    if(is.null(parameter_scale) || length(parameter_scale) == 0L){
+      next
+    }
+
+    scaled_terms <- names(parameter_scale)
+    if(is.null(scaled_terms) || length(scaled_terms) == 0L){
+      next
+    }
+
+    parameter_prefix <- paste0(parameter, "_")
+    predictor_terms  <- ifelse(
+      startsWith(scaled_terms, parameter_prefix),
+      substring(scaled_terms, nchar(parameter_prefix) + 1L),
+      scaled_terms
+    )
+
+    scale_list[[parameter]] <- as.list(stats::setNames(rep(TRUE, length(predictor_terms)), predictor_terms))
+  }
+
+  scale_list <- scale_list[!vapply(scale_list, is.null, logical(1))]
+  if(length(scale_list) == 0L){
+    return(NULL)
+  }
+
+  return(scale_list)
+}
+
 .fit_to_posterior <- function(fit){
 
   ### check the input and split it on posterior and data
   if(inherits(fit, "runjags")){
 
     # get posterior and merge chains
-    posterior <- suppressWarnings(coda::as.mcmc(fit))
+    posterior <- .extract_posterior_samples(fit, as_list = FALSE)
 
   }else if(is.list(fit) & all(sapply(fit, inherits, what = "mcarray"))){
 
@@ -282,8 +331,9 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
   # package cannot currently deal with them
   if(any(sapply(prior_list, is.prior.spike_and_slab)))
     stop("Marginal likelihood computation for spike and slab priors is not implemented.")
-  if(any(sapply(prior_list, is.prior.mixture)))
-    stop("Marginal likelihood computation for prior mixture priors is not implemented.")
+  if(any(sapply(prior_list, is.prior.mixture))){
+    .JAGS_marglik_stop_unsupported_mixture(prior_list[[which(sapply(prior_list, is.prior.mixture))[1L]]])
+  }
 
   # get information about the specified parameters
   parameters_names <- .JAGS_bridgesampling_posterior_info(prior_list)
@@ -309,6 +359,19 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
   return(posterior)
 }
 
+.JAGS_marglik_stop_unsupported_mixture <- function(prior){
+
+  if(inherits(prior, "prior.bias_mixture")){
+    selection_backend_spec(prior)
+    stop(
+      "Marginal likelihood computation for bias mixture priors is not implemented because bridge sampling does not support discrete bias indicators.",
+      call. = FALSE
+    )
+  }
+
+  stop("Marginal likelihood computation for prior mixture priors is not implemented.", call. = FALSE)
+}
+
 .JAGS_bridgesampling_posterior_info                <- function(prior_list){
 
   # return empty string in case that no prior was specified
@@ -320,6 +383,7 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
     stop("'prior_list' must be a list.")
   if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
+  .check_prior_list_unique_names(prior_list)
 
 
   # add the resulting parameters
@@ -333,6 +397,18 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
     if(is.prior.weightfunction(prior_list[[i]])){
 
       add_parameter <- .JAGS_bridgesampling_posterior_info.weightfunction(prior_list[[i]])
+
+    }else if(is_prior_phacking(prior_list[[i]])){
+
+      add_parameter <- .JAGS_bridgesampling_posterior_info.phacking(prior_list[[i]])
+
+    }else if(is_prior_bias(prior_list[[i]])){
+
+      add_parameter <- .JAGS_bridgesampling_posterior_info.bias(prior_list[[i]])
+
+    }else if(is.prior.mixture(prior_list[[i]])){
+
+      .JAGS_marglik_stop_unsupported_mixture(prior_list[[i]])
 
     }else if(is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
 
@@ -395,6 +471,9 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
   if(!is.prior.vector(prior))
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
+  check_int(prior$parameters[["K"]], "K", lower = 1)
+  if(prior[["distribution"]] != "mpoint")
+    .check_vector_truncation_unsupported(prior$truncation)
 
   if(prior[["distribution"]] == "mpoint"){
     parameter <- NULL
@@ -477,28 +556,76 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
   if(!is.prior.weightfunction(prior))
     stop("improper prior provided")
 
+  J <- .weightfunction_n_bins(prior)
 
-  if(all(names(prior[["parameters"]]) %in% c("alpha", "steps"))){
+  if(prior$weights$type == "cumulative"){
 
-    parameter <- paste0("eta[",1:length(prior$parameters[["alpha"]]),"]")
+    parameter <- paste0("eta[", seq_len(J), "]")
     attr(parameter, "lb") <- rep(0,   length(parameter))
     attr(parameter, "ub") <- rep(Inf, length(parameter))
 
-  }else if(all(names(prior[["parameters"]]) %in% c("alpha1", "alpha2", "steps"))){
+  }else if(prior$weights$type == "independent" && prior$weights$scale == "omega"){
 
-    parameter <- c(paste0("eta1[",1:length(prior$parameters[["alpha1"]]),"]"), paste0("eta2[",1:length(prior$parameters[["alpha2"]]),"]"))
-    attr(parameter, "lb") <- rep(0,   length(parameter))
-    attr(parameter, "ub") <- rep(Inf, length(parameter))
+    parameter <- if(J > 1L) paste0("omega[", 2:J, "]") else NULL
+    attr(parameter, "lb") <- rep(prior$weights$prior$truncation[["lower"]], length(parameter))
+    attr(parameter, "ub") <- rep(prior$weights$prior$truncation[["upper"]], length(parameter))
 
-  }else if(prior[["distribution"]] %in% c("one.sided.fixed", "two.sided.fixed")){
+  }else if(prior$weights$type == "independent" && prior$weights$scale == "log_omega"){
+
+    parameter <- if(J > 1L) paste0("log_omega[", 2:J, "]") else NULL
+    attr(parameter, "lb") <- rep(prior$weights$prior$truncation[["lower"]], length(parameter))
+    attr(parameter, "ub") <- rep(prior$weights$prior$truncation[["upper"]], length(parameter))
+
+  }else if(prior$weights$type == "fixed"){
 
     parameter <- NULL
 
   }
 
-  names(attr(parameter, "lb")) <- parameter
-  names(attr(parameter, "ub")) <- parameter
+  if(!is.null(parameter)){
+    names(attr(parameter, "lb")) <- parameter
+    names(attr(parameter, "ub")) <- parameter
+  }
 
+  return(parameter)
+}
+.JAGS_bridgesampling_posterior_info.phacking <- function(prior){
+
+  .check_prior(prior)
+  if(!is_prior_phacking(prior))
+    stop("improper prior provided")
+
+  parameter <- .JAGS_bridgesampling_posterior_info.simple(prior$alpha, "alpha")
+
+  return(parameter)
+}
+.JAGS_bridgesampling_posterior_info.bias <- function(prior){
+
+  .check_prior(prior)
+  if(!is_prior_bias(prior))
+    stop("improper prior provided")
+
+  selection_backend_spec(prior)
+
+  parameter <- NULL
+  parameter_lb <- NULL
+  parameter_ub <- NULL
+
+  if(!is.null(prior$selection)){
+    selection_parameter <- .JAGS_bridgesampling_posterior_info.weightfunction(prior$selection)
+    parameter <- c(parameter, selection_parameter)
+    parameter_lb <- c(parameter_lb, attr(selection_parameter, "lb"))
+    parameter_ub <- c(parameter_ub, attr(selection_parameter, "ub"))
+  }
+  if(!is.null(prior$phacking)){
+    phacking_parameter <- .JAGS_bridgesampling_posterior_info.phacking(prior$phacking)
+    parameter <- c(parameter, phacking_parameter)
+    parameter_lb <- c(parameter_lb, attr(phacking_parameter, "lb"))
+    parameter_ub <- c(parameter_ub, attr(phacking_parameter, "ub"))
+  }
+
+  attr(parameter, "lb") <- parameter_lb
+  attr(parameter, "ub") <- parameter_ub
   return(parameter)
 }
 # .JAGS_bridgesampling_posterior_info.spike_and_slab <- function(prior, parameter_name){
@@ -560,6 +687,7 @@ JAGS_marglik_priors                <- function(samples, prior_list){
     stop("'prior_list' must be a list.")
   if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
+  .check_prior_list_unique_names(prior_list)
 
 
   # add the resulting parameters
@@ -569,6 +697,18 @@ JAGS_marglik_priors                <- function(samples, prior_list){
     if(is.prior.weightfunction(prior_list[[i]])){
 
       marglik <- marglik + .JAGS_marglik_priors.weightfunction(samples, prior_list[[i]])
+
+    }else if(is_prior_phacking(prior_list[[i]])){
+
+      marglik <- marglik + .JAGS_marglik_priors.phacking(samples, prior_list[[i]])
+
+    }else if(is_prior_bias(prior_list[[i]])){
+
+      marglik <- marglik + .JAGS_marglik_priors.bias(samples, prior_list[[i]])
+
+    }else if(is.prior.mixture(prior_list[[i]])){
+
+      .JAGS_marglik_stop_unsupported_mixture(prior_list[[i]])
 
     }else if(is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
 
@@ -626,6 +766,9 @@ JAGS_marglik_priors                <- function(samples, prior_list){
   if(!is.prior.vector(prior))
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
+  check_int(prior$parameters[["K"]], "K", lower = 1)
+  if(prior[["distribution"]] != "mpoint")
+    .check_vector_truncation_unsupported(prior$truncation)
 
   if(prior[["distribution"]] == "mpoint"){
     marglik <- 0
@@ -686,20 +829,52 @@ JAGS_marglik_priors                <- function(samples, prior_list){
   if(!is.prior.weightfunction(prior))
     stop("improper prior provided")
 
-  if(prior[["distribution"]] %in% c("one.sided.fixed", "two.sided.fixed")){
+  J <- .weightfunction_n_bins(prior)
+
+  if(prior$weights$type == "fixed"){
 
     marglik <- 0
 
-  }else if(all(names(prior[["parameters"]]) %in% c("alpha", "steps"))){
+  }else if(prior$weights$type == "cumulative"){
 
-    marglik <- sum(stats::dgamma(samples[ paste0("eta[",1:length(prior$parameters[["alpha"]]),"]") ], shape = prior$parameters[["alpha"]], rate = 1, log = TRUE))
+    marglik <- sum(stats::dgamma(samples[paste0("eta[", seq_len(J), "]")], shape = prior$weights$alpha, rate = 1, log = TRUE))
 
-  }else if(all(names(prior[["parameters"]]) %in% c("alpha1", "alpha2", "steps"))){
+  }else if(prior$weights$type == "independent"){
 
-    marglik <-
-      sum(stats::dgamma(samples[ paste0("eta1[",1:length(prior$parameters[["alpha1"]]),"]") ], shape = prior$parameters[["alpha1"]], rate = 1, log = TRUE)) +
-      sum(stats::dgamma(samples[ paste0("eta2[",1:length(prior$parameters[["alpha2"]]),"]") ], shape = prior$parameters[["alpha2"]], rate = 1, log = TRUE))
+    if(J == 1L){
+      marglik <- 0
+    }else if(prior$weights$scale == "omega"){
+      marglik <- sum(mlpdf(prior$weights$prior, samples[paste0("omega[", 2:J, "]")]))
+    }else if(prior$weights$scale == "log_omega"){
+      marglik <- sum(mlpdf(prior$weights$prior, samples[paste0("log_omega[", 2:J, "]")]))
+    }
 
+  }
+
+  return(marglik)
+}
+.JAGS_marglik_priors.phacking <- function(samples, prior){
+
+  .check_prior(prior)
+  if(!is_prior_phacking(prior))
+    stop("improper prior provided")
+
+  .JAGS_marglik_priors.simple(samples, prior$alpha, "alpha")
+}
+.JAGS_marglik_priors.bias <- function(samples, prior){
+
+  .check_prior(prior)
+  if(!is_prior_bias(prior))
+    stop("improper prior provided")
+
+  selection_backend_spec(prior)
+
+  marglik <- 0
+  if(!is.null(prior$selection)){
+    marglik <- marglik + .JAGS_marglik_priors.weightfunction(samples, prior$selection)
+  }
+  if(!is.null(prior$phacking)){
+    marglik <- marglik + .JAGS_marglik_priors.phacking(samples, prior$phacking)
   }
 
   return(marglik)
@@ -777,6 +952,18 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
       parameters <- c(parameters, .JAGS_marglik_parameters.weightfunction(samples, prior_list[[i]]))
 
+    }else if(is_prior_phacking(prior_list[[i]])){
+
+      parameters <- c(parameters, .JAGS_marglik_parameters.phacking(samples, prior_list[[i]]))
+
+    }else if(is_prior_bias(prior_list[[i]])){
+
+      parameters <- c(parameters, .JAGS_marglik_parameters.bias(samples, prior_list[[i]]))
+
+    }else if(is.prior.mixture(prior_list[[i]])){
+
+      .JAGS_marglik_stop_unsupported_mixture(prior_list[[i]])
+
     }else if(is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
 
       parameters <- c(parameters, .JAGS_marglik_parameters.PP(samples, prior_list[[i]]))
@@ -819,6 +1006,28 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
   return(parameter)
 }
+.JAGS_marglik_parameter_values          <- function(samples, prior, parameter_names){
+
+  if(is.prior.point(prior)){
+    return(rep(prior$parameters[["location"]], length(parameter_names)))
+  }
+
+  sample_names <- parameter_names
+  if(prior[["distribution"]] == "invgamma"){
+    sample_names <- paste0("inv_", parameter_names)
+  }
+
+  if(!all(sample_names %in% names(samples))){
+    stop("'samples' does not contain all monitored formula prior parameters.", call. = FALSE)
+  }
+
+  values <- unname(unlist(samples[sample_names], use.names = FALSE))
+  if(prior[["distribution"]] == "invgamma"){
+    values <- values^-1
+  }
+
+  return(values)
+}
 .JAGS_marglik_parameters.vector         <- function(samples, prior, parameter_name){
 
   .check_prior(prior)
@@ -852,16 +1061,13 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
   if(is.prior.treatment(prior) | is.prior.independent(prior)){
 
+    parameter <- list()
     if(.get_prior_factor_levels(prior) == 1){
-
-      parameter <- .JAGS_marglik_parameters.simple(samples, prior, parameter_name)
-
+      parameter_names <- parameter_name
     }else{
-
-      parameter <- list()
-      parameter[[parameter_name]] <- samples[ paste0(parameter_name, "[", 1:.get_prior_factor_levels(prior), "]") ]
-
+      parameter_names <- paste0(parameter_name, "[", 1:.get_prior_factor_levels(prior), "]")
     }
+    parameter[[parameter_name]] <- .JAGS_marglik_parameter_values(samples, prior, parameter_names)
 
   }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
 
@@ -893,31 +1099,64 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
   if(!is.prior.weightfunction(prior))
     stop("improper prior provided")
 
+  parameter <- list()
+  J <- .weightfunction_n_bins(prior)
+
+  if(prior$weights$type == "cumulative"){
+
+    eta     <- samples[paste0("eta[", seq_len(J), "]")]
+    std_eta <- eta / sum(eta)
+    omega <- unname(rev(cumsum(rev(std_eta))))
+
+  }else if(prior$weights$type == "independent"){
+
+    omega <- rep(1, J)
+    if(J > 1L){
+      if(prior$weights$scale == "omega"){
+        omega[2:J] <- samples[paste0("omega[", 2:J, "]")]
+      }else if(prior$weights$scale == "log_omega"){
+        omega[2:J] <- exp(samples[paste0("log_omega[", 2:J, "]")])
+      }
+    }
+  }else if(prior$weights$type == "fixed"){
+
+    omega <- unname(prior$weights$omega)
+
+  }
+
+  expansion <- .weightfunction_mapping_expansion(prior, force_one_sided = TRUE)
+  parameter[["omega"]] <- unname(omega[expansion$index])
+
+  return(parameter)
+}
+.JAGS_marglik_parameters.phacking <- function(samples, prior){
+
+  .check_prior(prior)
+  if(!is_prior_phacking(prior))
+    stop("improper prior provided")
+
+  alpha <- samples[["alpha"]]
+  constants <- phack_backend_constants(prior$form, prior$source, prior$destination, target = prior$target)
+  list(
+    alpha     = alpha,
+    pi_null   = alpha * constants$pi_null_per_alpha,
+    beta_null = alpha * constants$beta_null_per_alpha
+  )
+}
+.JAGS_marglik_parameters.bias <- function(samples, prior){
+
+  .check_prior(prior)
+  if(!is_prior_bias(prior))
+    stop("improper prior provided")
+
+  selection_backend_spec(prior)
 
   parameter <- list()
-  if(all(names(prior[["parameters"]]) %in% c("alpha", "steps"))){
-
-    eta     <- samples[ paste0("eta[",1:length(prior$parameters[["alpha"]]),"]") ]
-    std_eta <- eta / sum(eta)
-    parameter[["omega"]] <- cumsum(std_eta)
-
-  }else if(all(names(prior[["parameters"]]) %in% c("alpha1", "alpha2", "steps"))){
-
-    J1 <- length(prior$parameters[["alpha1"]])
-    J2 <- length(prior$parameters[["alpha2"]])
-    omega    <- rep(NA, J1 + J2 - 1)
-    eta1     <- samples[ paste0("eta1[",1:J1,"]") ]
-    std_eta1 <- eta1 / sum(eta1)
-    omega[J2:length(omega)] <- cumsum(std_eta1)
-    eta2     <- samples[ paste0("eta2[",1:J2,"]") ]
-    std_eta2 <- (eta2 / sum(eta2)) * (1 - std_eta1[1])
-    omega[1:(J2-1)] <- rev(cumsum(std_eta2[J2:2])) + std_eta1[1]
-    parameter[["omega"]] <- omega
-
-  }else if(prior[["distribution"]] %in% c("one.sided.fixed", "two.sided.fixed")){
-
-    parameter[["omega"]] <- prior$parameters[["omega"]]
-
+  if(!is.null(prior$selection)){
+    parameter <- c(parameter, .JAGS_marglik_parameters.weightfunction(samples, prior$selection))
+  }
+  if(!is.null(prior$phacking)){
+    parameter <- c(parameter, .JAGS_marglik_parameters.phacking(samples, prior$phacking))
   }
 
   return(parameter)
@@ -939,7 +1178,7 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 # }
 
 #' @rdname JAGS_marglik_parameters
-JAGS_marglik_parameters_formula      <- function(samples, formula_data_list, formula_prior_list, prior_list_parameters){
+JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_data_list, formula_prior_list, prior_list_parameters){
 
   # return empty list in case that no prior was specified
   if(length(formula_prior_list) == 0){
@@ -949,16 +1188,18 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_data_list, for
   parameters <- list()
 
   for(parameter in names(formula_prior_list)){
-    parameters[[parameter]] <- .JAGS_marglik_parameters_formula_get(samples, parameter, formula_data_list[[parameter]], formula_prior_list[[parameter]], prior_list_parameters)
+    # check for log(intercept) attribute on the formula
+    log_intercept <- if(!is.null(formula_list[[parameter]])) isTRUE(attr(formula_list[[parameter]], "log(intercept)")) else FALSE
+    parameters[[parameter]] <- .JAGS_marglik_parameters_formula_get(samples, parameter, formula_data_list[[parameter]], formula_prior_list[[parameter]], prior_list_parameters, log_intercept)
   }
 
   return(parameters)
 }
 
-.JAGS_marglik_parameters_formula_get <- function(samples, parameter, formula_data_list, formula_prior_list, prior_list_parameters){
+.JAGS_marglik_parameters_formula_get <- function(samples, parameter, formula_data_list, formula_prior_list, prior_list_parameters, log_intercept = FALSE){
 
   formula_terms            <- names(formula_prior_list)
-  names(formula_data_list) <- gsub("_data", "", names(formula_data_list))
+  names(formula_data_list) <- sub(paste0("^", parameter, "_data_"), paste0(parameter, "_"), names(formula_data_list))
 
   # start with intercept
   if(sum(formula_terms == paste0(parameter, "_intercept")) == 1){
@@ -974,15 +1215,13 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_data_list, for
       multiply_by <- 1
     }
 
-    if(is.prior.point(formula_prior_list[[paste0(parameter, "_intercept")]])){
-
-      output <- multiply_by * rep(formula_prior_list[[paste0(parameter, "_intercept")]][["parameters"]][["location"]], formula_data_list[[paste0("N_", parameter)]])
-
-    }else{
-
-      output <- multiply_by * rep(samples[[paste0(parameter, "_intercept")]], formula_data_list[[paste0("N_", parameter)]])
-
+    intercept_prior <- formula_prior_list[[paste0(parameter, "_intercept")]]
+    intercept_value <- .JAGS_marglik_parameter_values(samples, intercept_prior, paste0(parameter, "_intercept"))
+    # apply log transformation if log(intercept) attribute is set
+    if(log_intercept){
+      intercept_value <- log(intercept_value)
     }
+    output <- multiply_by * rep(intercept_value, formula_data_list[[paste0("N_", parameter)]])
 
   }else{
     output <- rep(0, formula_data_list[[paste0("N_", parameter)]])
@@ -1020,15 +1259,19 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_data_list, for
       }else if(is.prior.factor(formula_prior_list[[term]])){
 
         if(.get_prior_factor_levels(formula_prior_list[[term]]) == 1){
-          output <- output + multiply_by * samples[[term]] * formula_data_list[[term]]
+          term_value <- .JAGS_marglik_parameter_values(samples, formula_prior_list[[term]], term)
+          output     <- output + multiply_by * term_value * formula_data_list[[term]]
         }else{
-          output <- output + multiply_by * formula_data_list[[term]] %*% samples[paste0(term,"[", 1:.get_prior_factor_levels(formula_prior_list[[term]]), "]")]
+          term_names  <- paste0(term,"[", 1:.get_prior_factor_levels(formula_prior_list[[term]]), "]")
+          term_values <- .JAGS_marglik_parameter_values(samples, formula_prior_list[[term]], term_names)
+          output      <- output + multiply_by * formula_data_list[[term]] %*% term_values
         }
 
 
       }else if(is.prior.simple(formula_prior_list[[term]])){
 
-        output <- output + multiply_by * samples[[term]] * formula_data_list[[term]]
+        term_value <- .JAGS_marglik_parameter_values(samples, formula_prior_list[[term]], term)
+        output     <- output + multiply_by * term_value * formula_data_list[[term]]
 
       }
 

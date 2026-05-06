@@ -1,2012 +1,1017 @@
-context("Model-averaging plot functions")
-set.seed(1)
+skip_if_not_test_profile(c("visual", "visual-fixture"))
 
-test_that("helper functions work", {
+# ============================================================================ #
+# TEST FILE: Model Averaging Plots
+# ============================================================================ #
+#
+# PURPOSE:
+#   Tests for plot_prior_list, plot_posterior, plot_models, and related
+#   visualization functions in model averaging.
+#   Semantic plot-data companions live in
+#   test-model-averaging-plots-edge-cases.R; this file is for presentation
+#   regressions that still need rendered visual coverage.
+#
+# DEPENDENCIES:
+#   - vdiffr: Visual regression testing
+#   - rjags: For tests using pre-fitted models
+#   - common-functions.R: temp_fits_dir, skip_if_no_fits
+#
+# SKIP CONDITIONS:
+#   - skip_if_not_installed("vdiffr"): For visual tests
+#   - skip_if_not_visual_fixture_tests(): For visual tests using pre-fitted models
+#   - skip_if_no_fits(): For tests using pre-fitted models
+#
+# MODELS/FIXTURES:
+#   - fit_summary0, fit_summary1, fit_orthonormal_0, fit_orthonormal_1
+#
+# TAGS: @evaluation, @visual, @plots, @model-averaging
+# ============================================================================ #
 
-  # join duplicate
-  prior_list       <- list(
-    p1  = prior("normal", list(0, 1)),
-    p2  = prior("lognormal", list(0, .5)),
-    p3  = prior("point", list(1)),
-    p4  = prior("normal", list(0, 1))
-  )
+source(testthat::test_path("common-functions.R"))
 
-  simplified_list <- .simplify_prior_list(prior_list)
-
-  expect_equal(simplified_list, list(
-    p1  = prior("normal", list(0, 1), prior_weights = 2),
-    p2  = prior("lognormal", list(0, .5)),
-    p3  = prior("point", list(1))
-  ))
-
-
-  # no duplicate
-  prior_list       <- list(
-    p1  = prior("normal", list(0, 1)),
-    p2  = prior("lognormal", list(0, .5)),
-    p3  = prior("point", list(1))
-  )
-
-  simplified_list <- .simplify_prior_list(prior_list)
-
-  expect_equal(simplified_list, list(
-    p1  = prior("normal", list(0, 1)),
-    p2  = prior("lognormal", list(0, .5)),
-    p3  = prior("point", list(1))
-  ))
+skip_if_not_installed("vdiffr")
 
 
-  # multiple duplicates
-  prior_list       <- list(
-    p1  = prior("normal", list(0, 1)),
-    p2  = prior("lognormal", list(0, .5)),
-    p3  = prior("point", list(1)),
-    p1  = prior("normal", list(0, 1)),
-    p4  = prior("normal", list(0, 1)),
-    p2  = prior("lognormal", list(0, .5))
-  )
+# ============================================================================ #
+# SECTION 1: plot_prior_list basic tests
+# ============================================================================ #
+test_that("plot_prior_list handles simple cases", {
+  skip_if_not_visual_tests()
+  set.seed(1)
 
-  simplified_list <- .simplify_prior_list(prior_list)
-
-  expect_equal(simplified_list, list(
-    p1  = prior("normal", list(0, 1), prior_weights = 3),
-    p2  = prior("lognormal", list(0, .5), prior_weights = 2),
-    p3  = prior("point", list(1))
-  ))
-})
-
-
-test_that("prior plot functions (simple) work", {
-
-  ### simple cases
-  # continuous
-  prior_list       <- list(
+  # Test with a single normal prior
+  prior_list_normal <- list(
     p1 = prior("normal", list(0, 1))
   )
 
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-1", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4)
-    lines(prior_list$p1, col = "blue", lwd = 3, lty = 2)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-2", {
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4) + geom_prior(prior_list$p1, col = "blue", lwd = 3, lty = 2)
+  vdiffr::expect_doppelganger("plot-prior-list-single-normal", function() {
+    plot_prior_list(prior_list_normal)
   })
 
-  # spike
-  prior_list       <- list(
-    p1 = prior("spike", list(.5))
-  )
-
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-3", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4)
-    lines(prior_list$p1, col = "blue", lwd = 3, lty = 2)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-4", {
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4) + geom_prior(prior_list$p1, col = "blue", lwd = 3, lty = 2)
-  })
-
-
-  ### the prior joining should give the same prior (+ check truncation)
-  prior_list       <- list(
-    p1 = prior("normal", list(0, 1), truncation = list(0, Inf)),
-    p2 = prior("normal", list(0, 1.001), truncation = list(0, Inf))
-  )
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-5", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4)
-    lines(prior_list$p1, col = "blue", lwd = 3, lty = 2)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-6", function(){
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4) + geom_prior(prior_list$p1, col = "blue", lwd = 3, lty = 2)
-  })
-
-
-  ### mixtures
-  prior_list       <- list(
+  # Test with multiple priors
+  prior_list_multi <- list(
     p1 = prior("normal", list(0, 1)),
-    p2 = prior("normal", list(0, 1), list(1, Inf)),
-    p3 = prior("spike", list(.5))
+    p2 = prior("normal", list(1, 0.5)),
+    p3 = prior("cauchy", list(0, 1))
   )
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-7", function(){
+
+  vdiffr::expect_doppelganger("plot-prior-list-multi", function() {
+    plot_prior_list(prior_list_multi)
+  })
+
+  # Test with gamma prior
+  prior_list_gamma <- list(
+    p1 = prior("gamma", list(2, 1))
+  )
+
+  vdiffr::expect_doppelganger("plot-prior-list-gamma", function() {
+    plot_prior_list(prior_list_gamma)
+  })
+
+})
+
+
+test_that("plot_prior_list handles orthonormal priors", {
+  skip_if_not_visual_tests()
+  set.seed(1)
+
+  # Create orthonormal factor prior
+  prior_orth <- prior_factor("mnorm", list(mean = 0, sd = 1), contrast = "orthonormal")
+  attr(prior_orth, "levels") <- 3
+
+  prior_list <- list(p1 = prior_orth)
+
+  # Base plot
+  vdiffr::expect_doppelganger("plot-prior-list-orthonormal-base", function() {
+    plot_prior_list(prior_list)
+  })
+
+  # ggplot
+  vdiffr::expect_doppelganger("plot-prior-list-orthonormal-ggplot", {
+    plot_prior_list(prior_list, plot_type = "ggplot")
+  })
+
+  vdiffr::expect_doppelganger("plot-prior-list-orthonormal2-ggplot", {
+    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lty = 2, linetype = 2)
+  })
+
+  # Create orthonormal factor prior with spike
+  prior_orth0 <- prior_factor("spike", list(0), contrast = "orthonormal")
+  attr(prior_orth0, "levels") <- 3
+
+  prior_list0 <- list(p1 = prior_orth0)
+
+  # Base plot
+  vdiffr::expect_doppelganger("plot-prior-list-orthonormal-spike", function() {
+    plot_prior_list(prior_list0)
+  })
+
+  prior_list2 <- list(
+    p1 = prior_orth,
+    p2 = prior_orth0
+  )
+
+  # Base plot with transformation
+  vdiffr::expect_doppelganger("plot-prior-list-orthonormal-spike-and-slab", function() {
+    suppressMessages(plot_prior_list(prior_list2, transformation = "exp", transformation_settings = TRUE, xlim = c(0.01, 5)))
+  })
+
+})
+
+
+test_that("plot_prior_list handles meandif priors", {
+  skip_if_not_visual_tests()
+  set.seed(1)
+
+  # Create meandif factor prior
+  prior_md <- prior_factor("mnorm", list(mean = 0, sd = 0.5), contrast = "meandif")
+  attr(prior_md, "levels") <- 3
+
+  prior_list <- list(p1 = prior_md)
+
+  # Base plot
+  vdiffr::expect_doppelganger("plot-prior-list-meandif-base", function() {
+    plot_prior_list(prior_list)
+  })
+
+  # ggplot
+  vdiffr::expect_doppelganger("plot-prior-list-meandif-ggplot", {
+    plot_prior_list(prior_list, plot_type = "ggplot")
+  })
+
+})
+
+
+test_that("plot_prior_list handles weightfunction priors", {
+  skip_if_not_visual_tests()
+  set.seed(1)
+
+  # Create one-sided weightfunction prior
+  wf_prior <- prior_weightfunction("one-sided", c(0.05), wf_cumulative(c(1, 1)))
+
+  prior_list_wf <- list(p1 = wf_prior)
+
+  vdiffr::expect_doppelganger("plot-prior-list-weightfunction", function() {
+    plot_prior_list(prior_list_wf)
+  })
+
+  # Test ggplot version
+  vdiffr::expect_doppelganger("plot-prior-list-weightfunction-ggplot", {
+    plot_prior_list(prior_list_wf, plot_type = "ggplot")
+  })
+
+})
+
+
+test_that("scale_y2 is handled correctly for mixed distributions", {
+  skip_if_not_visual_tests()
+  set.seed(1)
+
+  # Create a list with both continuous and point priors
+  prior_list <- list(
+    p1 = prior("normal", list(0, 1)),
+    p2 = prior("spike", list(0))
+  )
+
+  # Base plot should handle dual y-axis
+  vdiffr::expect_doppelganger("plot-prior-list-dual-axis", function() {
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4))
     plot_prior_list(prior_list)
   })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-8", function(){
+
+  # ggplot should handle it differently
+  vdiffr::expect_doppelganger("plot-prior-list-dual-axis-ggplot", {
     plot_prior_list(prior_list, plot_type = "ggplot")
   })
 
-  # with additional settings
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-9", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_prior_list(prior_list, xlab = "xlab", ylab = "ylab", ylab2 = "ylab2", main = "main")
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-10", function(){
-    plot_prior_list(prior_list, plot_type = "ggplot", xlab = "xlab", ylab = "ylab", ylab2 = "ylab2", main = "main")
-  })
+})
 
-  # and more spikes
-  prior_list       <- list(
+
+# ============================================================================ #
+# SECTION 2: lines_prior_list tests
+# ============================================================================ #
+test_that("lines_prior_list handles various configurations", {
+  skip_if_not_visual_tests()
+  set.seed(1)
+  prior_list <- list(
     p1 = prior("normal", list(0, 1)),
-    p2 = prior("normal", list(0, 1), list(1, Inf)),
-    p3 = prior("spike", list(.5)),
-    p4 = prior("spike", list(-5))
+    p2 = prior("normal", list(0, 2))
   )
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-11", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_prior_list(prior_list)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-12", function(){
-    plot_prior_list(prior_list, plot_type = "ggplot")
+
+  # Test adding lines to existing plot
+  vdiffr::expect_doppelganger("lines-prior-list-add", function() {
+    plot(NULL, xlim = c(-5, 5), ylim = c(0, 0.5), xlab = "", ylab = "")
+    lines_prior_list(prior_list, col = "red", lwd = 2)
   })
 
-  # verify aggregation
-  prior_list       <- list(
+  # Test with custom xlim
+  vdiffr::expect_doppelganger("lines-prior-list-xlim", function() {
+    plot(NULL, xlim = c(-3, 3), ylim = c(0, 0.5), xlab = "", ylab = "")
+    lines_prior_list(prior_list, xlim = c(-3, 3), col = "blue")
+  })
+
+})
+
+
+# ============================================================================ #
+# SECTION 3: geom_prior_list tests
+# ============================================================================ #
+test_that("geom_prior_list handles various configurations", {
+  skip_if_not_visual_tests()
+  set.seed(1)
+  prior_list <- list(
     p1 = prior("normal", list(0, 1)),
-    p2 = prior("normal", list(0, 1)),
-    p3 = prior("spike", list(.5)),
-    p4 = prior("spike", list(.5))
-  )
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-simple-13", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_prior_list(prior_list, lwd = 2)
-    lines_prior_list(prior_list, lty = 2, col = "red", lwd = 2)
-  })
-})
-
-# skip the rest as it takes too long
-skip_on_cran()
-
-test_that("prior plot functions (PET-PEESE) work", {
-
-  ### simple cases
-  # continuous
-  prior_list       <- list(
-    p1 = prior_PET("cauchy",   list(0, 1))
-  )
-  prior_list_mu   <- list(
-    m1 = prior("spike", list(0))
-  )
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-1", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4, col.fill = ggplot2::alpha("red", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
-    lines(prior_list$p1, col = "blue", lwd = 3, lty = 2, col.fill = ggplot2::alpha("blue", .20))
-  })
-  prior_list       <- list(
-    p1 = prior_PEESE("cauchy",   list(0, 2))
-  )
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-2", {
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu) + geom_prior(prior_list$p1, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
-  })
-
-  # spike
-  prior_list       <- list(
-    p1 = prior_PET("point", list(.1))
-  )
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-3", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4, n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
-    lines(prior_list$p1, col = "blue", lwd = 3, lty = 2)
-  })
-  prior_list       <- list(
-    p1 = prior_PEESE("point", list(.05))
-  )
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-4", {
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu) + geom_prior(prior_list$p1, col = "blue", lwd = 3, lty = 2, n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
-  })
-
-
-  ### the prior joining should give the same prior
-  prior_list       <- list(
-    PET1  = prior_PET("cauchy",   list(0, 1)),
-    PET2  = prior_PET("cauchy",   list(0, 1.001))
-  )
-  prior_list_mu   <- list(
-    m1 = prior("spike", list(0)),
-    m2 = prior("spike", list(0))
-  )
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-5", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
-    lines(prior_list$PET1, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20))
-  })
-  ### the prior joining should give the same prior
-  prior_list       <- list(
-    PEESE1 = prior_PEESE("cauchy",   list(0, 1)),
-    PEESE2 = prior_PEESE("cauchy",   list(0, 1.001))
-  )
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-6", function(){
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", col.fill = scales::alpha("red", .20), lwd = 4, n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu) + geom_prior_list(prior_list, col = "blue", col.fill = scales::alpha("blue", .20), lwd = 3, lty = 2, n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
-  })
-
-
-  ### mixtures
-  prior_list       <- list(
-    p1 = prior_PET("cauchy",     list(0, 1)),
-    p2 = prior_PEESE("cauchy",   list(0, 5))
-  )
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-7", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
-    lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-8", function(){
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu) + geom_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
-  })
-
-  # with additional settings
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-9", function(){
-    plot_prior_list(prior_list, n_samples = 1000, n_points = 50, xlab = "xlab", ylab = "ylab", main = "main", prior_list_mu = prior_list_mu)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-10", function(){
-    plot_prior_list(prior_list, n_samples = 1000, n_points = 50, plot_type = "ggplot", xlab = "xlab", ylab = "ylab", main = "main", prior_list_mu = prior_list_mu)
-  })
-
-
-  ### dealing with other type of priors
-  prior_list       <- list(
-    p1 = prior_PET("cauchy",     list(0, 1)),
-    p2 = prior_PEESE("cauchy",   list(0, 5)),
-    p3 = prior_none(prior_weights = 4)
-  )
-  prior_list_mu    <- list(
-    m1 = prior("spike",  list(0)),
-    m2 = prior("spike",  list(0)),
-    m3 = prior("normal", list(.3, .15))
-  )
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-11", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50, ylim = c(0, .5), prior_list_mu = prior_list_mu)
-    lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-PETPEESE-12", function(){
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, col.fill = scales::alpha("red", .20), n_samples = 1000, n_points = 50, ylim = c(0, .5), prior_list_mu = prior_list_mu) + geom_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), n_samples = 1000, n_points = 50, prior_list_mu = prior_list_mu)
-  })
-})
-
-
-test_that("prior plot functions (weightfunctions) work", {
-
-  ### simple cases
-  # continuous
-  prior_list       <- list(
-    p1 = prior_weightfunction("one.sided", list(c(.05, 0.10), c(1, 1, 1)))
+    p2 = prior("spike", list(0.5))
   )
 
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-1", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4, col.fill = scales::alpha("red", .20))
-    lines(prior_list$p1, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20))
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-2", {
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, col.fill = scales::alpha("red", .20)) + geom_prior(prior_list$p1, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20))
-  })
-
-  # spike
-  prior_list       <- list(
-    p1 = prior_weightfunction("one.sided.fixed", list(c(.05), c(1, .5)))
-  )
-
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-3", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4)
-    lines(prior_list$p1, col = "blue", lwd = 3, lty = 2)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-4", {
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4) + geom_prior(prior_list$p1, col = "blue", lwd = 3, lty = 2)
-  })
-
-
-  ### the prior joining should give the same prior
-  prior_list       <- list(
-    p1 = prior_weightfunction("one.sided", list(c(.05, 0.10), c(1, 1, 1))),
-    p2 = prior_weightfunction("one.sided", list(c(.05, 0.10), c(1, 1, 1.0001)))
-  )
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-5", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4, col.fill = scales::alpha("red", .20))
-    lines(prior_list$p1, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20))
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-6", function(){
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, col.fill = scales::alpha("red", .20)) + geom_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20))
-  })
-
-
-  ### mixtures
-  prior_list       <- list(
-    p1 = prior_weightfunction("one.sided", list(c(.025), c(1, 1))),
-    p2 = prior_weightfunction("two.sided", list(c(.05),  c(1, 1))),
-    p3 = prior_weightfunction("one.sided.fixed", list(c(.05), c(1, .5)), prior_weights = 10)
-  )
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-7", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4, col.fill = scales::alpha("red", .20), rescale_x = TRUE)
-    lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), rescale_x = TRUE)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-8", function(){
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, col.fill = scales::alpha("red", .20), rescale_x = TRUE) + geom_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), rescale_x = TRUE)
-  })
-
-  # with additional settings
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-9", function(){
-    plot_prior_list(prior_list, xlab = "xlab", ylab = "ylab", main = "main")
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-10", function(){
-    plot_prior_list(prior_list, plot_type = "ggplot", xlab = "xlab", ylab = "ylab", main = "main")
-  })
-
-
-  ### dealing with other type of priors
-  prior_list       <- list(
-    p1 = prior_weightfunction("one.sided", list(c(.5), c(1, 1))),
-    p2 = prior_none(),
-    p3 = prior_none()
-  )
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-11", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4, col.fill = scales::alpha("red", .20), rescale_x = TRUE)
-    lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), rescale_x = TRUE)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-wf-12", function(){
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4, col.fill = scales::alpha("red", .20), rescale_x = TRUE) + geom_prior_list(prior_list, col = "blue", lwd = 3, lty = 2, col.fill = scales::alpha("blue", .20), rescale_x = TRUE)
+  # Test adding to ggplot
+  vdiffr::expect_doppelganger("geom-prior-list-add", {
+    ggplot2::ggplot() +
+      ggplot2::xlim(-4, 4) +
+      ggplot2::ylim(0, 1) +
+      geom_prior_list(prior_list, col = "red")
   })
 
 })
 
 
-test_that("prior plot functions (orthonormal) work", {
-
-  ### simple cases
-  prior_list       <- list(
-    p1 = prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "orthonormal")
-  )
-  prior_list$p1$parameters$K <- 3
-
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-orthonormal-1", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4)
-    lines(prior_list$p1, col = "blue", lwd = 3, lty = 2)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-orthonormal-2", {
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4) +
-      geom_prior(prior_list$p1, col = "blue", lwd = 3, lty = 2)
-  })
-
-  # spike & slab mixture
-  prior_list       <- list(
-    p1 = prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "orthonormal"),
-    p2 = prior("spike", list(0))
-  )
-  prior_list$p1$parameters$K <- 3
-
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-orthonormal-3", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4)
-  })
-
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-orthonormal-4", {
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4)
-  })
-
-
-  ### mixtures
-  prior_list       <- list(
-    p1 = prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "orthonormal"),
-    p2 = prior_factor("mcauchy", list(location = 0, scale = 1), contrast = "orthonormal"),
-    p3 = prior("spike", list(0))
-  )
-  prior_list$p1$parameters$K <- 3
-  prior_list$p2$parameters$K <- 3
-
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-orthonormal-5", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4)
-    lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-orthonormal-6", function(){
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 2) +
-      geom_prior_list(prior_list, col = "blue", lwd = 1, lty = 2)
-  })
-
-})
-
-
-test_that("prior plot functions (treatment) work", {
-
-  ### simple cases
-  prior_list       <- list(
-    p1 = prior_factor("beta", list(alpha = 4, beta = 5), contrast = "treatment")
-  )
-
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-treatment-1", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4)
-    lines(prior_list$p1, col = "blue", lwd = 3, lty = 2)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-treatment-2", {
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4) +
-      geom_prior(prior_list$p1, col = "blue", lwd = 3, lty = 2)
-  })
-
-  # spike & slab mixture
-  prior_list       <- list(
-    p1 = prior_factor("beta", list(alpha = 4, beta = 5), contrast = "treatment"),
-    p2 = prior("spike", list(0))
-  )
-
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-treatment-3", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4)
-  })
-
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-treatment-4", {
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 2)
-  })
-
-
-  ### mixtures
-  prior_list       <- list(
-    p1 = prior_factor("normal", list(mean = 0, sd = 1), contrast = "treatment"),
-    p2 = prior_factor("beta", list(alpha = 4, beta = 5), contrast = "treatment"),
-    p3 = prior("spike", list(0))
-  )
-
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-treatment-5", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4)
-    lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-treatment-6", function(){
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 2) +
-      geom_prior_list(prior_list, col = "blue", lwd = 1, lty = 2)
-  })
-
-})
-
-
-test_that("prior plot functions (independent) work", {
-
-  ### simple cases
-  prior_list       <- list(
-    p1 = prior_factor("beta", list(alpha = 4, beta = 5), contrast = "independent")
-  )
-
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-independent-1", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4)
-    lines(prior_list$p1, col = "blue", lwd = 3, lty = 2)
-  })
-
-  # spike & slab mixture
-  prior_list       <- list(
-    p1 = prior_factor("beta", list(alpha = 4, beta = 5), contrast = "independent"),
-    p2 = prior("spike", list(0))
-  )
-
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-independent-2", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4)
-  })
-
-  ### mixtures
-  prior_list       <- list(
-    p1 = prior_factor("normal", list(mean = 0, sd = 1), contrast = "independent"),
-    p2 = prior_factor("beta", list(alpha = 4, beta = 5), contrast = "independent"),
-    p3 = prior("spike", list(0))
-  )
-
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-independent-3", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4)
-    lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-independent-4", function(){
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 2) +
-      geom_prior_list(prior_list, col = "blue", lwd = 1, lty = 2)
-  })
-
-})
-
-
-test_that("prior plot functions (meandif) work", {
-
-  ### simple cases
-  prior_list       <- list(
-    p1 = prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "meandif")
-  )
-  prior_list$p1$parameters$K <- 3
-
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-meandif-1", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4)
-    lines(prior_list$p1, col = "blue", lwd = 3, lty = 2)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-meandif-2", {
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4) +
-      geom_prior(prior_list$p1, col = "blue", lwd = 3, lty = 2)
-  })
-
-  # spike & slab mixture
-  prior_list       <- list(
-    p1 = prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "meandif"),
-    p2 = prior("spike", list(0))
-  )
-  prior_list$p1$parameters$K <- 3
-
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-meandif-3", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4)
-  })
-
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-meandif-4", {
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 4)
-  })
-
-
-  ### mixtures
-  prior_list       <- list(
-    p1 = prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "meandif"),
-    p2 = prior_factor("mcauchy", list(location = 0, scale = 1), contrast = "meandif"),
-    p3 = prior("spike", list(0))
-  )
-  prior_list$p1$parameters$K <- 3
-  prior_list$p2$parameters$K <- 3
-
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-meandif-5", function(){
-    plot_prior_list(prior_list, col = "red", lwd = 4)
-    lines_prior_list(prior_list, col = "blue", lwd = 3, lty = 2)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-prior-meandif-6", function(){
-    plot_prior_list(prior_list, plot_type = "ggplot", col = "red", lwd = 2) +
-      geom_prior_list(prior_list, col = "blue", lwd = 1, lty = 2)
-  })
-
-})
-
-
-test_that("posterior plot functions (simple) work", {
-
+# ============================================================================ #
+# SECTION 4: plot_posterior tests
+# ============================================================================ #
+test_that("plot_posterior handles various sample types", {
   set.seed(1)
-  data <- NULL
-  priors_list0 <- list(
-    m  = prior("spike", list(0)),
-    s  = prior("normal", list(0, 1), list(0, Inf))
-  )
-  priors_list1 <- list(
-    m  = prior("normal", list(0, .3)),
-    s  = prior("normal", list(0, 1), list(0, Inf))
-  )
-  model_syntax <-
-    "model
-    {
-    }"
-  log_posterior <- function(parameters, data){
-    return(0)
-  }
-  # fit the models
-  fit0 <- suppressWarnings(JAGS_fit(model_syntax, data, priors_list0, chains = 1, adapt = 100, burnin = 150, sample = 500, seed = 0))
-  fit1 <- suppressWarnings(JAGS_fit(model_syntax, data, priors_list1, chains = 1, adapt = 100, burnin = 150, sample = 500, seed = 1))
-  # get marginal likelihoods
-  marglik0 <- JAGS_bridgesampling(fit0, log_posterior = log_posterior, data = data, prior_list = priors_list0)
-  marglik1 <- JAGS_bridgesampling(fit1, log_posterior = log_posterior, data = data, prior_list = priors_list1)
-  # automatically mix posteriors
-  models <- list(
-    list(fit = fit0, marglik = marglik0, prior_weights = 1),
-    list(fit = fit1, marglik = marglik1, prior_weights = 1)
-  )
-  mixed_posteriors <- mix_posteriors(model_list = models, parameters = c("m", "s"), is_null_list = list("m" = 1, "s" = 0), seed = 1)
-
-
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-simple-1", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "m", lwd = 2, col = "red", par_name = expression(mu))
-    lines_prior_list(attr(mixed_posteriors$m, "prior_list"), col = "blue")
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-simple-2", {
-    plot_posterior(mixed_posteriors, "m", plot_type = "ggplot", lwd = 2, col = "red") + geom_prior_list(attr(mixed_posteriors$m, "prior_list"), col = "blue")
-  })
-
-  # checks truncation
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-simple-3", function(){
-    plot_posterior(mixed_posteriors, "s")
-    lines_prior_list(attr(mixed_posteriors$s, "prior_list"), col = "blue")
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-simple-4", {
-    plot_posterior(mixed_posteriors, "s", plot_type = "ggplot")
-  })
-
-  # check transformation
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-simple-5", function(){
-    plot_posterior(mixed_posteriors, "s", transformation = "exp")
-    lines_prior_list(attr(mixed_posteriors$s, "prior_list"), col = "blue", transformation = "exp")
-  })
-
-  # prior and posterior
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-simple-6", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "m", lwd = 2, col = "red", prior = TRUE, dots_prior = list(col = "blue", lty = 2))
-  })
-
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-simple-7", function(){
-    plot_posterior(mixed_posteriors, "m", plot_type = "ggplot", lwd = 2, col = "red", prior = TRUE, dots_prior = list(col = "blue", lty = 2))
-  })
-
-  # check transformation
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-simple-8", function(){
-    plot_posterior(mixed_posteriors, "s", transformation = "exp", lwd = 2, col = "red", prior = TRUE, dots_prior = list(col = "blue", lty = 2))
-  })
-})
-
-
-test_that("posterior plot functions (PET-PEESE) work", {
-
-  set.seed(1)
-  data <- NULL
-  priors_list0 <- list(
-    mu    = prior("spike", list(0)),
-    PET   = prior_PET("normal", list(0, .2))
-  )
-  priors_list1 <- list(
-    mu    = prior("spike", list(0)),
-    PEESE = prior_PEESE("normal", list(0, .8))
-  )
-  model_syntax <-
-    "model
-    {
-    }"
-  log_posterior <- function(parameters, data){
-    return(0)
-  }
-  # fit the models
-  fit0 <- suppressWarnings(JAGS_fit(model_syntax, data, priors_list0, chains = 1, adapt = 100, burnin = 150, sample = 2000, seed = 0))
-  fit1 <- suppressWarnings(JAGS_fit(model_syntax, data, priors_list1, chains = 1, adapt = 100, burnin = 150, sample = 2000, seed = 1))
-  # get marginal likelihoods
-  marglik0 <- JAGS_bridgesampling(fit0, log_posterior = log_posterior, data = data, prior_list = priors_list0)
-  marglik1 <- JAGS_bridgesampling(fit1, log_posterior = log_posterior, data = data, prior_list = priors_list1)
-  # automatically mix posteriors
-  models <- list(
-    list(fit = fit0, marglik = marglik0, prior_weights = 1),
-    list(fit = fit1, marglik = marglik1, prior_weights = 1)
-  )
-  mixed_posteriors <- mix_posteriors(model_list = models, parameters = c("mu", "PET", "PEESE"), is_null_list = list("mu" = c(T, T), "PET" = c(F,T),  "PEESE" = c(T,F)), seed = 1)
-
-
-
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-PETPEESE-1", function(){
-    plot_posterior(mixed_posteriors, "PETPEESE", lwd = 2, col = "red", col.fill = scales::alpha("red", .20), par_name = "PET-PEESE", n_points = 50, ylim = c(0, 1))
-    lines_prior_list(list(priors_list0$PET, priors_list1$PEESE), n_points = 50, n_samples = 1000, col = "blue", col.fill = scales::alpha("blue", .20), prior_list_mu = list(priors_list0$mu, priors_list1$mu))
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-PETPEESE-2", {
-    plot_posterior(mixed_posteriors, "PETPEESE", plot_type = "ggplot", lwd = 2, col = "red", col.fill = scales::alpha("red", .20), ylim = c(0, .5)) + geom_prior_list(list(priors_list0$PET, priors_list1$PEESE), n_points = 50, n_samples = 1000, col = "blue", col.fill = scales::alpha("blue", .20), prior_list_mu = list(priors_list0$mu, priors_list1$mu))
-  })
-
-  # check transformation
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-PETPEESE-5", function(){
-    plot_posterior(mixed_posteriors, "PETPEESE", transformation = "lin", transformation_arguments = list(a = 0, b = 0.5), main = "PET-PEESE (1/2x)")
-    lines_prior_list(list(priors_list0$PET, priors_list1$PEESE), n_points = 50, n_samples = 1000, col = "blue", col.fill = scales::alpha("blue", .20), transformation = "lin", transformation_arguments = list(a = 0, b = 0.5), prior_list_mu = list(priors_list0$mu, priors_list1$mu))
-  })
-
-  # prior and posterior
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-PETPEESE-6", function(){
-    plot_posterior(mixed_posteriors, "PETPEESE", lwd = 2, col = "red", col.fill = scales::alpha("red", .20), prior = TRUE, n_points = 50, n_samples = 1000, dots_prior = list(col = "blue", col.fill = scales::alpha("blue", .20), lty = 2))
-  })
-
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-PETPEESE-7", function(){
-    plot_posterior(mixed_posteriors, "PETPEESE", plot_type = "ggplot", lwd = 2, col = "red", col.fill = scales::alpha("red", .20), n_points = 50, n_samples = 1000, prior = TRUE, dots_prior = list(col = "blue", col.fill = scales::alpha("blue", .20), lty = 2))
-  })
-
-  # check transformation
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-PETPEESE-8", function(){
-    plot_posterior(mixed_posteriors, "PETPEESE", transformation = "lin", transformation_arguments = list(a = 0, b = 0.5), lwd = 2, col = "red", n_points = 50, n_samples = 1000, col.fill = scales::alpha("red", .20), prior = TRUE, dots_prior = list(col = "blue", col.fill = scales::alpha("blue", .20), lty = 2))
-  })
-
-  # add an overhelming missing model
-  priors_list2 <- list(
-    mu = prior("normal", list(.2, .2), prior_weights = 4)
-  )
-  # fit the models
-  fit2 <- suppressWarnings(JAGS_fit(model_syntax, data, priors_list2, chains = 1, adapt = 100, burnin = 150, sample = 2000, seed = 1))
-  # get marginal likelihoods
-  marglik2 <- JAGS_bridgesampling(fit2, log_posterior = log_posterior, data = data, prior_list = priors_list2)
-  # automatically mix posteriors
-  models <- list(
-    list(fit = fit0, marglik = marglik0, prior_weights = 1),
-    list(fit = fit1, marglik = marglik1, prior_weights = 1),
-    list(fit = fit2, marglik = marglik2, prior_weights = 4)
-  )
-  mixed_posteriors <- mix_posteriors(model_list = models, parameters = c("mu" ,"PET", "PEESE"), is_null_list = list("mu" = c(T, T, F),"PET" = c(F,T,F),  "PEESE" = c(T,F,F)), seed = 1)
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-PETPEESE-9", function(){
-    plot_posterior(mixed_posteriors, "PETPEESE", ylim = c(0, 3), lwd = 2, col = "red", col.fill = scales::alpha("red", .20), n_points = 50, n_samples = 1000, prior = TRUE, dots_prior = list(col = "blue", col.fill = scales::alpha("blue", .20), lty = 2))
-  })
-
-})
-
-
-test_that("posterior plot functions (weightfunctions) work", {
-
-  set.seed(1)
-  data <- NULL
-  priors_list0 <- list(
-    omega = prior_weightfunction("one.sided", list(c(.025), c(1, 1)))
-  )
-  priors_list1 <- list(
-    omega = prior_weightfunction("two.sided", list(c(.05),  c(1, 1)))
-  )
-  model_syntax <-
-    "model
-    {
-    }"
-  log_posterior <- function(parameters, data){
-    return(0)
-  }
-  # fit the models
-  fit0 <- suppressWarnings(JAGS_fit(model_syntax, data, priors_list0, chains = 1, adapt = 100, burnin = 150, sample = 2000, seed = 0))
-  fit1 <- suppressWarnings(JAGS_fit(model_syntax, data, priors_list1, chains = 1, adapt = 100, burnin = 150, sample = 2000, seed = 1))
-  # get marginal likelihoods
-  marglik0 <- JAGS_bridgesampling(fit0, log_posterior = log_posterior, data = data, prior_list = priors_list0)
-  marglik1 <- JAGS_bridgesampling(fit1, log_posterior = log_posterior, data = data, prior_list = priors_list1)
-  # automatically mix posteriors
-  models <- list(
-    list(fit = fit0, marglik = marglik0, prior_weights = 1),
-    list(fit = fit1, marglik = marglik1, prior_weights = 1)
-  )
-  mixed_posteriors <- mix_posteriors(model_list = models, parameters = "omega", is_null_list = list("omega" = c(F,F)), seed = 1)
-
-
-
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-wf-1", function(){
-    plot_posterior(mixed_posteriors, "omega", lwd = 2, col = "red", col.fill = scales::alpha("red", .20), par_name = "Selection Models", n_points = 50, ylim = c(0, 1))
-    lines_prior_list(list(priors_list0$omega, priors_list1$omega), n_points = 50, n_samples = 1000, col = "blue", col.fill = scales::alpha("blue", .20))
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-wf-2", {
-    plot_posterior(mixed_posteriors, "omega", plot_type = "ggplot", lwd = 2, col = "red", col.fill = scales::alpha("red", .20)) + geom_prior_list(list(priors_list0$omega, priors_list1$omega), n_points = 50, n_samples = 1000, col = "blue", col.fill = scales::alpha("blue", .20))
-  })
-
-  # rescale-x
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-wf-3", function(){
-    plot_posterior(mixed_posteriors, "omega", lwd = 2, rescale_x = TRUE, col = "red", col.fill = scales::alpha("red", .20), par_name = "Selection Models", n_points = 50, ylim = c(0, 1))
-    lines_prior_list(list(priors_list0$omega, priors_list1$omega), rescale_x = TRUE, n_points = 50, n_samples = 1000, col = "blue", col.fill = scales::alpha("blue", .20))
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-wf-4", {
-    plot_posterior(mixed_posteriors, "omega", rescale_x = TRUE, plot_type = "ggplot", lwd = 2, col = "red", col.fill = scales::alpha("red", .20)) + geom_prior_list(list(priors_list0$omega, priors_list1$omega), rescale_x = TRUE, n_points = 50, n_samples = 1000, col = "blue", col.fill = scales::alpha("blue", .20))
-  })
-
-  # prior and posterior
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-wf-6", function(){
-    plot_posterior(mixed_posteriors, "omega", lwd = 2, col = "red", col.fill = scales::alpha("red", .20), prior = TRUE, n_points = 50, n_samples = 1000, dots_prior = list(col = "blue", col.fill = scales::alpha("blue", .20), lty = 2))
-  })
-
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-wf-7", function(){
-    plot_posterior(mixed_posteriors, "omega", plot_type = "ggplot", lwd = 2, col = "red", col.fill = scales::alpha("red", .20), n_points = 50, n_samples = 1000, prior = TRUE, dots_prior = list(col = "blue", col.fill = scales::alpha("blue", .20), lty = 2))
-  })
-
-  # rescale-x
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-wf-8", function(){
-    plot_posterior(mixed_posteriors, "omega", rescale_x = TRUE, lwd = 2, col = "red", col.fill = scales::alpha("red", .20), prior = TRUE, n_points = 50, n_samples = 1000, dots_prior = list(col = "blue", col.fill = scales::alpha("blue", .20), lty = 2))
-  })
-
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-wf-9", function(){
-    plot_posterior(mixed_posteriors, "omega", rescale_x = TRUE, plot_type = "ggplot", lwd = 2, col = "red", col.fill = scales::alpha("red", .20), n_points = 50, n_samples = 1000, prior = TRUE, dots_prior = list(col = "blue", col.fill = scales::alpha("blue", .20), lty = 2))
-  })
-
-  # add an overhelming missing model
-  priors_list2 <- list(
-    mu = prior("normal", list(0, .8), prior_weights = 4)
-  )
-  # fit the models
-  fit2 <- suppressWarnings(JAGS_fit(model_syntax, data, priors_list2, chains = 1, adapt = 100, burnin = 150, sample = 2000, seed = 1))
-  # get marginal likelihoods
-  marglik2 <- JAGS_bridgesampling(fit2, log_posterior = log_posterior, data = data, prior_list = priors_list2)
-  # automatically mix posteriors
-  models <- list(
-    list(fit = fit0, marglik = marglik0, prior_weights = 1),
-    list(fit = fit1, marglik = marglik1, prior_weights = 1),
-    list(fit = fit2, marglik = marglik2, prior_weights = 5)
-  )
-  mixed_posteriors <- mix_posteriors(model_list = models, parameters = "omega", is_null_list = list("omega" = c(F,F,F)), seed = 1)
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-wf-10", function(){
-    plot_posterior(mixed_posteriors, "omega", lwd = 2, col = "red", col.fill = scales::alpha("red", .20), n_points = 50, n_samples = 1000, prior = TRUE, dots_prior = list(col = "blue", col.fill = scales::alpha("blue", .20), lty = 2))
-  })
-
-})
-
-
-test_that("posterior plot functions (orthonormal) work", {
-
-  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  skip_if_not_visual_fixture_tests()
+  skip_if_not_installed("rjags")
   skip_on_cran()
+  skip_if_no_fits()
 
-  set.seed(1)
+  # Load fits
+  fit_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
+  marglik_summary0 <- readRDS(file.path(temp_marglik_dir, "fit_summary0.RDS"))
 
-  data_formula <- data.frame(
-    x_fac3o = factor(rep(c("A", "B", "C"), 40), levels = c("A", "B", "C"))
-  )
-  data <- list(
-    y = rnorm(120, .4  + ifelse(data_formula$x_fac3o == "A", 0.0, ifelse(data_formula$x_fac3o == "B", -0.5, 0.5)), 1),
-    N = 120
-  )
+  fit_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1.RDS"))
+  marglik_summary1 <- readRDS(file.path(temp_marglik_dir, "fit_summary1.RDS"))
 
-  # create model with mix of a formula and free parameters ---
-  formula_list0 <- list(mu = ~ 1)
-  formula_list1 <- list(mu = ~ x_fac3o)
-
-  formula_prior_list0 <- list(
-    mu    = list(
-      "intercept"       = prior("normal", list(0, 5))
-    )
-  )
-  formula_prior_list1 <- list(
-    mu    = list(
-      "intercept"       = prior("normal", list(0, 5)),
-      "x_fac3o"         = prior_factor("mnormal", contrast = "orthonormal", list(0, 0.5))
-    )
-  )
-
-  prior_list        <- list(sigma = prior("lognormal", list(0, 1)))
-  formula_data_list <- list(mu = data_formula)
-
-  model_syntax <- paste0(
-    "model{\n",
-    "for(i in 1:N){\n",
-    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
-    "}\n",
-    "}"
-  )
-
-  log_posterior <- function(parameters, data){
-    sum(stats::dnorm(data$y, parameters[["mu"]], parameters[["sigma"]], log = TRUE))
-  }
-
-  fit0 <- JAGS_fit(
-    model_syntax = model_syntax, data = data, prior_list = prior_list,
-    formula_list = formula_list0, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0, seed = 1)
-  fit1 <- JAGS_fit(
-    model_syntax = model_syntax, data = data, prior_list = prior_list,
-    formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1, seed = 2)
-
-  marglik0 <- JAGS_bridgesampling(
-    fit0, log_posterior = log_posterior, data = data, prior_list = prior_list,
-    formula_list = formula_list0, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0)
-  marglik1 <- JAGS_bridgesampling(
-    fit1, log_posterior = log_posterior, data = data, prior_list = prior_list,
-    formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1)
-
-  # mix posteriors
   models <- list(
-    list(fit = fit0, marglik = marglik0, prior_weights = 1),
-    list(fit = fit1, marglik = marglik1, prior_weights = 1)
+    list(fit = fit_summary0, marglik = marglik_summary0, prior_weights = 1),
+    list(fit = fit_summary1, marglik = marglik_summary1, prior_weights = 1)
   )
 
   mixed_posteriors <- mix_posteriors(
-    model_list   = models,
-    parameters   = c("mu_intercept", "mu_x_fac3o"),
-    is_null_list = list(
-      "mu_intercept"  = c(TRUE,  TRUE),
-      "mu_x_fac3o"    = c(FALSE, TRUE)
-    ),
-    seed = 1, n_samples = 10000)
+    model_list = models,
+    parameters = c("m", "omega"),
+    is_null_list = list("m" = c(FALSE, FALSE), "omega" = c(TRUE, FALSE)),
+    seed = 1,
+    n_samples = 1000
+  )
 
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-o-1", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "mu_x_fac3o")
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-o-2", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "mu_x_fac3o", col = c("red", "green", "blue"))
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-o-3", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "mu_x_fac3o", lty = c(2, 3, 4), col = "blue", lwd = 2)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-o-4", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "mu_x_fac3o", legend = FALSE)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-o-5", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "mu_x_fac3o", col = c("red", "green", "blue"), dots_prior = list(col = "grey"), prior = TRUE)
+  # Test simple posterior plot
+  vdiffr::expect_doppelganger("plot-posterior-simple", function() {
+    plot_posterior(mixed_posteriors, "m")
   })
 
-  vdiffr::expect_doppelganger("model-averaging-ggplot-posterior-o-1", plot_posterior(mixed_posteriors, "mu_x_fac3o", plot_type = "ggplot"))
-  vdiffr::expect_doppelganger("model-averaging-ggplot-posterior-o-2", plot_posterior(mixed_posteriors, "mu_x_fac3o", col = c("red", "green", "blue"), plot_type = "ggplot"))
-  vdiffr::expect_doppelganger("model-averaging-ggplot-posterior-o-3", plot_posterior(mixed_posteriors, "mu_x_fac3o", lty = c(2, 3, 4), col = "blue", lwd = 2, plot_type = "ggplot"))
-  vdiffr::expect_doppelganger("model-averaging-ggplot-posterior-o-4", plot_posterior(mixed_posteriors, "mu_x_fac3o", legend = FALSE, plot_type = "ggplot"))
-  vdiffr::expect_doppelganger("model-averaging-ggplot-posterior-o-5", plot_posterior(mixed_posteriors, "mu_x_fac3o", col = c("red", "green", "blue"), prior = TRUE, plot_type = "ggplot"))
+  # Test with prior overlay
+  vdiffr::expect_doppelganger("plot-posterior-with-prior", function() {
+    plot_posterior(mixed_posteriors, "m", prior = TRUE)
+  })
+
+  # Test ggplot version
+  vdiffr::expect_doppelganger("plot-posterior-ggplot", {
+    plot_posterior(mixed_posteriors, "m", plot_type = "ggplot")
+  })
+
+  # Test with custom xlim
+  vdiffr::expect_doppelganger("plot-posterior-xlim", function() {
+    plot_posterior(mixed_posteriors, "m", xlim = c(-2, 2))
+  })
 
 })
 
 
-test_that("posterior plot functions (treatment) work", {
-
-  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
-  skip_on_cran()
-
+test_that("plot_posterior handles weightfunction posteriors", {
   set.seed(1)
+  skip_if_not_visual_fixture_tests()
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+  skip_if_no_fits()
 
-  data_formula <- data.frame(
-    x_fac2t = factor(rep(c("A", "B"), 60), levels = c("A", "B"))
-  )
-  data <- list(
-    y = rnorm(120, .4  + ifelse(data_formula$x_fac2t == "A", 0.0, 0.5), 1),
-    N = 120
-  )
+  # Load fits
+  fit_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
+  marglik_summary0 <- readRDS(file.path(temp_marglik_dir, "fit_summary0.RDS"))
 
-  # create model with mix of a formula and free parameters ---
-  formula_list0 <- list(mu = ~ 1)
-  formula_list1 <- list(mu = ~ x_fac2t)
+  fit_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1.RDS"))
+  marglik_summary1 <- readRDS(file.path(temp_marglik_dir, "fit_summary1.RDS"))
 
-  formula_prior_list0 <- list(
-    mu    = list(
-      "intercept"       = prior("normal", list(0, 5))
-    )
-  )
-  formula_prior_list1 <- list(
-    mu    = list(
-      "intercept"       = prior("normal", list(0, 5)),
-      "x_fac2t"         = prior_factor("normal", contrast = "treatment", list(0, 0.5))
-    )
-  )
-
-  prior_list        <- list(sigma = prior("lognormal", list(0, 1)))
-  formula_data_list <- list(mu = data_formula)
-
-  model_syntax <- paste0(
-    "model{\n",
-    "for(i in 1:N){\n",
-    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
-    "}\n",
-    "}"
-  )
-
-  log_posterior <- function(parameters, data){
-    sum(stats::dnorm(data$y, parameters[["mu"]], parameters[["sigma"]], log = TRUE))
-  }
-
-  fit0 <- JAGS_fit(
-    model_syntax = model_syntax, data = data, prior_list = prior_list,
-    formula_list = formula_list0, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0, seed = 1)
-  fit1 <- JAGS_fit(
-    model_syntax = model_syntax, data = data, prior_list = prior_list,
-    formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1, seed = 2)
-
-  marglik0 <- JAGS_bridgesampling(
-    fit0, log_posterior = log_posterior, data = data, prior_list = prior_list,
-    formula_list = formula_list0, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0)
-  marglik1 <- JAGS_bridgesampling(
-    fit1, log_posterior = log_posterior, data = data, prior_list = prior_list,
-    formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1)
-
-  # mix posteriors
   models <- list(
-    list(fit = fit0, marglik = marglik0, prior_weights = 1),
-    list(fit = fit1, marglik = marglik1, prior_weights = 1)
+    list(fit = fit_summary0, marglik = marglik_summary0, prior_weights = 1),
+    list(fit = fit_summary1, marglik = marglik_summary1, prior_weights = 1)
   )
 
   mixed_posteriors <- mix_posteriors(
-    model_list   = models,
-    parameters   = c("mu_intercept", "mu_x_fac2t"),
-    is_null_list = list(
-      "mu_intercept"  = c(TRUE,  TRUE),
-      "mu_x_fac2t"    = c(FALSE, TRUE)
-    ),
-    seed = 1, n_samples = 10000)
+    model_list = models,
+    parameters = c("m", "omega"),
+    is_null_list = list("m" = c(FALSE, FALSE), "omega" = c(TRUE, FALSE)),
+    seed = 1,
+    n_samples = 1000
+  )
 
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-t-1", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "mu_x_fac2t")
+  # Test weightfunction posterior plot
+  vdiffr::expect_doppelganger("plot-posterior-omega", function() {
+    plot_posterior(mixed_posteriors, "omega", n_points = 50, n_samples = 500)
   })
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-t-2", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "mu_x_fac2t", col = "red")
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-t-3", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "mu_x_fac2t", lty = 2, col = "blue", lwd = 2)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-t-4", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "mu_x_fac2t", legend = FALSE)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-t-5", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "mu_x_fac2t", col = "red", prior = TRUE)
-  })
-
-  vdiffr::expect_doppelganger("model-averaging-ggplot-posterior-t-1", plot_posterior(mixed_posteriors, "mu_x_fac2t", plot_type = "ggplot"))
-  vdiffr::expect_doppelganger("model-averaging-ggplot-posterior-t-2", plot_posterior(mixed_posteriors, "mu_x_fac2t", col = "red", plot_type = "ggplot"))
-  vdiffr::expect_doppelganger("model-averaging-ggplot-posterior-t-3", plot_posterior(mixed_posteriors, "mu_x_fac2t", lty = 2, col = "blue", lwd = 2, plot_type = "ggplot"))
-  vdiffr::expect_doppelganger("model-averaging-ggplot-posterior-t-4", plot_posterior(mixed_posteriors, "mu_x_fac2t", legend = FALSE, plot_type = "ggplot"))
-  vdiffr::expect_doppelganger("model-averaging-ggplot-posterior-t-5", plot_posterior(mixed_posteriors, "mu_x_fac2t", col = "red", prior = TRUE, plot_type = "ggplot"))
 
 })
 
 
-test_that("posterior plot functions (independent) work", {
-
-  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+# ============================================================================ #
+# SECTION 5: plot_models tests
+# ============================================================================ #
+test_that("plot_models handles various configurations", {
+  set.seed(1)
+  skip_if_not_visual_fixture_tests()
+  skip_if_not_installed("rjags")
   skip_on_cran()
+  skip_if_no_fits()
 
-  set.seed(1)
+  # Load fits
+  fit_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
+  marglik_summary0 <- readRDS(file.path(temp_marglik_dir, "fit_summary0.RDS"))
 
-  data_formula <- data.frame(
-    x_fac2i = factor(rep(c("A", "B"), 150), levels = c("A", "B"))
-  )
-  data <- list(
-    y = rnorm(300, ifelse(data_formula$x_fac2i == "A", 0.0, 0.5), 1),
-    N = 300
-  )
+  fit_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1.RDS"))
+  marglik_summary1 <- readRDS(file.path(temp_marglik_dir, "fit_summary1.RDS"))
 
-  # create model with mix of a formula and free parameters ---
-  formula_list0 <- list(mu = ~ x_fac2i - 1)
-  formula_list1 <- list(mu = ~ x_fac2i - 1)
-
-  formula_prior_list0 <- list(
-    mu    = list(
-      "x_fac2i" = prior_factor("spike", contrast = "independent", list(0))
-    )
-  )
-  formula_prior_list1 <- list(
-    mu    = list(
-      "x_fac2i" = prior_factor("normal", contrast = "independent", list(0, 1/4))
-    )
-  )
-
-  prior_list        <- list(sigma = prior("lognormal", list(0, 1)))
-  formula_data_list <- list(mu = data_formula)
-
-  model_syntax <- paste0(
-    "model{\n",
-    "for(i in 1:N){\n",
-    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
-    "}\n",
-    "}"
-  )
-
-  log_posterior <- function(parameters, data){
-    sum(stats::dnorm(data$y, parameters[["mu"]], parameters[["sigma"]], log = TRUE))
-  }
-
-  fit0 <- JAGS_fit(
-    model_syntax = model_syntax, data = data, prior_list = prior_list,
-    formula_list = formula_list0, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0, seed = 1)
-  fit1 <- JAGS_fit(
-    model_syntax = model_syntax, data = data, prior_list = prior_list,
-    formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1, seed = 2)
-
-  marglik0 <- JAGS_bridgesampling(
-    fit0, log_posterior = log_posterior, data = data, prior_list = prior_list,
-    formula_list = formula_list0, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0)
-  marglik1 <- JAGS_bridgesampling(
-    fit1, log_posterior = log_posterior, data = data, prior_list = prior_list,
-    formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1)
-
-  # mix posteriors
   models <- list(
-    list(fit = fit0, marglik = marglik0, prior_weights = 1),
-    list(fit = fit1, marglik = marglik1, prior_weights = 1)
-  )
-
-  mixed_posteriors <- mix_posteriors(
-    model_list   = models,
-    parameters   = c("mu_x_fac2i"),
-    is_null_list = list(
-      "mu_x_fac2i"    = c(FALSE, TRUE)
-    ),
-    seed = 1, n_samples = 10000)
-
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-i-1", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "mu_x_fac2i")
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-i-2", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "mu_x_fac2i", col = c("green", "yellow"))
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-i-3", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "mu_x_fac2i", col = "red", prior = TRUE)
-  })
-
-  vdiffr::expect_doppelganger("model-averaging-ggplot-posterior-i-1", plot_posterior(mixed_posteriors, "mu_x_fac2i", plot_type = "ggplot"))
-  vdiffr::expect_doppelganger("model-averaging-ggplot-posterior-i-2", plot_posterior(mixed_posteriors, "mu_x_fac2i", prior = TRUE, plot_type = "ggplot"))
-
-})
-
-
-test_that("posterior plot functions (meandif) work", {
-
-  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
-  skip_on_cran()
-
-  set.seed(1)
-
-  data_formula <- data.frame(
-    x_fac3md = factor(rep(c("A", "B", "C"), 40), levels = c("A", "B", "C"))
-  )
-  data <- list(
-    y = rnorm(120, .4  + ifelse(data_formula$x_fac3md == "A", 0.0, ifelse(data_formula$x_fac3md == "B", -0.5, 0.5)), 1),
-    N = 120
-  )
-
-  # create model with mix of a formula and free parameters ---
-  formula_list0 <- list(mu = ~ 1)
-  formula_list1 <- list(mu = ~ x_fac3md)
-
-  formula_prior_list0 <- list(
-    mu    = list(
-      "intercept"       = prior("normal", list(0, 5))
-    )
-  )
-  formula_prior_list1 <- list(
-    mu    = list(
-      "intercept"       = prior("normal", list(0, 5)),
-      "x_fac3md"         = prior_factor("mnormal", contrast = "meandif", list(0, 0.5))
-    )
-  )
-
-  prior_list        <- list(sigma = prior("lognormal", list(0, 1)))
-  formula_data_list <- list(mu = data_formula)
-
-  model_syntax <- paste0(
-    "model{\n",
-    "for(i in 1:N){\n",
-    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
-    "}\n",
-    "}"
-  )
-
-  log_posterior <- function(parameters, data){
-    sum(stats::dnorm(data$y, parameters[["mu"]], parameters[["sigma"]], log = TRUE))
-  }
-
-  fit0 <- JAGS_fit(
-    model_syntax = model_syntax, data = data, prior_list = prior_list,
-    formula_list = formula_list0, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0, seed = 1)
-  fit1 <- JAGS_fit(
-    model_syntax = model_syntax, data = data, prior_list = prior_list,
-    formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1, seed = 2)
-
-  marglik0 <- JAGS_bridgesampling(
-    fit0, log_posterior = log_posterior, data = data, prior_list = prior_list,
-    formula_list = formula_list0, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0)
-  marglik1 <- JAGS_bridgesampling(
-    fit1, log_posterior = log_posterior, data = data, prior_list = prior_list,
-    formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1)
-
-  # mix posteriors
-  models <- list(
-    list(fit = fit0, marglik = marglik0, prior_weights = 1),
-    list(fit = fit1, marglik = marglik1, prior_weights = 1)
-  )
-
-  mixed_posteriors <- mix_posteriors(
-    model_list   = models,
-    parameters   = c("mu_intercept", "mu_x_fac3md"),
-    is_null_list = list(
-      "mu_intercept"  = c(TRUE,  TRUE),
-      "mu_x_fac3md"    = c(FALSE, TRUE)
-    ),
-    seed = 1, n_samples = 10000)
-
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-md-1", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "mu_x_fac3md")
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-md-2", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "mu_x_fac3md", col = c("red", "green", "blue"))
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-md-3", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "mu_x_fac3md", lty = c(2, 3, 4), col = "blue", lwd = 2)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-md-4", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "mu_x_fac3md", legend = FALSE)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-posterior-md-5", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "mu_x_fac3md", col = c("red", "green", "blue"), dots_prior = list(col = "grey"), prior = TRUE)
-  })
-
-  vdiffr::expect_doppelganger("model-averaging-ggplot-posterior-md-1", plot_posterior(mixed_posteriors, "mu_x_fac3md", plot_type = "ggplot"))
-  vdiffr::expect_doppelganger("model-averaging-ggplot-posterior-md-2", plot_posterior(mixed_posteriors, "mu_x_fac3md", col = c("red", "green", "blue"), plot_type = "ggplot"))
-  vdiffr::expect_doppelganger("model-averaging-ggplot-posterior-md-3", plot_posterior(mixed_posteriors, "mu_x_fac3md", lty = c(2, 3, 4), col = "blue", lwd = 2, plot_type = "ggplot"))
-  vdiffr::expect_doppelganger("model-averaging-ggplot-posterior-md-4", plot_posterior(mixed_posteriors, "mu_x_fac3md", legend = FALSE, plot_type = "ggplot"))
-  vdiffr::expect_doppelganger("model-averaging-ggplot-posterior-md-5", plot_posterior(mixed_posteriors, "mu_x_fac3md", col = c("red", "green", "blue"), prior = TRUE, plot_type = "ggplot"))
-
-})
-
-
-test_that("models plot functions work", {
-
-  set.seed(1)
-  ### prior distribution related functions
-  p0 <- prior(distribution = "point",  parameters = list(location = 0))
-  p1 <- prior(distribution = "normal", parameters = list(mean = 0, sd = 1))
-  p2 <- prior(distribution = "normal", parameters = list(mean = 0, sd = 1), truncation = list(0, Inf))
-
-  data <- list(
-    x = rnorm(10),
-    N = 10
-  )
-
-  ## create and fit models
-  priors_list0 <- list(mu  = p0)
-  priors_list1 <- list(mu  = p1)
-  priors_list2 <- list(tau = p2)
-
-  # define likelihood for the data
-  model_syntax <-
-    "model{
-    for(i in 1:N){
-      x[i] ~ dnorm(mu, 1)
-    }
-  }"
-  model_syntax2 <-
-    "model{
-    for(i in 1:N){
-      x[i] ~ dnorm(0, pow(tau, -2))
-    }
-  }"
-
-  # define log posterior for bridge sampling
-  log_posterior <- function(parameters, data){
-    sum(dnorm(data$x, parameters$mu, 1, log = TRUE))
-  }
-  log_posterior2 <- function(parameters, data){
-    sum(dnorm(data$x, 0, parameters$tau, log = TRUE))
-  }
-  # fit the models
-  fit0 <- JAGS_fit(model_syntax,  data, priors_list0, chains = 1, adapt = 100, burnin = 200, sample = 1000, seed = 0)
-  fit1 <- JAGS_fit(model_syntax,  data, priors_list1, chains = 1, adapt = 100, burnin = 200, sample = 1000, seed = 1)
-  fit2 <- JAGS_fit(model_syntax2, data, priors_list2, chains = 1, adapt = 100, burnin = 200, sample = 1000, seed = 2)
-  # get marginal likelihoods
-  marglik0 <- list(
-    logml = sum(dnorm(data$x, mean(p0), 1, log = TRUE))
-  )
-  class(marglik0) <- "bridge"
-  marglik1 <- JAGS_bridgesampling(fit1, log_posterior = log_posterior, data = data, prior_list = priors_list1)
-  marglik2 <- JAGS_bridgesampling(fit2, log_posterior = log_posterior2, data = data, prior_list = priors_list2)
-  ## create an object with the models
-  models <- list(
-    list(fit = fit0, marglik = marglik0, prior_weights = 1, fit_summary = runjags_estimates_table(fit0)),
-    list(fit = fit1, marglik = marglik1, prior_weights = 1, fit_summary = runjags_estimates_table(fit1)),
-    list(fit = fit2, marglik = marglik2, prior_weights = 1, fit_summary = runjags_estimates_table(fit2))
-  )
-  # compare and summarize the models
-  models            <- models_inference(models)
-  inference         <- ensemble_inference(model_list = models, parameters = c("mu", "tau"), is_null_list = list("mu" = c(1, 3), "tau" = c(1, 2)))
-  mixed_posteriors  <- mix_posteriors(model_list = models, parameters = c("mu", "tau"), is_null_list = list("mu" = c(1, 3), "tau" = c(1, 2)), seed = 1)
-
-
-  vdiffr::expect_doppelganger("model-averaging-plot-models-1", function(){
-    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu")
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-models-2", function(){
-    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "tau")
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-models-3", function(){
-    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu", prior = TRUE)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-models-4", function(){
-    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "tau", prior = TRUE)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-models-5", function(){
-    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu", conditional = TRUE)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-models-6", function(){
-    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "tau", prior = TRUE, conditional = TRUE)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-models-7", {
-    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu", plot_type = "ggplot")
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-models-8", {
-    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "tau", prior = TRUE, plot_type = "ggplot")
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-models-9", {
-    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu", plot_type = "ggplot", y_axis2 = FALSE)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-models-10", {
-    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu", plot_type = "ggplot", show_estimates = FALSE)
-  })
-
-})
-
-
-test_that("models plot functions work (formulas + factors)", {
-
-
-  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
-  skip_on_cran()
-
-  set.seed(1)
-
-  data_formula <- data.frame(
-    x_cont1 = rnorm(60),
-    x_fac2t = factor(rep(c("A", "B"), 30), levels = c("A", "B")),
-    x_fac3o = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C")),
-    x_fac3t = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C"))
-  )
-  data <- list(
-    y = rnorm(60, .4 * data_formula$x_cont1 + ifelse(data_formula$x_fac3t == "A", 0.0, ifelse(data_formula$x_fac3t == "B", -0.2, 0.4)), 1),
-    N = 60
-  )
-
-  # create model with mix of a formula and free parameters ---
-  formula_list0 <- list(mu = ~ x_fac2t)
-  formula_list1 <- list(mu = ~ x_cont1 + x_fac3t)
-  formula_list2 <- list(mu = ~ x_fac3o)
-  formula_list3 <- list(mu = ~ x_cont1 * x_fac3o)
-
-  formula_prior_list0 <- list(
-    mu    = list(
-      "intercept"       = prior("normal", list(0, 5)),
-      "x_fac2t"         = prior_factor("normal",  contrast = "treatment", list(0, 1))
-    )
-  )
-  formula_prior_list1 <- list(
-    mu    = list(
-      "intercept"       = prior("normal", list(0, 5)),
-      "x_cont1"         = prior("normal", list(0, 1)),
-      "x_fac3t"         = prior_factor("normal", contrast = "treatment", list(0, 1))
-    )
-  )
-  formula_prior_list2 <- list(
-    mu    = list(
-      "intercept"       = prior("normal", list(0, 5)),
-      "x_fac3o"         = prior_factor("mnormal", contrast = "orthonormal", list(0, 1))
-    )
-  )
-  formula_prior_list3 <- list(
-    mu    = list(
-      "intercept"       = prior("normal", list(0, 5)),
-      "x_cont1"         = prior("normal", list(0, 1)),
-      "x_fac3o"         = prior_factor("mnormal", contrast = "orthonormal", list(0, 1)),
-      "x_cont1:x_fac3o" = prior_factor("mnormal", contrast = "orthonormal", list(0, 1))
-    )
-  )
-
-  prior_list        <- list(sigma = prior("lognormal", list(0, 1)))
-  formula_data_list <- list(mu = data_formula)
-
-  model_syntax <- paste0(
-    "model{\n",
-    "for(i in 1:N){\n",
-    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
-    "}\n",
-    "}"
-  )
-
-  log_posterior <- function(parameters, data){
-    sum(stats::dnorm(data$y, parameters[["mu"]], parameters[["sigma"]], log = TRUE))
-  }
-
-  fit0 <- JAGS_fit(
-    model_syntax = model_syntax, data = data, prior_list = prior_list,
-    formula_list = formula_list0, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0, seed = 1)
-  fit1 <- JAGS_fit(
-    model_syntax = model_syntax, data = data, prior_list = prior_list,
-    formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1, seed = 2)
-  fit2 <- JAGS_fit(
-    model_syntax = model_syntax, data = data, prior_list = prior_list,
-    formula_list = formula_list2, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list2, seed = 3)
-  fit3 <- JAGS_fit(
-    model_syntax = model_syntax, data = data, prior_list = prior_list,
-    formula_list = formula_list3, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list3, seed = 4)
-
-  marglik0 <- JAGS_bridgesampling(
-    fit0, log_posterior = log_posterior, data = data, prior_list = prior_list,
-    formula_list = formula_list0, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0)
-  marglik1 <- JAGS_bridgesampling(
-    fit1, log_posterior = log_posterior, data = data, prior_list = prior_list,
-    formula_list = formula_list1, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1)
-  marglik2 <- JAGS_bridgesampling(
-    fit2, log_posterior = log_posterior, data = data, prior_list = prior_list,
-    formula_list = formula_list2, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list2)
-  marglik3 <- JAGS_bridgesampling(
-    fit3, log_posterior = log_posterior, data = data, prior_list = prior_list,
-    formula_list = formula_list3, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list3)
-
-
-  # mix posteriors
-  models <- list(
-    list(fit = fit0, marglik = marglik0, fit_summary = runjags_estimates_table(fit0), prior_weights = 1),
-    list(fit = fit1, marglik = marglik1, fit_summary = runjags_estimates_table(fit1), prior_weights = 1),
-    list(fit = fit2, marglik = marglik2, fit_summary = runjags_estimates_table(fit2), prior_weights = 1),
-    list(fit = fit3, marglik = marglik3, fit_summary = runjags_estimates_table(fit3), prior_weights = 1)
+    list(fit = fit_summary0, marglik = marglik_summary0, prior_weights = 1, fit_summary = runjags_estimates_table(fit_summary0)),
+    list(fit = fit_summary1, marglik = marglik_summary1, prior_weights = 1, fit_summary = runjags_estimates_table(fit_summary1))
   )
   models <- models_inference(models)
-
 
   inference <- ensemble_inference(
-    model_list   = models,
-    parameters   = c("mu_x_cont1", "mu_x_fac2t", "mu_x_fac3t", "mu_x_fac3o", "mu_x_cont1__xXx__x_fac3o"),
-    is_null_list = list(
-      "mu_x_cont1"         = c(TRUE,  FALSE, TRUE,  FALSE),
-      "mu_x_fac2t"         = c(FALSE, TRUE,  TRUE,  TRUE),
-      "mu_x_fac3t"         = c(TRUE,  FALSE, TRUE,  TRUE),
-      "mu_x_fac3o"         = c(TRUE,  TRUE,  FALSE, FALSE),
-      "mu_x_cont1__xXx__x_fac3o" = c(TRUE,  TRUE,  TRUE,  FALSE)
-    ),
-    conditional = FALSE)
+    model_list = models,
+    parameters = c("m"),
+    is_null_list = list("m" = c(FALSE, FALSE))
+  )
 
   mixed_posteriors <- mix_posteriors(
-    model_list   = models,
-    parameters   = c("mu_x_cont1", "mu_x_fac2t", "mu_x_fac3t", "mu_x_fac3o", "mu_x_cont1__xXx__x_fac3o"),
-    is_null_list = list(
-      "mu_x_cont1"               = c(TRUE,  FALSE, TRUE,  FALSE),
-      "mu_x_fac2t"               = c(FALSE, TRUE,  TRUE,  TRUE),
-      "mu_x_fac3t"               = c(TRUE,  FALSE, TRUE,  TRUE),
-      "mu_x_fac2t"               = c(TRUE,  TRUE,  FALSE, FALSE),
-      "mu_x_cont1__xXx__x_fac3o" = c(TRUE,  TRUE,  TRUE,  FALSE)
-    ),
-    seed = 1, n_samples = 10000)
+    model_list = models,
+    parameters = c("m"),
+    is_null_list = list("m" = c(FALSE, FALSE)),
+    seed = 1,
+    n_samples = 1000
+  )
 
-
-
-  vdiffr::expect_doppelganger("model-averaging-plot-models-formula-1", function(){
-    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu_x_cont1")
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-models-formula-2", function(){
-    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu_x_fac2t")
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-models-formula-3", function(){
-    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu_x_fac2t", prior = TRUE)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-models-formula-4", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
-    par(mfrow = c(2, 1))
-    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu_x_fac3t")
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-models-formula-5", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
-    par(mfrow = c(2, 1))
-    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu_x_fac3t", prior = TRUE)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-models-formula-6", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
-    par(mfrow = c(3, 1))
-    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu_x_fac3o")
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-models-formula-7", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
-    par(mfrow = c(3, 1))
-    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu_x_fac3o", prior = TRUE)
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-models-formula-8", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
-    par(mfrow = c(3, 1))
-    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu_x_cont1__xXx__x_fac3o")
-  })
-  vdiffr::expect_doppelganger("model-averaging-plot-models-formula-9", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
-    par(mfrow = c(3, 1))
-    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu_x_cont1__xXx__x_fac3o", prior = TRUE)
+  # Test basic plot_models
+  vdiffr::expect_doppelganger("plot-models-basic", function() {
+    plot_models(models, mixed_posteriors, inference, "m")
   })
 
-  # ggplot versions
-  p1 <- plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu_x_cont1", plot_type = "ggplot")
-  p2 <- plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu_x_fac3o", prior = TRUE, plot_type = "ggplot")
-
-  vdiffr::expect_doppelganger("model-averaging-plot-models-formula-10", p1)
-  vdiffr::expect_doppelganger("model-averaging-plot-models-formula-11", p2[[1]])
-  vdiffr::expect_doppelganger("model-averaging-plot-models-formula-12", p2[[2]])
-  vdiffr::expect_doppelganger("model-averaging-plot-models-formula-13", p2[[3]])
+  # Test ggplot version
+  vdiffr::expect_doppelganger("plot-models-ggplot", {
+    plot_models(models, mixed_posteriors, inference, "m", plot_type = "ggplot")
+  })
 
 })
 
 
-test_that("models plot functions work (formulas + spike factors)", {
-
-
-  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
-  skip_on_cran()
-
+test_that("plot_models handles order argument", {
   set.seed(1)
+  skip_if_not_visual_fixture_tests()
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+  skip_if_no_fits()
 
-  data_formula <- data.frame(
-    x_fac3md = factor(rep(c("A", "B", "C"), 100), levels = c("A", "B", "C"))
-  )
-  data <- list(
-    y = rnorm(300, ifelse(data_formula$x_fac3md == "A", 0.0, ifelse(data_formula$x_fac3md == "B", -0.2, 0.4))),
-    N = 300
-  )
+  # Load fits
+  fit_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
+  marglik_summary0 <- readRDS(file.path(temp_marglik_dir, "fit_summary0.RDS"))
 
+  fit_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1.RDS"))
+  marglik_summary1 <- readRDS(file.path(temp_marglik_dir, "fit_summary1.RDS"))
 
-  formula_list <- list(
-    mu    = ~ x_fac3md
-  )
-  formula_data_list <- list(
-    mu    = data_formula
-  )
-  formula_prior_list0 <- list(
-    mu    = list(
-      "intercept" = prior("normal", list(0, 5)),
-      "x_fac3md"  = prior_factor("spike", contrast = "meandif", list(0))
-    )
-  )
-  formula_prior_list1 <- list(
-    mu    = list(
-      "intercept" = prior("normal", list(0, 5)),
-      "x_fac3md"  = prior_factor("mnormal", contrast = "meandif", list(0, 0.25))
-    )
-  )
-
-  prior_list <- list(
-    sigma = prior("lognormal", list(0, 1))
-  )
-  model_syntax <- paste0(
-    "model{\n",
-    "for(i in 1:N){\n",
-    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
-    "}\n",
-    "}"
-  )
-
-  fit0 <- JAGS_fit(
-    model_syntax = model_syntax, data = data, prior_list = prior_list,
-    formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list0)
-  fit1 <- JAGS_fit(
-    model_syntax = model_syntax, data = data, prior_list = prior_list,
-    formula_list = formula_list, formula_data_list = formula_data_list, formula_prior_list = formula_prior_list1)
-
-  log_posterior <- function(parameters, data){
-    return(sum(stats::dnorm(data$y, mean = parameters[["mu"]], sd = parameters[["sigma"]], log = TRUE)))
-  }
-
-  marglik0 <- JAGS_bridgesampling(
-    fit                = fit0,
-    log_posterior      = log_posterior,
-    data               = data,
-    prior_list         = prior_list,
-    formula_list       = formula_list,
-    formula_data_list  = formula_data_list,
-    formula_prior_list = formula_prior_list0)
-  marglik1 <- JAGS_bridgesampling(
-    fit                = fit1,
-    log_posterior      = log_posterior,
-    data               = data,
-    prior_list         = prior_list,
-    formula_list       = formula_list,
-    formula_data_list  = formula_data_list,
-    formula_prior_list = formula_prior_list1)
-
-
-  # mix posteriors
   models <- list(
-    list(fit = fit0, marglik = marglik0, fit_summary = runjags_estimates_table(fit0, remove_spike_0 = FALSE, transform_factors = TRUE), prior_weights = 1),
-    list(fit = fit1, marglik = marglik1, fit_summary = runjags_estimates_table(fit1, remove_spike_0 = FALSE, transform_factors = TRUE), prior_weights = 1)
+    list(fit = fit_summary0, marglik = marglik_summary0, prior_weights = 1, fit_summary = runjags_estimates_table(fit_summary0)),
+    list(fit = fit_summary1, marglik = marglik_summary1, prior_weights = 1, fit_summary = runjags_estimates_table(fit_summary1))
   )
   models <- models_inference(models)
 
-    inference <- ensemble_inference(
-    model_list   = models,
-    parameters   = c("mu_x_fac3md"),
-    is_null_list = list(
-      "mu_x_fac3md" = c(TRUE,  FALSE)
-    ),
-    conditional = FALSE)
+  inference <- ensemble_inference(
+    model_list = models,
+    parameters = c("m"),
+    is_null_list = list("m" = c(FALSE, FALSE))
+  )
 
   mixed_posteriors <- mix_posteriors(
-    model_list   = models,
-    parameters   = c("mu_x_fac3md"),
-    is_null_list = list(
-      "mu_x_fac3md" = c(TRUE,  FALSE)
-    ),
-    seed = 1, n_samples = 10000)
+    model_list = models,
+    parameters = c("m"),
+    is_null_list = list("m" = c(FALSE, FALSE)),
+    seed = 1,
+    n_samples = 1000
+  )
 
-
-
-  vdiffr::expect_doppelganger("model-averaging-plot-models-formula-s-1", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
-    par(mfrow = c(3, 1))
-    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu_x_fac3md")
+  # Test with order = decreasing by estimate
+  vdiffr::expect_doppelganger("plot-models-order-decreasing-estimate", function() {
+    BayesTools::plot_models(models, mixed_posteriors, inference, "m", order = list("decreasing", "estimate"))
   })
-  vdiffr::expect_doppelganger("model-averaging-plot-models-formula-s-2", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
-    par(mfrow = c(3, 1))
-    plot_models(model_list = models, samples = mixed_posteriors, inference = inference, parameter = "mu_x_fac3md", prior = TRUE)
+
+  # Test with order = increasing by BF
+  vdiffr::expect_doppelganger("plot-models-order-increasing-bf", function() {
+    BayesTools::plot_models(models, mixed_posteriors, inference, "m", order = list("decreasing", "BF"))
+  })
+
+  # Test with order = decreasing by probability
+  vdiffr::expect_doppelganger("plot-models-order-decreasing-prob", function() {
+    BayesTools::plot_models(models, mixed_posteriors, inference, "m", order = list("decreasing", "probability"))
+  })
+
+  # Test with transformation
+  vdiffr::expect_doppelganger("plot-models-order-trans", function() {
+    BayesTools::plot_models(models, mixed_posteriors, inference, "m", transformation = "exp")
+  })
+
+  # Test with transformation and prior
+  vdiffr::expect_doppelganger("plot-models-order-trans-prior", function() {
+    BayesTools::plot_models(models, mixed_posteriors, inference, "m", prior = TRUE, transformation = "exp")
+  })
+
+  # Test with transformation ggplot
+  vdiffr::expect_doppelganger("plot-models-order-trans-ggplot", function() {
+    BayesTools::plot_models(models, mixed_posteriors, inference, "m", transformation = "exp", plot_type = "ggplot")
+  })
+
+  # Test with transformation and prior ggplot
+  vdiffr::expect_doppelganger("plot-models-order-trans-prior-ggplot", function() {
+    BayesTools::plot_models(models, mixed_posteriors, inference, "m", prior = TRUE, transformation = "exp", plot_type = "ggplot")
   })
 
 })
 
 
-test_that("posterior plot model averaging based on simple single JAGS models  (formulas)", {
-
+test_that("plot_models handles orthonormal priors", {
   set.seed(1)
+  skip_if_not_visual_fixture_tests()
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+  skip_if_no_fits()
 
-  data_formula <- data.frame(
-    x_cont1 = rnorm(300),
-    x_fac2t = factor(rep(c("A", "B"), 150), levels = c("A", "B")),
-    x_fac3t = factor(rep(c("A", "B", "C"), 100), levels = c("A", "B", "C"))
-  )
-  data <- list(
-    y = rnorm(300, -0.15 + 0.20 * data_formula$x_cont1 + ifelse(data_formula$x_fac3t == "A", 0.0, ifelse(data_formula$x_fac3t == "B", -0.2, 0.2)), ifelse(data_formula$x_fac2t == "A", 0.5, 1)),
-    N = 300
-  )
+  # Load orthonormal models with marginal likelihoods
+  fit_orthonormal_0 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_0.RDS"))
+  marglik_orthonormal_0 <- readRDS(file.path(temp_marglik_dir, "fit_orthonormal_0.RDS"))
 
-  # create model with mix of a formula and free parameters ---
-  formula_list1 <- list(
-    mu    = ~ x_cont1 + x_fac2t + x_fac3t
-  )
-  formula_data_list1 <- list(
-    mu    = data_formula
-  )
-  formula_prior_list1 <- list(
-    mu    = list(
-      "intercept"  = prior("normal",  list(-1, 0.5), prior_weights = 1),
-      "x_cont1"    = prior("normal",  list(0, 1), prior_weights = 1),
-      "x_fac2t"    = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
-      "x_fac3t"    = prior_factor("mnormal", list(0, 1), contrast = "meandif")
-    )
-  )
+  fit_orthonormal_1 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_1.RDS"))
+  marglik_orthonormal_1 <- readRDS(file.path(temp_marglik_dir, "fit_orthonormal_1.RDS"))
 
-  attr(formula_prior_list1$mu$x_cont1, "multiply_by") <- "sigma"
-  prior_list1 <- list(
-    "sigma" =  prior("lognormal", list(0, 1))
+  models <- list(
+    list(fit = fit_orthonormal_0, marglik = marglik_orthonormal_0, prior_weights = 1,
+         fit_summary = suppressMessages(runjags_estimates_table(fit_orthonormal_0, transform_factors = TRUE))),
+    list(fit = fit_orthonormal_1, marglik = marglik_orthonormal_1, prior_weights = 1,
+         fit_summary = suppressMessages(runjags_estimates_table(fit_orthonormal_1, transform_factors = TRUE)))
   )
-  model_syntax1 <- paste0(
-    "model{\n",
-    "for(i in 1:N){\n",
-    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
-    "}\n",
-    "}"
+  models <- models_inference(models)
+
+  # Get factor parameter names from the model
+  prior_list <- attr(fit_orthonormal_1, "prior_list")
+  factor_params <- names(prior_list)[sapply(prior_list, is.prior.factor)]
+
+  inference <- ensemble_inference(
+    model_list = models,
+    parameters = factor_params,
+    is_null_list = setNames(list(c(TRUE, FALSE)), factor_params)
   )
 
-
-  fit1 <- JAGS_fit(
-    model_syntax = model_syntax1, data = data, prior_list = prior_list1,
-    formula_list = formula_list1, formula_data_list = formula_data_list1, formula_prior_list = formula_prior_list1)
-  # BayesTools::JAGS_estimates_table(fit1)
-
-  mixed_posteriors <- as_mixed_posteriors(
-    mode       = fit1,
-    parameters = names(attr(fit1, "prior_list"))
+  mixed_posteriors <- mix_posteriors(
+    model_list = models,
+    parameters = factor_params,
+    is_null_list = setNames(list(c(TRUE, FALSE)), factor_params),
+    seed = 1,
+    n_samples = 1000
   )
 
-  vdiffr::expect_doppelganger("model-averaging-simple-plot-ss-posterior-intercept", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "mu_intercept", prior = T, dots_prior = list(col = "grey"))
-  })
-
-  vdiffr::expect_doppelganger("model-averaging-simple-plot-ss-posterior-x_cont1", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "mu_x_cont1", prior = T, dots_prior = list(col = "grey"))
-  })
-
-  vdiffr::expect_doppelganger("model-averaging-simple-plot-ss-posterior-x_fac2t", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "mu_x_fac2t", prior = T, dots_prior = list(col = "grey"))
-  })
-
-  vdiffr::expect_doppelganger("model-averaging-simple-plot-ss-posterior-x_fac3t", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "mu_x_fac3t", prior = T, dots_prior = list(col = "grey"))
-  })
-
-  vdiffr::expect_doppelganger("model-averaging-simple-plot-ss-posterior-sigma", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "sigma", prior = T, dots_prior = list(col = "grey"))
-  })
-})
-
-test_that("posterior plot model averaging based on complex single JAGS models  (formulas + spike factors + mixture)", {
-
-  set.seed(1)
-
-  data_formula <- data.frame(
-    x_cont1 = rnorm(300),
-    x_fac2t = factor(rep(c("A", "B"), 150), levels = c("A", "B")),
-    x_fac3t = factor(rep(c("A", "B", "C"), 100), levels = c("A", "B", "C"))
-  )
-  data <- list(
-    y = rnorm(300, -0.15 + 0.20 * data_formula$x_cont1 + ifelse(data_formula$x_fac3t == "A", 0.0, ifelse(data_formula$x_fac3t == "B", -0.2, 0.2)), ifelse(data_formula$x_fac2t == "A", 0.5, 1)),
-    N = 300
-  )
-
-  # create model with mix of a formula and free parameters ---
-  formula_list1 <- list(
-    mu    = ~ x_cont1 + x_fac2t + x_fac3t
-  )
-  formula_data_list1 <- list(
-    mu    = data_formula
-  )
-  formula_prior_list1 <- list(
-    mu    = list(
-      "intercept"  = prior_mixture(
-        list(
-          prior("spike",   list(0),       prior_weights = 2),
-          prior("normal",  list(-1, 0.5), prior_weights = 1),
-          prior("normal",  list( 1, 0.5), prior_weights = 1)
-        ),
-        is_null = c(T, F, F)
-      ),
-      "x_cont1"    = prior_spike_and_slab(prior("normal",  list(0, 1), prior_weights = 1)),
-      "x_fac2t"    = prior_mixture(list(
-          prior("spike", list(0), prior_weights = 1),
-          prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
-        ),
-        is_null = c(T, F)
-      ),
-      "x_fac3t"    = prior_mixture(list(
-          prior("spike", list(0), prior_weights = 1),
-          prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
-        ),
-        is_null = c(T, F)
-      )
-    )
-  )
-
-  attr(formula_prior_list1$mu$x_cont1, "multiply_by") <- "sigma"
-  prior_list1 <- list(
-    "sigma" = prior_mixture(
-      list(
-        prior("normal",    list(0, 1), truncation = list(0, Inf)),
-        prior("lognormal", list(0, 1))
-      ),
-      components = c("normal", "lognormal")
-    ),
-    "bias"  = prior_mixture(list(
-      prior_none(prior_weights = 1),
-      prior_weightfunction(distribution = "two.sided", parameters = list(alpha = c(1, 1), steps = c(0.05)), prior_weights = 1/3),
-      prior_weightfunction(distribution = "one.sided", parameters = list(alpha = c(1, 1, 1), steps = c(0.025, 0.05)), prior_weights = 1/3),
-      prior_PET("normal", list(0, 1), prior_weights = 1/3)
-    ), is_null = c(T, F, F, F))
-  )
-  model_syntax1 <- paste0(
-    "model{\n",
-    "for(i in 1:N){\n",
-    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
-    "}\n",
-    "}"
-  )
-
-  if("RoBMA" %in% rownames(installed.packages())){
-    require("RoBMA")
-  }else{
-    skip()
-  }
-
-  fit1 <- JAGS_fit(
-    model_syntax = model_syntax1, data = data, prior_list = prior_list1,
-    formula_list = formula_list1, formula_data_list = formula_data_list1, formula_prior_list = formula_prior_list1)
-
-  mixed_posteriors <- as_mixed_posteriors(
-    mode       = fit1,
-    parameters = names(attr(fit1, "prior_list"))
-  )
-
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-intercept", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "mu_intercept", prior = T, dots_prior = list(col = "grey"))
-  })
-
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-x_cont1", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "mu_x_cont1", prior = T, dots_prior = list(col = "grey"))
-  })
-
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-x_fac2t", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "mu_x_fac2t", prior = T, dots_prior = list(col = "grey"))
-  })
-
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-x_fac3t", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "mu_x_fac3t", prior = T, dots_prior = list(col = "grey"))
-  })
-
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-sigma", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors, "sigma", prior = T, dots_prior = list(col = "grey"))
-  })
-
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-bias-PET", function(){
-    PET <- mixed_posteriors$bias[,"PET",drop=FALSE]
-    attributes(PET) <- c(attributes(PET), attributes(mixed_posteriors$bias)[!names(attributes(mixed_posteriors$bias)) %in% c("dimnames", "dim")])
-    attr(PET, "prior_list")[!sapply(attr(PET, "prior_list"), is.prior.PET)] <- lapply(1:sum(!sapply(attr(PET, "prior_list"), is.prior.PET)), function(i) prior("point", list(0)))
-    attr(PET, "prior_list")[ sapply(attr(PET, "prior_list"), is.prior.PET)] <- lapply(attr(PET, "prior_list")[sapply(attr(PET, "prior_list"), is.prior.PET)], function(p) {
-      class(p) <- class(p)[!class(p) %in% "prior.PET"]
-      return(p)
-    })
-    plot_posterior(list(PET = PET), "PET", prior = T, dots_prior = list(col = "grey"))
-  })
-
-
-  mixed_posteriors_conditional1 <- as_mixed_posteriors(
-    mode       = fit1,
-    parameters  = "mu_intercept",
-    conditional = "mu_intercept",
-    force_plots = TRUE
-  )
-
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-intercept-con", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors_conditional1, "mu_intercept", prior = TRUE, dots_prior = list(col = "grey"))
-  })
-
-  mixed_posteriors_conditional2 <- as_mixed_posteriors(
-    mode       = fit1,
-    parameters  = "mu_x_cont1",
-    conditional = "mu_x_cont1",
-    force_plots = TRUE
-  )
-
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-x_cont1-con", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors_conditional2, "mu_x_cont1", prior = TRUE, dots_prior = list(col = "grey"))
-  })
-
-  mixed_posteriors_conditional3 <- as_mixed_posteriors(
-    mode       = fit1,
-    parameters  = "mu_x_fac2t",
-    conditional = "mu_x_fac2t",
-    force_plots = TRUE
-  )
-
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-x_fac2t-con", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors_conditional3, "mu_x_fac2t", prior = TRUE, dots_prior = list(col = "grey"))
-  })
-
-  mixed_posteriors_conditional4 <- as_mixed_posteriors(
-    mode       = fit1,
-    parameters  = "mu_x_fac3t",
-    conditional = "mu_x_fac3t",
-    force_plots = TRUE
-  )
-
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-x_fac3t-con", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors_conditional4, "mu_x_fac3t", prior = TRUE, dots_prior = list(col = "grey"))
-  })
-
-
-  mixed_posteriors_conditional5a <- as_mixed_posteriors(
-    mode       = fit1,
-    parameters  = "bias"
-  )
-
-  mixed_posteriors_conditional5b <- as_mixed_posteriors(
-    mode       = fit1,
-    parameters  = "bias",
-    conditional = "bias",
-    force_plots = TRUE
-  )
-
-  mixed_posteriors_conditional6a <- as_mixed_posteriors(
-    mode       = fit1,
-    parameters  = "bias",
-    conditional = "PET",
-    force_plots = TRUE
-  )
-
-  mixed_posteriors_conditional6b <- as_mixed_posteriors(
-    mode       = fit1,
-    parameters  = "bias",
-    conditional = "omega",
-    force_plots = TRUE
-  )
-
-
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-weightfunction", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors_conditional5a, parameter = "weightfunction", prior = TRUE, col = "black", col.fill = ggplot2::alpha("grey", 0.2),  dots_prior = list(col = "red", col.fill = ggplot2::alpha("red", 0.5)))
-  })
-
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-weightfunction-con", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4))
-    plot_posterior(mixed_posteriors_conditional6b, parameter = "weightfunction", prior = TRUE, col = "black", col.fill = ggplot2::alpha("grey", 0.2),  dots_prior = list(col = "red", col.fill = ggplot2::alpha("red", 0.5)))
-  })
-
-#   # TODO: at some point
-#   vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-PETPEESE", function(){
-#     oldpar <- graphics::par(no.readonly = TRUE)
-#     on.exit(graphics::par(mar = oldpar[["mar"]]))
-#     par(mar = c(4, 4, 1, 4))
-#     plot_posterior(mixed_posteriors_conditional5a, parameter = "PETPEESE", prior = TRUE, col = "black", col.fill = ggplot2::alpha("grey", 0.2),  dots_prior = list(col = "red", col.fill = ggplot2::alpha("red", 0.5)))
-#   })
-#
-#   vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-PETPEESE-con", function(){
-#     oldpar <- graphics::par(no.readonly = TRUE)
-#     on.exit(graphics::par(mar = oldpar[["mar"]]))
-#     par(mar = c(4, 4, 1, 4))
-#     plot_posterior(mixed_posteriors_conditional6b, parameter = "PETPEESE", prior = TRUE, col = "black", col.fill = ggplot2::alpha("grey", 0.2),  dots_prior = list(col = "red", col.fill = ggplot2::alpha("red", 0.5)))
-#   })
-
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-PET-con", function(){
+  # Test with orthonormal priors
+  vdiffr::expect_doppelganger("plot-models-orthonormal", function() {
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
     par(mar = c(4, 4, 1, 4), mfrow = c(3, 1))
-    hist(mixed_posteriors_conditional5a$bias[,"PET"], breaks = 50, col = "grey", main = "PET", xlab = "PET")
-    hist(mixed_posteriors_conditional5b$bias[,"PET"], breaks = 50, col = "grey", main = "PET", xlab = "PET")
-    hist(mixed_posteriors_conditional6a$bias[,"PET"], breaks = 50, col = "grey", main = "PET", xlab = "PET")
+    BayesTools::plot_models(models, mixed_posteriors, inference, factor_params)
   })
 
-  vdiffr::expect_doppelganger("model-averaging-plot-ss-posterior-omega-con", function(){
+  vdiffr::expect_doppelganger("plot-models-orthonormal-2", function() {
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(4, 4, 1, 4), mfrow = c(3, 3))
-    hist(mixed_posteriors_conditional5a$bias[,"omega[0,0.025]"], breaks = 50, col = "grey", main = "omega[0,0.025]", xlab = "omega[0,0.025]")
-    hist(mixed_posteriors_conditional5a$bias[,"omega[0.025,0.05]"], breaks = 50, col = "grey", main = "omega[0.025,0.05]", xlab = "omega[0.025,0.05]")
-    hist(mixed_posteriors_conditional5a$bias[,"omega[0.05,0.975]"], breaks = 50, col = "grey", main = "omega[0.05,0.975]", xlab = "omega[0.05,0.975]")
-
-    hist(mixed_posteriors_conditional5b$bias[,"omega[0,0.025]"], breaks = 50, col = "grey", main = "omega[0,0.025]", xlab = "omega[0,0.025]")
-    hist(mixed_posteriors_conditional5b$bias[,"omega[0.025,0.05]"], breaks = 50, col = "grey", main = "omega[0.025,0.05]", xlab = "omega[0.025,0.05]")
-    hist(mixed_posteriors_conditional5b$bias[,"omega[0.05,0.975]"], breaks = 50, col = "grey", main = "omega[0.05,0.975]", xlab = "omega[0.05,0.975]")
-
-    hist(mixed_posteriors_conditional6b$bias[,"omega[0,0.025]"], breaks = 50, col = "grey", main = "omega[0,0.025]", xlab = "omega[0,0.025]")
-    hist(mixed_posteriors_conditional6b$bias[,"omega[0.025,0.05]"], breaks = 50, col = "grey", main = "omega[0.025,0.05]", xlab = "omega[0.025,0.05]")
-    hist(mixed_posteriors_conditional6b$bias[,"omega[0.05,0.975]"], breaks = 50, col = "grey", main = "omega[0.05,0.975]", xlab = "omega[0.05,0.975]")
+    par(mar = c(4, 4, 1, 4), mfrow = c(3, 1))
+    BayesTools::plot_models(models, mixed_posteriors, inference, factor_params, transformation = "exp")
   })
 
-
-
+  vdiffr::expect_doppelganger("plot-models-orthonormal-3", function() {
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mar = oldpar[["mar"]]))
+    par(mar = c(4, 4, 1, 4), mfrow = c(3, 1))
+    BayesTools::plot_models(models, mixed_posteriors, inference, factor_params, transformation = "exp", prior = TRUE)
+  })
 
 })
+
+
+# ============================================================================ #
+# SECTION 6: .plot_prior_list.factor tests
+# ============================================================================ #
+test_that(".plot_prior_list.factor handles point priors within factor", {
+  skip_if_not_visual_tests()
+  set.seed(1)
+
+  # Test factor prior with spike
+  prior_spike <- prior("spike", list(0))
+  prior_factor_treat <- prior_factor("normal", list(mean = 0, sd = 1), contrast = "treatment")
+  attr(prior_factor_treat, "levels") <- 3
+
+  prior_list <- list(p1 = prior_spike, p2 = prior_factor_treat)
+
+  vdiffr::expect_doppelganger("plot-factor-with-spike", function() {
+    plot_prior_list(prior_list)
+  })
+
+  vdiffr::expect_doppelganger("plot-factor-with-spike-trans", function() {
+    plot_prior_list(prior_list, transformation = "tanh")
+  })
+
+  vdiffr::expect_doppelganger("plot-factor-with-spike-trans-settings", function() {
+    plot_prior_list(prior_list, transformation = "tanh", transformation_settings = T, xlim = c(-0.5, 0.5))
+  })
+
+})
+
+
+test_that(".plot_prior_list.factor handles transformation", {
+  skip_if_not_visual_tests()
+  set.seed(1)
+
+  # Create treatment factor prior with normal distribution
+  prior_treat <- prior_factor("normal", list(mean = 0, sd = 0.5), contrast = "treatment")
+  attr(prior_treat, "levels") <- 3
+
+  prior_list <- list(p1 = prior_treat)
+
+  vdiffr::expect_doppelganger("plot-factor-transformation", function() {
+    plot_prior_list(prior_list, transformation = "exp")
+  })
+
+})
+
+# ============================================================================ #
+# SECTION: get_scale_transformation with plotting
+# ============================================================================ #
+
+test_that("exp_lin transformation functions are defined correctly", {
+  skip_if_not_visual_tests()
+  # Test that exp_lin transformation is correctly defined
+  # (used for log-intercept unscaling)
+
+  # Get the transformation functions
+  trans_funcs <- BayesTools:::.density.prior_transformation_functions("exp_lin")
+
+  # Verify the functions exist
+  expect_true(is.function(trans_funcs$fun))
+  expect_true(is.function(trans_funcs$inv))
+  expect_true(is.function(trans_funcs$jac))
+
+  # Test the transformation: exp(a + b * log(x))
+  x <- 2
+  a <- 0.5
+  b <- 1.3
+
+  # fun: compare against the closed form
+  expected <- exp(a + b * log(x))
+  expect_equal(trans_funcs$fun(x, a, b), expected)
+
+  # inv: should reverse the transformation
+  y <- trans_funcs$fun(x, a, b)
+  expect_equal(trans_funcs$inv(y, a, b), x, tolerance = 1e-10)
+
+  # jac: derivative of the transformation at the original value
+  expect_equal(trans_funcs$jac(x, a, b), b * y / x)
+  expect_equal(trans_funcs$jac(x, 0, 1), 1)
+})
+
+test_that("linear transformation matches expected behavior", {
+  skip_if_not_visual_tests()
+  set.seed(1)
+
+  # Create a normal prior
+  prior_list <- list(p1 = prior("normal", list(0, 1)))
+
+  # Apply linear transformation: a + b*x with a=0, b=0.5
+  # This should compress the distribution by half
+  vdiffr::expect_doppelganger("plot-normal-lin-compress", function() {
+    plot_prior_list(prior_list,
+                    transformation = "lin",
+                    transformation_arguments = list(a = 0, b = 0.5))
+  })
+
+  # Apply linear transformation with offset: a + b*x with a=2, b=0.5
+  # This should compress and shift
+  vdiffr::expect_doppelganger("plot-normal-lin-shift-compress", function() {
+    plot_prior_list(prior_list,
+                    transformation = "lin",
+                    transformation_arguments = list(a = 2, b = 0.5))
+  })
+})
+
+
+# ============================================================================ #
+# SECTION: transform_scaled visual tests
+# ============================================================================ #
+# These tests use pre-fitted regression models with formula_scale to visually
+# verify that the transform_scaled feature correctly transforms priors and
+# posteriors from standardized to original scale.
+
+.make_fake_scaled_formula_fit <- function(prior_list, posterior_samples, formula_scale) {
+  fit <- coda::mcmc(posterior_samples)
+  class(fit) <- c("BayesTools_fit", class(fit))
+
+  attr(fit, "prior_list") <- prior_list
+  attr(fit, "formula_scale") <- formula_scale
+
+  return(fit)
+}
+
+.integrate_density_mass <- function(x, y) {
+  sum(diff(x) * (y[-1] + y[-length(y)]) / 2)
+}
+
+
+test_that("transform_scaled is auto-detected from samples attribute", {
+  skip_if_not_visual_fixture_tests()
+  skip_if_no_fits()
+
+  # Load a model with formula_scale
+  fit_path <- file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS")
+  skip_if_not(file.exists(fit_path), "Pre-fitted model not available")
+
+  fit <- readRDS(fit_path)
+
+  # Extract with transform_scaled = TRUE
+  samples_scaled <- as_mixed_posteriors(fit, parameters = "mu_intercept", transform_scaled = TRUE)
+
+  # Verify the attribute is set
+
+  expect_true(isTRUE(attr(samples_scaled, "transform_scaled")))
+  expect_false(is.null(attr(samples_scaled, "prior_densities")))
+  expect_null(attr(samples_scaled, "prior_samples"))
+
+  # Extract without transform_scaled
+  samples_unscaled <- as_mixed_posteriors(fit, parameters = "mu_intercept", transform_scaled = FALSE)
+
+  # Verify the attribute is NOT set
+  expect_null(attr(samples_unscaled, "transform_scaled"))
+})
+
+
+test_that("linear prior density helper preserves transformed point masses", {
+  skip_if_not_visual_tests()
+  plot_data <- BayesTools:::.prior_linear_density_to_plot_data(
+    BayesTools:::.prior_linear_density_point(0),
+    n_points = 128
+  )
+
+  expect_true(any(vapply(plot_data, inherits, logical(1), what = "density.prior.point")))
+  expect_false(any(vapply(plot_data, inherits, logical(1), what = "density.prior.simple")))
+  expect_equal(plot_data[[1]]$x, 0)
+  expect_equal(plot_data[[1]]$y, 1)
+})
+
+test_that("transform_scaled helper preserves total mass for mixed point-continuous priors", {
+  skip_if_not_visual_tests()
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(x = prior_mixture(
+      list(
+        prior("spike", list(0), prior_weights = 1),
+        prior("normal", list(1, 0.25), prior_weights = 4)
+      ),
+      is_null = c(TRUE, FALSE)
+    )),
+    weights = c(x = 1),
+    n_grid = 512
+  )
+  plot_data <- BayesTools:::.prior_linear_density_to_plot_data(
+    prior_density,
+    n_points = 512
+  )
+
+  density_data <- plot_data[[which(vapply(plot_data, inherits, logical(1), what = "density.prior.simple"))]]
+  point_mass <- sum(vapply(
+    plot_data[vapply(plot_data, inherits, logical(1), what = "density.prior.point")],
+    function(item) item$y,
+    numeric(1)
+  ))
+
+  expect_equal(.integrate_density_mass(density_data$x, density_data$y) + point_mass, 1, tolerance = 0.03)
+})
+
+test_that("transform_scaled helper preserves total mass under user transformations", {
+  skip_if_not_visual_tests()
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(x = prior_mixture(
+      list(
+        prior("spike", list(0), prior_weights = 3),
+        prior("normal", list(1.5, 0.4), prior_weights = 17)
+      ),
+      is_null = c(TRUE, FALSE)
+    )),
+    weights = c(x = 1),
+    n_grid = 512
+  )
+  plot_data <- BayesTools:::.prior_linear_density_to_plot_data(
+    prior_density,
+    n_points = 512,
+    transformation = "lin",
+    transformation_arguments = list(a = 2, b = 0.5)
+  )
+
+  density_data <- plot_data[[which(vapply(plot_data, inherits, logical(1), what = "density.prior.simple"))]]
+  point_data <- plot_data[vapply(plot_data, inherits, logical(1), what = "density.prior.point")]
+  point_mass <- sum(vapply(point_data, function(item) item$y, numeric(1)))
+
+  expect_equal(point_data[[1]]$x, 2)
+  expect_equal(.integrate_density_mass(density_data$x, density_data$y) + point_mass, 1, tolerance = 0.03)
+})
+
+test_that("plot_posterior errors when transformed prior densities are missing", {
+  skip_if_not_visual_tests()
+  sample_entry <- structure(
+    rnorm(64),
+    class = c("mixed_posteriors.formula", "mixed_posteriors.simple", "mixed_posteriors"),
+    formula_parameter = "mu",
+    prior_list = list(prior("normal", list(0, 1)))
+  )
+  samples <- structure(
+    list(mu_x1 = sample_entry),
+    class = c("as_mixed_posteriors", "mixed_posteriors"),
+    transform_scaled = TRUE
+  )
+
+  expect_error(
+    plot_posterior(samples, "mu_x1", prior = TRUE, plot_type = "ggplot"),
+    "no prior densities found"
+  )
+})
+
+
+test_that("transform_scaled visual: spike prior remains atomic", {
+  skip_if_not_visual_tests()
+  skip_on_cran()
+
+  set.seed(123)
+
+  prior_list <- list(
+    mu_intercept = prior("normal", list(0, 1)),
+    mu_x1 = prior("spike", list(0))
+  )
+  for(i in seq_along(prior_list)){
+    attr(prior_list[[i]], "parameter") <- "mu"
+  }
+
+  formula_scale <- list(mu = list(mu_x1 = list(mean = 5, sd = 2)))
+  attr(formula_scale$mu, "log_intercept") <- FALSE
+
+  posterior_samples <- cbind(
+    mu_intercept = rnorm(4000, 0, 1),
+    mu_x1 = rnorm(4000, 0.25, 0.20)
+  )
+
+  fit <- .make_fake_scaled_formula_fit(prior_list, posterior_samples, formula_scale)
+  samples_scaled <- as_mixed_posteriors(
+    fit,
+    parameters = "mu_x1",
+    transform_scaled = TRUE,
+    n_prior_samples = 20000
+  )
+
+  expect_equal(
+    BayesTools:::.prior_linear_density_point_mass(attr(samples_scaled, "prior_densities")$mu_x1, 0),
+    1
+  )
+
+  vdiffr::expect_doppelganger("transform-scaled-spike-only-prior", function() {
+    plot_posterior(
+      samples_scaled,
+      "mu_x1",
+      prior = TRUE,
+      main = "Spike Prior (Original Scale)",
+      dots_prior = list(col = "grey"),
+      xlim = c(-1, 1)
+    )
+  })
+})
+
+
+test_that("transform_scaled visual: conditional mixture prior removes spike", {
+  skip_if_not_visual_tests()
+  skip_on_cran()
+
+  set.seed(124)
+
+  prior_list <- list(
+    mu_intercept = prior("normal", list(0, 1)),
+    mu_x1 = prior_mixture(
+      list(
+        prior("spike", list(0), prior_weights = 1),
+        prior("normal", list(0.6, 0.4), prior_weights = 1)
+      ),
+      is_null = c(TRUE, FALSE)
+    )
+  )
+  for(i in seq_along(prior_list)){
+    attr(prior_list[[i]], "parameter") <- "mu"
+  }
+
+  formula_scale <- list(mu = list(mu_x1 = list(mean = 5, sd = 2)))
+  attr(formula_scale$mu, "log_intercept") <- FALSE
+
+  indicator <- sample(c(1L, 2L), size = 4000, replace = TRUE)
+  posterior_samples <- cbind(
+    mu_intercept = rnorm(4000, 0, 1),
+    mu_x1 = ifelse(indicator == 1L, 0, rnorm(4000, 0.6, 0.4)),
+    mu_x1_indicator = indicator
+  )
+
+  fit <- .make_fake_scaled_formula_fit(prior_list, posterior_samples, formula_scale)
+  samples_unconditional <- as_mixed_posteriors(
+    fit,
+    parameters = "mu_x1",
+    transform_scaled = TRUE,
+    n_prior_samples = 20000
+  )
+  samples_conditional <- as_mixed_posteriors(
+    fit,
+    parameters = "mu_x1",
+    conditional = "mu_x1",
+    transform_scaled = TRUE,
+    n_prior_samples = 20000
+  )
+
+  expect_gt(
+    BayesTools:::.prior_linear_density_point_mass(attr(samples_unconditional, "prior_densities")$mu_x1, 0),
+    0
+  )
+  expect_equal(
+    BayesTools:::.prior_linear_density_point_mass(attr(samples_conditional, "prior_densities")$mu_x1, 0),
+    0
+  )
+
+  vdiffr::expect_doppelganger("transform-scaled-conditional-mixture-prior", function() {
+    oldpar <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
+    par(mfrow = c(1, 2))
+
+    plot_posterior(
+      samples_unconditional,
+      "mu_x1",
+      prior = TRUE,
+      main = "Mixture Prior (Unconditional)",
+      dots_prior = list(col = "grey"),
+      xlim = c(-1, 2)
+    )
+
+    plot_posterior(
+      samples_conditional,
+      "mu_x1",
+      prior = TRUE,
+      main = "Mixture Prior (Conditional Alt)",
+      dots_prior = list(col = "grey"),
+      xlim = c(-1, 2)
+    )
+  })
+})
+
+
+test_that("transform_scaled visual: auto-scaled continuous predictors intercept", {
+  skip_if_not_visual_fixture_tests()
+  skip_on_cran()
+  skip_if_no_fits()
+
+  fit_path <- file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS")
+  skip_if_not(file.exists(fit_path), "Pre-fitted model not available")
+
+  fit <- readRDS(fit_path)
+
+  # Extract posteriors with and without transform_scaled
+  samples_scaled <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_x_cont1", "mu_x_cont2"),
+                                        transform_scaled = TRUE)
+  samples_unscaled <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_x_cont1", "mu_x_cont2"),
+                                          transform_scaled = FALSE)
+
+  # Visual test: intercept - scaled (left) vs original (right)
+  vdiffr::expect_doppelganger("transform-scaled-intercept-comparison", function() {
+    par(mfrow = c(1, 2))
+
+    # Left: Standardized scale
+    plot_posterior(samples_unscaled, "mu_intercept", prior = TRUE,
+                   main = "Intercept (Standardized Scale)", dots_prior = list(col = "grey"))
+
+    # Right: Original scale (auto-detected from samples)
+    plot_posterior(samples_scaled, "mu_intercept", prior = TRUE,
+                   main = "Intercept (Original Scale)", dots_prior = list(col = "grey"))
+  })
+})
+
+
+test_that("transform_scaled visual: auto-scaled continuous predictor coefficient", {
+  skip_if_not_visual_fixture_tests()
+  skip_on_cran()
+  skip_if_no_fits()
+
+  fit_path <- file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS")
+  skip_if_not(file.exists(fit_path), "Pre-fitted model not available")
+
+  fit      <- readRDS(fit_path)
+
+  samples_scaled <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_x_cont1", "mu_x_cont2"),
+                                        transform_scaled = TRUE, n_prior_samples = 1e5)
+  samples_unscaled <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_x_cont1", "mu_x_cont2"),
+                                          transform_scaled = FALSE)
+
+  # Visual test: coefficient x_cont1 - scaled (left) vs original (right)
+  vdiffr::expect_doppelganger("transform-scaled-coef-x_cont1-comparison", function() {
+    par(mfrow = c(1, 2))
+
+    # Left: Standardized scale
+    plot_posterior(samples_unscaled, "mu_x_cont1", prior = TRUE,
+                   main = "x_cont1 (Standardized Scale)", dots_prior = list(col = "grey"))
+
+    # Right: Original scale (auto-detected from samples)
+    plot_posterior(samples_scaled, "mu_x_cont1", prior = TRUE,
+                   main = "x_cont1 (Original Scale)", dots_prior = list(col = "grey"))
+  })
+
+  # Visual test: coefficient x_cont2
+  vdiffr::expect_doppelganger("transform-scaled-coef-x_cont2-comparison", function() {
+    par(mfrow = c(1, 2))
+
+    plot_posterior(samples_unscaled, "mu_x_cont2", prior = TRUE,
+                   main = "x_cont2 (Standardized Scale)", dots_prior = list(col = "grey"))
+
+    plot_posterior(samples_scaled, "mu_x_cont2", prior = TRUE,
+                   main = "x_cont2 (Original Scale)", dots_prior = list(col = "grey"))
+  })
+})
+
+
+test_that("transform_scaled visual: all parameters side-by-side", {
+  skip_if_not_visual_fixture_tests()
+  skip_on_cran()
+  skip_if_no_fits()
+
+  fit_path <- file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS")
+  skip_if_not(file.exists(fit_path), "Pre-fitted model not available")
+
+  fit      <- readRDS(fit_path)
+
+  samples_scaled <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_x_cont1", "mu_x_cont2"),
+                                        transform_scaled = TRUE)
+  samples_unscaled <- as_mixed_posteriors(fit, parameters = c("mu_intercept", "mu_x_cont1", "mu_x_cont2"),
+                                          transform_scaled = FALSE)
+
+  # Visual test: 3x2 grid showing all parameters
+  vdiffr::expect_doppelganger("transform-scaled-all-params-grid", function() {
+    par(mfrow = c(3, 2), mar = c(4, 4, 2, 1))
+
+    # Row 1: Intercept
+    plot_posterior(samples_unscaled, "mu_intercept", prior = TRUE, main = "Intercept (Scaled)", dots_prior = list(col = "grey"))
+    plot_posterior(samples_scaled, "mu_intercept", prior = TRUE, main = "Intercept (Original)", dots_prior = list(col = "grey"))
+
+    # Row 2: x_cont1
+    plot_posterior(samples_unscaled, "mu_x_cont1", prior = TRUE, main = "x_cont1 (Scaled)", dots_prior = list(col = "grey"))
+    plot_posterior(samples_scaled, "mu_x_cont1", prior = TRUE, main = "x_cont1 (Original)", dots_prior = list(col = "grey"))
+
+    # Row 3: x_cont2
+    plot_posterior(samples_unscaled, "mu_x_cont2", prior = TRUE, main = "x_cont2 (Scaled)", dots_prior = list(col = "grey"))
+    plot_posterior(samples_scaled, "mu_x_cont2", prior = TRUE, main = "x_cont2 (Original)", dots_prior = list(col = "grey"))
+  })
+})
+
+
+test_that("transform_scaled visual: dual parameter regression with log(intercept)", {
+  skip_if_not_visual_fixture_tests()
+  skip_on_cran()
+  skip_if_no_fits()
+
+  fit_path <- file.path(temp_fits_dir, "fit_dual_param_regression.RDS")
+  fit <- readRDS(fit_path)
+
+  # Get available mu parameters (those with formula_scale applied)
+  params <- names(attr(fit, "prior_list"))
+  sigma_params <- params[grepl("^log_sigma_", params)]
+
+  samples_scaled <- as_mixed_posteriors(fit, parameters = sigma_params, transform_scaled = TRUE)
+  samples_unscaled <- as_mixed_posteriors(fit, parameters = sigma_params, transform_scaled = FALSE)
+
+  # Visual test: intercept for dual-parameter model
+  vdiffr::expect_doppelganger("transform-scaled-dual-param-intercept", function() {
+    par(mfrow = c(2, 2))
+    plot_posterior(samples_unscaled, "log_sigma_intercept", prior = TRUE, main = "Dual: Intercept (Scaled)", dots_prior = list(col = "grey"), xlim = c(0, 1))
+    plot_posterior(samples_scaled, "log_sigma_intercept", prior = TRUE, main = "Dual: Intercept (Original)", dots_prior = list(col = "grey"), xlim = c(0, 1))
+    plot_posterior(samples_unscaled, "log_sigma_x_sigma", prior = TRUE, main = "Dual: Slope (Scaled)", dots_prior = list(col = "grey"), xlim = c(-1, 1))
+    plot_posterior(samples_scaled, "log_sigma_x_sigma", prior = TRUE, main = "Dual: Slope (Original)", dots_prior = list(col = "grey"), xlim = c(-1, 1))
+  })
+})
+

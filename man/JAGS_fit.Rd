@@ -12,6 +12,7 @@ JAGS_fit(
   formula_list = NULL,
   formula_data_list = NULL,
   formula_prior_list = NULL,
+  formula_scale_list = NULL,
   chains = 4,
   adapt = 500,
   burnin = 1000,
@@ -20,7 +21,7 @@ JAGS_fit(
   autofit = FALSE,
   autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error =
     0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10,
-    max_extend = 10),
+    max_extend = 10, check_indicators = FALSE),
   parallel = FALSE,
   cores = chains,
   silent = TRUE,
@@ -34,7 +35,7 @@ JAGS_extend(
   fit,
   autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error =
     0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10,
-    max_extend = 10),
+    max_extend = 10, check_indicators = FALSE),
   parallel = FALSE,
   cores = NULL,
   silent = TRUE,
@@ -61,6 +62,11 @@ JAGS_extend(
 the names of the prior distribution correspond to the parameter names) of parameters specified
 within the \code{formula}}
 
+\item{formula_scale_list}{named list of named lists for standardizing continuous predictors
+(names of the lists correspond to the parameter name created by each of the formula).
+Each entry should be a named list where continuous predictors with \code{TRUE} values will
+be standardized. Defaults to \code{NULL} (no standardization).}
+
 \item{chains}{number of chains to be run, defaults to \code{4}}
 
 \item{adapt}{number of samples used for adapting the MCMC chains, defaults to \code{500}}
@@ -80,7 +86,7 @@ Possible options are:
 \item{max_Rhat}{maximum R-hat error for the autofit function.
 Defaults to \code{1.05}.}
 \item{min_ESS}{minimum effective sample size. Defaults to \code{500}.}
-\item{max_error}{maximum MCMC error. Defaults to \code{1.01}.}
+\item{max_error}{maximum MCMC error. Defaults to \code{0.01}.}
 \item{max_SD_error}{maximum MCMC error as the proportion of standard
 deviation of the parameters. Defaults to \code{0.05}.}
 \item{max_time}{list specifying the time \code{time} and \code{units}
@@ -91,6 +97,8 @@ need to correspond to \code{units} passed to \link[base]{difftime} function.}
 \code{1000}.}
 \item{restarts}{number of times new initial values should be generated in case the model
 fails to initialize. Defaults to \code{10}.}
+\item{check_indicators}{whether model indicator variables should be included
+in convergence checks. Defaults to \code{FALSE}.}
 }}
 
 \item{parallel}{whether the chains should be run in parallel \code{FALSE}}

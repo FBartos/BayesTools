@@ -1,0 +1,6 @@
+                                                                             
+ Model              1                           Parameter prior distributions
+ Prior prob.    1.000             omega[one-sided: .025] ~ CumDirichlet(1, 1)
+ log(marglik)   -0.02                                                        
+ Post. prob.    1.000                                                        
+ Inclusion BF      NA                                                        

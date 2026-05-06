@@ -11,14 +11,12 @@ vignette: >
   %\VignetteIndexEntry{Comparison to other R packages}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
-  %\VignetteEngine{knitr::rmarkdown_notangle}
 ---
 
 
 ```{r setup, include = FALSE}
-# is_check <- ("CheckExEnv" %in% search()) ||
-#              any(c("_R_CHECK_TIMINGS_", "_R_CHECK_LICENSE_") %in% names(Sys.getenv())) 
-is_check <- F
+is_check <- ("CheckExEnv" %in% search()) ||
+             any(c("_R_CHECK_TIMINGS_", "_R_CHECK_LICENSE_") %in% names(Sys.getenv()))
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment  = "#>",

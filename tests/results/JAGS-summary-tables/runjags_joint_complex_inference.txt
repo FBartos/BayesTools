@@ -1,0 +1,5 @@
+               Prior prob. Post. prob. Inclusion BF
+(mu) intercept       0.500       0.028        0.029
+(mu) x_cont1         0.500       0.360        0.562
+(mu) x_fac3t         0.500       0.059        0.063
+sigma                0.500       0.445        0.802

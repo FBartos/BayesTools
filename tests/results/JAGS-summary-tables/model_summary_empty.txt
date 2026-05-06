@@ -1,0 +1,6 @@
+                                                          
+ Model                       Parameter prior distributions
+ Prior prob.                                              
+ log(marglik)                                             
+ Post. prob.                                              
+ Inclusion BF                                             

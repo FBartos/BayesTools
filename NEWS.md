@@ -1,3 +1,40 @@
+# version 0.3.0
+### Features
+- major refactoring and speed-up of unit tests
+- adds support for `__default_factor` and `__default_continuous` priors in `JAGS_formula()` - when specified in the `prior_list`, these are used as default priors for factor and continuous predictors that are not explicitly specified
+- adds automatic standardization of continuous predictors via `formula_scale` parameter in `JAGS_formula()` and `JAGS_fit()` - improves MCMC sampling efficiency and numerical stability
+- adds `transform_scale_samples()` function to transform posterior samples back to original scale after standardization
+- adds `transform_prior_samples()` function to generate and transform prior samples using the same matrix transformation as posterior samples - enables correct visualization of priors on the original (unscaled) predictor scale, including proper handling of the intercept which depends on multiple coefficient priors
+- adds `transform_scaled` argument to `plot_posterior()` for visualizing prior and posterior distributions on the original (unscaled) scale when using formula-based models with auto-scaling
+- adds `exp_lin` transformation type for log-intercept unscaling in density/plotting functions: `exp(a + b * log(x))`
+- adds `log(intercept)` formula attribute for specifying models of the form `log(intercept) + sum(beta_i * x_i)` - useful for parameters that must be positive (e.g., standard deviation) while keeping the intercept on the original scale. Set via `attr(formula, "log(intercept)") <- TRUE`. Supported in `JAGS_formula()`, `JAGS_evaluate_formula()`, and marginal likelihood computation
+- adds advanced parameter filtering options to `runjags_estimates_table()`:
+  - `remove_parameters = TRUE` to remove all non-formula parameters
+  - `remove_formulas` to remove all parameters from specific formulas
+  - `keep_parameters` to keep only specified parameters
+  - `keep_formulas` to keep only parameters from specified formulas
+  - when `bias` is specified in `remove_parameters` or `keep_parameters`, the corresponding bias-related parameters (`PET`, `PEESE`, `omega`, `alpha`, `pi_null`, and `phack_kind`) are automatically included based on the bias prior type
+- adds `probs` argument to `runjags_estimates_table()` and `runjags_estimates_empty_table()` for custom quantiles (default: `c(0.025, 0.5, 0.975)`)
+- adds `effect_direction` argument to `plot_posterior()`, `plot_prior_list()`, `lines_prior_list()`, and `geom_prior_list()` for PET-PEESE regression plots - use `"positive"` (default) for `mu + PET*se + PEESE*se^2` or `"negative"` for `mu - PET*se - PEESE*se^2`
+- redesigns `prior_weightfunction()` around a unified `side`, `steps`, and `weights` specification, with `wf_cumulative()`, `wf_fixed()`, and `wf_independent()` constructors for cumulative Dirichlet, fixed, independent, and log-independent weightfunction priors
+- adds p-hacking and composed selection-bias priors via `prior_phacking()`, `prior_bias()`, calibration helpers, and `selection_backend_spec()` for compiling active step/p-hacking backend parameters
+- adds error % for inclusion BF calculation
+
+### Changes
+- changes quantile column names in `runjags_estimates_table()` and `stan_estimates_table()` from `lCI`/`Median`/`uCI` to numeric values (e.g., `0.025`/`0.5`/`0.975`) for consistency with ensemble summary tables
+- implied prior distributions for estimated marginal means, unstandardized coefficients, and PET-PEESE no longer require prior samples 
+- implied prior distributions for weightfunction weights now use analytical forms for cumulative Dirichlet, fixed, independent, and log-independent priors, including mixture and model-averaged weightfunctions where possible
+- independent weightfunction priors now allow non-reference weights above one via non-negative omega-scale priors or unrestricted log-omega priors
+- replaces the legacy dot-named weightfunction prior specifications with the unified weightfunction prior API and updates JAGS generation, marginal likelihood computation, posterior extraction, diagnostics, and summary tables to use the new component-local `omega` representation
+- composed selection-bias priors and publication-bias mixtures now support prior sampling and explicit unsupported-operation errors for ambiguous scalar prior generics
+
+### Fixes
+- reports inclusion Bayes factors as `NA` when the prior assigns probability 0 or 1 to inclusion, while keeping finite-sample bounds for posterior inclusion probabilities of 0 or 1
+- fixes incorrect ordering the printed mixture priors
+- fixes formula with no intercepts coded as `0` (instead of only `-1`)
+- fixes bug in `.is.wholenumber` with NAs and `na.rm = TRUE`
+- fixes ggplot prior spike layers for marginal factor plots with density and point components
+
 # version 0.2.23
 ### Fixes
 - `JAGS_diagnostics` functions now correctly handle factor parameters nested within mixture priors

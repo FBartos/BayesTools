@@ -13,12 +13,13 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - {os: windows-latest, r: 'release'}
+          - {os: windows-latest, r: '4.6'}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup R
+        id: setup-r
         uses: r-lib/actions/setup-r@v2
         with:
           r-version: ${{ matrix.config.r }}
@@ -28,18 +29,17 @@ jobs:
 
       # Cache R packages
       - name: Cache R packages
-        uses: actions/cache@v3
+        uses: actions/cache@v5
         with:
           path: ${{ env.R_LIBS_USER }}
-          key: ${{ runner.os }}-r-${{ matrix.config.r }}-${{ hashFiles('**/DESCRIPTION') }}
+          key: ${{ runner.os }}-r-${{ steps.setup-r.outputs.installed-r-version }}-cache-v2-${{ hashFiles('**/DESCRIPTION') }}
           restore-keys: |
-            ${{ runner.os }}-r-${{ matrix.config.r }}-
-            ${{ runner.os }}-r-
+            ${{ runner.os }}-r-${{ steps.setup-r.outputs.installed-r-version }}-cache-v2-
 
       # Cache JAGS installation (Windows)
       - name: Cache JAGS (Windows)
         if: runner.os == 'Windows'
-        uses: actions/cache@v3
+        uses: actions/cache@v5
         with:
           path: C:\Program Files\JAGS
           key: ${{ runner.os }}-jags-4.3.1
@@ -75,7 +75,7 @@ jobs:
           options(repos = c(CRAN = "https://cloud.r-project.org"))
           
           # Check if packages are already installed before installing
-          required_packages <- c('devtools', 'rcmdcheck', 'BayesFactor', 'RoBMA', 'runjags', 'rjags', 'rstan', 'scales', 'vdiffr', 'testthat', 'covr', 'knitr', 'rmarkdown')
+          required_packages <- c('devtools', 'rcmdcheck', 'BayesFactor', 'RoBMA', 'runjags', 'rjags', 'rstan', 'scales', 'vdiffr', 'testthat', 'covr', 'knitr', 'rmarkdown', 'lme4')
           missing_packages <- required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)]
           
           if (length(missing_packages) > 0) {
@@ -92,19 +92,48 @@ jobs:
       - name: Test coverage
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          # This workflow is coverage-only and runs the full developer profile.
+          BAYESTOOLS_TEST_PROFILE: "all"
+          BAYESTOOLS_TEST_FILES_DIR: ${{ runner.temp }}/BayesTools_test_files
+          BAYESTOOLS_TEST_SKIP_REFIT: "false"
+          NOT_CRAN: "true"
+          VDIFFR_RUN_TESTS: "true"
+          AGENT: "1"
           JAGS_ROOT: "/c/progra~1/JAGS/JAGS-4.3.1"
           JAGS_MAJOR_VERSION: 4
         run: |
-          Sys.setenv(NOT_CRAN = "true")
-          # Use a persistent directory for install_path to allow debugging
-          install_path <- file.path(Sys.getenv("RUNNER_TEMP"), "R_LIBS")
-          dir.create(install_path, showWarnings = FALSE, recursive = TRUE)
+          # Run source-tree tests against covr's already-loaded instrumented
+          # package. Using devtools::test() here reloads the source tree through
+          # pkgload and can produce an empty trace, while type = "tests" runs
+          # copied installed tests without the original R/*.R files that the
+          # fixture-cache metadata hashes intentionally inspect.
+          # Use forward-slash paths on Windows; covr injects these paths into
+          # instrumented R code, where backslashes can become invalid escapes.
+          repo_path <- normalizePath(".", winslash = "/", mustWork = TRUE)
+          on.exit(unlink(file.path(repo_path, "tests/testthat/_snaps"), recursive = TRUE, force = TRUE), add = TRUE)
+          install_path <- normalizePath(file.path(Sys.getenv("RUNNER_TEMP"), "R_LIBS"), winslash = "/", mustWork = FALSE)
+          unlink(install_path, recursive = TRUE, force = TRUE)
           
           coverage <- covr::package_coverage(
+            path = repo_path,
+            type = "none",
             quiet = FALSE,
             clean = FALSE,
-            install_path = install_path
+            install_path = install_path,
+            code = c(
+              "repo_path <- normalizePath('.', winslash = '/', mustWork = TRUE)",
+              "setwd(repo_path)",
+              "test_files_dir <- Sys.getenv('BAYESTOOLS_TEST_FILES_DIR')",
+              "if (test_files_dir == '') test_files_dir <- file.path(tempdir(), 'BayesTools_test_files')",
+              "dir.create(test_files_dir, showWarnings = FALSE, recursive = TRUE)",
+              "Sys.setenv(BAYESTOOLS_TEST_FILES_DIR = normalizePath(test_files_dir, winslash = '/', mustWork = TRUE))",
+              "reporter <- if (identical(Sys.getenv('AGENT'), '1') && exists('LlmReporter', envir = asNamespace('testthat'), inherits = FALSE)) testthat::LlmReporter$new() else NULL",
+              "testthat::test_dir(file.path(repo_path, 'tests', 'testthat'), reporter = reporter, package = 'BayesTools', load_package = 'installed', stop_on_failure = TRUE)"
+            )
           )
+          if (covr::percent_coverage(coverage) == 0) {
+            stop("Coverage trace is empty; refusing to upload 0% coverage.", call. = FALSE)
+          }
           covr::codecov(coverage = coverage)
         shell: Rscript {0}
       
@@ -113,12 +142,12 @@ jobs:
         if: failure()
         shell: pwsh
         run: |
-          $failFiles = Get-ChildItem -Path $env:RUNNER_TEMP -Recurse -Filter "testthat.Rout.fail" -ErrorAction SilentlyContinue
+          $failFiles = Get-ChildItem -Path $env:RUNNER_TEMP -Recurse -Filter "*.Rout.fail" -ErrorAction SilentlyContinue
           if ($failFiles) {
             foreach ($file in $failFiles) {
               Write-Host "`n=== Contents of $($file.FullName) ===`n"
               Get-Content $file.FullName
             }
           } else {
-            Write-Host "No testthat.Rout.fail files found in $env:RUNNER_TEMP"
+            Write-Host "No *.Rout.fail files found in $env:RUNNER_TEMP"
           }

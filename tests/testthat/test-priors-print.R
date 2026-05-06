@@ -1,4 +1,36 @@
-context("Prior print function")
+skip_if_not_test_profile(c("unit", "visual"))
+
+# ============================================================================ #
+# TEST FILE: Prior Print Function
+# ============================================================================ #
+#
+# PURPOSE:
+#   Tests for the print.prior S3 method including input validation,
+#   formatting options, and output correctness.
+#
+# DEPENDENCIES:
+#   - None (pure R)
+#
+# SKIP CONDITIONS:
+#   - None (can run on CRAN)
+#
+# TAGS: @evaluation, @priors, @print
+# ============================================================================ #
+
+
+test_that("Prior print function input validation", {
+
+  p <- prior("normal", list(0, 1))
+
+  # Check invalid inputs
+  expect_error(print(p, short_name = "no"), "'short_name'")
+  expect_error(print(p, parameter_names = "no"), "'parameter_names'")
+  expect_error(print(p, digits_estimates = "two"), "'digits_estimates'")
+  expect_error(print(p, plot = "yes"), "'plot'")
+  expect_error(print(p, silent = "shh"), "'silent'")
+  expect_error(print(p, inline = "no"), "'inline'")
+
+})
 
 
 test_that("Prior print function works", {
@@ -28,16 +60,16 @@ test_that("Prior print function works", {
   expect_equal(utils::capture.output(print(p6)), "PEESE ~ Gamma(1, 1)")
 
   # check weightfunctions
-  p7  <- prior_weightfunction("one.sided", list(c(0.05), c(1, 1)))
-  p8  <- prior_weightfunction("one.sided", list(c(0.05, .95), c(1, 1), c(1, 1)))
-  p9  <- prior_weightfunction("two.sided", list(c(0.05), c(1, 1)))
-  p10 <- prior_weightfunction("one.sided.fixed", list(c(0.10), c(.7, 1)))
+  p7  <- prior_weightfunction("one-sided", c(0.05), wf_cumulative(c(1, 1)))
+  p8  <- prior_weightfunction("one-sided", c(0.05, .95), wf_independent(prior("beta", list(1, 1))))
+  p9  <- prior_weightfunction("two-sided", c(0.05), wf_cumulative(c(1, 1)))
+  p10 <- prior_weightfunction("one-sided", c(0.10), wf_fixed(c(1, .7)))
   expect_equal(utils::capture.output(print(p7)),  "omega[one-sided: .05] ~ CumDirichlet(1, 1)")
-  expect_equal(utils::capture.output(print(p8)),  "omega[one-sided: .95, .05] ~ CumDirichlet(1, 1), revCumDirichlet(1, 1)")
+  expect_equal(utils::capture.output(print(p8)),  "omega[one-sided: .05, .95] ~ Independent(Beta(1, 1))")
   expect_equal(utils::capture.output(print(p9)),  "omega[two-sided: .05] ~ CumDirichlet(1, 1)")
   expect_equal(utils::capture.output(print(p10)), "omega[one-sided: .1] = (1, 0.7)")
   expect_equal(utils::capture.output(print(p7,  parameter_names = TRUE)), "omega[one-sided: .05] ~ CumDirichlet(alpha = 1, 1)")
-  expect_equal(utils::capture.output(print(p8,  parameter_names = TRUE)), "omega[one-sided: .95, .05] ~ CumDirichlet(alpha1 = 1, 1), revCumDirichlet(alpha2 = 1, 1)")
+  expect_equal(utils::capture.output(print(p8,  parameter_names = TRUE)), "omega[one-sided: .05, .95] ~ Independent(Beta(alpha = 1, beta = 1))")
   expect_equal(utils::capture.output(print(p9,  parameter_names = TRUE)), "omega[two-sided: .05] ~ CumDirichlet(alpha = 1, 1)")
   expect_equal(utils::capture.output(print(p10, parameter_names = TRUE)), "omega[one-sided: .1] = (1, 0.7)")
 
@@ -71,56 +103,60 @@ test_that("Prior print function works", {
   empty_plot <- function(){
     plot(NULL, xlim = c(0, 1), ylim = c(0, 1), axes = FALSE, ann = FALSE)
   }
-  vdiffr::expect_doppelganger("priors-print-1", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(0, 0, 0, 0))
-    empty_plot()
-    text(0.5, 1,   print(p1, plot = TRUE))
-    text(0.5, 0.9, print(p1, short_name = TRUE, plot = TRUE))
-    text(0.5, 0.8, print(p1, parameter_names = TRUE, plot = TRUE))
-    text(0.5, 0.7, print(p1, silent = TRUE, plot = TRUE))
-    text(0.5, 0.6, print(p2, plot = TRUE))
-    text(0.5, 0.5, print(p2, short_name = TRUE, plot = TRUE))
-    text(0.5, 0.4, print(p2, parameter_names = TRUE, plot = TRUE))
-    text(0.5, 0.3, print(p2, silent = TRUE, plot = TRUE))
-    text(0.5, 0.2, print(p3, silent = TRUE, plot = TRUE))
-    text(0.5, 0.1, print(p4, silent = TRUE, plot = TRUE))
-  })
+  if (bayestools_test_profile_includes("visual")) {
+    testthat::skip_if_not_installed("vdiffr")
 
-  vdiffr::expect_doppelganger("priors-print-2", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(0, 0, 0, 0))
-    empty_plot()
-    text(0.5, 1,   print(p5,  plot = TRUE))
-    text(0.5, 0.9, print(p6,  plot = TRUE))
-    text(0.5, 0.8, print(p7,  plot = TRUE))
-    text(0.5, 0.7, print(p8,  plot = TRUE))
-    text(0.5, 0.6, print(p9,  plot = TRUE))
-    text(0.5, 0.5, print(p10, plot = TRUE))
-    text(0.5, 0.4, print(p7,  parameter_names = TRUE, plot = TRUE))
-    text(0.5, 0.3, print(p8,  parameter_names = TRUE, plot = TRUE))
-    text(0.5, 0.2, print(p9,  parameter_names = TRUE, plot = TRUE))
-    text(0.5, 0.1, print(p10, parameter_names = TRUE, plot = TRUE))
-  })
+    vdiffr::expect_doppelganger("priors-print-1", function(){
+      oldpar <- graphics::par(no.readonly = TRUE)
+      on.exit(graphics::par(mar = oldpar[["mar"]]))
+      par(mar = c(0, 0, 0, 0))
+      empty_plot()
+      text(0.5, 1,   print(p1, plot = TRUE))
+      text(0.5, 0.9, print(p1, short_name = TRUE, plot = TRUE))
+      text(0.5, 0.8, print(p1, parameter_names = TRUE, plot = TRUE))
+      text(0.5, 0.7, print(p1, silent = TRUE, plot = TRUE))
+      text(0.5, 0.6, print(p2, plot = TRUE))
+      text(0.5, 0.5, print(p2, short_name = TRUE, plot = TRUE))
+      text(0.5, 0.4, print(p2, parameter_names = TRUE, plot = TRUE))
+      text(0.5, 0.3, print(p2, silent = TRUE, plot = TRUE))
+      text(0.5, 0.2, print(p3, silent = TRUE, plot = TRUE))
+      text(0.5, 0.1, print(p4, silent = TRUE, plot = TRUE))
+    })
 
-  vdiffr::expect_doppelganger("priors-print-3", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mar = oldpar[["mar"]]))
-    par(mar = c(0, 0, 0, 0))
-    empty_plot()
-    text(0.5, 1,   print(p11, plot = TRUE))
-    text(0.5, 0.9, print(p12, plot = TRUE))
-    text(0.5, 0.8, print(p13, plot = TRUE))
-    text(0.5, 0.7, print(p14, plot = TRUE))
-    text(0.5, 0.6, print(p15, plot = TRUE))
-    text(0.5, 0.5, print(p16, plot = TRUE))
-    text(0.5, 0.4, print(p17, plot = TRUE))
-    text(0.5, 0.3, print(p18, plot = TRUE))
-    text(0.5, 0.2, print(p19, plot = TRUE))
-    text(0.5, 0.1, print(p20, plot = TRUE))
-  })
+    vdiffr::expect_doppelganger("priors-print-2", function(){
+      oldpar <- graphics::par(no.readonly = TRUE)
+      on.exit(graphics::par(mar = oldpar[["mar"]]))
+      par(mar = c(0, 0, 0, 0))
+      empty_plot()
+      text(0.5, 1,   print(p5,  plot = TRUE))
+      text(0.5, 0.9, print(p6,  plot = TRUE))
+      text(0.5, 0.8, print(p7,  plot = TRUE))
+      text(0.5, 0.7, print(p8,  plot = TRUE))
+      text(0.5, 0.6, print(p9,  plot = TRUE))
+      text(0.5, 0.5, print(p10, plot = TRUE))
+      text(0.5, 0.4, print(p7,  parameter_names = TRUE, plot = TRUE))
+      text(0.5, 0.3, print(p8,  parameter_names = TRUE, plot = TRUE))
+      text(0.5, 0.2, print(p9,  parameter_names = TRUE, plot = TRUE))
+      text(0.5, 0.1, print(p10, parameter_names = TRUE, plot = TRUE))
+    })
+
+    vdiffr::expect_doppelganger("priors-print-3", function(){
+      oldpar <- graphics::par(no.readonly = TRUE)
+      on.exit(graphics::par(mar = oldpar[["mar"]]))
+      par(mar = c(0, 0, 0, 0))
+      empty_plot()
+      text(0.5, 1,   print(p11, plot = TRUE))
+      text(0.5, 0.9, print(p12, plot = TRUE))
+      text(0.5, 0.8, print(p13, plot = TRUE))
+      text(0.5, 0.7, print(p14, plot = TRUE))
+      text(0.5, 0.6, print(p15, plot = TRUE))
+      text(0.5, 0.5, print(p16, plot = TRUE))
+      text(0.5, 0.4, print(p17, plot = TRUE))
+      text(0.5, 0.3, print(p18, plot = TRUE))
+      text(0.5, 0.2, print(p19, plot = TRUE))
+      text(0.5, 0.1, print(p20, plot = TRUE))
+    })
+  }
 
   p21 <- prior_spike_and_slab(prior("gamma", list(1, 2), list(0, Inf)),
                               prior_inclusion = prior("beta", list(3, 2)))
@@ -153,25 +189,108 @@ test_that("Prior print function works", {
     "alternative:", "  (1/3) * Normal(mean = 0, sd = 1)", "  (1/3) * Normal(mean = -3, sd = 1)", "  (1/3) * Gamma(shape = 5, rate = 10)"
   ))
   expect_equal(utils::capture.output(print(p23, short_name = TRUE)), c(
-    "alternative:", "  (1/7) * N(0, 1)", "null:", "  (5/7) * N(-3, 1)", "  (1/7) * G(5, 10)"
+    "alternative:", "  (5/7) * N(-3, 1)", "null:", "  (1/7) * N(0, 1)", "  (1/7) * G(5, 10)"
   ))
   expect_equal(utils::capture.output(print(p24)), c(
     "b:", "  (1/6) * Normal(0, 1)",  "a:", "  (5/6) * Normal(-3, 1)"
   ))
-  vdiffr::expect_doppelganger("priors-print-4", function(){
-    empty_plot()
-    text(0.5, 1, print(p21, plot = TRUE))
-    text(0.5, 0.9, print(p22, plot = TRUE))
-    text(0.5, 0.8, print(p23, plot = TRUE))
-    text(0.5, 0.7, print(p24, plot = TRUE))
-  })
+  if (bayestools_test_profile_includes("visual")) {
+    testthat::skip_if_not_installed("vdiffr")
+
+    vdiffr::expect_doppelganger("priors-print-4", function(){
+      empty_plot()
+      text(0.5, 1, print(p21, plot = TRUE))
+      text(0.5, 0.9, print(p22, plot = TRUE))
+      text(0.5, 0.8, print(p23, plot = TRUE))
+      text(0.5, 0.7, print(p24, plot = TRUE))
+    })
+  }
 
   # prior expressions
   pe1 <- prior("normal", parameters = list(0, expression(x)))
   expect_equal(utils::capture.output(print(pe1)), "Normal(0, x)")
 
-  vdiffr::expect_doppelganger("priors-print-e1", function(){
-    empty_plot()
-    text(0.5, 1, print(pe1, plot = TRUE))
-  })
+  if (bayestools_test_profile_includes("visual")) {
+    testthat::skip_if_not_installed("vdiffr")
+
+    vdiffr::expect_doppelganger("priors-print-e1", function(){
+      empty_plot()
+      text(0.5, 1, print(pe1, plot = TRUE))
+    })
+  }
 })
+
+
+test_that("Prior print for prior_none", {
+
+  p_none <- prior_none()
+  output <- utils::capture.output(print(p_none))
+  expect_type(output, "character")
+
+  # Silent output
+  expect_equal(utils::capture.output(print(p_none, silent = TRUE)), character())
+
+})
+
+
+test_that("Prior print with inline option for mixtures", {
+
+  p_mix <- prior_mixture(
+    list(
+      prior("normal", list(0, 1)),
+      prior("normal", list(0, 2))
+    )
+  )
+
+  # Test inline option
+  output_inline <- print(p_mix, silent = TRUE, inline = TRUE)
+  expect_type(output_inline, "character")
+
+})
+
+
+test_that("Prior print for additional distributions", {
+
+  # Beta distribution with different parameters
+  p_beta <- prior("beta", list(alpha = 2, beta = 5))
+  expect_equal(utils::capture.output(print(p_beta)), "Beta(2, 5)")
+  expect_equal(utils::capture.output(print(p_beta, short_name = TRUE)), "B(2, 5)")
+
+  # Exponential distribution
+  p_exp <- prior("exp", list(rate = 2))
+  expect_equal(utils::capture.output(print(p_exp)), "Exponential(2)")
+  expect_equal(utils::capture.output(print(p_exp, short_name = TRUE)), "E(2)")
+
+  # Uniform distribution
+  p_unif <- prior("uniform", list(a = -1, b = 1))
+  expect_equal(utils::capture.output(print(p_unif)), "Uniform(-1, 1)")
+  expect_equal(utils::capture.output(print(p_unif, short_name = TRUE)), "U(-1, 1)")
+
+  # Lognormal distribution
+  p_ln <- prior("lognormal", list(meanlog = 0, sdlog = 1))
+  expect_equal(utils::capture.output(print(p_ln)), "Lognormal(0, 1)")
+  expect_equal(utils::capture.output(print(p_ln, short_name = TRUE)), "Ln(0, 1)")
+
+  # Inverse gamma distribution
+  p_ig <- prior("invgamma", list(shape = 1, scale = 1))
+  expect_equal(utils::capture.output(print(p_ig)), "InvGamma(1, 1)")
+  expect_equal(utils::capture.output(print(p_ig, short_name = TRUE)), "Ig(1, 1)")
+
+})
+
+
+test_that("Prior print digits_estimates parameter", {
+
+  p <- prior("normal", list(mean = 1.2345678, sd = 0.9876543))
+
+  # Default (2 digits)
+  expect_match(utils::capture.output(print(p)), "Normal\\(1\\.23, 0\\.99\\)")
+
+  # 4 digits
+  expect_match(utils::capture.output(print(p, digits_estimates = 4)), "Normal\\(1\\.2346, 0\\.9877\\)")
+
+  # 0 digits
+  expect_match(utils::capture.output(print(p, digits_estimates = 0)), "Normal\\(1, 1\\)")
+
+})
+

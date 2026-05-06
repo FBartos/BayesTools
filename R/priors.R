@@ -76,7 +76,7 @@ prior <- function(distribution, parameters, truncation = list(lower = -Inf, uppe
   check_list(parameters, "parameters")
   #sapply(seq_along(parameters), function(i)check_real(parameters[[i]], names(parameters[[i]]), check_length = 0))
   check_list(truncation, "truncation")
-  check_real(prior_weights, "prior_weights", lower = 0, allow_bound = FALSE)
+  .check_prior_weight(prior_weights)
 
   # clean the input name
   distribution <- .prior_clean_input_name(distribution)
@@ -127,7 +127,7 @@ prior <- function(distribution, parameters, truncation = list(lower = -Inf, uppe
 #' @rdname prior
 prior_none <- function(prior_weights = 1){
 
-  check_real(prior_weights, "prior_weights", lower = 0, allow_bound = FALSE)
+  .check_prior_weight(prior_weights)
 
   out <- list()
   out$distribution <- "none"
@@ -140,86 +140,127 @@ prior_none <- function(prior_weights = 1){
 
 #' @title Creates a prior distribution for a weight function
 #'
-#' @description \code{prior_weightfunction} creates a prior distribution for fitting
-#' a RoBMA selection model. The prior can be visualized by the \code{plot} function.
+#' @description \code{prior_weightfunction} creates a prior distribution for
+#' fitting a RoBMA selection model. The \code{side} and \code{steps} arguments
+#' define the p-value bins, and the \code{weights} argument defines the prior on
+#' the publication weights in those bins.
 #'
-#' @param distribution name of the prior distribution. The
-#' possible options are
-#' \describe{
-#'   \item{\code{"two.sided"}}{for a two-sided weight function
-#'   characterized by a vector \code{steps} and vector \code{alpha}
-#'   parameters. The \code{alpha} parameter determines an alpha
-#'   parameter of Dirichlet distribution which cumulative sum
-#'   is used for the weights omega.}
-#'   \item{\code{"one.sided"}}{for a one-sided weight function
-#'   characterized by either a vector \code{steps} and vector
-#'   \code{alpha} parameter, leading to a monotonic one-sided
-#'   function, or by a vector \code{steps}, vector \code{alpha1},
-#'   and vector \code{alpha2} parameters leading non-monotonic
-#'   one-sided weight function. The \code{alpha} / \code{alpha1} and
-#'   \code{alpha2} parameters determine an alpha parameter of
-#'   Dirichlet distribution which cumulative sum is used for
-#'   the weights omega.}
-#' }
-#' @param parameters list of appropriate parameters for a given
-#' \code{distribution}.
+#' @param side side geometry. Either \code{"one-sided"} or \code{"two-sided"}.
+#' @param steps increasing p-value cut points between 0 and 1.
+#' @param weights a weight-prior object created by \code{wf_cumulative()},
+#' \code{wf_fixed()}, or \code{wf_independent()}.
+#' @param reference reference bin. Currently only \code{"most_significant"} is
+#' supported and fixes the most significant bin to \code{omega = 1}.
 #' @param prior_weights prior odds associated with a given distribution.
-#' The model fitting function usually creates models corresponding to
-#' all combinations of prior distributions for each of the model
-#' parameters, and sets the model priors odds to the product of
-#' its prior distributions.
-#'
-#' @details Constrained cases of weight functions can be specified by adding
-#' ".fixed" after the distribution name, i.e., \code{"two.sided.fixed"} and
-#' \code{"one.sided.fixed"}. In these cases, the functions are specified using
-#' \code{steps} and \code{omega} parameters, where the \code{omega} parameter
-#' is a vector of weights that corresponds to the relative publication probability
-#' (i.e., no parameters are estimated).
-#'
 #'
 #' @examples
-#' p1 <- prior_weightfunction("one-sided", parameters = list(steps = c(.05, .10), alpha = c(1, 1, 1)))
+#' p1 <- prior_weightfunction(
+#'   side = "one-sided",
+#'   steps = c(.05, .10),
+#'   weights = wf_cumulative(alpha = c(1, 1, 1))
+#' )
 #'
-#' # the prior distribution can be visualized using the plot function
-#' # (see ?plot.prior for all options)
-#' plot(p1)
+#' p2 <- prior_weightfunction(
+#'   side = "one-sided",
+#'   steps = c(.05),
+#'   weights = wf_independent(prior("beta", list(1, 1)))
+#' )
 #'
 #' @return \code{prior_weightfunction} returns an object of class 'prior'.
 #'
-#' @export  prior_weightfunction
+#' @export prior_weightfunction
 #' @seealso [plot.prior()]
-prior_weightfunction <- function(distribution, parameters, prior_weights = 1){
+prior_weightfunction <- function(side = "one-sided", steps = c(.025, .05),
+                                 weights = wf_cumulative(),
+                                 reference = "most_significant",
+                                 prior_weights = 1){
 
-  # general input check
-  check_char(distribution, "distribution")
-  check_list(parameters, "parameters")
-  sapply(seq_along(parameters), function(i)check_real(parameters[[i]], names(parameters[[i]]), check_length = 0))
-  check_real(prior_weights, "prior_weights", lower = 0, allow_bound = FALSE)
+  check_char(side, "side")
+  check_real(steps, "steps", check_length = 0)
+  check_char(reference, "reference", allow_values = "most_significant")
+  .check_prior_weight(prior_weights)
 
-  # clean the input name
-  distribution <- .prior_clean_input_name(distribution)
+  side <- .weightfunction_normalize_side(side)
+  steps <- .weightfunction_validate_steps(steps)
+  bins <- .weightfunction_bins(steps)
+  weights <- .weightfunction_validate_weights(weights, n_bins = nrow(bins), reference = reference)
+  truncation <- .weightfunction_weights_truncation(weights)
 
-  if(distribution == "twosided"){
-    distribution <- "two.sided"
-  }else if(distribution == "onesided"){
-    distribution <- "one.sided"
-  }else if(distribution == "twosidedfixed"){
-    distribution <- "two.sided.fixed"
-  }else if(distribution == "onesidedfixed"){
-    distribution <- "one.sided.fixed"
-  }else{
-    stop(paste0("The specified distribution name '", distribution,"' is not known. Please, see '?prior_weightfunction' for more information about supported prior distributions for weight functions."))
-  }
-
-  # check the passed settings
-  output <- do.call(paste0(".prior_weightfunction_", distribution), list(parameters = parameters))
-
-  # add the prior odds
-  output$prior_weights <- prior_weights
+  output <- list(
+    distribution  = "weightfunction",
+    side          = side,
+    steps         = steps,
+    bins          = bins,
+    reference     = reference,
+    weights       = weights,
+    parameters    = list(steps = steps),
+    truncation    = truncation,
+    prior_weights = prior_weights
+  )
 
   class(output) <- c("prior", "prior.weightfunction")
 
   return(output)
+}
+
+#' @rdname prior_weightfunction
+#' @param alpha positive cumulative-Dirichlet concentration parameters. If
+#' omitted, a flat Dirichlet prior is used with one concentration parameter per
+#' bin.
+#' @export
+wf_cumulative <- function(alpha = NULL){
+
+  if(!is.null(alpha)){
+    check_real(alpha, "alpha", lower = 0, allow_bound = FALSE, check_length = 0, allow_NA = FALSE)
+  }
+
+  out <- list(type = "cumulative", alpha = alpha)
+  class(out) <- c("weightfunction_weights", "weightfunction_weights.cumulative")
+  return(out)
+}
+
+#' @rdname prior_weightfunction
+#' @param omega fixed non-negative relative publication weights, one per bin.
+#' The reference-bin weight must be exactly 1.
+#' @export
+wf_fixed <- function(omega){
+
+  check_real(omega, "omega", lower = 0, check_length = 0, allow_NA = FALSE)
+
+  out <- list(type = "fixed", omega = omega)
+  class(out) <- c("weightfunction_weights", "weightfunction_weights.fixed")
+  return(out)
+}
+
+#' @rdname prior_weightfunction
+#' @param prior prior distribution for each non-reference weight.
+#' @param scale latent scale for independent weights. \code{"omega"} places the
+#' prior directly on the non-negative publication weight. \code{"log_omega"}
+#' places the prior on \code{log(omega)} and transforms with
+#' \code{omega = exp(log_omega)}, allowing weights above one whenever the log
+#' prior assigns mass above zero.
+#' @export
+wf_independent <- function(prior, scale = "omega"){
+
+  .check_prior(prior)
+  if(!is.prior.simple(prior) || is.prior.point(prior) || is.prior.discrete(prior)){
+    stop("'prior' must be a continuous simple prior distribution.", call. = FALSE)
+  }
+
+  check_char(scale, "scale", allow_values = c("omega", "log_omega", "log"))
+  if(scale == "log"){
+    scale <- "log_omega"
+  }
+
+  if(scale == "omega"){
+    if(prior$truncation[["lower"]] < 0){
+      stop("Independent omega-scale weight priors must have non-negative support.", call. = FALSE)
+    }
+  }
+
+  out <- list(type = "independent", scale = scale, prior = prior)
+  class(out) <- c("weightfunction_weights", "weightfunction_weights.independent")
+  return(out)
 }
 
 #' @title Creates a prior distribution for PET or PEESE models
@@ -402,6 +443,7 @@ prior_spike_and_slab <- function(prior_parameter,
     stop("'prior_parameter' must be a prior distribution")
   if(!is.prior(prior_inclusion))
     stop("'prior_inclusion' must be a prior distribution")
+  .check_prior_weight(prior_weights)
   if(is.prior.point(prior_inclusion) && (prior_inclusion$parameters[["location"]] < 0 | prior_inclusion$parameters[["location"]] > 1))
     stop("The probability parameter of 'prior_inclusion' must be within 0 and 1.")
   if(!is.prior.point(prior_inclusion) && (prior_inclusion$truncation[["lower"]] < 0 | prior_inclusion$truncation[["upper"]] > 1))
@@ -434,6 +476,7 @@ prior_spike_and_slab <- function(prior_parameter,
   
   # Store inclusion prior as attribute so it can be retrieved by helper functions
   attr(mixture_output, "inclusion_prior") <- prior_inclusion
+  attr(mixture_output, "model_prior_weights") <- prior_weights
   
   # Add spike_and_slab classes for specialized behavior while keeping mixture functionality
   if(is.prior.factor(prior_parameter)){
@@ -543,24 +586,26 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
     # change prior none/spikes into factor prior spikes
     for(i in seq_along(prior_list)){
       if(is.prior.point(prior_list[[i]])){
-        # Save the component attribute before recreating
+        # Save mixture metadata before recreating the factor-compatible prior.
         component_attr <- attr(prior_list[[i]], "component")
+        prior_weight   <- .prior_model_weight(prior_list[[i]])
         prior_list[[i]] <- prior_factor(
           distribution = "point",
           parameters   = list(location = prior_list[[i]][["parameters"]][["location"]]),
+          prior_weights = prior_weight,
           contrast     = gsub("prior.", "", priors_type[["class"]], fixed = TRUE)
         )
-        # Restore the component attribute
         attr(prior_list[[i]], "component") <- component_attr
       }else if(is.prior.none(prior_list[[i]])){
-        # Save the component attribute before recreating
+        # Save mixture metadata before recreating the factor-compatible prior.
         component_attr <- attr(prior_list[[i]], "component")
+        prior_weight   <- .prior_model_weight(prior_list[[i]])
         prior_list[[i]] <- prior_factor(
           distribution = "point",
           parameters   = list(location = 0),
+          prior_weights = prior_weight,
           contrast     = gsub("prior.", "", priors_type[["class"]], fixed = TRUE)
         )
-        # Restore the component attribute
         attr(prior_list[[i]], "component") <- component_attr
       }
     }
@@ -569,11 +614,16 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
     class(prior_list)      <- c("prior", "prior.factor_mixture", "prior.mixture", priors_type[["class"]])
 
 
-  }else if(any(sapply(prior_list, is.prior.PET)) || any(sapply(prior_list, is.prior.PEESE)) || any(sapply(prior_list, is.prior.weightfunction))){
+  }else if(any(sapply(prior_list, is.prior.PET)) || any(sapply(prior_list, is.prior.PEESE)) ||
+           any(sapply(prior_list, is.prior.weightfunction)) || any(sapply(prior_list, is_prior_phacking)) ||
+           any(sapply(prior_list, is_prior_bias))){
 
-    # test that the prior is either a PET, PEESE, or weightfunction prior
-    if(!all(sapply(prior_list, is.prior.PET) | sapply(prior_list, is.prior.PEESE) | sapply(prior_list, is.prior.weightfunction) | sapply(prior_list, is.prior.none)))
-      stop("PET/PEESE/weightfunction prior mixture requires that all priors are either PET, PEESE, or weightfunction prior distributions")
+    # test that the prior is either a PET, PEESE, weightfunction, p-hacking,
+    # composed bias, or none prior
+    if(!all(sapply(prior_list, is.prior.PET) | sapply(prior_list, is.prior.PEESE) |
+            sapply(prior_list, is.prior.weightfunction) | sapply(prior_list, is_prior_phacking) |
+            sapply(prior_list, is_prior_bias) | sapply(prior_list, is.prior.none)))
+      stop("Publication-bias prior mixtures require PET, PEESE, weightfunction, p-hacking, composed bias, or none prior distributions.")
 
     class(prior_list) <- c("prior", "prior.bias_mixture", "prior.mixture")
 
@@ -587,9 +637,11 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
     # change none into prior spikes
     for(i in seq_along(prior_list)){
       if(is.prior.none(prior_list[[i]])){
+        prior_weight <- .prior_model_weight(prior_list[[i]])
         prior_list[[i]] <- prior(
           distribution = "point",
-          parameters   = list(location = 0)
+          parameters   = list(location = 0),
+          prior_weights = prior_weight
         )
       }
     }
@@ -601,7 +653,7 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
   }
 
   attr(prior_list, "components")    <- components
-  attr(prior_list, "prior_weights") <- sapply(prior_list, function(p) p[["prior_weights"]])
+  attr(prior_list, "prior_weights") <- sapply(prior_list, .prior_model_weight)
 
   return(prior_list)
 }
@@ -818,6 +870,15 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
   # check individual parameters
   .check_parameter(parameters$probability, "probability")
   .check_parameter_range(parameters$probability, "probability", lower = 0, upper = 1, include_bounds = TRUE)
+  bernoulli_support <- c(0, 1)
+  bernoulli_keep    <- bernoulli_support >= truncation[["lower"]] & bernoulli_support <= truncation[["upper"]]
+  if(!any(bernoulli_keep))
+    stop("Bernoulli truncation must contain at least one support point: 0 or 1.", call. = FALSE)
+  if(!is.expression(parameters$probability)){
+    bernoulli_prob <- c(1 - parameters$probability, parameters$probability)
+    if(sum(bernoulli_prob[bernoulli_keep]) <= 0)
+      stop("Bernoulli truncation must retain positive probability mass.", call. = FALSE)
+  }
 
   # add the values to the output
   output$distribution <- "bernoulli"
@@ -842,10 +903,12 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
   if(parameters$a >= parameters$b)
     stop("Parameter 'a' must be lower than the parameter 'b'.")
 
+  truncation <- .check_and_set_truncation(truncation, lower = parameters$a, upper = parameters$b)
+
   # add the values to the output
   output$distribution <- "uniform"
   output$parameters   <- parameters
-  output$truncation   <- list(lower = parameters$a, upper = parameters$b)
+  output$truncation   <- truncation
 
   class(output) <- c("prior", "prior.simple")
 
@@ -860,6 +923,7 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
 
   # check individual parameters
   .check_parameter(parameters$location, "location")
+  .check_point_truncation(truncation, parameters$location, "point")
 
   # add the values to the output
   output$distribution <- "point"
@@ -877,6 +941,7 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
   # check overall settings
   parameters <- .check_and_name_parameters(parameters, c("mean", "sd", "K"), "multivariate normal")
   truncation <- .check_and_set_truncation(truncation)
+  .check_vector_truncation_unsupported(truncation)
 
   # check individual parameters
   .check_parameter(parameters$mean, "mean")
@@ -900,6 +965,7 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
   # check overall settings
   parameters <- .check_and_name_parameters(parameters, c("location", "scale", "K"), "multivariate Cauchy")
   truncation <- .check_and_set_truncation(truncation)
+  .check_vector_truncation_unsupported(truncation)
 
   # check individual parameters
   .check_parameter(parameters$location, "location")
@@ -925,6 +991,7 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
   # check overall settings
   parameters <- .check_and_name_parameters(parameters, c("location", "scale", "df", "K"), "multivariate student-t")
   truncation <- .check_and_set_truncation(truncation)
+  .check_vector_truncation_unsupported(truncation)
 
   # check individual parameters
   .check_parameter(parameters$location, "location")
@@ -954,6 +1021,7 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
   # check individual parameters
   .check_parameter(parameters$location, "location")
   .check_parameter_dimensions(parameters$K, "K", allow_NA = TRUE)   # allow undetermined dimensions if called by prior_factor
+  .check_point_truncation(truncation, parameters$location, "multivariate point")
 
   # add the values to the output
   output$distribution <- "mpoint"
@@ -964,110 +1032,392 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
 
   return(output)
 }
-.prior_weightfunction_two.sided <- function(parameters){
+.check_point_truncation <- function(truncation, location, distribution){
 
-  output <- list()
-
-  # check overall settings
-  parameters <- .check_and_name_parameters(parameters, c("steps", "alpha"), "two-sided weightfunction")
-
-  # check individual parameters
-  .check_parameter_weigthfunction(parameters$steps, parameters$alpha)
-
-  # reverse the ordering of alpha and weights - to correspond to ordering on t-statistics
-  parameters$steps <- rev(parameters$steps)
-  parameters$alpha <- rev(parameters$alpha)
-
-  # add the values to the output
-  output$distribution <- "two.sided"
-  output$parameters   <- parameters
-  output$truncation   <- list(lower = 0, upper = 1)
-
-  return(output)
-}
-.prior_weightfunction_one.sided <- function(parameters){
-
-  output <- list()
-
-  if(length(parameters) == 2){
-
-    # check overall settings
-    parameters <- .check_and_name_parameters(parameters, c("steps", "alpha"), "one-sided weightfunction")
-
-    # check individual parameters
-    .check_parameter_weigthfunction(parameters$steps, parameters$alpha)
-
-    # reverse the ordering of alpha and weights - to correspond to ordering on t-statistics
-    parameters$steps <- rev(parameters$steps)
-    parameters$alpha <- rev(parameters$alpha)
-
-    # add the values to the output
-    output$distribution <- "one.sided"
-    output$parameters   <- parameters
-    output$truncation   <- list(lower = 0, upper = 1)
-
-  }else{
-
-    # check overall settings
-    parameters <- .check_and_name_parameters(parameters, c("steps", "alpha1", "alpha2"), "one-sided weightfunction")
-
-    # check individual parameters
-    .check_parameter_weigthfunction(parameters$steps, alpha1 = parameters$alpha1, alpha2 = parameters$alpha2)
-
-    # reverse the ordering of alpha and weights - to correspond to ordering on t-statistics
-    parameters$steps  <- rev(parameters$steps)
-    parameters$alpha1 <- rev(parameters$alpha1)
-
-    # add the values to the output
-    output$distribution <- "one.sided"
-    output$parameters   <- parameters
-    output$truncation   <- list(lower = 0, upper = 1)
-
+  if(is.expression(location)){
+    return(invisible(NULL))
   }
 
-  return(output)
+  if(length(truncation) > 2)
+    stop("More than two truncation points were supplied.", call. = FALSE)
+
+  if(!is.null(names(truncation))){
+    if(!all(names(truncation) %in% c("lower", "upper")))
+      stop("Truncation points must be named 'lower' and 'upper'.", call. = FALSE)
+    if(length(truncation) == 1){
+      if(names(truncation) == "lower"){
+        truncation$upper <- Inf
+      }else if(names(truncation) == "upper"){
+        truncation$lower <- -Inf
+      }
+    }
+  }else{
+    if(length(truncation) == 2){
+      names(truncation) <- c("lower", "upper")
+    }else if(length(truncation) == 1){
+      names(truncation) <- "lower"
+      truncation$upper <- Inf
+    }else{
+      truncation <- list(lower = -Inf, upper = Inf)
+    }
+  }
+
+  truncation <- truncation[c("lower", "upper")]
+
+  if(!is.numeric(truncation[["lower"]]) || length(truncation[["lower"]]) != 1 ||
+     !is.numeric(truncation[["upper"]]) || length(truncation[["upper"]]) != 1){
+    stop("Truncation points must be numeric values.", call. = FALSE)
+  }
+
+  if(truncation[["lower"]] > truncation[["upper"]]){
+    stop("The lower truncation point must be lower or equal to the upper truncation point.", call. = FALSE)
+  }
+
+  if(truncation[["lower"]] > location || truncation[["upper"]] < location){
+    stop(paste0("The ", distribution, " prior truncation must contain the point location."), call. = FALSE)
+  }
+
+  invisible(NULL)
 }
-.prior_weightfunction_two.sided.fixed <- function(parameters){
+.check_vector_truncation_unsupported <- function(truncation){
 
-  output <- list()
-
-  # check overall settings
-  parameters <- .check_and_name_parameters(parameters, c("steps", "omega"), "two-sided.fixed weightfunction")
-
-  # check individual parameters
-  .check_parameter_weigthfunction(parameters$steps, omega = parameters$omega)
-
-  # reverse the ordering of alpha and weights - to correspond to ordering on t-statistics
-  parameters$steps <- rev(parameters$steps)
-  parameters$omega <- rev(parameters$omega)
-
-  # add the values to the output
-  output$distribution <- "two.sided.fixed"
-  output$parameters   <- parameters
-  output$truncation   <- list(lower = 0, upper = 1)
-
-  return(output)
+  if(!is.infinite(truncation[["lower"]]) || !is.infinite(truncation[["upper"]])){
+    stop("Vector priors do not support truncation.", call. = FALSE)
+  }
 }
-.prior_weightfunction_one.sided.fixed <- function(parameters){
+.weightfunction_normalize_side <- function(side){
 
-  output <- list()
+  side_clean <- .prior_clean_input_name(side)
+  if(side_clean %in% c("onesided", "one")){
+    return("one-sided")
+  }
+  if(side_clean %in% c("twosided", "two")){
+    return("two-sided")
+  }
 
-  # check overall settings
-  parameters <- .check_and_name_parameters(parameters, c("steps", "omega"), "one-sided.fixed weightfunction")
+  stop("'side' must be either 'one-sided' or 'two-sided'.", call. = FALSE)
+}
+.weightfunction_validate_steps <- function(steps){
 
-  # check individual parameters
-  .check_parameter_weigthfunction(parameters$steps, omega = parameters$omega)
+  check_real(steps, "steps", check_length = 0, allow_NA = FALSE)
 
-  # reverse the ordering of alpha and weights - to correspond to ordering on t-statistics
-  parameters$steps <- rev(parameters$steps)
-  parameters$omega <- rev(parameters$omega)
+  if(length(steps) == 0){
+    stop("'steps' must contain at least one p-value cut point.", call. = FALSE)
+  }
+  if(any(steps >= 1) || any(steps <= 0)){
+    stop("'steps' must be higher than 0 and lower than 1.", call. = FALSE)
+  }
+  if(anyDuplicated(steps)){
+    stop("'steps' must not contain duplicate cut points.", call. = FALSE)
+  }
+  if(!all(steps == cummax(steps))){
+    stop("'steps' must be monotonically increasing.", call. = FALSE)
+  }
 
-  # add the values to the output
-  output$distribution <- "one.sided.fixed"
-  output$parameters   <- parameters
-  output$truncation   <- list(lower = 0, upper = 1)
+  steps
+}
+.weightfunction_bins <- function(steps){
 
-  return(output)
+  cuts <- c(0, steps, 1)
+  data.frame(
+    lower     = cuts[-length(cuts)],
+    upper     = cuts[-1],
+    reference = c(TRUE, rep(FALSE, length(cuts) - 2L))
+  )
+}
+.weightfunction_validate_weights <- function(weights, n_bins, reference){
+
+  if(!inherits(weights, "weightfunction_weights")){
+    stop("'weights' must be created by wf_cumulative(), wf_fixed(), or wf_independent().", call. = FALSE)
+  }
+
+  if(weights$type == "cumulative"){
+    if(is.null(weights$alpha)){
+      weights$alpha <- rep(1, n_bins)
+    }
+    check_real(weights$alpha, "alpha", lower = 0, allow_bound = FALSE, check_length = n_bins, allow_NA = FALSE)
+
+  }else if(weights$type == "fixed"){
+    check_real(weights$omega, "omega", lower = 0, check_length = n_bins, allow_NA = FALSE)
+    if(reference == "most_significant" && !isTRUE(all.equal(weights$omega[1], 1))){
+      stop("The reference-bin fixed weight must be exactly 1.", call. = FALSE)
+    }
+
+  }else if(weights$type == "independent"){
+    .check_prior(weights$prior)
+    if(!is.prior.simple(weights$prior) || is.prior.point(weights$prior) || is.prior.discrete(weights$prior)){
+      stop("'weights$prior' must be a continuous simple prior distribution.", call. = FALSE)
+    }
+    if(weights$scale == "omega"){
+      if(weights$prior$truncation[["lower"]] < 0){
+        stop("Independent omega-scale weight priors must have non-negative support.", call. = FALSE)
+      }
+    }else if(weights$scale != "log_omega"){
+      stop("Unsupported independent weight prior scale.", call. = FALSE)
+    }
+
+  }else{
+    stop("Unsupported weightfunction weight prior type.", call. = FALSE)
+  }
+
+  weights
+}
+.weightfunction_weights_truncation <- function(weights){
+
+  if(weights$type == "cumulative"){
+    return(list(lower = 0, upper = 1))
+  }
+
+  if(weights$type == "fixed"){
+    return(list(lower = 0, upper = max(1, weights$omega, na.rm = TRUE)))
+  }
+
+  if(weights$type == "independent"){
+    if(weights$scale == "omega"){
+      upper <- weights$prior$truncation[["upper"]]
+    }else if(weights$scale == "log_omega"){
+      upper <- weights$prior$truncation[["upper"]]
+      upper <- if(is.infinite(upper)) Inf else exp(upper)
+    }else{
+      stop("Unsupported independent weight prior scale.", call. = FALSE)
+    }
+
+    return(list(lower = 0, upper = max(1, upper)))
+  }
+
+  stop("Unsupported weightfunction weight prior type.", call. = FALSE)
+}
+.weightfunction_n_bins <- function(prior){
+
+  if(!is.prior.weightfunction(prior)){
+    stop("'prior' must be a weightfunction prior.", call. = FALSE)
+  }
+
+  nrow(prior$bins)
+}
+.weightfunction_is_fixed <- function(prior){
+  prior$weights$type == "fixed"
+}
+.weightfunction_local_cuts <- function(prior){
+
+  c(prior$bins$lower[1], prior$bins$upper)
+}
+.weightfunction_reference_index <- function(prior){
+  which(prior$bins$reference)
+}
+.weightfunction_alpha_marginal <- function(alpha, index){
+
+  if(index <= 1L){
+    return(list(type = "point", location = 1))
+  }
+
+  list(
+    type  = "beta",
+    alpha = sum(alpha[index:length(alpha)]),
+    beta  = sum(alpha[seq_len(index - 1L)])
+  )
+}
+.weightfunction_rng <- function(prior, n){
+
+  J <- .weightfunction_n_bins(prior)
+
+  if(prior$weights$type == "fixed"){
+    out <- matrix(rep(prior$weights$omega, each = n), nrow = n)
+
+  }else if(prior$weights$type == "cumulative"){
+    theta <- extraDistr::rdirichlet(n, alpha = prior$weights$alpha)
+    out   <- t(apply(theta[,J:1, drop = FALSE], 1, cumsum))[,J:1, drop = FALSE]
+    # Keep the reference bin exact; row-wise cumulative sums can leave 1 +/- eps.
+    out[,1L] <- 1
+
+  }else if(prior$weights$type == "independent"){
+    out <- matrix(1, nrow = n, ncol = J)
+    if(J > 1L){
+      draws <- matrix(rng(prior$weights$prior, n * (J - 1L)), nrow = n, ncol = J - 1L)
+      if(prior$weights$scale == "log_omega"){
+        draws <- exp(draws)
+      }
+      out[,2:J] <- draws
+    }
+  }
+
+  colnames(out) <- paste0("omega[", seq_len(J), "]")
+  out
+}
+.weightfunction_marginal_components <- function(prior){
+
+  J <- .weightfunction_n_bins(prior)
+
+  if(prior$weights$type == "fixed"){
+    return(lapply(prior$weights$omega, function(x){
+      list(type = "point", location = x)
+    }))
+  }
+
+  if(prior$weights$type == "cumulative"){
+    return(lapply(seq_len(J), function(j){
+      .weightfunction_alpha_marginal(prior$weights$alpha, j)
+    }))
+  }
+
+  if(prior$weights$type == "independent"){
+    return(lapply(seq_len(J), function(j){
+      if(j == 1L){
+        list(type = "point", location = 1)
+      }else{
+        list(type = "prior", prior = prior$weights$prior, scale = prior$weights$scale)
+      }
+    }))
+  }
+}
+.prior_weightfunction_component_range <- function(component, quantiles = .005){
+
+  switch(
+    component$type,
+    "point" = c(component$location, component$location),
+    "beta"  = c(0, 1),
+    "prior" = {
+      if(component$scale == "omega"){
+        lower <- component$prior$truncation[["lower"]]
+        upper <- component$prior$truncation[["upper"]]
+
+        lower <- if(is.infinite(lower)) mquant(component$prior, quantiles) else lower
+        upper <- if(is.infinite(upper)) mquant(component$prior, 1 - quantiles) else upper
+        c(lower, upper)
+      }else{
+        lower <- component$prior$truncation[["lower"]]
+        upper <- component$prior$truncation[["upper"]]
+
+        lower <- if(is.infinite(lower)) 0 else exp(lower)
+        upper <- if(is.infinite(upper)) exp(mquant(component$prior, 1 - quantiles)) else exp(upper)
+        c(lower, upper)
+      }
+    }
+  )
+}
+.weightfunction_range <- function(prior, quantiles = .005){
+
+  ranges <- do.call(rbind, lapply(
+    .weightfunction_marginal_components(prior),
+    .prior_weightfunction_component_range,
+    quantiles = quantiles
+  ))
+
+  x_range <- range(c(0, 1, as.vector(ranges)), finite = TRUE)
+  if(x_range[1] == x_range[2]){
+    x_range <- range(c(0, 1, x_range), finite = TRUE)
+  }
+
+  x_range
+}
+.prior_weightfunction_component_cdf <- function(component, q){
+
+  switch(
+    component$type,
+    "point" = ppoint(q, location = component$location),
+    "beta"  = stats::pbeta(q, shape1 = component$alpha, shape2 = component$beta),
+    "prior" = {
+      if(component$scale == "omega"){
+        mcdf(component$prior, q)
+      }else{
+        p <- numeric(length(q))
+        p[q <= 0] <- 0
+        inside <- q > 0
+        p[inside] <- mcdf(component$prior, log(q[inside]))
+        p
+      }
+    }
+  )
+}
+.prior_weightfunction_component_ccdf <- function(component, q){
+  if(component$type == "point"){
+    return(ppoint(q, location = component$location, lower.tail = FALSE))
+  }
+  1 - .prior_weightfunction_component_cdf(component, q)
+}
+.prior_weightfunction_component_lpdf <- function(component, x){
+
+  switch(
+    component$type,
+    "point" = dpoint(x, location = component$location, log = TRUE),
+    "beta"  = stats::dbeta(x, shape1 = component$alpha, shape2 = component$beta, log = TRUE),
+    "prior" = {
+      if(component$scale == "omega"){
+        mlpdf(component$prior, x)
+      }else{
+        out <- rep(-Inf, length(x))
+        inside <- x > 0
+        out[inside] <- mlpdf(component$prior, log(x[inside])) - log(x[inside])
+        out
+      }
+    }
+  )
+}
+.prior_weightfunction_component_quant <- function(component, p){
+
+  switch(
+    component$type,
+    "point" = qpoint(p, location = component$location),
+    "beta"  = stats::qbeta(p, shape1 = component$alpha, shape2 = component$beta),
+    "prior" = {
+      if(component$scale == "omega"){
+        mquant(component$prior, p)
+      }else{
+        exp(mquant(component$prior, p))
+      }
+    }
+  )
+}
+.prior_weightfunction_component_mean <- function(component){
+
+  switch(
+    component$type,
+    "point" = component$location,
+    "beta"  = component$alpha / (component$alpha + component$beta),
+    "prior" = {
+      if(component$scale == "omega"){
+        mean(component$prior)
+      }else{
+        stats::integrate(
+          f     = function(x, prior) {
+            y <- exp(x) * pdf(prior, x)
+            y[!is.finite(y)] <- 0
+            y
+          },
+          lower = component$prior$truncation[["lower"]],
+          upper = component$prior$truncation[["upper"]],
+          prior = component$prior
+        )$value
+      }
+    }
+  )
+}
+.prior_weightfunction_component_var <- function(component){
+
+  switch(
+    component$type,
+    "point" = 0,
+    "beta"  = (component$alpha * component$beta) /
+      ((component$alpha + component$beta)^2 * (component$alpha + component$beta + 1)),
+    "prior" = {
+      if(component$scale == "omega"){
+        var(component$prior)
+      }else{
+        m1 <- .prior_weightfunction_component_mean(component)
+        m2 <- stats::integrate(
+          f     = function(x, prior) {
+            y <- exp(2 * x) * pdf(prior, x)
+            y[!is.finite(y)] <- 0
+            y
+          },
+          lower = component$prior$truncation[["lower"]],
+          upper = component$prior$truncation[["upper"]],
+          prior = component$prior
+        )$value
+        m2 - m1^2
+      }
+    }
+  )
 }
 
 #### elementary prior related functions ####
@@ -1165,7 +1515,65 @@ rng.prior   <- function(x, n, ...){
     if(sample_components)
       return(components)
 
-    if(inherits(prior, "prior.factor_mixture")){
+    if(inherits(prior, "prior.bias_mixture")){
+
+      branch_info <- lapply(prior, .selection_branch_info)
+      spec        <- selection_backend_spec(prior)
+
+      is_PET        <- sapply(prior, is.prior.PET)
+      is_PEESE      <- sapply(prior, is.prior.PEESE)
+      has_selection <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
+      has_phacking  <- vapply(branch_info, function(x) !is.null(x$phacking),  logical(1))
+
+      out_names <- character()
+      if(any(has_selection)){
+        omega_names <- paste0("omega[", seq_len(spec$step$n_bins), "]")
+        out_names   <- c(out_names, omega_names)
+
+        selection_priors <- lapply(branch_info[has_selection], function(x) x$selection)
+        omega_mapping    <- weightfunctions_mapping(selection_priors, one_sided = TRUE)
+        selection_index  <- which(has_selection)
+      }
+      if(any(has_phacking)){
+        out_names <- c(out_names, "alpha", "pi_null")
+      }
+      if(any(is_PET)){
+        out_names <- c(out_names, "PET")
+      }
+      if(any(is_PEESE)){
+        out_names <- c(out_names, "PEESE")
+      }
+
+      x <- matrix(0, nrow = n, ncol = length(out_names))
+      colnames(x) <- out_names
+      if(any(has_selection)){
+        x[, omega_names] <- 1
+      }
+
+      for(component in unique(components)){
+        component_rows <- component == components
+        n_component    <- sum(component_rows)
+
+        if(has_selection[component]){
+          selection_i <- match(component, selection_index)
+          selection_samples <- rng(branch_info[[component]]$selection, n_component)
+          x[component_rows, omega_names] <- selection_samples[, paste0("omega[", omega_mapping[[selection_i]], "]"), drop = FALSE]
+        }
+
+        if(has_phacking[component]){
+          phacking_samples <- rng(branch_info[[component]]$phacking, n_component)
+          x[component_rows, c("alpha", "pi_null")] <- phacking_samples[, c("alpha", "pi_null"), drop = FALSE]
+        }
+
+        if(is_PET[component]){
+          x[component_rows, "PET"] <- rng(prior[[component]], n_component, transform_factor_samples = FALSE)
+        }
+        if(is_PEESE[component]){
+          x[component_rows, "PEESE"] <- rng(prior[[component]], n_component, transform_factor_samples = FALSE)
+        }
+      }
+
+    }else if(inherits(prior, "prior.factor_mixture")){
 
       prior_type <- .get_prior_factor_list_type(prior)
 
@@ -1195,33 +1603,7 @@ rng.prior   <- function(x, n, ...){
 
   }else if(is.prior.simple(prior)){
 
-    x <- NULL
-    # guesstimate the number of samples needed before the truncation
-    nn <- round(n * 1/.prior_C(prior) * 1.10)
-
-    while(length(x) < n){
-      temp_x <- switch(
-        prior[["distribution"]],
-        "normal"    = stats::rnorm(nn, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]]),
-        "lognormal" = stats::rlnorm(nn, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]]),
-        "t"         = extraDistr::rlst(nn, df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]]),
-        "gamma"     = stats::rgamma(nn, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]]),
-        "invgamma"  = extraDistr::rinvgamma(nn, alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]]),
-        "beta"      = stats::rbeta(nn, shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]]),
-        "bernoulli" = stats::rbinom(nn, size = 1, prob = prior$parameters[["probability"]]),
-        "exp"       = stats::rexp(nn, rate = prior$parameters[["rate"]]),
-        "uniform"   = stats::runif(nn, min = prior$parameters[["a"]], max = prior$parameters[["b"]]),
-        "point"     = rpoint(n, location = prior$parameters[["location"]])
-      )
-      x <- c(x, temp_x[temp_x >= prior$truncation[["lower"]] & temp_x <= prior$truncation[["upper"]]])
-    }
-
-    # make sure the enough samples were generated
-    if(length(x) < n){
-      x <- rng(prior, n)
-    }
-
-    x <- x[1:n]
+    x <- .prior_simple_rng(prior, n)
 
   }else if(transform_factor_samples && (is.prior.orthonormal(prior) | is.prior.meandif(prior))){
 
@@ -1273,6 +1655,9 @@ rng.prior   <- function(x, n, ...){
 
   }else if(is.prior.vector(prior)){
 
+    if(prior[["distribution"]] != "mpoint")
+      .check_vector_truncation_unsupported(prior$truncation)
+
     par1 <- switch(
       prior[["distribution"]],
       "mnormal" = prior$parameter[["mean"]],
@@ -1304,13 +1689,27 @@ rng.prior   <- function(x, n, ...){
 
   }else if(is.prior.weightfunction(prior)){
 
-    x <- switch(
-      prior[["distribution"]],
-      "one.sided" = rone.sided(n, alpha = if(!is.null(prior$parameters[["alpha"]])) prior$parameters[["alpha"]], alpha1 = if(!is.null(prior$parameters[["alpha1"]])) prior$parameters[["alpha1"]], alpha2 = if(!is.null(prior$parameters[["alpha2"]])) prior$parameters[["alpha2"]]),
-      "two.sided" = rtwo.sided(n, alpha = prior$parameters[["alpha"]]),
-      "one.sided.fixed" = rone.sided_fixed(n, omega = prior$parameters[["omega"]]),
-      "two.sided.fixed" = rtwo.sided_fixed(n, omega = prior$parameters[["omega"]])
+    x <- .weightfunction_rng(prior, n)
+
+  }else if(is_prior_phacking(prior)){
+
+    alpha <- rng(prior$alpha, n)
+    x <- cbind(
+      alpha   = alpha,
+      pi_null = phack_pi_null(alpha, prior$form, prior$source, prior$destination, target = prior$target)
     )
+
+  }else if(is_prior_bias(prior)){
+
+    selection_backend_spec(prior)
+
+    x <- NULL
+    if(!is.null(prior$selection)){
+      x <- cbind(x, rng(prior$selection, n))
+    }
+    if(!is.null(prior$phacking)){
+      x <- cbind(x, rng(prior$phacking, n))
+    }
 
   }
 
@@ -1321,7 +1720,7 @@ cdf.prior   <- function(x, q, ...){
 
   prior <- x
 
-  .check_q(q)
+  .check_q(as.vector(q))
   .check_prior(prior)
 
   if(is.prior.spike_and_slab(prior)){
@@ -1334,31 +1733,7 @@ cdf.prior   <- function(x, q, ...){
 
   }else if(is.prior.simple(prior)){
 
-    p <- rep(NA, length(q))
-
-    # deal with values below the truncation point
-    q_lower    <- q < prior$truncation[["lower"]]
-    p[q_lower] <- 0
-
-    # compute for the values above truncation point
-    p[!q_lower] <- switch(
-      prior[["distribution"]],
-      "normal"    = stats::pnorm(q[!q_lower], mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], lower.tail = TRUE, log.p = FALSE),
-      "lognormal" = stats::plnorm(q[!q_lower], meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], lower.tail = TRUE, log.p = FALSE),
-      "t"         = extraDistr::plst(q[!q_lower], df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
-      "gamma"     = stats::pgamma(q[!q_lower], shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
-      "invgamma"  = extraDistr::pinvgamma(q[!q_lower], alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
-      "beta"      = stats::pbeta(q[!q_lower], shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = TRUE, log.p = FALSE),
-      "bernoulli" = stats::pbinom(q[!q_lower], size = 1, prob = prior$parameters[["probability"]], lower.tail = TRUE, log.p = FALSE),
-      "exp"       = stats::pexp(q[!q_lower], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
-      "uniform"   = stats::punif(q[!q_lower], min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = TRUE, log.p = FALSE),
-      "point"     = ppoint(q[!q_lower], location = prior$parameters[["location"]], lower.tail = TRUE, log.p = FALSE)
-    )
-
-    # deal with truncation
-    if(prior[["distribution"]] != "point"){
-      p[!q_lower] <- (p[!q_lower] - .prior_C1(prior)) /.prior_C(prior)
-    }
+    p <- .prior_simple_cdf(prior, q)
 
   }else if(is.prior.vector(prior)){
 
@@ -1367,6 +1742,10 @@ cdf.prior   <- function(x, q, ...){
   }else if(is.prior.weightfunction(prior)){
 
     stop("Only marginal cdfs are implemented for prior weightfunctions.")
+
+  }else if(is_prior_phacking(prior) || is_prior_bias(prior)){
+
+    .selection_prior_stop_unsupported_generic("cdf", prior)
 
   }
 
@@ -1377,7 +1756,7 @@ ccdf.prior  <- function(x, q, ...){
 
   prior <- x
 
-  .check_q(q)
+  .check_q(as.vector(q))
   .check_prior(prior)
 
   if(is.prior.spike_and_slab(prior)){
@@ -1390,31 +1769,7 @@ ccdf.prior  <- function(x, q, ...){
 
   }else if(is.prior.simple(prior)){
 
-    p <- rep(NA, length(q))
-
-    # deal with values above the truncation point
-    q_higher    <- q > prior$truncation[["upper"]]
-    p[q_higher] <- 0
-
-    # compute for the values belove truncation point
-    p[!q_higher] <- switch(
-      prior[["distribution"]],
-      "normal"    = stats::pnorm(q[!q_higher], mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], lower.tail = FALSE, log.p = FALSE),
-      "lognormal" = stats::plnorm(q[!q_higher], meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], lower.tail = FALSE, log.p = FALSE),
-      "t"         = extraDistr::plst(q[!q_higher], df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]], lower.tail = FALSE, log.p = FALSE),
-      "gamma"     = stats::pgamma(q[!q_higher], shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = FALSE, log.p = FALSE),
-      "invgamma"  = extraDistr::pinvgamma(q[!q_higher], alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], lower.tail = FALSE, log.p = FALSE),
-      "beta"      = stats::pbeta(q[!q_higher], shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = FALSE, log.p = FALSE),
-      "bernoulli" = stats::pbinom(q[!q_higher], size = 1, prob = prior$parameters[["probability"]], lower.tail = FALSE, log.p = FALSE),
-      "exp"       = stats::pexp(q[!q_higher], rate = prior$parameters[["rate"]], lower.tail = FALSE, log.p = FALSE),
-      "uniform"   = stats::punif(q[!q_higher], min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = FALSE, log.p = FALSE),
-      "point"     = ppoint(q[!q_higher], location = prior$parameters[["location"]], lower.tail = FALSE, log.p = FALSE)
-    )
-
-    # deal with truncation
-    if(prior[["distribution"]] != "point"){
-      p[!q_higher] <- (p[!q_higher] - (1 - .prior_C2(prior))) /.prior_C(prior)
-    }
+    p <- .prior_simple_ccdf(prior, q)
 
   }else if(is.prior.vector(prior)){
 
@@ -1423,6 +1778,10 @@ ccdf.prior  <- function(x, q, ...){
   }else if(is.prior.weightfunction(prior)){
 
     stop("Only marginal ccdf functions are implemented for prior weightfunctions.")
+
+  }else if(is_prior_phacking(prior) || is_prior_bias(prior)){
+
+    .selection_prior_stop_unsupported_generic("ccdf", prior)
 
   }
 
@@ -1434,7 +1793,7 @@ lpdf.prior  <- function(x, y, ...){
   prior <- x
   x     <- y
 
-  .check_x(x)
+  .check_x(as.vector(x))
   .check_prior(prior)
 
   if(is.prior.spike_and_slab(prior)){
@@ -1447,26 +1806,12 @@ lpdf.prior  <- function(x, y, ...){
 
   }else if(is.prior.simple(prior)){
 
-    log_lik <- switch(
-      prior[["distribution"]],
-      "normal"    = stats::dnorm(x, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], log = TRUE),
-      "lognormal" = stats::dlnorm(x, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], log = TRUE),
-      "t"         = extraDistr::dlst(x, df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]], log = TRUE),
-      "gamma"     = stats::dgamma(x, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], log = TRUE),
-      "invgamma"  = extraDistr::dinvgamma(x, alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], log = TRUE),
-      "beta"      = stats::dbeta(x, shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], log = TRUE),
-      "bernoulli" = stats::dbinom(x, size = 1, prob = prior$parameters[["probability"]], log = TRUE),
-      "exp"       = stats::dexp(x, rate = prior$parameters[["rate"]], log = TRUE),
-      "uniform"   = stats::dunif(x, min = prior$parameters[["a"]], max = prior$parameters[["b"]], log = TRUE),
-      "point"     = dpoint(x, location = prior$parameters[["location"]], log = TRUE)
-    )
-
-    log_lik[x < prior$truncation[["lower"]] | x > prior$truncation[["upper"]]] <- -Inf
-    if(prior[["distribution"]] != "point"){
-      log_lik <- log_lik - log(.prior_C(prior))
-    }
+    log_lik <- .prior_simple_lpdf(prior, x)
 
   }else if(is.prior.vector(prior)){
+
+    if(prior[["distribution"]] != "mpoint")
+      .check_vector_truncation_unsupported(prior$truncation)
 
     par1 <- switch(
       prior[["distribution"]],
@@ -1497,6 +1842,10 @@ lpdf.prior  <- function(x, y, ...){
 
     stop("Only marginal lpdf are implemented for prior weightfunctions.")
 
+  }else if(is_prior_phacking(prior) || is_prior_bias(prior)){
+
+    .selection_prior_stop_unsupported_generic("lpdf", prior)
+
   }
 
   return(log_lik)
@@ -1507,11 +1856,15 @@ pdf.prior   <- function(x, y, ...){
   prior <- x
   x     <- y
 
-  .check_x(x)
+  .check_x(as.vector(x))
   .check_prior(prior)
 
-  log_lik <- lpdf(prior, x)
-  lik     <- exp(log_lik)
+  if(is.prior.simple(prior)){
+    lik <- .prior_simple_pdf(prior, x)
+  }else{
+    log_lik <- lpdf.prior(prior, x)
+    lik     <- exp(log_lik)
+  }
 
   return(lik)
 }
@@ -1533,60 +1886,284 @@ quant.prior <- function(x, p, ...){
 
   }else if(is.prior.simple(prior)){
 
-    if(.is_prior_default_range(prior)){
+    q <- .prior_simple_quant(prior, p)
 
-      q <- switch(
-        prior[["distribution"]],
-        "normal"    = stats::qnorm(p, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], lower.tail = TRUE, log.p = FALSE),
-        "lognormal" = stats::qlnorm(p, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], lower.tail = TRUE, log.p = FALSE),
-        "t"         = extraDistr::qlst(p, df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
-        "gamma"     = stats::qgamma(p, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
-        "invgamma"  = extraDistr::qinvgamma(p, alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
-        "beta"      = stats::qbeta(p, shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = TRUE, log.p = FALSE),
-        "bernoulli" = stats::qbinom(p, size = 1, prob = prior$parameters[["probability"]], lower.tail = TRUE, log.p = FALSE),
-        "exp"       = stats::qexp(p, rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
-        "uniform"   = stats::qunif(p, min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = TRUE, log.p = FALSE),
-        "point"     = qpoint(p, location = prior$parameters[["location"]], lower.tail = TRUE, log.p = FALSE)
-      )
+  }else if(is.prior.vector(prior) && !is.prior.factor(prior)){
 
-    }else{
-
-      if(!is.infinite(prior$truncation[["lower"]]) & !is.infinite(prior$truncation[["upper"]])){
-        start_value <- prior$truncation[["lower"]] + (prior$truncation[["upper"]]  - prior$truncation[["lower"]]) / 2
-      }else if(!is.infinite(prior$truncation[["upper"]])){
-        start_value <- prior$truncation[["upper"]] - 1
-      }else if(!is.infinite(prior$truncation[["lower"]])){
-        start_value <- prior$truncation[["lower"]] + 1
-      }else{
-        start_value <- 0
-      }
-
-      q <- sapply(p, function(p_i){
-        stats::optim(
-          par     = start_value,
-          fn      = function(x, prior, p_i)(cdf(prior, x) - p_i)^2,
-          lower   = prior$truncation[["lower"]],
-          upper   = prior$truncation[["upper"]],
-          prior   = prior,
-          p_i     = p_i,
-          method  = "L-BFGS-B",
-          control = list(
-            factr = 1e3
-          )
-        )$par
-      })
-
-    }
-
+    q <- mquant(prior, p)
 
   }else if(is.prior.weightfunction(prior)){
 
     stop("Only marginal quantile functions are implemented for prior weightfunctions.")
 
+  }else if(is_prior_phacking(prior) || is_prior_bias(prior)){
+
+    .selection_prior_stop_unsupported_generic("quantile functions", prior)
+
   }
 
   return(q)
 }
+
+.prior_simple_base_d <- function(prior, x, log = FALSE){
+
+  switch(
+    prior[["distribution"]],
+    "normal"    = stats::dnorm(x, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], log = log),
+    "lognormal" = stats::dlnorm(x, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], log = log),
+    "t"         = extraDistr::dlst(x, df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]], log = log),
+    "gamma"     = stats::dgamma(x, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], log = log),
+    "invgamma"  = extraDistr::dinvgamma(x, alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], log = log),
+    "beta"      = stats::dbeta(x, shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], log = log),
+    "bernoulli" = stats::dbinom(x, size = 1, prob = prior$parameters[["probability"]], log = log),
+    "exp"       = stats::dexp(x, rate = prior$parameters[["rate"]], log = log),
+    "uniform"   = stats::dunif(x, min = prior$parameters[["a"]], max = prior$parameters[["b"]], log = log),
+    "point"     = dpoint(x, location = prior$parameters[["location"]], log = log)
+  )
+}
+
+.prior_simple_base_p <- function(prior, q, lower.tail = TRUE){
+
+  switch(
+    prior[["distribution"]],
+    "normal"    = stats::pnorm(q, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], lower.tail = lower.tail, log.p = FALSE),
+    "lognormal" = stats::plnorm(q, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], lower.tail = lower.tail, log.p = FALSE),
+    "t"         = extraDistr::plst(q, df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]], lower.tail = lower.tail, log.p = FALSE),
+    "gamma"     = stats::pgamma(q, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = lower.tail, log.p = FALSE),
+    "invgamma"  = extraDistr::pinvgamma(q, alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], lower.tail = lower.tail, log.p = FALSE),
+    "beta"      = stats::pbeta(q, shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = lower.tail, log.p = FALSE),
+    "bernoulli" = stats::pbinom(q, size = 1, prob = prior$parameters[["probability"]], lower.tail = lower.tail, log.p = FALSE),
+    "exp"       = stats::pexp(q, rate = prior$parameters[["rate"]], lower.tail = lower.tail, log.p = FALSE),
+    "uniform"   = stats::punif(q, min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = lower.tail, log.p = FALSE),
+    "point"     = ppoint(q, location = prior$parameters[["location"]], lower.tail = lower.tail, log.p = FALSE)
+  )
+}
+
+.prior_simple_base_q <- function(prior, p){
+
+  switch(
+    prior[["distribution"]],
+    "normal"    = stats::qnorm(p, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], lower.tail = TRUE, log.p = FALSE),
+    "lognormal" = stats::qlnorm(p, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], lower.tail = TRUE, log.p = FALSE),
+    "t"         = extraDistr::qlst(p, df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
+    "gamma"     = stats::qgamma(p, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
+    "invgamma"  = extraDistr::qinvgamma(p, alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
+    "beta"      = stats::qbeta(p, shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = TRUE, log.p = FALSE),
+    "bernoulli" = stats::qbinom(p, size = 1, prob = prior$parameters[["probability"]], lower.tail = TRUE, log.p = FALSE),
+    "exp"       = stats::qexp(p, rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
+    "uniform"   = stats::qunif(p, min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = TRUE, log.p = FALSE),
+    "point"     = qpoint(p, location = prior$parameters[["location"]], lower.tail = TRUE, log.p = FALSE)
+  )
+}
+
+.prior_simple_base_r <- function(prior, n){
+
+  switch(
+    prior[["distribution"]],
+    "normal"    = stats::rnorm(n, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]]),
+    "lognormal" = stats::rlnorm(n, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]]),
+    "t"         = extraDistr::rlst(n, df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]]),
+    "gamma"     = stats::rgamma(n, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]]),
+    "invgamma"  = extraDistr::rinvgamma(n, alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]]),
+    "beta"      = stats::rbeta(n, shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]]),
+    "bernoulli" = stats::rbinom(n, size = 1, prob = prior$parameters[["probability"]]),
+    "exp"       = stats::rexp(n, rate = prior$parameters[["rate"]]),
+    "uniform"   = stats::runif(n, min = prior$parameters[["a"]], max = prior$parameters[["b"]]),
+    "point"     = rpoint(n, location = prior$parameters[["location"]])
+  )
+}
+
+.prior_simple_discrete_support <- function(prior){
+
+  switch(
+    prior[["distribution"]],
+    "bernoulli" = c(0, 1)
+  )
+}
+
+.prior_simple_discrete_prob <- function(prior){
+
+  switch(
+    prior[["distribution"]],
+    "bernoulli" = c(1 - prior$parameters[["probability"]], prior$parameters[["probability"]])
+  )
+}
+
+.prior_simple_truncated_discrete <- function(prior){
+
+  support <- .prior_simple_discrete_support(prior)
+  prob    <- .prior_simple_discrete_prob(prior)
+  keep    <- support >= prior$truncation[["lower"]] & support <= prior$truncation[["upper"]]
+
+  support <- support[keep]
+  prob    <- prob[keep]
+
+  if(length(support) == 0 || sum(prob) <= 0){
+    stop("The truncated discrete prior has no probability mass in its support.", call. = FALSE)
+  }
+
+  list(
+    support = support,
+    prob    = prob / sum(prob)
+  )
+}
+
+.prior_simple_cdf <- function(prior, q){
+
+  if(.is_prior_default_range(prior)){
+    return(.prior_simple_base_p(prior, q, lower.tail = TRUE))
+  }
+
+  p        <- numeric(length(q))
+  q_lower  <- q < prior$truncation[["lower"]]
+  q_higher <- q > prior$truncation[["upper"]]
+  q_inside <- !q_lower & !q_higher
+
+  p[q_lower]  <- 0
+  p[q_higher] <- 1
+
+  if(any(q_inside)){
+    p[q_inside] <- .prior_simple_base_p(prior, q[q_inside], lower.tail = TRUE)
+
+    if(prior[["distribution"]] != "point"){
+      C1          <- .prior_C1(prior)
+      p[q_inside] <- (p[q_inside] - C1) / (.prior_C2(prior) - C1)
+    }
+  }
+
+  return(p)
+}
+
+.prior_simple_ccdf <- function(prior, q){
+
+  if(.is_prior_default_range(prior)){
+    return(.prior_simple_base_p(prior, q, lower.tail = FALSE))
+  }
+
+  p        <- numeric(length(q))
+  q_lower  <- q < prior$truncation[["lower"]]
+  q_higher <- q > prior$truncation[["upper"]]
+  q_inside <- !q_lower & !q_higher
+
+  p[q_lower]  <- 1
+  p[q_higher] <- 0
+
+  if(any(q_inside)){
+    p[q_inside] <- .prior_simple_base_p(prior, q[q_inside], lower.tail = FALSE)
+
+    if(prior[["distribution"]] != "point"){
+      C2          <- .prior_C2(prior)
+      p[q_inside] <- (p[q_inside] - (1 - C2)) / (C2 - .prior_C1(prior))
+    }
+  }
+
+  return(p)
+}
+
+.prior_simple_lpdf <- function(prior, x){
+
+  if(.is_prior_default_range(prior)){
+    return(.prior_simple_base_d(prior, x, log = TRUE))
+  }
+
+  log_lik <- .prior_simple_base_d(prior, x, log = TRUE)
+  log_lik[x < prior$truncation[["lower"]] | x > prior$truncation[["upper"]]] <- -Inf
+
+  if(prior[["distribution"]] != "point"){
+    log_lik <- log_lik - log(.prior_C(prior))
+  }
+
+  return(log_lik)
+}
+
+.prior_simple_pdf <- function(prior, x){
+
+  if(.is_prior_default_range(prior)){
+    return(.prior_simple_base_d(prior, x, log = FALSE))
+  }
+
+  lik <- .prior_simple_base_d(prior, x, log = FALSE)
+  lik[x < prior$truncation[["lower"]] | x > prior$truncation[["upper"]]] <- 0
+
+  if(prior[["distribution"]] != "point"){
+    lik <- lik / .prior_C(prior)
+  }
+
+  return(lik)
+}
+
+.prior_simple_quant <- function(prior, p){
+
+  if(.is_prior_default_range(prior)){
+    return(.prior_simple_base_q(prior, p))
+  }
+
+  if(is.prior.discrete(prior)){
+    discrete <- .prior_simple_truncated_discrete(prior)
+    cdf      <- cumsum(discrete[["prob"]])
+    return(vapply(p, function(p_i) discrete[["support"]][which(cdf >= p_i)[1]], numeric(1)))
+  }
+
+  C1 <- .prior_C1(prior)
+  .prior_simple_base_q(prior, C1 + p * (.prior_C2(prior) - C1))
+}
+
+.prior_simple_quant_optim <- function(prior, p){
+
+  if(!is.infinite(prior$truncation[["lower"]]) & !is.infinite(prior$truncation[["upper"]])){
+    start_value <- prior$truncation[["lower"]] + (prior$truncation[["upper"]]  - prior$truncation[["lower"]]) / 2
+  }else if(!is.infinite(prior$truncation[["upper"]])){
+    start_value <- prior$truncation[["upper"]] - 1
+  }else if(!is.infinite(prior$truncation[["lower"]])){
+    start_value <- prior$truncation[["lower"]] + 1
+  }else{
+    start_value <- 0
+  }
+
+  sapply(p, function(p_i){
+    stats::optim(
+      par     = start_value,
+      fn      = function(x, prior, p_i)(.prior_simple_cdf(prior, x) - p_i)^2,
+      lower   = prior$truncation[["lower"]],
+      upper   = prior$truncation[["upper"]],
+      prior   = prior,
+      p_i     = p_i,
+      method  = "L-BFGS-B",
+      control = list(
+        factr = 1e3
+      )
+    )$par
+  })
+}
+
+.prior_simple_rng <- function(prior, n){
+
+  if(.is_prior_default_range(prior)){
+    return(.prior_simple_base_r(prior, n))
+  }
+
+  if(is.prior.discrete(prior)){
+    discrete <- .prior_simple_truncated_discrete(prior)
+    return(sample(discrete[["support"]], size = n, replace = TRUE, prob = discrete[["prob"]]))
+  }
+
+  C1 <- .prior_C1(prior)
+  .prior_simple_base_q(prior, stats::runif(n, min = C1, max = .prior_C2(prior)))
+}
+
+.prior_simple_rng_rejection <- function(prior, n){
+
+  x  <- NULL
+  nn <- round(n * 1 / .prior_C(prior) * 1.10)
+
+  while(length(x) < n){
+    temp_x <- .prior_simple_base_r(prior, nn)
+    x      <- c(x, temp_x[temp_x >= prior$truncation[["lower"]] & temp_x <= prior$truncation[["upper"]]])
+  }
+
+  x[1:n]
+}
+
 .prior_C1 <- function(prior){
 
   if(is.prior.simple(prior)){
@@ -1599,7 +2176,7 @@ quant.prior <- function(x, p, ...){
       "gamma"     = stats::pgamma(prior$truncation[["lower"]], shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
       "invgamma"  = extraDistr::pinvgamma(prior$truncation[["lower"]], alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
       "beta"      = stats::pbeta(prior$truncation[["lower"]], shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = TRUE, log.p = FALSE),
-      "bernoulli" = stats::pbinom(prior$truncation[["lower"]] - 1, size = 1, prob = prior$parameters[["probability"]], lower.tail = TRUE, log.p = FALSE),
+      "bernoulli" = stats::pbinom(ceiling(prior$truncation[["lower"]]) - 1, size = 1, prob = prior$parameters[["probability"]], lower.tail = TRUE, log.p = FALSE),
       "exp"       = stats::pexp(prior$truncation[["lower"]], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
       "uniform"   = stats::punif(prior$truncation[["lower"]], min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = TRUE, log.p = FALSE),
       "point"     = ppoint(prior$truncation[["lower"]], location = prior$parameters[["location"]], lower.tail = TRUE, log.p = FALSE)
@@ -1621,7 +2198,7 @@ quant.prior <- function(x, p, ...){
       "gamma"     = stats::pgamma(prior$truncation[["upper"]], shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
       "invgamma"  = extraDistr::pinvgamma(prior$truncation[["upper"]], alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
       "beta"      = stats::pbeta(prior$truncation[["upper"]], shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = TRUE, log.p = FALSE),
-      "bernoulli" = stats::pbinom(prior$truncation[["upper"]] + 1, size = 1, prob = prior$parameters[["probability"]], lower.tail = TRUE, log.p = FALSE),
+      "bernoulli" = stats::pbinom(prior$truncation[["upper"]], size = 1, prob = prior$parameters[["probability"]], lower.tail = TRUE, log.p = FALSE),
       "exp"       = stats::pexp(prior$truncation[["upper"]], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
       "uniform"   = stats::punif(prior$truncation[["upper"]], min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = TRUE, log.p = FALSE),
       "point"     = ppoint(prior$truncation[["upper"]], location = prior$parameters[["location"]], lower.tail = TRUE, log.p = FALSE)
@@ -1642,6 +2219,110 @@ quant.prior <- function(x, p, ...){
   return(C)
 }
 
+.prior_vector_dimension <- function(prior){
+
+  K <- prior$parameters[["K"]]
+  .check_parameter_dimensions(K, "K", allow_NA = FALSE)
+  as.integer(K)
+}
+.prior_vector_primary_location <- function(prior){
+
+  location <- switch(
+    prior[["distribution"]],
+    "mnormal" = prior$parameters[["mean"]],
+    "mt"      = prior$parameters[["location"]],
+    "mpoint"  = prior$parameters[["location"]]
+  )
+
+  if(length(location) != 1){
+    stop("Only exchangeable vector prior distributions with scalar location parameters are supported.", call. = FALSE)
+  }
+
+  location
+}
+.prior_vector_x_matrix <- function(x, K, name = "x"){
+
+  if(is.matrix(x)){
+    if(ncol(x) != K){
+      stop(paste0("The '", name, "' argument must have ", K, " columns."), call. = FALSE)
+    }
+    return(x)
+  }
+
+  matrix(rep(x, times = K), ncol = K)
+}
+.prior_vector_marginal_cdf <- function(prior, q, lower.tail = TRUE){
+
+  K     <- .prior_vector_dimension(prior)
+  q_mat <- .prior_vector_x_matrix(q, K, "q")
+  loc   <- .prior_vector_primary_location(prior)
+
+  out <- switch(
+    prior[["distribution"]],
+    "mnormal" = apply(q_mat, 2, stats::pnorm, mean = loc, sd = prior$parameters[["sd"]], lower.tail = lower.tail),
+    "mt"      = apply(q_mat, 2, extraDistr::plst, df = prior$parameters[["df"]], mu = loc, sigma = prior$parameters[["scale"]], lower.tail = lower.tail),
+    "mpoint"  = apply(q_mat, 2, ppoint, location = loc, lower.tail = lower.tail)
+  )
+
+  matrix(out, nrow = nrow(q_mat), ncol = K)
+}
+.prior_vector_marginal_lpdf <- function(prior, x){
+
+  K     <- .prior_vector_dimension(prior)
+  x_mat <- .prior_vector_x_matrix(x, K, "x")
+  loc   <- .prior_vector_primary_location(prior)
+
+  out <- switch(
+    prior[["distribution"]],
+    "mnormal" = apply(x_mat, 2, stats::dnorm, mean = loc, sd = prior$parameters[["sd"]], log = TRUE),
+    "mt"      = apply(x_mat, 2, extraDistr::dlst, df = prior$parameters[["df"]], mu = loc, sigma = prior$parameters[["scale"]], log = TRUE),
+    "mpoint"  = apply(x_mat, 2, dpoint, location = loc, log = TRUE)
+  )
+
+  matrix(out, nrow = nrow(x_mat), ncol = K)
+}
+.prior_vector_marginal_quant <- function(prior, p){
+
+  K   <- .prior_vector_dimension(prior)
+  loc <- .prior_vector_primary_location(prior)
+
+  q <- switch(
+    prior[["distribution"]],
+    "mnormal" = stats::qnorm(p, mean = loc, sd = prior$parameters[["sd"]]),
+    "mt"      = extraDistr::qlst(p, df = prior$parameters[["df"]], mu = loc, sigma = prior$parameters[["scale"]]),
+    "mpoint"  = qpoint(p, location = loc)
+  )
+
+  matrix(rep(q, times = K), ncol = K)
+}
+.prior_vector_mean <- function(prior){
+
+  K   <- .prior_vector_dimension(prior)
+  loc <- .prior_vector_primary_location(prior)
+
+  m <- switch(
+    prior[["distribution"]],
+    "mnormal" = loc,
+    "mt"      = ifelse(prior$parameters[["df"]] > 1, loc, NaN),
+    "mpoint"  = loc
+  )
+
+  rep(m, K)
+}
+.prior_vector_var <- function(prior){
+
+  K <- .prior_vector_dimension(prior)
+
+  v <- switch(
+    prior[["distribution"]],
+    "mnormal" = prior$parameters[["sd"]]^2,
+    "mt"      = ifelse(prior$parameters[["df"]] > 2, prior$parameters[["scale"]]^2 * prior$parameters[["df"]] / (prior$parameters[["df"]] - 2), NaN),
+    "mpoint"  = 0
+  )
+
+  rep(v, K)
+}
+
 # tools
 .is_prior_default_range   <- function(prior){
   default_range <- switch(
@@ -1654,13 +2335,11 @@ quant.prior <- function(x, p, ...){
     "beta"      = isTRUE(all.equal(prior$truncation[["lower"]], 0)) & isTRUE(all.equal(prior$truncation[["upper"]], 1)),
     "bernoulli" = isTRUE(all.equal(prior$truncation[["lower"]], 0)) & isTRUE(all.equal(prior$truncation[["upper"]], 1)),
     "exp"       = isTRUE(all.equal(prior$truncation[["lower"]], 0)) & is.infinite(prior$truncation[["upper"]]),
-    "uniform"   = TRUE,
+    "uniform"   = isTRUE(all.equal(prior$truncation[["lower"]], prior$parameters[["a"]])) &
+      isTRUE(all.equal(prior$truncation[["upper"]], prior$parameters[["b"]])),
     "point"     = TRUE,
-    "mpoint"    = TRUE,
-    "one.sided" = TRUE,
-    "two.sided" = TRUE,
-    "one.sided.fixed" = TRUE,
-    "two.sided.fixed" = TRUE,
+    "mpoint"          = TRUE,
+    "weightfunction"  = TRUE,
     "none"            = TRUE
   )
 }
@@ -1673,7 +2352,7 @@ mcdf.prior   <- function(x, q, ...){
 
   prior <- x
 
-  .check_q(q)
+  .check_q(as.vector(q))
   .check_prior(prior)
 
   if(is.prior.spike_and_slab(prior)){
@@ -1686,17 +2365,16 @@ mcdf.prior   <- function(x, q, ...){
 
   }else if(is.prior.simple(prior)){
 
-    p <- cdf(prior, q)
+    p <- .prior_simple_cdf(prior, q)
 
   }else if(is.prior.weightfunction(prior)){
 
-    p <- switch(
-      prior[["distribution"]],
-      "one.sided" = mpone.sided(q, alpha = if(!is.null(prior$parameters[["alpha"]])) prior$parameters[["alpha"]], alpha1 = if(!is.null(prior$parameters[["alpha1"]])) prior$parameters[["alpha1"]], alpha2 = if(!is.null(prior$parameters[["alpha2"]])) prior$parameters[["alpha2"]]),
-      "two.sided" = mptwo.sided(q, alpha = prior$parameters[["alpha"]]),
-      "one.sided.fixed" = mpone.sided_fixed(q, omega = prior$parameters[["omega"]]),
-      "two.sided.fixed" = mptwo.sided_fixed(q, omega = prior$parameters[["omega"]])
-    )
+    components <- .weightfunction_marginal_components(prior)
+    p <- do.call(cbind, lapply(components, .prior_weightfunction_component_cdf, q = q))
+
+  }else if(is.prior.vector(prior) && !is.prior.factor(prior)){
+
+    p <- .prior_vector_marginal_cdf(prior, q, lower.tail = TRUE)
 
   }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
 
@@ -1752,7 +2430,7 @@ mccdf.prior  <- function(x, q, ...){
 
   prior <- x
 
-  .check_q(q)
+  .check_q(as.vector(q))
   .check_prior(prior)
 
   if(is.prior.spike_and_slab(prior)){
@@ -1765,17 +2443,16 @@ mccdf.prior  <- function(x, q, ...){
 
   }else if(is.prior.simple(prior)){
 
-    p <- ccdf(prior, q)
+    p <- .prior_simple_ccdf(prior, q)
 
   }else if(is.prior.weightfunction(prior)){
 
-    p <- switch(
-      prior[["distribution"]],
-      "one.sided" = mpone.sided(q, alpha = if(!is.null(prior$parameters[["alpha"]])) prior$parameters[["alpha"]], alpha1 = if(!is.null(prior$parameters[["alpha1"]])) prior$parameters[["alpha1"]], alpha2 = if(!is.null(prior$parameters[["alpha2"]])) prior$parameters[["alpha2"]], lower.tail = FALSE),
-      "two.sided" = mptwo.sided(q, alpha = prior$parameters[["alpha"]], lower.tail = FALSE),
-      "one.sided.fixed" = mpone.sided_fixed(q, omega = prior$parameters[["omega"]], lower.tail = FALSE),
-      "two.sided.fixed" = mptwo.sided_fixed(q, omega = prior$parameters[["omega"]], lower.tail = FALSE)
-    )
+    components <- .weightfunction_marginal_components(prior)
+    p <- do.call(cbind, lapply(components, .prior_weightfunction_component_ccdf, q = q))
+
+  }else if(is.prior.vector(prior) && !is.prior.factor(prior)){
+
+    p <- .prior_vector_marginal_cdf(prior, q, lower.tail = FALSE)
 
   }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
 
@@ -1832,7 +2509,7 @@ mlpdf.prior  <- function(x, y, ...){
   prior <- x
   x     <- y
 
-  .check_x(x)
+  .check_x(as.vector(x))
   .check_prior(prior)
 
   if(is.prior.spike_and_slab(prior)){
@@ -1845,17 +2522,16 @@ mlpdf.prior  <- function(x, y, ...){
 
   }else if(is.prior.simple(prior)){
 
-    log_lik <- lpdf(prior, x)
+    log_lik <- .prior_simple_lpdf(prior, x)
 
   }else if(is.prior.weightfunction(prior)){
 
-    log_lik <- switch(
-      prior[["distribution"]],
-      "one.sided" = mdone.sided(x, alpha = if(!is.null(prior$parameters[["alpha"]])) prior$parameters[["alpha"]], alpha1 = if(!is.null(prior$parameters[["alpha1"]])) prior$parameters[["alpha1"]], alpha2 = if(!is.null(prior$parameters[["alpha2"]])) prior$parameters[["alpha2"]], log = TRUE),
-      "two.sided" = mdtwo.sided(x, alpha = prior$parameters[["alpha"]], log = TRUE),
-      "one.sided.fixed" = mdone.sided_fixed(x, omega = prior$parameters[["omega"]], log = TRUE),
-      "two.sided.fixed" = mdtwo.sided_fixed(x, omega = prior$parameters[["omega"]], log = TRUE),
-    )
+    components <- .weightfunction_marginal_components(prior)
+    log_lik <- do.call(cbind, lapply(components, .prior_weightfunction_component_lpdf, x = x))
+
+  }else if(is.prior.vector(prior) && !is.prior.factor(prior)){
+
+    log_lik <- .prior_vector_marginal_lpdf(prior, x)
 
   }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
 
@@ -1912,11 +2588,15 @@ mpdf.prior   <- function(x, y, ...){
   prior <- x
   x     <- y
 
-  .check_x(x)
+  .check_x(as.vector(x))
   .check_prior(prior)
 
-  log_lik <- mlpdf(prior, x)
-  lik     <- exp(log_lik)
+  if(is.prior.simple(prior)){
+    lik <- .prior_simple_pdf(prior, x)
+  }else{
+    log_lik <- mlpdf.prior(prior, x)
+    lik     <- exp(log_lik)
+  }
 
   return(lik)
 }
@@ -1938,17 +2618,16 @@ mquant.prior <- function(x, p, ...){
 
   }else if(is.prior.simple(prior)){
 
-    q <- quant(prior, p)
+    q <- .prior_simple_quant(prior, p)
 
   }else if(is.prior.weightfunction(prior)){
 
-    q <- switch(
-      prior[["distribution"]],
-      "one.sided" = mqone.sided(p, alpha = if(!is.null(prior$parameters[["alpha"]])) prior$parameters[["alpha"]], alpha1 = if(!is.null(prior$parameters[["alpha1"]])) prior$parameters[["alpha1"]], alpha2 = if(!is.null(prior$parameters[["alpha2"]])) prior$parameters[["alpha2"]]),
-      "two.sided" = mqtwo.sided(p, alpha = prior$parameters[["alpha"]]),
-      "one.sided.fixed" = mqone.sided_fixed(p, omega = prior$parameters[["omega"]]),
-      "two.sided.fixed" = mqtwo.sided_fixed(p, omega = prior$parameters[["omega"]])
-    )
+    components <- .weightfunction_marginal_components(prior)
+    q <- do.call(cbind, lapply(components, .prior_weightfunction_component_quant, p = p))
+
+  }else if(is.prior.vector(prior) && !is.prior.factor(prior)){
+
+    q <- .prior_vector_marginal_quant(prior, p)
 
   }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
 
@@ -2142,14 +2821,20 @@ mean.prior   <- function(x, ...){
 
     }else{
 
-      # check for undefined values
+      if(is.prior.discrete(x)){
+        discrete <- .prior_simple_truncated_discrete(x)
+        return(sum(discrete[["support"]] * discrete[["prob"]]))
+      }
+
+      # check for undefined values when the problematic tail is still unbounded
       if(x[["distribution"]] == "t"){
-        if(x$parameters[["df"]] <= 1){
+        if(x$parameters[["df"]] <= 1 &&
+           (is.infinite(x$truncation[["lower"]]) || is.infinite(x$truncation[["upper"]]))){
           return(NaN)
         }
       }
       if(x[["distribution"]] == "invgamma"){
-        if(x$parameters[["shape"]] <= 1){
+        if(x$parameters[["shape"]] <= 1 && is.infinite(x$truncation[["upper"]])){
           return(NaN)
         }
       }
@@ -2167,6 +2852,14 @@ mean.prior   <- function(x, ...){
   }else if(is.prior.weightfunction(x)){
 
     m <- .mean.weightfunction(x)
+
+  }else if(is_prior_phacking(x) || is_prior_bias(x)){
+
+    .selection_prior_stop_unsupported_generic("mean", x)
+
+  }else if(is.prior.vector(x) && !is.prior.factor(x)){
+
+    m <- .prior_vector_mean(x)
 
   }else if(is.prior.orthonormal(x) | is.prior.meandif(x)){
 
@@ -2266,25 +2959,11 @@ var.prior   <- function(x, ...){
 
   if(is.prior.spike_and_slab(x)){
 
-    inclusion_prior <- .get_spike_and_slab_inclusion(x)
-    variable_prior <- .get_spike_and_slab_variable(x)
-    
-    # Handle different inclusion prior types
-    if(inclusion_prior[["distribution"]] == "beta") {
-      # the inclusion is beta -> indicators are betabinom
-      var_inclusion <- with(inclusion_prior[["parameters"]], (alpha * beta * (alpha + beta + 1) ) / ( (alpha + beta)^2 * (alpha + beta + 1)  ) )
-    } else if(inclusion_prior[["distribution"]] == "point") {
-      # the inclusion is a spike (point) -> no variance
-      var_inclusion <- 0
-    } else {
-      # for other distributions, compute variance directly
-      var_inclusion <- var(inclusion_prior)
-    }
-    
-    var <-
-      (var(variable_prior)  + mean(variable_prior)^2) *
-      (var_inclusion         + mean(inclusion_prior)^2) -
-      (mean(variable_prior)^2 * mean(inclusion_prior)^2)
+    inclusion_mean <- mean(.get_spike_and_slab_inclusion(x))
+    variable_mean  <- mean(.get_spike_and_slab_variable(x))
+    variable_E2    <- var(.get_spike_and_slab_variable(x)) + variable_mean^2
+
+    var <- inclusion_mean * variable_E2 - (inclusion_mean * variable_mean)^2
 
   }else if(is.prior.mixture(x)){
 
@@ -2300,7 +2979,7 @@ var.prior   <- function(x, ...){
         "lognormal" = (exp(x$parameters[["sdlog"]]^2) - 1) * exp(2 * x$parameters[["meanlog"]] + x$parameters[["sdlog"]]^2),
         "t"         = ifelse(x$parameters[["df"]] > 2, x$parameters[["scale"]]^2 * x$parameters[["df"]] / (x$parameters[["df"]] - 2), NaN),
         "gamma"     = x$parameters[["shape"]] / x$parameters[["rate"]]^2,
-        "invgamma"  = ifelse(x$parameters[["shape"]] > 2, x$parameters[["scale"]]^2 / (x$parameters[["shape"]] - 1)^2 * (x$parameters[["shape"]] - 2), NaN),
+        "invgamma"  = ifelse(x$parameters[["shape"]] > 2, x$parameters[["scale"]]^2 / ((x$parameters[["shape"]] - 1)^2 * (x$parameters[["shape"]] - 2)), NaN),
         "beta"      = (x$parameters[["alpha"]] * x$parameters[["beta"]]) / ((x$parameters[["alpha"]] + x$parameters[["beta"]])^2 * (x$parameters[["alpha"]] + x$parameters[["beta"]] + 1)),
         "bernoulli" = (x$parameters[["probability"]] * (1 - x$parameters[["probability"]]) ),
         "exp"       = 1 / x$parameters[["rate"]]^2,
@@ -2310,14 +2989,21 @@ var.prior   <- function(x, ...){
 
     }else{
 
-      # check for undefined values
+      if(is.prior.discrete(x)){
+        discrete <- .prior_simple_truncated_discrete(x)
+        E2       <- sum(discrete[["support"]]^2 * discrete[["prob"]])
+        return(E2 - mean(x)^2)
+      }
+
+      # check for undefined values when the problematic tail is still unbounded
       if(x[["distribution"]] == "t"){
-        if(x$parameters[["df"]] <= 2){
+        if(x$parameters[["df"]] <= 2 &&
+           (is.infinite(x$truncation[["lower"]]) || is.infinite(x$truncation[["upper"]]))){
           return(NaN)
         }
       }
       if(x[["distribution"]] == "invgamma"){
-        if(x$parameters[["shape"]] <= 2){
+        if(x$parameters[["shape"]] <= 2 && is.infinite(x$truncation[["upper"]])){
           return(NaN)
         }
       }
@@ -2336,6 +3022,14 @@ var.prior   <- function(x, ...){
   }else if(is.prior.weightfunction(x)){
 
     var <- .var.weightfunction(x)
+
+  }else if(is_prior_phacking(x) || is_prior_bias(x)){
+
+    .selection_prior_stop_unsupported_generic("variance", x)
+
+  }else if(is.prior.vector(x) && !is.prior.factor(x)){
+
+    var <- .prior_vector_var(x)
 
   }else if(is.prior.orthonormal(x) | is.prior.meandif(x)){
 
@@ -2425,45 +3119,15 @@ sd.prior     <- function(x, ...){
 
 .mean.weightfunction <- function(prior){
 
-  if(prior[["distribution"]] %in% c("one.sided.fixed", "two.sided.fixed")){
-
-    m <- prior$parameters[["omega"]]
-
-  }else if(all(names(prior[["parameters"]]) %in% c("steps", "alpha"))){
-
-    alpha       <- prior$parameters[["alpha"]]
-    alpha_alpha <- cumsum(alpha)[-length(alpha)]
-    alpha_beta  <- cumsum(alpha[length(alpha):1])[(length(alpha)-1):1]
-
-    m <- c(alpha_alpha/(alpha_alpha + alpha_beta), 1)
-
-  }else{
-
-    stop("Analytical solutions for the mean of one-sided non-monotonic weights are not implemented.")
-
-  }
+  components <- .weightfunction_marginal_components(prior)
+  m <- vapply(components, .prior_weightfunction_component_mean, numeric(1))
 
   return(m)
 }
 .var.weightfunction  <- function(prior){
 
-  if(prior[["distribution"]] %in% c("one.sided.fixed", "two.sided.fixed")){
-
-    m <- rep(0, length(prior$parameters[["omega"]]))
-
-  }else if(all(names(prior[["parameters"]]) %in% c("steps", "alpha"))){
-
-    alpha       <- prior$parameters[["alpha"]]
-    alpha_alpha <- cumsum(alpha)[-length(alpha)]
-    alpha_beta  <- cumsum(alpha[length(alpha):1])[(length(alpha)-1):1]
-
-    m <- c((alpha_alpha * alpha_beta) / ((alpha_alpha + alpha_beta)^2 * (alpha_alpha + alpha_beta + 1)), 0)
-
-  }else{
-
-    stop("Analytical solutions for the var/sd of one-sided non-monotonic weights are not implemented.")
-
-  }
+  components <- .weightfunction_marginal_components(prior)
+  m <- vapply(components, .prior_weightfunction_component_var, numeric(1))
 
   return(m)
 }

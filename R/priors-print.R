@@ -67,6 +67,10 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
     output <- .print.prior.simple(x, short_name, parameter_names, plot, digits_estimates, silent)
   }else if(is.prior.weightfunction(x)){
     output <- .print.prior.weightfunction(x, short_name, parameter_names, plot, digits_estimates, silent)
+  }else if(is_prior_phacking(x)){
+    output <- .print.prior.phacking(x, short_name, parameter_names, plot, digits_estimates, silent)
+  }else if(is_prior_bias(x)){
+    output <- .print.prior.bias(x, short_name, parameter_names, plot, digits_estimates, silent)
   }else if(is.prior.spike_and_slab(x)){
     output <- .print.prior.spike_and_slab(x, short_name, parameter_names, plot, digits_estimates, silent)
   }else if(is.prior.mixture(x)){
@@ -234,29 +238,25 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
   # type of steps
   if(short_name){
     steps_name <- switch(
-      x[["distribution"]],
-      "two.sided"    = "2s: ",
-      "one.sided"    = "1s: ",
-      "two.sided.fixed" = "2s: ",
-      "one.sided.fixed" = "1s: "
+      x[["side"]],
+      "two-sided" = "2s: ",
+      "one-sided" = "1s: "
     )
   }else{
     steps_name <- switch(
-      x[["distribution"]],
-      "two.sided"    = "two-sided: ",
-      "one.sided"    = "one-sided: ",
-      "two.sided.fixed" = "two-sided: ",
-      "one.sided.fixed" = "one-sided: "
+      x[["side"]],
+      "two-sided" = "two-sided: ",
+      "one-sided" = "one-sided: "
     )
   }
 
   # add steps
-  out_steps  <- paste(trimws(x$parameters[["steps"]], which = "left", whitespace = "0"), collapse = ", ")
+  out_steps  <- paste(trimws(x$steps, which = "left", whitespace = "0"), collapse = ", ")
 
   # distribution
-  if(all(names(x[["parameters"]]) %in% c("alpha", "steps"))){
+  if(x$weights$type == "cumulative"){
 
-    out_parameters <- paste(round(x$parameters[["alpha"]], digits_estimates), collapse = ", ")
+    out_parameters <- paste(round(x$weights[["alpha"]], digits_estimates), collapse = ", ")
     if(parameter_names){
       out_parameters <- paste0("alpha = ", out_parameters)
     }
@@ -272,36 +272,26 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
       output <- bquote(italic(.(out_prefix))[.(steps_name)*.(out_steps)]~"~"~italic(.(out_distribution))*(.(out_parameters)))
     }
 
-  }else if(all(names(x[["parameters"]]) %in% c("alpha1", "alpha2", "steps"))){
+  }else if(x$weights$type == "fixed"){
 
-    out_parameters1 <- paste(round(x$parameters[["alpha1"]],      digits_estimates), collapse = ", ")
-    out_parameters2 <- paste(round(rev(x$parameters[["alpha2"]]), digits_estimates), collapse = ", ")
-    if(parameter_names){
-      out_parameters1 <- paste0("alpha1 = ", out_parameters1)
-      out_parameters2 <- paste0("alpha2 = ", out_parameters2)
-    }
-    if(short_name){
-      out_distribution1 <- paste0("CumD")
-      out_distribution2 <- paste0("rCumD")
-    }else{
-      out_distribution1 <- paste0("CumDirichlet")
-      out_distribution2 <- paste0("revCumDirichlet")
-    }
-
-    if(!plot){
-      output <- paste0(out_prefix, "[", steps_name, out_steps, "]", " ~ ", out_distribution1, "(", out_parameters1, "), ", out_distribution2, "(", out_parameters2, ")")
-    }else{
-      output <- bquote(italic(.(out_prefix))[.(steps_name)*.(out_steps)]~"~"~italic(.(out_distribution1))*(.(out_parameters1))~","~~italic(.(out_distribution2))*(.(out_parameters2)))
-    }
-
-  }else if(all(names(x[["distribution"]]) %in% c("one.sided.fixed", "two.sided.fixed"))){
-
-    out_parameters <- paste0(round(x$parameters[["omega"]], digits_estimates), collapse = ", ")
+    out_parameters <- paste0(round(x$weights[["omega"]], digits_estimates), collapse = ", ")
 
     if(!plot){
       output <- paste0(out_prefix, "[", steps_name, out_steps, "]", " = ", "(", out_parameters, ")")
     }else{
       output <- bquote(italic(.(out_prefix))[.(steps_name)*.(out_steps)]~"="~(.(out_parameters)))
+    }
+
+  }else if(x$weights$type == "independent"){
+
+    out_distribution <- if(x$weights$scale == "omega") "Independent" else "IndependentLog"
+    out_parameters <- print(x$weights$prior, short_name = short_name, parameter_names = parameter_names,
+                            plot = FALSE, digits_estimates = digits_estimates, silent = TRUE)
+
+    if(!plot){
+      output <- paste0(out_prefix, "[", steps_name, out_steps, "]", " ~ ", out_distribution, "(", out_parameters, ")")
+    }else{
+      output <- bquote(italic(.(out_prefix))[.(steps_name)*.(out_steps)]~"~"~italic(.(out_distribution))*(.(out_parameters)))
     }
   }
 
@@ -318,6 +308,57 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
     output <- out_name
   }else{
     output <- bquote(italic(.(out_name)))
+  }
+
+  return(output)
+}
+.print.prior.phacking       <- function(x, short_name, parameter_names, plot, digits_estimates, silent){
+
+  report_parameter <- .phacking_report_parameter(x)
+  out_prefix <- if(plot) as.name(report_parameter) else report_parameter
+  form_name <- if(short_name) substr(x$form, 1, 1) else x$form
+  alpha_prior <- print(x$alpha, short_name = short_name, parameter_names = parameter_names,
+                       plot = FALSE, digits_estimates = digits_estimates, silent = TRUE)
+  format_p <- function(value) format(value, scientific = FALSE, digits = max(digits_estimates, 2), trim = TRUE)
+  out_parameters <- paste0(
+    "target = ", format_p(x$target), ", ",
+    "source = ", format_p(x$source), ", ",
+    "destination = ", format_p(x$destination), ", ",
+    "form = ", form_name
+  )
+
+  if(!plot){
+    if(report_parameter == "alpha"){
+      output <- paste0(out_prefix, "[phacking: ", out_parameters, "] ~ ", alpha_prior)
+    }else{
+      output <- paste0(out_prefix, "[phacking: ", out_parameters, "] derived from alpha ~ ", alpha_prior)
+    }
+  }else{
+    if(report_parameter == "alpha"){
+      output <- bquote(italic(.(out_prefix))[.(out_parameters)]~"~"~.(alpha_prior))
+    }else{
+      output <- bquote(italic(.(out_prefix))[.(out_parameters)]~" derived from "~alpha~"~"~.(alpha_prior))
+    }
+  }
+
+  return(output)
+}
+.print.prior.bias           <- function(x, short_name, parameter_names, plot, digits_estimates, silent){
+
+  parts <- character()
+  if(!is.null(x$selection)){
+    parts <- c(parts, print(x$selection, short_name = short_name, parameter_names = parameter_names,
+                            plot = FALSE, digits_estimates = digits_estimates, silent = TRUE))
+  }
+  if(!is.null(x$phacking)){
+    parts <- c(parts, print(x$phacking, short_name = short_name, parameter_names = parameter_names,
+                            plot = FALSE, digits_estimates = digits_estimates, silent = TRUE))
+  }
+
+  if(!plot){
+    output <- paste(parts, collapse = " * ")
+  }else{
+    output <- bquote(.(paste(parts, collapse = " * ")))
   }
 
   return(output)
@@ -347,7 +388,10 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
 
   prior_components <- attr(x, "components")
   if(all(prior_components %in% c("null", "alternative"))){
-    prior_components <- sort(prior_components)
+    prior_order      <- order(prior_components)
+    prior_names      <- prior_names[prior_order]
+    prior_weights    <- prior_weights[prior_order]
+    prior_components <- prior_components[prior_order]
   }
 
   if(!plot){

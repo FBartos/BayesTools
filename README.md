@@ -196,8 +196,8 @@ summary for the fitted model.
 ``` r
 # formatted summary tables
 runjags_estimates_table(fit1, priors_list1)
-#>     Mean    SD    lCI Median   uCI error(MCMC) error(MCMC)/SD   ESS R-hat
-#> mu 0.116 0.304 -0.469  0.117 0.715     0.00242          0.008 15748 1.000
+#>     Mean    SD 0.025   0.5 0.975 error(MCMC) error(MCMC)/SD   ESS R-hat
+#> mu 0.116 0.304 -0.469 0.117 0.715     0.00242          0.008 15748 1.000
 ```
 
 We create a `log_posterior` function that defines the log likelihood of
@@ -288,7 +288,7 @@ ensemble_inference_table(inference, parameters = "mu")
 #>    Models Prior prob. Post. prob. Inclusion BF
 #> mu    2/3       0.667       0.430        0.377
 ensemble_estimates_table(mixed_posteriors,  parameters = "mu")
-#>     Mean Median  0.025  0.95
+#>     Mean Median  0.025 0.975
 #> mu 0.091  0.000 -0.218 0.523
 ensemble_summary_table(models, parameters = "mu")
 #>  Model       Prior mu       Prior prob. log(marglik) Post. prob. Inclusion BF

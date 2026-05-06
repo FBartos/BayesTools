@@ -9,7 +9,9 @@ as_mixed_posteriors(
   parameters,
   conditional = NULL,
   conditional_rule = "AND",
-  force_plots = FALSE
+  force_plots = FALSE,
+  transform_scaled = FALSE,
+  n_prior_samples = 10000
 )
 }
 \arguments{
@@ -26,6 +28,15 @@ Either "AND" or "OR". Defaults to "AND".}
 \item{force_plots}{temporal argument allowing to generate conditional posterior samples
 suitable for prior and posterior plots. Only available when conditioning on a
 single parameter.}
+
+\item{transform_scaled}{whether to transform samples from standardized (scaled) to
+original (unscaled) scale. When \code{TRUE}, posterior samples are
+transformed, and the result can be directly passed to \link{plot_posterior} which will
+automatically detect the transformation and use transformed deterministic prior densities.
+Requires a model fitted with \code{formula_scale_list}. Defaults to \code{FALSE}.}
+
+\item{n_prior_samples}{controls the numerical grid used for transformed
+prior densities when \code{transform_scaled = TRUE}. Defaults to 10000.}
 }
 \value{
 \code{as_mix_posteriors} returns a named list of mixed posterior

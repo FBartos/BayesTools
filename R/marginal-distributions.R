@@ -14,8 +14,8 @@
 #' @param prior_samples whether marginal prior distributions should be generated
 #' \code{contrast = "orthonormal"}, and \code{contrast = "independent"} levels
 #' @param use_formula whether the parameter should be evaluated as a part of supplied formula
-#' @param n_samples number of samples to be drawn for the model-averaged
-#' prior distribution
+#' @param n_samples controls the numerical grid used for model-averaged
+#' prior densities
 #' @inheritParams density.prior
 #'
 #' @return \code{marginal_posterior} returns a named list of mixed marginal posterior
@@ -330,118 +330,79 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       # add priors
       if(prior_samples){
 
-        ### generate prior samples matrix in the same format as are the posterior samples
-        if(inherits(samples, "as_mixed_posteriors")){
-          prior_samples <- .as_mixed_priors(prior_list = prior_list, n_samples = n_samples, conditional = attr(samples, "conditional", exact = TRUE), conditional_rule = attr(samples, "conditional_rule"))
-        }else{
-          prior_samples <- .mix_priors(prior_list = prior_list, n_samples = n_samples)
+        if(sum(grepl(":", model_terms, fixed = TRUE)) > 5){
+          warning(
+            "Deterministic marginal prior densities with more than five interaction terms can be slow.",
+            call. = FALSE
+          )
         }
 
-        for(i in seq_along(prior_samples)){
-          # de-name factor levels
-          if(priors_info[[i]][["factor"]]){
-            if(priors_info[[i]][["levels"]] == 1){
-              colnames(prior_samples[[i]]) <- priors_info[[i]][["term"]]
-            }else{
-              colnames(prior_samples[[i]]) <- paste0(priors_info[[i]][["term"]], "[", 1:priors_info[[i]][["levels"]], "]")
-            }
-          }
+        prior_density_context <- attr(samples, "prior_density_context")
+        if(is.null(prior_density_context)){
+          prior_density_context <- .prior_density_build_context(
+            prior_list   = prior_list,
+            column_names = colnames(posterior_samples_matrix),
+            n_grid       = max(16L, n_samples)
+          )
         }
-        prior_samples_matrix <- do.call(cbind, prior_samples)
 
+        linear_weights <- matrix(
+          0,
+          nrow = nrow(data),
+          ncol = length(prior_density_context$column_names),
+          dimnames = list(NULL, prior_density_context$column_names)
+        )
 
-        # obtain prior_samples information
-        models_ind <- do.call(cbind, lapply(c(if(has_intercept) "intercept", model_terms), function(x) attr(prior_samples[[JAGS_parameter_names(x, formula_parameter = formula_parameter)]], "models_ind")))
-        sample_ind <- do.call(cbind, lapply(c(if(has_intercept) "intercept", model_terms), function(x) attr(prior_samples[[JAGS_parameter_names(x, formula_parameter = formula_parameter)]], "sample_ind")))
-        if(!inherits(samples, "as_mixed_posteriors") && (!all(models_ind[,1] == models_ind) || !all(sample_ind[,1] == sample_ind)))
-          stop("the prior prior_samples are not alligned across models/draws")
-        models_ind <- models_ind[,1]
-
-
-        ### evaluate the design matrix on the prior_samples -> output[data, prior]
         if(has_intercept){
-
           terms_indexes    <- attr(model_matrix, "assign") + 1
           terms_indexes[1] <- 0
-
-          # get model/sample indices and check for scaling factors
-          temp_multiply_by  <- .get_combined_parameter_scaling_factor_matrix(
-            JAGS_parameter_names("intercept", formula_parameter = formula_parameter),
-            prior_list  = prior_list,
-            posterior   = prior_samples_matrix,
-            models_ind  = models_ind,
-            nrow        = nrow(data),
-            simple_list = inherits(samples, "as_mixed_posteriors")
-          )
-
-          marginal_prior_samples <- temp_multiply_by * matrix(prior_samples_matrix[,JAGS_parameter_names("intercept", formula_parameter = formula_parameter)],
-                                                         nrow = nrow(data), ncol = nrow(prior_samples_matrix), byrow = TRUE)
-
+          intercept_name <- JAGS_parameter_names("intercept", formula_parameter = formula_parameter)
+          if(intercept_name %in% colnames(linear_weights)){
+            linear_weights[, intercept_name] <- 1
+          }
         }else{
-
-          terms_indexes     <- attr(model_matrix, "assign")
-          marginal_prior_samples <- matrix(0, nrow = nrow(data), ncol = nrow(prior_samples_matrix))
-
+          terms_indexes <- attr(model_matrix, "assign")
         }
 
-        # add remaining terms (omitting the intercept indexed as 0)
         for(i in unique(terms_indexes[terms_indexes > 0])){
-
-          # subset the model matrix
-          temp_data <- model_matrix[,terms_indexes == i,drop = FALSE]
-
-          temp_prior <- prior_samples_matrix[,paste0(
+          temp_data <- model_matrix[, terms_indexes == i, drop = FALSE]
+          temp_all_columns <- paste0(
             JAGS_model_terms[i],
-            if(model_terms_type[i] == "factor" && priors_info[[JAGS_model_terms[i]]][["levels"]] > 1) paste0("[", 1:priors_info[[JAGS_model_terms[i]]][["levels"]], "]"))
-            ,drop = FALSE]
-
-          # check for scaling factors
-          temp_multiply_by <- .get_combined_parameter_scaling_factor_matrix(
-            JAGS_model_terms[i],
-            prior_list   = prior_list,
-            posterior    = prior_samples_matrix,
-            models_ind   = models_ind,
-            nrow         = nrow(data),
-            simple_list  = inherits(samples, "as_mixed_posteriors")
+            if(model_terms_type[i] == "factor" && priors_info[[JAGS_model_terms[i]]][["levels"]] > 1) paste0("[", 1:priors_info[[JAGS_model_terms[i]]][["levels"]], "]")
           )
+          temp_columns_keep <- temp_all_columns %in% colnames(linear_weights)
+          temp_columns <- temp_all_columns[temp_columns_keep]
+          temp_data <- temp_data[, temp_columns_keep, drop = FALSE]
+          if(length(temp_columns) == 0)
+            next
 
-          marginal_prior_samples <- marginal_prior_samples + temp_multiply_by * (temp_data %*% t(temp_prior))
-
+          linear_weights[, temp_columns] <- linear_weights[, temp_columns, drop = FALSE] + temp_data[, seq_along(temp_columns), drop = FALSE]
         }
 
-        # apply transformations
-        if(!is.null(transformation)){
-          marginal_prior_samples <- .density.prior_transformation_x(marginal_prior_samples, transformation, transformation_arguments)
-        }
-
-
-        ### split the output into lists based on specification
         if(length(at_manipulated) == 1 && format_parameter_names(at_manipulated, formula_parameters = formula_parameter, formula_prefix = FALSE) == "intercept"){
 
-          class(marginal_prior_samples)                   <- c(class(marginal_prior_samples), "marginal_posterior.simple")
-          attr(marginal_prior_samples, "parameter")       <- parameter
-          attr(marginal_prior_samples, "level")           <- "intercept"
-          attr(marginal_prior_samples, "data")            <- data
-          attr(marginal_prior_samples, "all_alternative") <- attr(prior_samples, "all_alternative")
-
-          attr(marginal_posterior_samples[["intercept"]], "prior_samples") <- marginal_prior_samples
+          prior_weights <- linear_weights
+          prior_density <- .prior_density_from_context_rows(
+            prior_density_context,
+            prior_weights,
+            output_transformation           = transformation,
+            output_transformation_arguments = transformation_arguments
+          )
+          attr(marginal_posterior_samples[["intercept"]], "linear_weights") <- prior_weights
+          attr(marginal_posterior_samples[["intercept"]], "prior_density") <- prior_density
 
         }else{
 
-          marginal_prior_samples <- lapply(seq_along(data_split), function(lvl){
-            temp_marginal_prior_samples <- marginal_prior_samples[data_split[[lvl]],]
-            temp_data                       <- data[data_split[[lvl]],]
-            class(temp_marginal_prior_samples)                   <- c(class(temp_marginal_prior_samples), "marginal_posterior.simple")
-            attr(temp_marginal_prior_samples, "parameter")       <- parameter
-            attr(temp_marginal_prior_samples, "level")           <- level_names[lvl]
-            attr(temp_marginal_prior_samples, "data")            <- temp_data
-            attr(temp_marginal_prior_samples, "all_alternative") <- attr(prior_samples, "all_alternative")
-            return(temp_marginal_prior_samples)
-          })
-          names(marginal_prior_samples) <- level_names
-
-          for(lvl in level_names){
-            attr(marginal_posterior_samples[[lvl]], "prior_samples") <- marginal_prior_samples[[lvl]]
+          for(lvl in seq_along(level_names)){
+            prior_weights <- linear_weights[data_split[[lvl]], , drop = FALSE]
+            prior_density <- .prior_density_from_context_rows(
+              prior_density_context,
+              prior_weights,
+              output_transformation           = transformation,
+              output_transformation_arguments = transformation_arguments
+            )
+            attr(marginal_posterior_samples[[level_names[lvl]]], "linear_weights") <- prior_weights
+            attr(marginal_posterior_samples[[level_names[lvl]]], "prior_density") <- prior_density
           }
         }
 
@@ -467,31 +428,26 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     if(inherits(samples[[parameter]], "mixed_posteriors.factor")){
 
       # transform factor levels
-      marginal_posterior_samples <- transform_factor_samples(samples[parameter])
+      marginal_posterior_samples <- transform_factor_samples(samples)
       marginal_posterior_samples <- transform_treatment_samples(marginal_posterior_samples)[[parameter]]
+      marginal_factor_metadata <- marginal_posterior_samples
+
+      level_names <- attr(marginal_posterior_samples, "level_names")
+      if(is.null(level_names) || is.list(level_names)){
+        level_names <- .factor_cell_labels(.factor_level_list(marginal_posterior_samples))
+      }
 
       # apply transformations
       if(!is.null(transformation)){
         marginal_posterior_samples <- .density.prior_transformation_x(marginal_posterior_samples, transformation, transformation_arguments)
       }
 
-      # TODO: change once dealing with factors interactions is solved
-      if(attr(marginal_posterior_samples, "interaction")){
-        if(length(attr(marginal_posterior_samples, "level_names")) == 1){
-          level_names <- attr(marginal_posterior_samples, "level_names")[[1]]
-        }else{
-          stop("de-transformation for interaction of multiple factors is not implemented.")
-        }
-      }else{
-        level_names <- attr(marginal_posterior_samples, "level_names")
-      }
-
       # create output object
-      marginal_posterior_samples <- lapply(level_names, function(lvl){
-        temp_marginal_posterior_samples <- marginal_posterior_samples[,level_names == lvl]
+      marginal_posterior_samples <- lapply(seq_along(level_names), function(lvl_i){
+        temp_marginal_posterior_samples <- marginal_posterior_samples[,lvl_i]
         class(temp_marginal_posterior_samples) <- c(class(temp_marginal_posterior_samples), "marginal_posterior.factor")
         attr(temp_marginal_posterior_samples, "parameter")  <- parameter
-        attr(temp_marginal_posterior_samples, "level_name") <- lvl
+        attr(temp_marginal_posterior_samples, "level_name") <- level_names[lvl_i]
         return(temp_marginal_posterior_samples)
       })
       names(marginal_posterior_samples) <- level_names
@@ -500,68 +456,75 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
     }else if(inherits(samples[[parameter]], "mixed_posteriors.simple")){
 
+      marginal_posterior_samples <- samples[[parameter]]
+
       # apply transformations
       if(!is.null(transformation)){
         marginal_posterior_samples <- .density.prior_transformation_x(marginal_posterior_samples, transformation, transformation_arguments)
       }
 
-      marginal_posterior_samples <- samples[[parameter]]
       class(marginal_posterior_samples) <- c(class(marginal_posterior_samples), "marginal_posterior.simple")
 
     }
 
 
-    # add prior samples
+    # add prior densities
     if(prior_samples){
 
-      if(inherits(samples, "as_mixed_posteriors")){
-        prior_samples <- .as_mixed_priors(prior_list = prior_list, n_samples = n_samples, conditional = attr(samples, "conditional", exact = TRUE), conditional_rule = attr(samples, "conditional_rule"))
-      }else{
-        prior_samples <- .mix_priors(prior_list = prior_list, n_samples = n_samples)
+      prior_density_context <- attr(samples, "prior_density_context")
+      if(is.null(prior_density_context)){
+        context_columns <- unique(unlist(lapply(names(prior_list), function(parameter_name){
+          parameter_prior <- prior_list[[parameter_name]]
+          if(is.prior(parameter_prior)){
+            .prior_linear_prior_columns(parameter_name, parameter_prior)
+          }else{
+            .prior_linear_prior_columns(parameter_name, parameter_prior[[1]])
+          }
+        }), use.names = FALSE))
+        prior_density_context <- .prior_density_build_context(
+          prior_list   = prior_list,
+          column_names = context_columns,
+          n_grid       = max(16L, n_samples)
+        )
       }
-      marginal_prior_samples <- prior_samples[[parameter]]
 
-      # transform if factors
-      ### extract the corresponding samples
-      if(inherits(prior_samples[[parameter]], "mixed_posteriors.factor")){
+      if(inherits(samples[[parameter]], "mixed_posteriors.factor")){
 
-        # transform factor levels
-        marginal_prior_samples <- transform_factor_samples(prior_samples[parameter])
-        marginal_prior_samples <- transform_treatment_samples(marginal_prior_samples)[[parameter]]
+        factor_weights <- .prior_factor_level_weight_matrix(
+          sample_metadata = marginal_factor_metadata,
+          parameter       = parameter,
+          samples         = samples
+        )
 
-        # apply transformations
-        if(!is.null(transformation)){
-          marginal_prior_samples <- .density.prior_transformation_x(marginal_prior_samples, transformation, transformation_arguments)
+        for(lvl_i in seq_along(level_names)){
+          weights <- rep(0, length(prior_density_context$column_names))
+          names(weights) <- prior_density_context$column_names
+          weights[colnames(factor_weights)] <- factor_weights[lvl_i, ]
+
+          prior_density <- .prior_density_from_context(
+            prior_density_context,
+            weights,
+            output_transformation           = transformation,
+            output_transformation_arguments = transformation_arguments
+          )
+          attr(marginal_posterior_samples[[level_names[lvl_i]]], "linear_weights") <- weights
+          attr(marginal_posterior_samples[[level_names[lvl_i]]], "prior_density") <- prior_density
         }
 
-        # create output object
-        marginal_prior_samples <- lapply(level_names, function(lvl){
-          temp_marginal_prior_samples <- marginal_prior_samples[,level_names == lvl]
-          class(temp_marginal_prior_samples) <- c(class(temp_marginal_prior_samples), "marginal_posterior.factor")
-          attr(temp_marginal_prior_samples, "parameter")  <- parameter
-          attr(temp_marginal_prior_samples, "level_name") <- lvl
-          return(temp_marginal_prior_samples)
-        })
-        names(marginal_prior_samples) <- level_names
-        class(marginal_prior_samples) <- c(class(marginal_prior_samples), "marginal_posterior.factor")
+      }else if(inherits(samples[[parameter]], "mixed_posteriors.simple")){
 
-        for(lvl in level_names){
-          attr(marginal_posterior_samples[[lvl]], "prior_samples") <- marginal_prior_samples[[lvl]]
-        }
+        weights <- rep(0, length(prior_density_context$column_names))
+        names(weights) <- prior_density_context$column_names
+        weights[[parameter]] <- 1
 
-
-      }else if(inherits(prior_samples[[parameter]], "mixed_posteriors.simple")){
-
-        marginal_prior_samples <- prior_samples[[parameter]]
-
-        # apply transformations
-        if(!is.null(transformation)){
-          marginal_prior_samples <- .density.prior_transformation_x(marginal_prior_samples, transformation, transformation_arguments)
-        }
-
-        class(marginal_prior_samples) <- c(class(marginal_prior_samples), "marginal_posterior.simple")
-        attr(marginal_posterior_samples, "prior_samples") <- marginal_prior_samples
-
+        prior_density <- .prior_density_from_context(
+          prior_density_context,
+          weights,
+          output_transformation           = transformation,
+          output_transformation_arguments = transformation_arguments
+        )
+        attr(marginal_posterior_samples, "linear_weights") <- weights
+        attr(marginal_posterior_samples, "prior_density") <- prior_density
       }
 
     }
@@ -569,6 +532,34 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
   class(marginal_posterior_samples) <- c(class(marginal_posterior_samples), "marginal_posterior")
   return(marginal_posterior_samples)
+}
+
+.marginal_posterior_parameter_samples <- function(samples, parameter){
+
+  parameter_samples <- samples[[parameter]]
+
+  if(is.list(parameter_samples)){
+    out <- lapply(parameter_samples, as.numeric)
+  }else{
+    out <- list(as.numeric(parameter_samples))
+    names(out) <- parameter
+  }
+
+  out
+}
+
+.marginal_posterior_parameter_prior_densities <- function(samples, parameter){
+
+  parameter_samples <- samples[[parameter]]
+
+  if(is.list(parameter_samples)){
+    out <- lapply(parameter_samples, attr, which = "prior_density")
+  }else{
+    out <- list(attr(parameter_samples, "prior_density"))
+    names(out) <- parameter
+  }
+
+  out
 }
 
 .get_combined_parameter_scaling_factor_matrix <- function(term, prior_list, posterior, models_ind, nrow, simple_list = FALSE){
@@ -600,7 +591,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
   ### get model indices
   prior_weights <- do.call(cbind, lapply(seq_along(prior_list), function(i){
-    prior_weights <- sapply(prior_list[[i]], function(prior) prior[["prior_weights"]])
+    prior_weights <- sapply(prior_list[[i]], .prior_model_weight)
     prior_weights <- prior_weights / sum(prior_weights)
     return(prior_weights)
   }))
@@ -624,7 +615,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     temp_parameter    <- parameters[p]
     temp_priors       <- prior_list[[temp_parameter]]
 
-    if(any(sapply(temp_priors, is.prior.weightfunction)) && all(sapply(temp_priors, is.prior.weightfunction) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.prior.none) | sapply(temp_priors, is.null))){
+    if(any(sapply(temp_priors, is.prior.weightfunction)) && all(sapply(temp_priors, is.prior.weightfunction) | sapply(temp_priors, .is_prior_weightfunction_null) | sapply(temp_priors, is.null))){
       # weightfunctions:
 
       # replace missing priors with default prior: none
@@ -696,7 +687,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     stop("'priors' must be a list of simple priors")
 
   # get prior model probabilities
-  prior_probs <- sapply(priors, function(prior) prior[["prior_weights"]])
+  prior_probs <- sapply(priors, .prior_model_weight)
   prior_probs <- prior_probs / sum(prior_probs)
 
   # do not set seed when sampling multiple priors for the same model -- they will end up completely correlated
@@ -710,10 +701,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   models_ind <- NULL
 
   # mix samples
-  for(i in seq_along(priors)[ceiling(prior_probs * n_samples) >= 1]){
+  sample_counts <- .prior_mixture_sample_counts(prior_probs, n_samples)
+  for(i in seq_along(priors)[sample_counts > 0]){
 
     # sample indexes
-    temp_ind <- 1:ceiling(n_samples * prior_probs[i])
+    temp_ind <- seq_len(sample_counts[i])
 
     # sample prior
     samples <- c(samples, rng(priors[[i]], length(temp_ind), transform_factor_samples = FALSE))
@@ -747,7 +739,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     stop("'priors' must be a list of vector priors")
 
   # get prior model probabilities
-  prior_probs <- sapply(priors, function(prior) prior[["prior_weights"]])
+  prior_probs <- sapply(priors, .prior_model_weight)
   prior_probs <- prior_probs / sum(prior_probs)
 
   # do not set seed when sampling multiple priors for the same model -- they will end up completely correlated
@@ -765,10 +757,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   models_ind <- NULL
 
   # mix samples
-  for(i in seq_along(priors)[ceiling(prior_probs * n_samples) > 1]){
+  sample_counts <- .prior_mixture_sample_counts(prior_probs, n_samples)
+  for(i in seq_along(priors)[sample_counts > 0]){
 
     # sample indexes
-    temp_ind <- 1:ceiling(n_samples * prior_probs[i])
+    temp_ind <- seq_len(sample_counts[i])
 
     if(is.prior.point(priors[[i]]) & is.prior.simple(priors[[i]])){
       # not sampling the priors in case they were imputed (missing dimensions)
@@ -809,7 +802,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     stop("'priors' must be a list of factor priors")
 
   # get prior model probabilities
-  prior_probs <- sapply(priors, function(prior) prior[["prior_weights"]])
+  prior_probs <- sapply(priors, .prior_model_weight)
   prior_probs <- prior_probs / sum(prior_probs)
 
   # check the prior levels
@@ -826,6 +819,12 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         "levels"      = .get_prior_factor_levels(p),
         "level_names" = .get_prior_factor_level_names(p),
         "interaction" = .is_prior_interaction(p),
+        "interaction_terms" = attr(p, "interaction_terms"),
+        "term_components"   = attr(p, "term_components"),
+        "factor_terms"      = attr(p, "factor_terms"),
+        "factor_contrasts"  = attr(p, "factor_contrasts"),
+        "factor_design"     = attr(p, "factor_design"),
+        "factor_cell_names" = attr(p, "factor_cell_names"),
         "treatment"   = is.prior.treatment(p),
         "independent" = is.prior.independent(p),
         "orthonormal" = is.prior.orthonormal(p),
@@ -853,6 +852,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       samples <- matrix(samples, ncol = 1)
 
     }else{
+
+      # keep the same seed across levels
+      if(is.null(seed)){
+        seed <- sample(666666, 1)
+      }
 
       samples <- lapply(1:levels, function(i) .mix_priors.simple(priors, paste0(parameter, "[", i, "]"), seed, n_samples))
 
@@ -883,6 +887,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       samples <- matrix(samples, ncol = 1)
 
     }else{
+
+      # keep the same seed across levels
+      if(is.null(seed)){
+        seed <- sample(666666, 1)
+      }
 
       samples <- lapply(1:levels, function(i) .mix_priors.simple(priors, paste0(parameter, "[", i, "]"), seed, n_samples))
 
@@ -917,6 +926,12 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   attr(samples, "levels")      <- priors_info[["levels"]]
   attr(samples, "level_names") <- priors_info[["level_names"]]
   attr(samples, "interaction") <- priors_info[["interaction"]]
+  attr(samples, "interaction_terms") <- priors_info[["interaction_terms"]]
+  attr(samples, "term_components")   <- priors_info[["term_components"]]
+  attr(samples, "factor_terms")      <- priors_info[["factor_terms"]]
+  attr(samples, "factor_contrasts")  <- priors_info[["factor_contrasts"]]
+  attr(samples, "factor_design")     <- priors_info[["factor_design"]]
+  attr(samples, "factor_cell_names") <- priors_info[["factor_cell_names"]]
   attr(samples, "treatment")   <- priors_info[["treatment"]]
   attr(samples, "independent") <- priors_info[["independent"]]
   attr(samples, "orthonormal") <- priors_info[["orthonormal"]]
@@ -924,6 +939,12 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
   return(samples)
 }
+
+.prior_mixture_sample_counts <- function(prior_probs, n_samples){
+
+  .mixture_sample_counts(prior_probs, n_samples)
+}
+
 .mix_priors.weightfunction <- function(priors, parameter, seed = NULL, n_samples = 10000){
 
   # check input
@@ -931,11 +952,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   check_char(parameter, "parameter")
   check_real(seed, "seed", allow_NULL = TRUE)
   check_int(n_samples, "n_samples")
-  if(!all(sapply(priors, is.prior.weightfunction) | sapply(priors, is.prior.point) | sapply(priors, is.prior.none)))
-    stop("'priors' must be a list of weightfunction priors distributions")
+  if(!all(sapply(priors, is.prior.weightfunction) | sapply(priors, .is_prior_weightfunction_null)))
+    stop("'priors' must be a list of weightfunction priors or point(1)/none null priors")
 
   # get prior model probabilities
-  prior_probs <- sapply(priors, function(prior) prior[["prior_weights"]])
+  prior_probs <- sapply(priors, .prior_model_weight)
   prior_probs <- prior_probs / sum(prior_probs)
 
   # do not set seed when sampling multiple priors for the same model -- they will end up completely correlated
@@ -944,9 +965,10 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   }
 
   # obtain mapping for the weight coefficients
-  omega_mapping <- weightfunctions_mapping(priors)
-  omega_cuts    <- weightfunctions_mapping(priors, cuts_only = TRUE)
-  omega_names   <- sapply(1:(length(omega_cuts)-1), function(i)paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
+  omega_info    <- .weightfunction_mapping_info(priors)
+  omega_mapping <- omega_info$mapping
+  omega_cuts    <- omega_info$cuts
+  omega_names   <- omega_info$names
 
   # prepare output objects
   samples    <- matrix(nrow = 0, ncol = length(omega_cuts) - 1)
@@ -954,12 +976,13 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   models_ind <- NULL
 
   # mix samples
-  for(i in seq_along(priors)[ceiling(prior_probs * n_samples) > 1]){
+  sample_counts <- .prior_mixture_sample_counts(prior_probs, n_samples)
+  for(i in seq_along(priors)[sample_counts > 0]){
 
     # sample indexes
-    temp_ind <- 1:ceiling(n_samples * prior_probs[i])
+    temp_ind <- seq_len(sample_counts[i])
 
-    if(is.prior.none(priors[[i]])){
+    if(.is_prior_weightfunction_null(priors[[i]])){
       samples <- rbind(samples, matrix(1, ncol = length(omega_cuts) - 1, nrow = length(temp_ind)))
     }else{
       # create temp samples so names can be matched by mapping
@@ -973,9 +996,9 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   }
 
   # assure the correct number of samples
-  samples    <- samples[1:n_samples,,drop=FALSE]
-  sample_ind <- sample_ind[1:n_samples]
-  models_ind <- models_ind[1:n_samples]
+  samples    <- samples[seq_len(n_samples),,drop=FALSE]
+  sample_ind <- sample_ind[seq_len(n_samples)]
+  models_ind <- models_ind[seq_len(n_samples)]
 
   rownames(samples) <- NULL
   colnames(samples) <- omega_names
@@ -983,6 +1006,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   attr(samples, "models_ind") <- models_ind
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- priors
+  samples <- .weightfunction_set_omega_context(samples, omega_info)
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.weightfunction")
 
   return(samples)
@@ -1074,6 +1098,14 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     }else if(is.prior.weightfunction(temp_prior)){
       # weightfunctions:
       out[[temp_parameter]] <- .as_mixed_priors.weightfunction(temp_prior, temp_parameter, NULL, n_samples)
+
+    }else if(is_prior_phacking(temp_prior)){
+      # p-hacking priors:
+      out[[temp_parameter]] <- .as_mixed_priors.phacking(temp_prior, temp_parameter, NULL, n_samples)
+
+    }else if(is_prior_bias(temp_prior)){
+      # composed publication-bias priors:
+      out[[temp_parameter]] <- .as_mixed_priors.bias(temp_prior, temp_parameter, NULL, n_samples)
 
     }else if(is.prior.factor(temp_prior)){
       # factor priors
@@ -1225,6 +1257,12 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     "levels"      = .get_prior_factor_levels(prior),
     "level_names" = .get_prior_factor_level_names(prior),
     "interaction" = .is_prior_interaction(prior),
+    "interaction_terms" = attr(prior, "interaction_terms"),
+    "term_components"   = attr(prior, "term_components"),
+    "factor_terms"      = attr(prior, "factor_terms"),
+    "factor_contrasts"  = attr(prior, "factor_contrasts"),
+    "factor_design"     = attr(prior, "factor_design"),
+    "factor_cell_names" = attr(prior, "factor_cell_names"),
     "treatment"   = is.prior.treatment(prior),
     "independent" = is.prior.independent(prior),
     "orthonormal" = is.prior.orthonormal(prior),
@@ -1286,6 +1324,12 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   attr(samples, "levels")      <- prior_info[["levels"]]
   attr(samples, "level_names") <- prior_info[["level_names"]]
   attr(samples, "interaction") <- prior_info[["interaction"]]
+  attr(samples, "interaction_terms") <- prior_info[["interaction_terms"]]
+  attr(samples, "term_components")   <- prior_info[["term_components"]]
+  attr(samples, "factor_terms")      <- prior_info[["factor_terms"]]
+  attr(samples, "factor_contrasts")  <- prior_info[["factor_contrasts"]]
+  attr(samples, "factor_design")     <- prior_info[["factor_design"]]
+  attr(samples, "factor_cell_names") <- prior_info[["factor_cell_names"]]
   attr(samples, "treatment")   <- prior_info[["treatment"]]
   attr(samples, "independent") <- prior_info[["independent"]]
   attr(samples, "orthonormal") <- prior_info[["orthonormal"]]
@@ -1321,6 +1365,80 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- prior
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.weightfunction")
+
+  return(samples)
+}
+.as_mixed_priors.phacking <- function(prior, parameter, seed = NULL, n_samples = 10000){
+
+  # check input
+  check_list(prior, "prior")
+  check_char(parameter, "parameter")
+  check_real(seed, "seed", allow_NULL = TRUE)
+  check_int(n_samples, "n_samples")
+
+  if(!is.null(seed)){
+    set.seed(seed)
+  }
+
+  samples <- rng(prior, n_samples)
+  par_names <- intersect(.phacking_report_parameter(prior), colnames(samples))
+  samples <- samples[, par_names, drop = FALSE]
+
+  rownames(samples) <- NULL
+  attr(samples, "sample_ind") <- FALSE
+  attr(samples, "models_ind") <- FALSE
+  attr(samples, "parameter")  <- parameter
+  attr(samples, "prior_list") <- prior
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.phacking")
+
+  return(samples)
+}
+.as_mixed_priors.bias <- function(prior, parameter, seed = NULL, n_samples = 10000){
+
+  # check input
+  check_list(prior, "prior")
+  check_char(parameter, "parameter")
+  check_real(seed, "seed", allow_NULL = TRUE)
+  check_int(n_samples, "n_samples")
+
+  if(!is.null(seed)){
+    set.seed(seed)
+  }
+
+  spec          <- selection_backend_spec(prior)
+  branch_info   <- .selection_prior_branch_info(prior)
+  has_selection <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
+  has_phacking  <- vapply(branch_info, function(x) !is.null(x$phacking),  logical(1))
+
+  samples <- rng(prior, n_samples)
+
+  out_names <- character()
+  par_names <- character()
+
+  if(any(has_selection)){
+    omega_cuts  <- spec$step$breaks
+    omega_names <- sapply(seq_len(length(omega_cuts) - 1L), function(i) paste0("omega[", omega_cuts[i], ",", omega_cuts[i + 1L], "]"))
+    omega_par   <- paste0("omega[", seq_len(length(omega_cuts) - 1L), "]")
+    out_names   <- c(out_names, omega_names)
+    par_names   <- c(par_names, omega_par)
+  }
+  if(any(has_phacking)){
+    phacking_priors <- lapply(branch_info[has_phacking], function(x) x$phacking)
+    phacking_names <- .selection_phacking_report_parameters(phacking_priors)
+    out_names <- c(out_names, phacking_names)
+    par_names <- c(par_names, phacking_names)
+  }
+
+  keep <- par_names %in% colnames(samples)
+  samples <- samples[, par_names[keep], drop = FALSE]
+  colnames(samples) <- out_names[keep]
+
+  rownames(samples) <- NULL
+  attr(samples, "sample_ind") <- FALSE
+  attr(samples, "models_ind") <- FALSE
+  attr(samples, "parameter")  <- parameter
+  attr(samples, "prior_list") <- prior
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.bias")
 
   return(samples)
 }
@@ -1373,26 +1491,12 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   is_PET            <- sapply(prior, is.prior.PET)
   is_PEESE          <- sapply(prior, is.prior.PEESE)
   is_weightfunction <- sapply(prior, is.prior.weightfunction)
+  is_phacking       <- sapply(prior, is_prior_phacking)
+  is_bias           <- sapply(prior, is_prior_bias)
 
-  if(any(is_PET | is_PEESE | is_weightfunction)){
+  if(any(is_PET | is_PEESE | is_weightfunction | is_phacking | is_bias)){
 
-    stop("not implemented yet")  # probably not needed
-    # samples <- NULL
-    #
-    # if(any(is_PET)){
-    #   samples <- cbind(samples, .as_mixed_posteriors.simple(fit, prior[is_PET][[1]], "PET"))
-    # }
-    # if(any(is_PEESE)){
-    #   samples <- cbind(.as_mixed_posteriors.simple(fit, prior[is_PEESE][[1]], "PEESE"))
-    # }
-    # if(any(is_weightfunction)){
-    #   # create a dummy prior with all the cuts
-    #   dummy_prior <- #TODO:
-    #   samples     <- cbind(.as_mixed_posteriors.weightfunction(fit, dummy_prior, "omega"))
-    # }
-    #
-    # samples <- .as_mixed_posteriors.factor(fit, prior_variable, parameter)
-    # attr(samples, "models_ind") <- as.vector(model_samples[,paste0(parameter, "_indicator")])
+    temp_samples <- .mix_priors.bias(prior, parameter = parameter, seed = seed, n_samples = n_samples)
 
   }else{
 
@@ -1423,6 +1527,121 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   # append classes and priors
   class(samples) <- c(class(samples), "mixed_posteriors.mixture")
   attr(samples, "prior_list") <- prior
+
+  return(samples)
+}
+.mix_priors.bias <- function(priors, parameter, seed = NULL, n_samples = 10000){
+
+  # check input
+  check_list(priors, "priors")
+  check_char(parameter, "parameter")
+  check_real(seed, "seed", allow_NULL = TRUE)
+  check_int(n_samples, "n_samples")
+
+  allowed <- sapply(priors, function(prior){
+    is.prior.none(prior) || is.prior.PET(prior) || is.prior.PEESE(prior) ||
+      is.prior.weightfunction(prior) || is_prior_phacking(prior) || is_prior_bias(prior)
+  })
+  if(!all(allowed)){
+    stop("'priors' must be a list of publication-bias priors.", call. = FALSE)
+  }
+
+  spec        <- selection_backend_spec(priors)
+  branch_info <- lapply(priors, .selection_branch_info)
+
+  is_PET       <- sapply(priors, is.prior.PET)
+  is_PEESE     <- sapply(priors, is.prior.PEESE)
+  has_selection <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
+  has_phacking  <- vapply(branch_info, function(x) !is.null(x$phacking),  logical(1))
+
+  prior_probs <- sapply(priors, .prior_model_weight)
+  prior_probs <- prior_probs / sum(prior_probs)
+
+  if(!is.null(seed)){
+    set.seed(seed)
+  }
+
+  out_names <- character()
+  if(any(has_selection)){
+    omega_cuts  <- spec$step$breaks
+    omega_names <- .weightfunction_omega_names(omega_cuts)
+    out_names   <- c(out_names, omega_names)
+
+    selection_priors <- lapply(branch_info[has_selection], function(x) x$selection)
+    omega_mapping    <- .weightfunction_mapping_info(selection_priors, one_sided = TRUE)$mapping
+    selection_index  <- which(has_selection)
+  }
+  if(any(has_phacking)){
+    phacking_priors <- lapply(branch_info[has_phacking], function(x) x$phacking)
+    phacking_names  <- .selection_phacking_report_parameters(phacking_priors)
+    out_names <- c(out_names, phacking_names)
+  }
+  if(any(is_PET)){
+    out_names <- c(out_names, "PET")
+  }
+  if(any(is_PEESE)){
+    out_names <- c(out_names, "PEESE")
+  }
+
+  samples    <- matrix(nrow = 0, ncol = length(out_names))
+  colnames(samples) <- out_names
+  sample_ind <- NULL
+  models_ind <- NULL
+
+  sample_counts <- .prior_mixture_sample_counts(prior_probs, n_samples)
+  for(i in seq_along(priors)[sample_counts > 0]){
+
+    temp_ind <- seq_len(sample_counts[i])
+    temp_samples <- matrix(0, nrow = length(temp_ind), ncol = length(out_names))
+    colnames(temp_samples) <- out_names
+
+    if(any(has_selection)){
+      temp_samples[, omega_names] <- 1
+    }
+
+    if(has_selection[i]){
+      selection_i <- match(i, selection_index)
+      selection_samples <- rng(branch_info[[i]]$selection, length(temp_ind))
+      temp_samples[, omega_names] <- selection_samples[, paste0("omega[", omega_mapping[[selection_i]], "]"), drop = FALSE]
+    }
+
+    if(has_phacking[i]){
+      phacking_samples <- rng(branch_info[[i]]$phacking, length(temp_ind))
+      phacking_names <- .phacking_report_parameter(branch_info[[i]]$phacking)
+      temp_samples[, phacking_names] <- phacking_samples[, phacking_names, drop = FALSE]
+    }
+
+    if(is_PET[i]){
+      temp_samples[, "PET"] <- rng(priors[[i]], length(temp_ind), transform_factor_samples = FALSE)
+    }
+    if(is_PEESE[i]){
+      temp_samples[, "PEESE"] <- rng(priors[[i]], length(temp_ind), transform_factor_samples = FALSE)
+    }
+
+    samples    <- rbind(samples, temp_samples)
+    sample_ind <- c(sample_ind, temp_ind)
+    models_ind <- c(models_ind, rep(i, length(temp_ind)))
+  }
+
+  samples    <- samples[seq_len(n_samples), , drop = FALSE]
+  sample_ind <- sample_ind[seq_len(n_samples)]
+  models_ind <- models_ind[seq_len(n_samples)]
+
+  rownames(samples) <- NULL
+  attr(samples, "sample_ind") <- sample_ind
+  attr(samples, "models_ind") <- models_ind
+  attr(samples, "parameter")  <- parameter
+  attr(samples, "prior_list") <- priors
+  if(any(has_selection)){
+    samples <- .weightfunction_set_omega_context(samples, list(
+      mapping   = NULL,
+      cuts      = omega_cuts,
+      names     = omega_names,
+      pars      = paste0("omega[", seq_len(length(omega_cuts) - 1L), "]"),
+      one_sided = TRUE
+    ))
+  }
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.bias")
 
   return(samples)
 }
@@ -1466,24 +1685,26 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
 
 .Savage_Dickey_BF.fun    <- function(posterior, null_hypothesis, normal_approximation, silent){
 
-  if(is.null(attr(posterior, "prior_samples")))
-    stop("there are no prior samples for the posterior distribution", call. = FALSE)
+  if(is.null(attr(posterior, "prior_density")))
+    stop("there are no prior densities for the posterior distribution", call. = FALSE)
 
-  if (!is.null(attr(attr(posterior, "prior_samples"),"all_alternative")) && attr(attr(posterior, "prior_samples"),"all_alternative"))
-    return(NA) # all prior samples come from alternative distributions --- there is no hypothesis to test
-
-  prior <- attr(posterior, "prior_samples")
+  prior <- attr(posterior, "prior_density")
 
   warnings <- NULL
 
   if(mean(posterior == null_hypothesis) > 0.05){
     warnings <- c(warnings, "There is a considerable cluster of posterior samples at the exact null hypothesis values. The Savage-Dickey density ratio is likely to be invalid.")
   }
-  if(mean(prior == null_hypothesis) > 0.05){
-    warnings <- c(warnings, "There is a considerable cluster of prior samples at the exact null hypothesis values. The Savage-Dickey density ratio is likely to be invalid.")
+  if(.prior_linear_density_point_mass(prior, null_hypothesis) > 0.05){
+    warnings <- c(warnings, "There is a considerable point mass in the prior at the exact null hypothesis value. The Savage-Dickey density ratio is likely to be invalid.")
   }
-  if(null_hypothesis < min(prior) || null_hypothesis > max(prior)){
-    warnings <- c(warnings, "Prior samples do not span both sides of the null hypothesis. Check whether the prior distribution contain the null hypothesis in the first place. The Savage-Dickey density ratio is likely to be invalid.")
+
+  prior_range <- range(c(
+    if(!is.null(prior$density)) prior$density$x else NULL,
+    if(!is.null(prior$points) && nrow(prior$points) > 0) prior$points$x else NULL
+  ))
+  if(null_hypothesis < prior_range[1] || null_hypothesis > prior_range[2]){
+    warnings <- c(warnings, "Prior density does not span both sides of the null hypothesis. Check whether the prior distribution contains the null hypothesis in the first place. The Savage-Dickey density ratio is likely to be invalid.")
   }
   if(null_hypothesis < min(posterior) || null_hypothesis > max(posterior)){
     warnings <- c(warnings, "Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.")
@@ -1495,11 +1716,10 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
 
   if(normal_approximation){
     posterior_height <- .Savage_Dickey_BF.normal(posterior, null_hypothesis)
-    prior_height     <- .Savage_Dickey_BF.normal(prior, null_hypothesis)
   }else{
     posterior_height <- .Savage_Dickey_BF.kd(posterior, null_hypothesis)
-    prior_height     <- .Savage_Dickey_BF.kd(prior, null_hypothesis)
   }
+  prior_height <- .prior_linear_density_height(prior, null_hypothesis)
 
   BF <- exp(log(prior_height) - log(posterior_height))
 
@@ -1706,20 +1926,6 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
 
     check_char(conditional_list[[marginal_parameters[i]]], sprintf("conditional_list[[%1$s]]", marginal_parameters[i]), check_length = FALSE, allow_values = parameters, allow_NULL = TRUE)
 
-    # obtain model-averaged posterior conditional on including the parameter of interest
-    # (different from individual conditionals)
-    temp_conditional_posterior <- as_mixed_posteriors(
-      model            = model,
-      parameters       = parameters,
-      conditional      = conditional_list[[marginal_parameters[i]]],
-      conditional_rule = conditional_rule,
-      force_plots       = force_plots
-    )
-
-    # skip the rest of the parameter because of impossibility of obtaining conditional samples
-    if (length(temp_conditional_posterior) == 0)
-      next
-
     # compute the marginals
     out[["averaged"]][[marginal_parameters[i]]] <- marginal_posterior(
       samples           = averaged_posterior,
@@ -1728,13 +1934,24 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
       prior_samples     = TRUE,
       n_samples         = n_samples
     )
-    out[["conditional"]][[marginal_parameters[i]]] <- marginal_posterior(
-      samples           = temp_conditional_posterior,
-      parameter         = marginal_parameters[i],
-      formula           = formula,
-      prior_samples     = TRUE,
-      n_samples         = n_samples
+
+    out[["conditional"]][[marginal_parameters[i]]] <- .marginal_inference_conditional_posterior(
+      model              = model,
+      parameters         = parameters,
+      marginal_parameter = marginal_parameters[i],
+      formula            = formula,
+      averaged_marginal  = out[["averaged"]][[marginal_parameters[i]]],
+      prior_list         = attr(averaged_posterior, "prior_list"),
+      conditional        = conditional_list[[marginal_parameters[i]]],
+      conditional_rule   = conditional_rule,
+      n_samples          = n_samples,
+      force_plots        = force_plots
     )
+
+    if(length(out[["conditional"]][[marginal_parameters[i]]]) == 0){
+      out[["averaged"]][[marginal_parameters[i]]] <- NULL
+      next
+    }
 
     # and inclusion Bayes factor
     out[["inference"]][[marginal_parameters[i]]] <- Savage_Dickey_BF(
@@ -1749,4 +1966,89 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
   attr(out, "normal_approximation") <- normal_approximation
   class(out) <- c(class(out), "marginal_inference")
   return(out)
+}
+
+.marginal_inference_condition_key <- function(conditional){
+
+  paste0(c(length(conditional), conditional), collapse = "\r")
+}
+
+.marginal_inference_level_conditionals <- function(marginal, prior_list, conditional){
+
+  levels <- names(marginal)
+  conditionals <- lapply(levels, function(level){
+    weights <- attr(marginal[[level]], "linear_weights")
+    if(is.null(weights)){
+      return(conditional)
+    }
+    if(!is.null(dim(weights))){
+      active <- unique(unlist(apply(weights, 1, function(row_weights){
+        .prior_linear_active_conditionals(
+          prior_list  = prior_list,
+          weights     = row_weights,
+          conditional = conditional
+        )
+      }), use.names = FALSE))
+      return(conditional[conditional %in% active])
+    }
+    .prior_linear_active_conditionals(
+      prior_list   = prior_list,
+      weights      = weights,
+      conditional  = conditional
+    )
+  })
+  names(conditionals) <- levels
+
+  conditionals
+}
+
+.marginal_inference_conditional_posterior <- function(model, parameters, marginal_parameter,
+                                                      formula, averaged_marginal, prior_list,
+                                                      conditional, conditional_rule, n_samples,
+                                                      force_plots){
+
+  level_conditionals <- .marginal_inference_level_conditionals(
+    marginal    = averaged_marginal,
+    prior_list  = prior_list,
+    conditional = conditional
+  )
+
+  conditional_marginal <- averaged_marginal
+  marginal_cache <- list()
+
+  for(level in names(level_conditionals)){
+    level_conditional <- level_conditionals[[level]]
+    key <- .marginal_inference_condition_key(level_conditional)
+
+    if(is.null(marginal_cache[[key]])){
+      conditional_posterior <- as_mixed_posteriors(
+        model            = model,
+        parameters       = parameters,
+        conditional      = if(length(level_conditional) == 0) NULL else level_conditional,
+        conditional_rule = conditional_rule,
+        force_plots      = force_plots
+      )
+
+      if(length(conditional_posterior) == 0){
+        return(list())
+      }else{
+        marginal_cache[[key]] <- marginal_posterior(
+          samples       = conditional_posterior,
+          parameter     = marginal_parameter,
+          formula       = formula,
+          prior_samples = TRUE,
+          n_samples     = n_samples
+        )
+      }
+    }
+
+    if(length(marginal_cache[[key]]) == 0){
+      return(list())
+    }
+
+    conditional_marginal[[level]] <- marginal_cache[[key]][[level]]
+    attr(conditional_marginal[[level]], "effective_conditional") <- level_conditional
+  }
+
+  conditional_marginal
 }

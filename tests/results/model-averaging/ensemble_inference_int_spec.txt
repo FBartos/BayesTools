@@ -1,0 +1,4 @@
+BF: 0.086
+is_null: FALSE, TRUE
+prior_probs: 0.5, 0.5
+post_probs: 0.0792, 0.9208

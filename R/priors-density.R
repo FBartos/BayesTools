@@ -30,11 +30,12 @@
 #' specifying one of the prepared transformations:
 #' \describe{
 #'   \item{lin}{linear transformation in form of \code{a + b*x}}
-#'   \item{tanh}{also known as Fisher's z transformation}
+#'   \item{tanh}{hyperbolic tangent transformation}
 #'   \item{exp}{exponential transformation}
 #' }, or a list containing the transformation function \code{fun},
-#' inverse transformation function \code{inv}, and the Jacobian of
-#' the transformation \code{jac}. See examples for details.
+#' inverse transformation function \code{inv}, and derivative of the
+#' transformation \code{jac}, evaluated on the original support. See examples
+#' for details.
 #' @param transformation_arguments a list with named arguments for
 #' the \code{transformation}
 #' @param transformation_settings boolean indicating whether the
@@ -76,14 +77,16 @@ density.prior <- function(x,
     if(!is.null(x_seq)){
       x_range <- range(x_seq)
     }else{
-      if(!individual & (is.prior.PET(x) | is.prior.PEESE(x))){
+      if(is_prior_phacking(x) || is_prior_bias(x)){
+        .selection_prior_stop_unsupported_generic("density", x)
+      }else if(!individual & (is.prior.PET(x) | is.prior.PEESE(x))){
         x_range <- c(0, 1)
       }else if(!individual & is.prior.weightfunction(x)){
         x_range <- c(0, 1)
       }else if(is.prior.spike_and_slab(x)){
-        x_range <- range(.get_spike_and_slab_variable(x)[["truncation"]]["lower"], .get_spike_and_slab_variable(x)[["truncation"]]["upper"], 0)
+        x_range <- range(c(range(.get_spike_and_slab_variable(x), if(is.null(x_range_quant)) .range.prior_quantile_default(.get_spike_and_slab_variable(x)) else x_range_quant), 0))
       }else if(is.prior.discrete(x)){
-        x_range <- c(x[["truncation"]]["lower"], x[["truncation"]]["upper"])
+        x_range <- c(x[["truncation"]][["lower"]], x[["truncation"]][["upper"]])
       }else{
         x_range <- range(x, if(is.null(x_range_quant)) .range.prior_quantile_default(x) else x_range_quant)
       }
@@ -109,6 +112,8 @@ density.prior <- function(x,
   # use the corresponding density subfunction
   if(is.prior.weightfunction(x)){
     out <- .density.prior.weightfunction(x, x_seq, x_range, n_points, n_samples, force_samples, individual)
+  }else if(is_prior_phacking(x) || is_prior_bias(x)){
+    .selection_prior_stop_unsupported_generic("density", x)
   }else if(is.prior.PET(x) | is.prior.PEESE(x)){
     out <- .density.prior.PETPEESE(x, x_seq, x_range, n_points, n_samples, force_samples, individual, transformation, transformation_arguments, truncate_end)
   }else if(is.prior.spike_and_slab(x)){
@@ -121,6 +126,10 @@ density.prior <- function(x,
     out <- .density.prior.simple(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
   }
 
+  if(!is.null(transformation)){
+    attr(out, "transformation") <- transformation
+  }
+
   return(out)
 }
 
@@ -129,7 +138,14 @@ density.prior <- function(x,
   # get the samples to estimate density / obtain the density directly
   if(force_samples | .density.prior_need_samples(x)){
     x_sam <- rng(x, n_samples)
-    x_den <- stats::density(x_sam, n = n_points, from = x_range[1], to = x_range[2])$y
+    if(is.prior.discrete(x)){
+      x_seq <- unique(round(x_seq))
+      x_den <- vapply(x_seq, function(x_i) mean(x_sam == x_i), numeric(1))
+    }else{
+      x_density <- stats::density(x_sam, n = n_points, from = x_range[1], to = x_range[2])
+      x_seq     <- x_density$x
+      x_den     <- x_density$y
+    }
   }else{
 
     if(is.prior.discrete(x)){
@@ -230,7 +246,9 @@ density.prior <- function(x,
 
     if(force_samples | .density.prior_need_samples(x)){
       x_sam <- rng(x, n_samples)
-      x_den <- do.call(cbind, lapply(1:ncol(x_sam), function(i)stats::density(x_sam[,i], n = n_points, from = x_range[1], to = x_range[2])$y))
+      densities <- lapply(1:ncol(x_sam), function(i) stats::density(x_sam[,i], n = n_points, from = x_range[1], to = x_range[2]))
+      x_seq     <- densities[[1]]$x
+      x_den     <- do.call(cbind, lapply(densities, `[[`, "y"))
     }else{
       x_den <- mpdf(x, x_seq)
       x_sam <- NULL
@@ -248,8 +266,11 @@ density.prior <- function(x,
 
     out <- list()
     out_types <- .density.prior_type(x)
+    components <- .weightfunction_marginal_components(x)
 
     for(i in 1:ncol(x_den)){
+
+      temp_samples <- if(is.null(x_sam)) NULL else x_sam[,i]
 
       # create the output object
       if(out_types[i] == "point"){
@@ -257,9 +278,9 @@ density.prior <- function(x,
           call    = call("density", print(x, silent = TRUE)),
           bw      = NULL,
           n       = n_points,
-          x       = 1,
+          x       = components[[i]]$location,
           y       = 1,
-          samples = x_sam[,i]
+          samples = temp_samples
         )
       }else{
         temp_out <- list(
@@ -268,15 +289,15 @@ density.prior <- function(x,
           n       = n_points,
           x       = x_seq,
           y       = x_den[,i],
-          samples = x_sam[,i]
+          samples = temp_samples
         )
       }
 
 
       class(temp_out) <- c("density", "density.prior", paste0("density.prior.",out_types[i]))
-      attr(temp_out, "x_range") <- c(0, 1)
-      attr(temp_out, "y_range") <- c(0, max(x_den[,i]))
-      attr(temp_out, "steps")   <- c(1, x$parameters[["steps"]], 0)[c(i+1, i)]
+      attr(temp_out, "x_range") <- x_range
+      attr(temp_out, "y_range") <- if(out_types[i] == "point") c(0, 1) else c(0, max(x_den[,i]))
+      attr(temp_out, "steps")   <- c(x$bins$lower[i], x$bins$upper[i])
 
       out[[i]] <- temp_out
     }
@@ -284,19 +305,19 @@ density.prior <- function(x,
   }else{
 
     # weightfunction specific stuff
-    x_seq     <- c(0, rev(x$parameters[["steps"]]), 1)
+    x_seq     <- .weightfunction_local_cuts(x)
     x_seq_rep <- c(1, sort(rep(2:(length(x_seq)-1), 2)) ,length(x_seq))
     x_val_rep <- sort(rep(1:(length(x_seq)-1), 2))
     if(force_samples | .density.prior_need_samples(x)){
       x_sam  <- rng(x, n_samples)
-      x_lCI  <- rev(apply(x_sam, 2, stats::quantile, probs = .025))
-      x_uCI  <- rev(apply(x_sam, 2, stats::quantile, probs = .975))
-      x_mean <- rev(apply(x_sam, 2, mean))
+      x_lCI  <- apply(x_sam, 2, stats::quantile, probs = .025)
+      x_uCI  <- apply(x_sam, 2, stats::quantile, probs = .975)
+      x_mean <- apply(x_sam, 2, mean)
     }else{
       x_sam  <- NULL
-      x_lCI  <- rev(mquant(x, .025))
-      x_uCI  <- rev(mquant(x, .975))
-      x_mean <- rev(mean(x))
+      x_lCI  <- mquant(x, .025)
+      x_uCI  <- mquant(x, .975)
+      x_mean <- mean(x)
     }
 
     out <- list(
@@ -313,7 +334,7 @@ density.prior <- function(x,
 
     class(out) <- c("density", "density.prior", "density.prior.weightfunction")
     attr(out, "x_range") <- c(0, 1)
-    attr(out, "y_range") <- c(0, 1)
+    attr(out, "y_range") <- c(0, max(1, x_mean, x_lCI, x_uCI, na.rm = TRUE))
   }
 
   return(out)
@@ -394,7 +415,7 @@ density.prior <- function(x,
   if(force_samples | .density.prior_need_samples(x)){
 
     if(is.na(x$parameters[["K"]]) && !is.null(attr(x, "levels"))){
-      x$parameters[["K"]] <- .get_prior_factor_levels(prior)
+      x$parameters[["K"]] <- .get_prior_factor_levels(x)
     }else if(is.na(x$parameters[["K"]])){
       x$parameters[["K"]] <- 1
       warning("number of factor levels / dimensionality of the prior distribution was not specified -- assuming two factor levels")
@@ -402,7 +423,9 @@ density.prior <- function(x,
 
     x_sam <- rng(x, n_samples)
     x_sam <- as.vector(x_sam)
-    x_den <- stats::density(x_sam, n = n_points, from = x_range[1], to = x_range[2])$y
+    x_density <- stats::density(x_sam, n = n_points, from = x_range[1], to = x_range[2])
+    x_seq     <- x_density$x
+    x_den     <- x_density$y
 
   }else{
     x_den <- mpdf(x, x_seq)
@@ -473,7 +496,7 @@ density.prior <- function(x,
 
 
   class(out) <- c("density", "density.prior.spike_and_slab")
-  attr(out, "x_range") <- x_range
+  attr(out, "x_range") <- range(c(attr(density_variable, "x_range"), attr(density_inclusion, "x_range")))
   attr(out, "y_range_variable")  <- attr(density_variable,  "y_range")
   attr(out, "y_range_inclusion") <- attr(density_inclusion, "y_range")
 
@@ -512,6 +535,13 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
 
   x_range <- c(NA, NA)
 
+  if(is.prior.weightfunction(x)){
+    return(.weightfunction_range(x, quantiles))
+  }
+  if(is_prior_phacking(x) || is_prior_bias(x)){
+    .selection_prior_stop_unsupported_generic("range", x)
+  }
+
   if(is.infinite(x[["truncation"]][["lower"]])){
     x_range[1] <- mquant(x, quantiles)
   }else{
@@ -532,12 +562,6 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
 # helper functions
 .density.prior_need_samples   <- function(prior){
 
-  if(is.prior.weightfunction(prior)){
-    if(all(names(prior$parameters) %in% c("alpha1", "alpha2", "steps"))){
-      return(TRUE)
-    }
-  }
-
   return(FALSE)
 }
 .density.prior_type           <- function(prior){
@@ -546,11 +570,12 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
   }else if(is.prior.simple(prior)){
     return("simple")
   }else if(is.prior.weightfunction(prior)){
-    if(prior[["distribution"]] %in% c("one.sided.fixed", "two.sided.fixed")){
-      return(rep("point", length(prior[["parameters"]][["steps"]]) + 1))
-    }else{
-      return(c(rep("simple", length(prior[["parameters"]][["steps"]])), "point"))
-    }
+    components <- .weightfunction_marginal_components(prior)
+    return(vapply(components, function(component){
+      if(component$type == "point") "point" else "simple"
+    }, character(1)))
+  }else if(is_prior_phacking(prior) || is_prior_bias(prior)){
+    .selection_prior_stop_unsupported_generic("density", prior)
   }else if(is.prior.orthonormal(prior)){
     return("orthonormal")
   }else if(is.prior.meandif(prior)){
@@ -570,10 +595,7 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
     "exp"       = .005,
     "uniform"   = .005,
     "point"     = .005,
-    "one.sided" = .005,
-    "one.sided" = .005,
-    "two.sided.fixed" = .005,
-    "two.sided.fixed" = .005,
+    "weightfunction" = .005,
     "mnormal"    = .005,
     "mt"         = .010
   )
@@ -601,12 +623,13 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
 }
 .density.prior_transformation_y         <- function(x, y, transformation, transformation_arguments = NULL){
 
-  arg <- list(x = x)
+  x_inv <- .density.prior_transformation_inv_x(x, transformation, transformation_arguments)
+  arg <- list(x = x_inv)
   for(i in seq_along(transformation_arguments)){
     arg[[names(transformation_arguments)[i]]] <- transformation_arguments[[i]]
   }
 
-  y * do.call(.density.prior_transformation_functions(transformation)$jac, arg)
+  y / abs(do.call(.density.prior_transformation_functions(transformation)$jac, arg))
 }
 .density.prior_transformation_functions <- function(transformation){
 
@@ -617,17 +640,25 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
       "lin" = list(
         fun = function(x, a = 0, b = 1)a + b * x,
         inv = function(x, a = 0, b = 1)(x - a) / b,
-        jac = function(x, a = 0, b = 1)1 / b
+        jac = function(x, a = 0, b = 1)b
+      ),
+      "exp_lin" = list(
+        # Exponential-linear transformation: exp(a + b * log(x))
+        # Used for log-intercept unscaling where: intercept_orig = exp(log(intercept_z) * b + a)
+        # When a = 0 and b = 1, this is identity: exp(log(x)) = x
+        fun = function(x, a = 0, b = 1) exp(a + b * log(x)),
+        inv = function(x, a = 0, b = 1) exp((log(x) - a) / b),
+        jac = function(x, a = 0, b = 1) b * exp(a + b * log(x)) / x
       ),
       "tanh" = list(
         fun = tanh,
         inv = atanh,
-        jac = function(x)1/(1-x^2)
+        jac = function(x)1 - tanh(x)^2
       ),
       "exp"  = list(
         fun = exp,
         inv = log,
-        jac = function(x)1/x
+        jac = exp
       )
     ))
 
@@ -637,7 +668,7 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
 
   }else{
 
-    stop("Transformation must be either a character vector of length 1 corresponding to one of known transformations ('lin' = linear, 'tanh' = Fisher's z, 'exp' = exponential) or a list of three functions (fun = transformation function, inv = inverse transformation, jac = jacobian adjustment).")
+    stop("Transformation must be either a character vector of length 1 corresponding to one of known transformations ('lin' = linear, 'exp_lin' = exponential-linear for log-intercept, 'tanh' = hyperbolic tangent, 'exp' = exponential) or a list of three functions (fun = transformation function, inv = inverse transformation, jac = derivative of the transformation).")
 
   }
 

@@ -1,0 +1,2 @@
+   Mean    SD 0.025   0.5 0.975 error(MCMC) error(MCMC)/SD ESS R-hat
+s 0.426 0.047 0.349 0.420 0.524     0.00211          0.045 491 1.005

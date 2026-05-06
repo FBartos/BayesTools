@@ -45,9 +45,8 @@
 <text x='44.64' y='178.08' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>0.5</text>
 <text x='44.64' y='115.65' text-anchor='end' style='font-size: 12.00px; font-family: sans;' textLength='16.68px' lengthAdjust='spacingAndGlyphs'>0.6</text>
 <text x='374.40' y='33.65' text-anchor='middle' style='font-size: 12.00px; font-weight: bold; font-family: sans;' textLength='33.35px' lengthAdjust='spacingAndGlyphs'>exp(x)</text>
-<text x='338.90' y='554.80' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
-<text x='341.91' y='554.80' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='38.68px' lengthAdjust='spacingAndGlyphs'>Normal</text>
-<text x='381.89' y='554.80' style='font-size: 12.00px; font-family: sans;' textLength='28.01px' lengthAdjust='spacingAndGlyphs'>(0, 1)</text>
+<text x='325.88' y='554.79' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
+<text x='328.89' y='554.79' style='font-size: 12.00px; font-family: sans;' textLength='94.03px' lengthAdjust='spacingAndGlyphs'>exp(Normal(0, 1))</text>
 <text transform='translate(12.96,280.80) rotate(-90)' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='40.02px' lengthAdjust='spacingAndGlyphs'>Density</text>
 </g>
 <defs>

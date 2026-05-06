@@ -47,7 +47,7 @@
 #' @export check_list
 
 #' @rdname check_input
-check_bool   <- function(x, name, check_length = 1, allow_NULL = FALSE, allow_NA = TRUE, call = ""){
+check_bool   <- function(x, name = deparse(substitute(x)), check_length = 1, allow_NULL = FALSE, allow_NA = TRUE, call = ""){
 
   if(is.null(x) || length(x) == 0){
     if(allow_NULL){
@@ -70,7 +70,7 @@ check_bool   <- function(x, name, check_length = 1, allow_NULL = FALSE, allow_NA
 }
 
 #' @rdname check_input
-check_char   <- function(x, name, check_length = 1, allow_values = NULL, allow_NULL = FALSE, allow_NA = TRUE, call = ""){
+check_char   <- function(x, name = deparse(substitute(x)), check_length = 1, allow_values = NULL, allow_NULL = FALSE, allow_NA = TRUE, call = ""){
 
   if(is.null(x) || length(x) == 0){
     if(allow_NULL){
@@ -86,17 +86,20 @@ check_char   <- function(x, name, check_length = 1, allow_values = NULL, allow_N
   if(check_length != 0 && length(x) != check_length)
     stop(paste0(call, "The '", name, "' argument must have length '", check_length, "'."), call. = FALSE)
 
-  if(!is.null(allow_values) && any(!x %in% allow_values))
-    stop(paste0(call, "The '", paste0(x[!x %in% allow_values], collapse = "', '") ,"' values are not recognized by the '", name, "' argument."), call. = FALSE)
-
   if(!allow_NA && anyNA(x))
     stop(paste0(call, "The '", name, "' argument cannot contain NA/NaN values."), call. = FALSE)
+
+  if(!is.null(allow_values)){
+    unrecognized <- !is.na(x) & !x %in% allow_values
+    if(any(unrecognized))
+      stop(paste0(call, "The '", paste0(x[unrecognized], collapse = "', '") ,"' values are not recognized by the '", name, "' argument."), call. = FALSE)
+  }
 
   return()
 }
 
 #' @rdname check_input
-check_real   <- function(x, name, lower = -Inf, upper = Inf, allow_bound = TRUE, check_length = 1, allow_NULL = FALSE, allow_NA = TRUE, call = ""){
+check_real   <- function(x, name = deparse(substitute(x)), lower = -Inf, upper = Inf, allow_bound = TRUE, check_length = 1, allow_NULL = FALSE, allow_NA = TRUE, call = ""){
 
   if(is.null(x) || length(x) == 0){
     if(allow_NULL){
@@ -115,22 +118,24 @@ check_real   <- function(x, name, lower = -Inf, upper = Inf, allow_bound = TRUE,
   if(!is.numeric(x) | !is.vector(x))
     stop(paste0(call, "The '", name, "' argument must be a numeric vector."), call. = FALSE)
 
+  x_no_na <- x[!is.na(x)]
+
   if(!is.infinite(lower)){
     if(!allow_bound){
-      if(any(x[!is.na(x)] <= lower))
+      if(any(x_no_na <= lower))
         stop(paste0(call, "The '", name ,"' must be higher than ", lower,"."), call. = FALSE)
     }else{
-      if(any(x[!is.na(x)] < lower))
+      if(any(x_no_na < lower))
         stop(paste0(call, "The '", name ,"' must be equal or higher than ", lower,"."), call. = FALSE)
     }
   }
 
   if(!is.infinite(upper)){
     if(!allow_bound){
-      if(any(x >= upper))
+      if(any(x_no_na >= upper))
         stop(paste0(call, "The '", name ,"' must be lower than ", upper,"."), call. = FALSE)
     }else{
-      if(any(x > upper))
+      if(any(x_no_na > upper))
         stop(paste0(call, "The '", name ,"' must be equal or lower than ", upper,"."), call. = FALSE)
     }
   }
@@ -139,7 +144,7 @@ check_real   <- function(x, name, lower = -Inf, upper = Inf, allow_bound = TRUE,
 }
 
 #' @rdname check_input
-check_int    <- function(x, name, lower = -Inf, upper = Inf, allow_bound = TRUE, check_length = 1, allow_NULL = FALSE, allow_NA = TRUE, call = ""){
+check_int    <- function(x, name = deparse(substitute(x)), lower = -Inf, upper = Inf, allow_bound = TRUE, check_length = 1, allow_NULL = FALSE, allow_NA = TRUE, call = ""){
 
   if(is.null(x) || length(x) == 0){
     if(allow_NULL){
@@ -158,7 +163,7 @@ check_int    <- function(x, name, lower = -Inf, upper = Inf, allow_bound = TRUE,
 }
 
 #' @rdname check_input
-check_list   <- function(x, name, check_length = 0, check_names = NULL, all_objects = FALSE, allow_other = FALSE, allow_NULL = FALSE, call = ""){
+check_list   <- function(x, name = deparse(substitute(x)), check_length = 0, check_names = NULL, all_objects = FALSE, allow_other = FALSE, allow_NULL = FALSE, call = ""){
 
   if(is.null(x) || length(x) == 0){
     if(allow_NULL){
@@ -189,7 +194,7 @@ check_list   <- function(x, name, check_length = 0, check_names = NULL, all_obje
 # helper functions
 .is.wholenumber  <- function(x, na.rm = FALSE, tol = .Machine$double.eps^0.5){
   if(na.rm){
-    return(abs(x - round(stats::na.omit(x))) < tol)
+    return(stats::na.omit(abs(x - round(x))) < tol)
   }else{
     return(abs(x - round(x)) < tol)
   }
@@ -215,13 +220,13 @@ check_list   <- function(x, name, check_length = 0, check_names = NULL, all_obje
 
 # check whether package is installed
 .check_rstan   <- function(){
-  if(!try(requireNamespace("rstan")))
+  if(!requireNamespace("rstan", quietly = TRUE))
     stop("rstan package needs to be installed. Run 'install.packages('rstan')'")
   else
     return(invisible(TRUE))
 }
 .check_runjags <- function(){
-  if(!try(requireNamespace("runjags")))
+  if(!requireNamespace("runjags", quietly = TRUE))
     stop("runjags package needs to be installed. Run 'install.packages('runjags')'")
   else
     return(invisible(TRUE))
@@ -257,19 +262,38 @@ check_list   <- function(x, name, check_length = 0, check_names = NULL, all_obje
 }
 
 # JASP progress bar functions
-.JASP_progress_bar_start <- function(n, label = "", package_source = "jaspBase"){
-  if(isTRUE(eval(expr = parse(text = paste0("require('", package_source, "')")))) && eval(expr = parse(text = paste0(package_source, '::jaspResultsCalledFromJasp()')))){
-    eval(expr = parse(text = paste0(package_source, '::startProgressbar(expectedTicks = n, label = label)')))
-  }else{
-    cat(paste0(label, "(", n , ")\n"))
+.JASP_progress_bar_active <- function(package_source = "jaspBase"){
+  if(!requireNamespace(package_source, quietly = TRUE)){
+    return(FALSE)
   }
+
+  namespace <- asNamespace(package_source)
+  if(!exists("jaspResultsCalledFromJasp", envir = namespace, inherits = FALSE)){
+    return(FALSE)
+  }
+
+  isTRUE(get("jaspResultsCalledFromJasp", envir = namespace, inherits = FALSE)())
+}
+.JASP_progress_bar_call <- function(function_name, package_source = "jaspBase", ...){
+  if(!.JASP_progress_bar_active(package_source)){
+    return(invisible(FALSE))
+  }
+
+  namespace <- asNamespace(package_source)
+  if(!exists(function_name, envir = namespace, inherits = FALSE)){
+    return(invisible(FALSE))
+  }
+
+  do.call(get(function_name, envir = namespace, inherits = FALSE), list(...))
+  return(invisible(TRUE))
+}
+.JASP_progress_bar_start <- function(n, label = "", package_source = "jaspBase"){
+  .JASP_progress_bar_call("startProgressbar", package_source, expectedTicks = n, label = label)
+  return(invisible())
 }
 .JASP_progress_bar_tick  <- function(package_source = "jaspBase"){
-  if(isTRUE(eval(expr = parse(text = paste0("require('", package_source, "')")))) && eval(expr = parse(text = paste0(package_source, '::jaspResultsCalledFromJasp()')))){
-    eval(expr = parse(text = paste0(package_source, '::progressbarTick()')))
-  }else{
-    cat(".")
-  }
+  .JASP_progress_bar_call("progressbarTick", package_source)
+  return(invisible())
 }
 
 # depreciate orthonormal

@@ -12,12 +12,15 @@ geom_prior_list(
   n_points = 500,
   n_samples = 10000,
   force_samples = FALSE,
+  individual = FALSE,
+  show_figures = if (individual) 1 else NULL,
   transformation = NULL,
   transformation_arguments = NULL,
   transformation_settings = FALSE,
   rescale_x = FALSE,
   scale_y2 = NULL,
   prior_list_mu = NULL,
+  effect_direction = "positive",
   ...
 )
 }
@@ -47,16 +50,24 @@ analytically (or if samples are forced with
 \item{force_samples}{should prior be sampled instead
 of obtaining analytic solution whenever possible}
 
+\item{individual}{should individual densities be returned
+(e.g., in case of weightfunction)}
+
+\item{show_figures}{which figures should be returned in case of
+multiple plots are generated. Useful when priors for the omega
+parameter are plotted and \code{individual = TRUE}.}
+
 \item{transformation}{transformation to be applied
 to the prior distribution. Either a character
 specifying one of the prepared transformations:
 \describe{
 \item{lin}{linear transformation in form of \code{a + b*x}}
-\item{tanh}{also known as Fisher's z transformation}
+\item{tanh}{hyperbolic tangent transformation}
 \item{exp}{exponential transformation}
 }, or a list containing the transformation function \code{fun},
-inverse transformation function \code{inv}, and the Jacobian of
-the transformation \code{jac}. See examples for details.}
+inverse transformation function \code{inv}, and derivative of the
+transformation \code{jac}, evaluated on the original support. See examples
+for details.}
 
 \item{transformation_arguments}{a list with named arguments for
 the \code{transformation}}
@@ -72,6 +83,11 @@ weightfunction is plotted.}
 
 \item{prior_list_mu}{list of priors for the mu parameter
 required when plotting PET-PEESE}
+
+\item{effect_direction}{direction of the effect for PET-PEESE
+regression. Use \code{"positive"} (default) for
+\code{mu + PET*se + PEESE*se^2} or \code{"negative"} for
+\code{mu - PET*se - PEESE*se^2}.}
 
 \item{...}{additional arguments}
 }

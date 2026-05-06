@@ -29,4 +29,6 @@ the models represent the null or alternative hypothesis.
 Supplying \code{margliks} as the input is preferred since it is better at dealing with
 under/overflow (posterior probabilities are very close to either 0 or 1). In case that both the
 \code{post_probs} and \code{margliks} are supplied, the results are based on \code{margliks}.
+If the prior probability of either the null or alternative hypothesis is
+zero, the Bayes factor is undefined and \code{NA} is returned.
 }

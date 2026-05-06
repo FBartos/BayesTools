@@ -13,31 +13,34 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - {os: windows-latest, r: 'release'}
-          - {os: ubuntu-latest, r: 'release'}
-          - {os: macOS-latest, r: 'release'}
+          - {os: windows-latest, r: '4.6'}
+          - {os: ubuntu-latest, r: '4.6'}
+          - {os: macos-15-intel, r: '4.6'}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup R
+        id: setup-r
         uses: r-lib/actions/setup-r@v2
         with:
           r-version: ${{ matrix.config.r }}
 
+      - name: Setup Pandoc
+        uses: r-lib/actions/setup-pandoc@v2
+
       # Cache R packages
       - name: Cache R packages
-        uses: actions/cache@v3
+        uses: actions/cache@v5
         with:
           path: ${{ env.R_LIBS_USER }}
-          key: ${{ runner.os }}-r-${{ matrix.config.r }}-${{ hashFiles('**/DESCRIPTION') }}
+          key: ${{ runner.os }}-r-${{ steps.setup-r.outputs.installed-r-version }}-cache-v2-${{ hashFiles('**/DESCRIPTION') }}
           restore-keys: |
-            ${{ runner.os }}-r-${{ matrix.config.r }}-
-            ${{ runner.os }}-r-
+            ${{ runner.os }}-r-${{ steps.setup-r.outputs.installed-r-version }}-cache-v2-
 
       # Cache system dependencies
       - name: Cache system dependencies
         if: runner.os == 'Linux'
-        uses: actions/cache@v3
+        uses: actions/cache@v5
         with:
           path: /var/cache/apt
           key: ${{ runner.os }}-apt-${{ hashFiles('.github/workflows/R-CMD-check.yaml') }}
@@ -47,7 +50,7 @@ jobs:
       # Cache JAGS installation (Windows)
       - name: Cache JAGS (Windows)
         if: runner.os == 'Windows'
-        uses: actions/cache@v3
+        uses: actions/cache@v5
         with:
           path: C:\Program Files\JAGS
           key: ${{ runner.os }}-jags-4.3.1
@@ -57,7 +60,7 @@ jobs:
       # Cache JAGS installation (macOS)  
       - name: Cache JAGS (macOS)
         if: runner.os == 'macOS'
-        uses: actions/cache@v3
+        uses: actions/cache@v5
         with:
           path: /opt/homebrew
           key: ${{ runner.os }}-jags-${{ hashFiles('.github/workflows/R-CMD-check.yaml') }}
@@ -71,6 +74,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libssl-dev \
+            libuv1-dev \
             libcurl4-openssl-dev \
             libxml2-dev \
             libfontconfig1-dev \
@@ -140,7 +144,7 @@ jobs:
           options(repos = c(CRAN = "https://cloud.r-project.org"))
           
           # Check if packages are already installed before installing
-          required_packages <- c('devtools', 'rcmdcheck', 'BayesFactor', 'RoBMA', 'runjags', 'rjags', 'rstan', 'scales', 'vdiffr', 'testthat', 'covr', 'pandoc')
+          required_packages <- c('devtools', 'rcmdcheck', 'BayesFactor', 'RoBMA', 'runjags', 'rjags', 'rstan', 'scales', 'vdiffr', 'testthat', 'covr', 'lme4')
           missing_packages <- required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)]
           
           if (length(missing_packages) > 0) {
@@ -157,6 +161,8 @@ jobs:
         if: runner.os != 'Windows'
         env:
           _R_CHECK_CRAN_INCOMING_REMOTE_: false
+          BAYESTOOLS_TEST_PROFILE: all
+          AGENT: 1
         run: |
           options(crayon.enabled = TRUE)
           rcmdcheck::rcmdcheck(
@@ -164,12 +170,14 @@ jobs:
             build_args  = c("--no-build-vignettes"),
             error_on    = "warning",
             check_dir   = "check")
-        shell: Rscript {0}"
+        shell: Rscript {0}
 
       - name: Check
         if: runner.os == 'Windows'
         env:
           _R_CHECK_CRAN_INCOMING_REMOTE_: false
+          BAYESTOOLS_TEST_PROFILE: all
+          AGENT: 1
           JAGS_ROOT: "/c/progra~1/JAGS/JAGS-4.3.1"
           JAGS_MAJOR_VERSION: 4
         run: |
@@ -183,7 +191,7 @@ jobs:
 
       - name: Upload check results
         if: failure()
-        uses: actions/upload-artifact@main
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ runner.os }}-r${{ matrix.config.r }}-results
           path: check

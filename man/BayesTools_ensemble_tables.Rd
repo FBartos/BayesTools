@@ -16,13 +16,15 @@
 ensemble_estimates_table(
   samples,
   parameters,
-  probs = c(0.025, 0.95),
+  probs = c(0.025, 0.975),
   title = NULL,
   footnotes = NULL,
   warnings = NULL,
   transform_factors = FALSE,
   transform_orthonormal = FALSE,
-  formula_prefix = TRUE
+  formula_prefix = TRUE,
+  transform_scaled = FALSE,
+  formula_scale = NULL
 )
 
 ensemble_inference_table(
@@ -58,7 +60,7 @@ ensemble_diagnostics_table(
 )
 
 ensemble_estimates_empty_table(
-  probs = c(0.025, 0.95),
+  probs = c(0.025, 0.975),
   title = NULL,
   footnotes = NULL,
   warnings = NULL
@@ -78,13 +80,15 @@ marginal_estimates_table(
   samples,
   inference,
   parameters,
-  probs = c(0.025, 0.95),
+  probs = c(0.025, 0.5, 0.975),
   logBF = FALSE,
   BF01 = FALSE,
   title = NULL,
   footnotes = NULL,
   warnings = NULL,
-  formula_prefix = TRUE
+  formula_prefix = TRUE,
+  transform_scaled = FALSE,
+  formula_scale = NULL
 )
 }
 \arguments{
@@ -113,6 +117,16 @@ differences from the grand mean}
 
 \item{formula_prefix}{whether the parameter prefix from formula should
 be printed. Defaults to \code{TRUE}.}
+
+\item{transform_scaled}{whether coefficients from standardized
+continuous predictors should be transformed back to the original
+scale. Defaults to \code{FALSE}.}
+
+\item{formula_scale}{named list containing standardization information
+(mean and sd) for each standardized predictor. Required when
+\code{transform_scaled = TRUE} for ensemble/marginal tables. For
+\code{runjags_estimates_table}, this is automatically extracted from
+the fit object's \code{formula_scale} attribute.}
 
 \item{inference}{model inference created by \link{ensemble_inference}}
 

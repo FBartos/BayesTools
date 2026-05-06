@@ -1,0 +1,1 @@
+,JAGS model with 101 samples (adapt+burnin = 100),,Full summary statistics have not been pre-calculated - use either the summary method or add.summary to calculate summary statistics,

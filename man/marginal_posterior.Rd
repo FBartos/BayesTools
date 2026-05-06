@@ -40,11 +40,12 @@ to the prior distribution. Either a character
 specifying one of the prepared transformations:
 \describe{
 \item{lin}{linear transformation in form of \code{a + b*x}}
-\item{tanh}{also known as Fisher's z transformation}
+\item{tanh}{hyperbolic tangent transformation}
 \item{exp}{exponential transformation}
 }, or a list containing the transformation function \code{fun},
-inverse transformation function \code{inv}, and the Jacobian of
-the transformation \code{jac}. See examples for details.}
+inverse transformation function \code{inv}, and derivative of the
+transformation \code{jac}, evaluated on the original support. See examples
+for details.}
 
 \item{transformation_arguments}{a list with named arguments for
 the \code{transformation}}
@@ -53,8 +54,8 @@ the \code{transformation}}
 settings the \code{x_seq} or \code{x_range} was specified on
 the transformed support}
 
-\item{n_samples}{number of samples to be drawn for the model-averaged
-prior distribution}
+\item{n_samples}{controls the numerical grid used for model-averaged
+prior densities}
 
 \item{...}{additional arguments}
 }

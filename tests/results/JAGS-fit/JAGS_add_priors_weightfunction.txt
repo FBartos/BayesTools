@@ -1,0 +1,12 @@
+model{
+ eta[1] ~ dgamma(1, 1)
+eta[2] ~ dgamma(1, 1)
+for(j in 1:2){
+  std_eta[j] <- eta[j] / sum(eta)
+}
+omega[1] <- 1
+for(j in 2:2){
+  omega[j] <- sum(std_eta[j:2])
+}
+
+}

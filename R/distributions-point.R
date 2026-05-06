@@ -10,7 +10,7 @@
 #' @param log,log.p logical; if \code{TRUE}, probabilities
 #' \code{p} are given as \code{log(p)}.
 #' @param lower.tail logical; if \code{TRUE} (default), probabilities
-#' are \eqn{P[X \le x]}, otherwise, \eqn{P[X \ge x]}.
+#' are \eqn{P[X \le x]}, otherwise, \eqn{P[X > x]}.
 #'
 #' @examples
 #' # draw samples from a point distribution
@@ -43,13 +43,11 @@ dpoint <- function(x, location, log = FALSE){
     location <- rep(location, length(x))
   }
 
-  lik <- sapply(1:length(x), function(i){
-    if(isTRUE(all.equal(location[i], x[i]))){
-      return(Inf)
-    }else{
-      return(0)
-    }
-  })
+  lik <- ifelse(
+    is.na(location) | is.na(x),
+    NA_real_,
+    ifelse(location == x, Inf, 0)
+  )
 
   if(log){
     lik <- log(lik)

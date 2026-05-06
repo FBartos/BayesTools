@@ -1,546 +1,30 @@
-context("JAGS formula")
-
-test_that("JAGS formula works", {
-
-  # check the posterior distributions with weak priors against a maximum likelihood estimates with ML
-  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
-  skip_on_cran()
-
-  set.seed(1)
-  df_all <- data.frame(
-    x_cont1 = rnorm(60),
-    x_cont2 = rnorm(60),
-    x_bin   = rbinom(60, 1, .5),
-    x_fac2o = factor(rep(c("A", "B"), 30), levels = c("A", "B")),
-    x_fac2t = factor(rep(c("A", "B"), 30), levels = c("A", "B")),
-    x_fac3o = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C")),
-    x_fac3t = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C")),
-    x_fac3i = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C")),
-    x_fac3md= factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C"))
-  )
-  df_all$y <- rnorm(60, 0.1, 0.5) + 0.30 * df_all$x_cont1 - 0.15 * df_all$x_cont1 * df_all$x_cont2 + 0.2 * df_all$x_bin +
-    ifelse(df_all$x_fac3t == "A", 0.2, ifelse(df_all$x_fac3t == "B", -0.2, 0)) +
-    ifelse(df_all$x_fac3o == "A", 0.2, ifelse(df_all$x_fac3o == "B", -0.2, 0))
-  prior_list_all <- list(
-    "intercept"       = prior("normal", list(0, 5)),
-    "x_cont1"         = prior("normal", list(0, 1)),
-    "x_cont2"         = prior("normal", list(0, 1)),
-    "x_cont1:x_cont2" = prior("normal", list(0, 1)),
-    "x_fac2o"         = prior_factor("mcauchy", contrast = "orthonormal", list(0, 1)),
-    "x_fac2t"         = prior_factor("normal",  contrast = "treatment",   list(0, 1)),
-    "x_fac3o"         = prior_factor("mnormal", contrast = "orthonormal", list(0, 1)),
-    "x_fac3t"         = prior_factor("uniform", contrast = "treatment",   list(-2, 2)),
-    "x_fac3i"         = prior_factor("normal",  contrast = "independent", list(0, 1)),
-    "x_fac3md"        = prior_factor("mnormal", contrast = "meandif",     list(0, 1)),
-    "x_fac2t:x_fac3o" = prior_factor("mnormal", contrast = "orthonormal", list(0,  2)),
-    "x_fac2o:x_fac3t" = prior_factor("normal",  contrast = "treatment",   list(0,  2)),
-    "x_cont1:x_fac3o" = prior_factor("mnormal", contrast = "orthonormal", list(0,  2)),
-    "x_cont1:x_fac3t" = prior_factor("normal",  contrast = "treatment",   list(0,  2))
-  )
-  prior_list2  <- list(
-    "sigma" = prior("cauchy", list(0, 1), list(0, 1))
-  )
-  model_syntax <- paste0(
-    "for(i in 1:N){\n",
-    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
-    "}\n"
-  )
-
-
-  # simple linear regression ----
-  formula_1      <- JAGS_formula(~ x_cont1, parameter = "mu", data = df_all[,"x_cont1", drop = FALSE], prior_list = prior_list_all[c("intercept", "x_cont1")])
-  prior_list_1   <- c(formula_1$prior_list, prior_list2)
-  model_syntax_1 <- JAGS_add_priors(paste0("model{", formula_1$formula_syntax, model_syntax, "}"), prior_list_1)
-  data_1         <- c(formula_1$data, N = nrow(df_all), y = list(df_all$y))
-
-  model_1   <- rjags::jags.model(file = textConnection(model_syntax_1), inits = JAGS_get_inits(prior_list_1, chains = 2, seed = 1), data = data_1, n.chains = 2, quiet = TRUE)
-  samples_1 <- rjags::coda.samples(model = model_1, variable.names = JAGS_to_monitor(prior_list_1), n.iter = 5000, quiet = TRUE, progress.bar = "none")
-  samples_1 <- do.call(rbind, samples_1)
-
-  lm_1 <- stats::lm(y ~ x_cont1, data = df_all)
-
-  vdiffr::expect_doppelganger("JAGS-formula-lm-1", function(){
-
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
-    par(mfcol = c(1, 3))
-
-    hist(samples_1[,"mu_intercept"], freq = FALSE, main = "Intercept")
-    curve(dnorm(x, mean = coef(lm_1)["(Intercept)"], sd = summary(lm_1)$coefficients["(Intercept)", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_1[,"mu_x_cont1"], freq = FALSE, main = "x_cont1")
-    curve(dnorm(x, mean = coef(lm_1)["x_cont1"], sd = summary(lm_1)$coefficients["x_cont1", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_1[,"sigma"], freq = FALSE, main = "sigma")
-    abline(v = sigma(lm_1), lwd = 3)
-  })
-
-
-  # linear regression with two continuous predictors and their interaction ----
-  formula_2      <- JAGS_formula(~ x_cont1 * x_cont2, parameter = "mu", data = df_all[,c("x_cont1", "x_cont2")], prior_list = prior_list_all[c("intercept", "x_cont1", "x_cont2", "x_cont1:x_cont2")])
-  prior_list_2   <- c(formula_2$prior_list, prior_list2)
-  model_syntax_2 <- JAGS_add_priors(paste0("model{", formula_2$formula_syntax, model_syntax, "}"), prior_list_2)
-  data_2         <- c(formula_2$data, N = nrow(df_all), y = list(df_all$y))
-
-  model_2   <- rjags::jags.model(file = textConnection(model_syntax_2), inits = JAGS_get_inits(prior_list_2, chains = 2, seed = 1), data = data_2, n.chains = 2, quiet = TRUE)
-  samples_2 <- rjags::coda.samples(model = model_2, variable.names = JAGS_to_monitor(prior_list_2), n.iter = 5000, quiet = TRUE, progress.bar = "none")
-  samples_2 <- do.call(rbind, samples_2)
-
-  lm_2 <- stats::lm(y ~ x_cont1 * x_cont2, data = df_all)
-
-  vdiffr::expect_doppelganger("JAGS-formula-lm-2", function(){
-
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
-    par(mfcol = c(1, 3))
-
-    hist(samples_2[,"mu_x_cont1"], freq = FALSE, main = "x_cont1")
-    curve(dnorm(x, mean = coef(lm_2)["x_cont1"], sd = summary(lm_2)$coefficients["x_cont1", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_2[,"mu_x_cont2"], freq = FALSE, main = "x_cont2")
-    curve(dnorm(x, mean = coef(lm_2)["x_cont2"], sd = summary(lm_2)$coefficients["x_cont2", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_2[,"mu_x_cont1__xXx__x_cont2"], freq = FALSE, main = "x_cont1:x_cont2")
-    curve(dnorm(x, mean = coef(lm_2)["x_cont1:x_cont2"], sd = summary(lm_2)$coefficients["x_cont1:x_cont2", "Std. Error"]), add = TRUE, lwd = 2)
-  })
-
-
-  # linear regression with a treatment factor (2 levels) ----
-  formula_3      <- JAGS_formula(~ x_fac2t, parameter = "mu", data = df_all[,"x_fac2t",drop = FALSE], prior_list = prior_list_all[c("intercept", "x_fac2t")])
-  prior_list_3   <- c(formula_3$prior_list, prior_list2)
-  model_syntax_3 <- JAGS_add_priors(paste0("model{", formula_3$formula_syntax, model_syntax, "}"), prior_list_3)
-  data_3         <- c(formula_3$data, N = nrow(df_all), y = list(df_all$y))
-
-  model_3   <- rjags::jags.model(file = textConnection(model_syntax_3), inits = JAGS_get_inits(prior_list_3, chains = 2, seed = 1), data = data_3, n.chains = 2, quiet = TRUE)
-  samples_3 <- rjags::coda.samples(model = model_3, variable.names = JAGS_to_monitor(prior_list_3), n.iter = 5000, quiet = TRUE, progress.bar = "none")
-  samples_3 <- do.call(rbind, samples_3)
-
-  lm_3 <- stats::lm(y ~ x_fac2t, data = df_all)
-
-  vdiffr::expect_doppelganger("JAGS-formula-lm-3", function(){
-
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
-    par(mfcol = c(1, 3))
-
-    hist(samples_3[,"mu_intercept"], freq = FALSE, main = "Intercept")
-    curve(dnorm(x, mean = coef(lm_3)["(Intercept)"], sd = summary(lm_3)$coefficients["(Intercept)", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_3[,"mu_x_fac2t"], freq = FALSE, main = "x_fac2t")
-    curve(dnorm(x, mean = coef(lm_3)["x_fac2tB"], sd = summary(lm_3)$coefficients["x_fac2tB", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_3[,"sigma"], freq = FALSE, main = "sigma")
-    abline(v = sigma(lm_3), lwd = 3)
-  })
-
-
-  # linear regression with an orthonormal factor (2 levels) ----
-  formula_4      <- JAGS_formula(~ x_fac2o, parameter = "mu", data = df_all[,"x_fac2o",drop = FALSE], prior_list = prior_list_all[c("intercept", "x_fac2o")])
-  prior_list_4   <- c(formula_4$prior_list, prior_list2)
-  model_syntax_4 <- JAGS_add_priors(paste0("model{", formula_4$formula_syntax, model_syntax, "}"), prior_list_4)
-  data_4         <- c(formula_4$data, N = nrow(df_all), y = list(df_all$y))
-
-  model_4   <- rjags::jags.model(file = textConnection(model_syntax_4), inits = JAGS_get_inits(prior_list_4, chains = 2, seed = 1), data = data_4, n.chains = 2, quiet = TRUE)
-  samples_4 <- rjags::coda.samples(model = model_4, variable.names = JAGS_to_monitor(prior_list_4), n.iter = 5000, quiet = TRUE, progress.bar = "none")
-  samples_4 <- do.call(rbind, samples_4)
-
-  df_4 <- df_all
-  contrasts(df_4$x_fac2o) <- contr.orthonormal(levels(df_4$x_fac2o))
-  lm_4 <- stats::lm(y ~ x_fac2o, data = df_4)
-
-  vdiffr::expect_doppelganger("JAGS-formula-lm-4", function(){
-
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
-    par(mfcol = c(1, 3))
-
-    hist(samples_4[,"mu_intercept"], freq = FALSE, main = "Intercept")
-    curve(dnorm(x, mean = coef(lm_4)["(Intercept)"], sd = summary(lm_4)$coefficients["(Intercept)", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_4[,"mu_x_fac2o"], freq = FALSE, main = "x_fac2o")
-    curve(dnorm(x, mean = coef(lm_4)["x_fac2o1"], sd = summary(lm_4)$coefficients["x_fac2o1", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_4[,"sigma"], freq = FALSE, main = "sigma")
-    abline(v = sigma(lm_4), lwd = 3)
-  })
-
-
-  # linear regression with a treatment factor (3 levels) ----
-  formula_5      <- JAGS_formula(~ x_fac3t, parameter = "mu", data = df_all[,"x_fac3t",drop = FALSE], prior_list = prior_list_all[c("intercept", "x_fac3t")])
-  prior_list_5   <- c(formula_5$prior_list, prior_list2)
-  model_syntax_5 <- JAGS_add_priors(paste0("model{", formula_5$formula_syntax, model_syntax, "}"), prior_list_5)
-  data_5         <- c(formula_5$data, N = nrow(df_all), y = list(df_all$y))
-
-  model_5   <- rjags::jags.model(file = textConnection(model_syntax_5), inits = JAGS_get_inits(prior_list_5, chains = 2, seed = 1), data = data_5, n.chains = 2, quiet = TRUE)
-  samples_5 <- rjags::coda.samples(model = model_5, variable.names = JAGS_to_monitor(prior_list_5), n.iter = 5000, quiet = TRUE, progress.bar = "none")
-  samples_5 <- do.call(rbind, samples_5)
-
-  lm_5 <- stats::lm(y ~ x_fac3t, data = df_all)
-
-  vdiffr::expect_doppelganger("JAGS-formula-lm-5", function(){
-
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
-    par(mfcol = c(1, 3))
-
-    hist(samples_5[,"mu_intercept"], freq = FALSE, main = "Intercept")
-    curve(dnorm(x, mean = coef(lm_5)["(Intercept)"], sd = summary(lm_5)$coefficients["(Intercept)", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_5[,"mu_x_fac3t[1]"], freq = FALSE, main = "x_fac3t[1]")
-    curve(dnorm(x, mean = coef(lm_5)["x_fac3tB"], sd = summary(lm_5)$coefficients["x_fac3tB", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_5[,"mu_x_fac3t[2]"], freq = FALSE, main = "x_fac3t[2]")
-    curve(dnorm(x, mean = coef(lm_5)["x_fac3tC"], sd = summary(lm_5)$coefficients["x_fac3tC", "Std. Error"]), add = TRUE, lwd = 2)
-  })
-
-
-  # linear regression with an orthonormal factor (3 levels) ----
-  formula_6      <- JAGS_formula(~ x_fac3o, parameter = "mu", data = df_all[,"x_fac3o",drop = FALSE], prior_list = prior_list_all[c("intercept", "x_fac3o")])
-  prior_list_6   <- c(formula_6$prior_list, prior_list2)
-  model_syntax_6 <- JAGS_add_priors(paste0("model{", formula_6$formula_syntax, model_syntax, "}"), prior_list_6)
-  data_6         <- c(formula_6$data, N = nrow(df_all), y = list(df_all$y))
-
-  model_6   <- rjags::jags.model(file = textConnection(model_syntax_6), inits = JAGS_get_inits(prior_list_6, chains = 2, seed = 1), data = data_6, n.chains = 2, quiet = TRUE)
-  samples_6 <- rjags::coda.samples(model = model_6, variable.names = JAGS_to_monitor(prior_list_6), n.iter = 5000, quiet = TRUE, progress.bar = "none")
-  samples_6 <- do.call(rbind, samples_6)
-
-  df_6 <- df_all
-  contrasts(df_6$x_fac3o) <- contr.orthonormal(levels(df_6$x_fac3o))
-  lm_6 <- stats::lm(y ~ x_fac3o, data = df_6)
-
-  vdiffr::expect_doppelganger("JAGS-formula-lm-6", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
-    par(mfcol = c(1, 3))
-
-    hist(samples_6[,"mu_intercept"], freq = FALSE, main = "Intercept")
-    curve(dnorm(x, mean = coef(lm_6)["(Intercept)"], sd = summary(lm_6)$coefficients["(Intercept)", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_6[,"mu_x_fac3o[1]"], freq = FALSE, main = "x_fac3o")
-    curve(dnorm(x, mean = coef(lm_6)["x_fac3o1"], sd = summary(lm_6)$coefficients["x_fac3o1", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_6[,"mu_x_fac3o[2]"], freq = FALSE, main = "x_fac3o")
-    curve(dnorm(x, mean = coef(lm_6)["x_fac3o2"], sd = summary(lm_6)$coefficients["x_fac3o2", "Std. Error"]), add = TRUE, lwd = 2)
-  })
-
-
-  # linear regression with an orthonormal interaction between factors ----
-  formula_7      <- JAGS_formula(~ x_fac2t * x_fac3o, parameter = "mu", data = df_all[,c("x_fac2t", "x_fac3o")], prior_list = prior_list_all[c("intercept", "x_fac2t", "x_fac3o", "x_fac2t:x_fac3o")])
-  prior_list_7   <- c(formula_7$prior_list, prior_list2)
-  model_syntax_7 <- JAGS_add_priors(paste0("model{", formula_7$formula_syntax, model_syntax, "}"), prior_list_7)
-  data_7         <- c(formula_7$data, N = nrow(df_all), y = list(df_all$y))
-
-  model_7   <- rjags::jags.model(file = textConnection(model_syntax_7), inits = JAGS_get_inits(prior_list_7, chains = 2, seed = 1), data = data_7, n.chains = 2, quiet = TRUE)
-  samples_7 <- rjags::coda.samples(model = model_7, variable.names = JAGS_to_monitor(prior_list_7), n.iter = 5000, quiet = TRUE, progress.bar = "none")
-  samples_7 <- do.call(rbind, samples_7)
-
-  df_7 <- df_all
-  contrasts(df_7$x_fac3o) <- contr.orthonormal(levels(df_7$x_fac3o))
-  lm_7 <- stats::lm(y ~ x_fac2t * x_fac3o, data = df_7)
-
-  vdiffr::expect_doppelganger("JAGS-formula-lm-7", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
-    par(mfrow = c(2, 3))
-
-    hist(samples_7[,"mu_intercept"], freq = FALSE, main = "Intercept")
-    curve(dnorm(x, mean = coef(lm_7)["(Intercept)"], sd = summary(lm_7)$coefficients["(Intercept)", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_7[,"mu_x_fac3o[1]"], freq = FALSE, main = "x_fac3o")
-    curve(dnorm(x, mean = coef(lm_7)["x_fac3o1"], sd = summary(lm_7)$coefficients["x_fac3o1", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_7[,"mu_x_fac3o[2]"], freq = FALSE, main = "x_fac3o")
-    curve(dnorm(x, mean = coef(lm_7)["x_fac3o2"], sd = summary(lm_7)$coefficients["x_fac3o2", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_7[,"mu_x_fac2t"], freq = FALSE, main = "x_fac2t")
-    curve(dnorm(x, mean = coef(lm_7)["x_fac2tB"], sd = summary(lm_7)$coefficients["x_fac2tB", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_7[,"mu_x_fac2t__xXx__x_fac3o[1]"], freq = FALSE, main = "x_fac2t:x_fac3o")
-    curve(dnorm(x, mean = coef(lm_7)["x_fac2tB:x_fac3o1"], sd = summary(lm_7)$coefficients["x_fac2tB:x_fac3o1", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_7[,"mu_x_fac2t__xXx__x_fac3o[2]"], freq = FALSE, main = "x_fac2t:x_fac3o")
-    curve(dnorm(x, mean = coef(lm_7)["x_fac2tB:x_fac3o2"], sd = summary(lm_7)$coefficients["x_fac2tB:x_fac3o2", "Std. Error"]), add = TRUE, lwd = 2)
-
-  })
-
-
-  # linear regression with a treatment interaction between factors ----
-  formula_8      <- JAGS_formula(~  x_fac2o * x_fac3t, parameter = "mu", data = df_all[,c("x_fac2o", "x_fac3t")], prior_list = prior_list_all[c("intercept", "x_fac2o", "x_fac3t", "x_fac2o:x_fac3t")])
-  prior_list_8   <- c(formula_8$prior_list, prior_list2)
-  model_syntax_8 <- JAGS_add_priors(paste0("model{", formula_8$formula_syntax, model_syntax, "}"), prior_list_8)
-  data_8         <- c(formula_8$data, N = nrow(df_all), y = list(df_all$y))
-
-  model_8   <- rjags::jags.model(file = textConnection(model_syntax_8), inits = JAGS_get_inits(prior_list_8, chains = 2, seed = 1), data = data_8, n.chains = 2, quiet = TRUE)
-  samples_8 <- rjags::coda.samples(model = model_8, variable.names = JAGS_to_monitor(prior_list_8), n.iter = 5000, quiet = TRUE, progress.bar = "none")
-  samples_8 <- do.call(rbind, samples_8)
-
-  df_8 <- df_all
-  contrasts(df_8$x_fac2o) <- contr.orthonormal(levels(df_8$x_fac2o))
-  lm_8 <- stats::lm(y ~ x_fac2o * x_fac3t, data = df_8)
-
-  vdiffr::expect_doppelganger("JAGS-formula-lm-8", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
-    par(mfrow = c(2, 3))
-
-    hist(samples_8[,"mu_intercept"], freq = FALSE, main = "Intercept")
-    curve(dnorm(x, mean = coef(lm_8)["(Intercept)"], sd = summary(lm_8)$coefficients["(Intercept)", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_8[,"mu_x_fac3t[1]"], freq = FALSE, main = "x_fac3t")
-    curve(dnorm(x, mean = coef(lm_8)["x_fac3tB"], sd = summary(lm_8)$coefficients["x_fac3tB", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_8[,"mu_x_fac3t[2]"], freq = FALSE, main = "x_fac3t")
-    curve(dnorm(x, mean = coef(lm_8)["x_fac3tC"], sd = summary(lm_8)$coefficients["x_fac3tC", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_8[,"mu_x_fac2o"], freq = FALSE, main = "x_fac2o")
-    curve(dnorm(x, mean = coef(lm_8)["x_fac2o1"], sd = summary(lm_8)$coefficients["x_fac2o1", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_8[,"mu_x_fac2o__xXx__x_fac3t[1]"], freq = FALSE, main = "x_fac2o:fac3t")
-    curve(dnorm(x, mean = coef(lm_8)["x_fac2o1:x_fac3tB"], sd = summary(lm_8)$coefficients["x_fac2o1:x_fac3tB", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_8[,"mu_x_fac2o__xXx__x_fac3t[2]"], freq = FALSE, main = "x_fac2o:fac3t")
-    curve(dnorm(x, mean = coef(lm_8)["x_fac2o1:x_fac3tC"], sd = summary(lm_8)$coefficients["x_fac2o1:x_fac3tC", "Std. Error"]), add = TRUE, lwd = 2)
-
-  })
-  # linear regression with an interaction between continuous variable and orthonormal factor ----
-  formula_9      <- JAGS_formula(~ x_cont1 * x_fac3o , parameter = "mu", data = df_all[,c("x_cont1", "x_fac3o")], prior_list = prior_list_all[c("intercept", "x_cont1", "x_fac3o", "x_cont1:x_fac3o")])
-  prior_list_9   <- c(formula_9$prior_list, prior_list2)
-  model_syntax_9 <- JAGS_add_priors(paste0("model{", formula_9$formula_syntax, model_syntax, "}"), prior_list_9)
-  data_9         <- c(formula_9$data, N = nrow(df_all), y = list(df_all$y))
-
-  model_9   <- rjags::jags.model(file = textConnection(model_syntax_9), inits = JAGS_get_inits(prior_list_9, chains = 2, seed = 1), data = data_9, n.chains = 2, quiet = TRUE)
-  samples_9 <- rjags::coda.samples(model = model_9, variable.names = JAGS_to_monitor(prior_list_9), n.iter = 5000, quiet = TRUE, progress.bar = "none")
-  samples_9 <- do.call(rbind, samples_9)
-
-  df_9 <- df_all
-  contrasts(df_9$x_fac3o) <- contr.orthonormal(levels(df_9$x_fac3o))
-  lm_9 <- stats::lm(y ~ x_cont1 * x_fac3o, data = df_9)
-
-  vdiffr::expect_doppelganger("JAGS-formula-lm-9", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
-    par(mfrow = c(2, 3))
-
-    hist(samples_9[,"mu_intercept"], freq = FALSE, main = "Intercept")
-    curve(dnorm(x, mean = coef(lm_9)["(Intercept)"], sd = summary(lm_9)$coefficients["(Intercept)", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_9[,"mu_x_fac3o[1]"], freq = FALSE, main = "x_fac3o")
-    curve(dnorm(x, mean = coef(lm_9)["x_fac3o1"], sd = summary(lm_9)$coefficients["x_fac3o1", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_9[,"mu_x_fac3o[2]"], freq = FALSE, main = "x_fac3o")
-    curve(dnorm(x, mean = coef(lm_9)["x_fac3o2"], sd = summary(lm_9)$coefficients["x_fac3o2", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_9[,"mu_x_cont1"], freq = FALSE, main = "x_cont1")
-    curve(dnorm(x, mean = coef(lm_9)["x_cont1"], sd = summary(lm_9)$coefficients["x_cont1", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_9[,"mu_x_cont1__xXx__x_fac3o[1]"], freq = FALSE, main = "x_cont1:x_fac3o")
-    curve(dnorm(x, mean = coef(lm_9)["x_cont1:x_fac3o1"], sd = summary(lm_9)$coefficients["x_cont1:x_fac3o1", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_9[,"mu_x_cont1__xXx__x_fac3o[2]"], freq = FALSE, main = "x_cont1:x_fac3o")
-    curve(dnorm(x, mean = coef(lm_9)["x_cont1:x_fac3o2"], sd = summary(lm_9)$coefficients["x_cont1:x_fac3o2", "Std. Error"]), add = TRUE, lwd = 2)
-
-  })
-
-
-  # linear regression with an interaction between continuous variable and orthonormal factor ----
-  formula_10      <- JAGS_formula(~ x_cont1 * x_fac3t , parameter = "mu", data = df_all[,c("x_cont1", "x_fac3t")], prior_list = prior_list_all[c("intercept", "x_cont1", "x_fac3t", "x_cont1:x_fac3t")])
-  prior_list_10   <- c(formula_10$prior_list, prior_list2)
-  model_syntax_10 <- JAGS_add_priors(paste0("model{", formula_10$formula_syntax, model_syntax, "}"), prior_list_10)
-  data_10         <- c(formula_10$data, N = nrow(df_all), y = list(df_all$y))
-
-  model_10   <- rjags::jags.model(file = textConnection(model_syntax_10), inits = JAGS_get_inits(prior_list_10, chains = 2, seed = 1), data = data_10, n.chains = 2, quiet = TRUE)
-  samples_10 <- rjags::coda.samples(model = model_10, variable.names = JAGS_to_monitor(prior_list_10), n.iter = 5000, quiet = TRUE, progress.bar = "none")
-  samples_10 <- do.call(rbind, samples_10)
-
-  lm_10 <- stats::lm(y ~ x_cont1 * x_fac3t, data = df_all)
-
-  vdiffr::expect_doppelganger("JAGS-formula-lm-10", function(){
-
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
-    par(mfrow = c(2, 3))
-
-    hist(samples_10[,"mu_intercept"], freq = FALSE, main = "Intercept")
-    curve(dnorm(x, mean = coef(lm_10)["(Intercept)"], sd = summary(lm_10)$coefficients["(Intercept)", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_10[,"mu_x_fac3t[1]"], freq = FALSE, main = "x_fac3t")
-    curve(dnorm(x, mean = coef(lm_10)["x_fac3tB"], sd = summary(lm_10)$coefficients["x_fac3tB", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_10[,"mu_x_fac3t[2]"], freq = FALSE, main = "x_fac3t")
-    curve(dnorm(x, mean = coef(lm_10)["x_fac3tC"], sd = summary(lm_10)$coefficients["x_fac3tC", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_10[,"mu_x_cont1"], freq = FALSE, main = "x_cont1")
-    curve(dnorm(x, mean = coef(lm_10)["x_cont1"], sd = summary(lm_10)$coefficients["x_cont1", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_10[,"mu_x_cont1__xXx__x_fac3t[1]"], freq = FALSE, main = "x_cont1:x_fac3t")
-    curve(dnorm(x, mean = coef(lm_10)["x_cont1:x_fac3tB"], sd = summary(lm_10)$coefficients["x_cont1:x_fac3tB", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_10[,"mu_x_cont1__xXx__x_fac3t[2]"], freq = FALSE, main = "x_cont1:x_fac3t")
-    curve(dnorm(x, mean = coef(lm_10)["x_cont1:x_fac3tC"], sd = summary(lm_10)$coefficients["x_cont1:x_fac3tC", "Std. Error"]), add = TRUE, lwd = 2)
-
-  })
-
-
-  # scaling formula parameters by another parameter works ----
-  prior_list_1s  <- prior_list_all[c("intercept", "x_cont1")]
-  attr(prior_list_1s$x_cont1, "multiply_by") <- "sigma"
-  formula_1s     <- JAGS_formula(~ x_cont1, parameter = "mu", data = df_all[,"x_cont1", drop = FALSE], prior_list = prior_list_1s)
-  prior_list_1s  <- c(formula_1s$prior_list, prior_list2)
-  model_syntax_1s<- JAGS_add_priors(paste0("model{", formula_1s$formula_syntax, model_syntax, "}"), prior_list_1s)
-  data_1         <- c(formula_1$data, N = nrow(df_all), y = list(df_all$y))
-
-  model_1s  <- rjags::jags.model(file = textConnection(model_syntax_1s), inits = JAGS_get_inits(prior_list_1s, chains = 2, seed = 1), data = data_1, n.chains = 2, quiet = TRUE)
-  samples_1s <- rjags::coda.samples(model = model_1s, variable.names = JAGS_to_monitor(prior_list_1s), n.iter = 5000, quiet = TRUE, progress.bar = "none")
-  samples_1s <- do.call(rbind, samples_1s)
-
-  expect_equal(formula_1s$formula_syntax, "for(i in 1:N_mu){\n  mu[i] = mu_intercept + sigma * mu_x_cont1 * mu_data_x_cont1[i]\n}\n")
-
-  lm_1s <- stats::lm(y ~ I(sd(y) * x_cont1), data = df_all)
-
-  vdiffr::expect_doppelganger("JAGS-formula-lm-1s", function(){
-
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
-    par(mfcol = c(1, 3))
-
-    hist(samples_1s[,"mu_intercept"], freq = FALSE, main = "Intercept")
-    curve(dnorm(x, mean = coef(lm_1s)["(Intercept)"], sd = summary(lm_1s)$coefficients["(Intercept)", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_1s[,"mu_x_cont1"], freq = FALSE, main = "I(sd(y) * x_cont1)")
-    curve(dnorm(x, mean = coef(lm_1s)["I(sd(y) * x_cont1)"], sd = summary(lm_1s)$coefficients["I(sd(y) * x_cont1)", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_1s[,"sigma"], freq = FALSE, main = "sigma")
-    abline(v = sigma(lm_1s), lwd = 3)
-  })
-
-
-  # input checks work
-  expect_error(JAGS_formula(~ x_cont1 , parameter = "mu", data = df_all[,c("x_cont1"), drop = FALSE], prior_list = prior_list_all[c("x_cont1")]),
-               "The 'intercept' objects are missing in the 'prior_list' argument.")
-  expect_error(JAGS_formula(~ x_cont1 , parameter = "mu", data = df_all[,c("x_cont1"), drop = FALSE], prior_list = prior_list_all[c("intercept")]),
-               "The 'x_cont1' objects are missing in the 'prior_list' argument.")
-  expect_error(JAGS_formula(~ x_fac2t , parameter = "mu", data = df_all[,c("x_cont1"), drop = FALSE], prior_list = prior_list_all[c("intercept", "x_fac2t")]),
-               "The 'x_fac2t' predictor variable is missing in the data set.")
-  expect_error(JAGS_formula(~ x_fac2t , parameter = "mu", data = as.matrix(df_all), prior_list = prior_list_all[c("intercept", "x_fac2t")]),
-               "'data' must be a data.frame")
-  expect_error(JAGS_formula(~ x_fac2t , parameter = "mu", data = df_all, prior_list = list(
-    "intercept" = prior("normal", list(0, 1)),
-    "x_fac2t"   = prior("normal", list(0, 1))
-  )), "Unsupported prior distribution defined for 'x_fac2t' factor variable")
-  expect_error(JAGS_formula(~ x_cont1 , parameter = "mu", data = df_all, prior_list = list(
-    "intercept" = prior("normal", list(0, 1)),
-    "x_cont1"   = prior_factor("normal", list(0, 1), contrast = "treatment")
-  )), "Unsupported prior distribution defined for 'x_cont1' continuous variable.")
-
-  # linear regression with an independent factor (3 levels) ----
-  formula_11      <- JAGS_formula(~ x_fac3i - 1, parameter = "mu", data = df_all[,"x_fac3i",drop = FALSE], prior_list = prior_list_all[c("x_fac3i")])
-  prior_list_11   <- c(formula_11$prior_list, prior_list2)
-  model_syntax_11 <- JAGS_add_priors(paste0("model{", formula_11$formula_syntax, model_syntax, "}"), prior_list_11)
-  data_11         <- c(formula_11$data, N = nrow(df_all), y = list(df_all$y))
-
-  model_11   <- rjags::jags.model(file = textConnection(model_syntax_11), inits = JAGS_get_inits(prior_list_11, chains = 2, seed = 1), data = data_11, n.chains = 2, quiet = TRUE)
-  samples_11 <- rjags::coda.samples(model = model_11, variable.names = JAGS_to_monitor(prior_list_11), n.iter = 5000, quiet = TRUE, progress.bar = "none")
-  samples_11 <- do.call(rbind, samples_11)
-
-  lm_11 <- stats::lm(y ~ x_fac3i - 1, data = df_all)
-
-  vdiffr::expect_doppelganger("JAGS-formula-lm-11", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
-    par(mfcol = c(1, 3))
-
-    hist(samples_11[,"mu_x_fac3i[1]"], freq = FALSE, main = "x_fac3i[1]")
-    curve(dnorm(x, mean = coef(lm_11)["x_fac3iA"], sd = summary(lm_11)$coefficients["x_fac3iA", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_11[,"mu_x_fac3i[2]"], freq = FALSE, main = "x_fac3i[2]")
-    curve(dnorm(x, mean = coef(lm_11)["x_fac3iB"], sd = summary(lm_11)$coefficients["x_fac3iB", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_11[,"mu_x_fac3i[3]"], freq = FALSE, main = "x_fac3i[3]")
-    curve(dnorm(x, mean = coef(lm_11)["x_fac3iC"], sd = summary(lm_11)$coefficients["x_fac3iC", "Std. Error"]), add = TRUE, lwd = 2)
-  })
-
-
-  # linear regression with a meandif factor (3 levels) ----
-  formula_12      <- JAGS_formula(~ x_fac3md, parameter = "mu", data = df_all[,"x_fac3md",drop = FALSE], prior_list = prior_list_all[c("intercept", "x_fac3md")])
-  prior_list_12   <- c(formula_12$prior_list, prior_list2)
-  model_syntax_12 <- JAGS_add_priors(paste0("model{", formula_12$formula_syntax, model_syntax, "}"), prior_list_12)
-  data_12         <- c(formula_12$data, N = nrow(df_all), y = list(df_all$y))
-
-  model_12   <- rjags::jags.model(file = textConnection(model_syntax_12), inits = JAGS_get_inits(prior_list_12, chains = 2, seed = 1), data = data_12, n.chains = 2, quiet = TRUE)
-  samples_12 <- rjags::coda.samples(model = model_12, variable.names = JAGS_to_monitor(prior_list_12), n.iter = 5000, quiet = TRUE, progress.bar = "none")
-  samples_12 <- do.call(rbind, samples_12)
-
-  df_12 <- df_all
-  contrasts(df_12$x_fac3md) <- contr.meandif(levels(df_12$x_fac3o))
-  lm_12 <- stats::lm(y ~ x_fac3md, data = df_12)
-
-  vdiffr::expect_doppelganger("JAGS-formula-lm-12", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
-    par(mfcol = c(1, 3))
-
-    hist(samples_12[,"mu_intercept"], freq = FALSE, main = "Intercept")
-    curve(dnorm(x, mean = coef(lm_12)["(Intercept)"], sd = summary(lm_12)$coefficients["(Intercept)", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_12[,"mu_x_fac3md[1]"], freq = FALSE, main = "x_fac3md")
-    curve(dnorm(x, mean = coef(lm_12)["x_fac3md1"], sd = summary(lm_12)$coefficients["x_fac3md1", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_12[,"mu_x_fac3md[2]"], freq = FALSE, main = "x_fac3md")
-    curve(dnorm(x, mean = coef(lm_12)["x_fac3md2"], sd = summary(lm_12)$coefficients["x_fac3md2", "Std. Error"]), add = TRUE, lwd = 2)
-  })
-
-
-  # linear regression with a spike independent factor (3 levels) ----
-  prior_list_13   <- list("x_fac3i" = prior_factor("spike",  contrast = "independent", list(1.5)))
-  formula_13      <- JAGS_formula(~ x_fac3i - 1, parameter = "mu", data = df_all[,"x_fac3i",drop = FALSE], prior_list = prior_list_13)
-  prior_list_13   <- c(formula_13$prior_list, prior_list2)
-  model_syntax_13 <- JAGS_add_priors(paste0("model{", formula_13$formula_syntax, model_syntax, "}"), prior_list_13)
-  data_13         <- c(formula_13$data, N = nrow(df_all), y = list(df_all$y))
-
-  model_13   <- rjags::jags.model(file = textConnection(model_syntax_13), inits = JAGS_get_inits(prior_list_13, chains = 2, seed = 1), data = data_13, n.chains = 2, quiet = TRUE)
-  samples_13 <- rjags::coda.samples(model = model_13, variable.names = JAGS_to_monitor(prior_list_13), n.iter = 5000, quiet = TRUE, progress.bar = "none")
-  samples_13 <- do.call(rbind, samples_13)
-  expect_equal(diag(3), contr.independent(1:3))
-
-  vdiffr::expect_doppelganger("JAGS-formula-lm-13", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
-    par(mfcol = c(1, 3))
-
-    hist(samples_13[,"mu_x_fac3i[1]"], freq = FALSE, main = "x_fac3i[1]")
-    hist(samples_13[,"mu_x_fac3i[2]"], freq = FALSE, main = "x_fac3i[2]")
-    hist(samples_13[,"mu_x_fac3i[3]"], freq = FALSE, main = "x_fac3i[3]")
-  })
-
-
-  # linear regression with a meandif spike factor (3 levels) ----
-  prior_list_14   <- list("intercept" = prior_list_all$intercept, "x_fac3md" = prior_factor("spike",  contrast = "meandif", list(0)))
-  formula_14      <- JAGS_formula(~ x_fac3md, parameter = "mu", data = df_all[,"x_fac3md",drop = FALSE], prior_list = prior_list_14)
-  prior_list_14   <- c(formula_14$prior_list, prior_list2)
-  model_syntax_14 <- JAGS_add_priors(paste0("model{", formula_14$formula_syntax, model_syntax, "}"), prior_list_14)
-  data_14         <- c(formula_14$data, N = nrow(df_all), y = list(df_all$y))
-
-  model_14   <- rjags::jags.model(file = textConnection(model_syntax_14), inits = JAGS_get_inits(prior_list_14, chains = 2, seed = 1), data = data_14, n.chains = 2, quiet = TRUE)
-  samples_14 <- rjags::coda.samples(model = model_14, variable.names = JAGS_to_monitor(prior_list_14), n.iter = 5000, quiet = TRUE, progress.bar = "none")
-  samples_14 <- do.call(rbind, samples_14)
-
-  df_14 <- df_all
-  contrasts(df_14$x_fac3md) <- contr.meandif(levels(df_14$x_fac3o))
-  lm_14 <- stats::lm(y ~ 1, data = df_14)
-
-  vdiffr::expect_doppelganger("JAGS-formula-lm-14", function(){
-    oldpar <- graphics::par(no.readonly = TRUE)
-    on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
-    par(mfcol = c(1, 3))
-
-    hist(samples_14[,"mu_intercept"], freq = FALSE, main = "Intercept")
-    curve(dnorm(x, mean = coef(lm_14)["(Intercept)"], sd = summary(lm_14)$coefficients["(Intercept)", "Std. Error"]), add = TRUE, lwd = 2)
-
-    hist(samples_14[,"mu_x_fac3md[1]"], freq = FALSE, main = "x_fac3md")
-    hist(samples_14[,"mu_x_fac3md[2]"], freq = FALSE, main = "x_fac3md")
-  })
-
-})
+skip_if_not_test_profile("fixture")
+
+# ============================================================================ #
+# TEST FILE: JAGS Formula Handling
+# ============================================================================ #
+#
+# PURPOSE:
+#   Tests for JAGS formula parsing, parameter naming, and prediction functions
+#   in R/JAGS-formula.R. Includes JAGS_evaluate_formula and helper utilities.
+#
+# DEPENDENCIES:
+#   - rjags: Required for JAGS model evaluation
+#   - common-functions.R: Test helpers and pre-fitted model access
+#
+# SKIP CONDITIONS:
+#   - First section (parameter name tools): Can run on CRAN (pure R)
+#   - Second section (JAGS evaluation): skip_if_not_installed("rjags")
+#   - skip_on_os(): Multivariate sampling consistency (meandif priors)
+#
+# MODELS/FIXTURES:
+#   - Uses pre-fitted models from test-00-model-fits.R via temp_fits_dir
+#
+# TAGS: @evaluation, @JAGS, @formula
+# ============================================================================ #
+
+# Load common test helpers
+source(testthat::test_path("common-functions.R"))
 
 test_that("JAGS formula tools work", {
 
@@ -569,208 +53,256 @@ test_that("JAGS formula tools work", {
 
 })
 
-test_that("JAGS evaluate formula works", {
+test_that("formula_add_intercept repairs only top-level no-intercept terms", {
 
-  # check the posterior distributions with weak priors against a maximum likelihood estimates with ML
-  skip_on_os(c("mac", "linux", "solaris")) # multivariate sampling does not exactly match across OSes
+  env <- new.env(parent = emptyenv())
+  formula <- stats::as.formula("~ I(x - 1) + offset(z - 1) - 1", env = env)
+  attr(formula, "custom") <- "metadata"
+
+  out <- formula_add_intercept(formula)
+
+  expect_identical(environment(out), env)
+  expect_identical(attr(out, "custom"), "metadata")
+  expect_equal(attr(stats::terms(out), "intercept"), 1)
+  expect_equal(attr(stats::terms(out), "term.labels"), "I(x - 1)")
+  expect_equal(attr(stats::terms(out), "offset"), 2)
+
+  expect_equal(formula_add_intercept(~ x - 1), ~ x, ignore_formula_env = TRUE)
+  expect_equal(formula_add_intercept(~ 0 + x), ~ x, ignore_formula_env = TRUE)
+  expect_equal(formula_add_intercept(~ x + 0), ~ x, ignore_formula_env = TRUE)
+  expect_equal(formula_add_intercept(~ x + -1), ~ x, ignore_formula_env = TRUE)
+  expect_equal(formula_add_intercept(y ~ 0 + x), y ~ x, ignore_formula_env = TRUE)
+  expect_equal(formula_add_intercept(~ -1), ~ 1, ignore_formula_env = TRUE)
+
+  intercept_formula <- ~ x + y
+  expect_identical(formula_add_intercept(intercept_formula), intercept_formula)
+
+  expect_error(formula_add_intercept("~ x - 1"), "'formula' must be a formula.", fixed = TRUE)
+})
+
+test_that("JAGS_formula stores exact fitted formula design metadata", {
+
+  df <- data.frame(
+    x  = c(-1, 0, 1, 2),
+    x2 = c(-1, 0, 1, 2),
+    f  = factor(c("a", "b", "a", "b"), levels = c("a", "b"))
+  )
+
+  result <- JAGS_formula(
+    formula = ~ x + x2 + f,
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x         = prior("normal", list(0, 1)),
+      x2        = prior("normal", list(0, 1)),
+      f         = prior_factor("normal", list(0, 1), contrast = "treatment")
+    ),
+    formula_scale = list(x = TRUE)
+  )
+
+  design <- result$formula_design
+
+  expect_s3_class(design, "BayesTools_formula_design")
+  expect_identical(design$parameter, "mu")
+  expect_equal(design$formula, ~ x + x2 + f, ignore_formula_env = TRUE)
+  expect_equal(nrow(design$model_frame), nrow(df))
+  expect_equal(colnames(design$model_matrix), c("(Intercept)", "x", "x2", "fb"))
+  expect_equal(design$column_names, colnames(design$model_matrix))
+  expect_equal(design$raw_column_names, c("(Intercept)", "x", "x2", "fb"))
+  expect_equal(design$assign, attr(design$model_matrix, "assign"))
+  expect_equal(attr(design$terms, "term.labels"), c("x", "x2", "f"))
+  expect_equal(design$contrasts$f, "contr.treatment")
+  expect_equal(design$xlevels$f, c("a", "b"))
+  expect_equal(design$predictors, c("x", "x2", "f"))
+  expect_equal(design$predictor_types, c(x = "continuous", x2 = "continuous", f = "factor"))
+  expect_equal(design$model_terms, c("intercept", "x", "x2", "f"))
+  expect_equal(design$model_terms_type, c(intercept = "continuous", x = "continuous", x2 = "continuous", f = "factor"))
+
+  expect_equal(unname(design$model_matrix[, "x"]), unname(result$data$mu_data_x))
+  expect_equal(unname(design$model_matrix[, "x2"]), unname(result$data$mu_data_x2))
+  expect_equal(unname(design$model_matrix[, "fb", drop = FALSE]), unname(result$data$mu_data_f))
+  expect_equal(design$jags_data_names$x, "mu_data_x")
+  expect_equal(design$jags_data_names$x2, "mu_data_x2")
+  expect_equal(design$jags_data_names$f, "mu_data_f")
+  expect_equal(design$formula_scale$mu_x$mean, mean(df$x))
+  expect_equal(design$formula_scale$mu_x$sd, stats::sd(df$x))
+  expect_equal(names(design$prior_list), names(result$prior_list))
+
+  expect_lt(design$rank, ncol(design$model_matrix))
+  expect_named(design$aliased, colnames(design$model_matrix))
+  expect_true(any(design$aliased))
+})
+
+test_that("JAGS_formula_design accessor returns stored designs predictably", {
+
+  design_mu <- structure(list(parameter = "mu"), class = c("BayesTools_formula_design", "list"))
+  design_tau <- structure(list(parameter = "log_tau"), class = c("BayesTools_formula_design", "list"))
+  fit <- structure(list(), class = "BayesTools_fit")
+  attr(fit, "formula_design") <- list(mu = design_mu, log_tau = design_tau)
+
+  expect_identical(JAGS_formula_design(fit), list(mu = design_mu, log_tau = design_tau))
+  expect_identical(JAGS_formula_design(fit, "mu"), design_mu)
+  expect_identical(JAGS_formula_design(fit, "log_tau"), design_tau)
+  expect_null(JAGS_formula_design(structure(list(), class = "BayesTools_fit")))
+  expect_error(JAGS_formula_design(fit, "sigma"), "Formula design for parameter 'sigma' was not found.", fixed = TRUE)
+})
+
+test_that("JAGS_formula stores multi-factor contrast metadata", {
+
+  df <- expand.grid(
+    a = factor(c("a1", "a2"), levels = c("a1", "a2")),
+    b = factor(c("b1", "b2", "b3"), levels = c("b1", "b2", "b3")),
+    x = c(-1, 1)
+  )
+
+  formula_result <- JAGS_formula(
+    formula = ~ x * a * b,
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1)),
+      a = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+      b = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+      "x:a" = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+      "x:b" = prior_factor("mnormal", list(0, 1), contrast = "meandif"),
+      "a:b" = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+      "x:a:b" = prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+    )
+  )
+
+  interaction_prior <- formula_result$prior_list$mu_x__xXx__a__xXx__b
+  level_grid <- expand.grid(
+    a = c("a1", "a2"),
+    b = c("b1", "b2", "b3"),
+    KEEP.OUT.ATTRS = FALSE,
+    stringsAsFactors = FALSE
+  )
+  a_contrast <- contr.orthonormal(c("a1", "a2"))
+  b_contrast <- contr.meandif(c("b1", "b2", "b3"))
+  a_index <- match(level_grid$a, c("a1", "a2"))
+  b_index <- match(level_grid$b, c("b1", "b2", "b3"))
+  expected_design <- cbind(
+    a_contrast[a_index, 1] * b_contrast[b_index, 1],
+    a_contrast[a_index, 1] * b_contrast[b_index, 2]
+  )
+
+  expect_equal(attr(interaction_prior, "term_components"), c("x", "a", "b"))
+  expect_equal(attr(interaction_prior, "factor_terms"), c("a", "b"))
+  expect_equal(
+    attr(interaction_prior, "factor_contrasts"),
+    c(a = "contr.orthonormal", b = "contr.meandif")
+  )
+  expect_equal(dim(attr(interaction_prior, "factor_design")), c(6L, 2L))
+  expect_equal(
+    attr(interaction_prior, "factor_cell_names"),
+    c("a=a1, b=b1", "a=a2, b=b1", "a=a1, b=b2", "a=a2, b=b2", "a=a1, b=b3", "a=a2, b=b3")
+  )
+  expect_equal(unname(attr(interaction_prior, "factor_design")), unname(expected_design))
+})
+
+test_that(".factor_term_design_from_formula handles no-intercept factor interactions", {
+
+  df <- expand.grid(
+    a = factor(c("a1", "a2"), levels = c("a1", "a2")),
+    b = factor(c("b1", "b2", "b3"), levels = c("b1", "b2", "b3"))
+  )
+  stats::contrasts(df$a) <- "contr.orthonormal"
+  stats::contrasts(df$b) <- "contr.meandif"
+
+  formula <- ~ a + b + a:b - 1
+  predictors <- as.character(attr(stats::terms(formula), "variables"))[-1]
+  model_matrix <- stats::model.matrix(stats::model.frame(formula, data = df), formula = formula, data = df)
+  term_index <- which(attr(stats::terms(formula), "term.labels") == "a:b")
+
+  design_info <- BayesTools:::.factor_term_design_from_formula(
+    formula = formula,
+    data = df,
+    predictors = predictors,
+    predictors_type = c(a = "factor", b = "factor"),
+    term_index = term_index,
+    term_components = c("a", "b"),
+    factor_terms = c("a", "b"),
+    has_intercept = FALSE
+  )
+
+  expect_equal(
+    unname(design_info$design),
+    unname(model_matrix[, attr(model_matrix, "assign") == term_index, drop = FALSE])
+  )
+  expect_equal(
+    design_info$cell_names,
+    c("a=a1, b=b1", "a=a2, b=b1", "a=a1, b=b2", "a=a2, b=b2", "a=a1, b=b3", "a=a2, b=b3")
+  )
+})
+
+# ============================================================================ #
+# SECTION: Tests requiring JAGS (skip conditions per test)
+# ============================================================================ #
+
+test_that("JAGS evaluate formula works with spike priors", {
+
+  # Test JAGS_evaluate_formula with spike prior distributions using pre-fitted model
+  skip_on_os(c("mac", "linux", "solaris"))
   skip_on_cran()
+  skip_if_no_fits()
+  skip_if_not_installed("rjags")
 
-  # complex formula including scaling
-  set.seed(1)
-  df_all <- data.frame(
-    x_cont1 = rnorm(60),
-    x_cont2 = rnorm(60),
-    x_fac2t = factor(rep(c("A", "B"), 30), levels = c("A", "B")),
-    x_fac3o = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C"))
-  )
-  df_all$y <- rnorm(60, 0.1, 0.5) + 0.30 * df_all$x_cont1 - 0.15 * df_all$x_cont1 * df_all$x_cont2 +
-    ifelse(df_all$x_fac3o == "A", 0.2, ifelse(df_all$x_fac3o == "B", -0.2, 0))
+  # Load pre-fitted model with spike factor priors (all 4 contrast types)
+  fit_spike <- readRDS(file.path(temp_fits_dir, "fit_spike_factors.RDS"))
 
-  prior_list_all <- list(
-    "intercept"       = prior("normal", list(0, 5)),
-    "x_cont1"         = prior("normal", list(0, 1)),
-    "x_cont2"         = prior("normal", list(0, 1)),
-    "x_fac2t"         = prior_factor("normal",  contrast = "treatment",   list(0, 1)),
-    "x_fac3o"         = prior_factor("mnormal", contrast = "orthonormal", list(0, 1)),
-    "x_cont1:x_fac3o" = prior_factor("mnormal", contrast = "orthonormal", list(0,  2))
-  )
-  prior_list2  <- list(
-    "sigma" = prior("cauchy", list(0, 1), list(0, 1))
-  )
-  model_syntax <- paste0(
-    "for(i in 1:N){\n",
-    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
-    "}\n"
-  )
-
-  formula      <- JAGS_formula(~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, parameter = "mu", data = df_all, prior_list = prior_list_all)
-  prior_list   <- c(formula$prior_list, prior_list2)
-  model_syntax <- JAGS_add_priors(paste0("model{", formula$formula_syntax, model_syntax, "}"), prior_list)
-  data         <- c(formula$data, N = nrow(df_all), y = list(df_all$y))
-
-  model   <- rjags::jags.model(file = textConnection(model_syntax), inits = JAGS_get_inits(prior_list, chains = 1, seed = 1), data = data, n.chains = 1, quiet = TRUE)
-  samples <- rjags::coda.samples(model = model, variable.names = JAGS_to_monitor(prior_list), n.iter = 10, quiet = TRUE, progress.bar = "none")
-
-  new_data <-  data.frame(
-    x_cont1 = c(0, 0, 1, 1),
-    x_cont2 = c(0, 1, 0, 1),
-    x_fac2t = factor(c("A", "B", "A", "B"), levels = c("A", "B")),
-    x_fac3o = factor(c("A", "B", "C", "A"), levels = c("A", "B", "C"))
-  )
-
-  # test the results against the lm function (by passing the ML estimates)
-  contrasts(df_all$x_fac3o) <- contr.orthonormal(levels(df_all$x_fac3o))
-  fit_lm <- stats::lm(y~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, data = df_all)
-
-  samples_new <- c(coef(fit_lm), sigma = sigma(fit_lm))[c("(Intercept)","x_cont1","x_cont1:x_fac3o1","x_cont1:x_fac3o2","x_cont2","x_fac2tB","x_fac3o1","x_fac3o2","sigma")]
-  samples_new <- matrix(samples_new, nrow = 1)
-  colnames(samples_new) <- colnames(samples[[1]])
-  samples_new <- coda::as.mcmc.list(coda::as.mcmc(samples_new))
-
-  expect_equal(predict(fit_lm, newdata = new_data), JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data, prior_list)[,1])
-
-  # for a posterior samples matrix
-  samples_new <- c(coef(fit_lm), sigma = sigma(fit_lm))[c("(Intercept)","x_cont1","x_cont1:x_fac3o1","x_cont1:x_fac3o2","x_cont2","x_fac2tB","x_fac3o1","x_fac3o2","sigma")]
-  samples_new <- matrix(samples_new, nrow = 5, ncol = length(samples_new), byrow = TRUE)
-  colnames(samples_new) <- colnames(samples[[1]])
-  samples_new <- coda::as.mcmc.list(coda::as.mcmc(samples_new))
-
-  expect_equal(matrix(predict(fit_lm, newdata = new_data), nrow = 4, ncol = 5), unname(JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data, prior_list)))
-
-  # check filling in missing or miss ordered factor levels
-  samples_new <- c(coef(fit_lm), sigma = sigma(fit_lm))[c("(Intercept)","x_cont1","x_cont1:x_fac3o1","x_cont1:x_fac3o2","x_cont2","x_fac2tB","x_fac3o1","x_fac3o2","sigma")]
-  samples_new <- matrix(samples_new, nrow = 1)
-  colnames(samples_new) <- colnames(samples[[1]])
-  samples_new <- coda::as.mcmc.list(coda::as.mcmc(samples_new))
-
-  new_data2         <- new_data
-  new_data2$x_fac2t <- factor(as.character(new_data2$x_fac2t), levels = c("B", "A"))
-  expect_equal(predict(fit_lm, newdata = new_data), JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data2, prior_list)[,1])
-
-  new_data3         <- new_data
-  new_data3$x_fac3o <- factor(c("A", "B", "A", "B"), levels = c("B", "A"))
-  expect_equal(predict(fit_lm, newdata = new_data3), JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data3, prior_list)[,1])
-
-  new_data4         <- new_data
-  new_data4$x_fac3o <- c("A", "B", "A", "B")
-  expect_equal(predict(fit_lm, newdata = new_data3), JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data4, prior_list)[,1])
-
-  # check scaling works (by multiplying be zero)
-  prior_list2 <- prior_list
-  attr(prior_list2$mu_x_cont2, "multiply_by") <- 0
-  attr(prior_list2$mu_x_fac2t, "multiply_by") <- 0
-
-  samples_new2 <- c(coef(fit_lm), sigma = sigma(fit_lm))[c("(Intercept)","x_cont1","x_cont1:x_fac3o1","x_cont1:x_fac3o2","x_cont2","x_fac2tB","x_fac3o1","x_fac3o2","sigma")]
-  samples_new2 <- matrix(samples_new2, nrow = 1)
-  colnames(samples_new2) <- colnames(samples[[1]])
-  samples_new2[,"mu_x_cont2"]    <- 0
-  samples_new2[,"mu_x_fac2t"] <- 0
-  samples_new2 <- coda::as.mcmc.list(coda::as.mcmc(samples_new2))
-
-  expect_equal(JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data, prior_list2)[,1],
-               JAGS_evaluate_formula(samples_new2, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data, prior_list)[,1])
-
-  # check scaling by another parameter works
-  prior_list2 <- prior_list
-  attr(prior_list2$mu_x_cont2, "multiply_by") <- "sigma"
-
-  expect_equal(unname(unlist(JAGS_evaluate_formula(samples, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data, prior_list2)[,1])),
-               c(0.4436353, -0.0658681, 0.1870391, 0.8548012), tolerance = 1e-5)
-
-  ### test input tests
-  expect_error(JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data[,1:3], prior_list),
-               "The 'x_fac3o' predictor variable is missing in the data.")
-  expect_error(JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", new_data, prior_list[-1]),
-               "The prior distribution for the 'x_fac2t' term is missing in the prior_list.")
-
-  bad_data         <- new_data
-  bad_data$x_fac2t <- factor(c("C", "B", "C", "B"), levels = c("B", "C"))
-
-  expect_error(JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", bad_data, prior_list),
-               "Levels specified in the 'x_fac2t' factor variable do not match the levels used for model specification.")
-
-  bad_data2         <- new_data
-  bad_data2$x_fac2t <- c("C", "B", "C", "B")
-
-  expect_error(JAGS_evaluate_formula(samples_new, ~ x_fac2t + x_cont2 + x_cont1 * x_fac3o, "mu", bad_data2, prior_list),
-               "Levels specified in the 'x_fac2t' factor variable do not match the levels used for model specification.")
-
-  # evaluate formula with spike prior distributions ----
-  set.seed(1)
-  df_all <- data.frame(
-    x_fac2i  = factor(rep(c("A", "B"), 30), levels = c("A", "B")),
-    x_fac3o  = factor(sample(c("A", "B", "C"), 60, replace = TRUE), levels = c("A", "B", "C")),
-    x_fac3t  = factor(sample(c("A", "B", "C"), 60, replace = TRUE), levels = c("A", "B", "C")),
-    x_fac3md = factor(sample(c("A", "B", "C"), 60, replace = TRUE), levels = c("A", "B", "C"))
-  )
-  df_all$y <- rnorm(60, 0.1, 0.5)
-
-  prior_list_all <- list(
-    "intercept" = prior("normal", list(0, 5)),
-    "x_fac2i"   = prior_factor("spike", contrast = "independent", list(1)),
-    "x_fac3o"   = prior_factor("spike", contrast = "orthonormal", list(0)),
-    "x_fac3t"   = prior_factor("spike", contrast = "treatment",   list(2)),
-    "x_fac3md"  = prior_factor("spike", contrast = "meandif",     list(0))
-  )
-  prior_list2  <- list(
-    "sigma" = prior("cauchy", list(0, 1), list(0, 1))
-  )
-  model_syntax <- paste0(
-    "model{",
-    "for(i in 1:N){\n",
-    "  y[i] ~ dnorm(mu[i], 1/pow(sigma, 2))\n",
-    "}\n",
-    "}"
-  )
-
-  fit1 <- JAGS_fit(
-    model_syntax       = model_syntax,
-    formula_list       = list(mu = ~ x_fac2i + x_fac3o + x_fac3t + x_fac3md),
-    data               = list(y = df_all$y, N = nrow(df_all)),
-    prior_list         = prior_list2,
-    formula_data_list  = list(mu = df_all),
-    formula_prior_list = list(mu = prior_list_all))
-
-  new_data <-  data.frame(
+  # New data for prediction
+  new_data <- data.frame(
     x_fac2i  = factor(c("A", "B", "A"), levels = c("A", "B")),
     x_fac3o  = factor(c("A", "A", "B"), levels = c("A", "B", "C")),
     x_fac3t  = factor(c("A", "B", "C"), levels = c("A", "B", "C")),
     x_fac3md = factor(c("B", "B", "C"), levels = c("A", "B", "C"))
   )
-  new_samples <- JAGS_evaluate_formula(fit1, ~ x_fac2i + x_fac3o + x_fac3t + x_fac3md, "mu", new_data, attr(fit1, "prior_list"))
-  new_samples <- apply(new_samples, 1, mean)
 
-  intercept_estimate <- JAGS_estimates_table(fit1)["(mu) intercept", "Mean"]
+  # Note: fit_spike_factors uses formula ~ x_fac2i + x_fac3o + x_fac3t + x_fac3md - 1
+  # with spike priors: independent(1), orthonormal(0), treatment(2), meandif(0)
+  prior_list <- attr(fit_spike, "prior_list")
+  new_samples <- JAGS_evaluate_formula(fit_spike, ~ x_fac2i + x_fac3o + x_fac3t + x_fac3md - 1, "mu", new_data, prior_list)
+  new_samples_mean <- apply(new_samples, 1, mean)
 
-  expect_equivalent(intercept_estimate + 1, new_samples[1])
-  expect_equivalent(intercept_estimate + 1 + 2, new_samples[2])
-  expect_equivalent(intercept_estimate + 1 + 2, new_samples[3])
+  # Verify spike values are correctly applied:
+  # - x_fac2i independent spike(1): each level gets value 1
+  # - x_fac3o orthonormal spike(0): contrast coefficients are 0
+  # - x_fac3t treatment spike(2): non-reference levels get value 2
+  # - x_fac3md meandif spike(0): differences from mean are 0
+  # Row 1: A(1) + A(0) + A(ref=0) + B(0) = 1
+  # Row 2: B(1) + A(0) + B(2) + B(0) = 3
+  # Row 3: A(1) + B(0) + C(2) + C(0) = 3
+  expect_equal(new_samples_mean[1], 1, tolerance = 0.01, ignore_attr = TRUE)
+  expect_equal(new_samples_mean[2], 3, tolerance = 0.01, ignore_attr = TRUE)
+  expect_equal(new_samples_mean[3], 3, tolerance = 0.01, ignore_attr = TRUE)
+})
 
+test_that("JAGS evaluate formula works with spike-and-slab and mixture priors", {
 
-  # dealing with spike and slab and mixture priors
-  prior_list_all2 <- list(
-    "intercept" = prior_spike_and_slab(prior("normal", list(0, 5))),
-    "x_fac2i"   = prior_mixture(list(
-      prior("spike", list(1)),
-      prior_factor("mnormal", contrast = "orthonormal", list(0, 1))
-    ), is_null = c(T,  F)),
-    "x_fac3o"   = prior_spike_and_slab(prior_factor("mnormal", contrast = "orthonormal", list(0, 1))),
-    "x_fac3t"   = prior_mixture(list(
-      prior_factor("normal", contrast = "treatment",   list(0, 1)),
-      prior("spike", list(0))
-    ), is_null = c(T,  F))
+  # Test JAGS_evaluate_formula with spike-and-slab and mixture priors using pre-fitted model
+  skip_on_os(c("mac", "linux", "solaris"))
+  skip_on_cran()
+  skip_if_no_fits()
+  skip_if_not_installed("rjags")
+
+  # Load pre-fitted joint complex model (mixture intercept, spike-and-slab continuous, spike-and-slab factor)
+  fit_joint <- readRDS(file.path(temp_fits_dir, "fit_joint_complex.RDS"))
+
+  # New data for prediction
+  new_data <- data.frame(
+    x_cont1 = c(0, 1, -1),
+    x_fac3t = factor(c("A", "B", "C"), levels = c("A", "B", "C"))
   )
-  fit2 <- JAGS_fit(
-    model_syntax       = model_syntax,
-    formula_list       = list(mu = ~ x_fac2i + x_fac3o + x_fac3t),
-    data               = list(y = df_all$y, N = nrow(df_all)),
-    prior_list         = prior_list2,
-    formula_data_list  = list(mu = df_all),
-    formula_prior_list = list(mu = prior_list_all2), chains = 1, adapt = 100, burnin = 100, sample = 200)
 
-  new_samples <- JAGS_evaluate_formula(fit2, ~ x_fac2i + x_fac3o + x_fac3t, "mu", new_data, attr(fit2, "prior_list"))
-  expect_equivalent(dim(new_samples), c(3, 200))
+  # fit_joint_complex uses formula ~ x_cont1 + x_fac3t
+  prior_list <- attr(fit_joint, "prior_list")
+  new_samples <- JAGS_evaluate_formula(fit_joint, ~ x_cont1 + x_fac3t, "mu", new_data, prior_list)
 
+  # Should return samples for 3 new data points x number of posterior samples
+  expect_equal(nrow(new_samples), 3)
+  expect_equal(ncol(new_samples), 1000)
 })
 
 test_that("Expression handling functions work", {
@@ -794,12 +326,12 @@ test_that("Expression handling functions work", {
   expect_equal(.extract_expressions(f5), list("x"))
   expect_equal(.extract_expressions(f6), list("x", "b"))
 
-  expect_equal(.remove_expressions(f1), formula(y ~ 1))
-  expect_equal(.remove_expressions(f2), formula(y ~ z))
-  expect_equal(.remove_expressions(f3), formula(y ~ 1))
-  expect_equal(.remove_expressions(f4), formula(y ~ z))
-  expect_equal(.remove_expressions(f5), formula(y ~ z))
-  expect_equal(.remove_expressions(f6), formula(y ~ z))
+  expect_equal(.remove_expressions(f1), formula(y ~ 1), ignore_formula_env = TRUE)
+  expect_equal(.remove_expressions(f2), formula(y ~ z), ignore_formula_env = TRUE)
+  expect_equal(.remove_expressions(f3), formula(y ~ 1), ignore_formula_env = TRUE)
+  expect_equal(.remove_expressions(f4), formula(y ~ z), ignore_formula_env = TRUE)
+  expect_equal(.remove_expressions(f5), formula(y ~ z), ignore_formula_env = TRUE)
+  expect_equal(.remove_expressions(f6), formula(y ~ z), ignore_formula_env = TRUE)
 })
 
 test_that("Random effects handling functions work", {
@@ -840,13 +372,13 @@ test_that("Random effects handling functions work", {
   expect_equal(.extract_random_effects(f6), t2)
   expect_equal(.extract_random_effects(f7), t3)
 
-  expect_equal(.remove_random_effects(f1), formula( ~ 1))
-  expect_equal(.remove_random_effects(f2), formula( ~ x_cont1))
-  expect_equal(.remove_random_effects(f3), formula( ~ 1))
-  expect_equal(.remove_random_effects(f4), formula( ~ 1))
-  expect_equal(.remove_random_effects(f5), formula( ~ x_cont1))
-  expect_equal(.remove_random_effects(f6), formula( ~ x_cont1))
-  expect_equal(.remove_random_effects(f7), formula( ~ x_cont1 + x_cont2))
+  expect_equal(.remove_random_effects(f1), formula( ~ 1), ignore_formula_env = TRUE)
+  expect_equal(.remove_random_effects(f2), formula( ~ x_cont1), ignore_formula_env = TRUE)
+  expect_equal(.remove_random_effects(f3), formula( ~ 1), ignore_formula_env = TRUE)
+  expect_equal(.remove_random_effects(f4), formula( ~ 1), ignore_formula_env = TRUE)
+  expect_equal(.remove_random_effects(f5), formula( ~ x_cont1), ignore_formula_env = TRUE)
+  expect_equal(.remove_random_effects(f6), formula( ~ x_cont1), ignore_formula_env = TRUE)
+  expect_equal(.remove_random_effects(f7), formula( ~ x_cont1 + x_cont2), ignore_formula_env = TRUE)
 
 })
 
@@ -859,24 +391,270 @@ test_that("-1 (no intercept) formula handling works correctly", {
     x_fac3i  = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C")),
     x_cont   = rnorm(60)
   )
-  
+
   # Test 1: Basic -1 formula functionality
   prior_list_basic <- list(
     "x_fac3md" = prior_factor("mnormal", contrast = "meandif", list(0, 1))
   )
-  result_basic <- JAGS_formula(~ x_fac3md - 1, parameter = "mu", 
-                              data = df_test[, "x_fac3md", drop = FALSE], 
+  result_basic <- JAGS_formula(~ x_fac3md - 1, parameter = "mu",
+                              data = df_test[, "x_fac3md", drop = FALSE],
                               prior_list = prior_list_basic)
-  
+
   # The -1 should automatically add spike(0) intercept
   expect_true("mu_intercept" %in% names(result_basic$prior_list))
   expect_true(is.prior.point(result_basic$prior_list$mu_intercept))
   expect_equal(result_basic$prior_list$mu_intercept$parameters$location, 0)
   expect_true(grepl("mu_intercept", result_basic$formula_syntax))
-  
+
   # Test 2: Helper function test
-  expect_equal(.add_intercept_to_formula(~ x - 1), ~ x)
-  expect_equal(.add_intercept_to_formula(~ x + y - 1), ~ x + y)
-  expect_equal(.add_intercept_to_formula(~ - 1), ~ 1)
+  expect_equal(.add_intercept_to_formula(~ x - 1), ~ x, ignore_formula_env = TRUE)
+  expect_equal(.add_intercept_to_formula(~ x + y - 1), ~ x + y, ignore_formula_env = TRUE)
+  expect_equal(.add_intercept_to_formula(~ - 1), ~ 1, ignore_formula_env = TRUE)
+
+  expect_equal(.add_intercept_to_formula(~ x + 0), ~ x, ignore_formula_env = TRUE)
+  expect_equal(.add_intercept_to_formula(~ x + y + 0), ~ x + y, ignore_formula_env = TRUE)
+  expect_equal(.add_intercept_to_formula(~ 0), ~ 1, ignore_formula_env = TRUE)
+
+  skip_if_not_installed("coda")
+
+  prior_list_continuous <- list(
+    "x_cont" = prior("normal", list(0, 1))
+  )
+  result_continuous <- JAGS_formula(~ x_cont - 1, parameter = "mu",
+                                    data = df_test[, "x_cont", drop = FALSE],
+                                    prior_list = prior_list_continuous)
+  posterior <- matrix(c(1, 2), nrow = 2)
+  colnames(posterior) <- "mu_x_cont"
+  posterior <- coda::as.mcmc(posterior)
+
+  expect_false("mu_intercept" %in% colnames(posterior))
+  expect_equal(
+    JAGS_evaluate_formula(
+      posterior,
+      ~ x_cont - 1,
+      "mu",
+      data.frame(x_cont = c(3, 4)),
+      result_continuous$prior_list
+    ),
+    cbind(c(3, 4), c(6, 8)),
+    ignore_attr = TRUE
+  )
+
+})
+
+test_that("log(intercept) attribute works for specifying log(int) + sum(beta_i * x_i) models", {
+
+  # this is helpful for specifying models for e.g., standard deviation where the output must be positive,
+  # but we want the intercept to be specified on the original scale - we can take exp() of the whole formula output
+
+  # setup test data
+  set.seed(1)
+  df_test <- data.frame(
+    x_fac3md = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C")),
+    x_fac3i  = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C")),
+    x_cont   = rnorm(60)
+  )
+
+  # Test 1: Basic -1 formula functionality
+  prior_list_basic <- list(
+    "intercept" = prior("normal", list(0, 1)),
+    "x_fac3md"  = prior_factor("mnormal", contrast = "meandif", list(0, 1))
+  )
+
+  # no log intercept
+  result_basic <- JAGS_formula(~ 1 + x_fac3md, parameter = "mu",
+                               data = df_test[, "x_fac3md", drop = FALSE],
+                               prior_list = prior_list_basic)
+
+  # log intercept
+  formula <- ~ 1 + x_fac3md
+  attr(formula, "log(intercept)") <- TRUE
+  result_log   <- JAGS_formula(formula, parameter = "mu",
+                               data = df_test[, "x_fac3md", drop = FALSE],
+                               prior_list = prior_list_basic)
+
+  # generates normal intercept
+  expect_equal(
+    result_basic[["formula_syntax"]],
+    "for(i in 1:N_mu){\n  mu[i] = mu_intercept + inprod(mu_x_fac3md, mu_data_x_fac3md[i,])\n}\n"
+  )
+
+  # generates log intercept
+  expect_equal(
+    result_log[["formula_syntax"]],
+    "for(i in 1:N_mu){\n  mu[i] = log(mu_intercept) + inprod(mu_x_fac3md, mu_data_x_fac3md[i,])\n}\n"
+  )
+
+  # everything else should match
+  result_basic[["formula_syntax"]] <- NULL
+  result_log[["formula_syntax"]]   <- NULL
+  result_basic[["formula"]] <- NULL
+  result_log[["formula"]]   <- NULL
+  expect_equal(result_basic, result_log)
+})
+
+test_that("JAGS_evaluate_formula works with log(intercept) attribute", {
+
+  # Test that JAGS_evaluate_formula correctly applies log() transformation to intercept
+  # when the formula has the log(intercept) attribute set
+
+  skip_if_not_installed("coda")
+
+  # Setup: simple data for testing
+  set.seed(1)
+  df_test <- data.frame(
+    x_cont = rnorm(10)
+  )
+
+  # Create prior list with gamma prior for intercept (must be positive for log)
+  prior_list <- list(
+    "intercept" = prior("gamma", list(2, 1)),
+    "x_cont"    = prior("normal", list(0, 1))
+  )
+
+  # Process formula to get prior_list with parameter names
+  formula_result <- JAGS_formula(~ x_cont, parameter = "mu", data = df_test, prior_list = prior_list)
+  prior_list_processed <- formula_result$prior_list
+
+
+  # Create mock samples: intercept = 2, x_cont = 0.5
+  samples <- matrix(c(2, 0.5), nrow = 1)
+  colnames(samples) <- c("mu_intercept", "mu_x_cont")
+  samples <- coda::as.mcmc.list(coda::as.mcmc(samples))
+
+  # New data for prediction
+  new_data <- data.frame(x_cont = c(0, 1, -1))
+
+  # Test without log(intercept): result = intercept + x_cont * data
+  # For x_cont =  0: result = 2 + 0.5 * 0 = 2
+  # For x_cont =  1: result = 2 + 0.5 * 1 = 2.5
+  # For x_cont = -1: result = 2 + 0.5 * (-1) = 1.5
+  formula_no_log <- ~ x_cont
+  result_no_log <- JAGS_evaluate_formula(samples, formula_no_log, "mu", new_data, prior_list_processed)
+  expect_equal(as.vector(result_no_log[,1]), c(2, 2.5, 1.5), tolerance = 1e-10)
+
+  # Test with log(intercept): result = log(intercept) + x_cont * data
+  # For x_cont =  0: result = log(2) + 0.5 * 0 = log(2)
+  # For x_cont =  1: result = log(2) + 0.5 * 1 = log(2) + 0.5
+  # For x_cont = -1: result = log(2) + 0.5 * (-1) = log(2) - 0.5
+  formula_log <- ~ x_cont
+  attr(formula_log, "log(intercept)") <- TRUE
+  result_log <- JAGS_evaluate_formula(samples, formula_log, "mu", new_data, prior_list_processed)
+  expect_equal(as.vector(result_log[,1]), c(log(2), log(2) + 0.5, log(2) - 0.5), tolerance = 1e-10)
+})
+
+test_that("Default priors (__default_factor and __default_continuous) work correctly", {
+
+  # setup test data
+  set.seed(1)
+  df_test <- data.frame(
+    x_cont1 = rnorm(60),
+    x_cont2 = rnorm(60),
+    x_fac3  = factor(rep(c("A", "B", "C"), 20), levels = c("A", "B", "C")),
+    x_fac2  = factor(rep(c("X", "Y"), 30), levels = c("X", "Y"))
+  )
+
+  # Test 1: Only __default_continuous - applies to intercept and continuous predictors
+  prior_list_cont_default <- list(
+    "__default_continuous" = prior("normal", list(0, 1))
+  )
+  result1 <- JAGS_formula(~ x_cont1 + x_cont2, parameter = "mu",
+                          data = df_test, prior_list = prior_list_cont_default)
+
+  # Check that intercept and both continuous predictors got the default prior
+  expect_true("mu_intercept" %in% names(result1$prior_list))
+  expect_true("mu_x_cont1" %in% names(result1$prior_list))
+  expect_true("mu_x_cont2" %in% names(result1$prior_list))
+  expect_equal(result1$prior_list$mu_intercept$distribution, "normal")
+  expect_equal(result1$prior_list$mu_x_cont1$distribution, "normal")
+  expect_equal(result1$prior_list$mu_x_cont2$distribution, "normal")
+
+  # Test 2: Only __default_factor - continuous predictors must still be specified
+  prior_list_fac_default <- list(
+    "intercept"            = prior("normal", list(0, 5)),
+    "x_cont1"              = prior("cauchy", list(0, 1)),
+    "__default_factor"     = prior_factor("normal", list(0, 0.5), contrast = "treatment")
+  )
+  result2 <- JAGS_formula(~ x_cont1 + x_fac3 + x_fac2, parameter = "mu",
+                          data = df_test, prior_list = prior_list_fac_default)
+
+  # Check that factors got the default prior
+  expect_true("mu_x_fac3" %in% names(result2$prior_list))
+  expect_true("mu_x_fac2" %in% names(result2$prior_list))
+  expect_equal(result2$prior_list$mu_x_fac3$distribution, "normal")
+  expect_equal(result2$prior_list$mu_x_fac2$distribution, "normal")
+  # Check that explicit priors are preserved
+  expect_equal(result2$prior_list$mu_intercept$distribution, "normal")
+  expect_equal(result2$prior_list$mu_intercept$parameters$mean, 0)
+  expect_equal(result2$prior_list$mu_intercept$parameters$sd, 5)
+  expect_equal(result2$prior_list$mu_x_cont1$distribution, "t")  # cauchy is internally stored as t
+
+  # Test 3: Both defaults - all terms get assigned correctly
+  prior_list_both_defaults <- list(
+    "__default_continuous" = prior("normal", list(0, 2)),
+    "__default_factor"     = prior_factor("normal", list(0, 1), contrast = "treatment")
+  )
+  result3 <- JAGS_formula(~ x_cont1 + x_fac3, parameter = "mu",
+                          data = df_test, prior_list = prior_list_both_defaults)
+
+  expect_equal(result3$prior_list$mu_intercept$distribution, "normal")
+  expect_equal(result3$prior_list$mu_intercept$parameters$sd, 2)  # from continuous default
+  expect_equal(result3$prior_list$mu_x_cont1$parameters$sd, 2)    # from continuous default
+  expect_equal(result3$prior_list$mu_x_fac3$parameters$sd, 1)     # from factor default
+
+  # Test 4: Explicit priors override defaults
+  prior_list_override <- list(
+    "intercept"            = prior("cauchy", list(0, 10)),  # explicit override
+    "__default_continuous" = prior("normal", list(0, 1)),
+    "__default_factor"     = prior_factor("normal", list(0, 0.5), contrast = "treatment"),
+    "x_fac3"               = prior_factor("mnormal", list(0, 2), contrast = "orthonormal")  # explicit override
+  )
+  result4 <- JAGS_formula(~ x_cont1 + x_fac3 + x_fac2, parameter = "mu",
+                          data = df_test, prior_list = prior_list_override)
+
+  # Explicit priors should be used
+  expect_equal(result4$prior_list$mu_intercept$distribution, "t")  # cauchy is internally stored as t
+  expect_equal(result4$prior_list$mu_x_fac3$distribution, "mnormal")
+  expect_equal(result4$prior_list$mu_x_fac3$parameters$sd, 2)
+  # Default priors for non-specified terms
+  expect_equal(result4$prior_list$mu_x_cont1$distribution, "normal")
+  expect_equal(result4$prior_list$mu_x_fac2$distribution, "normal")
+  expect_equal(result4$prior_list$mu_x_fac2$parameters$sd, 0.5)
+
+  # Test 5: Interactions use factor default when they involve factors
+  prior_list_interaction <- list(
+    "__default_continuous" = prior("normal", list(0, 1)),
+    "__default_factor"     = prior_factor("mnormal", list(0, 0.5), contrast = "orthonormal")
+  )
+  result5 <- JAGS_formula(~ x_cont1 * x_fac3, parameter = "mu",
+                          data = df_test, prior_list = prior_list_interaction)
+
+  # x_cont1:x_fac3 interaction involves a factor, so should get factor default
+  expect_true("mu_x_cont1__xXx__x_fac3" %in% names(result5$prior_list))
+  expect_equal(result5$prior_list[["mu_x_cont1__xXx__x_fac3"]]$distribution, "mnormal")
+
+  # Test 6: Error when term is missing and no appropriate default
+  prior_list_missing <- list(
+    "__default_continuous" = prior("normal", list(0, 1))
+    # no __default_factor, and x_fac3 not specified
+ )
+  expect_error(
+    JAGS_formula(~ x_cont1 + x_fac3, parameter = "mu",
+                 data = df_test, prior_list = prior_list_missing),
+    "missing"
+  )
+
+  # Test 7: Reserved names cannot be used as variable names in data
+  df_bad <- data.frame(
+    `__default_factor` = rnorm(10),
+    x = rnorm(10),
+    check.names = FALSE
+  )
+  expect_error(
+    JAGS_formula(~ x, parameter = "mu", data = df_bad,
+                 prior_list = list("intercept" = prior("normal", list(0, 1)),
+                                   "x" = prior("normal", list(0, 1)))),
+    "__default_factor"
+  )
 
 })

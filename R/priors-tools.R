@@ -120,66 +120,23 @@
   if(is.expression(parameter))
     return()
 
-  if(!allow_NA && is.na(parameter)){
+  if(length(parameter) != 1)
+    stop(paste0("The '", name, "' must be a numeric vector of length 1."), call. = FALSE)
+
+  if(is.na(parameter)){
+    if(allow_NA)
+      return()
     stop(paste0("The '", name, "' must be defined."), call. = FALSE)
-  }else if(!allow_NA){
-    if(length(parameter) != 1 || !is.numeric(parameter))
-      stop(paste0("The '", name, "' must be a numeric vector of length 1."), call. = FALSE)
-    if(!.is.wholenumber(parameter))
-      stop(paste0(call, "The '", name ,"' must be an integer"), call. = FALSE)
   }
-}
-.check_parameter_weigthfunction <- function(steps, alpha = NULL, alpha1 = NULL, alpha2 = NULL, omega = NULL){
 
-  if(!is.null(alpha)){
+  if(!is.numeric(parameter))
+    stop(paste0("The '", name, "' must be a numeric vector of length 1."), call. = FALSE)
 
-    .check_parameter(steps, "steps", length = 0)
-    .check_parameter(alpha, "alpha", length = 0)
+  if(!.is.wholenumber(parameter))
+    stop(paste0("The '", name ,"' must be an integer"), call. = FALSE)
 
-    if(any(steps >= 1) | any(steps <= 0))
-      stop("Parameter 'steps' must be higher than 0 and lower than 1.", call. = FALSE)
-    if(!(all(steps == cummax(steps))))
-      stop("Parameters 'steps' must be monotonically increasing.", call. = FALSE)
-    if(length(steps) != length(alpha) - 1)
-      stop("The parameter alpha needs to have one more argument then there are steps.", call. = FALSE)
-
-    .check_parameter_positive(alpha, "alpha")
-
-  }else if(!is.null(alpha1) & !is.null(alpha2)){
-
-    .check_parameter(steps,  "steps",  length = 0)
-    .check_parameter(alpha1, "alpha1", length = 0)
-    .check_parameter(alpha2, "alpha2", length = 0)
-
-    if(any(steps >= 1) | any(steps <= 0))
-      stop("Parameter 'steps' must be higher than 0 and lower than 1.", call. = FALSE)
-    if(!(all(steps == cummax(steps))))
-      stop("Parameters 'steps' must be monotonically increasing.", call. = FALSE)
-    if(sum(steps <= .5) != length(alpha1) - 1)
-      stop("The parameter alpha1 needs to have one more argument then there are steps <= .5.", call. = FALSE)
-    if(sum(steps > .5)  != length(alpha2) - 1)
-      stop("The parameter alpha2 needs to have one more argument then there are steps > .5.", call. = FALSE)
-
-    .check_parameter_positive(alpha1, "alpha1")
-    .check_parameter_positive(alpha2, "alpha2")
-
-  }else if(!is.null(omega)){
-
-    .check_parameter(steps, "steps", length = 0)
-    .check_parameter(omega, "omega", length = 0)
-
-    if(any(steps >= 1) | any(steps <= 0))
-      stop("Parameter 'steps' must be higher than 0 and lower than 1.", call. = FALSE)
-    if(!(all(steps == cummax(steps))))
-      stop("Parameters 'steps' must be monotonically increasing.", call. = FALSE)
-    if(length(steps) != length(omega) - 1)
-      stop("The parameter omega needs to have one more argument then there are steps.", call. = FALSE)
-    if(any(omega < 0) | any(omega > 1))
-      stop("Parameter 'omega' must be within 0 to 1 range.", call. = FALSE)
-    if(!any(sapply(omega, function(omega_i)isTRUE(all.equal(omega_i, 1)))))
-      stop("At least one 'omega' parameter must be equal to 1.", call. = FALSE)
-
-  }
+  if(parameter < 1)
+    stop(paste0("The '", name ,"' must be a positive integer"), call. = FALSE)
 }
 .check_parameter_range          <- function(parameter, name, lower, upper, include_bounds = FALSE){
 
@@ -264,7 +221,19 @@
   }
 }
 .is_prior_expression           <- function(prior){
-  return(any(sapply(prior[["parameters"]], is.expression)))
+
+  parameters <- prior[["parameters"]]
+  if(is.null(parameters)){
+    return(FALSE)
+  }
+
+  for(i in seq_along(parameters)){
+    if(is.expression(parameters[[i]])){
+      return(TRUE)
+    }
+  }
+
+  return(FALSE)
 }
 .prior_expression_to_character <- function(prior){
   prior[["parameters"]] <- lapply(prior[["parameters"]], function(x){
@@ -357,6 +326,12 @@ is.prior.PEESE           <- function(x){
 is.prior.weightfunction  <- function(x){
   inherits(x, "prior.weightfunction")
 }
+.is_prior_weightfunction_null <- function(x){
+  is.prior.none(x) ||
+    (is.prior.point(x) &&
+       length(x$parameters[["location"]]) == 1L &&
+       isTRUE(all.equal(x$parameters[["location"]], 1)))
+}
 #' @rdname is.prior
 is.prior.factor          <- function(x){
   inherits(x, "prior.factor")
@@ -393,6 +368,50 @@ is.prior.mixture         <- function(x){
 
   if(!allow_expressions && .is_prior_expression(prior))
     stop(paste0("The '", name, "' argument must not contain parameter expressions."), call. = FALSE)
+
+  return()
+}
+.prior_model_weight <- function(prior){
+
+  prior_weight <- attr(prior, "model_prior_weights", exact = TRUE)
+  if(!is.null(prior_weight)){
+    return(prior_weight)
+  }
+
+  prior[["prior_weights"]]
+}
+.set_prior_model_weight <- function(prior, prior_weight){
+
+  if(is.prior.mixture(prior)){
+    attr(prior, "model_prior_weights") <- prior_weight
+  }else{
+    prior[["prior_weights"]] <- prior_weight
+  }
+
+  prior
+}
+.check_prior_weight <- function(prior_weights, name = "prior_weights"){
+
+  check_real(prior_weights, name, lower = 0, allow_bound = FALSE, allow_NA = FALSE)
+
+  if(any(!is.finite(prior_weights)))
+    stop(paste0("The '", name, "' must be finite."), call. = FALSE)
+
+  return()
+}
+.check_prior_list_unique_names <- function(prior_list, name = "prior_list"){
+
+  prior_names <- names(prior_list)
+  if(!is.null(prior_names) && anyDuplicated(prior_names)){
+    duplicate_names <- unique(prior_names[duplicated(prior_names)])
+    stop(
+      paste0(
+        "The '", name, "' argument must not contain duplicate names ('",
+        paste0(duplicate_names, collapse = "', '"), "')."
+      ),
+      call. = FALSE
+    )
+  }
 
   return()
 }

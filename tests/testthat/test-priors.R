@@ -1,119 +1,35 @@
-context("Prior distribution functions")
+skip_if_not_test_profile("visual")
 
-# each test checks that a corresponding prior distribution can be created and the following functions work:
-# - random number generator
-# - quantile function
-# - density function
-# - distribution function
-# - print function
-# - mean and sd functions
-test_prior          <- function(prior, skip_moments = FALSE){
-  set.seed(1)
-  # tests rng and print function (for plot)
-  samples <- rng(prior, 100000)
-  if(is.prior.discrete(prior)){
-    barplot(table(samples)/length(samples), main = print(prior, plot = T), width = 1/(max(samples)+1), space = 0, xlim = c(-0.25, max(samples)+0.25))
-  }else if(is.prior.spike_and_slab(prior)){
-    xh         <- hist(samples[samples != 0], breaks = 50, plot = FALSE)
-    xh$density <- xh$density * mean(samples != 0)
-    plot(xh, main = print(prior, plot = T), freq = FALSE)
-  }else{
-    hist(samples, main = print(prior, plot = T), breaks = 50, freq = FALSE)
-  }
-  # tests density function
-  lines(prior, individual = TRUE)
+# ============================================================================ #
+# TEST FILE: Prior Distribution Evaluation Tests
+# ============================================================================ #
+#
+# PURPOSE:
+#   Visual regression tests for prior distribution functions (rng, pdf, cdf,
+#   quant, mean, sd). Each test validates a distribution type works correctly.
+#
+# DEPENDENCIES:
+#   - vdiffr: Visual regression testing
+#   - common-functions.R: test_prior, test_weightfunction, test_orthonormal,
+#     test_meandif helper functions
+#
+# SKIP CONDITIONS:
+#   - skip_on_os(c("mac", "linux", "solaris")): Multivariate sampling tests
+#     (orthonormal, meandif priors only)
+#   - Note: Pure R tests - can run on CRAN
+#
+# MODELS/FIXTURES:
+#   - None required (pure prior testing)
+#
+# TAGS: @evaluation, @visual, @priors
+# ============================================================================ #
 
-  # tests quantile function
-  if(!is.prior.spike_and_slab(prior) && !is.prior.mixture(prior)){
-    abline(v = quant(prior, 0.5), col = "blue", lwd = 2)
-  }
-  # tests that pdf(q(x)) == x
-  if(!is.prior.point(prior) && !is.prior.discrete(prior) && !is.prior.spike_and_slab(prior) && !is.prior.mixture(prior)){
-    expect_equal(.25, cdf(prior, quant(prior, 0.25)), tolerance = 1e-4)
-    expect_equal(.25, ccdf(prior, quant(prior, 0.75)), tolerance = 1e-4)
-  }
-  # test mean and sd functions
-  if(!skip_moments){
-    expect_equal(mean(samples), mean(prior), tolerance = 1e-2)
-    expect_equal(sd(samples),   sd(prior),   tolerance = 1e-2)
-  }
-  return(invisible())
-}
-test_weightfunction <- function(prior, skip_moments = FALSE){
-  set.seed(1)
-  # tests rng and print function (for plot)
-  samples   <- rng(prior, 10000)
-  densities <- density(prior, individual = TRUE)
+# Load test helper functions
+source(testthat::test_path("common-functions.R"))
 
-  if(!all(names(prior$parameters) %in% c("steps", "alpha1", "alpha2"))){
-    quantiles <- mquant(prior, 0.5)
-  }
+# File-level skips for visual regression
+skip_if_not_installed("vdiffr")
 
-  oldpar <- graphics::par(no.readonly = TRUE)
-  on.exit(graphics::par(mfcol = oldpar[["mfcol"]]))
-  par(mfcol = c(1, ncol(samples)-1))
-
-  for(i in 1:(ncol(samples)-1)){
-    hist(samples[,i], main = print(prior, plot = T), breaks = 50, freq = FALSE)
-    lines(densities[[i]])
-    if(!all(names(prior$parameters) %in% c("steps", "alpha1", "alpha2"))){
-      abline(v = quantiles[i], col = "blue", lwd = 2)
-    }
-    if(!grepl("fixed", prior$distribution) & !all(names(prior$parameters) %in% c("steps", "alpha1", "alpha2"))){
-      expect_equal(.25, mcdf(prior, mquant(prior, 0.25)[,i])[,i], tolerance = 1e-5)
-      expect_equal(.25, mccdf.prior(prior, mquant(prior, 0.75)[,i])[,i], tolerance = 1e-5)
-    }
-    if(!skip_moments){
-      expect_equal(apply(samples, 2, mean), mean(prior), tolerance = 1e-2)
-      expect_equal(apply(samples, 2, sd),   sd(prior)  , tolerance = 1e-2)
-    }
-  }
-  return(invisible())
-}
-test_orthonormal    <- function(prior, skip_moments = FALSE){
-  set.seed(1)
-  # tests rng and print function (for plot)
-  samples <- rng(prior, 100000)
-  samples <- samples[abs(samples) < 10]
-  hist(samples, main = print(prior, plot = T), breaks = 50, freq = FALSE)
-  # tests density function
-  lines(prior, individual = TRUE)
-  # tests quantile function
-  abline(v = mquant(prior, 0.5), col = "blue", lwd = 2)
-  # tests that pdf(q(x)) == x
-  if(!is.prior.point(prior)){
-    expect_equal(.25, mcdf(prior, mquant(prior, 0.25)), tolerance = 1e-5)
-    expect_equal(.25, mccdf(prior, mquant(prior, 0.75)), tolerance = 1e-5)
-  }
-  # test mean and sd functions
-  if(!skip_moments){
-    expect_equal(mean(samples), mean(prior), tolerance = 1e-2)
-    expect_equal(sd(samples),   sd(prior),   tolerance = 1e-2)
-  }
-  return(invisible())
-}
-test_meandif        <- function(prior, skip_moments = FALSE){
-  set.seed(1)
-  # tests rng and print function (for plot)
-  samples <- rng(prior, 100000)
-  samples <- samples[abs(samples) < 10]
-  hist(samples, main = print(prior, plot = T), breaks = 50, freq = FALSE)
-  # tests density function
-  lines(prior, individual = TRUE)
-  # tests quantile function
-  abline(v = mquant(prior, 0.5), col = "blue", lwd = 2)
-  # tests that pdf(q(x)) == x
-  if(!is.prior.point(prior)){
-    expect_equal(.25, mcdf(prior, mquant(prior, 0.25)), tolerance = 1e-5)
-    expect_equal(.25, mccdf(prior, mquant(prior, 0.75)), tolerance = 1e-5)
-  }
-  # test mean and sd functions
-  if(!skip_moments){
-    expect_equal(mean(samples), mean(prior), tolerance = 1e-2)
-    expect_equal(sd(samples),   sd(prior),   tolerance = 1e-2)
-  }
-  return(invisible())
-}
 
 test_that("Normal prior distribution works", {
 
@@ -190,7 +106,7 @@ test_that("Beta prior distribution works", {
 
 })
 
-test_that("Beta prior distribution works", {
+test_that("Bernoulli prior distribution works", {
 
   vdiffr::expect_doppelganger("prior-bernoulli-1", function()test_prior(prior("bernoulli", list(.50))))
   vdiffr::expect_doppelganger("prior-bernoulli-2", function()test_prior(prior("bernoulli", list(.66))))
@@ -229,41 +145,37 @@ test_that("PET & PEESE prior distribution works", {
 
 test_that("One-sided weigthfunction prior distribution works", {
 
-  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-1", function()test_weightfunction(prior_weightfunction("one.sided", list(c(.05), c(1, 1)))))
-  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-2", function()test_weightfunction(prior_weightfunction("one.sided", list(c(.05, 0.10), c(1, 1, 1)))))
-  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-3", function()test_weightfunction(prior_weightfunction("one.sided", list(c(.05), c(5, .5)))))
-  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-4", function()test_weightfunction(prior_weightfunction("one.sided", list(c(.05, 0.10), c(5, 5, 1)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-1", function()test_weightfunction(prior_weightfunction("one-sided", c(.05), wf_cumulative(c(1, 1)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-2", function()test_weightfunction(prior_weightfunction("one-sided", c(.05, 0.10), wf_cumulative(c(1, 1, 1)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-3", function()test_weightfunction(prior_weightfunction("one-sided", c(.05), wf_cumulative(c(5, .5)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-4", function()test_weightfunction(prior_weightfunction("one-sided", c(.05, 0.10), wf_cumulative(c(5, 5, 1)))))
 
   # non-monotonic one-sided requires sampling
-  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-5", function()test_weightfunction(prior_weightfunction("one.sided", list(c(.05, 0.60), c(1, 1), c(1, 1))), skip_moments = TRUE))
-  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-6", function()test_weightfunction(prior_weightfunction("one.sided", list(c(.05, 0.10, 0.60), c(1, 1, 1), c(1, 1))), skip_moments = TRUE))
+  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-5", function()test_weightfunction(prior_weightfunction("one-sided", c(.05, 0.60), wf_independent(prior("beta", list(1, 1)))), skip_moments = TRUE))
+  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided-6", function()test_weightfunction(prior_weightfunction("one-sided", c(.05, 0.10, 0.60), wf_independent(prior("beta", list(1, 1)))), skip_moments = TRUE))
 })
 
 test_that("Two-sided weigthfunction prior distribution works", {
 
-  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided-1", function()test_weightfunction(prior_weightfunction("two.sided", list(c(.05), c(1, 1)))))
-  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided-2", function()test_weightfunction(prior_weightfunction("two.sided", list(c(.05, 0.10), c(1, 1, 1)))))
-  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided-3", function()test_weightfunction(prior_weightfunction("two.sided", list(c(.05), c(5, .5)))))
-  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided-4", function()test_weightfunction(prior_weightfunction("two.sided", list(c(.05, 0.10), c(5, 5, 1)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided-1", function()test_weightfunction(prior_weightfunction("two-sided", c(.05), wf_cumulative(c(1, 1)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided-2", function()test_weightfunction(prior_weightfunction("two-sided", c(.05, 0.10), wf_cumulative(c(1, 1, 1)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided-3", function()test_weightfunction(prior_weightfunction("two-sided", c(.05), wf_cumulative(c(5, .5)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided-4", function()test_weightfunction(prior_weightfunction("two-sided", c(.05, 0.10), wf_cumulative(c(5, 5, 1)))))
 
 })
 
 test_that("One-sided.fixed weigthfunction prior distribution works", {
 
-  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided.fixed-1", function()test_weightfunction(prior_weightfunction("one.sided.fixed", list(c(.05), c(1, .5)))))
-  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided.fixed-2", function()test_weightfunction(prior_weightfunction("one.sided.fixed", list(c(.05, 0.10), c(1, .2, .5)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided.fixed-1", function()test_weightfunction(prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .5)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-one.sided.fixed-2", function()test_weightfunction(prior_weightfunction("one-sided", c(.05, 0.10), wf_fixed(c(1, .2, .5)))))
 
 })
 
 test_that("Two-sided.fixed weigthfunction prior distribution works", {
 
-  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided.fixed-1", function()test_weightfunction(prior_weightfunction("two.sided.fixed", list(c(.05), c(1, .5)))))
-  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided.fixed-2", function()test_weightfunction(prior_weightfunction("two.sided.fixed", list(c(.05, 0.10), c(1, .2, .5)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided.fixed-1", function()test_weightfunction(prior_weightfunction("two-sided", c(.05), wf_fixed(c(1, .5)))))
+  vdiffr::expect_doppelganger("prior-weigthfunction-two.sided.fixed-2", function()test_weightfunction(prior_weightfunction("two-sided", c(.05, 0.10), wf_fixed(c(1, .2, .5)))))
 
-})
-
-test_that("Vector prior distribution works", {
-  # TODO
 })
 
 test_that("Orthonormal prior distribution works", {
@@ -376,6 +288,39 @@ test_that("Prior mixture distributions work", {
 
   vdiffr::expect_doppelganger("prior-mixture-4", function()hist(rng(p4, 10000, transform_factor_samples = FALSE), main = print(p4, plot = T), breaks = 50, freq = FALSE))
   vdiffr::expect_doppelganger("prior-mixture-5", function()hist(rng(p4, 10000, transform_factor_samples = TRUE), main = print(p4, plot = T), breaks = 50, freq = FALSE))
+
+  # mixture with none and spikes
+  p5 <- prior_mixture(
+    list(
+      prior_none(),
+      prior("spike", list(1)),
+      prior("gamma",  list(5, 10))
+    )
+  )
+  p6 <- prior_mixture(
+    list(
+      prior_none(),
+      prior("spike", list(1)),
+      prior_factor("mnormal", list(0, 1),  contrast = "orthonormal")
+    ), components = c("a", "b", "c")
+  )
+  p7 <- prior_mixture(
+    list(
+      prior_none(),
+      prior("spike", list(1)),
+      prior_factor("beta", list(3, 1),  contrast = "treatment")
+    )
+  )
+  for(i in seq_along(p6)){
+    p6[[i]]$parameters[["K"]] <- 2
+  }
+  for(i in seq_along(p7)){
+    p7[[i]]$parameters[["K"]] <- 2
+  }
+
+  vdiffr::expect_doppelganger("prior-mixture-6", function()hist(rng(p5, 10000, transform_factor_samples = FALSE), main = print(p5, plot = T), breaks = 50, freq = FALSE))
+  vdiffr::expect_doppelganger("prior-mixture-7", function()hist(rng(p6, 10000, transform_factor_samples = FALSE), main = print(p6, plot = T), breaks = 50, freq = FALSE))
+  vdiffr::expect_doppelganger("prior-mixture-8", function()hist(rng(p7, 10000, transform_factor_samples = FALSE), main = print(p7, plot = T), breaks = 50, freq = FALSE))
 
 })
 

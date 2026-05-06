@@ -3,6 +3,14 @@
 #' @param prior_list list of prior distributions
 #' @param prior_list_mu list of priors for the mu parameter
 #' required when plotting PET-PEESE
+#' @param effect_direction direction of the effect for PET-PEESE
+#' regression. Use \code{"positive"} (default) for
+#' \code{mu + PET*se + PEESE*se^2} or \code{"negative"} for
+#' \code{mu - PET*se - PEESE*se^2}.
+#' @param legend whether factor legends should be drawn.
+#' @param legend_title optional title for factor legends.
+#' @param legend_labels optional labels for factor legend levels.
+#' @param legend_position optional legend position for factor legends.
 #' @param ... additional arguments
 #' @inheritParams density.prior
 #' @inheritParams plot.prior
@@ -15,12 +23,10 @@
 plot_prior_list <- function(prior_list, plot_type = "base",
                             x_seq = NULL, xlim = NULL, x_range_quant = NULL, n_points = 500,
                             n_samples = 10000, force_samples = FALSE,
+                            individual = FALSE, show_figures = if(individual) 1 else NULL,
                             transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
-                            rescale_x = FALSE, par_name = NULL, prior_list_mu = NULL, ...){
-
-  # TODO: add plots for individual parameters for weightfunction and PET-PEESE
-  individual = FALSE
-  show_figures = if(individual) 1 else NULL
+                            rescale_x = FALSE, par_name = NULL, prior_list_mu = NULL, effect_direction = "positive",
+                            legend = TRUE, legend_title = NULL, legend_labels = NULL, legend_position = NULL, ...){
 
   # check input (most arguments are checked within density)
   check_list(prior_list, "prior_list")
@@ -29,7 +35,9 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   check_char(plot_type, "plot_type", allow_values = c("base", "ggplot"))
   check_bool(individual, "individual")
   check_bool(rescale_x, "rescale_x")
+  check_bool(legend, "legend", allow_NA = FALSE)
   check_int(show_figures, "show_figures", allow_NULL = TRUE)
+  check_char(effect_direction, "effect_direction", allow_values = c("positive", "negative"))
   # check that there is no mixing of PET-PEESE and weightfunctions
   if(any(sapply(prior_list, is.prior.weightfunction)) & (any(sapply(prior_list, is.prior.PET)) | any(sapply(prior_list, is.prior.PEESE))))
     stop("weightfunction and PET-PEESE priors cannot be mixed within a 'prior_list'.")
@@ -49,7 +57,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   }
 
-  if(prior_type == "PETPEESE"){
+  if(prior_type == "PETPEESE" && !individual){
     check_list(prior_list_mu, "prior_list_mu", check_length = length(prior_list))
     if(is.prior(prior_list_mu) | !all(sapply(prior_list_mu, is.prior)))
       stop("'prior_list_mu' must be a list of priors (priors for the mu parameter are required for plotting PET-PEESE).")
@@ -71,30 +79,42 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
 
   # get the plotting data
-  if(prior_type == "weightfunction"){
+  if(prior_type == "weightfunction" && !individual){
+    # special dispatching for visualizing the whole weightfunction
 
-    # use samples (not sure how to provide analytic solution for this yes)
+    # use analytical marginal summaries of the mapped cumulative Dirichlet weights
     plot_data <- .plot_data_prior_list.weightfunction(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                                                       n_points = n_points, n_samples = n_samples)
     plot <- .plot.prior.weightfunction(prior_list, plot_type = plot_type, plot_data = plot_data, rescale_x = rescale_x, par_name = par_name, ...)
 
-  }else if(prior_type == "PETPEESE"){
+  }else if(prior_type == "PETPEESE" && !individual){
+    # special dispatching for visualizing the PET-PEESE regression
 
-    # use samples (not sure how to provide analytic solution for this yes)
+    # use deterministic linear-combination summaries when supported, with a sampling fallback
     plot_data <- .plot_data_prior_list.PETPEESE(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                                                 n_points = n_points, n_samples = n_samples,
                                                 transformation = transformation, transformation_arguments = transformation_arguments,
-                                                transformation_settings = transformation_settings, prior_list_mu = prior_list_mu)
+                                                transformation_settings = transformation_settings, prior_list_mu = prior_list_mu,
+                                                effect_direction = effect_direction)
     plot <- .plot.prior.PETPEESE(prior_list, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
 
   }else if(prior_type %in% c("simple", "orthonormal", "meandif")){
+    # regular prior distributions (or individual plots for parameters from weightfunctions/PET-PEESE)
 
     # solve analytically
     plot_data <- .plot_data_prior_list.simple(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                                               n_points = n_points, n_samples = n_samples, force_samples = force_samples, individual = individual,
                                               transformation = transformation, transformation_arguments = transformation_arguments,
                                               transformation_settings = transformation_settings)
-    plot <- .plot_prior_list.both(plot_data = plot_data, plot_type = plot_type, par_name = par_name, ...)
+    if(any(sapply(plot_data, inherits, what = "density.prior.factor"))){
+      plot <- .plot_prior_list.factor(
+        plot_data = plot_data, plot_type = plot_type, par_name = par_name,
+        legend = legend, legend_title = legend_title, legend_labels = legend_labels,
+        legend_position = legend_position, ...
+      )
+    }else{
+      plot <- .plot_prior_list.both(plot_data = plot_data, plot_type = plot_type, par_name = par_name, ...)
+    }
 
   }
 
@@ -199,6 +219,137 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     return(plot)
   }
 }
+.plot_prior_factor_component_level_name <- function(component){
+
+  level_name <- attr(component, "level_name")
+  if(!is.null(level_name) && length(level_name) == 1L && !is.na(level_name)){
+    return(as.character(level_name))
+  }
+
+  if(inherits(component, "density.prior.factor")){
+    level <- attr(component, "level")
+    if(!is.null(level) && length(level) == 1L && !is.na(level)){
+      return(as.character(level))
+    }
+  }
+
+  NA_character_
+}
+.plot_prior_factor_format_level_names <- function(level_names){
+
+  if(length(level_names) == 0L){
+    return(character())
+  }
+
+  level_labels <- level_names
+  dif_matches  <- gregexpr("[dif:", level_labels, fixed = TRUE)
+  has_dif       <- vapply(dif_matches, function(x) x[1] != -1L, logical(1))
+  multi_dif     <- vapply(dif_matches, function(x) x[1] != -1L && length(x) > 1, logical(1))
+  if(any(multi_dif)){
+    level_labels[multi_dif] <- gsub("__xXx__", ":", level_labels[multi_dif], fixed = TRUE)
+  }
+  if(any(has_dif & !multi_dif)){
+    single_dif <- has_dif & !multi_dif
+    level_labels[single_dif] <- substr(
+      level_labels[single_dif],
+      regexpr("[dif:", level_labels[single_dif], fixed = TRUE) + 5,
+      regexpr("]", level_labels[single_dif], fixed = TRUE) - 1
+    )
+  }
+  no_dif <- !has_dif
+  if(any(no_dif & grepl("[", level_labels, fixed = TRUE))){
+    bracket_names <- no_dif & grepl("[", level_labels, fixed = TRUE)
+    level_labels[bracket_names] <- substr(
+      level_labels[bracket_names],
+      regexpr("[", level_labels[bracket_names], fixed = TRUE) + 1,
+      regexpr("]", level_labels[bracket_names], fixed = TRUE) - 1
+    )
+  }
+
+  level_labels
+}
+.plot_prior_factor_normalize_data <- function(plot_data){
+
+  is_point  <- vapply(plot_data, inherits, logical(1), what = "density.prior.point")
+  is_factor <- vapply(plot_data, inherits, logical(1), what = "density.prior.factor")
+
+  component_levels <- vapply(plot_data, .plot_prior_factor_component_level_name, character(1))
+  level_names_raw  <- unique(component_levels[is_factor & !is.na(component_levels)])
+  level_names      <- .plot_prior_factor_format_level_names(level_names_raw)
+
+  plot_data <- lapply(seq_along(plot_data), function(i){
+    component <- plot_data[[i]]
+    level_id  <- match(component_levels[i], level_names_raw)
+
+    if(is.na(level_id)){
+      level_id <- NA_integer_
+    }
+
+    attr(component, "plot_component") <- if(is_point[i]) "point" else if(is_factor[i]) "density" else "other"
+    attr(component, "component_id")    <- i
+    attr(component, "level_id")       <- level_id
+    attr(component, "level_label")    <- if(!is.na(level_id)) level_names[level_id] else NA_character_
+
+    component
+  })
+  names(plot_data) <- names(is_point)
+
+  list(
+    plot_data       = plot_data,
+    points          = plot_data[is_point],
+    densities       = plot_data[is_factor & !is_point],
+    level_names_raw = level_names_raw,
+    level_names     = level_names
+  )
+}
+.plot_prior_factor_style_value <- function(values, level_id, component_id, n_levels, default = NULL){
+
+  if(is.null(values)){
+    return(default)
+  }
+
+  if(length(values) == 1L){
+    value <- values[[1L]]
+  }else if(length(values) == n_levels && length(level_id) == 1L && !is.na(level_id) && is.finite(level_id) && level_id >= 1L && length(values) >= level_id){
+    value <- values[[level_id]]
+  }else if(length(component_id) == 1L && !is.na(component_id) && is.finite(component_id) && component_id >= 1L && length(values) >= component_id){
+    value <- values[[component_id]]
+  }else if(length(level_id) == 1L && !is.na(level_id) && is.finite(level_id) && level_id >= 1L && length(values) >= level_id){
+    value <- values[[level_id]]
+  }else{
+    return(default)
+  }
+
+  if(is.null(value) || length(value) == 0L || all(is.na(value))){
+    return(default)
+  }
+
+  value
+}
+.plot_prior_factor_level_style_values <- function(values, plot_data, n_levels, default = NULL){
+
+  out <- rep(default, n_levels)
+  if(n_levels == 0L){
+    return(out)
+  }
+
+  for(level_id in seq_len(n_levels)){
+    component_ind <- which(vapply(plot_data, function(component){
+      identical(attr(component, "level_id"), level_id)
+    }, logical(1)))[1]
+
+    component_id <- if(!is.na(component_ind)) attr(plot_data[[component_ind]], "component_id") else NA_integer_
+    out[level_id] <- .plot_prior_factor_style_value(
+      values       = values,
+      level_id     = level_id,
+      component_id = component_id,
+      n_levels     = n_levels,
+      default      = default
+    )
+  }
+
+  out
+}
 .plot_prior_list.factor           <- function(plot_data, plot_type, par_name = NULL, scale_y2 = NULL, add = FALSE, ...){
 
   # get default plot settings
@@ -241,34 +392,73 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   if(is.null(dots[["ylim"]]))  dots$ylim  <-  ylim
   if(is.null(dots[["ylim2"]])) dots$ylim2 <-  ylim2
 
-  # split on points and factors
-  plot_data_points  <- plot_data[sapply(plot_data, inherits, what = "density.prior.point")]
-  plot_data_factors <- plot_data[sapply(plot_data, inherits, what = "density.prior.factor")]
-
-  # prepare factor naming & formatting
-  level_names <- sapply(plot_data_factors, attr, which = "level_name")
-  if(any(grepl("[dif:", level_names, fixed = TRUE))){
-    level_names <- substr(level_names, regexpr("[dif:", level_names, fixed = TRUE)[[1]] + 5, regexpr("]", level_names, fixed = TRUE) - 1)
-  }else if(any(grepl("[", level_names, fixed = TRUE))){
-    level_names <- substr(level_names, regexpr("[", level_names, fixed = TRUE)[[1]] + 1, regexpr("]", level_names, fixed = TRUE) - 1)
+  # normalize factor component metadata before rendering
+  plot_data_normalized <- .plot_prior_factor_normalize_data(plot_data)
+  level_names          <- plot_data_normalized[["level_names"]]
+  if(!is.null(dots[["legend_labels"]])){
+    if(length(dots[["legend_labels"]]) != length(level_names)){
+      stop("'legend_labels' must have the same length as the number of factor levels.", call. = FALSE)
+    }
+    level_names <- as.character(dots[["legend_labels"]])
+    plot_data_normalized[["level_names"]] <- level_names
+    plot_data_normalized[["plot_data"]] <- lapply(plot_data_normalized[["plot_data"]], function(component){
+      level_id <- attr(component, "level_id")
+      if(length(level_id) == 1L && !is.na(level_id)){
+        attr(component, "level_label") <- level_names[level_id]
+      }
+      component
+    })
+    plot_data_normalized[["points"]] <- plot_data_normalized[["plot_data"]][
+      vapply(plot_data_normalized[["plot_data"]], inherits, logical(1), what = "density.prior.point")
+    ]
+    plot_data_normalized[["densities"]] <- plot_data_normalized[["plot_data"]][
+      vapply(plot_data_normalized[["plot_data"]], function(component){
+        inherits(component, "density.prior.factor") && !inherits(component, "density.prior.point")
+      }, logical(1))
+    ]
   }
+  plot_data_points     <- plot_data_normalized[["points"]]
+  plot_data_factors    <- plot_data_normalized[["densities"]]
+  style_components     <- if(length(plot_data_factors) > 0L) plot_data_factors else plot_data_points
 
 
   # prepare legend information
-  if(!is.null(dots[["legend"]]) && !dots[["legend"]]){
-    if(!is.null(dots[["col"]]))      dots[["col"]]      <- rep(dots[["col"]][1], length(level_names))
-    if(!is.null(dots[["lty"]]))      dots[["lty"]]      <- rep(dots[["lty"]][1], length(level_names))
-    if(!is.null(dots[["linetype"]])) dots[["linetype"]] <- rep(dots[["linetype"]][1], length(level_names))
+  if(is.null(dots[["legend"]])){
+    dots[["legend"]] <- TRUE
   }else{
-    if(is.null(dots[["col"]]) & (is.null(dots[["lty"]]) | is.null(dots[["linetype"]]))){
-      dots$col <- grDevices::palette.colors(n = length(level_names) + 1)[-1]
-    }
-    if(length(dots[["col"]]) == 1)      dots[["col"]]      <- rep(dots[["col"]],      length(level_names))
-    if(length(dots[["lty"]]) == 1)      dots[["lty"]]      <- rep(dots[["lty"]],      length(level_names))
-    if(length(dots[["linetype"]]) == 1) dots[["linetype"]] <- rep(dots[["linetype"]], length(level_names))
-
-    if(is.null(dots[["legend"]]))       dots[["legend"]]   <- TRUE
+    check_bool(dots[["legend"]], "legend", allow_NA = FALSE)
   }
+  draw_legend <- isTRUE(dots[["legend"]])
+  if(identical(dots[["legend_position"]], "none")){
+    draw_legend <- FALSE
+  }
+  dots[["legend"]] <- draw_legend
+
+  if(is.null(dots[["col"]]) & (is.null(dots[["lty"]]) | is.null(dots[["linetype"]]))){
+    dots$col <- grDevices::palette.colors(n = length(level_names) + 1)[-1]
+  }
+  if(length(dots[["col"]]) == 1)      dots[["col"]]      <- rep(dots[["col"]],      length(level_names))
+  if(length(dots[["lty"]]) == 1)      dots[["lty"]]      <- rep(dots[["lty"]],      length(level_names))
+  if(length(dots[["linetype"]]) == 1) dots[["linetype"]] <- rep(dots[["linetype"]], length(level_names))
+
+  level_col <- .plot_prior_factor_level_style_values(
+    dots[["col"]],
+    style_components,
+    length(level_names),
+    .plot.prior_settings()[["col"]]
+  )
+  level_lty <- .plot_prior_factor_level_style_values(
+    dots[["lty"]],
+    style_components,
+    length(level_names),
+    .plot.prior_settings()[["lty"]]
+  )
+  level_linetype <- .plot_prior_factor_level_style_values(
+    dots[["linetype"]],
+    style_components,
+    length(level_names),
+    .plot.prior_settings()[["lty"]]
+  )
 
 
   if(plot_type == "base"){
@@ -282,8 +472,22 @@ plot_prior_list <- function(prior_list, plot_type = "base",
       args           <- dots
       args$scale_y2  <- scale_y2
       args$plot_data <- plot_data_points[[i]]
-      args$col       <- if(unique(length(dots[["col"]])) > 1) .plot.prior_settings()[["col"]]
-      args$lty       <- if(unique(length(dots[["lty"]])) > 1) .plot.prior_settings()[["lty"]]
+      point_level    <- attr(plot_data_points[[i]], "level_id")
+      point_component <- attr(plot_data_points[[i]], "component_id")
+      args$col       <- .plot_prior_factor_style_value(
+        values       = dots[["col"]],
+        level_id     = point_level,
+        component_id = point_component,
+        n_levels     = length(level_names),
+        default      = if(length(dots[["col"]]) > 1) .plot.prior_settings()[["col"]]
+      )
+      args$lty <- .plot_prior_factor_style_value(
+        values       = dots[["lty"]],
+        level_id     = point_level,
+        component_id = point_component,
+        n_levels     = length(level_names),
+        default      = if(length(dots[["lty"]]) > 1) .plot.prior_settings()[["lty"]]
+      )
       do.call(.lines.prior.point, args)
     }
 
@@ -291,17 +495,21 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     for(i in seq_along(plot_data_factors)){
       args           <- dots
       args$plot_data <- plot_data_factors[[i]]
-      args$level     <- i
+      args$level     <- attr(plot_data_factors[[i]], "level_id")
+      if(is.na(args$level)) args$level <- i
+      args$col       <- level_col
+      args$lty       <- level_lty
       do.call(.lines.prior.factor, args)
     }
 
-    if(dots[["legend"]]){
+    if(draw_legend && length(level_names) > 0){
       graphics::legend(
         if(is.null(dots[["legend_position"]])) "topright" else dots[["legend_position"]],
         legend = level_names,
-        col    = if(!is.null(dots[["col"]])) dots[["col"]] else rep(.plot.prior_settings()[["col"]], length(level_names)),
-        lty    = if(!is.null(dots[["lty"]])) dots[["lty"]] else rep(.plot.prior_settings()[["lty"]], length(level_names)),
+        col    = level_col,
+        lty    = level_lty,
         lwd    = if(!is.null(dots[["lwd"]])) dots[["lwd"]] else rep(.plot.prior_settings()[["lwd"]], length(level_names)),
+        title  = dots[["legend_title"]],
         bty    = "n")
     }
 
@@ -315,29 +523,53 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     for(i in seq_along(plot_data_points)){
       args           <- dots
       args$scale_y2  <- scale_y2
-      args$plot_data <- plot_data[[i]]
-      args$col       <- if(unique(length(dots[["col"]])) > 1)      .plot.prior_settings()[["col"]]
-      args$lty       <- if(unique(length(dots[["linetype"]])) > 1) .plot.prior_settings()[["linetype"]]
+      args$plot_data <- plot_data_points[[i]]
+      point_level    <- attr(plot_data_points[[i]], "level_id")
+      point_component <- attr(plot_data_points[[i]], "component_id")
+      args$col       <- .plot_prior_factor_style_value(
+        values       = dots[["col"]],
+        level_id     = point_level,
+        component_id = point_component,
+        n_levels     = length(level_names),
+        default      = if(length(dots[["col"]]) > 1) .plot.prior_settings()[["col"]]
+      )
+      args$lty <- .plot_prior_factor_style_value(
+        values       = if(!is.null(dots[["linetype"]])) dots[["linetype"]] else dots[["lty"]],
+        level_id     = point_level,
+        component_id = point_component,
+        n_levels     = length(level_names),
+        default      = .plot.prior_settings()[["lty"]]
+      )
       plot           <- c(plot, do.call(.geom_prior.point, args))
     }
 
     # plot factor levels
-    plot_data_factors <- data.frame(
-      x     = do.call(c, lapply(plot_data_factors, function(x) x$x)),
-      y     = do.call(c, lapply(plot_data_factors, function(x) x$y)),
-      level = do.call(c, lapply(seq_along(plot_data_factors), function(i) rep(level_names[i], length(plot_data_factors[[i]]$x))))
-    )
+    if(length(plot_data_factors) > 0){
+      plot_data_factors <- data.frame(
+        x     = do.call(c, lapply(plot_data_factors, function(x) x$x)),
+        y     = do.call(c, lapply(plot_data_factors, function(x) x$y)),
+        level = do.call(c, lapply(seq_along(plot_data_factors), function(i) {
+          level <- attr(plot_data_factors[[i]], "level_label")
+          if(length(level) != 1L || is.na(level)){
+            level <- as.character(i)
+          }
+          rep(level, length(plot_data_factors[[i]]$x))
+        }))
+      )
 
-    args             <- dots
-    args$level_names <- level_names
-    args$plot_data   <- plot_data_factors
+      args             <- dots
+      args$level_names <- level_names
+      args$plot_data   <- plot_data_factors
+      args$col         <- level_col
+      args$lty         <- if(!is.null(dots[["linetype"]])) level_linetype else level_lty
+      args$linetype    <- if(!is.null(dots[["linetype"]])) level_linetype else NULL
 
-    plot <- c(plot, do.call(.geom_prior.factors, args))
+      plot <- c(plot, do.call(.geom_prior.factors, args))
+    }
 
 
-    if(dots[["legend"]]){
+    if(draw_legend && length(level_names) > 0){
       plot <- c(plot, list(ggplot2::theme(
-        legend.title    = ggplot2::element_blank(),
         legend.position = if(is.null(dots[["legend_position"]])) "right" else dots[["legend_position"]])))
     }
 
@@ -357,56 +589,29 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
 .plot_data_prior_list.weightfunction <- function(prior_list, x_seq, x_range, x_range_quant, n_points, n_samples){
 
-  # join the same priors
-  prior_list <- .simplify_prior_list(prior_list)
+  context <- .weightfunction_prior_list_context(prior_list)
 
-  prior_weights  <- sapply(prior_list, function(p)p$prior_weights)
-  mixing_prop    <- prior_weights / sum(prior_weights)
+  omega_cuts <- context$omega_cuts
+  x_mean     <- numeric(length(omega_cuts) - 1)
+  x_lCI      <- numeric(length(omega_cuts) - 1)
+  x_uCI      <- numeric(length(omega_cuts) - 1)
 
-  prior_list     <- prior_list[round(n_samples * mixing_prop) > 0]
-  mixing_prop    <- mixing_prop[round(n_samples * mixing_prop) > 0]
+  for(i in seq_len(length(omega_cuts) - 1)){
+    components <- .weightfunction_prior_marginal_components(context, i)
 
-  # replace non-weighfunctions from prior mixture feneration
-  if(any(!c(sapply(prior_list, is.prior.weightfunction) | sapply(prior_list, is.prior.none)))){
-    for(i in seq_along(prior_list)){
-      if(!(is.prior.weightfunction(prior_list[[i]]) | is.prior.none(prior_list[[i]]))){
-        prior_list[[i]] <- prior_none(prior_weights = prior_weights[i])
-      }
-    }
+    x_mean[i] <- .weightfunction_mixture_mean(components)
+    x_lCI[i]  <- .weightfunction_mixture_quantile(components, .025)
+    x_uCI[i]  <- .weightfunction_mixture_quantile(components, .975)
   }
-
-  # get the samples
-  samples_list <- list()
-  for(i in seq_along(prior_list)){
-    if(is.prior.weightfunction(prior_list[[i]])){
-      samples_list[[i]] <- rng(prior_list[[i]], round(n_samples * mixing_prop[i]))
-    }else{
-      samples_list[[i]] <- list()
-    }
-
-  }
-
-  # merge the samples
-  omega_mapping <- weightfunctions_mapping(prior_list)
-  omega_cuts    <- weightfunctions_mapping(prior_list, cuts_only = TRUE)
-
-  # join samples
-  samples    <- matrix(nrow = 0, ncol = length(omega_cuts) - 1)
-  for(i in seq_along(samples_list)){
-    if(is.prior.weightfunction(prior_list[[i]])){
-      samples <- rbind(samples, samples_list[[i]][,omega_mapping[[i]]])
-    }else{
-      samples <- rbind(samples, matrix(1, ncol = length(omega_cuts) - 1, nrow = round(n_samples * mixing_prop[i])))
-    }
-  }
-
-  x_lCI  <- apply(samples, 2, stats::quantile, probs = .025)
-  x_uCI  <- apply(samples, 2, stats::quantile, probs = .975)
-  x_mean <- apply(samples, 2, mean)
 
   x_seq     <- omega_cuts
-  x_seq_rep <- c(1, sort(rep(2:(length(x_seq)-1), 2)) ,length(x_seq))
-  x_val_rep <- sort(rep(1:(length(x_seq)-1), 2))
+  if(length(x_seq) > 2){
+    x_seq_rep <- c(1, sort(rep(2:(length(x_seq)-1), 2)) ,length(x_seq))
+    x_val_rep <- sort(rep(1:(length(x_seq)-1), 2))
+  }else{
+    x_seq_rep <- c(1, 2)
+    x_val_rep <- c(1, 1)
+  }
 
 
   out <- list(
@@ -417,20 +622,539 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     y       = x_mean[x_val_rep],
     y_lCI   = x_lCI[x_val_rep],
     y_uCI   = x_uCI[x_val_rep],
-    samples = samples
+    samples = NULL
   )
 
 
   class(out) <- c("density", "density.prior", "density.prior.weightfunction")
   attr(out, "x_range") <- c(0, 1)
-  attr(out, "y_range") <- c(0, 1)
+  attr(out, "y_range") <- c(0, max(1, x_mean, x_lCI, x_uCI, na.rm = TRUE))
 
   return(out)
 }
-.plot_data_prior_list.PETPEESE       <- function(prior_list, x_seq, x_range, x_range_quant, n_points, n_samples,
-                                                 transformation, transformation_arguments, transformation_settings, prior_list_mu){
+.plot_data_prior_list.weightparameter<- function(prior_list, parameter, n_points, n_samples){
 
-  # TODO: add dependency on the mu parameter as well
+  context       <- .weightfunction_prior_list_context(prior_list)
+  parameter_ind <- match(parameter, context$omega_names)
+
+  if(is.na(parameter_ind)){
+    stop(paste0("Parameter '", parameter, "' not found in the weightfunction prior."), call. = FALSE)
+  }
+
+  components <- .weightfunction_prior_marginal_components(context, parameter_ind)
+  out        <- .plot_data_prior_weightparameter_components(components, parameter, n_points)
+
+  return(out)
+}
+.weightfunction_prior_list_context <- function(prior_list, one_sided = NULL){
+
+  omega_context <- attr(prior_list, "omega_context")
+  if(is.null(one_sided)){
+    one_sided <- if(!is.null(omega_context) && !is.null(omega_context$one_sided)){
+      isTRUE(omega_context$one_sided)
+    }else{
+      .weightfunction_prior_context_uses_selection_mapping(prior_list)
+    }
+  }else{
+    check_bool(one_sided, "one_sided")
+  }
+
+  prior_list <- .weightfunction_expand_bias_mixture_priors(prior_list)
+  prior_list <- .simplify_prior_list(prior_list)
+  prior_list <- .weightfunction_expand_bias_mixture_priors(prior_list)
+
+  prior_weights <- sapply(prior_list, .prior_model_weight)
+  keep          <- is.finite(prior_weights) & prior_weights > 0
+  prior_list    <- prior_list[keep]
+  prior_weights <- prior_weights[keep]
+
+  if(length(prior_list) == 0){
+    stop("At least one weightfunction prior must have positive prior weight.", call. = FALSE)
+  }
+
+  # Non-weightfunction bias components imply no selection adjustment and
+  # therefore correspond to publication weights fixed at one.
+  for(i in seq_along(prior_list)){
+    if(.weightfunction_prior_has_selection(prior_list[[i]])){
+      selection_priors <- .selection_prior_selection_priors(prior_list[[i]])
+      selection_prior  <- selection_priors[[1L]]
+      selection_prior$prior_weights <- prior_weights[i]
+      prior_list[[i]] <- selection_prior
+    }else if(!(is.prior.weightfunction(prior_list[[i]]) | is.prior.none(prior_list[[i]]))){
+      prior_list[[i]] <- prior_none(prior_weights = prior_weights[i])
+    }
+  }
+
+  prior_weights <- sapply(prior_list, .prior_model_weight)
+  model_weights <- prior_weights / sum(prior_weights)
+  omega_info    <- .weightfunction_mapping_info(prior_list, one_sided = one_sided)
+  omega_mapping <- omega_info$mapping
+  omega_cuts    <- omega_info$cuts
+  omega_names   <- omega_info$names
+
+  list(
+    prior_list    = prior_list,
+    model_weights = model_weights,
+    omega_mapping = omega_mapping,
+    omega_cuts    = omega_cuts,
+    omega_names   = omega_names
+  )
+}
+.weightfunction_prior_context_uses_selection_mapping <- function(prior_list){
+
+  if(inherits(prior_list, "prior.bias_mixture") || is_prior_bias(prior_list)){
+    return(TRUE)
+  }
+  if(is.prior(prior_list)){
+    return(FALSE)
+  }
+  if(is.list(prior_list)){
+    return(any(vapply(prior_list, function(prior){
+      inherits(prior, "prior.bias_mixture") || is_prior_bias(prior)
+    }, logical(1))))
+  }
+
+  FALSE
+}
+.weightfunction_expand_bias_mixture_priors <- function(prior_list){
+
+  if(is.prior.mixture(prior_list)){
+    class(prior_list) <- NULL
+    return(prior_list)
+  }
+  if(is.prior(prior_list)){
+    return(list(prior_list))
+  }
+
+  expanded <- list()
+  for(i in seq_along(prior_list)){
+    if(inherits(prior_list[[i]], "prior.bias_mixture")){
+      prior_mixture_components <- prior_list[[i]]
+      class(prior_mixture_components) <- NULL
+      expanded <- c(expanded, prior_mixture_components)
+    }else{
+      expanded[[length(expanded) + 1L]] <- prior_list[[i]]
+    }
+  }
+
+  expanded
+}
+.weightfunction_prior_has_selection <- function(prior){
+
+  if(is.prior.weightfunction(prior) || is_prior_bias(prior) || inherits(prior, "prior.bias_mixture")){
+    return(.selection_prior_has_selection(prior))
+  }
+
+  FALSE
+}
+.weightfunction_prior_marginal_components <- function(context, parameter_ind){
+
+  components <- list()
+
+  for(i in seq_along(context$prior_list)){
+    prior <- context$prior_list[[i]]
+
+    if(is.prior.weightfunction(prior)){
+      component <- .weightfunction_prior_component(
+        prior  = prior,
+        index  = context$omega_mapping[[i]][parameter_ind],
+        weight = context$model_weights[i]
+      )
+    }else{
+      component <- list(
+        type     = "point",
+        weight   = context$model_weights[i],
+        location = 1
+      )
+    }
+
+    components[[length(components) + 1L]] <- component
+  }
+
+  components <- components[vapply(components, function(component){
+    is.finite(component$weight) && component$weight > 0
+  }, logical(1))]
+  total_weight <- sum(vapply(components, function(component) component$weight, numeric(1)))
+
+  lapply(components, function(component){
+    component$weight <- component$weight / total_weight
+    component
+  })
+}
+.weightfunction_prior_component <- function(prior, index, weight){
+
+  if(prior$weights$type == "fixed"){
+    return(list(
+      type     = "point",
+      weight   = weight,
+      location = prior$weights[["omega"]][index]
+    ))
+  }
+
+  if(prior$weights$type == "cumulative"){
+    return(.weightfunction_prior_component_cumdirichlet(prior$weights[["alpha"]], index, weight))
+  }
+
+  if(prior$weights$type == "independent"){
+    if(index == 1L){
+      return(list(
+        type     = "point",
+        weight   = weight,
+        location = 1
+      ))
+    }
+    return(list(
+      type   = "prior",
+      weight = weight,
+      prior  = prior$weights$prior,
+      scale  = prior$weights$scale
+    ))
+  }
+
+  stop("Unsupported weightfunction prior specification.", call. = FALSE)
+}
+.weightfunction_prior_component_cumdirichlet <- function(alpha, index, weight){
+
+  if(index <= 1L){
+    return(list(
+      type     = "point",
+      weight   = weight,
+      location = 1
+    ))
+  }
+
+  list(
+    type   = "beta",
+    weight = weight,
+    alpha  = sum(alpha[index:length(alpha)]),
+    beta   = sum(alpha[seq_len(index - 1L)])
+  )
+}
+.weightfunction_component_mean <- function(component){
+
+  switch(
+    component$type,
+    "point" = component$location,
+    "beta"  = component$alpha / (component$alpha + component$beta),
+    "prior" = if(component$scale == "omega"){
+      mean(component$prior)
+    }else{
+      stats::integrate(
+        f     = function(x, prior) {
+          y <- exp(x) * pdf(prior, x)
+          y[!is.finite(y)] <- 0
+          y
+        },
+        lower = component$prior$truncation[["lower"]],
+        upper = component$prior$truncation[["upper"]],
+        prior = component$prior
+      )$value
+    },
+    "one_minus_product_beta" = {
+      1 - (component$u_alpha / (component$u_alpha + component$u_beta)) *
+        (component$v_alpha / (component$v_alpha + component$v_beta))
+    }
+  )
+}
+.weightfunction_component_cdf <- function(component, q){
+
+  switch(
+    component$type,
+    "point" = as.numeric(q >= component$location),
+    "beta"  = stats::pbeta(q, shape1 = component$alpha, shape2 = component$beta),
+    "prior" = if(component$scale == "omega"){
+      mcdf(component$prior, q)
+    }else{
+      p <- numeric(length(q))
+      p[q <= 0] <- 0
+      inside <- q > 0
+      p[inside] <- mcdf(component$prior, log(q[inside]))
+      p
+    },
+    "one_minus_product_beta" = .weightfunction_one_minus_product_beta_cdf(
+      q       = q,
+      u_alpha = component$u_alpha,
+      u_beta  = component$u_beta,
+      v_alpha = component$v_alpha,
+      v_beta  = component$v_beta
+    )
+  )
+}
+.weightfunction_component_pdf <- function(component, x){
+
+  switch(
+    component$type,
+    "point" = rep(0, length(x)),
+    "beta"  = stats::dbeta(x, shape1 = component$alpha, shape2 = component$beta),
+    "prior" = if(component$scale == "omega"){
+      mpdf(component$prior, x)
+    }else{
+      y <- numeric(length(x))
+      inside <- x > 0
+      y[inside] <- mpdf(component$prior, log(x[inside])) / x[inside]
+      y
+    },
+    "one_minus_product_beta" = .weightfunction_one_minus_product_beta_pdf(
+      x       = x,
+      u_alpha = component$u_alpha,
+      u_beta  = component$u_beta,
+      v_alpha = component$v_alpha,
+      v_beta  = component$v_beta
+    )
+  )
+}
+.weightfunction_component_range <- function(component, quantiles = .005){
+
+  switch(
+    component$type,
+    "point" = c(component$location, component$location),
+    "beta"  = c(0, 1),
+    "prior" = {
+      if(component$scale == "omega"){
+        lower <- component$prior$truncation[["lower"]]
+        upper <- component$prior$truncation[["upper"]]
+
+        lower <- if(is.infinite(lower)) mquant(component$prior, quantiles) else lower
+        upper <- if(is.infinite(upper)) mquant(component$prior, 1 - quantiles) else upper
+        c(lower, upper)
+      }else{
+        lower <- component$prior$truncation[["lower"]]
+        upper <- component$prior$truncation[["upper"]]
+
+        lower <- if(is.infinite(lower)) 0 else exp(lower)
+        upper <- if(is.infinite(upper)) exp(mquant(component$prior, 1 - quantiles)) else exp(upper)
+        c(lower, upper)
+      }
+    },
+    "one_minus_product_beta" = c(0, 1)
+  )
+}
+.weightfunction_components_range <- function(components, samples = NULL, quantiles = .005){
+
+  ranges <- do.call(rbind, lapply(components, .weightfunction_component_range, quantiles = quantiles))
+  values <- as.vector(ranges)
+  if(!is.null(samples)){
+    values <- c(values, samples)
+  }
+
+  x_range <- range(values, finite = TRUE)
+  if(!all(is.finite(x_range))){
+    x_range <- c(0, 1)
+  }
+  if(x_range[1] == x_range[2]){
+    x_range <- range(c(0, 1, values), finite = TRUE)
+  }
+  x_range[1] <- max(0, x_range[1])
+
+  x_range
+}
+.weightfunction_component_quantile <- function(component, p){
+
+  switch(
+    component$type,
+    "point" = component$location,
+    "beta"  = stats::qbeta(p, shape1 = component$alpha, shape2 = component$beta),
+    "prior" = if(component$scale == "omega"){
+      mquant(component$prior, p)
+    }else{
+      exp(mquant(component$prior, p))
+    },
+    "one_minus_product_beta" = {
+      lower <- 0
+      upper <- 1
+      for(iter in seq_len(100L)){
+        mid <- lower / 2 + upper / 2
+        if(.weightfunction_component_cdf(component, mid) >= p){
+          upper <- mid
+        }else{
+          lower <- mid
+        }
+        if(abs(upper - lower) <= 1e-8){
+          break
+        }
+      }
+      upper
+    }
+  )
+}
+.weightfunction_mixture_mean <- function(components){
+
+  sum(vapply(components, function(component){
+    component$weight * .weightfunction_component_mean(component)
+  }, numeric(1)))
+}
+.weightfunction_mixture_cdf <- function(components, q){
+
+  p <- sum(vapply(components, function(component){
+    component$weight * .weightfunction_component_cdf(component, q)
+  }, numeric(1)))
+
+  pmin(pmax(p, 0), 1)
+}
+.weightfunction_mixture_quantile <- function(components, p){
+
+  if(p <= 0){
+    return(0)
+  }
+  if(p >= 1){
+    return(max(.weightfunction_components_range(components)))
+  }
+
+  lower <- 0
+  upper <- max(vapply(components, .weightfunction_component_quantile, numeric(1), p = p))
+  if(!is.finite(upper) || upper <= lower){
+    upper <- max(.weightfunction_components_range(components))
+  }
+
+  for(iter in seq_len(100L)){
+    mid <- lower / 2 + upper / 2
+    if(.weightfunction_mixture_cdf(components, mid) >= p){
+      upper <- mid
+    }else{
+      lower <- mid
+    }
+
+    if(abs(upper - lower) <= 1e-8){
+      break
+    }
+  }
+
+  upper
+}
+.plot_data_prior_weightparameter_components <- function(components, parameter, n_points){
+
+  x_range <- .weightfunction_components_range(components)
+  x_den <- seq(x_range[1], x_range[2], length.out = n_points)
+  y_den <- rep(0, length(x_den))
+
+  for(component in components){
+    if(component$type != "point"){
+      y_component <- .weightfunction_component_pdf(component, x_den)
+      y_component[!is.finite(y_component)] <- 0
+      y_den <- y_den + component$weight * y_component
+    }
+  }
+
+  point_components <- components[vapply(components, function(component){
+    component$type == "point"
+  }, logical(1))]
+
+  x_points <- NULL
+  y_points <- NULL
+  if(length(point_components) > 0){
+    point_locations <- vapply(point_components, function(component) component$location, numeric(1))
+    point_keys      <- as.character(signif(point_locations, 15))
+    point_groups    <- split(seq_along(point_components), point_keys)
+
+    x_points <- unname(vapply(point_groups, function(ind) point_locations[ind[1]], numeric(1)))
+    y_points <- unname(vapply(point_groups, function(ind){
+      sum(vapply(point_components[ind], function(component) component$weight, numeric(1)))
+    }, numeric(1)))
+  }
+
+  out <- list()
+
+  if(any(y_den > 0)){
+    out_den <- list(
+      call    = call("density", "weightfunction prior"),
+      bw      = NULL,
+      n       = n_points,
+      x       = x_den,
+      y       = y_den,
+      samples = NULL
+    )
+
+    class(out_den) <- c("density", "density.prior", "density.prior.simple")
+    attr(out_den, "x_range") <- x_range
+    attr(out_den, "y_range") <- c(0, max(y_den))
+    attr(out_den, "parameter") <- parameter
+
+    out[["density"]] <- out_den
+  }
+
+  if(!is.null(y_points)){
+    for(i in seq_along(y_points)){
+      temp_points <- list(
+        call    = call("density", paste0("point", i)),
+        bw      = NULL,
+        n       = n_points,
+        x       = x_points[i],
+        y       = y_points[i],
+        samples = NULL
+      )
+
+      class(temp_points) <- c("density", "density.prior", "density.prior.point")
+      attr(temp_points, "x_range") <- x_range
+      attr(temp_points, "y_range") <- c(0, max(y_points[i]))
+      attr(temp_points, "parameter") <- parameter
+
+      out[[paste0("points",i)]] <- temp_points
+    }
+  }
+
+  out
+}
+.weightfunction_one_minus_product_beta_cdf <- function(q, u_alpha, u_beta, v_alpha, v_beta){
+
+  vapply(q, function(q_i){
+    if(q_i <= 0){
+      return(0)
+    }
+    if(q_i >= 1){
+      return(1)
+    }
+
+    product_lower <- 1 - q_i
+    integration <- stats::integrate(
+      f = function(u){
+        stats::dbeta(u, shape1 = u_alpha, shape2 = u_beta) *
+          stats::pbeta(product_lower / u, shape1 = v_alpha, shape2 = v_beta, lower.tail = FALSE)
+      },
+      lower         = product_lower,
+      upper         = 1,
+      subdivisions  = 200L,
+      rel.tol       = 1e-7,
+      stop.on.error = FALSE
+    )
+
+    if(!is.finite(integration$value)){
+      stop("Weightfunction prior CDF integration failed.", call. = FALSE)
+    }
+
+    pmin(pmax(integration$value, 0), 1)
+  }, numeric(1))
+}
+.weightfunction_one_minus_product_beta_pdf <- function(x, u_alpha, u_beta, v_alpha, v_beta){
+
+  vapply(x, function(x_i){
+    if(x_i <= 0 || x_i >= 1){
+      return(0)
+    }
+
+    product_value <- 1 - x_i
+    integration <- stats::integrate(
+      f = function(u){
+        stats::dbeta(u, shape1 = u_alpha, shape2 = u_beta) *
+          stats::dbeta(product_value / u, shape1 = v_alpha, shape2 = v_beta) / u
+      },
+      lower         = product_value,
+      upper         = 1,
+      subdivisions  = 200L,
+      rel.tol       = 1e-7,
+      stop.on.error = FALSE
+    )
+
+    if(!is.finite(integration$value)){
+      return(NA_real_)
+    }
+
+    pmax(integration$value, 0)
+  }, numeric(1))
+}
+.plot_data_prior_list.PETPEESE       <- function(prior_list, x_seq, x_range, x_range_quant, n_points, n_samples,
+                                                 transformation, transformation_arguments, transformation_settings, prior_list_mu,
+                                                 effect_direction = "positive"){
+
   if(is.null(x_seq)){
     x_seq <- seq(x_range[1], x_range[2], length.out = n_points)
   }
@@ -441,7 +1165,604 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     x_range <- .density.prior_transformation_x(x_range, transformation, transformation_arguments)
   }
 
-  prior_weights  <- sapply(prior_list, function(p)p$prior_weights)
+  deterministic <- tryCatch(
+    .plot_data_prior_list.PETPEESE_deterministic(
+      prior_list               = prior_list,
+      x_seq                    = x_seq,
+      n_points                 = n_points,
+      transformation           = transformation,
+      transformation_arguments = transformation_arguments,
+      prior_list_mu            = prior_list_mu,
+      effect_direction         = effect_direction
+    ),
+    error = function(e) NULL
+  )
+
+  if(!is.null(deterministic)){
+    return(deterministic)
+  }
+
+  .plot_data_prior_list.PETPEESE_sampled(
+    prior_list               = prior_list,
+    x_seq                    = x_seq,
+    n_points                 = n_points,
+    n_samples                = n_samples,
+    transformation           = transformation,
+    transformation_arguments = transformation_arguments,
+    prior_list_mu            = prior_list_mu,
+    effect_direction         = effect_direction
+  )
+}
+.plot_data_prior_list.PETPEESE_deterministic <- function(prior_list, x_seq, n_points, transformation, transformation_arguments,
+                                                         prior_list_mu, effect_direction = "positive"){
+
+  if(is.list(transformation)){
+    stop("Custom transformations are handled by sampled PET-PEESE prior summaries.", call. = FALSE)
+  }
+
+  prior_weights <- sapply(prior_list, .prior_model_weight)
+  keep <- is.finite(prior_weights) & prior_weights > 0
+  prior_list    <- prior_list[keep]
+  prior_list_mu <- prior_list_mu[keep]
+  prior_weights <- prior_weights[keep]
+
+  if(length(prior_list) == 0){
+    stop("At least one PET-PEESE prior must have positive prior weight.", call. = FALSE)
+  }
+
+  model_weights <- prior_weights / sum(prior_weights)
+  context <- .petpeese_prior_cdf_context(
+    prior_list       = prior_list,
+    prior_list_mu    = prior_list_mu,
+    model_weights    = model_weights,
+    effect_direction = effect_direction
+  )
+
+  quantiles <- vapply(x_seq, function(se){
+    .petpeese_prior_cdf_quantile(context, se, c(.500, .025, .975))
+  }, numeric(3))
+
+  if(!is.null(transformation)){
+    quantiles <- .petpeese_transform_quantiles(
+      quantiles,
+      transformation,
+      transformation_arguments
+    )
+  }
+
+  out <- list(
+    call    = call("density", "PET-PEESE list"),
+    bw      = NULL,
+    n       = n_points,
+    x       = x_seq,
+    y       = quantiles[1,],
+    y_lCI   = quantiles[2,],
+    y_uCI   = quantiles[3,],
+    samples = NULL
+  )
+
+  class(out) <- c("density", "density.prior", "density.prior.PETPEESE")
+  attr(out, "x_range") <- range(x_seq)
+  attr(out, "y_range") <- range(out$y)
+
+  return(out)
+}
+.petpeese_prior_cdf_context <- function(prior_list, prior_list_mu, model_weights,
+                                        effect_direction = "positive"){
+
+  direction_sign <- if(effect_direction == "negative") -1 else 1
+
+  models <- vector("list", length(prior_list))
+  for(i in seq_along(prior_list)){
+    bias_prior <- prior_list[[i]]
+    if(is.prior.PET(bias_prior)){
+      bias_type <- "PET"
+      bias_components <- .petpeese_prior_components(bias_prior)
+    }else if(is.prior.PEESE(bias_prior)){
+      bias_type <- "PEESE"
+      bias_components <- .petpeese_prior_components(bias_prior)
+    }else{
+      bias_type <- "none"
+      bias_components <- .petpeese_prior_components(prior("point", list(location = 0)))
+    }
+
+    models[[i]] <- list(
+      weight = model_weights[i],
+      mu     = .petpeese_prior_components(prior_list_mu[[i]]),
+      bias   = bias_components,
+      type   = bias_type
+    )
+  }
+
+  list(
+    models         = models,
+    direction_sign = direction_sign
+  )
+}
+.petpeese_prior_components <- function(prior){
+
+  if(is.null(prior) || is.prior.none(prior)){
+    return(.petpeese_prior_components_normalize(list(
+      list(weight = 1, type = "atom", x = 0)
+    )))
+  }
+
+  if(is.prior.spike_and_slab(prior)){
+    inclusion <- mean(.get_spike_and_slab_inclusion(prior))
+    if(!is.finite(inclusion) || inclusion < 0 || inclusion > 1){
+      stop("Spike-and-slab inclusion prior must have a finite mean in [0, 1].", call. = FALSE)
+    }
+    variable_components <- .petpeese_prior_components(.get_spike_and_slab_variable(prior))
+    variable_components <- lapply(variable_components, function(component){
+      component$weight <- component$weight * inclusion
+      component
+    })
+    spike_component <- list(list(weight = 1 - inclusion, type = "atom", x = 0))
+    return(.petpeese_prior_components_normalize(c(variable_components, spike_component)))
+  }
+
+  if(is.prior.mixture(prior)){
+    weights <- attr(prior, "prior_weights")
+    if(is.null(weights)){
+      weights <- sapply(prior, .prior_model_weight)
+    }
+    weights <- weights / sum(weights)
+
+    components <- list()
+    for(i in seq_along(prior)){
+      component_components <- .petpeese_prior_components(prior[[i]])
+      component_components <- lapply(component_components, function(component){
+        component$weight <- component$weight * weights[i]
+        component
+      })
+      components <- c(components, component_components)
+    }
+    return(.petpeese_prior_components_normalize(components))
+  }
+
+  if(is.prior.point(prior)){
+    return(.petpeese_prior_components_normalize(list(
+      list(weight = 1, type = "atom", x = prior$parameters[["location"]])
+    )))
+  }
+
+  if(is.prior.discrete(prior)){
+    support <- switch(
+      prior[["distribution"]],
+      "bernoulli" = c(0, 1),
+      stop("Unsupported discrete PET-PEESE prior distribution.", call. = FALSE)
+    )
+    probabilities <- mpdf(prior, support)
+    keep <- is.finite(probabilities) & probabilities > 0
+    if(!any(keep)){
+      stop("Discrete PET-PEESE prior has zero probability mass.", call. = FALSE)
+    }
+    support <- support[keep]
+    probabilities <- probabilities[keep] / sum(probabilities[keep])
+    return(.petpeese_prior_components_normalize(lapply(seq_along(support), function(i){
+      list(weight = probabilities[i], type = "atom", x = support[i])
+    })))
+  }
+
+  if(is.prior.simple(prior)){
+    prior_functions <- .petpeese_prior_simple_functions(prior)
+    return(.petpeese_prior_components_normalize(list(
+      list(
+        weight = 1,
+        type   = "continuous",
+        prior  = prior,
+        cdf    = prior_functions$cdf,
+        ccdf   = prior_functions$ccdf,
+        pdf    = prior_functions$pdf,
+        quant  = prior_functions$quant
+      )
+    )))
+  }
+
+  stop("Unsupported PET-PEESE prior type for deterministic CDF plotting.", call. = FALSE)
+}
+.petpeese_prior_simple_functions <- function(prior){
+
+  default_range <- .is_prior_default_range(prior)
+  if(default_range){
+    return(list(
+      cdf = function(q) .prior_simple_base_p(prior, q, lower.tail = TRUE),
+      ccdf = function(q) .prior_simple_base_p(prior, q, lower.tail = FALSE),
+      pdf = function(x) .prior_simple_base_d(prior, x, log = FALSE),
+      quant = function(p) .prior_simple_base_q(prior, p)
+    ))
+  }
+
+  C1 <- .prior_C1(prior)
+  C2 <- .prior_C2(prior)
+  C  <- C2 - C1
+  lower <- prior$truncation[["lower"]]
+  upper <- prior$truncation[["upper"]]
+
+  list(
+    cdf = function(q){
+      p <- numeric(length(q))
+      q_lower  <- q < lower
+      q_higher <- q > upper
+      q_inside <- !q_lower & !q_higher
+
+      p[q_lower]  <- 0
+      p[q_higher] <- 1
+      if(any(q_inside)){
+        p[q_inside] <- (.prior_simple_base_p(prior, q[q_inside], lower.tail = TRUE) - C1) / C
+      }
+      p
+    },
+    ccdf = function(q){
+      p <- numeric(length(q))
+      q_lower  <- q < lower
+      q_higher <- q > upper
+      q_inside <- !q_lower & !q_higher
+
+      p[q_lower]  <- 1
+      p[q_higher] <- 0
+      if(any(q_inside)){
+        p[q_inside] <- (.prior_simple_base_p(prior, q[q_inside], lower.tail = FALSE) - (1 - C2)) / C
+      }
+      p
+    },
+    pdf = function(x){
+      y <- .prior_simple_base_d(prior, x, log = FALSE)
+      y[x < lower | x > upper] <- 0
+      y / C
+    },
+    quant = function(p){
+      .prior_simple_base_q(prior, C1 + p * C)
+    }
+  )
+}
+.petpeese_prior_components_normalize <- function(components){
+
+  components <- components[vapply(components, function(component){
+    is.finite(component$weight) && component$weight > 0
+  }, logical(1))]
+
+  if(length(components) == 0){
+    stop("PET-PEESE prior components have zero total weight.", call. = FALSE)
+  }
+
+  total_weight <- sum(vapply(components, function(component) component$weight, numeric(1)))
+  lapply(components, function(component){
+    component$weight <- component$weight / total_weight
+    component
+  })
+}
+.petpeese_prior_cdf_quantile <- function(context, se, probs){
+
+  vapply(probs, function(p){
+    .petpeese_prior_cdf_one_quantile(context, se, p)
+  }, numeric(1))
+}
+.petpeese_prior_cdf_one_quantile <- function(context, se, p){
+
+  if(p <= 0){
+    return(.petpeese_prior_cdf_range(context, se, tail_prob = .Machine$double.eps)[1])
+  }
+  if(p >= 1){
+    return(.petpeese_prior_cdf_range(context, se, tail_prob = .Machine$double.eps)[2])
+  }
+
+  fast_quantile <- .petpeese_prior_fast_quantile(context, se, p)
+  if(is.finite(fast_quantile)){
+    return(fast_quantile)
+  }
+
+  bounds <- .petpeese_prior_cdf_range(context, se)
+  lower <- bounds[1]
+  upper <- bounds[2]
+
+  if(!is.finite(lower) || !is.finite(upper)){
+    lower <- -1
+    upper <-  1
+  }
+
+  if(isTRUE(all.equal(lower, upper))){
+    return(lower)
+  }
+
+  cdf_lower <- .petpeese_prior_cdf(context, lower, se)
+  cdf_upper <- .petpeese_prior_cdf(context, upper, se)
+  width <- max(1, upper - lower, abs(lower), abs(upper))
+
+  iter <- 0L
+  while(is.finite(cdf_lower) && cdf_lower >= p && iter < 80L){
+    upper <- lower
+    lower <- lower - width
+    width <- width * 2
+    cdf_lower <- .petpeese_prior_cdf(context, lower, se)
+    iter <- iter + 1L
+  }
+
+  iter <- 0L
+  while(is.finite(cdf_upper) && cdf_upper < p && iter < 80L){
+    lower <- upper
+    upper <- upper + width
+    width <- width * 2
+    cdf_upper <- .petpeese_prior_cdf(context, upper, se)
+    iter <- iter + 1L
+  }
+
+  if(!is.finite(cdf_lower) || !is.finite(cdf_upper) || cdf_lower >= p || cdf_upper < p){
+    stop("Could not bracket PET-PEESE prior quantile.", call. = FALSE)
+  }
+
+  if(!.petpeese_prior_cdf_has_atoms(context, se)){
+    root <- tryCatch(
+      stats::uniroot(
+        f        = function(q) .petpeese_prior_cdf(context, q, se) - p,
+        interval = c(lower, upper),
+        tol      = 1e-8 * max(1, abs(upper - lower))
+      )$root,
+      error = function(e) NA_real_
+    )
+    if(is.finite(root)){
+      return(root)
+    }
+  }
+
+  for(iter in seq_len(100L)){
+    mid <- lower / 2 + upper / 2
+    cdf_mid <- .petpeese_prior_cdf(context, mid, se)
+    if(!is.finite(cdf_mid)){
+      stop("PET-PEESE prior CDF returned a non-finite value.", call. = FALSE)
+    }
+
+    if(cdf_mid >= p){
+      upper <- mid
+    }else{
+      lower <- mid
+    }
+
+    if(abs(upper - lower) <= 1e-8 * max(1, abs(lower), abs(upper))){
+      break
+    }
+  }
+
+  upper
+}
+.petpeese_prior_cdf_has_atoms <- function(context, se){
+
+  any(vapply(context$models, function(model){
+    if(model$weight <= 0){
+      return(FALSE)
+    }
+    scale <- switch(
+      model$type,
+      "PET"   = context$direction_sign * se,
+      "PEESE" = context$direction_sign * se^2,
+      "none"  = 0
+    )
+
+    any(vapply(model$mu, function(mu_component){
+      any(vapply(model$bias, function(bias_component){
+        .petpeese_prior_sum_has_atom(mu_component, bias_component, scale)
+      }, logical(1)))
+    }, logical(1)))
+  }, logical(1)))
+}
+.petpeese_prior_sum_has_atom <- function(mu_component, bias_component, scale){
+
+  if(abs(scale) <= .prior_linear_density_zero_tol()){
+    return(mu_component$type == "atom")
+  }
+
+  mu_component$type == "atom" && bias_component$type == "atom"
+}
+.petpeese_prior_fast_quantile <- function(context, se, p){
+
+  if(length(context$models) != 1L){
+    return(NA_real_)
+  }
+
+  model <- context$models[[1]]
+  if(length(model$mu) != 1L || length(model$bias) != 1L){
+    return(NA_real_)
+  }
+
+  scale <- switch(
+    model$type,
+    "PET"   = context$direction_sign * se,
+    "PEESE" = context$direction_sign * se^2,
+    "none"  = 0
+  )
+
+  .petpeese_prior_sum_quantile(model$mu[[1]], model$bias[[1]], scale, p)
+}
+.petpeese_prior_sum_quantile <- function(mu_component, bias_component, scale, p){
+
+  if(abs(scale) <= .prior_linear_density_zero_tol()){
+    return(.petpeese_prior_component_quantile(mu_component, p))
+  }
+
+  if(mu_component$type == "atom" && bias_component$type == "atom"){
+    return(mu_component$x + scale * bias_component$x)
+  }
+
+  if(mu_component$type == "atom"){
+    bias_p <- if(scale > 0) p else 1 - p
+    return(mu_component$x + scale * .petpeese_prior_component_quantile(bias_component, bias_p))
+  }
+
+  if(bias_component$type == "atom"){
+    return(.petpeese_prior_component_quantile(mu_component, p) + scale * bias_component$x)
+  }
+
+  NA_real_
+}
+.petpeese_prior_cdf <- function(context, q, se){
+
+  cdf <- sum(vapply(context$models, function(model){
+    model$weight * .petpeese_prior_model_cdf(model, q, se, context$direction_sign)
+  }, numeric(1)))
+
+  pmin(pmax(cdf, 0), 1)
+}
+.petpeese_prior_model_cdf <- function(model, q, se, direction_sign){
+
+  scale <- switch(
+    model$type,
+    "PET"   = direction_sign * se,
+    "PEESE" = direction_sign * se^2,
+    "none"  = 0
+  )
+
+  cdf <- 0
+  for(mu_component in model$mu){
+    for(bias_component in model$bias){
+      cdf <- cdf + mu_component$weight * bias_component$weight *
+        .petpeese_prior_sum_cdf(mu_component, bias_component, scale, q)
+    }
+  }
+
+  cdf
+}
+.petpeese_prior_sum_cdf <- function(mu_component, bias_component, scale, q){
+
+  if(abs(scale) <= .prior_linear_density_zero_tol()){
+    return(.petpeese_prior_component_cdf(mu_component, q))
+  }
+
+  if(mu_component$type == "atom" && bias_component$type == "atom"){
+    return(as.numeric(q >= mu_component$x + scale * bias_component$x))
+  }
+
+  if(mu_component$type == "atom"){
+    threshold <- (q - mu_component$x) / scale
+    if(scale > 0){
+      return(.petpeese_prior_component_cdf(bias_component, threshold))
+    }else{
+      return(.petpeese_prior_component_ccdf(bias_component, threshold))
+    }
+  }
+
+  if(bias_component$type == "atom"){
+    return(.petpeese_prior_component_cdf(mu_component, q - scale * bias_component$x))
+  }
+
+  integration <- stats::integrate(
+    f = function(b){
+      .petpeese_prior_component_cdf(mu_component, q - scale * b) *
+        .petpeese_prior_component_pdf(bias_component, b)
+    },
+    lower        = bias_component$prior$truncation[["lower"]],
+    upper        = bias_component$prior$truncation[["upper"]],
+    subdivisions = 200L,
+    rel.tol      = 1e-7,
+    stop.on.error = FALSE
+  )
+
+  if(!isTRUE(integration$message == "OK") && !is.finite(integration$value)){
+    stop("PET-PEESE prior CDF integration failed.", call. = FALSE)
+  }
+
+  pmin(pmax(integration$value, 0), 1)
+}
+.petpeese_prior_component_cdf <- function(component, q){
+
+  if(component$type == "atom"){
+    return(as.numeric(q >= component$x))
+  }
+
+  component$cdf(q)
+}
+.petpeese_prior_component_ccdf <- function(component, q){
+
+  if(component$type == "atom"){
+    return(as.numeric(q <= component$x))
+  }
+
+  component$ccdf(q)
+}
+.petpeese_prior_component_pdf <- function(component, x){
+
+  if(component$type == "atom"){
+    return(ifelse(x == component$x, Inf, 0))
+  }
+
+  component$pdf(x)
+}
+.petpeese_prior_component_quantile <- function(component, p){
+
+  if(component$type == "atom"){
+    return(component$x)
+  }
+
+  component$quant(p)
+}
+.petpeese_prior_cdf_range <- function(context, se, tail_prob = .prior_linear_density_tail_prob()){
+
+  ranges <- do.call(rbind, lapply(context$models, function(model){
+    .petpeese_prior_model_range(model, se, context$direction_sign, tail_prob)
+  }))
+
+  range(ranges[,1], ranges[,2], finite = TRUE)
+}
+.petpeese_prior_model_range <- function(model, se, direction_sign, tail_prob){
+
+  scale <- switch(
+    model$type,
+    "PET"   = direction_sign * se,
+    "PEESE" = direction_sign * se^2,
+    "none"  = 0
+  )
+
+  ranges <- list()
+  for(mu_component in model$mu){
+    mu_range <- .petpeese_prior_component_range(mu_component, tail_prob)
+    for(bias_component in model$bias){
+      if(abs(scale) <= .prior_linear_density_zero_tol()){
+        ranges[[length(ranges) + 1L]] <- mu_range
+      }else{
+        bias_range <- .petpeese_prior_component_range(bias_component, tail_prob)
+        scaled_bias_range <- sort(scale * bias_range)
+        ranges[[length(ranges) + 1L]] <- c(
+          mu_range[1] + scaled_bias_range[1],
+          mu_range[2] + scaled_bias_range[2]
+        )
+      }
+    }
+  }
+
+  ranges <- do.call(rbind, ranges)
+  range(ranges[,1], ranges[,2], finite = TRUE)
+}
+.petpeese_prior_component_range <- function(component, tail_prob){
+
+  if(component$type == "atom"){
+    return(rep(component$x, 2))
+  }
+
+  component$quant(c(tail_prob, 1 - tail_prob))
+}
+.petpeese_transform_quantiles <- function(quantiles, transformation, transformation_arguments){
+
+  transformed <- .density.prior_transformation_x(
+    as.vector(quantiles),
+    transformation,
+    transformation_arguments
+  )
+  transformed <- matrix(transformed, nrow = nrow(quantiles), ncol = ncol(quantiles))
+
+  if(any(!is.finite(transformed))){
+    stop("PET-PEESE transformed prior quantiles are non-finite.", call. = FALSE)
+  }
+
+  rbind(
+    transformed[1,],
+    pmin(transformed[2,], transformed[3,]),
+    pmax(transformed[2,], transformed[3,])
+  )
+}
+.plot_data_prior_list.PETPEESE_sampled <- function(prior_list, x_seq, n_points, n_samples,
+                                                   transformation, transformation_arguments, prior_list_mu,
+                                                   effect_direction = "positive"){
+
+  prior_weights  <- sapply(prior_list, .prior_model_weight)
   mixing_prop    <- prior_weights / sum(prior_weights)
 
   prior_list     <- prior_list[round(n_samples * mixing_prop) > 0]
@@ -461,19 +1782,13 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   }
   samples <- do.call(rbind, samples_list)
 
-  # compute PET-PEESE (mu + PET*se + PEESE*se^2)
-  x_sam  <- matrix(samples[,1], nrow = length(samples), ncol = length(x_seq)) +
-    matrix(samples[,2], nrow = length(samples), ncol = length(x_seq)) * matrix(x_seq,   nrow = length(samples), ncol = length(x_seq), byrow = TRUE) +
-    matrix(samples[,3], nrow = length(samples), ncol = length(x_seq)) * matrix(x_seq^2, nrow = length(samples), ncol = length(x_seq), byrow = TRUE)
-
-  # transform the PEESE parameter if requested
-  if(!is.null(transformation)){
-    x_sam <- .density.prior_transformation_x(x_sam, transformation, transformation_arguments)
-  }
-
-  x_med  <- apply(x_sam, 2, stats::quantile, prob = .500)
-  x_lCI  <- apply(x_sam, 2, stats::quantile, prob = .025)
-  x_uCI  <- apply(x_sam, 2, stats::quantile, prob = .975)
+  summary <- .petpeese_line_summary_from_samples(
+    samples                  = samples,
+    x_seq                    = x_seq,
+    transformation           = transformation,
+    transformation_arguments = transformation_arguments,
+    effect_direction         = effect_direction
+  )
 
 
   out <- list(
@@ -481,16 +1796,16 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     bw      = NULL,
     n       = n_points,
     x       = x_seq,
-    y       = x_med,
-    y_lCI   = x_lCI,
-    y_uCI   = x_uCI,
-    samples = x_sam
+    y       = summary$median,
+    y_lCI   = summary$lCI,
+    y_uCI   = summary$uCI,
+    samples = summary$samples
   )
 
 
   class(out) <- c("density", "density.prior", "density.prior.PETPEESE")
   attr(out, "x_range") <- range(x_seq)
-  attr(out, "y_range") <- range(x_med)
+  attr(out, "y_range") <- range(summary$median)
 
   return(out)
 }
@@ -534,7 +1849,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     }
   }
 
-  prior_weights  <- sapply(prior_list, function(p)p$prior_weights)
+  prior_weights  <- sapply(prior_list, .prior_model_weight)
   mixing_prop    <- prior_weights / sum(prior_weights)
 
   prior_list  <- prior_list[round(n_samples * mixing_prop) > 1]
@@ -677,7 +1992,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   }
 
   # find the duplicates and collect prior odds
-  prior_weights <- unname(sapply(prior_list, function(p)p$prior_weights))
+  prior_weights <- unname(sapply(prior_list, .prior_model_weight))
   to_remove  <- NULL
   for(i in 1:nrow(are_equal)){
     this_ind    <- c(1:ncol(are_equal))[are_equal[i,]]
@@ -688,7 +2003,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   # return prior odds
   for(i in seq_along(prior_list)){
-    prior_list[[i]][["prior_weights"]] <- prior_weights[i]
+    prior_list[[i]] <- .set_prior_model_weight(prior_list[[i]], prior_weights[i])
   }
 
   # remove the duplicates
@@ -712,12 +2027,9 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 #' @export
 lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_points = 500,
                              n_samples = 10000, force_samples = FALSE,
+                             individual = FALSE, show_figures = if(individual) 1 else NULL,
                              transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
-                             rescale_x = FALSE, scale_y2 = NULL, prior_list_mu = NULL, ...){
-
-  # TODO: add plots for individual parameters for weightfunction and PET-PEESE
-  individual = FALSE
-  show_parameter = if(individual) 1 else NULL
+                             rescale_x = FALSE, scale_y2 = NULL, prior_list_mu = NULL, effect_direction = "positive", ...){
 
   # check input (most arguments are checked within density)
   check_list(prior_list, "prior_list")
@@ -725,8 +2037,9 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
     stop("'prior_list' must be a list of priors.")
   check_bool(individual, "individual")
   check_bool(rescale_x, "rescale_x")
-  check_int(show_parameter, "show_parameter", allow_NULL = TRUE)
+  check_int(show_figures, "show_figures", allow_NULL = TRUE)
   check_real(scale_y2, "scale_y2", lower = 0, allow_NULL = TRUE)
+  check_char(effect_direction, "effect_direction", allow_values = c("positive", "negative"))
 
 
   # get the plotting type
@@ -762,19 +2075,20 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
   # get the plotting data
   if(prior_type == "weightfunction"){
 
-    # use samples (not sure how to provide analytic solution for this yes)
+    # use analytical marginal summaries of the mapped cumulative Dirichlet weights
     plot_data <- .plot_data_prior_list.weightfunction(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                                                       n_points = n_points, n_samples = n_samples)
-    .lines.prior.weightfunction(prior_list, plot_data = plot_data, rescale_x = rescale_x, ...)
+    .lines.prior.weightfunction(plot_data = plot_data, rescale_x = rescale_x, ...)
 
   }else if(prior_type == "PETPEESE"){
 
-    # use samples (not sure how to provide analytic solution for this yes)
+    # use deterministic linear-combination summaries when supported, with a sampling fallback
     plot_data <- .plot_data_prior_list.PETPEESE(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                                                 n_points = n_points, n_samples = n_samples,
                                                 transformation = transformation, transformation_arguments = transformation_arguments,
-                                                transformation_settings = transformation_settings, prior_list_mu = prior_list_mu)
-    .lines.prior.PETPEESE(prior_list, plot_data = plot_data, ...)
+                                                transformation_settings = transformation_settings, prior_list_mu = prior_list_mu,
+                                                effect_direction = effect_direction)
+    .lines.prior.PETPEESE(plot_data = plot_data, ...)
 
   }else if(prior_type == "simple"){
 
@@ -813,12 +2127,9 @@ lines_prior_list <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
 #' @export
 geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_points = 500,
                              n_samples = 10000, force_samples = FALSE,
+                             individual = FALSE, show_figures = if(individual) 1 else NULL,
                              transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
-                             rescale_x = FALSE, scale_y2 = NULL, prior_list_mu = NULL, ...){
-
-  # TODO: add plots for individual parameters for weightfunction and PET-PEESE
-  individual = FALSE
-  show_parameter = if(individual) 1 else NULL
+                             rescale_x = FALSE, scale_y2 = NULL, prior_list_mu = NULL, effect_direction = "positive", ...){
 
   # check input (most arguments are checked within density)
   check_list(prior_list, "prior_list")
@@ -826,8 +2137,9 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
     stop("'prior_list' must be a list of priors.")
   check_bool(individual, "individual")
   check_bool(rescale_x, "rescale_x")
-  check_int(show_parameter, "show_parameter", allow_NULL = TRUE)
+  check_int(show_figures, "show_figures", allow_NULL = TRUE)
   check_real(scale_y2, "scale_y2", lower = 0, allow_NULL = TRUE)
+  check_char(effect_direction, "effect_direction", allow_values = c("positive", "negative"))
 
 
   # get the plotting type
@@ -862,19 +2174,20 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
   # get the plotting data
   if(prior_type == "weightfunction"){
 
-    # use samples (not sure how to provide analytic solution for this yes)
+    # use analytical marginal summaries of the mapped cumulative Dirichlet weights
     plot_data <- .plot_data_prior_list.weightfunction(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                                                       n_points = n_points, n_samples = n_samples)
-    geom <- .geom_prior.weightfunction(prior_list, plot_data = plot_data, rescale_x = rescale_x, ...)
+    geom <- .geom_prior.weightfunction(plot_data = plot_data, rescale_x = rescale_x, ...)
 
   }else if(prior_type == "PETPEESE"){
 
-    # use samples (not sure how to provide analytic solution for this yes)
+    # use deterministic linear-combination summaries when supported, with a sampling fallback
     plot_data <- .plot_data_prior_list.PETPEESE(prior_list, x_seq = x_seq, x_range = xlim, x_range_quant = x_range_quant,
                                                 n_points = n_points, n_samples = n_samples,
                                                 transformation = transformation, transformation_arguments = transformation_arguments,
-                                                transformation_settings = transformation_settings, prior_list_mu = prior_list_mu)
-    geom <- .geom_prior.PETPEESE(prior_list, plot_data = plot_data, ...)
+                                                transformation_settings = transformation_settings, prior_list_mu = prior_list_mu,
+                                                effect_direction = effect_direction)
+    geom <- .geom_prior.PETPEESE(plot_data = plot_data, ...)
 
   }else if(prior_type == "simple"){
 
@@ -904,16 +2217,39 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
 #' @title Plot samples from the mixed posterior distributions
 #'
 #' @param samples samples from a posterior distribution for a
-#' parameter generated by [mix_posteriors].
+#' parameter generated by [mix_posteriors] or [as_mixed_posteriors].
 #' @param parameter parameter name to be plotted. Use \code{"PETPEESE"}
 #' for PET-PEESE plot with parameters \code{"PET"} and \code{"PEESE"},
 #' and \code{"weightfunction"} for plotting a weightfunction with
 #' parameters \code{"omega"}.
-#' @param prior whether prior distribution should be added to the figure
+#' @param prior whether prior distribution should be added to the figure.
+#' When samples were prepared with \code{as_mixed_posteriors(..., transform_scaled = TRUE)},
+#' the transformed prior samples are automatically used.
+#' @param effect_direction direction of the effect for PET-PEESE
+#' regression. Use \code{"positive"} (default) for
+#' \code{mu + PET*se + PEESE*se^2} or \code{"negative"} for
+#' \code{mu - PET*se - PEESE*se^2}.
 #' @param dots_prior additional arguments for the prior distribution plot
+#' @param data optional numeric vector of observed p-values in \code{[0, 1]}, or
+#' a data frame with a \code{p} column. Used only for weightfunction plots.
+#' @param show_data whether observed p-values should be shown as rug marks on
+#' the weightfunction x-axis.
+#' @param dots_data additional styling arguments for observed p-value rug marks.
+#' Supports \code{col}/\code{color}, \code{alpha}, \code{lwd}/\code{linewidth},
+#' \code{side}/\code{rug_side}, and \code{height}/\code{rug_height}.
+#' @param legend whether factor legends should be drawn.
+#' @param legend_title optional title for factor legends.
+#' @param legend_labels optional labels for factor legend levels.
+#' @param legend_position optional legend position for factor legends.
 #' @param ... additional arguments
 #' @inheritParams density.prior
 #' @inheritParams plot.prior
+#'
+#' @details
+#' When using scaled predictors (via \code{formula_scale_list} in [JAGS_fit]),
+#' you can plot posteriors on the original (unscaled) scale by preparing samples with
+#' \code{as_mixed_posteriors(..., transform_scaled = TRUE)}. The function automatically
+#' detects this and uses the pre-computed transformed prior samples when \code{prior = TRUE}.
 #'
 #' @return \code{plot_posterior} returns either \code{NULL} or
 #' an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
@@ -922,12 +2258,11 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
 #' @export
 plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE,
                            n_points = 1000, n_samples = 10000, force_samples = FALSE,
+                           individual   = FALSE, show_figures = NULL,
                            transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
-                           rescale_x = FALSE, par_name = NULL, dots_prior = list(), ...){
-
-  # TODO: add plots for individual parameters for weightfunction and PET-PEESE
-  individual = FALSE
-  show_figures = if(individual) 1 else NULL
+                           rescale_x = FALSE, par_name = NULL, effect_direction = "positive",
+                           dots_prior = list(), data = NULL, show_data = FALSE, dots_data = list(),
+                           legend = TRUE, legend_title = NULL, legend_labels = NULL, legend_position = NULL, ...){
 
   # check input
   check_list(samples, "prior_list")
@@ -937,113 +2272,292 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   check_char(plot_type, "plot_type", allow_values = c("base", "ggplot"))
   check_bool(individual, "individual")
   check_bool(rescale_x, "rescale_x")
-  check_int(show_figures, "show_figures", allow_NULL = TRUE)
+  check_bool(legend, "legend", allow_NA = FALSE)
+  check_bool(show_data, "show_data")
+  check_list(dots_data, "dots_data", allow_NULL = TRUE)
+  check_int(show_figures, "show_figures", allow_NULL = TRUE, lower = 0)
+  check_char(effect_direction, "effect_direction", allow_values = c("positive", "negative"))
   .check_transformation_input(transformation, transformation_arguments, transformation_settings)
 
   # deal with bad parameter names for PET-PEESE, weightfunction
   if(tolower(gsub("-", "", gsub("_", "", gsub(".", "", parameter, fixed = TRUE),fixed = TRUE), fixed = TRUE)) %in% c("weightfunction", "weigthfunction", "omega")){
     parameter <- "omega"
-  }else if(tolower(gsub("-", "", gsub("_", "", gsub(".", "", parameter, fixed = TRUE),fixed = TRUE), fixed = TRUE)) == "petpeese"){
+  }else if(tolower(gsub("-", "", gsub("_", "", gsub(".", "", parameter, fixed = TRUE),fixed = TRUE), fixed = TRUE)) %in% "petpeese"){
     parameter <- "PETPEESE"
+  }else if(tolower(gsub("-", "", gsub("_", "", gsub(".", "", parameter, fixed = TRUE),fixed = TRUE), fixed = TRUE)) %in% "pet"){
+    parameter <- "PET"
+  }else if(tolower(gsub("-", "", gsub("_", "", gsub(".", "", parameter, fixed = TRUE),fixed = TRUE), fixed = TRUE)) %in% "peese"){
+    parameter <- "PEESE"
+  }
+
+  if(show_data && !identical(parameter, "omega")){
+    stop("'show_data' is currently supported only for weightfunction posterior plots.", call. = FALSE)
+  }
+  if(show_data && individual){
+    stop("'show_data' is supported only for the full weightfunction posterior plot.", call. = FALSE)
+  }
+  data_p <- .weightfunction_plot_data_pvalues(data, show_data)
+
+  # auto-detect transform_scaled from samples attribute
+  transform_scaled <- isTRUE(attr(samples, "transform_scaled"))
+
+  # handle transform_scaled: check for pre-computed prior densities
+  prior_densities_transformed <- NULL
+  prior_density_context <- attr(samples, "prior_density_context")
+  if(transform_scaled && prior){
+    prior_densities_transformed <- attr(samples, "prior_densities")
+    if(is.null(prior_densities_transformed)){
+      stop("Samples were prepared with 'transform_scaled = TRUE' but no prior densities found. ",
+           "This should not happen - please report this as a bug.")
+    }
   }
 
   # get the plotting range
   dots <- list(...)
   xlim <- dots[["xlim"]]
   if(is.null(xlim)){
-    if(parameter %in% c("omega", "PETPEESE") & !individual){
-      xlim      <- c(0, 1)
+    if(parameter %in% c("PET", "PEESE", "PETPEESE") & !individual){
+      xlim <- c(0, 1)
+    }else if(parameter == "omega"){
+      xlim <- c(0, 1)
     }else{
       # use the data range otherwise
-      xlim   <- NULL
+      xlim <- NULL
     }
   }
 
 
-  if(parameter == "omega"){
+  if(is.element(parameter, "omega")){
 
-    plot_data <- .plot_data_samples.weightfunction(samples, x_seq = NULL, x_range = xlim, x_range_quant = NULL, n_points = n_points)
+    if (individual) {
 
-    # add priors, if requested
-    if(prior){
+      # bias plot parameters require special extraction
+      if (!is.null(samples[["bias"]]) && inherits(samples[["bias"]], "mixed_posteriors.bias")) {
+        samples <- .simplify_as_mixed_posterior_bias(samples, parameter)
+      }
+      prior_list  <- attr(samples[[parameter]], "prior_list")
+      prior_list  <- .simplify_prior_list(prior_list)
 
-      # extract the correct weightfunction samples
-      if(!is.null(samples[[parameter]])){
-        prior_list <- attr(samples[[parameter]], "prior_list")
-      }else if(!is.null(samples[["bias"]])){
-        prior_list <- attr(samples[["bias"]], "prior_list")
-      }else{
-        stop("No 'omega' or 'bias' samples found.")
+
+      # plot the individual weight parameters
+      out_list  <- list()
+      par_names <- colnames(samples[["omega"]])
+
+      if (!is.null(show_figures)) {
+        if (show_figures > length(par_names)) {
+          stop("'show_figures' corresponds to a number larger than the number of weight function parameters.")
+        } else {
+          par_names <- par_names[show_figures]
+        }
       }
 
-      prior_list      <- .simplify_prior_list(prior_list)
-      plot_data_prior <- .plot_data_prior_list.weightfunction(prior_list, x_seq = NULL, x_range = xlim, x_range_quant = NULL,
-                                                              n_points = n_points, n_samples = n_samples)
+      for (par in par_names) {
 
-      # transplant common xlim and ylim
-      plot_data_joined <- list(plot_data_prior, plot_data)
+        plot_data <- .plot_data_samples.weightparameter(samples, parameter = par, n_points = n_points)
 
-      xlim <- range(as.vector(sapply(plot_data_joined, attr, which = "x_range")))
-      ylim <- range(as.vector(sapply(plot_data_joined, attr, which = "y_range")))
-      attr(plot_data_prior, "x_range") <- xlim
-      attr(plot_data_prior, "y_range") <- ylim
-      dots_prior <- .transfer_dots(dots_prior, ...)
+        # add priors, if requested
+        if(prior){
 
-      args           <- dots_prior
-      args$x         <- prior_list
-      args$plot_data <- plot_data_prior
-      args$rescale_x <- rescale_x
-      args$plot_type <- plot_type
-      args$par_name  <- par_name
-      plot           <- do.call(.plot.prior.weightfunction, args)
+          plot_data_prior <- .plot_data_prior_list.weightparameter(prior_list, parameter = par, n_points = n_points, n_samples = n_samples)
 
-      if(plot_type == "ggplot"){
-        plot <- plot + .geom_prior.weightfunction(plot_data, rescale_x = rescale_x, ...)
-      }else{
-        .lines.prior.weightfunction(plot_data, rescale_x = rescale_x, ...)
+          # transplant common xlim and ylim
+          plot_data_joined <- c(plot_data_prior, plot_data)
+
+          xlim <- range(as.vector(sapply(plot_data_joined, attr, which = "x_range")))
+          attr(plot_data_prior[[1]], "x_range") <- xlim
+
+          if(any(sapply(plot_data_prior, inherits, what = "density.prior.simple")) & any(sapply(plot_data_prior, inherits, what = "density.prior.point"))){
+            ylim  <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.simple")], attr, which = "y_range")))
+            ylim2 <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.point")],  attr, which = "y_range")))
+            attr(plot_data_prior[[which.max(sapply(plot_data_prior, inherits, what = "density.prior.simple"))]], "y_range") <- ylim
+            attr(plot_data_prior[[which.max(sapply(plot_data_prior, inherits, what = "density.prior.point"))]],  "y_range") <- ylim2
+          }else if(any(sapply(plot_data_prior, inherits, what = "density.prior.simple"))){
+            ylim  <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.simple")], attr, which = "y_range")))
+            attr(plot_data_prior[[which.max(sapply(plot_data_prior, inherits, what = "density.prior.simple"))]], "y_range") <- ylim
+          }else if(any(sapply(plot_data_prior, inherits, what = "density.prior.point"))){
+            ylim  <- range(as.vector(sapply(plot_data_joined[sapply(plot_data_joined, inherits, what = "density.prior.point")],  attr, which = "y_range")))
+            attr(plot_data_prior[[which.max(sapply(plot_data_prior, inherits, what = "density.prior.point"))]], "y_range") <- ylim
+          }
+
+          scale_y2   <- .get_scale_y2(plot_data_prior, ...)
+          dots_prior <- .transfer_dots(dots_prior, ...)
+
+
+          # set the y/x ranges
+          for(i in seq_along(plot_data)){
+            if(inherits(plot_data[[i]], what = "density.prior.point")){
+              attr(plot_data[[i]], which = "y_range") <- if(any(sapply(plot_data_prior, inherits, what = "density.prior.simple")) & any(sapply(plot_data_prior, inherits, what = "density.prior.point"))) ylim2 else ylim
+            }else{
+              attr(plot_data[[i]], which = "y_range") <- ylim
+              attr(plot_data[[i]], which = "x_range") <- xlim
+            }
+          }
+
+          # plot prior
+          args_prior           <- dots_prior
+          args_prior$plot_data <- plot_data_prior
+          args_prior$plot_type <- plot_type
+          args_prior$par_name  <- par
+          args_prior$scale_y2  <- scale_y2
+
+          plot <- do.call(.plot_prior_list.both, args_prior)
+
+
+          # plot posterior
+          args           <- list(...)
+          args$plot_data <- plot_data
+          args$plot_type <- plot_type
+          args$par_name  <- par
+          args$scale_y2  <- scale_y2
+          args$add       <- TRUE
+
+          if(plot_type == "base"){
+            plot <- do.call(.plot_prior_list.both, args)
+          }else if(plot_type == "ggplot"){
+            plot <- plot + do.call(.plot_prior_list.both, args)
+            out_list[[par]] <- plot
+          }
+
+        }else{
+
+          # plot just posterior otherwise
+          plot <- .plot_prior_list.both(plot_data = plot_data, plot_type = plot_type, par_name = par, ...)
+          out_list[[par]] <- plot
+
+        }
       }
 
-    }else{
+      plot <- out_list
 
-      # plot just posterior otherwise
-      plot <- .plot.prior.weightfunction(NULL, plot_data = plot_data, plot_type = plot_type, rescale_x = rescale_x, par_name = par_name, ...)
 
+
+
+    } else {
+
+      # special dispatching for visualizing the whole weightfunction
+
+      plot_data <- .plot_data_samples.weightfunction(samples, x_seq = NULL, x_range = xlim, x_range_quant = NULL, n_points = n_points)
+
+      # add priors, if requested
+      if(prior){
+
+        # extract the correct weightfunction samples
+        if(!is.null(samples[[parameter]])){
+          prior_list <- attr(samples[[parameter]], "prior_list")
+        }else if(!is.null(samples[["bias"]])){
+          prior_list <- attr(samples[["bias"]], "prior_list")
+        }else{
+          stop("No 'omega' or 'bias' samples found.")
+        }
+
+        prior_list      <- .simplify_prior_list(prior_list)
+        plot_data_prior <- .plot_data_prior_list.weightfunction(prior_list, x_seq = NULL, x_range = xlim, x_range_quant = NULL,
+                                                                n_points = n_points, n_samples = n_samples)
+
+        # transplant common xlim and ylim
+        plot_data_joined <- list(plot_data_prior, plot_data)
+
+        xlim <- range(as.vector(sapply(plot_data_joined, attr, which = "x_range")))
+        ylim <- range(as.vector(sapply(plot_data_joined, attr, which = "y_range")))
+        attr(plot_data_prior, "x_range") <- xlim
+        attr(plot_data_prior, "y_range") <- ylim
+        dots_prior <- .transfer_dots(dots_prior, ...)
+
+        args           <- dots_prior
+        args$x         <- prior_list
+        args$plot_data <- plot_data_prior
+        args$rescale_x <- rescale_x
+        args$plot_type <- plot_type
+        args$par_name  <- par_name
+        plot           <- do.call(.plot.prior.weightfunction, args)
+
+        if(plot_type == "ggplot"){
+          plot <- plot + .geom_prior.weightfunction(plot_data, rescale_x = rescale_x, ...)
+          if(show_data){
+            plot <- plot + .geom.weightfunction_data(data_p, plot_data, rescale_x, dots_data)
+          }
+        }else{
+          .lines.prior.weightfunction(plot_data, rescale_x = rescale_x, ...)
+          if(show_data){
+            .lines.weightfunction_data(data_p, plot_data, rescale_x, dots_data)
+          }
+        }
+
+      }else{
+
+        # plot just posterior otherwise
+        plot <- .plot.prior.weightfunction(NULL, plot_data = plot_data, plot_type = plot_type, rescale_x = rescale_x, par_name = par_name, ...)
+        if(show_data){
+          if(plot_type == "ggplot"){
+            plot <- plot + .geom.weightfunction_data(data_p, plot_data, rescale_x, dots_data)
+          }else{
+            .lines.weightfunction_data(data_p, plot_data, rescale_x, dots_data)
+          }
+        }
+
+      }
     }
 
-  }else if(parameter == "PETPEESE"){
+  }else if(is.element(parameter, c("PET", "PEESE", "PETPEESE")) && !individual){
+    # special dispatching for visualizing the PET-PEESE regression
 
     plot_data <- .plot_data_samples.PETPEESE(samples, x_seq = NULL, x_range = xlim, x_range_quant = NULL, n_points = n_points,
-                                             transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings)
+                                             transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings,
+                                             effect_direction = effect_direction)
 
     # add priors, if requested
     if(prior){
 
-      if(is.null(samples[["mu"]]))
-        stop("'mu' samples are required for plotting PET-PEESE.")
-      prior_list_mu   <- attr(samples[["mu"]],   "prior_list")
+      if(is.null(samples[["mu"]]) && is.null(samples[["mu_intercept"]]))
+        stop("'mu' or 'mu_intercept' samples are required for plotting PET-PEESE.")
 
-      # TODO: a bit of a hack - removing priors that were added as a fill for sampling
-      if(!is.null(samples[["PET"]]) & !is.null(samples[["PEESE"]])){
-        prior_list_PET   <- attr(samples[["PET"]],   "prior_list")
-        prior_list_PEESE <- attr(samples[["PEESE"]], "prior_list")
-        prior_fill       <- seq_along(prior_list_PET)[!sapply(prior_list_PET, is.prior.PET) & !sapply(prior_list_PEESE, is.prior.PEESE)]
-        prior_list       <- c(prior_list_PET[sapply(prior_list_PET, is.prior.PET)], prior_list_PEESE[sapply(prior_list_PEESE, is.prior.PEESE)],
-                              prior_list_PET[prior_fill])
-        prior_list_mu    <- prior_list_mu[c(c(1:length(prior_list_mu))[sapply(prior_list_PET, is.prior.PET)], c(1:length(prior_list_mu))[sapply(prior_list_PEESE, is.prior.PEESE)], c(1:length(prior_list_mu))[prior_fill])]
-      }else if(is.null(samples[["PET"]]) & !is.null(samples[["PEESE"]])){
-        prior_list <- attr(samples[["PEESE"]], "prior_list")
-      }else if(!is.null(samples[["PET"]]) & is.null(samples[["PEESE"]])){
-        prior_list <- attr(samples[["PET"]], "prior_list")
-      }else{
-        stop("Either PET or PEESE samples need to be provided.")
+      if(!is.null(samples[["mu"]])){
+        prior_list_mu <- attr(samples[["mu"]], "prior_list")
+      }else if(!is.null(samples[["mu_intercept"]])){
+        prior_list_mu <- attr(samples[["mu_intercept"]], "prior_list")
+      }
+      if(is.prior.simple(prior_list_mu)){
+        prior_list_mu <- list(prior_list_mu)
+      }
+
+      if (is.null(samples[["bias"]])){
+        # TODO: a bit of a hack - removing priors that were added as a fill for sampling
+        if(!is.null(samples[["PET"]]) & !is.null(samples[["PEESE"]])){
+          prior_list_PET   <- attr(samples[["PET"]],   "prior_list")
+          prior_list_PEESE <- attr(samples[["PEESE"]], "prior_list")
+          prior_fill       <- seq_along(prior_list_PET)[!sapply(prior_list_PET, is.prior.PET) & !sapply(prior_list_PEESE, is.prior.PEESE)]
+          prior_list       <- c(prior_list_PET[sapply(prior_list_PET, is.prior.PET)], prior_list_PEESE[sapply(prior_list_PEESE, is.prior.PEESE)],
+                                prior_list_PET[prior_fill])
+          prior_list_mu    <- prior_list_mu[c(c(1:length(prior_list_mu))[sapply(prior_list_PET, is.prior.PET)], c(1:length(prior_list_mu))[sapply(prior_list_PEESE, is.prior.PEESE)], c(1:length(prior_list_mu))[prior_fill])]
+        }else if(is.null(samples[["PET"]]) & !is.null(samples[["PEESE"]])){
+          prior_list <- attr(samples[["PEESE"]], "prior_list")
+        }else if(!is.null(samples[["PET"]]) & is.null(samples[["PEESE"]])){
+          prior_list <- attr(samples[["PET"]], "prior_list")
+        }else{
+          stop("Either PET or PEESE samples need to be provided.")
+        }
+        if(is.prior.simple(prior_list)){
+          prior_list <- list(prior_list)
+        }
+      } else {
+        prior_list <- attr(samples[["bias"]], "prior_list")
+        prior_list <- prior_list[sapply(prior_list, \(x) is.prior.PET(x) || is.prior.PEESE(x) || is.prior.none(x) || is.prior.point(x))]
+
+        # make cross product of the mixture priors
+        priors_grid <- expand.grid(
+          "mu" = prior_list_mu,
+          "PP" = prior_list
+        )
+        prior_list_mu <- priors_grid[["mu"]]
+        prior_list    <- priors_grid[["PP"]]
       }
 
       # cannot simplify prior_list - it would break the dependency with mu
-
       plot_data_prior <- .plot_data_prior_list.PETPEESE(prior_list, x_seq = NULL, x_range = xlim, x_range_quant = NULL,
                                                   n_points = n_points, n_samples = n_samples,
                                                   transformation = transformation, transformation_arguments = transformation_arguments,
-                                                  transformation_settings = transformation_settings, prior_list_mu = prior_list_mu)
+                                                  transformation_settings = transformation_settings, prior_list_mu = prior_list_mu,
+                                                  effect_direction = effect_direction)
 
       # transplant common xlim and ylim
       plot_data_joined <- list(plot_data_prior, plot_data)
@@ -1080,9 +2594,15 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
 
   }else{
+    # regular prior distributions (or individual plots for parameters PET-PEESE)
 
+    # bias plot parameters require special extraction
+    if (is.element(parameter, c("PET", "PEESE", "PETPEESE")) && !is.null(samples[["bias"]]) && inherits(samples[["bias"]], "mixed_posteriors.bias")) {
+      samples <- .simplify_as_mixed_posterior_bias(samples, parameter)
+    }
     prior_list  <- attr(samples[[parameter]], "prior_list")
     prior_list  <- .simplify_prior_list(prior_list)
+
 
     if(any(sapply(prior_list, is.prior.factor))){
       plot_data <- .plot_data_samples.factor(samples, parameter = parameter, n_points = n_points,
@@ -1097,10 +2617,37 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     # add priors, if requested
     if(prior){
 
-      plot_data_prior <- .plot_data_prior_list.simple(prior_list, x_seq = NULL, x_range = xlim, x_range_quant = NULL,
-                                                n_points = n_points, n_samples = n_samples, force_samples = force_samples, individual = individual,
-                                                transformation = transformation, transformation_arguments = transformation_arguments,
-                                                transformation_settings = transformation_settings)
+      # use transformed prior densities if available (from transform_scaled)
+      plot_data_prior <- NULL
+      if(transform_scaled && !is.null(prior_density_context) && any(sapply(prior_list, is.prior.factor))){
+        plot_data_prior <- .plot_data_prior_factor_density_transformed(
+          prior_density_context      = prior_density_context,
+          samples                   = samples,
+          parameter                 = parameter,
+          prior_list                = prior_list,
+          n_points                  = n_points,
+          x_range                   = xlim,
+          transformation            = transformation,
+          transformation_arguments  = transformation_arguments,
+          transformation_settings   = transformation_settings
+        )
+      }else if(transform_scaled && !is.null(prior_densities_transformed) && parameter %in% names(prior_densities_transformed)){
+        plot_data_prior <- .prior_linear_density_to_plot_data(
+          prior_densities_transformed[[parameter]],
+          n_points                  = n_points,
+          x_range                   = xlim,
+          transformation            = transformation,
+          transformation_arguments  = transformation_arguments,
+          transformation_settings   = transformation_settings
+        )
+      }
+
+      if(is.null(plot_data_prior)){
+        plot_data_prior <- .plot_data_prior_list.simple(prior_list, x_seq = NULL, x_range = xlim, x_range_quant = NULL,
+                                                  n_points = n_points, n_samples = n_samples, force_samples = force_samples, individual = individual,
+                                                  transformation = transformation, transformation_arguments = transformation_arguments,
+                                                  transformation_settings = transformation_settings)
+      }
 
       # transplant common xlim and ylim
       plot_data_joined <- c(plot_data_prior, plot_data)
@@ -1141,8 +2688,19 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       args_prior$plot_type <- plot_type
       args_prior$par_name  <- par_name
       args_prior$scale_y2  <- scale_y2
+      if(plot_type == "ggplot"){
+        args_prior$hardcode <- TRUE
+      }
+      args_prior$legend <- FALSE
+      args_prior$legend_title <- legend_title
+      args_prior$legend_labels <- legend_labels
+      args_prior$legend_position <- legend_position
 
-      plot <- do.call(.plot_prior_list.both, args_prior)
+      if(any(sapply(plot_data_prior, inherits, what = "density.prior.factor"))){
+        plot <- do.call(.plot_prior_list.factor, args_prior)
+      }else{
+        plot <- do.call(.plot_prior_list.both, args_prior)
+      }
 
 
       # plot posterior
@@ -1152,6 +2710,10 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       args$par_name  <- par_name
       args$scale_y2  <- scale_y2
       args$add       <- TRUE
+      args$legend    <- legend
+      args$legend_title <- legend_title
+      args$legend_labels <- legend_labels
+      args$legend_position <- legend_position
 
       if(plot_type == "base"){
         if(any(sapply(prior_list, is.prior.factor))){
@@ -1172,7 +2734,11 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
       # plot just posterior otherwise
       if(any(sapply(prior_list, is.prior.factor))){
-        plot <- .plot_prior_list.factor(plot_data = plot_data, plot_type = plot_type, par_name = par_name, ...)
+        plot <- .plot_prior_list.factor(
+          plot_data = plot_data, plot_type = plot_type, par_name = par_name,
+          legend = legend, legend_title = legend_title, legend_labels = legend_labels,
+          legend_position = legend_position, ...
+        )
       }else{
         plot <- .plot_prior_list.both(plot_data = plot_data, plot_type = plot_type, par_name = par_name, ...)
       }
@@ -1188,6 +2754,48 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   }else{
     return(invisible())
   }
+}
+
+# Helper function to create factor plot data from transformed prior densities.
+.plot_data_prior_factor_density_transformed <- function(prior_density_context, samples, parameter, prior_list, n_points, x_range = NULL,
+                                                        transformation = NULL, transformation_arguments = NULL,
+                                                        transformation_settings = FALSE){
+
+  if(is.null(samples[[parameter]]) || !inherits(samples[[parameter]], "mixed_posteriors.factor")){
+    return(NULL)
+  }
+
+  factor_weights <- .prior_factor_level_weight_matrix(
+    sample_metadata = samples[[parameter]],
+    parameter       = parameter,
+    samples         = samples
+  )
+
+  plot_data <- list()
+  for(level_i in seq_len(nrow(factor_weights))){
+    weights <- rep(0, length(prior_density_context$column_names))
+    names(weights) <- prior_density_context$column_names
+    weights[colnames(factor_weights)] <- factor_weights[level_i, ]
+
+    level_density <- .prior_density_from_context(prior_density_context, weights)
+    level_plot_data <- .prior_linear_density_to_plot_data(
+      level_density,
+      n_points                  = n_points,
+      x_range                   = x_range,
+      transformation            = transformation,
+      transformation_arguments  = transformation_arguments,
+      transformation_settings   = transformation_settings,
+      factor                    = TRUE,
+      level                     = level_i,
+      level_name                = rownames(factor_weights)[level_i]
+    )
+
+    for(data_i in seq_along(level_plot_data)){
+      plot_data[[paste0("level", level_i, "_", names(level_plot_data)[data_i])]] <- level_plot_data[[data_i]]
+    }
+  }
+
+  return(plot_data)
 }
 
 .plot_data_samples.simple         <- function(samples, parameter, n_points, transformation, transformation_arguments, transformation_settings){
@@ -1325,24 +2933,41 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
   return(out)
 }
-.plot_data_samples.PETPEESE       <- function(samples, x_seq, x_range, x_range_quant, n_points, transformation, transformation_arguments, transformation_settings){
+.plot_data_samples.PETPEESE       <- function(samples, x_seq, x_range, x_range_quant, n_points, transformation, transformation_arguments, transformation_settings, effect_direction = "positive"){
 
   check_list(samples, "samples")
+  if (is.null(samples[["mu"]]) && is.null(samples[["mu_intercept"]]))
+    stop("'mu' or 'mu_intercept' samples need to be present.")
 
-  if(is.null(samples[["PET"]]) & is.null(samples[["PEESE"]]))
-    stop("At least one 'PET' or 'PEESE' model needs to be specified.")
-  if(is.null(samples[["mu"]]))
-    stop("'mu' samples need to be present.")
+  if (!is.null(samples[["bias"]])) {
 
-  # get the samples
-  if(!is.null(samples[["PET"]]) & !is.null(samples[["PEESE"]])){
-    if(!all(attr(samples[["PET"]], "models_ind") == attr(samples[["PEESE"]], "models_ind")))
-      stop("non-matching dimensions")
-    samples <- cbind(samples[["mu"]], samples[["PET"]], samples[["PEESE"]])
-  }else if(is.null(samples[["PET"]])){
-    samples <- cbind(samples[["mu"]], rep(0, length(samples[["PEESE"]])), samples[["PEESE"]])
-  }else if(is.null(samples[["PEESE"]])){
-    samples <- cbind(samples[["mu"]], samples[["PET"]], rep(0, length(samples[["PET"]])))
+    if(length(c("PET", "PEESE") %in% samples[["bias"]]) == 0)
+      stop("At least one 'PET' or 'PEESE' model needs to be specified.")
+
+    # create mu-PET-PEESE samples matrix
+    new_samples <- matrix(if(!is.null(samples[["mu"]])) samples[["mu"]] else samples[["mu_intercept"]], ncol = 1)
+    for (par in c("PET", "PEESE")) {
+      if (is.element(par, colnames(samples[["bias"]]))) {
+        new_samples <- cbind(new_samples, samples[["bias"]][,par])
+      } else {
+        new_samples <- cbind(new_samples, 0)
+      }
+    }
+
+  } else {
+
+    if(is.null(samples[["PET"]]) & is.null(samples[["PEESE"]]))
+      stop("At least one 'PET' or 'PEESE' model needs to be specified.")
+
+    # create mu-PET-PEESE samples matrix
+    new_samples <- matrix(if(!is.null(samples[["mu"]])) samples[["mu"]] else samples[["mu_intercept"]], ncol = 1)
+    for (par in c("PET", "PEESE")) {
+      if (!is.null(samples[[par]])) {
+        new_samples <- cbind(new_samples, samples[[par]])
+      } else {
+        new_samples <- cbind(new_samples, 0)
+      }
+    }
   }
 
   # get the plotting range
@@ -1353,20 +2978,13 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     x_seq   <- seq(x_range[1], x_range[2], length.out = n_points)
   }
 
-
-  # compute PET-PEESE (mu + PET*se + PEESE*se^2)
-  x_sam  <- matrix(samples[,1], nrow = length(samples), ncol = length(x_seq)) +
-    matrix(samples[,2], nrow = length(samples), ncol = length(x_seq)) * matrix(x_seq, nrow = length(samples), ncol = length(x_seq), byrow = TRUE) +
-    matrix(samples[,3], nrow = length(samples), ncol = length(x_seq)) * matrix(x_seq^2, nrow = length(samples), ncol = length(x_seq), byrow = TRUE)
-
-  # transform the parameter if requested
-  if(!is.null(transformation)){
-    x_sam <- .density.prior_transformation_x(x_sam, transformation, transformation_arguments)
-  }
-
-  x_med  <- apply(x_sam, 2, stats::quantile, prob = .500)
-  x_lCI  <- apply(x_sam, 2, stats::quantile, prob = .025)
-  x_uCI  <- apply(x_sam, 2, stats::quantile, prob = .975)
+  summary <- .petpeese_line_summary_from_samples(
+    samples                  = new_samples,
+    x_seq                    = x_seq,
+    transformation           = transformation,
+    transformation_arguments = transformation_arguments,
+    effect_direction         = effect_direction
+  )
 
 
   out <- list(
@@ -1374,18 +2992,49 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     bw      = NULL,
     n       = n_points,
     x       = x_seq,
-    y       = x_med,
-    y_lCI   = x_lCI,
-    y_uCI   = x_uCI,
-    samples = x_sam
+    y       = summary$median,
+    y_lCI   = summary$lCI,
+    y_uCI   = summary$uCI,
+    samples = summary$samples
   )
 
 
   class(out) <- c("density", "density.prior", "density.prior.PETPEESE")
   attr(out, "x_range") <- range(x_seq)
-  attr(out, "y_range") <- range(x_med)
+  attr(out, "y_range") <- range(summary$median)
 
   return(out)
+}
+.petpeese_line_summary_from_samples <- function(samples, x_seq, transformation, transformation_arguments,
+                                                effect_direction = "positive"){
+
+  samples <- as.matrix(samples)
+  if(ncol(samples) != 3){
+    stop("'samples' must contain mu, PET, and PEESE columns.", call. = FALSE)
+  }
+
+  direction_sign <- if(effect_direction == "negative") -1 else 1
+  n_samples <- nrow(samples)
+
+  x_sam <- matrix(samples[,1], nrow = n_samples, ncol = length(x_seq)) +
+    direction_sign * matrix(samples[,2], nrow = n_samples, ncol = length(x_seq)) *
+      matrix(x_seq, nrow = n_samples, ncol = length(x_seq), byrow = TRUE) +
+    direction_sign * matrix(samples[,3], nrow = n_samples, ncol = length(x_seq)) *
+      matrix(x_seq^2, nrow = n_samples, ncol = length(x_seq), byrow = TRUE)
+
+  if(!is.null(transformation)){
+    x_sam <- .density.prior_transformation_x(x_sam, transformation, transformation_arguments)
+  }
+
+  quantiles <- apply(x_sam, 2, stats::quantile, probs = c(.500, .025, .975), names = FALSE)
+  quantiles <- matrix(quantiles, nrow = 3)
+
+  list(
+    median  = quantiles[1,],
+    lCI     = quantiles[2,],
+    uCI     = quantiles[3,],
+    samples = x_sam
+  )
 }
 .plot_data_samples.weightfunction <- function(samples, x_seq, x_range, x_range_quant, n_points){
 
@@ -1410,9 +3059,13 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     x_seq   <- seq(x_range[1], x_range[2], length.out = n_points)
   }
 
-  # merge the samples
-  omega_mapping <- weightfunctions_mapping(prior_list[sapply(prior_list, is.prior.weightfunction)])
-  omega_cuts    <- weightfunctions_mapping(prior_list[sapply(prior_list, is.prior.weightfunction)], cuts_only = TRUE)
+  context    <- .weightfunction_prior_list_context(prior_list)
+  omega_cuts <- context$omega_cuts
+
+  omega_columns <- grepl("^omega\\[", colnames(samples))
+  if(any(omega_columns)){
+    samples <- samples[, omega_columns, drop = FALSE]
+  }
 
   x_lCI  <- apply(samples, 2, stats::quantile, probs = .025)
   x_uCI  <- apply(samples, 2, stats::quantile, probs = .975)
@@ -1437,7 +3090,304 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
   class(out) <- c("density", "density.prior", "density.prior.weightfunction")
   attr(out, "x_range") <- c(0, 1)
-  attr(out, "y_range") <- c(0, 1)
+  attr(out, "y_range") <- c(0, max(1, x_mean, x_lCI, x_uCI, na.rm = TRUE))
+
+  return(out)
+}
+
+.weightfunction_plot_data_pvalues <- function(data, show_data){
+
+  if(!show_data){
+    return(numeric())
+  }
+  if(is.null(data)){
+    stop("'data' must be supplied when 'show_data = TRUE'.", call. = FALSE)
+  }
+
+  if(is.data.frame(data)){
+    if(!"p" %in% names(data)){
+      stop("'data' must be a numeric vector of p-values or a data frame with a 'p' column.", call. = FALSE)
+    }
+    data <- data[["p"]]
+  }
+
+  check_real(data, "data", lower = 0, upper = 1, check_length = 0, allow_NA = FALSE)
+  data <- data[is.finite(data)]
+
+  return(data)
+}
+
+.weightfunction_plot_data_x <- function(p, plot_data, rescale_x){
+
+  if(length(p) == 0L || !rescale_x){
+    return(p)
+  }
+
+  cuts <- unique(plot_data$x)
+  scaled_cuts <- seq(0, 1, length.out = length(cuts))
+
+  stats::approx(
+    x    = cuts,
+    y    = scaled_cuts,
+    xout = p,
+    rule = 2,
+    ties = "ordered"
+  )$y
+}
+
+.weightfunction_data_col <- function(dots_data){
+
+  col <- if(!is.null(dots_data[["col"]])){
+    dots_data[["col"]]
+  }else if(!is.null(dots_data[["color"]])){
+    dots_data[["color"]]
+  }else{
+    "black"
+  }
+
+  if(!is.null(dots_data[["alpha"]])){
+    col <- grDevices::adjustcolor(col, alpha.f = dots_data[["alpha"]])
+  }
+
+  col
+}
+
+.weightfunction_data_lwd <- function(dots_data){
+
+  if(!is.null(dots_data[["lwd"]])){
+    dots_data[["lwd"]]
+  }else if(!is.null(dots_data[["linewidth"]])){
+    dots_data[["linewidth"]]
+  }else if(!is.null(dots_data[["size"]])){
+    dots_data[["size"]]
+  }else{
+    .5
+  }
+}
+
+.weightfunction_data_side <- function(dots_data, ggplot = FALSE){
+
+  side <- if(!is.null(dots_data[["side"]])){
+    dots_data[["side"]]
+  }else if(!is.null(dots_data[["rug_side"]])){
+    dots_data[["rug_side"]]
+  }else{
+    if(ggplot) "b" else 1
+  }
+
+  if(ggplot){
+    side <- as.character(side)
+    if(side %in% c("1", "bottom", "b")){
+      return("b")
+    }
+    if(side %in% c("3", "top", "t")){
+      return("t")
+    }
+    return(side)
+  }
+
+  if(is.character(side)){
+    if(side %in% c("bottom", "b")){
+      return(1)
+    }
+    if(side %in% c("top", "t")){
+      return(3)
+    }
+  }
+
+  side
+}
+
+.weightfunction_data_height <- function(dots_data){
+
+  if(!is.null(dots_data[["height"]])){
+    dots_data[["height"]]
+  }else if(!is.null(dots_data[["rug_height"]])){
+    dots_data[["rug_height"]]
+  }else if(!is.null(dots_data[["ticksize"]])){
+    dots_data[["ticksize"]]
+  }else{
+    .03
+  }
+}
+
+.lines.weightfunction_data <- function(p, plot_data, rescale_x, dots_data = list()){
+
+  if(length(p) == 0L){
+    return(invisible())
+  }
+
+  p <- .weightfunction_plot_data_x(p, plot_data, rescale_x)
+
+  graphics::rug(
+    p,
+    side     = .weightfunction_data_side(dots_data, ggplot = FALSE),
+    ticksize = .weightfunction_data_height(dots_data),
+    col      = .weightfunction_data_col(dots_data),
+    lwd      = .weightfunction_data_lwd(dots_data)
+  )
+
+  return(invisible())
+}
+
+.geom.weightfunction_data <- function(p, plot_data, rescale_x, dots_data = list()){
+
+  if(length(p) == 0L){
+    return(NULL)
+  }
+
+  p <- .weightfunction_plot_data_x(p, plot_data, rescale_x)
+
+  ggplot2::geom_rug(
+    data        = data.frame(p = p),
+    mapping     = ggplot2::aes(x = .data[["p"]]),
+    inherit.aes = FALSE,
+    sides       = .weightfunction_data_side(dots_data, ggplot = TRUE),
+    length      = grid::unit(.weightfunction_data_height(dots_data), "npc"),
+    color       = .weightfunction_data_col(dots_data),
+    linewidth   = .weightfunction_data_lwd(dots_data)
+  )
+}
+.plot_data_samples.weightparameter<- function(samples, parameter, n_points){
+
+  check_list(samples, "samples", check_names = "omega", allow_other = TRUE)
+  if(!is.null(samples[["omega"]])){
+    samples <- samples[["omega"]]
+  }else if(!is.null(samples[["bias"]])){
+    samples <- samples[["bias"]]
+  }else{
+    stop("No 'omega' or 'bias' samples found.")
+  }
+
+  x_points <- NULL
+  y_points <- NULL
+  x_den    <- NULL
+  y_den    <- NULL
+
+  # extract the relevant data
+  prior_list <- attr(samples, "prior_list")
+  models_ind <- attr(samples, "models_ind")
+  samples    <- samples[,parameter]
+  n_samples_total <- length(samples)
+  if (!(is.prior.mixture(prior_list) || is.prior.spike_and_slab(prior_list)) && is.prior(prior_list))
+    prior_list <- list(prior_list)
+
+  # replace prior_none with spike(1)
+  for (i in seq_along(prior_list)) {
+    if (is.prior.none(prior_list[[i]])) {
+      temp_weight <- prior_list[[i]][["prior_weights"]]
+      prior_list[[i]] <- prior("spike", parameters = list(location = 1))
+      prior_list[[i]][["prior_weights"]] <- temp_weight
+    }
+  }
+
+  # deal with spikes
+  samples_is_1 <- abs(samples - 1) < 1e-6
+
+  if(any(samples_is_1)){
+    x_points <- 1
+    y_points <- mean(samples_is_1)
+
+    # remove the used samples so they are not re-used in density
+    # (since they might be forced to one even in non-null models due to cummulativness)
+    models_ind <- models_ind[!samples_is_1]
+    samples    <- samples[!samples_is_1]
+
+  }else{
+    x_points <- NULL
+    y_points <- NULL
+  }
+
+  # deal with the densities
+  if (!all(sapply(prior_list, \(x) is.prior.point(x) || is.prior.none(x)))) {
+
+    samples_density   <- samples[models_ind %in% which(!sapply(prior_list, is.prior.point))]
+
+    if(length(samples_density) > 0){
+
+      args <- list(x = samples_density, n = n_points)
+
+      # set the endpoints for possible truncation
+      prior_list_simple <- prior_list[!sapply(prior_list, is.prior.point)]
+      context <- .weightfunction_prior_list_context(prior_list)
+      parameter_ind <- match(parameter, context$omega_names)
+      if(is.na(parameter_ind)){
+        prior_list_simple_lower <- min(c(0, samples_density), na.rm = TRUE)
+        prior_list_simple_upper <- max(c(1, samples_density), na.rm = TRUE)
+      }else{
+        components <- .weightfunction_prior_marginal_components(context, parameter_ind)
+        prior_range <- .weightfunction_components_range(components, samples = samples_density)
+        prior_list_simple_lower <- prior_range[1]
+        prior_list_simple_upper <- prior_range[2]
+      }
+
+      if(!is.infinite(prior_list_simple_lower)){
+        args <- c(args, from = prior_list_simple_lower)
+      }
+      if(!is.infinite(prior_list_simple_upper)){
+        args <- c(args, to = prior_list_simple_upper)
+      }
+
+      # get the density estimate
+      density_continuous <- do.call(stats::density, args)
+      x_den    <- density_continuous$x
+      y_den    <- density_continuous$y * (length(samples_density) / n_samples_total)
+
+      # check for truncation
+      if(isTRUE(all.equal(prior_list_simple_lower, x_den[1])) | prior_list_simple_lower >= x_den[1]){
+        y_den <- c(0, y_den)
+        x_den <- c(x_den[1], x_den)
+      }
+      if(isTRUE(all.equal(prior_list_simple_upper, x_den[length(x_den)])) | prior_list_simple_upper <= x_den[length(x_den)]){
+        y_den <- c(y_den, 0)
+        x_den <- c(x_den, x_den[length(x_den)])
+      }
+    }
+  }
+
+
+  # create the output object
+  out <- list()
+
+  # add continuous densities
+  if(!is.null(y_den)){
+    out_den    <- list(
+      call    = call("density", "mixed samples"),
+      bw      = NULL,
+      n       = n_points,
+      x       = x_den,
+      y       = y_den,
+      samples = samples_density
+    )
+
+    class(out_den) <- c("density", "density.prior", "density.prior.simple")
+    attr(out_den, "x_range") <- range(x_den)
+    attr(out_den, "y_range") <- c(0, max(y_den))
+    attr(out_den, "parameter") <- parameter
+
+    out[["density"]] <- out_den
+  }
+
+  # add spikes
+  if(!is.null(y_points)){
+    for(i in seq_along(y_points)){
+      temp_points <- list(
+        call    = call("density", paste0("point", i)),
+        bw      = NULL,
+        n       = n_points,
+        x       = x_points[i],
+        y       = y_points[i],
+        samples = NULL
+      )
+
+      class(temp_points) <- c("density", "density.prior", "density.prior.point")
+      attr(temp_points, "x_range") <- if(!is.null(x_den)) range(x_den) else range(c(0, 1, x_points[i]))
+      attr(temp_points, "y_range") <- c(0, max(y_points[i]))
+      attr(temp_points, "parameter") <- parameter
+
+      out[[paste0("points",i)]] <- temp_points
+    }
+  }
 
   return(out)
 }
@@ -1528,7 +3478,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
         # get the density estimate
         density_continuous <- do.call(stats::density, args)
         x_den    <- density_continuous$x
-        y_den    <- density_continuous$y * (length(samples_density[,i]) / length(samples))
+        y_den    <- density_continuous$y * (nrow(samples_density) / nrow(samples))
 
         # check for truncation
         if(isTRUE(all.equal(prior_list_simple_lower, x_den[1])) | prior_list_simple_lower >= x_den[1]){
@@ -1645,7 +3595,7 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
 
       # transform the samples
       if(ncol(total_samples) == attr(total_samples, "levels")){
-        total_samples <- transform_factor_samples(samples[parameter])[[parameter]]
+        total_samples <- transform_factor_samples(samples)[[parameter]]
       }
       # transform the model summaries
       if(!any(sapply(models_summary, function(m) all(colnames(total_samples) %in% attr(m, "parameters"))))){
@@ -1707,7 +3657,7 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
     }),
     y_lCI      = sapply(1:length(models_summary), function(i){
       if(any(attr(models_summary[[i]], "parameters") == parameter)){
-        return(models_summary[[i]][attr(models_summary[[i]], "parameters") == parameter, "lCI"])
+        return(models_summary[[i]][attr(models_summary[[i]], "parameters") == parameter, "0.025"])
       }else if(is.prior.point(prior_list[[i]])){
         return(prior_list[[i]]$parameters[["location"]])
       }else{
@@ -1716,7 +3666,7 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
     }),
     y_uCI      = sapply(1:length(models_summary), function(i){
       if(any(attr(models_summary[[i]], "parameters") == parameter)){
-        return(models_summary[[i]][attr(models_summary[[i]], "parameters") == parameter, "uCI"])
+        return(models_summary[[i]][attr(models_summary[[i]], "parameters") == parameter, "0.975"])
       }else if(is.prior.point(prior_list[[i]])){
         return(prior_list[[i]]$parameters[["location"]])
       }else{
@@ -1956,7 +3906,7 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
   return(plot)
 }
 
-.simplify_spike_samples <- function(samples, prior_list){
+.simplify_spike_samples           <- function(samples, prior_list){
 
   # Check if we're dealing with spike_and_slab or mixture (which are single priors) vs list of priors
   is_spike_and_slab <- is.prior.spike_and_slab(prior_list)
@@ -2016,7 +3966,53 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
 
   return(spike_probability)
 }
+.simplify_as_mixed_posterior_bias <- function(samples, parameter) {
 
+  ### replace all remaining priors by null prior
+  prior_list <- attr(samples[["bias"]], "prior_list")
+  prior_list <- .weightfunction_expand_bias_mixture_priors(prior_list)
+
+  if (parameter == "PET") {
+    prior_ind <- which(sapply(prior_list, \(x) !is.prior.PET(x)))
+  } else if (parameter == "PEESE") {
+    prior_ind <- which(sapply(prior_list, \(x) !is.prior.PEESE(x)))
+  } else if (parameter == "omega") {
+    prior_ind <- which(sapply(prior_list, \(x) !.weightfunction_prior_has_selection(x)))
+  }
+  if (length(prior_ind) > 0) {
+    for (i in prior_ind) {
+      temp_weight     <- prior_list[[i]][["prior_weights"]]
+      prior_list[[i]] <- if (parameter == "omega") prior_none() else prior("point", parameters = list(0))
+      prior_list[[i]][["prior_weights"]] <- temp_weight
+    }
+  }
+
+  ### create new samples
+  new_samples <- samples[["bias"]][, grepl(parameter, colnames(samples[["bias"]])),drop=FALSE]
+
+  ### store attribute
+  std_attrs  <- c("dim", "dimnames", "names", "prior_list", "mcpar")
+  all_attrs  <- attributes(samples[["bias"]])
+  to_restore <- setdiff(names(all_attrs), std_attrs)
+
+  ### re-assign attributes
+  for (a in to_restore) {
+    attr(new_samples, a) <- all_attrs[[a]]
+  }
+
+  # remove `mixed_posteriors.bias` class
+  class(new_samples) <- class(new_samples)[!class(new_samples) %in% "mixed_posteriors.bias"]
+
+  ### assign prior list and model indicator
+  attr(prior_list, "omega_context") <- attr(samples[["bias"]], "omega_context")
+  attr(new_samples, "prior_list") <- prior_list
+
+  ### remove the old samples & store new samples
+  samples[["bias"]]    <- NULL
+  samples[[parameter]] <- new_samples
+
+  return(samples)
+}
 
 #' @title Plot samples from the marginal posterior distributions
 #'
@@ -2036,13 +4032,15 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
 plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
                           n_points = 1000,
                           transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
-                          rescale_x = FALSE, par_name = NULL, dots_prior = list(), ...){
+                          rescale_x = FALSE, par_name = NULL, dots_prior = list(),
+                          legend = TRUE, legend_title = NULL, legend_labels = NULL, legend_position = NULL, ...){
 
   # check input
   if(any(!sapply(samples, inherits, what = "marginal_posterior")))
     stop("'samples' must be a be an object generated by 'marginal_posterior' function.")
   check_char(parameter, "parameter")
   check_char(plot_type, "plot_type", allow_values = c("base", "ggplot"))
+  check_bool(legend, "legend", allow_NA = FALSE)
   .check_transformation_input(transformation, transformation_arguments, transformation_settings)
 
 
@@ -2059,7 +4057,7 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
   # add priors, if requested
   if(prior){
 
-    plot_data_prior <- lapply(plot_data, attr, which = "prior")
+    plot_data_prior <- unlist(lapply(plot_data, attr, which = "prior"), recursive = FALSE)
 
     # transplant common xlim and ylim
     plot_data_joined <- c(plot_data, plot_data_prior)
@@ -2079,6 +4077,10 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
     args_prior$plot_type <- plot_type
     args_prior$par_name  <- par_name
     args_prior$hardcode  <- TRUE
+    args_prior$legend    <- FALSE
+    args_prior$legend_title <- legend_title
+    args_prior$legend_labels <- legend_labels
+    args_prior$legend_position <- legend_position
 
     plot <- do.call(.plot_prior_list.factor, args_prior)
 
@@ -2089,6 +4091,10 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
     args$plot_type <- plot_type
     args$par_name  <- par_name
     args$add       <- TRUE
+    args$legend    <- legend
+    args$legend_title <- legend_title
+    args$legend_labels <- legend_labels
+    args$legend_position <- legend_position
 
     if(plot_type == "base"){
       plot <- do.call(.plot_prior_list.factor, args)
@@ -2099,7 +4105,11 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
   }else{
 
     # plot just posterior otherwise
-    plot <- .plot_prior_list.factor(plot_data = plot_data, plot_type = plot_type, par_name = par_name, ...)
+    plot <- .plot_prior_list.factor(
+      plot_data = plot_data, plot_type = plot_type, par_name = par_name,
+      legend = legend, legend_title = legend_title, legend_labels = legend_labels,
+      legend_position = legend_position, ...
+    )
 
   }
 
@@ -2116,25 +4126,20 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
 
   check_list(samples, "samples", check_names = parameter, allow_other = TRUE)
 
-  x_points <- NULL
-  y_points <- NULL
-  x_den    <- NULL
-  y_den    <- NULL
-
   # extract the relevant information
   if(is.list(samples[[parameter]]) && length(samples[[parameter]]) > 1){
-    posterior_samples <- do.call(cbind, samples[[parameter]])
+    posterior_samples <- .marginal_posterior_parameter_samples(samples, parameter)
+    prior_densities   <- .marginal_posterior_parameter_prior_densities(samples, parameter)
     if(prior){
-      prior_samples <- do.call(cbind, lapply(samples[[parameter]], attr, which = "prior_samples"))
+      if(any(vapply(prior_densities, is.null, logical(1))))
+        stop("'samples' did not contain prior densities")
     }
   }else{
-    posterior_samples  <- matrix(samples[[parameter]][[1]], ncol = 1)
-    colnames(posterior_samples) <- names(samples[[parameter]])
+    posterior_samples <- .marginal_posterior_parameter_samples(samples, parameter)
+    prior_densities   <- .marginal_posterior_parameter_prior_densities(samples, parameter)
     if(prior){
-      prior_samples <- matrix(attr(samples[[parameter]][[1]], "prior_samples"), ncol = 1)
-      if(is.null(prior_samples))
-        stop("'samples' did not contain prior samples")
-      colnames(prior_samples) <- names(samples[[parameter]])
+      if(is.null(prior_densities[[1]]))
+        stop("'samples' did not contain prior densities")
     }
   }
 
@@ -2144,55 +4149,143 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
 
 
   # deal with the densities
-  for(i in 1:ncol(posterior_samples)){
+  for(i in seq_along(posterior_samples)){
 
-    out_den <- .plot_data_marginal_samples.den(posterior_samples[,i], n_points, transformation, transformation_arguments, transformation_settings)
-    attr(out_den, "level")      <- i
-    attr(out_den, "level_name") <- colnames(posterior_samples)[i]
+    out_level <- .plot_data_marginal_samples.den(
+      posterior_samples[[i]],
+      n_points,
+      transformation,
+      transformation_arguments,
+      transformation_settings,
+      prior_density = prior_densities[[i]]
+    )
 
-    if(prior){
-      out_den.prior <- .plot_data_marginal_samples.den(prior_samples[,i], n_points, transformation, transformation_arguments, transformation_settings)
-      attr(out_den.prior, "level")      <- i
-      attr(out_den.prior, "level_name") <- colnames(prior_samples)[i]
-
-      attr(out_den, "prior") <- out_den.prior
+    for(j in seq_along(out_level)){
+      attr(out_level[[j]], "level")      <- i
+      attr(out_level[[j]], "level_name") <- names(posterior_samples)[i]
     }
 
-    out[[paste0("density", i)]] <- out_den
+    if(prior){
+      out_den.prior <- .prior_linear_density_to_plot_data(
+        prior_densities[[i]],
+        n_points                  = n_points,
+        transformation            = transformation,
+        transformation_arguments  = transformation_arguments,
+        transformation_settings   = transformation_settings,
+        factor                    = TRUE,
+        level                     = i,
+        level_name                = names(posterior_samples)[i]
+      )
+
+      attr(out_level[[1]], "prior") <- out_den.prior
+    }
+
+    for(j in seq_along(out_level)){
+      out[[paste0(names(out_level)[j], i)]] <- out_level[[j]]
+    }
 
   }
 
   return(out)
 }
-.plot_data_marginal_samples.den <- function(x, n_points, transformation, transformation_arguments, transformation_settings){
+.plot_data_marginal_samples.den <- function(x, n_points, transformation, transformation_arguments, transformation_settings,
+                                            prior_density = NULL){
 
-  args <- list(x = x, n = n_points)
+  point_locations <- .plot_data_marginal_samples_point_locations(prior_density)
+  point_samples   <- rep(FALSE, length(x))
+  x_points        <- NULL
+  y_points        <- NULL
 
-  # get the density estimate
-  density_continuous <- do.call(stats::density, args)
-  x_den    <- density_continuous$x
-  y_den    <- density_continuous$y
+  if(length(point_locations) > 0){
+    point_counts <- numeric(length(point_locations))
+    for(i in seq_along(point_locations)){
+      tol <- sqrt(.Machine$double.eps) * max(1, abs(point_locations[i]))
+      point_matches <- !point_samples & abs(x - point_locations[i]) <= tol
+      point_counts[i] <- sum(point_matches)
+      point_samples <- point_samples | point_matches
+    }
 
-
-  # apply transformations
-  if(!is.null(transformation)){
-    x_den <- .density.prior_transformation_x(x_den, transformation, transformation_arguments)
-    y_den <- .density.prior_transformation_y(x_den, y_den, transformation, transformation_arguments)
-    x     <- .density.prior_transformation_x(x, transformation, transformation_arguments)
+    point_keep <- point_counts > 0
+    x_points <- point_locations[point_keep]
+    y_points <- point_counts[point_keep] / length(x)
   }
 
-  out_den <- list(
-    call    = call("density", "mixed samples"),
-    bw      = NULL,
-    n       = n_points,
-    x       = x_den,
-    y       = y_den,
-    samples = x
-  )
+  samples_density <- x[!point_samples]
 
-  class(out_den) <- c("density", "density.prior", "density.prior.factor", "density.prior.simple")
-  attr(out_den, "x_range")    <- range(x_den)
-  attr(out_den, "y_range")    <- c(0, max(y_den))
+  # create the output object
+  out <- list()
 
-  return(out_den)
+  # get the density estimate
+  if(length(samples_density) > 1 && diff(range(samples_density)) > 0){
+    args <- list(x = samples_density, n = n_points)
+
+    density_continuous <- do.call(stats::density, args)
+    x_den    <- density_continuous$x
+    y_den    <- density_continuous$y * (length(samples_density) / length(x))
+
+    # apply transformations
+    if(!is.null(transformation)){
+      x_den           <- .density.prior_transformation_x(x_den, transformation, transformation_arguments)
+      y_den           <- .density.prior_transformation_y(x_den, y_den, transformation, transformation_arguments)
+      samples_density <- .density.prior_transformation_x(samples_density, transformation, transformation_arguments)
+    }
+
+    out_den <- list(
+      call    = call("density", "mixed samples"),
+      bw      = NULL,
+      n       = n_points,
+      x       = x_den,
+      y       = y_den,
+      samples = samples_density
+    )
+
+    class(out_den) <- c("density", "density.prior", "density.prior.factor", "density.prior.simple")
+    attr(out_den, "x_range")    <- range(x_den)
+    attr(out_den, "y_range")    <- c(0, max(y_den))
+
+    out[["density"]] <- out_den
+
+  }else if(length(samples_density) > 0){
+    x_points <- c(x_points, unique(samples_density))
+    y_points <- c(y_points, tabulate(match(samples_density, unique(samples_density))) / length(x))
+  }
+
+  if(!is.null(y_points)){
+    if(!is.null(transformation)){
+      x_points <- .density.prior_transformation_x(x_points, transformation, transformation_arguments)
+    }
+
+    for(i in seq_along(y_points)){
+      temp_points <- list(
+        call    = call("density", paste0("point", i)),
+        bw      = NULL,
+        n       = n_points,
+        x       = x_points[i],
+        y       = y_points[i],
+        samples = NULL
+      )
+
+      class(temp_points) <- c("density", "density.prior", "density.prior.point", "density.prior.factor")
+      attr(temp_points, "x_range") <- range(x_points)
+      attr(temp_points, "y_range") <- c(0, max(y_points))
+
+      out[[paste0("points", i)]] <- temp_points
+    }
+  }
+
+  return(out)
+}
+.plot_data_marginal_samples_point_locations <- function(prior_density){
+
+  if(!inherits(prior_density, "prior_linear_density") || is.null(prior_density$points) || nrow(prior_density$points) == 0){
+    return(numeric())
+  }
+
+  points <- prior_density$points
+  points <- points[points$p > .prior_linear_density_zero_tol(), , drop = FALSE]
+  if(nrow(points) == 0){
+    return(numeric())
+  }
+
+  points$x
 }

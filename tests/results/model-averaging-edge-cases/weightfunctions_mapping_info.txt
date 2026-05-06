@@ -1,0 +1,3 @@
+Mixed mapping length: 2
+Inx 1: 1,1,2,2,2
+Inx 2: 1,2,3,2,1

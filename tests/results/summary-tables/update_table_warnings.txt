@@ -1,0 +1,4 @@
+      Models Prior prob. Post. prob. Inclusion BF
+m        2/2       1.000       1.000           NA
+omega    1/2       0.500       0.638        1.759
+[0;31mThis is a warning[0m

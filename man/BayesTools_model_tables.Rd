@@ -35,13 +35,21 @@ runjags_estimates_table(
   footnotes = NULL,
   warnings = NULL,
   conditional = FALSE,
+  probs = c(0.025, 0.5, 0.975),
   remove_spike_0 = TRUE,
   transform_factors = FALSE,
   transform_orthonormal = FALSE,
   formula_prefix = TRUE,
   remove_inclusion = FALSE,
   remove_parameters = NULL,
-  return_samples = FALSE
+  remove_formulas = NULL,
+  keep_parameters = NULL,
+  keep_formulas = NULL,
+  return_samples = FALSE,
+  transform_scaled = FALSE,
+  remove_diagnostics = FALSE,
+  diagnostic_columns = getOption("BayesTools.JAGS_estimates_diagnostic_columns", if
+    (remove_diagnostics) "none" else "all")
 )
 
 runjags_inference_table(
@@ -49,7 +57,12 @@ runjags_inference_table(
   title = NULL,
   footnotes = NULL,
   warnings = NULL,
-  formula_prefix = TRUE
+  formula_prefix = TRUE,
+  logBF = FALSE,
+  BF01 = FALSE,
+  BF_diagnostics = FALSE,
+  BF_diagnostic_columns = getOption("BayesTools.JAGS_BF_diagnostic_columns", if
+    (BF_diagnostics) "all" else "none")
 )
 
 JAGS_estimates_table(
@@ -59,13 +72,21 @@ JAGS_estimates_table(
   footnotes = NULL,
   warnings = NULL,
   conditional = FALSE,
+  probs = c(0.025, 0.5, 0.975),
   remove_spike_0 = TRUE,
   transform_factors = FALSE,
   transform_orthonormal = FALSE,
   formula_prefix = TRUE,
   remove_inclusion = FALSE,
   remove_parameters = NULL,
-  return_samples = FALSE
+  remove_formulas = NULL,
+  keep_parameters = NULL,
+  keep_formulas = NULL,
+  return_samples = FALSE,
+  transform_scaled = FALSE,
+  remove_diagnostics = FALSE,
+  diagnostic_columns = getOption("BayesTools.JAGS_estimates_diagnostic_columns", if
+    (remove_diagnostics) "none" else "all")
 )
 
 JAGS_inference_table(
@@ -73,7 +94,12 @@ JAGS_inference_table(
   title = NULL,
   footnotes = NULL,
   warnings = NULL,
-  formula_prefix = TRUE
+  formula_prefix = TRUE,
+  logBF = FALSE,
+  BF01 = FALSE,
+  BF_diagnostics = FALSE,
+  BF_diagnostic_columns = getOption("BayesTools.JAGS_BF_diagnostic_columns", if
+    (BF_diagnostics) "all" else "none")
 )
 
 JAGS_summary_table(
@@ -95,13 +121,47 @@ model_summary_empty_table(
   warnings = NULL
 )
 
-runjags_estimates_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
+runjags_estimates_empty_table(
+  probs = c(0.025, 0.5, 0.975),
+  title = NULL,
+  footnotes = NULL,
+  warnings = NULL,
+  remove_diagnostics = FALSE,
+  diagnostic_columns = getOption("BayesTools.JAGS_estimates_diagnostic_columns", if
+    (remove_diagnostics) "none" else "all")
+)
 
-runjags_inference_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
+runjags_inference_empty_table(
+  title = NULL,
+  footnotes = NULL,
+  warnings = NULL,
+  logBF = FALSE,
+  BF01 = FALSE,
+  BF_diagnostics = FALSE,
+  BF_diagnostic_columns = getOption("BayesTools.JAGS_BF_diagnostic_columns", if
+    (BF_diagnostics) "all" else "none")
+)
 
-JAGS_estimates_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
+JAGS_estimates_empty_table(
+  probs = c(0.025, 0.5, 0.975),
+  title = NULL,
+  footnotes = NULL,
+  warnings = NULL,
+  remove_diagnostics = FALSE,
+  diagnostic_columns = getOption("BayesTools.JAGS_estimates_diagnostic_columns", if
+    (remove_diagnostics) "none" else "all")
+)
 
-JAGS_inference_empty_table(title = NULL, footnotes = NULL, warnings = NULL)
+JAGS_inference_empty_table(
+  title = NULL,
+  footnotes = NULL,
+  warnings = NULL,
+  logBF = FALSE,
+  BF01 = FALSE,
+  BF_diagnostics = FALSE,
+  BF_diagnostic_columns = getOption("BayesTools.JAGS_BF_diagnostic_columns", if
+    (BF_diagnostics) "all" else "none")
+)
 
 stan_estimates_table(
   fit,
@@ -137,8 +197,10 @@ shortened. Defaults to \code{FALSE}.}
 \item{formula_prefix}{whether the parameter prefix from formula should
 be printed. Defaults to \code{TRUE}.}
 
-\item{remove_parameters}{parameters to be removed from the summary. Defaults
-to \code{NULL}, i.e., including all parameters.}
+\item{remove_parameters}{parameters to be removed from the summary.
+Can be \code{NULL} (default, no removal), a character vector of parameter
+names to remove, or \code{TRUE} to remove all parameters that are not
+part of any formula.}
 
 \item{fit}{runjags model fit}
 
@@ -147,6 +209,8 @@ to specific parameters}
 
 \item{conditional}{summarizes estimates conditional on being included
 in the model for spike and slab priors. Defaults to \code{FALSE}.}
+
+\item{probs}{quantiles for parameter estimates}
 
 \item{transform_factors}{whether factors with orthonormal/meandif
 prior distribution should be transformed to differences from the
@@ -159,8 +223,52 @@ differences from the grand mean}
 \item{remove_inclusion}{whether estimates of the inclusion probabilities
 should be excluded from the summary table. Defaults to \code{FALSE}.}
 
+\item{remove_formulas}{character vector of formula names whose parameters
+should be removed from the summary. Defaults to \code{NULL}.}
+
+\item{keep_parameters}{character vector of parameter names to keep.
+All other parameters will be removed unless they belong to formulas
+specified in \code{keep_formulas}. Defaults to \code{NULL}.}
+
+\item{keep_formulas}{character vector of formula names whose parameters
+should be kept. All other parameters will be removed unless they are
+specified in \code{keep_parameters}. Defaults to \code{NULL}.}
+
 \item{return_samples}{whether to return the transoformed and formated samples
 instead of the table. Defaults to \code{FALSE}.}
+
+\item{transform_scaled}{whether coefficients from standardized
+continuous predictors should be transformed back to the original
+scale. Defaults to \code{FALSE}.}
+
+\item{remove_diagnostics}{whether to exclude MCMC diagnostics (MCMC error,
+ESS, R-hat) from the output table. Defaults to \code{FALSE}. Setting to
+\code{TRUE} will exclude diagnostics columns regardless of the
+\code{conditional} setting.}
+
+\item{diagnostic_columns}{MCMC diagnostic columns to display in JAGS
+estimates tables. Can be \code{"all"}, \code{"none"}, \code{TRUE},
+\code{FALSE}, or a character vector containing any subset of
+\code{"MCMC_error"}, \code{"MCMC_SD_error"}, \code{"ESS"}, and
+\code{"R_hat"}. Defaults to the
+\code{BayesTools.JAGS_estimates_diagnostic_columns} option, or all
+diagnostics unless \code{remove_diagnostics = TRUE}.}
+
+\item{logBF}{whether the Bayes factor should be on log scale}
+
+\item{BF01}{whether the Bayes factor should be inverted}
+
+\item{BF_diagnostics}{whether to add MCMC diagnostics for Bayes factors
+computed from model indicator frequencies. The Bayes factor error is
+reported as a relative Monte Carlo standard error percentage. Defaults to
+\code{FALSE}.}
+
+\item{BF_diagnostic_columns}{MCMC diagnostic columns to display in JAGS
+inclusion Bayes factor tables. Can be \code{"all"}, \code{"none"},
+\code{TRUE}, \code{FALSE}, or a character vector containing any subset of
+\code{"ESS"}, \code{"MCMC_error"}, and \code{"BF_error_percent"}.
+Defaults to the \code{BayesTools.JAGS_BF_diagnostic_columns} option, or all
+diagnostics when \code{BF_diagnostics = TRUE} and none otherwise.}
 }
 \value{
 \code{model_summary_table} returns a table with
@@ -172,6 +280,18 @@ class 'BayesTools_table'.
 \description{
 Creates model summary based on a model objects or
 provides estimates table for a runjags fit.
+}
+\details{
+For product-space JAGS inclusion Bayes factors, posterior inclusion
+probabilities of exactly 0 or 1 cannot produce a finite point estimate of
+the model odds ratio. In that case, inclusion BFs marked with \code{"<"} or
+\code{">"} are finite-sample bounds: posterior inclusion probabilities of
+0 or 1 were replaced by \code{1/S} or \code{(S - 1)/S}, where \code{S} is
+the number of posterior samples. This is a reporting convention, not an
+unbiased finite Bayes-factor estimate. If the prior inclusion probability
+is exactly 0 or 1, the inclusion Bayes factor is undefined and reported as
+\code{NA}, because the corresponding inclusion/exclusion comparison was not
+tested.
 }
 \seealso{
 \link{BayesTools_ensemble_tables}

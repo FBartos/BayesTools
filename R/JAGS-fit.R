@@ -17,6 +17,10 @@
 #' (names of the lists correspond to the parameter name created by each of the formula and
 #' the names of the prior distribution correspond to the parameter names) of parameters specified
 #' within the \code{formula}
+#' @param formula_scale_list named list of named lists for standardizing continuous predictors
+#' (names of the lists correspond to the parameter name created by each of the formula).
+#' Each entry should be a named list where continuous predictors with \code{TRUE} values will
+#' be standardized. Defaults to \code{NULL} (no standardization).
 #' @param chains number of chains to be run, defaults to \code{4}
 #' @param adapt number of samples used for adapting the MCMC chains, defaults to \code{500}
 #' @param burnin number of burnin iterations of the MCMC chains, defaults to \code{1000}
@@ -30,7 +34,7 @@
 #'   \item{max_Rhat}{maximum R-hat error for the autofit function.
 #'   Defaults to \code{1.05}.}
 #'   \item{min_ESS}{minimum effective sample size. Defaults to \code{500}.}
-#'   \item{max_error}{maximum MCMC error. Defaults to \code{1.01}.}
+#'   \item{max_error}{maximum MCMC error. Defaults to \code{0.01}.}
 #'   \item{max_SD_error}{maximum MCMC error as the proportion of standard
 #'   deviation of the parameters. Defaults to \code{0.05}.}
 #'   \item{max_time}{list specifying the time \code{time} and \code{units}
@@ -41,6 +45,8 @@
 #'   \code{1000}.}
 #'   \item{restarts}{number of times new initial values should be generated in case the model
 #'   fails to initialize. Defaults to \code{10}.}
+#'   \item{check_indicators}{whether model indicator variables should be included
+#'   in convergence checks. Defaults to \code{FALSE}.}
 #' }
 #' @param parallel whether the chains should be run in parallel \code{FALSE}
 #' @param cores number of cores used for multithreading if \code{parallel = TRUE},
@@ -89,10 +95,43 @@
 #' @name JAGS_fit
 NULL
 
+.JAGS_require_packages <- function(required_packages, cl = NULL){
+
+  if(length(required_packages) == 0)
+    return(invisible(logical(0)))
+
+  required_packages <- unique(required_packages)
+
+  if(is.null(cl)){
+    package_loaded <- vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)
+  }else{
+    package_loaded <- vapply(required_packages, function(package){
+      all(unlist(parallel::clusterCall(
+        cl,
+        function(package) requireNamespace(package, quietly = TRUE),
+        package
+      ), use.names = FALSE))
+    }, logical(1))
+  }
+
+  missing_packages <- names(package_loaded)[!package_loaded]
+  if(length(missing_packages) > 0)
+    stop(
+      paste0(
+        "Required packages are not available: '",
+        paste0(missing_packages, collapse = "', '"),
+        "'."
+      ),
+      call. = FALSE
+    )
+
+  invisible(package_loaded)
+}
+
 #' @rdname JAGS_fit
-JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL,
+JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL, formula_scale_list = NULL,
                      chains = 4, adapt = 500, burnin = 1000, sample = 4000, thin = 1,
-                     autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10),
+                     autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE),
                      parallel = FALSE, cores = chains, silent = TRUE, seed = NULL,
                      add_parameters = NULL, required_packages = NULL, ...){
 
@@ -102,12 +141,13 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   ### check input
   .check_JAGS_syntax(model_syntax)
   JAGS_check_and_list_fit_settings(chains, adapt, burnin, sample, thin, autofit, parallel, cores, silent, seed)
-  JAGS_check_and_list_autofit_settings(autofit_control)
+  autofit_control <- JAGS_check_and_list_autofit_settings(autofit_control)
   check_char(add_parameters, "add_parameters", check_length = 0, allow_NULL = TRUE)
-  check_char(required_packages, "required_packages", check_length = 0, allow_NULL = TRUE)
+  check_char(required_packages, "required_packages", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   check_list(formula_list, "formula_list", allow_NULL = TRUE)
   check_list(formula_data_list, "formula_data_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
   check_list(formula_prior_list, "formula_prior_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
+  check_list(formula_scale_list, "formula_scale_list", allow_NULL = TRUE)
 
   ### add formulas
   if(!is.null(formula_list)){
@@ -116,22 +156,32 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     formula_output <- list()
     for(parameter in names(formula_list)){
       formula_output[[parameter]] <- JAGS_formula(
-        formula    = formula_list[[parameter]],
-        parameter  = parameter,
-        data       = formula_data_list[[parameter]],
-        prior_list = formula_prior_list[[parameter]])
+        formula        = formula_list[[parameter]],
+        parameter      = parameter,
+        data           = formula_data_list[[parameter]],
+        prior_list     = formula_prior_list[[parameter]],
+        formula_scale  = if(!is.null(formula_scale_list)) formula_scale_list[[parameter]] else NULL)
     }
 
     # merge with the rest of the input
     prior_list     <- c(do.call(c, unname(lapply(formula_output, function(output) output[["prior_list"]]))), prior_list)
     data           <- c(do.call(c, unname(lapply(formula_output, function(output) output[["data"]]))),       data)
     formula_syntax <- paste0(lapply(formula_output, function(output) output[["formula_syntax"]]), collapse = "")
+    
+    # collect formula_scale information
+    formula_scale_info <- lapply(formula_output, function(output) output[["formula_scale"]])
+    formula_scale_info <- formula_scale_info[!sapply(formula_scale_info, is.null)]
+    if(length(formula_scale_info) == 0) formula_scale_info <- NULL
+    formula_design_info <- lapply(formula_output, function(output) output[["formula_design"]])
 
     # add the formula syntax to the model syntax
     opening_bracket <- regexpr("{", model_syntax, fixed = TRUE)[1]
     syntax_start    <- substr(model_syntax, 1, opening_bracket)
     syntax_end      <- substr(model_syntax, opening_bracket + 1, nchar(model_syntax))
     model_syntax    <- paste0(syntax_start, "\n", formula_syntax, "\n", syntax_end)
+  }else{
+    formula_scale_info <- NULL
+    formula_design_info <- NULL
   }
 
 
@@ -152,19 +202,15 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   # parallel vs. not
   if(parallel){
     cl <- parallel::makePSOCKcluster(cores)
-    on.exit(try(parallel::stopCluster(cl)))
-    for(i in seq_along(required_packages)){
-      parallel::clusterCall(cl, function(x) requireNamespace(required_packages[i]))
-    }
+    on.exit(try(parallel::stopCluster(cl), silent = TRUE), add = TRUE)
+    .JAGS_require_packages(required_packages, cl)
     model_call <- c(
       model_call,
       method = "rjparallel",
       cl     = list(cl)
     )
   }else{
-    for(i in seq_along(required_packages)){
-      requireNamespace(required_packages[i])
-    }
+    .JAGS_require_packages(required_packages)
     model_call <- c(
       model_call,
       method = "rjags"
@@ -180,7 +226,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   if(silent){
     user_silent.jags    <- runjags::runjags.getOption("silent.jags")
     user_silent.runjags <- runjags::runjags.getOption("silent.runjags")
-    on.exit(runjags::runjags.options(silent.jags = user_silent.jags, silent.runjags = user_silent.runjags))
+    on.exit(runjags::runjags.options(silent.jags = user_silent.jags, silent.runjags = user_silent.runjags), add = TRUE)
     runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
   }
 
@@ -229,7 +275,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 
   if(autofit && !inherits(fit, "error")){
 
-    converged  <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], fail_fast = TRUE)
+    converged  <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], check_indicators = autofit_control[["check_indicators"]], fail_fast = TRUE)
     itteration <- 1
 
     if(!converged && isTRUE(dots[["is_JASP"]]))
@@ -262,7 +308,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 
       fit <- runjags::add.summary(fit)
 
-      converged  <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], fail_fast = TRUE)
+      converged  <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], check_indicators = autofit_control[["check_indicators"]], fail_fast = TRUE)
       itteration <- itteration + 1
 
       if(isTRUE(dots[["is_JASP"]]))
@@ -274,6 +320,14 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   attr(fit, "prior_list")   <- prior_list
   attr(fit, "model_syntax") <- model_syntax
   attr(fit, "required_packages") <- required_packages
+  if(!is.null(formula_scale_info)){
+    # Keep formula_scale as a nested list keyed by parameter name
+    # Each element contains the scaling info for that parameter's predictors
+    attr(fit, "formula_scale") <- formula_scale_info
+  }
+  if(!is.null(formula_design_info)){
+    attr(fit, "formula_design") <- formula_design_info
+  }
 
   class(fit) <- c(class(fit), "BayesTools_fit")
 
@@ -281,7 +335,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 }
 
 #' @rdname JAGS_fit
-JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10),
+JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE),
                         parallel = FALSE, cores = NULL, silent = TRUE, seed = NULL){
 
   if(!inherits(fit, "BayesTools_fit"))
@@ -291,7 +345,9 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   prior_list        <- attr(fit, "prior_list")
   model_syntax      <- attr(fit, "model_syntax")
   required_packages <- attr(fit, "required_packages")
-  JAGS_check_and_list_autofit_settings(autofit_control)
+  formula_scale     <- attr(fit, "formula_scale")
+  formula_design    <- attr(fit, "formula_design")
+  autofit_control <- JAGS_check_and_list_autofit_settings(autofit_control)
 
   # parallel vs. not
   if(parallel){
@@ -299,10 +355,8 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
       cores <- length(fit[["mcmc"]])
     }
     cl <- parallel::makePSOCKcluster(cores)
-    on.exit(try(parallel::stopCluster(cl)))
-    for(i in seq_along(required_packages)){
-      parallel::clusterCall(cl, function(x) requireNamespace(required_packages[i]))
-    }
+    on.exit(try(parallel::stopCluster(cl), silent = TRUE), add = TRUE)
+    .JAGS_require_packages(required_packages, cl)
     refit_call <- list(
       runjags.object = fit,
       sample         = autofit_control[["sample_extend"]],
@@ -311,9 +365,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
       summarise      = FALSE
     )
   }else{
-    for(i in seq_along(required_packages)){
-      requireNamespace(required_packages[i])
-    }
+    .JAGS_require_packages(required_packages)
     refit_call <- list(
       runjags.object = fit,
       sample         = autofit_control[["sample_extend"]],
@@ -331,7 +383,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   if(silent){
     user_silent.jags    <- runjags::runjags.getOption("silent.jags")
     user_silent.runjags <- runjags::runjags.getOption("silent.runjags")
-    on.exit(runjags::runjags.options(silent.jags = user_silent.jags, silent.runjags = user_silent.runjags))
+    on.exit(runjags::runjags.options(silent.jags = user_silent.jags, silent.runjags = user_silent.runjags), add = TRUE)
     runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
   }
 
@@ -339,7 +391,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   itteration <- 0
   converged  <- FALSE
 
-  while(!converged & itteration < autofit_control[["restarts"]]){
+  while(!converged){
 
     if(!is.null(autofit_control[["max_time"]]) && difftime(Sys.time(), start_time, units = autofit_control[["max_time"]][["unit"]]) > autofit_control[["max_time"]][["time"]]){
       if(!silent){
@@ -348,7 +400,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
       }
       break
     }
-    if(!is.null(autofit_control[["max_extend"]]) && itteration > autofit_control[["max_extend"]]){
+    if(!is.null(autofit_control[["max_extend"]]) && itteration >= autofit_control[["max_extend"]]){
       if(!silent){
         attr(fit, "warning") <- "The automatic model fitting was terminated due to the 'max_extend' constraint."
         warning(attr(fit, "warning"), immediate. = TRUE)
@@ -365,7 +417,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
       break
     }
 
-    converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], fail_fast = TRUE)
+    converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], check_indicators = autofit_control[["check_indicators"]], fail_fast = TRUE)
 
     # update the refit call
     if(!converged){
@@ -378,6 +430,12 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   attr(fit, "prior_list")   <- prior_list
   attr(fit, "model_syntax") <- model_syntax
   attr(fit, "required_packages") <- required_packages
+  if(!is.null(formula_scale)){
+    attr(fit, "formula_scale") <- formula_scale
+  }
+  if(!is.null(formula_design)){
+    attr(fit, "formula_design") <- formula_design
+  }
 
   class(fit) <- c(class(fit), "BayesTools_fit")
 
@@ -395,12 +453,14 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
 #' @param max_Rhat maximum R-hat error for the autofit function.
 #'   Defaults to \code{1.05}.
 #' @param min_ESS minimum effective sample size. Defaults to \code{500}.
-#' @param max_error maximum MCMC error. Defaults to \code{1.01}.
+#' @param max_error maximum MCMC error. Defaults to \code{0.01}.
 #' @param max_SD_error maximum MCMC error as the proportion of standard
 #'   deviation of the parameters. Defaults to \code{0.05}.
 #' @param add_parameters vector of additional parameter names that should be used
 #' (only allows removing last, fixed, omega element if omega is tracked manually).
 #' @param fail_fast whether the function should stop after the first failed convergence check.
+#' @param check_indicators whether model indicator variables should be included
+#' in convergence checks. Defaults to \code{FALSE}.
 #'
 #' @examples \dontrun{
 #' # simulate data
@@ -432,7 +492,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
 #'
 #' @seealso [JAGS_fit()]
 #' @export
-JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, add_parameters = NULL, fail_fast = FALSE){
+JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, add_parameters = NULL, fail_fast = FALSE, check_indicators = FALSE){
 
   # check input
   if(!inherits(fit, "runjags"))
@@ -445,42 +505,46 @@ JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 5
   check_real(max_error,    "max_error",    lower = 0, allow_NULL = TRUE)
   check_real(max_SD_error, "max_SD_error", lower = 0, upper = 1, allow_NULL = TRUE)
   check_char(add_parameters, "add_parameters", check_length = 0, allow_NULL = TRUE)
+  check_bool(check_indicators, "check_indicators")
 
   # extract samples and parameter information
-  mcmc_samples    <- coda::as.mcmc.list(fit)
-  parameter_names <- colnames(mcmc_samples[[1]])
-  parameters_keep <- rep(TRUE, length(parameter_names))
-
-  # remove auxiliary and support parameters from the summary
-  for(i in seq_along(prior_list)){
-    if(is.prior.weightfunction(prior_list[[i]])){
-      if(prior_list[[i]][["distribution"]] %in% c("one.sided", "two.sided")){
-        parameters_keep[grepl("eta", parameter_names)] <- FALSE
-      }
-      parameter_names[max(grep("omega", parameter_names))] <- FALSE
-    }else if(is.prior.mixture(prior_list[[i]]) && any(sapply(prior_list[[i]], is.prior.weightfunction))){
-      parameters_keep[max(grep("omega", parameter_names))] <- FALSE
-    }else if(is.prior.point(prior_list[[i]])){
-      parameters_keep[parameter_names == names(prior_list)[i]] <- FALSE
-    }else if(is.prior.simple(prior_list[[i]]) && prior_list[[i]][["distribution"]] == "invgamma"){
-      parameters_keep[parameter_names == paste0("inv_",names(prior_list)[i])] <- FALSE
-    }else if(is.prior.mixture(prior_list[[i]]) && length(prior_list[[i]]) == 1 && is.prior.point(prior_list[[i]][[1]])){
-      parameters_keep[parameter_names == names(prior_list)[i]] <- FALSE
-    }
-  }
-
-  # remove indicators/inclusions
-  parameters_keep[grepl("_indicator", parameter_names)] <- FALSE
-  parameters_keep[grepl("_inclusion", parameter_names)] <- FALSE
-
-  if(all(!parameters_keep)){
+  mcmc_samples_list <- .extract_posterior_samples(fit, as_list = TRUE)
+  mcmc_samples      <- do.call(rbind, mcmc_samples_list)
+  
+  # build remove_parameters list: point priors, spike priors, indicators, inclusions
+  remove_params <- c(
+    # point priors
+    names(prior_list)[sapply(prior_list, is.prior.point)],
+    # mixture with single point prior
+    names(prior_list)[sapply(prior_list, function(p) {
+      is.prior.mixture(p) && length(p) == 1 && is.prior.point(p[[1]])
+    })],
+    # add_parameters that should be excluded
+    add_parameters
+  )
+  
+  # use helper to remove auxiliary parameters
+  cleaned <- .remove_auxiliary_parameters(mcmc_samples, prior_list, remove_params)
+  mcmc_samples <- cleaned$model_samples
+  
+  # remove auxiliary inclusion probabilities and, by default, model indicators
+  indicator_cols <- grepl("_indicator", colnames(mcmc_samples))
+  inclusion_cols <- grepl("_inclusion", colnames(mcmc_samples))
+  mcmc_samples <- mcmc_samples[, !(inclusion_cols | (!check_indicators & indicator_cols)), drop = FALSE]
+  
+  if(ncol(mcmc_samples) == 0){
     return(TRUE)
   }
-
-  # remove parameters that are not monitored
-  for(i in seq_along(mcmc_samples)){
-    mcmc_samples[[i]] <- mcmc_samples[[i]][,parameters_keep,drop=FALSE]
-  }
+  
+  # convert back to mcmc.list for convergence checks
+  n_chains <- length(mcmc_samples_list)
+  samples_per_chain <- nrow(mcmc_samples) / n_chains
+  mcmc_samples_list_cleaned <- lapply(1:n_chains, function(i) {
+    start_idx <- (i - 1) * samples_per_chain + 1
+    end_idx <- i * samples_per_chain
+    coda::as.mcmc(mcmc_samples[start_idx:end_idx, , drop = FALSE])
+  })
+  mcmc_samples <- coda::as.mcmc.list(mcmc_samples_list_cleaned)
 
   ### check the convergence
   fails <- NULL
@@ -574,6 +638,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
   check_list(prior_list, "prior_list")
   if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
+  .check_prior_list_unique_names(prior_list)
   .check_JAGS_syntax(syntax)
 
   # identify parts of the syntax
@@ -600,6 +665,14 @@ JAGS_add_priors           <- function(syntax, prior_list){
     if(is.prior.weightfunction(prior_list[[i]])){
 
       syntax_priors <- paste(syntax_priors, .JAGS_prior.weightfunction(prior_list[[i]]))
+
+    }else if(is_prior_phacking(prior_list[[i]])){
+
+      syntax_priors <- paste(syntax_priors, .JAGS_prior.phacking(prior_list[[i]]))
+
+    }else if(is_prior_bias(prior_list[[i]])){
+
+      syntax_priors <- paste(syntax_priors, .JAGS_prior.bias(prior_list[[i]]))
 
     }else if(is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
 
@@ -691,6 +764,9 @@ JAGS_add_priors           <- function(syntax, prior_list){
   if(!is.prior.vector(prior))
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
+  check_int(prior$parameters[["K"]], "K", lower = 1)
+  if(prior[["distribution"]] != "mpoint")
+    .check_vector_truncation_unsupported(prior$truncation)
 
   # parse expressions to test
   if(.is_prior_expression(prior)){
@@ -807,44 +883,115 @@ JAGS_add_priors           <- function(syntax, prior_list){
   if(!is.prior.weightfunction(prior))
     stop("improper prior provided")
 
-  # creating cummulative dirichlet distribution using gammas (in order to bypass bugs in bridgesampling)
-  if(all(names(prior[["parameters"]]) %in% c("alpha", "steps"))){
-    syntax <- character()
-    for(i in 1:length(prior$parameters[["alpha"]])){
-      syntax <- paste0(syntax, "eta[",i,"] ~ dgamma(",prior$parameters[["alpha"]][i],", 1)\n")
+  spec <- selection_backend_spec(prior)
+  return(.JAGS_selection_backend_syntax(spec))
+}
+.JAGS_prior.phacking      <- function(prior){
+
+  .check_prior(prior)
+  if(!is_prior_phacking(prior))
+    stop("improper prior provided")
+
+  spec <- selection_backend_spec(prior)
+  return(.JAGS_selection_backend_syntax(spec))
+}
+.JAGS_prior.bias          <- function(prior){
+
+  .check_prior(prior)
+  if(!is_prior_bias(prior))
+    stop("improper prior provided")
+
+  spec <- selection_backend_spec(prior)
+  return(.JAGS_selection_backend_syntax(spec))
+}
+
+.JAGS_selection_backend_syntax <- function(spec){
+
+  code <- c(spec$prior_code, spec$transform_code)
+  code <- code[nzchar(code)]
+  if(length(code) == 0L){
+    return("")
+  }
+  code <- sub("[\r\n]+$", "", code)
+
+  paste0(paste0(code, collapse = "\n"), "\n")
+}
+
+.JAGS_weightfunction_component_syntax <- function(prior, component_id = NULL, global_cuts = NULL, force_one_sided = FALSE){
+
+  J <- .weightfunction_n_bins(prior)
+  syntax <- character()
+
+  expansion     <- .weightfunction_mapping_expansion(prior, force_one_sided)
+  all_cuts      <- if(is.null(global_cuts)) expansion$cuts else global_cuts
+  needs_mapping <- !identical(all_cuts, .weightfunction_local_cuts(prior)) ||
+    !identical(expansion$index, seq_len(J))
+
+  omega_local <- if(is.null(component_id) && !needs_mapping) "omega" else if(is.null(component_id)) "omega_local" else paste0("omega_local_component_", component_id)
+  omega_target <- if(is.null(component_id)) "omega" else paste0("omega_component_", component_id)
+
+  if(prior$weights$type == "cumulative"){
+    eta_name <- if(is.null(component_id)) "eta" else paste0("eta_component_", component_id)
+    std_eta_name <- if(is.null(component_id)) "std_eta" else paste0("std_eta_component_", component_id)
+
+    for(i in seq_len(J)){
+      syntax <- paste0(syntax, eta_name, "[", i, "] ~ dgamma(", prior$weights$alpha[i], ", 1)\n")
     }
     syntax <- paste0(syntax,
-                     "for(j in 1:",length(prior$parameters[["alpha"]]),"){\n",
-                     "  std_eta[j]  = eta[j] / sum(eta)\n",
-                     "  omega[j]    = sum(std_eta[1:j])\n",
-                     "}\n")
-  }else if(all(names(prior[["parameters"]]) %in% c("alpha1", "alpha2", "steps"))){
-    syntax <- character()
-    for(i in 1:length(prior$parameters[["alpha1"]])){
-      syntax <- paste0(syntax, "eta1[",i,"] ~ dgamma(",prior$parameters[["alpha1"]][i],", 1)\n")
+      "for(j in 1:", J, "){\n",
+      "  ", std_eta_name, "[j] <- ", eta_name, "[j] / sum(", eta_name, ")\n",
+      "}\n",
+      omega_local, "[1] <- 1\n"
+    )
+    if(J > 1L){
+      syntax <- paste0(syntax,
+        "for(j in 2:", J, "){\n",
+        "  ", omega_local, "[j] <- sum(", std_eta_name, "[j:", J, "])\n",
+        "}\n"
+      )
     }
-    for(i in 1:length(prior$parameters[["alpha2"]])){
-      syntax <- paste0(syntax, "eta2[",i,"] ~ dgamma(",prior$parameters[["alpha2"]][i],", 1)\n")
+
+  }else if(prior$weights$type == "fixed"){
+    for(i in seq_len(J)){
+      syntax <- paste0(syntax, omega_local, "[", i, "] <- ", prior$weights$omega[i], "\n")
     }
-    syntax <- paste0(syntax,
-                     "for(j1 in 1:",length(prior$parameters[["alpha1"]]),"){\n",
-                     "  std_eta1[j1]      = eta1[j1] / sum(eta1)\n",
-                     "  omega[",length(prior$parameters[["alpha2"]])," - 1 + j1] = sum(std_eta1[1:j1])\n",
-                     "}\n",
-                     "for(j2 in 1:",length(prior$parameters[["alpha2"]]),"){\n",
-                     "  std_eta2[j2]  = (eta2[j2] / sum(eta2)) * (1 - std_eta1[1])\n",
-                     "}\n",
-                     "for(j2 in 2:",length(prior$parameters[["alpha2"]]),"){\n",
-                      "  omega[j2-1] = sum(std_eta2[j2:",length(prior$parameters[["alpha2"]]),"]) + std_eta1[1]\n",
-                     "}\n")
-  }else if(prior[["distribution"]] %in% c("one.sided.fixed", "two.sided.fixed")){
-    syntax <- character()
-    for(i in 1:length(prior$parameters[["omega"]])){
-      syntax <- paste0(syntax, "omega[",i,"] = ",prior$parameters[["omega"]][i],"\n")
+
+  }else if(prior$weights$type == "independent"){
+    syntax <- paste0(syntax, omega_local, "[1] <- 1\n")
+    if(J > 1L){
+      for(i in 2:J){
+        if(prior$weights$scale == "omega"){
+          syntax <- paste0(syntax, .JAGS_prior.simple(prior$weights$prior, paste0(omega_local, "[", i, "]")))
+        }else if(prior$weights$scale == "log_omega"){
+          log_omega_name <- if(is.null(component_id)) "log_omega" else paste0("log_omega_component_", component_id)
+          syntax <- paste0(
+            syntax,
+            .JAGS_prior.simple(prior$weights$prior, paste0(log_omega_name, "[", i, "]")),
+            omega_local, "[", i, "] <- exp(", log_omega_name, "[", i, "])\n"
+          )
+        }
+      }
     }
   }
 
-  return(syntax)
+  if(!is.null(component_id) || needs_mapping){
+    global_bin_indices <- .weightfunction_global_bin_indices(all_cuts, expansion)
+    for(i in seq_len(length(all_cuts) - 1L)){
+      ind <- global_bin_indices[i]
+      syntax <- paste0(syntax, omega_target, "[", i, "] <- ", omega_local, "[", expansion$index[ind], "]\n")
+    }
+  }
+
+  syntax
+}
+.JAGS_weightfunction_none_component_syntax <- function(component_id, n_bins){
+
+  syntax <- character()
+  omega_target <- if(is.null(component_id)) "omega" else paste0("omega_component_", component_id)
+  for(i in seq_len(n_bins)){
+    syntax <- paste0(syntax, omega_target, "[", i, "] <- 1\n")
+  }
+  syntax
 }
 .JAGS_prior.spike_and_slab <- function(prior, parameter_name){
 
@@ -880,14 +1027,24 @@ JAGS_add_priors           <- function(syntax, prior_list){
     is_PET            <- sapply(prior_list, is.prior.PET)
     is_PEESE          <- sapply(prior_list, is.prior.PEESE)
     is_weightfunction <- sapply(prior_list, is.prior.weightfunction)
+    is_phacking       <- sapply(prior_list, is_prior_phacking)
+    is_bias           <- sapply(prior_list, is_prior_bias)
     is_none           <- sapply(prior_list, is.prior.none)
-
-    prior_weights <- attr(prior_list, "prior_weights")
-    syntax <- paste0(" bias_indicator ~ dcat(c(", paste0(prior_weights, collapse = ", "), "))\n")
+    branch_info       <- lapply(prior_list, .selection_branch_info)
+    has_selection     <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
+    has_phacking      <- vapply(branch_info, function(x) !is.null(x$phacking),  logical(1))
 
     # if any prior is bias related, the whole component must be dispatching publication bias
-    if(any(!(is_PET | is_PEESE | is_weightfunction | is_none)))
+    if(any(!(is_PET | is_PEESE | is_weightfunction | is_phacking | is_bias | is_none)))
       stop("Mixture of publication bias and standard priors is not supported.")
+
+    prior_weights <- attr(prior_list, "prior_weights")
+    if(any(has_selection) || any(has_phacking)){
+      spec <- selection_backend_spec(prior_list)
+      syntax <- .JAGS_selection_backend_syntax(spec)
+    }else{
+      syntax <- paste0(" bias_indicator ~ dcat(c(", paste0(prior_weights, collapse = ", "), "))\n")
+    }
 
     if(any(is_PET)){
       if(sum(is_PET) > 1) stop("Only one PET style publication bias adjustment is allowed.")
@@ -899,7 +1056,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
       syntax <- paste0(
         syntax,
         .JAGS_add_priors.fun(named_prior_PET),
-        " PET = PET_1 * (bias_indicator == ", which(is_PET), ")\n"
+        " PET <- PET_1 * equals(bias_indicator, ", which(is_PET), ")\n"
       )
     }
     if(any(is_PEESE)){
@@ -912,91 +1069,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
       syntax <- paste0(
         syntax,
         .JAGS_add_priors.fun(named_prior_PEESE),
-        " PEESE = PEESE_1 * (bias_indicator == ", which(is_PEESE), ")\n"
-      )
-    }
-    if(any(is_weightfunction)){
-      # we cannot simulate weights from the mixture distribution directly because
-      # JAGS does not allow complex support for the cumulative simplex parameter
-      # (we could make it on the non-cumulative simplex but it does not give more advantage)
-
-      # create a vector of the alpha parameters
-      alpha <- lapply(prior_list[is_weightfunction], function(x){
-        if(grepl("fixed", x[["distribution"]])){
-          return(x$parameters[["omega"]])
-        }else{
-          return(x$parameters[["alpha"]])
-        }
-      })
-
-      # dispatch the prior distribution on weight parameters
-      syntax <- paste0(
-        syntax,
-        " for(i in 1:", max(lengths(alpha)), "){\n",
-        "   eta[i] ~ dgamma(eta_shape[i, bias_indicator], 1)\n",
-        " }\n"
-      )
-
-      # transform etas into weights (eta2omega JAGS function is in the RoBMA package)
-      syntax <- paste0(syntax, " omega = eta2omega(eta, omega_index[,bias_indicator], eta_index[,bias_indicator], eta_index_max[bias_indicator])\n")
-
-      # add the necessary auxiliary data: omega_index, eta_index, eta_index_max, eta_shape
-      # create the weightfunction mapping for weights
-      omega_index_weighfunction <- weightfunctions_mapping(prior_list[is_weightfunction], one_sided = TRUE)
-      omega_index_weighfunction <- lapply(omega_index_weighfunction, rev)
-      omega_index_weighfunction <- do.call(rbind, omega_index_weighfunction)
-      omega_index <- matrix(0, ncol = ncol(omega_index_weighfunction), length(prior_list))
-      omega_index[is_weightfunction,] <- omega_index_weighfunction
-
-      # in case of fixed weight functions, the omega_index direly corresponds to the fixed weights
-      for(i in seq_along(prior_list)){
-        if(is.prior.weightfunction(prior_list[[i]])){
-          if(grepl("fixed", prior_list[[i]]$distribution)){
-            omega_index[i,] <- prior_list[[i]]$parameters[["omega"]][omega_index[i,]]
-          }
-        }
-      }
-
-      # create the eta to omega mapping
-      # eta_index_max helps dispatching within the eta2omega function
-      # 0  = non-weightfunction, all weights are set to 0
-      # >1 = indicates how many alpha parameters are needed to construct the weightfunction based on the eta_index
-      # -1 = indicates fixed weightfunction, omega index already encoded all weights
-      eta_index     <- matrix(0, nrow = length(prior_list), ncol = max(lengths(alpha)))
-      eta_index_max <- rep(0, length(prior_list))
-      for(i in seq_along(prior_list)){
-        if(is.prior.weightfunction(prior_list[[i]])){
-          if(grepl("fixed", prior_list[[i]]$distribution)){
-            eta_index_max[i] <- -1
-            eta_index[i,]    <- -1
-          }else{
-            temp_index       <- unique(omega_index[i,])
-            eta_index[i,1:length(temp_index)] <- sort(temp_index)
-            eta_index_max[i] <- length(temp_index)
-          }
-        }else{
-          eta_index_max[i] <- 0
-        }
-      }
-
-      # create priors for eta (set alpha to 1 for non-weightfunctions to keep the sampling in the expected area)
-      eta_shape <- matrix(1, nrow = length(prior_list), ncol = max(lengths(alpha)))
-      for(i in seq_along(prior_list)){
-        if(is.prior.weightfunction(prior_list[[i]])){
-          if(!grepl("fixed", prior_list[[i]]$distribution)){
-            temp_shape <- prior_list[[i]]$parameters[["alpha"]]
-            eta_shape[i,1:length(temp_shape)] <- temp_shape
-          }
-        }
-      }
-
-      # paste the matricies directly into JAGS code (simplifies data handling)
-      syntax <- paste0(
-        syntax,
-        .add_JAGS_matrix("omega_index",   t(omega_index)),
-        .add_JAGS_matrix("eta_index",     t(eta_index)),
-        .add_JAGS_vector("eta_index_max", eta_index_max),
-        .add_JAGS_matrix("eta_shape",     t(eta_shape))
+        " PEESE <- PEESE_1 * equals(bias_indicator, ", which(is_PEESE), ")\n"
       )
     }
 
@@ -1097,6 +1170,7 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
   check_list(prior_list, "prior_list")
   if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
+  .check_prior_list_unique_names(prior_list)
 
 
   # select seed at random if none was specified
@@ -1134,6 +1208,14 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
     }else if(is.prior.weightfunction(prior_list[[i]])){
 
       temp_inits <- c(temp_inits, .JAGS_init.weightfunction(prior_list[[i]]))
+
+    }else if(is_prior_phacking(prior_list[[i]])){
+
+      temp_inits <- c(temp_inits, .JAGS_init.phacking(prior_list[[i]]))
+
+    }else if(is_prior_bias(prior_list[[i]])){
+
+      temp_inits <- c(temp_inits, .JAGS_init.bias(prior_list[[i]]))
 
     }else if(is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
 
@@ -1277,29 +1359,48 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 
   return(init)
 }
-.JAGS_init.weightfunction  <- function(prior){
+.JAGS_init.weightfunction  <- function(prior, component_id = NULL){
 
   .check_prior(prior)
   if(!is.prior.weightfunction(prior))
     stop("improper prior provided")
 
+  if(is.null(component_id)){
+    return(selection_backend_spec(prior)$init)
+  }
+
   init <- list()
-  if(prior[["distribution"]] %in% c("one.sided.fixed", "two.sided.fixed")){
-
+  if(prior$weights$type == "fixed"){
     return()
-
-  }else if(all(names(prior[["parameters"]]) %in% c("alpha", "steps"))){
-
-    init[["eta"]] <- stats::rgamma(length(prior$parameters[["alpha"]]), shape = prior$parameters[["alpha"]], rate = 1)
-
-  }else if(all(names(prior[["parameters"]]) %in% c("alpha1", "alpha2", "steps"))){
-
-    init[["eta1"]] <- stats::rgamma(length(prior$parameters[["alpha1"]]), shape = prior$parameters[["alpha1"]], rate = 1)
-    init[["eta2"]] <- stats::rgamma(length(prior$parameters[["alpha2"]]), shape = prior$parameters[["alpha2"]], rate = 1)
-
+  }else if(prior$weights$type == "cumulative"){
+    eta_name <- paste0("eta_component_", component_id)
+    init[[eta_name]] <- stats::rgamma(length(prior$weights[["alpha"]]), shape = prior$weights[["alpha"]], rate = 1)
   }
 
   return(init)
+}
+.JAGS_init.phacking       <- function(prior, component_id = NULL){
+
+  .check_prior(prior)
+  if(!is_prior_phacking(prior))
+    stop("improper prior provided")
+
+  if(is.null(component_id)){
+    return(selection_backend_spec(prior)$init)
+  }
+
+  alpha_name <- paste0("alpha_component_", component_id)
+  init <- .JAGS_init.simple(prior$alpha, alpha_name)
+
+  return(init)
+}
+.JAGS_init.bias           <- function(prior){
+
+  .check_prior(prior)
+  if(!is_prior_bias(prior))
+    stop("improper prior provided")
+
+  return(selection_backend_spec(prior)$init)
 }
 .JAGS_init.spike_and_slab  <- function(prior, parameter_name){
 
@@ -1331,12 +1432,17 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
     is_PET            <- sapply(prior_list, is.prior.PET)
     is_PEESE          <- sapply(prior_list, is.prior.PEESE)
     is_weightfunction <- sapply(prior_list, is.prior.weightfunction)
+    is_phacking       <- sapply(prior_list, is_prior_phacking)
+    is_bias           <- sapply(prior_list, is_prior_bias)
     is_none           <- sapply(prior_list, is.prior.none)
+    branch_info       <- lapply(prior_list, .selection_branch_info)
+    has_selection     <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
+    has_phacking      <- vapply(branch_info, function(x) !is.null(x$phacking),  logical(1))
 
     init <- list()
 
     # if any prior is bias related, the whole component must be dispatching publication bias
-    if(any(!(is_PET | is_PEESE | is_weightfunction | is_none)))
+    if(any(!(is_PET | is_PEESE | is_weightfunction | is_phacking | is_bias | is_none)))
       stop("Mixture of publication bias and standard priors is not supported.")
 
     if(any(is_PET)){
@@ -1357,21 +1463,11 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 
       init <- c(init, .JAGS_get_inits.fun(named_prior_PEESE))
     }
-    if(any(is_weightfunction)){
-
-      # find prior with the most alpha parameters and simulate initial values from it
-      alpha <- sapply(prior_list[is_weightfunction], function(x){
-        if(grepl("fixed", x[["distribution"]])){
-          return(length(x$parameters[["omega"]]))
-        }else{
-          return(length(x$parameters[["alpha"]]))
-        }
-      })
-
-      init <- c(init, .JAGS_get_inits.fun(prior_list[is_weightfunction][which.max(alpha)]))
+    if(any(has_selection) || any(has_phacking)){
+      init <- c(init, selection_backend_spec(prior_list)$init)
+    }else{
+      init[["bias_indicator"]] <- rng(prior_list, 1, sample_components = TRUE)
     }
-
-    init[["bias_indicator"]] <- rng(prior_list, 1, sample_components = TRUE)
 
   }else{
 
@@ -1409,6 +1505,7 @@ JAGS_to_monitor             <- function(prior_list){
   check_list(prior_list, "prior_list")
   if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
+  .check_prior_list_unique_names(prior_list)
 
 
   # add the monitored parameters
@@ -1418,6 +1515,14 @@ JAGS_to_monitor             <- function(prior_list){
     if(is.prior.weightfunction(prior_list[[i]])){
 
       monitor <- c(monitor, .JAGS_monitor.weightfunction(prior_list[[i]]))
+
+    }else if(is_prior_phacking(prior_list[[i]])){
+
+      monitor <- c(monitor, .JAGS_monitor.phacking(prior_list[[i]]))
+
+    }else if(is_prior_bias(prior_list[[i]])){
+
+      monitor <- c(monitor, .JAGS_monitor.bias(prior_list[[i]]))
 
     }else if(is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
 
@@ -1446,6 +1551,10 @@ JAGS_to_monitor             <- function(prior_list){
     }
   }
 
+  if(length(monitor) == 0L){
+    return("")
+  }
+
   return(monitor)
 }
 
@@ -1457,7 +1566,9 @@ JAGS_to_monitor             <- function(prior_list){
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
 
-  if(prior[["distribution"]] == "invgamma"){
+  if(prior[["distribution"]] %in% c("point", "mpoint")){
+    monitor <- character()
+  }else if(prior[["distribution"]] == "invgamma"){
     monitor <- c(parameter_name, paste0("inv_", parameter_name))
   }else{
     monitor <- parameter_name
@@ -1497,14 +1608,34 @@ JAGS_to_monitor             <- function(prior_list){
   if(!is.prior.weightfunction(prior))
     stop("improper prior provided")
 
-  monitor <- "omega"
-  if(all(names(prior[["parameters"]]) %in% c("alpha", "steps"))){
-    monitor <- c(monitor, "eta")
-  }else if(all(names(prior[["parameters"]]) %in% c("alpha1", "alpha2", "steps"))){
-    monitor <- c(monitor, "eta1", "eta2")
+  return(selection_backend_spec(prior)$monitor)
+}
+.JAGS_monitor_private.weightfunction <- function(prior){
+
+  if(prior$weights$type == "cumulative"){
+    return("eta")
+  }
+  if(prior$weights$type == "independent" && prior$weights$scale == "log_omega"){
+    return("log_omega")
   }
 
-  return(monitor)
+  character()
+}
+.JAGS_monitor.phacking      <- function(prior){
+
+  .check_prior(prior)
+  if(!is_prior_phacking(prior))
+    stop("improper prior provided")
+
+  selection_backend_spec(prior)$monitor
+}
+.JAGS_monitor.bias          <- function(prior){
+
+  .check_prior(prior)
+  if(!is_prior_bias(prior))
+    stop("improper prior provided")
+
+  selection_backend_spec(prior)$monitor
 }
 .JAGS_monitor.spike_and_slab <- function(prior, parameter_name){
 
@@ -1540,13 +1671,22 @@ JAGS_to_monitor             <- function(prior_list){
     is_PET            <- sapply(prior_list, is.prior.PET)
     is_PEESE          <- sapply(prior_list, is.prior.PEESE)
     is_weightfunction <- sapply(prior_list, is.prior.weightfunction)
+    is_phacking       <- sapply(prior_list, is_prior_phacking)
+    is_bias           <- sapply(prior_list, is_prior_bias)
     is_none           <- sapply(prior_list, is.prior.none)
-
-    monitor <- "bias_indicator"
+    branch_info       <- lapply(prior_list, .selection_branch_info)
+    has_selection     <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
+    has_phacking      <- vapply(branch_info, function(x) !is.null(x$phacking),  logical(1))
 
     # if any prior is bias related, the whole component must be dispatching publication bias
-    if(any(!(is_PET | is_PEESE | is_weightfunction | is_none)))
+    if(any(!(is_PET | is_PEESE | is_weightfunction | is_phacking | is_bias | is_none)))
       stop("Mixture of publication bias and standard priors is not supported.")
+
+    monitor <- if(any(has_selection) || any(has_phacking)){
+      selection_backend_spec(prior_list)$monitor
+    }else{
+      "bias_indicator"
+    }
 
     if(any(is_PET)){
       if(sum(is_PET) > 1) stop("Only one PET style publication bias adjustment is allowed.")
@@ -1558,17 +1698,12 @@ JAGS_to_monitor             <- function(prior_list){
 
       monitor <- c(monitor, "PEESE")
     }
-    if(any(is_weightfunction)){
-
-      monitor <- c(monitor, "omega")
-    }
-
   }else{
 
     monitor <- c(paste0(parameter_name, "_indicator"), parameter_name)
   }
 
-  return(monitor)
+  return(unique(monitor))
 }
 
 #' @title Check and list 'JAGS' fitting settings
@@ -1632,11 +1767,15 @@ JAGS_check_and_list_fit_settings     <- function(chains, adapt, burnin, sample, 
 #' @rdname JAGS_check_and_list
 JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_extend = FALSE, call = ""){
 
-  check_list(autofit_control, "autofit_control", check_names = c("max_Rhat", "min_ESS", "max_error", "max_SD_error",  "max_time", "sample_extend", "restarts", "max_extend"), call = call)
+  check_list(autofit_control, "autofit_control", check_names = c("max_Rhat", "min_ESS", "max_error", "max_SD_error",  "max_time", "sample_extend", "restarts", "max_extend", "check_indicators"), call = call)
+  if(is.null(autofit_control[["check_indicators"]])){
+    autofit_control[["check_indicators"]] <- FALSE
+  }
   check_real(autofit_control[["max_Rhat"]],     "max_Rhat",     lower = 1, allow_NULL = TRUE, call = call)
   check_real(autofit_control[["min_ESS"]],      "min_ESS",      lower = 0, allow_NULL = TRUE, call = call)
   check_real(autofit_control[["max_error"]],    "max_error",    lower = 0, allow_NULL = TRUE, call = call)
   check_real(autofit_control[["max_SD_error"]], "max_SD_error", lower = 0, upper = 1, allow_NULL = TRUE, call = call)
+  check_bool(autofit_control[["check_indicators"]], "check_indicators", call = call)
   check_list(autofit_control[["max_time"]],     "max_time", check_names = c("time", "unit"), check_length = 2, allow_NULL = TRUE, call = call)
   if(!is.null(autofit_control[["max_time"]])){
     if(is.null(names(autofit_control[["max_time"]]))){

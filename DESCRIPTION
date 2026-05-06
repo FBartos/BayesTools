@@ -1,6 +1,6 @@
 Package: BayesTools
 Title: Tools for Bayesian Analyses
-Version: 0.2.23
+Version: 0.3.0
 Description: Provides tools for conducting Bayesian analyses and Bayesian model averaging 
     (Kass and Raftery, 1995, <doi:10.1080/01621459.1995.10476572>, 
     Hoeting et al., 1999, <doi:10.1214/ss/1009212519>). The package contains 
@@ -19,12 +19,14 @@ License: GPL-3
 Encoding: UTF-8
 LazyData: true
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3
 SystemRequirements: JAGS >= 4.3.0 (https://mcmc-jags.sourceforge.io/)
 Depends:
+    R (>= 4.1.0),
     stats
 Imports:
     graphics,
+    grid,
     extraDistr,
     mvtnorm,
     coda,
@@ -35,15 +37,17 @@ Imports:
     rlang
 Suggests: 
     scales,
-    testthat,
+    testthat (>= 3.3.0),
     vdiffr,
     covr,
     knitr,
     rstan,
     rjags,
     runjags,
+    lme4,
     BayesFactor,
     RoBMA,
     rmarkdown
 RdMacros: Rdpack
 VignetteBuilder: knitr
+Config/testthat/edition: 3

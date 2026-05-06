@@ -51,9 +51,13 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
   check_list(prior_list, "prior_list")
   if(!all(sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
-  check_char(parameter, "parameter", allow_values = c(names(prior_list), if(any(names(prior_list) == "bias")) c("PET", "PEESE", "omega")))
+  check_char(parameter, "parameter", allow_values = c(names(prior_list), if(any(names(prior_list) == "bias")) c("PET", "PEESE", "omega", "alpha", "pi_null")))
   if(!is.null(transformations))
     check_char(names(transformations), "names(transformations)", allow_values = parameter)
+  if(parameter == "omega" && !is.null(prior_list[["bias"]]) && !.selection_prior_has_selection(prior_list[["bias"]]))
+    stop("'omega' diagnostics require at least one weightfunction component in the 'bias' prior.", call. = FALSE)
+  if(parameter %in% c("alpha", "pi_null") && !is.null(prior_list[["bias"]]) && !.selection_prior_has_phacking(prior_list[["bias"]]))
+    stop("'alpha' and 'pi_null' diagnostics require at least one p-hacking component in the 'bias' prior.", call. = FALSE)
 
   # do not produce diagnostics for a spike prior
   if(is.prior.point(prior_list[[parameter]])){
@@ -75,15 +79,24 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
 
 
   # prepare nice parameter names
-  if(!is.null(attr(prior_list[[parameter]], "parameter"))){
-    parameter_name <- format_parameter_names(attr(plot_data, "parameter_name"), attr(prior_list[[parameter]], "parameter"), formula_prefix = formula_prefix)
+  display_prior <- if(parameter %in% c("PET", "PEESE", "omega", "alpha", "pi_null") && !is.null(prior_list[["bias"]])){
+    prior_list[["bias"]]
+  }else{
+    prior_list[[parameter]]
+  }
+  if(!is.null(attr(display_prior, "parameter"))){
+    parameter_name <- format_parameter_names(attr(plot_data, "parameter_name"), attr(display_prior, "parameter"), formula_prefix = formula_prefix)
   }else{
     parameter_name <- attr(plot_data, "parameter_name")
   }
 
   # get default plot settings
   dots      <- list(...)
-  main      <- print(prior_list[[parameter]], plot = TRUE, short_name = short_name, parameter_names = parameter_names)
+  main      <- if(parameter %in% c("alpha", "pi_null")){
+    parameter
+  }else{
+    print(display_prior, plot = TRUE, short_name = short_name, parameter_names = parameter_names)
+  }
   xlab      <- switch(
     type,
     "density"         = parameter_name,
@@ -213,14 +226,14 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
   if(!is.null(transformations) && any(!sapply(transformations, function(trans)is.function(trans[["fun"]]))))
     stop("'transformations' must be list of functions in the 'fun' element.")
 
-  model_samples <- coda::as.mcmc.list(fit)
-  samples_chain <- lapply(seq_along(model_samples), function(i) {
-    return(rep(i, nrow(model_samples[[i]])))
+  model_samples_list <- .extract_posterior_samples(fit, as_list = TRUE)
+  samples_chain <- lapply(seq_along(model_samples_list), function(i) {
+    return(rep(i, nrow(model_samples_list[[i]])))
   })
-  samples_iter  <- lapply(seq_along(model_samples), function(i) {
-    return(1:nrow(model_samples[[i]]))
+  samples_iter  <- lapply(seq_along(model_samples_list), function(i) {
+    return(1:nrow(model_samples_list[[i]]))
   })
-  model_samples <- do.call(rbind, model_samples)
+  model_samples <- do.call(rbind, model_samples_list)
 
 
   # extract the relevant parameters
@@ -250,9 +263,23 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
       model_samples <- model_samples[,parameter,drop = FALSE]
     }
   }else if(is.prior.weightfunction(prior_list[[parameter]])){
-    model_samples <- model_samples[,paste0("omega", "[", (length(weightfunctions_mapping(list(prior_list[[parameter]]), cuts_only = TRUE)) - 2):1, "]"),drop = FALSE]
+    omega_cuts <- weightfunctions_mapping(list(prior_list[[parameter]]), cuts_only = TRUE)
+    model_samples <- model_samples[,paste0("omega", "[", 2:(length(omega_cuts) - 1), "]"),drop = FALSE]
   }else if(parameter == "omega" && !is.null(prior_list[["bias"]])){
-    model_samples <- model_samples[,paste0("omega", "[", 2:(length(weightfunctions_mapping(prior_list[["bias"]][sapply(prior_list[["bias"]], is.prior.weightfunction)], cuts_only = TRUE, one_sided = TRUE)) - 1), "]"),drop = FALSE]
+    selection_priors <- .selection_prior_selection_priors(prior_list[["bias"]])
+    model_samples <- model_samples[,paste0("omega", "[", 2:(length(weightfunctions_mapping(selection_priors, cuts_only = TRUE, one_sided = TRUE)) - 1), "]"),drop = FALSE]
+  }else if(is_prior_phacking(prior_list[[parameter]])){
+    model_samples <- model_samples[,intersect(.phacking_report_parameter(prior_list[[parameter]]), colnames(model_samples)),drop = FALSE]
+  }else if(is_prior_bias(prior_list[[parameter]])){
+    bias_parameters <- .selection_bias_parameter_names(prior_list[[parameter]], include_kind = FALSE)
+    bias_parameters <- bias_parameters[bias_parameters != "omega"]
+    if("omega" %in% .selection_bias_parameter_names(prior_list[[parameter]], include_kind = FALSE)){
+      omega_cuts <- weightfunctions_mapping(.selection_prior_selection_priors(prior_list[[parameter]]), cuts_only = TRUE, one_sided = TRUE)
+      bias_parameters <- c(paste0("omega", "[", 2:(length(omega_cuts) - 1), "]"), bias_parameters)
+    }
+    model_samples <- model_samples[,intersect(bias_parameters, colnames(model_samples)),drop = FALSE]
+  }else if(parameter %in% c("alpha", "pi_null") && !is.null(prior_list[["bias"]])){
+    model_samples <- model_samples[,parameter,drop = FALSE]
   }else if(is.prior.vector(prior_list[[parameter]])){
     if(prior_list[[parameter]]$parameters[["K"]] > 1){
       model_samples <- model_samples[,paste0(parameter, "[", 1:prior_list[[parameter]]$parameters[["K"]], "]"),drop = FALSE]
@@ -269,7 +296,7 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
   }
 
   # deal with bias mixture dispatching
-  if(parameter %in% c("PET", "PEESE", "omega") && !is.null(prior_list[["bias"]])){
+  if(parameter %in% c("PET", "PEESE", "omega", "alpha", "pi_null") && !is.null(prior_list[["bias"]])){
     prior_list      <- prior_list[["bias"]]
     parameter_names <- parameter
   }else{
@@ -280,82 +307,18 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
 
   # mostly adapted from runjags_estimates_table
   # apply transformations
-  if(!is.null(transformations)){
-    for(par in names(transformations)){
-      model_samples[,par] <- do.call(transformations[[par]][["fun"]], c(list(model_samples[,par]), transformations[[par]][["arg"]]))
-    }
-  }
+  model_samples <- .apply_parameter_transformations(model_samples, transformations, prior_list, transform_factors)
 
-  # transform meandif and orthonormal factors to differences from runjags_estimates_table
-  if(transform_factors & any(sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x)))){
-    for(par in names(prior_list)[sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x))]){
+  # transform meandif and orthonormal factors to differences
+  model_samples <- .transform_factor_contrasts(model_samples, prior_list, transform_factors, transformations)
+  
+  # rename factor levels (treatment, independent)
+  model_samples <- .rename_factor_levels(model_samples, prior_list)
+  
+  # extract parameter names from column names after transformations and renaming
+  parameter_names <- colnames(model_samples)
 
-      if(.get_prior_factor_levels(prior_list[[par]]) == 1){
-        par_names <- par
-      }else{
-        par_names <- paste0(par, "[", 1:.get_prior_factor_levels(prior_list[[par]]), "]")
-      }
-
-      original_samples <- model_samples[,par_names,drop = FALSE]
-
-      if(is.prior.orthonormal(prior_list[[par]])){
-        model_samples <- original_samples %*% t(contr.orthonormal(1:(.get_prior_factor_levels(prior_list[[par]])+1)))
-      }else if(is.prior.meandif(prior_list[[par]])){
-        model_samples <- original_samples %*% t(contr.meandif(1:(.get_prior_factor_levels(prior_list[[par]])+1)))
-      }
-
-
-      if(attr(prior_list[[par]], "interaction")){
-        if(length(.get_prior_factor_level_names(prior_list[[par]])) == 1){
-          parameter_names <- paste0(par, " [dif: ", .get_prior_factor_level_names(prior_list[[par]])[[1]],"]")
-        }else{
-          stop("orthonormal/meandif de-transformation for interaction of multiple factors is not implemented.")
-        }
-      }else{
-        parameter_names <- paste0(par, " [dif: ", .get_prior_factor_level_names(prior_list[[par]]),"]")
-      }
-    }
-  }else if(any(sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x)))){
-    for(par in names(prior_list)[sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x))]){
-      if(.get_prior_factor_levels(prior_list[[par]]) == 1){
-        parameter_names <- par
-      }else{
-        parameter_names <- paste0(par, "[", 1:.get_prior_factor_levels(prior_list[[par]]), "]")
-      }
-    }
-  }
-
-  # rename treatment factor levels
-  if(any(sapply(prior_list, is.prior.treatment))){
-    for(par in names(prior_list)[sapply(prior_list, is.prior.treatment)]){
-      if(!.is_prior_interaction(prior_list[[par]])){
-        if(.get_prior_factor_levels(prior_list[[par]]) == 1){
-          parameter_names <- par
-        }else{
-          parameter_names <- paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]])[-1], "]")
-        }
-      }else if(length(attr(prior_list[[par]], "levels")) == 1){
-        parameter_names <- paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]])[[1]][-1], "]")
-      }
-    }
-  }
-
-  # rename independent factor levels
-  if(any(sapply(prior_list, is.prior.independent))){
-    for(par in names(prior_list)[sapply(prior_list, is.prior.independent)]){
-      if(!.is_prior_interaction(prior_list[[par]])){
-        if(.get_prior_factor_levels(prior_list[[par]]) == 1){
-          parameter_names <- par
-        }else{
-          parameter_names <- paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]]), "]")
-        }
-      }else if(length(attr(prior_list[[par]], "levels")) == 1){
-        parameter_names <- paste0(par,"[",.get_prior_factor_level_names(prior_list[[par]]), "]")
-      }
-    }
-  }
-
-  # rename weightfunctions factor levels
+  # rename weightfunctions factor levels (special case that overrides)
   if(any(sapply(prior_list, is.prior.weightfunction)) && !is.prior.mixture(prior_list)){
     for(par in names(prior_list)[sapply(prior_list, is.prior.weightfunction)]){
       omega_cuts      <- weightfunctions_mapping(prior_list[par], cuts_only = TRUE)
@@ -365,8 +328,18 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
   }
 
   if(is.prior.mixture(prior_list) && parameter == "omega"){
-    omega_cuts      <- weightfunctions_mapping(prior_list[sapply(prior_list, is.prior.weightfunction)], cuts_only = TRUE, one_sided = TRUE)
+    omega_cuts      <- weightfunctions_mapping(.selection_prior_selection_priors(prior_list), cuts_only = TRUE, one_sided = TRUE)
     parameter_names <- sapply(2:(length(omega_cuts)-1), function(i)paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
+  }
+
+  if(any(sapply(prior_list, is_prior_bias))){
+    bias_prior <- prior_list[[which(sapply(prior_list, is_prior_bias))[1]]]
+    if(.selection_prior_has_selection(bias_prior)){
+      omega_cuts      <- weightfunctions_mapping(.selection_prior_selection_priors(bias_prior), cuts_only = TRUE, one_sided = TRUE)
+      omega_names_old <- paste0("omega[", 1:(length(omega_cuts)-1), "]")
+      omega_names     <- sapply(1:(length(omega_cuts)-1), function(i)paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
+      parameter_names[parameter_names %in% omega_names_old] <- omega_names[match(parameter_names[parameter_names %in% omega_names_old], omega_names_old)]
+    }
   }
 
   # attach the relevant attributes
@@ -382,17 +355,10 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
 
   chain <- attr(plot_data, "chain")
   prior <- attr(plot_data, "prior")
+  bounds <- .diagnostics_prior_bounds(prior, attr(plot_data, "parameter"))
 
-  if(is.prior.weightfunction(prior)){
-    prior_lower <- 0
-    prior_upper <- 1
-  }else if(is.prior.mixture(prior)){
-    prior_lower <- min(sapply(prior, function(x) x$truncation[["lower"]]))
-    prior_upper <- max(sapply(prior, function(x) x$truncation[["upper"]]))
-  }else{
-    prior_lower <- prior$truncation[["lower"]]
-    prior_upper <- prior$truncation[["upper"]]
-  }
+  prior_lower <- bounds[["lower"]]
+  prior_upper <- bounds[["upper"]]
 
   out   <- list()
 
@@ -452,6 +418,85 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
   attr(out, "parameter_name") <- colnames(plot_data)
 
   return(out)
+}
+
+.diagnostics_prior_bounds <- function(prior, parameter){
+
+  is_selection_prior <- .diagnostics_is_selection_prior(prior)
+
+  if(is.prior.weightfunction(prior)){
+    return(.weightfunction_weights_truncation(prior$weights))
+  }
+
+  if(is_selection_prior && parameter == "omega"){
+    selection_priors <- .selection_prior_selection_priors(prior)
+    if(length(selection_priors) == 0L){
+      return(list(lower = 1, upper = 1))
+    }
+    upper <- max(vapply(selection_priors, function(x){
+      .weightfunction_weights_truncation(x$weights)$upper
+    }, numeric(1)))
+    return(list(lower = 0, upper = upper))
+  }
+
+  if(is_selection_prior && parameter == "alpha"){
+    return(list(lower = 0, upper = 1))
+  }
+
+  if(is_prior_phacking(prior) && !parameter %in% c("alpha", "pi_null")){
+    parameter <- .phacking_report_parameter(prior)
+  }
+
+  if(is_selection_prior && parameter == "pi_null"){
+    phacking_priors <- .selection_prior_phacking_priors(prior)
+    if(length(phacking_priors) > 0L){
+      upper <- max(vapply(phacking_priors, function(x){
+        phack_backend_constants(x$form, x$source, x$destination, target = x$target)$pi_null_per_alpha
+      }, numeric(1)))
+      return(list(lower = 0, upper = upper))
+    }
+    return(list(lower = 0, upper = Inf))
+  }
+
+  if(is_prior_phacking(prior) || is_prior_bias(prior)){
+    return(list(lower = 0, upper = 1))
+  }
+
+  if(is.prior.mixture(prior)){
+    simple_priors <- prior[vapply(prior, function(x) is.prior.simple(x) || is.prior.point(x), logical(1))]
+    if(length(simple_priors) == 0L){
+      return(list(lower = -Inf, upper = Inf))
+    }
+    prior_lower <- min(vapply(simple_priors, function(x){
+      if(is.prior.point(x)) x$parameters[["location"]] else x$truncation[["lower"]]
+    }, numeric(1)))
+    prior_upper <- max(vapply(simple_priors, function(x){
+      if(is.prior.point(x)) x$parameters[["location"]] else x$truncation[["upper"]]
+    }, numeric(1)))
+    return(list(lower = prior_lower, upper = prior_upper))
+  }
+
+  if(is.prior.point(prior)){
+    return(list(lower = prior$parameters[["location"]], upper = prior$parameters[["location"]]))
+  }
+
+  return(list(lower = prior$truncation[["lower"]], upper = prior$truncation[["upper"]]))
+}
+
+.diagnostics_is_selection_prior <- function(prior){
+
+  if(is.prior.weightfunction(prior) || is_prior_phacking(prior) || is_prior_bias(prior)){
+    return(TRUE)
+  }
+
+  if(is.prior.mixture(prior)){
+    return(any(vapply(prior, function(x){
+      is.prior.none(x) || is.prior.PET(x) || is.prior.PEESE(x) ||
+        is.prior.weightfunction(x) || is_prior_phacking(x) || is_prior_bias(x)
+    }, logical(1))))
+  }
+
+  FALSE
 }
 .diagnostics_plot_data_trace           <- function(plot_data, n_points, ylim){
 

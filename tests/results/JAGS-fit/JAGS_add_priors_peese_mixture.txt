@@ -1,0 +1,6 @@
+model{
+  bias_indicator ~ dcat(c(1, 1))
+ PEESE_1 ~ dnorm(0,1)T(0,)
+ PEESE <- PEESE_1 * equals(bias_indicator, 2)
+
+}

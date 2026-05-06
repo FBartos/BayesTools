@@ -59,13 +59,17 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL, condition
     is_null <- rep(FALSE, length(prior_weights))
   }
 
-  prior_probs <- prior_weights / sum(prior_weights)
-  post_probs  <- unname(bridgesampling::post_prob(margliks, prior_prob = prior_probs))
+  prior_probs <- .model_averaging_prior_probs(prior_weights)
+  margliks    <- .model_averaging_margliks(margliks, prior_probs)
+  post_probs  <- .model_averaging_post_probs(margliks, prior_probs)
   BF          <- inclusion_BF(prior_probs = prior_probs, margliks = margliks, is_null = is_null)
 
   if(conditional){
-    prior_probs <- ifelse(is_null, 0, prior_weights) / sum(prior_weights[!is_null])
-    post_probs  <- unname(bridgesampling::post_prob(margliks, prior_prob = prior_probs))
+    if(all(is_null))
+      stop("Conditional inference requires at least one non-null model.", call. = FALSE)
+    prior_probs <- .model_averaging_prior_probs(ifelse(is_null, 0, prior_weights))
+    margliks    <- .model_averaging_margliks(margliks, prior_probs)
+    post_probs  <- .model_averaging_post_probs(margliks, prior_probs)
   }
 
   output <- list(
@@ -79,6 +83,93 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL, condition
   class(output) <- c(class(output), "inference")
 
   return(output)
+}
+
+.model_averaging_prior_probs <- function(prior_weights){
+
+  if(any(!is.finite(prior_weights))){
+    stop("'prior_weights' must be finite.", call. = FALSE)
+  }
+  if(sum(prior_weights) <= 0){
+    stop("At least one prior model weight must be positive.", call. = FALSE)
+  }
+
+  prior_weights / sum(prior_weights)
+}
+
+.model_averaging_margliks <- function(margliks, prior_probs){
+
+  if(any(is.infinite(margliks) & margliks > 0 & prior_probs > 0, na.rm = TRUE)){
+    stop("Infinite positive marginal likelihoods are not supported.", call. = FALSE)
+  }
+
+  margliks[is.na(margliks)] <- -Inf
+
+  if(!any(is.finite(margliks) & prior_probs > 0)){
+    stop("No finite marginal likelihoods are available for models with positive prior probability.", call. = FALSE)
+  }
+
+  margliks
+}
+
+.model_averaging_post_probs <- function(margliks, prior_probs){
+
+  unname(bridgesampling::post_prob(margliks, prior_prob = prior_probs))
+}
+
+.posterior_mixture_sample_counts <- function(post_probs, n_samples){
+
+  .mixture_sample_counts(post_probs, n_samples)
+}
+
+.mixture_sample_counts <- function(probs, n_samples, preserve_positive = TRUE){
+
+  probs <- as.numeric(probs)
+  if(length(probs) == 0L){
+    return(integer())
+  }
+
+  if(length(n_samples) != 1L || !is.finite(n_samples) || n_samples < 0 || !.is.wholenumber(n_samples)){
+    stop("'n_samples' must be a non-negative integer.", call. = FALSE)
+  }
+  n_samples <- as.integer(n_samples)
+
+  if(any(!is.finite(probs)) || any(probs < 0)){
+    stop("'probs' must contain non-negative finite values.", call. = FALSE)
+  }
+  if(sum(probs) <= 0){
+    stop("At least one mixture probability must be positive.", call. = FALSE)
+  }
+
+  probs <- probs / sum(probs)
+  raw_counts <- probs * n_samples
+  counts <- floor(raw_counts)
+
+  remaining <- n_samples - sum(counts)
+  if(remaining > 0L){
+    add_order <- order(-(raw_counts - counts), -probs, seq_along(probs))
+    counts[add_order[seq_len(remaining)]] <- counts[add_order[seq_len(remaining)]] + 1L
+  }
+
+  if(preserve_positive && n_samples > 0L){
+    positive <- probs > 0
+    missing <- which(positive & counts == 0L)
+    if(length(missing) > 0L && sum(positive) <= n_samples){
+      for(m in missing){
+        donors <- which(counts > 1L)
+        if(length(donors) == 0L){
+          break
+        }
+
+        donor_cost <- abs((counts[donors] - 1L) - raw_counts[donors]) - abs(counts[donors] - raw_counts[donors])
+        donor <- donors[order(donor_cost, -counts[donors], -probs[donors], donors)[1L]]
+        counts[donor] <- counts[donor] - 1L
+        counts[m] <- 1L
+      }
+    }
+  }
+
+  as.integer(counts)
 }
 
 #' @rdname ensemble_inference
@@ -131,10 +222,10 @@ models_inference   <- function(model_list){
   sapply(model_list, function(m)check_real(m[["prior_weights"]], "model_list:prior_weights", lower = 0))
 
   margliks    <- sapply(model_list, function(model)model[["marglik"]][["logml"]])
-  margliks    <- ifelse(is.na(margliks), -Inf, margliks)
   prior_weights  <- sapply(model_list, function(model)model[["prior_weights"]])
-  prior_probs <- prior_weights / sum(prior_weights)
-  post_probs  <- unname(bridgesampling::post_prob(margliks, prior_prob = prior_probs))
+  prior_probs <- .model_averaging_prior_probs(prior_weights)
+  margliks    <- .model_averaging_margliks(margliks, prior_probs)
+  post_probs  <- .model_averaging_post_probs(margliks, prior_probs)
   incl_BF     <- sapply(seq_along(model_list), function(i){
     is_null <- rep(TRUE, length(model_list))
     is_null[i] <- FALSE
@@ -200,6 +291,16 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   prior_weights  <- sapply(model_list, function(m) m[["prior_weights"]])
 
   inference  <- ensemble_inference(model_list, parameters, is_null_list, conditional)
+
+  # Use one shared sampling seed so formula terms are drawn from aligned
+  # posterior rows across parameters.
+  if(!is.null(seed)){
+    set.seed(seed)
+    common_sample_seed <- seed
+  }else{
+    common_sample_seed <- sample(.Machine$integer.max, 1)
+  }
+
   out <- list()
 
   for(p in seq_along(parameters)){
@@ -209,7 +310,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
     temp_inference    <- inference[[temp_parameter]]
     temp_priors       <- lapply(priors, function(p) p[[temp_parameter]])
 
-    if(any(sapply(temp_priors, is.prior.weightfunction)) && all(sapply(temp_priors, is.prior.weightfunction) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.prior.none) | sapply(temp_priors, is.null))){
+    if(any(sapply(temp_priors, is.prior.weightfunction)) && all(sapply(temp_priors, is.prior.weightfunction) | sapply(temp_priors, .is_prior_weightfunction_null) | sapply(temp_priors, is.null))){
       # weightfunctions:
 
       # replace missing priors with default prior: none
@@ -221,10 +322,10 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 
       # replace prior odds with the corresponding prior model odds
       for(i in seq_along(temp_priors)){
-        temp_priors[[i]][["prior_weights"]] <- temp_inference$prior_probs[i]
+        temp_priors[[i]] <- .set_prior_model_weight(temp_priors[[i]], temp_inference$prior_probs[i])
       }
 
-      out[[temp_parameter]] <- .mix_posteriors.weightfunction(fits, temp_priors, temp_parameter, temp_inference$post_probs, seed, n_samples)
+      out[[temp_parameter]] <- .mix_posteriors.weightfunction(fits, temp_priors, temp_parameter, temp_inference$post_probs, common_sample_seed, n_samples)
 
     }else if(any(sapply(temp_priors, is.prior.factor)) && all(sapply(temp_priors, is.prior.factor) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.null))){
       # factor priors
@@ -238,10 +339,10 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 
       # replace prior odds with the corresponding prior model odds
       for(i in seq_along(temp_priors)){
-        temp_priors[[i]][["prior_weights"]] <- temp_inference$prior_probs[i]
+        temp_priors[[i]] <- .set_prior_model_weight(temp_priors[[i]], temp_inference$prior_probs[i])
       }
 
-      out[[temp_parameter]] <- .mix_posteriors.factor(fits, temp_priors, temp_parameter, temp_inference$post_probs, seed, n_samples)
+      out[[temp_parameter]] <- .mix_posteriors.factor(fits, temp_priors, temp_parameter, temp_inference$post_probs, common_sample_seed, n_samples)
 
     }else if(any(sapply(temp_priors, is.prior.vector)) && all(sapply(temp_priors, is.prior.vector) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.null))){
       # vector priors:
@@ -255,10 +356,10 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 
       # replace prior odds with the corresponding prior model odds
       for(i in seq_along(temp_priors)){
-        temp_priors[[i]][["prior_weights"]] <- temp_inference$prior_probs[i]
+        temp_priors[[i]] <- .set_prior_model_weight(temp_priors[[i]], temp_inference$prior_probs[i])
       }
 
-      out[[temp_parameter]] <- .mix_posteriors.vector(fits, temp_priors, temp_parameter, temp_inference$post_probs, seed, n_samples)
+      out[[temp_parameter]] <- .mix_posteriors.vector(fits, temp_priors, temp_parameter, temp_inference$post_probs, common_sample_seed, n_samples)
 
     }else if(all(sapply(temp_priors, is.prior.simple) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.null))){
       # simple priors:
@@ -272,10 +373,10 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 
       # replace prior odds with the corresponding prior model odds
       for(i in seq_along(temp_priors)){
-        temp_priors[[i]][["prior_weights"]] <- temp_inference$prior_probs[i]
+        temp_priors[[i]] <- .set_prior_model_weight(temp_priors[[i]], temp_inference$prior_probs[i])
       }
 
-      out[[temp_parameter]] <- .mix_posteriors.simple(fits, temp_priors, temp_parameter, temp_inference$post_probs, seed, n_samples)
+      out[[temp_parameter]] <- .mix_posteriors.simple(fits, temp_priors, temp_parameter, temp_inference$post_probs, common_sample_seed, n_samples)
 
     }else{
       stop("The posterior samples cannot be mixed: unsupported mixture of prior distributions.")
@@ -327,11 +428,10 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 
 
 
-  # set seed at the beginning makes sure that the samples of different parameters from the same models retain their correlation
+  # When seed is NULL, continue using the current RNG state so mix_posteriors()
+  # can coordinate draws across parameters.
   if(!is.null(seed)){
     set.seed(seed)
-  }else{
-    set.seed(1)
   }
 
   # prepare output objects
@@ -340,14 +440,15 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   models_ind <- NULL
 
   # mix samples
-  for(i in seq_along(fits)[round(post_probs * n_samples) > 1]){
+  sample_counts <- .posterior_mixture_sample_counts(post_probs, n_samples)
+  for(i in seq_along(fits)[sample_counts > 0]){
 
     # obtain posterior samples
     if(inherits(fits[[i]], "null_model")){
       # deal with a possibility of completely null model
       model_samples <- matrix()
     }else if(inherits(fits[[i]], "runjags")){
-      model_samples <- suppressWarnings(coda::as.mcmc(fits[[i]]))
+      model_samples <- .extract_posterior_samples(fits[[i]], as_list = FALSE)
       if(!is.matrix(model_samples)){
         # deal with automatic coercion into a vector in case of a single predictor
         model_samples <- matrix(model_samples, ncol = 1)
@@ -359,7 +460,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
     }
 
     # sample indexes
-    temp_ind <- sample(nrow(model_samples), round(n_samples * post_probs[i]), replace = TRUE)
+    temp_ind <- sample(nrow(model_samples), sample_counts[i], replace = TRUE)
 
     if(is.prior.point(priors[[i]])){
       # not sampling the priors as the samples would be already transformed
@@ -397,11 +498,10 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   if(!all(sapply(priors, is.prior.vector) | sapply(priors, is.prior.point)))
     stop("'priors' must be a list of vector priors")
 
-  # set seed at the beginning makes sure that the samples of different parameters from the same models retain their correlation
+  # When seed is NULL, continue using the current RNG state so mix_posteriors()
+  # can coordinate draws across parameters.
   if(!is.null(seed)){
     set.seed(seed)
-  }else{
-    set.seed(1)
   }
 
   # prepare output objects
@@ -414,14 +514,15 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   models_ind <- NULL
 
   # mix samples
-  for(i in seq_along(fits)[round(post_probs * n_samples) > 1]){
+  sample_counts <- .posterior_mixture_sample_counts(post_probs, n_samples)
+  for(i in seq_along(fits)[sample_counts > 0]){
 
     # obtain posterior samples
     if(inherits(fits[[i]], "null_model")){
       # deal with a possibility of completely null model
       model_samples <- matrix()
     }else if(inherits(fits[[i]], "runjags")){
-      model_samples <- suppressWarnings(coda::as.mcmc(fits[[i]]))
+      model_samples <- .extract_posterior_samples(fits[[i]], as_list = FALSE)
       if(!is.matrix(model_samples)){
         # deal with automatic coercion into a vector in case of a single predictor
         model_samples <- matrix(model_samples, ncol = 1)
@@ -433,7 +534,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
     }
 
     # sample indexes
-    temp_ind <- sample(nrow(model_samples), round(n_samples * post_probs[i]), replace = TRUE)
+    temp_ind <- sample(nrow(model_samples), sample_counts[i], replace = TRUE)
 
     if(is.prior.point(priors[[i]])){
       # not sampling the priors as the samples would be already transformed
@@ -487,6 +588,11 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
         "level_names"       = .get_prior_factor_level_names(p),
         "interaction"       = .is_prior_interaction(p),
         "interaction_terms" = attr(p, "interaction_terms"),
+        "term_components"   = attr(p, "term_components"),
+        "factor_terms"      = attr(p, "factor_terms"),
+        "factor_contrasts"  = attr(p, "factor_contrasts"),
+        "factor_design"     = attr(p, "factor_design"),
+        "factor_cell_names" = attr(p, "factor_cell_names"),
         "treatment"         = is.prior.treatment(p),
         "independent"       = is.prior.independent(p),
         "orthonormal"       = is.prior.orthonormal(p),
@@ -592,6 +698,11 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   attr(samples, "level_names")       <- priors_info[["level_names"]]
   attr(samples, "interaction")       <- if(length(priors_info) == 0) FALSE else priors_info[["interaction"]]
   attr(samples, "interaction_terms") <- priors_info[["interaction_terms"]]
+  attr(samples, "term_components")   <- priors_info[["term_components"]]
+  attr(samples, "factor_terms")      <- priors_info[["factor_terms"]]
+  attr(samples, "factor_contrasts")  <- priors_info[["factor_contrasts"]]
+  attr(samples, "factor_design")     <- priors_info[["factor_design"]]
+  attr(samples, "factor_cell_names") <- priors_info[["factor_cell_names"]]
   attr(samples, "treatment")         <- priors_info[["treatment"]]
   attr(samples, "independent")       <- priors_info[["independent"]]
   attr(samples, "orthonormal")       <- priors_info[["orthonormal"]]
@@ -610,15 +721,14 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   check_int(n_samples, "n_samples")
   if(!all(sapply(fits, inherits, what = "runjags") | sapply(fits, inherits, what = "stanfit") | sapply(fits, inherits, what = "null_model")))
     stop("'fits' must be a list of 'runjags' or 'rstan' models")
-  if(!all(sapply(priors, is.prior.weightfunction) | sapply(priors, is.prior.point) | sapply(priors, is.prior.none)))
-    stop("'priors' must be a list of weightfunction priors distributions")
+  if(!all(sapply(priors, is.prior.weightfunction) | sapply(priors, .is_prior_weightfunction_null)))
+    stop("'priors' must be a list of weightfunction priors or point(1)/none null priors")
 
 
-  # set seed at the beginning makes sure that the samples of different parameters from the same models retain their correlation
+  # When seed is NULL, continue using the current RNG state so mix_posteriors()
+  # can coordinate draws across parameters.
   if(!is.null(seed)){
     set.seed(seed)
-  }else{
-    set.seed(1)
   }
 
   # obtain mapping for the weight coefficients
@@ -632,14 +742,15 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   models_ind <- NULL
 
   # mix samples
-  for(i in seq_along(fits)[round(post_probs * n_samples) > 1]){
+  sample_counts <- .posterior_mixture_sample_counts(post_probs, n_samples)
+  for(i in seq_along(fits)[sample_counts > 0]){
 
     # obtain posterior samples
     if(inherits(fits[[i]], "null_model")){
       # deal with a possibility of completely null model
       model_samples <- matrix()
     }else if(inherits(fits[[i]], "runjags")){
-      model_samples <- suppressWarnings(coda::as.mcmc(fits[[i]]))
+      model_samples <- .extract_posterior_samples(fits[[i]], as_list = FALSE)
       if(!is.matrix(model_samples)){
         # deal with automatic coercion into a vector in case of a single predictor
         model_samples <- matrix(model_samples, ncol = 1)
@@ -651,9 +762,9 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
     }
 
     # sample indexes
-    temp_ind <- sample(nrow(model_samples), round(n_samples * post_probs[i]), replace = TRUE)
+    temp_ind <- sample(nrow(model_samples), sample_counts[i], replace = TRUE)
 
-    if(is.prior.none(priors[[i]])){
+    if(.is_prior_weightfunction_null(priors[[i]])){
       samples <- rbind(samples, matrix(1, ncol = length(omega_cuts) - 1, nrow = length(temp_ind)))
     }else{
       samples <- rbind(samples, model_samples[temp_ind, paste0("omega[",omega_mapping[[i]],"]")])
@@ -688,8 +799,14 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 #' @param force_plots temporal argument allowing to generate conditional posterior samples
 #' suitable for prior and posterior plots. Only available when conditioning on a
 #' single parameter.
+#' @param transform_scaled whether to transform samples from standardized (scaled) to
+#' original (unscaled) scale. When \code{TRUE}, posterior samples are
+#' transformed, and the result can be directly passed to [plot_posterior] which will
+#' automatically detect the transformation and use transformed deterministic prior densities.
+#' Requires a model fitted with \code{formula_scale_list}. Defaults to \code{FALSE}.
+#' @param n_prior_samples controls the numerical grid used for transformed
+#' prior densities when \code{transform_scaled = TRUE}. Defaults to 10000.
 #' @inheritParams ensemble_inference
-#' @inheritParams mix_posteriors
 #'
 #' @return \code{as_mix_posteriors} returns a named list of mixed posterior
 #' distributions (either a vector of matrix).
@@ -698,17 +815,21 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 #'
 #' @name as_mixed_posteriors
 #' @export
-as_mixed_posteriors <- function(model, parameters, conditional = NULL, conditional_rule = "AND", force_plots = FALSE){
+as_mixed_posteriors <- function(model, parameters, conditional = NULL, conditional_rule = "AND", force_plots = FALSE,
+                                 transform_scaled = FALSE, n_prior_samples = 10000){
 
   # check input
   if(!inherits(model, "BayesTools_fit"))
     stop("'model' must be a 'BayesTools_fit'")
   check_char(parameters, "parameters", check_length = FALSE)
-  check_char(conditional, "conditional", check_length = FALSE, allow_values = c(parameters, "PET", "PEESE", "PETPEESE", "omega"), allow_NULL = TRUE)
+  check_char(conditional, "conditional", check_length = FALSE, allow_values = c(parameters, "PET", "PEESE", "PETPEESE", "omega", "phacking", "alpha", "pi_null"), allow_NULL = TRUE)
   check_char(conditional_rule, "conditional_rule", allow_values = c("AND", "OR"))
+  check_bool(transform_scaled, "transform_scaled")
+  check_int(n_prior_samples, "n_prior_samples", lower = 1)
 
   # extract the list of priors
   priors <- attr(model, "prior_list")
+  prior_density_priors <- priors
 
   # extract the samples
   model_samples <- suppressWarnings(coda::as.mcmc(model))
@@ -724,23 +845,42 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     # subset the posterior distribution
     conditioning_samples <- do.call(cbind, lapply(conditional, function(parameter){
 
-      # special cases for PET / PEESE / PET-PEESE / weightfunctions
-      if(parameter == "PET" && !is.null(priors[["bias"]]) && is.prior.mixture(priors[["bias"]])){
-        is_PET <- sapply(priors[["bias"]], is.prior.PET)
-        return(model_samples[, "bias_indicator"] %in% which(is_PET))
+      # special cases for PET / PEESE / PET-PEESE / selection / p-hacking within the bias parameter
+      if (!is.null(priors[["bias"]]) && is.prior.mixture(priors[["bias"]])) {
+        bias_branch_info <- .selection_prior_branch_info(priors[["bias"]])
+        if(parameter == "PET"){
+          is_PET <- sapply(priors[["bias"]], is.prior.PET)
+          return(model_samples[, "bias_indicator"] %in% which(is_PET))
+        }
+        if(parameter == "PEESE"){
+          is_PEESE <- sapply(priors[["bias"]], is.prior.PEESE)
+          return(model_samples[, "bias_indicator"] %in% which(is_PEESE))
+        }
+        if(parameter == "PETPEESE"){
+          is_PET   <- sapply(priors[["bias"]], is.prior.PET)
+          is_PEESE <- sapply(priors[["bias"]], is.prior.PEESE)
+          return(model_samples[, "bias_indicator"] %in% which(is_PET | is_PEESE))
+        }
+        if(parameter == "omega"){
+          has_selection <- vapply(bias_branch_info, function(x) !is.null(x$selection), logical(1))
+          return(model_samples[, "bias_indicator"] %in% which(has_selection))
+        }
+        if(parameter %in% c("phacking", "alpha", "pi_null")){
+          has_phacking <- vapply(bias_branch_info, function(x) !is.null(x$phacking), logical(1))
+          return(model_samples[, "bias_indicator"] %in% which(has_phacking))
+        }
       }
-      if(parameter == "PEESE" && !is.null(priors[["bias"]]) && is.prior.mixture(priors[["bias"]])){
-        is_PEESE <- sapply(priors[["bias"]], is.prior.PEESE)
-        return(model_samples[, "bias_indicator"] %in% which(is_PEESE))
+
+      if(parameter == "omega" && any(vapply(priors, function(x){
+        is.prior.weightfunction(x) || (is_prior_bias(x) && !is.null(x$selection))
+      }, logical(1)))){
+        return(rep(TRUE, nrow(model_samples)))
       }
-      if(parameter == "PETPEESE" && !is.null(priors[["bias"]]) && is.prior.mixture(priors[["bias"]])){
-        is_PET   <- sapply(priors[["bias"]], is.prior.PET)
-        is_PEESE <- sapply(priors[["bias"]], is.prior.PEESE)
-        return(model_samples[, "bias_indicator"] %in% which(is_PET | is_PEESE))
-      }
-      if(parameter == "omega" && !is.null(priors[["bias"]]) && is.prior.mixture(priors[["bias"]])){
-        is_weightfunction <- sapply(priors[["bias"]], is.prior.weightfunction)
-        return(model_samples[, "bias_indicator"] %in% which(is_weightfunction))
+
+      if(parameter %in% c("phacking", "alpha", "pi_null") && any(vapply(priors, function(x){
+        is_prior_phacking(x) || (is_prior_bias(x) && !is.null(x$phacking))
+      }, logical(1)))){
+        return(rep(TRUE, nrow(model_samples)))
       }
 
       # normal cases
@@ -776,54 +916,88 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     model_samples <- model_samples[conditioning_samples,,drop=FALSE]
 
     # set prior weights to 0 for null distributions
-    # TODO: this needs to be implemented for enabling of the conditional mixture posterior distributions when more than one components is present
-    # (e.g., conditional marginal and posterior plots)
-    # the current workaround is suitable only for a single parameters (to produce averaged prior and posterior plots)
-    if(length(conditional) == 1 && length(parameters) == 1 && conditional == parameters && force_plots){
+    if(length(conditional) == 1){
 
-      # special cases for PET / PEESE / PET-PEESE / weightfunctions
-      if(conditional == "PET" && !is.null(priors[["bias"]]) && is.prior.mixture(priors[["bias"]])){
-        is_PET <- sapply(priors[["bias"]], is.prior.PET)
-        for(i in seq(along = is_PET)){
-          if(!is_PET[i]){
-            priors[[parameters]][[i]][["prior_weights"]] <- 0
-          }
-        }
-      }else if(conditional == "PEESE" && !is.null(priors[["bias"]]) && is.prior.mixture(priors[["bias"]])){
-        for(i in seq(along = is_PEESE)){
-          if(!is_PEESE[i]){
-            priors[[parameters]][[i]][["prior_weights"]] <- 0
-          }
-        }
-      }else if(conditional == "PETPEESE" && !is.null(priors[["bias"]]) && is.prior.mixture(priors[["bias"]])){
-        is_PET   <- sapply(priors[["bias"]], is.prior.PET)
-        is_PEESE <- sapply(priors[["bias"]], is.prior.PEESE)
-        for(i in seq(along = is_PET)){
-          if(!(is_PET[i] || is_PEESE[i])){
-            priors[[parameters]][[i]][["prior_weights"]] <- 0
-          }
-        }
-      }else if(conditional == "omega" && !is.null(priors[["bias"]]) && is.prior.mixture(priors[["bias"]])){
-        is_weightfunction <- sapply(priors[["bias"]], is.prior.weightfunction)
-        for(i in seq(along = is_weightfunction)){
-          if(!is_weightfunction[i]){
-            priors[[parameters]][[i]][["prior_weights"]] <- 0
-          }
-        }
-      }else if(is.prior.mixture(priors[[parameters]])){
+      if (conditional %in% c("bias", "PET", "PEESE", "PETPEESE", "omega", "phacking", "alpha", "pi_null") && !is.null(priors[["bias"]]) && is.prior.mixture(priors[["bias"]])) {
 
-        components <- attr(priors[[parameters]], "components")
+        # special cases for PET / PEESE / PET-PEESE / selection / p-hacking
+        bias_branch_info <- .selection_prior_branch_info(priors[["bias"]])
+        if(conditional == "bias"){
+          components <- attr(priors[["bias"]], "components")
+          if(is.null(components) || length(components) != length(priors[["bias"]])){
+            is_null <- sapply(priors[["bias"]], is.prior.none)
+          }else{
+            is_null <- components == "null"
+          }
+          for(i in seq(along = is_null)){
+            if(is_null[i]){
+              priors[["bias"]][[i]][["prior_weights"]] <- 0
+            }
+          }
+        }else if(conditional == "PET"){
+          is_PET <- sapply(priors[["bias"]], is.prior.PET)
+          for(i in seq(along = is_PET)){
+            if(!is_PET[i]){
+              priors[["bias"]][[i]][["prior_weights"]] <- 0
+            }
+          }
+        }else if(conditional == "PEESE"){
+          is_PEESE <- sapply(priors[["bias"]], is.prior.PEESE)
+          for(i in seq(along = is_PEESE)){
+            if(!is_PEESE[i]){
+              priors[["bias"]][[i]][["prior_weights"]] <- 0
+            }
+          }
+        }else if(conditional == "PETPEESE"){
+          is_PET   <- sapply(priors[["bias"]], is.prior.PET)
+          is_PEESE <- sapply(priors[["bias"]], is.prior.PEESE)
+          for(i in seq(along = is_PET)){
+            if(!(is_PET[i] || is_PEESE[i])){
+              priors[["bias"]][[i]][["prior_weights"]] <- 0
+            }
+          }
+        }else if(conditional == "omega"){
+          has_selection <- vapply(bias_branch_info, function(x) !is.null(x$selection), logical(1))
+          for(i in seq(along = has_selection)){
+            if(!has_selection[i]){
+              priors[["bias"]][[i]][["prior_weights"]] <- 0
+            }
+          }
+        }else if(conditional %in% c("phacking", "alpha", "pi_null")){
+          has_phacking <- vapply(bias_branch_info, function(x) !is.null(x$phacking), logical(1))
+          for(i in seq(along = has_phacking)){
+            if(!has_phacking[i]){
+              priors[["bias"]][[i]][["prior_weights"]] <- 0
+            }
+          }
+        }
 
-        attr(priors[[parameters]], "prior_weights")[which(components == "null")] <- 0
+        # propagate the prior weights to the mixture prior itself
+        attr(priors[["bias"]], "prior_weights") <- sapply(priors[["bias"]], \(x) x[["prior_weights"]])
+
+      }else if(is.prior.mixture(priors[[conditional]])){
+
+        components <- attr(priors[[conditional]], "components")
         for(i in seq(along = components)){
           if(components[i] == "null"){
-            priors[[parameters]][[i]][["prior_weights"]] <- 0
+            priors[[conditional]][[i]][["prior_weights"]] <- 0
           }
         }
+
+        # propagate the prior weights to the mixture prior itself
+        attr(priors[[conditional]], "prior_weights") <- sapply(priors[[conditional]], \(x) x[["prior_weights"]])
       }
+
     }
   }
 
+  # extract formula_scale early for transform_scaled support
+  formula_scale <- attr(model, "formula_scale")
+
+  # apply scale transformation to posterior samples if requested
+  if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
+    model_samples <- transform_scale_samples(model_samples, formula_scale)
+  }
 
   out    <- list()
 
@@ -840,6 +1014,14 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     }else if(is.prior.mixture(temp_prior)){
       # mixture priors
       out[[temp_parameter]] <- .as_mixed_posteriors.mixture(model_samples, temp_prior, temp_parameter, conditional)
+
+    }else if(is_prior_phacking(temp_prior)){
+      # p-hacking priors
+      out[[temp_parameter]] <- .as_mixed_posteriors.phacking(model_samples, temp_prior, temp_parameter)
+
+    }else if(is_prior_bias(temp_prior)){
+      # composed publication-bias priors
+      out[[temp_parameter]] <- .as_mixed_posteriors.bias(model_samples, temp_prior, temp_parameter, conditional)
 
     }else if(is.prior.weightfunction(temp_prior)){
       # weight functions
@@ -876,6 +1058,45 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   attr(out, "prior_list")       <- priors
   attr(out, "conditional")      <- conditional
   attr(out, "conditional_rule") <- conditional_rule
+
+  # propagate formula_scale attribute for transform_scaled support
+  if(!is.null(formula_scale)){
+    attr(out, "formula_scale") <- formula_scale
+  }
+
+  prior_context_priors      <- prior_density_priors
+  prior_context_conditional <- conditional
+  special_conditionals      <- c("PET", "PEESE", "PETPEESE", "omega", "phacking", "alpha", "pi_null")
+  if(length(conditional) == 1 &&
+     conditional %in% special_conditionals &&
+     !conditional %in% names(prior_density_priors)){
+    prior_context_priors      <- priors
+    prior_context_conditional <- NULL
+  }
+
+  # generate and store transformed prior densities if requested
+  if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
+    prior_densities <- .generate_transformed_prior_densities(
+      prior_list       = prior_context_priors,
+      column_names     = colnames(model_samples),
+      n_grid           = n_prior_samples,
+      formula_scale    = formula_scale,
+      conditional      = prior_context_conditional,
+      conditional_rule = conditional_rule
+    )
+    attr(out, "prior_densities")       <- prior_densities
+    attr(out, "prior_density_context") <- attr(prior_densities, "context")
+    attr(out, "transform_scaled")      <- TRUE
+  }else{
+    attr(out, "prior_density_context") <- .prior_density_build_context(
+      prior_list       = prior_context_priors,
+      column_names     = colnames(model_samples),
+      n_grid           = n_prior_samples,
+      conditional      = prior_context_conditional,
+      conditional_rule = conditional_rule
+    )
+  }
+
   class(out) <- c(class(out), "as_mixed_posteriors", "mixed_posteriors")
   return(out)
 }
@@ -944,6 +1165,11 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     "level_names"       = .get_prior_factor_level_names(prior),
     "interaction"       = .is_prior_interaction(prior),
     "interaction_terms" = attr(prior, "interaction_terms"),
+    "term_components"   = attr(prior, "term_components"),
+    "factor_terms"      = attr(prior, "factor_terms"),
+    "factor_contrasts"  = attr(prior, "factor_contrasts"),
+    "factor_design"     = attr(prior, "factor_design"),
+    "factor_cell_names" = attr(prior, "factor_cell_names"),
     "treatment"         = is.prior.treatment(prior),
     "independent"       = is.prior.independent(prior),
     "orthonormal"       = is.prior.orthonormal(prior),
@@ -965,8 +1191,15 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
     }
 
+    level_names <- prior_info[["level_names"]]
+    if(is.list(level_names)){
+      level_names <- lapply(level_names, function(x) x[-1])
+    }else{
+      level_names <- level_names[-1]
+    }
+
     rownames(samples) <- NULL
-    colnames(samples) <- paste0(parameter,"[",prior_info[["level_names"]][-1],"]")
+    colnames(samples) <- .format_factor_level_parameter_names(parameter, level_names, ncol(samples))
     attr(samples, "sample_ind") <- FALSE
     attr(samples, "models_ind") <- rep(1, nrow(samples))
     attr(samples, "parameter")  <- parameter
@@ -988,7 +1221,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     }
 
     rownames(samples) <- NULL
-    colnames(samples) <- paste0(parameter,"[",prior_info[["level_names"]],"]")
+    colnames(samples) <- .format_factor_level_parameter_names(parameter, prior_info[["level_names"]], ncol(samples))
     attr(samples, "sample_ind") <- FALSE
     attr(samples, "models_ind") <- rep(1, nrow(samples))
     attr(samples, "parameter")  <- parameter
@@ -1007,6 +1240,11 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   attr(samples, "level_names")       <- prior_info[["level_names"]]
   attr(samples, "interaction")       <- if(length(prior_info) == 0) FALSE else prior_info[["interaction"]]
   attr(samples, "interaction_terms") <- prior_info[["interaction_terms"]]
+  attr(samples, "term_components")   <- prior_info[["term_components"]]
+  attr(samples, "factor_terms")      <- prior_info[["factor_terms"]]
+  attr(samples, "factor_contrasts")  <- prior_info[["factor_contrasts"]]
+  attr(samples, "factor_design")     <- prior_info[["factor_design"]]
+  attr(samples, "factor_cell_names") <- prior_info[["factor_cell_names"]]
   attr(samples, "treatment")         <- prior_info[["treatment"]]
   attr(samples, "independent")       <- prior_info[["independent"]]
   attr(samples, "orthonormal")       <- prior_info[["orthonormal"]]
@@ -1019,13 +1257,15 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   # check input
   check_char(parameter, "parameter", check_length = FALSE)
 
+
   # obtain mapping for the weight coefficients
-  omega_mapping <- weightfunctions_mapping(list(prior))
-  omega_cuts    <- weightfunctions_mapping(list(prior), cuts_only = TRUE)
-  omega_names   <- sapply(1:(length(omega_cuts)-1), function(i) paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
+  omega_info    <- .weightfunction_mapping_info(list(prior))
+  omega_mapping <- omega_info$mapping
+  omega_names   <- omega_info$names
+  omega_par     <- omega_info$pars
 
   # prepare output objects
-  samples <- model_samples[, sapply(1:(length(omega_cuts)-1), function(i) paste0("omega[",i,"]"))]
+  samples <- model_samples[, omega_par, drop = FALSE]
 
   rownames(samples) <- NULL
   colnames(samples) <- omega_names
@@ -1033,7 +1273,102 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   attr(samples, "models_ind") <- rep(1, nrow(samples))
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- prior
+  samples <- .weightfunction_set_omega_context(samples, omega_info)
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.weightfunction")
+
+  return(samples)
+}
+.as_mixed_posteriors.phacking      <- function(model_samples, prior, parameter){
+
+  # check input
+  check_char(parameter, "parameter", check_length = FALSE)
+
+  par_names <- intersect(.phacking_report_parameter(prior), colnames(model_samples))
+  samples   <- model_samples[, par_names, drop = FALSE]
+
+  rownames(samples) <- NULL
+  attr(samples, "sample_ind") <- FALSE
+  attr(samples, "models_ind") <- rep(1, nrow(samples))
+  attr(samples, "parameter")  <- parameter
+  attr(samples, "prior_list") <- prior
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.phacking")
+
+  return(samples)
+}
+.as_mixed_posteriors.bias          <- function(model_samples, prior, parameter, conditional){
+
+  # check input
+  check_char(parameter, "parameter", check_length = FALSE)
+
+  branch_info   <- .selection_prior_branch_info(prior)
+  has_selection <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
+  has_phacking  <- vapply(branch_info, function(x) !is.null(x$phacking),  logical(1))
+
+  out_names <- NULL
+  par_names <- NULL
+
+  if(any(has_selection)){
+    selection_priors <- lapply(branch_info[has_selection], function(x) x$selection)
+    omega_info       <- .weightfunction_mapping_info(selection_priors, one_sided = TRUE)
+    omega_names      <- omega_info$names
+    omega_par        <- omega_info$pars
+  }
+  if(any(has_phacking)){
+    phacking_priors <- lapply(branch_info[has_phacking], function(x) x$phacking)
+    phacking_par    <- .selection_phacking_report_parameters(phacking_priors)
+    phacking_names  <- phacking_par
+  }
+
+  if(length(conditional) > 0 && any(c("omega", "phacking", "alpha", "pi_null") %in% conditional)){
+    if("omega" %in% conditional && any(has_selection)){
+      out_names <- c(out_names, omega_names)
+      par_names <- c(par_names, omega_par)
+    }
+    if("phacking" %in% conditional && any(has_phacking)){
+      out_names <- c(out_names, phacking_names)
+      par_names <- c(par_names, phacking_par)
+    }
+    if("alpha" %in% conditional && any(has_phacking)){
+      out_names <- c(out_names, "alpha")
+      par_names <- c(par_names, "alpha")
+    }
+    if("pi_null" %in% conditional && any(has_phacking)){
+      out_names <- c(out_names, "pi_null")
+      par_names <- c(par_names, "pi_null")
+    }
+  }else{
+    if(any(has_selection)){
+      out_names <- c(out_names, omega_names)
+      par_names <- c(par_names, omega_par)
+    }
+    if(any(has_phacking)){
+      out_names <- c(out_names, phacking_names)
+      par_names <- c(par_names, phacking_par)
+    }
+  }
+
+  if(is.null(par_names)){
+    par_names <- character()
+    out_names <- character()
+  }
+  keep_unique <- !duplicated(par_names)
+  par_names <- par_names[keep_unique]
+  out_names <- out_names[keep_unique]
+  keep_par <- par_names %in% colnames(model_samples)
+  par_names <- par_names[keep_par]
+  out_names <- out_names[keep_par]
+  samples   <- model_samples[, par_names, drop = FALSE]
+
+  rownames(samples) <- NULL
+  colnames(samples) <- out_names
+  attr(samples, "sample_ind") <- FALSE
+  attr(samples, "models_ind") <- rep(1, nrow(samples))
+  attr(samples, "parameter")  <- parameter
+  attr(samples, "prior_list") <- prior
+  if(any(has_selection)){
+    samples <- .weightfunction_set_omega_context(samples, omega_info)
+  }
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.bias")
 
   return(samples)
 }
@@ -1073,28 +1408,58 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
     is_PET            <- sapply(prior, is.prior.PET)
     is_PEESE          <- sapply(prior, is.prior.PEESE)
-    is_weightfunction <- sapply(prior, is.prior.weightfunction)
+    branch_info       <- .selection_prior_branch_info(prior)
+    has_selection     <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
+    has_phacking      <- vapply(branch_info, function(x) !is.null(x$phacking), logical(1))
 
     # prepare weightfunction parameter names
-    if(any(is_weightfunction)){
-      omega_mapping <- weightfunctions_mapping(prior[is_weightfunction], one_sided = TRUE)
-      omega_cuts    <- weightfunctions_mapping(prior[is_weightfunction], cuts_only = TRUE, one_sided = TRUE)
-      omega_names   <- sapply(1:(length(omega_cuts)-1), function(i) paste0("omega[",omega_cuts[i],",",omega_cuts[i+1],"]"))
-      omega_par     <- rev(sapply(1:(length(omega_cuts)-1), function(i) paste0("omega[",i,"]")))
+    if(any(has_selection)){
+      selection_priors <- lapply(branch_info[has_selection], function(x) x$selection)
+      omega_info    <- .weightfunction_mapping_info(selection_priors, one_sided = TRUE)
+      omega_mapping <- omega_info$mapping
+      omega_names   <- omega_info$names
+      omega_par     <- omega_info$pars
+    }
+    if(any(has_phacking)){
+      phacking_priors <- lapply(branch_info[has_phacking], function(x) x$phacking)
+      phacking_par    <- .selection_phacking_report_parameters(phacking_priors)
+      phacking_names  <- phacking_par
     }
 
     # deal with conditional parameters
-    if(length(conditional) > 0 && any(c("PET", "PEESE", "PETPEESE", "omega") %in% conditional)){
+    if(length(conditional) > 0 && any(c("PET", "PEESE", "PETPEESE", "omega", "phacking", "alpha", "pi_null") %in% conditional)){
 
-      if("omega" %in% conditional){
-        out_names <- omega_names
-        par_names <- omega_par
-      }else if("PETPEESE" %in% conditional){
-        out_names <- par_names <- c("PET", "PEESE")
-      }else if("PET" %in% conditional){
-        out_names <- par_names <- "PET"
-      }else if("PEESE" %in% conditional){
-        out_names <- par_names <- "PEESE"
+      out_names <- NULL
+      par_names <- NULL
+
+      if("omega" %in% conditional && any(has_selection)){
+        out_names <- c(out_names, omega_names)
+        par_names <- c(par_names, omega_par)
+      }
+      if("phacking" %in% conditional && any(has_phacking)){
+        out_names <- c(out_names, phacking_names)
+        par_names <- c(par_names, phacking_par)
+      }
+      if("alpha" %in% conditional && any(has_phacking)){
+        out_names <- c(out_names, "alpha")
+        par_names <- c(par_names, "alpha")
+      }
+      if("pi_null" %in% conditional && any(has_phacking)){
+        out_names <- c(out_names, "pi_null")
+        par_names <- c(par_names, "pi_null")
+      }
+      if("PETPEESE" %in% conditional){
+        # subset in case only PET/PEESE is supplied
+        out_names <- c(out_names, colnames(model_samples)[colnames(model_samples) %in% c("PET", "PEESE")])
+        par_names <- c(par_names, colnames(model_samples)[colnames(model_samples) %in% c("PET", "PEESE")])
+      }
+      if("PET" %in% conditional && any(is_PET)){
+        out_names <- c(out_names, "PET")
+        par_names <- c(par_names, "PET")
+      }
+      if("PEESE" %in% conditional && any(is_PEESE)){
+        out_names <- c(out_names, "PEESE")
+        par_names <- c(par_names, "PEESE")
       }
 
     }else{
@@ -1102,9 +1467,13 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       out_names <- NULL
       par_names <- NULL
 
-      if(any(is_weightfunction)){
+      if(any(has_selection)){
         out_names <- c(out_names, omega_names)
         par_names <- c(par_names, omega_par)
+      }
+      if(any(has_phacking)){
+        out_names <- c(out_names, phacking_names)
+        par_names <- c(par_names, phacking_par)
       }
       if(any(is_PET)){
         out_names <- c(out_names, "PET")
@@ -1117,6 +1486,16 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     }
 
     # select samples
+    if(is.null(par_names)){
+      par_names <- character()
+      out_names <- character()
+    }
+    keep_unique <- !duplicated(par_names)
+    par_names <- par_names[keep_unique]
+    out_names <- out_names[keep_unique]
+    keep_par <- par_names %in% colnames(model_samples)
+    par_names <- par_names[keep_par]
+    out_names <- out_names[keep_par]
     samples   <- model_samples[, par_names,drop=FALSE]
     indicator <- model_samples[,paste0(parameter, "_indicator")]
 
@@ -1126,6 +1505,9 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     attr(samples, "models_ind") <- as.vector(indicator)
     attr(samples, "parameter")  <- parameter
     attr(samples, "prior_list") <- prior
+    if(any(has_selection)){
+      samples <- .weightfunction_set_omega_context(samples, omega_info)
+    }
     class(samples) <- c("mixed_posteriors", "mixed_posteriors.bias")
 
   }else{
@@ -1161,6 +1543,8 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 #' @details Supplying \code{margliks} as the input is preferred since it is better at dealing with
 #' under/overflow (posterior probabilities are very close to either 0 or 1). In case that both the
 #' \code{post_probs} and \code{margliks} are supplied, the results are based on \code{margliks}.
+#' If the prior probability of either the null or alternative hypothesis is
+#' zero, the Bayes factor is undefined and \code{NA} is returned.
 #'
 #' @return \code{inclusion_BF} returns a Bayes factor.
 #'
@@ -1177,13 +1561,6 @@ inclusion_BF         <- function(prior_probs, post_probs, margliks, is_null){
     stop("'is_null' argument must be either logical vector, integer vector, or NULL.")
   }
 
-  # deal with all null or alternative scenarios
-  if(all(!is_null)){
-    return(Inf)
-  }else if(all(is_null)){
-    return(0)
-  }
-
   if(!missing(prior_probs) && !missing(margliks)){
     return(.inclusion_BF.margliks(prior_probs = prior_probs, margliks = margliks, is_null = is_null))
   }else if(!missing(prior_probs) && !missing(post_probs)){
@@ -1198,14 +1575,22 @@ inclusion_BF         <- function(prior_probs, post_probs, margliks, is_null){
   check_real(prior_probs, "prior_probs", lower = 0, upper = 1, check_length = 0)
   check_real(post_probs,  "post_probs", lower = 0, upper = 1, check_length = length(prior_probs))
 
-  if(isTRUE(all.equal(sum(post_probs[!is_null]), 1)) | isTRUE(all.equal(sum(prior_probs[!is_null]), 1))){
+  prior_alt  <- sum(prior_probs[!is_null])
+  prior_null <- sum(prior_probs[is_null])
+  post_alt   <- sum(post_probs[!is_null])
+  post_null  <- sum(post_probs[is_null])
+
+  if(isTRUE(all.equal(prior_alt, 0)) || isTRUE(all.equal(prior_null, 0))){
+    return(NA_real_)
+  }
+
+  if(isTRUE(all.equal(post_alt, 1))){
     return(Inf)
-  }else if(isTRUE(all.equal(sum(post_probs[is_null]), 1)) | isTRUE(all.equal(sum(prior_probs[is_null]), 1))){
+  }else if(isTRUE(all.equal(post_null, 1))){
     return(0)
   }else{
     return(
-      (sum(post_probs[!is_null]) / sum(post_probs[is_null]))  /
-        (sum(prior_probs[!is_null]) / sum(prior_probs[is_null]))
+      (post_alt / post_null) / (prior_alt / prior_null)
     )
   }
 }
@@ -1214,12 +1599,44 @@ inclusion_BF         <- function(prior_probs, post_probs, margliks, is_null){
   check_real(prior_probs, "prior_probs", lower = 0, upper = 1, check_length = 0)
   check_real(margliks,  "margliks", check_length = length(prior_probs))
 
-  # substract the max marglikto remove problems with overflow
-  margliks <- margliks - max(margliks)
+  prior_alt  <- sum(prior_probs[!is_null])
+  prior_null <- sum(prior_probs[is_null])
+
+  if(isTRUE(all.equal(prior_alt, 0)) || isTRUE(all.equal(prior_null, 0))){
+    return(NA_real_)
+  }
+
+  margliks <- .model_averaging_margliks(margliks, prior_probs)
+
+  active <- prior_probs > 0 & is.finite(margliks)
+  if(!any(active & !is_null)){
+    return(0)
+  }
+  if(!any(active & is_null)){
+    return(Inf)
+  }
+
+  # subtract the max among positive-prior finite models to avoid overflow.
+  margliks <- margliks - max(margliks[active])
+
+  alt_ind  <- active & !is_null
+  null_ind <- active & is_null
+
+  alt_marginal  <- sum(exp(margliks[alt_ind])  * prior_probs[alt_ind])
+  null_marginal <- sum(exp(margliks[null_ind]) * prior_probs[null_ind])
+
+  if(alt_marginal == 0 && null_marginal == 0){
+    return(NaN)
+  }
+  if(alt_marginal == 0){
+    return(0)
+  }
+  if(null_marginal == 0){
+    return(Inf)
+  }
 
   return(
-    (sum(exp(margliks[!is_null]) * prior_probs[!is_null]) / sum(exp(margliks[is_null]) * prior_probs[is_null])) /
-      (sum(prior_probs[!is_null]) / sum(prior_probs[is_null]))
+    (alt_marginal / null_marginal) / (prior_alt / prior_null)
   )
 }
 
@@ -1240,72 +1657,135 @@ inclusion_BF         <- function(prior_probs, post_probs, margliks, is_null){
 weightfunctions_mapping <- function(prior_list, cuts_only = FALSE, one_sided = FALSE){
 
   # check input
-  if(!all(sapply(prior_list, is.prior.weightfunction) | sapply(prior_list, is.prior.point) | sapply(prior_list, is.prior.none)))
-    stop("'priors' must be a list of weightfunction priors distributions")
+  if(!all(sapply(prior_list, is.prior.weightfunction) | sapply(prior_list, .is_prior_weightfunction_null)))
+    stop("'priors' must be a list of weightfunction priors or point(1)/none null priors")
   check_bool(cuts_only, "cuts_only")
   check_bool(one_sided, "one_sided")
 
-  # extract cuts and types
-  priors_cuts <- lapply(prior_list, function(prior)rev(prior[["parameters"]][["steps"]]))
-  priors_type <- sapply(prior_list, function(prior)prior[["distribution"]])
+  force_one_sided <- one_sided || any(sapply(prior_list, function(prior){
+    is.prior.weightfunction(prior) && prior$side == "one-sided"
+  }))
 
-
-  # get new cutpoint appropriate cut-points
-  priors_cuts_new <- priors_cuts
-  if(one_sided || any(grepl("one.sided", priors_type))){
-
-    # translate two.sided into one.sided
-    for(p in seq_along(priors_type)){
-      if(grepl("two.sided", priors_type[p])){
-        priors_cuts_new[[p]] <- c(priors_cuts[[p]]/2, 1 - rev(priors_cuts[[p]])/2)
-      }
+  prior_expansions <- lapply(prior_list, function(prior){
+    if(!is.prior.weightfunction(prior)){
+      return(NULL)
     }
-  }
+    .weightfunction_mapping_expansion(prior, force_one_sided)
+  })
 
-  # combine the steps
-  all_cuts <- c(0, sort(unique(unlist(priors_cuts_new))), 1)
+  all_cuts <- .weightfunction_unique_cuts(unlist(lapply(prior_expansions, function(expansion){
+    if(is.null(expansion)) NULL else expansion$cuts
+  })))
+  if(length(all_cuts) == 0L){
+    all_cuts <- c(0, 1)
+  }
 
   # return the naming for summary function if only asked for labels
   if(cuts_only){
     return(all_cuts)
   }
 
-
-  # get lower and upper bounds + indicies
-  omega_ind <- list()
-  p_bound   <- list()
-  for(p in seq_along(priors_type)){
-    if(!is.null(priors_cuts_new[[p]])){
-
-      p_bound[[p]] <- list(
-        l = c(0, priors_cuts_new[[p]]),
-        u = c(priors_cuts_new[[p]], 1))
-
-      if(one_sided || any(grepl("one.sided", priors_type))){
-        if(grepl("two.sided", priors_type[p])){
-          omega_ind[[p]] <- rev(c( (length(priors_cuts[[p]]) + 1):2, 1:(length(priors_cuts[[p]]) + 1) ))
-        }else if(grepl("one.sided", priors_type[p])){
-          omega_ind[[p]] <- rev(1:(length(priors_cuts[[p]]) + 1))
-        }
-      }else{
-        if(grepl("two.sided", priors_type[p])){
-          omega_ind[[p]] <- rev(1:(length(priors_cuts[[p]]) + 1))
-        }
-      }
-
-    }
-  }
-
   # create mapping to weights
   omega_mapping <- list()
-  for(p in seq_along(priors_type)){
+  for(p in seq_along(prior_list)){
     if(is.prior.weightfunction(prior_list[[p]])){
-      omega_mapping[[p]] <- sapply(1:(length(all_cuts)-1), function(i)
-        omega_ind[[p]][all_cuts[i] >= p_bound[[p]]$l & all_cuts[i+1] <= p_bound[[p]]$u]
-      )
+      expansion <- prior_expansions[[p]]
+      omega_mapping[[p]] <- expansion$index[.weightfunction_global_bin_indices(all_cuts, expansion)]
     }
   }
 
 
   return(omega_mapping)
+}
+
+.weightfunction_mapping_info <- function(prior_list, one_sided = FALSE){
+
+  cuts <- weightfunctions_mapping(prior_list, cuts_only = TRUE, one_sided = one_sided)
+  list(
+    mapping = weightfunctions_mapping(prior_list, one_sided = one_sided),
+    cuts    = cuts,
+    names   = .weightfunction_omega_names(cuts),
+    pars    = paste0("omega[", seq_len(length(cuts) - 1L), "]"),
+    one_sided = one_sided
+  )
+}
+
+.weightfunction_set_omega_context <- function(samples, omega_context){
+
+  if(is.null(omega_context)){
+    return(samples)
+  }
+
+  attr(samples, "omega_context") <- omega_context
+  prior_list <- attr(samples, "prior_list")
+  if(!is.null(prior_list)){
+    attr(prior_list, "omega_context") <- omega_context
+    attr(samples, "prior_list") <- prior_list
+  }
+
+  samples
+}
+
+.weightfunction_omega_names <- function(cuts){
+  sapply(seq_len(length(cuts) - 1L), function(i){
+    paste0("omega[", cuts[i], ",", cuts[i + 1L], "]")
+  })
+}
+
+.weightfunction_unique_cuts <- function(cuts, tolerance = sqrt(.Machine$double.eps)){
+
+  cuts <- sort(cuts)
+  if(length(cuts) <= 1L){
+    return(cuts)
+  }
+
+  out <- cuts[1L]
+  for(cut in cuts[-1L]){
+    if(abs(cut - out[length(out)]) <= tolerance){
+      if(abs(cut) <= tolerance || abs(out[length(out)]) <= tolerance){
+        out[length(out)] <- 0
+      }else if(abs(cut - 1) <= tolerance || abs(out[length(out)] - 1) <= tolerance){
+        out[length(out)] <- 1
+      }else{
+        out[length(out)] <- min(cut, out[length(out)])
+      }
+    }else{
+      out <- c(out, cut)
+    }
+  }
+
+  out
+}
+
+.weightfunction_global_bin_indices <- function(global_cuts, expansion, tolerance = sqrt(.Machine$double.eps)){
+
+  vapply(seq_len(length(global_cuts) - 1L), function(i){
+    ind <- which(
+      global_cuts[i] >= expansion$lower - tolerance &
+        global_cuts[i + 1L] <= expansion$upper + tolerance
+    )
+    if(length(ind) != 1L){
+      stop("Could not map global weightfunction bin to a local bin.", call. = FALSE)
+    }
+    ind
+  }, integer(1))
+}
+
+.weightfunction_mapping_expansion <- function(prior, force_one_sided = FALSE){
+
+  if(prior$side == "two-sided" && force_one_sided){
+    J <- .weightfunction_n_bins(prior)
+    cuts <- c(0, prior$steps / 2, 1 - rev(prior$steps) / 2, 1)
+    index <- c(seq_len(J), seq.int(J - 1L, 1L))
+  }else{
+    cuts <- .weightfunction_local_cuts(prior)
+    index <- seq_len(.weightfunction_n_bins(prior))
+  }
+
+  list(
+    cuts  = cuts,
+    lower = cuts[-length(cuts)],
+    upper = cuts[-1],
+    index = index
+  )
 }

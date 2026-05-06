@@ -27,7 +27,7 @@ qpoint(p, location, lower.tail = TRUE, log.p = FALSE)
 \item{n}{number of observations.}
 
 \item{lower.tail}{logical; if \code{TRUE} (default), probabilities
-are \eqn{P[X \le x]}, otherwise, \eqn{P[X \ge x]}.}
+are \eqn{P[X \le x]}, otherwise, \eqn{P[X > x]}.}
 
 \item{p}{vector of probabilities.}
 }

@@ -1,0 +1,1 @@
+Test found strong evidence in favor of the Effect, BF10 = 15.00, with mean conditional estimate mu = 0.498, 95% CI [0.300, 0.704].

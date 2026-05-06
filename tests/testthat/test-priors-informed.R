@@ -1,4 +1,21 @@
-context("Prior informed function")
+skip_if_not_test_profile("unit")
+
+# ============================================================================ #
+# TEST FILE: Prior Informed Function
+# ============================================================================ #
+#
+# PURPOSE:
+#   Tests for prior_informed function that creates priors based on
+#   published informed prior specifications (Oosterwijk, van Erp, medicine).
+#
+# DEPENDENCIES:
+#   - None (pure R)
+#
+# SKIP CONDITIONS:
+#   - None (can run on CRAN)
+#
+# TAGS: @evaluation, @priors, @informed
+# ============================================================================ #
 
 
 test_that("Informed prior distributions match the specification", {
@@ -325,4 +342,30 @@ test_that("Informed prior distributions match the specification", {
 
   expect_equal(print(prior_informed("cochrane", parameter = "effect", type = "logRR"), silent = TRUE),        "Student-t(0, 0.32, 3)")
   expect_equal(print(prior_informed("cochrane", parameter = "heterogeneity", type = "logRR"), silent = TRUE), "InvGamma(1.51, 0.23)")
+})
+
+
+test_that("medicine informed priors validate type-specific names and logHR scale", {
+  expect_error(
+    prior_informed("Breast Cancer", parameter = "effect", type = "smd"),
+    "not available for type 'smd'"
+  )
+  expect_error(
+    prior_informed("Heart", parameter = "effect", type = "logHR"),
+    "not available for type 'loghr'"
+  )
+  expect_error(
+    prior_informed("Cochrane"),
+    "'parameter' argument must be specified"
+  )
+
+  effect <- prior_informed("cochrane", parameter = "Effect", type = "LOGHR")
+  expect_equal(effect$distribution, "t")
+  expect_equal(effect$parameters, list("location" = 0, "scale" = .13, "df" = 2))
+  expect_equal(effect$truncation, list("lower" = -Inf, "upper" = Inf))
+
+  heterogeneity <- prior_informed("Cochrane", parameter = "Heterogeneity", type = "logHR")
+  expect_equal(heterogeneity$distribution, "invgamma")
+  expect_equal(heterogeneity$parameters, list("shape" = 2.42, "scale" = .30))
+  expect_equal(heterogeneity$truncation, list("lower" = 0, "upper" = Inf))
 })
