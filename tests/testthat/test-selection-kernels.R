@@ -241,6 +241,46 @@ test_that("selection_backend_spec compiles none, step, phack, and combined prior
   expect_match(combined_spec$prior_code, "phack_kind <- 1")
 })
 
+test_that("selection_backend_spec rejects malformed global breaks", {
+
+  selection <- prior_weightfunction("one-sided", c(.025), wf_fixed(c(1, .5)))
+
+  expect_error(selection_backend_spec(selection, global_breaks = c(0)), "at least 0 and 1")
+  expect_error(selection_backend_spec(selection, global_breaks = c(0, .025, .025, 1)), "duplicate")
+  expect_error(selection_backend_spec(selection, global_breaks = c(0, .05, .025, 1)), "monotonically")
+  expect_error(selection_backend_spec(selection, global_breaks = c(.001, .025, 1)), "start at 0 and end at 1")
+  expect_error(selection_backend_spec(selection, global_breaks = c(0, .02, 1)), "contain all step-selection")
+
+  spec <- selection_backend_spec(selection, global_breaks = c(0, .025, .50, 1))
+  expect_equal(spec$step$breaks, c(0, .025, .50, 1))
+  expect_equal(spec$step$coefficient_ids, paste0("omega[", 1:3, "]"))
+})
+
+test_that("selection initial omega expands two-sided weights onto one-sided global bins", {
+
+  selection <- prior_weightfunction("two-sided", c(.05, .10), wf_fixed(c(1, .2, .5)))
+
+  expect_equal(
+    BayesTools:::.selection_initial_omega(selection, c(0, .025, .05, .95, .975, 1)),
+    c(1, .2, .5, .2, 1)
+  )
+})
+
+test_that("selection prior means handle point, cumulative, and log-scale components", {
+
+  cumulative <- prior_weightfunction("one-sided", c(.025, .05), wf_cumulative(c(1, 2, 3)))
+  log_scale <- prior_weightfunction(
+    "one-sided",
+    c(.025),
+    wf_independent(prior("normal", list(0, .2)), scale = "log_omega")
+  )
+
+  expect_equal(BayesTools:::.selection_weightfunction_mean(cumulative), c(1, 5 / 6, 1 / 2))
+  expect_equal(BayesTools:::.selection_weightfunction_mean(log_scale), c(1, exp(.2^2 / 2)), tolerance = 1e-8)
+  expect_equal(BayesTools:::.selection_prior_mean(prior("point", list(3))), 3)
+  expect_equal(BayesTools:::.selection_prior_mean(prior("beta", list(2, 6))), 2 / 8)
+})
+
 test_that("selection_backend_spec compiles mixtures with active identity transforms", {
 
   selection <- prior_weightfunction("one-sided", c(.025), wf_fixed(c(1, .5)))

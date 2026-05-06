@@ -94,6 +94,44 @@ test_that(".remove_auxiliary_parameters removes indexed factor invgamma support"
 })
 
 
+test_that(".remove_auxiliary_parameters drops p-hacking internals by report scale and omega request", {
+
+  model_samples <- matrix(seq_len(50), ncol = 5)
+  colnames(model_samples) <- c("omega[1]", "omega[2]", "alpha", "pi_null", "phack_kind")
+
+  phacking_prior <- prior_phacking(form = "linear", report_scale = "alpha")
+
+  result <- BayesTools:::.remove_auxiliary_parameters(
+    model_samples,
+    list(ph = phacking_prior),
+    remove_parameters = "omega"
+  )
+
+  expect_equal(colnames(result$model_samples), c("alpha", "phack_kind"))
+  expect_true("ph" %in% names(result$prior_list))
+})
+
+
+test_that(".remove_auxiliary_parameters renames selection omegas and drops unreported p-hacking columns", {
+
+  selection <- prior_weightfunction("one-sided", c(.025), wf_fixed(c(1, .5)))
+  phacking <- prior_phacking(form = "linear", report_scale = "alpha")
+  bias <- prior_bias(selection, phacking)
+
+  model_samples <- matrix(seq_len(50), ncol = 5)
+  colnames(model_samples) <- c("omega[1]", "omega[2]", "alpha", "pi_null", "phack_kind")
+
+  result <- BayesTools:::.remove_auxiliary_parameters(
+    model_samples,
+    list(pub_bias = bias),
+    remove_parameters = NULL
+  )
+
+  expect_equal(colnames(result$model_samples), c("omega[0,0.025]", "omega[0.025,1]", "alpha", "phack_kind"))
+  expect_true("pub_bias" %in% names(result$prior_list))
+})
+
+
 test_that(".process_spike_and_slab handles conditional samples", {
   skip_on_cran()
   skip_if_not_installed("rjags")
@@ -293,6 +331,26 @@ test_that(".rename_factor_levels handles multi-factor treatment interactions", {
     c(
       "(mu) a[a2]:year:b[b2]",
       "(mu) a[a2]:year:b[b3]"
+    )
+  )
+})
+
+
+test_that(".format_factor_level_parameter_names falls back to numeric indices on interaction mismatch", {
+
+  result <- BayesTools:::.format_factor_level_parameter_names(
+    "mu_a__xXx__year__xXx__b",
+    list(a = c("a1", "a2"), missing = c("m1", "m2", "m3")),
+    n_parameters = 4
+  )
+
+  expect_equal(
+    result,
+    c(
+      "mu_a__xXx__year__xXx__b[1]",
+      "mu_a__xXx__year__xXx__b[2]",
+      "mu_a__xXx__year__xXx__b[3]",
+      "mu_a__xXx__year__xXx__b[4]"
     )
   )
 })

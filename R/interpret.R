@@ -1022,6 +1022,12 @@ interpret_tables <- function(sources, spec, ...){
     return(match[1])
   }
 
+  column_probs <- suppressWarnings(as.numeric(colnames(data)))
+  numeric_match <- which(!is.na(column_probs) & abs(column_probs - prob) < sqrt(.Machine$double.eps))
+  if(length(numeric_match) > 0){
+    return(colnames(data)[numeric_match[1L]])
+  }
+
   NULL
 }
 
