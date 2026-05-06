@@ -560,6 +560,95 @@ test_that("interpret_records normalizes ordered table and direct-record sources"
 })
 
 
+test_that("interpret_records selects direct records by record_id and row columns", {
+
+  records_source <- data.frame(
+    record_id = c("bf.record", "estimate.record"),
+    row = c("bf-row", "estimate-row"),
+    kind = c("evidence", "estimate"),
+    label = c("effect", "theta"),
+    BF_value = c(4, NA),
+    BF_orientation = c("alternative_over_null", NA),
+    central_name = c(NA, "mean"),
+    central_value = c(NA, 1.5),
+    stringsAsFactors = FALSE
+  )
+  rownames(records_source) <- c("not-bf", "not-estimate")
+
+  sources <- list(records = list(type = "records", data = records_source))
+  plan <- list(
+    list(kind = "evidence", source = "records", row = "bf.record", section = "s", item_id = "bf"),
+    list(kind = "estimate", source = "records", row = "estimate-row", section = "s", item_id = "est")
+  )
+
+  out <- interpret_records(sources, plan)
+
+  expect_equal(out$record_id, c("bf.record", "estimate.record"))
+  expect_equal(out$row, c("bf.record", "estimate-row"))
+  expect_equal(out$BF_canonical_value[1], 4)
+  expect_equal(out$central_value[2], 1.5)
+})
+
+
+test_that("interpret_records handles ambiguous multi-row sources according to missing policy", {
+
+  table <- data.frame(BF = c(2, 3), check.names = FALSE)
+  rownames(table) <- c("a", "b")
+
+  sources <- list(tests = table)
+  plan <- list(list(kind = "evidence", source = "tests", section = "s", item_id = "missing-row"))
+
+  expect_error(
+    interpret_records(sources, plan),
+    "multiple rows; specify 'row'",
+    fixed = TRUE
+  )
+
+  skipped <- interpret_records(sources, plan, missing = "skip")
+  expect_s3_class(skipped, "BayesTools_interpret_records")
+  expect_equal(nrow(skipped), 0)
+
+  expect_warning(
+    warned <- interpret_records(sources, plan, missing = "warn"),
+    "multiple rows; specify 'row'",
+    fixed = TRUE
+  )
+  expect_equal(nrow(warned), 0)
+})
+
+
+test_that("interpret_records matches explicitly requested padded probability columns", {
+
+  estimates <- data.frame(
+    Mean = 0,
+    "0.100" = -2,
+    "0.200" = -1,
+    "0.800" = 1,
+    "0.900" = 2,
+    check.names = FALSE
+  )
+  rownames(estimates) <- "theta"
+
+  out <- interpret_records(
+    sources = list(estimates = estimates),
+    plan = list(list(
+      kind = "estimate",
+      source = "estimates",
+      row = "theta",
+      lower_prob = .2,
+      upper_prob = .8
+    ))
+  )
+
+  expect_equal(out$central_name, "mean")
+  expect_equal(out$lower_value, -1)
+  expect_equal(out$upper_value, 1)
+  expect_equal(out$lower_prob, .2)
+  expect_equal(out$upper_prob, .8)
+  expect_equal(out$interval_level, .6)
+})
+
+
 test_that("interpret_tables aliases interpret_records and supports optional missing entries", {
 
   table <- data.frame(
