@@ -43,6 +43,19 @@ Profile policy:
 - For pure plotting changes, run `unit` and `visual`.
 - For plotting changes that load cached JAGS fits, run `unit`, `fit`, and `visual-fixture`; run `fixture` too when tables or fixture metadata are affected.
 
+Coverage-guided adversarial testing:
+
+- When a PR or branch has Codecov results, use coverage programmatically to identify weak spots before adding tests. For public GitHub PRs, query Codecov's API for PR metadata, resolve the head SHA from the GitHub PR API, then fetch the line report with `https://api.codecov.io/api/v2/github/<owner>/repos/<repo>/report/?sha=<sha>&path=R/`. Reduce the report to missed files and missed line clusters; do not print raw coverage payloads.
+- Treat missed lines as leads, not goals. Inspect the implementation and existing tests around the missed clusters, then add adversarial tests that assert boundary behavior, error handling, fallback paths, transformations, or invariants. Avoid tests that only execute lines without checking behavior.
+- After adding coverage-guided tests, run the relevant test profile first, usually `Rscript tools/test-profile.R unit` for pure helper and validation tests. Add `fit`, `fixture`, or visual profiles according to the profile policy above.
+- After implementation is complete and after any maintainer-requested commits are finished, check local coverage with `covr` when practical. Prefer a targeted run for the affected test files to avoid flooding the session and to avoid unrelated snapshot noise, for example:
+
+```powershell
+Rscript -e "Sys.setenv(AGENT='1', BAYESTOOLS_TEST_PROFILE='unit', BAYESTOOLS_TEST_SKIP_REFIT='TRUE'); cov <- covr::package_coverage(type='none', code=c('testthat::test_file(system.file(\"tests\", \"testthat\", \"test-interpret.R\", package=\"BayesTools\"), reporter=testthat::LlmReporter$new())', 'testthat::test_file(system.file(\"tests\", \"testthat\", \"test-JAGS-posterior-extraction.R\", package=\"BayesTools\"), reporter=testthat::LlmReporter$new())'), quiet=TRUE); print(covr::percent_coverage(cov)); covr::report(cov, file='coverage/index.html')"
+```
+
+- For full local coverage, use `covr::package_coverage(type = "tests")` with the same `AGENT` and `BAYESTOOLS_TEST_PROFILE` environment variables, but expect it to be slower and more fragile than the profile runner. If local `covr` fails for reasons unrelated to the changed tests, report the failure and rely on CI/Codecov for the final coverage delta.
+
 Test authoring rules:
 
 - This package uses testthat edition 3; do not add `context()`.
