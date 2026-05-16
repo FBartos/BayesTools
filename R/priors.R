@@ -447,6 +447,7 @@ prior_spike_and_slab <- function(prior_parameter,
     stop("'prior_parameter' must be a prior distribution")
   if(!is.prior(prior_inclusion))
     stop("'prior_inclusion' must be a prior distribution")
+  .check_spike_and_slab_inclusion_prior(prior_inclusion)
   .check_prior_weight(prior_weights)
   if(is.prior.point(prior_inclusion) && (prior_inclusion$parameters[["location"]] < 0 | prior_inclusion$parameters[["location"]] > 1))
     stop("The probability parameter of 'prior_inclusion' must be within 0 and 1.")
@@ -498,6 +499,27 @@ prior_spike_and_slab <- function(prior_parameter,
   }
 
   return(mixture_output)
+}
+
+.check_spike_and_slab_inclusion_prior <- function(prior_inclusion){
+
+  scalar_probability_prior <- is.prior.simple(prior_inclusion) &&
+    !is.prior.vector(prior_inclusion) &&
+    !is.prior.factor(prior_inclusion) &&
+    !is.prior.simplex(prior_inclusion) &&
+    !is.prior.weightfunction(prior_inclusion) &&
+    !is.prior.mixture(prior_inclusion) &&
+    !is.prior.spike_and_slab(prior_inclusion) &&
+    !is.prior.PET(prior_inclusion) &&
+    !is.prior.PEESE(prior_inclusion) &&
+    !is_prior_phacking(prior_inclusion) &&
+    !is_prior_bias(prior_inclusion)
+
+  if(!scalar_probability_prior){
+    stop("'prior_inclusion' must be a scalar probability prior.", call. = FALSE)
+  }
+
+  invisible(TRUE)
 }
 
 # Helper functions to extract variable and inclusion from spike_and_slab mixture structure
@@ -1354,10 +1376,13 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
       if(component$scale == "omega"){
         mcdf(component$prior, q)
       }else{
-        p <- numeric(length(q))
-        p[q <= 0] <- 0
-        inside <- q > 0
-        p[inside] <- mcdf(component$prior, log(q[inside]))
+        p <- rep(NA_real_, length(q))
+        q_known <- !is.na(q)
+        p[q_known & q <= 0] <- 0
+        inside <- q_known & q > 0
+        if(any(inside)){
+          p[inside] <- mcdf(component$prior, log(q[inside]))
+        }
         p
       }
     }
@@ -1391,7 +1416,7 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
 
   switch(
     component$type,
-    "point" = qpoint(p, location = component$location),
+    "point" = ifelse(is.na(p), NA_real_, component$location),
     "beta"  = stats::qbeta(p, shape1 = component$alpha, shape2 = component$beta),
     "prior" = {
       if(component$scale == "omega"){
@@ -1533,7 +1558,13 @@ rng.prior   <- function(x, n, ...){
 
   if(is.prior.spike_and_slab(prior)){
 
-    inclusion <- stats::rbinom(n, size = 1, prob = rng(.get_spike_and_slab_inclusion(prior), n))
+    inclusion_prob <- rng(.get_spike_and_slab_inclusion(prior), n)
+    if(!is.numeric(inclusion_prob) || !is.null(dim(inclusion_prob)) || length(inclusion_prob) != n ||
+       anyNA(inclusion_prob) || any(!is.finite(inclusion_prob)) ||
+       any(inclusion_prob < 0 | inclusion_prob > 1)){
+      stop("'prior_inclusion' must generate scalar probabilities within 0 and 1.", call. = FALSE)
+    }
+    inclusion <- stats::rbinom(n, size = 1, prob = inclusion_prob)
 
     if(sample_components)
       return(inclusion)
@@ -2056,10 +2087,11 @@ quant.prior <- function(x, p, ...){
     return(.prior_simple_base_p(prior, q, lower.tail = TRUE))
   }
 
-  p        <- numeric(length(q))
-  q_lower  <- q < prior$truncation[["lower"]]
-  q_higher <- q > prior$truncation[["upper"]]
-  q_inside <- !q_lower & !q_higher
+  p        <- rep(NA_real_, length(q))
+  q_known  <- !is.na(q)
+  q_lower  <- q_known & q < prior$truncation[["lower"]]
+  q_higher <- q_known & q > prior$truncation[["upper"]]
+  q_inside <- q_known & !q_lower & !q_higher
 
   p[q_lower]  <- 0
   p[q_higher] <- 1
@@ -2082,10 +2114,11 @@ quant.prior <- function(x, p, ...){
     return(.prior_simple_base_p(prior, q, lower.tail = FALSE))
   }
 
-  p        <- numeric(length(q))
-  q_lower  <- q < prior$truncation[["lower"]]
-  q_higher <- q > prior$truncation[["upper"]]
-  q_inside <- !q_lower & !q_higher
+  p        <- rep(NA_real_, length(q))
+  q_known  <- !is.na(q)
+  q_lower  <- q_known & q < prior$truncation[["lower"]]
+  q_higher <- q_known & q > prior$truncation[["upper"]]
+  q_inside <- q_known & !q_lower & !q_higher
 
   p[q_lower]  <- 1
   p[q_higher] <- 0

@@ -90,6 +90,23 @@ test_that("prior_spike_and_slab() preserves model prior weights", {
   expect_false("prior_weights" %in% names(p_ss))
 })
 
+test_that("prior_spike_and_slab() requires scalar inclusion probability priors", {
+  expect_error(
+    prior_spike_and_slab(
+      prior_parameter = prior("normal", list(0, 1)),
+      prior_inclusion = prior("mpoint", list(0.5, 2))
+    ),
+    "scalar probability prior"
+  )
+  expect_error(
+    prior_spike_and_slab(
+      prior_parameter = prior("normal", list(0, 1)),
+      prior_inclusion = prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, 1)))
+    ),
+    "scalar probability prior"
+  )
+})
+
 
 test_that(".set_spike_and_slab_variable_attr() sets attributes correctly", {
   p_ss <- prior_spike_and_slab(
@@ -611,6 +628,7 @@ test_that("cdf() handles truncated priors correctly", {
   expect_true(cdf(p, 0) > 0)
   expect_true(cdf(p, -3) == 0)  # Below truncation
   expect_true(cdf(p, 3) >= 1 - 1e-6)  # Above truncation
+  expect_equal(cdf(p, c(NA_real_, -3, 0, 3)), c(NA_real_, 0, cdf(p, 0), 1))
 })
 
 
@@ -637,6 +655,7 @@ test_that("ccdf() handles truncated priors correctly", {
   p <- prior("normal", list(0, 1), truncation = list(-2, 2))
   expect_true(ccdf(p, 0) > 0)
   expect_true(ccdf(p, 3) == 0)  # Above truncation
+  expect_equal(ccdf(p, c(NA_real_, -3, 0, 3)), c(NA_real_, 1, ccdf(p, 0), 0))
 })
 
 
@@ -940,6 +959,8 @@ test_that("log_omega weightfunction priors expose exact transformed marginals", 
 
   expect_equal(mcdf(p_wf, q), expected_cdf, tolerance = 1e-12)
   expect_equal(mccdf(p_wf, q), 1 - expected_cdf, tolerance = 1e-12)
+  expect_true(all(is.na(mcdf(p_wf, NA_real_))))
+  expect_true(all(is.na(mccdf(p_wf, NA_real_))))
 
   x <- c(0, .5, 1, 2)
   expected_lpdf <- cbind(
@@ -962,6 +983,7 @@ test_that("log_omega weightfunction priors expose exact transformed marginals", 
     ),
     tolerance = 1e-12
   )
+  expect_equal(mquant(p_wf, 0)[1, 1], 1)
 
   lognormal_mean <- exp(0.25 + 0.5^2 / 2)
   lognormal_var  <- (exp(0.5^2) - 1) * exp(2 * 0.25 + 0.5^2)

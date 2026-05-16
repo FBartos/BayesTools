@@ -179,8 +179,8 @@ ensemble_inference_table <- function(inference, parameters, logBF = FALSE, BF01 
   # check input
   check_char(parameters, "parameters", check_length = 0)
   check_list(inference, "inference", check_names = parameters, all_objects = TRUE, allow_other = TRUE)
-  check_bool(logBF, "logBF")
-  check_bool(BF01,  "BF01")
+  check_bool(logBF, "logBF", allow_NA = FALSE)
+  check_bool(BF01,  "BF01",  allow_NA = FALSE)
   check_char(title, "title", allow_NULL = TRUE)
   check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
   check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
@@ -248,12 +248,13 @@ ensemble_summary_table <- function(models, parameters, logBF = FALSE, BF01 = FAL
       names(parameters) <- parameters
     }
   }
-  check_bool(logBF, "logBF")
-  check_bool(BF01,  "BF01")
+  check_bool(logBF, "logBF", allow_NA = FALSE)
+  check_bool(BF01,  "BF01",  allow_NA = FALSE)
   check_char(title, "title", allow_NULL = TRUE)
   check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
   check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
-  check_bool(short_name, "short_name")
+  check_bool(remove_spike_0, "remove_spike_0", allow_NA = FALSE)
+  check_bool(short_name, "short_name", allow_NA = FALSE)
 
 
   # create the output
@@ -311,7 +312,8 @@ ensemble_diagnostics_table <- function(models, parameters, title = NULL, footnot
   check_char(title, "title", allow_NULL = TRUE)
   check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
   check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
-  check_bool(short_name, "short_name")
+  check_bool(remove_spike_0, "remove_spike_0", allow_NA = FALSE)
+  check_bool(short_name, "short_name", allow_NA = FALSE)
 
   # create the output
   ensemble_table <- .ensemble_table_foundation(models, parameters, remove_spike_0, short_name)
@@ -417,8 +419,8 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
   check_list(samples, "samples", check_names = parameters, all_objects = TRUE, allow_other = TRUE)
   check_list(inference, "inference", check_names = parameters, all_objects = TRUE, allow_other = TRUE)
   check_real(probs, "probs", lower = 0, upper = 1, check_length = 0, allow_NULL = TRUE)
-  check_bool(logBF, "logBF")
-  check_bool(BF01,  "BF01")
+  check_bool(logBF, "logBF", allow_NA = FALSE)
+  check_bool(BF01,  "BF01",  allow_NA = FALSE)
   check_char(title, "title", allow_NULL = TRUE)
   check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
   check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
@@ -733,7 +735,8 @@ model_summary_table <- function(model, model_description = NULL, title = NULL, f
   check_real(model_inference[["post_prob"]],    "model_inference:post_prob",   lower = 0, upper = 1)
   check_real(model_inference[["inclusion_BF"]], "model_inference:inclusion_BF", lower = 0)
   check_list(model_description, "model_description", allow_NULL = TRUE)
-  check_bool(short_name, "short_name")
+  check_bool(remove_spike_0, "remove_spike_0", allow_NA = FALSE)
+  check_bool(short_name, "short_name", allow_NA = FALSE)
   check_char(title, "title", allow_NULL = TRUE)
   check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
   check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
@@ -841,8 +844,8 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
   check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
   check_real(probs, "probs", lower = 0, upper = 1, check_length = 0)
-  check_bool(remove_spike_0, "remove_spike_0")
-  check_bool(conditional, "conditional")
+  check_bool(remove_spike_0, "remove_spike_0", allow_NA = FALSE)
+  check_bool(conditional, "conditional", allow_NA = FALSE)
   check_bool(transform_factors, "transform_factors")
   check_bool(transform_orthonormal, "transform_orthonormal")
   check_bool(formula_prefix, "formula_prefix")
@@ -1410,8 +1413,8 @@ runjags_inference_table  <- function(fit, title = NULL, footnotes = NULL, warnin
   check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
   check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
   check_bool(formula_prefix, "formula_prefix")
-  check_bool(logBF, "logBF")
-  check_bool(BF01,  "BF01")
+  check_bool(logBF, "logBF", allow_NA = FALSE)
+  check_bool(BF01,  "BF01",  allow_NA = FALSE)
   check_bool(BF_diagnostics, "BF_diagnostics")
   BF_diagnostic_columns <- .normalize_diagnostic_columns(BF_diagnostic_columns, .JAGS_BF_diagnostic_columns(), "BF_diagnostic_columns")
   BF_diagnostics        <- length(BF_diagnostic_columns) > 0
@@ -1654,8 +1657,8 @@ runjags_inference_empty_table <- function(title = NULL, footnotes = NULL, warnin
   check_char(title, "title", allow_NULL = TRUE)
   check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
   check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
-  check_bool(logBF, "logBF")
-  check_bool(BF01,  "BF01")
+  check_bool(logBF, "logBF", allow_NA = FALSE)
+  check_bool(BF01,  "BF01",  allow_NA = FALSE)
   check_bool(BF_diagnostics, "BF_diagnostics")
   BF_diagnostic_columns <- .normalize_diagnostic_columns(BF_diagnostic_columns, .JAGS_BF_diagnostic_columns(), "BF_diagnostic_columns")
   BF_diagnostics        <- length(BF_diagnostic_columns) > 0
@@ -1838,8 +1841,8 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
   BF <- as.numeric(BF)
   names(BF) <- BF_names
   check_real(BF, "BF", lower = 0, check_length = FALSE, allow_NA = TRUE)
-  check_bool(logBF, "logBF")
-  check_bool(BF01,  "BF01")
+  check_bool(logBF, "logBF", allow_NA = FALSE)
+  check_bool(BF01,  "BF01",  allow_NA = FALSE)
 
   if(BF01){
     BF   <- 1/BF
@@ -2205,7 +2208,7 @@ add_column <- function(table, column_title, column_values, column_position = NUL
     column_position <- ncol(table) + 1
   }
   if(is.null(column_type)){
-    if(all(.is.wholenumber(column_values))){
+    if(is.numeric(column_values) && !all(is.na(column_values)) && all(.is.wholenumber(column_values, na.rm = TRUE))){
       column_type <- "integer"
     }else if(is.numeric(column_values)){
       column_type <- "estimate"
@@ -2289,8 +2292,8 @@ update.BayesTools_table <- function(object, title = NULL, footnotes = NULL, warn
   check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
   check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
   check_char(remove_parameters, "remove_parameters", check_length = 0, allow_NULL = TRUE)
-  check_bool(logBF, "logBF")
-  check_bool(BF01,  "BF01")
+  check_bool(logBF, "logBF", allow_NA = FALSE)
+  check_bool(BF01,  "BF01",  allow_NA = FALSE)
 
   if(!is.null(footnotes)){
     attr(object, "footnotes") <- c(attr(object, "footnotes"), footnotes)

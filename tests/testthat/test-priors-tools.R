@@ -45,6 +45,11 @@ test_that("Prior handling works", {
   expect_error(prior("normal", list("a", 1)), "The 'mean' must be a numeric vector of length 1.")
   expect_error(prior("normal", list(0, "location" = 1)), "Parameters 'location' are not supported for a normal distribution.")
   expect_error(prior("normal", list(0, 1), list(Inf, -Inf)), "The lower truncation point must be lower than the upper truncation points.")
+  expect_error(prior("normal", list(NA_real_, 1)), "must be defined")
+  expect_error(prior("normal", list(Inf, 1)), "must be finite")
+  expect_error(prior("normal", list(0, NA_real_)), "must be defined")
+  expect_error(prior("bernoulli", list(NA_real_)), "must be defined")
+  expect_error(prior("normal", list(0, 1), list(lower = NA_real_, upper = Inf)), "cannot contain NA")
   expect_error(prior("lognormal", list(0, 1), list(-5, Inf)), "Lower truncation point must be larger or equal to 0.")
   expect_error(prior("beta", list(0, 1), list(0, 2)), "Upper truncation point must be smaller or equal to 1.")
   expect_error(prior("normal", list(0, -1)), "The 'sd' must be positive.")
@@ -413,6 +418,10 @@ test_that(".check_and_set_truncation works correctly", {
     BayesTools:::.check_and_set_truncation(list(-Inf, 2), upper = 1),
     "Upper truncation point must be smaller or equal to 1"
   )
+  expect_error(
+    BayesTools:::.check_and_set_truncation(list(lower = NA_real_, upper = Inf)),
+    "cannot contain NA"
+  )
 
 })
 
@@ -437,6 +446,8 @@ test_that(".check_parameter works correctly", {
     BayesTools:::.check_parameter(c(1, 2), "param", length = 3),
     "must be a numeric vector of length 3"
   )
+  expect_error(BayesTools:::.check_parameter(NA_real_, "param"), "must be defined")
+  expect_error(BayesTools:::.check_parameter(Inf, "param"), "must be finite")
 
 })
 

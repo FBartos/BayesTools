@@ -70,6 +70,8 @@ test_that(".check_JAGS_syntax validates syntax correctly", {
 
   # Test with valid syntax
   expect_silent(JAGS_add_priors("model{}", list(mu = prior("normal", list(0, 1)))))
+  expect_equal(JAGS_add_priors(NULL, list()), "model{}")
+  expect_match(JAGS_add_priors(NULL, list(mu = prior("normal", list(0, 1)))), "^model\\{")
 
   # Test with missing "model" keyword
   expect_error(
@@ -142,6 +144,26 @@ test_that("required packages are checked locally and on parallel workers", {
     fixed = TRUE
   )
 
+})
+
+test_that("JAGS_fit rejects unrecognized formula_scale_list entries", {
+
+  skip_if_not_installed("runjags")
+
+  data <- data.frame(x = c(-1, 0, 1))
+  expect_error(
+    JAGS_fit(
+      model_syntax = "model{}",
+      formula_list = list(mu = ~ x),
+      formula_data_list = list(mu = data),
+      formula_prior_list = list(mu = list(
+        intercept = prior("normal", list(0, 1)),
+        x = prior("normal", list(0, 1))
+      )),
+      formula_scale_list = list(muu = list(x = TRUE))
+    ),
+    "not recognized"
+  )
 })
 
 test_that("JAGS_fit stores formula design metadata on fitted formula models", {

@@ -108,9 +108,9 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   if(any(!sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
   .bt_check_prior_random(prior_random, allow_NULL = TRUE)
-  # formula_scale can be TRUE/FALSE (apply to all) or a named list
+  # formula_scale can be TRUE/FALSE (apply to all continuous predictors) or a named list
   if(!is.null(formula_scale) && !is.logical(formula_scale) && !is.list(formula_scale)){
-    stop("'formula_scale' must be NULL, TRUE, FALSE, or a named list")
+    stop("'formula_scale' must be NULL, TRUE, FALSE, or a named list.", call. = FALSE)
   }
 
 
@@ -148,7 +148,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   if(any(!predictors %in% colnames(data)))
     stop(paste0("The ", paste0("'", predictors[!predictors %in% colnames(data)], "'", collapse = ", ")," predictor variable is missing in the data set."))
   predictors_type  <- sapply(predictors, function(predictor){
-    if(is.factor(data[,predictor]) | is.character(data[,predictor])){
+    if(is.factor(data[[predictor]]) | is.character(data[[predictor]])){
       return("factor")
     }else{
       return("continuous")
@@ -170,6 +170,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   })
 
   scale_predictors_type <- .bt_merge_predictor_types(predictors_type, random_predictors_type)
+  .bt_validate_formula_scale(formula_scale, scale_predictors_type)
 
   if(length(random_effects) > 0){
     if(any(.get_grouping_factor(names(prior_list)) != "")){
@@ -207,27 +208,13 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   check_list(prior_list, "prior_list", check_names = model_terms, allow_other = FALSE, all_objects = TRUE)
 
   # check the prior distribution for each predictor
-  # assign factor contrasts to the data based on prior distributions
-  if(any(predictors_type == "factor")){
-
-    for(factor in names(predictors_type[predictors_type == "factor"])){
-
-      # select the corresponding prior for the variable
-      this_prior <- prior_list[[factor]]
-
-      if(is.prior.treatment(this_prior)){
-        stats::contrasts(data[,factor]) <- "contr.treatment"
-      }else if(is.prior.independent(this_prior)){
-        stats::contrasts(data[,factor]) <- "contr.independent"
-      }else if(is.prior.orthonormal(this_prior)){
-        stats::contrasts(data[,factor]) <- "contr.orthonormal"
-      }else if(is.prior.meandif(this_prior)){
-        stats::contrasts(data[,factor]) <- "contr.meandif"
-      }else{
-        stop(paste0("Unsupported prior distribution defined for '", factor, "' factor variable. See '?prior_factor' for details."))
-      }
-    }
-  }
+  data <- .bt_apply_factor_prior_contrasts(
+    data = data,
+    predictors_type = predictors_type,
+    model_terms = model_terms,
+    model_terms_type = model_terms_type,
+    prior_list = prior_list
+  )
   scale_info <- list()
   if(any(predictors_type == "continuous")){
 
@@ -263,7 +250,12 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   }
 
   # get the default design matrix
-  model_frame  <- stats::model.frame(formula, data = data)
+  model_frame  <- tryCatch(
+    stats::model.frame(formula, data = data, na.action = stats::na.fail),
+    error = function(e){
+      stop("Formula predictors contain missing values.", call. = FALSE)
+    }
+  )
   model_matrix <- stats::model.matrix(model_frame, formula = formula, data = data)
   raw_column_names <- colnames(model_matrix)
 
@@ -347,12 +339,12 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
         level_names <- list()
         for(sub_term in strsplit(model_terms[i], "__xXx__")[[1]]){
           if(predictors_type[sub_term] == "factor"){
-            level_names[[sub_term]] <- levels(data[,sub_term])
+            level_names[[sub_term]] <- levels(data[[sub_term]])
           }
         }
         attr(this_prior, "level_names") <- level_names
       }else{
-        attr(this_prior, "level_names") <- levels(data[,model_terms[i]])
+        attr(this_prior, "level_names") <- levels(data[[model_terms[i]]])
       }
       attr(this_prior, "term_components") <- strsplit(model_terms[i], "__xXx__", fixed = TRUE)[[1]]
       attr(this_prior, "factor_terms") <- if(is.list(attr(this_prior, "level_names"))) {
@@ -706,6 +698,61 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   }
 
   FALSE
+}
+
+.bt_validate_formula_scale <- function(formula_scale, predictor_types){
+
+  if(is.null(formula_scale)){
+    return(invisible(NULL))
+  }
+
+  if(is.logical(formula_scale)){
+    check_bool(formula_scale, "formula_scale", allow_NA = FALSE)
+    return(invisible(NULL))
+  }
+
+  if(!is.list(formula_scale)){
+    stop("'formula_scale' must be NULL, a single TRUE or FALSE, or a named list.", call. = FALSE)
+  }
+
+  if(is.null(names(formula_scale)) || anyNA(names(formula_scale)) || any(names(formula_scale) == "")){
+    stop("'formula_scale' must be a named list.", call. = FALSE)
+  }
+
+  if(any(duplicated(names(formula_scale)))){
+    stop("'formula_scale' names must be unique.", call. = FALSE)
+  }
+
+  unknown_predictors <- setdiff(names(formula_scale), names(predictor_types))
+  if(length(unknown_predictors) > 0L){
+    stop(
+      "The '",
+      paste0(unknown_predictors, collapse = "', '"),
+      "' entries in 'formula_scale' are not predictor variables in the formula.",
+      call. = FALSE
+    )
+  }
+
+  for(predictor in names(formula_scale)){
+    check_bool(
+      formula_scale[[predictor]],
+      paste0("formula_scale[['", predictor, "']]"),
+      allow_NA = FALSE
+    )
+  }
+
+  scaled_predictors <- names(formula_scale)[vapply(formula_scale, isTRUE, logical(1))]
+  noncontinuous_predictors <- scaled_predictors[predictor_types[scaled_predictors] != "continuous"]
+  if(length(noncontinuous_predictors) > 0L){
+    stop(
+      "Only continuous predictors can be standardized; '",
+      paste0(noncontinuous_predictors, collapse = "', '"),
+      "' in 'formula_scale' is not continuous.",
+      call. = FALSE
+    )
+  }
+
+  invisible(NULL)
 }
 
 #' @title Extract Fitted JAGS Formula Design Metadata
@@ -1482,11 +1529,13 @@ JAGS_formula_design <- function(fit, parameter = NULL){
   paste0("_", labels)
 }
 
-.bt_random_effect_apply_factor_prior_contrasts <- function(data,
-                                                           predictors_type,
-                                                           model_terms,
-                                                           model_terms_type,
-                                                           prior_list){
+.bt_apply_factor_prior_contrasts <- function(data,
+                                             predictors_type,
+                                             model_terms,
+                                             model_terms_type,
+                                             prior_list,
+                                             context = "Factor predictor",
+                                             validate_direct_factor_prior = TRUE){
 
   factor_predictors <- names(predictors_type)[predictors_type == "factor"]
   if(length(factor_predictors) == 0L){
@@ -1502,6 +1551,9 @@ JAGS_formula_design <- function(fit, parameter = NULL){
 
     if(factor_name %in% names(prior_list)){
       contrast_name <- .factor_object_contrast_name(prior_list[[factor_name]])
+      if(is.null(contrast_name) && isTRUE(validate_direct_factor_prior)){
+        stop(paste0("Unsupported prior distribution defined for '", factor_name, "' factor variable. See '?prior_factor' for details."), call. = FALSE)
+      }
     }
 
     if(is.null(contrast_name)){
@@ -1525,8 +1577,8 @@ JAGS_formula_design <- function(fit, parameter = NULL){
         contrast_name <- factor_term_contrasts
       }else if(length(factor_term_contrasts) > 1L){
         stop(
-          "Random-effect factor predictor '", factor_name,
-          "' has conflicting contrast priors across random terms.",
+          context, " '", factor_name,
+          "' has conflicting contrast priors across formula terms.",
           call. = FALSE
         )
       }
@@ -1540,6 +1592,23 @@ JAGS_formula_design <- function(fit, parameter = NULL){
   }
 
   data
+}
+
+.bt_random_effect_apply_factor_prior_contrasts <- function(data,
+                                                           predictors_type,
+                                                           model_terms,
+                                                           model_terms_type,
+                                                           prior_list){
+
+  .bt_apply_factor_prior_contrasts(
+    data = data,
+    predictors_type = predictors_type,
+    model_terms = model_terms,
+    model_terms_type = model_terms_type,
+    prior_list = prior_list,
+    context = "Random-effect factor predictor",
+    validate_direct_factor_prior = FALSE
+  )
 }
 
 .bt_random_effect_term_components <- function(term){
@@ -2067,22 +2136,12 @@ JAGS_formula_design <- function(fit, parameter = NULL){
 }
 .has_expression         <- function(formula){
   # check if there is any expression in the formula
-  return(any(grepl("expression\\(", deparse(formula))))
+  return(.bt_contains_expression_call(.bt_formula_rhs(formula)))
 }
 .extract_expressions    <- function(formula){
   # extract all expressions from the formula
 
-  # Convert the formula to a character string
-  formula_string <- deparse(formula)
-
-  # Use a regex to find all instances of "expression(...)"
-  matches     <- gregexpr("expression\\(.*?\\)", formula_string)
-  expressions <- regmatches(formula_string, matches)[[1]]
-
-  # Use a regex to remove "expression(" and the closing ")"
-  expressions <- lapply(expressions, .clean_from_expression)
-
-  return(expressions)
+  return(.bt_extract_expression_bodies(.bt_formula_rhs(formula)))
 }
 .clean_from_expression  <- function(x){
   # expression to character
@@ -2092,23 +2151,84 @@ JAGS_formula_design <- function(fit, parameter = NULL){
 .remove_expressions     <- function(formula){
   # remove all expressions from the formula
 
-  # Convert the formula to a character string
-  formula_string <- paste0(deparse(formula), collapse = " ")
+  rhs_index <- .bt_formula_rhs_index(formula)
+  rhs <- .bt_remove_expression_terms(formula[[rhs_index]])
+  if(is.null(rhs)){
+    rhs <- 1
+  }
+  formula[[rhs_index]] <- rhs
 
-  # Use a regex to remove all instances of "+ expression(...)" or "expression(...) +", considering spaces and newlines
-  formula_string_clean <- gsub("\\+\\s*expression\\(.*?\\)\\s*", "", formula_string)
-  formula_string_clean <- gsub("\\s*expression\\(.*?\\)\\s*\\+", "", formula_string_clean)
-
-  # Handle the case where the expression is the first term in the formula
-  formula_string_clean <- gsub("^\\s*expression\\(.*?\\)\\s*", "", formula_string_clean)
-
-  # Handle the case where the formula reduces to just "y ~ expression(...)"
-  if(grepl("^\\s*[a-zA-Z0-9._]+\\s*~\\s*expression\\(.*?\\)\\s*$", formula_string_clean)){
-    formula_string_clean <- gsub("expression\\(.*?\\)", "1", formula_string_clean)
+  return(formula)
+}
+.bt_formula_rhs_index <- function(formula){
+  if(length(formula) == 3L) 3L else 2L
+}
+.bt_formula_rhs <- function(formula){
+  formula[[.bt_formula_rhs_index(formula)]]
+}
+.bt_is_expression_call <- function(x){
+  is.call(x) && identical(as.character(x[[1L]]), "expression")
+}
+.bt_contains_expression_call <- function(x){
+  if(.bt_is_expression_call(x)){
+    return(TRUE)
+  }
+  if(is.call(x) || is.pairlist(x)){
+    return(any(vapply(as.list(x)[-1], .bt_contains_expression_call, logical(1))))
   }
 
-  # Reconvert the cleaned string back to a formula
-  return(stats::as.formula(formula_string_clean))
+  FALSE
+}
+.bt_extract_expression_bodies <- function(x){
+  if(.bt_is_expression_call(x)){
+    return(lapply(as.list(x)[-1], function(expression_body){
+      paste0(deparse(expression_body), collapse = " ")
+    }))
+  }
+  if(is.call(x) || is.pairlist(x)){
+    return(unlist(lapply(as.list(x)[-1], .bt_extract_expression_bodies), recursive = FALSE))
+  }
+
+  list()
+}
+.bt_remove_expression_terms <- function(x){
+  if(.bt_is_expression_call(x)){
+    return(NULL)
+  }
+
+  if(is.call(x)){
+    call_name <- as.character(x[[1L]])
+    if(call_name == "+" && length(x) == 3L){
+      lhs <- .bt_remove_expression_terms(x[[2L]])
+      rhs <- .bt_remove_expression_terms(x[[3L]])
+      if(is.null(lhs)){
+        return(rhs)
+      }
+      if(is.null(rhs)){
+        return(lhs)
+      }
+      return(call("+", lhs, rhs))
+    }
+    if(call_name == "-" && length(x) == 3L){
+      lhs <- .bt_remove_expression_terms(x[[2L]])
+      rhs <- .bt_remove_expression_terms(x[[3L]])
+      if(is.null(lhs) && is.null(rhs)){
+        return(NULL)
+      }
+      if(is.null(rhs)){
+        return(lhs)
+      }
+      if(is.null(lhs)){
+        stop("expression() terms must be additive formula terms.", call. = FALSE)
+      }
+      return(call("-", lhs, rhs))
+    }
+    if(.bt_contains_expression_call(x)){
+      stop("expression() terms must be additive formula terms.", call. = FALSE)
+    }
+  }
+
+  x
 }
 .has_random_effects     <- function(formula){
   return(length(.bt_parse_random_effects(formula)$terms) > 0L)
@@ -2354,13 +2474,13 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
 
       # set the contrast
       if(is.prior.orthonormal(this_prior)){
-        stats::contrasts(data[,factor]) <- "contr.orthonormal"
+        stats::contrasts(data[[factor]]) <- "contr.orthonormal"
       }else if(is.prior.meandif(this_prior)){
-        stats::contrasts(data[,factor]) <- "contr.meandif"
+        stats::contrasts(data[[factor]]) <- "contr.meandif"
       }else if(is.prior.independent(this_prior)){
-        stats::contrasts(data[,factor]) <- "contr.independent"
+        stats::contrasts(data[[factor]]) <- "contr.independent"
       }else if(is.prior.treatment(this_prior)){
-        stats::contrasts(data[,factor]) <- "contr.treatment"
+        stats::contrasts(data[[factor]]) <- "contr.treatment"
       }
     }
   }
@@ -2386,7 +2506,12 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
   }
 
   # get the design matrix
-  model_frame  <- stats::model.frame(formula, data = data)
+  model_frame  <- tryCatch(
+    stats::model.frame(formula, data = data, na.action = stats::na.fail),
+    error = function(e){
+      stop("Formula predictors contain missing values.", call. = FALSE)
+    }
+  )
   model_matrix <- stats::model.matrix(model_frame, formula = formula, data = data)
 
   ### evaluate the design matrix on the samples -> output[data, posterior]

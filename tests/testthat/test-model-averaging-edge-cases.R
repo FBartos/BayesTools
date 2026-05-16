@@ -176,6 +176,21 @@ test_that("conditional compute_inference renormalizes alternatives but keeps ful
   )
 })
 
+test_that("compute_inference rejects invalid model-index indicators", {
+  expect_error(
+    compute_inference(c(1, 1), c(0, 0), is_null = 0),
+    "equal or higher than 1"
+  )
+  expect_error(
+    compute_inference(c(1, 1), c(0, 0), is_null = c(TRUE, NA)),
+    "cannot contain NA"
+  )
+  expect_error(
+    compute_inference(c(1, 1), c(0, 0), is_null = 1, conditional = NA),
+    "cannot contain NA"
+  )
+})
+
 test_that("ensemble_inference applies exact algebra independently per parameter", {
 
   prior_weights <- c(1, 2, 3)

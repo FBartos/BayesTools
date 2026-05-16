@@ -199,6 +199,121 @@ test_that("JAGS_formula rejects non-syntactic formula names explicitly", {
   )
 })
 
+test_that("JAGS_formula rejects malformed formula_scale input", {
+  data <- data.frame(
+    x = c(-2, -1, 0, 1, 2),
+    f = factor(c("a", "b", "a", "b", "a"))
+  )
+  prior_list <- list(
+    intercept = prior("normal", list(0, 1)),
+    x = prior("normal", list(0, 1)),
+    f = prior_factor("normal", list(0, 1), contrast = "treatment")
+  )
+
+  expect_error(
+    JAGS_formula(~ x + f, "mu", data, prior_list, formula_scale = c(TRUE, FALSE)),
+    "length '1'"
+  )
+  expect_error(
+    JAGS_formula(~ x + f, "mu", data, prior_list, formula_scale = list(TRUE)),
+    "named list"
+  )
+  expect_error(
+    JAGS_formula(~ x + f, "mu", data, prior_list, formula_scale = list(x = TRUE, x = FALSE)),
+    "unique"
+  )
+  expect_error(
+    JAGS_formula(~ x + f, "mu", data, prior_list, formula_scale = list(xx = TRUE)),
+    "not predictor variables"
+  )
+  expect_error(
+    JAGS_formula(~ x + f, "mu", data, prior_list, formula_scale = list(f = TRUE)),
+    "Only continuous predictors"
+  )
+  expect_error(
+    JAGS_formula(~ x + f, "mu", data, prior_list, formula_scale = list(x = NA)),
+    "cannot contain NA"
+  )
+  expect_error(
+    JAGS_formula(~ x + f, "mu", data, prior_list, formula_scale = list(x = 1)),
+    "logical vector"
+  )
+
+  expect_error(
+    JAGS_formula(~ x + f, "mu", data, prior_list, formula_scale = list(x = TRUE, f = FALSE)),
+    NA
+  )
+})
+
+test_that("JAGS_formula rejects missing fixed-effect predictors before row dropping", {
+  data <- data.frame(x = c(1, NA_real_, 3))
+  prior_list <- list(
+    intercept = prior("normal", list(0, 1)),
+    x = prior("normal", list(0, 1))
+  )
+
+  expect_error(
+    JAGS_formula(~ x, "mu", data, prior_list),
+    "Formula predictors contain missing values.",
+    fixed = TRUE
+  )
+
+  formula_result <- JAGS_formula(~ x, "mu", data.frame(x = c(1, 2, 3)), prior_list)
+  posterior <- coda::mcmc(
+    matrix(c(mu_intercept = 0, mu_x = 1), nrow = 1, dimnames = list(NULL, c("mu_intercept", "mu_x")))
+  )
+  expect_error(
+    JAGS_evaluate_formula(posterior, ~ x, "mu", data, formula_result$prior_list),
+    "Formula predictors contain missing values.",
+    fixed = TRUE
+  )
+})
+
+test_that("JAGS_formula handles character and interaction-only factor predictors", {
+  character_data <- data.frame(g = c("a", "b", "a", "c"))
+  factor_data <- data.frame(g = factor(character_data$g))
+  prior_list <- list(
+    intercept = prior("normal", list(0, 1)),
+    g = prior_factor("normal", list(0, 1), contrast = "treatment")
+  )
+
+  character_result <- JAGS_formula(~ g, "mu", character_data, prior_list)
+  factor_result <- JAGS_formula(~ g, "mu", factor_data, prior_list)
+
+  expect_equal(character_result$formula_design$model_matrix, factor_result$formula_design$model_matrix)
+  expect_equal(character_result$formula_design$xlevels, factor_result$formula_design$xlevels)
+
+  interaction_data <- data.frame(
+    x = c(-1, 0, 1, 2),
+    g = factor(c("a", "b", "a", "b"))
+  )
+  interaction_prior <- list(
+    intercept = prior("normal", list(0, 1)),
+    "x:g" = prior_factor("normal", list(0, 1), contrast = "treatment")
+  )
+  interaction_result <- JAGS_formula(~ x:g, "mu", interaction_data, interaction_prior)
+  expect_jags_formula_design_matches_model_matrix(
+    interaction_result$formula_design,
+    formula = ~ x:g,
+    data = interaction_data
+  )
+})
+
+test_that("formula expression terms are parsed structurally", {
+  expect_equal(.extract_expressions(~ expression(log(x))), list("log(x)"))
+  expect_equal(.extract_expressions(y ~ z + expression(log(x)) + expression(exp(b))), list("log(x)", "exp(b)"))
+  expect_equal(.remove_expressions(y ~ expression(log(x))), formula(y ~ 1), ignore_formula_env = TRUE)
+  expect_equal(.remove_expressions(~ z + expression(log(x))), formula(~ z), ignore_formula_env = TRUE)
+
+  expression_result <- JAGS_formula(
+    y ~ expression(log(x)),
+    "mu",
+    data.frame(x = c(1, 2, 3)),
+    list(intercept = prior("normal", list(0, 1)))
+  )
+  expect_equal(expression_result$formula_design$transformed_terms, list("log(x)"))
+})
+
 test_that("JAGS_evaluate_formula matches lm predictions with automatic scaling", {
 
   data <- bayestools_oracle_gaussian_regression_data()

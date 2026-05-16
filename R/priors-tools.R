@@ -44,6 +44,8 @@
     }
   }
 
+  check_real(truncation$lower, "truncation$lower", check_length = 1, allow_NA = FALSE)
+  check_real(truncation$upper, "truncation$upper", check_length = 1, allow_NA = FALSE)
 
   if(lower != -Inf){
     # change the default value to a distribution specific value or throw an error of misspecified by user
@@ -85,6 +87,11 @@
     if(!is.numeric(parameter) | !is.vector(parameter) | length(parameter) != length)
       stop(paste0("The '", name, "' must be a numeric vector of length ", length, "."), call. = FALSE)
   }
+
+  if(anyNA(parameter))
+    stop(paste0("The '", name, "' must be defined."), call. = FALSE)
+  if(any(!is.finite(parameter)))
+    stop(paste0("The '", name, "' must be finite."), call. = FALSE)
 }
 .check_parameter_positive  <- function(parameter, name, include_zero = FALSE){
 
@@ -92,11 +99,15 @@
   if(is.expression(parameter))
     return()
 
+  check_real(parameter, name, check_length = 0, allow_NA = FALSE)
+  if(any(!is.finite(parameter)))
+    stop(paste0("The '", name, "' must be finite."), call. = FALSE)
+
   if(include_zero){
-    if(any(parameter < 0))
+    if(any(parameter < 0, na.rm = TRUE))
       stop(paste0("The '", name, "' must be non-negative."), call. = FALSE)
   }else{
-    if(any(parameter <= 0))
+    if(any(parameter <= 0, na.rm = TRUE))
       stop(paste0("The '", name, "' must be positive."), call. = FALSE)
   }
 }
@@ -106,11 +117,15 @@
   if(is.expression(parameter))
     return()
 
+  check_real(parameter, name, check_length = 0, allow_NA = FALSE)
+  if(any(!is.finite(parameter)))
+    stop(paste0("The '", name, "' must be finite."), call. = FALSE)
+
   if(include_zero){
-    if(any(parameter > 0))
+    if(any(parameter > 0, na.rm = TRUE))
       stop(paste0("The '", name, "' must be non-positive."), call. = FALSE)
   }else{
-    if(any(parameter >= 0))
+    if(any(parameter >= 0, na.rm = TRUE))
       stop(paste0("The '", name, "' must be negative."), call. = FALSE)
   }
 }
@@ -132,6 +147,9 @@
   if(!is.numeric(parameter))
     stop(paste0("The '", name, "' must be a numeric vector of length 1."), call. = FALSE)
 
+  if(!is.finite(parameter))
+    stop(paste0("The '", name, "' must be finite."), call. = FALSE)
+
   if(!.is.wholenumber(parameter))
     stop(paste0("The '", name ,"' must be an integer"), call. = FALSE)
 
@@ -144,11 +162,15 @@
   if(is.expression(parameter))
     return()
 
+  check_real(parameter, name, check_length = 0, allow_NA = FALSE)
+  if(any(!is.finite(parameter)))
+    stop(paste0("The '", name, "' must be finite."), call. = FALSE)
+
   if(include_bounds){
-    if(any(parameter < lower) | any(parameter > upper))
+    if(any(parameter < lower, na.rm = TRUE) | any(parameter > upper, na.rm = TRUE))
       stop(paste0("The '", name, "' must be higher than ", lower, " and lower than ", upper, "."), call. = FALSE)
   }else{
-    if(any(parameter <= lower) | any(parameter >= upper))
+    if(any(parameter <= lower, na.rm = TRUE) | any(parameter >= upper, na.rm = TRUE))
       stop(paste0("The '", name, "' must be higher or equal to than ", lower, " and lower or equal to than ", upper, "."), call. = FALSE)
   }
 }

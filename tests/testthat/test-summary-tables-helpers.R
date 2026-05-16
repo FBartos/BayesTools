@@ -73,6 +73,8 @@ test_that("format_BF input validation works", {
   expect_error(format_BF("3"), "must be a numeric")
   expect_error(format_BF(3, logBF = "TRUE"), "must be a logical")
   expect_error(format_BF(3, BF01 = "TRUE"), "must be a logical")
+  expect_error(format_BF(3, logBF = NA), "cannot contain NA")
+  expect_error(format_BF(3, BF01 = NA), "cannot contain NA")
 
 })
 
@@ -734,6 +736,19 @@ test_that("ensemble summary and diagnostics tables preserve model alignment", {
   )
   diagnostics <- ensemble_diagnostics_table(models, c(theta = "theta", beta = "beta"))
 
+  expect_error(
+    ensemble_summary_table(models, c(theta = "theta", beta = "beta"), remove_spike_0 = NA),
+    "cannot contain NA"
+  )
+  expect_error(
+    ensemble_diagnostics_table(models, c(theta = "theta", beta = "beta"), remove_spike_0 = NA),
+    "cannot contain NA"
+  )
+  expect_error(
+    model_summary_table(models[[1]], remove_spike_0 = NA),
+    "cannot contain NA"
+  )
+
   expect_equal(summary$Model, c(3, 1, 2))
   expect_equal(summary$prior_prob, c(0.20, 0.30, 0.50), tolerance = 1e-12)
   expect_equal(summary$marglik, log(c(2, 4, 3)), tolerance = 1e-12)
@@ -823,6 +838,10 @@ test_that("add_column works correctly", {
   expect_true("Category" %in% names(result5))
   expect_equal(attr(result5, "type")[4], "string")
   test_reference_table(result5, "add_column_string.txt")
+
+  all_missing <- add_column(test_data, "Missing", c(NA_real_, NA_real_))
+  expect_equal(attr(all_missing, "type")[4], "estimate")
+  expect_true(all(is.na(all_missing$Missing)))
 
 })
 

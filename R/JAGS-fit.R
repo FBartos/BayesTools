@@ -230,7 +230,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   dots <- list(...)
 
   ### check input
-  .check_JAGS_syntax(model_syntax)
+  model_syntax <- .check_JAGS_syntax(model_syntax)
   JAGS_check_and_list_fit_settings(chains, adapt, burnin, sample, thin, autofit, parallel, cores, silent, seed)
   autofit_control <- JAGS_check_and_list_autofit_settings(autofit_control)
   check_char(add_parameters, "add_parameters", check_length = 0, allow_NULL = TRUE)
@@ -240,7 +240,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   check_list(formula_data_list, "formula_data_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
   check_list(formula_prior_list, "formula_prior_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
   check_list(formula_random_prior_list, "formula_random_prior_list", check_names = names(formula_list), allow_other = FALSE, all_objects = FALSE, allow_NULL = TRUE)
-  check_list(formula_scale_list, "formula_scale_list", allow_NULL = TRUE)
+  check_list(formula_scale_list, "formula_scale_list", check_names = names(formula_list), allow_other = FALSE, all_objects = FALSE, allow_NULL = TRUE)
   if(!is.null(formula_random_prior_list)){
     for(parameter in names(formula_random_prior_list)){
       .bt_check_prior_random(formula_random_prior_list[[parameter]])
@@ -766,6 +766,8 @@ JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 5
 #' @export
 JAGS_add_priors           <- function(syntax, prior_list){
 
+  syntax <- .check_JAGS_syntax(syntax)
+
   # return the original syntax in case that no prior was specified
   if(length(prior_list) == 0){
     return(syntax)
@@ -775,7 +777,6 @@ JAGS_add_priors           <- function(syntax, prior_list){
   if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
   .check_prior_list_unique_names(prior_list)
-  .check_JAGS_syntax(syntax)
 
   # identify parts of the syntax
   opening_bracket <- regexpr("{", syntax, fixed = TRUE)[1]
@@ -1283,6 +1284,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
     stop("syntax must be a JAGS model syntax")
   if(!grepl("}", syntax, fixed = TRUE))
     stop("syntax must be a JAGS model syntax")
+  return(syntax)
 }
 .JAGS_parameter_to_precision <- function(parameter){
 

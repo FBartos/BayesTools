@@ -45,13 +45,13 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL, condition
 
   check_real(prior_weights, "prior_weights", lower = 0, check_length = 0)
   check_real(margliks,   "margliks", check_length = length(prior_weights))
-  check_bool(conditional, "conditional")
+  check_bool(conditional, "conditional", allow_NA = FALSE)
   if(!is.null(is_null)){
     if(is.numeric(is_null)){
-      check_int(is_null, "is_null", lower = 0, upper = length(prior_weights), check_length = 0)
-      is_null <- c(1:length(prior_weights)) %in% is_null
+      check_int(is_null, "is_null", lower = 1, upper = length(prior_weights), check_length = 0)
+      is_null <- seq_along(prior_weights) %in% is_null
     }else if(is.logical(is_null)){
-      check_bool(is_null, "is_null", check_length = length(prior_weights))
+      check_bool(is_null, "is_null", check_length = length(prior_weights), allow_NA = FALSE)
     }else{
       stop("'is_null' argument must be either logical vector, integer vector, or NULL.")
     }
@@ -1554,9 +1554,9 @@ inclusion_BF         <- function(prior_probs, post_probs, margliks, is_null){
 
   if(is.numeric(is_null)){
     check_int(is_null, "is_null", lower = 1, upper = length(prior_probs), check_length = 0)
-    is_null <- c(1:length(prior_probs)) %in% is_null
+    is_null <- seq_along(prior_probs) %in% is_null
   }else if(is.logical(is_null)){
-    check_bool(is_null, "is_null", check_length = length(prior_probs))
+    check_bool(is_null, "is_null", check_length = length(prior_probs), allow_NA = FALSE)
   }else{
     stop("'is_null' argument must be either logical vector, integer vector, or NULL.")
   }
