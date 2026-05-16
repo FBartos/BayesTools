@@ -48,6 +48,109 @@ make_adversarial_indicator_fit <- function(indicator = c(rep(1, 9900), rep(0, 10
   fit
 }
 
+make_random_summary_fit <- function(formula, data, prior_random_list,
+                                    extra_raw_columns = character()){
+
+  formula_result <- JAGS_formula(
+    formula = formula,
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random_list
+  )
+  prior_list <- c(
+    formula_result$prior_list,
+    list(sigma = prior("gamma", list(2, 2)))
+  )
+  column_names <- unique(c(
+    "sigma",
+    names(formula_result$prior_list),
+    extra_raw_columns
+  ))
+  samples <- matrix(
+    seq_len(20L * length(column_names)) / 100,
+    nrow = 20L,
+    ncol = length(column_names)
+  )
+  colnames(samples) <- column_names
+  fit <- structure(
+    list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+
+  fit
+}
+
+make_raw_random_summary_fit <- function(){
+
+  data <- data.frame(
+    x = c(-1, 0, 1, 2),
+    id = factor(c("a", "a", "b", "b"), levels = c("a", "b"))
+  )
+  formula <- ~ 1 + us(1 + x | id)
+  prior_random_list <- prior_random(
+    id = random_block(
+      sd = prior("gamma", list(2, 2)),
+      cor = prior_lkj(eta = 1),
+      monitor = random_monitor(
+        latent = TRUE,
+        coefficients = TRUE,
+        correlation = TRUE,
+        lkj_primitives = TRUE
+      )
+    )
+  )
+  design <- JAGS_formula(
+    formula = formula,
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random_list
+  )$formula_design
+  random_term <- design$random_effects[[1]]
+  raw_columns <- c(
+    as.vector(BayesTools:::.bt_random_effect_latent_names(
+      random_term,
+      n_groups = random_term$n_groups,
+      n_columns = random_term$n_columns
+    )),
+    as.vector(BayesTools:::.bt_random_effect_coefficient_names(
+      random_term,
+      n_groups = random_term$n_groups,
+      n_columns = random_term$n_columns
+    )),
+    paste0(random_term$parameter_stem, "_xRE_CORx_R[1,2]"),
+    paste0(random_term$parameter_stem, "_xRE_CORx_L[2,1]")
+  )
+
+  make_random_summary_fit(
+    formula = formula,
+    data = data,
+    prior_random_list = prior_random_list,
+    extra_raw_columns = raw_columns
+  )
+}
+
+make_two_block_random_summary_fit <- function(){
+
+  data <- data.frame(
+    id = factor(c("a", "a", "b", "b"), levels = c("a", "b")),
+    site = factor(c("s1", "s2", "s1", "s2"), levels = c("s1", "s2"))
+  )
+  make_random_summary_fit(
+    formula = ~ 1 +
+      random(1 | id, name = "id", covariance = "diag") +
+      random(1 | site, name = "site", covariance = "diag"),
+    data = data,
+    prior_random_list = prior_random(
+      id = random_block(sd = prior("gamma", list(2, 2))),
+      site = random_block(sd = prior("gamma", list(2, 2)))
+    )
+  )
+}
+
 expect_summary_row_order <- function(table, rows) {
   expect_equal(rownames(table), rows)
 }
@@ -152,6 +255,50 @@ test_that("runjags_inference_table supports selected BF diagnostics from argumen
   expect_equal(attr(inference_option[["MCMC_error"]], "name"), "error(Post. prob.)")
   expect_equal(attr(inference_option[["BF_error_percent"]], "name"), "error%(Inclusion BF)")
   expect_null(attr(inference_option, "footnotes"))
+})
+
+test_that("raw random-effect table filtering honors semantic aliases", {
+
+  skip_if_not_installed("runjags")
+
+  fit <- make_raw_random_summary_fit()
+  raw_samples <- JAGS_estimates_table(
+    fit,
+    random_effects_summary = "raw",
+    return_samples = TRUE
+  )
+  expect_true(any(grepl("z\\(", colnames(raw_samples))))
+  expect_true(any(grepl("coef\\(", colnames(raw_samples))))
+  expect_true(any(grepl("cor\\(", colnames(raw_samples))))
+
+  removed_random <- JAGS_estimates_table(
+    fit,
+    random_effects_summary = "raw",
+    remove_parameters = "random",
+    return_samples = TRUE
+  )
+  expect_false(any(grepl("z\\(", colnames(removed_random))))
+  expect_false(any(grepl("coef\\(", colnames(removed_random))))
+  expect_false(any(grepl("cor\\(", colnames(removed_random))))
+  expect_true(any(grepl("intercept", colnames(removed_random), fixed = TRUE)))
+  expect_true("sigma" %in% colnames(removed_random))
+})
+
+test_that("keep_random_effects preserves selected random rows with keep_parameters", {
+
+  skip_if_not_installed("runjags")
+
+  fit <- make_two_block_random_summary_fit()
+  kept <- JAGS_estimates_table(
+    fit,
+    keep_parameters = "sigma",
+    keep_random_effects = "id",
+    return_samples = TRUE
+  )
+
+  expect_true("sigma" %in% colnames(kept))
+  expect_true(any(grepl("sd\\(intercept \\| id\\)", colnames(kept))))
+  expect_false(any(grepl("sd\\(intercept \\| site\\)", colnames(kept))))
 })
 
 

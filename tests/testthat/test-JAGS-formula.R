@@ -352,25 +352,27 @@ test_that("Random effects handling functions work", {
   expect_true(.has_random_effects(f6))
   expect_true(.has_random_effects(f7))
 
-  t1 <- list("1 | id")
-  t2 <- list("1 + x_cont1 | id")
-  t3 <- list("x_cont1 | id", "0 + x_cont2 || group")
-  attr(t1[[1]], "grouping_factor") <- "id"
-  attr(t2[[1]], "grouping_factor") <- "id"
-  attr(t3[[1]], "grouping_factor") <- "id"
-  attr(t3[[2]], "grouping_factor") <- "group"
-  attr(t1[[1]], "independent") <- FALSE
-  attr(t2[[1]], "independent") <- FALSE
-  attr(t3[[1]], "independent") <- FALSE
-  attr(t3[[2]], "independent") <- TRUE
+  parsed_f3 <- .bt_parse_random_effects(f3)$terms
+  parsed_f4 <- .bt_parse_random_effects(f4)$terms
+  parsed_f7 <- .bt_parse_random_effects(f7)$terms
 
-  expect_equal(.extract_random_effects(f1), list())
-  expect_equal(.extract_random_effects(f2), list())
-  expect_equal(.extract_random_effects(f3), t1)
-  expect_equal(.extract_random_effects(f4), t2)
-  expect_equal(.extract_random_effects(f5), t2)
-  expect_equal(.extract_random_effects(f6), t2)
-  expect_equal(.extract_random_effects(f7), t3)
+  expect_length(parsed_f3, 1L)
+  expect_equal(parsed_f3[[1]]$term_formula, ~ 1, ignore_formula_env = TRUE)
+  expect_equal(parsed_f3[[1]]$group_label, "id")
+  expect_false(isTRUE(parsed_f3[[1]]$independent))
+
+  expect_length(parsed_f4, 1L)
+  expect_equal(parsed_f4[[1]]$term_formula, ~ 1 + x_cont1, ignore_formula_env = TRUE)
+  expect_equal(parsed_f4[[1]]$group_label, "id")
+  expect_false(isTRUE(parsed_f4[[1]]$independent))
+
+  expect_length(parsed_f7, 2L)
+  expect_equal(parsed_f7[[1]]$term_formula, ~ x_cont1, ignore_formula_env = TRUE)
+  expect_equal(parsed_f7[[1]]$group_label, "id")
+  expect_false(isTRUE(parsed_f7[[1]]$independent))
+  expect_equal(parsed_f7[[2]]$term_formula, ~ 0 + x_cont2, ignore_formula_env = TRUE)
+  expect_equal(parsed_f7[[2]]$group_label, "group")
+  expect_true(isTRUE(parsed_f7[[2]]$independent))
 
   expect_equal(.remove_random_effects(f1), formula( ~ 1), ignore_formula_env = TRUE)
   expect_equal(.remove_random_effects(f2), formula( ~ x_cont1), ignore_formula_env = TRUE)

@@ -1,0 +1,11 @@
+JAGS_MAJOR_VERSION ?= @JAGS_MAJOR_VERSION@
+
+PKG_CPPFLAGS=@JAGS_CFLAGS@ -D JAGS_MAJOR_FORCED=0$(JAGS_MAJOR_VERSION) -D JAGS_MAJOR_ASSUMED=0 -DR_NO_REMAP
+PKG_LIBS=@JAGS_LIBS@ @JAGS_RPATH@ -ljrmath
+
+OBJECTS = distributions/DBTLKJCPC.o \
+		  functions/BTLKJCholesky.o \
+		  lkj/BTLKJCore.o \
+		  r-lkj.o \
+		  init.o \
+		  BayesTools.o

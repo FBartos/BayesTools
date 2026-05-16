@@ -183,6 +183,13 @@ test_that("JAGS bridge helpers use natural latent weight parameters", {
     mlpdf(log_independent$weights$prior, .5),
     tolerance = 1e-12
   )
+  edge_samples <- samples
+  edge_samples[["eta[1]"]] <- 0
+  expect_equal(JAGS_marglik_priors(edge_samples, list(omega = cumulative)), -Inf)
+  expect_error(
+    JAGS_marglik_parameters(edge_samples, list(omega = cumulative)),
+    "out-of-support positive auxiliary coordinate"
+  )
 
   samples_two_sided <- c("eta[1]" = 1, "eta[2]" = 2, "eta[3]" = 3)
   expect_equal(

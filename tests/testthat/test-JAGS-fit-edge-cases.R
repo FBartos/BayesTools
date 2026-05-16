@@ -186,6 +186,231 @@ test_that("JAGS_fit stores formula design metadata on fitted formula models", {
   expect_identical(JAGS_formula_design(fit), list(mu = design))
 })
 
+test_that("JAGS_fit runs dummy structured random-effect formula models", {
+
+  skip_if_not_installed("runjags")
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+
+  sd_prior <- prior("normal", list(0, 0.5), truncation = list(lower = 0, upper = Inf))
+  rho_prior <- prior("normal", list(0, 0.5))
+  model_syntax <- "model{
+    for(i in 1:N_mu){
+      y[i] ~ dnorm(mu[i], 4)
+    }
+  }"
+
+  df_cs <- data.frame(
+    y = c(-0.2, 0.1, 0.4, 0.7, -0.1, 0.3, 0.5, 0.9),
+    x = c(-1, 0, 1, 2, -2, 0.5, 1.5, 2.5),
+    idx = factor(rep(c("t1", "t2"), 4), levels = c("t1", "t2")),
+    id = factor(rep(c("g1", "g2", "g3", "g4"), each = 2))
+  )
+
+  fit_cs <- suppressWarnings(JAGS_fit(
+    model_syntax = model_syntax,
+    data = list(y = df_cs$y),
+    formula_list = list(mu = ~ 1 + x + cs(idx | id)),
+    formula_data_list = list(mu = df_cs),
+    formula_prior_list = list(mu = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1))
+    )),
+    formula_random_prior_list = list(mu = prior_random(
+      id = random_block(
+        sd = sd_prior,
+        rho = rho_prior,
+        monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = TRUE)
+      )
+    )),
+    chains = 1,
+    adapt = 50,
+    burnin = 50,
+    sample = 100,
+    silent = TRUE,
+    seed = 101
+  ))
+
+  expect_s3_class(fit_cs, "BayesTools_fit")
+  expect_equal(attr(fit_cs, "jags_modules"), character())
+  expect_equal(JAGS_formula_design(fit_cs, "mu")$random_effects[[1]]$structure, "cs")
+  expect_true("mu__xREx__id_rho" %in% colnames(as.matrix(fit_cs$mcmc)))
+
+  df_ar1 <- data.frame(
+    y = c(-0.2, 0.1, 0.4, 0.7, -0.1, 0.3, 0.5, 0.9, 0.2, 0.6, 0.8, 1.0),
+    f = factor(rep(c("a", "b", "c"), 4), levels = c("a", "b", "c")),
+    id = factor(rep(c("g1", "g2", "g3", "g4"), each = 3))
+  )
+
+  fit_ar1 <- suppressWarnings(JAGS_fit(
+    model_syntax = model_syntax,
+    data = list(y = df_ar1$y),
+    formula_list = list(mu = ~ 1 + ar1(f | id)),
+    formula_data_list = list(mu = df_ar1),
+    formula_prior_list = list(mu = list(
+      intercept = prior("normal", list(0, 1))
+    )),
+    formula_random_prior_list = list(mu = prior_random(
+      id = random_block(
+        sd = sd_prior,
+        rho = rho_prior,
+        monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = TRUE)
+      )
+    )),
+    chains = 1,
+    adapt = 50,
+    burnin = 50,
+    sample = 100,
+    silent = TRUE,
+    seed = 102
+  ))
+
+  expect_s3_class(fit_ar1, "BayesTools_fit")
+  ar1_design <- JAGS_formula_design(fit_ar1, "mu")$random_effects[[1]]
+  expect_equal(ar1_design$structure, "ar1")
+  expect_equal(ar1_design$column_names, c("fa", "fb", "fc"))
+  expect_true("mu__xREx__id_rho" %in% colnames(as.matrix(fit_ar1$mcmc)))
+
+  df_us <- data.frame(
+    y = c(-0.2, 0.1, 0.4, 0.7, -0.1, 0.3),
+    x = c(-1, 0, 1, 2, -2, 0.5),
+    id = factor(c("g1", "g1", "g2", "g2", "g3", "g3"))
+  )
+
+  fit_us <- suppressWarnings(JAGS_fit(
+    model_syntax = model_syntax,
+    data = list(y = df_us$y),
+    formula_list = list(mu = ~ 1 + x + (1 + x | id)),
+    formula_data_list = list(mu = df_us),
+    formula_prior_list = list(mu = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1))
+    )),
+    formula_random_prior_list = list(mu = prior_random(
+      id = random_block(
+        sd = sd_prior,
+        cor = prior_lkj(eta = 1, include_correlation = FALSE)
+      )
+    )),
+    chains = 1,
+    adapt = 50,
+    burnin = 50,
+    sample = 100,
+    silent = TRUE,
+    seed = 103
+  ))
+
+  expect_s3_class(fit_us, "BayesTools_fit")
+  expect_equal(attr(fit_us, "jags_modules"), "BayesTools")
+  expect_equal(JAGS_formula_design(fit_us, "mu")$random_effects[[1]]$structure, "us")
+  expect_true(any(grepl("mu__xREx__id_xRE_CORx_L", colnames(as.matrix(fit_us$mcmc)), fixed = TRUE)))
+})
+
+test_that("JAGS_fit monitors random coefficients for observed-level prediction", {
+
+  skip_if_not_installed("runjags")
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+
+  df <- data.frame(
+    y = c(-0.2, 0.1, 0.4, 0.7, -0.1, 0.3),
+    id = factor(c("g1", "g1", "g2", "g2", "g3", "g3"))
+  )
+
+  fit <- suppressWarnings(JAGS_fit(
+    model_syntax = "model{
+      for(i in 1:N_mu){
+        y[i] ~ dnorm(mu[i], 4)
+      }
+    }",
+    data = list(y = df$y),
+    formula_list = list(mu = ~ 1 + diag(1 | id)),
+    formula_data_list = list(mu = df),
+    formula_prior_list = list(mu = list(
+      intercept = prior("normal", list(0, 1))
+    )),
+    formula_random_prior_list = list(mu = prior_random(
+      id = random_block(
+        sd = prior("gamma", list(2, 2)),
+        monitor = random_monitor(coefficients = TRUE, correlation = FALSE)
+      )
+    )),
+    chains = 1,
+    adapt = 50,
+    burnin = 50,
+    sample = 100,
+    silent = TRUE,
+    seed = 103
+  ))
+
+  posterior <- as.matrix(fit$mcmc)
+  expect_true(any(grepl("mu__xREx__id_xRE_COEFx", colnames(posterior), fixed = TRUE)))
+
+  prediction <- JAGS_evaluate_formula(
+    fit = fit,
+    formula = ~ 1 + diag(1 | id),
+    parameter = "mu",
+    data = df,
+    prior_list = attr(fit, "prior_list")
+  )
+
+  expect_equal(dim(prediction), c(nrow(df), nrow(posterior)))
+  expect_true(all(is.finite(prediction)))
+})
+
+test_that("JAGS_fit predicts observed random effects from latent monitors", {
+
+  skip_if_not_installed("runjags")
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+
+  df <- data.frame(
+    y = c(-0.2, 0.1, 0.4, 0.7, -0.1, 0.3),
+    id = factor(c("g1", "g1", "g2", "g2", "g3", "g3"))
+  )
+
+  fit <- suppressWarnings(JAGS_fit(
+    model_syntax = "model{
+      for(i in 1:N_mu){
+        y[i] ~ dnorm(mu[i], 4)
+      }
+    }",
+    data = list(y = df$y),
+    formula_list = list(mu = ~ 1 + diag(1 | id)),
+    formula_data_list = list(mu = df),
+    formula_prior_list = list(mu = list(
+      intercept = prior("normal", list(0, 1))
+    )),
+    formula_random_prior_list = list(mu = prior_random(
+      id = random_block(
+        sd = prior("gamma", list(2, 2)),
+        monitor = random_monitor(coefficients = FALSE, correlation = FALSE)
+      )
+    )),
+    chains = 1,
+    adapt = 50,
+    burnin = 50,
+    sample = 100,
+    silent = TRUE,
+    seed = 104
+  ))
+
+  posterior <- as.matrix(fit$mcmc)
+  expect_true(any(grepl("mu__xREx__id_xRE_Zx", colnames(posterior), fixed = TRUE)))
+  expect_false(any(grepl("mu__xREx__id_xRE_COEFx", colnames(posterior), fixed = TRUE)))
+
+  prediction <- JAGS_evaluate_formula(
+    fit = fit,
+    formula = ~ 1 + diag(1 | id),
+    parameter = "mu",
+    data = df,
+    prior_list = attr(fit, "prior_list")
+  )
+
+  expect_equal(dim(prediction), c(nrow(df), nrow(posterior)))
+  expect_true(all(is.finite(prediction)))
+})
+
 test_that("JAGS_fit stores formula design metadata on failed sampling objects", {
 
   skip_if_not_installed("runjags")
@@ -289,6 +514,41 @@ test_that("JAGS_check_convergence ignores indicator variables unless requested",
   expect_false(with_indicators)
   expect_match(attr(with_indicators, "errors"), "R-hat")
 
+})
+
+test_that("JAGS_check_convergence ignores add_parameters without priors", {
+
+  set.seed(2)
+  mu_values <- rnorm(100)
+  chain_1 <- cbind(mu = mu_values, "aux[1]" = rep(0, 100))
+  chain_2 <- cbind(mu = mu_values, "aux[1]" = rep(1, 100))
+  fit <- list(
+    mcmc         = coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2)),
+    summary.pars = list(mutate = NULL)
+  )
+  class(fit) <- "runjags"
+
+  prior_list <- list(mu = prior("normal", list(0, 1)))
+
+  without_aux <- JAGS_check_convergence(
+    fit,
+    prior_list    = prior_list,
+    max_Rhat     = 1.05,
+    min_ESS      = NULL,
+    max_error    = NULL,
+    max_SD_error = NULL
+  )
+  expect_false(without_aux)
+
+  expect_true(JAGS_check_convergence(
+    fit,
+    prior_list     = prior_list,
+    max_Rhat      = 1.05,
+    min_ESS       = NULL,
+    max_error     = NULL,
+    max_SD_error  = NULL,
+    add_parameters = "aux"
+  ))
 })
 
 

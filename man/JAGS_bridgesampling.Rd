@@ -15,6 +15,7 @@ JAGS_bridgesampling(
   formula_scale_list = NULL,
   add_parameters = NULL,
   add_bounds = NULL,
+  formula_random_prior_list = NULL,
   maxiter = 10000,
   silent = TRUE,
   ...
@@ -56,6 +57,12 @@ in bridgesampling but were not specified in the \code{prior_list}}
 \item{add_bounds}{list with two name vectors (\code{"lb"} and \code{"up"})
 containing lower and upper bounds of the additional parameters that were not
 specified in the \code{prior_list}}
+
+\item{formula_random_prior_list}{optional named list of \code{prior_random()}
+objects for random effects in \code{formula_list}. Bridge sampling for formula
+random effects requires the \code{prior_random()} interface because the
+stochastic bridge coordinates are the standardized latent effects and
+correlation primitives.}
 
 \item{maxiter}{maximum number of iterations for the
 \link[bridgesampling]{bridge_sampler}}

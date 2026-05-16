@@ -1167,15 +1167,18 @@ test_that("Random effects models fit correctly", {
   formula_data_list_re_int <- list(mu = data_formula)
   formula_prior_list_re_int <- list(
     mu = list(
-      "intercept"    = prior("normal", list(0, 5)),
-      "intercept|id" = prior("normal", list(0, 1), list(0, 1))
+      "intercept"    = prior("normal", list(0, 5))
     )
+  )
+  formula_random_prior_list_re_int <- list(
+    mu = prior_random(id = random_block(sd = prior("normal", list(0, 1), list(0, 1))))
   )
 
   fit_random_intercept <- JAGS_fit(
     model_syntax = model_syntax, data = data, prior_list = prior_list,
     formula_list = formula_list_re_int, formula_data_list = formula_data_list_re_int,
     formula_prior_list = formula_prior_list_re_int,
+    formula_random_prior_list = formula_random_prior_list_re_int,
     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 1)
   result <- save_fit(fit_random_intercept, "fit_random_intercept",
                      formulas = TRUE, random_effects = TRUE, simple_priors = TRUE,
@@ -1188,15 +1191,18 @@ test_that("Random effects models fit correctly", {
   formula_data_list_re_slope <- list(mu = data_formula)
   formula_prior_list_re_slope <- list(
     mu = list(
-      "intercept"  = prior("normal", list(0, 5)),
-      "x_cont1|id" = prior("normal", list(0, 1), list(0, 1))
+      "intercept"  = prior("normal", list(0, 5))
     )
+  )
+  formula_random_prior_list_re_slope <- list(
+    mu = prior_random(id = random_block(sd = prior("normal", list(0, 1), list(0, 1))))
   )
 
   fit_random_slope <- JAGS_fit(
     model_syntax = model_syntax, data = data, prior_list = prior_list,
     formula_list = formula_list_re_slope, formula_data_list = formula_data_list_re_slope,
     formula_prior_list = formula_prior_list_re_slope,
+    formula_random_prior_list = formula_random_prior_list_re_slope,
     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 2)
   result <- save_fit(fit_random_slope, "fit_random_slope",
                      formulas = TRUE, random_effects = TRUE, simple_priors = TRUE,
@@ -1210,16 +1216,18 @@ test_that("Random effects models fit correctly", {
   formula_prior_list_re_fac <- list(
     mu = list(
       "intercept"    = prior("normal", list(0, 5)),
-      "x_cont1"      = prior("normal", list(0, 1)),
-      "intercept|id" = prior("normal", list(0, 1), list(0, 1)),
-      "x_fac3|id"    = prior("normal", list(0, 1), list(0, 1))
+      "x_cont1"      = prior("normal", list(0, 1))
     )
+  )
+  formula_random_prior_list_re_fac <- list(
+    mu = prior_random(id = random_block(sd = prior("normal", list(0, 1), list(0, 1))))
   )
 
   fit_random_factor_slope <- JAGS_fit(
     model_syntax = model_syntax, data = data, prior_list = prior_list,
     formula_list = formula_list_re_fac, formula_data_list = formula_data_list_re_fac,
     formula_prior_list = formula_prior_list_re_fac,
+    formula_random_prior_list = formula_random_prior_list_re_fac,
     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
   result <- save_fit(fit_random_factor_slope, "fit_random_factor_slope",
                      formulas = TRUE, random_effects = TRUE, factor_priors = TRUE, simple_priors = TRUE,
@@ -1233,16 +1241,18 @@ test_that("Random effects models fit correctly", {
   formula_prior_list_re_fac <- list(
     mu = list(
       "intercept"    = prior("normal", list(0, 5)),
-      "x_fac3"       = prior_factor("mnormal", list(0, 1)),
-      "intercept|id" = prior("normal", list(0, 1), list(0, 1)),
-      "x_fac3|id"    = prior("normal", list(0, 1), list(0, 1))
+      "x_fac3"       = prior_factor("mnormal", list(0, 1))
     )
+  )
+  formula_random_prior_list_re_fac <- list(
+    mu = prior_random(id = random_block(sd = prior("normal", list(0, 1), list(0, 1))))
   )
 
   fit_random_factor_slope2 <- JAGS_fit(
     model_syntax = model_syntax, data = data, prior_list = prior_list,
     formula_list = formula_list_re_fac, formula_data_list = formula_data_list_re_fac,
     formula_prior_list = formula_prior_list_re_fac,
+    formula_random_prior_list = formula_random_prior_list_re_fac,
     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
   result <- save_fit(fit_random_factor_slope2, "fit_random_factor_slope2",
                      formulas = TRUE, random_effects = TRUE, factor_priors = TRUE, simple_priors = TRUE,
@@ -1256,15 +1266,18 @@ test_that("Random effects models fit correctly", {
   formula_data_list_re_fac <- list(mu = data_formula)
   formula_prior_list_re_fac <- list(
     mu = list(
-      "x_fac3"       = prior_factor("normal", list(0, 1), contrast = "independent"),
-      "x_fac3|id"    = prior_spike_and_slab(prior("normal", list(0, 1), list(0, 1)))
+      "x_fac3"       = prior_factor("normal", list(0, 1), contrast = "independent")
     )
+  )
+  formula_random_prior_list_re_fac <- list(
+    mu = prior_random(id = random_block(sd = prior_spike_and_slab(prior("normal", list(0, 1), list(0, 1)))))
   )
 
   fit_random_factor_slope3 <- JAGS_fit(
     model_syntax = model_syntax, data = data, prior_list = prior_list,
     formula_list = formula_list_re_fac, formula_data_list = formula_data_list_re_fac,
     formula_prior_list = formula_prior_list_re_fac,
+    formula_random_prior_list = formula_random_prior_list_re_fac,
     chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 3)
   result <- save_fit(fit_random_factor_slope3, "fit_random_factor_slope3",
                      formulas = TRUE, random_effects = TRUE, factor_priors = TRUE, simple_priors = TRUE,

@@ -107,12 +107,24 @@ test_that("fixture cache availability policy is profile-aware", {
 })
 
 test_that("model-fit cache marker hashes only fit-generation sources", {
+  skip_if_not(.test_cache_package_sources_available(), "Repository R source files are not available in this installed-package test context.")
+
   source_files <- .test_cache_source_files("model-fit")
 
   expect_true("description" %in% names(source_files))
   expect_true("package_R_JAGS-fit" %in% names(source_files))
   expect_true("package_R_JAGS-formula" %in% names(source_files))
+  expect_true("package_R_JAGS-formula-random" %in% names(source_files))
+  expect_true("package_R_JAGS-lkj-cholesky" %in% names(source_files))
   expect_true("package_R_JAGS-marglik" %in% names(source_files))
+  expect_true("package_R_random-effects-metadata" %in% names(source_files))
+  expect_true("package_R_random-effects-reconstruction" %in% names(source_files))
+  expect_true("package_R_random-priors" %in% names(source_files))
+  expect_true("package_R_random-effects-summary" %in% names(source_files))
+  expect_true("package_src_r_lkj_cc" %in% names(source_files))
+  expect_true("package_src_lkj_BTLKJCore_cc" %in% names(source_files))
+  expect_true("package_src_functions_BTLKJCholesky_cc" %in% names(source_files))
+  expect_true("package_src_distributions_DBTLKJCPC_cc" %in% names(source_files))
   expect_false("package_R_summary-tables" %in% names(source_files))
   expect_false("common_functions" %in% names(source_files))
   expect_false("expected_fit_catalog" %in% names(source_files))
@@ -130,18 +142,27 @@ test_that("model-fit cache marker hashes only fit-generation sources", {
 })
 
 test_that("downstream cache consumer source scopes are separate from model fitting", {
+  skip_if_not(.test_cache_package_sources_available(), "Repository R source files are not available in this installed-package test context.")
+
   model_fit_sources <- .test_cache_source_files("model-fit")
   fixture_sources <- .test_cache_source_files("fixture-consumer")
   visual_fixture_sources <- .test_cache_source_files("visual-fixture-consumer")
 
   expect_true("common_functions" %in% names(fixture_sources))
   expect_true("expected_fit_catalog" %in% names(fixture_sources))
+  expect_true("package_R_JAGS-formula-random" %in% names(fixture_sources))
+  expect_true("package_R_random-effects-metadata" %in% names(fixture_sources))
+  expect_true("package_R_random-effects-reconstruction" %in% names(fixture_sources))
+  expect_true("package_R_random-effects-summary" %in% names(fixture_sources))
+  expect_true("package_R_random-priors" %in% names(fixture_sources))
   expect_true("package_R_summary-tables" %in% names(fixture_sources))
   expect_true("package_R_model-averaging" %in% names(fixture_sources))
   expect_false("test_00_model_fits" %in% names(fixture_sources))
 
   expect_true("common_functions" %in% names(visual_fixture_sources))
   expect_true("expected_fit_catalog" %in% names(visual_fixture_sources))
+  expect_true("package_R_JAGS-formula-random" %in% names(visual_fixture_sources))
+  expect_true("package_R_random-effects-summary" %in% names(visual_fixture_sources))
   expect_true("package_R_model-averaging-plots" %in% names(visual_fixture_sources))
   expect_true("test_test_JAGS_diagnostic_plots" %in% names(visual_fixture_sources))
   expect_false("test_00_model_fits" %in% names(visual_fixture_sources))

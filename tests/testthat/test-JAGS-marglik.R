@@ -26,6 +26,112 @@ skip_if_not_test_profile("fit")
 # Load common test helpers
 source(testthat::test_path("common-functions.R"))
 
+make_bridge_random_fixture <- function(formula = ~ 1 + x + us(1 + x | id),
+                                       data = NULL,
+                                       prior_list = NULL,
+                                       prior_random_list = NULL){
+
+  if(is.null(data)){
+    data <- data.frame(
+      x = c(-1, 0, 1, 2),
+      id = factor(c("a", "a", "b", "b"), levels = c("a", "b"))
+    )
+  }
+  if(is.null(prior_list)){
+    prior_list <- list(intercept = prior("normal", list(0, 1)))
+    if("x" %in% all.vars(formula)){
+      prior_list$x <- prior("normal", list(0, 1))
+    }
+  }
+  if(is.null(prior_random_list)){
+    prior_random_list <- prior_random(
+      id = random_block(
+        sd = prior("gamma", list(2, 2)),
+        cor = prior_lkj(eta = 1, include_correlation = FALSE)
+      )
+    )
+  }
+
+  list(
+    data = data,
+    formula = formula,
+    prior_list = prior_list,
+    prior_random_list = prior_random_list,
+    result = JAGS_formula(
+      formula = formula,
+      parameter = "mu",
+      data = data,
+      prior_list = prior_list,
+      prior_random = prior_random_list
+    )
+  )
+}
+
+expect_formula_random_prior_only_bridge <- function(formula, data, prior_list,
+                                                    prior_random_list,
+                                                    n_iter = 8000,
+                                                    tolerance = 0.08,
+                                                    seed = 1,
+                                                    maxiter = 2000){
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+
+  formula_result <- JAGS_formula(
+    formula = formula,
+    parameter = "mu",
+    data = data,
+    prior_list = prior_list,
+    prior_random = prior_random_list
+  )
+  model_syntax <- JAGS_add_priors(
+    paste0("model{\n", formula_result$formula_syntax, "\n}"),
+    formula_result$prior_list
+  )
+  monitor <- unique(c(
+    JAGS_to_monitor(formula_result$prior_list),
+    formula_result$add_parameters
+  ))
+
+  set.seed(seed)
+  model <- rjags::jags.model(
+    file = textConnection(model_syntax),
+    data = formula_result$data,
+    inits = JAGS_get_inits(formula_result$prior_list, chains = 2, seed = seed),
+    n.chains = 2,
+    quiet = TRUE
+  )
+  samples <- rjags::coda.samples(
+    model = model,
+    variable.names = monitor,
+    n.iter = n_iter,
+    quiet = TRUE,
+    progress.bar = "none"
+  )
+  attr(samples, "formula_design") <- list(mu = formula_result$formula_design)
+
+  marglik <- JAGS_bridgesampling(
+    fit = samples,
+    log_posterior = STANDARD_LOG_POSTERIOR,
+    data = list(),
+    prior_list = NULL,
+    formula_list = list(mu = formula),
+    formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = prior_list),
+    formula_random_prior_list = list(mu = prior_random_list),
+    maxiter = maxiter
+  )
+
+  expect_s3_class(marglik, "bridge")
+  expect_equal(marglik$logml, 0, tolerance = tolerance)
+
+  invisible(list(
+    marglik = marglik,
+    formula_result = formula_result,
+    samples = samples
+  ))
+}
+
 test_that("direct composed bias priors support bridge-sampling helpers", {
 
   selection <- prior_weightfunction("one-sided", c(.025), wf_cumulative(c(1, 2)))
@@ -434,6 +540,671 @@ test_that("JAGS bridgesampling infers formula scaling metadata from fits", {
   expect_equal(bridge_formula$data$mu_data_x, scaled_formula$data$mu_data_x)
 })
 
+test_that("JAGS bridgesampling posterior supports add-only parameters", {
+
+  posterior <- matrix(
+    c(
+      -1, 0.2,
+       0, 0.5,
+       1, 0.8
+    ),
+    ncol = 2,
+    byrow = TRUE
+  )
+  colnames(posterior) <- c("x", "prob")
+
+  info <- BayesTools:::.JAGS_bridgesampling_posterior_info(NULL)
+  expect_type(info, "character")
+  expect_equal(length(info), 0L)
+  expect_equal(attr(info, "lb"), numeric())
+  expect_equal(attr(info, "ub"), numeric())
+
+  result_null <- JAGS_bridgesampling_posterior(
+    posterior = posterior,
+    prior_list = NULL,
+    add_parameters = c("x", "prob"),
+    add_bounds = list(
+      lb = c(x = -Inf, prob = 0),
+      ub = c(x = Inf, prob = 1)
+    )
+  )
+  expect_equal(colnames(result_null), c("x", "prob"))
+  expect_equal(attr(result_null, "lb"), c(x = -Inf, prob = 0))
+  expect_equal(attr(result_null, "ub"), c(x = Inf, prob = 1))
+
+  result_empty <- JAGS_bridgesampling_posterior(
+    posterior = posterior,
+    prior_list = list(),
+    add_parameters = "x",
+    add_bounds = list(lb = -Inf, ub = Inf)
+  )
+  expect_equal(colnames(result_empty), "x")
+  expect_equal(attr(result_empty, "lb"), c(x = -Inf))
+  expect_equal(attr(result_empty, "ub"), c(x = Inf))
+})
+
+test_that("JAGS bridgesampling validates rebuilt formula random design metadata", {
+
+  fixture <- make_bridge_random_fixture()
+  fitted <- list(mu = fixture$result$formula_design)
+  rebuilt <- list(mu = fixture$result$formula_design)
+
+  expect_silent(BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(fitted, rebuilt))
+
+  changed <- rebuilt
+  changed$mu$random_effects[[1]]$structure <- "diag"
+  expect_error(
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(fitted, changed),
+    "covariance structure",
+    fixed = TRUE
+  )
+
+  changed <- rebuilt
+  changed$mu$random_effects[[1]]$structure <- NULL
+  changed$mu$random_effects[[1]]$covariance <- "us"
+  expect_error(
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(fitted, changed),
+    "missing canonical 'random_term\\$structure'"
+  )
+
+  changed <- rebuilt
+  changed$mu$random_effects[[1]]$homogeneous_sd <- NULL
+  expect_error(
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(fitted, changed),
+    "missing canonical 'random_term\\$homogeneous_sd'"
+  )
+
+  changed <- rebuilt
+  changed$mu$random_effects[[1]]$correlation <- NULL
+  expect_error(
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(fitted, changed),
+    "missing canonical 'random_term\\$correlation'"
+  )
+
+  changed <- rebuilt
+  changed$mu$random_effects[[1]]$block_name <- "other"
+  expect_error(
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(fitted, changed),
+    "block names",
+    fixed = TRUE
+  )
+
+  changed <- rebuilt
+  changed$mu$random_effects[[1]]$group_levels <- rev(changed$mu$random_effects[[1]]$group_levels)
+  expect_error(
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(fitted, changed),
+    "group levels",
+    fixed = TRUE
+  )
+
+  changed <- rebuilt
+  changed$mu$random_effects[[1]]$column_names[1] <- "changed"
+  expect_error(
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(fitted, changed),
+    "column names",
+    fixed = TRUE
+  )
+
+  changed <- rebuilt
+  changed$mu$random_effects[[1]]$n_columns <- changed$mu$random_effects[[1]]$n_columns + 1L
+  expect_error(
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(fitted, changed),
+    "group or column counts",
+    fixed = TRUE
+  )
+
+  changed <- rebuilt
+  changed$mu$random_effects[[1]]$model_matrix <- changed$mu$random_effects[[1]]$model_matrix[-1, , drop = FALSE]
+  expect_error(
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(fitted, changed),
+    "model matrix shape or columns",
+    fixed = TRUE
+  )
+
+  changed <- rebuilt
+  changed$mu$random_effects[[1]]$group_map <- rev(changed$mu$random_effects[[1]]$group_map)
+  expect_error(
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(fitted, changed),
+    "group map",
+    fixed = TRUE
+  )
+
+  structured_fixture <- make_bridge_random_fixture(
+    formula = ~ 1 + ar1(idx | id),
+    data = data.frame(
+      idx = factor(c("t1", "t2", "t1", "t2"), levels = c("t1", "t2")),
+      id = factor(c("a", "a", "b", "b"), levels = c("a", "b"))
+    ),
+    prior_random_list = prior_random(
+      id = random_block(
+        sd = prior("gamma", list(2, 2)),
+        rho = prior("normal", list(0, 0.5))
+      )
+    )
+  )
+  structured_fitted <- list(mu = structured_fixture$result$formula_design)
+  structured_changed <- structured_fitted
+  structured_changed$mu$random_effects[[1]]$structured_index$label <- "changed"
+  expect_error(
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(
+      structured_fitted,
+      structured_changed
+    ),
+    "structured random-effect index metadata",
+    fixed = TRUE
+  )
+
+  allocation_data <- data.frame(
+    study = factor(c("s1", "s1", "s2", "s2"), levels = c("s1", "s2")),
+    drug = factor(c("a", "b", "a", "b"), levels = c("a", "b"))
+  )
+  allocation_formula <- ~ 1 +
+    random(1 | study, name = "study", covariance = "diag") +
+    random(1 | drug, name = "drug", covariance = "diag")
+  allocation_prior_list <- list(intercept = prior("normal", list(0, 1)))
+  allocation_fixture <- make_bridge_random_fixture(
+    formula = allocation_formula,
+    data = allocation_data,
+    prior_list = allocation_prior_list,
+    prior_random_list = prior_random(
+      allocation = random_variance_allocation(
+        sd = prior("gamma", list(2, 2)),
+        allocation = prior("dirichlet", list(alpha = c(2, 3)))
+      )
+    )
+  )
+  independent_fixture <- make_bridge_random_fixture(
+    formula = allocation_formula,
+    data = allocation_data,
+    prior_list = allocation_prior_list,
+    prior_random_list = prior_random(
+      study = random_block(sd = prior("gamma", list(2, 2))),
+      drug = random_block(sd = prior("gamma", list(2, 2)))
+    )
+  )
+  expect_error(
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(
+      list(mu = allocation_fixture$result$formula_design),
+      list(mu = independent_fixture$result$formula_design)
+    ),
+    "scale/allocation",
+    fixed = TRUE
+  )
+})
+
+test_that("JAGS bridgesampling rejects fitted/rebuilt random design mismatches", {
+
+  fixture <- make_bridge_random_fixture()
+  fit <- coda::mcmc(matrix(0, nrow = 2, ncol = 1, dimnames = list(NULL, "dummy")))
+  attr(fit, "formula_design") <- list(mu = fixture$result$formula_design)
+
+  mismatch_data <- fixture$data
+  mismatch_data$id <- factor(as.character(mismatch_data$id), levels = c("b", "a"))
+
+  expect_error(
+    JAGS_bridgesampling(
+      fit = fit,
+      log_posterior = STANDARD_LOG_POSTERIOR,
+      data = list(),
+      prior_list = NULL,
+      formula_list = list(mu = fixture$formula),
+      formula_data_list = list(mu = mismatch_data),
+      formula_prior_list = list(mu = fixture$prior_list),
+      formula_random_prior_list = list(mu = fixture$prior_random_list),
+      maxiter = 10
+    ),
+    "group levels",
+    fixed = TRUE
+  )
+})
+
+test_that("JAGS bridgesampling supports formula random effects through prior_random", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+  if(!isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE))){
+    skip("BayesTools JAGS module is not available")
+  }
+
+  df_test <- data.frame(
+    x = c(-0.5, 0.5),
+    id = factor(c("a", "b"), levels = c("a", "b"))
+  )
+  formula <- ~ 1 + x + us(1 + x | id)
+  prior_list <- list(
+    intercept = prior("normal", list(0, 1)),
+    x         = prior("normal", list(0, 1))
+  )
+  prior_random_list <- prior_random(
+    id = random_block(
+      sd = prior("gamma", list(2, 2)),
+      cor = prior_lkj(eta = 1, include_correlation = FALSE)
+    )
+  )
+
+  formula_result <- JAGS_formula(
+    formula = formula,
+    parameter = "mu",
+    data = df_test,
+    prior_list = prior_list,
+    prior_random = prior_random_list
+  )
+  expect_true("mu__xREx__id_xRE_CORx_lkj_u[1]" %in% formula_result$add_parameters)
+
+  model_syntax <- JAGS_add_priors(
+    paste0("model{\n", formula_result$formula_syntax, "\n}"),
+    formula_result$prior_list
+  )
+  monitor <- unique(c(
+    JAGS_to_monitor(formula_result$prior_list),
+    formula_result$add_parameters
+  ))
+
+  set.seed(1)
+  model <- rjags::jags.model(
+    file = textConnection(model_syntax),
+    data = formula_result$data,
+    inits = JAGS_get_inits(formula_result$prior_list, chains = 2, seed = 1),
+    n.chains = 2,
+    quiet = TRUE
+  )
+  samples <- rjags::coda.samples(
+    model = model,
+    variable.names = monitor,
+    n.iter = 5000,
+    quiet = TRUE,
+    progress.bar = "none"
+  )
+
+  marglik <- JAGS_bridgesampling(
+    fit = samples,
+    log_posterior = STANDARD_LOG_POSTERIOR,
+    data = list(),
+    prior_list = NULL,
+    formula_list = list(mu = formula),
+    formula_data_list = list(mu = df_test),
+    formula_prior_list = list(mu = prior_list),
+    formula_random_prior_list = list(mu = prior_random_list),
+    maxiter = 1000
+  )
+
+  expect_s3_class(marglik, "bridge")
+  expect_equal(marglik$logml, 0, tolerance = 0.08)
+})
+
+test_that("JAGS bridgesampling supports continuous-time CAR formula random effects", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+
+  df_test <- data.frame(
+    time = c(0, 0.5, 2, 0, 0.5, 2),
+    id = factor(c("a", "a", "a", "b", "b", "b"), levels = c("a", "b"))
+  )
+  formula <- ~ 1 + car(0 + time | id)
+  prior_list <- list(
+    intercept = prior("normal", list(0, 1))
+  )
+  prior_random_list <- prior_random(
+    id = random_block(
+      sd = prior("gamma", list(2, 2)),
+      rho = prior("normal", list(0, 0.5))
+    )
+  )
+
+  formula_result <- JAGS_formula(
+    formula = formula,
+    parameter = "mu",
+    data = df_test,
+    prior_list = prior_list,
+    prior_random = prior_random_list
+  )
+  expect_equal(formula_result$formula_design$random_effects[[1]]$structure, "car")
+  expect_equal(formula_result$formula_design$random_effects[[1]]$correlation$bounds, c(lower = 0, upper = 1))
+  expect_true("mu__xREx__id_rho" %in% formula_result$add_parameters)
+
+  model_syntax <- JAGS_add_priors(
+    paste0("model{\n", formula_result$formula_syntax, "\n}"),
+    formula_result$prior_list
+  )
+  monitor <- unique(c(
+    JAGS_to_monitor(formula_result$prior_list),
+    formula_result$add_parameters
+  ))
+
+  set.seed(1)
+  model <- rjags::jags.model(
+    file = textConnection(model_syntax),
+    data = formula_result$data,
+    inits = JAGS_get_inits(formula_result$prior_list, chains = 2, seed = 1),
+    n.chains = 2,
+    quiet = TRUE
+  )
+  samples <- rjags::coda.samples(
+    model = model,
+    variable.names = monitor,
+    n.iter = 8000,
+    quiet = TRUE,
+    progress.bar = "none"
+  )
+
+  marglik <- JAGS_bridgesampling(
+    fit = samples,
+    log_posterior = STANDARD_LOG_POSTERIOR,
+    data = list(),
+    prior_list = NULL,
+    formula_list = list(mu = formula),
+    formula_data_list = list(mu = df_test),
+    formula_prior_list = list(mu = prior_list),
+    formula_random_prior_list = list(mu = prior_random_list),
+    maxiter = 1000
+  )
+
+  expect_s3_class(marglik, "bridge")
+  expect_equal(marglik$logml, 0, tolerance = 0.08)
+})
+
+test_that("JAGS bridgesampling supports Dirichlet variance-allocation random effects", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+
+  df_test <- data.frame(
+    study = factor(c("s1", "s1", "s2", "s2"), levels = c("s1", "s2")),
+    drug = factor(c("a", "b", "a", "b"), levels = c("a", "b"))
+  )
+  formula <- ~ 1 +
+    random(1 | study, name = "study", covariance = "diag") +
+    random(1 | drug, name = "drug", covariance = "diag")
+  prior_list <- list(
+    intercept = prior("normal", list(0, 1))
+  )
+  prior_random_list <- prior_random(
+    allocation = random_variance_allocation(
+      sd = prior("gamma", list(2, 2)),
+      allocation = prior("dirichlet", list(alpha = c(2, 3)))
+    )
+  )
+
+  formula_result <- JAGS_formula(
+    formula = formula,
+    parameter = "mu",
+    data = df_test,
+    prior_list = prior_list,
+    prior_random = prior_random_list
+  )
+  expect_true("mu__xRE_ALLOCx_allocation_weight" %in% names(formula_result$prior_list))
+  expect_true("mu__xREx__study_xRE_Zx" %in% formula_result$add_parameters)
+  expect_true("mu__xREx__drug_xRE_Zx" %in% formula_result$add_parameters)
+
+  model_syntax <- JAGS_add_priors(
+    paste0("model{\n", formula_result$formula_syntax, "\n}"),
+    formula_result$prior_list
+  )
+  monitor <- unique(c(
+    JAGS_to_monitor(formula_result$prior_list),
+    formula_result$add_parameters
+  ))
+
+  set.seed(1)
+  model <- rjags::jags.model(
+    file = textConnection(model_syntax),
+    data = formula_result$data,
+    inits = JAGS_get_inits(formula_result$prior_list, chains = 2, seed = 1),
+    n.chains = 2,
+    quiet = TRUE
+  )
+  samples <- rjags::coda.samples(
+    model = model,
+    variable.names = monitor,
+    n.iter = 8000,
+    quiet = TRUE,
+    progress.bar = "none"
+  )
+
+  marglik <- JAGS_bridgesampling(
+    fit = samples,
+    log_posterior = STANDARD_LOG_POSTERIOR,
+    data = list(),
+    prior_list = NULL,
+    formula_list = list(mu = formula),
+    formula_data_list = list(mu = df_test),
+    formula_prior_list = list(mu = prior_list),
+    formula_random_prior_list = list(mu = prior_random_list),
+    maxiter = 1000
+  )
+
+  expect_s3_class(marglik, "bridge")
+  expect_equal(marglik$logml, 0, tolerance = 0.08)
+})
+
+test_that("JAGS bridgesampling gives unit marglik for prior-only random-effect settings", {
+
+  sd_prior <- prior("gamma", list(2, 2))
+  fixed_priors <- list(
+    intercept = prior("normal", list(0, 1)),
+    x = prior("normal", list(0, 1))
+  )
+  continuous_data <- data.frame(
+    x = c(-1, 0, 1, 2, -2, 3),
+    id = factor(c("a", "a", "b", "b", "c", "c"), levels = c("a", "b", "c"))
+  )
+  factor_data <- data.frame(
+    f = factor(rep(c("a", "b", "c"), 3), levels = c("a", "b", "c")),
+    id = factor(rep(c("g1", "g2", "g3"), each = 3), levels = c("g1", "g2", "g3"))
+  )
+
+  diag_heterogeneous <- expect_formula_random_prior_only_bridge(
+    formula = ~ 1 + x + diag(1 + x | id, hom = FALSE),
+    data = continuous_data,
+    prior_list = fixed_priors,
+    prior_random_list = prior_random(
+      id = random_block(
+        sd = sd_prior,
+        terms = list(x = prior("gamma", list(3, 1)))
+      )
+    ),
+    seed = 10
+  )
+  expect_false(diag_heterogeneous$formula_result$formula_design$random_effects[[1]]$homogeneous_sd)
+  expect_equal(
+    diag_heterogeneous$formula_result$formula_design$random_effects[[1]]$sd_parameter_names,
+    c("mu__xREx__id_intercept", "mu__xREx__id_x")
+  )
+
+  id_homogeneous <- expect_formula_random_prior_only_bridge(
+    formula = ~ 1 + x + id(1 + x | id),
+    data = continuous_data,
+    prior_list = fixed_priors,
+    prior_random_list = prior_random(
+      id = random_block(
+        sd = sd_prior,
+        monitor = random_monitor(
+          latent = TRUE,
+          coefficients = TRUE,
+          correlation = FALSE
+        )
+      )
+    ),
+    seed = 11
+  )
+  expect_true(id_homogeneous$formula_result$formula_design$random_effects[[1]]$homogeneous_sd)
+  expect_equal(
+    unique(id_homogeneous$formula_result$formula_design$random_effects[[1]]$sd_parameter_names),
+    "mu__xREx__id_sd"
+  )
+
+  lkj_syntax <- expect_formula_random_prior_only_bridge(
+    formula = ~ 1 + x + us(1 + x | id),
+    data = continuous_data,
+    prior_list = fixed_priors,
+    prior_random_list = prior_random(
+      id = random_block(
+        sd = sd_prior,
+        cor = prior_lkj(
+          eta = 2,
+          backend = "syntax",
+          include_correlation = FALSE
+        )
+      )
+    ),
+    seed = 12
+  )
+  expect_equal(lkj_syntax$formula_result$jags_modules, character())
+  expect_true(any(grepl("_xRE_CORx_lkj_u", lkj_syntax$formula_result$add_parameters, fixed = TRUE)))
+
+  cs_fisher_z <- expect_formula_random_prior_only_bridge(
+    formula = ~ 1 + cs(f | id),
+    data = factor_data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1))
+    ),
+    prior_random_list = prior_random(
+      id = random_block(
+        sd = sd_prior,
+        rho = prior("normal", list(0, 0.5))
+      )
+    ),
+    seed = 13
+  )
+  expect_true(cs_fisher_z$formula_result$formula_design$random_effects[[1]]$homogeneous_sd)
+  expect_equal(
+    cs_fisher_z$formula_result$formula_design$random_effects[[1]]$correlation$rho_scale,
+    "fisher_z"
+  )
+  expect_true("mu__xREx__id_rho_z" %in% names(cs_fisher_z$formula_result$prior_list))
+
+  hcs_logit <- expect_formula_random_prior_only_bridge(
+    formula = ~ 1 + hcs(f | id),
+    data = factor_data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1))
+    ),
+    prior_random_list = prior_random(
+      id = random_block(
+        sd = sd_prior,
+        covariance = random_covariance(
+          rho = prior("normal", list(0, 0.5)),
+          rho_scale = "logit"
+        )
+      )
+    ),
+    seed = 14
+  )
+  expect_false(hcs_logit$formula_result$formula_design$random_effects[[1]]$homogeneous_sd)
+  expect_true("mu__xREx__id_rho_logit" %in% names(hcs_logit$formula_result$prior_list))
+  expect_equal(
+    hcs_logit$formula_result$formula_design$random_effects[[1]]$correlation$rho_scale,
+    "logit"
+  )
+
+  ar1_fisher_z <- expect_formula_random_prior_only_bridge(
+    formula = ~ 1 + ar1(f | id),
+    data = factor_data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1))
+    ),
+    prior_random_list = prior_random(
+      id = random_block(
+        sd = sd_prior,
+        rho = prior("normal", list(0, 0.5))
+      )
+    ),
+    seed = 15
+  )
+  expect_equal(ar1_fisher_z$formula_result$formula_design$random_effects[[1]]$structure, "ar1")
+  expect_true("mu__xREx__id_rho_z" %in% names(ar1_fisher_z$formula_result$prior_list))
+
+  har_raw <- expect_formula_random_prior_only_bridge(
+    formula = ~ 1 + har(f | id),
+    data = factor_data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1))
+    ),
+    prior_random_list = prior_random(
+      id = random_block(
+        sd = sd_prior,
+        covariance = random_covariance(
+          rho = prior("normal", list(0, 0.5), truncation = list(lower = -1, upper = 1)),
+          rho_scale = "rho"
+        )
+      )
+    ),
+    seed = 16
+  )
+  expect_equal(har_raw$formula_result$formula_design$random_effects[[1]]$structure, "har")
+  expect_false(har_raw$formula_result$formula_design$random_effects[[1]]$homogeneous_sd)
+  expect_true("mu__xREx__id_rho" %in% names(har_raw$formula_result$prior_list))
+  expect_false("mu__xREx__id_rho_z" %in% names(har_raw$formula_result$prior_list))
+
+  nested_allocation <- expect_formula_random_prior_only_bridge(
+    formula = ~ 1 +
+      random(1 | study, name = "study", covariance = "diag") +
+      random(1 | paper, name = "paper", covariance = "diag") +
+      random(1 | drug, name = "drug", covariance = "diag"),
+    data = data.frame(
+      study = factor(c("s1", "s1", "s2", "s2"), levels = c("s1", "s2")),
+      paper = factor(c("p1", "p2", "p1", "p2"), levels = c("p1", "p2")),
+      drug = factor(c("d1", "d1", "d2", "d2"), levels = c("d1", "d2"))
+    ),
+    prior_list = list(
+      intercept = prior("normal", list(0, 1))
+    ),
+    prior_random_list = prior_random(
+      random_variance_allocation(
+        name = "total_re",
+        terms = c(nested = "nested", drug = "drug"),
+        sd = sd_prior,
+        allocation = prior("dirichlet", list(alpha = c(2, 3)))
+      ),
+      random_variance_allocation(
+        name = "nested_split",
+        parent = allocation_ref("total_re", "nested"),
+        terms = c(study = "study", paper = "paper"),
+        allocation = prior("dirichlet", list(alpha = c(3, 2)))
+      )
+    ),
+    n_iter = 10000,
+    seed = 17
+  )
+  expect_true("mu__xRE_ALLOCx_total_re_weight" %in% names(nested_allocation$formula_result$prior_list))
+  expect_true("mu__xRE_ALLOCx_nested_split_weight" %in% names(nested_allocation$formula_result$prior_list))
+  expect_equal(
+    length(nested_allocation$formula_result$formula_design$random_effects[[1]]$allocation$factors),
+    2L
+  )
+
+  sd_leaf_allocation <- expect_formula_random_prior_only_bridge(
+    formula = ~ 1 + hcs(f | id),
+    data = factor_data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1))
+    ),
+    prior_random_list = prior_random(
+      allocation = random_variance_allocation(
+        name = "leaf_alloc",
+        terms = "id",
+        components = "sd",
+        scale = "mean_variance",
+        sd = sd_prior,
+        allocation = prior("dirichlet", list(alpha = c(2, 3, 4)))
+      ),
+      id = random_block(rho = prior("normal", list(0, 0.5)))
+    ),
+    n_iter = 10000,
+    seed = 18
+  )
+  expect_true("mu__xRE_ALLOCx_leaf_alloc_weight" %in% names(sd_leaf_allocation$formula_result$prior_list))
+  expect_equal(
+    sd_leaf_allocation$formula_result$formula_design$random_effects[[1]]$allocation$components,
+    "sd"
+  )
+  expect_equal(
+    sd_leaf_allocation$formula_result$formula_design$random_effects[[1]]$allocation$scale,
+    "mean_variance"
+  )
+})
+
 test_that("JAGS formula marglik reconstructs inverse-gamma terms on original scale", {
 
   samples <- c(
@@ -537,8 +1308,28 @@ test_that("JAGS_bridgesampling_posterior input validation works", {
   expect_error(JAGS_bridgesampling_posterior(posterior, prior_list = NULL, add_parameters = 1), "'add_parameters' must be a character")
   expect_error(JAGS_bridgesampling_posterior(posterior, prior_list = NULL, add_parameters = "x", add_bounds = "x"), "'add_bounds' must be a list")
   expect_error(JAGS_bridgesampling_posterior(posterior, prior_list = NULL, add_parameters = "x", add_bounds = list(a = 1)), "'add_bounds' must contain lower and upper bounds")
-  expect_error(JAGS_bridgesampling_posterior(posterior, prior_list = NULL, add_parameters = c("x", "y"), add_bounds = list(lb = 0, ub = 1)), "lb' and 'ub' must have the same lenght")
-  expect_error(JAGS_bridgesampling_posterior(posterior, prior_list = NULL, add_parameters = "x", add_bounds = list(lb = "a", ub = "b")), "lb' and 'ub' must be numeric")
+  expect_error(JAGS_bridgesampling_posterior(posterior, prior_list = NULL, add_parameters = c("x", "y"), add_bounds = list(lb = 0, ub = 1)), "'lb' and 'ub' must have the same length")
+  expect_error(JAGS_bridgesampling_posterior(posterior, prior_list = NULL, add_parameters = "x", add_bounds = list(lb = "a", ub = "b")), "'lb' and 'ub' must be numeric")
+  expect_error(
+    JAGS_bridgesampling_posterior(
+      posterior,
+      prior_list = NULL,
+      add_parameters = "x",
+      add_bounds = list(lb = stats::setNames(-Inf, "wrong"), ub = stats::setNames(Inf, "x"))
+    ),
+    "names must match",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_bridgesampling_posterior(
+      posterior,
+      prior_list = NULL,
+      add_parameters = "x",
+      add_bounds = list(lb = 1, ub = 0)
+    ),
+    "smaller than upper",
+    fixed = TRUE
+  )
 
   # Unsupported prior types
   expect_error(
@@ -564,9 +1355,10 @@ test_that("JAGS_bridgesampling_posterior input validation works", {
 
 test_that("JAGS_marglik_priors input validation and edge cases work", {
 
-  # Empty prior_list returns empty list
+  # Empty prior_list contributes zero log prior density
 
-  expect_equal(JAGS_marglik_priors(list(), prior_list = list()), list())
+  expect_equal(JAGS_marglik_priors(list(), prior_list = list()), 0)
+  expect_equal(JAGS_marglik_priors_formula(list(), formula_prior_list = list(mu = list())), 0)
 
   # Input validation
   expect_error(JAGS_marglik_priors(list(), prior_list = "x"), "'prior_list' must be a list.")

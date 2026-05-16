@@ -1,0 +1,67 @@
+JAGS_ROOT_CANDIDATES := $(sort $(wildcard /c/progra~1/JAGS/JAGS-*))
+space :=
+space +=
+
+ifeq ($(strip $(JAGS_ROOT)),)
+JAGS_ROOT := $(lastword $(JAGS_ROOT_CANDIDATES))
+endif
+ifeq ($(strip $(JAGS_ROOT)),)
+$(error JAGS was not found. Install JAGS >= 4.3.0 or set JAGS_ROOT=/c/progra~1/JAGS/JAGS-4.3.1. You may also set JAGS_INCLUDE_DIR and JAGS_LIB_DIR explicitly)
+endif
+
+ifeq ($(strip $(JAGS_INCLUDE_DIR)),)
+JAGS_INCLUDE_DIR = $(JAGS_ROOT)/include
+ifeq ($(shell test -f "$(JAGS_INCLUDE_DIR)/module/Module.h" && echo yes),)
+ifneq ($(shell test -f "$(JAGS_ROOT)/include/JAGS/module/Module.h" && echo yes),)
+JAGS_INCLUDE_DIR = $(JAGS_ROOT)/include/JAGS
+endif
+endif
+endif
+ifeq ($(shell test -f "$(JAGS_INCLUDE_DIR)/module/Module.h" && echo yes),)
+$(error Could not find JAGS headers at "$(JAGS_INCLUDE_DIR)"; expected module/Module.h. Set JAGS_ROOT or JAGS_INCLUDE_DIR)
+endif
+
+ifeq ($(strip $(JAGS_LIB_DIR)),)
+JAGS_LIB_DIR = $(JAGS_ROOT)$(R_ARCH)/bin
+ifeq ($(shell test -d "$(JAGS_LIB_DIR)" && echo yes),)
+ifneq ($(shell test -d "$(JAGS_ROOT)/bin" && echo yes),)
+JAGS_LIB_DIR = $(JAGS_ROOT)/bin
+else ifneq ($(shell test -d "$(JAGS_ROOT)$(R_ARCH)/lib" && echo yes),)
+JAGS_LIB_DIR = $(JAGS_ROOT)$(R_ARCH)/lib
+else ifneq ($(shell test -d "$(JAGS_ROOT)/lib" && echo yes),)
+JAGS_LIB_DIR = $(JAGS_ROOT)/lib
+endif
+endif
+endif
+ifeq ($(shell test -d "$(JAGS_LIB_DIR)" && echo yes),)
+$(error Could not find the JAGS library directory at "$(JAGS_LIB_DIR)". Set JAGS_ROOT or JAGS_LIB_DIR)
+endif
+
+ifneq ($(strip $(JAGS_MAJOR_VERSION)),)
+JAGS_MAJOR = $(strip $(JAGS_MAJOR_VERSION))
+else
+JAGS_ROOT_BASE = $(notdir $(JAGS_ROOT))
+JAGS_MAJOR_FROM_ROOT = $(strip $(word 2,$(subst .,$(space),$(subst -,$(space),$(JAGS_ROOT_BASE)))))
+ifneq ($(strip $(JAGS_MAJOR_FROM_ROOT)),)
+JAGS_MAJOR = $(strip $(JAGS_MAJOR_FROM_ROOT))
+else
+JAGS_MAJOR = 4
+endif
+endif
+
+ifeq ($(shell test -f "$(JAGS_LIB_DIR)/jags-$(JAGS_MAJOR).dll" -o -f "$(JAGS_LIB_DIR)/libjags-$(JAGS_MAJOR).dll" -o -f "$(JAGS_LIB_DIR)/libjags-$(JAGS_MAJOR).dll.a" && echo yes),)
+$(error Could not find the JAGS library jags-$(JAGS_MAJOR) in "$(JAGS_LIB_DIR)". Set JAGS_MAJOR_VERSION, JAGS_ROOT, or JAGS_LIB_DIR)
+endif
+ifeq ($(shell test -f "$(JAGS_LIB_DIR)/jrmath-0.dll" -o -f "$(JAGS_LIB_DIR)/libjrmath-0.dll" -o -f "$(JAGS_LIB_DIR)/libjrmath-0.dll.a" && echo yes),)
+$(error Could not find the JAGS JRmath library in "$(JAGS_LIB_DIR)". Set JAGS_ROOT or JAGS_LIB_DIR)
+endif
+
+PKG_CPPFLAGS=-I"$(JAGS_INCLUDE_DIR)" -D JAGS_MAJOR_FORCED=0$(JAGS_MAJOR_VERSION) -D JAGS_MAJOR_ASSUMED=4 -DR_NO_REMAP
+PKG_LIBS=-L"$(JAGS_LIB_DIR)" -ljags-$(JAGS_MAJOR) -ljrmath-0
+
+OBJECTS = distributions/DBTLKJCPC.o \
+		  functions/BTLKJCholesky.o \
+		  lkj/BTLKJCore.o \
+		  r-lkj.o \
+		  init.o \
+		  BayesTools.o

@@ -1,0 +1,219 @@
+#!/bin/sh
+
+JAGS_MIN_VERSION="4.3.0"
+JAGS_CFLAGS=""
+JAGS_LIBS="-ljags"
+JAGS_RPATH=""
+JAGS_INCLUDE_DIR="${JAGS_INCLUDE_DIR}"
+JAGS_LIB_DIR="${JAGS_LIB_DIR}"
+JAGS_PREFIX="${JAGS_PREFIX}"
+JAGS_VERSION=""
+JAGS_VERSION_SOURCE=""
+JAGS_MAJOR_VERSION="${JAGS_MAJOR_VERSION}"
+
+as_echo() {
+  echo "configure: $*"
+}
+
+as_error() {
+  echo "configure: error: $*" >&2
+  exit 1
+}
+
+normalize_version() {
+  echo "$1" | sed 's/^[^0-9]*//; s/[^0-9.].*$//'
+}
+
+version_ge() {
+  version=`normalize_version "$1"`
+  minimum=`normalize_version "$2"`
+
+  old_ifs=$IFS
+  IFS=.
+  set -- $version
+  version_major=${1:-0}
+  version_minor=${2:-0}
+  version_patch=${3:-0}
+  set -- $minimum
+  minimum_major=${1:-0}
+  minimum_minor=${2:-0}
+  minimum_patch=${3:-0}
+  IFS=$old_ifs
+
+  if [ "$version_major" -gt "$minimum_major" ]; then return 0; fi
+  if [ "$version_major" -lt "$minimum_major" ]; then return 1; fi
+  if [ "$version_minor" -gt "$minimum_minor" ]; then return 0; fi
+  if [ "$version_minor" -lt "$minimum_minor" ]; then return 1; fi
+  [ "$version_patch" -ge "$minimum_patch" ]
+}
+
+major_version() {
+  version=`normalize_version "$1"`
+  old_ifs=$IFS
+  IFS=.
+  set -- $version
+  IFS=$old_ifs
+  echo "${1:-}"
+}
+
+jags_header_ok() {
+  test -f "$1/module/Module.h"
+}
+
+jags_header_dir() {
+  for dir in "$@"; do
+    if [ -n "$dir" ] && jags_header_ok "$dir"; then
+      echo "$dir"
+      return 0
+    fi
+    if [ -n "$dir" ] && jags_header_ok "$dir/JAGS"; then
+      echo "$dir/JAGS"
+      return 0
+    fi
+  done
+  return 1
+}
+
+sed_escape() {
+  printf '%s\n' "$1" | sed 's/[&\\]/\\&/g'
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --with-jags-prefix=*)
+      JAGS_PREFIX="${arg#*=}"
+      ;;
+    --with-jags-includedir=*)
+      JAGS_INCLUDE_DIR="${arg#*=}"
+      ;;
+    --with-jags-libdir=*)
+      JAGS_LIB_DIR="${arg#*=}"
+      ;;
+  esac
+done
+
+if [ -z "$JAGS_PREFIX" ] && [ -n "$JAGS_ROOT" ]; then
+  JAGS_PREFIX="$JAGS_ROOT"
+fi
+
+if command -v pkg-config >/dev/null 2>&1; then
+  if pkg-config --exists jags; then
+    JAGS_CFLAGS=`pkg-config --cflags jags`
+    JAGS_LIBS=`pkg-config --libs jags`
+    JAGS_VERSION=`pkg-config --modversion jags 2>/dev/null`
+    JAGS_VERSION_SOURCE="pkg-config"
+  fi
+fi
+
+if [ -z "$JAGS_VERSION" ] && [ -n "$JAGS_PREFIX" ]; then
+  JAGS_PREFIX_BASE=`basename "$JAGS_PREFIX" 2>/dev/null`
+  case "$JAGS_PREFIX_BASE" in
+    JAGS-[0-9]*)
+      JAGS_VERSION=`echo "$JAGS_PREFIX_BASE" | sed 's/^JAGS-//'`
+      JAGS_VERSION_SOURCE="JAGS prefix"
+      ;;
+  esac
+fi
+
+if [ -n "$JAGS_VERSION" ]; then
+  if ! version_ge "$JAGS_VERSION" "$JAGS_MIN_VERSION"; then
+    as_error "JAGS >= ${JAGS_MIN_VERSION} is required; ${JAGS_VERSION_SOURCE} reported ${JAGS_VERSION}."
+  fi
+  if [ -z "$JAGS_MAJOR_VERSION" ]; then
+    JAGS_MAJOR_VERSION=`major_version "$JAGS_VERSION"`
+  fi
+  as_echo "detected JAGS ${JAGS_VERSION} with ${JAGS_VERSION_SOURCE}"
+else
+  as_echo "JAGS version could not be determined with pkg-config"
+fi
+
+if [ -z "$JAGS_INCLUDE_DIR" ]; then
+  for flag in $JAGS_CFLAGS; do
+    case "$flag" in
+      -I*)
+        candidate=`echo "$flag" | sed 's/^-I//'`
+        if jags_header_ok "$candidate"; then
+          JAGS_INCLUDE_DIR="$candidate"
+          break
+        fi
+        ;;
+    esac
+  done
+fi
+
+if [ -z "$JAGS_INCLUDE_DIR" ]; then
+  if [ -n "$JAGS_PREFIX" ]; then
+    JAGS_INCLUDE_DIR=`jags_header_dir \
+      "$JAGS_PREFIX/include"`
+  fi
+fi
+
+if [ -z "$JAGS_INCLUDE_DIR" ]; then
+  JAGS_INCLUDE_DIR=`jags_header_dir \
+    "/usr/local/include/JAGS" \
+    "/usr/local/include" \
+    "/opt/local/include/JAGS" \
+    "/opt/local/include" \
+    "/usr/include/JAGS" \
+    "/usr/include"`
+fi
+
+if [ -z "$JAGS_INCLUDE_DIR" ]; then
+  as_error "JAGS headers were not found. Install JAGS >= ${JAGS_MIN_VERSION}, set JAGS_ROOT, or pass --with-jags-prefix/--with-jags-includedir."
+fi
+if ! jags_header_ok "$JAGS_INCLUDE_DIR"; then
+  as_error "JAGS header module/Module.h was not found under '${JAGS_INCLUDE_DIR}'."
+fi
+
+case " $JAGS_CFLAGS " in
+  *" -I${JAGS_INCLUDE_DIR} "*) ;;
+  *) JAGS_CFLAGS="-I${JAGS_INCLUDE_DIR} ${JAGS_CFLAGS}" ;;
+esac
+
+if [ -n "$JAGS_PREFIX" ] && [ -z "$JAGS_LIB_DIR" ]; then
+  if [ -d "${JAGS_PREFIX}/lib" ]; then
+    JAGS_LIB_DIR="${JAGS_PREFIX}/lib"
+  elif [ -d "${JAGS_PREFIX}/lib64" ]; then
+    JAGS_LIB_DIR="${JAGS_PREFIX}/lib64"
+  else
+    as_error "JAGS library directory was not found under '${JAGS_PREFIX}'. Pass --with-jags-libdir or set JAGS_LIB_DIR."
+  fi
+fi
+
+if [ -z "$JAGS_LIB_DIR" ] && [ -z "$JAGS_VERSION" ]; then
+  case "$JAGS_INCLUDE_DIR" in
+    /usr/local/*)
+      if [ -d "/usr/local/lib" ]; then
+        JAGS_LIB_DIR="/usr/local/lib"
+      fi
+      ;;
+    /opt/local/*)
+      if [ -d "/opt/local/lib" ]; then
+        JAGS_LIB_DIR="/opt/local/lib"
+      fi
+      ;;
+  esac
+fi
+
+if [ -n "$JAGS_LIB_DIR" ]; then
+  if [ ! -d "$JAGS_LIB_DIR" ]; then
+    as_error "JAGS library directory '${JAGS_LIB_DIR}' does not exist."
+  fi
+  JAGS_LIBS="-L${JAGS_LIB_DIR} ${JAGS_LIBS}"
+fi
+
+as_echo "using JAGS CFLAGS: ${JAGS_CFLAGS}"
+as_echo "using JAGS LIBS: ${JAGS_LIBS}"
+as_echo "creating src/Makevars"
+
+JAGS_CFLAGS_SED=`sed_escape "$JAGS_CFLAGS"`
+JAGS_LIBS_SED=`sed_escape "$JAGS_LIBS"`
+JAGS_RPATH_SED=`sed_escape "$JAGS_RPATH"`
+JAGS_MAJOR_VERSION_SED=`sed_escape "$JAGS_MAJOR_VERSION"`
+
+sed \
+  -e "s|@JAGS_CFLAGS@|${JAGS_CFLAGS_SED}|g" \
+  -e "s|@JAGS_LIBS@|${JAGS_LIBS_SED}|g" \
+  -e "s|@JAGS_RPATH@|${JAGS_RPATH_SED}|g" \
+  -e "s|@JAGS_MAJOR_VERSION@|${JAGS_MAJOR_VERSION_SED}|g" \
+  src/Makevars.in > src/Makevars

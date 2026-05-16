@@ -303,8 +303,7 @@ if (isNamespaceLoaded("BayesTools")) {
 #' Test a prior distribution for consistency
 #'
 #' Validates that a prior distribution's rng, pdf, cdf, quant, mean, and sd
-
-' functions work correctly and are mutually consistent.
+#' functions work correctly and are mutually consistent.
 #'
 #' @param prior A prior object to test
 #' @param skip_moments Logical; skip mean/sd validation (for distributions
@@ -613,11 +612,50 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
   }
   package_source_files <- unique(package_source_files)
   package_source_files <- package_source_files[file.exists(package_source_files)]
+  if(length(package_source_files) == 0L){
+    return(stats::setNames(character(), character()))
+  }
   names(package_source_files) <- paste0(
     "package_R_",
     tools::file_path_sans_ext(basename(package_source_files))
   )
   package_source_files
+}
+
+.test_cache_package_src_files <- function(files = character(), patterns = character()) {
+  package_src_dir <- file.path(testthat::test_path("..", ".."), "src")
+  if(!dir.exists(package_src_dir)){
+    return(stats::setNames(character(), character()))
+  }
+
+  package_source_files <- file.path(package_src_dir, files)
+  for (pattern in patterns) {
+    package_source_files <- c(
+      package_source_files,
+      list.files(package_src_dir, pattern = pattern, full.names = TRUE, recursive = TRUE)
+    )
+  }
+  package_source_files <- unique(package_source_files)
+  package_source_files <- package_source_files[file.exists(package_source_files)]
+  if(length(package_source_files) == 0L){
+    return(stats::setNames(character(), character()))
+  }
+
+  relative_paths <- substring(
+    normalizePath(package_source_files, winslash = "/", mustWork = TRUE),
+    nchar(normalizePath(package_src_dir, winslash = "/", mustWork = TRUE)) + 2L
+  )
+  names(package_source_files) <- paste0(
+    "package_src_",
+    gsub("[^A-Za-z0-9]+", "_", relative_paths)
+  )
+  package_source_files
+}
+
+.test_cache_package_sources_available <- function() {
+
+  package_r_dir <- file.path(testthat::test_path("..", ".."), "R")
+  dir.exists(package_r_dir) && length(list.files(package_r_dir, pattern = "\\.R$", full.names = TRUE)) > 0L
 }
 
 .test_cache_existing_test_files <- function(files) {
@@ -637,14 +675,27 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
       files = c(
         "JAGS-fit.R",
         "JAGS-formula.R",
+        "JAGS-formula-random.R",
+        "JAGS-lkj-cholesky.R",
         "JAGS-marglik.R",
         "priors.R",
         "priors-tools.R",
         "priors-informed.R",
+        "random-effects-allocation.R",
+        "random-effects-metadata.R",
+        "random-effects-reconstruction.R",
+        "random-effects-sd-spec.R",
+        "random-effects-summary.R",
+        "random-priors.R",
         "selection-kernels.R",
-        "tools.R"
+        "tools.R",
+        "zzz.R"
       ),
       patterns = "^distributions-.*\\.R$"
+    ),
+    .test_cache_package_src_files(
+      files = c("BayesTools.cc", "init.c", "r-lkj.cc", "Makevars.in", "Makevars.win", "Makevars.ucrt"),
+      patterns = "\\.(cc|h)$"
     ),
     test_00_model_fits = testthat::test_path("test-00-model-fits.R")
   )
@@ -654,7 +705,15 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
       files = c(
         "JAGS-fit.R",
         "JAGS-formula.R",
+        "JAGS-formula-random.R",
+        "JAGS-lkj-cholesky.R",
         "model-averaging.R",
+        "random-effects-allocation.R",
+        "random-effects-metadata.R",
+        "random-effects-reconstruction.R",
+        "random-effects-sd-spec.R",
+        "random-effects-summary.R",
+        "random-priors.R",
         "selection-kernels.R",
         "summary-tables.R",
         "interpret.R"
@@ -681,9 +740,14 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
     .test_cache_package_r_files(
       files = c(
         "JAGS-fit.R",
+        "JAGS-formula.R",
+        "JAGS-formula-random.R",
+        "JAGS-lkj-cholesky.R",
         "model-averaging.R",
         "model-averaging-plots.R",
         "priors-plot.R",
+        "random-effects-summary.R",
+        "random-priors.R",
         "summary-tables.R"
       )
     ),

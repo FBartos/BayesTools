@@ -477,6 +477,56 @@ test_that("runjags_estimates_table reports exact sample summaries without snapsh
   .expect_runjags_estimate_values_for_test(transformed, transformed_posterior, c(0.25, 0.75))
 })
 
+test_that("raw random-effect correlation aliases include logit-scale rho columns", {
+
+  samples <- matrix(
+    seq_len(5L * 5L),
+    nrow = 5L,
+    dimnames = list(
+      NULL,
+      c(
+        "mu_intercept",
+        "mu__xREx__id_sd",
+        "mu__xREx__id_rho",
+        "mu__xREx__id_rho_z",
+        "mu__xREx__id_rho_logit"
+      )
+    )
+  )
+  formula_design <- list(
+    mu = structure(
+      list(
+        parameter = "mu",
+        random_effects = list(list(parameter_stem = "mu__xREx__id"))
+      ),
+      class = c("BayesTools_formula_design", "list")
+    )
+  )
+
+  removed <- BayesTools:::.bt_JAGS_estimates_filter_raw_random_columns(
+    model_samples = samples,
+    prior_list = list(),
+    formula_design = formula_design,
+    remove_parameters = "random_correlation"
+  )
+  expect_true("mu__xREx__id_sd" %in% colnames(removed))
+  expect_false("mu__xREx__id_rho" %in% colnames(removed))
+  expect_false("mu__xREx__id_rho_z" %in% colnames(removed))
+  expect_false("mu__xREx__id_rho_logit" %in% colnames(removed))
+
+  kept <- BayesTools:::.bt_JAGS_estimates_filter_raw_random_columns(
+    model_samples = samples,
+    prior_list = list(),
+    formula_design = formula_design,
+    keep_parameters = "random_correlation"
+  )
+  expect_true("mu_intercept" %in% colnames(kept))
+  expect_false("mu__xREx__id_sd" %in% colnames(kept))
+  expect_true("mu__xREx__id_rho" %in% colnames(kept))
+  expect_true("mu__xREx__id_rho_z" %in% colnames(kept))
+  expect_true("mu__xREx__id_rho_logit" %in% colnames(kept))
+})
+
 
 test_that("runjags summary helper keeps only requested diagnostics", {
 

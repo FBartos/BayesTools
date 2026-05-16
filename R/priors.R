@@ -33,6 +33,8 @@
 #'   \code{rate}.}
 #'   \item{\code{"uniform"}}{for a uniform distribution defined on a
 #'   range from \code{a} to \code{b}}
+#'   \item{\code{"dirichlet"}}{for a Dirichlet distribution over a simplex,
+#'   characterized by a positive concentration vector \code{alpha}.}
 #' }
 #' @param parameters list of appropriate parameters for a given
 #' \code{distribution}.
@@ -111,6 +113,8 @@ prior <- function(distribution, parameters, truncation = list(lower = -Inf, uppe
     distribution <- "mcauchy"
   }else if(distribution %in% c("mpoint", "mspike")){
     distribution <- "mpoint"
+  }else if(distribution %in% c("dirichlet", "simplex")){
+    distribution <- "dirichlet"
   }else{
     stop(paste0("The specified distribution name '", distribution,"' is not known. Please, see '?prior' for more information about supported prior distributions."))
   }
@@ -1032,6 +1036,36 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
 
   return(output)
 }
+.prior_dirichlet <- function(parameters, truncation){
+
+  output <- list()
+
+  if(!is.null(names(parameters))){
+    names(parameters)[names(parameters) == "concentration"] <- "alpha"
+  }
+  parameters <- .check_and_name_parameters(parameters, "alpha", "Dirichlet")
+  truncation <- .check_and_set_truncation(truncation)
+  .check_vector_truncation_unsupported(truncation)
+
+  .check_parameter(parameters$alpha, "alpha", length = 0)
+  .check_parameter_positive(parameters$alpha, "alpha")
+  if(any(!is.finite(parameters$alpha))){
+    stop("The 'alpha' concentration parameters must be finite.", call. = FALSE)
+  }
+  if(length(parameters$alpha) < 2L){
+    stop("The Dirichlet 'alpha' concentration vector must contain at least two values.", call. = FALSE)
+  }
+
+  parameters$K <- length(parameters$alpha)
+
+  output$distribution <- "dirichlet"
+  output$parameters   <- parameters
+  output$truncation   <- truncation
+
+  class(output) <- c("prior", "prior.vector", "prior.simplex")
+
+  return(output)
+}
 .check_point_truncation <- function(truncation, location, distribution){
 
   if(is.expression(location)){
@@ -1658,6 +1692,10 @@ rng.prior   <- function(x, n, ...){
     if(prior[["distribution"]] != "mpoint")
       .check_vector_truncation_unsupported(prior$truncation)
 
+    if(prior[["distribution"]] == "dirichlet"){
+      return(.prior_dirichlet_rng(prior, n))
+    }
+
     par1 <- switch(
       prior[["distribution"]],
       "mnormal" = prior$parameter[["mean"]],
@@ -1812,6 +1850,10 @@ lpdf.prior  <- function(x, y, ...){
 
     if(prior[["distribution"]] != "mpoint")
       .check_vector_truncation_unsupported(prior$truncation)
+
+    if(prior[["distribution"]] == "dirichlet"){
+      return(.prior_dirichlet_lpdf(prior, x))
+    }
 
     par1 <- switch(
       prior[["distribution"]],
@@ -2221,6 +2263,10 @@ quant.prior <- function(x, p, ...){
 
 .prior_vector_dimension <- function(prior){
 
+  if(identical(prior$distribution, "dirichlet")){
+    return(length(prior$parameters[["alpha"]]))
+  }
+
   K <- prior$parameters[["K"]]
   .check_parameter_dimensions(K, "K", allow_NA = FALSE)
   as.integer(K)
@@ -2251,10 +2297,76 @@ quant.prior <- function(x, p, ...){
 
   matrix(rep(x, times = K), ncol = K)
 }
+.prior_dirichlet_rng <- function(prior, n){
+
+  alpha <- prior$parameters[["alpha"]]
+  out <- extraDistr::rdirichlet(n, alpha = alpha)
+  colnames(out) <- paste0("V", seq_along(alpha))
+  out
+}
+.prior_dirichlet_x_matrix <- function(x, K, name = "x"){
+
+  if(is.matrix(x)){
+    if(ncol(x) != K){
+      stop(paste0("The '", name, "' argument must have ", K, " columns."), call. = FALSE)
+    }
+    return(x)
+  }
+  if(is.data.frame(x)){
+    x <- as.matrix(x)
+    if(ncol(x) != K){
+      stop(paste0("The '", name, "' argument must have ", K, " columns."), call. = FALSE)
+    }
+    return(x)
+  }
+  if(length(x) == K){
+    return(matrix(x, nrow = 1L))
+  }
+  if(length(x) %% K == 0L){
+    return(matrix(x, ncol = K, byrow = TRUE))
+  }
+
+  stop(paste0("The '", name, "' argument length must be a multiple of the Dirichlet dimension."), call. = FALSE)
+}
+.prior_dirichlet_lpdf <- function(prior, x){
+
+  alpha <- prior$parameters[["alpha"]]
+  K <- length(alpha)
+  x_mat <- .prior_dirichlet_x_matrix(x, K, "x")
+  log_const <- lgamma(sum(alpha)) - sum(lgamma(alpha))
+
+  apply(x_mat, 1L, function(row){
+    if(anyNA(row)){
+      return(NA_real_)
+    }
+    if(any(row < 0 | row > 1) || !isTRUE(all.equal(sum(row), 1, tolerance = 1e-8))){
+      return(-Inf)
+    }
+    zero <- row == 0
+    if(any(zero & alpha < 1)){
+      return(Inf)
+    }
+    if(any(zero & alpha > 1)){
+      return(-Inf)
+    }
+    positive <- row > 0
+    log_const + sum((alpha[positive] - 1) * log(row[positive]))
+  })
+}
 .prior_vector_marginal_cdf <- function(prior, q, lower.tail = TRUE){
 
   K     <- .prior_vector_dimension(prior)
   q_mat <- .prior_vector_x_matrix(q, K, "q")
+
+  if(identical(prior$distribution, "dirichlet")){
+    alpha <- prior$parameters[["alpha"]]
+    alpha0 <- sum(alpha)
+    out <- vapply(seq_len(K), function(i){
+      stats::pbeta(q_mat[, i], shape1 = alpha[i], shape2 = alpha0 - alpha[i], lower.tail = lower.tail)
+    }, numeric(nrow(q_mat)))
+    return(matrix(out, nrow = nrow(q_mat), ncol = K))
+  }
+
   loc   <- .prior_vector_primary_location(prior)
 
   out <- switch(
@@ -2270,6 +2382,16 @@ quant.prior <- function(x, p, ...){
 
   K     <- .prior_vector_dimension(prior)
   x_mat <- .prior_vector_x_matrix(x, K, "x")
+
+  if(identical(prior$distribution, "dirichlet")){
+    alpha <- prior$parameters[["alpha"]]
+    alpha0 <- sum(alpha)
+    out <- vapply(seq_len(K), function(i){
+      stats::dbeta(x_mat[, i], shape1 = alpha[i], shape2 = alpha0 - alpha[i], log = TRUE)
+    }, numeric(nrow(x_mat)))
+    return(matrix(out, nrow = nrow(x_mat), ncol = K))
+  }
+
   loc   <- .prior_vector_primary_location(prior)
 
   out <- switch(
@@ -2284,6 +2406,16 @@ quant.prior <- function(x, p, ...){
 .prior_vector_marginal_quant <- function(prior, p){
 
   K   <- .prior_vector_dimension(prior)
+
+  if(identical(prior$distribution, "dirichlet")){
+    alpha <- prior$parameters[["alpha"]]
+    alpha0 <- sum(alpha)
+    q <- vapply(seq_len(K), function(i){
+      stats::qbeta(p, shape1 = alpha[i], shape2 = alpha0 - alpha[i])
+    }, numeric(length(p)))
+    return(matrix(q, nrow = length(p), ncol = K))
+  }
+
   loc <- .prior_vector_primary_location(prior)
 
   q <- switch(
@@ -2298,6 +2430,12 @@ quant.prior <- function(x, p, ...){
 .prior_vector_mean <- function(prior){
 
   K   <- .prior_vector_dimension(prior)
+
+  if(identical(prior$distribution, "dirichlet")){
+    alpha <- prior$parameters[["alpha"]]
+    return(alpha / sum(alpha))
+  }
+
   loc <- .prior_vector_primary_location(prior)
 
   m <- switch(
@@ -2312,6 +2450,12 @@ quant.prior <- function(x, p, ...){
 .prior_vector_var <- function(prior){
 
   K <- .prior_vector_dimension(prior)
+
+  if(identical(prior$distribution, "dirichlet")){
+    alpha <- prior$parameters[["alpha"]]
+    alpha0 <- sum(alpha)
+    return(alpha * (alpha0 - alpha) / (alpha0^2 * (alpha0 + 1)))
+  }
 
   v <- switch(
     prior[["distribution"]],
@@ -2339,6 +2483,7 @@ quant.prior <- function(x, p, ...){
       isTRUE(all.equal(prior$truncation[["upper"]], prior$parameters[["b"]])),
     "point"     = TRUE,
     "mpoint"          = TRUE,
+    "dirichlet"       = TRUE,
     "weightfunction"  = TRUE,
     "none"            = TRUE
   )

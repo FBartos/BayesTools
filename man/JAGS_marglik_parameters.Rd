@@ -12,7 +12,8 @@ JAGS_marglik_parameters_formula(
   formula_list,
   formula_data_list,
   formula_prior_list,
-  prior_list_parameters
+  prior_list_parameters,
+  formula_design_list = NULL
 )
 }
 \arguments{
@@ -36,6 +37,10 @@ within the \code{formula}}
 
 \item{prior_list_parameters}{named list of prior distributions on model parameters
 (not specified within the formula but that might scale the formula parameters)}
+
+\item{formula_design_list}{optional formula-design metadata produced by
+\code{JAGS_formula()}, used internally to reconstruct formula random effects
+for bridge sampling.}
 }
 \value{
 \code{JAGS_marglik_parameters} returns a named list

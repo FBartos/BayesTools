@@ -14,7 +14,9 @@
 ^BayesTools.Rcheck$
 ^BayesTools_.*\.tar\.gz$
 ^\.StatsVault($|/)
-^tests($|/)
+^src/Makevars$
+^src/.*\.(dll|o|so)$
+^tests/testthat/_snaps($|/)
 ^doc$
 ^Meta$
 ^\.vscode$

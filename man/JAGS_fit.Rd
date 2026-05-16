@@ -13,6 +13,7 @@ JAGS_fit(
   formula_data_list = NULL,
   formula_prior_list = NULL,
   formula_scale_list = NULL,
+  formula_random_prior_list = NULL,
   chains = 4,
   adapt = 500,
   burnin = 1000,
@@ -28,6 +29,7 @@ JAGS_fit(
   seed = NULL,
   add_parameters = NULL,
   required_packages = NULL,
+  jags_modules = NULL,
   ...
 )
 
@@ -66,6 +68,10 @@ within the \code{formula}}
 (names of the lists correspond to the parameter name created by each of the formula).
 Each entry should be a named list where continuous predictors with \code{TRUE} values will
 be standardized. Defaults to \code{NULL} (no standardization).}
+
+\item{formula_random_prior_list}{optional named list of \code{prior_random()}
+objects for random effects in \code{formula_list}. Required for any formula that
+contains random effects.}
 
 \item{chains}{number of chains to be run, defaults to \code{4}}
 
@@ -116,6 +122,9 @@ monitored but were not specified in the \code{prior_list}}
 \item{required_packages}{character vector specifying list of packages containing
 JAGS models required for sampling (in case that the function is run in parallel or in
 detached R session). Defaults to \code{NULL}.}
+
+\item{jags_modules}{character vector specifying JAGS modules required by the
+generated model syntax. Defaults to \code{NULL}.}
 
 \item{...}{additional hidden arguments}
 

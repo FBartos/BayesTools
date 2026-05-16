@@ -314,6 +314,112 @@ test_that("exchangeable vector priors expose exact numeric and JAGS APIs", {
 })
 
 
+test_that("Dirichlet simplex priors expose joint, marginal, JAGS, and bridge APIs", {
+  p <- prior("dirichlet", list(alpha = c(2, 3, 5)))
+  p_alias <- prior("simplex", list(concentration = c(2, 3, 5)))
+
+  expect_true(is.prior.simplex(p))
+  expect_s3_class(p, "prior.vector")
+  expect_equal(p_alias$parameters$alpha, p$parameters$alpha)
+  expect_equal(mean(p), c(.2, .3, .5))
+  expect_equal(
+    var(p),
+    c(2, 3, 5) * (10 - c(2, 3, 5)) / (10^2 * 11)
+  )
+  expect_equal(sd(p), sqrt(var(p)))
+
+  expect_error(prior("dirichlet", list(alpha = 1)), "at least two")
+  expect_error(prior("dirichlet", list(alpha = c(1, 0))), "positive")
+  expect_error(prior("dirichlet", list(alpha = c(1, Inf))), "finite")
+
+  x <- c(.2, .3, .5)
+  expected_lpdf <- lgamma(10) - sum(lgamma(c(2, 3, 5))) +
+    sum((c(2, 3, 5) - 1) * log(x))
+  expect_equal(lpdf(p, x), expected_lpdf, tolerance = 1e-12)
+  expect_equal(pdf(p, x), exp(expected_lpdf), tolerance = 1e-12)
+  expect_equal(lpdf(p, c(.2, .3, .4)), -Inf)
+  expect_equal(lpdf(p, c(.2, -.3, 1.1)), -Inf)
+
+  q <- rbind(c(.2, .3, .5), c(.6, .2, .2))
+  expect_equal(
+    mlpdf(p, q),
+    matrix(
+      c(
+        stats::dbeta(q[, 1], 2, 8, log = TRUE),
+        stats::dbeta(q[, 2], 3, 7, log = TRUE),
+        stats::dbeta(q[, 3], 5, 5, log = TRUE)
+      ),
+      nrow = 2
+    ),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    mcdf(p, q),
+    matrix(
+      c(
+        stats::pbeta(q[, 1], 2, 8),
+        stats::pbeta(q[, 2], 3, 7),
+        stats::pbeta(q[, 3], 5, 5)
+      ),
+      nrow = 2
+    ),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    mquant(p, c(.25, .75)),
+    cbind(
+      stats::qbeta(c(.25, .75), 2, 8),
+      stats::qbeta(c(.25, .75), 3, 7),
+      stats::qbeta(c(.25, .75), 5, 5)
+    ),
+    tolerance = 1e-12
+  )
+
+  set.seed(1)
+  draws <- rng(p, 1000)
+  expect_equal(dim(draws), c(1000L, 3L))
+  expect_true(all(draws >= 0 & draws <= 1))
+  expect_equal(rowSums(draws), rep(1, 1000), tolerance = 1e-12)
+
+  syntax <- JAGS_add_priors("model{}", list(w = p))
+  expect_match(syntax, "prior_par_eta_w\\[1\\] ~ dgamma\\(2, 1\\)")
+  expect_match(syntax, "w\\[3\\] <- prior_par_eta_w\\[3\\] / sum\\(prior_par_eta_w\\[1:3\\]\\)")
+
+  inits <- JAGS_get_inits(list(w = p), chains = 1, seed = 1)[[1]]
+  expect_true("prior_par_eta_w" %in% names(inits))
+  expect_equal(length(inits$prior_par_eta_w), 3L)
+  expect_true(all(inits$prior_par_eta_w > 0))
+  expect_equal(JAGS_to_monitor(list(w = p)), c("w", "prior_par_eta_w"))
+
+  posterior <- matrix(
+    c(1, 2, 3, 4, 5, 6),
+    nrow = 2,
+    byrow = TRUE,
+    dimnames = list(NULL, paste0("prior_par_eta_w[", 1:3, "]"))
+  )
+  prepared <- JAGS_bridgesampling_posterior(posterior, list(w = p))
+  expect_equal(colnames(prepared), colnames(posterior))
+  expect_equal(attr(prepared, "lb"), stats::setNames(rep(0, 3), colnames(posterior)))
+  expect_equal(attr(prepared, "ub"), stats::setNames(rep(Inf, 3), colnames(posterior)))
+
+  samples <- posterior[1, ]
+  expect_equal(
+    JAGS_marglik_priors(samples, list(w = p)),
+    sum(stats::dgamma(c(1, 2, 3), shape = c(2, 3, 5), rate = 1, log = TRUE)),
+    tolerance = 1e-12
+  )
+  expect_equal(JAGS_marglik_parameters(samples, list(w = p))$w, c(1, 2, 3) / 6)
+
+  public_posterior <- matrix(
+    c(.2, .3, .5, 1, 2, 3),
+    nrow = 1,
+    dimnames = list(NULL, c("w[1]", "w[2]", "w[3]", paste0("prior_par_eta_w[", 1:3, "]")))
+  )
+  cleaned <- BayesTools:::.remove_auxiliary_parameters(public_posterior, list(w = p))
+  expect_equal(colnames(cleaned$model_samples), paste0("w[", 1:3, "]"))
+})
+
+
 test_that("JAGS prior APIs reject duplicate parameter names", {
   p <- prior("normal", list(0, 1))
   duplicate_prior_list <- list(theta = p, theta = p)

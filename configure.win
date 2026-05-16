@@ -1,0 +1,12 @@
+#!/bin/sh
+
+if [ -n "$JAGS_ROOT" ]; then
+  if [ ! -d "$JAGS_ROOT" ]; then
+    echo "configure.win: JAGS_ROOT is set to '$JAGS_ROOT', but that directory was not found." >&2
+    echo "configure.win: src/Makevars.win will stop with installation help if JAGS cannot be found." >&2
+  fi
+else
+  echo "configure.win: JAGS_ROOT is not set; src/Makevars.win will search /c/progra~1/JAGS/JAGS-*." >&2
+fi
+
+exit 0

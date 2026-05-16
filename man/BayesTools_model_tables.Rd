@@ -47,6 +47,12 @@ runjags_estimates_table(
   keep_formulas = NULL,
   return_samples = FALSE,
   transform_scaled = FALSE,
+  random_effects_summary = c("standard", "full", "raw", "none"),
+  random_effects_metadata = FALSE,
+  remove_random_effects = NULL,
+  keep_random_effects = NULL,
+  remove_random_structures = NULL,
+  keep_random_structures = NULL,
   remove_diagnostics = FALSE,
   diagnostic_columns = getOption("BayesTools.JAGS_estimates_diagnostic_columns", if
     (remove_diagnostics) "none" else "all")
@@ -84,6 +90,12 @@ JAGS_estimates_table(
   keep_formulas = NULL,
   return_samples = FALSE,
   transform_scaled = FALSE,
+  random_effects_summary = c("standard", "full", "raw", "none"),
+  random_effects_metadata = FALSE,
+  remove_random_effects = NULL,
+  keep_random_effects = NULL,
+  remove_random_structures = NULL,
+  keep_random_structures = NULL,
   remove_diagnostics = FALSE,
   diagnostic_columns = getOption("BayesTools.JAGS_estimates_diagnostic_columns", if
     (remove_diagnostics) "none" else "all")
@@ -200,7 +212,11 @@ be printed. Defaults to \code{TRUE}.}
 \item{remove_parameters}{parameters to be removed from the summary.
 Can be \code{NULL} (default, no removal), a character vector of parameter
 names to remove, or \code{TRUE} to remove all parameters that are not
-part of any formula.}
+part of any formula. For formula random effects, character filters also
+accept semantic aliases \code{"random"}, \code{"random_sd"},
+\code{"random_rho"}, \code{"random_correlation"},
+\code{"random_variance_fraction"}, \code{"random_allocation"}, and
+\code{"random_sd_multiplier"}.}
 
 \item{fit}{runjags model fit}
 
@@ -228,7 +244,9 @@ should be removed from the summary. Defaults to \code{NULL}.}
 
 \item{keep_parameters}{character vector of parameter names to keep.
 All other parameters will be removed unless they belong to formulas
-specified in \code{keep_formulas}. Defaults to \code{NULL}.}
+specified in \code{keep_formulas}. The random-effect aliases listed for
+\code{remove_parameters} can also be used here, for example
+\code{keep_parameters = c("random_sd", "random_rho")}.}
 
 \item{keep_formulas}{character vector of formula names whose parameters
 should be kept. All other parameters will be removed unless they are
@@ -239,7 +257,37 @@ instead of the table. Defaults to \code{FALSE}.}
 
 \item{transform_scaled}{whether coefficients from standardized
 continuous predictors should be transformed back to the original
-scale. Defaults to \code{FALSE}.}
+scale. For \code{runjags_estimates_table()}, random-effect summaries are
+also derived on the transformed scale when the fit contains
+\code{formula_scale} metadata: random-effect SDs and correlations are
+computed from the transformed covariance draws. Defaults to \code{FALSE}.}
+
+\item{random_effects_summary}{random-effect reporting mode for JAGS estimates
+tables. \code{"standard"} replaces raw random-effect implementation
+parameters with semantic SD, rho/correlation, and variance-allocation
+summaries. \code{"full"} also includes heterogeneous SD multipliers.
+\code{"raw"} keeps the historical raw monitored parameters, and
+\code{"none"} removes random-effect parameters from the table. When used
+together with \code{transform_scaled = TRUE}, SD and correlation summaries
+for formula random effects are computed after applying the original-scale
+formula transformation.}
+
+\item{random_effects_metadata}{whether to add random-effect metadata columns
+to JAGS estimates tables. When \code{TRUE}, the table includes the
+user-facing random-effect name, grouping label, and covariance structure
+type for random-effect rows. Defaults to \code{FALSE}.}
+
+\item{remove_random_effects, keep_random_effects}{character vectors of
+random-effect names/blocks used to remove or keep random-effect rows.
+These match explicit \code{name = } values, generated block names, and
+grouping labels. Non-random parameters are left unaffected; combine with
+\code{keep_parameters = "random"} to return only the selected random-effect
+rows.}
+
+\item{remove_random_structures, keep_random_structures}{character vectors of
+random-effect covariance structures (for example \code{"diag"}, \code{"us"},
+\code{"ar1"}, or \code{"hcs"}) used to remove or keep random-effect rows.
+Non-random parameters are left unaffected.}
 
 \item{remove_diagnostics}{whether to exclude MCMC diagnostics (MCMC error,
 ESS, R-hat) from the output table. Defaults to \code{FALSE}. Setting to
@@ -282,16 +330,16 @@ Creates model summary based on a model objects or
 provides estimates table for a runjags fit.
 }
 \details{
-For product-space JAGS inclusion Bayes factors, posterior inclusion
-probabilities of exactly 0 or 1 cannot produce a finite point estimate of
-the model odds ratio. In that case, inclusion BFs marked with \code{"<"} or
-\code{">"} are finite-sample bounds: posterior inclusion probabilities of
-0 or 1 were replaced by \code{1/S} or \code{(S - 1)/S}, where \code{S} is
-the number of posterior samples. This is a reporting convention, not an
-unbiased finite Bayes-factor estimate. If the prior inclusion probability
-is exactly 0 or 1, the inclusion Bayes factor is undefined and reported as
-\code{NA}, because the corresponding inclusion/exclusion comparison was not
-tested.
+For product-space JAGS inclusion Bayes factors, posterior
+inclusion probabilities of exactly 0 or 1 cannot produce a finite
+point estimate of the model odds ratio. In that case, inclusion BFs
+marked with \code{"<"} or \code{">"} are finite-sample bounds: posterior
+inclusion probabilities of 0 or 1 were replaced by \code{1/S} or
+\code{(S - 1)/S}, where \code{S} is the number of posterior samples.
+This is a reporting convention, not an unbiased finite Bayes-factor
+estimate. If the prior inclusion probability is exactly 0 or 1, the
+inclusion Bayes factor is undefined and reported as \code{NA}, because
+the corresponding inclusion/exclusion comparison was not tested.
 }
 \seealso{
 \link{BayesTools_ensemble_tables}

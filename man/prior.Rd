@@ -45,6 +45,8 @@ parameter. The later is internally converted to
 \code{rate}.}
 \item{\code{"uniform"}}{for a uniform distribution defined on a
 range from \code{a} to \code{b}}
+\item{\code{"dirichlet"}}{for a Dirichlet distribution over a simplex,
+characterized by a positive concentration vector \code{alpha}.}
 }}
 
 \item{parameters}{list of appropriate parameters for a given

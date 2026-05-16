@@ -120,7 +120,10 @@ be printed. Defaults to \code{TRUE}.}
 
 \item{transform_scaled}{whether coefficients from standardized
 continuous predictors should be transformed back to the original
-scale. Defaults to \code{FALSE}.}
+scale. For \code{runjags_estimates_table()}, random-effect summaries are
+also derived on the transformed scale when the fit contains
+\code{formula_scale} metadata: random-effect SDs and correlations are
+computed from the transformed covariance draws. Defaults to \code{FALSE}.}
 
 \item{formula_scale}{named list containing standardization information
 (mean and sd) for each standardized predictor. Required when

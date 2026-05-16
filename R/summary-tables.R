@@ -36,7 +36,10 @@
 #' differences from the grand mean
 #' @param transform_scaled whether coefficients from standardized
 #' continuous predictors should be transformed back to the original
-#' scale. Defaults to \code{FALSE}.
+#' scale. For \code{runjags_estimates_table()}, random-effect summaries are
+#' also derived on the transformed scale when the fit contains
+#' \code{formula_scale} metadata: random-effect SDs and correlations are
+#' computed from the transformed covariance draws. Defaults to \code{FALSE}.
 #' @param formula_scale named list containing standardization information
 #' (mean and sd) for each standardized predictor. Required when
 #' \code{transform_scaled = TRUE} for ensemble/marginal tables. For
@@ -614,15 +617,44 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
 #' @param remove_parameters parameters to be removed from the summary.
 #' Can be \code{NULL} (default, no removal), a character vector of parameter
 #' names to remove, or \code{TRUE} to remove all parameters that are not
-#' part of any formula.
+#' part of any formula. For formula random effects, character filters also
+#' accept semantic aliases \code{"random"}, \code{"random_sd"},
+#' \code{"random_rho"}, \code{"random_correlation"},
+#' \code{"random_variance_fraction"}, \code{"random_allocation"}, and
+#' \code{"random_sd_multiplier"}.
 #' @param remove_formulas character vector of formula names whose parameters
 #' should be removed from the summary. Defaults to \code{NULL}.
 #' @param keep_parameters character vector of parameter names to keep.
 #' All other parameters will be removed unless they belong to formulas
-#' specified in \code{keep_formulas}. Defaults to \code{NULL}.
+#' specified in \code{keep_formulas}. The random-effect aliases listed for
+#' \code{remove_parameters} can also be used here, for example
+#' \code{keep_parameters = c("random_sd", "random_rho")}.
 #' @param keep_formulas character vector of formula names whose parameters
 #' should be kept. All other parameters will be removed unless they are
 #' specified in \code{keep_parameters}. Defaults to \code{NULL}.
+#' @param random_effects_summary random-effect reporting mode for JAGS estimates
+#' tables. \code{"standard"} replaces raw random-effect implementation
+#' parameters with semantic SD, rho/correlation, and variance-allocation
+#' summaries. \code{"full"} also includes heterogeneous SD multipliers.
+#' \code{"raw"} keeps the historical raw monitored parameters, and
+#' \code{"none"} removes random-effect parameters from the table. When used
+#' together with \code{transform_scaled = TRUE}, SD and correlation summaries
+#' for formula random effects are computed after applying the original-scale
+#' formula transformation.
+#' @param random_effects_metadata whether to add random-effect metadata columns
+#' to JAGS estimates tables. When \code{TRUE}, the table includes the
+#' user-facing random-effect name, grouping label, and covariance structure
+#' type for random-effect rows. Defaults to \code{FALSE}.
+#' @param remove_random_effects,keep_random_effects character vectors of
+#' random-effect names/blocks used to remove or keep random-effect rows.
+#' These match explicit \code{name = } values, generated block names, and
+#' grouping labels. Non-random parameters are left unaffected; combine with
+#' \code{keep_parameters = "random"} to return only the selected random-effect
+#' rows.
+#' @param remove_random_structures,keep_random_structures character vectors of
+#' random-effect covariance structures (for example \code{"diag"}, \code{"us"},
+#' \code{"ar1"}, or \code{"hcs"}) used to remove or keep random-effect rows.
+#' Non-random parameters are left unaffected.
 #' @param return_samples whether to return the transoformed and formated samples
 #' instead of the table. Defaults to \code{FALSE}.
 #' @param remove_diagnostics whether to exclude MCMC diagnostics (MCMC error,
@@ -783,6 +815,10 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
                                      probs = c(0.025, 0.5, 0.975), remove_spike_0 = TRUE, transform_factors = FALSE, transform_orthonormal = FALSE,
                                      formula_prefix = TRUE, remove_inclusion = FALSE, remove_parameters = NULL, remove_formulas = NULL,
                                      keep_parameters = NULL, keep_formulas = NULL, return_samples = FALSE, transform_scaled = FALSE,
+                                     random_effects_summary = c("standard", "full", "raw", "none"),
+                                     random_effects_metadata = FALSE,
+                                     remove_random_effects = NULL, keep_random_effects = NULL,
+                                     remove_random_structures = NULL, keep_random_structures = NULL,
                                      remove_diagnostics = FALSE,
                                      diagnostic_columns = getOption("BayesTools.JAGS_estimates_diagnostic_columns", if(remove_diagnostics) "none" else "all")){
 
@@ -811,6 +847,8 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   check_bool(transform_orthonormal, "transform_orthonormal")
   check_bool(formula_prefix, "formula_prefix")
   check_bool(transform_scaled, "transform_scaled")
+  random_effects_summary <- match.arg(random_effects_summary)
+  check_bool(random_effects_metadata, "random_effects_metadata")
   check_bool(remove_diagnostics, "remove_diagnostics")
   diagnostic_columns <- .normalize_diagnostic_columns(diagnostic_columns, .JAGS_estimates_diagnostic_columns(), "diagnostic_columns")
   if(remove_diagnostics){
@@ -824,6 +862,10 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   check_char(remove_formulas, "remove_formulas", allow_NULL = TRUE, check_length = 0)
   check_char(keep_parameters, "keep_parameters", allow_NULL = TRUE, check_length = 0)
   check_char(keep_formulas, "keep_formulas", allow_NULL = TRUE, check_length = 0)
+  check_char(remove_random_effects, "remove_random_effects", allow_NULL = TRUE, check_length = 0)
+  check_char(keep_random_effects, "keep_random_effects", allow_NULL = TRUE, check_length = 0)
+  check_char(remove_random_structures, "remove_random_structures", allow_NULL = TRUE, check_length = 0)
+  check_char(keep_random_structures, "keep_random_structures", allow_NULL = TRUE, check_length = 0)
 
   # depreciate
   transform_factors <- .depreciate.transform_orthonormal(transform_orthonormal, transform_factors)
@@ -831,14 +873,26 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   # get model samples
   model_samples <- .extract_posterior_samples(fit, as_list = FALSE)
 
-  # transform scaled coefficients back to original scale before filtering. Lower
-  # order coefficients can depend on higher-order interaction columns.
   formula_scale <- NULL
   if(transform_scaled){
     formula_scale <- attr(fit, "formula_scale")
-    if(!is.null(formula_scale) && length(formula_scale) > 0){
-      model_samples <- transform_scale_samples(model_samples, formula_scale)
-    }
+  }
+
+  random_summary <- .bt_random_effect_summary_samples(
+    model_samples = model_samples,
+    prior_list = prior_list,
+    formula_design = attr(fit, "formula_design"),
+    mode = random_effects_summary,
+    formula_scale = if(transform_scaled) formula_scale else NULL
+  )
+  model_samples <- random_summary$model_samples
+  prior_list <- random_summary$prior_list
+
+  # Transform scaled coefficients after deriving random-effect summaries. This
+  # lets summaries reconstruct point-prior/allocation SDs before covariance
+  # transformations, while fixed effects still retain all interaction columns.
+  if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
+    model_samples <- transform_scale_samples(model_samples, formula_scale)
   }
 
   ### remove un-wanted estimates (or support values) - spike and slab priors already dealt with later (also remove the item from prior list)
@@ -849,12 +903,27 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     remove_formulas   = remove_formulas,
     keep_parameters   = keep_parameters,
     keep_formulas     = keep_formulas,
+    remove_random_effects = remove_random_effects,
+    keep_random_effects = keep_random_effects,
+    remove_random_structures = remove_random_structures,
+    keep_random_structures = keep_random_structures,
     remove_spike_0    = remove_spike_0
   )
 
   cleaned       <- .remove_auxiliary_parameters(model_samples, prior_list, remove_params_vec)
   model_samples <- cleaned$model_samples
   prior_list    <- cleaned$prior_list
+  model_samples <- .bt_JAGS_estimates_filter_raw_random_columns(
+    model_samples = model_samples,
+    prior_list = prior_list,
+    formula_design = attr(fit, "formula_design"),
+    remove_parameters = remove_parameters,
+    keep_parameters = keep_parameters,
+    remove_random_effects = remove_random_effects,
+    keep_random_effects = keep_random_effects,
+    remove_random_structures = remove_random_structures,
+    keep_random_structures = keep_random_structures
+  )
 
   # simplify mixture and spike and slab priors to simple priors
   # the samples and summary can be dealt with as any other prior (i.e., transformations later)
@@ -1116,12 +1185,20 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 
   # rename formula parameters
   if(any(!sapply(lapply(prior_list, attr, which = "parameter"), is.null))){
+    raw_parameter_names <- colnames(model_samples)
     colnames(model_samples) <- format_parameter_names(
       parameters         = colnames(model_samples),
       formula_parameters = unique(unlist(lapply(prior_list, attr, which = "parameter"))),
       formula_random     = unique(unlist(lapply(prior_list, attr, which = "random_factor"))),
       formula_prefix     = formula_prefix,
       formula_scale      = if(transform_scaled) formula_scale else NULL)
+    colnames(model_samples) <- .bt_random_effect_summary_display_names(
+      names = colnames(model_samples),
+      raw_names = raw_parameter_names,
+      prior_list = prior_list,
+      formula_prefix = formula_prefix,
+      formula_design = attr(fit, "formula_design")
+    )
   }
 
   # return samples if requested
@@ -1132,14 +1209,23 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 
   # compute the summary
   if(ncol(model_samples) == 0){
-    return(runjags_estimates_empty_table(
+    empty_table <- runjags_estimates_empty_table(
       probs              = probs,
       title              = title,
       footnotes          = footnotes,
       warnings           = warnings,
       remove_diagnostics = remove_diagnostics,
       diagnostic_columns = summary_diagnostic_columns
-    ))
+    )
+    if(random_effects_metadata){
+      empty_table <- .bt_random_effect_summary_add_metadata_columns(
+        table = empty_table,
+        parameter_names = character(),
+        prior_list = prior_list,
+        formula_design = attr(fit, "formula_design")
+      )
+    }
+    return(empty_table)
   }else{
     runjags_summary <- .runjags_summary_fast(
       model_samples       = model_samples,
@@ -1161,8 +1247,149 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   attr(runjags_summary, "title")      <- title
   attr(runjags_summary, "footnotes")  <- footnotes
   attr(runjags_summary, "warnings")   <- warnings
+  if(random_effects_metadata){
+    runjags_summary <- .bt_random_effect_summary_add_metadata_columns(
+      table = runjags_summary,
+      parameter_names = parameter_names,
+      prior_list = prior_list,
+      formula_design = attr(fit, "formula_design")
+    )
+  }
 
   return(runjags_summary)
+}
+
+.bt_JAGS_estimates_filter_raw_random_columns <- function(model_samples,
+                                                         prior_list,
+                                                         formula_design = NULL,
+                                                         remove_parameters = NULL,
+                                                         keep_parameters = NULL,
+                                                         remove_random_effects = NULL,
+                                                         keep_random_effects = NULL,
+                                                         remove_random_structures = NULL,
+                                                         keep_random_structures = NULL){
+
+  model_samples <- .bt_random_effect_summary_filter_raw_columns(
+    model_samples = model_samples,
+    formula_design = formula_design,
+    remove_random_effects = remove_random_effects,
+    keep_random_effects = keep_random_effects,
+    remove_random_structures = remove_random_structures,
+    keep_random_structures = keep_random_structures
+  )
+
+  column_names <- colnames(model_samples)
+  if(length(column_names) == 0L){
+    return(model_samples)
+  }
+  random_design <- .bt_random_effect_summary_designs(formula_design)
+  if(length(random_design) == 0L){
+    return(model_samples)
+  }
+
+  remove_aliases <- .bt_JAGS_estimates_random_aliases(remove_parameters)
+  keep_aliases <- .bt_JAGS_estimates_random_aliases(keep_parameters)
+  keep_active <- !is.null(keep_parameters)
+  if(length(remove_aliases) == 0L && !keep_active){
+    return(model_samples)
+  }
+
+  random_prior_columns <- .bt_JAGS_estimates_random_prior_columns(
+    column_names = column_names,
+    prior_list = prior_list
+  )
+  remove_columns <- rep(FALSE, length(column_names))
+
+  for(design in random_design){
+    for(random_term in design$random_effects){
+      term_columns <- vapply(
+        column_names,
+        .bt_random_effect_summary_raw_parameter_matches,
+        logical(1),
+        random_term = random_term
+      )
+      if(!any(term_columns)){
+        next
+      }
+
+      if(.bt_JAGS_estimates_random_alias_has_all(remove_aliases)){
+        remove_columns <- remove_columns | term_columns
+      }else if(.bt_JAGS_estimates_random_alias_has_correlation(remove_aliases)){
+        remove_columns <- remove_columns |
+          (term_columns & .bt_JAGS_estimates_raw_random_correlation_columns(column_names))
+      }
+
+      if(keep_active){
+        keep_columns <- random_prior_columns
+        if(.bt_JAGS_estimates_random_alias_has_all(keep_aliases)){
+          keep_columns <- keep_columns | term_columns
+        }
+        if(.bt_JAGS_estimates_random_alias_has_correlation(keep_aliases)){
+          keep_columns <- keep_columns |
+            (term_columns & .bt_JAGS_estimates_raw_random_correlation_columns(column_names))
+        }
+        if(!is.null(keep_random_effects) || !is.null(keep_random_structures)){
+          term_matches <- .bt_random_effect_summary_term_filter_matches(
+            random_term = random_term,
+            random_effects = keep_random_effects,
+            random_structures = keep_random_structures
+          )
+          if(term_matches){
+            keep_columns <- keep_columns | term_columns
+          }
+        }
+        remove_columns <- remove_columns | (term_columns & !keep_columns)
+      }
+    }
+  }
+
+  model_samples[, !remove_columns, drop = FALSE]
+}
+
+.bt_JAGS_estimates_random_prior_columns <- function(column_names, prior_list){
+
+  if(length(prior_list) == 0L){
+    return(rep(FALSE, length(column_names)))
+  }
+  random_flags <- .bt_random_effect_prior_flags(prior_list)
+  random_prior_names <- random_flags$name[random_flags$any]
+
+  .bt_random_effect_summary_parameter_columns(
+    column_names = column_names,
+    parameter_names = random_prior_names
+  )
+}
+
+.bt_JAGS_estimates_random_aliases <- function(parameters){
+
+  if(is.null(parameters) || !is.character(parameters)){
+    return(character())
+  }
+
+  intersect(
+    parameters,
+    c(
+      "random", "random_effects", "random_sd", "random_rho",
+      "random_cor", "random_correlation", "random_variance_fraction",
+      "random_allocation", "random_sd_multiplier"
+    )
+  )
+}
+
+.bt_JAGS_estimates_random_alias_has_all <- function(aliases){
+
+  any(aliases %in% c("random", "random_effects"))
+}
+
+.bt_JAGS_estimates_random_alias_has_correlation <- function(aliases){
+
+  any(aliases %in% c("random_rho", "random_cor", "random_correlation"))
+}
+
+.bt_JAGS_estimates_raw_random_correlation_columns <- function(column_names){
+
+  grepl("_xRE_CORx", column_names, fixed = TRUE) |
+    grepl("_rho(_z|_logit)?(\\[|$)", column_names)
 }
 
 #' @rdname BayesTools_model_tables
@@ -1638,7 +1865,7 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
   return(BF)
 }
 
-#' @exportS3Method
+#' @export
 `[.BayesTools_BF` <- function(x, i, ...){
 
   bound_operator <- attr(x, "bound_operator")
@@ -1657,7 +1884,7 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
   return(out)
 }
 
-#' @exportS3Method
+#' @export
 `[.BayesTools_table` <- function(x, i, j, ..., drop = TRUE){
 
   original_names <- names(x)
@@ -2267,6 +2494,7 @@ update.BayesTools_table <- function(object, title = NULL, footnotes = NULL, warn
 
   return(unique(columns))
 }
+
 .runjags_summary_fast   <- function(model_samples, n_samples, n_chains, conditional, probs = c(0.025, 0.975), remove_diagnostics = FALSE,
                                     diagnostic_columns = .JAGS_estimates_diagnostic_columns()){
 

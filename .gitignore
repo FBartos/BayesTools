@@ -12,6 +12,13 @@ BayesTools_*.tar.gz
 ..Rcheck/
 Rplots.pdf
 check/
+/src/Makevars
+/src/*.o
+/src/**/*.o
+/src/*.dll
+/src/**/*.dll
+/src/*.so
+/src/**/*.so
 
 # Commit the small StatsVault coordination files used by Codex, but keep
 # bulky local caches, PDFs, query caches, and contribution artifacts ignored.
@@ -34,3 +41,5 @@ check/
 !.StatsVault/notes/*.md
 
 CLAUDE.md
+/.dev/lme4
+.positai

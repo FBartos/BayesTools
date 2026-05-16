@@ -27,8 +27,12 @@ the \code{formula}}
 the supplied data.
 }
 \description{
-Evaluates a JAGS formula on a posterior distribution
-obtained from a fitted model.
+Evaluates a JAGS formula on a posterior distribution obtained
+from a fitted model. Formula random effects can be evaluated for existing
+grouping levels when either standardized latent random effects and covariance
+hyperparameters were monitored via \code{random_monitor(latent = TRUE)}, or
+the group-level coefficients were monitored via
+\code{random_monitor(coefficients = TRUE)}.
 }
 \seealso{
 \code{\link[=JAGS_fit]{JAGS_fit()}} \code{\link[=JAGS_formula]{JAGS_formula()}}

@@ -93,6 +93,28 @@ test_that(".remove_auxiliary_parameters removes indexed factor invgamma support"
   expect_equal(colnames(result$model_samples), c("theta[1]", "theta[2]"))
 })
 
+test_that(".remove_auxiliary_parameters removes vector prior columns by base name", {
+
+  model_samples <- matrix(
+    seq_len(6),
+    nrow = 1,
+    dimnames = list(
+      NULL,
+      c("w[1]", "w[2]", "w[3]", "prior_par_eta_w[1]", "prior_par_eta_w[2]", "prior_par_eta_w[3]")
+    )
+  )
+  prior_list <- list(w = prior("dirichlet", list(alpha = c(1, 2, 3))))
+
+  result <- BayesTools:::.remove_auxiliary_parameters(
+    model_samples,
+    prior_list,
+    remove_parameters = "w"
+  )
+
+  expect_equal(ncol(result$model_samples), 0L)
+  expect_equal(names(result$prior_list), character())
+})
+
 
 test_that(".remove_auxiliary_parameters drops p-hacking internals by report scale and omega request", {
 

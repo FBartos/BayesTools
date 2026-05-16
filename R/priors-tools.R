@@ -275,6 +275,7 @@
 #' @export is.prior.simple
 #' @export is.prior.discrete
 #' @export is.prior.vector
+#' @export is.prior.simplex
 #' @export is.prior.point
 #' @export is.prior.none
 #' @export is.prior.PET
@@ -313,6 +314,10 @@ is.prior.discrete        <- function(x){
 #' @rdname is.prior
 is.prior.vector          <- function(x){
   inherits(x, "prior.vector")
+}
+#' @rdname is.prior
+is.prior.simplex         <- function(x){
+  inherits(x, "prior.simplex")
 }
 #' @rdname is.prior
 is.prior.PET             <- function(x){

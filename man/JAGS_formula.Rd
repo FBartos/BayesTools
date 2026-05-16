@@ -4,7 +4,14 @@
 \alias{JAGS_formula}
 \title{Create JAGS formula syntax and data object}
 \usage{
-JAGS_formula(formula, parameter, data, prior_list, formula_scale = NULL)
+JAGS_formula(
+  formula,
+  parameter,
+  data,
+  prior_list,
+  formula_scale = NULL,
+  prior_random = NULL
+)
 }
 \arguments{
 \item{formula}{formula specifying the right hand side of the assignment (the
@@ -26,7 +33,11 @@ automatically added. The list can also include two special entries:}
 \item{formula_scale}{named list specifying whether to standardize continuous predictors.
 If \code{NULL} (default), no standardization is applied. If a named list is provided,
 continuous predictors with \code{TRUE} values will be standardized (mean-centered and
-scaled by standard deviation). The intercept is never standardized.
+scaled by standard deviation). The intercept is never standardized.}
+
+\item{prior_random}{optional \code{prior_random()} object defining random-effect
+standard-deviation, covariance, monitoring, and prediction policies. Required
+when \code{formula} contains random effects.
 \describe{
 \item{\code{"__default_continuous"}}{A prior to use for any continuous predictors
 (including the intercept) that are not explicitly specified in the prior list.}
@@ -56,6 +67,9 @@ model behavior while maintaining consistent formula parsing.
 When using default priors (\code{"__default_continuous"} or \code{"__default_factor"}),
 explicitly specified priors for individual terms take precedence over the defaults.
 The defaults are only applied to terms that are not already in the prior list.
+
+Formula random effects require \code{prior_random}. Random-effect SD priors in
+\code{prior_list} using \code{"term|group"} names are no longer supported.
 }
 \examples{
 # simulate data

@@ -20,6 +20,9 @@
 #' If \code{NULL} (default), no standardization is applied. If a named list is provided,
 #' continuous predictors with \code{TRUE} values will be standardized (mean-centered and
 #' scaled by standard deviation). The intercept is never standardized.
+#' @param prior_random optional `prior_random()` object defining random-effect
+#' standard-deviation, covariance, monitoring, and prediction policies. Required
+#' when \code{formula} contains random effects.
 #' \describe{
 #'   \item{\code{"__default_continuous"}}{A prior to use for any continuous predictors
 #'     (including the intercept) that are not explicitly specified in the prior list.}
@@ -38,6 +41,9 @@
 #' When using default priors (\code{"__default_continuous"} or \code{"__default_factor"}),
 #' explicitly specified priors for individual terms take precedence over the defaults.
 #' The defaults are only applied to terms that are not already in the prior list.
+#'
+#' Formula random effects require \code{prior_random}. Random-effect SD priors in
+#' \code{prior_list} using \code{"term|group"} names are no longer supported.
 #'
 #' @examples
 #' # simulate data
@@ -90,7 +96,8 @@
 #'
 #' @seealso [JAGS_fit()]
 #' @export
-JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = NULL){
+JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = NULL,
+                         prior_random = NULL){
 
   if(!is.language(formula))
     stop("'formula' must be a formula")
@@ -100,6 +107,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   check_list(prior_list, "prior_list")
   if(any(!sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
+  .bt_check_prior_random(prior_random, allow_NULL = TRUE)
   # formula_scale can be TRUE/FALSE (apply to all) or a named list
   if(!is.null(formula_scale) && !is.logical(formula_scale) && !is.list(formula_scale)){
     stop("'formula_scale' must be NULL, TRUE, FALSE, or a named list")
@@ -114,7 +122,10 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   # store expressions (included later as the literal character input)
   expressions    <- .extract_expressions(formula)
   # store random effects (included later via a formula interface)
-  random_effects <- .extract_random_effects(formula)
+  random_effects <- .bt_parse_random_effects(formula)$terms
+  .bt_validate_random_effect_block_names(random_effects, prior_random)
+  random_effects_interface <- .bt_random_effects_interface(random_effects, prior_random)
+  random_predictors_type <- .bt_random_effects_predictor_types(random_effects, data)
   # remove expressions and random effects from the formula
   formula <- .remove_expressions(formula)
   formula <- .remove_random_effects(formula)
@@ -143,6 +154,9 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
       return("continuous")
     }
   })
+  if(length(predictors) == 0L){
+    predictors_type <- stats::setNames(character(), character())
+  }
   model_terms      <- c(if(has_intercept) "intercept", attr(formula_terms, "term.labels"))
   model_terms_type <- sapply(model_terms, function(model_term){
     model_term <- strsplit(model_term, ":")[[1]]
@@ -155,15 +169,15 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     }
   })
 
-  # separate prior lists: extract random effects priors
-  prior_list_random_effects <- list()
+  scale_predictors_type <- .bt_merge_predictor_types(predictors_type, random_predictors_type)
+
   if(length(random_effects) > 0){
-    # store the random effects specific priors in the corresponding entry
-    for(i in seq_along(random_effects)){
-      prior_list_random_effects[[i]] <- prior_list[which(.get_grouping_factor(names(prior_list)) == attr(random_effects[[i]], "grouping_factor"))]
+    if(any(.get_grouping_factor(names(prior_list)) != "")){
+      stop(
+        "Random-effect priors must be supplied through 'prior_random'; 'prior_list' names containing '|' are no longer supported.",
+        call. = FALSE
+      )
     }
-    # remove the random effects specific priors from the prior list
-    prior_list <- prior_list[.get_grouping_factor(names(prior_list)) == ""]
   }
 
   # handle default priors: __default_factor and __default_continuous
@@ -214,6 +228,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
       }
     }
   }
+  scale_info <- list()
   if(any(predictors_type == "continuous")){
 
     for(continuous in names(predictors_type[predictors_type == "continuous"])){
@@ -225,34 +240,25 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
         stop(paste0("Unsupported prior distribution defined for '", continuous, "' continuous variable. See '?prior' for details."))
       }
     }
+  }
 
-    # standardize continuous predictors if requested
-    scale_info <- list()
-    if(!is.null(formula_scale)){
-      for(continuous in names(predictors_type[predictors_type == "continuous"])){
-        # determine if this predictor should be scaled
-        should_scale <- FALSE
-        if(is.logical(formula_scale) && length(formula_scale) == 1){
-          # formula_scale = TRUE/FALSE applies to all continuous predictors
-          should_scale <- isTRUE(formula_scale)
-        }else if(is.list(formula_scale) && !is.null(formula_scale[[continuous]])){
-          # named list: check specific predictor
-          should_scale <- isTRUE(formula_scale[[continuous]])
-        }
+  random_effect_unscaled_data <- data
 
-        if(should_scale){
-          # store original mean and sd
-          scale_info[[continuous]] <- list(
-            mean = mean(data[, continuous], na.rm = TRUE),
-            sd   = stats::sd(data[, continuous], na.rm = TRUE)
-          )
-          if(is.na(scale_info[[continuous]]$sd) || !is.finite(scale_info[[continuous]]$sd) || scale_info[[continuous]]$sd <= 0){
-            stop(paste0("Cannot standardize predictor '", continuous, "' because its standard deviation must be positive and finite."), call. = FALSE)
-          }
-          # standardize the predictor
-          data[, continuous] <- (data[, continuous] - scale_info[[continuous]]$mean) / scale_info[[continuous]]$sd
-        }
+  # standardize continuous predictors if requested. This includes predictors
+  # used only inside random-effect terms, excluding CAR time coordinates.
+  if(!is.null(formula_scale) && any(scale_predictors_type == "continuous")){
+    for(continuous in names(scale_predictors_type[scale_predictors_type == "continuous"])){
+      if(!.bt_should_scale_predictor(formula_scale, continuous)){
+        next
       }
+      scale_info[[continuous]] <- list(
+        mean = mean(data[, continuous], na.rm = TRUE),
+        sd   = stats::sd(data[, continuous], na.rm = TRUE)
+      )
+      if(is.na(scale_info[[continuous]]$sd) || !is.finite(scale_info[[continuous]]$sd) || scale_info[[continuous]]$sd <= 0){
+        stop(paste0("Cannot standardize predictor '", continuous, "' because its standard deviation must be positive and finite."), call. = FALSE)
+      }
+      data[, continuous] <- (data[, continuous] - scale_info[[continuous]]$mean) / scale_info[[continuous]]$sd
     }
   }
 
@@ -265,11 +271,10 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   if(sum(grepl("intercept", names(prior_list))) > 1)
     stop("only the intercept parameter can contain 'intercept' in its name.")
   # check whether any reserved term is in usage (note: __default_factor/__default_continuous are reserved but already removed from prior_list)
-  reserved_terms <- c("__xXx__", "__xREx__", "xRE_PRECx", "xRE_CORx", "xRE_Zx", "xRE_STDx", "xRE_COEFx", "xRE_MAPx", "xRE_COEFx", "xRE_DATAx", "__default_factor", "__default_continuous")
-  for(reserved_term in reserved_terms){
-    if(any(grepl(reserved_term, colnames(data))))
-      stop(paste0("'", reserved_term, "' string is internally used by the BayesTools package and can't be used for naming variables."))
-  }
+  .bt_validate_random_effect_reserved_name(
+    colnames(data),
+    context = "naming variables"
+  )
 
 
   # replace interaction signs (due to JAGS incompatibility)
@@ -421,19 +426,59 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
 
   # add random effects back to the formula
   random_scale_terms <- character()
+  random_sd_leaves <- list()
+  random_correlation_required <- character()
+  add_parameters <- character()
+  jags_modules <- character()
+  required_packages <- character()
+  random_allocation_context <- .bt_random_variance_allocation_context(
+    random_effects = random_effects,
+    prior_random = prior_random,
+    parameter = parameter
+  )
+  if(length(random_allocation_context$prior_list) > 0L){
+    prior_list <- c(prior_list, random_allocation_context$prior_list)
+  }
+  if(length(random_allocation_context$syntax) > 0L){
+    random_syntax <- c(random_syntax, random_allocation_context$syntax)
+  }
   for(random_i in seq_along(random_effects)){
-    temp_random   <- .JAGS_random_effect_formula(random_effects[[random_i]], parameter, data, prior_list_random_effects[[random_i]])
+    random_effect_data <- data
+    random_structure <- .bt_random_effect_structure(random_effects[[random_i]])
+    if(random_structure %in% c("cs", "hcs", "ar1", "car", "har")){
+      random_effect_data <- random_effect_unscaled_data
+    }
+    temp_random   <- .JAGS_random_effect_formula(
+      random_effects[[random_i]],
+      parameter,
+      random_effect_data,
+      prior_random = prior_random,
+      allocation_context = random_allocation_context,
+      group_data = random_effect_unscaled_data
+    )
+    random_effects[[random_i]] <- temp_random[["random_effect"]]
 
     for(data_i in seq_along(temp_random[["data"]])){
       JAGS_data[[names(temp_random[["data"]])[data_i]]] <- temp_random[["data"]][[data_i]]
     }
-    random_key <- paste0("__xREx__", attr(random_effects[[random_i]], "grouping_factor"))
+    random_key <- paste0("__xREx__", attr(random_effects[[random_i]], "random_block"))
     jags_data_names[[random_key]] <- names(temp_random[["data"]])
+    random_sd_leaves[[random_key]] <- temp_random[["random_effect"]]$sd_leaves
+    if(random_structure %in% c("us", "cs", "hcs", "ar1", "car", "har") &&
+       is.numeric(random_effects[[random_i]]$n_columns) &&
+       length(random_effects[[random_i]]$n_columns) == 1L &&
+       !is.na(random_effects[[random_i]]$n_columns) &&
+       random_effects[[random_i]]$n_columns > 1L){
+      random_correlation_required <- c(random_correlation_required, random_key)
+    }
 
     random_syntax  <- c(random_syntax,  temp_random[["random_syntax"]])
     formula_syntax <- c(formula_syntax, temp_random[["formula_term"]])
     prior_list     <- c(prior_list, temp_random[["prior_list"]])
     random_scale_terms <- c(random_scale_terms, temp_random[["random_scale_terms"]])
+    add_parameters <- c(add_parameters, temp_random[["add_parameters"]])
+    jags_modules <- c(jags_modules, temp_random[["jags_modules"]])
+    required_packages <- c(required_packages, temp_random[["required_packages"]])
   }
 
   # finish the syntax
@@ -458,7 +503,10 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     formula_syntax = formula_syntax,
     data           = JAGS_data,
     prior_list     = prior_list,
-    formula        = formula
+    formula        = formula,
+    add_parameters = unique(add_parameters),
+    jags_modules   = unique(jags_modules),
+    required_packages = unique(required_packages)
   )
 
   # add scale information if standardization was applied
@@ -472,6 +520,10 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     if(length(random_scale_terms) > 0){
       names(random_scale_terms) <- paste0(parameter, "_", names(random_scale_terms))
       attr(scale_info, "random_effect_terms") <- random_scale_terms
+      attr(scale_info, "random_effect_sd_leaves") <- random_sd_leaves
+      if(length(random_correlation_required) > 0L){
+        attr(scale_info, "random_effect_correlation_required") <- unique(random_correlation_required)
+      }
     }
     output$formula_scale <- scale_info
   }
@@ -494,8 +546,11 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     formula_scale     = output$formula_scale,
     expressions       = expressions,
     random_effects    = random_effects,
-    jags_data_names   = jags_data_names
+    jags_data_names   = jags_data_names,
+    random_allocations = random_allocation_context$allocations,
+    random_effects_interface = random_effects_interface
   )
+  output$random_effects_interface <- random_effects_interface
 
   return(output)
 }
@@ -506,7 +561,9 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
                                         model_terms, model_terms_type,
                                         prior_list, formula_scale,
                                         expressions, random_effects,
-                                        jags_data_names){
+                                        jags_data_names,
+                                        random_allocations = list(),
+                                        random_effects_interface = NULL){
 
   formula_terms <- stats::terms(formula)
   attr(formula_terms, ".Environment") <- emptyenv()
@@ -555,11 +612,100 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     aliased            = aliased,
     transformed_terms  = expressions,
     random_effects     = random_effects,
-    jags_data_names    = jags_data_names
+    jags_data_names    = jags_data_names,
+    random_allocations = random_allocations,
+    random_effects_interface = random_effects_interface
   )
   class(out) <- c("BayesTools_formula_design", "list")
 
   return(out)
+}
+
+.bt_random_effects_predictor_types <- function(random_effects, data){
+
+  if(length(random_effects) == 0L){
+    return(stats::setNames(character(), character()))
+  }
+
+  scale_terms <- random_effects[
+    !vapply(random_effects, function(random_term){
+      .bt_random_effect_structure(random_term) %in% c("cs", "hcs", "ar1", "car", "har")
+    }, logical(1))
+  ]
+  if(length(scale_terms) == 0L){
+    return(stats::setNames(character(), character()))
+  }
+
+  predictors <- unique(unlist(lapply(scale_terms, function(random_term){
+    formula_terms <- stats::terms(random_term$term_formula)
+    as.character(attr(formula_terms, "variables"))[-1L]
+  }), use.names = FALSE))
+  if(length(predictors) == 0L){
+    return(stats::setNames(character(), character()))
+  }
+
+  missing_predictors <- predictors[!predictors %in% colnames(data)]
+  if(length(missing_predictors) > 0L){
+    stop(
+      paste0(
+        "The ",
+        paste0("'", missing_predictors, "'", collapse = ", "),
+        " predictor variable is missing in the data set."
+      ),
+      call. = FALSE
+    )
+  }
+
+  vapply(predictors, function(predictor){
+    if(is.factor(data[, predictor]) || is.character(data[, predictor])){
+      "factor"
+    }else{
+      "continuous"
+    }
+  }, character(1))
+}
+
+.bt_merge_predictor_types <- function(...){
+
+  predictor_types <- list(...)
+  predictor_types <- predictor_types[vapply(predictor_types, length, integer(1)) > 0L]
+  if(length(predictor_types) == 0L){
+    return(stats::setNames(character(), character()))
+  }
+
+  out <- predictor_types[[1L]]
+  if(length(predictor_types) == 1L){
+    return(out)
+  }
+
+  for(i in seq(2L, length(predictor_types))){
+    current <- predictor_types[[i]]
+    conflicts <- intersect(names(out), names(current))
+    conflicts <- conflicts[out[conflicts] != current[conflicts]]
+    if(length(conflicts) > 0L){
+      stop(
+        "Predictor type conflicts between fixed and random-effect formulas for: ",
+        paste(conflicts, collapse = ", "),
+        ".",
+        call. = FALSE
+      )
+    }
+    out[setdiff(names(current), names(out))] <- current[setdiff(names(current), names(out))]
+  }
+
+  out
+}
+
+.bt_should_scale_predictor <- function(formula_scale, predictor){
+
+  if(is.logical(formula_scale) && length(formula_scale) == 1L){
+    return(isTRUE(formula_scale))
+  }
+  if(is.list(formula_scale) && !is.null(formula_scale[[predictor]])){
+    return(isTRUE(formula_scale[[predictor]]))
+  }
+
+  FALSE
 }
 
 #' @title Extract Fitted JAGS Formula Design Metadata
@@ -600,23 +746,54 @@ JAGS_formula_design <- function(fit, parameter = NULL){
   return(formula_design[[parameter]])
 }
 
-.JAGS_random_effect_formula <- function(formula, parameter, data, prior_list){
+.bt_formula_design_has_random_effects <- function(design){
 
-  # extract the grouping factor information
-  grouping_factor        <- attr(formula, "grouping_factor")
-  grouping_independent   <- attr(formula, "independent")
-  grouping_factor_levels <- levels(as.factor(data[[grouping_factor]]))
-  grouping_mapping       <- as.numeric(as.factor(data[[grouping_factor]]))
+  !is.null(design) &&
+    inherits(design, "BayesTools_formula_design") &&
+    length(design$random_effects) > 0L
+}
 
-  # TODO: expand to factor random effects
-  # needs to implement LKJ correlation matrix
-  if(!grouping_independent){
-    stop("Only independent random effects are supported yet.")
+.bt_random_effects_interface <- function(random_effects, prior_random = NULL){
+
+  if(length(random_effects) == 0L){
+    return("none")
+  }
+  if(!is.null(prior_random)){
+    return("prior_random")
   }
 
-  # remove the grouping factor from the formula
-  formula <- .remove_grouping_factor(formula)
-  formula <- stats::as.formula(paste("~", formula))
+  stop("Formula random effects require 'prior_random'.", call. = FALSE)
+}
+
+.JAGS_random_effect_formula <- function(formula, parameter, data,
+                                        prior_random = NULL,
+                                        allocation_context = NULL,
+                                        group_data = data){
+
+  if(is.null(prior_random)){
+    stop("Formula random effects require 'prior_random'.", call. = FALSE)
+  }
+
+  random_term <- .bt_as_random_effect_term(formula)
+  .bt_validate_random_effect_term_supported(random_term)
+
+  # extract the grouping factor information
+  grouping_factor <- random_term$group_label
+  grouping_values <- .bt_random_group_values(random_term, group_data)
+  grouping_factor_levels <- levels(as.factor(grouping_values))
+  grouping_mapping       <- as.numeric(factor(grouping_values, levels = grouping_factor_levels))
+
+  formula <- random_term$term_formula
+  random_structure <- .bt_random_term_structure(random_term, prior_random)
+  structured_formula <- .bt_random_effect_normalize_structured_formula(
+    formula = formula,
+    data = data,
+    structure = random_structure
+  )
+  formula <- structured_formula$formula
+  data <- structured_formula$data
+  random_term$term_formula <- formula
+  random_term$structured_index <- structured_formula$index
 
   # obtain predictors characteristics factors (copy from formula)
   formula_terms    <- stats::terms(formula)
@@ -631,6 +808,9 @@ JAGS_formula_design <- function(fit, parameter = NULL){
       return("continuous")
     }
   })
+  if(length(predictors) == 0L){
+    predictors_type <- stats::setNames(character(), character())
+  }
   model_terms      <- c(if(has_intercept) "intercept", attr(formula_terms, "term.labels"))
   model_terms_type <- sapply(model_terms, function(model_term){
     model_term <- strsplit(model_term, ":")[[1]]
@@ -643,55 +823,109 @@ JAGS_formula_design <- function(fit, parameter = NULL){
     }
   })
 
-  # check that all priors have a lower bound on 0 or their range is > 0, if not, throw a warning and correct
-  for(i in seq_along(prior_list)){
-    if(is.prior.spike_and_slab(prior_list[[i]]) || is.prior.mixture(prior_list[[i]])){
-      for(j in seq_along(prior_list[[i]])){
-        if(range(prior_list[[i]][[j]])[1] < 0){
-          warning(paste0("The lower bound of the ", j ,"-th component in '", names(prior_list)[i], "' prior distribution is below 0. Correcting to 0."), immediate. = TRUE)
-          prior_list[[i]][[j]]$truncation$lower <- 0
-        }
-      }
-    }else{
-      if(range(prior_list[[i]])[1] < 0){
-        warning(paste0("The lower bound of the '", names(prior_list)[i], "' prior distribution is below 0. Correcting to 0."), immediate. = TRUE)
-        prior_list[[i]]$truncation$lower <- 0
-      }
+  homogeneous_sd <- .bt_random_effect_homogeneous_sd(random_term, random_structure)
+  allocation_info <- .bt_random_variance_allocation_for_block(
+    allocation_context,
+    random_term$block_name
+  )
+  allocated_sd <- !is.null(allocation_info)
+
+  block_prior <- .bt_random_prior_for_block(prior_random, random_term$block_name)
+  .bt_validate_random_block_for_structure(
+    block_prior,
+    structure = random_structure,
+    block_name = random_term$block_name
+  )
+  if(allocated_sd){
+    if(!is.null(block_prior$terms)){
+      stop(
+        "Random-effect block '", random_term$block_name,
+        "' cannot use term-specific SD overrides while it is controlled by a variance allocation prior.",
+        call. = FALSE
+      )
     }
+    prior_list <- list()
+    original_prior_names <- character()
+  }else{
+    prior_list <- .bt_random_prior_terms_to_prior_list(block_prior, model_terms, homogeneous_sd)
+    original_prior_names <- names(prior_list)
   }
+  monitor_policy <- block_prior$monitor
 
-  # drop the grouping factor from the prior names
-  names(prior_list) <- .remove_grouping_factor(names(prior_list))
-  # check that all terms have a prior distribution
-  check_list(prior_list, "prior_list", check_names = model_terms, allow_other = TRUE, all_objects = TRUE)
+  if(!allocated_sd){
+    if(homogeneous_sd){
+      check_list(prior_list, "prior_list", check_names = "sd", allow_other = TRUE, all_objects = TRUE)
+    }else{
+      check_list(prior_list, "prior_list", check_names = model_terms, allow_other = TRUE, all_objects = TRUE)
+    }
+    .bt_random_effect_check_structured_sd_priors(
+      prior_list = prior_list,
+      model_terms = model_terms,
+      random_structure = random_structure,
+      homogeneous_sd = homogeneous_sd
+    )
+    prior_list <- .bt_random_effect_force_nonnegative_priors(prior_list)
+  }
+  data <- .bt_random_effect_apply_factor_prior_contrasts(
+    data = data,
+    predictors_type = predictors_type,
+    model_terms = model_terms,
+    model_terms_type = model_terms_type,
+    prior_list = prior_list
+  )
 
-  # get the default design matrix
-  model_frame  <- stats::model.frame(formula, data = data)
-  model_matrix <- stats::model.matrix(model_frame, formula = formula, data = data)
+  # get the design matrix. For no-intercept random formulas, add an intercept
+  # while constructing the matrix and drop it afterwards. This preserves
+  # BayesTools factor-prior contrasts instead of forcing raw level indicators.
+  random_design <- .bt_random_effect_design_matrix(
+    formula,
+    data,
+    preserve_no_intercept_contrasts = !random_structure %in% c("cs", "hcs", "ar1", "car", "har"),
+    structure = random_structure,
+    block_name = random_term$block_name
+  )
+  model_frame <- random_design$model_frame
+  model_matrix <- random_design$model_matrix
+  car_metadata <- random_design$car
+  raw_column_names <- colnames(model_matrix)
+  random_factor_predictors <- names(predictors_type)[predictors_type == "factor"]
+  random_xlevels <- lapply(random_factor_predictors, function(predictor){
+    if(predictor %in% names(model_frame) && is.factor(model_frame[[predictor]])){
+      levels(model_frame[[predictor]])
+    }else{
+      NULL
+    }
+  })
+  names(random_xlevels) <- random_factor_predictors
+  random_xlevels <- random_xlevels[!vapply(random_xlevels, is.null, logical(1))]
 
   # check whether intercept is unique parameter
   if(sum(grepl("intercept", names(prior_list))) > 1)
     stop("only the intercept parameter can contain 'intercept' in its name.")
   # check whether any reserved term is in usage
-  reserved_terms <- c("__xXx__", "__xREx__", "xRE_PRECx", "xRE_CORx", "xRE_Zx", "xRE_STDx", "xRE_COEFx", "xRE_MAPx", "xRE_COEFx", "xRE_DATAx")
-  for(reserved_term in reserved_terms){
-    if(any(grepl(reserved_term, names(prior_list))))
-      stop(paste0("'", reserved_term, "' string is internally used by the BayesTools package and can't be used for naming variables or prior distributions."))
-  }
+  .bt_validate_random_effect_reserved_name(
+    names(prior_list),
+    context = "naming variables or prior distributions"
+  )
 
   # replace interaction signs (due to JAGS incompatibility)
   colnames(model_matrix)  <- gsub(":", "__xXx__", colnames(model_matrix))
+  column_names            <- colnames(model_matrix)
   names(prior_list)       <- gsub(":", "__xXx__", names(prior_list))
   names(model_terms_type) <- gsub(":", "__xXx__", names(model_terms_type))
   model_terms             <- gsub(":", "__xXx__", model_terms)
 
   # prepare syntax & data based on the formula
-  parameter_suffix <- paste0("_xREx__", grouping_factor)       # priors should not be named with parameter name (done on exit from formula)
+  parameter_suffix <- paste0("_xREx__", random_term$block_name) # priors should not be named with parameter name (done on exit from formula)
   parameter        <- paste0(parameter, "_", parameter_suffix) # variables should be named already here
   random_syntax    <- NULL
   JAGS_data        <- list()
   new_prior_list   <- list()
   random_scale_terms <- character()
+  add_parameters <- character()
+  jags_modules <- character()
+  required_packages <- character()
+  correlation_metadata <- NULL
 
   ### in essence, the following prepares constructors that:
   # 1) samples standardized random effects xRE_Zx[ids, predictors] from a multivariate normal distribution
@@ -702,9 +936,10 @@ JAGS_formula_design <- function(fit, parameter = NULL){
 
   n_id  <- length(grouping_factor_levels)
   n_par <- ncol(model_matrix)
-
+  if(n_par < 1L){
+    stop("Random-effect term '", random_term$block_name, "' does not generate any design columns.", call. = FALSE)
+  }
   # step 1:
-  # TODO: get the identity matrix to sample the standardized random effects (update once correlated random effects are available with cholesky sampled correlation matrix)
   random_syntax <- c(random_syntax, .add_JAGS_matrix(name = paste0(parameter, "_xRE_PRECx"), diag(1, n_par)))
   random_syntax <- c(random_syntax, paste0(
     " for(i in 1:",n_id,"){\n",
@@ -713,141 +948,125 @@ JAGS_formula_design <- function(fit, parameter = NULL){
   ))
 
   # step 2
-  if(has_intercept){
-    terms_indexes    <- attr(model_matrix, "assign") + 1
-    terms_indexes[1] <- 0
-
-    new_prior_list[[paste0(parameter_suffix, "_intercept")]] <- prior_list[["intercept"]]
-    random_scale_terms[[paste0(parameter_suffix, "_intercept")]] <- "intercept"
-    attr(new_prior_list[[paste0(parameter_suffix, "_intercept")]], "random_factor") <- grouping_factor
-    random_syntax   <- c(random_syntax, paste0(
-      parameter, "_xRE_STDx[1] = ", parameter, "_", "intercept"
-    ))
-  }else{
-    terms_indexes    <- attr(model_matrix, "assign")
-  }
-
-  # add remaining terms (omitting the intercept indexed as NA)
-  for(i in unique(terms_indexes[terms_indexes > 0])){
-
-    # extract the corresponding prior distribution for a given coefficient
-    this_prior <- prior_list[[model_terms[i]]]
-
-    # check whether the term is an interaction or not and save the corresponding attributes
-    attr(this_prior, "interaction") <- grepl("__xXx__", model_terms[i])
-    if(.is_prior_interaction(this_prior)){
-      attr(this_prior, "interaction_terms") <- strsplit(model_terms[i], "__xXx__")[[1]]
-    }
-
-    if(!is.null(attr(this_prior, "multiply_by")))
-      stop("'multiply_by' attribute is inadmissible for random effects")
-
-    if(model_terms_type[i] == "continuous"){
-
-      random_syntax <- c(random_syntax, paste0(
-        parameter, "_xRE_STDx[", i, "] = ", parameter, "_", model_terms[i]
-      ))
-
-    }else if(model_terms_type[i] == "factor"){
-
-      # factor random effects use the same contrasts as set in the upstream formula
-      # (in the rare case that no factor_prior on the upstream formula was set, this might default to a treatment contrast)
-
-      ## parameterization
-      # treatment contrasts: independent variances for the comparison factor levels
-      # independent contrasts: independent variances for each factor level
-      # meandif/orthonormal contrasts: one total variance for the factor
-      if(is.null(attr(data[[model_terms[i]]], "contrasts")) || attr(data[[model_terms[i]]], "contrasts") %in% c("contr.treatment", "contr.independent")){
-
-        # determine the prior type
-        if(is.null(attr(data[[model_terms[i]]], "contrasts")) || attr(data[[model_terms[i]]], "contrasts") == "contr.treatment"){
-          temp_prior_type <- "prior.treatment"
-          attr(this_prior, "levels") <- sum(terms_indexes == i) + 1
-        }else{
-          temp_prior_type <- "prior.independent"
-          attr(this_prior, "levels") <- sum(terms_indexes == i)
-        }
-
-        # store level information
-        if(.is_prior_interaction(this_prior)){
-          level_names <- list()
-          for(sub_term in strsplit(model_terms[i], "__xXx__")[[1]]){
-            if(model_terms_type[sub_term] == "factor"){
-              level_names[[sub_term]] <- levels(data[,sub_term])
-            }
-          }
-          attr(this_prior, "level_names") <- level_names
-        }else{
-          attr(this_prior, "level_names") <- levels(data[,model_terms[i]])
-        }
-
-        # distribute the individual coefficients to the STD
-        for(j in 1:sum(terms_indexes == i)){
-          random_syntax <- c(random_syntax, paste0(
-            parameter, "_xRE_STDx[", i + j - 1, "] = ", parameter, "_", model_terms[i], "[", j, "]"
-          ))
-        }
-
-        # transform the simple prior into treatment / independent factor prior (for each of the coefficients)
-        if(is.prior.simple(this_prior)){
-          class(this_prior) <- c(class(this_prior), "prior.factor", temp_prior_type)
-        }else if(is.prior.spike_and_slab(this_prior) || is.prior.mixture(this_prior)){
-          for(p in seq_along(this_prior)){
-            class(this_prior[[p]]) <- c(class(this_prior[[p]]), "prior.factor", temp_prior_type)
-          }
-          if(is.prior.spike_and_slab(this_prior)){
-            class(this_prior) <- c(class(this_prior)[!class(this_prior) %in% c("prior.simple_spike_and_slab")], "prior.factor_spike_and_slab", temp_prior_type)
-          } else {
-            class(this_prior) <- c(class(this_prior)[!class(this_prior) %in% c("prior.simple_mixture")],  "prior.factor_mixture", temp_prior_type)
-          }
-        }
-
-      }else if(attr(data[[model_terms[i]]], "contrasts") %in% c("contr.orthonormal", "contr.meandif")){
-
-        # do not change the prior type of create multiple levels
-        # distribute the same coefficients to the STD
-        for(j in 1:sum(terms_indexes == i)){
-          random_syntax <- c(random_syntax, paste0(
-            parameter, "_xRE_STDx[", i + j - 1, "] = ", parameter, "_", model_terms[i]
-          ))
-        }
-        # no prior transformation needed
-
-      }else{
-        stop("Unsupported factor contrasts for the random effects.")
-      }
-
-
-    }else{
-      stop("Unrecognized model term.")
-    }
-
-    # update the corresponding prior distribution back into the prior list
-    # (and forward attributes to lower level components in the case of spike and slab and mixture priors)
-    attr(this_prior, "random_sd")     <- TRUE
-    attr(this_prior, "random_factor") <- grouping_factor
-    if(is.prior.spike_and_slab(this_prior) || is.prior.mixture(this_prior)){
-      for(p in seq_along(this_prior)){
-        attr(this_prior, "levels")            -> attr(this_prior[[p]], "levels")
-        attr(this_prior, "level_names")       -> attr(this_prior[[p]], "level_names")
-        attr(this_prior, "interaction")       -> attr(this_prior[[p]], "interaction")
-        attr(this_prior, "interaction_terms") -> attr(this_prior[[p]], "interaction_terms")
-      }
-      this_prior -> new_prior_list[[paste0(parameter_suffix, "_", model_terms[i])]]
-      random_scale_terms[[paste0(parameter_suffix, "_", model_terms[i])]] <- model_terms[i]
-    }else{
-      this_prior -> new_prior_list[[paste0(parameter_suffix, "_", model_terms[i])]]
-      random_scale_terms[[paste0(parameter_suffix, "_", model_terms[i])]] <- model_terms[i]
-    }
-
-  }
+  sd_spec <- .bt_random_effect_sd_spec(
+    parameter = parameter,
+    parameter_suffix = parameter_suffix,
+    prior_list = prior_list,
+    random_term = random_term,
+    grouping_factor = grouping_factor,
+    allocation_info = allocation_info,
+    model_matrix = model_matrix,
+    model_terms = model_terms,
+    model_terms_type = model_terms_type,
+    predictors_type = predictors_type,
+    data = data,
+    random_structure = random_structure,
+    has_intercept = has_intercept,
+    homogeneous_sd = homogeneous_sd
+  )
+  terms_indexes <- sd_spec$terms_indexes
+  sd_parameter_names <- sd_spec$sd_parameter_names
+  sd_leaves <- sd_spec$sd_leaves
+  random_scale_terms <- c(random_scale_terms, sd_spec$random_scale_terms)
+  add_parameters <- c(add_parameters, sd_spec$add_parameters)
+  random_syntax <- c(random_syntax, sd_spec$syntax)
+  new_prior_list <- c(new_prior_list, sd_spec$prior_list)
+  allocation_info <- sd_spec$allocation_info
 
   # step 3
-  random_syntax <- c(random_syntax, paste0(
-    " for(i in 1:",n_par,"){\n",
-    "   ",paste0(parameter, "_xRE_COEFx"),"[1:",n_id,",i] = ",paste0(parameter, "_xRE_Zx"),"[1:",n_id,",i] * ",paste0(parameter, "_xRE_STDx"),"[i]\n",
-    " }\n"
-  ))
+  if(random_structure == "us" && n_par == 1L){
+    block_prior <- .bt_random_prior_for_block(prior_random, random_term$block_name)
+    if(!is.null(block_prior$covariance$cor)){
+      stop(
+        "Single-column random-effect structure 'us' has no correlation parameter; remove the 'cor' prior.",
+        call. = FALSE
+      )
+    }
+  }
+  if(random_structure %in% c("diag", "id") ||
+     (random_structure == "us" && n_par == 1L)){
+    random_syntax <- c(random_syntax, paste0(
+      " for(i in 1:",n_par,"){\n",
+      "   ",paste0(parameter, "_xRE_COEFx"),"[1:",n_id,",i] = ",paste0(parameter, "_xRE_Zx"),"[1:",n_id,",i] * ",paste0(parameter, "_xRE_STDx"),"[i]\n",
+      " }\n"
+    ))
+  }else if(random_structure == "us"){
+    block_prior <- .bt_random_prior_for_block(prior_random, random_term$block_name)
+    if(n_par > 1L && is.null(block_prior$covariance$cor)){
+      stop(
+        "Random-effect block '", random_term$block_name,
+        "' with structure 'us' requires an LKJ correlation prior. ",
+        "Supply 'cor = prior_lkj(eta = ...)'.",
+        call. = FALSE
+      )
+    }
+    lkj_prior <- .bt_random_block_lkj_prior(block_prior)
+    lkj_module <- JAGS_lkj_corr_cholesky(
+      name = paste0(parameter, "_xRE_CORx"),
+      K = n_par,
+      eta = lkj_prior$eta,
+      include_correlation = isTRUE(monitor_policy$correlation) && isTRUE(lkj_prior$include_correlation),
+      include_primitives = isTRUE(monitor_policy$lkj_primitives) || isTRUE(lkj_prior$include_primitives),
+      backend = lkj_prior$backend
+    )
+    random_syntax <- c(random_syntax, lkj_module$syntax)
+    add_parameters <- c(add_parameters, lkj_module$monitor, lkj_module$primitive_names)
+    jags_modules <- c(jags_modules, lkj_module$jags_module)
+    required_packages <- c(required_packages, lkj_module$required_packages)
+    correlation_metadata <- list(
+      type = "lkj",
+      eta = lkj_prior$eta,
+      backend = lkj_prior$backend,
+      primitive_names = lkj_module$primitive_names,
+      primitive_bounds = lkj_module$primitive_bounds,
+      cholesky_name = lkj_module$cholesky_name,
+      correlation_name = lkj_module$correlation_name
+    )
+    random_syntax <- c(random_syntax, paste0(
+      " for(g in 1:",n_id,"){\n",
+      "   for(i in 1:",n_par,"){\n",
+      "     ",paste0(parameter, "_xRE_COEFx"),"[g,i] = ",paste0(parameter, "_xRE_STDx"),"[i] * inprod(", lkj_module$cholesky_name, "[i,1:", n_par, "], ", paste0(parameter, "_xRE_Zx"), "[g,1:", n_par, "])\n",
+      "   }\n",
+      " }\n"
+    ))
+  }else if(random_structure %in% c("cs", "hcs", "ar1", "car", "har")){
+    block_prior <- .bt_random_prior_for_block(prior_random, random_term$block_name)
+    corr_module <- .bt_JAGS_structured_corr_cholesky(
+      node_prefix = parameter,
+      prior_prefix = parameter_suffix,
+      K = n_par,
+      structure = random_structure,
+      block_prior = block_prior,
+      include_correlation = isTRUE(monitor_policy$correlation),
+      require_rho = TRUE,
+      distance_matrix = if(identical(random_structure, "car")) car_metadata$distance_matrix else NULL
+    )
+    random_syntax <- c(random_syntax, corr_module$syntax)
+    for(corr_prior_name in names(corr_module$prior_list)){
+      corr_module$prior_list[[corr_prior_name]] <- .bt_random_effect_set_prior_metadata(
+        corr_module$prior_list[[corr_prior_name]],
+        block = random_term$block_name,
+        grouping = grouping_factor,
+        type = "correlation",
+        structure = random_structure,
+        name = .bt_random_effect_public_name(random_term)
+      )
+    }
+    new_prior_list <- c(new_prior_list, corr_module$prior_list)
+    add_parameters <- c(add_parameters, corr_module$monitor)
+    correlation_metadata <- corr_module$bridge
+    if(identical(random_structure, "car")){
+      correlation_metadata$time_variable <- car_metadata$time_variable
+      correlation_metadata$time_values <- car_metadata$time_values
+    }
+    random_syntax <- c(random_syntax, paste0(
+      " for(g in 1:",n_id,"){\n",
+      "   for(i in 1:",n_par,"){\n",
+      "     ",paste0(parameter, "_xRE_COEFx"),"[g,i] = ",paste0(parameter, "_xRE_STDx"),"[i] * inprod(", corr_module$cholesky_name, "[i,1:", n_par, "], ", paste0(parameter, "_xRE_Zx"), "[g,1:", n_par, "])\n",
+      "   }\n",
+      " }\n"
+    ))
+  }
 
   # step 4
   random_syntax <- c(random_syntax, paste0(
@@ -860,14 +1079,981 @@ JAGS_formula_design <- function(fit, parameter = NULL){
   JAGS_data[[paste0(parameter, "_xRE_DATAx")]] <- model_matrix
   JAGS_data[[paste0(parameter, "_xRE_MAPx")]]  <- grouping_mapping
 
+  if(isTRUE(monitor_policy$latent)){
+    add_parameters <- c(add_parameters, paste0(parameter, "_xRE_Zx"))
+  }
+  if(isTRUE(monitor_policy$coefficients)){
+    add_parameters <- c(add_parameters, paste0(parameter, "_xRE_COEFx"))
+  }
+
+  random_term$model_matrix    <- model_matrix
+  random_term$raw_column_names <- raw_column_names
+  random_term$column_names     <- column_names
+  random_term$contrasts        <- attr(model_matrix, "contrasts")
+  random_term$xlevels          <- random_xlevels
+  random_term$assign           <- attr(model_matrix, "assign")
+  random_term$model_terms      <- model_terms
+  random_term$model_terms_type <- model_terms_type
+  random_term$group_levels     <- grouping_factor_levels
+  random_term$group_map        <- grouping_mapping
+  random_term$n_groups         <- n_id
+  random_term$n_columns        <- n_par
+  random_term$prior_terms      <- original_prior_names
+  random_term$parameter_stem   <- parameter
+  random_term$sd_parameter_names <- sd_parameter_names
+  random_term$sd_leaves          <- sd_leaves
+  random_term$jags_data_names  <- names(JAGS_data)
+  random_term$structure        <- random_structure
+  random_term$homogeneous_sd   <- homogeneous_sd
+  random_term$interface        <- "prior_random"
+  random_term$allocation       <- allocation_info
+  random_term$correlation      <- correlation_metadata
+  random_term$car              <- car_metadata
+  attr(random_term, "random_block") <- random_term$block_name
+
   return(list(
     random_syntax  = random_syntax,
     formula_term   = paste0(parameter,"[i]"),
     data           = JAGS_data,
     prior_list     = new_prior_list,
     random_scale_terms = random_scale_terms,
+    add_parameters = unique(add_parameters),
+    jags_modules   = unique(jags_modules),
+    required_packages = unique(required_packages),
+    random_effect  = random_term,
     formula        = formula
   ))
+}
+
+.bt_random_effect_design_matrix <- function(formula, data,
+                                            preserve_no_intercept_contrasts = TRUE,
+                                            structure = NULL,
+                                            car_time_values = NULL,
+                                            block_name = NULL){
+
+  if(identical(structure, "car")){
+    return(.bt_random_effect_car_design_matrix(
+      formula = formula,
+      data = data,
+      car_time_values = car_time_values
+    ))
+  }
+
+  formula_terms <- stats::terms(formula)
+  has_intercept <- attr(formula_terms, "intercept") == 1L
+  matrix_formula <- formula
+  if(!has_intercept && isTRUE(preserve_no_intercept_contrasts)){
+    matrix_formula <- formula_add_intercept(formula)
+  }
+
+  model_frame <- stats::model.frame(matrix_formula, data = data)
+  model_matrix <- stats::model.matrix(model_frame, formula = matrix_formula, data = data)
+  if(nrow(model_matrix) != nrow(data)){
+    label <- "Random-effect term"
+    if(!is.null(block_name) && nzchar(block_name)){
+      label <- paste0("Random-effect block '", block_name, "'")
+    }
+    stop(
+      label,
+      " contains missing predictor values; random-effect design matrices must have one row per data row.",
+      call. = FALSE
+    )
+  }
+
+  if(!has_intercept && isTRUE(preserve_no_intercept_contrasts)){
+    intercept_column <- which(colnames(model_matrix) == "(Intercept)")
+    if(length(intercept_column) == 1L){
+      assign <- attr(model_matrix, "assign")
+      model_matrix <- model_matrix[, -intercept_column, drop = FALSE]
+      attr(model_matrix, "assign") <- assign[-intercept_column]
+    }
+  }
+
+  list(
+    model_frame = model_frame,
+    model_matrix = model_matrix
+  )
+}
+
+.bt_random_effect_normalize_structured_formula <- function(formula, data,
+                                                           structure){
+
+  out <- list(formula = formula, data = data, index = NULL)
+  if(!structure %in% c("cs", "hcs", "ar1", "car", "har")){
+    return(out)
+  }
+
+  if(identical(structure, "car")){
+    out$formula <- .bt_random_effect_formula_without_intercept(formula)
+    return(out)
+  }
+
+  index_variables <- .bt_random_effect_structured_index_variables(formula, structure)
+  if(structure %in% c("ar1", "har") && length(index_variables) > 1L){
+    stop(
+      "The '", structure,
+      "' random-effect covariance structure requires a single ordered index variable. ",
+      "Create an explicit ordered index column before calling '", structure, "()'.",
+      call. = FALSE
+    )
+  }
+
+  missing_variables <- index_variables[!index_variables %in% names(data)]
+  if(length(missing_variables) > 0L){
+    stop(
+      paste0(
+        "The ",
+        paste0("'", missing_variables, "'", collapse = ", "),
+        " structured random-effect index variable is missing in the data set."
+      ),
+      call. = FALSE
+    )
+  }
+
+  index_name <- .bt_random_effect_structured_index_name(index_variables)
+  data[[index_name]] <- .bt_random_effect_structured_index_values(data, index_variables)
+  out$data <- data
+  out$formula <- stats::as.formula(
+    call("~", call("-", as.name(index_name), 1)),
+    env = environment(formula)
+  )
+  out$index <- list(
+    variables = index_variables,
+    name = index_name,
+    label = paste(index_variables, collapse = ":"),
+    structure = structure
+  )
+
+  out
+}
+
+.bt_random_effect_formula_without_intercept <- function(formula){
+
+  rhs_index <- if(length(formula) == 3L) 3L else 2L
+  stats::as.formula(
+    call("~", call("-", formula[[rhs_index]], 1)),
+    env = environment(formula)
+  )
+}
+
+.bt_random_effect_structured_index_variables <- function(formula, structure){
+
+  rhs_index <- if(length(formula) == 3L) 3L else 2L
+  rhs <- formula[[rhs_index]]
+  usage <- if(structure %in% c("cs", "hcs")){
+    paste0("Use '", structure, "(index | group)' or '", structure, "(index1 + index2 | group)'.")
+  }else{
+    paste0("Use '", structure, "(index | group)'.")
+  }
+  if(.bt_random_effect_structured_index_has_intercept_control(rhs)){
+    stop(
+      "The '", structure,
+      "' random-effect covariance structure uses index variables and does not support explicit ",
+      "'1', '0', or '-1' terms. ", usage,
+      call. = FALSE
+    )
+  }
+
+  variables <- .bt_random_effect_structured_index_plus_terms(rhs, structure)
+  if(length(variables) == 0L || any(!nzchar(variables))){
+    stop(
+      "The '", structure,
+      "' random-effect covariance structure requires at least one index variable.",
+      call. = FALSE
+    )
+  }
+  if(anyDuplicated(variables)){
+    stop(
+      "Structured random-effect index variables must be unique.",
+      call. = FALSE
+    )
+  }
+
+  variables
+}
+
+.bt_random_effect_structured_index_plus_terms <- function(expr, structure){
+
+  if(is.symbol(expr)){
+    return(as.character(expr))
+  }
+  if(is.call(expr) && identical(expr[[1L]], as.name("+")) && length(expr) == 3L){
+    return(c(
+      .bt_random_effect_structured_index_plus_terms(expr[[2L]], structure),
+      .bt_random_effect_structured_index_plus_terms(expr[[3L]], structure)
+    ))
+  }
+
+  stop(
+    "The '", structure,
+    "' random-effect covariance structure supports index variables",
+    if(structure %in% c("cs", "hcs")) " separated by '+'." else ".",
+    " ",
+    if(structure %in% c("cs", "hcs")){
+      paste0("Use '", structure, "(index | group)' or '", structure, "(index1 + index2 | group)'.")
+    }else{
+      paste0("Use '", structure, "(index | group)'.")
+    },
+    call. = FALSE
+  )
+}
+
+.bt_random_effect_structured_index_has_intercept_control <- function(expr){
+
+  if(is.numeric(expr) && length(expr) == 1L && expr %in% c(0, 1)){
+    return(TRUE)
+  }
+  if(is.call(expr) && identical(expr[[1L]], as.name("-")) && length(expr) == 2L){
+    return(.bt_random_effect_structured_index_has_intercept_control(expr[[2L]]))
+  }
+  if(is.call(expr) && identical(expr[[1L]], as.name("-")) && length(expr) == 3L){
+    return(
+      .bt_random_effect_structured_index_has_intercept_control(expr[[2L]]) ||
+        .bt_random_effect_structured_index_has_intercept_control(expr[[3L]])
+    )
+  }
+  if(is.call(expr) && identical(expr[[1L]], as.name("+")) && length(expr) == 3L){
+    return(
+      .bt_random_effect_structured_index_has_intercept_control(expr[[2L]]) ||
+        .bt_random_effect_structured_index_has_intercept_control(expr[[3L]])
+    )
+  }
+
+  FALSE
+}
+
+.bt_random_effect_structured_index_name <- function(variables){
+
+  if(length(variables) == 1L){
+    return(variables)
+  }
+
+  .bt_random_effect_sanitize_name(paste(variables, collapse = "_"))
+}
+
+.bt_random_effect_structured_index_values <- function(data, variables){
+
+  values <- lapply(variables, function(variable){
+    .bt_random_effect_structured_index_component(data[[variable]])
+  })
+
+  if(length(values) == 1L){
+    return(values[[1L]])
+  }
+
+  do.call(interaction, c(values, list(drop = TRUE, lex.order = TRUE)))
+}
+
+.bt_random_effect_structured_index_component <- function(x){
+
+  if(is.factor(x)){
+    return(x)
+  }
+  if(is.character(x)){
+    return(factor(x, levels = sort(unique(x))))
+  }
+  if(is.numeric(x) || is.integer(x) || is.logical(x)){
+    return(factor(x, levels = sort(unique(x))))
+  }
+
+  factor(x, levels = sort(unique(x)))
+}
+
+.bt_random_effect_car_design_matrix <- function(formula, data,
+                                                car_time_values = NULL){
+
+  formula_terms <- stats::terms(formula)
+  has_intercept <- attr(formula_terms, "intercept") == 1L
+  if(has_intercept){
+    stop(
+      "CAR random-effect terms require exactly one untransformed time variable. Use 'car(time | group)'.",
+      call. = FALSE
+    )
+  }
+
+  term_labels <- attr(formula_terms, "term.labels")
+  predictors <- as.character(attr(formula_terms, "variables"))[-1L]
+  if(length(term_labels) != 1L || length(predictors) != 1L ||
+     !identical(term_labels, predictors)){
+    stop(
+      "CAR random-effect terms require exactly one untransformed time variable. Use 'car(time | group)'.",
+      call. = FALSE
+    )
+  }
+
+  time_name <- predictors
+  if(!time_name %in% names(data)){
+    stop("The '", time_name, "' CAR time variable is missing in the data set.", call. = FALSE)
+  }
+
+  observed_time <- .bt_random_effect_car_observed_time(data[[time_name]], time_name)
+  if(is.null(car_time_values)){
+    car_time_values <- sort(unique(observed_time))
+  }else{
+    car_time_values <- .bt_random_effect_car_reference_time_values(car_time_values)
+    new_time <- observed_time[!observed_time %in% car_time_values]
+    if(length(new_time) > 0L){
+      stop(
+        "New CAR time coordinate(s) for random-effect prediction are not supported: ",
+        paste(sort(unique(new_time)), collapse = ", "),
+        ".",
+        call. = FALSE
+      )
+    }
+  }
+
+  time_index <- match(observed_time, car_time_values)
+  model_matrix <- matrix(0, nrow = length(observed_time), ncol = length(car_time_values))
+  if(length(observed_time) > 0L){
+    model_matrix[cbind(seq_along(observed_time), time_index)] <- 1
+  }
+  colnames(model_matrix) <- paste0(time_name, .bt_random_effect_car_time_suffix(car_time_values))
+  attr(model_matrix, "assign") <- rep(1L, ncol(model_matrix))
+  attr(model_matrix, "contrasts") <- NULL
+
+  model_frame <- data[time_name]
+  attr(model_frame, "terms") <- formula_terms
+
+  list(
+    model_frame = model_frame,
+    model_matrix = model_matrix,
+    car = list(
+      time_variable = time_name,
+      time_values = car_time_values,
+      distance_matrix = abs(outer(car_time_values, car_time_values, "-"))
+    )
+  )
+}
+
+.bt_random_effect_car_observed_time <- function(x, time_name){
+
+  if(is.numeric(x) || is.integer(x)){
+    out <- as.numeric(x)
+  }else if(is.ordered(x)){
+    level_values <- suppressWarnings(as.numeric(as.character(levels(x))))
+    if(any(is.na(level_values))){
+      stop(
+        "Ordered factor CAR time variable '", time_name,
+        "' must have numeric level labels.",
+        call. = FALSE
+      )
+    }
+    out <- level_values[match(as.character(x), levels(x))]
+  }else{
+    stop(
+      "CAR time variable '", time_name,
+      "' must be numeric or an ordered factor with numeric level labels.",
+      call. = FALSE
+    )
+  }
+
+  if(any(is.na(out)) || any(!is.finite(out))){
+    stop("CAR time variable '", time_name, "' must contain only finite values.", call. = FALSE)
+  }
+
+  out
+}
+
+.bt_random_effect_car_reference_time_values <- function(x){
+
+  if(!is.numeric(x) && !is.integer(x)){
+    stop("CAR reference time values must be numeric.", call. = FALSE)
+  }
+  x <- as.numeric(x)
+  if(length(x) == 0L || any(is.na(x)) || any(!is.finite(x))){
+    stop("CAR reference time values must be finite and non-empty.", call. = FALSE)
+  }
+  if(anyDuplicated(x)){
+    stop("CAR reference time values must be unique.", call. = FALSE)
+  }
+  sort(x)
+}
+
+.bt_random_effect_car_time_suffix <- function(x){
+
+  labels <- vapply(x, function(value){
+    format(value, scientific = FALSE, trim = TRUE, digits = 15)
+  }, character(1))
+  labels <- gsub("-", "m", labels, fixed = TRUE)
+  labels <- gsub(".", "p", labels, fixed = TRUE)
+  labels <- gsub("[^A-Za-z0-9_]", "_", labels)
+  labels <- gsub("_+", "_", labels)
+  labels <- gsub("^_|_$", "", labels)
+  paste0("_", labels)
+}
+
+.bt_random_effect_apply_factor_prior_contrasts <- function(data,
+                                                           predictors_type,
+                                                           model_terms,
+                                                           model_terms_type,
+                                                           prior_list){
+
+  factor_predictors <- names(predictors_type)[predictors_type == "factor"]
+  if(length(factor_predictors) == 0L){
+    return(data)
+  }
+
+  for(factor_name in factor_predictors){
+    contrast_name <- NULL
+
+    if(!is.factor(data[[factor_name]])){
+      data[[factor_name]] <- factor(data[[factor_name]])
+    }
+
+    if(factor_name %in% names(prior_list)){
+      contrast_name <- .factor_object_contrast_name(prior_list[[factor_name]])
+    }
+
+    if(is.null(contrast_name)){
+      factor_terms <- model_terms[
+        model_terms_type == "factor" &
+          vapply(model_terms, function(term){
+            factor_name %in% .bt_random_effect_term_components(term)
+          }, logical(1))
+      ]
+      factor_term_contrasts <- vapply(factor_terms, function(term){
+        if(term %in% names(prior_list)){
+          contrast <- .factor_object_contrast_name(prior_list[[term]])
+          if(is.null(contrast)) NA_character_ else contrast
+        }else{
+          NA_character_
+        }
+      }, character(1))
+      factor_term_contrasts <- unique(factor_term_contrasts[!is.na(factor_term_contrasts)])
+
+      if(length(factor_term_contrasts) == 1L){
+        contrast_name <- factor_term_contrasts
+      }else if(length(factor_term_contrasts) > 1L){
+        stop(
+          "Random-effect factor predictor '", factor_name,
+          "' has conflicting contrast priors across random terms.",
+          call. = FALSE
+        )
+      }
+    }
+
+    if(!is.null(contrast_name)){
+      stats::contrasts(data[[factor_name]]) <- contrast_name
+    }else if(is.null(attr(data[[factor_name]], "contrasts"))){
+      stats::contrasts(data[[factor_name]]) <- "contr.treatment"
+    }
+  }
+
+  data
+}
+
+.bt_random_effect_term_components <- function(term){
+
+  unlist(strsplit(term, "__xXx__|:", perl = TRUE), use.names = FALSE)
+}
+
+.bt_random_effect_factor_term_contrast <- function(model_term, predictors_type, data){
+
+  components <- .bt_random_effect_term_components(model_term)
+  factor_components <- components[
+    components %in% names(predictors_type) &
+      predictors_type[components] == "factor"
+  ]
+  if(length(factor_components) == 0L){
+    return(NULL)
+  }
+
+  contrasts <- vapply(factor_components, function(factor_name){
+    contrast_name <- attr(data[[factor_name]], "contrasts")
+    if(is.null(contrast_name)) "contr.treatment" else contrast_name
+  }, character(1))
+  contrasts <- unique(contrasts)
+
+  if(length(contrasts) == 1L){
+    return(contrasts)
+  }
+  if(all(contrasts %in% c("contr.treatment", "contr.independent"))){
+    return("contr.independent")
+  }
+  if(all(contrasts %in% c("contr.orthonormal", "contr.meandif"))){
+    return("contr.orthonormal")
+  }
+
+  stop(
+    "Random-effect factor interaction '", model_term,
+    "' uses mixed factor contrast families, which is not supported.",
+    call. = FALSE
+  )
+}
+
+.bt_random_term_structure <- function(random_term, prior_random = NULL){
+
+  structure <- .bt_random_effect_structure(random_term)
+  if(!is.null(prior_random)){
+    block_prior <- .bt_random_prior_for_block(prior_random, random_term$block_name)
+    requested <- block_prior$covariance$structure
+    if(!is.null(requested)){
+      requested <- tolower(.bt_random_covariance_normalize(requested))
+      if(!identical(requested, structure)){
+        stop(
+          "Random-effect block '", random_term$block_name,
+          "' uses covariance structure '", structure,
+          "' in the formula but '", requested,
+          "' in 'prior_random'. The formula owns the covariance structure.",
+          call. = FALSE
+        )
+      }
+    }
+  }
+
+  structure
+}
+
+.bt_random_effect_homogeneous_sd <- function(random_term, structure){
+
+  switch(
+    structure,
+    id = TRUE,
+    diag = identical(random_term$hom, TRUE),
+    cs = TRUE,
+    hcs = FALSE,
+    ar1 = TRUE,
+    car = TRUE,
+    har = FALSE,
+    us = FALSE,
+    FALSE
+  )
+}
+
+.bt_JAGS_structured_corr_cholesky <- function(node_prefix, prior_prefix, K,
+                                              structure, block_prior,
+                                              include_correlation = TRUE,
+                                              require_rho = FALSE,
+                                              distance_matrix = NULL){
+
+  check_char(node_prefix, "node_prefix", allow_NA = FALSE)
+  check_char(prior_prefix, "prior_prefix", allow_NA = FALSE)
+  check_int(K, "K", lower = 1, allow_NA = FALSE)
+  check_char(structure, "structure", allow_values = c("cs", "hcs", "ar1", "car", "har"), allow_NA = FALSE)
+  check_bool(include_correlation, "include_correlation", allow_NA = FALSE)
+  check_bool(require_rho, "require_rho", allow_NA = FALSE)
+  if(identical(structure, "car")){
+    distance_matrix <- .bt_random_effect_validate_car_distance_matrix(distance_matrix, K)
+  }
+
+  L_name <- paste0(node_prefix, "_xRE_CORx_L")
+  R_name <- paste0(node_prefix, "_xRE_CORx_R")
+  rho_name <- paste0(node_prefix, "_rho")
+
+  syntax <- c(paste0("# Structured random-effect correlation: ", structure))
+  prior_list <- list()
+  monitor <- L_name
+
+  if(K == 1L){
+    if(!is.null(block_prior$covariance) && !is.null(block_prior$covariance$rho)){
+      stop(
+        "Single-column random-effect structure '", structure,
+        "' has no correlation parameter; remove the 'rho' prior.",
+        call. = FALSE
+      )
+    }
+    syntax <- c(
+      syntax,
+      paste0(L_name, "[1,1] <- 1")
+    )
+    if(include_correlation){
+      syntax <- c(syntax, paste0(R_name, "[1,1] <- 1"))
+      monitor <- c(monitor, R_name)
+    }
+    return(list(
+      syntax = paste0(paste(syntax, collapse = "\n"), "\n"),
+      prior_list = prior_list,
+      monitor = monitor,
+      cholesky_name = L_name,
+      correlation_name = if(include_correlation) R_name else NULL,
+      rho_name = NULL,
+      bridge = NULL
+    ))
+  }
+
+  rho_info <- .bt_random_effect_structured_rho_prior(
+    prior_prefix = prior_prefix,
+    node_prefix = node_prefix,
+    K = K,
+    structure = structure,
+    block_prior = block_prior,
+    require_rho = require_rho
+  )
+  syntax <- c(syntax, rho_info$syntax)
+  prior_list <- rho_info$prior_list
+  monitor <- c(monitor, rho_info$monitor)
+
+  for(row in seq_len(K)){
+    for(column in seq_len(K)){
+      target <- paste0(R_name, "[", row, ",", column, "]")
+      expr <- if(row == column){
+        "1"
+      }else if(structure %in% c("cs", "hcs")){
+        rho_name
+      }else if(identical(structure, "car")){
+        paste0("pow(", rho_name, ", ", .bt_JAGS_numeric_literal(distance_matrix[row, column]), ")")
+      }else{
+        paste0("pow(", rho_name, ", ", abs(row - column), ")")
+      }
+      syntax <- c(syntax, paste0(target, " <- ", expr))
+    }
+  }
+
+  for(row in seq_len(K)){
+    for(column in seq_len(K)){
+      target <- paste0(L_name, "[", row, ",", column, "]")
+      if(column > row){
+        syntax <- c(syntax, paste0(target, " <- 0"))
+      }else if(row == column){
+        cholesky_sum <- .bt_JAGS_cholesky_crossprod_sum(L_name, row, row, column - 1L)
+        syntax <- c(syntax, paste0(target, " <- sqrt(", R_name, "[", row, ",", row, "] - (", cholesky_sum, "))"))
+      }else{
+        cholesky_sum <- .bt_JAGS_cholesky_crossprod_sum(L_name, row, column, column - 1L)
+        syntax <- c(syntax, paste0(
+          target, " <- (", R_name, "[", row, ",", column, "] - (", cholesky_sum, ")) / ",
+          L_name, "[", column, ",", column, "]"
+        ))
+      }
+    }
+  }
+
+  if(include_correlation){
+    monitor <- c(monitor, R_name)
+  }
+
+  list(
+    syntax = paste0(paste(syntax, collapse = "\n"), "\n"),
+    prior_list = prior_list,
+    monitor = unique(monitor),
+    cholesky_name = L_name,
+    correlation_name = if(include_correlation) R_name else NULL,
+    rho_name = rho_name,
+    bridge = list(
+      type = "rho",
+      structure = structure,
+      rho_name = rho_name,
+      sample_name = rho_info$sample_name,
+      prior_name = rho_info$prior_name,
+      sample_fixed = rho_info$sample_fixed,
+      rho_scale = rho_info$rho_scale,
+      bounds = rho_info$bounds,
+      distance_matrix = if(identical(structure, "car")) distance_matrix else NULL,
+      cholesky_name = L_name,
+      correlation_name = if(include_correlation) R_name else NULL
+    )
+  )
+}
+
+.bt_random_effect_validate_car_distance_matrix <- function(distance_matrix, K){
+
+  if(is.null(distance_matrix)){
+    stop("CAR random-effect structures require a distance matrix.", call. = FALSE)
+  }
+  if(!is.matrix(distance_matrix) || !is.numeric(distance_matrix) ||
+     !all(dim(distance_matrix) == c(K, K))){
+    stop("CAR distance matrix must be a numeric K by K matrix.", call. = FALSE)
+  }
+  if(any(is.na(distance_matrix)) || any(!is.finite(distance_matrix))){
+    stop("CAR distance matrix must contain only finite values.", call. = FALSE)
+  }
+  if(any(distance_matrix < 0)){
+    stop("CAR distance matrix cannot contain negative distances.", call. = FALSE)
+  }
+  if(!isTRUE(all.equal(distance_matrix, t(distance_matrix), tolerance = 1e-12))){
+    stop("CAR distance matrix must be symmetric.", call. = FALSE)
+  }
+  if(any(abs(diag(distance_matrix)) > 1e-12)){
+    stop("CAR distance matrix must have a zero diagonal.", call. = FALSE)
+  }
+  if(K > 1L && any(distance_matrix[row(distance_matrix) != col(distance_matrix)] <= 0)){
+    stop("CAR distance matrix must have positive off-diagonal distances.", call. = FALSE)
+  }
+
+  distance_matrix
+}
+
+.bt_JAGS_numeric_literal <- function(x){
+
+  if(length(x) != 1L || is.na(x) || !is.finite(x)){
+    stop("JAGS numeric literal must be finite.", call. = FALSE)
+  }
+
+  format(x, scientific = FALSE, trim = TRUE, digits = 15)
+}
+
+.bt_JAGS_cholesky_crossprod_sum <- function(L_name, row, column, n_terms){
+
+  if(n_terms < 1L){
+    return("0")
+  }
+
+  paste0(
+    L_name, "[", row, ",", seq_len(n_terms), "] * ",
+    L_name, "[", column, ",", seq_len(n_terms), "]",
+    collapse = " + "
+  )
+}
+
+.bt_random_effect_structured_rho_prior <- function(prior_prefix, node_prefix, K,
+                                                   structure, block_prior,
+                                                   require_rho = FALSE){
+
+  rho_prior <- block_prior$covariance$rho
+  if(is.null(rho_prior)){
+    if(isTRUE(require_rho)){
+      stop(
+        "Random-effect structure '", structure,
+        "' requires a scalar correlation prior. Supply 'rho = prior(...)'.",
+        call. = FALSE
+      )
+    }
+    rho_prior <- prior("normal", list(0, 0.5))
+  }
+
+  rho_scale <- block_prior$covariance$rho_scale
+  if(is.null(rho_scale)){
+    rho_scale <- "fisher_z"
+  }
+
+  bounds <- .bt_random_effect_structured_rho_bounds(K = K, structure = structure)
+  rho_name <- paste0(node_prefix, "_rho")
+  syntax <- character()
+  monitor <- character()
+  sample_fixed <- NULL
+
+  if(identical(rho_scale, "fisher_z")){
+    lower <- if(bounds[["lower"]] <= -1) -Inf else atanh(bounds[["lower"]])
+    upper <- if(bounds[["upper"]] >= 1) Inf else atanh(bounds[["upper"]])
+    rho_prior <- .bt_random_effect_bound_scalar_prior(
+      rho_prior,
+      lower = lower,
+      upper = upper,
+      label = paste0(structure, " Fisher-z correlation prior"),
+      warn = FALSE
+    )
+    prior_name <- paste0(prior_prefix, "_rho_z")
+    sample_name <- paste0(node_prefix, "_rho_z")
+    syntax <- c(syntax, paste0(rho_name, " <- 2 * ilogit(2 * ", node_prefix, "_rho_z) - 1"))
+    monitor <- rho_name
+  }else if(identical(rho_scale, "logit")){
+    prior_name <- paste0(prior_prefix, "_rho_logit")
+    sample_name <- paste0(node_prefix, "_rho_logit")
+    syntax <- c(syntax, paste0(
+      rho_name, " <- ", .bt_JAGS_numeric_literal(bounds[["lower"]]), " + ",
+      .bt_JAGS_numeric_literal(bounds[["upper"]] - bounds[["lower"]]),
+      " * ilogit(", sample_name, ")"
+    ))
+    monitor <- rho_name
+  }else{
+    rho_prior <- .bt_random_effect_bound_scalar_prior(
+      rho_prior,
+      lower = bounds[["lower"]],
+      upper = bounds[["upper"]],
+      label = paste0(structure, " raw correlation prior"),
+      warn = TRUE
+    )
+    prior_name <- paste0(prior_prefix, "_rho")
+    sample_name <- rho_name
+  }
+  if(is.prior.point(rho_prior)){
+    sample_fixed <- rho_prior$parameters[["location"]]
+  }
+
+  prior_list <- stats::setNames(list(rho_prior), prior_name)
+
+  list(
+    prior_list = prior_list,
+    syntax = syntax,
+    monitor = monitor,
+    prior_list_name = prior_name,
+    prior_name = sample_name,
+    sample_name = sample_name,
+    sample_fixed = sample_fixed,
+    rho_scale = rho_scale,
+    bounds = bounds
+  )
+}
+
+.bt_random_effect_structured_rho_bounds <- function(K, structure){
+
+  if(structure %in% c("cs", "hcs")){
+    lower <- -1 / (K - 1)
+    upper <- 1
+  }else if(structure %in% c("ar1", "har")){
+    lower <- -1
+    upper <- 1
+  }else if(identical(structure, "car")){
+    lower <- 0
+    upper <- 1
+  }else{
+    stop("Unsupported structured random-effect correlation '", structure, "'.", call. = FALSE)
+  }
+
+  c(lower = lower, upper = upper)
+}
+
+.bt_random_effect_bound_scalar_prior <- function(x, lower, upper, label,
+                                                warn = TRUE){
+
+  if(is.prior.none(x)){
+    stop(label, " cannot use prior_none().", call. = FALSE)
+  }
+
+  if(is.prior.spike_and_slab(x) || is.prior.mixture(x)){
+    for(i in seq_along(x)){
+      if(is.prior.none(x[[i]])){
+        next
+      }
+      x[[i]] <- .bt_random_effect_bound_scalar_prior(
+        x[[i]],
+        lower = lower,
+        upper = upper,
+        label = paste0(label, " component ", i),
+        warn = warn
+      )
+    }
+    return(x)
+  }
+
+  if(!is.prior.simple(x)){
+    stop(label, " must be an ordinary scalar prior.", call. = FALSE)
+  }
+
+  if(is.prior.point(x)){
+    location <- x$parameters[["location"]]
+    if(length(location) != 1L || is.na(location) || location <= lower || location >= upper){
+      stop(label, " point mass must lie strictly inside (", lower, ", ", upper, ").", call. = FALSE)
+    }
+    return(x)
+  }
+
+  new_lower <- max(x$truncation[["lower"]], lower)
+  new_upper <- min(x$truncation[["upper"]], upper)
+  if(new_lower >= new_upper){
+    stop(label, " has no support inside (", lower, ", ", upper, ").", call. = FALSE)
+  }
+  if(isTRUE(warn) &&
+     (!identical(new_lower, x$truncation[["lower"]]) || !identical(new_upper, x$truncation[["upper"]]))){
+    warning(label, " was truncated to the valid correlation range.", immediate. = TRUE, call. = FALSE)
+  }
+  if(!identical(new_lower, x$truncation[["lower"]]) || !identical(new_upper, x$truncation[["upper"]])){
+    x$truncation[["lower"]] <- new_lower
+    x$truncation[["upper"]] <- new_upper
+  }
+
+  x
+}
+
+.bt_random_prior_terms_to_prior_list <- function(block_prior, model_terms,
+                                                homogeneous_sd = FALSE){
+
+  sd_prior <- block_prior$sd
+  covariance_sd <- if(!is.null(block_prior$covariance)) block_prior$covariance$sd else NULL
+  if(!is.null(sd_prior) && !is.null(covariance_sd)){
+    stop(
+      "Random-effect SD prior was supplied both as 'sd' and 'covariance = random_covariance(sd = ...)'. Supply it in only one place.",
+      call. = FALSE
+    )
+  }
+  if(is.null(sd_prior) && !is.null(covariance_sd)){
+    sd_prior <- block_prior$covariance$sd
+  }
+  if(is.null(sd_prior)){
+    stop("Random-effect SD prior is missing. Supply 'sd' in prior_random() or random_block().", call. = FALSE)
+  }
+
+  if(homogeneous_sd){
+    out <- list(sd = sd_prior)
+  }else{
+    out <- rep(list(sd_prior), length(model_terms))
+    names(out) <- model_terms
+  }
+
+  if(!is.null(block_prior$terms)){
+    term_overrides <- block_prior$terms
+    if(is.null(names(term_overrides)) || any(!nzchar(names(term_overrides)))){
+      stop("Random-effect term overrides must be named.", call. = FALSE)
+    }
+    unknown_terms <- setdiff(names(term_overrides), names(out))
+    if(length(unknown_terms) > 0L){
+      stop("Unknown random-effect term override(s): ", paste(unknown_terms, collapse = ", "), ".", call. = FALSE)
+    }
+    for(term in names(term_overrides)){
+      override <- term_overrides[[term]]
+      if(is.prior(override)){
+        out[[term]] <- override
+      }else if(inherits(override, "random_block") && !is.null(override$sd)){
+        out[[term]] <- override$sd
+      }else{
+        stop("Random-effect term override '", term, "' must be a prior or random_block(sd = ...).", call. = FALSE)
+      }
+    }
+  }
+
+  out
+}
+
+.bt_random_effect_force_nonnegative_priors <- function(prior_list){
+
+  for(i in seq_along(prior_list)){
+    prior_list[[i]] <- .bt_random_effect_force_nonnegative_prior(
+      prior = prior_list[[i]],
+      name = names(prior_list)[i]
+    )
+  }
+
+  prior_list
+}
+
+.bt_random_effect_force_nonnegative_prior <- function(prior, name){
+
+  if(is.prior.spike_and_slab(prior) || is.prior.mixture(prior)){
+    for(j in seq_along(prior)){
+      prior[[j]] <- .bt_random_effect_force_nonnegative_prior_component(
+        prior = prior[[j]],
+        label = paste0(j, "-th component in '", name, "'")
+      )
+    }
+    return(prior)
+  }
+
+  .bt_random_effect_force_nonnegative_prior_component(
+    prior = prior,
+    label = paste0("'", name, "'")
+  )
+}
+
+.bt_random_effect_force_nonnegative_prior_component <- function(prior, label){
+
+  if(is.prior.none(prior)){
+    stop(
+      "Random-effect SD prior ", label, " cannot use prior_none().",
+      call. = FALSE
+    )
+  }
+
+  if(is.prior.point(prior)){
+    location <- prior$parameters[["location"]]
+    if(any(is.na(location)) || any(location < 0)){
+      stop(
+        "Random-effect SD prior ", label,
+        " point mass must be nonnegative.",
+        call. = FALSE
+      )
+    }
+    return(prior)
+  }
+
+  if(range(prior)[1] < 0){
+    warning(
+      paste0("The lower bound of the ", label, " prior distribution is below 0. Correcting to 0."),
+      immediate. = TRUE,
+      call. = FALSE
+    )
+    prior$truncation$lower <- 0
+  }
+
+  prior
 }
 
 # formula helper functions
@@ -925,66 +2111,10 @@ JAGS_formula_design <- function(fit, parameter = NULL){
   return(stats::as.formula(formula_string_clean))
 }
 .has_random_effects     <- function(formula){
-  # Convert the formula to a character string
-  formula_str <- paste(deparse(formula), collapse = " ")
-
-  # Regular expression to match `( ... | ... )` patterns
-  has_random <- grepl("\\([^\\)]+\\|[^\\)]+\\)", formula_str)
-
-  # Return TRUE if at least one match is found, otherwise FALSE
-  return(has_random)
+  return(length(.bt_parse_random_effects(formula)$terms) > 0L)
 }
-.extract_random_effects <- function(formula) {
-  # Convert the formula to a character string
-  formula_str <- paste(deparse(formula), collapse = " ")
-
-  # Regular expression to match `( ... | ... )` or `( ... || ... )` patterns
-  random_effects <- gregexpr("\\([^\\)]+\\|{1,2}[^\\)]+\\)", formula_str)
-
-  # Extract matches
-  matches <- regmatches(formula_str, random_effects)
-
-  # Clean up the parentheses and remove unnecessary spaces
-  clean_matches <- lapply(unlist(matches), function(x) gsub("^\\(|\\)$", "", x))  # Remove outer parentheses
-  clean_matches <- lapply(clean_matches, trimws)  # Remove extra spaces from each match
-
-  # Add random effects information
-  for (i in seq_along(clean_matches)) {
-    # Extract the grouping factor (right-hand side of | or ||)
-    grouping_factor <- trimws(sub(".*\\|{1,2}\\s*", "", clean_matches[[i]]))
-    attr(clean_matches[[i]], "grouping_factor") <- grouping_factor
-
-    # Detect whether independent `||` or correlated `|` random effects are used
-    independent <- grepl("\\|\\|", clean_matches[[i]])  # Check if `||` is used
-    attr(clean_matches[[i]], "independent") <- independent
-  }
-
-  # Return the cleaned random effects as a list
-  return(as.list(clean_matches))
-}
-
 .remove_random_effects  <- function(formula){
-  # Convert the formula to a character string
-  formula_str <- paste(deparse(formula), collapse = " ")
-
-  # Regular expression to match and remove `( ... | ... )` patterns
-  cleaned_formula <- gsub("\\+?\\s*\\([^\\)]+\\|[^\\)]+\\)", "", formula_str)
-
-  # Normalize spacing around '+' and remove any leading '+'
-  cleaned_formula <- gsub("\\s*\\+\\s*", " + ", cleaned_formula)  # Normalize '+' spacing
-  cleaned_formula <- gsub("^\\s*~\\s*\\+\\s*", "~ ", cleaned_formula)  # Remove leading '+'
-
-  # Ensure no excessive spaces remain
-  cleaned_formula <- gsub("\\s{2,}", " ", cleaned_formula)  # Replace multiple spaces with a single space
-  cleaned_formula <- trimws(cleaned_formula)  # Trim leading/trailing whitespace
-
-  # Ensure at least "1" remains if formula is empty after cleaning
-  if (grepl("^\\s*~\\s*$", cleaned_formula)) {
-    cleaned_formula <- "~ 1"
-  }
-
-  # Return as a formula
-  return(stats::as.formula(cleaned_formula))
+  return(.bt_fixed_formula(formula))
 }
 .get_grouping_factor    <- function(x){
   has_grouping            <- grepl("\\|", x)
@@ -1094,8 +2224,12 @@ formula_add_intercept <- function(formula){
 
 #' @title Evaluate JAGS formula using posterior samples
 #'
-#' @description Evaluates a JAGS formula on a posterior distribution
-#' obtained from a fitted model.
+#' @description Evaluates a JAGS formula on a posterior distribution obtained
+#' from a fitted model. Formula random effects can be evaluated for existing
+#' grouping levels when either standardized latent random effects and covariance
+#' hyperparameters were monitored via \code{random_monitor(latent = TRUE)}, or
+#' the group-level coefficients were monitored via
+#' \code{random_monitor(coefficients = TRUE)}.
 #'
 #' @param fit model fitted with either \link[runjags]{runjags} posterior
 #' samples obtained with \link[rjags]{rjags-package}
@@ -1130,6 +2264,26 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
 
   # remove the specified response (would crash the model.frame if not included)
   formula <- .remove_response(formula)
+  if(.has_random_effects(formula)){
+    return(.bt_JAGS_evaluate_formula_with_random_effects(
+      fit = fit,
+      formula = formula,
+      parameter = parameter,
+      data = data,
+      prior_list = prior_list,
+      posterior = posterior
+    ))
+  }
+  fitted_design <- try(JAGS_formula_design(fit, parameter), silent = TRUE)
+  if(!inherits(fitted_design, "try-error") &&
+     .bt_formula_design_has_random_effects(fitted_design)){
+    stop(
+      "The fitted formula for parameter '", parameter,
+      "' includes random effects. JAGS_evaluate_formula() cannot currently evaluate ",
+      "random-effect fits without silently dropping group-level contributions.",
+      call. = FALSE
+    )
+  }
   log_intercept <- isTRUE(attr(formula, "log(intercept)"))
   if(attr(stats::terms(formula), "intercept") == 0){
     formula <- formula_add_intercept(formula)
@@ -1223,23 +2377,12 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
       }
     }
 
-    # apply scaling if predictors were scaled during model fitting
-    formula_scale <- attr(fit, "formula_scale")
-    if(!is.null(formula_scale)){
-      # Handle nested structure: formula_scale[[parameter]] contains the scaling info
-      param_scale <- formula_scale[[parameter]]
-      if(!is.null(param_scale)){
-        for(continuous in names(predictors_type[predictors_type == "continuous"])){
-          # check if this predictor was scaled (with parameter prefix)
-          scaled_name <- paste0(parameter, "_", continuous)
-          if(scaled_name %in% names(param_scale)){
-            # apply the same scaling transformation
-            scale_info <- param_scale[[scaled_name]]
-            data[, continuous] <- (data[, continuous] - scale_info$mean) / scale_info$sd
-          }
-        }
-      }
-    }
+    data <- .bt_apply_formula_scale_to_data(
+      fit = fit,
+      parameter = parameter,
+      data = data,
+      predictors_type = predictors_type
+    )
   }
 
   # get the design matrix
@@ -1306,6 +2449,351 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
   return(output)
 }
 
+.bt_apply_formula_scale_to_data <- function(fit, parameter, data,
+                                            predictors_type){
+
+  continuous_predictors <- names(predictors_type[predictors_type == "continuous"])
+
+  formula_scale <- attr(fit, "formula_scale")
+  if(is.null(formula_scale)){
+    return(data)
+  }
+
+  param_scale <- formula_scale[[parameter]]
+  if(is.null(param_scale)){
+    return(data)
+  }
+
+  scaled_predictors <- sub(paste0("^", parameter, "_"), "", names(param_scale))
+  continuous_predictors <- unique(c(continuous_predictors, scaled_predictors))
+  if(length(continuous_predictors) == 0L){
+    return(data)
+  }
+
+  for(continuous in continuous_predictors){
+    if(!continuous %in% colnames(data)){
+      next
+    }
+    scaled_name <- paste0(parameter, "_", continuous)
+    if(scaled_name %in% names(param_scale)){
+      scale_info <- param_scale[[scaled_name]]
+      data[, continuous] <- (data[, continuous] - scale_info$mean) / scale_info$sd
+    }
+  }
+
+  data
+}
+
+.bt_JAGS_evaluate_formula_with_random_effects <- function(fit, formula,
+                                                          parameter, data,
+                                                          prior_list,
+                                                          posterior){
+
+  fitted_design <- try(JAGS_formula_design(fit, parameter), silent = TRUE)
+  if(inherits(fitted_design, "try-error") || is.null(fitted_design)){
+    stop(
+      "JAGS_evaluate_formula() needs fitted formula design metadata to evaluate random effects. ",
+      "Use a fit produced by JAGS_fit() with formula_list.",
+      call. = FALSE
+    )
+  }
+  if(!.bt_formula_design_has_random_effects(fitted_design)){
+    stop(
+      "The supplied formula contains random effects, but the fitted formula for parameter '",
+      parameter, "' does not.",
+      call. = FALSE
+    )
+  }
+
+  random_terms <- .bt_parse_random_effects(formula)$terms
+  .bt_validate_random_effect_prediction_terms(
+    requested = random_terms,
+    fitted = fitted_design$random_effects,
+    parameter = parameter
+  )
+
+  fixed_formula <- .remove_random_effects(formula)
+  fixed_fit <- fit
+  attr(fixed_fit, "formula_design") <- NULL
+  output <- JAGS_evaluate_formula(
+    fit = fixed_fit,
+    formula = fixed_formula,
+    parameter = parameter,
+    data = data,
+    prior_list = prior_list
+  )
+  random_data <- .bt_apply_formula_scale_to_data(
+    fit = fit,
+    parameter = parameter,
+    data = data,
+    predictors_type = fitted_design$predictor_types
+  )
+
+  for(random_term in fitted_design$random_effects){
+    random_structure <- .bt_random_effect_structure(
+      random_term,
+      context = "Random-effect prediction metadata"
+    )
+    output <- output + .bt_JAGS_evaluate_random_effect_term(
+      random_term = random_term,
+      data = if(random_structure %in% c("cs", "hcs", "ar1", "car", "har")) data else random_data,
+      group_data = data,
+      posterior = posterior,
+      prior_list = prior_list
+    )
+  }
+
+  output
+}
+
+.bt_validate_random_effect_prediction_terms <- function(requested, fitted,
+                                                        parameter){
+
+  requested_names <- vapply(requested, function(term) term$block_name, character(1))
+  if(anyDuplicated(requested_names)){
+    stop(
+      "Random-effect block names in the supplied formula must be unique.",
+      call. = FALSE
+    )
+  }
+  fitted_names <- vapply(fitted, function(term) term$block_name, character(1))
+  if(!setequal(requested_names, fitted_names)){
+    stop(
+      "Random-effect blocks in the supplied formula do not match the fitted formula for parameter '",
+      parameter, "'.",
+      call. = FALSE
+    )
+  }
+
+  for(block in fitted_names){
+    requested_term <- requested[[match(block, requested_names)]]
+    fitted_term <- fitted[[match(block, fitted_names)]]
+    requested_structure <- .bt_random_effect_structure(
+      requested_term,
+      context = "Random-effect prediction metadata"
+    )
+    fitted_structure <- .bt_random_effect_structure(
+      fitted_term,
+      context = "Random-effect prediction metadata"
+    )
+    .bt_validate_random_effect_term_supported(requested_term)
+    requested_homogeneous <- .bt_random_effect_homogeneous_sd(
+      requested_term,
+      requested_structure
+    )
+    fitted_homogeneous <- .bt_random_effect_homogeneous_sd_metadata(
+      fitted_term,
+      context = "Random-effect prediction metadata"
+    )
+    if(!identical(requested_structure, fitted_structure) ||
+       !identical(requested_homogeneous, fitted_homogeneous) ||
+       !identical(.bt_deparse_expr(requested_term$expr), .bt_deparse_expr(fitted_term$expr)) ||
+       !identical(requested_term$group_label, fitted_term$group_label)){
+      stop(
+        "Random-effect block '", block,
+        "' in the supplied formula does not match the fitted formula.",
+        call. = FALSE
+      )
+    }
+  }
+
+  invisible(TRUE)
+}
+
+.bt_JAGS_evaluate_random_effect_term <- function(random_term, data, posterior,
+                                                prior_list,
+                                                group_data = data){
+
+  prediction <- .bt_random_effect_prediction_data(random_term, data, group_data = group_data)
+  model_matrix <- prediction$model_matrix
+  group_map <- prediction$group_map
+
+  n_draws <- nrow(posterior)
+  n_rows <- nrow(model_matrix)
+  n_columns <- ncol(model_matrix)
+  n_groups <- length(random_term$group_levels)
+
+  coefficient_names <- .bt_random_effect_coefficient_names(
+    random_term = random_term,
+    n_groups = n_groups,
+    n_columns = n_columns
+  )
+  if(all(as.vector(coefficient_names) %in% colnames(posterior))){
+    return(.bt_random_effect_contribution_from_coefficients(
+      model_matrix = model_matrix,
+      group_map = group_map,
+      coefficient_names = coefficient_names,
+      posterior = posterior
+    ))
+  }
+
+  latent_contribution <- .bt_try_random_effect_contribution_from_latent(
+    random_term = random_term,
+    model_matrix = model_matrix,
+    group_map = group_map,
+    posterior = posterior,
+    prior_list = prior_list
+  )
+  if(!is.null(latent_contribution)){
+    return(latent_contribution)
+  }
+
+  stop(
+    "Random-effect coefficients for block '", random_term$block_name,
+    "' cannot be reconstructed from the posterior samples. Refit with ",
+    "random_monitor(latent = TRUE) or random_monitor(coefficients = TRUE) ",
+    "for that random-effect block before using JAGS_evaluate_formula() ",
+    "with random effects.",
+    call. = FALSE
+  )
+}
+
+.bt_random_effect_contribution_from_coefficients <- function(model_matrix,
+                                                            group_map,
+                                                            coefficient_names,
+                                                            posterior){
+
+  n_draws <- nrow(posterior)
+  n_rows <- nrow(model_matrix)
+  n_columns <- ncol(model_matrix)
+  output <- matrix(0, nrow = n_rows, ncol = n_draws)
+  for(column in seq_len(n_columns)){
+    coefficient_matrix <- posterior[, coefficient_names[, column], drop = FALSE]
+    output <- output +
+      t(coefficient_matrix[, group_map, drop = FALSE]) *
+      matrix(model_matrix[, column], nrow = n_rows, ncol = n_draws)
+  }
+
+  output
+}
+
+.bt_random_effect_prediction_data <- function(random_term, data, group_data = data){
+
+  prediction_data <- data
+  random_structure <- .bt_random_effect_structure(
+    random_term,
+    context = "Random-effect prediction metadata"
+  )
+  prediction_data <- .bt_random_effect_prediction_structured_index_data(
+    random_term,
+    prediction_data
+  )
+  factor_levels <- random_term$xlevels
+  if(!is.null(factor_levels) && length(factor_levels) > 0L){
+    for(factor_name in names(factor_levels)){
+      if(!factor_name %in% names(prediction_data)){
+        stop(
+          "The '", factor_name,
+          "' predictor needed for random-effect prediction is missing in the data.",
+          call. = FALSE
+        )
+      }
+      if(is.factor(prediction_data[[factor_name]])){
+        observed_levels <- unique(as.character(prediction_data[[factor_name]]))
+        if(!all(observed_levels %in% factor_levels[[factor_name]])){
+          stop(
+            "Levels specified in the '", factor_name,
+            "' factor variable do not match the levels used for model specification.",
+            call. = FALSE
+          )
+        }
+        prediction_data[[factor_name]] <- factor(
+          as.character(prediction_data[[factor_name]]),
+          levels = factor_levels[[factor_name]]
+        )
+      }else if(all(unique(prediction_data[[factor_name]]) %in% factor_levels[[factor_name]])){
+        prediction_data[[factor_name]] <- factor(
+          prediction_data[[factor_name]],
+          levels = factor_levels[[factor_name]]
+        )
+      }else{
+        stop(
+          "Levels specified in the '", factor_name,
+          "' factor variable do not match the levels used for model specification.",
+          call. = FALSE
+        )
+      }
+    }
+  }
+
+  contrasts <- random_term$contrasts
+  if(!is.null(contrasts) && length(contrasts) > 0L){
+    for(factor_name in names(contrasts)){
+      if(factor_name %in% names(prediction_data) && is.factor(prediction_data[[factor_name]])){
+        stats::contrasts(prediction_data[[factor_name]]) <- contrasts[[factor_name]]
+      }
+    }
+  }
+
+  random_design <- .bt_random_effect_design_matrix(
+    random_term$term_formula,
+    prediction_data,
+    preserve_no_intercept_contrasts = !random_structure %in% c("cs", "hcs", "ar1", "car", "har"),
+    structure = random_structure,
+    car_time_values = if(identical(random_structure, "car")) random_term$car$time_values else NULL,
+    block_name = random_term$block_name
+  )
+  model_matrix <- random_design$model_matrix
+  colnames(model_matrix) <- gsub(":", "__xXx__", colnames(model_matrix))
+
+  if(!identical(colnames(model_matrix), random_term$column_names)){
+    stop(
+      "Random-effect design columns for block '", random_term$block_name,
+      "' do not match the fitted formula.",
+      call. = FALSE
+    )
+  }
+
+  grouping_values <- .bt_random_group_values(random_term, group_data)
+  if(length(grouping_values) != nrow(model_matrix)){
+    stop(
+      "Random-effect grouping data for block '", random_term$block_name,
+      "' must have one value per prediction row.",
+      call. = FALSE
+    )
+  }
+  group_map <- match(as.character(grouping_values), random_term$group_levels)
+  if(any(is.na(group_map))){
+    new_groups <- unique(as.character(grouping_values)[is.na(group_map)])
+    stop(
+      "New random-effect level(s) for block '", random_term$block_name,
+      "' are not supported by JAGS_evaluate_formula(): ",
+      paste(new_groups, collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+
+  list(
+    model_matrix = model_matrix,
+    group_map = group_map
+  )
+}
+
+.bt_random_effect_prediction_structured_index_data <- function(random_term,
+                                                               data){
+
+  index <- random_term$structured_index
+  if(is.null(index)){
+    return(data)
+  }
+
+  missing_variables <- index$variables[!index$variables %in% names(data)]
+  if(length(missing_variables) > 0L){
+    stop(
+      "The ",
+      paste0("'", missing_variables, "'", collapse = ", "),
+      " structured random-effect index variable is missing in the data.",
+      call. = FALSE
+    )
+  }
+
+  data[[index$name]] <- .bt_random_effect_structured_index_values(
+    data,
+    index$variables
+  )
+  data
+}
 
 .get_parameter_scaling_factor_matrix <- function(term, prior_list, posterior, nrow, ncol){
 
@@ -2119,8 +3607,9 @@ transform_treatment_samples <- function(samples){
 
   # Identify which columns are affected by the transformation
   affected_cols <- grep(paste0("^", prefix, "_"), colnames(posterior), value = TRUE)
-  random_sd_cols <- grep(paste0("^", prefix, "__xREx__"), affected_cols, value = TRUE)
-  fixed_cols     <- setdiff(affected_cols, random_sd_cols)
+  random_sd_cols  <- grep(paste0("^", prefix, "__xREx__"), affected_cols, value = TRUE)
+  random_aux_cols <- grep(paste0("^", prefix, "__(xRE_ALLOCx|xRE_SUMMARY__)"), affected_cols, value = TRUE)
+  fixed_cols      <- setdiff(affected_cols, c(random_sd_cols, random_aux_cols))
 
   if (length(affected_cols) == 0) {
     return(posterior)
@@ -2154,7 +3643,9 @@ transform_treatment_samples <- function(samples){
   return(posterior)
 }
 
-.apply_random_sd_unscale <- function(posterior, random_sd_cols, formula_scale, prefix){
+.apply_random_sd_unscale <- function(posterior, random_sd_cols, formula_scale,
+                                     prefix,
+                                     correlation_required_groups = NULL){
 
   if(length(random_sd_cols) == 0){
     return(posterior)
@@ -2168,6 +3659,11 @@ transform_treatment_samples <- function(samples){
   random_sd_cols <- names(term_map)
   group_keys <- vapply(random_sd_cols, .random_sd_group_key,
                        character(1), term_map = term_map, prefix = prefix)
+  required_groups <- .random_sd_correlation_required_groups(
+    formula_scale = formula_scale,
+    prefix = prefix,
+    correlation_required_groups = correlation_required_groups
+  )
 
   for(group_key in unique(group_keys)){
     group_cols <- random_sd_cols[group_keys == group_key]
@@ -2182,12 +3678,47 @@ transform_treatment_samples <- function(samples){
     M <- .build_unscale_matrix(unname(pseudo_terms), formula_scale, prefix)
 
     source_sd <- posterior[, group_cols, drop = FALSE]
+    source_cor <- .random_sd_correlation_draws(
+      posterior = posterior,
+      prefix = prefix,
+      group_key = group_key,
+      n_terms = length(group_cols),
+      required = group_key %in% required_groups
+    )
     transformed_sd <- matrix(NA_real_, nrow = nrow(source_sd), ncol = ncol(source_sd))
     colnames(transformed_sd) <- group_cols
 
-    for(target_i in seq_along(group_cols)){
-      transformed_var <- rowSums(t(t(source_sd^2) * (M[target_i, ]^2)))
-      transformed_sd[, target_i] <- sqrt(transformed_var)
+    if(is.null(source_cor)){
+      for(target_i in seq_along(group_cols)){
+        transformed_var <- rowSums(t(t(source_sd^2) * (M[target_i, ]^2)))
+        transformed_sd[, target_i] <- sqrt(transformed_var)
+      }
+    }else{
+      transformed_cor <- array(NA_real_, dim = dim(source_cor))
+      valid_cor_draw <- rep(FALSE, nrow(source_sd))
+      for(draw_i in seq_len(nrow(source_sd))){
+        source_cov <- diag(source_sd[draw_i, ], nrow = ncol(source_sd)) %*%
+          source_cor[draw_i, , ] %*%
+          diag(source_sd[draw_i, ], nrow = ncol(source_sd))
+        transformed_cov <- M %*% source_cov %*% t(M)
+        transformed_sd[draw_i, ] <- sqrt(diag(transformed_cov))
+        if(any(!is.finite(transformed_sd[draw_i, ]) | transformed_sd[draw_i, ] <= 0)){
+          next
+        }
+        transformed_cor[draw_i, , ] <- transformed_cov /
+          tcrossprod(transformed_sd[draw_i, ])
+        diag(transformed_cor[draw_i, , ]) <- 1
+        valid_cor_draw[draw_i] <- all(is.finite(transformed_cor[draw_i, , ]))
+      }
+      if(any(valid_cor_draw)){
+        posterior <- .random_sd_assign_transformed_correlation(
+          posterior = posterior,
+          prefix = prefix,
+          group_key = group_key,
+          correlation = transformed_cor,
+          valid_draw = valid_cor_draw
+        )
+      }
     }
 
     posterior[, group_cols] <- transformed_sd
@@ -2195,7 +3726,116 @@ transform_treatment_samples <- function(samples){
 
   posterior
 }
+
+.random_sd_assign_transformed_correlation <- function(posterior, prefix,
+                                                      group_key,
+                                                      correlation,
+                                                      valid_draw = NULL){
+
+  n_terms <- dim(correlation)[2L]
+  if(is.null(valid_draw)){
+    valid_draw <- rep(TRUE, dim(correlation)[1L])
+  }
+  valid_draw <- valid_draw & is.finite(vapply(
+    seq_len(dim(correlation)[1L]),
+    function(draw_i) sum(correlation[draw_i, , ]),
+    numeric(1)
+  ))
+
+  R_names <- .random_sd_correlation_matrix_names(
+    prefix = prefix,
+    group_key = group_key,
+    suffix = "_xRE_CORx_R",
+    n_terms = n_terms
+  )
+  L_names <- .random_sd_correlation_matrix_names(
+    prefix = prefix,
+    group_key = group_key,
+    suffix = "_xRE_CORx_L",
+    n_terms = n_terms
+  )
+
+  has_R <- all(as.vector(R_names) %in% colnames(posterior))
+  has_L <- all(as.vector(L_names) %in% colnames(posterior))
+  if(!has_R && !has_L){
+    return(posterior)
+  }
+
+  if(has_R){
+    posterior[, as.vector(R_names)] <- NA_real_
+  }
+  if(has_L){
+    posterior[, as.vector(L_names)] <- NA_real_
+  }
+  if(!any(valid_draw)){
+    return(posterior)
+  }
+
+  L <- NULL
+  if(has_L){
+    L <- array(NA_real_, dim = dim(correlation))
+    for(draw_i in which(valid_draw)){
+      this_L <- try(t(chol(correlation[draw_i, , ])), silent = TRUE)
+      if(inherits(this_L, "try-error")){
+        valid_draw[draw_i] <- FALSE
+        next
+      }
+      L[draw_i, , ] <- this_L
+    }
+    if(!any(valid_draw)){
+      return(posterior)
+    }
+  }
+
+  if(has_R){
+    for(row in seq_len(n_terms)){
+      for(column in seq_len(n_terms)){
+        posterior[valid_draw, R_names[row, column]] <-
+          correlation[valid_draw, row, column]
+      }
+    }
+  }
+  if(has_L){
+    for(row in seq_len(n_terms)){
+      for(column in seq_len(n_terms)){
+        posterior[valid_draw, L_names[row, column]] <-
+          L[valid_draw, row, column]
+      }
+    }
+  }
+
+  posterior
+}
+
+.random_sd_correlation_matrix_names <- function(prefix, group_key, suffix,
+                                                n_terms){
+
+  stem <- paste0(prefix, "__xREx__", group_key, suffix)
+  outer(
+    seq_len(n_terms),
+    seq_len(n_terms),
+    Vectorize(function(row, column){
+      paste0(stem, "[", row, ",", column, "]")
+    })
+  )
+}
+
 .random_sd_term_map <- function(random_sd_cols, formula_scale, prefix){
+
+  scaled_vars <- sub(paste0("^", prefix, "_"), "", names(formula_scale))
+  sd_leaves <- attr(formula_scale, "random_effect_sd_leaves")
+  if(!is.null(sd_leaves) && length(sd_leaves) > 0){
+    descriptor_terms <- do.call(
+      c,
+      unname(lapply(sd_leaves, .random_sd_leaf_term_map, scaled_vars = scaled_vars))
+    )
+    term_map <- descriptor_terms[random_sd_cols]
+    names(term_map) <- random_sd_cols
+    term_map <- term_map[!is.na(term_map)]
+    if(length(term_map) > 0){
+      return(term_map)
+    }
+  }
 
   metadata <- attr(formula_scale, "random_effect_terms")
   if(!is.null(metadata) && length(metadata) > 0){
@@ -2208,7 +3848,6 @@ transform_treatment_samples <- function(samples){
     }
   }
 
-  scaled_vars <- sub(paste0("^", prefix, "_"), "", names(formula_scale))
   possible_terms <- c("intercept", scaled_vars)
   names(possible_terms) <- possible_terms
 
@@ -2225,12 +3864,204 @@ transform_treatment_samples <- function(samples){
 
   term_map[!is.na(term_map)]
 }
+
+.random_sd_leaf_term_map <- function(leaves, scaled_vars){
+
+  if(is.null(leaves$leaf_terms)){
+    return(stats::setNames(character(), character()))
+  }
+
+  out <- leaves$leaf_terms
+  homogeneous <- identical(unique(unname(leaves$leaf_terms)), "sd")
+  if(!isTRUE(homogeneous)){
+    return(out)
+  }
+
+  if(is.null(leaves$leaf_names_by_column) || is.null(leaves$column_names)){
+    return(out)
+  }
+
+  leaf_names <- unique(leaves$leaf_names_by_column)
+  if(length(leaf_names) != 1L){
+    return(out)
+  }
+
+  column_terms <- vapply(
+    leaves$column_names,
+    .random_sd_term_from_column_name,
+    character(1)
+  )
+  scaled_columns <- vapply(
+    column_terms,
+    .random_sd_term_uses_scaled_var,
+    logical(1),
+    scaled_vars = scaled_vars
+  )
+
+  if(length(column_terms) == 1L){
+    if(isTRUE(scaled_columns)){
+      out[[leaf_names]] <- column_terms
+    }
+    return(out)
+  }
+
+  if(any(scaled_columns)){
+    stop(
+      "Cannot unscale homogeneous random-effect SD '", leaf_names,
+      "' because its block contains scaled random-slope columns. ",
+      "Use a heterogeneous random-effect SD structure or leave samples on the fitted scale.",
+      call. = FALSE
+    )
+  }
+
+  out
+}
+
+.random_sd_term_from_column_name <- function(column_name){
+
+  if(identical(column_name, "(Intercept)")){
+    return("intercept")
+  }
+
+  column_name
+}
+
+.random_sd_term_uses_scaled_var <- function(term, scaled_vars){
+
+  if(length(scaled_vars) == 0L || identical(term, "intercept")){
+    return(FALSE)
+  }
+
+  term <- sub("\\[[^]]+\\]$", "", term)
+  components <- .bt_random_effect_term_components(term)
+  any(components %in% scaled_vars)
+}
+
 .random_sd_group_key <- function(col, term_map, prefix){
 
   base_col <- sub("\\[[^]]+\\]$", "", col)
   rest <- sub(paste0("^", prefix, "__xREx__"), "", base_col)
   term <- unname(term_map[[col]])
-  sub(paste0("_", term, "$"), "", rest)
+  term_core <- gsub("\\[[^]]+\\]", "", term)
+  .random_sd_strip_term_suffix(rest, term_core)
+}
+
+.random_sd_strip_term_suffix <- function(x, term){
+
+  suffix <- paste0("_", term)
+  if(endsWith(x, suffix)){
+    return(substr(x, 1L, nchar(x) - nchar(suffix)))
+  }
+
+  x
+}
+
+.random_sd_correlation_required_groups <- function(formula_scale, prefix,
+                                                   correlation_required_groups = NULL){
+
+  required <- character()
+  metadata <- attr(formula_scale, "random_effect_correlation_required")
+  if(!is.null(metadata)){
+    if(is.logical(metadata)){
+      if(!is.null(names(metadata))){
+        metadata <- names(metadata)[metadata]
+      }else{
+        metadata <- character()
+      }
+    }
+    required <- c(required, as.character(metadata))
+  }
+  if(!is.null(correlation_required_groups)){
+    required <- c(required, as.character(correlation_required_groups))
+  }
+  required <- required[!is.na(required) & nzchar(required)]
+  if(length(required) == 0L){
+    return(character())
+  }
+
+  required <- sub(paste0("^", prefix, "__xREx__"), "", required)
+  required <- sub("^__xREx__", "", required)
+  unique(required)
+}
+
+.random_sd_correlation_draws <- function(posterior, prefix, group_key, n_terms,
+                                         required = FALSE){
+
+  if(n_terms < 2L){
+    return(NULL)
+  }
+
+  stem <- paste0(prefix, "__xREx__", group_key)
+  R_names <- outer(
+    seq_len(n_terms),
+    seq_len(n_terms),
+    Vectorize(function(row, column){
+      paste0(stem, "_xRE_CORx_R[", row, ",", column, "]")
+    })
+  )
+  R_present <- as.vector(R_names) %in% colnames(posterior)
+
+  L_names <- outer(
+    seq_len(n_terms),
+    seq_len(n_terms),
+    Vectorize(function(row, column){
+      paste0(stem, "_xRE_CORx_L[", row, ",", column, "]")
+    })
+  )
+  L_present <- as.vector(L_names) %in% colnames(posterior)
+
+  if(any(R_present) && !all(R_present)){
+    stop(
+      "Random-effect correlation samples are incomplete for block '",
+      group_key,
+      "'. Expected a complete random-effect correlation matrix.",
+      call. = FALSE
+    )
+  }
+  if(any(L_present) && !all(L_present)){
+    stop(
+      "Random-effect Cholesky samples are incomplete for block '",
+      group_key,
+      "'. Expected a complete random-effect Cholesky matrix.",
+      call. = FALSE
+    )
+  }
+
+  if(all(R_present)){
+    out <- array(NA_real_, dim = c(nrow(posterior), n_terms, n_terms))
+    for(row in seq_len(n_terms)){
+      for(column in seq_len(n_terms)){
+        out[, row, column] <- posterior[, R_names[row, column]]
+      }
+    }
+    return(out)
+  }
+
+  if(!all(L_present)){
+    if(isTRUE(required)){
+      stop(
+        "Random-effect SD unscaling requires random-effect correlation samples for block '",
+        group_key,
+        "'. Expected monitored correlation or Cholesky coordinates.",
+        call. = FALSE
+      )
+    }
+    return(NULL)
+  }
+
+  L <- array(NA_real_, dim = c(nrow(posterior), n_terms, n_terms))
+  for(row in seq_len(n_terms)){
+    for(column in seq_len(n_terms)){
+      L[, row, column] <- posterior[, L_names[row, column]]
+    }
+  }
+
+  out <- array(NA_real_, dim = c(nrow(posterior), n_terms, n_terms))
+  for(draw_i in seq_len(nrow(posterior))){
+    out[draw_i, , ] <- L[draw_i, , ] %*% t(L[draw_i, , ])
+  }
+
+  out
 }
 
 

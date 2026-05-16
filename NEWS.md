@@ -1,3 +1,39 @@
+# version 0.3.1
+### Features
+- adds the `prior_random()` interface for formula random effects, including `random_block()` / `random_term()`, `random_covariance()`, `random_monitor()`, `random_new_levels()`, `random_variance_allocation()`, and `allocation_ref()` helpers for specifying random-effect standard deviation priors, covariance structures, monitoring policy, and total-variance allocation priors
+- adds lme4-like formula random-effect parsing through `reformulas`, including ordinary and independent random effects, named random-effect blocks, nested grouping expressions, factor random slopes, and structured covariance shortcuts for diagonal, shared-SD independent, unstructured, compound-symmetry, heterogeneous compound-symmetry, discrete AR(1), heterogeneous AR(1), and continuous-time AR(1) random effects
+- adds LKJ correlation priors for unstructured random-effect covariance matrices via `prior_lkj()` and `JAGS_lkj_corr_cholesky()`, with a package-shipped compiled JAGS backend and a pure-JAGS syntax fallback
+- adds `BayesTools_load_JAGS_module()` and package compilation support for the BayesTools JAGS module used by generated LKJ-Cholesky syntax
+- adds `formula_random_prior_list` to `JAGS_fit()` and `JAGS_bridgesampling()` so formula random effects can be fitted and bridge sampled through the explicit `prior_random()` interface
+- adds bridge-sampling support for formula random effects by using standardized latent random effects, scalar correlation coordinates, and LKJ primitive coordinates as bridge parameters
+- adds semantic random-effect summaries to `runjags_estimates_table()` / `JAGS_estimates_table()` through `random_effects_summary`, `random_effects_metadata`, `remove_random_effects`, `keep_random_effects`, `remove_random_structures`, and `keep_random_structures`
+- adds random-effect parameter filter aliases such as `"random"`, `"random_sd"`, `"random_rho"`, `"random_correlation"`, `"random_variance_fraction"`, `"random_allocation"`, and `"random_sd_multiplier"` for estimates tables
+- adds Dirichlet simplex priors via `prior("dirichlet", ...)` / `prior("simplex", ...)`, including random generation, log-density, marginal distribution helpers, JAGS syntax, initialization, posterior extraction, and bridge-sampling support
+- adds a `RandomEffects` vignette comparing BayesTools formula random effects with lme4 and rstanarm examples
+
+### Changes
+- formula random effects now require `prior_random()`; legacy random-effect priors named with `"term|group"` inside formula `prior_list` are no longer supported
+- internal random-effect term metadata now uses canonical `structure` fields only; covariance-only random-effect metadata is rejected as malformed rather than repaired downstream
+- internal fitted random-effect metadata now requires canonical `homogeneous_sd`, correlation, scalar-correlation, and variance-allocation fields where applicable; malformed metadata is rejected instead of silently defaulted during prediction, summaries, reconstruction, and bridge sampling
+- `JAGS_fit()` and `JAGS_extend()` now carry generated `add_parameters`, `required_packages`, and `jags_modules` metadata so formula-generated monitors and JAGS modules remain available during fitting, extension, convergence checks, and parallel execution
+- `JAGS_estimates_table(transform_scaled = TRUE)` now derives formula random-effect SD and correlation summaries on the transformed original scale when fitted formula-scale metadata are available
+- `JAGS_evaluate_formula()` can evaluate fitted random-effect formulas for existing grouping levels when latent random effects or group-level coefficients were monitored
+- `JAGS_check_convergence()` ignores model indicator variables by default and excludes generated auxiliary monitor parameters from convergence checks unless explicitly requested
+
+### Fixes
+- improves validation and error messages for malformed random-effect formulas, unsupported covariance structures, conflicting variance-allocation specifications, missing random-effect priors, and unsupported new grouping levels in prediction
+- rejects non-diagonal random-effect covariance wrappers combined with `||` syntax consistently, including mixed formulas with multiple random-effect blocks
+- validates rebuilt bridge-sampling random-effect variance-allocation metadata against fitted designs and treats empty prior lists as zero log-prior contributions
+- expands fixture-cache source hashing to cover random-effect and LKJ R/native sources so stale fitted fixtures are invalidated after random-feature changes
+- fixes bridge-sampling bound validation by requiring named lower and upper bounds that match `add_parameters`
+- fixes bridge sampling for structured formula random-effect correlations by applying canonical scalar-rho support bounds, treating covariance-boundary proposals as zero density before reconstruction, and preserving fixed scalar-rho point priors in metadata
+- fixes bridge-sampling support checks for positive gamma auxiliary coordinates used by inverse-gamma priors, Dirichlet simplex priors, random-effect variance allocations, and cumulative weightfunction priors before derived parameters are reconstructed
+- makes semantic random-effect SD summaries fail on missing canonical SD, point-prior, or allocation coordinates instead of silently dropping unreconstructable summaries
+- enforces open LKJ primitive-coordinate support before random-effect Cholesky or correlation reconstruction and treats out-of-support LKJ bridge densities as zero density
+- makes transformed-scale random-effect SD summaries and direct `transform_scale_samples()` calls require complete correlation coordinates for correlated random-effect blocks instead of silently using diagonal covariance
+- makes random-effect allocation summaries fail on missing Dirichlet allocation coordinates instead of silently omitting variance-fraction summaries
+- removes auxiliary Dirichlet gamma coordinates from ordinary posterior summaries while keeping them available for marginal-likelihood calculations
+
 # version 0.3.0
 ### Features
 - major refactoring and speed-up of unit tests

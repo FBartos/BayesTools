@@ -543,13 +543,13 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
   }
 
   if(is.infinite(x[["truncation"]][["lower"]])){
-    x_range[1] <- mquant(x, quantiles)
+    x_range[1] <- min(mquant(x, quantiles), na.rm = TRUE)
   }else{
     x_range[1] <- x[["truncation"]][["lower"]]
   }
 
   if(is.infinite(x[["truncation"]][["upper"]])){
-    x_range[2] <- mquant(x, 1 - quantiles)
+    x_range[2] <- max(mquant(x, 1 - quantiles), na.rm = TRUE)
   }else{
     x_range[2] <- x[["truncation"]][["upper"]]
   }
@@ -597,7 +597,8 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
     "point"     = .005,
     "weightfunction" = .005,
     "mnormal"    = .005,
-    "mt"         = .010
+    "mt"         = .010,
+    "dirichlet"  = .005
   )
 
 }

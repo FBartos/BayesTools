@@ -11,6 +11,7 @@ bayestools_test_profile_contexts <- list(
     "interpret",
     "JAGS-diagnostic-plot-data",
     "JAGS-formula-design-oracles",
+    "JAGS-lkj-cholesky",
     "JAGS-marginal-distributions",
     "JAGS-posterior-extraction",
     "marginal-inference-conditioning",
@@ -63,13 +64,14 @@ bayestools_test_profile_contexts <- list(
     "fixture-integrity",
     "JAGS-fit-edge-cases",
     "JAGS-fit-lm-oracles",
+    "JAGS-lkj-cholesky-fit",
     "JAGS-marglik"
   )
 )
 
 bayestools_normalize_test_profiles <- function(profiles = NULL) {
   if (is.null(profiles) || length(profiles) == 0L) {
-    profiles <- Sys.getenv("BAYESTOOLS_TEST_PROFILE", "all")
+    profiles <- Sys.getenv("BAYESTOOLS_TEST_PROFILE", "unit")
   }
 
   profiles <- unlist(strsplit(as.character(profiles), "[,;[:space:]]+"))

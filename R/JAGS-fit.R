@@ -21,6 +21,9 @@
 #' (names of the lists correspond to the parameter name created by each of the formula).
 #' Each entry should be a named list where continuous predictors with \code{TRUE} values will
 #' be standardized. Defaults to \code{NULL} (no standardization).
+#' @param formula_random_prior_list optional named list of `prior_random()`
+#' objects for random effects in `formula_list`. Required for any formula that
+#' contains random effects.
 #' @param chains number of chains to be run, defaults to \code{4}
 #' @param adapt number of samples used for adapting the MCMC chains, defaults to \code{500}
 #' @param burnin number of burnin iterations of the MCMC chains, defaults to \code{1000}
@@ -58,6 +61,8 @@
 #' @param required_packages character vector specifying list of packages containing
 #' JAGS models required for sampling (in case that the function is run in parallel or in
 #' detached R session). Defaults to \code{NULL}.
+#' @param jags_modules character vector specifying JAGS modules required by the
+#' generated model syntax. Defaults to \code{NULL}.
 #' @param fit a 'BayesTools_fit' object (created by \code{JAGS_fit()} function) to be
 #' extended
 #' @param ... additional hidden arguments
@@ -128,12 +133,98 @@ NULL
   invisible(package_loaded)
 }
 
+.JAGS_load_modules <- function(jags_modules, cl = NULL, warn = TRUE){
+
+  if(length(jags_modules) == 0){
+    return(invisible(logical(0)))
+  }
+
+  jags_modules <- unique(jags_modules)
+
+  if(is.null(cl)){
+    loaded <- vapply(
+      jags_modules,
+      function(module){
+        if(module == "BayesTools"){
+          return(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = warn)))
+        }
+        if(!requireNamespace("rjags", quietly = TRUE)){
+          if(warn){
+            warning(
+              "The 'rjags' package is required to load JAGS modules.",
+              call. = FALSE
+            )
+          }
+          return(FALSE)
+        }
+        if(module %in% rjags::list.modules()){
+          return(TRUE)
+        }
+        load_error <- NULL
+        tryCatch(
+          rjags::load.module(module, quiet = TRUE),
+          error = function(e) load_error <<- conditionMessage(e)
+        )
+        loaded <- module %in% rjags::list.modules()
+        if(!loaded && warn){
+          message <- paste0("JAGS module '", module, "' failed to load.")
+          if(!is.null(load_error)){
+            message <- paste0(message, " rjags error: ", load_error)
+          }
+          warning(message, call. = FALSE)
+        }
+        loaded
+      },
+      logical(1)
+    )
+  }else{
+    loaded <- parallel::clusterCall(
+      cl,
+      function(jags_modules){
+        vapply(
+          jags_modules,
+          function(module){
+            if(module == "BayesTools"){
+              return(isTRUE(BayesTools::BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
+            }
+            if(!requireNamespace("rjags", quietly = TRUE)){
+              return(FALSE)
+            }
+            if(module %in% rjags::list.modules()){
+              return(TRUE)
+            }
+            tryCatch(rjags::load.module(module, quiet = TRUE), error = function(e) NULL)
+            module %in% rjags::list.modules()
+          },
+          logical(1)
+        )
+      },
+      jags_modules
+    )
+    loaded <- Reduce("&", loaded)
+  }
+
+  failed <- names(loaded)[!loaded]
+  if(length(failed) > 0){
+    stop(
+      paste0(
+        "Required JAGS modules failed to load: '",
+        paste0(failed, collapse = "', '"),
+        "'."
+      ),
+      call. = FALSE
+    )
+  }
+
+  invisible(loaded)
+}
+
 #' @rdname JAGS_fit
-JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL, formula_scale_list = NULL,
+JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL, formula_scale_list = NULL, formula_random_prior_list = NULL,
                      chains = 4, adapt = 500, burnin = 1000, sample = 4000, thin = 1,
                      autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE),
                      parallel = FALSE, cores = chains, silent = TRUE, seed = NULL,
-                     add_parameters = NULL, required_packages = NULL, ...){
+                     add_parameters = NULL, required_packages = NULL, jags_modules = NULL, ...){
 
   .check_runjags()
   dots <- list(...)
@@ -144,10 +235,31 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   autofit_control <- JAGS_check_and_list_autofit_settings(autofit_control)
   check_char(add_parameters, "add_parameters", check_length = 0, allow_NULL = TRUE)
   check_char(required_packages, "required_packages", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
+  check_char(jags_modules, "jags_modules", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   check_list(formula_list, "formula_list", allow_NULL = TRUE)
   check_list(formula_data_list, "formula_data_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
   check_list(formula_prior_list, "formula_prior_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
+  check_list(formula_random_prior_list, "formula_random_prior_list", check_names = names(formula_list), allow_other = FALSE, all_objects = FALSE, allow_NULL = TRUE)
   check_list(formula_scale_list, "formula_scale_list", allow_NULL = TRUE)
+  if(!is.null(formula_random_prior_list)){
+    for(parameter in names(formula_random_prior_list)){
+      .bt_check_prior_random(formula_random_prior_list[[parameter]])
+    }
+  }
+  if(!is.null(formula_list)){
+    for(parameter in names(formula_list)){
+      if(is.language(formula_list[[parameter]]) &&
+         .has_random_effects(formula_list[[parameter]]) &&
+         (is.null(formula_random_prior_list) || is.null(formula_random_prior_list[[parameter]]))){
+        stop(
+          "JAGS_fit() requires 'formula_random_prior_list' with a prior_random() object for formula random effects in parameter '",
+          parameter,
+          "'.",
+          call. = FALSE
+        )
+      }
+    }
+  }
 
   ### add formulas
   if(!is.null(formula_list)){
@@ -160,7 +272,8 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
         parameter      = parameter,
         data           = formula_data_list[[parameter]],
         prior_list     = formula_prior_list[[parameter]],
-        formula_scale  = if(!is.null(formula_scale_list)) formula_scale_list[[parameter]] else NULL)
+        formula_scale  = if(!is.null(formula_scale_list)) formula_scale_list[[parameter]] else NULL,
+        prior_random   = if(!is.null(formula_random_prior_list)) formula_random_prior_list[[parameter]] else NULL)
     }
 
     # merge with the rest of the input
@@ -173,6 +286,9 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     formula_scale_info <- formula_scale_info[!sapply(formula_scale_info, is.null)]
     if(length(formula_scale_info) == 0) formula_scale_info <- NULL
     formula_design_info <- lapply(formula_output, function(output) output[["formula_design"]])
+    formula_add_parameters <- unique(unlist(lapply(formula_output, function(output) output[["add_parameters"]])), use.names = FALSE)
+    formula_jags_modules <- unique(unlist(lapply(formula_output, function(output) output[["jags_modules"]])), use.names = FALSE)
+    formula_required_packages <- unique(unlist(lapply(formula_output, function(output) output[["required_packages"]])), use.names = FALSE)
 
     # add the formula syntax to the model syntax
     opening_bracket <- regexpr("{", model_syntax, fixed = TRUE)[1]
@@ -182,7 +298,14 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   }else{
     formula_scale_info <- NULL
     formula_design_info <- NULL
+    formula_add_parameters <- character()
+    formula_jags_modules <- character()
+    formula_required_packages <- character()
   }
+
+  add_parameters <- unique(c(add_parameters, formula_add_parameters))
+  jags_modules <- unique(c(jags_modules, formula_jags_modules))
+  required_packages <- unique(c(required_packages, formula_required_packages))
 
 
   ### create the model call
@@ -204,6 +327,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     cl <- parallel::makePSOCKcluster(cores)
     on.exit(try(parallel::stopCluster(cl), silent = TRUE), add = TRUE)
     .JAGS_require_packages(required_packages, cl)
+    .JAGS_load_modules(jags_modules, cl, warn = !silent)
     model_call <- c(
       model_call,
       method = "rjparallel",
@@ -211,6 +335,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     )
   }else{
     .JAGS_require_packages(required_packages)
+    .JAGS_load_modules(jags_modules, warn = !silent)
     model_call <- c(
       model_call,
       method = "rjags"
@@ -275,7 +400,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 
   if(autofit && !inherits(fit, "error")){
 
-    converged  <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], check_indicators = autofit_control[["check_indicators"]], fail_fast = TRUE)
+    converged  <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], add_parameters = add_parameters, check_indicators = autofit_control[["check_indicators"]], fail_fast = TRUE)
     itteration <- 1
 
     if(!converged && isTRUE(dots[["is_JASP"]]))
@@ -308,7 +433,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 
       fit <- runjags::add.summary(fit)
 
-      converged  <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], check_indicators = autofit_control[["check_indicators"]], fail_fast = TRUE)
+      converged  <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], add_parameters = add_parameters, check_indicators = autofit_control[["check_indicators"]], fail_fast = TRUE)
       itteration <- itteration + 1
 
       if(isTRUE(dots[["is_JASP"]]))
@@ -319,7 +444,9 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   # add information to the fitted object
   attr(fit, "prior_list")   <- prior_list
   attr(fit, "model_syntax") <- model_syntax
+  attr(fit, "add_parameters") <- add_parameters
   attr(fit, "required_packages") <- required_packages
+  attr(fit, "jags_modules") <- jags_modules
   if(!is.null(formula_scale_info)){
     # Keep formula_scale as a nested list keyed by parameter name
     # Each element contains the scaling info for that parameter's predictors
@@ -345,8 +472,13 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   prior_list        <- attr(fit, "prior_list")
   model_syntax      <- attr(fit, "model_syntax")
   required_packages <- attr(fit, "required_packages")
+  jags_modules      <- attr(fit, "jags_modules")
+  add_parameters    <- attr(fit, "add_parameters")
   formula_scale     <- attr(fit, "formula_scale")
   formula_design    <- attr(fit, "formula_design")
+  if(is.null(add_parameters)){
+    add_parameters <- character()
+  }
   autofit_control <- JAGS_check_and_list_autofit_settings(autofit_control)
 
   # parallel vs. not
@@ -357,6 +489,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     cl <- parallel::makePSOCKcluster(cores)
     on.exit(try(parallel::stopCluster(cl), silent = TRUE), add = TRUE)
     .JAGS_require_packages(required_packages, cl)
+    .JAGS_load_modules(jags_modules, cl, warn = !silent)
     refit_call <- list(
       runjags.object = fit,
       sample         = autofit_control[["sample_extend"]],
@@ -366,6 +499,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     )
   }else{
     .JAGS_require_packages(required_packages)
+    .JAGS_load_modules(jags_modules, warn = !silent)
     refit_call <- list(
       runjags.object = fit,
       sample         = autofit_control[["sample_extend"]],
@@ -417,7 +551,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
       break
     }
 
-    converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], check_indicators = autofit_control[["check_indicators"]], fail_fast = TRUE)
+    converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], add_parameters = add_parameters, check_indicators = autofit_control[["check_indicators"]], fail_fast = TRUE)
 
     # update the refit call
     if(!converged){
@@ -429,7 +563,9 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   # add information to the fitted object
   attr(fit, "prior_list")   <- prior_list
   attr(fit, "model_syntax") <- model_syntax
+  attr(fit, "add_parameters") <- add_parameters
   attr(fit, "required_packages") <- required_packages
+  attr(fit, "jags_modules") <- jags_modules
   if(!is.null(formula_scale)){
     attr(fit, "formula_scale") <- formula_scale
   }
@@ -758,6 +894,9 @@ JAGS_add_priors           <- function(syntax, prior_list){
 
   return(syntax)
 }
+.JAGS_prior_dirichlet_eta_name <- function(parameter_name){
+  paste0("prior_par_eta_", parameter_name)
+}
 .JAGS_prior.vector         <- function(prior, parameter_name){
 
   .check_prior(prior, allow_expressions = TRUE)
@@ -773,7 +912,19 @@ JAGS_add_priors           <- function(syntax, prior_list){
     prior <- .prior_expression_to_character(prior)
   }
 
-  if(prior[["distribution"]] %in% c("mnormal", "mt")){
+  if(prior[["distribution"]] == "dirichlet"){
+    eta_name <- .JAGS_prior_dirichlet_eta_name(parameter_name)
+    syntax <- paste0(vapply(seq_len(prior$parameters[["K"]]), function(i){
+      paste0(eta_name, "[", i, "] ~ dgamma(", prior$parameters[["alpha"]][i], ", 1)\n")
+    }, character(1)), collapse = "")
+    for(i in seq_len(prior$parameters[["K"]])){
+      syntax <- paste0(
+        syntax,
+        parameter_name, "[", i, "] <- ", eta_name, "[", i, "] / sum(", eta_name, "[1:", prior$parameters[["K"]], "])\n"
+      )
+    }
+
+  }else if(prior[["distribution"]] %in% c("mnormal", "mt")){
     # create the location/means vector the sigma matrix
 
     par1 <- switch(
@@ -1303,7 +1454,13 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
     init <- list()
 
 
-    if(prior[["distribution"]] == "mt"){
+    if(prior[["distribution"]] == "dirichlet"){
+      init[[.JAGS_prior_dirichlet_eta_name(parameter_name)]] <- stats::rgamma(
+        prior$parameters[["K"]],
+        shape = prior$parameters[["alpha"]],
+        rate = 1
+      )
+    }else if(prior[["distribution"]] == "mt"){
       init[[paste0("prior_par_s_", parameter_name)]] <- rng(prior("gamma", list(shape = prior$parameters[["df"]]/2, rate = prior$parameters[["df"]]/2)), 1)
       init[[paste0("prior_par_z_", parameter_name)]] <- rng(prior("mnormal", list(mean = 0, sd = prior$parameters[["scale"]], K = prior$parameters[["K"]])), 1)[1,]
     }else{
@@ -1579,6 +1736,9 @@ JAGS_to_monitor             <- function(prior_list){
 .JAGS_monitor.vector         <- function(prior, parameter_name){
 
   monitor <- .JAGS_monitor.simple(prior, parameter_name)
+  if(prior[["distribution"]] == "dirichlet"){
+    monitor <- c(monitor, .JAGS_prior_dirichlet_eta_name(parameter_name))
+  }
 
   return(monitor)
 }

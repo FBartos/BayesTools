@@ -41,6 +41,14 @@ bayestools_optional_fit_requirements <- function() {
   )
 }
 
+.bayestools_random_z_monitors <- function(stem, n_groups, n_columns) {
+  as.vector(outer(
+    seq_len(n_groups),
+    seq_len(n_columns),
+    function(group, column) paste0(stem, "[", group, ",", column, "]")
+  ))
+}
+
 .bayestools_find_calls <- function(expr, fun) {
   matches <- list()
 
@@ -997,7 +1005,10 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       formula = "~ 1 + (1 || id)",
       scale_policy = "random-effects",
       prior_features = "simple,formula,random-effects",
-      expected_monitor = c("mu_intercept", "mu__xREx__id_intercept", "sigma"),
+      expected_monitor = c(
+        "mu_intercept", "mu__xREx__id_intercept", "sigma",
+        .bayestools_random_z_monitors("mu__xREx__id_xRE_Zx", 10L, 1L)
+      ),
       expected_formula_parameters = "mu",
       oracle_type = "formula-fixture-metadata",
       expected_chains = 2L,
@@ -1012,7 +1023,10 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       formula = "~ 1 + (0 + x_cont1 || id)",
       scale_policy = "random-effects",
       prior_features = "simple,formula,random-effects",
-      expected_monitor = c("mu_intercept", "mu__xREx__id_x_cont1", "sigma"),
+      expected_monitor = c(
+        "mu_intercept", "mu__xREx__id_x_cont1", "sigma",
+        .bayestools_random_z_monitors("mu__xREx__id_xRE_Zx", 10L, 1L)
+      ),
       expected_formula_parameters = "mu",
       oracle_type = "formula-fixture-metadata",
       expected_chains = 2L,
@@ -1029,7 +1043,8 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       prior_features = "simple,formula,factor,random-effects",
       expected_monitor = c(
         "mu_intercept", "mu_x_cont1", "mu__xREx__id_intercept",
-        "mu__xREx__id_x_fac3[1]", "mu__xREx__id_x_fac3[2]", "sigma"
+        "mu__xREx__id_x_fac3[1]", "mu__xREx__id_x_fac3[2]", "sigma",
+        .bayestools_random_z_monitors("mu__xREx__id_xRE_Zx", 10L, 3L)
       ),
       expected_formula_parameters = "mu",
       oracle_type = "formula-fixture-metadata",
@@ -1047,7 +1062,8 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       prior_features = "simple,formula,factor,random-effects",
       expected_monitor = c(
         "mu_intercept", "mu_x_fac3[1]", "mu_x_fac3[2]",
-        "mu__xREx__id_intercept", "mu__xREx__id_x_fac3", "sigma"
+        "mu__xREx__id_intercept", "mu__xREx__id_x_fac3", "sigma",
+        .bayestools_random_z_monitors("mu__xREx__id_xRE_Zx", 10L, 3L)
       ),
       expected_formula_parameters = "mu",
       oracle_type = "formula-fixture-metadata",
@@ -1068,7 +1084,8 @@ bayestools_semantic_fit_catalog_overrides <- function() {
         "mu__xREx__id_x_fac3_indicator",
         "mu__xREx__id_x_fac3[1]", "mu__xREx__id_x_fac3[2]", "mu__xREx__id_x_fac3[3]",
         "mu__xREx__id_x_fac3_variable[1]", "mu__xREx__id_x_fac3_variable[2]", "mu__xREx__id_x_fac3_variable[3]",
-        "sigma"
+        "sigma",
+        .bayestools_random_z_monitors("mu__xREx__id_xRE_Zx", 10L, 3L)
       ),
       expected_formula_parameters = "mu",
       oracle_type = "formula-fixture-metadata",

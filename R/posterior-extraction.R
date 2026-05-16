@@ -52,6 +52,11 @@ NULL
       }
       model_samples <- model_samples[, !colnames(model_samples) %in% aux_names, drop = FALSE]
     }
+
+    if (is.prior.simplex(prior_list[[i]])) {
+      aux_pattern <- paste0("^", .JAGS_prior_dirichlet_eta_name(par_name), "(\\[|$)")
+      model_samples <- model_samples[, !grepl(aux_pattern, colnames(model_samples)), drop = FALSE]
+    }
     
     # weightfunction parameters
     if (is.prior.weightfunction(prior_list[[i]])) {
@@ -124,6 +129,24 @@ NULL
       prior_list[i] <- NULL
     }
   }
+
+  if (is.character(remove_parameters) && length(remove_parameters) > 0L) {
+    column_names <- colnames(model_samples)
+    if (is.null(column_names) || length(column_names) == 0L) {
+      return(list(model_samples = model_samples, prior_list = prior_list))
+    }
+    for (par_name in unique(remove_parameters)) {
+      cols_to_remove <- column_names == par_name |
+        startsWith(column_names, paste0(par_name, "["))
+      if (any(cols_to_remove)) {
+        model_samples <- model_samples[, !cols_to_remove, drop = FALSE]
+        column_names <- colnames(model_samples)
+        if (is.null(column_names) || length(column_names) == 0L) {
+          break
+        }
+      }
+    }
+  }
   
   return(list(model_samples = model_samples, prior_list = prior_list))
 }
@@ -185,6 +208,20 @@ NULL
       colnames(model_samples)[grepl("^omega\\[", colnames(model_samples))]
     )
 
+  } else if (is.prior.vector(prior) && !is.prior.factor(prior)) {
+    cols_to_remove <- c(
+      par_name,
+      colnames(model_samples)[startsWith(colnames(model_samples), paste0(par_name, "["))]
+    )
+    if (is.prior.simplex(prior)) {
+      eta_name <- .JAGS_prior_dirichlet_eta_name(par_name)
+      cols_to_remove <- c(
+        cols_to_remove,
+        eta_name,
+        colnames(model_samples)[startsWith(colnames(model_samples), paste0(eta_name, "["))]
+      )
+    }
+
   } else if (is.prior.factor(prior)) {
     # factor prior: remove all indexed columns
     cols_to_remove <- .JAGS_prior_factor_names(par_name, prior)
@@ -221,10 +258,17 @@ NULL
 #' If "bias" is specified and the bias prior contains PET, PEESE, or weightfunction priors,
 #' the corresponding parameters (PET, PEESE, omega) are also added to the keep list.
 #' @param keep_formulas character vector of formula names whose parameters should be kept (all others removed unless in keep_parameters)
+#' @param remove_random_effects character vector of random-effect names/blocks to remove.
+#' @param keep_random_effects character vector of random-effect names/blocks to keep while leaving non-random parameters unaffected.
+#' @param remove_random_structures character vector of random-effect covariance structures to remove.
+#' @param keep_random_structures character vector of random-effect covariance structures to keep while leaving non-random parameters unaffected.
 #' @param remove_spike_0 whether to remove spike at 0 priors
 #' @return list with filtered model_samples and prior_list
 .filter_parameters <- function(prior_list, remove_parameters = NULL, remove_formulas = NULL,
-                               keep_parameters = NULL, keep_formulas = NULL, remove_spike_0 = TRUE) {
+                               keep_parameters = NULL, keep_formulas = NULL,
+                               remove_random_effects = NULL, keep_random_effects = NULL,
+                               remove_random_structures = NULL, keep_random_structures = NULL,
+                               remove_spike_0 = TRUE) {
   
   # get formula parameter for each prior
   prior_formulas <- sapply(prior_list, function(p) {
@@ -244,6 +288,7 @@ NULL
   
   # initialize parameters to remove
   params_to_remove <- character(0)
+  random_keep_matches <- character(0)
   
   # handle remove_spike_0
   if (remove_spike_0) {
@@ -259,7 +304,8 @@ NULL
     non_formula_params <- names(prior_list)[prior_formulas == "__none"]
     params_to_remove <- c(params_to_remove, non_formula_params)
   } else if (is.character(remove_parameters)) {
-    params_to_remove <- c(params_to_remove, remove_parameters)
+    remove_parameters_expanded <- .expand_parameter_filter_aliases(prior_list, remove_parameters)
+    params_to_remove <- c(params_to_remove, remove_parameters_expanded)
     # if "bias" is in remove_parameters, also add corresponding bias-related parameters
     if ("bias" %in% remove_parameters) {
       params_to_remove <- c(params_to_remove, .get_bias_params(prior_list, "bias"))
@@ -271,6 +317,38 @@ NULL
     formula_params <- names(prior_list)[prior_formulas %in% remove_formulas]
     params_to_remove <- c(params_to_remove, formula_params)
   }
+
+  # handle random-effect-specific filters. These filters restrict only
+  # random-effect rows; non-random parameters are governed by the ordinary
+  # parameter/formula filters below.
+  if(!is.null(remove_random_effects)){
+    params_to_remove <- c(
+      params_to_remove,
+      names(prior_list)[.bt_random_effect_filter_matches(
+        prior_list,
+        random_effects = remove_random_effects
+      )]
+    )
+  }
+  if(!is.null(remove_random_structures)){
+    params_to_remove <- c(
+      params_to_remove,
+      names(prior_list)[.bt_random_effect_filter_matches(
+        prior_list,
+        random_structures = remove_random_structures
+      )]
+    )
+  }
+  if(!is.null(keep_random_effects) || !is.null(keep_random_structures)){
+    random_flags <- .bt_random_effect_prior_flags(prior_list)
+    random_params <- random_flags$name[random_flags$any]
+    random_keep_matches <- names(prior_list)[.bt_random_effect_filter_matches(
+      prior_list,
+      random_effects = keep_random_effects,
+      random_structures = keep_random_structures
+    )]
+    params_to_remove <- c(params_to_remove, setdiff(random_params, random_keep_matches))
+  }
   
   # handle keep_parameters and keep_formulas (these define what to keep, everything else is removed)
   if (!is.null(keep_parameters) || !is.null(keep_formulas)) {
@@ -281,7 +359,8 @@ NULL
     params_to_keep <- character(0)
     
     if (!is.null(keep_parameters)) {
-      params_to_keep <- c(params_to_keep, keep_parameters)
+      keep_parameters_expanded <- .expand_parameter_filter_aliases(prior_list, keep_parameters)
+      params_to_keep <- c(params_to_keep, keep_parameters_expanded)
       # if "bias" is in keep_parameters, also add corresponding bias-related parameters
       if ("bias" %in% keep_parameters) {
         params_to_keep <- c(params_to_keep, .get_bias_params(prior_list, "bias"))
@@ -291,6 +370,9 @@ NULL
     if (!is.null(keep_formulas)) {
       formula_params_to_keep <- names(prior_list)[prior_formulas %in% keep_formulas]
       params_to_keep <- c(params_to_keep, formula_params_to_keep)
+    }
+    if(length(random_keep_matches) > 0L){
+      params_to_keep <- c(params_to_keep, random_keep_matches)
     }
     
     # add parameters not in keep list to removal list
@@ -308,6 +390,28 @@ NULL
   params_to_remove <- unique(params_to_remove)
   
   return(params_to_remove)
+}
+
+.expand_parameter_filter_aliases <- function(prior_list, parameters) {
+
+  if(is.null(parameters) || length(parameters) == 0L){
+    return(parameters)
+  }
+
+  expanded <- parameters
+  for(parameter in parameters){
+    matches <- .parameter_filter_alias_matches(prior_list, parameter)
+    if(length(matches) > 0L){
+      expanded <- c(expanded, matches)
+    }
+  }
+
+  unique(expanded)
+}
+
+.parameter_filter_alias_matches <- function(prior_list, alias) {
+
+  .bt_random_effect_alias_matches(prior_list, alias)
 }
 
 

@@ -7,6 +7,7 @@
 \alias{is.prior.simple}
 \alias{is.prior.discrete}
 \alias{is.prior.vector}
+\alias{is.prior.simplex}
 \alias{is.prior.PET}
 \alias{is.prior.PEESE}
 \alias{is.prior.weightfunction}
@@ -30,6 +31,8 @@ is.prior.simple(x)
 is.prior.discrete(x)
 
 is.prior.vector(x)
+
+is.prior.simplex(x)
 
 is.prior.PET(x)
 
