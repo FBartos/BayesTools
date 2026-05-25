@@ -2241,6 +2241,10 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
 #' @param legend_title optional title for factor legends.
 #' @param legend_labels optional labels for factor legend levels.
 #' @param legend_position optional legend position for factor legends.
+#' @param density_method density source for continuous posterior curves.
+#' \code{"KDE"} computes the standard kernel density estimate.
+#' \code{"precomputed"} uses a valid \code{posterior_density} attribute when
+#' present and falls back to KDE otherwise.
 #' @param ... additional arguments
 #' @inheritParams density.prior
 #' @inheritParams plot.prior
@@ -2250,6 +2254,10 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
 #' you can plot posteriors on the original (unscaled) scale by preparing samples with
 #' \code{as_mixed_posteriors(..., transform_scaled = TRUE)}. The function automatically
 #' detects this and uses the pre-computed transformed prior samples when \code{prior = TRUE}.
+#'
+#' Posterior sample vectors may carry a \code{posterior_density} attribute
+#' with \code{x} and \code{y} coordinates. These densities are used only when
+#' \code{density_method = "precomputed"}.
 #'
 #' @return \code{plot_posterior} returns either \code{NULL} or
 #' an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
@@ -2262,7 +2270,8 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
                            transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
                            rescale_x = FALSE, par_name = NULL, effect_direction = "positive",
                            dots_prior = list(), data = NULL, show_data = FALSE, dots_data = list(),
-                           legend = TRUE, legend_title = NULL, legend_labels = NULL, legend_position = NULL, ...){
+                           legend = TRUE, legend_title = NULL, legend_labels = NULL, legend_position = NULL,
+                           ..., density_method = c("KDE", "precomputed")){
 
   # check input
   check_list(samples, "prior_list")
@@ -2277,6 +2286,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   check_list(dots_data, "dots_data", allow_NULL = TRUE)
   check_int(show_figures, "show_figures", allow_NULL = TRUE, lower = 0)
   check_char(effect_direction, "effect_direction", allow_values = c("positive", "negative"))
+  density_method <- .posterior_density_method(density_method)
   .check_transformation_input(transformation, transformation_arguments, transformation_settings)
 
   # deal with bad parameter names for PET-PEESE, weightfunction
@@ -2606,10 +2616,12 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
     if(any(sapply(prior_list, is.prior.factor))){
       plot_data <- .plot_data_samples.factor(samples, parameter = parameter, n_points = n_points,
-                                             transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings)
+                                             transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings,
+                                             density_method = density_method)
     }else{
       plot_data <- .plot_data_samples.simple(samples, parameter = parameter, n_points = n_points,
-                                             transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings)
+                                             transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings,
+                                             density_method = density_method)
     }
 
 
@@ -2798,9 +2810,11 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   return(plot_data)
 }
 
-.plot_data_samples.simple         <- function(samples, parameter, n_points, transformation, transformation_arguments, transformation_settings){
+.plot_data_samples.simple         <- function(samples, parameter, n_points, transformation, transformation_arguments, transformation_settings,
+                                             density_method = c("KDE", "precomputed")){
 
   check_list(samples, "samples", check_names = parameter, allow_other = TRUE)
+  density_method <- .posterior_density_method(density_method)
 
   x_points <- NULL
   y_points <- NULL
@@ -2810,6 +2824,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   # extract the relevant data
   samples    <- samples[[parameter]]
   prior_list <- attr(samples, "prior_list")
+  posterior_density <- .posterior_density_for_method(attr(samples, "posterior_density"), density_method)
   if (!(is.prior.mixture(prior_list) || is.prior.spike_and_slab(prior_list)) && is.prior(prior_list))
     prior_list <- list(prior_list)
 
@@ -2838,7 +2853,26 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
     samples_density   <- samples[attr(samples, "models_ind") %in% which(!sapply(prior_list, is.prior.point))]
 
-    if(length(samples_density) > 0){
+    if(!is.null(posterior_density)){
+
+      if(nrow(posterior_density[["point_masses"]]) > 0L){
+        x_points <- posterior_density[["point_masses"]][["x"]]
+        y_points <- posterior_density[["point_masses"]][["mass"]]
+        if(!is.null(transformation)){
+          x_points <- .density.prior_transformation_x(x_points, transformation, transformation_arguments)
+        }
+      }
+
+      x_den <- posterior_density[["x"]]
+      y_den <- posterior_density[["y"]]
+
+      if(!is.null(transformation)){
+        x_den   <- .density.prior_transformation_x(x_den, transformation, transformation_arguments)
+        y_den   <- .density.prior_transformation_y(x_den, y_den, transformation, transformation_arguments)
+        samples_density <- .density.prior_transformation_x(samples_density, transformation, transformation_arguments)
+      }
+
+    }else if(length(samples_density) > 0){
 
       args <- list(x = samples_density, n = n_points)
 
@@ -2907,6 +2941,10 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     class(out_den) <- c("density", "density.prior", "density.prior.simple")
     attr(out_den, "x_range") <- range(x_den)
     attr(out_den, "y_range") <- c(0, max(y_den))
+    if(!is.null(posterior_density)){
+      attr(out_den, "posterior_density_method") <- posterior_density[["method"]]
+      attr(out_den, "posterior_density_diagnostics") <- posterior_density[["diagnostics"]]
+    }
 
     out[["density"]] <- out_den
   }
@@ -3391,17 +3429,24 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
   return(out)
 }
-.plot_data_samples.factor         <- function(samples, parameter, n_points, transformation, transformation_arguments, transformation_settings){
+.plot_data_samples.factor         <- function(samples, parameter, n_points, transformation, transformation_arguments, transformation_settings,
+                                             density_method = c("KDE", "precomputed")){
 
   check_list(samples, "samples", check_names = parameter, allow_other = TRUE)
+  density_method <- .posterior_density_method(density_method)
 
   x_points <- NULL
   y_points <- NULL
   x_den    <- NULL
   y_den    <- NULL
+  sample_point_data <- list()
+  stored_point_masses <- FALSE
 
   # transform & extract the relevant data
   prior_list <- attr(samples[[parameter]], "prior_list")
+  posterior_density_sources <- .posterior_density_sources(samples, samples[[parameter]])
+  posterior_density_conditional <- attr(samples[[parameter]], "conditional", exact = TRUE)
+  posterior_density_conditional_rule <- attr(samples[[parameter]], "conditional_rule", exact = TRUE)
   if (!(is.prior.mixture(prior_list) || is.prior.spike_and_slab(prior_list)) && is.prior(prior_list))
     prior_list <- list(prior_list)
 
@@ -3450,7 +3495,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       attr(temp_points, "x_range") <- range(x_points[i])
       attr(temp_points, "y_range") <- c(0, max(y_points[i]))
 
-      out[[paste0("points",i)]] <- temp_points
+      sample_point_data[[paste0("points",i)]] <- temp_points
     }
   }
 
@@ -3462,39 +3507,95 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     if(nrow(samples_density) > 0){
       for(i in 1:ncol(samples_density)){
 
-        args <- list(x = samples_density[,i], n = n_points)
+        density_aliases <- .plot_data_factor_density_aliases(
+          parameter   = parameter,
+          samples     = samples,
+          sample_name = colnames(samples_density)[i],
+          level_i     = i
+        )
+        posterior_density <- .posterior_density_for_method(
+          .posterior_density_from_sources(
+            sources          = posterior_density_sources,
+            aliases          = density_aliases,
+            conditional      = posterior_density_conditional,
+            conditional_rule = posterior_density_conditional_rule
+          ),
+          density_method
+        )
 
-        # set the endpoints for possible truncation
-        prior_list_simple <- prior_list[!sapply(prior_list, is.prior.point)]
-        prior_list_simple_lower <- min(sapply(prior_list_simple, function(p) p$truncation[["lower"]]))
-        prior_list_simple_upper <- max(sapply(prior_list_simple, function(p) p$truncation[["upper"]]))
-        if(!is.infinite(prior_list_simple_lower)){
-          args <- c(args, from = prior_list_simple_lower)
-        }
-        if(!is.infinite(prior_list_simple_upper)){
-          args <- c(args, to = prior_list_simple_upper)
-        }
+        if(!is.null(posterior_density)){
 
-        # get the density estimate
-        density_continuous <- do.call(stats::density, args)
-        x_den    <- density_continuous$x
-        y_den    <- density_continuous$y * (nrow(samples_density) / nrow(samples))
+          if(nrow(posterior_density[["point_masses"]]) > 0L){
+            stored_point_masses <- TRUE
+            x_points_i <- posterior_density[["point_masses"]][["x"]]
+            y_points_i <- posterior_density[["point_masses"]][["mass"]]
+            if(!is.null(transformation)){
+              x_points_i <- .density.prior_transformation_x(x_points_i, transformation, transformation_arguments)
+            }
+            for(point_i in seq_along(y_points_i)){
+              temp_points <- list(
+                call    = call("density", paste0("point", point_i)),
+                bw      = NULL,
+                n       = n_points,
+                x       = x_points_i[point_i],
+                y       = y_points_i[point_i],
+                samples = NULL
+              )
 
-        # check for truncation
-        if(isTRUE(all.equal(prior_list_simple_lower, x_den[1])) | prior_list_simple_lower >= x_den[1]){
-          y_den <- c(0, y_den)
-          x_den <- c(x_den[1], x_den)
-        }
-        if(isTRUE(all.equal(prior_list_simple_upper, x_den[length(x_den)])) | prior_list_simple_upper <= x_den[length(x_den)]){
-          y_den <- c(y_den, 0)
-          x_den <- c(x_den, x_den[length(x_den)])
-        }
+              class(temp_points) <- c("density", "density.prior", "density.prior.point")
+              attr(temp_points, "x_range")    <- range(x_points_i[point_i])
+              attr(temp_points, "y_range")    <- c(0, max(y_points_i[point_i]))
+              attr(temp_points, "level")      <- i
+              attr(temp_points, "level_name") <- colnames(samples_density)[i]
 
-        # apply transformations
-        if(!is.null(transformation)){
-          x_den   <- .density.prior_transformation_x(x_den,   transformation, transformation_arguments)
-          y_den   <- .density.prior_transformation_y(x_den, y_den, transformation, transformation_arguments)
-          samples_density[,i] <- .density.prior_transformation_x(samples_density[,i],   transformation, transformation_arguments)
+              out[[paste0("density", i, "_points", point_i)]] <- temp_points
+            }
+          }
+
+          x_den <- posterior_density[["x"]]
+          y_den <- posterior_density[["y"]]
+          if(!is.null(transformation)){
+            x_den <- .density.prior_transformation_x(x_den, transformation, transformation_arguments)
+            y_den <- .density.prior_transformation_y(x_den, y_den, transformation, transformation_arguments)
+            samples_density[,i] <- .density.prior_transformation_x(samples_density[,i], transformation, transformation_arguments)
+          }
+
+        }else{
+
+          args <- list(x = samples_density[,i], n = n_points)
+
+          # set the endpoints for possible truncation
+          prior_list_simple <- prior_list[!sapply(prior_list, is.prior.point)]
+          prior_list_simple_lower <- min(sapply(prior_list_simple, function(p) p$truncation[["lower"]]))
+          prior_list_simple_upper <- max(sapply(prior_list_simple, function(p) p$truncation[["upper"]]))
+          if(!is.infinite(prior_list_simple_lower)){
+            args <- c(args, from = prior_list_simple_lower)
+          }
+          if(!is.infinite(prior_list_simple_upper)){
+            args <- c(args, to = prior_list_simple_upper)
+          }
+
+          # get the density estimate
+          density_continuous <- do.call(stats::density, args)
+          x_den    <- density_continuous$x
+          y_den    <- density_continuous$y * (nrow(samples_density) / nrow(samples))
+
+          # check for truncation
+          if(isTRUE(all.equal(prior_list_simple_lower, x_den[1])) | prior_list_simple_lower >= x_den[1]){
+            y_den <- c(0, y_den)
+            x_den <- c(x_den[1], x_den)
+          }
+          if(isTRUE(all.equal(prior_list_simple_upper, x_den[length(x_den)])) | prior_list_simple_upper <= x_den[length(x_den)]){
+            y_den <- c(y_den, 0)
+            x_den <- c(x_den, x_den[length(x_den)])
+          }
+
+          # apply transformations
+          if(!is.null(transformation)){
+            x_den   <- .density.prior_transformation_x(x_den,   transformation, transformation_arguments)
+            y_den   <- .density.prior_transformation_y(x_den, y_den, transformation, transformation_arguments)
+            samples_density[,i] <- .density.prior_transformation_x(samples_density[,i],   transformation, transformation_arguments)
+          }
         }
 
         out_den    <- list(
@@ -3511,6 +3612,10 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
         attr(out_den, "y_range")    <- c(0, max(y_den))
         attr(out_den, "level")      <- i
         attr(out_den, "level_name") <- colnames(samples_density)[i]
+        if(!is.null(posterior_density)){
+          attr(out_den, "posterior_density_method") <- posterior_density[["method"]]
+          attr(out_den, "posterior_density_diagnostics") <- posterior_density[["diagnostics"]]
+        }
 
         out[[paste0("density", i)]] <- out_den
 
@@ -3518,9 +3623,59 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     }
   }
 
+  if(!stored_point_masses && length(sample_point_data) > 0L){
+    out <- c(sample_point_data, out)
+  }
+
 
 
   return(out)
+}
+
+.plot_data_factor_density_aliases <- function(parameter, samples, sample_name, level_i){
+
+  bracket_matches <- regmatches(sample_name, gregexpr("\\[[^]]+\\]", sample_name))[[1]]
+  bracket_aliases <- gsub("^\\[|\\]$", "", bracket_matches)
+  aliases <- .posterior_density_aliases(sample_name)
+
+  if(length(bracket_aliases) > 0L){
+    aliases <- .posterior_density_aliases(
+      aliases,
+      bracket_aliases,
+      paste0(parameter, "[", bracket_aliases, "]")
+    )
+  }
+  if(length(bracket_aliases) > 1L){
+    cell_alias <- paste0(bracket_aliases, collapse = ", ")
+    aliases <- .posterior_density_aliases(
+      aliases,
+      cell_alias,
+      paste0(parameter, "[", cell_alias, "]")
+    )
+  }
+
+  level_names <- attr(samples, "level_names", exact = TRUE)
+  if(is.list(level_names)){
+    level_names <- .factor_cell_labels(level_names)
+  }
+  if(length(level_names) == ncol(samples)){
+    aliases <- .posterior_density_aliases(
+      aliases,
+      level_names[[level_i]],
+      paste0(parameter, "[", level_names[[level_i]], "]")
+    )
+  }
+
+  factor_cell_names <- attr(samples, "factor_cell_names", exact = TRUE)
+  if(length(factor_cell_names) == ncol(samples)){
+    aliases <- .posterior_density_aliases(
+      aliases,
+      factor_cell_names[[level_i]],
+      paste0(parameter, "[", factor_cell_names[[level_i]], "]")
+    )
+  }
+
+  return(aliases)
 }
 
 
@@ -4027,13 +4182,18 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
 #' @return \code{plot_marginal} returns either \code{NULL} or
 #' an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
 #'
+#' @details Marginal posterior vectors may carry a \code{posterior_density}
+#' attribute with \code{x} and \code{y} coordinates. These densities are used
+#' only when \code{density_method = "precomputed"}.
+#'
 #' @seealso [prior()] [marginal_inference()]  [plot_posterior()]
 #' @export
 plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
                           n_points = 1000,
                           transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
                           rescale_x = FALSE, par_name = NULL, dots_prior = list(),
-                          legend = TRUE, legend_title = NULL, legend_labels = NULL, legend_position = NULL, ...){
+                          legend = TRUE, legend_title = NULL, legend_labels = NULL, legend_position = NULL,
+                          ..., density_method = c("KDE", "precomputed")){
 
   # check input
   if(any(!sapply(samples, inherits, what = "marginal_posterior")))
@@ -4041,6 +4201,7 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
   check_char(parameter, "parameter")
   check_char(plot_type, "plot_type", allow_values = c("base", "ggplot"))
   check_bool(legend, "legend", allow_NA = FALSE)
+  density_method <- .posterior_density_method(density_method)
   .check_transformation_input(transformation, transformation_arguments, transformation_settings)
 
 
@@ -4050,7 +4211,8 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
 
 
   plot_data <- .plot_data_marginal_samples(samples, parameter = parameter, prior = prior, n_points = n_points,
-                                           transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings)
+                                           transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings,
+                                           density_method = density_method)
 
 
 
@@ -4122,14 +4284,17 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
 
 }
 
-.plot_data_marginal_samples     <- function(samples, parameter, prior, n_points, transformation, transformation_arguments, transformation_settings){
+.plot_data_marginal_samples     <- function(samples, parameter, prior, n_points, transformation, transformation_arguments, transformation_settings,
+                                            density_method = c("KDE", "precomputed")){
 
   check_list(samples, "samples", check_names = parameter, allow_other = TRUE)
+  density_method <- .posterior_density_method(density_method)
 
   # extract the relevant information
   if(is.list(samples[[parameter]]) && length(samples[[parameter]]) > 1){
     posterior_samples <- .marginal_posterior_parameter_samples(samples, parameter)
     prior_densities   <- .marginal_posterior_parameter_prior_densities(samples, parameter)
+    posterior_densities <- .marginal_posterior_parameter_posterior_densities(samples, parameter)
     if(prior){
       if(any(vapply(prior_densities, is.null, logical(1))))
         stop("'samples' did not contain prior densities")
@@ -4137,6 +4302,7 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
   }else{
     posterior_samples <- .marginal_posterior_parameter_samples(samples, parameter)
     prior_densities   <- .marginal_posterior_parameter_prior_densities(samples, parameter)
+    posterior_densities <- .marginal_posterior_parameter_posterior_densities(samples, parameter)
     if(prior){
       if(is.null(prior_densities[[1]]))
         stop("'samples' did not contain prior densities")
@@ -4157,7 +4323,9 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
       transformation,
       transformation_arguments,
       transformation_settings,
-      prior_density = prior_densities[[i]]
+      prior_density     = prior_densities[[i]],
+      posterior_density = posterior_densities[[i]],
+      density_method    = density_method
     )
 
     for(j in seq_along(out_level)){
@@ -4189,12 +4357,15 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
   return(out)
 }
 .plot_data_marginal_samples.den <- function(x, n_points, transformation, transformation_arguments, transformation_settings,
-                                            prior_density = NULL){
+                                            prior_density = NULL, posterior_density = NULL,
+                                            density_method = c("KDE", "precomputed")){
 
   point_locations <- .plot_data_marginal_samples_point_locations(prior_density)
   point_samples   <- rep(FALSE, length(x))
   x_points        <- NULL
   y_points        <- NULL
+  density_method <- .posterior_density_method(density_method)
+  posterior_density <- .posterior_density_for_method(posterior_density, density_method)
 
   if(length(point_locations) > 0){
     point_counts <- numeric(length(point_locations))
@@ -4216,7 +4387,39 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
   out <- list()
 
   # get the density estimate
-  if(length(samples_density) > 1 && diff(range(samples_density)) > 0){
+  if(!is.null(posterior_density)){
+    if(nrow(posterior_density[["point_masses"]]) > 0L){
+      x_points <- posterior_density[["point_masses"]][["x"]]
+      y_points <- posterior_density[["point_masses"]][["mass"]]
+    }
+
+    x_den <- posterior_density[["x"]]
+    y_den <- posterior_density[["y"]]
+
+    if(!is.null(transformation)){
+      x_den           <- .density.prior_transformation_x(x_den, transformation, transformation_arguments)
+      y_den           <- .density.prior_transformation_y(x_den, y_den, transformation, transformation_arguments)
+      samples_density <- .density.prior_transformation_x(samples_density, transformation, transformation_arguments)
+    }
+
+    out_den <- list(
+      call    = call("density", "stored posterior density"),
+      bw      = NULL,
+      n       = length(x_den),
+      x       = x_den,
+      y       = y_den,
+      samples = samples_density
+    )
+
+    class(out_den) <- c("density", "density.prior", "density.prior.factor", "density.prior.simple")
+    attr(out_den, "x_range")    <- range(x_den)
+    attr(out_den, "y_range")    <- c(0, max(y_den))
+    attr(out_den, "posterior_density_method") <- posterior_density[["method"]]
+    attr(out_den, "posterior_density_diagnostics") <- posterior_density[["diagnostics"]]
+
+    out[["density"]] <- out_den
+
+  }else if(length(samples_density) > 1 && diff(range(samples_density)) > 0){
     args <- list(x = samples_density, n = n_points)
 
     density_continuous <- do.call(stats::density, args)

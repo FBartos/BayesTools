@@ -20,7 +20,8 @@ plot_marginal(
   legend_title = NULL,
   legend_labels = NULL,
   legend_position = NULL,
-  ...
+  ...,
+  density_method = c("KDE", "precomputed")
 )
 }
 \arguments{
@@ -76,6 +77,11 @@ parameter that needs to be transformed.}
 \item{legend_position}{optional legend position for factor legends.}
 
 \item{...}{additional arguments}
+
+\item{density_method}{density source for continuous posterior curves.
+\code{"KDE"} computes the standard kernel density estimate.
+\code{"precomputed"} uses a valid \code{posterior_density} attribute when
+present and falls back to KDE otherwise.}
 }
 \value{
 \code{plot_marginal} returns either \code{NULL} or
@@ -83,6 +89,11 @@ an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
 }
 \description{
 Plot samples from the marginal posterior distributions
+}
+\details{
+Marginal posterior vectors may carry a \code{posterior_density}
+attribute with \code{x} and \code{y} coordinates. These densities are used
+only when \code{density_method = "precomputed"}.
 }
 \seealso{
 \code{\link[=prior]{prior()}} \code{\link[=marginal_inference]{marginal_inference()}}  \code{\link[=plot_posterior]{plot_posterior()}}

@@ -532,6 +532,41 @@ test_that("marginal_estimates_table handles various inputs", {
 
 })
 
+test_that("marginal_estimates_table reports Savage-Dickey BF error attributes", {
+
+  set.seed(1)
+  samples <- list(
+    mu = list(
+      a = rnorm(100),
+      b = rnorm(100, mean = 1)
+    )
+  )
+  BF_a <- 2.5
+  BF_b <- 4
+  attr(BF_a, "BF_error_percent") <- 6.25
+  inference <- list(
+    mu = list(
+      a = BF_a,
+      b = BF_b
+    )
+  )
+
+  marginal_table <- marginal_estimates_table(
+    samples    = samples,
+    inference  = inference,
+    parameters = "mu"
+  )
+
+  expect_true("BF_error_percent" %in% colnames(marginal_table))
+  expect_equal(attr(marginal_table, "type"), c("estimate", "estimate", "estimate", "estimate", "estimate", "inclusion_BF", "BF_error"))
+  expect_equal(as.numeric(marginal_table[["BF_error_percent"]]), c(6.25, NA_real_))
+  expect_equal(attr(marginal_table[["BF_error_percent"]], "name"), "error%(Inclusion BF)")
+
+  marginal_table_BF01 <- update(marginal_table, BF01 = TRUE)
+  expect_equal(as.numeric(marginal_table_BF01[["BF_error_percent"]]), c(6.25, NA_real_))
+  expect_equal(attr(marginal_table_BF01[["BF_error_percent"]], "name"), "error%(Inclusion BF)")
+})
+
 
 # ============================================================================ #
 # SECTION 5: model_summary_table tests

@@ -8,7 +8,8 @@ Savage_Dickey_BF(
   posterior,
   null_hypothesis = 0,
   normal_approximation = FALSE,
-  silent = FALSE
+  silent = FALSE,
+  density_method = c("KDE", "precomputed")
 )
 }
 \arguments{
@@ -21,6 +22,11 @@ Savage_Dickey_BF(
 approximated via a normal distribution (rather than kernel density). Defaults to \code{FALSE}.}
 
 \item{silent}{whether warnings should be returned silently. Defaults to \code{FALSE}}
+
+\item{density_method}{density source for the posterior ordinate. \code{"KDE"}
+computes the standard kernel density estimate. \code{"precomputed"} uses a
+valid \code{posterior_ordinate} attribute when present, then falls back to
+a valid \code{posterior_density} attribute.}
 }
 \value{
 \code{Savage_Dickey_BF} returns a Bayes factor.
@@ -28,4 +34,13 @@ approximated via a normal distribution (rather than kernel density). Defaults to
 \description{
 Computes Savage-Dickey (density ratio) inclusion Bayes factors
 based the change of height from prior to posterior distribution at the test value.
+}
+\details{
+Marginal posterior vectors may carry a \code{posterior_ordinate}
+attribute with exact \code{value} and \code{ordinate} entries. When
+\code{density_method = "precomputed"} and
+\code{normal_approximation = FALSE}, a matching ordinate is used for the
+Savage-Dickey ratio. If no matching ordinate is available, a
+\code{posterior_density} grid with \code{x} and \code{y} coordinates is
+used before falling back to a kernel density estimate.
 }

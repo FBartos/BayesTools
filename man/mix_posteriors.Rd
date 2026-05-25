@@ -24,7 +24,8 @@ be drawn}
 \item{is_null_list}{list with entries for each parameter carrying either
 logical vector of indicators specifying whether the model corresponds
 to the null or alternative hypothesis (or an integer vector indexing models
-corresponding to the null hypothesis)}
+corresponding to the null hypothesis; use \code{0} or \code{integer(0)}
+when no models are null)}
 
 \item{conditional}{whether prior and posterior model probabilities should
 be returned only for the conditional model. Defaults to \code{FALSE}}

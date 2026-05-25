@@ -15,7 +15,8 @@ inclusion_BF(prior_probs, post_probs, margliks, is_null)
 
 \item{is_null}{logical vector of indicators whether the model corresponds
 to the null or alternative hypothesis (or an integer vector indexing models
-corresponding to the null hypothesis)}
+corresponding to the null hypothesis; use \code{0} or \code{integer(0)}
+when no models are null)}
 }
 \value{
 \code{inclusion_BF} returns a Bayes factor.

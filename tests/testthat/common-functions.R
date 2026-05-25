@@ -524,11 +524,27 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
   )
 
   attr(fit, "fixture_metadata") <- .fixture_metadata_from_registry_entry(registry_entry)
-  saveRDS(fit, file = file.path(temp_fits_dir, paste0(name, ".RDS")))
+  fit_file <- file.path(temp_fits_dir, paste0(name, ".RDS"))
+  marglik_file <- file.path(temp_marglik_dir, paste0(name, ".RDS"))
+
+  saveRDS(fit, file = fit_file)
 
   # Save marglik if provided
   if (!is.null(marglik)) {
-    saveRDS(marglik, file = file.path(temp_marglik_dir, paste0(name, ".RDS")))
+    saveRDS(marglik, file = marglik_file)
+  }
+
+  expect_true(file.exists(fit_file), info = paste("Saved fit artifact for", name))
+  expect_identical(registry_entry$model_name, name)
+  expect_identical(registry_entry$has_marglik, !is.null(marglik))
+  expect_identical(attr(fit, "fixture_metadata")$model_name, name)
+  expect_identical(attr(fit, "fixture_metadata")$has_marglik, !is.null(marglik))
+
+  if (!is.null(marglik)) {
+    expect_true(
+      file.exists(marglik_file),
+      info = paste("Saved marginal-likelihood artifact for", name)
+    )
   }
 
   # Return model metadata entry for registry
@@ -708,6 +724,7 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
         "JAGS-formula-random.R",
         "JAGS-lkj-cholesky.R",
         "model-averaging.R",
+        "posterior-density.R",
         "random-effects-allocation.R",
         "random-effects-metadata.R",
         "random-effects-reconstruction.R",
@@ -743,8 +760,10 @@ save_fit <- function(fit, name, marglik = NULL, simple_priors = FALSE, vector_pr
         "JAGS-formula.R",
         "JAGS-formula-random.R",
         "JAGS-lkj-cholesky.R",
+        "marginal-distributions.R",
         "model-averaging.R",
         "model-averaging-plots.R",
+        "posterior-density.R",
         "priors-plot.R",
         "random-effects-summary.R",
         "random-priors.R",

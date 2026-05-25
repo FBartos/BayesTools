@@ -28,7 +28,8 @@ plot_posterior(
   legend_title = NULL,
   legend_labels = NULL,
   legend_position = NULL,
-  ...
+  ...,
+  density_method = c("KDE", "precomputed")
 )
 }
 \arguments{
@@ -117,6 +118,11 @@ Supports \code{col}/\code{color}, \code{alpha}, \code{lwd}/\code{linewidth},
 \item{legend_position}{optional legend position for factor legends.}
 
 \item{...}{additional arguments}
+
+\item{density_method}{density source for continuous posterior curves.
+\code{"KDE"} computes the standard kernel density estimate.
+\code{"precomputed"} uses a valid \code{posterior_density} attribute when
+present and falls back to KDE otherwise.}
 }
 \value{
 \code{plot_posterior} returns either \code{NULL} or
@@ -130,6 +136,10 @@ When using scaled predictors (via \code{formula_scale_list} in \link{JAGS_fit}),
 you can plot posteriors on the original (unscaled) scale by preparing samples with
 \code{as_mixed_posteriors(..., transform_scaled = TRUE)}. The function automatically
 detects this and uses the pre-computed transformed prior samples when \code{prior = TRUE}.
+
+Posterior sample vectors may carry a \code{posterior_density} attribute
+with \code{x} and \code{y} coordinates. These densities are used only when
+\code{density_method = "precomputed"}.
 }
 \seealso{
 \code{\link[=prior]{prior()}} \code{\link[=lines_prior_list]{lines_prior_list()}}  \code{\link[=geom_prior_list]{geom_prior_list()}}

@@ -427,9 +427,17 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     ### extract the corresponding samples
     if(inherits(samples[[parameter]], "mixed_posteriors.factor")){
 
+      parameter_samples <- samples[[parameter]]
+      posterior_density_sources <- .posterior_density_sources(samples, parameter_samples)
+      posterior_ordinate_sources <- .posterior_ordinate_sources(samples, parameter_samples)
+      posterior_density_conditional <- attr(parameter_samples, "conditional", exact = TRUE)
+      posterior_density_conditional_rule <- attr(parameter_samples, "conditional_rule", exact = TRUE)
+
       # transform factor levels
       marginal_posterior_samples <- transform_factor_samples(samples)
       marginal_posterior_samples <- transform_treatment_samples(marginal_posterior_samples)[[parameter]]
+      attr(marginal_posterior_samples, "posterior_density") <- NULL
+      attr(marginal_posterior_samples, "posterior_ordinate") <- NULL
       marginal_factor_metadata <- marginal_posterior_samples
 
       level_names <- attr(marginal_posterior_samples, "level_names")
@@ -448,6 +456,34 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         class(temp_marginal_posterior_samples) <- c(class(temp_marginal_posterior_samples), "marginal_posterior.factor")
         attr(temp_marginal_posterior_samples, "parameter")  <- parameter
         attr(temp_marginal_posterior_samples, "level_name") <- level_names[lvl_i]
+        if(is.null(transformation)){
+          posterior_density <- .posterior_density_from_sources(
+            sources          = posterior_density_sources,
+            aliases          = .posterior_density_aliases(
+              level_names[lvl_i],
+              colnames(marginal_posterior_samples)[lvl_i],
+              paste0(parameter, "[", level_names[lvl_i], "]")
+            ),
+            conditional      = posterior_density_conditional,
+            conditional_rule = posterior_density_conditional_rule
+          )
+          if(!is.null(posterior_density)){
+            attr(temp_marginal_posterior_samples, "posterior_density") <- posterior_density
+          }
+          posterior_ordinate <- .posterior_ordinate_from_sources(
+            sources          = posterior_ordinate_sources,
+            aliases          = .posterior_density_aliases(
+              level_names[lvl_i],
+              colnames(marginal_posterior_samples)[lvl_i],
+              paste0(parameter, "[", level_names[lvl_i], "]")
+            ),
+            conditional      = posterior_density_conditional,
+            conditional_rule = posterior_density_conditional_rule
+          )
+          if(!is.null(posterior_ordinate)){
+            attr(temp_marginal_posterior_samples, "posterior_ordinate") <- posterior_ordinate
+          }
+        }
         return(temp_marginal_posterior_samples)
       })
       names(marginal_posterior_samples) <- level_names
@@ -461,6 +497,41 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       # apply transformations
       if(!is.null(transformation)){
         marginal_posterior_samples <- .density.prior_transformation_x(marginal_posterior_samples, transformation, transformation_arguments)
+        attr(marginal_posterior_samples, "posterior_density") <- NULL
+        attr(marginal_posterior_samples, "posterior_ordinate") <- NULL
+      }else{
+        marginal_posterior_samples <- .posterior_density_attach(
+          samples          = marginal_posterior_samples,
+          sources          = .posterior_density_sources(samples[[parameter]]),
+          parameter        = parameter,
+          conditional      = attr(samples[[parameter]], "conditional", exact = TRUE),
+          conditional_rule = attr(samples[[parameter]], "conditional_rule", exact = TRUE),
+          allow_unlabeled  = TRUE
+        )
+        marginal_posterior_samples <- .posterior_ordinate_attach(
+          samples          = marginal_posterior_samples,
+          sources          = .posterior_ordinate_sources(samples[[parameter]]),
+          parameter        = parameter,
+          conditional      = attr(samples[[parameter]], "conditional", exact = TRUE),
+          conditional_rule = attr(samples[[parameter]], "conditional_rule", exact = TRUE),
+          allow_unlabeled  = TRUE
+        )
+        marginal_posterior_samples <- .posterior_density_attach(
+          samples          = marginal_posterior_samples,
+          sources          = .posterior_density_sources(samples),
+          parameter        = parameter,
+          conditional      = attr(samples[[parameter]], "conditional", exact = TRUE),
+          conditional_rule = attr(samples[[parameter]], "conditional_rule", exact = TRUE),
+          allow_unlabeled  = FALSE
+        )
+        marginal_posterior_samples <- .posterior_ordinate_attach(
+          samples          = marginal_posterior_samples,
+          sources          = .posterior_ordinate_sources(samples),
+          parameter        = parameter,
+          conditional      = attr(samples[[parameter]], "conditional", exact = TRUE),
+          conditional_rule = attr(samples[[parameter]], "conditional_rule", exact = TRUE),
+          allow_unlabeled  = FALSE
+        )
       }
 
       class(marginal_posterior_samples) <- c(class(marginal_posterior_samples), "marginal_posterior.simple")
@@ -556,6 +627,20 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     out <- lapply(parameter_samples, attr, which = "prior_density")
   }else{
     out <- list(attr(parameter_samples, "prior_density"))
+    names(out) <- parameter
+  }
+
+  out
+}
+
+.marginal_posterior_parameter_posterior_densities <- function(samples, parameter){
+
+  parameter_samples <- samples[[parameter]]
+
+  if(is.list(parameter_samples)){
+    out <- .posterior_density_child_attributes(parameter_samples)
+  }else{
+    out <- list(attr(parameter_samples, "posterior_density"))
     names(out) <- parameter
   }
 
@@ -1657,33 +1742,59 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 #' @param normal_approximation whether the height of prior and posterior density should be
 #' approximated via a normal distribution (rather than kernel density). Defaults to \code{FALSE}.
 #' @param silent whether warnings should be returned silently. Defaults to \code{FALSE}
+#' @param density_method density source for the posterior ordinate. \code{"KDE"}
+#' computes the standard kernel density estimate. \code{"precomputed"} uses a
+#' valid \code{posterior_ordinate} attribute when present, then falls back to
+#' a valid \code{posterior_density} attribute.
 #'
+#' @details Marginal posterior vectors may carry a \code{posterior_ordinate}
+#' attribute with exact \code{value} and \code{ordinate} entries. When
+#' \code{density_method = "precomputed"} and
+#' \code{normal_approximation = FALSE}, a matching ordinate is used for the
+#' Savage-Dickey ratio. If no matching ordinate is available, a
+#' \code{posterior_density} grid with \code{x} and \code{y} coordinates is
+#' used before falling back to a kernel density estimate.
 #'
 #' @return \code{Savage_Dickey_BF} returns a Bayes factor.
 #'
 #' @export
-Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximation = FALSE, silent = FALSE){
+Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximation = FALSE, silent = FALSE,
+                             density_method = c("KDE", "precomputed")){
 
   if(!inherits(posterior, "marginal_posterior"))
     stop("'BF_savage_dickey' function requires an object of class 'marginal_posteriors'")
   check_real(null_hypothesis, "null_hypothesis")
   check_bool(normal_approximation, "normal_approximation")
   check_bool(silent, "silent")
+  density_method <- .posterior_density_method(density_method)
 
   if(is.list(posterior)){
     bf <- list()
+    posterior_densities <- .posterior_density_child_attributes(posterior)
+    posterior_ordinates <- .posterior_ordinate_child_attributes(posterior, null_hypothesis)
     for(i in seq_along(posterior)){
-      bf[[i]] <- .Savage_Dickey_BF.fun(posterior[[i]], null_hypothesis, normal_approximation, silent)
+      posterior_i <- posterior[[i]]
+      if(identical(density_method, "precomputed") &&
+         is.null(.posterior_density_for_method(attr(posterior_i, "posterior_density"), density_method)) &&
+         !is.null(posterior_densities[[i]])){
+        attr(posterior_i, "posterior_density") <- posterior_densities[[i]]
+      }
+      if(identical(density_method, "precomputed") &&
+         is.null(.posterior_ordinate_for_method(attr(posterior_i, "posterior_ordinate"), null_hypothesis, density_method)) &&
+         !is.null(posterior_ordinates[[i]])){
+        attr(posterior_i, "posterior_ordinate") <- posterior_ordinates[[i]]
+      }
+      bf[[i]] <- .Savage_Dickey_BF.fun(posterior_i, null_hypothesis, normal_approximation, silent, density_method)
     }
     names(bf) <- names(posterior)
   }else{
-    bf <- .Savage_Dickey_BF.fun(posterior, null_hypothesis, normal_approximation, silent)
+    bf <- .Savage_Dickey_BF.fun(posterior, null_hypothesis, normal_approximation, silent, density_method)
   }
 
   return(bf)
 }
 
-.Savage_Dickey_BF.fun    <- function(posterior, null_hypothesis, normal_approximation, silent){
+.Savage_Dickey_BF.fun    <- function(posterior, null_hypothesis, normal_approximation, silent, density_method){
 
   if(is.null(attr(posterior, "prior_density")))
     stop("there are no prior densities for the posterior distribution", call. = FALSE)
@@ -1691,9 +1802,31 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   prior <- attr(posterior, "prior_density")
 
   warnings <- NULL
+  stored_posterior_density <- NULL
+  stored_posterior_ordinate <- NULL
+  BF_error_percent <- NA_real_
+  if(!normal_approximation){
+    stored_posterior_ordinate <- .posterior_ordinate_for_method(
+      attr(posterior, "posterior_ordinate"),
+      null_hypothesis,
+      density_method
+    )
+    stored_posterior_density <- .posterior_density_for_method(
+      attr(posterior, "posterior_density"),
+      density_method
+    )
+  }
 
   if(mean(posterior == null_hypothesis) > 0.05){
     warnings <- c(warnings, "There is a considerable cluster of posterior samples at the exact null hypothesis values. The Savage-Dickey density ratio is likely to be invalid.")
+  }
+  if(!is.null(stored_posterior_density) && nrow(stored_posterior_density[["point_masses"]]) > 0L){
+    point_masses <- stored_posterior_density[["point_masses"]]
+    point_tol <- sqrt(.Machine$double.eps) * max(1, abs(null_hypothesis))
+    null_point_mass <- sum(point_masses[["mass"]][abs(point_masses[["x"]] - null_hypothesis) <= point_tol])
+    if(null_point_mass > 0.05){
+      warnings <- c(warnings, "Stored posterior density contains a considerable point mass at the exact null hypothesis value. The Savage-Dickey density ratio is likely to be invalid.")
+    }
   }
   if(.prior_linear_density_point_mass(prior, null_hypothesis) > 0.05){
     warnings <- c(warnings, "There is a considerable point mass in the prior at the exact null hypothesis value. The Savage-Dickey density ratio is likely to be invalid.")
@@ -1706,25 +1839,49 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   if(null_hypothesis < prior_range[1] || null_hypothesis > prior_range[2]){
     warnings <- c(warnings, "Prior density does not span both sides of the null hypothesis. Check whether the prior distribution contains the null hypothesis in the first place. The Savage-Dickey density ratio is likely to be invalid.")
   }
-  if(null_hypothesis < min(posterior) || null_hypothesis > max(posterior)){
+  posterior_range <- range(posterior)
+  if(!is.null(stored_posterior_density) && is.null(stored_posterior_ordinate)){
+    posterior_range <- range(stored_posterior_density[["x"]], finite = TRUE)
+    if(null_hypothesis < posterior_range[1] || null_hypothesis > posterior_range[2]){
+      warnings <- c(warnings, "Stored posterior density does not span both sides of the null hypothesis. Falling back to the kernel density estimate.")
+      stored_posterior_density <- NULL
+      posterior_range <- range(posterior)
+    }
+  }
+  if(is.null(stored_posterior_ordinate) &&
+     (null_hypothesis < posterior_range[1] || null_hypothesis > posterior_range[2])){
     warnings <- c(warnings, "Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.")
+  }
+
+  if(normal_approximation){
+    posterior_height <- .Savage_Dickey_BF.normal(posterior, null_hypothesis)
+  }else if(!is.null(stored_posterior_ordinate)){
+    posterior_height <- stored_posterior_ordinate[["y"]]
+    BF_error_percent <- .posterior_ordinate_bf_error_percent(stored_posterior_ordinate)
+  }else if(!is.null(stored_posterior_density)){
+    posterior_height <- .posterior_density_height(stored_posterior_density, null_hypothesis)
+    if(!is.finite(posterior_height) || posterior_height <= 0){
+      warnings <- c(warnings, "Stored posterior density has zero or non-finite height at the null hypothesis. Falling back to the kernel density estimate.")
+      posterior_height <- .Savage_Dickey_BF.kd(posterior, null_hypothesis)
+    }else{
+      BF_error_percent <- .posterior_density_bf_error_percent(stored_posterior_density, null_hypothesis)
+    }
+  }else{
+    posterior_height <- .Savage_Dickey_BF.kd(posterior, null_hypothesis)
   }
   if(!silent && !is.null(warnings)){
     sapply(warnings, warning, call. = FALSE)
   }
 
-
-  if(normal_approximation){
-    posterior_height <- .Savage_Dickey_BF.normal(posterior, null_hypothesis)
-  }else{
-    posterior_height <- .Savage_Dickey_BF.kd(posterior, null_hypothesis)
-  }
   prior_height <- .prior_linear_density_height(prior, null_hypothesis)
 
   BF <- exp(log(prior_height) - log(posterior_height))
 
   if(!is.null(warnings)){
     attr(BF, "warnings") <- warnings
+  }
+  if(is.finite(BF_error_percent)){
+    attr(BF, "BF_error_percent") <- BF_error_percent
   }
 
   return(BF)
@@ -1735,6 +1892,7 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
 
   return(height)
 }
+
 .Savage_Dickey_BF.kd     <- function(samples, null_hypothesis){
 
   if(null_hypothesis < min(samples) || null_hypothesis > max(samples)){
@@ -1780,6 +1938,11 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
 #' relevant for the formula (all of which need to have specification of
 #' \code{is_null_list})
 #' @param seed seed for random number generation
+#' @param density_method posterior density method used for Savage-Dickey Bayes
+#' factors. Currently only \code{"KDE"} is supported by
+#' \code{marginal_inference()} and \code{as_marginal_inference()} because
+#' generic model-averaged marginal posteriors do not have a well-defined
+#' precomputed density source.
 #' @inheritParams ensemble_inference
 #' @inheritParams marginal_posterior
 #' @inheritParams Savage_Dickey_BF
@@ -1791,7 +1954,8 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
 #' @export
 marginal_inference <- function(model_list, marginal_parameters, parameters, is_null_list, formula,
                                null_hypothesis = 0, normal_approximation = FALSE,
-                               n_samples = 10000, seed = NULL, silent = FALSE){
+                               n_samples = 10000, seed = NULL, silent = FALSE,
+                               density_method = "KDE"){
 
   # check input (majority of the checks performed within mix_posteriors)
   check_list(model_list, "model_list")
@@ -1800,6 +1964,7 @@ marginal_inference <- function(model_list, marginal_parameters, parameters, is_n
   check_list(is_null_list, "is_null_list", check_length = length(parameters))
   if(!all(unlist(sapply(model_list, function(m) sapply(attr(m[["fit"]], "prior_list"), function(p) is.prior(p))))))
     stop("model_list:priors must contain 'BayesTools' priors")
+  density_method <- .marginal_inference_density_method(density_method)
 
 
   # create one full model-averaged ensemble
@@ -1858,12 +2023,14 @@ marginal_inference <- function(model_list, marginal_parameters, parameters, is_n
       posterior            = out[["conditional"]][[marginal_parameters[i]]],
       null_hypothesis      = null_hypothesis,
       normal_approximation = normal_approximation,
-      silent               = silent
+      silent               = silent,
+      density_method       = density_method
     )
   }
 
   attr(out, "null_hypothesis")      <- null_hypothesis
   attr(out, "normal_approximation") <- normal_approximation
+  attr(out, "density_method")        <- density_method
   class(out) <- c(class(out), "marginal_inference")
   return(out)
 }
@@ -1895,7 +2062,8 @@ marginal_inference <- function(model_list, marginal_parameters, parameters, is_n
 #' @export
 as_marginal_inference <- function(model, marginal_parameters, parameters, conditional_list, conditional_rule, formula,
                                   null_hypothesis = 0, normal_approximation = FALSE,
-                                  n_samples = 10000, silent = FALSE, force_plots = FALSE){
+                                  n_samples = 10000, silent = FALSE, force_plots = FALSE,
+                                  density_method = "KDE"){
 
   # check input (majority of the checks performed within mix_posteriors)
   # check input
@@ -1905,6 +2073,7 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
   check_char(marginal_parameters, "marginal_parameters", check_length = FALSE)
   check_list(conditional_list, "conditional_list", check_length = length(marginal_parameters))
   check_char(conditional_rule, "conditional_rule")
+  density_method <- .marginal_inference_density_method(density_method)
 
   priors <- attr(model, "prior_list")
 
@@ -1924,7 +2093,13 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
 
   for(i in seq_along(marginal_parameters)){
 
-    check_char(conditional_list[[marginal_parameters[i]]], sprintf("conditional_list[[%1$s]]", marginal_parameters[i]), check_length = FALSE, allow_values = parameters, allow_NULL = TRUE)
+    check_char(
+      conditional_list[[marginal_parameters[i]]],
+      sprintf("conditional_list[[%1$s]]", marginal_parameters[i]),
+      check_length = FALSE,
+      allow_values = c(parameters, "PET", "PEESE", "PETPEESE", "omega", "phacking", "alpha", "pi_null"),
+      allow_NULL = TRUE
+    )
 
     # compute the marginals
     out[["averaged"]][[marginal_parameters[i]]] <- marginal_posterior(
@@ -1958,14 +2133,32 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
       posterior            = out[["conditional"]][[marginal_parameters[i]]],
       null_hypothesis      = null_hypothesis,
       normal_approximation = normal_approximation,
-      silent               = silent
+      silent               = silent,
+      density_method       = density_method
     )
   }
 
   attr(out, "null_hypothesis")      <- null_hypothesis
   attr(out, "normal_approximation") <- normal_approximation
+  attr(out, "density_method")        <- density_method
   class(out) <- c(class(out), "marginal_inference")
   return(out)
+}
+
+.marginal_inference_density_method <- function(density_method){
+
+  density_method <- .posterior_density_method(density_method)
+  if(identical(density_method, "precomputed")){
+    stop(
+      "'density_method = \"precomputed\"' is not supported by ",
+      "'marginal_inference()' or 'as_marginal_inference()'. ",
+      "Precomputed densities must be computed for the marginal posterior ",
+      "itself and passed directly to 'Savage_Dickey_BF()'.",
+      call. = FALSE
+    )
+  }
+
+  return(density_method)
 }
 
 .marginal_inference_condition_key <- function(conditional){

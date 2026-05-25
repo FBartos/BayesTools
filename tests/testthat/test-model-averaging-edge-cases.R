@@ -176,10 +176,18 @@ test_that("conditional compute_inference renormalizes alternatives but keeps ful
   )
 })
 
-test_that("compute_inference rejects invalid model-index indicators", {
+test_that("compute_inference handles no-null and invalid model-index indicators", {
+  no_null <- compute_inference(c(1, 1), c(0, 0), is_null = 0)
+  expect_equal(attr(no_null, "is_null"), c(FALSE, FALSE))
+  expect_true(is.na(no_null$BF))
+
+  no_null_empty <- compute_inference(c(1, 1), c(0, 0), is_null = integer(0))
+  expect_equal(attr(no_null_empty, "is_null"), c(FALSE, FALSE))
+
   expect_error(
-    compute_inference(c(1, 1), c(0, 0), is_null = 0),
-    "equal or higher than 1"
+    compute_inference(c(1, 1), c(0, 0), is_null = c(0, 1)),
+    "can contain 0 only when no null models are specified",
+    fixed = TRUE
   )
   expect_error(
     compute_inference(c(1, 1), c(0, 0), is_null = c(TRUE, NA)),
@@ -463,6 +471,7 @@ test_that("inclusion_BF handles all-null models", {
 
   BF <- inclusion_BF(prior_probs = prior_probs, post_probs = post_probs, is_null = is_null)
   expect_true(is.na(BF))
+  expect_true(is.na(inclusion_BF(prior_probs = prior_probs, post_probs = post_probs, is_null = 1:2)))
 
 })
 
@@ -476,6 +485,8 @@ test_that("inclusion_BF handles all-alternative models", {
 
   BF <- inclusion_BF(prior_probs = prior_probs, post_probs = post_probs, is_null = is_null)
   expect_true(is.na(BF))
+  expect_true(is.na(inclusion_BF(prior_probs = prior_probs, post_probs = post_probs, is_null = 0)))
+  expect_true(is.na(inclusion_BF(prior_probs = prior_probs, post_probs = post_probs, is_null = integer(0))))
 
 })
 

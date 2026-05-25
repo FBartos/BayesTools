@@ -442,6 +442,7 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
     if(is.list(samples[[parameter]]) && length(samples[[parameter]]) > 1){
       temp_samples  <- .marginal_posterior_parameter_samples(samples, parameter)
       temp_BF       <- do.call(c, inference[[parameter]])
+      temp_BF_error <- .marginal_inference_BF_error_percent(inference[[parameter]], temp_BF)
       temp_warnings <- do.call(c, lapply(names(inference[[parameter]]), function(lvl) {
         if(is.null(attr(inference[[parameter]][[lvl]], "warnings"))){
           return()
@@ -452,6 +453,7 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
     }else{
       temp_samples  <- .marginal_posterior_parameter_samples(samples, parameter)
       temp_BF       <- inference[[parameter]][[1]]
+      temp_BF_error <- .marginal_inference_BF_error_percent(inference[[parameter]], temp_BF)
       if(is.null(attr(inference[[parameter]][[1]], "warnings"))){
         temp_warnings <- NULL
       }else{
@@ -470,7 +472,11 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
     }
 
     # add BF
-    par_summary <- cbind(par_summary, "inclusion_BF" = temp_BF)
+    par_summary <- cbind(
+      par_summary,
+      "inclusion_BF"     = temp_BF,
+      "BF_error_percent" = temp_BF_error
+    )
 
 
     # format parameter names
@@ -497,15 +503,67 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
   # prepare output
   estimates_table                    <- data.frame(estimates_table)
   colnames(estimates_table)          <- gsub("X", "", colnames(estimates_table))
+  has_BF_error                       <- any(is.finite(estimates_table[["BF_error_percent"]]))
+  if(!has_BF_error){
+    estimates_table[["BF_error_percent"]] <- NULL
+  }
   estimates_table[,"inclusion_BF"]   <- format_BF(estimates_table[,"inclusion_BF"], logBF = logBF, BF01 = BF01, inclusion = TRUE)
+  if(has_BF_error){
+    attr(estimates_table[["BF_error_percent"]], "name") <- .BF_error_column_name(BF01)
+  }
   class(estimates_table)             <- c("BayesTools_table", "BayesTools_marginal_estimates", class(estimates_table))
-  attr(estimates_table, "type")      <- c(rep("estimate", ncol(estimates_table) - 1), "inclusion_BF")
+  table_type                         <- rep("estimate", ncol(estimates_table))
+  table_type[colnames(estimates_table) == "inclusion_BF"] <- "inclusion_BF"
+  table_type[colnames(estimates_table) == "BF_error_percent"] <- "BF_error"
+  attr(estimates_table, "type")      <- table_type
   attr(estimates_table, "rownames")  <- TRUE
   attr(estimates_table, "title")     <- title
   attr(estimates_table, "footnotes") <- footnotes
   attr(estimates_table, "warnings")  <- warnings
 
   return(estimates_table)
+}
+
+.marginal_inference_BF_error_percent <- function(inference, BF){
+
+  out <- rep(NA_real_, length(BF))
+  names(out) <- names(BF)
+  if(length(out) == 0L){
+    return(out)
+  }
+
+  if(is.list(inference) && !inherits(inference, "marginal_inference")){
+    errors <- vapply(inference, .BF_error_percent_value, numeric(1))
+    if(length(errors) == length(out)){
+      out <- errors
+      names(out) <- names(BF)
+    }else if(!is.null(names(out)) && !is.null(names(errors))){
+      out[] <- errors[names(out)]
+    }
+  }else{
+    if(is.list(inference)){
+      out[] <- .BF_error_percent_value(inference[[1]])
+    }else{
+      out[] <- .BF_error_percent_value(inference)
+    }
+  }
+
+  return(out)
+}
+
+.BF_error_percent_value <- function(x){
+
+  BF_error_percent <- attr(x, "BF_error_percent")
+  if(is.null(BF_error_percent)){
+    return(NA_real_)
+  }
+
+  BF_error_percent <- as.numeric(BF_error_percent)[1]
+  if(!is.finite(BF_error_percent) || BF_error_percent < 0){
+    return(NA_real_)
+  }
+
+  return(BF_error_percent)
 }
 
 

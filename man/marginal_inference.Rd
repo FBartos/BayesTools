@@ -15,7 +15,8 @@ marginal_inference(
   normal_approximation = FALSE,
   n_samples = 10000,
   seed = NULL,
-  silent = FALSE
+  silent = FALSE,
+  density_method = "KDE"
 )
 }
 \arguments{
@@ -33,7 +34,8 @@ relevant for the formula (all of which need to have specification of
 \item{is_null_list}{list with entries for each parameter carrying either
 logical vector of indicators specifying whether the model corresponds
 to the null or alternative hypothesis (or an integer vector indexing models
-corresponding to the null hypothesis)}
+corresponding to the null hypothesis; use \code{0} or \code{integer(0)}
+when no models are null)}
 
 \item{formula}{model formula (needs to be specified if \code{parameter} was part of a formula)}
 
@@ -48,6 +50,12 @@ prior densities}
 \item{seed}{seed for random number generation}
 
 \item{silent}{whether warnings should be returned silently. Defaults to \code{FALSE}}
+
+\item{density_method}{posterior density method used for Savage-Dickey Bayes
+factors. Currently only \code{"KDE"} is supported by
+\code{marginal_inference()} and \code{as_marginal_inference()} because
+generic model-averaged marginal posteriors do not have a well-defined
+precomputed density source.}
 }
 \value{
 \code{marginal_inference} returns an object of class 'marginal_inference'.

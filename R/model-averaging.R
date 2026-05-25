@@ -16,12 +16,14 @@
 #' @param is_null_list list with entries for each parameter carrying either
 #' logical vector of indicators specifying whether the model corresponds
 #' to the null or alternative hypothesis (or an integer vector indexing models
-#' corresponding to the null hypothesis)
+#' corresponding to the null hypothesis; use \code{0} or \code{integer(0)}
+#' when no models are null)
 #' @param prior_weights vector of prior model odds
 #' @param margliks vector of marginal likelihoods
 #' @param is_null logical vector of indicators specifying whether the model corresponds
 #' to the null or alternative hypothesis (or an integer vector indexing models
-#' corresponding to the null hypothesis)
+#' corresponding to the null hypothesis; use \code{0} or \code{integer(0)}
+#' when no models are null)
 #' @param conditional whether prior and posterior model probabilities should
 #' be returned only for the conditional model. Defaults to \code{FALSE}
 #'
@@ -46,18 +48,7 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL, condition
   check_real(prior_weights, "prior_weights", lower = 0, check_length = 0)
   check_real(margliks,   "margliks", check_length = length(prior_weights))
   check_bool(conditional, "conditional", allow_NA = FALSE)
-  if(!is.null(is_null)){
-    if(is.numeric(is_null)){
-      check_int(is_null, "is_null", lower = 1, upper = length(prior_weights), check_length = 0)
-      is_null <- seq_along(prior_weights) %in% is_null
-    }else if(is.logical(is_null)){
-      check_bool(is_null, "is_null", check_length = length(prior_weights), allow_NA = FALSE)
-    }else{
-      stop("'is_null' argument must be either logical vector, integer vector, or NULL.")
-    }
-  }else{
-    is_null <- rep(FALSE, length(prior_weights))
-  }
+  is_null <- .model_averaging_is_null(is_null, length(prior_weights))
 
   prior_probs <- .model_averaging_prior_probs(prior_weights)
   margliks    <- .model_averaging_margliks(margliks, prior_probs)
@@ -830,6 +821,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   # extract the list of priors
   priors <- attr(model, "prior_list")
   prior_density_priors <- priors
+  formula_scale <- attr(model, "formula_scale")
 
   # extract the samples
   model_samples <- suppressWarnings(coda::as.mcmc(model))
@@ -838,6 +830,8 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     model_samples <- matrix(model_samples, ncol = 1)
     colnames(model_samples) <- model$monitor
   }
+  posterior_density_sources <- .posterior_density_sources(model, model_samples)
+  posterior_ordinate_sources <- .posterior_ordinate_sources(model, model_samples)
 
   # apply conditioning
   if(length(conditional) > 0){
@@ -991,12 +985,11 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     }
   }
 
-  # extract formula_scale early for transform_scaled support
-  formula_scale <- attr(model, "formula_scale")
-
   # apply scale transformation to posterior samples if requested
   if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
     model_samples <- transform_scale_samples(model_samples, formula_scale)
+    posterior_density_sources <- list()
+    posterior_ordinate_sources <- list()
   }
 
   out    <- list()
@@ -1053,11 +1046,40 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     attr(out[[temp_parameter]], "conditional")      <- conditional
     attr(out[[temp_parameter]], "conditional_rule") <- conditional_rule
 
+    out[[temp_parameter]] <- .posterior_density_attach(
+      samples            = out[[temp_parameter]],
+      sources            = posterior_density_sources,
+      parameter          = temp_parameter,
+      conditional        = conditional,
+      conditional_rule   = conditional_rule,
+      allow_unlabeled    = length(parameters) == 1L
+    )
+    out[[temp_parameter]] <- .posterior_ordinate_attach(
+      samples            = out[[temp_parameter]],
+      sources            = posterior_ordinate_sources,
+      parameter          = temp_parameter,
+      conditional        = conditional,
+      conditional_rule   = conditional_rule,
+      allow_unlabeled    = length(parameters) == 1L
+    )
+
   }
 
   attr(out, "prior_list")       <- priors
   attr(out, "conditional")      <- conditional
   attr(out, "conditional_rule") <- conditional_rule
+  if(length(posterior_density_sources) > 0L){
+    attr(out, "posterior_density") <- posterior_density_sources[[1]]
+    if(length(posterior_density_sources) > 1L){
+      attr(out, "posterior_densities") <- posterior_density_sources[-1]
+    }
+  }
+  if(length(posterior_ordinate_sources) > 0L){
+    attr(out, "posterior_ordinate") <- posterior_ordinate_sources[[1]]
+    if(length(posterior_ordinate_sources) > 1L){
+      attr(out, "posterior_ordinates") <- posterior_ordinate_sources[-1]
+    }
+  }
 
   # propagate formula_scale attribute for transform_scaled support
   if(!is.null(formula_scale)){
@@ -1538,7 +1560,8 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 #' @param margliks vector of marginal likelihoods.
 #' @param is_null logical vector of indicators whether the model corresponds
 #' to the null or alternative hypothesis (or an integer vector indexing models
-#' corresponding to the null hypothesis)
+#' corresponding to the null hypothesis; use \code{0} or \code{integer(0)}
+#' when no models are null)
 #'
 #' @details Supplying \code{margliks} as the input is preferred since it is better at dealing with
 #' under/overflow (posterior probabilities are very close to either 0 or 1). In case that both the
@@ -1552,14 +1575,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 inclusion_BF         <- function(prior_probs, post_probs, margliks, is_null){
 
 
-  if(is.numeric(is_null)){
-    check_int(is_null, "is_null", lower = 1, upper = length(prior_probs), check_length = 0)
-    is_null <- seq_along(prior_probs) %in% is_null
-  }else if(is.logical(is_null)){
-    check_bool(is_null, "is_null", check_length = length(prior_probs), allow_NA = FALSE)
-  }else{
-    stop("'is_null' argument must be either logical vector, integer vector, or NULL.")
-  }
+  is_null <- .model_averaging_is_null(is_null, length(prior_probs))
 
   if(!missing(prior_probs) && !missing(margliks)){
     return(.inclusion_BF.margliks(prior_probs = prior_probs, margliks = margliks, is_null = is_null))
@@ -1568,6 +1584,31 @@ inclusion_BF         <- function(prior_probs, post_probs, margliks, is_null){
   }else{
     stop("'prior_probs' and either 'post_probs' or 'marglik' must be specified.")
   }
+}
+
+.model_averaging_is_null <- function(is_null, n_models){
+
+  if(is.null(is_null)){
+    return(rep(FALSE, n_models))
+  }
+
+  if(is.numeric(is_null)){
+    check_int(is_null, "is_null", lower = 0, upper = n_models, check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
+    if(length(is_null) == 0L || (length(is_null) == 1L && is_null == 0)){
+      return(rep(FALSE, n_models))
+    }
+    if(any(is_null == 0)){
+      stop("'is_null' can contain 0 only when no null models are specified.", call. = FALSE)
+    }
+    return(seq_len(n_models) %in% is_null)
+  }
+
+  if(is.logical(is_null)){
+    check_bool(is_null, "is_null", check_length = n_models, allow_NA = FALSE)
+    return(is_null)
+  }
+
+  stop("'is_null' argument must be either logical vector, integer vector, or NULL.", call. = FALSE)
 }
 
 .inclusion_BF.probs    <- function(prior_probs, post_probs, is_null){

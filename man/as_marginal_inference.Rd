@@ -16,7 +16,8 @@ as_marginal_inference(
   normal_approximation = FALSE,
   n_samples = 10000,
   silent = FALSE,
-  force_plots = FALSE
+  force_plots = FALSE,
+  density_method = "KDE"
 )
 }
 \arguments{
@@ -49,6 +50,12 @@ prior densities}
 \item{force_plots}{temporal argument allowing to generate conditional posterior samples
 suitable for prior and posterior plots. Only available when conditioning on a
 single parameter.}
+
+\item{density_method}{posterior density method used for Savage-Dickey Bayes
+factors. Currently only \code{"KDE"} is supported by
+\code{marginal_inference()} and \code{as_marginal_inference()} because
+generic model-averaged marginal posteriors do not have a well-defined
+precomputed density source.}
 }
 \value{
 \code{as_marginal_inference} returns an object of class 'marginal_inference'.

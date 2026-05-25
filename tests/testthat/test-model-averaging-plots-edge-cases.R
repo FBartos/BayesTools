@@ -392,6 +392,59 @@ test_that("posterior plot data separates spike mass from continuous samples", {
   expect_equal(sum(plot_data$density$y) * dx, .7, tolerance = .08)
 })
 
+test_that("posterior plot data uses stored posterior density when available", {
+  theta <- seq(-2, 2, length.out = 40)
+  stored_x <- seq(-3, 3, length.out = 61)
+  stored_y <- stats::dnorm(stored_x, mean = .25, sd = .9)
+  attr(theta, "models_ind") <- rep(1, length(theta))
+  attr(theta, "prior_list") <- list(prior("normal", list(mean = 0, sd = 1)))
+  attr(theta, "posterior_density") <- list(
+    x      = stored_x,
+    y      = stored_y,
+    method = "iwmde"
+  )
+
+  plot_data <- BayesTools:::.plot_data_samples.simple(
+    samples = list(theta = theta),
+    parameter = "theta",
+    n_points = 16,
+    transformation = NULL,
+    transformation_arguments = NULL,
+    transformation_settings = FALSE,
+    density_method = "precomputed"
+  )
+
+  expect_equal(plot_data$density$x, stored_x)
+  expect_equal(plot_data$density$y, stored_y)
+  expect_equal(attr(plot_data$density, "posterior_density_method"), "iwmde")
+})
+
+test_that("posterior plot data ignores stored density by default", {
+  theta <- seq(-2, 2, length.out = 40)
+  stored_x <- seq(-3, 3, length.out = 61)
+  stored_y <- stats::dnorm(stored_x, mean = .25, sd = .9)
+  attr(theta, "models_ind") <- rep(1, length(theta))
+  attr(theta, "prior_list") <- list(prior("normal", list(mean = 0, sd = 1)))
+  attr(theta, "posterior_density") <- list(
+    x      = stored_x,
+    y      = stored_y,
+    method = "iwmde"
+  )
+
+  plot_data <- BayesTools:::.plot_data_samples.simple(
+    samples = list(theta = theta),
+    parameter = "theta",
+    n_points = 16,
+    transformation = NULL,
+    transformation_arguments = NULL,
+    transformation_settings = FALSE
+  )
+
+  expect_equal(length(plot_data$density$x), 16)
+  expect_false(identical(plot_data$density$x, stored_x))
+  expect_null(attr(plot_data$density, "posterior_density_method"))
+})
+
 test_that("plot-model posterior data falls back to point priors for absent rows", {
   make_summary <- function(parameters, mean, lo, hi) {
     out <- data.frame(
@@ -1313,6 +1366,173 @@ test_that("factor posterior density curves keep continuous mass scale", {
   }, numeric(1))
 
   expect_equal(unname(areas), c(1, 1), tolerance = 0.08)
+})
+
+test_that("factor posterior plot data uses level-matched stored densities", {
+
+  n_samples <- 100
+  samples <- cbind(
+    `mu_alloc[random]`     = seq(-1, 0, length.out = n_samples),
+    `mu_alloc[systematic]` = seq(1, 2, length.out = n_samples)
+  )
+
+  prior <- prior_factor("normal", list(0, 1), contrast = "treatment")
+  attr(prior, "levels") <- 3
+  attr(prior, "level_names") <- c("alternate", "random", "systematic")
+
+  stored_random_x <- seq(-2, 1, length.out = 31)
+  stored_systematic_x <- seq(0, 3, length.out = 31)
+  attr(samples, "prior_list") <- prior
+  attr(samples, "models_ind") <- rep(1, nrow(samples))
+  attr(samples, "posterior_density") <- list(
+    random = list(
+      parameter = "random",
+      x         = stored_random_x,
+      y         = stats::dnorm(stored_random_x, mean = -.5, sd = .5),
+      method    = "iwmde"
+    ),
+    systematic = list(
+      parameter = "systematic",
+      x         = stored_systematic_x,
+      y         = stats::dnorm(stored_systematic_x, mean = 1.5, sd = .5),
+      method    = "iwmde"
+    )
+  )
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
+
+  plot_data <- BayesTools:::.plot_data_samples.factor(
+    samples                  = list(mu_alloc = samples),
+    parameter                = "mu_alloc",
+    n_points                 = 16,
+    transformation           = NULL,
+    transformation_arguments = NULL,
+    transformation_settings  = FALSE,
+    density_method           = "precomputed"
+  )
+
+  expect_equal(plot_data$density1$x, stored_random_x)
+  expect_equal(plot_data$density2$x, stored_systematic_x)
+  expect_equal(attr(plot_data$density1, "posterior_density_method"), "iwmde")
+  expect_equal(attr(plot_data$density2, "posterior_density_method"), "iwmde")
+})
+
+test_that("factor posterior plot data uses stored point masses once", {
+
+  n_samples <- 100
+  samples <- cbind(
+    `mu_alloc[random]`     = c(rep(0, 40), seq(-1, 0, length.out = 60)),
+    `mu_alloc[systematic]` = c(rep(0, 40), seq(1, 2, length.out = 60))
+  )
+
+  prior <- prior_factor("normal", list(0, 1), contrast = "treatment")
+  attr(prior, "levels") <- 3
+  attr(prior, "level_names") <- c("alternate", "random", "systematic")
+
+  stored_x <- seq(-2, 2, length.out = 31)
+  attr(samples, "prior_list") <- list(
+    prior_factor("point", list(location = 0), contrast = "treatment"),
+    prior
+  )
+  attr(samples, "models_ind") <- c(rep(1, 40), rep(2, 60))
+  attr(samples, "posterior_density") <- list(
+    random = list(
+      parameter    = "random",
+      x            = stored_x,
+      y            = stats::dnorm(stored_x),
+      point_masses = data.frame(x = 0, mass = .25),
+      method       = "iwmde"
+    ),
+    systematic = list(
+      parameter    = "systematic",
+      x            = stored_x,
+      y            = stats::dnorm(stored_x),
+      point_masses = data.frame(x = 0, mass = .25),
+      method       = "iwmde"
+    )
+  )
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
+
+  plot_data <- BayesTools:::.plot_data_samples.factor(
+    samples                  = list(mu_alloc = samples),
+    parameter                = "mu_alloc",
+    n_points                 = 16,
+    transformation           = NULL,
+    transformation_arguments = NULL,
+    transformation_settings  = FALSE,
+    density_method           = "precomputed"
+  )
+
+  point_entries <- plot_data[vapply(plot_data, inherits, logical(1), what = "density.prior.point")]
+
+  expect_false(any(grepl("^points", names(plot_data))))
+  expect_equal(length(point_entries), 2L)
+  expect_equal(
+    unname(vapply(point_entries, function(point) point[["y"]], numeric(1))),
+    c(.25, .25)
+  )
+})
+
+test_that("factor posterior plot data matches interaction cell aliases", {
+
+  n_samples <- 80
+  samples <- cbind(
+    `mu_a[A]__xXx__b[B]` = seq(-1, 0, length.out = n_samples),
+    `mu_a[C]__xXx__b[D]` = seq(1, 2, length.out = n_samples)
+  )
+
+  prior <- prior_factor("normal", list(0, 1), contrast = "independent")
+  attr(prior, "levels") <- 2
+  attr(prior, "level_names") <- list(a = c("A", "C"), b = c("B", "D"))
+  attr(prior, "factor_cell_names") <- c("A, B", "C, D")
+
+  stored_ab_x <- seq(-2, 1, length.out = 31)
+  stored_cd_x <- seq(0, 3, length.out = 31)
+  attr(samples, "prior_list") <- prior
+  attr(samples, "models_ind") <- rep(1, nrow(samples))
+  attr(samples, "level_names") <- attr(prior, "level_names")
+  attr(samples, "factor_cell_names") <- attr(prior, "factor_cell_names")
+  attr(samples, "posterior_density") <- list(
+    "A, B" = list(
+      parameter = "A, B",
+      x         = stored_ab_x,
+      y         = stats::dnorm(stored_ab_x, mean = -.5, sd = .5),
+      method    = "iwmde"
+    ),
+    "C, D" = list(
+      parameter = "C, D",
+      x         = stored_cd_x,
+      y         = stats::dnorm(stored_cd_x, mean = 1.5, sd = .5),
+      method    = "iwmde"
+    )
+  )
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
+
+  plot_data <- BayesTools:::.plot_data_samples.factor(
+    samples                  = list(mu_a__xXx__b = samples),
+    parameter                = "mu_a__xXx__b",
+    n_points                 = 16,
+    transformation           = NULL,
+    transformation_arguments = NULL,
+    transformation_settings  = FALSE,
+    density_method           = "precomputed"
+  )
+
+  expect_equal(plot_data$density1$x, stored_ab_x)
+  expect_equal(plot_data$density2$x, stored_cd_x)
+  expect_equal(attr(plot_data$density1, "posterior_density_method"), "iwmde")
+  expect_equal(attr(plot_data$density2, "posterior_density_method"), "iwmde")
+})
+
+test_that("density_method is named-only on exported plot APIs", {
+
+  expect_gt(
+    match("density_method", names(formals(plot_posterior))),
+    match("...", names(formals(plot_posterior)))
+  )
+  expect_gt(
+    match("density_method", names(formals(plot_marginal))),
+    match("...", names(formals(plot_marginal)))
+  )
 })
 
 test_that("factor posterior plot data aggregates duplicate point-mass models", {
