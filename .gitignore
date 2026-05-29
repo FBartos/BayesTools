@@ -13,3 +13,4 @@ Rplots.pdf
 check/
 tests/vdiffr.Rout.fail
 tests/testthat/test-summary-tables-old.R
+.StatsVault/
