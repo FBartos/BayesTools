@@ -12,3 +12,4 @@ BayesTools.Rcheck
 Rplots.pdf
 check/
 tests/vdiffr.Rout.fail
+.StatsVault/
