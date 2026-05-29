@@ -1981,6 +1981,7 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
     attr(out, "parameters") <- selected_parameters
   }
   attr(out, "warnings") <- .subset_table_warnings(attr(x, "warnings"), selected_parameters, rownames(out))
+  out <- .subset_table_hypothesis_attributes(x, out)
 
   out
 }
@@ -2206,6 +2207,23 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
   warnings[keep]
 }
 
+.subset_table_hypothesis_attributes <- function(table, output){
+
+  if(!inherits(table, "BayesTools_hypothesis_BF")){
+    return(output)
+  }
+
+  raw_BF <- attr(table, "raw_BF")
+  if(!is.null(raw_BF) && length(raw_BF) == nrow(table)){
+    row_indices <- match(rownames(output), rownames(table))
+    if(!any(is.na(row_indices))){
+      attr(output, "raw_BF") <- raw_BF[row_indices]
+    }
+  }
+
+  output
+}
+
 .format_BF_column <- function(x){
 
   out <- format(round(x, digits = 3), nsmall = 3)
@@ -2369,8 +2387,9 @@ update.BayesTools_table <- function(object, title = NULL, footnotes = NULL, warn
     attr(object, "title") <- title
   }
 
-  if(any(attr(object, "type") == "inclusion_BF")){
-    for(BF_col in which(attr(object, "type") == "inclusion_BF")){
+  BF_types <- attr(object, "type") %in% c("BF", "inclusion_BF")
+  if(any(BF_types)){
+    for(BF_col in which(BF_types)){
       BF_values <- object[[BF_col]]
       raw_BF    <- as.numeric(BF_values)
       bound_operator <- .standardize_BF_bound_operator(attr(BF_values, "bound_operator"), length(BF_values))
@@ -2382,15 +2401,27 @@ update.BayesTools_table <- function(object, title = NULL, footnotes = NULL, warn
         bound_operator <- .invert_BF_bound_operator(bound_operator)
       }
       attr(raw_BF, "bound_operator") <- bound_operator
-      object[[BF_col]] <- format_BF(raw_BF, logBF = logBF, BF01 = BF01, inclusion = TRUE)
+      object[[BF_col]] <- format_BF(
+        raw_BF,
+        logBF     = logBF,
+        BF01      = BF01,
+        inclusion = identical(attr(object, "type")[BF_col], "inclusion_BF")
+      )
     }
   }
   if(any(attr(object, "type") == "BF_error")){
     BF_error_cols <- which(attr(object, "type") == "BF_error")
     if(length(BF_error_cols) == 1){
-      attr(object[[BF_error_cols]], "name") <- .BF_error_column_name(BF01)
+      BF_cols <- which(attr(object, "type") %in% c("BF", "inclusion_BF"))
+      if(length(BF_cols) == 1 && identical(attr(object, "type")[BF_cols], "BF")){
+        attr(object[[BF_error_cols]], "name") <- "error%(BF)"
+      }else{
+        attr(object[[BF_error_cols]], "name") <- .BF_error_column_name(BF01)
+      }
     }
   }
+  attr(object, "logBF") <- logBF
+  attr(object, "BF01")  <- BF01
 
   return(object)
 }
@@ -2405,6 +2436,7 @@ update.BayesTools_table <- function(object, title = NULL, footnotes = NULL, warn
       "prior"           = .center_priors(x),
       "string_left"     = .string_left(x),
       "string"          = x,
+      "hypothesis_label" = x,
       "estimate"        = format(round(x, digits = 3), nsmall = 3),
       "prior_prob"      = format(round(x, digits = 3), nsmall = 3),
       "post_prob"       = format(round(x, digits = 3), nsmall = 3),
@@ -2435,6 +2467,7 @@ update.BayesTools_table <- function(object, title = NULL, footnotes = NULL, warn
       "prior"           = .string_center(paste0("Prior ", x), values),
       "string_left"     = .string_left(x, values),
       "string"          = x,
+      "hypothesis_label" = paste0(x, ":"),
       "estimate"        = x,
       "probability"     = x,
       "prior_prob"      = "Prior prob.",
@@ -2503,7 +2536,7 @@ update.BayesTools_table <- function(object, title = NULL, footnotes = NULL, warn
 
 .check_table_types      <- function(x, name, allow_NULL = FALSE){
   check_char(x, name, allow_values = c(
-    "integer", "prior", "string_left", "string", "estimate",
+    "integer", "prior", "string_left", "string", "hypothesis_label", "estimate",
     "probability", "prior_prob", "post_prob",
     "marglik", "BF", "inclusion_BF", "BF_error", "n_models",
     "ESS", "R_hat", "MCMC_error", "MCMC_SD_error", "min_ESS", "max_R_hat", "max_MCMC_error", "max_MCMC_SD_error"),

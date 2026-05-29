@@ -406,6 +406,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           }
         }
 
+        attr(marginal_posterior_samples, "prior_density_context") <- prior_density_context
       }
 
       attr(marginal_posterior_samples, "formula_parameter") <- formula_parameter
@@ -598,6 +599,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         attr(marginal_posterior_samples, "prior_density") <- prior_density
       }
 
+      attr(marginal_posterior_samples, "prior_density_context") <- prior_density_context
     }
   }
 

@@ -814,6 +814,72 @@ test_that("Simple formula-based regression models fit correctly", {
   model_registry[["fit_formula_treatment"]] <<- result$registry_entry
   fit_formula_treatment <- result$fit
 
+  # Regression with positive treatment factor
+  formula_prior_list_treatment_positive <- list(
+    mu = list(
+      "intercept" = prior("normal", list(0, 5)),
+      "x_cont1"   = prior("normal", list(0, 1)),
+      "x_fac2t"   = prior_factor(
+        "normal",
+        parameters = list(0, 1),
+        truncation = list(0, Inf),
+        contrast   = "treatment"
+      )
+    )
+  )
+
+  fit_formula_treatment_positive <- JAGS_fit(
+    model_syntax = model_syntax_simple, data = data, prior_list = prior_list_simple,
+    formula_list = formula_list_treatment, formula_data_list = formula_data_list_treatment,
+    formula_prior_list = formula_prior_list_treatment_positive,
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 4)
+
+  marglik_formula_treatment_positive <- JAGS_bridgesampling(
+    fit_formula_treatment_positive, log_posterior = log_posterior_formula, data = data,
+    prior_list = prior_list_simple,
+    formula_list = formula_list_treatment, formula_data_list = formula_data_list_treatment,
+    formula_prior_list = formula_prior_list_treatment_positive)
+
+  result <- save_fit(fit_formula_treatment_positive, "fit_formula_treatment_positive",
+                     marglik = marglik_formula_treatment_positive,
+                     formulas = TRUE, factor_priors = TRUE, simple_priors = TRUE,
+                     note = "Regression with continuous predictor and positive-truncated 2-level treatment factor")
+  model_registry[["fit_formula_treatment_positive"]] <<- result$registry_entry
+  fit_formula_treatment_positive <- result$fit
+
+  # Regression with negative treatment factor
+  formula_prior_list_treatment_negative <- list(
+    mu = list(
+      "intercept" = prior("normal", list(0, 5)),
+      "x_cont1"   = prior("normal", list(0, 1)),
+      "x_fac2t"   = prior_factor(
+        "normal",
+        parameters = list(0, 1),
+        truncation = list(-Inf, 0),
+        contrast   = "treatment"
+      )
+    )
+  )
+
+  fit_formula_treatment_negative <- JAGS_fit(
+    model_syntax = model_syntax_simple, data = data, prior_list = prior_list_simple,
+    formula_list = formula_list_treatment, formula_data_list = formula_data_list_treatment,
+    formula_prior_list = formula_prior_list_treatment_negative,
+    chains = 2, adapt = 100, burnin = 150, sample = 500, seed = 5)
+
+  marglik_formula_treatment_negative <- JAGS_bridgesampling(
+    fit_formula_treatment_negative, log_posterior = log_posterior_formula, data = data,
+    prior_list = prior_list_simple,
+    formula_list = formula_list_treatment, formula_data_list = formula_data_list_treatment,
+    formula_prior_list = formula_prior_list_treatment_negative)
+
+  result <- save_fit(fit_formula_treatment_negative, "fit_formula_treatment_negative",
+                     marglik = marglik_formula_treatment_negative,
+                     formulas = TRUE, factor_priors = TRUE, simple_priors = TRUE,
+                     note = "Regression with continuous predictor and negative-truncated 2-level treatment factor")
+  model_registry[["fit_formula_treatment_negative"]] <<- result$registry_entry
+  fit_formula_treatment_negative <- result$fit
+
   # Regression with orthonormal factor
   formula_list_orthonormal <- list(mu = ~ x_cont1 + x_fac3o)
   formula_data_list_orthonormal <- list(mu = data_formula)

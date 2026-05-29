@@ -1,5 +1,5 @@
 setwd("C:/R-Packages/BayesTools")
-
+clean_cached_fits()
 test_files_dir <- file.path(tempdir(), "BayesTools_test_files")
 dir.create(test_files_dir, recursive = TRUE, showWarnings = FALSE)
 

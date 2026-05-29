@@ -8,6 +8,7 @@ bayestools_test_profile_contexts <- list(
     "distributions-weightfunctions",
     "factor-interaction-coefficients",
     "fixture-catalog-static",
+    "hypothesis-BF",
     "interpret",
     "JAGS-diagnostic-plot-data",
     "JAGS-formula-design-oracles",
@@ -34,6 +35,7 @@ bayestools_test_profile_contexts <- list(
   ),
   fixture = c(
     "fixture-integrity",
+    "hypothesis-BF-bridge",
     "JAGS-ensemble-tables",
     "JAGS-fit",
     "JAGS-formula-scale",
