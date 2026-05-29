@@ -13,7 +13,6 @@
 ^pkgdown$
 ^BayesTools.Rcheck$
 ^BayesTools_.*\.tar\.gz$
-^\.StatsVault($|/)
 ^src/Makevars$
 ^src/.*\.(dll|o|so)$
 ^tests/testthat/_snaps($|/)
@@ -24,3 +23,4 @@
 ^\.claude$
 ^dev$
 ^\.dev($|/)
+^\.StatsVault($|/)
