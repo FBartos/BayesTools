@@ -181,11 +181,9 @@ test_that("Savage_Dickey_BF uses prior density over normal posterior height", {
   expected <- BayesTools:::.prior_linear_density_height(prior_density, 0) /
     stats::dnorm(0, mean = mean(posterior), sd = stats::sd(posterior))
 
-  expect_equal(
-    Savage_Dickey_BF(posterior, null_hypothesis = 0, normal_approximation = TRUE, silent = TRUE),
-    expected,
-    tolerance = 1e-12
-  )
+  out <- Savage_Dickey_BF(posterior, null_hypothesis = 0, normal_approximation = TRUE, silent = TRUE)
+  expect_equal(as.numeric(out), expected, tolerance = 1e-12)
+  expect_equal(attr(out, "posterior_density_source"), "normal")
 })
 
 test_that("Savage_Dickey_BF uses stored posterior density when available", {
@@ -210,16 +208,175 @@ test_that("Savage_Dickey_BF uses stored posterior density when available", {
   expected <- BayesTools:::.prior_linear_density_height(prior_density, 0) /
     stats::approx(stored_x, stored_y, xout = 0)[["y"]]
 
-  expect_equal(
-    Savage_Dickey_BF(
-      posterior,
-      null_hypothesis      = 0,
-      normal_approximation = FALSE,
-      silent               = TRUE,
-      density_method       = "precomputed"
+  out <- Savage_Dickey_BF(
+    posterior,
+    null_hypothesis      = 0,
+    normal_approximation = FALSE,
+    silent               = TRUE,
+    density_method       = "precomputed"
+  )
+  expect_equal(as.numeric(out), expected, tolerance = 1e-12)
+  expect_equal(attr(out, "posterior_density_source"), "precomputed")
+})
+
+test_that("posterior density and ordinate constructors create reusable attributes", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(-3, 3, length.out = 301),
+    prior_density
+  )
+
+  ordinate <- posterior_ordinate_attribute(
+    value          = 0,
+    ordinate       = .5,
+    method         = "iwmde",
+    density_method = "IWMDE",
+    diagnostics    = list(BF_error_percent = 2.5),
+    parameter      = "theta"
+  )
+  attr(posterior, "posterior_ordinate") <- ordinate
+
+  out <- Savage_Dickey_BF(
+    posterior,
+    null_hypothesis = 0,
+    silent          = TRUE,
+    density_method  = "precomputed"
+  )
+  expect_equal(attr(out, "posterior_density_source"), "precomputed")
+  expect_equal(attr(out, "BF_error_percent"), 2.5)
+  expect_true(posterior_ordinate_has_value(ordinate, 0))
+  expect_true(posterior_ordinate_supports_bf(ordinate))
+  expect_false(posterior_ordinate_supports_bf(
+    ordinate,
+    validator = function(x) FALSE
+  ))
+
+  second <- posterior_ordinate_attribute(
+    value          = 1,
+    ordinate       = .25,
+    method         = "iwmde",
+    density_method = "IWMDE"
+  )
+  appended <- posterior_ordinate_append(ordinate, second)
+  expect_true(posterior_ordinate_has_value(appended, 0))
+  expect_true(posterior_ordinate_has_value(appended, 1))
+  expect_true(posterior_ordinate_supports_bf(
+    appended,
+    validator = function(x) !is.null(x[["diagnostics"]])
+  ))
+  expect_error(
+    posterior_ordinate_append(NULL, list(value = 0)),
+    "valid posterior ordinate"
+  )
+  expect_error(
+    posterior_ordinate_attribute(
+      value          = c(0, 0),
+      ordinate       = c(.5, .6),
+      method         = "iwmde",
+      density_method = "IWMDE"
     ),
-    expected,
-    tolerance = 1e-12
+    "unique"
+  )
+  expect_error(
+    posterior_ordinate_append(ordinate, ordinate),
+    "duplicate"
+  )
+  expect_error(
+    posterior_ordinate_attribute(
+      value          = 0,
+      ordinate       = .5,
+      method         = "iwmde",
+      density_method = "IWMDE",
+      x              = 0
+    ),
+    "reserved fields"
+  )
+
+  density <- posterior_density_attribute(
+    x              = seq(-2, 2, length.out = 201),
+    y              = stats::dnorm(seq(-2, 2, length.out = 201)),
+    method         = "iwmde",
+    density_method = "IWMDE",
+    point_masses   = data.frame(x = 0, mass = .01),
+    parameter      = "theta"
+  )
+  parsed_density <- BayesTools:::.posterior_density_from_attribute(density)
+  expect_equal(parsed_density[["method"]], "iwmde")
+  expect_equal(parsed_density[["point_masses"]][["mass"]], .01)
+  expect_error(
+    posterior_density_attribute(
+      x              = 0:1,
+      y              = c(1, 1),
+      method         = "iwmde",
+      density_method = "IWMDE",
+      density        = list(x = 0:1, y = c(1, 1))
+    ),
+    "reserved fields"
+  )
+})
+
+test_that("Savage_Dickey_BF validates scalar options and reports KDE fallback source", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    seq(-3, 3, length.out = 301),
+    prior_density
+  )
+
+  expect_error(
+    Savage_Dickey_BF(posterior, null_hypothesis = Inf, silent = TRUE),
+    "must be finite",
+    fixed = TRUE
+  )
+  expect_error(
+    Savage_Dickey_BF(posterior, null_hypothesis = NA_real_, silent = TRUE),
+    "cannot contain NA/NaN",
+    fixed = TRUE
+  )
+  expect_error(
+    Savage_Dickey_BF(posterior, normal_approximation = NA, silent = TRUE),
+    "cannot contain NA/NaN",
+    fixed = TRUE
+  )
+  expect_error(
+    Savage_Dickey_BF(posterior, silent = NA),
+    "cannot contain NA/NaN",
+    fixed = TRUE
+  )
+
+  attr(posterior, "posterior_density") <- list(
+    x      = seq(2, 3, length.out = 101),
+    y      = rep(1, 101),
+    method = "qCMDE"
+  )
+  out <- Savage_Dickey_BF(
+    posterior,
+    null_hypothesis      = 0,
+    normal_approximation = FALSE,
+    silent               = TRUE,
+    density_method       = "precomputed"
+  )
+
+  expect_equal(attr(out, "posterior_density_source"), "KDE")
+  expect_true(attr(out, "posterior_density_fallback"))
+  expect_match(
+    attr(out, "posterior_density_fallback_warnings"),
+    "Falling back to the kernel density estimate",
+    fixed = TRUE
+  )
+  expect_match(
+    attr(out, "warnings"),
+    "Falling back to the kernel density estimate",
+    fixed = TRUE
   )
 })
 
@@ -427,16 +584,14 @@ test_that("Savage_Dickey_BF ignores stored posterior density by default", {
   expected <- BayesTools:::.prior_linear_density_height(prior_density, 0) /
     BayesTools:::.Savage_Dickey_BF.kd(posterior, 0)
 
-  expect_equal(
-    Savage_Dickey_BF(
-      posterior,
-      null_hypothesis      = 0,
-      normal_approximation = FALSE,
-      silent               = TRUE
-    ),
-    expected,
-    tolerance = 1e-12
+  out <- Savage_Dickey_BF(
+    posterior,
+    null_hypothesis      = 0,
+    normal_approximation = FALSE,
+    silent               = TRUE
   )
+  expect_equal(as.numeric(out), expected, tolerance = 1e-12)
+  expect_equal(attr(out, "posterior_density_source"), "KDE")
 })
 
 test_that("Savage_Dickey_BF falls back when stored density misses the null", {
@@ -469,7 +624,9 @@ test_that("Savage_Dickey_BF falls back when stored density misses the null", {
   )
 
   attr(out, "warnings") <- NULL
-  expect_equal(out, expected, tolerance = 1e-12)
+  expect_equal(as.numeric(out), expected, tolerance = 1e-12)
+  expect_equal(attr(out, "posterior_density_source"), "KDE")
+  expect_true(attr(out, "posterior_density_fallback"))
   expect_true(is.finite(out))
 })
 
@@ -505,7 +662,9 @@ test_that("Savage_Dickey_BF falls back when stored density has zero null height"
   )
 
   attr(out, "warnings") <- NULL
-  expect_equal(out, expected, tolerance = 1e-12)
+  expect_equal(as.numeric(out), expected, tolerance = 1e-12)
+  expect_equal(attr(out, "posterior_density_source"), "KDE")
+  expect_true(attr(out, "posterior_density_fallback"))
   expect_true(is.finite(out))
 })
 
@@ -559,6 +718,38 @@ test_that("stored posterior density selection validates names and conditionals",
     conditional      = c("a", "b"),
     conditional_rule = "AND"
   ))
+  density[["condition_key"]] <- BayesTools:::.condition_event_key(c("a", "b"), "OR")
+  sources <- list(theta = density)
+  expect_equal(
+    BayesTools:::.posterior_density_from_sources(
+      sources          = list(sources),
+      aliases          = "theta",
+      conditional      = c("a", "b"),
+      conditional_rule = "OR",
+      condition_key    = BayesTools:::.condition_event_key(c("a", "b"), "OR")
+    )$method,
+    "iwmde"
+  )
+  expect_null(BayesTools:::.posterior_density_from_sources(
+    sources          = list(sources),
+    aliases          = "theta",
+    conditional      = c("a", "b"),
+    conditional_rule = "AND",
+    condition_key    = BayesTools:::.condition_event_key(c("a", "b"), "AND")
+  ))
+  alias_density <- density
+  alias_density[["condition_key"]] <- NULL
+  alias_density[["conditional"]] <- "phacking"
+  alias_density[["conditional_rule"]] <- "AND"
+  expect_equal(
+    BayesTools:::.posterior_density_from_sources(
+      sources          = list(list(theta = alias_density)),
+      aliases          = "theta",
+      conditional      = "alpha",
+      conditional_rule = "AND"
+    )$method,
+    "iwmde"
+  )
   expect_null(BayesTools:::.posterior_density_from_sources(
     sources = list(sources),
     aliases = "missing"
@@ -651,7 +842,8 @@ test_that("Savage_Dickey_BF uses top-level stored density for list posteriors", 
     density_method       = "precomputed"
   )
 
-  expect_equal(out[["level"]], expected, tolerance = 1e-12)
+  expect_equal(as.numeric(out[["level"]]), expected, tolerance = 1e-12)
+  expect_equal(attr(out[["level"]], "posterior_density_source"), "precomputed")
 
   attr(posterior_list, "posterior_density") <- NULL
   attr(posterior_list, "posterior_densities") <- list(
@@ -671,7 +863,8 @@ test_that("Savage_Dickey_BF uses top-level stored density for list posteriors", 
     density_method       = "precomputed"
   )
 
-  expect_equal(out[["level"]], expected, tolerance = 1e-12)
+  expect_equal(as.numeric(out[["level"]]), expected, tolerance = 1e-12)
+  expect_equal(attr(out[["level"]], "posterior_density_source"), "precomputed")
 })
 
 test_that("Savage_Dickey_BF respects child conditionals for top-level sources", {
@@ -973,7 +1166,7 @@ test_that("Savage_Dickey_BF replaces invalid child sources with valid top-level 
   expect_equal(as.numeric(out[["level"]]), expected, tolerance = 1e-12)
 })
 
-test_that("Savage_Dickey_BF warns for point mass and posterior-null clusters", {
+test_that("Savage_Dickey_BF errors for point mass and posterior-null clusters", {
 
   continuous_prior <- BayesTools:::.prior_linear_combination_density(
     prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
@@ -985,7 +1178,7 @@ test_that("Savage_Dickey_BF warns for point mass and posterior-null clusters", {
     continuous_prior
   )
 
-  expect_warning(
+  expect_error(
     Savage_Dickey_BF(posterior_cluster, null_hypothesis = 0, normal_approximation = TRUE),
     "posterior samples at the exact null hypothesis"
   )
@@ -996,7 +1189,7 @@ test_that("Savage_Dickey_BF warns for point mass and posterior-null clusters", {
     point_prior
   )
 
-  expect_warning(
+  expect_error(
     Savage_Dickey_BF(posterior_continuous, null_hypothesis = 0, normal_approximation = TRUE),
     "point mass in the prior"
   )
@@ -1011,7 +1204,7 @@ test_that("Savage_Dickey_BF warns for point mass and posterior-null clusters", {
     point_masses = list(location = 0, p = .2)
   )
 
-  expect_warning(
+  expect_error(
     Savage_Dickey_BF(
       posterior_with_stored_point,
       null_hypothesis = 0,
@@ -2128,11 +2321,14 @@ test_that("Marginal distribution prior and posterior functions work", {
                "Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.")
 
   # simple factor
-  BF.marg_post_x_fac2t <- suppressWarnings(Savage_Dickey_BF(marg_post_simple_x_fac2t))
-  expect_equal(BF.marg_post_x_fac2t, list("A" = 0, "B" = 0.0009), tolerance = 1e-3, ignore_attr = TRUE)
-  expect_equal(attr(BF.marg_post_x_fac2t[["A"]], "warnings"),
-               c("There is a considerable cluster of posterior samples at the exact null hypothesis values. The Savage-Dickey density ratio is likely to be invalid.",
-                 "There is a considerable point mass in the prior at the exact null hypothesis value. The Savage-Dickey density ratio is likely to be invalid."))
+  expect_error(
+    Savage_Dickey_BF(marg_post_simple_x_fac2t),
+    "exact null hypothesis value|point mass in the prior"
+  )
+  marg_post_simple_x_fac2t_B <- marg_post_simple_x_fac2t[["B"]]
+  class(marg_post_simple_x_fac2t_B) <- c(class(marg_post_simple_x_fac2t_B), "marginal_posterior")
+  BF.marg_post_x_fac2t_B <- suppressWarnings(Savage_Dickey_BF(marg_post_simple_x_fac2t_B))
+  expect_equal(BF.marg_post_x_fac2t_B, 0.0009, tolerance = 1e-3, ignore_attr = TRUE)
 
 
   BF.marg_post_x_fac3md <- Savage_Dickey_BF(marg_post_x_fac3md, silent = TRUE)

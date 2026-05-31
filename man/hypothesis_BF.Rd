@@ -12,7 +12,7 @@ hypothesis_BF(
   logBF = FALSE,
   BF01 = FALSE,
   seed = NULL,
-  density_method = c("KDE", "precomputed"),
+  density_method = c("KDE", "normal", "precomputed"),
   columns = "default",
   ...
 )
@@ -36,9 +36,10 @@ hypothesis_BF(
 \item{seed}{optional seed used only by downstream helpers that sample.}
 
 \item{density_method}{posterior density source for point-null tests.
-\code{"KDE"} uses kernel density estimates. \code{"precomputed"} uses valid
-\code{posterior_ordinate} or \code{posterior_density} attributes before
-falling back to KDE.}
+\code{"KDE"} uses kernel density estimates. \code{"normal"} uses a normal
+approximation to the posterior density at the null. \code{"precomputed"}
+uses valid \code{posterior_ordinate} or \code{posterior_density} attributes
+before falling back to KDE.}
 
 \item{columns}{output columns. \code{"default"} returns \code{Alternative},
 \code{Null}, \code{BF}, and \code{BF_error}. \code{"all"} also returns

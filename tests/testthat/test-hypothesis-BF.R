@@ -87,6 +87,148 @@ test_that("hypothesis_BF computes point-null Savage-Dickey from numeric draws", 
 })
 
 
+test_that("hypothesis_BF routes normal point-null density requests", {
+
+  set.seed(11)
+  prior_density <- .hypothesis_prior_density_for_test()
+  posterior <- .hypothesis_marginal_posterior_for_test(
+    stats::rnorm(8000, mean = 0.35, sd = 1.15),
+    prior_density
+  )
+
+  out <- hypothesis_BF(
+    posterior      = posterior,
+    hypothesis     = "theta = 0",
+    parameter      = "theta",
+    density_method = "normal",
+    columns        = "all"
+  )
+  expected <- Savage_Dickey_BF(
+    posterior,
+    null_hypothesis      = 0,
+    normal_approximation = TRUE,
+    silent               = TRUE
+  )
+
+  expect_equal(attr(out, "raw_BF"), as.numeric(expected), tolerance = 1e-12)
+  expect_equal(out[["method"]], "Savage-Dickey (normal)")
+})
+
+
+test_that("hypothesis_BF applies normal point-null routing to list levels", {
+
+  set.seed(12)
+  prior_density <- .hypothesis_prior_density_for_test()
+  level_a <- .hypothesis_marginal_posterior_for_test(
+    stats::rnorm(5000, mean = 0.2, sd = 1.1),
+    prior_density
+  )
+  level_b <- .hypothesis_marginal_posterior_for_test(
+    stats::rnorm(5000, mean = -0.2, sd = 0.9),
+    prior_density
+  )
+  posterior <- list(a = level_a, b = level_b)
+  class(posterior) <- c("marginal_posterior.factor", "marginal_posterior", "list")
+
+  explicit <- hypothesis_BF(
+    posterior      = posterior,
+    hypothesis     = "theta[ a ] = 0",
+    parameter      = "theta",
+    density_method = "normal",
+    columns        = "all"
+  )
+  expected <- Savage_Dickey_BF(
+    level_a,
+    null_hypothesis      = 0,
+    normal_approximation = TRUE,
+    silent               = TRUE
+  )
+
+  expect_equal(attr(explicit, "raw_BF"), as.numeric(expected), tolerance = 1e-12)
+  expect_equal(explicit[["method"]], "Savage-Dickey (normal)")
+
+  expanded <- hypothesis_BF(
+    posterior      = posterior,
+    hypothesis     = "theta = 0",
+    parameter      = "theta",
+    density_method = "normal",
+    columns        = "all"
+  )
+
+  expect_equal(nrow(expanded), 2L)
+  expect_equal(expanded[["method"]], rep("Savage-Dickey (normal)", 2))
+})
+
+
+test_that("hypothesis_BF normal compound point expressions do not use KDE", {
+
+  set.seed(13)
+  prior     <- stats::rnorm(7000, mean = 0, sd = 1)
+  posterior <- stats::rnorm(7000, mean = 0.3, sd = 1.2)
+
+  out <- hypothesis_BF(
+    posterior      = posterior,
+    prior          = prior,
+    hypothesis     = "theta + 0 = 0",
+    parameter      = "theta",
+    density_method = "normal",
+    columns        = "all"
+  )
+
+  expected_prior <- stats::dnorm(0, mean = mean(prior), sd = stats::sd(prior))
+  expected_posterior <- stats::dnorm(
+    0,
+    mean = mean(posterior),
+    sd   = stats::sd(posterior)
+  )
+
+  expect_equal(attr(out, "raw_BF"), expected_prior / expected_posterior)
+  expect_equal(out[["prior"]], expected_prior)
+  expect_equal(out[["posterior"]], expected_posterior)
+  expect_equal(out[["method"]], "Savage-Dickey (normal)")
+  expect_false(identical(out[["method"]], "kernel Savage-Dickey"))
+})
+
+
+test_that("hypothesis parser helpers expose point and level references", {
+
+  parsed <- hypothesis_parse_point_reference(c(
+    "theta[ a ] = 0",
+    "theta + 0 != 1",
+    "theta == 0 VS theta > -1"
+  ))
+
+  expect_equal(parsed[["symbol"]][1], "theta[a]")
+  expect_equal(parsed[["parameter"]][1], "theta")
+  expect_equal(parsed[["level"]][1], "a")
+  expect_true(parsed[["direct"]][1])
+  expect_false(parsed[["direct"]][2])
+  expect_equal(parsed[["operator"]][3], "=")
+
+  expect_error(
+    hypothesis_parse_point_reference("theta + 0 = 0", allow_compound = FALSE),
+    "not a direct"
+  )
+  expect_error(
+    hypothesis_parse_point_reference("theta = other"),
+    "numeric value"
+  )
+
+  refs <- hypothesis_parse_level_reference(c("theta[ a ]", "theta"))
+  expect_equal(refs[["symbol"]][1], "theta[a]")
+  expect_equal(refs[["parameter"]][1], "theta")
+  expect_equal(refs[["level"]][1], "a")
+  expect_true(refs[["direct"]][1])
+  expect_false(refs[["direct"]][2])
+  expect_equal(hypothesis_normalize_level_references("theta[ a ] = 0"),
+               "`theta[a]` = 0")
+
+  parsed_vs_level <- hypothesis_parse_point_reference("theta[a vs b] = 0")
+  expect_equal(parsed_vs_level[["symbol"]], "theta[a vs b]")
+  expect_equal(parsed_vs_level[["level"]], "a vs b")
+})
+
+
 test_that("hypothesis_BF returns compact BayesTools table by default", {
 
   set.seed(101)
@@ -469,6 +611,65 @@ test_that("hypothesis_BF rejects conditional level comparisons with different co
 })
 
 
+test_that("hypothesis_BF treats same conditional labels with AND and OR as different events", {
+
+  prior_list <- list(
+    theta = prior_spike_and_slab(
+      prior("normal", list(mean = 0, sd = 1)),
+      prior_inclusion = prior("point", list(location = 0.5))
+    ),
+    phi = prior_spike_and_slab(
+      prior("normal", list(mean = 0, sd = 1)),
+      prior_inclusion = prior("point", list(location = 0.5))
+    )
+  )
+  and_event <- BayesTools:::.condition_event(
+    prior_list       = prior_list,
+    conditional      = c("theta", "phi"),
+    conditional_rule = "AND"
+  )
+  or_event <- BayesTools:::.condition_event(
+    prior_list       = prior_list,
+    conditional      = c("theta", "phi"),
+    conditional_rule = "OR"
+  )
+  posterior <- list(
+    and = structure(
+      c(rep(1, 80), rep(-1, 20)),
+      class                    = c("marginal_posterior.simple", "numeric"),
+      linear_weights           = c(theta = 1, phi = 0),
+      effective_conditional    = c("theta", "phi"),
+      effective_conditional_rule = "AND",
+      condition_key            = and_event[["condition_key"]],
+      resolved_condition_event = and_event
+    ),
+    or = structure(
+      rep(0, 100),
+      class                    = c("marginal_posterior.simple", "numeric"),
+      linear_weights           = c(theta = 0, phi = 1),
+      effective_conditional    = c("theta", "phi"),
+      effective_conditional_rule = "OR",
+      condition_key            = or_event[["condition_key"]],
+      resolved_condition_event = or_event
+    )
+  )
+  class(posterior) <- c("list", "marginal_posterior.factor", "marginal_posterior")
+  attr(posterior, "parameter") <- "mu_alloc"
+
+  expect_false(identical(
+    attr(posterior[["and"]], "resolved_condition_event"),
+    attr(posterior[["or"]], "resolved_condition_event")
+  ))
+  expect_error(
+    hypothesis_BF(
+      posterior  = posterior,
+      hypothesis = "mu_alloc[and] > mu_alloc[or]"
+    ),
+    "different conditional posterior subsets"
+  )
+})
+
+
 test_that("hypothesis_BF uses child precomputed density for explicit level point null", {
 
   prior_density <- .hypothesis_prior_density_for_test()
@@ -828,4 +1029,34 @@ test_that("hypothesis_BF reuses stored qCMDE density and BF error", {
   expect_equal(attr(out, "raw_BF"), expected, tolerance = 1e-12)
   expect_equal(out[["posterior"]], posterior_height, tolerance = 1e-12)
   expect_equal(as.numeric(out[["BF_error"]]), 4, tolerance = 1e-12)
+})
+
+
+test_that("hypothesis_BF warns when precomputed point density falls back to KDE", {
+
+  prior_density <- .hypothesis_prior_density_for_test()
+  posterior <- .hypothesis_marginal_posterior_for_test(
+    seq(-3, 3, length.out = 301),
+    prior_density
+  )
+  attr(posterior, "posterior_density") <- list(
+    x      = seq(2, 3, length.out = 101),
+    y      = rep(1, 101),
+    method = "qCMDE"
+  )
+
+  expect_warning(
+    out <- hypothesis_BF(
+      posterior      = posterior,
+      hypothesis     = "theta = 0",
+      parameter      = "theta",
+      columns        = "all",
+      density_method = "precomputed"
+    ),
+    "Falling back to the kernel density estimate",
+    fixed = TRUE
+  )
+
+  expect_equal(out[["method"]], "Savage-Dickey")
+  expect_null(attr(out, "warnings"))
 })

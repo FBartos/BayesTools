@@ -529,7 +529,7 @@
   }
 
   bounds <- .bt_random_effect_rho_bounds_metadata(correlation, random_term)
-  if(any(rho <= bounds[["lower"]] | rho >= bounds[["upper"]])){
+  if(any(.bt_random_effect_rho_outside_support(rho, bounds, structure))){
     return(NULL)
   }
 
@@ -607,6 +607,21 @@
     " are missing canonical 'random_term$correlation$bounds'.",
     call. = FALSE
   )
+}
+
+.bt_random_effect_rho_outside_support <- function(rho, bounds, structure){
+
+  lower_outside <- if(.bt_random_effect_rho_lower_inclusive(structure)){
+    rho < bounds[["lower"]]
+  }else{
+    rho <= bounds[["lower"]]
+  }
+
+  lower_outside | rho >= bounds[["upper"]]
+}
+
+.bt_random_effect_rho_lower_inclusive <- function(structure){
+  identical(structure, "car")
 }
 
 .bt_random_effect_structured_correlation_matrix <- function(structure, K, rho,

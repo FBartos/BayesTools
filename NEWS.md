@@ -21,6 +21,7 @@
 - `JAGS_check_convergence()` ignores model indicator variables by default and excludes generated auxiliary monitor parameters from convergence checks unless explicitly requested
 
 ### Fixes
+- expands nested random-effect grouping (e.g. `g1/g2`, `g1/g2/g3`) consistently inside covariance specials (`diag()`, `cs()`, `us()`, `ar1()`, ...) and `random()` / `re()` wrappers, matching the plain-bar `(... | g1/g2)` expansion; previously a nested grouping inside a wrapper was left unexpanded and silently fitted as the literal `g1/g2` expression (a wrong model with numeric grouping IDs) or raised a confusing error with factor grouping. An explicit block `name` on a nested grouping is applied as a per-level prefix (e.g. `random(1 | site/plot, name = "spatial")` yields blocks `spatial_plot_site` and `spatial_site`), and an un-expanded nested grouping reaching grouping evaluation is guarded against
 - improves validation and error messages for malformed random-effect formulas, unsupported covariance structures, conflicting variance-allocation specifications, missing random-effect priors, and unsupported new grouping levels in prediction
 - rejects non-diagonal random-effect covariance wrappers combined with `||` syntax consistently, including mixed formulas with multiple random-effect blocks
 - validates rebuilt bridge-sampling random-effect variance-allocation metadata against fitted designs and treats empty prior lists as zero log-prior contributions

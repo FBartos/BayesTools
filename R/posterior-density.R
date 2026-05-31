@@ -1,6 +1,405 @@
+#' @title Posterior density method helpers
+#'
+#' @description Helpers for normalizing public posterior-density method
+#' arguments and identifying methods that are expected to use precomputed
+#' posterior density or ordinate attributes.
+#'
+#' @param method density method.
+#' @param allowed character vector of allowed density methods.
+#' @param name argument name used in error messages.
+#'
+#' @return \code{posterior_density_method_match()} returns a scalar character
+#' value. \code{posterior_density_method_uses_precomputed()} returns a scalar
+#' logical value.
+#'
+#' @export
+posterior_density_method_match <- function(method,
+                                           allowed = c("KDE", "precomputed"),
+                                           name = "method"){
+
+  check_char(method, "method", check_length = 0, allow_NA = FALSE)
+  check_char(allowed, "allowed", check_length = 0, allow_NA = FALSE)
+  check_char(name, "name", check_length = 1, allow_NA = FALSE)
+
+  method <- tryCatch(match.arg(method, allowed), error = function(e) NULL)
+  if(is.null(method)){
+    stop(
+      "The '", name, "' argument must be one of '",
+      paste(allowed, collapse = "', '"),
+      "'.",
+      call. = FALSE
+    )
+  }
+
+  return(method)
+}
+
+#' @rdname posterior_density_method_match
+#' @export
+posterior_density_method_uses_precomputed <- function(method){
+
+  check_char(method, "method", check_length = 1, allow_NA = FALSE)
+
+  return(tolower(method) %in% c("precomputed", "qcmde", "iwmde"))
+}
+
 .posterior_density_method <- function(density_method){
 
-  return(match.arg(density_method, c("KDE", "precomputed")))
+  return(posterior_density_method_match(
+    density_method,
+    allowed = c("KDE", "precomputed")
+  ))
+}
+
+
+#' @title Posterior density and ordinate attributes
+#'
+#' @description Construct and inspect posterior-density and posterior-ordinate
+#' attributes in the schema consumed by \code{\link{Savage_Dickey_BF}} and
+#' \code{\link{hypothesis_BF}}.
+#'
+#' @details Additional metadata must be named and cannot replace structural
+#' schema fields. Posterior ordinate values are unique so a point-null lookup
+#' maps to at most one stored ordinate. When a validator is supplied to
+#' \code{posterior_ordinate_supports_bf()}, it is applied to matching ordinate
+#' entries rather than to the multi-ordinate container as a whole.
+#'
+#' @param x numeric density grid locations.
+#' @param y numeric density grid heights.
+#' @param method estimator label stored in the attribute.
+#' @param density_method public density method label stored in the attribute.
+#' @param diagnostics optional estimator diagnostics.
+#' @param point_masses optional point-mass table/list with \code{x} and
+#' \code{mass} entries.
+#' @param ... additional named metadata fields, for example \code{parameter},
+#' \code{conditional}, or \code{conditional_rule}.
+#'
+#' @return \code{posterior_density_attribute()} returns a list suitable for a
+#' \code{posterior_density} attribute.
+#'
+#' @export
+posterior_density_attribute <- function(x, y, method, density_method,
+                                        diagnostics = NULL,
+                                        point_masses = NULL, ...){
+
+  check_real(x, "x", check_length = 0, allow_NA = FALSE)
+  check_real(y, "y", check_length = 0, allow_NA = FALSE)
+  check_char(method, "method", check_length = 1, allow_NA = FALSE)
+  check_char(density_method, "density_method", check_length = 1,
+             allow_NA = FALSE)
+  if(length(x) != length(y)){
+    stop("'x' and 'y' must have the same length.", call. = FALSE)
+  }
+
+  metadata <- list(...)
+  metadata_names <- names(metadata)
+  if(length(metadata) > 0L &&
+     (is.null(metadata_names) || any(!nzchar(metadata_names)))){
+    stop("Additional posterior density metadata must be named.",
+         call. = FALSE)
+  }
+  reserved <- c(
+    "status", "x", "y", "method", "density_method", "diagnostics",
+    "point_masses", "density", "posterior_density", "posterior_densities",
+    "densities", "estimator"
+  )
+  if(any(metadata_names %in% reserved)){
+    stop("Additional posterior density metadata cannot replace reserved fields.",
+         call. = FALSE)
+  }
+
+  out <- c(list(
+    status         = "ok",
+    x              = x,
+    y              = y,
+    method         = method,
+    density_method = density_method,
+    diagnostics    = diagnostics,
+    point_masses   = point_masses
+  ), metadata)
+  class(out) <- c("BayesTools_posterior_density", "list")
+
+  if(is.null(.posterior_density_from_attribute(out))){
+    stop("Posterior density attribute must contain a valid positive density grid.",
+         call. = FALSE)
+  }
+
+  return(out)
+}
+
+
+#' @rdname posterior_density_attribute
+#' @param value numeric null-hypothesis value or values.
+#' @param ordinate numeric posterior ordinate height or heights.
+#'
+#' @return \code{posterior_ordinate_attribute()} returns a list suitable for a
+#' \code{posterior_ordinate} attribute.
+#'
+#' @export
+posterior_ordinate_attribute <- function(value, ordinate, method,
+                                         density_method,
+                                         diagnostics = NULL, ...){
+
+  check_real(value, "value", check_length = 0, allow_NA = FALSE)
+  check_real(ordinate, "ordinate", check_length = 0, allow_NA = FALSE)
+  check_char(method, "method", check_length = 1, allow_NA = FALSE)
+  check_char(density_method, "density_method", check_length = 1,
+             allow_NA = FALSE)
+  if(length(value) != length(ordinate)){
+    stop("'value' and 'ordinate' must have the same length.", call. = FALSE)
+  }
+  if(any(!is.finite(value)) || any(!is.finite(ordinate)) ||
+     any(ordinate <= 0)){
+    stop("Posterior ordinates must be finite and positive.", call. = FALSE)
+  }
+  if(length(.posterior_ordinate_duplicated_values(value)) > 0L){
+    stop("Posterior ordinate values must be unique.", call. = FALSE)
+  }
+
+  metadata <- list(...)
+  metadata_names <- names(metadata)
+  if(length(metadata) > 0L &&
+     (is.null(metadata_names) || any(!nzchar(metadata_names)))){
+    stop("Additional posterior ordinate metadata must be named.",
+         call. = FALSE)
+  }
+  reserved <- c(
+    "status", "value", "ordinate", "method", "density_method",
+    "diagnostics", "x", "y", "null_hypothesis", "height",
+    "posterior_height", "ordinates", "posterior_ordinate",
+    "posterior_ordinates", "estimator"
+  )
+  if(any(metadata_names %in% reserved)){
+    stop("Additional posterior ordinate metadata cannot replace reserved fields.",
+         call. = FALSE)
+  }
+
+  out <- c(list(
+    status         = "ok",
+    value          = value,
+    ordinate       = ordinate,
+    method         = method,
+    density_method = density_method,
+    diagnostics    = diagnostics
+  ), metadata)
+  class(out) <- c("BayesTools_posterior_ordinate", "list")
+
+  if(!.posterior_ordinate_has_data(out)){
+    stop("Posterior ordinate attribute must contain valid value and ordinate fields.",
+         call. = FALSE)
+  }
+
+  return(out)
+}
+
+
+#' @rdname posterior_density_attribute
+#' @param existing existing posterior-ordinate attribute or \code{NULL}.
+#' @param ordinate posterior-ordinate attribute to append.
+#'
+#' @return \code{posterior_ordinate_append()} returns a posterior-ordinate
+#' attribute container that may hold multiple ordinates.
+#'
+#' @export
+posterior_ordinate_append <- function(existing, ordinate){
+
+  if(is.null(existing)){
+    if(is.null(ordinate)){
+      return(NULL)
+    }
+    if(!.posterior_ordinate_has_data(ordinate)){
+      stop("'ordinate' is not a valid posterior ordinate attribute.",
+           call. = FALSE)
+    }
+    if(length(.posterior_ordinate_duplicated_values(
+      .posterior_ordinate_value_candidates(ordinate)
+    )) > 0L){
+      stop("Posterior ordinate attributes cannot contain duplicate values.",
+           call. = FALSE)
+    }
+    return(ordinate)
+  }
+  if(is.null(ordinate)){
+    if(!.posterior_ordinate_has_data(existing)){
+      stop("'existing' is not a valid posterior ordinate attribute.",
+           call. = FALSE)
+    }
+    if(length(.posterior_ordinate_duplicated_values(
+      .posterior_ordinate_value_candidates(existing)
+    )) > 0L){
+      stop("Posterior ordinate attributes cannot contain duplicate values.",
+           call. = FALSE)
+    }
+    return(existing)
+  }
+  if(!.posterior_ordinate_has_data(existing)){
+    stop("'existing' is not a valid posterior ordinate attribute.",
+         call. = FALSE)
+  }
+  if(!.posterior_ordinate_has_data(ordinate)){
+    stop("'ordinate' is not a valid posterior ordinate attribute.",
+         call. = FALSE)
+  }
+  if(length(.posterior_ordinate_duplicated_values(c(
+    .posterior_ordinate_value_candidates(existing),
+    .posterior_ordinate_value_candidates(ordinate)
+  ))) > 0L){
+    stop("Posterior ordinate attributes cannot contain duplicate values.",
+         call. = FALSE)
+  }
+
+  out <- list(
+    status    = "ok",
+    ordinates = c(
+      .posterior_ordinate_entries(existing),
+      .posterior_ordinate_entries(ordinate)
+    )
+  )
+  class(out) <- c("BayesTools_posterior_ordinates", "list")
+
+  return(out)
+}
+
+
+#' @rdname posterior_density_attribute
+#' @param validator optional function for stricter method-specific BF support
+#' checks. It is called only after the generic BayesTools schema is valid.
+#'
+#' @return \code{posterior_ordinate_supports_bf()} and
+#' \code{posterior_ordinate_has_value()} return scalar logical values.
+#'
+#' @export
+posterior_ordinate_supports_bf <- function(ordinate, validator = NULL){
+
+  if(is.null(ordinate) || !.posterior_ordinate_has_data(ordinate)){
+    return(FALSE)
+  }
+  if(!is.null(validator)){
+    if(!is.function(validator)){
+      stop("'validator' must be a function.", call. = FALSE)
+    }
+  }
+
+  for(entry in .posterior_ordinate_entries(ordinate)){
+    values <- .posterior_ordinate_value_candidates(entry)
+    if(length(values) == 0L){
+      next
+    }
+    supported <- vapply(
+      values,
+      function(value) {
+        parsed <- .posterior_ordinate_from_attribute(entry, value)
+        if(is.null(parsed)){
+          return(FALSE)
+        }
+        if(is.null(validator)){
+          return(TRUE)
+        }
+        isTRUE(validator(entry)) || isTRUE(validator(parsed))
+      },
+      logical(1)
+    )
+    if(any(supported)){
+      return(TRUE)
+    }
+  }
+
+  return(FALSE)
+}
+
+
+#' @rdname posterior_density_attribute
+#' @export
+posterior_ordinate_has_value <- function(ordinate, value){
+
+  check_real(value, "value", check_length = 1, allow_NA = FALSE)
+  if(!is.finite(value)){
+    stop("'value' must be finite.", call. = FALSE)
+  }
+
+  return(!is.null(.posterior_ordinate_from_attribute(ordinate, value)))
+}
+
+
+.posterior_ordinate_entries <- function(ordinate){
+
+  if(is.list(ordinate) &&
+     !is.data.frame(ordinate[["ordinates"]]) &&
+     is.list(ordinate[["ordinates"]]) &&
+     is.null(ordinate[["ordinates"]][["x"]]) &&
+     is.null(ordinate[["ordinates"]][["value"]]) &&
+     is.null(ordinate[["ordinates"]][["null_hypothesis"]])){
+    return(ordinate[["ordinates"]])
+  }
+
+  return(list(ordinate))
+}
+
+
+.posterior_ordinate_value_candidates <- function(ordinate){
+
+  values <- numeric()
+  if(is.null(ordinate)){
+    return(values)
+  }
+  if(is.data.frame(ordinate)){
+    value_name <- intersect(c("x", "value", "null_hypothesis"),
+                            colnames(ordinate))[1L]
+    if(!is.na(value_name)){
+      values <- c(values, ordinate[[value_name]])
+    }
+    values <- suppressWarnings(as.numeric(values))
+    values <- values[is.finite(values)]
+    return(unique(values))
+  }
+  if(!is.list(ordinate)){
+    return(values)
+  }
+  for(value_name in c("x", "value", "null_hypothesis")){
+    if(!is.null(ordinate[[value_name]])){
+      values <- c(values, ordinate[[value_name]])
+    }
+  }
+  for(container_name in c("ordinate", "ordinates")){
+    if(!is.null(ordinate[[container_name]]) &&
+       (is.list(ordinate[[container_name]]) ||
+        is.data.frame(ordinate[[container_name]]))){
+      if(is.list(ordinate[[container_name]]) &&
+         !is.data.frame(ordinate[[container_name]]) &&
+         is.null(ordinate[[container_name]][["x"]]) &&
+         is.null(ordinate[[container_name]][["value"]]) &&
+         is.null(ordinate[[container_name]][["null_hypothesis"]])){
+        for(entry in ordinate[[container_name]]){
+          values <- c(values, .posterior_ordinate_value_candidates(entry))
+        }
+      }else{
+        values <- c(
+          values,
+          .posterior_ordinate_value_candidates(ordinate[[container_name]])
+        )
+      }
+    }
+  }
+
+  values <- suppressWarnings(as.numeric(values))
+  values <- values[is.finite(values)]
+
+  return(unique(values))
+}
+
+.posterior_ordinate_duplicated_values <- function(values){
+
+  values <- suppressWarnings(as.numeric(values))
+  values <- sort(values[is.finite(values)])
+  if(length(values) <= 1L){
+    return(numeric())
+  }
+
+  tolerance <- sqrt(.Machine$double.eps) *
+    pmax(1, abs(values[-1L]), abs(values[-length(values)]))
+  duplicated <- abs(diff(values)) <= tolerance
+
+  return(unique(values[-1L][duplicated]))
 }
 
 .posterior_density_for_method <- function(posterior_density, density_method){
@@ -84,6 +483,19 @@
   return(rule[[1]])
 }
 
+.posterior_density_condition_key_metadata <- function(posterior_density){
+
+  key <- .posterior_density_metadata_values(
+    posterior_density,
+    c("condition_key", "conditional_key")
+  )
+  if(length(key) == 0L){
+    return(NULL)
+  }
+
+  key[[1]]
+}
+
 .posterior_density_normalize_condition <- function(conditional){
 
   conditional <- unlist(conditional, use.names = FALSE)
@@ -93,20 +505,27 @@
   return(unique(conditional))
 }
 
-.posterior_density_condition_matches <- function(posterior_density, conditional, conditional_rule){
+.posterior_density_condition_matches <- function(posterior_density, conditional, conditional_rule,
+                                                 condition_key = NULL){
 
   requested_conditional <- .posterior_density_normalize_condition(conditional)
   density_conditional   <- .posterior_density_normalize_condition(
     .posterior_density_conditional_metadata(posterior_density)
   )
+  requested_key <- if(is.null(condition_key)){
+    .condition_event_key(requested_conditional, conditional_rule)
+  }else{
+    as.character(condition_key)
+  }
+  density_key <- .posterior_density_condition_key_metadata(posterior_density)
+  if(!is.null(density_key)){
+    return(identical(as.character(density_key), requested_key))
+  }
 
   if(length(requested_conditional) == 0L && length(density_conditional) == 0L){
     return(TRUE)
   }
   if(length(requested_conditional) == 0L || length(density_conditional) == 0L){
-    return(FALSE)
-  }
-  if(!setequal(requested_conditional, density_conditional)){
     return(FALSE)
   }
 
@@ -117,11 +536,17 @@
   if(!is.null(density_rule) && !identical(as.character(density_rule), as.character(conditional_rule))){
     return(FALSE)
   }
+  if(is.null(density_rule)){
+    density_rule <- conditional_rule
+  }
 
-  return(TRUE)
+  density_key <- .condition_event_key(density_conditional, density_rule)
+
+  identical(requested_key, density_key)
 }
 
-.posterior_density_candidate_matches <- function(posterior_density, aliases, conditional, conditional_rule, allow_unlabeled = FALSE){
+.posterior_density_candidate_matches <- function(posterior_density, aliases, conditional, conditional_rule,
+                                                 condition_key = NULL, allow_unlabeled = FALSE){
 
   if(is.null(.posterior_density_from_attribute(posterior_density))){
     return(FALSE)
@@ -136,11 +561,17 @@
     return(FALSE)
   }
 
-  return(.posterior_density_condition_matches(posterior_density, conditional, conditional_rule))
+  return(.posterior_density_condition_matches(
+    posterior_density,
+    conditional      = conditional,
+    conditional_rule = conditional_rule,
+    condition_key    = condition_key
+  ))
 }
 
 .posterior_ordinate_candidate_matches <- function(posterior_ordinate, aliases, conditional, conditional_rule,
-                                                  allow_unlabeled = FALSE, null_hypothesis = NULL){
+                                                  condition_key = NULL, allow_unlabeled = FALSE,
+                                                  null_hypothesis = NULL){
 
   if(!.posterior_ordinate_has_data(posterior_ordinate)){
     return(FALSE)
@@ -159,7 +590,12 @@
     return(FALSE)
   }
 
-  return(.posterior_density_condition_matches(posterior_ordinate, conditional, conditional_rule))
+  return(.posterior_density_condition_matches(
+    posterior_ordinate,
+    conditional      = conditional,
+    conditional_rule = conditional_rule,
+    condition_key    = condition_key
+  ))
 }
 
 .posterior_ordinate_has_data <- function(posterior_ordinate){
@@ -213,7 +649,7 @@
 }
 
 .posterior_density_from_sources <- function(sources, aliases, conditional = NULL, conditional_rule = "AND",
-                                            allow_unlabeled = FALSE){
+                                            condition_key = NULL, allow_unlabeled = FALSE){
 
   aliases <- .posterior_density_aliases(aliases)
   if(length(aliases) == 0L){
@@ -226,6 +662,7 @@
       aliases            = aliases,
       conditional        = conditional,
       conditional_rule   = conditional_rule,
+      condition_key      = condition_key,
       allow_unlabeled    = allow_unlabeled,
       selected_by_name   = FALSE,
       depth              = 0L
@@ -239,7 +676,7 @@
 }
 
 .posterior_density_from_source <- function(source, aliases, conditional, conditional_rule,
-                                           allow_unlabeled, selected_by_name, depth){
+                                           condition_key, allow_unlabeled, selected_by_name, depth){
 
   if(is.null(source) || depth > 4L){
     return(NULL)
@@ -250,6 +687,7 @@
     aliases          = aliases,
     conditional      = conditional,
     conditional_rule = conditional_rule,
+    condition_key    = condition_key,
     allow_unlabeled  = allow_unlabeled || selected_by_name
   )){
     return(source)
@@ -263,12 +701,13 @@
   for(container_name in container_names[container_names %in% names(source)]){
     out <- .posterior_density_from_source(
       source             = source[[container_name]],
-      aliases            = aliases,
-      conditional        = conditional,
-      conditional_rule   = conditional_rule,
-      allow_unlabeled    = allow_unlabeled,
-      selected_by_name   = selected_by_name,
-      depth              = depth + 1L
+        aliases            = aliases,
+        conditional        = conditional,
+        conditional_rule   = conditional_rule,
+        condition_key      = condition_key,
+        allow_unlabeled    = allow_unlabeled,
+        selected_by_name   = selected_by_name,
+        depth              = depth + 1L
     )
     if(!is.null(out)){
       return(out)
@@ -283,6 +722,7 @@
         aliases            = aliases,
         conditional        = conditional,
         conditional_rule   = conditional_rule,
+        condition_key      = condition_key,
         allow_unlabeled    = TRUE,
         selected_by_name   = TRUE,
         depth              = depth + 1L
@@ -299,6 +739,7 @@
       aliases            = aliases,
       conditional        = conditional,
       conditional_rule   = conditional_rule,
+      condition_key      = condition_key,
       allow_unlabeled    = allow_unlabeled,
       selected_by_name   = selected_by_name,
       depth              = depth + 1L
@@ -331,7 +772,7 @@
 }
 
 .posterior_density_attach <- function(samples, sources, parameter, conditional = NULL, conditional_rule = "AND",
-                                      allow_unlabeled = FALSE){
+                                      condition_key = NULL, allow_unlabeled = FALSE){
 
   if(length(sources) == 0L){
     return(samples)
@@ -374,6 +815,7 @@
         aliases            = density_aliases[[density_name]],
         conditional        = conditional,
         conditional_rule   = conditional_rule,
+        condition_key      = condition_key,
         allow_unlabeled    = allow_unlabeled && length(density_aliases) == 1L
       )
       if(!is.null(density)){
@@ -393,6 +835,7 @@
     aliases            = .posterior_density_aliases(parameter, attr(samples, "parameter", exact = TRUE)),
     conditional        = conditional,
     conditional_rule   = conditional_rule,
+    condition_key      = condition_key,
     allow_unlabeled    = allow_unlabeled
   )
   if(!is.null(density)){
@@ -422,7 +865,8 @@
 }
 
 .posterior_ordinate_from_sources <- function(sources, aliases, conditional = NULL, conditional_rule = "AND",
-                                             allow_unlabeled = FALSE, null_hypothesis = NULL){
+                                             condition_key = NULL, allow_unlabeled = FALSE,
+                                             null_hypothesis = NULL){
 
   aliases <- .posterior_density_aliases(aliases)
   if(length(aliases) == 0L){
@@ -437,6 +881,7 @@
         aliases            = aliases,
         conditional        = conditional,
         conditional_rule   = conditional_rule,
+        condition_key      = condition_key,
         allow_unlabeled    = allow_unlabeled,
         selected_by_name   = FALSE,
         depth              = 0L
@@ -459,6 +904,7 @@
       aliases            = aliases,
       conditional        = conditional,
       conditional_rule   = conditional_rule,
+      condition_key      = condition_key,
       allow_unlabeled    = allow_unlabeled,
       selected_by_name   = FALSE,
       depth              = 0L,
@@ -473,7 +919,8 @@
 }
 
 .posterior_ordinate_collect_from_source <- function(source, aliases, conditional, conditional_rule,
-                                                    allow_unlabeled, selected_by_name, depth){
+                                                    condition_key, allow_unlabeled,
+                                                    selected_by_name, depth){
 
   if(is.null(source) || depth > 4L){
     return(list())
@@ -485,6 +932,7 @@
     aliases          = aliases,
     conditional      = conditional,
     conditional_rule = conditional_rule,
+    condition_key    = condition_key,
     allow_unlabeled  = allow_unlabeled || selected_by_name
   )){
     out <- c(out, list(source))
@@ -498,12 +946,13 @@
   for(container_name in container_names[container_names %in% names(source)]){
     out <- c(out, .posterior_ordinate_collect_from_source(
       source             = source[[container_name]],
-      aliases            = aliases,
-      conditional        = conditional,
-      conditional_rule   = conditional_rule,
-      allow_unlabeled    = allow_unlabeled,
-      selected_by_name   = selected_by_name,
-      depth              = depth + 1L
+        aliases            = aliases,
+        conditional        = conditional,
+        conditional_rule   = conditional_rule,
+        condition_key      = condition_key,
+        allow_unlabeled    = allow_unlabeled,
+        selected_by_name   = selected_by_name,
+        depth              = depth + 1L
     ))
   }
 
@@ -517,6 +966,7 @@
           aliases            = aliases,
           conditional        = conditional,
           conditional_rule   = conditional_rule,
+          condition_key      = condition_key,
           allow_unlabeled    = TRUE,
           selected_by_name   = TRUE,
           depth              = depth + 1L
@@ -533,6 +983,7 @@
       aliases            = aliases,
       conditional        = conditional,
       conditional_rule   = conditional_rule,
+      condition_key      = condition_key,
       allow_unlabeled    = allow_unlabeled,
       selected_by_name   = selected_by_name,
       depth              = depth + 1L
@@ -556,7 +1007,7 @@
 }
 
 .posterior_ordinate_from_source <- function(source, aliases, conditional, conditional_rule,
-                                            allow_unlabeled, selected_by_name, depth,
+                                            condition_key, allow_unlabeled, selected_by_name, depth,
                                             null_hypothesis){
 
   if(is.null(source) || depth > 4L){
@@ -571,11 +1022,12 @@
   if(has_ordinate &&
      .posterior_ordinate_candidate_matches(
        source,
-       aliases          = aliases,
-       conditional      = conditional,
-       conditional_rule = conditional_rule,
-       allow_unlabeled  = allow_unlabeled || selected_by_name,
-       null_hypothesis  = null_hypothesis
+     aliases          = aliases,
+     conditional      = conditional,
+     conditional_rule = conditional_rule,
+     condition_key    = condition_key,
+     allow_unlabeled  = allow_unlabeled || selected_by_name,
+     null_hypothesis  = null_hypothesis
      )){
     return(source)
   }
@@ -588,12 +1040,13 @@
   for(container_name in container_names[container_names %in% names(source)]){
     out <- .posterior_ordinate_from_source(
       source             = source[[container_name]],
-      aliases            = aliases,
-      conditional        = conditional,
-      conditional_rule   = conditional_rule,
-      allow_unlabeled    = allow_unlabeled,
-      selected_by_name   = selected_by_name,
-      depth              = depth + 1L,
+        aliases            = aliases,
+        conditional        = conditional,
+        conditional_rule   = conditional_rule,
+        condition_key      = condition_key,
+        allow_unlabeled    = allow_unlabeled,
+        selected_by_name   = selected_by_name,
+        depth              = depth + 1L,
       null_hypothesis    = null_hypothesis
     )
     if(!is.null(out)){
@@ -609,6 +1062,7 @@
         aliases            = aliases,
         conditional        = conditional,
         conditional_rule   = conditional_rule,
+        condition_key      = condition_key,
         allow_unlabeled    = TRUE,
         selected_by_name   = TRUE,
         depth              = depth + 1L,
@@ -626,6 +1080,7 @@
       aliases            = aliases,
       conditional        = conditional,
       conditional_rule   = conditional_rule,
+      condition_key      = condition_key,
       allow_unlabeled    = allow_unlabeled,
       selected_by_name   = selected_by_name,
       depth              = depth + 1L,
@@ -640,7 +1095,7 @@
 }
 
 .posterior_ordinate_attach <- function(samples, sources, parameter, conditional = NULL, conditional_rule = "AND",
-                                       allow_unlabeled = FALSE){
+                                       condition_key = NULL, allow_unlabeled = FALSE){
 
   if(length(sources) == 0L){
     return(samples)
@@ -683,6 +1138,7 @@
         aliases            = ordinate_aliases[[ordinate_name]],
         conditional        = conditional,
         conditional_rule   = conditional_rule,
+        condition_key      = condition_key,
         allow_unlabeled    = allow_unlabeled && length(ordinate_aliases) == 1L
       )
       if(!is.null(ordinate)){
@@ -702,6 +1158,7 @@
     aliases            = .posterior_density_aliases(parameter, attr(samples, "parameter", exact = TRUE)),
     conditional        = conditional,
     conditional_rule   = conditional_rule,
+    condition_key      = condition_key,
     allow_unlabeled    = allow_unlabeled
   )
   if(!is.null(ordinate)){
@@ -716,6 +1173,14 @@
   out <- lapply(samples, function(x) {
     density <- attr(x, "posterior_density", exact = TRUE)
     if(is.null(.posterior_density_from_attribute(density))){
+      return(NULL)
+    }
+    if(!.posterior_density_condition_matches(
+      density,
+      conditional      = attr(x, "conditional", exact = TRUE),
+      conditional_rule = attr(x, "conditional_rule", exact = TRUE),
+      condition_key    = attr(x, "condition_key", exact = TRUE)
+    )){
       return(NULL)
     }
 
@@ -736,11 +1201,13 @@
       )
       conditional      <- attr(samples[[i]], "conditional", exact = TRUE)
       conditional_rule <- attr(samples[[i]], "conditional_rule", exact = TRUE)
+      condition_key    <- attr(samples[[i]], "condition_key", exact = TRUE)
       density <- .posterior_density_from_sources(
         sources          = top_sources,
         aliases          = aliases,
         conditional      = conditional,
         conditional_rule = conditional_rule,
+        condition_key    = condition_key,
         allow_unlabeled  = FALSE
       )
       if(is.null(out[[i]]) && !is.null(density)){
@@ -761,11 +1228,13 @@
           )
           conditional      <- attr(samples[[i]], "conditional", exact = TRUE)
           conditional_rule <- attr(samples[[i]], "conditional_rule", exact = TRUE)
+          condition_key    <- attr(samples[[i]], "condition_key", exact = TRUE)
           if(.posterior_density_candidate_matches(
             top_level[[i]],
             aliases          = aliases,
             conditional      = conditional,
             conditional_rule = conditional_rule,
+            condition_key    = condition_key,
             allow_unlabeled  = TRUE
           )){
             out[[i]] <- top_level[[i]]
@@ -800,6 +1269,14 @@
     }else if(is.null(.posterior_ordinate_from_attribute(ordinate, null_hypothesis))){
       return(NULL)
     }
+    if(!.posterior_density_condition_matches(
+      ordinate,
+      conditional      = attr(x, "conditional", exact = TRUE),
+      conditional_rule = attr(x, "conditional_rule", exact = TRUE),
+      condition_key    = attr(x, "condition_key", exact = TRUE)
+    )){
+      return(NULL)
+    }
 
     return(ordinate)
   })
@@ -818,11 +1295,13 @@
       )
       conditional      <- attr(samples[[i]], "conditional", exact = TRUE)
       conditional_rule <- attr(samples[[i]], "conditional_rule", exact = TRUE)
+      condition_key    <- attr(samples[[i]], "condition_key", exact = TRUE)
       ordinate <- .posterior_ordinate_from_sources(
         sources          = top_sources,
         aliases          = aliases,
         conditional      = conditional,
         conditional_rule = conditional_rule,
+        condition_key    = condition_key,
         allow_unlabeled  = FALSE,
         null_hypothesis  = null_hypothesis
       )
@@ -844,11 +1323,13 @@
           )
           conditional      <- attr(samples[[i]], "conditional", exact = TRUE)
           conditional_rule <- attr(samples[[i]], "conditional_rule", exact = TRUE)
+          condition_key    <- attr(samples[[i]], "condition_key", exact = TRUE)
           if(.posterior_ordinate_candidate_matches(
             top_level[[i]],
             aliases          = aliases,
             conditional      = conditional,
             conditional_rule = conditional_rule,
+            condition_key    = condition_key,
             allow_unlabeled  = TRUE,
             null_hypothesis  = null_hypothesis
           )){
@@ -983,7 +1464,7 @@
         "posterior_height", "method", "estimator", "parameter", "parameters",
         "parameter_name", "name", "conditional", "condition", "conditioned_on",
         "conditioning", "conditional_rule", "condition_rule",
-        "conditioning_rule")
+        "conditioning_rule", "condition_key", "conditional_key")
     )]
   }else{
     return(NULL)

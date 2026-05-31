@@ -487,11 +487,16 @@ test_that("log(intercept) attribute works for specifying log(int) + sum(beta_i *
     "for(i in 1:N_mu){\n  mu[i] = log(mu_intercept) + inprod(mu_x_fac3md, mu_data_x_fac3md[i,])\n}\n"
   )
 
+  expect_false(result_basic$formula_design$log_intercept)
+  expect_true(result_log$formula_design$log_intercept)
+
   # everything else should match
   result_basic[["formula_syntax"]] <- NULL
   result_log[["formula_syntax"]]   <- NULL
   result_basic[["formula"]] <- NULL
   result_log[["formula"]]   <- NULL
+  result_basic[["formula_design"]][["log_intercept"]] <- NULL
+  result_log[["formula_design"]][["log_intercept"]]   <- NULL
   expect_equal(result_basic, result_log)
 })
 

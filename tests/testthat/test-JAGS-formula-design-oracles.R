@@ -680,6 +680,116 @@ test_that("JAGS_formula records scaling and JAGS data columns by model term", {
   )
 })
 
+test_that("nested grouping expands consistently across covariance specials and wrappers", {
+
+  block_labels <- function(formula){
+    terms <- BayesTools:::.bt_parse_random_effects(formula)$terms
+    list(
+      labels     = vapply(terms, function(t) t$group_label, character(1)),
+      structures = vapply(terms, function(t) t$structure, character(1)),
+      blocks     = vapply(terms, function(t) t$block_name, character(1))
+    )
+  }
+
+  # The plain-bar reference expansion (already supported) defines the canonical
+  # order/interaction convention every wrapped structure must match.
+  reference <- block_labels(~ 1 + (1 | g1 / g2))
+  expect_equal(reference$labels, c("g2:g1", "g1"))
+  expect_equal(reference$blocks, c("g2_g1", "g1"))
+
+  for(structure in c("diag", "id", "us", "un", "cs", "hcs", "ar1", "ar", "har", "car")){
+    parsed <- block_labels(stats::as.formula(
+      paste0("~ 1 + x + ", structure, "(1 + x | g1 / g2)")
+    ))
+    expect_equal(parsed$labels, c("g2:g1", "g1"),
+                 info = paste("labels for", structure))
+    expect_equal(parsed$blocks, c("g2_g1", "g1"),
+                 info = paste("blocks for", structure))
+    expect_equal(length(unique(parsed$structures)), 1L,
+                 info = paste("single structure for", structure))
+  }
+
+  for(wrapper in c("random", "re")){
+    parsed <- block_labels(stats::as.formula(
+      paste0("~ 1 + ", wrapper, "(1 | g1 / g2)")
+    ))
+    expect_equal(parsed$labels, c("g2:g1", "g1"))
+    expect_equal(parsed$blocks, c("g2_g1", "g1"))
+    expect_equal(parsed$structures, c("us", "us"))
+  }
+
+  # Three-level nesting expands to one block per cumulative level.
+  three <- block_labels(~ 1 + diag(1 | g1 / g2 / g3))
+  expect_equal(three$labels, c("g3:g2:g1", "g2:g1", "g1"))
+  expect_equal(three$blocks, c("g3_g2_g1", "g2_g1", "g1"))
+
+  # Formula order is preserved when wrapped and plain terms are mixed.
+  mixed <- block_labels(~ 1 + x + diag(1 | g1 / g2) + random(1 | h))
+  expect_equal(mixed$blocks, c("g2_g1", "g1", "h"))
+  expect_equal(mixed$structures, c("diag", "diag", "us"))
+
+  # Named covariance / hom arguments propagate to every expanded sub-term.
+  propagated <- block_labels(~ 1 + x + random(1 + x | g1 / g2, covariance = "cs"))
+  expect_equal(propagated$structures, c("cs", "cs"))
+  hom_propagated <- BayesTools:::.bt_parse_random_effects(~ 1 + cs(1 + x | g1 / g2, hom = TRUE))$terms
+  expect_true(all(vapply(hom_propagated, function(t) isTRUE(t$hom), logical(1))))
+
+  # '||' under a wrapper expands and still resolves to diagonal blocks, matching
+  # the plain-bar '||' nesting expansion.
+  double_bar <- block_labels(~ 1 + x + random(1 + x || g1 / g2))
+  expect_equal(double_bar$structures, c("diag", "diag"))
+  expect_equal(double_bar$blocks, c("g2_g1", "g1"))
+
+  # An explicit block name becomes a per-level prefix on each expanded block,
+  # preserving the user's naming intent while keeping the blocks distinct.
+  named_two <- block_labels(~ 1 + random(1 | g1 / g2, name = "foo"))
+  expect_equal(named_two$blocks, c("foo_g2_g1", "foo_g1"))
+  named_special <- block_labels(~ 1 + diag(1 | g1 / g2, name = "foo"))
+  expect_equal(named_special$blocks, c("foo_g2_g1", "foo_g1"))
+  named_three <- block_labels(~ 1 + random(1 | g1 / g2 / g3, name = "spatial"))
+  expect_equal(named_three$blocks, c("spatial_g3_g2_g1", "spatial_g2_g1", "spatial_g1"))
+
+  # Defensive guard: an un-expanded slash grouping must never reach evaluation.
+  slash_term <- BayesTools:::.bt_parse_random_effects(~ 1 + (1 | g1 / g2))$terms[[1]]
+  slash_term$group_expr <- quote(g1 / g2)
+  slash_term$group_is_symbol <- FALSE
+  expect_error(
+    BayesTools:::.bt_random_group_values(slash_term, data.frame(g1 = 1:4, g2 = 1:4)),
+    "was not expanded into separate per-level blocks",
+    fixed = TRUE
+  )
+
+  # End-to-end: numeric grouping IDs must build two nested blocks, not a single
+  # block keyed on the literal 'g1 / g2' quotient.
+  df_numeric <- data.frame(
+    g1 = rep(1:4, each = 10),               # 4 outer groups
+    g2 = rep(rep(1:2, each = 5), 4),        # 2 inner-of-g1 -> 8 (g2:g1) groups
+    g3 = rep(1:5, 8)                        # 5 inner-of-(g2:g1) -> 40 (g3:g2:g1) groups
+  )
+  sd_prior <- prior("normal", list(0, 1), truncation = list(lower = 0, upper = Inf))
+  map_level_counts <- function(formula){
+    built <- JAGS_formula(
+      formula,
+      parameter    = "mu",
+      data         = df_numeric,
+      prior_list   = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(sd = sd_prior)
+    )
+    map_columns <- grep("xRE_MAPx", names(built$data), value = TRUE)
+    sort(vapply(map_columns, function(m) length(unique(built$data[[m]])), integer(1)))
+  }
+
+  # Two-level nesting: inner (g2:g1) has 8 groups, outer (g1) has 4.
+  for(formula in list(~ 1 + (1 | g1 / g2), ~ 1 + diag(1 | g1 / g2), ~ 1 + random(1 | g1 / g2))){
+    expect_equal(unname(map_level_counts(formula)), c(4L, 8L))
+  }
+
+  # Three-level nesting: 40 / 8 / 4 across the cumulative levels.
+  for(formula in list(~ 1 + (1 | g1 / g2 / g3), ~ 1 + diag(1 | g1 / g2 / g3), ~ 1 + random(1 | g1 / g2 / g3))){
+    expect_equal(unname(map_level_counts(formula)), c(4L, 8L, 40L))
+  }
+})
+
 test_that("random-effect design exposes grouping maps and correlated syntax", {
 
   df <- data.frame(
@@ -3137,19 +3247,23 @@ test_that("random-effect formulas are guarded in fixed-only downstream evaluator
     fixed = TRUE
   )
 
-  expect_error(
-    JAGS_bridgesampling(
-      fit = fit,
-      log_posterior = function(parameters, data) 0,
-      data = list(),
-      prior_list = list(),
-      formula_list = list(mu = ~ 1 + diag(1 | id)),
-      formula_data_list = list(mu = df),
-      formula_prior_list = list(mu = list(
-        intercept = prior("normal", list(0, 1))
-      ))
+  expect_warning(
+    expect_error(
+      JAGS_bridgesampling(
+        fit = fit,
+        log_posterior = function(parameters, data) 0,
+        data = list(),
+        prior_list = list(),
+        formula_list = list(mu = ~ 1 + diag(1 | id)),
+        formula_data_list = list(mu = df),
+        formula_prior_list = list(mu = list(
+          intercept = prior("normal", list(0, 1))
+        ))
+      ),
+      "requires posterior samples of standardized latent random effects",
+      fixed = TRUE
     ),
-    "requires 'formula_random_prior_list'",
+    "supplied formula-related inputs do not fully match",
     fixed = TRUE
   )
 
@@ -3181,9 +3295,143 @@ test_that("random-effect formulas are guarded in fixed-only downstream evaluator
       fit = fit,
       log_posterior = function(parameters, data) 0,
       data = list(),
-      prior_list = formula_result$prior_list
+      prior_list = NULL
     ),
-    "requires 'formula_list'",
+    "requires posterior samples of standardized latent random effects",
+    fixed = TRUE
+  )
+})
+
+test_that("JAGS bridgesampling can reconstruct formula parameters from fitted design metadata", {
+
+  df <- data.frame(x = c(10, 20, 30))
+  prior_list <- list(
+    intercept = prior("normal", list(0, 1)),
+    x = prior("normal", list(0, 1))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + x,
+    parameter = "mu",
+    data = df,
+    prior_list = prior_list,
+    formula_scale = list(x = TRUE)
+  )
+  samples <- c(mu_intercept = 10, mu_x = 2)
+
+  reconstructed <- JAGS_marglik_parameters_formula(
+    samples = samples,
+    formula_list = NULL,
+    formula_data_list = NULL,
+    formula_prior_list = list(mu = formula_result$prior_list),
+    prior_list_parameters = list(),
+    formula_design_list = list(mu = formula_result$formula_design)
+  )
+  expected_x <- as.vector(formula_result$formula_design$model_matrix[, "x"])
+  expect_equal(reconstructed$mu, 10 + 2 * expected_x, tolerance = 1e-12)
+
+  log_formula <- ~ 1 + x
+  attr(log_formula, "log(intercept)") <- TRUE
+  log_result <- JAGS_formula(
+    formula = log_formula,
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("gamma", list(2, 2)),
+      x = prior("normal", list(0, 1))
+    )
+  )
+  log_reconstructed <- JAGS_marglik_parameters_formula(
+    samples = c(mu_intercept = exp(1), mu_x = 2),
+    formula_list = NULL,
+    formula_data_list = NULL,
+    formula_prior_list = list(mu = log_result$prior_list),
+    prior_list_parameters = list(),
+    formula_design_list = list(mu = log_result$formula_design)
+  )
+  expect_equal(log_reconstructed$mu, 1 + 2 * df$x, tolerance = 1e-12)
+})
+
+test_that("JAGS bridgesampling uses fitted formula metadata and warns on supplied mismatches", {
+
+  df <- data.frame(x = c(10, 20, 30))
+  prior_list <- list(
+    intercept = prior("normal", list(0, 1)),
+    x = prior("normal", list(0, 1))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + x,
+    parameter = "mu",
+    data = df,
+    prior_list = prior_list,
+    formula_scale = list(x = TRUE)
+  )
+  fit <- coda::mcmc(matrix(
+    0,
+    nrow = 1,
+    ncol = 1,
+    dimnames = list(NULL, "mu_intercept")
+  ))
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+
+  expect_error(
+    JAGS_bridgesampling(
+      fit = fit,
+      log_posterior = function(parameters, data) 0,
+      data = list()
+    ),
+    "posterior' does not contain",
+    fixed = TRUE
+  )
+
+  expect_warning(
+    expect_error(
+      JAGS_bridgesampling(
+        fit = fit,
+        log_posterior = function(parameters, data) 0,
+        data = list(),
+        formula_list = list(mu = ~ 1 + x),
+        formula_data_list = list(mu = df),
+        formula_prior_list = list(mu = prior_list),
+        formula_scale_list = list(wrong_name = list(x = TRUE))
+      ),
+      "posterior' does not contain",
+      fixed = TRUE
+    ),
+    "supplied formula-related inputs do not fully match",
+    fixed = TRUE
+  )
+
+  expect_warning(
+    expect_error(
+      JAGS_bridgesampling(
+        fit = fit,
+        log_posterior = function(parameters, data) 0,
+        data = list(),
+        formula_list = list(mu = ~ 1 + x),
+        formula_data_list = list(mu = df),
+        formula_prior_list = list(mu = prior_list),
+        formula_scale_list = TRUE
+      ),
+      "posterior' does not contain",
+      fixed = TRUE
+    ),
+    "supplied formula-related inputs do not fully match",
+    fixed = TRUE
+  )
+
+  expect_warning(
+    expect_error(
+      JAGS_bridgesampling(
+        fit = fit,
+        log_posterior = function(parameters, data) 0,
+        data = list(),
+        prior_list = formula_result$prior_list
+      ),
+      "posterior' does not contain",
+      fixed = TRUE
+    ),
+    "received formula priors in 'prior_list'",
     fixed = TRUE
   )
 })
@@ -6300,6 +6548,49 @@ test_that("structured random-effect terms use level-indexed factor columns and s
   expect_match(car_result$formula_syntax, "mu__xREx__id_rho <- 2 * ilogit(2 * mu__xREx__id_rho_z) - 1", fixed = TRUE)
   expect_match(car_result$formula_syntax, "pow(mu__xREx__id_rho, 1.5)", fixed = TRUE)
   expect_match(car_result$formula_syntax, "pow(mu__xREx__id_rho, 2)", fixed = TRUE)
+
+  car_independent <- JAGS_formula(
+    formula = ~ 1 + car(0 + time | id),
+    parameter = "mu",
+    data = car_df,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(sd = sd_prior, rho = prior("point", list(location = 0)))
+    )
+  )
+  car_independent_term <- car_independent$formula_design$random_effects[[1]]
+  empty_posterior <- matrix(numeric(0), nrow = 2, ncol = 0)
+  expect_equal(
+    BayesTools:::.bt_random_effect_rho_draws(car_independent_term, empty_posterior),
+    c(0, 0)
+  )
+  expect_equal(
+    BayesTools:::.bt_JAGS_marglik_random_effect_scalar_rho_support(
+      empty_posterior,
+      car_independent_term
+    ),
+    0
+  )
+
+  car_independent_raw <- JAGS_formula(
+    formula = ~ 1 + car(0 + time | id),
+    parameter = "mu",
+    data = car_df,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(
+        sd = sd_prior,
+        covariance = random_covariance(
+          rho = prior("point", list(location = 0)),
+          rho_scale = "rho"
+        )
+      )
+    )
+  )
+  expect_equal(
+    car_independent_raw$formula_design$random_effects[[1]]$correlation$sample_fixed,
+    0
+  )
 
   car_explicit_no_intercept <- JAGS_formula(
     formula = ~ 1 + car(0 + time | id),

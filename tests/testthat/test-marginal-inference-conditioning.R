@@ -382,6 +382,41 @@ test_that("conditional spike-and-slab prior densities use the slab", {
 })
 
 
+test_that("marginal inference rejects row-varying active linear weights", {
+
+  prior_list <- list(
+    theta = prior_spike_and_slab(
+      prior("normal", list(mean = 0, sd = 1)),
+      prior_inclusion = prior("point", list(location = 0.5))
+    ),
+    phi = prior_spike_and_slab(
+      prior("normal", list(mean = 0, sd = 1)),
+      prior_inclusion = prior("point", list(location = 0.5))
+    )
+  )
+  marginal <- list(
+    varying = structure(
+      1:2,
+      linear_weights = matrix(
+        c(1, 0, 0, 1),
+        nrow = 2,
+        byrow = TRUE,
+        dimnames = list(NULL, c("theta", "phi"))
+      )
+    )
+  )
+
+  expect_error(
+    BayesTools:::.marginal_inference_level_conditionals(
+      marginal    = marginal,
+      prior_list  = prior_list,
+      conditional = c("theta", "phi")
+    ),
+    "Row-varying active conditional sets"
+  )
+})
+
+
 test_that("marginal inference conditions formula levels by active weights", {
 
   prior_list <- list(
@@ -429,6 +464,7 @@ test_that("marginal inference conditions formula levels by active weights", {
     ),
     conditional_rule    = "OR",
     formula             = ~ x,
+    null_hypothesis     = 0.123,
     n_samples           = 128,
     silent              = TRUE
   )
@@ -437,9 +473,12 @@ test_that("marginal inference conditions formula levels by active weights", {
   intercept <- inference[["conditional"]][["mu_intercept"]][["intercept"]]
 
   expect_equal(attr(zero_level, "effective_conditional"), "mu_intercept")
+  expect_equal(attr(zero_level, "effective_conditional_rule"), "OR")
+  expect_equal(attr(zero_level, "condition_key"), BayesTools:::.condition_event_key("mu_intercept", "OR"))
   expect_equal(mean(as.numeric(zero_level) == 0), 0)
   expect_equal(.prior_linear_density_point_mass(attr(zero_level, "prior_density"), 0), 0)
   expect_equal(attr(intercept, "effective_conditional"), "mu_intercept")
+  expect_equal(attr(intercept, "condition_key"), BayesTools:::.condition_event_key("mu_intercept", "OR"))
   expect_equal(mean(as.numeric(intercept) == 0), 0)
   expect_equal(.prior_linear_density_point_mass(attr(intercept, "prior_density"), 0), 0)
 
@@ -450,6 +489,7 @@ test_that("marginal inference conditions formula levels by active weights", {
     conditional_list    = list(mu_x = "mu_x"),
     conditional_rule    = "OR",
     formula             = ~ x,
+    null_hypothesis     = 0.123,
     n_samples           = 128,
     silent              = TRUE
   )
@@ -516,6 +556,7 @@ test_that("marginal inference conditions treatment factor levels by active weigh
     conditional_list    = list(mu_fac = c("mu_intercept", "mu_fac")),
     conditional_rule    = "OR",
     formula             = ~ fac,
+    null_hypothesis     = 0.123,
     n_samples           = 128,
     silent              = TRUE
   )
@@ -526,6 +567,17 @@ test_that("marginal inference conditions treatment factor levels by active weigh
   expect_equal(attr(factor_levels[["A"]], "effective_conditional"), "mu_intercept")
   expect_equal(attr(factor_levels[["B"]], "effective_conditional"), c("mu_intercept", "mu_fac"))
   expect_equal(attr(factor_levels[["C"]], "effective_conditional"), c("mu_intercept", "mu_fac"))
+  expect_s3_class(attr(factor_levels[["A"]], "prior_density_context"), "prior_density_conditional_context")
+  expect_s3_class(attr(factor_levels[["B"]], "prior_density_context"), "prior_density_conditional_context")
+  expect_false(is.null(attr(factor_levels[["A"]], "resolved_condition_event")))
+  expect_false(identical(
+    attr(factor_levels[["A"]], "resolved_condition_event"),
+    attr(factor_levels[["B"]], "resolved_condition_event")
+  ))
+  expect_identical(
+    attr(factor_levels[["B"]], "resolved_condition_event"),
+    attr(factor_levels[["C"]], "resolved_condition_event")
+  )
   expect_equal(mean(as.numeric(factor_levels[["A"]]) == 0), 0)
   expect_equal(mean(as.numeric(factor_levels[["B"]]) == 0), 0)
   expect_equal(mean(as.numeric(factor_levels[["C"]]) == 0), 0)
@@ -587,6 +639,7 @@ test_that("marginal inference conditions treatment factor levels by active weigh
     conditional_list    = list(mu_fac = "mu_fac"),
     conditional_rule    = "OR",
     formula             = ~ fac,
+    null_hypothesis     = 0.123,
     n_samples           = 128,
     silent              = TRUE
   )

@@ -46,7 +46,7 @@
 #'   single ordered index variable, with one scalar correlation `rho`; `"HAR"`
 #'   has one SD per index level.
 #' * `"CAR"`: continuous-time AR(1), currently for `car(time | group)`,
-#'   using `rho ^ abs(t_i - t_j)` with `0 < rho < 1`.
+#'   using `rho ^ abs(t_i - t_j)` with `0 <= rho < 1`.
 #' * `"UN"` / `"US"`: unstructured covariance with SD priors and `prior_lkj()`.
 #'
 #' The formula parser owns the actual structure used by a block. Supplying a
@@ -513,7 +513,10 @@ prior_lkj <- function(eta = 1, backend = c("module", "syntax"),
 #' @param coefficients whether to monitor realized group-level coefficients.
 #'   This is convenient for inspection but can be memory intensive.
 #' @param correlation whether to monitor correlation matrices.
-#' @param lkj_primitives whether to monitor LKJ primitive beta coordinates.
+#' @param lkj_primitives whether to monitor user-facing LKJ primitive beta
+#'   coordinates. For formula `us` random effects, raw LKJ primitive `u`
+#'   coordinates are always retained internally because bridge sampling evaluates
+#'   the LKJ prior on those coordinates.
 #' @export
 random_monitor <- function(latent = TRUE, coefficients = FALSE,
                            correlation = TRUE, lkj_primitives = FALSE){

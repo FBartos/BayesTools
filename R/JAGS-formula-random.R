@@ -66,6 +66,25 @@
   .bt_find_random_effect_calls_ordered(formula, expand_method)
 }
 
+# TRUE for a `expr | group` or `expr || group` bar call.
+.bt_random_effect_is_bar_call <- function(x){
+  is.call(x) && length(x) == 3L &&
+    (identical(x[[1L]], as.name("|")) || identical(x[[1L]], as.name("||")))
+}
+
+# TRUE for a random()/re() wrapper or a covariance special (diag/cs/us/...) that
+# encloses a bar. These are the calls whose grouping the ordered walker has to
+# expand itself (reformulas::findbars_x cannot, see .bt_random_effect_expand_call_nesting).
+.bt_random_effect_is_wrapper_call <- function(x){
+  if(!is.call(x)){
+    return(FALSE)
+  }
+  call_name <- as.character(x[[1L]])
+  any(call_name %in% c("random", "re")) ||
+    (any(call_name %in% setdiff(.bt_random_effect_specials(), c("random", "re"))) &&
+       .bt_random_effect_has_bar_arg(x))
+}
+
 .bt_find_random_effect_calls_ordered <- function(x, expand_method,
                                                 env = parent.frame()){
 
@@ -82,15 +101,10 @@
     return(list())
   }
 
-  call_name <- as.character(x[[1L]])
-  if(call_name %in% c("random", "re")){
-    return(list(x))
+  if(.bt_random_effect_is_wrapper_call(x)){
+    return(.bt_random_effect_expand_call_nesting(x, expand_method, env))
   }
-  if(call_name %in% setdiff(.bt_random_effect_specials(), c("random", "re")) &&
-     .bt_random_effect_has_bar_arg(x)){
-    return(list(x))
-  }
-  if(identical(x[[1L]], as.name("|")) || identical(x[[1L]], as.name("||"))){
+  if(.bt_random_effect_is_bar_call(x)){
     term_formula <- stats::as.formula(call("~", x), env = env)
     return(reformulas::findbars_x(
       term_formula,
@@ -108,6 +122,75 @@
   out
 }
 
+# Expand a covariance-special or random()/re() wrapper call whose grouping is a
+# nested expression ('g1/g2') into one call per nesting level, preserving the
+# wrapper structure and all named arguments. Returns 'list(x)' unchanged when the
+# grouping is not nested, so non-nested wrappers behave exactly as before.
+#
+# reformulas::findbars_x already expands nested grouping for *un-named* specials
+# and wrappers, but it drops or fails to expand wrappers carrying named arguments
+# such as name =/covariance =/hom =. The ordered walker therefore has to perform
+# the nesting expansion itself while keeping those named arguments intact.
+.bt_random_effect_expand_call_nesting <- function(x, expand_method, env){
+
+  args <- as.list(x)
+  term_position <- .bt_random_effect_unnamed_term_positions(args)
+  # A malformed wrapper (not exactly one unnamed term) is left for
+  # .bt_random_effect_term_from_call to reject with a context-rich message.
+  if(length(term_position) != 1L){
+    return(list(x))
+  }
+
+  inner <- args[[term_position]]
+  if(!.bt_random_effect_is_bar_call(inner)){
+    return(list(x))
+  }
+
+  group_levels <- .bt_random_effect_nested_group_levels(inner[[3L]], expand_method, env)
+  if(is.null(group_levels) || length(group_levels) <= 1L){
+    return(list(x))
+  }
+
+  # An explicit block name becomes a per-level prefix so the user's naming intent
+  # is preserved while keeping the expanded blocks distinct (e.g.
+  # random(1 | site/plot, name = "spatial") -> "spatial_plot_site", "spatial_site").
+  base_name <- if("name" %in% names(args)){
+    .bt_random_effect_eval_name(args[["name"]], env)
+  }else{
+    NULL
+  }
+
+  lapply(group_levels, function(level_group){
+    new_args <- args
+    new_args[[term_position]] <- as.call(list(inner[[1L]], inner[[2L]], level_group))
+    if(!is.null(base_name)){
+      new_args[["name"]] <- paste0(base_name, "_", .bt_deparse_expr(level_group))
+    }
+    as.call(new_args)
+  })
+}
+
+# Return the per-level grouping expressions for a nested grouping expression
+# ('g1/g2/...'), in the exact order and interaction convention that
+# reformulas::findbars_x uses for plain bars (so special/wrapper and plain-bar
+# nesting expand identically). Returns NULL when the expression is not nested.
+.bt_random_effect_nested_group_levels <- function(group_expr, expand_method, env){
+
+  if(!(is.call(group_expr) && identical(group_expr[[1L]], as.name("/")))){
+    return(NULL)
+  }
+
+  dummy_formula <- stats::as.formula(call("~", call("|", 1, group_expr)), env = env)
+  expanded <- reformulas::findbars_x(
+    dummy_formula,
+    specials = .bt_random_effect_specials(),
+    default.special = NULL,
+    expand_doublevert_method = expand_method
+  )
+
+  lapply(expanded, function(bar) bar[[3L]])
+}
+
 .bt_find_random_wrapper_calls <- function(x){
 
   if(inherits(x, "formula")){
@@ -119,12 +202,7 @@
     return(list())
   }
 
-  call_name <- as.character(x[[1L]])
-  if(call_name %in% c("random", "re")){
-    return(list(x))
-  }
-  if(call_name %in% setdiff(.bt_random_effect_specials(), c("random", "re")) &&
-     .bt_random_effect_has_bar_arg(x)){
+  if(.bt_random_effect_is_wrapper_call(x)){
     return(list(x))
   }
 
@@ -142,11 +220,7 @@
   if(length(args) < 2L){
     return(FALSE)
   }
-  any(vapply(args[-1L], function(arg){
-    is.call(arg) &&
-      (identical(arg[[1L]], as.name("|")) ||
-         identical(arg[[1L]], as.name("||")))
-  }, logical(1)))
+  any(vapply(args[-1L], .bt_random_effect_is_bar_call, logical(1)))
 }
 
 .bt_random_effect_term_from_call <- function(x, index, env){
@@ -338,14 +412,21 @@
   )
 }
 
-.bt_random_effect_call_term_arg <- function(args, label){
+# Positions of the unnamed arguments of a wrapper/special call (the term slots),
+# excluding the call head. A well-formed random-effect call has exactly one.
+.bt_random_effect_unnamed_term_positions <- function(args){
 
   arg_names <- names(args)
   if(is.null(arg_names)){
     arg_names <- rep("", length(args))
   }
-  unnamed_positions <- which(!nzchar(arg_names) & seq_along(args) > 1L)
-  if(length(unnamed_positions) != 1L){
+  which(!nzchar(arg_names) & seq_along(args) > 1L)
+}
+
+.bt_random_effect_call_term_arg <- function(args, label){
+
+  term_position <- .bt_random_effect_unnamed_term_positions(args)
+  if(length(term_position) != 1L){
     stop(
       label,
       " must contain exactly one unnamed term of the form 'expr | group'.",
@@ -353,7 +434,7 @@
     )
   }
 
-  args[[unnamed_positions]]
+  args[[term_position]]
 }
 
 .bt_random_effect_extra_named_args <- function(args, allowed){
@@ -584,6 +665,15 @@
     return(.bt_validate_random_group_values(data[[term$group_label]], term, data))
   }
 
+  if(.bt_random_group_is_slash_expr(term$group_expr)){
+    stop(
+      "Random-effect nested grouping '", term$group_label,
+      "' was not expanded into separate per-level blocks before evaluation. ",
+      "This is an internal BayesTools error; please report it.",
+      call. = FALSE
+    )
+  }
+
   term_env <- environment(term$term_formula)
   if(is.null(term_env)){
     term_env <- parent.frame()
@@ -611,6 +701,11 @@
 .bt_random_group_is_colon_expr <- function(expr){
 
   is.call(expr) && identical(expr[[1L]], as.name(":")) && length(expr) == 3L
+}
+
+.bt_random_group_is_slash_expr <- function(expr){
+
+  is.call(expr) && identical(expr[[1L]], as.name("/")) && length(expr) == 3L
 }
 
 .bt_random_group_colon_terms <- function(expr){

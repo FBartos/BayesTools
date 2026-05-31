@@ -151,10 +151,31 @@ test_that("conditional bias posteriors zero null bias prior weights", {
   attr(model, "prior_list") <- list(bias = bias_prior)
 
   mixed <- as_mixed_posteriors(model, parameters = "bias", conditional = "bias")
-  conditioned_prior_weights <- sapply(attr(mixed$bias, "prior_list"), function(prior) prior$prior_weights)
+  conditioned_context <- attr(mixed, "prior_density_context")
 
-  expect_equal(conditioned_prior_weights, c(0, 1, 1))
+  expect_equal(length(conditioned_context$prior_lists), 2L)
+  expect_equal(conditioned_context$model_weights, c(1 / 2, 1 / 2))
+  expect_equal(conditioned_context$condition_key, BayesTools:::.condition_event_key("bias", "AND"))
   expect_equal(attr(mixed$bias, "models_ind"), c(2, 3))
+
+  mixed_or <- as_mixed_posteriors(
+    model,
+    parameters       = "bias",
+    conditional      = c("PETPEESE", "omega"),
+    conditional_rule = "OR"
+  )
+  expect_equal(attr(mixed_or$bias, "models_ind"), c(2, 3))
+
+  expect_warning(
+    mixed_and <- as_mixed_posteriors(
+      model,
+      parameters       = "bias",
+      conditional      = c("PETPEESE", "omega"),
+      conditional_rule = "AND"
+    ),
+    "No samples left after conditioning"
+  )
+  expect_equal(mixed_and, list())
 })
 
 test_that("independent and log-independent weightfunction marginals are analytical", {

@@ -76,19 +76,25 @@ jobs:
       - name: Install required packages
         run: |
           options(repos = c(CRAN = "https://cloud.r-project.org"))
-          
+
           # Check if packages are already installed before installing
-          required_packages <- c('devtools', 'pkgdown', 'BayesFactor', 'RoBMA', 'runjags', 'rjags', 'rstan', 'scales', 'vdiffr', 'testthat', 'covr', 'pandoc', 'lme4')
+          required_packages <- c('devtools', 'pkgdown', 'BayesFactor', 'RoBMA', 'runjags', 'rjags', 'rstan', 'rstanarm', 'scales', 'vdiffr', 'testthat', 'covr', 'knitr', 'rmarkdown', 'pandoc', 'lme4')
           missing_packages <- required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)]
-          
+
           if (length(missing_packages) > 0) {
             cat("Installing missing packages:", paste(missing_packages, collapse = ", "), "\n")
             install.packages(missing_packages)
           } else {
             cat("All required packages are already installed\n")
           }
-          
+
           devtools::install()
+        shell: Rscript {0}
+
+      - name: Validate RandomEffects vignette cache
+        run: |
+          source(file.path("tools", "random-effects-vignette-cache.R"))
+          stop_if_invalid_random_effects_vignette_cache()
         shell: Rscript {0}
 
       - name: Deploy package

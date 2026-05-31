@@ -586,12 +586,11 @@
 
 .prior_linear_active_conditionals <- function(prior_list, weights, conditional){
 
-  if(length(conditional) == 0){
-    return(character())
-  }
-
-  active <- .prior_linear_active_parameters(prior_list, weights)
-  conditional[conditional %in% active]
+  .condition_event_active_labels(
+    prior_list  = prior_list,
+    weights     = weights,
+    conditional = conditional
+  )
 }
 
 .prior_linear_weight_groups <- function(prior_list, weights){
@@ -1491,68 +1490,39 @@
   component
 }
 
-.prior_density_condition_models <- function(prior_list, conditional, conditional_rule){
+.prior_density_condition_models <- function(prior_list, conditional, conditional_rule,
+                                            condition_event = NULL){
 
-  conditional <- unique(conditional[conditional %in% names(prior_list)])
-  if(length(conditional) == 0){
-    return(NULL)
+  if(is.null(condition_event)){
+    condition_event <- .condition_event(
+      prior_list        = prior_list,
+      conditional       = conditional,
+      conditional_rule  = conditional_rule
+    )
   }
 
-  options <- lapply(conditional, function(parameter){
-    .prior_density_condition_component(prior_list[[parameter]])
-  })
-  names(options) <- conditional
-
-  option_grid <- expand.grid(lapply(options, seq_along))
-  keep <- logical(nrow(option_grid))
-  model_weights <- numeric(nrow(option_grid))
-
-  for(i in seq_len(nrow(option_grid))){
-    alternatives <- logical(length(conditional))
-    probabilities <- numeric(length(conditional))
-
-    for(j in seq_along(conditional)){
-      option <- options[[j]][[option_grid[i, j]]]
-      alternatives[j] <- option$alternative
-      probabilities[j] <- option$probability
-    }
-
-    keep[i] <- if(conditional_rule == "AND") all(alternatives) else any(alternatives)
-    model_weights[i] <- prod(probabilities)
-  }
-
-  option_grid <- option_grid[keep & model_weights > 0, , drop = FALSE]
-  model_weights <- model_weights[keep & model_weights > 0]
-
-  if(nrow(option_grid) == 0){
-    return(list(prior_lists = list(), weights = numeric()))
-  }
-
-  prior_lists <- lapply(seq_len(nrow(option_grid)), function(i){
-    model_prior_list <- prior_list
-    for(j in seq_along(conditional)){
-      parameter <- conditional[j]
-      component <- options[[j]][[option_grid[i, j]]]$prior
-      model_prior_list[[parameter]] <- .prior_density_copy_parent_attributes(
-        component = component,
-        parent    = prior_list[[parameter]]
-      )
-    }
-    model_prior_list
-  })
-
-  list(
-    prior_lists = prior_lists,
-    weights     = model_weights / sum(model_weights)
-  )
+  .condition_event_model_options(prior_list, condition_event)
 }
 
 .prior_density_conditional_context <- function(prior_list, column_names, conditional,
                                                conditional_rule = "AND", formula_scale = NULL,
                                                n_grid = .prior_linear_density_default_grid(),
-                                               tail_prob = .prior_linear_density_tail_prob()){
+                                               tail_prob = .prior_linear_density_tail_prob(),
+                                               condition_event = NULL){
 
-  condition_models <- .prior_density_condition_models(prior_list, conditional, conditional_rule)
+  if(is.null(condition_event)){
+    condition_event <- .condition_event(
+      prior_list        = prior_list,
+      conditional       = conditional,
+      conditional_rule  = conditional_rule
+    )
+  }
+  condition_models <- .prior_density_condition_models(
+    prior_list        = prior_list,
+    conditional       = conditional,
+    conditional_rule  = conditional_rule,
+    condition_event   = condition_event
+  )
   if(is.null(condition_models)){
     return(.prior_density_context(prior_list, column_names, formula_scale, n_grid, tail_prob))
   }
@@ -1561,6 +1531,10 @@
     prior_list      = prior_list,
     column_names    = column_names,
     formula_scale   = formula_scale,
+    conditional     = condition_event[["conditional"]],
+    conditional_rule = condition_event[["conditional_rule"]],
+    condition_event = condition_event,
+    condition_key   = condition_event[["condition_key"]],
     prior_lists     = condition_models$prior_lists,
     model_weights   = condition_models$weights,
     n_grid          = n_grid,
@@ -1634,7 +1608,7 @@
   }
 
   if(length(context$prior_lists) == 0){
-    return(.prior_linear_density_point(0))
+    stop("No prior models remain after applying the conditional event.", call. = FALSE)
   }
 
   dists <- lapply(context$prior_lists, function(prior_list){
@@ -1688,17 +1662,27 @@
                                          n_grid = .prior_linear_density_default_grid(),
                                          tail_prob = .prior_linear_density_tail_prob(),
                                          conditional = NULL,
-                                         conditional_rule = "AND"){
+                                         conditional_rule = "AND",
+                                         condition_event = NULL){
 
-  if(length(conditional) > 0){
+  if(is.null(condition_event)){
+    condition_event <- .condition_event(
+      prior_list        = prior_list,
+      conditional       = conditional,
+      conditional_rule  = conditional_rule
+    )
+  }
+
+  if(length(condition_event[["conditional"]]) > 0){
     return(.prior_density_conditional_context(
       prior_list       = prior_list,
       column_names     = column_names,
-      conditional      = conditional,
+      conditional      = condition_event[["conditional"]],
       conditional_rule = conditional_rule,
       formula_scale    = formula_scale,
       n_grid           = n_grid,
-      tail_prob        = tail_prob
+      tail_prob        = tail_prob,
+      condition_event  = condition_event
     ))
   }
 
@@ -1827,6 +1811,7 @@
 
 .generate_transformed_prior_densities <- function(prior_list, column_names, formula_scale = NULL,
                                                   conditional = NULL, conditional_rule = "AND",
+                                                  condition_event = NULL,
                                                   n_grid = .prior_linear_density_default_grid(),
                                                   tail_prob = .prior_linear_density_tail_prob()){
 
@@ -1837,7 +1822,8 @@
     n_grid           = n_grid,
     tail_prob        = tail_prob,
     conditional      = conditional,
-    conditional_rule = conditional_rule
+    conditional_rule = conditional_rule,
+    condition_event  = condition_event
   )
 
   prior_columns <- unlist(lapply(names(prior_list), function(parameter){

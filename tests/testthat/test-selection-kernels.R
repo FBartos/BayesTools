@@ -241,6 +241,79 @@ test_that("selection_backend_spec compiles none, step, phack, and combined prior
   expect_match(combined_spec$prior_code, "phack_kind <- 1")
 })
 
+test_that("selection backend spec and context helpers expose generic names and rows", {
+
+  selection <- prior_weightfunction("one-sided", c(.025), wf_fixed(c(1, .5)))
+  spec <- selection_backend_spec(
+    selection,
+    names = list(omega = "custom_omega", alpha = "custom_alpha")
+  )
+
+  expect_equal(spec$jags_omega, "custom_omega")
+  expect_equal(spec$step$coefficient_ids, paste0("custom_omega[", 1:2, "]"))
+
+  context <- spec
+  context$z_lower <- c(1.96, -Inf)
+  context$z_upper <- c(Inf, 1.96)
+  context$sign <- 1L
+  context$phack_q <- 1L
+  context$phack_z_source <- c(0, 0)
+  context$phack_z_dest <- c(0, 0)
+  context$segments <- list(
+    bounds       = c(-Inf, 0, Inf),
+    step_bin     = c(2L, 1L),
+    phack_region = c(0L, 0L)
+  )
+  context$omega <- matrix(
+    c(1, .5, 1, .8, 1, .3),
+    nrow = 3,
+    byrow = TRUE
+  )
+  context$alpha <- 0
+  context$phack_kind <- 0L
+  context$kernel_mode <- c(1L, 1L, 1L)
+  context$bias_indicator <- c(1L, 1L, 1L)
+  context$use_normal <- c(FALSE, FALSE, FALSE)
+  context$obs_bin <- c(1L, 2L, 1L, 2L)
+  context <- selection_context_validate(
+    context,
+    required = c("omega", "alpha", "phack_kind", "kernel_mode",
+                 "bias_indicator", "use_normal")
+  )
+
+  expect_equal(context$alpha, c(0, 0, 0))
+  expect_error(
+    selection_context_validate(within(context, alpha <- c(0, 1))),
+    "alpha"
+  )
+
+  static <- selection_native_static_args(context)
+  expect_equal(static$segment_step_bin, c(2L, 1L))
+  expect_identical(selection_native_static_args(context), static)
+
+  row_subset <- selection_context_subset_rows(context, c(1L, 3L))
+  expect_equal(nrow(row_subset$omega), 2L)
+  expect_false(identical(row_subset$native_cache, context$native_cache))
+  expect_error(
+    selection_context_subset_rows(context, c(TRUE, FALSE)),
+    "one value per selection context row"
+  )
+
+  obs_subset <- selection_context_subset_observations(context, c(2L, 4L))
+  expect_equal(obs_subset$obs_bin, c(2L, 2L))
+  expect_false(identical(obs_subset$native_cache, context$native_cache))
+  expect_error(
+    selection_context_subset_observations(context, 5L),
+    "outside selection context 'obs_bin'"
+  )
+
+  kernel_args <- selection_native_kernel_args(context, S = 2, kernel_mode = 1L)
+  expect_equal(kernel_args$alpha, c(0, 0))
+  expect_equal(kernel_args$kernel_mode, c(1L, 1L))
+  expect_equal(selection_row_arg(5, 3, "x"), c(5, 5, 5))
+  expect_error(selection_row_arg(1:2, 3, "x"), "length 1 or 3")
+})
+
 test_that("selection_backend_spec rejects malformed global breaks", {
 
   selection <- prior_weightfunction("one-sided", c(.025), wf_fixed(c(1, .5)))
@@ -420,9 +493,20 @@ test_that("bias posterior extraction recognizes composed selection and phacking 
   expect_equal(colnames(mixed_phacking$bias), "pi_null")
   expect_equal(attr(mixed_phacking$bias, "models_ind"), c(3, 4))
 
+  mixed_combined <- as_mixed_posteriors(
+    model,
+    parameters       = "bias",
+    conditional      = c("omega", "phacking"),
+    conditional_rule = "AND"
+  )
+  expect_equal(attr(mixed_combined$bias, "models_ind"), 4)
+  expect_equal(length(attr(mixed_combined, "prior_density_context")$prior_lists), 1L)
+
   mixed_bias <- as_mixed_posteriors(model, parameters = "bias", conditional = "bias")
-  conditioned_prior_weights <- sapply(attr(mixed_bias$bias, "prior_list"), function(prior) prior$prior_weights)
-  expect_equal(conditioned_prior_weights, c(0, 1, 1, 1))
+  conditioned_context <- attr(mixed_bias, "prior_density_context")
+  expect_equal(length(conditioned_context$prior_lists), 3L)
+  expect_equal(conditioned_context$model_weights, rep(1 / 3, 3))
+  expect_equal(conditioned_context$condition_key, BayesTools:::.condition_event_key("bias", "AND"))
 })
 
 test_that("direct p-hacking and bias priors unpack mixed posteriors", {

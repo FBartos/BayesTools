@@ -15,10 +15,19 @@ vignette: >
 
 
 ```{r setup, include = FALSE}
-is_check <- ("CheckExEnv" %in% search()) ||
-             any(c("_R_CHECK_TIMINGS_", "_R_CHECK_LICENSE_") %in% names(Sys.getenv()))
+source(file.path("..", "tools", "random-effects-vignette-cache.R"))
 required_packages <- c("lme4", "rstanarm", "runjags", "rjags")
-can_evaluate <- !is_check && all(vapply(required_packages, requireNamespace, logical(1), quietly = TRUE))
+random_effects_cache_file <- file.path("..", "models", "RandomEffects.RDS")
+random_effects_cache_names <- random_effects_vignette_cache_names()
+missing_packages <- required_packages[
+  !vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)
+]
+random_effects_cache <- validate_random_effects_vignette_cache(
+  random_effects_cache_file,
+  load = TRUE
+)
+random_effects_models <- random_effects_cache$cache
+can_evaluate <- length(missing_packages) == 0L && isTRUE(random_effects_cache$valid)
 options(width = 140)
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = can_evaluate, dev = "png")
 if(.Platform$OS.type == "windows"){
@@ -39,7 +48,15 @@ pre code {
 ```
 
 ```{r skipped-packages, echo = FALSE, eval = !can_evaluate}
-cat("The model-fitting chunks are skipped during package checks or when optional packages are unavailable.")
+if(length(missing_packages) > 0L){
+  cat("The random-effects vignette requires optional packages: ",
+      paste(missing_packages, collapse = ", "), ".\n", sep = "")
+}
+if(!file.exists(random_effects_cache_file)){
+  cat("The random-effects vignette requires the precomputed model cache at ../models/RandomEffects.RDS.\n")
+}else if(!isTRUE(random_effects_cache$valid)){
+  cat(format_random_effects_vignette_cache_error(random_effects_cache), "\n", sep = "")
+}
 ```
 
 BayesTools can generate JAGS [@JAGS] mixed models directly from formulas with random-effect terms. The formula syntax follows the conventions used by lme4 [@lme4], while `prior_random()` keeps the random-effect standard deviation priors, correlation priors, variance-allocation priors, and monitoring policy explicit. The first and crossed-effect examples also include Bayesian comparison models fitted with rstanarm [@rstanarm].
@@ -53,6 +70,10 @@ suppressPackageStartupMessages({
   library(lme4)
   library(rstanarm)
 })
+```
+
+```{r load-precomputed-random-effects, include = FALSE}
+list2env(random_effects_models[random_effects_cache_names], envir = knitr::knit_global())
 ```
 
 ```{r comparison-helpers, include = FALSE}
@@ -480,7 +501,9 @@ lme4_correlated_scaled <- lme4::lmer(
   Reaction_z ~ Days_s + (1 + Days_s | Subject),
   data = sleepstudy, REML = FALSE
 )
+```
 
+```{r fit-stan-correlated-regenerate, eval = FALSE}
 stan_correlated <- rstanarm::stan_lmer(
   Reaction_z ~ Days + (1 + Days | Subject),
   data = sleepstudy,
@@ -505,7 +528,7 @@ stan_correlated_scaled <- rstanarm::stan_lmer(
 In BayesTools, the observation model and formula-generated mean parameter are specified separately.
 
 ```{r}
-sleep_likelihood <- 
+sleep_likelihood <-
 "model{
   for(i in 1:N){
     Reaction_z[i] ~ dnorm(mu[i], pow(sigma, -2))
@@ -539,7 +562,7 @@ sleep_random_priors <- list(
 
 The model uses the standardized response and is fitted on standardized `Days`; `JAGS_estimates_table()` transforms fixed effects, random-effect SDs, and the random-effect correlation back to the original `Days` scale.
 
-```{r}
+```{r fit-sleep-regenerate, eval = FALSE}
 fit_sleep <- JAGS_fit(
   model_syntax = sleep_likelihood, data = sleep_data, prior_list = list(sigma = unit_sd_prior),
   formula_list = sleep_formula, formula_data_list = list(mu = sleepstudy),
@@ -593,7 +616,9 @@ sleep_independent_priors <- list(
       monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = FALSE))
   )
 )
+```
 
+```{r fit-sleep-independent-regenerate, eval = FALSE}
 fit_sleep_independent <- JAGS_fit(
   model_syntax = sleep_likelihood, data = sleep_data, prior_list = list(sigma = unit_sd_prior),
   formula_list = sleep_independent_formula, formula_data_list = list(mu = sleepstudy),
@@ -602,7 +627,9 @@ fit_sleep_independent <- JAGS_fit(
   formula_random_prior_list = sleep_independent_priors,
   chains = 2, adapt = 500, burnin = 500, sample = 1000, seed = 13
 )
+```
 
+```{r}
 JAGS_estimates_table(
   fit_sleep_independent, transform_scaled = FALSE,
   random_effects_summary = "standard", remove_diagnostics = TRUE)
@@ -641,7 +668,7 @@ lme4::VarCorr(lme4_temperature)
 BayesTools uses the same observation model. The fixed temperature effect is specified on the standardized fitted scale through `formula_scale_list`. The structured fits below are compared against the lme4 unstructured covariance fit because lme4 does not directly fit HCS or AR(1) random-effect covariance constraints.
 
 ```{r}
-cake_likelihood <- 
+cake_likelihood <-
 "model{
   for(i in 1:N){
     angle_z[i] ~ dnorm(mu[i], pow(sigma, -2))
@@ -706,7 +733,7 @@ recipe_design$formula_design$random_effects[[1]]$column_names
 names(recipe_design$prior_list)
 ```
 
-```{r}
+```{r fit-cake-recipe-regenerate, eval = FALSE}
 fit_cake_recipe <- JAGS_fit(
   model_syntax = cake_likelihood, data = cake_data, prior_list = list(sigma = unit_sd_prior),
   formula_list = list(mu = recipe_formula),
@@ -716,7 +743,9 @@ fit_cake_recipe <- JAGS_fit(
   formula_random_prior_list = recipe_random_priors,
   chains = 2, adapt = 1000, burnin = 1000, sample = 4000, seed = 34
 )
+```
 
+```{r}
 JAGS_estimates_table(fit_cake_recipe, transform_scaled = FALSE, random_effects_summary = "standard", remove_diagnostics = TRUE)
 ```
 
@@ -730,7 +759,7 @@ compare_recipe_estimates(lme4_model = lme4_recipe, bayes_model = fit_cake_recipe
 
 The HCS structure estimates a separate random-effect SD for each temperature and one common correlation across all temperature pairs. For structured factor effects, BayesTools expands the factor into one column per level, so the formula does not use the usual `0 +` model-matrix notation. For CS/HCS blocks, multiple index variables such as `temperature + recipe` are combined as `interaction(temperature, recipe, drop = TRUE)`.
 
-```{r}
+```{r fit-cake-hcs-regenerate, eval = FALSE}
 fit_cake_hcs <- JAGS_fit(
   model_syntax = cake_likelihood, data = cake_data, prior_list = list(sigma = unit_sd_prior),
   formula_list = list(mu = ~ temp + hcs(temperature | replicate, name = "replicate")),
@@ -740,7 +769,9 @@ fit_cake_hcs <- JAGS_fit(
   formula_random_prior_list = cake_random_priors,
   chains = 2, adapt = 1000, burnin = 1000, sample = 4000, seed = 31
 )
+```
 
+```{r}
 JAGS_estimates_table(fit_cake_hcs, transform_scaled = FALSE, random_effects_summary = "standard", remove_diagnostics = TRUE)
 ```
 
@@ -756,7 +787,7 @@ compare_hcs_estimates(
 
 The AR(1) structure estimates one shared random-effect SD and one adjacent-temperature correlation; correlations at longer lags are powers of this `rho`.
 
-```{r}
+```{r fit-cake-ar1-regenerate, eval = FALSE}
 fit_cake_ar1 <- JAGS_fit(
   model_syntax = cake_likelihood, data = cake_data, prior_list = list(sigma = unit_sd_prior),
   formula_list = list(mu = ~ temp + ar1(temperature | replicate, name = "replicate")),
@@ -766,7 +797,9 @@ fit_cake_ar1 <- JAGS_fit(
   formula_random_prior_list = cake_random_priors,
   chains = 2, adapt = 1000, burnin = 1000, sample = 4000, seed = 32
 )
+```
 
+```{r}
 JAGS_estimates_table(fit_cake_ar1, transform_scaled = FALSE, random_effects_summary = "standard", remove_diagnostics = TRUE)
 ```
 
@@ -780,7 +813,7 @@ compare_ar1_estimates(lme4_model = lme4_temperature, bayes_model = fit_cake_ar1)
 
 The `har()` structure combines the previous two ideas: it estimates a separate SD for each ordered temperature and one AR(1) adjacent-temperature correlation.
 
-```{r}
+```{r fit-cake-har-regenerate, eval = FALSE}
 fit_cake_har <- JAGS_fit(
   model_syntax = cake_likelihood, data = cake_data, prior_list = list(sigma = unit_sd_prior),
   formula_list = list(mu = ~ temp + har(temperature | replicate, name = "replicate")),
@@ -790,7 +823,9 @@ fit_cake_har <- JAGS_fit(
   formula_random_prior_list = cake_random_priors,
   chains = 2, adapt = 1000, burnin = 1000, sample = 4000, seed = 33
 )
+```
 
+```{r}
 JAGS_estimates_table(fit_cake_har, transform_scaled = FALSE, random_effects_summary = "standard", remove_diagnostics = TRUE)
 ```
 
@@ -844,7 +879,9 @@ sleep_car_priors <- list(
       sd = unit_sd_prior, rho = rho_prior,
       monitor = random_monitor(latent = FALSE, coefficients = FALSE, correlation = TRUE)))
 )
+```
 
+```{r fit-sleep-car-regenerate, eval = FALSE}
 fit_sleep_car <- JAGS_fit(
   model_syntax = sleep_likelihood, data = sleep_data, prior_list = list(sigma = unit_sd_prior),
   formula_list = list(mu = ~ Days + car(Days | Subject, name = "subject_days")),
@@ -882,7 +919,7 @@ lme4::VarCorr(lme4_nested)
 ```
 
 ```{r}
-nested_likelihood <- 
+nested_likelihood <-
 "model{
   for(i in 1:N){
     strength_z[i] ~ dnorm(mu[i], pow(sigma, -2))
@@ -907,7 +944,9 @@ nested_allocation_priors <- list(
     )
   )
 )
+```
 
+```{r fit-nested-regenerate, eval = FALSE}
 fit_nested <- JAGS_fit(
   model_syntax = nested_likelihood, data = nested_data, prior_list = list(sigma = unit_sd_prior),
   formula_list = nested_formula, formula_data_list = list(mu = Pastes),
@@ -915,7 +954,9 @@ fit_nested <- JAGS_fit(
   formula_random_prior_list = nested_allocation_priors,
   chains = 2, adapt = 1000, burnin = 1000, sample = 2000, seed = 41
 )
+```
 
+```{r}
 JAGS_estimates_table(fit_nested, random_effects_summary = "standard", remove_diagnostics = TRUE)
 ```
 
@@ -960,7 +1001,9 @@ lme4_crossed <- lme4::lmer(
   data = Penicillin, REML = FALSE
 )
 lme4::VarCorr(lme4_crossed)
+```
 
+```{r fit-stan-crossed-regenerate, eval = FALSE}
 stan_crossed <- rstanarm::stan_lmer(
   diameter_z ~ 1 + (1 | plate) + (1 | sample),
   data = Penicillin,
@@ -975,7 +1018,7 @@ stan_crossed <- rstanarm::stan_lmer(
 The BayesTools formula uses explicit block names because there are two random-effect blocks.
 
 ```{r}
-crossed_likelihood <- 
+crossed_likelihood <-
 "model{
   for(i in 1:N){
     diameter_z[i] ~ dnorm(mu[i], pow(sigma, -2))
@@ -1004,7 +1047,9 @@ crossed_independent_priors <- list(
     sample = random_block(sd = unit_sd_prior, monitor = random_monitor(latent = FALSE))
   )
 )
+```
 
+```{r fit-crossed-independent-regenerate, eval = FALSE}
 fit_crossed_independent <- JAGS_fit(
   model_syntax = crossed_likelihood, data = crossed_data, prior_list = list(sigma = unit_sd_prior),
   formula_list = crossed_formula, formula_data_list = list(mu = Penicillin),
@@ -1012,7 +1057,9 @@ fit_crossed_independent <- JAGS_fit(
   formula_random_prior_list = crossed_independent_priors,
   chains = 4, adapt = 2000, burnin = 2000, sample = 4000, seed = 2
 )
+```
 
+```{r}
 JAGS_estimates_table(fit_crossed_independent, random_effects_summary = "standard", remove_diagnostics = TRUE)
 ```
 
@@ -1030,7 +1077,9 @@ crossed_allocation_priors <- list(
     )
   )
 )
+```
 
+```{r fit-crossed-allocation-regenerate, eval = FALSE}
 fit_crossed_allocation <- JAGS_fit(
   model_syntax = crossed_likelihood, data = crossed_data, prior_list = list(sigma = unit_sd_prior),
   formula_list = crossed_formula, formula_data_list = list(mu = Penicillin),
@@ -1038,7 +1087,9 @@ fit_crossed_allocation <- JAGS_fit(
   formula_random_prior_list = crossed_allocation_priors,
   chains = 4, adapt = 2000, burnin = 2000, sample = 4000, seed = 3
 )
+```
 
+```{r}
 JAGS_estimates_table(fit_crossed_allocation, random_effects_summary = "standard", remove_diagnostics = TRUE)
 ```
 
@@ -1048,6 +1099,16 @@ The two crossed-effect fits use the same likelihood and random-effect formula. T
 compare_crossed_estimates(
   lme4_model = lme4_crossed, stan_model = stan_crossed,
   bayes_independent = fit_crossed_independent, bayes_allocation = fit_crossed_allocation)
+```
+
+```{r save-precomputed-random-effects, include = FALSE, eval = FALSE}
+# Regenerate the cache by evaluating the non-evaluated fit chunks above, then
+# run this chunk from the vignette directory.
+dir.create(file.path("..", "models"), showWarnings = FALSE)
+saveRDS(
+  mget(random_effects_cache_names, envir = knitr::knit_global()),
+  random_effects_cache_file
+)
 ```
 
 

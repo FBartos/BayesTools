@@ -822,6 +822,11 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   priors <- attr(model, "prior_list")
   prior_density_priors <- priors
   formula_scale <- attr(model, "formula_scale")
+  condition_event <- .condition_event(
+    prior_list        = priors,
+    conditional       = conditional,
+    conditional_rule  = conditional_rule
+  )
 
   # extract the samples
   model_samples <- suppressWarnings(coda::as.mcmc(model))
@@ -834,72 +839,14 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   posterior_ordinate_sources <- .posterior_ordinate_sources(model, model_samples)
 
   # apply conditioning
-  if(length(conditional) > 0){
+  if(length(condition_event[["conditional"]]) > 0){
 
     # subset the posterior distribution
-    conditioning_samples <- do.call(cbind, lapply(conditional, function(parameter){
-
-      # special cases for PET / PEESE / PET-PEESE / selection / p-hacking within the bias parameter
-      if (!is.null(priors[["bias"]]) && is.prior.mixture(priors[["bias"]])) {
-        bias_branch_info <- .selection_prior_branch_info(priors[["bias"]])
-        if(parameter == "PET"){
-          is_PET <- sapply(priors[["bias"]], is.prior.PET)
-          return(model_samples[, "bias_indicator"] %in% which(is_PET))
-        }
-        if(parameter == "PEESE"){
-          is_PEESE <- sapply(priors[["bias"]], is.prior.PEESE)
-          return(model_samples[, "bias_indicator"] %in% which(is_PEESE))
-        }
-        if(parameter == "PETPEESE"){
-          is_PET   <- sapply(priors[["bias"]], is.prior.PET)
-          is_PEESE <- sapply(priors[["bias"]], is.prior.PEESE)
-          return(model_samples[, "bias_indicator"] %in% which(is_PET | is_PEESE))
-        }
-        if(parameter == "omega"){
-          has_selection <- vapply(bias_branch_info, function(x) !is.null(x$selection), logical(1))
-          return(model_samples[, "bias_indicator"] %in% which(has_selection))
-        }
-        if(parameter %in% c("phacking", "alpha", "pi_null")){
-          has_phacking <- vapply(bias_branch_info, function(x) !is.null(x$phacking), logical(1))
-          return(model_samples[, "bias_indicator"] %in% which(has_phacking))
-        }
-      }
-
-      if(parameter == "omega" && any(vapply(priors, function(x){
-        is.prior.weightfunction(x) || (is_prior_bias(x) && !is.null(x$selection))
-      }, logical(1)))){
-        return(rep(TRUE, nrow(model_samples)))
-      }
-
-      if(parameter %in% c("phacking", "alpha", "pi_null") && any(vapply(priors, function(x){
-        is_prior_phacking(x) || (is_prior_bias(x) && !is.null(x$phacking))
-      }, logical(1)))){
-        return(rep(TRUE, nrow(model_samples)))
-      }
-
-      # normal cases
-      temp_prior <- priors[[parameter]]
-
-      if(is.prior.spike_and_slab(temp_prior)){
-
-        return(model_samples[,paste0(parameter, "_indicator")] == 1)
-
-      }else if(is.prior.mixture(temp_prior)){
-
-        components <- attr(temp_prior, "components")
-        if(!all(components %in% c("null", "alternative")))
-          stop("conditional mixture posterior distributions are available only for 'null' and 'alternative' components")
-
-        return(model_samples[,paste0(parameter, "_indicator")] %in% which(components == "alternative"))
-
-      }else{
-
-        warning(sprintf("The parameter '%s' is not a conditional parameter. All samples are assumed to compe from the conditional posterior distribution.", parameter), call. = FALSE, immediate. = TRUE)
-        return(rep(TRUE, nrow(model_samples)))
-
-      }
-    }))
-    conditioning_samples <- apply(conditioning_samples, 1, ifelse(conditional_rule == "AND", all, any))
+    conditioning_samples <- .condition_event_posterior_mask(
+      event        = condition_event,
+      prior_list   = priors,
+      model_samples = model_samples
+    )
 
     if(sum(conditioning_samples) == 0){
       warning("No samples left after conditioning.", call. = FALSE, immediate. = TRUE)
@@ -908,81 +855,6 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
 
     model_samples <- model_samples[conditioning_samples,,drop=FALSE]
-
-    # set prior weights to 0 for null distributions
-    if(length(conditional) == 1){
-
-      if (conditional %in% c("bias", "PET", "PEESE", "PETPEESE", "omega", "phacking", "alpha", "pi_null") && !is.null(priors[["bias"]]) && is.prior.mixture(priors[["bias"]])) {
-
-        # special cases for PET / PEESE / PET-PEESE / selection / p-hacking
-        bias_branch_info <- .selection_prior_branch_info(priors[["bias"]])
-        if(conditional == "bias"){
-          components <- attr(priors[["bias"]], "components")
-          if(is.null(components) || length(components) != length(priors[["bias"]])){
-            is_null <- sapply(priors[["bias"]], is.prior.none)
-          }else{
-            is_null <- components == "null"
-          }
-          for(i in seq(along = is_null)){
-            if(is_null[i]){
-              priors[["bias"]][[i]][["prior_weights"]] <- 0
-            }
-          }
-        }else if(conditional == "PET"){
-          is_PET <- sapply(priors[["bias"]], is.prior.PET)
-          for(i in seq(along = is_PET)){
-            if(!is_PET[i]){
-              priors[["bias"]][[i]][["prior_weights"]] <- 0
-            }
-          }
-        }else if(conditional == "PEESE"){
-          is_PEESE <- sapply(priors[["bias"]], is.prior.PEESE)
-          for(i in seq(along = is_PEESE)){
-            if(!is_PEESE[i]){
-              priors[["bias"]][[i]][["prior_weights"]] <- 0
-            }
-          }
-        }else if(conditional == "PETPEESE"){
-          is_PET   <- sapply(priors[["bias"]], is.prior.PET)
-          is_PEESE <- sapply(priors[["bias"]], is.prior.PEESE)
-          for(i in seq(along = is_PET)){
-            if(!(is_PET[i] || is_PEESE[i])){
-              priors[["bias"]][[i]][["prior_weights"]] <- 0
-            }
-          }
-        }else if(conditional == "omega"){
-          has_selection <- vapply(bias_branch_info, function(x) !is.null(x$selection), logical(1))
-          for(i in seq(along = has_selection)){
-            if(!has_selection[i]){
-              priors[["bias"]][[i]][["prior_weights"]] <- 0
-            }
-          }
-        }else if(conditional %in% c("phacking", "alpha", "pi_null")){
-          has_phacking <- vapply(bias_branch_info, function(x) !is.null(x$phacking), logical(1))
-          for(i in seq(along = has_phacking)){
-            if(!has_phacking[i]){
-              priors[["bias"]][[i]][["prior_weights"]] <- 0
-            }
-          }
-        }
-
-        # propagate the prior weights to the mixture prior itself
-        attr(priors[["bias"]], "prior_weights") <- sapply(priors[["bias"]], \(x) x[["prior_weights"]])
-
-      }else if(is.prior.mixture(priors[[conditional]])){
-
-        components <- attr(priors[[conditional]], "components")
-        for(i in seq(along = components)){
-          if(components[i] == "null"){
-            priors[[conditional]][[i]][["prior_weights"]] <- 0
-          }
-        }
-
-        # propagate the prior weights to the mixture prior itself
-        attr(priors[[conditional]], "prior_weights") <- sapply(priors[[conditional]], \(x) x[["prior_weights"]])
-      }
-
-    }
   }
 
   # apply scale transformation to posterior samples if requested
@@ -1006,7 +878,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
     }else if(is.prior.mixture(temp_prior)){
       # mixture priors
-      out[[temp_parameter]] <- .as_mixed_posteriors.mixture(model_samples, temp_prior, temp_parameter, conditional)
+      out[[temp_parameter]] <- .as_mixed_posteriors.mixture(model_samples, temp_prior, temp_parameter, condition_event[["conditional"]])
 
     }else if(is_prior_phacking(temp_prior)){
       # p-hacking priors
@@ -1014,7 +886,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
     }else if(is_prior_bias(temp_prior)){
       # composed publication-bias priors
-      out[[temp_parameter]] <- .as_mixed_posteriors.bias(model_samples, temp_prior, temp_parameter, conditional)
+      out[[temp_parameter]] <- .as_mixed_posteriors.bias(model_samples, temp_prior, temp_parameter, condition_event[["conditional"]])
 
     }else if(is.prior.weightfunction(temp_prior)){
       # weight functions
@@ -1043,31 +915,34 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     }
 
     # add conditioning information
-    attr(out[[temp_parameter]], "conditional")      <- conditional
-    attr(out[[temp_parameter]], "conditional_rule") <- conditional_rule
+    out[[temp_parameter]] <- .condition_event_set_attributes(
+      out[[temp_parameter]],
+      condition_event
+    )
 
     out[[temp_parameter]] <- .posterior_density_attach(
       samples            = out[[temp_parameter]],
       sources            = posterior_density_sources,
       parameter          = temp_parameter,
-      conditional        = conditional,
+      conditional        = condition_event[["conditional"]],
       conditional_rule   = conditional_rule,
+      condition_key      = condition_event[["condition_key"]],
       allow_unlabeled    = length(parameters) == 1L
     )
     out[[temp_parameter]] <- .posterior_ordinate_attach(
       samples            = out[[temp_parameter]],
       sources            = posterior_ordinate_sources,
       parameter          = temp_parameter,
-      conditional        = conditional,
+      conditional        = condition_event[["conditional"]],
       conditional_rule   = conditional_rule,
+      condition_key      = condition_event[["condition_key"]],
       allow_unlabeled    = length(parameters) == 1L
     )
 
   }
 
   attr(out, "prior_list")       <- priors
-  attr(out, "conditional")      <- conditional
-  attr(out, "conditional_rule") <- conditional_rule
+  out <- .condition_event_set_attributes(out, condition_event)
   if(length(posterior_density_sources) > 0L){
     attr(out, "posterior_density") <- posterior_density_sources[[1]]
     if(length(posterior_density_sources) > 1L){
@@ -1086,36 +961,28 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     attr(out, "formula_scale") <- formula_scale
   }
 
-  prior_context_priors      <- prior_density_priors
-  prior_context_conditional <- conditional
-  special_conditionals      <- c("PET", "PEESE", "PETPEESE", "omega", "phacking", "alpha", "pi_null")
-  if(length(conditional) == 1 &&
-     conditional %in% special_conditionals &&
-     !conditional %in% names(prior_density_priors)){
-    prior_context_priors      <- priors
-    prior_context_conditional <- NULL
-  }
-
   # generate and store transformed prior densities if requested
   if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
     prior_densities <- .generate_transformed_prior_densities(
-      prior_list       = prior_context_priors,
+      prior_list       = prior_density_priors,
       column_names     = colnames(model_samples),
       n_grid           = n_prior_samples,
       formula_scale    = formula_scale,
-      conditional      = prior_context_conditional,
-      conditional_rule = conditional_rule
+      conditional      = condition_event[["conditional"]],
+      conditional_rule = conditional_rule,
+      condition_event  = condition_event
     )
     attr(out, "prior_densities")       <- prior_densities
     attr(out, "prior_density_context") <- attr(prior_densities, "context")
     attr(out, "transform_scaled")      <- TRUE
   }else{
     attr(out, "prior_density_context") <- .prior_density_build_context(
-      prior_list       = prior_context_priors,
+      prior_list       = prior_density_priors,
       column_names     = colnames(model_samples),
       n_grid           = n_prior_samples,
-      conditional      = prior_context_conditional,
-      conditional_rule = conditional_rule
+      conditional      = condition_event[["conditional"]],
+      conditional_rule = conditional_rule,
+      condition_event  = condition_event
     )
   }
 

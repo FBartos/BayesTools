@@ -22,7 +22,9 @@ selection_backend_spec(
 \item{global_breaks}{optional global p-value break grid.}
 }
 \value{
-A list describing the compiled backend specification.
+A list describing the compiled backend specification, including explicit
+JAGS parameter names such as \code{jags_omega}, \code{jags_alpha}, and
+\code{jags_phack_kind}.
 }
 \description{
 \code{selection_backend_spec()} compiles step-selection and

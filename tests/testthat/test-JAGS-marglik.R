@@ -732,7 +732,7 @@ test_that("JAGS bridgesampling validates rebuilt formula random design metadata"
   )
 })
 
-test_that("JAGS bridgesampling rejects fitted/rebuilt random design mismatches", {
+test_that("JAGS bridgesampling warns on fitted/rebuilt random design mismatches", {
 
   fixture <- make_bridge_random_fixture()
   fit <- coda::mcmc(matrix(0, nrow = 2, ncol = 1, dimnames = list(NULL, "dummy")))
@@ -741,17 +741,21 @@ test_that("JAGS bridgesampling rejects fitted/rebuilt random design mismatches",
   mismatch_data <- fixture$data
   mismatch_data$id <- factor(as.character(mismatch_data$id), levels = c("b", "a"))
 
-  expect_error(
-    JAGS_bridgesampling(
-      fit = fit,
-      log_posterior = STANDARD_LOG_POSTERIOR,
-      data = list(),
-      prior_list = NULL,
-      formula_list = list(mu = fixture$formula),
-      formula_data_list = list(mu = mismatch_data),
-      formula_prior_list = list(mu = fixture$prior_list),
-      formula_random_prior_list = list(mu = fixture$prior_random_list),
-      maxiter = 10
+  expect_warning(
+    expect_error(
+      JAGS_bridgesampling(
+        fit = fit,
+        log_posterior = STANDARD_LOG_POSTERIOR,
+        data = list(),
+        prior_list = NULL,
+        formula_list = list(mu = fixture$formula),
+        formula_data_list = list(mu = mismatch_data),
+        formula_prior_list = list(mu = fixture$prior_list),
+        formula_random_prior_list = list(mu = fixture$prior_random_list),
+        maxiter = 10
+      ),
+      "requires posterior samples of standardized latent random effects",
+      fixed = TRUE
     ),
     "group levels",
     fixed = TRUE

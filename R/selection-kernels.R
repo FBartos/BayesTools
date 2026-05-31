@@ -412,6 +412,13 @@ selection_backend_spec <- function(priors,
     mode           = mode,
     branch_type    = branch_type,
     prior_weights  = prior_weights,
+    jags_omega     = names$omega,
+    jags_alpha     = names$alpha,
+    jags_pi_null   = names$pi_null,
+    jags_beta_null = names$beta_null,
+    jags_phack_kind = names$phack_kind,
+    jags_phack_z_source = names$phack_z_source,
+    jags_phack_z_dest   = names$phack_z_dest,
     step           = list(
       breaks          = breaks,
       n_bins          = as.integer(n_bins),
@@ -437,6 +444,313 @@ selection_backend_spec <- function(priors,
       kernel_mode      = .selection_mode_code(mode)
     )
   ))
+}
+
+
+#' @title Selection context helpers
+#'
+#' @description Validate and subset row-wise selection-kernel contexts and
+#' prepare small argument lists for native selected-normal backends.
+#'
+#' @param context selection context list.
+#' @param selection_spec selection backend specification or context list.
+#' @param n_samples optional expected number of posterior/sample rows.
+#' @param required character vector of fields that must be present.
+#' @param rows row indices or logical row mask.
+#' @param idx observation indices.
+#' @param S number of rows for row-wise native arguments.
+#' @param alpha optional p-hacking severity values.
+#' @param phack_kind optional p-hacking form indicators.
+#' @param kernel_mode optional selection-kernel mode indicators.
+#' @param x scalar or row-wise vector.
+#' @param n required row count.
+#' @param name argument name used in errors.
+#'
+#' @return Validated or subset context lists, or lists of prepared native
+#' arguments.
+#'
+#' @export
+selection_context_validate <- function(context, n_samples = NULL,
+                                       required = character()){
+
+  check_list(context, "context")
+  if(length(required) > 0L){
+    check_char(required, "required", check_length = 0, allow_NA = FALSE)
+  }
+
+  if(is.null(n_samples)){
+    n_samples <- .selection_context_n_samples(context)
+  }
+  check_int(n_samples, "n_samples", lower = 1, allow_NA = FALSE)
+
+  out <- context
+
+  if("omega" %in% names(out) || "omega" %in% required){
+    if(is.null(out[["omega"]]) || !is.matrix(out[["omega"]]) ||
+       nrow(out[["omega"]]) != n_samples ||
+       (!is.numeric(out[["omega"]]) && !is.integer(out[["omega"]])) ||
+       any(!is.finite(out[["omega"]]))){
+      stop("Invalid selection context 'omega'.", call. = FALSE)
+    }
+  }
+
+  if("alpha" %in% names(out) || "alpha" %in% required){
+    if(is.null(out[["alpha"]])){
+      stop("Missing selection context 'alpha'.", call. = FALSE)
+    }
+    out[["alpha"]] <- selection_row_arg(out[["alpha"]], n_samples, "alpha")
+    if(!is.numeric(out[["alpha"]]) && !is.integer(out[["alpha"]])){
+      stop("Invalid selection context 'alpha'.", call. = FALSE)
+    }
+    if(any(!is.finite(out[["alpha"]]))){
+      stop("Invalid selection context 'alpha'.", call. = FALSE)
+    }
+    out[["alpha"]] <- as.numeric(out[["alpha"]])
+  }
+
+  for(field in c("phack_kind", "kernel_mode", "bias_indicator")){
+    if(!field %in% names(out) && !field %in% required){
+      next
+    }
+    if(is.null(out[[field]])){
+      stop("Missing selection context '", field, "'.", call. = FALSE)
+    }
+    out[[field]] <- selection_row_arg(out[[field]], n_samples, field)
+    if(!is.numeric(out[[field]]) && !is.integer(out[[field]])){
+      stop("Invalid selection context '", field, "'.", call. = FALSE)
+    }
+    if(any(!is.finite(out[[field]])) ||
+       any(abs(out[[field]] - round(out[[field]])) > sqrt(.Machine$double.eps))){
+      stop("Invalid selection context '", field, "'.", call. = FALSE)
+    }
+    out[[field]] <- as.integer(round(out[[field]]))
+  }
+
+  if("use_normal" %in% names(out) || "use_normal" %in% required){
+    if(is.null(out[["use_normal"]]) || !is.logical(out[["use_normal"]])){
+      stop("Invalid selection context 'use_normal'.", call. = FALSE)
+    }
+    out[["use_normal"]] <- selection_row_arg(
+      out[["use_normal"]],
+      n_samples,
+      "use_normal"
+    )
+    if(any(is.na(out[["use_normal"]]))){
+      stop("Invalid selection context 'use_normal'.", call. = FALSE)
+    }
+  }
+
+  if("kernel_mode" %in% names(out) &&
+     any(!out[["kernel_mode"]] %in% 0:3)){
+    stop("Invalid selection context 'kernel_mode'.", call. = FALSE)
+  }
+  if("bias_indicator" %in% names(out) &&
+     any(out[["bias_indicator"]] < 1L)){
+    stop("Invalid selection context 'bias_indicator'.", call. = FALSE)
+  }
+
+  return(out)
+}
+
+
+#' @rdname selection_context_validate
+#' @export
+selection_context_subset_rows <- function(context, rows){
+
+  check_list(context, "context")
+  S <- .selection_context_n_samples(context)
+  if(is.logical(rows)){
+    check_bool(rows, "rows", check_length = 0, allow_NA = FALSE)
+    if(length(rows) != S){
+      stop("'rows' logical mask must have one value per selection context row.",
+           call. = FALSE)
+    }
+    rows <- which(rows)
+  }else{
+    check_int(rows, "rows", check_length = 0, lower = 1, allow_NA = FALSE)
+  }
+
+  out <- context
+  if(any(rows > S)){
+    stop("'rows' contains indices outside the selection context.",
+         call. = FALSE)
+  }
+
+  for(field in c("omega", "alpha", "phack_kind", "kernel_mode",
+                 "bias_indicator", "use_normal")){
+    value <- out[[field]]
+    if(is.null(value)){
+      next
+    }
+    if(is.matrix(value) && nrow(value) == S){
+      out[[field]] <- value[rows, , drop = FALSE]
+    }else if(!is.matrix(value) && length(value) == S){
+      out[[field]] <- value[rows]
+    }
+  }
+
+  out <- selection_context_validate(out, n_samples = length(rows))
+
+  return(.selection_context_reset_native_cache(out))
+}
+
+
+#' @rdname selection_context_validate
+#' @export
+selection_context_subset_observations <- function(context, idx){
+
+  check_list(context, "context")
+  check_int(idx, "idx", check_length = 0, lower = 1, allow_NA = FALSE)
+
+  out <- context
+  for(field in c("obs_bin", "yi", "sei")){
+    value <- out[[field]]
+    if(is.null(value)){
+      next
+    }
+    if(max(idx) > length(value)){
+      stop("'idx' contains indices outside selection context '", field, "'.",
+           call. = FALSE)
+    }
+    out[[field]] <- value[idx]
+  }
+
+  return(.selection_context_reset_native_cache(out))
+}
+
+
+#' @rdname selection_context_validate
+#' @export
+selection_native_static_args <- function(selection_spec){
+
+  check_list(selection_spec, "selection_spec")
+
+  cache <- selection_spec[["native_cache"]]
+  if(is.environment(cache) &&
+     exists("static", envir = cache, inherits = FALSE)){
+    return(get("static", envir = cache, inherits = FALSE))
+  }
+
+  segments <- selection_spec[["segments"]]
+  if(is.null(segments)){
+    segments <- list(bounds = numeric(), step_bin = integer(),
+                     phack_region = integer())
+  }
+
+  out <- list(
+    z_lower       = as.numeric(.selection_null_default(selection_spec[["z_lower"]], numeric())),
+    z_upper       = as.numeric(.selection_null_default(selection_spec[["z_upper"]], numeric())),
+    sign          = as.integer(.selection_null_default(selection_spec[["sign"]], 1L)),
+    phack_q       = as.integer(.selection_null_default(selection_spec[["phack_q"]], 1L)),
+    phack_z_source = as.numeric(.selection_null_default(selection_spec[["phack_z_source"]], c(0, 0))),
+    phack_z_dest  = as.numeric(.selection_null_default(selection_spec[["phack_z_dest"]], c(0, 0))),
+    segment_bounds = as.numeric(.selection_null_default(segments[["bounds"]], numeric())),
+    segment_step_bin = as.integer(.selection_null_default(segments[["step_bin"]], integer())),
+    segment_phack_region = as.integer(.selection_null_default(segments[["phack_region"]], integer())),
+    telescope_probabilities = isTRUE(selection_spec[["telescope_probabilities"]])
+  )
+
+  if(is.environment(cache)){
+    assign("static", out, envir = cache)
+  }
+
+  return(out)
+}
+
+
+#' @rdname selection_context_validate
+#' @export
+selection_native_kernel_args <- function(selection_spec, S, alpha = NULL,
+                                         phack_kind = NULL,
+                                         kernel_mode = NULL){
+
+  check_list(selection_spec, "selection_spec")
+  check_int(S, "S", lower = 1, allow_NA = FALSE)
+
+  if(is.null(alpha)){
+    alpha <- rep(0, S)
+  }
+  if(is.null(phack_kind)){
+    if(isTRUE(selection_spec[["mixed_phack_q"]])){
+      stop(
+        "'phack_kind' is required for mixed linear/quadratic p-hacking forms.",
+        call. = FALSE
+      )
+    }
+    phack_kind <- rep(
+      if(isTRUE(selection_spec[["has_phack"]])) selection_spec[["phack_q"]] else 0L,
+      S
+    )
+  }
+  if(is.null(kernel_mode)){
+    kernel_mode <- rep(
+      .selection_null_default(selection_spec[["kernel_mode"]], 0L),
+      S
+    )
+  }
+
+  return(list(
+    alpha       = as.numeric(selection_row_arg(alpha, S, "alpha")),
+    phack_kind  = as.integer(selection_row_arg(phack_kind, S, "phack_kind")),
+    kernel_mode = as.integer(selection_row_arg(kernel_mode, S, "kernel_mode")),
+    static      = selection_native_static_args(selection_spec)
+  ))
+}
+
+
+#' @rdname selection_context_validate
+#' @export
+selection_row_arg <- function(x, n, name){
+
+  check_int(n, "n", lower = 1, allow_NA = FALSE)
+  check_char(name, "name", check_length = 1, allow_NA = FALSE)
+
+  if(length(x) == 1L){
+    return(rep(x, n))
+  }
+  if(length(x) != n){
+    stop("Selection argument '", name, "' must have length 1 or ", n, ".",
+         call. = FALSE)
+  }
+
+  return(x)
+}
+
+
+.selection_context_n_samples <- function(context){
+
+  if(!is.null(context[["omega"]]) && !is.null(nrow(context[["omega"]]))){
+    return(nrow(context[["omega"]]))
+  }
+  for(field in c("alpha", "phack_kind", "kernel_mode", "bias_indicator",
+                 "use_normal")){
+    if(!is.null(context[[field]]) && length(context[[field]]) > 1L){
+      return(length(context[[field]]))
+    }
+  }
+
+  stop("Cannot infer the number of rows in selection context.",
+       call. = FALSE)
+}
+
+
+.selection_context_reset_native_cache <- function(context){
+
+  if(!is.null(context)){
+    context[["native_cache"]] <- new.env(parent = emptyenv())
+  }
+
+  return(context)
+}
+
+
+.selection_null_default <- function(x, default){
+
+  if(is.null(x)){
+    return(default)
+  }
+
+  return(x)
 }
 
 .phack_validate_alpha_prior <- function(alpha){

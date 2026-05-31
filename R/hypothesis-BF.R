@@ -31,9 +31,10 @@
 #' @param BF01 whether to display the inverse Bayes factor.
 #' @param seed optional seed used only by downstream helpers that sample.
 #' @param density_method posterior density source for point-null tests.
-#' \code{"KDE"} uses kernel density estimates. \code{"precomputed"} uses valid
-#' \code{posterior_ordinate} or \code{posterior_density} attributes before
-#' falling back to KDE.
+#' \code{"KDE"} uses kernel density estimates. \code{"normal"} uses a normal
+#' approximation to the posterior density at the null. \code{"precomputed"}
+#' uses valid \code{posterior_ordinate} or \code{posterior_density} attributes
+#' before falling back to KDE.
 #' @param columns output columns. \code{"default"} returns \code{Alternative},
 #' \code{Null}, \code{BF}, and \code{BF_error}. \code{"all"} also returns
 #' \code{prior}, \code{posterior}, and \code{method} columns. The
@@ -53,7 +54,7 @@
 #' @export
 hypothesis_BF <- function(posterior, prior = NULL, hypothesis, parameter = NULL,
                           logBF = FALSE, BF01 = FALSE, seed = NULL,
-                          density_method = c("KDE", "precomputed"),
+                          density_method = c("KDE", "normal", "precomputed"),
                           columns = "default", ...) {
 
   check_char(hypothesis, "hypothesis", check_length = 0, allow_NA = FALSE)
@@ -64,7 +65,7 @@ hypothesis_BF <- function(posterior, prior = NULL, hypothesis, parameter = NULL,
   check_real(seed, "seed", check_length = 1, allow_NULL = TRUE,
              allow_NA = FALSE)
   check_char(columns, "columns", check_length = 0, allow_NA = FALSE)
-  density_method <- .posterior_density_method(density_method)
+  density_method <- .hypothesis_density_method(density_method)
   columns        <- .hypothesis_BF_output_columns(columns)
 
   if(!is.null(seed)){
@@ -119,6 +120,16 @@ hypothesis_BF <- function(posterior, prior = NULL, hypothesis, parameter = NULL,
 }
 
 
+.hypothesis_density_method <- function(density_method){
+
+  return(posterior_density_method_match(
+    density_method,
+    allowed = c("KDE", "normal", "precomputed"),
+    name    = "density_method"
+  ))
+}
+
+
 #' @export
 print.BayesTools_hypothesis_BF <- function(x, ...) {
 
@@ -128,6 +139,182 @@ print.BayesTools_hypothesis_BF <- function(x, ...) {
   print(x, ...)
 
   return(invisible(x))
+}
+
+
+#' @title Hypothesis parser helpers
+#'
+#' @description Utilities for parsing point-null hypothesis references and
+#' level references in the same syntax accepted by \code{\link{hypothesis_BF}}.
+#'
+#' @param hypothesis character vector with hypothesis statements.
+#' @param allow_compound whether compound left-hand side expressions such as
+#' \code{"theta + 0 = 0"} should be returned with \code{direct = FALSE}
+#' instead of rejected.
+#' @param text character vector with possible \code{parameter[level]}
+#' references.
+#'
+#' @return \code{hypothesis_parse_point_reference()} returns a data frame with
+#' columns \code{hypothesis}, \code{side}, \code{symbol}, \code{parameter},
+#' \code{level}, \code{value}, \code{operator}, and \code{direct}.
+#' \code{hypothesis_parse_level_reference()} returns a data frame with columns
+#' \code{input}, \code{symbol}, \code{parameter}, \code{level}, and
+#' \code{direct}. \code{hypothesis_normalize_level_references()} returns a
+#' character vector.
+#'
+#' @export
+hypothesis_parse_point_reference <- function(hypothesis,
+                                             allow_compound = TRUE){
+
+  check_char(hypothesis, "hypothesis", check_length = 0, allow_NA = FALSE)
+  check_bool(allow_compound, "allow_compound", allow_NA = FALSE)
+
+  rows <- list()
+  for(i in seq_along(hypothesis)){
+    parsed <- .parse_hypothesis_BF(hypothesis[[i]])
+    side_names <- if(isTRUE(parsed[["explicit"]])) c("left", "right") else "left"
+    for(side_name in side_names){
+      side <- parsed[[side_name]]
+      if(!side[["type"]] %in% c("point", "not_point")){
+        next
+      }
+      row <- .hypothesis_point_reference_row(
+        hypothesis = hypothesis[[i]],
+        side_name  = side_name,
+        side       = side
+      )
+      if(!isTRUE(allow_compound) && !isTRUE(row[["direct"]])){
+        stop(
+          "Point hypothesis side '", side[["label"]],
+          "' is not a direct parameter or level reference.",
+          call. = FALSE
+        )
+      }
+      rows[[length(rows) + 1L]] <- row
+    }
+  }
+
+  if(length(rows) == 0L){
+    return(.hypothesis_empty_point_reference_table())
+  }
+
+  out <- do.call(rbind, rows)
+  rownames(out) <- NULL
+
+  return(out)
+}
+
+
+#' @rdname hypothesis_parse_point_reference
+#' @export
+hypothesis_parse_level_reference <- function(text){
+
+  check_char(text, "text", check_length = 0, allow_NA = FALSE)
+
+  rows <- lapply(text, function(text_i){
+    normalized <- .hypothesis_normalize_level_references(text_i)
+    symbol <- tryCatch(
+      .hypothesis_direct_symbol(normalized),
+      error = function(e) NULL
+    )
+    ref <- .hypothesis_parse_level_symbol(symbol)
+
+    data.frame(
+      input     = text_i,
+      symbol    = if(is.null(symbol)) NA_character_ else symbol,
+      parameter = ref[["parameter"]],
+      level     = ref[["level"]],
+      direct    = !is.null(symbol) && isTRUE(ref[["direct"]]),
+      stringsAsFactors = FALSE
+    )
+  })
+
+  out <- do.call(rbind, rows)
+  rownames(out) <- NULL
+
+  return(out)
+}
+
+
+#' @rdname hypothesis_parse_point_reference
+#' @export
+hypothesis_normalize_level_references <- function(text){
+
+  check_char(text, "text", check_length = 0, allow_NA = FALSE)
+
+  return(unname(vapply(
+    text,
+    .hypothesis_normalize_level_references,
+    character(1)
+  )))
+}
+
+
+.hypothesis_empty_point_reference_table <- function(){
+
+  data.frame(
+    hypothesis = character(),
+    side       = character(),
+    symbol     = character(),
+    parameter  = character(),
+    level      = character(),
+    value      = numeric(),
+    operator   = character(),
+    direct     = logical(),
+    stringsAsFactors = FALSE
+  )
+}
+
+
+.hypothesis_point_reference_row <- function(hypothesis, side_name, side){
+
+  symbol <- .hypothesis_direct_symbol(side[["expr"]])
+  ref <- .hypothesis_parse_level_symbol(symbol)
+  direct <- !is.null(symbol)
+  parameter <- if(isTRUE(ref[["direct"]])){
+    ref[["parameter"]]
+  }else if(direct){
+    symbol
+  }else{
+    NA_character_
+  }
+
+  data.frame(
+    hypothesis = hypothesis,
+    side       = side_name,
+    symbol     = if(is.null(symbol)) NA_character_ else symbol,
+    parameter  = parameter,
+    level      = ref[["level"]],
+    value      = side[["value"]],
+    operator   = if(identical(side[["type"]], "point")) "=" else "!=",
+    direct     = direct,
+    stringsAsFactors = FALSE
+  )
+}
+
+
+.hypothesis_parse_level_symbol <- function(symbol){
+
+  empty <- list(
+    parameter = NA_character_,
+    level     = NA_character_,
+    direct    = FALSE
+  )
+  if(is.null(symbol) || !nzchar(symbol)){
+    return(empty)
+  }
+
+  ref <- regexec("^([^\\[]+)\\[([^\\]]+)\\]$", symbol, perl = TRUE)
+  match <- regmatches(symbol, ref)[[1L]]
+  if(length(match) != 3L){
+    return(empty)
+  }
+
+  return(list(
+    parameter = match[[2L]],
+    level     = trimws(match[[3L]]),
+    direct    = TRUE
+  ))
 }
 
 
@@ -169,6 +356,12 @@ print.BayesTools_hypothesis_BF <- function(x, ...) {
         pieces[[i]],
         perl = TRUE
       )
+      pieces[[i]] <- gsub(
+        "`([^`\\[]+)\\[\\s*([^\\]\\[]*\\S)\\s*\\]`",
+        "`\\1[\\2]`",
+        pieces[[i]],
+        perl = TRUE
+      )
     }
   }
 
@@ -178,7 +371,46 @@ print.BayesTools_hypothesis_BF <- function(x, ...) {
 
 .hypothesis_split_vs <- function(hypothesis) {
 
-  parts <- strsplit(hypothesis, "\\s+[Vv][Ss]\\s+", perl = TRUE)[[1L]]
+  chars <- strsplit(hypothesis, "", fixed = TRUE)[[1L]]
+  in_backtick <- FALSE
+  depth <- 0L
+  found <- integer()
+
+  i <- 1L
+  while(i <= length(chars)){
+    ch <- chars[[i]]
+    if(ch == "`"){
+      in_backtick <- !in_backtick
+      i <- i + 1L
+      next
+    }
+    if(!in_backtick){
+      if(ch == "("){
+        depth <- depth + 1L
+      }else if(ch == ")"){
+        depth <- max(0L, depth - 1L)
+      }else if(depth == 0L && i > 1L && i < length(chars) &&
+               tolower(ch) == "v" && tolower(chars[[i + 1L]]) == "s" &&
+               grepl("\\s", chars[[i - 1L]]) &&
+               i + 2L <= length(chars) && grepl("\\s", chars[[i + 2L]])){
+        found <- c(found, i)
+        i <- i + 2L
+        next
+      }
+    }
+    i <- i + 1L
+  }
+
+  if(length(found) == 0L){
+    parts <- hypothesis
+  }else if(length(found) == 1L){
+    parts <- c(
+      substr(hypothesis, 1L, found[[1L]] - 1L),
+      substr(hypothesis, found[[1L]] + 2L, nchar(hypothesis))
+    )
+  }else{
+    parts <- character()
+  }
   parts <- trimws(parts)
   parts <- parts[nzchar(parts)]
 
@@ -875,15 +1107,13 @@ print.BayesTools_hypothesis_BF <- function(x, ...) {
 .hypothesis_validate_level_conditionals <- function(posterior, parameter,
                                                     levels) {
 
-  conditionals <- lapply(levels, function(level) {
-    attr(posterior[[level]], "effective_conditional", exact = TRUE)
-  })
-  has_conditional <- vapply(conditionals, function(x) !is.null(x), logical(1))
-  if(!any(has_conditional)){
+  keys <- vapply(levels, function(level) {
+    .hypothesis_level_condition_key(posterior[[level]])
+  }, character(1))
+  if(all(keys == "<averaged>")){
     return(invisible(TRUE))
   }
 
-  keys <- vapply(conditionals, .hypothesis_conditional_key, character(1))
   if(length(unique(keys)) > 1L){
     stop(
       "Level comparison for parameter '", parameter,
@@ -897,13 +1127,90 @@ print.BayesTools_hypothesis_BF <- function(x, ...) {
 }
 
 
-.hypothesis_conditional_key <- function(conditional) {
+.hypothesis_level_condition_key <- function(level) {
+
+  key <- attr(level, "condition_key", exact = TRUE)
+  if(!is.null(key)){
+    return(as.character(key))
+  }
+
+  conditional <- attr(level, "effective_conditional", exact = TRUE)
+  conditional_rule <- attr(level, "effective_conditional_rule", exact = TRUE)
+  if(is.null(conditional)){
+    conditional <- attr(level, "conditional", exact = TRUE)
+  }
+  if(is.null(conditional_rule)){
+    conditional_rule <- attr(level, "conditional_rule", exact = TRUE)
+  }
+
+  .hypothesis_conditional_key(conditional, conditional_rule)
+}
+
+
+.hypothesis_conditional_key <- function(conditional, conditional_rule = "AND") {
 
   if(is.null(conditional)){
     return("<averaged>")
   }
+  if(is.null(conditional_rule)){
+    conditional_rule <- "AND"
+  }
 
-  paste(sort(unique(as.character(conditional))), collapse = "\r")
+  .condition_event_key(conditional, conditional_rule)
+}
+
+
+.hypothesis_context_condition_key <- function(context) {
+
+  key <- context[["condition_key"]]
+  if(!is.null(key)){
+    return(as.character(key))
+  }
+
+  conditional <- context[["conditional"]]
+  conditional_rule <- context[["conditional_rule"]]
+  if(is.null(conditional)){
+    return("<averaged>")
+  }
+  if(is.null(conditional_rule)){
+    conditional_rule <- "AND"
+  }
+
+  .condition_event_key(conditional, conditional_rule)
+}
+
+
+.hypothesis_child_prior_context <- function(posterior, levels) {
+
+  child_contexts <- lapply(levels, function(level) {
+    attr(posterior[[level]], "prior_density_context", exact = TRUE)
+  })
+  has_context <- !vapply(child_contexts, is.null, logical(1))
+  if(!any(has_context)){
+    return(NULL)
+  }
+
+  if(!all(has_context)){
+    stop(
+      "Level comparisons require prior contexts for all conditional levels.",
+      call. = FALSE
+    )
+  }
+  valid_context <- vapply(child_contexts, .hypothesis_is_prior_density_context, logical(1))
+  if(!all(valid_context)){
+    stop("Invalid joint prior information for level-comparison hypotheses.",
+         call. = FALSE)
+  }
+
+  keys <- vapply(child_contexts, .hypothesis_context_condition_key, character(1))
+  if(length(unique(keys)) > 1L){
+    stop(
+      "Level comparison prior contexts use different conditional posterior subsets.",
+      call. = FALSE
+    )
+  }
+
+  child_contexts[[1]]
 }
 
 
@@ -960,7 +1267,10 @@ print.BayesTools_hypothesis_BF <- function(x, ...) {
     return(out)
   }
 
-  context <- attr(posterior, "prior_density_context", exact = TRUE)
+  context <- .hypothesis_child_prior_context(posterior, levels)
+  if(is.null(context)){
+    context <- attr(posterior, "prior_density_context", exact = TRUE)
+  }
   if(is.null(context)){
     stop("Joint prior information is required for level-comparison hypotheses.",
          call. = FALSE)
@@ -1078,7 +1388,7 @@ print.BayesTools_hypothesis_BF <- function(x, ...) {
 
   out <- .hypothesis_empty_prior_sample_matrix(context[["column_names"]], n)
   if(length(context[["prior_lists"]]) == 0L){
-    return(out)
+    stop("No prior models remain after applying the conditional event.", call. = FALSE)
   }
 
   model_i <- sample(seq_along(context[["model_weights"]]), size = n,
@@ -1312,12 +1622,13 @@ print.BayesTools_hypothesis_BF <- function(x, ...) {
 
   marginal <- .hypothesis_point_marginal(quantity, side)
   if(!is.null(marginal)){
+    normal_approximation <- identical(density_method, "normal")
     inclusion_BF <- Savage_Dickey_BF(
       posterior            = marginal[["posterior"]],
       null_hypothesis      = side[["value"]],
-      normal_approximation = FALSE,
+      normal_approximation = normal_approximation,
       silent               = TRUE,
-      density_method       = density_method
+      density_method       = if(normal_approximation) "KDE" else density_method
     )
     prior_value <- .hypothesis_prior_density_height(
       marginal[["prior_density"]],
@@ -1325,9 +1636,24 @@ print.BayesTools_hypothesis_BF <- function(x, ...) {
     )
     posterior_value <- prior_value / as.numeric(inclusion_BF)
     BF <- posterior_value / prior_value
-    warning <- attr(inclusion_BF, "warnings", exact = TRUE)
+    bf_warnings <- attr(inclusion_BF, "warnings", exact = TRUE)
     BF_error <- attr(inclusion_BF, "BF_error_percent", exact = TRUE)
-    method <- if(identical(density_method, "precomputed")){
+    density_source <- attr(inclusion_BF, "posterior_density_source", exact = TRUE)
+    fallback_warnings <- attr(inclusion_BF, "posterior_density_fallback_warnings", exact = TRUE)
+    if(length(fallback_warnings) > 0L){
+      warning(
+        paste(unique(fallback_warnings), collapse = " "),
+        call. = FALSE
+      )
+      bf_warnings <- bf_warnings[!bf_warnings %in% fallback_warnings]
+      if(length(bf_warnings) == 0L){
+        bf_warnings <- NULL
+      }
+    }
+    method <- if(identical(density_source, "normal")){
+      "Savage-Dickey (normal)"
+    }else if(identical(density_method, "precomputed") &&
+             identical(density_source, "precomputed")){
       "Savage-Dickey (precomputed)"
     }else{
       "Savage-Dickey"
@@ -1348,16 +1674,27 @@ print.BayesTools_hypothesis_BF <- function(x, ...) {
         side[["expr"]],
         .hypothesis_prior_draws(quantity)
       )
-      prior_value <- .hypothesis_sample_density_height(prior, side[["value"]],
-                                                       "prior")
+      prior_value <- .hypothesis_draw_density_height(
+        prior,
+        side[["value"]],
+        "prior",
+        density_method
+      )
     }
-    posterior_value <- .hypothesis_sample_density_height(
-      posterior, side[["value"]], "posterior"
+    posterior_value <- .hypothesis_draw_density_height(
+      posterior,
+      side[["value"]],
+      "posterior",
+      density_method
     )
     BF <- posterior_value / prior_value
-    warning <- NULL
+    bf_warnings <- NULL
     BF_error <- NA_real_
-    method <- "kernel Savage-Dickey"
+    method <- if(identical(density_method, "normal")){
+      "Savage-Dickey (normal)"
+    }else{
+      "kernel Savage-Dickey"
+    }
   }
 
   if(inverse){
@@ -1370,7 +1707,7 @@ print.BayesTools_hypothesis_BF <- function(x, ...) {
     posterior = posterior_value,
     method    = method,
     BF_error  = if(is.null(BF_error)) NA_real_ else as.numeric(BF_error),
-    warning   = .hypothesis_collapse_warning(warning)
+    warning   = .hypothesis_collapse_warning(bf_warnings)
   ))
 }
 
@@ -1879,6 +2216,35 @@ print.BayesTools_hypothesis_BF <- function(x, ...) {
   if(!is.finite(height) || height < 0){
     stop("Could not estimate ", label, " density at the point hypothesis.",
          call. = FALSE)
+  }
+
+  return(height)
+}
+
+
+.hypothesis_draw_density_height <- function(samples, value, label,
+                                            density_method) {
+
+  if(identical(density_method, "normal")){
+    return(.hypothesis_normal_density_height(samples, value, label))
+  }
+
+  return(.hypothesis_sample_density_height(samples, value, label))
+}
+
+
+.hypothesis_normal_density_height <- function(samples, value, label) {
+
+  sample_sd <- stats::sd(samples)
+  if(length(samples) < 2L || !is.finite(sample_sd) || sample_sd <= 0){
+    stop("Cannot estimate ", label, " normal density from degenerate samples.",
+         call. = FALSE)
+  }
+
+  height <- stats::dnorm(value, mean = mean(samples), sd = sample_sd)
+  if(!is.finite(height) || height < 0){
+    stop("Could not estimate ", label,
+         " normal density at the point hypothesis.", call. = FALSE)
   }
 
   return(height)

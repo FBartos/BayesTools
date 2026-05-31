@@ -526,6 +526,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   output$formula_design <- .JAGS_formula_design_object(
     parameter         = parameter,
     formula           = design_formula,
+    log_intercept     = log_intercept,
     model_frame       = model_frame,
     model_matrix      = model_matrix,
     raw_column_names  = raw_column_names,
@@ -547,7 +548,8 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   return(output)
 }
 
-.JAGS_formula_design_object <- function(parameter, formula, model_frame, model_matrix,
+.JAGS_formula_design_object <- function(parameter, formula, log_intercept,
+                                        model_frame, model_matrix,
                                         raw_column_names, column_names,
                                         predictors, predictors_type,
                                         model_terms, model_terms_type,
@@ -585,6 +587,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   out <- list(
     parameter          = parameter,
     formula            = formula_output,
+    log_intercept      = isTRUE(log_intercept),
     model_frame        = model_frame_output,
     model_matrix       = model_matrix,
     column_names       = column_names,
@@ -1898,7 +1901,8 @@ JAGS_formula_design <- function(fit, parameter = NULL){
       lower = lower,
       upper = upper,
       label = paste0(structure, " Fisher-z correlation prior"),
-      warn = FALSE
+      warn = FALSE,
+      lower_inclusive = .bt_random_effect_rho_lower_inclusive(structure)
     )
     prior_name <- paste0(prior_prefix, "_rho_z")
     sample_name <- paste0(node_prefix, "_rho_z")
@@ -1919,7 +1923,8 @@ JAGS_formula_design <- function(fit, parameter = NULL){
       lower = bounds[["lower"]],
       upper = bounds[["upper"]],
       label = paste0(structure, " raw correlation prior"),
-      warn = TRUE
+      warn = TRUE,
+      lower_inclusive = .bt_random_effect_rho_lower_inclusive(structure)
     )
     prior_name <- paste0(prior_prefix, "_rho")
     sample_name <- rho_name
@@ -1962,7 +1967,8 @@ JAGS_formula_design <- function(fit, parameter = NULL){
 }
 
 .bt_random_effect_bound_scalar_prior <- function(x, lower, upper, label,
-                                                warn = TRUE){
+                                                warn = TRUE,
+                                                lower_inclusive = FALSE){
 
   if(is.prior.none(x)){
     stop(label, " cannot use prior_none().", call. = FALSE)
@@ -1978,7 +1984,8 @@ JAGS_formula_design <- function(fit, parameter = NULL){
         lower = lower,
         upper = upper,
         label = paste0(label, " component ", i),
-        warn = warn
+        warn = warn,
+        lower_inclusive = lower_inclusive
       )
     }
     return(x)
@@ -1990,8 +1997,18 @@ JAGS_formula_design <- function(fit, parameter = NULL){
 
   if(is.prior.point(x)){
     location <- x$parameters[["location"]]
-    if(length(location) != 1L || is.na(location) || location <= lower || location >= upper){
-      stop(label, " point mass must lie strictly inside (", lower, ", ", upper, ").", call. = FALSE)
+    lower_violation <- if(isTRUE(lower_inclusive)){
+      location < lower
+    }else{
+      location <= lower
+    }
+    if(length(location) != 1L || is.na(location) || lower_violation || location >= upper){
+      interval <- if(isTRUE(lower_inclusive)){
+        paste0("[", lower, ", ", upper, ")")
+      }else{
+        paste0("(", lower, ", ", upper, ")")
+      }
+      stop(label, " point mass must lie inside ", interval, ".", call. = FALSE)
     }
     return(x)
   }
@@ -3721,7 +3738,7 @@ transform_treatment_samples <- function(samples){
 # @param prefix Parameter prefix (e.g., "mu")
 # @return Transformed posterior matrix
 .apply_unscale_transform_single <- function(posterior, formula_scale, prefix) {
-  
+
   if (is.null(formula_scale) || length(formula_scale) == 0) {
     return(posterior)
   }
@@ -4631,10 +4648,10 @@ contr.independent <- function(n, contrasts = TRUE){
 }
 
 
-#' @title Clean parameter names from JAGS
+#' @title JAGS parameter-name helpers
 #'
-#' @description Removes additional formatting from parameter names outputted from
-#' JAGS.
+#' @description Format formula-derived parameter names and extract exact indexed
+#' JAGS parameter columns.
 #'
 #' @param parameters a vector of parameter names
 #' @param formula_parameter a formula parameter prefix name
@@ -4645,15 +4662,34 @@ contr.independent <- function(n, contrasts = TRUE){
 #' @param formula_scale optional nested list containing scaling info. When provided,
 #' intercepts from parameters with \code{log_intercept = TRUE} attribute will be
 #' renamed to \code{exp(intercept)}.
+#' @param x character vector to escape for regular-expression matching.
+#' @param columns character vector of column names.
+#' @param parameter exact unindexed JAGS parameter name.
+#' @param samples matrix, data frame, \code{mcmc}, or \code{mcmc.list} object.
+#' @param drop_missing whether missing indexed columns should return
+#' \code{NULL}. If \code{FALSE}, a zero-column matrix with the input row count
+#' is returned.
+#' @param row named row vector, list, or one-row data frame.
 #'
 #' @examples
 #' format_parameter_names(c("mu_x_cont", "mu_x_fac3t", "mu_x_fac3t__xXx__x_cont"),
 #'                        formula_parameters = "mu")
 #'
-#' @return A character vector with reformatted parameter names.
+#' @return \code{format_parameter_names()}, \code{JAGS_parameter_names()}, and
+#' \code{JAGS_regex_escape()} return character vectors.
+#' \code{JAGS_indexed_parameter_columns()} returns a logical vector.
+#' \code{JAGS_indexed_parameter_matrix()} returns a matrix of exact indexed
+#' parameter columns sorted by numeric index, or \code{NULL} when none are
+#' present and \code{drop_missing = TRUE}.
+#' \code{JAGS_indexed_parameter_vector()} returns indexed row values sorted by
+#' numeric index.
 #'
 #' @export format_parameter_names
 #' @export JAGS_parameter_names
+#' @export JAGS_regex_escape
+#' @export JAGS_indexed_parameter_columns
+#' @export JAGS_indexed_parameter_matrix
+#' @export JAGS_indexed_parameter_vector
 #' @name parameter_names
 NULL
 
@@ -4717,6 +4753,160 @@ JAGS_parameter_names   <- function(parameters, formula_parameter = NULL){
   parameters <- gsub(":", "__xXx__", parameters)
 
   return(parameters)
+}
+
+#' @rdname parameter_names
+JAGS_regex_escape <- function(x){
+
+  if(!is.character(x) || !is.vector(x)){
+    stop("The 'x' argument must be a character vector.", call. = FALSE)
+  }
+  if(anyNA(x)){
+    stop("The 'x' argument cannot contain NA/NaN values.", call. = FALSE)
+  }
+  if(length(x) == 0L){
+    return(character())
+  }
+
+  special <- c("\\", ".", "|", "(", ")", "[", "]", "{", "}", "^", "$",
+               "*", "+", "?")
+  out <- vapply(x, function(x_i){
+    chars <- strsplit(x_i, "", fixed = TRUE)[[1L]]
+    chars <- vapply(chars, function(ch){
+      if(ch %in% special){
+        return(paste0("\\", ch))
+      }
+      ch
+    }, character(1))
+    paste0(chars, collapse = "")
+  }, character(1))
+
+  return(unname(out))
+}
+
+#' @rdname parameter_names
+JAGS_indexed_parameter_columns <- function(columns, parameter){
+
+  .JAGS_check_columns(columns)
+  .JAGS_check_indexed_parameter(parameter)
+
+  return(!is.na(.JAGS_indexed_parameter_indices(columns, parameter)))
+}
+
+#' @rdname parameter_names
+JAGS_indexed_parameter_matrix <- function(samples, parameter,
+                                         drop_missing = TRUE){
+
+  check_bool(drop_missing, "drop_missing", allow_NA = FALSE)
+  .JAGS_check_indexed_parameter(parameter)
+
+  if(inherits(samples, "mcmc.list") || inherits(samples, "mcmc")){
+    samples <- as.matrix(samples)
+  }
+  if(!is.matrix(samples) && !is.data.frame(samples)){
+    stop("'samples' must be a matrix, data frame, mcmc, or mcmc.list object.",
+         call. = FALSE)
+  }
+  if(is.data.frame(samples)){
+    samples <- as.matrix(samples)
+  }
+
+  columns <- colnames(samples)
+  if(is.null(columns)){
+    if(drop_missing){
+      return(NULL)
+    }
+    return(samples[, integer(0), drop = FALSE])
+  }
+
+  selected <- .JAGS_indexed_parameter_sorted_columns(columns, parameter)
+  if(length(selected) == 0L){
+    if(drop_missing){
+      return(NULL)
+    }
+    return(samples[, integer(0), drop = FALSE])
+  }
+
+  return(samples[, selected, drop = FALSE])
+}
+
+#' @rdname parameter_names
+JAGS_indexed_parameter_vector <- function(row, parameter){
+
+  .JAGS_check_indexed_parameter(parameter)
+
+  if(is.data.frame(row)){
+    if(nrow(row) != 1L){
+      stop("'row' data frames must contain exactly one row.", call. = FALSE)
+    }
+    row <- unlist(row[1L, , drop = TRUE], use.names = TRUE)
+  }else if(is.list(row) && !is.atomic(row)){
+    row <- unlist(row, use.names = TRUE)
+  }
+
+  row_names <- names(row)
+  if(is.null(row_names)){
+    stop("'row' must be a named vector or one-row data frame.", call. = FALSE)
+  }
+
+  selected <- .JAGS_indexed_parameter_sorted_columns(row_names, parameter)
+  if(length(selected) == 0L){
+    return(row[integer(0)])
+  }
+
+  return(row[selected])
+}
+
+.JAGS_check_columns <- function(columns){
+
+  if(!is.character(columns) || !is.vector(columns)){
+    stop("The 'columns' argument must be a character vector.",
+         call. = FALSE)
+  }
+  if(anyNA(columns)){
+    stop("The 'columns' argument cannot contain NA/NaN values.",
+         call. = FALSE)
+  }
+
+  return(invisible(TRUE))
+}
+
+.JAGS_check_indexed_parameter <- function(parameter){
+
+  check_char(parameter, "parameter", check_length = 1, allow_NA = FALSE)
+  if(!nzchar(parameter)){
+    stop("The 'parameter' argument must not be empty.", call. = FALSE)
+  }
+
+  return(invisible(TRUE))
+}
+
+.JAGS_indexed_parameter_indices <- function(columns, parameter){
+
+  pattern <- paste0("^", JAGS_regex_escape(parameter), "\\[([0-9]+)\\]$")
+  matches <- regexec(pattern, columns, perl = TRUE)
+  parts <- regmatches(columns, matches)
+  out <- rep(NA_integer_, length(columns))
+  has_match <- vapply(parts, length, integer(1)) == 2L
+  out[has_match] <- as.integer(vapply(
+    parts[has_match],
+    `[[`,
+    character(1),
+    2L
+  ))
+
+  return(out)
+}
+
+.JAGS_indexed_parameter_sorted_columns <- function(columns, parameter){
+
+  indices <- .JAGS_indexed_parameter_indices(columns, parameter)
+  keep <- which(!is.na(indices))
+  if(length(keep) == 0L){
+    return(integer())
+  }
+
+  return(keep[order(indices[keep])])
 }
 
 .JAGS_prior_factor_names <- function(parameter, prior){

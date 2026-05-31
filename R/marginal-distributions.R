@@ -390,6 +390,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           )
           attr(marginal_posterior_samples[["intercept"]], "linear_weights") <- prior_weights
           attr(marginal_posterior_samples[["intercept"]], "prior_density") <- prior_density
+          attr(marginal_posterior_samples[["intercept"]], "prior_density_context") <- prior_density_context
 
         }else{
 
@@ -403,6 +404,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
             )
             attr(marginal_posterior_samples[[level_names[lvl]]], "linear_weights") <- prior_weights
             attr(marginal_posterior_samples[[level_names[lvl]]], "prior_density") <- prior_density
+            attr(marginal_posterior_samples[[level_names[lvl]]], "prior_density_context") <- prior_density_context
           }
         }
 
@@ -433,6 +435,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       posterior_ordinate_sources <- .posterior_ordinate_sources(samples, parameter_samples)
       posterior_density_conditional <- attr(parameter_samples, "conditional", exact = TRUE)
       posterior_density_conditional_rule <- attr(parameter_samples, "conditional_rule", exact = TRUE)
+      posterior_density_condition_key <- attr(parameter_samples, "condition_key", exact = TRUE)
 
       # transform factor levels
       marginal_posterior_samples <- transform_factor_samples(samples)
@@ -466,7 +469,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
               paste0(parameter, "[", level_names[lvl_i], "]")
             ),
             conditional      = posterior_density_conditional,
-            conditional_rule = posterior_density_conditional_rule
+            conditional_rule = posterior_density_conditional_rule,
+            condition_key    = posterior_density_condition_key
           )
           if(!is.null(posterior_density)){
             attr(temp_marginal_posterior_samples, "posterior_density") <- posterior_density
@@ -479,7 +483,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
               paste0(parameter, "[", level_names[lvl_i], "]")
             ),
             conditional      = posterior_density_conditional,
-            conditional_rule = posterior_density_conditional_rule
+            conditional_rule = posterior_density_conditional_rule,
+            condition_key    = posterior_density_condition_key
           )
           if(!is.null(posterior_ordinate)){
             attr(temp_marginal_posterior_samples, "posterior_ordinate") <- posterior_ordinate
@@ -507,6 +512,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           parameter        = parameter,
           conditional      = attr(samples[[parameter]], "conditional", exact = TRUE),
           conditional_rule = attr(samples[[parameter]], "conditional_rule", exact = TRUE),
+          condition_key    = attr(samples[[parameter]], "condition_key", exact = TRUE),
           allow_unlabeled  = TRUE
         )
         marginal_posterior_samples <- .posterior_ordinate_attach(
@@ -515,6 +521,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           parameter        = parameter,
           conditional      = attr(samples[[parameter]], "conditional", exact = TRUE),
           conditional_rule = attr(samples[[parameter]], "conditional_rule", exact = TRUE),
+          condition_key    = attr(samples[[parameter]], "condition_key", exact = TRUE),
           allow_unlabeled  = TRUE
         )
         marginal_posterior_samples <- .posterior_density_attach(
@@ -523,6 +530,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           parameter        = parameter,
           conditional      = attr(samples[[parameter]], "conditional", exact = TRUE),
           conditional_rule = attr(samples[[parameter]], "conditional_rule", exact = TRUE),
+          condition_key    = attr(samples[[parameter]], "condition_key", exact = TRUE),
           allow_unlabeled  = FALSE
         )
         marginal_posterior_samples <- .posterior_ordinate_attach(
@@ -531,6 +539,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           parameter        = parameter,
           conditional      = attr(samples[[parameter]], "conditional", exact = TRUE),
           conditional_rule = attr(samples[[parameter]], "conditional_rule", exact = TRUE),
+          condition_key    = attr(samples[[parameter]], "condition_key", exact = TRUE),
           allow_unlabeled  = FALSE
         )
       }
@@ -581,6 +590,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           )
           attr(marginal_posterior_samples[[level_names[lvl_i]]], "linear_weights") <- weights
           attr(marginal_posterior_samples[[level_names[lvl_i]]], "prior_density") <- prior_density
+          attr(marginal_posterior_samples[[level_names[lvl_i]]], "prior_density_context") <- prior_density_context
         }
 
       }else if(inherits(samples[[parameter]], "mixed_posteriors.simple")){
@@ -597,14 +607,63 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         )
         attr(marginal_posterior_samples, "linear_weights") <- weights
         attr(marginal_posterior_samples, "prior_density") <- prior_density
+        attr(marginal_posterior_samples, "prior_density_context") <- prior_density_context
       }
 
       attr(marginal_posterior_samples, "prior_density_context") <- prior_density_context
     }
   }
 
+  marginal_posterior_samples <- .marginal_posterior_set_condition_attributes(
+    marginal_posterior_samples,
+    samples
+  )
   class(marginal_posterior_samples) <- c(class(marginal_posterior_samples), "marginal_posterior")
   return(marginal_posterior_samples)
+}
+
+.marginal_posterior_set_condition_attributes <- function(marginal, samples){
+
+  conditional <- attr(samples, "conditional", exact = TRUE)
+  conditional_rule <- attr(samples, "conditional_rule", exact = TRUE)
+  condition_key <- attr(samples, "condition_key", exact = TRUE)
+  condition_event <- attr(samples, "condition_event", exact = TRUE)
+  if(is.null(condition_event)){
+    condition_event <- attr(samples, "resolved_condition_event", exact = TRUE)
+  }
+
+  if(is.null(conditional) && is.null(conditional_rule) &&
+     is.null(condition_key) && is.null(condition_event)){
+    return(marginal)
+  }
+  if(is.null(conditional_rule)){
+    conditional_rule <- "AND"
+  }
+  if(is.null(condition_key)){
+    condition_key <- .condition_event_key(conditional, conditional_rule)
+  }
+
+  set_attrs <- function(x){
+    attr(x, "conditional")      <- conditional
+    attr(x, "conditional_rule") <- conditional_rule
+    attr(x, "condition_key")    <- condition_key
+    if(!is.null(condition_event)){
+      attr(x, "condition_event")          <- condition_event
+      attr(x, "resolved_condition_event") <- condition_event
+    }
+    x
+  }
+
+  if(is.list(marginal)){
+    marginal_attributes <- attributes(marginal)
+    for(i in seq_along(marginal)){
+      marginal[[i]] <- set_attrs(marginal[[i]])
+    }
+    attributes(marginal) <- marginal_attributes
+  }
+  marginal <- set_attrs(marginal)
+
+  marginal
 }
 
 .marginal_posterior_parameter_samples <- function(samples, parameter){
@@ -1106,6 +1165,14 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     stop("'prior_list' must be a list of prior distributions")
   check_real(seed, "seed", allow_NULL = TRUE)
   check_int(n_samples, "n_samples")
+  if(is.null(conditional_rule)){
+    conditional_rule <- "AND"
+  }
+  condition_event <- .condition_event(
+    prior_list        = prior_list,
+    conditional       = conditional,
+    conditional_rule  = conditional_rule
+  )
 
   # set seed only once at the beginning -- not in the individual draws as the priors will end up completely correlated
   if(is.null(seed)){
@@ -1118,53 +1185,22 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   out        <- list()
 
   # estimate the number of necessary samples for conditioning
-  if(length(conditional) > 0){
+  if(length(condition_event[["conditional"]]) > 0){
 
-    conditioning_probabilities <- sapply(conditional, function(parameter){
-
-      temp_prior <- prior_list[[parameter]]
-
-      if(is.prior.spike_and_slab(temp_prior)){
-
-        return(mean(.get_spike_and_slab_inclusion(temp_prior)))
-
-      }else if(is.prior.mixture(temp_prior)){
-
-        components    <- attr(temp_prior, "components")
-        prior_weights <- attr(temp_prior, "prior_weights")
-
-        if(!all(components %in% c("null", "alternative")))
-          stop("conditional mixture posterior distributions are available only for 'null' and 'alternative' components")
-
-        return(sum(prior_weights[components == "alternative"]) / sum(prior_weights))
-
-      }else{
-
-        warning(sprintf("The parameter '%s' is not a conditional parameter. All samples are assumed to compe from the conditional posterior distribution.", parameter), call. = FALSE, immediate. = TRUE)
-        return(1)
-      }
-    })
-    # add a check when forwarding samples to marginal inference
-    all_alternative <- all(sapply(conditional, function(parameter){
-
-      temp_prior <- prior_list[[parameter]]
-
-      if(is.prior.spike_and_slab(temp_prior)){
-        return(mean(.get_spike_and_slab_inclusion(temp_prior)) == 1)
-      }else if(is.prior.mixture(temp_prior)){
-        return(all(attr(temp_prior, "components") == "alternative"))
-      }else{
-        return(TRUE)
-      }
-    }))
+    condition_models <- .condition_event_model_options(prior_list, condition_event)
+    conditioning_probability <- if(is.null(condition_models)){
+      1
+    }else{
+      condition_models[["event_probability"]]
+    }
+    if(!is.finite(conditioning_probability) || conditioning_probability <= 0){
+      stop("No prior models remain after applying the conditional event.", call. = FALSE)
+    }
+    all_alternative <- conditioning_probability == 1
 
     # multiply by 1.25 to ensure that the requested number of samples is reached
     requested_samples <- n_samples
-    if(conditional_rule == "AND"){
-      n_samples <- round(n_samples / prod(conditioning_probabilities) * 1.25)
-    }else if(conditional_rule == "OR"){
-      n_samples  <- round(n_samples / (1 - prod(1 - conditioning_probabilities)) * 1.25)
-    }
+    n_samples <- round(n_samples / conditioning_probability * 1.25)
   }
 
   # create the samples
@@ -1219,28 +1255,26 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
 
   # perform conditioning (and copy back with attributes)
-  if(length(conditional) > 0){
+  if(length(condition_event[["conditional"]]) > 0){
 
     # obtain the indicator samples
-    conditioning_samples <- do.call(cbind, lapply(conditional, function(parameter){
-
-      temp_prior <- prior_list[[parameter]]
-
-      if(is.prior.spike_and_slab(temp_prior)){
-
-        return(attr(out[[parameter]], "models_ind") == 1)
-
-      }else if(is.prior.mixture(temp_prior)){
-
-        components <- attr(temp_prior, "components")
-        return(attr(out[[parameter]], "models_ind") %in% which(components == "alternative"))
-
-      }else{
-
-        return(rep(TRUE, n_samples))
+    indicator_samples <- matrix(nrow = n_samples, ncol = 0L)
+    for(parameter in parameters){
+      models_ind <- attr(out[[parameter]], "models_ind")
+      if(length(models_ind) == n_samples && !identical(models_ind, rep(FALSE, n_samples))){
+        indicator_samples <- cbind(indicator_samples, models_ind)
+        colnames(indicator_samples)[ncol(indicator_samples)] <- paste0(parameter, "_indicator")
+        if(parameter == "bias"){
+          indicator_samples <- cbind(indicator_samples, models_ind)
+          colnames(indicator_samples)[ncol(indicator_samples)] <- "bias_indicator"
+        }
       }
-    }))
-    conditioning_samples <- apply(conditioning_samples, 1, ifelse(conditional_rule == "AND", all, any))
+    }
+    conditioning_samples <- .condition_event_posterior_mask(
+      event         = condition_event,
+      prior_list    = prior_list,
+      model_samples = indicator_samples
+    )
 
     # check enough samples were drawn (if too many remove the extra ones)
     if(sum(conditioning_samples) < requested_samples){
@@ -1266,6 +1300,14 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     # put a check whether all samples were conditional
     attr(out, "all_alternative") <- all_alternative
   }
+
+  for(parameter in names(out)){
+    out[[parameter]] <- .condition_event_set_attributes(
+      out[[parameter]],
+      condition_event
+    )
+  }
+  out <- .condition_event_set_attributes(out, condition_event)
 
   return(out)
 }
@@ -1765,9 +1807,12 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
 
   if(!inherits(posterior, "marginal_posterior"))
     stop("'BF_savage_dickey' function requires an object of class 'marginal_posteriors'")
-  check_real(null_hypothesis, "null_hypothesis")
-  check_bool(normal_approximation, "normal_approximation")
-  check_bool(silent, "silent")
+  check_real(null_hypothesis, "null_hypothesis", allow_NA = FALSE)
+  if(!is.finite(null_hypothesis)){
+    stop("The 'null_hypothesis' argument must be finite.", call. = FALSE)
+  }
+  check_bool(normal_approximation, "normal_approximation", allow_NA = FALSE)
+  check_bool(silent, "silent", allow_NA = FALSE)
   density_method <- .posterior_density_method(density_method)
 
   if(is.list(posterior)){
@@ -1806,32 +1851,63 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   warnings <- NULL
   stored_posterior_density <- NULL
   stored_posterior_ordinate <- NULL
+  posterior_density_source <- if(isTRUE(normal_approximation)) "normal" else "KDE"
+  posterior_density_fallback_warnings <- NULL
   BF_error_percent <- NA_real_
   if(!normal_approximation){
+    posterior_ordinate_attr <- attr(posterior, "posterior_ordinate")
+    if(!is.null(posterior_ordinate_attr) &&
+       !.posterior_density_condition_matches(
+         posterior_ordinate_attr,
+         conditional      = attr(posterior, "conditional", exact = TRUE),
+         conditional_rule = attr(posterior, "conditional_rule", exact = TRUE),
+         condition_key    = attr(posterior, "condition_key", exact = TRUE)
+       )){
+      posterior_ordinate_attr <- NULL
+    }
+    posterior_density_attr <- attr(posterior, "posterior_density")
+    if(!is.null(posterior_density_attr) &&
+       !.posterior_density_condition_matches(
+         posterior_density_attr,
+         conditional      = attr(posterior, "conditional", exact = TRUE),
+         conditional_rule = attr(posterior, "conditional_rule", exact = TRUE),
+         condition_key    = attr(posterior, "condition_key", exact = TRUE)
+       )){
+      posterior_density_attr <- NULL
+    }
     stored_posterior_ordinate <- .posterior_ordinate_for_method(
-      attr(posterior, "posterior_ordinate"),
+      posterior_ordinate_attr,
       null_hypothesis,
       density_method
     )
     stored_posterior_density <- .posterior_density_for_method(
-      attr(posterior, "posterior_density"),
+      posterior_density_attr,
       density_method
     )
   }
 
   if(mean(posterior == null_hypothesis) > 0.05){
-    warnings <- c(warnings, "There is a considerable cluster of posterior samples at the exact null hypothesis values. The Savage-Dickey density ratio is likely to be invalid.")
+    stop(
+      "There is a considerable cluster of posterior samples at the exact null hypothesis value. The Savage-Dickey density ratio is invalid.",
+      call. = FALSE
+    )
   }
   if(!is.null(stored_posterior_density) && nrow(stored_posterior_density[["point_masses"]]) > 0L){
     point_masses <- stored_posterior_density[["point_masses"]]
     point_tol <- sqrt(.Machine$double.eps) * max(1, abs(null_hypothesis))
     null_point_mass <- sum(point_masses[["mass"]][abs(point_masses[["x"]] - null_hypothesis) <= point_tol])
-    if(null_point_mass > 0.05){
-      warnings <- c(warnings, "Stored posterior density contains a considerable point mass at the exact null hypothesis value. The Savage-Dickey density ratio is likely to be invalid.")
+    if(null_point_mass > 0){
+      stop(
+        "Stored posterior density contains a point mass at the exact null hypothesis value. The Savage-Dickey density ratio is invalid.",
+        call. = FALSE
+      )
     }
   }
-  if(.prior_linear_density_point_mass(prior, null_hypothesis) > 0.05){
-    warnings <- c(warnings, "There is a considerable point mass in the prior at the exact null hypothesis value. The Savage-Dickey density ratio is likely to be invalid.")
+  if(.prior_linear_density_point_mass(prior, null_hypothesis) > 0){
+    stop(
+      "There is a point mass in the prior at the exact null hypothesis value. The Savage-Dickey density ratio is invalid.",
+      call. = FALSE
+    )
   }
 
   prior_range <- range(c(
@@ -1845,7 +1921,9 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   if(!is.null(stored_posterior_density) && is.null(stored_posterior_ordinate)){
     posterior_range <- range(stored_posterior_density[["x"]], finite = TRUE)
     if(null_hypothesis < posterior_range[1] || null_hypothesis > posterior_range[2]){
-      warnings <- c(warnings, "Stored posterior density does not span both sides of the null hypothesis. Falling back to the kernel density estimate.")
+      fallback_warning <- "Stored posterior density does not span both sides of the null hypothesis. Falling back to the kernel density estimate."
+      warnings <- c(warnings, fallback_warning)
+      posterior_density_fallback_warnings <- c(posterior_density_fallback_warnings, fallback_warning)
       stored_posterior_density <- NULL
       posterior_range <- range(posterior)
     }
@@ -1859,13 +1937,17 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     posterior_height <- .Savage_Dickey_BF.normal(posterior, null_hypothesis)
   }else if(!is.null(stored_posterior_ordinate)){
     posterior_height <- stored_posterior_ordinate[["y"]]
+    posterior_density_source <- "precomputed"
     BF_error_percent <- .posterior_ordinate_bf_error_percent(stored_posterior_ordinate)
   }else if(!is.null(stored_posterior_density)){
     posterior_height <- .posterior_density_height(stored_posterior_density, null_hypothesis)
     if(!is.finite(posterior_height) || posterior_height <= 0){
-      warnings <- c(warnings, "Stored posterior density has zero or non-finite height at the null hypothesis. Falling back to the kernel density estimate.")
+      fallback_warning <- "Stored posterior density has zero or non-finite height at the null hypothesis. Falling back to the kernel density estimate."
+      warnings <- c(warnings, fallback_warning)
+      posterior_density_fallback_warnings <- c(posterior_density_fallback_warnings, fallback_warning)
       posterior_height <- .Savage_Dickey_BF.kd(posterior, null_hypothesis)
     }else{
+      posterior_density_source <- "precomputed"
       BF_error_percent <- .posterior_density_bf_error_percent(stored_posterior_density, null_hypothesis)
     }
   }else{
@@ -1884,6 +1966,11 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   }
   if(is.finite(BF_error_percent)){
     attr(BF, "BF_error_percent") <- BF_error_percent
+  }
+  attr(BF, "posterior_density_source") <- posterior_density_source
+  if(length(posterior_density_fallback_warnings) > 0L){
+    attr(BF, "posterior_density_fallback") <- TRUE
+    attr(BF, "posterior_density_fallback_warnings") <- posterior_density_fallback_warnings
   }
 
   return(BF)
@@ -2163,12 +2250,13 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
   return(density_method)
 }
 
-.marginal_inference_condition_key <- function(conditional){
+.marginal_inference_condition_key <- function(conditional, conditional_rule = "AND"){
 
-  paste0(c(length(conditional), conditional), collapse = "\r")
+  .condition_event_key(conditional, conditional_rule)
 }
 
-.marginal_inference_level_conditionals <- function(marginal, prior_list, conditional){
+.marginal_inference_level_conditionals <- function(marginal, prior_list, conditional,
+                                                   conditional_rule = "AND"){
 
   levels <- names(marginal)
   conditionals <- lapply(levels, function(level){
@@ -2177,14 +2265,21 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
       return(conditional)
     }
     if(!is.null(dim(weights))){
-      active <- unique(unlist(apply(weights, 1, function(row_weights){
+      row_conditionals <- lapply(seq_len(nrow(weights)), function(row_i){
         .prior_linear_active_conditionals(
           prior_list  = prior_list,
-          weights     = row_weights,
+          weights     = weights[row_i, ],
           conditional = conditional
         )
-      }), use.names = FALSE))
-      return(conditional[conditional %in% active])
+      })
+      row_keys <- vapply(row_conditionals, .condition_labels_key, character(1))
+      if(length(unique(row_keys)) > 1L){
+        stop(
+          "Row-varying active conditional sets are not supported for marginal inference.",
+          call. = FALSE
+        )
+      }
+      return(row_conditionals[[1]])
     }
     .prior_linear_active_conditionals(
       prior_list   = prior_list,
@@ -2205,7 +2300,8 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
   level_conditionals <- .marginal_inference_level_conditionals(
     marginal    = averaged_marginal,
     prior_list  = prior_list,
-    conditional = conditional
+    conditional = conditional,
+    conditional_rule = conditional_rule
   )
 
   conditional_marginal <- averaged_marginal
@@ -2213,7 +2309,12 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
 
   for(level in names(level_conditionals)){
     level_conditional <- level_conditionals[[level]]
-    key <- .marginal_inference_condition_key(level_conditional)
+    level_event <- .condition_event(
+      prior_list        = prior_list,
+      conditional       = level_conditional,
+      conditional_rule  = conditional_rule
+    )
+    key <- level_event[["condition_key"]]
 
     if(is.null(marginal_cache[[key]])){
       conditional_posterior <- as_mixed_posteriors(
@@ -2242,7 +2343,11 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
     }
 
     conditional_marginal[[level]] <- marginal_cache[[key]][[level]]
-    attr(conditional_marginal[[level]], "effective_conditional") <- level_conditional
+    conditional_marginal[[level]] <- .condition_event_set_attributes(
+      conditional_marginal[[level]],
+      level_event,
+      effective = TRUE
+    )
   }
 
   conditional_marginal

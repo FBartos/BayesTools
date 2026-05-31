@@ -4,7 +4,11 @@
 \alias{parameter_names}
 \alias{format_parameter_names}
 \alias{JAGS_parameter_names}
-\title{Clean parameter names from JAGS}
+\alias{JAGS_regex_escape}
+\alias{JAGS_indexed_parameter_columns}
+\alias{JAGS_indexed_parameter_matrix}
+\alias{JAGS_indexed_parameter_vector}
+\title{JAGS parameter-name helpers}
 \usage{
 format_parameter_names(
   parameters,
@@ -15,6 +19,14 @@ format_parameter_names(
 )
 
 JAGS_parameter_names(parameters, formula_parameter = NULL)
+
+JAGS_regex_escape(x)
+
+JAGS_indexed_parameter_columns(columns, parameter)
+
+JAGS_indexed_parameter_matrix(samples, parameter, drop_missing = TRUE)
+
+JAGS_indexed_parameter_vector(row, parameter)
 }
 \arguments{
 \item{parameters}{a vector of parameter names}
@@ -30,14 +42,35 @@ kept. Defaults to \code{TRUE}.}
 intercepts from parameters with \code{log_intercept = TRUE} attribute will be
 renamed to \code{exp(intercept)}.}
 
+\item{x}{character vector to escape for regular-expression matching.}
+
 \item{formula_parameter}{a formula parameter prefix name}
+
+\item{columns}{column names to search.}
+
+\item{parameter}{exact unindexed JAGS parameter name.}
+
+\item{samples}{matrix, data frame, \code{mcmc}, or \code{mcmc.list} object.}
+
+\item{drop_missing}{whether missing indexed columns should return
+\code{NULL}. If \code{FALSE}, a zero-column matrix with the input row count
+is returned.}
+
+\item{row}{named row vector, list, or one-row data frame.}
 }
 \value{
-A character vector with reformatted parameter names.
+\code{format_parameter_names()}, \code{JAGS_parameter_names()}, and
+\code{JAGS_regex_escape()} return character vectors.
+\code{JAGS_indexed_parameter_columns()} returns a logical vector.
+\code{JAGS_indexed_parameter_matrix()} returns a matrix of exact indexed
+parameter columns sorted by numeric index, or \code{NULL} when none are
+present and \code{drop_missing = TRUE}.
+\code{JAGS_indexed_parameter_vector()} returns indexed row values sorted by
+numeric index.
 }
 \description{
-Removes additional formatting from parameter names outputted from
-JAGS.
+Format formula-derived parameter names and extract exact indexed
+JAGS parameter columns.
 }
 \examples{
 format_parameter_names(c("mu_x_cont", "mu_x_fac3t", "mu_x_fac3t__xXx__x_cont"),

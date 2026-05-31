@@ -14,11 +14,17 @@
 #' and additional list of parameters passed as \code{...} as input and
 #' returns the log of the unnormalized posterior density of the model part
 #' @param data list containing data to fit the model (not including data for the formulas)
-#' @param prior_list named list of prior distribution
+#' @param prior_list named list of prior distributions
 #' (names correspond to the parameter names) of parameters not specified within the
-#' \code{formula_list}
+#' \code{formula_list}. For \code{BayesTools_fit} objects, stored non-formula
+#' priors are used when \code{prior_list = NULL}; if fitted formula priors are
+#' supplied here, they are ignored with a warning in favor of the stored formula
+#' metadata.
 #' @param formula_list named list of formulas to be added to the model
-#' (names correspond to the parameter name created by each of the formula)
+#' (names correspond to the parameter name created by each of the formula). For
+#' \code{BayesTools_fit} objects with stored formula-design metadata, formula
+#' inputs can usually be omitted; if supplied, they are rebuilt only to check
+#' consistency with the fitted design.
 #' @param formula_data_list named list of data frames containing data for each formula
 #' (names of the lists correspond to the parameter name created by each of the formula)
 #' @param formula_prior_list named list of named lists of prior distributions
@@ -28,7 +34,8 @@
 #' @param formula_scale_list named list of named lists for standardizing continuous predictors
 #' (names of the lists correspond to the parameter name created by each of the formula).
 #' Each entry should be a named list where continuous predictors with \code{TRUE} values will
-#' be standardized. Defaults to \code{NULL} (no standardization).
+#' be standardized. Defaults to stored fit metadata when available and to
+#' \code{NULL} (no standardization) otherwise.
 #' @param add_parameters vector of additional parameter names that should be used
 #' in bridgesampling but were not specified in the \code{prior_list}
 #' @param add_bounds list with two name vectors (\code{"lb"} and \code{"up"})
@@ -38,7 +45,9 @@
 #' objects for random effects in `formula_list`. Bridge sampling for formula
 #' random effects requires the `prior_random()` interface because the
 #' stochastic bridge coordinates are the standardized latent effects and
-#' correlation primitives.
+#' correlation primitives. For \code{BayesTools_fit} objects with stored
+#' formula-design metadata, this can be omitted unless formula inputs are being
+#' supplied for a consistency check.
 #' @param maxiter maximum number of iterations for the
 #' \link[bridgesampling]{bridge_sampler}
 #' @param silent whether the progress should be printed, defaults to \code{TRUE}
@@ -85,87 +94,45 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
                                 maxiter = 10000, silent = TRUE, ...){
 
   ### check input
-  if(is.null(prior_list)){
-    prior_list <- list()
-  }
   check_bool(silent, "silent")
   check_int(maxiter, "maxiter", lower = 1)
-  check_list(formula_list, "formula_list", allow_NULL = TRUE)
-  check_list(formula_data_list, "formula_data_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
-  check_list(formula_prior_list, "formula_prior_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
-  check_list(formula_scale_list, "formula_scale_list", allow_NULL = TRUE)
-  check_list(formula_random_prior_list, "formula_random_prior_list", check_names = names(formula_list), allow_other = FALSE, all_objects = FALSE, allow_NULL = TRUE)
-  if(!is.null(formula_random_prior_list)){
-    for(parameter in names(formula_random_prior_list)){
-      .bt_check_prior_random(formula_random_prior_list[[parameter]])
-    }
-  }
-  if(!is.null(formula_list)){
-    for(parameter in names(formula_list)){
-      if(.has_random_effects(formula_list[[parameter]]) &&
-         (is.null(formula_random_prior_list) || is.null(formula_random_prior_list[[parameter]]))){
-        stop(
-          "JAGS_bridgesampling() requires 'formula_random_prior_list' with a prior_random() object for formula random effects in parameter '",
-          parameter,
-          "'. Legacy random-effect priors in 'formula_prior_list' are not bridge-sampling ready.",
-          call. = FALSE
-        )
-      }
-    }
-  }
-  fitted_formula_design <- attr(fit, "formula_design")
-  if(!is.null(fitted_formula_design)){
-    random_formula_parameters <- names(fitted_formula_design)[
-      vapply(fitted_formula_design, .bt_formula_design_has_random_effects, logical(1))
-    ]
-    missing_random_formula_parameters <- setdiff(random_formula_parameters, names(formula_list))
-    if(length(missing_random_formula_parameters) > 0L){
-      stop(
-        "JAGS_bridgesampling() requires 'formula_list', 'formula_data_list', 'formula_prior_list', and 'formula_random_prior_list' for fitted formula random effects in parameter(s): ",
-        paste(missing_random_formula_parameters, collapse = ", "),
-        ".",
-        call. = FALSE
-      )
-    }
-  }
 
-  if(is.null(formula_scale_list) && !is.null(formula_list)){
-    formula_scale_list <- .JAGS_formula_scale_list_from_fit(fit, names(formula_list))
+  formula_context <- .bt_JAGS_bridge_formula_context(
+    fit = fit,
+    formula_list = formula_list,
+    formula_data_list = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    formula_scale_list = formula_scale_list,
+    formula_random_prior_list = formula_random_prior_list
+  )
+  formula_design_list <- formula_context$formula_design_list
+  formula_list <- formula_context$formula_list
+  formula_data_list <- formula_context$formula_data_list
+  formula_prior_list <- formula_context$formula_prior_list
+
+  if(is.null(prior_list)){
+    prior_list <- .bt_JAGS_bridge_prior_list_from_fit(
+      fit = fit,
+      formula_design_list = formula_design_list
+    )
+  }else{
+    prior_list <- .bt_JAGS_bridge_non_formula_prior_list(
+      prior_list = prior_list,
+      formula_design_list = formula_design_list,
+      warn = TRUE
+    )
+  }
+  if(is.null(prior_list)){
+    prior_list <- list()
   }
 
   # extract the posterior distribution
   posterior <- .fit_to_posterior(fit)
 
-  ### prepare formula objects summary
-  if(!is.null(formula_list)){
-
-    # obtain settings for each formula
-    formula_output <- list()
-    for(parameter in names(formula_list)){
-      formula_output[[parameter]] <- JAGS_formula(
-        formula       = formula_list[[parameter]],
-        parameter     = parameter,
-        data          = formula_data_list[[parameter]],
-        prior_list    = formula_prior_list[[parameter]],
-        formula_scale = if(!is.null(formula_scale_list)) formula_scale_list[[parameter]] else NULL,
-        prior_random  = if(!is.null(formula_random_prior_list)) formula_random_prior_list[[parameter]] else NULL)
-    }
-
-    # merge with the rest of the input
-    formula_list       <- lapply(formula_output, function(output) output[["formula"]])
-    formula_prior_list <- lapply(formula_output, function(output) output[["prior_list"]])
-    formula_data_list  <- lapply(formula_output, function(output) output[["data"]])
-    formula_design_list <- lapply(formula_output, function(output) output[["formula_design"]])
-    .bt_JAGS_bridge_validate_formula_random_designs(
-      fitted_formula_design = fitted_formula_design,
-      rebuilt_formula_design = formula_design_list
-    )
-
+  if(length(formula_prior_list) > 0L){
     all_prior_list <- c(prior_list, do.call(c, unname(formula_prior_list)))
-
   }else{
     all_prior_list <- prior_list
-    formula_design_list <- NULL
   }
 
   if(length(all_prior_list) > 0L && any(sapply(all_prior_list, is.prior.discrete)))
@@ -261,6 +228,464 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   }
 
   return(marglik)
+}
+
+.bt_JAGS_bridge_formula_input_supplied <- function(formula_list,
+                                                   formula_data_list,
+                                                   formula_prior_list,
+                                                   formula_scale_list,
+                                                   formula_random_prior_list){
+
+  !is.null(formula_list) ||
+    !is.null(formula_data_list) ||
+    !is.null(formula_prior_list) ||
+    !is.null(formula_scale_list) ||
+    !is.null(formula_random_prior_list)
+}
+
+.bt_JAGS_bridge_formula_context <- function(fit,
+                                            formula_list,
+                                            formula_data_list,
+                                            formula_prior_list,
+                                            formula_scale_list,
+                                            formula_random_prior_list){
+
+  formula_input_supplied <- .bt_JAGS_bridge_formula_input_supplied(
+    formula_list = formula_list,
+    formula_data_list = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    formula_scale_list = formula_scale_list,
+    formula_random_prior_list = formula_random_prior_list
+  )
+  fitted_formula_design <- .bt_JAGS_bridge_formula_design_list(
+    attr(fit, "formula_design")
+  )
+  has_fitted_formula_design <- length(fitted_formula_design) > 0L
+
+  if(!formula_input_supplied){
+    if(has_fitted_formula_design){
+      return(.bt_JAGS_bridge_formula_context_from_design(
+        fitted_formula_design
+      ))
+    }
+    return(.bt_JAGS_bridge_empty_formula_context())
+  }
+
+  rebuildability <- tryCatch(.bt_JAGS_bridge_formula_inputs_rebuildability(
+    formula_list = formula_list,
+    formula_data_list = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    formula_scale_list = formula_scale_list,
+    formula_random_prior_list = formula_random_prior_list,
+    has_fitted_formula_design = has_fitted_formula_design
+  ), error = function(e){
+    if(has_fitted_formula_design){
+      return(list(
+        rebuildable = FALSE,
+        detail = conditionMessage(e)
+      ))
+    }
+    stop(conditionMessage(e), call. = FALSE)
+  })
+  if(!isTRUE(rebuildability$rebuildable)){
+    if(has_fitted_formula_design){
+      .bt_JAGS_bridge_warn_formula_mismatch(rebuildability$detail)
+      return(.bt_JAGS_bridge_formula_context_from_design(
+        fitted_formula_design
+      ))
+    }
+    stop(rebuildability$detail, call. = FALSE)
+  }
+
+  rebuilt_context <- tryCatch(.bt_JAGS_bridge_rebuild_formula_context(
+    fit = fit,
+    formula_list = formula_list,
+    formula_data_list = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    formula_scale_list = formula_scale_list,
+    formula_random_prior_list = formula_random_prior_list
+  ), error = function(e){
+    e
+  })
+  if(inherits(rebuilt_context, "error")){
+    if(has_fitted_formula_design){
+      .bt_JAGS_bridge_warn_formula_mismatch(
+        paste0("formula inputs could not be rebuilt: ", conditionMessage(rebuilt_context))
+      )
+      return(.bt_JAGS_bridge_formula_context_from_design(
+        fitted_formula_design
+      ))
+    }
+    stop(conditionMessage(rebuilt_context), call. = FALSE)
+  }
+  if(has_fitted_formula_design){
+    .bt_JAGS_bridge_warn_formula_mismatch(
+      .bt_JAGS_bridge_formula_design_mismatches(
+        fitted_formula_design = fitted_formula_design,
+        rebuilt_formula_design = rebuilt_context$formula_design_list
+      )
+    )
+    return(.bt_JAGS_bridge_formula_context_from_design(
+      fitted_formula_design
+    ))
+  }
+
+  rebuilt_context
+}
+
+.bt_JAGS_bridge_formula_inputs_rebuildability <- function(formula_list,
+                                                          formula_data_list,
+                                                          formula_prior_list,
+                                                          formula_scale_list,
+                                                          formula_random_prior_list,
+                                                          has_fitted_formula_design){
+
+  if(is.null(formula_list) || is.null(formula_data_list) || is.null(formula_prior_list)){
+    detail <- if(has_fitted_formula_design){
+      "formula-related inputs are incomplete"
+    }else{
+      "When supplying formula-related inputs to JAGS_bridgesampling(), provide 'formula_list', 'formula_data_list', and 'formula_prior_list'."
+    }
+    return(list(rebuildable = FALSE, detail = detail))
+  }
+
+  check_list(formula_list, "formula_list", allow_NULL = FALSE)
+  if(has_fitted_formula_design){
+    check_list(formula_data_list, "formula_data_list", allow_NULL = FALSE)
+    check_list(formula_prior_list, "formula_prior_list", allow_NULL = FALSE)
+    if(!.bt_JAGS_bridge_formula_input_names_match(
+      formula_list = formula_list,
+      formula_data_list = formula_data_list,
+      formula_prior_list = formula_prior_list,
+      formula_scale_list = formula_scale_list,
+      formula_random_prior_list = formula_random_prior_list
+    )){
+      return(list(
+        rebuildable = FALSE,
+        detail = "formula input names are incomplete or inconsistent"
+      ))
+    }
+    scale_check_names <- NULL
+    random_check_names <- NULL
+  }else{
+    check_list(formula_data_list, "formula_data_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = FALSE)
+    check_list(formula_prior_list, "formula_prior_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = FALSE)
+    scale_check_names <- names(formula_list)
+    random_check_names <- names(formula_list)
+  }
+
+  check_list(formula_scale_list, "formula_scale_list", check_names = scale_check_names, allow_other = FALSE, all_objects = FALSE, allow_NULL = TRUE)
+  check_list(formula_random_prior_list, "formula_random_prior_list", check_names = random_check_names, allow_other = FALSE, all_objects = FALSE, allow_NULL = TRUE)
+  if(!is.null(formula_random_prior_list)){
+    for(parameter in names(formula_random_prior_list)){
+      .bt_check_prior_random(formula_random_prior_list[[parameter]])
+    }
+  }
+
+  for(parameter in names(formula_list)){
+    if(.has_random_effects(formula_list[[parameter]]) &&
+       (is.null(formula_random_prior_list) || is.null(formula_random_prior_list[[parameter]]))){
+      detail <- paste0(
+        "JAGS_bridgesampling() requires 'formula_random_prior_list' with a prior_random() object for formula random effects in parameter '",
+        parameter,
+        "'. Legacy random-effect priors in 'formula_prior_list' are not bridge-sampling ready."
+      )
+      if(has_fitted_formula_design){
+        detail <- paste0(
+          "formula random effects for parameter '",
+          parameter,
+          "' cannot be rebuilt without a matching 'formula_random_prior_list' entry"
+        )
+      }
+      return(list(rebuildable = FALSE, detail = detail))
+    }
+  }
+
+  list(rebuildable = TRUE, detail = NULL)
+}
+
+.bt_JAGS_bridge_rebuild_formula_context <- function(fit,
+                                                    formula_list,
+                                                    formula_data_list,
+                                                    formula_prior_list,
+                                                    formula_scale_list,
+                                                    formula_random_prior_list){
+
+  if(is.null(formula_scale_list)){
+    formula_scale_list <- .JAGS_formula_scale_list_from_fit(
+      fit,
+      names(formula_list)
+    )
+  }
+
+  formula_output <- list()
+  for(parameter in names(formula_list)){
+    formula_output[[parameter]] <- JAGS_formula(
+      formula       = formula_list[[parameter]],
+      parameter     = parameter,
+      data          = formula_data_list[[parameter]],
+      prior_list    = formula_prior_list[[parameter]],
+      formula_scale = if(!is.null(formula_scale_list)) formula_scale_list[[parameter]] else NULL,
+      prior_random  = if(!is.null(formula_random_prior_list)) formula_random_prior_list[[parameter]] else NULL
+    )
+  }
+
+  list(
+    formula_design_list = lapply(formula_output, function(output) output[["formula_design"]]),
+    formula_list        = lapply(formula_output, function(output) output[["formula"]]),
+    formula_data_list   = lapply(formula_output, function(output) output[["data"]]),
+    formula_prior_list  = lapply(formula_output, function(output) output[["prior_list"]])
+  )
+}
+
+.bt_JAGS_bridge_empty_formula_context <- function(){
+
+  list(
+    formula_design_list = NULL,
+    formula_list        = NULL,
+    formula_data_list   = NULL,
+    formula_prior_list  = list()
+  )
+}
+
+.bt_JAGS_bridge_formula_context_from_design <- function(formula_design_list){
+
+  list(
+    formula_design_list = formula_design_list,
+    formula_list        = .bt_JAGS_bridge_formula_list_from_design(formula_design_list),
+    formula_data_list   = NULL,
+    formula_prior_list  = .bt_JAGS_bridge_formula_prior_list_from_design(formula_design_list)
+  )
+}
+
+.bt_JAGS_bridge_prior_list_from_fit <- function(fit, formula_design_list){
+
+  fit_prior_list <- attr(fit, "prior_list")
+  .bt_JAGS_bridge_non_formula_prior_list(
+    prior_list = fit_prior_list,
+    formula_design_list = formula_design_list,
+    warn = FALSE
+  )
+}
+
+.bt_JAGS_bridge_non_formula_prior_list <- function(prior_list,
+                                                   formula_design_list,
+                                                   warn = FALSE){
+
+  if(is.null(prior_list)){
+    return(list())
+  }
+  if(!is.list(prior_list)){
+    return(prior_list)
+  }
+
+  formula_prior_names <- .bt_JAGS_bridge_formula_prior_names(formula_design_list)
+  if(length(formula_prior_names) == 0L){
+    return(prior_list)
+  }
+
+  overlap <- intersect(names(prior_list), formula_prior_names)
+  if(length(overlap) > 0L){
+    if(isTRUE(warn)){
+      warning(
+        "JAGS_bridgesampling() received formula priors in 'prior_list'; using fitted formula metadata for these priors and ignoring duplicate 'prior_list' entries: ",
+        paste(utils::head(overlap, 8L), collapse = ", "),
+        if(length(overlap) > 8L) ", ..." else "",
+        ".",
+        call. = FALSE,
+        immediate. = TRUE
+      )
+    }
+    prior_list <- prior_list[setdiff(names(prior_list), overlap)]
+  }
+
+  prior_list
+}
+
+.bt_JAGS_bridge_formula_prior_names <- function(formula_design_list){
+
+  formula_prior_list <- .bt_JAGS_bridge_formula_prior_list_from_design(
+    formula_design_list
+  )
+  unique(unlist(lapply(formula_prior_list, names), use.names = FALSE))
+}
+
+.bt_JAGS_bridge_formula_list_from_design <- function(formula_design_list){
+
+  if(length(formula_design_list) == 0L){
+    return(NULL)
+  }
+
+  formula_list <- lapply(formula_design_list, function(design){
+    if(inherits(design, "BayesTools_formula_design")){
+      return(design$formula)
+    }
+    NULL
+  })
+  formula_list[!vapply(formula_list, is.null, logical(1))]
+}
+
+.bt_JAGS_bridge_formula_prior_list_from_design <- function(formula_design_list){
+
+  if(length(formula_design_list) == 0L){
+    return(list())
+  }
+
+  prior_list <- lapply(formula_design_list, function(design){
+    if(inherits(design, "BayesTools_formula_design") &&
+       is.list(design$prior_list)){
+      return(design$prior_list)
+    }
+    list()
+  })
+  prior_list[!vapply(prior_list, function(x) length(x) == 0L, logical(1))]
+}
+
+.bt_JAGS_bridge_formula_input_names_match <- function(formula_list,
+                                                      formula_data_list,
+                                                      formula_prior_list,
+                                                      formula_scale_list = NULL,
+                                                      formula_random_prior_list = NULL){
+
+  formula_names <- names(formula_list)
+  if(is.null(formula_names) || anyNA(formula_names) || any(!nzchar(formula_names))){
+    return(FALSE)
+  }
+
+  if(!setequal(formula_names, names(formula_data_list)) ||
+     !setequal(formula_names, names(formula_prior_list))){
+    return(FALSE)
+  }
+  if(!is.null(formula_scale_list) &&
+     any(!names(formula_scale_list) %in% formula_names)){
+    return(FALSE)
+  }
+  if(!is.null(formula_random_prior_list) &&
+     any(!names(formula_random_prior_list) %in% formula_names)){
+    return(FALSE)
+  }
+
+  TRUE
+}
+
+.bt_JAGS_bridge_warn_formula_mismatch <- function(mismatches){
+
+  if(length(mismatches) == 0L){
+    return(invisible(TRUE))
+  }
+
+  warning(
+    "JAGS_bridgesampling() supplied formula-related inputs do not fully match the fitted formula design; using the fitted formula design. ",
+    "First mismatch: ",
+    mismatches[[1L]],
+    if(length(mismatches) > 1L) paste0(" Additional mismatches: ", length(mismatches) - 1L, ".") else "",
+    call. = FALSE,
+    immediate. = TRUE
+  )
+  invisible(FALSE)
+}
+
+.bt_JAGS_bridge_formula_design_mismatches <- function(fitted_formula_design,
+                                                      rebuilt_formula_design){
+
+  fitted_formula_design <- .bt_JAGS_bridge_formula_design_list(fitted_formula_design)
+  rebuilt_formula_design <- .bt_JAGS_bridge_formula_design_list(rebuilt_formula_design)
+  mismatches <- character()
+
+  if(!setequal(names(fitted_formula_design), names(rebuilt_formula_design))){
+    mismatches <- c(
+      mismatches,
+      paste0(
+        "formula parameter names differ; fitted: ",
+        paste(names(fitted_formula_design), collapse = ", "),
+        "; supplied: ",
+        paste(names(rebuilt_formula_design), collapse = ", ")
+      )
+    )
+  }
+
+  for(parameter in intersect(names(fitted_formula_design), names(rebuilt_formula_design))){
+    fitted <- fitted_formula_design[[parameter]]
+    rebuilt <- rebuilt_formula_design[[parameter]]
+    mismatches <- c(
+      mismatches,
+      .bt_JAGS_bridge_formula_design_parameter_mismatches(
+        parameter = parameter,
+        fitted = fitted,
+        rebuilt = rebuilt
+      )
+    )
+  }
+
+  mismatches
+}
+
+.bt_JAGS_bridge_formula_design_parameter_mismatches <- function(parameter,
+                                                               fitted,
+                                                               rebuilt){
+
+  mismatches <- character()
+  if(!inherits(fitted, "BayesTools_formula_design") ||
+     !inherits(rebuilt, "BayesTools_formula_design")){
+    return(paste0("formula design metadata for parameter '", parameter, "' are incomplete"))
+  }
+
+  if(!.bt_JAGS_bridge_formulas_equal(fitted$formula, rebuilt$formula)){
+    mismatches <- c(mismatches, paste0("formula differs for parameter '", parameter, "'"))
+  }
+  if(!identical(isTRUE(fitted$log_intercept), isTRUE(rebuilt$log_intercept))){
+    mismatches <- c(mismatches, paste0("log-intercept metadata differ for parameter '", parameter, "'"))
+  }
+  if(!identical(dim(fitted$model_matrix), dim(rebuilt$model_matrix)) ||
+     !identical(colnames(fitted$model_matrix), colnames(rebuilt$model_matrix))){
+    mismatches <- c(mismatches, paste0("fixed-effect model matrix shape or columns differ for parameter '", parameter, "'"))
+  }else if(!isTRUE(all.equal(
+    unname(fitted$model_matrix),
+    unname(rebuilt$model_matrix),
+    tolerance = 1e-12,
+    check.attributes = FALSE
+  ))){
+    mismatches <- c(mismatches, paste0("fixed-effect model matrix values differ for parameter '", parameter, "'"))
+  }
+  if(!identical(fitted$assign, rebuilt$assign)){
+    mismatches <- c(mismatches, paste0("fixed-effect model term assignments differ for parameter '", parameter, "'"))
+  }
+  if(!.bt_JAGS_bridge_metadata_equal(fitted$contrasts, rebuilt$contrasts) ||
+     !.bt_JAGS_bridge_metadata_equal(fitted$xlevels, rebuilt$xlevels)){
+    mismatches <- c(mismatches, paste0("factor contrasts or levels differ for parameter '", parameter, "'"))
+  }
+  if(!.bt_JAGS_bridge_metadata_equal(fitted$formula_scale, rebuilt$formula_scale)){
+    mismatches <- c(mismatches, paste0("formula scaling metadata differ for parameter '", parameter, "'"))
+  }
+  if(!identical(names(fitted$prior_list), names(rebuilt$prior_list))){
+    mismatches <- c(mismatches, paste0("formula prior names differ for parameter '", parameter, "'"))
+  }else{
+    for(prior_name in names(fitted$prior_list)){
+      if(!.bt_JAGS_bridge_metadata_equal(fitted$prior_list[[prior_name]], rebuilt$prior_list[[prior_name]])){
+        mismatches <- c(mismatches, paste0("formula prior metadata differ for parameter '", parameter, "', prior '", prior_name, "'"))
+        break
+      }
+    }
+  }
+
+  random_mismatch <- tryCatch({
+    .bt_JAGS_bridge_validate_formula_random_design(
+      parameter = parameter,
+      fitted = fitted,
+      rebuilt = rebuilt
+    )
+    NULL
+  }, error = function(e) conditionMessage(e))
+  if(!is.null(random_mismatch)){
+    mismatches <- c(mismatches, random_mismatch)
+  }
+
+  mismatches
+}
+
+.bt_JAGS_bridge_formulas_equal <- function(x, y){
+
+  isTRUE(all.equal(x, y, check.environment = FALSE))
 }
 
 .bt_JAGS_formula_random_bridge_parameters <- function(formula_design_list){
@@ -1910,7 +2335,7 @@ JAGS_marglik_priors_formula <- function(samples, formula_prior_list){
     random_term = random_term
   )
   bounds <- .bt_random_effect_rho_bounds_metadata(correlation, random_term)
-  if(any(rho <= bounds[["lower"]] | rho >= bounds[["upper"]])){
+  if(any(.bt_random_effect_rho_outside_support(rho, bounds, structure))){
     return(-Inf)
   }
 
@@ -2277,7 +2702,17 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
     if(.bt_formula_design_has_random_effects(design)){
       parameter_prior_list <- .bt_JAGS_marglik_formula_fixed_priors(parameter_prior_list, parameter)
     }
-    parameters[[parameter]] <- .JAGS_marglik_parameters_formula_get(samples, parameter, formula_data_list[[parameter]], parameter_prior_list, prior_list_parameters, log_intercept)
+    if(.bt_JAGS_formula_design_can_reconstruct(design)){
+      parameters[[parameter]] <- .bt_JAGS_marglik_parameters_formula_design(
+        samples = samples,
+        design = design,
+        formula_prior_list = parameter_prior_list,
+        prior_list_parameters = prior_list_parameters,
+        log_intercept = log_intercept
+      )
+    }else{
+      parameters[[parameter]] <- .JAGS_marglik_parameters_formula_get(samples, parameter, formula_data_list[[parameter]], parameter_prior_list, prior_list_parameters, log_intercept)
+    }
     if(.bt_formula_design_has_random_effects(design)){
       parameters[[parameter]] <- parameters[[parameter]] +
         .bt_JAGS_marglik_random_effects_value(samples, design, formula_prior_list[[parameter]])
@@ -2285,6 +2720,125 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
   }
 
   return(parameters)
+}
+
+.bt_JAGS_formula_design_can_reconstruct <- function(design){
+
+  inherits(design, "BayesTools_formula_design") &&
+    !is.null(design$parameter) &&
+    !is.null(design$model_matrix) &&
+    !is.null(design$assign) &&
+    !is.null(design$model_terms)
+}
+
+.bt_JAGS_marglik_parameters_formula_design <- function(samples, design,
+                                                       formula_prior_list,
+                                                       prior_list_parameters,
+                                                       log_intercept = FALSE){
+
+  parameter <- design$parameter
+  output <- rep(0, nrow(design$model_matrix))
+  if(length(formula_prior_list) == 0L){
+    return(output)
+  }
+
+  intercept_name <- paste0(parameter, "_intercept")
+  if(intercept_name %in% names(formula_prior_list)){
+    intercept_prior <- formula_prior_list[[intercept_name]]
+    intercept_value <- .JAGS_marglik_parameter_values(
+      samples,
+      intercept_prior,
+      intercept_name
+    )
+    if(isTRUE(log_intercept) || isTRUE(design$log_intercept)){
+      intercept_value <- log(intercept_value)
+    }
+    output <- output + .bt_JAGS_marglik_prior_multiply_by(
+      intercept_prior,
+      prior_list_parameters
+    ) * intercept_value
+  }
+
+  remaining_terms <- setdiff(names(formula_prior_list), intercept_name)
+  for(term in remaining_terms){
+    term_prior <- formula_prior_list[[term]]
+    model_term <- sub(paste0("^", parameter, "_"), "", term)
+    columns <- .bt_JAGS_formula_design_term_columns(design, model_term)
+    term_data <- design$model_matrix[, columns, drop = FALSE]
+    multiply_by <- .bt_JAGS_marglik_prior_multiply_by(
+      term_prior,
+      prior_list_parameters
+    )
+
+    if(is.prior.point(term_prior) && !is.prior.factor(term_prior)){
+      output <- output + multiply_by * term_prior[["parameters"]][["location"]] * as.vector(term_data)
+
+    }else if(is.prior.point(term_prior) && is.prior.factor(term_prior)){
+      if(.get_prior_factor_levels(term_prior) == 1){
+        output <- output + multiply_by * term_prior[["parameters"]][["location"]] * as.vector(term_data)
+      }else{
+        output <- output + multiply_by * as.vector(term_data %*% rep(term_prior[["parameters"]][["location"]], .get_prior_factor_levels(term_prior)))
+      }
+
+    }else if(is.prior.factor(term_prior)){
+      if(.get_prior_factor_levels(term_prior) == 1){
+        term_value <- .JAGS_marglik_parameter_values(samples, term_prior, term)
+        output <- output + multiply_by * term_value * as.vector(term_data)
+      }else{
+        term_names <- paste0(term, "[", 1:.get_prior_factor_levels(term_prior), "]")
+        term_values <- .JAGS_marglik_parameter_values(samples, term_prior, term_names)
+        output <- output + multiply_by * as.vector(term_data %*% term_values)
+      }
+
+    }else if(is.prior.simple(term_prior)){
+      term_value <- .JAGS_marglik_parameter_values(samples, term_prior, term)
+      output <- output + multiply_by * term_value * as.vector(term_data)
+    }
+  }
+
+  as.vector(output)
+}
+
+.bt_JAGS_formula_design_term_columns <- function(design, model_term){
+
+  term_index <- match(model_term, design$model_terms)
+  if(is.na(term_index)){
+    stop(
+      "Stored formula design for parameter '",
+      design$parameter,
+      "' is missing model term '",
+      model_term,
+      "'.",
+      call. = FALSE
+    )
+  }
+
+  columns <- which(design$assign == (term_index - 1L))
+  if(length(columns) == 0L){
+    stop(
+      "Stored formula design for parameter '",
+      design$parameter,
+      "' is missing model-matrix columns for term '",
+      model_term,
+      "'.",
+      call. = FALSE
+    )
+  }
+
+  columns
+}
+
+.bt_JAGS_marglik_prior_multiply_by <- function(prior, prior_list_parameters){
+
+  multiply_by <- attr(prior, "multiply_by")
+  if(is.null(multiply_by)){
+    return(1)
+  }
+  if(is.numeric(multiply_by)){
+    return(multiply_by)
+  }
+
+  prior_list_parameters[[multiply_by]]
 }
 
 .bt_JAGS_marglik_formula_fixed_priors <- function(formula_prior_list, parameter){

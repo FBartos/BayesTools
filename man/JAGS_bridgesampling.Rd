@@ -31,12 +31,18 @@ returns the log of the unnormalized posterior density of the model part}
 
 \item{data}{list containing data to fit the model (not including data for the formulas)}
 
-\item{prior_list}{named list of prior distribution
+\item{prior_list}{named list of prior distributions
 (names correspond to the parameter names) of parameters not specified within the
-\code{formula_list}}
+\code{formula_list}. For \code{BayesTools_fit} objects, stored non-formula
+priors are used when \code{prior_list = NULL}; if fitted formula priors are
+supplied here, they are ignored with a warning in favor of the stored formula
+metadata.}
 
 \item{formula_list}{named list of formulas to be added to the model
-(names correspond to the parameter name created by each of the formula)}
+(names correspond to the parameter name created by each of the formula). For
+\code{BayesTools_fit} objects with stored formula-design metadata, formula
+inputs can usually be omitted; if supplied, they are rebuilt only to check
+consistency with the fitted design.}
 
 \item{formula_data_list}{named list of data frames containing data for each formula
 (names of the lists correspond to the parameter name created by each of the formula)}
@@ -49,7 +55,8 @@ within the \code{formula}}
 \item{formula_scale_list}{named list of named lists for standardizing continuous predictors
 (names of the lists correspond to the parameter name created by each of the formula).
 Each entry should be a named list where continuous predictors with \code{TRUE} values will
-be standardized. Defaults to \code{NULL} (no standardization).}
+be standardized. Defaults to stored fit metadata when available and to
+\code{NULL} (no standardization) otherwise.}
 
 \item{add_parameters}{vector of additional parameter names that should be used
 in bridgesampling but were not specified in the \code{prior_list}}
@@ -62,7 +69,9 @@ specified in the \code{prior_list}}
 objects for random effects in \code{formula_list}. Bridge sampling for formula
 random effects requires the \code{prior_random()} interface because the
 stochastic bridge coordinates are the standardized latent effects and
-correlation primitives.}
+correlation primitives. For \code{BayesTools_fit} objects with stored
+formula-design metadata, this can be omitted unless formula inputs are being
+supplied for a consistency check.}
 
 \item{maxiter}{maximum number of iterations for the
 \link[bridgesampling]{bridge_sampler}}

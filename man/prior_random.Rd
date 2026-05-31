@@ -165,7 +165,10 @@ This is convenient for inspection but can be memory intensive.}
 
 \item{correlation}{whether to monitor correlation matrices.}
 
-\item{lkj_primitives}{whether to monitor LKJ primitive beta coordinates.}
+\item{lkj_primitives}{whether to monitor user-facing LKJ primitive beta
+coordinates. For formula \code{us} random effects, raw LKJ primitive \code{u}
+coordinates are always retained internally because bridge sampling evaluates
+the LKJ prior on those coordinates.}
 
 \item{allow}{whether new levels are allowed during prediction.}
 
@@ -224,7 +227,7 @@ with \code{interaction(..., drop = TRUE)}.
 single ordered index variable, with one scalar correlation \code{rho}; \code{"HAR"}
 has one SD per index level.
 \item \code{"CAR"}: continuous-time AR(1), currently for \code{car(time | group)},
-using \code{rho ^ abs(t_i - t_j)} with \verb{0 < rho < 1}.
+using \code{rho ^ abs(t_i - t_j)} with \verb{0 <= rho < 1}.
 \item \code{"UN"} / \code{"US"}: unstructured covariance with SD priors and \code{prior_lkj()}.
 }
 

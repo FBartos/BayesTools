@@ -3447,6 +3447,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   posterior_density_sources <- .posterior_density_sources(samples, samples[[parameter]])
   posterior_density_conditional <- attr(samples[[parameter]], "conditional", exact = TRUE)
   posterior_density_conditional_rule <- attr(samples[[parameter]], "conditional_rule", exact = TRUE)
+  posterior_density_condition_key <- attr(samples[[parameter]], "condition_key", exact = TRUE)
   if (!(is.prior.mixture(prior_list) || is.prior.spike_and_slab(prior_list)) && is.prior(prior_list))
     prior_list <- list(prior_list)
 
@@ -3518,7 +3519,8 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
             sources          = posterior_density_sources,
             aliases          = density_aliases,
             conditional      = posterior_density_conditional,
-            conditional_rule = posterior_density_conditional_rule
+            conditional_rule = posterior_density_conditional_rule,
+            condition_key    = posterior_density_condition_key
           ),
           density_method
         )
