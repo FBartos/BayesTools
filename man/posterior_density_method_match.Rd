@@ -28,5 +28,8 @@ logical value.
 \description{
 Helpers for normalizing public posterior-density method
 arguments and identifying methods that are expected to use precomputed
-posterior density or ordinate attributes.
+posterior density or ordinate attributes. Estimator labels such as
+\code{"qCMDE"} and \code{"IWMDE"} are treated as precomputed metadata
+sources by \code{posterior_density_method_uses_precomputed()}, but they are
+not public \code{density_method} argument values.
 }

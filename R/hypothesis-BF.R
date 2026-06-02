@@ -18,7 +18,10 @@
 #' supplied, including precomputed qCMDE/IWMDE posterior ordinates when
 #' \code{density_method = "precomputed"}. Level-specific
 #' \code{marginal_posterior.*} subclass vectors with attached density
-#' attributes are accepted as marginal posterior inputs.
+#' attributes are accepted as marginal posterior inputs; parent-level
+#' \code{posterior_density}, \code{posterior_densities},
+#' \code{posterior_ordinate}, or \code{posterior_ordinates} metadata on a
+#' marginal-posterior list is reused for matching level hypotheses.
 #'
 #' @param posterior posterior draws, a \code{marginal_posterior}, a
 #' \code{marginal_inference} object, or a data frame/matrix of posterior draws.
@@ -34,7 +37,12 @@
 #' \code{"KDE"} uses kernel density estimates. \code{"normal"} uses a normal
 #' approximation to the posterior density at the null. \code{"precomputed"}
 #' uses valid \code{posterior_ordinate} or \code{posterior_density} attributes
-#' before falling back to KDE.
+#' before falling back to KDE. KDE point-null tests use boundary reflection when
+#' exact support metadata is attached to the marginal posterior or to a matched
+#' \code{posterior_density} attribute; numeric and data-frame expression tests
+#' use standard sample KDE. When a precomputed point-null density falls back to
+#' KDE, the fallback is warned immediately and retained in the returned table's
+#' \code{warnings} attribute.
 #' @param columns output columns. \code{"default"} returns \code{Alternative},
 #' \code{Null}, \code{BF}, and \code{BF_error}. \code{"all"} also returns
 #' \code{prior}, \code{posterior}, and \code{method} columns. The
@@ -49,7 +57,8 @@
 #' percentage when available. Region odds errors are computed on
 #' \code{log(BF)} from prior/posterior region indicators; point-vs-region
 #' errors combine the available point-density and region-mass errors on the
-#' \code{log(BF)} scale.
+#' \code{log(BF)} scale. Point-null tests require a positive finite prior
+#' density at the null value.
 #'
 #' @export
 hypothesis_BF <- function(posterior, prior = NULL, hypothesis, parameter = NULL,
@@ -936,7 +945,9 @@ hypothesis_normalize_level_references <- function(text){
       .hypothesis_quantity_from_marginal_posterior(
         posterior = posterior[[i]],
         parameter = parameter,
-        label     = label
+        label     = label,
+        parent    = posterior,
+        index     = i
       )
     })
     return(out)
@@ -1023,6 +1034,9 @@ hypothesis_normalize_level_references <- function(text){
     prior_draws        = prior,
     posterior_marginal = NULL,
     posterior_marginals = NULL,
+    posterior_marginal_parent = NULL,
+    posterior_marginal_index = NULL,
+    posterior_marginal_indices = NULL,
     prior_densities    = NULL,
     prior_density      = prior_density
   )
@@ -1072,6 +1086,8 @@ hypothesis_normalize_level_references <- function(text){
     .hypothesis_marginal_child(posterior[[level]])
   })
   names(posterior_marginals) <- names(posterior_df)
+  posterior_marginal_indices <- match(levels, names(posterior))
+  names(posterior_marginal_indices) <- names(posterior_df)
   prior_densities <- lapply(levels, function(level) {
     attr(posterior[[level]], "prior_density", exact = TRUE)
   })
@@ -1084,6 +1100,9 @@ hypothesis_normalize_level_references <- function(text){
     prior_draws        = prior_df,
     posterior_marginal = NULL,
     posterior_marginals = posterior_marginals,
+    posterior_marginal_parent = posterior,
+    posterior_marginal_index = NULL,
+    posterior_marginal_indices = posterior_marginal_indices,
     prior_densities    = prior_densities,
     prior_density      = NULL
   )
@@ -1505,7 +1524,9 @@ hypothesis_normalize_level_references <- function(text){
 
 
 .hypothesis_quantity_from_marginal_posterior <- function(posterior, parameter,
-                                                         label) {
+                                                         label,
+                                                         parent = NULL,
+                                                         index = NULL) {
 
   if(.hypothesis_inherits_marginal_posterior(posterior) &&
      !inherits(posterior, "marginal_posterior")){
@@ -1522,6 +1543,9 @@ hypothesis_normalize_level_references <- function(text){
     prior_draws        = NULL,
     posterior_marginal = posterior,
     posterior_marginals = NULL,
+    posterior_marginal_parent = parent,
+    posterior_marginal_index = index,
+    posterior_marginal_indices = NULL,
     prior_densities    = NULL,
     prior_density      = attr(posterior, "prior_density", exact = TRUE)
   )
@@ -1623,8 +1647,15 @@ hypothesis_normalize_level_references <- function(text){
   marginal <- .hypothesis_point_marginal(quantity, side)
   if(!is.null(marginal)){
     normal_approximation <- identical(density_method, "normal")
+    posterior <- .posterior_precomputed_child(
+      parent          = marginal[["posterior_parent"]],
+      child           = marginal[["posterior"]],
+      index           = marginal[["posterior_index"]],
+      null_hypothesis = side[["value"]],
+      density_method  = if(normal_approximation) "KDE" else density_method
+    )
     inclusion_BF <- Savage_Dickey_BF(
-      posterior            = marginal[["posterior"]],
+      posterior            = posterior,
       null_hypothesis      = side[["value"]],
       normal_approximation = normal_approximation,
       silent               = TRUE,
@@ -1634,6 +1665,7 @@ hypothesis_normalize_level_references <- function(text){
       marginal[["prior_density"]],
       side[["value"]]
     )
+    .hypothesis_check_prior_density(prior_value, side[["label"]])
     posterior_value <- prior_value / as.numeric(inclusion_BF)
     BF <- posterior_value / prior_value
     bf_warnings <- attr(inclusion_BF, "warnings", exact = TRUE)
@@ -1645,10 +1677,6 @@ hypothesis_normalize_level_references <- function(text){
         paste(unique(fallback_warnings), collapse = " "),
         call. = FALSE
       )
-      bf_warnings <- bf_warnings[!bf_warnings %in% fallback_warnings]
-      if(length(bf_warnings) == 0L){
-        bf_warnings <- NULL
-      }
     }
     method <- if(identical(density_source, "normal")){
       "Savage-Dickey (normal)"
@@ -1681,6 +1709,7 @@ hypothesis_normalize_level_references <- function(text){
         density_method
       )
     }
+    .hypothesis_check_prior_density(prior_value, side[["label"]])
     posterior_value <- .hypothesis_draw_density_height(
       posterior,
       side[["value"]],
@@ -1718,8 +1747,10 @@ hypothesis_normalize_level_references <- function(text){
      .hypothesis_expression_is_parameter(side[["expr"]],
                                          quantity[["parameter"]])){
     return(list(
-      posterior     = quantity[["posterior_marginal"]],
-      prior_density = quantity[["prior_density"]]
+      posterior        = quantity[["posterior_marginal"]],
+      posterior_parent = quantity[["posterior_marginal_parent"]],
+      posterior_index  = quantity[["posterior_marginal_index"]],
+      prior_density    = quantity[["prior_density"]]
     ))
   }
 
@@ -1730,8 +1761,10 @@ hypothesis_normalize_level_references <- function(text){
   }
 
   return(list(
-    posterior     = quantity[["posterior_marginals"]][[symbol]],
-    prior_density = quantity[["prior_densities"]][[symbol]]
+    posterior        = quantity[["posterior_marginals"]][[symbol]],
+    posterior_parent = quantity[["posterior_marginal_parent"]],
+    posterior_index  = quantity[["posterior_marginal_indices"]][[symbol]],
+    prior_density    = quantity[["prior_densities"]][[symbol]]
   ))
 }
 
@@ -2266,6 +2299,16 @@ hypothesis_normalize_level_references <- function(text){
   if(!is.finite(mass) || mass <= 0 || mass >= 1){
     stop("Prior region mass for hypothesis '", label,
          "' is zero, one, or non-finite.", call. = FALSE)
+  }
+
+  return(invisible(TRUE))
+}
+
+.hypothesis_check_prior_density <- function(density, label) {
+
+  if(!is.finite(density) || density <= 0){
+    stop("Prior density at point hypothesis '", label,
+         "' is zero or non-finite.", call. = FALSE)
   }
 
   return(invisible(TRUE))

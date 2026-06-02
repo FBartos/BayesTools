@@ -471,6 +471,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   attr(samples, "prior_list") <- priors
   attr(samples, "interaction")       <- if(length(priors_info) == 0) FALSE else priors_info[["interaction"]]
   attr(samples, "interaction_terms") <- priors_info[["interaction_terms"]]
+  samples <- .posterior_support_set_from_prior_list(samples, priors)
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.simple")
 
   return(samples)
@@ -546,6 +547,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   attr(samples, "models_ind") <- models_ind
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- priors
+  samples <- .posterior_support_set_columns_from_prior_list(samples, priors)
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.vector")
 
   return(samples)
@@ -699,6 +701,16 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   attr(samples, "orthonormal")       <- priors_info[["orthonormal"]]
   attr(samples, "meandif")           <- priors_info[["meandif"]]
 
+  if(isTRUE(priors_info[["treatment"]]) || isTRUE(priors_info[["independent"]])){
+    factor_support <- .posterior_support_from_prior_list(priors)
+    if(!is.null(factor_support) && !is.null(colnames(samples))){
+      attr(samples, "posterior_support") <- stats::setNames(
+        rep(list(factor_support), ncol(samples)),
+        colnames(samples)
+      )
+    }
+  }
+
   return(samples)
 }
 .mix_posteriors.weightfunction <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000){
@@ -771,6 +783,11 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   attr(samples, "models_ind") <- models_ind
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- priors
+  samples <- .posterior_support_set_weightfunction_columns(
+    samples,
+    priors,
+    .weightfunction_mapping_info(priors)
+  )
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.weightfunction")
 
   return(samples)
@@ -913,6 +930,12 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       class(out[[temp_parameter]]) <- c(class(out[[temp_parameter]]), "mixed_posteriors.formula")
       attr(out[[temp_parameter]], "formula_parameter")  <- attr(temp_prior, which = "parameter")
     }
+    if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
+      out[[temp_parameter]] <- .posterior_support_drop(
+        out[[temp_parameter]],
+        recursive = TRUE
+      )
+    }
 
     # add conditioning information
     out[[temp_parameter]] <- .condition_event_set_attributes(
@@ -985,6 +1008,16 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
       condition_event  = condition_event
     )
   }
+  if(length(condition_event[["conditional"]]) > 0L ||
+     (transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0L)){
+    prior_density_context <- attr(out, "prior_density_context", exact = TRUE)
+    for(parameter in names(out)){
+      out[[parameter]] <- .posterior_support_set_from_prior_context(
+        out[[parameter]],
+        prior_density_context
+      )
+    }
+  }
 
   class(out) <- c(class(out), "as_mixed_posteriors", "mixed_posteriors")
   return(out)
@@ -1012,6 +1045,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   attr(samples, "prior_list") <- prior
   attr(samples, "interaction")       <- if(length(prior_info) == 0) FALSE else prior_info[["interaction"]]
   attr(samples, "interaction_terms") <- prior_info[["interaction_terms"]]
+  samples <- .posterior_support_set_from_prior_list(samples, prior)
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.simple")
 
   return(samples)
@@ -1022,7 +1056,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   check_char(parameter, "parameter", check_length = FALSE)
 
   # gather information about the prior distribution
-  K <- prior$parameter[["K"]]
+  K <- prior$parameters[["K"]]
   if(length(K) != 1)
     stop("all vector prior must be of the same length")
 
@@ -1039,6 +1073,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   attr(samples, "models_ind") <- rep(1, nrow(samples))
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- prior
+  samples <- .posterior_support_set_columns_from_prior_list(samples, prior)
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.vector")
 
   return(samples)
@@ -1119,7 +1154,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
   }else if(prior_info[["orthonormal"]] | prior_info[["meandif"]]){
 
-    prior$parameter[["K"]] <- prior_info[["levels"]]
+    prior$parameters[["K"]] <- prior_info[["levels"]]
     samples <- .as_mixed_posteriors.vector(model_samples, prior, parameter)
     class(samples) <- c(class(samples), "mixed_posteriors.factor")
 
@@ -1138,6 +1173,16 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   attr(samples, "independent")       <- prior_info[["independent"]]
   attr(samples, "orthonormal")       <- prior_info[["orthonormal"]]
   attr(samples, "meandif")           <- prior_info[["meandif"]]
+
+  if(isTRUE(prior_info[["treatment"]]) || isTRUE(prior_info[["independent"]])){
+    factor_support <- .posterior_support_from_prior_list(prior)
+    if(!is.null(factor_support) && !is.null(colnames(samples))){
+      attr(samples, "posterior_support") <- stats::setNames(
+        rep(list(factor_support), ncol(samples)),
+        colnames(samples)
+      )
+    }
+  }
 
   return(samples)
 }
@@ -1163,6 +1208,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- prior
   samples <- .weightfunction_set_omega_context(samples, omega_info)
+  samples <- .posterior_support_set_weightfunction_columns(samples, prior, omega_info)
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.weightfunction")
 
   return(samples)
@@ -1283,6 +1329,11 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
   class(samples) <- c("mixed_posteriors.spike_and_slab", class(samples))
   attr(samples, "prior_list") <- prior
+  if(!is.null(dim(samples))){
+    samples <- .posterior_support_set_columns_from_prior_list(samples, prior)
+  }else{
+    samples <- .posterior_support_set_from_prior_list(samples, prior)
+  }
 
   return(samples)
 }

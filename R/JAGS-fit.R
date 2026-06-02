@@ -219,6 +219,48 @@ NULL
   invisible(loaded)
 }
 
+.JAGS_prior_uses_nonlocal <- function(prior){
+
+  if(!is.prior(prior)){
+    return(FALSE)
+  }
+
+  if(isTRUE(prior[["distribution"]] %in% c("moment", "invmoment"))){
+    return(TRUE)
+  }
+
+  if(is.prior.spike_and_slab(prior)){
+    return(
+      .JAGS_prior_uses_nonlocal(.get_spike_and_slab_variable(prior)) ||
+        .JAGS_prior_uses_nonlocal(.get_spike_and_slab_inclusion(prior))
+    )
+  }
+
+  if(is.prior.mixture(prior)){
+    return(any(vapply(as.list(prior), .JAGS_prior_uses_nonlocal, logical(1))))
+  }
+
+  if(is.prior.weightfunction(prior) && identical(prior$weights$type, "independent")){
+    return(.JAGS_prior_uses_nonlocal(prior$weights$prior))
+  }
+
+  if(is_prior_phacking(prior)){
+    return(.JAGS_prior_uses_nonlocal(prior$alpha))
+  }
+
+  if(is_prior_bias(prior)){
+    uses_selection <- !is.null(prior$selection) && .JAGS_prior_uses_nonlocal(prior$selection)
+    uses_phacking  <- !is.null(prior$phacking)  && .JAGS_prior_uses_nonlocal(prior$phacking)
+    return(uses_selection || uses_phacking)
+  }
+
+  FALSE
+}
+.JAGS_prior_list_uses_nonlocal <- function(prior_list){
+
+  length(prior_list) > 0L && any(vapply(prior_list, .JAGS_prior_uses_nonlocal, logical(1)))
+}
+
 #' @rdname JAGS_fit
 JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL, formula_scale_list = NULL, formula_random_prior_list = NULL,
                      chains = 4, adapt = 500, burnin = 1000, sample = 4000, thin = 1,
@@ -307,6 +349,10 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   jags_modules <- unique(c(jags_modules, formula_jags_modules))
   required_packages <- unique(c(required_packages, formula_required_packages))
 
+  if(.JAGS_prior_list_uses_nonlocal(prior_list)){
+    jags_modules <- unique(c(jags_modules, "BayesTools"))
+    required_packages <- unique(c(required_packages, "BayesTools"))
+  }
 
   ### create the model call
   model_call <- list(
@@ -761,6 +807,11 @@ JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 5
 #' @param prior_list named list of prior distribution
 #' (names correspond to the parameter names)
 #'
+#' @details Syntax containing moment or inverse-moment priors uses the
+#' BayesTools JAGS module. \code{JAGS_fit()} loads this module automatically;
+#' users running syntax returned by \code{JAGS_add_priors()} directly in JAGS
+#' need to load the module first.
+#'
 #' @return \code{JAGS_add_priors} returns a JAGS syntax.
 #'
 #' @export
@@ -864,7 +915,9 @@ JAGS_add_priors           <- function(syntax, prior_list){
     "exp"       = paste0(parameter_name," ~ dexp(",prior$parameter[["rate"]],")"),
     "beta"      = paste0(parameter_name," ~ dbeta(",prior$parameter[["alpha"]],",",prior$parameter[["beta"]],")"),
     "bernoulli" = paste0(parameter_name," ~ dbern(",prior$parameter[["probability"]],")"),
-    "uniform"   = paste0(parameter_name," ~ dunif(",prior$parameter[["a"]],",",prior$parameter[["b"]],")")
+    "uniform"   = paste0(parameter_name," ~ dunif(",prior$parameter[["a"]],",",prior$parameter[["b"]],")"),
+    "moment"    = paste0(parameter_name," ~ dbt_moment(",prior$parameter[["location"]],",",prior$parameter[["tau"]],",",prior$parameter[["order"]],")"),
+    "invmoment" = paste0(parameter_name," ~ dbt_invmoment(",prior$parameter[["location"]],",",prior$parameter[["tau"]],",",prior$parameter[["order"]],",",prior$parameter[["df"]],")")
   )
 
   # add truncation

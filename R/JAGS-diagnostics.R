@@ -348,6 +348,9 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
   attr(model_samples, "iter")      <- do.call(c, samples_iter)
   attr(model_samples, "parameter") <- parameter
   attr(model_samples, "prior")     <- if(is.prior.mixture(prior_list)) prior_list else prior_list[[parameter]]
+  # Diagnostic transformations are validated against the selected parameter;
+  # reflected KDE bounds are therefore no longer on the same support scale.
+  attr(model_samples, "density_support_transformed") <- !is.null(transformations)
 
   return(model_samples)
 }
@@ -356,9 +359,10 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
   chain <- attr(plot_data, "chain")
   prior <- attr(plot_data, "prior")
   bounds <- .diagnostics_prior_bounds(prior, attr(plot_data, "parameter"))
-
-  prior_lower <- bounds[["lower"]]
-  prior_upper <- bounds[["upper"]]
+  bounds <- c(bounds[["lower"]], bounds[["upper"]])
+  if(isTRUE(attr(plot_data, "density_support_transformed"))){
+    bounds <- c(-Inf, Inf)
+  }
 
   out   <- list()
 
@@ -372,25 +376,22 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
 
     for(j in seq_along(unique(chain))){
 
-      temp_args    <- list(x = plot_data[chain == j,i], n = n_points, from = x_range[1], to = x_range[2], na.rm = TRUE)
-      temp_density <- do.call(stats::density, temp_args)
+      density_continuous <- .density_kde_boundary(
+        x      = plot_data[chain == j,i],
+        n      = n_points,
+        from   = x_range[1],
+        to     = x_range[2],
+        bounds = bounds,
+        na.rm  = TRUE
+      )
 
-      x_den    <- temp_density$x
-      y_den    <- temp_density$y
-
-      # check for truncation
-      if(isTRUE(all.equal(prior_lower, x_den[1])) | prior_lower >= x_den[1]){
-        y_den <- c(0, y_den)
-        x_den <- c(x_den[1], x_den)
-      }
-      if(isTRUE(all.equal(prior_upper, x_den[length(x_den)])) | prior_upper <= x_den[length(x_den)]){
-        y_den <- c(y_den, 0)
-        x_den <- c(x_den, x_den[length(x_den)])
-      }
+      x_den <- density_continuous$x
+      y_den <- density_continuous$y
+      boundary_reflection <- isTRUE(attr(density_continuous, "boundary_reflection"))
 
       temp_density    <- list(
         call    = call("density"),
-        bw      = NULL,
+        bw      = density_continuous$bw,
         n       = n_points,
         x       = x_den,
         y       = y_den
@@ -402,6 +403,9 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
       attr(temp_density, "chain")          <- j
       attr(temp_density, "parameter")      <- attr(plot_data, "parameter")
       attr(temp_density, "parameter_name") <- colnames(plot_data)[i]
+      if(boundary_reflection){
+        attr(temp_density, "boundary_reflection") <- TRUE
+      }
 
       out[[colnames(plot_data)[[i]]]][[j]] <- temp_density
     }

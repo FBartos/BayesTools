@@ -28,10 +28,11 @@ marginal_posterior(
 \item{at}{named list with predictor levels of the formula for which marginalization
 should be performed. If a predictor level is missing, \code{0} is used for continuous
 predictors, the baseline factor level is used for factors with \code{contrast = "treatment"} prior
-distributions, and the parameter is completely omitted for for factors with \code{contrast = "meandif"},}
+distributions, and the parameter is completely omitted for factors with
+\code{contrast = "meandif"}, \code{contrast = "orthonormal"}, and
+\code{contrast = "independent"} levels.}
 
-\item{prior_samples}{whether marginal prior distributions should be generated
-\code{contrast = "orthonormal"}, and \code{contrast = "independent"} levels}
+\item{prior_samples}{whether marginal prior distributions should be generated}
 
 \item{use_formula}{whether the parameter should be evaluated as a part of supplied formula}
 
@@ -61,11 +62,27 @@ prior densities}
 }
 \value{
 \code{marginal_posterior} returns a named list of mixed marginal posterior
-distributions (either a vector of matrix).
-#'
+distributions (either vectors or matrices).
 }
 \description{
 Creates marginal model-averages posterior distributions for a given
 parameter based on model-averaged posterior samples and parameter name
 (and formula with at specification).
+}
+\details{
+When the mixed posterior samples carry deterministic
+\code{posterior_density}, \code{posterior_ordinate}, or
+\code{posterior_support} metadata, \code{marginal_posterior()} propagates
+matching metadata to the returned marginal posterior. Matching uses the
+parameter name, list/level names such as \code{theta[A]}, and conditional
+metadata when present. Exact support metadata is propagated even when
+\code{prior_samples = FALSE}; requesting prior samples adds prior-density
+metadata but does not replace already attached posterior support.
+Transformations drop stored posterior density and ordinate metadata because
+those estimates are no longer on the returned scale; exact support metadata
+is transformed when the transformation is supported. If support metadata is
+absent, support is inferred from prior metadata only when the posterior
+samples are on the raw, unconditioned prior scale; otherwise the deterministic
+prior-density context is used so formula-scale transformations and
+conditional model restrictions are respected.
 }

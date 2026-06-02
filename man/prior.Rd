@@ -31,7 +31,7 @@ converted into a generalized t-distribution with \code{df = 1}.}
 by a \code{location}, \code{scale}, and \code{df} parameters.}
 \item{\code{"gamma"}}{for a gamma distribution characterized
 by either \code{shape} and \code{rate}, or \code{shape} and
-\code{scale} parameters. The later is internally converted to
+\code{scale} parameters. The latter is internally converted to
 the \code{shape} and \code{rate} parametrization}
 \item{\code{"invgamma"}}{for an inverse-gamma distribution
 characterized by a \code{shape} and \code{scale} parameters. The
@@ -45,6 +45,13 @@ parameter. The later is internally converted to
 \code{rate}.}
 \item{\code{"uniform"}}{for a uniform distribution defined on a
 range from \code{a} to \code{b}}
+\item{\code{"moment"}}{for a Johnson-Rossell moment prior characterized
+by exactly one of \code{mode} or \code{tau}, an optional \code{order}
+that defaults to 1, and an optional \code{location} that defaults to 0.}
+\item{\code{"invmoment"}}{for a Johnson-Rossell inverse-moment prior
+characterized by exactly one of \code{mode} or \code{tau}, a \code{df},
+an optional \code{order} that defaults to 1, and an optional
+\code{location} that defaults to 0.}
 \item{\code{"dirichlet"}}{for a Dirichlet distribution over a simplex,
 characterized by a positive concentration vector \code{alpha}.}
 }}
@@ -71,6 +78,20 @@ A named list containing the distribution name, parameters, and prior weights.
 \code{prior} creates a prior distribution.
 The prior can be visualized by the \code{plot} function.
 }
+\details{
+Moment and inverse-moment priors are symmetric nonlocal priors
+with zero density at \code{location}. The \code{mode} parameter is the
+positive distance from \code{location} to each symmetric mode; supplied
+negative values are converted to their absolute value. Positional parameters
+are interpreted as \code{mode} for \code{"moment"} and \code{mode, df}
+for \code{"invmoment"}. Use named parameters for \code{tau}, \code{order},
+\code{location}, or the inverse-moment \code{nu} alias. Positional input
+always treats the first parameter as \code{mode}. For moment priors,
+\code{tau = mode^2 / (2 * order)}. For inverse-moment priors,
+\code{tau = mode^2 * ((df + 1) / (2 * order))^(1 / order)}.
+Aliases \code{"pmom"}, \code{"pimom"}, and \code{"inversemoment"} are
+accepted, and inverse-moment \code{df} may also be supplied as \code{nu}.
+}
 \examples{
 # create a standard normal prior distribution
 p1 <- prior(distribution = "normal", parameters = list(mean = 1, sd = 1))
@@ -82,6 +103,14 @@ truncation = list(lower = 0, upper = Inf))
 # the prior distribution can be visualized using the plot function
 # (see ?plot.prior for all options)
 plot(p1)
+
+# create nonlocal priors centered on zero
+p3 <- prior("moment", list(mode = 0.5))
+p4 <- prior("invmoment", list(mode = 0.5, df = 3))
+
+# tau can be specified directly when named
+p5 <- prior("pmom", list(tau = 0.125))
+p6 <- prior("pimom", list(tau = 0.5, nu = 3))
 
 }
 \seealso{

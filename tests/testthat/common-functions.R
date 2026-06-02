@@ -346,6 +346,85 @@ test_prior <- function(prior, skip_moments = FALSE) {
   return(invisible())
 }
 
+test_nonlocal_prior <- function(prior, skip_moments = FALSE, moment_tolerance = 1e-2) {
+  set.seed(1)
+  samples <- rng(prior, 100000)
+
+  sample_range <- stats::quantile(samples, c(.005, .995), names = FALSE)
+  xlim <- range(c(range(prior), sample_range), finite = TRUE)
+  xlim <- range(pretty(xlim))
+
+  hist(
+    samples,
+    main = print(prior, plot = TRUE),
+    breaks = 80,
+    freq = FALSE,
+    xlim = xlim,
+    col = "grey90",
+    border = "grey70"
+  )
+  lines(prior, xlim = xlim, individual = TRUE, col = "black", lwd = 2)
+
+  prior_median <- quant(prior, 0.5)
+  sample_median <- stats::median(samples)
+  prior_mean <- mean(prior)
+  sample_mean <- mean(samples)
+
+  legend_text <- "prior density"
+  legend_col <- "black"
+  legend_lty <- 1
+  legend_lwd <- 2
+
+  abline(v = prior_median, col = "blue", lwd = 2)
+  abline(v = sample_median, col = "blue", lwd = 2, lty = 3)
+  legend_text <- c(legend_text, "prior median", "sample median")
+  legend_col <- c(legend_col, "blue", "blue")
+  legend_lty <- c(legend_lty, 1, 3)
+  legend_lwd <- c(legend_lwd, 2, 2)
+
+  if (is.finite(prior_mean) && is.finite(sample_mean)) {
+    abline(v = prior_mean, col = "red", lwd = 2)
+    abline(v = sample_mean, col = "red", lwd = 2, lty = 3)
+    legend_text <- c(legend_text, "prior mean", "sample mean")
+    legend_col <- c(legend_col, "red", "red")
+    legend_lty <- c(legend_lty, 1, 3)
+    legend_lwd <- c(legend_lwd, 2, 2)
+  }
+
+  modes <- prior$parameters[["location"]] + c(-1, 1) * prior$parameters[["mode"]]
+  modes <- modes[
+    modes >= prior$truncation[["lower"]] &
+      modes <= prior$truncation[["upper"]]
+  ]
+  if (length(modes) > 0L) {
+    abline(v = modes, col = "purple", lwd = 2, lty = 4)
+    legend_text <- c(legend_text, "mode")
+    legend_col <- c(legend_col, "purple")
+    legend_lty <- c(legend_lty, 4)
+    legend_lwd <- c(legend_lwd, 2)
+  }
+
+  legend(
+    "topright",
+    legend = legend_text,
+    col = legend_col,
+    lty = legend_lty,
+    lwd = legend_lwd,
+    bty = "n"
+  )
+
+  expect_equal(.25, cdf(prior, quant(prior, 0.25)), tolerance = 1e-4)
+  expect_equal(.50, cdf(prior, prior_median), tolerance = 1e-4)
+  expect_equal(.25, ccdf(prior, quant(prior, 0.75)), tolerance = 1e-4)
+
+  if (!skip_moments) {
+    expect_equal(sample_mean - prior_mean, 0, tolerance = moment_tolerance)
+    expect_equal(sd(samples) - sd(prior), 0, tolerance = moment_tolerance)
+  }
+
+  return(invisible())
+}
+
 #' Test a weight function prior distribution
 #'
 #' Validates weight function priors with multiple components.

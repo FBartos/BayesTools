@@ -52,6 +52,35 @@ test_that("as_mixed_posteriors applies AND and OR conditioning exactly", {
   expect_equal(attr(or_samples$mu_b, "models_ind"), c(0, 1, 1, 1))
 })
 
+test_that("as_mixed_posteriors refreshes support from conditional context", {
+
+  prior_list <- list(
+    theta = prior_spike_and_slab(
+      prior("uniform", list(10, 20)),
+      prior_inclusion = prior("point", list(0.5))
+    )
+  )
+  posterior <- cbind(
+    theta           = c(0, 11, 0, 18),
+    theta_indicator = c(0, 1, 0, 1)
+  )
+  fit <- .mock_marginal_fit(posterior, prior_list)
+
+  averaged <- as_mixed_posteriors(fit, parameters = "theta")
+  conditional <- as_mixed_posteriors(
+    fit,
+    parameters  = "theta",
+    conditional = "theta"
+  )
+
+  expect_equal(
+    BayesTools:::.posterior_support_bounds(averaged$theta, exact_only = FALSE),
+    c(0, 20)
+  )
+  expect_false(BayesTools:::.posterior_support_get(averaged$theta)$exact)
+  expect_equal(BayesTools:::.posterior_support_bounds(conditional$theta), c(10, 20))
+})
+
 test_that("as_mixed_posteriors propagates named upstream posterior densities", {
 
   prior_list <- list(theta = prior("normal", list(0, 1)))

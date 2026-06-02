@@ -15,6 +15,7 @@ posterior_density_attribute(
   density_method,
   diagnostics = NULL,
   point_masses = NULL,
+  support = NULL,
   ...
 )
 
@@ -47,12 +48,23 @@ posterior_ordinate_has_value(ordinate, value)
 \item{point_masses}{optional point-mass table/list with \code{x} and
 \code{mass} entries.}
 
+\item{support}{optional exact support metadata for the density scale. Supply
+a trusted numeric \code{c(lower, upper)} vector, or a list with
+\code{bounds}, optional \code{points}, optional \code{type}, and optional
+\code{exact} entries. The \code{type} entry may be \code{"interval"},
+\code{"points"}, or \code{"mixed"}; KDE boundary reflection uses only
+interval-capable support. Set \code{exact = FALSE} when the values are
+plotting or integration limits rather than true support boundaries.}
+
 \item{...}{additional named metadata fields, for example \code{parameter},
 \code{conditional}, or \code{conditional_rule}.}
 
 \item{value}{numeric null-hypothesis value or values.}
 
-\item{ordinate}{numeric posterior ordinate height or heights.}
+\item{ordinate}{for \code{posterior_ordinate_attribute()}, numeric
+posterior ordinate height or heights; for
+\code{posterior_ordinate_append()}, a posterior-ordinate attribute to
+append.}
 
 \item{existing}{existing posterior-ordinate attribute or \code{NULL}.}
 
@@ -82,5 +94,13 @@ Additional metadata must be named and cannot replace structural
 schema fields. Posterior ordinate values are unique so a point-null lookup
 maps to at most one stored ordinate. When a validator is supplied to
 \code{posterior_ordinate_supports_bf()}, it is applied to matching ordinate
-entries rather than to the multi-ordinate container as a whole.
+entries rather than to the multi-ordinate container as a whole. The
+\code{support} field is used to check whether exact support excludes a
+requested point-null value and, when a kernel-density fallback must be
+computed from posterior samples, to supply boundary reflection. It must
+describe the true posterior support on the same scale as \code{x}, not the
+finite range of an estimator grid. The stable public metadata schema is the
+object returned by these constructors. Raw list and data-frame attributes
+with equivalent fields are parsed for backwards compatibility, but extension
+code should prefer the constructors.
 }

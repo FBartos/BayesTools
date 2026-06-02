@@ -121,6 +121,8 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
       "bernoulli"    = "Br",
       "exp"          = "E",
       "uniform"      = "U",
+      "moment"       = "MOM",
+      "invmoment"    = "iMOM",
       "mnormal"      = "mN",
       "mt"           = "mT",
       "mCauchy"      = "mC",
@@ -141,6 +143,8 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
       "bernoulli"    = "Bernoulli",
       "exp"          = "Exponential",
       "uniform"      = "Uniform",
+      "moment"       = "Moment",
+      "invmoment"    = "InvMoment",
       "mnormal"      = "mNormal",
       "mt"           = "mStudent-t",
       "mCauchy"      = "mCauchy",
@@ -167,8 +171,37 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
   }
 
   # remove the dimensions parameter from multivariate prior distributions
+  force_parameter_names <- FALSE
   if(is.prior.vector(x)){
     x[["parameters"]] <- x[["parameters"]][names(x[["parameters"]]) != "K"]
+  }else if(x[["distribution"]] == "moment"){
+    default_order    <- isTRUE(all.equal(x[["parameters"]][["order"]], 1))
+    default_location <- isTRUE(all.equal(x[["parameters"]][["location"]], 0))
+    parameter_order <- "mode"
+    if(!default_order){
+      parameter_order <- c(parameter_order, "order")
+    }
+    if(!default_location){
+      parameter_order <- c(parameter_order, "location")
+    }
+    force_parameter_names <- !default_order || !default_location
+    x[["parameters"]] <- x[["parameters"]][parameter_order]
+  }else if(x[["distribution"]] == "invmoment"){
+    default_order    <- isTRUE(all.equal(x[["parameters"]][["order"]], 1))
+    default_location <- isTRUE(all.equal(x[["parameters"]][["location"]], 0))
+    parameter_order <- "mode"
+    if(!default_order){
+      parameter_order <- c(parameter_order, "order")
+    }
+    parameter_order <- c(parameter_order, "df")
+    if(!default_location){
+      parameter_order <- c(parameter_order, "location")
+    }
+    force_parameter_names <- !default_order || !default_location
+    x[["parameters"]] <- x[["parameters"]][parameter_order]
+  }
+  if(force_parameter_names){
+    parameter_names <- TRUE
   }
 
   ### prepare prior parameters

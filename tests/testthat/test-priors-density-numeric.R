@@ -4,6 +4,10 @@ skip_if_not_test_profile("unit")
 # TEST FILE: Prior Density Numeric Regression Tests
 # ============================================================================ #
 
+.density_numeric_trapezoid_mass <- function(density) {
+  sum(diff(density$x) * (head(density$y, -1) + tail(density$y, -1)) / 2)
+}
+
 test_that("density transformation Jacobians use absolute inverse derivatives", {
   expect_equal(
     BayesTools:::.density.prior_transformation_y(
@@ -165,6 +169,90 @@ test_that("spike-and-slab density scales slab density and spike mass", {
   expect_equal(attr(d$inclusion, "y_range"), c(0, .75))
   expect_equal(attr(d, "y_range_variable"), attr(d$variable, "y_range"))
   expect_equal(attr(d, "y_range_inclusion"), attr(d$inclusion, "y_range"))
+})
+
+
+test_that("boundary KDE validates explicit support bounds", {
+  expect_error(
+    BayesTools:::.density_kde_boundary(1:5, n = 32, bounds = c(1, 0)),
+    "lower boundary"
+  )
+  expect_error(
+    BayesTools:::.density_kde_boundary(1:5, n = 32, bounds = c(0, NA)),
+    "'bounds' must be a numeric vector of length 2",
+    fixed = TRUE
+  )
+
+  d <- BayesTools:::.density_kde_boundary(1:5, n = 32, bounds = c(-Inf, Inf))
+  expect_false(isTRUE(attr(d, "boundary_reflection")))
+})
+
+
+test_that("sampled uniform density uses boundary reflection on finite support", {
+  set.seed(11)
+  d <- density(
+    prior("uniform", list(0, 1)),
+    x_range = c(0, 1),
+    n_samples = 4000,
+    n_points = 512,
+    force_samples = TRUE,
+    truncate_end = FALSE
+  )
+
+  expect_equal(range(d$x), c(0, 1))
+  expect_true(all(is.finite(d$y)))
+  expect_true(all(d$y >= 0))
+  expect_equal(.density_numeric_trapezoid_mass(d), 1, tolerance = .02)
+  expect_gt(d$y[1], .8)
+  expect_gt(d$y[length(d$y)], .8)
+  expect_true(isTRUE(attr(d, "boundary_reflection")))
+})
+
+
+test_that("sampled exponential density reflects only the true lower boundary", {
+  set.seed(12)
+  d <- density(
+    prior("exp", list(rate = 1)),
+    x_range = c(0, 5),
+    n_samples = 4000,
+    n_points = 512,
+    force_samples = TRUE,
+    truncate_end = FALSE
+  )
+
+  expect_equal(range(d$x), c(0, 5))
+  expect_true(all(is.finite(d$y)))
+  expect_true(all(d$y >= 0))
+  expect_equal(.density_numeric_trapezoid_mass(d), stats::pexp(5), tolerance = .02)
+  expect_gt(d$y[1], .75)
+  expect_lt(d$y[length(d$y)], .2)
+  expect_true(isTRUE(attr(d, "boundary_reflection")))
+})
+
+
+test_that("sampled individual weightfunction densities reflect per-component support", {
+  set.seed(13)
+  d <- density(
+    prior_weightfunction(
+      "one-sided",
+      c(.05),
+      wf_independent(prior("beta", list(1, 1)))
+    ),
+    individual = TRUE,
+    force_samples = TRUE,
+    n_samples = 4000,
+    n_points = 512
+  )
+
+  continuous_density <- d[[2]]
+
+  expect_s3_class(d[[1]], "density.prior.point")
+  expect_s3_class(continuous_density, "density.prior.simple")
+  expect_equal(range(continuous_density$x), c(0, 1))
+  expect_true(all(is.finite(continuous_density$y)))
+  expect_true(all(continuous_density$y >= 0))
+  expect_equal(.density_numeric_trapezoid_mass(continuous_density), 1, tolerance = .02)
+  expect_true(isTRUE(attr(continuous_density, "boundary_reflection")))
 })
 
 

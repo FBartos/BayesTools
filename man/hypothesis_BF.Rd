@@ -39,7 +39,12 @@ hypothesis_BF(
 \code{"KDE"} uses kernel density estimates. \code{"normal"} uses a normal
 approximation to the posterior density at the null. \code{"precomputed"}
 uses valid \code{posterior_ordinate} or \code{posterior_density} attributes
-before falling back to KDE.}
+before falling back to KDE. KDE point-null tests use boundary reflection when
+exact support metadata is attached to the marginal posterior or to a matched
+\code{posterior_density} attribute; numeric and data-frame expression tests
+use standard sample KDE. When a precomputed point-null density falls back to
+KDE, the fallback is warned immediately and retained in the returned table's
+\code{warnings} attribute.}
 
 \item{columns}{output columns. \code{"default"} returns \code{Alternative},
 \code{Null}, \code{BF}, and \code{BF_error}. \code{"all"} also returns
@@ -57,7 +62,8 @@ A BayesTools table of class \code{BayesTools_hypothesis_BF}. The
 percentage when available. Region odds errors are computed on
 \code{log(BF)} from prior/posterior region indicators; point-vs-region
 errors combine the available point-density and region-mass errors on the
-\code{log(BF)} scale.
+\code{log(BF)} scale. Point-null tests require a positive finite prior
+density at the null value.
 }
 \description{
 Computes Bayes factors for scalar hypotheses written as
@@ -69,5 +75,8 @@ marginal posterior carries joint prior information. Point-null hypotheses use
 supplied, including precomputed qCMDE/IWMDE posterior ordinates when
 \code{density_method = "precomputed"}. Level-specific
 \code{marginal_posterior.*} subclass vectors with attached density
-attributes are accepted as marginal posterior inputs.
+attributes are accepted as marginal posterior inputs; parent-level
+\code{posterior_density}, \code{posterior_densities},
+\code{posterior_ordinate}, or \code{posterior_ordinates} metadata on a
+marginal-posterior list is reused for matching level hypotheses.
 }

@@ -23,6 +23,7 @@ bayestools_test_profile_contexts <- list(
     "priors-density-numeric",
     "priors-informed",
     "priors-linear-density",
+    "priors-nonlocal",
     "priors-plot-data",
     "priors-print",
     "priors-tools",
@@ -67,6 +68,7 @@ bayestools_test_profile_contexts <- list(
     "JAGS-fit-edge-cases",
     "JAGS-fit-lm-oracles",
     "JAGS-lkj-cholesky-fit",
+    "JAGS-nonlocal-fit",
     "JAGS-marglik"
   )
 )

@@ -37,6 +37,10 @@ diagnostic_plot_layer_data <- function(plot) {
   ggplot2::ggplot_build(plot)$data
 }
 
+.diagnostic_density_mass <- function(density) {
+  sum(diff(density$x) * (head(density$y, -1) + tail(density$y, -1)) / 2)
+}
+
 test_that("diagnostic plot data preserves chain, iteration, and transformations", {
   fit <- .mock_diagnostics_fit()
   prior_list <- attr(fit, "prior_list")
@@ -57,6 +61,7 @@ test_that("diagnostic plot data preserves chain, iteration, and transformations"
   expect_equal(attr(plot_data, "iter"), rep(1:6, times = 2))
   expect_equal(attr(plot_data, "parameter"), "theta")
   expect_identical(attr(plot_data, "prior"), prior_list$theta)
+  expect_true(isTRUE(attr(plot_data, "density_support_transformed")))
 
   trace_data <- .diagnostics_plot_data_trace(plot_data, n_points = 10, ylim = NULL)
   expect_equal(names(trace_data), "theta")
@@ -82,6 +87,56 @@ test_that("diagnostic plot data preserves chain, iteration, and transformations"
   expect_equal(autocorrelation_data$theta[[1]]$x, 0:3)
   expect_equal(autocorrelation_data$theta[[1]]$y[[1]], 1)
   expect_equal(attr(autocorrelation_data$theta[[1]], "x_range"), c(0, 3))
+})
+
+test_that("diagnostic density plot data reflects bounded prior support", {
+  chain_1 <- cbind(theta = seq(.005, .995, length.out = 400))
+  chain_2 <- cbind(theta = rev(chain_1[, "theta"]))
+
+  fit <- coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2))
+  class(fit) <- c("BayesTools_fit", class(fit))
+  prior_list <- list(theta = prior("uniform", list(0, 1)))
+
+  plot_data <- .diagnostics_plot_data(
+    fit = fit,
+    parameter = "theta",
+    prior_list = prior_list,
+    transformations = NULL,
+    transform_factors = FALSE
+  )
+  density_data <- .diagnostics_plot_data_density(plot_data, n_points = 512, xlim = c(0, 1))
+
+  for(chain_density in density_data$theta){
+    expect_equal(range(chain_density$x), c(0, 1))
+    expect_true(all(is.finite(chain_density$y)))
+    expect_true(all(chain_density$y >= 0))
+    expect_equal(.diagnostic_density_mass(chain_density), 1, tolerance = .03)
+    expect_gt(chain_density$y[1], .75)
+    expect_gt(chain_density$y[length(chain_density$y)], .75)
+    expect_true(isTRUE(attr(chain_density, "boundary_reflection")))
+  }
+})
+
+test_that("diagnostic density does not reflect after custom transformations", {
+  chain_1 <- cbind(theta = seq(.005, .995, length.out = 100))
+  chain_2 <- cbind(theta = rev(chain_1[, "theta"]))
+
+  fit <- coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2))
+  class(fit) <- c("BayesTools_fit", class(fit))
+  prior_list <- list(theta = prior("uniform", list(0, 1)))
+
+  plot_data <- .diagnostics_plot_data(
+    fit = fit,
+    parameter = "theta",
+    prior_list = prior_list,
+    transformations = list(theta = list(fun = function(x, shift) x + shift, arg = list(shift = 2))),
+    transform_factors = FALSE
+  )
+  density_data <- .diagnostics_plot_data_density(plot_data, n_points = 128, xlim = c(2, 3))
+
+  expect_false(isTRUE(attr(density_data$theta[[1]], "boundary_reflection")))
+  expect_equal(range(density_data$theta[[1]]$x), c(2, 3))
+  expect_true(max(density_data$theta[[1]]$y) > 0)
 })
 
 test_that("diagnostic ggplot geoms expose exact density trace and autocorrelation data", {

@@ -276,6 +276,14 @@ test_that("Prior print for additional distributions", {
   expect_equal(utils::capture.output(print(p_ig)), "InvGamma(1, 1)")
   expect_equal(utils::capture.output(print(p_ig, short_name = TRUE)), "Ig(1, 1)")
 
+  # Alternate gamma input is printed in canonical shape/rate form
+  p_gamma_scale <- prior("gamma", list(shape = 2, scale = .5))
+  expect_equal(utils::capture.output(print(p_gamma_scale)), "Gamma(2, 2)")
+  expect_equal(
+    utils::capture.output(print(p_gamma_scale, parameter_names = TRUE)),
+    "Gamma(shape = 2, rate = 2)"
+  )
+
 })
 
 

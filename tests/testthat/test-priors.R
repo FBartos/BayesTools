@@ -83,6 +83,28 @@ test_that("Inverse-gamma prior distribution works", {
 
 })
 
+test_that("Moment prior distribution works", {
+
+  vdiffr::expect_doppelganger("prior-moment-1", function(){
+    test_nonlocal_prior(prior("moment", list(mode = .5, location = .25)))
+  })
+  vdiffr::expect_doppelganger("prior-moment-2", function(){
+    test_nonlocal_prior(prior("moment", list(mode = .5, location = .25), list(.25, Inf)))
+  })
+
+})
+
+test_that("Inverse-moment prior distribution works", {
+
+  vdiffr::expect_doppelganger("prior-invmoment-1", function(){
+    test_nonlocal_prior(prior("invmoment", list(mode = .5, df = 6, location = .25)))
+  })
+  vdiffr::expect_doppelganger("prior-invmoment-2", function(){
+    test_nonlocal_prior(prior("invmoment", list(mode = .5, df = 6, location = .25), list(.25, Inf)))
+  })
+
+})
+
 test_that("Exponential prior distribution works", {
 
   vdiffr::expect_doppelganger("prior-exp-1", function()test_prior(prior("exp", list(1.5))))

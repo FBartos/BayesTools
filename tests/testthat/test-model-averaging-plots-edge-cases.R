@@ -20,6 +20,10 @@ skip_if_not_test_profile("unit")
 # TAGS: @edge-cases, @plots, @input-validation
 # ============================================================================ #
 
+.model_plot_density_mass <- function(density) {
+  sum(diff(density$x) * (head(density$y, -1) + tail(density$y, -1)) / 2)
+}
+
 
 # ============================================================================ #
 # SECTION 1: plot_prior_list input validation
@@ -390,6 +394,250 @@ test_that("posterior plot data separates spike mass from continuous samples", {
 
   dx <- plot_data$density$x[2] - plot_data$density$x[1]
   expect_equal(sum(plot_data$density$y) * dx, .7, tolerance = .08)
+})
+
+test_that("bounded posterior KDE reflects support and keeps spike mass separate", {
+  theta <- c(rep(0, 20), seq(.005, .995, length.out = 80))
+  attr(theta, "models_ind") <- c(rep(1, 20), rep(2, 80))
+  attr(theta, "prior_list") <- list(
+    prior("point", list(location = 0)),
+    prior("uniform", list(0, 1))
+  )
+
+  plot_data <- BayesTools:::.plot_data_samples.simple(
+    samples = list(theta = theta),
+    parameter = "theta",
+    n_points = 512,
+    transformation = NULL,
+    transformation_arguments = NULL,
+    transformation_settings = FALSE
+  )
+
+  expect_equal(plot_data$points1$x, 0)
+  expect_equal(plot_data$points1$y, .2)
+  expect_false(any(plot_data$density$samples == 0))
+  expect_equal(plot_data$density$samples, theta[21:100])
+  expect_equal(range(plot_data$density$x), c(0, 1))
+  expect_equal(plot_data$density$x[1:2], c(0, 0), tolerance = 1e-12)
+  expect_equal(plot_data$density$y[1], 0)
+  expect_gt(plot_data$density$y[2], 0)
+  expect_equal(tail(plot_data$density$x, 2), c(1, 1), tolerance = 1e-12)
+  expect_gt(tail(plot_data$density$y, 2)[1], 0)
+  expect_equal(tail(plot_data$density$y, 1), 0)
+  expect_equal(.model_plot_density_mass(plot_data$density), .8, tolerance = .03)
+  expect_true(isTRUE(attr(plot_data$density, "boundary_reflection")))
+})
+
+test_that("conditional posterior prior overlay uses conditioned spike-and-slab slab", {
+  prior_list <- list(
+    theta = prior_spike_and_slab(
+      prior("normal", list(mean = 1, sd = 0.2)),
+      prior_inclusion = prior("point", list(location = 0.5))
+    )
+  )
+
+  posterior <- cbind(
+    theta           = c(rep(0, 50), seq(0.5, 1.5, length.out = 50)),
+    theta_indicator = c(rep(0, 50), rep(1, 50))
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+
+  samples <- as_mixed_posteriors(
+    model       = fit,
+    parameters  = "theta",
+    conditional = "theta"
+  )
+  prior_list_plot <- BayesTools:::.simplify_prior_list(attr(samples$theta, "prior_list"))
+
+  expect_true(BayesTools:::.plot_data_prior_should_use_context(
+    samples = samples,
+    parameter = "theta",
+    transform_scaled = FALSE,
+    prior_list = prior_list_plot
+  ))
+
+  plot_data_prior <- BayesTools:::.plot_data_prior_density_context(
+    prior_density_context = attr(samples, "prior_density_context"),
+    samples = samples,
+    parameter = "theta",
+    prior_list = prior_list_plot,
+    n_points = 128,
+    x_range = NULL,
+    transformation = NULL,
+    transformation_arguments = NULL,
+    transformation_settings = FALSE
+  )
+
+  expect_equal(names(plot_data_prior), "density")
+  expect_false(any(vapply(plot_data_prior, inherits, logical(1), what = "density.prior.point")))
+  expect_gt(max(plot_data_prior$density$y), 0)
+
+  expect_s3_class(
+    plot_posterior(samples, "theta", plot_type = "ggplot", prior = TRUE),
+    "ggplot"
+  )
+})
+
+test_that("conditional PET/PEESE prior overlays do not reintroduce excluded bias branches", {
+  prior_list <- list(
+    bias = prior_mixture(
+      list(
+        prior_none(prior_weights = 1),
+        prior_PET("normal", list(mean = 0, sd = 1), prior_weights = 1),
+        prior_PEESE("normal", list(mean = 0, sd = 1), prior_weights = 1)
+      ),
+      is_null = c(TRUE, FALSE, FALSE)
+    )
+  )
+
+  posterior <- cbind(
+    bias_indicator = c(rep(1, 20), rep(2, 20), rep(3, 20)),
+    PET            = c(rep(0, 20), seq(0.1, 1.0, length.out = 20), rep(0, 20)),
+    PEESE          = c(rep(0, 20), rep(0, 20), seq(0.2, 1.2, length.out = 20))
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- prior_list
+
+  samples <- as_mixed_posteriors(
+    model       = fit,
+    parameters  = "bias",
+    conditional = "PEESE",
+    force_plots = TRUE
+  )
+  simplified <- BayesTools:::.simplify_as_mixed_posterior_bias(samples, "PEESE")
+  prior_list_plot <- BayesTools:::.simplify_prior_list(attr(simplified$PEESE, "prior_list"))
+
+  point_prior <- vapply(prior_list_plot, is.prior.point, logical(1))
+  expect_true(all(vapply(prior_list_plot[point_prior], BayesTools:::.prior_model_weight, numeric(1)) == 0))
+
+  plot_data <- BayesTools:::.plot_data_samples.simple(
+    samples = simplified,
+    parameter = "PEESE",
+    n_points = 128,
+    transformation = NULL,
+    transformation_arguments = NULL,
+    transformation_settings = FALSE
+  )
+  expect_equal(names(plot_data), "density")
+  expect_equal(plot_data$density$samples, posterior[posterior[, "bias_indicator"] == 3, "PEESE"])
+
+  plot_data_prior <- BayesTools:::.plot_data_prior_list.simple(
+    prior_list = prior_list_plot,
+    x_seq = NULL,
+    x_range = NULL,
+    x_range_quant = NULL,
+    n_points = 128,
+    n_samples = 10000,
+    force_samples = FALSE,
+    individual = FALSE,
+    transformation = NULL,
+    transformation_arguments = NULL,
+    transformation_settings = FALSE
+  )
+
+  expect_equal(names(plot_data_prior), "density")
+  expect_false(any(vapply(plot_data_prior, inherits, logical(1), what = "density.prior.point")))
+
+  expect_s3_class(
+    plot_posterior(samples, "PEESE", plot_type = "ggplot", prior = TRUE, individual = TRUE),
+    "ggplot"
+  )
+})
+
+test_that("omega posterior KDE excludes exact one samples and reflects bounded support", {
+  continuous_samples <- seq(.005, .995, length.out = 75)
+  omega_samples <- cbind(
+    "omega[0,0.05]" = rep(1, 100),
+    "omega[0.05,1]" = c(rep(1, 25), continuous_samples)
+  )
+  attr(omega_samples, "prior_list") <- list(
+    prior_weightfunction(
+      "one-sided",
+      c(.05),
+      wf_independent(prior("beta", list(1, 1)))
+    )
+  )
+  attr(omega_samples, "models_ind") <- rep(1, nrow(omega_samples))
+
+  plot_data <- BayesTools:::.plot_data_samples.weightparameter(
+    samples = list(omega = omega_samples),
+    parameter = "omega[0.05,1]",
+    n_points = 512
+  )
+
+  expect_equal(plot_data$points1$x, 1)
+  expect_equal(plot_data$points1$y, .25)
+  expect_false(any(plot_data$density$samples == 1))
+  expect_equal(plot_data$density$samples, continuous_samples)
+  expect_equal(range(plot_data$density$x), c(0, 1))
+  expect_equal(plot_data$density$x[1:2], c(0, 0), tolerance = 1e-12)
+  expect_equal(plot_data$density$y[1], 0)
+  expect_gt(plot_data$density$y[2], 0)
+  expect_equal(tail(plot_data$density$x, 2), c(1, 1), tolerance = 1e-12)
+  expect_gt(tail(plot_data$density$y, 2)[1], 0)
+  expect_equal(tail(plot_data$density$y, 1), 0)
+  expect_equal(.model_plot_density_mass(plot_data$density), .75, tolerance = .03)
+  expect_true(isTRUE(attr(plot_data$density, "boundary_reflection")))
+})
+
+test_that("omega prior and posterior curves integrate their continuous masses", {
+  prior_list <- list(
+    bias = prior_mixture(
+      list(
+        prior_none(prior_weights = 1),
+        prior_weightfunction("two-sided", c(.05), wf_cumulative(c(1, 1)), prior_weights = 1 / 3),
+        prior_weightfunction("one-sided", c(.025, .05), wf_cumulative(c(1, 1, 1)), prior_weights = 1 / 3),
+        prior_PET("normal", list(0, 1), prior_weights = 1 / 3)
+      ),
+      is_null = c(TRUE, FALSE, FALSE, FALSE)
+    )
+  )
+  parameter <- "omega[0.05,0.975]"
+
+  prior_data <- BayesTools:::.plot_data_prior_list.weightparameter(
+    prior_list$bias,
+    parameter = parameter,
+    n_points = 2048,
+    n_samples = 1
+  )
+  prior_point_mass <- sum(vapply(prior_data, function(component) {
+    if(inherits(component, "density.prior.point")) component$y else 0
+  }, numeric(1)))
+
+  n_samples <- 4000
+  models_ind <- c(rep(1, 500), rep(2, 1500), rep(3, 1500), rep(4, 500))
+  omega_samples <- matrix(
+    1,
+    nrow = n_samples,
+    ncol = 4,
+    dimnames = list(NULL, c(
+      "omega[0,0.025]",
+      "omega[0.025,0.05]",
+      "omega[0.05,0.975]",
+      "omega[0.975,1]"
+    ))
+  )
+  omega_samples[models_ind == 2, parameter] <- seq(.005, .995, length.out = sum(models_ind == 2))
+  omega_samples[models_ind == 3, parameter] <- seq(.995, .005, length.out = sum(models_ind == 3))
+  attr(omega_samples, "prior_list") <- prior_list$bias
+  attr(omega_samples, "models_ind") <- models_ind
+
+  posterior_data <- BayesTools:::.plot_data_samples.weightparameter(
+    samples = list(bias = omega_samples),
+    parameter = parameter,
+    n_points = 512
+  )
+
+  expect_equal(.model_plot_density_mass(prior_data$density), 1 / 3, tolerance = 1e-3)
+  expect_equal(prior_point_mass, 2 / 3, tolerance = 1e-8)
+  expect_equal(.model_plot_density_mass(posterior_data$density), .75, tolerance = .03)
+  expect_equal(posterior_data$points1$y, .25, tolerance = 1e-8)
+  expect_equal(.model_plot_density_mass(prior_data$density) + prior_point_mass, 1, tolerance = 1e-3)
+  expect_equal(.model_plot_density_mass(posterior_data$density) + posterior_data$points1$y, 1, tolerance = .03)
+  expect_gt(.model_plot_density_mass(posterior_data$density), .model_plot_density_mass(prior_data$density))
 })
 
 test_that("posterior plot data uses stored posterior density when available", {
@@ -1366,6 +1614,82 @@ test_that("factor posterior density curves keep continuous mass scale", {
   }, numeric(1))
 
   expect_equal(unname(areas), c(1, 1), tolerance = 0.08)
+})
+
+test_that("bounded factor posterior KDE reflects each level support", {
+  n_samples <- 4000
+  samples <- cbind(
+    `theta[A]` = seq(.005, .995, length.out = n_samples),
+    `theta[B]` = rev(seq(.005, .995, length.out = n_samples))
+  )
+
+  prior <- prior_factor("uniform", list(0, 1), contrast = "independent")
+  attr(prior, "levels") <- 2
+  attr(prior, "level_names") <- c("A", "B")
+
+  attr(samples, "prior_list") <- prior
+  attr(samples, "models_ind") <- rep(1, nrow(samples))
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector", "matrix")
+
+  plot_data <- BayesTools:::.plot_data_samples.factor(
+    samples = list(theta = samples),
+    parameter = "theta",
+    n_points = 512,
+    transformation = NULL,
+    transformation_arguments = NULL,
+    transformation_settings = FALSE
+  )
+
+  density_entries <- plot_data[vapply(plot_data, inherits, logical(1), what = "density.prior.simple")]
+  areas <- vapply(density_entries, .model_plot_density_mass, numeric(1))
+  ranges <- t(vapply(density_entries, function(density) range(density$x), numeric(2)))
+
+  expect_length(density_entries, 2)
+  expect_equal(unname(vapply(density_entries, attr, numeric(1), which = "level")), 1:2)
+  expect_equal(unname(vapply(density_entries, attr, character(1), which = "level_name")), colnames(samples))
+  expect_equal(unname(areas), c(1, 1), tolerance = .03)
+  expect_equal(unname(ranges), matrix(c(0, 1, 0, 1), ncol = 2, byrow = TRUE))
+  expect_true(all(vapply(density_entries, function(density){
+    isTRUE(attr(density, "boundary_reflection"))
+  }, logical(1))))
+})
+
+test_that("transformed bounded factor posterior KDE avoids singular endpoints", {
+  n_samples <- 4000
+  samples <- cbind(
+    `theta[A]` = seq(.005, .995, length.out = n_samples),
+    `theta[B]` = rev(seq(.005, .995, length.out = n_samples))
+  )
+
+  prior <- prior_factor("uniform", list(0, 1), contrast = "independent")
+  attr(prior, "levels") <- 2
+  attr(prior, "level_names") <- c("A", "B")
+
+  attr(samples, "prior_list") <- prior
+  attr(samples, "models_ind") <- rep(1, nrow(samples))
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector", "matrix")
+
+  plot_data <- BayesTools:::.plot_data_samples.factor(
+    samples = list(theta = samples),
+    parameter = "theta",
+    n_points = 512,
+    transformation = "exp_lin",
+    transformation_arguments = NULL,
+    transformation_settings = FALSE
+  )
+
+  density_entries <- plot_data[vapply(plot_data, inherits, logical(1), what = "density.prior.simple")]
+
+  expect_length(density_entries, 2)
+  expect_true(all(vapply(density_entries, function(density){
+    all(is.finite(density$x)) && all(is.finite(density$y))
+  }, logical(1))))
+  expect_true(all(vapply(density_entries, function(density){
+    min(density$x) > 0 && max(density$x) < 1
+  }, logical(1))))
+  expect_true(all(vapply(density_entries, function(density){
+    isTRUE(attr(density, "boundary_reflection"))
+  }, logical(1))))
 })
 
 test_that("factor posterior plot data uses level-matched stored densities", {

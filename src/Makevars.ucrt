@@ -59,9 +59,13 @@ endif
 PKG_CPPFLAGS=-I"$(JAGS_INCLUDE_DIR)" -D JAGS_MAJOR_FORCED=0$(JAGS_MAJOR_VERSION) -D JAGS_MAJOR_ASSUMED=4 -DR_NO_REMAP
 PKG_LIBS=-L"$(JAGS_LIB_DIR)" -ljags-$(JAGS_MAJOR) -ljrmath-0
 
-OBJECTS = distributions/DBTLKJCPC.o \
+OBJECTS = distributions/DBTInvMoment.o \
+		  distributions/DBTLKJCPC.o \
+		  distributions/DBTMoment.o \
 		  functions/BTLKJCholesky.o \
 		  lkj/BTLKJCore.o \
+		  nonlocal/BTNonlocalCore.o \
 		  r-lkj.o \
+		  r-nonlocal.o \
 		  init.o \
 		  BayesTools.o

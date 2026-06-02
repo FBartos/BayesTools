@@ -12,8 +12,8 @@
 #' automatically obtaining \code{x_range}
 #' if both \code{x_range} and \code{x_seq}
 #' are unspecified. Defaults to \code{0.005}
-#' for all but Cauchy, Student-t, Gamma, and
-#' Inverse-gamme distributions that use
+#' for all but Cauchy, Student-t, Gamma, inverse-gamma,
+#' moment, and inverse-moment distributions that use
 #' \code{0.010}.
 #' @param n_points number of equally spaced points
 #' in the \code{x_range} if \code{x_seq} is unspecified
@@ -41,11 +41,16 @@
 #' @param transformation_settings boolean indicating whether the
 #' settings the \code{x_seq} or \code{x_range} was specified on
 #' the transformed support
-#' @param truncate_end whether the density should be set to zero in
-#' for the endpoints of truncated distributions
+#' @param truncate_end whether the density should be set to zero
+#' for endpoints of truncated distributions
 #' @param ... additional arguments
 #'
 #' @return \code{density.prior} returns an object of class 'density'.
+#'
+#' @details Sample-based density estimates for continuous priors with finite
+#' support use boundary-reflected kernel density estimates. The plotting range
+#' controls the evaluation grid, while reflection is based on the prior's true
+#' truncation bounds.
 #'
 #' @importFrom stats density
 #' @seealso [prior()]
@@ -135,6 +140,8 @@ density.prior <- function(x,
 
 .density.prior.simple                 <- function(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end){
 
+  boundary_reflection <- FALSE
+
   # get the samples to estimate density / obtain the density directly
   if(force_samples | .density.prior_need_samples(x)){
     x_sam <- rng(x, n_samples)
@@ -142,9 +149,16 @@ density.prior <- function(x,
       x_seq <- unique(round(x_seq))
       x_den <- vapply(x_seq, function(x_i) mean(x_sam == x_i), numeric(1))
     }else{
-      x_density <- stats::density(x_sam, n = n_points, from = x_range[1], to = x_range[2])
-      x_seq     <- x_density$x
-      x_den     <- x_density$y
+      x_density <- .density_kde_boundary(
+        x      = x_sam,
+        n      = n_points,
+        from   = x_range[1],
+        to     = x_range[2],
+        bounds = c(x$truncation[["lower"]], x$truncation[["upper"]])
+      )
+      x_seq               <- x_density$x
+      x_den               <- x_density$y
+      boundary_reflection <- isTRUE(attr(x_density, "boundary_reflection"))
     }
   }else{
 
@@ -196,6 +210,9 @@ density.prior <- function(x,
   class(out) <- c("density", "density.prior", "density.prior.simple")
   attr(out, "x_range") <- x_range
   attr(out, "y_range") <- c(0, max(x_den))
+  if(boundary_reflection){
+    attr(out, "boundary_reflection") <- TRUE
+  }
 
   return(out)
 }
@@ -244,33 +261,62 @@ density.prior <- function(x,
   # create either distribution for the individual weights or the whole weightfunction
   if(individual){
 
+    out <- list()
+    out_types <- .density.prior_type(x)
+    components <- .weightfunction_marginal_components(x)
+    component_bounds <- lapply(components, .density.prior_weightfunction_component_bounds)
+    density_boundary_reflection <- rep(FALSE, length(components))
+
     if(force_samples | .density.prior_need_samples(x)){
       x_sam <- rng(x, n_samples)
-      densities <- lapply(1:ncol(x_sam), function(i) stats::density(x_sam[,i], n = n_points, from = x_range[1], to = x_range[2]))
-      x_seq     <- densities[[1]]$x
-      x_den     <- do.call(cbind, lapply(densities, `[[`, "y"))
+      density_ind <- which(out_types != "point")
+      densities <- lapply(density_ind, function(i){
+        .density_kde_boundary(
+          x      = x_sam[,i],
+          n      = n_points,
+          from   = x_range[1],
+          to     = x_range[2],
+          bounds = component_bounds[[i]]
+        )
+      })
+      if(length(densities) > 0L){
+        x_seq <- densities[[1]]$x
+        x_den <- matrix(0, nrow = length(x_seq), ncol = ncol(x_sam))
+        for(j in seq_along(density_ind)){
+          x_den[,density_ind[j]] <- densities[[j]]$y
+          density_boundary_reflection[density_ind[j]] <- isTRUE(attr(densities[[j]], "boundary_reflection"))
+        }
+      }else{
+        x_seq <- seq(x_range[1], x_range[2], length.out = n_points)
+        x_den <- matrix(0, nrow = length(x_seq), ncol = ncol(x_sam))
+      }
     }else{
       x_den <- mpdf(x, x_seq)
       x_sam <- NULL
     }
 
-    # set the endpoints to zero if they correspond to truncation
-    if(isTRUE(all.equal(x$truncation[["lower"]], x_seq[1])) | x$truncation[["lower"]] >= x_seq[1]){
-      x_den <- rbind(0, x_den)
-      x_seq <- c(x_seq[1], x_seq)
-    }
-    if(isTRUE(all.equal(x$truncation[["upper"]], x_seq[length(x_seq)])) | x$truncation[["upper"]] <= x_seq[length(x_seq)]){
-      x_den <- rbind(x_den, 0)
-      x_seq <- c(x_seq, x_seq[length(x_seq)])
-    }
-
-    out <- list()
-    out_types <- .density.prior_type(x)
-    components <- .weightfunction_marginal_components(x)
-
     for(i in 1:ncol(x_den)){
 
       temp_samples <- if(is.null(x_sam)) NULL else x_sam[,i]
+      temp_x_seq <- x_seq
+      temp_y_den <- x_den[,i]
+      temp_bounds <- component_bounds[[i]]
+
+      if(out_types[i] != "point"){
+        at_lower_bound <- is.finite(temp_bounds[1]) &&
+          (isTRUE(all.equal(temp_bounds[1], temp_x_seq[1])) | temp_bounds[1] >= temp_x_seq[1])
+        at_upper_bound <- is.finite(temp_bounds[2]) &&
+          (isTRUE(all.equal(temp_bounds[2], temp_x_seq[length(temp_x_seq)])) | temp_bounds[2] <= temp_x_seq[length(temp_x_seq)])
+
+        if(at_lower_bound){
+          temp_y_den <- c(0, temp_y_den)
+          temp_x_seq <- c(temp_x_seq[1], temp_x_seq)
+        }
+        if(at_upper_bound){
+          temp_y_den <- c(temp_y_den, 0)
+          temp_x_seq <- c(temp_x_seq, temp_x_seq[length(temp_x_seq)])
+        }
+      }
 
       # create the output object
       if(out_types[i] == "point"){
@@ -287,8 +333,8 @@ density.prior <- function(x,
           call    = call("density", print(x, silent = TRUE)),
           bw      = NULL,
           n       = n_points,
-          x       = x_seq,
-          y       = x_den[,i],
+          x       = temp_x_seq,
+          y       = temp_y_den,
           samples = temp_samples
         )
       }
@@ -296,8 +342,11 @@ density.prior <- function(x,
 
       class(temp_out) <- c("density", "density.prior", paste0("density.prior.",out_types[i]))
       attr(temp_out, "x_range") <- x_range
-      attr(temp_out, "y_range") <- if(out_types[i] == "point") c(0, 1) else c(0, max(x_den[,i]))
+      attr(temp_out, "y_range") <- if(out_types[i] == "point") c(0, 1) else c(0, max(temp_y_den))
       attr(temp_out, "steps")   <- c(x$bins$lower[i], x$bins$upper[i])
+      if(density_boundary_reflection[i]){
+        attr(temp_out, "boundary_reflection") <- TRUE
+      }
 
       out[[i]] <- temp_out
     }
@@ -411,6 +460,8 @@ density.prior <- function(x,
 }
 .density.prior.orthonormal_or_meandif <- function(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end){
 
+  boundary_reflection <- FALSE
+
   # get the samples to estimate density / obtain the density directly
   if(force_samples | .density.prior_need_samples(x)){
 
@@ -423,9 +474,16 @@ density.prior <- function(x,
 
     x_sam <- rng(x, n_samples)
     x_sam <- as.vector(x_sam)
-    x_density <- stats::density(x_sam, n = n_points, from = x_range[1], to = x_range[2])
-    x_seq     <- x_density$x
-    x_den     <- x_density$y
+    x_density <- .density_kde_boundary(
+      x      = x_sam,
+      n      = n_points,
+      from   = x_range[1],
+      to     = x_range[2],
+      bounds = c(x$truncation[["lower"]], x$truncation[["upper"]])
+    )
+    x_seq               <- x_density$x
+    x_den               <- x_density$y
+    boundary_reflection <- isTRUE(attr(x_density, "boundary_reflection"))
 
   }else{
     x_den <- mpdf(x, x_seq)
@@ -472,6 +530,9 @@ density.prior <- function(x,
   class(out) <- c("density", "density.prior", if(is.prior.orthonormal(x)) "density.prior.orthonormal" else if(is.prior.meandif(x)) "density.prior.meandif")
   attr(out, "x_range") <- x_range
   attr(out, "y_range") <- c(0, max(x_den))
+  if(boundary_reflection){
+    attr(out, "boundary_reflection") <- TRUE
+  }
 
   return(out)
 }
@@ -560,6 +621,114 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
 
 
 # helper functions
+.density_kde_boundary       <- function(x, n, from = NULL, to = NULL, bounds = c(-Inf, Inf), na.rm = FALSE, ...){
+
+  if(!is.numeric(bounds) || length(bounds) != 2L || anyNA(bounds)){
+    stop("'bounds' must be a numeric vector of length 2.", call. = FALSE)
+  }
+  if(bounds[1] > bounds[2]){
+    stop("The lower boundary must be lower than or equal to the upper boundary.", call. = FALSE)
+  }
+
+  # Estimate the bandwidth on the original sample. The reflected sample is only
+  # used to correct leakage at the true support boundaries.
+  dots <- list(...)
+  density_args <- c(list(x = x, n = n, na.rm = na.rm), dots)
+  if(!is.null(from)){
+    density_args$from <- from
+  }
+  if(!is.null(to)){
+    density_args$to <- to
+  }
+
+  density_base <- do.call(stats::density, density_args)
+  attr(density_base, "boundary_reflection") <- FALSE
+
+  if(!any(is.finite(bounds))){
+    return(density_base)
+  }
+
+  # 'from' and 'to' define only the evaluation grid. 'bounds' defines the true
+  # support and therefore where reflection is applied.
+  x_ref <- x
+  weights_ref <- dots[["weights"]]
+  if(na.rm){
+    keep <- !is.na(x_ref)
+    if(!is.null(weights_ref)){
+      keep <- keep & !is.na(weights_ref)
+    }
+    x_ref <- x_ref[keep]
+    if(!is.null(weights_ref)){
+      weights_ref <- weights_ref[keep]
+    }
+  }
+
+  if(is.null(weights_ref)){
+    weights_ref <- rep(1 / length(x_ref), length(x_ref))
+  }
+
+  x_reflected <- x_ref
+  weights_reflected <- weights_ref
+  if(is.finite(bounds[1])){
+    x_reflected <- c(x_reflected, 2 * bounds[1] - x_ref)
+    weights_reflected <- c(weights_reflected, weights_ref)
+  }
+  if(is.finite(bounds[2])){
+    x_reflected <- c(x_reflected, 2 * bounds[2] - x_ref)
+    weights_reflected <- c(weights_reflected, weights_ref)
+  }
+
+  density_reflected_args <- dots
+  density_reflected_args[c("adjust", "bw", "subdensity", "warnWbw", "weights", "width")] <- NULL
+  density_reflected_args <- c(
+    list(
+      x          = x_reflected,
+      bw         = density_base$bw,
+      n          = n,
+      from       = if(is.null(from)) density_base$x[1] else from,
+      to         = if(is.null(to)) density_base$x[length(density_base$x)] else to,
+      weights    = weights_reflected,
+      subdensity = TRUE,
+      warnWbw    = FALSE,
+      na.rm      = FALSE
+    ),
+    density_reflected_args
+  )
+
+  density_reflected <- do.call(stats::density, density_reflected_args)
+  if(is.finite(bounds[1])){
+    density_reflected$y[density_reflected$x < bounds[1]] <- 0
+  }
+  if(is.finite(bounds[2])){
+    density_reflected$y[density_reflected$x > bounds[2]] <- 0
+  }
+  attr(density_reflected, "boundary_reflection") <- TRUE
+
+  return(density_reflected)
+}
+.density.prior_weightfunction_component_bounds <- function(component){
+
+  switch(
+    component$type,
+    "point" = c(component$location, component$location),
+    "beta"  = c(0, 1),
+    "prior" = {
+      lower <- component$prior$truncation[["lower"]]
+      upper <- component$prior$truncation[["upper"]]
+      if(component$scale == "omega"){
+        c(lower, upper)
+      }else{
+        c(exp(lower), exp(upper))
+      }
+    },
+    "one_minus_product_beta" = c(0, 1)
+  )
+}
+.density.prior_weightfunction_components_bounds <- function(components){
+
+  bounds <- do.call(rbind, lapply(components, .density.prior_weightfunction_component_bounds))
+  c(min(bounds[,1], na.rm = TRUE), max(bounds[,2], na.rm = TRUE))
+}
 .density.prior_need_samples   <- function(prior){
 
   return(FALSE)
@@ -591,6 +760,8 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
     "t"         = .010,
     "gamma"     = .010,
     "invgamma"  = .010,
+    "moment"    = .010,
+    "invmoment" = .010,
     "beta"      = .005,
     "exp"       = .005,
     "uniform"   = .005,

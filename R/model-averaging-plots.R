@@ -1375,9 +1375,14 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
   C1 <- .prior_C1(prior)
   C2 <- .prior_C2(prior)
-  C  <- C2 - C1
+  C  <- .prior_C(prior)
   lower <- prior$truncation[["lower"]]
   upper <- prior$truncation[["upper"]]
+  use_survival <- .prior_simple_use_survival_truncation(prior)
+  if(use_survival){
+    S1 <- .prior_simple_base_p(prior, lower, lower.tail = FALSE)
+    S2 <- .prior_simple_base_p(prior, upper, lower.tail = FALSE)
+  }
 
   list(
     cdf = function(q){
@@ -1389,7 +1394,12 @@ plot_prior_list <- function(prior_list, plot_type = "base",
       p[q_lower]  <- 0
       p[q_higher] <- 1
       if(any(q_inside)){
-        p[q_inside] <- (.prior_simple_base_p(prior, q[q_inside], lower.tail = TRUE) - C1) / C
+        if(use_survival){
+          S_q         <- .prior_simple_base_p(prior, q[q_inside], lower.tail = FALSE)
+          p[q_inside] <- (S1 - S_q) / C
+        }else{
+          p[q_inside] <- (.prior_simple_base_p(prior, q[q_inside], lower.tail = TRUE) - C1) / C
+        }
       }
       p
     },
@@ -1402,7 +1412,11 @@ plot_prior_list <- function(prior_list, plot_type = "base",
       p[q_lower]  <- 1
       p[q_higher] <- 0
       if(any(q_inside)){
-        p[q_inside] <- (.prior_simple_base_p(prior, q[q_inside], lower.tail = FALSE) - (1 - C2)) / C
+        if(use_survival){
+          p[q_inside] <- (.prior_simple_base_p(prior, q[q_inside], lower.tail = FALSE) - S2) / C
+        }else{
+          p[q_inside] <- (.prior_simple_base_p(prior, q[q_inside], lower.tail = FALSE) - (1 - C2)) / C
+        }
       }
       p
     },
@@ -1412,6 +1426,9 @@ plot_prior_list <- function(prior_list, plot_type = "base",
       y / C
     },
     quant = function(p){
+      if(use_survival){
+        return(.prior_simple_base_q(prior, S1 - p * (S1 - S2), lower.tail = FALSE))
+      }
       .prior_simple_base_q(prior, C1 + p * C)
     }
   )
@@ -1880,7 +1897,11 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     if(inherits(plot_data[[i]], "density.prior.point")){
       x_points <- c(x_points, plot_data[[i]]$x[plot_data[[i]]$y != 0])
       y_points <- c(y_points, mixing_prop[i])
-    }else if(inherits(plot_data[[i]], "density.prior.simple") | inherits(plot_data[[i]], "density.prior.orthonormal") | inherits(plot_data[[i]], "density.prior.meandif")){
+    }else if(inherits(plot_data[[i]], "density.prior.simple") |
+             inherits(plot_data[[i]], "density.prior.orthonormal") |
+             inherits(plot_data[[i]], "density.prior.meandif") |
+             inherits(plot_data[[i]], "density.prior.PET") |
+             inherits(plot_data[[i]], "density.prior.PEESE")){
       x_den <- rbind(x_den, plot_data[[i]]$x)
       y_den <- rbind(y_den, plot_data[[i]]$y * mixing_prop[i])
     }
@@ -2242,7 +2263,8 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
 #' @param legend_labels optional labels for factor legend levels.
 #' @param legend_position optional legend position for factor legends.
 #' @param density_method density source for continuous posterior curves.
-#' \code{"KDE"} computes the standard kernel density estimate.
+#' \code{"KDE"} computes a kernel density estimate. Plot methods with exact
+#' finite prior-support bounds apply boundary reflection.
 #' \code{"precomputed"} uses a valid \code{posterior_density} attribute when
 #' present and falls back to KDE otherwise.
 #' @param ... additional arguments
@@ -2629,10 +2651,10 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     # add priors, if requested
     if(prior){
 
-      # use transformed prior densities if available (from transform_scaled)
+      # use transformed or conditioned prior densities if available
       plot_data_prior <- NULL
-      if(transform_scaled && !is.null(prior_density_context) && any(sapply(prior_list, is.prior.factor))){
-        plot_data_prior <- .plot_data_prior_factor_density_transformed(
+      if(.plot_data_prior_should_use_context(samples, parameter, transform_scaled, prior_list)){
+        plot_data_prior <- .plot_data_prior_density_context(
           prior_density_context      = prior_density_context,
           samples                   = samples,
           parameter                 = parameter,
@@ -2643,7 +2665,8 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
           transformation_arguments  = transformation_arguments,
           transformation_settings   = transformation_settings
         )
-      }else if(transform_scaled && !is.null(prior_densities_transformed) && parameter %in% names(prior_densities_transformed)){
+      }
+      if(is.null(plot_data_prior) && transform_scaled && !is.null(prior_densities_transformed) && parameter %in% names(prior_densities_transformed)){
         plot_data_prior <- .prior_linear_density_to_plot_data(
           prior_densities_transformed[[parameter]],
           n_points                  = n_points,
@@ -2810,6 +2833,161 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   return(plot_data)
 }
 
+.plot_data_prior_has_condition <- function(samples, parameter){
+
+  condition_metadata <- .marginal_posterior_condition_metadata(
+    samples,
+    condition_source = samples[[parameter]]
+  )
+
+  length(.posterior_density_normalize_condition(condition_metadata[["conditional"]])) > 0L
+}
+
+.plot_data_prior_should_use_context <- function(samples, parameter, transform_scaled, prior_list){
+
+  if(.plot_data_prior_has_condition(samples, parameter)){
+    return(TRUE)
+  }
+
+  isTRUE(transform_scaled) && any(vapply(prior_list, is.prior.factor, logical(1)))
+}
+
+.plot_data_prior_context_for_plot <- function(prior_density_context, samples, parameter, n_points){
+
+  condition_metadata <- .marginal_posterior_condition_metadata(
+    samples,
+    condition_source = samples[[parameter]]
+  )
+
+  if(!is.null(prior_density_context) &&
+     .marginal_posterior_context_matches_condition(prior_density_context, condition_metadata)){
+    return(prior_density_context)
+  }
+
+  prior_list <- attr(samples, "prior_list", exact = TRUE)
+  if(is.null(prior_list)){
+    return(NULL)
+  }
+
+  column_names <- NULL
+  if(!is.null(prior_density_context)){
+    column_names <- prior_density_context[["column_names"]]
+  }
+
+  .marginal_posterior_prior_density_context(
+    samples          = samples,
+    prior_list       = prior_list,
+    column_names     = column_names,
+    n_samples        = max(16L, n_points),
+    allow_failure    = TRUE,
+    condition_source = samples[[parameter]]
+  )
+}
+
+.plot_data_prior_density_context <- function(prior_density_context, samples, parameter, prior_list, n_points, x_range = NULL,
+                                             transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE){
+
+  prior_density_context <- .plot_data_prior_context_for_plot(
+    prior_density_context = prior_density_context,
+    samples               = samples,
+    parameter             = parameter,
+    n_points              = n_points
+  )
+  if(is.null(prior_density_context)){
+    return(NULL)
+  }
+
+  if(any(vapply(prior_list, is.prior.factor, logical(1)))){
+    return(.plot_data_prior_factor_density_transformed(
+      prior_density_context      = prior_density_context,
+      samples                   = samples,
+      parameter                 = parameter,
+      prior_list                = prior_list,
+      n_points                  = n_points,
+      x_range                   = x_range,
+      transformation            = transformation,
+      transformation_arguments  = transformation_arguments,
+      transformation_settings   = transformation_settings
+    ))
+  }
+
+  column_names <- prior_density_context[["column_names"]]
+  if(is.null(column_names) || !parameter %in% column_names){
+    return(NULL)
+  }
+
+  weights <- rep(0, length(column_names))
+  names(weights) <- column_names
+  weights[parameter] <- 1
+
+  prior_density <- tryCatch(
+    .prior_density_from_context(prior_density_context, weights),
+    error = function(e) NULL
+  )
+  if(is.null(prior_density)){
+    return(NULL)
+  }
+
+  .prior_linear_density_to_plot_data(
+    prior_density,
+    n_points                  = n_points,
+    x_range                   = x_range,
+    transformation            = transformation,
+    transformation_arguments  = transformation_arguments,
+    transformation_settings   = transformation_settings
+  )
+}
+
+.plot_data_samples_prior_bounds <- function(prior_list, factor_contrasts = FALSE){
+
+  prior_list_simple <- prior_list[!vapply(prior_list, is.prior.point, logical(1))]
+  if(length(prior_list_simple) == 0L){
+    return(c(-Inf, Inf))
+  }
+
+  if(factor_contrasts && any(vapply(prior_list_simple, function(p) is.prior.orthonormal(p) || is.prior.meandif(p), logical(1)))){
+    return(c(-Inf, Inf))
+  }
+
+  lower <- vapply(prior_list_simple, function(p) p$truncation[["lower"]], numeric(1))
+  upper <- vapply(prior_list_simple, function(p) p$truncation[["upper"]], numeric(1))
+
+  c(min(lower), max(upper))
+}
+.plot_data_samples_density_range <- function(bounds, transformation = NULL){
+
+  offset <- if(!is.null(transformation)) 1e-5 else 0
+  from <- if(!is.infinite(bounds[1])) bounds[1] + offset else NULL
+  to   <- if(!is.infinite(bounds[2])) bounds[2] - offset else NULL
+
+  if(!is.null(from) && !is.null(to) && from >= to){
+    from <- bounds[1]
+    to   <- bounds[2]
+  }
+
+  list(from = from, to = to)
+}
+.plot_data_density_add_boundary_zeros <- function(x_den, y_den, bounds){
+
+  if(is.null(bounds) || !is.numeric(bounds) || length(bounds) != 2L ||
+     anyNA(bounds) || length(x_den) == 0L || length(y_den) == 0L){
+    return(list(x = x_den, y = y_den))
+  }
+
+  if(is.finite(bounds[1]) &&
+     (isTRUE(all.equal(bounds[1], x_den[1])) || bounds[1] >= x_den[1])){
+    x_den <- c(x_den[1], x_den)
+    y_den <- c(0, y_den)
+  }
+
+  if(is.finite(bounds[2]) &&
+     (isTRUE(all.equal(bounds[2], x_den[length(x_den)])) || bounds[2] <= x_den[length(x_den)])){
+    x_den <- c(x_den, x_den[length(x_den)])
+    y_den <- c(y_den, 0)
+  }
+
+  list(x = x_den, y = y_den)
+}
 .plot_data_samples.simple         <- function(samples, parameter, n_points, transformation, transformation_arguments, transformation_settings,
                                              density_method = c("KDE", "precomputed")){
 
@@ -2820,6 +2998,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   y_points <- NULL
   x_den    <- NULL
   y_den    <- NULL
+  boundary_reflection <- FALSE
 
   # extract the relevant data
   samples    <- samples[[parameter]]
@@ -2874,50 +3053,41 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
     }else if(length(samples_density) > 0){
 
-      args <- list(x = samples_density, n = n_points)
-
-      # set the endpoints for possible truncation
-      prior_list_simple <- prior_list[!sapply(prior_list, is.prior.point)]
-      prior_list_simple_lower <- min(sapply(prior_list_simple, function(p) p$truncation[["lower"]]))
-      prior_list_simple_upper <- max(sapply(prior_list_simple, function(p) p$truncation[["upper"]]))
-      if(!is.infinite(prior_list_simple_lower)){ # adding a small number for possible transformations (0 -> -Inf)
-        args <- c(args, from = prior_list_simple_lower + if(!is.null(transformation)) 1e-5 else 0)
+      # Keep evaluation range separate from true support so bounded KDEs can
+      # reflect at the support while avoiding transformation singularities.
+      density_bounds <- .posterior_support_bounds(samples, interval_only = TRUE)
+      if(is.null(density_bounds)){
+        density_bounds <- .plot_data_samples_prior_bounds(prior_list)
       }
-      if(!is.infinite(prior_list_simple_upper)){
-        args <- c(args, to = prior_list_simple_upper   - if(!is.null(transformation)) 1e-5 else 0)
-      }
+      density_range  <- .plot_data_samples_density_range(density_bounds, transformation)
 
       # get the density estimate
-      density_continuous <- do.call(stats::density, args)
-      x_den    <- density_continuous$x
-      y_den    <- density_continuous$y * (length(samples_density) / length(samples))
-
-      # check for truncation
-      if(!is.null(transformation)){
-        if(isTRUE(all.equal(prior_list_simple_lower + 1e-5, x_den[1])) | prior_list_simple_lower + 1e-5 >= x_den[1]){
-          y_den <- c(0, y_den)
-          x_den <- c(x_den[1], x_den)
-        }
-        if(isTRUE(all.equal(prior_list_simple_upper - 1e-5, x_den[length(x_den)])) | prior_list_simple_upper + 1e-5 <= x_den[length(x_den)]){
-          y_den <- c(y_den, 0)
-          x_den <- c(x_den, x_den[length(x_den)])
-        }
-      }else{
-        if(isTRUE(all.equal(prior_list_simple_lower, x_den[1])) | prior_list_simple_lower >= x_den[1]){
-          y_den <- c(0, y_den)
-          x_den <- c(x_den[1], x_den)
-        }
-        if(isTRUE(all.equal(prior_list_simple_upper, x_den[length(x_den)])) | prior_list_simple_upper <= x_den[length(x_den)]){
-          y_den <- c(y_den, 0)
-          x_den <- c(x_den, x_den[length(x_den)])
-        }
-      }
+      density_continuous <- .density_kde_boundary(
+        x      = samples_density,
+        n      = n_points,
+        from   = density_range[["from"]],
+        to     = density_range[["to"]],
+        bounds = density_bounds
+      )
+      x_den <- density_continuous$x
+      y_den <- density_continuous$y * (length(samples_density) / length(samples))
+      boundary_reflection <- isTRUE(attr(density_continuous, "boundary_reflection"))
 
       # apply transformations
       if(!is.null(transformation)){
         x_den   <- .density.prior_transformation_x(x_den,   transformation, transformation_arguments)
         y_den   <- .density.prior_transformation_y(x_den, y_den, transformation, transformation_arguments)
         samples_density <- .density.prior_transformation_x(samples_density,   transformation, transformation_arguments)
+      }
+
+      if(boundary_reflection){
+        plot_bounds <- density_bounds
+        if(!is.null(transformation)){
+          plot_bounds <- .density.prior_transformation_x(plot_bounds, transformation, transformation_arguments)
+        }
+        density_plot <- .plot_data_density_add_boundary_zeros(x_den, y_den, plot_bounds)
+        x_den <- density_plot$x
+        y_den <- density_plot$y
       }
 
     }
@@ -2944,6 +3114,9 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     if(!is.null(posterior_density)){
       attr(out_den, "posterior_density_method") <- posterior_density[["method"]]
       attr(out_den, "posterior_density_diagnostics") <- posterior_density[["diagnostics"]]
+    }
+    if(boundary_reflection){
+      attr(out_den, "boundary_reflection") <- TRUE
     }
 
     out[["density"]] <- out_den
@@ -3301,6 +3474,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   y_points <- NULL
   x_den    <- NULL
   y_den    <- NULL
+  boundary_reflection <- FALSE
 
   # extract the relevant data
   prior_list <- attr(samples, "prior_list")
@@ -3343,42 +3517,34 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
     if(length(samples_density) > 0){
 
-      args <- list(x = samples_density, n = n_points)
-
-      # set the endpoints for possible truncation
-      prior_list_simple <- prior_list[!sapply(prior_list, is.prior.point)]
+      # Use component support for reflection and a display range for evaluation.
       context <- .weightfunction_prior_list_context(prior_list)
       parameter_ind <- match(parameter, context$omega_names)
       if(is.na(parameter_ind)){
-        prior_list_simple_lower <- min(c(0, samples_density), na.rm = TRUE)
-        prior_list_simple_upper <- max(c(1, samples_density), na.rm = TRUE)
+        density_bounds <- c(-Inf, Inf)
+        density_range <- range(c(0, 1, samples_density), finite = TRUE)
       }else{
         components <- .weightfunction_prior_marginal_components(context, parameter_ind)
-        prior_range <- .weightfunction_components_range(components, samples = samples_density)
-        prior_list_simple_lower <- prior_range[1]
-        prior_list_simple_upper <- prior_range[2]
-      }
-
-      if(!is.infinite(prior_list_simple_lower)){
-        args <- c(args, from = prior_list_simple_lower)
-      }
-      if(!is.infinite(prior_list_simple_upper)){
-        args <- c(args, to = prior_list_simple_upper)
+        density_bounds <- .density.prior_weightfunction_components_bounds(components)
+        density_range <- .weightfunction_components_range(components, samples = samples_density)
       }
 
       # get the density estimate
-      density_continuous <- do.call(stats::density, args)
-      x_den    <- density_continuous$x
-      y_den    <- density_continuous$y * (length(samples_density) / n_samples_total)
+      density_continuous <- .density_kde_boundary(
+        x      = samples_density,
+        n      = n_points,
+        from   = density_range[1],
+        to     = density_range[2],
+        bounds = density_bounds
+      )
+      x_den <- density_continuous$x
+      y_den <- density_continuous$y * (length(samples_density) / n_samples_total)
+      boundary_reflection <- isTRUE(attr(density_continuous, "boundary_reflection"))
 
-      # check for truncation
-      if(isTRUE(all.equal(prior_list_simple_lower, x_den[1])) | prior_list_simple_lower >= x_den[1]){
-        y_den <- c(0, y_den)
-        x_den <- c(x_den[1], x_den)
-      }
-      if(isTRUE(all.equal(prior_list_simple_upper, x_den[length(x_den)])) | prior_list_simple_upper <= x_den[length(x_den)]){
-        y_den <- c(y_den, 0)
-        x_den <- c(x_den, x_den[length(x_den)])
+      if(boundary_reflection){
+        density_plot <- .plot_data_density_add_boundary_zeros(x_den, y_den, density_bounds)
+        x_den <- density_plot$x
+        y_den <- density_plot$y
       }
     }
   }
@@ -3402,6 +3568,9 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     attr(out_den, "x_range") <- range(x_den)
     attr(out_den, "y_range") <- c(0, max(y_den))
     attr(out_den, "parameter") <- parameter
+    if(boundary_reflection){
+      attr(out_den, "boundary_reflection") <- TRUE
+    }
 
     out[["density"]] <- out_den
   }
@@ -3508,6 +3677,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     if(nrow(samples_density) > 0){
       for(i in 1:ncol(samples_density)){
 
+        boundary_reflection <- FALSE
         density_aliases <- .plot_data_factor_density_aliases(
           parameter   = parameter,
           samples     = samples,
@@ -3564,39 +3734,45 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
         }else{
 
-          args <- list(x = samples_density[,i], n = n_points)
-
-          # set the endpoints for possible truncation
-          prior_list_simple <- prior_list[!sapply(prior_list, is.prior.point)]
-          prior_list_simple_lower <- min(sapply(prior_list_simple, function(p) p$truncation[["lower"]]))
-          prior_list_simple_upper <- max(sapply(prior_list_simple, function(p) p$truncation[["upper"]]))
-          if(!is.infinite(prior_list_simple_lower)){
-            args <- c(args, from = prior_list_simple_lower)
+          # Factor contrasts may be transformed before plotting; in that case
+          # the marginal differences no longer have the original bounded support.
+          density_bounds <- .posterior_support_bounds(
+            samples,
+            name = colnames(samples_density)[i],
+            interval_only = TRUE
+          )
+          if(is.null(density_bounds)){
+            density_bounds <- .plot_data_samples_prior_bounds(prior_list, factor_contrasts = TRUE)
           }
-          if(!is.infinite(prior_list_simple_upper)){
-            args <- c(args, to = prior_list_simple_upper)
-          }
+          density_range  <- .plot_data_samples_density_range(density_bounds, transformation)
 
           # get the density estimate
-          density_continuous <- do.call(stats::density, args)
-          x_den    <- density_continuous$x
-          y_den    <- density_continuous$y * (nrow(samples_density) / nrow(samples))
-
-          # check for truncation
-          if(isTRUE(all.equal(prior_list_simple_lower, x_den[1])) | prior_list_simple_lower >= x_den[1]){
-            y_den <- c(0, y_den)
-            x_den <- c(x_den[1], x_den)
-          }
-          if(isTRUE(all.equal(prior_list_simple_upper, x_den[length(x_den)])) | prior_list_simple_upper <= x_den[length(x_den)]){
-            y_den <- c(y_den, 0)
-            x_den <- c(x_den, x_den[length(x_den)])
-          }
+          density_continuous <- .density_kde_boundary(
+            x      = samples_density[,i],
+            n      = n_points,
+            from   = density_range[["from"]],
+            to     = density_range[["to"]],
+            bounds = density_bounds
+          )
+          x_den <- density_continuous$x
+          y_den <- density_continuous$y * (nrow(samples_density) / nrow(samples))
+          boundary_reflection <- isTRUE(attr(density_continuous, "boundary_reflection"))
 
           # apply transformations
           if(!is.null(transformation)){
             x_den   <- .density.prior_transformation_x(x_den,   transformation, transformation_arguments)
             y_den   <- .density.prior_transformation_y(x_den, y_den, transformation, transformation_arguments)
             samples_density[,i] <- .density.prior_transformation_x(samples_density[,i],   transformation, transformation_arguments)
+          }
+
+          if(boundary_reflection){
+            plot_bounds <- density_bounds
+            if(!is.null(transformation)){
+              plot_bounds <- .density.prior_transformation_x(plot_bounds, transformation, transformation_arguments)
+            }
+            density_plot <- .plot_data_density_add_boundary_zeros(x_den, y_den, plot_bounds)
+            x_den <- density_plot$x
+            y_den <- density_plot$y
           }
         }
 
@@ -3617,6 +3793,9 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
         if(!is.null(posterior_density)){
           attr(out_den, "posterior_density_method") <- posterior_density[["method"]]
           attr(out_den, "posterior_density_diagnostics") <- posterior_density[["diagnostics"]]
+        }
+        if(boundary_reflection){
+          attr(out_den, "boundary_reflection") <- TRUE
         }
 
         out[[paste0("density", i)]] <- out_den
@@ -4123,11 +4302,61 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
 
   return(spike_probability)
 }
+.bias_prior_list_for_condition <- function(prior_list, condition_event){
+
+  prior_list_fallback <- .weightfunction_expand_bias_mixture_priors(prior_list)
+
+  if(is.null(condition_event) ||
+     length(.posterior_density_normalize_condition(condition_event[["conditional"]])) == 0L){
+    return(prior_list_fallback)
+  }
+
+  bias_family <- condition_event[["families"]][["bias"]]
+  if(is.null(bias_family) || length(bias_family[["labels"]]) == 0L){
+    return(prior_list_fallback)
+  }
+
+  values <- .condition_event_bias_label_values(prior_list, bias_family[["labels"]])
+  if(is.null(dim(values))){
+    keep <- as.logical(values)
+  }else{
+    rule_fun <- .condition_event_rule_function(condition_event[["conditional_rule"]])
+    keep <- apply(values, 1L, rule_fun)
+  }
+  keep[is.na(keep)] <- FALSE
+  if(length(keep) != length(prior_list_fallback) || !any(keep)){
+    return(prior_list_fallback)
+  }
+
+  prior_weights <- vapply(prior_list_fallback, .prior_model_weight, numeric(1))
+  prior_weights[!is.finite(prior_weights) | prior_weights < 0] <- 0
+  if(sum(prior_weights[keep]) <= 0){
+    return(prior_list_fallback)
+  }
+  prior_weights[!keep] <- 0
+  prior_weights <- prior_weights / sum(prior_weights)
+
+  for(i in seq_along(prior_list_fallback)){
+    prior_list_fallback[[i]] <- .set_prior_model_weight(prior_list_fallback[[i]], prior_weights[i])
+  }
+
+  prior_list_fallback
+}
 .simplify_as_mixed_posterior_bias <- function(samples, parameter) {
 
   ### replace all remaining priors by null prior
   prior_list <- attr(samples[["bias"]], "prior_list")
-  prior_list <- .weightfunction_expand_bias_mixture_priors(prior_list)
+  condition_event <- attr(samples[["bias"]], "resolved_condition_event", exact = TRUE)
+  if(is.null(condition_event)){
+    condition_event <- attr(samples[["bias"]], "condition_event", exact = TRUE)
+  }
+  if(is.null(condition_event)){
+    condition_event <- attr(samples, "resolved_condition_event", exact = TRUE)
+  }
+  if(is.null(condition_event)){
+    condition_event <- attr(samples, "condition_event", exact = TRUE)
+  }
+  prior_list <- .bias_prior_list_for_condition(prior_list, condition_event)
 
   if (parameter == "PET") {
     prior_ind <- which(sapply(prior_list, \(x) !is.prior.PET(x)))
@@ -4186,7 +4415,9 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
 #'
 #' @details Marginal posterior vectors may carry a \code{posterior_density}
 #' attribute with \code{x} and \code{y} coordinates. These densities are used
-#' only when \code{density_method = "precomputed"}.
+#' only when \code{density_method = "precomputed"}. Marginal KDE fallbacks use
+#' a standard KDE because marginal prior-density grids are numerical density
+#' ranges rather than true support metadata.
 #'
 #' @seealso [prior()] [marginal_inference()]  [plot_posterior()]
 #' @export

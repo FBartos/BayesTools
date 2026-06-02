@@ -702,6 +702,111 @@ test_that("hypothesis_BF uses child precomputed density for explicit level point
   expect_equal(out[["method"]], "Savage-Dickey (precomputed)")
 })
 
+test_that("hypothesis_BF uses parent precomputed metadata for level point nulls", {
+
+  prior_density <- .hypothesis_prior_density_for_test()
+  alternate <- .hypothesis_marginal_posterior_for_test(
+    seq(-3, 3, length.out = 301),
+    prior_density
+  )
+  random <- .hypothesis_marginal_posterior_for_test(
+    seq(-2, 2, length.out = 301),
+    prior_density
+  )
+  attr(alternate, "posterior_ordinate") <- list(
+    value    = 1,
+    ordinate = 100,
+    method   = "wrong-null"
+  )
+  posterior <- list(alternate = alternate, random = random)
+  class(posterior) <- c("list", "marginal_posterior.factor", "marginal_posterior")
+  attr(posterior, "parameter") <- "mu_alloc"
+  attr(posterior, "posterior_ordinate") <- list(
+    list(
+      parameter   = "mu_alloc[alternate]",
+      value       = 0,
+      ordinate    = 0.50,
+      method      = "IWMDE",
+      diagnostics = list(relative_mcse = 0.03)
+    ),
+    list(
+      parameter   = "mu_alloc[random]",
+      value       = 0,
+      ordinate    = 0.25,
+      method      = "IWMDE",
+      diagnostics = list(relative_mcse = 0.04)
+    )
+  )
+
+  explicit <- hypothesis_BF(
+    posterior      = posterior,
+    hypothesis     = "mu_alloc[alternate] = 0",
+    columns        = "all",
+    density_method = "precomputed"
+  )
+  expanded <- hypothesis_BF(
+    posterior      = posterior,
+    hypothesis     = "mu_alloc = 0",
+    parameter      = "mu_alloc",
+    columns        = "all",
+    density_method = "precomputed"
+  )
+
+  expected_alternate <- BayesTools:::.prior_linear_density_height(prior_density, 0) / 0.50
+  expected_random <- BayesTools:::.prior_linear_density_height(prior_density, 0) / 0.25
+
+  expect_equal(attr(explicit, "raw_BF"), expected_alternate, tolerance = 1e-12)
+  expect_equal(explicit[["posterior"]], 0.50, tolerance = 1e-12)
+  expect_equal(as.numeric(explicit[["BF_error"]]), 3, tolerance = 1e-12)
+  expect_equal(expanded[["posterior"]], c(0.50, 0.25), tolerance = 1e-12)
+  expect_equal(attr(expanded, "raw_BF"), c(expected_alternate, expected_random),
+               tolerance = 1e-12)
+  expect_equal(expanded[["method"]], rep("Savage-Dickey (precomputed)", 2))
+})
+
+test_that("hypothesis_BF uses parent posterior_densities for explicit level point null", {
+
+  prior_density <- .hypothesis_prior_density_for_test()
+  alternate <- .hypothesis_marginal_posterior_for_test(
+    seq(-3, 3, length.out = 301),
+    prior_density
+  )
+  random <- .hypothesis_marginal_posterior_for_test(
+    seq(-2, 2, length.out = 301),
+    prior_density
+  )
+  posterior <- list(alternate = alternate, random = random)
+  class(posterior) <- c("list", "marginal_posterior.factor", "marginal_posterior")
+  attr(posterior, "parameter") <- "mu_alloc"
+  attr(posterior, "posterior_densities") <- list(list(
+    list(
+      parameter = "mu_alloc[alternate]",
+      x         = seq(-1, 1, length.out = 101),
+      y         = rep(0.50, 101),
+      method    = "qCMDE"
+    ),
+    list(
+      parameter = "mu_alloc[random]",
+      x         = seq(-1, 1, length.out = 101),
+      y         = rep(0.25, 101),
+      method    = "qCMDE"
+    )
+  ))
+
+  out <- hypothesis_BF(
+    posterior      = posterior,
+    hypothesis     = "mu_alloc[alternate] = 0",
+    columns        = "all",
+    density_method = "precomputed"
+  )
+
+  expected <- BayesTools:::.prior_linear_density_height(prior_density, 0) / 0.50
+
+  expect_equal(attr(out, "raw_BF"), expected, tolerance = 1e-12)
+  expect_equal(out[["posterior"]], 0.50, tolerance = 1e-12)
+  expect_equal(out[["method"]], "Savage-Dickey (precomputed)")
+})
+
 
 test_that("hypothesis_BF infers marginal_inference parameter from bracket syntax", {
 
@@ -1058,5 +1163,75 @@ test_that("hypothesis_BF warns when precomputed point density falls back to KDE"
   )
 
   expect_equal(out[["method"]], "Savage-Dickey")
-  expect_null(attr(out, "warnings"))
+  expect_match(
+    attr(out, "warnings")[["theta"]],
+    "Falling back to the kernel density estimate",
+    fixed = TRUE
+  )
+})
+
+
+test_that("hypothesis_BF rejects zero prior density at point null", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("beta", list(alpha = 2, beta = 2))),
+    weights    = c(theta = 1),
+    n_grid     = 1024
+  )
+  posterior <- .hypothesis_marginal_posterior_for_test(
+    seq(.001, .999, length.out = 301),
+    prior_density
+  )
+  attr(posterior, "posterior_support") <-
+    BayesTools:::.posterior_support_new(c(0, 1), source = "test")
+
+  expect_error(
+    hypothesis_BF(
+      posterior  = posterior,
+      hypothesis = "theta = 0",
+      parameter  = "theta"
+    ),
+    "Prior density at the null hypothesis value is zero or non-finite|Prior density at point hypothesis"
+  )
+})
+
+
+test_that("hypothesis_BF point-null fallback uses exact marginal support", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("beta", list(alpha = 1, beta = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 1024
+  )
+  posterior <- .hypothesis_marginal_posterior_for_test(
+    seq(.001, .999, length.out = 301),
+    prior_density
+  )
+  attr(posterior, "posterior_support") <-
+    BayesTools:::.posterior_support_new(c(0, 1), source = "test")
+  attr(posterior, "posterior_density") <- list(
+    x      = seq(.25, .75, length.out = 101),
+    y      = rep(1, 101),
+    method = "qCMDE"
+  )
+
+  expect_warning(
+    out <- hypothesis_BF(
+      posterior      = posterior,
+      hypothesis     = "theta = 0",
+      parameter      = "theta",
+      columns        = "all",
+      density_method = "precomputed"
+    ),
+    "Falling back to the kernel density estimate",
+    fixed = TRUE
+  )
+
+  posterior_height <- BayesTools:::.Savage_Dickey_BF.kd(posterior, 0)
+  prior_height <- BayesTools:::.prior_linear_density_height(prior_density, 0)
+
+  expect_true(attr(posterior_height, "boundary_reflection"))
+  expect_equal(attr(out, "raw_BF"), prior_height / as.numeric(posterior_height), tolerance = 1e-12)
+  expect_equal(out[["posterior"]], as.numeric(posterior_height), tolerance = 1e-12)
+  expect_equal(out[["method"]], "Savage-Dickey")
 })

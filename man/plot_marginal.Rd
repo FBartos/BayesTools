@@ -79,7 +79,8 @@ parameter that needs to be transformed.}
 \item{...}{additional arguments}
 
 \item{density_method}{density source for continuous posterior curves.
-\code{"KDE"} computes the standard kernel density estimate.
+\code{"KDE"} computes a kernel density estimate. Plot methods with exact
+finite prior-support bounds apply boundary reflection.
 \code{"precomputed"} uses a valid \code{posterior_density} attribute when
 present and falls back to KDE otherwise.}
 }
@@ -93,7 +94,9 @@ Plot samples from the marginal posterior distributions
 \details{
 Marginal posterior vectors may carry a \code{posterior_density}
 attribute with \code{x} and \code{y} coordinates. These densities are used
-only when \code{density_method = "precomputed"}.
+only when \code{density_method = "precomputed"}. Marginal KDE fallbacks use
+a standard KDE because marginal prior-density grids are numerical density
+ranges rather than true support metadata.
 }
 \seealso{
 \code{\link[=prior]{prior()}} \code{\link[=marginal_inference]{marginal_inference()}}  \code{\link[=plot_posterior]{plot_posterior()}}

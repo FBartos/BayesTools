@@ -33,8 +33,8 @@ lower and upper range for the support
 automatically obtaining \code{x_range}
 if both \code{x_range} and \code{x_seq}
 are unspecified. Defaults to \code{0.005}
-for all but Cauchy, Student-t, Gamma, and
-Inverse-gamme distributions that use
+for all but Cauchy, Student-t, Gamma, inverse-gamma,
+moment, and inverse-moment distributions that use
 \code{0.010}.}
 
 \item{n_points}{number of equally spaced points
@@ -70,8 +70,8 @@ the \code{transformation}}
 settings the \code{x_seq} or \code{x_range} was specified on
 the transformed support}
 
-\item{truncate_end}{whether the density should be set to zero in
-for the endpoints of truncated distributions}
+\item{truncate_end}{whether the density should be set to zero
+for endpoints of truncated distributions}
 
 \item{...}{additional arguments}
 }
@@ -81,6 +81,12 @@ for the endpoints of truncated distributions}
 \description{
 Computes density of a prior
 distribution across a range of values.
+}
+\details{
+Sample-based density estimates for continuous priors with finite
+support use boundary-reflected kernel density estimates. The plotting range
+controls the evaluation grid, while reflection is based on the prior's true
+truncation bounds.
 }
 \seealso{
 \code{\link[=prior]{prior()}}

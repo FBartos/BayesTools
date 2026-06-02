@@ -24,9 +24,10 @@ approximated via a normal distribution (rather than kernel density). Defaults to
 \item{silent}{whether warnings should be returned silently. Defaults to \code{FALSE}}
 
 \item{density_method}{density source for the posterior ordinate. \code{"KDE"}
-computes the standard kernel density estimate. \code{"precomputed"} uses a
-valid \code{posterior_ordinate} attribute when present, then falls back to
-a valid \code{posterior_density} attribute.}
+computes a kernel density estimate, using boundary reflection when exact
+posterior-support metadata is available. \code{"precomputed"} uses a valid
+\code{posterior_ordinate} attribute when present, then falls back to a valid
+\code{posterior_density} attribute.}
 }
 \value{
 \code{Savage_Dickey_BF} returns a Bayes factor.
@@ -42,5 +43,22 @@ attribute with exact \code{value} and \code{ordinate} entries. When
 \code{normal_approximation = FALSE}, a matching ordinate is used for the
 Savage-Dickey ratio. If no matching ordinate is available, a
 \code{posterior_density} grid with \code{x} and \code{y} coordinates is
-used before falling back to a kernel density estimate.
+used before falling back to a kernel density estimate. The fallback KDE uses
+boundary reflection when exact \code{posterior_support} metadata is attached
+to the marginal posterior or to a matched posterior-density attribute. Exact
+support metadata is also checked before accepting precomputed posterior
+ordinates or densities; support is used to exclude the null only after it
+is validated against the posterior samples. A stale precomputed value is
+ignored when compatible exact support excludes the null. Support is not
+inferred from prior-density grids, posterior-density grids, or plotting
+ranges, which may be finite numerical integration ranges rather than true
+support boundaries. Exact support metadata is either a numeric
+\code{c(lower, upper)} vector or a list with
+\code{bounds = c(lower, upper)} and \code{exact = TRUE}; optional
+\code{type = "points"} support is not treated as a continuous interval for
+KDE boundary reflection. The same schema may be supplied as \code{support}
+in a \code{posterior_density} attribute. When the prior density at the null
+is zero or non-finite, the returned Bayes factor carries a warning because
+the point-null Savage-Dickey ratio is not a regular density ratio at that
+point.
 }

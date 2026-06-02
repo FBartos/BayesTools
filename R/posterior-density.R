@@ -2,7 +2,10 @@
 #'
 #' @description Helpers for normalizing public posterior-density method
 #' arguments and identifying methods that are expected to use precomputed
-#' posterior density or ordinate attributes.
+#' posterior density or ordinate attributes. Estimator labels such as
+#' \code{"qCMDE"} and \code{"IWMDE"} are treated as precomputed metadata
+#' sources by \code{posterior_density_method_uses_precomputed()}, but they are
+#' not public \code{density_method} argument values.
 #'
 #' @param method density method.
 #' @param allowed character vector of allowed density methods.
@@ -62,7 +65,15 @@ posterior_density_method_uses_precomputed <- function(method){
 #' schema fields. Posterior ordinate values are unique so a point-null lookup
 #' maps to at most one stored ordinate. When a validator is supplied to
 #' \code{posterior_ordinate_supports_bf()}, it is applied to matching ordinate
-#' entries rather than to the multi-ordinate container as a whole.
+#' entries rather than to the multi-ordinate container as a whole. The
+#' \code{support} field is used to check whether exact support excludes a
+#' requested point-null value and, when a kernel-density fallback must be
+#' computed from posterior samples, to supply boundary reflection. It must
+#' describe the true posterior support on the same scale as \code{x}, not the
+#' finite range of an estimator grid. The stable public metadata schema is the
+#' object returned by these constructors. Raw list and data-frame attributes
+#' with equivalent fields are parsed for backwards compatibility, but extension
+#' code should prefer the constructors.
 #'
 #' @param x numeric density grid locations.
 #' @param y numeric density grid heights.
@@ -71,6 +82,13 @@ posterior_density_method_uses_precomputed <- function(method){
 #' @param diagnostics optional estimator diagnostics.
 #' @param point_masses optional point-mass table/list with \code{x} and
 #' \code{mass} entries.
+#' @param support optional exact support metadata for the density scale. Supply
+#' a trusted numeric \code{c(lower, upper)} vector, or a list with
+#' \code{bounds}, optional \code{points}, optional \code{type}, and optional
+#' \code{exact} entries. The \code{type} entry may be \code{"interval"},
+#' \code{"points"}, or \code{"mixed"}; KDE boundary reflection uses only
+#' interval-capable support. Set \code{exact = FALSE} when the values are
+#' plotting or integration limits rather than true support boundaries.
 #' @param ... additional named metadata fields, for example \code{parameter},
 #' \code{conditional}, or \code{conditional_rule}.
 #'
@@ -80,7 +98,8 @@ posterior_density_method_uses_precomputed <- function(method){
 #' @export
 posterior_density_attribute <- function(x, y, method, density_method,
                                         diagnostics = NULL,
-                                        point_masses = NULL, ...){
+                                        point_masses = NULL,
+                                        support = NULL, ...){
 
   check_real(x, "x", check_length = 0, allow_NA = FALSE)
   check_real(y, "y", check_length = 0, allow_NA = FALSE)
@@ -100,12 +119,19 @@ posterior_density_attribute <- function(x, y, method, density_method,
   }
   reserved <- c(
     "status", "x", "y", "method", "density_method", "diagnostics",
-    "point_masses", "density", "posterior_density", "posterior_densities",
-    "densities", "estimator"
+    "point_masses", "support", "posterior_support", "density",
+    "posterior_density", "posterior_densities", "densities", "estimator"
   )
   if(any(metadata_names %in% reserved)){
     stop("Additional posterior density metadata cannot replace reserved fields.",
          call. = FALSE)
+  }
+
+  if(!is.null(support)){
+    support <- .posterior_support_from_attribute(support)
+    if(is.null(support)){
+      stop("Posterior density support metadata is invalid.", call. = FALSE)
+    }
   }
 
   out <- c(list(
@@ -115,7 +141,8 @@ posterior_density_attribute <- function(x, y, method, density_method,
     method         = method,
     density_method = density_method,
     diagnostics    = diagnostics,
-    point_masses   = point_masses
+    point_masses   = point_masses,
+    support        = support
   ), metadata)
   class(out) <- c("BayesTools_posterior_density", "list")
 
@@ -130,7 +157,10 @@ posterior_density_attribute <- function(x, y, method, density_method,
 
 #' @rdname posterior_density_attribute
 #' @param value numeric null-hypothesis value or values.
-#' @param ordinate numeric posterior ordinate height or heights.
+#' @param ordinate for \code{posterior_ordinate_attribute()}, numeric
+#' posterior ordinate height or heights; for
+#' \code{posterior_ordinate_append()}, a posterior-ordinate attribute to
+#' append.
 #'
 #' @return \code{posterior_ordinate_attribute()} returns a list suitable for a
 #' \code{posterior_ordinate} attribute.
@@ -195,7 +225,6 @@ posterior_ordinate_attribute <- function(value, ordinate, method,
 
 #' @rdname posterior_density_attribute
 #' @param existing existing posterior-ordinate attribute or \code{NULL}.
-#' @param ordinate posterior-ordinate attribute to append.
 #'
 #' @return \code{posterior_ordinate_append()} returns a posterior-ordinate
 #' attribute container that may hold multiple ordinates.
@@ -411,6 +440,35 @@ posterior_ordinate_has_value <- function(ordinate, value){
   return(NULL)
 }
 
+.posterior_density_usable_for_null <- function(posterior_density,
+                                               null_hypothesis){
+
+  posterior_density <- .posterior_density_from_attribute(posterior_density)
+  if(is.null(posterior_density) ||
+     !is.numeric(null_hypothesis) ||
+     length(null_hypothesis) != 1L ||
+     !is.finite(null_hypothesis)){
+    return(FALSE)
+  }
+
+  support <- .posterior_support_from_attribute(posterior_density[["support"]])
+  if(!is.null(support) && isTRUE(support$exact) &&
+     .posterior_support_excludes_value(support, null_hypothesis)){
+    return(TRUE)
+  }
+
+  point_masses <- posterior_density[["point_masses"]]
+  if(!is.null(point_masses) && nrow(point_masses) > 0L){
+    point_tol <- sqrt(.Machine$double.eps) * max(1, abs(null_hypothesis))
+    if(any(abs(point_masses[["x"]] - null_hypothesis) <= point_tol)){
+      return(TRUE)
+    }
+  }
+
+  height <- .posterior_density_height(posterior_density, null_hypothesis)
+  is.finite(height) && height > 0
+}
+
 .posterior_density_aliases <- function(...){
 
   aliases <- unlist(list(...), use.names = FALSE)
@@ -418,6 +476,38 @@ posterior_ordinate_has_value <- function(ordinate, value){
   aliases <- aliases[!is.na(aliases) & nzchar(aliases)]
 
   return(unique(aliases))
+}
+
+.posterior_density_sample_aliases <- function(samples, sample_name = NULL){
+
+  return(.posterior_density_aliases(
+    sample_name,
+    attr(samples, "parameter", exact = TRUE),
+    attr(samples, "level_name", exact = TRUE),
+    attr(samples, "factor_cell_names", exact = TRUE)
+  ))
+}
+
+.posterior_density_child_aliases <- function(parent, child, sample_name = NULL){
+
+  parent_parameter <- attr(parent, "parameter", exact = TRUE)
+  child_level <- attr(child, "level_name", exact = TRUE)
+  if(is.null(child_level)){
+    child_level <- attr(child, "level", exact = TRUE)
+  }
+
+  return(.posterior_density_aliases(
+    sample_name,
+    attr(child, "parameter", exact = TRUE),
+    child_level,
+    if(!is.null(parent_parameter) && !is.null(sample_name)){
+      paste0(parent_parameter, "[", sample_name, "]")
+    },
+    if(!is.null(parent_parameter) && !is.null(child_level)){
+      paste0(parent_parameter, "[", child_level, "]")
+    },
+    attr(child, "factor_cell_names", exact = TRUE)
+  ))
 }
 
 .posterior_density_metadata_values <- function(posterior_density, fields){
@@ -546,9 +636,15 @@ posterior_ordinate_has_value <- function(ordinate, value){
 }
 
 .posterior_density_candidate_matches <- function(posterior_density, aliases, conditional, conditional_rule,
-                                                 condition_key = NULL, allow_unlabeled = FALSE){
+                                                 condition_key = NULL, allow_unlabeled = FALSE,
+                                                 null_hypothesis = NULL){
 
-  if(is.null(.posterior_density_from_attribute(posterior_density))){
+  density <- .posterior_density_from_attribute(posterior_density)
+  if(is.null(density)){
+    return(FALSE)
+  }
+  if(!is.null(null_hypothesis) &&
+     !.posterior_density_usable_for_null(density, null_hypothesis)){
     return(FALSE)
   }
 
@@ -567,6 +663,124 @@ posterior_ordinate_has_value <- function(ordinate, value){
     conditional_rule = conditional_rule,
     condition_key    = condition_key
   ))
+}
+
+.posterior_density_direct_candidate_matches <- function(posterior_density,
+                                                        samples,
+                                                        aliases = NULL,
+                                                        allow_unlabeled = TRUE,
+                                                        null_hypothesis = NULL){
+
+  density <- .posterior_density_from_attribute(posterior_density)
+  if(is.null(density)){
+    return(FALSE)
+  }
+  if(!is.null(null_hypothesis) &&
+     !.posterior_density_usable_for_null(density, null_hypothesis)){
+    return(FALSE)
+  }
+  if(is.null(aliases)){
+    aliases <- .posterior_density_sample_aliases(samples)
+  }
+
+  parameter_names <- .posterior_density_parameter_metadata(posterior_density)
+  if(length(parameter_names) > 0L && length(aliases) > 0L){
+    if(!any(parameter_names %in% aliases)){
+      return(FALSE)
+    }
+  }else if(length(parameter_names) == 0L && !allow_unlabeled){
+    return(FALSE)
+  }
+
+  return(.posterior_density_condition_matches(
+    posterior_density,
+    conditional      = attr(samples, "conditional", exact = TRUE),
+    conditional_rule = attr(samples, "conditional_rule", exact = TRUE),
+    condition_key    = attr(samples, "condition_key", exact = TRUE)
+  ))
+}
+
+.posterior_density_direct_attribute <- function(samples, aliases = NULL,
+                                                null_hypothesis = NULL){
+
+  posterior_density <- attr(samples, "posterior_density", exact = TRUE)
+  if(.posterior_density_direct_candidate_matches(
+    posterior_density,
+    samples         = samples,
+    aliases         = aliases,
+    null_hypothesis = null_hypothesis
+  )){
+    return(posterior_density)
+  }
+
+  return(NULL)
+}
+
+.posterior_density_direct_status <- function(samples, aliases = NULL,
+                                             allow_unlabeled = TRUE){
+
+  posterior_density <- attr(samples, "posterior_density", exact = TRUE)
+  if(is.null(posterior_density)){
+    return(list(present = FALSE, relevant = FALSE, valid = FALSE, value = NULL))
+  }
+  if(is.null(aliases)){
+    aliases <- .posterior_density_sample_aliases(samples)
+  }
+
+  parameter_names <- .posterior_density_parameter_metadata(posterior_density)
+  relevant <- TRUE
+  if(length(parameter_names) > 0L && length(aliases) > 0L){
+    relevant <- any(parameter_names %in% aliases)
+  }else if(length(parameter_names) == 0L && !allow_unlabeled){
+    relevant <- FALSE
+  }
+  if(isTRUE(relevant)){
+    relevant <- .posterior_density_condition_matches(
+      posterior_density,
+      conditional      = attr(samples, "conditional", exact = TRUE),
+      conditional_rule = attr(samples, "conditional_rule", exact = TRUE),
+      condition_key    = attr(samples, "condition_key", exact = TRUE)
+    )
+  }
+
+  value <- if(isTRUE(relevant)){
+    .posterior_density_from_attribute(posterior_density)
+  }else{
+    NULL
+  }
+
+  list(
+    present  = TRUE,
+    relevant = isTRUE(relevant),
+    valid    = !is.null(value),
+    value    = value
+  )
+}
+
+.posterior_density_support_from_attribute <- function(posterior_density){
+
+  density <- .posterior_density_from_attribute(posterior_density)
+  if(is.null(density)){
+    return(NULL)
+  }
+
+  .posterior_support_from_attribute(density[["support"]])
+}
+
+.posterior_density_fill_missing_support <- function(posterior_density,
+                                                    support_source){
+
+  if(!is.null(.posterior_density_support_from_attribute(posterior_density))){
+    return(posterior_density)
+  }
+
+  source_support <- .posterior_density_support_from_attribute(support_source)
+  if(is.null(source_support) || !is.list(posterior_density)){
+    return(posterior_density)
+  }
+
+  posterior_density[["support"]] <- source_support
+  posterior_density
 }
 
 .posterior_ordinate_candidate_matches <- function(posterior_ordinate, aliases, conditional, conditional_rule,
@@ -596,6 +810,100 @@ posterior_ordinate_has_value <- function(ordinate, value){
     conditional_rule = conditional_rule,
     condition_key    = condition_key
   ))
+}
+
+.posterior_ordinate_direct_candidate_matches <- function(posterior_ordinate,
+                                                         samples,
+                                                         aliases = NULL,
+                                                         allow_unlabeled = TRUE,
+                                                         null_hypothesis = NULL){
+
+  if(!.posterior_ordinate_has_data(posterior_ordinate)){
+    return(FALSE)
+  }
+  if(!is.null(null_hypothesis) &&
+     is.null(.posterior_ordinate_from_attribute(posterior_ordinate, null_hypothesis))){
+    return(FALSE)
+  }
+  if(is.null(aliases)){
+    aliases <- .posterior_density_sample_aliases(samples)
+  }
+
+  parameter_names <- .posterior_density_parameter_metadata(posterior_ordinate)
+  if(length(parameter_names) > 0L && length(aliases) > 0L){
+    if(!any(parameter_names %in% aliases)){
+      return(FALSE)
+    }
+  }else if(length(parameter_names) == 0L && !allow_unlabeled){
+    return(FALSE)
+  }
+
+  return(.posterior_density_condition_matches(
+    posterior_ordinate,
+    conditional      = attr(samples, "conditional", exact = TRUE),
+    conditional_rule = attr(samples, "conditional_rule", exact = TRUE),
+    condition_key    = attr(samples, "condition_key", exact = TRUE)
+  ))
+}
+
+.posterior_ordinate_direct_attribute <- function(samples, aliases = NULL,
+                                                 null_hypothesis = NULL){
+
+  posterior_ordinate <- attr(samples, "posterior_ordinate", exact = TRUE)
+  if(.posterior_ordinate_direct_candidate_matches(
+    posterior_ordinate,
+    samples         = samples,
+    aliases         = aliases,
+    null_hypothesis = null_hypothesis
+  )){
+    return(posterior_ordinate)
+  }
+
+  return(NULL)
+}
+
+.posterior_ordinate_direct_status <- function(samples, aliases = NULL,
+                                              null_hypothesis = NULL,
+                                              allow_unlabeled = TRUE){
+
+  posterior_ordinate <- attr(samples, "posterior_ordinate", exact = TRUE)
+  if(is.null(posterior_ordinate)){
+    return(list(present = FALSE, relevant = FALSE, valid = FALSE, value = NULL))
+  }
+  if(is.null(aliases)){
+    aliases <- .posterior_density_sample_aliases(samples)
+  }
+
+  parameter_names <- .posterior_density_parameter_metadata(posterior_ordinate)
+  relevant <- TRUE
+  if(length(parameter_names) > 0L && length(aliases) > 0L){
+    relevant <- any(parameter_names %in% aliases)
+  }else if(length(parameter_names) == 0L && !allow_unlabeled){
+    relevant <- FALSE
+  }
+  if(isTRUE(relevant)){
+    relevant <- .posterior_density_condition_matches(
+      posterior_ordinate,
+      conditional      = attr(samples, "conditional", exact = TRUE),
+      conditional_rule = attr(samples, "conditional_rule", exact = TRUE),
+      condition_key    = attr(samples, "condition_key", exact = TRUE)
+    )
+  }
+
+  value <- if(isTRUE(relevant) && !is.null(null_hypothesis)){
+    .posterior_ordinate_from_attribute(posterior_ordinate, null_hypothesis)
+  }else if(isTRUE(relevant) && .posterior_ordinate_has_data(posterior_ordinate)){
+    posterior_ordinate
+  }else{
+    NULL
+  }
+
+  list(
+    present  = TRUE,
+    relevant = isTRUE(relevant),
+    valid    = !is.null(value),
+    value    = value
+  )
 }
 
 .posterior_ordinate_has_data <- function(posterior_ordinate){
@@ -649,7 +957,8 @@ posterior_ordinate_has_value <- function(ordinate, value){
 }
 
 .posterior_density_from_sources <- function(sources, aliases, conditional = NULL, conditional_rule = "AND",
-                                            condition_key = NULL, allow_unlabeled = FALSE){
+                                            condition_key = NULL, allow_unlabeled = FALSE,
+                                            null_hypothesis = NULL){
 
   aliases <- .posterior_density_aliases(aliases)
   if(length(aliases) == 0L){
@@ -665,7 +974,8 @@ posterior_ordinate_has_value <- function(ordinate, value){
       condition_key      = condition_key,
       allow_unlabeled    = allow_unlabeled,
       selected_by_name   = FALSE,
-      depth              = 0L
+      depth              = 0L,
+      null_hypothesis    = null_hypothesis
     )
     if(!is.null(out)){
       return(out)
@@ -676,7 +986,8 @@ posterior_ordinate_has_value <- function(ordinate, value){
 }
 
 .posterior_density_from_source <- function(source, aliases, conditional, conditional_rule,
-                                           condition_key, allow_unlabeled, selected_by_name, depth){
+                                           condition_key, allow_unlabeled, selected_by_name, depth,
+                                           null_hypothesis = NULL){
 
   if(is.null(source) || depth > 4L){
     return(NULL)
@@ -688,7 +999,8 @@ posterior_ordinate_has_value <- function(ordinate, value){
     conditional      = conditional,
     conditional_rule = conditional_rule,
     condition_key    = condition_key,
-    allow_unlabeled  = allow_unlabeled || selected_by_name
+    allow_unlabeled  = allow_unlabeled || selected_by_name,
+    null_hypothesis  = null_hypothesis
   )){
     return(source)
   }
@@ -707,7 +1019,8 @@ posterior_ordinate_has_value <- function(ordinate, value){
         condition_key      = condition_key,
         allow_unlabeled    = allow_unlabeled,
         selected_by_name   = selected_by_name,
-        depth              = depth + 1L
+        depth              = depth + 1L,
+        null_hypothesis    = null_hypothesis
     )
     if(!is.null(out)){
       return(out)
@@ -725,7 +1038,8 @@ posterior_ordinate_has_value <- function(ordinate, value){
         condition_key      = condition_key,
         allow_unlabeled    = TRUE,
         selected_by_name   = TRUE,
-        depth              = depth + 1L
+        depth              = depth + 1L,
+        null_hypothesis    = null_hypothesis
       )
       if(!is.null(out)){
         return(out)
@@ -742,7 +1056,8 @@ posterior_ordinate_has_value <- function(ordinate, value){
       condition_key      = condition_key,
       allow_unlabeled    = allow_unlabeled,
       selected_by_name   = selected_by_name,
-      depth              = depth + 1L
+      depth              = depth + 1L,
+      null_hypothesis    = null_hypothesis
     )
     if(!is.null(out)){
       return(out)
@@ -960,6 +1275,7 @@ posterior_ordinate_has_value <- function(ordinate, value){
   if(!is.null(source_names)){
     matched_names <- aliases[aliases %in% source_names]
     if(length(matched_names) > 0L){
+      matched_count <- length(out)
       for(alias in matched_names){
         out <- c(out, .posterior_ordinate_collect_from_source(
           source             = source[[alias]],
@@ -973,7 +1289,9 @@ posterior_ordinate_has_value <- function(ordinate, value){
         ))
       }
 
-      return(out)
+      if(length(out) > matched_count){
+        return(out)
+      }
     }
   }
 
@@ -1168,23 +1486,16 @@ posterior_ordinate_has_value <- function(ordinate, value){
   return(samples)
 }
 
-.posterior_density_child_attributes <- function(samples){
+.posterior_density_child_attributes <- function(samples, null_hypothesis = NULL){
 
-  out <- lapply(samples, function(x) {
-    density <- attr(x, "posterior_density", exact = TRUE)
-    if(is.null(.posterior_density_from_attribute(density))){
-      return(NULL)
-    }
-    if(!.posterior_density_condition_matches(
-      density,
-      conditional      = attr(x, "conditional", exact = TRUE),
-      conditional_rule = attr(x, "conditional_rule", exact = TRUE),
-      condition_key    = attr(x, "condition_key", exact = TRUE)
-    )){
-      return(NULL)
-    }
-
-    return(density)
+  sample_names <- names(samples)
+  out <- lapply(seq_along(samples), function(i) {
+    sample_name <- if(!is.null(sample_names)) sample_names[[i]] else NULL
+    .posterior_density_direct_attribute(
+      samples[[i]],
+      aliases         = .posterior_density_child_aliases(samples, samples[[i]], sample_name),
+      null_hypothesis = null_hypothesis
+    )
   })
   top_sources <- list(
     attr(samples, "posterior_density", exact = TRUE),
@@ -1194,11 +1505,8 @@ posterior_ordinate_has_value <- function(ordinate, value){
   if(length(top_sources) > 0L){
     sample_names <- names(samples)
     for(i in seq_along(samples)){
-      aliases <- .posterior_density_aliases(
-        sample_names[[i]],
-        attr(samples[[i]], "parameter", exact = TRUE),
-        attr(samples[[i]], "level_name", exact = TRUE)
-      )
+      sample_name <- if(!is.null(sample_names)) sample_names[[i]] else NULL
+      aliases <- .posterior_density_child_aliases(samples, samples[[i]], sample_name)
       conditional      <- attr(samples[[i]], "conditional", exact = TRUE)
       conditional_rule <- attr(samples[[i]], "conditional_rule", exact = TRUE)
       condition_key    <- attr(samples[[i]], "condition_key", exact = TRUE)
@@ -1208,10 +1516,13 @@ posterior_ordinate_has_value <- function(ordinate, value){
         conditional      = conditional,
         conditional_rule = conditional_rule,
         condition_key    = condition_key,
-        allow_unlabeled  = FALSE
+        allow_unlabeled  = FALSE,
+        null_hypothesis  = null_hypothesis
       )
       if(is.null(out[[i]]) && !is.null(density)){
         out[[i]] <- density
+      }else if(!is.null(out[[i]]) && !is.null(density)){
+        out[[i]] <- .posterior_density_fill_missing_support(out[[i]], density)
       }
     }
   }
@@ -1221,10 +1532,10 @@ posterior_ordinate_has_value <- function(ordinate, value){
       if(any(missing)){
         sample_names <- names(samples)
         for(i in which(missing)){
-          aliases <- .posterior_density_aliases(
-            if(!is.null(sample_names)) sample_names[[i]] else NULL,
-            attr(samples[[i]], "parameter", exact = TRUE),
-            attr(samples[[i]], "level_name", exact = TRUE)
+          aliases <- .posterior_density_child_aliases(
+            samples,
+            samples[[i]],
+            if(!is.null(sample_names)) sample_names[[i]] else NULL
           )
           conditional      <- attr(samples[[i]], "conditional", exact = TRUE)
           conditional_rule <- attr(samples[[i]], "conditional_rule", exact = TRUE)
@@ -1235,9 +1546,17 @@ posterior_ordinate_has_value <- function(ordinate, value){
             conditional      = conditional,
             conditional_rule = conditional_rule,
             condition_key    = condition_key,
-            allow_unlabeled  = TRUE
+            allow_unlabeled  = TRUE,
+            null_hypothesis  = null_hypothesis
           )){
-            out[[i]] <- top_level[[i]]
+            if(is.null(out[[i]])){
+              out[[i]] <- top_level[[i]]
+            }else{
+              out[[i]] <- .posterior_density_fill_missing_support(
+                out[[i]],
+                top_level[[i]]
+              )
+            }
           }
         }
         names(out) <- sample_names
@@ -1260,25 +1579,14 @@ posterior_ordinate_has_value <- function(ordinate, value){
 
 .posterior_ordinate_child_attributes <- function(samples, null_hypothesis = NULL){
 
-  out <- lapply(samples, function(x) {
-    ordinate <- attr(x, "posterior_ordinate", exact = TRUE)
-    if(is.null(null_hypothesis)){
-      if(!.posterior_ordinate_has_data(ordinate)){
-        return(NULL)
-      }
-    }else if(is.null(.posterior_ordinate_from_attribute(ordinate, null_hypothesis))){
-      return(NULL)
-    }
-    if(!.posterior_density_condition_matches(
-      ordinate,
-      conditional      = attr(x, "conditional", exact = TRUE),
-      conditional_rule = attr(x, "conditional_rule", exact = TRUE),
-      condition_key    = attr(x, "condition_key", exact = TRUE)
-    )){
-      return(NULL)
-    }
-
-    return(ordinate)
+  sample_names <- names(samples)
+  out <- lapply(seq_along(samples), function(i) {
+    sample_name <- if(!is.null(sample_names)) sample_names[[i]] else NULL
+    .posterior_ordinate_direct_attribute(
+      samples[[i]],
+      aliases         = .posterior_density_child_aliases(samples, samples[[i]], sample_name),
+      null_hypothesis = null_hypothesis
+    )
   })
   top_sources <- list(
     attr(samples, "posterior_ordinate", exact = TRUE),
@@ -1288,11 +1596,8 @@ posterior_ordinate_has_value <- function(ordinate, value){
   if(length(top_sources) > 0L){
     sample_names <- names(samples)
     for(i in seq_along(samples)){
-      aliases <- .posterior_density_aliases(
-        sample_names[[i]],
-        attr(samples[[i]], "parameter", exact = TRUE),
-        attr(samples[[i]], "level_name", exact = TRUE)
-      )
+      sample_name <- if(!is.null(sample_names)) sample_names[[i]] else NULL
+      aliases <- .posterior_density_child_aliases(samples, samples[[i]], sample_name)
       conditional      <- attr(samples[[i]], "conditional", exact = TRUE)
       conditional_rule <- attr(samples[[i]], "conditional_rule", exact = TRUE)
       condition_key    <- attr(samples[[i]], "condition_key", exact = TRUE)
@@ -1316,10 +1621,10 @@ posterior_ordinate_has_value <- function(ordinate, value){
       if(any(missing)){
         sample_names <- names(samples)
         for(i in which(missing)){
-          aliases <- .posterior_density_aliases(
-            if(!is.null(sample_names)) sample_names[[i]] else NULL,
-            attr(samples[[i]], "parameter", exact = TRUE),
-            attr(samples[[i]], "level_name", exact = TRUE)
+          aliases <- .posterior_density_child_aliases(
+            samples,
+            samples[[i]],
+            if(!is.null(sample_names)) sample_names[[i]] else NULL
           )
           conditional      <- attr(samples[[i]], "conditional", exact = TRUE)
           conditional_rule <- attr(samples[[i]], "conditional_rule", exact = TRUE)
@@ -1342,6 +1647,73 @@ posterior_ordinate_has_value <- function(ordinate, value){
   }
 
   return(out)
+}
+
+.posterior_precomputed_child <- function(parent, child, index, null_hypothesis,
+                                         density_method){
+
+  if(!identical(density_method, "precomputed") || is.null(parent) ||
+     is.null(index)){
+    return(child)
+  }
+
+  parent_names <- names(parent)
+  if(is.character(index)){
+    if(is.null(parent_names) || !index %in% parent_names){
+      return(child)
+    }
+    child_index <- match(index, parent_names)
+  }else{
+    child_index <- as.integer(index)
+    if(length(child_index) != 1L || is.na(child_index) ||
+       child_index < 1L || child_index > length(parent)){
+      return(child)
+    }
+  }
+
+  child_name <- if(!is.null(parent_names)) parent_names[[child_index]] else NULL
+  aliases <- .posterior_density_child_aliases(parent, child, child_name)
+
+  child_density <- .posterior_density_for_method(
+    .posterior_density_direct_attribute(
+      child,
+      aliases         = aliases,
+      null_hypothesis = null_hypothesis
+    ),
+    density_method
+  )
+  if(is.null(child_density)){
+    parent_densities <- .posterior_density_child_attributes(
+      parent,
+      null_hypothesis = null_hypothesis
+    )
+    if(length(parent_densities) >= child_index &&
+       !is.null(parent_densities[[child_index]])){
+      attr(child, "posterior_density") <- parent_densities[[child_index]]
+    }
+  }
+
+  child_ordinate <- .posterior_ordinate_for_method(
+    .posterior_ordinate_direct_attribute(
+      child,
+      aliases         = aliases,
+      null_hypothesis = null_hypothesis
+    ),
+    null_hypothesis,
+    density_method
+  )
+  if(is.null(child_ordinate)){
+    parent_ordinates <- .posterior_ordinate_child_attributes(
+      parent,
+      null_hypothesis = null_hypothesis
+    )
+    if(length(parent_ordinates) >= child_index &&
+       !is.null(parent_ordinates[[child_index]])){
+      attr(child, "posterior_ordinate") <- parent_ordinates[[child_index]]
+    }
+  }
+
+  child
 }
 
 .posterior_ordinate_from_attribute <- function(posterior_ordinate,
@@ -1585,6 +1957,7 @@ posterior_ordinate_has_value <- function(ordinate, value){
   method       <- NULL
   diagnostics  <- NULL
   point_masses <- NULL
+  support      <- NULL
 
   if(is.list(posterior_density)){
     if(!is.null(posterior_density[["method"]])){
@@ -1598,6 +1971,17 @@ posterior_ordinate_has_value <- function(ordinate, value){
     }
     if(!is.null(posterior_density[["point_masses"]])){
       point_masses <- posterior_density[["point_masses"]]
+    }
+    if(!is.null(posterior_density[["support"]])){
+      support <- .posterior_support_from_attribute(
+        posterior_density[["support"]],
+        exact = posterior_density[["support_exact"]]
+      )
+    }else if(!is.null(posterior_density[["posterior_support"]])){
+      support <- .posterior_support_from_attribute(
+        posterior_density[["posterior_support"]],
+        exact = posterior_density[["support_exact"]]
+      )
     }
     if(!is.null(posterior_density[["density"]]) &&
        (is.list(posterior_density[["density"]]) ||
@@ -1620,6 +2004,19 @@ posterior_ordinate_has_value <- function(ordinate, value){
     }
     if(is.null(method) && !is.null(source[["estimator"]])){
       method <- source[["estimator"]]
+    }
+    if(is.null(support)){
+      if(!is.null(source[["support"]])){
+        support <- .posterior_support_from_attribute(
+          source[["support"]],
+          exact = source[["support_exact"]]
+        )
+      }else if(!is.null(source[["posterior_support"]])){
+        support <- .posterior_support_from_attribute(
+          source[["posterior_support"]],
+          exact = source[["support_exact"]]
+        )
+      }
     }
   }else{
     return(NULL)
@@ -1659,6 +2056,7 @@ posterior_ordinate_has_value <- function(ordinate, value){
     y            = y,
     method       = method,
     diagnostics  = diagnostics,
+    support      = support,
     point_masses = .posterior_density_point_masses(point_masses)
   ))
 }

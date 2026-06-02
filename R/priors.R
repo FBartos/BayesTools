@@ -19,7 +19,7 @@
 #'   by a \code{location}, \code{scale}, and \code{df} parameters.}
 #'   \item{\code{"gamma"}}{for a gamma distribution characterized
 #'   by either \code{shape} and \code{rate}, or \code{shape} and
-#'   \code{scale} parameters. The later is internally converted to
+#'   \code{scale} parameters. The latter is internally converted to
 #'   the \code{shape} and \code{rate} parametrization}
 #'   \item{\code{"invgamma"}}{for an inverse-gamma distribution
 #'   characterized by a \code{shape} and \code{scale} parameters. The
@@ -33,6 +33,13 @@
 #'   \code{rate}.}
 #'   \item{\code{"uniform"}}{for a uniform distribution defined on a
 #'   range from \code{a} to \code{b}}
+#'   \item{\code{"moment"}}{for a Johnson-Rossell moment prior characterized
+#'   by exactly one of \code{mode} or \code{tau}, an optional \code{order}
+#'   that defaults to 1, and an optional \code{location} that defaults to 0.}
+#'   \item{\code{"invmoment"}}{for a Johnson-Rossell inverse-moment prior
+#'   characterized by exactly one of \code{mode} or \code{tau}, a \code{df},
+#'   an optional \code{order} that defaults to 1, and an optional
+#'   \code{location} that defaults to 0.}
 #'   \item{\code{"dirichlet"}}{for a Dirichlet distribution over a simplex,
 #'   characterized by a positive concentration vector \code{alpha}.}
 #' }
@@ -48,6 +55,19 @@
 #' the model parameters and sets the model priors odds to the product
 #' of its prior distributions.
 #'
+#' @details Moment and inverse-moment priors are symmetric nonlocal priors
+#' with zero density at \code{location}. The \code{mode} parameter is the
+#' positive distance from \code{location} to each symmetric mode; supplied
+#' negative values are converted to their absolute value. Positional parameters
+#' are interpreted as \code{mode} for \code{"moment"} and \code{mode, df}
+#' for \code{"invmoment"}. Use named parameters for \code{tau}, \code{order},
+#' \code{location}, or the inverse-moment \code{nu} alias. Positional input
+#' always treats the first parameter as \code{mode}. For moment priors,
+#' \code{tau = mode^2 / (2 * order)}. For inverse-moment priors,
+#' \code{tau = mode^2 * ((df + 1) / (2 * order))^(1 / order)}.
+#' Aliases \code{"pmom"}, \code{"pimom"}, and \code{"inversemoment"} are
+#' accepted, and inverse-moment \code{df} may also be supplied as \code{nu}.
+#'
 #' @examples
 #' # create a standard normal prior distribution
 #' p1 <- prior(distribution = "normal", parameters = list(mean = 1, sd = 1))
@@ -59,6 +79,14 @@
 #' # the prior distribution can be visualized using the plot function
 #' # (see ?plot.prior for all options)
 #' plot(p1)
+#'
+#' # create nonlocal priors centered on zero
+#' p3 <- prior("moment", list(mode = 0.5))
+#' p4 <- prior("invmoment", list(mode = 0.5, df = 3))
+#'
+#' # tau can be specified directly when named
+#' p5 <- prior("pmom", list(tau = 0.125))
+#' p6 <- prior("pimom", list(tau = 0.5, nu = 3))
 #'
 #' @return \code{prior} and \code{prior_none} return an object of class 'prior'.
 #' A named list containing the distribution name, parameters, and prior weights.
@@ -103,6 +131,10 @@ prior <- function(distribution, parameters, truncation = list(lower = -Inf, uppe
     distribution <- "exp"
   }else if(distribution %in% c("uniform", "unif")){
     distribution <- "uniform"
+  }else if(distribution %in% c("moment", "pmom")){
+    distribution <- "moment"
+  }else if(distribution %in% c("invmoment", "inversemoment", "pimom")){
+    distribution <- "invmoment"
   }else if(distribution %in% c("point", "spike")){
     distribution <- "point"
   }else if(distribution %in% c("multivariatenorm", "multivariatenormal", "mnorm", "mnormal")){
@@ -957,6 +989,36 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
   output$truncation   <- list(lower = parameters$location, upper = parameters$location)
 
   class(output) <- c("prior", "prior.simple", "prior.point")
+
+  return(output)
+}
+.prior_moment    <- function(parameters, truncation){
+
+  output <- list()
+
+  parameters <- .nonlocal_parameters_moment(parameters)
+  truncation <- .check_and_set_truncation(truncation)
+
+  output$distribution <- "moment"
+  output$parameters   <- parameters
+  output$truncation   <- truncation
+
+  class(output) <- c("prior", "prior.simple")
+
+  return(output)
+}
+.prior_invmoment <- function(parameters, truncation){
+
+  output <- list()
+
+  parameters <- .nonlocal_parameters_invmoment(parameters)
+  truncation <- .check_and_set_truncation(truncation)
+
+  output$distribution <- "invmoment"
+  output$parameters   <- parameters
+  output$truncation   <- truncation
+
+  class(output) <- c("prior", "prior.simple")
 
   return(output)
 }
@@ -1991,6 +2053,8 @@ quant.prior <- function(x, p, ...){
     "bernoulli" = stats::dbinom(x, size = 1, prob = prior$parameters[["probability"]], log = log),
     "exp"       = stats::dexp(x, rate = prior$parameters[["rate"]], log = log),
     "uniform"   = stats::dunif(x, min = prior$parameters[["a"]], max = prior$parameters[["b"]], log = log),
+    "moment"    = .dmoment_prior(x, location = prior$parameters[["location"]], tau = prior$parameters[["tau"]], order = prior$parameters[["order"]], log = log),
+    "invmoment" = .dinvmoment_prior(x, location = prior$parameters[["location"]], tau = prior$parameters[["tau"]], order = prior$parameters[["order"]], df = prior$parameters[["df"]], log = log),
     "point"     = dpoint(x, location = prior$parameters[["location"]], log = log)
   )
 }
@@ -2008,24 +2072,28 @@ quant.prior <- function(x, p, ...){
     "bernoulli" = stats::pbinom(q, size = 1, prob = prior$parameters[["probability"]], lower.tail = lower.tail, log.p = FALSE),
     "exp"       = stats::pexp(q, rate = prior$parameters[["rate"]], lower.tail = lower.tail, log.p = FALSE),
     "uniform"   = stats::punif(q, min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = lower.tail, log.p = FALSE),
+    "moment"    = .pmoment_prior(q, location = prior$parameters[["location"]], tau = prior$parameters[["tau"]], order = prior$parameters[["order"]], lower.tail = lower.tail),
+    "invmoment" = .pinvmoment_prior(q, location = prior$parameters[["location"]], tau = prior$parameters[["tau"]], order = prior$parameters[["order"]], df = prior$parameters[["df"]], lower.tail = lower.tail),
     "point"     = ppoint(q, location = prior$parameters[["location"]], lower.tail = lower.tail, log.p = FALSE)
   )
 }
 
-.prior_simple_base_q <- function(prior, p){
+.prior_simple_base_q <- function(prior, p, lower.tail = TRUE){
 
   switch(
     prior[["distribution"]],
-    "normal"    = stats::qnorm(p, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], lower.tail = TRUE, log.p = FALSE),
-    "lognormal" = stats::qlnorm(p, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], lower.tail = TRUE, log.p = FALSE),
-    "t"         = extraDistr::qlst(p, df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
-    "gamma"     = stats::qgamma(p, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
-    "invgamma"  = extraDistr::qinvgamma(p, alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], lower.tail = TRUE, log.p = FALSE),
-    "beta"      = stats::qbeta(p, shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = TRUE, log.p = FALSE),
-    "bernoulli" = stats::qbinom(p, size = 1, prob = prior$parameters[["probability"]], lower.tail = TRUE, log.p = FALSE),
-    "exp"       = stats::qexp(p, rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
-    "uniform"   = stats::qunif(p, min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = TRUE, log.p = FALSE),
-    "point"     = qpoint(p, location = prior$parameters[["location"]], lower.tail = TRUE, log.p = FALSE)
+    "normal"    = stats::qnorm(p, mean = prior$parameters[["mean"]], sd = prior$parameters[["sd"]], lower.tail = lower.tail, log.p = FALSE),
+    "lognormal" = stats::qlnorm(p, meanlog = prior$parameters[["meanlog"]], sdlog = prior$parameters[["sdlog"]], lower.tail = lower.tail, log.p = FALSE),
+    "t"         = extraDistr::qlst(p, df = prior$parameters[["df"]], mu = prior$parameters[["location"]], sigma = prior$parameters[["scale"]], lower.tail = lower.tail, log.p = FALSE),
+    "gamma"     = stats::qgamma(p, shape = prior$parameters[["shape"]], rate = prior$parameters[["rate"]], lower.tail = lower.tail, log.p = FALSE),
+    "invgamma"  = extraDistr::qinvgamma(p, alpha = prior$parameters[["shape"]], beta = prior$parameters[["scale"]], lower.tail = lower.tail, log.p = FALSE),
+    "beta"      = stats::qbeta(p, shape1 = prior$parameters[["alpha"]], shape2 = prior$parameters[["beta"]], lower.tail = lower.tail, log.p = FALSE),
+    "bernoulli" = stats::qbinom(p, size = 1, prob = prior$parameters[["probability"]], lower.tail = lower.tail, log.p = FALSE),
+    "exp"       = stats::qexp(p, rate = prior$parameters[["rate"]], lower.tail = lower.tail, log.p = FALSE),
+    "uniform"   = stats::qunif(p, min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = lower.tail, log.p = FALSE),
+    "moment"    = .qmoment_prior(p, location = prior$parameters[["location"]], tau = prior$parameters[["tau"]], order = prior$parameters[["order"]], lower.tail = lower.tail),
+    "invmoment" = .qinvmoment_prior(p, location = prior$parameters[["location"]], tau = prior$parameters[["tau"]], order = prior$parameters[["order"]], df = prior$parameters[["df"]], lower.tail = lower.tail),
+    "point"     = qpoint(p, location = prior$parameters[["location"]], lower.tail = lower.tail, log.p = FALSE)
   )
 }
 
@@ -2042,6 +2110,8 @@ quant.prior <- function(x, p, ...){
     "bernoulli" = stats::rbinom(n, size = 1, prob = prior$parameters[["probability"]]),
     "exp"       = stats::rexp(n, rate = prior$parameters[["rate"]]),
     "uniform"   = stats::runif(n, min = prior$parameters[["a"]], max = prior$parameters[["b"]]),
+    "moment"    = .rmoment_prior(n, location = prior$parameters[["location"]], tau = prior$parameters[["tau"]], order = prior$parameters[["order"]]),
+    "invmoment" = .rinvmoment_prior(n, location = prior$parameters[["location"]], tau = prior$parameters[["tau"]], order = prior$parameters[["order"]], df = prior$parameters[["df"]]),
     "point"     = rpoint(n, location = prior$parameters[["location"]])
   )
 }
@@ -2081,6 +2151,23 @@ quant.prior <- function(x, p, ...){
   )
 }
 
+.prior_simple_use_survival_truncation <- function(prior){
+
+  if(prior[["distribution"]] == "point" || is.prior.discrete(prior) ||
+     is.infinite(prior$truncation[["lower"]])){
+    return(FALSE)
+  }
+
+  C1 <- .prior_C1(prior)
+  is.finite(C1) && C1 > .5
+}
+
+.prior_simple_survival_C <- function(prior){
+
+  .prior_simple_base_p(prior, prior$truncation[["lower"]], lower.tail = FALSE) -
+    .prior_simple_base_p(prior, prior$truncation[["upper"]], lower.tail = FALSE)
+}
+
 .prior_simple_cdf <- function(prior, q){
 
   if(.is_prior_default_range(prior)){
@@ -2100,8 +2187,14 @@ quant.prior <- function(x, p, ...){
     p[q_inside] <- .prior_simple_base_p(prior, q[q_inside], lower.tail = TRUE)
 
     if(prior[["distribution"]] != "point"){
-      C1          <- .prior_C1(prior)
-      p[q_inside] <- (p[q_inside] - C1) / (.prior_C2(prior) - C1)
+      if(.prior_simple_use_survival_truncation(prior)){
+        S1          <- .prior_simple_base_p(prior, prior$truncation[["lower"]], lower.tail = FALSE)
+        S_q         <- .prior_simple_base_p(prior, q[q_inside], lower.tail = FALSE)
+        p[q_inside] <- (S1 - S_q) / .prior_C(prior)
+      }else{
+        C1          <- .prior_C1(prior)
+        p[q_inside] <- (p[q_inside] - C1) / .prior_C(prior)
+      }
     }
   }
 
@@ -2127,8 +2220,13 @@ quant.prior <- function(x, p, ...){
     p[q_inside] <- .prior_simple_base_p(prior, q[q_inside], lower.tail = FALSE)
 
     if(prior[["distribution"]] != "point"){
-      C2          <- .prior_C2(prior)
-      p[q_inside] <- (p[q_inside] - (1 - C2)) / (C2 - .prior_C1(prior))
+      if(.prior_simple_use_survival_truncation(prior)){
+        S2          <- .prior_simple_base_p(prior, prior$truncation[["upper"]], lower.tail = FALSE)
+        p[q_inside] <- (p[q_inside] - S2) / .prior_C(prior)
+      }else{
+        C2          <- .prior_C2(prior)
+        p[q_inside] <- (p[q_inside] - (1 - C2)) / .prior_C(prior)
+      }
     }
   }
 
@@ -2180,7 +2278,13 @@ quant.prior <- function(x, p, ...){
   }
 
   C1 <- .prior_C1(prior)
-  .prior_simple_base_q(prior, C1 + p * (.prior_C2(prior) - C1))
+  if(.prior_simple_use_survival_truncation(prior)){
+    S1 <- .prior_simple_base_p(prior, prior$truncation[["lower"]], lower.tail = FALSE)
+    S2 <- .prior_simple_base_p(prior, prior$truncation[["upper"]], lower.tail = FALSE)
+    return(.prior_simple_base_q(prior, S1 - p * (S1 - S2), lower.tail = FALSE))
+  }
+
+  .prior_simple_base_q(prior, C1 + p * .prior_C(prior))
 }
 
 .prior_simple_quant_optim <- function(prior, p){
@@ -2222,8 +2326,12 @@ quant.prior <- function(x, p, ...){
     return(sample(discrete[["support"]], size = n, replace = TRUE, prob = discrete[["prob"]]))
   }
 
+  if(.prior_simple_use_survival_truncation(prior)){
+    return(.prior_simple_quant(prior, stats::runif(n)))
+  }
+
   C1 <- .prior_C1(prior)
-  .prior_simple_base_q(prior, stats::runif(n, min = C1, max = .prior_C2(prior)))
+  .prior_simple_base_q(prior, stats::runif(n, min = C1, max = C1 + .prior_C(prior)))
 }
 
 .prior_simple_rng_rejection <- function(prior, n){
@@ -2254,6 +2362,8 @@ quant.prior <- function(x, p, ...){
       "bernoulli" = stats::pbinom(ceiling(prior$truncation[["lower"]]) - 1, size = 1, prob = prior$parameters[["probability"]], lower.tail = TRUE, log.p = FALSE),
       "exp"       = stats::pexp(prior$truncation[["lower"]], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
       "uniform"   = stats::punif(prior$truncation[["lower"]], min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = TRUE, log.p = FALSE),
+      "moment"    = .pmoment_prior(prior$truncation[["lower"]], location = prior$parameters[["location"]], tau = prior$parameters[["tau"]], order = prior$parameters[["order"]], lower.tail = TRUE),
+      "invmoment" = .pinvmoment_prior(prior$truncation[["lower"]], location = prior$parameters[["location"]], tau = prior$parameters[["tau"]], order = prior$parameters[["order"]], df = prior$parameters[["df"]], lower.tail = TRUE),
       "point"     = ppoint(prior$truncation[["lower"]], location = prior$parameters[["location"]], lower.tail = TRUE, log.p = FALSE)
     )
 
@@ -2276,6 +2386,8 @@ quant.prior <- function(x, p, ...){
       "bernoulli" = stats::pbinom(prior$truncation[["upper"]], size = 1, prob = prior$parameters[["probability"]], lower.tail = TRUE, log.p = FALSE),
       "exp"       = stats::pexp(prior$truncation[["upper"]], rate = prior$parameters[["rate"]], lower.tail = TRUE, log.p = FALSE),
       "uniform"   = stats::punif(prior$truncation[["upper"]], min = prior$parameters[["a"]], max = prior$parameters[["b"]], lower.tail = TRUE, log.p = FALSE),
+      "moment"    = .pmoment_prior(prior$truncation[["upper"]], location = prior$parameters[["location"]], tau = prior$parameters[["tau"]], order = prior$parameters[["order"]], lower.tail = TRUE),
+      "invmoment" = .pinvmoment_prior(prior$truncation[["upper"]], location = prior$parameters[["location"]], tau = prior$parameters[["tau"]], order = prior$parameters[["order"]], df = prior$parameters[["df"]], lower.tail = TRUE),
       "point"     = ppoint(prior$truncation[["upper"]], location = prior$parameters[["location"]], lower.tail = TRUE, log.p = FALSE)
     )
 
@@ -2288,6 +2400,10 @@ quant.prior <- function(x, p, ...){
   if(is.prior.simple(prior)){
 
     C <- .prior_C2(prior) - .prior_C1(prior)
+    if(prior[["distribution"]] != "point" && !is.prior.discrete(prior) &&
+       (.prior_simple_use_survival_truncation(prior) || !is.finite(C) || C <= 0)){
+      C <- .prior_simple_survival_C(prior)
+    }
 
   }
 
@@ -2509,6 +2625,8 @@ quant.prior <- function(x, p, ...){
     "t"         = is.infinite(prior$truncation[["lower"]])          & is.infinite(prior$truncation[["upper"]]),
     "gamma"     = isTRUE(all.equal(prior$truncation[["lower"]], 0)) & is.infinite(prior$truncation[["upper"]]),
     "invgamma"  = isTRUE(all.equal(prior$truncation[["lower"]], 0)) & is.infinite(prior$truncation[["upper"]]),
+    "moment"    = is.infinite(prior$truncation[["lower"]])          & is.infinite(prior$truncation[["upper"]]),
+    "invmoment" = is.infinite(prior$truncation[["lower"]])          & is.infinite(prior$truncation[["upper"]]),
     "beta"      = isTRUE(all.equal(prior$truncation[["lower"]], 0)) & isTRUE(all.equal(prior$truncation[["upper"]], 1)),
     "bernoulli" = isTRUE(all.equal(prior$truncation[["lower"]], 0)) & isTRUE(all.equal(prior$truncation[["upper"]], 1)),
     "exp"       = isTRUE(all.equal(prior$truncation[["lower"]], 0)) & is.infinite(prior$truncation[["upper"]]),
@@ -2990,6 +3108,8 @@ mean.prior   <- function(x, ...){
         "t"         = ifelse(x$parameters[["df"]] > 1, x$parameters[["location"]], NaN),
         "gamma"     = x$parameters[["shape"]] / x$parameters[["rate"]],
         "invgamma"  = ifelse(x$parameters[["shape"]] > 1, x$parameters[["scale"]]/(x$parameters[["shape"]] - 1), NaN),
+        "moment"    = x$parameters[["location"]],
+        "invmoment" = ifelse(x$parameters[["df"]] > 1, x$parameters[["location"]], NaN),
         "beta"      = x$parameters[["alpha"]] / (x$parameters[["alpha"]] + x$parameters[["beta"]]),
         "bernoulli" = x$parameters[["probability"]],
         "exp"       = 1 / x$parameters[["rate"]],
@@ -3013,6 +3133,12 @@ mean.prior   <- function(x, ...){
       }
       if(x[["distribution"]] == "invgamma"){
         if(x$parameters[["shape"]] <= 1 && is.infinite(x$truncation[["upper"]])){
+          return(NaN)
+        }
+      }
+      if(x[["distribution"]] == "invmoment"){
+        if(x$parameters[["df"]] <= 1 &&
+           (is.infinite(x$truncation[["lower"]]) || is.infinite(x$truncation[["upper"]]))){
           return(NaN)
         }
       }
@@ -3158,6 +3284,13 @@ var.prior   <- function(x, ...){
         "t"         = ifelse(x$parameters[["df"]] > 2, x$parameters[["scale"]]^2 * x$parameters[["df"]] / (x$parameters[["df"]] - 2), NaN),
         "gamma"     = x$parameters[["shape"]] / x$parameters[["rate"]]^2,
         "invgamma"  = ifelse(x$parameters[["shape"]] > 2, x$parameters[["scale"]]^2 / ((x$parameters[["shape"]] - 1)^2 * (x$parameters[["shape"]] - 2)), NaN),
+        "moment"    = x$parameters[["tau"]] * (2 * x$parameters[["order"]] + 1),
+        "invmoment" = ifelse(
+          x$parameters[["df"]] > 2,
+          x$parameters[["tau"]] * exp(lgamma(x$parameters[["df"]] / (2 * x$parameters[["order"]]) - 1 / x$parameters[["order"]]) -
+            lgamma(x$parameters[["df"]] / (2 * x$parameters[["order"]]))),
+          NaN
+        ),
         "beta"      = (x$parameters[["alpha"]] * x$parameters[["beta"]]) / ((x$parameters[["alpha"]] + x$parameters[["beta"]])^2 * (x$parameters[["alpha"]] + x$parameters[["beta"]] + 1)),
         "bernoulli" = (x$parameters[["probability"]] * (1 - x$parameters[["probability"]]) ),
         "exp"       = 1 / x$parameters[["rate"]]^2,
@@ -3182,6 +3315,12 @@ var.prior   <- function(x, ...){
       }
       if(x[["distribution"]] == "invgamma"){
         if(x$parameters[["shape"]] <= 2 && is.infinite(x$truncation[["upper"]])){
+          return(NaN)
+        }
+      }
+      if(x[["distribution"]] == "invmoment"){
+        if(x$parameters[["df"]] <= 2 &&
+           (is.infinite(x$truncation[["lower"]]) || is.infinite(x$truncation[["upper"]]))){
           return(NaN)
         }
       }

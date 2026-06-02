@@ -3302,7 +3302,12 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
 
   old_attributes <- attributes(coefficient_samples)
   old_class <- class(coefficient_samples)
-  old_attributes <- old_attributes[!names(old_attributes) %in% c("dim", "dimnames", "names", "class", "level_names")]
+  old_attributes <- old_attributes[
+    !names(old_attributes) %in% c(
+      "dim", "dimnames", "names", "class", "level_names",
+      "posterior_support"
+    )
+  ]
   attributes(transformed_samples) <- c(attributes(transformed_samples), old_attributes)
   attr(transformed_samples, "level_names")       <- design_info[["cell_names"]]
   attr(transformed_samples, "factor_cell_names") <- design_info[["cell_names"]]

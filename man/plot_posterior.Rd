@@ -120,7 +120,8 @@ Supports \code{col}/\code{color}, \code{alpha}, \code{lwd}/\code{linewidth},
 \item{...}{additional arguments}
 
 \item{density_method}{density source for continuous posterior curves.
-\code{"KDE"} computes the standard kernel density estimate.
+\code{"KDE"} computes a kernel density estimate. Plot methods with exact
+finite prior-support bounds apply boundary reflection.
 \code{"precomputed"} uses a valid \code{posterior_density} attribute when
 present and falls back to KDE otherwise.}
 }

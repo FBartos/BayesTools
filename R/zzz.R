@@ -190,7 +190,15 @@ BayesTools_load_JAGS_module <- function(quiet = TRUE, warn = TRUE){
     "BayesTools_lkj_cholesky_from_u",
     "BayesTools_lkj_corr_from_u",
     "BayesTools_lkj_log_prior_u",
-    "BayesTools_lkj_alpha"
+    "BayesTools_lkj_alpha",
+    "BayesTools_moment_d",
+    "BayesTools_moment_p",
+    "BayesTools_moment_q",
+    "BayesTools_moment_r",
+    "BayesTools_invmoment_d",
+    "BayesTools_invmoment_p",
+    "BayesTools_invmoment_q",
+    "BayesTools_invmoment_r"
   )
 }
 
@@ -263,7 +271,7 @@ BayesTools_load_JAGS_module <- function(quiet = TRUE, warn = TRUE){
   if(!loaded && warn){
     message <- paste0(
       "BayesTools native routines failed to load from the package DLL. ",
-      "Compiled LKJ helpers will be unavailable."
+      "Compiled helper routines will be unavailable."
     )
     if(!is.null(load_error)){
       message <- paste0(message, " R loader error: ", load_error)
@@ -283,6 +291,19 @@ BayesTools_load_JAGS_module <- function(quiet = TRUE, warn = TRUE){
   .BayesTools_load_native_routines(pkgname = "BayesTools", warn = TRUE)
   if(!isTRUE(.BayesTools_native_routines_loaded(pkgname = "BayesTools"))){
     stop("BayesTools native LKJ routines are not loaded.", call. = FALSE)
+  }
+
+  invisible(TRUE)
+}
+.BayesTools_require_native_nonlocal <- function(){
+
+  if(isTRUE(.BayesTools_native_routines_loaded(pkgname = "BayesTools"))){
+    return(invisible(TRUE))
+  }
+
+  .BayesTools_load_native_routines(pkgname = "BayesTools", warn = TRUE)
+  if(!isTRUE(.BayesTools_native_routines_loaded(pkgname = "BayesTools"))){
+    stop("BayesTools native nonlocal-prior routines are not loaded.", call. = FALSE)
   }
 
   invisible(TRUE)

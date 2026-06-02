@@ -10,17 +10,34 @@
 #' @param at named list with predictor levels of the formula for which marginalization
 #' should be performed. If a predictor level is missing, \code{0} is used for continuous
 #' predictors, the baseline factor level is used for factors with \code{contrast = "treatment"} prior
-#' distributions, and the parameter is completely omitted for for factors with \code{contrast = "meandif"},
+#' distributions, and the parameter is completely omitted for factors with
+#' \code{contrast = "meandif"}, \code{contrast = "orthonormal"}, and
+#' \code{contrast = "independent"} levels.
 #' @param prior_samples whether marginal prior distributions should be generated
-#' \code{contrast = "orthonormal"}, and \code{contrast = "independent"} levels
 #' @param use_formula whether the parameter should be evaluated as a part of supplied formula
 #' @param n_samples controls the numerical grid used for model-averaged
 #' prior densities
 #' @inheritParams density.prior
 #'
+#' @details When the mixed posterior samples carry deterministic
+#' \code{posterior_density}, \code{posterior_ordinate}, or
+#' \code{posterior_support} metadata, \code{marginal_posterior()} propagates
+#' matching metadata to the returned marginal posterior. Matching uses the
+#' parameter name, list/level names such as \code{theta[A]}, and conditional
+#' metadata when present. Exact support metadata is propagated even when
+#' \code{prior_samples = FALSE}; requesting prior samples adds prior-density
+#' metadata but does not replace already attached posterior support.
+#' Transformations drop stored posterior density and ordinate metadata because
+#' those estimates are no longer on the returned scale; exact support metadata
+#' is transformed when the transformation is supported. If support metadata is
+#' absent, support is inferred from prior metadata only when the posterior
+#' samples are on the raw, unconditioned prior scale; otherwise the deterministic
+#' prior-density context is used so formula-scale transformations and
+#' conditional model restrictions are respected.
+#'
 #' @return \code{marginal_posterior} returns a named list of mixed marginal posterior
-#' distributions (either a vector of matrix).
-#'#'
+#' distributions (either vectors or matrices).
+#'
 #' @export
 marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, prior_samples = FALSE, use_formula = TRUE,
                                transformation = NULL, transformation_arguments = NULL, transformation_settings = FALSE,
@@ -327,6 +344,82 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       }
 
 
+      prior_density_context <- .marginal_posterior_prior_density_context(
+        samples          = samples,
+        prior_list       = prior_list,
+        column_names     = colnames(posterior_samples_matrix),
+        n_samples        = n_samples,
+        allow_failure    = !prior_samples,
+        condition_source = samples[[parameter]]
+      )
+
+      if(!is.null(prior_density_context)){
+
+      linear_weights <- matrix(
+        0,
+        nrow = nrow(data),
+        ncol = length(prior_density_context$column_names),
+        dimnames = list(NULL, prior_density_context$column_names)
+      )
+
+      if(has_intercept){
+        terms_indexes    <- attr(model_matrix, "assign") + 1
+        terms_indexes[1] <- 0
+        intercept_name <- JAGS_parameter_names("intercept", formula_parameter = formula_parameter)
+        if(intercept_name %in% colnames(linear_weights)){
+          linear_weights[, intercept_name] <- 1
+        }
+      }else{
+        terms_indexes <- attr(model_matrix, "assign")
+      }
+
+      for(i in unique(terms_indexes[terms_indexes > 0])){
+        temp_data <- model_matrix[, terms_indexes == i, drop = FALSE]
+        temp_all_columns <- paste0(
+          JAGS_model_terms[i],
+          if(model_terms_type[i] == "factor" && priors_info[[JAGS_model_terms[i]]][["levels"]] > 1) paste0("[", 1:priors_info[[JAGS_model_terms[i]]][["levels"]], "]")
+        )
+        temp_columns_keep <- temp_all_columns %in% colnames(linear_weights)
+        temp_columns <- temp_all_columns[temp_columns_keep]
+        temp_data <- temp_data[, temp_columns_keep, drop = FALSE]
+        if(length(temp_columns) == 0)
+          next
+
+        linear_weights[, temp_columns] <- linear_weights[, temp_columns, drop = FALSE] + temp_data[, seq_along(temp_columns), drop = FALSE]
+      }
+
+      if(length(at_manipulated) == 1 && format_parameter_names(at_manipulated, formula_parameters = formula_parameter, formula_prefix = FALSE) == "intercept"){
+
+        prior_weights <- linear_weights
+        marginal_posterior_samples[["intercept"]] <- .posterior_support_set(
+          marginal_posterior_samples[["intercept"]],
+          .posterior_support_from_prior_context_weights(
+            prior_density_context,
+            prior_weights,
+            output_transformation           = transformation,
+            output_transformation_arguments = transformation_arguments
+          )
+        )
+
+      }else{
+
+        level_prior_weights <- vector("list", length(level_names))
+        names(level_prior_weights) <- level_names
+        for(lvl in seq_along(level_names)){
+          prior_weights <- linear_weights[data_split[[lvl]], , drop = FALSE]
+          level_prior_weights[[level_names[lvl]]] <- prior_weights
+          marginal_posterior_samples[[level_names[lvl]]] <- .posterior_support_set(
+            marginal_posterior_samples[[level_names[lvl]]],
+            .posterior_support_from_prior_context_weights(
+              prior_density_context,
+              prior_weights,
+              output_transformation           = transformation,
+              output_transformation_arguments = transformation_arguments
+            )
+          )
+        }
+      }
+
       # add priors
       if(prior_samples){
 
@@ -335,48 +428,6 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
             "Deterministic marginal prior densities with more than five interaction terms can be slow.",
             call. = FALSE
           )
-        }
-
-        prior_density_context <- attr(samples, "prior_density_context")
-        if(is.null(prior_density_context)){
-          prior_density_context <- .prior_density_build_context(
-            prior_list   = prior_list,
-            column_names = colnames(posterior_samples_matrix),
-            n_grid       = max(16L, n_samples)
-          )
-        }
-
-        linear_weights <- matrix(
-          0,
-          nrow = nrow(data),
-          ncol = length(prior_density_context$column_names),
-          dimnames = list(NULL, prior_density_context$column_names)
-        )
-
-        if(has_intercept){
-          terms_indexes    <- attr(model_matrix, "assign") + 1
-          terms_indexes[1] <- 0
-          intercept_name <- JAGS_parameter_names("intercept", formula_parameter = formula_parameter)
-          if(intercept_name %in% colnames(linear_weights)){
-            linear_weights[, intercept_name] <- 1
-          }
-        }else{
-          terms_indexes <- attr(model_matrix, "assign")
-        }
-
-        for(i in unique(terms_indexes[terms_indexes > 0])){
-          temp_data <- model_matrix[, terms_indexes == i, drop = FALSE]
-          temp_all_columns <- paste0(
-            JAGS_model_terms[i],
-            if(model_terms_type[i] == "factor" && priors_info[[JAGS_model_terms[i]]][["levels"]] > 1) paste0("[", 1:priors_info[[JAGS_model_terms[i]]][["levels"]], "]")
-          )
-          temp_columns_keep <- temp_all_columns %in% colnames(linear_weights)
-          temp_columns <- temp_all_columns[temp_columns_keep]
-          temp_data <- temp_data[, temp_columns_keep, drop = FALSE]
-          if(length(temp_columns) == 0)
-            next
-
-          linear_weights[, temp_columns] <- linear_weights[, temp_columns, drop = FALSE] + temp_data[, seq_along(temp_columns), drop = FALSE]
         }
 
         if(length(at_manipulated) == 1 && format_parameter_names(at_manipulated, formula_parameters = formula_parameter, formula_prefix = FALSE) == "intercept"){
@@ -395,7 +446,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         }else{
 
           for(lvl in seq_along(level_names)){
-            prior_weights <- linear_weights[data_split[[lvl]], , drop = FALSE]
+            prior_weights <- level_prior_weights[[level_names[lvl]]]
             prior_density <- .prior_density_from_context_rows(
               prior_density_context,
               prior_weights,
@@ -409,6 +460,8 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         }
 
         attr(marginal_posterior_samples, "prior_density_context") <- prior_density_context
+      }
+
       }
 
       attr(marginal_posterior_samples, "formula_parameter") <- formula_parameter
@@ -425,6 +478,12 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     ### obtain prior list and information
     prior_list <- lapply(names(samples), function(model_term) attr(samples[[model_term]], "prior_list"))
     names(prior_list) <- names(samples)
+    prior_density_context <- NULL
+    factor_weights <- NULL
+    can_use_raw_prior_support <- .marginal_posterior_can_use_raw_prior_support(
+      samples,
+      parameter
+    )
 
 
     ### extract the corresponding samples
@@ -443,10 +502,29 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       attr(marginal_posterior_samples, "posterior_density") <- NULL
       attr(marginal_posterior_samples, "posterior_ordinate") <- NULL
       marginal_factor_metadata <- marginal_posterior_samples
+      marginal_factor_support <- attr(marginal_factor_metadata, "posterior_support", exact = TRUE)
+      marginal_factor_support <- .marginal_posterior_support_for_context(
+        marginal_factor_support,
+        can_use_raw_prior_support
+      )
 
       level_names <- attr(marginal_posterior_samples, "level_names")
       if(is.null(level_names) || is.list(level_names)){
         level_names <- .factor_cell_labels(.factor_level_list(marginal_posterior_samples))
+      }
+      if(is.null(marginal_factor_support)){
+        prior_density_context <- .marginal_posterior_prior_density_context(
+          samples    = samples,
+          prior_list = prior_list,
+          n_samples  = n_samples,
+          allow_failure = TRUE,
+          condition_source = parameter_samples
+        )
+        factor_weights <- .prior_factor_level_weight_matrix(
+          sample_metadata = marginal_factor_metadata,
+          parameter       = parameter,
+          samples         = samples
+        )
       }
 
       # apply transformations
@@ -460,6 +538,42 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         class(temp_marginal_posterior_samples) <- c(class(temp_marginal_posterior_samples), "marginal_posterior.factor")
         attr(temp_marginal_posterior_samples, "parameter")  <- parameter
         attr(temp_marginal_posterior_samples, "level_name") <- level_names[lvl_i]
+        temp_support <- NULL
+        if(!is.null(marginal_factor_support)){
+          temp_support <- .posterior_support_get(
+            marginal_factor_metadata,
+            colnames(marginal_posterior_samples)[lvl_i]
+          )
+          if(is.null(temp_support)){
+            temp_support <- .posterior_support_get(
+              marginal_factor_metadata,
+              level_names[lvl_i]
+            )
+          }
+        }
+        if(is.null(temp_support) && !is.null(factor_weights) &&
+           !is.null(prior_density_context) &&
+           lvl_i <= nrow(factor_weights)){
+          weights <- rep(0, length(prior_density_context$column_names))
+          names(weights) <- prior_density_context$column_names
+          weights[colnames(factor_weights)] <- factor_weights[lvl_i, ]
+          temp_support <- .posterior_support_from_prior_context_weights(
+            prior_density_context,
+            weights,
+            output_transformation           = transformation,
+            output_transformation_arguments = transformation_arguments
+          )
+        }else if(!is.null(temp_support) && !is.null(transformation)){
+          temp_support <- .posterior_support_transform(
+            temp_support,
+            transformation,
+            transformation_arguments
+          )
+        }
+        temp_marginal_posterior_samples <- .posterior_support_set(
+          temp_marginal_posterior_samples,
+          temp_support
+        )
         if(is.null(transformation)){
           posterior_density <- .posterior_density_from_sources(
             sources          = posterior_density_sources,
@@ -499,12 +613,44 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     }else if(inherits(samples[[parameter]], "mixed_posteriors.simple")){
 
       marginal_posterior_samples <- samples[[parameter]]
+      marginal_support <- .marginal_posterior_support_for_context(
+        .posterior_support_get(marginal_posterior_samples),
+        can_use_raw_prior_support
+      )
+      if(is.null(marginal_support) && can_use_raw_prior_support){
+        marginal_support <- .posterior_support_from_prior_list(prior_list[[parameter]])
+      }
+      if(is.null(marginal_support)){
+        prior_density_context <- .marginal_posterior_prior_density_context(
+          samples    = samples,
+          prior_list = prior_list,
+          n_samples  = n_samples,
+          allow_failure = TRUE,
+          condition_source = samples[[parameter]]
+        )
+        if(!is.null(prior_density_context)){
+          weights <- rep(0, length(prior_density_context$column_names))
+          names(weights) <- prior_density_context$column_names
+          if(parameter %in% names(weights)){
+            weights[[parameter]] <- 1
+            marginal_support <- .posterior_support_from_prior_context_weights(
+              prior_density_context,
+              weights
+            )
+          }
+        }
+      }
 
       # apply transformations
       if(!is.null(transformation)){
         marginal_posterior_samples <- .density.prior_transformation_x(marginal_posterior_samples, transformation, transformation_arguments)
         attr(marginal_posterior_samples, "posterior_density") <- NULL
         attr(marginal_posterior_samples, "posterior_ordinate") <- NULL
+        marginal_support <- .posterior_support_transform(
+          marginal_support,
+          transformation,
+          transformation_arguments
+        )
       }else{
         marginal_posterior_samples <- .posterior_density_attach(
           samples          = marginal_posterior_samples,
@@ -544,6 +690,10 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         )
       }
 
+      marginal_posterior_samples <- .posterior_support_set(
+        marginal_posterior_samples,
+        marginal_support
+      )
       class(marginal_posterior_samples) <- c(class(marginal_posterior_samples), "marginal_posterior.simple")
 
     }
@@ -552,30 +702,24 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     # add prior densities
     if(prior_samples){
 
-      prior_density_context <- attr(samples, "prior_density_context")
       if(is.null(prior_density_context)){
-        context_columns <- unique(unlist(lapply(names(prior_list), function(parameter_name){
-          parameter_prior <- prior_list[[parameter_name]]
-          if(is.prior(parameter_prior)){
-            .prior_linear_prior_columns(parameter_name, parameter_prior)
-          }else{
-            .prior_linear_prior_columns(parameter_name, parameter_prior[[1]])
-          }
-        }), use.names = FALSE))
-        prior_density_context <- .prior_density_build_context(
-          prior_list   = prior_list,
-          column_names = context_columns,
-          n_grid       = max(16L, n_samples)
+        prior_density_context <- .marginal_posterior_prior_density_context(
+          samples    = samples,
+          prior_list = prior_list,
+          n_samples  = n_samples,
+          condition_source = samples[[parameter]]
         )
       }
 
       if(inherits(samples[[parameter]], "mixed_posteriors.factor")){
 
-        factor_weights <- .prior_factor_level_weight_matrix(
-          sample_metadata = marginal_factor_metadata,
-          parameter       = parameter,
-          samples         = samples
-        )
+        if(is.null(factor_weights)){
+          factor_weights <- .prior_factor_level_weight_matrix(
+            sample_metadata = marginal_factor_metadata,
+            parameter       = parameter,
+            samples         = samples
+          )
+        }
 
         for(lvl_i in seq_along(level_names)){
           weights <- rep(0, length(prior_density_context$column_names))
@@ -614,23 +758,309 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
     }
   }
 
+  if(is.null(transformation)){
+    marginal_posterior_samples <- .marginal_posterior_attach_precomputed_metadata(
+      marginal              = marginal_posterior_samples,
+      samples               = samples,
+      parameter             = parameter,
+      condition_source      = samples[[parameter]]
+    )
+  }
+
   marginal_posterior_samples <- .marginal_posterior_set_condition_attributes(
     marginal_posterior_samples,
-    samples
+    samples,
+    condition_source = samples[[parameter]]
   )
   class(marginal_posterior_samples) <- c(class(marginal_posterior_samples), "marginal_posterior")
   return(marginal_posterior_samples)
 }
 
-.marginal_posterior_set_condition_attributes <- function(marginal, samples){
+.marginal_posterior_prior_density_context <- function(samples, prior_list,
+                                                       column_names = NULL,
+                                                       n_samples = 10000,
+                                                       allow_failure = FALSE,
+                                                       condition_source = NULL){
 
-  conditional <- attr(samples, "conditional", exact = TRUE)
-  conditional_rule <- attr(samples, "conditional_rule", exact = TRUE)
-  condition_key <- attr(samples, "condition_key", exact = TRUE)
-  condition_event <- attr(samples, "condition_event", exact = TRUE)
-  if(is.null(condition_event)){
-    condition_event <- attr(samples, "resolved_condition_event", exact = TRUE)
+  condition_metadata <- .marginal_posterior_condition_metadata(
+    samples,
+    condition_source = condition_source
+  )
+  prior_density_context <- attr(samples, "prior_density_context")
+  if(!is.null(prior_density_context) &&
+     .marginal_posterior_context_matches_condition(prior_density_context, condition_metadata)){
+    return(prior_density_context)
   }
+
+  tryCatch(
+    {
+      if(is.null(column_names)){
+        column_names <- unique(unlist(lapply(names(prior_list), function(parameter_name){
+          parameter_prior <- prior_list[[parameter_name]]
+          if(is.prior(parameter_prior)){
+            .prior_linear_prior_columns(parameter_name, parameter_prior)
+          }else{
+            .prior_linear_prior_columns(parameter_name, parameter_prior[[1]])
+          }
+        }), use.names = FALSE))
+      }
+
+      .prior_density_build_context(
+        prior_list       = prior_list,
+        column_names     = column_names,
+        n_grid           = max(16L, n_samples),
+        conditional      = condition_metadata[["conditional"]],
+        conditional_rule = condition_metadata[["conditional_rule"]],
+        condition_event  = condition_metadata[["condition_event"]]
+      )
+    },
+    error = function(e){
+      if(isTRUE(allow_failure)){
+        return(NULL)
+      }
+      stop(conditionMessage(e), call. = FALSE)
+    }
+  )
+}
+
+.marginal_posterior_context_condition_metadata <- function(context){
+
+  .marginal_posterior_normalize_condition_metadata(
+    conditional      = context[["conditional"]],
+    conditional_rule = context[["conditional_rule"]],
+    condition_key    = context[["condition_key"]],
+    condition_event  = context[["condition_event"]]
+  )
+}
+
+.marginal_posterior_normalize_condition_metadata <- function(conditional = NULL,
+                                                             conditional_rule = NULL,
+                                                             condition_key = NULL,
+                                                             condition_event = NULL){
+
+  if(is.null(conditional) && !is.null(condition_event)){
+    conditional <- condition_event[["conditional"]]
+  }
+  if(is.null(conditional_rule) && !is.null(condition_event)){
+    conditional_rule <- condition_event[["conditional_rule"]]
+  }
+  if(is.null(condition_key) && !is.null(condition_event)){
+    condition_key <- condition_event[["condition_key"]]
+  }
+  if(is.null(conditional_rule) && length(conditional) > 0L){
+    conditional_rule <- "AND"
+  }
+  if(is.null(condition_key) && length(conditional) > 0L){
+    condition_key <- .condition_event_key(conditional, conditional_rule)
+  }
+
+  list(
+    conditional      = conditional,
+    conditional_rule = conditional_rule,
+    condition_key    = condition_key,
+    condition_event  = condition_event
+  )
+}
+
+.marginal_posterior_context_matches_condition <- function(context,
+                                                          condition_metadata){
+
+  context_metadata <- .marginal_posterior_context_condition_metadata(context)
+
+  requested_conditional <- .posterior_density_normalize_condition(
+    condition_metadata[["conditional"]]
+  )
+  context_conditional <- .posterior_density_normalize_condition(
+    context_metadata[["conditional"]]
+  )
+
+  if(length(requested_conditional) == 0L &&
+     length(context_conditional) == 0L){
+    return(TRUE)
+  }
+  if(length(requested_conditional) == 0L ||
+     length(context_conditional) == 0L){
+    return(FALSE)
+  }
+
+  requested_key <- condition_metadata[["condition_key"]]
+  if(is.null(requested_key)){
+    requested_key <- .condition_event_key(
+      requested_conditional,
+      condition_metadata[["conditional_rule"]]
+    )
+  }
+  context_key <- context_metadata[["condition_key"]]
+  if(is.null(context_key)){
+    context_key <- .condition_event_key(
+      context_conditional,
+      context_metadata[["conditional_rule"]]
+    )
+  }
+
+  identical(as.character(context_key), as.character(requested_key))
+}
+
+.marginal_posterior_condition_metadata <- function(samples, condition_source = NULL){
+
+  sources <- list(samples, condition_source)
+  sources <- sources[!vapply(sources, is.null, logical(1))]
+  if(length(sources) == 0L){
+    return(list(
+      conditional      = NULL,
+      conditional_rule = NULL,
+      condition_key    = NULL,
+      condition_event  = NULL
+    ))
+  }
+
+  source_metadata <- lapply(sources, function(source){
+    condition_event <- attr(source, "resolved_condition_event", exact = TRUE)
+    if(is.null(condition_event)){
+      condition_event <- attr(source, "condition_event", exact = TRUE)
+    }
+
+    .marginal_posterior_normalize_condition_metadata(
+      conditional      = attr(source, "conditional", exact = TRUE),
+      conditional_rule = attr(source, "conditional_rule", exact = TRUE),
+      condition_key    = attr(source, "condition_key", exact = TRUE),
+      condition_event  = condition_event
+    )
+  })
+
+  conditioned <- vapply(
+    source_metadata,
+    function(metadata) length(metadata[["conditional"]]) > 0L,
+    logical(1)
+  )
+  if(any(conditioned)){
+    return(source_metadata[[which(conditioned)[1L]]])
+  }
+
+  present <- vapply(
+    source_metadata,
+    function(metadata){
+      !is.null(metadata[["conditional"]]) ||
+        !is.null(metadata[["conditional_rule"]]) ||
+        !is.null(metadata[["condition_key"]]) ||
+        !is.null(metadata[["condition_event"]])
+    },
+    logical(1)
+  )
+  if(any(present)){
+    return(source_metadata[[which(present)[1L]]])
+  }
+
+  source_metadata[[1L]]
+}
+
+.marginal_posterior_can_use_raw_prior_support <- function(samples, parameter){
+
+  if(isTRUE(attr(samples, "transform_scaled", exact = TRUE)) ||
+     isTRUE(attr(samples[[parameter]], "transform_scaled", exact = TRUE))){
+    return(FALSE)
+  }
+
+  condition_metadata <- .marginal_posterior_condition_metadata(
+    samples,
+    condition_source = samples[[parameter]]
+  )
+
+  length(condition_metadata[["conditional"]]) == 0L
+}
+
+.marginal_posterior_support_for_context <- function(support,
+                                                    can_use_raw_prior_support){
+
+  if(isTRUE(can_use_raw_prior_support)){
+    return(support)
+  }
+  if(.posterior_support_is_raw_prior(support)){
+    return(NULL)
+  }
+
+  support
+}
+
+.marginal_posterior_attach_precomputed_metadata <- function(marginal, samples,
+                                                            parameter,
+                                                            condition_source = NULL){
+
+  if(!is.list(marginal)){
+    return(marginal)
+  }
+
+  density_sources <- .posterior_density_sources(samples)
+  ordinate_sources <- .posterior_ordinate_sources(samples)
+  if(length(density_sources) == 0L && length(ordinate_sources) == 0L){
+    return(marginal)
+  }
+
+  condition_metadata <- .marginal_posterior_condition_metadata(
+    samples,
+    condition_source = condition_source
+  )
+  sample_names <- names(marginal)
+
+  for(i in seq_along(marginal)){
+    sample_name <- if(!is.null(sample_names)) sample_names[[i]] else NULL
+    child_level <- attr(marginal[[i]], "level_name", exact = TRUE)
+    if(is.null(child_level)){
+      child_level <- attr(marginal[[i]], "level", exact = TRUE)
+    }
+    aliases <- .posterior_density_aliases(
+      sample_name,
+      child_level,
+      if(!is.null(sample_name)) paste0(parameter, "[", sample_name, "]"),
+      if(!is.null(child_level)) paste0(parameter, "[", child_level, "]"),
+      attr(marginal[[i]], "factor_cell_names", exact = TRUE)
+    )
+
+    if(length(density_sources) > 0L){
+      density <- .posterior_density_from_sources(
+        sources          = density_sources,
+        aliases          = aliases,
+        conditional      = condition_metadata[["conditional"]],
+        conditional_rule = condition_metadata[["conditional_rule"]],
+        condition_key    = condition_metadata[["condition_key"]],
+        allow_unlabeled  = FALSE
+      )
+      if(!is.null(density) &&
+         is.null(attr(marginal[[i]], "posterior_density", exact = TRUE))){
+        attr(marginal[[i]], "posterior_density") <- density
+      }
+    }
+
+    if(length(ordinate_sources) > 0L){
+      ordinate <- .posterior_ordinate_from_sources(
+        sources          = ordinate_sources,
+        aliases          = aliases,
+        conditional      = condition_metadata[["conditional"]],
+        conditional_rule = condition_metadata[["conditional_rule"]],
+        condition_key    = condition_metadata[["condition_key"]],
+        allow_unlabeled  = FALSE
+      )
+      if(!is.null(ordinate) &&
+         is.null(attr(marginal[[i]], "posterior_ordinate", exact = TRUE))){
+        attr(marginal[[i]], "posterior_ordinate") <- ordinate
+      }
+    }
+  }
+
+  marginal
+}
+
+.marginal_posterior_set_condition_attributes <- function(marginal, samples,
+                                                         condition_source = NULL){
+
+  condition_metadata <- .marginal_posterior_condition_metadata(
+    samples,
+    condition_source = condition_source
+  )
+  conditional <- condition_metadata[["conditional"]]
+  conditional_rule <- condition_metadata[["conditional_rule"]]
+  condition_key <- condition_metadata[["condition_key"]]
+  condition_event <- condition_metadata[["condition_event"]]
 
   if(is.null(conditional) && is.null(conditional_rule) &&
      is.null(condition_key) && is.null(condition_event)){
@@ -870,6 +1300,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   attr(samples, "models_ind") <- models_ind
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- priors
+  samples <- .posterior_support_set_from_prior_list(samples, priors)
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.simple")
 
   return(samples)
@@ -933,6 +1364,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   attr(samples, "models_ind") <- models_ind
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- priors
+  samples <- .posterior_support_set_columns_from_prior_list(samples, priors)
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.vector")
 
   return(samples)
@@ -1083,6 +1515,16 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   attr(samples, "orthonormal") <- priors_info[["orthonormal"]]
   attr(samples, "meandif")     <- priors_info[["meandif"]]
 
+  if(isTRUE(priors_info[["treatment"]]) || isTRUE(priors_info[["independent"]])){
+    factor_support <- .posterior_support_from_prior_list(priors)
+    if(!is.null(factor_support) && !is.null(colnames(samples))){
+      attr(samples, "posterior_support") <- stats::setNames(
+        rep(list(factor_support), ncol(samples)),
+        colnames(samples)
+      )
+    }
+  }
+
   return(samples)
 }
 
@@ -1153,6 +1595,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- priors
   samples <- .weightfunction_set_omega_context(samples, omega_info)
+  samples <- .posterior_support_set_weightfunction_columns(samples, priors, omega_info)
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.weightfunction")
 
   return(samples)
@@ -1331,6 +1774,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   attr(samples, "models_ind") <- FALSE
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- prior
+  samples <- .posterior_support_set_from_prior_list(samples, prior)
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.simple")
 
   return(samples)
@@ -1366,6 +1810,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   attr(samples, "models_ind") <- FALSE
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- prior
+  samples <- .posterior_support_set_columns_from_prior_list(samples, prior)
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.vector")
 
   return(samples)
@@ -1464,6 +1909,16 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   attr(samples, "orthonormal") <- prior_info[["orthonormal"]]
   attr(samples, "meandif")     <- prior_info[["meandif"]]
 
+  if(isTRUE(prior_info[["treatment"]]) || isTRUE(prior_info[["independent"]])){
+    factor_support <- .posterior_support_from_prior_list(prior)
+    if(!is.null(factor_support) && !is.null(colnames(samples))){
+      attr(samples, "posterior_support") <- stats::setNames(
+        rep(list(factor_support), ncol(samples)),
+        colnames(samples)
+      )
+    }
+  }
+
   return(samples)
 }
 .as_mixed_priors.weightfunction <- function(prior, parameter, seed = NULL, n_samples = 10000){
@@ -1493,6 +1948,9 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   attr(samples, "models_ind") <- FALSE
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- prior
+  omega_info <- .weightfunction_mapping_info(list(prior))
+  samples <- .weightfunction_set_omega_context(samples, omega_info)
+  samples <- .posterior_support_set_weightfunction_columns(samples, prior, omega_info)
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.weightfunction")
 
   return(samples)
@@ -1606,6 +2064,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
   attr(samples, "sample_ind") <- FALSE
   attr(samples, "models_ind") <- inclusion
   attr(samples, "prior_list") <- prior
+  if(!is.null(dim(samples))){
+    samples <- .posterior_support_set_columns_from_prior_list(samples, prior)
+  }else{
+    samples <- .posterior_support_set_from_prior_list(samples, prior)
+  }
 
   return(samples)
 }
@@ -1787,9 +2250,10 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 #' approximated via a normal distribution (rather than kernel density). Defaults to \code{FALSE}.
 #' @param silent whether warnings should be returned silently. Defaults to \code{FALSE}
 #' @param density_method density source for the posterior ordinate. \code{"KDE"}
-#' computes the standard kernel density estimate. \code{"precomputed"} uses a
-#' valid \code{posterior_ordinate} attribute when present, then falls back to
-#' a valid \code{posterior_density} attribute.
+#' computes a kernel density estimate, using boundary reflection when exact
+#' posterior-support metadata is available. \code{"precomputed"} uses a valid
+#' \code{posterior_ordinate} attribute when present, then falls back to a valid
+#' \code{posterior_density} attribute.
 #'
 #' @details Marginal posterior vectors may carry a \code{posterior_ordinate}
 #' attribute with exact \code{value} and \code{ordinate} entries. When
@@ -1797,7 +2261,24 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 #' \code{normal_approximation = FALSE}, a matching ordinate is used for the
 #' Savage-Dickey ratio. If no matching ordinate is available, a
 #' \code{posterior_density} grid with \code{x} and \code{y} coordinates is
-#' used before falling back to a kernel density estimate.
+#' used before falling back to a kernel density estimate. The fallback KDE uses
+#' boundary reflection when exact \code{posterior_support} metadata is attached
+#' to the marginal posterior or to a matched posterior-density attribute. Exact
+#' support metadata is also checked before accepting precomputed posterior
+#' ordinates or densities; support is used to exclude the null only after it
+#' is validated against the posterior samples. A stale precomputed value is
+#' ignored when compatible exact support excludes the null. Support is not
+#' inferred from prior-density grids, posterior-density grids, or plotting
+#' ranges, which may be finite numerical integration ranges rather than true
+#' support boundaries. Exact support metadata is either a numeric
+#' \code{c(lower, upper)} vector or a list with
+#' \code{bounds = c(lower, upper)} and \code{exact = TRUE}; optional
+#' \code{type = "points"} support is not treated as a continuous interval for
+#' KDE boundary reflection. The same schema may be supplied as \code{support}
+#' in a \code{posterior_density} attribute. When the prior density at the null
+#' is zero or non-finite, the returned Bayes factor carries a warning because
+#' the point-null Savage-Dickey ratio is not a regular density ratio at that
+#' point.
 #'
 #' @return \code{Savage_Dickey_BF} returns a Bayes factor.
 #'
@@ -1817,20 +2298,14 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
 
   if(is.list(posterior)){
     bf <- list()
-    posterior_densities <- .posterior_density_child_attributes(posterior)
-    posterior_ordinates <- .posterior_ordinate_child_attributes(posterior, null_hypothesis)
     for(i in seq_along(posterior)){
-      posterior_i <- posterior[[i]]
-      if(identical(density_method, "precomputed") &&
-         is.null(.posterior_density_for_method(attr(posterior_i, "posterior_density"), density_method)) &&
-         !is.null(posterior_densities[[i]])){
-        attr(posterior_i, "posterior_density") <- posterior_densities[[i]]
-      }
-      if(identical(density_method, "precomputed") &&
-         is.null(.posterior_ordinate_for_method(attr(posterior_i, "posterior_ordinate"), null_hypothesis, density_method)) &&
-         !is.null(posterior_ordinates[[i]])){
-        attr(posterior_i, "posterior_ordinate") <- posterior_ordinates[[i]]
-      }
+      posterior_i <- .posterior_precomputed_child(
+        parent          = posterior,
+        child           = posterior[[i]],
+        index           = i,
+        null_hypothesis = null_hypothesis,
+        density_method  = density_method
+      )
       bf[[i]] <- .Savage_Dickey_BF.fun(posterior_i, null_hypothesis, normal_approximation, silent, density_method)
     }
     names(bf) <- names(posterior)
@@ -1852,38 +2327,64 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   stored_posterior_density <- NULL
   stored_posterior_ordinate <- NULL
   posterior_density_source <- if(isTRUE(normal_approximation)) "normal" else "KDE"
+  posterior_density_boundary_reflection <- FALSE
+  posterior_density_support_bounds <- NULL
   posterior_density_fallback_warnings <- NULL
   BF_error_percent <- NA_real_
+  posterior_ordinate_status <- NULL
+  posterior_density_status <- NULL
   if(!normal_approximation){
-    posterior_ordinate_attr <- attr(posterior, "posterior_ordinate")
-    if(!is.null(posterior_ordinate_attr) &&
-       !.posterior_density_condition_matches(
-         posterior_ordinate_attr,
-         conditional      = attr(posterior, "conditional", exact = TRUE),
-         conditional_rule = attr(posterior, "conditional_rule", exact = TRUE),
-         condition_key    = attr(posterior, "condition_key", exact = TRUE)
-       )){
-      posterior_ordinate_attr <- NULL
-    }
-    posterior_density_attr <- attr(posterior, "posterior_density")
-    if(!is.null(posterior_density_attr) &&
-       !.posterior_density_condition_matches(
-         posterior_density_attr,
-         conditional      = attr(posterior, "conditional", exact = TRUE),
-         conditional_rule = attr(posterior, "conditional_rule", exact = TRUE),
-         condition_key    = attr(posterior, "condition_key", exact = TRUE)
-       )){
-      posterior_density_attr <- NULL
-    }
-    stored_posterior_ordinate <- .posterior_ordinate_for_method(
-      posterior_ordinate_attr,
-      null_hypothesis,
-      density_method
+    posterior_ordinate_status <- .posterior_ordinate_direct_status(
+      posterior,
+      null_hypothesis = null_hypothesis
     )
-    stored_posterior_density <- .posterior_density_for_method(
-      posterior_density_attr,
-      density_method
-    )
+    posterior_density_status <- .posterior_density_direct_status(posterior)
+    if(identical(density_method, "precomputed") &&
+       isTRUE(posterior_ordinate_status[["valid"]])){
+      stored_posterior_ordinate <- posterior_ordinate_status[["value"]]
+    }
+    if(identical(density_method, "precomputed") &&
+       isTRUE(posterior_density_status[["valid"]])){
+      stored_posterior_density <- posterior_density_status[["value"]]
+    }
+  }
+  stored_posterior_density_support <- if(!is.null(stored_posterior_density)){
+    stored_posterior_density[["support"]]
+  }else{
+    NULL
+  }
+  if(identical(density_method, "precomputed") &&
+     is.null(stored_posterior_ordinate) &&
+     is.null(stored_posterior_density)){
+    if(!is.null(posterior_ordinate_status) &&
+       isTRUE(posterior_ordinate_status[["present"]]) &&
+       isTRUE(posterior_ordinate_status[["relevant"]]) &&
+       !isTRUE(posterior_ordinate_status[["valid"]])){
+      fallback_warning <- paste0(
+        "Precomputed posterior ordinate metadata is present but invalid ",
+        "for the requested null hypothesis. Falling back to the kernel ",
+        "density estimate."
+      )
+      warnings <- c(warnings, fallback_warning)
+      posterior_density_fallback_warnings <- c(
+        posterior_density_fallback_warnings,
+        fallback_warning
+      )
+    }
+    if(!is.null(posterior_density_status) &&
+       isTRUE(posterior_density_status[["present"]]) &&
+       isTRUE(posterior_density_status[["relevant"]]) &&
+       !isTRUE(posterior_density_status[["valid"]])){
+      fallback_warning <- paste0(
+        "Precomputed posterior density metadata is present but invalid. ",
+        "Falling back to the kernel density estimate."
+      )
+      warnings <- c(warnings, fallback_warning)
+      posterior_density_fallback_warnings <- c(
+        posterior_density_fallback_warnings,
+        fallback_warning
+      )
+    }
   }
 
   if(mean(posterior == null_hypothesis) > 0.05){
@@ -1918,6 +2419,22 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     warnings <- c(warnings, "Prior density does not span both sides of the null hypothesis. Check whether the prior distribution contains the null hypothesis in the first place. The Savage-Dickey density ratio is likely to be invalid.")
   }
   posterior_range <- range(posterior)
+  posterior_support_bounds <- .posterior_support_bounds(
+    posterior,
+    interval_only = TRUE
+  )
+  if(is.null(posterior_support_bounds)){
+    stored_support <- .posterior_support_from_attribute(stored_posterior_density_support)
+    if(!is.null(stored_support) && isTRUE(stored_support$exact) &&
+       .posterior_support_has_interval(stored_support)){
+      posterior_support_bounds <- stored_support$bounds
+    }
+  }
+  null_at_support_boundary <- FALSE
+  if(!is.null(posterior_support_bounds)){
+    boundary_tol <- sqrt(.Machine$double.eps) * max(1, abs(null_hypothesis), abs(posterior_support_bounds[is.finite(posterior_support_bounds)]))
+    null_at_support_boundary <- any(is.finite(posterior_support_bounds) & abs(null_hypothesis - posterior_support_bounds) <= boundary_tol)
+  }
   if(!is.null(stored_posterior_density) && is.null(stored_posterior_ordinate)){
     posterior_range <- range(stored_posterior_density[["x"]], finite = TRUE)
     if(null_hypothesis < posterior_range[1] || null_hypothesis > posterior_range[2]){
@@ -1929,35 +2446,91 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     }
   }
   if(is.null(stored_posterior_ordinate) &&
-     (null_hypothesis < posterior_range[1] || null_hypothesis > posterior_range[2])){
+     (null_hypothesis < posterior_range[1] || null_hypothesis > posterior_range[2]) &&
+     !isTRUE(null_at_support_boundary)){
     warnings <- c(warnings, "Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.")
+  }
+
+  kde_height <- function(support = NULL){
+    height <- .Savage_Dickey_BF.kd(
+      samples         = posterior,
+      null_hypothesis = null_hypothesis,
+      support         = support
+    )
+    support_warning <- attr(height, "posterior_support_warning", exact = TRUE)
+    if(!is.null(support_warning)){
+      warnings <<- c(warnings, support_warning)
+    }
+    if(isTRUE(attr(height, "boundary_reflection", exact = TRUE))){
+      posterior_density_boundary_reflection <<- TRUE
+    }
+    support_bounds <- attr(height, "posterior_support_bounds", exact = TRUE)
+    if(!is.null(support_bounds)){
+      posterior_density_support_bounds <<- support_bounds
+    }
+    height
   }
 
   if(normal_approximation){
     posterior_height <- .Savage_Dickey_BF.normal(posterior, null_hypothesis)
   }else if(!is.null(stored_posterior_ordinate)){
-    posterior_height <- stored_posterior_ordinate[["y"]]
-    posterior_density_source <- "precomputed"
-    BF_error_percent <- .posterior_ordinate_bf_error_percent(stored_posterior_ordinate)
+    support_exclusion <- .Savage_Dickey_BF.support_exclusion(
+      posterior,
+      null_hypothesis = null_hypothesis,
+      source_support  = stored_posterior_density_support
+    )
+    warnings <- c(warnings, support_exclusion[["warnings"]])
+    if(isTRUE(support_exclusion[["excluded"]])){
+      fallback_warning <- "Exact posterior support excludes the null hypothesis. Ignoring the precomputed posterior ordinate."
+      warnings <- c(warnings, fallback_warning)
+      posterior_density_fallback_warnings <- c(posterior_density_fallback_warnings, fallback_warning)
+      posterior_height <- 0
+      posterior_density_support_bounds <- support_exclusion[["bounds"]]
+    }else{
+      posterior_height <- stored_posterior_ordinate[["y"]]
+      posterior_density_source <- "precomputed"
+      BF_error_percent <- .posterior_ordinate_bf_error_percent(stored_posterior_ordinate)
+    }
   }else if(!is.null(stored_posterior_density)){
-    posterior_height <- .posterior_density_height(stored_posterior_density, null_hypothesis)
-    if(!is.finite(posterior_height) || posterior_height <= 0){
+    support_exclusion <- .Savage_Dickey_BF.support_exclusion(
+      posterior,
+      null_hypothesis = null_hypothesis,
+      source_support  = stored_posterior_density[["support"]]
+    )
+    warnings <- c(warnings, support_exclusion[["warnings"]])
+    if(isTRUE(support_exclusion[["excluded"]])){
+      fallback_warning <- "Exact posterior support excludes the null hypothesis. Ignoring the precomputed posterior density."
+      warnings <- c(warnings, fallback_warning)
+      posterior_density_fallback_warnings <- c(posterior_density_fallback_warnings, fallback_warning)
+      posterior_height <- 0
+      posterior_density_support_bounds <- support_exclusion[["bounds"]]
+    }else{
+      posterior_height <- .posterior_density_height(stored_posterior_density, null_hypothesis)
+    }
+    if(!isTRUE(support_exclusion[["excluded"]]) &&
+       (!is.finite(posterior_height) || posterior_height <= 0)){
       fallback_warning <- "Stored posterior density has zero or non-finite height at the null hypothesis. Falling back to the kernel density estimate."
       warnings <- c(warnings, fallback_warning)
       posterior_density_fallback_warnings <- c(posterior_density_fallback_warnings, fallback_warning)
-      posterior_height <- .Savage_Dickey_BF.kd(posterior, null_hypothesis)
-    }else{
+      posterior_height <- kde_height(stored_posterior_density[["support"]])
+    }else if(!isTRUE(support_exclusion[["excluded"]])){
       posterior_density_source <- "precomputed"
       BF_error_percent <- .posterior_density_bf_error_percent(stored_posterior_density, null_hypothesis)
     }
   }else{
-    posterior_height <- .Savage_Dickey_BF.kd(posterior, null_hypothesis)
+    posterior_height <- kde_height(stored_posterior_density_support)
   }
+  prior_height <- .prior_linear_density_height(prior, null_hypothesis)
+  if(!is.finite(prior_height) || prior_height <= 0){
+    warnings <- c(
+      warnings,
+      "Prior density at the null hypothesis value is zero or non-finite. The Savage-Dickey density ratio is invalid."
+    )
+  }
+
   if(!silent && !is.null(warnings)){
     sapply(warnings, warning, call. = FALSE)
   }
-
-  prior_height <- .prior_linear_density_height(prior, null_hypothesis)
 
   BF <- exp(log(prior_height) - log(posterior_height))
 
@@ -1968,6 +2541,12 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     attr(BF, "BF_error_percent") <- BF_error_percent
   }
   attr(BF, "posterior_density_source") <- posterior_density_source
+  if(isTRUE(posterior_density_boundary_reflection)){
+    attr(BF, "posterior_density_boundary_reflection") <- TRUE
+  }
+  if(!is.null(posterior_density_support_bounds)){
+    attr(BF, "posterior_density_support") <- posterior_density_support_bounds
+  }
   if(length(posterior_density_fallback_warnings) > 0L){
     attr(BF, "posterior_density_fallback") <- TRUE
     attr(BF, "posterior_density_fallback_warnings") <- posterior_density_fallback_warnings
@@ -1982,30 +2561,101 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   return(height)
 }
 
-.Savage_Dickey_BF.kd     <- function(samples, null_hypothesis){
+.Savage_Dickey_BF.support_exclusion <- function(samples, null_hypothesis,
+                                                source_support = NULL){
 
-  if(null_hypothesis < min(samples) || null_hypothesis > max(samples)){
+  supports <- list(source_support, .posterior_support_get(samples))
+  valid_bounds <- NULL
+  support_warnings <- NULL
 
-    # the test value is outside of the samples
-    height  <- 0
+  for(support in supports){
+    support <- .posterior_support_from_attribute(support)
+    if(is.null(support) || !isTRUE(support$exact)){
+      next
+    }
 
+    support_info <- .posterior_support_for_kde(samples, support = support)
+    if(!is.null(support_info[["warning"]])){
+      support_warnings <- c(support_warnings, support_info[["warning"]])
+    }
+    if(is.null(support_info[["bounds"]])){
+      next
+    }
+    if(is.null(valid_bounds)){
+      valid_bounds <- support_info[["bounds"]]
+    }
+
+    if(.posterior_support_excludes_value(
+      .posterior_support_new(support_info[["bounds"]]),
+      null_hypothesis
+    )){
+      return(list(
+        excluded = TRUE,
+        bounds   = support_info[["bounds"]],
+        warnings = support_warnings
+      ))
+    }
+  }
+
+  list(excluded = FALSE, bounds = valid_bounds, warnings = support_warnings)
+}
+
+.Savage_Dickey_BF.kd     <- function(samples, null_hypothesis, support = NULL){
+
+  sample_values <- as.numeric(samples)
+  sample_values <- sample_values[is.finite(sample_values)]
+  support_info <- .posterior_support_for_kde(samples, support = support)
+  support_bounds <- support_info[["bounds"]]
+
+  if(!is.null(support_bounds)){
+    if(null_hypothesis < support_bounds[1] || null_hypothesis > support_bounds[2]){
+      height <- 0
+      attr(height, "posterior_support_bounds") <- support_bounds
+      return(height)
+    }
+
+    if(any(is.finite(support_bounds))){
+      density_args <- list(
+        x      = sample_values,
+        n      = 512L,
+        bounds = support_bounds,
+        na.rm  = TRUE
+      )
+      if(is.finite(support_bounds[1])){
+        density_args[["from"]] <- support_bounds[1]
+      }
+      if(is.finite(support_bounds[2])){
+        density_args[["to"]] <- support_bounds[2]
+      }
+      density_posterior <- do.call(.density_kde_boundary, density_args)
+      height <- stats::approx(
+        density_posterior$x,
+        density_posterior$y,
+        xout  = null_hypothesis,
+        yleft = 0,
+        yright = 0
+      )[["y"]]
+      attr(height, "boundary_reflection") <- isTRUE(attr(density_posterior, "boundary_reflection"))
+      attr(height, "posterior_support_bounds") <- support_bounds
+      return(height)
+    }
+  }
+
+  if(null_hypothesis < min(sample_values) || null_hypothesis > max(sample_values)){
+    height <- 0
   }else{
+    density_posterior <- stats::density(sample_values)
+    height <- stats::approx(
+      density_posterior$x,
+      density_posterior$y,
+      xout   = null_hypothesis,
+      yleft  = 0,
+      yright = 0
+    )[["y"]]
+  }
 
-    # use linear approximation to find the point
-    density_posterior <- stats::density(samples)
-    density_posterior.x <- c(
-      density_posterior$x[which.max(density_posterior$x > null_hypothesis) - 1],
-      density_posterior$x[which.max(density_posterior$x > null_hypothesis)]
-    )
-    density_posterior.y <- c(
-      density_posterior$y[which.max(density_posterior$x > null_hypothesis) - 1],
-      density_posterior$y[which.max(density_posterior$x > null_hypothesis)]
-    )
-
-    dif.y <- density_posterior.y[2] - density_posterior.y[1]
-    dif.x <- density_posterior.x[2] - density_posterior.x[1]
-
-    height <- density_posterior.y[1] + dif.y * (null_hypothesis - density_posterior.x[1])/dif.x
+  if(!is.null(support_info[["warning"]])){
+    attr(height, "posterior_support_warning") <- support_info[["warning"]]
   }
 
   return(height)
