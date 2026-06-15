@@ -15,7 +15,6 @@ test_that("JAGS_lkj_corr_cholesky validates inputs and exposes metadata", {
   expect_error(JAGS_lkj_corr_cholesky("Omega", 0), "K")
   expect_error(JAGS_lkj_corr_cholesky("Omega", 2, eta = 0), "eta")
   expect_error(JAGS_lkj_corr_cholesky("Omega", 2, include_correlation = NA), "include_correlation")
-  expect_error(JAGS_lkj_corr_cholesky("Omega", 2, backend = "bad"), "one of")
 
   module <- JAGS_lkj_corr_cholesky(
     name = "Omega",
@@ -102,12 +101,11 @@ test_that("LKJ alpha generation is available without native routines", {
     K = 3,
     eta = 1,
     include_correlation = TRUE,
-    include_primitives = FALSE,
-    backend = "syntax"
+    include_primitives = FALSE
   )
 
   expect_equal(module$pairs$alpha, c(1.5, 1.5, 1))
-  expect_match(module$syntax, "Sigma_lkj_u[1] ~ dbeta(1.5, 1.5)", fixed = TRUE)
+  expect_match(module$syntax, "Sigma_lkj_u[1:3] ~ dbt_lkj_cpc(Sigma_lkj_alpha)", fixed = TRUE)
   expect_error(
     BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(c(0.5), K = 2),
     "native LKJ routines requested",
@@ -294,49 +292,15 @@ test_that("compiled backend keeps generated syntax compact for larger dimensions
     include_correlation = TRUE,
     include_primitives = FALSE
   )
-  fallback <- JAGS_lkj_corr_cholesky(
-    name = "Sigma",
-    K = 8,
-    eta = 1.25,
-    include_correlation = TRUE,
-    include_primitives = FALSE,
-    backend = "syntax"
-  )
 
   module_lines <- strsplit(module$syntax, "\n", fixed = TRUE)[[1]]
-  fallback_lines <- strsplit(fallback$syntax, "\n", fixed = TRUE)[[1]]
 
-  expect_lt(length(module_lines), length(fallback_lines))
+  expect_lt(length(module_lines), 200L)
   expect_match(module$syntax, "Sigma_lkj_u[1:28] ~ dbt_lkj_cpc(Sigma_lkj_alpha)", fixed = TRUE)
   expect_match(module$syntax, "Sigma_L_flat[1:64] <- bt_lkj_cholesky(Sigma_lkj_u, 8)", fixed = TRUE)
   expect_match(module$syntax, "Sigma_R_flat[1:64] <- bt_lkj_corr(Sigma_lkj_u, 8)", fixed = TRUE)
   expect_false(grepl("sqrt", module$syntax, fixed = TRUE))
   expect_false(grepl("inprod", module$syntax, fixed = TRUE))
-  expect_true(grepl("sqrt", fallback$syntax, fixed = TRUE))
-  expect_true(grepl("inprod", fallback$syntax, fixed = TRUE))
-})
-
-test_that("JAGS LKJ-Cholesky syntax fallback is unrolled and deterministic after primitives", {
-  module <- JAGS_lkj_corr_cholesky(
-    name = "Sigma",
-    K = 3,
-    eta = 1,
-    include_correlation = TRUE,
-    include_primitives = FALSE,
-    backend = "syntax"
-  )
-
-  expect_equal(module$backend, "syntax")
-  expect_match(module$syntax, "Sigma_lkj_u[1] ~ dbeta(1.5, 1.5)", fixed = TRUE)
-  expect_match(module$syntax, "Sigma_lkj_u[3] ~ dbeta(1, 1)", fixed = TRUE)
-  expect_match(module$syntax, "Sigma_L[3,2] <- Sigma_lkj_cpc[3] * sqrt(1 - pow(Sigma_lkj_cpc[2], 2))", fixed = TRUE)
-  expect_match(module$syntax, "Sigma_R[3,1] <- inprod(Sigma_L[3,1:3], Sigma_L[1,1:3])", fixed = TRUE)
-  expect_match(module$syntax, "Sigma_R[1,3] <- Sigma_R[3,1]", fixed = TRUE)
-
-  expect_false(grepl("dmnorm", module$syntax, fixed = TRUE))
-  expect_false(grepl("dwish", module$syntax, fixed = TRUE))
-  expect_false(grepl("for(", module$syntax, fixed = TRUE))
-  expect_false(grepl("for ", module$syntax, fixed = TRUE))
 })
 
 test_that("one-dimensional LKJ-Cholesky module degenerates to identity", {

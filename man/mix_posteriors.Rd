@@ -46,6 +46,13 @@ a list of models, vector of parameters, and a list of
 indicators of the null or alternative hypothesis models
 for each parameter.
 }
+\details{
+For simplex parameters such as Dirichlet priors, absent model
+parameters are not filled with an implicit spike at zero because the all-zero
+vector is off the simplex. Every model with positive prior or posterior
+probability must provide an explicit compatible simplex prior or point prior
+on the simplex.
+}
 \seealso{
 \link{ensemble_inference} \link{BayesTools_ensemble_tables} \link{as_mixed_posteriors}
 }

@@ -1,54 +1,121 @@
 #include "DBTInvMoment.h"
 #include "../nonlocal/BTNonlocalCore.h"
 
+#include <cmath>
 #include <rng/RNG.h>
+#include <util/nainf.h>
 
 namespace jags {
   namespace BayesTools {
 
-    DBTInvMoment::DBTInvMoment() : RScalarDist("dbt_invmoment", 4, DIST_UNBOUNDED, false)
+    DBTInvMoment::DBTInvMoment() : ScalarDist("dbt_invmoment", 4, DIST_UNBOUNDED)
     {
     }
 
-    double DBTInvMoment::d(double x, PDFType type,
-                           std::vector<double const *> const &par,
-                           bool give_log) const
+    bool DBTInvMoment::checkParameterValue(std::vector<double const *> const &par) const
     {
-      return bayestools::nonlocal::dinvmoment(x, par[0][0], par[1][0], par[2][0], par[3][0], give_log);
+      return bayestools::nonlocal::valid_invmoment_parameters(*par[0], *par[1], *par[2], *par[3]);
     }
 
-    double DBTInvMoment::p(double x, std::vector<double const *> const &par,
-                           bool lower, bool give_log) const
+    bool DBTInvMoment::checkParameterDiscrete(std::vector<bool> const &mask) const
     {
-      return bayestools::nonlocal::pinvmoment(x, par[0][0], par[1][0], par[2][0], par[3][0], lower, give_log);
+      return mask[2];
     }
 
-    double DBTInvMoment::q(double p, std::vector<double const *> const &par,
-                           bool lower, bool log_p) const
+    bool DBTInvMoment::isDiscreteValued(std::vector<bool> const &mask) const
     {
-      return bayestools::nonlocal::qinvmoment(p, par[0][0], par[1][0], par[2][0], par[3][0], lower, log_p);
+      return false;
     }
 
-    double DBTInvMoment::r(std::vector<double const *> const &par, RNG *rng) const
+    double DBTInvMoment::logDensity(double x, PDFType type,
+                                    std::vector<double const *> const &par,
+                                    double const *lower, double const *upper) const
     {
-      return bayestools::nonlocal::rinvmoment(rng->uniform(), rng->uniform(), par[0][0], par[1][0], par[2][0], par[3][0]);
+      double out = bayestools::nonlocal::invmoment_log_density(
+        x, *par[0], *par[1], *par[2], *par[3]
+      );
+      if(!std::isfinite(out)){
+        return JAGS_NEGINF;
+      }
+      if(lower || upper){
+        double l = lower ? *lower : JAGS_NEGINF;
+        double u = upper ? *upper : JAGS_POSINF;
+        if(x < l || x > u){
+          return JAGS_NEGINF;
+        }
+
+        double mass = bayestools::nonlocal::invmoment_cdf(
+          u, *par[0], *par[1], *par[2], *par[3], true, false
+        ) - bayestools::nonlocal::invmoment_cdf(
+          l, *par[0], *par[1], *par[2], *par[3], true, false
+        );
+        if(!(std::isfinite(mass) && mass > 0.0)){
+          mass = bayestools::nonlocal::invmoment_cdf(
+            l, *par[0], *par[1], *par[2], *par[3], false, false
+          ) - bayestools::nonlocal::invmoment_cdf(
+            u, *par[0], *par[1], *par[2], *par[3], false, false
+          );
+        }
+        if(!(std::isfinite(mass) && mass > 0.0)){
+          return JAGS_NEGINF;
+        }
+        out -= std::log(mass);
+      }
+      return std::isfinite(out) ? out : JAGS_NEGINF;
+    }
+
+    double DBTInvMoment::randomSample(std::vector<double const *> const &par,
+                                      double const *lower, double const *upper,
+                                      RNG *rng) const
+    {
+      if(lower || upper){
+        double l = lower ? *lower : JAGS_NEGINF;
+        double u = upper ? *upper : JAGS_POSINF;
+        double cdf_l = bayestools::nonlocal::invmoment_cdf(
+          l, *par[0], *par[1], *par[2], *par[3], true, false
+        );
+        double cdf_u = bayestools::nonlocal::invmoment_cdf(
+          u, *par[0], *par[1], *par[2], *par[3], true, false
+        );
+        double mass = cdf_u - cdf_l;
+        if(std::isfinite(mass) && mass > 0.0){
+          return bayestools::nonlocal::invmoment_quantile(
+            cdf_l + rng->uniform() * mass,
+            *par[0], *par[1], *par[2], *par[3], true, false
+          );
+        }
+
+        double surv_l = bayestools::nonlocal::invmoment_cdf(
+          l, *par[0], *par[1], *par[2], *par[3], false, false
+        );
+        double surv_u = bayestools::nonlocal::invmoment_cdf(
+          u, *par[0], *par[1], *par[2], *par[3], false, false
+        );
+        mass = surv_l - surv_u;
+        if(std::isfinite(mass) && mass > 0.0){
+          return bayestools::nonlocal::invmoment_quantile(
+            surv_u + rng->uniform() * mass,
+            *par[0], *par[1], *par[2], *par[3], false, false
+          );
+        }
+      }
+      return bayestools::nonlocal::invmoment_rng(
+        rng->uniform(), rng->uniform(), *par[0], *par[1], *par[2], *par[3]
+      );
     }
 
     double DBTInvMoment::typicalValue(std::vector<double const *> const &par,
                                       double const *lower, double const *upper) const
     {
-      double mode = bayestools::nonlocal::invmoment_mode(par[1][0], par[2][0], par[3][0]);
-      return bayestools::nonlocal::typical_value(par[0][0], mode, lower, upper);
+      double l = lower ? *lower : JAGS_NEGINF;
+      double u = upper ? *upper : JAGS_POSINF;
+      double mode = bayestools::nonlocal::invmoment_mode(*par[1], *par[2], *par[3]);
+      return bayestools::nonlocal::typical_value(*par[0], mode, l, u);
     }
 
-    bool DBTInvMoment::checkParameterValue(std::vector<double const *> const &par) const
+    bool DBTInvMoment::canBound() const
     {
-      return bayestools::nonlocal::valid_invmoment_parameters(par[0][0], par[1][0], par[2][0], par[3][0]);
-    }
-
-    bool DBTInvMoment::isLocationParameter(unsigned int index) const
-    {
-      return index == 0;
+      return true;
     }
   }
 }

@@ -38,13 +38,11 @@ hypothesis_BF(
 \item{density_method}{posterior density source for point-null tests.
 \code{"KDE"} uses kernel density estimates. \code{"normal"} uses a normal
 approximation to the posterior density at the null. \code{"precomputed"}
-uses valid \code{posterior_ordinate} or \code{posterior_density} attributes
-before falling back to KDE. KDE point-null tests use boundary reflection when
-exact support metadata is attached to the marginal posterior or to a matched
-\code{posterior_density} attribute; numeric and data-frame expression tests
-use standard sample KDE. When a precomputed point-null density falls back to
-KDE, the fallback is warned immediately and retained in the returned table's
-\code{warnings} attribute.}
+requires valid \code{posterior_ordinate} or \code{posterior_density}
+attributes and errors if no valid precomputed source is available. KDE
+point-null tests use boundary reflection when exact support metadata is
+attached to the marginal posterior or to a matched \code{posterior_density}
+attribute; numeric and data-frame expression tests use standard sample KDE.}
 
 \item{columns}{output columns. \code{"default"} returns \code{Alternative},
 \code{Null}, \code{BF}, and \code{BF_error}. \code{"all"} also returns
@@ -60,10 +58,11 @@ and transitive point-vs-region tests report \code{NA}. The default
 A BayesTools table of class \code{BayesTools_hypothesis_BF}. The
 \code{BF_error} column reports approximate relative Monte Carlo error
 percentage when available. Region odds errors are computed on
-\code{log(BF)} from prior/posterior region indicators; point-vs-region
-errors combine the available point-density and region-mass errors on the
-\code{log(BF)} scale. Point-null tests require a positive finite prior
-density at the null value.
+\code{log(BF)} from prior/posterior region indicators using an iid
+delta-method approximation on the flattened draws; they do not adjust for
+MCMC autocorrelation. Point-vs-region errors combine the available
+point-density and region-mass errors on the \code{log(BF)} scale.
+Point-null tests require a positive finite prior density at the null value.
 }
 \description{
 Computes Bayes factors for scalar hypotheses written as

@@ -63,12 +63,15 @@
                           structure = NULL, effect_label = NULL,
                           allocation = NULL,
                           component = NULL){
-    if(is.null(values) || length(values) != nrow(model_samples) || all(is.na(values))){
-      return(invisible(NULL))
-    }
+    values <- .bt_random_effect_summary_validate_values(
+      values = values,
+      name = name,
+      label = label,
+      n_draws = nrow(model_samples)
+    )
     name <- .bt_random_effect_summary_unique_name(name, used_names)
     used_names <<- c(used_names, name)
-    columns[[name]] <<- as.numeric(values)
+    columns[[name]] <<- values
     summary_priors[[name]] <<- .bt_random_effect_summary_prior(
       parameter = parameter,
       type = type,
@@ -88,6 +91,9 @@
     if(isTRUE(attr(prior, "random_sd_total"))){
       allocation <- attr(prior, "random_allocation")
       values <- .bt_random_effect_parameter_draws(prior_name, model_samples, prior_list)
+      if(is.null(values)){
+        .bt_random_effect_summary_missing_sd_total_stop(allocation)
+      }
       add_summary(
         name = .bt_random_effect_summary_name(
           parameter = attr(prior, "parameter"),
@@ -124,14 +130,14 @@
         parameter = parameter,
         type = allocation_summary$types[i],
         label = allocation_summary$labels[i],
-        block = if(identical(allocation_target, "sd")) block else NULL,
-        grouping = if(identical(allocation_target, "sd")) grouping else NULL,
-        structure = if(identical(allocation_target, "sd") && !is.null(random_term)) {
+        block = if(identical(allocation_target, "sd_component")) block else NULL,
+        grouping = if(identical(allocation_target, "sd_component")) grouping else NULL,
+        structure = if(identical(allocation_target, "sd_component") && !is.null(random_term)) {
           .bt_random_effect_summary_term_structure(random_term)
         }else{
           NULL
         },
-        effect_label = if(identical(allocation_target, "sd") && !is.null(random_term)) .bt_random_effect_public_name(random_term) else NULL,
+        effect_label = if(identical(allocation_target, "sd_component") && !is.null(random_term)) .bt_random_effect_public_name(random_term) else NULL,
         allocation = allocation$label,
         component = allocation_summary$components[i]
       )
@@ -178,7 +184,28 @@
         )
       }
 
-      rho <- .bt_random_effect_rho_draws(random_term, model_samples)
+      inclusion_summary <- .bt_random_effect_summary_inclusion_samples(
+        random_term = random_term,
+        model_samples = model_samples,
+        prior_list = prior_list,
+        parameter = parameter
+      )
+      for(i in seq_along(inclusion_summary$names)){
+        add_summary(
+          name = inclusion_summary$names[i],
+          values = inclusion_summary$values[, i],
+          parameter = parameter,
+          type = inclusion_summary$types[i],
+          label = inclusion_summary$labels[i],
+          block = random_term$block_name,
+          grouping = random_term$group_label,
+          structure = display_structure,
+          effect_label = .bt_random_effect_public_name(random_term),
+          component = inclusion_summary$components[i]
+        )
+      }
+
+      rho <- .bt_random_effect_summary_rho_samples(random_term, model_samples)
       if(!is.null(rho)){
         add_summary(
           name = .bt_random_effect_summary_name(
@@ -220,14 +247,18 @@
         )
       }
 
-      allocation <- random_term$allocation
-      add_allocation_summary(
-        allocation = allocation,
-        parameter = parameter,
-        block = random_term$block_name,
-        grouping = random_term$group_label,
-        random_term = random_term
-      )
+      if(!is.null(random_term$sd_binding) &&
+         length(random_term$sd_binding$allocations) > 0L){
+        for(allocation in random_term$sd_binding$allocations){
+          add_allocation_summary(
+            allocation = allocation,
+            parameter = parameter,
+            block = random_term$block_name,
+            grouping = random_term$group_label,
+            random_term = random_term
+          )
+        }
+      }
     }
     for(allocation in design$random_allocations){
       add_allocation_summary(
@@ -243,6 +274,34 @@
     summary_matrix <- do.call(cbind, columns)
   }
   list(model_samples = summary_matrix, prior_list = summary_priors)
+}
+
+.bt_random_effect_summary_validate_values <- function(values, name, label,
+                                                      n_draws){
+
+  if(is.null(values)){
+    stop(
+      "Random-effect summary '", label,
+      "' could not be computed for derived column '", name, "'.",
+      call. = FALSE
+    )
+  }
+  if(length(values) != n_draws){
+    stop(
+      "Random-effect summary '", label,
+      "' returned ", length(values), " draw(s), but expected ", n_draws, ".",
+      call. = FALSE
+    )
+  }
+  if(all(is.na(values))){
+    stop(
+      "Random-effect summary '", label,
+      "' contains only missing values.",
+      call. = FALSE
+    )
+  }
+
+  as.numeric(values)
 }
 
 .bt_random_effect_summary_complete_scaled_samples <- function(random_term,
@@ -285,13 +344,18 @@
     random_term = random_term,
     model_samples = completed
   )
+  correlation_required_groups <- if(.bt_random_effect_summary_requires_correlation(random_term)){
+    random_term$block_name
+  }else{
+    NULL
+  }
 
   .apply_random_sd_unscale(
     posterior = completed,
     random_sd_cols = sd_names,
     formula_scale = formula_scale[[parameter]],
     prefix = parameter,
-    correlation_required_groups = random_term$block_name
+    correlation_required_groups = correlation_required_groups
   )
 }
 
@@ -317,6 +381,7 @@
     posterior = model_samples
   )
   if(is.null(cholesky)){
+    .bt_random_effect_summary_rho_samples(random_term, model_samples)
     .bt_random_effect_summary_missing_correlation_stop(random_term)
   }
 
@@ -352,25 +417,14 @@
 
 .bt_random_effect_summary_allocation_target <- function(allocation){
 
-  components <- allocation$components
-  if(is.character(components) && length(components) == 1L &&
-     !is.na(components) && components %in% c("block", "sd")){
-    return(components)
-  }
-  if(is.list(components)){
-    target <- allocation$target
-    if(is.character(target) && length(target) == 1L && !is.na(target) &&
-       target %in% c("block", "sd")){
-      return(target)
-    }
-    stop(
-      "Random-effect allocation metadata are missing canonical 'allocation$target'.",
-      call. = FALSE
-    )
+  target <- allocation$target
+  if(is.character(target) && length(target) == 1L && !is.na(target) &&
+     target %in% c("block", "sd_component")){
+    return(target)
   }
 
   stop(
-    "Random-effect allocation metadata are missing canonical 'allocation$components'.",
+    "Random-effect allocation metadata are missing canonical 'allocation$target'.",
     call. = FALSE
   )
 }
@@ -379,6 +433,13 @@
                                                  prior_list,
                                                  parameter = NULL,
                                                  formula_scale = NULL){
+
+  if(!is.null(random_term$sd_binding) &&
+     .bt_random_sd_binding_has_external_source(random_term$sd_binding) &&
+     !isTRUE(random_term$sd_binding$true_allocation)){
+    return(list(names = character(), components = character(),
+                values = matrix(nrow = nrow(model_samples), ncol = 0L)))
+  }
 
   sd_names <- unique(random_term$sd_parameter_names)
   sd_names <- sd_names[!is.na(sd_names)]
@@ -447,12 +508,155 @@
     }
   }
 
-  keep <- colSums(!is.na(values)) > 0L
+  missing <- colSums(!is.na(values)) == 0L
+  if(any(missing)){
+    .bt_random_effect_summary_missing_sd_values_stop(
+      random_term = random_term,
+      sd_names = sd_names[missing]
+    )
+  }
+
   list(
-    names = sd_names[keep],
-    components = components[keep],
-    values = values[, keep, drop = FALSE]
+    names = sd_names,
+    components = components,
+    values = values
   )
+}
+
+.bt_random_effect_summary_inclusion_samples <- function(random_term,
+                                                        model_samples,
+                                                        prior_list,
+                                                        parameter){
+
+  prior_names <- .bt_random_effect_summary_inclusion_prior_names(
+    random_term,
+    prior_list
+  )
+  if(length(prior_names) == 0L){
+    return(list(
+      names = character(),
+      labels = character(),
+      types = character(),
+      components = character(),
+      values = matrix(nrow = nrow(model_samples), ncol = 0L)
+    ))
+  }
+
+  names <- labels <- types <- components <- character()
+  values <- list()
+  display_group <- .bt_random_effect_summary_group_label(random_term)
+
+  for(prior_name in prior_names){
+    prior <- prior_list[[prior_name]]
+    indicator_name <- paste0(prior_name, "_indicator")
+    if(!indicator_name %in% colnames(model_samples)){
+      next
+    }
+    indicator <- as.numeric(model_samples[, indicator_name])
+    prior_components <- attr(prior, "components")
+    if(is.prior.spike_and_slab(prior)){
+      alternative_index <- which(prior_components == "alternative")
+      if(length(alternative_index) != 1L){
+        next
+      }
+      names <- c(names, .bt_random_effect_summary_name(
+        parameter = parameter,
+        type = "inclusion",
+        parts = c(random_term$block_name, .bt_random_effect_summary_safe_label(prior_name))
+      ))
+      display_effect <- .bt_random_effect_summary_inclusion_effect_label(
+        random_term,
+        prior_name
+      )
+      labels <- c(labels, paste0(display_effect, " | ", display_group, " (inclusion)"))
+      types <- c(types, "inclusion")
+      components <- c(components, "alternative")
+      values[[length(values) + 1L]] <- as.numeric(indicator %in% alternative_index)
+    }else if(is.prior.mixture(prior)){
+      unique_components <- unique(prior_components)
+      for(component in unique_components){
+        component_index <- which(prior_components == component)
+        names <- c(names, .bt_random_effect_summary_name(
+          parameter = parameter,
+          type = "inclusion",
+          parts = c(
+            random_term$block_name,
+            .bt_random_effect_summary_safe_label(prior_name),
+            component
+          )
+        ))
+        display_effect <- .bt_random_effect_summary_inclusion_effect_label(
+          random_term,
+          prior_name
+        )
+        labels <- c(labels, paste0(
+          display_effect, " | ", display_group, " (inclusion: ", component, ")"
+        ))
+        types <- c(types, "inclusion")
+        components <- c(components, component)
+        values[[length(values) + 1L]] <- as.numeric(indicator %in% component_index)
+      }
+    }
+  }
+
+  if(length(values) == 0L){
+    value_matrix <- matrix(nrow = nrow(model_samples), ncol = 0L)
+  }else{
+    value_matrix <- do.call(cbind, values)
+    colnames(value_matrix) <- names
+  }
+
+  list(
+    names = names,
+    labels = labels,
+    types = types,
+    components = components,
+    values = value_matrix
+  )
+}
+
+.bt_random_effect_summary_inclusion_effect_label <- function(random_term,
+                                                            prior_name){
+
+  sd_names <- unique(random_term$sd_parameter_names)
+  sd_names <- sd_names[!is.na(sd_names)]
+  sd_prior_names <- sub("[[][^][]+[]]$", "", sd_names)
+  component_terms <- NULL
+  if(!is.null(random_term$sd_binding) &&
+     !is.null(random_term$sd_binding$sd_component_terms)){
+    component_terms <- random_term$sd_binding$sd_component_terms
+  }
+
+  if(!is.null(component_terms) && length(component_terms) > 0L){
+    matched <- component_terms[sd_prior_names == prior_name]
+    matched <- unname(matched[!is.na(matched) & nzchar(matched)])
+    if(length(matched) > 0L){
+      base_terms <- unique(sub("[[][^][]+[]]$", "", matched))
+      if(length(base_terms) == 1L && nzchar(base_terms)){
+        return(base_terms)
+      }
+      return(paste(matched, collapse = ", "))
+    }
+  }
+
+  .bt_random_effect_public_name(random_term)
+}
+
+.bt_random_effect_summary_inclusion_prior_names <- function(random_term,
+                                                            prior_list){
+
+  sd_names <- unique(random_term$sd_parameter_names)
+  sd_names <- sd_names[!is.na(sd_names)]
+  if(length(sd_names) == 0L || length(prior_list) == 0L){
+    return(character())
+  }
+
+  prior_names <- unique(sub("[[][^][]+[]]$", "", sd_names))
+  prior_names <- prior_names[prior_names %in% names(prior_list)]
+  prior_names[vapply(prior_names, function(prior_name){
+    prior <- prior_list[[prior_name]]
+    is.prior.spike_and_slab(prior) || is.prior.mixture(prior)
+  }, logical(1))]
 }
 
 .bt_random_effect_summary_sd_columns <- function(random_term, sd_names){
@@ -475,6 +679,34 @@
   )
 }
 
+.bt_random_effect_summary_missing_sd_values_stop <- function(random_term,
+                                                             sd_names){
+
+  stop(
+    "Random-effect summary SD samples contain only missing values for block '",
+    random_term$block_name,
+    "' coordinate(s): ",
+    paste0("'", sd_names, "'", collapse = ", "),
+    ".",
+    call. = FALSE
+  )
+}
+
+.bt_random_effect_summary_missing_sd_total_stop <- function(allocation){
+
+  label <- allocation
+  if(!is.character(label) || length(label) != 1L || is.na(label) || !nzchar(label)){
+    label <- "<unknown>"
+  }
+
+  stop(
+    "Random-effect total-SD summary samples are missing canonical total SD coordinates for allocation '",
+    label,
+    "'. Expected monitored total SD or point-prior coordinates.",
+    call. = FALSE
+  )
+}
+
 .bt_random_effect_summary_inconsistent_sd_stop <- function(random_term){
 
   stop(
@@ -482,6 +714,27 @@
     random_term$block_name,
     "': semantic SD names do not match canonical 'random_term$sd_parameter_names'.",
     call. = FALSE
+  )
+}
+
+.bt_random_effect_summary_rho_samples <- function(random_term, model_samples){
+
+  structure <- .bt_random_effect_summary_term_structure(random_term)
+  correlation <- .bt_random_effect_correlation_metadata(
+    random_term,
+    structure = structure,
+    context = "Random-effect summary metadata"
+  )
+  if(is.null(correlation) || !identical(correlation$type, "rho")){
+    return(NULL)
+  }
+
+  .bt_random_effect_rho_draws(
+    random_term = random_term,
+    posterior = model_samples,
+    missing = "error",
+    out_of_support = "error",
+    context = "Random-effect summary metadata"
   )
 }
 
@@ -500,20 +753,6 @@
   leaves <- random_term$sd_leaves
   if(!is.null(leaves) && !is.null(leaves$leaf_terms)){
     out <- unname(leaves$leaf_terms[sd_names])
-    missing <- is.na(out)
-    if(any(missing)){
-      out[missing] <- .bt_random_effect_summary_component_from_sd_name(
-        random_term,
-        sd_names[missing]
-      )
-    }
-    return(.bt_random_effect_summary_display_components(random_term, out))
-  }
-
-  allocation <- random_term$allocation
-  if(!is.null(allocation) && identical(allocation$components, "sd") &&
-     !is.null(allocation$leaf_terms)){
-    out <- unname(allocation$leaf_terms[sd_names])
     missing <- is.na(out)
     if(any(missing)){
       out[missing] <- .bt_random_effect_summary_component_from_sd_name(
@@ -684,7 +923,7 @@
   }
 
   allocation_target <- .bt_random_effect_summary_allocation_target(allocation)
-  if(include_multipliers && identical(allocation_target, "sd")){
+  if(include_multipliers && identical(allocation_target, "sd_component")){
     for(i in seq_len(ncol(weights))){
       names <- c(names, .bt_random_effect_summary_name(
         parameter = sub("__xRE_ALLOCx_.*$", "", allocation$weight_name),
@@ -706,7 +945,7 @@
     names = names,
     labels = labels,
     types = types,
-    components = rep(components, if(include_multipliers && identical(allocation_target, "sd")) 2L else 1L),
+    components = rep(components, if(include_multipliers && identical(allocation_target, "sd_component")) 2L else 1L),
     values = values
   )
 }
@@ -733,7 +972,7 @@
                                                            random_term = NULL){
 
   allocation_target <- .bt_random_effect_summary_allocation_target(allocation)
-  if(identical(allocation_target, "sd") && !is.null(allocation$leaf_terms)){
+  if(identical(allocation_target, "sd_component") && !is.null(allocation$leaf_terms)){
     components <- unname(allocation$leaf_terms)
     if(!is.null(random_term)){
       components <- .bt_random_effect_summary_display_components(

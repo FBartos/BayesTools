@@ -25,8 +25,8 @@ approximated via a normal distribution (rather than kernel density). Defaults to
 
 \item{density_method}{density source for the posterior ordinate. \code{"KDE"}
 computes a kernel density estimate, using boundary reflection when exact
-posterior-support metadata is available. \code{"precomputed"} uses a valid
-\code{posterior_ordinate} attribute when present, then falls back to a valid
+posterior-support metadata is available. \code{"precomputed"} requires a
+valid \code{posterior_ordinate} attribute when present, or otherwise a valid
 \code{posterior_density} attribute.}
 }
 \value{
@@ -41,18 +41,18 @@ Marginal posterior vectors may carry a \code{posterior_ordinate}
 attribute with exact \code{value} and \code{ordinate} entries. When
 \code{density_method = "precomputed"} and
 \code{normal_approximation = FALSE}, a matching ordinate is used for the
-Savage-Dickey ratio. If no matching ordinate is available, a
+Savage-Dickey ratio. If no matching ordinate is available, a valid
 \code{posterior_density} grid with \code{x} and \code{y} coordinates is
-used before falling back to a kernel density estimate. The fallback KDE uses
-boundary reflection when exact \code{posterior_support} metadata is attached
-to the marginal posterior or to a matched posterior-density attribute. Exact
-support metadata is also checked before accepting precomputed posterior
+used. If neither valid precomputed source is available, an error is thrown.
+Exact support metadata is also checked before accepting precomputed posterior
 ordinates or densities; support is used to exclude the null only after it
 is validated against the posterior samples. A stale precomputed value is
-ignored when compatible exact support excludes the null. Support is not
-inferred from prior-density grids, posterior-density grids, or plotting
-ranges, which may be finite numerical integration ranges rather than true
-support boundaries. Exact support metadata is either a numeric
+ignored when compatible exact support excludes the null; returned Bayes
+factors label this path as exact support exclusion rather than as a KDE
+estimate. Support is not inferred from prior-density grids,
+posterior-density grids, or plotting ranges, which may be finite numerical
+integration ranges rather than true support boundaries. Exact support
+metadata is either a numeric
 \code{c(lower, upper)} vector or a list with
 \code{bounds = c(lower, upper)} and \code{exact = TRUE}; optional
 \code{type = "points"} support is not treated as a continuous interval for

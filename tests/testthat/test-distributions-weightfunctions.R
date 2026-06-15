@@ -194,6 +194,7 @@ test_that("weightfunction helper input validation is explicit", {
   expect_error(rone.sided(5, alpha = "not_numeric"), "'alpha' must be a numeric vector or a matrix.")
   expect_error(mdone.sided(0.5, alpha = 1), "'alpha' must be a vector of length at least 2.")
   expect_error(mdone.sided(0.5, alpha = matrix(1, nrow = 2, ncol = 1)), "'alpha' must be a matrix with at least 2 columns.")
+  expect_error(mdone.sided(0.5, alpha = c(1, Inf)), "'alpha' must be finite.")
   expect_error(mdone.sided(0.5, alpha = c(-1, 1)), "'alpha' must be positive.")
 
   expect_error(mdone.sided_fixed(0.5, omega = "not_numeric"), "'omega' must be a numeric vector or a matrix.")
@@ -202,6 +203,7 @@ test_that("weightfunction helper input validation is explicit", {
   expect_error(rone.sided_fixed(5, omega = "not_numeric"), "'omega' must be a numeric vector or a matrix.")
   expect_error(mdone.sided_fixed(0.5, omega = 1), "'omega' must be a vector of length at least 2.")
   expect_error(mdone.sided_fixed(0.5, omega = matrix(1, nrow = 2, ncol = 1)), "'omega' must be a matrix with at least 2 columns.")
+  expect_error(mdone.sided_fixed(0.5, omega = c(1, Inf)), "'omega' must be finite.")
   expect_error(mdone.sided_fixed(0.5, omega = c(-.1, 1)), "'omega' must be non-negative.")
   expect_error(mdone.sided_fixed(0.5, omega = c(.5, 1)), "reference-bin")
 })

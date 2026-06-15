@@ -87,6 +87,54 @@ test_that("hypothesis_BF computes point-null Savage-Dickey from numeric draws", 
 })
 
 
+test_that("hypothesis_BF warns for exact point masses in raw point-null draws", {
+
+  continuous_draws <- seq(-3, 3, length.out = 400)
+  posterior_spike <- c(rep(0, 20), seq(-3, 3, length.out = 380))
+  prior_spike <- c(rep(0, 20), seq(-3, 3, length.out = 380))
+
+  expect_warning(
+    hypothesis_BF(
+      posterior  = posterior_spike,
+      prior      = continuous_draws,
+      hypothesis = "theta = 0",
+      parameter  = "theta"
+    ),
+    "posterior draws exactly match"
+  )
+
+  expect_warning(
+    hypothesis_BF(
+      posterior  = continuous_draws,
+      prior      = prior_spike,
+      hypothesis = "theta = 0",
+      parameter  = "theta"
+    ),
+    "prior draws exactly match"
+  )
+})
+
+
+test_that("hypothesis_BF rejects prior point mass metadata for point nulls", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(
+      theta = prior_spike_and_slab(
+        prior("normal", list(mean = 0, sd = 1)),
+        prior_inclusion = prior("point", list(location = 0.5))
+      )
+    ),
+    weights = c(theta = 1),
+    n_grid = 1024
+  )
+
+  expect_error(
+    BayesTools:::.hypothesis_prior_density_height(prior_density, 0),
+    "point mass in the prior"
+  )
+})
+
+
 test_that("hypothesis_BF routes normal point-null density requests", {
 
   set.seed(11)
@@ -112,6 +160,39 @@ test_that("hypothesis_BF routes normal point-null density requests", {
 
   expect_equal(attr(out, "raw_BF"), as.numeric(expected), tolerance = 1e-12)
   expect_equal(out[["method"]], "Savage-Dickey (normal)")
+})
+
+
+test_that("hypothesis_BF uses boundary-reflected KDE for marginal point nulls", {
+
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("beta", list(alpha = 1, beta = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 4096
+  )
+  posterior <- .hypothesis_marginal_posterior_for_test(
+    seq(.001, .999, length.out = 301),
+    prior_density
+  )
+  attr(posterior, "posterior_support") <- c(0, 1)
+
+  expected <- Savage_Dickey_BF(
+    posterior,
+    null_hypothesis      = 0,
+    normal_approximation = FALSE,
+    silent               = TRUE
+  )
+  out <- hypothesis_BF(
+    posterior      = posterior,
+    hypothesis     = "theta = 0",
+    parameter      = "theta",
+    density_method = "KDE",
+    columns        = "all"
+  )
+
+  expect_true(attr(expected, "posterior_density_boundary_reflection"))
+  expect_equal(attr(out, "raw_BF"), as.numeric(expected), tolerance = 1e-12)
+  expect_equal(out[["method"]], "Savage-Dickey")
 })
 
 
@@ -312,6 +393,14 @@ test_that("hypothesis_BF returns compact BayesTools table by default", {
   )
   expect_equal(attr(multi[2, , drop = FALSE], "raw_BF"),
                attr(multi, "raw_BF")[2])
+
+  expect_null(attr(multi[c(1, 1), , drop = FALSE], "raw_BF"))
+
+  mismatched <- multi[1, , drop = FALSE]
+  rownames(mismatched) <- "missing"
+  attr(mismatched, "raw_BF") <- attr(multi, "raw_BF")
+  mismatched <- BayesTools:::.subset_table_hypothesis_attributes(multi, mismatched)
+  expect_null(attr(mismatched, "raw_BF"))
 })
 
 
@@ -335,6 +424,43 @@ test_that("hypothesis_BF accepts scalar BayesTools prior objects", {
     out[["prior"]] / out[["posterior"]],
     tolerance = 1e-12
   )
+})
+
+
+test_that("hypothesis_BF uses analytic scalar prior probabilities for simple regions", {
+
+  posterior <- c(
+    seq(-1, 0.2, length.out = 30),
+    seq(0.3, 2, length.out = 70)
+  )
+
+  out <- hypothesis_BF(
+    posterior  = posterior,
+    prior      = prior("normal", list(mean = 0, sd = 1)),
+    hypothesis = "theta > 0.25",
+    parameter  = "theta",
+    columns    = "all",
+    seed       = 1
+  )
+  out_seed2 <- hypothesis_BF(
+    posterior  = posterior,
+    prior      = prior("normal", list(mean = 0, sd = 1)),
+    hypothesis = "theta > 0.25",
+    parameter  = "theta",
+    columns    = "all",
+    seed       = 2
+  )
+
+  prior_left      <- stats::pnorm(0.25, lower.tail = FALSE)
+  prior_right     <- stats::pnorm(0.25)
+  posterior_left  <- mean(posterior > 0.25)
+  posterior_right <- mean(posterior <= 0.25)
+  expected        <- (posterior_left / posterior_right) /
+    (prior_left / prior_right)
+
+  expect_equal(out[["prior"]], prior_left / prior_right, tolerance = 1e-12)
+  expect_equal(attr(out, "raw_BF"), expected, tolerance = 1e-12)
+  expect_equal(attr(out_seed2, "raw_BF"), expected, tolerance = 1e-12)
 })
 
 
@@ -483,6 +609,26 @@ test_that("hypothesis_BF reports boundary-valued posterior region evidence", {
   expect_equal(attr(out, "raw_BF"), 0)
   expect_true(is.na(out[["BF_error"]]))
   expect_match(attr(out, "warnings"), "Posterior region mass is zero")
+})
+
+
+test_that("hypothesis_BF reports undefined odds when both posterior regions are empty", {
+
+  prior     <- data.frame(theta = c(-2, -1.5, 1.5, 2))
+  posterior <- data.frame(theta = c(-0.5, 0, 0.5))
+
+  out <- hypothesis_BF(
+    posterior  = posterior,
+    prior      = prior,
+    hypothesis = "theta > 1 vs theta < -1",
+    columns    = "all"
+  )
+
+  expect_true(is.na(attr(out, "raw_BF")))
+  expect_false(is.nan(attr(out, "raw_BF")))
+  expect_true(is.na(out[["posterior"]]))
+  expect_true(is.na(out[["BF_error"]]))
+  expect_match(attr(out, "warnings"), "Both posterior region masses are zero")
 })
 
 
@@ -935,6 +1081,30 @@ test_that("hypothesis_BF rejects missing nonzero level weight columns", {
     ),
     "columns not available"
   )
+
+  unsupported_context <- BayesTools:::.prior_density_context(
+    prior_list   = list(alt = prior("normal", list(mean = 0, sd = 1))),
+    column_names = c("alt", "rand"),
+    n_grid       = 128
+  )
+  attr(posterior, "prior_density_context") <- unsupported_context
+
+  expect_error(
+    hypothesis_BF(
+      posterior  = posterior,
+      hypothesis = "mu_alloc[alternate] > mu_alloc[random]",
+      seed       = 15
+    ),
+    "No prior distribution"
+  )
+
+  attr(posterior[["random"]], "linear_weights") <- c(alt = 0, rand = 0)
+  out <- hypothesis_BF(
+    posterior  = posterior,
+    hypothesis = "mu_alloc[alternate] > mu_alloc[random]",
+    seed       = 16
+  )
+  expect_true(is.finite(attr(out, "raw_BF")))
 })
 
 
@@ -960,6 +1130,31 @@ test_that("hypothesis_BF rejects unsafe or ambiguous expressions", {
 
   prior     <- data.frame(theta = c(-1, 0, 1))
   posterior <- data.frame(theta = c(-1, 0, 1))
+
+  expect_equal(
+    BayesTools:::.hypothesis_eval_expression("qlogis(plogis(theta))", posterior),
+    posterior[["theta"]],
+    tolerance = 1e-12
+  )
+  expect_equal(
+    BayesTools:::.hypothesis_eval_condition("plogis(theta) >= 0.5", posterior),
+    c(FALSE, TRUE, TRUE)
+  )
+
+  expect_error(
+    hypothesis_BF(posterior, prior, "theta <- 1"),
+    "Use '=' or '=='"
+  )
+  expect_error(
+    hypothesis_BF(posterior, prior, "theta<-1"),
+    "Use '=' or '=='"
+  )
+  valid_negative <- hypothesis_BF(
+    posterior  = data.frame(theta = c(-2, 0, 2)),
+    prior      = data.frame(theta = c(-2, 0, 2)),
+    hypothesis = "theta < -1"
+  )
+  expect_true(is.finite(attr(valid_negative, "raw_BF")))
 
   expect_error(
     hypothesis_BF(posterior, prior, "theta == 0 & theta > -1"),
@@ -1005,6 +1200,35 @@ test_that("hypothesis_BF rejects degenerate point-null KDE inputs", {
       parameter  = "theta"
     ),
     "degenerate samples"
+  )
+})
+
+
+test_that("hypothesis_BF rejects precomputed density requests on raw draws", {
+
+  set.seed(6)
+  posterior <- stats::rnorm(100)
+  prior <- stats::rnorm(100)
+
+  expect_error(
+    hypothesis_BF(
+      posterior      = posterior,
+      prior          = prior,
+      hypothesis     = "theta = 0",
+      parameter      = "theta",
+      density_method = "precomputed"
+    ),
+    "requires valid posterior density metadata"
+  )
+
+  expect_error(
+    hypothesis_BF(
+      posterior      = data.frame(theta = posterior),
+      prior          = data.frame(theta = prior),
+      hypothesis     = "theta + 0 = 0",
+      density_method = "precomputed"
+    ),
+    "raw draws or compound expressions"
   )
 })
 
@@ -1136,8 +1360,35 @@ test_that("hypothesis_BF reuses stored qCMDE density and BF error", {
   expect_equal(as.numeric(out[["BF_error"]]), 4, tolerance = 1e-12)
 })
 
+test_that("hypothesis_BF rejects malformed precomputed point masses", {
 
-test_that("hypothesis_BF warns when precomputed point density falls back to KDE", {
+  prior_density <- .hypothesis_prior_density_for_test()
+  posterior <- .hypothesis_marginal_posterior_for_test(
+    seq(-3, 3, length.out = 301),
+    prior_density
+  )
+  attr(posterior, "posterior_density") <- list(
+    x            = seq(-1, 1, length.out = 101),
+    y            = rep(1, 101),
+    method       = "invalid-point-mass",
+    point_masses = list(location = 0, p = 1.2)
+  )
+
+  expect_error(
+    hypothesis_BF(
+      posterior      = posterior,
+      hypothesis     = "theta = 0",
+      parameter      = "theta",
+      columns        = "all",
+      density_method = "precomputed"
+    ),
+    "Precomputed posterior density metadata is present but invalid",
+    fixed = TRUE
+  )
+})
+
+
+test_that("hypothesis_BF rejects precomputed point density missing the null", {
 
   prior_density <- .hypothesis_prior_density_for_test()
   posterior <- .hypothesis_marginal_posterior_for_test(
@@ -1150,22 +1401,15 @@ test_that("hypothesis_BF warns when precomputed point density falls back to KDE"
     method = "qCMDE"
   )
 
-  expect_warning(
-    out <- hypothesis_BF(
+  expect_error(
+    hypothesis_BF(
       posterior      = posterior,
       hypothesis     = "theta = 0",
       parameter      = "theta",
       columns        = "all",
       density_method = "precomputed"
     ),
-    "Falling back to the kernel density estimate",
-    fixed = TRUE
-  )
-
-  expect_equal(out[["method"]], "Savage-Dickey")
-  expect_match(
-    attr(out, "warnings")[["theta"]],
-    "Falling back to the kernel density estimate",
+    "Stored posterior density does not span",
     fixed = TRUE
   )
 })
@@ -1196,7 +1440,7 @@ test_that("hypothesis_BF rejects zero prior density at point null", {
 })
 
 
-test_that("hypothesis_BF point-null fallback uses exact marginal support", {
+test_that("hypothesis_BF precomputed point null rejects density grid missing support boundary", {
 
   prior_density <- BayesTools:::.prior_linear_combination_density(
     prior_list = list(theta = prior("beta", list(alpha = 1, beta = 1))),
@@ -1215,23 +1459,15 @@ test_that("hypothesis_BF point-null fallback uses exact marginal support", {
     method = "qCMDE"
   )
 
-  expect_warning(
-    out <- hypothesis_BF(
+  expect_error(
+    hypothesis_BF(
       posterior      = posterior,
       hypothesis     = "theta = 0",
       parameter      = "theta",
       columns        = "all",
       density_method = "precomputed"
     ),
-    "Falling back to the kernel density estimate",
+    "Stored posterior density does not span",
     fixed = TRUE
   )
-
-  posterior_height <- BayesTools:::.Savage_Dickey_BF.kd(posterior, 0)
-  prior_height <- BayesTools:::.prior_linear_density_height(prior_density, 0)
-
-  expect_true(attr(posterior_height, "boundary_reflection"))
-  expect_equal(attr(out, "raw_BF"), prior_height / as.numeric(posterior_height), tolerance = 1e-12)
-  expect_equal(out[["posterior"]], as.numeric(posterior_height), tolerance = 1e-12)
-  expect_equal(out[["method"]], "Savage-Dickey")
 })

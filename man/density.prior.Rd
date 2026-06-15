@@ -76,7 +76,9 @@ for endpoints of truncated distributions}
 \item{...}{additional arguments}
 }
 \value{
-\code{density.prior} returns an object of class 'density'.
+\code{density.prior} returns an object of class 'density'. For
+Dirichlet simplex priors it returns a named list of beta-marginal density
+objects, one for each simplex coordinate.
 }
 \description{
 Computes density of a prior

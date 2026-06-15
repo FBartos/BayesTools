@@ -29,7 +29,7 @@ converted into a generalized t-distribution with \code{df = 1}.}
 by a \code{location}, \code{scale}, and \code{df} parameters.}
 \item{\code{"gamma"}}{for a gamma distribution characterized
 by either \code{shape} and \code{rate}, or \code{shape} and
-\code{scale} parameters. The later is internally converted to
+\code{scale} parameters. The latter is internally converted to
 the \code{shape} and \code{rate} parametrization}
 \item{\code{"invgamma"}}{for an inverse-gamma distribution
 characterized by a \code{shape} and \code{scale} parameters. The
@@ -43,6 +43,13 @@ parameter. The later is internally converted to
 \code{rate}.}
 \item{\code{"uniform"}}{for a uniform distribution defined on a
 range from \code{a} to \code{b}}
+\item{\code{"moment"}}{for a Johnson-Rossell moment prior characterized
+by exactly one of \code{mode} or \code{tau}, an optional \code{order}
+that defaults to 1, and an optional \code{location} that defaults to 0.}
+\item{\code{"invmoment"}}{for a Johnson-Rossell inverse-moment prior
+characterized by exactly one of \code{mode} or \code{tau}, a \code{df},
+an optional \code{order} that defaults to 1, and an optional
+\code{location} that defaults to 0.}
 \item{\code{"dirichlet"}}{for a Dirichlet distribution over a simplex,
 characterized by a positive concentration vector \code{alpha}.}
 }}

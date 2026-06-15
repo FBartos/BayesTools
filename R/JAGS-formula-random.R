@@ -33,13 +33,16 @@
     stop("'double_bar' must be either 'diag' or 'split'.", call. = FALSE)
   )
 
-  bars <- reformulas::findbars_x(
-    formula,
-    specials = .bt_random_effect_specials(),
-    default.special = NULL,
-    expand_doublevert_method = expand_method
-  )
-  bars <- .bt_merge_random_wrapper_bars(formula, bars, expand_method)
+  if(length(.bt_find_random_wrapper_calls(formula)) > 0L){
+    bars <- .bt_find_random_effect_calls_ordered(formula, expand_method)
+  }else{
+    bars <- reformulas::findbars_x(
+      formula,
+      specials = .bt_random_effect_specials(),
+      default.special = NULL,
+      expand_doublevert_method = expand_method
+    )
+  }
 
   terms <- lapply(seq_along(bars), function(i){
     .bt_random_effect_term_from_call(bars[[i]], index = i, env = environment(formula))
@@ -115,8 +118,10 @@
   }
 
   out <- list()
-  for(i in seq.int(2L, length(x))){
-    out <- c(out, .bt_find_random_effect_calls_ordered(x[[i]], expand_method, env = env))
+  if(length(x) >= 2L){
+    for(i in seq.int(2L, length(x))){
+      out <- c(out, .bt_find_random_effect_calls_ordered(x[[i]], expand_method, env = env))
+    }
   }
 
   out
@@ -176,6 +181,7 @@
 # nesting expand identically). Returns NULL when the expression is not nested.
 .bt_random_effect_nested_group_levels <- function(group_expr, expand_method, env){
 
+  group_expr <- .bt_random_effect_strip_group_parens(group_expr)
   if(!(is.call(group_expr) && identical(group_expr[[1L]], as.name("/")))){
     return(NULL)
   }
@@ -189,6 +195,44 @@
   )
 
   lapply(expanded, function(bar) bar[[3L]])
+}
+
+.bt_random_effect_strip_group_parens <- function(expr){
+
+  while(is.call(expr) && identical(expr[[1L]], as.name("(")) && length(expr) == 2L){
+    expr <- expr[[2L]]
+  }
+
+  expr
+}
+
+.bt_random_effect_validate_group_expr <- function(expr){
+
+  if(.bt_random_effect_group_expr_allowed(expr)){
+    return(invisible(TRUE))
+  }
+
+  stop(
+    "Random-effect grouping expressions must be variables, ':' interactions, or '/' nested grouping.",
+    call. = FALSE
+  )
+}
+
+.bt_random_effect_group_expr_allowed <- function(expr){
+
+  expr <- .bt_random_effect_strip_group_parens(expr)
+  if(is.symbol(expr)){
+    return(TRUE)
+  }
+  operator <- if(is.call(expr) && is.symbol(expr[[1L]])) as.character(expr[[1L]]) else ""
+  if(is.call(expr) && length(expr) == 3L && operator %in% c(":", "/")){
+    return(
+      .bt_random_effect_group_expr_allowed(expr[[2L]]) &&
+        .bt_random_effect_group_expr_allowed(expr[[3L]])
+    )
+  }
+
+  FALSE
 }
 
 .bt_find_random_wrapper_calls <- function(x){
@@ -207,8 +251,10 @@
   }
 
   out <- list()
-  for(i in seq.int(2L, length(x))){
-    out <- c(out, .bt_find_random_wrapper_calls(x[[i]]))
+  if(length(x) >= 2L){
+    for(i in seq.int(2L, length(x))){
+      out <- c(out, .bt_find_random_wrapper_calls(x[[i]]))
+    }
   }
 
   out
@@ -235,11 +281,13 @@
   extra_args <- character()
 
   if(is.call(x) && as.character(x[[1L]]) %in% c("random", "re")){
+    wrapper_name <- as.character(x[[1L]])
     wrapper_args <- as.list(x)
     term_arg <- .bt_random_effect_call_term_arg(
       wrapper_args,
       "Random-effect wrappers"
     )
+    .bt_random_effect_reject_wrapped_special(wrapper_name, term_arg)
     if("name" %in% names(wrapper_args)){
       block_name <- .bt_random_effect_eval_name(wrapper_args[["name"]], env)
       has_explicit_name <- TRUE
@@ -248,9 +296,15 @@
       structure <- .bt_random_covariance_from_arg(wrapper_args[["covariance"]], env)
       explicit_special <- TRUE
     }
+    if("hom" %in% names(wrapper_args)){
+      hom <- .bt_random_effect_eval_hom(wrapper_args[["hom"]], env)
+      resolved_hom <- .bt_random_effect_resolve_wrapper_hom(structure, hom)
+      structure <- resolved_hom$structure
+      hom <- resolved_hom$hom
+    }
     extra_args <- .bt_random_effect_extra_named_args(
       wrapper_args,
-      c("", "name", "covariance")
+      c("", "name", "covariance", "hom")
     )
     x <- term_arg
     special_call <- x
@@ -296,8 +350,10 @@
   }
 
   expr <- x[[2L]]
-  group_expr <- x[[3L]]
+  group_expr <- .bt_random_effect_strip_group_parens(x[[3L]])
+  x[[3L]] <- group_expr
   group_label <- .bt_deparse_expr(group_expr)
+  .bt_random_effect_validate_group_expr(group_expr)
   independent <- structure %in% c("diag", "id")
   if(is.null(block_name)){
     block_name <- group_label
@@ -330,6 +386,43 @@
   class(term) <- c("BayesTools_random_effect_term", "list")
 
   return(term)
+}
+
+.bt_random_effect_reject_wrapped_special <- function(wrapper_name, term_arg){
+
+  if(!.bt_random_effect_is_covariance_special_call(term_arg)){
+    return(invisible(TRUE))
+  }
+
+  special <- as.character(term_arg[[1L]])
+  structure <- .bt_random_covariance_from_special(special)
+  stop(
+    "Do not wrap covariance-special random-effect calls in '", wrapper_name,
+    "()'. Use direct '", special, "(expr | group)' syntax or '",
+    wrapper_name, "(expr | group, covariance = \"", structure, "\")'.",
+    call. = FALSE
+  )
+}
+
+.bt_random_effect_is_covariance_special_call <- function(x){
+
+  is.call(x) &&
+    as.character(x[[1L]]) %in% setdiff(.bt_random_effect_specials(), c("random", "re"))
+}
+
+.bt_random_effect_resolve_wrapper_hom <- function(structure, hom){
+
+  if(!identical(hom, FALSE)){
+    return(list(structure = structure, hom = hom))
+  }
+  if(identical(structure, "cs")){
+    return(list(structure = "hcs", hom = NULL))
+  }
+  if(identical(structure, "ar1")){
+    return(list(structure = "har", hom = NULL))
+  }
+
+  list(structure = structure, hom = hom)
 }
 
 .bt_random_effect_metadata_block_detail <- function(random_term){
@@ -518,7 +611,7 @@
   c(
     "__xXx__", "__xREx__", "xRE_ALLOCx", "xRE_PRECx", "xRE_CORx",
     "xRE_Zx", "xRE_STDx", "xRE_COEFx", "xRE_MAPx", "xRE_DATAx",
-    "__default_factor", "__default_continuous"
+    "__xRE_SUMMARY__", "__default_factor", "__default_continuous"
   )
 }
 
@@ -552,18 +645,20 @@
 
 .bt_validate_random_effect_block_names <- function(terms, prior_random = NULL){
 
-  if(length(terms) == 0L){
-    return(invisible(TRUE))
+  if(!is.null(prior_random)){
+    .bt_check_prior_random(prior_random)
   }
 
-  block_names <- vapply(terms, function(term) term$block_name, character(1))
-  .bt_validate_random_effect_reserved_name(block_names)
-  if(anyDuplicated(block_names)){
-    stop("Random-effect block names must be unique.", call. = FALSE)
+  block_names <- character()
+  if(length(terms) > 0L){
+    block_names <- vapply(terms, function(term) term$block_name, character(1))
+    .bt_validate_random_effect_reserved_name(block_names)
+    if(anyDuplicated(block_names)){
+      stop("Random-effect block names must be unique.", call. = FALSE)
+    }
   }
 
   if(!is.null(prior_random)){
-    .bt_check_prior_random(prior_random)
     unknown_blocks <- setdiff(.bt_random_prior_block_names(prior_random), block_names)
     if(length(unknown_blocks) > 0L){
       stop(
@@ -684,7 +779,10 @@
       silent = TRUE
     )
   }else{
-    value <- try(eval(term$group_expr, envir = data, enclos = term_env), silent = TRUE)
+    stop(
+      "Random-effect grouping expressions must be variables, ':' interactions, or '/' nested grouping.",
+      call. = FALSE
+    )
   }
   if(inherits(value, "try-error")){
     stop(
@@ -700,16 +798,19 @@
 
 .bt_random_group_is_colon_expr <- function(expr){
 
+  expr <- .bt_random_effect_strip_group_parens(expr)
   is.call(expr) && identical(expr[[1L]], as.name(":")) && length(expr) == 3L
 }
 
 .bt_random_group_is_slash_expr <- function(expr){
 
+  expr <- .bt_random_effect_strip_group_parens(expr)
   is.call(expr) && identical(expr[[1L]], as.name("/")) && length(expr) == 3L
 }
 
 .bt_random_group_colon_terms <- function(expr){
 
+  expr <- .bt_random_effect_strip_group_parens(expr)
   if(.bt_random_group_is_colon_expr(expr)){
     return(c(
       .bt_random_group_colon_terms(expr[[2L]]),

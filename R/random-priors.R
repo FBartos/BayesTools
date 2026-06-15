@@ -5,6 +5,9 @@
 #' Random-effect formulas own the grouping variables, slopes, intercepts, and
 #' covariance structure. `prior_random()` supplies priors and monitoring policy
 #' for the already parsed random-effect blocks.
+#' Random-effect grouping expressions must be grouping variables, explicit `:`
+#' interactions, or explicit `/` nesting. Derived grouping variables should be
+#' materialized as columns in `data` before they are referenced by a formula.
 #'
 #' @details
 #' Formula random effects in [JAGS_formula()] and [JAGS_fit()] require an
@@ -54,9 +57,8 @@
 #' is resolved.
 #'
 #' @section Correlation priors:
-#' Use `prior_lkj(eta = ...)` for full unstructured correlation matrices. The
-#' compiled JAGS backend is used by default, with a syntax fallback available
-#' through `backend = "syntax"`.
+#' Use `prior_lkj(eta = ...)` for full unstructured correlation matrices. LKJ
+#' priors use the BayesTools compiled JAGS module.
 #'
 #' Use `rho` for scalar-correlation structures (`"CS"`, `"HCS"`, `"AR"`,
 #' `"HAR"`, and `"CAR"`). `rho_scale` controls the scale on which the prior is
@@ -71,8 +73,12 @@
 #'   the structure-specific valid interval.
 #'
 #' @section Variance allocation:
-#' `random_variance_allocation()` expresses one total SD prior plus a Dirichlet
-#' prior over variance fractions. Multiple named allocations can be supplied in
+#' `random_variance_allocation()` expresses one total SD source plus a Dirichlet
+#' prior over variance fractions. Root allocations must specify exactly one of
+#' a prior-owned `sd` prior or `sd_source = random_sd_source(...)`.
+#' `sd_source` can reference an already-defined JAGS node such as scalar `tau`
+#' or row-shaped `tau` without creating a prior for that node. Multiple named
+#' allocations can be supplied in
 #' `prior_random()`; child allocations can inherit one component of an earlier
 #' allocation through `parent = allocation_ref(...)`.
 #'
@@ -82,11 +88,19 @@
 #' This is useful for nested or crossed random intercepts when the prior should
 #' control total heterogeneity separately from how that heterogeneity is
 #' allocated across components. The allocation targets named random-effect
-#' blocks through `terms`. If `terms = NULL`, the allocation targets all
-#' remaining unallocated random-effect blocks at resolution time. Generated JAGS
+#' blocks through `terms`. If `terms = NULL`, a single root block allocation
+#' targets all random-effect blocks at resolution time and must resolve to at
+#' least two blocks. Generated JAGS
 #' syntax supports allocated blocks with one SD component, homogeneous
-#' structures where one SD controls the block, and explicit `components = "sd"`
-#' allocations that split the resolved SD leaves of one heterogeneous block.
+#' structures where one SD controls the block, and explicit
+#' `target = "sd_component"` allocations that split the resolved SD components
+#' of one heterogeneous block. Row-shaped external sources are applied inside
+#' the observation-level random-effect contribution, including child
+#' allocations and SD-component allocations; they do not create scalar SD
+#' summary parameters. Prediction and bridge-sampling reconstruction for these
+#' sources require standardized latent random-effect monitors, row-source values
+#' from either posterior columns or a `parameter_source(..., values = ...)`
+#' callback, and any required Dirichlet allocation coordinates.
 #' Use `scale = "total_variance"` to preserve summed variance and
 #' `scale = "mean_variance"` to preserve average variance inside a
 #' heterogeneous block.
@@ -116,6 +130,13 @@
 #'   a list of such specifications, defining total-SD plus Dirichlet variance
 #'   allocation across named random-effect blocks. Block-local allocation is
 #'   reserved for a future release.
+#' @param sd_source for `random_block()`, optional external random-effect SD
+#'   source created with `random_sd_source()`. A block-local `sd_source`
+#'   replaces inherited top-level SD priors and inherited covariance SD priors,
+#'   but conflicts with block-local `sd`, block-local `covariance$sd`, and
+#'   term-specific SD overrides. For `random_variance_allocation()`, root
+#'   allocations must specify exactly one of `sd` or `sd_source`; child
+#'   allocations inherit their SD budget from `parent`.
 #'
 #' @return A list-like S3 object describing random-effect priors, covariance
 #'   settings, allocation settings, and monitoring policy.
@@ -164,7 +185,7 @@
 #'   random_variance_allocation(
 #'     terms = c("study", "drug"),
 #'     sd = sd_prior,
-#'     allocation = prior("dirichlet", list(alpha = c(1, 1)))
+#'     weights = prior("dirichlet", list(alpha = c(1, 1)))
 #'   )
 #' )
 #'
@@ -174,13 +195,13 @@
 #'     name = "total_re",
 #'     terms = c(nested = "nested", simple = "study"),
 #'     sd = sd_prior,
-#'     allocation = prior("dirichlet", list(alpha = c(1, 1)))
+#'     weights = prior("dirichlet", list(alpha = c(1, 1)))
 #'   ),
 #'   random_variance_allocation(
 #'     name = "nested_split",
 #'     parent = allocation_ref("total_re", "nested"),
 #'     terms = c("paper", "country"),
-#'     allocation = prior("dirichlet", list(alpha = c(3, 1)))
+#'     weights = prior("dirichlet", list(alpha = c(3, 1)))
 #'   )
 #' )
 #' @export
@@ -242,9 +263,11 @@ prior_random <- function(..., sd = NULL, covariance = NULL, cor = NULL,
 #' @export
 random_block <- function(sd = NULL, covariance = NULL, cor = NULL, rho = NULL,
                          monitor = NULL, new_levels = NULL, allocation = NULL,
-                         terms = NULL){
+                         terms = NULL, sd_source = NULL){
 
   .bt_check_random_sd_prior(sd, allow_NULL = TRUE)
+  .bt_check_random_sd_source(sd_source, allow_NULL = TRUE)
+  .bt_check_random_block_terms(terms)
 
   if(is.null(covariance)){
     covariance <- if(is.null(cor) && is.null(rho)){
@@ -256,6 +279,18 @@ random_block <- function(sd = NULL, covariance = NULL, cor = NULL, rho = NULL,
     .bt_check_random_covariance(covariance)
     if(!is.null(cor) || !is.null(rho)){
       stop("'cor' and 'rho' cannot be supplied together with 'covariance'.", call. = FALSE)
+    }
+  }
+  covariance_sd <- if(!is.null(covariance)) covariance$sd else NULL
+  if(!is.null(sd_source)){
+    if(!is.null(sd)){
+      stop("'sd_source' cannot be supplied together with block-local 'sd'.", call. = FALSE)
+    }
+    if(!is.null(covariance_sd)){
+      stop("'sd_source' cannot be supplied together with block-local 'covariance$sd'.", call. = FALSE)
+    }
+    if(!is.null(terms)){
+      stop("'sd_source' cannot be supplied together with term-specific SD overrides in 'terms'.", call. = FALSE)
     }
   }
   if(!is.null(monitor)){
@@ -277,7 +312,8 @@ random_block <- function(sd = NULL, covariance = NULL, cor = NULL, rho = NULL,
     monitor    = monitor,
     new_levels = new_levels,
     allocation = allocation,
-    terms      = terms
+    terms      = terms,
+    sd_source  = sd_source
   )
   class(out) <- c("random_block", "list")
 
@@ -293,63 +329,83 @@ random_term <- random_block
 #'   this allocation as `parent`.
 #' @param parent optional `allocation_ref()` object selecting a component of an
 #'   earlier named allocation. Child allocations inherit that component's SD
-#'   budget and must not specify `sd`.
-#' @param components allocation target type. `"block"` allocates across named
-#'   random-effect blocks or symbolic intermediate components. `"sd"` expands
-#'   one selected heterogeneous block to its resolved SD leaves.
+#'   budget and must not specify `sd` or `sd_source`.
+#' @param target allocation target type. `"block"` allocates across named
+#'   random-effect blocks or symbolic intermediate components.
+#'   `"sd_component"` expands one selected heterogeneous block to its resolved
+#'   SD components.
 #' @param scale variance normalization. `"total_variance"` uses
 #'   `sd_child = sd_parent * sqrt(w)`. `"mean_variance"` uses
 #'   `sd_child = sd_parent * sqrt(K * w)` and is intended for
-#'   `components = "sd"` heterogeneity tests.
+#'   `target = "sd_component"` heterogeneity tests.
+#' @param weights optional Dirichlet simplex prior over variance fractions.
 #' @export
 random_variance_allocation <- function(terms = NULL, sd = NULL,
-                                       allocation = NULL,
+                                       weights = NULL,
                                        name = NULL,
                                        parent = NULL,
-                                       components = c("block", "sd"),
-                                       scale = c("total_variance", "mean_variance")){
+                                       target = c("block", "sd_component"),
+                                       scale = c("total_variance", "mean_variance"),
+                                       sd_source = NULL){
 
   check_char(terms, "terms", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   if(!is.null(terms) && anyDuplicated(terms)){
     stop("'terms' in random_variance_allocation() must be unique.", call. = FALSE)
   }
   .bt_check_random_allocation_term_labels(terms)
-  components <- match.arg(components)
+  target <- match.arg(target)
   scale <- match.arg(scale)
-  if(identical(scale, "mean_variance") && !identical(components, "sd")){
-    stop("'scale = \"mean_variance\"' is supported only with components = \"sd\".", call. = FALSE)
-  }
-  if(identical(components, "sd") && (is.null(terms) || length(terms) != 1L)){
-    stop("'components = \"sd\"' requires exactly one random-effect block in 'terms'.", call. = FALSE)
+  if(identical(scale, "mean_variance") && !identical(target, "sd_component")){
+    stop("'scale = \"mean_variance\"' is supported only with target = \"sd_component\".", call. = FALSE)
   }
   .bt_check_random_allocation_ref(parent, allow_NULL = TRUE)
   if(is.null(parent)){
-    .bt_check_random_sd_prior(sd, allow_NULL = FALSE)
+    if(is.null(sd) && is.null(sd_source)){
+      stop("Root variance allocations must specify exactly one of 'sd' or 'sd_source'.", call. = FALSE)
+    }
+    if(!is.null(sd) && !is.null(sd_source)){
+      stop("Root variance allocations must specify exactly one of 'sd' or 'sd_source', not both.", call. = FALSE)
+    }
+    .bt_check_random_sd_prior(sd, allow_NULL = TRUE)
+    .bt_check_random_sd_source(sd_source, allow_NULL = TRUE)
   }else{
     if(!is.null(sd)){
       stop("Child variance allocations inherit their SD budget from 'parent' and must not specify 'sd'.", call. = FALSE)
     }
-  }
-  if(is.null(allocation)){
-    if(identical(components, "block") && !is.null(terms) && length(terms) < 2L){
-      stop(
-        "A default Dirichlet allocation prior can be used only when at least two 'terms' are supplied.",
-        call. = FALSE
-      )
+    if(!is.null(sd_source)){
+      stop("Child variance allocations inherit their SD budget from 'parent' and must not specify 'sd_source'.", call. = FALSE)
     }
-    if(identical(components, "block") && !is.null(terms)){
-      allocation <- prior("dirichlet", list(alpha = rep(1, length(terms))))
+  }
+  if(identical(target, "sd_component") && (is.null(terms) || length(terms) != 1L)){
+    stop("'target = \"sd_component\"' requires exactly one random-effect block in 'terms'.", call. = FALSE)
+  }
+  if(identical(target, "block") && !is.null(terms) && length(terms) < 2L){
+    stop(
+      "Block variance allocation requires at least two resolved random-effect blocks. ",
+      "Use random_block(sd_source = ...) for a direct one-block SD source.",
+      call. = FALSE
+    )
+  }
+  if(is.null(weights)){
+    if(identical(target, "block") && !is.null(terms)){
+      weights <- prior("dirichlet", list(alpha = rep(1, length(terms))))
     }
   }else{
-    .bt_check_random_allocation_prior(allocation)
+    .bt_check_random_allocation_prior(weights)
   }
   check_char(name, "name", allow_NULL = TRUE, allow_NA = FALSE)
+  if(!is.null(name)){
+    .bt_validate_random_effect_reserved_name(
+      name,
+      context = "variance allocation labels"
+    )
+  }
   if(!is.null(name) && !grepl("^[A-Za-z][A-Za-z0-9_]*$", name)){
     stop("'name' must start with a letter and contain only letters, numbers, and underscores.", call. = FALSE)
   }
 
-  if(identical(components, "block") && !is.null(terms) &&
-     !is.null(allocation) && length(terms) != allocation$parameters[["K"]]){
+  if(identical(target, "block") && !is.null(terms) &&
+     !is.null(weights) && length(terms) != weights$parameters[["K"]]){
     stop(
       "The Dirichlet allocation dimension must match the number of targeted random-effect terms.",
       call. = FALSE
@@ -359,10 +415,11 @@ random_variance_allocation <- function(terms = NULL, sd = NULL,
   out <- list(
     terms      = terms,
     sd         = sd,
-    allocation = allocation,
+    sd_source  = sd_source,
+    weights    = weights,
     name       = name,
     parent     = parent,
-    components = components,
+    target     = target,
     scale      = scale
   )
   class(out) <- c("random_variance_allocation", "list")
@@ -379,6 +436,10 @@ allocation_ref <- function(allocation_name, component){
 
   check_char(allocation_name, "allocation_name", allow_NA = FALSE)
   check_char(component, "component", allow_NA = FALSE)
+  .bt_validate_random_effect_reserved_name(
+    c(allocation_name, component),
+    context = "variance allocation references"
+  )
   if(!grepl("^[A-Za-z][A-Za-z0-9_]*$", allocation_name)){
     stop("'allocation_name' must start with a letter and contain only letters, numbers, and underscores.", call. = FALSE)
   }
@@ -405,13 +466,10 @@ allocation_ref <- function(allocation_name, component){
 #' @param rho_scale scale for scalar correlation priors. `"fisher_z"` is the
 #'   default, `"logit"` uses a logit transform of the valid raw-rho interval,
 #'   and `"rho"` uses the raw correlation parameter.
-#' @param backend LKJ backend, either the compiled JAGS module (`"module"`) or
-#'   the pure-JAGS syntax fallback (`"syntax"`).
 #' @export
 random_covariance <- function(structure = NULL, sd = NULL, cor = NULL,
                               rho = NULL, eta = NULL,
-                              rho_scale = c("fisher_z", "rho", "logit"),
-                              backend = c("module", "syntax")){
+                              rho_scale = c("fisher_z", "rho", "logit")){
 
   explicit_fields <- character()
   if(!missing(structure)) explicit_fields <- c(explicit_fields, "structure")
@@ -419,10 +477,9 @@ random_covariance <- function(structure = NULL, sd = NULL, cor = NULL,
   if(!missing(cor)) explicit_fields <- c(explicit_fields, "cor")
   if(!missing(rho)) explicit_fields <- c(explicit_fields, "rho")
   if(!missing(rho_scale)) explicit_fields <- c(explicit_fields, "rho_scale")
-  if(!missing(backend)) explicit_fields <- c(explicit_fields, "backend")
+  if(!missing(eta) && !is.null(eta)) explicit_fields <- c(explicit_fields, "cor")
 
   rho_scale <- match.arg(rho_scale)
-  backend <- match.arg(backend)
   .bt_check_random_sd_prior(sd, allow_NULL = TRUE)
 
   if(!is.null(cor) && !is.null(rho)){
@@ -437,7 +494,7 @@ random_covariance <- function(structure = NULL, sd = NULL, cor = NULL,
       stop("'eta' must be finite.", call. = FALSE)
     }
     if(is.null(cor)){
-      cor <- prior_lkj(eta = eta, backend = backend)
+      cor <- prior_lkj(eta = eta)
     }
   }
   if(!is.null(cor)){
@@ -456,14 +513,10 @@ random_covariance <- function(structure = NULL, sd = NULL, cor = NULL,
     sd        = sd,
     cor       = cor,
     rho       = rho,
-    rho_scale = rho_scale,
-    backend   = backend
+    rho_scale = rho_scale
   )
-  if(!is.null(out$cor) && "backend" %in% explicit_fields){
-    out$cor$backend <- backend
-  }
   class(out) <- c("random_covariance", "list")
-  attr(out, "explicit_fields") <- explicit_fields
+  attr(out, "explicit_fields") <- unique(explicit_fields)
 
   if(!is.null(structure)){
     .bt_validate_random_covariance_for_structure(
@@ -482,12 +535,9 @@ random_covariance <- function(structure = NULL, sd = NULL, cor = NULL,
 #' @param include_primitives whether to monitor LKJ primitive beta coordinates
 #'   for `prior_lkj()`.
 #' @export
-prior_lkj <- function(eta = 1, backend = c("module", "syntax"),
-                      include_correlation = TRUE,
+prior_lkj <- function(eta = 1, include_correlation = TRUE,
                       include_primitives = FALSE){
 
-  backend_explicit <- !missing(backend)
-  backend <- match.arg(backend)
   check_real(eta, "eta", lower = 0, allow_bound = FALSE, allow_NA = FALSE)
   if(!is.finite(eta)){
     stop("'eta' must be finite.", call. = FALSE)
@@ -497,12 +547,10 @@ prior_lkj <- function(eta = 1, backend = c("module", "syntax"),
 
   out <- list(
     eta = eta,
-    backend = backend,
     include_correlation = include_correlation,
     include_primitives = include_primitives
   )
   class(out) <- c("prior_lkj", "list")
-  attr(out, "explicit_fields") <- if(backend_explicit) "backend" else character()
 
   out
 }
@@ -583,6 +631,41 @@ is.prior_random <- function(x){
     if(!inherits(blocks[[i]], "random_block")){
       stop("Random-effect block override '", names(blocks)[i], "' must be created with random_block().", call. = FALSE)
     }
+    .bt_check_random_block_terms(blocks[[i]]$terms)
+  }
+
+  invisible(TRUE)
+}
+
+.bt_check_random_block_terms <- function(terms){
+
+  if(is.null(terms)){
+    return(invisible(TRUE))
+  }
+  if(!is.list(terms)){
+    stop("Random-effect term overrides in 'terms' must be a named list.", call. = FALSE)
+  }
+  term_names <- names(terms)
+  if(is.null(term_names) || any(is.na(term_names)) || any(!nzchar(term_names))){
+    stop("Random-effect term overrides in 'terms' must be named.", call. = FALSE)
+  }
+  if(anyDuplicated(term_names)){
+    stop("Random-effect term override names must be unique.", call. = FALSE)
+  }
+  for(term in term_names){
+    override <- terms[[term]]
+    if(is.prior(override)){
+      next
+    }
+    if(inherits(override, "random_block") && !is.null(override$sd)){
+      .bt_check_random_sd_prior(override$sd)
+      next
+    }
+    stop(
+      "Random-effect term override '", term,
+      "' must be a prior or random_block(sd = ...).",
+      call. = FALSE
+    )
   }
 
   invisible(TRUE)
@@ -701,6 +784,10 @@ is.prior_random <- function(x){
     if(anyDuplicated(allocation_names)){
       stop("Variance allocation list names must be unique.", call. = FALSE)
     }
+    .bt_validate_random_effect_reserved_name(
+      allocation_names,
+      context = "variance allocation list names"
+    )
     bad <- !grepl("^[A-Za-z][A-Za-z0-9_]*$", allocation_names)
     if(any(bad)){
       stop("Variance allocation list names must start with a letter and contain only letters, numbers, and underscores.", call. = FALSE)
@@ -710,46 +797,89 @@ is.prior_random <- function(x){
     stop("'allocation' must contain at least one random_variance_allocation() object.", call. = FALSE)
   }
   for(i in seq_along(allocations)){
-    allocation <- allocations[[i]]
-    if(!inherits(allocation, "random_variance_allocation")){
-      stop("'allocation' entries must be created with random_variance_allocation().", call. = FALSE)
-    }
-    components <- allocation$components
-    if(is.null(components)){
-      components <- "block"
-    }
-    scale <- allocation$scale
-    if(is.null(scale)){
-      scale <- "total_variance"
-    }
-    check_char(components, "components", allow_values = c("block", "sd"), allow_NA = FALSE)
-    check_char(scale, "scale", allow_values = c("total_variance", "mean_variance"), allow_NA = FALSE)
-    if(identical(scale, "mean_variance") && !identical(components, "sd")){
-      stop("'scale = \"mean_variance\"' is supported only with components = \"sd\".", call. = FALSE)
-    }
-    .bt_check_random_allocation_term_labels(allocation$terms)
-    .bt_check_random_allocation_ref(allocation$parent, allow_NULL = TRUE)
-    if(is.null(allocation$parent)){
-      .bt_check_random_sd_prior(allocation$sd, allow_NULL = FALSE)
-    }else if(!is.null(allocation$sd)){
-      stop("Child variance allocations inherit their SD budget from 'parent' and must not specify 'sd'.", call. = FALSE)
-    }
-    if(!is.null(allocation$allocation)){
-      .bt_check_random_allocation_prior(allocation$allocation)
-    }
-    if(identical(components, "sd") &&
-       (is.null(allocation$terms) || length(allocation$terms) != 1L)){
-      stop("'components = \"sd\"' requires exactly one random-effect block in 'terms'.", call. = FALSE)
-    }
-    if(identical(components, "block") &&
-       !is.null(allocation$terms) &&
-       !is.null(allocation$allocation) &&
-       length(allocation$terms) != allocation$allocation$parameters[["K"]]){
+    allocation_error <- tryCatch(
+      {
+        .bt_check_random_allocation_entry(allocations[[i]])
+        NULL
+      },
+      error = function(e)e
+    )
+    if(inherits(allocation_error, "error")){
       stop(
-        "The Dirichlet allocation dimension must match the number of targeted random-effect terms.",
+        "Variance allocation ", .bt_random_allocation_display_label(allocations, i),
+        " is invalid: ", conditionMessage(allocation_error),
         call. = FALSE
       )
     }
+  }
+
+  invisible(TRUE)
+}
+
+.bt_random_allocation_display_label <- function(allocations, i){
+
+  allocation_names <- names(allocations)
+  if(!is.null(allocation_names) && length(allocation_names) >= i &&
+     !is.na(allocation_names[[i]]) && nzchar(allocation_names[[i]])){
+    return(paste0("'", allocation_names[[i]], "'"))
+  }
+
+  allocation <- allocations[[i]]
+  if(inherits(allocation, "random_variance_allocation") &&
+     !is.null(allocation$name) && length(allocation$name) == 1L &&
+     !is.na(allocation$name) && nzchar(allocation$name)){
+    return(paste0("'", allocation$name, "'"))
+  }
+
+  paste0("#", i)
+}
+
+.bt_check_random_allocation_entry <- function(allocation){
+
+  if(!inherits(allocation, "random_variance_allocation")){
+    stop("'allocation' entries must be created with random_variance_allocation().", call. = FALSE)
+  }
+  target <- allocation$target
+  scale <- allocation$scale
+  check_char(target, "target", allow_values = c("block", "sd_component"), allow_NA = FALSE)
+  check_char(scale, "scale", allow_values = c("total_variance", "mean_variance"), allow_NA = FALSE)
+  if(identical(scale, "mean_variance") && !identical(target, "sd_component")){
+    stop("'scale = \"mean_variance\"' is supported only with target = \"sd_component\".", call. = FALSE)
+  }
+  .bt_check_random_allocation_term_labels(allocation$terms)
+  .bt_check_random_allocation_ref(allocation$parent, allow_NULL = TRUE)
+  if(is.null(allocation$parent)){
+    if(is.null(allocation$sd) && is.null(allocation$sd_source)){
+      stop("Root variance allocations must specify exactly one of 'sd' or 'sd_source'.", call. = FALSE)
+    }
+    if(!is.null(allocation$sd) && !is.null(allocation$sd_source)){
+      stop("Root variance allocations must specify exactly one of 'sd' or 'sd_source', not both.", call. = FALSE)
+    }
+    .bt_check_random_sd_prior(allocation$sd, allow_NULL = TRUE)
+    .bt_check_random_sd_source(allocation$sd_source, allow_NULL = TRUE)
+  }else{
+    if(!is.null(allocation$sd)){
+      stop("Child variance allocations inherit their SD budget from 'parent' and must not specify 'sd'.", call. = FALSE)
+    }
+    if(!is.null(allocation$sd_source)){
+      stop("Child variance allocations inherit their SD budget from 'parent' and must not specify 'sd_source'.", call. = FALSE)
+    }
+  }
+  if(!is.null(allocation$weights)){
+    .bt_check_random_allocation_prior(allocation$weights)
+  }
+  if(identical(target, "sd_component") &&
+     (is.null(allocation$terms) || length(allocation$terms) != 1L)){
+    stop("'target = \"sd_component\"' requires exactly one random-effect block in 'terms'.", call. = FALSE)
+  }
+  if(identical(target, "block") &&
+     !is.null(allocation$terms) &&
+     !is.null(allocation$weights) &&
+     length(allocation$terms) != allocation$weights$parameters[["K"]]){
+    stop(
+      "The Dirichlet allocation dimension must match the number of targeted random-effect terms.",
+      call. = FALSE
+    )
   }
 
   invisible(TRUE)
@@ -765,6 +895,16 @@ is.prior_random <- function(x){
   }
   check_char(x$allocation, "allocation", allow_NA = FALSE)
   check_char(x$component, "component", allow_NA = FALSE)
+  .bt_validate_random_effect_reserved_name(
+    c(x$allocation, x$component),
+    context = "variance allocation references"
+  )
+  if(!grepl("^[A-Za-z][A-Za-z0-9_]*$", x$allocation)){
+    stop("'allocation' must start with a letter and contain only letters, numbers, and underscores.", call. = FALSE)
+  }
+  if(!grepl("^[A-Za-z][A-Za-z0-9_]*$", x$component)){
+    stop("'component' must start with a letter and contain only letters, numbers, and underscores.", call. = FALSE)
+  }
 
   invisible(TRUE)
 }
@@ -784,6 +924,10 @@ is.prior_random <- function(x){
   if(anyDuplicated(labels)){
     stop("Variance allocation term labels must be unique.", call. = FALSE)
   }
+  .bt_validate_random_effect_reserved_name(
+    labels,
+    context = "variance allocation component labels"
+  )
   bad <- !grepl("^[A-Za-z][A-Za-z0-9_]*$", labels)
   if(any(bad)){
     stop("Variance allocation term labels must start with a letter and contain only letters, numbers, and underscores.", call. = FALSE)
@@ -797,6 +941,13 @@ is.prior_random <- function(x){
   if(!is.prior.simplex(x) || !identical(x$distribution, "dirichlet")){
     stop(
       "Variance allocation priors must be Dirichlet simplex priors created with prior('dirichlet', list(alpha = ...)).",
+      call. = FALSE
+    )
+  }
+  K <- x$parameters[["K"]]
+  if(!is.numeric(K) || length(K) != 1L || is.na(K) || K < 2L){
+    stop(
+      "Variance allocation Dirichlet priors must have at least two dimensions.",
       call. = FALSE
     )
   }
@@ -858,7 +1009,8 @@ is.prior_random <- function(x){
     monitor    = prior_random$monitor,
     new_levels = prior_random$new_levels,
     allocation = NULL,
-    terms      = NULL
+    terms      = NULL,
+    sd_source  = NULL
   )
 
   if(block_name %in% names(prior_random$blocks)){
@@ -867,6 +1019,12 @@ is.prior_random <- function(x){
       if(!is.null(override[[field]])){
         if(identical(field, "covariance")){
           block[[field]] <- .bt_random_merge_covariance(block[[field]], override[[field]])
+        }else if(identical(field, "sd_source")){
+          block[[field]] <- override[[field]]
+          block$sd <- NULL
+          if(!is.null(block$covariance)){
+            block$covariance$sd <- NULL
+          }
         }else{
           block[[field]] <- override[[field]]
         }
@@ -886,7 +1044,7 @@ is.prior_random <- function(x){
   .bt_check_random_covariance(block$covariance)
   cor_prior <- block$covariance$cor
   if(is.null(cor_prior)){
-    cor_prior <- prior_lkj(eta = 1, backend = block$covariance$backend)
+    cor_prior <- prior_lkj(eta = 1)
   }
 
   cor_prior
@@ -907,26 +1065,10 @@ is.prior_random <- function(x){
   if("rho_scale" %in% override_fields){
     out$rho_scale <- override$rho_scale
   }
-  if("backend" %in% override_fields){
-    out$backend <- override$backend
-    if(!is.null(out$cor)){
-      out$cor$backend <- override$backend
-    }
-  }
   if(!is.null(override$rho)){
     out["cor"] <- list(NULL)
   }
   if(!is.null(override$cor)){
-    if("backend" %in% override_fields){
-      out$backend <- override$backend
-      out$cor$backend <- override$backend
-    }else if("backend" %in% .bt_random_covariance_explicit_fields(base) &&
-             !.bt_prior_lkj_backend_explicit(override$cor)){
-      out$backend <- base$backend
-      out$cor$backend <- base$backend
-    }else{
-      out$backend <- out$cor$backend
-    }
     out["rho"] <- list(NULL)
   }
   if(!is.null(out$structure)){
@@ -998,26 +1140,13 @@ is.prior_random <- function(x){
 
   fields <- attr(x, "explicit_fields")
   if(is.null(fields)){
-    fields <- setdiff(names(x)[!vapply(x, is.null, logical(1))], c("rho_scale", "backend"))
+    fields <- setdiff(names(x)[!vapply(x, is.null, logical(1))], "rho_scale")
     if(!is.null(x$rho)){
       fields <- c(fields, "rho_scale")
     }
-    if(!is.null(x$cor)){
-      fields <- c(fields, "backend")
-    }
   }
 
-  fields
-}
-
-.bt_prior_lkj_backend_explicit <- function(x){
-
-  fields <- attr(x, "explicit_fields")
-  if(!is.null(fields)){
-    return("backend" %in% fields)
-  }
-
-  !is.null(x$backend) && !identical(x$backend, "module")
+  unique(fields)
 }
 
 .bt_random_structure_uses_lkj <- function(structure){
@@ -1096,6 +1225,7 @@ is.prior_random <- function(x){
     structure = structure,
     label = label
   )
+  .bt_check_random_block_terms(block$terms)
   .bt_check_random_new_levels(block$new_levels, allow_NULL = TRUE)
   .bt_check_random_allocation(block$allocation)
 

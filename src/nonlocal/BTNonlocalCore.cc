@@ -1,22 +1,24 @@
 #include "BTNonlocalCore.h"
 
+#include <algorithm>
+#include <cfloat>
 #include <cmath>
 #include <limits>
-#include <JRmath.h>
+#include <Rmath.h>
 
 namespace bayestools {
 namespace nonlocal {
 
 namespace {
 
-double maybe_log(double p, bool log_p)
+bool valid_order(double order)
 {
-  return log_p ? std::log(p) : p;
+  return std::isfinite(order) && order >= 1.0 && std::floor(order) == order;
 }
 
-double log_two()
+double quiet_nan()
 {
-  return std::log(2.0);
+  return std::numeric_limits<double>::quiet_NaN();
 }
 
 double log_half()
@@ -24,75 +26,73 @@ double log_half()
   return -std::log(2.0);
 }
 
-double half_times_tail(double tail, bool log_tail, bool log_p)
+double log1mexp(double log_p)
 {
-  if(log_tail){
-    return log_p ? log_half() + tail : 0.5 * std::exp(tail);
+  if(log_p == 0.0){
+    return R_NegInf;
   }
-
-  return log_p ? log_half() + std::log(tail) : 0.5 * tail;
+  if(log_p < -std::log(2.0)){
+    return std::log1p(-std::exp(log_p));
+  }
+  return std::log(-std::expm1(log_p));
 }
 
-double half_plus_half(double p, bool log_p)
+double clamp_probability(double p)
 {
-  return log_p ? std::log1p(p) + log_half() : 0.5 + 0.5 * p;
+  if(p < 0.0){
+    return 0.0;
+  }
+  if(p > 1.0){
+    return 1.0;
+  }
+  return p;
 }
 
-double open_unit(double u)
+double return_probability(double p, bool lower_tail, bool log_p)
 {
-  if(u <= 0.0){
-    return std::nextafter(0.0, 1.0);
+  p = clamp_probability(p);
+  if(!lower_tail){
+    p = 1.0 - p;
   }
-  if(u >= 1.0){
-    return std::nextafter(1.0, 0.0);
+  if(log_p){
+    return std::log(p);
   }
-  return u;
+  return p;
 }
 
-double nan_value()
+double return_half_probability(double p, bool log_p)
 {
-  return std::numeric_limits<double>::quiet_NaN();
+  if(log_p){
+    return log_half() + p;
+  }
+  return 0.5 * p;
+}
+
+double return_half_plus_half_probability(double p, bool log_p)
+{
+  if(log_p){
+    return log_half() + std::log1p(p);
+  }
+  return 0.5 + 0.5 * p;
 }
 
 bool inside(double x, double lower, double upper)
 {
-  return std::isfinite(x) && x >= lower && x <= upper;
+  return x >= lower && x <= upper && std::isfinite(x);
 }
 
-double nudge_from_location(double x, double location, double lower, double upper)
+}
+
+bool valid_common_parameters(double location, double tau, double order)
 {
-  if(x != location){
-    return x;
-  }
-
-  double right = std::nextafter(location, upper);
-  if(inside(right, lower, upper) && right != location){
-    return right;
-  }
-
-  double left = std::nextafter(location, lower);
-  if(inside(left, lower, upper) && left != location){
-    return left;
-  }
-
-  return x;
-}
-
-}
-
-bool valid_order(double order)
-{
-  return std::isfinite(order) && order >= 1.0 && std::fabs(order - std::round(order)) < 1e-8;
-}
-
-bool valid_moment_parameters(double location, double tau, double order)
-{
-  return std::isfinite(location) && std::isfinite(tau) && tau > 0.0 && valid_order(order);
+  return std::isfinite(location) && std::isfinite(tau) && tau > 0.0 &&
+    valid_order(order);
 }
 
 bool valid_invmoment_parameters(double location, double tau, double order, double df)
 {
-  return valid_moment_parameters(location, tau, order) && std::isfinite(df) && df > 0.0;
+  return valid_common_parameters(location, tau, order) &&
+    std::isfinite(df) && df > 0.0;
 }
 
 double moment_mode(double tau, double order)
@@ -105,282 +105,295 @@ double invmoment_mode(double tau, double order, double df)
   return std::sqrt(tau) * std::pow(2.0 * order / (df + 1.0), 1.0 / (2.0 * order));
 }
 
-double typical_value(double location, double mode, double const *lower, double const *upper)
+double moment_log_density(double x, double location, double tau, double order)
 {
-  double lower_value = lower == nullptr ? R_NegInf : *lower;
-  double upper_value = upper == nullptr ? R_PosInf : *upper;
-
-  double right_mode = location + mode;
-  if(inside(right_mode, lower_value, upper_value)){
-    return right_mode;
+  if(!valid_common_parameters(location, tau, order)){
+    return R_NegInf;
   }
-
-  double left_mode = location - mode;
-  if(inside(left_mode, lower_value, upper_value)){
-    return left_mode;
-  }
-
-  double candidate;
-  if(std::isfinite(lower_value) && std::isfinite(upper_value)){
-    candidate = lower_value / 2.0 + upper_value / 2.0;
-  }else if(std::isfinite(lower_value)){
-    candidate = lower_value + mode;
-    if(!std::isfinite(candidate)){
-      candidate = std::nextafter(lower_value, R_PosInf);
-    }
-  }else if(std::isfinite(upper_value)){
-    candidate = upper_value - mode;
-    if(!std::isfinite(candidate)){
-      candidate = std::nextafter(upper_value, R_NegInf);
-    }
-  }else{
-    candidate = right_mode;
-  }
-
-  return nudge_from_location(candidate, location, lower_value, upper_value);
-}
-
-double dmoment(double x, double location, double tau, double order, bool give_log)
-{
-  if(std::isnan(x)){
-    return x;
-  }
-  if(!valid_moment_parameters(location, tau, order)){
-    return give_log ? R_NegInf : 0.0;
-  }
-
   double delta = x - location;
   if(!std::isfinite(delta) || delta == 0.0){
-    return give_log ? R_NegInf : 0.0;
+    return R_NegInf;
   }
 
-  double log_double_factorial = lgammafn(2.0 * order + 1.0) -
-    order * std::log(2.0) - lgammafn(order + 1.0);
-  double log_density = 2.0 * order * std::log(std::fabs(delta)) +
+  double log_double_factorial =
+    lgammafn(2.0 * order + 1.0) - order * std::log(2.0) - lgammafn(order + 1.0);
+
+  return 2.0 * order * std::log(std::fabs(delta)) +
     dnorm(delta, 0.0, std::sqrt(tau), true) -
-    order * std::log(tau) -
-    log_double_factorial;
-
-  return give_log ? log_density : std::exp(log_density);
+    order * std::log(tau) - log_double_factorial;
 }
 
-double pmoment(double q, double location, double tau, double order, bool lower_tail, bool log_p)
+double invmoment_log_density(double x, double location, double tau, double order, double df)
 {
-  if(std::isnan(q)){
-    return q;
-  }
-  if(!valid_moment_parameters(location, tau, order)){
-    return nan_value();
-  }
-
-  double delta = q - location;
-  if(delta == 0.0){
-    return maybe_log(0.5, log_p);
-  }
-
-  double z = delta * delta / tau;
-  double df = 2.0 * order + 1.0;
-  if(delta < 0.0){
-    if(lower_tail){
-      return half_times_tail(pchisq(z, df, false, log_p), log_p, log_p);
-    }
-    return half_plus_half(pchisq(z, df, true, false), log_p);
-  }
-
-  if(lower_tail){
-    return half_plus_half(pchisq(z, df, true, false), log_p);
-  }
-  return half_times_tail(pchisq(z, df, false, log_p), log_p, log_p);
-}
-
-double qmoment(double p, double location, double tau, double order, bool lower_tail, bool log_p)
-{
-  if(std::isnan(p)){
-    return p;
-  }
-  if(!valid_moment_parameters(location, tau, order)){
-    return nan_value();
-  }
-
-  double df = 2.0 * order + 1.0;
-  double z;
-  double direction;
-
-  if(log_p){
-    if(p > 0.0){
-      return nan_value();
-    }
-    if(std::isinf(p) && p < 0.0){
-      return lower_tail ? R_NegInf : R_PosInf;
-    }
-    if(p == 0.0){
-      return lower_tail ? R_PosInf : R_NegInf;
-    }
-    if(p == log_half()){
-      return location;
-    }
-
-    if(p < log_half()){
-      direction = lower_tail ? -1.0 : 1.0;
-      z = qchisq(log_two() + p, df, false, true);
-    }else{
-      direction = lower_tail ? 1.0 : -1.0;
-      z = qchisq(log_two() + std::log(-std::expm1(p)), df, false, true);
-    }
-
-    return location + direction * std::sqrt(tau * z);
-  }
-
-  if(p < 0.0 || p > 1.0){
-    return nan_value();
-  }
-  if(p <= 0.0){
-    return lower_tail ? R_NegInf : R_PosInf;
-  }
-  if(p >= 1.0){
-    return lower_tail ? R_PosInf : R_NegInf;
-  }
-  if(p == 0.5){
-    return location;
-  }
-
-  if(p < 0.5){
-    direction = lower_tail ? -1.0 : 1.0;
-    z = qchisq(2.0 * p, df, false, false);
-  }else{
-    direction = lower_tail ? 1.0 : -1.0;
-    z = qchisq(2.0 * (1.0 - p), df, false, false);
-  }
-
-  return location + direction * std::sqrt(tau * z);
-}
-
-double rmoment(double sign_u, double magnitude_u, double location, double tau, double order)
-{
-  double sign = sign_u < 0.5 ? -1.0 : 1.0;
-  double y = qchisq(open_unit(magnitude_u), 2.0 * order + 1.0, true, false);
-  return location + sign * std::sqrt(tau * y);
-}
-
-double dinvmoment(double x, double location, double tau, double order, double df, bool give_log)
-{
-  if(std::isnan(x)){
-    return x;
-  }
   if(!valid_invmoment_parameters(location, tau, order, df)){
-    return give_log ? R_NegInf : 0.0;
+    return R_NegInf;
   }
-
   double delta = x - location;
   if(!std::isfinite(delta) || delta == 0.0){
-    return give_log ? R_NegInf : 0.0;
+    return R_NegInf;
   }
 
-  double log_density = std::log(order) +
-    (df / 2.0) * std::log(tau) -
+  return std::log(order) + (df / 2.0) * std::log(tau) -
     lgammafn(df / (2.0 * order)) -
     (df + 1.0) * std::log(std::fabs(delta)) -
     std::pow(tau / (delta * delta), order);
-
-  return give_log ? log_density : std::exp(log_density);
 }
 
-double pinvmoment(double q, double location, double tau, double order, double df, bool lower_tail, bool log_p)
+double moment_cdf(double q, double location, double tau, double order,
+                  bool lower_tail, bool log_p)
 {
-  if(std::isnan(q)){
-    return q;
+  if(!valid_common_parameters(location, tau, order)){
+    return quiet_nan();
   }
-  if(!valid_invmoment_parameters(location, tau, order, df)){
-    return nan_value();
+  if(ISNAN(q)){
+    return quiet_nan();
+  }
+  if(q == R_NegInf){
+    return return_probability(0.0, lower_tail, log_p);
+  }
+  if(q == R_PosInf){
+    return return_probability(1.0, lower_tail, log_p);
   }
 
   double delta = q - location;
-  if(delta == 0.0){
-    return maybe_log(0.5, log_p);
-  }
-
-  double u = std::pow(tau / (delta * delta), order);
-  double shape = df / (2.0 * order);
+  double z = delta * delta / tau;
   if(delta < 0.0){
     if(lower_tail){
-      return half_times_tail(pgamma(u, shape, 1.0, true, log_p), log_p, log_p);
+      return return_half_probability(
+        pchisq(z, 2.0 * order + 1.0, false, log_p),
+        log_p
+      );
     }
-    return half_plus_half(pgamma(u, shape, 1.0, false, false), log_p);
+    return return_half_plus_half_probability(
+      pchisq(z, 2.0 * order + 1.0, true, false),
+      log_p
+    );
+  }
+  if(delta > 0.0){
+    if(lower_tail){
+      return return_half_plus_half_probability(
+        pchisq(z, 2.0 * order + 1.0, true, false),
+        log_p
+      );
+    }
+    return return_half_probability(
+      pchisq(z, 2.0 * order + 1.0, false, log_p),
+      log_p
+    );
   }
 
-  if(lower_tail){
-    return half_plus_half(pgamma(u, shape, 1.0, false, false), log_p);
-  }
-  return half_times_tail(pgamma(u, shape, 1.0, true, log_p), log_p, log_p);
+  return return_probability(0.5, lower_tail, log_p);
 }
 
-double qinvmoment(double p, double location, double tau, double order, double df, bool lower_tail, bool log_p)
+double invmoment_cdf(double q, double location, double tau, double order,
+                     double df, bool lower_tail, bool log_p)
 {
-  if(std::isnan(p)){
-    return p;
-  }
   if(!valid_invmoment_parameters(location, tau, order, df)){
-    return nan_value();
+    return quiet_nan();
+  }
+  if(ISNAN(q)){
+    return quiet_nan();
+  }
+  if(q == R_NegInf){
+    return return_probability(0.0, lower_tail, log_p);
+  }
+  if(q == R_PosInf){
+    return return_probability(1.0, lower_tail, log_p);
   }
 
-  double shape = df / (2.0 * order);
-  double u;
-  double direction;
+  double delta = q - location;
+  double s = std::pow(tau / (delta * delta), order);
+  if(delta < 0.0){
+    if(lower_tail){
+      return return_half_probability(
+        pgamma(s, df / (2.0 * order), 1.0, true, log_p),
+        log_p
+      );
+    }
+    return return_half_plus_half_probability(
+      pgamma(s, df / (2.0 * order), 1.0, false, false),
+      log_p
+    );
+  }
+  if(delta > 0.0){
+    if(lower_tail){
+      return return_half_plus_half_probability(
+        pgamma(s, df / (2.0 * order), 1.0, false, false),
+        log_p
+      );
+    }
+    return return_half_probability(
+      pgamma(s, df / (2.0 * order), 1.0, true, log_p),
+      log_p
+    );
+  }
 
-  if(log_p){
-    if(p > 0.0){
-      return nan_value();
+  return return_probability(0.5, lower_tail, log_p);
+}
+
+double moment_quantile(double p, double location, double tau, double order,
+                       bool lower_tail, bool log_p)
+{
+  if(!valid_common_parameters(location, tau, order)){
+    return quiet_nan();
+  }
+  double prob = log_p ? std::exp(p) : p;
+  if(ISNAN(prob) || prob < 0.0 || prob > 1.0){
+    return quiet_nan();
+  }
+
+  if(!lower_tail){
+    if(prob == 0.0){
+      return R_PosInf;
     }
-    if(std::isinf(p) && p < 0.0){
-      return lower_tail ? R_NegInf : R_PosInf;
+    if(prob == 1.0){
+      return R_NegInf;
     }
-    if(p == 0.0){
-      return lower_tail ? R_PosInf : R_NegInf;
-    }
-    if(p == log_half()){
+    if(prob == 0.5){
       return location;
     }
-
-    if(p < log_half()){
-      direction = lower_tail ? -1.0 : 1.0;
-      u = qgamma(log_two() + p, shape, 1.0, true, true);
-    }else{
-      direction = lower_tail ? 1.0 : -1.0;
-      u = qgamma(log_two() + std::log(-std::expm1(p)), shape, 1.0, true, true);
+    if(prob < 0.5){
+      double p_tail = log_p ? p + std::log(2.0) : 2.0 * prob;
+      double z = qchisq(p_tail, 2.0 * order + 1.0, false, log_p);
+      return location + std::sqrt(tau * z);
     }
 
-    return location + direction * std::sqrt(tau) * std::pow(u, -1.0 / (2.0 * order));
+    double lower_prob = 1.0 - prob;
+    double p_tail = log_p ? log1mexp(p) + std::log(2.0) : 2.0 * lower_prob;
+    double z = qchisq(p_tail, 2.0 * order + 1.0, false, log_p);
+    return location - std::sqrt(tau * z);
   }
 
-  if(p < 0.0 || p > 1.0){
-    return nan_value();
+  if(prob == 0.0){
+    return R_NegInf;
   }
-  if(p <= 0.0){
-    return lower_tail ? R_NegInf : R_PosInf;
+  if(prob == 1.0){
+    return R_PosInf;
   }
-  if(p >= 1.0){
-    return lower_tail ? R_PosInf : R_NegInf;
-  }
-  if(p == 0.5){
+  if(prob == 0.5){
     return location;
   }
 
-  if(p < 0.5){
-    direction = lower_tail ? -1.0 : 1.0;
-    u = qgamma(2.0 * p, shape, 1.0, true, false);
-  }else{
-    direction = lower_tail ? 1.0 : -1.0;
-    u = qgamma(2.0 * (1.0 - p), shape, 1.0, true, false);
+  if(prob < 0.5){
+    double p_tail = log_p ? p + std::log(2.0) : 2.0 * prob;
+    double z = qchisq(p_tail, 2.0 * order + 1.0, false, log_p);
+    return location - std::sqrt(tau * z);
   }
 
-  return location + direction * std::sqrt(tau) * std::pow(u, -1.0 / (2.0 * order));
+  double upper_prob = 1.0 - prob;
+  double p_tail = log_p ? log1mexp(p) + std::log(2.0) : 2.0 * upper_prob;
+  double z = qchisq(p_tail, 2.0 * order + 1.0, false, log_p);
+  return location + std::sqrt(tau * z);
 }
 
-double rinvmoment(double sign_u, double magnitude_u, double location, double tau, double order, double df)
+double invmoment_quantile(double p, double location, double tau, double order,
+                          double df, bool lower_tail, bool log_p)
 {
-  double sign = sign_u < 0.5 ? -1.0 : 1.0;
-  double u = qgamma(open_unit(magnitude_u), df / (2.0 * order), 1.0, true, false);
-  return location + sign * std::sqrt(tau) * std::pow(u, -1.0 / (2.0 * order));
+  if(!valid_invmoment_parameters(location, tau, order, df)){
+    return quiet_nan();
+  }
+  double prob = log_p ? std::exp(p) : p;
+  if(ISNAN(prob) || prob < 0.0 || prob > 1.0){
+    return quiet_nan();
+  }
+
+  double shape = df / (2.0 * order);
+
+  if(!lower_tail){
+    if(prob == 0.0){
+      return R_PosInf;
+    }
+    if(prob == 1.0){
+      return R_NegInf;
+    }
+    if(prob == 0.5){
+      return location;
+    }
+    if(prob < 0.5){
+      double p_tail = log_p ? p + std::log(2.0) : 2.0 * prob;
+      double s = qgamma(p_tail, shape, 1.0, true, log_p);
+      return location + std::sqrt(tau / std::pow(s, 1.0 / order));
+    }
+
+    double lower_prob = 1.0 - prob;
+    double p_tail = log_p ? log1mexp(p) + std::log(2.0) : 2.0 * lower_prob;
+    double s = qgamma(p_tail, shape, 1.0, true, log_p);
+    return location - std::sqrt(tau / std::pow(s, 1.0 / order));
+  }
+
+  if(prob == 0.0){
+    return R_NegInf;
+  }
+  if(prob == 1.0){
+    return R_PosInf;
+  }
+  if(prob == 0.5){
+    return location;
+  }
+
+  if(prob < 0.5){
+    double p_tail = log_p ? p + std::log(2.0) : 2.0 * prob;
+    double s = qgamma(p_tail, shape, 1.0, true, log_p);
+    return location - std::sqrt(tau / std::pow(s, 1.0 / order));
+  }
+
+  double upper_prob = 1.0 - prob;
+  double p_tail = log_p ? log1mexp(p) + std::log(2.0) : 2.0 * upper_prob;
+  double s = qgamma(p_tail, shape, 1.0, true, log_p);
+  return location + std::sqrt(tau / std::pow(s, 1.0 / order));
+}
+
+double moment_rng(double u_sign, double u_size, double location, double tau,
+                  double order)
+{
+  u_size = std::min(1.0 - DBL_EPSILON, std::max(DBL_MIN, u_size));
+  double sign = u_sign < 0.5 ? -1.0 : 1.0;
+  double z = qchisq(u_size, 2.0 * order + 1.0, true, false);
+  return location + sign * std::sqrt(tau * z);
+}
+
+double invmoment_rng(double u_sign, double u_size, double location, double tau,
+                     double order, double df)
+{
+  u_size = std::min(1.0 - DBL_EPSILON, std::max(DBL_MIN, u_size));
+  double sign = u_sign < 0.5 ? -1.0 : 1.0;
+  double s = qgamma(u_size, df / (2.0 * order), 1.0, true, false);
+  return location + sign * std::sqrt(tau / std::pow(s, 1.0 / order));
+}
+
+double typical_value(double location, double mode_abs, double lower,
+                     double upper)
+{
+  if(std::isfinite(mode_abs) && mode_abs > 0.0){
+    double upper_mode = location + mode_abs;
+    if(inside(upper_mode, lower, upper)){
+      return upper_mode;
+    }
+    double lower_mode = location - mode_abs;
+    if(inside(lower_mode, lower, upper)){
+      return lower_mode;
+    }
+  }
+
+  if(std::isfinite(lower) && std::isfinite(upper) && lower < upper){
+    double width = upper - lower;
+    double candidate = location <= (lower + upper) / 2.0 ?
+      lower + 0.75 * width : lower + 0.25 * width;
+    if(candidate == location){
+      candidate = lower + 0.25 * width;
+    }
+    return candidate;
+  }
+
+  double step = std::isfinite(mode_abs) && mode_abs > 0.0 ?
+    mode_abs : std::max(1.0, std::fabs(location) * 0.1);
+  if(std::isfinite(lower)){
+    return lower + step;
+  }
+  if(std::isfinite(upper)){
+    return upper - step;
+  }
+  return location + step;
 }
 
 }

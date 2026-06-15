@@ -36,13 +36,11 @@
 #' @param density_method posterior density source for point-null tests.
 #' \code{"KDE"} uses kernel density estimates. \code{"normal"} uses a normal
 #' approximation to the posterior density at the null. \code{"precomputed"}
-#' uses valid \code{posterior_ordinate} or \code{posterior_density} attributes
-#' before falling back to KDE. KDE point-null tests use boundary reflection when
-#' exact support metadata is attached to the marginal posterior or to a matched
-#' \code{posterior_density} attribute; numeric and data-frame expression tests
-#' use standard sample KDE. When a precomputed point-null density falls back to
-#' KDE, the fallback is warned immediately and retained in the returned table's
-#' \code{warnings} attribute.
+#' requires valid \code{posterior_ordinate} or \code{posterior_density}
+#' attributes and errors if no valid precomputed source is available. KDE
+#' point-null tests use boundary reflection when exact support metadata is
+#' attached to the marginal posterior or to a matched \code{posterior_density}
+#' attribute; numeric and data-frame expression tests use standard sample KDE.
 #' @param columns output columns. \code{"default"} returns \code{Alternative},
 #' \code{Null}, \code{BF}, and \code{BF_error}. \code{"all"} also returns
 #' \code{prior}, \code{posterior}, and \code{method} columns. The
@@ -55,10 +53,11 @@
 #' @return A BayesTools table of class \code{BayesTools_hypothesis_BF}. The
 #' \code{BF_error} column reports approximate relative Monte Carlo error
 #' percentage when available. Region odds errors are computed on
-#' \code{log(BF)} from prior/posterior region indicators; point-vs-region
-#' errors combine the available point-density and region-mass errors on the
-#' \code{log(BF)} scale. Point-null tests require a positive finite prior
-#' density at the null value.
+#' \code{log(BF)} from prior/posterior region indicators using an iid
+#' delta-method approximation on the flattened draws; they do not adjust for
+#' MCMC autocorrelation. Point-vs-region errors combine the available
+#' point-density and region-mass errors on the \code{log(BF)} scale.
+#' Point-null tests require a positive finite prior density at the null value.
 #'
 #' @export
 hypothesis_BF <- function(posterior, prior = NULL, hypothesis, parameter = NULL,
@@ -330,6 +329,7 @@ hypothesis_normalize_level_references <- function(text){
 .parse_hypothesis_BF <- function(hypothesis) {
 
   hypothesis <- .hypothesis_normalize_level_references(hypothesis)
+  .hypothesis_reject_assignment_arrow(hypothesis)
   parts <- .hypothesis_split_vs(hypothesis)
   left  <- .parse_hypothesis_side(parts[[1L]])
   right <- if(length(parts) == 2L) {
@@ -347,6 +347,28 @@ hypothesis_normalize_level_references <- function(text){
   class(out) <- "BayesTools_hypothesis_BF_parsed"
 
   return(out)
+}
+
+
+.hypothesis_reject_assignment_arrow <- function(text) {
+
+  chars <- strsplit(text, "", fixed = TRUE)[[1L]]
+  in_backtick <- FALSE
+
+  i <- 1L
+  while(i <= length(chars)){
+    ch <- chars[[i]]
+    if(ch == "`"){
+      in_backtick <- !in_backtick
+    }else if(!in_backtick && ch == "<" && i < length(chars) &&
+             chars[[i + 1L]] == "-"){
+      stop("Hypothesis uses '<-'. Use '=' or '==' for equality hypotheses.",
+           call. = FALSE)
+    }
+    i <- i + 1L
+  }
+
+  invisible(TRUE)
 }
 
 
@@ -657,7 +679,7 @@ hypothesis_normalize_level_references <- function(text){
          call. = FALSE)
   }
 
-  value <- eval(expr, envir = baseenv())
+  value <- eval(expr, envir = .hypothesis_eval_parent())
   check_real(value, "hypothesis value", check_length = 1, allow_NA = FALSE)
   if(!is.finite(value)){
     stop("Hypothesis value must be finite.", call. = FALSE)
@@ -677,6 +699,16 @@ hypothesis_normalize_level_references <- function(text){
 
   return(parsed[[1L]])
 }
+
+
+.hypothesis_eval_parent <- local({
+  env <- new.env(parent = baseenv())
+  env[["plogis"]] <- stats::plogis
+  env[["qlogis"]] <- stats::qlogis
+  function(){
+    env
+  }
+})
 
 
 .hypothesis_validate_expression <- function(expr, condition) {
@@ -844,7 +876,8 @@ hypothesis_normalize_level_references <- function(text){
       prior         = prior_df,
       label         = parameter,
       parameter     = parameter,
-      prior_density = prior_info[["density"]]
+      prior_density = prior_info[["density"]],
+      prior_object  = prior_info[["prior_object"]]
     )))
   }
 
@@ -995,7 +1028,9 @@ hypothesis_normalize_level_references <- function(text){
 .hypothesis_prior_input_to_draws <- function(prior, parameter, n) {
 
   prior_density <- NULL
+  prior_object <- NULL
   if(inherits(prior, "prior")){
+    prior_object <- prior
     prior_density <- tryCatch(
       .prior_linear_combination_density(
         prior_list = setNames(list(prior), parameter),
@@ -1017,15 +1052,17 @@ hypothesis_normalize_level_references <- function(text){
   check_real(prior, "prior", check_length = 0, allow_NA = FALSE)
 
   return(list(
-    draws   = prior,
-    density = prior_density
+    draws        = prior,
+    density      = prior_density,
+    prior_object = prior_object
   ))
 }
 
 
 .hypothesis_quantity_from_draws <- function(posterior, prior, label,
                                             parameter = NULL,
-                                            prior_density = NULL) {
+                                            prior_density = NULL,
+                                            prior_object = NULL) {
 
   out <- list(
     label              = label,
@@ -1038,7 +1075,8 @@ hypothesis_normalize_level_references <- function(text){
     posterior_marginal_index = NULL,
     posterior_marginal_indices = NULL,
     prior_densities    = NULL,
-    prior_density      = prior_density
+    prior_density      = prior_density,
+    prior_object       = prior_object
   )
   class(out) <- "BayesTools_hypothesis_quantity"
 
@@ -1104,7 +1142,8 @@ hypothesis_normalize_level_references <- function(text){
     posterior_marginal_index = NULL,
     posterior_marginal_indices = posterior_marginal_indices,
     prior_densities    = prior_densities,
-    prior_density      = NULL
+    prior_density      = NULL,
+    prior_object       = NULL
   )
   class(out) <- "BayesTools_hypothesis_quantity"
 
@@ -1299,7 +1338,6 @@ hypothesis_normalize_level_references <- function(text){
          call. = FALSE)
   }
 
-  prior_matrix <- .hypothesis_prior_samples_from_context(context, n)
   level_weights <- lapply(levels, function(level) {
     weights <- attr(posterior[[level]], "linear_weights", exact = TRUE)
     if(is.null(weights)){
@@ -1309,6 +1347,9 @@ hypothesis_normalize_level_references <- function(text){
     .hypothesis_prepare_level_weights(weights)
   })
   names(level_weights) <- levels
+  .hypothesis_validate_level_weights_context(level_weights, context)
+
+  prior_matrix <- .hypothesis_prior_samples_from_context(context, n)
   row_i <- .hypothesis_level_weight_rows(level_weights, nrow(prior_matrix))
 
   prior_values <- lapply(levels, function(level){
@@ -1319,6 +1360,99 @@ hypothesis_normalize_level_references <- function(text){
   names(out) <- columns
 
   return(out)
+}
+
+
+.hypothesis_validate_level_weights_context <- function(level_weights, context) {
+
+  for(level in names(level_weights)){
+    weights <- .hypothesis_prepare_level_weights(level_weights[[level]])
+    for(row_i in seq_len(nrow(weights))){
+      .hypothesis_validate_context_weight_vector(context, weights[row_i, ])
+    }
+  }
+
+  invisible(TRUE)
+}
+
+
+.hypothesis_validate_context_weight_vector <- function(context, weights) {
+
+  nonzero_columns <- .hypothesis_nonzero_weight_columns(weights)
+  if(length(nonzero_columns) == 0L){
+    return(invisible(TRUE))
+  }
+  .hypothesis_check_weight_columns_available(nonzero_columns, context)
+
+  if(inherits(context, "prior_density_context")){
+    standardized_weights <- .prior_density_context_standardized_weights(
+      context = context,
+      weights  = weights
+    )
+    .prior_linear_weight_groups(context[["prior_list"]], standardized_weights)
+    return(invisible(TRUE))
+  }
+
+  if(inherits(context, "prior_density_model_mixture_context")){
+    for(model_i in seq_along(context[["model_weights"]])){
+      model_prior_list <- .hypothesis_model_mixture_prior_list(context, model_i)
+      .prior_linear_weight_groups(model_prior_list, weights)
+    }
+    return(invisible(TRUE))
+  }
+
+  if(inherits(context, "prior_density_conditional_context")){
+    if(length(context[["prior_lists"]]) == 0L){
+      stop("No prior models remain after applying the conditional event.",
+           call. = FALSE)
+    }
+    for(prior_list in context[["prior_lists"]]){
+      if(!is.null(context[["formula_scale"]]) &&
+         length(context[["formula_scale"]]) > 0L){
+        component_context <- .prior_density_context(
+          prior_list    = prior_list,
+          column_names  = context[["column_names"]],
+          formula_scale = context[["formula_scale"]],
+          n_grid        = context[["n_grid"]],
+          tail_prob     = context[["tail_prob"]]
+        )
+        standardized_weights <- .prior_density_context_standardized_weights(
+          context = component_context,
+          weights  = weights
+        )
+        .prior_linear_weight_groups(prior_list, standardized_weights)
+      }else{
+        .prior_linear_weight_groups(prior_list, weights)
+      }
+    }
+    return(invisible(TRUE))
+  }
+
+  stop("Unknown prior density context.", call. = FALSE)
+}
+
+
+.hypothesis_nonzero_weight_columns <- function(weights) {
+
+  if(is.null(names(weights))){
+    return(character())
+  }
+
+  names(weights)[is.finite(weights) &
+                   abs(weights) > .prior_linear_density_zero_tol()]
+}
+
+
+.hypothesis_check_weight_columns_available <- function(nonzero_columns, context) {
+
+  missing <- setdiff(nonzero_columns, context[["column_names"]])
+  if(length(missing) > 0L){
+    stop("Linear prior weights reference columns not available in the joint ",
+         "prior context: ", paste(missing, collapse = ", "), ".",
+         call. = FALSE)
+  }
+
+  invisible(TRUE)
 }
 
 
@@ -1547,7 +1681,8 @@ hypothesis_normalize_level_references <- function(text){
     posterior_marginal_index = index,
     posterior_marginal_indices = NULL,
     prior_densities    = NULL,
-    prior_density      = attr(posterior, "prior_density", exact = TRUE)
+    prior_density      = attr(posterior, "prior_density", exact = TRUE),
+    prior_object       = NULL
   )
   class(out) <- "BayesTools_hypothesis_quantity"
 
@@ -1779,6 +1914,17 @@ hypothesis_normalize_level_references <- function(text){
   .hypothesis_check_prior_mass(prior_left, left[["label"]])
   .hypothesis_check_prior_mass(prior_right, right[["label"]])
 
+  if(posterior_left == 0 && posterior_right == 0){
+    return(list(
+      BF        = NA_real_,
+      prior     = prior_left / prior_right,
+      posterior = NA_real_,
+      method    = "prior-posterior odds",
+      BF_error  = NA_real_,
+      warning   = "Both posterior region masses are zero; region-odds BF is undefined."
+    ))
+  }
+
   BF       <- (posterior_left / posterior_right) / (prior_left / prior_right)
   BF_error <- .hypothesis_region_odds_BF_error_percent(quantity, left, right)
   warning  <- NULL
@@ -1915,6 +2061,10 @@ hypothesis_normalize_level_references <- function(text){
 }
 
 
+# NOTE: These MC variances intentionally use the iid delta-method
+# approximation because hypothesis_BF() currently receives flattened draws.
+# Revisit after the draw backend moves to posterior objects so chain/iteration
+# metadata can support autocorrelation-aware SEs for the derived indicators.
 .hypothesis_log_odds_indicator_mc_var <- function(left, right) {
 
   n <- length(left)
@@ -2073,6 +2223,13 @@ hypothesis_normalize_level_references <- function(text){
 
 .hypothesis_region_mass <- function(quantity, side, prior) {
 
+  if(prior){
+    prior_object_mass <- .hypothesis_prior_object_region_mass(quantity, side)
+    if(!is.null(prior_object_mass)){
+      return(prior_object_mass)
+    }
+  }
+
   if(prior && is.null(quantity[["prior_draws"]])){
     if(is.null(quantity[["prior_density"]])){
       stop("Prior information is required for region hypotheses.",
@@ -2096,6 +2253,88 @@ hypothesis_normalize_level_references <- function(text){
   }
 
   return(mass)
+}
+
+
+.hypothesis_prior_object_region_mass <- function(quantity, side) {
+
+  prior_object <- quantity[["prior_object"]]
+  if(is.null(prior_object) || !is.prior.simple(prior_object) ||
+     is.prior.point(prior_object) || is.prior.discrete(prior_object) ||
+     !isTRUE(side[["simple"]])){
+    return(NULL)
+  }
+
+  comparison <- .hypothesis_simple_parameter_comparison(
+    side      = side,
+    parameter = quantity[["parameter"]]
+  )
+  if(is.null(comparison)){
+    return(NULL)
+  }
+
+  mass <- tryCatch(
+    switch(
+      comparison[["operator"]],
+      "<"  = cdf(prior_object, comparison[["value"]]),
+      "<=" = cdf(prior_object, comparison[["value"]]),
+      ">"  = ccdf(prior_object, comparison[["value"]]),
+      ">=" = ccdf(prior_object, comparison[["value"]])
+    ),
+    error = function(e) NULL
+  )
+  if(is.null(mass) || length(mass) != 1L || !is.finite(mass)){
+    return(NULL)
+  }
+
+  mass <- max(0, min(1, as.numeric(mass)))
+  if(!is.null(side[["complement"]]) && isTRUE(side[["complement"]])){
+    mass <- 1 - mass
+  }
+
+  mass
+}
+
+
+.hypothesis_simple_parameter_comparison <- function(side, parameter) {
+
+  if(is.null(parameter) || is.null(side[["condition"]])){
+    return(NULL)
+  }
+
+  expr <- .hypothesis_parse_expression(side[["condition"]])
+  if(!is.call(expr)){
+    return(NULL)
+  }
+  op <- as.character(expr[[1L]])
+  if(!op %in% c("<", "<=", ">", ">=")){
+    return(NULL)
+  }
+
+  lhs <- expr[[2L]]
+  rhs <- expr[[3L]]
+  lhs_symbols <- .hypothesis_expression_symbols(lhs)
+  rhs_symbols <- .hypothesis_expression_symbols(rhs)
+
+  if(length(lhs_symbols) == 1L && identical(lhs_symbols, parameter) &&
+     length(rhs_symbols) == 0L && is.name(lhs)){
+    return(list(
+      operator = op,
+      value    = .hypothesis_parse_number(paste(deparse(rhs, width.cutoff = 500L),
+                                                collapse = ""))
+    ))
+  }
+
+  if(length(rhs_symbols) == 1L && identical(rhs_symbols, parameter) &&
+     length(lhs_symbols) == 0L && is.name(rhs)){
+    return(list(
+      operator = switch(op, "<" = ">", "<=" = ">=", ">" = "<", ">=" = "<="),
+      value    = .hypothesis_parse_number(paste(deparse(lhs, width.cutoff = 500L),
+                                                collapse = ""))
+    ))
+  }
+
+  NULL
 }
 
 
@@ -2179,7 +2418,7 @@ hypothesis_normalize_level_references <- function(text){
          paste(missing, collapse = "', '"), "'.", call. = FALSE)
   }
 
-  env <- list2env(as.list(draws), parent = baseenv())
+  env <- list2env(as.list(draws), parent = .hypothesis_eval_parent())
   values <- eval(expr, envir = env)
   check_real(values, "hypothesis expression", check_length = 0,
              allow_NA = FALSE)
@@ -2203,7 +2442,7 @@ hypothesis_normalize_level_references <- function(text){
          paste(missing, collapse = "', '"), "'.", call. = FALSE)
   }
 
-  env <- list2env(as.list(draws), parent = baseenv())
+  env <- list2env(as.list(draws), parent = .hypothesis_eval_parent())
   values <- eval(expr, envir = env)
   if(!is.logical(values)){
     stop("Region hypothesis must evaluate to logical values.", call. = FALSE)
@@ -2229,6 +2468,7 @@ hypothesis_normalize_level_references <- function(text){
     stop("Cannot estimate ", label, " density from degenerate samples.",
          call. = FALSE)
   }
+  .hypothesis_warn_point_draw_cluster(samples, value, label)
 
   if(value < min(samples) || value > max(samples)){
     if(label == "prior"){
@@ -2255,8 +2495,36 @@ hypothesis_normalize_level_references <- function(text){
 }
 
 
+.hypothesis_warn_point_draw_cluster <- function(samples, value, label,
+                                               threshold = 0.01) {
+
+  point_matches <- samples == value
+  point_matches[is.na(point_matches)] <- FALSE
+  point_share <- mean(point_matches)
+  if(is.finite(point_share) && point_share > threshold){
+    warning(
+      "More than 1% of ", label,
+      " draws exactly match the point hypothesis value. Raw-draw ",
+      "point-null Bayes factors use continuous-density approximations and ",
+      "may be unreliable for spike-and-slab or other point-mass draws.",
+      call. = FALSE
+    )
+  }
+
+  invisible(point_share)
+}
+
+
 .hypothesis_draw_density_height <- function(samples, value, label,
                                             density_method) {
+
+  if(identical(density_method, "precomputed")){
+    stop(
+      "'density_method = \"precomputed\"' requires valid posterior density ",
+      "metadata and cannot be used with raw draws or compound expressions.",
+      call. = FALSE
+    )
+  }
 
   if(identical(density_method, "normal")){
     return(.hypothesis_normal_density_height(samples, value, label))
@@ -2273,6 +2541,7 @@ hypothesis_normalize_level_references <- function(text){
     stop("Cannot estimate ", label, " normal density from degenerate samples.",
          call. = FALSE)
   }
+  .hypothesis_warn_point_draw_cluster(samples, value, label)
 
   height <- stats::dnorm(value, mean = mean(samples), sd = sample_sd)
   if(!is.finite(height) || height < 0){
@@ -2288,6 +2557,13 @@ hypothesis_normalize_level_references <- function(text){
 
   if(is.null(prior_density)){
     stop("Prior density is required for point hypotheses.", call. = FALSE)
+  }
+
+  if(.prior_linear_density_point_mass(prior_density, value) > 0){
+    stop(
+      "There is a point mass in the prior at the exact null hypothesis value. The Savage-Dickey density ratio is invalid.",
+      call. = FALSE
+    )
   }
 
   .prior_linear_density_height(prior_density, value)

@@ -33,8 +33,8 @@ geom_prior(
 automatically obtaining \code{x_range}
 if both \code{x_range} and \code{x_seq}
 are unspecified. Defaults to \code{0.005}
-for all but Cauchy, Student-t, Gamma, and
-Inverse-gamme distributions that use
+for all but Cauchy, Student-t, Gamma, inverse-gamma,
+moment, and inverse-moment distributions that use
 \code{0.010}.}
 
 \item{n_points}{number of equally spaced points

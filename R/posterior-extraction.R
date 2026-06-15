@@ -152,6 +152,67 @@ NULL
 }
 
 
+.materialize_missing_point_prior_samples <- function(model_samples, prior_list) {
+
+  if(is.null(prior_list) || length(prior_list) == 0L || nrow(model_samples) == 0L){
+    return(model_samples)
+  }
+
+  for(parameter in names(prior_list)){
+    prior <- prior_list[[parameter]]
+    if(!is.prior.point(prior)){
+      next
+    }
+    point_samples <- .point_prior_sample_matrix(
+      prior = prior,
+      parameter = parameter,
+      n_samples = nrow(model_samples)
+    )
+    missing <- !colnames(point_samples) %in% colnames(model_samples)
+    if(any(missing)){
+      model_samples <- cbind(
+        model_samples,
+        point_samples[, missing, drop = FALSE]
+      )
+    }
+  }
+
+  model_samples
+}
+
+.point_prior_sample_matrix <- function(prior, parameter, n_samples){
+
+  if(is.prior.factor(prior)){
+    return(.generate_factor_prior_sample_matrix(
+      prior = prior,
+      parameter = parameter,
+      n_samples = n_samples
+    ))
+  }
+
+  if(is.prior.vector(prior)){
+    parameter_names <- .JAGS_prior_factor_names(parameter, prior)
+    values <- rep(prior[["parameters"]][["location"]],
+                  length.out = length(parameter_names))
+    samples <- matrix(
+      rep(values, each = n_samples),
+      nrow = n_samples,
+      ncol = length(parameter_names)
+    )
+    colnames(samples) <- parameter_names
+    return(samples)
+  }
+
+  samples <- matrix(
+    prior[["parameters"]][["location"]],
+    nrow = n_samples,
+    ncol = 1L
+  )
+  colnames(samples) <- parameter
+  samples
+}
+
+
 #' @rdname posterior_extraction_helpers
 #' @description Helper to remove all columns associated with a parameter
 #' @param model_samples matrix of posterior samples
@@ -293,7 +354,8 @@ NULL
   # handle remove_spike_0
   if (remove_spike_0) {
     spike_0_params <- names(prior_list)[sapply(seq_along(prior_list), function(i) {
-      is.prior.point(prior_list[[i]]) && prior_list[[i]][["parameters"]][["location"]] == 0
+      is.prior.point(prior_list[[i]]) &&
+        isTRUE(all(prior_list[[i]][["parameters"]][["location"]] == 0))
     })]
     params_to_remove <- c(params_to_remove, spike_0_params)
   }
@@ -594,12 +656,11 @@ NULL
     }
   }
 
-  fallback_names <- paste0(parameter, "[", unlist(level_names, use.names = FALSE), "]")
-  if (!is.null(n_parameters) && length(fallback_names) != n_parameters) {
-    return(paste0(parameter, "[", seq_len(n_parameters), "]"))
-  }
-
-  return(fallback_names)
+  stop(
+    "Factor level names cannot be formatted for parameter '", parameter,
+    "' because the factor metadata do not match the parameter terms.",
+    call. = FALSE
+  )
 }
 
 

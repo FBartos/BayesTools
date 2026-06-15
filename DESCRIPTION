@@ -23,7 +23,7 @@ RoxygenNote: 7.3.3
 SystemRequirements: JAGS >= 4.3.0 (https://mcmc-jags.sourceforge.io/)
 NeedsCompilation: yes
 Depends:
-    R (>= 4.1.0),
+    R (>= 4.3.0),
     stats
 Imports:
     graphics,
@@ -36,7 +36,7 @@ Imports:
     ggplot2,
     Rdpack,
     rlang,
-    reformulas
+    reformulas (>= 0.2.0)
 Suggests: 
     scales,
     testthat (>= 3.3.0),

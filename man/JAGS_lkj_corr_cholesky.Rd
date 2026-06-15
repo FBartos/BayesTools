@@ -9,8 +9,7 @@ JAGS_lkj_corr_cholesky(
   K,
   eta = 1,
   include_correlation = TRUE,
-  include_primitives = FALSE,
-  backend = c("module", "syntax")
+  include_primitives = FALSE
 )
 }
 \arguments{
@@ -25,10 +24,6 @@ deterministic correlation matrix \code{name_R}.}
 
 \item{include_primitives}{logical scalar. Whether primitive beta/CPC nodes
 should be included in the returned monitor vector.}
-
-\item{backend}{character scalar. Backend used for generated JAGS syntax.
-\code{"module"} uses the package-shipped compiled JAGS module, and \code{"syntax"}
-emits a pure-JAGS fallback.}
 }
 \value{
 A list with JAGS syntax, monitor names, primitive bridge coordinate
@@ -36,8 +31,6 @@ names and bounds, and metadata for the generated LKJ-Cholesky block.
 }
 \description{
 Creates JAGS syntax for a Cholesky factor of a correlation matrix with the
-same target distribution as Stan's \code{lkj_corr_cholesky(eta)}. The default
-backend uses the BayesTools compiled JAGS module. The syntax backend keeps a
-pure-JAGS fallback that samples canonical partial correlations through
-independent beta nodes and deterministically builds the lower Cholesky factor.
+same target distribution as Stan's \code{lkj_corr_cholesky(eta)}, using the
+BayesTools compiled JAGS module.
 }

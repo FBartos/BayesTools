@@ -940,7 +940,7 @@ nested_allocation_priors <- list(
       name = "nested_re",
       terms = c(batch = "batch", cask = "cask_batch"),
       sd = unit_sd_prior,
-      allocation = prior("dirichlet", parameters = list(alpha = c(1, 1)))
+      weights = prior("dirichlet", parameters = list(alpha = c(1, 1)))
     )
   )
 )
@@ -1073,7 +1073,7 @@ crossed_allocation_priors <- list(
     monitor = random_monitor(latent = FALSE),
     allocation = random_variance_allocation(
       name = "total_re", terms = c(plate = "plate", sample = "sample"),
-      sd = unit_sd_prior, allocation = prior("dirichlet", parameters = list(alpha = c(1, 1)))
+      sd = unit_sd_prior, weights = prior("dirichlet", parameters = list(alpha = c(1, 1)))
     )
   )
 )

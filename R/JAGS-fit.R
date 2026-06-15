@@ -353,6 +353,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     jags_modules <- unique(c(jags_modules, "BayesTools"))
     required_packages <- unique(c(required_packages, "BayesTools"))
   }
+  prior_list <- .complete_factor_metadata_prior_list(prior_list)
 
   ### create the model call
   model_call <- list(
@@ -522,6 +523,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   add_parameters    <- attr(fit, "add_parameters")
   formula_scale     <- attr(fit, "formula_scale")
   formula_design    <- attr(fit, "formula_design")
+  prior_list        <- .complete_factor_metadata_prior_list(prior_list)
   if(is.null(add_parameters)){
     add_parameters <- character()
   }
@@ -1510,11 +1512,13 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 
 
     if(prior[["distribution"]] == "dirichlet"){
-      init[[.JAGS_prior_dirichlet_eta_name(parameter_name)]] <- stats::rgamma(
+      eta_init <- stats::rgamma(
         prior$parameters[["K"]],
         shape = prior$parameters[["alpha"]],
         rate = 1
       )
+      eta_init[!is.finite(eta_init) | eta_init <= 0] <- .Machine$double.xmin
+      init[[.JAGS_prior_dirichlet_eta_name(parameter_name)]] <- eta_init
     }else if(prior[["distribution"]] == "mt"){
       init[[paste0("prior_par_s_", parameter_name)]] <- rng(prior("gamma", list(shape = prior$parameters[["df"]]/2, rate = prior$parameters[["df"]]/2)), 1)
       init[[paste0("prior_par_z_", parameter_name)]] <- rng(prior("mnormal", list(mean = 0, sd = prior$parameters[["scale"]], K = prior$parameters[["K"]])), 1)[1,]

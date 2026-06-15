@@ -13,9 +13,12 @@ JAGS_marglik_priors_formula(samples, formula_prior_list)
 \item{samples}{samples provided by bridgesampling
 function}
 
-\item{prior_list}{named list of prior distribution
+\item{prior_list}{named list of prior distributions
 (names correspond to the parameter names) of parameters not specified within the
-\code{formula_list}}
+\code{formula_list}. For \code{BayesTools_fit} objects, stored non-formula
+priors are used when \code{prior_list = NULL}; if fitted formula priors are
+supplied here, they are ignored with a warning in favor of the stored formula
+metadata.}
 
 \item{formula_prior_list}{named list of named lists of prior distributions
 (names of the lists correspond to the parameter name created by each of the formula and

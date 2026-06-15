@@ -117,6 +117,7 @@ test_that("model-fit cache marker hashes only fit-generation sources", {
   expect_true("package_R_JAGS-formula-random" %in% names(source_files))
   expect_true("package_R_JAGS-lkj-cholesky" %in% names(source_files))
   expect_true("package_R_JAGS-marglik" %in% names(source_files))
+  expect_true("package_R_parameter-source" %in% names(source_files))
   expect_true("package_R_random-effects-metadata" %in% names(source_files))
   expect_true("package_R_random-effects-reconstruction" %in% names(source_files))
   expect_true("package_R_random-priors" %in% names(source_files))

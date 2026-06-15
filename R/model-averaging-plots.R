@@ -2266,7 +2266,9 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
 #' \code{"KDE"} computes a kernel density estimate. Plot methods with exact
 #' finite prior-support bounds apply boundary reflection.
 #' \code{"precomputed"} uses a valid \code{posterior_density} attribute when
-#' present and falls back to KDE otherwise.
+#' present and falls back to KDE otherwise. A precomputed density is treated as
+#' authoritative for atomic mass layers: atoms are drawn only from explicit
+#' \code{point_masses} metadata.
 #' @param ... additional arguments
 #' @inheritParams density.prior
 #' @inheritParams plot.prior
@@ -2279,7 +2281,9 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
 #'
 #' Posterior sample vectors may carry a \code{posterior_density} attribute
 #' with \code{x} and \code{y} coordinates. These densities are used only when
-#' \code{density_method = "precomputed"}.
+#' \code{density_method = "precomputed"}. If a stored density is used and
+#' sample-derived point masses are available, the plot layer uses only explicit
+#' \code{point_masses} from the stored density and warns when none are declared.
 #'
 #' @return \code{plot_posterior} returns either \code{NULL} or
 #' an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
@@ -2988,6 +2992,56 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
   list(x = x_den, y = y_den)
 }
+
+.plot_data_warn_missing_stored_point_masses <- function(){
+
+  warning(
+    "Stored posterior density does not declare 'point_masses'; sample-derived point masses are not added. Provide explicit 'point_masses' when atomic posterior mass should be shown.",
+    call. = FALSE
+  )
+}
+
+.plot_data_stored_point_masses <- function(posterior_density, transformation = NULL,
+                                           transformation_arguments = NULL){
+
+  point_masses <- posterior_density[["point_masses"]]
+  x_points <- point_masses[["x"]]
+  y_points <- point_masses[["mass"]]
+  if(length(y_points) == 0L){
+    return(list(x = NULL, y = NULL))
+  }
+  if(!is.null(transformation)){
+    x_points <- .density.prior_transformation_x(
+      x_points,
+      transformation,
+      transformation_arguments
+    )
+  }
+
+  list(x = x_points, y = y_points)
+}
+
+.plot_data_factor_sample_points_for_levels <- function(sample_point_data, levels,
+                                                       level_names){
+
+  out <- list()
+  if(length(sample_point_data) == 0L || length(levels) == 0L){
+    return(out)
+  }
+
+  for(level in levels){
+    for(point_i in seq_along(sample_point_data)){
+      point_data <- sample_point_data[[point_i]]
+      attr(point_data, "level") <- level
+      if(length(level_names) >= level){
+        attr(point_data, "level_name") <- level_names[[level]]
+      }
+      out[[paste0("points", level, "_", point_i)]] <- point_data
+    }
+  }
+
+  out
+}
 .plot_data_samples.simple         <- function(samples, parameter, n_points, transformation, transformation_arguments, transformation_settings,
                                              density_method = c("KDE", "precomputed")){
 
@@ -3034,12 +3088,19 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
     if(!is.null(posterior_density)){
 
-      if(nrow(posterior_density[["point_masses"]]) > 0L){
-        x_points <- posterior_density[["point_masses"]][["x"]]
-        y_points <- posterior_density[["point_masses"]][["mass"]]
-        if(!is.null(transformation)){
-          x_points <- .density.prior_transformation_x(x_points, transformation, transformation_arguments)
-        }
+      sample_points_available <- !is.null(y_points)
+      x_points <- NULL
+      y_points <- NULL
+      if(.posterior_density_point_masses_declared(posterior_density)){
+        stored_points <- .plot_data_stored_point_masses(
+          posterior_density,
+          transformation,
+          transformation_arguments
+        )
+        x_points <- stored_points[["x"]]
+        y_points <- stored_points[["y"]]
+      }else if(sample_points_available){
+        .plot_data_warn_missing_stored_point_masses()
       }
 
       x_den <- posterior_density[["x"]]
@@ -3609,7 +3670,8 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   x_den    <- NULL
   y_den    <- NULL
   sample_point_data <- list()
-  stored_point_masses <- FALSE
+  sample_points_suppressed_by_level <- logical()
+  missing_stored_point_masses_warning <- FALSE
 
   # transform & extract the relevant data
   prior_list <- attr(samples[[parameter]], "prior_list")
@@ -3673,6 +3735,7 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
   if(any(!sapply(prior_list, is.prior.point))){
 
     samples_density <- samples[attr(samples, "models_ind") %in% which(!sapply(prior_list, is.prior.point)),,drop=FALSE]
+    sample_points_suppressed_by_level <- rep(FALSE, ncol(samples_density))
 
     if(nrow(samples_density) > 0){
       for(i in 1:ncol(samples_density)){
@@ -3697,13 +3760,15 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
 
         if(!is.null(posterior_density)){
 
-          if(nrow(posterior_density[["point_masses"]]) > 0L){
-            stored_point_masses <- TRUE
-            x_points_i <- posterior_density[["point_masses"]][["x"]]
-            y_points_i <- posterior_density[["point_masses"]][["mass"]]
-            if(!is.null(transformation)){
-              x_points_i <- .density.prior_transformation_x(x_points_i, transformation, transformation_arguments)
-            }
+          if(.posterior_density_point_masses_declared(posterior_density)){
+            sample_points_suppressed_by_level[i] <- TRUE
+            stored_points <- .plot_data_stored_point_masses(
+              posterior_density,
+              transformation,
+              transformation_arguments
+            )
+            x_points_i <- stored_points[["x"]]
+            y_points_i <- stored_points[["y"]]
             for(point_i in seq_along(y_points_i)){
               temp_points <- list(
                 call    = call("density", paste0("point", point_i)),
@@ -3721,6 +3786,12 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
               attr(temp_points, "level_name") <- colnames(samples_density)[i]
 
               out[[paste0("density", i, "_points", point_i)]] <- temp_points
+            }
+          }else if(length(sample_point_data) > 0L){
+            sample_points_suppressed_by_level[i] <- TRUE
+            if(!missing_stored_point_masses_warning){
+              .plot_data_warn_missing_stored_point_masses()
+              missing_stored_point_masses_warning <- TRUE
             }
           }
 
@@ -3804,8 +3875,20 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
     }
   }
 
-  if(!stored_point_masses && length(sample_point_data) > 0L){
-    out <- c(sample_point_data, out)
+  if(length(sample_point_data) > 0L){
+    if(length(sample_points_suppressed_by_level) == 0L ||
+       !any(sample_points_suppressed_by_level)){
+      out <- c(sample_point_data, out)
+    }else{
+      out <- c(
+        .plot_data_factor_sample_points_for_levels(
+          sample_point_data,
+          which(!sample_points_suppressed_by_level),
+          colnames(samples_density)
+        ),
+        out
+      )
+    }
   }
 
 
@@ -4417,7 +4500,12 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
 #' attribute with \code{x} and \code{y} coordinates. These densities are used
 #' only when \code{density_method = "precomputed"}. Marginal KDE fallbacks use
 #' a standard KDE because marginal prior-density grids are numerical density
-#' ranges rather than true support metadata.
+#' ranges rather than true support metadata; this can intentionally differ from
+#' the support-reflected ordinate used by \code{\link{Savage_Dickey_BF}} when
+#' exact posterior-support metadata is available. If a stored density is used
+#' and sample-derived point masses are available, the plot layer uses only
+#' explicit \code{point_masses} from the stored density and warns when none are
+#' declared.
 #'
 #' @seealso [prior()] [marginal_inference()]  [plot_posterior()]
 #' @export
@@ -4621,9 +4709,17 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
 
   # get the density estimate
   if(!is.null(posterior_density)){
-    if(nrow(posterior_density[["point_masses"]]) > 0L){
-      x_points <- posterior_density[["point_masses"]][["x"]]
-      y_points <- posterior_density[["point_masses"]][["mass"]]
+    sample_points_available <- !is.null(y_points)
+    x_points <- NULL
+    y_points <- NULL
+    if(.posterior_density_point_masses_declared(posterior_density)){
+      stored_points <- .plot_data_stored_point_masses(
+        posterior_density
+      )
+      x_points <- stored_points[["x"]]
+      y_points <- stored_points[["y"]]
+    }else if(sample_points_available){
+      .plot_data_warn_missing_stored_point_masses()
     }
 
     x_den <- posterior_density[["x"]]

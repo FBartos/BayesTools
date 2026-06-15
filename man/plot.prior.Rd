@@ -37,8 +37,8 @@ or ggplot2 \code{"ggplot"} for plotting.}
 automatically obtaining \code{x_range}
 if both \code{x_range} and \code{x_seq}
 are unspecified. Defaults to \code{0.005}
-for all but Cauchy, Student-t, Gamma, and
-Inverse-gamme distributions that use
+for all but Cauchy, Student-t, Gamma, inverse-gamma,
+moment, and inverse-moment distributions that use
 \code{0.010}.}
 
 \item{n_points}{number of equally spaced points
@@ -90,6 +90,8 @@ parameter that needs to be transformed.}
 \value{
 \code{plot.prior} returns either \code{NULL} or
 an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
+Dirichlet simplex priors are plotted as one beta marginal per coordinate;
+the ggplot method returns a list unless a single figure is selected.
 }
 \description{
 Plots a prior object

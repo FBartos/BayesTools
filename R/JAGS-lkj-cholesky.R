@@ -2,10 +2,8 @@
 #'
 #' @description
 #' Creates JAGS syntax for a Cholesky factor of a correlation matrix with the
-#' same target distribution as Stan's `lkj_corr_cholesky(eta)`. The default
-#' backend uses the BayesTools compiled JAGS module. The syntax backend keeps a
-#' pure-JAGS fallback that samples canonical partial correlations through
-#' independent beta nodes and deterministically builds the lower Cholesky factor.
+#' same target distribution as Stan's `lkj_corr_cholesky(eta)`, using the
+#' BayesTools compiled JAGS module.
 #'
 #' @param name character scalar. Prefix used for generated JAGS nodes.
 #' @param K integer scalar. Dimension of the correlation matrix.
@@ -14,9 +12,6 @@
 #'   deterministic correlation matrix `name_R`.
 #' @param include_primitives logical scalar. Whether primitive beta/CPC nodes
 #'   should be included in the returned monitor vector.
-#' @param backend character scalar. Backend used for generated JAGS syntax.
-#'   `"module"` uses the package-shipped compiled JAGS module, and `"syntax"`
-#'   emits a pure-JAGS fallback.
 #'
 #' @return A list with JAGS syntax, monitor names, primitive bridge coordinate
 #'   names and bounds, and metadata for the generated LKJ-Cholesky block.
@@ -24,142 +19,17 @@
 #' @export
 JAGS_lkj_corr_cholesky <- function(name, K, eta = 1,
                                    include_correlation = TRUE,
-                                   include_primitives = FALSE,
-                                   backend = c("module", "syntax")){
+                                   include_primitives = FALSE){
 
-  backend <- match.arg(backend)
-  .bt_check_lkj_cholesky_module_inputs(name, K, eta, include_correlation, include_primitives, backend)
+  .bt_check_lkj_cholesky_module_inputs(name, K, eta, include_correlation, include_primitives)
 
-  if(backend == "module"){
-    return(.bt_JAGS_lkj_corr_cholesky_module(
-      name = name,
-      K = K,
-      eta = eta,
-      include_correlation = include_correlation,
-      include_primitives = include_primitives
-    ))
-  }
-
-  .bt_JAGS_lkj_corr_cholesky_syntax(
+  .bt_JAGS_lkj_corr_cholesky_module(
     name = name,
     K = K,
     eta = eta,
     include_correlation = include_correlation,
     include_primitives = include_primitives
   )
-}
-
-.bt_JAGS_lkj_corr_cholesky_syntax <- function(name, K, eta,
-                                              include_correlation,
-                                              include_primitives){
-
-  pairs <- .bt_lkj_cholesky_cpc_pairs(K = K, eta = eta)
-  n_pairs <- nrow(pairs)
-  pair_index <- matrix(NA_integer_, K, K)
-  if(n_pairs > 0L){
-    for(p in seq_len(n_pairs)){
-      pair_index[pairs$i[p], pairs$j[p]] <- pairs$index[p]
-    }
-  }
-
-  L_name <- paste0(name, "_L")
-  R_name <- paste0(name, "_R")
-  u_name <- paste0(name, "_lkj_u")
-  cpc_name <- paste0(name, "_lkj_cpc")
-
-  syntax <- c(paste0("# LKJ-Cholesky correlation module: ", name))
-
-  if(n_pairs > 0L){
-    for(p in seq_len(n_pairs)){
-      alpha <- .bt_jags_number(pairs$alpha[p])
-      syntax <- c(
-        syntax,
-        paste0(u_name, "[", p, "] ~ dbeta(", alpha, ", ", alpha, ")"),
-        paste0(cpc_name, "[", p, "] <- 2 * ", u_name, "[", p, "] - 1")
-      )
-    }
-  }
-
-  for(row in seq_len(K)){
-    for(column in seq_len(K)){
-      target <- paste0(L_name, "[", row, ",", column, "]")
-      if(column > row){
-        syntax <- c(syntax, paste0(target, " <- 0"))
-      }else if(row == 1L && column == 1L){
-        syntax <- c(syntax, paste0(target, " <- 1"))
-      }else if(column < row){
-        syntax <- c(
-          syntax,
-          paste0(target, " <- ", .bt_lkj_cholesky_entry_expr(cpc_name, pair_index, row, column))
-        )
-      }else{
-        syntax <- c(
-          syntax,
-          paste0(target, " <- ", .bt_lkj_cholesky_diag_expr(cpc_name, pair_index, row))
-        )
-      }
-    }
-  }
-
-  if(include_correlation){
-    for(row in seq_len(K)){
-      for(column in seq_len(row)){
-        target <- paste0(R_name, "[", row, ",", column, "]")
-        syntax <- c(
-          syntax,
-          paste0(target, " <- inprod(", L_name, "[", row, ",1:", K, "], ", L_name, "[", column, ",1:", K, "])")
-        )
-        if(column != row){
-          syntax <- c(
-            syntax,
-            paste0(R_name, "[", column, ",", row, "] <- ", target)
-          )
-        }
-      }
-    }
-  }
-
-  primitive_names <- character(0)
-  cpc_names <- character(0)
-  primitive_lb <- numeric(0)
-  primitive_ub <- numeric(0)
-  if(n_pairs > 0L){
-    primitive_names <- paste0(u_name, "[", seq_len(n_pairs), "]")
-    cpc_names <- paste0(cpc_name, "[", seq_len(n_pairs), "]")
-    primitive_lb <- stats::setNames(rep(0, n_pairs), primitive_names)
-    primitive_ub <- stats::setNames(rep(1, n_pairs), primitive_names)
-  }
-
-  monitor <- L_name
-  if(include_correlation){
-    monitor <- c(monitor, R_name)
-  }
-  if(include_primitives && n_pairs > 0L){
-    monitor <- c(monitor, primitive_names, cpc_names)
-  }
-
-  out <- list(
-    syntax = paste0(paste(syntax, collapse = "\n"), "\n"),
-    monitor = monitor,
-    name = name,
-    K = K,
-    eta = eta,
-    cholesky_name = L_name,
-    correlation_name = if(include_correlation) R_name else NULL,
-    primitive_name = u_name,
-    cpc_name = cpc_name,
-    primitive_names = primitive_names,
-    cpc_names = cpc_names,
-    primitive_bounds = list(lb = primitive_lb, ub = primitive_ub),
-    pairs = pairs,
-    backend = "syntax",
-    jags_module = NULL,
-    required_packages = NULL,
-    data = list()
-  )
-
-  class(out) <- c("BayesTools_JAGS_lkj_corr_cholesky", "list")
-  out
 }
 
 .bt_JAGS_lkj_corr_cholesky_module <- function(name, K, eta,
@@ -275,10 +145,8 @@ JAGS_lkj_corr_cholesky <- function(name, K, eta = 1,
 
 .bt_check_lkj_cholesky_module_inputs <- function(name, K, eta,
                                                  include_correlation,
-                                                 include_primitives,
-                                                 backend = c("module", "syntax")){
+                                                 include_primitives){
 
-  backend <- match.arg(backend)
   check_char(name, "name", allow_NA = FALSE)
   if(!grepl("^[A-Za-z][A-Za-z0-9_]*$", name)){
     stop("'name' must be a valid JAGS node prefix using letters, digits, and underscores.", call. = FALSE)
@@ -290,7 +158,6 @@ JAGS_lkj_corr_cholesky <- function(name, K, eta = 1,
   }
   check_bool(include_correlation, "include_correlation", allow_NA = FALSE)
   check_bool(include_primitives, "include_primitives", allow_NA = FALSE)
-  check_char(backend, "backend", allow_values = c("module", "syntax"), allow_NA = FALSE)
 
   invisible(TRUE)
 }
@@ -515,34 +382,6 @@ JAGS_lkj_corr_cholesky <- function(name, K, eta = 1,
   }
 
   alpha
-}
-
-.bt_lkj_cholesky_entry_expr <- function(cpc_name, pair_index, row, column){
-
-  factors <- character(0)
-  if(column > 1L){
-    for(m in 1:(column - 1L)){
-      factors <- c(factors, .bt_lkj_cholesky_sqrt_expr(cpc_name, pair_index[m, row]))
-    }
-  }
-  factors <- c(paste0(cpc_name, "[", pair_index[column, row], "]"), factors)
-  paste(factors, collapse = " * ")
-}
-
-.bt_lkj_cholesky_diag_expr <- function(cpc_name, pair_index, row){
-
-  if(row == 1L){
-    return("1")
-  }
-  factors <- character(0)
-  for(m in 1:(row - 1L)){
-    factors <- c(factors, .bt_lkj_cholesky_sqrt_expr(cpc_name, pair_index[m, row]))
-  }
-  paste(factors, collapse = " * ")
-}
-
-.bt_lkj_cholesky_sqrt_expr <- function(cpc_name, index){
-  paste0("sqrt(1 - pow(", cpc_name, "[", index, "], 2))")
 }
 
 .bt_jags_number <- function(x){

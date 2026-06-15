@@ -47,6 +47,10 @@ test_that("moment prior constructor stores canonical parameters", {
   p_positional_alias <- prior("pmom", list(.125))
   expect_equal(p_positional_alias$parameters$mode, .125)
   expect_equal(p_positional_alias$parameters$tau, .125^2 / 2)
+
+  p_near_order <- prior("moment", list(mode = .5, order = 2 - 1e-9))
+  expect_equal(p_near_order$parameters$order, 2L)
+  expect_equal(p_near_order$parameters$tau, .5^2 / 4)
 })
 
 test_that("inverse-moment prior constructor stores canonical parameters", {
@@ -70,6 +74,10 @@ test_that("inverse-moment prior constructor stores canonical parameters", {
 
   p_tau_default_order_location <- prior("pimom", list(tau = .5, nu = 3))
   expect_equal(p_tau_default_order_location$parameters, p_default_order_location$parameters)
+
+  p_near_order <- prior("invmoment", list(mode = .5, order = 2 - 1e-9, df = 3))
+  expect_equal(p_near_order$parameters$order, 2L)
+  expect_equal(p_near_order$parameters$tau, .25)
 })
 
 test_that("nonlocal priors reject invalid parameterizations", {
@@ -80,6 +88,13 @@ test_that("nonlocal priors reject invalid parameterizations", {
   expect_error(prior("moment", list(mode = .5, order = 1.5)), "order")
   expect_error(prior("moment", list(mode = .5, location = Inf)), "location")
   expect_error(prior("moment", list(m = .5)), "not supported")
+  expect_error(prior("moment", list(mode = .Machine$double.xmin)), "mode")
+  expect_error(prior("moment", list(mode = .Machine$double.xmax)), "mode")
+  expect_error(prior("moment", list(tau = .Machine$double.xmax)), "tau")
+  expect_error(
+    prior("moment", list(mode = .5, order = .Machine$integer.max + 1)),
+    "order"
+  )
 
   expect_error(prior("invmoment", list(mode = .5)), "df")
   expect_error(prior("invmoment", list(mode = .5, order = 1)), "df")
@@ -88,6 +103,12 @@ test_that("nonlocal priors reject invalid parameterizations", {
   expect_error(prior("invmoment", list(tau = 0, df = 3)), "tau")
   expect_error(prior("invmoment", list(mode = .5, df = 3, nu = 3)), "only one")
   expect_error(prior("invmoment", list(mode = .5, d = 3)), "not supported")
+  expect_error(prior("invmoment", list(mode = .Machine$double.xmin, df = 3)), "mode")
+  expect_error(prior("invmoment", list(mode = .Machine$double.xmax, df = 3)), "mode")
+  expect_error(
+    prior("invmoment", list(mode = .5, order = .Machine$integer.max + 1, df = 3)),
+    "order"
+  )
 })
 
 test_that("moment prior density, distribution, and quantiles match reference identities", {

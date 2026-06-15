@@ -13,19 +13,26 @@ JAGS_marglik_parameters_formula(
   formula_data_list,
   formula_prior_list,
   prior_list_parameters,
-  formula_design_list = NULL
+  formula_design_list = NULL,
+  model_data = NULL
 )
 }
 \arguments{
 \item{samples}{samples provided by bridgesampling
 function}
 
-\item{prior_list}{named list of prior distribution
+\item{prior_list}{named list of prior distributions
 (names correspond to the parameter names) of parameters not specified within the
-\code{formula_list}}
+\code{formula_list}. For \code{BayesTools_fit} objects, stored non-formula
+priors are used when \code{prior_list = NULL}; if fitted formula priors are
+supplied here, they are ignored with a warning in favor of the stored formula
+metadata.}
 
 \item{formula_list}{named list of formulas to be added to the model
-(names correspond to the parameter name created by each of the formula)}
+(names correspond to the parameter name created by each of the formula). For
+\code{BayesTools_fit} objects with stored formula-design metadata, formula
+inputs can usually be omitted; if supplied, they are rebuilt only to check
+consistency with the fitted design.}
 
 \item{formula_data_list}{named list of data frames containing data for each formula
 (names of the lists correspond to the parameter name created by each of the formula)}
@@ -41,6 +48,9 @@ within the \code{formula}}
 \item{formula_design_list}{optional formula-design metadata produced by
 \code{JAGS_formula()}, used internally to reconstruct formula random effects
 for bridge sampling.}
+
+\item{model_data}{optional data passed to row-wise external parameter source
+reconstruction functions during formula random-effect bridge sampling.}
 }
 \value{
 \code{JAGS_marglik_parameters} returns a named list

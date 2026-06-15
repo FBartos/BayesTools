@@ -14,17 +14,17 @@
 .bt_random_effect_sd_spec <- function(parameter, parameter_suffix,
                                       prior_list, random_term,
                                       grouping_factor,
-                                      allocation_info, model_matrix,
+                                      sd_binding, model_matrix,
                                       model_terms, model_terms_type,
                                       predictors_type, data,
                                       random_structure, has_intercept,
                                       homogeneous_sd){
 
-  if(!is.null(allocation_info)){
+  if(!is.null(sd_binding) && isTRUE(sd_binding$true_allocation)){
     return(.bt_random_effect_allocated_sd_spec(
       parameter = parameter,
       parameter_suffix = parameter_suffix,
-      allocation_info = allocation_info,
+      sd_binding = sd_binding,
       model_matrix = model_matrix,
       model_terms = model_terms,
       model_terms_type = model_terms_type,
@@ -43,6 +43,58 @@
   syntax <- character()
   new_prior_list <- list()
   random_scale_terms <- character()
+
+  if(!is.null(sd_binding)){
+    if(!identical(sd_binding$application, "block")){
+      stop("Direct random-effect SD bindings must use block-level application.", call. = FALSE)
+    }
+    if(!.bt_random_sd_binding_has_external_source(sd_binding)){
+      stop("Direct random-effect SD bindings require an external SD source.", call. = FALSE)
+    }
+    sd_leaves <- .bt_random_effect_resolved_sd_leaves(
+      parameter = parameter,
+      model_matrix = model_matrix,
+      model_terms = model_terms,
+      model_terms_type = model_terms_type,
+      predictors_type = predictors_type,
+      data = data,
+      random_structure = random_structure,
+      has_intercept = has_intercept,
+      homogeneous_sd = homogeneous_sd,
+      structured_index = random_term$structured_index
+    )
+    sd_binding$sd_component_names <- sd_leaves$leaf_names
+    sd_binding$sd_component_terms <- sd_leaves$leaf_terms
+    sd_binding$sd_component_index_by_column <- sd_leaves$leaf_index_by_column
+    if(.bt_random_sd_binding_has_row_external_source(sd_binding)){
+      return(list(
+        terms_indexes = terms_indexes,
+        sd_parameter_names = rep(NA_character_, n_columns),
+        sd_leaves = sd_leaves,
+        random_scale_terms = character(),
+        add_parameters = character(),
+        syntax = character(),
+        prior_list = list(),
+        sd_binding = sd_binding
+      ))
+    }
+
+    sd_parameter_names <- rep(
+      .bt_random_sd_binding_shared_source_expression(sd_binding),
+      n_columns
+    )
+    syntax <- .bt_random_effect_sd_assignment_syntax(parameter, sd_parameter_names)
+    return(list(
+      terms_indexes = terms_indexes,
+      sd_parameter_names = sd_parameter_names,
+      sd_leaves = sd_leaves,
+      random_scale_terms = character(),
+      add_parameters = .bt_random_sd_binding_source_name(sd_binding$source),
+      syntax = syntax,
+      prior_list = list(),
+      sd_binding = sd_binding
+    ))
+  }
 
   if(isTRUE(homogeneous_sd)){
     prior_name <- paste0(parameter_suffix, "_sd")
@@ -120,6 +172,30 @@
     stop("Random-effect SD leaf metadata are inconsistent with generated SD parameters.", call. = FALSE)
   }
 
+  if(isTRUE(homogeneous_sd)){
+    sd_binding <- .bt_random_sd_binding(
+      source = .bt_prior_owned_sd_source(sd_parameter_names[[1L]]),
+      application = "block",
+      factors = list(),
+      true_allocation = FALSE,
+      allocations = list(),
+      sd_component_names = sd_leaves$leaf_names,
+      sd_component_terms = sd_leaves$leaf_terms,
+      sd_component_index_by_column = sd_leaves$leaf_index_by_column
+    )
+  }else{
+    sd_binding <- .bt_random_sd_binding(
+      sources_by_column = lapply(sd_parameter_names, .bt_prior_owned_sd_source),
+      application = "column",
+      factors_by_column = rep(list(list()), length(sd_parameter_names)),
+      true_allocation = FALSE,
+      allocations = list(),
+      sd_component_names = sd_leaves$leaf_names,
+      sd_component_terms = sd_leaves$leaf_terms,
+      sd_component_index_by_column = sd_leaves$leaf_index_by_column
+    )
+  }
+
   list(
     terms_indexes = terms_indexes,
     sd_parameter_names = sd_parameter_names,
@@ -128,7 +204,7 @@
     add_parameters = character(),
     syntax = syntax,
     prior_list = new_prior_list,
-    allocation_info = NULL
+    sd_binding = sd_binding
   )
 }
 
@@ -322,7 +398,7 @@
 }
 
 .bt_random_effect_allocated_sd_spec <- function(parameter, parameter_suffix,
-                                                allocation_info, model_matrix,
+                                                sd_binding, model_matrix,
                                                 model_terms, model_terms_type,
                                                 predictors_type, data,
                                                 random_structure,
@@ -331,11 +407,12 @@
                                                 structured_index = NULL){
 
   terms_indexes <- .bt_random_effect_term_indexes(model_matrix, has_intercept)
-  if(identical(allocation_info$components, "sd")){
+  allocation_info <- sd_binding$allocations[[1L]]
+  if(identical(allocation_info$target, "sd_component")){
     return(.bt_random_effect_allocated_sd_leaves_spec(
       parameter = parameter,
       parameter_suffix = parameter_suffix,
-      allocation_info = allocation_info,
+      sd_binding = sd_binding,
       model_matrix = model_matrix,
       model_terms = model_terms,
       model_terms_type = model_terms_type,
@@ -351,7 +428,7 @@
   if(!(isTRUE(homogeneous_sd) || ncol(model_matrix) == 1L)){
     stop(
       "Block-level variance allocation supports random-effect blocks with one SD component. ",
-      "Use random intercepts, single-column random slopes, homogeneous SD structures, or components = \"sd\" for heterogeneous blocks.",
+      "Use random intercepts, single-column random slopes, homogeneous SD structures, or target = \"sd_component\" for heterogeneous blocks.",
       call. = FALSE
     )
   }
@@ -397,13 +474,38 @@
     stop("Random-effect SD leaf metadata are inconsistent with generated SD parameters.", call. = FALSE)
   }
 
-  syntax <- paste0(sd_parameter, " = ", allocation_info$source_expression)
+  if(.bt_random_sd_binding_has_row_external_source(sd_binding)){
+    sd_binding$sd_component_names <- sd_leaves$leaf_names
+    sd_binding$sd_component_terms <- sd_leaves$leaf_terms
+    sd_binding$sd_component_index_by_column <- sd_leaves$leaf_index_by_column
+    return(list(
+      terms_indexes = terms_indexes,
+      sd_parameter_names = rep(NA_character_, n_columns),
+      sd_leaves = sd_leaves,
+      random_scale_terms = character(),
+      add_parameters = character(),
+      syntax = character(),
+      prior_list = list(),
+      sd_binding = sd_binding
+    ))
+  }
+
+  source_expression <- .bt_random_sd_binding_shared_source_expression(sd_binding)
+  factor_expression <- .bt_random_sd_binding_factors_expression(sd_binding$factors)
+  syntax <- paste0(
+    sd_parameter,
+    " = ",
+    paste(c(source_expression, if(!identical(factor_expression, "1")) factor_expression), collapse = " * ")
+  )
   syntax <- c(
     syntax,
     .bt_random_effect_sd_assignment_syntax(parameter, sd_parameter_names)
   )
 
   random_scale_terms <- stats::setNames(sd_term, sd_suffix)
+  sd_binding$sd_component_names <- sd_leaves$leaf_names
+  sd_binding$sd_component_terms <- sd_leaves$leaf_terms
+  sd_binding$sd_component_index_by_column <- sd_leaves$leaf_index_by_column
 
   list(
     terms_indexes = terms_indexes,
@@ -413,7 +515,7 @@
     add_parameters = sd_parameter,
     syntax = syntax,
     prior_list = list(),
-    allocation_info = allocation_info
+    sd_binding = sd_binding
   )
 }
 
@@ -484,6 +586,7 @@
 
   out <- list(
     terms_indexes = terms_indexes,
+    random_structure = random_structure,
     leaf_names_by_column = leaf_names,
     leaf_terms_by_column = leaf_terms,
     leaf_names = unique_leaf_names,
@@ -593,7 +696,7 @@
 
 .bt_random_effect_allocated_sd_leaves_spec <- function(parameter,
                                                        parameter_suffix,
-                                                       allocation_info,
+                                                       sd_binding,
                                                        model_matrix,
                                                        model_terms,
                                                        model_terms_type,
@@ -604,6 +707,7 @@
                                                        homogeneous_sd,
                                                        structured_index = NULL){
 
+  allocation_info <- sd_binding$allocations[[1L]]
   leaves <- .bt_random_effect_resolved_sd_leaves(
     parameter = parameter,
     model_matrix = model_matrix,
@@ -625,11 +729,49 @@
   }
 
   allocation_prior <- .bt_random_variance_allocation_prior(allocation_info, K)
+  leaf_terms <- stats::setNames(leaves$leaf_terms, leaves$leaf_names)
   allocation_prior <- .bt_random_effect_set_allocation_metadata(
     allocation_prior,
     allocation = allocation_info$label,
-    terms = allocation_info$terms
+    terms = leaf_terms,
+    parent = allocation_info$parent
   )
+  prior_list <- list(allocation_prior)
+  names(prior_list) <- allocation_info$weight_suffix
+
+  factor <- .bt_random_variance_allocation_factor(
+    weight_name = allocation_info$weight_name,
+    index = NA_integer_,
+    scale = allocation_info$scale,
+    n_targets = K
+  )
+  allocation_info$n_targets <- K
+  allocation_info$leaf_names <- leaves$leaf_names
+  allocation_info$leaf_terms <- leaves$leaf_terms
+  allocation_info$leaf_index_by_column <- leaves$leaf_index_by_column
+  sd_binding$allocations[[1L]] <- allocation_info
+  sd_binding$sd_component_names <- leaves$leaf_names
+  sd_binding$sd_component_terms <- leaves$leaf_terms
+  sd_binding$sd_component_index_by_column <- leaves$leaf_index_by_column
+
+  if(.bt_random_sd_binding_has_row_external_source(sd_binding)){
+    sd_binding$factors <- allocation_info$parent_factors
+    sd_binding$factors_by_column <- lapply(leaves$leaf_index_by_column, function(leaf_i){
+      leaf_factor <- factor
+      leaf_factor$index <- leaf_i
+      c(allocation_info$parent_factors, list(leaf_factor))
+    })
+    return(list(
+      terms_indexes = leaves$terms_indexes,
+      sd_parameter_names = rep(NA_character_, ncol(model_matrix)),
+      sd_leaves = leaves,
+      random_scale_terms = character(),
+      add_parameters = character(),
+      syntax = character(),
+      prior_list = prior_list,
+      sd_binding = sd_binding
+    ))
+  }
 
   syntax <- character()
   for(leaf_i in seq_len(K)){
@@ -647,25 +789,10 @@
     .bt_random_effect_sd_assignment_syntax(parameter, leaves$leaf_names_by_column)
   )
 
-  factor <- .bt_random_variance_allocation_factor(
-    weight_name = allocation_info$weight_name,
-    index = NA_integer_,
-    scale = allocation_info$scale,
-    n_targets = K
-  )
-  allocation_info$n_targets <- K
-  allocation_info$leaf_names <- leaves$leaf_names
-  allocation_info$leaf_terms <- leaves$leaf_terms
-  allocation_info$leaf_index_by_column <- leaves$leaf_index_by_column
-  allocation_info$factor_template <- factor
-  allocation_info$factors <- allocation_info$parent_factors
-
   random_scale_terms <- stats::setNames(
     leaves$leaf_terms,
     sub(paste0("^", parameter), parameter_suffix, leaves$leaf_names)
   )
-  prior_list <- list(allocation_prior)
-  names(prior_list) <- allocation_info$weight_suffix
 
   list(
     terms_indexes = leaves$terms_indexes,
@@ -675,6 +802,6 @@
     add_parameters = leaves$leaf_names,
     syntax = syntax,
     prior_list = prior_list,
-    allocation_info = allocation_info
+    sd_binding = sd_binding
   )
 }

@@ -12,19 +12,20 @@ JAGS_bridgesampling_posterior(
 )
 }
 \arguments{
-\item{posterior}{matrix of mcmc samples from the posterior
-distribution}
+\item{posterior}{matrix of mcmc samples from the posterior distribution.}
 
-\item{prior_list}{named list of prior distribution
-(names correspond to the parameter names) of parameters not specified within the
-\code{formula_list}}
+\item{prior_list}{named list of prior distributions. Names correspond to
+parameter names owned by BayesTools priors and determine the posterior
+columns retained for bridge sampling together with their bounds.}
 
-\item{add_parameters}{vector of additional parameter names that should be used
-in bridgesampling but were not specified in the \code{prior_list}}
+\item{add_parameters}{character vector of additional monitored posterior
+parameter names to retain in addition to the prior-owned parameters. These
+parameters are passed through as named entries and must be indexed by name
+by downstream likelihood code.}
 
-\item{add_bounds}{list with two name vectors (\code{"lb"} and \code{"up"})
-containing lower and upper bounds of the additional parameters that were not
-specified in the \code{prior_list}}
+\item{add_bounds}{list with two named numeric vectors, \code{"lb"} and
+\code{"ub"}, containing lower and upper bounds for every
+\code{add_parameters} entry.}
 }
 \value{
 \code{JAGS_bridgesampling_posterior} returns a matrix of

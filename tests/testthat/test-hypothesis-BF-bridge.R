@@ -6,22 +6,7 @@ skip_if_not_test_profile("fixture")
 
 source(testthat::test_path("common-functions.R"))
 
-
-.hypothesis_bridge_cache_ready_for_test <- function(names){
-
-  files <- c(
-    file.path(temp_fits_dir, paste0(names, ".RDS")),
-    file.path(temp_marglik_dir, paste0(names, ".RDS"))
-  )
-  if(all(file.exists(files))){
-    return(TRUE)
-  }
-
-  testthat::fail(
-    "Pre-fitted bridge fixtures not found. Run test-00-model-fits.R first."
-  )
-  return(FALSE)
-}
+skip_if_no_fits()
 
 
 .hypothesis_treatment_level_marginal_for_test <- function(fit){
@@ -48,10 +33,6 @@ source(testthat::test_path("common-functions.R"))
 
 test_that("hypothesis_BF point-null agrees with bridge-sampling model BF", {
 
-  if(!.hypothesis_bridge_cache_ready_for_test(c("fit_simple_normal", "fit_simple_spike"))){
-    return()
-  }
-
   fit_alt <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
   fit_null <- readRDS(file.path(temp_fits_dir, "fit_simple_spike.RDS"))
   ml_alt <- readRDS(file.path(temp_marglik_dir, "fit_simple_normal.RDS"))
@@ -74,10 +55,6 @@ test_that("hypothesis_BF point-null agrees with bridge-sampling model BF", {
 
 test_that("hypothesis_BF explicit level point-null agrees with bridge-sampling model BF", {
 
-  if(!.hypothesis_bridge_cache_ready_for_test(c("fit_formula_treatment", "fit_formula_simple"))){
-    return()
-  }
-
   fit_alt <- readRDS(file.path(temp_fits_dir, "fit_formula_treatment.RDS"))
   ml_alt <- readRDS(file.path(temp_marglik_dir, "fit_formula_treatment.RDS"))
   ml_null <- readRDS(file.path(temp_marglik_dir, "fit_formula_simple.RDS"))
@@ -96,10 +73,6 @@ test_that("hypothesis_BF explicit level point-null agrees with bridge-sampling m
 
 
 test_that("hypothesis_BF treatment-level point contrast agrees with bridge-sampling model BF", {
-
-  if(!.hypothesis_bridge_cache_ready_for_test(c("fit_formula_treatment", "fit_formula_simple"))){
-    return()
-  }
 
   fit_alt <- readRDS(file.path(temp_fits_dir, "fit_formula_treatment.RDS"))
   ml_alt <- readRDS(file.path(temp_marglik_dir, "fit_formula_treatment.RDS"))
@@ -120,14 +93,6 @@ test_that("hypothesis_BF treatment-level point contrast agrees with bridge-sampl
 
 test_that("hypothesis_BF treatment-level inequality agrees with truncated-prior bridge BF", {
 
-  if(!.hypothesis_bridge_cache_ready_for_test(c(
-    "fit_formula_treatment",
-    "fit_formula_treatment_positive",
-    "fit_formula_treatment_negative"
-  ))){
-    return()
-  }
-
   fit_alt <- readRDS(file.path(temp_fits_dir, "fit_formula_treatment.RDS"))
   ml_positive <- readRDS(file.path(temp_marglik_dir, "fit_formula_treatment_positive.RDS"))
   ml_negative <- readRDS(file.path(temp_marglik_dir, "fit_formula_treatment_negative.RDS"))
@@ -146,14 +111,6 @@ test_that("hypothesis_BF treatment-level inequality agrees with truncated-prior 
 
 
 test_that("hypothesis_BF transformed level inequality agrees with truncated-prior bridge BF", {
-
-  if(!.hypothesis_bridge_cache_ready_for_test(c(
-    "fit_formula_treatment",
-    "fit_formula_treatment_positive",
-    "fit_formula_treatment_negative"
-  ))){
-    return()
-  }
 
   fit_alt <- readRDS(file.path(temp_fits_dir, "fit_formula_treatment.RDS"))
   ml_positive <- readRDS(file.path(temp_marglik_dir, "fit_formula_treatment_positive.RDS"))
@@ -178,14 +135,6 @@ test_that("hypothesis_BF transformed level inequality agrees with truncated-prio
 
 test_that("hypothesis_BF point-vs-level-region agrees with truncated-prior bridge BF", {
 
-  if(!.hypothesis_bridge_cache_ready_for_test(c(
-    "fit_formula_simple",
-    "fit_formula_treatment",
-    "fit_formula_treatment_positive"
-  ))){
-    return()
-  }
-
   fit_alt <- readRDS(file.path(temp_fits_dir, "fit_formula_treatment.RDS"))
   ml_null <- readRDS(file.path(temp_marglik_dir, "fit_formula_simple.RDS"))
   ml_positive <- readRDS(file.path(temp_marglik_dir, "fit_formula_treatment_positive.RDS"))
@@ -208,10 +157,6 @@ test_that("hypothesis_BF point-vs-level-region agrees with truncated-prior bridg
 
 
 test_that("hypothesis_BF nested coefficient agrees with bridge-sampling model BF", {
-
-  if(!.hypothesis_bridge_cache_ready_for_test(c("fit_formula_treatment", "fit_formula_simple"))){
-    return()
-  }
 
   fit_alt <- readRDS(file.path(temp_fits_dir, "fit_formula_treatment.RDS"))
   ml_alt <- readRDS(file.path(temp_marglik_dir, "fit_formula_treatment.RDS"))

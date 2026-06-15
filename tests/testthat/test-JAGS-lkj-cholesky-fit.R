@@ -14,8 +14,7 @@ skip_on_cran()
 skip_if_not_installed("rjags")
 skip_if_not_installed("runjags")
 
-.fit_jags_lkj_cholesky_prior <- function(K, eta, sample = 3000, seed = 1L,
-                                          backend = "module") {
+.fit_jags_lkj_cholesky_prior <- function(K, eta, sample = 3000, seed = 1L) {
   skip_if_not(
     isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)),
     "BayesTools JAGS module is unavailable."
@@ -26,8 +25,7 @@ skip_if_not_installed("runjags")
     K = K,
     eta = eta,
     include_correlation = TRUE,
-    include_primitives = TRUE,
-    backend = backend
+    include_primitives = TRUE
   )
 
   user_silent.jags <- runjags::runjags.getOption("silent.jags")
@@ -61,8 +59,8 @@ skip_if_not_installed("runjags")
 .fit_jags_lkj_cholesky_prior_cached <- local({
   cache <- new.env(parent = emptyenv())
 
-  function(K, eta, sample = 3000, seed = 1L, backend = "module") {
-    key <- paste(K, eta, sample, seed, backend, sep = "|")
+  function(K, eta, sample = 3000, seed = 1L) {
+    key <- paste(K, eta, sample, seed, sep = "|")
     if(!exists(key, envir = cache, inherits = FALSE)){
       assign(
         key,
@@ -70,8 +68,7 @@ skip_if_not_installed("runjags")
           K = K,
           eta = eta,
           sample = sample,
-          seed = seed,
-          backend = backend
+          seed = seed
         ),
         envir = cache
       )

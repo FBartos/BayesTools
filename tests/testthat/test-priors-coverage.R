@@ -348,6 +348,33 @@ test_that("Dirichlet simplex priors expose joint, marginal, JAGS, and bridge API
   expect_error(prior("dirichlet", list(alpha = 1)), "at least two")
   expect_error(prior("dirichlet", list(alpha = c(1, 0))), "positive")
   expect_error(prior("dirichlet", list(alpha = c(1, Inf))), "finite")
+  expect_error(prior("dirichlet", list(alpha = expression(alpha1))), "at least two")
+
+  p_expression <- prior("dirichlet", list(alpha = expression(alpha1, alpha2)))
+  expect_true(BayesTools:::.is_prior_expression(p_expression))
+  expect_equal(p_expression$parameters$K, 2)
+  syntax_expression <- JAGS_add_priors("model{}", list(w = p_expression))
+  expect_match(syntax_expression, "prior_par_eta_w\\[1\\] ~ dgamma\\(alpha1, 1\\)")
+  expect_match(syntax_expression, "prior_par_eta_w\\[2\\] ~ dgamma\\(alpha2, 1\\)")
+
+  d <- density(p, x_seq = c(.25, .5), truncate_end = FALSE)
+  expect_s3_class(d, "density.prior.simplex")
+  expect_equal(names(d), c("V1", "V2", "V3"))
+  expect_s3_class(d[[1]], "density.prior.simple")
+  expect_equal(
+    d[[1]]$y,
+    stats::dbeta(c(.25, .5), shape1 = 2, shape2 = 8),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    d[[2]]$y,
+    stats::dbeta(c(.25, .5), shape1 = 3, shape2 = 7),
+    tolerance = 1e-12
+  )
+  expect_s3_class(
+    plot(p, plot_type = "ggplot", n_points = 16, show_figures = 1),
+    "ggplot"
+  )
 
   x <- c(.2, .3, .5)
   expected_lpdf <- lgamma(10) - sum(lgamma(c(2, 3, 5))) +
@@ -407,6 +434,11 @@ test_that("Dirichlet simplex priors expose joint, marginal, JAGS, and bridge API
   expect_equal(length(inits$prior_par_eta_w), 3L)
   expect_true(all(inits$prior_par_eta_w > 0))
   expect_equal(JAGS_to_monitor(list(w = p)), c("w", "prior_par_eta_w"))
+
+  tiny <- prior("dirichlet", list(alpha = c(1e-300, 1e-300)))
+  tiny_inits <- JAGS_get_inits(list(w = tiny), chains = 1, seed = 1)[[1]]
+  expect_true(all(is.finite(tiny_inits$prior_par_eta_w)))
+  expect_true(all(tiny_inits$prior_par_eta_w > 0))
 
   posterior <- matrix(
     c(1, 2, 3, 4, 5, 6),

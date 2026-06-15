@@ -1,0 +1,76 @@
+JAGS_MIN_VERSION := 4.3.0
+JAGS_ROOT_CANDIDATES := $(sort $(wildcard /c/progra~1/JAGS/JAGS-*))
+space :=
+space +=
+
+define version_ge
+$(shell awk -v version="$(1)" -v minimum="$(2)" 'BEGIN { split(version, v, "."); split(minimum, m, "."); for(i = 1; i <= 3; i++){ if(v[i] == "") v[i] = 0; if(m[i] == "") m[i] = 0; if(v[i] + 0 > m[i] + 0){ print "yes"; exit } if(v[i] + 0 < m[i] + 0){ print "no"; exit } } print "yes" }')
+endef
+
+define newest_jags_root
+$(shell printf '%s\n' $(JAGS_ROOT_CANDIDATES) | awk 'NF { n=split($$0, p, "/"); name=p[n]; sub(/^JAGS-/, "", name); split(name, v, "."); key=sprintf("%06d.%06d.%06d", v[1], v[2], v[3]); if(key > best){ best=key; root=$$0 } } END { print root }')
+endef
+
+ifeq ($(strip $(JAGS_ROOT)),)
+JAGS_ROOT := $(call newest_jags_root)
+endif
+ifeq ($(strip $(JAGS_ROOT)),)
+$(error JAGS was not found. Install JAGS >= $(JAGS_MIN_VERSION) or set JAGS_ROOT=/c/progra~1/JAGS/JAGS-4.3.1. You may also set JAGS_INCLUDE_DIR, JAGS_LIB_DIR, and JAGS_VERSION explicitly)
+endif
+
+ifeq ($(strip $(JAGS_INCLUDE_DIR)),)
+JAGS_INCLUDE_DIR = $(JAGS_ROOT)/include
+ifeq ($(shell test -f "$(JAGS_INCLUDE_DIR)/module/Module.h" && echo yes),)
+ifneq ($(shell test -f "$(JAGS_ROOT)/include/JAGS/module/Module.h" && echo yes),)
+JAGS_INCLUDE_DIR = $(JAGS_ROOT)/include/JAGS
+endif
+endif
+endif
+ifeq ($(shell test -f "$(JAGS_INCLUDE_DIR)/module/Module.h" && echo yes),)
+$(error Could not find JAGS headers at "$(JAGS_INCLUDE_DIR)"; expected module/Module.h. Set JAGS_ROOT or JAGS_INCLUDE_DIR)
+endif
+
+ifeq ($(strip $(JAGS_LIB_DIR)),)
+JAGS_LIB_DIR = $(JAGS_ROOT)$(R_ARCH)/lib
+ifeq ($(shell test -d "$(JAGS_LIB_DIR)" && echo yes),)
+ifneq ($(shell test -d "$(JAGS_ROOT)/lib" && echo yes),)
+JAGS_LIB_DIR = $(JAGS_ROOT)/lib
+else ifneq ($(shell test -d "$(JAGS_ROOT)$(R_ARCH)/bin" && echo yes),)
+JAGS_LIB_DIR = $(JAGS_ROOT)$(R_ARCH)/bin
+else ifneq ($(shell test -d "$(JAGS_ROOT)/bin" && echo yes),)
+JAGS_LIB_DIR = $(JAGS_ROOT)/bin
+endif
+endif
+endif
+ifeq ($(shell test -d "$(JAGS_LIB_DIR)" && echo yes),)
+$(error Could not find the JAGS library directory at "$(JAGS_LIB_DIR)". Set JAGS_ROOT or JAGS_LIB_DIR)
+endif
+
+ifeq ($(strip $(JAGS_VERSION)),)
+JAGS_VERSION := $(strip $(shell basename "$(JAGS_ROOT)" | sed 's/^JAGS-//'))
+endif
+ifeq ($(strip $(call version_ge,$(JAGS_VERSION),$(JAGS_MIN_VERSION))),no)
+$(error JAGS >= $(JAGS_MIN_VERSION) is required; JAGS_VERSION/JAGS_ROOT reported $(JAGS_VERSION))
+endif
+
+JAGS_DLL_MAJOR := $(firstword $(subst .,$(space),$(JAGS_VERSION)))
+JAGS_LIB_NAME := $(notdir $(firstword $(wildcard $(JAGS_LIB_DIR)/libjags.dll.a $(JAGS_LIB_DIR)/libjags-$(JAGS_DLL_MAJOR).dll.a $(JAGS_LIB_DIR)/jags-$(JAGS_DLL_MAJOR).dll $(JAGS_LIB_DIR)/libjags-$(JAGS_DLL_MAJOR).dll)))
+ifeq ($(strip $(JAGS_LIB_NAME)),)
+JAGS_LIB_NAME := $(notdir $(strip $(shell for file in "$(JAGS_LIB_DIR)"/libjags.dll.a "$(JAGS_LIB_DIR)"/libjags-$(JAGS_DLL_MAJOR).dll.a "$(JAGS_LIB_DIR)"/jags-$(JAGS_DLL_MAJOR).dll "$(JAGS_LIB_DIR)"/libjags-$(JAGS_DLL_MAJOR).dll "$(JAGS_LIB_DIR)"/jags.dll "$(JAGS_LIB_DIR)"/libjags.dll; do test -f "$$file" && basename "$$file" && break; done)))
+endif
+ifeq ($(strip $(JAGS_LIB_NAME)),)
+$(error Could not find the JAGS library in "$(JAGS_LIB_DIR)". Set JAGS_VERSION, JAGS_ROOT, or JAGS_LIB_DIR)
+endif
+JR_MATH_LIB_NAME := $(notdir $(firstword $(wildcard $(JAGS_LIB_DIR)/libjrmath.dll.a $(JAGS_LIB_DIR)/libjrmath-0.dll.a $(JAGS_LIB_DIR)/jrmath-0.dll $(JAGS_LIB_DIR)/libjrmath-0.dll $(JAGS_LIB_DIR)/jrmath.dll $(JAGS_LIB_DIR)/libjrmath.dll)))
+ifeq ($(strip $(JR_MATH_LIB_NAME)),)
+JR_MATH_LIB_NAME := $(notdir $(strip $(shell for file in "$(JAGS_LIB_DIR)"/libjrmath.dll.a "$(JAGS_LIB_DIR)"/libjrmath-0.dll.a "$(JAGS_LIB_DIR)"/jrmath-0.dll "$(JAGS_LIB_DIR)"/libjrmath-0.dll "$(JAGS_LIB_DIR)"/jrmath.dll "$(JAGS_LIB_DIR)"/libjrmath.dll; do test -f "$$file" && basename "$$file" && break; done)))
+endif
+ifeq ($(strip $(JR_MATH_LIB_NAME)),)
+$(error Could not find the JAGS JRmath library in "$(JAGS_LIB_DIR)". Set JAGS_ROOT or JAGS_LIB_DIR)
+endif
+
+JAGS_LINK := $(patsubst lib%.dll.a,%,$(patsubst %.dll,%,$(JAGS_LIB_NAME)))
+JR_MATH_LINK := $(patsubst lib%.dll.a,%,$(patsubst %.dll,%,$(JR_MATH_LIB_NAME)))
+
+PKG_CPPFLAGS=-I"$(JAGS_INCLUDE_DIR)" -DR_NO_REMAP
+PKG_LIBS=-L"$(JAGS_LIB_DIR)" -l$(JAGS_LINK) -l$(JR_MATH_LINK)

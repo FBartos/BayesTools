@@ -21,10 +21,49 @@
 
 .nonlocal_validate_order <- function(order){
 
-  check_int(order, "order", lower = 1, allow_NA = FALSE)
+  check_int(order, "order", lower = 1, upper = .Machine$integer.max,
+            allow_NA = FALSE)
   .nonlocal_validate_finite(order, "order")
 
-  as.integer(order)
+  order <- as.integer(round(order))
+  if(is.na(order)){
+    stop("The 'order' argument cannot be represented as an integer.",
+         call. = FALSE)
+  }
+
+  order
+}
+
+.nonlocal_validate_tau <- function(tau, name){
+
+  check_real(tau, name, lower = 0, allow_bound = FALSE, allow_NA = FALSE)
+  .nonlocal_validate_finite(tau, name)
+
+  invisible(NULL)
+}
+
+.nonlocal_validate_mode <- function(mode, name){
+
+  check_real(mode, name, allow_NA = FALSE)
+  .nonlocal_validate_finite(mode, name)
+  mode <- abs(mode)
+  if(mode == 0){
+    stop(paste0(
+      "The '", name, "' must be finite and nonzero after taking its absolute value."
+    ), call. = FALSE)
+  }
+
+  mode
+}
+
+.nonlocal_validate_derived_mode <- function(mode, name){
+
+  .nonlocal_validate_finite(mode, name)
+  if(mode == 0){
+    stop(paste0("The '", name, "' implies a zero mode."), call. = FALSE)
+  }
+
+  invisible(NULL)
 }
 
 .nonlocal_parameters_moment <- function(parameters){
@@ -62,19 +101,14 @@
   .nonlocal_validate_finite(location, "location")
 
   if("mode" %in% names(parameters)){
-    mode <- parameters[["mode"]]
-    check_real(mode, "mode", allow_NA = FALSE)
-    .nonlocal_validate_finite(mode, "mode")
-    mode <- abs(mode)
-    if(mode == 0){
-      stop("The 'mode' must be finite and nonzero after taking its absolute value.", call. = FALSE)
-    }
+    mode <- .nonlocal_validate_mode(parameters[["mode"]], "mode")
     tau <- mode^2 / (2 * order)
+    .nonlocal_validate_tau(tau, "mode")
   }else{
     tau <- parameters[["tau"]]
-    check_real(tau, "tau", lower = 0, allow_bound = FALSE, allow_NA = FALSE)
-    .nonlocal_validate_finite(tau, "tau")
+    .nonlocal_validate_tau(tau, "tau")
     mode <- sqrt(2 * order * tau)
+    .nonlocal_validate_derived_mode(mode, "tau")
   }
 
   list(
@@ -135,19 +169,14 @@
   .nonlocal_validate_finite(location, "location")
 
   if("mode" %in% names(parameters)){
-    mode <- parameters[["mode"]]
-    check_real(mode, "mode", allow_NA = FALSE)
-    .nonlocal_validate_finite(mode, "mode")
-    mode <- abs(mode)
-    if(mode == 0){
-      stop("The 'mode' must be finite and nonzero after taking its absolute value.", call. = FALSE)
-    }
+    mode <- .nonlocal_validate_mode(parameters[["mode"]], "mode")
     tau <- mode^2 * ((df + 1) / (2 * order))^(1 / order)
+    .nonlocal_validate_tau(tau, "mode")
   }else{
     tau <- parameters[["tau"]]
-    check_real(tau, "tau", lower = 0, allow_bound = FALSE, allow_NA = FALSE)
-    .nonlocal_validate_finite(tau, "tau")
+    .nonlocal_validate_tau(tau, "tau")
     mode <- sqrt(tau) * (2 * order / (df + 1))^(1 / (2 * order))
+    .nonlocal_validate_derived_mode(mode, "tau")
   }
 
   list(

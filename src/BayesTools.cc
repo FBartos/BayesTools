@@ -1,8 +1,8 @@
 #include <module/Module.h>
 
-#include "distributions/DBTInvMoment.h"
 #include "distributions/DBTLKJCPC.h"
 #include "distributions/DBTMoment.h"
+#include "distributions/DBTInvMoment.h"
 #include "functions/BTLKJCholesky.h"
 
 namespace jags {
@@ -17,9 +17,9 @@ namespace jags {
 
     BayesToolsModule::BayesToolsModule() : Module("BayesTools")
     {
+      insert(new DBTLKJCPC);
       insert(new DBTMoment);
       insert(new DBTInvMoment);
-      insert(new DBTLKJCPC);
       insert(new BTLKJCholesky);
       insert(new BTLKJCorr);
     }

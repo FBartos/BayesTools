@@ -42,11 +42,11 @@ kept. Defaults to \code{TRUE}.}
 intercepts from parameters with \code{log_intercept = TRUE} attribute will be
 renamed to \code{exp(intercept)}.}
 
-\item{x}{character vector to escape for regular-expression matching.}
-
 \item{formula_parameter}{a formula parameter prefix name}
 
-\item{columns}{column names to search.}
+\item{x}{character vector to escape for regular-expression matching.}
+
+\item{columns}{character vector of column names.}
 
 \item{parameter}{exact unindexed JAGS parameter name.}
 

@@ -37,6 +37,71 @@ test_that("validated fixture cache marker belongs to the active cache directory"
   expect_cache_completion_marker("model-fit")
 })
 
+test_that("cached factor fits carry canonical contrast metadata", {
+  registry_file <- file.path(test_files_dir, "model_registry.RDS")
+  expect_true(file.exists(registry_file), info = paste("Missing fixture registry:", registry_file))
+
+  registry <- readRDS(registry_file)
+  factor_flags <- registry$factor_priors
+  factor_flags[is.na(factor_flags)] <- FALSE
+  factor_fit_names <- registry$model_name[factor_flags]
+
+  factor_prior_objects <- function(prior){
+    out <- list()
+    if(is.prior.factor(prior)){
+      out <- c(out, list(prior))
+    }
+    if((is.prior.mixture(prior) || is.prior.spike_and_slab(prior)) && length(prior) > 0){
+      prior_components <- vapply(prior, is.prior, logical(1))
+      for(component_i in which(prior_components)){
+        out <- c(out, factor_prior_objects(prior[[component_i]]))
+      }
+    }
+    out
+  }
+
+  n_checked <- 0L
+  for(model_name in factor_fit_names){
+    fit_file <- file.path(temp_fits_dir, paste0(model_name, ".RDS"))
+    expect_true(file.exists(fit_file), info = paste("Missing cached fit:", fit_file))
+
+    fit <- readRDS(fit_file)
+    prior_list <- attr(fit, "prior_list", exact = TRUE)
+    expect_true(is.list(prior_list), info = paste("Missing prior list for", model_name))
+
+    factor_priors <- unlist(
+      lapply(prior_list, factor_prior_objects),
+      recursive = FALSE
+    )
+
+    for(prior in factor_priors){
+      level_names <- BayesTools:::.factor_level_list(prior)
+      if(is.null(level_names)){
+        next
+      }
+      n_checked <- n_checked + 1L
+      expect_false(
+        is.null(attr(prior, "factor_terms", exact = TRUE)),
+        info = paste("Missing factor_terms for", model_name)
+      )
+      expect_false(
+        is.null(attr(prior, "factor_contrasts", exact = TRUE)),
+        info = paste("Missing factor_contrasts for", model_name)
+      )
+      expect_false(
+        is.null(attr(prior, "factor_design", exact = TRUE)),
+        info = paste("Missing factor_design for", model_name)
+      )
+      expect_false(
+        is.null(attr(prior, "factor_cell_names", exact = TRUE)),
+        info = paste("Missing factor_cell_names for", model_name)
+      )
+    }
+  }
+
+  expect_true(n_checked > 0, info = "No cached factor priors were checked.")
+})
+
 test_that("fixture cache metadata rejects stale artifact declarations", {
   registry_file <- file.path(test_files_dir, "model_registry.RDS")
   expect_true(file.exists(registry_file), info = paste("Missing fixture registry:", registry_file))

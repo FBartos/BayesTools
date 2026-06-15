@@ -76,6 +76,20 @@ source(testthat::test_path("common-functions.R"))
   )
 }
 
+.mock_simplex_mixing_model <- function(prior_list, logml = 0, prior_weight = 1) {
+  w1 <- seq(.1, .9, length.out = 20)
+  posterior <- cbind(
+    "w[1]" = w1,
+    "w[2]" = 1 - w1,
+    theta  = seq_len(20)
+  )
+  list(
+    fit = .mock_runjags_fit_for_mixing(posterior, prior_list),
+    marglik = .mock_bridge(logml),
+    prior_weights = prior_weight
+  )
+}
+
 
 # ============================================================================ #
 # SECTION 1: inclusion_BF boundary conditions
@@ -383,6 +397,17 @@ test_that("model averaging rejects malformed prior weights at each public entry 
       n_samples    = 4
     )
   )
+
+  expect_error(
+    mix_posteriors(
+      list(.mock_mixing_model(offset = 100, logml = 0)),
+      parameters   = "typo",
+      is_null_list = list(typo = FALSE),
+      n_samples    = 4
+    ),
+    "not available in any model prior list",
+    fixed = TRUE
+  )
 })
 
 test_that("mixture sample counts are deterministic, exact length, and retain positive components", {
@@ -458,6 +483,87 @@ test_that("conditional mix_posteriors excludes null models from samples and prio
   expect_equal(
     vapply(mixed_priors, `[[`, numeric(1), "prior_weights"),
     c(0, 0.5, 0.5),
+    tolerance = 1e-12
+  )
+})
+
+test_that("mix_posteriors rejects implicit and scalar simplex nulls", {
+
+  simplex_model <- .mock_simplex_mixing_model(
+    list(w = prior("dirichlet", list(alpha = c(1, 1)))),
+    logml = 0
+  )
+  missing_model <- .mock_simplex_mixing_model(
+    list(theta = prior("normal", list(0, 1))),
+    logml = 0
+  )
+  scalar_point_model <- .mock_simplex_mixing_model(
+    list(w = prior("spike", list(location = 0))),
+    logml = 0
+  )
+
+  expect_error(
+    mix_posteriors(
+      list(simplex_model, missing_model),
+      parameters   = "w",
+      is_null_list = list(w = c(FALSE, TRUE)),
+      n_samples    = 10
+    ),
+    "no implicit spike-at-zero null",
+    fixed = TRUE
+  )
+  expect_error(
+    mix_posteriors(
+      list(simplex_model, scalar_point_model),
+      parameters   = "w",
+      is_null_list = list(w = c(FALSE, FALSE)),
+      n_samples    = 10
+    ),
+    "can only mix Dirichlet simplex priors",
+    fixed = TRUE
+  )
+})
+
+test_that("mix_posteriors preserves simplex draws for compatible explicit priors", {
+
+  simplex_model_1 <- .mock_simplex_mixing_model(
+    list(w = prior("dirichlet", list(alpha = c(1, 1)))),
+    logml = 0
+  )
+  simplex_model_2 <- .mock_simplex_mixing_model(
+    list(w = prior("dirichlet", list(alpha = c(2, 3)))),
+    logml = 0
+  )
+
+  mixed <- mix_posteriors(
+    list(simplex_model_1, simplex_model_2),
+    parameters   = "w",
+    is_null_list = list(w = c(FALSE, FALSE)),
+    seed         = 20260614,
+    n_samples    = 12
+  )
+
+  expect_s3_class(mixed$w, "mixed_posteriors.vector")
+  expect_equal(rowSums(mixed$w), rep(1, 12), tolerance = 1e-12)
+
+  point_model <- .mock_simplex_mixing_model(
+    list(w = prior("mpoint", list(location = .5, K = 2))),
+    logml = 0
+  )
+  mixed_point <- mix_posteriors(
+    list(simplex_model_1, point_model),
+    parameters   = "w",
+    is_null_list = list(w = c(FALSE, TRUE)),
+    seed         = 20260614,
+    n_samples    = 12
+  )
+
+  expect_equal(rowSums(mixed_point$w), rep(1, 12), tolerance = 1e-12)
+  point_rows <- attr(mixed_point$w, "models_ind") == 2L
+  expect_true(any(point_rows))
+  expect_equal(
+    unname(mixed_point$w[point_rows, , drop = FALSE]),
+    matrix(c(.5, .5), nrow = sum(point_rows), ncol = 2, byrow = TRUE),
     tolerance = 1e-12
   )
 })

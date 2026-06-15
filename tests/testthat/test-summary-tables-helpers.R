@@ -106,6 +106,10 @@ test_that("format_BF preserves finite-sample BF bounds across BF scales", {
   expect_equal(as.numeric(log_exclusion), log(1 / as.numeric(BF)), tolerance = 1e-12)
   expect_equal(attr(log_exclusion, "bound_operator"), c("<", ">"))
 
+  invalid_bound <- BF
+  attr(invalid_bound, "bound_operator") <- ">="
+  expect_error(format_BF(invalid_bound), "BF bound operators")
+
 })
 
 
@@ -677,6 +681,14 @@ test_that("ensemble inference table reports exact inclusion probability algebra"
   expect_error(
     ensemble_inference_table(inference, c("theta", "beta")),
     "cannot be 'conditional'",
+    fixed = TRUE
+  )
+
+  attr(inference, "conditional") <- NULL
+  attr(inference$theta, "is_null") <- NULL
+  expect_error(
+    ensemble_inference_table(inference, c("theta", "beta")),
+    "must have a logical 'is_null' attribute",
     fixed = TRUE
   )
 })

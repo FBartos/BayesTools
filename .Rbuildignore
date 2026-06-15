@@ -19,7 +19,7 @@
 ^tests/testthat/_snaps($|/)
 ^doc$
 ^Meta$
-^tools/test\.R$
+^tools$
 ^\.vscode$
 ^\.positai$
 ^\.claude$

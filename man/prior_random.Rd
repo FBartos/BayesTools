@@ -31,7 +31,8 @@ random_block(
   monitor = NULL,
   new_levels = NULL,
   allocation = NULL,
-  terms = NULL
+  terms = NULL,
+  sd_source = NULL
 )
 
 random_term(
@@ -42,17 +43,19 @@ random_term(
   monitor = NULL,
   new_levels = NULL,
   allocation = NULL,
-  terms = NULL
+  terms = NULL,
+  sd_source = NULL
 )
 
 random_variance_allocation(
   terms = NULL,
   sd = NULL,
-  allocation = NULL,
+  weights = NULL,
   name = NULL,
   parent = NULL,
-  components = c("block", "sd"),
-  scale = c("total_variance", "mean_variance")
+  target = c("block", "sd_component"),
+  scale = c("total_variance", "mean_variance"),
+  sd_source = NULL
 )
 
 allocation_ref(allocation_name, component)
@@ -63,13 +66,11 @@ random_covariance(
   cor = NULL,
   rho = NULL,
   eta = NULL,
-  rho_scale = c("fisher_z", "rho", "logit"),
-  backend = c("module", "syntax")
+  rho_scale = c("fisher_z", "rho", "logit")
 )
 
 prior_lkj(
   eta = 1,
-  backend = c("module", "syntax"),
   include_correlation = TRUE,
   include_primitives = FALSE
 )
@@ -120,16 +121,27 @@ this allocation as \code{parent}.}
 
 \item{parent}{optional \code{allocation_ref()} object selecting a component of an
 earlier named allocation. Child allocations inherit that component's SD
-budget and must not specify \code{sd}.}
+budget and must not specify \code{sd} or \code{sd_source}.}
 
-\item{components}{allocation target type. \code{"block"} allocates across named
-random-effect blocks or symbolic intermediate components. \code{"sd"} expands
-one selected heterogeneous block to its resolved SD leaves.}
+\item{target}{allocation target type. \code{"block"} allocates across named
+random-effect blocks or symbolic intermediate components.
+\code{"sd_component"} expands one selected heterogeneous block to its
+resolved SD components.}
 
 \item{scale}{variance normalization. \code{"total_variance"} uses
 \code{sd_child = sd_parent * sqrt(w)}. \code{"mean_variance"} uses
 \code{sd_child = sd_parent * sqrt(K * w)} and is intended for
-\code{components = "sd"} heterogeneity tests.}
+\code{target = "sd_component"} heterogeneity tests.}
+
+\item{weights}{optional Dirichlet simplex prior over variance fractions.}
+
+\item{sd_source}{for \code{random_block()}, optional external random-effect SD
+source created with \code{random_sd_source()}. A block-local \code{sd_source}
+replaces the inherited top-level \code{sd} or \code{covariance$sd} and cannot be
+combined with block-local SD priors or term-specific SD overrides. For
+\code{random_variance_allocation()}, root allocations must specify exactly one
+of \code{sd} or \code{sd_source}; child allocations inherit their SD budget from
+\code{parent}.}
 
 \item{allocation_name}{allocation name referenced by \code{allocation_ref()}.}
 
@@ -147,9 +159,6 @@ zero; \code{eta = 1} is uniform over correlation matrices.}
 \item{rho_scale}{scale for scalar correlation priors. \code{"fisher_z"} is the
 default, \code{"logit"} uses a logit transform of the valid raw-rho interval,
 and \code{"rho"} uses the raw correlation parameter.}
-
-\item{backend}{LKJ backend, either the compiled JAGS module (\code{"module"}) or
-the pure-JAGS syntax fallback (\code{"syntax"}).}
 
 \item{include_correlation}{whether to monitor the correlation matrix for
 \code{prior_lkj()}.}
@@ -183,6 +192,9 @@ settings, allocation settings, and monitoring policy.
 Random-effect formulas own the grouping variables, slopes, intercepts, and
 covariance structure. \code{prior_random()} supplies priors and monitoring policy
 for the already parsed random-effect blocks.
+Random-effect grouping expressions must be grouping variables, explicit \code{:}
+interactions, or explicit \code{/} nesting. Derived grouping variables should be
+materialized as columns in \code{data} before they are referenced by a formula.
 }
 \details{
 Formula random effects in \code{\link[=JAGS_formula]{JAGS_formula()}} and \code{\link[=JAGS_fit]{JAGS_fit()}} require an
@@ -238,9 +250,8 @@ is resolved.
 
 \section{Correlation priors}{
 
-Use \code{prior_lkj(eta = ...)} for full unstructured correlation matrices. The
-compiled JAGS backend is used by default, with a syntax fallback available
-through \code{backend = "syntax"}.
+Use \code{prior_lkj(eta = ...)} for full unstructured correlation matrices. LKJ
+priors use the BayesTools compiled JAGS module.
 
 Use \code{rho} for scalar-correlation structures (\code{"CS"}, \code{"HCS"}, \code{"AR"},
 \code{"HAR"}, and \code{"CAR"}). \code{rho_scale} controls the scale on which the prior is
@@ -258,8 +269,12 @@ the structure-specific valid interval.
 
 \section{Variance allocation}{
 
-\code{random_variance_allocation()} expresses one total SD prior plus a Dirichlet
-prior over variance fractions. Multiple named allocations can be supplied in
+\code{random_variance_allocation()} expresses one total SD source plus a Dirichlet
+prior over variance fractions. Root allocations must specify exactly one of
+a prior-owned \code{sd} prior or \code{sd_source = random_sd_source(...)}.
+\code{sd_source} can reference an already-defined JAGS node such as scalar \code{tau}
+or row-shaped \code{tau} without creating a prior for that node. Multiple named
+allocations can be supplied in
 \code{prior_random()}; child allocations can inherit one component of an earlier
 allocation through \code{parent = allocation_ref(...)}.
 
@@ -269,11 +284,19 @@ allocation through \code{parent = allocation_ref(...)}.
 This is useful for nested or crossed random intercepts when the prior should
 control total heterogeneity separately from how that heterogeneity is
 allocated across components. The allocation targets named random-effect
-blocks through \code{terms}. If \code{terms = NULL}, the allocation targets all
-remaining unallocated random-effect blocks at resolution time. Generated JAGS
+blocks through \code{terms}. If \code{terms = NULL}, a single root block allocation
+targets all random-effect blocks at resolution time and must resolve to at
+least two blocks. Generated JAGS
 syntax supports allocated blocks with one SD component, homogeneous
-structures where one SD controls the block, and explicit \code{components = "sd"}
-allocations that split the resolved SD leaves of one heterogeneous block.
+structures where one SD controls the block, and explicit
+\code{target = "sd_component"} allocations that split the resolved SD
+components of one heterogeneous block. Row-shaped external sources are applied
+inside the observation-level random-effect contribution, including child
+allocations and SD-component allocations; they do not create scalar SD summary
+parameters. Prediction and bridge-sampling reconstruction for these sources
+require standardized latent random-effect monitors, row-source values from
+either posterior columns or a \code{parameter_source(..., values = ...)} callback,
+and any required Dirichlet allocation coordinates.
 Use \code{scale = "total_variance"} to preserve summed variance and
 \code{scale = "mean_variance"} to preserve average variance inside a
 heterogeneous block.
@@ -335,7 +358,7 @@ prior_random(
   random_variance_allocation(
     terms = c("study", "drug"),
     sd = sd_prior,
-    allocation = prior("dirichlet", list(alpha = c(1, 1)))
+    weights = prior("dirichlet", list(alpha = c(1, 1)))
   )
 )
 
@@ -345,13 +368,13 @@ prior_random(
     name = "total_re",
     terms = c(nested = "nested", simple = "study"),
     sd = sd_prior,
-    allocation = prior("dirichlet", list(alpha = c(1, 1)))
+    weights = prior("dirichlet", list(alpha = c(1, 1)))
   ),
   random_variance_allocation(
     name = "nested_split",
     parent = allocation_ref("total_re", "nested"),
     terms = c("paper", "country"),
-    allocation = prior("dirichlet", list(alpha = c(3, 1)))
+    weights = prior("dirichlet", list(alpha = c(3, 1)))
   )
 )
 }

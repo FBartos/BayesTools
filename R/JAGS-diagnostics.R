@@ -466,6 +466,10 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
     return(list(lower = 0, upper = 1))
   }
 
+  if(is.prior.simplex(prior)){
+    return(list(lower = 0, upper = 1))
+  }
+
   if(is.prior.mixture(prior)){
     simple_priors <- prior[vapply(prior, function(x) is.prior.simple(x) || is.prior.point(x), logical(1))]
     if(length(simple_priors) == 0L){

@@ -58,12 +58,21 @@ Each entry should be a named list where continuous predictors with \code{TRUE} v
 be standardized. Defaults to stored fit metadata when available and to
 \code{NULL} (no standardization) otherwise.}
 
-\item{add_parameters}{vector of additional parameter names that should be used
-in bridgesampling but were not specified in the \code{prior_list}}
+\item{add_parameters}{character vector of additional monitored posterior
+parameter names to include in the bridge-sampling state and in the
+\code{parameters} object passed to \code{log_posterior}. These are for JAGS nodes that
+are not owned by \code{prior_list}, including special likelihood parameters and
+row-shaped external sources. The \code{parameters} object is a named superset of
+prior-owned and additional values; user code should index it by name, for
+example \code{parameters[["tau"]]}. Parameters already covered by \code{prior_list}
+must not be listed here. For Dirichlet priors generated through BayesTools,
+add the monitored auxiliary \code{prior_par_eta_*} coordinates when needed, not
+the normalized simplex coordinates owned by the prior.}
 
-\item{add_bounds}{list with two name vectors (\code{"lb"} and \code{"up"})
-containing lower and upper bounds of the additional parameters that were not
-specified in the \code{prior_list}}
+\item{add_bounds}{list with two named numeric vectors, \code{"lb"} and
+\code{"ub"}, containing lower and upper bounds for every
+\code{add_parameters} entry. Must be supplied whenever
+\code{add_parameters} is non-empty.}
 
 \item{formula_random_prior_list}{optional named list of \code{prior_random()}
 objects for random effects in \code{formula_list}. Bridge sampling for formula
@@ -89,9 +98,18 @@ A wrapper around
 \link[bridgesampling]{bridge_sampler} that automatically
 computes likelihood part dependent on the prior distribution
 and prepares parameter samples. \code{log_posterior} must
-specify a function that takes two arguments - a named list
-of samples from the prior distributions and the data, and returns
-log likelihood of the model part.
+specify a function that takes a named parameter list, the data, and any
+additional arguments, and returns the log likelihood of the model part.
+}
+\details{
+Row-shaped external random-effect SD sources, such as
+\code{random_sd_source("tau", shape = "row")}, must be reconstructable during
+bridge sampling. Supply them either as posterior columns named
+\code{tau[1]}, ..., \code{tau[n]} with non-negative lower bounds in \code{add_bounds}, or
+as \code{parameter_source("tau", shape = "row", values = function(parameters,
+data, n_rows) ...)}. The \code{values} function is evaluated from the named
+\code{parameters} object and row-aligned data; it must return finite,
+non-negative row values on the support of the model.
 }
 \examples{
 \dontrun{

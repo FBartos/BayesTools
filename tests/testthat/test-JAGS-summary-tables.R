@@ -48,6 +48,26 @@ make_adversarial_indicator_fit <- function(indicator = c(rep(1, 9900), rep(0, 10
   fit
 }
 
+make_point_vector_fit <- function(){
+
+  samples <- coda::mcmc(
+    matrix(seq_len(20L) / 10, ncol = 1L, dimnames = list(NULL, "sigma")),
+    start = 1,
+    end   = 20L,
+    thin  = 1
+  )
+  fit <- structure(
+    list(mcmc = coda::mcmc.list(samples), sample = 20L),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- list(
+    theta = prior("mpoint", list(location = 2, K = 2)),
+    sigma = prior("gamma", list(2, 2))
+  )
+
+  fit
+}
+
 make_random_summary_fit <- function(formula, data, prior_random_list,
                                     extra_raw_columns = character()){
 
@@ -149,6 +169,72 @@ make_two_block_random_summary_fit <- function(){
       site = random_block(sd = prior("gamma", list(2, 2)))
     )
   )
+}
+
+make_row_indexed_external_random_summary_fit <- function(){
+
+  data <- data.frame(
+    study = factor(c("s1", "s1", "s2", "s2")),
+    drug = factor(c("a", "b", "a", "b"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 +
+      random(1 | study, name = "study", covariance = "diag") +
+      random(1 | drug, name = "drug", covariance = "diag"),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      allocation = random_variance_allocation(
+        sd_source = random_sd_source("tau", shape = "row"),
+        weights = prior("dirichlet", list(alpha = c(2, 3)))
+      )
+    )
+  )
+
+  random_terms <- formula_result$formula_design$random_effects
+  latent_columns <- unlist(lapply(random_terms, function(random_term){
+    as.vector(BayesTools:::.bt_random_effect_latent_names(
+      random_term,
+      n_groups = random_term$n_groups,
+      n_columns = random_term$n_columns
+    ))
+  }), use.names = FALSE)
+  allocation <- formula_result$formula_design$random_allocations[[1]]
+  allocation_columns <- paste0(
+    allocation$weight_name,
+    "[",
+    seq_along(allocation$terms),
+    "]"
+  )
+
+  column_names <- unique(c(
+    "sigma",
+    "mu_intercept",
+    allocation_columns,
+    paste0("tau[", seq_len(nrow(data)), "]"),
+    latent_columns
+  ))
+  samples <- matrix(
+    seq_len(20L * length(column_names)) / 100,
+    nrow = 20L,
+    ncol = length(column_names)
+  )
+  colnames(samples) <- column_names
+  samples[, allocation_columns[1]] <- 0.25
+  samples[, allocation_columns[2]] <- 0.75
+
+  fit <- structure(
+    list(mcmc = coda::mcmc.list(coda::mcmc(samples)), sample = nrow(samples)),
+    class = c("runjags", "BayesTools_fit", "list")
+  )
+  attr(fit, "prior_list") <- c(
+    formula_result$prior_list,
+    list(sigma = prior("gamma", list(2, 2)))
+  )
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+
+  fit
 }
 
 expect_summary_row_order <- function(table, rows) {
@@ -299,6 +385,56 @@ test_that("keep_random_effects preserves selected random rows with keep_paramete
   expect_true("sigma" %in% colnames(kept))
   expect_true(any(grepl("sd\\(intercept \\| id\\)", colnames(kept))))
   expect_false(any(grepl("sd\\(intercept \\| site\\)", colnames(kept))))
+})
+
+test_that("row-indexed external random SD summaries survive the public estimates wrapper", {
+
+  skip_if_not_installed("runjags")
+
+  fit <- make_row_indexed_external_random_summary_fit()
+  allocation_rows <- c(
+    "(mu) var_frac(allocation: study)",
+    "(mu) var_frac(allocation: drug)"
+  )
+  scalar_sd_pattern <- "^\\(mu\\) sd\\("
+
+  for(summary_mode in c("standard", "full")){
+    summary_table <- JAGS_estimates_table(
+      fit,
+      random_effects_summary = summary_mode
+    )
+
+    expect_true(all(allocation_rows %in% rownames(summary_table)))
+    expect_false(any(grepl(scalar_sd_pattern, rownames(summary_table))))
+  }
+
+  raw_samples <- JAGS_estimates_table(
+    fit,
+    random_effects_summary = "raw",
+    return_samples = TRUE
+  )
+  expect_true(any(grepl("^\\(mu\\) z\\(", colnames(raw_samples))))
+  expect_false(any(grepl("var_frac\\(allocation:", colnames(raw_samples))))
+  expect_false(any(grepl(scalar_sd_pattern, colnames(raw_samples))))
+
+  none_samples <- JAGS_estimates_table(
+    fit,
+    random_effects_summary = "none",
+    return_samples = TRUE
+  )
+  expect_false(any(grepl("^\\(mu\\) z\\(", colnames(none_samples))))
+  expect_false(any(grepl("var_frac\\(allocation:", colnames(none_samples))))
+  expect_false(any(grepl(scalar_sd_pattern, colnames(none_samples))))
+
+  kept_random <- JAGS_estimates_table(
+    fit,
+    keep_parameters = "random_effects",
+    return_samples = TRUE
+  )
+  expect_true(all(allocation_rows %in% colnames(kept_random)))
+  expect_false("sigma" %in% colnames(kept_random))
+  expect_false(any(grepl("intercept", colnames(kept_random), fixed = TRUE)))
+  expect_false(any(grepl(scalar_sd_pattern, colnames(kept_random))))
 })
 
 
@@ -652,6 +788,71 @@ test_that("Summary table advanced features work correctly", {
   runjags_option_diagnostics <- JAGS_estimates_table(fit_dual_param)
   expect_equal(colnames(runjags_option_diagnostics), c("Mean", "SD", "0.025", "0.5", "0.975", "ESS"))
   expect_equal(attr(runjags_option_diagnostics, "type"), c(rep("estimate", 5), "ESS"))
+})
+
+test_that("runjags_estimates_table materializes vector point priors with indexed names", {
+
+  skip_if_not_installed("rjags")
+
+  point_vector_fit <- make_point_vector_fit()
+  point_vector_table <- runjags_estimates_table(
+    point_vector_fit,
+    remove_spike_0 = FALSE,
+    remove_diagnostics = TRUE
+  )
+
+  expect_true(all(c("theta[1]", "theta[2]") %in% rownames(point_vector_table)))
+  expect_equal(
+    as.numeric(point_vector_table[c("theta[1]", "theta[2]"), "Mean"]),
+    c(2, 2)
+  )
+  expect_equal(
+    as.numeric(point_vector_table[c("theta[1]", "theta[2]"), "SD"]),
+    c(0, 0)
+  )
+})
+
+test_that("runjags_estimates_table preserves point-factor and random-SD inclusion rows", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+  skip_if_no_fits()
+
+  fit_spike_factors <- readRDS(file.path(temp_fits_dir, "fit_spike_factors.RDS"))
+  spike_table <- runjags_estimates_table(fit_spike_factors)
+  point_rows <- c(
+    "(mu) x_fac2i[A]",
+    "(mu) x_fac2i[B]",
+    "(mu) x_fac3t[B]",
+    "(mu) x_fac3t[C]"
+  )
+  expect_true(all(point_rows %in% rownames(spike_table)))
+  expect_equal(as.numeric(spike_table[point_rows, "Mean"]), c(1, 1, 2, 2))
+  expect_false(any(grepl("x_fac3o|x_fac3md|mu_intercept", rownames(spike_table))))
+
+  fit_random_factor <- readRDS(file.path(temp_fits_dir, "fit_random_factor_slope3.RDS"))
+  random_table <- runjags_estimates_table(fit_random_factor)
+  raw_random_table <- runjags_estimates_table(
+    fit_random_factor,
+    random_effects_summary = "raw"
+  )
+  random_inclusion <- "(mu) x_fac3 | id (inclusion)"
+  raw_inclusion <- "(mu) _xREx__id_x_fac3 (inclusion)"
+  expect_true(random_inclusion %in% rownames(random_table))
+  expect_true(raw_inclusion %in% rownames(raw_random_table))
+  expect_equal(
+    as.numeric(random_table[random_inclusion, "Mean"]),
+    as.numeric(raw_random_table[raw_inclusion, "Mean"])
+  )
+  expect_true(is.na(random_table[random_inclusion, "SD"]))
+  expect_true(all(is.na(random_table[random_inclusion, c("0.025", "0.5", "0.975")])))
+
+  no_inclusion_table <- runjags_estimates_table(
+    fit_random_factor,
+    remove_inclusion = TRUE
+  )
+  expect_false(random_inclusion %in% rownames(no_inclusion_table))
+  expect_false(any(grepl(" (inclusion", rownames(no_inclusion_table), fixed = TRUE)))
 })
 
 # ============================================================================ #

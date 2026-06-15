@@ -433,6 +433,86 @@ test_that("JAGS_fit predicts observed random effects from latent monitors", {
   expect_true(all(is.finite(prediction)))
 })
 
+test_that("JAGS_fit predicts row-indexed external SD random effects from latent monitors", {
+
+  skip_if_not_installed("runjags")
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+
+  df <- data.frame(
+    y = c(-0.2, 0.1, 0.4, 0.7),
+    study = factor(c("s1", "s1", "s2", "s2")),
+    drug = factor(c("a", "b", "a", "b")),
+    tau_data = c(0.5, 0.75, 1.0, 1.25)
+  )
+  formula <- ~ 1 +
+    random(1 | study, name = "study", covariance = "diag") +
+    random(1 | drug, name = "drug", covariance = "diag")
+
+  fit <- suppressWarnings(JAGS_fit(
+    model_syntax = "model{
+      for(i in 1:N_mu){
+        y[i] ~ dnorm(mu[i], 4)
+        tau[i] <- tau_data[i]
+      }
+    }",
+    data = list(y = df$y, tau_data = df$tau_data),
+    formula_list = list(mu = formula),
+    formula_data_list = list(mu = df),
+    formula_prior_list = list(mu = list(
+      intercept = prior("normal", list(0, 1))
+    )),
+    formula_random_prior_list = list(mu = prior_random(
+      allocation = random_variance_allocation(
+        sd_source = random_sd_source("tau", shape = "row"),
+        weights = prior("dirichlet", list(alpha = c(2, 3)))
+      )
+    )),
+    add_parameters = c("tau", "mu"),
+    chains = 1,
+    adapt = 50,
+    burnin = 50,
+    sample = 100,
+    silent = TRUE,
+    seed = 105
+  ))
+
+  posterior <- as.matrix(fit$mcmc)
+  tau_names <- paste0("tau[", seq_len(nrow(df)), "]")
+  mu_names <- paste0("mu[", seq_len(nrow(df)), "]")
+
+  expect_true(all(tau_names %in% colnames(posterior)))
+  expect_true(all(mu_names %in% colnames(posterior)))
+  expect_true(any(grepl("mu__xREx__study_xRE_Zx", colnames(posterior), fixed = TRUE)))
+  expect_true(any(grepl("mu__xREx__drug_xRE_Zx", colnames(posterior), fixed = TRUE)))
+  expect_false(any(grepl("_xRE_COEFx", colnames(posterior), fixed = TRUE)))
+  expect_equal(
+    unname(posterior[, tau_names, drop = FALSE]),
+    unname(matrix(
+      rep(df$tau_data, each = nrow(posterior)),
+      nrow = nrow(posterior),
+      ncol = nrow(df)
+    )),
+    tolerance = 1e-12
+  )
+
+  prediction <- JAGS_evaluate_formula(
+    fit = fit,
+    formula = formula,
+    parameter = "mu",
+    data = df,
+    prior_list = attr(fit, "prior_list")
+  )
+
+  expect_equal(dim(prediction), c(nrow(df), nrow(posterior)))
+  expect_true(all(is.finite(prediction)))
+  expect_equal(
+    unname(t(prediction)),
+    unname(posterior[, mu_names, drop = FALSE]),
+    tolerance = 1e-8
+  )
+})
+
 test_that("JAGS_fit stores formula design metadata on failed sampling objects", {
 
   skip_if_not_installed("runjags")

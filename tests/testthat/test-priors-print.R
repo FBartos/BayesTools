@@ -32,6 +32,140 @@ test_that("Prior print function input validation", {
 
 })
 
+test_that("Random-effect specification print methods are compact", {
+
+  sd_prior  <- prior("gamma", list(shape = 2, rate = 2))
+  rho_prior <- prior("normal", list(mean = 0, sd = 0.5))
+  lkj_prior <- prior_lkj(eta = 2, include_correlation = FALSE, include_primitives = TRUE)
+  covariance <- random_covariance(structure = "us", sd = sd_prior, cor = lkj_prior)
+  monitor <- random_monitor(coefficients = TRUE, lkj_primitives = TRUE)
+  new_levels <- random_new_levels(allow = TRUE, method = "sample")
+  block <- random_block(
+    sd = sd_prior,
+    covariance = random_covariance(rho = rho_prior, rho_scale = "rho"),
+    monitor = monitor,
+    terms = list(
+      intercept = sd_prior,
+      slope     = random_term(sd = sd_prior)
+    )
+  )
+  source <- parameter_source(
+    "tau",
+    shape = "row",
+    values = function(parameters, data, n_rows) rep(1, n_rows)
+  )
+  sd_source <- random_sd_source(source)
+  allocation <- random_variance_allocation(
+    name = "total_re",
+    terms = c(study = "study", site = "site"),
+    sd = sd_prior,
+    weights = prior("dirichlet", list(alpha = c(2, 3)))
+  )
+  child_allocation <- random_variance_allocation(
+    name = "nested_split",
+    parent = allocation_ref("total_re", "study"),
+    terms = c("paper", "country"),
+    weights = prior("dirichlet", list(alpha = c(3, 1)))
+  )
+  random_prior <- prior_random(
+    sd = sd_prior,
+    covariance = random_covariance(eta = 3),
+    study = block,
+    allocation = list(total_re = allocation, nested_split = child_allocation)
+  )
+
+  expect_equal(utils::capture.output(print(lkj_prior)), c(
+    "prior_lkj()",
+    "  eta: 2",
+    "  include_correlation: FALSE",
+    "  include_primitives: TRUE"
+  ))
+  expect_equal(print(lkj_prior, silent = TRUE), c(
+    "prior_lkj()",
+    "  eta: 2",
+    "  include_correlation: FALSE",
+    "  include_primitives: TRUE"
+  ))
+  expect_equal(utils::capture.output(print(covariance)), c(
+    "random_covariance()",
+    "  structure: US",
+    "  sd: Gamma(2, 2)",
+    "  cor: prior_lkj(eta = 2, include_correlation = FALSE, include_primitives = TRUE)",
+    "  rho: none",
+    "  rho_scale: fisher_z"
+  ))
+  expect_equal(utils::capture.output(print(monitor)), c(
+    "random_monitor()",
+    "  latent: TRUE",
+    "  coefficients: TRUE",
+    "  correlation: TRUE",
+    "  lkj_primitives: TRUE"
+  ))
+  expect_equal(utils::capture.output(print(new_levels)), c(
+    "random_new_levels()",
+    "  allow: TRUE",
+    "  method: sample"
+  ))
+  expect_equal(utils::capture.output(print(block)), c(
+    "random_block()",
+    "  sd: Gamma(2, 2)",
+    "  sd_source: none",
+    "  covariance: random_covariance(structure = formula-owned, rho = Normal(0, 0.5), rho_scale = rho)",
+    "  monitor: random_monitor(latent = TRUE, coefficients = TRUE, correlation = TRUE, lkj_primitives = TRUE)",
+    "  new_levels: inherit",
+    "  terms: intercept, slope",
+    "  allocation: none"
+  ))
+  expect_s3_class(random_term(sd = sd_prior), "random_block")
+  expect_equal(utils::capture.output(print(source)), c(
+    "parameter_source()",
+    "  name: tau",
+    "  shape: row",
+    "  values: function"
+  ))
+  expect_equal(utils::capture.output(print(sd_source)), c(
+    "random_sd_source()",
+    "  source: tau[row]"
+  ))
+  expect_equal(utils::capture.output(print(allocation)), c(
+    "random_variance_allocation()",
+    "  name: total_re",
+    "  terms: study = study, site = site",
+    "  sd: Gamma(2, 2)",
+    "  sd_source: none",
+    "  weights: Dirichlet(2, 3)",
+    "  parent: none",
+    "  target: block",
+    "  scale: total_variance"
+  ))
+  expect_equal(utils::capture.output(print(child_allocation)), c(
+    "random_variance_allocation()",
+    "  name: nested_split",
+    "  terms: paper, country",
+    "  sd: none",
+    "  sd_source: none",
+    "  weights: Dirichlet(3, 1)",
+    "  parent: allocation_ref(allocation = \"total_re\", component = \"study\")",
+    "  target: block",
+    "  scale: total_variance"
+  ))
+  expect_equal(utils::capture.output(print(allocation_ref("total_re", "study"))), c(
+    "allocation_ref()",
+    "  allocation: total_re",
+    "  component: study"
+  ))
+  expect_equal(utils::capture.output(print(random_prior)), c(
+    "prior_random()",
+    "  sd: Gamma(2, 2)",
+    "  covariance: random_covariance(structure = formula-owned, cor = prior_lkj(eta = 3, include_correlation = TRUE, include_primitives = FALSE))",
+    "  monitor: random_monitor(latent = TRUE, coefficients = FALSE, correlation = TRUE, lkj_primitives = FALSE)",
+    "  new_levels: random_new_levels(allow = FALSE, method = \"zero\")",
+    "  allocation: 2 allocations (total_re, nested_split)",
+    "  blocks: study = random_block(sd = Gamma(2, 2), covariance = random_covariance(structure = formula-owned, rho = Normal(0, 0.5), rho_scale = rho), monitor = random_monitor(latent = TRUE, coefficients = TRUE, correlation = TRUE, lkj_primitives = TRUE), terms = intercept, slope)"
+  ))
+  expect_equal(utils::capture.output(print(random_prior, silent = TRUE)), character())
+})
+
 
 test_that("Prior print function works", {
 

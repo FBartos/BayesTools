@@ -46,7 +46,9 @@ posterior_ordinate_has_value(ordinate, value)
 \item{diagnostics}{optional estimator diagnostics.}
 
 \item{point_masses}{optional point-mass table/list with \code{x} and
-\code{mass} entries.}
+\code{mass} entries. Aliases \code{location} for \code{x} and \code{p} for
+\code{mass} are accepted. Locations and masses must be finite, masses must
+be positive, and the aggregated point mass cannot exceed one.}
 
 \item{support}{optional exact support metadata for the density scale. Supply
 a trusted numeric \code{c(lower, upper)} vector, or a list with

@@ -184,21 +184,43 @@ ensemble_inference_table <- function(inference, parameters, logBF = FALSE, BF01 
   check_char(title, "title", allow_NULL = TRUE)
   check_char(footnotes, "footnotes", check_length = 0, allow_NULL = TRUE)
   check_char(warnings, "warnings", check_length = 0, allow_NULL = TRUE)
-  if(attr(inference,"conditional"))
+  conditional <- attr(inference, "conditional", exact = TRUE)
+  if(!is.null(conditional)){
+    check_bool(conditional, "attr(inference, \"conditional\")", allow_NA = FALSE)
+  }
+  if(isTRUE(conditional))
     stop("The inference object cannot be 'conditional'.")
 
   # extract values
   inference_table <- NULL
   n_models        <- NULL
   for(parameter in parameters){
+    parameter_inference <- inference[[parameter]]
+    is_null <- attr(parameter_inference, "is_null", exact = TRUE)
+    if(is.null(is_null) || !is.logical(is_null)){
+      stop(
+        "The inference object for parameter '", parameter,
+        "' must have a logical 'is_null' attribute.",
+        call. = FALSE
+      )
+    }
+    check_real(parameter_inference[["prior_probs"]], paste0("inference$", parameter, "$prior_probs"), lower = 0, upper = 1, check_length = length(is_null), allow_NA = FALSE)
+    check_real(parameter_inference[["post_probs"]], paste0("inference$", parameter, "$post_probs"), lower = 0, upper = 1, check_length = length(is_null), allow_NA = FALSE)
+    check_real(parameter_inference[["BF"]], paste0("inference$", parameter, "$BF"), lower = 0, check_length = 1, allow_NA = TRUE)
+    parameter_name <- attr(parameter_inference, "parameter_name", exact = TRUE)
+    if(is.null(parameter_name)){
+      parameter_name <- parameter
+    }else{
+      check_char(parameter_name, paste0("attr(inference$", parameter, ", \"parameter_name\")"), check_length = 1, allow_NA = FALSE)
+    }
     inference_table <- rbind(inference_table, c(
-      "models"       = sum(!attr(inference[[parameter]], "is_null")),
-      "prior_prob"   = sum(inference[[parameter]][["prior_probs"]][!attr(inference[[parameter]], "is_null")]),
-      "post_prob"    = sum(inference[[parameter]][["post_probs"]][!attr(inference[[parameter]], "is_null")] ),
-      "inclusion_BF" = inference[[parameter]][["BF"]]
+      "models"       = sum(!is_null),
+      "prior_prob"   = sum(parameter_inference[["prior_probs"]][!is_null]),
+      "post_prob"    = sum(parameter_inference[["post_probs"]][!is_null]),
+      "inclusion_BF" = parameter_inference[["BF"]]
     ))
-    rownames(inference_table)[nrow(inference_table)] <- attr(inference[[parameter]], "parameter_name")
-    n_models <- c(n_models, length(attr(inference[[parameter]], "is_null")))
+    rownames(inference_table)[nrow(inference_table)] <- parameter_name
+    n_models <- c(n_models, length(is_null))
   }
   inference_table <- data.frame(inference_table)
 
@@ -954,6 +976,20 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   # transformations, while fixed effects still retain all interaction columns.
   if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
     model_samples <- transform_scale_samples(model_samples, formula_scale)
+  }
+
+  model_samples <- .materialize_missing_point_prior_samples(model_samples, prior_list)
+  if(remove_inclusion){
+    random_inclusion <- vapply(
+      prior_list,
+      function(prior) identical(attr(prior, "random_summary", exact = TRUE), "inclusion"),
+      logical(1)
+    )
+    if(any(random_inclusion)){
+      random_inclusion_names <- names(prior_list)[random_inclusion]
+      model_samples <- model_samples[, !colnames(model_samples) %in% random_inclusion_names, drop = FALSE]
+      prior_list <- prior_list[!random_inclusion]
+    }
   }
 
   ### remove un-wanted estimates (or support values) - spike and slab priors already dealt with later (also remove the item from prior list)
@@ -2126,7 +2162,10 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
   if(length(operator) != n){
     operator <- rep_len(operator, n)
   }
-  operator[!operator %in% c("<", ">")] <- NA_character_
+  invalid <- !is.na(operator) & !operator %in% c("<", ">")
+  if(any(invalid)){
+    stop("BF bound operators must be '<' or '>'.", call. = FALSE)
+  }
 
   return(operator)
 }
@@ -2214,9 +2253,12 @@ format_BF <- function(BF, logBF = FALSE, BF01 = FALSE, inclusion = FALSE){
   }
 
   raw_BF <- attr(table, "raw_BF")
+  attr(output, "raw_BF") <- NULL
   if(!is.null(raw_BF) && length(raw_BF) == nrow(table)){
     row_indices <- match(rownames(output), rownames(table))
-    if(!any(is.na(row_indices))){
+    if(length(row_indices) == nrow(output) &&
+       !any(is.na(row_indices)) &&
+       !anyDuplicated(row_indices)){
       attr(output, "raw_BF") <- raw_BF[row_indices]
     }
   }
@@ -2610,7 +2652,8 @@ update.BayesTools_table <- function(object, title = NULL, footnotes = NULL, warn
 
   # remove all but Mean for inclusions
   quantile_col_names <- as.character(probs)
-  runjags_summary[grepl("(inclusion)", rownames(runjags_summary)), c("SD", quantile_col_names)] <- NA
+  inclusion_rows <- grepl(" (inclusion", rownames(runjags_summary), fixed = TRUE)
+  runjags_summary[inclusion_rows, c("SD", quantile_col_names)] <- NA
 
   # don't produce fit diagnostics for conditional samples (different chain lengths etc...) or if remove_diagnostics is TRUE
   if(conditional || length(diagnostic_columns) == 0){

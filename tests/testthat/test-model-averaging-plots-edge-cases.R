@@ -667,6 +667,42 @@ test_that("posterior plot data uses stored posterior density when available", {
   expect_equal(attr(plot_data$density, "posterior_density_method"), "iwmde")
 })
 
+test_that("posterior plot data does not add sample spikes to stored full density", {
+  theta <- c(rep(0, 25), seq(-2, 2, length.out = 75))
+  stored_x <- seq(-2, 2, length.out = 51)
+  stored_y <- stats::dnorm(stored_x)
+  attr(theta, "models_ind") <- c(rep(1, 25), rep(2, 75))
+  attr(theta, "prior_list") <- list(
+    prior("point", list(location = 0)),
+    prior("normal", list(mean = 0, sd = 1))
+  )
+  attr(theta, "posterior_density") <- list(
+    x      = stored_x,
+    y      = stored_y,
+    method = "iwmde"
+  )
+
+  expect_warning(
+    plot_data <- BayesTools:::.plot_data_samples.simple(
+      samples                  = list(theta = theta),
+      parameter                = "theta",
+      n_points                 = 16,
+      transformation           = NULL,
+      transformation_arguments = NULL,
+      transformation_settings  = FALSE,
+      density_method           = "precomputed"
+    ),
+    "does not declare 'point_masses'",
+    fixed = TRUE
+  )
+
+  expect_equal(plot_data$density$x, stored_x)
+  expect_equal(
+    length(plot_data[vapply(plot_data, inherits, logical(1), "density.prior.point")]),
+    0L
+  )
+})
+
 test_that("posterior plot data ignores stored density by default", {
   theta <- seq(-2, 2, length.out = 40)
   stored_x <- seq(-3, 3, length.out = 61)
@@ -1794,6 +1830,53 @@ test_that("factor posterior plot data uses stored point masses once", {
     unname(vapply(point_entries, function(point) point[["y"]], numeric(1))),
     c(.25, .25)
   )
+})
+
+test_that("factor posterior plot data keeps fallback spikes per level", {
+
+  n_samples <- 100
+  samples <- cbind(
+    `mu_alloc[random]`     = c(rep(0, 40), seq(-1, 0, length.out = 60)),
+    `mu_alloc[systematic]` = c(rep(0, 40), seq(1, 2, length.out = 60))
+  )
+
+  prior <- prior_factor("normal", list(0, 1), contrast = "treatment")
+  point_prior <- prior_factor("point", list(location = 0), contrast = "treatment")
+  attr(prior, "levels") <- 3
+  attr(prior, "level_names") <- c("alternate", "random", "systematic")
+  attr(point_prior, "levels") <- 3
+  attr(point_prior, "level_names") <- c("alternate", "random", "systematic")
+
+  stored_x <- seq(-2, 2, length.out = 31)
+  attr(samples, "prior_list") <- list(point_prior, prior)
+  attr(samples, "models_ind") <- c(rep(1, 40), rep(2, 60))
+  attr(samples, "posterior_density") <- list(
+    random = list(
+      parameter    = "random",
+      x            = stored_x,
+      y            = stats::dnorm(stored_x),
+      point_masses = data.frame(x = 0, mass = .25),
+      method       = "iwmde"
+    )
+  )
+  class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
+
+  plot_data <- BayesTools:::.plot_data_samples.factor(
+    samples                  = list(mu_alloc = samples),
+    parameter                = "mu_alloc",
+    n_points                 = 16,
+    transformation           = NULL,
+    transformation_arguments = NULL,
+    transformation_settings  = FALSE,
+    density_method           = "precomputed"
+  )
+
+  point_entries <- plot_data[vapply(plot_data, inherits, logical(1), "density.prior.point")]
+  point_levels <- vapply(point_entries, function(point) attr(point, "level"), numeric(1))
+
+  expect_setequal(unname(point_levels), c(1, 2))
+  expect_equal(point_entries[[which(point_levels == 1)]]$y, .25)
+  expect_equal(point_entries[[which(point_levels == 2)]]$y, .40)
 })
 
 test_that("factor posterior plot data matches interaction cell aliases", {

@@ -117,6 +117,41 @@ test_that("diagnostic density plot data reflects bounded prior support", {
   }
 })
 
+test_that("diagnostic density plot data reflects simplex coordinate support", {
+  w1 <- seq(.005, .995, length.out = 400)
+  chain_1 <- cbind("w[1]" = w1, "w[2]" = 1 - w1)
+  chain_2 <- cbind("w[1]" = rev(w1), "w[2]" = rev(1 - w1))
+
+  fit <- coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2))
+  class(fit) <- c("BayesTools_fit", class(fit))
+  prior_list <- list(w = prior("dirichlet", list(alpha = c(1, 1))))
+
+  expect_equal(
+    BayesTools:::.diagnostics_prior_bounds(prior_list$w, "w"),
+    list(lower = 0, upper = 1)
+  )
+
+  plot_data <- .diagnostics_plot_data(
+    fit = fit,
+    parameter = "w",
+    prior_list = prior_list,
+    transformations = NULL,
+    transform_factors = FALSE
+  )
+  expect_equal(colnames(plot_data), c("w[1]", "w[2]"))
+
+  density_data <- .diagnostics_plot_data_density(plot_data, n_points = 256, xlim = c(0, 1))
+
+  for(parameter_density in density_data){
+    for(chain_density in parameter_density){
+      expect_equal(range(chain_density$x), c(0, 1))
+      expect_true(all(is.finite(chain_density$y)))
+      expect_true(all(chain_density$y >= 0))
+      expect_true(isTRUE(attr(chain_density, "boundary_reflection")))
+    }
+  }
+})
+
 test_that("diagnostic density does not reflect after custom transformations", {
   chain_1 <- cbind(theta = seq(.005, .995, length.out = 100))
   chain_2 <- cbind(theta = rev(chain_1[, "theta"]))

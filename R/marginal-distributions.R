@@ -2251,26 +2251,26 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 #' @param silent whether warnings should be returned silently. Defaults to \code{FALSE}
 #' @param density_method density source for the posterior ordinate. \code{"KDE"}
 #' computes a kernel density estimate, using boundary reflection when exact
-#' posterior-support metadata is available. \code{"precomputed"} uses a valid
-#' \code{posterior_ordinate} attribute when present, then falls back to a valid
+#' posterior-support metadata is available. \code{"precomputed"} requires a
+#' valid \code{posterior_ordinate} attribute when present, or otherwise a valid
 #' \code{posterior_density} attribute.
 #'
 #' @details Marginal posterior vectors may carry a \code{posterior_ordinate}
 #' attribute with exact \code{value} and \code{ordinate} entries. When
 #' \code{density_method = "precomputed"} and
 #' \code{normal_approximation = FALSE}, a matching ordinate is used for the
-#' Savage-Dickey ratio. If no matching ordinate is available, a
+#' Savage-Dickey ratio. If no matching ordinate is available, a valid
 #' \code{posterior_density} grid with \code{x} and \code{y} coordinates is
-#' used before falling back to a kernel density estimate. The fallback KDE uses
-#' boundary reflection when exact \code{posterior_support} metadata is attached
-#' to the marginal posterior or to a matched posterior-density attribute. Exact
-#' support metadata is also checked before accepting precomputed posterior
+#' used. If neither valid precomputed source is available, an error is thrown.
+#' Exact support metadata is also checked before accepting precomputed posterior
 #' ordinates or densities; support is used to exclude the null only after it
 #' is validated against the posterior samples. A stale precomputed value is
-#' ignored when compatible exact support excludes the null. Support is not
-#' inferred from prior-density grids, posterior-density grids, or plotting
-#' ranges, which may be finite numerical integration ranges rather than true
-#' support boundaries. Exact support metadata is either a numeric
+#' ignored when compatible exact support excludes the null; returned Bayes
+#' factors label this path as exact support exclusion rather than as a KDE
+#' estimate. Support is not inferred from prior-density grids,
+#' posterior-density grids, or plotting ranges, which may be finite numerical
+#' integration ranges rather than true support boundaries. Exact support
+#' metadata is either a numeric
 #' \code{c(lower, upper)} vector or a list with
 #' \code{bounds = c(lower, upper)} and \code{exact = TRUE}; optional
 #' \code{type = "points"} support is not treated as a continuous interval for
@@ -2353,38 +2353,34 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   }else{
     NULL
   }
-  if(identical(density_method, "precomputed") &&
+  if(!isTRUE(normal_approximation) &&
+     identical(density_method, "precomputed") &&
      is.null(stored_posterior_ordinate) &&
      is.null(stored_posterior_density)){
     if(!is.null(posterior_ordinate_status) &&
        isTRUE(posterior_ordinate_status[["present"]]) &&
        isTRUE(posterior_ordinate_status[["relevant"]]) &&
        !isTRUE(posterior_ordinate_status[["valid"]])){
-      fallback_warning <- paste0(
+      stop(
         "Precomputed posterior ordinate metadata is present but invalid ",
-        "for the requested null hypothesis. Falling back to the kernel ",
-        "density estimate."
-      )
-      warnings <- c(warnings, fallback_warning)
-      posterior_density_fallback_warnings <- c(
-        posterior_density_fallback_warnings,
-        fallback_warning
+        "for the requested null hypothesis.",
+        call. = FALSE
       )
     }
     if(!is.null(posterior_density_status) &&
        isTRUE(posterior_density_status[["present"]]) &&
        isTRUE(posterior_density_status[["relevant"]]) &&
        !isTRUE(posterior_density_status[["valid"]])){
-      fallback_warning <- paste0(
-        "Precomputed posterior density metadata is present but invalid. ",
-        "Falling back to the kernel density estimate."
-      )
-      warnings <- c(warnings, fallback_warning)
-      posterior_density_fallback_warnings <- c(
-        posterior_density_fallback_warnings,
-        fallback_warning
+      stop(
+        "Precomputed posterior density metadata is present but invalid.",
+        call. = FALSE
       )
     }
+    stop(
+      "'density_method = \"precomputed\"' requires valid posterior ordinate ",
+      "or posterior density metadata for the requested null hypothesis.",
+      call. = FALSE
+    )
   }
 
   if(mean(posterior == null_hypothesis) > 0.05){
@@ -2438,11 +2434,10 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   if(!is.null(stored_posterior_density) && is.null(stored_posterior_ordinate)){
     posterior_range <- range(stored_posterior_density[["x"]], finite = TRUE)
     if(null_hypothesis < posterior_range[1] || null_hypothesis > posterior_range[2]){
-      fallback_warning <- "Stored posterior density does not span both sides of the null hypothesis. Falling back to the kernel density estimate."
-      warnings <- c(warnings, fallback_warning)
-      posterior_density_fallback_warnings <- c(posterior_density_fallback_warnings, fallback_warning)
-      stored_posterior_density <- NULL
-      posterior_range <- range(posterior)
+      stop(
+        "Stored posterior density does not span both sides of the null hypothesis.",
+        call. = FALSE
+      )
     }
   }
   if(is.null(stored_posterior_ordinate) &&
@@ -2464,6 +2459,9 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     if(isTRUE(attr(height, "boundary_reflection", exact = TRUE))){
       posterior_density_boundary_reflection <<- TRUE
     }
+    if(isTRUE(attr(height, "posterior_support_exclusion", exact = TRUE))){
+      posterior_density_source <<- "exact_support_exclusion"
+    }
     support_bounds <- attr(height, "posterior_support_bounds", exact = TRUE)
     if(!is.null(support_bounds)){
       posterior_density_support_bounds <<- support_bounds
@@ -2481,10 +2479,14 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     )
     warnings <- c(warnings, support_exclusion[["warnings"]])
     if(isTRUE(support_exclusion[["excluded"]])){
-      fallback_warning <- "Exact posterior support excludes the null hypothesis. Ignoring the precomputed posterior ordinate."
+      fallback_warning <- paste0(
+        "Exact ", support_exclusion[["source_label"]],
+        " excludes the null hypothesis. Ignoring the precomputed posterior ordinate."
+      )
       warnings <- c(warnings, fallback_warning)
       posterior_density_fallback_warnings <- c(posterior_density_fallback_warnings, fallback_warning)
       posterior_height <- 0
+      posterior_density_source <- "exact_support_exclusion"
       posterior_density_support_bounds <- support_exclusion[["bounds"]]
     }else{
       posterior_height <- stored_posterior_ordinate[["y"]]
@@ -2499,20 +2501,24 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     )
     warnings <- c(warnings, support_exclusion[["warnings"]])
     if(isTRUE(support_exclusion[["excluded"]])){
-      fallback_warning <- "Exact posterior support excludes the null hypothesis. Ignoring the precomputed posterior density."
+      fallback_warning <- paste0(
+        "Exact ", support_exclusion[["source_label"]],
+        " excludes the null hypothesis. Ignoring the precomputed posterior density."
+      )
       warnings <- c(warnings, fallback_warning)
       posterior_density_fallback_warnings <- c(posterior_density_fallback_warnings, fallback_warning)
       posterior_height <- 0
+      posterior_density_source <- "exact_support_exclusion"
       posterior_density_support_bounds <- support_exclusion[["bounds"]]
     }else{
       posterior_height <- .posterior_density_height(stored_posterior_density, null_hypothesis)
     }
     if(!isTRUE(support_exclusion[["excluded"]]) &&
        (!is.finite(posterior_height) || posterior_height <= 0)){
-      fallback_warning <- "Stored posterior density has zero or non-finite height at the null hypothesis. Falling back to the kernel density estimate."
-      warnings <- c(warnings, fallback_warning)
-      posterior_density_fallback_warnings <- c(posterior_density_fallback_warnings, fallback_warning)
-      posterior_height <- kde_height(stored_posterior_density[["support"]])
+      stop(
+        "Stored posterior density has zero or non-finite height at the null hypothesis.",
+        call. = FALSE
+      )
     }else if(!isTRUE(support_exclusion[["excluded"]])){
       posterior_density_source <- "precomputed"
       BF_error_percent <- .posterior_density_bf_error_percent(stored_posterior_density, null_hypothesis)
@@ -2562,13 +2568,15 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
 }
 
 .Savage_Dickey_BF.support_exclusion <- function(samples, null_hypothesis,
-                                                source_support = NULL){
+                                                 source_support = NULL){
 
   supports <- list(source_support, .posterior_support_get(samples))
+  support_labels <- c("stored posterior density support", "posterior support")
   valid_bounds <- NULL
   support_warnings <- NULL
 
-  for(support in supports){
+  for(i in seq_along(supports)){
+    support <- supports[[i]]
     support <- .posterior_support_from_attribute(support)
     if(is.null(support) || !isTRUE(support$exact)){
       next
@@ -2590,14 +2598,16 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
       null_hypothesis
     )){
       return(list(
-        excluded = TRUE,
-        bounds   = support_info[["bounds"]],
-        warnings = support_warnings
+        excluded    = TRUE,
+        bounds      = support_info[["bounds"]],
+        source_label = support_labels[[i]],
+        warnings    = support_warnings
       ))
     }
   }
 
-  list(excluded = FALSE, bounds = valid_bounds, warnings = support_warnings)
+  list(excluded = FALSE, bounds = valid_bounds, source_label = NULL,
+       warnings = support_warnings)
 }
 
 .Savage_Dickey_BF.kd     <- function(samples, null_hypothesis, support = NULL){
@@ -2611,6 +2621,7 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     if(null_hypothesis < support_bounds[1] || null_hypothesis > support_bounds[2]){
       height <- 0
       attr(height, "posterior_support_bounds") <- support_bounds
+      attr(height, "posterior_support_exclusion") <- TRUE
       return(height)
     }
 
@@ -2793,6 +2804,14 @@ marginal_inference <- function(model_list, marginal_parameters, parameters, is_n
 #' @inheritParams as_mixed_posteriors
 #' @inheritParams marginal_inference
 #' @inheritParams Savage_Dickey_BF
+#'
+#' @details For \code{as_marginal_inference()}, \code{conditional_list} is
+#' applied separately to each output marginal or level. A requested conditional
+#' parameter is active only for levels whose linear combination has a nonzero
+#' weight for that parameter. Requested conditionals with zero weight are ignored
+#' for that level; if no requested conditionals are active, the level uses the
+#' fully averaged posterior and prior context. Level comparisons require the
+#' compared levels to use the same effective conditional subset and rule.
 #'
 #' @return \code{as_marginal_inference} returns an object of class 'marginal_inference'.
 #'

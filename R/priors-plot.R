@@ -38,6 +38,8 @@
 #'
 #' @return \code{plot.prior} returns either \code{NULL} or
 #' an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
+#' Dirichlet simplex priors are plotted as one beta marginal per coordinate;
+#' the ggplot method returns a list unless a single figure is selected.
 #'
 #' @seealso [prior()] [lines.prior()]  [geom_prior()]
 #' @rdname plot.prior
@@ -169,6 +171,16 @@ plot.prior <- function(x, plot_type = "base",
     }
   }
 
+  # simplex prior plots
+  if(is.prior.simplex(x)){
+    plots <- .plot.prior.simplex(x = x, plot_type = plot_type, plot_data = plot_data, show_figures = show_figures, par_name = par_name, ...)
+    if(plot_type == "ggplot"){
+      return(plots)
+    }else{
+      return(invisible())
+    }
+  }
+
   # discrete prior plots
   if(is.prior.discrete(x)){
     plots <- .plot.prior.discrete(x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)
@@ -188,6 +200,37 @@ plot.prior <- function(x, plot_type = "base",
       return(invisible())
     }
   }
+}
+
+.plot.prior.simplex       <- function(x, plot_type, plot_data, show_figures = NULL, par_name = NULL, ...){
+
+  if(is.null(show_figures)){
+    plots_ind <- seq_along(plot_data)
+  }else{
+    plots_ind <- seq_along(plot_data)[show_figures]
+  }
+
+  plots <- list()
+  for(figure in plots_ind){
+    component_name <- if(is.null(par_name)){
+      names(plot_data)[figure]
+    }else{
+      paste0(par_name, "[", figure, "]")
+    }
+    plots[[figure]] <- .plot.prior.simple(
+      x = x,
+      plot_type = plot_type,
+      plot_data = plot_data[[figure]],
+      par_name = component_name,
+      ...
+    )
+  }
+
+  if(plot_type == "ggplot" && length(plots_ind) == 1L){
+    plots <- plots[[plots_ind]]
+  }
+
+  return(plots)
 }
 
 .plot.prior.point          <- function(x, plot_type, plot_data, par_name = NULL, ...){

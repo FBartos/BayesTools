@@ -243,6 +243,12 @@ models_inference   <- function(model_list){
 #' indicators of the null or alternative hypothesis models
 #' for each parameter.
 #'
+#' @details For simplex parameters such as Dirichlet priors, absent model
+#' parameters are not filled with an implicit spike at zero because the all-zero
+#' vector is off the simplex. Every model with positive prior or posterior
+#' probability must provide an explicit compatible simplex prior or point prior
+#' on the simplex.
+#'
 #' @param seed integer specifying seed for sampling posteriors for
 #' model averaging. Defaults to \code{NULL}.
 #' @param n_samples number of samples to be drawn for the model-averaged
@@ -301,6 +307,14 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
     temp_inference    <- inference[[temp_parameter]]
     temp_priors       <- lapply(priors, function(p) p[[temp_parameter]])
 
+    if(all(sapply(temp_priors, is.null))){
+      stop(
+        "The parameter '", temp_parameter,
+        "' is not available in any model prior list.",
+        call. = FALSE
+      )
+    }
+
     if(any(sapply(temp_priors, is.prior.weightfunction)) && all(sapply(temp_priors, is.prior.weightfunction) | sapply(temp_priors, .is_prior_weightfunction_null) | sapply(temp_priors, is.null))){
       # weightfunctions:
 
@@ -337,6 +351,13 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 
     }else if(any(sapply(temp_priors, is.prior.vector)) && all(sapply(temp_priors, is.prior.vector) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.null))){
       # vector priors:
+
+      .mix_posteriors_validate_simplex_priors(
+        temp_priors,
+        temp_parameter,
+        temp_inference$prior_probs,
+        temp_inference$post_probs
+      )
 
       # replace missing priors with default prior: spike(0)
       for(i in 1:length(fits)){
@@ -383,6 +404,77 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 
   class(out) <- c(class(out), "mixed_posteriors")
   return(out)
+}
+
+.mix_posteriors_is_dirichlet_simplex <- function(prior){
+  is.prior.simplex(prior) && identical(prior[["distribution"]], "dirichlet")
+}
+
+.mix_posteriors_is_simplex_point <- function(prior, K){
+
+  if(!is.prior.point(prior)){
+    return(FALSE)
+  }
+
+  location <- prior$parameters[["location"]]
+  if(is.numeric(location) && length(location) == 1L){
+    location <- rep(location, K)
+  }
+  is.numeric(location) &&
+    length(location) == K &&
+    all(is.finite(location)) &&
+    all(location >= 0) &&
+    isTRUE(all.equal(sum(location), 1, tolerance = 1e-8))
+}
+
+.mix_posteriors_validate_simplex_priors <- function(priors, parameter, prior_probs, post_probs){
+
+  simplex <- vapply(priors, .mix_posteriors_is_dirichlet_simplex, logical(1))
+  if(!any(simplex)){
+    return(invisible(NULL))
+  }
+
+  K <- unique(vapply(priors[simplex], function(prior){
+    prior$parameters[["K"]]
+  }, numeric(1)))
+  if(length(K) != 1L){
+    stop(
+      "The simplex parameter '", parameter,
+      "' cannot be mixed across Dirichlet priors with different dimensions.",
+      call. = FALSE
+    )
+  }
+
+  contributing <- prior_probs > 0 | post_probs > 0
+  missing <- vapply(priors, is.null, logical(1))
+  if(any(missing & contributing)){
+    stop(
+      "The simplex parameter '", parameter,
+      "' has no implicit spike-at-zero null. Every model with positive prior ",
+      "or posterior probability must provide an explicit compatible Dirichlet ",
+      "simplex prior or point prior on the simplex.",
+      call. = FALSE
+    )
+  }
+
+  compatible <- vapply(priors, function(prior){
+    if(is.null(prior)){
+      return(TRUE)
+    }
+    .mix_posteriors_is_dirichlet_simplex(prior) ||
+      .mix_posteriors_is_simplex_point(prior, K)
+  }, logical(1))
+
+  if(any(!compatible & contributing)){
+    stop(
+      "The simplex parameter '", parameter,
+      "' can only mix Dirichlet simplex priors with the same dimension or ",
+      "explicit point priors on the simplex.",
+      call. = FALSE
+    )
+  }
+
+  invisible(NULL)
 }
 
 .mix_posteriors.simple         <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000){
@@ -530,7 +622,15 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 
     if(is.prior.point(priors[[i]])){
       # not sampling the priors as the samples would be already transformed
-      samples <- rbind(samples, matrix(priors[[i]]$parameters[["location"]], nrow = length(temp_ind), ncol = K))
+      samples <- rbind(
+        samples,
+        matrix(
+          rep(priors[[i]]$parameters[["location"]], times = length(temp_ind)),
+          nrow = length(temp_ind),
+          ncol = K,
+          byrow = TRUE
+        )
+      )
     }else if(K == 1){
       samples <- rbind(samples, matrix(model_samples[temp_ind, parameter], nrow = length(temp_ind), ncol = K))
     }else{
@@ -565,6 +665,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
     stop("'fits' must be a list of 'runjags' or 'rstan' models")
   if(!all(sapply(priors, is.prior.factor) | sapply(priors, is.prior.point)))
     stop("'priors' must be a list of factor priors")
+  priors <- .complete_factor_metadata_prior_list(priors)
 
   # check the prior levels
   levels <- unique(sapply(priors[sapply(priors, is.prior.factor)], .get_prior_factor_levels))
@@ -1082,6 +1183,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
   # check input
   check_char(parameter, "parameter", check_length = FALSE)
+  prior <- .complete_factor_metadata(prior, parameter)
 
   # gather information about the prior distribution
   prior_info <- list(

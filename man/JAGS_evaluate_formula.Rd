@@ -33,6 +33,14 @@ grouping levels when either standardized latent random effects and covariance
 hyperparameters were monitored via \code{random_monitor(latent = TRUE)}, or
 the group-level coefficients were monitored via
 \code{random_monitor(coefficients = TRUE)}.
+Row-indexed external random-effect SD sources, such as
+\code{random_sd_source("tau", shape = "row")}, are evaluated from latent
+random effects only. Model generation automatically monitors the required
+latent effects for these blocks. The posterior samples must either contain
+source columns named \code{tau[1]}, ..., \code{tau[nrow(data)]} aligned to
+the supplied prediction rows, or the source must provide a
+\code{parameter_source()} \code{values} function for reconstructing row-wise
+source values from the posterior samples and supplied prediction data.
 }
 \seealso{
 \code{\link[=JAGS_fit]{JAGS_fit()}} \code{\link[=JAGS_formula]{JAGS_formula()}}

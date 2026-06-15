@@ -4,23 +4,32 @@
 namespace bayestools {
 namespace nonlocal {
 
-bool valid_order(double order);
-bool valid_moment_parameters(double location, double tau, double order);
+bool valid_common_parameters(double location, double tau, double order);
 bool valid_invmoment_parameters(double location, double tau, double order, double df);
 
 double moment_mode(double tau, double order);
 double invmoment_mode(double tau, double order, double df);
-double typical_value(double location, double mode, double const *lower, double const *upper);
 
-double dmoment(double x, double location, double tau, double order, bool give_log);
-double pmoment(double q, double location, double tau, double order, bool lower_tail, bool log_p);
-double qmoment(double p, double location, double tau, double order, bool lower_tail, bool log_p);
-double rmoment(double sign_u, double magnitude_u, double location, double tau, double order);
+double moment_log_density(double x, double location, double tau, double order);
+double invmoment_log_density(double x, double location, double tau, double order, double df);
 
-double dinvmoment(double x, double location, double tau, double order, double df, bool give_log);
-double pinvmoment(double q, double location, double tau, double order, double df, bool lower_tail, bool log_p);
-double qinvmoment(double p, double location, double tau, double order, double df, bool lower_tail, bool log_p);
-double rinvmoment(double sign_u, double magnitude_u, double location, double tau, double order, double df);
+double moment_cdf(double q, double location, double tau, double order,
+                  bool lower_tail, bool log_p);
+double invmoment_cdf(double q, double location, double tau, double order,
+                     double df, bool lower_tail, bool log_p);
+
+double moment_quantile(double p, double location, double tau, double order,
+                       bool lower_tail, bool log_p);
+double invmoment_quantile(double p, double location, double tau, double order,
+                          double df, bool lower_tail, bool log_p);
+
+double moment_rng(double u_sign, double u_size, double location, double tau,
+                  double order);
+double invmoment_rng(double u_sign, double u_size, double location, double tau,
+                     double order, double df);
+
+double typical_value(double location, double mode_abs, double lower,
+                     double upper);
 
 }
 }

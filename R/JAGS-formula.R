@@ -251,11 +251,14 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
 
   # get the default design matrix
   model_frame  <- tryCatch(
-    stats::model.frame(formula, data = data, na.action = stats::na.fail),
+    stats::model.frame(formula, data = data, na.action = stats::na.pass),
     error = function(e){
-      stop("Formula predictors contain missing values.", call. = FALSE)
+      stop(conditionMessage(e), call. = FALSE)
     }
   )
+  if(anyNA(model_frame)){
+    stop("Formula predictors contain missing values.", call. = FALSE)
+  }
   model_matrix <- stats::model.matrix(model_frame, formula = formula, data = data)
   raw_column_names <- colnames(model_matrix)
 
@@ -423,16 +426,16 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   add_parameters <- character()
   jags_modules <- character()
   required_packages <- character()
-  random_allocation_context <- .bt_random_variance_allocation_context(
+  random_sd_binding_context <- .bt_random_sd_binding_context(
     random_effects = random_effects,
     prior_random = prior_random,
     parameter = parameter
   )
-  if(length(random_allocation_context$prior_list) > 0L){
-    prior_list <- c(prior_list, random_allocation_context$prior_list)
+  if(length(random_sd_binding_context$prior_list) > 0L){
+    prior_list <- c(prior_list, random_sd_binding_context$prior_list)
   }
-  if(length(random_allocation_context$syntax) > 0L){
-    random_syntax <- c(random_syntax, random_allocation_context$syntax)
+  if(length(random_sd_binding_context$syntax) > 0L){
+    random_syntax <- c(random_syntax, random_sd_binding_context$syntax)
   }
   for(random_i in seq_along(random_effects)){
     random_effect_data <- data
@@ -445,7 +448,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
       parameter,
       random_effect_data,
       prior_random = prior_random,
-      allocation_context = random_allocation_context,
+      sd_binding_context = random_sd_binding_context,
       group_data = random_effect_unscaled_data
     )
     random_effects[[random_i]] <- temp_random[["random_effect"]]
@@ -509,6 +512,14 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     attr(scale_info, "parameter") <- parameter
     # store log_intercept attribute for proper unscaling transformation
     attr(scale_info, "log_intercept") <- log_intercept
+    point_terms <- .formula_scale_point_terms(
+      prior_list = prior_list,
+      parameter = parameter,
+      model_terms = model_terms
+    )
+    if(length(point_terms) > 0L){
+      attr(scale_info, "point_terms") <- point_terms
+    }
     if(length(random_scale_terms) > 0){
       names(random_scale_terms) <- paste0(parameter, "_", names(random_scale_terms))
       attr(scale_info, "random_effect_terms") <- random_scale_terms
@@ -528,6 +539,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     formula           = design_formula,
     log_intercept     = log_intercept,
     model_frame       = model_frame,
+    source_data       = random_effect_unscaled_data,
     model_matrix      = model_matrix,
     raw_column_names  = raw_column_names,
     column_names      = column_names,
@@ -540,7 +552,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     expressions       = expressions,
     random_effects    = random_effects,
     jags_data_names   = jags_data_names,
-    random_allocations = random_allocation_context$allocations,
+    random_allocations = random_sd_binding_context$allocations,
     random_effects_interface = random_effects_interface
   )
   output$random_effects_interface <- random_effects_interface
@@ -548,8 +560,33 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   return(output)
 }
 
+.formula_scale_point_terms <- function(prior_list, parameter, model_terms){
+
+  fixed_names <- paste0(parameter, "_", model_terms)
+  fixed_names <- fixed_names[fixed_names %in% names(prior_list)]
+  if(length(fixed_names) == 0L){
+    return(stats::setNames(numeric(), character()))
+  }
+
+  point_terms <- numeric()
+  for(fixed_name in fixed_names){
+    this_prior <- prior_list[[fixed_name]]
+    if(!is.prior.point(this_prior)){
+      next
+    }
+    location <- this_prior$parameters[["location"]]
+    if(!is.numeric(location) || length(location) != 1L ||
+       is.na(location) || !is.finite(location)){
+      next
+    }
+    point_terms[[fixed_name]] <- location
+  }
+
+  point_terms
+}
+
 .JAGS_formula_design_object <- function(parameter, formula, log_intercept,
-                                        model_frame, model_matrix,
+                                        model_frame, source_data, model_matrix,
                                         raw_column_names, column_names,
                                         predictors, predictors_type,
                                         model_terms, model_terms_type,
@@ -589,6 +626,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     formula            = formula_output,
     log_intercept      = isTRUE(log_intercept),
     model_frame        = model_frame_output,
+    source_data        = source_data,
     model_matrix       = model_matrix,
     column_names       = column_names,
     raw_column_names   = raw_column_names,
@@ -817,7 +855,7 @@ JAGS_formula_design <- function(fit, parameter = NULL){
 
 .JAGS_random_effect_formula <- function(formula, parameter, data,
                                         prior_random = NULL,
-                                        allocation_context = NULL,
+                                        sd_binding_context = NULL,
                                         group_data = data){
 
   if(is.null(prior_random)){
@@ -874,23 +912,33 @@ JAGS_formula_design <- function(fit, parameter = NULL){
   })
 
   homogeneous_sd <- .bt_random_effect_homogeneous_sd(random_term, random_structure)
-  allocation_info <- .bt_random_variance_allocation_for_block(
-    allocation_context,
+  sd_binding <- .bt_random_sd_binding_for_block(
+    sd_binding_context,
     random_term$block_name
   )
-  allocated_sd <- !is.null(allocation_info)
 
   block_prior <- .bt_random_prior_for_block(prior_random, random_term$block_name)
+  if(is.null(sd_binding) && !is.null(block_prior$sd_source)){
+    sd_binding <- .bt_random_sd_binding(
+      source = block_prior$sd_source,
+      application = "block",
+      factors = list(),
+      true_allocation = FALSE,
+      allocations = list()
+    )
+  }
+  bound_sd <- !is.null(sd_binding)
   .bt_validate_random_block_for_structure(
     block_prior,
     structure = random_structure,
     block_name = random_term$block_name
   )
-  if(allocated_sd){
+  row_indexed_external_sd <- .bt_random_sd_binding_has_row_external_source(sd_binding)
+  if(bound_sd){
     if(!is.null(block_prior$terms)){
       stop(
         "Random-effect block '", random_term$block_name,
-        "' cannot use term-specific SD overrides while it is controlled by a variance allocation prior.",
+        "' cannot use term-specific SD overrides while it is controlled by an SD binding.",
         call. = FALSE
       )
     }
@@ -901,8 +949,19 @@ JAGS_formula_design <- function(fit, parameter = NULL){
     original_prior_names <- names(prior_list)
   }
   monitor_policy <- block_prior$monitor
+  if(isTRUE(row_indexed_external_sd) && isTRUE(monitor_policy$coefficients)){
+    stop(
+      "Group-level coefficient monitoring is not supported for random-effect block '",
+      random_term$block_name,
+      "' with a row-indexed external SD source.",
+      call. = FALSE
+    )
+  }
+  if(isTRUE(row_indexed_external_sd)){
+    monitor_policy$latent <- TRUE
+  }
 
-  if(!allocated_sd){
+  if(!bound_sd){
     if(homogeneous_sd){
       check_list(prior_list, "prior_list", check_names = "sd", allow_other = TRUE, all_objects = TRUE)
     }else{
@@ -1004,7 +1063,7 @@ JAGS_formula_design <- function(fit, parameter = NULL){
     prior_list = prior_list,
     random_term = random_term,
     grouping_factor = grouping_factor,
-    allocation_info = allocation_info,
+    sd_binding = sd_binding,
     model_matrix = model_matrix,
     model_terms = model_terms,
     model_terms_type = model_terms_type,
@@ -1021,7 +1080,8 @@ JAGS_formula_design <- function(fit, parameter = NULL){
   add_parameters <- c(add_parameters, sd_spec$add_parameters)
   random_syntax <- c(random_syntax, sd_spec$syntax)
   new_prior_list <- c(new_prior_list, sd_spec$prior_list)
-  allocation_info <- sd_spec$allocation_info
+  sd_binding <- sd_spec$sd_binding
+  row_indexed_external_sd <- .bt_random_sd_binding_has_row_external_source(sd_binding)
 
   # step 3
   if(random_structure == "us" && n_par == 1L){
@@ -1035,11 +1095,19 @@ JAGS_formula_design <- function(fit, parameter = NULL){
   }
   if(random_structure %in% c("diag", "id") ||
      (random_structure == "us" && n_par == 1L)){
-    random_syntax <- c(random_syntax, paste0(
-      " for(i in 1:",n_par,"){\n",
-      "   ",paste0(parameter, "_xRE_COEFx"),"[1:",n_id,",i] = ",paste0(parameter, "_xRE_Zx"),"[1:",n_id,",i] * ",paste0(parameter, "_xRE_STDx"),"[i]\n",
-      " }\n"
-    ))
+    if(isTRUE(row_indexed_external_sd)){
+      random_syntax <- c(random_syntax, paste0(
+        " for(i in 1:",n_par,"){\n",
+        "   ",paste0(parameter, "_xRE_UNIT_COEFx"),"[1:",n_id,",i] = ",paste0(parameter, "_xRE_Zx"),"[1:",n_id,",i]\n",
+        " }\n"
+      ))
+    }else{
+      random_syntax <- c(random_syntax, paste0(
+        " for(i in 1:",n_par,"){\n",
+        "   ",paste0(parameter, "_xRE_COEFx"),"[1:",n_id,",i] = ",paste0(parameter, "_xRE_Zx"),"[1:",n_id,",i] * ",paste0(parameter, "_xRE_STDx"),"[i]\n",
+        " }\n"
+      ))
+    }
   }else if(random_structure == "us"){
     block_prior <- .bt_random_prior_for_block(prior_random, random_term$block_name)
     if(n_par > 1L && is.null(block_prior$covariance$cor)){
@@ -1056,8 +1124,7 @@ JAGS_formula_design <- function(fit, parameter = NULL){
       K = n_par,
       eta = lkj_prior$eta,
       include_correlation = isTRUE(monitor_policy$correlation) && isTRUE(lkj_prior$include_correlation),
-      include_primitives = isTRUE(monitor_policy$lkj_primitives) || isTRUE(lkj_prior$include_primitives),
-      backend = lkj_prior$backend
+      include_primitives = isTRUE(monitor_policy$lkj_primitives) || isTRUE(lkj_prior$include_primitives)
     )
     random_syntax <- c(random_syntax, lkj_module$syntax)
     add_parameters <- c(add_parameters, lkj_module$monitor, lkj_module$primitive_names)
@@ -1066,19 +1133,28 @@ JAGS_formula_design <- function(fit, parameter = NULL){
     correlation_metadata <- list(
       type = "lkj",
       eta = lkj_prior$eta,
-      backend = lkj_prior$backend,
       primitive_names = lkj_module$primitive_names,
       primitive_bounds = lkj_module$primitive_bounds,
       cholesky_name = lkj_module$cholesky_name,
       correlation_name = lkj_module$correlation_name
     )
-    random_syntax <- c(random_syntax, paste0(
-      " for(g in 1:",n_id,"){\n",
-      "   for(i in 1:",n_par,"){\n",
-      "     ",paste0(parameter, "_xRE_COEFx"),"[g,i] = ",paste0(parameter, "_xRE_STDx"),"[i] * inprod(", lkj_module$cholesky_name, "[i,1:", n_par, "], ", paste0(parameter, "_xRE_Zx"), "[g,1:", n_par, "])\n",
-      "   }\n",
-      " }\n"
-    ))
+    if(isTRUE(row_indexed_external_sd)){
+      random_syntax <- c(random_syntax, paste0(
+        " for(g in 1:",n_id,"){\n",
+        "   for(i in 1:",n_par,"){\n",
+        "     ",paste0(parameter, "_xRE_UNIT_COEFx"),"[g,i] = inprod(", lkj_module$cholesky_name, "[i,1:", n_par, "], ", paste0(parameter, "_xRE_Zx"), "[g,1:", n_par, "])\n",
+        "   }\n",
+        " }\n"
+      ))
+    }else{
+      random_syntax <- c(random_syntax, paste0(
+        " for(g in 1:",n_id,"){\n",
+        "   for(i in 1:",n_par,"){\n",
+        "     ",paste0(parameter, "_xRE_COEFx"),"[g,i] = ",paste0(parameter, "_xRE_STDx"),"[i] * inprod(", lkj_module$cholesky_name, "[i,1:", n_par, "], ", paste0(parameter, "_xRE_Zx"), "[g,1:", n_par, "])\n",
+        "   }\n",
+        " }\n"
+      ))
+    }
   }else if(random_structure %in% c("cs", "hcs", "ar1", "car", "har")){
     block_prior <- .bt_random_prior_for_block(prior_random, random_term$block_name)
     corr_module <- .bt_JAGS_structured_corr_cholesky(
@@ -1109,21 +1185,117 @@ JAGS_formula_design <- function(fit, parameter = NULL){
       correlation_metadata$time_variable <- car_metadata$time_variable
       correlation_metadata$time_values <- car_metadata$time_values
     }
-    random_syntax <- c(random_syntax, paste0(
-      " for(g in 1:",n_id,"){\n",
-      "   for(i in 1:",n_par,"){\n",
-      "     ",paste0(parameter, "_xRE_COEFx"),"[g,i] = ",paste0(parameter, "_xRE_STDx"),"[i] * inprod(", corr_module$cholesky_name, "[i,1:", n_par, "], ", paste0(parameter, "_xRE_Zx"), "[g,1:", n_par, "])\n",
-      "   }\n",
-      " }\n"
-    ))
+    if(isTRUE(row_indexed_external_sd)){
+      random_syntax <- c(random_syntax, paste0(
+        " for(g in 1:",n_id,"){\n",
+        "   for(i in 1:",n_par,"){\n",
+        "     ",paste0(parameter, "_xRE_UNIT_COEFx"),"[g,i] = inprod(", corr_module$cholesky_name, "[i,1:", n_par, "], ", paste0(parameter, "_xRE_Zx"), "[g,1:", n_par, "])\n",
+        "   }\n",
+        " }\n"
+      ))
+    }else{
+      random_syntax <- c(random_syntax, paste0(
+        " for(g in 1:",n_id,"){\n",
+        "   for(i in 1:",n_par,"){\n",
+        "     ",paste0(parameter, "_xRE_COEFx"),"[g,i] = ",paste0(parameter, "_xRE_STDx"),"[i] * inprod(", corr_module$cholesky_name, "[i,1:", n_par, "], ", paste0(parameter, "_xRE_Zx"), "[g,1:", n_par, "])\n",
+        "   }\n",
+        " }\n"
+      ))
+    }
   }
 
   # step 4
-  random_syntax <- c(random_syntax, paste0(
-    " for(i in 1:",nrow(model_matrix),"){\n",
-    "   ",parameter,"[i] = inprod(", paste0(parameter, "_xRE_COEFx[", paste0(parameter, "_xRE_MAPx[i]"),", 1:",n_par,"]"), ", ", paste0(parameter, "_xRE_DATAx[i,1:", n_par,"]"),")\n",
-    " }\n"
-  ))
+  if(isTRUE(row_indexed_external_sd)){
+    if(isTRUE(sd_binding$true_allocation)){
+      allocation_target <- .bt_random_effect_allocation_target_metadata(
+        sd_binding$allocations[[1L]],
+        context = paste0(
+          "Random-effect SD binding metadata for block '",
+          random_term$block_name,
+          "'"
+        )
+      )
+      if(length(sd_binding$factors_by_column) > 0L &&
+         !identical(allocation_target, "sd_component")){
+        stop(
+          "Random-effect SD binding metadata for block '",
+          random_term$block_name,
+          "' with row-indexed column factor chains require 'allocation$target' to be 'sd_component'.",
+          call. = FALSE
+        )
+      }
+    }
+    if(isTRUE(sd_binding$true_allocation) &&
+       length(sd_binding$allocations) > 0L &&
+       identical(sd_binding$allocations[[1L]]$target, "sd_component")){
+      .bt_check_random_sd_component_binding(
+        binding = sd_binding,
+        n_columns = n_par,
+        context = paste0(
+          "Random-effect SD binding metadata for block '",
+          random_term$block_name,
+          "'"
+        )
+      )
+    }
+    source_expression <- .bt_random_sd_binding_shared_source_expression(
+      sd_binding,
+      row_index = "i"
+    )
+    if(identical(sd_binding$application, "column")){
+      if(length(sd_binding$factors_by_column) == 0L){
+        stop(
+          "Random-effect SD binding metadata for block '",
+          random_term$block_name,
+          "' are missing canonical 'binding$factors_by_column'.",
+          call. = FALSE
+        )
+      }
+      if(length(sd_binding$factors_by_column) != n_par){
+        stop(
+          "Random-effect SD binding metadata for block '",
+          random_term$block_name,
+          "' do not match the number of random-effect columns.",
+          call. = FALSE
+        )
+      }
+      column_terms <- vapply(seq_len(n_par), function(column){
+        factor_expression <- .bt_random_sd_binding_factors_expression(
+          sd_binding$factors_by_column[[column]]
+        )
+        paste(
+          c(
+            if(!identical(factor_expression, "1")) factor_expression,
+            paste0(parameter, "_xRE_UNIT_COEFx[", parameter, "_xRE_MAPx[i],", column, "]"),
+            paste0(parameter, "_xRE_DATAx[i,", column, "]")
+          ),
+          collapse = " * "
+        )
+      }, character(1))
+      row_contribution <- paste0(source_expression, " * (", paste(column_terms, collapse = " + "), ")")
+    }else{
+      factor_expression <- .bt_random_sd_binding_factors_expression(sd_binding$factors)
+      unit_contribution <- paste0(
+        "inprod(",
+        paste0(parameter, "_xRE_UNIT_COEFx[", paste0(parameter, "_xRE_MAPx[i]"), ", 1:", n_par, "]"),
+        ", ",
+        paste0(parameter, "_xRE_DATAx[i,1:", n_par, "]"),
+        ")"
+      )
+      row_contribution <- paste0(source_expression, " * ", factor_expression, " * ", unit_contribution)
+    }
+    random_syntax <- c(random_syntax, paste0(
+      " for(i in 1:",nrow(model_matrix),"){\n",
+      "   ",parameter,"[i] = ", row_contribution, "\n",
+      " }\n"
+    ))
+  }else{
+    random_syntax <- c(random_syntax, paste0(
+      " for(i in 1:",nrow(model_matrix),"){\n",
+      "   ",parameter,"[i] = inprod(", paste0(parameter, "_xRE_COEFx[", paste0(parameter, "_xRE_MAPx[i]"),", 1:",n_par,"]"), ", ", paste0(parameter, "_xRE_DATAx[i,1:", n_par,"]"),")\n",
+      " }\n"
+    ))
+  }
 
   # create the JAGS data list
   JAGS_data[[paste0(parameter, "_xRE_DATAx")]] <- model_matrix
@@ -1132,7 +1304,7 @@ JAGS_formula_design <- function(fit, parameter = NULL){
   if(isTRUE(monitor_policy$latent)){
     add_parameters <- c(add_parameters, paste0(parameter, "_xRE_Zx"))
   }
-  if(isTRUE(monitor_policy$coefficients)){
+  if(isTRUE(monitor_policy$coefficients) && !isTRUE(row_indexed_external_sd)){
     add_parameters <- c(add_parameters, paste0(parameter, "_xRE_COEFx"))
   }
 
@@ -1156,7 +1328,7 @@ JAGS_formula_design <- function(fit, parameter = NULL){
   random_term$structure        <- random_structure
   random_term$homogeneous_sd   <- homogeneous_sd
   random_term$interface        <- "prior_random"
-  random_term$allocation       <- allocation_info
+  random_term$sd_binding       <- sd_binding
   random_term$correlation      <- correlation_metadata
   random_term$car              <- car_metadata
   attr(random_term, "random_block") <- random_term$block_name
@@ -2060,6 +2232,9 @@ JAGS_formula_design <- function(fit, parameter = NULL){
     if(is.null(names(term_overrides)) || any(!nzchar(names(term_overrides)))){
       stop("Random-effect term overrides must be named.", call. = FALSE)
     }
+    if(anyDuplicated(names(term_overrides))){
+      stop("Random-effect term override names must be unique.", call. = FALSE)
+    }
     unknown_terms <- setdiff(names(term_overrides), names(out))
     if(length(unknown_terms) > 0L){
       stop("Unknown random-effect term override(s): ", paste(unknown_terms, collapse = ", "), ".", call. = FALSE)
@@ -2367,6 +2542,14 @@ formula_add_intercept <- function(formula){
 #' hyperparameters were monitored via \code{random_monitor(latent = TRUE)}, or
 #' the group-level coefficients were monitored via
 #' \code{random_monitor(coefficients = TRUE)}.
+#' Row-indexed external random-effect SD sources, such as
+#' \code{random_sd_source("tau", shape = "row")}, are evaluated from latent
+#' random effects only. Model generation automatically monitors the required
+#' latent effects for these blocks. The posterior samples must either contain
+#' source columns named \code{tau[1]}, ..., \code{tau[nrow(data)]} aligned to
+#' the supplied prediction rows, or the source must provide a
+#' \code{parameter_source()} \code{values} function for reconstructing row-wise
+#' source values from the posterior samples and supplied prediction data.
 #'
 #' @param fit model fitted with either \link[runjags]{runjags} posterior
 #' samples obtained with \link[rjags]{rjags-package}
@@ -2524,11 +2707,14 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
 
   # get the design matrix
   model_frame  <- tryCatch(
-    stats::model.frame(formula, data = data, na.action = stats::na.fail),
+    stats::model.frame(formula, data = data, na.action = stats::na.pass),
     error = function(e){
-      stop("Formula predictors contain missing values.", call. = FALSE)
+      stop(conditionMessage(e), call. = FALSE)
     }
   )
+  if(anyNA(model_frame)){
+    stop("Formula predictors contain missing values.", call. = FALSE)
+  }
   model_matrix <- stats::model.matrix(model_frame, formula = formula, data = data)
 
   ### evaluate the design matrix on the samples -> output[data, posterior]
@@ -2754,6 +2940,20 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
   n_rows <- nrow(model_matrix)
   n_columns <- ncol(model_matrix)
   n_groups <- length(random_term$group_levels)
+
+  if(.bt_random_effect_has_row_indexed_external_sd(random_term)){
+    return(
+      .bt_random_effect_row_indexed_contribution_from_latent(
+        random_term = random_term,
+        model_matrix = model_matrix,
+        group_map = group_map,
+        posterior = posterior,
+        prior_list = prior_list,
+        data = group_data,
+        context = "Prediction"
+      )
+    )
+  }
 
   coefficient_names <- .bt_random_effect_coefficient_names(
     random_term = random_term,
@@ -3102,6 +3302,107 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
   )
 }
 
+.complete_factor_metadata_prior_list <- function(prior_list){
+
+  if(is.null(prior_list) || length(prior_list) == 0){
+    return(prior_list)
+  }
+
+  for(parameter in names(prior_list)){
+    prior_list[[parameter]] <- .complete_factor_metadata(prior_list[[parameter]], parameter)
+  }
+
+  return(prior_list)
+}
+
+.copy_missing_factor_metadata <- function(target, source){
+
+  metadata_names <- c(
+    "levels",
+    "level_names",
+    "interaction",
+    "interaction_terms",
+    "term_components",
+    "factor_terms",
+    "factor_contrasts",
+    "factor_design",
+    "factor_cell_names"
+  )
+
+  for(metadata_name in metadata_names){
+    if(is.null(attr(target, metadata_name, exact = TRUE)) &&
+       !is.null(attr(source, metadata_name, exact = TRUE))){
+      attr(target, metadata_name) <- attr(source, metadata_name, exact = TRUE)
+    }
+  }
+
+  return(target)
+}
+
+.complete_factor_metadata <- function(x, parameter = NULL){
+
+  if((is.prior.mixture(x) || is.prior.spike_and_slab(x)) && length(x) > 0){
+    prior_components <- vapply(x, is.prior, logical(1))
+    for(component_i in which(prior_components)){
+      x[[component_i]] <- .complete_factor_metadata(x[[component_i]], parameter)
+    }
+
+    factor_components <- which(vapply(x, is.prior.factor, logical(1)))
+    if(length(factor_components) > 0){
+      x <- .copy_missing_factor_metadata(x, x[[factor_components[[1]]]])
+    }
+  }
+
+  if(!is.prior.factor(x)){
+    return(x)
+  }
+
+  level_names <- .factor_level_list(x)
+  if(is.null(level_names) || length(level_names) != 1L){
+    return(x)
+  }
+
+  factor_terms <- attr(x, "factor_terms", exact = TRUE)
+  if(is.null(factor_terms) || length(factor_terms) != 1L ||
+     anyNA(factor_terms) || !nzchar(factor_terms)){
+    factor_terms <- if(!is.null(parameter) && nzchar(parameter)){
+      parameter
+    }else{
+      ".factor"
+    }
+    attr(x, "factor_terms") <- factor_terms
+  }
+
+  contrast <- .factor_object_contrast_name(x)
+  if(is.null(contrast)){
+    return(x)
+  }
+
+  factor_contrasts <- attr(x, "factor_contrasts", exact = TRUE)
+  if(is.null(factor_contrasts)){
+    factor_contrasts <- stats::setNames(contrast, factor_terms)
+  }else{
+    factor_contrasts <- as.character(factor_contrasts)
+    if(is.null(names(factor_contrasts))){
+      names(factor_contrasts) <- factor_terms[seq_along(factor_contrasts)]
+    }
+    factor_contrasts <- factor_contrasts[factor_terms]
+    if(any(is.na(factor_contrasts))){
+      factor_contrasts[is.na(factor_contrasts)] <- contrast
+    }
+  }
+  attr(x, "factor_contrasts") <- factor_contrasts
+
+  if(is.null(attr(x, "factor_design", exact = TRUE)) ||
+     is.null(attr(x, "factor_cell_names", exact = TRUE))){
+    design_info <- .factor_term_design_from_metadata(x)
+    attr(x, "factor_design")     <- design_info[["design"]]
+    attr(x, "factor_cell_names") <- design_info[["cell_names"]]
+  }
+
+  return(x)
+}
+
 .add_factor_metadata_from_named_objects <- function(x, parameter, objects){
 
   level_names <- .factor_level_list(x)
@@ -3116,49 +3417,13 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
 
   factor_contrasts <- attr(x, "factor_contrasts")
   if(is.null(factor_contrasts)){
-    factor_contrasts <- rep(NA_character_, length(factor_terms))
-    names(factor_contrasts) <- factor_terms
+    return(x)
   }else{
     factor_contrasts <- as.character(factor_contrasts)
     if(is.null(names(factor_contrasts))){
       names(factor_contrasts) <- factor_terms[seq_along(factor_contrasts)]
     }
     factor_contrasts <- factor_contrasts[factor_terms]
-  }
-
-  formula_parameter <- attr(x, "formula_parameter")
-  if(is.null(formula_parameter)){
-    formula_parameter <- attr(x, "parameter")
-    if(!is.null(formula_parameter) && identical(formula_parameter, parameter)){
-      formula_parameter <- NULL
-    }
-  }
-  if(is.null(formula_parameter) && grepl("_", parameter, fixed = TRUE)){
-    formula_parameter <- sub("_.*$", "", parameter)
-  }
-
-  for(factor_term in factor_terms[is.na(factor_contrasts)]){
-    candidates <- factor_term
-    if(!is.null(formula_parameter)){
-      candidates <- c(paste0(formula_parameter, "_", factor_term), candidates)
-    }
-    candidates <- unique(candidates)
-    candidates <- candidates[candidates %in% names(objects)]
-
-    for(candidate in candidates){
-      contrast <- .factor_object_contrast_name(objects[[candidate]])
-      if(!is.null(contrast)){
-        factor_contrasts[[factor_term]] <- contrast
-        break
-      }
-    }
-  }
-
-  if(any(is.na(factor_contrasts)) && length(factor_terms) == 1){
-    fallback_contrast <- .factor_object_contrast_name(x)
-    if(!is.null(fallback_contrast)){
-      factor_contrasts[is.na(factor_contrasts)] <- fallback_contrast
-    }
   }
 
   attr(x, "factor_contrasts") <- factor_contrasts
@@ -3234,12 +3499,7 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
   factor_terms <- names(level_names)
   factor_contrasts <- attr(x, "factor_contrasts")
   if(is.null(factor_contrasts)){
-    fallback_contrast <- .factor_object_contrast_name(x)
-    if(is.null(fallback_contrast) || length(factor_terms) > 1){
-      stop("Factor contrast metadata is missing and cannot be inferred.", call. = FALSE)
-    }
-    factor_contrasts <- rep(fallback_contrast, length(factor_terms))
-    names(factor_contrasts) <- factor_terms
+    stop("Factor contrast metadata is missing and cannot be inferred.", call. = FALSE)
   }else{
     factor_contrasts <- as.character(factor_contrasts)
     if(is.null(names(factor_contrasts))){
@@ -3324,7 +3584,6 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
 #'
 #' @param samples (a list) of mixed posterior distributions created with
 #' \code{mix_posteriors} function
-#'
 #' @return \code{transform_meandif_samples} returns a named list of mixed posterior
 #' distributions (either a vector of matrix).
 #'
@@ -3349,7 +3608,6 @@ transform_factor_samples <- function(samples){
 #'
 #' @param samples (a list) of mixed posterior distributions created with
 #' \code{mix_posteriors} function
-#'
 #' @return \code{transform_meandif_samples} returns a named list of mixed posterior
 #' distributions (either a vector of matrix).
 #'
@@ -3384,7 +3642,6 @@ transform_meandif_samples <- function(samples){
 #'
 #' @param samples (a list) of mixed posterior distributions created with
 #' \code{mix_posteriors} function
-#'
 #' @return \code{transform_orthonormal_samples} returns a named list of mixed posterior
 #' distributions (either a vector of matrix).
 #'
@@ -3570,7 +3827,14 @@ transform_treatment_samples <- function(samples){
 
   scaled_vars <- sub(paste0("^", prefix, "_"), "", scaled_terms)
   term_components <- unique(unlist(lapply(term_names, .parse_term_components, prefix = prefix), use.names = FALSE))
-  unused_terms <- scaled_terms[!scaled_vars %in% term_components]
+  random_scaled_vars <- .formula_scale_random_scaled_vars(
+    formula_scale,
+    scaled_vars = scaled_vars
+  )
+  unused_terms <- scaled_terms[
+    !scaled_vars %in% term_components &
+      !scaled_vars %in% random_scaled_vars
+  ]
 
   if(length(unused_terms) == 0)
     return(invisible(NULL))
@@ -3598,6 +3862,92 @@ transform_treatment_samples <- function(samples){
   }
 
   invisible(NULL)
+}
+
+.formula_scale_random_scaled_vars <- function(formula_scale, scaled_vars = NULL){
+
+  if(is.null(scaled_vars)){
+    prefix <- attr(formula_scale, "parameter")
+    if(!is.null(prefix) && length(prefix) == 1L && !is.na(prefix) && nzchar(prefix)){
+      scaled_vars <- sub(paste0("^", prefix, "_"), "", names(formula_scale))
+    }else{
+      scaled_vars <- names(formula_scale)
+    }
+  }
+
+  random_terms <- character()
+
+  metadata <- attr(formula_scale, "random_effect_terms")
+  if(!is.null(metadata)){
+    metadata <- unname(as.character(metadata))
+    metadata <- metadata[is.na(metadata) | metadata != "sd"]
+    random_terms <- c(random_terms, metadata)
+  }
+
+  sd_leaves <- attr(formula_scale, "random_effect_sd_leaves")
+  if(!is.null(sd_leaves) && length(sd_leaves) > 0L){
+    for(leaves in sd_leaves){
+      random_terms <- c(
+        random_terms,
+        .formula_scale_random_leaf_terms(
+          leaves = leaves,
+          scaled_vars = scaled_vars
+        )
+      )
+    }
+  }
+
+  random_terms <- random_terms[!is.na(random_terms) & nzchar(random_terms)]
+  random_terms <- setdiff(random_terms, "intercept")
+  if(length(random_terms) == 0L){
+    return(character())
+  }
+
+  random_components <- unique(unlist(lapply(random_terms, .bt_random_effect_term_components), use.names = FALSE))
+  random_components <- setdiff(random_components, "intercept")
+  if(length(scaled_vars) > 0L){
+    random_components <- random_components[random_components %in% scaled_vars]
+  }
+  unique(random_components)
+}
+
+.formula_scale_random_leaf_terms <- function(leaves, scaled_vars){
+
+  if(.random_sd_structured_leaves(leaves)){
+    return(character())
+  }
+
+  leaf_terms <- character()
+  if(!is.null(leaves$leaf_terms)){
+    leaf_terms <- unname(as.character(leaves$leaf_terms))
+  }
+
+  homogeneous_sd <- length(leaf_terms) > 0L &&
+    all(!is.na(leaf_terms) & leaf_terms == "sd")
+  if(!homogeneous_sd){
+    if(!is.null(leaves$leaf_terms_by_column)){
+      leaf_terms <- c(leaf_terms, unname(as.character(leaves$leaf_terms_by_column)))
+    }
+    return(leaf_terms)
+  }
+
+  if(is.null(leaves$column_names)){
+    return(character())
+  }
+
+  column_terms <- vapply(
+    leaves$column_names,
+    .random_sd_term_from_column_name,
+    character(1)
+  )
+  scaled_columns <- vapply(
+    column_terms,
+    .random_sd_term_uses_scaled_var,
+    logical(1),
+    scaled_vars = scaled_vars
+  )
+
+  column_terms[scaled_columns]
 }
 
 
@@ -3754,6 +4104,14 @@ transform_treatment_samples <- function(samples){
 
   # Identify which columns are affected by the transformation
   affected_cols <- grep(paste0("^", prefix, "_"), colnames(posterior), value = TRUE)
+  if (length(affected_cols) > 0) {
+    posterior <- .materialize_formula_scale_point_terms(
+      posterior = posterior,
+      formula_scale = formula_scale,
+      prefix = prefix
+    )
+    affected_cols <- grep(paste0("^", prefix, "_"), colnames(posterior), value = TRUE)
+  }
   random_sd_cols  <- grep(paste0("^", prefix, "__xREx__"), affected_cols, value = TRUE)
   random_aux_cols <- grep(paste0("^", prefix, "__(xRE_ALLOCx|xRE_SUMMARY__)"), affected_cols, value = TRUE)
   fixed_cols      <- setdiff(affected_cols, c(random_sd_cols, random_aux_cols))
@@ -3790,12 +4148,50 @@ transform_treatment_samples <- function(samples){
   return(posterior)
 }
 
+.materialize_formula_scale_point_terms <- function(posterior, formula_scale,
+                                                   prefix){
+
+  point_terms <- attr(formula_scale, "point_terms", exact = TRUE)
+  if(is.null(point_terms) || length(point_terms) == 0L){
+    return(posterior)
+  }
+
+  point_terms <- point_terms[startsWith(names(point_terms), paste0(prefix, "_"))]
+  point_terms <- point_terms[!names(point_terms) %in% colnames(posterior)]
+  if(length(point_terms) == 0L){
+    return(posterior)
+  }
+
+  point_matrix <- matrix(
+    rep(unname(point_terms), each = nrow(posterior)),
+    nrow = nrow(posterior),
+    dimnames = list(NULL, names(point_terms))
+  )
+
+  cbind(posterior, point_matrix)
+}
+
 .apply_random_sd_unscale <- function(posterior, random_sd_cols, formula_scale,
                                      prefix,
                                      correlation_required_groups = NULL){
 
   if(length(random_sd_cols) == 0){
     return(posterior)
+  }
+
+  column_groups <- .random_sd_column_unscale_groups(
+    random_sd_cols = random_sd_cols,
+    formula_scale = formula_scale,
+    prefix = prefix
+  )
+  if(!is.null(column_groups)){
+    return(.apply_random_sd_column_unscale(
+      posterior = posterior,
+      column_groups = column_groups,
+      formula_scale = formula_scale,
+      prefix = prefix,
+      correlation_required_groups = correlation_required_groups
+    ))
   }
 
   term_map <- .random_sd_term_map(random_sd_cols, formula_scale, prefix)
@@ -3817,7 +4213,14 @@ transform_treatment_samples <- function(samples){
     group_terms <- unname(term_map[group_cols])
 
     if(any(duplicated(group_terms))){
-      next
+      duplicated_terms <- unique(group_terms[duplicated(group_terms)])
+      stop(
+        "Random-effect SD columns for group '", group_key,
+        "' cannot be unscaled because multiple columns map to the same term: ",
+        paste0("'", duplicated_terms, "'", collapse = ", "),
+        ".",
+        call. = FALSE
+      )
     }
 
     pseudo_terms <- paste0(prefix, "_", group_terms)
@@ -3857,18 +4260,107 @@ transform_treatment_samples <- function(samples){
         diag(transformed_cor[draw_i, , ]) <- 1
         valid_cor_draw[draw_i] <- all(is.finite(transformed_cor[draw_i, , ]))
       }
-      if(any(valid_cor_draw)){
-        posterior <- .random_sd_assign_transformed_correlation(
-          posterior = posterior,
-          prefix = prefix,
-          group_key = group_key,
-          correlation = transformed_cor,
-          valid_draw = valid_cor_draw
-        )
-      }
+      posterior <- .random_sd_assign_transformed_correlation(
+        posterior = posterior,
+        prefix = prefix,
+        group_key = group_key,
+        correlation = transformed_cor,
+        valid_draw = valid_cor_draw
+      )
     }
 
     posterior[, group_cols] <- transformed_sd
+  }
+
+  posterior
+}
+
+.apply_random_sd_column_unscale <- function(posterior, column_groups,
+                                            formula_scale, prefix,
+                                            correlation_required_groups = NULL){
+
+  if(length(column_groups) == 0L){
+    return(posterior)
+  }
+
+  required_groups <- .random_sd_correlation_required_groups(
+    formula_scale = formula_scale,
+    prefix = prefix,
+    correlation_required_groups = correlation_required_groups
+  )
+
+  for(group in column_groups){
+    group_key <- group$group_key
+    pseudo_terms <- paste0(prefix, "_", group$column_terms)
+    M <- .build_unscale_matrix(pseudo_terms, formula_scale, prefix)
+
+    source_sd <- posterior[, group$leaf_names_by_column, drop = FALSE]
+    source_cor <- .random_sd_correlation_draws(
+      posterior = posterior,
+      prefix = prefix,
+      group_key = group_key,
+      n_terms = length(group$column_terms),
+      required = group_key %in% required_groups
+    )
+    transformed_sd_by_column <- matrix(
+      NA_real_,
+      nrow = nrow(source_sd),
+      ncol = ncol(source_sd),
+      dimnames = list(NULL, group$leaf_names_by_column)
+    )
+
+    if(is.null(source_cor)){
+      for(target_i in seq_along(group$column_terms)){
+        transformed_var <- rowSums(t(t(source_sd^2) * (M[target_i, ]^2)))
+        transformed_sd_by_column[, target_i] <- sqrt(transformed_var)
+      }
+    }else{
+      transformed_cor <- array(NA_real_, dim = dim(source_cor))
+      valid_cor_draw <- rep(FALSE, nrow(source_sd))
+      for(draw_i in seq_len(nrow(source_sd))){
+        source_cov <- diag(source_sd[draw_i, ], nrow = ncol(source_sd)) %*%
+          source_cor[draw_i, , ] %*%
+          diag(source_sd[draw_i, ], nrow = ncol(source_sd))
+        transformed_cov <- M %*% source_cov %*% t(M)
+        transformed_sd_by_column[draw_i, ] <- sqrt(diag(transformed_cov))
+        if(any(!is.finite(transformed_sd_by_column[draw_i, ]) |
+               transformed_sd_by_column[draw_i, ] <= 0)){
+          next
+        }
+        transformed_cor[draw_i, , ] <- transformed_cov /
+          tcrossprod(transformed_sd_by_column[draw_i, ])
+        diag(transformed_cor[draw_i, , ]) <- 1
+        valid_cor_draw[draw_i] <- all(is.finite(transformed_cor[draw_i, , ]))
+      }
+      posterior <- .random_sd_assign_transformed_correlation(
+        posterior = posterior,
+        prefix = prefix,
+        group_key = group_key,
+        correlation = transformed_cor,
+        valid_draw = valid_cor_draw
+      )
+    }
+
+    for(sd_col in group$leaf_names){
+      column_index <- which(group$leaf_names_by_column == sd_col)
+      if(length(column_index) == 1L){
+        posterior[, sd_col] <- transformed_sd_by_column[, column_index]
+        next
+      }
+      shared_values <- transformed_sd_by_column[, column_index, drop = FALSE]
+      max_difference <- max(
+        abs(shared_values - shared_values[, 1L]),
+        na.rm = TRUE
+      )
+      if(is.finite(max_difference) && max_difference > sqrt(.Machine$double.eps)){
+        stop(
+          "Random-effect SD column '", sd_col,
+          "' cannot be unscaled because its shared design columns transform to different SDs.",
+          call. = FALSE
+        )
+      }
+      posterior[, sd_col] <- shared_values[, 1L]
+    }
   }
 
   posterior
@@ -4012,9 +4504,154 @@ transform_treatment_samples <- function(samples){
   term_map[!is.na(term_map)]
 }
 
+.random_sd_column_unscale_groups <- function(random_sd_cols, formula_scale,
+                                             prefix){
+
+  sd_leaves <- attr(formula_scale, "random_effect_sd_leaves", exact = TRUE)
+  if(is.null(sd_leaves)){
+    return(NULL)
+  }
+
+  scaled_vars <- sub(paste0("^", prefix, "_"), "", names(formula_scale))
+  groups <- list()
+  leaf_keys <- names(sd_leaves)
+  if(is.null(leaf_keys)){
+    leaf_keys <- rep("", length(sd_leaves))
+  }
+  for(i in seq_along(sd_leaves)){
+    group <- .random_sd_column_unscale_group(
+      leaves = sd_leaves[[i]],
+      leaf_key = leaf_keys[[i]],
+      random_sd_cols = random_sd_cols,
+      scaled_vars = scaled_vars,
+      prefix = prefix
+    )
+    if(is.null(group)){
+      next
+    }
+    groups[[length(groups) + 1L]] <- group
+  }
+
+  groups
+}
+
+.random_sd_column_unscale_group <- function(leaves, leaf_key, random_sd_cols,
+                                            scaled_vars, prefix){
+
+  if(.random_sd_structured_leaves(leaves)){
+    return(NULL)
+  }
+
+  if(is.null(leaves$leaf_names_by_column) ||
+     is.null(leaves$leaf_terms_by_column) ||
+     is.null(leaves$leaf_names)){
+    return(NULL)
+  }
+
+  leaf_names_by_column <- as.character(leaves$leaf_names_by_column)
+  column_terms <- as.character(leaves$leaf_terms_by_column)
+  leaf_names <- as.character(leaves$leaf_names)
+
+  if(length(leaf_names_by_column) == 0L ||
+     length(column_terms) != length(leaf_names_by_column)){
+    return(NULL)
+  }
+
+  available_leaf_names <- leaf_names[leaf_names %in% random_sd_cols]
+  if(length(available_leaf_names) == 0L){
+    return(NULL)
+  }
+
+  homogeneous <- !is.null(leaves$leaf_terms) &&
+    identical(unique(unname(as.character(leaves$leaf_terms))), "sd")
+  if(isTRUE(homogeneous) && !is.null(leaves$column_names)){
+    column_terms <- vapply(
+      leaves$column_names,
+      .random_sd_term_from_column_name,
+      character(1)
+    )
+  }
+  scaled_columns <- vapply(
+    column_terms,
+    .random_sd_term_uses_scaled_var,
+    logical(1),
+    scaled_vars = scaled_vars
+  )
+
+  if(!any(scaled_columns)){
+    return(NULL)
+  }
+
+  if(isTRUE(homogeneous)){
+    if(length(column_terms) == 1L){
+      column_terms <- .random_sd_term_from_column_name(leaves$column_names[[1L]])
+    }else{
+      stop(
+        "Cannot unscale homogeneous random-effect SD '",
+        paste(available_leaf_names, collapse = "', '"),
+        "' because its block contains scaled random-slope columns. ",
+        "Use a heterogeneous random-effect SD structure or leave samples on the fitted scale.",
+        call. = FALSE
+      )
+    }
+  }
+
+  missing_leaf_names <- setdiff(leaf_names, random_sd_cols)
+  group_key <- .random_sd_group_key_from_leaf_key(
+    leaf_key = leaf_key,
+    leaf_names = leaf_names,
+    column_terms = column_terms,
+    prefix = prefix
+  )
+  if(length(missing_leaf_names) > 0L){
+    stop(
+      "Random-effect SD unscaling for block '", group_key,
+      "' requires all SD columns from the block. Missing: ",
+      paste0("'", missing_leaf_names, "'", collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+
+  list(
+    group_key = group_key,
+    leaf_names = leaf_names,
+    leaf_names_by_column = leaf_names_by_column,
+    column_terms = column_terms
+  )
+}
+
+.random_sd_structured_leaves <- function(leaves){
+
+  random_structure <- leaves$random_structure
+  !is.null(random_structure) &&
+    length(random_structure) == 1L &&
+    random_structure %in% c("cs", "hcs", "ar1", "car", "har")
+}
+
+.random_sd_group_key_from_leaf_key <- function(leaf_key, leaf_names,
+                                               column_terms, prefix){
+
+  if(!is.null(leaf_key) && length(leaf_key) == 1L &&
+     !is.na(leaf_key) && nzchar(leaf_key)){
+    return(sub("^__xREx__", "", leaf_key))
+  }
+
+  term_map <- stats::setNames(column_terms[seq_along(leaf_names)], leaf_names)
+  .random_sd_group_key(
+    col = leaf_names[[1L]],
+    term_map = term_map,
+    prefix = prefix
+  )
+}
+
 .random_sd_leaf_term_map <- function(leaves, scaled_vars){
 
   if(is.null(leaves$leaf_terms)){
+    return(stats::setNames(character(), character()))
+  }
+
+  if(.random_sd_structured_leaves(leaves)){
     return(stats::setNames(character(), character()))
   }
 
@@ -4493,15 +5130,23 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
       }
 
     }else{
-      # Fallback for other prior types - try rng
       temp_samples <- tryCatch(
         rng(prior, n_samples),
         error = function(e){
-          warning(sprintf("Could not generate samples for prior '%s': %s. Using zeros.",
-                          param_name, e$message))
-          rep(0, n_samples)
+          stop(
+            "Could not generate samples for prior '", param_name, "': ",
+            e$message,
+            call. = FALSE
+          )
         }
       )
+      if(!is.numeric(temp_samples)){
+        stop(
+          "Could not generate samples for prior '", param_name,
+          "': rng() did not return numeric samples.",
+          call. = FALSE
+        )
+      }
 
       if(is.matrix(temp_samples)){
         n_cols <- ncol(temp_samples)

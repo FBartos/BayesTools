@@ -658,6 +658,8 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
     stop(paste0("'", name, "' must be a vector of length at least 2."))
   if(is.matrix(alpha))if(ncol(alpha) < 2)
     stop(paste0("'", name, "' must be a matrix with at least 2 columns."))
+  if(any(!is.finite(alpha)))
+    stop(paste0("'", name, "' must be finite."))
   if(!all(alpha > 0))
     stop(paste0("'", name, "' must be positive."))
 }
@@ -668,6 +670,8 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
     stop(paste0("'", name, "' must be a vector of length at least 2."))
   if(is.matrix(omega))if(ncol(omega) < 2)
     stop(paste0("'", name, "' must be a matrix with at least 2 columns."))
+  if(any(!is.finite(omega)))
+    stop(paste0("'", name, "' must be finite."))
   if(!all(omega >= 0))
     stop(paste0("'", name, "' must be non-negative."))
   if(is.vector(omega) && !isTRUE(all.equal(omega[1], 1)))

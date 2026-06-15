@@ -79,6 +79,8 @@ test_that("weightfunction constructors validate independent scales", {
     prior("normal", list(0, 1)),
     scale = "log_omega"
   ))
+  expect_error(wf_cumulative(c(1, Inf)), "finite")
+  expect_error(wf_fixed(c(1, Inf)), "finite")
 
   expect_error(
     prior_weightfunction("one-sided", c(.05), wf_fixed(c(.9, .5))),
@@ -196,6 +198,102 @@ test_that("JAGS bridge helpers use natural latent weight parameters", {
     JAGS_marglik_parameters(samples_two_sided, list(omega = two_sided))$omega,
     c(1, 5/6, 1/2, 5/6, 1),
     tolerance = 1e-12
+  )
+})
+
+test_that("JAGS bridge posterior rejects monitored deterministic owned aliases", {
+
+  cumulative <- prior_weightfunction("one-sided", c(.025), wf_cumulative(c(1, 2)))
+  cumulative_posterior <- matrix(
+    c(1, 2, 1, 1 / 3),
+    nrow = 1,
+    dimnames = list(NULL, c("eta[1]", "eta[2]", "omega[1]", "std_eta[1]"))
+  )
+  expect_error(
+    JAGS_bridgesampling_posterior(
+      cumulative_posterior,
+      prior_list = list(omega = cumulative),
+      add_parameters = "omega[1]",
+      add_bounds = list(lb = c("omega[1]" = 0), ub = c("omega[1]" = Inf))
+    ),
+    "BayesTools-owned",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_bridgesampling_posterior(
+      cumulative_posterior,
+      prior_list = list(omega = cumulative),
+      add_parameters = "std_eta[1]",
+      add_bounds = list(lb = c("std_eta[1]" = 0), ub = c("std_eta[1]" = 1))
+    ),
+    "BayesTools-owned",
+    fixed = TRUE
+  )
+  two_sided <- prior_weightfunction("two-sided", c(.05, .10), wf_cumulative(c(1, 2, 3)))
+  expect_error(
+    JAGS_bridgesampling_posterior(
+      cumulative_posterior,
+      prior_list = list(omega = two_sided),
+      add_parameters = "omega[5]",
+      add_bounds = list(lb = c("omega[5]" = 0), ub = c("omega[5]" = Inf))
+    ),
+    "BayesTools-owned",
+    fixed = TRUE
+  )
+
+  phacking <- prior_phacking(form = "linear")
+  phacking_posterior <- matrix(
+    c(.2, 1, 1.5),
+    nrow = 1,
+    dimnames = list(NULL, c("alpha", "phack_kind", "phack_z_source[1]"))
+  )
+  expect_error(
+    JAGS_bridgesampling_posterior(
+      phacking_posterior,
+      prior_list = list(phacking = phacking),
+      add_parameters = "phack_kind",
+      add_bounds = list(lb = c(phack_kind = 0), ub = c(phack_kind = 2))
+    ),
+    "BayesTools-owned",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_bridgesampling_posterior(
+      phacking_posterior,
+      prior_list = list(phacking = phacking),
+      add_parameters = "omega[1]",
+      add_bounds = list(lb = c("omega[1]" = 0), ub = c("omega[1]" = Inf))
+    ),
+    "BayesTools-owned",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_bridgesampling_posterior(
+      phacking_posterior,
+      prior_list = list(phacking = phacking),
+      add_parameters = "phack_z_source[1]",
+      add_bounds = list(lb = c("phack_z_source[1]" = -Inf), ub = c("phack_z_source[1]" = Inf))
+    ),
+    "BayesTools-owned",
+    fixed = TRUE
+  )
+
+  theta <- prior_factor("invgamma", list(2, 1), contrast = "independent")
+  attr(theta, "levels") <- 2
+  theta_posterior <- matrix(
+    c(1, 2, 1, 0.5),
+    nrow = 1,
+    dimnames = list(NULL, c("inv_theta[1]", "inv_theta[2]", "theta[1]", "theta[2]"))
+  )
+  expect_error(
+    JAGS_bridgesampling_posterior(
+      theta_posterior,
+      prior_list = list(theta = theta),
+      add_parameters = "theta[1]",
+      add_bounds = list(lb = c("theta[1]" = 0), ub = c("theta[1]" = Inf))
+    ),
+    "BayesTools-owned",
+    fixed = TRUE
   )
 })
 

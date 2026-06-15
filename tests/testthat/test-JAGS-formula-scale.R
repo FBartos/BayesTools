@@ -581,6 +581,17 @@ test_that("transform_prior_samples respects seed and validates formula_scale", {
     transform_prior_samples(bad_fit, n_samples = 32, seed = 1),
     "higher than 0"
   )
+
+  unsupported_prior <- list(distribution = "unsupported")
+  class(unsupported_prior) <- c("prior", "prior.unsupported")
+  expect_error(
+    BayesTools:::.generate_prior_sample_matrix(
+      list(theta = unsupported_prior),
+      n_samples = 4
+    ),
+    "Could not generate samples for prior 'theta'",
+    fixed = TRUE
+  )
 })
 
 test_that("transform_prior_samples handles scaled multi-factor interactions", {

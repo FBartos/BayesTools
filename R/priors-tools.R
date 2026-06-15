@@ -260,7 +260,9 @@
 .prior_expression_to_character <- function(prior){
   prior[["parameters"]] <- lapply(prior[["parameters"]], function(x){
     if(is.expression(x)){
-      return(.clean_from_expression(deparse(x)))
+      return(vapply(as.list(x), function(expr){
+        .clean_from_expression(paste(deparse(expr, width.cutoff = 500L), collapse = ""))
+      }, character(1)))
     }else{
       return(x)
     }

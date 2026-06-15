@@ -45,7 +45,9 @@
 #' for endpoints of truncated distributions
 #' @param ... additional arguments
 #'
-#' @return \code{density.prior} returns an object of class 'density'.
+#' @return \code{density.prior} returns an object of class 'density'. For
+#' Dirichlet simplex priors it returns a named list of beta-marginal density
+#' objects, one for each simplex coordinate.
 #'
 #' @details Sample-based density estimates for continuous priors with finite
 #' support use boundary-reflected kernel density estimates. The plotting range
@@ -127,6 +129,8 @@ density.prior <- function(x,
     out <- .density.prior.point(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments)
   }else if(is.prior.orthonormal(x) | is.prior.meandif(x)){
     out <- .density.prior.orthonormal_or_meandif(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
+  }else if(is.prior.simplex(x)){
+    out <- .density.prior.simplex(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
   }else if(is.prior.simple(x)){
     out <- .density.prior.simple(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
   }
@@ -213,6 +217,47 @@ density.prior <- function(x,
   if(boundary_reflection){
     attr(out, "boundary_reflection") <- TRUE
   }
+
+  return(out)
+}
+
+.density.prior.simplex                <- function(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end){
+
+  if(!identical(x[["distribution"]], "dirichlet")){
+    stop("Only Dirichlet simplex prior densities are supported.", call. = FALSE)
+  }
+
+  alpha  <- x$parameters[["alpha"]]
+  alpha0 <- sum(alpha)
+
+  out <- vector("list", length(alpha))
+  names(out) <- paste0("V", seq_along(alpha))
+
+  for(i in seq_along(alpha)){
+    component_prior <- prior(
+      "beta",
+      list(alpha = alpha[i], beta = alpha0 - alpha[i])
+    )
+    out[[i]] <- .density.prior.simple(
+      component_prior,
+      x_seq,
+      x_range,
+      n_points,
+      n_samples,
+      force_samples,
+      transformation,
+      transformation_arguments,
+      truncate_end
+    )
+    attr(out[[i]], "component")      <- i
+    attr(out[[i]], "component_name") <- names(out)[i]
+    class(out[[i]]) <- c("density.prior.simplex_component", class(out[[i]]))
+  }
+
+  attr(out, "x_range")        <- range(unlist(lapply(out, attr, which = "x_range")), na.rm = TRUE)
+  attr(out, "y_range")        <- range(unlist(lapply(out, attr, which = "y_range")), na.rm = TRUE)
+  attr(out, "parameter_name") <- names(out)
+  class(out) <- c("density.prior.simplex", "list")
 
   return(out)
 }

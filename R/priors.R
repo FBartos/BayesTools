@@ -41,7 +41,8 @@
 #'   an optional \code{order} that defaults to 1, and an optional
 #'   \code{location} that defaults to 0.}
 #'   \item{\code{"dirichlet"}}{for a Dirichlet distribution over a simplex,
-#'   characterized by a positive concentration vector \code{alpha}.}
+#'   characterized by a positive concentration vector \code{alpha}. Density
+#'   and plot methods show one beta marginal per simplex coordinate.}
 #' }
 #' @param parameters list of appropriate parameters for a given
 #' \code{distribution}.
@@ -248,6 +249,9 @@ wf_cumulative <- function(alpha = NULL){
 
   if(!is.null(alpha)){
     check_real(alpha, "alpha", lower = 0, allow_bound = FALSE, check_length = 0, allow_NA = FALSE)
+    if(any(!is.finite(alpha))){
+      stop("The 'alpha' argument must be finite.", call. = FALSE)
+    }
   }
 
   out <- list(type = "cumulative", alpha = alpha)
@@ -262,6 +266,9 @@ wf_cumulative <- function(alpha = NULL){
 wf_fixed <- function(omega){
 
   check_real(omega, "omega", lower = 0, check_length = 0, allow_NA = FALSE)
+  if(any(!is.finite(omega))){
+    stop("The 'omega' argument must be finite.", call. = FALSE)
+  }
 
   out <- list(type = "fixed", omega = omega)
   class(out) <- c("weightfunction_weights", "weightfunction_weights.fixed")
@@ -1133,7 +1140,7 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
 
   .check_parameter(parameters$alpha, "alpha", length = 0)
   .check_parameter_positive(parameters$alpha, "alpha")
-  if(any(!is.finite(parameters$alpha))){
+  if(is.numeric(parameters$alpha) && any(!is.finite(parameters$alpha))){
     stop("The 'alpha' concentration parameters must be finite.", call. = FALSE)
   }
   if(length(parameters$alpha) < 2L){
@@ -1254,9 +1261,15 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
       weights$alpha <- rep(1, n_bins)
     }
     check_real(weights$alpha, "alpha", lower = 0, allow_bound = FALSE, check_length = n_bins, allow_NA = FALSE)
+    if(any(!is.finite(weights$alpha))){
+      stop("The 'alpha' argument must be finite.", call. = FALSE)
+    }
 
   }else if(weights$type == "fixed"){
     check_real(weights$omega, "omega", lower = 0, check_length = n_bins, allow_NA = FALSE)
+    if(any(!is.finite(weights$omega))){
+      stop("The 'omega' argument must be finite.", call. = FALSE)
+    }
     if(reference == "most_significant" && !isTRUE(all.equal(weights$omega[1], 1))){
       stop("The reference-bin fixed weight must be exactly 1.", call. = FALSE)
     }

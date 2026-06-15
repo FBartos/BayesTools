@@ -252,6 +252,25 @@ test_that("selection backend spec and context helpers expose generic names and r
   expect_equal(spec$jags_omega, "custom_omega")
   expect_equal(spec$step$coefficient_ids, paste0("custom_omega[", 1:2, "]"))
 
+  expect_error(
+    selection_backend_spec(selection, names = list("custom_omega")),
+    "must be named",
+    fixed = TRUE
+  )
+  expect_error(
+    selection_backend_spec(
+      selection,
+      names = list(phack_z_dest = "dest_a", phack_z_destination = "dest_b")
+    ),
+    "must not conflict",
+    fixed = TRUE
+  )
+  phacking_alias <- selection_backend_spec(
+    prior_phacking(),
+    names = list(phack_z_destination = "custom_dest")
+  )
+  expect_equal(phacking_alias$jags_phack_z_dest, "custom_dest")
+
   context <- spec
   context$z_lower <- c(1.96, -Inf)
   context$z_upper <- c(Inf, 1.96)
@@ -275,6 +294,8 @@ test_that("selection backend spec and context helpers expose generic names and r
   context$bias_indicator <- c(1L, 1L, 1L)
   context$use_normal <- c(FALSE, FALSE, FALSE)
   context$obs_bin <- c(1L, 2L, 1L, 2L)
+  context$yi <- c(.1, .2, -.1, .3)
+  context$sei <- c(.2, .2, .2, .2)
   context <- selection_context_validate(
     context,
     required = c("omega", "alpha", "phack_kind", "kernel_mode",
@@ -283,9 +304,46 @@ test_that("selection backend spec and context helpers expose generic names and r
 
   expect_equal(context$alpha, c(0, 0, 0))
   expect_error(
-    selection_context_validate(within(context, alpha <- c(0, 1))),
+    selection_context_validate(within(context, alpha <- c(0, .5, 1))),
     "alpha"
   )
+  expect_error(
+    selection_context_validate(context, required = "alpah"),
+    "Unknown selection context required field"
+  )
+  bad_context <- context
+  bad_context$omega[1, 2] <- -0.1
+  expect_error(selection_context_validate(bad_context), "omega")
+  bad_context <- context
+  bad_context$omega <- bad_context$omega[, 1, drop = FALSE]
+  expect_error(selection_context_validate(bad_context), "omega")
+  bad_context <- context
+  bad_context$alpha <- -0.1
+  expect_error(selection_context_validate(bad_context), "alpha")
+  bad_context <- context
+  bad_context$alpha <- 1
+  expect_error(selection_context_validate(bad_context), "alpha")
+  bad_context <- context
+  bad_context$phack_kind <- 3L
+  expect_error(selection_context_validate(bad_context), "phack_kind")
+  bad_context <- context
+  bad_context$bias_indicator <- 2L
+  expect_error(selection_context_validate(bad_context), "bias_indicator")
+  bad_context <- context
+  bad_context$obs_bin[1] <- 3L
+  expect_error(selection_context_validate(bad_context), "obs_bin")
+  bad_context <- context
+  bad_context$obs_bin <- integer(0)
+  expect_error(selection_context_validate(bad_context), "obs_bin")
+  bad_context <- context
+  bad_context$yi[1] <- Inf
+  expect_error(selection_context_validate(bad_context), "yi")
+  bad_context <- context
+  bad_context$sei[1] <- 0
+  expect_error(selection_context_validate(bad_context), "sei")
+  bad_context <- context
+  bad_context$sei <- bad_context$sei[-1]
+  expect_error(selection_context_validate(bad_context), "same length")
 
   static <- selection_native_static_args(context)
   expect_equal(static$segment_step_bin, c(2L, 1L))
@@ -293,25 +351,125 @@ test_that("selection backend spec and context helpers expose generic names and r
 
   row_subset <- selection_context_subset_rows(context, c(1L, 3L))
   expect_equal(nrow(row_subset$omega), 2L)
+  expect_equal(row_subset$kernel_mode, c(1L, 1L))
   expect_false(identical(row_subset$native_cache, context$native_cache))
   expect_error(
     selection_context_subset_rows(context, c(TRUE, FALSE)),
     "one value per selection context row"
   )
+  expect_error(
+    selection_context_subset_rows(context, integer(0)),
+    "must select at least one"
+  )
+  expect_error(
+    selection_context_subset_rows(context, c(FALSE, FALSE, FALSE)),
+    "must select at least one"
+  )
+  expect_error(selection_context_subset_rows(context, 4L), "outside")
+
+  one_row <- context
+  one_row$omega <- NULL
+  one_row$alpha <- 0
+  one_row$phack_kind <- 0L
+  one_row$kernel_mode <- 1L
+  one_row$bias_indicator <- 1L
+  one_row$use_normal <- FALSE
+  one_row <- selection_context_validate(one_row)
+  expect_equal(selection_context_subset_rows(one_row, 1L)$kernel_mode, 1L)
+
+  custom_context <- context
+  custom_context$draw_id <- seq_len(nrow(custom_context$omega))
+  expect_error(
+    selection_context_subset_rows(custom_context, 1:2),
+    "row_fields"
+  )
+  custom_context$row_fields <- "draw_id"
+  expect_equal(
+    selection_context_subset_rows(custom_context, c(3L, 1L))$draw_id,
+    c(3L, 1L)
+  )
 
   obs_subset <- selection_context_subset_observations(context, c(2L, 4L))
   expect_equal(obs_subset$obs_bin, c(2L, 2L))
+  expect_equal(obs_subset$yi, c(.2, .3))
   expect_false(identical(obs_subset$native_cache, context$native_cache))
   expect_error(
     selection_context_subset_observations(context, 5L),
     "outside selection context 'obs_bin'"
   )
+  expect_error(
+    selection_context_subset_observations(context, integer(0)),
+    "must select at least one"
+  )
 
-  kernel_args <- selection_native_kernel_args(context, S = 2, kernel_mode = 1L)
-  expect_equal(kernel_args$alpha, c(0, 0))
-  expect_equal(kernel_args$kernel_mode, c(1L, 1L))
+  kernel_args <- selection_native_kernel_args(context, S = 3, kernel_mode = 1L)
+  expect_equal(kernel_args$alpha, c(0, 0, 0))
+  expect_equal(kernel_args$kernel_mode, c(1L, 1L, 1L))
+  expect_error(
+    selection_native_kernel_args(context, S = 3, alpha = 1),
+    "alpha"
+  )
+  expect_error(
+    selection_native_kernel_args(context, S = 3, phack_kind = 1.5),
+    "phack_kind"
+  )
+  expect_error(
+    selection_native_kernel_args(context, S = 3, kernel_mode = 4L),
+    "kernel_mode"
+  )
+
+  bad_static <- context
+  bad_static$native_cache <- NULL
+  bad_static$sign <- 0L
+  expect_error(selection_native_static_args(bad_static), "sign")
+  bad_static <- context
+  bad_static$native_cache <- NULL
+  bad_static$segments$bounds <- rev(bad_static$segments$bounds)
+  expect_error(selection_native_static_args(bad_static), "segment bounds")
+
   expect_equal(selection_row_arg(5, 3, "x"), c(5, 5, 5))
   expect_error(selection_row_arg(1:2, 3, "x"), "length 1 or 3")
+})
+
+test_that("selection native helpers use compiled bare specs instead of neutral placeholders", {
+
+  selection <- prior_weightfunction("one-sided", c(.025), wf_fixed(c(1, .5)))
+  step_spec <- selection_backend_spec(selection)
+
+  step_static <- selection_native_static_args(step_spec)
+  expect_equal(step_static$z_lower, step_spec$step$z_lower)
+  expect_equal(step_static$z_upper, step_spec$step$z_upper)
+  expect_equal(step_static$segment_step_bin, c(2L, 1L))
+
+  step_args <- selection_native_kernel_args(step_spec, S = 2)
+  expect_equal(step_args$alpha, c(0, 0))
+  expect_equal(step_args$phack_kind, c(0L, 0L))
+  expect_equal(step_args$kernel_mode, c(1L, 1L))
+
+  phacking <- prior_phacking()
+  phack_spec <- selection_backend_spec(phacking)
+  phack_static <- selection_native_static_args(phack_spec)
+  expect_equal(phack_static$phack_q, 1L)
+  expect_equal(phack_static$phack_z_source, phack_spec$phacking$z_source)
+  expect_equal(phack_static$phack_z_dest, phack_spec$phacking$z_destination)
+
+  phack_args <- selection_native_kernel_args(phack_spec, S = 2)
+  expect_equal(phack_args$alpha, c(0, 0))
+  expect_equal(phack_args$phack_kind, c(1L, 1L))
+  expect_equal(phack_args$kernel_mode, c(2L, 2L))
+
+  mixed_phack <- selection_backend_spec(prior_mixture(list(
+    prior_phacking(form = "linear"),
+    prior_phacking(form = "quadratic")
+  )))
+  expect_error(
+    selection_native_kernel_args(mixed_phack, S = 2),
+    "required for mixed"
+  )
+  expect_equal(
+    selection_native_kernel_args(mixed_phack, S = 2, phack_kind = c(1L, 2L))$phack_kind,
+    c(1L, 2L)
+  )
 })
 
 test_that("selection_backend_spec rejects malformed global breaks", {
@@ -457,6 +615,33 @@ test_that("direct selection-family JAGS helpers use active public names", {
   phacking_inits <- JAGS_get_inits(list(phacking = phacking), chains = 1, seed = 1)[[1]]
   expect_true("alpha" %in% names(phacking_inits))
   expect_false(any(grepl("_component_", names(phacking_inits), fixed = TRUE)))
+})
+
+test_that("inverse-gamma p-hacking alpha monitors the sampled auxiliary coordinate", {
+
+  selection <- prior_weightfunction("one-sided", c(.025), wf_fixed(c(1, .5)))
+  invgamma_alpha <- prior("invgamma", list(shape = 3, scale = .4), list(0, 1))
+  phacking <- prior_phacking(form = "linear", alpha = invgamma_alpha)
+  bias <- prior_bias(selection, phacking)
+
+  phacking_syntax <- JAGS_add_priors("model{}", list(phacking = phacking))
+  expect_match(phacking_syntax, "inv_alpha ~ dgamma\\(3,0.4\\)T\\(1,\\)")
+  expect_match(phacking_syntax, "alpha = pow\\(inv_alpha, -1\\)")
+
+  phacking_monitor <- JAGS_to_monitor(list(phacking = phacking))
+  expect_true(all(c("alpha", "inv_alpha", "phack_kind", "pi_null") %in% phacking_monitor))
+
+  bias_monitor <- JAGS_to_monitor(list(bias = bias))
+  expect_true(all(c("omega", "inv_alpha", "alpha", "phack_kind", "pi_null") %in% bias_monitor))
+
+  bias_mixture <- prior_mixture(list(
+    prior_none(),
+    phacking
+  ))
+  mixture_syntax <- JAGS_add_priors("model{}", list(bias = bias_mixture))
+  expect_match(mixture_syntax, "inv_alpha_component_2 ~ dgamma\\(3,0.4\\)T\\(1,\\)")
+  expect_match(mixture_syntax, "alpha_component_2 = pow\\(inv_alpha_component_2, -1\\)")
+  expect_true("inv_alpha_component_2" %in% JAGS_to_monitor(list(bias = bias_mixture)))
 })
 
 test_that("bias posterior extraction recognizes composed selection and phacking branches", {

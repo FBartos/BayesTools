@@ -123,7 +123,9 @@ Supports \code{col}/\code{color}, \code{alpha}, \code{lwd}/\code{linewidth},
 \code{"KDE"} computes a kernel density estimate. Plot methods with exact
 finite prior-support bounds apply boundary reflection.
 \code{"precomputed"} uses a valid \code{posterior_density} attribute when
-present and falls back to KDE otherwise.}
+present and falls back to KDE otherwise. A precomputed density is treated as
+authoritative for atomic mass layers: atoms are drawn only from explicit
+\code{point_masses} metadata.}
 }
 \value{
 \code{plot_posterior} returns either \code{NULL} or
@@ -140,7 +142,9 @@ detects this and uses the pre-computed transformed prior samples when \code{prio
 
 Posterior sample vectors may carry a \code{posterior_density} attribute
 with \code{x} and \code{y} coordinates. These densities are used only when
-\code{density_method = "precomputed"}.
+\code{density_method = "precomputed"}. If a stored density is used and
+sample-derived point masses are available, the plot layer uses only explicit
+\code{point_masses} from the stored density and warns when none are declared.
 }
 \seealso{
 \code{\link[=prior]{prior()}} \code{\link[=lines_prior_list]{lines_prior_list()}}  \code{\link[=geom_prior_list]{geom_prior_list()}}

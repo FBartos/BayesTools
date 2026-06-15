@@ -18,6 +18,41 @@ expect_nonlocal_prior_only_samples <- function(prior, samples, tolerance = .08) 
   }
 }
 
+test_that("BayesTools JAGS module initializes truncated nonlocal priors", {
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+
+  skip_if_not(isTRUE(BayesTools_load_JAGS_module(quiet = TRUE, warn = FALSE)))
+
+  priors <- list(
+    moment = prior(
+      "moment",
+      list(mode = .5),
+      truncation = list(lower = -.1, upper = .1)
+    ),
+    invmoment = prior(
+      "invmoment",
+      list(mode = .5, df = 6),
+      truncation = list(lower = -.1, upper = .1)
+    )
+  )
+
+  for(prior_i in priors){
+    syntax <- JAGS_add_priors("model{}", list(theta = prior_i))
+    expect_silent(local({
+      con <- textConnection(syntax)
+      on.exit(close(con), add = TRUE)
+      rjags::jags.model(
+        file     = con,
+        data     = list(),
+        n.chains = 1,
+        n.adapt  = 0,
+        quiet    = TRUE
+      )
+    }))
+  }
+})
+
 test_that("BayesTools JAGS module samples nonlocal priors", {
   skip_if_not_installed("rjags")
   skip_if_not_installed("runjags")
