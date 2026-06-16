@@ -617,7 +617,7 @@ test_that("direct selection-family JAGS helpers use active public names", {
   expect_false(any(grepl("_component_", names(phacking_inits), fixed = TRUE)))
 })
 
-test_that("inverse-gamma p-hacking alpha monitors the sampled auxiliary coordinate", {
+test_that("inverse-gamma p-hacking alpha samples and monitors the natural coordinate", {
 
   selection <- prior_weightfunction("one-sided", c(.025), wf_fixed(c(1, .5)))
   invgamma_alpha <- prior("invgamma", list(shape = 3, scale = .4), list(0, 1))
@@ -625,23 +625,25 @@ test_that("inverse-gamma p-hacking alpha monitors the sampled auxiliary coordina
   bias <- prior_bias(selection, phacking)
 
   phacking_syntax <- JAGS_add_priors("model{}", list(phacking = phacking))
-  expect_match(phacking_syntax, "inv_alpha ~ dgamma\\(3,0.4\\)T\\(1,\\)")
-  expect_match(phacking_syntax, "alpha = pow\\(inv_alpha, -1\\)")
+  expect_match(phacking_syntax, "alpha ~ dbt_invgamma\\(3,0.4\\)T\\(0,1\\)")
+  expect_false(grepl("inv_alpha", phacking_syntax, fixed = TRUE))
 
   phacking_monitor <- JAGS_to_monitor(list(phacking = phacking))
-  expect_true(all(c("alpha", "inv_alpha", "phack_kind", "pi_null") %in% phacking_monitor))
+  expect_true(all(c("alpha", "phack_kind", "pi_null") %in% phacking_monitor))
+  expect_false("inv_alpha" %in% phacking_monitor)
 
   bias_monitor <- JAGS_to_monitor(list(bias = bias))
-  expect_true(all(c("omega", "inv_alpha", "alpha", "phack_kind", "pi_null") %in% bias_monitor))
+  expect_true(all(c("omega", "alpha", "phack_kind", "pi_null") %in% bias_monitor))
+  expect_false("inv_alpha" %in% bias_monitor)
 
   bias_mixture <- prior_mixture(list(
     prior_none(),
     phacking
   ))
   mixture_syntax <- JAGS_add_priors("model{}", list(bias = bias_mixture))
-  expect_match(mixture_syntax, "inv_alpha_component_2 ~ dgamma\\(3,0.4\\)T\\(1,\\)")
-  expect_match(mixture_syntax, "alpha_component_2 = pow\\(inv_alpha_component_2, -1\\)")
-  expect_true("inv_alpha_component_2" %in% JAGS_to_monitor(list(bias = bias_mixture)))
+  expect_match(mixture_syntax, "alpha_component_2 ~ dbt_invgamma\\(3,0.4\\)T\\(0,1\\)")
+  expect_false(grepl("inv_alpha_component_2", mixture_syntax, fixed = TRUE))
+  expect_false("inv_alpha_component_2" %in% JAGS_to_monitor(list(bias = bias_mixture)))
 })
 
 test_that("bias posterior extraction recognizes composed selection and phacking branches", {

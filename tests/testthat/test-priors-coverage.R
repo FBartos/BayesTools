@@ -851,6 +851,46 @@ test_that("mean() handles truncated distributions and undefined moments", {
   expect_true(is.nan(mean(prior("invgamma", list(.5, 1)))))
 })
 
+test_that("native inverse-gamma helpers match gamma-transform identities", {
+  p <- prior("invgamma", list(shape = 3, scale = 2))
+  x <- c(.25, 1, 2)
+  expected_lpdf <- 3 * log(2) - lgamma(3) - 4 * log(x) - 2 / x
+
+  expect_equal(lpdf(p, x), expected_lpdf, tolerance = 1e-12)
+  expect_equal(pdf(p, x), exp(expected_lpdf), tolerance = 1e-12)
+  expect_equal(
+    cdf(p, x),
+    stats::pgamma(1 / x, shape = 3, rate = 2, lower.tail = FALSE),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    ccdf(p, x),
+    stats::pgamma(1 / x, shape = 3, rate = 2, lower.tail = TRUE),
+    tolerance = 1e-12
+  )
+
+  probs <- c(.05, .5, .95)
+  expected_q <- 1 / stats::qgamma(probs, shape = 3, rate = 2, lower.tail = FALSE)
+  expect_equal(quant(p, probs), expected_q, tolerance = 1e-12)
+  expect_equal(cdf(p, quant(p, probs)), probs, tolerance = 1e-12)
+  expect_equal(
+    BayesTools:::.pinvgamma_prior(x, 3, 2, log.p = TRUE),
+    log(cdf(p, x)),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    BayesTools:::.qinvgamma_prior(log(probs), 3, 2, log.p = TRUE),
+    expected_q,
+    tolerance = 1e-12
+  )
+
+  set.seed(11)
+  draws <- rng(p, 100)
+  expect_length(draws, 100)
+  expect_true(all(is.finite(draws)))
+  expect_true(all(draws > 0))
+})
+
 
 test_that("mean() returns NaN for multivariate t with df <= 1", {
   p_mt <- prior_factor("mt", list(0, 1, 1), contrast = "orthonormal")

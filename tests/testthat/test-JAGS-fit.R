@@ -418,16 +418,18 @@ test_that("JAGS handles invgamma prior", {
 
   # Test syntax
   result <- JAGS_add_priors("model{}", priors_inv)
-  expect_true(grepl("inv_tau", result))
-  expect_true(grepl("dgamma", result))
+  expect_true(grepl("tau ~ dbt_invgamma(3,2)", result, fixed = TRUE))
+  expect_false(grepl("inv_tau", result, fixed = TRUE))
+  expect_false(grepl("pow(inv_tau", result, fixed = TRUE))
 
   # Test inits
   inits <- JAGS_get_inits(priors_inv, chains = 2, seed = 1)
-  expect_true("inv_tau" %in% names(inits[[1]]))
+  expect_true("tau" %in% names(inits[[1]]))
+  expect_false("inv_tau" %in% names(inits[[1]]))
 
   # Test monitor
   monitor <- JAGS_to_monitor(priors_inv)
-  expect_true("tau" %in% monitor)
+  expect_equal(monitor, "tau")
 
 })
 

@@ -61,7 +61,8 @@ test_that(".extract_posterior_samples extracts samples correctly", {
 })
 
 
-test_that(".remove_auxiliary_parameters removes invgamma support", {
+# TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma test.
+test_that(".remove_auxiliary_parameters removes legacy invgamma support", {
   skip_on_cran()
   skip_if_not_installed("rjags")
 
@@ -80,7 +81,8 @@ test_that(".remove_auxiliary_parameters removes invgamma support", {
 })
 
 
-test_that(".remove_auxiliary_parameters removes indexed factor invgamma support", {
+# TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma test.
+test_that(".remove_auxiliary_parameters removes legacy indexed factor invgamma support", {
   model_samples <- matrix(rnorm(400), ncol = 4)
   colnames(model_samples) <- c("theta[1]", "theta[2]", "inv_theta[1]", "inv_theta[2]")
 
@@ -1094,7 +1096,7 @@ test_that("helper functions work with runjags estimates extraction", {
   # Test that remove_auxiliary_parameters helper works
   cleaned <- BayesTools:::.remove_auxiliary_parameters(model_samples, prior_list, NULL)
   
-  # Should remove inv_sigma
+  # TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma test.
   expect_false("inv_sigma" %in% colnames(cleaned$model_samples))
   expect_true("mu" %in% colnames(cleaned$model_samples))
   expect_equal(ncol(cleaned$model_samples), 1)

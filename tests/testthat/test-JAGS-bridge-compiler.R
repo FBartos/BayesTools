@@ -25,13 +25,13 @@ test_that("compiled bridge prior evaluators match public marglik helpers", {
 
   samples <- c(
     mu = .2,
-    inv_sigma = .5,
+    sigma = 2,
     "v[1]" = -.1,
     "v[2]" = .3,
     "prior_par_eta_w[1]" = 1.2,
     "prior_par_eta_w[2]" = 2.4,
-    "inv_theta[1]" = 2,
-    "inv_theta[2]" = 3,
+    "theta[1]" = .5,
+    "theta[2]" = 1 / 3,
     PET = .4,
     PEESE = .6,
     "eta[1]" = 1.5,
@@ -51,23 +51,37 @@ test_that("compiled bridge prior evaluators match public marglik helpers", {
     JAGS_marglik_parameters(samples, prior_list),
     tolerance = 1e-12
   )
+
+  # TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma test.
+  legacy_samples <- samples[!names(samples) %in% c("sigma", "theta[1]", "theta[2]")]
+  legacy_samples <- c(
+    legacy_samples,
+    inv_sigma = .5,
+    "inv_theta[1]" = 2,
+    "inv_theta[2]" = 3
+  )
+  expect_equal(
+    compiled$parameters(legacy_samples),
+    compiled$parameters(samples),
+    tolerance = 1e-12
+  )
 })
 
-test_that("compiled bridge prior evaluators preserve auxiliary support behavior", {
+test_that("compiled bridge prior evaluators preserve positive support behavior", {
 
   prior_list <- list(
     sigma = prior("invgamma", list(3, 2), list(1, 3)),
     w     = prior("dirichlet", list(alpha = c(2, 3)))
   )
   samples <- c(
-    inv_sigma = .5,
+    sigma = 2,
     "prior_par_eta_w[1]" = 1.2,
     "prior_par_eta_w[2]" = 2.4
   )
   compiled <- BayesTools:::.bt_JAGS_bridge_compile_prior_list_evaluator(prior_list)
 
   bad_invgamma <- samples
-  bad_invgamma[["inv_sigma"]] <- 0
+  bad_invgamma[["sigma"]] <- 0
   expect_equal(compiled$log_prior(bad_invgamma), -Inf)
   invgamma_error <- tryCatch(
     compiled$parameters(bad_invgamma),
@@ -83,6 +97,15 @@ test_that("compiled bridge prior evaluators preserve auxiliary support behavior"
     error = function(e) e
   )
   expect_s3_class(dirichlet_error, "BayesTools_marglik_out_of_support")
+
+  # TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma test.
+  legacy_invgamma <- samples[!names(samples) %in% "sigma"]
+  legacy_invgamma[["inv_sigma"]] <- .5
+  expect_equal(
+    compiled$parameters(legacy_invgamma),
+    compiled$parameters(samples),
+    tolerance = 1e-12
+  )
 })
 
 test_that("compiled formula prior evaluator matches public formula density helper", {
@@ -98,7 +121,7 @@ test_that("compiled formula prior evaluator matches public formula density helpe
   )
   samples <- c(
     mu_intercept = .2,
-    inv_mu_x = .5,
+    mu_x = 2,
     sigma_intercept = .8
   )
 
@@ -181,7 +204,7 @@ test_that("compiled formula parameter evaluator matches design reconstruction", 
   formula_design_list <- list(mu = formula_output$formula_design)
   samples <- c(
     mu_intercept = .2,
-    inv_mu_x = .5,
+    mu_x = 2,
     "mu_g[1]" = .3,
     "mu_g[2]" = -.4
   )

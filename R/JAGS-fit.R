@@ -219,46 +219,54 @@ NULL
   invisible(loaded)
 }
 
-.JAGS_prior_uses_nonlocal <- function(prior){
+.JAGS_prior_uses_BayesTools_module <- function(prior){
 
   if(!is.prior(prior)){
     return(FALSE)
   }
 
-  if(isTRUE(prior[["distribution"]] %in% c("moment", "invmoment"))){
+  if(isTRUE(prior[["distribution"]] %in% c("invgamma", "moment", "invmoment"))){
     return(TRUE)
   }
 
   if(is.prior.spike_and_slab(prior)){
     return(
-      .JAGS_prior_uses_nonlocal(.get_spike_and_slab_variable(prior)) ||
-        .JAGS_prior_uses_nonlocal(.get_spike_and_slab_inclusion(prior))
+      .JAGS_prior_uses_BayesTools_module(.get_spike_and_slab_variable(prior)) ||
+        .JAGS_prior_uses_BayesTools_module(.get_spike_and_slab_inclusion(prior))
     )
   }
 
   if(is.prior.mixture(prior)){
-    return(any(vapply(as.list(prior), .JAGS_prior_uses_nonlocal, logical(1))))
+    return(any(vapply(as.list(prior), .JAGS_prior_uses_BayesTools_module, logical(1))))
   }
 
   if(is.prior.weightfunction(prior) && identical(prior$weights$type, "independent")){
-    return(.JAGS_prior_uses_nonlocal(prior$weights$prior))
+    return(.JAGS_prior_uses_BayesTools_module(prior$weights$prior))
   }
 
   if(is_prior_phacking(prior)){
-    return(.JAGS_prior_uses_nonlocal(prior$alpha))
+    return(.JAGS_prior_uses_BayesTools_module(prior$alpha))
   }
 
   if(is_prior_bias(prior)){
-    uses_selection <- !is.null(prior$selection) && .JAGS_prior_uses_nonlocal(prior$selection)
-    uses_phacking  <- !is.null(prior$phacking)  && .JAGS_prior_uses_nonlocal(prior$phacking)
+    uses_selection <- !is.null(prior$selection) && .JAGS_prior_uses_BayesTools_module(prior$selection)
+    uses_phacking  <- !is.null(prior$phacking)  && .JAGS_prior_uses_BayesTools_module(prior$phacking)
     return(uses_selection || uses_phacking)
   }
 
   FALSE
 }
+.JAGS_prior_uses_nonlocal <- function(prior){
+
+  .JAGS_prior_uses_BayesTools_module(prior)
+}
+.JAGS_prior_list_uses_BayesTools_module <- function(prior_list){
+
+  length(prior_list) > 0L && any(vapply(prior_list, .JAGS_prior_uses_BayesTools_module, logical(1)))
+}
 .JAGS_prior_list_uses_nonlocal <- function(prior_list){
 
-  length(prior_list) > 0L && any(vapply(prior_list, .JAGS_prior_uses_nonlocal, logical(1)))
+  .JAGS_prior_list_uses_BayesTools_module(prior_list)
 }
 
 #' @rdname JAGS_fit
@@ -349,7 +357,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   jags_modules <- unique(c(jags_modules, formula_jags_modules))
   required_packages <- unique(c(required_packages, formula_required_packages))
 
-  if(.JAGS_prior_list_uses_nonlocal(prior_list)){
+  if(.JAGS_prior_list_uses_BayesTools_module(prior_list)){
     jags_modules <- unique(c(jags_modules, "BayesTools"))
     required_packages <- unique(c(required_packages, "BayesTools"))
   }
@@ -913,7 +921,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
     "lognormal" = paste0(parameter_name," ~ dlnorm(",prior$parameter[["meanlog"]],",", .JAGS_parameter_to_precision(prior$parameter[["sdlog"]]),")"),
     "t"         = paste0(parameter_name," ~ dt(",prior$parameter[["location"]],",", .JAGS_parameter_to_precision(prior$parameter[["scale"]]),",", prior$parameter[["df"]],")"),
     "gamma"     = paste0(parameter_name," ~ dgamma(",prior$parameter[["shape"]],",",prior$parameter[["rate"]],")"),
-    "invgamma"  = paste0("inv_",parameter_name," ~ dgamma(",prior$parameter[["shape"]],",",prior$parameter[["scale"]],")"),
+    "invgamma"  = paste0(parameter_name," ~ dbt_invgamma(",prior$parameter[["shape"]],",",prior$parameter[["scale"]],")"),
     "exp"       = paste0(parameter_name," ~ dexp(",prior$parameter[["rate"]],")"),
     "beta"      = paste0(parameter_name," ~ dbeta(",prior$parameter[["alpha"]],",",prior$parameter[["beta"]],")"),
     "bernoulli" = paste0(parameter_name," ~ dbern(",prior$parameter[["probability"]],")"),
@@ -924,29 +932,15 @@ JAGS_add_priors           <- function(syntax, prior_list){
 
   # add truncation
   if(!.is_prior_default_range(prior)){
-    # the truncation for invgamma needs to be done in reverse since we sample from gamma
-    if(prior[["distribution"]] == "invgamma"){
-      syntax <- paste0(syntax, "T(",
-                       ifelse(is.infinite(prior$truncation[["upper"]]^-1),"",prior$truncation[["upper"]]^-1),
-                       ",",
-                       ifelse(is.infinite(prior$truncation[["lower"]]^-1),"",prior$truncation[["lower"]]^-1),
-                       ")")
-    }else{
-      syntax <- paste0(syntax, "T(",
-                       ifelse(is.infinite(prior$truncation[["lower"]]),"",prior$truncation[["lower"]]),
-                       ",",
-                       ifelse(is.infinite(prior$truncation[["upper"]]),"",prior$truncation[["upper"]]),
-                       ")")
-    }
+    syntax <- paste0(syntax, "T(",
+                     ifelse(is.infinite(prior$truncation[["lower"]]),"",prior$truncation[["lower"]]),
+                     ",",
+                     ifelse(is.infinite(prior$truncation[["upper"]]),"",prior$truncation[["upper"]]),
+                     ")")
   }
 
   # finish the line
   syntax <- paste0(syntax, "\n")
-
-  # transform the parameter in case of inverse-gamma
-  if(prior[["distribution"]] == "invgamma"){
-    syntax <- paste0(syntax, "  ", parameter_name," = pow(inv_",parameter_name,", -1)\n")
-  }
 
   return(syntax)
 }
@@ -1473,19 +1467,7 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
   }else{
     init <- list()
 
-    if(prior[["distribution"]] == "invgamma"){
-
-      sampling_prior <- prior(
-        "distribution" = "gamma",
-        "parameters"   = list("shape" = prior$parameters[["shape"]], "rate" = prior$parameters[["scale"]]),
-        "truncation"   = list("lower" = prior$truncation[["upper"]]^-1, "upper" = prior$truncation[["lower"]]^-1))
-      init[[paste0("inv_", parameter_name)]] <- rng(sampling_prior, 1)
-
-    }else{
-
-      init[[parameter_name]] <- rng(prior, 1)
-
-    }
+    init[[parameter_name]] <- rng(prior, 1)
   }
 
   return(init)
@@ -1784,8 +1766,6 @@ JAGS_to_monitor             <- function(prior_list){
 
   if(prior[["distribution"]] %in% c("point", "mpoint")){
     monitor <- character()
-  }else if(prior[["distribution"]] == "invgamma"){
-    monitor <- c(parameter_name, paste0("inv_", parameter_name))
   }else{
     monitor <- parameter_name
   }

@@ -394,14 +394,51 @@ test_that("nonlocal priors generate direct JAGS syntax and standard metadata", {
   )
 })
 
+test_that("inverse-gamma priors generate natural-scale BayesTools JAGS syntax", {
+  p_invgamma <- prior("invgamma", list(shape = 3, scale = 2), list(1, 3))
+
+  syntax <- JAGS_add_priors("model{}", list(sigma = p_invgamma))
+  expect_match(syntax, "sigma ~ dbt_invgamma(3,2)T(1,3)", fixed = TRUE)
+  expect_false(grepl("inv_sigma", syntax, fixed = TRUE))
+  expect_false(grepl("pow(inv_sigma", syntax, fixed = TRUE))
+
+  expect_equal(JAGS_to_monitor(list(sigma = p_invgamma)), "sigma")
+  inits <- JAGS_get_inits(list(sigma = p_invgamma), chains = 1, seed = 1)[[1]]
+  expect_named(inits, c("sigma", ".RNG.seed", ".RNG.name"), ignore.order = TRUE)
+  expect_true(is.finite(inits$sigma))
+  expect_true(inits$sigma >= 1 && inits$sigma <= 3)
+  expect_false("inv_sigma" %in% names(inits))
+})
+
+test_that("inverse-gamma formula priors request the BayesTools JAGS module", {
+  formula_result <- JAGS_formula(
+    ~ x,
+    "sigma",
+    data = data.frame(x = c(1, 2, 3)),
+    prior_list = list(
+      intercept = prior("invgamma", list(shape = 3, scale = 2)),
+      x         = prior("normal", list(mean = 0, sd = 1))
+    )
+  )
+
+  expect_equal(formula_result$jags_modules, "BayesTools")
+  expect_equal(formula_result$required_packages, "BayesTools")
+
+  syntax <- JAGS_add_priors("model{}", formula_result$prior_list)
+  expect_match(syntax, "sigma_intercept ~ dbt_invgamma(3,2)", fixed = TRUE)
+  expect_false(grepl("inv_sigma_intercept", syntax, fixed = TRUE))
+})
+
 test_that("nonlocal priors request the BayesTools JAGS module recursively", {
   p_moment <- prior("moment", list(mode = .5))
+  p_invgamma <- prior("invgamma", list(2, 1))
   p_inclusion <- prior("beta", list(1, 1))
-  p_spike_and_slab <- prior_spike_and_slab(p_moment, p_inclusion)
+  p_spike_and_slab <- prior_spike_and_slab(p_invgamma, p_inclusion)
   p_mixture <- prior_mixture(list(prior("normal", list(0, 1)), p_moment))
 
+  expect_true(BayesTools:::.JAGS_prior_list_uses_BayesTools_module(list(theta = p_invgamma)))
   expect_true(BayesTools:::.JAGS_prior_list_uses_nonlocal(list(theta = p_moment)))
   expect_true(BayesTools:::.JAGS_prior_list_uses_nonlocal(list(theta = p_spike_and_slab)))
   expect_true(BayesTools:::.JAGS_prior_list_uses_nonlocal(list(theta = p_mixture)))
-  expect_false(BayesTools:::.JAGS_prior_list_uses_nonlocal(list(theta = prior("normal", list(0, 1)))))
+  expect_false(BayesTools:::.JAGS_prior_list_uses_BayesTools_module(list(theta = prior("normal", list(0, 1)))))
 })

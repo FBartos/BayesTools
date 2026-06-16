@@ -13,6 +13,10 @@ extern SEXP BayesTools_invmoment_d(SEXP x, SEXP location, SEXP tau, SEXP order, 
 extern SEXP BayesTools_invmoment_p(SEXP q, SEXP location, SEXP tau, SEXP order, SEXP df, SEXP lower_tail, SEXP log_p);
 extern SEXP BayesTools_invmoment_q(SEXP p, SEXP location, SEXP tau, SEXP order, SEXP df, SEXP lower_tail, SEXP log_p);
 extern SEXP BayesTools_invmoment_r(SEXP n, SEXP location, SEXP tau, SEXP order, SEXP df);
+extern SEXP BayesTools_invgamma_d(SEXP x, SEXP shape, SEXP scale, SEXP log);
+extern SEXP BayesTools_invgamma_p(SEXP q, SEXP shape, SEXP scale, SEXP lower_tail, SEXP log_p);
+extern SEXP BayesTools_invgamma_q(SEXP p, SEXP shape, SEXP scale, SEXP lower_tail, SEXP log_p);
+extern SEXP BayesTools_invgamma_r(SEXP n, SEXP shape, SEXP scale);
 
 static const R_CallMethodDef callMethods[] = {
   {"BayesTools_lkj_cholesky_from_u", (DL_FUNC) &BayesTools_lkj_cholesky_from_u, 2},
@@ -27,6 +31,10 @@ static const R_CallMethodDef callMethods[] = {
   {"BayesTools_invmoment_p",         (DL_FUNC) &BayesTools_invmoment_p,         7},
   {"BayesTools_invmoment_q",         (DL_FUNC) &BayesTools_invmoment_q,         7},
   {"BayesTools_invmoment_r",         (DL_FUNC) &BayesTools_invmoment_r,         5},
+  {"BayesTools_invgamma_d",          (DL_FUNC) &BayesTools_invgamma_d,          4},
+  {"BayesTools_invgamma_p",          (DL_FUNC) &BayesTools_invgamma_p,          5},
+  {"BayesTools_invgamma_q",          (DL_FUNC) &BayesTools_invgamma_q,          5},
+  {"BayesTools_invgamma_r",          (DL_FUNC) &BayesTools_invgamma_r,          3},
   {NULL, NULL, 0}
 };
 

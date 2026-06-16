@@ -235,23 +235,23 @@ test_that("p-hacking bridge helpers support point and inverse-gamma alpha priors
   invgamma_bias <- prior_bias(selection = selection, phacking = invgamma_alpha)
   invgamma_posterior <- matrix(
     c(
-      1.5, 2.5, 2.5,
-      1.1, 2.1, 2.0
+      1.5, 2.5, 0.4,
+      1.1, 2.1, 0.5
     ),
     ncol = 3,
     byrow = TRUE
   )
-  colnames(invgamma_posterior) <- c("eta[1]", "eta[2]", "inv_alpha")
+  colnames(invgamma_posterior) <- c("eta[1]", "eta[2]", "alpha")
 
   invgamma_prepared <- JAGS_bridgesampling_posterior(invgamma_posterior, list(bias = invgamma_bias))
-  expect_equal(colnames(invgamma_prepared), c("eta[1]", "eta[2]", "inv_alpha"))
-  expect_equal(attr(invgamma_prepared, "lb"), c("eta[1]" = 0, "eta[2]" = 0, "inv_alpha" = 1))
-  expect_equal(attr(invgamma_prepared, "ub"), c("eta[1]" = Inf, "eta[2]" = Inf, "inv_alpha" = Inf))
+  expect_equal(colnames(invgamma_prepared), c("eta[1]", "eta[2]", "alpha"))
+  expect_equal(attr(invgamma_prepared, "lb"), c("eta[1]" = 0, "eta[2]" = 0, "alpha" = 0))
+  expect_equal(attr(invgamma_prepared, "ub"), c("eta[1]" = Inf, "eta[2]" = Inf, "alpha" = 1))
 
   invgamma_samples <- invgamma_posterior[1, ]
   expected_invgamma_prior_density <-
     sum(stats::dgamma(invgamma_samples[c("eta[1]", "eta[2]")], shape = c(1, 2), rate = 1, log = TRUE)) +
-    lpdf(prior("gamma", list(shape = 3, rate = .4), list(1, Inf)), invgamma_samples[["inv_alpha"]])
+    lpdf(invgamma_alpha_prior, invgamma_samples[["alpha"]])
   expect_equal(
     JAGS_marglik_priors(invgamma_samples, list(bias = invgamma_bias)),
     expected_invgamma_prior_density,
@@ -263,17 +263,25 @@ test_that("p-hacking bridge helpers support point and inverse-gamma alpha priors
     invgamma_alpha$form, invgamma_alpha$source, invgamma_alpha$destination,
     target = invgamma_alpha$target
   )
-  expect_equal(invgamma_parameters$alpha, 1 / invgamma_samples[["inv_alpha"]])
+  expect_equal(invgamma_parameters$alpha, invgamma_samples[["alpha"]])
   expect_equal(
     invgamma_parameters$pi_null,
-    (1 / invgamma_samples[["inv_alpha"]]) * invgamma_constants$pi_null_per_alpha,
+    invgamma_samples[["alpha"]] * invgamma_constants$pi_null_per_alpha,
     tolerance = 1e-12
   )
   expect_equal(
     invgamma_parameters$beta_null,
-    (1 / invgamma_samples[["inv_alpha"]]) * invgamma_constants$beta_null_per_alpha,
+    invgamma_samples[["alpha"]] * invgamma_constants$beta_null_per_alpha,
     tolerance = 1e-12
   )
+
+  # TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma test.
+  legacy_invgamma_posterior <- invgamma_posterior
+  colnames(legacy_invgamma_posterior)[3] <- "inv_alpha"
+  legacy_invgamma_posterior[, "inv_alpha"] <- 1 / legacy_invgamma_posterior[, "inv_alpha"]
+  legacy_prepared <- JAGS_bridgesampling_posterior(legacy_invgamma_posterior, list(bias = invgamma_bias))
+  expect_equal(colnames(legacy_prepared), c("eta[1]", "eta[2]", "alpha"))
+  expect_equal(legacy_prepared[, "alpha"], invgamma_posterior[, "alpha"])
 })
 
 test_that("bias mixtures fail explicitly in bridge-sampling helpers", {
@@ -1414,11 +1422,11 @@ test_that("JAGS bridgesampling gives unit marglik for prior-only random-effect s
   )
 })
 
-test_that("JAGS formula marglik reconstructs inverse-gamma terms on original scale", {
+test_that("JAGS formula marglik reconstructs inverse-gamma terms on natural scale", {
 
   samples <- c(
-    "inv_mu_intercept" = 2,
-    "inv_mu_x"         = 4
+    "mu_intercept" = 0.5,
+    "mu_x"         = 0.25
   )
   formula_data_list <- list(
     mu = list(
@@ -1454,20 +1462,44 @@ test_that("JAGS formula marglik reconstructs inverse-gamma terms on original sca
   )
 
   expect_equal(parameters_log$mu, c(log(0.5) + 0.25 * 10, log(0.5) + 0.25 * 20))
+
+  # TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma test.
+  legacy_samples <- c(
+    "inv_mu_intercept" = 2,
+    "inv_mu_x"         = 4
+  )
+  legacy_parameters <- JAGS_marglik_parameters_formula(
+    samples            = legacy_samples,
+    formula_list       = list(mu = ~ 1 + x),
+    formula_data_list  = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    prior_list_parameters = list()
+  )
+
+  expect_equal(legacy_parameters$mu, parameters$mu)
 })
 
 
-test_that("JAGS marglik reconstructs indexed factor inverse-gamma auxiliaries", {
+test_that("JAGS marglik reconstructs indexed factor inverse-gamma parameters", {
   theta_prior <- prior_factor("invgamma", list(2, 1), contrast = "independent")
   attr(theta_prior, "levels") <- 2
 
   parameters <- BayesTools:::.JAGS_marglik_parameters.factor(
-    samples = c("inv_theta[1]" = 2, "inv_theta[2]" = 4),
+    samples = c("theta[1]" = 0.5, "theta[2]" = 0.25),
     prior = theta_prior,
     parameter_name = "theta"
   )
 
   expect_equal(parameters$theta, c(0.5, 0.25))
+
+  # TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma test.
+  legacy_parameters <- BayesTools:::.JAGS_marglik_parameters.factor(
+    samples = c("inv_theta[1]" = 2, "inv_theta[2]" = 4),
+    prior = theta_prior,
+    parameter_name = "theta"
+  )
+
+  expect_equal(legacy_parameters$theta, parameters$theta)
 })
 
 

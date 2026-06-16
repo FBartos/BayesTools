@@ -2601,7 +2601,7 @@ test_that("variance allocation priors generate shared total SD and Dirichlet all
   )
 })
 
-test_that("bridge auxiliary positive support is enforced before reconstruction", {
+test_that("bridge positive support is enforced before reconstruction", {
 
   dirichlet_prior <- prior("dirichlet", list(alpha = c(1, 2)))
   dirichlet_samples <- c(
@@ -2615,11 +2615,11 @@ test_that("bridge auxiliary positive support is enforced before reconstruction",
   )
 
   invgamma_prior <- prior("invgamma", list(1, 2))
-  invgamma_samples <- c("inv_sigma" = 0)
+  invgamma_samples <- c("sigma" = 0)
   expect_equal(JAGS_marglik_priors(invgamma_samples, list(sigma = invgamma_prior)), -Inf)
   expect_error(
     JAGS_marglik_parameters(invgamma_samples, list(sigma = invgamma_prior)),
-    "out-of-support positive auxiliary coordinate"
+    "out-of-support inverse-gamma coordinate"
   )
 
   formula_prior_list <- list(
@@ -2627,18 +2627,27 @@ test_that("bridge auxiliary positive support is enforced before reconstruction",
   )
   expect_equal(
     JAGS_marglik_priors_formula(
-      samples = c("inv_mu_intercept" = 0),
+      samples = c("mu_intercept" = 0),
       formula_prior_list = formula_prior_list
     ),
     -Inf
   )
   expect_error(
     JAGS_marglik_parameters_formula(
-      samples = c("inv_mu_intercept" = 0),
+      samples = c("mu_intercept" = 0),
       formula_list = list(mu = ~ 1),
       formula_data_list = list(mu = list(N_mu = 1)),
       formula_prior_list = formula_prior_list,
       prior_list_parameters = list()
+    ),
+    "out-of-support inverse-gamma coordinate"
+  )
+
+  # TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma test.
+  expect_error(
+    JAGS_marglik_parameters(
+      c("inv_sigma" = 0),
+      list(sigma = invgamma_prior)
     ),
     "out-of-support positive auxiliary coordinate"
   )

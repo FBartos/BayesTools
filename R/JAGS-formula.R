@@ -488,6 +488,10 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   for(i in seq_along(prior_list)){
     attr(prior_list[[i]], "parameter") <- parameter
   }
+  if(.JAGS_prior_list_uses_BayesTools_module(prior_list)){
+    jags_modules <- c(jags_modules, "BayesTools")
+    required_packages <- c(required_packages, "BayesTools")
+  }
 
   # preserve log(intercept) attribute on output formula
   if(log_intercept){

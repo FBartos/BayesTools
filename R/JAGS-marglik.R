@@ -1941,6 +1941,11 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
   # get information about the specified parameters
   parameters_names <- .JAGS_bridgesampling_posterior_info(prior_list)
   owned_parameter_names <- .bt_JAGS_bridge_owned_parameter_names(prior_list)
+  # TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma support.
+  posterior <- .bt_JAGS_bridge_materialize_legacy_invgamma_posterior(
+    posterior = posterior,
+    prior_list = prior_list
+  )
 
   # add the user defined parameters
   if(!is.null(add_parameters)){
@@ -1977,6 +1982,91 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
   attr(posterior, "ub") <- attr(parameters_names, "ub")
 
   return(posterior)
+}
+
+# TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma support.
+.bt_JAGS_bridge_materialize_legacy_invgamma_posterior <- function(posterior,
+                                                                  prior_list){
+
+  if(length(prior_list) == 0L){
+    return(posterior)
+  }
+
+  for(i in seq_along(prior_list)){
+    posterior <- .bt_JAGS_bridge_materialize_legacy_invgamma_prior(
+      posterior = posterior,
+      prior = prior_list[[i]],
+      parameter_name = names(prior_list)[i]
+    )
+  }
+
+  posterior
+}
+
+.bt_JAGS_bridge_materialize_legacy_invgamma_prior <- function(posterior,
+                                                              prior,
+                                                              parameter_name){
+
+  if(is_prior_bias(prior)){
+    if(!is.null(prior$phacking)){
+      posterior <- .bt_JAGS_bridge_materialize_legacy_invgamma_prior(
+        posterior = posterior,
+        prior = prior$phacking,
+        parameter_name = "alpha"
+      )
+    }
+    return(posterior)
+  }
+
+  if(is_prior_phacking(prior)){
+    return(.bt_JAGS_bridge_materialize_legacy_invgamma_prior(
+      posterior = posterior,
+      prior = prior$alpha,
+      parameter_name = "alpha"
+    ))
+  }
+
+  if(is.prior.PET(prior)){
+    parameter_name <- "PET"
+  }
+
+  if(is.prior.PEESE(prior)){
+    parameter_name <- "PEESE"
+  }
+
+  if(!is.prior.simple(prior) || !identical(prior[["distribution"]], "invgamma")){
+    return(posterior)
+  }
+
+  parameter_names <- if(is.prior.factor(prior)){
+    .JAGS_prior_factor_names(parameter_name, prior)
+  }else{
+    parameter_name
+  }
+
+  .bt_JAGS_bridge_materialize_legacy_invgamma_columns(
+    posterior = posterior,
+    parameter_names = parameter_names
+  )
+}
+
+.bt_JAGS_bridge_materialize_legacy_invgamma_columns <- function(posterior,
+                                                                parameter_names){
+
+  missing <- !parameter_names %in% colnames(posterior)
+  if(!any(missing)){
+    return(posterior)
+  }
+
+  missing_parameter_names <- parameter_names[missing]
+  legacy_names <- paste0("inv_", missing_parameter_names)
+  if(!all(legacy_names %in% colnames(posterior))){
+    return(posterior)
+  }
+
+  values <- 1 / posterior[, legacy_names, drop = FALSE]
+  colnames(values) <- missing_parameter_names
+  cbind(posterior, values)
 }
 
 .bt_JAGS_bridge_validate_add_parameters_not_prior_dirichlet <- function(
@@ -2252,11 +2342,7 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
   check_char(parameter_name, "parameter_name")
 
 
-  if(prior[["distribution"]] == "invgamma"){
-    parameter <- paste0("inv_", parameter_name)
-    attr(parameter, "lb") <- prior$truncation[["upper"]]^-1
-    attr(parameter, "ub") <- prior$truncation[["lower"]]^-1
-  }else if(prior[["distribution"]] == "point"){
+  if(prior[["distribution"]] == "point"){
     parameter <- NULL
   }else{
     parameter <- parameter_name
@@ -2552,20 +2638,15 @@ JAGS_marglik_priors                <- function(samples, prior_list){
 
   if(prior[["distribution"]] == "invgamma"){
 
-    inv_name <- paste0("inv_", parameter_name)
-    inv_value <- .bt_JAGS_marglik_positive_auxiliary_values(
+    value <- .bt_JAGS_marglik_invgamma_values(
       samples = samples,
-      parameter_names = inv_name,
+      parameter_names = parameter_name,
       missing_message = "'samples' does not contain all monitored inverse-gamma prior parameters."
     )
-    if(is.null(inv_value)){
+    if(is.null(value)){
       return(-Inf)
     }
-    sampling_prior <- prior(
-      "distribution" = "gamma",
-      "parameters"   = list("shape" = prior$parameters[["shape"]], "rate" = prior$parameters[["scale"]]),
-      "truncation"   = list("lower" = prior$truncation[["upper"]]^-1, "upper" = prior$truncation[["lower"]]^-1))
-    marglik <- lpdf(sampling_prior, inv_value)
+    marglik <- lpdf(prior, value)
 
   }else if(prior[["distribution"]] == "point"){
 
@@ -2723,25 +2804,6 @@ JAGS_marglik_priors                <- function(samples, prior_list){
 
   return(marglik)
 }
-# .JAGS_marglik_priors.spike_and_slab <- function(samples, prior, parameter_name){
-#
-#   .check_prior(prior)
-#   if(!is.prior.spike_and_slab(prior))
-#     stop("improper prior provided")
-#   check_char(parameter_name, "parameter_name")
-#
-#   marglik <- 0
-#   if(!is.prior.point(prior[["inclusion"]])){
-#     marglik <- marglik + .JAGS_marglik_priors.simple(samples, prior[["inclusion"]], paste0(parameter_name, "_inclusion"))
-#   }
-#
-#   if(samples[[ paste0(if(prior[["variable"]][["distribution"]] == "invgamma") "inv_" else "", parameter_name, "_variable") ]] != 0){
-#     marglik <- marglik + .JAGS_marglik_priors.simple(samples, prior[["variable"]], paste0(parameter_name, "_variable"))
-#   }
-#
-#   return(marglik)
-# }
-
 #' @rdname JAGS_marglik_priors
 JAGS_marglik_priors_formula <- function(samples, formula_prior_list){
 
@@ -3006,13 +3068,13 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
   parameter <- list()
   if(prior[["distribution"]] == "invgamma"){
-    inv_value <- .bt_JAGS_marglik_positive_auxiliary_values(
+    value <- .bt_JAGS_marglik_invgamma_values(
       samples = samples,
-      parameter_names = paste0("inv_", parameter_name),
+      parameter_names = parameter_name,
       missing_message = "'samples' does not contain all monitored inverse-gamma prior parameters.",
       signal = TRUE
     )
-    parameter[[parameter_name]] <- inv_value^-1
+    parameter[[parameter_name]] <- value
   }else if(prior[["distribution"]] == "point"){
     parameter[[parameter_name]] <- prior$parameters[["location"]]
   }else{
@@ -3027,28 +3089,21 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
     return(rep(prior$parameters[["location"]], length(parameter_names)))
   }
 
-  sample_names <- parameter_names
   if(prior[["distribution"]] == "invgamma"){
-    sample_names <- paste0("inv_", parameter_names)
+    return(.bt_JAGS_marglik_invgamma_values(
+      samples = samples,
+      parameter_names = parameter_names,
+      missing_message = "'samples' does not contain all monitored formula prior parameters.",
+      signal = TRUE
+    ))
   }
 
+  sample_names <- parameter_names
   if(!all(sample_names %in% names(samples))){
     stop("'samples' does not contain all monitored formula prior parameters.", call. = FALSE)
   }
 
-  if(prior[["distribution"]] == "invgamma"){
-    values <- .bt_JAGS_marglik_positive_auxiliary_values(
-      samples = samples,
-      parameter_names = sample_names,
-      missing_message = "'samples' does not contain all monitored formula prior parameters.",
-      signal = TRUE
-    )
-  }else{
-    values <- unname(unlist(samples[sample_names], use.names = FALSE))
-  }
-  if(prior[["distribution"]] == "invgamma"){
-    values <- values^-1
-  }
+  values <- unname(unlist(samples[sample_names], use.names = FALSE))
 
   return(values)
 }
@@ -3195,6 +3250,44 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
   values
 }
+.bt_JAGS_marglik_invgamma_values <- function(samples,
+                                             parameter_names,
+                                             missing_message,
+                                             signal = FALSE){
+
+  if(all(parameter_names %in% names(samples))){
+    values <- unname(unlist(samples[parameter_names], use.names = FALSE))
+    invalid <- !is.finite(values) | values <= 0
+    if(any(invalid)){
+      if(isTRUE(signal)){
+        .bt_JAGS_marglik_out_of_support(
+          "Bridge samples contain out-of-support inverse-gamma coordinate '",
+          parameter_names[which(invalid)[1L]],
+          "'."
+        )
+      }
+      return(NULL)
+    }
+    return(values)
+  }
+
+  # TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma support.
+  legacy_names <- paste0("inv_", parameter_names)
+  if(all(legacy_names %in% names(samples))){
+    legacy_values <- .bt_JAGS_marglik_positive_auxiliary_values(
+      samples = samples,
+      parameter_names = legacy_names,
+      missing_message = missing_message,
+      signal = signal
+    )
+    if(is.null(legacy_values)){
+      return(NULL)
+    }
+    return(legacy_values^-1)
+  }
+
+  stop(missing_message, call. = FALSE)
+}
 .JAGS_marglik_parameters.phacking <- function(samples, prior){
 
   .check_prior(prior)
@@ -3308,39 +3401,27 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
   distribution <- prior_object[["distribution"]]
 
   if(identical(distribution, "invgamma")){
-    inv_name <- paste0("inv_", parameter_name)
-    sampling_prior <- prior(
-      "distribution" = "gamma",
-      "parameters"   = list(
-        "shape" = prior_object$parameters[["shape"]],
-        "rate"  = prior_object$parameters[["scale"]]
-      ),
-      "truncation"   = list(
-        "lower" = prior_object$truncation[["upper"]]^-1,
-        "upper" = prior_object$truncation[["lower"]]^-1
-      )
-    )
     return(list(
       log_prior = function(samples){
-        inv_value <- .bt_JAGS_marglik_positive_auxiliary_values(
+        value <- .bt_JAGS_marglik_invgamma_values(
           samples = samples,
-          parameter_names = inv_name,
+          parameter_names = parameter_name,
           missing_message = "'samples' does not contain all monitored inverse-gamma prior parameters."
         )
-        if(is.null(inv_value)){
+        if(is.null(value)){
           return(-Inf)
         }
-        lpdf(sampling_prior, inv_value)
+        lpdf(prior_object, value)
       },
       parameters = function(samples){
-        inv_value <- .bt_JAGS_marglik_positive_auxiliary_values(
+        value <- .bt_JAGS_marglik_invgamma_values(
           samples = samples,
-          parameter_names = inv_name,
+          parameter_names = parameter_name,
           missing_message = "'samples' does not contain all monitored inverse-gamma prior parameters.",
           signal = TRUE
         )
         parameter <- list()
-        parameter[[parameter_name]] <- inv_value^-1
+        parameter[[parameter_name]] <- value
         parameter
       }
     ))
@@ -3380,20 +3461,18 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
     return(function(samples) rep(location, length(parameter_names)))
   }
 
-  sample_names <- parameter_names
   if(identical(prior_object[["distribution"]], "invgamma")){
-    sample_names <- paste0("inv_", parameter_names)
     return(function(samples){
-      values <- .bt_JAGS_marglik_positive_auxiliary_values(
+      .bt_JAGS_marglik_invgamma_values(
         samples = samples,
-        parameter_names = sample_names,
+        parameter_names = parameter_names,
         missing_message = "'samples' does not contain all monitored formula prior parameters.",
         signal = TRUE
       )
-      values^-1
     })
   }
 
+  sample_names <- parameter_names
   function(samples){
     if(!all(sample_names %in% names(samples))){
       stop("'samples' does not contain all monitored formula prior parameters.", call. = FALSE)

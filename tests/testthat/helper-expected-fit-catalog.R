@@ -243,7 +243,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       formula = NA_character_,
       scale_policy = "point-prior-fixed",
       prior_features = "simple,point",
-      expected_monitor = c("p1", "p2", "p3", "p4", "p5", "p6", "inv_p6", "p7", "p8", "p9"),
+      expected_monitor = c("p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8", "p9"),
       expected_formula_parameters = character(),
       expected_formula_scale = character(),
       oracle_type = "fixture-metadata",
@@ -251,7 +251,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       expected_iterations = 500L,
       tolerance = NA_real_,
       flags = list(simple_priors = TRUE),
-      note = "Prior-only scalar fixture; point prior component is deterministic and inverse-gamma exposes its inverse monitor."
+      note = "Prior-only scalar fixture; point prior component is deterministic and inverse-gamma is monitored on its natural scale."
     ),
     list(
       model_name = "fit_simple_pub_bias",
@@ -835,7 +835,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       formula = NA_character_,
       scale_policy = "expression-linked",
       prior_features = "simple,expression",
-      expected_monitor = c("x", "x_sigma", "inv_x_sigma"),
+      expected_monitor = c("x", "x_sigma"),
       expected_formula_parameters = character(),
       expected_formula_scale = character(),
       oracle_type = "fixture-metadata",
@@ -843,7 +843,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       expected_iterations = 500L,
       tolerance = NA_real_,
       flags = list(simple_priors = TRUE, expression_priors = TRUE),
-      note = "Expression prior fixture with monitored hyperparameter and inverse scale."
+      note = "Expression prior fixture with monitored hyperparameter and natural inverse-gamma scale."
     ),
     list(
       model_name = "fit_expression_mixture",
@@ -853,7 +853,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       formula = NA_character_,
       scale_policy = "expression-linked,mixture-indicator",
       prior_features = "simple,mixture,expression",
-      expected_monitor = c("x_indicator", "x", "x_sigma", "inv_x_sigma"),
+      expected_monitor = c("x_indicator", "x", "x_sigma"),
       expected_formula_parameters = character(),
       expected_formula_scale = character(),
       oracle_type = "fixture-metadata",
@@ -861,7 +861,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       expected_iterations = 500L,
       tolerance = NA_real_,
       flags = list(simple_priors = TRUE, mixture_priors = TRUE, expression_priors = TRUE),
-      note = "Expression mixture fixture with monitored component indicator and inverse scale."
+      note = "Expression mixture fixture with monitored component indicator and natural inverse-gamma scale."
     ),
     list(
       model_name = "fit_add_parameters",
@@ -1175,7 +1175,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       model_family = "prior-only-expression",
       scale_policy = "expression-linked,spike-and-slab-indicator",
       prior_features = "simple,expression,spike-and-slab",
-      expected_monitor = c("x_indicator", "x", "x_variable", "x_sigma", "inv_x_sigma"),
+      expected_monitor = c("x_indicator", "x", "x_variable", "x_sigma"),
       expected_chains = 2L,
       expected_iterations = 500L,
       flags = list(simple_priors = TRUE, spike_and_slab_priors = TRUE, expression_priors = TRUE),

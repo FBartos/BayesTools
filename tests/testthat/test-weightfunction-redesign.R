@@ -281,9 +281,9 @@ test_that("JAGS bridge posterior rejects monitored deterministic owned aliases",
   theta <- prior_factor("invgamma", list(2, 1), contrast = "independent")
   attr(theta, "levels") <- 2
   theta_posterior <- matrix(
-    c(1, 2, 1, 0.5),
+    c(1, 0.5),
     nrow = 1,
-    dimnames = list(NULL, c("inv_theta[1]", "inv_theta[2]", "theta[1]", "theta[2]"))
+    dimnames = list(NULL, c("theta[1]", "theta[2]"))
   )
   expect_error(
     JAGS_bridgesampling_posterior(

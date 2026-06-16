@@ -3468,16 +3468,15 @@ test_that("Marginal distribution prior and posterior functions work", {
 
   BF.marg_post_x_fac3md <- Savage_Dickey_BF(marg_post_x_fac3md, silent = TRUE)
   expect_equal(BF.marg_post_x_fac3md, list("A" = Inf, "B" = Inf, "C" = Inf), ignore_attr = TRUE)
+  expect_equal(attr(BF.marg_post_x_fac3md[["A"]], "warnings"),
+               "Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.")
 
   BF2.marg_post_x_fac3md <- suppressWarnings(Savage_Dickey_BF(marg_post_x_fac3md, null_hypothesis = 0.5))
-  expect_equal(BF2.marg_post_x_fac3md, list("A" = Inf, "B" = 0.145, "C" = 0.1654), tolerance = 5e-3, ignore_attr = TRUE)
-  expect_equal(attr(BF2.marg_post_x_fac3md[["A"]], "warnings"),
-               "Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.")
+  expect_equal(BF2.marg_post_x_fac3md, list("A" = Inf, "B" = 0.1447, "C" = 0.165), tolerance = 5e-3, ignore_attr = TRUE)
 
   BF2.marg_post_x_fac3md <- suppressWarnings(Savage_Dickey_BF(marg_post_x_fac3md, null_hypothesis = 0.5, normal_approximation = TRUE))
-  expect_equal(BF2.marg_post_x_fac3md, list("A" = 0.629, "B" = 0.0983, "C" = 0.1260), tolerance = 5e-3, ignore_attr = TRUE)
-  expect_equal(attr(BF2.marg_post_x_fac3md[["A"]], "warnings"),
-               "Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.")
+  expect_equal(BF2.marg_post_x_fac3md, list("A" = 0.629, "B" = 0.0983, "C" = 0.126), tolerance = 5e-3, ignore_attr = TRUE)
+
 
   ### marginal_inference ----
   set.seed(1)

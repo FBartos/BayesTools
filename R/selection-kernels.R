@@ -1683,22 +1683,7 @@ selection_row_arg <- function(x, n, name){
 
 .selection_backend_phacking_auxiliary_monitors <- function(branch_info, has_phacking, names, uses_indicator){
 
-  if(!any(has_phacking)){
-    return(character())
-  }
-
-  invgamma_alpha <- vapply(branch_info, function(x){
-    !is.null(x$phacking) && identical(x$phacking$alpha[["distribution"]], "invgamma")
-  }, logical(1))
-  if(!any(invgamma_alpha)){
-    return(character())
-  }
-
-  if(uses_indicator){
-    return(paste0("inv_alpha_component_", which(invgamma_alpha)))
-  }
-
-  paste0("inv_", names$alpha)
+  character()
 }
 
 .selection_backend_init <- function(branch_info, breaks, prior_weights, names, uses_indicator){

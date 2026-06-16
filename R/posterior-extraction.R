@@ -43,7 +43,7 @@ NULL
     
     par_name <- names(prior_list)[i]
     
-    # invgamma support parameter
+    # TODO(BayesTools 0.4.0): remove legacy inv_<parameter> inverse-gamma cleanup.
     if (is.prior.simple(prior_list[[i]]) && prior_list[[i]][["distribution"]] == "invgamma") {
       aux_names <- if(is.prior.factor(prior_list[[i]])){
         paste0("inv_", .JAGS_prior_factor_names(par_name, prior_list[[i]]))
