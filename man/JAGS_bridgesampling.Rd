@@ -16,6 +16,7 @@ JAGS_bridgesampling(
   add_parameters = NULL,
   add_bounds = NULL,
   formula_random_prior_list = NULL,
+  formula_random_effects_compile_list = NULL,
   maxiter = 10000,
   silent = TRUE,
   ...
@@ -81,6 +82,12 @@ stochastic bridge coordinates are the standardized latent effects and
 correlation primitives. For \code{BayesTools_fit} objects with stored
 formula-design metadata, this can be omitted unless formula inputs are being
 supplied for a consistency check.}
+
+\item{formula_random_effects_compile_list}{optional named list of
+\code{random_effects_compile()} objects. When formula inputs are supplied for
+bridge-sampling rebuild/validation, this must match the fitted random-effect
+compilation policy; otherwise a fitted marginalized model would not be rebuilt
+as the same model.}
 
 \item{maxiter}{maximum number of iterations for the
 \link[bridgesampling]{bridge_sampler}}

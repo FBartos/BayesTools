@@ -56,6 +56,11 @@
 #' correlation primitives. For \code{BayesTools_fit} objects with stored
 #' formula-design metadata, this can be omitted unless formula inputs are being
 #' supplied for a consistency check.
+#' @param formula_random_effects_compile_list optional named list of
+#' `random_effects_compile()` objects. When formula inputs are supplied for
+#' bridge-sampling rebuild/validation, this must match the fitted
+#' random-effect compilation policy; otherwise a fitted marginalized model would
+#' not be rebuilt as the same model.
 #' @param maxiter maximum number of iterations for the
 #' \link[bridgesampling]{bridge_sampler}
 #' @param silent whether the progress should be printed, defaults to \code{TRUE}
@@ -108,6 +113,7 @@
 JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL, formula_scale_list = NULL,
                                 add_parameters = NULL, add_bounds = NULL,
                                 formula_random_prior_list = NULL,
+                                formula_random_effects_compile_list = NULL,
                                 maxiter = 10000, silent = TRUE, ...){
 
   ### check input
@@ -120,7 +126,8 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     formula_data_list = formula_data_list,
     formula_prior_list = formula_prior_list,
     formula_scale_list = formula_scale_list,
-    formula_random_prior_list = formula_random_prior_list
+    formula_random_prior_list = formula_random_prior_list,
+    formula_random_effects_compile_list = formula_random_effects_compile_list
   )
   formula_design_list <- formula_context$formula_design_list
   formula_list <- formula_context$formula_list
@@ -275,13 +282,15 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
                                                    formula_data_list,
                                                    formula_prior_list,
                                                    formula_scale_list,
-                                                   formula_random_prior_list){
+                                                   formula_random_prior_list,
+                                                   formula_random_effects_compile_list = NULL){
 
   !is.null(formula_list) ||
     !is.null(formula_data_list) ||
     !is.null(formula_prior_list) ||
     !is.null(formula_scale_list) ||
-    !is.null(formula_random_prior_list)
+    !is.null(formula_random_prior_list) ||
+    !is.null(formula_random_effects_compile_list)
 }
 
 .bt_JAGS_bridge_formula_context <- function(fit,
@@ -289,14 +298,16 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
                                             formula_data_list,
                                             formula_prior_list,
                                             formula_scale_list,
-                                            formula_random_prior_list){
+                                            formula_random_prior_list,
+                                            formula_random_effects_compile_list = NULL){
 
   formula_input_supplied <- .bt_JAGS_bridge_formula_input_supplied(
     formula_list = formula_list,
     formula_data_list = formula_data_list,
     formula_prior_list = formula_prior_list,
     formula_scale_list = formula_scale_list,
-    formula_random_prior_list = formula_random_prior_list
+    formula_random_prior_list = formula_random_prior_list,
+    formula_random_effects_compile_list = formula_random_effects_compile_list
   )
   fitted_formula_design <- .bt_JAGS_bridge_formula_design_list(
     attr(fit, "formula_design")
@@ -318,6 +329,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     formula_prior_list = formula_prior_list,
     formula_scale_list = formula_scale_list,
     formula_random_prior_list = formula_random_prior_list,
+    formula_random_effects_compile_list = formula_random_effects_compile_list,
     has_fitted_formula_design = has_fitted_formula_design
   ), error = function(e){
     if(has_fitted_formula_design){
@@ -341,7 +353,8 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     formula_data_list = formula_data_list,
     formula_prior_list = formula_prior_list,
     formula_scale_list = formula_scale_list,
-    formula_random_prior_list = formula_random_prior_list
+    formula_random_prior_list = formula_random_prior_list,
+    formula_random_effects_compile_list = formula_random_effects_compile_list
   ), error = function(e){
     e
   })
@@ -379,7 +392,8 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
                                                           formula_prior_list,
                                                           formula_scale_list,
                                                           formula_random_prior_list,
-                                                          has_fitted_formula_design){
+                                                          formula_random_effects_compile_list = NULL,
+                                                          has_fitted_formula_design = FALSE){
 
   if(is.null(formula_list) || is.null(formula_data_list) || is.null(formula_prior_list)){
     detail <- if(has_fitted_formula_design){
@@ -399,7 +413,8 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
       formula_data_list = formula_data_list,
       formula_prior_list = formula_prior_list,
       formula_scale_list = formula_scale_list,
-      formula_random_prior_list = formula_random_prior_list
+      formula_random_prior_list = formula_random_prior_list,
+      formula_random_effects_compile_list = formula_random_effects_compile_list
     )){
       return(list(
         rebuildable = FALSE,
@@ -417,9 +432,15 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
 
   check_list(formula_scale_list, "formula_scale_list", check_names = scale_check_names, allow_other = FALSE, all_objects = FALSE, allow_NULL = TRUE)
   check_list(formula_random_prior_list, "formula_random_prior_list", check_names = random_check_names, allow_other = FALSE, all_objects = FALSE, allow_NULL = TRUE)
+  check_list(formula_random_effects_compile_list, "formula_random_effects_compile_list", check_names = random_check_names, allow_other = FALSE, all_objects = FALSE, allow_NULL = TRUE)
   if(!is.null(formula_random_prior_list)){
     for(parameter in names(formula_random_prior_list)){
       .bt_check_prior_random(formula_random_prior_list[[parameter]])
+    }
+  }
+  if(!is.null(formula_random_effects_compile_list)){
+    for(parameter in names(formula_random_effects_compile_list)){
+      .bt_check_random_effects_compile(formula_random_effects_compile_list[[parameter]])
     }
   }
 
@@ -450,7 +471,8 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
                                                     formula_data_list,
                                                     formula_prior_list,
                                                     formula_scale_list,
-                                                    formula_random_prior_list){
+                                                    formula_random_prior_list,
+                                                    formula_random_effects_compile_list = NULL){
 
   if(is.null(formula_scale_list)){
     formula_scale_list <- .JAGS_formula_scale_list_from_fit(
@@ -467,7 +489,8 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
       data          = formula_data_list[[parameter]],
       prior_list    = formula_prior_list[[parameter]],
       formula_scale = if(!is.null(formula_scale_list)) formula_scale_list[[parameter]] else NULL,
-      prior_random  = if(!is.null(formula_random_prior_list)) formula_random_prior_list[[parameter]] else NULL
+      prior_random  = if(!is.null(formula_random_prior_list)) formula_random_prior_list[[parameter]] else NULL,
+      random_effects_compile = if(!is.null(formula_random_effects_compile_list)) formula_random_effects_compile_list[[parameter]] else NULL
     )
   }
   formula_data_output <- lapply(names(formula_output), function(parameter){
@@ -603,7 +626,8 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
                                                       formula_data_list,
                                                       formula_prior_list,
                                                       formula_scale_list = NULL,
-                                                      formula_random_prior_list = NULL){
+                                                      formula_random_prior_list = NULL,
+                                                      formula_random_effects_compile_list = NULL){
 
   formula_names <- names(formula_list)
   if(is.null(formula_names) || anyNA(formula_names) || any(!nzchar(formula_names))){
@@ -620,6 +644,10 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   }
   if(!is.null(formula_random_prior_list) &&
      any(!names(formula_random_prior_list) %in% formula_names)){
+    return(FALSE)
+  }
+  if(!is.null(formula_random_effects_compile_list) &&
+     any(!names(formula_random_effects_compile_list) %in% formula_names)){
     return(FALSE)
   }
 
@@ -747,20 +775,26 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   for(parameter in intersect(names(fitted_formula_design), names(rebuilt_formula_design))){
     fitted <- fitted_formula_design[[parameter]]
     rebuilt <- rebuilt_formula_design[[parameter]]
-    if(!.bt_formula_design_has_random_effects(fitted) ||
-       !.bt_formula_design_has_random_effects(rebuilt)){
+    if(!.bt_formula_design_has_any_random_effects(fitted) ||
+       !.bt_formula_design_has_any_random_effects(rebuilt)){
       next
     }
-    fitted_blocks <- .bt_JAGS_bridge_random_block_names(fitted$random_effects)
-    rebuilt_blocks <- .bt_JAGS_bridge_random_block_names(rebuilt$random_effects)
+    fitted_random_effects <- .bt_formula_design_random_effects(fitted)
+    rebuilt_random_effects <- .bt_formula_design_random_effects(rebuilt)
+    fitted_blocks <- .bt_JAGS_bridge_random_block_names(fitted_random_effects)
+    rebuilt_blocks <- .bt_JAGS_bridge_random_block_names(rebuilt_random_effects)
     for(block in intersect(fitted_blocks, rebuilt_blocks)){
       fitted_i <- match(block, fitted_blocks)
       rebuilt_i <- match(block, rebuilt_blocks)
-      fitted$random_effects[[fitted_i]] <- .bt_JAGS_bridge_random_term_update_source_values(
-        fitted = fitted$random_effects[[fitted_i]],
-        rebuilt = rebuilt$random_effects[[rebuilt_i]]
+      fitted_random_effects[[fitted_i]] <- .bt_JAGS_bridge_random_term_update_source_values(
+        fitted = fitted_random_effects[[fitted_i]],
+        rebuilt = rebuilt_random_effects[[rebuilt_i]]
       )
     }
+    fitted <- .bt_formula_design_set_random_effects(
+      fitted,
+      fitted_random_effects
+    )
     fitted_formula_design[[parameter]] <- fitted
   }
 
@@ -850,10 +884,10 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
 
   for(parameter in names(formula_design_list)){
     design <- formula_design_list[[parameter]]
-    if(!.bt_formula_design_has_random_effects(design)){
+    if(!.bt_formula_design_has_any_random_effects(design)){
       next
     }
-    for(random_term in design$random_effects){
+    for(random_term in .bt_formula_design_random_effects(design)){
       if(.bt_random_effect_has_row_indexed_external_sd(random_term)){
         source <- .bt_random_effect_row_indexed_source(random_term)
         source_names <- .bt_parameter_source_row_names(
@@ -969,9 +1003,14 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
 
   for(parameter in names(formula_design_list)){
     design <- formula_design_list[[parameter]]
-    if(!.bt_formula_design_has_random_effects(design)){
+    if(!.bt_formula_design_has_any_random_effects(design)){
       next
     }
+    .bt_JAGS_bridge_validate_formula_random_compile(
+      parameter = parameter,
+      design = design,
+      label = "stored"
+    )
     if(!identical(design$random_effects_interface, "prior_random")){
       stop(
         "JAGS_bridgesampling() supports formula random effects only through the 'prior_random()' interface for parameter '",
@@ -980,7 +1019,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
         call. = FALSE
       )
     }
-    for(random_term in design$random_effects){
+    for(random_term in .bt_formula_design_sampled_random_effects(design)){
       n_groups <- random_term$n_groups
       n_columns <- random_term$n_columns
       z_names <- as.vector(.bt_random_effect_latent_names(
@@ -992,6 +1031,9 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
       lb <- c(lb, stats::setNames(rep(-Inf, length(z_names)), z_names))
       ub <- c(ub, stats::setNames(rep( Inf, length(z_names)), z_names))
 
+    }
+    for(random_term in .bt_formula_design_random_effects(design)){
+      n_columns <- random_term$n_columns
       if(identical(.bt_JAGS_bridge_random_term_structure(random_term), "us") &&
          n_columns > 1L){
         u_names <- .bt_random_effect_lkj_primitive_names(
@@ -1228,11 +1270,24 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   lb <- numeric()
   ub <- numeric()
 
-  for(design in formula_design_list){
-    if(!.bt_formula_design_has_random_effects(design)){
+  design_names <- names(formula_design_list)
+  if(is.null(design_names)){
+    design_names <- rep("", length(formula_design_list))
+  }
+  for(design_i in seq_along(formula_design_list)){
+    design <- formula_design_list[[design_i]]
+    if(!.bt_formula_design_has_any_random_effects(design)){
       next
     }
-    for(random_term in design$random_effects){
+    .bt_JAGS_bridge_validate_formula_random_compile(
+      parameter = .bt_JAGS_bridge_design_parameter_name(
+        design,
+        fallback = design_names[[design_i]]
+      ),
+      design = design,
+      label = "stored"
+    )
+    for(random_term in .bt_formula_design_random_effects(design)){
       rho_parameter <- .bt_JAGS_bridge_scalar_rho_parameter(random_term)
       if(is.null(rho_parameter)){
         next
@@ -1357,10 +1412,10 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   }
 
   fitted_random_parameters <- names(fitted_formula_design)[
-    vapply(fitted_formula_design, .bt_formula_design_has_random_effects, logical(1))
+    vapply(fitted_formula_design, .bt_formula_design_has_any_random_effects, logical(1))
   ]
   rebuilt_random_parameters <- names(rebuilt_formula_design)[
-    vapply(rebuilt_formula_design, .bt_formula_design_has_random_effects, logical(1))
+    vapply(rebuilt_formula_design, .bt_formula_design_has_any_random_effects, logical(1))
   ]
   if(length(fitted_random_parameters) == 0L &&
      length(rebuilt_random_parameters) == 0L){
@@ -1420,6 +1475,23 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   formula_design
 }
 
+.bt_JAGS_bridge_design_parameter_name <- function(design, fallback = ""){
+
+  if(inherits(design, "BayesTools_formula_design") &&
+     is.character(design$parameter) &&
+     length(design$parameter) == 1L &&
+     !is.na(design$parameter) &&
+     nzchar(design$parameter)){
+    return(design$parameter)
+  }
+  if(is.character(fallback) && length(fallback) == 1L &&
+     !is.na(fallback) && nzchar(fallback)){
+    return(fallback)
+  }
+
+  ""
+}
+
 .bt_JAGS_bridge_validate_formula_random_design <- function(parameter, fitted,
                                                           rebuilt){
 
@@ -1430,18 +1502,29 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     )
   }
 
-  fitted_blocks <- .bt_JAGS_bridge_random_block_names(fitted$random_effects)
-  rebuilt_blocks <- .bt_JAGS_bridge_random_block_names(rebuilt$random_effects)
+  fitted_all <- .bt_formula_design_random_effects(fitted)
+  rebuilt_all <- .bt_formula_design_random_effects(rebuilt)
+  fitted_blocks <- .bt_JAGS_bridge_random_block_names(fitted_all)
+  rebuilt_blocks <- .bt_JAGS_bridge_random_block_names(rebuilt_all)
   if(!identical(fitted_blocks, rebuilt_blocks)){
     .bt_JAGS_bridge_random_design_mismatch(
       parameter,
       "random-effect block names or order differ"
     )
   }
+  if(!.bt_JAGS_bridge_metadata_equal(
+    .bt_JAGS_bridge_random_compile_metadata(fitted),
+    .bt_JAGS_bridge_random_compile_metadata(rebuilt)
+  )){
+    .bt_JAGS_bridge_random_design_mismatch(
+      parameter,
+      "random-effect compile metadata differ"
+    )
+  }
 
   for(block in fitted_blocks){
-    fitted_term <- fitted$random_effects[[match(block, fitted_blocks)]]
-    rebuilt_term <- rebuilt$random_effects[[match(block, rebuilt_blocks)]]
+    fitted_term <- fitted_all[[match(block, fitted_blocks)]]
+    rebuilt_term <- rebuilt_all[[match(block, rebuilt_blocks)]]
     .bt_JAGS_bridge_validate_random_term(
       parameter = parameter,
       block = block,
@@ -1450,7 +1533,91 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     )
   }
 
+  .bt_JAGS_bridge_validate_formula_random_compile(
+    parameter = parameter,
+    design = fitted,
+    label = "fitted"
+  )
+  .bt_JAGS_bridge_validate_formula_random_compile(
+    parameter = parameter,
+    design = rebuilt,
+    label = "rebuilt"
+  )
+
   invisible(TRUE)
+}
+
+.bt_JAGS_bridge_validate_formula_random_compile <- function(parameter, design,
+                                                            label){
+
+  random_effects <- .bt_formula_design_random_effects(design)
+  blocks <- .bt_JAGS_bridge_random_block_names(random_effects)
+  modes <- .bt_random_effects_compile_modes_from_terms(random_effects)
+  if(!identical(names(modes), blocks)){
+    .bt_JAGS_bridge_random_design_mismatch(
+      parameter,
+      paste0(label, " random-effect compile metadata is missing block names")
+    )
+  }
+
+  expected <- .bt_JAGS_bridge_random_compile_metadata_from_terms(random_effects)
+  stored <- .bt_JAGS_bridge_random_compile_metadata_from_policy(
+    design$random_effects_compile
+  )
+  if(!is.null(stored) &&
+     !.bt_JAGS_bridge_metadata_equal(expected, stored)){
+    .bt_JAGS_bridge_random_design_mismatch(
+      parameter,
+      paste0(label, " random-effect compile metadata is inconsistent with random-effect terms")
+    )
+  }
+
+  for(random_i in seq_along(random_effects)){
+    .bt_JAGS_bridge_validate_random_term(
+      parameter = parameter,
+      block = blocks[[random_i]],
+      fitted = random_effects[[random_i]],
+      rebuilt = random_effects[[random_i]]
+    )
+  }
+
+  invisible(TRUE)
+}
+
+.bt_JAGS_bridge_random_compile_metadata <- function(design){
+
+  .bt_JAGS_bridge_random_compile_metadata_from_terms(
+    .bt_formula_design_random_effects(design)
+  )
+}
+
+.bt_JAGS_bridge_random_compile_metadata_from_terms <- function(random_effects){
+
+  modes <- .bt_random_effects_compile_modes_from_terms(random_effects)
+  blocks <- names(modes)
+
+  list(
+    sampled = blocks[modes == "sampled"],
+    marginalized = blocks[modes == "marginalized"],
+    mode = modes
+  )
+}
+
+.bt_JAGS_bridge_random_compile_metadata_from_policy <- function(policy){
+
+  if(is.null(policy)){
+    return(NULL)
+  }
+  .bt_check_random_effects_compile(policy)
+  if(is.null(policy$mode)){
+    return(NULL)
+  }
+
+  list(
+    sampled = if(is.null(policy$sampled)) character() else policy$sampled,
+    marginalized = if(is.null(policy$marginalized)) character() else policy$marginalized,
+    mode = policy$mode
+  )
 }
 
 .bt_JAGS_bridge_random_block_names <- function(random_effects){
@@ -2823,11 +2990,24 @@ JAGS_marglik_priors_formula <- function(samples, formula_prior_list){
   }
 
   marglik <- 0
-  for(design in formula_design_list){
-    if(!.bt_formula_design_has_random_effects(design)){
+  design_names <- names(formula_design_list)
+  if(is.null(design_names)){
+    design_names <- rep("", length(formula_design_list))
+  }
+  for(design_i in seq_along(formula_design_list)){
+    design <- formula_design_list[[design_i]]
+    if(!.bt_formula_design_has_any_random_effects(design)){
       next
     }
-    for(random_term in design$random_effects){
+    .bt_JAGS_bridge_validate_formula_random_compile(
+      parameter = .bt_JAGS_bridge_design_parameter_name(
+        design,
+        fallback = design_names[[design_i]]
+      ),
+      design = design,
+      label = "stored"
+    )
+    for(random_term in .bt_formula_design_random_effects(design)){
       contribution <- .bt_JAGS_marglik_random_effect_prior(samples, random_term)
       if(is.na(contribution)){
         return(-Inf)
@@ -2846,27 +3026,34 @@ JAGS_marglik_priors_formula <- function(samples, formula_prior_list){
 
   n_groups <- random_term$n_groups
   n_columns <- random_term$n_columns
-  z_names <- as.vector(.bt_random_effect_latent_names(
-    random_term = random_term,
-    n_groups = n_groups,
-    n_columns = n_columns
-  ))
-  if(!all(z_names %in% names(samples))){
-    stop(
-      "Bridge samples are missing standardized latent random effects for block '",
-      random_term$block_name,
-      "'.",
-      call. = FALSE
-    )
-  }
+  sampled_random_effect <- identical(
+    .bt_random_effect_term_compile_mode(random_term),
+    "sampled"
+  )
+  marglik <- 0
+  if(isTRUE(sampled_random_effect)){
+    z_names <- as.vector(.bt_random_effect_latent_names(
+      random_term = random_term,
+      n_groups = n_groups,
+      n_columns = n_columns
+    ))
+    if(!all(z_names %in% names(samples))){
+      stop(
+        "Bridge samples are missing standardized latent random effects for block '",
+        random_term$block_name,
+        "'.",
+        call. = FALSE
+      )
+    }
 
-  z_values <- samples[z_names]
-  if(any(is.na(z_values))){
-    return(-Inf)
-  }
-  marglik <- sum(stats::dnorm(z_values, mean = 0, sd = 1, log = TRUE))
-  if(is.na(marglik)){
-    return(-Inf)
+    z_values <- samples[z_names]
+    if(any(is.na(z_values))){
+      return(-Inf)
+    }
+    marglik <- sum(stats::dnorm(z_values, mean = 0, sd = 1, log = TRUE))
+    if(is.na(marglik)){
+      return(-Inf)
+    }
   }
 
   scalar_rho_support <- .bt_JAGS_marglik_random_effect_scalar_rho_support(
@@ -3763,9 +3950,22 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
   evaluators <- list()
   if(length(formula_design_list) > 0L){
-    for(design in formula_design_list){
-      if(.bt_formula_design_has_random_effects(design)){
-        for(random_term in design$random_effects){
+    design_names <- names(formula_design_list)
+    if(is.null(design_names)){
+      design_names <- rep("", length(formula_design_list))
+    }
+    for(design_i in seq_along(formula_design_list)){
+      design <- formula_design_list[[design_i]]
+      if(.bt_formula_design_has_any_random_effects(design)){
+        .bt_JAGS_bridge_validate_formula_random_compile(
+          parameter = .bt_JAGS_bridge_design_parameter_name(
+            design,
+            fallback = design_names[[design_i]]
+          ),
+          design = design,
+          label = "stored"
+        )
+        for(random_term in .bt_formula_design_random_effects(design)){
           evaluators[[length(evaluators) + 1L]] <-
             .bt_JAGS_bridge_compile_random_effect_prior_evaluator(random_term)
         }
@@ -3796,11 +3996,19 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
   n_groups <- random_term$n_groups
   n_columns <- random_term$n_columns
   block_name <- random_term$block_name
-  z_names <- as.vector(.bt_random_effect_latent_names(
-    random_term = random_term,
-    n_groups = n_groups,
-    n_columns = n_columns
-  ))
+  sampled_random_effect <- identical(
+    .bt_random_effect_term_compile_mode(random_term),
+    "sampled"
+  )
+  if(isTRUE(sampled_random_effect)){
+    z_names <- as.vector(.bt_random_effect_latent_names(
+      random_term = random_term,
+      n_groups = n_groups,
+      n_columns = n_columns
+    ))
+  }else{
+    z_names <- character()
+  }
   structure <- .bt_JAGS_bridge_random_term_structure(random_term)
   scalar_rho_support_evaluator <- .bt_JAGS_bridge_compile_random_effect_scalar_rho_support(
     random_term = random_term,
@@ -3814,22 +4022,25 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
   list(
     log_prior = function(samples){
-      if(!all(z_names %in% names(samples))){
-        stop(
-          "Bridge samples are missing standardized latent random effects for block '",
-          block_name,
-          "'.",
-          call. = FALSE
-        )
-      }
+      marglik <- 0
+      if(isTRUE(sampled_random_effect)){
+        if(!all(z_names %in% names(samples))){
+          stop(
+            "Bridge samples are missing standardized latent random effects for block '",
+            block_name,
+            "'.",
+            call. = FALSE
+          )
+        }
 
-      z_values <- samples[z_names]
-      if(any(is.na(z_values))){
-        return(-Inf)
-      }
-      marglik <- sum(stats::dnorm(z_values, mean = 0, sd = 1, log = TRUE))
-      if(is.na(marglik)){
-        return(-Inf)
+        z_values <- samples[z_names]
+        if(any(is.na(z_values))){
+          return(-Inf)
+        }
+        marglik <- sum(stats::dnorm(z_values, mean = 0, sd = 1, log = TRUE))
+        if(is.na(marglik)){
+          return(-Inf)
+        }
       }
 
       scalar_rho_support <- scalar_rho_support_evaluator(samples)
@@ -4006,12 +4217,16 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
     parameter_prior_list <- formula_prior_list[[parameter]]
     design <- if(!is.null(formula_design_list)) formula_design_list[[parameter]] else NULL
 
-    if(.bt_formula_design_has_random_effects(design)){
-      design <- .bt_JAGS_bridge_prepare_random_effect_allocation_design(design)
+    if(.bt_formula_design_has_any_random_effects(design)){
       fixed_prior_list <- .bt_JAGS_marglik_formula_fixed_priors(
         parameter_prior_list,
         parameter
       )
+    }else{
+      fixed_prior_list <- parameter_prior_list
+    }
+    if(.bt_formula_design_has_sampled_random_effects(design)){
+      design <- .bt_JAGS_bridge_prepare_random_effect_allocation_design(design)
       source_data <- .bt_JAGS_marglik_parameter_source_data(
         model_data = model_data,
         formula_data = formula_data,
@@ -4023,8 +4238,6 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
         formula_prior_list = parameter_prior_list,
         source_data = source_data
       )
-    }else{
-      fixed_prior_list <- parameter_prior_list
     }
 
     fixed_plans[[parameter]] <- .bt_JAGS_bridge_compile_formula_fixed_plan(
@@ -4074,11 +4287,15 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
 .bt_JAGS_bridge_prepare_random_effect_allocation_design <- function(design){
 
-  if(!.bt_formula_design_has_random_effects(design)){
+  if(!.bt_formula_design_has_sampled_random_effects(design)){
     return(design)
   }
 
   for(random_i in seq_along(design$random_effects)){
+    if(!identical(.bt_random_effect_term_compile_mode(design$random_effects[[random_i]]),
+                  "sampled")){
+      next
+    }
     design$random_effects[[random_i]] <-
       .bt_JAGS_bridge_prepare_random_effect_allocation_term(
         design$random_effects[[random_i]]
@@ -4407,8 +4624,10 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
     log_intercept <- if(!is.null(formula_parameter)) isTRUE(attr(formula_parameter, "log(intercept)")) else FALSE
     parameter_prior_list <- formula_prior_list[[parameter]]
     design <- if(!is.null(formula_design_list)) formula_design_list[[parameter]] else NULL
-    if(.bt_formula_design_has_random_effects(design)){
+    if(.bt_formula_design_has_any_random_effects(design)){
       parameter_prior_list <- .bt_JAGS_marglik_formula_fixed_priors(parameter_prior_list, parameter)
+    }
+    if(.bt_formula_design_has_sampled_random_effects(design)){
       random_parameters <- c(random_parameters, parameter)
     }
     if(.bt_JAGS_formula_design_can_reconstruct(design)){
@@ -4426,7 +4645,7 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
 
   for(parameter in random_parameters){
     design <- if(!is.null(formula_design_list)) formula_design_list[[parameter]] else NULL
-    if(.bt_formula_design_has_random_effects(design)){
+    if(.bt_formula_design_has_sampled_random_effects(design)){
       source_parameters <- .bt_JAGS_marglik_parameter_source_parameters(
         samples = samples,
         prior_list_parameters = prior_list_parameters,
@@ -4705,7 +4924,7 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
                                                   parameters = NULL){
 
   output <- rep(0, nrow(design$model_matrix))
-  for(random_term in design$random_effects){
+  for(random_term in .bt_formula_design_sampled_random_effects(design)){
     output <- output + .bt_JAGS_marglik_random_effect_value(
       samples = samples,
       random_term = random_term,

@@ -47,7 +47,7 @@
     return(list())
   }
 
-  formula_design[vapply(formula_design, .bt_formula_design_has_random_effects, logical(1))]
+  formula_design[vapply(formula_design, .bt_formula_design_has_any_random_effects, logical(1))]
 }
 
 .bt_random_effect_summary_derived_samples <- function(model_samples, prior_list,

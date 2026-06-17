@@ -10,7 +10,8 @@ JAGS_formula(
   data,
   prior_list,
   formula_scale = NULL,
-  prior_random = NULL
+  prior_random = NULL,
+  random_effects_compile = NULL
 )
 }
 \arguments{
@@ -47,6 +48,11 @@ in the prior list.}
 }
 These default priors allow for more concise specification when many predictors
 share the same prior distribution.}
+
+\item{random_effects_compile}{optional \code{random_effects_compile()} object
+specifying which resolved formula random-effect blocks remain sampled and
+which are compiled as marginalized structural blocks. Defaults to \code{NULL},
+which samples all random-effect blocks.}
 }
 \value{
 \code{JAGS_formula} returns a list containing the formula JAGS syntax,

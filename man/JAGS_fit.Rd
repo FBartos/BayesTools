@@ -14,6 +14,7 @@ JAGS_fit(
   formula_prior_list = NULL,
   formula_scale_list = NULL,
   formula_random_prior_list = NULL,
+  formula_random_effects_compile_list = NULL,
   chains = 4,
   adapt = 500,
   burnin = 1000,
@@ -72,6 +73,11 @@ be standardized. Defaults to \code{NULL} (no standardization).}
 \item{formula_random_prior_list}{optional named list of \code{prior_random()}
 objects for random effects in \code{formula_list}. Required for any formula that
 contains random effects.}
+
+\item{formula_random_effects_compile_list}{optional named list of
+\code{random_effects_compile()} objects controlling which formula random-effect
+blocks are sampled and which are compiled as marginalized structural blocks.
+Defaults to \code{NULL}, which preserves the current all-sampled behavior.}
 
 \item{chains}{number of chains to be run, defaults to \code{4}}
 

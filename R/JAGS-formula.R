@@ -23,6 +23,10 @@
 #' @param prior_random optional `prior_random()` object defining random-effect
 #' standard-deviation, covariance, monitoring, and prediction policies. Required
 #' when \code{formula} contains random effects.
+#' @param random_effects_compile optional `random_effects_compile()` object
+#' specifying which resolved random-effect blocks should be compiled as sampled
+#' random effects and which should be compiled as structural marginalized
+#' blocks.
 #' \describe{
 #'   \item{\code{"__default_continuous"}}{A prior to use for any continuous predictors
 #'     (including the intercept) that are not explicitly specified in the prior list.}
@@ -97,7 +101,7 @@
 #' @seealso [JAGS_fit()]
 #' @export
 JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = NULL,
-                         prior_random = NULL){
+                         prior_random = NULL, random_effects_compile = NULL){
 
   if(!is.language(formula))
     stop("'formula' must be a formula")
@@ -108,6 +112,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   if(any(!sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
   .bt_check_prior_random(prior_random, allow_NULL = TRUE)
+  .bt_check_random_effects_compile(random_effects_compile, allow_NULL = TRUE)
   # formula_scale can be TRUE/FALSE (apply to all continuous predictors) or a named list
   if(!is.null(formula_scale) && !is.logical(formula_scale) && !is.list(formula_scale)){
     stop("'formula_scale' must be NULL, TRUE, FALSE, or a named list.", call. = FALSE)
@@ -122,10 +127,14 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   # store expressions (included later as the literal character input)
   expressions    <- .extract_expressions(formula)
   # store random effects (included later via a formula interface)
-  random_effects <- .bt_parse_random_effects(formula)$terms
-  .bt_validate_random_effect_block_names(random_effects, prior_random)
-  random_effects_interface <- .bt_random_effects_interface(random_effects, prior_random)
-  random_predictors_type <- .bt_random_effects_predictor_types(random_effects, data)
+  parsed_random_effects <- .bt_parse_random_effects(formula)$terms
+  .bt_validate_random_effect_block_names(parsed_random_effects, prior_random)
+  random_effects_compile <- .bt_resolve_random_effects_compile(
+    random_effects = parsed_random_effects,
+    random_effects_compile = random_effects_compile
+  )
+  random_effects_interface <- .bt_random_effects_interface(parsed_random_effects, prior_random)
+  random_predictors_type <- .bt_random_effects_predictor_types(parsed_random_effects, data)
   # remove expressions and random effects from the formula
   formula <- .remove_expressions(formula)
   formula <- .remove_random_effects(formula)
@@ -172,7 +181,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   scale_predictors_type <- .bt_merge_predictor_types(predictors_type, random_predictors_type)
   .bt_validate_formula_scale(formula_scale, scale_predictors_type)
 
-  if(length(random_effects) > 0){
+  if(length(parsed_random_effects) > 0){
     if(any(.get_grouping_factor(names(prior_list)) != "")){
       stop(
         "Random-effect priors must be supplied through 'prior_random'; 'prior_list' names containing '|' are no longer supported.",
@@ -427,7 +436,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   jags_modules <- character()
   required_packages <- character()
   random_sd_binding_context <- .bt_random_sd_binding_context(
-    random_effects = random_effects,
+    random_effects = parsed_random_effects,
     prior_random = prior_random,
     parameter = parameter
   )
@@ -437,33 +446,41 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   if(length(random_sd_binding_context$syntax) > 0L){
     random_syntax <- c(random_syntax, random_sd_binding_context$syntax)
   }
-  for(random_i in seq_along(random_effects)){
+  compiled_random_effects <- parsed_random_effects
+  for(random_i in seq_along(parsed_random_effects)){
     random_effect_data <- data
-    random_structure <- .bt_random_effect_structure(random_effects[[random_i]])
+    random_structure <- .bt_random_effect_structure(parsed_random_effects[[random_i]])
     if(random_structure %in% c("cs", "hcs", "ar1", "car", "har")){
       random_effect_data <- random_effect_unscaled_data
     }
+    compile_mode <- .bt_random_effects_compile_mode(
+      random_effects_compile,
+      parsed_random_effects[[random_i]]$block_name
+    )
     temp_random   <- .JAGS_random_effect_formula(
-      random_effects[[random_i]],
+      parsed_random_effects[[random_i]],
       parameter,
       random_effect_data,
       prior_random = prior_random,
       sd_binding_context = random_sd_binding_context,
-      group_data = random_effect_unscaled_data
+      group_data = random_effect_unscaled_data,
+      compile_mode = compile_mode
     )
-    random_effects[[random_i]] <- temp_random[["random_effect"]]
+    compiled_random_effects[[random_i]] <- temp_random[["random_effect"]]
 
-    for(data_i in seq_along(temp_random[["data"]])){
-      JAGS_data[[names(temp_random[["data"]])[data_i]]] <- temp_random[["data"]][[data_i]]
+    if(!identical(compile_mode, "marginalized")){
+      for(data_i in seq_along(temp_random[["data"]])){
+        JAGS_data[[names(temp_random[["data"]])[data_i]]] <- temp_random[["data"]][[data_i]]
+      }
     }
-    random_key <- paste0("__xREx__", attr(random_effects[[random_i]], "random_block"))
+    random_key <- paste0("__xREx__", attr(compiled_random_effects[[random_i]], "random_block"))
     jags_data_names[[random_key]] <- names(temp_random[["data"]])
     random_sd_leaves[[random_key]] <- temp_random[["random_effect"]]$sd_leaves
     if(random_structure %in% c("us", "cs", "hcs", "ar1", "car", "har") &&
-       is.numeric(random_effects[[random_i]]$n_columns) &&
-       length(random_effects[[random_i]]$n_columns) == 1L &&
-       !is.na(random_effects[[random_i]]$n_columns) &&
-       random_effects[[random_i]]$n_columns > 1L){
+       is.numeric(compiled_random_effects[[random_i]]$n_columns) &&
+       length(compiled_random_effects[[random_i]]$n_columns) == 1L &&
+       !is.na(compiled_random_effects[[random_i]]$n_columns) &&
+       compiled_random_effects[[random_i]]$n_columns > 1L){
       random_correlation_required <- c(random_correlation_required, random_key)
     }
 
@@ -554,7 +571,8 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     prior_list        = prior_list,
     formula_scale     = output$formula_scale,
     expressions       = expressions,
-    random_effects    = random_effects,
+    random_effects    = compiled_random_effects,
+    random_effects_compile = random_effects_compile,
     jags_data_names   = jags_data_names,
     random_allocations = random_sd_binding_context$allocations,
     random_effects_interface = random_effects_interface
@@ -596,6 +614,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
                                         model_terms, model_terms_type,
                                         prior_list, formula_scale,
                                         expressions, random_effects,
+                                        random_effects_compile = NULL,
                                         jags_data_names,
                                         random_allocations = list(),
                                         random_effects_interface = NULL){
@@ -625,6 +644,14 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   names(xlevels) <- factor_predictors
   xlevels <- xlevels[!vapply(xlevels, is.null, logical(1))]
 
+  if(is.null(random_effects_compile)){
+    random_effects_compile <- .bt_random_effects_compile_resolved(
+      sampled = vapply(random_effects, function(term) term$block_name, character(1)),
+      marginalized = character(),
+      mode = .bt_random_effects_compile_modes_from_terms(random_effects)
+    )
+  }
+
   out <- list(
     parameter          = parameter,
     formula            = formula_output,
@@ -649,6 +676,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     aliased            = aliased,
     transformed_terms  = expressions,
     random_effects     = random_effects,
+    random_effects_compile = random_effects_compile,
     jags_data_names    = jags_data_names,
     random_allocations = random_allocations,
     random_effects_interface = random_effects_interface
@@ -838,13 +866,6 @@ JAGS_formula_design <- function(fit, parameter = NULL){
   return(formula_design[[parameter]])
 }
 
-.bt_formula_design_has_random_effects <- function(design){
-
-  !is.null(design) &&
-    inherits(design, "BayesTools_formula_design") &&
-    length(design$random_effects) > 0L
-}
-
 .bt_random_effects_interface <- function(random_effects, prior_random = NULL){
 
   if(length(random_effects) == 0L){
@@ -860,11 +881,14 @@ JAGS_formula_design <- function(fit, parameter = NULL){
 .JAGS_random_effect_formula <- function(formula, parameter, data,
                                         prior_random = NULL,
                                         sd_binding_context = NULL,
-                                        group_data = data){
+                                        group_data = data,
+                                        compile_mode = c("sampled", "marginalized")){
 
   if(is.null(prior_random)){
     stop("Formula random effects require 'prior_random'.", call. = FALSE)
   }
+  compile_mode <- match.arg(compile_mode)
+  sampled_random_effect <- identical(compile_mode, "sampled")
 
   random_term <- .bt_as_random_effect_term(formula)
   .bt_validate_random_effect_term_supported(random_term)
@@ -953,7 +977,8 @@ JAGS_formula_design <- function(fit, parameter = NULL){
     original_prior_names <- names(prior_list)
   }
   monitor_policy <- block_prior$monitor
-  if(isTRUE(row_indexed_external_sd) && isTRUE(monitor_policy$coefficients)){
+  if(isTRUE(sampled_random_effect) &&
+     isTRUE(row_indexed_external_sd) && isTRUE(monitor_policy$coefficients)){
     stop(
       "Group-level coefficient monitoring is not supported for random-effect block '",
       random_term$block_name,
@@ -961,7 +986,7 @@ JAGS_formula_design <- function(fit, parameter = NULL){
       call. = FALSE
     )
   }
-  if(isTRUE(row_indexed_external_sd)){
+  if(isTRUE(sampled_random_effect) && isTRUE(row_indexed_external_sd)){
     monitor_policy$latent <- TRUE
   }
 
@@ -1053,12 +1078,14 @@ JAGS_formula_design <- function(fit, parameter = NULL){
     stop("Random-effect term '", random_term$block_name, "' does not generate any design columns.", call. = FALSE)
   }
   # step 1:
-  random_syntax <- c(random_syntax, .add_JAGS_matrix(name = paste0(parameter, "_xRE_PRECx"), diag(1, n_par)))
-  random_syntax <- c(random_syntax, paste0(
-    " for(i in 1:",n_id,"){\n",
-    "   ",paste0(parameter, "_xRE_Zx"),"[i,1:", n_par ,"] ~ dmnorm(rep(0, ", n_par,"), ", paste0(parameter, "_xRE_PRECx"), ")\n",
-    " }\n"
-  ))
+  if(isTRUE(sampled_random_effect)){
+    random_syntax <- c(random_syntax, .add_JAGS_matrix(name = paste0(parameter, "_xRE_PRECx"), diag(1, n_par)))
+    random_syntax <- c(random_syntax, paste0(
+      " for(i in 1:",n_id,"){\n",
+      "   ",paste0(parameter, "_xRE_Zx"),"[i,1:", n_par ,"] ~ dmnorm(rep(0, ", n_par,"), ", paste0(parameter, "_xRE_PRECx"), ")\n",
+      " }\n"
+    ))
+  }
 
   # step 2
   sd_spec <- .bt_random_effect_sd_spec(
@@ -1099,13 +1126,13 @@ JAGS_formula_design <- function(fit, parameter = NULL){
   }
   if(random_structure %in% c("diag", "id") ||
      (random_structure == "us" && n_par == 1L)){
-    if(isTRUE(row_indexed_external_sd)){
+    if(isTRUE(sampled_random_effect) && isTRUE(row_indexed_external_sd)){
       random_syntax <- c(random_syntax, paste0(
         " for(i in 1:",n_par,"){\n",
         "   ",paste0(parameter, "_xRE_UNIT_COEFx"),"[1:",n_id,",i] = ",paste0(parameter, "_xRE_Zx"),"[1:",n_id,",i]\n",
         " }\n"
       ))
-    }else{
+    }else if(isTRUE(sampled_random_effect)){
       random_syntax <- c(random_syntax, paste0(
         " for(i in 1:",n_par,"){\n",
         "   ",paste0(parameter, "_xRE_COEFx"),"[1:",n_id,",i] = ",paste0(parameter, "_xRE_Zx"),"[1:",n_id,",i] * ",paste0(parameter, "_xRE_STDx"),"[i]\n",
@@ -1142,7 +1169,7 @@ JAGS_formula_design <- function(fit, parameter = NULL){
       cholesky_name = lkj_module$cholesky_name,
       correlation_name = lkj_module$correlation_name
     )
-    if(isTRUE(row_indexed_external_sd)){
+    if(isTRUE(sampled_random_effect) && isTRUE(row_indexed_external_sd)){
       random_syntax <- c(random_syntax, paste0(
         " for(g in 1:",n_id,"){\n",
         "   for(i in 1:",n_par,"){\n",
@@ -1150,7 +1177,7 @@ JAGS_formula_design <- function(fit, parameter = NULL){
         "   }\n",
         " }\n"
       ))
-    }else{
+    }else if(isTRUE(sampled_random_effect)){
       random_syntax <- c(random_syntax, paste0(
         " for(g in 1:",n_id,"){\n",
         "   for(i in 1:",n_par,"){\n",
@@ -1189,7 +1216,7 @@ JAGS_formula_design <- function(fit, parameter = NULL){
       correlation_metadata$time_variable <- car_metadata$time_variable
       correlation_metadata$time_values <- car_metadata$time_values
     }
-    if(isTRUE(row_indexed_external_sd)){
+    if(isTRUE(sampled_random_effect) && isTRUE(row_indexed_external_sd)){
       random_syntax <- c(random_syntax, paste0(
         " for(g in 1:",n_id,"){\n",
         "   for(i in 1:",n_par,"){\n",
@@ -1197,7 +1224,7 @@ JAGS_formula_design <- function(fit, parameter = NULL){
         "   }\n",
         " }\n"
       ))
-    }else{
+    }else if(isTRUE(sampled_random_effect)){
       random_syntax <- c(random_syntax, paste0(
         " for(g in 1:",n_id,"){\n",
         "   for(i in 1:",n_par,"){\n",
@@ -1209,7 +1236,7 @@ JAGS_formula_design <- function(fit, parameter = NULL){
   }
 
   # step 4
-  if(isTRUE(row_indexed_external_sd)){
+  if(isTRUE(sampled_random_effect) && isTRUE(row_indexed_external_sd)){
     if(isTRUE(sd_binding$true_allocation)){
       allocation_target <- .bt_random_effect_allocation_target_metadata(
         sd_binding$allocations[[1L]],
@@ -1293,7 +1320,7 @@ JAGS_formula_design <- function(fit, parameter = NULL){
       "   ",parameter,"[i] = ", row_contribution, "\n",
       " }\n"
     ))
-  }else{
+  }else if(isTRUE(sampled_random_effect)){
     random_syntax <- c(random_syntax, paste0(
       " for(i in 1:",nrow(model_matrix),"){\n",
       "   ",parameter,"[i] = inprod(", paste0(parameter, "_xRE_COEFx[", paste0(parameter, "_xRE_MAPx[i]"),", 1:",n_par,"]"), ", ", paste0(parameter, "_xRE_DATAx[i,1:", n_par,"]"),")\n",
@@ -1305,10 +1332,11 @@ JAGS_formula_design <- function(fit, parameter = NULL){
   JAGS_data[[paste0(parameter, "_xRE_DATAx")]] <- model_matrix
   JAGS_data[[paste0(parameter, "_xRE_MAPx")]]  <- grouping_mapping
 
-  if(isTRUE(monitor_policy$latent)){
+  if(isTRUE(sampled_random_effect) && isTRUE(monitor_policy$latent)){
     add_parameters <- c(add_parameters, paste0(parameter, "_xRE_Zx"))
   }
-  if(isTRUE(monitor_policy$coefficients) && !isTRUE(row_indexed_external_sd)){
+  if(isTRUE(sampled_random_effect) &&
+     isTRUE(monitor_policy$coefficients) && !isTRUE(row_indexed_external_sd)){
     add_parameters <- c(add_parameters, paste0(parameter, "_xRE_COEFx"))
   }
 
@@ -1335,11 +1363,13 @@ JAGS_formula_design <- function(fit, parameter = NULL){
   random_term$sd_binding       <- sd_binding
   random_term$correlation      <- correlation_metadata
   random_term$car              <- car_metadata
+  random_term$compile_mode     <- compile_mode
   attr(random_term, "random_block") <- random_term$block_name
+  attr(random_term, "compile_mode") <- compile_mode
 
   return(list(
     random_syntax  = random_syntax,
-    formula_term   = paste0(parameter,"[i]"),
+    formula_term   = if(isTRUE(sampled_random_effect)) paste0(parameter,"[i]") else character(),
     data           = JAGS_data,
     prior_list     = new_prior_list,
     random_scale_terms = random_scale_terms,
@@ -2600,7 +2630,7 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
   }
   fitted_design <- try(JAGS_formula_design(fit, parameter), silent = TRUE)
   if(!inherits(fitted_design, "try-error") &&
-     .bt_formula_design_has_random_effects(fitted_design)){
+     .bt_formula_design_has_sampled_random_effects(fitted_design)){
     stop(
       "The fitted formula for parameter '", parameter,
       "' includes random effects. JAGS_evaluate_formula() cannot currently evaluate ",
@@ -2829,7 +2859,7 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
       call. = FALSE
     )
   }
-  if(!.bt_formula_design_has_random_effects(fitted_design)){
+  if(!.bt_formula_design_has_any_random_effects(fitted_design)){
     stop(
       "The supplied formula contains random effects, but the fitted formula for parameter '",
       parameter, "' does not.",
@@ -2840,7 +2870,7 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
   random_terms <- .bt_parse_random_effects(formula)$terms
   .bt_validate_random_effect_prediction_terms(
     requested = random_terms,
-    fitted = fitted_design$random_effects,
+    fitted = .bt_formula_design_random_effects(fitted_design),
     parameter = parameter
   )
 
@@ -2861,7 +2891,7 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
     predictors_type = fitted_design$predictor_types
   )
 
-  for(random_term in fitted_design$random_effects){
+  for(random_term in .bt_formula_design_sampled_random_effects(fitted_design)){
     random_structure <- .bt_random_effect_structure(
       random_term,
       context = "Random-effect prediction metadata"
@@ -2889,15 +2919,18 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
     )
   }
   fitted_names <- vapply(fitted, function(term) term$block_name, character(1))
-  if(!setequal(requested_names, fitted_names)){
+  unknown_names <- setdiff(requested_names, fitted_names)
+  if(length(unknown_names) > 0L){
     stop(
-      "Random-effect blocks in the supplied formula do not match the fitted formula for parameter '",
-      parameter, "'.",
+      "Random-effect block(s) in the supplied formula do not match the fitted formula for parameter '",
+      parameter, "'; block(s) were not found in the fitted formula: ",
+      paste(unknown_names, collapse = ", "),
+      ".",
       call. = FALSE
     )
   }
 
-  for(block in fitted_names){
+  for(block in requested_names){
     requested_term <- requested[[match(block, requested_names)]]
     fitted_term <- fitted[[match(block, fitted_names)]]
     requested_structure <- .bt_random_effect_structure(

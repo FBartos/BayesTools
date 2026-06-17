@@ -24,6 +24,10 @@
 #' @param formula_random_prior_list optional named list of `prior_random()`
 #' objects for random effects in `formula_list`. Required for any formula that
 #' contains random effects.
+#' @param formula_random_effects_compile_list optional named list of
+#' `random_effects_compile()` objects controlling which formula random-effect
+#' blocks are sampled and which are compiled as marginalized structural blocks.
+#' Defaults to \code{NULL}, which preserves the current all-sampled behavior.
 #' @param chains number of chains to be run, defaults to \code{4}
 #' @param adapt number of samples used for adapting the MCMC chains, defaults to \code{500}
 #' @param burnin number of burnin iterations of the MCMC chains, defaults to \code{1000}
@@ -270,7 +274,7 @@ NULL
 }
 
 #' @rdname JAGS_fit
-JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL, formula_scale_list = NULL, formula_random_prior_list = NULL,
+JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL, formula_scale_list = NULL, formula_random_prior_list = NULL, formula_random_effects_compile_list = NULL,
                      chains = 4, adapt = 500, burnin = 1000, sample = 4000, thin = 1,
                      autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE),
                      parallel = FALSE, cores = chains, silent = TRUE, seed = NULL,
@@ -290,10 +294,16 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   check_list(formula_data_list, "formula_data_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
   check_list(formula_prior_list, "formula_prior_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
   check_list(formula_random_prior_list, "formula_random_prior_list", check_names = names(formula_list), allow_other = FALSE, all_objects = FALSE, allow_NULL = TRUE)
+  check_list(formula_random_effects_compile_list, "formula_random_effects_compile_list", check_names = names(formula_list), allow_other = FALSE, all_objects = FALSE, allow_NULL = TRUE)
   check_list(formula_scale_list, "formula_scale_list", check_names = names(formula_list), allow_other = FALSE, all_objects = FALSE, allow_NULL = TRUE)
   if(!is.null(formula_random_prior_list)){
     for(parameter in names(formula_random_prior_list)){
       .bt_check_prior_random(formula_random_prior_list[[parameter]])
+    }
+  }
+  if(!is.null(formula_random_effects_compile_list)){
+    for(parameter in names(formula_random_effects_compile_list)){
+      .bt_check_random_effects_compile(formula_random_effects_compile_list[[parameter]])
     }
   }
   if(!is.null(formula_list)){
@@ -323,7 +333,8 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
         data           = formula_data_list[[parameter]],
         prior_list     = formula_prior_list[[parameter]],
         formula_scale  = if(!is.null(formula_scale_list)) formula_scale_list[[parameter]] else NULL,
-        prior_random   = if(!is.null(formula_random_prior_list)) formula_random_prior_list[[parameter]] else NULL)
+        prior_random   = if(!is.null(formula_random_prior_list)) formula_random_prior_list[[parameter]] else NULL,
+        random_effects_compile = if(!is.null(formula_random_effects_compile_list)) formula_random_effects_compile_list[[parameter]] else NULL)
     }
 
     # merge with the rest of the input

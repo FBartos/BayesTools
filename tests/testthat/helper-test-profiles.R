@@ -17,6 +17,7 @@ bayestools_test_profile_contexts <- list(
     "JAGS-lkj-cholesky",
     "JAGS-marginal-distributions",
     "JAGS-posterior-extraction",
+    "JAGS-random-effects-compile",
     "JAGS-random-effect-scaling",
     "marginal-inference-conditioning",
     "marginal-prior-samplers",
