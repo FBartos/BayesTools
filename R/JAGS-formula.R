@@ -515,6 +515,16 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     attr(formula, "log(intercept)") <- TRUE
   }
 
+  marginalized_random_data <- unlist(lapply(compiled_random_effects, function(random_effect){
+    if(identical(.bt_random_effect_term_compile_mode(random_effect), "marginalized")){
+      return(random_effect$jags_data_names)
+    }
+    character()
+  }), use.names = FALSE)
+  if(length(marginalized_random_data) > 0L){
+    JAGS_data[marginalized_random_data] <- NULL
+  }
+
   output <- list(
     formula_syntax = formula_syntax,
     data           = JAGS_data,
