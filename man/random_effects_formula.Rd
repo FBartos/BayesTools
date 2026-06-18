@@ -24,6 +24,6 @@ List names define top-level random-effect components used by allocation and
 summary metadata. Missing names are replaced by \code{"Component 1"},
 \code{"Component 2"}, and so on, then sanitized for JAGS node names. Unnamed
 random-effect terms inside a list entry are auto-named from the component
-label. Explicit \code{name =} arguments define the final random-effect block name
+label. Explicit \verb{name =} arguments define the final random-effect block name
 and are the names targeted by \code{prior_random()} block overrides.
 }

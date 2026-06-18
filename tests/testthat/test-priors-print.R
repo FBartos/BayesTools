@@ -39,7 +39,7 @@ test_that("Random-effect specification print methods are compact", {
   lkj_prior <- prior_lkj(eta = 2, include_correlation = FALSE, include_primitives = TRUE)
   covariance <- random_covariance(structure = "us", sd = sd_prior, cor = lkj_prior)
   monitor <- random_monitor(coefficients = TRUE, lkj_primitives = TRUE)
-  new_levels <- random_new_levels(allow = TRUE, method = "sample")
+  new_levels <- random_new_levels(method = "sample")
   block <- random_block(
     sd = sd_prior,
     covariance = random_covariance(rho = rho_prior, rho_scale = "rho"),
@@ -103,7 +103,6 @@ test_that("Random-effect specification print methods are compact", {
   ))
   expect_equal(utils::capture.output(print(new_levels)), c(
     "random_new_levels()",
-    "  allow: TRUE",
     "  method: sample"
   ))
   expect_equal(utils::capture.output(print(block)), c(
@@ -159,7 +158,7 @@ test_that("Random-effect specification print methods are compact", {
     "  sd: Gamma(2, 2)",
     "  covariance: random_covariance(structure = formula-owned, cor = prior_lkj(eta = 3, include_correlation = TRUE, include_primitives = FALSE))",
     "  monitor: random_monitor(latent = TRUE, coefficients = FALSE, correlation = TRUE, lkj_primitives = FALSE)",
-    "  new_levels: random_new_levels(allow = FALSE, method = \"zero\")",
+    "  new_levels: random_new_levels(method = \"error\")",
     "  allocation: 2 allocations (total_re, nested_split)",
     "  blocks: study = random_block(sd = Gamma(2, 2), covariance = random_covariance(structure = formula-owned, rho = Normal(0, 0.5), rho_scale = rho), monitor = random_monitor(latent = TRUE, coefficients = TRUE, correlation = TRUE, lkj_primitives = TRUE), terms = intercept, slope)"
   ))

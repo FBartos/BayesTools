@@ -63,11 +63,11 @@ Validate and subset row-wise selection-kernel contexts and
 prepare small argument lists for native selected-normal backends.
 }
 \details{
-Context validation checks row-wise posterior fields, observation fields, and
-compiled selection-bin metadata together. Custom row-wise fields may be listed
-in a character vector named \code{row_fields}; row subsetting rejects undeclared
-fields that otherwise look row-wise. Native argument helpers accept either an
-augmented context or a bare \code{selection_backend_spec()} object, using
-compiled \code{step}, \code{phacking}, and \code{data} fallbacks where
-available.
+Context validation checks row-wise posterior fields, observation
+fields, and compiled selection-bin metadata together. Custom row-wise
+fields may be listed in a character vector named \code{row_fields}; row
+subsetting rejects undeclared fields that otherwise look row-wise. Native
+argument helpers accept either an augmented context or a bare
+\code{selection_backend_spec()} object, using compiled \code{step},
+\code{phacking}, and \code{data} fallbacks where available.
 }

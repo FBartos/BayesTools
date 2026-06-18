@@ -112,8 +112,12 @@
 #' coefficients in prediction. Turning `latent = FALSE` can reduce memory use,
 #' but bridge sampling and conditional prediction may require refitting.
 #'
-#' `random_new_levels()` is reserved for future prediction support for new
-#' grouping levels. It currently requires `allow = FALSE`.
+#' `random_new_levels()` controls prediction for grouping levels that were not
+#' observed when the model was fitted. The default `method = "error"` disallows
+#' new levels. `method = "zero"` assigns zero random-effect contribution to new
+#' levels and `method = "sample"` draws new group-level coefficients from the
+#' fitted random-effect distribution during draw-valued prediction or integrates
+#' them through the block covariance for covariance-valued prediction.
 #'
 #' @param ... named `random_block()` specifications and, optionally,
 #'   top-level `random_variance_allocation()` specifications.
@@ -124,8 +128,8 @@
 #' @param rho optional scalar correlation prior for structured correlation
 #'   models. The default scale is Fisher's z.
 #' @param monitor `random_monitor()` object.
-#' @param new_levels `random_new_levels()` object. New-level prediction is
-#'   reserved for a future release and currently must leave `allow = FALSE`.
+#' @param new_levels `random_new_levels()` object controlling prediction for
+#'   previously unseen grouping levels.
 #' @param allocation optional `random_variance_allocation()` specification, or
 #'   a list of such specifications, defining total-SD plus Dirichlet variance
 #'   allocation across named random-effect blocks. Block-local allocation is
@@ -586,18 +590,50 @@ random_monitor <- function(latent = TRUE, coefficients = FALSE,
 }
 
 #' @rdname prior_random
-#' @param allow whether new levels are allowed during prediction.
-#' @param method new-level prediction method.
+#' @param method new-level prediction method: `"error"` disallows new levels,
+#'   `"zero"` fixes their random-effect contribution at zero, and `"sample"`
+#'   treats them as draws from the fitted random-effect distribution.
 #' @export
-random_new_levels <- function(allow = FALSE, method = c("zero", "sample")){
+random_new_levels <- function(method = c("error", "zero", "sample")){
 
-  check_bool(allow, "allow")
   method <- match.arg(method)
 
-  out <- list(allow = allow, method = method)
+  out <- list(
+    method = method,
+    allow = !identical(method, "error")
+  )
   class(out) <- c("random_new_levels", "list")
 
   out
+}
+
+.bt_random_new_levels_resolve <- function(new_levels){
+
+  if(is.null(new_levels)){
+    return(random_new_levels())
+  }
+  if(is.character(new_levels) && length(new_levels) == 1L &&
+     !is.na(new_levels)){
+    if(new_levels %in% c("error", "zero", "sample")){
+      return(random_new_levels(method = new_levels))
+    }
+  }
+  .bt_check_random_new_levels(new_levels)
+  new_levels
+}
+
+.bt_random_effect_new_levels_policy <- function(random_term,
+                                                override = NULL){
+
+  if(!is.null(override)){
+    return(.bt_random_new_levels_resolve(override))
+  }
+  new_levels <- random_term$new_levels
+  if(is.null(new_levels)){
+    return(random_new_levels())
+  }
+
+  .bt_random_new_levels_resolve(new_levels)
 }
 
 is.prior_random <- function(x){
@@ -759,9 +795,17 @@ is.prior_random <- function(x){
   if(!inherits(x, "random_new_levels")){
     stop("'new_levels' must be created with random_new_levels().", call. = FALSE)
   }
-  if(isTRUE(x$allow)){
+  if(!is.character(x$method) || length(x$method) != 1L ||
+     is.na(x$method) || !x$method %in% c("error", "zero", "sample")){
     stop(
-      "New-level random-effect prediction is not implemented yet; leave 'new_levels' at random_new_levels(allow = FALSE).",
+      "'new_levels$method' must be 'error', 'zero', or 'sample'.",
+      call. = FALSE
+    )
+  }
+  check_bool(x$allow, "new_levels$allow", allow_NA = FALSE)
+  if(!identical(x$allow, !identical(x$method, "error"))){
+    stop(
+      "'new_levels$allow' must match 'new_levels$method'.",
       call. = FALSE
     )
   }

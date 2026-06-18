@@ -12,7 +12,7 @@
 #'   one formula design.
 #' @param data optional data frame defining the observation rows. When `NULL`,
 #'   the fitted formula design rows are used. New random-effect grouping levels
-#'   are treated as independent groups for marginal covariance construction.
+#'   require an explicit `new_levels` policy unless allowed by block metadata.
 #'   Row-indexed external SD sources require a reconstructing
 #'   `parameter_source(..., values = ...)` function when `data` is supplied.
 #' @param posterior_samples optional posterior sample matrix, data frame,
@@ -22,6 +22,10 @@
 #'   design.
 #' @param blocks optional character vector of random-effect block names to
 #'   include. The default includes all formula random-effect blocks.
+#' @param new_levels optional new-level policy. Use a `random_new_levels()`
+#'   object or one of `"error"`, `"zero"`, or `"sample"`. `"zero"` assigns
+#'   zero covariance contribution to unseen grouping levels. `"sample"` treats
+#'   unseen grouping levels as independent draws from the block covariance `G`.
 #' @param ... reserved for future extensions. Unused arguments are rejected.
 #'
 #' @return A list of class
@@ -37,7 +41,7 @@
 #' @export
 random_effects_marginal_vcov <- function(
     fit, parameter = NULL, data = NULL, posterior_samples = NULL,
-    prior_list = NULL, blocks = NULL, ...){
+    prior_list = NULL, blocks = NULL, new_levels = NULL, ...){
 
   dots <- list(...)
   if(length(dots) > 0L){
@@ -59,6 +63,9 @@ random_effects_marginal_vcov <- function(
   if(!is.null(data) && !is.data.frame(data)){
     stop("'data' must be a data.frame.", call. = FALSE)
   }
+  if(!is.null(new_levels)){
+    new_levels <- .bt_random_new_levels_resolve(new_levels)
+  }
 
   design <- .bt_random_effect_marginal_covariance_design(
     fit = fit,
@@ -79,14 +86,16 @@ random_effects_marginal_vcov <- function(
     posterior = posterior,
     prior_list = prior_list,
     data = data,
-    blocks = blocks
+    blocks = blocks,
+    new_levels = new_levels
   )
 }
 
 .bt_random_effect_marginal_covariance_samples <- function(design, posterior,
                                                           prior_list,
                                                           data = NULL,
-                                                          blocks = NULL){
+                                                          blocks = NULL,
+                                                          new_levels = NULL){
 
   selected <- .bt_random_effect_marginal_covariance_terms(
     design = design,
@@ -101,19 +110,20 @@ random_effects_marginal_vcov <- function(
   block_metadata <- vector("list", length(random_terms))
   for(block_i in seq_along(random_terms)){
     random_term <- random_terms[[block_i]]
+    block_new_levels <- .bt_random_effect_new_levels_policy(
+      random_term = random_term,
+      override = new_levels
+    )
     block_data <- .bt_random_effect_marginal_covariance_block_data(
       design = design,
       random_term = random_term,
       data = data
     )
-    if(!is.null(samples)){
-      .bt_random_effect_marginal_covariance_check_block_output(
-        random_term = random_term,
-        samples = samples,
-        n_draws = nrow(posterior),
-        row_names = block_data$row_names
-      )
-    }
+    new_level_info <- .bt_random_effect_marginal_covariance_new_level_info(
+      random_term = random_term,
+      block_data = block_data,
+      new_levels = block_new_levels
+    )
     block_output <- .bt_random_effect_marginal_covariance_block_samples(
       random_term = random_term,
       model_matrix = block_data$model_matrix,
@@ -121,17 +131,32 @@ random_effects_marginal_vcov <- function(
       source_data = block_data$source_data,
       data_supplied = block_data$data_supplied,
       posterior = posterior,
-      prior_list = prior_list,
-      samples = samples
+      prior_list = prior_list
     )
-    samples <- block_output$samples
+    if(any(new_level_info$row_mask) &&
+       identical(block_new_levels$method, "zero")){
+      block_output$samples[, new_level_info$row_mask, ] <- 0
+      block_output$samples[, , new_level_info$row_mask] <- 0
+    }
+    if(is.null(samples)){
+      samples <- block_output$samples
+    }else{
+      .bt_random_effect_marginal_covariance_check_block_output(
+        random_term = random_term,
+        samples = samples,
+        n_draws = nrow(posterior),
+        row_names = block_data$row_names
+      )
+      samples <- samples + block_output$samples
+    }
     block_metadata[[block_i]] <- .bt_random_effect_marginal_covariance_block_metadata(
       random_term = random_term,
       model_matrix = block_data$model_matrix,
       group_map = block_data$group_map,
       group_levels = block_data$group_levels,
       row_names = block_data$row_names,
-      sample_dim = block_output$sample_dim
+      sample_dim = block_output$sample_dim,
+      new_level_info = new_level_info
     )
   }
   names(block_metadata) <- vapply(random_terms, `[[`, character(1), "block_name")
@@ -556,6 +581,37 @@ random_effects_marginal_vcov <- function(
   invisible(TRUE)
 }
 
+.bt_random_effect_marginal_covariance_new_level_info <- function(
+    random_term,
+    block_data,
+    new_levels){
+
+  new_row <- block_data$group_map > random_term$n_groups
+  new_group_index <- if(length(block_data$group_levels) > random_term$n_groups){
+    seq.int(random_term$n_groups + 1L, length(block_data$group_levels))
+  }else{
+    integer()
+  }
+  new_group_levels <- block_data$group_levels[new_group_index]
+  if(length(new_group_levels) > 0L && !isTRUE(new_levels$allow)){
+    stop(
+      "New random-effect level(s) for block '", random_term$block_name,
+      "' require an explicit new-level policy: ",
+      paste(new_group_levels, collapse = ", "),
+      ". Use new_levels = \"zero\" or new_levels = \"sample\".",
+      call. = FALSE
+    )
+  }
+
+  list(
+    policy = new_levels,
+    group_levels = new_group_levels,
+    group_index = new_group_index,
+    row_mask = new_row,
+    rows = which(new_row)
+  )
+}
+
 .bt_random_effect_marginal_covariance_int_metadata <- function(x, field,
                                                                random_term){
 
@@ -581,8 +637,7 @@ random_effects_marginal_vcov <- function(
     source_data,
     data_supplied,
     posterior,
-    prior_list,
-    samples = NULL){
+    prior_list){
 
   if(.bt_random_effect_has_row_indexed_external_sd(random_term)){
     return(.bt_random_effect_marginal_covariance_row_indexed_block(
@@ -634,8 +689,7 @@ random_effects_marginal_vcov <- function(
     samples = .bt_random_effect_marginal_covariance_expand(
       model_matrix = model_matrix,
       group_map = group_map,
-      block_covariance = covariance,
-      out = samples
+      block_covariance = covariance
     ),
     sample_dim = c(nrow(posterior), nrow(model_matrix), nrow(model_matrix))
   )
@@ -648,8 +702,7 @@ random_effects_marginal_vcov <- function(
     source_data,
     data_supplied,
     posterior,
-    prior_list,
-    samples = NULL){
+    prior_list){
 
   n_draws <- nrow(posterior)
   n_rows <- nrow(model_matrix)
@@ -737,8 +790,7 @@ random_effects_marginal_vcov <- function(
       group_map = group_map,
       block_covariance = correlation,
       row_weights = row_weights,
-      column_weights = column_weights,
-      out = samples
+      column_weights = column_weights
     ),
     sample_dim = c(n_draws, n_rows, n_rows)
   )
@@ -971,8 +1023,7 @@ random_effects_marginal_vcov <- function(
     group_map,
     block_covariance,
     row_weights = NULL,
-    column_weights = NULL,
-    out = NULL){
+    column_weights = NULL){
 
   n_draws <- dim(block_covariance)[1L]
   n_rows <- nrow(model_matrix)
@@ -981,19 +1032,8 @@ random_effects_marginal_vcov <- function(
   if(is.null(row_names)){
     row_names <- as.character(seq_len(n_rows))
   }
-  if(is.null(out)){
-    out <- array(0, dim = c(n_draws, n_rows, n_rows))
-    dimnames(out) <- list(draw = NULL, row = row_names, column = row_names)
-  }else{
-    expected_dim <- c(n_draws, n_rows, n_rows)
-    if(!identical(dim(out), expected_dim) ||
-       !identical(dimnames(out)[2:3], list(row = row_names, column = row_names))){
-      stop(
-        "Internal error: random-effect marginal covariance accumulator has incompatible dimensions.",
-        call. = FALSE
-      )
-    }
-  }
+  out <- array(0, dim = c(n_draws, n_rows, n_rows))
+  dimnames(out) <- list(draw = NULL, row = row_names, column = row_names)
 
   rows_by_group <- split(seq_len(n_rows), group_map)
   n_draws_num <- as.numeric(n_draws)
@@ -1056,7 +1096,8 @@ random_effects_marginal_vcov <- function(
     group_map,
     group_levels,
     row_names,
-    sample_dim){
+    sample_dim,
+    new_level_info = NULL){
 
   structure <- .bt_random_effect_structure(
     random_term,
@@ -1081,6 +1122,9 @@ random_effects_marginal_vcov <- function(
     row_order = seq_len(nrow(model_matrix)),
     group_levels = group_levels,
     group_map = group_map,
+    new_levels = if(is.list(new_level_info)) new_level_info$policy else NULL,
+    new_group_levels = if(is.list(new_level_info)) new_level_info$group_levels else character(),
+    new_level_rows = if(is.list(new_level_info)) new_level_info$rows else integer(),
     column_names = colnames(model_matrix),
     model_matrix = model_matrix,
     sd_parameter_names = random_term$sd_parameter_names,

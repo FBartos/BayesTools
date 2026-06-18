@@ -1367,6 +1367,7 @@ JAGS_formula_design <- function(fit, parameter = NULL){
   random_term$sd_binding       <- sd_binding
   random_term$correlation      <- correlation_metadata
   random_term$car              <- car_metadata
+  random_term$new_levels       <- block_prior$new_levels
   random_term$compile_mode     <- compile_mode
   attr(random_term, "random_block") <- random_term$block_name
   attr(random_term, "compile_mode") <- compile_mode
@@ -2592,13 +2593,25 @@ formula_add_intercept <- function(formula){
 #' @param fit model fitted with either \link[runjags]{runjags} posterior
 #' samples obtained with \link[rjags]{rjags-package}
 #' @param formula formula specifying the right hand side of the assignment (the
-#' left hand side is ignored). If the formula has a \code{"log(intercept)"}
-#' attribute set to \code{TRUE}, the intercept values will be log-transformed
-#' before computing the linear predictor.
+#' left hand side is ignored). If `NULL`, the fitted formula stored in
+#' `formula_design` metadata is used. If the formula has a
+#' \code{"log(intercept)"} attribute set to \code{TRUE}, the intercept values
+#' will be log-transformed before computing the linear predictor.
 #' @param parameter name of the parameter created with the formula
-#' @param data data.frame containing predictors included in the formula
-#' @param prior_list named list of prior distribution of parameters specified within
-#' the \code{formula}
+#' @param data data.frame containing predictors included in the formula. If
+#' `NULL`, fitted source data from `formula_design` metadata are used.
+#' @param prior_list named list of prior distribution of parameters specified
+#' within the \code{formula}. If `NULL`, fitted priors from `formula_design`
+#' metadata are used.
+#' @param formula_target optional formula prediction target. `NULL` preserves
+#' the historical safety behavior. `"fixed"` evaluates only the fixed formula
+#' contribution. `"conditional"` evaluates fixed effects plus fitted or
+#' explicitly generated random-effect contributions.
+#' @param blocks optional random-effect block names used with
+#' `formula_target = "conditional"`.
+#' @param new_levels optional new-level policy used only with
+#' `formula_target = "conditional"`. Use a `random_new_levels()` object or one
+#' of `"error"`, `"zero"`, or `"sample"`.
 #'
 #'
 #' @return \code{JAGS_evaluate_formula} returns a matrix of the evaluated posterior samples on
@@ -2606,13 +2619,50 @@ formula_add_intercept <- function(formula){
 #'
 #' @seealso [JAGS_fit()] [JAGS_formula()]
 #' @export
-JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
+JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
+                                  data = NULL, prior_list = NULL,
+                                  formula_target = NULL, blocks = NULL,
+                                  new_levels = NULL){
+
+  check_char(parameter, "parameter")
+  formula_target <- .bt_formula_prediction_target(
+    formula_target,
+    allow_marginal = FALSE,
+    context = "JAGS_evaluate_formula()"
+  )
+  if(!is.null(blocks)){
+    check_char(blocks, "blocks", check_length = 0, allow_NA = FALSE)
+    if(anyDuplicated(blocks)){
+      stop("'blocks' must be unique.", call. = FALSE)
+    }
+  }
+  if(!is.null(blocks) && !identical(formula_target, "conditional")){
+    stop("'blocks' can be used only with formula_target = \"conditional\".", call. = FALSE)
+  }
+  if(!is.null(new_levels) && !identical(formula_target, "conditional")){
+    stop("'new_levels' can be used only with formula_target = \"conditional\".", call. = FALSE)
+  }
+  if(!is.null(new_levels)){
+    new_levels <- .bt_random_new_levels_resolve(new_levels)
+  }
+  fitted_design <- .bt_JAGS_evaluate_formula_design(fit, parameter)
+  resolved_inputs <- .bt_JAGS_evaluate_formula_resolve_inputs(
+    fit = fit,
+    formula = formula,
+    parameter = parameter,
+    data = data,
+    prior_list = prior_list,
+    fitted_design = fitted_design
+  )
+  formula <- resolved_inputs$formula
+  data <- resolved_inputs$data
+  prior_list <- resolved_inputs$prior_list
+  fitted_design <- resolved_inputs$fitted_design
 
   if(!is.language(formula))
     stop("'formula' must be a formula")
   if(!is.data.frame(data))
     stop("'data' must be a data.frame")
-  check_char(parameter, "parameter")
   check_list(prior_list, "prior_list")
   if(any(!sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
@@ -2622,18 +2672,34 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
 
   # remove the specified response (would crash the model.frame if not included)
   formula <- .remove_response(formula)
-  if(.has_random_effects(formula)){
+  formula_has_random <- .has_random_effects(formula)
+  fitted_has_random <- !is.null(fitted_design) &&
+    .bt_formula_design_has_any_random_effects(fitted_design)
+  if(!is.null(blocks) && !fitted_has_random){
+    stop(
+      "The fitted formula for parameter '", parameter,
+      "' does not include random-effect blocks.",
+      call. = FALSE
+    )
+  }
+  if(identical(formula_target, "fixed")){
+    formula <- .remove_random_effects(formula)
+  }else if(formula_has_random ||
+           (identical(formula_target, "conditional") && fitted_has_random)){
     return(.bt_JAGS_evaluate_formula_with_random_effects(
       fit = fit,
       formula = formula,
       parameter = parameter,
       data = data,
       prior_list = prior_list,
-      posterior = posterior
+      posterior = posterior,
+      formula_target = formula_target,
+      blocks = blocks,
+      new_levels = new_levels
     ))
   }
-  fitted_design <- try(JAGS_formula_design(fit, parameter), silent = TRUE)
-  if(!inherits(fitted_design, "try-error") &&
+  if(is.null(formula_target) &&
+     !inherits(fitted_design, "try-error") &&
      .bt_formula_design_has_sampled_random_effects(fitted_design)){
     stop(
       "The fitted formula for parameter '", parameter,
@@ -2815,6 +2881,411 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
   return(output)
 }
 
+.bt_formula_prediction_target <- function(formula_target,
+                                          allow_marginal = TRUE,
+                                          context = "Formula prediction"){
+
+  if(is.null(formula_target)){
+    return(NULL)
+  }
+  check_char(formula_target, "formula_target", check_length = 1,
+             allow_NULL = FALSE, allow_NA = FALSE)
+  allowed <- c("fixed", "conditional", if(isTRUE(allow_marginal)) "marginal")
+  if(!formula_target %in% allowed){
+    stop(
+      context, " supports formula_target = ",
+      paste0("'", allowed, "'", collapse = ", "),
+      if(!isTRUE(allow_marginal)) ". Use JAGS_predict_formula() for formula_target = 'marginal'." else ".",
+      call. = FALSE
+    )
+  }
+
+  formula_target
+}
+
+.bt_JAGS_evaluate_formula_design <- function(fit, parameter){
+
+  fitted_design <- try(JAGS_formula_design(fit, parameter), silent = TRUE)
+  if(inherits(fitted_design, "try-error")){
+    return(NULL)
+  }
+
+  fitted_design
+}
+
+.bt_JAGS_evaluate_formula_resolve_inputs <- function(fit, formula,
+                                                     parameter, data,
+                                                     prior_list,
+                                                     fitted_design = NULL){
+
+  if(is.null(fitted_design)){
+    fitted_design <- .bt_JAGS_evaluate_formula_design(fit, parameter)
+  }
+
+  if(is.null(formula)){
+    if(is.null(fitted_design)){
+      stop("'formula' must be a formula.", call. = FALSE)
+    }
+    formula <- fitted_design$formula
+    # Stored design formulas intentionally drop their original environment.
+    # Use the user workspace as a pragmatic evaluation environment for replay.
+    environment(formula) <- globalenv()
+    if(isTRUE(fitted_design$log_intercept)){
+      attr(formula, "log(intercept)") <- TRUE
+    }
+  }
+  if(is.null(data)){
+    if(is.null(fitted_design)){
+      stop("'data' must be a data.frame.", call. = FALSE)
+    }
+    data <- fitted_design$source_data
+    if(is.null(data)){
+      data <- as.data.frame(fitted_design$model_frame)
+    }
+  }
+  if(is.null(prior_list)){
+    fit_prior_list <- attr(fit, "prior_list", exact = TRUE)
+    if(is.list(fit_prior_list) && length(fit_prior_list) > 0L){
+      prior_list <- fit_prior_list
+    }else if(!is.null(fitted_design) && is.list(fitted_design$prior_list)){
+      prior_list <- fitted_design$prior_list
+    }else{
+      stop("'prior_list' must be supplied.", call. = FALSE)
+    }
+  }
+
+  list(
+    formula = formula,
+    data = data,
+    prior_list = prior_list,
+    fitted_design = fitted_design
+  )
+}
+
+#' Formula prediction with explicit random-effect target
+#'
+#' @description
+#' Returns formula-scale predictions from fitted BayesTools formula metadata.
+#' Unlike [JAGS_evaluate_formula()], this helper can return structured
+#' prediction output for marginal random-effect targets, including marginal
+#' random-effect covariance or simulated random-effect draws.
+#'
+#' @param fit model fitted with [JAGS_fit()] or posterior samples carrying
+#' `formula_design` metadata.
+#' @param parameter formula parameter name.
+#' @param formula optional formula. If `NULL`, the fitted formula for
+#' `parameter` is used.
+#' @param data optional prediction data. If `NULL`, fitted source data are used.
+#' @param prior_list optional named prior list. If `NULL`, fitted priors are
+#' used.
+#' @param formula_target prediction target: `"conditional"`, `"fixed"`, or
+#' `"marginal"`. The default includes fitted random-effect contributions.
+#' @param blocks optional random-effect block names.
+#' @param new_levels new-level policy for conditional or marginal random-effect
+#' prediction. Use a `random_new_levels()` object or one of `"error"`, `"zero"`,
+#' or `"sample"`.
+#' @param marginal_method marginal representation used only with
+#' `formula_target = "marginal"`: `"covariance"` returns fixed means plus
+#' marginal random-effect covariance; `"sample"` returns materialized
+#' random-effect draws.
+#' @param seed optional random seed used when random-effect draws are simulated.
+#' @param components whether to include component matrices where available.
+#'
+#' @return A list of class `BayesTools_formula_prediction` with fields `value`,
+#' `mean`, `random`, `vcov`, `components`, and `metadata`.
+#'
+#' @seealso [JAGS_evaluate_formula()] [random_effects_marginal_vcov()]
+#' @export
+JAGS_predict_formula <- function(fit, parameter, formula = NULL, data = NULL,
+                                 prior_list = NULL,
+                                 formula_target = c("conditional", "fixed", "marginal"),
+                                 blocks = NULL, new_levels = NULL,
+                                 marginal_method = c("covariance", "sample"),
+                                 seed = NULL, components = FALSE){
+
+  check_char(parameter, "parameter")
+  marginal_method_supplied <- !missing(marginal_method)
+  formula_target <- match.arg(formula_target)
+  marginal_method <- match.arg(marginal_method)
+  if(!is.null(blocks)){
+    check_char(blocks, "blocks", check_length = 0, allow_NA = FALSE)
+    if(anyDuplicated(blocks)){
+      stop("'blocks' must be unique.", call. = FALSE)
+    }
+  }
+  if(!is.null(blocks) && identical(formula_target, "fixed")){
+    stop(
+      "'blocks' can be used only with formula_target = \"conditional\" or \"marginal\".",
+      call. = FALSE
+    )
+  }
+  if(!is.null(new_levels) && identical(formula_target, "fixed")){
+    stop(
+      "'new_levels' can be used only with formula_target = \"conditional\" or \"marginal\".",
+      call. = FALSE
+    )
+  }
+  if(isTRUE(marginal_method_supplied) &&
+     !identical(formula_target, "marginal")){
+    stop(
+      "'marginal_method' can be used only with formula_target = \"marginal\".",
+      call. = FALSE
+    )
+  }
+  if(!is.null(new_levels)){
+    new_levels <- .bt_random_new_levels_resolve(new_levels)
+  }
+  check_bool(components, "components", allow_NA = FALSE)
+  if(!is.null(seed)){
+    check_int(seed, "seed", lower = 0, check_length = 1, allow_NA = FALSE)
+  }
+
+  fixed <- JAGS_evaluate_formula(
+    fit = fit,
+    formula = formula,
+    parameter = parameter,
+    data = data,
+    prior_list = prior_list,
+    formula_target = "fixed"
+  )
+  if(identical(formula_target, "fixed")){
+    return(.bt_formula_prediction_object(
+      value = fixed,
+      mean = fixed,
+      random = NULL,
+      vcov = NULL,
+      components = NULL,
+      metadata = .bt_formula_prediction_metadata(
+        parameter = parameter,
+        formula_target = formula_target,
+        marginal_method = NA_character_,
+        blocks = blocks,
+        new_levels = new_levels
+      )
+    ))
+  }
+
+  if(identical(formula_target, "conditional")){
+    seed_state <- .bt_formula_prediction_seed(seed)
+    on.exit(.bt_formula_prediction_restore_seed(seed_state), add = TRUE)
+    value <- JAGS_evaluate_formula(
+      fit = fit,
+      formula = formula,
+      parameter = parameter,
+      data = data,
+      prior_list = prior_list,
+      formula_target = "conditional",
+      blocks = blocks,
+      new_levels = new_levels
+    )
+    random <- value - fixed
+    return(.bt_formula_prediction_object(
+      value = value,
+      mean = fixed,
+      random = random,
+      vcov = NULL,
+      components = if(isTRUE(components)) list(fixed = fixed, random = random) else NULL,
+      metadata = .bt_formula_prediction_metadata(
+        parameter = parameter,
+        formula_target = formula_target,
+        marginal_method = NA_character_,
+        blocks = blocks,
+        new_levels = new_levels
+      )
+    ))
+  }
+
+  posterior <- .bt_random_effect_marginal_covariance_posterior(
+    fit = fit,
+    posterior_samples = NULL
+  )
+  design <- .bt_random_effect_marginal_covariance_design(
+    fit = fit,
+    parameter = parameter
+  )
+  resolved_inputs <- .bt_JAGS_evaluate_formula_resolve_inputs(
+    fit = fit,
+    formula = formula,
+    parameter = parameter,
+    data = data,
+    prior_list = prior_list,
+    fitted_design = design
+  )
+  prior_list <- resolved_inputs$prior_list
+
+  if(identical(marginal_method, "covariance")){
+    vcov <- random_effects_marginal_vcov(
+      fit = fit,
+      parameter = design$parameter,
+      data = data,
+      posterior_samples = posterior,
+      prior_list = prior_list,
+      blocks = blocks,
+      new_levels = new_levels
+    )
+    return(.bt_formula_prediction_object(
+      value = fixed,
+      mean = fixed,
+      random = NULL,
+      vcov = vcov,
+      components = if(isTRUE(components)) list(fixed = fixed) else NULL,
+      metadata = .bt_formula_prediction_metadata(
+        parameter = parameter,
+        formula_target = formula_target,
+        marginal_method = marginal_method,
+        blocks = blocks,
+        new_levels = new_levels
+      )
+    ))
+  }
+
+  seed_state <- .bt_formula_prediction_seed(seed)
+  on.exit(.bt_formula_prediction_restore_seed(seed_state), add = TRUE)
+  random <- .bt_random_effects_marginal_sample(
+    design = design,
+    posterior = posterior,
+    prior_list = prior_list,
+    data = data,
+    blocks = blocks,
+    new_levels = new_levels
+  )
+  value <- fixed + random
+  .bt_formula_prediction_object(
+    value = value,
+    mean = fixed,
+    random = random,
+    vcov = NULL,
+    components = if(isTRUE(components)) list(fixed = fixed, random = random) else NULL,
+    metadata = .bt_formula_prediction_metadata(
+      parameter = parameter,
+      formula_target = formula_target,
+      marginal_method = marginal_method,
+      blocks = blocks,
+      new_levels = new_levels
+    )
+  )
+}
+
+.bt_formula_prediction_object <- function(value, mean, random, vcov,
+                                          components, metadata){
+
+  out <- list(
+    value = value,
+    mean = mean,
+    random = random,
+    vcov = vcov,
+    components = components,
+    metadata = metadata
+  )
+  class(out) <- c("BayesTools_formula_prediction", "list")
+
+  out
+}
+
+.bt_formula_prediction_metadata <- function(parameter, formula_target,
+                                            marginal_method, blocks,
+                                            new_levels){
+
+  list(
+    parameter = parameter,
+    formula_target = formula_target,
+    marginal_method = marginal_method,
+    blocks = blocks,
+    new_levels = new_levels
+  )
+}
+
+.bt_formula_prediction_seed <- function(seed){
+
+  if(is.null(seed)){
+    return(NULL)
+  }
+  state <- list(
+    exists = exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE),
+    value = if(exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)){
+      get(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+    }else{
+      NULL
+    }
+  )
+  set.seed(seed)
+  state
+}
+
+.bt_formula_prediction_restore_seed <- function(state){
+
+  if(is.null(state)){
+    return(invisible(NULL))
+  }
+  if(isTRUE(state$exists)){
+    assign(".Random.seed", state$value, envir = .GlobalEnv)
+  }else if(exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)){
+    rm(".Random.seed", envir = .GlobalEnv)
+  }
+
+  invisible(NULL)
+}
+
+.bt_random_effects_marginal_sample <- function(design, posterior, prior_list,
+                                               data = NULL, blocks = NULL,
+                                               new_levels = NULL){
+
+  selected <- .bt_random_effect_marginal_covariance_terms(
+    design = design,
+    blocks = blocks
+  )
+  output <- NULL
+  for(random_term in selected$terms){
+    block_new_levels <- .bt_random_effect_new_levels_policy(
+      random_term = random_term,
+      override = new_levels
+    )
+    block_data <- .bt_random_effect_marginal_covariance_block_data(
+      design = design,
+      random_term = random_term,
+      data = data
+    )
+    new_row <- block_data$group_map > random_term$n_groups
+    if(any(new_row) && !isTRUE(block_new_levels$allow)){
+      new_groups <- block_data$group_levels[unique(block_data$group_map[new_row])]
+      stop(
+        "New random-effect level(s) for block '", random_term$block_name,
+        "' require an explicit new-level policy: ",
+        paste(new_groups, collapse = ", "),
+        ". Use new_levels = \"zero\" or new_levels = \"sample\".",
+        call. = FALSE
+      )
+    }
+    rows <- seq_len(nrow(block_data$model_matrix))
+    if(any(new_row) && identical(block_new_levels$method, "zero")){
+      rows <- rows[!new_row]
+    }
+    contribution <- .bt_random_effect_group_contribution_sample(
+      random_term = random_term,
+      model_matrix = block_data$model_matrix,
+      group_map = block_data$group_map,
+      rows = rows,
+      posterior = posterior,
+      prior_list = prior_list,
+      source_data = block_data$source_data
+    )
+    if(is.null(output)){
+      output <- contribution
+    }else{
+      if(!identical(dim(output), dim(contribution))){
+        stop(
+          "Random-effect marginal sample block '", random_term$block_name,
+          "' produced incompatible dimensions.",
+          call. = FALSE
+        )
+      }
+      output <- output + contribution
+    }
+  }
+
+  output
+}
+
 .bt_apply_formula_scale_to_data <- function(fit, parameter, data,
                                             predictors_type){
 
@@ -2853,10 +3324,13 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
 .bt_JAGS_evaluate_formula_with_random_effects <- function(fit, formula,
                                                           parameter, data,
                                                           prior_list,
-                                                          posterior){
+                                                          posterior,
+                                                          formula_target = NULL,
+                                                          blocks = NULL,
+                                                          new_levels = NULL){
 
-  fitted_design <- try(JAGS_formula_design(fit, parameter), silent = TRUE)
-  if(inherits(fitted_design, "try-error") || is.null(fitted_design)){
+  fitted_design <- .bt_JAGS_evaluate_formula_design(fit, parameter)
+  if(is.null(fitted_design)){
     stop(
       "JAGS_evaluate_formula() needs fitted formula design metadata to evaluate random effects. ",
       "Use a fit produced by JAGS_fit() with formula_list.",
@@ -2871,22 +3345,34 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
     )
   }
 
-  random_terms <- .bt_parse_random_effects(formula)$terms
-  .bt_validate_random_effect_prediction_terms(
-    requested = random_terms,
-    fitted = .bt_formula_design_random_effects(fitted_design),
+  random_terms <- if(.has_random_effects(formula)){
+    .bt_parse_random_effects(formula)$terms
+  }else{
+    list()
+  }
+  if(length(random_terms) > 0L){
+    .bt_validate_random_effect_prediction_terms(
+      requested = random_terms,
+      fitted = .bt_formula_design_random_effects(fitted_design),
+      parameter = parameter
+    )
+  }
+  selected_random_effects <- .bt_JAGS_evaluate_formula_random_effect_terms(
+    fitted_design = fitted_design,
+    requested_terms = random_terms,
+    formula_target = formula_target,
+    blocks = blocks,
     parameter = parameter
   )
 
   fixed_formula <- .remove_random_effects(formula)
-  fixed_fit <- fit
-  attr(fixed_fit, "formula_design") <- NULL
   output <- JAGS_evaluate_formula(
-    fit = fixed_fit,
+    fit = fit,
     formula = fixed_formula,
     parameter = parameter,
     data = data,
-    prior_list = prior_list
+    prior_list = prior_list,
+    formula_target = "fixed"
   )
   random_data <- .bt_apply_formula_scale_to_data(
     fit = fit,
@@ -2895,7 +3381,7 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
     predictors_type = fitted_design$predictor_types
   )
 
-  for(random_term in .bt_formula_design_sampled_random_effects(fitted_design)){
+  for(random_term in selected_random_effects){
     random_structure <- .bt_random_effect_structure(
       random_term,
       context = "Random-effect prediction metadata"
@@ -2905,11 +3391,61 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
       data = if(random_structure %in% c("cs", "hcs", "ar1", "car", "har")) data else random_data,
       group_data = data,
       posterior = posterior,
-      prior_list = prior_list
+      prior_list = prior_list,
+      new_levels = new_levels
     )
   }
 
   output
+}
+
+.bt_JAGS_evaluate_formula_random_effect_terms <- function(fitted_design,
+                                                          requested_terms,
+                                                          formula_target,
+                                                          blocks,
+                                                          parameter){
+
+  fitted_terms <- .bt_formula_design_random_effects(fitted_design)
+  fitted_names <- vapply(fitted_terms, `[[`, character(1), "block_name")
+  if(!is.null(blocks)){
+    unknown <- setdiff(blocks, fitted_names)
+    if(length(unknown) > 0L){
+      stop(
+        "Unknown random-effect block(s): ",
+        paste(unknown, collapse = ", "),
+        ".",
+        call. = FALSE
+      )
+    }
+  }
+
+  if(!identical(formula_target, "conditional")){
+    return(.bt_formula_design_sampled_random_effects(fitted_design))
+  }
+
+  requested_names <- vapply(requested_terms, `[[`, character(1), "block_name")
+  selected_names <- if(!is.null(blocks)){
+    blocks
+  }else if(length(requested_names) > 0L){
+    requested_names
+  }else{
+    fitted_names
+  }
+  selected_terms <- fitted_terms[match(selected_names, fitted_names)]
+  modes <- vapply(selected_terms, .bt_random_effect_term_compile_mode, character(1))
+  marginalized <- selected_names[modes == "marginalized"]
+  if(length(marginalized) > 0L){
+    stop(
+      "JAGS_evaluate_formula() cannot use formula_target = \"conditional\" for ",
+      "random-effect block(s) compiled as marginalized: ",
+      paste(marginalized, collapse = ", "),
+      ". Use formula_target = \"marginal\" with JAGS_predict_formula() or refit ",
+      "with the block(s) sampled.",
+      call. = FALSE
+    )
+  }
+
+  selected_terms
 }
 
 .bt_validate_random_effect_prediction_terms <- function(requested, fitted,
@@ -2971,11 +3507,55 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
 
 .bt_JAGS_evaluate_random_effect_term <- function(random_term, data, posterior,
                                                 prior_list,
-                                                group_data = data){
+                                                group_data = data,
+                                                new_levels = NULL){
 
-  prediction <- .bt_random_effect_prediction_data(random_term, data, group_data = group_data)
+  new_levels <- .bt_random_effect_new_levels_policy(random_term, new_levels)
+  prediction <- .bt_random_effect_prediction_data(
+    random_term,
+    data,
+    group_data = group_data,
+    allow_new_groups = isTRUE(new_levels$allow)
+  )
   model_matrix <- prediction$model_matrix
   group_map <- prediction$group_map
+  n_rows <- nrow(model_matrix)
+  n_draws <- nrow(posterior)
+  output <- matrix(0, nrow = n_rows, ncol = n_draws)
+  fitted_n_groups <- length(random_term$group_levels)
+  new_row <- group_map > fitted_n_groups
+
+  if(any(!new_row)){
+    existing_rows <- which(!new_row)
+    output[existing_rows, ] <- .bt_JAGS_evaluate_random_effect_term_existing(
+      random_term = random_term,
+      model_matrix = model_matrix[existing_rows, , drop = FALSE],
+      group_map = group_map[existing_rows],
+      posterior = posterior,
+      prior_list = prior_list,
+      group_data = group_data[existing_rows, , drop = FALSE]
+    )
+  }
+  if(any(new_row) && identical(new_levels$method, "sample")){
+    output <- output + .bt_random_effect_new_level_contribution_sample(
+      random_term = random_term,
+      prediction = prediction,
+      new_row = new_row,
+      posterior = posterior,
+      prior_list = prior_list,
+      source_data = group_data
+    )
+  }
+
+  output
+}
+
+.bt_JAGS_evaluate_random_effect_term_existing <- function(random_term,
+                                                          model_matrix,
+                                                          group_map,
+                                                          posterior,
+                                                          prior_list,
+                                                          group_data){
 
   n_draws <- nrow(posterior)
   n_rows <- nrow(model_matrix)
@@ -3048,6 +3628,176 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
   }
 
   output
+}
+
+.bt_random_effect_new_level_contribution_sample <- function(random_term,
+                                                            prediction,
+                                                            new_row,
+                                                            posterior,
+                                                            prior_list,
+                                                            source_data){
+
+  .bt_random_effect_group_contribution_sample(
+    random_term = random_term,
+    model_matrix = prediction$model_matrix,
+    group_map = prediction$group_map,
+    rows = which(new_row),
+    posterior = posterior,
+    prior_list = prior_list,
+    source_data = source_data
+  )
+}
+
+.bt_random_effect_group_contribution_sample <- function(random_term,
+                                                        model_matrix,
+                                                        group_map,
+                                                        rows = seq_len(nrow(model_matrix)),
+                                                        posterior,
+                                                        prior_list,
+                                                        source_data){
+
+  n_draws <- nrow(posterior)
+  n_rows <- nrow(model_matrix)
+  n_columns <- ncol(model_matrix)
+  output <- matrix(0, nrow = n_rows, ncol = n_draws)
+  if(length(rows) == 0L){
+    return(output)
+  }
+
+  if(.bt_random_effect_has_row_indexed_external_sd(random_term)){
+    return(.bt_random_effect_group_contribution_sample_row_indexed(
+      random_term = random_term,
+      model_matrix = model_matrix,
+      group_map = group_map,
+      rows = rows,
+      posterior = posterior,
+      prior_list = prior_list,
+      source_data = source_data
+    ))
+  }
+
+  sd_draws <- .bt_random_effect_sd_draws(
+    random_term = random_term,
+    n_columns = n_columns,
+    posterior = posterior,
+    prior_list = prior_list
+  )
+  if(is.null(sd_draws)){
+    .bt_random_effect_marginal_covariance_missing_sd_stop(
+      random_term = random_term,
+      n_columns = n_columns
+    )
+  }
+  correlation <- .bt_random_effect_marginal_covariance_correlation_draws(
+    random_term = random_term,
+    n_columns = n_columns,
+    posterior = posterior
+  )
+
+  groups <- sort(unique(group_map[rows]))
+  group_index <- match(group_map[rows], groups)
+  for(draw in seq_len(n_draws)){
+    G <- matrix(
+      correlation[draw, , ],
+      nrow = n_columns,
+      ncol = n_columns
+    ) * tcrossprod(sd_draws[draw, ])
+    effects <- .bt_random_effect_mvn_group_draws(
+      covariance = G,
+      n_groups = length(groups)
+    )
+    output[rows, draw] <- rowSums(
+      model_matrix[rows, , drop = FALSE] *
+        effects[group_index, , drop = FALSE]
+    )
+  }
+
+  output
+}
+
+.bt_random_effect_group_contribution_sample_row_indexed <- function(
+    random_term,
+    model_matrix,
+    group_map,
+    rows,
+    posterior,
+    prior_list,
+    source_data){
+
+  n_draws <- nrow(posterior)
+  n_rows <- nrow(model_matrix)
+  n_columns <- ncol(model_matrix)
+  output <- matrix(0, nrow = n_rows, ncol = n_draws)
+
+  source_draws <- .bt_random_effect_row_indexed_source_draws(
+    random_term = random_term,
+    n_rows = n_rows,
+    posterior = posterior,
+    data = source_data,
+    context = "Prediction"
+  )
+  column_allocation <- .bt_random_effect_row_indexed_column_allocation_draws(
+    random_term = random_term,
+    posterior = posterior,
+    prior_list = prior_list,
+    n_columns = n_columns
+  )
+  if(is.null(column_allocation)){
+    allocation <- .bt_random_effect_row_indexed_allocation_draws(
+      random_term = random_term,
+      posterior = posterior,
+      prior_list = prior_list
+    )
+  }else{
+    allocation <- NULL
+  }
+  correlation <- .bt_random_effect_marginal_covariance_correlation_draws(
+    random_term = random_term,
+    n_columns = n_columns,
+    posterior = posterior
+  )
+
+  groups <- sort(unique(group_map[rows]))
+  group_index <- match(group_map[rows], groups)
+  for(draw in seq_len(n_draws)){
+    effects <- .bt_random_effect_mvn_group_draws(
+      covariance = matrix(correlation[draw, , ], nrow = n_columns, ncol = n_columns),
+      n_groups = length(groups)
+    )
+    Z <- model_matrix[rows, , drop = FALSE] *
+      matrix(source_draws[draw, rows], nrow = length(rows), ncol = n_columns)
+    if(is.null(column_allocation)){
+      Z <- Z * allocation[draw]
+    }else{
+      Z <- Z * matrix(
+        column_allocation[draw, ],
+        nrow = length(rows),
+        ncol = n_columns,
+        byrow = TRUE
+      )
+    }
+    output[rows, draw] <- rowSums(Z * effects[group_index, , drop = FALSE])
+  }
+
+  output
+}
+
+.bt_random_effect_mvn_group_draws <- function(covariance, n_groups){
+
+  if(n_groups == 0L){
+    return(matrix(numeric(), nrow = 0L, ncol = ncol(covariance)))
+  }
+  decomposition <- eigen(covariance, symmetric = TRUE)
+  values <- pmax(decomposition$values, 0)
+  transform <- decomposition$vectors %*%
+    (sqrt(values) * t(decomposition$vectors))
+  z <- matrix(
+    stats::rnorm(n_groups * ncol(covariance)),
+    nrow = n_groups,
+    ncol = ncol(covariance)
+  )
+
+  z %*% transform
 }
 
 .bt_random_effect_prediction_data <- function(random_term, data,

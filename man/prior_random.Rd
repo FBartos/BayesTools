@@ -69,11 +69,7 @@ random_covariance(
   rho_scale = c("fisher_z", "rho", "logit")
 )
 
-prior_lkj(
-  eta = 1,
-  include_correlation = TRUE,
-  include_primitives = FALSE
-)
+prior_lkj(eta = 1, include_correlation = TRUE, include_primitives = FALSE)
 
 random_monitor(
   latent = TRUE,
@@ -82,7 +78,7 @@ random_monitor(
   lkj_primitives = FALSE
 )
 
-random_new_levels(allow = FALSE, method = c("zero", "sample"))
+random_new_levels(method = c("error", "zero", "sample"))
 }
 \arguments{
 \item{...}{named \code{random_block()} specifications and, optionally,
@@ -100,8 +96,12 @@ models. The default scale is Fisher's z.}
 
 \item{monitor}{\code{random_monitor()} object.}
 
-\item{new_levels}{\code{random_new_levels()} object. New-level prediction is
-reserved for a future release and currently must leave \code{allow = FALSE}.}
+\item{new_levels}{\code{random_new_levels()} object controlling prediction for
+previously unseen grouping levels.}
+
+\item{method}{new-level prediction method: \code{"error"} disallows new levels,
+\code{"zero"} fixes their random-effect contribution at zero, and \code{"sample"}
+treats them as draws from the fitted random-effect distribution.}
 
 \item{allocation}{optional \code{random_variance_allocation()} specification, or
 a list of such specifications, defining total-SD plus Dirichlet variance
@@ -116,6 +116,16 @@ as \code{"intercept"} or a slope term label. For
 by the shared allocation. If \code{NULL}, the allocation targets all remaining
 unallocated random-effect blocks at resolution time.}
 
+\item{sd_source}{for \code{random_block()}, optional external random-effect SD
+source created with \code{random_sd_source()}. A block-local \code{sd_source}
+replaces inherited top-level SD priors and inherited covariance SD priors,
+but conflicts with block-local \code{sd}, block-local \code{covariance$sd}, and
+term-specific SD overrides. For \code{random_variance_allocation()}, root
+allocations must specify exactly one of \code{sd} or \code{sd_source}; child
+allocations inherit their SD budget from \code{parent}.}
+
+\item{weights}{optional Dirichlet simplex prior over variance fractions.}
+
 \item{name}{optional allocation label. Required when another allocation uses
 this allocation as \code{parent}.}
 
@@ -125,23 +135,13 @@ budget and must not specify \code{sd} or \code{sd_source}.}
 
 \item{target}{allocation target type. \code{"block"} allocates across named
 random-effect blocks or symbolic intermediate components.
-\code{"sd_component"} expands one selected heterogeneous block to its
-resolved SD components.}
+\code{"sd_component"} expands one selected heterogeneous block to its resolved
+SD components.}
 
 \item{scale}{variance normalization. \code{"total_variance"} uses
 \code{sd_child = sd_parent * sqrt(w)}. \code{"mean_variance"} uses
 \code{sd_child = sd_parent * sqrt(K * w)} and is intended for
 \code{target = "sd_component"} heterogeneity tests.}
-
-\item{weights}{optional Dirichlet simplex prior over variance fractions.}
-
-\item{sd_source}{for \code{random_block()}, optional external random-effect SD
-source created with \code{random_sd_source()}. A block-local \code{sd_source}
-replaces the inherited top-level \code{sd} or \code{covariance$sd} and cannot be
-combined with block-local SD priors or term-specific SD overrides. For
-\code{random_variance_allocation()}, root allocations must specify exactly one
-of \code{sd} or \code{sd_source}; child allocations inherit their SD budget from
-\code{parent}.}
 
 \item{allocation_name}{allocation name referenced by \code{allocation_ref()}.}
 
@@ -289,14 +289,14 @@ targets all random-effect blocks at resolution time and must resolve to at
 least two blocks. Generated JAGS
 syntax supports allocated blocks with one SD component, homogeneous
 structures where one SD controls the block, and explicit
-\code{target = "sd_component"} allocations that split the resolved SD
-components of one heterogeneous block. Row-shaped external sources are applied
-inside the observation-level random-effect contribution, including child
-allocations and SD-component allocations; they do not create scalar SD summary
-parameters. Prediction and bridge-sampling reconstruction for these sources
-require standardized latent random-effect monitors, row-source values from
-either posterior columns or a \code{parameter_source(..., values = ...)} callback,
-and any required Dirichlet allocation coordinates.
+\code{target = "sd_component"} allocations that split the resolved SD components
+of one heterogeneous block. Row-shaped external sources are applied inside
+the observation-level random-effect contribution, including child
+allocations and SD-component allocations; they do not create scalar SD
+summary parameters. Prediction and bridge-sampling reconstruction for these
+sources require standardized latent random-effect monitors, row-source values
+from either posterior columns or a \code{parameter_source(..., values = ...)}
+callback, and any required Dirichlet allocation coordinates.
 Use \code{scale = "total_variance"} to preserve summed variance and
 \code{scale = "mean_variance"} to preserve average variance inside a
 heterogeneous block.
@@ -310,8 +310,12 @@ are required for bridge sampling and for reconstructing group-level
 coefficients in prediction. Turning \code{latent = FALSE} can reduce memory use,
 but bridge sampling and conditional prediction may require refitting.
 
-\code{random_new_levels()} is reserved for future prediction support for new
-grouping levels. It currently requires \code{allow = FALSE}.
+\code{random_new_levels()} controls prediction for grouping levels that were not
+observed when the model was fitted. The default \code{method = "error"} disallows
+new levels. \code{method = "zero"} assigns zero random-effect contribution to new
+levels and \code{method = "sample"} draws new group-level coefficients from the
+fitted random-effect distribution during draw-valued prediction or integrates
+them through the block covariance for covariance-valued prediction.
 }
 
 \examples{

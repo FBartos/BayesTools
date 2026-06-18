@@ -1717,10 +1717,9 @@ test_that("prior_random rejects unsupported and ignored production settings", {
     "Block-local variance allocation priors are not implemented",
     fixed = TRUE
   )
-  expect_error(
-    prior_random(sd = sd_prior, new_levels = random_new_levels(allow = TRUE)),
-    "New-level random-effect prediction is not implemented yet",
-    fixed = TRUE
+  expect_s3_class(
+    prior_random(sd = sd_prior, new_levels = random_new_levels(method = "zero")),
+    "prior_random"
   )
   expect_error(
     random_covariance(rho = prior_factor("normal", list(0, 1), contrast = "treatment")),

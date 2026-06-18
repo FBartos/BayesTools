@@ -11,6 +11,7 @@ random_effects_marginal_vcov(
   posterior_samples = NULL,
   prior_list = NULL,
   blocks = NULL,
+  new_levels = NULL,
   ...
 )
 }
@@ -23,7 +24,7 @@ one formula design.}
 
 \item{data}{optional data frame defining the observation rows. When \code{NULL},
 the fitted formula design rows are used. New random-effect grouping levels
-are treated as independent groups for marginal covariance construction.
+require an explicit \code{new_levels} policy unless allowed by block metadata.
 Row-indexed external SD sources require a reconstructing
 \code{parameter_source(..., values = ...)} function when \code{data} is supplied.}
 
@@ -37,6 +38,11 @@ design.}
 \item{blocks}{optional character vector of random-effect block names to
 include. The default includes all formula random-effect blocks.}
 
+\item{new_levels}{optional new-level policy. Use a \code{random_new_levels()}
+object or one of \code{"error"}, \code{"zero"}, or \code{"sample"}. \code{"zero"} assigns
+zero covariance contribution to unseen grouping levels. \code{"sample"} treats
+unseen grouping levels as independent draws from the block covariance \code{G}.}
+
 \item{...}{reserved for future extensions. Unused arguments are rejected.}
 }
 \value{
@@ -44,7 +50,7 @@ A list of class
 \code{BayesTools_random_effects_marginal_vcov} with fields:
 \describe{
 \item{samples}{A dense array with dimensions
-\code{draw x row x row}.}
+\verb{draw x row x row}.}
 \item{metadata}{A list describing row ordering, included blocks,
 skipped blocks, structures, dimensions, and dense-memory size.}
 }

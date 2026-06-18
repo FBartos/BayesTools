@@ -67,7 +67,7 @@ row-shaped external sources. The \code{parameters} object is a named superset of
 prior-owned and additional values; user code should index it by name, for
 example \code{parameters[["tau"]]}. Parameters already covered by \code{prior_list}
 must not be listed here. For Dirichlet priors generated through BayesTools,
-add the monitored auxiliary \code{prior_par_eta_*} coordinates when needed, not
+add the monitored auxiliary \verb{prior_par_eta_*} coordinates when needed, not
 the normalized simplex coordinates owned by the prior.}
 
 \item{add_bounds}{list with two named numeric vectors, \code{"lb"} and
@@ -85,9 +85,9 @@ supplied for a consistency check.}
 
 \item{formula_random_effects_compile_list}{optional named list of
 \code{random_effects_compile()} objects. When formula inputs are supplied for
-bridge-sampling rebuild/validation, this must match the fitted random-effect
-compilation policy; otherwise a fitted marginalized model would not be rebuilt
-as the same model.}
+bridge-sampling rebuild/validation, this must match the fitted
+random-effect compilation policy; otherwise a fitted marginalized model would
+not be rebuilt as the same model.}
 
 \item{maxiter}{maximum number of iterations for the
 \link[bridgesampling]{bridge_sampler}}
@@ -113,8 +113,7 @@ Row-shaped external random-effect SD sources, such as
 \code{random_sd_source("tau", shape = "row")}, must be reconstructable during
 bridge sampling. Supply them either as posterior columns named
 \code{tau[1]}, ..., \code{tau[n]} with non-negative lower bounds in \code{add_bounds}, or
-as \code{parameter_source("tau", shape = "row", values = function(parameters,
-data, n_rows) ...)}. The \code{values} function is evaluated from the named
+as \code{parameter_source("tau", shape = "row", values = function(parameters, data, n_rows) ...)}. The \code{values} function is evaluated from the named
 \code{parameters} object and row-aligned data; it must return finite,
 non-negative row values on the support of the model.
 }

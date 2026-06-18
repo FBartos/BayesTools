@@ -19,8 +19,8 @@ loop.}
 
 \item{values}{optional function for R-side reconstruction of row-shaped
 sources. When supplied with \code{shape = "row"}, it must accept named
-arguments \code{parameters}, \code{data}, and \code{n_rows}, or include \code{...}, and
-return a numeric vector of length \code{n_rows}. This is used by prediction and bridge-sampling
+arguments \code{parameters}, \code{data}, and \code{n_rows}, or include \code{...}, and return
+a numeric vector of length \code{n_rows}. This is used by prediction and bridge-sampling
 reconstruction when the row-shaped source is not present as explicit
 posterior columns. For formula bridge reconstruction, \code{data} contains raw
 row-aligned formula/model data rather than standardized design matrices.

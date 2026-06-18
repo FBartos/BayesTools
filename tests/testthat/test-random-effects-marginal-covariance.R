@@ -45,13 +45,15 @@ skip_if_not_test_profile("unit")
   posterior
 }
 
-.re_cov_output <- function(result, posterior, data = NULL, blocks = NULL){
+.re_cov_output <- function(result, posterior, data = NULL, blocks = NULL,
+                           new_levels = NULL){
   random_effects_marginal_vcov(
     result$formula_design,
     data = data,
     posterior_samples = posterior,
     prior_list = result$prior_list,
-    blocks = blocks
+    blocks = blocks,
+    new_levels = new_levels
   )
 }
 
@@ -194,7 +196,17 @@ test_that("diag random intercept and slope covariance uses ZGZ' by group", {
     id = factor(c("a", "c", "c", "b"), levels = c("a", "b", "c")),
     x = c(4, 5, 6, 7)
   )
-  out_new_level <- .re_cov_output(result, posterior, data = new_level_data)
+  expect_error(
+    .re_cov_output(result, posterior, data = new_level_data),
+    "explicit new-level policy",
+    fixed = TRUE
+  )
+  out_new_level <- .re_cov_output(
+    result,
+    posterior,
+    data = new_level_data,
+    new_levels = "sample"
+  )
   Z_new_level <- cbind("(Intercept)" = 1, x = new_level_data$x)
   expected_new_level <- .re_cov_expand(
     Z_new_level,
@@ -205,6 +217,44 @@ test_that("diag random intercept and slope covariance uses ZGZ' by group", {
   expect_equal(out_new_level$metadata$blocks$id$n_groups, 3L)
   expect_equal(out_new_level$metadata$blocks$id$fitted_n_groups, 2L)
   expect_equal(out_new_level$metadata$blocks$id$group_levels, c("a", "b", "c"))
+  expect_equal(out_new_level$metadata$blocks$id$new_group_levels, "c")
+  expect_equal(out_new_level$metadata$blocks$id$new_level_rows, c(2L, 3L))
+  expect_equal(out_new_level$metadata$blocks$id$new_levels$method, "sample")
+
+  out_zero_level <- .re_cov_output(
+    result,
+    posterior,
+    data = new_level_data,
+    new_levels = "zero"
+  )
+  expected_zero_level <- expected_new_level
+  expected_zero_level[2:3, ] <- 0
+  expected_zero_level[, 2:3] <- 0
+  expect_equal(.re_cov_first(out_zero_level), expected_zero_level, tolerance = 1e-12)
+  expect_equal(out_zero_level$metadata$blocks$id$new_group_levels, "c")
+  expect_equal(out_zero_level$metadata$blocks$id$new_level_rows, c(2L, 3L))
+  expect_equal(out_zero_level$metadata$blocks$id$new_levels$method, "zero")
+
+  result_stored_zero <- .re_cov_formula(
+    formula = ~ 1 + random(1 + x | id, name = "id", covariance = "diag"),
+    data = df,
+    prior_random = prior_random(
+      id = random_block(
+        sd = .re_cov_sd_prior(),
+        new_levels = random_new_levels(method = "zero")
+      )
+    )
+  )
+  random_term_stored_zero <- .re_cov_term(result_stored_zero, "id")
+  posterior_stored_zero <- .re_cov_posterior(
+    .re_cov_sd_values(random_term_stored_zero, c(2, 3))
+  )
+  out_stored_zero <- .re_cov_output(
+    result_stored_zero,
+    posterior_stored_zero,
+    data = new_level_data
+  )
+  expect_equal(.re_cov_first(out_stored_zero), expected_zero_level, tolerance = 1e-12)
 })
 
 test_that("id covariance shares one SD across independent columns", {
@@ -427,7 +477,12 @@ test_that("structured covariance uses fitted column order for supplied data", {
     f = factor(c("c", "a", "b", "c"), levels = c("c", "b", "a")),
     time = c(5, 0, 2, 5)
   )
-  out <- .re_cov_output(result, posterior, data = new_data)
+  out <- .re_cov_output(
+    result,
+    posterior,
+    data = new_data,
+    new_levels = "sample"
+  )
   Z_new <- matrix(0, nrow = nrow(new_data), ncol = random_term$n_columns)
   colnames(Z_new) <- random_term$column_names
   Z_new[cbind(seq_len(nrow(new_data)), c(3L, 1L, 2L, 3L))] <- 1

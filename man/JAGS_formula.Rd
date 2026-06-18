@@ -38,7 +38,12 @@ scaled by standard deviation). The intercept is never standardized.}
 
 \item{prior_random}{optional \code{prior_random()} object defining random-effect
 standard-deviation, covariance, monitoring, and prediction policies. Required
-when \code{formula} contains random effects.
+when \code{formula} contains random effects.}
+
+\item{random_effects_compile}{optional \code{random_effects_compile()} object
+specifying which resolved random-effect blocks should be compiled as sampled
+random effects and which should be compiled as structural marginalized
+blocks.
 \describe{
 \item{\code{"__default_continuous"}}{A prior to use for any continuous predictors
 (including the intercept) that are not explicitly specified in the prior list.}
@@ -48,11 +53,6 @@ in the prior list.}
 }
 These default priors allow for more concise specification when many predictors
 share the same prior distribution.}
-
-\item{random_effects_compile}{optional \code{random_effects_compile()} object
-specifying which resolved formula random-effect blocks remain sampled and
-which are compiled as marginalized structural blocks. Defaults to \code{NULL},
-which samples all random-effect blocks.}
 }
 \value{
 \code{JAGS_formula} returns a list containing the formula JAGS syntax,

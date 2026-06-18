@@ -51,7 +51,8 @@ characterized by exactly one of \code{mode} or \code{tau}, a \code{df},
 an optional \code{order} that defaults to 1, and an optional
 \code{location} that defaults to 0.}
 \item{\code{"dirichlet"}}{for a Dirichlet distribution over a simplex,
-characterized by a positive concentration vector \code{alpha}.}
+characterized by a positive concentration vector \code{alpha}. Density
+and plot methods show one beta marginal per simplex coordinate.}
 }}
 
 \item{parameters}{list of appropriate parameters for a given

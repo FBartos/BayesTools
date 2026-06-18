@@ -86,8 +86,7 @@
 .bt_format_random_new_levels_inline <- function(x){
 
   paste0(
-    "random_new_levels(allow = ", as.character(x$allow),
-    ", method = \"", x$method, "\")"
+    "random_new_levels(method = \"", x$method, "\")"
   )
 }
 
@@ -288,7 +287,6 @@ print.random_new_levels <- function(x, silent = FALSE, ...){
 
   .bt_print_spec_lines(c(
     "random_new_levels()",
-    paste0("  allow: ", as.character(x$allow)),
     paste0("  method: ", x$method)
   ), silent = silent)
 }

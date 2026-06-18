@@ -4,23 +4,47 @@
 \alias{JAGS_evaluate_formula}
 \title{Evaluate JAGS formula using posterior samples}
 \usage{
-JAGS_evaluate_formula(fit, formula, parameter, data, prior_list)
+JAGS_evaluate_formula(
+  fit,
+  formula = NULL,
+  parameter,
+  data = NULL,
+  prior_list = NULL,
+  formula_target = NULL,
+  blocks = NULL,
+  new_levels = NULL
+)
 }
 \arguments{
 \item{fit}{model fitted with either \link[runjags]{runjags} posterior
 samples obtained with \link[rjags]{rjags-package}}
 
 \item{formula}{formula specifying the right hand side of the assignment (the
-left hand side is ignored). If the formula has a \code{"log(intercept)"}
-attribute set to \code{TRUE}, the intercept values will be log-transformed
-before computing the linear predictor.}
+left hand side is ignored). If \code{NULL}, the fitted formula stored in
+\code{formula_design} metadata is used. If the formula has a
+\code{"log(intercept)"} attribute set to \code{TRUE}, the intercept values
+will be log-transformed before computing the linear predictor.}
 
 \item{parameter}{name of the parameter created with the formula}
 
-\item{data}{data.frame containing predictors included in the formula}
+\item{data}{data.frame containing predictors included in the formula. If
+\code{NULL}, fitted source data from \code{formula_design} metadata are used.}
 
-\item{prior_list}{named list of prior distribution of parameters specified within
-the \code{formula}}
+\item{prior_list}{named list of prior distribution of parameters specified
+within the \code{formula}. If \code{NULL}, fitted priors from \code{formula_design}
+metadata are used.}
+
+\item{formula_target}{optional formula prediction target. \code{NULL} preserves
+the historical safety behavior. \code{"fixed"} evaluates only the fixed formula
+contribution. \code{"conditional"} evaluates fixed effects plus fitted or
+explicitly generated random-effect contributions.}
+
+\item{blocks}{optional random-effect block names used with
+\code{formula_target = "conditional"}.}
+
+\item{new_levels}{optional new-level policy used only with
+\code{formula_target = "conditional"}. Use a \code{random_new_levels()} object or
+one of \code{"error"}, \code{"zero"}, or \code{"sample"}.}
 }
 \value{
 \code{JAGS_evaluate_formula} returns a matrix of the evaluated posterior samples on

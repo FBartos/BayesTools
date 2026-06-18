@@ -68,13 +68,13 @@ Computes inclusion Bayes factors for each marginal estimate via a Savage-Dickey
 density approximation.
 }
 \details{
-For \code{as_marginal_inference()}, \code{conditional_list} is applied
-separately to each output marginal or level. A requested conditional parameter
-is active only for levels whose linear combination has a nonzero weight for
-that parameter. Requested conditionals with zero weight are ignored for that
-level; if no requested conditionals are active, the level uses the fully
-averaged posterior and prior context. Level comparisons require the compared
-levels to use the same effective conditional subset and rule.
+For \code{as_marginal_inference()}, \code{conditional_list} is
+applied separately to each output marginal or level. A requested conditional
+parameter is active only for levels whose linear combination has a nonzero
+weight for that parameter. Requested conditionals with zero weight are ignored
+for that level; if no requested conditionals are active, the level uses the
+fully averaged posterior and prior context. Level comparisons require the
+compared levels to use the same effective conditional subset and rule.
 }
 \seealso{
 \link{marginal_inference} \link{as_mixed_posteriors}

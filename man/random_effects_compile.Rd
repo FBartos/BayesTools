@@ -11,25 +11,25 @@ random_effects_compile(sampled = NULL, marginalized = NULL)
 names that should be compiled as ordinary sampled random effects.}
 
 \item{marginalized}{optional character vector of resolved random-effect
-block names that should be compiled structurally without latent group-level
-coefficients.}
+block names that should be compiled structurally without latent
+group-level coefficients.}
 }
 \value{
-A list-like S3 object used by \code{\link[=JAGS_formula]{JAGS_formula()}},
-\code{\link[=JAGS_fit]{JAGS_fit()}}, and
+A list-like S3 object used by \code{\link[=JAGS_formula]{JAGS_formula()}}, \code{\link[=JAGS_fit]{JAGS_fit()}}, and
 \code{\link[=JAGS_bridgesampling]{JAGS_bridgesampling()}}.
 }
 \description{
-\code{random_effects_compile()} specifies which resolved formula
-random-effect blocks are compiled as structural marginalized blocks. Blocks
-not listed in \code{marginalized} are compiled as ordinary sampled random
-effects. Marginalized blocks keep their SD, allocation, correlation,
-covariance-structure, and metadata, but do not generate latent group-level
-coefficients and do not contribute to the formula linear predictor. Callers
-that marginalize a block are responsible for using the stored metadata and
-generated hyperparameter nodes in their likelihood.
+\code{random_effects_compile()} specifies which resolved formula random-effect
+blocks are compiled as structural marginalized blocks. Blocks not listed in
+\code{marginalized} are compiled as ordinary sampled random effects. Marginalized
+blocks keep their SD, allocation, correlation, covariance-structure, and
+metadata, but do not generate latent group-level coefficients and do not
+contribute to the formula linear predictor. Callers that marginalize a block
+are responsible for using the stored metadata and generated hyperparameter
+nodes in their likelihood.
 }
 \examples{
 random_effects_compile()
 random_effects_compile(marginalized = "study_estimate")
+
 }
