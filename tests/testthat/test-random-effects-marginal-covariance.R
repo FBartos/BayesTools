@@ -1,0 +1,830 @@
+skip_if_not_test_profile("unit")
+
+.re_cov_sd_prior <- function(){
+  prior(
+    "normal",
+    list(mean = 0, sd = 1),
+    truncation = list(lower = 0, upper = Inf)
+  )
+}
+
+.re_cov_fixed_priors <- function(){
+  list(intercept = prior("normal", list(0, 1)))
+}
+
+.re_cov_formula <- function(formula, data, prior_random,
+                            random_effects_compile = NULL){
+  JAGS_formula(
+    formula = formula,
+    parameter = "mu",
+    data = data,
+    prior_list = .re_cov_fixed_priors(),
+    prior_random = prior_random,
+    random_effects_compile = random_effects_compile
+  )
+}
+
+.re_cov_term <- function(result, block_name){
+  random_effects <- result$formula_design$random_effects
+  block_names <- vapply(random_effects, `[[`, character(1), "block_name")
+  random_effects[[match(block_name, block_names)]]
+}
+
+.re_cov_posterior <- function(values){
+  matrix(
+    as.numeric(values),
+    nrow = 1,
+    dimnames = list(NULL, names(values))
+  )
+}
+
+.re_cov_posterior_draws <- function(...){
+  draws <- list(...)
+  posterior <- do.call(rbind, draws)
+  colnames(posterior) <- names(draws[[1L]])
+  posterior
+}
+
+.re_cov_output <- function(result, posterior, data = NULL, blocks = NULL){
+  random_effects_marginal_vcov(
+    result$formula_design,
+    data = data,
+    posterior_samples = posterior,
+    prior_list = result$prior_list,
+    blocks = blocks
+  )
+}
+
+.re_cov_first <- function(out){
+  unname(out$samples[1, , ])
+}
+
+.re_cov_expand <- function(model_matrix, group_map, G){
+  out <- matrix(0, nrow(model_matrix), nrow(model_matrix))
+  for(rows in split(seq_len(nrow(model_matrix)), group_map)){
+    Z <- model_matrix[rows, , drop = FALSE]
+    out[rows, rows] <- Z %*% G %*% t(Z)
+  }
+  unname(out)
+}
+
+.re_cov_sd_values <- function(random_term, sd){
+  sd_names <- random_term$sd_parameter_names
+  if(length(unique(sd_names)) == 1L){
+    return(stats::setNames(sd[1L], unique(sd_names)))
+  }
+
+  stats::setNames(sd, sd_names)
+}
+
+.re_cov_rho_sample <- function(random_term, rho){
+  stats::setNames(atanh(rho), random_term$correlation$sample_name)
+}
+
+.re_cov_cholesky_values <- function(random_term, L){
+  out <- numeric()
+  for(row in seq_len(nrow(L))){
+    for(column in seq_len(ncol(L))){
+      name <- paste0(
+        random_term$parameter_stem,
+        "_xRE_CORx_L[", row, ",", column, "]"
+      )
+      out[name] <- L[row, column]
+    }
+  }
+  out
+}
+
+.re_cov_compound_correlation <- function(K, rho){
+  R <- matrix(rho, K, K)
+  diag(R) <- 1
+  R
+}
+
+.re_cov_ar1_correlation <- function(K, rho){
+  rho^abs(outer(seq_len(K), seq_len(K), "-"))
+}
+
+.re_cov_car_correlation <- function(time, rho){
+  rho^abs(outer(time, time, "-"))
+}
+
+.re_cov_structured_data <- function(){
+  data.frame(
+    id = factor(rep(c("a", "b"), each = 3), levels = c("a", "b")),
+    f = factor(rep(c("a", "b", "c"), 2), levels = c("a", "b", "c")),
+    time = rep(c(0, 2, 5), 2)
+  )
+}
+
+.re_cov_expect_structured <- function(formula, structure, sd, rho, R){
+  result <- .re_cov_formula(
+    formula = formula,
+    data = .re_cov_structured_data(),
+    prior_random = prior_random(
+      id = random_block(
+        sd = .re_cov_sd_prior(),
+        rho = prior("normal", list(0, 0.5))
+      )
+    )
+  )
+  random_term <- .re_cov_term(result, "id")
+  sd <- if(length(sd) == 1L){
+    rep(sd, random_term$n_columns)
+  }else{
+    sd
+  }
+
+  posterior <- .re_cov_posterior(c(
+    .re_cov_sd_values(random_term, sd),
+    .re_cov_rho_sample(random_term, rho)
+  ))
+  out <- .re_cov_output(result, posterior)
+  expected <- .re_cov_expand(
+    random_term$model_matrix,
+    random_term$group_map,
+    R * tcrossprod(sd)
+  )
+
+  expect_equal(random_term$structure, structure)
+  expect_equal(.re_cov_first(out), expected, tolerance = 1e-12)
+  expect_equal(out$metadata$structures, stats::setNames(structure, "id"))
+}
+
+test_that("diag random intercept and slope covariance uses ZGZ' by group", {
+
+  df <- data.frame(
+    id = factor(c("a", "a", "b", "b"), levels = c("a", "b")),
+    x = c(0, 1, 2, 3)
+  )
+  result <- .re_cov_formula(
+    formula = ~ 1 + random(1 + x | id, name = "id", covariance = "diag"),
+    data = df,
+    prior_random = prior_random(
+      id = random_block(sd = .re_cov_sd_prior())
+    )
+  )
+  random_term <- .re_cov_term(result, "id")
+  posterior <- .re_cov_posterior(.re_cov_sd_values(random_term, c(2, 3)))
+  out <- .re_cov_output(result, posterior)
+  expected <- .re_cov_expand(
+    random_term$model_matrix,
+    random_term$group_map,
+    diag(c(2, 3)^2)
+  )
+
+  expect_s3_class(out, "BayesTools_random_effects_marginal_vcov")
+  expect_equal(dim(out$samples), c(1L, 4L, 4L))
+  expect_equal(.re_cov_first(out), expected, tolerance = 1e-12)
+  expect_equal(out$metadata$blocks$id$n_columns, 2L)
+  expect_false(out$metadata$blocks$id$row_varying_sd)
+
+  new_data <- data.frame(
+    id = factor(c("a", "b", "a"), levels = c("a", "b")),
+    x = c(4, 5, 6)
+  )
+  out_new <- .re_cov_output(result, posterior, data = new_data)
+  Z_new <- cbind("(Intercept)" = 1, x = new_data$x)
+  expected_new <- .re_cov_expand(Z_new, c(1L, 2L, 1L), diag(c(2, 3)^2))
+  expect_equal(.re_cov_first(out_new), expected_new, tolerance = 1e-12)
+  expect_equal(out_new$metadata$data_source, "data")
+  expect_equal(out_new$metadata$n_rows, 3L)
+
+  new_level_data <- data.frame(
+    id = factor(c("a", "c", "c", "b"), levels = c("a", "b", "c")),
+    x = c(4, 5, 6, 7)
+  )
+  out_new_level <- .re_cov_output(result, posterior, data = new_level_data)
+  Z_new_level <- cbind("(Intercept)" = 1, x = new_level_data$x)
+  expected_new_level <- .re_cov_expand(
+    Z_new_level,
+    c(1L, 3L, 3L, 2L),
+    diag(c(2, 3)^2)
+  )
+  expect_equal(.re_cov_first(out_new_level), expected_new_level, tolerance = 1e-12)
+  expect_equal(out_new_level$metadata$blocks$id$n_groups, 3L)
+  expect_equal(out_new_level$metadata$blocks$id$fitted_n_groups, 2L)
+  expect_equal(out_new_level$metadata$blocks$id$group_levels, c("a", "b", "c"))
+})
+
+test_that("id covariance shares one SD across independent columns", {
+
+  df <- data.frame(
+    id = factor(c("a", "a", "b", "b"), levels = c("a", "b")),
+    x = c(0, 1, 2, 3)
+  )
+  result <- .re_cov_formula(
+    formula = ~ 1 + random(1 + x | id, name = "id", covariance = "id"),
+    data = df,
+    prior_random = prior_random(
+      id = random_block(sd = .re_cov_sd_prior())
+    )
+  )
+  random_term <- .re_cov_term(result, "id")
+  posterior <- .re_cov_posterior(.re_cov_sd_values(random_term, 2))
+  out <- .re_cov_output(result, posterior)
+  expected <- .re_cov_expand(
+    random_term$model_matrix,
+    random_term$group_map,
+    diag(rep(2^2, random_term$n_columns))
+  )
+
+  expect_equal(random_term$structure, "id")
+  expect_equal(.re_cov_first(out), expected, tolerance = 1e-12)
+})
+
+test_that("diag covariance uses draw-specific SD samples", {
+
+  df <- data.frame(
+    id = factor(c("a", "a", "b", "b"), levels = c("a", "b")),
+    x = c(0, 1, 2, 3)
+  )
+  result <- .re_cov_formula(
+    formula = ~ 1 + random(1 + x | id, name = "id", covariance = "diag"),
+    data = df,
+    prior_random = prior_random(
+      id = random_block(sd = .re_cov_sd_prior())
+    )
+  )
+  random_term <- .re_cov_term(result, "id")
+  posterior <- .re_cov_posterior_draws(
+    .re_cov_sd_values(random_term, c(2, 3)),
+    .re_cov_sd_values(random_term, c(4, 5))
+  )
+  out <- .re_cov_output(result, posterior)
+  expected_1 <- .re_cov_expand(
+    random_term$model_matrix,
+    random_term$group_map,
+    diag(c(2, 3)^2)
+  )
+  expected_2 <- .re_cov_expand(
+    random_term$model_matrix,
+    random_term$group_map,
+    diag(c(4, 5)^2)
+  )
+
+  expect_equal(out$metadata$n_draws, 2L)
+  expect_equal(unname(out$samples[1, , ]), expected_1, tolerance = 1e-12)
+  expect_equal(unname(out$samples[2, , ]), expected_2, tolerance = 1e-12)
+})
+
+test_that("us covariance uses monitored LKJ Cholesky samples", {
+
+  df <- data.frame(
+    id = factor(c("a", "a", "b", "b"), levels = c("a", "b")),
+    x = c(0, 1, 2, 3)
+  )
+  result <- .re_cov_formula(
+    formula = ~ 1 + random(1 + x | id, name = "id"),
+    data = df,
+    prior_random = prior_random(
+      id = random_block(
+        sd = .re_cov_sd_prior(),
+        cor = prior_lkj(eta = 2)
+      )
+    )
+  )
+  random_term <- .re_cov_term(result, "id")
+  rho <- 0.5
+  L <- matrix(c(1, 0, rho, sqrt(1 - rho^2)), 2, 2, byrow = TRUE)
+  posterior <- .re_cov_posterior(c(
+    .re_cov_sd_values(random_term, c(2, 3)),
+    .re_cov_cholesky_values(random_term, L)
+  ))
+  out <- .re_cov_output(result, posterior)
+  R <- matrix(c(1, rho, rho, 1), 2, 2)
+  expected <- .re_cov_expand(
+    random_term$model_matrix,
+    random_term$group_map,
+    R * tcrossprod(c(2, 3))
+  )
+
+  expect_equal(random_term$structure, "us")
+  expect_equal(.re_cov_first(out), expected, tolerance = 1e-12)
+  expect_equal(out$metadata$blocks$id$correlation_type, "lkj")
+
+  bad_posterior <- posterior
+  bad_posterior[1, paste0(random_term$parameter_stem, "_xRE_CORx_L[2,2]")] <- NA_real_
+  expect_error(
+    .re_cov_output(result, bad_posterior),
+    "must be finite",
+    fixed = TRUE
+  )
+})
+
+test_that("us covariance can reconstruct LKJ primitive samples", {
+
+  df <- data.frame(
+    id = factor(c("a", "a", "b", "b"), levels = c("a", "b")),
+    x = c(0, 1, 2, 3),
+    z = c(3, 2, 1, 0)
+  )
+  result <- .re_cov_formula(
+    formula = ~ 1 + random(1 + x + z | id, name = "id"),
+    data = df,
+    prior_random = prior_random(
+      id = random_block(
+        sd = .re_cov_sd_prior(),
+        cor = prior_lkj(eta = 2, include_primitives = TRUE)
+      )
+    )
+  )
+  random_term <- .re_cov_term(result, "id")
+  u <- c(0.2, 0.6, 0.8)
+  L <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(matrix(u, nrow = 1L), K = 3L)
+  if(length(dim(L)) == 3L){
+    L <- L[1L, , ]
+  }
+  sd <- c(2, 3, 4)
+  posterior <- .re_cov_posterior(c(
+    .re_cov_sd_values(random_term, sd),
+    stats::setNames(u, random_term$correlation$primitive_names)
+  ))
+  out <- .re_cov_output(result, posterior)
+  expected <- .re_cov_expand(
+    random_term$model_matrix,
+    random_term$group_map,
+    tcrossprod(L) * tcrossprod(sd)
+  )
+
+  expect_equal(.re_cov_first(out), expected, tolerance = 1e-12)
+})
+
+test_that("cs covariance uses scalar-rho compound symmetry", {
+
+  .re_cov_expect_structured(
+    formula = ~ 1 + cs(f | id),
+    structure = "cs",
+    sd = 2,
+    rho = 0.25,
+    R = .re_cov_compound_correlation(3L, 0.25)
+  )
+})
+
+test_that("hcs covariance uses heterogeneous SDs with compound symmetry", {
+
+  .re_cov_expect_structured(
+    formula = ~ 1 + hcs(f | id),
+    structure = "hcs",
+    sd = c(2, 3, 4),
+    rho = 0.25,
+    R = .re_cov_compound_correlation(3L, 0.25)
+  )
+})
+
+test_that("ar1 covariance uses discrete autoregressive distances", {
+
+  .re_cov_expect_structured(
+    formula = ~ 1 + ar1(f | id),
+    structure = "ar1",
+    sd = 2,
+    rho = 0.5,
+    R = .re_cov_ar1_correlation(3L, 0.5)
+  )
+})
+
+test_that("har covariance uses heterogeneous SDs with AR1 correlations", {
+
+  .re_cov_expect_structured(
+    formula = ~ 1 + har(f | id),
+    structure = "har",
+    sd = c(2, 3, 4),
+    rho = 0.5,
+    R = .re_cov_ar1_correlation(3L, 0.5)
+  )
+})
+
+test_that("car covariance uses continuous-time distances", {
+
+  .re_cov_expect_structured(
+    formula = ~ 1 + car(time | id),
+    structure = "car",
+    sd = 2,
+    rho = 0.5,
+    R = .re_cov_car_correlation(c(0, 2, 5), 0.5)
+  )
+})
+
+test_that("structured covariance uses fitted column order for supplied data", {
+
+  result <- .re_cov_formula(
+    formula = ~ 1 + cs(f | id),
+    data = .re_cov_structured_data(),
+    prior_random = prior_random(
+      id = random_block(
+        sd = .re_cov_sd_prior(),
+        rho = prior("normal", list(0, 0.5))
+      )
+    )
+  )
+  random_term <- .re_cov_term(result, "id")
+  posterior <- .re_cov_posterior(c(
+    .re_cov_sd_values(random_term, 2),
+    .re_cov_rho_sample(random_term, 0.25)
+  ))
+  new_data <- data.frame(
+    id = factor(c("c", "c", "a", "b"), levels = c("c", "b", "a")),
+    f = factor(c("c", "a", "b", "c"), levels = c("c", "b", "a")),
+    time = c(5, 0, 2, 5)
+  )
+  out <- .re_cov_output(result, posterior, data = new_data)
+  Z_new <- matrix(0, nrow = nrow(new_data), ncol = random_term$n_columns)
+  colnames(Z_new) <- random_term$column_names
+  Z_new[cbind(seq_len(nrow(new_data)), c(3L, 1L, 2L, 3L))] <- 1
+  expected <- .re_cov_expand(
+    Z_new,
+    c(3L, 3L, 1L, 2L),
+    .re_cov_compound_correlation(3L, 0.25) * 2^2
+  )
+
+  expect_equal(out$metadata$blocks$id$column_names, random_term$column_names)
+  expect_equal(out$metadata$blocks$id$group_levels, c("a", "b", "c"))
+  expect_equal(out$metadata$blocks$id$n_groups, 3L)
+  expect_equal(out$metadata$blocks$id$fitted_n_groups, 2L)
+  expect_equal(
+    matrix(as.numeric(out$metadata$blocks$id$model_matrix), nrow = nrow(Z_new)),
+    matrix(as.numeric(Z_new), nrow = nrow(Z_new)),
+    tolerance = 1e-12
+  )
+  expect_equal(.re_cov_first(out), expected, tolerance = 1e-12)
+})
+
+test_that("point SD and scalar-rho priors are materialized on the right scale", {
+
+  df <- .re_cov_structured_data()
+  posterior <- .re_cov_posterior(c(unrelated = 1))
+
+  fisher_result <- .re_cov_formula(
+    formula = ~ 1 + cs(f | id),
+    data = df,
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("point", list(location = 2)),
+        rho = prior("point", list(location = 0.2))
+      )
+    )
+  )
+  fisher_term <- .re_cov_term(fisher_result, "id")
+  fisher_out <- .re_cov_output(fisher_result, posterior)
+  fisher_expected <- .re_cov_expand(
+    fisher_term$model_matrix,
+    fisher_term$group_map,
+    .re_cov_compound_correlation(3L, tanh(0.2)) * 2^2
+  )
+  expect_equal(.re_cov_first(fisher_out), fisher_expected, tolerance = 1e-12)
+
+  raw_result <- .re_cov_formula(
+    formula = ~ 1 + cs(f | id),
+    data = df,
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("point", list(location = 2)),
+        covariance = random_covariance(
+          rho = prior("point", list(location = 0.25)),
+          rho_scale = "rho"
+        )
+      )
+    )
+  )
+  raw_term <- .re_cov_term(raw_result, "id")
+  raw_out <- .re_cov_output(raw_result, posterior)
+  raw_expected <- .re_cov_expand(
+    raw_term$model_matrix,
+    raw_term$group_map,
+    .re_cov_compound_correlation(3L, 0.25) * 2^2
+  )
+  expect_equal(.re_cov_first(raw_out), raw_expected, tolerance = 1e-12)
+})
+
+test_that("scalar rho posterior columns use canonical sample precedence", {
+
+  result <- .re_cov_formula(
+    formula = ~ 1 + cs(f | id),
+    data = .re_cov_structured_data(),
+    prior_random = prior_random(
+      id = random_block(
+        sd = .re_cov_sd_prior(),
+        rho = prior("normal", list(0, 0.5))
+      )
+    )
+  )
+  random_term <- .re_cov_term(result, "id")
+  posterior <- .re_cov_posterior(c(
+    .re_cov_sd_values(random_term, 2),
+    stats::setNames(0.9, random_term$correlation$rho_name),
+    .re_cov_rho_sample(random_term, 0.25)
+  ))
+  out <- .re_cov_output(result, posterior)
+  expected <- .re_cov_expand(
+    random_term$model_matrix,
+    random_term$group_map,
+    .re_cov_compound_correlation(3L, 0.25) * 2^2
+  )
+
+  expect_equal(.re_cov_first(out), expected, tolerance = 1e-12)
+})
+
+test_that("crossed independent random intercept blocks are summed", {
+
+  df <- data.frame(
+    study = factor(c("s1", "s1", "s2", "s2"), levels = c("s1", "s2")),
+    drug = factor(c("d1", "d2", "d1", "d2"), levels = c("d1", "d2"))
+  )
+  result <- .re_cov_formula(
+    formula = ~ 1 +
+      random(1 | study, name = "study", covariance = "diag") +
+      random(1 | drug, name = "drug", covariance = "diag"),
+    data = df,
+    prior_random = prior_random(
+      study = random_block(sd = .re_cov_sd_prior()),
+      drug = random_block(sd = .re_cov_sd_prior())
+    )
+  )
+  study <- .re_cov_term(result, "study")
+  drug <- .re_cov_term(result, "drug")
+  posterior <- .re_cov_posterior(c(
+    .re_cov_sd_values(study, 2),
+    .re_cov_sd_values(drug, 3)
+  ))
+  study_expected <- .re_cov_expand(
+    study$model_matrix,
+    study$group_map,
+    matrix(2^2, 1L, 1L)
+  )
+  drug_expected <- .re_cov_expand(
+    drug$model_matrix,
+    drug$group_map,
+    matrix(3^2, 1L, 1L)
+  )
+
+  out <- .re_cov_output(result, posterior)
+  expect_equal(.re_cov_first(out), study_expected + drug_expected)
+  expect_equal(out$metadata$included_blocks, c("study", "drug"))
+  expect_equal(out$metadata$skipped_blocks$block_name, character())
+  expect_true(out$metadata$dense)
+  expect_false(out$metadata$potentially_expensive)
+
+  study_only <- .re_cov_output(result, posterior, blocks = "study")
+  expect_equal(.re_cov_first(study_only), study_expected)
+  expect_equal(study_only$metadata$included_blocks, "study")
+  expect_equal(study_only$metadata$skipped_blocks$block_name, "drug")
+  expect_equal(study_only$metadata$skipped_blocks$reason, "not requested")
+  expect_error(
+    .re_cov_output(result, posterior, blocks = c("study", "study")),
+    "'blocks' must be unique",
+    fixed = TRUE
+  )
+  expect_error(
+    random_effects_marginal_vcov(
+      result$formula_design,
+      posterior_samples = posterior,
+      prior_list = result$prior_list,
+      unused = TRUE
+    ),
+    "Unused argument(s): unused.",
+    fixed = TRUE
+  )
+
+  broken_result <- result
+  broken_result$formula_design$random_effects[[2L]]$model_matrix <-
+    broken_result$formula_design$random_effects[[2L]]$model_matrix[1:3, , drop = FALSE]
+  broken_result$formula_design$random_effects[[2L]]$group_map <-
+    broken_result$formula_design$random_effects[[2L]]$group_map[1:3]
+  expect_error(
+    .re_cov_output(broken_result, posterior),
+    "produced dimensions",
+    fixed = TRUE
+  )
+
+  fit <- coda::mcmc(posterior)
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+  attr(fit, "prior_list") <- result$prior_list
+  extracted <- random_effects_marginal_vcov(fit, parameter = "mu")
+  expect_equal(extracted$samples, out$samples)
+})
+
+test_that("nested random-effect blocks are expanded and summed", {
+
+  df <- data.frame(
+    district = factor(c("d1", "d1", "d2", "d2"), levels = c("d1", "d2")),
+    school = factor(c("s1", "s2", "s3", "s4"),
+                    levels = c("s1", "s2", "s3", "s4"))
+  )
+  result <- .re_cov_formula(
+    formula = ~ 1 + random(1 | district / school, covariance = "diag"),
+    data = df,
+    prior_random = prior_random(sd = .re_cov_sd_prior())
+  )
+  random_effects <- result$formula_design$random_effects
+  expect_length(random_effects, 2L)
+
+  posterior_values <- numeric()
+  expected <- matrix(0, nrow(df), nrow(df))
+  for(block_i in seq_along(random_effects)){
+    random_term <- random_effects[[block_i]]
+    sd <- block_i + 1
+    posterior_values <- c(
+      posterior_values,
+      .re_cov_sd_values(random_term, sd)
+    )
+    expected <- expected + .re_cov_expand(
+      random_term$model_matrix,
+      random_term$group_map,
+      matrix(sd^2, 1L, 1L)
+    )
+  }
+
+  out <- .re_cov_output(result, .re_cov_posterior(posterior_values))
+  expect_equal(.re_cov_first(out), expected)
+})
+
+test_that("row-varying direct SD sources weight rows inside groups", {
+
+  df <- data.frame(
+    id = factor(c("a", "a", "b", "b"), levels = c("a", "b"))
+  )
+  result <- .re_cov_formula(
+    formula = ~ 1 + random(1 | id, name = "id", covariance = "diag"),
+    data = df,
+    prior_random = prior_random(
+      id = random_block(sd_source = random_sd_source("tau", shape = "row"))
+    )
+  )
+  random_term <- .re_cov_term(result, "id")
+  tau_1 <- c(1, 2, 3, 4)
+  tau_2 <- c(2, 1, 4, 3)
+  posterior <- .re_cov_posterior_draws(
+    stats::setNames(tau_1, paste0("tau[", 1:4, "]")),
+    stats::setNames(tau_2, paste0("tau[", 1:4, "]"))
+  )
+  out <- .re_cov_output(result, posterior)
+  expected_1 <- .re_cov_expand(
+    matrix(tau_1, ncol = 1L),
+    random_term$group_map,
+    matrix(1, 1L, 1L)
+  )
+  expected_2 <- .re_cov_expand(
+    matrix(tau_2, ncol = 1L),
+    random_term$group_map,
+    matrix(1, 1L, 1L)
+  )
+
+  expect_true(out$metadata$blocks$id$row_varying_sd)
+  expect_equal(out$metadata$n_draws, 2L)
+  expect_equal(unname(out$samples[1, , ]), expected_1)
+  expect_equal(unname(out$samples[2, , ]), expected_2)
+  expect_error(
+    .re_cov_output(result, posterior, data = df),
+    "requires a parameter_source(..., values = ...) function when 'data' is supplied",
+    fixed = TRUE
+  )
+})
+
+test_that("row-varying SD sources with values functions support supplied data", {
+
+  df <- data.frame(
+    id = factor(c("a", "a", "b", "b"), levels = c("a", "b")),
+    tau_scale = c(1, 2, 3, 4)
+  )
+  tau_source <- parameter_source(
+    "tau",
+    shape = "row",
+    values = function(parameters, data, n_rows){
+      parameters$tau_total * data$tau_scale[seq_len(n_rows)]
+    }
+  )
+  result <- .re_cov_formula(
+    formula = ~ 1 + random(1 | id, name = "id", covariance = "diag"),
+    data = df,
+    prior_random = prior_random(
+      id = random_block(sd_source = random_sd_source(tau_source))
+    )
+  )
+  posterior <- .re_cov_posterior(c(tau_total = 2))
+  new_data <- data.frame(
+    id = factor(c("a", "a", "b"), levels = c("a", "b")),
+    tau_scale = c(5, 7, 11)
+  )
+  out <- .re_cov_output(result, posterior, data = new_data)
+  tau <- 2 * new_data$tau_scale
+  expected <- .re_cov_expand(
+    matrix(tau, ncol = 1L),
+    c(1L, 1L, 2L),
+    matrix(1, 1L, 1L)
+  )
+
+  expect_equal(.re_cov_first(out), expected, tolerance = 1e-12)
+})
+
+test_that("row-varying SD-component allocation weights columns and rows", {
+
+  df <- data.frame(
+    id = factor(c("a", "a", "b", "b"), levels = c("a", "b")),
+    x = c(0, 1, 2, 3)
+  )
+  result <- .re_cov_formula(
+    formula = ~ 1 + random(1 + x | id, name = "id", covariance = "diag"),
+    data = df,
+    prior_random = prior_random(
+      random_variance_allocation(
+        terms = "id",
+        target = "sd_component",
+        scale = "total_variance",
+        sd_source = random_sd_source("tau", shape = "row"),
+        weights = prior("dirichlet", list(alpha = c(1, 1)))
+      )
+    )
+  )
+  random_term <- .re_cov_term(result, "id")
+  tau <- c(2, 3, 5, 7)
+  weights <- c(0.25, 0.75)
+  weight_name <- random_term$sd_binding$allocations[[1L]]$weight_name
+  posterior <- .re_cov_posterior(c(
+    stats::setNames(tau, paste0("tau[", seq_along(tau), "]")),
+    stats::setNames(weights, paste0(weight_name, "[", seq_along(weights), "]"))
+  ))
+  out <- .re_cov_output(result, posterior)
+
+  weighted_design <- random_term$model_matrix *
+    matrix(tau, nrow = nrow(random_term$model_matrix),
+           ncol = ncol(random_term$model_matrix)) *
+    matrix(sqrt(weights), nrow = nrow(random_term$model_matrix),
+           ncol = ncol(random_term$model_matrix), byrow = TRUE)
+  expected <- .re_cov_expand(
+    weighted_design,
+    random_term$group_map,
+    diag(ncol(random_term$model_matrix))
+  )
+
+  expect_true(out$metadata$blocks$id$row_varying_sd)
+  expect_equal(.re_cov_first(out), expected, tolerance = 1e-12)
+
+  eta_name <- BayesTools:::.JAGS_prior_dirichlet_eta_name(weight_name)
+  eta_posterior <- .re_cov_posterior(c(
+    stats::setNames(tau, paste0("tau[", seq_along(tau), "]")),
+    stats::setNames(c(1, 3), paste0(eta_name, "[", seq_along(weights), "]"))
+  ))
+  eta_out <- .re_cov_output(result, eta_posterior)
+  expect_equal(.re_cov_first(eta_out), expected, tolerance = 1e-12)
+})
+
+test_that("marginalized blocks keep usable covariance metadata", {
+
+  df <- data.frame(
+    study = factor(c("s1", "s1", "s2", "s2"), levels = c("s1", "s2"))
+  )
+  result <- .re_cov_formula(
+    formula = ~ 1 + random(1 | study, name = "study", covariance = "diag"),
+    data = df,
+    prior_random = prior_random(
+      study = random_block(sd = .re_cov_sd_prior())
+    ),
+    random_effects_compile = random_effects_compile(marginalized = "study")
+  )
+  random_term <- .re_cov_term(result, "study")
+  posterior <- .re_cov_posterior(.re_cov_sd_values(random_term, 2))
+  out <- .re_cov_output(result, posterior)
+  expected <- .re_cov_expand(
+    random_term$model_matrix,
+    random_term$group_map,
+    matrix(2^2, 1L, 1L)
+  )
+
+  expect_equal(random_term$compile_mode, "marginalized")
+  expect_equal(out$metadata$blocks$study$compile_mode, "marginalized")
+  expect_equal(.re_cov_first(out), expected)
+})
+
+test_that("missing SD samples fail with block and structure context", {
+
+  df <- data.frame(
+    id = factor(c("a", "b"), levels = c("a", "b"))
+  )
+  result <- .re_cov_formula(
+    formula = ~ 1 + random(1 | id, name = "id", covariance = "diag"),
+    data = df,
+    prior_random = prior_random(
+      id = random_block(sd = .re_cov_sd_prior())
+    )
+  )
+  random_term <- .re_cov_term(result, "id")
+  posterior <- .re_cov_posterior(c(unrelated = 1))
+
+  expect_error(
+    .re_cov_output(result, posterior),
+    "block 'id' with structure 'diag' cannot resolve SD draws",
+    fixed = TRUE
+  )
+
+  duplicate_posterior <- .re_cov_posterior(.re_cov_sd_values(random_term, 2))
+  duplicate_posterior <- cbind(
+    duplicate_posterior,
+    duplicate_posterior[, 1L, drop = FALSE]
+  )
+  colnames(duplicate_posterior)[2L] <- colnames(duplicate_posterior)[1L]
+  expect_error(
+    .re_cov_output(result, duplicate_posterior),
+    "column names must be unique",
+    fixed = TRUE
+  )
+})

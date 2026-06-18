@@ -468,13 +468,11 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     )
     compiled_random_effects[[random_i]] <- temp_random[["random_effect"]]
 
-    if(!identical(compile_mode, "marginalized")){
-      for(data_i in seq_along(temp_random[["data"]])){
-        JAGS_data[[names(temp_random[["data"]])[data_i]]] <- temp_random[["data"]][[data_i]]
-      }
+    for(data_i in seq_along(temp_random[["data"]])){
+      JAGS_data[[names(temp_random[["data"]])[data_i]]] <- temp_random[["data"]][[data_i]]
     }
     random_key <- paste0("__xREx__", attr(compiled_random_effects[[random_i]], "random_block"))
-    jags_data_names[[random_key]] <- names(temp_random[["data"]])
+    jags_data_names[random_key] <- list(compiled_random_effects[[random_i]]$jags_data_names)
     random_sd_leaves[[random_key]] <- temp_random[["random_effect"]]$sd_leaves
     if(random_structure %in% c("us", "cs", "hcs", "ar1", "car", "har") &&
        is.numeric(compiled_random_effects[[random_i]]$n_columns) &&
@@ -513,16 +511,6 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   # preserve log(intercept) attribute on output formula
   if(log_intercept){
     attr(formula, "log(intercept)") <- TRUE
-  }
-
-  marginalized_random_data <- unlist(lapply(compiled_random_effects, function(random_effect){
-    if(identical(.bt_random_effect_term_compile_mode(random_effect), "marginalized")){
-      return(random_effect$jags_data_names)
-    }
-    character()
-  }), use.names = FALSE)
-  if(length(marginalized_random_data) > 0L){
-    JAGS_data[marginalized_random_data] <- NULL
   }
 
   output <- list(
@@ -1339,8 +1327,10 @@ JAGS_formula_design <- function(fit, parameter = NULL){
   }
 
   # create the JAGS data list
-  JAGS_data[[paste0(parameter, "_xRE_DATAx")]] <- model_matrix
-  JAGS_data[[paste0(parameter, "_xRE_MAPx")]]  <- grouping_mapping
+  if(isTRUE(sampled_random_effect)){
+    JAGS_data[[paste0(parameter, "_xRE_DATAx")]] <- model_matrix
+    JAGS_data[[paste0(parameter, "_xRE_MAPx")]]  <- grouping_mapping
+  }
 
   if(isTRUE(sampled_random_effect) && isTRUE(monitor_policy$latent)){
     add_parameters <- c(add_parameters, paste0(parameter, "_xRE_Zx"))
@@ -1366,7 +1356,11 @@ JAGS_formula_design <- function(fit, parameter = NULL){
   random_term$parameter_stem   <- parameter
   random_term$sd_parameter_names <- sd_parameter_names
   random_term$sd_leaves          <- sd_leaves
-  random_term$jags_data_names  <- names(JAGS_data)
+  random_jags_data_names <- names(JAGS_data)
+  if(is.null(random_jags_data_names)){
+    random_jags_data_names <- character()
+  }
+  random_term["jags_data_names"] <- list(random_jags_data_names)
   random_term$structure        <- random_structure
   random_term$homogeneous_sd   <- homogeneous_sd
   random_term$interface        <- "prior_random"
@@ -3056,7 +3050,9 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
   output
 }
 
-.bt_random_effect_prediction_data <- function(random_term, data, group_data = data){
+.bt_random_effect_prediction_data <- function(random_term, data,
+                                              group_data = data,
+                                              allow_new_groups = FALSE){
 
   prediction_data <- data
   random_structure <- .bt_random_effect_structure(
@@ -3141,9 +3137,19 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
       call. = FALSE
     )
   }
-  group_map <- match(as.character(grouping_values), random_term$group_levels)
+  group_levels <- random_term$group_levels
+  group_map <- match(as.character(grouping_values), group_levels)
   if(any(is.na(group_map))){
     new_groups <- unique(as.character(grouping_values)[is.na(group_map)])
+    if(isTRUE(allow_new_groups)){
+      group_levels <- c(group_levels, new_groups)
+      group_map <- match(as.character(grouping_values), group_levels)
+      return(list(
+        model_matrix = model_matrix,
+        group_map = group_map,
+        group_levels = group_levels
+      ))
+    }
     stop(
       "New random-effect level(s) for block '", random_term$block_name,
       "' are not supported by JAGS_evaluate_formula(): ",
@@ -3155,7 +3161,8 @@ JAGS_evaluate_formula <- function(fit, formula, parameter, data, prior_list){
 
   list(
     model_matrix = model_matrix,
-    group_map = group_map
+    group_map = group_map,
+    group_levels = group_levels
   )
 }
 

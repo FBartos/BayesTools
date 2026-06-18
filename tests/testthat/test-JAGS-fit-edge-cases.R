@@ -208,6 +208,76 @@ test_that("JAGS_fit stores formula design metadata on fitted formula models", {
   expect_identical(JAGS_formula_design(fit), list(mu = design))
 })
 
+test_that("JAGS_fit does not emit unused sampled data for marginalized random effects", {
+
+  skip_if_not_installed("runjags")
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+
+  df <- data.frame(
+    y = c(-0.2, 0.1, 0.3, -0.1),
+    study = factor(c("s1", "s1", "s2", "s2")),
+    estimate = factor(c("e1", "e2", "e3", "e4"))
+  )
+  sd_prior <- prior(
+    "normal",
+    list(mean = 0, sd = 1),
+    truncation = list(lower = 0, upper = Inf)
+  )
+  prior_random <- prior_random(
+    study = random_block(sd = sd_prior),
+    estimate = random_block(sd = sd_prior)
+  )
+  warnings <- character()
+
+  fit <- withCallingHandlers(
+    JAGS_fit(
+      model_syntax = "model{
+        for(i in 1:N_mu){
+          y[i] ~ dnorm(mu[i], 1)
+        }
+      }",
+      data = list(y = df$y),
+      formula_list = list(
+        mu = ~ 1 +
+          random(1 | study, name = "study", covariance = "diag") +
+          random(1 | estimate, name = "estimate", covariance = "diag")
+      ),
+      formula_data_list = list(mu = df),
+      formula_prior_list = list(mu = list(
+        intercept = prior("normal", list(mean = 0, sd = 1))
+      )),
+      formula_random_prior_list = list(mu = prior_random),
+      formula_random_effects_compile_list = list(
+        mu = random_effects_compile(marginalized = "estimate")
+      ),
+      chains = 1,
+      adapt = 100,
+      burnin = 100,
+      sample = 100,
+      silent = FALSE,
+      seed = 123
+    ),
+    warning = function(w){
+      warnings <<- c(warnings, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  design <- JAGS_formula_design(fit, "mu")
+  estimate_term <- design$random_effects[[which(vapply(
+    design$random_effects,
+    function(random_term) identical(random_term$block_name, "estimate"),
+    logical(1)
+  ))]]
+
+  expect_equal(warnings, character())
+  expect_equal(estimate_term$compile_mode, "marginalized")
+  expect_equal(estimate_term$jags_data_names, character())
+  expect_false(grepl("mu__xREx__estimate_xRE_DATAx", attr(fit, "model"), fixed = TRUE))
+  expect_false(grepl("mu__xREx__estimate_xRE_MAPx", attr(fit, "model"), fixed = TRUE))
+})
+
 test_that("JAGS_fit runs dummy structured random-effect formula models", {
 
   skip_if_not_installed("runjags")

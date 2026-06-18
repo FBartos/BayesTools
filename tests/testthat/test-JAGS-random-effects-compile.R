@@ -144,11 +144,12 @@ test_that("marginalized blocks keep metadata but omit latent mean nodes", {
   expect_equal(marginalized_terms[[1]]$compile_mode, "marginalized")
   expect_equal(marginalized_terms[[1]]$sd_parameter_names,
                "mu__xREx__estimate_intercept")
-  expect_equal(
-    marginalized_terms[[1]]$jags_data_names,
-    c("mu__xREx__estimate_xRE_DATAx", "mu__xREx__estimate_xRE_MAPx")
-  )
-  expect_false(any(marginalized_terms[[1]]$jags_data_names %in% names(result$data)))
+  expect_equal(marginalized_terms[[1]]$jags_data_names, character())
+  expect_equal(design$jags_data_names[["__xREx__estimate"]], character())
+  expect_false("mu__xREx__estimate_xRE_DATAx" %in% names(result$data))
+  expect_false("mu__xREx__estimate_xRE_MAPx" %in% names(result$data))
+  expect_equal(dim(marginalized_terms[[1]]$model_matrix), c(4L, 1L))
+  expect_equal(marginalized_terms[[1]]$group_map, seq_len(4L))
   expect_true(all(.re_compile_terms_by_mode(design, "sampled")[[1]]$jags_data_names %in% names(result$data)))
 
   expect_false(grepl("mu__xREx__estimate_xRE_Zx", result$formula_syntax, fixed = TRUE))
