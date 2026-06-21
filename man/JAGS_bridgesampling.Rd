@@ -17,6 +17,7 @@ JAGS_bridgesampling(
   add_bounds = NULL,
   formula_random_prior_list = NULL,
   formula_random_effects_compile_list = NULL,
+  bridge_context = FALSE,
   maxiter = 10000,
   silent = TRUE,
   ...
@@ -89,6 +90,13 @@ bridge-sampling rebuild/validation, this must match the fitted
 random-effect compilation policy; otherwise a fitted marginalized model would
 not be rebuilt as the same model.}
 
+\item{bridge_context}{whether the \code{log_posterior} callback receives a
+read-only \code{bridge_context} argument. Defaults to \code{FALSE}, preserving
+the historical \code{log_posterior(parameters, data, ...)} call. The context
+contains the current independent bridge state and BayesTools-resolved
+deterministic formula/random-effect nodes; it is not necessarily an
+original MCMC posterior row.}
+
 \item{maxiter}{maximum number of iterations for the
 \link[bridgesampling]{bridge_sampler}}
 
@@ -116,6 +124,22 @@ bridge sampling. Supply them either as posterior columns named
 as \code{parameter_source("tau", shape = "row", values = function(parameters, data, n_rows) ...)}. The \code{values} function is evaluated from the named
 \code{parameters} object and row-aligned data; it must return finite,
 non-negative row values on the support of the model.
+
+When \code{bridge_context = TRUE}, the callback receives an object of class
+\code{BayesTools_bridge_context} with fields \code{state}, \code{state_matrix}, \code{nodes},
+\code{prior_parameters}, \code{formula_prior_parameters}, \code{formula_parameters},
+\code{add_parameters}, \code{random}, \code{node_info}, and \code{metadata}. The \code{state} field
+contains the independent bridge coordinates. The \code{nodes} field is a flat
+named numeric vector that also includes deterministic BayesTools-resolved nodes
+such as normalized Dirichlet allocation weights reconstructed from
+\verb{prior_par_eta_*} coordinates. The \code{node_info} field records the owner
+and role of each exposed node. The \code{random} field contains structured
+random-effect block state including resolved SDs, allocation weights,
+correlations, Cholesky factors, covariance matrices where row-invariant, and
+row-indexed SD source values where applicable. Each random block is keyed by
+formula parameter and block name, and contains \code{block_name}, \code{compile_mode},
+\code{dimensions}, \code{levels}, \code{scale}, \code{allocation}, \code{correlation},
+\code{covariance}, \code{latent}, and \code{nodes} fields.
 }
 \examples{
 \dontrun{

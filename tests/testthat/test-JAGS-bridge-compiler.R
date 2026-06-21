@@ -132,6 +132,51 @@ test_that("compiled formula prior evaluator matches public formula density helpe
     JAGS_marglik_priors_formula(samples, formula_prior_list),
     tolerance = 1e-12
   )
+  expect_equal(
+    compiled$parameters(samples),
+    c(
+      JAGS_marglik_parameters(samples, formula_prior_list$mu),
+      JAGS_marglik_parameters(samples, formula_prior_list$sigma)
+    ),
+    tolerance = 1e-12
+  )
+})
+
+test_that("bridge callback dispatcher exposes context only when requested", {
+
+  context <- structure(
+    list(state = c(theta = .1)),
+    class = c("BayesTools_bridge_context", "list")
+  )
+  parameters <- list(theta = .1)
+
+  expect_equal(
+    BayesTools:::.bt_JAGS_bridge_call_log_posterior(
+      log_posterior = function(parameters, data){
+        expect_null(attr(parameters, "bridge_context", exact = TRUE))
+        data$value
+      },
+      parameters = parameters,
+      data = list(value = 1),
+      context = context,
+      bridge_context = FALSE
+    ),
+    1
+  )
+
+  expect_equal(
+    BayesTools:::.bt_JAGS_bridge_call_log_posterior(
+      log_posterior = function(parameters, data, bridge_context){
+        expect_s3_class(bridge_context, "BayesTools_bridge_context")
+        data$value
+      },
+      parameters = parameters,
+      data = list(value = 2),
+      context = context,
+      bridge_context = TRUE
+    ),
+    2
+  )
 })
 
 test_that("compiled random-effect prior evaluator matches public helper", {
@@ -630,6 +675,377 @@ test_that("bridge posterior-row cache preserves random-effect helper fallback sh
     )
   )
   expect_true(is.environment(cache))
+})
+
+test_that("bridge context exposes resolved formula allocation nodes", {
+
+  formula_data <- data.frame(
+    study = factor(c("s1", "s1", "s2", "s2", "s3", "s3")),
+    drug = factor(c("a", "b", "a", "b", "a", "b"))
+  )
+  formula_output <- JAGS_formula(
+    formula = ~ 1 +
+      random(1 | study, name = "study", covariance = "diag") +
+      random(1 | drug, name = "drug", covariance = "diag"),
+    parameter = "mu",
+    data = formula_data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      allocation = random_variance_allocation(
+        sd = prior("gamma", list(2, 2)),
+        weights = prior("dirichlet", list(alpha = c(2, 3)))
+      )
+    )
+  )
+  formula_prior_list <- list(mu = formula_output$prior_list)
+  formula_list <- list(mu = formula_output$formula)
+  formula_data_list <- list(mu = formula_output$data)
+  formula_design_list <- list(mu = formula_output$formula_design)
+  samples <- c(
+    "mu_intercept" = 10,
+    "mu__xRE_ALLOCx_allocation__total_sd" = 2,
+    "prior_par_eta_mu__xRE_ALLOCx_allocation__weight[1]" = 1,
+    "prior_par_eta_mu__xRE_ALLOCx_allocation__weight[2]" = 3,
+    "mu__xREx__study_xRE_Zx[1,1]" = 0.1,
+    "mu__xREx__study_xRE_Zx[2,1]" = 0.2,
+    "mu__xREx__study_xRE_Zx[3,1]" = 0.3,
+    "mu__xREx__drug_xRE_Zx[1,1]" = 1,
+    "mu__xREx__drug_xRE_Zx[2,1]" = 2
+  )
+  samples <- BayesTools:::.bt_JAGS_bridge_cache_posterior_row(samples, TRUE)
+  formula_prior_evaluator <- BayesTools:::.bt_JAGS_bridge_compile_formula_prior_evaluator(
+    formula_prior_list
+  )
+  formula_parameter_evaluator <- BayesTools:::.bt_JAGS_bridge_compile_formula_parameter_evaluator(
+    formula_list = formula_list,
+    formula_data_list = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    formula_design_list = formula_design_list,
+    model_data = list()
+  )
+  prior_parameters <- list()
+  formula_prior_parameters <- formula_prior_evaluator$parameters(samples)
+  formula_parameters <- formula_parameter_evaluator$parameters(
+    samples,
+    prior_parameters
+  )
+
+  context <- BayesTools:::.bt_JAGS_bridge_context(
+    samples = samples,
+    prior_parameters = prior_parameters,
+    formula_prior_parameters = formula_prior_parameters,
+    formula_parameters = formula_parameters,
+    add_parameters = NULL,
+    formula_design_list = formula_design_list,
+    formula_data_list = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    model_data = list()
+  )
+
+  expect_s3_class(context, "BayesTools_bridge_context")
+  expect_true(is.matrix(context$state_matrix))
+  expect_equal(
+    colnames(context$state_matrix),
+    names(context$state)
+  )
+  expect_true(is.environment(
+    attr(
+      context$state_matrix,
+      "BayesTools_random_effect_dirichlet_draw_cache",
+      exact = TRUE
+    )
+  ))
+  expect_equal(
+    context$formula_prior_parameters[["mu__xRE_ALLOCx_allocation__weight"]],
+    c(1, 3) / 4,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    context$nodes[["mu__xRE_ALLOCx_allocation__weight[1]"]],
+    1 / 4,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    context$nodes[["mu__xRE_ALLOCx_allocation__weight[2]"]],
+    3 / 4,
+    tolerance = 1e-12
+  )
+  expect_true(
+    "prior_par_eta_mu__xRE_ALLOCx_allocation__weight[1]" %in%
+      names(context$state)
+  )
+  expect_false(
+    "mu__xRE_ALLOCx_allocation__weight[1]" %in%
+      names(context$state)
+  )
+  weight_info <- context$node_info[
+    context$node_info$name == "mu__xRE_ALLOCx_allocation__weight[1]",
+    ,
+    drop = FALSE
+  ]
+  expect_equal(nrow(weight_info), 1L)
+  expect_equal(weight_info$owner, "formula")
+  expect_equal(weight_info$role, "random_allocation")
+  expect_true(is.na(weight_info$block_name))
+  expect_equal(
+    context$random$mu$study$block_name,
+    "study"
+  )
+  expect_equal(
+    context$random$mu$study$dimensions$n_groups,
+    3L
+  )
+  expect_equal(
+    unname(context$random$mu$study$allocation$weights[["mu__xRE_ALLOCx_allocation__weight"]]),
+    c(1, 3) / 4,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    context$random$mu$study$scale$type,
+    "column"
+  )
+  expect_equal(
+    unname(context$random$mu$study$scale$column_sd),
+    1,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    unname(context$random$mu$drug$scale$column_sd),
+    sqrt(3),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    context$random$mu$study$correlation$matrix,
+    matrix(1, 1L, 1L)
+  )
+  expect_equal(
+    context$formula_parameters$mu,
+    formula_parameters$mu,
+    tolerance = 1e-12
+  )
+})
+
+test_that("bridge context exposes marginalized random blocks without latent draws", {
+
+  formula_data <- data.frame(
+    study = factor(c("s1", "s1", "s2", "s2"), levels = c("s1", "s2")),
+    estimate = factor(c("e1", "e2", "e3", "e4"))
+  )
+  formula_output <- JAGS_formula(
+    formula = ~ 1 +
+      random(1 | study, name = "study", covariance = "diag") +
+      random(1 | estimate, name = "estimate", covariance = "diag"),
+    parameter = "mu",
+    data = formula_data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      allocation = random_variance_allocation(
+        name = "total_re",
+        terms = c(study = "study", estimate = "estimate"),
+        sd = prior("gamma", list(2, 2)),
+        weights = prior("dirichlet", list(alpha = c(2, 3)))
+      )
+    ),
+    random_effects_compile = random_effects_compile(
+      marginalized = "estimate"
+    )
+  )
+  formula_prior_list <- list(mu = formula_output$prior_list)
+  formula_list <- list(mu = formula_output$formula)
+  formula_data_list <- list(mu = formula_output$data)
+  formula_design_list <- list(mu = formula_output$formula_design)
+  random_terms <- formula_output$formula_design$random_effects
+  study_term <- random_terms[[1L]]
+  estimate_term <- random_terms[[2L]]
+  z_names <- as.vector(BayesTools:::.bt_random_effect_latent_names(
+    random_term = study_term,
+    n_groups = study_term$n_groups,
+    n_columns = study_term$n_columns
+  ))
+  weight_name <- "mu__xRE_ALLOCx_total_re__weight"
+  samples <- c(
+    "mu_intercept" = 10,
+    "mu__xRE_ALLOCx_total_re__total_sd" = 2,
+    stats::setNames(
+      c(1, 3),
+      paste0(
+        BayesTools:::.JAGS_prior_dirichlet_eta_name(weight_name),
+        "[",
+        1:2,
+        "]"
+      )
+    ),
+    stats::setNames(c(.1, .2), z_names)
+  )
+  samples <- BayesTools:::.bt_JAGS_bridge_cache_posterior_row(samples, TRUE)
+  formula_prior_evaluator <- BayesTools:::.bt_JAGS_bridge_compile_formula_prior_evaluator(
+    formula_prior_list
+  )
+  formula_parameter_evaluator <- BayesTools:::.bt_JAGS_bridge_compile_formula_parameter_evaluator(
+    formula_list = formula_list,
+    formula_data_list = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    formula_design_list = formula_design_list,
+    model_data = list()
+  )
+  prior_parameters <- list()
+  formula_prior_parameters <- formula_prior_evaluator$parameters(samples)
+  formula_parameters <- formula_parameter_evaluator$parameters(
+    samples,
+    prior_parameters
+  )
+
+  context <- BayesTools:::.bt_JAGS_bridge_context(
+    samples = samples,
+    prior_parameters = prior_parameters,
+    formula_prior_parameters = formula_prior_parameters,
+    formula_parameters = formula_parameters,
+    add_parameters = NULL,
+    formula_design_list = formula_design_list,
+    formula_data_list = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    model_data = list()
+  )
+
+  expect_equal(context$random$mu$study$compile_mode, "sampled")
+  expect_equal(context$random$mu$estimate$compile_mode, "marginalized")
+  expect_true(is.matrix(context$random$mu$study$latent))
+  expect_null(context$random$mu$estimate$latent)
+  expect_false(any(grepl(
+    "mu__xREx__estimate_xRE_Zx",
+    names(context$state),
+    fixed = TRUE
+  )))
+  expect_equal(
+    unname(context$random$mu$estimate$allocation$weights[[weight_name]]),
+    c(1, 3) / 4,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    unname(context$random$mu$estimate$scale$column_sd),
+    sqrt(3),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    context$random$mu$estimate$covariance,
+    matrix(3, 1L, 1L),
+    tolerance = 1e-12
+  )
+  expect_true(estimate_term$sd_parameter_names %in% names(context$nodes))
+  expect_equal(
+    context$nodes[[estimate_term$sd_parameter_names]],
+    sqrt(3),
+    tolerance = 1e-12
+  )
+})
+
+test_that("bridge context exposes row-indexed external SD source nodes", {
+
+  formula_data <- data.frame(
+    study = factor(c("s1", "s1", "s2", "s2"), levels = c("s1", "s2")),
+    drug = factor(c("a", "b", "a", "b"), levels = c("a", "b")),
+    tau_factor = c(0.5, 0.75, 1, 1.25)
+  )
+  tau_source <- parameter_source(
+    "tau",
+    shape = "row",
+    values = function(parameters, data, n_rows){
+      data$tau_factor[seq_len(n_rows)]
+    }
+  )
+  formula_output <- JAGS_formula(
+    formula = ~ 1 +
+      random(1 | study, name = "study", covariance = "diag") +
+      random(1 | drug, name = "drug", covariance = "diag"),
+    parameter = "mu",
+    data = formula_data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      allocation = random_variance_allocation(
+        sd_source = random_sd_source(tau_source),
+        weights = prior("dirichlet", list(alpha = c(2, 3)))
+      )
+    )
+  )
+  formula_prior_list <- list(mu = formula_output$prior_list)
+  formula_list <- list(mu = formula_output$formula)
+  formula_data_list <- list(mu = formula_data)
+  formula_design_list <- list(mu = formula_output$formula_design)
+  samples <- c(
+    "mu_intercept" = 10,
+    "prior_par_eta_mu__xRE_ALLOCx_allocation__weight[1]" = 1,
+    "prior_par_eta_mu__xRE_ALLOCx_allocation__weight[2]" = 3,
+    "mu__xREx__study_xRE_Zx[1,1]" = 0.1,
+    "mu__xREx__study_xRE_Zx[2,1]" = 0.2,
+    "mu__xREx__drug_xRE_Zx[1,1]" = 1,
+    "mu__xREx__drug_xRE_Zx[2,1]" = 2
+  )
+  samples <- BayesTools:::.bt_JAGS_bridge_cache_posterior_row(samples, TRUE)
+  formula_prior_evaluator <- BayesTools:::.bt_JAGS_bridge_compile_formula_prior_evaluator(
+    formula_prior_list
+  )
+  formula_parameter_evaluator <- BayesTools:::.bt_JAGS_bridge_compile_formula_parameter_evaluator(
+    formula_list = formula_list,
+    formula_data_list = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    formula_design_list = formula_design_list,
+    model_data = list()
+  )
+  prior_parameters <- list()
+  formula_prior_parameters <- formula_prior_evaluator$parameters(samples)
+  formula_parameters <- formula_parameter_evaluator$parameters(
+    samples,
+    prior_parameters
+  )
+
+  context <- BayesTools:::.bt_JAGS_bridge_context(
+    samples = samples,
+    prior_parameters = prior_parameters,
+    formula_prior_parameters = formula_prior_parameters,
+    formula_parameters = formula_parameters,
+    add_parameters = NULL,
+    formula_design_list = formula_design_list,
+    formula_data_list = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    model_data = list()
+  )
+
+  expect_equal(
+    unname(context$random$mu$study$scale$row_sd_source),
+    formula_data$tau_factor,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    context$random$mu$study$scale$type,
+    "row_indexed"
+  )
+  expect_equal(
+    context$nodes[names(context$random$mu$study$scale$row_sd_source)],
+    context$random$mu$study$scale$row_sd_source,
+    tolerance = 1e-12
+  )
+  row_sd_info <- context$node_info[
+    context$node_info$name == names(context$random$mu$study$scale$row_sd_source)[1L],
+    ,
+    drop = FALSE
+  ]
+  expect_equal(row_sd_info$role, "random_effect")
+  expect_true(is.na(row_sd_info$block_name))
+  expect_equal(
+    unname(context$random$mu$study$allocation$weights[["mu__xRE_ALLOCx_allocation__weight"]]),
+    c(1, 3) / 4,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    context$random$mu$study$allocation$block_multiplier,
+    sqrt(1 / 4),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    context$random$mu$drug$allocation$block_multiplier,
+    sqrt(3 / 4),
+    tolerance = 1e-12
+  )
 })
 
 test_that("compiled bridge prior evaluator rejects unsupported mixtures at setup", {

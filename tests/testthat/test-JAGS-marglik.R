@@ -688,6 +688,44 @@ test_that("JAGS bridgesampling posterior supports add-only parameters", {
   expect_equal(attr(result_empty, "ub"), c(x = Inf))
 })
 
+test_that("JAGS bridgesampling passes requested bridge context to callback", {
+
+  skip_if_not_installed("bridgesampling")
+  skip_if_not_installed("coda")
+
+  set.seed(1)
+  posterior <- matrix(
+    rnorm(2000),
+    ncol = 1,
+    dimnames = list(NULL, "mu")
+  )
+  posterior <- coda::as.mcmc(posterior)
+  seen <- new.env(parent = emptyenv())
+  log_posterior <- function(parameters, data, bridge_context){
+    if(!exists("context", envir = seen, inherits = FALSE)){
+      seen$context <- bridge_context
+      seen$mu <- parameters$mu
+    }
+    expect_s3_class(bridge_context, "BayesTools_bridge_context")
+    expect_true("mu" %in% names(bridge_context$state))
+    expect_equal(bridge_context$nodes[["mu"]], parameters$mu)
+    0
+  }
+
+  marglik <- JAGS_bridgesampling(
+    fit = posterior,
+    log_posterior = log_posterior,
+    data = list(),
+    prior_list = list(mu = prior("normal", list(0, 1))),
+    bridge_context = TRUE,
+    maxiter = 1000
+  )
+
+  expect_s3_class(marglik, "bridge")
+  expect_s3_class(seen$context, "BayesTools_bridge_context")
+  expect_equal(seen$context$nodes[["mu"]], seen$mu)
+})
+
 test_that("JAGS bridgesampling validates rebuilt formula random design metadata", {
 
   fixture <- make_bridge_random_fixture()
