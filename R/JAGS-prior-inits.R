@@ -1,0 +1,334 @@
+#' @title Create initial values for 'JAGS' model
+#'
+#' @description Creates initial values for priors in
+#' a 'JAGS' model.
+#'
+#' @param chains number of chains
+#' @param seed seed for random number generation
+#'
+#' @inheritParams JAGS_add_priors
+#'
+#' @return \code{JAGS_add_priors} returns a list of JAGS
+#' initial values.
+#'
+#' @export
+JAGS_get_inits            <- function(prior_list, chains, seed){
+
+  # return empty list in case that no prior was specified
+  if(length(prior_list) == 0){
+    return(list())
+  }
+
+  check_int(chains, "chains", lower = 1)
+  check_real(seed, "seed", allow_NULL = TRUE)
+  check_list(prior_list, "prior_list")
+  if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
+    stop("'prior_list' must be a list of priors.")
+  .check_prior_list_unique_names(prior_list)
+
+
+  # select seed at random if none was specified
+  if(is.null(seed)){
+    seed <- sample(666666, 1)
+  }
+  set.seed(seed)
+
+
+  # create the starting values
+  inits <- vector("list", chains)
+  for(j in 1:chains){
+
+    temp_inits <- .JAGS_get_inits.fun(prior_list)
+
+    temp_inits[[".RNG.seed"]] <- seed + j
+    temp_inits[[".RNG.name"]] <- if(chains > 4) "lecuyer::RngStream" else "base::Super-Duper"
+
+    inits[[j]] <- temp_inits
+  }
+
+  return(inits)
+}
+
+.JAGS_get_inits.fun        <- function(prior_list){
+
+  temp_inits <- list()
+
+  for(i in seq_along(prior_list)){
+
+    if(is.prior.point(prior_list[[i]])){
+
+      next
+
+    }else if(is.prior.weightfunction(prior_list[[i]])){
+
+      temp_inits <- c(temp_inits, .JAGS_init.weightfunction(prior_list[[i]]))
+
+    }else if(is_prior_phacking(prior_list[[i]])){
+
+      temp_inits <- c(temp_inits, .JAGS_init.phacking(prior_list[[i]]))
+
+    }else if(is_prior_bias(prior_list[[i]])){
+
+      temp_inits <- c(temp_inits, .JAGS_init.bias(prior_list[[i]]))
+
+    }else if(is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
+
+      temp_inits <- c(temp_inits, .JAGS_init.PP(prior_list[[i]]))
+
+    }else if(is.prior.spike_and_slab(prior_list[[i]])){
+
+      temp_inits <- c(temp_inits, .JAGS_init.spike_and_slab(prior_list[[i]], names(prior_list)[i]))
+
+    }else if(is.prior.mixture(prior_list[[i]])){
+
+      temp_inits <- c(temp_inits, .JAGS_init.mixture(prior_list[[i]], names(prior_list)[i]))
+
+    }else if(is.prior.factor(prior_list[[i]])){
+
+      temp_inits <- c(temp_inits, .JAGS_init.factor(prior_list[[i]], names(prior_list)[i]))
+
+    }else if(is.prior.vector(prior_list[[i]])){
+
+      temp_inits <- c(temp_inits, .JAGS_init.vector(prior_list[[i]], names(prior_list)[i]))
+
+    }else if(is.prior.simple(prior_list[[i]])){
+
+      temp_inits <- c(temp_inits, .JAGS_init.simple(prior_list[[i]], names(prior_list)[i]))
+
+    }
+  }
+
+  return(temp_inits)
+}
+.JAGS_init.simple          <- function(prior, parameter_name){
+
+  .check_prior(prior, allow_expressions = TRUE)
+  if(!is.prior.simple(prior))
+    stop("improper prior provided")
+  check_char(parameter_name, "parameter_name")
+
+  # no initialization for expression priors: require higher-level input
+  if(.is_prior_expression(prior)){
+    return()
+  }
+
+  if(prior[["distribution"]] == "point"){
+
+    return()
+
+  }else{
+    init <- list()
+
+    init[[parameter_name]] <- rng(prior, 1)
+  }
+
+  return(init)
+}
+.JAGS_init.vector          <- function(prior, parameter_name){
+
+  .check_prior(prior, allow_expressions = TRUE)
+  if(!is.prior.vector(prior))
+    stop("improper prior provided")
+  check_char(parameter_name, "parameter_name")
+
+  # no initialization for expression priors: require higher-level input
+  if(.is_prior_expression(prior)){
+    return()
+  }
+
+  if(prior[["distribution"]] == "point"){
+
+    return()
+
+  }else{
+
+    init <- list()
+
+
+    if(prior[["distribution"]] == "dirichlet"){
+      eta_init <- stats::rgamma(
+        prior$parameters[["K"]],
+        shape = prior$parameters[["alpha"]],
+        rate = 1
+      )
+      eta_init[!is.finite(eta_init) | eta_init <= 0] <- .Machine$double.xmin
+      init[[.JAGS_prior_dirichlet_eta_name(parameter_name)]] <- eta_init
+    }else if(prior[["distribution"]] == "mt"){
+      init[[paste0("prior_par_s_", parameter_name)]] <- rng(prior("gamma", list(shape = prior$parameters[["df"]]/2, rate = prior$parameters[["df"]]/2)), 1)
+      init[[paste0("prior_par_z_", parameter_name)]] <- rng(prior("mnormal", list(mean = 0, sd = prior$parameters[["scale"]], K = prior$parameters[["K"]])), 1)[1,]
+    }else{
+      init[[parameter_name]] <- rng(prior, 1)[1,]
+    }
+
+  }
+
+  return(init)
+}
+.JAGS_init.factor          <- function(prior, parameter_name){
+
+  .check_prior(prior, allow_expressions = TRUE)
+  if(!is.prior.factor(prior))
+    stop("improper prior provided")
+  check_char(parameter_name, "parameter_name")
+  check_int(.get_prior_factor_levels(prior), "levels", lower = 1)
+
+  # no initialization for expression priors: require higher-level input
+  if(.is_prior_expression(prior)){
+    return()
+  }
+
+  if(is.prior.treatment(prior) | is.prior.independent(prior)){
+
+    init <- list()
+    init[[parameter_name]] <- rng(prior, .get_prior_factor_levels(prior))
+
+  }else if(is.prior.orthonormal(prior) | is.prior.meandif(prior)){
+
+    prior$parameters[["K"]] <- .get_prior_factor_levels(prior)
+
+    # remove the orthonormal/meandif class, otherwise samples from the transformed distributions are generated
+    class(prior) <- class(prior)[!class(prior) %in% c("prior.orthonormal", "prior.meandif")]
+
+    init <- .JAGS_init.vector(prior, parameter_name)
+
+  }
+
+  return(init)
+}
+.JAGS_init.PP              <- function(prior){
+
+  .check_prior(prior)
+  if(!is.prior.PET(prior) & !is.prior.PEESE(prior))
+    stop("improper prior provided")
+
+  if(is.prior.PET(prior)){
+    init <- .JAGS_init.simple(prior, "PET")
+  }else if(is.prior.PEESE(prior)){
+    init <- .JAGS_init.simple(prior, "PEESE")
+  }
+
+  return(init)
+}
+.JAGS_init.weightfunction  <- function(prior, component_id = NULL){
+
+  .check_prior(prior)
+  if(!is.prior.weightfunction(prior))
+    stop("improper prior provided")
+
+  if(is.null(component_id)){
+    return(selection_backend_spec(prior)$init)
+  }
+
+  init <- list()
+  if(prior$weights$type == "fixed"){
+    return()
+  }else if(prior$weights$type == "cumulative"){
+    eta_name <- paste0("eta_component_", component_id)
+    init[[eta_name]] <- stats::rgamma(length(prior$weights[["alpha"]]), shape = prior$weights[["alpha"]], rate = 1)
+  }
+
+  return(init)
+}
+.JAGS_init.phacking       <- function(prior, component_id = NULL){
+
+  .check_prior(prior)
+  if(!is_prior_phacking(prior))
+    stop("improper prior provided")
+
+  if(is.null(component_id)){
+    return(selection_backend_spec(prior)$init)
+  }
+
+  alpha_name <- paste0("alpha_component_", component_id)
+  init <- .JAGS_init.simple(prior$alpha, alpha_name)
+
+  return(init)
+}
+.JAGS_init.bias           <- function(prior){
+
+  .check_prior(prior)
+  if(!is_prior_bias(prior))
+    stop("improper prior provided")
+
+  return(selection_backend_spec(prior)$init)
+}
+.JAGS_init.spike_and_slab  <- function(prior, parameter_name){
+
+  .check_prior(prior)
+  if(!is.prior.spike_and_slab(prior))
+    stop("improper prior provided")
+
+  prior_variable        <- list(.get_spike_and_slab_variable(prior))
+  names(prior_variable) <- paste0(parameter_name, "_variable")
+  init <- .JAGS_get_inits.fun(prior_variable)
+
+  if(!is.prior.point(.get_spike_and_slab_inclusion(prior))){
+    init[[paste0(parameter_name, "_inclusion")]] <- rng(.get_spike_and_slab_inclusion(prior), 1)
+  }
+
+
+  return(init)
+}
+.JAGS_init.mixture         <- function(prior_list, parameter_name){
+
+  .check_prior_list(prior_list, allow_expressions = TRUE)
+  if(!is.prior.mixture(prior_list))
+    stop("improper prior provided")
+  check_char(parameter_name, "parameter_name")
+
+  if(inherits(prior_list, "prior.bias_mixture")){
+
+    # dispatch between publication bias prior mixture and a standard prior mixture
+    is_PET            <- sapply(prior_list, is.prior.PET)
+    is_PEESE          <- sapply(prior_list, is.prior.PEESE)
+    is_weightfunction <- sapply(prior_list, is.prior.weightfunction)
+    is_phacking       <- sapply(prior_list, is_prior_phacking)
+    is_bias           <- sapply(prior_list, is_prior_bias)
+    is_none           <- sapply(prior_list, is.prior.none)
+    branch_info       <- lapply(prior_list, .selection_branch_info)
+    has_selection     <- vapply(branch_info, function(x) !is.null(x$selection), logical(1))
+    has_phacking      <- vapply(branch_info, function(x) !is.null(x$phacking),  logical(1))
+
+    init <- list()
+
+    # if any prior is bias related, the whole component must be dispatching publication bias
+    if(any(!(is_PET | is_PEESE | is_weightfunction | is_phacking | is_bias | is_none)))
+      stop("Mixture of publication bias and standard priors is not supported.")
+
+    if(any(is_PET)){
+      if(sum(is_PET) > 1) stop("Only one PET style publication bias adjustment is allowed.")
+
+      named_prior_PET <- prior_list[[which(is_PET)]]
+      class(named_prior_PET) <- class(named_prior_PET)[!class(named_prior_PET) %in% "prior.PET"]
+      named_prior_PET <- list("PET_1" = named_prior_PET)
+
+      init <- c(init, .JAGS_get_inits.fun(named_prior_PET))
+    }
+    if(any(is_PEESE)){
+      if(sum(is_PEESE) > 1) stop("Only one PEESE style publication bias adjustment is allowed.")
+
+      named_prior_PEESE <- prior_list[[which(is_PEESE)]]
+      class(named_prior_PEESE) <- class(named_prior_PEESE)[!class(named_prior_PEESE) %in% "prior.PEESE"]
+      named_prior_PEESE <- list("PEESE_1" = named_prior_PEESE)
+
+      init <- c(init, .JAGS_get_inits.fun(named_prior_PEESE))
+    }
+    if(any(has_selection) || any(has_phacking)){
+      init <- c(init, selection_backend_spec(prior_list)$init)
+    }else{
+      init[["bias_indicator"]] <- rng(prior_list, 1, sample_components = TRUE)
+    }
+
+  }else{
+
+    prior_components <- as.list(prior_list)
+    class(prior_components) <- "list"
+    names(prior_components) <- paste0(parameter_name, "_component_", seq_along(prior_components))
+
+    init <- .JAGS_get_inits.fun(prior_components)
+    init[[paste0(parameter_name, "_indicator")]] <- rng(prior_list, 1, sample_components = TRUE)
+
+  }
+
+  return(init)
+}

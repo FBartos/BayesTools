@@ -1,0 +1,360 @@
+.bt_random_effect_summary_rho_samples <- function(random_term, model_samples){
+
+  structure <- .bt_random_effect_summary_term_structure(random_term)
+  correlation <- .bt_random_effect_correlation_metadata(
+    random_term,
+    structure = structure,
+    context = "Random-effect summary metadata"
+  )
+  if(is.null(correlation) || !identical(correlation$type, "rho")){
+    return(NULL)
+  }
+
+  .bt_random_effect_rho_draws(
+    random_term = random_term,
+    posterior = model_samples,
+    missing = "error",
+    out_of_support = "error",
+    context = "Random-effect summary metadata"
+  )
+}
+
+.bt_random_effect_summary_missing_correlation_stop <- function(random_term){
+
+  stop(
+    "Random-effect summary samples are missing or invalid canonical correlation coordinates for block '",
+    random_term$block_name,
+    "'. Expected monitored Cholesky, LKJ primitive, or scalar correlation coordinates.",
+    call. = FALSE
+  )
+}
+
+.bt_random_effect_summary_sd_components <- function(random_term, sd_names){
+
+  leaves <- random_term$sd_leaves
+  if(!is.null(leaves) && !is.null(leaves$leaf_terms)){
+    out <- unname(leaves$leaf_terms[sd_names])
+    missing <- is.na(out)
+    if(any(missing)){
+      out[missing] <- .bt_random_effect_summary_component_from_sd_name(
+        random_term,
+        sd_names[missing]
+      )
+    }
+    return(.bt_random_effect_summary_display_components(random_term, out))
+  }
+
+  .bt_random_effect_summary_display_components(
+    random_term,
+    .bt_random_effect_summary_component_from_sd_name(random_term, sd_names)
+  )
+}
+
+.bt_random_effect_summary_component_from_sd_name <- function(random_term,
+                                                            sd_names){
+
+  prefix <- paste0(random_term$parameter_stem, "_")
+  out <- sub(paste0("^", prefix), "", sd_names)
+  out <- gsub("__xXx__", ":", out, fixed = TRUE)
+  .bt_random_effect_summary_normalize_components(out)
+}
+
+.bt_random_effect_summary_normalize_components <- function(components){
+
+  components <- gsub("__xXx__", ":", components, fixed = TRUE)
+  components[components == "sd"] <- "shared"
+  components[components == "(Intercept)"] <- "intercept"
+  components
+}
+
+.bt_random_effect_summary_display_components <- function(random_term, components){
+
+  components <- .bt_random_effect_summary_normalize_components(components)
+
+  index <- random_term$structured_index
+  if(is.null(index) || is.null(index$name) || is.null(index$label) ||
+     identical(index$name, index$label)){
+    return(components)
+  }
+
+  index_name <- as.character(index$name)
+  index_label <- as.character(index$label)
+  replace <- components == index_name | startsWith(components, paste0(index_name, "["))
+  components[replace] <- paste0(
+    index_label,
+    substr(components[replace], nchar(index_name) + 1L, nchar(components[replace]))
+  )
+  components
+}
+
+.bt_random_effect_summary_unscale_sd_fallback <- function(values, sd_names,
+                                                          parameter,
+                                                          formula_scale){
+
+  if(is.null(parameter) || is.null(formula_scale) || length(formula_scale) == 0L ||
+     is.null(formula_scale[[parameter]]) || length(formula_scale[[parameter]]) == 0L){
+    return(values)
+  }
+
+  transformed <- .apply_random_sd_unscale(
+    posterior = values,
+    random_sd_cols = sd_names,
+    formula_scale = formula_scale[[parameter]],
+    prefix = parameter
+  )
+  transformed[, sd_names, drop = FALSE]
+}
+
+.bt_random_effect_summary_correlation_samples <- function(random_term,
+                                                          model_samples){
+
+  out <- list(
+    labels = character(),
+    parts = list(),
+    values = matrix(nrow = nrow(model_samples), ncol = 0L)
+  )
+  if(random_term$n_columns < 2L){
+    return(out)
+  }
+
+  structure <- .bt_random_effect_summary_term_structure(random_term)
+  correlation <- .bt_random_effect_correlation_metadata(
+    random_term,
+    structure = structure,
+    context = "Random-effect summary metadata"
+  )
+  if(is.null(correlation) || !identical(correlation$type, "lkj")){
+    return(out)
+  }
+
+  cholesky <- .bt_random_effect_cholesky_draws(
+    random_term = random_term,
+    n_columns = random_term$n_columns,
+    posterior = model_samples
+  )
+  if(is.null(cholesky)){
+    .bt_random_effect_summary_missing_correlation_stop(random_term)
+  }
+
+  pairs <- utils::combn(seq_len(random_term$n_columns), 2L)
+  values <- matrix(NA_real_, nrow = nrow(model_samples), ncol = ncol(pairs))
+  labels <- character(ncol(pairs))
+  parts <- vector("list", ncol(pairs))
+  for(i in seq_len(ncol(pairs))){
+    first <- pairs[1L, i]
+    second <- pairs[2L, i]
+    first_values <- cholesky[, first, , drop = FALSE]
+    second_values <- cholesky[, second, , drop = FALSE]
+    dim(first_values) <- c(dim(cholesky)[1L], dim(cholesky)[3L])
+    dim(second_values) <- c(dim(cholesky)[1L], dim(cholesky)[3L])
+    values[, i] <- rowSums(first_values * second_values)
+    pair <- .bt_random_effect_summary_column_components(random_term)[c(first, second)]
+    labels[i] <- paste0(pair[1L], ",", pair[2L])
+    parts[[i]] <- pair
+  }
+
+  list(labels = labels, parts = parts, values = values)
+}
+
+.bt_random_effect_summary_column_components <- function(random_term){
+
+  components <- random_term$column_names
+  leaves <- random_term$sd_leaves
+  if(!is.null(leaves) && !is.null(leaves$leaf_terms_by_column) &&
+     length(leaves$leaf_terms_by_column) == random_term$n_columns &&
+     !identical(unique(unname(leaves$leaf_terms_by_column)), "sd")){
+    components <- leaves$leaf_terms_by_column
+  }
+
+  .bt_random_effect_summary_display_components(random_term, components)
+}
+
+.bt_random_effect_summary_allocation_samples <- function(allocation,
+                                                         random_term = NULL,
+                                                         model_samples,
+                                                         prior_list,
+                                                         include_multipliers = FALSE){
+
+  weights <- .bt_random_effect_dirichlet_draws(
+    parameter_name = allocation$weight_name,
+    posterior = model_samples,
+    prior_list = prior_list
+  )
+  if(is.null(weights)){
+    .bt_random_effect_summary_missing_allocation_stop(allocation)
+  }
+
+  components <- .bt_random_effect_summary_allocation_components(
+    allocation = allocation,
+    K = ncol(weights),
+    random_term = random_term
+  )
+  names <- labels <- types <- character()
+  values <- list()
+
+  for(i in seq_len(ncol(weights))){
+    names <- c(names, .bt_random_effect_summary_name(
+      parameter = sub("__xRE_ALLOCx_.*$", "", allocation$weight_name),
+      type = "var_frac",
+      parts = c(allocation$label, components[i])
+    ))
+    labels <- c(labels, paste0("var_frac(", allocation$label, ": ", components[i], ")"))
+    types <- c(types, "var_frac")
+    values[[length(values) + 1L]] <- weights[, i]
+  }
+
+  allocation_target <- .bt_random_effect_summary_allocation_target(allocation)
+  if(include_multipliers && identical(allocation_target, "sd_component")){
+    for(i in seq_len(ncol(weights))){
+      names <- c(names, .bt_random_effect_summary_name(
+        parameter = sub("__xRE_ALLOCx_.*$", "", allocation$weight_name),
+        type = "sd_mult",
+        parts = c(allocation$label, components[i])
+      ))
+      labels <- c(labels, paste0("sd_mult(", allocation$label, ": ", components[i], ")"))
+      types <- c(types, "sd_multiplier")
+      values[[length(values) + 1L]] <- .bt_random_effect_allocation_multiplier(
+        weights = weights[, i],
+        scale = allocation$scale,
+        n_targets = ncol(weights)
+      )
+    }
+  }
+
+  values <- do.call(cbind, values)
+  list(
+    names = names,
+    labels = labels,
+    types = types,
+    components = rep(components, if(include_multipliers && identical(allocation_target, "sd_component")) 2L else 1L),
+    values = values
+  )
+}
+
+.bt_random_effect_summary_missing_allocation_stop <- function(allocation){
+
+  label <- allocation$label
+  if(!is.character(label) || length(label) != 1L || is.na(label) || !nzchar(label)){
+    label <- allocation$weight_name
+  }
+  if(!is.character(label) || length(label) != 1L || is.na(label) || !nzchar(label)){
+    label <- "<unknown>"
+  }
+
+  stop(
+    "Random-effect allocation summary samples are missing Dirichlet allocation coordinates for allocation '",
+    label,
+    "'. Expected monitored simplex weights or Dirichlet auxiliary coordinates.",
+    call. = FALSE
+  )
+}
+
+.bt_random_effect_summary_allocation_components <- function(allocation, K,
+                                                           random_term = NULL){
+
+  allocation_target <- .bt_random_effect_summary_allocation_target(allocation)
+  if(identical(allocation_target, "sd_component") && !is.null(allocation$leaf_terms)){
+    components <- unname(allocation$leaf_terms)
+    if(!is.null(random_term)){
+      components <- .bt_random_effect_summary_display_components(
+        random_term,
+        components
+      )
+    }
+  }else{
+    terms <- allocation$terms
+    components <- names(terms)
+    if(is.null(components) || !all(nzchar(components))){
+      components <- unname(terms)
+    }
+  }
+
+  if(length(components) != K){
+    components <- paste0("component_", seq_len(K))
+  }
+  components
+}
+
+.bt_random_effect_summary_prior <- function(parameter, type, label,
+                                            block = NULL, grouping = NULL,
+                                            structure = NULL,
+                                            effect_label = NULL,
+                                            allocation = NULL,
+                                            component = NULL){
+
+  out <- prior_none()
+  attr(out, "parameter") <- parameter
+  attr(out, "random_summary") <- type
+  attr(out, "random_summary_label") <- label
+  if(!is.null(block)){
+    attr(out, "random_factor") <- block
+  }
+  if(!is.null(effect_label)){
+    attr(out, "random_name") <- effect_label
+  }else if(!is.null(block)){
+    attr(out, "random_name") <- block
+  }
+  if(!is.null(grouping)){
+    attr(out, "random_grouping_factor") <- grouping
+  }
+  if(!is.null(structure)){
+    attr(out, "random_structure") <- structure
+  }
+  if(!is.null(allocation)){
+    attr(out, "random_allocation") <- allocation
+  }
+  if(!is.null(component)){
+    attr(out, "random_component") <- component
+  }
+
+  out
+}
+
+.bt_random_effect_summary_group_label <- function(random_term){
+
+  group_label <- random_term$group_label
+  if(!is.null(group_label) && length(group_label) == 1L && nzchar(group_label)){
+    return(group_label)
+  }
+
+  random_term$block_name
+}
+
+.bt_random_effect_summary_name <- function(parameter, type, parts){
+
+  paste0(
+    parameter,
+    "__xRE_SUMMARY__",
+    type,
+    "__",
+    paste(vapply(parts, .bt_random_effect_summary_safe_label, character(1)),
+          collapse = "__")
+  )
+}
+
+.bt_random_effect_summary_safe_label <- function(x){
+
+  x <- gsub("[^A-Za-z0-9_]", "_", x)
+  x <- gsub("_+", "_", x)
+  x <- gsub("^_|_$", "", x)
+  if(!nzchar(x)){
+    x <- "component"
+  }
+  x
+}
+
+.bt_random_effect_summary_unique_name <- function(name, used_names){
+
+  if(!name %in% used_names){
+    return(name)
+  }
+  i <- 2L
+  candidate <- paste0(name, "_", i)
+  while(candidate %in% used_names){
+    i <- i + 1L
+    candidate <- paste0(name, "_", i)
+  }
+
+  candidate
+}
+
