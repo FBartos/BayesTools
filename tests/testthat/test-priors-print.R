@@ -32,7 +32,7 @@ test_that("Prior print function input validation", {
 
 })
 
-test_that("Random-effect specification print methods are compact", {
+test_that("Random-effect specification print methods use prior notation", {
 
   sd_prior  <- prior("gamma", list(shape = 2, rate = 2))
   rho_prior <- prior("normal", list(mean = 0, sd = 0.5))
@@ -75,24 +75,23 @@ test_that("Random-effect specification print methods are compact", {
   )
 
   expect_equal(utils::capture.output(print(lkj_prior)), c(
-    "prior_lkj()",
-    "  eta: 2",
+    "R ~ LKJ(eta = 2)",
     "  include_correlation: FALSE",
     "  include_primitives: TRUE"
   ))
   expect_equal(print(lkj_prior, silent = TRUE), c(
-    "prior_lkj()",
-    "  eta: 2",
+    "R ~ LKJ(eta = 2)",
     "  include_correlation: FALSE",
     "  include_primitives: TRUE"
   ))
   expect_equal(utils::capture.output(print(covariance)), c(
-    "random_covariance()",
-    "  structure: US",
-    "  sd: Gamma(2, 2)",
-    "  cor: prior_lkj(eta = 2, include_correlation = FALSE, include_primitives = TRUE)",
-    "  rho: none",
-    "  rho_scale: fisher_z"
+    "covariance: US",
+    "  sigma ~ Gamma(2, 2)",
+    "  R ~ LKJ(eta = 2)"
+  ))
+  expect_equal(utils::capture.output(print(random_covariance(rho_scale = "rho"))), c(
+    "covariance: formula-owned",
+    "  rho_scale: rho"
   ))
   expect_equal(utils::capture.output(print(monitor)), c(
     "random_monitor()",
@@ -106,14 +105,13 @@ test_that("Random-effect specification print methods are compact", {
     "  method: sample"
   ))
   expect_equal(utils::capture.output(print(block)), c(
-    "random_block()",
-    "  sd: Gamma(2, 2)",
-    "  sd_source: none",
-    "  covariance: random_covariance(structure = formula-owned, rho = Normal(0, 0.5), rho_scale = rho)",
-    "  monitor: random_monitor(latent = TRUE, coefficients = TRUE, correlation = TRUE, lkj_primitives = TRUE)",
-    "  new_levels: inherit",
-    "  terms: intercept, slope",
-    "  allocation: none"
+    "block",
+    "  sigma ~ Gamma(2, 2)",
+    "  rho ~ Normal(0, 0.5)",
+    "  rho_scale: rho",
+    "  sigma_intercept ~ Gamma(2, 2)",
+    "  sigma_slope ~ Gamma(2, 2)",
+    "  monitor: latent = TRUE, coefficients = TRUE, correlation = TRUE, lkj_primitives = TRUE"
   ))
   expect_s3_class(random_term(sd = sd_prior), "random_block")
   expect_equal(utils::capture.output(print(source)), c(
@@ -127,26 +125,17 @@ test_that("Random-effect specification print methods are compact", {
     "  source: tau[row]"
   ))
   expect_equal(utils::capture.output(print(allocation)), c(
-    "random_variance_allocation()",
-    "  name: total_re",
-    "  terms: study = study, site = site",
-    "  sd: Gamma(2, 2)",
-    "  sd_source: none",
-    "  weights: Dirichlet(2, 3)",
-    "  parent: none",
-    "  target: block",
-    "  scale: total_variance"
+    "allocation: total_re",
+    "  sigma_total ~ Gamma(2, 2)",
+    "  w ~ Dirichlet(2, 3)",
+    "  sigma_study = sigma_total * sqrt(w[1])",
+    "  sigma_site = sigma_total * sqrt(w[2])"
   ))
   expect_equal(utils::capture.output(print(child_allocation)), c(
-    "random_variance_allocation()",
-    "  name: nested_split",
-    "  terms: paper, country",
-    "  sd: none",
-    "  sd_source: none",
-    "  weights: Dirichlet(3, 1)",
-    "  parent: allocation_ref(allocation = \"total_re\", component = \"study\")",
-    "  target: block",
-    "  scale: total_variance"
+    "allocation: nested_split",
+    "  w ~ Dirichlet(3, 1)",
+    "  sigma_paper = sigma_study * sqrt(w[1])",
+    "  sigma_country = sigma_study * sqrt(w[2])"
   ))
   expect_equal(utils::capture.output(print(allocation_ref("total_re", "study"))), c(
     "allocation_ref()",
@@ -154,15 +143,106 @@ test_that("Random-effect specification print methods are compact", {
     "  component: study"
   ))
   expect_equal(utils::capture.output(print(random_prior)), c(
-    "prior_random()",
-    "  sd: Gamma(2, 2)",
-    "  covariance: random_covariance(structure = formula-owned, cor = prior_lkj(eta = 3, include_correlation = TRUE, include_primitives = FALSE))",
-    "  monitor: random_monitor(latent = TRUE, coefficients = FALSE, correlation = TRUE, lkj_primitives = FALSE)",
-    "  new_levels: random_new_levels(method = \"error\")",
-    "  allocation: 2 allocations (total_re, nested_split)",
-    "  blocks: study = random_block(sd = Gamma(2, 2), covariance = random_covariance(structure = formula-owned, rho = Normal(0, 0.5), rho_scale = rho), monitor = random_monitor(latent = TRUE, coefficients = TRUE, correlation = TRUE, lkj_primitives = TRUE), terms = intercept, slope)"
+    "defaults",
+    "  sigma ~ Gamma(2, 2)",
+    "  R ~ LKJ(eta = 3)",
+    "allocation: total_re",
+    "  sigma_total ~ Gamma(2, 2)",
+    "  w ~ Dirichlet(2, 3)",
+    "  sigma_study = sigma_total * sqrt(w[1])",
+    "  sigma_site = sigma_total * sqrt(w[2])",
+    "allocation: nested_split",
+    "  w ~ Dirichlet(3, 1)",
+    "  sigma_paper = sigma_study * sqrt(w[1])",
+    "  sigma_country = sigma_study * sqrt(w[2])",
+    "block: study",
+    "  sigma ~ Gamma(2, 2)",
+    "  rho ~ Normal(0, 0.5)",
+    "  rho_scale: rho",
+    "  sigma_intercept ~ Gamma(2, 2)",
+    "  sigma_slope ~ Gamma(2, 2)",
+    "  monitor: latent = TRUE, coefficients = TRUE, correlation = TRUE, lkj_primitives = TRUE"
   ))
   expect_equal(utils::capture.output(print(random_prior, silent = TRUE)), character())
+  expect_equal(utils::capture.output(print(prior_random(
+    covariance = random_covariance(rho_scale = "rho")
+  ))), c(
+    "defaults",
+    "  rho_scale: rho"
+  ))
+})
+
+test_that("Random prior printing expands allocation and term priors", {
+
+  sd_total <- prior(
+    distribution = "normal",
+    parameters = list(mean = 0, sd = 0.30),
+    truncation = list(lower = 0, upper = Inf)
+  )
+
+  alloc <- random_variance_allocation(
+    name    = "random_total",
+    terms   = c(study = "study", outcome = "outcome"),
+    sd      = sd_total,
+    weights = prior(
+      distribution = "dirichlet",
+      parameters = list(alpha = c(1, 1))
+    )
+  )
+  pr_alloc <- prior_random(allocation = alloc)
+  expect_equal(utils::capture.output(print(pr_alloc)), c(
+    "allocation: random_total",
+    "  sigma_total ~ Normal(0, 0.3)[0, Inf]",
+    "  w ~ Dirichlet(1, 1)",
+    "  sigma_study = sigma_total * sqrt(w[1])",
+    "  sigma_outcome = sigma_total * sqrt(w[2])"
+  ))
+
+  hetero_alloc <- random_variance_allocation(
+    terms   = "study",
+    sd      = sd_total,
+    weights = prior(
+      distribution = "dirichlet",
+      parameters = list(alpha = c(1, 1))
+    ),
+    target = "sd_component",
+    scale  = "mean_variance"
+  )
+  pr_hetero <- prior_random(allocation = hetero_alloc)
+  expect_equal(utils::capture.output(print(pr_hetero)), c(
+    "allocation: #1",
+    "  sigma_total ~ Normal(0, 0.3)[0, Inf]",
+    "  w ~ Dirichlet(1, 1)",
+    "  sigma_study[1] = sigma_total * sqrt(2 * w[1])",
+    "  sigma_study[2] = sigma_total * sqrt(2 * w[2])",
+    "  scale: mean_variance"
+  ))
+
+  sd_intercept <- prior(
+    distribution = "normal",
+    parameters = list(mean = 0, sd = 0.15),
+    truncation = list(lower = 0, upper = Inf)
+  )
+  sd_dose <- prior(
+    distribution = "normal",
+    parameters = list(mean = 0, sd = 0.35),
+    truncation = list(lower = 0, upper = Inf)
+  )
+  pr_terms <- prior_random(
+    study = random_block(
+      sd = sd_total,
+      terms = list(
+        intercept = sd_intercept,
+        dose      = sd_dose
+      )
+    )
+  )
+  expect_equal(utils::capture.output(print(pr_terms)), c(
+    "block: study",
+    "  sigma ~ Normal(0, 0.3)[0, Inf]",
+    "  sigma_intercept ~ Normal(0, 0.15)[0, Inf]",
+    "  sigma_dose ~ Normal(0, 0.35)[0, Inf]"
+  ))
 })
 
 
