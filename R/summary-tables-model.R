@@ -24,8 +24,8 @@
 #' part of any formula. For formula random effects, character filters also
 #' accept semantic aliases \code{"random"}, \code{"random_sd"},
 #' \code{"random_rho"}, \code{"random_correlation"},
-#' \code{"random_variance_fraction"}, \code{"random_allocation"}, and
-#' \code{"random_sd_multiplier"}.
+#' \code{"random_variance_fraction"}, \code{"random_variance_ratio"},
+#' \code{"random_allocation"}, and \code{"random_sd_multiplier"}.
 #' @param remove_formulas character vector of formula names whose parameters
 #' should be removed from the summary. Defaults to \code{NULL}.
 #' @param keep_parameters character vector of parameter names to keep.
@@ -38,8 +38,9 @@
 #' specified in \code{keep_parameters}. Defaults to \code{NULL}.
 #' @param random_effects_summary random-effect reporting mode for JAGS estimates
 #' tables. \code{"standard"} replaces raw random-effect implementation
-#' parameters with semantic SD, rho/correlation, and variance-allocation
-#' summaries. \code{"full"} also includes heterogeneous SD multipliers.
+#' parameters with semantic SD, rho/correlation, true variance-fraction, and
+#' mean-variance SD-component variance-ratio summaries. \code{"full"} also
+#' includes heterogeneous SD multipliers.
 #' \code{"raw"} keeps the historical raw monitored parameters, and
 #' \code{"none"} removes random-effect parameters from the table. When used
 #' together with \code{transform_scaled = TRUE}, SD and correlation summaries
@@ -790,7 +791,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     c(
       "random", "random_effects", "random_sd", "random_rho",
       "random_cor", "random_correlation", "random_variance_fraction",
-      "random_allocation", "random_sd_multiplier"
+      "random_variance_ratio", "random_allocation", "random_sd_multiplier"
     )
   )
 }

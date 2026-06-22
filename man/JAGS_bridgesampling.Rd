@@ -130,16 +130,16 @@ When \code{bridge_context = TRUE}, the callback receives an object of class
 \code{prior_parameters}, \code{formula_prior_parameters}, \code{formula_parameters},
 \code{add_parameters}, \code{random}, \code{node_info}, and \code{metadata}. The \code{state} field
 contains the independent bridge coordinates. The \code{nodes} field is a flat
-named numeric vector that also includes deterministic BayesTools-resolved nodes
-such as normalized Dirichlet allocation weights reconstructed from
-\verb{prior_par_eta_*} coordinates. The \code{node_info} field records the owner
-and role of each exposed node. The \code{random} field contains structured
+named numeric vector that also includes deterministic BayesTools-resolved
+nodes such as normalized Dirichlet allocation weights reconstructed from
+\verb{prior_par_eta_*} coordinates. The \code{node_info} field records the owner and
+role of each exposed node. The \code{random} field contains structured
 random-effect block state including resolved SDs, allocation weights,
 correlations, Cholesky factors, covariance matrices where row-invariant, and
 row-indexed SD source values where applicable. Each random block is keyed by
 formula parameter and block name, and contains \code{block_name}, \code{compile_mode},
-\code{dimensions}, \code{levels}, \code{scale}, \code{allocation}, \code{correlation},
-\code{covariance}, \code{latent}, and \code{nodes} fields.
+\code{dimensions}, \code{levels}, \code{scale}, \code{allocation}, \code{correlation}, \code{covariance},
+\code{latent}, and \code{nodes} fields.
 }
 \examples{
 \dontrun{

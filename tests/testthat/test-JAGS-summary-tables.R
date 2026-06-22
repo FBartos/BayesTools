@@ -437,7 +437,6 @@ test_that("row-indexed external random SD summaries survive the public estimates
   expect_false(any(grepl(scalar_sd_pattern, colnames(kept_random))))
 })
 
-
 test_that("runjags_inference_table propagates real indicator MCSE to BF error percent", {
 
   fit       <- make_adversarial_indicator_fit()

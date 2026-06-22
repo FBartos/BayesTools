@@ -4439,6 +4439,16 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
     "mu__xRE_SUMMARY__sd__study__intercept",
     "mu__xRE_SUMMARY__sd__drug__intercept"
   ) %in% colnames(nested_summary$model_samples)))
+  expect_equal(colnames(nested_summary$model_samples), c(
+    "mu__xRE_SUMMARY__sd_total__total_re",
+    "mu__xRE_SUMMARY__sd__study__intercept",
+    "mu__xRE_SUMMARY__sd__paper__intercept",
+    "mu__xRE_SUMMARY__sd__drug__intercept",
+    "mu__xRE_SUMMARY__var_frac__total_re__nested",
+    "mu__xRE_SUMMARY__var_frac__total_re__drug",
+    "mu__xRE_SUMMARY__var_frac__nested_split__study",
+    "mu__xRE_SUMMARY__var_frac__nested_split__paper"
+  ))
   expect_equal(
     nested_summary$model_samples[, "mu__xRE_SUMMARY__var_frac__total_re__nested"],
     c(1 / 4, 2 / 4),
@@ -4620,6 +4630,46 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
     slash_metadata[slash_cask_row, "Random structure"],
     slash_result$formula_design$random_effects[[1]]$structure
   )
+
+  slash_allocation_result <- JAGS_formula(
+    formula = ~ 1 + random(1 | batch/cask, covariance = "diag"),
+    parameter = "mu",
+    data = df_slash,
+    prior_list = fixed_priors,
+    prior_random = prior_random(
+      random_variance_allocation(
+        name = "random_total",
+        sd = sd_prior,
+        weights = prior("dirichlet", list(alpha = c(1, 1)))
+      )
+    )
+  )
+  slash_allocation <- slash_allocation_result$formula_design$random_allocations[[1]]
+  slash_allocation_summary <- BayesTools:::.bt_random_effect_summary_samples(
+    model_samples = matrix(
+      c(2, 0.25, 0.75, 4, 0.5, 0.5),
+      nrow = 2,
+      byrow = TRUE,
+      dimnames = list(
+        NULL,
+        c(
+          slash_allocation$source_node,
+          paste0(slash_allocation$weight_name, "[1]"),
+          paste0(slash_allocation$weight_name, "[2]")
+        )
+      )
+    ),
+    prior_list = slash_allocation_result$prior_list,
+    formula_design = list(mu = slash_allocation_result$formula_design),
+    mode = "standard"
+  )
+  expect_equal(colnames(slash_allocation_summary$model_samples), c(
+    "mu__xRE_SUMMARY__sd_total__random_total",
+    "mu__xRE_SUMMARY__sd__cask_batch__intercept",
+    "mu__xRE_SUMMARY__sd__batch__intercept",
+    "mu__xRE_SUMMARY__var_frac__random_total__cask_batch",
+    "mu__xRE_SUMMARY__var_frac__random_total__batch"
+  ))
 
   named_result <- JAGS_formula(
     formula = ~ 1 + diag(1 | study, name = "study_re"),
@@ -4857,11 +4907,35 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
     formula_design = list(mu = sd_leaf_result$formula_design),
     mode = "full"
   )
+  expect_false("mu__xRE_SUMMARY__var_frac__het_sd__x" %in%
+                 colnames(sd_leaf_summary$model_samples))
+  expect_equal(
+    unname(sd_leaf_summary$model_samples[1, "mu__xRE_SUMMARY__var_ratio__het_sd__x"]),
+    2 * 3 / 4,
+    tolerance = 1e-12
+  )
   expect_equal(
     unname(sd_leaf_summary$model_samples[1, "mu__xRE_SUMMARY__sd_mult__het_sd__x"]),
     sqrt(2 * 3 / 4),
     tolerance = 1e-12
   )
+
+  remove_for_fraction_sd_leaf <- BayesTools:::.filter_parameters(
+    sd_leaf_summary$prior_list,
+    keep_parameters = "random_variance_fraction",
+    remove_spike_0 = FALSE
+  )
+  kept_fraction_sd_leaf <- setdiff(names(sd_leaf_summary$prior_list), remove_for_fraction_sd_leaf)
+  expect_false(any(grepl("__var_ratio__", kept_fraction_sd_leaf, fixed = TRUE)))
+
+  remove_for_ratio <- BayesTools:::.filter_parameters(
+    sd_leaf_summary$prior_list,
+    keep_parameters = "random_variance_ratio",
+    remove_spike_0 = FALSE
+  )
+  kept_ratio <- setdiff(names(sd_leaf_summary$prior_list), remove_for_ratio)
+  expect_gt(length(kept_ratio), 0L)
+  expect_true(all(grepl("__var_ratio__", kept_ratio, fixed = TRUE)))
 
   homogeneous_result <- JAGS_formula(
     formula = ~ 1 + id(1 + x | study),

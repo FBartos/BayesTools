@@ -32,6 +32,7 @@ bayestools_test_profile_contexts <- list(
     "priors-print",
     "priors-tools",
     "random-effects-marginal-covariance",
+    "random-effects-summary-posterior",
     "selection-kernels",
     "summary-tables-helpers",
     "tools-evaluation",

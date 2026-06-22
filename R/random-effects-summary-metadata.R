@@ -189,22 +189,36 @@
     K = ncol(weights),
     random_term = random_term
   )
+  allocation_type <- .bt_random_effect_summary_allocation_type(allocation)
   names <- labels <- types <- character()
+  component_values <- character()
+  component_indices <- integer()
   values <- list()
 
   for(i in seq_len(ncol(weights))){
     names <- c(names, .bt_random_effect_summary_name(
       parameter = sub("__xRE_ALLOCx_.*$", "", allocation$weight_name),
-      type = "var_frac",
+      type = allocation_type$name,
       parts = c(allocation$label, components[i])
     ))
-    labels <- c(labels, paste0("var_frac(", allocation$label, ": ", components[i], ")"))
-    types <- c(types, "var_frac")
-    values[[length(values) + 1L]] <- weights[, i]
+    labels <- c(labels, paste0(allocation_type$label, "(", allocation$label, ": ", components[i], ")"))
+    types <- c(types, allocation_type$summary)
+    component_values <- c(component_values, components[i])
+    component_indices <- c(component_indices, i)
+    values[[length(values) + 1L]] <- .bt_random_effect_summary_allocation_values(
+      weights = weights[, i],
+      allocation = allocation,
+      allocation_type = allocation_type,
+      K = ncol(weights)
+    )
   }
 
   allocation_target <- .bt_random_effect_summary_allocation_target(allocation)
   if(include_multipliers && identical(allocation_target, "sd_component")){
+    allocation_scale <- .bt_random_effect_allocation_scale_metadata(
+      allocation,
+      context = "Random-effect summary metadata"
+    )
     for(i in seq_len(ncol(weights))){
       names <- c(names, .bt_random_effect_summary_name(
         parameter = sub("__xRE_ALLOCx_.*$", "", allocation$weight_name),
@@ -213,10 +227,15 @@
       ))
       labels <- c(labels, paste0("sd_mult(", allocation$label, ": ", components[i], ")"))
       types <- c(types, "sd_multiplier")
+      component_values <- c(component_values, components[i])
+      component_indices <- c(component_indices, i)
       values[[length(values) + 1L]] <- .bt_random_effect_allocation_multiplier(
         weights = weights[, i],
-        scale = allocation$scale,
-        n_targets = ncol(weights)
+        scale = allocation_scale,
+        n_targets = .bt_random_effect_summary_allocation_n_targets(
+          allocation,
+          K = ncol(weights)
+        )
       )
     }
   }
@@ -226,9 +245,80 @@
     names = names,
     labels = labels,
     types = types,
-    components = rep(components, if(include_multipliers && identical(allocation_target, "sd_component")) 2L else 1L),
+    components = component_values,
+    indices = component_indices,
     values = values
   )
+}
+
+.bt_random_effect_summary_allocation_type <- function(allocation){
+
+  allocation_target <- .bt_random_effect_summary_allocation_target(allocation)
+  allocation_scale <- .bt_random_effect_allocation_scale_metadata(
+    allocation,
+    context = "Random-effect summary metadata"
+  )
+
+  if(identical(allocation_target, "sd_component") &&
+     identical(allocation_scale, "mean_variance")){
+    return(list(
+      name = "var_ratio",
+      label = "var_ratio",
+      summary = "var_ratio",
+      scale = allocation_scale
+    ))
+  }
+
+  list(
+    name = "var_frac",
+    label = "var_frac",
+    summary = "var_frac",
+    scale = allocation_scale
+  )
+}
+
+.bt_random_effect_summary_allocation_values <- function(weights, allocation,
+                                                        allocation_type, K){
+
+  if(identical(allocation_type$summary, "var_ratio")){
+    return(.bt_random_effect_allocation_variance_ratio(
+      weights = weights,
+      n_targets = .bt_random_effect_summary_allocation_n_targets(
+        allocation,
+        K = K
+      )
+    ))
+  }
+
+  weights
+}
+
+.bt_random_effect_summary_allocation_n_targets <- function(allocation, K){
+
+  n_targets <- allocation$n_targets
+  if(is.numeric(n_targets) && length(n_targets) == 1L &&
+     !is.na(n_targets) && n_targets == as.integer(n_targets) &&
+     n_targets >= 2L && n_targets == K){
+    return(as.integer(n_targets))
+  }
+
+  stop(
+    "Random-effect allocation metadata are missing canonical 'allocation$n_targets'.",
+    call. = FALSE
+  )
+}
+
+.bt_random_effect_allocation_variance_ratio <- function(weights, n_targets){
+
+  if(!is.numeric(n_targets) || length(n_targets) != 1L ||
+     is.na(n_targets) || n_targets < 1L){
+    stop(
+      "Random-effect allocation metadata are missing canonical 'allocation$n_targets'.",
+      call. = FALSE
+    )
+  }
+
+  n_targets * weights
 }
 
 .bt_random_effect_summary_missing_allocation_stop <- function(allocation){
@@ -280,6 +370,8 @@
                                             structure = NULL,
                                             effect_label = NULL,
                                             allocation = NULL,
+                                            allocation_metadata = NULL,
+                                            allocation_index = NULL,
                                             component = NULL){
 
   out <- prior_none()
@@ -302,6 +394,12 @@
   }
   if(!is.null(allocation)){
     attr(out, "random_allocation") <- allocation
+  }
+  if(!is.null(allocation_metadata)){
+    attr(out, "random_allocation_metadata") <- allocation_metadata
+  }
+  if(!is.null(allocation_index)){
+    attr(out, "random_allocation_index") <- allocation_index
   }
   if(!is.null(component)){
     attr(out, "random_component") <- component

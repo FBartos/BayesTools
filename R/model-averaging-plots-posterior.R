@@ -445,6 +445,18 @@ plot_posterior <- function(samples, parameter, plot_type = "base", prior = FALSE
       }
 
       if(is.null(plot_data_prior)){
+        plot_data_prior <- .plot_data_attached_prior_density(
+          samples                   = samples,
+          parameter                 = parameter,
+          n_points                  = n_points,
+          x_range                   = xlim,
+          transformation            = transformation,
+          transformation_arguments  = transformation_arguments,
+          transformation_settings   = transformation_settings
+        )
+      }
+
+      if(is.null(plot_data_prior)){
         plot_data_prior <- .plot_data_prior_list.simple(prior_list, x_seq = NULL, x_range = xlim, x_range_quant = NULL,
                                                   n_points = n_points, n_samples = n_samples, force_samples = force_samples, individual = individual,
                                                   transformation = transformation, transformation_arguments = transformation_arguments,

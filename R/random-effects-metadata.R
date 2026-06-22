@@ -214,7 +214,8 @@
     "random_cor" = flags$summary %in% c("rho", "cor") | random_rho,
     "random_correlation" = flags$summary %in% c("rho", "cor") | random_rho,
     "random_variance_fraction" = flags$summary == "var_frac" | is_dirichlet_allocation,
-    "random_allocation" = flags$summary %in% c("sd_total", "var_frac", "sd_multiplier") |
+    "random_variance_ratio" = flags$summary == "var_ratio",
+    "random_allocation" = flags$summary %in% c("sd_total", "var_frac", "var_ratio", "sd_multiplier") |
       flags$allocation,
     "random_sd_multiplier" = flags$summary == "sd_multiplier",
     rep(FALSE, nrow(flags))

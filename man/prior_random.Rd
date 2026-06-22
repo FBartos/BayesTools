@@ -99,10 +99,6 @@ models. The default scale is Fisher's z.}
 \item{new_levels}{\code{random_new_levels()} object controlling prediction for
 previously unseen grouping levels.}
 
-\item{method}{new-level prediction method: \code{"error"} disallows new levels,
-\code{"zero"} fixes their random-effect contribution at zero, and \code{"sample"}
-treats them as draws from the fitted random-effect distribution.}
-
 \item{allocation}{optional \code{random_variance_allocation()} specification, or
 a list of such specifications, defining total-SD plus Dirichlet variance
 allocation across named random-effect blocks. Block-local allocation is
@@ -124,7 +120,7 @@ term-specific SD overrides. For \code{random_variance_allocation()}, root
 allocations must specify exactly one of \code{sd} or \code{sd_source}; child
 allocations inherit their SD budget from \code{parent}.}
 
-\item{weights}{optional Dirichlet simplex prior over variance fractions.}
+\item{weights}{optional Dirichlet simplex prior over allocation weights.}
 
 \item{name}{optional allocation label. Required when another allocation uses
 this allocation as \code{parent}.}
@@ -141,7 +137,10 @@ SD components.}
 \item{scale}{variance normalization. \code{"total_variance"} uses
 \code{sd_child = sd_parent * sqrt(w)}. \code{"mean_variance"} uses
 \code{sd_child = sd_parent * sqrt(K * w)} and is intended for
-\code{target = "sd_component"} heterogeneity tests.}
+\code{target = "sd_component"} heterogeneity tests.
+Summaries report \code{w} as a variance fraction for \code{"total_variance"} and
+\code{K * w} as a variance ratio to the average SD-component variance for
+\code{"mean_variance"}.}
 
 \item{allocation_name}{allocation name referenced by \code{allocation_ref()}.}
 
@@ -179,9 +178,9 @@ coordinates. For formula \code{us} random effects, raw LKJ primitive \code{u}
 coordinates are always retained internally because bridge sampling evaluates
 the LKJ prior on those coordinates.}
 
-\item{allow}{whether new levels are allowed during prediction.}
-
-\item{method}{new-level prediction method.}
+\item{method}{new-level prediction method: \code{"error"} disallows new levels,
+\code{"zero"} fixes their random-effect contribution at zero, and \code{"sample"}
+treats them as draws from the fitted random-effect distribution.}
 }
 \value{
 A list-like S3 object describing random-effect priors, covariance

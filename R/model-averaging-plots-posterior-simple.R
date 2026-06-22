@@ -144,6 +144,30 @@
   )
 }
 
+.plot_data_attached_prior_density <- function(samples, parameter, n_points,
+                                              x_range = NULL,
+                                              transformation = NULL,
+                                              transformation_arguments = NULL,
+                                              transformation_settings = FALSE){
+
+  if(is.null(samples[[parameter]])){
+    return(NULL)
+  }
+  prior_density <- attr(samples[[parameter]], "prior_density", exact = TRUE)
+  if(!inherits(prior_density, "prior_linear_density")){
+    return(NULL)
+  }
+
+  .prior_linear_density_to_plot_data(
+    prior_density,
+    n_points                  = n_points,
+    x_range                   = x_range,
+    transformation            = transformation,
+    transformation_arguments  = transformation_arguments,
+    transformation_settings   = transformation_settings
+  )
+}
+
 .plot_data_samples_prior_bounds <- function(prior_list, factor_contrasts = FALSE){
 
   prior_list_simple <- prior_list[!vapply(prior_list, is.prior.point, logical(1))]

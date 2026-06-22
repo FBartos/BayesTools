@@ -62,6 +62,8 @@
                           block = NULL, grouping = NULL,
                           structure = NULL, effect_label = NULL,
                           allocation = NULL,
+                          allocation_metadata = NULL,
+                          allocation_index = NULL,
                           component = NULL){
     values <- .bt_random_effect_summary_validate_values(
       values = values,
@@ -81,6 +83,8 @@
       structure = structure,
       effect_label = effect_label,
       allocation = allocation,
+      allocation_metadata = allocation_metadata,
+      allocation_index = allocation_index,
       component = component
     )
     invisible(NULL)
@@ -139,6 +143,8 @@
         },
         effect_label = if(identical(allocation_target, "sd_component") && !is.null(random_term)) .bt_random_effect_public_name(random_term) else NULL,
         allocation = allocation$label,
+        allocation_metadata = allocation,
+        allocation_index = allocation_summary$indices[i],
         component = allocation_summary$components[i]
       )
     }
@@ -272,7 +278,139 @@
     summary_matrix <- matrix(nrow = nrow(model_samples), ncol = 0L)
   }else{
     summary_matrix <- do.call(cbind, columns)
+    summary_order <- .bt_random_effect_summary_column_order(
+      summary_priors = summary_priors,
+      random_design = random_design
+    )
+    summary_matrix <- summary_matrix[, summary_order, drop = FALSE]
+    summary_priors <- summary_priors[summary_order]
   }
   list(model_samples = summary_matrix, prior_list = summary_priors)
 }
 
+.bt_random_effect_summary_column_order <- function(summary_priors,
+                                                   random_design){
+
+  parameter_names <- names(summary_priors)
+  if(length(parameter_names) == 0L){
+    return(parameter_names)
+  }
+
+  summary_type <- .bt_random_effect_summary_prior_attributes(
+    summary_priors,
+    "random_summary"
+  )
+  summary_parameter <- .bt_random_effect_summary_prior_attributes(
+    summary_priors,
+    "parameter"
+  )
+  summary_allocation <- .bt_random_effect_summary_prior_attributes(
+    summary_priors,
+    "random_allocation"
+  )
+  is_allocation_summary <- summary_type %in% c(
+    "var_frac",
+    "var_ratio",
+    "sd_multiplier"
+  )
+  used <- stats::setNames(rep(FALSE, length(parameter_names)), parameter_names)
+  ordered <- character()
+
+  add_matches <- function(matches){
+    matches[is.na(matches)] <- FALSE
+    selected <- parameter_names[matches & !used]
+    if(length(selected) > 0L){
+      ordered <<- c(ordered, selected)
+      used[selected] <<- TRUE
+    }
+    invisible(NULL)
+  }
+
+  for(design in random_design){
+    parameter <- design$parameter
+    parameter_match <- summary_parameter == parameter
+
+    for(allocation in design$random_allocations){
+      add_matches(
+        parameter_match &
+          summary_type == "sd_total" &
+          summary_allocation == allocation$label
+      )
+    }
+    add_matches(parameter_match & summary_type == "sd_total")
+
+    for(random_term in design$random_effects){
+      add_matches(
+        parameter_match &
+          !is_allocation_summary &
+          summary_type != "sd_total" &
+          .bt_random_effect_summary_column_matches_term(
+            summary_priors,
+            random_term
+          )
+      )
+    }
+
+    add_matches(
+      parameter_match &
+        !is_allocation_summary &
+        summary_type != "sd_total"
+    )
+    for(allocation in design$random_allocations){
+      add_matches(
+        parameter_match &
+          is_allocation_summary &
+          summary_allocation == allocation$label
+      )
+    }
+    add_matches(parameter_match & is_allocation_summary)
+  }
+
+  add_matches(rep(TRUE, length(parameter_names)))
+  ordered
+}
+
+.bt_random_effect_summary_prior_attributes <- function(summary_priors,
+                                                       attribute){
+
+  vapply(summary_priors, function(prior){
+    value <- attr(prior, attribute, exact = TRUE)
+    if(is.null(value) || length(value) == 0L || is.na(value[1L])){
+      return("")
+    }
+    as.character(value[1L])
+  }, character(1))
+}
+
+.bt_random_effect_summary_column_matches_term <- function(summary_priors,
+                                                          random_term){
+
+  term_names <- unique(c(
+    random_term$block_name,
+    .bt_random_effect_public_name(random_term),
+    random_term$group_label,
+    .bt_random_effect_summary_group_label(random_term)
+  ))
+  term_names <- term_names[!is.na(term_names) & nzchar(term_names)]
+
+  if(length(term_names) == 0L){
+    return(rep(FALSE, length(summary_priors)))
+  }
+
+  random_factor <- .bt_random_effect_summary_prior_attributes(
+    summary_priors,
+    "random_factor"
+  )
+  random_name <- .bt_random_effect_summary_prior_attributes(
+    summary_priors,
+    "random_name"
+  )
+  random_grouping <- .bt_random_effect_summary_prior_attributes(
+    summary_priors,
+    "random_grouping_factor"
+  )
+
+  random_factor %in% term_names |
+    random_name %in% term_names |
+    random_grouping %in% term_names
+}

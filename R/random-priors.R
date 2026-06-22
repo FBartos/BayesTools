@@ -342,7 +342,10 @@ random_term <- random_block
 #'   `sd_child = sd_parent * sqrt(w)`. `"mean_variance"` uses
 #'   `sd_child = sd_parent * sqrt(K * w)` and is intended for
 #'   `target = "sd_component"` heterogeneity tests.
-#' @param weights optional Dirichlet simplex prior over variance fractions.
+#'   Summaries report `w` as a variance fraction for `"total_variance"` and
+#'   `K * w` as a variance ratio to the average SD-component variance for
+#'   `"mean_variance"`.
+#' @param weights optional Dirichlet simplex prior over allocation weights.
 #' @export
 random_variance_allocation <- function(terms = NULL, sd = NULL,
                                        weights = NULL,
