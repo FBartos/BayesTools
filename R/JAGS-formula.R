@@ -16,6 +16,19 @@
 #' the \code{formula}. When using \code{-1} in the formula, an "intercept" prior
 #' can be explicitly specified; otherwise, \code{prior("spike", list(0))} is
 #' automatically added. The list can also include two special entries:
+#' \describe{
+#'   \item{\code{"__default_continuous"}}{A prior to use for any continuous predictors
+#'     (including the intercept) that are not explicitly specified in the prior list.
+#'     This can also be a zero-argument function returning a prior object; in that
+#'     case it is evaluated only if a missing continuous term needs the default.}
+#'   \item{\code{"__default_factor"}}{A prior to use for any factor predictors
+#'     (including interactions involving factors) that are not explicitly specified
+#'     in the prior list. This can also be a zero-argument function returning a prior
+#'     object; in that case it is evaluated only if a missing factor term needs the
+#'     default.}
+#' }
+#' These default priors allow for more concise specification when many predictors
+#' share the same prior distribution.
 #' @param formula_scale named list specifying whether to standardize continuous predictors.
 #' If \code{NULL} (default), no standardization is applied. If a named list is provided,
 #' continuous predictors with \code{TRUE} values will be standardized (mean-centered and
@@ -27,15 +40,6 @@
 #' specifying which resolved random-effect blocks should be compiled as sampled
 #' random effects and which should be compiled as structural marginalized
 #' blocks.
-#' \describe{
-#'   \item{\code{"__default_continuous"}}{A prior to use for any continuous predictors
-#'     (including the intercept) that are not explicitly specified in the prior list.}
-#'   \item{\code{"__default_factor"}}{A prior to use for any factor predictors
-#'     (including interactions involving factors) that are not explicitly specified
-#'     in the prior list.}
-#' }
-#' These default priors allow for more concise specification when many predictors
-#' share the same prior distribution.
 #'
 #' @details When a formula with \code{-1} (no intercept) is specified, the
 #' function automatically removes the \code{-1}, adds an intercept back to the
@@ -109,8 +113,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   if(!is.data.frame(data))
     stop("'data' must be a data.frame")
   check_list(prior_list, "prior_list")
-  if(any(!sapply(prior_list, is.prior)))
-    stop("'prior_list' must be a list of priors.")
+  .JAGS_formula_check_prior_list(prior_list)
   .bt_check_prior_random(prior_random, allow_NULL = TRUE)
   .bt_check_random_effects_compile(random_effects_compile, allow_NULL = TRUE)
   # formula_scale can be TRUE/FALSE (apply to all continuous predictors) or a named list
@@ -201,6 +204,20 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
 
   # fill in missing priors with defaults based on term type
   if(has_defaults){
+    missing_terms <- model_terms[!model_terms %in% names(prior_list)]
+    if(any(model_terms_type[missing_terms] == "continuous") && !is.null(default_continuous_prior)){
+      default_continuous_prior <- .JAGS_formula_resolve_default_prior(
+        default_prior = default_continuous_prior,
+        default_name  = "__default_continuous"
+      )
+    }
+    if(any(model_terms_type[missing_terms] == "factor") && !is.null(default_factor_prior)){
+      default_factor_prior <- .JAGS_formula_resolve_default_prior(
+        default_prior = default_factor_prior,
+        default_name  = "__default_factor"
+      )
+    }
+
     for(term in model_terms){
       if(!term %in% names(prior_list)){
         term_type <- model_terms_type[[term]]

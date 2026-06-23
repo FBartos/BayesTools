@@ -29,7 +29,20 @@ is useful for parameters that must be positive (e.g., standard deviation).}
 \item{prior_list}{named list of prior distribution of parameters specified within
 the \code{formula}. When using \code{-1} in the formula, an "intercept" prior
 can be explicitly specified; otherwise, \code{prior("spike", list(0))} is
-automatically added. The list can also include two special entries:}
+automatically added. The list can also include two special entries:
+\describe{
+\item{\code{"__default_continuous"}}{A prior to use for any continuous predictors
+(including the intercept) that are not explicitly specified in the prior list.
+This can also be a zero-argument function returning a prior object; in that
+case it is evaluated only if a missing continuous term needs the default.}
+\item{\code{"__default_factor"}}{A prior to use for any factor predictors
+(including interactions involving factors) that are not explicitly specified
+in the prior list. This can also be a zero-argument function returning a prior
+object; in that case it is evaluated only if a missing factor term needs the
+default.}
+}
+These default priors allow for more concise specification when many predictors
+share the same prior distribution.}
 
 \item{formula_scale}{named list specifying whether to standardize continuous predictors.
 If \code{NULL} (default), no standardization is applied. If a named list is provided,
@@ -43,16 +56,7 @@ when \code{formula} contains random effects.}
 \item{random_effects_compile}{optional \code{random_effects_compile()} object
 specifying which resolved random-effect blocks should be compiled as sampled
 random effects and which should be compiled as structural marginalized
-blocks.
-\describe{
-\item{\code{"__default_continuous"}}{A prior to use for any continuous predictors
-(including the intercept) that are not explicitly specified in the prior list.}
-\item{\code{"__default_factor"}}{A prior to use for any factor predictors
-(including interactions involving factors) that are not explicitly specified
-in the prior list.}
-}
-These default priors allow for more concise specification when many predictors
-share the same prior distribution.}
+blocks.}
 }
 \value{
 \code{JAGS_formula} returns a list containing the formula JAGS syntax,

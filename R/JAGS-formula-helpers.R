@@ -115,6 +115,60 @@
   grouping[has_grouping]  <- trimws(sub(".*\\|\\s*", "", x[has_grouping]))
   return(grouping)
 }
+.JAGS_formula_default_prior_names <- function(){
+  c("__default_continuous", "__default_factor")
+}
+.JAGS_formula_is_lazy_default_prior <- function(x){
+  is.function(x) && typeof(x) == "closure" && length(formals(x)) == 0L
+}
+.JAGS_formula_check_prior_list <- function(prior_list){
+
+  default_prior_names <- .JAGS_formula_default_prior_names()
+  prior_names         <- names(prior_list)
+
+  for(i in seq_along(prior_list)){
+    prior_name  <- if(is.null(prior_names)) "" else prior_names[[i]]
+    prior_value <- prior_list[[i]]
+
+    if(prior_name %in% default_prior_names){
+      if(is.prior(prior_value) || .JAGS_formula_is_lazy_default_prior(prior_value)){
+        next
+      }
+      if(is.function(prior_value)){
+        stop(
+          paste0(
+            "The 'prior_list[[\"", prior_name, "\"]]' entry must be a prior object ",
+            "or a zero-argument function returning a prior object."
+          ),
+          call. = FALSE
+        )
+      }
+    }
+
+    if(!is.prior(prior_value)){
+      stop("'prior_list' must be a list of priors.", call. = FALSE)
+    }
+  }
+
+  return()
+}
+.JAGS_formula_resolve_default_prior <- function(default_prior, default_name){
+
+  if(.JAGS_formula_is_lazy_default_prior(default_prior)){
+    default_prior <- default_prior()
+    if(!is.prior(default_prior)){
+      stop(
+        paste0(
+          "The 'prior_list[[\"", default_name, "\"]]' lazy default must return ",
+          "a BayesTools prior object."
+        ),
+        call. = FALSE
+      )
+    }
+  }
+
+  return(default_prior)
+}
 .remove_grouping_factor <- function(formula){
   return(trimws(sub("\\|.*$", "", formula)))
 }
