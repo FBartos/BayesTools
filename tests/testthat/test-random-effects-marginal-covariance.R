@@ -321,6 +321,205 @@ test_that("known group covariance uses tau squared times ZKZ prime", {
     "known group covariance",
     fixed = TRUE
   )
+
+  marginalized_result <- .re_cov_formula(
+    formula = random_effects,
+    data = df,
+    prior_random = prior_random(
+      id = random_block(sd = .re_cov_sd_prior())
+    ),
+    random_effects_compile = random_effects_compile(marginalized = "id")
+  )
+  marginalized_term <- .re_cov_term(marginalized_result, "id")
+  marginalized_posterior <- .re_cov_posterior(
+    .re_cov_sd_values(marginalized_term, .5)
+  )
+  marginalized_out <- .re_cov_output(marginalized_result, marginalized_posterior)
+
+  expect_equal(marginalized_term$compile_mode, "marginalized")
+  expect_equal(.re_cov_first(marginalized_out), expected, tolerance = 1e-12)
+  expect_equal(
+    marginalized_out$metadata$blocks$id$group_covariance$kernel,
+    K[levels(df$id), levels(df$id)]
+  )
+  expect_error(
+    .re_cov_output(marginalized_result, marginalized_posterior, data = new_level_data),
+    "known group covariance",
+    fixed = TRUE
+  )
+})
+
+test_that("marginal variance factors support diagonal known group covariance scaling", {
+
+  df <- data.frame(
+    id = factor(c("b", "a", "c"), levels = c("b", "a", "c"))
+  )
+  K <- diag(c(4, 9, 16))
+  dimnames(K) <- list(c("a", "b", "c"), c("a", "b", "c"))
+  expected <- list(
+    none = c(9, 4, 16),
+    cor = c(1, 1, 1),
+    cor0 = c(1, 1, 1),
+    cov0 = c(9, 4, 16)
+  )
+
+  for(scale in names(expected)){
+    random_effects <- random_effects_formula(
+      ~ 1 | id,
+      group_covariance = random_group_covariance(K, scale = scale)
+    )
+    result <- .re_cov_formula(
+      formula = random_effects,
+      data = df,
+      prior_random = prior_random(
+        id = random_block(sd = .re_cov_sd_prior())
+      ),
+      random_effects_compile = random_effects_compile(marginalized = "id")
+    )
+    factors <- random_effects_marginal_variance_factors(
+      result$formula_design,
+      require_one_to_one = TRUE
+    )
+    block <- factors$blocks$id
+
+    expect_s3_class(factors, "BayesTools_random_effects_marginal_variance_factors")
+    expect_equal(factors$included_blocks, "id")
+    expect_equal(block$compile_mode, "marginalized")
+    expect_equal(block$group_covariance$scale, scale)
+    expect_equal(unname(block$row_multiplier), expected[[scale]], tolerance = 1e-12)
+    expect_true(block$row_covariance_diagonal)
+    expect_true(block$one_to_one)
+  }
+})
+
+test_that("marginal variance factors default to marginalized blocks and accept named blocks", {
+
+  df <- data.frame(
+    study = factor(c("s1", "s1", "s2", "s2"), levels = c("s1", "s2")),
+    estimate = factor(c("e1", "e2", "e3", "e4"),
+                      levels = c("e1", "e2", "e3", "e4"))
+  )
+  result <- .re_cov_formula(
+    formula = ~ 1 +
+      random(1 | study, name = "study", covariance = "diag") +
+      random(1 | estimate, name = "estimate", covariance = "diag"),
+    data = df,
+    prior_random = prior_random(
+      study = random_block(sd = .re_cov_sd_prior()),
+      estimate = random_block(sd = .re_cov_sd_prior())
+    ),
+    random_effects_compile = random_effects_compile(marginalized = "estimate")
+  )
+
+  default <- random_effects_marginal_variance_factors(result$formula_design)
+  expect_equal(default$included_blocks, "estimate")
+  expect_equal(default$skipped_blocks$block_name, "study")
+  expect_equal(default$skipped_blocks$reason, "not marginalized")
+  expect_equal(unname(default$blocks$estimate$row_multiplier), rep(1, 4))
+  expect_true(default$blocks$estimate$row_covariance_diagonal)
+
+  named <- random_effects_marginal_variance_factors(
+    result$formula_design,
+    blocks = "study",
+    require_diagonal = FALSE
+  )
+  expect_equal(named$included_blocks, "study")
+  expect_equal(named$blocks$study$compile_mode, "sampled")
+  expect_equal(named$skipped_blocks$block_name, "estimate")
+  expect_equal(named$skipped_blocks$reason, "not requested")
+  expect_error(
+    random_effects_marginal_variance_factors(
+      result$formula_design,
+      blocks = c("study", "study")
+    ),
+    "'blocks' must be unique",
+    fixed = TRUE
+  )
+  expect_error(
+    random_effects_marginal_variance_factors(
+      result$formula_design,
+      blocks = "missing"
+    ),
+    "Unknown random-effect block",
+    fixed = TRUE
+  )
+})
+
+test_that("marginal variance factors protect diagonal-only known covariance use", {
+
+  df <- data.frame(
+    id = factor(c("b", "a", "c"), levels = c("b", "a", "c"))
+  )
+  K <- matrix(
+    c(4, 1, .5,
+      1, 9, 2,
+      .5, 2, 16),
+    nrow = 3,
+    byrow = TRUE,
+    dimnames = list(c("a", "b", "c"), c("a", "b", "c"))
+  )
+  random_effects <- random_effects_formula(
+    ~ 1 | id,
+    group_covariance = random_group_covariance(K, scale = "none")
+  )
+  result <- .re_cov_formula(
+    formula = random_effects,
+    data = df,
+    prior_random = prior_random(
+      id = random_block(sd = .re_cov_sd_prior())
+    ),
+    random_effects_compile = random_effects_compile(marginalized = "id")
+  )
+
+  expect_error(
+    random_effects_marginal_variance_factors(result$formula_design),
+    "off-diagonal row covariance",
+    fixed = TRUE
+  )
+  factors <- random_effects_marginal_variance_factors(
+    result$formula_design,
+    require_diagonal = FALSE
+  )
+  expected_row_covariance <- K[as.character(df$id), as.character(df$id)]
+
+  expect_false(factors$blocks$id$row_covariance_diagonal)
+  expect_equal(
+    unname(factors$blocks$id$row_multiplier),
+    unname(diag(expected_row_covariance)),
+    tolerance = 1e-12
+  )
+  expect_gt(factors$blocks$id$max_off_diagonal, 0)
+})
+
+test_that("marginal variance factors reject repeated groups when required", {
+
+  df <- data.frame(
+    id = factor(c("a", "a", "b"), levels = c("a", "b"))
+  )
+  K <- diag(c(4, 9))
+  dimnames(K) <- list(c("a", "b"), c("a", "b"))
+  random_effects <- random_effects_formula(
+    ~ 1 | id,
+    group_covariance = random_group_covariance(K, scale = "none")
+  )
+  result <- .re_cov_formula(
+    formula = random_effects,
+    data = df,
+    prior_random = prior_random(
+      id = random_block(sd = .re_cov_sd_prior())
+    ),
+    random_effects_compile = random_effects_compile(marginalized = "id")
+  )
+
+  expect_error(
+    random_effects_marginal_variance_factors(
+      result$formula_design,
+      require_diagonal = FALSE,
+      require_one_to_one = TRUE
+    ),
+    "one-to-one",
+    fixed = TRUE
+  )
 })
 
 test_that("id covariance shares one SD across independent columns", {

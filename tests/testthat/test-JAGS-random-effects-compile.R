@@ -188,6 +188,61 @@ test_that("known group covariance compiles as sampled random-intercept kernel", 
   expect_true("mu__xREx__study_xRE_COEFx" %in% result$add_parameters)
 })
 
+test_that("known group covariance compiles as marginalized random-intercept metadata", {
+
+  data <- data.frame(
+    study = factor(c("s2", "s1", "s3", "s2"), levels = c("s2", "s1", "s3"))
+  )
+  K <- .re_compile_known_group_kernel()
+  random_effects <- random_effects_formula(
+    ~ 1 | study,
+    group_covariance = random_group_covariance(K, scale = "none")
+  )
+  result <- JAGS_formula(
+    formula = random_effects,
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      study = random_block(
+        sd = .re_compile_sd_prior(),
+        monitor = random_monitor(latent = TRUE, coefficients = TRUE)
+      )
+    ),
+    random_effects_compile = random_effects_compile(marginalized = "study")
+  )
+  random_term <- result$formula_design$random_effects[[1]]
+  expected_levels <- levels(data$study)
+  expected_kernel <- K[expected_levels, expected_levels]
+
+  expect_true(all(c(
+    "block_name", "group_label", "group_levels", "group_map", "model_matrix",
+    "n_groups", "n_columns", "structure", "homogeneous_sd",
+    "sd_parameter_names", "sd_binding", "compile_mode", "group_covariance"
+  ) %in% names(random_term)))
+  expect_equal(random_term$compile_mode, "marginalized")
+  expect_s3_class(random_term$group_covariance, "random_group_covariance_kernel")
+  expect_equal(random_term$group_covariance$levels, expected_levels)
+  expect_equal(random_term$group_covariance$dropped_levels, "extra")
+  expect_equal(random_term$group_covariance$kernel, expected_kernel)
+  expect_equal(random_term$group_map, c(1, 2, 3, 1))
+  expect_equal(dim(random_term$model_matrix), c(4L, 1L))
+  expect_equal(random_term$n_groups, 3L)
+  expect_equal(random_term$n_columns, 1L)
+  expect_equal(random_term$jags_data_names, character())
+
+  expect_false("mu__xREx__study_xRE_GROUP_PRECx" %in% names(result$data))
+  expect_false("mu__xREx__study_xRE_GROUP_MUx" %in% names(result$data))
+  expect_false("mu__xREx__study_xRE_DATAx" %in% names(result$data))
+  expect_false("mu__xREx__study_xRE_MAPx" %in% names(result$data))
+  expect_false(grepl("mu__xREx__study_xRE_GROUP_Zx", result$formula_syntax, fixed = TRUE))
+  expect_false(grepl("mu__xREx__study_xRE_Zx", result$formula_syntax, fixed = TRUE))
+  expect_false(grepl("mu__xREx__study_xRE_COEFx", result$formula_syntax, fixed = TRUE))
+  expect_false(grepl("mu__xREx__study[i] =", result$formula_syntax, fixed = TRUE))
+  expect_false(any(grepl("mu__xREx__study_xRE_Zx", result$add_parameters, fixed = TRUE)))
+  expect_false(any(grepl("mu__xREx__study_xRE_COEFx", result$add_parameters, fixed = TRUE)))
+})
+
 test_that("known group covariance rejects unsupported random-effect designs", {
 
   data <- data.frame(
@@ -217,14 +272,14 @@ test_that("known group covariance rejects unsupported random-effect designs", {
   )
   expect_error(
     JAGS_formula(
-      formula = random_intercept,
+      formula = random_slope,
       parameter = "mu",
       data = data,
       prior_list = list(intercept = prior("normal", list(0, 1))),
       prior_random = prior_random(study = random_block(sd = .re_compile_sd_prior())),
       random_effects_compile = random_effects_compile(marginalized = "study")
     ),
-    "marginalized compilation is not supported",
+    "random intercepts only",
     fixed = TRUE
   )
   expect_error(
@@ -236,6 +291,20 @@ test_that("known group covariance rejects unsupported random-effect designs", {
       prior_random = prior_random(
         study = random_block(sd_source = random_sd_source("tau", shape = "row"))
       )
+    ),
+    "row-indexed external SD sources",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_formula(
+      formula = random_intercept,
+      parameter = "mu",
+      data = data,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(
+        study = random_block(sd_source = random_sd_source("tau", shape = "row"))
+      ),
+      random_effects_compile = random_effects_compile(marginalized = "study")
     ),
     "row-indexed external SD sources",
     fixed = TRUE

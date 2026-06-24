@@ -309,6 +309,35 @@ test_that("known group covariance random-effect prior uses MVN kernel density", 
     "group covariance metadata differ",
     fixed = TRUE
   )
+
+  marginalized_output <- JAGS_formula(
+    formula = random_effects,
+    parameter = "mu",
+    data = formula_data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(sd = prior("gamma", list(2, 1)))
+    ),
+    random_effects_compile = random_effects_compile(marginalized = "id")
+  )
+  changed_marginalized_output <- JAGS_formula(
+    formula = changed_random_effects,
+    parameter = "mu",
+    data = formula_data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(sd = prior("gamma", list(2, 1)))
+    ),
+    random_effects_compile = random_effects_compile(marginalized = "id")
+  )
+  expect_error(
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(
+      list(mu = marginalized_output$formula_design),
+      list(mu = changed_marginalized_output$formula_design)
+    ),
+    "group covariance metadata differ",
+    fixed = TRUE
+  )
 })
 
 test_that("compiled formula parameter evaluator matches design reconstruction", {

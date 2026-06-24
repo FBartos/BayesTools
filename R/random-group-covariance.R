@@ -360,11 +360,11 @@ print.random_group_covariance <- function(x, ...){
     compile_mode,
     row_indexed_external_sd){
 
-  if(!identical(compile_mode, "sampled")){
+  if(!compile_mode %in% c("sampled", "marginalized")){
     stop(
       "Known group covariance for random-effect block '",
       random_term$block_name,
-      "' requires sampled random effects; marginalized compilation is not supported.",
+      "' received an unknown random-effect compile mode.",
       call. = FALSE
     )
   }
@@ -380,7 +380,7 @@ print.random_group_covariance <- function(x, ...){
     stop(
       "Known group covariance for random-effect block '",
       random_term$block_name,
-      "' currently supports sampled random intercepts only.",
+      "' currently supports random intercepts only.",
       call. = FALSE
     )
   }

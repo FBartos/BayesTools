@@ -12,7 +12,7 @@ random_effects_formula(random, envir = parent.frame(), group_covariance = NULL)
 \item{envir}{environment used for the returned formula.}
 
 \item{group_covariance}{optional known group covariance. Use one
-\code{random_group_covariance()} object or numeric matrix for a single random
+\code{\link[=random_group_covariance]{random_group_covariance()}} object or numeric matrix for a single random
 block, or a named list of objects/matrices for multiple random blocks.
 Names should match resolved random-effect block names, or grouping labels
 when the grouping label is unambiguous.}
