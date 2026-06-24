@@ -472,6 +472,9 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   if(length(random_sd_binding_context$syntax) > 0L){
     random_syntax <- c(random_syntax, random_sd_binding_context$syntax)
   }
+  if(length(random_sd_binding_context$add_parameters) > 0L){
+    add_parameters <- c(add_parameters, random_sd_binding_context$add_parameters)
+  }
   compiled_random_effects <- parsed_random_effects
   for(random_i in seq_along(parsed_random_effects)){
     random_effect_data <- data

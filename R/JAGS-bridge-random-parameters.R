@@ -118,6 +118,33 @@
   invisible(TRUE)
 }
 
+.bt_JAGS_bridge_formula_allocation_inclusion_names <- function(formula_design_list){
+
+  formula_design_list <- .bt_JAGS_bridge_formula_design_list(formula_design_list)
+  .bt_random_variance_allocation_inclusion_indicator_names(formula_design_list)
+}
+
+.bt_JAGS_bridge_check_no_allocation_inclusion <- function(formula_design_list){
+
+  indicator_names <- .bt_JAGS_bridge_formula_allocation_inclusion_names(
+    formula_design_list
+  )
+  if(length(indicator_names) == 0L){
+    return(invisible(TRUE))
+  }
+
+  stop(
+    "Bridge sampling for variance allocation inclusion gates is not implemented ",
+    "because the gates introduce discrete Bernoulli indicators. ",
+    "Affected indicator node(s): ",
+    paste0("'", indicator_names[seq_len(min(3L, length(indicator_names)))], "'",
+           collapse = ", "),
+    if(length(indicator_names) > 3L) ", ..." else "",
+    ".",
+    call. = FALSE
+  )
+}
+
 .bt_JAGS_formula_random_bridge_parameters <- function(formula_design_list){
 
   if(length(formula_design_list) == 0L){

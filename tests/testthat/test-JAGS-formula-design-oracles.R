@@ -1744,6 +1744,42 @@ test_that("prior_random rejects unsupported and ignored production settings", {
   )
   expect_error(
     random_variance_allocation(
+      terms = c(study = "study", drug = "drug"),
+      sd = sd_prior,
+      inclusion = prior("spike", list(location = 0.5))
+    ),
+    "named list of scalar probability priors",
+    fixed = TRUE
+  )
+  expect_error(
+    random_variance_allocation(
+      terms = c(study = "study", drug = "drug"),
+      sd = sd_prior,
+      inclusion = list(study = 0.5)
+    ),
+    "must be a prior object",
+    fixed = TRUE
+  )
+  expect_error(
+    random_variance_allocation(
+      terms = c(study = "study", drug = "drug"),
+      sd = sd_prior,
+      inclusion = list(`bad-name` = prior("spike", list(location = 0.5)))
+    ),
+    "letters, numbers, and underscores",
+    fixed = TRUE
+  )
+  expect_error(
+    random_variance_allocation(
+      terms = c(study = "study", drug = "drug"),
+      sd = sd_prior,
+      inclusion = list(study = prior("spike", list(location = 1.5)))
+    ),
+    "bounded within 0 and 1",
+    fixed = TRUE
+  )
+  expect_error(
+    random_variance_allocation(
       terms = c("study", "drug"),
       sd = sd_prior,
       weights = prior("dirichlet", list(alpha = c(1, 1, 1)))
@@ -2425,6 +2461,139 @@ test_that("variance allocation priors generate shared total SD and Dirichlet all
   expect_equal(
     result$formula_design$random_effects[[1]]$sd_parameter_names,
     "mu__xREx__study_intercept"
+  )
+
+  allocation_inclusion_result <- JAGS_formula(
+    formula = ~ 1 +
+      random(1 | study, name = "study", covariance = "diag") +
+      random(1 | drug, name = "drug", covariance = "diag"),
+    parameter = "mu",
+    data = df,
+    prior_list = fixed_priors,
+    prior_random = prior_random(
+      allocation = random_variance_allocation(
+        name = "total_re",
+        terms = c(study = "study", drug = "drug"),
+        sd = prior("gamma", list(2, 2)),
+        weights = prior("dirichlet", list(alpha = c(2, 3))),
+        inclusion = list(study = prior("spike", list(location = 0.5)))
+      )
+    )
+  )
+  expect_true("mu__xRE_ALLOCx_total_re__include_study_prob" %in%
+                names(allocation_inclusion_result$prior_list))
+  expect_match(
+    allocation_inclusion_result$formula_syntax,
+    "mu__xRE_ALLOCx_total_re__include_study_indicator ~ dbern(mu__xRE_ALLOCx_total_re__include_study_prob)",
+    fixed = TRUE
+  )
+  expect_match(
+    allocation_inclusion_result$formula_syntax,
+    "mu__xREx__study_intercept = mu__xRE_ALLOCx_total_re__total_sd * mu__xRE_ALLOCx_total_re__include_study_indicator * sqrt(mu__xRE_ALLOCx_total_re__weight[1])",
+    fixed = TRUE
+  )
+  expect_match(
+    allocation_inclusion_result$formula_syntax,
+    "mu__xREx__drug_intercept = mu__xRE_ALLOCx_total_re__total_sd * sqrt(mu__xRE_ALLOCx_total_re__weight[2])",
+    fixed = TRUE
+  )
+  expect_false(grepl(
+    "include_drug",
+    allocation_inclusion_result$formula_syntax,
+    fixed = TRUE
+  ))
+  expect_true("mu__xRE_ALLOCx_total_re__include_study_indicator" %in%
+                allocation_inclusion_result$add_parameters)
+  allocation_inclusion_syntax <- JAGS_add_priors(
+    "model{}",
+    allocation_inclusion_result$prior_list
+  )
+  expect_match(
+    allocation_inclusion_syntax,
+    "mu__xRE_ALLOCx_total_re__include_study_prob = 0.5",
+    fixed = TRUE
+  )
+
+  allocation_inclusion_posterior <- matrix(
+    c(
+      2, 1, 3, 1,
+      2, 1, 3, 0
+    ),
+    nrow = 2,
+    byrow = TRUE,
+    dimnames = list(
+      NULL,
+      c(
+        "mu__xRE_ALLOCx_total_re__total_sd",
+        "prior_par_eta_mu__xRE_ALLOCx_total_re__weight[1]",
+        "prior_par_eta_mu__xRE_ALLOCx_total_re__weight[2]",
+        "mu__xRE_ALLOCx_total_re__include_study_indicator"
+      )
+    )
+  )
+  inclusion_study_sd <- BayesTools:::.bt_random_effect_sd_draws(
+    random_term = allocation_inclusion_result$formula_design$random_effects[[1]],
+    n_columns = 1,
+    posterior = allocation_inclusion_posterior,
+    prior_list = allocation_inclusion_result$prior_list
+  )
+  inclusion_drug_sd <- BayesTools:::.bt_random_effect_sd_draws(
+    random_term = allocation_inclusion_result$formula_design$random_effects[[2]],
+    n_columns = 1,
+    posterior = allocation_inclusion_posterior,
+    prior_list = allocation_inclusion_result$prior_list
+  )
+  expect_equal(inclusion_study_sd[, 1], c(2 * sqrt(1 / 4), 0))
+  expect_equal(inclusion_drug_sd[, 1], c(2 * sqrt(3 / 4), 2 * sqrt(3 / 4)))
+  expect_error(
+    BayesTools:::.bt_random_effect_sd_draws(
+      random_term = allocation_inclusion_result$formula_design$random_effects[[1]],
+      n_columns = 1,
+      posterior = allocation_inclusion_posterior[
+        ,
+        colnames(allocation_inclusion_posterior) !=
+          "mu__xRE_ALLOCx_total_re__include_study_indicator",
+        drop = FALSE
+      ],
+      prior_list = allocation_inclusion_result$prior_list
+    ),
+    "missing Bernoulli indicator",
+    fixed = TRUE
+  )
+  expect_equal(
+    BayesTools:::.bt_JAGS_bridge_formula_allocation_inclusion_names(
+      list(mu = allocation_inclusion_result$formula_design)
+    ),
+    "mu__xRE_ALLOCx_total_re__include_study_indicator"
+  )
+  expect_equal(
+    BayesTools:::.bt_JAGS_bridge_allocation_factor_metadata(
+      allocation_inclusion_result$formula_design$random_effects[[1]]$
+        sd_binding$allocations[[1L]]$factors[[1L]]
+    )$inclusion_name,
+    "mu__xRE_ALLOCx_total_re__include_study_indicator"
+  )
+  expect_equal(
+    BayesTools:::.bt_JAGS_bridge_allocation_metadata(
+      allocation_inclusion_result$formula_design$random_effects[[1]]$
+        sd_binding$allocations[[1L]]
+    )$inclusion$study$indicator_name,
+    "mu__xRE_ALLOCx_total_re__include_study_indicator"
+  )
+  expect_error(
+    BayesTools:::.bt_JAGS_bridge_compile_formula_random_prior_evaluator(
+      list(mu = allocation_inclusion_result$formula_design)
+    ),
+    "Bridge sampling for variance allocation inclusion gates",
+    fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.bt_JAGS_marglik_priors_formula_random(
+      samples = allocation_inclusion_posterior[1, ],
+      formula_design_list = list(mu = allocation_inclusion_result$formula_design)
+    ),
+    "Bridge sampling for variance allocation inclusion gates",
+    fixed = TRUE
   )
 
   total_component_result <- JAGS_formula(
@@ -4064,6 +4233,83 @@ test_that("variance allocation graph supports child block and SD-leaf allocation
   expect_equal(length(nested_result$formula_design$random_effects[[1]]$sd_binding$allocations[[1L]]$factors), 2L)
   expect_equal(length(nested_result$formula_design$random_effects[[3]]$sd_binding$allocations[[1L]]$factors), 1L)
 
+  nested_gate_prior <- prior_random(
+    random_variance_allocation(
+      name = "total_re",
+      terms = c(nested = "nested", drug = "drug"),
+      sd = sd_prior,
+      weights = prior("dirichlet", list(alpha = c(1, 1))),
+      inclusion = list(nested = prior("spike", list(location = 0.5)))
+    ),
+    random_variance_allocation(
+      name = "nested_split",
+      parent = allocation_ref("total_re", "nested"),
+      terms = c(study = "study", paper = "paper"),
+      weights = prior("dirichlet", list(alpha = c(3, 2)))
+    )
+  )
+  nested_gate_result <- JAGS_formula(
+    formula = ~ 1 +
+      random(1 | study, name = "study", covariance = "diag") +
+      random(1 | paper, name = "paper", covariance = "diag") +
+      random(1 | drug, name = "drug", covariance = "diag"),
+    parameter = "mu",
+    data = df_nested,
+    prior_list = fixed_priors,
+    prior_random = nested_gate_prior
+  )
+  expect_match(
+    nested_gate_result$formula_syntax,
+    "mu__xRE_ALLOCx_total_re__component_nested_sd = mu__xRE_ALLOCx_total_re__total_sd * mu__xRE_ALLOCx_total_re__include_nested_indicator * sqrt(mu__xRE_ALLOCx_total_re__weight[1])",
+    fixed = TRUE
+  )
+  expect_match(
+    nested_gate_result$formula_syntax,
+    "mu__xREx__study_intercept = mu__xRE_ALLOCx_total_re__total_sd * mu__xRE_ALLOCx_total_re__include_nested_indicator * sqrt(mu__xRE_ALLOCx_total_re__weight[1]) * sqrt(mu__xRE_ALLOCx_nested_split__weight[1])",
+    fixed = TRUE
+  )
+  expect_true("mu__xRE_ALLOCx_total_re__include_nested_indicator" %in%
+                nested_gate_result$add_parameters)
+  nested_gate_posterior <- matrix(
+    c(
+      4, 1, 3, 3, 2, 1,
+      4, 1, 3, 3, 2, 0
+    ),
+    nrow = 2,
+    byrow = TRUE,
+    dimnames = list(
+      NULL,
+      c(
+        "mu__xRE_ALLOCx_total_re__total_sd",
+        "prior_par_eta_mu__xRE_ALLOCx_total_re__weight[1]",
+        "prior_par_eta_mu__xRE_ALLOCx_total_re__weight[2]",
+        "prior_par_eta_mu__xRE_ALLOCx_nested_split__weight[1]",
+        "prior_par_eta_mu__xRE_ALLOCx_nested_split__weight[2]",
+        "mu__xRE_ALLOCx_total_re__include_nested_indicator"
+      )
+    )
+  )
+  expect_equal(
+    BayesTools:::.bt_random_effect_sd_draws(
+      random_term = nested_gate_result$formula_design$random_effects[[1]],
+      n_columns = 1,
+      posterior = nested_gate_posterior,
+      prior_list = nested_gate_result$prior_list
+    )[, 1],
+    c(4 * sqrt(1 / 4) * sqrt(3 / 5), 0),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    BayesTools:::.bt_random_effect_sd_draws(
+      random_term = nested_gate_result$formula_design$random_effects[[3]],
+      n_columns = 1,
+      posterior = nested_gate_posterior,
+      prior_list = nested_gate_result$prior_list
+    )[, 1],
+    c(4 * sqrt(3 / 4), 4 * sqrt(3 / 4)),
+    tolerance = 1e-12
+  )
+
   nested_external_prior <- prior_random(
     random_variance_allocation(
       name = "total_re",
@@ -4265,6 +4511,47 @@ test_that("variance allocation graph rejects ambiguous or conflicting specificat
       target = "sd_component"
     ),
     "exactly one",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_formula(
+      formula = ~ 1 +
+        random(1 | study, name = "study", covariance = "diag") +
+        random(1 | drug, name = "drug", covariance = "diag"),
+      parameter = "mu",
+      data = df,
+      prior_list = fixed_priors,
+      prior_random = prior_random(
+        random_variance_allocation(
+          name = "total_re",
+          terms = c(study = "study", drug = "drug"),
+          sd = sd_prior,
+          weights = prior("dirichlet", list(alpha = c(1, 1))),
+          inclusion = list(missing = prior("spike", list(location = 0.5)))
+        )
+      )
+    ),
+    "unknown component label",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_formula(
+      formula = ~ 1 + random(1 + x | study, name = "study", covariance = "diag"),
+      parameter = "mu",
+      data = df,
+      prior_list = fixed_priors,
+      prior_random = prior_random(
+        random_variance_allocation(
+          name = "study_sd",
+          terms = "study",
+          sd = sd_prior,
+          target = "sd_component",
+          weights = prior("dirichlet", list(alpha = c(1, 1))),
+          inclusion = list(study = prior("spike", list(location = 0.5)))
+        )
+      )
+    ),
+    "supports target = \"block\"",
     fixed = TRUE
   )
   expect_error(
@@ -4603,6 +4890,65 @@ test_that("random-effect summary samples expose semantic SD, rho, and allocation
   expect_true("(mu) sd_total(total_re)" %in% display_names)
   expect_true("(mu) var_frac(total_re: nested)" %in% display_names)
   expect_true("(mu) sd(intercept | study)" %in% display_names)
+
+  allocation_inclusion_result <- JAGS_formula(
+    formula = ~ 1 +
+      random(1 | study, name = "study", covariance = "diag") +
+      random(1 | drug, name = "drug", covariance = "diag"),
+    parameter = "mu",
+    data = df_nested,
+    prior_list = fixed_priors,
+    prior_random = prior_random(
+      allocation = random_variance_allocation(
+        name = "total_re",
+        terms = c(study = "study", drug = "drug"),
+        sd = sd_prior,
+        weights = prior("dirichlet", list(alpha = c(1, 1))),
+        inclusion = list(study = prior("spike", list(location = 0.5)))
+      )
+    )
+  )
+  allocation_inclusion_posterior <- matrix(
+    c(
+      4, 1, 3, 1,
+      4, 1, 3, 0
+    ),
+    nrow = 2,
+    byrow = TRUE,
+    dimnames = list(
+      NULL,
+      c(
+        "mu__xRE_ALLOCx_total_re__total_sd",
+        "prior_par_eta_mu__xRE_ALLOCx_total_re__weight[1]",
+        "prior_par_eta_mu__xRE_ALLOCx_total_re__weight[2]",
+        "mu__xRE_ALLOCx_total_re__include_study_indicator"
+      )
+    )
+  )
+  allocation_inclusion_summary <- BayesTools:::.bt_random_effect_summary_samples(
+    model_samples = allocation_inclusion_posterior,
+    prior_list = allocation_inclusion_result$prior_list,
+    formula_design = list(mu = allocation_inclusion_result$formula_design),
+    mode = "standard"
+  )
+  expect_true("mu__xRE_SUMMARY__inclusion__total_re__study" %in%
+                colnames(allocation_inclusion_summary$model_samples))
+  expect_false("mu__xRE_ALLOCx_total_re__include_study_indicator" %in%
+                 colnames(allocation_inclusion_summary$model_samples))
+  expect_equal(
+    allocation_inclusion_summary$model_samples[
+      ,
+      "mu__xRE_SUMMARY__inclusion__total_re__study"
+    ],
+    c(1, 0)
+  )
+  allocation_inclusion_display_names <- BayesTools:::.bt_random_effect_summary_display_names(
+    names = colnames(allocation_inclusion_summary$model_samples),
+    raw_names = colnames(allocation_inclusion_summary$model_samples),
+    prior_list = allocation_inclusion_summary$prior_list,
+    formula_prefix = TRUE
+  )
+  expect_true("(mu) inclusion(total_re: study)" %in% allocation_inclusion_display_names)
 
   missing_nested_posterior <- nested_posterior[
     ,

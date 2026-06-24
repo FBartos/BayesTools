@@ -267,6 +267,7 @@ JAGS_marglik_priors_formula <- function(samples, formula_prior_list){
   if(length(formula_design_list) == 0L){
     return(0)
   }
+  .bt_JAGS_bridge_check_no_allocation_inclusion(formula_design_list)
 
   marglik <- 0
   design_names <- names(formula_design_list)

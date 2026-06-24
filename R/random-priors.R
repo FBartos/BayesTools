@@ -346,6 +346,10 @@ random_term <- random_block
 #'   `K * w` as a variance ratio to the average SD-component variance for
 #'   `"mean_variance"`.
 #' @param weights optional Dirichlet simplex prior over allocation weights.
+#' @param inclusion optional named list of scalar probability priors, keyed by
+#'   allocation component label. For `target = "block"`, each listed component
+#'   receives an independent Bernoulli gate and its SD contribution is multiplied
+#'   by that gate. Gate names must match resolved allocation component labels.
 #' @export
 random_variance_allocation <- function(terms = NULL, sd = NULL,
                                        weights = NULL,
@@ -353,7 +357,8 @@ random_variance_allocation <- function(terms = NULL, sd = NULL,
                                        parent = NULL,
                                        target = c("block", "sd_component"),
                                        scale = c("total_variance", "mean_variance"),
-                                       sd_source = NULL){
+                                       sd_source = NULL,
+                                       inclusion = NULL){
 
   check_char(terms, "terms", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   if(!is.null(terms) && anyDuplicated(terms)){
@@ -400,6 +405,7 @@ random_variance_allocation <- function(terms = NULL, sd = NULL,
   }else{
     .bt_check_random_allocation_prior(weights)
   }
+  .bt_check_random_allocation_inclusion(inclusion)
   check_char(name, "name", allow_NULL = TRUE, allow_NA = FALSE)
   if(!is.null(name)){
     .bt_validate_random_effect_reserved_name(
@@ -424,6 +430,7 @@ random_variance_allocation <- function(terms = NULL, sd = NULL,
     sd         = sd,
     sd_source  = sd_source,
     weights    = weights,
+    inclusion  = inclusion,
     name       = name,
     parent     = parent,
     target     = target,
@@ -915,6 +922,7 @@ is.prior_random <- function(x){
   if(!is.null(allocation$weights)){
     .bt_check_random_allocation_prior(allocation$weights)
   }
+  .bt_check_random_allocation_inclusion(allocation$inclusion)
   if(identical(target, "sd_component") &&
      (is.null(allocation$terms) || length(allocation$terms) != 1L)){
     stop("'target = \"sd_component\"' requires exactly one random-effect block in 'terms'.", call. = FALSE)
@@ -925,6 +933,120 @@ is.prior_random <- function(x){
      length(allocation$terms) != allocation$weights$parameters[["K"]]){
     stop(
       "The Dirichlet allocation dimension must match the number of targeted random-effect terms.",
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
+.bt_check_random_allocation_inclusion <- function(inclusion,
+                                                  component_labels = NULL,
+                                                  allocation_label = NULL){
+
+  if(is.null(inclusion)){
+    return(invisible(TRUE))
+  }
+  if(inherits(inclusion, "prior") || !is.list(inclusion)){
+    stop("'inclusion' must be a named list of scalar probability priors.", call. = FALSE)
+  }
+  if(length(inclusion) == 0L){
+    stop("'inclusion' must contain at least one component prior.", call. = FALSE)
+  }
+  inclusion_names <- names(inclusion)
+  if(is.null(inclusion_names) || any(!nzchar(inclusion_names))){
+    stop("'inclusion' must be a fully named list.", call. = FALSE)
+  }
+  if(anyDuplicated(inclusion_names)){
+    stop("Variance allocation inclusion labels must be unique.", call. = FALSE)
+  }
+  .bt_validate_random_effect_reserved_name(
+    inclusion_names,
+    context = "variance allocation inclusion labels"
+  )
+  bad <- !grepl("^[A-Za-z][A-Za-z0-9_]*$", inclusion_names)
+  if(any(bad)){
+    stop("Variance allocation inclusion labels must start with a letter and contain only letters, numbers, and underscores.", call. = FALSE)
+  }
+
+  for(i in seq_along(inclusion)){
+    .bt_check_random_allocation_inclusion_prior(
+      inclusion[[i]],
+      inclusion_names[[i]]
+    )
+  }
+
+  if(!is.null(component_labels)){
+    unknown <- setdiff(inclusion_names, component_labels)
+    if(length(unknown) > 0L){
+      label <- if(is.null(allocation_label) || !nzchar(allocation_label)){
+        ""
+      }else{
+        paste0(" in allocation '", allocation_label, "'")
+      }
+      stop(
+        "Variance allocation inclusion", label,
+        " references unknown component label(s): ",
+        paste(unknown, collapse = ", "),
+        ".",
+        call. = FALSE
+      )
+    }
+  }
+
+  invisible(TRUE)
+}
+
+.bt_check_random_allocation_inclusion_prior <- function(prior_inclusion,
+                                                        component_label){
+
+  if(!is.prior(prior_inclusion)){
+    stop(
+      "Variance allocation inclusion prior for component '",
+      component_label,
+      "' must be a prior object.",
+      call. = FALSE
+    )
+  }
+  probability_error <- tryCatch(
+    {
+      .check_spike_and_slab_inclusion_prior(prior_inclusion)
+      NULL
+    },
+    error = function(e)e
+  )
+  if(inherits(probability_error, "error")){
+    stop(
+      "Variance allocation inclusion prior for component '",
+      component_label,
+      "' must be a scalar probability prior.",
+      call. = FALSE
+    )
+  }
+
+  if(is.prior.point(prior_inclusion)){
+    location <- prior_inclusion$parameters[["location"]]
+    if(!is.numeric(location) || length(location) != 1L ||
+       is.na(location) || location < 0 || location > 1){
+      stop(
+        "Variance allocation inclusion prior for component '",
+        component_label,
+        "' must be bounded within 0 and 1.",
+        call. = FALSE
+      )
+    }
+    return(invisible(TRUE))
+  }
+
+  lower <- prior_inclusion$truncation[["lower"]]
+  upper <- prior_inclusion$truncation[["upper"]]
+  if(!is.numeric(lower) || length(lower) != 1L ||
+     !is.numeric(upper) || length(upper) != 1L ||
+     is.na(lower) || is.na(upper) || lower < 0 || upper > 1){
+    stop(
+      "Variance allocation inclusion prior for component '",
+      component_label,
+      "' must be bounded within 0 and 1.",
       call. = FALSE
     )
   }

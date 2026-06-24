@@ -310,8 +310,19 @@
         factor,
         context = "Random-effect allocation factor metadata"
       ),
-      n_targets = factor$n_targets
+      n_targets = factor$n_targets,
+      inclusion_name = factor$inclusion_name
     )
+    if(!is.null(factor_plan[[factor_i]]$inclusion_name) &&
+       (!is.character(factor_plan[[factor_i]]$inclusion_name) ||
+        length(factor_plan[[factor_i]]$inclusion_name) != 1L ||
+        is.na(factor_plan[[factor_i]]$inclusion_name) ||
+        !nzchar(factor_plan[[factor_i]]$inclusion_name))){
+      stop(
+        "Random-effect allocation factor metadata are missing canonical 'inclusion_name'.",
+        call. = FALSE
+      )
+    }
   }
 
   factor_plan
@@ -357,14 +368,48 @@
         call. = FALSE
       )
     }
+    gate <- .bt_random_effect_allocation_gate_draws(
+      parameter_name = factor$inclusion_name,
+      posterior = posterior
+    )
+    if(is.null(gate)){
+      stop(
+        "Random-effect allocation inclusion samples are missing Bernoulli indicator '",
+        factor$inclusion_name,
+        "'.",
+        call. = FALSE
+      )
+    }
     out <- out * .bt_random_effect_allocation_multiplier(
       weights = weights[, factor$index],
       scale = scale,
       n_targets = factor$n_targets
-    )
+    ) * gate
   }
 
   out
+}
+
+.bt_random_effect_allocation_gate_draws <- function(parameter_name, posterior){
+
+  if(is.null(parameter_name)){
+    return(rep(1, nrow(posterior)))
+  }
+  if(!parameter_name %in% colnames(posterior)){
+    return(NULL)
+  }
+
+  values <- as.numeric(posterior[, parameter_name])
+  invalid <- !is.finite(values) | !(values %in% c(0, 1))
+  if(any(invalid)){
+    .bt_random_effect_allocation_out_of_support(
+      "Random-effect allocation inclusion samples for '",
+      parameter_name,
+      "' must be Bernoulli indicators."
+    )
+  }
+
+  values
 }
 
 .bt_random_effect_allocation_factor_chain_label <- function(factors){
@@ -383,7 +428,14 @@
        is.na(factor$index)){
       return("<malformed>")
     }
-    paste0(factor$weight_name, "[", factor$index, "]")
+    label <- paste0(factor$weight_name, "[", factor$index, "]")
+    if(is.character(factor$inclusion_name) &&
+       length(factor$inclusion_name) == 1L &&
+       !is.na(factor$inclusion_name) &&
+       nzchar(factor$inclusion_name)){
+      label <- paste0(label, " * ", factor$inclusion_name)
+    }
+    label
   }, character(1))
 
   paste0(" (", paste(labels, collapse = " -> "), ")")

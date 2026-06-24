@@ -187,14 +187,17 @@ test_that("Random prior printing expands allocation and term priors", {
     weights = prior(
       distribution = "dirichlet",
       parameters = list(alpha = c(1, 1))
-    )
+    ),
+    inclusion = list(study = prior("spike", list(location = 0.5)))
   )
   pr_alloc <- prior_random(allocation = alloc)
   expect_equal(utils::capture.output(print(pr_alloc)), c(
     "allocation: random_total",
     "  sigma_total ~ Normal(0, 0.3)[0, Inf]",
     "  w ~ Dirichlet(1, 1)",
-    "  sigma_study = sigma_total * sqrt(w[1])",
+    "  p_study ~ Spike(0.5)",
+    "  I_study ~ Bernoulli(p_study)",
+    "  sigma_study = sigma_total * I_study * sqrt(w[1])",
     "  sigma_outcome = sigma_total * sqrt(w[2])"
   ))
 

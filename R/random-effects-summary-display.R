@@ -245,6 +245,12 @@
     colnames(model_samples),
     raw_prior_names
   )
+  allocation_indicator_names <- .bt_random_variance_allocation_inclusion_indicator_names(
+    random_design
+  )
+  if(length(allocation_indicator_names) > 0L){
+    raw_cols <- raw_cols | colnames(model_samples) %in% allocation_indicator_names
+  }
   if(length(raw_prefixes) > 0L){
     raw_cols <- raw_cols | Reduce(
       "|",

@@ -251,6 +251,72 @@
   )
 }
 
+.bt_random_effect_summary_allocation_inclusion_samples <- function(allocation,
+                                                                   model_samples){
+
+  inclusion <- allocation$inclusion
+  if(is.null(inclusion) || length(inclusion) == 0L){
+    return(list(
+      names = character(),
+      labels = character(),
+      types = character(),
+      components = character(),
+      indices = integer(),
+      values = matrix(nrow = nrow(model_samples), ncol = 0L)
+    ))
+  }
+
+  names <- labels <- types <- character()
+  component_values <- character()
+  component_indices <- integer()
+  values <- list()
+
+  for(component_label in names(inclusion)){
+    record <- inclusion[[component_label]]
+    indicator_name <- record$indicator_name
+    if(!is.character(indicator_name) || length(indicator_name) != 1L ||
+       is.na(indicator_name) || !nzchar(indicator_name)){
+      stop(
+        "Random-effect allocation inclusion metadata are missing canonical 'indicator_name'.",
+        call. = FALSE
+      )
+    }
+    indicator <- .bt_random_effect_allocation_gate_draws(
+      parameter_name = indicator_name,
+      posterior = model_samples
+    )
+    if(is.null(indicator)){
+      stop(
+        "Random-effect allocation inclusion summary samples are missing Bernoulli indicator '",
+        indicator_name,
+        "'.",
+        call. = FALSE
+      )
+    }
+
+    names <- c(names, .bt_random_effect_summary_name(
+      parameter = sub("__xRE_ALLOCx_.*$", "", allocation$weight_name),
+      type = "inclusion",
+      parts = c(allocation$label, component_label)
+    ))
+    labels <- c(labels, paste0("inclusion(", allocation$label, ": ", component_label, ")"))
+    types <- c(types, "inclusion")
+    component_values <- c(component_values, component_label)
+    component_indices <- c(component_indices, record$index)
+    values[[length(values) + 1L]] <- indicator
+  }
+
+  values <- do.call(cbind, values)
+  list(
+    names = names,
+    labels = labels,
+    types = types,
+    components = component_values,
+    indices = component_indices,
+    values = values
+  )
+}
+
 .bt_random_effect_summary_allocation_type <- function(allocation){
 
   allocation_target <- .bt_random_effect_summary_allocation_target(allocation)

@@ -171,14 +171,75 @@
   paste0(parameter, "__xRE_ALLOCx_", label, "__component_", component_label, "_sd")
 }
 
+.bt_random_variance_allocation_inclusion_names <- function(parameter, label,
+                                                           component_label){
+
+  stem <- paste0("_xRE_ALLOCx_", label, "__include_", component_label)
+  list(
+    prob_suffix = paste0(stem, "_prob"),
+    prob_name = paste0(parameter, "_", stem, "_prob"),
+    indicator_name = paste0(parameter, "_", stem, "_indicator")
+  )
+}
+
+.bt_random_variance_allocation_inclusion_indicator_names <- function(formula_design){
+
+  if(inherits(formula_design, "BayesTools_formula_design")){
+    formula_design <- list(formula_design)
+  }
+  if(!is.list(formula_design)){
+    return(character())
+  }
+
+  indicators <- character()
+  collect_allocation <- function(allocation){
+    if(!is.list(allocation) || !is.list(allocation$inclusion) ||
+       length(allocation$inclusion) == 0L){
+      return(invisible(NULL))
+    }
+    for(inclusion in allocation$inclusion){
+      indicator_name <- inclusion$indicator_name
+      if(is.character(indicator_name) && length(indicator_name) == 1L &&
+         !is.na(indicator_name) && nzchar(indicator_name)){
+        indicators <<- c(indicators, indicator_name)
+      }
+    }
+    invisible(NULL)
+  }
+
+  for(design in formula_design){
+    if(!inherits(design, "BayesTools_formula_design")){
+      next
+    }
+    if(is.list(design$random_allocations)){
+      for(allocation in design$random_allocations){
+        collect_allocation(allocation)
+      }
+    }
+    for(random_term in .bt_formula_design_random_effects(design)){
+      binding <- random_term$sd_binding
+      if(is.null(binding) || !is.list(binding$allocations)){
+        next
+      }
+      for(allocation in binding$allocations){
+        collect_allocation(allocation)
+      }
+    }
+  }
+
+  unique(indicators)
+}
+
 .bt_random_variance_allocation_factor <- function(weight_name, index, scale,
-                                                  n_targets){
+                                                  n_targets,
+                                                  inclusion_name = NULL){
 
   list(
     weight_name = weight_name,
     index = index,
     scale = scale,
-    n_targets = n_targets
+    n_targets = n_targets,
+    inclusion_name = inclusion_name
   )
 }
 
@@ -206,6 +267,10 @@
   }
   if(factor$index > factor$n_targets){
     stop("Random-effect allocation factor metadata reference a coordinate outside 'n_targets'.", call. = FALSE)
+  }
+  if(!is.null(factor$inclusion_name)){
+    check_char(factor$inclusion_name, "factor$inclusion_name",
+               allow_NA = FALSE)
   }
 
   invisible(TRUE)
@@ -237,14 +302,46 @@
   paste0("sqrt(", multiplier, ")")
 }
 
-.bt_random_variance_allocation_expression <- function(source_name, weight_name,
-                                                      index, scale, n_targets){
+.bt_random_variance_allocation_factor_expression <- function(factor){
 
   multiplier <- .bt_random_variance_allocation_multiplier_expression(
-    weight_name = weight_name,
-    index = index,
-    scale = scale,
-    n_targets = n_targets
+    weight_name = factor$weight_name,
+    index = factor$index,
+    scale = factor$scale,
+    n_targets = factor$n_targets
+  )
+
+  if(!is.null(factor$inclusion_name)){
+    multiplier <- paste0(factor$inclusion_name, " * ", multiplier)
+  }
+
+  multiplier
+}
+
+.bt_random_variance_allocation_factors_expression <- function(factors){
+
+  if(length(factors) == 0L){
+    return("1")
+  }
+
+  paste(
+    vapply(factors, .bt_random_variance_allocation_factor_expression, character(1)),
+    collapse = " * "
+  )
+}
+
+.bt_random_variance_allocation_expression <- function(source_name, weight_name,
+                                                      index, scale, n_targets,
+                                                      inclusion_name = NULL){
+
+  multiplier <- .bt_random_variance_allocation_factor_expression(
+    .bt_random_variance_allocation_factor(
+      weight_name = weight_name,
+      index = index,
+      scale = scale,
+      n_targets = n_targets,
+      inclusion_name = inclusion_name
+    )
   )
 
   paste0(source_name, " * ", multiplier)

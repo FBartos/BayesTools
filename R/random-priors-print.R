@@ -251,6 +251,29 @@
   .bt_format_random_print_prior(x$weights, digits_estimates)
 }
 
+.bt_format_random_allocation_inclusion_lines <- function(x, digits_estimates){
+
+  if(!is.list(x$inclusion) || length(x$inclusion) == 0L){
+    return(character())
+  }
+
+  lines <- character()
+  for(component in names(x$inclusion)){
+    prob_name <- paste0("p_", component)
+    indicator_name <- paste0("I_", component)
+    lines <- c(lines, .bt_format_random_prior_equation(
+      prob_name,
+      .bt_format_random_print_prior(x$inclusion[[component]], digits_estimates)
+    ))
+    lines <- c(lines, .bt_format_random_prior_equation(
+      indicator_name,
+      paste0("Bernoulli(", prob_name, ")")
+    ))
+  }
+
+  lines
+}
+
 .bt_format_random_allocation_source_name <- function(x){
 
   if(is.null(x$parent)){
@@ -285,9 +308,14 @@
   }
 
   vapply(seq_along(labels), function(i){
+    gate <- if(is.list(x$inclusion) && labels[i] %in% names(x$inclusion)){
+      paste0("I_", labels[i], " * ")
+    }else{
+      ""
+    }
     .bt_format_random_prior_equation(
       .bt_format_random_sigma_name(labels[i]),
-      paste0(source_name, " * sqrt(w[", i, "])"),
+      paste0(source_name, " * ", gate, "sqrt(w[", i, "])"),
       operator = "="
     )
   }, character(1))
@@ -357,6 +385,10 @@
   lines <- c(lines, .bt_format_random_prior_equation(
     "w",
     .bt_format_random_allocation_weight_prior(x, digits_estimates)
+  ))
+  lines <- c(lines, .bt_format_random_allocation_inclusion_lines(
+    x,
+    digits_estimates
   ))
 
   if(identical(target, "block")){

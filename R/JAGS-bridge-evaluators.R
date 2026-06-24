@@ -448,6 +448,8 @@
 
 .bt_JAGS_bridge_compile_formula_random_prior_evaluator <- function(formula_design_list){
 
+  .bt_JAGS_bridge_check_no_allocation_inclusion(formula_design_list)
+
   evaluators <- list()
   if(length(formula_design_list) > 0L){
     design_names <- names(formula_design_list)

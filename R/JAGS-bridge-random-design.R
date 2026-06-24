@@ -440,7 +440,7 @@
       "weight_name", "leaf_names", "leaf_terms",
       "leaf_index_by_column", "source_node", "weight_suffix",
       "total_suffix", "sd_component_names", "sd_component_terms",
-      "sd_component_index_by_column"
+      "sd_component_index_by_column", "inclusion"
     )
   )]
   if(!is.null(allocation$source)){
@@ -452,6 +452,12 @@
   if(!is.null(allocation$parent_factors)){
     allocation$parent_factors <- lapply(allocation$parent_factors, .bt_JAGS_bridge_allocation_factor_metadata)
   }
+  if(!is.null(allocation$inclusion)){
+    allocation$inclusion <- lapply(
+      allocation$inclusion,
+      .bt_JAGS_bridge_allocation_inclusion_metadata
+    )
+  }
 
   allocation
 }
@@ -460,7 +466,19 @@
 
   factor[intersect(
     names(factor),
-    c("weight_name", "index", "scale", "n_targets")
+    c("weight_name", "index", "scale", "n_targets", "inclusion_name")
+  )]
+}
+
+.bt_JAGS_bridge_allocation_inclusion_metadata <- function(inclusion){
+
+  if(is.null(inclusion)){
+    return(NULL)
+  }
+
+  inclusion[intersect(
+    names(inclusion),
+    c("component", "index", "prob_suffix", "prob_name", "indicator_name")
   )]
 }
 

@@ -55,7 +55,8 @@ random_variance_allocation(
   parent = NULL,
   target = c("block", "sd_component"),
   scale = c("total_variance", "mean_variance"),
-  sd_source = NULL
+  sd_source = NULL,
+  inclusion = NULL
 )
 
 allocation_ref(allocation_name, component)
@@ -141,6 +142,11 @@ SD components.}
 Summaries report \code{w} as a variance fraction for \code{"total_variance"} and
 \code{K * w} as a variance ratio to the average SD-component variance for
 \code{"mean_variance"}.}
+
+\item{inclusion}{optional named list of scalar probability priors, keyed by
+allocation component label. For \code{target = "block"}, each listed component
+receives an independent Bernoulli gate and its SD contribution is multiplied
+by that gate. Gate names must match resolved allocation component labels.}
 
 \item{allocation_name}{allocation name referenced by \code{allocation_ref()}.}
 

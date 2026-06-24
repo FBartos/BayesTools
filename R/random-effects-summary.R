@@ -148,6 +148,23 @@
         component = allocation_summary$components[i]
       )
     }
+    inclusion_summary <- .bt_random_effect_summary_allocation_inclusion_samples(
+      allocation = allocation,
+      model_samples = model_samples
+    )
+    for(i in seq_along(inclusion_summary$names)){
+      add_summary(
+        name = inclusion_summary$names[i],
+        values = inclusion_summary$values[, i],
+        parameter = parameter,
+        type = inclusion_summary$types[i],
+        label = inclusion_summary$labels[i],
+        allocation = allocation$label,
+        allocation_metadata = allocation,
+        allocation_index = inclusion_summary$indices[i],
+        component = inclusion_summary$components[i]
+      )
+    }
     seen_allocations <<- c(seen_allocations, allocation$weight_name)
     invisible(NULL)
   }
@@ -316,7 +333,7 @@
     "var_frac",
     "var_ratio",
     "sd_multiplier"
-  )
+  ) | (summary_type == "inclusion" & nzchar(summary_allocation))
   used <- stats::setNames(rep(FALSE, length(parameter_names)), parameter_names)
   ordered <- character()
 

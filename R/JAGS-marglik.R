@@ -157,6 +157,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   formula_list <- formula_context$formula_list
   formula_data_list <- formula_context$formula_data_list
   formula_prior_list <- formula_context$formula_prior_list
+  .bt_JAGS_bridge_check_no_allocation_inclusion(formula_design_list)
 
   if(is.null(prior_list)){
     prior_list <- .bt_JAGS_bridge_prior_list_from_fit(
