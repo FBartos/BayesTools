@@ -345,6 +345,16 @@
       block = block
     )
   }
+  if(!.bt_JAGS_bridge_metadata_equal(
+    .bt_JAGS_bridge_group_covariance_metadata(fitted),
+    .bt_JAGS_bridge_group_covariance_metadata(rebuilt)
+  )){
+    .bt_JAGS_bridge_random_design_mismatch(
+      parameter,
+      "random-effect group covariance metadata differ",
+      block = block
+    )
+  }
 
   invisible(TRUE)
 }
@@ -518,6 +528,11 @@
       "time_variable", "time_values", "distance_matrix"
     )
   )]
+}
+
+.bt_JAGS_bridge_group_covariance_metadata <- function(random_term){
+
+  .bt_random_effect_group_covariance_metadata(random_term)
 }
 
 .bt_JAGS_bridge_metadata_equal <- function(x, y){

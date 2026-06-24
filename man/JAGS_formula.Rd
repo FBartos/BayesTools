@@ -16,7 +16,8 @@ JAGS_formula(
 }
 \arguments{
 \item{formula}{formula specifying the right hand side of the assignment (the
-left hand side is ignored). If the formula contains \code{-1}, it will be
+left hand side is ignored), or a \code{BayesTools_random_effects} object returned
+by \code{\link[=random_effects_formula]{random_effects_formula()}}. If the formula contains \code{-1}, it will be
 automatically converted to include an intercept with a spike(0) prior.
 The formula can also have a \code{"log(intercept)"} attribute set to \code{TRUE}
 to generate syntax of the form \code{log(intercept) + sum(beta_i * x_i)}, which

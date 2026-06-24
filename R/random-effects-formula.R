@@ -16,12 +16,18 @@
 #'
 #' @param random a formula or non-empty list of formulas.
 #' @param envir environment used for the returned formula.
+#' @param group_covariance optional known group covariance. Use one
+#'   [random_group_covariance()] object or numeric matrix for a single random
+#'   block, or a named list of objects/matrices for multiple random blocks.
+#'   Names should match resolved random-effect block names, or grouping labels
+#'   when the grouping label is unambiguous.
 #'
 #' @return A `BayesTools_random_effects` object with `formula`, `terms`, and
 #'   `components` fields.
 #'
 #' @export
-random_effects_formula <- function(random, envir = parent.frame()){
+random_effects_formula <- function(random, envir = parent.frame(),
+                                   group_covariance = NULL){
 
   formulas <- .bt_random_effects_input_formulas(random)
   is_list_input <- is.list(random) && !inherits(random, "formula")
@@ -83,6 +89,10 @@ random_effects_formula <- function(random, envir = parent.frame()){
     }
   }
   .bt_validate_random_effect_block_names(normalized_terms)
+  normalized_terms <- .bt_random_effects_apply_group_covariance(
+    terms = normalized_terms,
+    group_covariance = group_covariance
+  )
 
   formula <- stats::as.formula(
     call("~", .bt_random_effect_plus_calls(normalized_calls)),
@@ -94,11 +104,148 @@ random_effects_formula <- function(random, envir = parent.frame()){
   out <- list(
     formula = formula,
     terms = normalized_terms,
-    components = components
+    components = components,
+    group_covariance = .bt_random_effects_group_covariance_metadata(
+      normalized_terms
+    )
   )
   class(out) <- c("BayesTools_random_effects", "list")
 
   out
+}
+
+.bt_random_effects_apply_group_covariance <- function(terms,
+                                                      group_covariance = NULL){
+
+  if(is.null(group_covariance)){
+    return(terms)
+  }
+  entries <- .bt_random_effects_group_covariance_entries(group_covariance)
+  entry_names <- names(entries)
+  if(is.null(entry_names)){
+    entry_names <- rep("", length(entries))
+  }
+  entry_names[is.na(entry_names)] <- ""
+
+  if(length(entries) == 1L && !nzchar(entry_names[[1L]])){
+    if(length(terms) != 1L){
+      stop(
+        "Unnamed 'group_covariance' is only supported for a single random-effect block.",
+        call. = FALSE
+      )
+    }
+    terms[[1L]]$group_covariance <- entries[[1L]]
+    return(terms)
+  }
+  if(any(!nzchar(entry_names))){
+    stop(
+      "'group_covariance' must be named when multiple entries are supplied.",
+      call. = FALSE
+    )
+  }
+  if(anyDuplicated(entry_names)){
+    stop("'group_covariance' names must be unique.", call. = FALSE)
+  }
+
+  matched <- rep(FALSE, length(terms))
+  for(i in seq_along(entries)){
+    index <- .bt_random_effects_group_covariance_match(
+      terms = terms,
+      name = entry_names[[i]]
+    )
+    if(matched[[index]]){
+      stop(
+        "Random-effect block '",
+        terms[[index]]$block_name,
+        "' has more than one known group covariance entry.",
+        call. = FALSE
+      )
+    }
+    terms[[index]]$group_covariance <- entries[[i]]
+    matched[[index]] <- TRUE
+  }
+
+  terms
+}
+
+.bt_random_effects_group_covariance_entries <- function(group_covariance){
+
+  if(.bt_is_random_group_covariance(group_covariance) ||
+     is.matrix(group_covariance) ||
+     is.data.frame(group_covariance)){
+    return(list(.bt_as_random_group_covariance(group_covariance)))
+  }
+  if(!is.list(group_covariance) || length(group_covariance) == 0L){
+    stop(
+      "'group_covariance' must be a random_group_covariance() object, a numeric matrix, or a named list.",
+      call. = FALSE
+    )
+  }
+
+  lapply(group_covariance, .bt_as_random_group_covariance)
+}
+
+.bt_random_effects_group_covariance_match <- function(terms, name){
+
+  block_names <- vapply(terms, `[[`, character(1), "block_name")
+  block_matches <- which(block_names == name)
+  if(length(block_matches) == 1L){
+    return(block_matches)
+  }
+  if(length(block_matches) > 1L){
+    stop(
+      "'group_covariance' name '",
+      name,
+      "' matches multiple random-effect blocks.",
+      call. = FALSE
+    )
+  }
+
+  group_labels <- vapply(terms, `[[`, character(1), "group_label")
+  group_matches <- which(group_labels == name)
+  if(length(group_matches) == 0L){
+    sanitized <- vapply(
+      group_labels,
+      .bt_random_effect_sanitize_name,
+      character(1)
+    )
+    group_matches <- which(sanitized == name)
+  }
+  if(length(group_matches) == 1L){
+    return(group_matches)
+  }
+  if(length(group_matches) > 1L){
+    stop(
+      "'group_covariance' name '",
+      name,
+      "' matches an ambiguous random-effect grouping label.",
+      call. = FALSE
+    )
+  }
+
+  stop(
+    "'group_covariance' name '",
+    name,
+    "' does not match any random-effect block or unambiguous grouping label.",
+    call. = FALSE
+  )
+}
+
+.bt_random_effects_group_covariance_metadata <- function(terms){
+
+  out <- lapply(terms, function(term){
+    if(is.null(term$group_covariance)){
+      return(NULL)
+    }
+    list(
+      block_name = term$block_name,
+      group_label = term$group_label,
+      scale = term$group_covariance$scale,
+      levels = rownames(term$group_covariance$covariance)
+    )
+  })
+  names(out) <- vapply(terms, `[[`, character(1), "block_name")
+  out[!vapply(out, is.null, logical(1))]
 }
 
 .bt_random_effects_input_formulas <- function(random){

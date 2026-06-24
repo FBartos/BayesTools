@@ -257,6 +257,72 @@ test_that("diag random intercept and slope covariance uses ZGZ' by group", {
   expect_equal(.re_cov_first(out_stored_zero), expected_zero_level, tolerance = 1e-12)
 })
 
+test_that("known group covariance uses tau squared times ZKZ prime", {
+
+  df <- data.frame(
+    id = factor(c("b", "a", "c", "b"), levels = c("b", "a", "c"))
+  )
+  K <- matrix(
+    c(4, 1, .5,
+      1, 9, 2,
+      .5, 2, 16),
+    nrow = 3,
+    byrow = TRUE,
+    dimnames = list(c("a", "b", "c"), c("a", "b", "c"))
+  )
+  random_effects <- random_effects_formula(
+    ~ 1 | id,
+    group_covariance = random_group_covariance(K, scale = "none")
+  )
+  result <- .re_cov_formula(
+    formula = random_effects,
+    data = df,
+    prior_random = prior_random(
+      id = random_block(sd = .re_cov_sd_prior())
+    )
+  )
+  random_term <- .re_cov_term(result, "id")
+  posterior <- .re_cov_posterior(.re_cov_sd_values(random_term, .5))
+  out <- .re_cov_output(result, posterior)
+  expected <- unname(.5^2 * K[as.character(df$id), as.character(df$id)])
+
+  expect_equal(random_term$group_covariance$scale, "none")
+  expect_equal(
+    BayesTools:::.bt_random_effect_sd_summary_label("intercept", "id", random_term),
+    "sd_multiplier(intercept | id)"
+  )
+  expect_equal(.re_cov_first(out), expected, tolerance = 1e-12)
+  expect_equal(diag(.re_cov_first(out)), .5^2 * c(9, 4, 16, 9))
+  expect_equal(
+    out$metadata$blocks$id$group_covariance$kernel,
+    K[levels(df$id), levels(df$id)]
+  )
+
+  new_data <- data.frame(
+    id = factor(c("c", "a"), levels = c("b", "a", "c"))
+  )
+  out_new <- .re_cov_output(result, posterior, data = new_data)
+  expect_equal(
+    .re_cov_first(out_new),
+    unname(.5^2 * K[as.character(new_data$id), as.character(new_data$id)]),
+    tolerance = 1e-12
+  )
+
+  new_level_data <- data.frame(
+    id = factor(c("a", "d"), levels = c("a", "b", "c", "d"))
+  )
+  expect_error(
+    .re_cov_output(result, posterior, data = new_level_data),
+    "known group covariance",
+    fixed = TRUE
+  )
+  expect_error(
+    .re_cov_output(result, posterior, data = new_level_data, new_levels = "sample"),
+    "known group covariance",
+    fixed = TRUE
+  )
+})
+
 test_that("id covariance shares one SD across independent columns", {
 
   df <- data.frame(

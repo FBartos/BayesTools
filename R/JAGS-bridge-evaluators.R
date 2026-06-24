@@ -493,22 +493,11 @@
 
   force(random_term)
 
-  n_groups <- random_term$n_groups
   n_columns <- random_term$n_columns
-  block_name <- random_term$block_name
   sampled_random_effect <- identical(
     .bt_random_effect_term_compile_mode(random_term),
     "sampled"
   )
-  if(isTRUE(sampled_random_effect)){
-    z_names <- as.vector(.bt_random_effect_latent_names(
-      random_term = random_term,
-      n_groups = n_groups,
-      n_columns = n_columns
-    ))
-  }else{
-    z_names <- character()
-  }
   structure <- .bt_JAGS_bridge_random_term_structure(random_term)
   scalar_rho_support_evaluator <- .bt_JAGS_bridge_compile_random_effect_scalar_rho_support(
     random_term = random_term,
@@ -524,23 +513,7 @@
     log_prior = function(samples){
       marglik <- 0
       if(isTRUE(sampled_random_effect)){
-        if(!all(z_names %in% names(samples))){
-          stop(
-            "Bridge samples are missing standardized latent random effects for block '",
-            block_name,
-            "'.",
-            call. = FALSE
-          )
-        }
-
-        z_values <- samples[z_names]
-        if(any(is.na(z_values))){
-          return(-Inf)
-        }
-        marglik <- sum(stats::dnorm(z_values, mean = 0, sd = 1, log = TRUE))
-        if(is.na(marglik)){
-          return(-Inf)
-        }
+        marglik <- .bt_random_effect_latent_log_density(random_term, samples)
       }
 
       scalar_rho_support <- scalar_rho_support_evaluator(samples)

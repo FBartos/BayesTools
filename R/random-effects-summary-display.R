@@ -402,7 +402,13 @@
   )
   components <- .bt_random_effect_summary_sd_components(random_term, sd_names)
   group <- .bt_random_effect_summary_group_label(random_term)
-  labels <- paste0(prefix, "sd(", components, " | ", group, ")")
+  labels <- paste0(prefix, vapply(
+    components,
+    .bt_random_effect_sd_summary_label,
+    character(1),
+    group = group,
+    random_term = random_term
+  ))
 
   for(i in seq_along(sd_names)){
     matches <- raw_names %in% c(sd_names[i], display_sd_names[i])

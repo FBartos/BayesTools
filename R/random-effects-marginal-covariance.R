@@ -446,7 +446,8 @@ random_effects_marginal_vcov <- function(
       random_term = random_term,
       data = random_data,
       group_data = data,
-      allow_new_groups = TRUE
+      allow_new_groups = .bt_random_effect_allows_new_levels(random_term),
+      context = "random_effects_marginal_vcov()"
     )
     model_matrix <- prediction$model_matrix
     group_map <- prediction$group_map
@@ -602,6 +603,17 @@ random_effects_marginal_vcov <- function(
       call. = FALSE
     )
   }
+  if(length(new_group_levels) > 0L &&
+     .bt_random_effect_has_known_group_covariance(random_term)){
+    stop(
+      "New random-effect level(s) for block '",
+      random_term$block_name,
+      "' are not supported with known group covariance: ",
+      paste(new_group_levels, collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
 
   list(
     policy = new_levels,
@@ -673,6 +685,16 @@ random_effects_marginal_vcov <- function(
     nonnegative = TRUE
   )
 
+  if(.bt_random_effect_has_known_group_covariance(random_term)){
+    return(.bt_random_effect_marginal_covariance_known_group_block(
+      random_term = random_term,
+      model_matrix = model_matrix,
+      group_map = group_map,
+      posterior = posterior,
+      sd_draws = sd_draws
+    ))
+  }
+
   correlation <- .bt_random_effect_marginal_covariance_correlation_draws(
     random_term = random_term,
     n_columns = n_columns,
@@ -692,6 +714,54 @@ random_effects_marginal_vcov <- function(
       block_covariance = covariance
     ),
     sample_dim = c(nrow(posterior), nrow(model_matrix), nrow(model_matrix))
+  )
+}
+
+.bt_random_effect_marginal_covariance_known_group_block <- function(
+    random_term,
+    model_matrix,
+    group_map,
+    posterior,
+    sd_draws){
+
+  n_draws <- nrow(posterior)
+  n_rows <- nrow(model_matrix)
+  if(ncol(model_matrix) != 1L){
+    stop(
+      "Random-effect marginal covariance for block '",
+      random_term$block_name,
+      "' with known group covariance supports one random-effect column only.",
+      call. = FALSE
+    )
+  }
+  group_covariance <- .bt_random_effect_known_group_covariance(
+    random_term,
+    context = "Random-effect marginal covariance"
+  )
+  if(any(group_map > length(group_covariance$levels))){
+    stop(
+      "Random-effect marginal covariance for block '",
+      random_term$block_name,
+      "' cannot include new levels with known group covariance.",
+      call. = FALSE
+    )
+  }
+
+  row_names <- rownames(model_matrix)
+  if(is.null(row_names)){
+    row_names <- as.character(seq_len(n_rows))
+  }
+  base_covariance <- group_covariance$kernel[group_map, group_map, drop = FALSE] *
+    tcrossprod(model_matrix[, 1L])
+  out <- array(NA_real_, dim = c(n_draws, n_rows, n_rows))
+  dimnames(out) <- list(draw = NULL, row = row_names, column = row_names)
+  for(draw in seq_len(n_draws)){
+    out[draw, , ] <- sd_draws[draw, 1L]^2 * base_covariance
+  }
+
+  list(
+    samples = out,
+    sample_dim = c(n_draws, n_rows, n_rows)
   )
 }
 
@@ -1130,6 +1200,7 @@ random_effects_marginal_vcov <- function(
     sd_parameter_names = random_term$sd_parameter_names,
     row_varying_sd = .bt_random_effect_has_row_indexed_external_sd(random_term),
     correlation_type = if(is.list(correlation)) correlation$type else NA_character_,
+    group_covariance = .bt_random_effect_group_covariance_metadata(random_term),
     included = TRUE,
     skipped = FALSE,
     dense = TRUE,

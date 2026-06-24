@@ -985,6 +985,140 @@ test_that("random-effect formula lists retain component hierarchy", {
   )
 })
 
+test_that("random group covariance constructor validates and scales kernels", {
+
+  K <- matrix(
+    c(4, 1, 1,
+      1, 9, 2,
+      1, 2, 16),
+    nrow = 3,
+    byrow = TRUE,
+    dimnames = list(c("b", "a", "extra"), c("b", "a", "extra"))
+  )
+  none <- random_group_covariance(K, scale = "none")
+  expect_s3_class(none, "random_group_covariance")
+  expect_equal(none$covariance, K)
+  expect_equal(none$scale, "none")
+
+  prepared_none <- BayesTools:::.bt_prepare_group_covariance_kernel(
+    none,
+    group_levels = c("a", "b"),
+    block_name = "id"
+  )
+  expect_equal(prepared_none$levels, c("a", "b"))
+  expect_equal(prepared_none$dropped_levels, "extra")
+  expect_equal(prepared_none$kernel, K[c("a", "b"), c("a", "b")])
+
+  K2 <- matrix(
+    c(4, 1, 1, 9),
+    nrow = 2,
+    dimnames = list(c("a", "b"), c("a", "b"))
+  )
+  prepared_cor <- BayesTools:::.bt_prepare_group_covariance_kernel(
+    random_group_covariance(K2, scale = "cor"),
+    group_levels = c("a", "b"),
+    block_name = "id"
+  )
+  expect_equal(prepared_cor$kernel, stats::cov2cor(K2), tolerance = 1e-12)
+
+  prepared_cor0 <- BayesTools:::.bt_prepare_group_covariance_kernel(
+    random_group_covariance(K2, scale = "cor0"),
+    group_levels = c("a", "b"),
+    block_name = "id"
+  )
+  R <- stats::cov2cor(K2)
+  expect_equal(prepared_cor0$kernel, (R - min(R)) / (1 - min(R)), tolerance = 1e-12)
+
+  prepared_cov0 <- BayesTools:::.bt_prepare_group_covariance_kernel(
+    random_group_covariance(K2, scale = "cov0"),
+    group_levels = c("a", "b"),
+    block_name = "id"
+  )
+  expect_equal(prepared_cov0$kernel, K2 - min(K2), tolerance = 1e-12)
+
+  expect_error(
+    BayesTools:::.bt_prepare_group_covariance_kernel(
+      random_group_covariance(K2, scale = "none"),
+      group_levels = c("a", "missing"),
+      block_name = "id"
+    ),
+    "missing fitted level",
+    fixed = TRUE
+  )
+  singular <- matrix(
+    c(1, 1, 1, 1),
+    nrow = 2,
+    dimnames = list(c("a", "b"), c("a", "b"))
+  )
+  expect_error(
+    BayesTools:::.bt_prepare_group_covariance_kernel(
+      random_group_covariance(singular, scale = "none"),
+      group_levels = c("a", "b"),
+      block_name = "id"
+    ),
+    "positive definite",
+    fixed = TRUE
+  )
+
+  expect_error(
+    random_group_covariance(matrix(1, 1, 1), scale = "none"),
+    "row and column names",
+    fixed = TRUE
+  )
+  bad <- K2
+  dimnames(bad) <- list(c("a", "a"), c("a", "b"))
+  expect_error(
+    random_group_covariance(bad, scale = "none"),
+    "row names must be unique",
+    fixed = TRUE
+  )
+})
+
+test_that("random_effects_formula attaches known group covariance by block names", {
+
+  study_kernel <- diag(2)
+  dimnames(study_kernel) <- list(c("a", "b"), c("a", "b"))
+  district_kernel <- diag(2)
+  dimnames(district_kernel) <- list(c("d1", "d2"), c("d1", "d2"))
+
+  by_block <- random_effects_formula(
+    ~ random(1 | study, name = "study_block") +
+      random(1 | district, name = "district_block"),
+    group_covariance = list(
+      study_block = random_group_covariance(study_kernel, scale = "none"),
+      district_block = district_kernel
+    )
+  )
+  expect_equal(
+    vapply(by_block$terms, function(term) term$group_covariance$scale, character(1)),
+    c("none", "cor")
+  )
+  expect_equal(names(by_block$group_covariance), c("study_block", "district_block"))
+
+  by_group <- random_effects_formula(
+    ~ random(1 | study, name = "study_block"),
+    group_covariance = list(study = random_group_covariance(study_kernel))
+  )
+  expect_s3_class(by_group$terms[[1]]$group_covariance, "random_group_covariance")
+
+  expect_error(
+    random_effects_formula(
+      ~ random(1 | study, name = "a") + random(1 | district, name = "b"),
+      group_covariance = random_group_covariance(study_kernel)
+    ),
+    "single random-effect block",
+    fixed = TRUE
+  )
+  expect_error(
+    random_effects_formula(
+      ~ random(1 | study, name = "a"),
+      group_covariance = list(missing = random_group_covariance(study_kernel))
+    ),
+    "does not match",
+    fixed = TRUE
+  )
+})
+
 test_that("random-effect design exposes grouping maps and correlated syntax", {
 
   df <- data.frame(
@@ -6341,6 +6475,91 @@ test_that("JAGS_evaluate_formula reconstructs observed random effects from laten
       prior_list = formula_result$prior_list
     ),
     "cannot be reconstructed from the posterior samples",
+    fixed = TRUE
+  )
+})
+
+test_that("JAGS_evaluate_formula rejects new levels for known group covariance", {
+
+  df <- data.frame(
+    id = factor(c("a", "b", "a", "c"), levels = c("a", "b", "c"))
+  )
+  K <- matrix(
+    c(2, .4, .2,
+      .4, 3, .5,
+      .2, .5, 4),
+    nrow = 3,
+    byrow = TRUE,
+    dimnames = list(c("a", "b", "c"), c("a", "b", "c"))
+  )
+  random_effects <- random_effects_formula(
+    ~ 1 | id,
+    group_covariance = random_group_covariance(K, scale = "none")
+  )
+  formula_result <- JAGS_formula(
+    formula = random_effects,
+    parameter = "mu",
+    data = df,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("gamma", list(2, 1)),
+        monitor = random_monitor(latent = TRUE, coefficients = FALSE)
+      )
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1]]
+  z_names <- as.vector(BayesTools:::.bt_random_effect_latent_names(
+    random_term = random_term,
+    n_groups = random_term$n_groups,
+    n_columns = random_term$n_columns
+  ))
+  posterior <- matrix(
+    c(10, 2, .1, -.2, .3),
+    nrow = 1,
+    dimnames = list(NULL, c("mu_intercept", random_term$sd_parameter_names, z_names))
+  )
+  fit <- coda::mcmc(posterior)
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+
+  prediction <- JAGS_evaluate_formula(
+    fit = fit,
+    formula = random_effects$formula,
+    parameter = "mu",
+    data = df,
+    prior_list = formula_result$prior_list
+  )
+  expect_equal(
+    unname(drop(prediction)),
+    10 + 2 * c(.1, -.2, .1, .3),
+    tolerance = 1e-12
+  )
+
+  new_data <- data.frame(
+    id = factor(c("a", "d"), levels = c("a", "b", "c", "d"))
+  )
+  expect_error(
+    JAGS_evaluate_formula(
+      fit = fit,
+      formula = random_effects$formula,
+      parameter = "mu",
+      data = new_data,
+      prior_list = formula_result$prior_list
+    ),
+    "known group covariance",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_evaluate_formula(
+      fit = fit,
+      formula = random_effects$formula,
+      parameter = "mu",
+      data = new_data,
+      prior_list = formula_result$prior_list,
+      formula_target = "conditional",
+      new_levels = "sample"
+    ),
+    "known group covariance",
     fixed = TRUE
   )
 })

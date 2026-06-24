@@ -5,7 +5,8 @@
 #' function.
 #'
 #' @param formula formula specifying the right hand side of the assignment (the
-#' left hand side is ignored). If the formula contains \code{-1}, it will be
+#' left hand side is ignored), or a `BayesTools_random_effects` object returned
+#' by [random_effects_formula()]. If the formula contains \code{-1}, it will be
 #' automatically converted to include an intercept with a spike(0) prior.
 #' The formula can also have a \code{"log(intercept)"} attribute set to \code{TRUE}
 #' to generate syntax of the form \code{log(intercept) + sum(beta_i * x_i)}, which
@@ -107,8 +108,15 @@
 JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = NULL,
                          prior_random = NULL, random_effects_compile = NULL){
 
+  formula_input <- formula
+  formula <- .bt_formula_random_formula(formula)
   if(!is.language(formula))
-    stop("'formula' must be a formula")
+    stop("'formula' must be a formula", call. = FALSE)
+  resolved_random_terms <- if(inherits(formula_input, "BayesTools_random_effects")){
+    formula_input$terms
+  }else{
+    attr(formula, "random_terms", exact = TRUE)
+  }
   check_char(parameter, "parameter")
   if(!is.data.frame(data))
     stop("'data' must be a data.frame")
@@ -124,13 +132,14 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
 
   # remove the specified response
   formula <- .remove_response(formula)
+  formula <- .bt_formula_preserve_random_terms(formula, resolved_random_terms)
   # store log(intercept) attribute (for models relying on mu = log(intercept) + sum(beta_i * x_i) trick
   # exp(mu) = intercept * exp(sum(beta_i * x_i)) (e.g., Poisson regression / regression with log link etc...)
   log_intercept  <- isTRUE(attr(formula, "log(intercept)"))
   # store expressions (included later as the literal character input)
   expressions    <- .extract_expressions(formula)
   # store random effects (included later via a formula interface)
-  parsed_random_effects <- .bt_parse_random_effects(formula)$terms
+  parsed_random_effects <- .bt_formula_random_terms(formula)
   .bt_validate_random_effect_block_names(parsed_random_effects, prior_random)
   random_effects_compile <- .bt_resolve_random_effects_compile(
     random_effects = parsed_random_effects,

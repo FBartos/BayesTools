@@ -223,11 +223,21 @@
                                                 new_levels = NULL){
 
   new_levels <- .bt_random_effect_new_levels_policy(random_term, new_levels)
+  if(.bt_random_effect_has_known_group_covariance(random_term) &&
+     isTRUE(new_levels$allow)){
+    stop(
+      "New random-effect levels for block '",
+      random_term$block_name,
+      "' are not supported with known group covariance.",
+      call. = FALSE
+    )
+  }
   prediction <- .bt_random_effect_prediction_data(
     random_term,
     data,
     group_data = group_data,
-    allow_new_groups = isTRUE(new_levels$allow)
+    allow_new_groups = isTRUE(new_levels$allow),
+    context = "JAGS_evaluate_formula()"
   )
   model_matrix <- prediction$model_matrix
   group_map <- prediction$group_map
@@ -387,6 +397,14 @@
       source_data = source_data
     ))
   }
+  if(.bt_random_effect_has_known_group_covariance(random_term)){
+    stop(
+      "Sampling new random-effect levels for block '",
+      random_term$block_name,
+      "' is not supported with known group covariance.",
+      call. = FALSE
+    )
+  }
 
   sd_draws <- .bt_random_effect_sd_draws(
     random_term = random_term,
@@ -514,7 +532,8 @@
 
 .bt_random_effect_prediction_data <- function(random_term, data,
                                               group_data = data,
-                                              allow_new_groups = FALSE){
+                                              allow_new_groups = FALSE,
+                                              context = "JAGS_evaluate_formula()"){
 
   prediction_data <- data
   random_structure <- .bt_random_effect_structure(
@@ -603,6 +622,15 @@
   group_map <- match(as.character(grouping_values), group_levels)
   if(any(is.na(group_map))){
     new_groups <- unique(as.character(grouping_values)[is.na(group_map)])
+    if(.bt_random_effect_has_known_group_covariance(random_term)){
+      stop(
+        "New random-effect level(s) for block '", random_term$block_name,
+        "' are not supported with known group covariance: ",
+        paste(new_groups, collapse = ", "),
+        ".",
+        call. = FALSE
+      )
+    }
     if(isTRUE(allow_new_groups)){
       group_levels <- c(group_levels, new_groups)
       group_map <- match(as.character(grouping_values), group_levels)
@@ -614,7 +642,7 @@
     }
     stop(
       "New random-effect level(s) for block '", random_term$block_name,
-      "' are not supported by JAGS_evaluate_formula(): ",
+      "' are not supported by ", context, ": ",
       paste(new_groups, collapse = ", "),
       ".",
       call. = FALSE

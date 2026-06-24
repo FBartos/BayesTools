@@ -4,12 +4,18 @@
 \alias{random_effects_formula}
 \title{Normalize random-effect formula input}
 \usage{
-random_effects_formula(random, envir = parent.frame())
+random_effects_formula(random, envir = parent.frame(), group_covariance = NULL)
 }
 \arguments{
 \item{random}{a formula or non-empty list of formulas.}
 
 \item{envir}{environment used for the returned formula.}
+
+\item{group_covariance}{optional known group covariance. Use one
+\code{random_group_covariance()} object or numeric matrix for a single random
+block, or a named list of objects/matrices for multiple random blocks.
+Names should match resolved random-effect block names, or grouping labels
+when the grouping label is unambiguous.}
 }
 \value{
 A \code{BayesTools_random_effects} object with \code{formula}, \code{terms}, and

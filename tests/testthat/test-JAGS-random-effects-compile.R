@@ -46,6 +46,15 @@ skip_if_not_test_profile("unit")
   vapply(random_effects, `[[`, character(1), "block_name")
 }
 
+.re_compile_known_group_kernel <- function(){
+  levels <- c("s2", "extra", "s1", "s3")
+  K <- diag(c(1.0, 2.5, 1.5, 2.0))
+  K[lower.tri(K)] <- c(.20, .10, .05, .15, .08, .12)
+  K <- K + t(K) - diag(diag(K))
+  dimnames(K) <- list(levels, levels)
+  K
+}
+
 .re_compile_terms_by_mode <- function(design, mode){
   design$random_effects[
     vapply(design$random_effects, function(random_term){
@@ -123,6 +132,114 @@ test_that("default random-effect compilation remains all sampled", {
   expect_match(result$formula_syntax, "mu__xREx__study_xRE_Zx", fixed = TRUE)
   expect_match(result$formula_syntax, "mu__xREx__estimate_xRE_Zx", fixed = TRUE)
   expect_match(result$formula_syntax, "mu__xREx__estimate\\[i\\] =")
+})
+
+test_that("known group covariance compiles as sampled random-intercept kernel", {
+
+  data <- data.frame(
+    study = factor(c("s2", "s1", "s3", "s2"), levels = c("s2", "s1", "s3"))
+  )
+  K <- .re_compile_known_group_kernel()
+  random_effects <- random_effects_formula(
+    ~ 1 | study,
+    group_covariance = random_group_covariance(K, scale = "none")
+  )
+  result <- JAGS_formula(
+    formula = random_effects,
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      study = random_block(
+        sd = .re_compile_sd_prior(),
+        monitor = random_monitor(latent = TRUE, coefficients = TRUE)
+      )
+    )
+  )
+  random_term <- result$formula_design$random_effects[[1]]
+  expected_levels <- levels(data$study)
+  expected_kernel <- K[expected_levels, expected_levels]
+
+  expect_s3_class(random_term$group_covariance, "random_group_covariance_kernel")
+  expect_equal(random_term$group_covariance$levels, expected_levels)
+  expect_equal(random_term$group_covariance$dropped_levels, "extra")
+  expect_equal(random_term$group_covariance$kernel, expected_kernel)
+  expect_equal(
+    result$data[["mu__xREx__study_xRE_GROUP_PRECx"]],
+    chol2inv(chol(expected_kernel)),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    result$data[["mu__xREx__study_xRE_GROUP_MUx"]],
+    rep(0, length(expected_levels))
+  )
+  expect_match(
+    result$formula_syntax,
+    "mu__xREx__study_xRE_GROUP_Zx[1:3] ~ dmnorm",
+    fixed = TRUE
+  )
+  expect_match(
+    result$formula_syntax,
+    "mu__xREx__study_xRE_Zx[i,1] = mu__xREx__study_xRE_GROUP_Zx[i]",
+    fixed = TRUE
+  )
+  expect_false(grepl("mu__xREx__study_xRE_PRECx", result$formula_syntax, fixed = TRUE))
+  expect_true("mu__xREx__study_xRE_Zx" %in% result$add_parameters)
+  expect_true("mu__xREx__study_xRE_COEFx" %in% result$add_parameters)
+})
+
+test_that("known group covariance rejects unsupported random-effect designs", {
+
+  data <- data.frame(
+    study = factor(c("s2", "s1", "s3", "s2"), levels = c("s2", "s1", "s3")),
+    x = c(0, 1, 0, 1)
+  )
+  K <- .re_compile_known_group_kernel()
+  random_intercept <- random_effects_formula(
+    ~ 1 | study,
+    group_covariance = random_group_covariance(K, scale = "none")
+  )
+  random_slope <- random_effects_formula(
+    ~ x | study,
+    group_covariance = random_group_covariance(K, scale = "none")
+  )
+
+  expect_error(
+    JAGS_formula(
+      formula = random_slope,
+      parameter = "mu",
+      data = data,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(study = random_block(sd = .re_compile_sd_prior()))
+    ),
+    "random intercepts only",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_formula(
+      formula = random_intercept,
+      parameter = "mu",
+      data = data,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(study = random_block(sd = .re_compile_sd_prior())),
+      random_effects_compile = random_effects_compile(marginalized = "study")
+    ),
+    "marginalized compilation is not supported",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_formula(
+      formula = random_intercept,
+      parameter = "mu",
+      data = data,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(
+        study = random_block(sd_source = random_sd_source("tau", shape = "row"))
+      )
+    ),
+    "row-indexed external SD sources",
+    fixed = TRUE
+  )
 })
 
 test_that("marginalized blocks keep metadata but omit latent mean nodes", {

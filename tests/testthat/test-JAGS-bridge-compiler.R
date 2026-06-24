@@ -224,6 +224,93 @@ test_that("compiled random-effect prior evaluator matches public helper", {
   )
 })
 
+test_that("known group covariance random-effect prior uses MVN kernel density", {
+
+  formula_data <- data.frame(
+    id = factor(c("a", "b", "a", "c"), levels = c("a", "b", "c"))
+  )
+  K <- matrix(
+    c(2, .4, .2,
+      .4, 3, .5,
+      .2, .5, 4),
+    nrow = 3,
+    byrow = TRUE,
+    dimnames = list(c("a", "b", "c"), c("a", "b", "c"))
+  )
+  random_effects <- random_effects_formula(
+    ~ 1 | id,
+    group_covariance = random_group_covariance(K, scale = "none")
+  )
+  formula_output <- JAGS_formula(
+    formula = random_effects,
+    parameter = "mu",
+    data = formula_data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("gamma", list(2, 1)),
+        monitor = random_monitor(latent = TRUE)
+      )
+    )
+  )
+  random_term <- formula_output$formula_design$random_effects[[1]]
+  z_names <- as.vector(BayesTools:::.bt_random_effect_latent_names(
+    random_term = random_term,
+    n_groups = random_term$n_groups,
+    n_columns = random_term$n_columns
+  ))
+  z <- c(.1, -.2, .3)
+  samples <- stats::setNames(z, z_names)
+  chol_K <- chol(K[random_term$group_levels, random_term$group_levels])
+  expected <- -0.5 * (
+    length(z) * log(2 * pi) +
+      2 * sum(log(diag(chol_K))) +
+      as.numeric(crossprod(z, chol2inv(chol_K) %*% z))
+  )
+  compiled <- BayesTools:::.bt_JAGS_bridge_compile_formula_random_prior_evaluator(
+    formula_design_list = list(mu = formula_output$formula_design)
+  )
+
+  expect_equal(compiled$log_prior(samples), expected, tolerance = 1e-12)
+  expect_equal(
+    BayesTools:::.bt_JAGS_marglik_random_effect_prior(
+      samples = samples,
+      random_term = random_term
+    ),
+    expected,
+    tolerance = 1e-12
+  )
+  expect_false(isTRUE(all.equal(
+    expected,
+    sum(stats::dnorm(z, mean = 0, sd = 1, log = TRUE)),
+    tolerance = 1e-8
+  )))
+
+  changed_K <- K
+  changed_K["a", "b"] <- changed_K["b", "a"] <- .1
+  changed_random_effects <- random_effects_formula(
+    ~ 1 | id,
+    group_covariance = random_group_covariance(changed_K, scale = "none")
+  )
+  changed_output <- JAGS_formula(
+    formula = changed_random_effects,
+    parameter = "mu",
+    data = formula_data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(sd = prior("gamma", list(2, 1)))
+    )
+  )
+  expect_error(
+    BayesTools:::.bt_JAGS_bridge_validate_formula_random_designs(
+      list(mu = formula_output$formula_design),
+      list(mu = changed_output$formula_design)
+    ),
+    "group covariance metadata differ",
+    fixed = TRUE
+  )
+})
+
 test_that("compiled formula parameter evaluator matches design reconstruction", {
 
   formula_data <- data.frame(

@@ -209,8 +209,31 @@
   if(n_par < 1L){
     stop("Random-effect term '", random_term$block_name, "' does not generate any design columns.", call. = FALSE)
   }
+  group_covariance <- .bt_random_effect_prepare_known_group_covariance(
+    random_term = random_term,
+    group_levels = grouping_factor_levels,
+    n_columns = n_par,
+    model_matrix = model_matrix,
+    random_structure = random_structure,
+    compile_mode = compile_mode,
+    row_indexed_external_sd = row_indexed_external_sd
+  )
   # step 1:
-  if(isTRUE(sampled_random_effect)){
+  if(isTRUE(sampled_random_effect) && !is.null(group_covariance)){
+    group_mean_name <- paste0(parameter, "_xRE_GROUP_MUx")
+    group_precision_name <- paste0(parameter, "_xRE_GROUP_PRECx")
+    group_latent_name <- paste0(parameter, "_xRE_GROUP_Zx")
+    random_syntax <- c(random_syntax, paste0(
+      " ", group_latent_name, "[1:", n_id, "] ~ dmnorm(",
+      group_mean_name, "[1:", n_id, "], ",
+      group_precision_name, "[1:", n_id, ",1:", n_id, "])\n",
+      " for(i in 1:", n_id, "){\n",
+      "   ", paste0(parameter, "_xRE_Zx"), "[i,1] = ", group_latent_name, "[i]\n",
+      " }\n"
+    ))
+    JAGS_data[[group_mean_name]] <- rep(0, n_id)
+    JAGS_data[[group_precision_name]] <- group_covariance$precision
+  }else if(isTRUE(sampled_random_effect)){
     random_syntax <- c(random_syntax, .add_JAGS_matrix(name = paste0(parameter, "_xRE_PRECx"), diag(1, n_par)))
     random_syntax <- c(random_syntax, paste0(
       " for(i in 1:",n_id,"){\n",
@@ -245,6 +268,14 @@
   new_prior_list <- c(new_prior_list, sd_spec$prior_list)
   sd_binding <- sd_spec$sd_binding
   row_indexed_external_sd <- .bt_random_sd_binding_has_row_external_source(sd_binding)
+  if(!is.null(group_covariance) && isTRUE(row_indexed_external_sd)){
+    stop(
+      "Known group covariance for random-effect block '",
+      random_term$block_name,
+      "' does not support row-indexed external SD sources.",
+      call. = FALSE
+    )
+  }
 
   # step 3
   if(random_structure == "us" && n_par == 1L){
@@ -500,6 +531,7 @@
   random_term$interface        <- "prior_random"
   random_term$sd_binding       <- sd_binding
   random_term$correlation      <- correlation_metadata
+  random_term$group_covariance <- group_covariance
   random_term$car              <- car_metadata
   random_term$new_levels       <- block_prior$new_levels
   random_term$compile_mode     <- compile_mode

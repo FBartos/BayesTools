@@ -138,7 +138,8 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   }
   if(!is.null(formula_list)){
     for(parameter in names(formula_list)){
-      if(is.language(formula_list[[parameter]]) &&
+      if((is.language(formula_list[[parameter]]) ||
+          inherits(formula_list[[parameter]], "BayesTools_random_effects")) &&
          .has_random_effects(formula_list[[parameter]]) &&
          (is.null(formula_random_prior_list) || is.null(formula_random_prior_list[[parameter]]))){
         stop(

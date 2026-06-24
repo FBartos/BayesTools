@@ -469,6 +469,7 @@
     samples = samples,
     random_term = random_term
   )
+  group_covariance <- .bt_random_effect_group_covariance_metadata(random_term)
   nodes <- numeric()
   column_names <- .bt_JAGS_bridge_context_random_column_names(random_term)
 
@@ -496,6 +497,7 @@
       cholesky = cholesky,
       matrix = correlation
     ),
+    group_covariance = group_covariance,
     covariance = NULL,
     latent = latent,
     nodes = nodes

@@ -303,7 +303,6 @@ JAGS_marglik_priors_formula <- function(samples, formula_prior_list){
 
 .bt_JAGS_marglik_random_effect_prior <- function(samples, random_term){
 
-  n_groups <- random_term$n_groups
   n_columns <- random_term$n_columns
   sampled_random_effect <- identical(
     .bt_random_effect_term_compile_mode(random_term),
@@ -311,28 +310,7 @@ JAGS_marglik_priors_formula <- function(samples, formula_prior_list){
   )
   marglik <- 0
   if(isTRUE(sampled_random_effect)){
-    z_names <- as.vector(.bt_random_effect_latent_names(
-      random_term = random_term,
-      n_groups = n_groups,
-      n_columns = n_columns
-    ))
-    if(!all(z_names %in% names(samples))){
-      stop(
-        "Bridge samples are missing standardized latent random effects for block '",
-        random_term$block_name,
-        "'.",
-        call. = FALSE
-      )
-    }
-
-    z_values <- samples[z_names]
-    if(any(is.na(z_values))){
-      return(-Inf)
-    }
-    marglik <- sum(stats::dnorm(z_values, mean = 0, sd = 1, log = TRUE))
-    if(is.na(marglik)){
-      return(-Inf)
-    }
+    marglik <- .bt_random_effect_latent_log_density(random_term, samples)
   }
 
   scalar_rho_support <- .bt_JAGS_marglik_random_effect_scalar_rho_support(

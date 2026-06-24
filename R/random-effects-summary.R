@@ -181,7 +181,11 @@
           values = sd_summary$values[, i],
           parameter = parameter,
           type = "sd",
-          label = paste0("sd(", sd_summary$components[i], " | ", display_group, ")"),
+          label = .bt_random_effect_sd_summary_label(
+            component = sd_summary$components[i],
+            group = display_group,
+            random_term = random_term
+          ),
           block = random_term$block_name,
           grouping = random_term$group_label,
           structure = display_structure,

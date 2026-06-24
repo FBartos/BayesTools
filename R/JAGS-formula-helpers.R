@@ -103,8 +103,35 @@
 
   x
 }
+.bt_formula_random_terms <- function(formula){
+
+  if(inherits(formula, "BayesTools_random_effects")){
+    return(formula$terms)
+  }
+  random_terms <- attr(formula, "random_terms", exact = TRUE)
+  if(is.list(random_terms)){
+    return(random_terms)
+  }
+
+  .bt_parse_random_effects(formula)$terms
+}
+.bt_formula_random_formula <- function(formula){
+
+  if(inherits(formula, "BayesTools_random_effects")){
+    return(formula$formula)
+  }
+
+  formula
+}
+.bt_formula_preserve_random_terms <- function(formula, random_terms){
+
+  if(is.list(random_terms)){
+    attr(formula, "random_terms") <- random_terms
+  }
+  formula
+}
 .has_random_effects     <- function(formula){
-  return(length(.bt_parse_random_effects(formula)$terms) > 0L)
+  return(length(.bt_formula_random_terms(formula)) > 0L)
 }
 .remove_random_effects  <- function(formula){
   return(.bt_fixed_formula(formula))
