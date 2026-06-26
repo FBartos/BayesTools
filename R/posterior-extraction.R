@@ -283,6 +283,20 @@ NULL
       )
     }
 
+  } else if (is.prior.ordered(prior)) {
+    cols_to_remove <- c(
+      .JAGS_prior_factor_names(par_name, prior),
+      .prior_ordered_total_monitor_names(prior, par_name)
+    )
+    for(record in .prior_ordered_dirichlet_records(prior)){
+      eta_name <- .JAGS_prior_dirichlet_eta_name(record$node)
+      cols_to_remove <- c(
+        cols_to_remove,
+        eta_name,
+        colnames(model_samples)[startsWith(colnames(model_samples), paste0(eta_name, "["))]
+      )
+    }
+
   } else if (is.prior.factor(prior)) {
     # factor prior: remove all indexed columns
     cols_to_remove <- .JAGS_prior_factor_names(par_name, prior)
@@ -563,13 +577,18 @@ NULL
 #' @return updated model_samples matrix
 .transform_factor_contrasts <- function(model_samples, prior_list, transform_factors = FALSE, transformations = NULL) {
   
-  factor_parameters <- names(prior_list)[sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x))]
+  factor_parameters <- names(prior_list)[sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x) | is.prior.ordered(x))]
 
   if (!transform_factors || length(factor_parameters) == 0) {
     return(model_samples)
   }
 
-  if (any(factor_parameters %in% names(transformations))) {
+  transformed_centered <- factor_parameters[
+    vapply(factor_parameters, function(parameter){
+      is.prior.orthonormal(prior_list[[parameter]]) || is.prior.meandif(prior_list[[parameter]])
+    }, logical(1))
+  ]
+  if (any(transformed_centered %in% names(transformations))) {
     message("The transformation was applied to the differences from the mean. Note that non-linear transformations do not map from the orthonormal/meandif contrasts to the differences from the mean.")
   }
 
@@ -582,15 +601,19 @@ NULL
     temp_samples  <- model_samples[, colnames(model_samples) %in% par_names, drop = FALSE]
     model_samples <- model_samples[, !colnames(model_samples) %in% par_names, drop = FALSE]
     
+    transformed_class <- if(is.prior.ordered(prior_list[[par]])) {
+      "mixed_posteriors.ordered_transformed"
+    }else if(is.prior.orthonormal(prior_list[[par]])) {
+      "mixed_posteriors.orthonormal_transformed"
+    }else{
+      "mixed_posteriors.meandif_transformed"
+    }
+
     transformed_samples <- .transform_factor_contrast_samples(
       coefficient_samples = temp_samples,
       metadata            = prior_list[[par]],
       parameter           = par,
-      transformed_class   = if(is.prior.orthonormal(prior_list[[par]])) {
-        "mixed_posteriors.orthonormal_transformed"
-      }else{
-        "mixed_posteriors.meandif_transformed"
-      }
+      transformed_class   = transformed_class
     )
     
     # apply transformation if specified

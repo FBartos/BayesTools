@@ -161,6 +161,16 @@ plot.prior <- function(x, plot_type = "base",
     }
   }
 
+  # ordered factor prior plots
+  if(is.prior.ordered(x)){
+    plots <- .plot.prior.simplex(x = x, plot_type = plot_type, plot_data = plot_data, show_figures = show_figures, par_name = par_name, ...)
+    if(plot_type == "ggplot"){
+      return(plots)
+    }else{
+      return(invisible())
+    }
+  }
+
   # plot orthonormal and meandif priors
   if(is.prior.orthonormal(x) | is.prior.meandif(x)){
     plots <- .plot.prior.orthonormal_or_meandif(x = x, plot_type = plot_type, plot_data = plot_data, par_name = par_name, ...)

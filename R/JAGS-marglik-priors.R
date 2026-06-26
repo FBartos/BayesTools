@@ -34,6 +34,7 @@ JAGS_marglik_priors                <- function(samples, prior_list){
 
   # add the resulting parameters
   marglik <- 0
+  ordered_allocation_keys <- character()
   for(i in seq_along(prior_list)){
 
     if(is.prior.weightfunction(prior_list[[i]])){
@@ -56,6 +57,20 @@ JAGS_marglik_priors                <- function(samples, prior_list){
 
       marglik <- marglik + .JAGS_marglik_priors.PP(samples, prior_list[[i]])
 
+    }else if(is.prior.ordered(prior_list[[i]])){
+
+      ordered_marglik <- .JAGS_marglik_priors.ordered(
+        samples,
+        prior_list[[i]],
+        names(prior_list)[i],
+        emitted_allocations = ordered_allocation_keys
+      )
+      marglik <- marglik + ordered_marglik[["marglik"]]
+      ordered_allocation_keys <- unique(c(
+        ordered_allocation_keys,
+        ordered_marglik[["allocation_keys"]]
+      ))
+
     }else if(is.prior.factor(prior_list[[i]])){
 
       marglik <- marglik + .JAGS_marglik_priors.factor(samples, prior_list[[i]], names(prior_list)[i])
@@ -74,6 +89,38 @@ JAGS_marglik_priors                <- function(samples, prior_list){
   return(marglik)
 }
 
+
+.JAGS_marglik_priors.ordered        <- function(samples, prior, parameter_name, emitted_allocations = character()){
+
+  .prior_ordered_bridge_check(prior)
+  total_names <- .prior_ordered_total_monitor_names(prior, parameter_name)
+
+  marglik <- 0
+  if(!is.prior.point(prior$total)){
+    total_values <- unname(unlist(samples[total_names], use.names = FALSE))
+    marglik <- marglik + sum(lpdf(prior$total, total_values))
+  }
+
+  emitted_now <- character()
+  for(record in .prior_ordered_dirichlet_records(prior)){
+    if(record$key %in% emitted_allocations || record$key %in% emitted_now){
+      next
+    }
+    eta_names <- paste0(.JAGS_prior_dirichlet_eta_name(record$node), "[", seq_len(record$dim), "]")
+    eta <- .bt_JAGS_marglik_positive_auxiliary_values(
+      samples = samples,
+      parameter_names = eta_names,
+      missing_message = "'samples' does not contain all monitored ordered Dirichlet allocation parameters."
+    )
+    if(is.null(eta)){
+      return(list(marglik = -Inf, allocation_keys = emitted_now))
+    }
+    marglik <- marglik + sum(stats::dgamma(eta, shape = record$spec$alpha, rate = 1, log = TRUE))
+    emitted_now <- c(emitted_now, record$key)
+  }
+
+  list(marglik = marglik, allocation_keys = emitted_now)
+}
 
 .JAGS_marglik_priors.simple         <- function(samples, prior, parameter_name){
 

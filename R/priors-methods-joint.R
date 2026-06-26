@@ -185,6 +185,16 @@ rng.prior   <- function(x, n, ...){
 
     attr(x, "components") <- components
 
+  }else if(is.prior.ordered(prior)){
+
+    quantity <- if(is.null(dots[["quantity"]])) "level" else dots[["quantity"]]
+    x <- .prior_ordered_rng(
+      prior = prior,
+      n = n,
+      transform_factor_samples = transform_factor_samples,
+      quantity = quantity
+    )
+
   }else if(is.prior.simple(prior)){
 
     x <- .prior_simple_rng(prior, n)

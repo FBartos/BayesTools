@@ -14,11 +14,25 @@
   .check_prior_list_unique_names(prior_list)
 
   evaluators <- vector("list", length(prior_list))
+  ordered_allocation_keys <- character()
   for(i in seq_along(prior_list)){
-    evaluators[[i]] <- .bt_JAGS_bridge_compile_prior_evaluator(
-      prior_list[[i]],
-      names(prior_list)[i]
-    )
+    if(is.prior.ordered(prior_list[[i]])){
+      evaluator <- .bt_JAGS_bridge_compile_ordered_evaluator(
+        prior_list[[i]],
+        names(prior_list)[i],
+        emitted_allocations = ordered_allocation_keys
+      )
+      ordered_allocation_keys <- unique(c(
+        ordered_allocation_keys,
+        evaluator[["allocation_keys"]]
+      ))
+      evaluators[[i]] <- evaluator[["evaluator"]]
+    }else{
+      evaluators[[i]] <- .bt_JAGS_bridge_compile_prior_evaluator(
+        prior_list[[i]],
+        names(prior_list)[i]
+      )
+    }
   }
 
   list(
@@ -59,6 +73,8 @@
     .JAGS_marglik_stop_unsupported_mixture(prior_object)
   }else if(is.prior.PET(prior_object) | is.prior.PEESE(prior_object)){
     return(.bt_JAGS_bridge_compile_PP_evaluator(prior_object))
+  }else if(is.prior.ordered(prior_object)){
+    return(.bt_JAGS_bridge_compile_ordered_evaluator(prior_object, parameter_name)[["evaluator"]])
   }else if(is.prior.factor(prior_object)){
     return(.bt_JAGS_bridge_compile_factor_evaluator(prior_object, parameter_name))
   }else if(is.prior.vector(prior_object)){
@@ -68,6 +84,63 @@
   }
 
   stop("Unsupported prior object.", call. = FALSE)
+}
+
+.bt_JAGS_bridge_compile_ordered_evaluator <- function(prior_object, parameter_name, emitted_allocations = character()){
+
+  force(prior_object)
+  force(parameter_name)
+  force(emitted_allocations)
+
+  .prior_ordered_bridge_check(prior_object)
+  total_names <- .prior_ordered_total_monitor_names(prior_object, parameter_name)
+  total_prior <- prior_object$total
+
+  emitted_now <- character()
+  dirichlet_records <- .prior_ordered_dirichlet_records(prior_object)
+  dirichlet_records <- dirichlet_records[
+    !vapply(dirichlet_records, function(record){
+      record$key %in% emitted_allocations
+    }, logical(1))
+  ]
+
+  for(record in dirichlet_records){
+    emitted_now <- c(emitted_now, record$key)
+  }
+
+  evaluator <- list(
+    log_prior = function(samples){
+      marglik <- 0
+      if(!is.prior.point(total_prior)){
+        total_values <- unname(unlist(samples[total_names], use.names = FALSE))
+        marglik <- marglik + sum(lpdf(total_prior, total_values))
+      }
+      for(record in dirichlet_records){
+        eta_names <- paste0(.JAGS_prior_dirichlet_eta_name(record$node), "[", seq_len(record$dim), "]")
+        eta <- .bt_JAGS_marglik_positive_auxiliary_values(
+          samples = samples,
+          parameter_names = eta_names,
+          missing_message = "'samples' does not contain all monitored ordered Dirichlet allocation parameters."
+        )
+        if(is.null(eta)){
+          return(-Inf)
+        }
+        marglik <- marglik + sum(stats::dgamma(eta, shape = record$spec$alpha, rate = 1, log = TRUE))
+      }
+      marglik
+    },
+    parameters = function(samples){
+      parameter_names <- .JAGS_prior_factor_names(parameter_name, prior_object)
+      parameter <- list()
+      parameter[[parameter_name]] <- .bt_JAGS_bridge_compile_parameter_values(
+        prior_object,
+        parameter_names
+      )(samples)
+      parameter
+    }
+  )
+
+  list(evaluator = evaluator, allocation_keys = emitted_now)
 }
 
 .bt_JAGS_bridge_compile_simple_evaluator <- function(prior_object, parameter_name){

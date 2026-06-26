@@ -65,6 +65,8 @@ JAGS_to_monitor             <- function(prior_list){
     }
   }
 
+  monitor <- unique(monitor)
+
   if(length(monitor) == 0L){
     return("")
   }
@@ -99,9 +101,45 @@ JAGS_to_monitor             <- function(prior_list){
 }
 .JAGS_monitor.factor         <- function(prior, parameter_name){
 
+  if(is.prior.ordered(prior)){
+    return(.JAGS_monitor.ordered(prior, parameter_name))
+  }
+
   monitor <- .JAGS_monitor.simple(prior, parameter_name)
 
   return(monitor)
+}
+.JAGS_monitor.ordered        <- function(prior, parameter_name){
+
+  .check_prior(prior, allow_expressions = TRUE)
+  if(!is.prior.ordered(prior))
+    stop("improper prior provided")
+  check_char(parameter_name, "parameter_name")
+
+  metadata <- .prior_ordered_metadata(prior)
+  total_name <- .prior_ordered_total_name(parameter_name)
+
+  monitor <- parameter_name
+
+  if(is.prior.spike_and_slab(prior$total) && metadata$theta_dim > 1L){
+    monitor <- c(
+      monitor,
+      paste0(total_name, "_indicator"),
+      JAGS_to_monitor(setNames(list(.get_spike_and_slab_inclusion(prior$total)), paste0(total_name, "_inclusion"))),
+      if(!is.prior.point(.get_spike_and_slab_variable(prior$total))) paste0(total_name, "_variable"),
+      total_name
+    )
+  }else if(metadata$theta_dim == 1L){
+    monitor <- c(monitor, JAGS_to_monitor(setNames(list(prior$total), total_name)))
+  }else if(!is.prior.point(prior$total)){
+    monitor <- c(monitor, total_name)
+  }
+
+  for(record in .prior_ordered_dirichlet_records(prior)){
+    monitor <- c(monitor, .JAGS_prior_dirichlet_eta_name(record$node))
+  }
+
+  unique(monitor[nzchar(monitor)])
 }
 .JAGS_monitor.PP             <- function(prior){
 

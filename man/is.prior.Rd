@@ -12,6 +12,7 @@
 \alias{is.prior.PEESE}
 \alias{is.prior.weightfunction}
 \alias{is.prior.factor}
+\alias{is.prior.ordered}
 \alias{is.prior.orthonormal}
 \alias{is.prior.treatment}
 \alias{is.prior.independent}
@@ -41,6 +42,8 @@ is.prior.PEESE(x)
 is.prior.weightfunction(x)
 
 is.prior.factor(x)
+
+is.prior.ordered(x)
 
 is.prior.orthonormal(x)
 

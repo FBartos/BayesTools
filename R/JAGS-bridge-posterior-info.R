@@ -32,6 +32,7 @@
   parameters    <- character()
   parameters_lb <- numeric()
   parameters_ub <- numeric()
+  ordered_allocation_keys <- character()
   for(i in seq_along(prior_list)){
 
     add_parameter <- NULL
@@ -55,6 +56,19 @@
     }else if(is.prior.PET(prior_list[[i]]) | is.prior.PEESE(prior_list[[i]])){
 
       add_parameter <- .JAGS_bridgesampling_posterior_info.PP(prior_list[[i]])
+
+    }else if(is.prior.ordered(prior_list[[i]])){
+
+      add_parameter_info <- .JAGS_bridgesampling_posterior_info.ordered(
+        prior_list[[i]],
+        names(prior_list)[i],
+        emitted_allocations = ordered_allocation_keys
+      )
+      add_parameter <- add_parameter_info[["parameter"]]
+      ordered_allocation_keys <- unique(c(
+        ordered_allocation_keys,
+        add_parameter_info[["allocation_keys"]]
+      ))
 
     }else if(is.prior.factor(prior_list[[i]])){
 
@@ -179,6 +193,41 @@
   }
 
   return(parameter)
+}
+.JAGS_bridgesampling_posterior_info.ordered <- function(prior, parameter_name, emitted_allocations = character()){
+
+  .prior_ordered_bridge_check(prior)
+  metadata <- .prior_ordered_metadata(prior)
+  total_names <- .prior_ordered_total_monitor_names(prior, parameter_name)
+
+  parameter <- character()
+  parameter_lb <- numeric()
+  parameter_ub <- numeric()
+
+  if(!is.prior.point(prior$total)){
+    parameter <- c(parameter, total_names)
+    parameter_lb <- c(parameter_lb, rep(prior$total$truncation[["lower"]], length(total_names)))
+    parameter_ub <- c(parameter_ub, rep(prior$total$truncation[["upper"]], length(total_names)))
+  }
+
+  emitted_now <- character()
+  for(record in .prior_ordered_dirichlet_records(prior)){
+    if(record$key %in% emitted_allocations || record$key %in% emitted_now){
+      next
+    }
+    eta_names <- paste0(.JAGS_prior_dirichlet_eta_name(record$node), "[", seq_len(record$dim), "]")
+    parameter <- c(parameter, eta_names)
+    parameter_lb <- c(parameter_lb, rep(0, length(eta_names)))
+    parameter_ub <- c(parameter_ub, rep(Inf, length(eta_names)))
+    emitted_now <- c(emitted_now, record$key)
+  }
+
+  attr(parameter, "lb") <- parameter_lb
+  attr(parameter, "ub") <- parameter_ub
+  names(attr(parameter, "lb")) <- parameter
+  names(attr(parameter, "ub")) <- parameter
+
+  list(parameter = parameter, allocation_keys = emitted_now)
 }
 .JAGS_bridgesampling_posterior_info.PP             <- function(prior){
 

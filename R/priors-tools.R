@@ -176,7 +176,18 @@
 }
 
 .get_prior_factor_levels       <- function(prior){
-  if(is.prior.independent(prior)){
+  if(is.prior.ordered(prior)){
+    coefficient_dim <- attr(prior, "coefficient_dim", exact = TRUE)
+    if(!is.null(coefficient_dim)){
+      return(coefficient_dim)
+    }
+    if(!is.null(attr(prior, "levels", exact = TRUE))){
+      if(identical(prior$contrast, "cumulative_levels")){
+        return(attr(prior, "levels", exact = TRUE))
+      }
+      return(attr(prior, "levels", exact = TRUE) - 1)
+    }
+  }else if(is.prior.independent(prior)){
     return(attr(prior, "levels"))
   }else if(is.prior.treatment(prior)){
     return(attr(prior, "levels") - 1)
@@ -209,6 +220,7 @@
         "independent"       = NA,
         "orthonormal"       = NA,
         "meandif"           = NA,
+        "ordered"           = NA,
         "K"                 = NA
       ))
     }else{
@@ -217,7 +229,14 @@
         "independent"       = is.prior.independent(p),
         "orthonormal"       = is.prior.orthonormal(p),
         "meandif"           = is.prior.meandif(p),
-        "K"                 = if(!is.null(p[["parameters"]][["K"]])) p[["parameters"]][["K"]] else NA
+        "ordered"           = is.prior.ordered(p),
+        "K"                 = if(is.prior.ordered(p)) {
+          .get_prior_factor_levels(p)
+        }else if(!is.null(p[["parameters"]][["K"]])) {
+          p[["parameters"]][["K"]]
+        }else{
+          NA
+        }
       ))
     }
   }))
@@ -310,6 +329,7 @@
 #' @export is.prior.meandif
 #' @export is.prior.treatment
 #' @export is.prior.independent
+#' @export is.prior.ordered
 #' @export is.prior.spike_and_slab
 #' @export is.prior.mixture
 #' @name is.prior
@@ -364,6 +384,10 @@ is.prior.weightfunction  <- function(x){
 #' @rdname is.prior
 is.prior.factor          <- function(x){
   inherits(x, "prior.factor")
+}
+#' @rdname is.prior
+is.prior.ordered         <- function(x){
+  inherits(x, "prior.ordered")
 }
 #' @rdname is.prior
 is.prior.orthonormal     <- function(x){

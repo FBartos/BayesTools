@@ -61,6 +61,10 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
       parameters <- c(parameters, .JAGS_marglik_parameters.PP(samples, prior_list[[i]]))
 
+    }else if(is.prior.ordered(prior_list[[i]])){
+
+      parameters <- c(parameters, .JAGS_marglik_parameters.ordered(samples, prior_list[[i]], names(prior_list)[i]))
+
     }else if(is.prior.factor(prior_list[[i]])){
 
       parameters <- c(parameters, .JAGS_marglik_parameters.factor(samples, prior_list[[i]], names(prior_list)[i]))
@@ -191,6 +195,19 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
 
   return(parameter)
+}
+.JAGS_marglik_parameters.ordered       <- function(samples, prior, parameter_name){
+
+  .check_prior(prior)
+  if(!is.prior.ordered(prior))
+    stop("improper prior provided")
+  check_char(parameter_name, "parameter_name")
+
+  parameter <- list()
+  parameter_names <- .JAGS_prior_factor_names(parameter_name, prior)
+  parameter[[parameter_name]] <- .JAGS_marglik_parameter_values(samples, prior, parameter_names)
+
+  parameter
 }
 .JAGS_marglik_parameters.PP             <- function(samples, prior){
 

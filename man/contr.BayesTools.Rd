@@ -5,6 +5,8 @@
 \alias{contr.orthonormal}
 \alias{contr.meandif}
 \alias{contr.independent}
+\alias{contr.ordered_cumulative}
+\alias{contr.ordered_cumulative_levels}
 \title{BayesTools Contrast Matrices}
 \usage{
 contr.orthonormal(n, contrasts = TRUE)
@@ -12,6 +14,10 @@ contr.orthonormal(n, contrasts = TRUE)
 contr.meandif(n, contrasts = TRUE)
 
 contr.independent(n, contrasts = TRUE)
+
+contr.ordered_cumulative(n, contrasts = TRUE)
+
+contr.ordered_cumulative_levels(n, contrasts = TRUE)
 }
 \arguments{
 \item{n}{a vector of levels for a factor, or the number of levels}
@@ -41,6 +47,12 @@ with k = n - 1 if \code{contrasts = TRUE} and k = n if \code{contrasts = FALSE}.
 \item{\code{contr.independent}}{Return a matrix of independent contrasts -- a level for each term.
 Returns a matrix with n rows and k columns, with k = n if \code{contrasts = TRUE} and k = n
 if \code{contrasts = FALSE}.}
+\item{\code{contr.ordered_cumulative}}{Return a cumulative increment basis
+for ordered factors, with the first level fixed to zero and the last level
+equal to the full total effect.}
+\item{\code{contr.ordered_cumulative_levels}}{Return a cumulative level
+basis for ordered factors, where the first level receives the first
+allocation share and the last level equals the full total effect.}
 }
 }
 \examples{
@@ -55,6 +67,10 @@ contr.meandif(c(1, 2, 3))
 # Independent contrasts
 contr.independent(c(1, 2))
 contr.independent(c(1, 2, 3))
+
+# Ordered cumulative contrasts
+contr.ordered_cumulative(c("low", "mid", "high"))
+contr.ordered_cumulative_levels(c("low", "mid", "high"))
 
 }
 \references{

@@ -184,18 +184,28 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
       # select the corresponding prior in the variable
       this_prior <- prior_list_formula[[factor]]
 
+      ordered_factor <- is.prior.ordered(this_prior)
+
       if(is.factor(data[,factor])){
         if(all(levels(data[,factor]) %in% .get_prior_factor_level_names(this_prior))){
           # either the formatting is correct, or the supplied levels are a subset of the original levels
           # reformat to check ordering and etc...
-          data[,factor] <- factor(data[,factor], levels = .get_prior_factor_level_names(this_prior))
+          data[,factor] <- if(ordered_factor){
+            ordered(data[,factor], levels = .get_prior_factor_level_names(this_prior))
+          }else{
+            factor(data[,factor], levels = .get_prior_factor_level_names(this_prior))
+          }
         }else{
           # there are some additional levels
           stop(paste0("Levels specified in the '", factor, "' factor variable do not match the levels used for model specification."))
         }
       }else if(all(unique(data[,factor]) %in% .get_prior_factor_level_names(this_prior))){
         # the variable was not passed as a factor but the values matches the factor levels
-        data[,factor] <- factor(data[,factor], levels = .get_prior_factor_level_names(this_prior))
+        data[,factor] <- if(ordered_factor){
+          ordered(data[,factor], levels = .get_prior_factor_level_names(this_prior))
+        }else{
+          factor(data[,factor], levels = .get_prior_factor_level_names(this_prior))
+        }
       }else{
         # there are some additional mismatching values
         stop(paste0("Levels specified in the '", factor, "' factor variable do not match the levels used for model specification."))
@@ -210,6 +220,8 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
         stats::contrasts(data[[factor]]) <- "contr.independent"
       }else if(is.prior.treatment(this_prior)){
         stats::contrasts(data[[factor]]) <- "contr.treatment"
+      }else if(is.prior.ordered(this_prior)){
+        stats::contrasts(data[[factor]]) <- .prior_ordered_contrast_name(this_prior$contrast)
       }
     }
   }

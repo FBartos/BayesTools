@@ -421,7 +421,15 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
   check_char(parameter_name, "parameter_name")
 
   owned <- parameter_name
-  if(is.prior.factor(prior)){
+  if(is.prior.ordered(prior)){
+    K <- .get_prior_factor_levels(prior)
+    if(K > 1L){
+      owned <- c(owned, paste0(parameter_name, "[", seq_len(K), "]"))
+    }
+    for(record in .prior_ordered_dirichlet_records(prior)){
+      owned <- c(owned, record$node, paste0(record$node, "[", seq_len(record$dim), "]"))
+    }
+  }else if(is.prior.factor(prior)){
     K <- .get_prior_factor_levels(prior)
     if(K > 1L){
       owned <- c(owned, paste0(parameter_name, "[", seq_len(K), "]"))

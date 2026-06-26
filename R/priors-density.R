@@ -92,6 +92,8 @@ density.prior <- function(x,
         x_range <- c(0, 1)
       }else if(is.prior.spike_and_slab(x)){
         x_range <- range(c(range(.get_spike_and_slab_variable(x), if(is.null(x_range_quant)) .range.prior_quantile_default(.get_spike_and_slab_variable(x)) else x_range_quant), 0))
+      }else if(is.prior.ordered(x)){
+        x_range <- range(x$total, if(is.null(x_range_quant)) .range.prior_quantile_default(x$total) else x_range_quant)
       }else if(is.prior.discrete(x)){
         x_range <- c(x[["truncation"]][["lower"]], x[["truncation"]][["upper"]])
       }else{
@@ -127,6 +129,8 @@ density.prior <- function(x,
     out <- .density.prior.spike_and_slab(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
   }else if(is.prior.point(x)){
     out <- .density.prior.point(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments)
+  }else if(is.prior.ordered(x)){
+    out <- .density.prior.ordered(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
   }else if(is.prior.orthonormal(x) | is.prior.meandif(x)){
     out <- .density.prior.orthonormal_or_meandif(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end)
   }else if(is.prior.simplex(x)){
@@ -219,6 +223,201 @@ density.prior <- function(x,
   }
 
   return(out)
+}
+
+.density.prior.ordered                <- function(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end){
+
+  if(!force_samples && is.null(transformation)){
+    direct <- .density.prior.ordered_direct(x, x_seq, n_points, transformation, transformation_arguments, truncate_end)
+    if(!is.null(direct)){
+      return(direct)
+    }
+  }
+
+  samples <- rng(x, n_samples, transform_factor_samples = TRUE)
+  if(!is.matrix(samples)){
+    samples <- matrix(samples, ncol = 1L)
+  }
+
+  out <- vector("list", ncol(samples))
+  names(out) <- colnames(samples)
+
+  for(i in seq_len(ncol(samples))){
+    x_density <- .density_kde_boundary(
+      x    = samples[, i],
+      n    = n_points,
+      from = x_range[1],
+      to   = x_range[2]
+    )
+    out[[i]] <- list(
+      call    = call("density", print(x, silent = TRUE)),
+      bw      = x_density$bw,
+      n       = n_points,
+      x       = x_density$x,
+      y       = x_density$y,
+      samples = samples[, i]
+    )
+    class(out[[i]]) <- c("density.prior.ordered_component", "density", "density.prior")
+    attr(out[[i]], "x_range") <- range(x_density$x)
+    attr(out[[i]], "y_range") <- range(x_density$y)
+    attr(out[[i]], "component") <- i
+    attr(out[[i]], "component_name") <- names(out)[i]
+  }
+
+  attr(out, "x_range")        <- range(unlist(lapply(out, attr, which = "x_range")), na.rm = TRUE)
+  attr(out, "y_range")        <- range(unlist(lapply(out, attr, which = "y_range")), na.rm = TRUE)
+  attr(out, "parameter_name") <- names(out)
+  class(out) <- c("density.prior.ordered", "list")
+
+  out
+}
+
+.density.prior.ordered_direct         <- function(x, x_seq, n_points, transformation, transformation_arguments, truncate_end){
+
+  x <- .prior_ordered_default_bound(x)
+  metadata <- .prior_ordered_metadata(x)
+
+  if(length(metadata$ordered_terms) != 1L || metadata$theta_dim != 1L ||
+     length(metadata$allocations) != 1L || !is.prior.simple(x$total) ||
+     is.prior.discrete(x$total) || is.prior.point(x$total)){
+    return(NULL)
+  }
+
+  record <- metadata$allocations[[1]]
+  if(!record$spec$type %in% c("fixed", "dirichlet")){
+    return(NULL)
+  }
+
+  level_names <- .factor_term_design_from_metadata(x)[["cell_names"]]
+  component_names <- .factor_contrast_parameter_names(
+    parameter = metadata$parameter_name,
+    level_names = .factor_level_list(x),
+    cell_names = level_names
+  )
+
+  densities <- vector("list", length(component_names))
+  names(densities) <- component_names
+
+  if(identical(record$spec$type, "fixed")){
+    cumulative <- if(identical(x$contrast, "cumulative")){
+      c(0, cumsum(record$spec$weights))
+    }else{
+      cumsum(record$spec$weights)
+    }
+    for(i in seq_along(cumulative)){
+      densities[[i]] <- .density.prior.ordered_scaled_total(
+        total = x$total,
+        scale = cumulative[[i]],
+        x_seq = x_seq,
+        n_points = n_points
+      )
+    }
+  }else{
+    alpha <- record$spec$alpha
+    D <- length(alpha)
+    for(i in seq_along(densities)){
+      m <- if(identical(x$contrast, "cumulative")) i - 1L else i
+      if(m == 0L){
+        densities[[i]] <- .density.prior.point(prior("point", list(location = 0)), x_seq, range(x_seq), n_points, n_samples = 1L, force_samples = FALSE, transformation = NULL, transformation_arguments = NULL)
+      }else if(m == D){
+        densities[[i]] <- .density.prior.simple(x$total, x_seq, range(x_seq), n_points, n_samples = 1L, force_samples = FALSE, transformation = NULL, transformation_arguments = NULL, truncate_end = truncate_end)
+      }else{
+        densities[[i]] <- .density.prior.ordered_dirichlet_product(
+          total = x$total,
+          alpha1 = sum(alpha[seq_len(m)]),
+          alpha2 = sum(alpha[(m + 1L):D]),
+          x_seq = x_seq,
+          n_points = n_points
+        )
+        if(is.null(densities[[i]])){
+          return(NULL)
+        }
+      }
+    }
+  }
+
+  for(i in seq_along(densities)){
+    attr(densities[[i]], "component") <- i
+    attr(densities[[i]], "component_name") <- names(densities)[i]
+    class(densities[[i]]) <- c("density.prior.ordered_component", class(densities[[i]]))
+  }
+
+  attr(densities, "x_range")        <- range(unlist(lapply(densities, attr, which = "x_range")), na.rm = TRUE)
+  attr(densities, "y_range")        <- range(unlist(lapply(densities, attr, which = "y_range")), na.rm = TRUE)
+  attr(densities, "parameter_name") <- names(densities)
+  attr(densities, "method")         <- "direct"
+  class(densities) <- c("density.prior.ordered", "list")
+
+  densities
+}
+
+.density.prior.ordered_scaled_total   <- function(total, scale, x_seq, n_points){
+
+  if(isTRUE(all.equal(scale, 0))){
+    return(.density.prior.point(
+      prior("point", list(location = 0)),
+      x_seq,
+      range(x_seq),
+      n_points,
+      n_samples = 1L,
+      force_samples = FALSE,
+      transformation = NULL,
+      transformation_arguments = NULL
+    ))
+  }
+
+  y <- pdf(total, x_seq / scale) / abs(scale)
+  out <- list(
+    call    = call("density", print(total, silent = TRUE)),
+    bw      = NULL,
+    n       = n_points,
+    x       = x_seq,
+    y       = y,
+    samples = NULL
+  )
+  class(out) <- c("density", "density.prior", "density.prior.simple")
+  attr(out, "x_range") <- range(x_seq)
+  attr(out, "y_range") <- c(0, max(y, na.rm = TRUE))
+  out
+}
+
+.density.prior.ordered_dirichlet_product <- function(total, alpha1, alpha2, x_seq, n_points){
+
+  y <- vapply(x_seq, function(x_value){
+    value <- tryCatch({
+      stats::integrate(
+        function(c_value){
+          pdf(total, x_value / c_value) *
+            stats::dbeta(c_value, shape1 = alpha1, shape2 = alpha2) /
+            abs(c_value)
+        },
+        lower = .Machine$double.eps,
+        upper = 1,
+        subdivisions = 100L,
+        rel.tol = 1e-5
+      )$value
+    }, error = function(e){
+      NA_real_
+    })
+    value
+  }, numeric(1))
+
+  if(anyNA(y) || any(!is.finite(y))){
+    return(NULL)
+  }
+
+  out <- list(
+    call    = call("density", print(total, silent = TRUE)),
+    bw      = NULL,
+    n       = n_points,
+    x       = x_seq,
+    y       = y,
+    samples = NULL
+  )
+  class(out) <- c("density", "density.prior", "density.prior.simple")
+  attr(out, "x_range") <- range(x_seq)
+  attr(out, "y_range") <- c(0, max(y, na.rm = TRUE))
+  out
 }
 
 .density.prior.simplex                <- function(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end){
@@ -646,6 +845,9 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
   }
   if(is_prior_phacking(x) || is_prior_bias(x)){
     .selection_prior_stop_unsupported_generic("range", x)
+  }
+  if(is.prior.ordered(x)){
+    return(range(x$total, quantiles = quantiles))
   }
 
   if(is.infinite(x[["truncation"]][["lower"]])){

@@ -46,6 +46,7 @@ JAGS_add_priors           <- function(syntax, prior_list){
 
   syntax_priors <- ""
   syntax_attributes <- NULL
+  ordered_allocation_keys <- character()
 
   for(i in seq_along(prior_list)){
 
@@ -72,6 +73,19 @@ JAGS_add_priors           <- function(syntax, prior_list){
     }else if(is.prior.mixture(prior_list[[i]])){
 
       syntax_priors <- paste(syntax_priors, .JAGS_prior.mixture(prior_list[[i]], names(prior_list)[i]))
+
+    }else if(is.prior.ordered(prior_list[[i]])){
+
+      ordered_syntax <- .JAGS_prior.ordered(
+        prior_list[[i]],
+        names(prior_list)[i],
+        emitted_allocations = ordered_allocation_keys
+      )
+      syntax_priors <- paste(syntax_priors, ordered_syntax[["syntax"]])
+      ordered_allocation_keys <- unique(c(
+        ordered_allocation_keys,
+        ordered_syntax[["allocation_keys"]]
+      ))
 
     }else if(is.prior.factor(prior_list[[i]])){
 
@@ -236,7 +250,11 @@ JAGS_add_priors           <- function(syntax, prior_list){
   check_char(parameter_name, "parameter_name")
   check_int(.get_prior_factor_levels(prior), "levels", lower = 1)
 
-  if(is.prior.treatment(prior) | is.prior.independent(prior)){
+  if(is.prior.ordered(prior)){
+
+    syntax <- .JAGS_prior.ordered(prior, parameter_name)[["syntax"]]
+
+  }else if(is.prior.treatment(prior) | is.prior.independent(prior)){
 
     syntax <- paste0(
       "for(i in 1:", .get_prior_factor_levels(prior), "){\n",
@@ -252,6 +270,109 @@ JAGS_add_priors           <- function(syntax, prior_list){
   }
 
   return(syntax)
+}
+.JAGS_prior.ordered        <- function(prior, parameter_name, emitted_allocations = character()){
+
+  .check_prior(prior, allow_expressions = TRUE)
+  if(!is.prior.ordered(prior))
+    stop("improper prior provided")
+  check_char(parameter_name, "parameter_name")
+
+  metadata <- .prior_ordered_metadata(prior)
+  total_name <- .prior_ordered_total_name(parameter_name)
+
+  syntax <- .JAGS_prior.ordered_total(prior$total, total_name, metadata$theta_dim)
+
+  emitted_now <- character()
+  dirichlet_records <- .prior_ordered_dirichlet_records(prior)
+  for(record in dirichlet_records){
+    if(record$key %in% emitted_allocations || record$key %in% emitted_now){
+      next
+    }
+    eta_name <- .JAGS_prior_dirichlet_eta_name(record$node)
+    for(j in seq_len(record$dim)){
+      syntax <- paste0(
+        syntax,
+        eta_name, "[", j, "] ~ dgamma(", record$spec$alpha[j], ", 1)\n"
+      )
+    }
+    for(j in seq_len(record$dim)){
+      syntax <- paste0(
+        syntax,
+        record$node, "[", j, "] <- ", eta_name, "[", j, "] / sum(",
+        eta_name, "[1:", record$dim, "])\n"
+      )
+    }
+    emitted_now <- c(emitted_now, record$key)
+  }
+
+  for(i in seq_len(metadata$coefficient_dim)){
+    lhs <- if(metadata$coefficient_dim == 1L){
+      parameter_name
+    }else{
+      paste0(parameter_name, "[", i, "]")
+    }
+    syntax <- paste0(
+      syntax,
+      lhs, " <- ",
+      .prior_ordered_coefficient_expression(prior, parameter_name, i),
+      "\n"
+    )
+  }
+
+  list(syntax = syntax, allocation_keys = emitted_now)
+}
+
+.JAGS_prior.ordered_total  <- function(total, total_name, theta_dim){
+
+  if(is.prior.spike_and_slab(total) && theta_dim > 1L){
+    variable_prior <- .get_spike_and_slab_variable(total)
+    inclusion_prior <- .get_spike_and_slab_inclusion(total)
+    variable_list <- list(variable_prior)
+    inclusion_list <- list(inclusion_prior)
+    names(variable_list) <- paste0(total_name, "_variable")
+    names(inclusion_list) <- paste0(total_name, "_inclusion")
+
+    syntax <- paste0(
+      .JAGS_add_priors.fun(inclusion_list),
+      total_name, "_indicator ~ dbern(", total_name, "_inclusion)\n"
+    )
+    for(i in seq_len(theta_dim)){
+      syntax <- paste0(
+        syntax,
+        .JAGS_prior.simple(variable_prior, paste0(total_name, "_variable[", i, "]")),
+        total_name, "[", i, "] <- ", total_name, "_variable[", i, "] * ",
+        total_name, "_indicator\n"
+      )
+    }
+    return(syntax)
+  }
+
+  if(theta_dim > 1L){
+    if(!is.prior.simple(total) || is.prior.point(total)){
+      if(is.prior.point(total)){
+        syntax <- ""
+        for(i in seq_len(theta_dim)){
+          syntax <- paste0(
+            syntax,
+            total_name, "[", i, "] <- ", total$parameters[["location"]], "\n"
+          )
+        }
+        return(syntax)
+      }
+      stop("Multi-slice ordered interactions require a simple scalar 'total' prior.", call. = FALSE)
+    }
+
+    syntax <- ""
+    for(i in seq_len(theta_dim)){
+      syntax <- paste0(syntax, .JAGS_prior.simple(total, paste0(total_name, "[", i, "]")))
+    }
+    return(syntax)
+  }
+
+  total_list <- list(total)
+  names(total_list) <- total_name
+  .JAGS_add_priors.fun(total_list)
 }
 .JAGS_prior.PP             <- function(prior){
 

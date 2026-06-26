@@ -63,6 +63,8 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
 
   if(is.prior.none(x)){
     output <- .print.prior.none(x, short_name, parameter_names, plot, digits_estimates, silent)
+  }else if(is.prior.ordered(x)){
+    output <- .print.prior.ordered(x, short_name, parameter_names, plot, digits_estimates, silent)
   }else if(is.prior.simple(x) || is.prior.vector(x)){
     output <- .print.prior.simple(x, short_name, parameter_names, plot, digits_estimates, silent)
   }else if(is.prior.weightfunction(x)){
@@ -82,6 +84,32 @@ print.prior <- function(x, short_name = FALSE, parameter_names = FALSE, plot = F
     cat(output)
   }
   return(invisible(output))
+}
+
+.print.prior.ordered        <- function(x, short_name, parameter_names, plot, digits_estimates, silent){
+
+  total <- print(x$total, short_name, parameter_names, plot = FALSE, digits_estimates, silent = TRUE)
+  allocation <- switch(
+    x$allocation$type,
+    "default_dirichlet" = "Dirichlet(1, ...)",
+    "fixed" = paste0("fixed(", paste0(round(x$allocation$weights, digits_estimates), collapse = ", "), ")"),
+    "dirichlet" = paste0("Dirichlet(", paste0(round(x$allocation$alpha, digits_estimates), collapse = ", "), ")"),
+    "by_factor" = "factor-specific",
+    "allocation"
+  )
+
+  out <- paste0(
+    "ordered ", x$contrast, ": total ~ ",
+    total,
+    ", allocation ~ ",
+    allocation
+  )
+
+  if(plot){
+    return(out)
+  }
+
+  out
 }
 
 .print.prior.simple         <- function(x, short_name, parameter_names, plot, digits_estimates, silent){

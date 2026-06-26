@@ -140,6 +140,8 @@
 
   if(is.prior.independent(x) || isTRUE(attr(x, "independent"))){
     return("contr.independent")
+  }else if(is.prior.ordered(x)){
+    return(.prior_ordered_contrast_name(x$contrast))
   }else if(is.prior.treatment(x) || isTRUE(attr(x, "treatment"))){
     return("contr.treatment")
   }else if(is.prior.orthonormal(x) || isTRUE(attr(x, "orthonormal"))){
@@ -159,6 +161,8 @@
     "contr.independent" = contr.independent(level_names),
     "contr.orthonormal" = contr.orthonormal(level_names),
     "contr.meandif"     = contr.meandif(level_names),
+    "contr.ordered_cumulative" = contr.ordered_cumulative(level_names),
+    "contr.ordered_cumulative_levels" = contr.ordered_cumulative_levels(level_names),
     stop("Unsupported factor contrast '", contrast, "'.", call. = FALSE)
   )
 }
@@ -180,6 +184,7 @@
 
   metadata_names <- c(
     "levels",
+    "coefficient_dim",
     "level_names",
     "interaction",
     "interaction_terms",
@@ -187,7 +192,8 @@
     "factor_terms",
     "factor_contrasts",
     "factor_design",
-    "factor_cell_names"
+    "factor_cell_names",
+    "ordered_metadata"
   )
 
   for(metadata_name in metadata_names){
@@ -259,6 +265,10 @@
     design_info <- .factor_term_design_from_metadata(x)
     attr(x, "factor_design")     <- design_info[["design"]]
     attr(x, "factor_cell_names") <- design_info[["cell_names"]]
+  }
+
+  if(is.prior.ordered(x)){
+    x <- .bt_bind_ordered_prior_metadata(x, parameter)
   }
 
   return(x)
@@ -457,6 +467,7 @@ transform_factor_samples <- function(samples){
 
   samples <- transform_meandif_samples(samples)
   samples <- transform_orthonormal_samples(samples)
+  samples <- transform_ordered_samples(samples)
 
   return(samples)
 }
@@ -543,6 +554,28 @@ transform_treatment_samples <- function(samples){
         metadata            = treatment_samples,
         parameter           = names(samples)[i],
         transformed_class   = "mixed_posteriors.treatment_transformed"
+      )
+    }
+  }
+
+  return(samples)
+}
+
+transform_ordered_samples <- function(samples){
+
+  check_list(samples, "samples", allow_NULL = TRUE)
+
+  for(i in seq_along(samples)){
+    if(!inherits(samples[[i]],"mixed_posteriors.ordered_transformed") &&
+       inherits(samples[[i]], "mixed_posteriors.factor") &&
+       isTRUE(attr(samples[[i]], "ordered"))){
+
+      ordered_samples <- .add_factor_metadata_from_named_objects(samples[[i]], names(samples)[i], samples)
+      samples[[i]] <- .transform_factor_contrast_samples(
+        coefficient_samples = ordered_samples,
+        metadata            = ordered_samples,
+        parameter           = names(samples)[i],
+        transformed_class   = "mixed_posteriors.ordered_transformed"
       )
     }
   }

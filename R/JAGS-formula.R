@@ -368,7 +368,9 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
       # factor variables or interactions with a factor requires factor style prior
 
       # add levels information attributes to factors
-      if(is.prior.independent(this_prior)){
+      if(is.prior.ordered(this_prior) && !.is_prior_interaction(this_prior)){
+        attr(this_prior, "levels") <- length(levels(data[[model_terms[i]]]))
+      }else if(is.prior.independent(this_prior)){
         attr(this_prior, "levels") <- sum(terms_indexes == i)
       }else{
         attr(this_prior, "levels") <- sum(terms_indexes == i) + 1
@@ -412,6 +414,9 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
       )
       attr(this_prior, "factor_design")     <- factor_design_info[["design"]]
       attr(this_prior, "factor_cell_names") <- factor_design_info[["cell_names"]]
+      if(is.prior.ordered(this_prior)){
+        this_prior <- .bt_bind_ordered_prior_metadata(this_prior, paste0(parameter, "_", model_terms[i]))
+      }
 
       data_name <- paste0(parameter, "_data_", model_terms[i])
       JAGS_data[[data_name]] <- model_matrix[,terms_indexes == i, drop = FALSE]
@@ -441,6 +446,8 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
         attr(this_prior, "factor_contrasts")  -> attr(this_prior[[p]], "factor_contrasts")
         attr(this_prior, "factor_design")     -> attr(this_prior[[p]], "factor_design")
         attr(this_prior, "factor_cell_names") -> attr(this_prior[[p]], "factor_cell_names")
+        attr(this_prior, "coefficient_dim")   -> attr(this_prior[[p]], "coefficient_dim")
+        attr(this_prior, "ordered_metadata")  -> attr(this_prior[[p]], "ordered_metadata")
       }
       this_prior -> prior_list[[model_terms[i]]]
     }else{
@@ -532,6 +539,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   for(i in seq_along(prior_list)){
     attr(prior_list[[i]], "parameter") <- parameter
   }
+  .bt_validate_ordered_shared_allocations(prior_list)
   if(.JAGS_prior_list_uses_BayesTools_module(prior_list)){
     jags_modules <- c(jags_modules, "BayesTools")
     required_packages <- c(required_packages, "BayesTools")

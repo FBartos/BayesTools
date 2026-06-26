@@ -52,6 +52,7 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 .JAGS_get_inits.fun        <- function(prior_list){
 
   temp_inits <- list()
+  ordered_allocation_keys <- character()
 
   for(i in seq_along(prior_list)){
 
@@ -82,6 +83,19 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
     }else if(is.prior.mixture(prior_list[[i]])){
 
       temp_inits <- c(temp_inits, .JAGS_init.mixture(prior_list[[i]], names(prior_list)[i]))
+
+    }else if(is.prior.ordered(prior_list[[i]])){
+
+      ordered_inits <- .JAGS_init.ordered(
+        prior_list[[i]],
+        names(prior_list)[i],
+        emitted_allocations = ordered_allocation_keys
+      )
+      temp_inits <- c(temp_inits, ordered_inits[["inits"]])
+      ordered_allocation_keys <- unique(c(
+        ordered_allocation_keys,
+        ordered_inits[["allocation_keys"]]
+      ))
 
     }else if(is.prior.factor(prior_list[[i]])){
 
@@ -177,7 +191,11 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
     return()
   }
 
-  if(is.prior.treatment(prior) | is.prior.independent(prior)){
+  if(is.prior.ordered(prior)){
+
+    init <- .JAGS_init.ordered(prior, parameter_name)[["inits"]]
+
+  }else if(is.prior.treatment(prior) | is.prior.independent(prior)){
 
     init <- list()
     init[[parameter_name]] <- rng(prior, .get_prior_factor_levels(prior))
@@ -194,6 +212,64 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
   }
 
   return(init)
+}
+.JAGS_init.ordered         <- function(prior, parameter_name, emitted_allocations = character()){
+
+  .check_prior(prior, allow_expressions = TRUE)
+  if(!is.prior.ordered(prior))
+    stop("improper prior provided")
+  check_char(parameter_name, "parameter_name")
+
+  metadata <- .prior_ordered_metadata(prior)
+  total_name <- .prior_ordered_total_name(parameter_name)
+  init <- .JAGS_init.ordered_total(prior$total, total_name, metadata$theta_dim)
+
+  emitted_now <- character()
+  for(record in .prior_ordered_dirichlet_records(prior)){
+    if(record$key %in% emitted_allocations || record$key %in% emitted_now){
+      next
+    }
+    eta_init <- stats::rgamma(
+      record$dim,
+      shape = record$spec$alpha,
+      rate = 1
+    )
+    eta_init[!is.finite(eta_init) | eta_init <= 0] <- .Machine$double.xmin
+    init[[.JAGS_prior_dirichlet_eta_name(record$node)]] <- eta_init
+    emitted_now <- c(emitted_now, record$key)
+  }
+
+  list(inits = init, allocation_keys = emitted_now)
+}
+
+.JAGS_init.ordered_total   <- function(total, total_name, theta_dim){
+
+  if(is.prior.point(total)){
+    return(list())
+  }
+
+  if(is.prior.spike_and_slab(total) && theta_dim > 1L){
+    variable <- .get_spike_and_slab_variable(total)
+    inclusion <- .get_spike_and_slab_inclusion(total)
+    init <- list()
+    if(!is.prior.point(variable)){
+      init[[paste0(total_name, "_variable")]] <- rng(variable, theta_dim)
+    }
+    if(!is.prior.point(inclusion)){
+      init[[paste0(total_name, "_inclusion")]] <- rng(inclusion, 1)
+    }
+    return(init)
+  }
+
+  if(theta_dim > 1L){
+    init <- list()
+    init[[total_name]] <- rng(total, theta_dim)
+    return(init)
+  }
+
+  total_list <- list(total)
+  names(total_list) <- total_name
+  .JAGS_get_inits.fun(total_list)
 }
 .JAGS_init.PP              <- function(prior){
 

@@ -166,7 +166,8 @@
     random_structure = random_structure,
     has_intercept = has_intercept,
     homogeneous_sd = homogeneous_sd,
-    structured_index = random_term$structured_index
+    structured_index = random_term$structured_index,
+    prior_list = prior_list
   )
   if(!identical(unname(sd_leaves$leaf_names_by_column), unname(sd_parameter_names))){
     stop("Random-effect SD leaf metadata are inconsistent with generated SD parameters.", call. = FALSE)
@@ -350,11 +351,88 @@
 
   }else if(contrast %in% c("contr.orthonormal", "contr.meandif")){
     sd_parameter_names <- rep(paste0(parameter, "_", model_term), length(columns))
+  }else if(.prior_ordered_is_contrast_name(contrast)){
+    if(is.prior.ordered(prior)){
+      prior <- .bt_random_effect_bind_ordered_sd_prior(
+        prior = prior,
+        parameter = parameter,
+        model_term = model_term,
+        columns = columns,
+        predictors_type = predictors_type,
+        data = data
+      )
+      sd_parameter_names <- if(length(columns) == 1L){
+        paste0(parameter, "_", model_term)
+      }else{
+        paste0(parameter, "_", model_term, "[", seq_along(columns), "]")
+      }
+    }else{
+      sd_parameter_names <- rep(paste0(parameter, "_", model_term), length(columns))
+    }
   }else{
     stop("Unsupported factor contrasts for the random effects.", call. = FALSE)
   }
 
   list(prior = prior, sd_parameter_names = sd_parameter_names)
+}
+
+.bt_random_effect_bind_ordered_sd_prior <- function(prior, parameter,
+                                                    model_term, columns,
+                                                    predictors_type, data){
+
+  term_components <- .bt_random_effect_term_components(model_term)
+  factor_terms <- term_components[
+    term_components %in% names(predictors_type) &
+      predictors_type[term_components] == "factor"
+  ]
+  if(length(factor_terms) == 0L){
+    stop("Ordered random-effect SD priors require a factor term.", call. = FALSE)
+  }
+
+  level_names <- lapply(factor_terms, function(factor_term){
+    levels(data[[factor_term]])
+  })
+  names(level_names) <- factor_terms
+
+  attr(prior, "levels") <- if(length(factor_terms) == 1L){
+    length(level_names[[1L]])
+  }else{
+    NULL
+  }
+  attr(prior, "level_names") <- if(length(factor_terms) == 1L && identical(model_term, factor_terms[[1L]])){
+    level_names[[1L]]
+  }else{
+    level_names
+  }
+  attr(prior, "term_components") <- term_components
+  attr(prior, "factor_terms") <- factor_terms
+  attr(prior, "factor_contrasts") <- vapply(factor_terms, function(factor_term){
+    factor_contrast <- attr(data[[factor_term]], "contrasts")
+    if(is.null(factor_contrast)){
+      "contr.treatment"
+    }else if(is.character(factor_contrast)){
+      factor_contrast[1L]
+    }else{
+      stop("Unsupported matrix-valued factor contrast metadata.", call. = FALSE)
+    }
+  }, character(1))
+
+  design_info <- .factor_term_design_from_metadata(prior)
+  attr(prior, "factor_design") <- design_info$design
+  attr(prior, "factor_cell_names") <- design_info$cell_names
+  prior <- .bt_bind_ordered_prior_metadata(prior, paste0(parameter, "_", model_term))
+
+  coefficient_dim <- attr(prior, "coefficient_dim", exact = TRUE)
+  if(!identical(coefficient_dim, length(columns))){
+    stop(
+      "Ordered random-effect SD prior for '", model_term, "' implies ",
+      coefficient_dim, " coefficient(s), but the random-effect design has ",
+      length(columns), " column(s).",
+      call. = FALSE
+    )
+  }
+
+  prior
 }
 
 .bt_random_effect_set_factor_prior_class <- function(prior, prior_type){
@@ -526,7 +604,8 @@
                                                  random_structure,
                                                  has_intercept,
                                                  homogeneous_sd,
-                                                 structured_index = NULL){
+                                                 structured_index = NULL,
+                                                 prior_list = NULL){
 
   n_columns <- ncol(model_matrix)
   terms_indexes <- .bt_random_effect_term_indexes(model_matrix, has_intercept)
@@ -549,6 +628,9 @@
         leaf_names[columns] <- paste0(parameter, "_", model_term)
       }else if(identical(model_terms_type[[i]], "factor")){
         contrast <- .bt_random_effect_factor_term_contrast(model_term, predictors_type, data)
+        ordered_sd_prior <- !is.null(prior_list) &&
+          model_term %in% names(prior_list) &&
+          is.prior.ordered(prior_list[[model_term]])
         if(random_structure %in% c("cs", "hcs", "ar1", "car", "har") ||
            contrast %in% c("contr.treatment", "contr.independent")){
           leaf_term_labels <- .bt_random_effect_factor_sd_leaf_terms(
@@ -563,7 +645,13 @@
             leaf_terms[columns[j]] <- leaf_term_labels[j]
             leaf_names[columns[j]] <- paste0(parameter, "_", model_term, "[", j, "]")
           }
-        }else if(contrast %in% c("contr.orthonormal", "contr.meandif")){
+        }else if(.prior_ordered_is_contrast_name(contrast) && isTRUE(ordered_sd_prior)){
+          for(j in seq_along(columns)){
+            leaf_terms[columns[j]] <- paste0(model_term, "[", j, "]")
+            leaf_names[columns[j]] <- paste0(parameter, "_", model_term, "[", j, "]")
+          }
+        }else if(contrast %in% c("contr.orthonormal", "contr.meandif") ||
+                 .prior_ordered_is_contrast_name(contrast)){
           leaf_terms[columns] <- model_term
           leaf_names[columns] <- paste0(parameter, "_", model_term)
         }else{

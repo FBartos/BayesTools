@@ -127,6 +127,10 @@
     return(TRUE)
   }
 
+  if(is.prior.ordered(prior)){
+    return(.JAGS_prior_uses_BayesTools_module(prior$total))
+  }
+
   if(is.prior.spike_and_slab(prior)){
     return(
       .JAGS_prior_uses_BayesTools_module(.get_spike_and_slab_variable(prior)) ||

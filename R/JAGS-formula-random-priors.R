@@ -14,10 +14,6 @@
   for(factor_name in factor_predictors){
     contrast_name <- NULL
 
-    if(!is.factor(data[[factor_name]])){
-      data[[factor_name]] <- factor(data[[factor_name]])
-    }
-
     if(factor_name %in% names(prior_list)){
       contrast_name <- .factor_object_contrast_name(prior_list[[factor_name]])
       if(is.null(contrast_name) && isTRUE(validate_direct_factor_prior)){
@@ -51,6 +47,13 @@
           call. = FALSE
         )
       }
+    }
+
+    if(!is.factor(data[[factor_name]])){
+      data[[factor_name]] <- factor(data[[factor_name]])
+    }
+    if(!is.null(contrast_name) && .prior_ordered_is_contrast_name(contrast_name)){
+      data[[factor_name]] <- ordered(data[[factor_name]], levels = levels(data[[factor_name]]))
     }
 
     if(!is.null(contrast_name)){
@@ -110,6 +113,12 @@
   }
   if(all(contrasts %in% c("contr.orthonormal", "contr.meandif"))){
     return("contr.orthonormal")
+  }
+  if(all(.prior_ordered_is_contrast_name(contrasts))){
+    contrasts <- unique(contrasts)
+    if(length(contrasts) == 1L){
+      return(contrasts)
+    }
   }
 
   stop(
@@ -561,6 +570,14 @@
 }
 
 .bt_random_effect_force_nonnegative_prior <- function(prior, name){
+
+  if(is.prior.ordered(prior)){
+    prior$total <- .bt_random_effect_force_nonnegative_prior(
+      prior = prior$total,
+      name = paste0(name, "$total")
+    )
+    return(prior)
+  }
 
   if(is.prior.spike_and_slab(prior) || is.prior.mixture(prior)){
     for(j in seq_along(prior)){

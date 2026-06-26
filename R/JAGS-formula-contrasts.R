@@ -22,6 +22,12 @@
 #'   \item{\code{contr.independent}}{Return a matrix of independent contrasts -- a level for each term.
 #'     Returns a matrix with n rows and k columns, with k = n if \code{contrasts = TRUE} and k = n
 #'     if \code{contrasts = FALSE}.}
+#'   \item{\code{contr.ordered_cumulative}}{Return a cumulative increment basis
+#'     for ordered factors, with the first level fixed to zero and the last level
+#'     equal to the full total effect.}
+#'   \item{\code{contr.ordered_cumulative_levels}}{Return a cumulative level
+#'     basis for ordered factors, where the first level receives the first
+#'     allocation share and the last level equals the full total effect.}
 #' }
 #'
 #' @param n a vector of levels for a factor, or the number of levels
@@ -40,10 +46,15 @@
 #' contr.independent(c(1, 2))
 #' contr.independent(c(1, 2, 3))
 #'
+#' # Ordered cumulative contrasts
+#' contr.ordered_cumulative(c("low", "mid", "high"))
+#' contr.ordered_cumulative_levels(c("low", "mid", "high"))
+#'
 #' @references
 #' \insertAllCited{}
 #'
 #' @aliases contr.orthonormal contr.meandif contr.independent
+#'   contr.ordered_cumulative contr.ordered_cumulative_levels
 #' @name contr.BayesTools
 NULL
 
@@ -118,5 +129,51 @@ contr.independent <- function(n, contrasts = TRUE){
   cont <- diag(x = 1, nrow = n, ncol = n)
 
   return(cont)
+}
+
+#' @rdname contr.BayesTools
+#' @export
+contr.ordered_cumulative <- function(n, contrasts = TRUE){
+
+  if(length(n) <= 1L){
+    if(is.numeric(n) && length(n) == 1L && n > 1L){
+      return(TRUE)
+    }else{
+      stop("Not enough degrees of freedom to define contrasts.")
+    }
+  }else{
+    n <- length(n)
+  }
+
+  cont <- matrix(0, nrow = n, ncol = n - 1L)
+  for(i in seq_len(n)){
+    if(i > 1L){
+      cont[i, seq_len(i - 1L)] <- 1
+    }
+  }
+
+  cont
+}
+
+#' @rdname contr.BayesTools
+#' @export
+contr.ordered_cumulative_levels <- function(n, contrasts = TRUE){
+
+  if(length(n) <= 1L){
+    if(is.numeric(n) && length(n) == 1L && n >= 1L){
+      return(TRUE)
+    }else{
+      stop("Not enough degrees of freedom to define contrasts.")
+    }
+  }else{
+    n <- length(n)
+  }
+
+  cont <- matrix(0, nrow = n, ncol = n)
+  for(i in seq_len(n)){
+    cont[i, seq_len(i)] <- 1
+  }
+
+  cont
 }
 

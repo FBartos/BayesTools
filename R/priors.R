@@ -318,6 +318,69 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
   return(output)
 }
 
+#' @title Creates a prior distribution for ordered factor effects
+#'
+#' @description \code{prior_ordered} creates a factor prior for ordered predictors
+#' by separating a scalar total effect from an allocation of that effect across
+#' ordered-level increments.
+#'
+#' @param total scalar prior for the total effect from the first to the last
+#' ordered level.
+#' @param allocation allocation prior or fixed split. \code{NULL} creates a
+#' late-bound flat Dirichlet allocation with dimension determined by the formula
+#' term. Numeric vectors specify fixed splits. Dirichlet priors specify random
+#' allocations. For terms with multiple ordered factors, use a named list.
+#' @param contrast ordered contrast. \code{"cumulative"} uses
+#' \code{nlevels(f) - 1} increments and sets the first level effect to zero.
+#' \code{"cumulative_levels"} uses \code{nlevels(f)} increments and gives the
+#' first level a non-zero allocation share.
+#' @param id optional allocation-sharing id. For terms with multiple ordered
+#' factors, use a named character vector.
+#' @inheritParams prior
+#'
+#' @details Spike-and-slab or mixture behavior belongs on \code{total}; e.g.,
+#' \code{prior_ordered(prior_spike_and_slab(...))}. Bridge sampling is available
+#' only when \code{total} is a simple scalar prior and \code{allocation} is fixed
+#' or a simple Dirichlet allocation.
+#'
+#' @return return an object of class 'prior'.
+#'
+#' @seealso [prior()] [prior_factor()]
+#' @export prior_ordered
+prior_ordered <- function(total,
+                          allocation = NULL,
+                          contrast = "cumulative",
+                          id = NULL,
+                          prior_weights = 1){
+
+  check_char(contrast, "contrast", allow_values = .prior_ordered_contrast_values)
+  check_char(id, "id", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
+  .check_prior_weight(prior_weights)
+  .prior_ordered_check_total(total)
+
+  allocation <- .prior_ordered_allocation_spec(allocation)
+
+  output <- list(
+    distribution  = "ordered",
+    total         = total,
+    allocation    = allocation,
+    contrast      = contrast,
+    id            = id,
+    prior_weights = prior_weights,
+    parameters    = list(K = NA),
+    truncation    = list(lower = -Inf, upper = Inf)
+  )
+
+  class(output) <- c(
+    "prior",
+    "prior.factor",
+    "prior.ordered",
+    paste0("prior.ordered_", contrast)
+  )
+
+  output
+}
+
 
 #' @title Creates a spike and slab prior distribution
 #'
@@ -364,6 +427,12 @@ prior_spike_and_slab <- function(prior_parameter,
 
   # Create the spike component (point at 0)
   if(is.prior.factor(prior_parameter)){
+    if(is.prior.ordered(prior_parameter)){
+      stop(
+        "For ordered factor priors, put spike-and-slab behavior on the 'total' prior inside prior_ordered().",
+        call. = FALSE
+      )
+    }
     # For factor priors, create a factor spike
     priors_type <- .get_prior_factor_list_type(list(prior_parameter))
     contrast_type <- gsub("prior.", "", priors_type[["class"]], fixed = TRUE)
