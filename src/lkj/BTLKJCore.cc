@@ -53,6 +53,9 @@ bool valid_alpha(double const *alpha, unsigned int length)
 
 double cpc_from_u(double u)
 {
+  // Preserve the LKJ transform on [0, 1] and keep descendant evaluation
+  // finite while JAGS rejects stochastic proposals outside that support.
+  u = std::max(0.0, std::min(1.0, u));
   return 2.0 * u - 1.0;
 }
 

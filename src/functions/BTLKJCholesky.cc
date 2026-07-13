@@ -19,6 +19,20 @@ namespace jags {
         return static_cast<unsigned int>(K_value);
       }
 
+      bool finite_transform_u(double const *u, unsigned int length)
+      {
+        // JAGS can evaluate descendants before rejecting an out-of-support
+        // stochastic proposal. The transform therefore accepts every finite
+        // proposal; fill_cholesky_from_u() supplies the finite extension.
+        for(unsigned int i = 0; i < length; ++i){
+          if(!std::isfinite(u[i])){
+            return false;
+          }
+        }
+
+        return true;
+      }
+
       bool check_lkj_args(std::vector<double const *> const &args,
                           std::vector<unsigned int> const &lengths)
       {
@@ -28,7 +42,7 @@ namespace jags {
 
         unsigned int K = as_K(*args[1]);
         return lengths[0] == bayestools::lkj::n_cpc(K) &&
-          bayestools::lkj::valid_u(args[0], lengths[0]);
+          finite_transform_u(args[0], lengths[0]);
       }
     }
 

@@ -374,6 +374,27 @@ test_that("compiled LKJ-Cholesky functions match hand-coded transform oracles", 
   }
 })
 
+test_that("compiled LKJ transforms evaluate boundary proposals", {
+  settings <- list(
+    list(K = 2L, u = -1e-8),
+    list(K = 2L, u = 0),
+    list(K = 2L, u = 1),
+    list(K = 2L, u = 1 + 1e-8),
+    list(K = 3L, u = c(0, 1, 0.5))
+  )
+
+  for(setting in settings){
+    samples <- .eval_jags_lkj_cholesky_transform(setting$u, setting$K)
+    L <- .jags_lkj_matrix_draw(samples, 1, "Omega_L", setting$K)
+    R <- .jags_lkj_matrix_draw(samples, 1, "Omega_R", setting$K)
+
+    expect_true(all(is.finite(L)))
+    expect_true(all(is.finite(R)))
+    expect_equal(R, L %*% t(L), tolerance = 1e-12)
+    expect_equal(diag(R), rep(1, setting$K), tolerance = 1e-12)
+  }
+})
+
 test_that("compiled LKJ CPC distribution logDensity matches beta density for observed nodes", {
   K <- 4L
   eta <- 0.75

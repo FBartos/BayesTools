@@ -465,7 +465,7 @@ random_effects_marginal_variance_factors <- function(
     data_source = if(is.null(data)) "fitted" else "data",
     dense = TRUE,
     dense_entries = dense_entries,
-    estimated_size_bytes = as.numeric(object.size(samples)),
+    estimated_size_bytes = as.numeric(utils::object.size(samples)),
     potentially_expensive = dense_entries > 1e7,
     included_blocks = names(block_metadata),
     skipped_blocks = selected$skipped,

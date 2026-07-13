@@ -1,2 +1,14 @@
 PKG_CPPFLAGS=@JAGS_CFLAGS@ -DR_NO_REMAP
 PKG_LIBS=@JAGS_LIBS@ @JAGS_RPATH@ -ljrmath
+
+$(SHLIB): native-sources.o
+
+native-sources.o: \
+	distributions/DBTLKJCPC.cc \
+	distributions/DBTInvGamma.cc \
+	distributions/DBTMoment.cc \
+	distributions/DBTInvMoment.cc \
+	functions/BTLKJCholesky.cc \
+	invgamma/BTInvGammaCore.cc \
+	lkj/BTLKJCore.cc \
+	nonlocal/BTNonlocalCore.cc

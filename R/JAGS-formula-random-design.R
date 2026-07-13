@@ -10,6 +10,105 @@
   stop("Formula random effects require 'prior_random'.", call. = FALSE)
 }
 
+.bt_random_effect_dense_complexity <- function(structure, n_groups,
+                                               n_columns, n_rows,
+                                               monitor_policy){
+
+  is_correlated <- structure %in% c("us", "cs", "hcs", "ar1", "car", "har") &&
+    n_columns > 1L
+  is_symbolic <- structure %in% c("cs", "hcs", "ar1", "car", "har") &&
+    n_columns > 1L
+
+  cholesky_products <- if(is_symbolic){
+    n_columns * (n_columns - 1) * (n_columns + 1) / 6
+  }else{
+    0
+  }
+  transform_products <- if(is_correlated){
+    n_groups * n_columns^2 + n_rows * n_columns
+  }else{
+    0
+  }
+  monitored_values <- 0
+  if(isTRUE(monitor_policy$latent)){
+    monitored_values <- monitored_values + n_groups * n_columns
+  }
+  if(isTRUE(monitor_policy$coefficients)){
+    monitored_values <- monitored_values + n_groups * n_columns
+  }
+  if(is_correlated){
+    monitored_values <- monitored_values + n_columns^2
+    if(isTRUE(monitor_policy$correlation)){
+      monitored_values <- monitored_values + n_columns^2
+    }
+    if(identical(structure, "us")){
+      monitored_values <- monitored_values + n_columns * (n_columns - 1) / 2
+    }
+  }
+
+  c(
+    cholesky_products = cholesky_products,
+    transform_products = transform_products,
+    monitored_values = monitored_values
+  )
+}
+
+.bt_random_effect_check_dense_complexity <- function(random_term, structure,
+                                                      n_groups, n_columns,
+                                                      n_rows, monitor_policy){
+
+  multiplier <- getOption(
+    "BayesTools.random_effects_complexity_multiplier",
+    1
+  )
+  if(!is.numeric(multiplier) || length(multiplier) != 1L || is.na(multiplier) ||
+     multiplier <= 0){
+    stop(
+      "Option 'BayesTools.random_effects_complexity_multiplier' must be a positive numeric scalar.",
+      call. = FALSE
+    )
+  }
+  if(is.infinite(multiplier)){
+    return(invisible(NULL))
+  }
+
+  estimates <- .bt_random_effect_dense_complexity(
+    structure = structure,
+    n_groups = n_groups,
+    n_columns = n_columns,
+    n_rows = n_rows,
+    monitor_policy = monitor_policy
+  )
+  limits <- multiplier * c(
+    cholesky_products = 2e5,
+    transform_products = 5e6,
+    monitored_values = 2e4
+  )
+  exceeded <- estimates > limits
+  if(!any(exceeded)){
+    return(invisible(estimates))
+  }
+
+  details <- paste0(
+    names(estimates)[exceeded], "=",
+    format(estimates[exceeded], scientific = FALSE, trim = TRUE),
+    " (limit ",
+    format(limits[exceeded], scientific = FALSE, trim = TRUE),
+    ")"
+  )
+  stop(
+    "Random-effect block '", random_term$block_name,
+    "' (", toupper(structure), "; ", n_groups, " groups x ",
+    n_columns, " columns) exceeds the current dense JAGS compiler limits: ",
+    paste(details, collapse = ", "), ". This representation can exhaust ",
+    "memory before sampling. Reduce the structured index dimension or ",
+    "reformulate the random effect. To bypass the safety guard after checking ",
+    "available resources, set options(",
+    "BayesTools.random_effects_complexity_multiplier = Inf).",
+    call. = FALSE
+  )
+}
+
 .JAGS_random_effect_formula <- function(formula, parameter, data,
                                         prior_random = NULL,
                                         sd_binding_context = NULL,
@@ -208,6 +307,16 @@
   n_par <- ncol(model_matrix)
   if(n_par < 1L){
     stop("Random-effect term '", random_term$block_name, "' does not generate any design columns.", call. = FALSE)
+  }
+  if(isTRUE(sampled_random_effect)){
+    .bt_random_effect_check_dense_complexity(
+      random_term = random_term,
+      structure = random_structure,
+      n_groups = n_id,
+      n_columns = n_par,
+      n_rows = nrow(model_matrix),
+      monitor_policy = monitor_policy
+    )
   }
   group_covariance <- .bt_random_effect_prepare_known_group_covariance(
     random_term = random_term,

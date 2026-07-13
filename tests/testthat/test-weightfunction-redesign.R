@@ -413,7 +413,7 @@ test_that("JAGS fits full bias mixtures with PET, PEESE, and heterogeneous weigh
 
   skip_if_not_test_profile("fixture")
   skip_if_not_installed("rjags")
-  skip_if_missing_fits("fit_bias_petpeese_heterogeneous_wf")
+  skip_if_missing_fits("fit_bias_petpeese_hetero_wf")
 
   bias <- prior_mixture(list(
     prior_none(prior_weights = 1),
@@ -438,7 +438,7 @@ test_that("JAGS fits full bias mixtures with PET, PEESE, and heterogeneous weigh
   expect_match(syntax, "omega_component_5\\[3\\] <- 1")
   expect_match(syntax, "omega\\[3\\] <- omega_component_1\\[3\\] \\* equals\\(bias_indicator, 1\\) \\+ omega_component_2\\[3\\] \\* equals\\(bias_indicator, 2\\)")
 
-  fit <- readRDS(file.path(temp_fits_dir, "fit_bias_petpeese_heterogeneous_wf.RDS"))
+  fit <- readRDS(file.path(temp_fits_dir, "fit_bias_petpeese_hetero_wf.RDS"))
 
   posterior <- as.matrix(.fit_to_posterior(fit))
   indicator <- posterior[, "bias_indicator"]

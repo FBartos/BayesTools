@@ -74,3 +74,15 @@ JR_MATH_LINK := $(patsubst lib%.dll.a,%,$(patsubst %.dll,%,$(JR_MATH_LIB_NAME)))
 
 PKG_CPPFLAGS=-I"$(JAGS_INCLUDE_DIR)" -DR_NO_REMAP
 PKG_LIBS=-L"$(JAGS_LIB_DIR)" -l$(JAGS_LINK) -l$(JR_MATH_LINK)
+
+$(SHLIB): native-sources.o
+
+native-sources.o: \
+	distributions/DBTLKJCPC.cc \
+	distributions/DBTInvGamma.cc \
+	distributions/DBTMoment.cc \
+	distributions/DBTInvMoment.cc \
+	functions/BTLKJCholesky.cc \
+	invgamma/BTInvGammaCore.cc \
+	lkj/BTLKJCore.cc \
+	nonlocal/BTNonlocalCore.cc

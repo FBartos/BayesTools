@@ -987,7 +987,7 @@ bayestools_semantic_fit_catalog_overrides <- function() {
       note = "Heterogeneous publication-bias mixture with five omega monitors."
     ),
     catalog_row(
-      "fit_bias_petpeese_heterogeneous_wf",
+      "fit_bias_petpeese_hetero_wf",
       has_marglik = FALSE,
       model_family = "prior-only-publication-bias-mixture",
       scale_policy = "mixture-indicator,weightfunction",

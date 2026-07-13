@@ -557,7 +557,7 @@ test_that("Weightfunction redesign and selection-kernel models fit correctly", {
     prior_weightfunction("one-sided", c(.025), wf_independent(prior("normal", list(mean = log(1.5), sd = .15)), "log_omega"), prior_weights = 1),
     prior_weightfunction("two-sided", c(.05), wf_fixed(c(1, .4)), prior_weights = 1)
   ))
-  fit_bias_petpeese_heterogeneous_wf <- suppressWarnings(JAGS_fit(
+  fit_bias_petpeese_hetero_wf <- suppressWarnings(JAGS_fit(
     "model{}",
     data       = NULL,
     prior_list = list(bias = bias_petpeese_heterogeneous_wf),
@@ -567,12 +567,12 @@ test_that("Weightfunction redesign and selection-kernel models fit correctly", {
     sample     = 1200,
     seed       = 15
   ))
-  result <- save_fit(fit_bias_petpeese_heterogeneous_wf, "fit_bias_petpeese_heterogeneous_wf",
+  result <- save_fit(fit_bias_petpeese_hetero_wf, "fit_bias_petpeese_hetero_wf",
                      pub_bias_priors = TRUE, weightfunction_priors = TRUE,
                      mixture_priors = TRUE,
                      note = "Full bias mixture with PET, PEESE, and heterogeneous weightfunctions")
-  model_registry[["fit_bias_petpeese_heterogeneous_wf"]] <<- result$registry_entry
-  fit_bias_petpeese_heterogeneous_wf <- result$fit
+  model_registry[["fit_bias_petpeese_hetero_wf"]] <<- result$registry_entry
+  fit_bias_petpeese_hetero_wf <- result$fit
 
   # Ordinary mixture plus selection-kernel bias mixture for summary table tests
   selection <- prior_weightfunction("one-sided", c(.025), wf_fixed(c(1, .5)))

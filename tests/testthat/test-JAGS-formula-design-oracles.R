@@ -9459,6 +9459,54 @@ test_that("structured random-effect terms use level-indexed factor columns and s
   )
   sd_prior <- prior("normal", list(0, 1), truncation = list(lower = 0, upper = Inf))
 
+  large_factor_df <- data.frame(
+    f = factor(sprintf("level_%03d", seq_len(113L))),
+    id = factor(rep(sprintf("group_%02d", seq_len(17L)), length.out = 113L))
+  )
+  expect_error(
+    JAGS_formula(
+      formula = ~ 1 + cs(f | id),
+      parameter = "mu",
+      data = large_factor_df,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(
+        id = random_block(sd = sd_prior, rho = prior("normal", list(0, 0.5)))
+      )
+    ),
+    "CS; 17 groups x 113 columns.*cholesky_products=240464.*monitored_values=27459",
+    perl = TRUE
+  )
+
+  old_multiplier <- getOption("BayesTools.random_effects_complexity_multiplier")
+  on.exit(options(BayesTools.random_effects_complexity_multiplier = old_multiplier), add = TRUE)
+  options(BayesTools.random_effects_complexity_multiplier = 0)
+  expect_error(
+    BayesTools:::.bt_random_effect_check_dense_complexity(
+      random_term = list(block_name = "id"),
+      structure = "cs",
+      n_groups = 17L,
+      n_columns = 113L,
+      n_rows = 113L,
+      monitor_policy = random_monitor()
+    ),
+    "must be a positive numeric scalar",
+    fixed = TRUE
+  )
+  options(BayesTools.random_effects_complexity_multiplier = old_multiplier)
+
+  options(BayesTools.random_effects_complexity_multiplier = Inf)
+  expect_null(
+    BayesTools:::.bt_random_effect_check_dense_complexity(
+      random_term = list(block_name = "id"),
+      structure = "cs",
+      n_groups = 17L,
+      n_columns = 113L,
+      n_rows = 113L,
+      monitor_policy = random_monitor()
+    )
+  )
+  options(BayesTools.random_effects_complexity_multiplier = old_multiplier)
+
   expect_error(
     JAGS_formula(
       formula = ~ 1 + cs(f | id),
