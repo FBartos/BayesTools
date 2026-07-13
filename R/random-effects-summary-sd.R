@@ -39,6 +39,21 @@
      is.null(formula_scale[[parameter]]) || length(formula_scale[[parameter]]) == 0L){
     return(model_samples)
   }
+  parameter_scale <- formula_scale[[parameter]]
+  column_groups <- .random_sd_column_unscale_groups(
+    random_sd_cols = sd_names,
+    formula_scale = parameter_scale,
+    prefix = parameter
+  )
+  term_map <- if(is.null(column_groups)){
+    .random_sd_term_map(sd_names, parameter_scale, parameter)
+  }else{
+    character()
+  }
+  if((is.null(column_groups) || length(column_groups) == 0L) &&
+     length(term_map) == 0L){
+    return(model_samples)
+  }
 
   sd_draws <- .bt_random_effect_sd_draws(
     random_term = random_term,
@@ -75,7 +90,7 @@
   .apply_random_sd_unscale(
     posterior = completed,
     random_sd_cols = sd_names,
-    formula_scale = formula_scale[[parameter]],
+    formula_scale = parameter_scale,
     prefix = parameter,
     correlation_required_groups = correlation_required_groups
   )

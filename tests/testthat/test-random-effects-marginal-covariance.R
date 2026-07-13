@@ -816,6 +816,43 @@ test_that("point SD and scalar-rho priors are materialized on the right scale", 
   expect_equal(.re_cov_first(raw_out), raw_expected, tolerance = 1e-12)
 })
 
+test_that("sparse structured covariance expands row pairs without global matrices", {
+
+  K <- 678L
+  row_column <- c(1L, 50L, 678L, 4L, 300L, 50L, 2L, 678L)
+  df <- data.frame(
+    id = factor(rep(c("a", "b"), each = 4L)),
+    index = factor(
+      paste0("level_", row_column),
+      levels = paste0("level_", seq_len(K))
+    )
+  )
+  result <- .re_cov_formula(
+    formula = ~ 1 + cs(index | id),
+    data = df,
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("point", list(location = 2)),
+        rho = prior("point", list(location = 0.2))
+      )
+    )
+  )
+  term <- .re_cov_term(result, "id")
+  expect_s3_class(
+    term$latent_layout,
+    "BayesTools_random_effect_structured_local_layout"
+  )
+
+  out <- .re_cov_output(
+    result,
+    .re_cov_posterior(c(unrelated = 1))
+  )
+  fitted_column <- max.col(term$model_matrix, ties.method = "first")
+  expected <- outer(term$group_map, term$group_map, "==") *
+    tanh(0.2)^outer(fitted_column, fitted_column, function(x, y) x != y) * 4
+  expect_equal(.re_cov_first(out), expected, tolerance = 1e-12)
+})
+
 test_that("scalar rho posterior columns use canonical sample precedence", {
 
   result <- .re_cov_formula(

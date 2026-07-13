@@ -1,6 +1,5 @@
 .bt_random_effect_cholesky_draws <- function(random_term, n_columns,
-                                            posterior,
-                                            sample_space = FALSE){
+                                            posterior){
 
   structure <- .bt_random_effect_structure(
     random_term,
@@ -13,16 +12,58 @@
     }
     return(out)
   }
-  correlation <- .bt_random_effect_correlation_metadata(
-    random_term,
-    structure = structure,
-    context = "Random-effect posterior reconstruction metadata"
-  )
-
   L_names <- .bt_random_effect_cholesky_names(
     random_term = random_term,
     n_columns = n_columns
   )
+  if(structure %in% c("cs", "hcs", "ar1", "car", "har")){
+    correlation <- .bt_random_effect_correlation_metadata(
+      random_term,
+      structure = structure,
+      context = "Random-effect posterior reconstruction metadata"
+    )
+    rho <- .bt_random_effect_rho_draws(
+      random_term = random_term,
+      posterior = posterior,
+      out_of_support = "error"
+    )
+    if(!is.null(rho)){
+      distance_matrix <- if(identical(structure, "car")){
+        if(!is.null(correlation$distance_matrix)){
+          correlation$distance_matrix
+        }else{
+          time_values <- correlation$time_values
+          if(is.null(time_values) && is.list(random_term$car)){
+            time_values <- random_term$car$time_values
+          }
+          if(!is.numeric(time_values) || length(time_values) != n_columns ||
+             any(!is.finite(time_values)) || anyDuplicated(time_values)){
+            stop(
+              "Random-effect posterior reconstruction metadata",
+              .bt_random_effect_metadata_block_detail(random_term),
+              " are missing canonical CAR time coordinates.",
+              call. = FALSE
+            )
+          }
+          abs(outer(time_values, time_values, "-"))
+        }
+      }else{
+        NULL
+      }
+      out <- array(NA_real_, dim = c(nrow(posterior), n_columns, n_columns))
+      for(draw in seq_len(nrow(posterior))){
+        R <- .bt_random_effect_structured_correlation_matrix(
+          structure = structure,
+          K = n_columns,
+          rho = rho[draw],
+          distance_matrix = distance_matrix
+        )
+        out[draw, , ] <- t(chol(R))
+      }
+      return(out)
+    }
+  }
+
   if(all(as.vector(L_names) %in% colnames(posterior))){
     out <- array(NA_real_, dim = c(nrow(posterior), n_columns, n_columns))
     for(row in seq_len(n_columns)){
@@ -43,34 +84,12 @@
     }
   }
 
-  if(structure %in% c("cs", "hcs", "ar1", "car", "har")){
-    rho <- .bt_random_effect_rho_draws(
-      random_term = random_term,
-      posterior = posterior,
-      sample_space = sample_space
-    )
-    if(!is.null(rho)){
-      out <- array(NA_real_, dim = c(nrow(posterior), n_columns, n_columns))
-      for(draw in seq_len(nrow(posterior))){
-        R <- .bt_random_effect_structured_correlation_matrix(
-          structure = structure,
-          K = n_columns,
-          rho = rho[draw],
-          distance_matrix = if(identical(structure, "car")) correlation$distance_matrix else NULL
-        )
-        out[draw, , ] <- t(chol(R))
-      }
-      return(out)
-    }
-  }
-
   NULL
 }
 
 .bt_random_effect_rho_draws <- function(random_term, posterior,
                                         missing = c("null", "error"),
                                         out_of_support = c("null", "error"),
-                                        sample_space = FALSE,
                                         context = "Random-effect posterior reconstruction metadata"){
 
   missing <- match.arg(missing)
@@ -86,7 +105,12 @@
     context = context
   )
   if(is.null(correlation) || !identical(correlation$type, "rho")){
-    return(NULL)
+    stop(
+      context,
+      .bt_random_effect_metadata_block_detail(random_term),
+      " does not define canonical scalar correlation metadata.",
+      call. = FALSE
+    )
   }
   if(!is.character(correlation$rho_name) || length(correlation$rho_name) != 1L ||
      is.na(correlation$rho_name) || !nzchar(correlation$rho_name)){
@@ -166,8 +190,7 @@
     random_term,
     context = context
   )
-  if(isTRUE(sample_space) &&
-     identical(rho_source, "sample") &&
+  if(rho_source %in% c("sample", "fixed_sample") &&
      !identical(rho_scale, "rho")){
     sample_bounds <- .bt_random_effect_rho_sample_bounds(
       correlation = correlation,
@@ -192,11 +215,6 @@
       }
       return(NULL)
     }
-    rho <- .bt_random_effect_clamp_sample_space_rho(
-      rho = rho,
-      bounds = bounds,
-      structure = structure
-    )
   }
   invalid <- .bt_random_effect_rho_outside_support(rho, bounds, structure)
   if(any(invalid)){
@@ -243,24 +261,6 @@
   }
 
   c(lower = lower, upper = upper)
-}
-
-.bt_random_effect_clamp_sample_space_rho <- function(rho, bounds, structure){
-
-  interval_width <- bounds[["upper"]] - bounds[["lower"]]
-  if(!is.finite(interval_width) || interval_width <= 0){
-    return(rho)
-  }
-  eps <- .Machine$double.eps * max(1, abs(bounds[["lower"]]), abs(bounds[["upper"]]))
-  lower <- bounds[["lower"]] + eps
-  upper <- bounds[["upper"]] - eps
-
-  if(!.bt_random_effect_rho_lower_inclusive(structure)){
-    rho <- ifelse(is.finite(rho) & rho <= bounds[["lower"]], lower, rho)
-  }
-  rho <- ifelse(is.finite(rho) & rho >= bounds[["upper"]], upper, rho)
-
-  rho
 }
 
 .bt_random_effect_missing_rho_draws_stop <- function(random_term, correlation,
@@ -313,16 +313,78 @@
                                             random_term = NULL,
                                             context = "Random-effect posterior reconstruction metadata"){
 
+  if(!is.numeric(value) || any(!is.finite(value))){
+    stop(
+      context,
+      .bt_random_effect_metadata_block_detail(random_term),
+      " scalar correlation coordinates must be finite.",
+      call. = FALSE
+    )
+  }
+
   rho_scale <- .bt_random_effect_rho_scale_metadata(correlation, random_term, context)
+  bounds <- .bt_random_effect_rho_bounds_metadata(correlation, random_term, context)
+  structure <- .bt_random_effect_structure(random_term, context = context)
+  interior <- .bt_random_effect_representable_rho_bounds(bounds, structure)
   if(identical(rho_scale, "fisher_z")){
-    return(tanh(value))
+    return(pmax(interior[["lower"]], pmin(interior[["upper"]], tanh(value))))
   }
   if(identical(rho_scale, "logit")){
-    bounds <- .bt_random_effect_rho_bounds_metadata(correlation, random_term, context)
-    return(bounds[["lower"]] + (bounds[["upper"]] - bounds[["lower"]]) * stats::plogis(value))
+    return(
+      interior[["lower"]] +
+        (interior[["upper"]] - interior[["lower"]]) * stats::plogis(value)
+    )
   }
 
   value
+}
+
+.bt_random_effect_representable_rho_bounds <- function(bounds, structure){
+
+  interior <- c(
+    lower = if(.bt_random_effect_rho_lower_inclusive(structure)){
+      bounds[["lower"]]
+    }else{
+      .bt_random_effect_representable_rho_neighbor(
+        bounds[["lower"]],
+        direction = 1
+      )
+    },
+    upper = .bt_random_effect_representable_rho_neighbor(
+      bounds[["upper"]],
+      direction = -1
+    )
+  )
+  if(!all(is.finite(interior)) ||
+     (!.bt_random_effect_rho_lower_inclusive(structure) &&
+      interior[["lower"]] <= bounds[["lower"]]) ||
+     (.bt_random_effect_rho_lower_inclusive(structure) &&
+      interior[["lower"]] != bounds[["lower"]]) ||
+     interior[["upper"]] >= bounds[["upper"]] ||
+     interior[["lower"]] >= interior[["upper"]]){
+    stop("Scalar correlation bounds have no representable interior.", call. = FALSE)
+  }
+
+  interior
+}
+
+.bt_random_effect_representable_rho_neighbor <- function(bound, direction){
+
+  smallest <- .Machine$double.xmin * .Machine$double.eps
+  margin <- .Machine$double.eps / 2 * abs(bound)
+  if(!is.finite(margin) || margin == 0){
+    margin <- smallest
+  }
+  for(i in seq_len(64L)){
+    candidate <- bound + direction * margin
+    if(is.finite(candidate) && candidate != bound){
+      return(candidate)
+    }
+    margin <- margin * 2
+  }
+
+  stop("Scalar correlation bound has no representable interior neighbor.",
+       call. = FALSE)
 }
 
 .bt_random_effect_rho_scale_metadata <- function(correlation,

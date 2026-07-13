@@ -395,7 +395,9 @@ test_that("marginalized blocks retain allocation and correlation metadata", {
   expect_equal(hcs_term$correlation$type, "rho")
   expect_equal(length(hcs_term$sd_parameter_names), 2L)
   expect_false(grepl("mu__xREx__id_xRE_Zx", hcs_result$formula_syntax, fixed = TRUE))
-  expect_match(hcs_result$formula_syntax, hcs_term$correlation$cholesky_name, fixed = TRUE)
+  expect_match(hcs_result$formula_syntax, hcs_term$correlation$rho_name, fixed = TRUE)
+  expect_null(hcs_term$correlation$cholesky_name)
+  expect_null(hcs_term$correlation$correlation_name)
 })
 
 test_that("nested formula expansion resolves marginalized block names", {

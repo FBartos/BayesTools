@@ -292,8 +292,7 @@
     model_matrix = model_matrix,
     car = list(
       time_variable = time_name,
-      time_values = car_time_values,
-      distance_matrix = abs(outer(car_time_values, car_time_values, "-"))
+      time_values = car_time_values
     )
   )
 }
@@ -345,13 +344,19 @@
 .bt_random_effect_car_time_suffix <- function(x){
 
   labels <- vapply(x, function(value){
-    format(value, scientific = FALSE, trim = TRUE, digits = 15)
+    format(value, scientific = FALSE, trim = TRUE, digits = 17)
   }, character(1))
   labels <- gsub("-", "m", labels, fixed = TRUE)
   labels <- gsub(".", "p", labels, fixed = TRUE)
   labels <- gsub("[^A-Za-z0-9_]", "_", labels)
   labels <- gsub("_+", "_", labels)
   labels <- gsub("^_|_$", "", labels)
+  if(anyDuplicated(labels)){
+    stop(
+      "CAR time values cannot be represented by unique random-effect labels.",
+      call. = FALSE
+    )
+  }
   paste0("_", labels)
 }
 

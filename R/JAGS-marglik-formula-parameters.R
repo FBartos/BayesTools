@@ -367,10 +367,44 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
     ))
   }
 
+  if(inherits(
+    random_term$latent_layout,
+    "BayesTools_random_effect_structured_local_layout"
+  )){
+    return(.bt_JAGS_marglik_random_effect_structured_local_value(
+      samples = samples,
+      random_term = random_term,
+      prior_list = prior_list
+    ))
+  }
+
   model_matrix <- random_term$model_matrix
   group_map <- random_term$group_map
   n_groups <- random_term$n_groups
   n_columns <- random_term$n_columns
+  structure <- .bt_random_effect_structure(
+    random_term,
+    context = "Bridge-sampling random-effect metadata"
+  )
+  if(n_columns > 1L &&
+     structure %in% c("cs", "hcs", "ar1", "car", "har")){
+    posterior <- .bt_JAGS_marglik_random_effect_posterior_row(samples)
+    sd_values <- .bt_JAGS_marglik_random_effect_sd_values(
+      samples = samples,
+      random_term = random_term,
+      prior_list = prior_list
+    )
+    contribution <- .bt_random_effect_structured_contribution_from_latent(
+      random_term = random_term,
+      model_matrix = model_matrix,
+      group_map = group_map,
+      posterior = posterior,
+      scale_draws = matrix(sd_values, nrow = 1L)
+    )
+    if(!is.null(contribution)){
+      return(as.vector(contribution[, 1L]))
+    }
+  }
 
   z_names <- .bt_random_effect_latent_names(
     random_term = random_term,
@@ -399,6 +433,24 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
     random_term = random_term,
     prior_list = prior_list
   )
+  if(structure %in% c("diag", "id")){
+    contribution <- .bt_random_effect_independent_contribution_from_latent(
+      random_term = random_term,
+      model_matrix = model_matrix,
+      group_map = group_map,
+      posterior = .bt_JAGS_marglik_random_effect_posterior_row(samples),
+      column_scale_draws = matrix(sd_values, nrow = 1L)
+    )
+    if(is.null(contribution)){
+      stop(
+        "Bridge samples are missing standardized latent random effects for block '",
+        random_term$block_name,
+        "'.",
+        call. = FALSE
+      )
+    }
+    return(as.vector(contribution[, 1L]))
+  }
   L <- .bt_JAGS_marglik_random_effect_cholesky(
     samples = samples,
     random_term = random_term
@@ -412,6 +464,47 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
     cholesky = array(L, dim = c(1L, n_columns, n_columns))
   )
   as.vector(contribution[, 1L])
+}
+
+.bt_JAGS_marglik_random_effect_structured_local_value <- function(
+    samples, random_term, prior_list){
+
+  layout <- random_term$latent_layout
+  if(!all(layout$node_names %in% names(samples))){
+    stop(
+      "Bridge samples are missing group-local standardized latent random effects for block '",
+      random_term$block_name, "'.",
+      call. = FALSE
+    )
+  }
+  sd_values <- .bt_JAGS_marglik_random_effect_sd_values(
+    samples = samples,
+    random_term = random_term,
+    prior_list = prior_list
+  )
+  rho <- .bt_JAGS_marglik_random_effect_rho(samples, random_term)
+  coefficients <- vector("list", layout$n_groups)
+  for(group in seq_len(layout$n_groups)){
+    columns <- layout$group_columns[[group]]
+    names <- .bt_random_effect_structured_local_node_names(
+      parameter_stem = random_term$parameter_stem,
+      group = rep(group, length(columns)),
+      column = columns
+    )
+    unit <- .bt_random_effect_structured_subset_transform(
+      structure = layout$structure,
+      columns = columns,
+      latent = unname(samples[names]),
+      rho = rho,
+      global_n_columns = layout$global_n_columns,
+      column_coordinates = layout$column_coordinates
+    )
+    coefficients[[group]] <- unit * sd_values[columns]
+  }
+
+  vapply(seq_along(layout$row_column), function(row){
+    coefficients[[random_term$group_map[row]]][layout$row_local[row]]
+  }, numeric(1))
 }
 
 .bt_JAGS_marglik_check_random_effect_dirichlet_samples <- function(
@@ -503,41 +596,60 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
   n_groups <- random_term$n_groups
   n_columns <- random_term$n_columns
 
-  z_names <- .bt_random_effect_latent_names(
-    random_term = random_term,
-    n_groups = n_groups,
-    n_columns = n_columns
+  posterior <- .bt_JAGS_marglik_random_effect_posterior_row(samples)
+  structure <- .bt_random_effect_structure(
+    random_term,
+    context = "Bridge-sampling random-effect metadata"
   )
-  if(!all(as.vector(z_names) %in% names(samples))){
-    stop(
-      "Bridge samples are missing standardized latent random effects for block '",
-      random_term$block_name,
-      "'.",
-      call. = FALSE
+  unit_contribution <- NULL
+  unit_columns <- NULL
+  independent <- structure %in% c("diag", "id")
+  if(n_columns > 1L &&
+     structure %in% c("cs", "hcs", "ar1", "car", "har")){
+    unit_contribution <- .bt_random_effect_structured_contribution_from_latent(
+      random_term = random_term,
+      model_matrix = model_matrix,
+      group_map = group_map,
+      posterior = posterior,
+      scale_draws = matrix(1, nrow = 1L, ncol = n_columns)
     )
   }
-  z <- matrix(
-    unname(samples[as.vector(z_names)]),
-    nrow = n_groups,
-    ncol = n_columns
-  )
-  z_draws <- lapply(seq_len(n_columns), function(column){
-    matrix(z[, column], nrow = 1L)
-  })
+  if(is.null(unit_contribution) && !isTRUE(independent)){
+    z_names <- .bt_random_effect_latent_names(
+      random_term = random_term,
+      n_groups = n_groups,
+      n_columns = n_columns
+    )
+    if(!all(as.vector(z_names) %in% names(samples))){
+      stop(
+        "Bridge samples are missing standardized latent random effects for block '",
+        random_term$block_name,
+        "'.",
+        call. = FALSE
+      )
+    }
+    z <- matrix(
+      unname(samples[as.vector(z_names)]),
+      nrow = n_groups,
+      ncol = n_columns
+    )
+    z_draws <- lapply(seq_len(n_columns), function(column){
+      matrix(z[, column], nrow = 1L)
+    })
 
-  L <- .bt_JAGS_marglik_random_effect_cholesky(
-    samples = samples,
-    random_term = random_term
-  )
-  unit_columns <- .bt_random_effect_column_contributions_from_latent_draws(
-    model_matrix = model_matrix,
-    group_map = group_map,
-    z_draws = z_draws,
-    sd_draws = matrix(1, nrow = 1L, ncol = n_columns),
-    cholesky = array(L, dim = c(1L, n_columns, n_columns))
-  )
+    L <- .bt_JAGS_marglik_random_effect_cholesky(
+      samples = samples,
+      random_term = random_term
+    )
+    unit_columns <- .bt_random_effect_column_contributions_from_latent_draws(
+      model_matrix = model_matrix,
+      group_map = group_map,
+      z_draws = z_draws,
+      sd_draws = matrix(1, nrow = 1L, ncol = n_columns),
+      cholesky = array(L, dim = c(1L, n_columns, n_columns))
+    )
+  }
 
-  posterior <- .bt_JAGS_marglik_random_effect_posterior_row(samples)
   source_draws <- .bt_JAGS_marglik_row_indexed_external_sd_source_draws(
     random_term = random_term,
     n_rows = nrow(model_matrix),
@@ -567,6 +679,36 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
         "'."
       )
     }
+    if(isTRUE(independent)){
+      contribution <- .bt_random_effect_independent_contribution_from_latent(
+        random_term = random_term,
+        model_matrix = model_matrix,
+        group_map = group_map,
+        posterior = posterior,
+        column_scale_draws = column_allocation_draws,
+        row_scale_draws = source_draws
+      )
+      if(is.null(contribution)){
+        stop(
+          "Bridge samples are missing standardized latent random effects for block '",
+          random_term$block_name,
+          "'.",
+          call. = FALSE
+        )
+      }
+      return(as.vector(contribution[, 1L]))
+    }
+    if(!is.null(unit_contribution)){
+      row_column <- .bt_random_effect_structured_indicator_columns(
+        model_matrix,
+        context = "Bridge reconstruction for a row-indexed scalar-structured random effect"
+      )
+      return(as.vector(
+        unit_contribution[, 1L] *
+          source_draws[1L, ] *
+          column_allocation_draws[1L, row_column]
+      ))
+    }
     return(as.vector(.bt_random_effect_apply_row_indexed_source_to_unit_columns(
       unit_columns = unit_columns,
       source_draws = source_draws,
@@ -586,6 +728,33 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
     )
   }
 
+  if(isTRUE(independent)){
+    contribution <- .bt_random_effect_independent_contribution_from_latent(
+      random_term = random_term,
+      model_matrix = model_matrix,
+      group_map = group_map,
+      posterior = posterior,
+      row_scale_draws = source_draws,
+      draw_scale = allocation_draws
+    )
+    if(is.null(contribution)){
+      stop(
+        "Bridge samples are missing standardized latent random effects for block '",
+        random_term$block_name,
+        "'.",
+        call. = FALSE
+      )
+    }
+    return(as.vector(contribution[, 1L]))
+  }
+
+  if(!is.null(unit_contribution)){
+    return(as.vector(
+      unit_contribution[, 1L] *
+        source_draws[1L, ] *
+        allocation_draws[1L]
+    ))
+  }
   as.vector(.bt_random_effect_apply_row_indexed_source_to_unit_columns(
     unit_columns = unit_columns,
     source_draws = source_draws,
@@ -905,8 +1074,7 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
   L <- .bt_random_effect_cholesky_draws(
     random_term = random_term,
     n_columns = n_columns,
-    posterior = .bt_JAGS_marglik_random_effect_posterior_row(samples),
-    sample_space = TRUE
+    posterior = .bt_JAGS_marglik_random_effect_posterior_row(samples)
   )
   if(is.null(L)){
     if(.bt_JAGS_marglik_random_effect_correlation_sample_available(samples, random_term)){
@@ -973,7 +1141,6 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
   rho <- .bt_random_effect_rho_draws(
     random_term = random_term,
     posterior = .bt_JAGS_marglik_random_effect_posterior_row(samples),
-    sample_space = TRUE,
     context = "Bridge sampling random-effect metadata"
   )
   if(is.null(rho)){

@@ -503,6 +503,187 @@ test_that("JAGS_fit predicts observed random effects from latent monitors", {
   expect_true(all(is.finite(prediction)))
 })
 
+test_that("centered and noncentered fits preserve substantive output schemas", {
+
+  skip_if_not_installed("runjags")
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+
+  df <- data.frame(
+    y = c(-0.4, -0.1, 0.2, 0.5, 0.8, 0.1, 0.3, 0.6, 0.9, 1.1,
+          -0.3, 0, 0.1, 0.4, 0.7, 0.2, 0.5, 0.7, 1, 1.2),
+    index = factor(rep(c("i1", "i2"), 10L)),
+    id = factor(rep(paste0("g", seq_len(4L)), each = 5L))
+  )
+  fit_parameterization <- function(parameterization, seed){
+
+    suppressWarnings(JAGS_fit(
+      model_syntax = "model{
+        for(i in 1:N_mu){
+          y[i] ~ dnorm(mu[i], 4)
+        }
+      }",
+      data = list(y = df$y),
+      formula_list = list(mu = ~ 1 + cs(index | id)),
+      formula_data_list = list(mu = df),
+      formula_prior_list = list(mu = list(
+        intercept = prior("normal", list(0, 1))
+      )),
+      formula_random_prior_list = list(mu = prior_random(
+        id = random_block(
+          sd = prior("gamma", list(2, 2)),
+          rho = prior("normal", list(0, 0.5)),
+          parameterization = parameterization
+        )
+      )),
+      chains = 1,
+      adapt = 100,
+      burnin = 200,
+      sample = 400,
+      silent = TRUE,
+      seed = seed
+    ))
+  }
+
+  noncentered <- fit_parameterization("noncentered", 207)
+  centered    <- fit_parameterization("centered", 208)
+  noncentered_draws <- as.matrix(noncentered$mcmc)
+  centered_draws    <- as.matrix(centered$mcmc)
+  centered_term <- JAGS_formula_design(centered, "mu")$random_effects[[1L]]
+  sd_name       <- centered_term$sd_parameter_names[[1L]]
+  rho_name      <- centered_term$correlation$rho_name
+
+  expect_setequal(colnames(centered_draws), colnames(noncentered_draws))
+  expect_equal(
+    mean(centered_draws[, "mu_intercept"]),
+    mean(noncentered_draws[, "mu_intercept"]),
+    tolerance = 0.2
+  )
+  expect_equal(
+    mean(centered_draws[, sd_name]),
+    mean(noncentered_draws[, sd_name]),
+    tolerance = 0.25
+  )
+  expect_equal(
+    mean(centered_draws[, rho_name]),
+    mean(noncentered_draws[, rho_name]),
+    tolerance = 0.25
+  )
+  expect_identical(centered_term$parameterization_resolved, "centered")
+})
+
+test_that("group-local structured fits monitor only active latent cells", {
+
+  skip_if_not_installed("runjags")
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+
+  K <- 40L
+  df <- data.frame(
+    y = seq(-0.5, 0.5, length.out = K),
+    index = factor(
+      paste0("level_", seq_len(K)),
+      levels = paste0("level_", seq_len(K))
+    ),
+    id = factor(rep(paste0("group_", seq_len(8L)), length.out = K))
+  )
+  fit <- suppressWarnings(JAGS_fit(
+    model_syntax = "model{
+      for(i in 1:N_mu){
+        y[i] ~ dnorm(mu[i], 4)
+      }
+    }",
+    data = list(y = df$y),
+    formula_list = list(mu = ~ 1 + cs(index | id)),
+    formula_data_list = list(mu = df),
+    formula_prior_list = list(mu = list(
+      intercept = prior("normal", list(0, 1))
+    )),
+    formula_random_prior_list = list(mu = prior_random(
+      id = random_block(
+        sd = prior("point", list(location = 1)),
+        rho = prior("point", list(location = 0.2))
+      )
+    )),
+    chains = 1,
+    adapt = 50,
+    burnin = 50,
+    sample = 100,
+    silent = TRUE,
+    seed = 209
+  ))
+  term <- JAGS_formula_design(fit, "mu")$random_effects[[1L]]
+  posterior <- as.matrix(fit$mcmc)
+  z_names <- grep("_xRE_Zx[", colnames(posterior), fixed = TRUE, value = TRUE)
+
+  expect_s3_class(
+    term$latent_layout,
+    "BayesTools_random_effect_structured_local_layout"
+  )
+  expect_length(z_names, K)
+  expect_lt(length(z_names), term$n_groups * term$n_columns)
+  expect_false(any(grepl("_xRE_CORx_L[", colnames(posterior), fixed = TRUE)))
+  expect_false(any(grepl("_xRE_CORx_R[", colnames(posterior), fixed = TRUE)))
+
+  prediction <- JAGS_evaluate_formula(
+    fit = fit,
+    formula = ~ 1 + cs(index | id),
+    parameter = "mu",
+    data = df,
+    prior_list = attr(fit, "prior_list")
+  )
+  expect_equal(dim(prediction), c(K, nrow(posterior)))
+  expect_true(all(is.finite(prediction)))
+})
+
+test_that("JAGS transformed scalar rho remains representably inside support", {
+
+  skip_if_not_installed("runjags")
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+
+  df <- data.frame(
+    y = c(-0.2, 0.1, 0.4, -0.1, 0.2, 0.5),
+    index = factor(rep(c("i1", "i2", "i3"), 2L)),
+    id = factor(rep(c("g1", "g2"), each = 3L))
+  )
+  fit <- suppressWarnings(JAGS_fit(
+    model_syntax = "model{
+      for(i in 1:N_mu){
+        y[i] ~ dnorm(mu[i], 4)
+      }
+    }",
+    data = list(y = df$y),
+    formula_list = list(mu = ~ 1 + ar1(index | id)),
+    formula_data_list = list(mu = df),
+    formula_prior_list = list(mu = list(
+      intercept = prior("normal", list(0, 1))
+    )),
+    formula_random_prior_list = list(mu = prior_random(
+      id = random_block(
+        sd = prior("point", list(location = 1)),
+        rho = prior("point", list(location = 1e300))
+      )
+    )),
+    chains = 1,
+    adapt = 50,
+    burnin = 50,
+    sample = 100,
+    silent = TRUE,
+    seed = 210
+  ))
+  random_term <- JAGS_formula_design(fit, "mu")$random_effects[[1L]]
+  interior <- .bt_random_effect_representable_rho_bounds(
+    random_term$correlation$bounds,
+    random_term$structure
+  )
+  rho <- as.matrix(fit$mcmc)[, random_term$correlation$rho_name]
+
+  expect_true(all(is.finite(rho)))
+  expect_equal(unname(rho), rep(interior[["upper"]], length(rho)), tolerance = 0)
+  expect_lt(max(rho), random_term$correlation$bounds[["upper"]])
+})
+
 test_that("JAGS_fit predicts row-indexed external SD random effects from latent monitors", {
 
   skip_if_not_installed("runjags")

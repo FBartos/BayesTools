@@ -543,6 +543,19 @@ sleep_data <- list(Reaction_z = sleepstudy$Reaction_z, N = nrow(sleepstudy))
 
 Each random-effect term has a block name. If `name` is omitted, the block name is the sanitized grouping expression, so a single `(1 + Days | Subject)` block would be named `Subject`. With two or more random-effect blocks and `prior_random()`, BayesTools requires explicit block names. The explicit unstructured form `us(1 + Days | Subject, name = "Subject")` is equivalent to lme4's `(1 + Days | Subject)` but makes the prior-matching name visible.
 
+The sampled representation is a backend choice, not a different statistical
+model. `prior_random(parameterization = "noncentered")` is the default;
+`"centered"` samples realized group coefficients, and `"auto"` uses a
+deterministic design-based heuristic for each block. A block can override the
+global choice with `random_block(parameterization = ...)`. The SD, allocation,
+and correlation priors and the semantic posterior summaries are unchanged.
+Explicit centering requires strictly positive backend-owned SD coordinates;
+zero-mass scales, inclusion-gated allocations, and external or row-indexed SD
+sources require the noncentered representation. Scalar CS/HCS/AR1/HAR/CAR
+correlations are stored compactly as rho draws; use
+`random_effects_correlation_draws()` only when a dense draw-by-matrix array is
+actually needed.
+
 `formula_scale_list` standardizes predictors, not the response. The response standardization above makes unit-scale priors appropriate for the intercept, residual SD, and random-effect SDs. Priors for `Days` and its random-effect SD are specified on the fitted standardized-`Days` scale, and the summary functions backtransform them to the original day scale.
 
 ```{r, purl = FALSE}

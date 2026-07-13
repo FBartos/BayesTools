@@ -418,6 +418,43 @@
       n_columns = n_columns
     )
   }
+  structure <- .bt_random_effect_structure(
+    random_term,
+    context = "Random-effect prediction metadata"
+  )
+  if(structure %in% c("diag", "id")){
+    return(.bt_random_effect_group_contribution_sample_independent(
+      random_term = random_term,
+      model_matrix = model_matrix,
+      group_map = group_map,
+      rows = rows,
+      posterior = posterior,
+      column_scale_draws = sd_draws
+    ))
+  }
+  rho_draws <- if(n_columns > 1L &&
+                    structure %in% c("cs", "hcs", "ar1", "car", "har")){
+    .bt_random_effect_rho_draws(
+      random_term = random_term,
+      posterior = posterior,
+      missing = "null",
+      context = "Random-effect prediction metadata"
+    )
+  }else{
+    NULL
+  }
+  if(n_columns > 1L &&
+     structure %in% c("cs", "hcs", "ar1", "car", "har") &&
+     !is.null(rho_draws)){
+    return(.bt_random_effect_group_contribution_sample_structured(
+      random_term = random_term,
+      model_matrix = model_matrix,
+      group_map = group_map,
+      rows = rows,
+      posterior = posterior,
+      sd_draws = sd_draws
+    ))
+  }
   correlation <- .bt_random_effect_marginal_covariance_correlation_draws(
     random_term = random_term,
     n_columns = n_columns,
@@ -443,6 +480,182 @@
   }
 
   output
+}
+
+# Sample scalar-structured new groups from only their requested columns.
+.bt_random_effect_group_contribution_sample_structured <- function(
+    random_term,
+    model_matrix,
+    group_map,
+    rows,
+    posterior,
+    sd_draws){
+
+  n_draws   <- nrow(posterior)
+  n_rows    <- nrow(model_matrix)
+  n_columns <- ncol(model_matrix)
+  output    <- matrix(0, nrow = n_rows, ncol = n_draws)
+  structure <- .bt_random_effect_structure(
+    random_term,
+    context = "Random-effect prediction metadata"
+  )
+  rho_draws <- .bt_random_effect_rho_draws(
+    random_term = random_term,
+    posterior = posterior,
+    missing = "error",
+    out_of_support = "error",
+    context = "Random-effect prediction metadata"
+  )
+  column_coordinates <- if(identical(structure, "car")){
+    random_term$car$time_values
+  }else{
+    seq_len(n_columns)
+  }
+  coordinates <- .bt_random_effect_structured_local_coordinates(
+    structure = structure,
+    n_columns = n_columns,
+    column_coordinates = column_coordinates
+  )
+  for(rho in unique(rho_draws)){
+    .bt_random_effect_structured_local_check_rho(
+      structure = structure,
+      rho = rho,
+      global_n_columns = n_columns
+    )
+  }
+
+  groups <- sort(unique(group_map[rows]))
+  group_rows <- lapply(groups, function(group){
+    rows[group_map[rows] == group]
+  })
+  group_columns <- lapply(group_rows, function(group_rows_i){
+    columns <- unname(which(colSums(
+      model_matrix[group_rows_i, , drop = FALSE] != 0
+    ) > 0L))
+    columns[order(coordinates[columns], columns)]
+  })
+  nonempty <- lengths(group_columns) > 0L
+  if(!any(nonempty)){
+    return(output)
+  }
+
+  group_rows    <- group_rows[nonempty]
+  group_columns <- group_columns[nonempty]
+  subset_keys   <- vapply(group_columns, paste, collapse = ",", character(1))
+  unique_keys   <- unique(subset_keys)
+  subset_groups <- lapply(unique_keys, function(key) which(subset_keys == key))
+  subset_columns <- lapply(subset_groups, function(group_index){
+    group_columns[[group_index[1L]]]
+  })
+
+  for(draw in seq_len(n_draws)){
+    for(subset in seq_along(subset_columns)){
+      columns     <- subset_columns[[subset]]
+      group_index <- subset_groups[[subset]]
+      z <- matrix(
+        stats::rnorm(length(group_index) * length(columns)),
+        nrow = length(group_index),
+        ncol = length(columns)
+      )
+      effects <- matrix(NA_real_, nrow = length(group_index),
+                        ncol = length(columns))
+      for(index in seq_along(group_index)){
+        effects[index, ] <- .bt_random_effect_prediction_structured_subset_transform(
+          structure = structure,
+          columns = columns,
+          latent = z[index, ],
+          rho = rho_draws[draw],
+          coordinates = coordinates
+        )
+      }
+      effects <- sweep(
+        effects,
+        MARGIN = 2L,
+        STATS = sd_draws[draw, columns],
+        FUN = "*"
+      )
+
+      for(index in seq_along(group_index)){
+        group_position <- group_index[index]
+        rows_i <- group_rows[[group_position]]
+        output[rows_i, draw] <- drop(
+          model_matrix[rows_i, columns, drop = FALSE] %*%
+            effects[index, ]
+        )
+      }
+    }
+  }
+
+  output
+}
+
+# Sample independent new groups without an identity covariance decomposition.
+.bt_random_effect_group_contribution_sample_independent <- function(
+    random_term,
+    model_matrix,
+    group_map,
+    rows,
+    posterior,
+    column_scale_draws = NULL,
+    row_scale_draws = NULL,
+    draw_scale = NULL){
+
+  n_draws   <- nrow(posterior)
+  n_rows    <- nrow(model_matrix)
+  n_columns <- ncol(model_matrix)
+  output    <- matrix(0, nrow = n_rows, ncol = n_draws)
+  if(length(rows) == 0L){
+    return(output)
+  }
+
+  groups <- sort(unique(group_map[rows]))
+  group_index <- match(group_map[rows], groups)
+  for(draw in seq_len(n_draws)){
+    effects <- matrix(
+      stats::rnorm(length(groups) * n_columns),
+      nrow = length(groups),
+      ncol = n_columns
+    )
+    if(!is.null(column_scale_draws)){
+      effects <- sweep(
+        effects,
+        MARGIN = 2L,
+        STATS = column_scale_draws[draw, ],
+        FUN = "*"
+      )
+    }
+    contribution <- rowSums(
+      model_matrix[rows, , drop = FALSE] *
+        effects[group_index, , drop = FALSE]
+    )
+    if(!is.null(row_scale_draws)){
+      contribution <- contribution * row_scale_draws[draw, rows]
+    }
+    if(!is.null(draw_scale)){
+      contribution <- contribution * draw_scale[draw]
+    }
+    output[rows, draw] <- contribution
+  }
+
+  output
+}
+
+# Apply the exact scalar-structure recurrence to one validated principal subset.
+.bt_random_effect_prediction_structured_subset_transform <- function(
+    structure,
+    columns,
+    latent,
+    rho,
+    coordinates){
+
+  .bt_random_effect_structured_subset_transform(
+    structure = structure,
+    columns = columns,
+    latent = latent,
+    rho = rho,
+    global_n_columns = length(coordinates),
+    column_coordinates = coordinates
+  )
 }
 
 .bt_random_effect_group_contribution_sample_row_indexed <- function(
@@ -480,6 +693,70 @@
     )
   }else{
     allocation <- NULL
+  }
+  structure <- .bt_random_effect_structure(
+    random_term,
+    context = "Random-effect prediction metadata"
+  )
+  if(structure %in% c("diag", "id")){
+    if(is.null(column_allocation)){
+      return(.bt_random_effect_group_contribution_sample_independent(
+        random_term = random_term,
+        model_matrix = model_matrix,
+        group_map = group_map,
+        rows = rows,
+        posterior = posterior,
+        row_scale_draws = source_draws,
+        draw_scale = allocation
+      ))
+    }
+    return(.bt_random_effect_group_contribution_sample_independent(
+      random_term = random_term,
+      model_matrix = model_matrix,
+      group_map = group_map,
+      rows = rows,
+      posterior = posterior,
+      column_scale_draws = column_allocation,
+      row_scale_draws = source_draws
+    ))
+  }
+  rho_draws <- if(n_columns > 1L &&
+                    structure %in% c("cs", "hcs", "ar1", "car", "har")){
+    .bt_random_effect_rho_draws(
+      random_term = random_term,
+      posterior = posterior,
+      missing = "null",
+      context = "Random-effect prediction metadata"
+    )
+  }else{
+    NULL
+  }
+  if(n_columns > 1L &&
+     structure %in% c("cs", "hcs", "ar1", "car", "har") &&
+     !is.null(rho_draws)){
+    unit_contribution <- .bt_random_effect_group_contribution_sample_structured(
+      random_term = random_term,
+      model_matrix = model_matrix,
+      group_map = group_map,
+      rows = rows,
+      posterior = posterior,
+      sd_draws = matrix(1, nrow = n_draws, ncol = n_columns)
+    )
+    if(is.null(column_allocation)){
+      allocation_matrix <- matrix(
+        allocation,
+        nrow = n_rows,
+        ncol = n_draws,
+        byrow = TRUE
+      )
+    }else{
+      row_column <- .bt_random_effect_structured_indicator_columns(
+        model_matrix,
+        context = "Prediction for a row-indexed scalar-structured random effect"
+      )
+      allocation_matrix <- t(column_allocation[, row_column, drop = FALSE])
+    }
+    return(unit_contribution * t(source_draws) * allocation_matrix)
   }
   correlation <- .bt_random_effect_marginal_covariance_correlation_draws(
     random_term = random_term,

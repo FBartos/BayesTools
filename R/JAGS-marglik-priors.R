@@ -425,46 +425,115 @@ JAGS_marglik_priors_formula <- function(samples, formula_prior_list){
     return(0)
   }
 
-  correlation <- .bt_random_effect_correlation_metadata(
+  support_spec <- .bt_JAGS_random_effect_scalar_rho_support_spec(
     random_term,
     structure = structure,
     context = "Bridge sampling random-effect metadata"
   )
+
+  posterior <- .bt_JAGS_marglik_random_effect_posterior_row(samples)
+  correlation <- support_spec$correlation
+  rho_scale <- .bt_random_effect_rho_scale_metadata(
+    correlation,
+    random_term = random_term,
+    context = "Bridge sampling random-effect metadata"
+  )
+  source_name <- if(!identical(rho_scale, "rho") &&
+                    correlation$sample_name %in% colnames(posterior)){
+    correlation$sample_name
+  }else if(correlation$rho_name %in% colnames(posterior)){
+    correlation$rho_name
+  }else{
+    correlation$sample_name
+  }
+  if(source_name %in% colnames(posterior) &&
+     any(!is.finite(posterior[, source_name]))){
+    return(-Inf)
+  }
+
+  rho <- .bt_random_effect_rho_draws(
+    random_term = random_term,
+    posterior = posterior,
+    missing = "error",
+    out_of_support = "null",
+    context = "Bridge sampling random-effect metadata"
+  )
+  if(is.null(rho) || any(is.na(rho) | !is.finite(rho))){
+    return(-Inf)
+  }
+  if(any(.bt_random_effect_rho_outside_support(
+    rho,
+    bounds = support_spec$bounds,
+    structure = structure
+  ))){
+    return(-Inf)
+  }
+
+  0
+}
+
+.bt_JAGS_random_effect_scalar_rho_support_spec <- function(
+    random_term,
+    structure,
+    context = "Bridge sampling random-effect metadata"){
+
+  correlation <- .bt_random_effect_correlation_metadata(
+    random_term,
+    structure = structure,
+    context = context
+  )
   if(is.null(correlation) || !identical(correlation$type, "rho")){
     stop(
-      "Bridge sampling random-effect metadata",
+      context,
       .bt_random_effect_metadata_block_detail(random_term),
       " are missing canonical scalar 'random_term$correlation'.",
       call. = FALSE
     )
   }
 
-  rho <- .bt_random_effect_rho_draws(
+  bounds <- .bt_random_effect_rho_bounds_metadata(
+    correlation,
     random_term = random_term,
-    posterior = .bt_JAGS_marglik_random_effect_posterior_row(samples),
-    missing = "error",
-    out_of_support = "null",
-    sample_space = TRUE,
-    context = "Bridge sampling random-effect metadata"
+    context = context
   )
-  if(is.null(rho) || any(is.na(rho) | !is.finite(rho))){
-    return(-Inf)
-  }
-
-  R <- .bt_random_effect_structured_correlation_matrix(
-    structure = structure,
+  exact_bounds <- .bt_random_effect_structured_rho_bounds(
     K = random_term$n_columns,
-    rho = rho[1L],
-    distance_matrix = if(identical(structure, "car")) correlation$distance_matrix else NULL
+    structure = structure
   )
-  chol_ok <- tryCatch({
-    chol(R)
-    TRUE
-  }, error = function(e) FALSE)
-  if(!chol_ok){
-    return(-Inf)
+  bounds_values <- as.numeric(bounds[c("lower", "upper")])
+  if(!isTRUE(all.equal(
+    bounds_values,
+    as.numeric(exact_bounds),
+    tolerance = 1e-12,
+    check.attributes = FALSE
+  ))){
+    stop(
+      context,
+      .bt_random_effect_metadata_block_detail(random_term),
+      " contain scalar correlation bounds that do not match the exact ",
+      toupper(structure),
+      " support.",
+      call. = FALSE
+    )
   }
 
-  0
+  if(identical(structure, "car")){
+    time_values <- correlation$time_values
+    if(!is.numeric(time_values) || length(time_values) != random_term$n_columns ||
+       any(!is.finite(time_values)) || anyDuplicated(time_values) ||
+       any(diff(time_values) <= 0)){
+      stop(
+        context,
+        .bt_random_effect_metadata_block_detail(random_term),
+        " are missing canonical ordered CAR time coordinates.",
+        call. = FALSE
+      )
+    }
+  }
+
+  list(
+    correlation = correlation,
+    bounds = exact_bounds
+  )
 }
 

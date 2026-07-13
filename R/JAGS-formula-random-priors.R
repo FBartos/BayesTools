@@ -291,6 +291,117 @@
   )
 }
 
+# Compile a scalar structured-correlation prior without materializing a dense
+# Cholesky factor. Dense correlation entries are optional derived nodes.
+.bt_JAGS_structured_corr_direct <- function(node_prefix, prior_prefix, K,
+                                            structure, block_prior,
+                                            include_correlation = FALSE,
+                                            require_rho = FALSE,
+                                            distance_matrix = NULL){
+
+  check_char(node_prefix, "node_prefix", allow_NA = FALSE)
+  check_char(prior_prefix, "prior_prefix", allow_NA = FALSE)
+  check_int(K, "K", lower = 1, allow_NA = FALSE)
+  check_char(
+    structure,
+    "structure",
+    allow_values = c("cs", "hcs", "ar1", "car", "har"),
+    allow_NA = FALSE
+  )
+  check_bool(include_correlation, "include_correlation", allow_NA = FALSE)
+  check_bool(require_rho, "require_rho", allow_NA = FALSE)
+  if(identical(structure, "car") && isTRUE(include_correlation)){
+    distance_matrix <- .bt_random_effect_validate_car_distance_matrix(
+      distance_matrix,
+      K
+    )
+  }
+
+  R_name   <- paste0(node_prefix, "_xRE_CORx_R")
+  rho_name <- paste0(node_prefix, "_rho")
+  syntax   <- paste0("# Direct structured random-effect correlation: ", structure)
+
+  if(K == 1L){
+    if(!is.null(block_prior$covariance) && !is.null(block_prior$covariance$rho)){
+      stop(
+        "Single-column random-effect structure '", structure,
+        "' has no correlation parameter; remove the 'rho' prior.",
+        call. = FALSE
+      )
+    }
+    if(isTRUE(include_correlation)){
+      syntax <- c(syntax, paste0(R_name, "[1,1] <- 1"))
+    }
+    return(list(
+      syntax = paste0(paste(syntax, collapse = "\n"), "\n"),
+      prior_list = list(),
+      monitor = if(isTRUE(include_correlation)) R_name else character(),
+      cholesky_name = NULL,
+      correlation_name = if(isTRUE(include_correlation)) R_name else NULL,
+      rho_name = NULL,
+      bridge = NULL
+    ))
+  }
+
+  rho_info <- .bt_random_effect_structured_rho_prior(
+    prior_prefix = prior_prefix,
+    node_prefix = node_prefix,
+    K = K,
+    structure = structure,
+    block_prior = block_prior,
+    require_rho = require_rho
+  )
+  syntax <- c(syntax, rho_info$syntax)
+
+  if(isTRUE(include_correlation)){
+    for(row in seq_len(K)){
+      for(column in seq_len(K)){
+        expression <- if(row == column){
+          "1"
+        }else if(structure %in% c("cs", "hcs")){
+          rho_name
+        }else if(identical(structure, "car")){
+          paste0(
+            "pow(", rho_name, ", ",
+            .bt_JAGS_numeric_literal(distance_matrix[row, column]), ")"
+          )
+        }else{
+          paste0("pow(", rho_name, ", ", abs(row - column), ")")
+        }
+        syntax <- c(
+          syntax,
+          paste0(R_name, "[", row, ",", column, "] <- ", expression)
+        )
+      }
+    }
+  }
+
+  list(
+    syntax = paste0(paste(syntax, collapse = "\n"), "\n"),
+    prior_list = rho_info$prior_list,
+    monitor = unique(c(
+      rho_info$monitor,
+      if(isTRUE(include_correlation)) R_name else character()
+    )),
+    cholesky_name = NULL,
+    correlation_name = if(isTRUE(include_correlation)) R_name else NULL,
+    rho_name = rho_name,
+    bridge = list(
+      type = "rho",
+      structure = structure,
+      rho_name = rho_name,
+      sample_name = rho_info$sample_name,
+      prior_name = rho_info$prior_name,
+      sample_fixed = rho_info$sample_fixed,
+      rho_scale = rho_info$rho_scale,
+      bounds = rho_info$bounds,
+      distance_matrix = if(identical(structure, "car")) distance_matrix else NULL,
+      cholesky_name = NULL,
+      correlation_name = if(isTRUE(include_correlation)) R_name else NULL
+    )
+  )
+}
+
 .bt_random_effect_validate_car_distance_matrix <- function(distance_matrix, K){
 
   if(is.null(distance_matrix)){
@@ -325,7 +436,7 @@
     stop("JAGS numeric literal must be finite.", call. = FALSE)
   }
 
-  format(x, scientific = FALSE, trim = TRUE, digits = 15)
+  format(x, scientific = FALSE, trim = TRUE, digits = 17)
 }
 
 .bt_JAGS_cholesky_crossprod_sum <- function(L_name, row, column, n_terms){
@@ -363,6 +474,10 @@
   }
 
   bounds <- .bt_random_effect_structured_rho_bounds(K = K, structure = structure)
+  interior_bounds <- .bt_random_effect_representable_rho_bounds(
+    bounds,
+    structure
+  )
   rho_name <- paste0(node_prefix, "_rho")
   syntax <- character()
   monitor <- character()
@@ -381,14 +496,22 @@
     )
     prior_name <- paste0(prior_prefix, "_rho_z")
     sample_name <- paste0(node_prefix, "_rho_z")
-    syntax <- c(syntax, paste0(rho_name, " <- 2 * ilogit(2 * ", node_prefix, "_rho_z) - 1"))
+    syntax <- c(syntax, paste0(
+      rho_name, " <- max(",
+      .bt_JAGS_numeric_literal(interior_bounds[["lower"]]), ", min(",
+      .bt_JAGS_numeric_literal(interior_bounds[["upper"]]), ", 2 * ilogit(2 * ",
+      sample_name, ") - 1))"
+    ))
     monitor <- rho_name
   }else if(identical(rho_scale, "logit")){
     prior_name <- paste0(prior_prefix, "_rho_logit")
     sample_name <- paste0(node_prefix, "_rho_logit")
     syntax <- c(syntax, paste0(
-      rho_name, " <- ", .bt_JAGS_numeric_literal(bounds[["lower"]]), " + ",
-      .bt_JAGS_numeric_literal(bounds[["upper"]] - bounds[["lower"]]),
+      rho_name, " <- ",
+      .bt_JAGS_numeric_literal(interior_bounds[["lower"]]), " + ",
+      .bt_JAGS_numeric_literal(
+        interior_bounds[["upper"]] - interior_bounds[["lower"]]
+      ),
       " * ilogit(", sample_name, ")"
     ))
     monitor <- rho_name

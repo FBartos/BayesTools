@@ -988,6 +988,34 @@ random_effects_marginal_variance_factors <- function(
     ))
   }
 
+  structure <- .bt_random_effect_structure(
+    random_term,
+    context = "Random-effect marginal covariance metadata"
+  )
+  if(structure %in% c("diag", "id")){
+    return(.bt_random_effect_marginal_covariance_independent(
+      model_matrix = model_matrix,
+      group_map = group_map,
+      n_draws = nrow(posterior),
+      column_scale_draws = sd_draws
+    ))
+  }
+
+  row_column <- .bt_random_effect_marginal_covariance_structured_columns(
+    random_term = random_term,
+    model_matrix = model_matrix
+  )
+  if(!is.null(row_column)){
+    return(.bt_random_effect_marginal_covariance_structured_one_hot(
+      random_term = random_term,
+      model_matrix = model_matrix,
+      group_map = group_map,
+      posterior = posterior,
+      row_column = row_column,
+      row_sd = sd_draws[, row_column, drop = FALSE]
+    ))
+  }
+
   correlation <- .bt_random_effect_marginal_covariance_correlation_draws(
     random_term = random_term,
     n_columns = n_columns,
@@ -1132,12 +1160,6 @@ random_effects_marginal_variance_factors <- function(
     )
   }
 
-  correlation <- .bt_random_effect_marginal_covariance_correlation_draws(
-    random_term = random_term,
-    n_columns = n_columns,
-    posterior = posterior
-  )
-
   if(is.null(column_allocation)){
     row_weights <- source_draws *
       matrix(allocation, nrow = n_draws, ncol = n_rows)
@@ -1147,6 +1169,46 @@ random_effects_marginal_variance_factors <- function(
     column_weights <- column_allocation
   }
 
+  structure <- .bt_random_effect_structure(
+    random_term,
+    context = "Random-effect marginal covariance metadata"
+  )
+  if(structure %in% c("diag", "id")){
+    return(.bt_random_effect_marginal_covariance_independent(
+      model_matrix = model_matrix,
+      group_map = group_map,
+      n_draws = n_draws,
+      column_scale_draws = column_weights,
+      row_scale_draws = row_weights
+    ))
+  }
+
+  row_column <- .bt_random_effect_marginal_covariance_structured_columns(
+    random_term = random_term,
+    model_matrix = model_matrix
+  )
+  if(!is.null(row_column)){
+    row_sd <- if(is.null(column_allocation)){
+      row_weights
+    }else{
+      source_draws * column_allocation[, row_column, drop = FALSE]
+    }
+    return(.bt_random_effect_marginal_covariance_structured_one_hot(
+      random_term = random_term,
+      model_matrix = model_matrix,
+      group_map = group_map,
+      posterior = posterior,
+      row_column = row_column,
+      row_sd = row_sd
+    ))
+  }
+
+  correlation <- .bt_random_effect_marginal_covariance_correlation_draws(
+    random_term = random_term,
+    n_columns = n_columns,
+    posterior = posterior
+  )
+
   list(
     samples = .bt_random_effect_marginal_covariance_expand(
       model_matrix = model_matrix,
@@ -1155,6 +1217,93 @@ random_effects_marginal_variance_factors <- function(
       row_weights = row_weights,
       column_weights = column_weights
     ),
+    sample_dim = c(n_draws, n_rows, n_rows)
+  )
+}
+
+.bt_random_effect_marginal_covariance_structured_columns <- function(
+    random_term, model_matrix){
+
+  structure <- .bt_random_effect_structure(
+    random_term,
+    context = "Random-effect marginal covariance metadata"
+  )
+  if(!structure %in% c("cs", "hcs", "ar1", "car", "har")){
+    return(NULL)
+  }
+  nonzero <- abs(model_matrix) > sqrt(.Machine$double.eps)
+  if(any(rowSums(nonzero) != 1L)){
+    return(NULL)
+  }
+  row_column <- max.col(nonzero, ties.method = "first")
+  selected <- model_matrix[cbind(seq_len(nrow(model_matrix)), row_column)]
+  if(any(abs(selected - 1) > sqrt(.Machine$double.eps))){
+    return(NULL)
+  }
+
+  row_column
+}
+
+.bt_random_effect_marginal_covariance_structured_one_hot <- function(
+    random_term, model_matrix, group_map, posterior, row_column, row_sd){
+
+  structure <- .bt_random_effect_structure(
+    random_term,
+    context = "Random-effect marginal covariance metadata"
+  )
+  rho <- .bt_random_effect_rho_draws(
+    random_term = random_term,
+    posterior = posterior,
+    missing = "error",
+    out_of_support = "error",
+    context = "Random-effect marginal covariance metadata"
+  )
+  n_draws <- nrow(posterior)
+  n_rows  <- nrow(model_matrix)
+  if(!is.matrix(row_sd) || !identical(dim(row_sd), c(n_draws, n_rows)) ||
+     any(!is.finite(row_sd)) || any(row_sd < 0)){
+    stop(
+      "Random-effect marginal covariance row SD draws for block '",
+      random_term$block_name,
+      "' do not match the structured one-hot design.",
+      call. = FALSE
+    )
+  }
+
+  exponent <- if(structure %in% c("cs", "hcs")){
+    outer(row_column, row_column, "!=") * 1
+  }else if(identical(structure, "car")){
+    time_values <- random_term$car$time_values
+    if(!is.numeric(time_values) || length(time_values) != ncol(model_matrix) ||
+       any(!is.finite(time_values))){
+      stop(
+        "Random-effect marginal covariance metadata for CAR block '",
+        random_term$block_name,
+        "' are missing canonical time coordinates.",
+        call. = FALSE
+      )
+    }
+    abs(outer(time_values[row_column], time_values[row_column], "-"))
+  }else{
+    abs(outer(row_column, row_column, "-"))
+  }
+  same_group <- outer(group_map, group_map, "==")
+  row_names <- rownames(model_matrix)
+  if(is.null(row_names)){
+    row_names <- as.character(seq_len(n_rows))
+  }
+  out <- array(
+    0,
+    dim = c(n_draws, n_rows, n_rows),
+    dimnames = list(draw = NULL, row = row_names, column = row_names)
+  )
+  for(draw in seq_len(n_draws)){
+    out[draw, , ] <- same_group * rho[draw]^exponent *
+      tcrossprod(row_sd[draw, ])
+  }
+
+  list(
+    samples = out,
     sample_dim = c(n_draws, n_rows, n_rows)
   )
 }
@@ -1260,6 +1409,50 @@ random_effects_marginal_variance_factors <- function(
   }
 
   out
+}
+
+# Expand independent random effects through their weighted design directly.
+.bt_random_effect_marginal_covariance_independent <- function(
+    model_matrix,
+    group_map,
+    n_draws,
+    column_scale_draws = NULL,
+    row_scale_draws = NULL){
+
+  n_rows    <- nrow(model_matrix)
+  n_columns <- ncol(model_matrix)
+  row_names <- rownames(model_matrix)
+  if(is.null(row_names)){
+    row_names <- as.character(seq_len(n_rows))
+  }
+  out <- array(
+    0,
+    dim = c(n_draws, n_rows, n_rows),
+    dimnames = list(draw = NULL, row = row_names, column = row_names)
+  )
+  rows_by_group <- split(seq_len(n_rows), group_map)
+  for(draw in seq_len(n_draws)){
+    for(rows in rows_by_group){
+      Z <- model_matrix[rows, , drop = FALSE]
+      if(!is.null(column_scale_draws)){
+        Z <- sweep(
+          Z,
+          MARGIN = 2L,
+          STATS = column_scale_draws[draw, ],
+          FUN = "*"
+        )
+      }
+      if(!is.null(row_scale_draws)){
+        Z <- Z * row_scale_draws[draw, rows]
+      }
+      out[draw, rows, rows] <- tcrossprod(Z)
+    }
+  }
+
+  list(
+    samples = out,
+    sample_dim = c(n_draws, n_rows, n_rows)
+  )
 }
 
 .bt_random_effect_marginal_covariance_missing_sd_stop <- function(random_term,

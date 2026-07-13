@@ -20,7 +20,8 @@ prior_random(
   rho = NULL,
   monitor = random_monitor(),
   new_levels = random_new_levels(),
-  allocation = NULL
+  allocation = NULL,
+  parameterization = "noncentered"
 )
 
 random_block(
@@ -32,7 +33,8 @@ random_block(
   new_levels = NULL,
   allocation = NULL,
   terms = NULL,
-  sd_source = NULL
+  sd_source = NULL,
+  parameterization = NULL
 )
 
 random_term(
@@ -44,7 +46,8 @@ random_term(
   new_levels = NULL,
   allocation = NULL,
   terms = NULL,
-  sd_source = NULL
+  sd_source = NULL,
+  parameterization = NULL
 )
 
 random_variance_allocation(
@@ -104,6 +107,10 @@ previously unseen grouping levels.}
 a list of such specifications, defining total-SD plus Dirichlet variance
 allocation across named random-effect blocks. Block-local allocation is
 reserved for a future release.}
+
+\item{parameterization}{requested sampled random-effect parameterization:
+\code{"noncentered"}, \code{"centered"}, or \code{"auto"}. The top-level value is
+inherited by blocks without an explicit \code{random_block()} override.}
 
 \item{terms}{for \code{random_block()}, an optional named list of term-specific
 SD overrides. Each entry must be either a prior object or
@@ -177,7 +184,10 @@ Required for bridge sampling and coefficient reconstruction.}
 \item{coefficients}{whether to monitor realized group-level coefficients.
 This is convenient for inspection but can be memory intensive.}
 
-\item{correlation}{whether to monitor correlation matrices.}
+\item{correlation}{whether correlation matrices are part of the semantic
+monitored output. Scalar CS/HCS/AR1/HAR/CAR backends retain only \code{rho}
+during sampling and derive the requested matrix afterward; this avoids a
+quadratic JAGS graph without changing the correlation target.}
 
 \item{lkj_primitives}{whether to monitor user-facing LKJ primitive beta
 coordinates. For formula \code{us} random effects, raw LKJ primitive \code{u}
@@ -321,6 +331,23 @@ new levels. \code{method = "zero"} assigns zero random-effect contribution to ne
 levels and \code{method = "sample"} draws new group-level coefficients from the
 fitted random-effect distribution during draw-valued prediction or integrates
 them through the block covariance for covariance-valued prediction.
+}
+
+\section{Parameterization}{
+
+\code{parameterization} controls how sampled random-effect blocks are represented
+by the computational backend. \code{"noncentered"} retains standardized latent
+effects, \code{"centered"} samples realized group-level coefficients, and
+\code{"auto"} lets the backend choose a supported representation from the
+resolved block design. Its deterministic heuristic uses within-group
+replication and design conditioning; it does not inspect outcome-specific
+likelihood curvature. The choice does not change the SD, allocation, or
+correlation priors. Block-specific values supplied through \code{random_block()}
+override the top-level default. Explicit \code{"centered"} compilation requires
+strictly positive backend-owned SD coordinates and therefore rejects
+point-mass-at-zero scales, inclusion-gated variance allocations, and external
+or row-indexed SD sources. \code{"auto"} falls back to \code{"noncentered"} when those
+contracts or its design-information checks do not support centering.
 }
 
 \examples{

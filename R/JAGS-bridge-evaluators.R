@@ -620,22 +620,11 @@
     return(function(samples) 0)
   }
 
-  correlation <- .bt_random_effect_correlation_metadata(
+  support_spec <- .bt_JAGS_random_effect_scalar_rho_support_spec(
     random_term,
     structure = structure,
     context = "Bridge sampling random-effect metadata"
   )
-  if(is.null(correlation) || !identical(correlation$type, "rho")){
-    stop(
-      "Bridge sampling random-effect metadata",
-      .bt_random_effect_metadata_block_detail(random_term),
-      " are missing canonical scalar 'random_term$correlation'.",
-      call. = FALSE
-    )
-  }
-
-  K <- random_term$n_columns
-  distance_matrix <- if(identical(structure, "car")) correlation$distance_matrix else NULL
 
   function(samples){
     rho <- .bt_random_effect_rho_draws(
@@ -643,24 +632,16 @@
       posterior = .bt_JAGS_marglik_random_effect_posterior_row(samples),
       missing = "error",
       out_of_support = "null",
-      sample_space = TRUE,
       context = "Bridge sampling random-effect metadata"
     )
     if(is.null(rho) || any(is.na(rho) | !is.finite(rho))){
       return(-Inf)
     }
-
-    R <- .bt_random_effect_structured_correlation_matrix(
-      structure = structure,
-      K = K,
-      rho = rho[1L],
-      distance_matrix = distance_matrix
-    )
-    chol_ok <- tryCatch({
-      chol(R)
-      TRUE
-    }, error = function(e) FALSE)
-    if(!chol_ok){
+    if(any(.bt_random_effect_rho_outside_support(
+      rho,
+      bounds = support_spec$bounds,
+      structure = structure
+    ))){
       return(-Inf)
     }
 

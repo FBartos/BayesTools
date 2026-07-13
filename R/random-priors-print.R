@@ -230,6 +230,9 @@
   if(!is.null(x$new_levels)){
     lines <- c(lines, paste0("new_levels: ", x$new_levels$method))
   }
+  if(!is.null(x$parameterization)){
+    lines <- c(lines, paste0("parameterization: ", x$parameterization))
+  }
 
   if(length(lines) == 0L && isTRUE(include_empty)){
     lines <- "inherits defaults"
@@ -440,6 +443,9 @@
   }
   if(!.bt_random_new_levels_is_default(x$new_levels)){
     lines <- c(lines, paste0("new_levels: ", x$new_levels$method))
+  }
+  if(!identical(x$parameterization, "noncentered")){
+    lines <- c(lines, paste0("parameterization: ", x$parameterization))
   }
   if(length(lines) == 0L){
     return(character())

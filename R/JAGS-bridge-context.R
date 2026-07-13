@@ -450,15 +450,38 @@
   posterior <- .bt_JAGS_marglik_random_effect_posterior_row(samples)
   n_columns <- random_term$n_columns
   structure <- .bt_JAGS_bridge_random_term_structure(random_term)
-  cholesky <- .bt_JAGS_marglik_random_effect_cholesky(
-    samples = samples,
-    random_term = random_term
+  rho <- if(n_columns > 1L &&
+            structure %in% c("cs", "hcs", "ar1", "car", "har")){
+    .bt_JAGS_bridge_context_random_rho(
+      random_term = random_term,
+      posterior = posterior
+    )
+  }else{
+    NULL
+  }
+  layout <- random_term$latent_layout
+  group_local <- inherits(
+    layout,
+    "BayesTools_random_effect_structured_local_layout"
   )
-  correlation <- tcrossprod(cholesky)
-  rho <- .bt_JAGS_bridge_context_random_rho(
-    random_term = random_term,
-    posterior = posterior
-  )
+  scalar_structure <- n_columns > 1L &&
+    structure %in% c("cs", "hcs", "ar1", "car", "har") &&
+    !is.null(rho)
+  independent <- n_columns > 1L && structure %in% c("diag", "id")
+  compact_correlation <- isTRUE(group_local) || isTRUE(scalar_structure) ||
+    isTRUE(independent)
+  if(isTRUE(compact_correlation)){
+    cholesky <- NULL
+    correlation <- NULL
+    correlation_blocks <- NULL
+  }else{
+    cholesky <- .bt_JAGS_marglik_random_effect_cholesky(
+      samples = samples,
+      random_term = random_term
+    )
+    correlation <- tcrossprod(cholesky)
+    correlation_blocks <- NULL
+  }
   allocation <- .bt_JAGS_bridge_context_random_allocation(
     random_term = random_term,
     posterior = posterior,
@@ -495,7 +518,29 @@
     correlation = list(
       rho = rho,
       cholesky = cholesky,
-      matrix = correlation
+      matrix = correlation,
+      blocks = correlation_blocks,
+      block_columns = NULL,
+      structure = if(isTRUE(group_local)) layout$structure else if(
+        isTRUE(scalar_structure)
+      ) {
+        structure
+      } else if(isTRUE(independent)) {
+        structure
+      } else {
+        NULL
+      },
+      column_coordinates = if(isTRUE(group_local)) {
+        layout$column_coordinates
+      } else if(isTRUE(scalar_structure) && identical(structure, "car")) {
+        random_term$car$time_values
+      } else if(isTRUE(scalar_structure)) {
+        seq_len(n_columns)
+      } else if(isTRUE(independent)) {
+        seq_len(n_columns)
+      } else {
+        NULL
+      }
     ),
     group_covariance = group_covariance,
     covariance = NULL,
@@ -547,7 +592,11 @@
   names(sd_values) <- column_names
   out$scale$type <- "column"
   out$scale$column_sd <- sd_values
-  out$covariance <- correlation * tcrossprod(sd_values)
+  if(isTRUE(compact_correlation)){
+    out$covariance <- NULL
+  }else{
+    out$covariance <- correlation * tcrossprod(sd_values)
+  }
   sd_nodes <- .bt_JAGS_bridge_context_random_sd_nodes(
     random_term = random_term,
     sd_values = sd_values
@@ -564,7 +613,6 @@
     posterior = posterior,
     missing = "null",
     out_of_support = "error",
-    sample_space = TRUE,
     context = "Bridge context random-effect metadata"
   )
   if(is.null(rho)){
@@ -629,11 +677,27 @@
     return(NULL)
   }
 
-  z <- matrix(
-    unname(samples[as.vector(z_names)]),
-    nrow = random_term$n_groups,
-    ncol = random_term$n_columns
-  )
+  layout <- random_term$latent_layout
+  if(inherits(layout, "BayesTools_random_effect_structured_local_layout")){
+    z <- list(
+      values = unname(samples[as.vector(z_names)]),
+      node_names = as.vector(z_names),
+      group = layout$local_group,
+      column = layout$local_column,
+      dimensions = c(
+        n_groups = random_term$n_groups,
+        n_columns = random_term$n_columns
+      )
+    )
+    class(z) <- c("BayesTools_group_local_latent", "list")
+    return(z)
+  }else{
+    z <- matrix(
+      unname(samples[as.vector(z_names)]),
+      nrow = random_term$n_groups,
+      ncol = random_term$n_columns
+    )
+  }
   dimnames(z) <- list(
     group = random_term$group_levels,
     column = .bt_JAGS_bridge_context_random_column_names(random_term)

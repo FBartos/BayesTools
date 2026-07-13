@@ -345,6 +345,16 @@
       block = block
     )
   }
+  if(!identical(fitted$parameterization_requested,
+                rebuilt$parameterization_requested) ||
+     !identical(fitted$parameterization_resolved,
+                rebuilt$parameterization_resolved)){
+    .bt_JAGS_bridge_random_design_mismatch(
+      parameter,
+      "random-effect parameterization differs",
+      block = block
+    )
+  }
   if(!.bt_JAGS_bridge_metadata_equal(
     .bt_JAGS_bridge_group_covariance_metadata(fitted),
     .bt_JAGS_bridge_group_covariance_metadata(rebuilt)
@@ -355,8 +365,38 @@
       block = block
     )
   }
+  if(!.bt_JAGS_bridge_metadata_equal(
+    .bt_JAGS_bridge_latent_layout_metadata(fitted),
+    .bt_JAGS_bridge_latent_layout_metadata(rebuilt)
+  )){
+    .bt_JAGS_bridge_random_design_mismatch(
+      parameter,
+      "random-effect latent layout differs",
+      block = block
+    )
+  }
 
   invisible(TRUE)
+}
+
+.bt_JAGS_bridge_latent_layout_metadata <- function(random_term){
+
+  layout <- random_term$latent_layout
+  if(is.null(layout)){
+    return(NULL)
+  }
+  list(
+    type = layout$type,
+    structure = layout$structure,
+    global_n_columns = layout$global_n_columns,
+    n_groups = layout$n_groups,
+    n_local = layout$n_local,
+    group_columns = layout$group_columns,
+    row_column = layout$row_column,
+    row_local = layout$row_local,
+    column_coordinates = layout$column_coordinates,
+    node_names = layout$node_names
+  )
 }
 
 .bt_JAGS_bridge_random_term_structure <- function(random_term){

@@ -218,6 +218,257 @@ test_that("conditional target handles new levels by explicit policy", {
   )
 })
 
+test_that("structured new-level sampling uses only requested column subsets", {
+
+  factor_levels <- sprintf("level_%03d", seq_len(113L))
+  group_levels  <- sprintf("group_%02d", seq_len(17L))
+  df <- data.frame(
+    f = factor(factor_levels, levels = factor_levels),
+    id = factor(rep(group_levels, length.out = length(factor_levels)),
+                levels = group_levels)
+  )
+  sd_prior <- prior(
+    "normal",
+    list(mean = 0, sd = 1),
+    truncation = list(lower = 0, upper = Inf)
+  )
+  result <- JAGS_formula(
+    formula = ~ 1 + cs(f | id),
+    parameter = "mu",
+    data = df,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(
+        sd = sd_prior,
+        rho = prior("normal", list(0, 0.5))
+      )
+    )
+  )
+  random_term <- result$formula_design$random_effects[[1L]]
+  sd_name     <- unique(random_term$sd_parameter_names)
+  rho_name    <- random_term$correlation$rho_name
+  posterior <- cbind(
+    mu_intercept = c(10, 20),
+    sd = c(2, 3),
+    rho = c(-0.005, 0.4)
+  )
+  colnames(posterior)[2:3] <- c(sd_name, rho_name)
+  fit <- coda::mcmc(posterior)
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+
+  new_data <- data.frame(
+    f = factor(
+      factor_levels[c(2L, 113L, 2L, 50L, 113L)],
+      levels = factor_levels
+    ),
+    id = factor(
+      c("new_1", "new_1", "new_1", "new_2", "new_2"),
+      levels = c(group_levels, "new_1", "new_2")
+    )
+  )
+
+  subset_cholesky <- BayesTools:::.bt_random_effect_structured_subset_cholesky
+  prediction_subset_transform <-
+    BayesTools:::.bt_random_effect_prediction_structured_subset_transform
+  requested_columns <- list()
+  testthat::local_mocked_bindings(
+    .bt_random_effect_marginal_covariance_correlation_draws = function(...){
+      stop("global correlation materialized", call. = FALSE)
+    },
+    .bt_random_effect_prediction_structured_subset_transform = function(
+        structure, columns, latent, rho, coordinates){
+
+      requested_columns[[length(requested_columns) + 1L]] <<- columns
+      prediction_subset_transform(
+        structure = structure,
+        columns = columns,
+        latent = latent,
+        rho = rho,
+        coordinates = coordinates
+      )
+    },
+    .package = "BayesTools"
+  )
+
+  set.seed(812)
+  prediction <- JAGS_evaluate_formula(
+    fit = fit,
+    parameter = "mu",
+    data = new_data,
+    prior_list = result$prior_list,
+    formula_target = "conditional",
+    new_levels = "sample"
+  )
+
+  set.seed(812)
+  expected_random <- matrix(0, nrow = nrow(new_data), ncol = nrow(posterior))
+  for(draw in seq_len(nrow(posterior))){
+    L_1 <- subset_cholesky(
+      structure = "cs",
+      columns = c(2L, 113L),
+      rho = posterior[draw, rho_name],
+      global_n_columns = length(factor_levels),
+      column_coordinates = seq_along(factor_levels)
+    )
+    effect_1 <- drop(L_1 %*% stats::rnorm(2L)) * posterior[draw, sd_name]
+    expected_random[1:3, draw] <- effect_1[c(1L, 2L, 1L)]
+
+    L_2 <- subset_cholesky(
+      structure = "cs",
+      columns = c(50L, 113L),
+      rho = posterior[draw, rho_name],
+      global_n_columns = length(factor_levels),
+      column_coordinates = seq_along(factor_levels)
+    )
+    effect_2 <- drop(L_2 %*% stats::rnorm(2L)) * posterior[draw, sd_name]
+    expected_random[4:5, draw] <- effect_2
+  }
+  expected <- expected_random + matrix(
+    posterior[, "mu_intercept"],
+    nrow = nrow(new_data),
+    ncol = nrow(posterior),
+    byrow = TRUE
+  )
+
+  expect_equal(unname(prediction), unname(expected), tolerance = 1e-12)
+  expect_equal(
+    requested_columns,
+    rep(list(c(2L, 113L), c(50L, 113L)), nrow(posterior))
+  )
+  expect_lt(max(lengths(requested_columns)), length(factor_levels))
+})
+
+test_that("structured new-level subset sampling covers HCS, AR1, HAR, and CAR", {
+
+  factor_levels <- letters[1:5]
+  time_values   <- c(0, 0.5, 2, 5, 9)
+  factor_data <- data.frame(
+    f = factor(rep(factor_levels, 2L), levels = factor_levels),
+    id = factor(rep(c("old_1", "old_2"), each = length(factor_levels)))
+  )
+  car_data <- data.frame(
+    time = rep(time_values, 2L),
+    id = factor(rep(c("old_1", "old_2"), each = length(time_values)))
+  )
+  specifications <- list(
+    hcs = list(formula = ~ 1 + hcs(f | id), data = factor_data),
+    ar1 = list(formula = ~ 1 + ar1(f | id), data = factor_data),
+    har = list(formula = ~ 1 + har(f | id), data = factor_data),
+    car = list(formula = ~ 1 + car(time | id), data = car_data)
+  )
+  sd_prior <- prior(
+    "normal",
+    list(mean = 0, sd = 1),
+    truncation = list(lower = 0, upper = Inf)
+  )
+  subset_calls <- character()
+  subset_cholesky <- BayesTools:::.bt_random_effect_structured_subset_cholesky
+  prediction_subset_transform <-
+    BayesTools:::.bt_random_effect_prediction_structured_subset_transform
+  testthat::local_mocked_bindings(
+    .bt_random_effect_marginal_covariance_correlation_draws = function(...){
+      stop("global correlation materialized", call. = FALSE)
+    },
+    .bt_random_effect_prediction_structured_subset_transform = function(
+        structure, columns, latent, rho, coordinates){
+
+      subset_calls <<- c(subset_calls, structure)
+      prediction_subset_transform(
+        structure = structure,
+        columns = columns,
+        latent = latent,
+        rho = rho,
+        coordinates = coordinates
+      )
+    },
+    .package = "BayesTools"
+  )
+
+  for(structure in names(specifications)){
+    specification <- specifications[[structure]]
+    result <- JAGS_formula(
+      formula = specification$formula,
+      parameter = "mu",
+      data = specification$data,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(
+        id = random_block(
+          sd = sd_prior,
+          rho = prior("normal", list(0, 0.5))
+        )
+      )
+    )
+    random_term <- result$formula_design$random_effects[[1L]]
+    sd_names    <- unique(random_term$sd_parameter_names)
+    rho_name    <- random_term$correlation$rho_name
+    posterior_values <- c(
+      mu_intercept = 0,
+      stats::setNames(seq_along(sd_names) + 1, sd_names),
+      stats::setNames(0.35, rho_name)
+    )
+    posterior <- matrix(
+      posterior_values,
+      nrow = 1L,
+      dimnames = list(NULL, names(posterior_values))
+    )
+    fit <- coda::mcmc(posterior)
+    attr(fit, "formula_design") <- list(mu = result$formula_design)
+    new_data <- if(identical(structure, "car")){
+      data.frame(
+        time = time_values[c(1L, 3L, 5L)],
+        id = factor(rep("new", 3L), levels = c("old_1", "old_2", "new"))
+      )
+    }else{
+      data.frame(
+        f = factor(factor_levels[c(1L, 3L, 5L)], levels = factor_levels),
+        id = factor(rep("new", 3L), levels = c("old_1", "old_2", "new"))
+      )
+    }
+
+    set.seed(914)
+    prediction <- JAGS_evaluate_formula(
+      fit = fit,
+      parameter = "mu",
+      data = new_data,
+      prior_list = result$prior_list,
+      formula_target = "conditional",
+      new_levels = "sample"
+    )
+
+    columns <- c(1L, 3L, 5L)
+    coordinates <- if(identical(structure, "car")){
+      time_values
+    }else{
+      seq_along(factor_levels)
+    }
+    sd_draws <- BayesTools:::.bt_random_effect_sd_draws(
+      random_term = random_term,
+      n_columns = length(factor_levels),
+      posterior = posterior,
+      prior_list = result$prior_list
+    )
+    L <- subset_cholesky(
+      structure = structure,
+      columns = columns,
+      rho = posterior[1L, rho_name],
+      global_n_columns = length(factor_levels),
+      column_coordinates = coordinates
+    )
+    set.seed(914)
+    expected <- drop(L %*% stats::rnorm(length(columns))) *
+      sd_draws[1L, columns]
+
+    expect_equal(
+      unname(drop(prediction)),
+      unname(expected),
+      tolerance = 1e-12,
+      info = structure
+    )
+  }
+
+  expect_equal(subset_calls, names(specifications))
+})
+
 test_that("stored new-level policies are used when no override is supplied", {
 
   result <- .formula_prediction_result(

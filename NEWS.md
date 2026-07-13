@@ -5,6 +5,7 @@
 - adds LKJ correlation priors for unstructured random-effect covariance matrices via `prior_lkj()` and `JAGS_lkj_corr_cholesky()`, using the package-shipped compiled JAGS backend
 - adds `BayesTools_load_JAGS_module()` and package compilation support for the BayesTools JAGS module used by generated LKJ-Cholesky syntax
 - adds `formula_random_prior_list` to `JAGS_fit()` and `JAGS_bridgesampling()` so formula random effects can be fitted and bridge sampled through the explicit `prior_random()` interface
+- adds block-level `"noncentered"`, `"centered"`, and `"auto"` random-effect parameterizations without changing the prior or semantic output contracts; structured scalar-correlation blocks use scalable direct recurrences and expose dense correlation draws only on explicit reconstruction
 - adds bridge-sampling support for formula random effects by using standardized latent random effects, scalar correlation coordinates, and LKJ primitive coordinates as bridge parameters
 - adds semantic random-effect summaries to `runjags_estimates_table()` / `JAGS_estimates_table()` through `random_effects_summary`, `random_effects_metadata`, `remove_random_effects`, `keep_random_effects`, `remove_random_structures`, and `keep_random_structures`
 - adds random-effect parameter filter aliases such as `"random"`, `"random_sd"`, `"random_rho"`, `"random_correlation"`, `"random_variance_fraction"`, `"random_allocation"`, and `"random_sd_multiplier"` for estimates tables

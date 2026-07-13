@@ -119,6 +119,21 @@
 #' fitted random-effect distribution during draw-valued prediction or integrates
 #' them through the block covariance for covariance-valued prediction.
 #'
+#' @section Parameterization:
+#' `parameterization` controls how sampled random-effect blocks are represented
+#' by the computational backend. `"noncentered"` retains standardized latent
+#' effects, `"centered"` samples realized group-level coefficients, and
+#' `"auto"` lets the backend choose a supported representation from the
+#' resolved block design. Its deterministic heuristic uses within-group
+#' replication and design conditioning; it does not inspect outcome-specific
+#' likelihood curvature. The choice does not change the SD, allocation, or
+#' correlation priors. Block-specific values supplied through `random_block()`
+#' override the top-level default. Explicit `"centered"` compilation requires
+#' strictly positive backend-owned SD coordinates and therefore rejects
+#' point-mass-at-zero scales, inclusion-gated variance allocations, and external
+#' or row-indexed SD sources. `"auto"` falls back to `"noncentered"` when those
+#' contracts or its design-information checks do not support centering.
+#'
 #' @param ... named `random_block()` specifications and, optionally,
 #'   top-level `random_variance_allocation()` specifications.
 #' @param sd prior distribution for random-effect standard deviations.
@@ -130,6 +145,9 @@
 #' @param monitor `random_monitor()` object.
 #' @param new_levels `random_new_levels()` object controlling prediction for
 #'   previously unseen grouping levels.
+#' @param parameterization requested sampled random-effect parameterization:
+#'   `"noncentered"`, `"centered"`, or `"auto"`. The top-level value is
+#'   inherited by blocks without an explicit `random_block()` override.
 #' @param allocation optional `random_variance_allocation()` specification, or
 #'   a list of such specifications, defining total-SD plus Dirichlet variance
 #'   allocation across named random-effect blocks. Block-local allocation is
@@ -212,7 +230,8 @@
 prior_random <- function(..., sd = NULL, covariance = NULL, cor = NULL,
                          rho = NULL, monitor = random_monitor(),
                          new_levels = random_new_levels(),
-                         allocation = NULL){
+                         allocation = NULL,
+                         parameterization = "noncentered"){
 
   blocks <- list(...)
   dot_allocations <- vapply(blocks, inherits, logical(1), what = "random_variance_allocation")
@@ -241,6 +260,7 @@ prior_random <- function(..., sd = NULL, covariance = NULL, cor = NULL,
 
   .bt_check_random_monitor(monitor)
   .bt_check_random_new_levels(new_levels)
+  .bt_check_random_parameterization(parameterization)
   .bt_check_random_allocation(allocation)
 
   out <- list(
@@ -248,6 +268,7 @@ prior_random <- function(..., sd = NULL, covariance = NULL, cor = NULL,
     covariance = covariance,
     monitor    = monitor,
     new_levels = new_levels,
+    parameterization = parameterization,
     allocation = allocation,
     blocks     = blocks
   )
@@ -267,7 +288,8 @@ prior_random <- function(..., sd = NULL, covariance = NULL, cor = NULL,
 #' @export
 random_block <- function(sd = NULL, covariance = NULL, cor = NULL, rho = NULL,
                          monitor = NULL, new_levels = NULL, allocation = NULL,
-                         terms = NULL, sd_source = NULL){
+                         terms = NULL, sd_source = NULL,
+                         parameterization = NULL){
 
   .bt_check_random_sd_prior(sd, allow_NULL = TRUE)
   .bt_check_random_sd_source(sd_source, allow_NULL = TRUE)
@@ -303,6 +325,7 @@ random_block <- function(sd = NULL, covariance = NULL, cor = NULL, rho = NULL,
   if(!is.null(new_levels)){
     .bt_check_random_new_levels(new_levels)
   }
+  .bt_check_random_parameterization(parameterization, allow_NULL = TRUE)
   if(!is.null(allocation)){
     stop(
       "Block-local variance allocation priors are not implemented yet; use top-level prior_random(allocation = random_variance_allocation(...)).",
@@ -315,6 +338,7 @@ random_block <- function(sd = NULL, covariance = NULL, cor = NULL, rho = NULL,
     covariance = covariance,
     monitor    = monitor,
     new_levels = new_levels,
+    parameterization = parameterization,
     allocation = allocation,
     terms      = terms,
     sd_source  = sd_source
@@ -574,7 +598,10 @@ prior_lkj <- function(eta = 1, include_correlation = TRUE,
 #'   Required for bridge sampling and coefficient reconstruction.
 #' @param coefficients whether to monitor realized group-level coefficients.
 #'   This is convenient for inspection but can be memory intensive.
-#' @param correlation whether to monitor correlation matrices.
+#' @param correlation whether correlation matrices are part of the semantic
+#'   monitored output. Scalar CS/HCS/AR1/HAR/CAR backends retain only `rho`
+#'   during sampling and derive the requested matrix afterward; this avoids a
+#'   quadratic JAGS graph without changing the correlation target.
 #' @param lkj_primitives whether to monitor user-facing LKJ primitive beta
 #'   coordinates. For formula `us` random effects, raw LKJ primitive `u`
 #'   coordinates are always retained internally because bridge sampling evaluates
@@ -658,6 +685,8 @@ is.prior_random <- function(x){
   if(!is.prior_random(x)){
     stop("'prior_random' must be created with prior_random().", call. = FALSE)
   }
+  .bt_check_random_parameterization(x$parameterization)
+  .bt_check_random_prior_blocks(x$blocks)
 
   invisible(TRUE)
 }
@@ -678,6 +707,10 @@ is.prior_random <- function(x){
       stop("Random-effect block override '", names(blocks)[i], "' must be created with random_block().", call. = FALSE)
     }
     .bt_check_random_block_terms(blocks[[i]]$terms)
+    .bt_check_random_parameterization(
+      blocks[[i]]$parameterization,
+      allow_NULL = TRUE
+    )
   }
 
   invisible(TRUE)
@@ -819,6 +852,19 @@ is.prior_random <- function(x){
       call. = FALSE
     )
   }
+
+  invisible(TRUE)
+}
+
+.bt_check_random_parameterization <- function(x, allow_NULL = FALSE){
+
+  check_char(
+    x,
+    "parameterization",
+    allow_values = c("noncentered", "centered", "auto"),
+    allow_NULL = allow_NULL,
+    allow_NA = FALSE
+  )
 
   invisible(TRUE)
 }
@@ -1177,6 +1223,7 @@ is.prior_random <- function(x){
     covariance = prior_random$covariance,
     monitor    = prior_random$monitor,
     new_levels = prior_random$new_levels,
+    parameterization = prior_random$parameterization,
     allocation = NULL,
     terms      = NULL,
     sd_source  = NULL
@@ -1396,6 +1443,7 @@ is.prior_random <- function(x){
   )
   .bt_check_random_block_terms(block$terms)
   .bt_check_random_new_levels(block$new_levels, allow_NULL = TRUE)
+  .bt_check_random_parameterization(block$parameterization)
   .bt_check_random_allocation(block$allocation)
 
   invisible(TRUE)

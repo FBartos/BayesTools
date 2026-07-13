@@ -1383,7 +1383,7 @@ test_that("JAGS_formula random-effect design exposes grouping maps and public va
   expect_true(isTRUE(attr(result$prior_list$mu__xREx__id_x, "random_sd")))
   expect_equal(attr(result$prior_list$mu__xREx__id_x, "random_factor"), "id")
   expect_match(result$formula_syntax, "for\\(i in 1:3\\)")
-  expect_match(result$formula_syntax, "dmnorm\\(rep\\(0, 2\\)")
+  expect_match(result$formula_syntax, "xRE_Zx\\[i,j\\] ~ dnorm\\(0, 1\\)")
 
   diag_result <- JAGS_formula(
     formula = ~ 1 + x + diag(1 + x | id),
@@ -3287,14 +3287,20 @@ test_that("external variance allocation sources generate scalar and row-indexed 
   expect_false(grepl("mu__xREx__study_xRE_STDx", row_cs_result$formula_syntax, fixed = TRUE))
   expect_match(
     row_cs_result$formula_syntax,
-    "mu__xREx__study_xRE_UNIT_COEFx[g,i] = inprod(mu__xREx__study_xRE_CORx_L[i,1:2], mu__xREx__study_xRE_Zx[g,1:2])",
+    "mu__xREx__study_xRE_UNIT_COEFx[g,i] <- mu__xREx__study_xRE_CS_PREFIXx[g,i - 1] + mu__xREx__study_xRE_CS_DIAGx[i] * mu__xREx__study_xRE_Zx[g,i]",
     fixed = TRUE
   )
   expect_match(
     row_cs_result$formula_syntax,
-    "mu__xREx__study[i] = tau[i] * sqrt(mu__xRE_ALLOCx_allocation__weight[1]) * inprod(mu__xREx__study_xRE_UNIT_COEFx[mu__xREx__study_xRE_MAPx[i], 1:2]",
+    paste0(
+      "mu__xREx__study[i] = tau[i] * ",
+      "sqrt(mu__xRE_ALLOCx_allocation__weight[1]) * ",
+      "mu__xREx__study_xRE_UNIT_COEFx[mu__xREx__study_xRE_MAPx[i],",
+      "mu__xREx__study_xRE_COLx[i]]"
+    ),
     fixed = TRUE
   )
+  expect_null(row_cs_result$data$mu__xREx__study_xRE_DATAx)
 
   row_summary <- BayesTools:::.bt_random_effect_summary_samples(
     model_samples = scalar_posterior[, -1, drop = FALSE],
@@ -9463,8 +9469,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     f = factor(sprintf("level_%03d", seq_len(113L))),
     id = factor(rep(sprintf("group_%02d", seq_len(17L)), length.out = 113L))
   )
-  expect_error(
-    JAGS_formula(
+  large_result <- JAGS_formula(
       formula = ~ 1 + cs(f | id),
       parameter = "mu",
       data = large_factor_df,
@@ -9472,9 +9477,40 @@ test_that("structured random-effect terms use level-indexed factor columns and s
       prior_random = prior_random(
         id = random_block(sd = sd_prior, rho = prior("normal", list(0, 0.5)))
       )
-    ),
-    "CS; 17 groups x 113 columns.*cholesky_products=240464.*monitored_values=27459",
-    perl = TRUE
+    )
+  large_term <- large_result$formula_design$random_effects[[1]]
+  expect_s3_class(
+    large_term$latent_layout,
+    "BayesTools_random_effect_structured_local_layout"
+  )
+  expect_equal(large_term$latent_layout$n_local, 113L)
+  expect_equal(
+    names(large_result$data),
+    c("N_mu", "mu__xREx__id_xRE_MAPx", "mu__xREx__id_xRE_COLx")
+  )
+  expect_false(grepl("_xRE_CORx_L", large_result$formula_syntax, fixed = TRUE))
+  expect_false(grepl("_xRE_CORx_R", large_result$formula_syntax, fixed = TRUE))
+
+  coefficient_result <- JAGS_formula(
+    formula = ~ 1 + cs(f | id),
+    parameter = "mu",
+    data = large_factor_df,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(
+        sd = sd_prior,
+        rho = prior("normal", list(0, 0.5)),
+        monitor = random_monitor(latent = FALSE, coefficients = TRUE)
+      )
+    )
+  )
+  coefficient_term <- coefficient_result$formula_design$random_effects[[1]]
+  expect_null(coefficient_term$latent_layout)
+  expect_true("mu__xREx__id_xRE_COEFx" %in% coefficient_result$add_parameters)
+  expect_match(
+    coefficient_result$formula_syntax,
+    "mu__xREx__id_xRE_Zx[i,j] ~ dnorm(0, 1)",
+    fixed = TRUE
   )
 
   old_multiplier <- getOption("BayesTools.random_effects_complexity_multiplier")
@@ -9533,7 +9569,9 @@ test_that("structured random-effect terms use level-indexed factor columns and s
   expect_equal(default_cs$prior_list$mu__xREx__id_rho_z$distribution, "normal")
   expect_equal(default_cs$prior_list$mu__xREx__id_rho_z$parameters, list(mean = 0, sd = 0.5))
   expect_true(default_cs$formula_design$random_effects[[1]]$homogeneous_sd)
-  expect_equal(colnames(default_cs$data$mu__xREx__id_xRE_DATAx), c("fa", "fb", "fc"))
+  expect_equal(default_cs$formula_design$random_effects[[1]]$column_names,
+               c("fa", "fb", "fc"))
+  expect_null(default_cs$data$mu__xREx__id_xRE_DATAx)
   expect_equal(
     default_cs$formula_design$random_effects[[1]]$sd_parameter_names,
     rep("mu__xREx__id_sd", 3)
@@ -9644,7 +9682,8 @@ test_that("structured random-effect terms use level-indexed factor columns and s
   )
   expect_equal(hcs_composite$formula_design$random_effects[[1]]$structured_index$variables, c("f", "g"))
   expect_equal(hcs_composite$formula_design$random_effects[[1]]$structured_index$label, "f:g")
-  expect_equal(ncol(hcs_composite$data$mu__xREx__id_xRE_DATAx), 6L)
+  expect_equal(hcs_composite$formula_design$random_effects[[1]]$n_columns, 6L)
+  expect_null(hcs_composite$data$mu__xREx__id_xRE_DATAx)
   expect_equal(
     hcs_composite$formula_design$random_effects[[1]]$sd_leaves$leaf_terms_by_column,
     paste0("f_g[", c("a.u", "a.v", "b.u", "b.v", "c.u", "c.v"), "]")
@@ -9967,7 +10006,9 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     )
   )
 
-  expect_equal(colnames(ar1_result$data$mu__xREx__id_xRE_DATAx), c("fa", "fb", "fc"))
+  expect_equal(ar1_result$formula_design$random_effects[[1]]$column_names,
+               c("fa", "fb", "fc"))
+  expect_null(ar1_result$data$mu__xREx__id_xRE_DATAx)
   expect_equal(names(ar1_result$prior_list), c("mu_intercept", "mu__xREx__id_sd", "mu__xREx__id_rho_z"))
   expect_true(ar1_result$formula_design$random_effects[[1]]$homogeneous_sd)
   expect_equal(ar1_result$formula_design$random_effects[[1]]$structure, "ar1")
@@ -9975,7 +10016,11 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     ar1_result$formula_design$random_effects[[1]]$sd_parameter_names,
     rep("mu__xREx__id_sd", 3)
   )
-  expect_match(ar1_result$formula_syntax, "pow(mu__xREx__id_rho, 2)", fixed = TRUE)
+  expect_match(
+    ar1_result$formula_syntax,
+    "mu__xREx__id_xRE_UNIT_COEFx[g,i - 1]",
+    fixed = TRUE
+  )
 
   ar1_implicit_levels <- JAGS_formula(
     formula = ~ 1 + ar1(f | id),
@@ -10018,7 +10063,9 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     )
   )
 
-  expect_equal(colnames(hcs_result$data$mu__xREx__id_xRE_DATAx), c("fa", "fb", "fc"))
+  expect_equal(hcs_result$formula_design$random_effects[[1]]$column_names,
+               c("fa", "fb", "fc"))
+  expect_null(hcs_result$data$mu__xREx__id_xRE_DATAx)
   expect_equal(names(hcs_result$prior_list), c("mu_intercept", "mu__xREx__id_f", "mu__xREx__id_rho_z"))
   expect_false(hcs_result$formula_design$random_effects[[1]]$homogeneous_sd)
   expect_equal(
@@ -10076,7 +10123,9 @@ test_that("structured random-effect terms use level-indexed factor columns and s
       id = random_block(sd = sd_prior, rho = prior("normal", list(0, 0.5)))
     )
   )
-  expect_equal(colnames(har_implicit_levels$data$mu__xREx__id_xRE_DATAx), c("fa", "fb", "fc"))
+  expect_equal(har_implicit_levels$formula_design$random_effects[[1]]$column_names,
+               c("fa", "fb", "fc"))
+  expect_null(har_implicit_levels$data$mu__xREx__id_xRE_DATAx)
   expect_false(har_implicit_levels$formula_design$random_effects[[1]]$homogeneous_sd)
 
   expect_error(
@@ -10137,7 +10186,11 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     paste0("mu__xREx__id_f[", 1:3, "]")
   )
   expect_false(grepl("rho_z", raw_result$formula_syntax, fixed = TRUE))
-  expect_match(raw_result$formula_syntax, "pow(mu__xREx__id_rho, 2)", fixed = TRUE)
+  expect_match(
+    raw_result$formula_syntax,
+    "mu__xREx__id_xRE_AR_PHIX[i] * mu__xREx__id_xRE_UNIT_COEFx[g,i - 1]",
+    fixed = TRUE
+  )
 
   raw_inherited <- NULL
   expect_warning(
@@ -10217,20 +10270,27 @@ test_that("structured random-effect terms use level-indexed factor columns and s
   car_term <- car_result$formula_design$random_effects[[1]]
   car_distance <- abs(outer(c(0, 0.5, 2), c(0, 0.5, 2), "-"))
 
-  expect_equal(colnames(car_result$data$mu__xREx__id_xRE_DATAx), c("time_0", "time_0p5", "time_2"))
+  expect_equal(car_term$column_names, c("time_0", "time_0p5", "time_2"))
+  expect_null(car_result$data$mu__xREx__id_xRE_DATAx)
   expect_equal(names(car_result$prior_list), c("mu_intercept", "mu__xREx__id_sd", "mu__xREx__id_rho_z"))
   expect_true(car_term$homogeneous_sd)
   expect_equal(car_term$structure, "car")
   expect_equal(car_term$car$time_variable, "time")
   expect_equal(car_term$car$time_values, c(0, 0.5, 2))
-  expect_equal(car_term$car$distance_matrix, car_distance)
+  expect_null(car_term$car$distance_matrix)
   expect_equal(car_term$correlation$bounds, c(lower = 0, upper = 1))
-  expect_equal(car_term$correlation$distance_matrix, car_distance)
+  expect_null(car_term$correlation$distance_matrix)
+  expect_equal(car_term$correlation$time_values, c(0, 0.5, 2))
   expect_equal(car_result$prior_list$mu__xREx__id_rho_z$truncation$lower, 0)
   expect_equal(car_result$prior_list$mu__xREx__id_rho_z$truncation$upper, Inf)
-  expect_match(car_result$formula_syntax, "mu__xREx__id_rho <- 2 * ilogit(2 * mu__xREx__id_rho_z) - 1", fixed = TRUE)
+  expect_match(
+    car_result$formula_syntax,
+    "mu__xREx__id_rho <- max(0, min(0.99999999999999989",
+    fixed = TRUE
+  )
+  expect_match(car_result$formula_syntax, "2 * ilogit(2 * mu__xREx__id_rho_z) - 1))", fixed = TRUE)
+  expect_match(car_result$formula_syntax, "pow(mu__xREx__id_rho, 0.5)", fixed = TRUE)
   expect_match(car_result$formula_syntax, "pow(mu__xREx__id_rho, 1.5)", fixed = TRUE)
-  expect_match(car_result$formula_syntax, "pow(mu__xREx__id_rho, 2)", fixed = TRUE)
 
   car_independent <- JAGS_formula(
     formula = ~ 1 + car(0 + time | id),
@@ -10245,7 +10305,13 @@ test_that("structured random-effect terms use level-indexed factor columns and s
   empty_posterior <- matrix(numeric(0), nrow = 2, ncol = 0)
   expect_equal(
     BayesTools:::.bt_random_effect_rho_draws(car_independent_term, empty_posterior),
-    c(0, 0)
+    rep(
+      BayesTools:::.bt_random_effect_representable_rho_bounds(
+        car_independent_term$correlation$bounds,
+        car_independent_term$structure
+      )[["lower"]],
+      2L
+    )
   )
   expect_equal(
     BayesTools:::.bt_JAGS_marglik_random_effect_scalar_rho_support(
@@ -10324,7 +10390,7 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     )
   )
   expect_equal(fixed_car_scale$formula_design$random_effects[[1]]$car$time_values, c(0, 0.5, 2))
-  expect_equal(fixed_car_scale$formula_design$random_effects[[1]]$car$distance_matrix, car_distance)
+  expect_null(fixed_car_scale$formula_design$random_effects[[1]]$car$distance_matrix)
   expect_equal(
     fixed_car_scale$data$mu__xREx__id_xRE_DATAx,
     car_result$data$mu__xREx__id_xRE_DATAx
@@ -10433,7 +10499,8 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     )
   )
   expect_equal(names(car_logit$prior_list), c("mu_intercept", "mu__xREx__id_sd", "mu__xREx__id_rho_logit"))
-  expect_match(car_logit$formula_syntax, "mu__xREx__id_rho <- 0 + 1 * ilogit(mu__xREx__id_rho_logit)", fixed = TRUE)
+  expect_match(car_logit$formula_syntax, "mu__xREx__id_rho <- 0 +", fixed = TRUE)
+  expect_match(car_logit$formula_syntax, "* ilogit(mu__xREx__id_rho_logit)", fixed = TRUE)
 
   ar_logit <- JAGS_formula(
     formula = ~ 1 + ar1(f | id),
@@ -10451,7 +10518,8 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     )
   )
   expect_equal(names(ar_logit$prior_list), c("mu_intercept", "mu__xREx__id_sd", "mu__xREx__id_rho_logit"))
-  expect_match(ar_logit$formula_syntax, "mu__xREx__id_rho <- -1 + 2 * ilogit(mu__xREx__id_rho_logit)", fixed = TRUE)
+  expect_match(ar_logit$formula_syntax, "mu__xREx__id_rho <- -0.99999999999999989", fixed = TRUE)
+  expect_match(ar_logit$formula_syntax, "* ilogit(mu__xREx__id_rho_logit)", fixed = TRUE)
 
   expect_error(
     JAGS_formula(
@@ -10542,7 +10610,8 @@ test_that("structured correlation Cholesky syntax exposes intended covariance pa
     ),
     include_correlation = TRUE
   )
-  expect_match(logit_module$syntax, "mu__xREx__id_rho <- -0.5 + 1.5 * ilogit(mu__xREx__id_rho_logit)", fixed = TRUE)
+  expect_match(logit_module$syntax, "mu__xREx__id_rho <- -0.49999999999999994", fixed = TRUE)
+  expect_match(logit_module$syntax, "* ilogit(mu__xREx__id_rho_logit)", fixed = TRUE)
   expect_true("_xREx__id_rho_logit" %in% names(logit_module$prior_list))
 })
 
@@ -10705,7 +10774,9 @@ test_that("JAGS_formula independent random-effect design matches lme4 lFormula o
 
   expect_equal(ar1_result$formula_design$random_effects[[1]]$column_names, ar1_lme4$reTrms$cnms$id)
   expect_equal(ar1_result$data$mu__xREx__id_xRE_MAPx, unname(as.integer(ar1_lme4$reTrms$flist$id)))
-  expect_equal(colnames(ar1_result$data$mu__xREx__id_xRE_DATAx), c("fa", "fb", "fc"))
+  expect_equal(ar1_result$formula_design$random_effects[[1]]$column_names,
+               c("fa", "fb", "fc"))
+  expect_null(ar1_result$data$mu__xREx__id_xRE_DATAx)
   expect_equal(ar1_result$formula_design$random_effects[[1]]$structure, "ar1")
   expect_true(ar1_result$formula_design$random_effects[[1]]$homogeneous_sd)
 })

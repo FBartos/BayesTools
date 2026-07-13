@@ -12,22 +12,28 @@
 
 .bt_random_effect_dense_complexity <- function(structure, n_groups,
                                                n_columns, n_rows,
-                                               monitor_policy){
+                                               monitor_policy,
+                                               centered = FALSE){
 
-  is_correlated <- structure %in% c("us", "cs", "hcs", "ar1", "car", "har") &&
-    n_columns > 1L
-  is_symbolic <- structure %in% c("cs", "hcs", "ar1", "car", "har") &&
+  is_unstructured <- identical(structure, "us") && n_columns > 1L
+  is_structured   <- structure %in% c("cs", "hcs", "ar1", "car", "har") &&
     n_columns > 1L
 
-  cholesky_products <- if(is_symbolic){
+  cholesky_products <- if(is_structured && isTRUE(centered)){
     n_columns * (n_columns - 1) * (n_columns + 1) / 6
+  }else if(is_unstructured){
+    n_columns^2
   }else{
     0
   }
-  transform_products <- if(is_correlated){
+  transform_products <- if(is_unstructured){
     n_groups * n_columns^2 + n_rows * n_columns
+  }else if(is_structured && isTRUE(centered)){
+    n_groups * n_columns^2 + n_rows
+  }else if(is_structured){
+    n_groups * n_columns + n_rows
   }else{
-    0
+    n_groups * n_columns + n_rows * n_columns
   }
   monitored_values <- 0
   if(isTRUE(monitor_policy$latent)){
@@ -36,14 +42,16 @@
   if(isTRUE(monitor_policy$coefficients)){
     monitored_values <- monitored_values + n_groups * n_columns
   }
-  if(is_correlated){
+  if(is_unstructured){
     monitored_values <- monitored_values + n_columns^2
     if(isTRUE(monitor_policy$correlation)){
       monitored_values <- monitored_values + n_columns^2
     }
-    if(identical(structure, "us")){
-      monitored_values <- monitored_values + n_columns * (n_columns - 1) / 2
-    }
+    monitored_values <- monitored_values + n_columns * (n_columns - 1) / 2
+  }else if(is_structured && isTRUE(centered)){
+    monitored_values <- monitored_values + 2 * n_columns^2
+  }else if(is_structured){
+    monitored_values <- monitored_values + 1L
   }
 
   c(
@@ -53,9 +61,54 @@
   )
 }
 
-.bt_random_effect_check_dense_complexity <- function(random_term, structure,
-                                                      n_groups, n_columns,
-                                                      n_rows, monitor_policy){
+# Estimate emitted syntax and monitored nodes for a group-local block.
+.bt_random_effect_group_local_complexity <- function(
+    layout, n_rows, monitor_policy, row_indexed_external_sd = FALSE,
+    column_allocation = FALSE){
+
+  if(!inherits(layout, "BayesTools_random_effect_structured_local_layout")){
+    stop("'layout' must be a structured local layout.", call. = FALSE)
+  }
+  check_int(n_rows, "n_rows", lower = 1, allow_NA = FALSE)
+  check_bool(
+    row_indexed_external_sd,
+    "row_indexed_external_sd",
+    allow_NA = FALSE
+  )
+  check_bool(column_allocation, "column_allocation", allow_NA = FALSE)
+
+  n_local           <- layout$n_local
+  correlation_nodes <- if(layout$global_n_columns > 1L) 1L else 0L
+  prefix_nodes      <- if(layout$structure %in% c("cs", "hcs")){
+    sum(pmax(lengths(layout$group_columns) - 1L, 0L))
+  }else{
+    0L
+  }
+  syntax_nodes     <-
+    n_local * (2L + !isTRUE(row_indexed_external_sd)) +
+    prefix_nodes + n_rows +
+    if(isTRUE(column_allocation)) layout$global_n_columns else 0L
+  monitored_values <- correlation_nodes
+  if(isTRUE(monitor_policy$latent)){
+    monitored_values <- monitored_values + n_local
+  }
+  if(isTRUE(monitor_policy$coefficients)){
+    monitored_values <- monitored_values + n_local
+  }
+  if(isTRUE(column_allocation)){
+    monitored_values <- monitored_values + layout$global_n_columns
+  }
+
+  c(
+    syntax_nodes = syntax_nodes,
+    monitored_values = monitored_values
+  )
+}
+
+# Stop before a group-local block exceeds configurable compiler limits.
+.bt_random_effect_check_group_local_complexity <- function(
+    random_term, layout, n_rows, monitor_policy,
+    row_indexed_external_sd = FALSE, column_allocation = FALSE){
 
   multiplier <- getOption(
     "BayesTools.random_effects_complexity_multiplier",
@@ -72,16 +125,15 @@
     return(invisible(NULL))
   }
 
-  estimates <- .bt_random_effect_dense_complexity(
-    structure = structure,
-    n_groups = n_groups,
-    n_columns = n_columns,
+  estimates <- .bt_random_effect_group_local_complexity(
+    layout = layout,
     n_rows = n_rows,
-    monitor_policy = monitor_policy
+    monitor_policy = monitor_policy,
+    row_indexed_external_sd = row_indexed_external_sd,
+    column_allocation = column_allocation
   )
-  limits <- multiplier * c(
-    cholesky_products = 2e5,
-    transform_products = 5e6,
+  limits   <- multiplier * c(
+    syntax_nodes = 2e5,
     monitored_values = 2e4
   )
   exceeded <- estimates > limits
@@ -98,15 +150,110 @@
   )
   stop(
     "Random-effect block '", random_term$block_name,
+    "' (", toupper(layout$structure), "; ", layout$n_local,
+    " active group-index cells) exceeds the current group-local JAGS compiler limits: ",
+    paste(details, collapse = ", "), ". This representation emits syntax ",
+    "and monitored nodes for each active cell and can exhaust memory before ",
+    "sampling. Reduce the structured index dimension or active cells, or ",
+    "disable latent monitoring when coefficient reconstruction and bridge ",
+    "sampling are not needed.",
+    call. = FALSE
+  )
+}
+
+.bt_random_effect_check_dense_complexity <- function(random_term, structure,
+                                                      n_groups, n_columns,
+                                                      n_rows, monitor_policy,
+                                                      centered = FALSE){
+
+  status <- .bt_random_effect_dense_complexity_status(
+    structure = structure,
+    n_groups = n_groups,
+    n_columns = n_columns,
+    n_rows = n_rows,
+    monitor_policy = monitor_policy,
+    centered = centered
+  )
+  if(all(is.infinite(status$limits))){
+    return(invisible(NULL))
+  }
+  if(!any(status$exceeded)){
+    return(invisible(status$estimates))
+  }
+
+  estimates <- status$estimates
+  limits    <- status$limits
+  exceeded  <- status$exceeded
+  details <- paste0(
+    names(estimates)[exceeded], "=",
+    format(estimates[exceeded], scientific = FALSE, trim = TRUE),
+    " (limit ",
+    format(limits[exceeded], scientific = FALSE, trim = TRUE),
+    ")"
+  )
+  stop(
+    "Random-effect block '", random_term$block_name,
     "' (", toupper(structure), "; ", n_groups, " groups x ",
     n_columns, " columns) exceeds the current dense JAGS compiler limits: ",
     paste(details, collapse = ", "), ". This representation can exhaust ",
-    "memory before sampling. Reduce the structured index dimension or ",
-    "reformulate the random effect. To bypass the safety guard after checking ",
-    "available resources, set options(",
-    "BayesTools.random_effects_complexity_multiplier = Inf).",
+    "memory before sampling. Reduce the structured index dimension or request ",
+    "parameterization = \"noncentered\" (or \"auto\") so an eligible block ",
+    "can use the group-local structured compiler.",
     call. = FALSE
   )
+}
+
+.bt_random_effect_dense_complexity_status <- function(structure, n_groups,
+                                                       n_columns, n_rows,
+                                                       monitor_policy,
+                                                       centered = FALSE){
+
+  multiplier <- getOption(
+    "BayesTools.random_effects_complexity_multiplier",
+    1
+  )
+  if(!is.numeric(multiplier) || length(multiplier) != 1L || is.na(multiplier) ||
+     multiplier <= 0){
+    stop(
+      "Option 'BayesTools.random_effects_complexity_multiplier' must be a positive numeric scalar.",
+      call. = FALSE
+    )
+  }
+  if(is.infinite(multiplier)){
+    return(list(
+      estimates = .bt_random_effect_dense_complexity(
+        structure = structure,
+        n_groups = n_groups,
+        n_columns = n_columns,
+        n_rows = n_rows,
+        monitor_policy = monitor_policy,
+        centered = centered
+      ),
+      limits = stats::setNames(rep(Inf, 3L), c(
+        "cholesky_products", "transform_products", "monitored_values"
+      )),
+      exceeded = stats::setNames(rep(FALSE, 3L), c(
+        "cholesky_products", "transform_products", "monitored_values"
+      ))
+    ))
+  }
+
+  estimates <- .bt_random_effect_dense_complexity(
+    structure = structure,
+    n_groups = n_groups,
+    n_columns = n_columns,
+    n_rows = n_rows,
+    monitor_policy = monitor_policy,
+    centered = centered
+  )
+  limits <- multiplier * c(
+    cholesky_products = 2e5,
+    transform_products = 5e6,
+    monitored_values = 2e4
+  )
+  exceeded <- estimates > limits
+
+  list(estimates = estimates, limits = limits, exceeded = exceeded)
 }
 
 .JAGS_random_effect_formula <- function(formula, parameter, data,
@@ -308,50 +455,10 @@
   if(n_par < 1L){
     stop("Random-effect term '", random_term$block_name, "' does not generate any design columns.", call. = FALSE)
   }
-  if(isTRUE(sampled_random_effect)){
-    .bt_random_effect_check_dense_complexity(
-      random_term = random_term,
-      structure = random_structure,
-      n_groups = n_id,
-      n_columns = n_par,
-      n_rows = nrow(model_matrix),
-      monitor_policy = monitor_policy
-    )
-  }
-  group_covariance <- .bt_random_effect_prepare_known_group_covariance(
-    random_term = random_term,
-    group_levels = grouping_factor_levels,
-    n_columns = n_par,
-    model_matrix = model_matrix,
-    random_structure = random_structure,
-    compile_mode = compile_mode,
-    row_indexed_external_sd = row_indexed_external_sd
-  )
-  # step 1:
-  if(isTRUE(sampled_random_effect) && !is.null(group_covariance)){
-    group_mean_name <- paste0(parameter, "_xRE_GROUP_MUx")
-    group_precision_name <- paste0(parameter, "_xRE_GROUP_PRECx")
-    group_latent_name <- paste0(parameter, "_xRE_GROUP_Zx")
-    random_syntax <- c(random_syntax, paste0(
-      " ", group_latent_name, "[1:", n_id, "] ~ dmnorm(",
-      group_mean_name, "[1:", n_id, "], ",
-      group_precision_name, "[1:", n_id, ",1:", n_id, "])\n",
-      " for(i in 1:", n_id, "){\n",
-      "   ", paste0(parameter, "_xRE_Zx"), "[i,1] = ", group_latent_name, "[i]\n",
-      " }\n"
-    ))
-    JAGS_data[[group_mean_name]] <- rep(0, n_id)
-    JAGS_data[[group_precision_name]] <- group_covariance$precision
-  }else if(isTRUE(sampled_random_effect)){
-    random_syntax <- c(random_syntax, .add_JAGS_matrix(name = paste0(parameter, "_xRE_PRECx"), diag(1, n_par)))
-    random_syntax <- c(random_syntax, paste0(
-      " for(i in 1:",n_id,"){\n",
-      "   ",paste0(parameter, "_xRE_Zx"),"[i,1:", n_par ,"] ~ dmnorm(rep(0, ", n_par,"), ", paste0(parameter, "_xRE_PRECx"), ")\n",
-      " }\n"
-    ))
-  }
 
-  # step 2
+  # Resolve the canonical SD leaves and bindings before choosing a sampled
+  # parameterization. Centered eligibility depends on their zero/external
+  # support, not only on the user-facing block prior.
   sd_spec <- .bt_random_effect_sd_spec(
     parameter = parameter,
     parameter_suffix = parameter_suffix,
@@ -377,6 +484,113 @@
   new_prior_list <- c(new_prior_list, sd_spec$prior_list)
   sd_binding <- sd_spec$sd_binding
   row_indexed_external_sd <- .bt_random_sd_binding_has_row_external_source(sd_binding)
+
+  parameterization <- .bt_random_effect_resolve_parameterization(
+    block_prior = block_prior,
+    prior_list = sd_spec$prior_list,
+    sd_binding = sd_binding,
+    row_indexed_external_sd = row_indexed_external_sd,
+    model_matrix = model_matrix,
+    group_map = grouping_mapping,
+    n_groups = n_id,
+    compile_mode = compile_mode,
+    block_name = random_term$block_name
+  )
+  dense_status <- .bt_random_effect_dense_complexity_status(
+    structure = random_structure,
+    n_groups = n_id,
+    n_columns = n_par,
+    n_rows = nrow(model_matrix),
+    monitor_policy = monitor_policy,
+    centered = identical(parameterization$resolved, "centered")
+  )
+  structured_layout <- NULL
+  if(isTRUE(sampled_random_effect) &&
+     random_structure %in% c("cs", "hcs", "ar1", "car", "har")){
+    structured_layout <- .bt_random_effect_structured_local_layout(
+      model_matrix = model_matrix,
+      group_map = grouping_mapping,
+      structure = random_structure,
+      parameter_stem = parameter,
+      n_groups = n_id,
+      column_coordinates = if(identical(random_structure, "car")){
+        car_metadata$time_values
+      }else{
+        seq_len(n_par)
+      }
+    )
+  }
+  dense_latent_cells <- n_id * n_par
+  sparse_advantage <- !is.null(structured_layout) &&
+    dense_latent_cells - structured_layout$n_local >= 100L &&
+    4 * structured_layout$n_local <= dense_latent_cells
+  group_local <- !is.null(structured_layout) &&
+    isTRUE(structured_layout$all_groups_observed) &&
+    identical(parameterization$resolved, "noncentered") &&
+    !isTRUE(monitor_policy$coefficients) &&
+    (any(dense_status$exceeded) || isTRUE(sparse_advantage)) &&
+    structured_layout$n_local < dense_latent_cells
+  latent_layout <- if(isTRUE(group_local)) structured_layout else NULL
+  if(isTRUE(sampled_random_effect) && isTRUE(group_local)){
+    .bt_random_effect_check_group_local_complexity(
+      random_term = random_term,
+      layout = latent_layout,
+      n_rows = nrow(model_matrix),
+      monitor_policy = monitor_policy,
+      row_indexed_external_sd = row_indexed_external_sd,
+      column_allocation = isTRUE(row_indexed_external_sd) &&
+        identical(sd_binding$application, "column")
+    )
+  }else if(isTRUE(sampled_random_effect)){
+    .bt_random_effect_check_dense_complexity(
+      random_term = random_term,
+      structure = random_structure,
+      n_groups = n_id,
+      n_columns = n_par,
+      n_rows = nrow(model_matrix),
+      monitor_policy = monitor_policy,
+      centered = identical(parameterization$resolved, "centered")
+    )
+  }
+  group_covariance <- .bt_random_effect_prepare_known_group_covariance(
+    random_term = random_term,
+    group_levels = grouping_factor_levels,
+    n_columns = n_par,
+    model_matrix = model_matrix,
+    random_structure = random_structure,
+    compile_mode = compile_mode,
+    row_indexed_external_sd = row_indexed_external_sd
+  )
+  # step 1:
+  if(isTRUE(sampled_random_effect) &&
+     identical(parameterization$resolved, "noncentered") &&
+     !isTRUE(group_local) && !is.null(group_covariance)){
+    group_mean_name <- paste0(parameter, "_xRE_GROUP_MUx")
+    group_precision_name <- paste0(parameter, "_xRE_GROUP_PRECx")
+    group_latent_name <- paste0(parameter, "_xRE_GROUP_Zx")
+    random_syntax <- c(random_syntax, paste0(
+      " ", group_latent_name, "[1:", n_id, "] ~ dmnorm(",
+      group_mean_name, "[1:", n_id, "], ",
+      group_precision_name, "[1:", n_id, ",1:", n_id, "])\n",
+      " for(i in 1:", n_id, "){\n",
+      "   ", paste0(parameter, "_xRE_Zx"), "[i,1] = ", group_latent_name, "[i]\n",
+      " }\n"
+    ))
+    JAGS_data[[group_mean_name]] <- rep(0, n_id)
+    JAGS_data[[group_precision_name]] <- group_covariance$precision
+  }else if(isTRUE(sampled_random_effect) &&
+           identical(parameterization$resolved, "noncentered") &&
+           !isTRUE(group_local)){
+    random_syntax <- c(random_syntax, paste0(
+      " for(i in 1:",n_id,"){\n",
+      "   for(j in 1:", n_par, "){\n",
+      "     ", paste0(parameter, "_xRE_Zx"), "[i,j] ~ dnorm(0, 1)\n",
+      "   }\n",
+      " }\n"
+    ))
+  }
+
+  # step 2 was resolved before step 1 so parameterization sees canonical scales.
   if(!is.null(group_covariance) && isTRUE(row_indexed_external_sd)){
     stop(
       "Known group covariance for random-effect block '",
@@ -398,7 +612,37 @@
   }
   if(random_structure %in% c("diag", "id") ||
      (random_structure == "us" && n_par == 1L)){
-    if(isTRUE(sampled_random_effect) && isTRUE(row_indexed_external_sd)){
+    if(isTRUE(sampled_random_effect) &&
+       identical(parameterization$resolved, "centered") &&
+       !is.null(group_covariance)){
+      group_precision_name <- paste0(parameter, "_xRE_GROUP_PRECx")
+      centered_precision_name <- paste0(parameter, "_xRE_GROUP_CENTER_PRECx")
+      JAGS_data[[group_precision_name]] <- group_covariance$precision
+      random_syntax <- c(random_syntax, paste0(
+        " for(i in 1:", n_id, "){\n",
+        "   for(j in 1:", n_id, "){\n",
+        "     ", centered_precision_name, "[i,j] <- ",
+        group_precision_name, "[i,j] / pow(", parameter,
+        "_xRE_STDx[1], 2)\n",
+        "   }\n",
+        " }\n",
+        " ", parameter, "_xRE_COEFx[1:", n_id,
+        ",1] ~ dmnorm(rep(0, ", n_id, "), ", centered_precision_name,
+        "[1:", n_id, ",1:", n_id, "])\n",
+        " for(i in 1:", n_id, "){\n",
+        "   ", parameter, "_xRE_Zx[i,1] <- ", parameter,
+        "_xRE_COEFx[i,1] / ", parameter, "_xRE_STDx[1]\n",
+        " }\n"
+      ))
+    }else if(isTRUE(sampled_random_effect) &&
+             identical(parameterization$resolved, "centered")){
+      random_syntax <- c(random_syntax, .bt_JAGS_centered_independent_random(
+        parameter = parameter,
+        K = n_par,
+        n_groups = n_id,
+        sd_name = paste0(parameter, "_xRE_STDx")
+      ))
+    }else if(isTRUE(sampled_random_effect) && isTRUE(row_indexed_external_sd)){
       random_syntax <- c(random_syntax, paste0(
         " for(i in 1:",n_par,"){\n",
         "   ",paste0(parameter, "_xRE_UNIT_COEFx"),"[1:",n_id,",i] = ",paste0(parameter, "_xRE_Zx"),"[1:",n_id,",i]\n",
@@ -441,7 +685,24 @@
       cholesky_name = lkj_module$cholesky_name,
       correlation_name = lkj_module$correlation_name
     )
-    if(isTRUE(sampled_random_effect) && isTRUE(row_indexed_external_sd)){
+    if(isTRUE(sampled_random_effect) &&
+       identical(parameterization$resolved, "centered")){
+      correlation_expression <- function(row, column){
+        terms <- paste0(
+          lkj_module$cholesky_name, "[", row, ",", seq_len(n_par), "] * ",
+          lkj_module$cholesky_name, "[", column, ",", seq_len(n_par), "]"
+        )
+        paste(terms, collapse = " + ")
+      }
+      random_syntax <- c(random_syntax, .bt_JAGS_centered_correlated_random(
+        parameter = parameter,
+        K = n_par,
+        n_groups = n_id,
+        sd_name = paste0(parameter, "_xRE_STDx"),
+        correlation_expression = correlation_expression,
+        cholesky_name = lkj_module$cholesky_name
+      ))
+    }else if(isTRUE(sampled_random_effect) && isTRUE(row_indexed_external_sd)){
       random_syntax <- c(random_syntax, paste0(
         " for(g in 1:",n_id,"){\n",
         "   for(i in 1:",n_par,"){\n",
@@ -460,16 +721,34 @@
     }
   }else if(random_structure %in% c("cs", "hcs", "ar1", "car", "har")){
     block_prior <- .bt_random_prior_for_block(prior_random, random_term$block_name)
-    corr_module <- .bt_JAGS_structured_corr_cholesky(
-      node_prefix = parameter,
-      prior_prefix = parameter_suffix,
-      K = n_par,
-      structure = random_structure,
-      block_prior = block_prior,
-      include_correlation = isTRUE(monitor_policy$correlation),
-      require_rho = TRUE,
-      distance_matrix = if(identical(random_structure, "car")) car_metadata$distance_matrix else NULL
-    )
+    centered_structure <- identical(parameterization$resolved, "centered")
+    corr_module <- if(isTRUE(centered_structure)){
+      .bt_JAGS_structured_corr_cholesky(
+        node_prefix = parameter,
+        prior_prefix = parameter_suffix,
+        K = n_par,
+        structure = random_structure,
+        block_prior = block_prior,
+        include_correlation = TRUE,
+        require_rho = TRUE,
+        distance_matrix = if(identical(random_structure, "car")){
+          abs(outer(car_metadata$time_values, car_metadata$time_values, "-"))
+        }else{
+          NULL
+        }
+      )
+    }else{
+      .bt_JAGS_structured_corr_direct(
+        node_prefix = parameter,
+        prior_prefix = parameter_suffix,
+        K = n_par,
+        structure = random_structure,
+        block_prior = block_prior,
+        include_correlation = FALSE,
+        require_rho = TRUE,
+        distance_matrix = NULL
+      )
+    }
     random_syntax <- c(random_syntax, corr_module$syntax)
     for(corr_prior_name in names(corr_module$prior_list)){
       corr_module$prior_list[[corr_prior_name]] <- .bt_random_effect_set_prior_metadata(
@@ -482,33 +761,81 @@
       )
     }
     new_prior_list <- c(new_prior_list, corr_module$prior_list)
-    add_parameters <- c(add_parameters, corr_module$monitor)
+    correlation_monitors <- corr_module$monitor
+    if(isTRUE(centered_structure)){
+      correlation_monitors <- corr_module$rho_name
+    }
+    add_parameters <- c(add_parameters, correlation_monitors)
     correlation_metadata <- corr_module$bridge
     if(identical(random_structure, "car")){
       correlation_metadata$time_variable <- car_metadata$time_variable
       correlation_metadata$time_values <- car_metadata$time_values
     }
-    if(isTRUE(sampled_random_effect) && isTRUE(row_indexed_external_sd)){
+    if(isTRUE(sampled_random_effect) && isTRUE(group_local)){
+      random_syntax <- c(random_syntax, .bt_JAGS_structured_local_transform(
+        parameter = parameter,
+        layout = latent_layout,
+        rho_name = corr_module$rho_name,
+        sd_name = paste0(parameter, "_xRE_STDx"),
+        row_indexed_external_sd = row_indexed_external_sd
+      ))
+    }else if(isTRUE(sampled_random_effect) && isTRUE(centered_structure)){
+      correlation_expression <- function(row, column){
+        paste0(corr_module$correlation_name, "[", row, ",", column, "]")
+      }
+      random_syntax <- c(random_syntax, .bt_JAGS_centered_correlated_random(
+        parameter = parameter,
+        K = n_par,
+        n_groups = n_id,
+        sd_name = paste0(parameter, "_xRE_STDx"),
+        correlation_expression = correlation_expression,
+        cholesky_name = corr_module$cholesky_name
+      ))
+    }else if(isTRUE(sampled_random_effect) && isTRUE(row_indexed_external_sd)){
       random_syntax <- c(random_syntax, paste0(
-        " for(g in 1:",n_id,"){\n",
-        "   for(i in 1:",n_par,"){\n",
-        "     ",paste0(parameter, "_xRE_UNIT_COEFx"),"[g,i] = inprod(", corr_module$cholesky_name, "[i,1:", n_par, "], ", paste0(parameter, "_xRE_Zx"), "[g,1:", n_par, "])\n",
-        "   }\n",
-        " }\n"
+        .bt_JAGS_structured_dense_transform(
+          parameter = parameter,
+          structure = random_structure,
+          K = n_par,
+          n_groups = n_id,
+          rho_name = corr_module$rho_name,
+          sd_name = paste0(parameter, "_xRE_STDx"),
+          row_indexed_external_sd = TRUE,
+          car_time_values = if(identical(random_structure, "car")){
+            car_metadata$time_values
+          }else{
+            NULL
+          }
+        )
       ))
     }else if(isTRUE(sampled_random_effect)){
-      random_syntax <- c(random_syntax, paste0(
-        " for(g in 1:",n_id,"){\n",
-        "   for(i in 1:",n_par,"){\n",
-        "     ",paste0(parameter, "_xRE_COEFx"),"[g,i] = ",paste0(parameter, "_xRE_STDx"),"[i] * inprod(", corr_module$cholesky_name, "[i,1:", n_par, "], ", paste0(parameter, "_xRE_Zx"), "[g,1:", n_par, "])\n",
-        "   }\n",
-        " }\n"
+      random_syntax <- c(random_syntax, .bt_JAGS_structured_dense_transform(
+        parameter = parameter,
+        structure = random_structure,
+        K = n_par,
+        n_groups = n_id,
+        rho_name = corr_module$rho_name,
+        sd_name = paste0(parameter, "_xRE_STDx"),
+        row_indexed_external_sd = FALSE,
+        car_time_values = if(identical(random_structure, "car")){
+          car_metadata$time_values
+        }else{
+          NULL
+        }
       ))
     }
   }
 
   # step 4
-  if(isTRUE(sampled_random_effect) && isTRUE(row_indexed_external_sd)){
+  if(isTRUE(sampled_random_effect) && !is.null(structured_layout) &&
+     !isTRUE(row_indexed_external_sd)){
+    random_syntax <- c(random_syntax, paste0(
+      " for(i in 1:", nrow(model_matrix), "){\n",
+      "   ", parameter, "[i] = ", parameter, "_xRE_COEFx[",
+      parameter, "_xRE_MAPx[i],", parameter, "_xRE_COLx[i]]\n",
+      " }\n"
+    ))
+  }else if(isTRUE(sampled_random_effect) && isTRUE(row_indexed_external_sd)){
     if(isTRUE(sd_binding$true_allocation)){
       allocation_target <- .bt_random_effect_allocation_target_metadata(
         sd_binding$allocations[[1L]],
@@ -545,6 +872,14 @@
       sd_binding,
       row_index = "i"
     )
+    unit_expression <- if(!is.null(structured_layout)){
+      paste0(
+        parameter, "_xRE_UNIT_COEFx[", parameter, "_xRE_MAPx[i],",
+        parameter, "_xRE_COLx[i]]"
+      )
+    }else{
+      NULL
+    }
     if(identical(sd_binding$application, "column")){
       if(length(sd_binding$factors_by_column) == 0L){
         stop(
@@ -562,30 +897,55 @@
           call. = FALSE
         )
       }
-      column_terms <- vapply(seq_len(n_par), function(column){
-        factor_expression <- .bt_random_sd_binding_factors_expression(
-          sd_binding$factors_by_column[[column]]
+      if(!is.null(structured_layout)){
+        column_scale_name <- paste0(parameter, "_xRE_ROW_COL_SCALEx")
+        for(column in seq_len(n_par)){
+          factor_expression <- .bt_random_sd_binding_factors_expression(
+            sd_binding$factors_by_column[[column]]
+          )
+          random_syntax <- c(random_syntax, paste0(
+            column_scale_name, "[", column, "] <- ", factor_expression, "\n"
+          ))
+        }
+        row_contribution <- paste0(
+          source_expression, " * ", column_scale_name, "[",
+          parameter, "_xRE_COLx[i]] * ", unit_expression
         )
-        paste(
-          c(
-            if(!identical(factor_expression, "1")) factor_expression,
-            paste0(parameter, "_xRE_UNIT_COEFx[", parameter, "_xRE_MAPx[i],", column, "]"),
-            paste0(parameter, "_xRE_DATAx[i,", column, "]")
-          ),
-          collapse = " * "
+      }else{
+        column_terms <- vapply(seq_len(n_par), function(column){
+          factor_expression <- .bt_random_sd_binding_factors_expression(
+            sd_binding$factors_by_column[[column]]
+          )
+          paste(
+            c(
+              if(!identical(factor_expression, "1")) factor_expression,
+              paste0(parameter, "_xRE_UNIT_COEFx[", parameter,
+                     "_xRE_MAPx[i],", column, "]"),
+              paste0(parameter, "_xRE_DATAx[i,", column, "]")
+            ),
+            collapse = " * "
+          )
+        }, character(1))
+        row_contribution <- paste0(
+          source_expression, " * (", paste(column_terms, collapse = " + "), ")"
         )
-      }, character(1))
-      row_contribution <- paste0(source_expression, " * (", paste(column_terms, collapse = " + "), ")")
+      }
     }else{
       factor_expression <- .bt_random_sd_binding_factors_expression(sd_binding$factors)
-      unit_contribution <- paste0(
-        "inprod(",
-        paste0(parameter, "_xRE_UNIT_COEFx[", paste0(parameter, "_xRE_MAPx[i]"), ", 1:", n_par, "]"),
-        ", ",
-        paste0(parameter, "_xRE_DATAx[i,1:", n_par, "]"),
-        ")"
+      unit_contribution <- if(!is.null(structured_layout)){
+        unit_expression
+      }else{
+        paste0(
+          "inprod(",
+          parameter, "_xRE_UNIT_COEFx[", parameter,
+          "_xRE_MAPx[i], 1:", n_par, "], ",
+          parameter, "_xRE_DATAx[i,1:", n_par, "]",
+          ")"
+        )
+      }
+      row_contribution <- paste0(
+        source_expression, " * ", factor_expression, " * ", unit_contribution
       )
-      row_contribution <- paste0(source_expression, " * ", factor_expression, " * ", unit_contribution)
     }
     random_syntax <- c(random_syntax, paste0(
       " for(i in 1:",nrow(model_matrix),"){\n",
@@ -601,7 +961,10 @@
   }
 
   # create the JAGS data list
-  if(isTRUE(sampled_random_effect)){
+  if(isTRUE(sampled_random_effect) && !is.null(structured_layout)){
+    JAGS_data[[paste0(parameter, "_xRE_MAPx")]] <- grouping_mapping
+    JAGS_data[[paste0(parameter, "_xRE_COLx")]] <- structured_layout$row_column
+  }else if(isTRUE(sampled_random_effect)){
     JAGS_data[[paste0(parameter, "_xRE_DATAx")]] <- model_matrix
     JAGS_data[[paste0(parameter, "_xRE_MAPx")]]  <- grouping_mapping
   }
@@ -643,7 +1006,12 @@
   random_term$group_covariance <- group_covariance
   random_term$car              <- car_metadata
   random_term$new_levels       <- block_prior$new_levels
+  random_term$monitor          <- monitor_policy
   random_term$compile_mode     <- compile_mode
+  random_term$parameterization_requested <- parameterization$requested
+  random_term$parameterization_resolved  <- parameterization$resolved
+  random_term$parameterization_reason    <- parameterization$reason
+  random_term$latent_layout <- latent_layout
   attr(random_term, "random_block") <- random_term$block_name
   attr(random_term, "compile_mode") <- compile_mode
 

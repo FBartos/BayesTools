@@ -1,5 +1,19 @@
 .bt_random_effect_latent_names <- function(random_term, n_groups, n_columns){
 
+  layout <- random_term$latent_layout
+  if(inherits(layout, "BayesTools_random_effect_structured_local_layout")){
+    node_names <- layout$node_names
+    if(length(node_names) != layout$n_local){
+      stop(
+        "Random-effect local latent metadata",
+        .bt_random_effect_metadata_block_detail(random_term),
+        " have inconsistent node names.",
+        call. = FALSE
+      )
+    }
+    return(node_names)
+  }
+
   outer(
     seq_len(n_groups),
     seq_len(n_columns),
