@@ -26,22 +26,30 @@
 #'   object or one of `"error"`, `"zero"`, or `"sample"`. `"zero"` assigns
 #'   zero covariance contribution to unseen grouping levels. `"sample"` treats
 #'   unseen grouping levels as independent draws from the block covariance `G`.
+#' @param diagonal_only whether to return only observation-level marginal
+#'   variances. This avoids allocating a `draw x row x row` array when callers
+#'   need only `diag(Z G Z')`.
 #' @param ... reserved for future extensions. Unused arguments are rejected.
 #'
 #' @return A list of class
 #'   `BayesTools_random_effects_marginal_vcov` with fields:
 #'   \describe{
-#'     \item{samples}{A dense array with dimensions
-#'       `draw x row x row`.}
+#'     \item{samples}{A dense array with dimensions `draw x row x row`, or a
+#'       `draw x row` matrix when `diagonal_only = TRUE`.}
 #'     \item{metadata}{A list describing row ordering, included blocks,
-#'       skipped blocks, structures, dimensions, and dense-memory size.}
+#'       skipped blocks, structures, dimensions, and memory size. With
+#'       `diagonal_only = TRUE`, it additionally identifies the `"diagonal"`
+#'       variance representation, its sample dimensions, and the equivalent
+#'       dense entry count. The default covariance metadata schema is
+#'       unchanged.}
 #'   }
 #'
 #' @seealso [JAGS_formula_design()] [JAGS_fit()]
 #' @export
 random_effects_marginal_vcov <- function(
     fit, parameter = NULL, data = NULL, posterior_samples = NULL,
-    prior_list = NULL, blocks = NULL, new_levels = NULL, ...){
+    prior_list = NULL, blocks = NULL, new_levels = NULL,
+    diagonal_only = FALSE, ...){
 
   dots <- list(...)
   if(length(dots) > 0L){
@@ -60,6 +68,7 @@ random_effects_marginal_vcov <- function(
   }
   check_char(parameter, "parameter", allow_NULL = TRUE, allow_NA = FALSE)
   check_char(blocks, "blocks", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
+  check_bool(diagonal_only, "diagonal_only", allow_NA = FALSE)
   if(!is.null(data) && !is.data.frame(data)){
     stop("'data' must be a data.frame.", call. = FALSE)
   }
@@ -87,7 +96,8 @@ random_effects_marginal_vcov <- function(
     prior_list = prior_list,
     data = data,
     blocks = blocks,
-    new_levels = new_levels
+    new_levels = new_levels,
+    diagonal_only = diagonal_only
   )
 }
 
@@ -388,7 +398,8 @@ random_effects_marginal_variance_factors <- function(
                                                           prior_list,
                                                           data = NULL,
                                                           blocks = NULL,
-                                                          new_levels = NULL){
+                                                          new_levels = NULL,
+                                                          diagonal_only = FALSE){
 
   selected <- .bt_random_effect_marginal_covariance_terms(
     design = design,
@@ -424,12 +435,17 @@ random_effects_marginal_variance_factors <- function(
       source_data = block_data$source_data,
       data_supplied = block_data$data_supplied,
       posterior = posterior,
-      prior_list = prior_list
+      prior_list = prior_list,
+      diagonal_only = diagonal_only
     )
     if(any(new_level_info$row_mask) &&
        identical(block_new_levels$method, "zero")){
-      block_output$samples[, new_level_info$row_mask, ] <- 0
-      block_output$samples[, , new_level_info$row_mask] <- 0
+      if(isTRUE(diagonal_only)){
+        block_output$samples[, new_level_info$row_mask] <- 0
+      }else{
+        block_output$samples[, new_level_info$row_mask, ] <- 0
+        block_output$samples[, , new_level_info$row_mask] <- 0
+      }
     }
     if(is.null(samples)){
       samples <- block_output$samples
@@ -438,7 +454,8 @@ random_effects_marginal_variance_factors <- function(
         random_term = random_term,
         samples = samples,
         n_draws = nrow(posterior),
-        row_names = block_data$row_names
+        row_names = block_data$row_names,
+        diagonal_only = diagonal_only
       )
       samples <- samples + block_output$samples
     }
@@ -449,29 +466,43 @@ random_effects_marginal_variance_factors <- function(
       group_levels = block_data$group_levels,
       row_names = block_data$row_names,
       sample_dim = block_output$sample_dim,
-      new_level_info = new_level_info
+      new_level_info = new_level_info,
+      diagonal_only = diagonal_only
     )
   }
   names(block_metadata) <- vapply(random_terms, `[[`, character(1), "block_name")
 
-  row_names <- dimnames(samples)[[2L]]
-  dense_entries <- prod(dim(samples))
+  row_names <- if(isTRUE(diagonal_only)){
+    colnames(samples)
+  }else{
+    dimnames(samples)[[2L]]
+  }
+  sample_entries <- prod(dim(samples))
   metadata <- list(
     parameter = design$parameter,
-    n_draws = dim(samples)[1L],
-    n_rows = dim(samples)[2L],
+    n_draws = nrow(samples),
+    n_rows = if(isTRUE(diagonal_only)) ncol(samples) else dim(samples)[2L],
     row_names = row_names,
-    row_order = seq_len(dim(samples)[2L]),
+    row_order = seq_along(row_names),
     data_source = if(is.null(data)) "fitted" else "data",
-    dense = TRUE,
-    dense_entries = dense_entries,
+    dense = !isTRUE(diagonal_only),
+    dense_entries = if(isTRUE(diagonal_only)) NA_real_ else sample_entries,
     estimated_size_bytes = as.numeric(utils::object.size(samples)),
-    potentially_expensive = dense_entries > 1e7,
+    potentially_expensive = sample_entries > 1e7,
     included_blocks = names(block_metadata),
     skipped_blocks = selected$skipped,
     structures = vapply(block_metadata, `[[`, character(1), "structure"),
     blocks = block_metadata
   )
+  if(isTRUE(diagonal_only)){
+    metadata$representation <- "diagonal"
+    metadata$quantity <- "variance"
+    metadata$diagonal_only <- TRUE
+    metadata$sample_dim <- dim(samples)
+    metadata$sample_entries <- sample_entries
+    metadata$equivalent_dense_entries <-
+      as.numeric(nrow(samples)) * as.numeric(ncol(samples))^2
+  }
 
   out <- list(samples = samples, metadata = metadata)
   class(out) <- c(
@@ -485,9 +516,14 @@ random_effects_marginal_variance_factors <- function(
     random_term,
     samples,
     n_draws,
-    row_names){
+    row_names,
+    diagonal_only = FALSE){
 
-  expected_dim <- c(n_draws, length(row_names), length(row_names))
+  expected_dim <- if(isTRUE(diagonal_only)){
+    c(n_draws, length(row_names))
+  }else{
+    c(n_draws, length(row_names), length(row_names))
+  }
   if(!identical(dim(samples), expected_dim)){
     stop(
       "Random-effect marginal covariance block '",
@@ -501,8 +537,12 @@ random_effects_marginal_variance_factors <- function(
     )
   }
 
-  expected_dimnames <- list(row = row_names, column = row_names)
-  if(!identical(dimnames(samples)[2:3], expected_dimnames)){
+  actual_row_names <- if(isTRUE(diagonal_only)){
+    colnames(samples)
+  }else{
+    dimnames(samples)[[2L]]
+  }
+  if(!identical(actual_row_names, row_names)){
     stop(
       "Random-effect marginal covariance block '",
       random_term$block_name,
@@ -942,7 +982,8 @@ random_effects_marginal_variance_factors <- function(
     source_data,
     data_supplied,
     posterior,
-    prior_list){
+    prior_list,
+    diagonal_only = FALSE){
 
   if(.bt_random_effect_has_row_indexed_external_sd(random_term)){
     return(.bt_random_effect_marginal_covariance_row_indexed_block(
@@ -952,7 +993,8 @@ random_effects_marginal_variance_factors <- function(
       source_data = source_data,
       data_supplied = data_supplied,
       posterior = posterior,
-      prior_list = prior_list
+      prior_list = prior_list,
+      diagonal_only = diagonal_only
     ))
   }
 
@@ -984,7 +1026,8 @@ random_effects_marginal_variance_factors <- function(
       model_matrix = model_matrix,
       group_map = group_map,
       posterior = posterior,
-      sd_draws = sd_draws
+      sd_draws = sd_draws,
+      diagonal_only = diagonal_only
     ))
   }
 
@@ -997,7 +1040,8 @@ random_effects_marginal_variance_factors <- function(
       model_matrix = model_matrix,
       group_map = group_map,
       n_draws = nrow(posterior),
-      column_scale_draws = sd_draws
+      column_scale_draws = sd_draws,
+      diagonal_only = diagonal_only
     ))
   }
 
@@ -1005,6 +1049,24 @@ random_effects_marginal_variance_factors <- function(
     random_term = random_term,
     model_matrix = model_matrix
   )
+  if(isTRUE(diagonal_only)){
+    one_sparse <- .bt_random_effect_marginal_covariance_one_sparse_columns(
+      model_matrix
+    )
+    if(!is.null(one_sparse)){
+      row_sd <- sd_draws[, one_sparse$row_column, drop = FALSE] *
+        matrix(
+          one_sparse$row_value,
+          nrow = nrow(posterior),
+          ncol = nrow(model_matrix),
+          byrow = TRUE
+        )
+      return(.bt_random_effect_marginal_variance_one_sparse(
+        model_matrix = model_matrix,
+        row_sd = row_sd
+      ))
+    }
+  }
   if(!is.null(row_column)){
     return(.bt_random_effect_marginal_covariance_structured_one_hot(
       random_term = random_term,
@@ -1012,7 +1074,29 @@ random_effects_marginal_variance_factors <- function(
       group_map = group_map,
       posterior = posterior,
       row_column = row_column,
-      row_sd = sd_draws[, row_column, drop = FALSE]
+      row_sd = sd_draws[, row_column, drop = FALSE],
+      diagonal_only = diagonal_only
+    ))
+  }
+
+  if(isTRUE(diagonal_only)){
+    cholesky <- .bt_random_effect_cholesky_draws(
+      random_term = random_term,
+      n_columns = n_columns,
+      posterior = posterior
+    )
+    if(is.null(cholesky)){
+      .bt_random_effect_marginal_covariance_missing_correlation_stop(
+        random_term = random_term,
+        n_columns = n_columns,
+        posterior = posterior
+      )
+    }
+    return(.bt_random_effect_marginal_variance_cholesky(
+      random_term = random_term,
+      model_matrix = model_matrix,
+      cholesky = cholesky,
+      column_weights = sd_draws
     ))
   }
 
@@ -1022,19 +1106,19 @@ random_effects_marginal_variance_factors <- function(
     posterior = posterior
   )
 
-  covariance <- array(NA_real_, dim = dim(correlation))
-  for(draw in seq_len(nrow(posterior))){
-    covariance[draw, , ] <- correlation[draw, , ] *
-      tcrossprod(sd_draws[draw, ])
-  }
-
   list(
     samples = .bt_random_effect_marginal_covariance_expand(
       model_matrix = model_matrix,
       group_map = group_map,
-      block_covariance = covariance
+      block_covariance = correlation,
+      column_weights = sd_draws,
+      diagonal_only = diagonal_only
     ),
-    sample_dim = c(nrow(posterior), nrow(model_matrix), nrow(model_matrix))
+    sample_dim = if(isTRUE(diagonal_only)){
+      c(nrow(posterior), nrow(model_matrix))
+    }else{
+      c(nrow(posterior), nrow(model_matrix), nrow(model_matrix))
+    }
   )
 }
 
@@ -1043,7 +1127,8 @@ random_effects_marginal_variance_factors <- function(
     model_matrix,
     group_map,
     posterior,
-    sd_draws){
+    sd_draws,
+    diagonal_only = FALSE){
 
   n_draws <- nrow(posterior)
   n_rows <- nrow(model_matrix)
@@ -1072,6 +1157,16 @@ random_effects_marginal_variance_factors <- function(
   if(is.null(row_names)){
     row_names <- as.character(seq_len(n_rows))
   }
+  if(isTRUE(diagonal_only)){
+    base_variance <- diag(group_covariance$kernel)[group_map] *
+      model_matrix[, 1L]^2
+    out <- tcrossprod(sd_draws[, 1L]^2, base_variance)
+    colnames(out) <- row_names
+    return(list(
+      samples = out,
+      sample_dim = c(n_draws, n_rows)
+    ))
+  }
   base_covariance <- group_covariance$kernel[group_map, group_map, drop = FALSE] *
     tcrossprod(model_matrix[, 1L])
   out <- array(NA_real_, dim = c(n_draws, n_rows, n_rows))
@@ -1093,7 +1188,8 @@ random_effects_marginal_variance_factors <- function(
     source_data,
     data_supplied,
     posterior,
-    prior_list){
+    prior_list,
+    diagonal_only = FALSE){
 
   n_draws <- nrow(posterior)
   n_rows <- nrow(model_matrix)
@@ -1179,8 +1275,33 @@ random_effects_marginal_variance_factors <- function(
       group_map = group_map,
       n_draws = n_draws,
       column_scale_draws = column_weights,
-      row_scale_draws = row_weights
+      row_scale_draws = row_weights,
+      diagonal_only = diagonal_only
     ))
+  }
+
+  if(isTRUE(diagonal_only)){
+    one_sparse <- .bt_random_effect_marginal_covariance_one_sparse_columns(
+      model_matrix
+    )
+    if(!is.null(one_sparse)){
+      row_sd <- if(is.null(column_allocation)){
+        row_weights
+      }else{
+        source_draws *
+          column_allocation[, one_sparse$row_column, drop = FALSE]
+      }
+      row_sd <- row_sd * matrix(
+        one_sparse$row_value,
+        nrow = n_draws,
+        ncol = n_rows,
+        byrow = TRUE
+      )
+      return(.bt_random_effect_marginal_variance_one_sparse(
+        model_matrix = model_matrix,
+        row_sd = row_sd
+      ))
+    }
   }
 
   row_column <- .bt_random_effect_marginal_covariance_structured_columns(
@@ -1199,7 +1320,30 @@ random_effects_marginal_variance_factors <- function(
       group_map = group_map,
       posterior = posterior,
       row_column = row_column,
-      row_sd = row_sd
+      row_sd = row_sd,
+      diagonal_only = diagonal_only
+    ))
+  }
+
+  if(isTRUE(diagonal_only)){
+    cholesky <- .bt_random_effect_cholesky_draws(
+      random_term = random_term,
+      n_columns = n_columns,
+      posterior = posterior
+    )
+    if(is.null(cholesky)){
+      .bt_random_effect_marginal_covariance_missing_correlation_stop(
+        random_term = random_term,
+        n_columns = n_columns,
+        posterior = posterior
+      )
+    }
+    return(.bt_random_effect_marginal_variance_cholesky(
+      random_term = random_term,
+      model_matrix = model_matrix,
+      cholesky = cholesky,
+      row_weights = row_weights,
+      column_weights = column_weights
     ))
   }
 
@@ -1215,9 +1359,111 @@ random_effects_marginal_variance_factors <- function(
       group_map = group_map,
       block_covariance = correlation,
       row_weights = row_weights,
-      column_weights = column_weights
+      column_weights = column_weights,
+      diagonal_only = diagonal_only
     ),
-    sample_dim = c(n_draws, n_rows, n_rows)
+    sample_dim = if(isTRUE(diagonal_only)){
+      c(n_draws, n_rows)
+    }else{
+      c(n_draws, n_rows, n_rows)
+    }
+  )
+}
+
+.bt_random_effect_marginal_covariance_one_sparse_columns <- function(
+    model_matrix){
+
+  if(any(!is.finite(model_matrix))){
+    return(NULL)
+  }
+  nonzero <- model_matrix != 0
+  if(any(rowSums(nonzero) != 1L)){
+    return(NULL)
+  }
+
+  row_column <- max.col(nonzero, ties.method = "first")
+  row_value <- model_matrix[cbind(seq_len(nrow(model_matrix)), row_column)]
+  if(any(!is.finite(row_value))){
+    return(NULL)
+  }
+
+  list(row_column = row_column, row_value = row_value)
+}
+
+.bt_random_effect_marginal_variance_one_sparse <- function(model_matrix,
+                                                           row_sd){
+
+  n_draws <- nrow(row_sd)
+  n_rows  <- nrow(model_matrix)
+  if(!is.matrix(row_sd) || !identical(dim(row_sd), c(n_draws, n_rows)) ||
+     any(!is.finite(row_sd))){
+    stop("One-sparse random-effect marginal SD draws are inconsistent.",
+         call. = FALSE)
+  }
+
+  row_names <- rownames(model_matrix)
+  if(is.null(row_names)){
+    row_names <- as.character(seq_len(n_rows))
+  }
+  samples <- row_sd^2
+  colnames(samples) <- row_names
+
+  list(
+    samples = samples,
+    sample_dim = c(n_draws, n_rows)
+  )
+}
+
+.bt_random_effect_marginal_variance_cholesky <- function(
+    random_term,
+    model_matrix,
+    cholesky,
+    row_weights = NULL,
+    column_weights = NULL){
+
+  n_draws  <- dim(cholesky)[1L]
+  n_rows   <- nrow(model_matrix)
+  n_columns <- ncol(model_matrix)
+  if(!is.array(cholesky) || length(dim(cholesky)) != 3L ||
+     !identical(dim(cholesky), c(n_draws, n_columns, n_columns)) ||
+     any(!is.finite(cholesky))){
+    stop(
+      "Random-effect marginal covariance Cholesky draws for block '",
+      random_term$block_name,
+      "' do not match the expected dimensions.",
+      call. = FALSE
+    )
+  }
+
+  row_names <- rownames(model_matrix)
+  if(is.null(row_names)){
+    row_names <- as.character(seq_len(n_rows))
+  }
+  samples <- matrix(
+    0,
+    nrow = n_draws,
+    ncol = n_rows,
+    dimnames = list(draw = NULL, row = row_names)
+  )
+  for(draw in seq_len(n_draws)){
+    Z <- model_matrix
+    if(!is.null(row_weights)){
+      Z <- Z * row_weights[draw, ]
+    }
+    if(!is.null(column_weights)){
+      Z <- sweep(
+        Z,
+        MARGIN = 2L,
+        STATS = column_weights[draw, ],
+        FUN = "*"
+      )
+    }
+    samples[draw, ] <- rowSums((Z %*% cholesky[draw, , ])^2)
+  }
+
+  list(
+    samples = samples,
+    sample_dim = c(n_draws, n_rows)
   )
 }
 
@@ -1245,7 +1491,8 @@ random_effects_marginal_variance_factors <- function(
 }
 
 .bt_random_effect_marginal_covariance_structured_one_hot <- function(
-    random_term, model_matrix, group_map, posterior, row_column, row_sd){
+    random_term, model_matrix, group_map, posterior, row_column, row_sd,
+    diagonal_only = FALSE){
 
   structure <- .bt_random_effect_structure(
     random_term,
@@ -1270,6 +1517,19 @@ random_effects_marginal_variance_factors <- function(
     )
   }
 
+  row_names <- rownames(model_matrix)
+  if(is.null(row_names)){
+    row_names <- as.character(seq_len(n_rows))
+  }
+  if(isTRUE(diagonal_only)){
+    out <- row_sd^2
+    colnames(out) <- row_names
+    return(list(
+      samples = out,
+      sample_dim = c(n_draws, n_rows)
+    ))
+  }
+
   exponent <- if(structure %in% c("cs", "hcs")){
     outer(row_column, row_column, "!=") * 1
   }else if(identical(structure, "car")){
@@ -1288,10 +1548,6 @@ random_effects_marginal_variance_factors <- function(
     abs(outer(row_column, row_column, "-"))
   }
   same_group <- outer(group_map, group_map, "==")
-  row_names <- rownames(model_matrix)
-  if(is.null(row_names)){
-    row_names <- as.character(seq_len(n_rows))
-  }
   out <- array(
     0,
     dim = c(n_draws, n_rows, n_rows),
@@ -1417,13 +1673,41 @@ random_effects_marginal_variance_factors <- function(
     group_map,
     n_draws,
     column_scale_draws = NULL,
-    row_scale_draws = NULL){
+    row_scale_draws = NULL,
+    diagonal_only = FALSE){
 
   n_rows    <- nrow(model_matrix)
   n_columns <- ncol(model_matrix)
   row_names <- rownames(model_matrix)
   if(is.null(row_names)){
     row_names <- as.character(seq_len(n_rows))
+  }
+  if(isTRUE(diagonal_only)){
+    out <- matrix(
+      0,
+      nrow = n_draws,
+      ncol = n_rows,
+      dimnames = list(draw = NULL, row = row_names)
+    )
+    for(draw in seq_len(n_draws)){
+      Z <- model_matrix
+      if(!is.null(column_scale_draws)){
+        Z <- sweep(
+          Z,
+          MARGIN = 2L,
+          STATS = column_scale_draws[draw, ],
+          FUN = "*"
+        )
+      }
+      if(!is.null(row_scale_draws)){
+        Z <- Z * row_scale_draws[draw, ]
+      }
+      out[draw, ] <- rowSums(Z^2)
+    }
+    return(list(
+      samples = out,
+      sample_dim = c(n_draws, n_rows)
+    ))
   }
   out <- array(
     0,
@@ -1579,7 +1863,8 @@ random_effects_marginal_variance_factors <- function(
     group_map,
     block_covariance,
     row_weights = NULL,
-    column_weights = NULL){
+    column_weights = NULL,
+    diagonal_only = FALSE){
 
   n_draws <- dim(block_covariance)[1L]
   n_rows <- nrow(model_matrix)
@@ -1587,6 +1872,35 @@ random_effects_marginal_variance_factors <- function(
   row_names <- rownames(model_matrix)
   if(is.null(row_names)){
     row_names <- as.character(seq_len(n_rows))
+  }
+  if(isTRUE(diagonal_only)){
+    out <- matrix(
+      0,
+      nrow = n_draws,
+      ncol = n_rows,
+      dimnames = list(draw = NULL, row = row_names)
+    )
+    for(draw in seq_len(n_draws)){
+      G <- matrix(
+        block_covariance[draw, , ],
+        nrow = n_columns,
+        ncol = n_columns
+      )
+      Z <- model_matrix
+      if(!is.null(row_weights)){
+        Z <- Z * row_weights[draw, ]
+      }
+      if(!is.null(column_weights)){
+        Z <- sweep(
+          Z,
+          MARGIN = 2L,
+          STATS = column_weights[draw, ],
+          FUN = "*"
+        )
+      }
+      out[draw, ] <- rowSums((Z %*% G) * Z)
+    }
+    return(out)
   }
   out <- array(0, dim = c(n_draws, n_rows, n_rows))
   dimnames(out) <- list(draw = NULL, row = row_names, column = row_names)
@@ -1653,7 +1967,8 @@ random_effects_marginal_variance_factors <- function(
     group_levels,
     row_names,
     sample_dim,
-    new_level_info = NULL){
+    new_level_info = NULL,
+    diagonal_only = FALSE){
 
   structure <- .bt_random_effect_structure(
     random_term,
@@ -1665,7 +1980,7 @@ random_effects_marginal_variance_factors <- function(
     context = "Random-effect marginal covariance metadata"
   )
 
-  list(
+  metadata <- list(
     block_name = random_term$block_name,
     grouping = random_term$group_label,
     structure = structure,
@@ -1689,7 +2004,18 @@ random_effects_marginal_variance_factors <- function(
     group_covariance = .bt_random_effect_group_covariance_metadata(random_term),
     included = TRUE,
     skipped = FALSE,
-    dense = TRUE,
-    dense_entries = prod(sample_dim)
+    dense = !isTRUE(diagonal_only),
+    dense_entries = if(isTRUE(diagonal_only)) NA_real_ else prod(sample_dim)
   )
+  if(isTRUE(diagonal_only)){
+    metadata$representation <- "diagonal"
+    metadata$quantity <- "variance"
+    metadata$diagonal_only <- TRUE
+    metadata$sample_dim <- sample_dim
+    metadata$sample_entries <- prod(sample_dim)
+    metadata$equivalent_dense_entries <-
+      as.numeric(sample_dim[[1L]]) * as.numeric(sample_dim[[2L]])^2
+  }
+
+  metadata
 }

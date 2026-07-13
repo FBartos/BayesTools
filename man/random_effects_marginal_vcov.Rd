@@ -12,6 +12,7 @@ random_effects_marginal_vcov(
   prior_list = NULL,
   blocks = NULL,
   new_levels = NULL,
+  diagonal_only = FALSE,
   ...
 )
 }
@@ -43,16 +44,24 @@ object or one of \code{"error"}, \code{"zero"}, or \code{"sample"}. \code{"zero"
 zero covariance contribution to unseen grouping levels. \code{"sample"} treats
 unseen grouping levels as independent draws from the block covariance \code{G}.}
 
+\item{diagonal_only}{whether to return only observation-level marginal
+variances. This avoids allocating a \verb{draw x row x row} array when callers
+need only \verb{diag(Z G Z')}.}
+
 \item{...}{reserved for future extensions. Unused arguments are rejected.}
 }
 \value{
 A list of class
 \code{BayesTools_random_effects_marginal_vcov} with fields:
 \describe{
-\item{samples}{A dense array with dimensions
-\verb{draw x row x row}.}
+\item{samples}{A dense array with dimensions \verb{draw x row x row}, or a
+\verb{draw x row} matrix when \code{diagonal_only = TRUE}.}
 \item{metadata}{A list describing row ordering, included blocks,
-skipped blocks, structures, dimensions, and dense-memory size.}
+skipped blocks, structures, dimensions, and memory size. With
+\code{diagonal_only = TRUE}, it additionally identifies the \code{"diagonal"}
+variance representation, its sample dimensions, and the equivalent
+dense entry count. The default covariance metadata schema is
+unchanged.}
 }
 }
 \description{

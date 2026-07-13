@@ -46,19 +46,30 @@ skip_if_not_test_profile("unit")
 }
 
 .re_cov_output <- function(result, posterior, data = NULL, blocks = NULL,
-                           new_levels = NULL){
+                           new_levels = NULL, diagonal_only = FALSE){
   random_effects_marginal_vcov(
     result$formula_design,
     data = data,
     posterior_samples = posterior,
     prior_list = result$prior_list,
     blocks = blocks,
-    new_levels = new_levels
+    new_levels = new_levels,
+    diagonal_only = diagonal_only
   )
 }
 
 .re_cov_first <- function(out){
   unname(out$samples[1, , ])
+}
+
+.re_cov_dense_diagonal <- function(out){
+  n_draws <- dim(out$samples)[1L]
+  n_rows  <- dim(out$samples)[2L]
+  unname(t(vapply(
+    seq_len(n_draws),
+    function(draw) diag(out$samples[draw, , ]),
+    numeric(n_rows)
+  )))
 }
 
 .re_cov_expand <- function(model_matrix, group_map, G){
@@ -142,6 +153,7 @@ skip_if_not_test_profile("unit")
     .re_cov_rho_sample(random_term, rho)
   ))
   out <- .re_cov_output(result, posterior)
+  diagonal <- .re_cov_output(result, posterior, diagonal_only = TRUE)
   expected <- .re_cov_expand(
     random_term$model_matrix,
     random_term$group_map,
@@ -150,6 +162,8 @@ skip_if_not_test_profile("unit")
 
   expect_equal(random_term$structure, structure)
   expect_equal(.re_cov_first(out), expected, tolerance = 1e-12)
+  expect_equal(unname(diagonal$samples), .re_cov_dense_diagonal(out),
+               tolerance = 1e-12)
   expect_equal(out$metadata$structures, stats::setNames(structure, "id"))
 }
 
@@ -169,6 +183,7 @@ test_that("diag random intercept and slope covariance uses ZGZ' by group", {
   random_term <- .re_cov_term(result, "id")
   posterior <- .re_cov_posterior(.re_cov_sd_values(random_term, c(2, 3)))
   out <- .re_cov_output(result, posterior)
+  diagonal <- .re_cov_output(result, posterior, diagonal_only = TRUE)
   expected <- .re_cov_expand(
     random_term$model_matrix,
     random_term$group_map,
@@ -178,6 +193,14 @@ test_that("diag random intercept and slope covariance uses ZGZ' by group", {
   expect_s3_class(out, "BayesTools_random_effects_marginal_vcov")
   expect_equal(dim(out$samples), c(1L, 4L, 4L))
   expect_equal(.re_cov_first(out), expected, tolerance = 1e-12)
+  expect_equal(unname(diagonal$samples), .re_cov_dense_diagonal(out),
+               tolerance = 1e-12)
+  expect_equal(dim(diagonal$samples), c(1L, 4L))
+  expect_identical(diagonal$metadata$representation, "diagonal")
+  expect_true(diagonal$metadata$diagonal_only)
+  expect_false(diagonal$metadata$dense)
+  expect_true(is.na(diagonal$metadata$dense_entries))
+  expect_equal(diagonal$metadata$sample_entries, 4)
   expect_equal(out$metadata$blocks$id$n_columns, 2L)
   expect_false(out$metadata$blocks$id$row_varying_sd)
 
@@ -234,6 +257,18 @@ test_that("diag random intercept and slope covariance uses ZGZ' by group", {
   expect_equal(out_zero_level$metadata$blocks$id$new_group_levels, "c")
   expect_equal(out_zero_level$metadata$blocks$id$new_level_rows, c(2L, 3L))
   expect_equal(out_zero_level$metadata$blocks$id$new_levels$method, "zero")
+  diagonal_zero_level <- .re_cov_output(
+    result,
+    posterior,
+    data = new_level_data,
+    new_levels = "zero",
+    diagonal_only = TRUE
+  )
+  expect_equal(
+    unname(diagonal_zero_level$samples),
+    matrix(diag(expected_zero_level), nrow = 1L),
+    tolerance = 1e-12
+  )
 
   result_stored_zero <- .re_cov_formula(
     formula = ~ 1 + random(1 + x | id, name = "id", covariance = "diag"),
@@ -284,6 +319,7 @@ test_that("known group covariance uses tau squared times ZKZ prime", {
   random_term <- .re_cov_term(result, "id")
   posterior <- .re_cov_posterior(.re_cov_sd_values(random_term, .5))
   out <- .re_cov_output(result, posterior)
+  diagonal <- .re_cov_output(result, posterior, diagonal_only = TRUE)
   expected <- unname(.5^2 * K[as.character(df$id), as.character(df$id)])
 
   expect_equal(random_term$group_covariance$scale, "none")
@@ -292,6 +328,8 @@ test_that("known group covariance uses tau squared times ZKZ prime", {
     "sd_multiplier(intercept | id)"
   )
   expect_equal(.re_cov_first(out), expected, tolerance = 1e-12)
+  expect_equal(unname(diagonal$samples), .re_cov_dense_diagonal(out),
+               tolerance = 1e-12)
   expect_equal(diag(.re_cov_first(out)), .5^2 * c(9, 4, 16, 9))
   expect_equal(
     out$metadata$blocks$id$group_covariance$kernel,
@@ -607,6 +645,7 @@ test_that("us covariance uses monitored LKJ Cholesky samples", {
     .re_cov_cholesky_values(random_term, L)
   ))
   out <- .re_cov_output(result, posterior)
+  diagonal <- .re_cov_output(result, posterior, diagonal_only = TRUE)
   R <- matrix(c(1, rho, rho, 1), 2, 2)
   expected <- .re_cov_expand(
     random_term$model_matrix,
@@ -616,6 +655,8 @@ test_that("us covariance uses monitored LKJ Cholesky samples", {
 
   expect_equal(random_term$structure, "us")
   expect_equal(.re_cov_first(out), expected, tolerance = 1e-12)
+  expect_equal(unname(diagonal$samples), .re_cov_dense_diagonal(out),
+               tolerance = 1e-12)
   expect_equal(out$metadata$blocks$id$correlation_type, "lkj")
 
   bad_posterior <- posterior
@@ -915,7 +956,10 @@ test_that("crossed independent random intercept blocks are summed", {
   )
 
   out <- .re_cov_output(result, posterior)
+  diagonal <- .re_cov_output(result, posterior, diagonal_only = TRUE)
   expect_equal(.re_cov_first(out), study_expected + drug_expected)
+  expect_equal(unname(diagonal$samples), .re_cov_dense_diagonal(out))
+  expect_equal(diagonal$metadata$included_blocks, c("study", "drug"))
   expect_equal(out$metadata$included_blocks, c("study", "drug"))
   expect_equal(out$metadata$skipped_blocks$block_name, character())
   expect_true(out$metadata$dense)
@@ -1015,6 +1059,7 @@ test_that("row-varying direct SD sources weight rows inside groups", {
     stats::setNames(tau_2, paste0("tau[", 1:4, "]"))
   )
   out <- .re_cov_output(result, posterior)
+  diagonal <- .re_cov_output(result, posterior, diagonal_only = TRUE)
   expected_1 <- .re_cov_expand(
     matrix(tau_1, ncol = 1L),
     random_term$group_map,
@@ -1030,6 +1075,7 @@ test_that("row-varying direct SD sources weight rows inside groups", {
   expect_equal(out$metadata$n_draws, 2L)
   expect_equal(unname(out$samples[1, , ]), expected_1)
   expect_equal(unname(out$samples[2, , ]), expected_2)
+  expect_equal(unname(diagonal$samples), .re_cov_dense_diagonal(out))
   expect_error(
     .re_cov_output(result, posterior, data = df),
     "requires a parameter_source(..., values = ...) function when 'data' is supplied",
@@ -1101,6 +1147,7 @@ test_that("row-varying SD-component allocation weights columns and rows", {
     stats::setNames(weights, paste0(weight_name, "[", seq_along(weights), "]"))
   ))
   out <- .re_cov_output(result, posterior)
+  diagonal <- .re_cov_output(result, posterior, diagonal_only = TRUE)
 
   weighted_design <- random_term$model_matrix *
     matrix(tau, nrow = nrow(random_term$model_matrix),
@@ -1115,6 +1162,8 @@ test_that("row-varying SD-component allocation weights columns and rows", {
 
   expect_true(out$metadata$blocks$id$row_varying_sd)
   expect_equal(.re_cov_first(out), expected, tolerance = 1e-12)
+  expect_equal(unname(diagonal$samples), .re_cov_dense_diagonal(out),
+               tolerance = 1e-12)
 
   eta_name <- BayesTools:::.JAGS_prior_dirichlet_eta_name(weight_name)
   eta_posterior <- .re_cov_posterior(c(
@@ -1150,6 +1199,96 @@ test_that("marginalized blocks keep usable covariance metadata", {
   expect_equal(random_term$compile_mode, "marginalized")
   expect_equal(out$metadata$blocks$study$compile_mode, "marginalized")
   expect_equal(.re_cov_first(out), expected)
+})
+
+test_that("diagonal-only covariance scales with draws times rows", {
+
+  n_draws <- 40000L
+  n_rows  <- 82L
+  df <- data.frame(
+    id = factor(rep("a", n_rows))
+  )
+  result <- .re_cov_formula(
+    formula = ~ 1 + random(1 | id, name = "id", covariance = "diag"),
+    data = df,
+    prior_random = prior_random(
+      id = random_block(sd = .re_cov_sd_prior())
+    )
+  )
+  random_term <- .re_cov_term(result, "id")
+  posterior <- matrix(
+    2,
+    nrow = n_draws,
+    ncol = 1L,
+    dimnames = list(NULL, random_term$sd_parameter_names)
+  )
+
+  out <- .re_cov_output(result, posterior, diagonal_only = TRUE)
+
+  expect_equal(dim(out$samples), c(n_draws, n_rows))
+  expect_true(all(out$samples == 4))
+  expect_equal(out$metadata$sample_entries, as.numeric(n_draws) * n_rows)
+  expect_lt(out$metadata$estimated_size_bytes, 40 * 1024^2)
+  expect_error(
+    .re_cov_output(result, posterior[1L, , drop = FALSE],
+                   diagonal_only = NA),
+    "'diagonal_only'",
+    fixed = TRUE
+  )
+})
+
+test_that("covariance defaults remain identical and diagonal singleton is stable", {
+
+  df <- data.frame(id = factor("a"))
+  result <- .re_cov_formula(
+    formula = ~ 1 + random(1 | id, name = "id", covariance = "diag"),
+    data = df,
+    prior_random = prior_random(
+      id = random_block(sd = .re_cov_sd_prior())
+    )
+  )
+  random_term <- .re_cov_term(result, "id")
+  posterior <- .re_cov_posterior(.re_cov_sd_values(random_term, 2))
+
+  default <- .re_cov_output(result, posterior)
+  explicit <- .re_cov_output(
+    result,
+    posterior,
+    diagonal_only = FALSE
+  )
+  diagonal <- .re_cov_output(
+    result,
+    posterior,
+    diagonal_only = TRUE
+  )
+
+  expect_identical(explicit, default)
+  expect_named(
+    default$metadata,
+    c(
+      "parameter", "n_draws", "n_rows", "row_names", "row_order",
+      "data_source", "dense", "dense_entries", "estimated_size_bytes",
+      "potentially_expensive", "included_blocks", "skipped_blocks",
+      "structures", "blocks"
+    ),
+    ignore.order = FALSE
+  )
+  expect_named(
+    default$metadata$blocks$id,
+    c(
+      "block_name", "grouping", "structure", "compile_mode", "n_groups",
+      "fitted_n_groups", "n_columns", "n_rows", "row_names", "row_order",
+      "group_levels", "group_map", "new_levels", "new_group_levels",
+      "new_level_rows", "column_names", "model_matrix",
+      "sd_parameter_names", "row_varying_sd", "correlation_type",
+      "group_covariance", "included", "skipped", "dense", "dense_entries"
+    ),
+    ignore.order = FALSE
+  )
+  expect_equal(dim(diagonal$samples), c(1L, 1L))
+  expect_equal(unname(diagonal$samples), matrix(4, 1L, 1L))
+  expect_identical(diagonal$metadata$sample_dim, c(1L, 1L))
+  expect_equal(diagonal$metadata$equivalent_dense_entries, 1)
 })
 
 test_that("missing SD samples fail with block and structure context", {
