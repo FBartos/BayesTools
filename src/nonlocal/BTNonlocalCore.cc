@@ -29,7 +29,7 @@ double log_half()
 double log1mexp(double log_p)
 {
   if(log_p == 0.0){
-    return R_NegInf;
+    return -std::numeric_limits<double>::infinity();
   }
   if(log_p < -std::log(2.0)){
     return std::log1p(-std::exp(log_p));
@@ -108,11 +108,11 @@ double invmoment_mode(double tau, double order, double df)
 double moment_log_density(double x, double location, double tau, double order)
 {
   if(!valid_common_parameters(location, tau, order)){
-    return R_NegInf;
+    return -std::numeric_limits<double>::infinity();
   }
   double delta = x - location;
   if(!std::isfinite(delta) || delta == 0.0){
-    return R_NegInf;
+    return -std::numeric_limits<double>::infinity();
   }
 
   double log_double_factorial =
@@ -126,11 +126,11 @@ double moment_log_density(double x, double location, double tau, double order)
 double invmoment_log_density(double x, double location, double tau, double order, double df)
 {
   if(!valid_invmoment_parameters(location, tau, order, df)){
-    return R_NegInf;
+    return -std::numeric_limits<double>::infinity();
   }
   double delta = x - location;
   if(!std::isfinite(delta) || delta == 0.0){
-    return R_NegInf;
+    return -std::numeric_limits<double>::infinity();
   }
 
   return std::log(order) + (df / 2.0) * std::log(tau) -
@@ -145,13 +145,13 @@ double moment_cdf(double q, double location, double tau, double order,
   if(!valid_common_parameters(location, tau, order)){
     return quiet_nan();
   }
-  if(ISNAN(q)){
+  if(std::isnan(q)){
     return quiet_nan();
   }
-  if(q == R_NegInf){
+  if(q == -std::numeric_limits<double>::infinity()){
     return return_probability(0.0, lower_tail, log_p);
   }
-  if(q == R_PosInf){
+  if(q == std::numeric_limits<double>::infinity()){
     return return_probability(1.0, lower_tail, log_p);
   }
 
@@ -191,13 +191,13 @@ double invmoment_cdf(double q, double location, double tau, double order,
   if(!valid_invmoment_parameters(location, tau, order, df)){
     return quiet_nan();
   }
-  if(ISNAN(q)){
+  if(std::isnan(q)){
     return quiet_nan();
   }
-  if(q == R_NegInf){
+  if(q == -std::numeric_limits<double>::infinity()){
     return return_probability(0.0, lower_tail, log_p);
   }
-  if(q == R_PosInf){
+  if(q == std::numeric_limits<double>::infinity()){
     return return_probability(1.0, lower_tail, log_p);
   }
 
@@ -238,16 +238,16 @@ double moment_quantile(double p, double location, double tau, double order,
     return quiet_nan();
   }
   double prob = log_p ? std::exp(p) : p;
-  if(ISNAN(prob) || prob < 0.0 || prob > 1.0){
+  if(std::isnan(prob) || prob < 0.0 || prob > 1.0){
     return quiet_nan();
   }
 
   if(!lower_tail){
     if(prob == 0.0){
-      return R_PosInf;
+      return std::numeric_limits<double>::infinity();
     }
     if(prob == 1.0){
-      return R_NegInf;
+      return -std::numeric_limits<double>::infinity();
     }
     if(prob == 0.5){
       return location;
@@ -265,10 +265,10 @@ double moment_quantile(double p, double location, double tau, double order,
   }
 
   if(prob == 0.0){
-    return R_NegInf;
+    return -std::numeric_limits<double>::infinity();
   }
   if(prob == 1.0){
-    return R_PosInf;
+    return std::numeric_limits<double>::infinity();
   }
   if(prob == 0.5){
     return location;
@@ -293,7 +293,7 @@ double invmoment_quantile(double p, double location, double tau, double order,
     return quiet_nan();
   }
   double prob = log_p ? std::exp(p) : p;
-  if(ISNAN(prob) || prob < 0.0 || prob > 1.0){
+  if(std::isnan(prob) || prob < 0.0 || prob > 1.0){
     return quiet_nan();
   }
 
@@ -301,10 +301,10 @@ double invmoment_quantile(double p, double location, double tau, double order,
 
   if(!lower_tail){
     if(prob == 0.0){
-      return R_PosInf;
+      return std::numeric_limits<double>::infinity();
     }
     if(prob == 1.0){
-      return R_NegInf;
+      return -std::numeric_limits<double>::infinity();
     }
     if(prob == 0.5){
       return location;
@@ -322,10 +322,10 @@ double invmoment_quantile(double p, double location, double tau, double order,
   }
 
   if(prob == 0.0){
-    return R_NegInf;
+    return -std::numeric_limits<double>::infinity();
   }
   if(prob == 1.0){
-    return R_PosInf;
+    return std::numeric_limits<double>::infinity();
   }
   if(prob == 0.5){
     return location;

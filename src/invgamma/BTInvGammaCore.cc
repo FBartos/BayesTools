@@ -65,13 +65,13 @@ double mode(double shape, double scale)
 double log_density(double x, double shape, double scale)
 {
   if(!valid_parameters(shape, scale)){
-    return R_NegInf;
+    return -std::numeric_limits<double>::infinity();
   }
-  if(ISNAN(x)){
+  if(std::isnan(x)){
     return quiet_nan();
   }
   if(x <= 0.0 || !std::isfinite(x)){
-    return R_NegInf;
+    return -std::numeric_limits<double>::infinity();
   }
 
   return shape * std::log(scale) - lgammafn(shape) -
@@ -83,13 +83,13 @@ double cdf(double q, double shape, double scale, bool lower_tail, bool log_p)
   if(!valid_parameters(shape, scale)){
     return quiet_nan();
   }
-  if(ISNAN(q)){
+  if(std::isnan(q)){
     return quiet_nan();
   }
   if(q <= 0.0){
     return return_probability(0.0, lower_tail, log_p);
   }
-  if(q == R_PosInf){
+  if(q == std::numeric_limits<double>::infinity()){
     return return_probability(1.0, lower_tail, log_p);
   }
 
@@ -103,7 +103,7 @@ double quantile(double p, double shape, double scale, bool lower_tail, bool log_
   }
 
   double prob = log_p ? std::exp(p) : p;
-  if(ISNAN(prob) || prob < 0.0 || prob > 1.0){
+  if(std::isnan(prob) || prob < 0.0 || prob > 1.0){
     return quiet_nan();
   }
 
@@ -112,14 +112,14 @@ double quantile(double p, double shape, double scale, bool lower_tail, bool log_
       return 0.0;
     }
     if(prob == 1.0){
-      return R_PosInf;
+      return std::numeric_limits<double>::infinity();
     }
     double gamma_q = qgamma(p, shape, 1.0 / scale, false, log_p);
     return 1.0 / gamma_q;
   }
 
   if(prob == 0.0){
-    return R_PosInf;
+    return std::numeric_limits<double>::infinity();
   }
   if(prob == 1.0){
     return 0.0;

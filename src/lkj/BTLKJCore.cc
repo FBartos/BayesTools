@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <JRmath.h>
+#include <limits>
 #include <vector>
 
 namespace bayestools {
@@ -132,7 +133,7 @@ double log_density_u_strided_valid_alpha(double const *u, double const *alpha,
                                          unsigned int length, unsigned int stride)
 {
   if(!valid_u_strided(u, length, stride)){
-    return R_NegInf;
+    return -std::numeric_limits<double>::infinity();
   }
 
   double log_density = 0.0;
@@ -147,7 +148,7 @@ double log_density_u_strided(double const *u, double const *alpha,
                              unsigned int length, unsigned int stride)
 {
   if(!valid_alpha(alpha, length)){
-    return R_NegInf;
+    return -std::numeric_limits<double>::infinity();
   }
 
   return log_density_u_strided_valid_alpha(u, alpha, length, stride);
