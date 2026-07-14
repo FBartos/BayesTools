@@ -148,6 +148,30 @@
 }
 
 
+# Freeze the implementation fingerprint that belongs to the loaded namespace.
+.freeze_fit_backend_fingerprint <- function(
+    value = .compute_fit_backend_fingerprint()) {
+
+  if (!exists(
+    "value",
+    envir    = .fit_backend_fingerprint_cache,
+    inherits = FALSE
+  )) {
+    assign(
+      "value",
+      value,
+      envir = .fit_backend_fingerprint_cache
+    )
+  }
+
+  return(invisible(get(
+    "value",
+    envir    = .fit_backend_fingerprint_cache,
+    inherits = FALSE
+  )))
+}
+
+
 #' Fingerprint the loaded BayesTools fitting backend
 #'
 #' @description
@@ -158,10 +182,16 @@
 #'
 #' @details
 #' The fingerprint covers the package's executable R and native surface and an
-#' explicit fit-backend schema version. It is memoized for the R session so
-#' source files edited after the namespace was loaded cannot silently restamp
-#' fits produced by the already loaded implementation. Development workflows
-#' should reload BayesTools after changing its backend.
+#' explicit fit-backend schema version. It is captured when the namespace loads
+#' and memoized for the R session so source files edited afterward cannot
+#' silently restamp fits produced by the already loaded implementation.
+#' Development workflows should reload BayesTools after changing its backend.
+#'
+#' The scope is intentionally conservative: any executable R/native or package
+#' build artifact change can change the fingerprint. Installed lazy-load
+#' databases and native libraries make the value build- and platform-local; it
+#' is not a cross-platform cache key. External runtimes and dependencies such as
+#' JAGS are outside this BayesTools implementation fingerprint.
 #'
 #' @return A length-one MD5 character string, or `NA_character_` when the
 #' loaded implementation cannot be resolved.
@@ -169,17 +199,7 @@
 #' @export
 fit_backend_fingerprint <- function() {
 
-  if (!exists(
-    "value",
-    envir    = .fit_backend_fingerprint_cache,
-    inherits = FALSE
-  )) {
-    assign(
-      "value",
-      .compute_fit_backend_fingerprint(),
-      envir = .fit_backend_fingerprint_cache
-    )
-  }
+  .freeze_fit_backend_fingerprint()
 
   return(get(
     "value",

@@ -18,8 +18,14 @@ backend changes.
 }
 \details{
 The fingerprint covers the package's executable R and native surface and an
-explicit fit-backend schema version. It is memoized for the R session so
-source files edited after the namespace was loaded cannot silently restamp
-fits produced by the already loaded implementation. Development workflows
-should reload BayesTools after changing its backend.
+explicit fit-backend schema version. It is captured when the namespace loads
+and memoized for the R session so source files edited afterward cannot
+silently restamp fits produced by the already loaded implementation.
+Development workflows should reload BayesTools after changing its backend.
+
+The scope is intentionally conservative: any executable R/native or package
+build artifact change can change the fingerprint. Installed lazy-load
+databases and native libraries make the value build- and platform-local; it
+is not a cross-platform cache key. External runtimes and dependencies such as
+JAGS are outside this BayesTools implementation fingerprint.
 }

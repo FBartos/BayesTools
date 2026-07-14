@@ -13,6 +13,7 @@
   }
 
   .BayesTools_load_native_routines(pkgname = pkgname, libname = libname, warn = FALSE)
+  .freeze_fit_backend_fingerprint()
 }
 
 .onUnload <- function(libpath){

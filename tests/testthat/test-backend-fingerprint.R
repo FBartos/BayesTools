@@ -1,12 +1,33 @@
 test_that("loaded fit backend fingerprint is stable and well formed", {
 
-  .clear_fit_backend_fingerprint_cache()
+  expect_true(exists(
+    "value",
+    envir    = .fit_backend_fingerprint_cache,
+    inherits = FALSE
+  ))
   fingerprint <- fit_backend_fingerprint()
 
   expect_type(fingerprint, "character")
   expect_length(fingerprint, 1L)
   expect_match(fingerprint, "^[[:xdigit:]]{32}$")
   expect_identical(fit_backend_fingerprint(), fingerprint)
+})
+
+
+test_that("fit backend fingerprint freezes the loaded implementation", {
+
+  .clear_fit_backend_fingerprint_cache()
+  on.exit({
+    .clear_fit_backend_fingerprint_cache()
+    .freeze_fit_backend_fingerprint()
+  }, add = TRUE)
+  loaded_fingerprint <- paste(rep("a", 32L), collapse = "")
+  edited_fingerprint <- paste(rep("b", 32L), collapse = "")
+
+  .freeze_fit_backend_fingerprint(loaded_fingerprint)
+  .freeze_fit_backend_fingerprint(edited_fingerprint)
+
+  expect_identical(fit_backend_fingerprint(), loaded_fingerprint)
 })
 
 
