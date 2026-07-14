@@ -1111,14 +1111,9 @@ random_effects_marginal_variance_factors <- function(
       model_matrix = model_matrix,
       group_map = group_map,
       block_covariance = correlation,
-      column_weights = sd_draws,
-      diagonal_only = diagonal_only
+      column_weights = sd_draws
     ),
-    sample_dim = if(isTRUE(diagonal_only)){
-      c(nrow(posterior), nrow(model_matrix))
-    }else{
-      c(nrow(posterior), nrow(model_matrix), nrow(model_matrix))
-    }
+    sample_dim = c(nrow(posterior), nrow(model_matrix), nrow(model_matrix))
   )
 }
 
@@ -1359,14 +1354,9 @@ random_effects_marginal_variance_factors <- function(
       group_map = group_map,
       block_covariance = correlation,
       row_weights = row_weights,
-      column_weights = column_weights,
-      diagonal_only = diagonal_only
+      column_weights = column_weights
     ),
-    sample_dim = if(isTRUE(diagonal_only)){
-      c(n_draws, n_rows)
-    }else{
-      c(n_draws, n_rows, n_rows)
-    }
+    sample_dim = c(n_draws, n_rows, n_rows)
   )
 }
 
@@ -1863,8 +1853,7 @@ random_effects_marginal_variance_factors <- function(
     group_map,
     block_covariance,
     row_weights = NULL,
-    column_weights = NULL,
-    diagonal_only = FALSE){
+    column_weights = NULL){
 
   n_draws <- dim(block_covariance)[1L]
   n_rows <- nrow(model_matrix)
@@ -1872,35 +1861,6 @@ random_effects_marginal_variance_factors <- function(
   row_names <- rownames(model_matrix)
   if(is.null(row_names)){
     row_names <- as.character(seq_len(n_rows))
-  }
-  if(isTRUE(diagonal_only)){
-    out <- matrix(
-      0,
-      nrow = n_draws,
-      ncol = n_rows,
-      dimnames = list(draw = NULL, row = row_names)
-    )
-    for(draw in seq_len(n_draws)){
-      G <- matrix(
-        block_covariance[draw, , ],
-        nrow = n_columns,
-        ncol = n_columns
-      )
-      Z <- model_matrix
-      if(!is.null(row_weights)){
-        Z <- Z * row_weights[draw, ]
-      }
-      if(!is.null(column_weights)){
-        Z <- sweep(
-          Z,
-          MARGIN = 2L,
-          STATS = column_weights[draw, ],
-          FUN = "*"
-        )
-      }
-      out[draw, ] <- rowSums((Z %*% G) * Z)
-    }
-    return(out)
   }
   out <- array(0, dim = c(n_draws, n_rows, n_rows))
   dimnames(out) <- list(draw = NULL, row = row_names, column = row_names)

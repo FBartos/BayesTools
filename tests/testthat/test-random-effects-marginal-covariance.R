@@ -645,7 +645,13 @@ test_that("us covariance uses monitored LKJ Cholesky samples", {
     .re_cov_cholesky_values(random_term, L)
   ))
   out <- .re_cov_output(result, posterior)
-  diagonal <- .re_cov_output(result, posterior, diagonal_only = TRUE)
+  diagonal <- testthat::with_mocked_bindings(
+    .re_cov_output(result, posterior, diagonal_only = TRUE),
+    .bt_random_effect_marginal_covariance_correlation_draws = function(...) {
+      stop("dense correlation reconstruction must not be used", call. = FALSE)
+    },
+    .package = "BayesTools"
+  )
   R <- matrix(c(1, rho, rho, 1), 2, 2)
   expected <- .re_cov_expand(
     random_term$model_matrix,
