@@ -1061,13 +1061,9 @@ test_that("stan_estimates_table works with stored fit", {
   skip_if_not_installed("rstan")
 
   # RoBTT's version check warns while its namespace loads against development
-  # BayesTools versions. Load it separately so readRDS warnings remain visible.
-  robtt_available <- suppressWarnings(
-    requireNamespace("RoBTT", quietly = TRUE)
-  )
-  if (!robtt_available) {
-    skip("Package 'RoBTT' cannot be loaded.")
-  }
+  # BayesTools versions. Suppress only that optional-dependency probe so
+  # readRDS warnings remain visible.
+  suppressWarnings(skip_if_not_installed("RoBTT"))
 
   # Load stored stan fit from tests/results/fits
   stan_fit_file <- testthat::test_path("..", "results", "fits", "fit_RoBTT.RDS")
