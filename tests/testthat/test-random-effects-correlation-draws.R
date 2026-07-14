@@ -132,6 +132,15 @@ test_that("correlation reconstruction validates support and compact CAR metadata
     fixed = TRUE
   )
 
+  car_term$car$time_values <- NULL
+  car_term$car$distance_matrix <-
+    abs(outer(c(0, 0.5, 2), c(0, 0.5, 2), "-"))
+  expect_error(
+    random_effects_correlation_draws(car_term, car_posterior),
+    "ordered CAR time coordinates",
+    fixed = TRUE
+  )
+
   cs_term$n_columns <- 2.5
   expect_error(
     random_effects_correlation_draws(cs_term, invalid_rho),
@@ -149,27 +158,6 @@ test_that("correlation reconstruction validates support and compact CAR metadata
   expect_error(
     random_effects_correlation_draws(unsupported, invalid_rho),
     "supports only scalar CS, HCS, AR1, HAR, and CAR",
-    fixed = TRUE
-  )
-})
-
-test_that("legacy CAR distance metadata remain supported and validated", {
-
-  term <- .correlation_draws_term("car")
-  distance <- abs(outer(c(0, 0.5, 2), c(0, 0.5, 2), "-"))
-  term$correlation$time_values <- NULL
-  term$car$time_values <- NULL
-  term$car$distance_matrix <- distance
-  posterior <- cbind(mu = 1, rho = 0.81)
-  colnames(posterior)[[2L]] <- term$correlation$rho_name
-
-  actual <- random_effects_correlation_draws(term, posterior)
-  expect_equal(unname(actual[1L, , ]), 0.81^distance, tolerance = 0)
-
-  term$car$distance_matrix <- matrix(0, nrow = 2L, ncol = 2L)
-  expect_error(
-    random_effects_correlation_draws(term, posterior),
-    "CAR distance matrix must be a numeric K by K matrix",
     fixed = TRUE
   )
 })
@@ -251,7 +239,7 @@ test_that("transformed rho coordinates stay in the representable interior", {
   expect_lt(near_zero[["lower"]] - (-1e-20), 1e-30)
 })
 
-test_that("invalid canonical rho never falls back to legacy Cholesky draws", {
+test_that("scalar structured Cholesky reconstruction requires canonical rho", {
 
   random_term <- .correlation_draws_term("ar1")
   L_names <- BayesTools:::.bt_random_effect_cholesky_names(random_term, 3L)
@@ -261,14 +249,14 @@ test_that("invalid canonical rho never falls back to legacy Cholesky draws", {
     nrow = 1L,
     dimnames = list(NULL, as.vector(L_names))
   )
-  expect_equal(
-    unname(BayesTools:::.bt_random_effect_cholesky_draws(
+  expect_error(
+    BayesTools:::.bt_random_effect_cholesky_draws(
       random_term = random_term,
       n_columns = 3L,
       posterior = legacy
-    )[1L, , ]),
-    legacy_L,
-    tolerance = 0
+    ),
+    "missing canonical scalar correlation coordinates",
+    fixed = TRUE
   )
 
   invalid_rho <- cbind(legacy, 1)

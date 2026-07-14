@@ -31,7 +31,6 @@ random_block(
   rho = NULL,
   monitor = NULL,
   new_levels = NULL,
-  allocation = NULL,
   terms = NULL,
   sd_source = NULL,
   parameterization = NULL
@@ -44,7 +43,6 @@ random_term(
   rho = NULL,
   monitor = NULL,
   new_levels = NULL,
-  allocation = NULL,
   terms = NULL,
   sd_source = NULL,
   parameterization = NULL
@@ -105,8 +103,7 @@ previously unseen grouping levels.}
 
 \item{allocation}{optional \code{random_variance_allocation()} specification, or
 a list of such specifications, defining total-SD plus Dirichlet variance
-allocation across named random-effect blocks. Block-local allocation is
-reserved for a future release.}
+allocation across named random-effect blocks.}
 
 \item{parameterization}{requested sampled random-effect parameterization:
 \code{"noncentered"}, \code{"centered"}, or \code{"auto"}. The top-level value is

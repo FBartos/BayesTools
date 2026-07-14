@@ -10,37 +10,25 @@
 #' are responsible for using the stored metadata and generated hyperparameter
 #' nodes in their likelihood.
 #'
-#' @param sampled optional character vector of resolved random-effect block
-#'   names that should be compiled as ordinary sampled random effects.
 #' @param marginalized optional character vector of resolved random-effect
 #'   block names that should be compiled structurally without latent
 #'   group-level coefficients.
 #'
-#' @return A list-like S3 object used by [JAGS_formula()], [JAGS_fit()], and
-#'   [JAGS_bridgesampling()].
+#' @return A list-like S3 object containing the requested `marginalized` block
+#'   names, used by [JAGS_formula()], [JAGS_fit()], and [JAGS_bridgesampling()].
+#'   Resolved formula-design metadata additionally records the complete
+#'   `sampled`, `marginalized`, and named `mode` outputs.
 #'
 #' @examples
 #' random_effects_compile()
 #' random_effects_compile(marginalized = "study_estimate")
 #'
 #' @export
-random_effects_compile <- function(sampled = NULL, marginalized = NULL){
+random_effects_compile <- function(marginalized = NULL){
 
-  sampled <- .bt_validate_random_effects_compile_names(sampled, "sampled")
   marginalized <- .bt_validate_random_effects_compile_names(marginalized, "marginalized")
 
-  overlap <- intersect(sampled, marginalized)
-  if(length(overlap) > 0L){
-    stop(
-      "Random-effect block(s) cannot be both sampled and marginalized: ",
-      paste(overlap, collapse = ", "),
-      ".",
-      call. = FALSE
-    )
-  }
-
   out <- list(
-    sampled = sampled,
     marginalized = marginalized
   )
   class(out) <- c("random_effects_compile", "list")
@@ -80,16 +68,18 @@ is.random_effects_compile <- function(x){
     stop("'random_effects_compile' must be created with random_effects_compile().", call. = FALSE)
   }
 
-  .bt_validate_random_effects_compile_names(x$sampled, "sampled")
   .bt_validate_random_effects_compile_names(x$marginalized, "marginalized")
-  overlap <- intersect(x$sampled, x$marginalized)
-  if(length(overlap) > 0L){
-    stop(
-      "Random-effect block(s) cannot be both sampled and marginalized: ",
-      paste(overlap, collapse = ", "),
-      ".",
-      call. = FALSE
-    )
+  if(inherits(x, "random_effects_compile_resolved")){
+    .bt_validate_random_effects_compile_names(x$sampled, "sampled")
+    overlap <- intersect(x$sampled, x$marginalized)
+    if(length(overlap) > 0L){
+      stop(
+        "Resolved random-effect block(s) cannot be both sampled and marginalized: ",
+        paste(overlap, collapse = ", "),
+        ".",
+        call. = FALSE
+      )
+    }
   }
 
   invisible(TRUE)
@@ -101,10 +91,8 @@ is.random_effects_compile <- function(x){
   .bt_check_random_effects_compile(random_effects_compile, allow_NULL = TRUE)
 
   block_names <- vapply(random_effects, function(term) term$block_name, character(1))
-  requested_sampled <- if(is.null(random_effects_compile)) NULL else random_effects_compile$sampled
   requested_marginalized <- if(is.null(random_effects_compile)) NULL else random_effects_compile$marginalized
-  requested <- unique(c(requested_sampled, requested_marginalized))
-  unknown <- setdiff(requested, block_names)
+  unknown <- setdiff(requested_marginalized, block_names)
   if(length(unknown) > 0L){
     stop(
       "random_effects_compile() contains unknown random-effect block(s): ",

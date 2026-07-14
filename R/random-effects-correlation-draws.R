@@ -21,8 +21,7 @@
 #' autoregressive (`"AR1"` and `"HAR"`), and continuous-time autoregressive
 #' (`"CAR"`). Correlation coordinates are transformed and checked against the
 #' structure-specific support recorded in `random_term`. `"CAR"` matrices use
-#' the compact ordered time coordinates stored by the formula compiler; legacy
-#' fitted metadata containing a distance matrix remain supported.
+#' the compact ordered time coordinates stored by the formula compiler.
 #'
 #' The returned array is dense and therefore requires memory proportional to
 #' the number of posterior draws times the squared coefficient count.
@@ -191,14 +190,6 @@ random_effects_correlation_draws <- function(random_term, posterior_samples){
   }
   if(structure %in% c("ar1", "har")){
     return(abs(outer(seq_len(n_columns), seq_len(n_columns), "-")))
-  }
-
-  distance <- correlation$distance_matrix
-  if(is.null(distance) && is.list(random_term$car)){
-    distance <- random_term$car$distance_matrix
-  }
-  if(!is.null(distance)){
-    return(.bt_random_effect_validate_car_distance_matrix(distance, n_columns))
   }
 
   time_values <- correlation$time_values

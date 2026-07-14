@@ -2006,11 +2006,11 @@ test_that("prior_random rejects unsupported and ignored production settings", {
     "entries must be created with random_variance_allocation",
     fixed = TRUE
   )
-  expect_error(
-    random_block(allocation = list(total = sd_prior)),
-    "Block-local variance allocation priors are not implemented",
-    fixed = TRUE
-  )
+  expect_false("allocation" %in% names(formals(random_block)))
+  expect_false("allocation" %in% names(random_block()))
+  expect_false("allocation" %in% names(
+    BayesTools:::.bt_random_prior_for_block(prior_random(), "study")
+  ))
   expect_s3_class(
     prior_random(sd = sd_prior, new_levels = random_new_levels(method = "zero")),
     "prior_random"
@@ -7690,7 +7690,7 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
       0,
       2, 3,
       0.25, 0.75,
-      1, 0, 0, 1,
+      0,
       1, 2,
       -1, 0.5,
       0, 0
@@ -7702,10 +7702,7 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
       "tau[2]",
       "mu__xRE_ALLOCx_allocation__weight[1]",
       "mu__xRE_ALLOCx_allocation__weight[2]",
-      "mu__xREx__study_xRE_CORx_L[1,1]",
-      "mu__xREx__study_xRE_CORx_L[1,2]",
-      "mu__xREx__study_xRE_CORx_L[2,1]",
-      "mu__xREx__study_xRE_CORx_L[2,2]",
+      "mu__xREx__study_rho_z",
       "mu__xREx__study_xRE_Zx[1,1]",
       "mu__xREx__study_xRE_Zx[1,2]",
       "mu__xREx__study_xRE_Zx[2,1]",

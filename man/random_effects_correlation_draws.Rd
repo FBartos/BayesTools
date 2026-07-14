@@ -30,8 +30,7 @@ Supported structures are compound symmetry (\code{"CS"} and \code{"HCS"}), discr
 autoregressive (\code{"AR1"} and \code{"HAR"}), and continuous-time autoregressive
 (\code{"CAR"}). Correlation coordinates are transformed and checked against the
 structure-specific support recorded in \code{random_term}. \code{"CAR"} matrices use
-the compact ordered time coordinates stored by the formula compiler; legacy
-fitted metadata containing a distance matrix remain supported.
+the compact ordered time coordinates stored by the formula compiler.
 
 The returned array is dense and therefore requires memory proportional to
 the number of posterior draws times the squared coefficient count.

@@ -65,32 +65,35 @@ skip_if_not_test_profile("unit")
 
 test_that("random_effects_compile validates block requests", {
 
-  compile <- random_effects_compile(
-    sampled = "study",
-    marginalized = "estimate"
-  )
+  compile <- random_effects_compile(marginalized = "estimate")
   expect_true(inherits(compile, "random_effects_compile"))
-  expect_equal(compile$sampled, "study")
   expect_equal(compile$marginalized, "estimate")
+  expect_named(compile, "marginalized")
+  expect_false("sampled" %in% names(formals(random_effects_compile)))
 
   expect_error(
-    random_effects_compile(sampled = 1),
+    random_effects_compile(marginalized = 1),
     "must be a character vector",
     fixed = TRUE
   )
   expect_error(
-    random_effects_compile(sampled = c("study", "study")),
+    random_effects_compile(marginalized = c("study", "study")),
     "must be unique",
-    fixed = TRUE
-  )
-  expect_error(
-    random_effects_compile(sampled = "study", marginalized = "study"),
-    "cannot be both sampled and marginalized",
     fixed = TRUE
   )
   expect_error(
     random_effects_compile(marginalized = NA_character_),
     "cannot contain NA",
+    fixed = TRUE
+  )
+  malformed_resolved <- BayesTools:::.bt_random_effects_compile_resolved(
+    sampled = "study",
+    marginalized = "study",
+    mode = c(study = "sampled")
+  )
+  expect_error(
+    BayesTools:::.bt_check_random_effects_compile(malformed_resolved),
+    "cannot be both sampled and marginalized",
     fixed = TRUE
   )
   expect_error(
@@ -124,6 +127,8 @@ test_that("default random-effect compilation remains all sampled", {
   expect_equal(.re_compile_block_names(design$random_effects), c("study", "estimate"))
   expect_false("random_effects_all" %in% names(design))
   expect_false("marginalized_random_effects" %in% names(design))
+  expect_equal(design$random_effects_compile$sampled, c("study", "estimate"))
+  expect_null(design$random_effects_compile$marginalized)
   expect_length(.re_compile_terms_by_mode(design, "marginalized"), 0L)
   expect_equal(
     design$random_effects_compile$mode,
@@ -323,6 +328,8 @@ test_that("marginalized blocks keep metadata but omit latent mean nodes", {
   expect_equal(.re_compile_block_names(design$random_effects), c("study", "estimate"))
   expect_equal(.re_compile_block_names(sampled_terms), "study")
   expect_equal(.re_compile_block_names(marginalized_terms), "estimate")
+  expect_equal(design$random_effects_compile$sampled, "study")
+  expect_equal(design$random_effects_compile$marginalized, "estimate")
   expect_equal(
     design$random_effects_compile$mode,
     c(study = "sampled", estimate = "marginalized")

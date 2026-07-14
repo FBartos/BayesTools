@@ -509,11 +509,21 @@ test_that("marginal variance factors protect diagonal-only known covariance use"
     random_effects_compile = random_effects_compile(marginalized = "id")
   )
 
-  expect_error(
+  unavailable <- tryCatch(
     random_effects_marginal_variance_factors(result$formula_design),
+    error = identity
+  )
+  expect_s3_class(
+    unavailable,
+    "BayesTools_random_effects_marginal_variance_unavailable"
+  )
+  expect_match(
+    conditionMessage(unavailable),
     "off-diagonal row covariance",
     fixed = TRUE
   )
+  expect_identical(unavailable$block_name, "id")
+  expect_identical(unavailable$reason, "non_diagonal_row_covariance")
   factors <- random_effects_marginal_variance_factors(
     result$formula_design,
     require_diagonal = FALSE
@@ -549,15 +559,73 @@ test_that("marginal variance factors reject repeated groups when required", {
     random_effects_compile = random_effects_compile(marginalized = "id")
   )
 
-  expect_error(
+  unavailable <- tryCatch(
     random_effects_marginal_variance_factors(
       result$formula_design,
       require_diagonal = FALSE,
       require_one_to_one = TRUE
     ),
-    "one-to-one",
-    fixed = TRUE
+    error = identity
   )
+  expect_s3_class(
+    unavailable,
+    "BayesTools_random_effects_marginal_variance_unavailable"
+  )
+  expect_match(conditionMessage(unavailable), "one-to-one", fixed = TRUE)
+  expect_identical(unavailable$block_name, "id")
+  expect_identical(unavailable$reason, "repeated_groups")
+})
+
+test_that("marginal variance factor limitations signal stable conditions", {
+
+  df <- data.frame(
+    id = factor(c("a", "a", "b", "b"), levels = c("a", "b")),
+    x = c(0, 1, 2, 3)
+  )
+  row_indexed <- .re_cov_formula(
+    formula = ~ 1 + random(1 | id, name = "id", covariance = "diag"),
+    data = df,
+    prior_random = prior_random(
+      id = random_block(sd_source = random_sd_source("tau", shape = "row"))
+    )
+  )
+  multiple_columns <- .re_cov_formula(
+    formula = ~ 1 + random(1 + x | id, name = "id", covariance = "diag"),
+    data = df,
+    prior_random = prior_random(
+      id = random_block(sd = .re_cov_sd_prior())
+    )
+  )
+
+  cases <- list(
+    row_indexed_sd = row_indexed$formula_design,
+    multiple_columns = multiple_columns$formula_design
+  )
+  messages <- c(
+    row_indexed_sd = "row-indexed external SD sources",
+    multiple_columns = "one random-effect column"
+  )
+  for(reason in names(cases)){
+    unavailable <- tryCatch(
+      random_effects_marginal_variance_factors(
+        cases[[reason]],
+        blocks = "id",
+        require_diagonal = FALSE
+      ),
+      error = identity
+    )
+    expect_s3_class(
+      unavailable,
+      "BayesTools_random_effects_marginal_variance_unavailable"
+    )
+    expect_match(
+      conditionMessage(unavailable),
+      messages[[reason]],
+      fixed = TRUE
+    )
+    expect_identical(unavailable$block_name, "id")
+    expect_identical(unavailable$reason, reason)
+  }
 })
 
 test_that("id covariance shares one SD across independent columns", {

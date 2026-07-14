@@ -12,10 +12,6 @@
     }
     return(out)
   }
-  L_names <- .bt_random_effect_cholesky_names(
-    random_term = random_term,
-    n_columns = n_columns
-  )
   if(structure %in% c("cs", "hcs", "ar1", "car", "har")){
     correlation <- .bt_random_effect_correlation_metadata(
       random_term,
@@ -25,56 +21,48 @@
     rho <- .bt_random_effect_rho_draws(
       random_term = random_term,
       posterior = posterior,
+      missing = "error",
       out_of_support = "error"
     )
-    if(!is.null(rho)){
-      distance_matrix <- if(identical(structure, "car")){
-        if(!is.null(correlation$distance_matrix)){
-          correlation$distance_matrix
-        }else{
-          time_values <- correlation$time_values
-          if(is.null(time_values) && is.list(random_term$car)){
-            time_values <- random_term$car$time_values
-          }
-          if(!is.numeric(time_values) || length(time_values) != n_columns ||
-             any(!is.finite(time_values)) || anyDuplicated(time_values)){
-            stop(
-              "Random-effect posterior reconstruction metadata",
-              .bt_random_effect_metadata_block_detail(random_term),
-              " are missing canonical CAR time coordinates.",
-              call. = FALSE
-            )
-          }
-          abs(outer(time_values, time_values, "-"))
-        }
-      }else{
-        NULL
-      }
-      out <- array(NA_real_, dim = c(nrow(posterior), n_columns, n_columns))
-      for(draw in seq_len(nrow(posterior))){
-        R <- .bt_random_effect_structured_correlation_matrix(
-          structure = structure,
-          K = n_columns,
-          rho = rho[draw],
-          distance_matrix = distance_matrix
-        )
-        out[draw, , ] <- t(chol(R))
-      }
-      return(out)
+    distance_matrix <- if(identical(structure, "car")){
+      .bt_random_effect_correlation_draws_distance(
+        random_term = random_term,
+        correlation = correlation,
+        structure = structure,
+        n_columns = n_columns,
+        context = "Random-effect posterior reconstruction metadata"
+      )
+    }else{
+      NULL
     }
-  }
-
-  if(all(as.vector(L_names) %in% colnames(posterior))){
     out <- array(NA_real_, dim = c(nrow(posterior), n_columns, n_columns))
-    for(row in seq_len(n_columns)){
-      for(column in seq_len(n_columns)){
-        out[, row, column] <- posterior[, L_names[row, column]]
-      }
+    for(draw in seq_len(nrow(posterior))){
+      R <- .bt_random_effect_structured_correlation_matrix(
+        structure = structure,
+        K = n_columns,
+        rho = rho[draw],
+        distance_matrix = distance_matrix
+      )
+      out[draw, , ] <- t(chol(R))
     }
     return(out)
   }
 
   if(identical(structure, "us")){
+    L_names <- .bt_random_effect_cholesky_names(
+      random_term = random_term,
+      n_columns = n_columns
+    )
+    if(all(as.vector(L_names) %in% colnames(posterior))){
+      out <- array(NA_real_, dim = c(nrow(posterior), n_columns, n_columns))
+      for(row in seq_len(n_columns)){
+        for(column in seq_len(n_columns)){
+          out[, row, column] <- posterior[, L_names[row, column]]
+        }
+      }
+      return(out)
+    }
+
     u_names <- .bt_random_effect_lkj_primitive_names(random_term, n_columns)
     if(all(u_names %in% colnames(posterior))){
       return(.bt_lkj_cholesky_cpc_u_to_L(

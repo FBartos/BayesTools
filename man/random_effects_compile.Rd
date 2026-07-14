@@ -4,19 +4,18 @@
 \alias{random_effects_compile}
 \title{Random-effect compilation policy}
 \usage{
-random_effects_compile(sampled = NULL, marginalized = NULL)
+random_effects_compile(marginalized = NULL)
 }
 \arguments{
-\item{sampled}{optional character vector of resolved random-effect block
-names that should be compiled as ordinary sampled random effects.}
-
 \item{marginalized}{optional character vector of resolved random-effect
 block names that should be compiled structurally without latent
 group-level coefficients.}
 }
 \value{
-A list-like S3 object used by \code{\link[=JAGS_formula]{JAGS_formula()}}, \code{\link[=JAGS_fit]{JAGS_fit()}}, and
-\code{\link[=JAGS_bridgesampling]{JAGS_bridgesampling()}}.
+A list-like S3 object containing the requested \code{marginalized} block
+names, used by \code{\link[=JAGS_formula]{JAGS_formula()}}, \code{\link[=JAGS_fit]{JAGS_fit()}}, and \code{\link[=JAGS_bridgesampling]{JAGS_bridgesampling()}}.
+Resolved formula-design metadata additionally records the complete
+\code{sampled}, \code{marginalized}, and named \code{mode} outputs.
 }
 \description{
 \code{random_effects_compile()} specifies which resolved formula random-effect

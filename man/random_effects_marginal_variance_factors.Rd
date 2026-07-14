@@ -40,6 +40,14 @@ a block with SD parameter \eqn{\tau}, the marginal variance contribution is
 is built from the prepared group kernel, so the dense row-space covariance
 factor is \eqn{Z K Z'}.
 }
+\details{
+Unsupported factor representations signal an error inheriting from
+\code{BayesTools_random_effects_marginal_variance_unavailable}. The condition
+carries stable \code{block_name} and \code{reason} fields so downstream packages can
+distinguish structural unavailability from invalid inputs. \code{reason} is one
+of \code{"row_indexed_sd"}, \code{"multiple_columns"},
+\code{"non_diagonal_row_covariance"}, or \code{"repeated_groups"}.
+}
 \seealso{
 \code{\link[=random_effects_marginal_vcov]{random_effects_marginal_vcov()}} \code{\link[=random_effects_compile]{random_effects_compile()}}
 }

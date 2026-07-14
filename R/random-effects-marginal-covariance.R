@@ -127,6 +127,13 @@ random_effects_marginal_vcov <- function(
 #'   `group_levels`, `model_matrix`, SD metadata, compile mode, and known group
 #'   covariance metadata when present.
 #'
+#' @details Unsupported factor representations signal an error inheriting from
+#'   `BayesTools_random_effects_marginal_variance_unavailable`. The condition
+#'   carries stable `block_name` and `reason` fields so downstream packages can
+#'   distinguish structural unavailability from invalid inputs. `reason` is one
+#'   of `"row_indexed_sd"`, `"multiple_columns"`,
+#'   `"non_diagonal_row_covariance"`, or `"repeated_groups"`.
+#'
 #' @seealso [random_effects_marginal_vcov()] [random_effects_compile()]
 #' @export
 random_effects_marginal_variance_factors <- function(
@@ -272,19 +279,21 @@ random_effects_marginal_variance_factors <- function(
   )
 
   if(.bt_random_effect_has_row_indexed_external_sd(random_term)){
-    stop(
+    .bt_random_effect_marginal_variance_unavailable_stop(
+      random_term = random_term,
+      reason = "row_indexed_sd",
       "Random-effect marginal variance factors for block '",
       random_term$block_name,
-      "' do not support row-indexed external SD sources.",
-      call. = FALSE
+      "' do not support row-indexed external SD sources."
     )
   }
   if(random_term$n_columns != 1L || ncol(block_data$model_matrix) != 1L){
-    stop(
+    .bt_random_effect_marginal_variance_unavailable_stop(
+      random_term = random_term,
+      reason = "multiple_columns",
       "Random-effect marginal variance factors for block '",
       random_term$block_name,
-      "' require one random-effect column.",
-      call. = FALSE
+      "' require one random-effect column."
     )
   }
 
@@ -298,19 +307,21 @@ random_effects_marginal_variance_factors <- function(
   one_to_one <- !anyDuplicated(block_data$group_map)
 
   if(isTRUE(require_diagonal) && !isTRUE(row_status$is_diagonal)){
-    stop(
+    .bt_random_effect_marginal_variance_unavailable_stop(
+      random_term = random_term,
+      reason = "non_diagonal_row_covariance",
       "Random-effect marginal variance factors for block '",
       random_term$block_name,
-      "' require diagonal row-space covariance, but the block has off-diagonal row covariance.",
-      call. = FALSE
+      "' require diagonal row-space covariance, but the block has off-diagonal row covariance."
     )
   }
   if(isTRUE(require_one_to_one) && !isTRUE(one_to_one)){
-    stop(
+    .bt_random_effect_marginal_variance_unavailable_stop(
+      random_term = random_term,
+      reason = "repeated_groups",
       "Random-effect marginal variance factors for block '",
       random_term$block_name,
-      "' require a one-to-one row-to-group mapping, but grouping levels repeat.",
-      call. = FALSE
+      "' require a one-to-one row-to-group mapping, but grouping levels repeat."
     )
   }
 
@@ -349,6 +360,20 @@ random_effects_marginal_variance_factors <- function(
     diagonal_tolerance = row_status$tolerance,
     one_to_one = one_to_one
   )
+}
+
+# Signal that a valid random-effect block cannot provide row variance factors.
+.bt_random_effect_marginal_variance_unavailable_stop <- function(
+    random_term, reason, ...){
+
+  condition <- errorCondition(
+    message = paste0(...),
+    call = NULL,
+    class = "BayesTools_random_effects_marginal_variance_unavailable",
+    block_name = random_term$block_name,
+    reason = reason
+  )
+  stop(condition)
 }
 
 .bt_random_effect_marginal_variance_base_covariance <- function(random_term,

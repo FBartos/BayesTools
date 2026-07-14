@@ -150,8 +150,7 @@
 #'   inherited by blocks without an explicit `random_block()` override.
 #' @param allocation optional `random_variance_allocation()` specification, or
 #'   a list of such specifications, defining total-SD plus Dirichlet variance
-#'   allocation across named random-effect blocks. Block-local allocation is
-#'   reserved for a future release.
+#'   allocation across named random-effect blocks.
 #' @param sd_source for `random_block()`, optional external random-effect SD
 #'   source created with `random_sd_source()`. A block-local `sd_source`
 #'   replaces inherited top-level SD priors and inherited covariance SD priors,
@@ -287,8 +286,8 @@ prior_random <- function(..., sd = NULL, covariance = NULL, cor = NULL,
 #'   unallocated random-effect blocks at resolution time.
 #' @export
 random_block <- function(sd = NULL, covariance = NULL, cor = NULL, rho = NULL,
-                         monitor = NULL, new_levels = NULL, allocation = NULL,
-                         terms = NULL, sd_source = NULL,
+                         monitor = NULL, new_levels = NULL, terms = NULL,
+                         sd_source = NULL,
                          parameterization = NULL){
 
   .bt_check_random_sd_prior(sd, allow_NULL = TRUE)
@@ -326,12 +325,6 @@ random_block <- function(sd = NULL, covariance = NULL, cor = NULL, rho = NULL,
     .bt_check_random_new_levels(new_levels)
   }
   .bt_check_random_parameterization(parameterization, allow_NULL = TRUE)
-  if(!is.null(allocation)){
-    stop(
-      "Block-local variance allocation priors are not implemented yet; use top-level prior_random(allocation = random_variance_allocation(...)).",
-      call. = FALSE
-    )
-  }
 
   out <- list(
     sd         = sd,
@@ -339,7 +332,6 @@ random_block <- function(sd = NULL, covariance = NULL, cor = NULL, rho = NULL,
     monitor    = monitor,
     new_levels = new_levels,
     parameterization = parameterization,
-    allocation = allocation,
     terms      = terms,
     sd_source  = sd_source
   )
@@ -1224,7 +1216,6 @@ is.prior_random <- function(x){
     monitor    = prior_random$monitor,
     new_levels = prior_random$new_levels,
     parameterization = prior_random$parameterization,
-    allocation = NULL,
     terms      = NULL,
     sd_source  = NULL
   )
@@ -1444,7 +1435,6 @@ is.prior_random <- function(x){
   .bt_check_random_block_terms(block$terms)
   .bt_check_random_new_levels(block$new_levels, allow_NULL = TRUE)
   .bt_check_random_parameterization(block$parameterization)
-  .bt_check_random_allocation(block$allocation)
 
   invisible(TRUE)
 }
