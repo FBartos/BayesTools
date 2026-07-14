@@ -1907,7 +1907,6 @@ test_that("Weightfunction models fit correctly", {
 })
 
 test_that("Orthonormal contrast models fit correctly", {
-  skip_on_os(c("mac", "linux", "solaris"))
   skip_if_not_installed("rjags")
   skip_if_not_installed("bridgesampling")
 

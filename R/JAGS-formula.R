@@ -294,7 +294,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   if(anyNA(model_frame)){
     stop("Formula predictors contain missing values.", call. = FALSE)
   }
-  model_matrix <- stats::model.matrix(model_frame, formula = formula, data = data)
+  model_matrix <- .bt_model_matrix(model_frame, formula = formula, data = data)
   raw_column_names <- colnames(model_matrix)
 
   # check whether intercept is unique parameter

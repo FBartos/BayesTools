@@ -167,6 +167,55 @@
   )
 }
 
+.bt_model_matrix <- function(model_frame, formula, data = model_frame){
+
+  factor_names <- names(model_frame)[vapply(model_frame, is.factor, logical(1))]
+  supported_contrasts <- c(
+    "contr.treatment",
+    "contr.independent",
+    "contr.orthonormal",
+    "contr.meandif",
+    "contr.ordered_cumulative",
+    "contr.ordered_cumulative_levels"
+  )
+
+  symbolic_contrasts <- lapply(factor_names, function(factor_name){
+    attr(model_frame[[factor_name]], "contrasts", exact = TRUE)
+  })
+  names(symbolic_contrasts) <- factor_names
+
+  resolved_names <- factor_names[vapply(symbolic_contrasts, function(contrast){
+    is.character(contrast) && length(contrast) > 0L &&
+      contrast[[1L]] %in% supported_contrasts
+  }, logical(1))]
+  contrasts_arg <- lapply(resolved_names, function(factor_name){
+    .factor_contrast_matrix(
+      levels(model_frame[[factor_name]]),
+      symbolic_contrasts[[factor_name]][[1L]]
+    )
+  })
+  names(contrasts_arg) <- resolved_names
+
+  model_matrix <- stats::model.matrix(
+    model_frame,
+    formula       = formula,
+    data          = data,
+    contrasts.arg = if(length(contrasts_arg) == 0L) NULL else contrasts_arg
+  )
+
+  # Keep the public design metadata symbolic while resolving package-defined
+  # contrast functions without relying on the user's search path.
+  if(length(resolved_names) > 0L){
+    model_contrasts <- attr(model_matrix, "contrasts", exact = TRUE)
+    for(factor_name in resolved_names){
+      model_contrasts[[factor_name]] <- symbolic_contrasts[[factor_name]][[1L]]
+    }
+    attr(model_matrix, "contrasts") <- model_contrasts
+  }
+
+  return(model_matrix)
+}
+
 .complete_factor_metadata_prior_list <- function(prior_list){
 
   if(is.null(prior_list) || length(prior_list) == 0){
@@ -325,7 +374,7 @@
   }
 
   grid_model_frame <- stats::model.frame(formula, data = grid_data)
-  grid_model_matrix <- stats::model.matrix(grid_model_frame, formula = formula, data = grid_data)
+  grid_model_matrix <- .bt_model_matrix(grid_model_frame, formula = formula, data = grid_data)
   grid_terms_indexes <- attr(grid_model_matrix, "assign")
   if(has_intercept){
     grid_terms_indexes <- grid_terms_indexes + 1

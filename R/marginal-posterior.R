@@ -198,7 +198,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
       ### get the design matrix
       model_frame  <- stats::model.frame(formula, data = data, na.action = NULL)
-      model_matrix <- stats::model.matrix(model_frame, data = model_frame, formula = formula)
+      model_matrix <- .bt_model_matrix(model_frame, data = model_frame, formula = formula)
 
       # replaces NAs by zero to omit the corresponding coefficients
       model_matrix[is.na(model_matrix)] <- 0

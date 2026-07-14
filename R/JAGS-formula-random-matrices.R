@@ -20,7 +20,7 @@
   }
 
   model_frame <- stats::model.frame(matrix_formula, data = data)
-  model_matrix <- stats::model.matrix(model_frame, formula = matrix_formula, data = data)
+  model_matrix <- .bt_model_matrix(model_frame, formula = matrix_formula, data = data)
   if(nrow(model_matrix) != nrow(data)){
     label <- "Random-effect term"
     if(!is.null(block_name) && nzchar(block_name)){
@@ -36,9 +36,11 @@
   if(!has_intercept && isTRUE(preserve_no_intercept_contrasts)){
     intercept_column <- which(colnames(model_matrix) == "(Intercept)")
     if(length(intercept_column) == 1L){
-      assign <- attr(model_matrix, "assign")
+      assign    <- attr(model_matrix, "assign")
+      contrasts <- attr(model_matrix, "contrasts", exact = TRUE)
       model_matrix <- model_matrix[, -intercept_column, drop = FALSE]
       attr(model_matrix, "assign") <- assign[-intercept_column]
+      attr(model_matrix, "contrasts") <- contrasts
     }
   }
 

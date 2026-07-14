@@ -10,6 +10,130 @@ skip_if_not_test_profile("unit")
 # TAGS: @evaluation, @formula, @model-matrix
 # ============================================================================ #
 
+test_that("BayesTools contrasts resolve without search-path lookup", {
+
+  contrast_names <- c(
+    "contr.treatment",
+    "contr.independent",
+    "contr.orthonormal",
+    "contr.meandif",
+    "contr.ordered_cumulative",
+    "contr.ordered_cumulative_levels"
+  )
+
+  for(contrast_name in contrast_names){
+    factor_data <- data.frame(
+      group = factor(c("a", "b", "c", "a"), levels = c("a", "b", "c"))
+    )
+    if(grepl("ordered", contrast_name, fixed = TRUE)){
+      factor_data$group <- ordered(factor_data$group, levels = c("a", "b", "c"))
+    }
+    attr(factor_data$group, "contrasts") <- contrast_name
+
+    model_frame <- stats::model.frame(~ group, data = factor_data)
+    observed <- .bt_model_matrix(
+      model_frame,
+      formula = ~ group,
+      data    = factor_data
+    )
+    expected <- stats::model.matrix(
+      ~ group,
+      data = factor_data,
+      contrasts.arg = list(
+        group = .factor_contrast_matrix(levels(factor_data$group), contrast_name)
+      )
+    )
+    attr(expected, "contrasts")[["group"]] <- contrast_name
+
+    expect_equal(observed, expected, info = contrast_name)
+    expect_identical(
+      attr(observed, "contrasts", exact = TRUE)[["group"]],
+      contrast_name,
+      info = contrast_name
+    )
+
+    random_design <- .bt_random_effect_design_matrix(
+      ~ 0 + group,
+      data = factor_data
+    )
+    expect_identical(
+      attr(random_design$model_matrix, "contrasts", exact = TRUE)[["group"]],
+      contrast_name,
+      info = paste(contrast_name, "random-effect metadata")
+    )
+  }
+
+  interaction_data <- expand.grid(
+    group_a = factor(c("a", "b", "c"), levels = c("a", "b", "c")),
+    group_b = factor(c("u", "v"), levels = c("u", "v"))
+  )
+  attr(interaction_data$group_a, "contrasts") <- "contr.orthonormal"
+  attr(interaction_data$group_b, "contrasts") <- "contr.meandif"
+  interaction_design <- .bt_random_effect_design_matrix(
+    ~ 0 + group_a:group_b,
+    data = interaction_data
+  )
+
+  expect_identical(
+    attr(interaction_design$model_matrix, "contrasts", exact = TRUE),
+    list(
+      group_a = "contr.orthonormal",
+      group_b = "contr.meandif"
+    )
+  )
+
+  sum_data <- interaction_data
+  attr(sum_data$group_a, "contrasts") <- "contr.sum"
+  attr(sum_data$group_b, "contrasts") <- "contr.orthonormal"
+  sum_frame <- stats::model.frame(~ group_a * group_b, data = sum_data)
+  sum_observed <- .bt_model_matrix(
+    sum_frame,
+    formula = ~ group_a * group_b,
+    data    = sum_data
+  )
+  sum_expected <- stats::model.matrix(
+    ~ group_a * group_b,
+    data = sum_data,
+    contrasts.arg = list(
+      group_a = stats::contr.sum(levels(sum_data$group_a)),
+      group_b = contr.orthonormal(levels(sum_data$group_b))
+    )
+  )
+  attr(sum_expected, "contrasts") <- list(
+    group_a = "contr.sum",
+    group_b = "contr.orthonormal"
+  )
+
+  expect_equal(sum_observed, sum_expected)
+
+  prediction_data <- data.frame(
+    group = factor(rep(c("a", "b", "c"), 2), levels = c("a", "b", "c")),
+    id    = factor(rep(c("g1", "g2", "g3"), each = 2))
+  )
+  random_result <- suppressWarnings(JAGS_formula(
+    formula   = ~ 1 + diag(0 + group | id),
+    parameter = "mu",
+    data      = prediction_data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1))
+    ),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+      )
+    )
+  ))
+  random_term <- random_result$formula_design$random_effects[[1L]]
+  prediction <- .bt_random_effect_prediction_data(
+    random_term,
+    data = prediction_data
+  )
+
+  expect_equal(prediction$model_matrix, random_term$model_matrix)
+  expect_equal(prediction$group_map, random_term$group_map)
+  expect_identical(prediction$group_levels, random_term$group_levels)
+})
+
 .jags_formula_oracle_expected_data <- function(data, factor_contrasts = list(),
                                                formula_scale = NULL) {
   out <- data

@@ -256,7 +256,7 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   if(anyNA(model_frame)){
     stop("Formula predictors contain missing values.", call. = FALSE)
   }
-  model_matrix <- stats::model.matrix(model_frame, formula = formula, data = data)
+  model_matrix <- .bt_model_matrix(model_frame, formula = formula, data = data)
 
   ### evaluate the design matrix on the samples -> output[data, posterior]
   if(has_intercept){

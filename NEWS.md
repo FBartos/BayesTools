@@ -27,6 +27,7 @@
 - fixes bridge-sampling bound validation by requiring named lower and upper bounds that match `add_parameters`
 - hardens JAGS build discovery by adding non-default Unix rpath flags, enforcing JAGS >= 4.3.0 when the version is discoverable, removing unused JAGS major-version compile defines, and making Windows JAGS root detection robust to spaces and semantic version ordering
 - hardens fixture test infrastructure by routing hypothesis bridge comparisons through shared cache-currency validation, registering indexed JAGS parameter tests in the unit profile, and expanding random-effect source/function hashes that invalidate fitted-model caches
+- resolves package-defined factor contrasts inside the namespace across fixed, random-effect, prediction, and marginal-posterior design matrices, so `BayesTools::` calls do not require attaching the package
 
 # version 0.3.0
 ### Features
