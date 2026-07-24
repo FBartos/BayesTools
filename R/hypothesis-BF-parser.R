@@ -222,7 +222,11 @@ hypothesis_normalize_level_references <- function(text){
 
 .hypothesis_normalize_level_references <- function(text) {
 
+  ends_in_backtick <- endsWith(text, "`")
   pieces <- strsplit(text, "`", fixed = TRUE)[[1L]]
+  if(ends_in_backtick){
+    pieces <- c(pieces, "")
+  }
   if(length(pieces) == 0L){
     return(text)
   }

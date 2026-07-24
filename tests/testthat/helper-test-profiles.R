@@ -10,6 +10,7 @@ bayestools_test_profile_contexts <- list(
     "factor-interaction-coefficients",
     "fixture-catalog-static",
     "hypothesis-BF",
+    "hypothesis-BF-parser-adversarial",
     "interpret",
     "JAGS-bridge-compiler",
     "JAGS-bridge-formula-context-validation",
