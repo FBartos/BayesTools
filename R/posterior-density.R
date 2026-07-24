@@ -111,12 +111,16 @@ posterior_density_attribute <- function(x, y, method, density_method,
   if(length(x) != length(y)){
     stop("'x' and 'y' must have the same length.", call. = FALSE)
   }
+  if(any(!is.finite(x)) || any(!is.finite(y))){
+    stop("Posterior density grid values must be finite.", call. = FALSE)
+  }
 
   metadata <- list(...)
   metadata_names <- names(metadata)
   if(length(metadata) > 0L &&
-     (is.null(metadata_names) || any(!nzchar(metadata_names)))){
-    stop("Additional posterior density metadata must be named.",
+     (is.null(metadata_names) || anyNA(metadata_names) ||
+      any(!nzchar(metadata_names)) || anyDuplicated(metadata_names))){
+    stop("Additional posterior density metadata must have unique, nonmissing names.",
          call. = FALSE)
   }
   reserved <- c(
@@ -200,8 +204,9 @@ posterior_ordinate_attribute <- function(value, ordinate, method,
   metadata <- list(...)
   metadata_names <- names(metadata)
   if(length(metadata) > 0L &&
-     (is.null(metadata_names) || any(!nzchar(metadata_names)))){
-    stop("Additional posterior ordinate metadata must be named.",
+     (is.null(metadata_names) || anyNA(metadata_names) ||
+      any(!nzchar(metadata_names)) || anyDuplicated(metadata_names))){
+    stop("Additional posterior ordinate metadata must have unique, nonmissing names.",
          call. = FALSE)
   }
   reserved <- c(

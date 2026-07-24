@@ -362,6 +362,18 @@ test_that("posterior density and ordinate constructors create reusable attribute
     ),
     "reserved fields"
   )
+  expect_error(
+    posterior_ordinate_attribute(
+      value          = 0,
+      ordinate       = .5,
+      method         = "iwmde",
+      density_method = "IWMDE",
+      parameter      = "theta",
+      parameter      = "mu"
+    ),
+    "unique, nonmissing names",
+    fixed = TRUE
+  )
 
   density <- posterior_density_attribute(
     x              = seq(-2, 2, length.out = 201),
@@ -387,6 +399,28 @@ test_that("posterior density and ordinate constructors create reusable attribute
   expect_false(BayesTools:::.posterior_density_point_masses_declared(
     BayesTools:::.posterior_density_from_attribute(density_without_points)
   ))
+  expect_error(
+    posterior_density_attribute(
+      x              = c(0, 1, Inf),
+      y              = c(1, 1, 1),
+      method         = "iwmde",
+      density_method = "IWMDE"
+    ),
+    "grid values must be finite",
+    fixed = TRUE
+  )
+  expect_error(
+    posterior_density_attribute(
+      x              = 0:1,
+      y              = c(1, 1),
+      method         = "iwmde",
+      density_method = "IWMDE",
+      parameter      = "theta",
+      parameter      = "mu"
+    ),
+    "unique, nonmissing names",
+    fixed = TRUE
+  )
   expect_error(
     posterior_density_attribute(
       x              = 0:1,
