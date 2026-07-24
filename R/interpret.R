@@ -999,7 +999,9 @@ interpret_tables <- function(sources, spec, ...){
   }
 
   interval_level <- .interpret_or(ref[["interval_level"]], schema[["interval_level"]])
-  if(is.null(interval_level) && is.finite(lower_prob) && is.finite(upper_prob)){
+  if(is.null(interval_level) &&
+     length(lower_prob) == 1L && is.finite(lower_prob) &&
+     length(upper_prob) == 1L && is.finite(upper_prob)){
     interval_level <- upper_prob - lower_prob
   }
 

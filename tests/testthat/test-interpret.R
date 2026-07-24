@@ -649,6 +649,38 @@ test_that("interpret_records matches explicitly requested padded probability col
 })
 
 
+test_that("interpret_records supports central-only estimate tables", {
+
+  estimates <- ensemble_estimates_table(
+    samples = list(theta = c(-1, 0, 2)),
+    parameters = "theta",
+    probs = NULL
+  )
+  plan <- list(list(
+    kind = "estimate",
+    source = "estimates",
+    row = "theta"
+  ))
+
+  out <- interpret_records(
+    sources = list(estimates = estimates),
+    plan = plan
+  )
+  text <- interpret_records(
+    sources = list(estimates = estimates),
+    plan = plan,
+    output = "text"
+  )
+
+  expect_equal(out$central_name, "mean")
+  expect_equal(out$central_value, mean(c(-1, 0, 2)))
+  expect_true(is.na(out$lower_value))
+  expect_true(is.na(out$upper_value))
+  expect_true(is.na(out$interval_level))
+  expect_false(grepl("interval", text, fixed = TRUE))
+})
+
+
 test_that("interpret_tables aliases interpret_records and supports optional missing entries", {
 
   table <- data.frame(
