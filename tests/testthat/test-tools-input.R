@@ -273,6 +273,11 @@ test_that("check_int validates integer inputs", {
   # Non-integer values rejected
   expect_error(check_int(1.5, "test"), "must be an integer")
   expect_error(check_int(c(1, 2.5, 3), "test", check_length = 3), "must be an integer")
+  expect_error(check_int(Inf, "test"), "must contain only finite values")
+  expect_error(
+    check_int(c(1, -Inf), "test", check_length = 2),
+    "must contain only finite values"
+  )
 })
 
 

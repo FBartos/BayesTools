@@ -156,6 +156,9 @@ check_int    <- function(x, name = deparse(substitute(x)), lower = -Inf, upper =
 
   check_real(x, name = name, lower = lower, upper = upper, allow_bound = allow_bound, check_length = check_length, allow_NULL = allow_NULL, allow_NA = allow_NA, call = call)
 
+  if(any(!is.finite(x[!is.na(x)])))
+    stop(paste0(call, "The '", name, "' argument must contain only finite values."), call. = FALSE)
+
   if(!all(.is.wholenumber(x, na.rm = TRUE)))
     stop(paste0(call, "The '", name ,"' argument must be an integer vector."), call. = FALSE)
 
