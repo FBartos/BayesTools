@@ -57,6 +57,7 @@
 #' \code{prior_list} using \code{"term|group"} names are no longer supported.
 #' Continuous fixed-effect terms must expand to one design-matrix column.
 #' Matrix-valued continuous predictors are not currently supported.
+#' The predictor name \code{intercept} is reserved for the formula intercept.
 #'
 #' @examples
 #' # simulate data
@@ -176,6 +177,12 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   predictors       <- as.character(attr(formula_terms, "variables"))[-1]
   if(any(!predictors %in% colnames(data)))
     stop(paste0("The ", paste0("'", predictors[!predictors %in% colnames(data)], "'", collapse = ", ")," predictor variable is missing in the data set."))
+  if("intercept" %in% predictors){
+    stop(
+      "The predictor name 'intercept' is reserved for the formula intercept.",
+      call. = FALSE
+    )
+  }
   matrix_predictors <- predictors[vapply(
     predictors,
     function(predictor){

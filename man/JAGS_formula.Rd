@@ -85,6 +85,7 @@ Formula random effects require \code{prior_random}. Random-effect SD priors in
 \code{prior_list} using \code{"term|group"} names are no longer supported.
 Continuous fixed-effect terms must expand to one design-matrix column.
 Matrix-valued continuous predictors are not currently supported.
+The predictor name \code{intercept} is reserved for the formula intercept.
 }
 \examples{
 # simulate data

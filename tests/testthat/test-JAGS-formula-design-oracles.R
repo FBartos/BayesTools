@@ -471,6 +471,20 @@ test_that("JAGS_formula rejects invalid JAGS parameter names", {
   )
 })
 
+test_that("JAGS_formula reserves the intercept predictor name", {
+  expect_error(
+    JAGS_formula(
+      ~ intercept,
+      "mu",
+      data.frame(intercept = c(-1, 0, 1)),
+      list(
+        intercept = prior("normal", list(0, 1))
+      )
+    ),
+    "predictor name 'intercept' is reserved"
+  )
+})
+
 test_that("JAGS_formula uses a neutral point for log intercepts without an intercept", {
   formula <- ~ x - 1
   attr(formula, "log(intercept)") <- TRUE
