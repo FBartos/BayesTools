@@ -99,6 +99,86 @@ test_that("conditional target equals fixed target for fixed-only formulas", {
   expect_equal(conditional, fixed)
 })
 
+test_that("formula design metadata preserves scaling during prediction", {
+
+  df <- data.frame(
+    x = c(10, 20, 30),
+    id = factor(c("a", "b", "a"), levels = c("a", "b"))
+  )
+  fixed_result <- JAGS_formula(
+    formula = ~ 1 + x,
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1))
+    ),
+    formula_scale = list(x = TRUE)
+  )
+  fixed_posterior <- matrix(
+    c(1, 2),
+    nrow = 1,
+    dimnames = list(NULL, c("mu_intercept", "mu_x"))
+  )
+  fixed_fit <- coda::mcmc(fixed_posterior)
+  attr(fixed_fit, "formula_design") <- list(mu = fixed_result$formula_design)
+
+  scaled_x <- as.numeric(scale(df$x))
+  fixed_prediction <- JAGS_evaluate_formula(
+    fit = fixed_fit,
+    parameter = "mu",
+    formula_target = "fixed"
+  )
+  expect_equal(unname(drop(fixed_prediction)), 1 + 2 * scaled_x)
+
+  random_result <- JAGS_formula(
+    formula = ~ 1 + x + diag(0 + x | id),
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1))
+    ),
+    formula_scale = list(x = TRUE),
+    prior_random = prior_random(
+      id = random_block(
+        sd = .formula_prediction_sd_prior(),
+        monitor = random_monitor(
+          latent = FALSE,
+          coefficients = TRUE,
+          correlation = FALSE
+        )
+      )
+    )
+  )
+  random_term <- random_result$formula_design$random_effects[[1L]]
+  coefficient_names <- as.vector(BayesTools:::.bt_random_effect_coefficient_names(
+    random_term,
+    n_groups = random_term$n_groups,
+    n_columns = random_term$n_columns
+  ))
+  random_posterior <- matrix(
+    c(1, 2, 0.5, -0.25),
+    nrow = 1,
+    dimnames = list(
+      NULL,
+      c("mu_intercept", "mu_x", coefficient_names)
+    )
+  )
+  random_fit <- coda::mcmc(random_posterior)
+  attr(random_fit, "formula_design") <- list(mu = random_result$formula_design)
+
+  conditional_prediction <- JAGS_evaluate_formula(
+    fit = random_fit,
+    parameter = "mu",
+    formula_target = "conditional"
+  )
+  expect_equal(
+    unname(drop(conditional_prediction)),
+    1 + 2 * scaled_x + c(0.5, -0.25, 0.5) * scaled_x
+  )
+})
+
 test_that("formula_target fixed and conditional preserve explicit semantics", {
 
   result <- .formula_prediction_result()

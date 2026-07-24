@@ -3,12 +3,18 @@
 
   continuous_predictors <- names(predictors_type[predictors_type == "continuous"])
 
-  formula_scale <- attr(fit, "formula_scale")
-  if(is.null(formula_scale)){
-    return(data)
+  formula_scale <- attr(fit, "formula_scale", exact = TRUE)
+  param_scale <- if(is.list(formula_scale)){
+    formula_scale[[parameter]]
+  }else{
+    NULL
   }
-
-  param_scale <- formula_scale[[parameter]]
+  if(is.null(param_scale)){
+    fitted_design <- .bt_JAGS_evaluate_formula_design(fit, parameter)
+    if(!is.null(fitted_design) && is.list(fitted_design$formula_scale)){
+      param_scale <- fitted_design$formula_scale
+    }
+  }
   if(is.null(param_scale)){
     return(data)
   }
