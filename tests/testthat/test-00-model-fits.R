@@ -413,7 +413,7 @@ test_that("Weightfunction prior models fit correctly", {
 
   # One-sided weightfunction (2 intervals)
   priors_wf_onesided2 <- list(
-    prior_weightfunction("one-sided", c(.05), wf_cumulative(c(1, 1)))
+    omega = prior_weightfunction("one-sided", c(.05), wf_cumulative(c(1, 1)))
   )
 
   model_syntax_wf1 <- "model{}"
@@ -428,7 +428,7 @@ test_that("Weightfunction prior models fit correctly", {
 
   # One-sided weightfunction (3 intervals)
   priors_wf_onesided3 <- list(
-    prior_weightfunction("one-sided", c(.05, 0.10), wf_cumulative(c(1, 2, 3)))
+    omega = prior_weightfunction("one-sided", c(.05, 0.10), wf_cumulative(c(1, 2, 3)))
   )
 
   model_syntax_wf2 <- "model{}"
@@ -443,7 +443,7 @@ test_that("Weightfunction prior models fit correctly", {
 
   # Two-sided weightfunction
   priors_wf_twosided <- list(
-    prior_weightfunction("two-sided", c(.05), wf_cumulative(c(1, 1)))
+    omega = prior_weightfunction("two-sided", c(.05), wf_cumulative(c(1, 1)))
   )
 
   model_syntax_wf3 <- "model{}"
@@ -458,7 +458,7 @@ test_that("Weightfunction prior models fit correctly", {
 
   # One-sided fixed weightfunction
   priors_wf_fixed <- list(
-    prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .5)))
+    omega = prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .5)))
   )
 
   model_syntax_wf4 <- "model{}"
