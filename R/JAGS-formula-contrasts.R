@@ -58,19 +58,30 @@
 #' @name contr.BayesTools
 NULL
 
+.bt_contrast_level_count <- function(n, contrasts, minimum = 2L){
+
+  check_bool(contrasts, "contrasts", allow_NA = FALSE)
+
+  if(length(n) > 1L){
+    return(length(n))
+  }
+  if(!is.numeric(n) || length(n) != 1L){
+    stop("Not enough degrees of freedom to define contrasts.", call. = FALSE)
+  }
+
+  check_int(n, "n", allow_NA = FALSE)
+  if(n < minimum){
+    stop("Not enough degrees of freedom to define contrasts.", call. = FALSE)
+  }
+
+  as.integer(n)
+}
+
 #' @rdname contr.BayesTools
 #' @export
 contr.orthonormal <- function(n, contrasts = TRUE){
   # based on: stanova::contr.bayes
-  if(length(n) <= 1L){
-    if(is.numeric(n) && length(n) == 1L && n > 1L){
-      return(TRUE)
-    }else{
-      stop("Not enough degrees of freedom to define contrasts.")
-    }
-  }else{
-    n <- length(n)
-  }
+  n <- .bt_contrast_level_count(n, contrasts)
 
   cont <- diag(n)
   if(contrasts){
@@ -88,15 +99,7 @@ contr.orthonormal <- function(n, contrasts = TRUE){
 #' @export
 contr.meandif <- function(n, contrasts = TRUE){
 
-  if(length(n) <= 1L){
-    if(is.numeric(n) && length(n) == 1L && n > 1L){
-      return(TRUE)
-    }else{
-      stop("Not enough degrees of freedom to define contrasts.")
-    }
-  }else{
-    n <- length(n)
-  }
+  n <- .bt_contrast_level_count(n, contrasts)
 
   cont <- diag(n)
   if(contrasts){
@@ -116,15 +119,7 @@ contr.meandif <- function(n, contrasts = TRUE){
 #' @export
 contr.independent <- function(n, contrasts = TRUE){
 
-  if(length(n) <= 1L){
-    if(is.numeric(n) && length(n) == 1L && n >= 1L){
-      return(TRUE)
-    }else{
-      stop("Not enough degrees of freedom to define contrasts.")
-    }
-  }else{
-    n <- length(n)
-  }
+  n <- .bt_contrast_level_count(n, contrasts, minimum = 1L)
 
   cont <- diag(x = 1, nrow = n, ncol = n)
 
@@ -135,14 +130,9 @@ contr.independent <- function(n, contrasts = TRUE){
 #' @export
 contr.ordered_cumulative <- function(n, contrasts = TRUE){
 
-  if(length(n) <= 1L){
-    if(is.numeric(n) && length(n) == 1L && n > 1L){
-      return(TRUE)
-    }else{
-      stop("Not enough degrees of freedom to define contrasts.")
-    }
-  }else{
-    n <- length(n)
+  n <- .bt_contrast_level_count(n, contrasts)
+  if(!contrasts){
+    return(diag(n))
   }
 
   cont <- matrix(0, nrow = n, ncol = n - 1L)
@@ -159,14 +149,9 @@ contr.ordered_cumulative <- function(n, contrasts = TRUE){
 #' @export
 contr.ordered_cumulative_levels <- function(n, contrasts = TRUE){
 
-  if(length(n) <= 1L){
-    if(is.numeric(n) && length(n) == 1L && n >= 1L){
-      return(TRUE)
-    }else{
-      stop("Not enough degrees of freedom to define contrasts.")
-    }
-  }else{
-    n <- length(n)
+  n <- .bt_contrast_level_count(n, contrasts, minimum = 1L)
+  if(!contrasts){
+    return(diag(n))
   }
 
   cont <- matrix(0, nrow = n, ncol = n)

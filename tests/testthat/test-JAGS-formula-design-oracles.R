@@ -134,6 +134,43 @@ test_that("BayesTools contrasts resolve without search-path lookup", {
   expect_identical(prediction$group_levels, random_term$group_levels)
 })
 
+test_that("BayesTools contrasts accept scalar level counts and validate inputs", {
+  contrast_functions <- list(
+    orthonormal = contr.orthonormal,
+    meandif = contr.meandif,
+    independent = contr.independent,
+    ordered_cumulative = contr.ordered_cumulative,
+    ordered_cumulative_levels = contr.ordered_cumulative_levels
+  )
+  expected_columns <- c(
+    orthonormal = 2L,
+    meandif = 2L,
+    independent = 3L,
+    ordered_cumulative = 2L,
+    ordered_cumulative_levels = 3L
+  )
+
+  for(name in names(contrast_functions)){
+    contrast_function <- contrast_functions[[name]]
+    scalar_result <- contrast_function(3)
+    expect_true(is.matrix(scalar_result), info = name)
+    expect_equal(dim(scalar_result), c(3L, expected_columns[[name]]), info = name)
+    expect_equal(contrast_function(3, contrasts = FALSE), diag(3), info = name)
+    expect_error(contrast_function(3, contrasts = NA), "cannot contain NA", info = name)
+    expect_error(contrast_function(3, contrasts = c(TRUE, FALSE)), "length '1'", info = name)
+  }
+
+  expect_equal(contr.independent(1), matrix(1, 1, 1))
+  expect_equal(contr.ordered_cumulative_levels(1), matrix(1, 1, 1))
+  expect_error(contr.orthonormal(1), "Not enough degrees of freedom")
+  expect_error(contr.meandif(1), "Not enough degrees of freedom")
+  expect_error(contr.ordered_cumulative(1), "Not enough degrees of freedom")
+
+  expect_error(contr.orthonormal(NA_real_), "cannot contain NA")
+  expect_error(contr.orthonormal(Inf), "finite values")
+  expect_error(contr.orthonormal(2.5), "integer vector")
+})
+
 test_that("factor contrast priors agree across main effects and interactions", {
   data <- data.frame(
     x = rep(c(-1, 1), 3),
