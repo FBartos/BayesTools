@@ -828,6 +828,40 @@ test_that("PET-PEESE prior plot data uses deterministic linear-combination summa
   expect_equal(plot_data$y_uCI, stats::qnorm(.975) * c(0, 0.5, 1), tolerance = 0.02)
 })
 
+test_that("plot_prior_list keeps retained components paired with their weights", {
+
+  point_priors <- list(
+    prior("point", list(100), prior_weights = 1),
+    prior("point", list(0), prior_weights = 9999)
+  )
+  point_plot <- plot_prior_list(
+    point_priors,
+    plot_type = "ggplot",
+    n_samples = 10000
+  )
+  point_data <- point_plot$layers[[1]]$data
+
+  expect_equal(point_data$x, 0)
+  expect_equal(point_data$yend, .9999)
+
+  continuous_priors <- list(
+    prior("normal", list(100, 1), prior_weights = 1),
+    prior("normal", list(0, 1), prior_weights = 9999)
+  )
+  density_plot <- plot_prior_list(
+    continuous_priors,
+    plot_type = "ggplot",
+    xlim = c(-5, 105),
+    n_points = 1101,
+    n_samples = 10000
+  )
+  density_data <- density_plot$layers[[1]]$data
+
+  expect_equal(density_data$x[which.max(density_data$y)], 0)
+  expect_equal(max(density_data$y), stats::dnorm(0) * .9999, tolerance = 1e-10)
+  expect_equal(.model_plot_density_mass(density_data), .9999, tolerance = 1e-5)
+})
+
 test_that("factor ggplot prior point layers use point plot data", {
 
   prior_list <- list(

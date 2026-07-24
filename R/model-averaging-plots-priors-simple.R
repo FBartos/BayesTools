@@ -41,8 +41,9 @@
   prior_weights  <- sapply(prior_list, .prior_model_weight)
   mixing_prop    <- prior_weights / sum(prior_weights)
 
-  prior_list  <- prior_list[round(n_samples * mixing_prop) > 1]
-  mixing_prop <- mixing_prop[round(n_samples * mixing_prop) > 0]
+  keep_components <- round(n_samples * mixing_prop) > 1
+  prior_list       <- prior_list[keep_components]
+  mixing_prop      <- mixing_prop[keep_components]
 
   plot_data <- list()
   for(i in seq_along(prior_list)){
