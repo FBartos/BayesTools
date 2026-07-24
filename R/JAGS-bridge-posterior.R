@@ -6,20 +6,52 @@
     # get posterior and merge chains
     posterior <- .extract_posterior_samples(fit, as_list = FALSE)
 
-  }else if(is.list(fit) & all(sapply(fit, inherits, what = "mcarray"))){
+  }else if(is.list(fit) &&
+           length(fit) > 0L &&
+           all(vapply(fit, inherits, logical(1), what = "mcarray"))){
 
     # rjags model with rjags::jags.samples
-    # merge chains
-    posterior <- do.call(cbind, lapply(names(fit), function(par){
-      if(dim(fit[[par]])[1] > 1){
-        samples <- do.call(rbind, lapply(1:(dim(fit[[par]]))[3],  function(chain)t(fit[[par]][,,chain])))
-        colnames(samples) <- paste0(attr(fit[[par]], "varname"), "[",1:ncol(samples),"]")
-      }else{
-        samples <- matrix(do.call(c, lapply(1:(dim(fit[[par]]))[3],  function(chain)fit[[par]][,,chain])), ncol = 1)
-        colnames(samples) <- attr(fit[[par]], "varname")
+    # flatten parameter dimensions and merge chains in coda order
+    fit_names <- names(fit)
+    converted <- lapply(seq_along(fit), function(i){
+      fallback_name <- NULL
+      if(!is.null(fit_names) &&
+         !is.na(fit_names[i]) &&
+         nzchar(fit_names[i])){
+        fallback_name <- fit_names[i]
       }
-      return(samples)
-    }))
+      .bt_fit_mcarray_to_matrix(fit[[i]], fallback_name = fallback_name)
+    })
+
+    reference_layout <- c(
+      converted[[1L]]$n_iteration,
+      converted[[1L]]$n_chain
+    )
+    matching_layout <- vapply(converted, function(parameter){
+      identical(
+        c(parameter$n_iteration, parameter$n_chain),
+        reference_layout
+      )
+    }, logical(1))
+    if(!all(matching_layout)){
+      stop(
+        "All 'mcarray' parameters must have matching iteration and chain dimensions.",
+        call. = FALSE
+      )
+    }
+
+    reference_iterations <- converted[[1L]]$iterations
+    matching_iterations <- vapply(converted, function(parameter){
+      identical(parameter$iterations, reference_iterations)
+    }, logical(1))
+    if(!all(matching_iterations)){
+      stop(
+        "All 'mcarray' parameters must have matching iteration metadata.",
+        call. = FALSE
+      )
+    }
+
+    posterior <- do.call(cbind, lapply(converted, `[[`, "samples"))
 
   }else if(inherits(fit, "mcmc.list")){
 
@@ -39,6 +71,161 @@
   }
 
   return(posterior)
+}
+
+.bt_fit_mcarray_to_matrix <- function(parameter, fallback_name = NULL){
+
+  parameter_dim <- dim(parameter)
+  if(is.null(parameter_dim) || length(parameter_dim) < 3L){
+    stop(
+      "Each 'mcarray' parameter must have at least one parameter dimension followed by iteration and chain dimensions.",
+      call. = FALSE
+    )
+  }
+  if(any(parameter_dim <= 0L)){
+    stop(
+      "All 'mcarray' dimensions must be positive.",
+      call. = FALSE
+    )
+  }
+
+  variable_dim <- parameter_dim[seq_len(length(parameter_dim) - 2L)]
+  n_iteration <- parameter_dim[length(parameter_dim) - 1L]
+  n_chain <- parameter_dim[length(parameter_dim)]
+
+  varname <- attr(parameter, "varname", exact = TRUE)
+  if(!is.character(varname) ||
+     length(varname) != 1L ||
+     is.na(varname) ||
+     !nzchar(varname)){
+    varname <- fallback_name
+  }
+  if(!is.character(varname) ||
+     length(varname) != 1L ||
+     is.na(varname) ||
+     !nzchar(varname)){
+    stop(
+      "Each 'mcarray' parameter must have a non-empty 'varname' attribute or list name.",
+      call. = FALSE
+    )
+  }
+
+  samples <- t(matrix(
+    as.vector(parameter),
+    nrow = prod(variable_dim),
+    ncol = n_iteration * n_chain
+  ))
+  colnames(samples) <- .bt_fit_mcarray_column_names(
+    varname = varname,
+    variable_dim = variable_dim
+  )
+
+  list(
+    samples = samples,
+    n_iteration = n_iteration,
+    n_chain = n_chain,
+    iterations = attr(parameter, "iterations", exact = TRUE)
+  )
+}
+
+.bt_fit_mcarray_column_names <- function(varname, variable_dim){
+
+  # Match the ordering used by rjags::coda.samples: the first parameter
+  # dimension varies fastest, followed by the remaining dimensions.
+  if(prod(variable_dim) == 1L){
+    return(varname)
+  }
+
+  basename <- varname
+  n_dimension <- length(variable_dim)
+  lower <- rep.int(1L, n_dimension)
+  upper <- variable_dim
+
+  parsed_name <- .bt_fit_mcarray_parse_varname(varname)
+  if(!is.null(parsed_name$lower) &&
+     !is.null(parsed_name$upper) &&
+     length(parsed_name$lower) == length(parsed_name$upper)){
+    monitored_dim <- parsed_name$upper - parsed_name$lower + 1
+    matching_dim <- isTRUE(all.equal(
+      variable_dim[variable_dim != 1L],
+      monitored_dim[monitored_dim != 1L],
+      check.attributes = FALSE
+    ))
+    if(matching_dim){
+      basename <- parsed_name$name
+      lower <- parsed_name$lower
+      upper <- parsed_name$upper
+      n_dimension <- length(monitored_dim)
+    }
+  }
+
+  indices <- as.character(seq.int(lower[1L], upper[1L]))
+  if(n_dimension > 1L){
+    for(i in 2:n_dimension){
+      indices <- outer(
+        indices,
+        seq.int(lower[i], upper[i]),
+        FUN = paste,
+        sep = ","
+      )
+    }
+  }
+
+  paste0(basename, "[", as.vector(indices), "]")
+}
+
+.bt_fit_mcarray_parse_varname <- function(varname){
+
+  parsed_name <- try(parse(text = varname, n = 1L), silent = TRUE)
+  if(!is.expression(parsed_name) || length(parsed_name) != 1L){
+    return(NULL)
+  }
+
+  parsed_name <- parsed_name[[1L]]
+  if(is.name(parsed_name)){
+    return(list(name = deparse(parsed_name)))
+  }
+  if(!is.call(parsed_name) ||
+     !identical(deparse(parsed_name[[1L]]), "[") ||
+     length(parsed_name) <= 2L){
+    return(NULL)
+  }
+
+  parsed_elements <- vapply(
+    parsed_name,
+    function(element) paste(deparse(element), collapse = ""),
+    character(1)
+  )
+  if(any(!nzchar(parsed_elements))){
+    return(NULL)
+  }
+
+  n_dimension <- length(parsed_name) - 2L
+  lower <- upper <- numeric(n_dimension)
+  for(i in seq_len(n_dimension)){
+    index <- parsed_name[[i + 2L]]
+    if(is.numeric(index)){
+      lower[i] <- upper[i] <- index
+    }else if(is.call(index) &&
+             length(index) == 3L &&
+             identical(deparse(index[[1L]]), ":") &&
+             is.numeric(index[[2L]]) &&
+             is.numeric(index[[3L]])){
+      lower[i] <- index[[2L]]
+      upper[i] <- index[[3L]]
+    }else{
+      return(NULL)
+    }
+  }
+  if(any(upper < lower)){
+    return(NULL)
+  }
+
+  list(
+    name = deparse(parsed_name[[2L]]),
+    lower = lower,
+    upper = upper
+  )
 }
 
 

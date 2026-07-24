@@ -21,6 +21,18 @@ skip_if_not_test_profile("unit")
 # TAGS: @evaluation, @JAGS, @posterior-extraction
 # ============================================================================ #
 
+.make_mock_mcarray <- function(values, dim, varname = NULL, iterations = NULL){
+  parameter <- array(values, dim = dim)
+  class(parameter) <- "mcarray"
+  if(!is.null(varname)){
+    attr(parameter, "varname") <- varname
+  }
+  if(!is.null(iterations)){
+    attr(parameter, "iterations") <- iterations
+  }
+  parameter
+}
+
 # Tests for posterior extraction helper functions
 test_that(".extract_posterior_samples extracts samples correctly", {
 
@@ -58,6 +70,159 @@ test_that(".extract_posterior_samples extracts samples correctly", {
   samples_list <- BayesTools:::.extract_posterior_samples(fit, as_list = TRUE)
   expect_true(inherits(samples_list, "mcmc.list"))
   expect_equal(length(samples_list), 2) # 2 chains
+})
+
+test_that(".fit_to_posterior flattens multidimensional mcarrays in coda order", {
+
+  iterations <- c(start = 1, end = 3, thin = 1)
+  theta <- .make_mock_mcarray(
+    values = seq_len(2 * 3 * 3 * 2),
+    dim = c(2, 3, 3, 2),
+    varname = "theta",
+    iterations = iterations
+  )
+  psi <- .make_mock_mcarray(
+    values = 1000 + seq_len(2 * 2 * 2 * 3 * 2),
+    dim = c(2, 2, 2, 3, 2),
+    varname = "psi",
+    iterations = iterations
+  )
+  alpha <- .make_mock_mcarray(
+    values = 2000 + seq_len(1 * 3 * 2),
+    dim = c(1, 3, 2),
+    varname = "alpha",
+    iterations = iterations
+  )
+
+  posterior <- BayesTools:::.fit_to_posterior(list(
+    theta = theta,
+    psi = psi,
+    alpha = alpha
+  ))
+
+  expected_theta <- do.call(rbind, lapply(seq_len(2), function(chain){
+    do.call(rbind, lapply(seq_len(3), function(iteration){
+      as.vector(theta[, , iteration, chain])
+    }))
+  }))
+  colnames(expected_theta) <- c(
+    "theta[1,1]", "theta[2,1]",
+    "theta[1,2]", "theta[2,2]",
+    "theta[1,3]", "theta[2,3]"
+  )
+
+  expected_psi <- do.call(rbind, lapply(seq_len(2), function(chain){
+    do.call(rbind, lapply(seq_len(3), function(iteration){
+      as.vector(psi[, , , iteration, chain])
+    }))
+  }))
+  colnames(expected_psi) <- c(
+    "psi[1,1,1]", "psi[2,1,1]",
+    "psi[1,2,1]", "psi[2,2,1]",
+    "psi[1,1,2]", "psi[2,1,2]",
+    "psi[1,2,2]", "psi[2,2,2]"
+  )
+
+  expected_alpha <- do.call(rbind, lapply(seq_len(2), function(chain){
+    do.call(rbind, lapply(seq_len(3), function(iteration){
+      alpha[1, iteration, chain]
+    }))
+  }))
+  colnames(expected_alpha) <- "alpha"
+
+  expect_equal(
+    posterior,
+    cbind(expected_theta, expected_psi, expected_alpha)
+  )
+})
+
+test_that(".fit_to_posterior preserves monitored mcarray indices", {
+
+  iterations <- c(start = 10, end = 11, thin = 1)
+  theta <- .make_mock_mcarray(
+    values = seq_len(4),
+    dim = c(2, 2, 1),
+    varname = "theta[2,4:5]",
+    iterations = iterations
+  )
+  phi <- .make_mock_mcarray(
+    values = 10 + seq_len(4),
+    dim = c(2, 2, 1),
+    varname = "phi[2:3,4]",
+    iterations = iterations
+  )
+  eta <- .make_mock_mcarray(
+    values = 20 + seq_len(4),
+    dim = c(2, 2, 1),
+    iterations = iterations
+  )
+
+  posterior <- BayesTools:::.fit_to_posterior(list(
+    theta_subset = theta,
+    phi_subset = phi,
+    eta = eta
+  ))
+
+  expect_identical(
+    colnames(posterior),
+    c(
+      "theta[2,4]", "theta[2,5]",
+      "phi[2,4]", "phi[3,4]",
+      "eta[1]", "eta[2]"
+    )
+  )
+})
+
+test_that(".fit_to_posterior rejects misaligned mcarray draws", {
+
+  by_chain <- .make_mock_mcarray(
+    values = seq_len(6),
+    dim = c(1, 3, 2),
+    varname = "x"
+  )
+  different_layout <- .make_mock_mcarray(
+    values = seq_len(6),
+    dim = c(1, 2, 3),
+    varname = "y"
+  )
+  expect_error(
+    BayesTools:::.fit_to_posterior(list(
+      x = by_chain,
+      y = different_layout
+    )),
+    "matching iteration and chain dimensions",
+    fixed = TRUE
+  )
+
+  first_iterations <- .make_mock_mcarray(
+    values = seq_len(6),
+    dim = c(1, 3, 2),
+    varname = "x",
+    iterations = c(start = 1, end = 3, thin = 1)
+  )
+  shifted_iterations <- .make_mock_mcarray(
+    values = seq_len(6),
+    dim = c(1, 3, 2),
+    varname = "y",
+    iterations = c(start = 2, end = 4, thin = 1)
+  )
+  expect_error(
+    BayesTools:::.fit_to_posterior(list(
+      x = first_iterations,
+      y = shifted_iterations
+    )),
+    "matching iteration metadata",
+    fixed = TRUE
+  )
+
+  malformed <- matrix(seq_len(6), nrow = 2)
+  class(malformed) <- "mcarray"
+  attr(malformed, "varname") <- "z"
+  expect_error(
+    BayesTools:::.fit_to_posterior(list(z = malformed)),
+    "at least one parameter dimension",
+    fixed = TRUE
+  )
 })
 
 
