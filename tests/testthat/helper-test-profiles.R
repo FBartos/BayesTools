@@ -2,6 +2,7 @@ bayestools_known_test_profiles <- c("unit", "fixture", "visual", "visual-fixture
 
 bayestools_test_profile_contexts <- list(
   unit = c(
+    "backend-fingerprint",
     "distributions-mpoint",
     "distributions-point",
     "distributions-tools",
@@ -26,6 +27,7 @@ bayestools_test_profile_contexts <- list(
     "marginal-prior-samplers",
     "model-averaging-edge-cases",
     "model-averaging-plots-edge-cases",
+    "prior-ordered",
     "priors-coverage",
     "priors-density-numeric",
     "priors-informed",
