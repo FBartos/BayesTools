@@ -136,15 +136,21 @@ tests for stored designs.
 
 **Issue.** Several covariance families distinguish mathematical support,
 floating-point representability, and stable factorization differently. Examples
-include LKJ endpoint matrices, CS/HCS near the lower bound, and CAR coordinates
-that are numerically but not exactly coincident.
+include LKJ endpoint matrices and CS/HCS near the lower bound. Kernel symmetry
+is currently checked with a fixed `all.equal(..., tolerance = 1e-10)` rule: a
+very small matrix with substantial relative asymmetry can be accepted and
+symmetrized while a rescaled copy is rejected. Exact duplicate CAR coordinates
+are rejected, but distinct values such as `c(0, 1e-320)` can still produce
+`rho^gap == 1` and a numerically singular correlation.
 
 **Impact.** The same conceptual boundary value may be accepted in one path,
 rejected in another, or fail later during factorization.
 
 **Suggested change.** Define one package-wide policy with separate open
 mathematical bounds and representable computational bounds, plus an explicit
-tolerance for coordinate equality. Apply it consistently to constructors, JAGS
+scale-aware symmetry rule and coordinate-separation tolerance. Decide whether
+near-coincident CAR coordinates should be rejected or handled by a stable
+latent-only transform. Apply the policy consistently to constructors, JAGS
 syntax, initialization, reconstruction, and marginal covariance.
 
 ## D11. Fit retry and extension semantics
