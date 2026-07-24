@@ -494,6 +494,34 @@ test_that("JAGS prior APIs reject duplicate parameter names", {
   )
 })
 
+test_that("JAGS prior APIs require complete parameter names", {
+  p <- prior("normal", list(0, 1))
+  malformed_prior_lists <- list(
+    list(p),
+    structure(list(p), names = ""),
+    structure(list(p), names = NA_character_),
+    structure(list(theta = p, p), names = c("theta", ""))
+  )
+
+  for(prior_list in malformed_prior_lists){
+    expect_error(
+      JAGS_to_monitor(prior_list),
+      "must be a fully named list",
+      fixed = TRUE
+    )
+    expect_error(
+      JAGS_add_priors("model{}", prior_list),
+      "must be a fully named list",
+      fixed = TRUE
+    )
+    expect_error(
+      JAGS_get_inits(prior_list, chains = 1, seed = 1),
+      "must be a fully named list",
+      fixed = TRUE
+    )
+  }
+})
+
 
 test_that("JAGS prior APIs reject malformed factor and vector attributes", {
   p_factor <- prior_factor("normal", list(0, 1), contrast = "treatment")

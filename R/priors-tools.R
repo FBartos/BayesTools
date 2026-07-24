@@ -455,7 +455,15 @@ is.prior.mixture         <- function(x){
 .check_prior_list_unique_names <- function(prior_list, name = "prior_list"){
 
   prior_names <- names(prior_list)
-  if(!is.null(prior_names) && anyDuplicated(prior_names)){
+  if(length(prior_list) > 0L &&
+     (is.null(prior_names) || length(prior_names) != length(prior_list) ||
+      anyNA(prior_names) || any(!nzchar(prior_names)))){
+    stop(
+      paste0("The '", name, "' argument must be a fully named list."),
+      call. = FALSE
+    )
+  }
+  if(anyDuplicated(prior_names)){
     duplicate_names <- unique(prior_names[duplicated(prior_names)])
     stop(
       paste0(
