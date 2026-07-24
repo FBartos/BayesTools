@@ -452,7 +452,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
         "treatment"         = is.prior.treatment(p),
         "independent"       = is.prior.independent(p),
         "orthonormal"       = is.prior.orthonormal(p),
-        "meandif"           = is.prior.meandif(p)
+        "meandif"           = is.prior.meandif(p),
+        "ordered"           = is.prior.ordered(p)
       ))
     }else{
       stop("unsupported prior type")
@@ -467,7 +468,64 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   }
 
 
-  if(priors_info[["treatment"]]){
+  if(priors_info[["ordered"]]){
+
+    if(!is.null(seed)){
+      set.seed(seed)
+    }
+
+    ordered_prior <- priors[[which(vapply(priors, is.prior.ordered, logical(1)))[1]]]
+    coefficient_names <- .JAGS_prior_factor_names(parameter, ordered_prior)
+    samples    <- matrix(nrow = 0, ncol = levels)
+    sample_ind <- NULL
+    models_ind <- NULL
+
+    sample_counts <- .posterior_mixture_sample_counts(post_probs, n_samples)
+    for(i in seq_along(fits)[sample_counts > 0]){
+
+      if(inherits(fits[[i]], "null_model")){
+        model_samples <- matrix()
+      }else if(inherits(fits[[i]], "runjags")){
+        model_samples <- .extract_posterior_samples(fits[[i]], as_list = FALSE)
+        if(!is.matrix(model_samples)){
+          model_samples <- matrix(model_samples, ncol = 1)
+          colnames(model_samples) <- fits[[i]]$monitor
+        }
+      }else if(inherits(fits[[i]], "stanfit")){
+        .check_rstan()
+        model_samples <- .extract_stan(fits[[i]])
+      }
+
+      temp_ind <- sample(nrow(model_samples), sample_counts[i], replace = TRUE)
+
+      if(is.prior.point(priors[[i]])){
+        samples <- rbind(
+          samples,
+          matrix(
+            rep(priors[[i]]$parameters[["location"]], times = length(temp_ind)),
+            nrow = length(temp_ind),
+            ncol = levels,
+            byrow = TRUE
+          )
+        )
+      }else{
+        temp_names <- .JAGS_prior_factor_names(parameter, priors[[i]])
+        samples <- rbind(samples, model_samples[temp_ind, temp_names, drop = FALSE])
+      }
+
+      sample_ind <- c(sample_ind, temp_ind)
+      models_ind <- c(models_ind, rep(i, length(temp_ind)))
+    }
+
+    rownames(samples) <- NULL
+    colnames(samples) <- coefficient_names
+    attr(samples, "sample_ind") <- sample_ind
+    attr(samples, "models_ind") <- models_ind
+    attr(samples, "parameter")  <- parameter
+    attr(samples, "prior_list") <- priors
+    class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
+
+  }else if(priors_info[["treatment"]]){
 
     if(levels == 1){
 
@@ -563,6 +621,11 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   attr(samples, "independent")       <- priors_info[["independent"]]
   attr(samples, "orthonormal")       <- priors_info[["orthonormal"]]
   attr(samples, "meandif")           <- priors_info[["meandif"]]
+  attr(samples, "ordered")           <- priors_info[["ordered"]]
+  if(isTRUE(priors_info[["ordered"]])){
+    ordered_prior <- priors[[which(vapply(priors, is.prior.ordered, logical(1)))[1]]]
+    attr(samples, "ordered_metadata") <- attr(ordered_prior, "ordered_metadata")
+  }
 
   if(isTRUE(priors_info[["treatment"]]) || isTRUE(priors_info[["independent"]])){
     factor_support <- .posterior_support_from_prior_list(priors)

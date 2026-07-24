@@ -1,3 +1,96 @@
+# Reconstruct ordered-factor term data from the design stored by JAGS_formula().
+# stats::model.matrix() expands the first no-intercept factor to level indicators,
+# even when a full-rank ordered contrast was supplied.
+.marginal_posterior_term_data <- function(model_matrix, terms_indexes, term_index,
+                                          data, prior_info, term_name){
+
+  term_data <- model_matrix[, terms_indexes == term_index, drop = FALSE]
+  if(!isTRUE(prior_info[["ordered"]])){
+    return(term_data)
+  }
+
+  factor_terms <- prior_info[["factor_terms"]]
+  factor_design <- prior_info[["factor_design"]]
+  level_names <- prior_info[["level_names"]]
+
+  if(is.null(factor_terms) || length(factor_terms) == 0L ||
+     is.null(factor_design) || is.null(level_names) ||
+     any(!factor_terms %in% names(data))){
+    stop("Ordered factor metadata for '", term_name, "' are incomplete.", call. = FALSE)
+  }
+
+  if(!is.list(level_names)){
+    if(length(factor_terms) != 1L){
+      stop("Ordered factor metadata for '", term_name, "' are incomplete.", call. = FALSE)
+    }
+    level_names <- stats::setNames(list(level_names), factor_terms)
+  }else{
+    if(is.null(names(level_names))){
+      if(length(level_names) != length(factor_terms)){
+        stop("Ordered factor metadata for '", term_name, "' are incomplete.", call. = FALSE)
+      }
+      names(level_names) <- factor_terms
+    }
+    level_names <- level_names[factor_terms]
+  }
+
+  if(any(vapply(level_names, is.null, logical(1)))){
+    stop("Ordered factor metadata for '", term_name, "' are incomplete.", call. = FALSE)
+  }
+
+  factor_design <- as.matrix(factor_design)
+  cell_grid <- .factor_cell_grid(level_names)
+  if(nrow(factor_design) != nrow(cell_grid) ||
+     ncol(factor_design) != prior_info[["levels"]]){
+    stop(
+      "Ordered factor metadata for '", term_name,
+      "' do not match its coefficient shape.",
+      call. = FALSE
+    )
+  }
+
+  term_data <- matrix(0, nrow = nrow(data), ncol = ncol(factor_design))
+  for(row_i in seq_len(nrow(data))){
+    factor_values <- data[row_i, factor_terms, drop = FALSE]
+    if(anyNA(factor_values)){
+      next
+    }
+
+    cell_match <- rep(TRUE, nrow(cell_grid))
+    for(factor_term in factor_terms){
+      cell_match <- cell_match &
+        as.character(cell_grid[[factor_term]]) == as.character(factor_values[[factor_term]])
+    }
+    cell_index <- which(cell_match)
+    if(length(cell_index) != 1L){
+      stop(
+        "Factor values for ordered term '", term_name,
+        "' do not match its stored levels.",
+        call. = FALSE
+      )
+    }
+    term_data[row_i, ] <- factor_design[cell_index, ]
+  }
+
+  continuous_terms <- setdiff(prior_info[["term_components"]], factor_terms)
+  for(continuous_term in continuous_terms){
+    if(!continuous_term %in% names(data) || !is.numeric(data[[continuous_term]])){
+      stop(
+        "Continuous component '", continuous_term, "' of ordered term '",
+        term_name, "' cannot be evaluated from 'at'.",
+        call. = FALSE
+      )
+    }
+    term_data <- term_data * matrix(
+      data[[continuous_term]],
+      nrow = nrow(term_data),
+      ncol = ncol(term_data)
+    )
+  }
+
+  term_data
+}
+
 #' @title Model-average marginal posterior distributions
 #'
 #' @description Creates marginal model-averages posterior distributions for a given
@@ -11,8 +104,8 @@
 #' should be performed. If a predictor level is missing, \code{0} is used for continuous
 #' predictors, the baseline factor level is used for factors with \code{contrast = "treatment"} prior
 #' distributions, and the parameter is completely omitted for factors with
-#' \code{contrast = "meandif"}, \code{contrast = "orthonormal"}, and
-#' \code{contrast = "independent"} levels.
+#' \code{contrast = "meandif"}, \code{contrast = "orthonormal"},
+#' \code{contrast = "independent"}, and ordered-factor levels.
 #' @param prior_samples whether marginal prior distributions should be generated
 #' @param use_formula whether the parameter should be evaluated as a part of supplied formula
 #' @param n_samples controls the numerical grid used for model-averaged
@@ -91,10 +184,15 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
         level_names       = attr(samples[[model_term]], "level_names"),
         interaction       = attr(samples[[model_term]], "interaction"),
         interaction_terms = attr(samples[[model_term]], "interaction_terms"),
+        term_components   = attr(samples[[model_term]], "term_components"),
+        factor_terms      = attr(samples[[model_term]], "factor_terms"),
+        factor_contrasts  = attr(samples[[model_term]], "factor_contrasts"),
+        factor_design     = attr(samples[[model_term]], "factor_design"),
         treatment         = attr(samples[[model_term]], "treatment"),
         independent       = attr(samples[[model_term]], "independent"),
         orthonormal       = attr(samples[[model_term]], "orthonormal"),
-        meandif           = attr(samples[[model_term]], "meandif")
+        meandif           = attr(samples[[model_term]], "meandif"),
+        ordered           = attr(samples[[model_term]], "ordered")
         ))
       names(priors_info) <- names(prior_list)
       model_terms_type <- sapply(JAGS_model_terms, function(model_term){
@@ -177,6 +275,22 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
             stats::contrasts(data[,predictors[i]]) <- "contr.meandif"
           }else if(priors_info[[JAGS_predictors[i]]][["independent"]]){
             stats::contrasts(data[,predictors[i]]) <- "contr.independent"
+          }else if(priors_info[[JAGS_predictors[i]]][["ordered"]]){
+            factor_contrasts <- unlist(
+              priors_info[[JAGS_predictors[i]]][["factor_contrasts"]],
+              use.names = FALSE
+            )
+            ordered_contrasts <- factor_contrasts[
+              .prior_ordered_is_contrast_name(factor_contrasts)
+            ]
+            if(length(ordered_contrasts) != 1L){
+              stop(
+                "Ordered contrast metadata for '", predictors[i],
+                "' are incomplete.",
+                call. = FALSE
+              )
+            }
+            stats::contrasts(data[,predictors[i]]) <- ordered_contrasts
           }else if(priors_info[[JAGS_predictors[i]]][["treatment"]]){
             stats::contrasts(data[,predictors[i]]) <- "contr.treatment"
             if(anyNA(data[,predictors[i]]))
@@ -257,7 +371,14 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       for(i in unique(terms_indexes[terms_indexes > 0])){
 
         # subset the model matrix
-        temp_data <- model_matrix[,terms_indexes == i,drop = FALSE]
+        temp_data <- .marginal_posterior_term_data(
+          model_matrix  = model_matrix,
+          terms_indexes = terms_indexes,
+          term_index    = i,
+          data          = data,
+          prior_info    = priors_info[[JAGS_model_terms[i]]],
+          term_name     = JAGS_model_terms[i]
+        )
 
         temp_posterior <- posterior_samples_matrix[,paste0(
           JAGS_model_terms[i],
@@ -374,7 +495,14 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       }
 
       for(i in unique(terms_indexes[terms_indexes > 0])){
-        temp_data <- model_matrix[, terms_indexes == i, drop = FALSE]
+        temp_data <- .marginal_posterior_term_data(
+          model_matrix  = model_matrix,
+          terms_indexes = terms_indexes,
+          term_index    = i,
+          data          = data,
+          prior_info    = priors_info[[JAGS_model_terms[i]]],
+          term_name     = JAGS_model_terms[i]
+        )
         temp_all_columns <- paste0(
           JAGS_model_terms[i],
           if(model_terms_type[i] == "factor" && priors_info[[JAGS_model_terms[i]]][["levels"]] > 1) paste0("[", 1:priors_info[[JAGS_model_terms[i]]][["levels"]], "]")

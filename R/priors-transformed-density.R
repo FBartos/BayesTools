@@ -193,7 +193,8 @@ plot_transformed_prior <- function(prior_list, column_names, formula_scale = NUL
 
   if(isTRUE(attr(metadata, "orthonormal")) ||
      isTRUE(attr(metadata, "meandif")) ||
-     inherits(metadata, "mixed_posteriors.treatment_transformed")){
+     inherits(metadata, "mixed_posteriors.treatment_transformed") ||
+     inherits(metadata, "mixed_posteriors.ordered_transformed")){
     design_info <- .factor_term_design_from_metadata(metadata)
     weights <- design_info$design
     rownames(weights) <- .factor_contrast_parameter_names(

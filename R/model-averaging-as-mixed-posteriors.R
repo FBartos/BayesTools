@@ -303,11 +303,25 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     "treatment"         = is.prior.treatment(prior),
     "independent"       = is.prior.independent(prior),
     "orthonormal"       = is.prior.orthonormal(prior),
-    "meandif"           = is.prior.meandif(prior)
+    "meandif"           = is.prior.meandif(prior),
+    "ordered"           = is.prior.ordered(prior)
   )
 
 
-  if(prior_info[["treatment"]]){
+  if(prior_info[["ordered"]]){
+
+    coefficient_names <- .JAGS_prior_factor_names(parameter, prior)
+    samples <- model_samples[, coefficient_names, drop = FALSE]
+
+    rownames(samples) <- NULL
+    colnames(samples) <- coefficient_names
+    attr(samples, "sample_ind") <- FALSE
+    attr(samples, "models_ind") <- rep(1, nrow(samples))
+    attr(samples, "parameter")  <- parameter
+    attr(samples, "prior_list") <- prior
+    class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
+
+  }else if(prior_info[["treatment"]]){
 
     if(prior_info[["levels"]] == 1){
 
@@ -379,6 +393,8 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   attr(samples, "independent")       <- prior_info[["independent"]]
   attr(samples, "orthonormal")       <- prior_info[["orthonormal"]]
   attr(samples, "meandif")           <- prior_info[["meandif"]]
+  attr(samples, "ordered")           <- prior_info[["ordered"]]
+  attr(samples, "ordered_metadata")  <- attr(prior, "ordered_metadata")
 
   if(isTRUE(prior_info[["treatment"]]) || isTRUE(prior_info[["independent"]])){
     factor_support <- .posterior_support_from_prior_list(prior)

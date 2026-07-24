@@ -503,6 +503,240 @@ test_that("ordered posterior extraction transforms coefficients to public levels
   expect_equal(unname(transformed[2, ]), c(0, 4, 12))
 })
 
+test_that("ordered prior mixing samples raw coefficients jointly", {
+  make_prior <- function(total, prior_weights){
+    p <- prior_ordered(
+      prior("point", list(location = total)),
+      allocation = c(.2, .3, .5),
+      contrast = "cumulative_levels",
+      prior_weights = prior_weights
+    )
+    attr(p, "levels") <- 3
+    attr(p, "level_names") <- c("low", "mid", "high")
+    p
+  }
+
+  p1 <- make_prior(10, 1)
+  p2 <- make_prior(20, 3)
+
+  single <- BayesTools:::.as_mixed_priors.factor(
+    p1,
+    parameter = "mu_f",
+    seed = 1,
+    n_samples = 4
+  )
+  expect_equal(
+    unname(single[, , drop = FALSE]),
+    matrix(c(2, 3, 5), nrow = 4, ncol = 3, byrow = TRUE)
+  )
+  expect_equal(colnames(single), paste0("mu_f[", 1:3, "]"))
+  expect_true(isTRUE(attr(single, "ordered")))
+  expect_false(is.null(attr(single, "ordered_metadata")))
+
+  single_levels <- transform_factor_samples(list(mu_f = single))$mu_f
+  expect_equal(
+    unname(single_levels[, , drop = FALSE]),
+    matrix(c(2, 5, 10), nrow = 4, ncol = 3, byrow = TRUE)
+  )
+
+  mixed <- BayesTools:::.mix_priors.factor(
+    list(p1, p2),
+    parameter = "mu_f",
+    seed = 2,
+    n_samples = 8
+  )
+  model_1 <- attr(mixed, "models_ind") == 1L
+  model_2 <- attr(mixed, "models_ind") == 2L
+  expect_equal(c(sum(model_1), sum(model_2)), c(2L, 6L))
+  expect_equal(
+    unname(mixed[model_1, , drop = FALSE]),
+    matrix(c(2, 3, 5), nrow = 2, ncol = 3, byrow = TRUE)
+  )
+  expect_equal(
+    unname(mixed[model_2, , drop = FALSE]),
+    matrix(c(4, 6, 10), nrow = 6, ncol = 3, byrow = TRUE)
+  )
+
+  mixed_levels <- transform_factor_samples(list(mu_f = mixed))$mu_f
+  expect_equal(
+    unname(mixed_levels[model_1, , drop = FALSE]),
+    matrix(c(2, 5, 10), nrow = 2, ncol = 3, byrow = TRUE)
+  )
+  expect_equal(
+    unname(mixed_levels[model_2, , drop = FALSE]),
+    matrix(c(4, 10, 20), nrow = 6, ncol = 3, byrow = TRUE)
+  )
+})
+
+test_that("public posterior mixing preserves ordered coefficient rows and metadata", {
+  df <- data.frame(
+    y = seq_len(6),
+    f = ordered(rep(c("low", "mid", "high"), 2), levels = c("low", "mid", "high"))
+  )
+  formula_info <- JAGS_formula(
+    y ~ f,
+    "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_ordered(prior("normal", list(0, 1)), allocation = c(.25, .75))
+    )
+  )
+  ordered_prior <- formula_info$prior_list$mu_f
+  posterior <- matrix(
+    c(1, 2, 4, 8),
+    nrow = 2,
+    byrow = TRUE,
+    dimnames = list(NULL, c("mu_f[1]", "mu_f[2]"))
+  )
+
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- formula_info$prior_list
+  single <- as_mixed_posteriors(fit, parameters = "mu_f")
+
+  expect_equal(unname(single$mu_f[, , drop = FALSE]), unname(posterior))
+  expect_true(isTRUE(attr(single$mu_f, "ordered")))
+  expect_equal(
+    attr(single$mu_f, "ordered_metadata"),
+    attr(ordered_prior, "ordered_metadata")
+  )
+
+  single_levels <- transform_factor_samples(single)$mu_f
+  expect_equal(
+    unname(single_levels[, , drop = FALSE]),
+    matrix(c(0, 1, 3, 0, 4, 12), nrow = 2, byrow = TRUE)
+  )
+  expect_equal(
+    BayesTools:::.prior_factor_level_weight_matrix(single_levels, "mu_f"),
+    structure(
+      attr(ordered_prior, "factor_design"),
+      dimnames = list(
+        colnames(single_levels),
+        c("mu_f[1]", "mu_f[2]")
+      )
+    )
+  )
+
+  make_model <- function(samples, prior){
+    samples <- coda::mcmc(samples)
+    model_fit <- structure(
+      list(
+        mcmc = coda::mcmc.list(samples),
+        sample = nrow(samples),
+        summary.pars = list(mutate = NULL),
+        monitor = colnames(samples)
+      ),
+      class = c("runjags", "BayesTools_fit", "list")
+    )
+    attr(model_fit, "prior_list") <- list(mu_f = prior)
+    list(
+      fit = model_fit,
+      marglik = structure(list(logml = 0), class = "bridge"),
+      prior_weights = 1
+    )
+  }
+
+  posterior_1 <- matrix(
+    c(1, 10, 2, 20, 3, 30),
+    nrow = 3,
+    byrow = TRUE,
+    dimnames = list(NULL, c("mu_f[1]", "mu_f[2]"))
+  )
+  posterior_2 <- matrix(
+    c(4, 40, 5, 50, 6, 60),
+    nrow = 3,
+    byrow = TRUE,
+    dimnames = list(NULL, c("mu_f[1]", "mu_f[2]"))
+  )
+  ordered_prior_2 <- JAGS_formula(
+    y ~ f,
+    "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_ordered(prior("normal", list(0, 1)), allocation = c(.4, .6))
+    )
+  )$prior_list$mu_f
+
+  mixed <- mix_posteriors(
+    list(
+      make_model(posterior_1, ordered_prior),
+      make_model(posterior_2, ordered_prior_2)
+    ),
+    parameters = "mu_f",
+    is_null_list = list(mu_f = c(FALSE, FALSE)),
+    seed = 3,
+    n_samples = 6
+  )
+
+  source_samples <- list(posterior_1, posterior_2)
+  for(row_i in seq_len(nrow(mixed$mu_f))){
+    model_i <- attr(mixed$mu_f, "models_ind")[[row_i]]
+    sample_i <- attr(mixed$mu_f, "sample_ind")[[row_i]]
+    expect_equal(
+      unname(mixed$mu_f[row_i, ]),
+      unname(source_samples[[model_i]][sample_i, ])
+    )
+  }
+  expect_true(isTRUE(attr(mixed$mu_f, "ordered")))
+  expect_false(is.null(attr(mixed$mu_f, "ordered_metadata")))
+})
+
+test_that("marginal posterior uses the stored full-rank ordered design", {
+  df <- data.frame(
+    y = seq_len(6),
+    f = ordered(rep(c("low", "mid", "high"), 2), levels = c("low", "mid", "high"))
+  )
+  formula_info <- JAGS_formula(
+    y ~ 0 + f,
+    "mu",
+    data = df,
+    prior_list = list(
+      f = prior_ordered(
+        prior("normal", list(0, 1)),
+        allocation = c(.2, .3, .5),
+        contrast = "cumulative_levels"
+      )
+    )
+  )
+  posterior <- matrix(
+    c(2, 3, 5, 4, 6, 10),
+    nrow = 2,
+    byrow = TRUE,
+    dimnames = list(NULL, paste0("mu_f[", 1:3, "]"))
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- formula_info$prior_list
+  mixed <- as_mixed_posteriors(fit, parameters = "mu_f")
+
+  formula_marginal <- marginal_posterior(
+    mixed,
+    parameter = "mu_f",
+    formula = ~ 0 + f,
+    prior_samples = FALSE
+  )
+  direct_marginal <- marginal_posterior(
+    mixed,
+    parameter = "mu_f",
+    use_formula = FALSE,
+    prior_samples = FALSE
+  )
+
+  expected <- list(
+    low = c(2, 4),
+    mid = c(5, 10),
+    high = c(10, 20)
+  )
+  expect_equal(names(formula_marginal), names(expected))
+  expect_equal(names(direct_marginal), names(expected))
+  for(level in names(expected)){
+    expect_equal(as.numeric(formula_marginal[[level]]), expected[[level]])
+    expect_equal(as.numeric(direct_marginal[[level]]), expected[[level]])
+  }
+})
+
 test_that("ordered densities are direct when supported and bridge sampling stops for complex totals", {
   p <- prior_ordered(prior("normal", list(0, 1)), allocation = c(.25, .75))
   attr(p, "levels") <- 3
