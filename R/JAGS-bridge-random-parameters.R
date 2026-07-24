@@ -554,4 +554,3 @@
     context = "Bridge sampling random-effect metadata"
   )
 }
-

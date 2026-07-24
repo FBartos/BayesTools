@@ -176,4 +176,3 @@ contr.ordered_cumulative_levels <- function(n, contrasts = TRUE){
 
   cont
 }
-

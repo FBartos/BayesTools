@@ -655,4 +655,3 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
 
   return(samples)
 }
-

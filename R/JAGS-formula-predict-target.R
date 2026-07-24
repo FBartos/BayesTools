@@ -321,4 +321,3 @@ JAGS_predict_formula <- function(fit, parameter, formula = NULL, data = NULL,
 
   output
 }
-

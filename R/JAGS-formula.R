@@ -616,4 +616,3 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
 
   return(output)
 }
-

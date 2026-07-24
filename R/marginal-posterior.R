@@ -1154,4 +1154,3 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
   return(temp_multiply_by)
 }
-

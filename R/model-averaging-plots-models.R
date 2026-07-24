@@ -379,4 +379,3 @@ plot_models <- function(model_list, samples, inference, parameter, plot_type = "
 
   return(plot)
 }
-

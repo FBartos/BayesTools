@@ -170,4 +170,3 @@
 
   .JAGS_prior_list_uses_BayesTools_module(prior_list)
 }
-

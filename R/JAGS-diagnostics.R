@@ -311,10 +311,10 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
 
   # transform meandif and orthonormal factors to differences
   model_samples <- .transform_factor_contrasts(model_samples, prior_list, transform_factors, transformations)
-  
+
   # rename factor levels (treatment, independent)
   model_samples <- .rename_factor_levels(model_samples, prior_list)
-  
+
   # extract parameter names from column names after transformations and renaming
   parameter_names <- colnames(model_samples)
 

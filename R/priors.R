@@ -436,7 +436,7 @@ prior_spike_and_slab <- function(prior_parameter,
     # For factor priors, create a factor spike
     priors_type <- .get_prior_factor_list_type(list(prior_parameter))
     contrast_type <- gsub("prior.", "", priors_type[["class"]], fixed = TRUE)
-    
+
     spike_component <- prior_factor(
       distribution = "point",
       parameters   = list(location = 0),
@@ -445,31 +445,31 @@ prior_spike_and_slab <- function(prior_parameter,
   } else {
     # For simple priors, create a simple spike
     spike_component <- prior(
-      distribution = "point", 
+      distribution = "point",
       parameters   = list(location = 0)
     )
   }
-  
+
   # Create the mixture using the mixture backend
   mixture_output <- prior_mixture(
     prior_list = list(prior_parameter, spike_component),
     components = c("alternative", "null")
   )
-  
+
   # Store inclusion prior as attribute so it can be retrieved by helper functions
   attr(mixture_output, "inclusion_prior") <- prior_inclusion
   attr(mixture_output, "model_prior_weights") <- prior_weights
-  
+
   # Add spike_and_slab classes for specialized behavior while keeping mixture functionality
   if(is.prior.factor(prior_parameter)){
     # obtain and store the contrast type
     priors_type <- .get_prior_factor_list_type(list(prior_parameter))
-    
+
     attr(prior_parameter, "K") <- priors_type[["K"]]
-    class(mixture_output) <- c("prior", "prior.spike_and_slab", "prior.factor_spike_and_slab", 
+    class(mixture_output) <- c("prior", "prior.spike_and_slab", "prior.factor_spike_and_slab",
                               class(mixture_output)[-1], priors_type[["class"]])
   }else if(is.prior.simple(prior_parameter)){
-    class(mixture_output) <- c("prior", "prior.spike_and_slab", "prior.simple_spike_and_slab", 
+    class(mixture_output) <- c("prior", "prior.spike_and_slab", "prior.simple_spike_and_slab",
                               class(mixture_output)[-1])
   }else{
     stop("The 'prior_parameter' must be either a simple or factor prior distribution.")
@@ -504,11 +504,11 @@ prior_spike_and_slab <- function(prior_parameter,
   if (!is.prior.spike_and_slab(spike_and_slab_prior)) {
     stop("This function only works with spike_and_slab priors")
   }
- 
+
   # Find the alternative component (this is the variable/slab part)
-  components    <- attr(spike_and_slab_prior, "components") 
+  components    <- attr(spike_and_slab_prior, "components")
   alternative_idx <- which(components == "alternative")
-  
+
   return(spike_and_slab_prior[[alternative_idx]])
 }
 
@@ -516,12 +516,12 @@ prior_spike_and_slab <- function(prior_parameter,
   if (!is.prior.spike_and_slab(spike_and_slab_prior)) {
     stop("This function only works with spike_and_slab priors")
   }
-  
+
   # For backward compatibility, use stored inclusion if available
   if (!is.null(spike_and_slab_prior[["inclusion"]])) {
     return(spike_and_slab_prior[["inclusion"]])
   }
-  
+
   # Get inclusion prior from attribute
   inclusion_prior <- attr(spike_and_slab_prior, "inclusion_prior")
   return(inclusion_prior)
@@ -532,14 +532,14 @@ prior_spike_and_slab <- function(prior_parameter,
   if (!is.prior.spike_and_slab(spike_and_slab_prior)) {
     stop("This function only works with spike_and_slab priors")
   }
-  
+
   # Find the alternative component (this is the variable/slab part)
-  components <- attr(spike_and_slab_prior, "components") 
+  components <- attr(spike_and_slab_prior, "components")
   alternative_idx <- which(components == "alternative")
 
   # Set attribute on the variable component
   attr(spike_and_slab_prior[[alternative_idx]], attr_name) <- value
-  
+
   return(spike_and_slab_prior)
 }
 
@@ -660,4 +660,3 @@ prior_mixture <- function(prior_list, is_null = rep(FALSE, length(prior_list)), 
 
   return(prior_list)
 }
-

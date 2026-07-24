@@ -798,6 +798,3 @@ plot.prior <- function(x, plot_type = "base",
 
   return(dots)
 }
-
-
-

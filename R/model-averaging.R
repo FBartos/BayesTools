@@ -235,4 +235,3 @@ models_inference   <- function(model_list){
 
   return(model_list)
 }
-

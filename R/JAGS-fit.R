@@ -172,7 +172,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     prior_list     <- c(do.call(c, unname(lapply(formula_output, function(output) output[["prior_list"]]))), prior_list)
     data           <- c(do.call(c, unname(lapply(formula_output, function(output) output[["data"]]))),       data)
     formula_syntax <- paste0(lapply(formula_output, function(output) output[["formula_syntax"]]), collapse = "")
-    
+
     # collect formula_scale information
     formula_scale_info <- lapply(formula_output, function(output) output[["formula_scale"]])
     formula_scale_info <- formula_scale_info[!sapply(formula_scale_info, is.null)]
@@ -475,4 +475,3 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
 
   return(fit)
 }
-

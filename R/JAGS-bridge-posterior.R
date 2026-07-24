@@ -443,4 +443,3 @@ JAGS_bridgesampling_posterior <- function(posterior, prior_list, add_parameters 
 
   owned
 }
-

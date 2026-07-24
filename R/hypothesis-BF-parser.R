@@ -663,5 +663,3 @@ hypothesis_normalize_level_references <- function(text){
 
   return(NULL)
 }
-
-

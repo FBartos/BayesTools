@@ -936,5 +936,3 @@ selection_row_arg <- function(x, n, name){
 
   return(context)
 }
-
-

@@ -674,5 +674,3 @@ marginal_estimates_table <- function(samples, inference, parameters, probs = c(0
 
   min(x, na.rm = TRUE)
 }
-
-

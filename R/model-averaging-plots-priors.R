@@ -586,4 +586,3 @@ plot_prior_list <- function(prior_list, plot_type = "base",
     return(plot)
   }
 }
-

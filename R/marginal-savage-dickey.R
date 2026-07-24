@@ -431,5 +431,3 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
 
   return(height)
 }
-
-

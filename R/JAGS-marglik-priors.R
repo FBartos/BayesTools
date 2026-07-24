@@ -536,4 +536,3 @@ JAGS_marglik_priors_formula <- function(samples, formula_prior_list){
     bounds = exact_bounds
   )
 }
-

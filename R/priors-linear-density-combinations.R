@@ -781,4 +781,3 @@
 
   sum(x$points$p[abs(x$points$x - value) <= .prior_linear_density_zero_tol()])
 }
-

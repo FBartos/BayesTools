@@ -295,4 +295,3 @@ formula_add_intercept <- function(formula){
 
   is.numeric(expr) && length(expr) == 1L && identical(as.numeric(expr), as.numeric(value))
 }
-

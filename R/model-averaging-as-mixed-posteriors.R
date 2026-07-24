@@ -672,4 +672,3 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
   return(samples)
 }
-

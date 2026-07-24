@@ -451,5 +451,3 @@ selection_backend_spec <- function(priors,
     )
   ))
 }
-
-

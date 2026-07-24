@@ -384,4 +384,3 @@
     prior = total_prior
   )
 }
-

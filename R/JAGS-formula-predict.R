@@ -398,4 +398,3 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
     fitted_design = fitted_design
   )
 }
-

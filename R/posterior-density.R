@@ -441,4 +441,3 @@ posterior_ordinate_has_value <- function(ordinate, value){
 
   return(unique(values[-1L][duplicated]))
 }
-

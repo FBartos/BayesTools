@@ -232,15 +232,15 @@
 # Helper function to transform scaled samples in list format (for ensemble/marginal tables)
 # Uses the combinatorial unscaling algorithm via the helper in JAGS-formula.R
 .transform_scale_samples_list <- function(samples, formula_scale){
-  
+
   if(is.null(formula_scale) || length(formula_scale) == 0){
     return(samples)
   }
-  
+
   sample_names <- names(samples)
   transformable <- sapply(samples, function(x) is.numeric(x) || is.matrix(x))
   transformable_names <- sample_names[transformable]
-  
+
   if(length(transformable_names) == 0){
     return(samples)
   }
@@ -286,6 +286,6 @@
       }
     }
   }
-  
+
   return(samples)
 }

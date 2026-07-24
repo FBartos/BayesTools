@@ -322,4 +322,3 @@ transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula
 
   return(samples)
 }
-

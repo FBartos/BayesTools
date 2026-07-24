@@ -65,7 +65,7 @@ JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 5
   # extract samples and parameter information
   mcmc_samples_list <- .extract_posterior_samples(fit, as_list = TRUE)
   mcmc_samples      <- do.call(rbind, mcmc_samples_list)
-  
+
   # build remove_parameters list: point priors, spike priors, indicators, inclusions
   remove_params <- c(
     # point priors
@@ -77,20 +77,20 @@ JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 5
     # add_parameters that should be excluded
     add_parameters
   )
-  
+
   # use helper to remove auxiliary parameters
   cleaned <- .remove_auxiliary_parameters(mcmc_samples, prior_list, remove_params)
   mcmc_samples <- cleaned$model_samples
-  
+
   # remove auxiliary inclusion probabilities and, by default, model indicators
   indicator_cols <- grepl("_indicator", colnames(mcmc_samples))
   inclusion_cols <- grepl("_inclusion", colnames(mcmc_samples))
   mcmc_samples <- mcmc_samples[, !(inclusion_cols | (!check_indicators & indicator_cols)), drop = FALSE]
-  
+
   if(ncol(mcmc_samples) == 0){
     return(TRUE)
   }
-  
+
   # convert back to mcmc.list for convergence checks
   n_chains <- length(mcmc_samples_list)
   samples_per_chain <- nrow(mcmc_samples) / n_chains

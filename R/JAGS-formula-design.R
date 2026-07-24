@@ -281,4 +281,3 @@ JAGS_formula_design <- function(fit, parameter = NULL){
 
   return(formula_design[[parameter]])
 }
-

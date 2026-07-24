@@ -148,5 +148,3 @@ print.BayesTools_hypothesis_BF <- function(x, ...) {
 
   return(invisible(x))
 }
-
-

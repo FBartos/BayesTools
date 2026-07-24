@@ -204,5 +204,3 @@
 
   return(prior_list)
 }
-
-

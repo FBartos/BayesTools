@@ -197,5 +197,3 @@ geom_prior_list  <- function(prior_list, xlim = NULL, x_seq = NULL, x_range_quan
 
   return(geom)
 }
-
-

@@ -83,5 +83,3 @@ mpdf   <- function(x, ...){
 pdf.default  <- function(x, ...){
   grDevices::pdf(x, ...)
 }
-
-

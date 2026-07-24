@@ -359,4 +359,3 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 
   return(parameter)
 }
-

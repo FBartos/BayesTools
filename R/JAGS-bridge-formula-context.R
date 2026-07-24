@@ -587,4 +587,3 @@
 
   isTRUE(all.equal(x, y, check.environment = FALSE))
 }
-
