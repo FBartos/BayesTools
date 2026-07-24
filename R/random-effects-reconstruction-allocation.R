@@ -3,11 +3,16 @@
   layout <- random_term$latent_layout
   if(inherits(layout, "BayesTools_random_effect_structured_local_layout")){
     node_names <- layout$node_names
-    if(length(node_names) != layout$n_local){
+    if(!is.character(node_names) ||
+       length(node_names) != layout$n_local ||
+       anyNA(node_names) ||
+       any(!nzchar(node_names)) ||
+       anyDuplicated(node_names)){
       stop(
         "Random-effect local latent metadata",
         .bt_random_effect_metadata_block_detail(random_term),
-        " have inconsistent node names.",
+        " must contain one unique, non-missing, non-empty character ",
+        "node name per local latent cell.",
         call. = FALSE
       )
     }

@@ -33,6 +33,53 @@ test_that("structured local layout keeps only observed group-column cells", {
   )
 })
 
+test_that("structured local latent names require unique character metadata", {
+
+  model_matrix <- diag(3)
+  layout <- BayesTools:::.bt_random_effect_structured_local_layout(
+    model_matrix = model_matrix,
+    group_map = c(1L, 1L, 2L),
+    structure = "cs",
+    parameter_stem = "mu__xREx__id"
+  )
+  random_term <- list(
+    block_name = "id",
+    parameter_stem = "mu__xREx__id",
+    latent_layout = layout
+  )
+  expect_identical(
+    BayesTools:::.bt_random_effect_latent_names(
+      random_term = random_term,
+      n_groups = layout$n_groups,
+      n_columns = layout$global_n_columns
+    ),
+    layout$node_names
+  )
+
+  malformed_names <- list(
+    non_character = seq_along(layout$node_names),
+    missing = replace(layout$node_names, 1L, NA_character_),
+    empty = replace(layout$node_names, 1L, ""),
+    duplicate = replace(layout$node_names, 2L, layout$node_names[[1L]])
+  )
+  for(node_names in malformed_names){
+    malformed_term <- random_term
+    malformed_term$latent_layout$node_names <- node_names
+    expect_error(
+      BayesTools:::.bt_random_effect_latent_names(
+        random_term = malformed_term,
+        n_groups = layout$n_groups,
+        n_columns = layout$global_n_columns
+      ),
+      paste0(
+        "Random-effect local latent metadata for block 'id' must contain one ",
+        "unique, non-missing, non-empty character node name per local latent cell."
+      ),
+      fixed = TRUE
+    )
+  }
+})
+
 test_that("structured local layout rejects non-one-hot and malformed mappings", {
 
   model_matrix <- rbind(c(1, 0, 0), c(0, 1, 0), c(0, 0, 1))
