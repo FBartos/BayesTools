@@ -47,6 +47,14 @@ JAGS_diagnostics                 <- function(fit, parameter, type, plot_type = "
 
   check_char(type, "type", allow_values = c("density", "trace", "autocorrelation"))
   check_char(plot_type, "plot_type", allow_values = c("base", "ggplot"))
+  if(type == "autocorrelation"){
+    check_int(
+      lags,
+      "lags",
+      lower = 0,
+      allow_NA = FALSE
+    )
+  }
   prior_list <- attr(fit, "prior_list")
   check_list(prior_list, "prior_list")
   if(!all(sapply(prior_list, is.prior)))
@@ -584,12 +592,10 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
 
   for(i in 1:ncol(plot_data)){
 
-    x_range <-
-
     for(j in seq_along(unique(chain))){
 
-      temp_x  <- 0:lags
       temp_y  <- stats::acf(plot_data[chain == j,i], lag.max = lags, plot = FALSE, na.action = stats::na.pass)$acf[, , 1L]
+      temp_x  <- seq_along(temp_y) - 1L
 
 
       temp_autocor <- list(
@@ -598,7 +604,7 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
       )
 
       class(temp_autocor) <- c("BayesTools_autocorrelation")
-      attr(temp_autocor, "x_range")        <- c(0, lags)
+      attr(temp_autocor, "x_range")        <- range(temp_x)
       attr(temp_autocor, "y_range")        <- range(c(0, temp_y))
       attr(temp_autocor, "chain")          <- j
       attr(temp_autocor, "parameter")      <- attr(plot_data, "parameter")
@@ -607,7 +613,7 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
       out[[colnames(plot_data)[[i]]]][[j]] <- temp_autocor
     }
 
-    attr(out[[colnames(plot_data)[[i]]]], "x_range")        <- c(0, lags)
+    attr(out[[colnames(plot_data)[[i]]]], "x_range")        <- range(unlist(lapply(out[[i]], function(x) attr(x, "x_range"))))
     attr(out[[colnames(plot_data)[[i]]]], "y_range")        <- c(0, max(sapply(out[[i]], function(x) attr(x, "y_range"))))
     attr(out[[colnames(plot_data)[[i]]]], "chains")         <- length(unique(chain))
     attr(out[[colnames(plot_data)[[i]]]], "parameter")      <- attr(plot_data, "parameter")
