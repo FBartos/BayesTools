@@ -368,6 +368,45 @@ test_that("ordered hidden total nodes cannot collide with formula coefficients",
   )
 })
 
+test_that("multi-slice ordered expression totals omit initialization", {
+  df <- expand.grid(
+    f = ordered(
+      c("low", "mid", "high"),
+      levels = c("low", "mid", "high")
+    ),
+    g = factor(c("a", "b", "c"), levels = c("a", "b", "c"))
+  )
+  formula_info <- JAGS_formula(
+    ~ f * g,
+    "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_ordered(prior("normal", list(0, 1))),
+      g = prior_factor("normal", list(0, 1), contrast = "treatment"),
+      "f:g" = prior_ordered(
+        prior("normal", list(0, expression(sigma)))
+      )
+    )
+  )
+
+  expect_equal(
+    attr(formula_info$prior_list$mu_f__xXx__g, "ordered_metadata")$theta_dim,
+    2L
+  )
+  inits <- JAGS_get_inits(
+    formula_info$prior_list,
+    chains = 1,
+    seed = 1
+  )[[1L]]
+  expect_false("mu_f__xXx__g_ordered_total" %in% names(inits))
+  expect_true(any(grepl(
+    "prior_par_eta_mu_f__xXx__g_ordered_alloc",
+    names(inits),
+    fixed = TRUE
+  )))
+})
+
 test_that("ordered fixed contrasts propagate to random slope designs", {
   df <- data.frame(
     y = seq_len(12),

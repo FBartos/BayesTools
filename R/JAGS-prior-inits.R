@@ -245,6 +245,10 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 
 .JAGS_init.ordered_total   <- function(total, total_name, theta_dim){
 
+  if(.is_prior_expression(total)){
+    return(list())
+  }
+
   if(is.prior.point(total)){
     return(list())
   }
