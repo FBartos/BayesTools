@@ -107,30 +107,79 @@
     return(out)
   }
 
-  for(design in random_design){
-    for(random_term in design$random_effects){
-      if(.bt_random_effect_summary_raw_parameter_matches(parameter_name, random_term)){
-        return(list(
-          name = .bt_random_effect_public_name(random_term),
-          grouping = .bt_random_effect_summary_group_label(random_term),
-          structure = .bt_random_effect_summary_term_structure(random_term)
-        ))
-      }
+  random_terms <- .bt_random_effect_summary_random_terms(random_design)
+  for(random_term in random_terms){
+    if(.bt_random_effect_summary_raw_parameter_matches(
+      parameter_name = parameter_name,
+      random_term = random_term,
+      random_terms = random_terms
+    )){
+      return(list(
+        name = .bt_random_effect_public_name(random_term),
+        grouping = .bt_random_effect_summary_group_label(random_term),
+        structure = .bt_random_effect_summary_term_structure(random_term)
+      ))
     }
   }
 
   out
 }
 
+.bt_random_effect_summary_random_terms <- function(random_design){
+
+  random_terms <- list()
+  for(design in random_design){
+    random_terms <- c(random_terms, design$random_effects)
+  }
+
+  random_terms
+}
+
+.bt_random_effect_summary_raw_parameter_owner_stem <- function(parameter_name,
+                                                               random_terms){
+
+  if(length(parameter_name) != 1L || is.na(parameter_name)){
+    return(NA_character_)
+  }
+
+  stems <- vapply(random_terms, function(random_term){
+    stem <- random_term$parameter_stem
+    if(is.null(stem) || length(stem) != 1L || is.na(stem) || !nzchar(stem)){
+      return(NA_character_)
+    }
+    as.character(stem)
+  }, character(1))
+  stems <- stems[!is.na(stems)]
+  if(length(stems) == 0L){
+    return(NA_character_)
+  }
+
+  matching_stems <- stems[
+    startsWith(parameter_name, paste0(stems, "_"))
+  ]
+  if(length(matching_stems) == 0L){
+    return(NA_character_)
+  }
+
+  matching_stems[which.max(nchar(matching_stems))]
+}
+
 .bt_random_effect_summary_raw_parameter_matches <- function(parameter_name,
-                                                           random_term){
+                                                           random_term,
+                                                           random_terms){
 
   stem <- random_term$parameter_stem
-  if(is.null(stem) || length(stem) != 1L || !nzchar(stem)){
+  if(is.null(stem) || length(stem) != 1L || is.na(stem) || !nzchar(stem)){
     return(FALSE)
   }
 
-  startsWith(parameter_name, paste0(stem, "_"))
+  identical(
+    as.character(stem),
+    .bt_random_effect_summary_raw_parameter_owner_stem(
+      parameter_name = parameter_name,
+      random_terms = random_terms
+    )
+  )
 }
 
 .bt_random_effect_summary_filter_raw_columns <- function(model_samples,
@@ -150,42 +199,42 @@
     return(model_samples)
   }
 
+  random_terms <- .bt_random_effect_summary_random_terms(random_design)
   remove_columns <- rep(FALSE, length(column_names))
-  for(design in random_design){
-    for(random_term in design$random_effects){
-      term_columns <- vapply(
-        column_names,
-        .bt_random_effect_summary_raw_parameter_matches,
-        logical(1),
-        random_term = random_term
+  for(random_term in random_terms){
+    term_columns <- vapply(
+      column_names,
+      .bt_random_effect_summary_raw_parameter_matches,
+      logical(1),
+      random_term = random_term,
+      random_terms = random_terms
+    )
+    if(!any(term_columns)){
+      next
+    }
+    if(!is.null(remove_random_effects)){
+      term_matches_remove_effect <- .bt_random_effect_summary_term_filter_matches(
+        random_term = random_term,
+        random_effects = remove_random_effects,
+        random_structures = NULL
       )
-      if(!any(term_columns)){
-        next
-      }
-      if(!is.null(remove_random_effects)){
-        term_matches_remove_effect <- .bt_random_effect_summary_term_filter_matches(
-          random_term = random_term,
-          random_effects = remove_random_effects,
-          random_structures = NULL
-        )
-        remove_columns <- remove_columns | (term_columns & term_matches_remove_effect)
-      }
-      if(!is.null(remove_random_structures)){
-        term_matches_remove_structure <- .bt_random_effect_summary_term_filter_matches(
-          random_term = random_term,
-          random_effects = NULL,
-          random_structures = remove_random_structures
-        )
-        remove_columns <- remove_columns | (term_columns & term_matches_remove_structure)
-      }
-      if(!is.null(keep_random_effects) || !is.null(keep_random_structures)){
-        term_matches <- .bt_random_effect_summary_term_filter_matches(
-          random_term = random_term,
-          random_effects = keep_random_effects,
-          random_structures = keep_random_structures
-        )
-        remove_columns <- remove_columns | (term_columns & !term_matches)
-      }
+      remove_columns <- remove_columns | (term_columns & term_matches_remove_effect)
+    }
+    if(!is.null(remove_random_structures)){
+      term_matches_remove_structure <- .bt_random_effect_summary_term_filter_matches(
+        random_term = random_term,
+        random_effects = NULL,
+        random_structures = remove_random_structures
+      )
+      remove_columns <- remove_columns | (term_columns & term_matches_remove_structure)
+    }
+    if(!is.null(keep_random_effects) || !is.null(keep_random_structures)){
+      term_matches <- .bt_random_effect_summary_term_filter_matches(
+        random_term = random_term,
+        random_effects = keep_random_effects,
+        random_structures = keep_random_structures
+      )
+      remove_columns <- remove_columns | (term_columns & !term_matches)
     }
   }
 

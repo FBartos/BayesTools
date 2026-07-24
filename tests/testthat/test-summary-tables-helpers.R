@@ -534,6 +534,110 @@ test_that("raw random-effect correlation aliases include logit-scale rho columns
 })
 
 
+test_that("raw random-effect columns use their longest matching parameter stem", {
+
+  short_term <- list(
+    parameter_stem = "mu__xREx__a",
+    block_name = "a",
+    group_label = "group_a",
+    has_explicit_name = TRUE,
+    structure = "diag"
+  )
+  long_term <- list(
+    parameter_stem = "mu__xREx__a_b",
+    block_name = "a_b",
+    group_label = "group_a_b",
+    has_explicit_name = TRUE,
+    structure = "diag"
+  )
+  formula_design <- list(
+    mu = structure(
+      list(
+        parameter = "mu",
+        random_effects = list(short_term, long_term)
+      ),
+      class = c("BayesTools_formula_design", "list")
+    )
+  )
+  short_column <- "mu__xREx__a_intercept"
+  long_column <- "mu__xREx__a_b_intercept"
+  samples <- matrix(
+    seq_len(6L),
+    nrow = 2L,
+    dimnames = list(NULL, c("mu_intercept", short_column, long_column))
+  )
+
+  short_metadata <- BayesTools:::.bt_random_effect_summary_raw_metadata_for_parameter(
+    parameter_name = short_column,
+    formula_design = formula_design
+  )
+  long_metadata <- BayesTools:::.bt_random_effect_summary_raw_metadata_for_parameter(
+    parameter_name = long_column,
+    formula_design = formula_design
+  )
+  expect_equal(
+    short_metadata,
+    list(name = "a", grouping = "group_a", structure = "diag")
+  )
+  expect_equal(
+    long_metadata,
+    list(name = "a_b", grouping = "group_a_b", structure = "diag")
+  )
+
+  removed_short <- BayesTools:::.bt_random_effect_summary_filter_raw_columns(
+    model_samples = samples,
+    formula_design = formula_design,
+    remove_random_effects = "a"
+  )
+  expect_identical(
+    colnames(removed_short),
+    c("mu_intercept", long_column)
+  )
+
+  removed_long <- BayesTools:::.bt_random_effect_summary_filter_raw_columns(
+    model_samples = samples,
+    formula_design = formula_design,
+    remove_random_effects = "a_b"
+  )
+  expect_identical(
+    colnames(removed_long),
+    c("mu_intercept", short_column)
+  )
+
+  kept_short <- BayesTools:::.bt_random_effect_summary_filter_raw_columns(
+    model_samples = samples,
+    formula_design = formula_design,
+    keep_random_effects = "a"
+  )
+  expect_identical(
+    colnames(kept_short),
+    c("mu_intercept", short_column)
+  )
+
+  kept_long <- BayesTools:::.bt_random_effect_summary_filter_raw_columns(
+    model_samples = samples,
+    formula_design = formula_design,
+    keep_random_effects = "a_b"
+  )
+  expect_identical(
+    colnames(kept_long),
+    c("mu_intercept", long_column)
+  )
+
+  kept_long_for_table <- BayesTools:::.bt_JAGS_estimates_filter_raw_random_columns(
+    model_samples = samples,
+    prior_list = list(),
+    formula_design = formula_design,
+    keep_parameters = "intercept",
+    keep_random_effects = "a_b"
+  )
+  expect_identical(
+    colnames(kept_long_for_table),
+    c("mu_intercept", long_column)
+  )
+})
+
+
 test_that("raw logit-scale correlations use correlation display labels", {
 
   raw_name <- "mu__xREx__id_rho_logit"
