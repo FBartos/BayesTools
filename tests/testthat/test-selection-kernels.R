@@ -34,6 +34,32 @@ test_that("prior_phacking validates geometry, form, alpha, and stores constants"
   expect_error(prior_phacking(alpha = prior("point", list(1))), "\\[0, 1\\)")
 })
 
+test_that("selection priors reject non-finite weights and semantic labels", {
+
+  for(prior_weights in c(NA_real_, NaN, Inf, -Inf)){
+    expect_error(
+      prior_phacking(prior_weights = prior_weights),
+      "prior_weights"
+    )
+    expect_error(
+      prior_bias(
+        phacking = prior_phacking(),
+        prior_weights = prior_weights
+      ),
+      "prior_weights"
+    )
+  }
+
+  expect_error(
+    prior_phacking(report_scale = NA_character_),
+    "report_scale"
+  )
+  expect_error(
+    prior_phacking(side = NA_character_),
+    "side"
+  )
+})
+
 test_that("prior_bias validates composition objects", {
 
   selection <- prior_weightfunction("one-sided", c(.025), wf_fixed(c(1, .5)))

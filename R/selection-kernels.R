@@ -29,13 +29,13 @@ prior_phacking <- function(side = "one-sided",
                            report_scale = "pi_null",
                            prior_weights = 1){
 
-  check_char(side, "side")
+  check_char(side, "side", allow_NA = FALSE)
   check_real(target, "target", lower = 0, upper = 1, allow_bound = FALSE, allow_NA = FALSE)
   check_real(source, "source", lower = 0, upper = 1, allow_bound = FALSE, allow_NA = FALSE)
   check_real(destination, "destination", lower = 0, upper = 1, allow_bound = FALSE, allow_NA = FALSE)
   form <- match.arg(form)
-  check_char(report_scale, "report_scale", allow_values = c("pi_null", "alpha"))
-  check_real(prior_weights, "prior_weights", lower = 0, allow_bound = FALSE)
+  check_char(report_scale, "report_scale", allow_values = c("pi_null", "alpha"), allow_NA = FALSE)
+  .check_prior_weight(prior_weights)
 
   side <- .weightfunction_normalize_side(side)
   if(side != "one-sided"){
@@ -90,7 +90,7 @@ prior_phacking <- function(side = "one-sided",
 #' @export
 prior_bias <- function(selection = NULL, phacking = NULL, prior_weights = 1){
 
-  check_real(prior_weights, "prior_weights", lower = 0, allow_bound = FALSE)
+  .check_prior_weight(prior_weights)
 
   if(is.null(selection) && is.null(phacking)){
     stop("At least one of 'selection' or 'phacking' must be specified.", call. = FALSE)
