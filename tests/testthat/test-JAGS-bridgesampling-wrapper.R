@@ -1,10 +1,36 @@
 skip_if_not_test_profile("unit")
 
+.mock_bridge_sampler <- function(...){
+
+  arguments <- list(...)
+  repetitions <- arguments[["repetitions"]]
+  if(is.null(repetitions)){
+    repetitions <- 1L
+  }
+  maxiter <- arguments[["maxiter"]]
+  niter <- if(maxiter <= 1L){
+    c(2L, rep.int(1L, repetitions - 1L))
+  }else{
+    rep.int(7L, repetitions)
+  }
+
+  structure(
+    list(
+      logml = seq_len(repetitions),
+      niter = niter
+    ),
+    class = "bridge_list"
+  )
+}
+
 test_that("JAGS_bridgesampling preserves repeated bridge estimates", {
 
-  set.seed(11)
+  testthat::local_mocked_bindings(
+    bridge_sampler = .mock_bridge_sampler,
+    .package = "bridgesampling"
+  )
   posterior <- coda::as.mcmc(matrix(
-    stats::rnorm(1000),
+    seq_len(20),
     ncol = 1,
     dimnames = list(NULL, "mu")
   ))
@@ -29,9 +55,12 @@ test_that("JAGS_bridgesampling preserves repeated bridge estimates", {
 
 test_that("JAGS_bridgesampling checks repeated iteration limits collectively", {
 
-  set.seed(11)
+  testthat::local_mocked_bindings(
+    bridge_sampler = .mock_bridge_sampler,
+    .package = "bridgesampling"
+  )
   posterior <- coda::as.mcmc(matrix(
-    stats::rnorm(1000),
+    seq_len(20),
     ncol = 1,
     dimnames = list(NULL, "mu")
   ))
