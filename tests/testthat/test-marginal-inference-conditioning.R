@@ -410,6 +410,60 @@ test_that("conditional spike-and-slab prior densities use the slab", {
   expect_equal(.prior_linear_density_point_mass(attr(marginal, "prior_density"), 0), 0)
 })
 
+test_that("as_marginal_inference conditions scalar spike-and-slab marginals", {
+
+  prior_list <- list(
+    theta = prior_spike_and_slab(
+      prior("normal", list(mean = 1, sd = 0.2)),
+      prior_inclusion = prior("point", list(location = 0.5))
+    )
+  )
+  posterior <- cbind(
+    theta           = c(0, 10, 0, 20, 30),
+    theta_indicator = c(0, 1, 0, 1, 1)
+  )
+  fit <- .mock_marginal_fit(posterior, prior_list)
+
+  inference <- as_marginal_inference(
+    model                = fit,
+    marginal_parameters = "theta",
+    parameters          = "theta",
+    conditional_list    = list(theta = "theta"),
+    conditional_rule    = "AND",
+    formula             = NULL,
+    null_hypothesis     = 0.123,
+    n_samples           = 128,
+    silent              = TRUE
+  )
+
+  averaged <- inference[["averaged"]][["theta"]]
+  conditional <- inference[["conditional"]][["theta"]]
+  direct <- marginal_posterior(
+    samples = as_mixed_posteriors(
+      model       = fit,
+      parameters  = "theta",
+      conditional = "theta"
+    ),
+    parameter     = "theta",
+    prior_samples = TRUE,
+    use_formula   = FALSE,
+    n_samples     = 128
+  )
+
+  expect_s3_class(conditional, "marginal_posterior.simple")
+  expect_equal(as.numeric(averaged), c(0, 10, 0, 20, 30))
+  expect_equal(as.numeric(conditional), c(10, 20, 30))
+  expect_equal(as.numeric(conditional), as.numeric(direct))
+  expect_equal(attr(conditional, "effective_conditional"), "theta")
+  expect_equal(attr(conditional, "effective_conditional_rule"), "AND")
+  expect_equal(
+    attr(conditional, "condition_key"),
+    BayesTools:::.condition_event_key("theta", "AND")
+  )
+  expect_gt(.prior_linear_density_point_mass(attr(averaged, "prior_density"), 0), 0)
+  expect_equal(.prior_linear_density_point_mass(attr(conditional, "prior_density"), 0), 0)
+})
+
 
 test_that("marginal inference rejects row-varying active linear weights", {
 

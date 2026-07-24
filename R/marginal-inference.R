@@ -252,9 +252,11 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
 .marginal_inference_level_conditionals <- function(marginal, prior_list, conditional,
                                                    conditional_rule = "AND"){
 
-  levels <- names(marginal)
+  scalar_marginal <- !is.list(marginal)
+  levels <- if(scalar_marginal) ".scalar" else names(marginal)
   conditionals <- lapply(levels, function(level){
-    weights <- attr(marginal[[level]], "linear_weights")
+    level_marginal <- if(scalar_marginal) marginal else marginal[[level]]
+    weights <- attr(level_marginal, "linear_weights")
     if(is.null(weights)){
       return(conditional)
     }
@@ -291,6 +293,11 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
                                                       conditional, conditional_rule, n_samples,
                                                       force_plots){
 
+  scalar_marginal <- !is.list(averaged_marginal)
+  if(scalar_marginal && length(conditional) == 0L){
+    return(averaged_marginal)
+  }
+
   level_conditionals <- .marginal_inference_level_conditionals(
     marginal    = averaged_marginal,
     prior_list  = prior_list,
@@ -309,6 +316,15 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
       conditional_rule  = conditional_rule
     )
     key <- level_event[["condition_key"]]
+
+    if(scalar_marginal && length(level_conditional) == 0L){
+      conditional_marginal <- .condition_event_set_attributes(
+        averaged_marginal,
+        level_event,
+        effective = TRUE
+      )
+      next
+    }
 
     if(is.null(marginal_cache[[key]])){
       conditional_posterior <- as_mixed_posteriors(
@@ -336,12 +352,20 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
       return(list())
     }
 
-    conditional_marginal[[level]] <- marginal_cache[[key]][[level]]
-    conditional_marginal[[level]] <- .condition_event_set_attributes(
-      conditional_marginal[[level]],
-      level_event,
-      effective = TRUE
-    )
+    if(scalar_marginal){
+      conditional_marginal <- .condition_event_set_attributes(
+        marginal_cache[[key]],
+        level_event,
+        effective = TRUE
+      )
+    }else{
+      conditional_marginal[[level]] <- marginal_cache[[key]][[level]]
+      conditional_marginal[[level]] <- .condition_event_set_attributes(
+        conditional_marginal[[level]],
+        level_event,
+        effective = TRUE
+      )
+    }
   }
 
   conditional_marginal
