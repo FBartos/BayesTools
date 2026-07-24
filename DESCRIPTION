@@ -40,6 +40,7 @@ Imports:
 Suggests: 
     scales,
     testthat (>= 3.3.0),
+    tibble,
     withr,
     vdiffr,
     covr,

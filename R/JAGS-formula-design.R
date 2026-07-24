@@ -138,7 +138,7 @@
   }
 
   vapply(predictors, function(predictor){
-    if(is.factor(data[, predictor]) || is.character(data[, predictor])){
+    if(is.factor(data[[predictor]]) || is.character(data[[predictor]])){
       "factor"
     }else{
       "continuous"

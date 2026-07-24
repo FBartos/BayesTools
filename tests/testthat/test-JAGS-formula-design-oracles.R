@@ -9455,6 +9455,45 @@ test_that("JAGS_evaluate_formula reconstructs factor random-slope designs", {
   expect_equal(unname(drop(prediction)), c(21, 31))
 })
 
+test_that("factor random slopes compile identically from data frames and tibbles", {
+
+  skip_if_not_installed("tibble")
+
+  df <- data.frame(
+    f = factor(rep(c("a", "b", "c"), 2), levels = c("a", "b", "c")),
+    id = factor(rep(c("g1", "g2"), each = 3), levels = c("g1", "g2"))
+  )
+  compile_formula <- function(data){
+    JAGS_formula(
+      formula = ~ 1 + diag(0 + f | id),
+      parameter = "mu",
+      data = data,
+      prior_list = list(
+        intercept = prior("normal", list(0, 1))
+      ),
+      formula_scale = TRUE,
+      prior_random = prior_random(
+        id = random_block(sd = prior("gamma", list(2, 2)))
+      )
+    )
+  }
+
+  data_frame_result <- compile_formula(df)
+  tibble_result <- compile_formula(tibble::as_tibble(df))
+  data_frame_term <- data_frame_result$formula_design$random_effects[[1L]]
+  tibble_term <- tibble_result$formula_design$random_effects[[1L]]
+
+  expect_identical(tibble_term$model_terms_type, data_frame_term$model_terms_type)
+  expect_identical(tibble_term$model_terms_type[["f"]], "factor")
+  expect_identical(tibble_term$sd_parameter_names, data_frame_term$sd_parameter_names)
+  expect_equal(
+    tibble_result$data$mu__xREx__id_xRE_DATAx,
+    data_frame_result$data$mu__xREx__id_xRE_DATAx
+  )
+  expect_identical(names(tibble_result$prior_list), names(data_frame_result$prior_list))
+  expect_null(tibble_result$formula_scale)
+})
+
 test_that("prior_random maps to explicitly named random-effect blocks", {
 
   df <- data.frame(

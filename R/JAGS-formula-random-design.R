@@ -296,7 +296,7 @@
   if(any(!predictors %in% colnames(data)))
     stop(paste0("The ", paste0("'", predictors[!predictors %in% colnames(data)], "'", collapse = ", ")," predictor variable is missing in the data set."))
   predictors_type  <- sapply(predictors, function(predictor){
-    if(is.factor(data[,predictor]) | is.character(data[,predictor])){
+    if(is.factor(data[[predictor]]) | is.character(data[[predictor]])){
       return("factor")
     }else{
       return("continuous")
