@@ -117,7 +117,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   model_syntax <- .check_JAGS_syntax(model_syntax)
   JAGS_check_and_list_fit_settings(chains, adapt, burnin, sample, thin, autofit, parallel, cores, silent, seed)
   autofit_control <- JAGS_check_and_list_autofit_settings(autofit_control)
-  check_char(add_parameters, "add_parameters", check_length = 0, allow_NULL = TRUE)
+  check_char(add_parameters, "add_parameters", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   check_char(required_packages, "required_packages", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   check_char(jags_modules, "jags_modules", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   check_list(formula_list, "formula_list", allow_NULL = TRUE)
@@ -204,6 +204,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     required_packages <- unique(c(required_packages, "BayesTools"))
   }
   prior_list <- .complete_factor_metadata_prior_list(prior_list)
+  .bt_validate_jags_add_parameters(add_parameters, prior_list)
 
   ### create the model call
   model_call <- list(
@@ -358,6 +359,41 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   return(fit)
 }
 
+.bt_validate_jags_add_parameters <- function(add_parameters, prior_list){
+
+  if(length(add_parameters) == 0L){
+    return(invisible(TRUE))
+  }
+  if(any(!nzchar(add_parameters))){
+    stop(
+      "The 'add_parameters' argument cannot contain empty parameter names.",
+      call. = FALSE
+    )
+  }
+  if(length(prior_list) == 0L){
+    return(invisible(TRUE))
+  }
+
+  prior_parameters <- unique(c(names(prior_list), JAGS_to_monitor(prior_list)))
+  parameter_base <- function(x){
+    sub("\\[.*$", "", x)
+  }
+  overlap <- add_parameters[
+    parameter_base(add_parameters) %in% parameter_base(prior_parameters)
+  ]
+  if(length(overlap) > 0L){
+    stop(
+      "The 'add_parameters' argument must not include parameters already ",
+      "monitored through 'prior_list': ",
+      paste(unique(overlap), collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
 #' @rdname JAGS_fit
 JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE),
                         parallel = FALSE, cores = NULL, silent = TRUE, seed = NULL){
@@ -377,6 +413,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   if(is.null(add_parameters)){
     add_parameters <- character()
   }
+  .bt_validate_jags_add_parameters(add_parameters, prior_list)
   autofit_control <- JAGS_check_and_list_autofit_settings(autofit_control)
 
   # parallel vs. not

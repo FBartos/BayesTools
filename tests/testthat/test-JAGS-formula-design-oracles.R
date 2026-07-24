@@ -244,6 +244,47 @@ test_that("formula_add_intercept handles grouped and unary no-intercept terms", 
   )
 })
 
+test_that("JAGS_fit rejects prior-backed add_parameters before fitting", {
+  prior_list <- list(mu = prior("normal", list(0, 1)))
+
+  expect_error(
+    JAGS_fit(
+      model_syntax = "model{}",
+      prior_list = prior_list,
+      add_parameters = "mu"
+    ),
+    "already monitored through 'prior_list'",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_fit(
+      model_syntax = "model{}",
+      prior_list = prior_list,
+      add_parameters = "mu[1]"
+    ),
+    "already monitored through 'prior_list'",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_fit(
+      model_syntax = "model{}",
+      prior_list = prior_list,
+      add_parameters = ""
+    ),
+    "cannot contain empty parameter names",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_fit(
+      model_syntax = "model{}",
+      prior_list = prior_list,
+      add_parameters = NA_character_
+    ),
+    "cannot contain NA",
+    fixed = TRUE
+  )
+})
+
 .jags_formula_oracle_expected_data <- function(data, factor_contrasts = list(),
                                                formula_scale = NULL) {
   out <- data
