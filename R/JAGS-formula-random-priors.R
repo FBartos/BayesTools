@@ -444,7 +444,13 @@
     stop("JAGS numeric literal must be finite.", call. = FALSE)
   }
 
-  format(x, scientific = FALSE, trim = TRUE, digits = 17)
+  format(
+    x,
+    scientific = FALSE,
+    trim = TRUE,
+    digits = 17,
+    decimal.mark = "."
+  )
 }
 
 .bt_JAGS_cholesky_crossprod_sum <- function(L_name, row, column, n_terms){

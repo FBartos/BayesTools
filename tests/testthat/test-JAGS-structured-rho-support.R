@@ -142,3 +142,46 @@ test_that("scalar rho support validates canonical bounds and CAR metadata", {
     fixed = TRUE
   )
 })
+
+test_that("structured random-effect JAGS literals are locale independent", {
+
+  withr::local_options(list(OutDec = ","))
+
+  expect_equal(
+    BayesTools:::.bt_JAGS_numeric_literal(0.5),
+    "0.5"
+  )
+
+  data <- data.frame(
+    time = c(0, 0.5, 2, 0, 0.5, 2),
+    id = factor(rep(c("a", "b"), each = 3L))
+  )
+  result <- JAGS_formula(
+    formula = ~ 1 + car(0 + time | id),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("gamma", list(2, 2)),
+        rho = prior("normal", list(0, 0.5))
+      )
+    )
+  )
+
+  expect_true(grepl(
+    "max(0, min(0.99999999999999989,",
+    result$formula_syntax,
+    fixed = TRUE
+  ))
+  expect_true(grepl(
+    "pow(mu__xREx__id_rho, 0.5)",
+    result$formula_syntax,
+    fixed = TRUE
+  ))
+  expect_true(grepl(
+    "pow(mu__xREx__id_rho, 1.5)",
+    result$formula_syntax,
+    fixed = TRUE
+  ))
+})
