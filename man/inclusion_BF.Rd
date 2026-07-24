@@ -7,9 +7,9 @@
 inclusion_BF(prior_probs, post_probs, margliks, is_null)
 }
 \arguments{
-\item{prior_probs}{vector of prior model probabilities}
+\item{prior_probs}{vector of prior model probabilities summing to one.}
 
-\item{post_probs}{vector of posterior model probabilities}
+\item{post_probs}{vector of posterior model probabilities summing to one.}
 
 \item{margliks}{vector of marginal likelihoods.}
 

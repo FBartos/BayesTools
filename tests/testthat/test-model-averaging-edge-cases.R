@@ -648,6 +648,96 @@ test_that("inclusion_BF treats prior and posterior boundaries differently", {
 })
 
 
+test_that("inclusion_BF keeps near-boundary and extreme finite odds finite", {
+
+  is_null <- c(TRUE, FALSE)
+
+  expect_equal(
+    inclusion_BF(
+      prior_probs = c(null = 0.5, alternative = 0.5),
+      post_probs  = c(null = 1e-8, alternative = 1 - 1e-8),
+      is_null     = is_null
+    ),
+    (1 - 1e-8) / 1e-8,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    inclusion_BF(
+      prior_probs = c(null = 0.5, alternative = 0.5),
+      post_probs  = c(null = 1 - 1e-8, alternative = 1e-8),
+      is_null     = is_null
+    ),
+    1e-8 / (1 - 1e-8),
+    tolerance = 1e-12
+  )
+
+  tiny <- 1e-320
+  expect_equal(
+    inclusion_BF(
+      prior_probs = c(null = tiny, alternative = 1),
+      post_probs  = c(null = 2 * tiny, alternative = 1),
+      is_null     = is_null
+    ),
+    0.5,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    inclusion_BF(
+      prior_probs = c(null = tiny, alternative = 1),
+      margliks    = c(null = 0, alternative = 0),
+      is_null     = is_null
+    ),
+    1,
+    tolerance = 1e-12
+  )
+
+})
+
+
+test_that("inclusion_BF rejects invalid probability vectors", {
+
+  is_null <- c(TRUE, FALSE)
+
+  expect_error(
+    inclusion_BF(
+      prior_probs = c(0.4, 0.4),
+      post_probs  = c(0.5, 0.5),
+      is_null     = is_null
+    ),
+    "'prior_probs' argument must sum to 1",
+    fixed = TRUE
+  )
+  expect_error(
+    inclusion_BF(
+      prior_probs = c(0.5, 0.5),
+      post_probs  = c(0, 0),
+      is_null     = is_null
+    ),
+    "'post_probs' argument must sum to 1",
+    fixed = TRUE
+  )
+  expect_error(
+    inclusion_BF(
+      prior_probs = c(1, 1),
+      margliks    = c(0, 0),
+      is_null     = is_null
+    ),
+    "'prior_probs' argument must sum to 1",
+    fixed = TRUE
+  )
+  expect_error(
+    inclusion_BF(
+      prior_probs = c(0.5, 0.5),
+      post_probs  = c(NA_real_, 0.5),
+      is_null     = is_null
+    ),
+    "'post_probs' argument cannot contain NA/NaN values",
+    fixed = TRUE
+  )
+
+})
+
+
 test_that("inclusion_BF works with marginal likelihoods only", {
 
   # Test with marginal likelihoods instead of posterior probs

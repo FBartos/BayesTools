@@ -4,8 +4,8 @@
 #' posterior model probabilities (or marginal likelihoods), and indicator whether
 #' the models represent the null or alternative hypothesis.
 #'
-#' @param prior_probs vector of prior model probabilities
-#' @param post_probs vector of posterior model probabilities
+#' @param prior_probs vector of prior model probabilities summing to one.
+#' @param post_probs vector of posterior model probabilities summing to one.
 #' @param margliks vector of marginal likelihoods.
 #' @param is_null logical vector of indicators whether the model corresponds
 #' to the null or alternative hypothesis (or an integer vector indexing models
@@ -62,37 +62,39 @@ inclusion_BF         <- function(prior_probs, post_probs, margliks, is_null){
 
 .inclusion_BF.probs    <- function(prior_probs, post_probs, is_null){
 
-  check_real(prior_probs, "prior_probs", lower = 0, upper = 1, check_length = 0)
-  check_real(post_probs,  "post_probs", lower = 0, upper = 1, check_length = length(prior_probs))
+  .inclusion_BF_check_probs(prior_probs, "prior_probs")
+  .inclusion_BF_check_probs(post_probs, "post_probs", check_length = length(prior_probs))
 
   prior_alt  <- sum(prior_probs[!is_null])
   prior_null <- sum(prior_probs[is_null])
   post_alt   <- sum(post_probs[!is_null])
   post_null  <- sum(post_probs[is_null])
 
-  if(isTRUE(all.equal(prior_alt, 0)) || isTRUE(all.equal(prior_null, 0))){
+  if(prior_alt == 0 || prior_null == 0){
     return(NA_real_)
   }
 
-  if(isTRUE(all.equal(post_alt, 1))){
-    return(Inf)
-  }else if(isTRUE(all.equal(post_null, 1))){
+  if(post_alt == 0){
     return(0)
-  }else{
-    return(
-      (post_alt / post_null) / (prior_alt / prior_null)
-    )
   }
+  if(post_null == 0){
+    return(Inf)
+  }
+
+  log_BF <- (log(post_alt) - log(post_null)) -
+    (log(prior_alt) - log(prior_null))
+
+  return(exp(log_BF))
 }
 .inclusion_BF.margliks <- function(prior_probs, margliks, is_null){
 
-  check_real(prior_probs, "prior_probs", lower = 0, upper = 1, check_length = 0)
+  .inclusion_BF_check_probs(prior_probs, "prior_probs")
   check_real(margliks,  "margliks", check_length = length(prior_probs))
 
   prior_alt  <- sum(prior_probs[!is_null])
   prior_null <- sum(prior_probs[is_null])
 
-  if(isTRUE(all.equal(prior_alt, 0)) || isTRUE(all.equal(prior_null, 0))){
+  if(prior_alt == 0 || prior_null == 0){
     return(NA_real_)
   }
 
@@ -106,28 +108,48 @@ inclusion_BF         <- function(prior_probs, post_probs, margliks, is_null){
     return(Inf)
   }
 
-  # subtract the max among positive-prior finite models to avoid overflow.
-  margliks <- margliks - max(margliks[active])
-
   alt_ind  <- active & !is_null
   null_ind <- active & is_null
 
-  alt_marginal  <- sum(exp(margliks[alt_ind])  * prior_probs[alt_ind])
-  null_marginal <- sum(exp(margliks[null_ind]) * prior_probs[null_ind])
-
-  if(alt_marginal == 0 && null_marginal == 0){
-    return(NaN)
-  }
-  if(alt_marginal == 0){
-    return(0)
-  }
-  if(null_marginal == 0){
-    return(Inf)
-  }
-
-  return(
-    (alt_marginal / null_marginal) / (prior_alt / prior_null)
+  alt_log_marginal <- .inclusion_BF_log_marginal(
+    margliks[alt_ind],
+    prior_probs[alt_ind],
+    prior_alt
   )
+  null_log_marginal <- .inclusion_BF_log_marginal(
+    margliks[null_ind],
+    prior_probs[null_ind],
+    prior_null
+  )
+
+  return(exp(alt_log_marginal - null_log_marginal))
+}
+
+.inclusion_BF_check_probs <- function(probs, name, check_length = 0){
+
+  check_real(
+    probs,
+    name,
+    lower = 0,
+    upper = 1,
+    check_length = check_length,
+    allow_NA = FALSE
+  )
+
+  tolerance <- .Machine$double.eps * max(8, length(probs))
+  if(abs(sum(probs) - 1) > tolerance){
+    stop(paste0("The '", name, "' argument must sum to 1."), call. = FALSE)
+  }
+
+  return()
+}
+
+.inclusion_BF_log_marginal <- function(margliks, prior_probs, prior_total){
+
+  log_terms <- margliks + log(prior_probs) - log(prior_total)
+  max_log_term <- max(log_terms)
+
+  return(max_log_term + log(sum(exp(log_terms - max_log_term))))
 }
 
 
