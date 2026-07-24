@@ -152,6 +152,60 @@ test_that("diagnostic density plot data reflects simplex coordinate support", {
   }
 })
 
+test_that("diagnostic density resolves heterogeneous composite-bias support by column", {
+  selection <- prior_weightfunction(
+    side = "one-sided",
+    steps = .05,
+    weights = wf_fixed(c(1, 1.5))
+  )
+  bias <- prior_bias(
+    selection = selection,
+    phacking = prior_phacking(report_scale = "alpha")
+  )
+  omega <- seq(1.05, 1.45, length.out = 400)
+  alpha <- seq(.005, .995, length.out = 400)
+  chain_1 <- cbind(
+    "omega[1]" = 1,
+    "omega[2]" = omega,
+    alpha = alpha
+  )
+  chain_2 <- cbind(
+    "omega[1]" = 1,
+    "omega[2]" = rev(omega),
+    alpha = rev(alpha)
+  )
+
+  fit <- coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2))
+  class(fit) <- c("BayesTools_fit", class(fit))
+  prior_list <- list(bias = bias)
+
+  plot_data <- .diagnostics_plot_data(
+    fit = fit,
+    parameter = "bias",
+    prior_list = prior_list,
+    transformations = NULL,
+    transform_factors = FALSE
+  )
+  expect_equal(colnames(plot_data), c("omega[0.05,1]", "alpha"))
+
+  density_data <- .diagnostics_plot_data_density(
+    plot_data,
+    n_points = 256,
+    xlim = NULL
+  )
+
+  for(chain_density in density_data[["omega[0.05,1]"]]){
+    expect_gt(max(chain_density$x), 1)
+    expect_gt(max(chain_density$y), 0)
+    expect_true(isTRUE(attr(chain_density, "boundary_reflection")))
+  }
+  for(chain_density in density_data$alpha){
+    expect_true(all(chain_density$x >= 0 & chain_density$x <= 1))
+    expect_gt(max(chain_density$y), 0)
+    expect_true(isTRUE(attr(chain_density, "boundary_reflection")))
+  }
+})
+
 test_that("diagnostic density does not reflect after custom transformations", {
   chain_1 <- cbind(theta = seq(.005, .995, length.out = 100))
   chain_2 <- cbind(theta = rev(chain_1[, "theta"]))

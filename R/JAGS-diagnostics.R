@@ -358,15 +358,20 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
 
   chain <- attr(plot_data, "chain")
   prior <- attr(plot_data, "prior")
-  bounds <- .diagnostics_prior_bounds(prior, attr(plot_data, "parameter"))
-  bounds <- c(bounds[["lower"]], bounds[["upper"]])
-  if(isTRUE(attr(plot_data, "density_support_transformed"))){
-    bounds <- c(-Inf, Inf)
-  }
 
   out   <- list()
 
   for(i in 1:ncol(plot_data)){
+
+    bounds <- .diagnostics_density_bounds(
+      prior          = prior,
+      parameter      = attr(plot_data, "parameter"),
+      parameter_name = colnames(plot_data)[i]
+    )
+    bounds <- c(bounds[["lower"]], bounds[["upper"]])
+    if(isTRUE(attr(plot_data, "density_support_transformed"))){
+      bounds <- c(-Inf, Inf)
+    }
 
     if(is.null(xlim)){
       x_range <- range(plot_data[,i], na.rm = TRUE)
@@ -422,6 +427,19 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
   attr(out, "parameter_name") <- colnames(plot_data)
 
   return(out)
+}
+
+.diagnostics_density_bounds <- function(prior, parameter, parameter_name){
+
+  if(is_prior_bias(prior) && identical(parameter, "bias")){
+    component <- sub("\\[.*$", "", parameter_name)
+    if(component %in% c("omega", "alpha", "pi_null")){
+      return(.diagnostics_prior_bounds(prior, component))
+    }
+    return(list(lower = -Inf, upper = Inf))
+  }
+
+  return(.diagnostics_prior_bounds(prior, parameter))
 }
 
 .diagnostics_prior_bounds <- function(prior, parameter){
