@@ -250,9 +250,9 @@ phack_backend_constants <- function(form, source, destination, target = .025){
     "quadratic" = 2L
   )
 
-  z_source_lower <- stats::qnorm(1 - source)
-  z_target       <- stats::qnorm(1 - target)
-  z_dest_upper   <- stats::qnorm(1 - destination)
+  z_source_lower <- stats::qnorm(source, lower.tail = FALSE)
+  z_target       <- stats::qnorm(target, lower.tail = FALSE)
+  z_dest_upper   <- stats::qnorm(destination, lower.tail = FALSE)
 
   source_mass <- .phack_power_null_moment(z_source_lower, z_target, q, anchor = z_source_lower, reverse = FALSE)
   dest_mass   <- .phack_power_null_moment(z_target, z_dest_upper, q, anchor = z_dest_upper, reverse = TRUE)
@@ -430,8 +430,11 @@ selection_backend_spec <- function(priors,
       n_bins          = as.integer(n_bins),
       coefficient     = names$omega,
       coefficient_ids = paste0(names$omega, "[", seq_len(n_bins), "]"),
-      z_lower         = stats::qnorm(1 - breaks[-1]),
-      z_upper         = stats::qnorm(1 - breaks[-length(breaks)])
+      z_lower         = stats::qnorm(breaks[-1], lower.tail = FALSE),
+      z_upper         = stats::qnorm(
+        breaks[-length(breaks)],
+        lower.tail = FALSE
+      )
     ),
     phacking      = phacking,
     prior_code    = paste0(prior_code[nzchar(prior_code)], collapse = "\n"),
@@ -440,8 +443,11 @@ selection_backend_spec <- function(priors,
     init          = init,
     data          = list(
       sel_p_cuts       = breaks,
-      sel_z_lower      = stats::qnorm(1 - breaks[-1]),
-      sel_z_upper      = stats::qnorm(1 - breaks[-length(breaks)]),
+      sel_z_lower      = stats::qnorm(breaks[-1], lower.tail = FALSE),
+      sel_z_upper      = stats::qnorm(
+        breaks[-length(breaks)],
+        lower.tail = FALSE
+      ),
       sel_n_bins       = as.integer(n_bins),
       phack_component_z_source = phacking$branch_z_source,
       phack_component_z_dest   = phacking$branch_z_destination,

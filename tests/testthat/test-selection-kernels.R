@@ -90,8 +90,8 @@ test_that("p-hacking null calibration matches source interval moments", {
   destination <- .005
   alpha <- c(.1, .4, .8)
 
-  z_a <- stats::qnorm(1 - source)
-  z_b <- stats::qnorm(1 - target)
+  z_a <- stats::qnorm(source, lower.tail = FALSE)
+  z_b <- stats::qnorm(target, lower.tail = FALSE)
   source_linear <- stats::integrate(
     function(z) ((z - z_a) / (z_b - z_a)) * stats::dnorm(z),
     lower = z_a,
@@ -153,11 +153,55 @@ test_that("phack_backend_constants returns z-domain power constants", {
   expect_equal(constants$form, "quadratic")
   expect_equal(constants$q, 2L)
   expect_equal(constants$phack_kind, 2L)
-  expect_equal(constants$z_source, stats::qnorm(1 - c(.25, .025)))
-  expect_equal(constants$z_destination, stats::qnorm(1 - c(.025, .005)))
+  expect_equal(
+    constants$z_source,
+    stats::qnorm(c(.25, .025), lower.tail = FALSE)
+  )
+  expect_equal(
+    constants$z_destination,
+    stats::qnorm(c(.025, .005), lower.tail = FALSE)
+  )
   expect_true(constants$source_null_mass > 0)
   expect_true(constants$destination_null_mass > 0)
   expect_true(constants$beta_null_per_alpha > 0)
+})
+
+test_that("selection normal-tail inversion preserves tiny finite cuts", {
+
+  tiny_p <- 1e-20
+  expected_z <- stats::qnorm(tiny_p, lower.tail = FALSE)
+  constants <- phack_backend_constants(
+    "linear",
+    source      = .25,
+    destination = tiny_p,
+    target      = .025
+  )
+
+  expect_true(is.finite(constants$z_destination[2]))
+  expect_equal(constants$z_destination[2], expected_z, tolerance = 1e-12)
+
+  selection <- prior_weightfunction(
+    "one-sided",
+    .05,
+    wf_fixed(c(1, .5))
+  )
+  spec <- selection_backend_spec(
+    selection,
+    global_breaks = c(0, tiny_p, .05, 1)
+  )
+  lower_index <- match(tiny_p, spec$step$breaks[-1])
+  upper_index <- match(tiny_p, spec$step$breaks[-length(spec$step$breaks)])
+
+  expect_false(is.na(lower_index))
+  expect_false(is.na(upper_index))
+  expect_true(is.finite(spec$step$z_lower[lower_index]))
+  expect_equal(spec$step$z_lower[lower_index], expected_z, tolerance = 1e-12)
+  expect_equal(spec$step$z_upper[upper_index], expected_z, tolerance = 1e-12)
+  expect_equal(spec$data$sel_z_lower, spec$step$z_lower)
+  expect_equal(spec$data$sel_z_upper, spec$step$z_upper)
+
+  segments <- BayesTools:::.selection_native_segments(spec)
+  expect_true(any(abs(segments$bounds - expected_z) < 1e-12))
 })
 
 test_that("p-hacking source depletion and destination inflation preserve null mass", {

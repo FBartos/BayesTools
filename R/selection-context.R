@@ -810,8 +810,11 @@ selection_row_arg <- function(x, n, name){
 .selection_native_segments <- function(selection_spec){
 
   p_cuts <- .selection_spec_p_cuts(selection_spec)
-  z_lower <- stats::qnorm(1 - p_cuts[-1])
-  z_upper <- stats::qnorm(1 - p_cuts[-length(p_cuts)])
+  z_lower <- stats::qnorm(p_cuts[-1], lower.tail = FALSE)
+  z_upper <- stats::qnorm(
+    p_cuts[-length(p_cuts)],
+    lower.tail = FALSE
+  )
   bounds <- c(-Inf, Inf, z_lower[is.finite(z_lower)], z_upper[is.finite(z_upper)])
 
   has_phacking <- .selection_spec_has_phack(selection_spec)
