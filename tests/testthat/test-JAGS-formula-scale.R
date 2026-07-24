@@ -537,6 +537,18 @@ test_that("transform_scale_samples validates malformed formula_scale metadata", 
     "NA/NaN"
   )
   expect_error(
+    transform_scale_samples(posterior, list(mu = list(mu_x1 = list(mean = Inf, sd = 1)))),
+    "mean.*finite"
+  )
+  expect_error(
+    transform_scale_samples(posterior, list(mu = list(mu_x1 = list(mean = -Inf, sd = 1)))),
+    "mean.*finite"
+  )
+  expect_error(
+    transform_scale_samples(posterior, list(mu = list(mu_x1 = list(mean = 0, sd = Inf)))),
+    "sd.*finite"
+  )
+  expect_error(
     transform_scale_samples(
       posterior,
       list(

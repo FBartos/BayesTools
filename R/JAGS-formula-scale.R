@@ -204,6 +204,13 @@
         paste0(name, "[['", param_name, "]][['", term_name, "]][['mean'] ]"),
         allow_NA = FALSE
       )
+      if(!is.finite(term_scale[["mean"]])){
+        stop(
+          "The '", name, "[['", param_name, "]][['", term_name,
+          "]][['mean']]' entry must be finite.",
+          call. = FALSE
+        )
+      }
       check_real(
         term_scale[["sd"]],
         paste0(name, "[['", param_name, "]][['", term_name, "]][['sd'] ]"),
@@ -211,6 +218,13 @@
         allow_bound = FALSE,
         allow_NA = FALSE
       )
+      if(!is.finite(term_scale[["sd"]])){
+        stop(
+          "The '", name, "[['", param_name, "]][['", term_name,
+          "]][['sd']]' entry must be finite.",
+          call. = FALSE
+        )
+      }
     }
   }
 
