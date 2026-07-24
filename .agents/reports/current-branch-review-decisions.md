@@ -422,3 +422,25 @@ current implementation does not honor.
 stored local group/column indices, including zero-size requests, or remove the
 dimension arguments and expose a separate explicit full-layout method. Add
 schema tests before relying on either behavior.
+
+## D29. Exact references for stochastic fit outputs
+
+**Issue.** A successful cache refresh regenerated all 73 fit objects and 22
+marginal-likelihood objects, after which the fixture profile reported 70 exact
+text-reference mismatches. Every failure was a sampled numeric value or
+diagnostic (posterior summaries, model probabilities, marginal likelihoods,
+ESS, or R-hat); table structure and semantic assertions passed. The current
+policy forbids agents from enabling reference generation without maintainer
+approval.
+
+**Impact.** A valid fit refresh can make the fixture lane fail even when the
+implementation and table schema are unchanged. Updating exact files blesses
+one stochastic realization, while leaving them unchanged prevents a refreshed
+cache from passing locally.
+
+**Suggested change.** Decide which outputs are true golden values. Keep exact
+references for deterministic formatting and schema, but compare stochastic
+statistics with documented tolerances or invariant assertions. If the current
+exact-snapshot policy is intentional, explicitly approve regenerating and
+reviewing the 70 affected references from the validated cache as one controlled
+update.
