@@ -173,7 +173,13 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
       stop(paste0("Unrecognized prior distribution for the '", model_term, "' term."))
     }
   })
-  predictors_type <- model_terms_type[predictors]
+  predictors_type <- .bt_JAGS_evaluate_predictor_types(
+    predictors = predictors,
+    model_terms = model_terms,
+    model_terms_type = model_terms_type,
+    prior_list = prior_list_formula,
+    fitted_design = fitted_design
+  )
 
   # check that passed data correspond to the specified priors (factor levels etc...) and set the proper contrasts
   if(any(predictors_type == "factor")){
@@ -316,6 +322,75 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   }
 
   return(output)
+}
+
+.bt_JAGS_evaluate_predictor_types <- function(predictors, model_terms,
+                                              model_terms_type, prior_list,
+                                              fitted_design){
+
+  if(length(predictors) == 0L){
+    return(stats::setNames(character(), character()))
+  }
+
+  predictors_type <- stats::setNames(rep(NA_character_, length(predictors)), predictors)
+  design_types <- fitted_design$predictor_types
+  if(is.character(design_types) && !is.null(names(design_types))){
+    matched <- intersect(predictors, names(design_types))
+    predictors_type[matched] <- design_types[matched]
+  }
+
+  unresolved <- names(predictors_type)[is.na(predictors_type)]
+  for(predictor in unresolved){
+    main_term <- which(model_terms == predictor)
+    if(length(main_term) == 1L){
+      predictors_type[[predictor]] <- model_terms_type[[main_term]]
+      next
+    }
+
+    containing_terms <- vapply(
+      model_terms,
+      function(model_term){
+        predictor %in% strsplit(model_term, ":", fixed = TRUE)[[1L]]
+      },
+      logical(1)
+    )
+    candidate_terms <- model_terms[containing_terms]
+    candidate_terms <- candidate_terms[candidate_terms != "intercept"]
+    if(length(candidate_terms) == 0L){
+      next
+    }
+
+    candidate_priors <- prior_list[candidate_terms]
+    factor_terms <- unique(unlist(lapply(
+      candidate_priors,
+      function(this_prior) attr(this_prior, "factor_terms", exact = TRUE)
+    ), use.names = FALSE))
+    candidate_types <- model_terms_type[match(candidate_terms, model_terms)]
+    if(any(candidate_types == "factor") && length(factor_terms) == 0L){
+      next
+    }
+    if(predictor %in% factor_terms){
+      predictors_type[[predictor]] <- "factor"
+    }else{
+      predictors_type[[predictor]] <- "continuous"
+    }
+  }
+
+  if(anyNA(predictors_type) ||
+     any(!predictors_type %in% c("continuous", "factor"))){
+    invalid <- names(predictors_type)[
+      is.na(predictors_type) |
+        !predictors_type %in% c("continuous", "factor")
+    ]
+    stop(
+      "Could not determine the fitted type of predictor(s): ",
+      paste0("'", invalid, "'", collapse = ", "),
+      ". Supply fit metadata created by JAGS_formula().",
+      call. = FALSE
+    )
+  }
+
+  predictors_type
 }
 
 .bt_formula_prediction_target <- function(formula_target,

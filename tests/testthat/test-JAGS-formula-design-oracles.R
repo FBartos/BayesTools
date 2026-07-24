@@ -423,6 +423,56 @@ test_that("JAGS_formula handles character and interaction-only factor predictors
   )
 })
 
+test_that("JAGS_evaluate_formula resolves interaction-only continuous predictors", {
+  fitted_data <- data.frame(
+    x = c(-2, -1, 1, 2),
+    z = c(1, 3, 2, 4)
+  )
+  formula_result <- JAGS_formula(
+    ~ x:z,
+    "mu",
+    fitted_data,
+    list(
+      intercept = prior("normal", list(0, 1)),
+      "x:z" = prior("normal", list(0, 1))
+    )
+  )
+  posterior <- coda::mcmc(matrix(
+    c(1.5, -0.75),
+    nrow = 1,
+    dimnames = list(NULL, c("mu_intercept", "mu_x__xXx__z"))
+  ))
+  attr(posterior, "formula_design") <- list(mu = formula_result$formula_design)
+
+  newdata <- data.frame(x = c(-3, 0.5, 4), z = c(2, -1, 3))
+  expected <- drop(
+    stats::model.matrix(~ x:z, data = newdata) %*% c(1.5, -0.75)
+  )
+  prediction <- JAGS_evaluate_formula(
+    posterior,
+    ~ x:z,
+    "mu",
+    newdata,
+    formula_result$prior_list
+  )
+
+  expect_equal(unname(drop(prediction)), unname(expected), tolerance = 1e-12)
+
+  attr(posterior, "formula_design") <- NULL
+  legacy_prediction <- JAGS_evaluate_formula(
+    posterior,
+    ~ x:z,
+    "mu",
+    newdata,
+    formula_result$prior_list
+  )
+  expect_equal(
+    unname(drop(legacy_prediction)),
+    unname(expected),
+    tolerance = 1e-12
+  )
+})
+
 test_that("formula expression terms are parsed structurally", {
   expect_equal(.extract_expressions(~ expression(log(x))), list("log(x)"))
   expect_equal(.extract_expressions(y ~ z + expression(log(x)) + expression(exp(b))), list("log(x)", "exp(b)"))
