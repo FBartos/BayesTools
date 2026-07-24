@@ -332,6 +332,98 @@ test_that("compute_inference handles zero and tiny prior weights semantically", 
   expect_equal(tiny$BF, 3, tolerance = 1e-12)
 })
 
+test_that("prior model-weight normalization is scale invariant", {
+
+  is_null <- c(TRUE, FALSE, FALSE)
+  margliks <- log(c(1, 2, 4))
+  ordinary_weights <- c(4, 2, 1)
+  huge_weights <- .Machine$double.xmax * c(1, 0.5, 0.25)
+  tiny_weights <- .Machine$double.xmin * c(1, 0.5, 0.25)
+
+  reference <- compute_inference(
+    prior_weights = ordinary_weights,
+    margliks = margliks,
+    is_null = is_null
+  )
+
+  for(prior_weights in list(huge_weights, tiny_weights)){
+    inference <- compute_inference(
+      prior_weights = prior_weights,
+      margliks = margliks,
+      is_null = is_null
+    )
+
+    expect_equal(inference$prior_probs, reference$prior_probs, tolerance = 1e-12)
+    expect_equal(inference$post_probs, reference$post_probs, tolerance = 1e-12)
+    expect_equal(inference$BF, reference$BF, tolerance = 1e-12)
+  }
+
+  expect_equal(reference$prior_probs, c(4 / 7, 2 / 7, 1 / 7), tolerance = 1e-12)
+  expect_equal(reference$post_probs, rep(1 / 3, 3), tolerance = 1e-12)
+  expect_equal(reference$BF, 8 / 3, tolerance = 1e-12)
+
+  conditional <- compute_inference(
+    prior_weights = rep(.Machine$double.xmax, 3),
+    margliks = rep(0, 3),
+    is_null = is_null,
+    conditional = TRUE
+  )
+  expect_equal(conditional$prior_probs, c(0, 0.5, 0.5), tolerance = 1e-12)
+  expect_equal(conditional$post_probs, c(0, 0.5, 0.5), tolerance = 1e-12)
+  expect_equal(conditional$BF, 1, tolerance = 1e-12)
+})
+
+test_that("extreme finite prior weights work across model-averaging entry points", {
+
+  prior_weights <- .Machine$double.xmax * c(1, 0.5, 0.25)
+  margliks <- log(c(1, 2, 4))
+  is_null <- c(TRUE, FALSE, FALSE)
+  expected_prior <- c(4 / 7, 2 / 7, 1 / 7)
+  expected_post <- rep(1 / 3, 3)
+
+  model_list <- lapply(seq_along(prior_weights), function(i){
+    .mock_mixing_model(
+      offset = 100 * i,
+      logml = margliks[i],
+      prior_weight = prior_weights[i]
+    )
+  })
+
+  ensemble <- ensemble_inference(
+    model_list = model_list,
+    parameters = "theta",
+    is_null_list = list(theta = is_null)
+  )
+  expect_equal(ensemble$theta$prior_probs, expected_prior, tolerance = 1e-12)
+  expect_equal(ensemble$theta$post_probs, expected_post, tolerance = 1e-12)
+
+  models <- models_inference(model_list)
+  expect_equal(
+    vapply(models, function(model) model$inference$prior_prob, numeric(1)),
+    expected_prior,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    vapply(models, function(model) model$inference$post_prob, numeric(1)),
+    expected_post,
+    tolerance = 1e-12
+  )
+
+  mixed <- mix_posteriors(
+    model_list = model_list,
+    parameters = "theta",
+    is_null_list = list(theta = is_null),
+    seed = 20260724,
+    n_samples = 12
+  )
+  expect_equal(length(mixed$theta), 12)
+  expect_equal(
+    vapply(attr(mixed$theta, "prior_list"), `[[`, numeric(1), "prior_weights"),
+    expected_prior,
+    tolerance = 1e-12
+  )
+})
+
 test_that("model averaging rejects invalid or unavailable positive-prior marginal likelihoods", {
 
   expect_error(

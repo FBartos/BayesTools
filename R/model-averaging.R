@@ -81,11 +81,12 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL, condition
   if(any(!is.finite(prior_weights))){
     stop("'prior_weights' must be finite.", call. = FALSE)
   }
-  if(sum(prior_weights) <= 0){
+  if(!any(prior_weights > 0)){
     stop("At least one prior model weight must be positive.", call. = FALSE)
   }
 
-  prior_weights / sum(prior_weights)
+  scaled_weights <- prior_weights / max(prior_weights)
+  scaled_weights / sum(scaled_weights)
 }
 
 .model_averaging_margliks <- function(margliks, prior_probs){
