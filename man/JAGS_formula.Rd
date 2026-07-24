@@ -30,7 +30,8 @@ is useful for parameters that must be positive (e.g., standard deviation).}
 \item{prior_list}{named list of prior distribution of parameters specified within
 the \code{formula}. When using \code{-1} in the formula, an "intercept" prior
 can be explicitly specified; otherwise, \code{prior("spike", list(0))} is
-automatically added. The list can also include two special entries:
+automatically added, or \code{prior("spike", list(1))} when the formula uses
+the \code{"log(intercept)"} attribute. The list can also include two special entries:
 \describe{
 \item{\code{"__default_continuous"}}{A prior to use for any continuous predictors
 (including the intercept) that are not explicitly specified in the prior list.
@@ -72,8 +73,8 @@ function.
 \details{
 When a formula with \code{-1} (no intercept) is specified, the
 function automatically removes the \code{-1}, adds an intercept back to the
-formula, and includes a spike(0) prior for the intercept to ensure equivalent
-model behavior while maintaining consistent formula parsing.
+formula, and includes a point prior that contributes zero on the formula
+scale: spike(0) ordinarily and spike(1) for a log-transformed intercept.
 
 When using default priors (\code{"__default_continuous"} or \code{"__default_factor"}),
 explicitly specified priors for individual terms take precedence over the defaults.

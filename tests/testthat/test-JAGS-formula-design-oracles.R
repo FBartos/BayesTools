@@ -441,6 +441,22 @@ test_that("JAGS_formula rejects matrix-valued continuous predictors", {
   )
 })
 
+test_that("JAGS_formula uses a neutral point for log intercepts without an intercept", {
+  formula <- ~ x - 1
+  attr(formula, "log(intercept)") <- TRUE
+
+  result <- JAGS_formula(
+    formula,
+    "mu",
+    data.frame(x = c(-1, 0, 1)),
+    list(x = prior("normal", list(0, 1)))
+  )
+
+  expect_true(is.prior.point(result$prior_list$mu_intercept))
+  expect_equal(result$prior_list$mu_intercept$parameters$location, 1)
+  expect_match(result$formula_syntax, "log\\(mu_intercept\\)", fixed = FALSE)
+})
+
 test_that("JAGS_evaluate_formula resolves interaction-only continuous predictors", {
   fitted_data <- data.frame(
     x = c(-2, -1, 1, 2),
