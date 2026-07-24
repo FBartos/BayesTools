@@ -890,7 +890,21 @@ test_that("JAGS_evaluate_formula preserves factor metadata and validates edge ca
       data = reordered_newdata,
       prior_list = missing_group_prior
     ),
-    "prior distribution.*missing"
+    "prior distribution for the 'group' term is missing"
+  )
+
+  missing_intercept_prior <- formula_result$prior_list[
+    setdiff(names(formula_result$prior_list), "mu_intercept")
+  ]
+  expect_error(
+    JAGS_evaluate_formula(
+      fit = fit,
+      formula = formula,
+      parameter = "mu",
+      data = reordered_newdata,
+      prior_list = missing_intercept_prior
+    ),
+    "prior distribution for the 'intercept' term is missing"
   )
 
   bad_factor_newdata <- reordered_newdata

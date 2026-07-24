@@ -157,8 +157,9 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   # check that all predictors have data and prior distribution
   if(!all(predictors %in% colnames(data)))
     stop(paste0("The ", paste0("'", predictors[!predictors %in% colnames(data)], "'", collapse = ", ")," predictor variable is missing in the data."))
-  if(!all(model_terms %in% names(prior_list_formula)))
-    stop(paste0("The prior distribution for the ", paste0("'", predictors[!model_terms %in% format_parameter_names(names(prior_list_formula), formula_parameters = parameter, formula_prefix = FALSE)], "'", collapse = ", ")," term is missing in the prior_list."))
+  missing_terms <- model_terms[!model_terms %in% names(prior_list_formula)]
+  if(length(missing_terms) > 0L)
+    stop(paste0("The prior distribution for the ", paste0("'", missing_terms, "'", collapse = ", ")," term is missing in the prior_list."))
 
   # obtain predictors characteristics -- based on prior distributions used to fit the original model
   # (i.e., do not truest the supplied data -- probably passed by the user)
