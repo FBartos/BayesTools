@@ -534,6 +534,74 @@ test_that("raw random-effect correlation aliases include logit-scale rho columns
 })
 
 
+test_that("raw random-effect monitors respect formula filters", {
+
+  skip_if_not_installed("runjags")
+
+  posterior <- matrix(
+    seq_len(6L * 4L),
+    nrow = 6L,
+    dimnames = list(
+      NULL,
+      c(
+        "mu_intercept",
+        "mu__xREx__id_sd",
+        "log_sigma_intercept",
+        "log_sigma__xREx__site_sd"
+      )
+    )
+  )
+  fit <- .runjags_table_fit_for_test(posterior)
+
+  mu_prior <- prior("normal", list(0, 1))
+  attr(mu_prior, "parameter") <- "mu"
+  log_sigma_prior <- prior("normal", list(0, 1))
+  attr(log_sigma_prior, "parameter") <- "log_sigma"
+  attr(fit, "prior_list") <- list(
+    mu_intercept = mu_prior,
+    log_sigma_intercept = log_sigma_prior
+  )
+  attr(fit, "formula_design") <- list(
+    mu = structure(
+      list(
+        parameter = "mu",
+        random_effects = list(list(parameter_stem = "mu__xREx__id"))
+      ),
+      class = c("BayesTools_formula_design", "list")
+    ),
+    log_sigma = structure(
+      list(
+        parameter = "log_sigma",
+        random_effects = list(list(parameter_stem = "log_sigma__xREx__site"))
+      ),
+      class = c("BayesTools_formula_design", "list")
+    )
+  )
+
+  removed <- suppressWarnings(runjags_estimates_table(
+    fit,
+    remove_formulas = "mu",
+    random_effects_summary = "raw",
+    return_samples = TRUE,
+    remove_diagnostics = TRUE
+  ))
+  kept <- suppressWarnings(runjags_estimates_table(
+    fit,
+    keep_formulas = "log_sigma",
+    random_effects_summary = "raw",
+    return_samples = TRUE,
+    remove_diagnostics = TRUE
+  ))
+
+  expect_equal(ncol(removed), 2L)
+  expect_false(any(grepl("__id_", colnames(removed), fixed = TRUE)))
+  expect_true(any(grepl("__site_", colnames(removed), fixed = TRUE)))
+  expect_equal(ncol(kept), 2L)
+  expect_false(any(grepl("__id_", colnames(kept), fixed = TRUE)))
+  expect_true(any(grepl("__site_", colnames(kept), fixed = TRUE)))
+})
+
+
 test_that("raw random-effect columns use their longest matching parameter stem", {
 
   short_term <- list(

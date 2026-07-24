@@ -338,7 +338,9 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     prior_list = prior_list,
     formula_design = attr(fit, "formula_design"),
     remove_parameters = remove_parameters,
+    remove_formulas = remove_formulas,
     keep_parameters = keep_parameters,
+    keep_formulas = keep_formulas,
     remove_random_effects = remove_random_effects,
     keep_random_effects = keep_random_effects,
     remove_random_structures = remove_random_structures,
@@ -683,7 +685,9 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
                                                          prior_list,
                                                          formula_design = NULL,
                                                          remove_parameters = NULL,
+                                                         remove_formulas = NULL,
                                                          keep_parameters = NULL,
+                                                         keep_formulas = NULL,
                                                          remove_random_effects = NULL,
                                                          keep_random_effects = NULL,
                                                          remove_random_structures = NULL,
@@ -709,8 +713,8 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 
   remove_aliases <- .bt_JAGS_estimates_random_aliases(remove_parameters)
   keep_aliases <- .bt_JAGS_estimates_random_aliases(keep_parameters)
-  keep_active <- !is.null(keep_parameters)
-  if(length(remove_aliases) == 0L && !keep_active){
+  keep_active <- !is.null(keep_parameters) || !is.null(keep_formulas)
+  if(length(remove_aliases) == 0L && length(remove_formulas) == 0L && !keep_active){
     return(model_samples)
   }
 
@@ -721,45 +725,53 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   random_terms <- .bt_random_effect_summary_random_terms(random_design)
   remove_columns <- rep(FALSE, length(column_names))
 
-  for(random_term in random_terms){
-    term_columns <- vapply(
-      column_names,
-      .bt_random_effect_summary_raw_parameter_matches,
-      logical(1),
-      random_term = random_term,
-      random_terms = random_terms
-    )
-    if(!any(term_columns)){
-      next
-    }
+  for(design in random_design){
+    formula_parameter <- design$parameter
+    remove_formula <- length(formula_parameter) == 1L &&
+      formula_parameter %in% remove_formulas
+    keep_formula <- length(formula_parameter) == 1L &&
+      formula_parameter %in% keep_formulas
 
-    if(.bt_JAGS_estimates_random_alias_has_all(remove_aliases)){
-      remove_columns <- remove_columns | term_columns
-    }else if(.bt_JAGS_estimates_random_alias_has_correlation(remove_aliases)){
-      remove_columns <- remove_columns |
-        (term_columns & .bt_JAGS_estimates_raw_random_correlation_columns(column_names))
-    }
-
-    if(keep_active){
-      keep_columns <- random_prior_columns
-      if(.bt_JAGS_estimates_random_alias_has_all(keep_aliases)){
-        keep_columns <- keep_columns | term_columns
+    for(random_term in design$random_effects){
+      term_columns <- vapply(
+        column_names,
+        .bt_random_effect_summary_raw_parameter_matches,
+        logical(1),
+        random_term = random_term,
+        random_terms = random_terms
+      )
+      if(!any(term_columns)){
+        next
       }
-      if(.bt_JAGS_estimates_random_alias_has_correlation(keep_aliases)){
-        keep_columns <- keep_columns |
+
+      if(remove_formula || .bt_JAGS_estimates_random_alias_has_all(remove_aliases)){
+        remove_columns <- remove_columns | term_columns
+      }else if(.bt_JAGS_estimates_random_alias_has_correlation(remove_aliases)){
+        remove_columns <- remove_columns |
           (term_columns & .bt_JAGS_estimates_raw_random_correlation_columns(column_names))
       }
-      if(!is.null(keep_random_effects) || !is.null(keep_random_structures)){
-        term_matches <- .bt_random_effect_summary_term_filter_matches(
-          random_term = random_term,
-          random_effects = keep_random_effects,
-          random_structures = keep_random_structures
-        )
-        if(term_matches){
+
+      if(keep_active){
+        keep_columns <- random_prior_columns
+        if(keep_formula || .bt_JAGS_estimates_random_alias_has_all(keep_aliases)){
           keep_columns <- keep_columns | term_columns
         }
+        if(.bt_JAGS_estimates_random_alias_has_correlation(keep_aliases)){
+          keep_columns <- keep_columns |
+            (term_columns & .bt_JAGS_estimates_raw_random_correlation_columns(column_names))
+        }
+        if(!is.null(keep_random_effects) || !is.null(keep_random_structures)){
+          term_matches <- .bt_random_effect_summary_term_filter_matches(
+            random_term = random_term,
+            random_effects = keep_random_effects,
+            random_structures = keep_random_structures
+          )
+          if(term_matches){
+            keep_columns <- keep_columns | term_columns
+          }
+        }
+        remove_columns <- remove_columns | (term_columns & !keep_columns)
       }
-      remove_columns <- remove_columns | (term_columns & !keep_columns)
     }
   }
 
