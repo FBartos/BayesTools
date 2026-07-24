@@ -804,6 +804,80 @@ test_that("ordered densities are direct when supported and bridge sampling stops
   )
 })
 
+test_that("ordered ranges cover zero and scaled total densities", {
+  p_positive <- prior_ordered(
+    prior("normal", list(10, 1)),
+    allocation = c(.25, .75),
+    contrast = "cumulative"
+  )
+  attr(p_positive, "levels") <- 3
+
+  expected_range <- c(0, stats::qnorm(.995, mean = 10, sd = 1))
+  expect_equal(range(p_positive), expected_range)
+  expect_equal(
+    range(p_positive, quantiles = .1),
+    c(0, stats::qnorm(.9, mean = 10, sd = 1))
+  )
+
+  density_positive <- density(p_positive, n_points = 101)
+  grid_step <- diff(expected_range) / 100
+  expect_equal(attr(density_positive, "x_range"), expected_range)
+  expect_lte(
+    abs(density_positive[[2]]$x[which.max(density_positive[[2]]$y)] - 2.5),
+    grid_step
+  )
+  expect_gt(max(density_positive[[2]]$y), 1)
+
+  p_negative <- prior_ordered(
+    prior("normal", list(-10, 1)),
+    allocation = c(.25, .75),
+    contrast = "cumulative"
+  )
+  expect_equal(
+    range(p_negative),
+    c(stats::qnorm(.005, mean = -10, sd = 1), 0)
+  )
+})
+
+test_that("ordered continuous-mixture totals have deterministic density ranges", {
+  total <- prior_mixture(
+    list(
+      prior("normal", list(-20, 1)),
+      prior("normal", list(10, 1))
+    ),
+    components = c("lower", "upper")
+  )
+  p <- prior_ordered(
+    total,
+    allocation = c(.25, .75),
+    contrast = "cumulative"
+  )
+  attr(p, "levels") <- 3
+
+  expected_range <- c(
+    stats::qnorm(.005, mean = -20, sd = 1),
+    stats::qnorm(.995, mean = 10, sd = 1)
+  )
+  expect_equal(range(p), expected_range)
+
+  set.seed(7403)
+  density_mixture <- density(p, n_points = 101, n_samples = 2000)
+
+  expect_s3_class(density_mixture, "density.prior.ordered")
+  expect_equal(attr(density_mixture, "x_range"), expected_range)
+  expect_s3_class(density_mixture[[1]], "density.prior.point")
+  expect_true(all(vapply(density_mixture, function(component){
+    all(is.finite(component$y))
+  }, logical(1))))
+  expect_equal(
+    density_mixture[[2]]$samples * 4,
+    density_mixture[[3]]$samples
+  )
+  expect_true(all(vapply(density_mixture[2:3], function(component){
+    max(component$y) > 0
+  }, logical(1))))
+})
+
 test_that("ordered sampled densities transform components and preserve cumulative atoms", {
   p <- prior_ordered(
     prior("normal", list(0, 1)),

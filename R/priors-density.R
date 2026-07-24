@@ -93,7 +93,7 @@ density.prior <- function(x,
       }else if(is.prior.spike_and_slab(x)){
         x_range <- range(c(range(.get_spike_and_slab_variable(x), if(is.null(x_range_quant)) .range.prior_quantile_default(.get_spike_and_slab_variable(x)) else x_range_quant), 0))
       }else if(is.prior.ordered(x)){
-        x_range <- range(x$total, if(is.null(x_range_quant)) .range.prior_quantile_default(x$total) else x_range_quant)
+        x_range <- .prior_ordered_range(x, quantiles = x_range_quant)
       }else if(is.prior.discrete(x)){
         x_range <- c(x[["truncation"]][["lower"]], x[["truncation"]][["upper"]])
       }else{
@@ -879,7 +879,7 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
     .selection_prior_stop_unsupported_generic("range", x)
   }
   if(is.prior.ordered(x)){
-    return(range(x$total, quantiles = quantiles))
+    return(.prior_ordered_range(x, quantiles = quantiles))
   }
 
   if(is.infinite(x[["truncation"]][["lower"]])){

@@ -553,6 +553,31 @@
   stop("Unsupported ordered allocation specification.", call. = FALSE)
 }
 
+.prior_ordered_total_range <- function(total, quantiles = NULL){
+
+  if(is.prior.mixture(total)){
+    component_ranges <- lapply(total, function(component){
+      if(is.null(quantiles)){
+        range(component)
+      }else{
+        range(component, quantiles = quantiles)
+      }
+    })
+    return(range(unlist(component_ranges, use.names = FALSE), na.rm = TRUE))
+  }
+
+  if(is.null(quantiles)){
+    range(total)
+  }else{
+    range(total, quantiles = quantiles)
+  }
+}
+
+.prior_ordered_range <- function(prior, quantiles = NULL){
+
+  range(c(0, .prior_ordered_total_range(prior$total, quantiles)), na.rm = TRUE)
+}
+
 .prior_ordered_default_bound <- function(prior, parameter_name = ".ordered"){
 
   if(!is.null(attr(prior, "ordered_metadata", exact = TRUE))){
