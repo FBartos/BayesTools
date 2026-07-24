@@ -14,8 +14,8 @@ A formula object with an intercept.
 }
 \description{
 Converts a no-intercept formula to the corresponding formula
-with an intercept while preserving the formula environment. Top-level
-no-intercept encodings such as \code{- 1}, \code{+ 0}, and \code{0 +} are
-removed without editing transformed calls such as \code{I(x - 1)} or
-\code{offset(x - 1)}.
+with an intercept while preserving the formula environment. Additive,
+parenthesized, and unary-plus no-intercept encodings such as \code{- 1},
+\code{+ 0}, and \code{0 +} are removed without editing transformed calls
+such as \code{I(x - 1)} or \code{offset(x - 1)}.
 }

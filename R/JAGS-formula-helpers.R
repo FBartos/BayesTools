@@ -240,10 +240,10 @@
 #' @title Add an Intercept to a Formula
 #'
 #' @description Converts a no-intercept formula to the corresponding formula
-#' with an intercept while preserving the formula environment. Top-level
-#' no-intercept encodings such as \code{- 1}, \code{+ 0}, and \code{0 +} are
-#' removed without editing transformed calls such as \code{I(x - 1)} or
-#' \code{offset(x - 1)}.
+#' with an intercept while preserving the formula environment. Additive,
+#' parenthesized, and unary-plus no-intercept encodings such as \code{- 1},
+#' \code{+ 0}, and \code{0 +} are removed without editing transformed calls
+#' such as \code{I(x - 1)} or \code{offset(x - 1)}.
 #'
 #' @param formula a formula object.
 #'
@@ -288,6 +288,12 @@ formula_add_intercept <- function(formula){
 
 .formula_strip_no_intercept <- function(expr){
 
+  if(is.call(expr) && length(expr) == 2L &&
+     (identical(expr[[1L]], as.name("(")) ||
+      identical(expr[[1L]], as.name("+")))){
+    return(.formula_strip_no_intercept(expr[[2L]]))
+  }
+
   if(.formula_is_no_intercept_additive_term(expr)){
     return(NULL)
   }
@@ -327,7 +333,9 @@ formula_add_intercept <- function(formula){
 
 .formula_is_numeric_constant <- function(expr, value){
 
-  if(is.call(expr) && identical(expr[[1L]], as.name("(")) && length(expr) == 2L){
+  if(is.call(expr) && length(expr) == 2L &&
+     (identical(expr[[1L]], as.name("(")) ||
+      identical(expr[[1L]], as.name("+")))){
     return(.formula_is_numeric_constant(expr[[2L]], value))
   }
 

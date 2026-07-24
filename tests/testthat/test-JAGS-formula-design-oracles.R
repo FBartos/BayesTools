@@ -176,6 +176,37 @@ test_that("factor contrast priors agree across main effects and interactions", {
   )
 })
 
+test_that("formula_add_intercept handles grouped and unary no-intercept terms", {
+  cases <- list(
+    list(~ (x - 1), ~ x),
+    list(~ ((0 + x)), ~ x),
+    list(~ (x + z - 1), ~ x + z),
+    list(~ x + (-1), ~ x),
+    list(~ x + ((-1)), ~ x),
+    list(~ x + (+0), ~ x),
+    list(~ x - (+1), ~ x)
+  )
+
+  for(case in cases){
+    expect_equal(
+      formula_add_intercept(case[[1L]]),
+      case[[2L]],
+      ignore_formula_env = TRUE
+    )
+  }
+
+  expect_equal(
+    formula_add_intercept(~ I(x - 1) - 1),
+    ~ I(x - 1),
+    ignore_formula_env = TRUE
+  )
+  expect_equal(
+    formula_add_intercept(~ offset(x - 1) - 1),
+    ~ offset(x - 1),
+    ignore_formula_env = TRUE
+  )
+})
+
 .jags_formula_oracle_expected_data <- function(data, factor_contrasts = list(),
                                                formula_scale = NULL) {
   out <- data
