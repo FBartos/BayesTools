@@ -539,6 +539,76 @@ test_that("marginal variance factors protect diagonal-only known covariance use"
   expect_gt(factors$blocks$id$max_off_diagonal, 0)
 })
 
+test_that("marginal variance factor diagonal checks are scale invariant", {
+
+  df <- data.frame(
+    id = factor(c("a", "b"), levels = c("a", "b"))
+  )
+  correlation <- matrix(
+    c(1, .5,
+      .5, 1),
+    nrow = 2,
+    byrow = TRUE,
+    dimnames = list(c("a", "b"), c("a", "b"))
+  )
+  scales <- c(1e-20, 1, 1e20)
+
+  for(scale in scales){
+    K <- scale * correlation
+    random_effects <- random_effects_formula(
+      ~ 1 | id,
+      group_covariance = random_group_covariance(K, scale = "none")
+    )
+    result <- .re_cov_formula(
+      formula = random_effects,
+      data = df,
+      prior_random = prior_random(
+        id = random_block(sd = .re_cov_sd_prior())
+      ),
+      random_effects_compile = random_effects_compile(marginalized = "id")
+    )
+
+    unavailable <- tryCatch(
+      random_effects_marginal_variance_factors(result$formula_design),
+      error = identity
+    )
+    expect_s3_class(
+      unavailable,
+      "BayesTools_random_effects_marginal_variance_unavailable"
+    )
+    expect_identical(
+      unavailable$reason,
+      "non_diagonal_row_covariance",
+      info = paste("scale =", scale)
+    )
+
+    factors <- random_effects_marginal_variance_factors(
+      result$formula_design,
+      require_diagonal = FALSE
+    )
+    expect_false(
+      factors$blocks$id$row_covariance_diagonal,
+      info = paste("scale =", scale)
+    )
+  }
+
+  diagonal_status <- lapply(
+    scales,
+    function(scale){
+      BayesTools:::.bt_random_effect_row_covariance_diagonal_status(
+        scale * diag(c(1, 4))
+      )
+    }
+  )
+  expect_true(all(vapply(diagonal_status, `[[`, logical(1), "is_diagonal")))
+
+  heterogeneous <- diag(c(1e20, 1e-8, 1e-8))
+  heterogeneous[2L, 3L] <- heterogeneous[3L, 2L] <- 5e-9
+  heterogeneous_status <-
+    BayesTools:::.bt_random_effect_row_covariance_diagonal_status(heterogeneous)
+  expect_false(heterogeneous_status$is_diagonal)
+})
+
 test_that("marginal variance factors reject repeated groups when required", {
 
   df <- data.frame(

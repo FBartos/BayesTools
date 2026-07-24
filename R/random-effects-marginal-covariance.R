@@ -409,11 +409,15 @@ random_effects_marginal_variance_factors <- function(
   off_diagonal <- row_covariance
   diag(off_diagonal) <- 0
   max_off_diagonal <- max(abs(off_diagonal))
-  scale <- max(1, max(abs(row_covariance)))
-  tolerance <- sqrt(.Machine$double.eps) * scale
+  # Apply the tolerance on the correlation scale so the decision is unchanged
+  # when the complete covariance matrix is rescaled.
+  row_sd <- sqrt(pmax(diag(row_covariance), 0))
+  pairwise_tolerance <- sqrt(.Machine$double.eps) * tcrossprod(row_sd)
+  diag(pairwise_tolerance) <- 0
+  tolerance <- max(pairwise_tolerance)
 
   list(
-    is_diagonal = isTRUE(max_off_diagonal <= tolerance),
+    is_diagonal = isTRUE(all(abs(off_diagonal) <= pairwise_tolerance)),
     max_off_diagonal = max_off_diagonal,
     tolerance = tolerance
   )
