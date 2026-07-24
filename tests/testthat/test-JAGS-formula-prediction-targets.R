@@ -99,6 +99,22 @@ test_that("conditional target equals fixed target for fixed-only formulas", {
   expect_equal(conditional, fixed)
 })
 
+test_that("formula prediction validates parameter names and seeds", {
+  result <- .formula_prediction_result()
+  fit <- .formula_prediction_fit(result)
+
+  expect_error(
+    JAGS_evaluate_formula(fit, parameter = NA_character_),
+    "'parameter' argument cannot contain NA/NaN values",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_predict_formula(fit, parameter = "mu", seed = .Machine$integer.max + 1),
+    "'seed' must be equal or lower than",
+    fixed = TRUE
+  )
+})
+
 test_that("formula design metadata preserves scaling during prediction", {
 
   df <- data.frame(

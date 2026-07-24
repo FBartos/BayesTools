@@ -53,7 +53,8 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
                                   formula_target = NULL, blocks = NULL,
                                   new_levels = NULL){
 
-  check_char(parameter, "parameter")
+  check_char(parameter, "parameter", allow_NA = FALSE)
+  .bt_check_jags_node_name(parameter, "parameter")
   formula_target <- .bt_formula_prediction_target(
     formula_target,
     allow_marginal = FALSE,

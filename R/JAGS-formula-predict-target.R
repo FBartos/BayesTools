@@ -39,7 +39,8 @@ JAGS_predict_formula <- function(fit, parameter, formula = NULL, data = NULL,
                                  marginal_method = c("covariance", "sample"),
                                  seed = NULL, components = FALSE){
 
-  check_char(parameter, "parameter")
+  check_char(parameter, "parameter", allow_NA = FALSE)
+  .bt_check_jags_node_name(parameter, "parameter")
   marginal_method_supplied <- !missing(marginal_method)
   formula_target <- match.arg(formula_target)
   marginal_method <- match.arg(marginal_method)
@@ -73,7 +74,14 @@ JAGS_predict_formula <- function(fit, parameter, formula = NULL, data = NULL,
   }
   check_bool(components, "components", allow_NA = FALSE)
   if(!is.null(seed)){
-    check_int(seed, "seed", lower = 0, check_length = 1, allow_NA = FALSE)
+    check_int(
+      seed,
+      "seed",
+      lower = 0,
+      upper = .Machine$integer.max,
+      check_length = 1,
+      allow_NA = FALSE
+    )
   }
 
   fixed <- JAGS_evaluate_formula(

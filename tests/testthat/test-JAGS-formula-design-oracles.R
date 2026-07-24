@@ -618,6 +618,24 @@ test_that("JAGS_formula uses a neutral point for log intercepts without an inter
   expect_match(result$formula_syntax, "log\\(mu_intercept\\)", fixed = FALSE)
 })
 
+test_that("transform_prior_samples validates counts and seeds before sampling", {
+  expect_error(
+    transform_prior_samples(NULL, n_samples = NA_real_),
+    "'n_samples' argument cannot contain NA/NaN values",
+    fixed = TRUE
+  )
+  expect_error(
+    transform_prior_samples(NULL, seed = NA_real_),
+    "'seed' argument cannot contain NA/NaN values",
+    fixed = TRUE
+  )
+  expect_error(
+    transform_prior_samples(NULL, seed = .Machine$integer.max + 1),
+    "'seed' must be equal or lower than",
+    fixed = TRUE
+  )
+})
+
 test_that("JAGS_evaluate_formula resolves interaction-only continuous predictors", {
   fitted_data <- data.frame(
     x = c(-2, -1, 1, 2),

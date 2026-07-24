@@ -101,8 +101,15 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
 #' @export
 transform_prior_samples <- function(fit, n_samples = 10000, seed = NULL, formula_scale = NULL){
 
-  check_int(n_samples, "n_samples", lower = 1)
-  check_int(seed, "seed", allow_NULL = TRUE)
+  check_int(n_samples, "n_samples", lower = 1, allow_NA = FALSE)
+  check_int(
+    seed,
+    "seed",
+    lower = 0,
+    upper = .Machine$integer.max,
+    allow_NULL = TRUE,
+    allow_NA = FALSE
+  )
 
   # Extract prior_list from fit
 
