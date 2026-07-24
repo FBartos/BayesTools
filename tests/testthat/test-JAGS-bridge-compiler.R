@@ -394,6 +394,76 @@ test_that("compiled formula parameter evaluator matches design reconstruction", 
   )
 })
 
+test_that("formula parameter evaluators reject missing named multiply_by parameters", {
+
+  formula_data <- data.frame(x = c(-1, 0, 2))
+  formula_output <- JAGS_formula(
+    formula = ~ 1 + x,
+    parameter = "mu",
+    data = formula_data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x         = prior("normal", list(0, 1))
+    )
+  )
+  formula_list <- list(mu = formula_output$formula)
+  formula_data_list <- list(mu = formula_output$data)
+  formula_design_list <- list(mu = formula_output$formula_design)
+  samples <- c(mu_intercept = .2, mu_x = -.4)
+
+  for(prior_name in c("mu_intercept", "mu_x")){
+    formula_prior_list <- list(mu = formula_output$prior_list)
+    multiplier_name <- paste0(prior_name, "_scale")
+    attr(
+      formula_prior_list$mu[[prior_name]],
+      "multiply_by"
+    ) <- multiplier_name
+
+    compiled <- BayesTools:::.bt_JAGS_bridge_compile_formula_parameter_evaluator(
+      formula_list = formula_list,
+      formula_data_list = formula_data_list,
+      formula_prior_list = formula_prior_list,
+      formula_design_list = formula_design_list,
+      model_data = list()
+    )
+    expected_error <- paste0(
+      "Formula prior 'multiply_by' parameter '",
+      multiplier_name,
+      "' is missing from 'prior_list_parameters'."
+    )
+
+    expect_error(
+      compiled$parameters(samples, list()),
+      expected_error,
+      fixed = TRUE
+    )
+    expect_error(
+      JAGS_marglik_parameters_formula(
+        samples = samples,
+        formula_list = formula_list,
+        formula_data_list = formula_data_list,
+        formula_prior_list = formula_prior_list,
+        prior_list_parameters = list(),
+        formula_design_list = formula_design_list,
+        model_data = list()
+      ),
+      expected_error,
+      fixed = TRUE
+    )
+    expect_error(
+      JAGS_marglik_parameters_formula(
+        samples = samples,
+        formula_list = formula_list,
+        formula_data_list = formula_data_list,
+        formula_prior_list = formula_prior_list,
+        prior_list_parameters = list()
+      ),
+      expected_error,
+      fixed = TRUE
+    )
+  }
+})
+
 test_that("compiled formula parameter evaluator preserves log-intercept reconstruction", {
 
   formula_obj <- ~ 1 + x

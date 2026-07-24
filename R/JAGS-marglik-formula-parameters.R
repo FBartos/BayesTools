@@ -309,7 +309,26 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
     return(multiply_by)
   }
 
-  prior_list_parameters[[multiply_by]]
+  .bt_JAGS_marglik_resolve_named_multiply_by(
+    multiply_by = multiply_by,
+    prior_list_parameters = prior_list_parameters
+  )
+}
+
+.bt_JAGS_marglik_resolve_named_multiply_by <- function(multiply_by,
+                                                        prior_list_parameters){
+
+  value <- prior_list_parameters[[multiply_by]]
+  if(is.null(value)){
+    stop(
+      "Formula prior 'multiply_by' parameter '",
+      multiply_by,
+      "' is missing from 'prior_list_parameters'.",
+      call. = FALSE
+    )
+  }
+
+  value
 }
 
 .bt_JAGS_marglik_formula_fixed_priors <- function(formula_prior_list, parameter){
@@ -1177,18 +1196,11 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
   # start with intercept
   if(sum(formula_terms == paste0(parameter, "_intercept")) == 1){
 
-    # check for scaling factors
-    if(!is.null(attr(formula_prior_list[[paste0(parameter, "_intercept")]], "multiply_by"))){
-      if(is.numeric(attr(formula_prior_list[[paste0(parameter, "_intercept")]], "multiply_by"))){
-        multiply_by <- attr(formula_prior_list[[paste0(parameter, "_intercept")]], "multiply_by")
-      }else{
-        multiply_by <- prior_list_parameters[[attr(formula_prior_list[[paste0(parameter, "_intercept")]], "multiply_by")]]
-      }
-    }else{
-      multiply_by <- 1
-    }
-
     intercept_prior <- formula_prior_list[[paste0(parameter, "_intercept")]]
+    multiply_by <- .bt_JAGS_marglik_prior_multiply_by(
+      intercept_prior,
+      prior_list_parameters
+    )
     intercept_value <- .JAGS_marglik_parameter_values(samples, intercept_prior, paste0(parameter, "_intercept"))
     # apply log transformation if log(intercept) attribute is set
     if(log_intercept){
@@ -1205,17 +1217,10 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
   if(length(remaining_terms) > 0){
     for(term in remaining_terms){
 
-      # check for scaling factors
-      if(!is.null(attr(formula_prior_list[[term]], "multiply_by"))){
-        if(is.numeric(attr(formula_prior_list[[term]], "multiply_by"))){
-          multiply_by <- attr(formula_prior_list[[term]], "multiply_by")
-        }else{
-          multiply_by <- prior_list_parameters[[attr(formula_prior_list[[term]], "multiply_by")]]
-        }
-      }else{
-        multiply_by <- 1
-      }
-
+      multiply_by <- .bt_JAGS_marglik_prior_multiply_by(
+        formula_prior_list[[term]],
+        prior_list_parameters
+      )
 
       if(is.prior.point(formula_prior_list[[term]]) && !is.prior.factor(formula_prior_list[[term]])){
 

@@ -368,7 +368,10 @@
 
   force(multiply_by)
   function(prior_list_parameters){
-    prior_list_parameters[[multiply_by]]
+    .bt_JAGS_marglik_resolve_named_multiply_by(
+      multiply_by = multiply_by,
+      prior_list_parameters = prior_list_parameters
+    )
   }
 }
 
