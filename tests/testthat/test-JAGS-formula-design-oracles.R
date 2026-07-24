@@ -556,6 +556,49 @@ test_that("formula expression terms are parsed structurally", {
   expect_equal(expression_result$formula_design$transformed_terms, list("log(x)"))
 })
 
+test_that("JAGS_evaluate_formula does not silently omit literal expressions", {
+  formula_result <- JAGS_formula(
+    ~ x + expression(z[i]),
+    "mu",
+    data.frame(x = c(1, 2), z = c(10, 20)),
+    list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1))
+    )
+  )
+  posterior <- coda::mcmc(matrix(
+    c(1, 2),
+    nrow = 1,
+    dimnames = list(NULL, c("mu_intercept", "mu_x"))
+  ))
+  attr(posterior, "formula_design") <- list(mu = formula_result$formula_design)
+
+  expect_error(
+    JAGS_evaluate_formula(posterior, formula = NULL, parameter = "mu"),
+    "cannot evaluate literal expression\\(\\) terms"
+  )
+  expect_error(
+    JAGS_evaluate_formula(
+      posterior,
+      ~ x + expression(z[i]),
+      "mu",
+      data.frame(x = 3, z = 30),
+      formula_result$prior_list
+    ),
+    "cannot evaluate literal expression\\(\\) terms"
+  )
+  expect_equal(
+    unname(JAGS_evaluate_formula(
+      posterior,
+      ~ x,
+      "mu",
+      data.frame(x = 3),
+      formula_result$prior_list
+    )),
+    matrix(7, nrow = 1)
+  )
+})
+
 test_that("JAGS_evaluate_formula matches lm predictions with automatic scaling", {
 
   data <- bayestools_oracle_gaussian_regression_data()

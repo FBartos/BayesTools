@@ -14,6 +14,10 @@
 #' the supplied prediction rows, or the source must provide a
 #' \code{parameter_source()} \code{values} function for reconstructing row-wise
 #' source values from the posterior samples and supplied prediction data.
+#' Literal \code{expression()} terms cannot be reconstructed automatically.
+#' Replaying a fitted formula that contains them produces an error rather than
+#' silently omitting their contribution. An explicit expression-free formula
+#' can still be supplied to evaluate a selected subset of the fitted formula.
 #'
 #' @param fit model fitted with either \link[runjags]{runjags} posterior
 #' samples obtained with \link[rjags]{rjags-package}
@@ -70,6 +74,7 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   if(!is.null(new_levels)){
     new_levels <- .bt_random_new_levels_resolve(new_levels)
   }
+  replay_fitted_formula <- is.null(formula)
   fitted_design <- .bt_JAGS_evaluate_formula_design(fit, parameter)
   resolved_inputs <- .bt_JAGS_evaluate_formula_resolve_inputs(
     fit = fit,
@@ -86,6 +91,16 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
 
   if(!is.language(formula))
     stop("'formula' must be a formula")
+  formula_expressions <- .extract_expressions(formula)
+  fitted_expressions <- fitted_design$transformed_terms
+  if(length(formula_expressions) > 0L ||
+     (replay_fitted_formula && length(fitted_expressions) > 0L)){
+    stop(
+      "JAGS_evaluate_formula() cannot evaluate literal expression() terms. ",
+      "Supply an explicit expression-free formula to evaluate a selected subset.",
+      call. = FALSE
+    )
+  }
   if(!is.data.frame(data))
     stop("'data' must be a data.frame")
   check_list(prior_list, "prior_list")

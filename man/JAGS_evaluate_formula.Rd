@@ -65,6 +65,10 @@ source columns named \code{tau[1]}, ..., \code{tau[nrow(data)]} aligned to
 the supplied prediction rows, or the source must provide a
 \code{parameter_source()} \code{values} function for reconstructing row-wise
 source values from the posterior samples and supplied prediction data.
+Literal \code{expression()} terms cannot be reconstructed automatically.
+Replaying a fitted formula that contains them produces an error rather than
+silently omitting their contribution. An explicit expression-free formula
+can still be supplied to evaluate a selected subset of the fitted formula.
 }
 \seealso{
 \code{\link[=JAGS_fit]{JAGS_fit()}} \code{\link[=JAGS_formula]{JAGS_formula()}}
