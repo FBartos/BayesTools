@@ -524,6 +524,72 @@ test_that(".rename_factor_levels handles multi-factor treatment interactions", {
   )
 })
 
+test_that(".rename_factor_levels distinguishes treatment random interaction designs", {
+
+  data <- data.frame(
+    f = factor(rep(c("a", "b", "c"), 4), levels = c("a", "b", "c")),
+    g = factor(rep(c("u", "v"), each = 6), levels = c("u", "v")),
+    id = factor(rep(c("s1", "s2", "s3", "s4"), each = 3))
+  )
+  sd_prior <- prior("gamma", list(2, 2))
+  fixed_priors <- list(intercept = prior("normal", list(0, 1)))
+
+  make_result <- function(random_formula){
+    JAGS_formula(
+      formula = random_formula,
+      parameter = "mu",
+      data = data,
+      prior_list = fixed_priors,
+      prior_random = prior_random(id = random_block(sd = sd_prior))
+    )
+  }
+  rename_interaction <- function(result){
+    parameter <- grep(
+      "f__xXx__g$",
+      names(result$prior_list),
+      value = TRUE
+    )
+    interaction_prior <- result$prior_list[parameter]
+    n_parameters <- .get_prior_factor_levels(interaction_prior[[1]])
+    model_samples <- matrix(
+      seq_len(n_parameters),
+      nrow = 1L,
+      dimnames = list(
+        NULL,
+        paste0(parameter, "[", seq_len(n_parameters), "]")
+      )
+    )
+
+    BayesTools:::.rename_factor_levels(model_samples, interaction_prior)
+  }
+
+  interaction_only <- rename_interaction(
+    make_result(~ 1 + diag(0 + f:g | id))
+  )
+  expect_equal(
+    colnames(interaction_only),
+    c(
+      "mu__xREx__id_f[a]__xXx__g[u]",
+      "mu__xREx__id_f[b]__xXx__g[u]",
+      "mu__xREx__id_f[c]__xXx__g[u]",
+      "mu__xREx__id_f[a]__xXx__g[v]",
+      "mu__xREx__id_f[b]__xXx__g[v]",
+      "mu__xREx__id_f[c]__xXx__g[v]"
+    )
+  )
+
+  hierarchical <- rename_interaction(
+    make_result(~ 1 + diag(0 + f * g | id))
+  )
+  expect_equal(
+    colnames(hierarchical),
+    c(
+      "mu__xREx__id_f[b]__xXx__g[v]",
+      "mu__xREx__id_f[c]__xXx__g[v]"
+    )
+  )
+})
+
 
 test_that(".format_factor_level_parameter_names rejects interaction metadata mismatch", {
 

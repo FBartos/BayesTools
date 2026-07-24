@@ -709,9 +709,23 @@ NULL
         }
       } else if (length(attr(prior_list[[par]], "levels")) == 1) {
         interaction_level_names <- .get_prior_factor_level_names(prior_list[[par]])
-        interaction_level_names <- lapply(interaction_level_names, function(level_name) level_name[-1])
-        colnames(model_samples)[colnames(model_samples) %in% paste0(par, "[", 1:.get_prior_factor_levels(prior_list[[par]]), "]")] <-
-          .format_factor_level_parameter_names(par, interaction_level_names, .get_prior_factor_levels(prior_list[[par]]))
+        n_parameters <- .get_prior_factor_levels(prior_list[[par]])
+        # Interaction-only treatment designs use the full cell grid, whereas
+        # hierarchical interactions use the non-reference-level grid.
+        if(prod(lengths(interaction_level_names)) != n_parameters){
+          interaction_level_names <- lapply(
+            interaction_level_names,
+            function(level_name) level_name[-1]
+          )
+        }
+        parameter_columns <- colnames(model_samples) %in%
+          paste0(par, "[", seq_len(n_parameters), "]")
+        colnames(model_samples)[parameter_columns] <-
+          .format_factor_level_parameter_names(
+            par,
+            interaction_level_names,
+            n_parameters
+          )
       }
     }
   }
