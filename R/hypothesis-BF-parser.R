@@ -582,7 +582,13 @@ hypothesis_normalize_level_references <- function(text){
     stop("Unsupported hypothesis expression.", call. = FALSE)
   }
 
-  fun <- as.character(expr[[1L]])
+  call_head <- expr[[1L]]
+  if(!is.name(call_head)){
+    call_label <- paste(deparse(call_head, width.cutoff = 500L), collapse = "")
+    stop("Unsupported hypothesis expression call '", call_label, "'.",
+         call. = FALSE)
+  }
+  fun <- as.character(call_head)
   allowed_arithmetic <- c("(", "+", "-", "*", "/", "^")
   allowed_functions  <- c("abs", "exp", "log", "sqrt", "plogis", "qlogis")
   allowed_condition  <- c("<", "<=", ">", ">=", "&", "|", "!")
@@ -594,6 +600,10 @@ hypothesis_normalize_level_references <- function(text){
   if(!fun %in% allowed){
     stop("Unsupported hypothesis expression operator or function '", fun, "'.",
          call. = FALSE)
+  }
+  if(length(expr) == 1L){
+    stop("Hypothesis expression call '", fun,
+         "' requires at least one argument.", call. = FALSE)
   }
   for(i in seq.int(2L, length(expr))){
     .hypothesis_validate_expression(expr[[i]], condition = condition)

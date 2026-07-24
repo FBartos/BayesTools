@@ -27,3 +27,18 @@ test_that("level-reference normalization preserves explicit escaping", {
   expect_equal(parsed[["parameter"]], rep("mu alloc", 3L))
   expect_equal(parsed[["level"]], c("level A", "a & b", "a vs b"))
 })
+
+
+test_that("hypothesis parser rejects malformed call nodes cleanly", {
+
+  expect_error(
+    hypothesis_parse_point_reference("abs() > 0"),
+    "Hypothesis expression call 'abs' requires at least one argument.",
+    fixed = TRUE
+  )
+  expect_error(
+    hypothesis_parse_point_reference("base::log(theta) > 0"),
+    "Unsupported hypothesis expression call 'base::log'.",
+    fixed = TRUE
+  )
+})
