@@ -172,14 +172,18 @@ backend capabilities.
 ## D12. Undefined convergence diagnostics
 
 **Issue.** Undefined `Rhat`, ESS, or MCSE values can currently be treated as
-passing convergence checks in some paths.
+passing convergence checks in some paths. Related diagnostic helpers do not
+have a consistent contract for one-observation densities, constant chains, or
+models whose requested diagnostic monitor set is empty.
 
 **Impact.** Degenerate or too-short chains may be reported as converged because
 a diagnostic could not be computed.
 
 **Suggested change.** Default undefined diagnostics to a distinct
 `not_assessable` result and fail convergence unless the caller explicitly opts
-into ignoring that diagnostic.
+into ignoring that diagnostic. Define the same result for degenerate density,
+autocorrelation, and empty-monitor inputs instead of exposing low-level
+bandwidth, range, or subscript errors.
 
 ## D13. Failed marginal-likelihood models
 
@@ -324,3 +328,97 @@ the values it displays.
 **Suggested change.** Either derive labels exclusively from interval metadata,
 or validate user-supplied labels against that metadata and require an explicit
 override flag for deliberately custom wording.
+
+## D23. Replay of legacy scaled formula designs
+
+**Issue.** Older serialized formula designs can lack `source_data`. Prediction
+then falls back to `model_frame`, but there is no metadata flag saying whether
+that frame is already on the fitted model scale. Applying the stored scaling
+again can double-scale predictors.
+
+**Impact.** Predictions from an otherwise readable legacy fit can differ
+substantially from predictions made when the fit was created, without an error.
+
+**Suggested change.** Version the formula-design schema and record the scale of
+every stored data field. For unversioned designs, either provide an explicit
+migration rule that treats `model_frame` as model-scale data or reject replay
+with instructions to refit; do not infer scale from the absence of
+`source_data`.
+
+## D24. Scale of monitored group-specific coefficients
+
+**Issue.** `transform_scale_samples()` converts fixed-effect coefficients back
+to their original predictor scale but leaves monitored
+`__xREx__..._xRE_COEFx` group-specific coefficients on the fitted standardized
+scale.
+
+**Impact.** A returned posterior object can mix coefficient scales, and tables
+or downstream calculations may interpret group-specific slopes as
+original-scale effects.
+
+**Suggested change.** Decide whether raw group-specific monitors are covered by
+the public transformation promise. If they are, apply the same fixed-effect
+unscaling matrix independently within every group and version any affected
+table/sample schema. Otherwise, keep them explicitly labeled as standardized
+and exclude them from APIs that promise original-scale coefficients.
+
+## D25. Ordered priors with both atoms and continuous mass
+
+**Issue.** For an ordered total prior that mixes point and continuous
+components, each nonconstant ordered level is currently represented by one KDE.
+This smears the point mass into a continuous bump because the ordered density
+output has no per-level mixed-measure representation.
+
+**Impact.** Density values and plots misrepresent the discrete probability
+mass, particularly for spike-and-slab totals.
+
+**Suggested change.** Extend ordered density output to carry continuous curves
+and atoms separately for every level, and teach plotting and marginal-inference
+consumers to preserve both parts. Until that schema exists, reject mixed-measure
+ordered density requests rather than smoothing the atoms.
+
+## D26. Random-formula transformation and grouping semantics
+
+**Issue.** Inline transformed random slopes are treated as missing variables,
+and the ordering of `g1:g2` grouping levels differs from base R and `lme4`.
+Supporting arbitrary calls would also require a stable replay environment.
+
+**Impact.** Familiar R random-formula syntax can fail unexpectedly or produce a
+different coefficient/group order, affecting prior alignment and serialized
+metadata.
+
+**Suggested change.** Define a supported random-formula grammar and either use a
+shared `model.frame()`-based implementation with explicit environments and
+base-compatible interaction ordering, or reject transformations and document a
+package-specific ordering. Any ordering change needs a metadata migration.
+
+## D27. Hypothesis grammar boundaries
+
+**Issue.** The hypothesis language does not define whether a complete relation
+may be wrapped in parentheses or negated with unary `!`. Escaped parameter names
+that equal R constants such as `Inf`, `NaN`, `NA`, or `TRUE` also collide with
+literal-token diagnostics.
+
+**Impact.** Expressions that are syntactically natural can be accepted,
+rejected, or diagnosed differently depending on superficial spelling.
+
+**Suggested change.** Publish a small formal grammar. Decide whether
+parenthesized and negated relations are supported, and make escaped identifiers
+take precedence over reserved literal tokens while retaining strict rejection
+of unescaped constants where they are not meaningful.
+
+## D28. Structured-local subset contract
+
+**Issue.** Structured-local latent-name extraction accepts `n_groups` and
+`n_columns` but currently ignores them, unlike dense random layouts. It is
+unclear whether zero and prefix requests should return a subset or whether those
+arguments are meaningless for this representation.
+
+**Impact.** Internal callers can receive more posterior coordinates than
+requested, and future optimizations may rely on a subset contract that the
+current implementation does not honor.
+
+**Suggested change.** Either make structured-local extraction filter by its
+stored local group/column indices, including zero-size requests, or remove the
+dimension arguments and expose a separate explicit full-layout method. Add
+schema tests before relying on either behavior.
