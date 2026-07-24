@@ -4,16 +4,16 @@ test_that("JAGS indexed parameter helpers match exact sorted indices", {
 
   columns <- c(
     "omega[1]", "omega[10]", "omega[2]", "omega", "omega_extra[1]",
-    "log_omega[1]", "someomega[1]", "omega[1,2]"
+    "log_omega[1]", "someomega[1]", "omega[1,2]", "omega[0]", "omega[01]"
   )
 
   expect_equal(
     JAGS_indexed_parameter_columns(columns, "omega"),
-    c(TRUE, TRUE, TRUE, FALSE, FALSE, FALSE, FALSE, FALSE)
+    c(TRUE, TRUE, TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE)
   )
 
   samples <- matrix(
-    seq_len(16),
+    seq_len(20),
     nrow = 2,
     dimnames = list(NULL, columns)
   )
@@ -91,6 +91,47 @@ test_that("JAGS indexed parameter vector extraction sorts values", {
   expect_equal(
     unname(JAGS_indexed_parameter_vector(row_df, "omega")),
     c(1, 2)
+  )
+
+  heterogeneous <- data.frame(
+    "omega[2]" = 2,
+    label = "unused",
+    "omega[1]" = 1,
+    check.names = FALSE
+  )
+  heterogeneous_matrix <- JAGS_indexed_parameter_matrix(
+    heterogeneous,
+    "omega"
+  )
+  expect_true(is.numeric(heterogeneous_matrix))
+  expect_equal(unname(heterogeneous_matrix), matrix(c(1, 2), nrow = 1))
+
+  heterogeneous_vector <- JAGS_indexed_parameter_vector(
+    heterogeneous,
+    "omega"
+  )
+  expect_true(is.numeric(heterogeneous_vector))
+  expect_equal(unname(heterogeneous_vector), c(1, 2))
+  expect_equal(
+    unname(JAGS_indexed_parameter_vector(
+      list("omega[2]" = 2, label = "unused", "omega[1]" = 1),
+      "omega"
+    )),
+    c(1, 2)
+  )
+})
+
+test_that("JAGS indexed parameter extraction rejects duplicate indices", {
+  samples <- matrix(
+    1:4,
+    nrow = 2,
+    dimnames = list(NULL, c("omega[1]", "omega[1]"))
+  )
+
+  expect_error(
+    JAGS_indexed_parameter_matrix(samples, "omega"),
+    "duplicate index: 1",
+    fixed = TRUE
   )
 })
 

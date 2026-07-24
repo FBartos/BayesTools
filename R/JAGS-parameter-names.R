@@ -157,16 +157,15 @@ JAGS_indexed_parameter_matrix <- function(samples, parameter,
     stop("'samples' must be a matrix, data frame, mcmc, or mcmc.list object.",
          call. = FALSE)
   }
-  if(is.data.frame(samples)){
-    samples <- as.matrix(samples)
-  }
+  samples_is_data_frame <- is.data.frame(samples)
 
   columns <- colnames(samples)
   if(is.null(columns)){
     if(drop_missing){
       return(NULL)
     }
-    return(samples[, integer(0), drop = FALSE])
+    out <- samples[, integer(0), drop = FALSE]
+    return(if(samples_is_data_frame) as.matrix(out) else out)
   }
 
   selected <- .JAGS_indexed_parameter_sorted_columns(columns, parameter)
@@ -174,10 +173,12 @@ JAGS_indexed_parameter_matrix <- function(samples, parameter,
     if(drop_missing){
       return(NULL)
     }
-    return(samples[, integer(0), drop = FALSE])
+    out <- samples[, integer(0), drop = FALSE]
+    return(if(samples_is_data_frame) as.matrix(out) else out)
   }
 
-  return(samples[, selected, drop = FALSE])
+  out <- samples[, selected, drop = FALSE]
+  return(if(samples_is_data_frame) as.matrix(out) else out)
 }
 
 #' @rdname parameter_names
@@ -189,17 +190,21 @@ JAGS_indexed_parameter_vector <- function(row, parameter){
     if(nrow(row) != 1L){
       stop("'row' data frames must contain exactly one row.", call. = FALSE)
     }
-    row <- unlist(row[1L, , drop = TRUE], use.names = TRUE)
-  }else if(is.list(row) && !is.atomic(row)){
-    row <- unlist(row, use.names = TRUE)
+    row_names <- names(row)
+  }else{
+    row_names <- names(row)
   }
-
-  row_names <- names(row)
   if(is.null(row_names)){
     stop("'row' must be a named vector or one-row data frame.", call. = FALSE)
   }
 
   selected <- .JAGS_indexed_parameter_sorted_columns(row_names, parameter)
+  if(is.data.frame(row)){
+    return(unlist(row[1L, selected, drop = FALSE], use.names = TRUE))
+  }
+  if(is.list(row) && !is.atomic(row)){
+    return(unlist(row[selected], use.names = TRUE))
+  }
   if(length(selected) == 0L){
     return(row[integer(0)])
   }
@@ -233,17 +238,26 @@ JAGS_indexed_parameter_vector <- function(row, parameter){
 
 .JAGS_indexed_parameter_indices <- function(columns, parameter){
 
-  pattern <- paste0("^", JAGS_regex_escape(parameter), "\\[([0-9]+)\\]$")
+  pattern <- paste0("^", JAGS_regex_escape(parameter), "\\[([1-9][0-9]*)\\]$")
   matches <- regexec(pattern, columns, perl = TRUE)
   parts <- regmatches(columns, matches)
   out <- rep(NA_integer_, length(columns))
   has_match <- vapply(parts, length, integer(1)) == 2L
-  out[has_match] <- as.integer(vapply(
+  index_text <- vapply(
     parts[has_match],
     `[[`,
     character(1),
     2L
-  ))
+  )
+  index_values <- suppressWarnings(as.numeric(index_text))
+  if(any(!is.finite(index_values)) ||
+     any(index_values > .Machine$integer.max)){
+    stop(
+      "Indexed JAGS parameter columns contain an index outside the supported integer range.",
+      call. = FALSE
+    )
+  }
+  out[has_match] <- as.integer(index_values)
 
   return(out)
 }
@@ -254,6 +268,17 @@ JAGS_indexed_parameter_vector <- function(row, parameter){
   keep <- which(!is.na(indices))
   if(length(keep) == 0L){
     return(integer())
+  }
+  duplicate_indices <- unique(indices[keep][duplicated(indices[keep])])
+  if(length(duplicate_indices) > 0L){
+    stop(
+      "Indexed JAGS parameter '", parameter,
+      "' contains duplicate index",
+      if(length(duplicate_indices) > 1L) " values: " else ": ",
+      paste(duplicate_indices, collapse = ", "),
+      ".",
+      call. = FALSE
+    )
   }
 
   return(keep[order(indices[keep])])
