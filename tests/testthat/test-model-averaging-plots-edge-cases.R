@@ -480,6 +480,36 @@ test_that("conditional posterior prior overlay uses conditioned spike-and-slab s
   )
 })
 
+test_that("plot_posterior handles attached point priors outside xlim", {
+
+  theta <- structure(
+    rep(0, 64),
+    class = c("mixed_posteriors.simple", "mixed_posteriors"),
+    prior_list = list(prior("spike", list(0))),
+    models_ind = rep(1L, 64),
+    prior_density = BayesTools:::.prior_linear_density_point(0)
+  )
+  samples <- list(theta = theta)
+
+  expect_null(BayesTools:::.plot_data_attached_prior_density(
+    samples = samples,
+    parameter = "theta",
+    n_points = 32,
+    x_range = c(10, 20)
+  ))
+  expect_s3_class(
+    plot_posterior(
+      samples,
+      "theta",
+      prior = TRUE,
+      plot_type = "ggplot",
+      xlim = c(10, 20),
+      n_points = 32
+    ),
+    "ggplot"
+  )
+})
+
 test_that("conditional PET/PEESE prior overlays do not reintroduce excluded bias branches", {
   prior_list <- list(
     bias = prior_mixture(

@@ -158,7 +158,7 @@
     return(NULL)
   }
 
-  .prior_linear_density_to_plot_data(
+  plot_data <- .prior_linear_density_to_plot_data(
     prior_density,
     n_points                  = n_points,
     x_range                   = x_range,
@@ -166,6 +166,12 @@
     transformation_arguments  = transformation_arguments,
     transformation_settings   = transformation_settings
   )
+
+  if(length(plot_data) == 0L){
+    return(NULL)
+  }
+
+  return(plot_data)
 }
 
 .plot_data_samples_prior_bounds <- function(prior_list, factor_contrasts = FALSE){
