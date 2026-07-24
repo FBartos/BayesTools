@@ -250,6 +250,15 @@
     if(!is.prior.ordered(prior)){
       next
     }
+    total_name <- .prior_ordered_total_name(names(prior_list)[i])
+    if(total_name %in% names(prior_list)){
+      stop(
+        "Ordered prior '", names(prior_list)[i],
+        "' generates hidden total node '", total_name,
+        "', which conflicts with another prior parameter.",
+        call. = FALSE
+      )
+    }
     metadata <- .prior_ordered_metadata(prior)
     for(record in metadata$allocations){
       signature <- .prior_ordered_allocation_signature(record)

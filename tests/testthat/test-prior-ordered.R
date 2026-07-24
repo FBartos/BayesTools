@@ -343,6 +343,31 @@ test_that("ordered allocation id sharing emits one shared allocation", {
   )
 })
 
+test_that("ordered hidden total nodes cannot collide with formula coefficients", {
+  df <- data.frame(
+    y = seq_len(6),
+    f = ordered(
+      rep(c("low", "mid", "high"), 2),
+      levels = c("low", "mid", "high")
+    ),
+    f_ordered_total = rep(c(-1, 1), 3)
+  )
+
+  expect_error(
+    JAGS_formula(
+      y ~ f + f_ordered_total,
+      "mu",
+      data = df,
+      prior_list = list(
+        intercept = prior("normal", list(0, 1)),
+        f = prior_ordered(prior("normal", list(0, 1))),
+        f_ordered_total = prior("normal", list(0, 1))
+      )
+    ),
+    "generates hidden total node 'mu_f_ordered_total'"
+  )
+})
+
 test_that("ordered fixed contrasts propagate to random slope designs", {
   df <- data.frame(
     y = seq_len(12),
