@@ -321,11 +321,12 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
       formula_data_list  = formula_data_list,
       formula_prior_list = formula_prior_list,
       ...
-    )), error = function(e)e)
+  )), error = function(e)e)
 
   # add a warning attribute and call the warning if not silent
-  if(!inherits(marglik, "error") && marglik[["niter"]] > maxiter){
-    attr(marglik, "warning") <- "Marginal likelihood could not be estimated within the maximum number of itetations and might be more variable than usual."
+  if(!inherits(marglik, "error") &&
+     any(marglik[["niter"]] > maxiter, na.rm = TRUE)){
+    attr(marglik, "warning") <- "Marginal likelihood could not be estimated within the maximum number of iterations and might be more variable than usual."
     if(!silent)
       warning(attr(marglik, "warning"), immediate. = TRUE)
   }
