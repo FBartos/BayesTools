@@ -201,19 +201,23 @@ transformation rather than the represented distribution.
 default should use a support-respecting sampler or fail with a diagnostic that
 identifies the approximation and invalid-draw rate.
 
-## D15. Finite-grid support and tail probabilities
+## D15. Deterministic finite-grid prior tails
 
-**Issue.** KDE and marginal-posterior objects often use the observed sample or
-stored grid range as effective support. One-sided hypotheses and transformations
-can therefore assign exactly zero mass outside a finite numerical range even
-when the underlying distribution has unbounded support.
+**Issue.** Raw Gaussian KDE tails and exact scalar-prior point densities are now
+handled without treating the sample/evaluation range as compact support.
+However, deterministic `prior_linear_density` grids are finite, renormalized
+numerical approximations built from tail quantiles. They retain neither omitted
+tail mass nor enough source provenance to recover density or CDF values outside
+the grid.
 
-**Impact.** Tail probabilities and Bayes factors can be overly confident and may
-depend materially on grid construction.
+**Impact.** Treating an outside-grid value as exact support zero is wrong, but
+extrapolating a deterministic grid is not statistically identified either.
+Point or region Bayes factors can therefore depend on an undocumented choice.
 
-**Suggested change.** Store mathematical support separately from evaluation
-range, extend/integrate tails with a documented approximation, and surface a
-diagnostic when a requested hypothesis relies on unresolved tail mass.
+**Suggested change.** Carry exact support plus source PDF/CDF provenance and
+recompute or extend the grid at the queried value where possible. When that
+provenance is unavailable, reject the query with an explicit "outside numerical
+approximation range" error; do not silently assign zero or invent KDE tails.
 
 ## D16. One-sided weight-function marginal inference
 
