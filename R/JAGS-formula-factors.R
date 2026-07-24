@@ -215,6 +215,14 @@
 
   return(model_matrix)
 }
+.bt_validate_model_matrix_finite <- function(model_matrix, context){
+
+  if(any(!is.finite(model_matrix))){
+    stop(context, " design matrix contains non-finite values.", call. = FALSE)
+  }
+
+  invisible(TRUE)
+}
 
 .complete_factor_metadata_prior_list <- function(prior_list){
 

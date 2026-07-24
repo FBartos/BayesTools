@@ -320,6 +320,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     stop("Formula predictors contain missing values.", call. = FALSE)
   }
   model_matrix <- .bt_model_matrix(model_frame, formula = formula, data = data)
+  .bt_validate_model_matrix_finite(model_matrix, "Formula")
   raw_column_names <- colnames(model_matrix)
 
   # check whether intercept is unique parameter

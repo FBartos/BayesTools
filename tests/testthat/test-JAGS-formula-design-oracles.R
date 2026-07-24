@@ -456,6 +456,66 @@ test_that("JAGS_formula rejects matrix-valued continuous predictors", {
   )
 })
 
+test_that("formula design matrices reject non-finite predictor values", {
+  prior_list <- list(
+    intercept = prior("normal", list(0, 1)),
+    x = prior("normal", list(0, 1))
+  )
+  expect_error(
+    JAGS_formula(
+      ~ x,
+      "mu",
+      data.frame(x = c(1, Inf, 2)),
+      prior_list
+    ),
+    "Formula design matrix contains non-finite values",
+    fixed = TRUE
+  )
+
+  fitted <- JAGS_formula(
+    ~ x,
+    "mu",
+    data.frame(x = 1:3),
+    prior_list
+  )
+  posterior <- coda::mcmc(matrix(
+    c(0, 1),
+    nrow = 1,
+    dimnames = list(NULL, c("mu_intercept", "mu_x"))
+  ))
+  attr(posterior, "formula_design") <- list(mu = fitted$formula_design)
+  expect_error(
+    JAGS_evaluate_formula(
+      posterior,
+      ~ x,
+      "mu",
+      data.frame(x = Inf),
+      fitted$prior_list
+    ),
+    "Formula design matrix contains non-finite values",
+    fixed = TRUE
+  )
+
+  positive_prior <- prior(
+    "normal",
+    list(0, 1),
+    truncation = list(lower = 0, upper = Inf)
+  )
+  expect_error(
+    JAGS_formula(
+      ~ 1 + diag(0 + x | id),
+      "mu",
+      data.frame(x = c(1, Inf), id = factor(c("a", "b"))),
+      list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(
+        id = random_block(sd = positive_prior)
+      )
+    ),
+    "Random-effect block 'id' design matrix contains non-finite values",
+    fixed = TRUE
+  )
+})
+
 test_that("JAGS_formula validates JAGS parameter names", {
   expect_no_error(
     JAGS_formula(

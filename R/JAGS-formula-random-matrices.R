@@ -21,17 +21,18 @@
 
   model_frame <- stats::model.frame(matrix_formula, data = data)
   model_matrix <- .bt_model_matrix(model_frame, formula = matrix_formula, data = data)
+  label <- "Random-effect term"
+  if(!is.null(block_name) && nzchar(block_name)){
+    label <- paste0("Random-effect block '", block_name, "'")
+  }
   if(nrow(model_matrix) != nrow(data)){
-    label <- "Random-effect term"
-    if(!is.null(block_name) && nzchar(block_name)){
-      label <- paste0("Random-effect block '", block_name, "'")
-    }
     stop(
       label,
       " contains missing predictor values; random-effect design matrices must have one row per data row.",
       call. = FALSE
     )
   }
+  .bt_validate_model_matrix_finite(model_matrix, label)
 
   if(!has_intercept && isTRUE(preserve_no_intercept_contrasts)){
     intercept_column <- which(colnames(model_matrix) == "(Intercept)")
