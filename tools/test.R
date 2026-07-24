@@ -1,16 +1,9 @@
-setwd("C:/R-Packages/BayesTools")
-clean_cached_fits()
-test_files_dir <- file.path(tempdir(), "BayesTools_test_files")
-dir.create(test_files_dir, recursive = TRUE, showWarnings = FALSE)
+args <- commandArgs(trailingOnly = TRUE)
+profile <- if(length(args) > 0L && nzchar(args[[1L]])) args[[1L]] else "all"
 
 Sys.setenv(
-  BAYESTOOLS_TEST_PROFILE = "all",
-  BAYESTOOLS_TEST_SKIP_REFIT = "false",
-  BAYESTOOLS_TEST_FILES_DIR = normalizePath(test_files_dir, winslash = "/", mustWork = TRUE),
-  NOT_CRAN = "true",
-  VDIFFR_RUN_TESTS = "true"
+  BAYESTOOLS_TEST_PROFILE = profile,
+  BAYESTOOLS_TEST_SKIP_REFIT = "false"
 )
 
-Sys.unsetenv("AGENT")
-
-devtools::test()
+source(file.path("tools", "test-profile.R"))
