@@ -96,6 +96,31 @@ test_that("random_effects_compile validates block requests", {
     "cannot be both sampled and marginalized",
     fixed = TRUE
   )
+  malformed_mode <- BayesTools:::.bt_random_effects_compile_resolved(
+    sampled = "study",
+    marginalized = character(),
+    mode = c(study = "invalid")
+  )
+  expect_error(
+    BayesTools:::.bt_check_random_effects_compile(malformed_mode),
+    "must be 'sampled' or 'marginalized'",
+    fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.bt_random_effects_compile_mode(malformed_mode, "study"),
+    "must be 'sampled' or 'marginalized'",
+    fixed = TRUE
+  )
+  inconsistent_mode <- BayesTools:::.bt_random_effects_compile_resolved(
+    sampled = "study",
+    marginalized = "estimate",
+    mode = c(study = "marginalized", estimate = "sampled")
+  )
+  expect_error(
+    BayesTools:::.bt_check_random_effects_compile(inconsistent_mode),
+    "inconsistent with the sampled and marginalized blocks",
+    fixed = TRUE
+  )
   expect_error(
     .re_compile_result(random_effects_compile(marginalized = "missing")),
     "unknown random-effect block",

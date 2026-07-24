@@ -80,6 +80,30 @@ is.random_effects_compile <- function(x){
         call. = FALSE
       )
     }
+    mode <- x$mode
+    if(!is.character(mode) || anyNA(mode) ||
+       any(!mode %in% c("sampled", "marginalized"))){
+      stop(
+        "Resolved random-effect compile modes must be 'sampled' or 'marginalized'.",
+        call. = FALSE
+      )
+    }
+    mode_names <- names(mode)
+    expected_names <- c(x$sampled, x$marginalized)
+    if(is.null(mode_names) || any(!nzchar(mode_names)) ||
+       anyDuplicated(mode_names) || !setequal(mode_names, expected_names)){
+      stop(
+        "Resolved random-effect compile modes must be uniquely named for every compiled block.",
+        call. = FALSE
+      )
+    }
+    if(any(mode[x$sampled] != "sampled") ||
+       any(mode[x$marginalized] != "marginalized")){
+      stop(
+        "Resolved random-effect compile modes are inconsistent with the sampled and marginalized blocks.",
+        call. = FALSE
+      )
+    }
   }
 
   invisible(TRUE)
@@ -147,6 +171,13 @@ is.random_effects_compile <- function(x){
   mode <- random_effects_compile$mode[[block_name]]
   if(is.null(mode) || length(mode) != 1L || is.na(mode) || !nzchar(mode)){
     return("sampled")
+  }
+  if(!mode %in% c("sampled", "marginalized")){
+    stop(
+      "Resolved random-effect compile mode for block '", block_name,
+      "' must be 'sampled' or 'marginalized'.",
+      call. = FALSE
+    )
   }
   mode
 }
