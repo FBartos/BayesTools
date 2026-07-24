@@ -68,12 +68,12 @@ double return_half_probability(double p, bool log_p)
   return 0.5 * p;
 }
 
-double return_half_plus_half_probability(double p, bool log_p)
+double return_one_minus_half_probability(double p, bool log_p)
 {
   if(log_p){
-    return log_half() + std::log1p(p);
+    return log1mexp(log_half() + p);
   }
-  return 0.5 + 0.5 * p;
+  return 1.0 - 0.5 * p;
 }
 
 bool inside(double x, double lower, double upper)
@@ -164,15 +164,15 @@ double moment_cdf(double q, double location, double tau, double order,
         log_p
       );
     }
-    return return_half_plus_half_probability(
-      pchisq(z, 2.0 * order + 1.0, true, false),
+    return return_one_minus_half_probability(
+      pchisq(z, 2.0 * order + 1.0, false, log_p),
       log_p
     );
   }
   if(delta > 0.0){
     if(lower_tail){
-      return return_half_plus_half_probability(
-        pchisq(z, 2.0 * order + 1.0, true, false),
+      return return_one_minus_half_probability(
+        pchisq(z, 2.0 * order + 1.0, false, log_p),
         log_p
       );
     }
@@ -210,15 +210,15 @@ double invmoment_cdf(double q, double location, double tau, double order,
         log_p
       );
     }
-    return return_half_plus_half_probability(
-      pgamma(s, df / (2.0 * order), 1.0, false, false),
+    return return_one_minus_half_probability(
+      pgamma(s, df / (2.0 * order), 1.0, true, log_p),
       log_p
     );
   }
   if(delta > 0.0){
     if(lower_tail){
-      return return_half_plus_half_probability(
-        pgamma(s, df / (2.0 * order), 1.0, false, false),
+      return return_one_minus_half_probability(
+        pgamma(s, df / (2.0 * order), 1.0, true, log_p),
         log_p
       );
     }

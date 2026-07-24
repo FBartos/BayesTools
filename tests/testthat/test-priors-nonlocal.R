@@ -224,6 +224,101 @@ test_that("inverse-moment prior density, distribution, and quantiles match refer
   )
 })
 
+test_that("native CDFs preserve finite near-unit log probabilities", {
+  location <- 0.25
+  order <- 1
+
+  moment_tau <- 0.125
+  moment_distance <- 10
+  moment_log_small_tail <- -log(2) + stats::pchisq(
+    moment_distance^2 / moment_tau,
+    2 * order + 1,
+    lower.tail = FALSE,
+    log.p = TRUE
+  )
+  moment_log_near_unit <- log1p(-exp(moment_log_small_tail))
+  moment_actual <- c(
+    BayesTools:::.pmoment_prior(
+      location - moment_distance, location, moment_tau, order,
+      lower.tail = FALSE, log.p = TRUE
+    ),
+    BayesTools:::.pmoment_prior(
+      location + moment_distance, location, moment_tau, order,
+      log.p = TRUE
+    )
+  )
+
+  expect_true(all(is.finite(moment_actual)))
+  expect_true(all(moment_actual < 0))
+  expect_equal(
+    moment_actual / moment_log_near_unit,
+    rep(1, 2),
+    tolerance = 1e-12
+  )
+
+  moment_round_trip <- c(
+    BayesTools:::.qmoment_prior(
+      moment_log_near_unit, location, moment_tau, order,
+      lower.tail = FALSE, log.p = TRUE
+    ),
+    BayesTools:::.qmoment_prior(
+      moment_log_near_unit, location, moment_tau, order,
+      log.p = TRUE
+    )
+  )
+  expect_equal(
+    (moment_round_trip - location) / moment_distance,
+    c(-1, 1),
+    tolerance = 1e-12
+  )
+
+  invmoment_tau <- 0.5
+  invmoment_df <- 3
+  invmoment_distance <- 1e6
+  invmoment_s <- (invmoment_tau / invmoment_distance^2)^order
+  invmoment_log_small_tail <- -log(2) + stats::pgamma(
+    invmoment_s,
+    invmoment_df / (2 * order),
+    lower.tail = TRUE,
+    log.p = TRUE
+  )
+  invmoment_log_near_unit <- log1p(-exp(invmoment_log_small_tail))
+  invmoment_actual <- c(
+    BayesTools:::.pinvmoment_prior(
+      location - invmoment_distance, location, invmoment_tau, order,
+      invmoment_df, lower.tail = FALSE, log.p = TRUE
+    ),
+    BayesTools:::.pinvmoment_prior(
+      location + invmoment_distance, location, invmoment_tau, order,
+      invmoment_df, log.p = TRUE
+    )
+  )
+
+  expect_true(all(is.finite(invmoment_actual)))
+  expect_true(all(invmoment_actual < 0))
+  expect_equal(
+    invmoment_actual / invmoment_log_near_unit,
+    rep(1, 2),
+    tolerance = 1e-12
+  )
+
+  invmoment_round_trip <- c(
+    BayesTools:::.qinvmoment_prior(
+      invmoment_log_near_unit, location, invmoment_tau, order,
+      invmoment_df, lower.tail = FALSE, log.p = TRUE
+    ),
+    BayesTools:::.qinvmoment_prior(
+      invmoment_log_near_unit, location, invmoment_tau, order,
+      invmoment_df, log.p = TRUE
+    )
+  )
+  expect_equal(
+    (invmoment_round_trip - location) / invmoment_distance,
+    c(-1, 1),
+    tolerance = 1e-12
+  )
+})
+
 test_that("native quantiles preserve extreme finite log probabilities", {
   log_probs <- c(-746, -1000)
 
