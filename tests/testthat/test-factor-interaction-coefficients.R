@@ -78,6 +78,79 @@ test_that("as_mixed_posteriors handles treatment factor-continuous interaction c
 })
 
 
+test_that("marginal estimates unscale fixed-factor interaction summaries", {
+
+  df <- data.frame(
+    alloc = factor(
+      rep(c("alternate", "random", "systematic"), each = 4),
+      levels = c("alternate", "random", "systematic")
+    ),
+    year = seq(10, 32, length.out = 12)
+  )
+  formula_result <- JAGS_formula(
+    formula       = ~ alloc * year,
+    parameter     = "mu",
+    data          = df,
+    formula_scale = list(year = TRUE),
+    prior_list    = list(
+      intercept    = prior("normal", list(0, 1)),
+      alloc        = prior_factor("normal", list(0, 1), contrast = "treatment"),
+      year         = prior("normal", list(0, 1)),
+      "alloc:year" = prior_factor("normal", list(0, 1), contrast = "treatment")
+    )
+  )
+
+  parameter <- "mu_alloc__xXx__year"
+  interaction_prior <- formula_result$prior_list[[parameter]]
+  posterior <- matrix(seq_len(12), nrow = 6, ncol = 2)
+  colnames(posterior) <- paste0(parameter, "[", 1:2, "]")
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- formula_result$prior_list
+  attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
+  attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
+
+  scaled_samples <- as_mixed_posteriors(
+    model = fit,
+    parameters = parameter
+  )
+  marginal <- marginal_posterior(
+    samples = scaled_samples,
+    parameter = parameter,
+    use_formula = FALSE
+  )
+  samples <- stats::setNames(list(marginal), parameter)
+  inference <- stats::setNames(
+    list(stats::setNames(as.list(rep(1, length(marginal))), names(marginal))),
+    parameter
+  )
+
+  table <- marginal_estimates_table(
+    samples = samples,
+    inference = inference,
+    parameters = parameter,
+    probs = c(0.25, 0.75),
+    transform_scaled = TRUE,
+    formula_scale = attr(fit, "formula_scale")
+  )
+
+  expected_samples <- posterior %*% t(attr(interaction_prior, "factor_design"))
+  expected_samples <- expected_samples / formula_result$formula_scale$mu_year$sd
+  expected_summary <- cbind(
+    Mean = colMeans(expected_samples),
+    SD = apply(expected_samples, 2, stats::sd),
+    "0.25" = apply(expected_samples, 2, stats::quantile, probs = 0.25),
+    "0.75" = apply(expected_samples, 2, stats::quantile, probs = 0.75)
+  )
+
+  expect_equal(
+    unname(as.matrix(table[, colnames(expected_summary)])),
+    unname(expected_summary),
+    tolerance = 1e-12
+  )
+})
+
+
 test_that("marginal_posterior handles treatment factor-continuous interaction coefficients", {
 
   df <- data.frame(

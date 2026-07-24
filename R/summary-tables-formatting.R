@@ -238,21 +238,36 @@
   }
 
   sample_names <- names(samples)
-  transformable <- sapply(samples, function(x) is.numeric(x) || is.matrix(x))
+  nested_transformable <- vapply(samples, function(x){
+    is.list(x) && length(x) > 0L &&
+      all(vapply(x, function(value) is.numeric(value) || is.matrix(value), logical(1)))
+  }, logical(1))
+  transformable <- vapply(
+    samples,
+    function(x) is.numeric(x) || is.matrix(x),
+    logical(1)
+  ) | nested_transformable
   transformable_names <- sample_names[transformable]
 
   if(length(transformable_names) == 0){
     return(samples)
   }
 
-  n_samples <- if(is.matrix(samples[[transformable_names[1]]])){
-    nrow(samples[[transformable_names[1]]])
+  first_name <- transformable_names[1]
+  n_samples <- if(nested_transformable[[first_name]]){
+    length(samples[[first_name]][[1]])
+  }else if(is.matrix(samples[[first_name]])){
+    nrow(samples[[first_name]])
   }else{
-    length(samples[[transformable_names[1]]])
+    length(samples[[first_name]])
   }
 
   sample_columns <- lapply(transformable_names, function(name){
-    if(is.matrix(samples[[name]])){
+    if(nested_transformable[[name]]){
+      temp_samples <- do.call(cbind, lapply(samples[[name]], as.numeric))
+      colnames(temp_samples) <- paste0(name, "[", seq_along(samples[[name]]), "]")
+      return(temp_samples)
+    }else if(is.matrix(samples[[name]])){
       temp_samples <- samples[[name]]
       if(is.null(colnames(temp_samples))){
         colnames(temp_samples) <- if(ncol(temp_samples) == 1) name else paste0(name, "[", seq_len(ncol(temp_samples)), "]")
@@ -274,12 +289,27 @@
   posterior_matrix <- .apply_unscale_transform(posterior_matrix, formula_scale)
 
   for(name in transformable_names){
-    old_attrs <- attributes(samples[[name]])
     column_names <- colnames(sample_columns[[name]])
 
-    if(is.matrix(samples[[name]])){
+    if(nested_transformable[[name]]){
+      for(i in seq_along(samples[[name]])){
+        old_sample <- samples[[name]][[i]]
+        transformed_sample <- posterior_matrix[, column_names[i]]
+        if(is.matrix(old_sample)){
+          old_sample[] <- transformed_sample
+          samples[[name]][[i]] <- old_sample
+        }else{
+          old_attrs <- attributes(old_sample)
+          samples[[name]][[i]] <- transformed_sample
+          for(attr_name in setdiff(names(old_attrs), "names")){
+            attr(samples[[name]][[i]], attr_name) <- old_attrs[[attr_name]]
+          }
+        }
+      }
+    }else if(is.matrix(samples[[name]])){
       samples[[name]][, seq_along(column_names)] <- posterior_matrix[, column_names, drop = FALSE]
     }else{
+      old_attrs <- attributes(samples[[name]])
       samples[[name]] <- posterior_matrix[, column_names]
       for(attr_name in setdiff(names(old_attrs), "names")){
         attr(samples[[name]], attr_name) <- old_attrs[[attr_name]]
