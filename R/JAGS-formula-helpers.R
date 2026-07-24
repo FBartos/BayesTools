@@ -83,6 +83,9 @@
       return(call("+", lhs, rhs))
     }
     if(call_name == "-" && length(x) == 3L){
+      if(.bt_contains_expression_call(x[[3L]])){
+        stop("expression() terms must be additive formula terms.", call. = FALSE)
+      }
       lhs <- .bt_remove_expression_terms(x[[2L]])
       rhs <- .bt_remove_expression_terms(x[[3L]])
       if(is.null(lhs) && is.null(rhs)){

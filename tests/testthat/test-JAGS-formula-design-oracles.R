@@ -669,6 +669,30 @@ test_that("formula expression terms are parsed structurally", {
     list(intercept = prior("normal", list(0, 1)))
   )
   expect_equal(expression_result$formula_design$transformed_terms, list("log(x)"))
+
+  expect_error(
+    JAGS_formula(
+      ~ x - expression(z[i]),
+      "mu",
+      data.frame(x = c(1, 2, 3), z = c(3, 2, 1)),
+      list(
+        intercept = prior("normal", list(0, 1)),
+        x = prior("normal", list(0, 1))
+      )
+    ),
+    "expression() terms must be additive formula terms",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_formula(
+      ~ expression(a[i]) - expression(b[i]),
+      "mu",
+      data.frame(a = c(1, 2, 3), b = c(3, 2, 1)),
+      list(intercept = prior("normal", list(0, 1)))
+    ),
+    "expression() terms must be additive formula terms",
+    fixed = TRUE
+  )
 })
 
 test_that("JAGS_evaluate_formula does not silently omit literal expressions", {
