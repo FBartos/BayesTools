@@ -534,6 +534,32 @@ test_that("raw random-effect correlation aliases include logit-scale rho columns
 })
 
 
+test_that("raw logit-scale correlations use correlation display labels", {
+
+  raw_name <- "mu__xREx__id_rho_logit"
+  formula_design <- structure(
+    list(
+      parameter = "mu",
+      random_effects = list(list(
+        parameter_stem = "mu__xREx__id",
+        block_name = "id"
+      ))
+    ),
+    class = c("BayesTools_formula_design", "list")
+  )
+
+  display_name <- BayesTools:::.bt_random_effect_summary_display_names(
+    names = "sd((mu) rho_logit|id)",
+    raw_names = raw_name,
+    prior_list = list(),
+    formula_prefix = TRUE,
+    formula_design = formula_design
+  )
+
+  expect_identical(display_name, "(mu) rho_logit(id)")
+})
+
+
 test_that("runjags summary helper keeps only requested diagnostics", {
 
   posterior <- matrix(

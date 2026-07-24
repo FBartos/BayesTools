@@ -436,7 +436,8 @@
   group <- .bt_random_effect_summary_group_label(random_term)
   rho_names <- c(
     rho = paste0(stem, "_rho"),
-    rho_z = paste0(stem, "_rho_z")
+    rho_z = paste0(stem, "_rho_z"),
+    rho_logit = paste0(stem, "_rho_logit")
   )
   for(rho_label in names(rho_names)){
     names[raw_names == rho_names[[rho_label]]] <- paste0(
