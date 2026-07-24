@@ -45,7 +45,8 @@
                                                           posterior,
                                                           formula_target = NULL,
                                                           blocks = NULL,
-                                                          new_levels = NULL){
+                                                          new_levels = NULL,
+                                                          replay_fitted_formula = FALSE){
 
   fitted_design <- .bt_JAGS_evaluate_formula_design(fit, parameter)
   if(is.null(fitted_design)){
@@ -80,7 +81,8 @@
     requested_terms = random_terms,
     formula_target = formula_target,
     blocks = blocks,
-    parameter = parameter
+    parameter = parameter,
+    replay_fitted_formula = replay_fitted_formula
   )
 
   fixed_formula <- .remove_random_effects(formula)
@@ -121,7 +123,8 @@
                                                           requested_terms,
                                                           formula_target,
                                                           blocks,
-                                                          parameter){
+                                                          parameter,
+                                                          replay_fitted_formula = FALSE){
 
   fitted_terms <- .bt_formula_design_random_effects(fitted_design)
   fitted_names <- vapply(fitted_terms, `[[`, character(1), "block_name")
@@ -137,7 +140,7 @@
     }
   }
 
-  if(!identical(formula_target, "conditional")){
+  if(is.null(formula_target) && isTRUE(replay_fitted_formula)){
     return(.bt_formula_design_sampled_random_effects(fitted_design))
   }
 
@@ -154,8 +157,8 @@
   marginalized <- selected_names[modes == "marginalized"]
   if(length(marginalized) > 0L){
     stop(
-      "JAGS_evaluate_formula() cannot use formula_target = \"conditional\" for ",
-      "random-effect block(s) compiled as marginalized: ",
+      "JAGS_evaluate_formula() cannot condition on random-effect block(s) ",
+      "compiled as marginalized: ",
       paste(marginalized, collapse = ", "),
       ". Use formula_target = \"marginal\" with JAGS_predict_formula() or refit ",
       "with the block(s) sampled.",

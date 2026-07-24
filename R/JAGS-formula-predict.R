@@ -136,7 +136,8 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
       posterior = posterior,
       formula_target = formula_target,
       blocks = blocks,
-      new_levels = new_levels
+      new_levels = new_levels,
+      replay_fitted_formula = replay_fitted_formula
     ))
   }
   if(is.null(formula_target) &&

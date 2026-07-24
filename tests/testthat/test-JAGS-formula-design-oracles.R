@@ -9817,6 +9817,17 @@ test_that("JAGS_evaluate_formula sums multiple monitored random-effect blocks", 
   )
 
   expect_equal(unname(drop(prediction)), c(1.5, 3.7, 4.7, 7.1))
+
+  study_prediction <- JAGS_evaluate_formula(
+    fit = fit,
+    formula = ~ 1 + x +
+      random(1 | id, name = "study", covariance = "diag"),
+    parameter = "mu",
+    data = df,
+    prior_list = formula_result$prior_list
+  )
+
+  expect_equal(unname(drop(study_prediction)), c(1.5, 3.5, 4.5, 6.5))
 })
 
 test_that("JAGS_evaluate_formula reconstructs factor random-slope designs", {
