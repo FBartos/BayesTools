@@ -187,48 +187,23 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
     # check the proper data input for each factor prior
     for(factor in names(predictors_type[predictors_type == "factor"])){
 
-      # select the corresponding prior in the variable
-      this_prior <- prior_list_formula[[factor]]
-
-      ordered_factor <- is.prior.ordered(this_prior)
-
-      if(is.factor(data[,factor])){
-        if(all(levels(data[,factor]) %in% .get_prior_factor_level_names(this_prior))){
-          # either the formatting is correct, or the supplied levels are a subset of the original levels
-          # reformat to check ordering and etc...
-          data[,factor] <- if(ordered_factor){
-            ordered(data[,factor], levels = .get_prior_factor_level_names(this_prior))
-          }else{
-            factor(data[,factor], levels = .get_prior_factor_level_names(this_prior))
-          }
-        }else{
-          # there are some additional levels
-          stop(paste0("Levels specified in the '", factor, "' factor variable do not match the levels used for model specification."))
-        }
-      }else if(all(unique(data[,factor]) %in% .get_prior_factor_level_names(this_prior))){
-        # the variable was not passed as a factor but the values matches the factor levels
-        data[,factor] <- if(ordered_factor){
-          ordered(data[,factor], levels = .get_prior_factor_level_names(this_prior))
-        }else{
-          factor(data[,factor], levels = .get_prior_factor_level_names(this_prior))
-        }
-      }else{
-        # there are some additional mismatching values
+      factor_metadata <- .bt_JAGS_evaluate_factor_metadata(
+        predictor = factor,
+        prior_list = prior_list_formula,
+        fitted_design = fitted_design
+      )
+      observed_levels <- unique(as.character(data[[factor]]))
+      observed_levels <- observed_levels[!is.na(observed_levels)]
+      if(any(!observed_levels %in% factor_metadata$levels)){
         stop(paste0("Levels specified in the '", factor, "' factor variable do not match the levels used for model specification."))
       }
 
-      # set the contrast
-      if(is.prior.orthonormal(this_prior)){
-        stats::contrasts(data[[factor]]) <- "contr.orthonormal"
-      }else if(is.prior.meandif(this_prior)){
-        stats::contrasts(data[[factor]]) <- "contr.meandif"
-      }else if(is.prior.independent(this_prior)){
-        stats::contrasts(data[[factor]]) <- "contr.independent"
-      }else if(is.prior.treatment(this_prior)){
-        stats::contrasts(data[[factor]]) <- "contr.treatment"
-      }else if(is.prior.ordered(this_prior)){
-        stats::contrasts(data[[factor]]) <- .prior_ordered_contrast_name(this_prior$contrast)
+      data[[factor]] <- if(factor_metadata$ordered){
+        ordered(data[[factor]], levels = factor_metadata$levels)
+      }else{
+        factor(data[[factor]], levels = factor_metadata$levels)
       }
+      stats::contrasts(data[[factor]]) <- factor_metadata$contrast
     }
   }
   if(any(predictors_type == "continuous")){
@@ -391,6 +366,83 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   }
 
   predictors_type
+}
+
+.bt_JAGS_evaluate_factor_metadata <- function(predictor, prior_list,
+                                              fitted_design){
+
+  candidate_names <- names(prior_list)[vapply(
+    seq_along(prior_list),
+    function(i){
+      identical(names(prior_list)[[i]], predictor) ||
+        predictor %in% attr(prior_list[[i]], "factor_terms", exact = TRUE)
+    },
+    logical(1)
+  )]
+  candidate_priors <- prior_list[candidate_names]
+  this_prior <- if(length(candidate_priors) > 0L) candidate_priors[[1L]] else NULL
+
+  fitted_levels <- fitted_design$xlevels[[predictor]]
+  if(is.null(fitted_levels)){
+    fitted_levels <- NULL
+    for(candidate_name in candidate_names){
+      level_names <- attr(prior_list[[candidate_name]], "level_names", exact = TRUE)
+      if(is.list(level_names)){
+        level_names <- level_names[[predictor]]
+      }else if(!identical(candidate_name, predictor)){
+        level_names <- NULL
+      }
+      if(!is.null(level_names)){
+        fitted_levels <- level_names
+        break
+      }
+    }
+  }
+  if(is.null(fitted_levels) || length(fitted_levels) == 0L){
+    stop(
+      "Could not recover fitted levels for factor predictor '", predictor,
+      "'. Supply fit metadata created by JAGS_formula().",
+      call. = FALSE
+    )
+  }
+
+  fitted_factor <- fitted_design$model_frame[[predictor]]
+  ordered_factor <- if(is.factor(fitted_factor)){
+    is.ordered(fitted_factor)
+  }else{
+    !is.null(this_prior) && is.prior.ordered(this_prior)
+  }
+
+  fitted_contrast <- fitted_design$contrasts[[predictor]]
+  if(is.null(fitted_contrast) && !is.null(this_prior)){
+    factor_contrasts <- attr(this_prior, "factor_contrasts", exact = TRUE)
+    if(!is.null(factor_contrasts) && predictor %in% names(factor_contrasts)){
+      fitted_contrast <- factor_contrasts[[predictor]]
+    }else if(is.prior.orthonormal(this_prior)){
+      fitted_contrast <- "contr.orthonormal"
+    }else if(is.prior.meandif(this_prior)){
+      fitted_contrast <- "contr.meandif"
+    }else if(is.prior.independent(this_prior)){
+      fitted_contrast <- "contr.independent"
+    }else if(is.prior.treatment(this_prior)){
+      fitted_contrast <- "contr.treatment"
+    }else if(is.prior.ordered(this_prior)){
+      fitted_contrast <- .prior_ordered_contrast_name(this_prior$contrast)
+    }
+  }
+  if(is.null(fitted_contrast)){
+    stop(
+      "Could not recover the fitted contrast for factor predictor '",
+      predictor, "'. Supply fit metadata created by JAGS_formula().",
+      call. = FALSE
+    )
+  }
+
+  list(
+    levels = as.character(fitted_levels),
+    ordered = ordered_factor,
+    contrast = fitted_contrast
+  )
 }
 
 .bt_formula_prediction_target <- function(formula_target,

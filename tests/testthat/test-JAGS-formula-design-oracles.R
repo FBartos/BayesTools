@@ -473,6 +473,74 @@ test_that("JAGS_evaluate_formula resolves interaction-only continuous predictors
   )
 })
 
+test_that("JAGS_evaluate_formula replays interaction-only factor metadata", {
+  fitted_data <- data.frame(
+    x = c(-2, -1, 1, 2, 3, 4),
+    g = factor(c("a", "b", "c", "a", "b", "c"), levels = c("c", "a", "b"))
+  )
+  formula_result <- JAGS_formula(
+    ~ x:g,
+    "mu",
+    fitted_data,
+    list(
+      intercept = prior("normal", list(0, 1)),
+      "x:g" = prior_factor("normal", list(0, 1), contrast = "treatment")
+    )
+  )
+  posterior <- coda::mcmc(matrix(
+    c(1.5, -0.75, 0.25, 1.25),
+    nrow = 1,
+    dimnames = list(
+      NULL,
+      c(
+        "mu_intercept",
+        "mu_x__xXx__g[1]",
+        "mu_x__xXx__g[2]",
+        "mu_x__xXx__g[3]"
+      )
+    )
+  ))
+  attr(posterior, "formula_design") <- list(mu = formula_result$formula_design)
+
+  newdata <- data.frame(
+    x = c(-3, 0.5, 4),
+    g = factor(c("b", "c", "a"), levels = c("unused", "a", "b", "c"))
+  )
+  canonical_newdata <- newdata
+  canonical_newdata$g <- factor(
+    canonical_newdata$g,
+    levels = formula_result$formula_design$xlevels$g
+  )
+  stats::contrasts(canonical_newdata$g) <- "contr.treatment"
+  expected <- drop(
+    stats::model.matrix(~ x:g, data = canonical_newdata) %*%
+      c(1.5, -0.75, 0.25, 1.25)
+  )
+  prediction <- JAGS_evaluate_formula(
+    posterior,
+    ~ x:g,
+    "mu",
+    newdata,
+    formula_result$prior_list
+  )
+
+  expect_equal(unname(drop(prediction)), unname(expected), tolerance = 1e-12)
+
+  attr(posterior, "formula_design") <- NULL
+  legacy_prediction <- JAGS_evaluate_formula(
+    posterior,
+    ~ x:g,
+    "mu",
+    newdata,
+    formula_result$prior_list
+  )
+  expect_equal(
+    unname(drop(legacy_prediction)),
+    unname(expected),
+    tolerance = 1e-12
+  )
+})
+
 test_that("formula expression terms are parsed structurally", {
   expect_equal(.extract_expressions(~ expression(log(x))), list("log(x)"))
   expect_equal(.extract_expressions(y ~ z + expression(log(x)) + expression(exp(b))), list("log(x)", "exp(b)"))
