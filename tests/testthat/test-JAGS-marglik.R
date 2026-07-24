@@ -453,6 +453,7 @@ test_that("JAGS model functions work (weightfunctions)", {
 
   for(i in seq_along(all_priors)){
     prior_list   <- all_priors[i]
+    names(prior_list) <- "omega"
     model_syntax <- JAGS_add_priors("model{}", prior_list)
     monitor      <- JAGS_to_monitor(prior_list)
     inits        <- JAGS_get_inits(prior_list, chains = 2, seed = 1)
