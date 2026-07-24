@@ -1682,6 +1682,29 @@ test_that("PET-PEESE posterior plot data does not recycle coefficient rows", {
   expect_equal(plot_data$y, c(0.5, 3))
 })
 
+test_that("PET-PEESE posterior plot data rejects unrelated bias columns", {
+
+  bias_samples <- cbind(
+    omega = c(0.5, 0.75),
+    alpha = c(1, 2)
+  )
+
+  expect_error(
+    BayesTools:::.plot_data_samples.PETPEESE(
+      samples                  = list(mu = c(0, 1), bias = bias_samples),
+      x_seq                    = c(0, 1),
+      x_range                  = c(0, 1),
+      x_range_quant            = NULL,
+      n_points                 = 2,
+      transformation           = NULL,
+      transformation_arguments = NULL,
+      transformation_settings  = FALSE
+    ),
+    "At least one 'PET' or 'PEESE' model needs to be specified.",
+    fixed = TRUE
+  )
+})
+
 test_that("PET-PEESE posterior plot data honors negative effect direction", {
   samples <- list(
     mu    = c(0, 1, 2, 3),

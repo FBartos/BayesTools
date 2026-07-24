@@ -6,7 +6,7 @@
 
   if (!is.null(samples[["bias"]])) {
 
-    if(length(c("PET", "PEESE") %in% samples[["bias"]]) == 0)
+    if(!any(c("PET", "PEESE") %in% colnames(samples[["bias"]])))
       stop("At least one 'PET' or 'PEESE' model needs to be specified.")
 
     # create mu-PET-PEESE samples matrix
