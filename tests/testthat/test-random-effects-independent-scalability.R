@@ -148,6 +148,27 @@ test_that("ID and DIAG reconstruction streams exact independent columns", {
   }
 })
 
+test_that("latent reconstruction rejects duplicate posterior coordinates", {
+
+  fixture <- .independent_backend_fixture("diag")
+  sd_name <- fixture$random_term$sd_parameter_names[[1L]]
+  duplicate <- fixture$posterior[, sd_name, drop = FALSE] + 100
+  posterior <- cbind(duplicate, fixture$posterior)
+  colnames(posterior)[1L] <- sd_name
+
+  expect_error(
+    .bt_try_random_effect_contribution_from_latent(
+      random_term = fixture$random_term,
+      model_matrix = fixture$random_term$model_matrix,
+      group_map = fixture$random_term$group_map,
+      posterior = posterior,
+      prior_list = fixture$result$prior_list
+    ),
+    "'posterior_samples' column names must be unique",
+    fixed = TRUE
+  )
+})
+
 test_that("independent new-level sampling avoids identity and eigen matrices", {
   .independent_backend_mock_dense_helpers()
   fixture <- .independent_backend_fixture("diag")

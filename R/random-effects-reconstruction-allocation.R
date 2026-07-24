@@ -26,6 +26,7 @@
 .bt_random_effect_sd_draws <- function(random_term, n_columns, posterior,
                                        prior_list){
 
+  posterior <- .bt_random_effect_marginal_covariance_validate_posterior(posterior)
   if(!is.null(random_term$sd_binding) &&
      isTRUE(random_term$sd_binding$true_allocation)){
     .bt_check_random_sd_binding(random_term$sd_binding)
