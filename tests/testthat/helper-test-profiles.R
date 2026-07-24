@@ -13,6 +13,7 @@ bayestools_test_profile_contexts <- list(
     "interpret",
     "JAGS-bridge-compiler",
     "JAGS-diagnostic-plot-data",
+    "JAGS-fit-settings",
     "JAGS-formula-default-priors",
     "JAGS-formula-design-oracles",
     "JAGS-formula-prediction-targets",

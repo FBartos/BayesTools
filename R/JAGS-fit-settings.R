@@ -31,16 +31,16 @@ NULL
 #' @rdname JAGS_check_and_list
 JAGS_check_and_list_fit_settings     <- function(chains, adapt, burnin, sample, thin, autofit, parallel, cores, silent, seed, check_mins = list(chains = 1, adapt = 50, burnin = 50, sample = 100, thin = 1), call = ""){
 
-  check_int(chains, "chains", lower = check_mins[["chains"]], call = call)
-  check_int(adapt,  "adapt",  lower = check_mins[["adapt"]],  call = call)
-  check_int(burnin, "burnin", lower = check_mins[["burnin"]], call = call)
-  check_int(sample, "sample", lower = check_mins[["sample"]], call = call)
-  check_int(thin,   "thin",   lower = check_mins[["thin"]],   call = call)
-  check_bool(parallel, "parallel",                call = call)
-  check_int(cores,     "cores", lower = 1,        call = call)
-  check_bool(autofit,  "autofit",                 call = call)
-  check_bool(silent,   "silent",                  call = call)
-  check_int(seed,      "seed", allow_NULL = TRUE, call = call)
+  check_int(chains, "chains", lower = check_mins[["chains"]], allow_NA = FALSE, call = call)
+  check_int(adapt,  "adapt",  lower = check_mins[["adapt"]],  allow_NA = FALSE, call = call)
+  check_int(burnin, "burnin", lower = check_mins[["burnin"]], allow_NA = FALSE, call = call)
+  check_int(sample, "sample", lower = check_mins[["sample"]], allow_NA = FALSE, call = call)
+  check_int(thin,   "thin",   lower = check_mins[["thin"]],   allow_NA = FALSE, call = call)
+  check_bool(parallel, "parallel",                allow_NA = FALSE, call = call)
+  check_int(cores,     "cores", lower = 1,        allow_NA = FALSE, call = call)
+  check_bool(autofit,  "autofit",                 allow_NA = FALSE, call = call)
+  check_bool(silent,   "silent",                  allow_NA = FALSE, call = call)
+  check_int(seed,      "seed", allow_NULL = TRUE, allow_NA = FALSE, call = call)
 
   return(invisible(list(
     chains   = chains,
@@ -63,22 +63,37 @@ JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_ex
   if(is.null(autofit_control[["check_indicators"]])){
     autofit_control[["check_indicators"]] <- FALSE
   }
-  check_real(autofit_control[["max_Rhat"]],     "max_Rhat",     lower = 1, allow_NULL = TRUE, call = call)
-  check_real(autofit_control[["min_ESS"]],      "min_ESS",      lower = 0, allow_NULL = TRUE, call = call)
-  check_real(autofit_control[["max_error"]],    "max_error",    lower = 0, allow_NULL = TRUE, call = call)
-  check_real(autofit_control[["max_SD_error"]], "max_SD_error", lower = 0, upper = 1, allow_NULL = TRUE, call = call)
-  check_bool(autofit_control[["check_indicators"]], "check_indicators", call = call)
+  check_real(autofit_control[["max_Rhat"]],     "max_Rhat",     lower = 1, allow_NULL = TRUE, allow_NA = FALSE, call = call)
+  check_real(autofit_control[["min_ESS"]],      "min_ESS",      lower = 0, allow_NULL = TRUE, allow_NA = FALSE, call = call)
+  check_real(autofit_control[["max_error"]],    "max_error",    lower = 0, allow_NULL = TRUE, allow_NA = FALSE, call = call)
+  check_real(autofit_control[["max_SD_error"]], "max_SD_error", lower = 0, upper = 1, allow_NULL = TRUE, allow_NA = FALSE, call = call)
+  for(name in c("max_Rhat", "min_ESS", "max_error", "max_SD_error")){
+    value <- autofit_control[[name]]
+    if(!is.null(value) && any(!is.finite(value))){
+      stop(
+        paste0(call, "The '", name, "' argument must contain only finite values."),
+        call. = FALSE
+      )
+    }
+  }
+  check_bool(autofit_control[["check_indicators"]], "check_indicators", allow_NA = FALSE, call = call)
   check_list(autofit_control[["max_time"]],     "max_time", check_names = c("time", "unit"), check_length = 2, allow_NULL = TRUE, call = call)
   if(!is.null(autofit_control[["max_time"]])){
     if(is.null(names(autofit_control[["max_time"]]))){
       names(autofit_control[["max_time"]]) <- c("time", "unit")
     }
-    check_real(autofit_control[["max_time"]][["time"]], "max_time:time", lower = 0, call = call)
-    check_char(autofit_control[["max_time"]][["unit"]], "max_time:unit", allow_values = c("secs", "mins", "hours", "days", "weeks"), call = call)
+    check_real(autofit_control[["max_time"]][["time"]], "max_time:time", lower = 0, allow_NA = FALSE, call = call)
+    if(any(!is.finite(autofit_control[["max_time"]][["time"]]))){
+      stop(
+        paste0(call, "The 'max_time:time' argument must contain only finite values."),
+        call. = FALSE
+      )
+    }
+    check_char(autofit_control[["max_time"]][["unit"]], "max_time:unit", allow_values = c("secs", "mins", "hours", "days", "weeks"), allow_NA = FALSE, call = call)
   }
-  check_int(autofit_control[["sample_extend"]], "sample_extend", lower = 1, allow_NULL = skip_sample_extend, call = call)
-  check_int(autofit_control[["restarts"]], "restarts", lower = 1, allow_NULL = TRUE, call = call)
-  check_int(autofit_control[["max_extend"]], "max_extend", lower = 1, allow_NULL = TRUE, call = call)
+  check_int(autofit_control[["sample_extend"]], "sample_extend", lower = 1, allow_NULL = skip_sample_extend, allow_NA = FALSE, call = call)
+  check_int(autofit_control[["restarts"]], "restarts", lower = 1, allow_NULL = TRUE, allow_NA = FALSE, call = call)
+  check_int(autofit_control[["max_extend"]], "max_extend", lower = 1, allow_NULL = TRUE, allow_NA = FALSE, call = call)
 
   return(invisible(autofit_control))
 }
