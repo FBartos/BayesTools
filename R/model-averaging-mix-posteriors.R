@@ -265,7 +265,11 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
     }
   })
   priors_info <- priors_info[!sapply(priors_info, isFALSE)]
-  if(length(priors_info) >= 2 && any(!unlist(lapply(priors_info, function(i) all.equal(i, priors_info[[1]]))))){
+  if(length(priors_info) >= 2 && any(!vapply(
+    priors_info,
+    function(i) isTRUE(all.equal(i, priors_info[[1]])),
+    logical(1)
+  ))){
     stop("non-matching prior factor type specifications")
   }else if(length(priors_info) != 0){
     priors_info <- priors_info[[1]]
@@ -460,7 +464,11 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
     }
   })
   priors_info <- priors_info[!sapply(priors_info, isFALSE)]
-  if(length(priors_info) >= 2 && any(!unlist(lapply(priors_info, function(i) all.equal(i, priors_info[[1]]))))){
+  if(length(priors_info) >= 2 && any(!vapply(
+    priors_info,
+    function(i) isTRUE(all.equal(i, priors_info[[1]])),
+    logical(1)
+  ))){
     stop("non-matching prior factor type specifications")
   }
   if(length(priors_info) != 0){

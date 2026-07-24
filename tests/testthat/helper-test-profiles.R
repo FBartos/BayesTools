@@ -33,6 +33,7 @@ bayestools_test_profile_contexts <- list(
     "marginal-inference-conditioning",
     "marginal-prior-rng",
     "marginal-prior-samplers",
+    "model-averaging-compatibility-guards",
     "model-averaging-edge-cases",
     "model-averaging-plots-edge-cases",
     "prior-ordered",

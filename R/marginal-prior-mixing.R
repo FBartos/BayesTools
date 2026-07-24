@@ -262,7 +262,11 @@
     }
   })
   priors_info <- priors_info[!sapply(priors_info, isFALSE)]
-  if(length(priors_info) >= 2 && any(!unlist(lapply(priors_info, function(i) all.equal(i, priors_info[[1]]))))){
+  if(length(priors_info) >= 2 && any(!vapply(
+    priors_info,
+    function(i) isTRUE(all.equal(i, priors_info[[1]])),
+    logical(1)
+  ))){
     stop("non-matching prior factor type specifications")
   }
   priors_info <- priors_info[[1]]
