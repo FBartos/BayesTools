@@ -1,7 +1,7 @@
 JAGS_MIN_VERSION := 4.3.0
 JAGS_ROOT_CANDIDATES := $(sort $(wildcard /c/progra~1/JAGS/JAGS-*))
-space :=
-space +=
+empty :=
+space := $(empty) $(empty)
 
 define version_ge
 $(shell awk -v version="$(1)" -v minimum="$(2)" 'BEGIN { split(version, v, "."); split(minimum, m, "."); for(i = 1; i <= 3; i++){ if(v[i] == "") v[i] = 0; if(m[i] == "") m[i] = 0; if(v[i] + 0 > m[i] + 0){ print "yes"; exit } if(v[i] + 0 < m[i] + 0){ print "no"; exit } } print "yes" }')
@@ -69,8 +69,8 @@ ifeq ($(strip $(JR_MATH_LIB_NAME)),)
 $(error Could not find the JAGS JRmath library in "$(JAGS_LIB_DIR)". Set JAGS_ROOT or JAGS_LIB_DIR)
 endif
 
-JAGS_LINK := $(patsubst lib%.dll.a,%,$(patsubst %.dll,%,$(JAGS_LIB_NAME)))
-JR_MATH_LINK := $(patsubst lib%.dll.a,%,$(patsubst %.dll,%,$(JR_MATH_LIB_NAME)))
+JAGS_LINK := $(patsubst lib%,%,$(patsubst %.dll.a,%,$(patsubst %.dll,%,$(JAGS_LIB_NAME))))
+JR_MATH_LINK := $(patsubst lib%,%,$(patsubst %.dll.a,%,$(patsubst %.dll,%,$(JR_MATH_LIB_NAME))))
 
 PKG_CPPFLAGS=-I"$(JAGS_INCLUDE_DIR)" -DR_NO_REMAP
 PKG_LIBS=-L"$(JAGS_LIB_DIR)" -l$(JAGS_LINK) -l$(JR_MATH_LINK)
