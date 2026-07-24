@@ -446,3 +446,24 @@ statistics and plots with documented tolerances or invariant assertions. If
 the current exact-snapshot policy is intentional, explicitly approve
 regenerating and reviewing the 70 affected text references and 147 affected SVG
 files from the validated cache as one controlled update.
+
+## D30. Portable source-package paths for visual snapshots
+
+**Issue.** `R CMD check --as-cran` reports 50 visual snapshot paths longer
+than the portable tar limit. Forty-nine were already present at the merge base;
+this branch adds
+`priors-plot/priors-plot-petpeese-decreasing-transformation-ggplot.svg`.
+The package currently ships all 530 SVG reference files in its source tarball.
+
+**Impact.** The package builds and checks successfully on Windows, but CRAN
+reports a portability NOTE and other tar implementations are only guaranteed
+to preserve paths up to 100 bytes. Renaming snapshots is mechanically broad
+because the `expect_doppelganger()` labels and stored files must stay aligned;
+excluding snapshots from the tarball changes which visual references downstream
+source-package users receive.
+
+**Suggested change.** Choose whether visual references are part of the
+distributed source package. If they are, shorten the 50 snapshot labels and
+filenames in a controlled visual-only update. If they are only CI/development
+artifacts, exclude `tests/testthat/_snaps` in `.Rbuildignore` while keeping the
+files in Git and running visual profiles from repository checkouts.
