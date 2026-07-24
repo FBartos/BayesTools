@@ -199,7 +199,11 @@ BayesTools_load_JAGS_module <- function(quiet = TRUE, warn = TRUE){
     "BayesTools_invmoment_d",
     "BayesTools_invmoment_p",
     "BayesTools_invmoment_q",
-    "BayesTools_invmoment_r"
+    "BayesTools_invmoment_r",
+    "BayesTools_invgamma_d",
+    "BayesTools_invgamma_p",
+    "BayesTools_invgamma_q",
+    "BayesTools_invgamma_r"
   )
 }
 
