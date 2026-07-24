@@ -252,7 +252,8 @@
       group_map = group_map[existing_rows],
       posterior = posterior,
       prior_list = prior_list,
-      group_data = group_data[existing_rows, , drop = FALSE]
+      group_data = group_data[existing_rows, , drop = FALSE],
+      prediction_rows = existing_rows
     )
   }
   if(any(new_row) && identical(new_levels$method, "sample")){
@@ -274,7 +275,8 @@
                                                           group_map,
                                                           posterior,
                                                           prior_list,
-                                                          group_data){
+                                                          group_data,
+                                                          prediction_rows = NULL){
 
   n_draws <- nrow(posterior)
   n_rows <- nrow(model_matrix)
@@ -290,6 +292,7 @@
         posterior = posterior,
         prior_list = prior_list,
         data = group_data,
+        prediction_rows = prediction_rows,
         context = "Prediction"
       )
     )

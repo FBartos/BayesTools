@@ -458,6 +458,81 @@ test_that("row-indexed new-level sampling rejects invalid scale draws", {
   }
 })
 
+test_that("row-indexed posterior sources retain mixed prediction-row positions", {
+
+  df <- .formula_prediction_data()
+  result <- JAGS_formula(
+    formula = ~ 1 + random(1 | id, name = "id", covariance = "diag"),
+    parameter = "mu",
+    data = df,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(
+        sd_source = random_sd_source("tau", shape = "row")
+      )
+    )
+  )
+  random_term <- result$formula_design$random_effects[[1L]]
+  latent_names <- as.vector(BayesTools:::.bt_random_effect_latent_names(
+    random_term = random_term,
+    n_groups = random_term$n_groups,
+    n_columns = random_term$n_columns
+  ))
+  mixed_data <- data.frame(
+    id = factor(c("new", "b"), levels = c("a", "b", "new"))
+  )
+
+  zero_posterior <- matrix(
+    c(0, 10, 1, 3),
+    nrow = 1L,
+    dimnames = list(NULL, c(
+      "mu_intercept",
+      "tau[2]",
+      latent_names
+    ))
+  )
+  zero_fit <- coda::mcmc(zero_posterior)
+  attr(zero_fit, "formula_design") <- list(mu = result$formula_design)
+  zero_prediction <- JAGS_evaluate_formula(
+    fit = zero_fit,
+    parameter = "mu",
+    data = mixed_data,
+    prior_list = result$prior_list,
+    formula_target = "conditional",
+    new_levels = "zero"
+  )
+  expect_equal(unname(drop(zero_prediction)), c(0, 30), tolerance = 1e-12)
+
+  sample_posterior <- matrix(
+    c(0, 2, 10, 1, 3),
+    nrow = 1L,
+    dimnames = list(NULL, c(
+      "mu_intercept",
+      "tau[1]",
+      "tau[2]",
+      latent_names
+    ))
+  )
+  sample_fit <- coda::mcmc(sample_posterior)
+  attr(sample_fit, "formula_design") <- list(mu = result$formula_design)
+  set.seed(943)
+  expected_new <- 2 * stats::rnorm(1L)
+  set.seed(943)
+  sample_prediction <- JAGS_evaluate_formula(
+    fit = sample_fit,
+    parameter = "mu",
+    data = mixed_data,
+    prior_list = result$prior_list,
+    formula_target = "conditional",
+    new_levels = "sample"
+  )
+  expect_equal(
+    unname(drop(sample_prediction)),
+    c(expected_new, 30),
+    tolerance = 1e-12
+  )
+})
+
 test_that("structured new-level sampling uses only requested column subsets", {
 
   factor_levels <- sprintf("level_%03d", seq_len(113L))

@@ -479,7 +479,8 @@
 
 .bt_random_effect_row_indexed_contribution_from_latent <- function(
     random_term, model_matrix, group_map, posterior, prior_list,
-    data = NULL, parameters = NULL, context = "Prediction"){
+    data = NULL, parameters = NULL, prediction_rows = NULL,
+    context = "Prediction"){
 
   source_draws <- .bt_random_effect_row_indexed_source_draws(
     random_term = random_term,
@@ -487,6 +488,7 @@
     posterior = posterior,
     data = data,
     parameters = parameters,
+    prediction_rows = prediction_rows,
     context = context
   )
   if(any(!is.finite(source_draws) | source_draws < 0)){
@@ -833,10 +835,29 @@
                                                        posterior,
                                                        data = NULL,
                                                        parameters = NULL,
+                                                       prediction_rows = NULL,
                                                        context = "Prediction"){
 
   source <- .bt_random_effect_row_indexed_source(random_term)
-  source_names <- .bt_parameter_source_row_names(source$source, n_rows)
+  if(is.null(prediction_rows)){
+    prediction_rows <- seq_len(n_rows)
+  }
+  if(!is.numeric(prediction_rows) || length(prediction_rows) != n_rows ||
+     anyNA(prediction_rows) ||
+     any(prediction_rows != as.integer(prediction_rows)) ||
+     any(prediction_rows < 1L)){
+    stop(
+      context, " with row-indexed external SD source '",
+      .bt_random_effect_external_sd_source_label(random_term),
+      "' received invalid prediction-row indices.",
+      call. = FALSE
+    )
+  }
+  prediction_rows <- as.integer(prediction_rows)
+  source_names <- .bt_parameter_source_row_names(
+    source$source,
+    max(prediction_rows)
+  )[prediction_rows]
   source_values <- .bt_parameter_source_value_draws(
     source = source$source,
     n_rows = n_rows,
@@ -846,6 +867,7 @@
     context = context
   )
   if(!is.null(source_values)){
+    colnames(source_values) <- source_names
     return(source_values)
   }
 
@@ -859,7 +881,7 @@
     context, " with row-indexed external SD source '",
     .bt_random_effect_external_sd_source_label(random_term),
     "' is missing values for prediction row(s): ",
-    paste(which(missing), collapse = ", "),
+    paste(prediction_rows[missing], collapse = ", "),
     ". Expected posterior column(s): ",
     paste0("'", source_names[missing][seq_len(min(3L, sum(missing)))], "'",
            collapse = ", "),
