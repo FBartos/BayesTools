@@ -305,7 +305,9 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
     return()
   }else if(prior$weights$type == "cumulative"){
     eta_name <- paste0("eta_component_", component_id)
-    init[[eta_name]] <- stats::rgamma(length(prior$weights[["alpha"]]), shape = prior$weights[["alpha"]], rate = 1)
+    eta_init <- stats::rgamma(length(prior$weights[["alpha"]]), shape = prior$weights[["alpha"]], rate = 1)
+    eta_init[!is.finite(eta_init) | eta_init <= 0] <- .Machine$double.xmin
+    init[[eta_name]] <- eta_init
   }
 
   return(init)
