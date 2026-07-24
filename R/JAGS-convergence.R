@@ -83,8 +83,8 @@ JAGS_check_convergence <- function(fit, prior_list, max_Rhat = 1.05, min_ESS = 5
   mcmc_samples <- cleaned$model_samples
 
   # remove auxiliary inclusion probabilities and, by default, model indicators
-  indicator_cols <- grepl("_indicator", colnames(mcmc_samples))
-  inclusion_cols <- grepl("_inclusion", colnames(mcmc_samples))
+  indicator_cols <- grepl("_indicator(\\[[^]]+\\])?$", colnames(mcmc_samples))
+  inclusion_cols <- grepl("_inclusion(\\[[^]]+\\])?$", colnames(mcmc_samples))
   mcmc_samples <- mcmc_samples[, !(inclusion_cols | (!check_indicators & indicator_cols)), drop = FALSE]
 
   if(ncol(mcmc_samples) == 0){

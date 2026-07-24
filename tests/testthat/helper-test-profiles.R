@@ -12,6 +12,7 @@ bayestools_test_profile_contexts <- list(
     "hypothesis-BF",
     "interpret",
     "JAGS-bridge-compiler",
+    "JAGS-convergence",
     "JAGS-diagnostic-plot-data",
     "JAGS-fit-settings",
     "JAGS-formula-default-priors",
