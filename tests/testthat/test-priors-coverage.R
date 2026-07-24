@@ -1177,3 +1177,46 @@ test_that("cumulative weightfunction priors expose exact beta marginals", {
   expect_equal(mean(p_wf), c(1, 5 / 6, 1 / 2), tolerance = 1e-12)
   expect_equal(var(p_wf), c(0, 5 / 252, 9 / 252), tolerance = 1e-12)
 })
+
+test_that("weightfunction marginal CCDFs preserve extreme upper tails", {
+  p_cumulative <- prior_weightfunction(
+    side    = "one-sided",
+    steps   = .05,
+    weights = wf_cumulative(c(100, 1))
+  )
+  beta_tail <- mccdf(p_cumulative, .9)[1, 2]
+  beta_expected <- stats::pbeta(
+    .9, shape1 = 1, shape2 = 100, lower.tail = FALSE
+  )
+
+  expect_gt(beta_tail, 0)
+  expect_equal(beta_tail / beta_expected, 1, tolerance = 1e-12)
+
+  p_omega <- prior_weightfunction(
+    side    = "one-sided",
+    steps   = .05,
+    weights = wf_independent(prior("beta", list(1, 100)))
+  )
+  omega_tail <- mccdf(p_omega, .9)[1, 2]
+
+  expect_gt(omega_tail, 0)
+  expect_equal(omega_tail / beta_expected, 1, tolerance = 1e-12)
+
+  p_log_omega <- prior_weightfunction(
+    side    = "one-sided",
+    steps   = .05,
+    weights = wf_independent(
+      prior("normal", list(mean = 0, sd = 1)),
+      scale = "log_omega"
+    )
+  )
+  log_omega_tail <- mccdf(p_log_omega, exp(10))[1, 2]
+  log_omega_expected <- stats::pnorm(10, lower.tail = FALSE)
+
+  expect_gt(log_omega_tail, 0)
+  expect_equal(
+    log_omega_tail / log_omega_expected,
+    1,
+    tolerance = 1e-12
+  )
+})

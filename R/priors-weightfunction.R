@@ -383,10 +383,31 @@ wf_independent <- function(prior, scale = "omega"){
   )
 }
 .prior_weightfunction_component_ccdf <- function(component, q){
-  if(component$type == "point"){
-    return(ppoint(q, location = component$location, lower.tail = FALSE))
-  }
-  1 - .prior_weightfunction_component_cdf(component, q)
+
+  switch(
+    component$type,
+    "point" = ppoint(q, location = component$location, lower.tail = FALSE),
+    "beta"  = stats::pbeta(
+      q,
+      shape1     = component$alpha,
+      shape2     = component$beta,
+      lower.tail = FALSE
+    ),
+    "prior" = {
+      if(component$scale == "omega"){
+        mccdf(component$prior, q)
+      }else{
+        p <- rep(NA_real_, length(q))
+        q_known <- !is.na(q)
+        p[q_known & q <= 0] <- 1
+        inside <- q_known & q > 0
+        if(any(inside)){
+          p[inside] <- mccdf(component$prior, log(q[inside]))
+        }
+        p
+      }
+    }
+  )
 }
 .prior_weightfunction_component_lpdf <- function(component, x){
 
