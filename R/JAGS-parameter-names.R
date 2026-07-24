@@ -65,19 +65,32 @@ format_parameter_names <- function(parameters, formula_parameters = NULL, formul
   }
 
   for(i in seq_along(formula_parameters)){
-    parameters[grep(paste0(formula_parameters[i], "_"), parameters)] <- gsub(
-      paste0(formula_parameters[i], "_"),
+    formula_prefix_pattern <- paste0(formula_parameters[i], "_")
+    matching_parameters <- grepl(
+      formula_prefix_pattern,
+      parameters,
+      fixed = TRUE
+    )
+    parameters[matching_parameters] <- gsub(
+      formula_prefix_pattern,
       if(formula_prefix) paste0("(", formula_parameters[i], ") ") else "",
-      parameters[grep(paste0(formula_parameters[i], "_"), parameters)])
+      parameters[matching_parameters],
+      fixed = TRUE
+    )
   }
 
   for(i in seq_along(formula_random)){
-    temp_which <- grepl(paste0("_xREx__", formula_random[i], "_"), parameters)
+    temp_which <- grepl(
+      paste0("_xREx__", formula_random[i], "_"),
+      parameters,
+      fixed = TRUE
+    )
     temp_incl  <- grepl("(inclusion)", parameters)
     parameters[temp_which] <- gsub(
       paste0("_xREx__", formula_random[i], "_"),
       "",
-      parameters[temp_which]
+      parameters[temp_which],
+      fixed = TRUE
     )
     if(any(temp_which &  temp_incl)){
       parameters[temp_which &  temp_incl] <- paste0(gsub("(inclusion)", "", parameters[temp_which & temp_incl], fixed = TRUE), "|", formula_random[i], " (inclusion)")

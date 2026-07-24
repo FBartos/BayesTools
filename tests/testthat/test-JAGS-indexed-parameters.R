@@ -1,5 +1,25 @@
 skip_if_not_test_profile("unit")
 
+test_that("formula parameter formatting matches identifiers literally", {
+
+  expect_equal(
+    format_parameter_names(
+      c("mu._theta", "muX_theta"),
+      formula_parameters = "mu.",
+      formula_prefix = FALSE
+    ),
+    c("theta", "muX_theta")
+  )
+
+  expect_equal(
+    format_parameter_names(
+      c("_xREx__site.id_slope", "_xREx__siteXid_slope"),
+      formula_random = "site.id"
+    ),
+    c("sd(slope|site.id)", "_xREx__siteXid_slope")
+  )
+})
+
 test_that("JAGS indexed parameter helpers match exact sorted indices", {
 
   columns <- c(
