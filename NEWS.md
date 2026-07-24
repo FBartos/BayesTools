@@ -5,17 +5,20 @@
 - adds LKJ correlation priors for unstructured random-effect covariance matrices via `prior_lkj()` and `JAGS_lkj_corr_cholesky()`, using the package-shipped compiled JAGS backend
 - adds `BayesTools_load_JAGS_module()` and package compilation support for the BayesTools JAGS module used by generated LKJ-Cholesky syntax
 - adds `formula_random_prior_list` to `JAGS_fit()` and `JAGS_bridgesampling()` so formula random effects can be fitted and bridge sampled through the explicit `prior_random()` interface
+- adds `JAGS_predict_formula()` for fixed, conditional, and marginalized formula prediction, with selectable random-effect blocks, explicit new-level policies, and covariance- or sampling-based marginal output
 - adds block-level `"noncentered"`, `"centered"`, and `"auto"` random-effect parameterizations without changing the prior or semantic output contracts; structured scalar-correlation blocks use scalable direct recurrences and expose dense correlation draws only on explicit reconstruction
 - adds `random_group_covariance()` for known covariance or correlation kernels across random-effect grouping levels
 - adds `random_effects_compile()` and `random_effects_marginal_variance_factors()` as the public contract for structurally marginalized random-effect blocks; unsupported factor representations signal the classed `BayesTools_random_effects_marginal_variance_unavailable` condition
-- adds `diagonal_only = TRUE` to `random_effects_marginal_vcov()` for scalable posterior marginal-variance extraction without allocating dense draw-by-row-by-row covariance arrays
+- adds `random_effects_marginal_vcov()` for posterior observation-level covariance or variance draws implied by formula random effects; `diagonal_only = TRUE` provides scalable marginal-variance extraction without allocating dense draw-by-row-by-row covariance arrays
 - adds `fit_backend_fingerprint()` for stable cache invalidation when fitted-model backend code or native binaries change
 - adds bridge-sampling support for formula random effects by using standardized latent random effects, scalar correlation coordinates, and LKJ primitive coordinates as bridge parameters
 - adds semantic random-effect summaries to `runjags_estimates_table()` / `JAGS_estimates_table()` through `random_effects_summary`, `random_effects_metadata`, `remove_random_effects`, `keep_random_effects`, `remove_random_structures`, and `keep_random_structures`
 - adds random-effect parameter filter aliases such as `"random"`, `"random_sd"`, `"random_rho"`, `"random_correlation"`, `"random_variance_fraction"`, `"random_allocation"`, and `"random_sd_multiplier"` for estimates tables
 - adds compact print methods for the public random-effect specification helpers, LKJ priors, parameter sources, random-SD sources, and variance-allocation references
+- adds `prior_ordered()` for ordered-factor priors that separate a scalar total effect from fixed or Dirichlet allocations across cumulative level increments
 - adds Dirichlet simplex priors via `prior("dirichlet", ...)` / `prior("simplex", ...)`, including random generation, log-density, marginal distribution helpers, JAGS syntax, initialization, posterior extraction, and bridge-sampling support
 - adds moment and inverse-moment nonlocal priors, including R density/distribution/quantile/RNG helpers and compiled JAGS-module support for prior-only and formula-model fitting
+- adds `hypothesis_BF()` for expression-based point and region hypotheses on posterior/prior draws or marginal posterior objects, including comparisons between named factor levels
 - adds a `RandomEffects` vignette comparing BayesTools formula random effects with lme4 and rstanarm examples
 
 ### Changes
