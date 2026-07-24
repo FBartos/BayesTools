@@ -23,7 +23,8 @@ The formula can also have a \code{"log(intercept)"} attribute set to \code{TRUE}
 to generate syntax of the form \code{log(intercept) + sum(beta_i * x_i)}, which
 is useful for parameters that must be positive (e.g., standard deviation).}
 
-\item{parameter}{name of the parameter to be created with the formula}
+\item{parameter}{valid unindexed JAGS node name of the parameter to be
+created with the formula}
 
 \item{data}{data.frame containing predictors included in the formula}
 

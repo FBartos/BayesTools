@@ -11,7 +11,8 @@
 #' The formula can also have a \code{"log(intercept)"} attribute set to \code{TRUE}
 #' to generate syntax of the form \code{log(intercept) + sum(beta_i * x_i)}, which
 #' is useful for parameters that must be positive (e.g., standard deviation).
-#' @param parameter name of the parameter to be created with the formula
+#' @param parameter valid unindexed JAGS node name of the parameter to be
+#' created with the formula
 #' @param data data.frame containing predictors included in the formula
 #' @param prior_list named list of prior distribution of parameters specified within
 #' the \code{formula}. When using \code{-1} in the formula, an "intercept" prior
@@ -121,6 +122,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     attr(formula, "random_terms", exact = TRUE)
   }
   check_char(parameter, "parameter")
+  .bt_check_jags_node_name(parameter, "parameter")
   if(!is.data.frame(data))
     stop("'data' must be a data.frame")
   check_list(prior_list, "prior_list")

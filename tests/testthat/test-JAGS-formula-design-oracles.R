@@ -456,6 +456,21 @@ test_that("JAGS_formula rejects matrix-valued continuous predictors", {
   )
 })
 
+test_that("JAGS_formula rejects invalid JAGS parameter names", {
+  expect_error(
+    JAGS_formula(
+      ~ x,
+      "bad-name",
+      data.frame(x = c(-1, 0, 1)),
+      list(
+        intercept = prior("normal", list(0, 1)),
+        x = prior("normal", list(0, 1))
+      )
+    ),
+    "'parameter' must start with a letter"
+  )
+})
+
 test_that("JAGS_formula uses a neutral point for log intercepts without an intercept", {
   formula <- ~ x - 1
   attr(formula, "log(intercept)") <- TRUE
