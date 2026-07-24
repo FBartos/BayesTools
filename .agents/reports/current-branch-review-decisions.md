@@ -429,18 +429,20 @@ schema tests before relying on either behavior.
 marginal-likelihood objects, after which the fixture profile reported 70 exact
 text-reference mismatches. Every failure was a sampled numeric value or
 diagnostic (posterior summaries, model probabilities, marginal likelihoods,
-ESS, or R-hat); table structure and semantic assertions passed. The current
-policy forbids agents from enabling reference generation without maintainer
-approval.
+ESS, or R-hat); table structure and semantic assertions passed. The
+visual-fixture profile likewise reported 154 changed snapshots (147 generated
+SVG files across all four fitted-output plot suites), alongside 445 passing
+assertions and no warnings or runtime errors. The current policy forbids agents
+from enabling reference generation without maintainer approval.
 
-**Impact.** A valid fit refresh can make the fixture lane fail even when the
-implementation and table schema are unchanged. Updating exact files blesses
-one stochastic realization, while leaving them unchanged prevents a refreshed
-cache from passing locally.
+**Impact.** A valid fit refresh can make both fixture lanes fail even when the
+implementation, table schema, and plotting code are unchanged. Updating exact
+files and visual snapshots blesses one stochastic realization, while leaving
+them unchanged prevents a refreshed cache from passing locally.
 
 **Suggested change.** Decide which outputs are true golden values. Keep exact
 references for deterministic formatting and schema, but compare stochastic
-statistics with documented tolerances or invariant assertions. If the current
-exact-snapshot policy is intentional, explicitly approve regenerating and
-reviewing the 70 affected references from the validated cache as one controlled
-update.
+statistics and plots with documented tolerances or invariant assertions. If
+the current exact-snapshot policy is intentional, explicitly approve
+regenerating and reviewing the 70 affected text references and 147 affected SVG
+files from the validated cache as one controlled update.
