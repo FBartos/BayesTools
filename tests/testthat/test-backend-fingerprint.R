@@ -1,3 +1,5 @@
+skip_if_not_test_profile("unit")
+
 test_that("loaded fit backend fingerprint is stable and well formed", {
 
   expect_true(exists(
