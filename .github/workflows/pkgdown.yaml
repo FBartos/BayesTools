@@ -93,7 +93,7 @@ jobs:
 
       - name: Validate RandomEffects vignette cache
         run: |
-          source(file.path("tools", "random-effects-vignette-cache.R"))
+          source(file.path("vignettes", "random-effects-vignette-cache.R"))
           stop_if_invalid_random_effects_vignette_cache()
         shell: Rscript {0}
 

@@ -160,7 +160,7 @@ jobs:
       - name: Render RandomEffects vignette
         if: runner.os != 'Windows'
         run: |
-          source(file.path("tools", "random-effects-vignette-cache.R"))
+          source(file.path("vignettes", "random-effects-vignette-cache.R"))
           stop_if_invalid_random_effects_vignette_cache()
           rmarkdown::render(
             "vignettes/RandomEffects.Rmd",
