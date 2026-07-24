@@ -568,6 +568,97 @@ test_that("mix_posteriors preserves simplex draws for compatible explicit priors
   )
 })
 
+test_that("mix_posteriors preserves factor-by-factor interaction coefficients", {
+
+  data <- expand.grid(
+    a = factor(c("a1", "a2"), levels = c("a1", "a2")),
+    b = factor(c("b1", "b2", "b3"), levels = c("b1", "b2", "b3"))
+  )
+  parameter <- "mu_a__xXx__b"
+
+  interaction_specs <- list(
+    treatment = list(
+      formula = ~ a * b,
+      priors = list(
+        intercept = prior("normal", list(0, 1)),
+        a = prior_factor("normal", list(0, 1), contrast = "treatment"),
+        b = prior_factor("normal", list(0, 1), contrast = "treatment"),
+        "a:b" = prior_factor("normal", list(0, 1), contrast = "treatment")
+      ),
+      names = c(
+        "mu_a[a2]__xXx__b[b2]",
+        "mu_a[a2]__xXx__b[b3]"
+      )
+    ),
+    independent = list(
+      formula = ~ 0 + a:b,
+      priors = list(
+        "a:b" = prior_factor("normal", list(0, 1), contrast = "independent")
+      ),
+      names = c(
+        "mu_a[a1]__xXx__b[b1]",
+        "mu_a[a2]__xXx__b[b1]",
+        "mu_a[a1]__xXx__b[b2]",
+        "mu_a[a2]__xXx__b[b2]",
+        "mu_a[a1]__xXx__b[b3]",
+        "mu_a[a2]__xXx__b[b3]"
+      )
+    )
+  )
+
+  null_fit <- .mock_runjags_fit_for_mixing(
+    matrix(0, nrow = 20, ncol = 1, dimnames = list(NULL, "dummy")),
+    list(dummy = prior("normal", list(0, 1)))
+  )
+
+  for(spec in interaction_specs){
+    formula_result <- JAGS_formula(
+      formula = spec$formula,
+      parameter = "mu",
+      data = data,
+      prior_list = spec$priors
+    )
+
+    K <- length(spec$names)
+    alternative_samples <- vapply(
+      seq_len(K),
+      function(i) 100 * i + seq_len(20),
+      numeric(20)
+    )
+    colnames(alternative_samples) <- paste0(parameter, "[", seq_len(K), "]")
+    alternative_fit <- .mock_runjags_fit_for_mixing(
+      alternative_samples,
+      formula_result$prior_list
+    )
+
+    model_list <- list(
+      list(fit = null_fit, marglik = .mock_bridge(0), prior_weights = 1),
+      list(fit = alternative_fit, marglik = .mock_bridge(log(2)), prior_weights = 1)
+    )
+    mixed <- mix_posteriors(
+      model_list = model_list,
+      parameters = parameter,
+      is_null_list = list(c(TRUE, FALSE)),
+      seed = 20260724,
+      n_samples = 12
+    )[[parameter]]
+
+    expect_s3_class(mixed, "mixed_posteriors.factor")
+    expect_identical(colnames(mixed), spec$names)
+    expect_equal(nrow(mixed), 12)
+
+    null_rows <- attr(mixed, "models_ind") == 1L
+    alternative_rows <- attr(mixed, "models_ind") == 2L
+    expect_true(any(null_rows))
+    expect_true(any(alternative_rows))
+    expect_equal(unname(mixed[null_rows, , drop = FALSE]), matrix(0, sum(null_rows), K))
+    expect_equal(
+      unname(mixed[alternative_rows, , drop = FALSE]),
+      outer(attr(mixed, "sample_ind")[alternative_rows], 100 * seq_len(K), `+`)
+    )
+  }
+})
+
 test_that("inclusion_BF handles all-null models", {
 
   # All null models assign zero prior mass to the alternative comparison.
