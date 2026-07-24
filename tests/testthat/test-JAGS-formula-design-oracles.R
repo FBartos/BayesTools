@@ -285,6 +285,78 @@ test_that("JAGS_fit rejects prior-backed add_parameters before fitting", {
   )
 })
 
+test_that("JAGS_fit requires uniquely named formula-indexed lists", {
+  formula <- ~ 1
+  formula_data <- data.frame(row = 1)
+  formula_priors <- list(intercept = prior("normal", list(0, 1)))
+
+  expect_error(
+    JAGS_fit(
+      model_syntax = "model{}",
+      formula_list = list(formula),
+      formula_data_list = list(mu = formula_data),
+      formula_prior_list = list(mu = formula_priors)
+    ),
+    "'formula_list' argument must be a fully named list",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_fit(
+      model_syntax = "model{}",
+      formula_list = structure(
+        list(formula, formula),
+        names = c("mu", "mu")
+      ),
+      formula_data_list = list(mu = formula_data),
+      formula_prior_list = list(mu = formula_priors)
+    ),
+    "'formula_list' argument must not contain duplicate names",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_fit(
+      model_syntax = "model{}",
+      formula_list = list(mu = formula),
+      formula_data_list = list(formula_data),
+      formula_prior_list = list(mu = formula_priors)
+    ),
+    "'formula_data_list' argument must be a fully named list",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_fit(
+      model_syntax = "model{}",
+      formula_list = list(mu = formula),
+      formula_data_list = list(mu = formula_data),
+      formula_prior_list = list(mu = formula_priors),
+      formula_scale_list = structure(
+        list(NULL, NULL),
+        names = c("mu", "mu")
+      )
+    ),
+    "'formula_scale_list' argument must not contain duplicate names",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_fit(
+      model_syntax = "model{}",
+      formula_data_list = list(mu = formula_data)
+    ),
+    "'formula_data_list' argument cannot be supplied without 'formula_list'",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_fit(
+      model_syntax = "model{}",
+      formula_random_effects_compile_list = list(
+        mu = random_effects_compile(marginalized = "block")
+      )
+    ),
+    "'formula_random_effects_compile_list' argument cannot be supplied without 'formula_list'",
+    fixed = TRUE
+  )
+})
+
 .jags_formula_oracle_expected_data <- function(data, factor_contrasts = list(),
                                                formula_scale = NULL) {
   out <- data

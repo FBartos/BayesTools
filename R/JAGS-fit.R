@@ -121,11 +121,19 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   check_char(required_packages, "required_packages", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   check_char(jags_modules, "jags_modules", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   check_list(formula_list, "formula_list", allow_NULL = TRUE)
-  check_list(formula_data_list, "formula_data_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
-  check_list(formula_prior_list, "formula_prior_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = is.null(formula_list))
-  check_list(formula_random_prior_list, "formula_random_prior_list", check_names = names(formula_list), allow_other = FALSE, all_objects = FALSE, allow_NULL = TRUE)
-  check_list(formula_random_effects_compile_list, "formula_random_effects_compile_list", check_names = names(formula_list), allow_other = FALSE, all_objects = FALSE, allow_NULL = TRUE)
-  check_list(formula_scale_list, "formula_scale_list", check_names = names(formula_list), allow_other = FALSE, all_objects = FALSE, allow_NULL = TRUE)
+  check_list(formula_data_list, "formula_data_list", allow_NULL = is.null(formula_list))
+  check_list(formula_prior_list, "formula_prior_list", allow_NULL = is.null(formula_list))
+  check_list(formula_random_prior_list, "formula_random_prior_list", allow_NULL = TRUE)
+  check_list(formula_random_effects_compile_list, "formula_random_effects_compile_list", allow_NULL = TRUE)
+  check_list(formula_scale_list, "formula_scale_list", allow_NULL = TRUE)
+  .bt_validate_jags_formula_lists(
+    formula_list = formula_list,
+    formula_data_list = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    formula_random_prior_list = formula_random_prior_list,
+    formula_random_effects_compile_list = formula_random_effects_compile_list,
+    formula_scale_list = formula_scale_list
+  )
   if(!is.null(formula_random_prior_list)){
     for(parameter in names(formula_random_prior_list)){
       .bt_check_prior_random(formula_random_prior_list[[parameter]])
@@ -357,6 +365,87 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   class(fit) <- c(class(fit), "BayesTools_fit")
 
   return(fit)
+}
+
+.bt_validate_jags_formula_list_names <- function(x, name){
+
+  if(length(x) == 0L){
+    return(invisible(TRUE))
+  }
+
+  x_names <- names(x)
+  if(is.null(x_names) || length(x_names) != length(x) ||
+     anyNA(x_names) || any(!nzchar(x_names))){
+    stop(
+      "The '", name, "' argument must be a fully named list.",
+      call. = FALSE
+    )
+  }
+  if(anyDuplicated(x_names)){
+    duplicate_names <- unique(x_names[duplicated(x_names)])
+    stop(
+      "The '", name, "' argument must not contain duplicate names ('",
+      paste(duplicate_names, collapse = "', '"),
+      "').",
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
+.bt_validate_jags_formula_lists <- function(
+    formula_list,
+    formula_data_list,
+    formula_prior_list,
+    formula_random_prior_list,
+    formula_random_effects_compile_list,
+    formula_scale_list){
+
+  .bt_validate_jags_formula_list_names(formula_list, "formula_list")
+  formula_names <- names(formula_list)
+  companion_lists <- list(
+    formula_data_list = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    formula_random_prior_list = formula_random_prior_list,
+    formula_random_effects_compile_list = formula_random_effects_compile_list,
+    formula_scale_list = formula_scale_list
+  )
+
+  for(name in names(companion_lists)){
+    x <- companion_lists[[name]]
+    if(length(x) == 0L){
+      next
+    }
+    if(length(formula_names) == 0L){
+      stop(
+        "The '", name, "' argument cannot be supplied without 'formula_list'.",
+        call. = FALSE
+      )
+    }
+    .bt_validate_jags_formula_list_names(x, name)
+    unrecognized <- setdiff(names(x), formula_names)
+    if(length(unrecognized) > 0L){
+      stop(
+        "The '", paste(unrecognized, collapse = "', '"),
+        "' objects are not recognized by the '", name, "' argument.",
+        call. = FALSE
+      )
+    }
+  }
+
+  for(name in c("formula_data_list", "formula_prior_list")){
+    missing <- setdiff(formula_names, names(companion_lists[[name]]))
+    if(length(missing) > 0L){
+      stop(
+        "The '", paste(missing, collapse = "', '"),
+        "' objects are missing in the '", name, "' argument.",
+        call. = FALSE
+      )
+    }
+  }
+
+  invisible(TRUE)
 }
 
 .bt_validate_jags_add_parameters <- function(add_parameters, prior_list){
