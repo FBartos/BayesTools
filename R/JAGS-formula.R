@@ -122,7 +122,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   }else{
     attr(formula, "random_terms", exact = TRUE)
   }
-  check_char(parameter, "parameter")
+  check_char(parameter, "parameter", allow_NA = FALSE)
   .bt_check_jags_node_name(parameter, "parameter")
   if(!is.data.frame(data))
     stop("'data' must be a data.frame")

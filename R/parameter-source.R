@@ -166,9 +166,16 @@ parameter_source <- function(name, shape = c("scalar", "row"),
 
 .bt_check_jags_node_name <- function(x, name){
 
-  if(!grepl("^[A-Za-z][A-Za-z0-9_]*$", x)){
+  if(length(x) != 1L || is.na(x) ||
+     !grepl("^[A-Za-z][A-Za-z0-9_.]*$", x)){
     stop(
-      "'", name, "' must start with a letter and contain only letters, numbers, and underscores.",
+      "'", name, "' must start with a letter and contain only letters, numbers, periods, and underscores.",
+      call. = FALSE
+    )
+  }
+  if(x %in% c("data", "in", "model", "var")){
+    stop(
+      "'", name, "' cannot use the reserved JAGS keyword '", x, "'.",
       call. = FALSE
     )
   }

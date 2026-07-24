@@ -456,7 +456,18 @@ test_that("JAGS_formula rejects matrix-valued continuous predictors", {
   )
 })
 
-test_that("JAGS_formula rejects invalid JAGS parameter names", {
+test_that("JAGS_formula validates JAGS parameter names", {
+  expect_no_error(
+    JAGS_formula(
+      ~ x,
+      "mu.x",
+      data.frame(x = c(-1, 0, 1)),
+      list(
+        intercept = prior("normal", list(0, 1)),
+        x = prior("normal", list(0, 1))
+      )
+    )
+  )
   expect_error(
     JAGS_formula(
       ~ x,
@@ -468,6 +479,32 @@ test_that("JAGS_formula rejects invalid JAGS parameter names", {
       )
     ),
     "'parameter' must start with a letter"
+  )
+  expect_error(
+    JAGS_formula(
+      ~ x,
+      "model",
+      data.frame(x = c(-1, 0, 1)),
+      list(
+        intercept = prior("normal", list(0, 1)),
+        x = prior("normal", list(0, 1))
+      )
+    ),
+    "reserved JAGS keyword 'model'",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_formula(
+      ~ x,
+      NA_character_,
+      data.frame(x = c(-1, 0, 1)),
+      list(
+        intercept = prior("normal", list(0, 1)),
+        x = prior("normal", list(0, 1))
+      )
+    ),
+    "'parameter' argument cannot contain NA/NaN values",
+    fixed = TRUE
   )
 })
 
