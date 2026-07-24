@@ -24,26 +24,28 @@
       missing = "error",
       out_of_support = "error"
     )
-    distance_matrix <- if(identical(structure, "car")){
-      .bt_random_effect_correlation_draws_distance(
+    column_coordinates <- if(identical(structure, "car")){
+      distance_matrix <- .bt_random_effect_correlation_draws_distance(
         random_term = random_term,
         correlation = correlation,
         structure = structure,
         n_columns = n_columns,
         context = "Random-effect posterior reconstruction metadata"
       )
+      distance_matrix[1L, ]
     }else{
       NULL
     }
+    columns <- seq_len(n_columns)
     out <- array(NA_real_, dim = c(nrow(posterior), n_columns, n_columns))
     for(draw in seq_len(nrow(posterior))){
-      R <- .bt_random_effect_structured_correlation_matrix(
+      out[draw, , ] <- .bt_random_effect_structured_subset_cholesky(
         structure = structure,
-        K = n_columns,
+        columns = columns,
         rho = rho[draw],
-        distance_matrix = distance_matrix
+        global_n_columns = n_columns,
+        column_coordinates = column_coordinates
       )
-      out[draw, , ] <- t(chol(R))
     }
     return(out)
   }

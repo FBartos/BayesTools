@@ -296,3 +296,92 @@ test_that("scalar structured Cholesky reconstruction requires canonical rho", {
     fixed = TRUE
   )
 })
+
+test_that("scalar structured Cholesky reconstruction matches dense factors", {
+
+  cases <- list(
+    cs = c(-0.25, 0.6),
+    hcs = c(-0.25, 0.6),
+    ar1 = c(-0.5, 0.6),
+    har = c(-0.5, 0.6),
+    car = c(0.25, 0.81)
+  )
+  for(structure in names(cases)){
+    random_term <- .correlation_draws_term(structure)
+    rho <- cases[[structure]]
+    posterior <- matrix(
+      rho,
+      ncol = 1L,
+      dimnames = list(NULL, random_term$correlation$rho_name)
+    )
+    actual <- BayesTools:::.bt_random_effect_cholesky_draws(
+      random_term = random_term,
+      n_columns = 3L,
+      posterior = posterior
+    )
+    distance <- if(structure %in% c("cs", "hcs")){
+      1 - diag(3L)
+    }else if(identical(structure, "car")){
+      abs(outer(c(0, 0.5, 2), c(0, 0.5, 2), "-"))
+    }else{
+      abs(outer(seq_len(3L), seq_len(3L), "-"))
+    }
+
+    expect_equal(dim(actual), c(2L, 3L, 3L), info = structure)
+    expect_null(dimnames(actual), info = structure)
+    for(draw in seq_along(rho)){
+      expected <- t(chol(rho[[draw]]^distance))
+      expect_equal(
+        actual[draw, , ],
+        expected,
+        tolerance = 1e-14,
+        info = paste(structure, "draw", draw)
+      )
+    }
+  }
+})
+
+test_that("CS Cholesky reconstruction is stable near its global lower bound", {
+
+  n_columns <- 100L
+  bounds <- BayesTools:::.bt_random_effect_structured_rho_bounds(
+    K = n_columns,
+    structure = "cs"
+  )
+  rho <- BayesTools:::.bt_random_effect_representable_rho_bounds(
+    bounds,
+    "cs"
+  )[["lower"]]
+  random_term <- list(
+    structure = "cs",
+    n_columns = n_columns,
+    block_name = "near-boundary",
+    correlation = list(
+      type = "rho",
+      rho_name = "rho",
+      sample_name = "rho",
+      rho_scale = "rho",
+      sample_fixed = NULL,
+      bounds = bounds
+    )
+  )
+  posterior <- matrix(
+    rho,
+    nrow = 1L,
+    dimnames = list(NULL, "rho")
+  )
+
+  actual <- BayesTools:::.bt_random_effect_cholesky_draws(
+    random_term = random_term,
+    n_columns = n_columns,
+    posterior = posterior
+  )[1L, , ]
+  expected <- matrix(rho, nrow = n_columns, ncol = n_columns)
+  diag(expected) <- 1
+
+  expect_true(all(is.finite(actual)))
+  expect_gt(min(diag(actual)), 0)
+  expect_equal(actual[upper.tri(actual)], rep(0, sum(upper.tri(actual))),
+               tolerance = 0)
+  expect_equal(tcrossprod(actual), expected, tolerance = 1e-12)
+})
