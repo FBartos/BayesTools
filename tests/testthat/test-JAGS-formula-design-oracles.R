@@ -437,7 +437,22 @@ test_that("JAGS_formula rejects matrix-valued continuous predictors", {
         m = prior("normal", list(0, 1))
       )
     ),
-    "term 'm' expands to 2 design-matrix columns"
+    "Matrix-valued predictor 'm' is not supported"
+  )
+
+  data$g <- factor(c("a", "b", "c"))
+  expect_error(
+    JAGS_formula(
+      ~ g + m:g,
+      "mu",
+      data,
+      list(
+        intercept = prior("normal", list(0, 1)),
+        g = prior_factor("normal", list(0, 1), contrast = "treatment"),
+        "m:g" = prior_factor("normal", list(0, 1), contrast = "treatment")
+      )
+    ),
+    "Matrix-valued predictor 'm' is not supported"
   )
 })
 

@@ -174,6 +174,23 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   predictors       <- as.character(attr(formula_terms, "variables"))[-1]
   if(any(!predictors %in% colnames(data)))
     stop(paste0("The ", paste0("'", predictors[!predictors %in% colnames(data)], "'", collapse = ", ")," predictor variable is missing in the data set."))
+  matrix_predictors <- predictors[vapply(
+    predictors,
+    function(predictor){
+      is.matrix(data[[predictor]]) && ncol(data[[predictor]]) > 1L
+    },
+    logical(1)
+  )]
+  if(length(matrix_predictors) > 0L){
+    stop(
+      "Matrix-valued predictor",
+      if(length(matrix_predictors) > 1L) "s " else " ",
+      paste0("'", matrix_predictors, "'", collapse = ", "),
+      if(length(matrix_predictors) > 1L) " are" else " is",
+      " not supported.",
+      call. = FALSE
+    )
+  }
   predictors_type  <- sapply(predictors, function(predictor){
     if(is.factor(data[[predictor]]) | is.character(data[[predictor]])){
       return("factor")
