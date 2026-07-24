@@ -5,7 +5,8 @@
                                                                 model_data){
 
   if(length(formula_prior_list) == 0L){
-    return(list(parameters = function(samples, prior_list_parameters) list()))
+    return(list(parameters = function(samples, prior_list_parameters,
+                                      formula_prior_parameters = list()) list()))
   }
 
   fixed_plans <- list()
@@ -55,7 +56,8 @@
   }
 
   list(
-    parameters = function(samples, prior_list_parameters){
+    parameters = function(samples, prior_list_parameters,
+                          formula_prior_parameters = list()){
       parameters <- list()
       for(parameter in names(fixed_plans)){
         parameters[[parameter]] <- fixed_plans[[parameter]]$value(
@@ -67,7 +69,8 @@
       if(length(random_plans) > 0L){
         source_base <- .bt_JAGS_bridge_formula_source_base_parameters(
           samples = samples,
-          prior_list_parameters = prior_list_parameters
+          prior_list_parameters = prior_list_parameters,
+          formula_prior_parameters = formula_prior_parameters
         )
         for(random_plan in random_plans){
           source_parameters <- .bt_JAGS_bridge_formula_source_parameters(
@@ -376,11 +379,15 @@
 }
 
 .bt_JAGS_bridge_formula_source_base_parameters <- function(samples,
-                                                           prior_list_parameters){
+                                                           prior_list_parameters,
+                                                           formula_prior_parameters = list()){
 
   out <- as.list(samples)
   if(length(prior_list_parameters) > 0L){
     out[names(prior_list_parameters)] <- prior_list_parameters
+  }
+  if(length(formula_prior_parameters) > 0L){
+    out[names(formula_prior_parameters)] <- formula_prior_parameters
   }
 
   out

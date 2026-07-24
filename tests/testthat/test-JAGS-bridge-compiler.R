@@ -1094,6 +1094,80 @@ test_that("compiled bridge allocation cache preserves row-indexed source reconst
   expect_equal(parameters$mu, 10 + expected_random, tolerance = 1e-12)
 })
 
+test_that("compiled row sources receive natural formula-prior parameters", {
+
+  formula_data <- data.frame(
+    study = factor(c("s1", "s1", "s2", "s2"), levels = c("s1", "s2")),
+    drug = factor(c("a", "b", "a", "b"), levels = c("a", "b")),
+    tau_factor = c(0.5, 0.75, 1, 1.25)
+  )
+  weight_name <- "mu__xRE_ALLOCx_allocation__weight"
+  eta_name <- paste0("prior_par_eta_", weight_name, "[1]")
+  tau_source <- parameter_source(
+    "tau",
+    shape = "row",
+    values = function(parameters, data, n_rows){
+      parameters[[weight_name]][1] *
+        parameters[[eta_name]] *
+        data$tau_factor[seq_len(n_rows)]
+    }
+  )
+  formula_output <- JAGS_formula(
+    formula = ~ 1 +
+      random(1 | study, name = "study", covariance = "diag") +
+      random(1 | drug, name = "drug", covariance = "diag"),
+    parameter = "mu",
+    data = formula_data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      allocation = random_variance_allocation(
+        sd_source = random_sd_source(tau_source),
+        weights = prior("dirichlet", list(alpha = c(2, 3)))
+      )
+    )
+  )
+  formula_prior_list <- list(mu = formula_output$prior_list)
+  samples <- c(
+    "mu_intercept" = 10,
+    "prior_par_eta_mu__xRE_ALLOCx_allocation__weight[1]" = 2,
+    "prior_par_eta_mu__xRE_ALLOCx_allocation__weight[2]" = 6,
+    "mu__xREx__study_xRE_Zx[1,1]" = 0.1,
+    "mu__xREx__study_xRE_Zx[2,1]" = 0.2,
+    "mu__xREx__drug_xRE_Zx[1,1]" = 1,
+    "mu__xREx__drug_xRE_Zx[2,1]" = 2
+  )
+  samples[[weight_name]] <- 99
+  formula_prior_evaluator <- BayesTools:::.bt_JAGS_bridge_compile_formula_prior_evaluator(
+    formula_prior_list
+  )
+  formula_prior_parameters <- formula_prior_evaluator$parameters(samples)
+  expect_equal(
+    formula_prior_parameters[[weight_name]],
+    c(0.25, 0.75),
+    tolerance = 1e-12
+  )
+
+  compiled <- BayesTools:::.bt_JAGS_bridge_compile_formula_parameter_evaluator(
+    formula_list = list(mu = formula_output$formula),
+    formula_data_list = list(mu = formula_data),
+    formula_prior_list = formula_prior_list,
+    formula_design_list = list(mu = formula_output$formula_design),
+    model_data = list()
+  )
+  parameters <- compiled$parameters(
+    BayesTools:::.bt_JAGS_bridge_cache_posterior_row(samples, TRUE),
+    list(),
+    formula_prior_parameters
+  )
+  source_values <- 0.25 * 2 * formula_data$tau_factor
+  expected_random <- source_values * (
+    c(0.1, 0.1, 0.2, 0.2) * sqrt(0.25) +
+      c(1, 2, 1, 2) * sqrt(0.75)
+  )
+
+  expect_equal(parameters$mu, 10 + expected_random, tolerance = 1e-12)
+})
+
 test_that("bridge posterior-row cache preserves random-effect helper fallback shape", {
 
   samples <- c("z[1,1]" = .1, "z[1,2]" = .2)

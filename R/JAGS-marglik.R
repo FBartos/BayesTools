@@ -268,7 +268,11 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     evaluated <- tryCatch({
       prior_parameters <- bridge_prior_evaluator$parameters(samples.row)
       formula_prior_parameters <- bridge_formula_prior_evaluator$parameters(samples.row)
-      formula_parameters <- bridge_formula_parameter_evaluator$parameters(samples.row, prior_parameters)
+      formula_parameters <- bridge_formula_parameter_evaluator$parameters(
+        samples.row,
+        prior_parameters,
+        formula_prior_parameters
+      )
       parameters <- c(prior_parameters, formula_parameters)
       if(length(add_parameters) > 0){
         parameters <- c(parameters, samples.row[add_parameters])
