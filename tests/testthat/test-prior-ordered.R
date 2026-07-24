@@ -803,3 +803,58 @@ test_that("ordered densities are direct when supported and bridge sampling stops
     JAGS_bridgesampling_posterior(samples, formula_info$prior_list)
   )
 })
+
+test_that("ordered sampled densities transform components and preserve cumulative atoms", {
+  p <- prior_ordered(
+    prior("normal", list(0, 1)),
+    allocation = c(.25, .75),
+    contrast = "cumulative"
+  )
+  attr(p, "levels") <- 3
+
+  set.seed(7401)
+  density_identity <- density(
+    p,
+    n_points = 31,
+    n_samples = 2000,
+    force_samples = TRUE
+  )
+  set.seed(7401)
+  density_exp <- density(
+    p,
+    n_points = 31,
+    n_samples = 2000,
+    force_samples = TRUE,
+    transformation = "exp"
+  )
+
+  expect_s3_class(density_exp[[1]], "density.prior.point")
+  expect_equal(density_exp[[1]]$x, 1)
+  expect_equal(unique(density_exp[[1]]$samples), 1)
+  expect_equal(density_exp[[1]]$y, 1)
+  expect_null(density_exp[[1]]$bw)
+
+  expect_s3_class(density_exp[[2]], "density.prior.simple")
+  expect_equal(density_exp[[2]]$x, exp(density_identity[[2]]$x))
+  expect_equal(density_exp[[2]]$samples, exp(density_identity[[2]]$samples))
+  expect_equal(
+    density_exp[[2]]$y,
+    density_identity[[2]]$y / density_exp[[2]]$x,
+    tolerance = 1e-10
+  )
+  expect_true(all(density_exp[[2]]$x > 0))
+
+  plot_exp <- plot(
+    p,
+    plot_type = "ggplot",
+    show_figures = 1,
+    n_points = 31,
+    n_samples = 2000,
+    force_samples = TRUE,
+    transformation = "exp"
+  )
+  expect_s3_class(plot_exp, "ggplot")
+  expect_equal(NROW(plot_exp$layers[[1]]$data), 1)
+  expect_equal(plot_exp$layers[[1]]$data$x, 1)
+  expect_equal(plot_exp$layers[[1]]$data$y, 1)
+})

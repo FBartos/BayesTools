@@ -243,23 +243,49 @@ density.prior <- function(x,
   names(out) <- colnames(samples)
 
   for(i in seq_len(ncol(samples))){
-    x_density <- .density_kde_boundary(
-      x    = samples[, i],
-      n    = n_points,
-      from = x_range[1],
-      to   = x_range[2]
-    )
-    out[[i]] <- list(
-      call    = call("density", print(x, silent = TRUE)),
-      bw      = x_density$bw,
-      n       = n_points,
-      x       = x_density$x,
-      y       = x_density$y,
-      samples = samples[, i]
-    )
-    class(out[[i]]) <- c("density.prior.ordered_component", "density", "density.prior")
-    attr(out[[i]], "x_range") <- range(x_density$x)
-    attr(out[[i]], "y_range") <- range(x_density$y)
+    component_samples <- samples[, i]
+
+    if(all(component_samples == component_samples[1])){
+      out[[i]] <- .density.prior.point(
+        prior("point", list(location = component_samples[1])),
+        x_seq,
+        x_range,
+        n_points,
+        n_samples,
+        force_samples = TRUE,
+        transformation,
+        transformation_arguments
+      )
+    }else{
+      x_density <- .density_kde_boundary(
+        x    = component_samples,
+        n    = n_points,
+        from = x_range[1],
+        to   = x_range[2]
+      )
+      x_values <- x_density$x
+      y_values <- x_density$y
+
+      if(!is.null(transformation)){
+        x_values         <- .density.prior_transformation_x(x_values, transformation, transformation_arguments)
+        component_samples <- .density.prior_transformation_x(component_samples, transformation, transformation_arguments)
+        y_values         <- .density.prior_transformation_y(x_values, y_values, transformation, transformation_arguments)
+      }
+
+      out[[i]] <- list(
+        call    = call("density", print(x, silent = TRUE)),
+        bw      = x_density$bw,
+        n       = n_points,
+        x       = x_values,
+        y       = y_values,
+        samples = component_samples
+      )
+      class(out[[i]]) <- c("density", "density.prior", "density.prior.simple")
+      attr(out[[i]], "x_range") <- range(x_values)
+      attr(out[[i]], "y_range") <- range(y_values)
+    }
+
+    class(out[[i]]) <- c("density.prior.ordered_component", class(out[[i]]))
     attr(out[[i]], "component") <- i
     attr(out[[i]], "component_name") <- names(out)[i]
   }
