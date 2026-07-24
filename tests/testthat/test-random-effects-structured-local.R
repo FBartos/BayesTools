@@ -186,6 +186,16 @@ test_that("local CAR recurrence retains irregular numeric time gaps", {
 
   coordinates <- c(0, 0.5, 2, 5)
   columns     <- c(1L, 3L, 4L)
+  expect_equal(
+    BayesTools:::.bt_random_effect_structured_subset_cholesky(
+      structure = "car",
+      columns = 2L,
+      rho = 0.5,
+      global_n_columns = length(coordinates),
+      column_coordinates = coordinates
+    ),
+    matrix(1, nrow = 1L, ncol = 1L)
+  )
   for(rho in c(0, 0.2, 0.75, 0.95)){
     L <- BayesTools:::.bt_random_effect_structured_subset_cholesky(
       structure = "car",
@@ -208,6 +218,27 @@ test_that("local CAR recurrence retains irregular numeric time gaps", {
       global_n_columns = length(coordinates)
     ),
     "requires one numeric coordinate",
+    fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.bt_random_effect_structured_subset_cholesky(
+      structure = "car",
+      columns = 2L,
+      rho = 0.5,
+      global_n_columns = length(coordinates)
+    ),
+    "requires one numeric coordinate",
+    fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.bt_random_effect_structured_subset_cholesky(
+      structure = "car",
+      columns = 2L,
+      rho = 0.5,
+      global_n_columns = length(coordinates),
+      column_coordinates = c(0, 0.5, 0.5, 5)
+    ),
+    "must be finite, unique, and match the global column count",
     fixed = TRUE
   )
   expect_error(

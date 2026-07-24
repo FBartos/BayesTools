@@ -238,6 +238,13 @@
     global_n_columns = global_n_columns
   )
   if(length(columns) == 1L){
+    if(identical(structure, "car")){
+      .bt_random_effect_structured_local_coordinates(
+        structure = structure,
+        n_columns = global_n_columns,
+        column_coordinates = column_coordinates
+      )
+    }
     return(matrix(1, nrow = 1L, ncol = 1L))
   }
 
