@@ -1,8 +1,10 @@
 skip_if_not_test_profile("unit")
 
-.mock_public_diagnostics_fit <- function(n = 6){
+.mock_public_diagnostics_fit <- function(n = 6, theta = NULL){
 
-  theta <- seq(-1, 1, length.out = n)
+  if(is.null(theta)){
+    theta <- seq(-1, 1, length.out = n)
+  }
   fit <- list(
     mcmc = coda::mcmc.list(
       coda::mcmc(cbind(theta = theta)),
@@ -43,6 +45,34 @@ test_that("JAGS autocorrelation diagnostics validate lags", {
       "'lags'"
     )
   }
+})
+
+
+test_that("JAGS autocorrelation diagnostics display negative correlations", {
+
+  theta <- rep(c(-1, 1), 5)
+  fit <- .mock_public_diagnostics_fit(theta = theta)
+  expected_min <- min(stats::acf(theta, lag.max = 4, plot = FALSE)$acf)
+
+  plot <- JAGS_diagnostics_autocorrelation(
+    fit,
+    parameter = "theta",
+    plot_type = "ggplot",
+    lags = 4
+  )
+  built_plot <- ggplot2::ggplot_build(plot)
+  expect_lt(min(built_plot$data[[1]]$y), 0)
+  expect_lte(built_plot$layout$panel_scales_y[[1]]$limits[[1]], expected_min)
+
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  JAGS_diagnostics_autocorrelation(
+    fit,
+    parameter = "theta",
+    plot_type = "base",
+    lags = 4
+  )
+  expect_lte(graphics::par("usr")[[3]], expected_min)
 })
 
 

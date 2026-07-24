@@ -614,7 +614,7 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
     }
 
     attr(out[[colnames(plot_data)[[i]]]], "x_range")        <- range(unlist(lapply(out[[i]], function(x) attr(x, "x_range"))))
-    attr(out[[colnames(plot_data)[[i]]]], "y_range")        <- c(0, max(sapply(out[[i]], function(x) attr(x, "y_range"))))
+    attr(out[[colnames(plot_data)[[i]]]], "y_range")        <- range(unlist(lapply(out[[i]], function(x) attr(x, "y_range"))))
     attr(out[[colnames(plot_data)[[i]]]], "chains")         <- length(unique(chain))
     attr(out[[colnames(plot_data)[[i]]]], "parameter")      <- attr(plot_data, "parameter")
     attr(out[[colnames(plot_data)[[i]]]], "parameter_name") <- colnames(plot_data)[i]
