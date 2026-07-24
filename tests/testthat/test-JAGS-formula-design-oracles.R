@@ -739,6 +739,55 @@ test_that("formula design matrices reject non-finite predictor values", {
   )
 })
 
+test_that("ordinary random slopes reject invalid values under na.pass", {
+  withr::local_options(list(na.action = "na.pass"))
+  positive_prior <- prior(
+    "normal",
+    list(0, 1),
+    truncation = list(lower = 0, upper = Inf)
+  )
+  random_priors <- prior_random(
+    id = random_block(sd = positive_prior)
+  )
+
+  for(missing_value in list(NA_real_, NaN)){
+    expect_error(
+      JAGS_formula(
+        ~ 1 + diag(0 + x | id),
+        "mu",
+        data.frame(
+          x = c(1, missing_value),
+          id = factor(c("a", "b"))
+        ),
+        list(intercept = prior("normal", list(0, 1))),
+        prior_random = random_priors
+      ),
+      paste0(
+        "Random-effect block 'id' contains missing predictor values; ",
+        "random-effect design matrices must have one row per data row."
+      ),
+      fixed = TRUE
+    )
+  }
+
+  for(infinite_value in list(Inf, -Inf)){
+    expect_error(
+      JAGS_formula(
+        ~ 1 + diag(0 + x | id),
+        "mu",
+        data.frame(
+          x = c(1, infinite_value),
+          id = factor(c("a", "b"))
+        ),
+        list(intercept = prior("normal", list(0, 1))),
+        prior_random = random_priors
+      ),
+      "Random-effect block 'id' design matrix contains non-finite values.",
+      fixed = TRUE
+    )
+  }
+})
+
 test_that("JAGS_formula validates JAGS parameter names", {
   expect_no_error(
     JAGS_formula(
