@@ -176,6 +176,27 @@ test_that("Prior plot (PET-PEESE) function works", {
   vdiffr::expect_doppelganger("priors-plot-7-1-1", function()plot(p6.1))
   vdiffr::expect_doppelganger("priors-plot-7-2-1", plot(p6.1, plot_type = "ggplot"))
 
+  decreasing_arguments <- list(a = 2, b = -3)
+  vdiffr::expect_doppelganger(
+    "priors-plot-PETPEESE-decreasing-transformation-base",
+    function(){
+      plot(
+        p6,
+        transformation = "lin",
+        transformation_arguments = decreasing_arguments
+      )
+    }
+  )
+  vdiffr::expect_doppelganger(
+    "priors-plot-PETPEESE-decreasing-transformation-ggplot",
+    plot(
+      p6,
+      plot_type = "ggplot",
+      transformation = "lin",
+      transformation_arguments = decreasing_arguments
+    )
+  )
+
 })
 
 test_that("Prior plot (orthonormal) function works", {

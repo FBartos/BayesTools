@@ -867,6 +867,49 @@ test_that("PET-PEESE public prior plots include uncertainty ribbons in y limits"
   expect_gte(max(single_limits), max(single_ribbon))
 })
 
+test_that("PET-PEESE public prior plots order ribbons after decreasing transformations", {
+
+  x_seq <- c(0, 0.5, 1)
+  bias_priors <- list(
+    PET = prior_PET(
+      "normal",
+      list(0, 1),
+      truncation = list(-Inf, Inf)
+    ),
+    PEESE = prior_PEESE(
+      "normal",
+      list(0, 1),
+      truncation = list(-Inf, Inf)
+    )
+  )
+  se_scale <- list(PET = x_seq, PEESE = x_seq^2)
+
+  for(prior_name in names(bias_priors)){
+    prior_plot <- plot(
+      bias_priors[[prior_name]],
+      plot_type = "ggplot",
+      x_seq = x_seq,
+      transformation = "lin",
+      transformation_arguments = list(a = 2, b = -3)
+    )
+
+    ribbon <- prior_plot$layers[[1]]$data
+    n_points <- length(x_seq)
+    lower <- ribbon$y[seq_len(n_points)]
+    upper <- rev(tail(ribbon$y, n_points))
+
+    expect_true(all(lower <= upper))
+    expect_equal(
+      lower,
+      (2 - 3 * stats::qnorm(.975)) * se_scale[[prior_name]]
+    )
+    expect_equal(
+      upper,
+      (2 - 3 * stats::qnorm(.025)) * se_scale[[prior_name]]
+    )
+  }
+})
+
 test_that("plot_prior_list keeps retained components paired with their weights", {
 
   point_priors <- list(

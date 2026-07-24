@@ -714,6 +714,11 @@ density.prior <- function(x,
       y_uCI   = x_uCI  * x_seq^2
     }
 
+    y_lower <- pmin(y_lCI, y_uCI)
+    y_upper <- pmax(y_lCI, y_uCI)
+    y_lCI   <- y_lower
+    y_uCI   <- y_upper
+
 
     out <- list(
       call    = call("density", print(x, silent = TRUE)),
