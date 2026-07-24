@@ -125,34 +125,19 @@
   }
 
   check_list(formula_list, "formula_list", allow_NULL = FALSE)
-  if(has_fitted_formula_design){
-    check_list(formula_data_list, "formula_data_list", allow_NULL = FALSE)
-    check_list(formula_prior_list, "formula_prior_list", allow_NULL = FALSE)
-    if(!.bt_JAGS_bridge_formula_input_names_match(
-      formula_list = formula_list,
-      formula_data_list = formula_data_list,
-      formula_prior_list = formula_prior_list,
-      formula_scale_list = formula_scale_list,
-      formula_random_prior_list = formula_random_prior_list,
-      formula_random_effects_compile_list = formula_random_effects_compile_list
-    )){
-      return(list(
-        rebuildable = FALSE,
-        detail = "formula input names are incomplete or inconsistent"
-      ))
-    }
-    scale_check_names <- NULL
-    random_check_names <- NULL
-  }else{
-    check_list(formula_data_list, "formula_data_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = FALSE)
-    check_list(formula_prior_list, "formula_prior_list", check_names = names(formula_list), allow_other = FALSE, all_objects = TRUE, allow_NULL = FALSE)
-    scale_check_names <- names(formula_list)
-    random_check_names <- names(formula_list)
-  }
-
-  check_list(formula_scale_list, "formula_scale_list", check_names = scale_check_names, allow_other = FALSE, all_objects = FALSE, allow_NULL = TRUE)
-  check_list(formula_random_prior_list, "formula_random_prior_list", check_names = random_check_names, allow_other = FALSE, all_objects = FALSE, allow_NULL = TRUE)
-  check_list(formula_random_effects_compile_list, "formula_random_effects_compile_list", check_names = random_check_names, allow_other = FALSE, all_objects = FALSE, allow_NULL = TRUE)
+  check_list(formula_data_list, "formula_data_list", allow_NULL = FALSE)
+  check_list(formula_prior_list, "formula_prior_list", allow_NULL = FALSE)
+  check_list(formula_scale_list, "formula_scale_list", allow_NULL = TRUE)
+  check_list(formula_random_prior_list, "formula_random_prior_list", allow_NULL = TRUE)
+  check_list(formula_random_effects_compile_list, "formula_random_effects_compile_list", allow_NULL = TRUE)
+  .bt_validate_jags_formula_lists(
+    formula_list = formula_list,
+    formula_data_list = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    formula_random_prior_list = formula_random_prior_list,
+    formula_random_effects_compile_list = formula_random_effects_compile_list,
+    formula_scale_list = formula_scale_list
+  )
   if(!is.null(formula_random_prior_list)){
     for(parameter in names(formula_random_prior_list)){
       .bt_check_prior_random(formula_random_prior_list[[parameter]])
@@ -349,29 +334,19 @@
                                                       formula_random_prior_list = NULL,
                                                       formula_random_effects_compile_list = NULL){
 
-  formula_names <- names(formula_list)
-  if(is.null(formula_names) || anyNA(formula_names) || any(!nzchar(formula_names))){
-    return(FALSE)
-  }
-
-  if(!setequal(formula_names, names(formula_data_list)) ||
-     !setequal(formula_names, names(formula_prior_list))){
-    return(FALSE)
-  }
-  if(!is.null(formula_scale_list) &&
-     any(!names(formula_scale_list) %in% formula_names)){
-    return(FALSE)
-  }
-  if(!is.null(formula_random_prior_list) &&
-     any(!names(formula_random_prior_list) %in% formula_names)){
-    return(FALSE)
-  }
-  if(!is.null(formula_random_effects_compile_list) &&
-     any(!names(formula_random_effects_compile_list) %in% formula_names)){
-    return(FALSE)
-  }
-
-  TRUE
+  tryCatch({
+    .bt_validate_jags_formula_lists(
+      formula_list = formula_list,
+      formula_data_list = formula_data_list,
+      formula_prior_list = formula_prior_list,
+      formula_random_prior_list = formula_random_prior_list,
+      formula_random_effects_compile_list = formula_random_effects_compile_list,
+      formula_scale_list = formula_scale_list
+    )
+    TRUE
+  }, error = function(e){
+    FALSE
+  })
 }
 
 .bt_JAGS_bridge_stop_formula_mismatch <- function(mismatches){
