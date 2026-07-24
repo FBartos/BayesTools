@@ -415,6 +415,15 @@
       n_columns = n_columns
     )
   }
+  .bt_random_effect_marginal_covariance_validate_draw_matrix(
+    draws = sd_draws,
+    n_draws = n_draws,
+    n_columns = n_columns,
+    label = "SD",
+    random_term = random_term,
+    nonnegative = TRUE,
+    context = "Random-effect prediction"
+  )
   structure <- .bt_random_effect_structure(
     random_term,
     context = "Random-effect prediction metadata"
@@ -676,6 +685,15 @@
     data = source_data,
     context = "Prediction"
   )
+  .bt_random_effect_marginal_covariance_validate_draw_matrix(
+    draws = source_draws,
+    n_draws = n_draws,
+    n_columns = n_rows,
+    label = "row-indexed SD source",
+    random_term = random_term,
+    nonnegative = TRUE,
+    context = "Random-effect prediction"
+  )
   column_allocation <- .bt_random_effect_row_indexed_column_allocation_draws(
     random_term = random_term,
     posterior = posterior,
@@ -688,8 +706,26 @@
       posterior = posterior,
       prior_list = prior_list
     )
+    .bt_random_effect_marginal_covariance_validate_draw_matrix(
+      draws = matrix(allocation, ncol = 1L),
+      n_draws = n_draws,
+      n_columns = 1L,
+      label = "row-indexed SD allocation",
+      random_term = random_term,
+      nonnegative = TRUE,
+      context = "Random-effect prediction"
+    )
   }else{
     allocation <- NULL
+    .bt_random_effect_marginal_covariance_validate_draw_matrix(
+      draws = column_allocation,
+      n_draws = n_draws,
+      n_columns = n_columns,
+      label = "row-indexed column SD allocation",
+      random_term = random_term,
+      nonnegative = TRUE,
+      context = "Random-effect prediction"
+    )
   }
   structure <- .bt_random_effect_structure(
     random_term,

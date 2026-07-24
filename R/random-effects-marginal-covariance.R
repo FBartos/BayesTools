@@ -1589,12 +1589,13 @@ random_effects_marginal_variance_factors <- function(
     n_columns,
     label,
     random_term,
-    nonnegative = FALSE){
+    nonnegative = FALSE,
+    context = "Random-effect marginal covariance"){
 
   if(!is.matrix(draws) || !is.numeric(draws) ||
      nrow(draws) != n_draws || ncol(draws) != n_columns){
     stop(
-      "Random-effect marginal covariance ",
+      context, " ",
       label,
       " draws for block '",
       random_term$block_name,
@@ -1608,7 +1609,7 @@ random_effects_marginal_variance_factors <- function(
   }
   if(any(invalid)){
     stop(
-      "Random-effect marginal covariance ",
+      context, " ",
       label,
       " draws for block '",
       random_term$block_name,

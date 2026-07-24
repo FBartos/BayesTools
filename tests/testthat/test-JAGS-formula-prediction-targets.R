@@ -314,6 +314,150 @@ test_that("conditional target handles new levels by explicit policy", {
   )
 })
 
+test_that("new-level sampling rejects invalid ordinary SD draws", {
+
+  result <- .formula_prediction_result()
+  random_term <- result$formula_design$random_effects[[1L]]
+  posterior <- as.matrix(.formula_prediction_fit(result))
+  sample_contribution <- function(posterior){
+    BayesTools:::.bt_random_effect_group_contribution_sample(
+      random_term = random_term,
+      model_matrix = random_term$model_matrix,
+      group_map = random_term$group_map,
+      posterior = posterior,
+      prior_list = result$prior_list,
+      source_data = .formula_prediction_data()
+    )
+  }
+
+  for(invalid_value in c(-1, NA_real_, Inf)){
+    invalid_posterior <- posterior
+    invalid_posterior[1L, random_term$sd_parameter_names[1L]] <- invalid_value
+    expect_error(
+      sample_contribution(invalid_posterior),
+      paste0(
+        "Random-effect prediction SD draws for block '",
+        random_term$block_name,
+        "' must be finite and non-negative."
+      ),
+      fixed = TRUE
+    )
+  }
+})
+
+test_that("row-indexed new-level sampling rejects invalid scale draws", {
+
+  df <- .formula_prediction_data()
+  fixed_priors <- list(intercept = prior("normal", list(0, 1)))
+  row_result <- JAGS_formula(
+    formula = ~ 1 + random(1 | id, name = "id", covariance = "diag"),
+    parameter = "mu",
+    data = df,
+    prior_list = fixed_priors,
+    prior_random = prior_random(
+      id = random_block(
+        sd_source = random_sd_source("tau", shape = "row")
+      )
+    )
+  )
+  column_result <- JAGS_formula(
+    formula = ~ 1 + random(1 + x | id, name = "id", covariance = "diag"),
+    parameter = "mu",
+    data = df,
+    prior_list = fixed_priors,
+    prior_random = prior_random(
+      allocation = random_variance_allocation(
+        terms = "id",
+        target = "sd_component",
+        sd_source = random_sd_source("tau", shape = "row"),
+        weights = prior("dirichlet", list(alpha = c(1, 1)))
+      )
+    )
+  )
+  posterior <- matrix(
+    0,
+    nrow = 2L,
+    ncol = 1L,
+    dimnames = list(NULL, "mu_intercept")
+  )
+  mock_draws <- new.env(parent = emptyenv())
+  mock_draws$source <- matrix(1, nrow = nrow(posterior), ncol = nrow(df))
+  mock_draws$allocation <- rep(1, nrow(posterior))
+  mock_draws$column_allocation <- NULL
+  testthat::local_mocked_bindings(
+    .bt_random_effect_row_indexed_source_draws = function(...){
+      mock_draws$source
+    },
+    .bt_random_effect_row_indexed_allocation_draws = function(...){
+      mock_draws$allocation
+    },
+    .bt_random_effect_row_indexed_column_allocation_draws = function(...){
+      mock_draws$column_allocation
+    },
+    .package = "BayesTools"
+  )
+  sample_contribution <- function(result){
+    random_term <- result$formula_design$random_effects[[1L]]
+    BayesTools:::.bt_random_effect_group_contribution_sample(
+      random_term = random_term,
+      model_matrix = random_term$model_matrix,
+      group_map = random_term$group_map,
+      posterior = posterior,
+      prior_list = result$prior_list,
+      source_data = df
+    )
+  }
+  expected_error <- function(label, random_term){
+    paste0(
+      "Random-effect prediction ",
+      label,
+      " draws for block '",
+      random_term$block_name,
+      "' must be finite and non-negative."
+    )
+  }
+  invalid_values <- c(-1, NA_real_, Inf)
+  row_term <- row_result$formula_design$random_effects[[1L]]
+
+  for(invalid_value in invalid_values){
+    mock_draws$source[,] <- 1
+    mock_draws$source[1L, 1L] <- invalid_value
+    expect_error(
+      sample_contribution(row_result),
+      expected_error("row-indexed SD source", row_term),
+      fixed = TRUE
+    )
+  }
+
+  mock_draws$source[,] <- 1
+  for(invalid_value in invalid_values){
+    mock_draws$allocation[] <- 1
+    mock_draws$allocation[1L] <- invalid_value
+    expect_error(
+      sample_contribution(row_result),
+      expected_error("row-indexed SD allocation", row_term),
+      fixed = TRUE
+    )
+  }
+
+  mock_draws$allocation[] <- 1
+  mock_draws$column_allocation <- matrix(
+    1,
+    nrow = nrow(posterior),
+    ncol = ncol(column_result$formula_design$random_effects[[1L]]$model_matrix)
+  )
+  column_term <- column_result$formula_design$random_effects[[1L]]
+  for(invalid_value in invalid_values){
+    mock_draws$column_allocation[,] <- 1
+    mock_draws$column_allocation[1L, 1L] <- invalid_value
+    expect_error(
+      sample_contribution(column_result),
+      expected_error("row-indexed column SD allocation", column_term),
+      fixed = TRUE
+    )
+  }
+})
+
 test_that("structured new-level sampling uses only requested column subsets", {
 
   factor_levels <- sprintf("level_%03d", seq_len(113L))
