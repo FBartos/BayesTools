@@ -217,8 +217,12 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   if(ncol(bridgesampling_posterior) == 0)
     stop("Bridge sampling cannot proceed without any estimated parameter")
 
-  bridge_prior_evaluator <- .bt_JAGS_bridge_compile_prior_list_evaluator(prior_list)
-  bridge_formula_prior_evaluator <- .bt_JAGS_bridge_compile_formula_prior_evaluator(formula_prior_list)
+  bridge_prior_evaluators <- .bt_JAGS_bridge_compile_model_prior_evaluators(
+    prior_list = prior_list,
+    formula_prior_list = formula_prior_list
+  )
+  bridge_prior_evaluator <- bridge_prior_evaluators$prior
+  bridge_formula_prior_evaluator <- bridge_prior_evaluators$formula
   bridge_formula_random_prior_evaluator <- .bt_JAGS_bridge_compile_formula_random_prior_evaluator(formula_design_list)
   bridge_formula_parameter_evaluator <- .bt_JAGS_bridge_compile_formula_parameter_evaluator(
     formula_list = formula_list,

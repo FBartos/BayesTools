@@ -1,9 +1,11 @@
-.bt_JAGS_bridge_compile_prior_list_evaluator <- function(prior_list){
+.bt_JAGS_bridge_compile_prior_list_evaluator <- function(prior_list,
+                                                         emitted_allocations = character()){
 
   if(length(prior_list) == 0L){
     return(list(
       log_prior = function(samples) 0,
-      parameters = function(samples) list()
+      parameters = function(samples) list(),
+      allocation_keys = unique(emitted_allocations)
     ))
   }
 
@@ -14,7 +16,7 @@
   .check_prior_list_unique_names(prior_list)
 
   evaluators <- vector("list", length(prior_list))
-  ordered_allocation_keys <- character()
+  ordered_allocation_keys <- unique(emitted_allocations)
   for(i in seq_along(prior_list)){
     if(is.prior.ordered(prior_list[[i]])){
       evaluator <- .bt_JAGS_bridge_compile_ordered_evaluator(
@@ -49,7 +51,8 @@
         parameters <- c(parameters, evaluator$parameters(samples))
       }
       parameters
-    }
+    },
+    allocation_keys = ordered_allocation_keys
   )
 }
 
@@ -498,31 +501,36 @@
   )
 }
 
-.bt_JAGS_bridge_compile_formula_prior_evaluator <- function(formula_prior_list){
+.bt_JAGS_bridge_compile_formula_prior_evaluator <- function(formula_prior_list,
+                                                            emitted_allocations = character()){
 
   if(length(formula_prior_list) == 0L){
     return(list(
       log_prior = function(samples) 0,
-      parameters = function(samples) list()
+      parameters = function(samples) list(),
+      allocation_keys = unique(emitted_allocations)
     ))
   }
 
-  evaluators <- lapply(formula_prior_list, .bt_JAGS_bridge_compile_prior_list_evaluator)
+  prior_list <- do.call(c, unname(formula_prior_list))
+  .bt_JAGS_bridge_compile_prior_list_evaluator(
+    prior_list = prior_list,
+    emitted_allocations = emitted_allocations
+  )
+}
+
+.bt_JAGS_bridge_compile_model_prior_evaluators <- function(prior_list,
+                                                           formula_prior_list){
+
+  prior_evaluator <- .bt_JAGS_bridge_compile_prior_list_evaluator(prior_list)
+  formula_prior_evaluator <- .bt_JAGS_bridge_compile_formula_prior_evaluator(
+    formula_prior_list = formula_prior_list,
+    emitted_allocations = prior_evaluator$allocation_keys
+  )
+
   list(
-    log_prior = function(samples){
-      marglik <- 0
-      for(evaluator in evaluators){
-        marglik <- marglik + evaluator$log_prior(samples)
-      }
-      marglik
-    },
-    parameters = function(samples){
-      parameters <- list()
-      for(evaluator in evaluators){
-        parameters <- c(parameters, evaluator$parameters(samples))
-      }
-      parameters
-    }
+    prior = prior_evaluator,
+    formula = formula_prior_evaluator
   )
 }
 

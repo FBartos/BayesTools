@@ -300,13 +300,12 @@ JAGS_marglik_priors                <- function(samples, prior_list){
 #' @rdname JAGS_marglik_priors
 JAGS_marglik_priors_formula <- function(samples, formula_prior_list){
 
-  marglik <- 0
-
-  for(parameter in names(formula_prior_list)){
-    marglik <- marglik + JAGS_marglik_priors(samples, formula_prior_list[[parameter]])
+  if(length(formula_prior_list) == 0L){
+    return(0)
   }
 
-  return(marglik)
+  prior_list <- do.call(c, unname(formula_prior_list))
+  JAGS_marglik_priors(samples, prior_list)
 }
 
 .bt_JAGS_marglik_priors_formula_random <- function(samples, formula_design_list){

@@ -142,6 +142,154 @@ test_that("compiled formula prior evaluator matches public formula density helpe
   )
 })
 
+test_that("shared ordered allocations contribute one prior density across scopes", {
+
+  formula_data <- data.frame(
+    f = ordered(c("low", "mid", "high"), levels = c("low", "mid", "high"))
+  )
+  make_prior_list <- function(parameter, id){
+    JAGS_formula(
+      formula = ~ f,
+      parameter = parameter,
+      data = formula_data,
+      prior_list = list(
+        intercept = prior("point", list(0)),
+        f = prior_ordered(
+          total = prior("normal", list(0, 1)),
+          allocation = prior("dirichlet", list(alpha = c(2, 3))),
+          id = id
+        )
+      )
+    )$prior_list
+  }
+
+  formula_prior_list <- list(
+    mu = make_prior_list("mu", "shared"),
+    tau = make_prior_list("tau", "shared")
+  )
+  samples <- c(
+    mu_f_ordered_total = 1,
+    tau_f_ordered_total = 2,
+    "prior_par_eta_ordered_alloc_shared_f[1]" = 1,
+    "prior_par_eta_ordered_alloc_shared_f[2]" = 3
+  )
+  total_log_prior <- sum(stats::dnorm(c(1, 2), log = TRUE))
+  allocation_log_prior <- sum(stats::dgamma(
+    c(1, 3),
+    shape = c(2, 3),
+    rate = 1,
+    log = TRUE
+  ))
+  expected <- total_log_prior + allocation_log_prior
+
+  compiled <- BayesTools:::.bt_JAGS_bridge_compile_formula_prior_evaluator(
+    formula_prior_list
+  )
+  expect_equal(
+    JAGS_marglik_priors_formula(samples, formula_prior_list),
+    expected,
+    tolerance = 1e-12
+  )
+  expect_equal(compiled$log_prior(samples), expected, tolerance = 1e-12)
+  expect_length(compiled$allocation_keys, 1L)
+
+  model_evaluators <-
+    BayesTools:::.bt_JAGS_bridge_compile_model_prior_evaluators(
+      prior_list = formula_prior_list$mu,
+      formula_prior_list = list(tau = formula_prior_list$tau)
+    )
+  expect_equal(
+    model_evaluators$prior$log_prior(samples),
+    stats::dnorm(1, log = TRUE) + allocation_log_prior,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    model_evaluators$formula$log_prior(samples),
+    stats::dnorm(2, log = TRUE),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    model_evaluators$prior$log_prior(samples) +
+      model_evaluators$formula$log_prior(samples),
+    expected,
+    tolerance = 1e-12
+  )
+})
+
+test_that("distinct ordered allocations retain independent prior densities", {
+
+  formula_data <- data.frame(
+    f = ordered(c("low", "mid", "high"), levels = c("low", "mid", "high"))
+  )
+  make_prior_list <- function(parameter, id){
+    JAGS_formula(
+      formula = ~ f,
+      parameter = parameter,
+      data = formula_data,
+      prior_list = list(
+        intercept = prior("point", list(0)),
+        f = prior_ordered(
+          total = prior("normal", list(0, 1)),
+          allocation = prior("dirichlet", list(alpha = c(2, 3))),
+          id = id
+        )
+      )
+    )$prior_list
+  }
+
+  formula_prior_list <- list(
+    mu = make_prior_list("mu", "mu_shape"),
+    tau = make_prior_list("tau", "tau_shape")
+  )
+  samples <- c(
+    mu_f_ordered_total = 1,
+    tau_f_ordered_total = 2,
+    "prior_par_eta_ordered_alloc_mu_shape_f[1]" = 1,
+    "prior_par_eta_ordered_alloc_mu_shape_f[2]" = 3,
+    "prior_par_eta_ordered_alloc_tau_shape_f[1]" = 2,
+    "prior_par_eta_ordered_alloc_tau_shape_f[2]" = 4
+  )
+  mu_allocation_log_prior <- sum(stats::dgamma(
+    c(1, 3),
+    shape = c(2, 3),
+    rate = 1,
+    log = TRUE
+  ))
+  tau_allocation_log_prior <- sum(stats::dgamma(
+    c(2, 4),
+    shape = c(2, 3),
+    rate = 1,
+    log = TRUE
+  ))
+  expected <- sum(stats::dnorm(c(1, 2), log = TRUE)) +
+    mu_allocation_log_prior +
+    tau_allocation_log_prior
+
+  compiled <- BayesTools:::.bt_JAGS_bridge_compile_formula_prior_evaluator(
+    formula_prior_list
+  )
+  expect_equal(
+    JAGS_marglik_priors_formula(samples, formula_prior_list),
+    expected,
+    tolerance = 1e-12
+  )
+  expect_equal(compiled$log_prior(samples), expected, tolerance = 1e-12)
+  expect_length(compiled$allocation_keys, 2L)
+
+  model_evaluators <-
+    BayesTools:::.bt_JAGS_bridge_compile_model_prior_evaluators(
+      prior_list = formula_prior_list$mu,
+      formula_prior_list = list(tau = formula_prior_list$tau)
+    )
+  expect_equal(
+    model_evaluators$prior$log_prior(samples) +
+      model_evaluators$formula$log_prior(samples),
+    expected,
+    tolerance = 1e-12
+  )
+  expect_length(model_evaluators$formula$allocation_keys, 2L)
+})
+
 test_that("bridge callback dispatcher exposes context only when requested", {
 
   context <- structure(
