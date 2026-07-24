@@ -504,6 +504,26 @@ test_that("transform_scale_samples validates malformed formula_scale metadata", 
     transform_scale_samples(posterior, list(mu = list(mu_x1 = list(mean = NA_real_, sd = 1)))),
     "NA/NaN"
   )
+  expect_error(
+    transform_scale_samples(
+      posterior,
+      list(
+        mu = list(mu_x1 = list(mean = 0, sd = 1)),
+        mu = list(mu_x1 = list(mean = 0, sd = 1))
+      )
+    ),
+    "duplicate parameter names"
+  )
+  expect_error(
+    transform_scale_samples(
+      posterior,
+      list(mu = list(
+        mu_x1 = list(mean = 0, sd = 1),
+        mu_x1 = list(mean = 1, sd = 2)
+      ))
+    ),
+    "duplicate term names"
+  )
 })
 
 test_that("transform_scale_samples warns when formula_scale prefix is unused", {

@@ -86,6 +86,8 @@
 
   if(is.null(names(formula_scale)) || anyNA(names(formula_scale)) || any(names(formula_scale) == ""))
     stop(paste0("The '", name, "' argument must be a named nested list keyed by parameter name."), call. = FALSE)
+  if(anyDuplicated(names(formula_scale)))
+    stop(paste0("The '", name, "' argument must not contain duplicate parameter names."), call. = FALSE)
 
   for(param_name in names(formula_scale)){
     param_scale <- formula_scale[[param_name]]
@@ -96,6 +98,8 @@
 
     if(is.null(names(param_scale)) || anyNA(names(param_scale)) || any(names(param_scale) == ""))
       stop(paste0("The '", name, "[['", param_name, "]]" ,"' entry must be a named list keyed by parameter term."), call. = FALSE)
+    if(anyDuplicated(names(param_scale)))
+      stop(paste0("The '", name, "[['", param_name, "']]' entry must not contain duplicate term names."), call. = FALSE)
 
     for(term_name in names(param_scale)){
       term_scale <- param_scale[[term_name]]
