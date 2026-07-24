@@ -275,6 +275,32 @@ test_that("transform_scale_samples handles interaction terms correctly", {
   expect_equal(posterior_original[, "mu_intercept"], expected_intercept, tolerance = 1e-10)
 })
 
+test_that("transform_scale_samples rejects incomplete centered interactions", {
+
+  posterior <- matrix(
+    c(1, 3),
+    nrow = 1,
+    dimnames = list(NULL, c("mu_intercept", "mu_x__xXx__z"))
+  )
+  formula_scale <- list(mu = list(
+    mu_x = list(mean = 10, sd = 2),
+    mu_z = list(mean = 20, sd = 5)
+  ))
+
+  expect_error(
+    transform_scale_samples(posterior, formula_scale),
+    "missing lower-order coefficient"
+  )
+
+  zero_centered_scale <- formula_scale
+  zero_centered_scale$mu$mu_x$mean <- 0
+  zero_centered_scale$mu$mu_z$mean <- 0
+  expect_equal(
+    transform_scale_samples(posterior, zero_centered_scale),
+    cbind(mu_intercept = 1, mu_x__xXx__z = 0.3)
+  )
+})
+
 test_that("transform_scale_samples handles indexed factor interactions", {
 
   posterior <- matrix(

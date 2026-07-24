@@ -21,6 +21,9 @@
 #' of S's scaled components) is:
 #' \deqn{(-1)^{|extra|} \cdot \prod_{i \in extra} \mu_i / \prod_{i \in S_{scaled}} \sigma_i}
 #' where \eqn{extra = S_{scaled} \setminus T_{scaled}}.
+#' The posterior must contain every lower-order coefficient with a nonzero
+#' contribution from this expansion. If it does not, the function stops rather
+#' than returning an incomplete transformation.
 #'
 #' @return \code{transform_scale_samples} returns posterior samples transformed
 #' back to the original predictor scale.

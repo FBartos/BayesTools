@@ -75,7 +75,12 @@
 
     pseudo_terms <- paste0(prefix, "_", group_terms)
     names(pseudo_terms) <- group_cols
-    M <- .build_unscale_matrix(unname(pseudo_terms), formula_scale, prefix)
+    M <- .build_unscale_matrix(
+      unname(pseudo_terms),
+      formula_scale,
+      prefix,
+      require_closure = FALSE
+    )
 
     source_sd <- posterior[, group_cols, drop = FALSE]
     source_cor <- .random_sd_correlation_draws(
@@ -142,7 +147,12 @@
   for(group in column_groups){
     group_key <- group$group_key
     pseudo_terms <- paste0(prefix, "_", group$column_terms)
-    M <- .build_unscale_matrix(pseudo_terms, formula_scale, prefix)
+    M <- .build_unscale_matrix(
+      pseudo_terms,
+      formula_scale,
+      prefix,
+      require_closure = FALSE
+    )
 
     source_sd <- posterior[, group$leaf_names_by_column, drop = FALSE]
     source_cor <- .random_sd_correlation_draws(

@@ -79,6 +79,78 @@
 }
 
 
+# Helper: Refuse incomplete coefficient transformations. Centered interactions
+# induce lower-order terms, which cannot be represented by a square transform
+# when the corresponding posterior columns are absent.
+.check_unscale_term_closure <- function(term_names, term_scaled, term_unscaled,
+                                        formula_scale, prefix) {
+
+  for(source_name in term_names){
+    source_scaled <- unique(term_scaled[[source_name]])
+    if(length(source_scaled) == 0L){
+      next
+    }
+
+    source_unscaled <- term_unscaled[[source_name]]
+    missing_targets <- character()
+    for(subset_size in 0:(length(source_scaled) - 1L)){
+      target_sets <- if(subset_size == 0L){
+        list(character())
+      }else{
+        utils::combn(source_scaled, subset_size, simplify = FALSE)
+      }
+
+      for(target_scaled in target_sets){
+        extra_scaled <- setdiff(source_scaled, target_scaled)
+        extra_params <- paste0(prefix, "_", extra_scaled)
+        mean_product <- prod(vapply(
+          extra_params,
+          function(parameter) formula_scale[[parameter]][["mean"]],
+          numeric(1)
+        ))
+        if(mean_product == 0){
+          next
+        }
+
+        target_exists <- any(vapply(
+          term_names,
+          function(target_name){
+            target_components <- term_scaled[[target_name]]
+            .unscale_ids_match(term_unscaled[[target_name]], source_unscaled) &&
+              length(target_components) == length(target_scaled) &&
+              all(target_components %in% target_scaled)
+          },
+          logical(1)
+        ))
+        if(!target_exists){
+          missing_targets <- c(
+            missing_targets,
+            if(length(target_scaled) == 0L){
+              "<no scaled components>"
+            }else{
+              paste(target_scaled, collapse = ":")
+            }
+          )
+        }
+      }
+    }
+
+    if(length(missing_targets) > 0L){
+      stop(
+        "Cannot unscale posterior term '", source_name,
+        "' because centering induces missing lower-order coefficient(s) for ",
+        "scaled component set(s): ",
+        paste0(unique(missing_targets), collapse = ", "),
+        ". Include the corresponding lower-order posterior columns.",
+        call. = FALSE
+      )
+    }
+  }
+
+  invisible(NULL)
+}
+
+
 # Helper: Validate the nested formula_scale structure used for unscaling.
 .check_formula_scale_info <- function(formula_scale, name = "formula_scale") {
 
@@ -279,8 +351,11 @@
 # @param term_names Character vector of all term names in the posterior
 # @param formula_scale Named list with scaling info (mean, sd) for scaled predictors
 # @param prefix The parameter prefix (e.g., "mu")
+# @param require_closure Whether missing induced coefficient terms should fail.
+#   Random-effect SD transforms operate in covariance space and set this to FALSE.
 # @return A square transformation matrix
-.build_unscale_matrix <- function(term_names, formula_scale, prefix) {
+.build_unscale_matrix <- function(term_names, formula_scale, prefix,
+                                  require_closure = TRUE) {
 
   n_terms <- length(term_names)
   M <- diag(n_terms)  # Start with identity matrix
@@ -301,6 +376,16 @@
   term_components <- lapply(term_structure, `[[`, "components")
   term_scaled <- lapply(term_structure, `[[`, "scaled")
   term_unscaled <- vapply(term_structure, `[[`, character(1), "unscaled_id")
+
+  if(isTRUE(require_closure)){
+    .check_unscale_term_closure(
+      term_names = term_names,
+      term_scaled = term_scaled,
+      term_unscaled = term_unscaled,
+      formula_scale = formula_scale,
+      prefix = prefix
+    )
+  }
 
   # Warn about high-order interactions
   max_order <- max(sapply(term_components, length))

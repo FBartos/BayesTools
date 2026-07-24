@@ -35,6 +35,9 @@ The contribution to a target term T from a source term S (where T is a subset
 of S's scaled components) is:
 \deqn{(-1)^{|extra|} \cdot \prod_{i \in extra} \mu_i / \prod_{i \in S_{scaled}} \sigma_i}
 where \eqn{extra = S_{scaled} \setminus T_{scaled}}.
+The posterior must contain every lower-order coefficient with a nonzero
+contribution from this expansion. If it does not, the function stops rather
+than returning an incomplete transformation.
 }
 \seealso{
 \code{\link[=JAGS_formula]{JAGS_formula()}} \code{\link[=JAGS_fit]{JAGS_fit()}}
