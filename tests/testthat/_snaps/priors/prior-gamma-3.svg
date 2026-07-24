@@ -25,9 +25,9 @@
   </clipPath>
 </defs>
 <g clip-path='url(#cpMC4wMHwzNjAuMDB8MC4wMHw1NzYuMDA=)'>
-<text x='140.19' y='32.36' style='font-size: 14.40px; font-style: italic; font-family: sans;' textLength='51.23px' lengthAdjust='spacingAndGlyphs'>Gamma</text>
-<text x='192.58' y='32.36' style='font-size: 14.40px; font-family: sans;' textLength='33.61px' lengthAdjust='spacingAndGlyphs'>(2, 3)</text>
-<text x='226.19' y='35.02' style='font-size: 10.08px; font-family: sans;' textLength='22.41px' lengthAdjust='spacingAndGlyphs'>[0, 3]</text>
+<text x='140.19' y='32.17' style='font-size: 14.40px; font-style: italic; font-family: sans;' textLength='51.23px' lengthAdjust='spacingAndGlyphs'>Gamma</text>
+<text x='192.58' y='32.17' style='font-size: 14.40px; font-family: sans;' textLength='33.61px' lengthAdjust='spacingAndGlyphs'>(2, 3)</text>
+<text x='226.19' y='35.21' style='font-size: 10.08px; font-family: sans;' textLength='22.41px' lengthAdjust='spacingAndGlyphs'>[0, 3]</text>
 <text x='194.40' y='557.28' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='44.70px' lengthAdjust='spacingAndGlyphs'>samples</text>
 <text transform='translate(12.96,280.80) rotate(-90)' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='40.02px' lengthAdjust='spacingAndGlyphs'>Density</text>
 </g>
@@ -143,9 +143,9 @@
   </clipPath>
 </defs>
 <g clip-path='url(#cpMzYwLjAwfDcyMC4wMHwwLjAwfDU3Ni4wMA==)'>
-<text x='500.19' y='32.36' style='font-size: 14.40px; font-style: italic; font-family: sans;' textLength='51.23px' lengthAdjust='spacingAndGlyphs'>Gamma</text>
-<text x='552.58' y='32.36' style='font-size: 14.40px; font-family: sans;' textLength='33.61px' lengthAdjust='spacingAndGlyphs'>(2, 3)</text>
-<text x='586.19' y='35.02' style='font-size: 10.08px; font-family: sans;' textLength='22.41px' lengthAdjust='spacingAndGlyphs'>[0, 3]</text>
+<text x='500.19' y='32.17' style='font-size: 14.40px; font-style: italic; font-family: sans;' textLength='51.23px' lengthAdjust='spacingAndGlyphs'>Gamma</text>
+<text x='552.58' y='32.17' style='font-size: 14.40px; font-family: sans;' textLength='33.61px' lengthAdjust='spacingAndGlyphs'>(2, 3)</text>
+<text x='586.19' y='35.21' style='font-size: 10.08px; font-family: sans;' textLength='22.41px' lengthAdjust='spacingAndGlyphs'>[0, 3]</text>
 <text x='554.40' y='557.28' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='44.70px' lengthAdjust='spacingAndGlyphs'>samples</text>
 <text transform='translate(372.96,280.80) rotate(-90)' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='40.02px' lengthAdjust='spacingAndGlyphs'>Density</text>
 </g>

@@ -26,34 +26,34 @@
 <text x='330.96' y='131.11' style='font-size: 12.00px; font-family: sans;' textLength='98.07px' lengthAdjust='spacingAndGlyphs'>(mean = 0, sd = 1)</text>
 <text x='326.00' y='184.44' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='38.68px' lengthAdjust='spacingAndGlyphs'>Normal</text>
 <text x='365.99' y='184.44' style='font-size: 12.00px; font-family: sans;' textLength='28.01px' lengthAdjust='spacingAndGlyphs'>(0, 1)</text>
-<text x='313.97' y='237.03' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='40.70px' lengthAdjust='spacingAndGlyphs'>Cauchy</text>
-<text x='355.62' y='237.03' style='font-size: 12.00px; font-family: sans;' textLength='28.01px' lengthAdjust='spacingAndGlyphs'>(0, 1)</text>
-<text x='383.63' y='239.25' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>[</text>
-<text x='385.96' y='239.25' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>0</text>
-<text x='390.63' y='239.25' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>, </text>
-<text x='395.30' y='239.25' style='font-size: 8.40px; font-family: sans;' textLength='8.40px' lengthAdjust='spacingAndGlyphs'>∞</text>
-<text x='403.70' y='239.25' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>]</text>
-<text x='329.83' y='290.37' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='8.67px' lengthAdjust='spacingAndGlyphs'>C</text>
-<text x='339.76' y='290.37' style='font-size: 12.00px; font-family: sans;' textLength='28.01px' lengthAdjust='spacingAndGlyphs'>(0, 1)</text>
-<text x='367.76' y='292.59' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>[</text>
-<text x='370.10' y='292.59' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>0</text>
-<text x='374.77' y='292.59' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>, </text>
-<text x='379.44' y='292.59' style='font-size: 8.40px; font-family: sans;' textLength='8.40px' lengthAdjust='spacingAndGlyphs'>∞</text>
-<text x='387.84' y='292.59' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>]</text>
-<text x='265.59' y='343.70' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='40.70px' lengthAdjust='spacingAndGlyphs'>Cauchy</text>
-<text x='307.25' y='343.70' style='font-size: 12.00px; font-family: sans;' textLength='124.75px' lengthAdjust='spacingAndGlyphs'>(location = 0, scale = 1)</text>
-<text x='432.00' y='345.92' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>[</text>
-<text x='434.33' y='345.92' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>0</text>
-<text x='439.01' y='345.92' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>, </text>
-<text x='443.67' y='345.92' style='font-size: 8.40px; font-family: sans;' textLength='8.40px' lengthAdjust='spacingAndGlyphs'>∞</text>
-<text x='452.07' y='345.92' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>]</text>
-<text x='313.97' y='397.03' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='40.70px' lengthAdjust='spacingAndGlyphs'>Cauchy</text>
-<text x='355.62' y='397.03' style='font-size: 12.00px; font-family: sans;' textLength='28.01px' lengthAdjust='spacingAndGlyphs'>(0, 1)</text>
-<text x='383.63' y='399.25' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>[</text>
-<text x='385.96' y='399.25' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>0</text>
-<text x='390.63' y='399.25' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>, </text>
-<text x='395.30' y='399.25' style='font-size: 8.40px; font-family: sans;' textLength='8.40px' lengthAdjust='spacingAndGlyphs'>∞</text>
-<text x='403.70' y='399.25' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>]</text>
+<text x='313.97' y='236.88' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='40.70px' lengthAdjust='spacingAndGlyphs'>Cauchy</text>
+<text x='355.62' y='236.88' style='font-size: 12.00px; font-family: sans;' textLength='28.01px' lengthAdjust='spacingAndGlyphs'>(0, 1)</text>
+<text x='383.63' y='239.41' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>[</text>
+<text x='385.96' y='239.41' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>0</text>
+<text x='390.63' y='239.41' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>, </text>
+<text x='395.30' y='239.41' style='font-size: 8.40px; font-family: sans;' textLength='8.40px' lengthAdjust='spacingAndGlyphs'>∞</text>
+<text x='403.70' y='239.41' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>]</text>
+<text x='329.83' y='290.21' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='8.67px' lengthAdjust='spacingAndGlyphs'>C</text>
+<text x='339.76' y='290.21' style='font-size: 12.00px; font-family: sans;' textLength='28.01px' lengthAdjust='spacingAndGlyphs'>(0, 1)</text>
+<text x='367.76' y='292.74' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>[</text>
+<text x='370.10' y='292.74' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>0</text>
+<text x='374.77' y='292.74' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>, </text>
+<text x='379.44' y='292.74' style='font-size: 8.40px; font-family: sans;' textLength='8.40px' lengthAdjust='spacingAndGlyphs'>∞</text>
+<text x='387.84' y='292.74' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>]</text>
+<text x='265.59' y='343.54' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='40.70px' lengthAdjust='spacingAndGlyphs'>Cauchy</text>
+<text x='307.25' y='343.54' style='font-size: 12.00px; font-family: sans;' textLength='124.75px' lengthAdjust='spacingAndGlyphs'>(location = 0, scale = 1)</text>
+<text x='432.00' y='346.08' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>[</text>
+<text x='434.33' y='346.08' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>0</text>
+<text x='439.01' y='346.08' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>, </text>
+<text x='443.67' y='346.08' style='font-size: 8.40px; font-family: sans;' textLength='8.40px' lengthAdjust='spacingAndGlyphs'>∞</text>
+<text x='452.07' y='346.08' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>]</text>
+<text x='313.97' y='396.88' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='40.70px' lengthAdjust='spacingAndGlyphs'>Cauchy</text>
+<text x='355.62' y='396.88' style='font-size: 12.00px; font-family: sans;' textLength='28.01px' lengthAdjust='spacingAndGlyphs'>(0, 1)</text>
+<text x='383.63' y='399.41' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>[</text>
+<text x='385.96' y='399.41' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>0</text>
+<text x='390.63' y='399.41' style='font-size: 8.40px; font-family: sans;' textLength='4.67px' lengthAdjust='spacingAndGlyphs'>, </text>
+<text x='395.30' y='399.41' style='font-size: 8.40px; font-family: sans;' textLength='8.40px' lengthAdjust='spacingAndGlyphs'>∞</text>
+<text x='403.70' y='399.41' style='font-size: 8.40px; font-family: sans;' textLength='2.33px' lengthAdjust='spacingAndGlyphs'>]</text>
 <text x='324.17' y='451.11' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='42.69px' lengthAdjust='spacingAndGlyphs'>Gamma</text>
 <text x='367.82' y='451.11' style='font-size: 12.00px; font-family: sans;' textLength='28.01px' lengthAdjust='spacingAndGlyphs'>(1, 1)</text>
 <text x='324.17' y='504.44' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='42.69px' lengthAdjust='spacingAndGlyphs'>Gamma</text>

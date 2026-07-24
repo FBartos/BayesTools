@@ -25,16 +25,16 @@
   </clipPath>
 </defs>
 <g clip-path='url(#cpMC4wMHwzNjAuMDB8MC4wMHw1NzYuMDA=)'>
-<text x='64.63' y='34.19' style='font-size: 14.40px; font-family: sans;' textLength='9.33px' lengthAdjust='spacingAndGlyphs'>ω</text>
-<text x='73.96' y='36.86' style='font-size: 10.08px; font-family: sans;' textLength='49.88px' lengthAdjust='spacingAndGlyphs'>one-sided: </text>
-<text x='123.84' y='36.86' style='font-size: 10.08px; font-family: sans;' textLength='28.02px' lengthAdjust='spacingAndGlyphs'>.05, .6</text>
-<text x='151.86' y='34.19' style='font-size: 14.40px; font-family: sans;' textLength='3.60px' lengthAdjust='spacingAndGlyphs'> </text>
-<text x='155.46' y='34.19' style='font-size: 14.40px; font-family: sans;' textLength='8.42px' lengthAdjust='spacingAndGlyphs'>~</text>
-<text x='163.88' y='34.19' style='font-size: 14.40px; font-family: sans;' textLength='3.60px' lengthAdjust='spacingAndGlyphs'> </text>
-<text x='167.48' y='34.19' style='font-size: 14.40px; font-style: italic; font-family: sans;' textLength='80.08px' lengthAdjust='spacingAndGlyphs'>Independent</text>
-<text x='248.96' y='34.19' style='font-size: 18.00px; font-family: sans;' textLength='5.99px' lengthAdjust='spacingAndGlyphs'>(</text>
-<text x='254.95' y='34.19' style='font-size: 14.40px; font-family: sans;' textLength='63.24px' lengthAdjust='spacingAndGlyphs'>Beta(1, 1)</text>
-<text x='318.19' y='34.19' style='font-size: 18.00px; font-family: sans;' textLength='5.98px' lengthAdjust='spacingAndGlyphs'>)</text>
+<text x='64.63' y='34.00' style='font-size: 14.40px; font-family: sans;' textLength='9.33px' lengthAdjust='spacingAndGlyphs'>ω</text>
+<text x='73.96' y='37.05' style='font-size: 10.08px; font-family: sans;' textLength='49.88px' lengthAdjust='spacingAndGlyphs'>one-sided: </text>
+<text x='123.84' y='37.05' style='font-size: 10.08px; font-family: sans;' textLength='28.02px' lengthAdjust='spacingAndGlyphs'>.05, .6</text>
+<text x='151.86' y='34.00' style='font-size: 14.40px; font-family: sans;' textLength='3.60px' lengthAdjust='spacingAndGlyphs'> </text>
+<text x='155.46' y='34.00' style='font-size: 14.40px; font-family: sans;' textLength='8.42px' lengthAdjust='spacingAndGlyphs'>~</text>
+<text x='163.88' y='34.00' style='font-size: 14.40px; font-family: sans;' textLength='3.60px' lengthAdjust='spacingAndGlyphs'> </text>
+<text x='167.48' y='34.00' style='font-size: 14.40px; font-style: italic; font-family: sans;' textLength='80.08px' lengthAdjust='spacingAndGlyphs'>Independent</text>
+<text x='248.96' y='34.00' style='font-size: 18.00px; font-family: sans;' textLength='5.99px' lengthAdjust='spacingAndGlyphs'>(</text>
+<text x='254.95' y='34.00' style='font-size: 14.40px; font-family: sans;' textLength='63.24px' lengthAdjust='spacingAndGlyphs'>Beta(1, 1)</text>
+<text x='318.19' y='34.00' style='font-size: 18.00px; font-family: sans;' textLength='5.98px' lengthAdjust='spacingAndGlyphs'>)</text>
 <text x='194.40' y='557.28' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='60.70px' lengthAdjust='spacingAndGlyphs'>samples[, i]</text>
 <text transform='translate(12.96,280.80) rotate(-90)' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='40.02px' lengthAdjust='spacingAndGlyphs'>Density</text>
 </g>
@@ -140,16 +140,16 @@
   </clipPath>
 </defs>
 <g clip-path='url(#cpMzYwLjAwfDcyMC4wMHwwLjAwfDU3Ni4wMA==)'>
-<text x='424.63' y='34.19' style='font-size: 14.40px; font-family: sans;' textLength='9.33px' lengthAdjust='spacingAndGlyphs'>ω</text>
-<text x='433.96' y='36.86' style='font-size: 10.08px; font-family: sans;' textLength='49.88px' lengthAdjust='spacingAndGlyphs'>one-sided: </text>
-<text x='483.84' y='36.86' style='font-size: 10.08px; font-family: sans;' textLength='28.02px' lengthAdjust='spacingAndGlyphs'>.05, .6</text>
-<text x='511.86' y='34.19' style='font-size: 14.40px; font-family: sans;' textLength='3.60px' lengthAdjust='spacingAndGlyphs'> </text>
-<text x='515.46' y='34.19' style='font-size: 14.40px; font-family: sans;' textLength='8.42px' lengthAdjust='spacingAndGlyphs'>~</text>
-<text x='523.88' y='34.19' style='font-size: 14.40px; font-family: sans;' textLength='3.60px' lengthAdjust='spacingAndGlyphs'> </text>
-<text x='527.48' y='34.19' style='font-size: 14.40px; font-style: italic; font-family: sans;' textLength='80.08px' lengthAdjust='spacingAndGlyphs'>Independent</text>
-<text x='608.96' y='34.19' style='font-size: 18.00px; font-family: sans;' textLength='5.99px' lengthAdjust='spacingAndGlyphs'>(</text>
-<text x='614.95' y='34.19' style='font-size: 14.40px; font-family: sans;' textLength='63.24px' lengthAdjust='spacingAndGlyphs'>Beta(1, 1)</text>
-<text x='678.19' y='34.19' style='font-size: 18.00px; font-family: sans;' textLength='5.98px' lengthAdjust='spacingAndGlyphs'>)</text>
+<text x='424.63' y='34.00' style='font-size: 14.40px; font-family: sans;' textLength='9.33px' lengthAdjust='spacingAndGlyphs'>ω</text>
+<text x='433.96' y='37.05' style='font-size: 10.08px; font-family: sans;' textLength='49.88px' lengthAdjust='spacingAndGlyphs'>one-sided: </text>
+<text x='483.84' y='37.05' style='font-size: 10.08px; font-family: sans;' textLength='28.02px' lengthAdjust='spacingAndGlyphs'>.05, .6</text>
+<text x='511.86' y='34.00' style='font-size: 14.40px; font-family: sans;' textLength='3.60px' lengthAdjust='spacingAndGlyphs'> </text>
+<text x='515.46' y='34.00' style='font-size: 14.40px; font-family: sans;' textLength='8.42px' lengthAdjust='spacingAndGlyphs'>~</text>
+<text x='523.88' y='34.00' style='font-size: 14.40px; font-family: sans;' textLength='3.60px' lengthAdjust='spacingAndGlyphs'> </text>
+<text x='527.48' y='34.00' style='font-size: 14.40px; font-style: italic; font-family: sans;' textLength='80.08px' lengthAdjust='spacingAndGlyphs'>Independent</text>
+<text x='608.96' y='34.00' style='font-size: 18.00px; font-family: sans;' textLength='5.99px' lengthAdjust='spacingAndGlyphs'>(</text>
+<text x='614.95' y='34.00' style='font-size: 14.40px; font-family: sans;' textLength='63.24px' lengthAdjust='spacingAndGlyphs'>Beta(1, 1)</text>
+<text x='678.19' y='34.00' style='font-size: 18.00px; font-family: sans;' textLength='5.98px' lengthAdjust='spacingAndGlyphs'>)</text>
 <text x='554.40' y='557.28' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='60.70px' lengthAdjust='spacingAndGlyphs'>samples[, i]</text>
 <text transform='translate(372.96,280.80) rotate(-90)' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='40.02px' lengthAdjust='spacingAndGlyphs'>Density</text>
 </g>

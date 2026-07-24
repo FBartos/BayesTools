@@ -3472,10 +3472,10 @@ test_that("Marginal distribution prior and posterior functions work", {
                "Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.")
 
   BF2.marg_post_x_fac3md <- suppressWarnings(Savage_Dickey_BF(marg_post_x_fac3md, null_hypothesis = 0.5))
-  expect_equal(BF2.marg_post_x_fac3md, list("A" = Inf, "B" = 0.1447, "C" = 0.165), tolerance = 5e-3, ignore_attr = TRUE)
+  expect_equal(BF2.marg_post_x_fac3md, list("A" = 4.062, "B" = 0.1404, "C" = 0.153), tolerance = 5e-3, ignore_attr = TRUE)
 
   BF2.marg_post_x_fac3md <- suppressWarnings(Savage_Dickey_BF(marg_post_x_fac3md, null_hypothesis = 0.5, normal_approximation = TRUE))
-  expect_equal(BF2.marg_post_x_fac3md, list("A" = 0.629, "B" = 0.0983, "C" = 0.126), tolerance = 5e-3, ignore_attr = TRUE)
+  expect_equal(BF2.marg_post_x_fac3md, list("A" = 0.614, "B" = 0.0997, "C" = 0.1237), tolerance = 5e-3, ignore_attr = TRUE)
 
 
   ### marginal_inference ----

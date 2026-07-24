@@ -18,17 +18,17 @@
   </clipPath>
 </defs>
 <g clip-path='url(#cpMC4wMHw3MjAuMDB8MC4wMHw1NzYuMDA=)'>
-<text x='262.42' y='33.41' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
-<text x='265.42' y='33.41' style='font-size: 12.00px; font-family: sans;' textLength='7.78px' lengthAdjust='spacingAndGlyphs'>ω</text>
-<text x='273.20' y='35.63' style='font-size: 8.40px; font-family: sans;' textLength='41.56px' lengthAdjust='spacingAndGlyphs'>one-sided: </text>
-<text x='314.76' y='35.63' style='font-size: 8.40px; font-family: sans;' textLength='28.02px' lengthAdjust='spacingAndGlyphs'>.05, .95</text>
-<text x='342.78' y='33.41' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
-<text x='345.79' y='33.41' style='font-size: 12.00px; font-family: sans;' textLength='7.01px' lengthAdjust='spacingAndGlyphs'>~</text>
-<text x='352.80' y='33.41' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
-<text x='355.80' y='33.41' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='66.74px' lengthAdjust='spacingAndGlyphs'>Independent</text>
-<text x='423.70' y='33.41' style='font-size: 15.00px; font-family: sans;' textLength='5.00px' lengthAdjust='spacingAndGlyphs'>(</text>
-<text x='428.70' y='33.41' style='font-size: 12.00px; font-family: sans;' textLength='52.70px' lengthAdjust='spacingAndGlyphs'>Beta(1, 1)</text>
-<text x='481.40' y='33.41' style='font-size: 15.00px; font-family: sans;' textLength='4.99px' lengthAdjust='spacingAndGlyphs'>)</text>
+<text x='262.42' y='33.26' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
+<text x='265.42' y='33.26' style='font-size: 12.00px; font-family: sans;' textLength='7.78px' lengthAdjust='spacingAndGlyphs'>ω</text>
+<text x='273.20' y='35.79' style='font-size: 8.40px; font-family: sans;' textLength='41.56px' lengthAdjust='spacingAndGlyphs'>one-sided: </text>
+<text x='314.76' y='35.79' style='font-size: 8.40px; font-family: sans;' textLength='28.02px' lengthAdjust='spacingAndGlyphs'>.05, .95</text>
+<text x='342.78' y='33.26' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
+<text x='345.79' y='33.26' style='font-size: 12.00px; font-family: sans;' textLength='7.01px' lengthAdjust='spacingAndGlyphs'>~</text>
+<text x='352.80' y='33.26' style='font-size: 12.00px; font-family: sans;' textLength='3.00px' lengthAdjust='spacingAndGlyphs'> </text>
+<text x='355.80' y='33.26' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='66.74px' lengthAdjust='spacingAndGlyphs'>Independent</text>
+<text x='423.70' y='33.26' style='font-size: 15.00px; font-family: sans;' textLength='5.00px' lengthAdjust='spacingAndGlyphs'>(</text>
+<text x='428.70' y='33.26' style='font-size: 12.00px; font-family: sans;' textLength='52.70px' lengthAdjust='spacingAndGlyphs'>Beta(1, 1)</text>
+<text x='481.40' y='33.26' style='font-size: 15.00px; font-family: sans;' textLength='4.99px' lengthAdjust='spacingAndGlyphs'>)</text>
 <text x='354.23' y='554.79' style='font-size: 12.00px; font-style: italic; font-family: sans;' textLength='6.67px' lengthAdjust='spacingAndGlyphs'>p</text>
 <text x='361.88' y='554.79' style='font-size: 12.00px; font-family: sans;' textLength='32.69px' lengthAdjust='spacingAndGlyphs'>-value</text>
 <text transform='translate(12.96,280.80) rotate(-90)' text-anchor='middle' style='font-size: 12.00px; font-family: sans;' textLength='56.03px' lengthAdjust='spacingAndGlyphs'>Probability</text>
