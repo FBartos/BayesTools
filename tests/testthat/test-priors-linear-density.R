@@ -82,6 +82,39 @@ test_that("linear prior density treats zero-weight combinations as point priors"
 })
 
 
+test_that("linear prior density rejects non-finite coefficient weights", {
+
+  priors <- list(
+    x = prior("normal", list(0, 1)),
+    y = prior("normal", list(0, 1))
+  )
+
+  for(bad_weight in c(NA_real_, NaN)){
+    expect_error(
+      BayesTools:::.prior_linear_combination_density(
+        prior_list = priors,
+        weights    = c(x = 1, y = bad_weight),
+        n_grid     = 128
+      ),
+      "The 'weights' argument cannot contain NA/NaN values.",
+      fixed = TRUE
+    )
+  }
+
+  for(bad_weight in c(Inf, -Inf)){
+    expect_error(
+      BayesTools:::.prior_linear_combination_density(
+        prior_list = priors,
+        weights    = c(x = 1, y = bad_weight),
+        n_grid     = 128
+      ),
+      "The 'weights' argument must contain only finite values.",
+      fixed = TRUE
+    )
+  }
+})
+
+
 test_that("linear prior density honors named scalar source transforms", {
   p <- prior("lognormal", list(0, 1))
 

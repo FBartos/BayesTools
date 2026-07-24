@@ -585,12 +585,14 @@
   if(is.null(weights) || length(weights) == 0){
     weights <- numeric()
   }else{
-    check_real(weights, "weights", check_length = 0)
+    check_real(weights, "weights", check_length = 0, allow_NA = FALSE)
+    if(any(!is.finite(weights))){
+      stop("The 'weights' argument must contain only finite values.", call. = FALSE)
+    }
   }
   check_int(n_grid, "n_grid", lower = 16)
   check_real(tail_prob, "tail_prob", lower = 0, upper = 0.5, allow_bound = FALSE)
 
-  weights <- weights[is.finite(weights)]
   weights <- weights[abs(weights) > .prior_linear_density_zero_tol()]
 
   if(length(weights) == 0){
