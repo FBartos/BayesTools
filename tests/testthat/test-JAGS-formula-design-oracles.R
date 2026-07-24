@@ -1459,6 +1459,36 @@ test_that("nested grouping expands consistently across covariance specials and w
   }
 })
 
+test_that("covariance specials preserve parenthesized bar terms", {
+
+  diag_parsed <- BayesTools:::.bt_parse_random_effects(~ diag((1 | g)))
+  expect_length(diag_parsed$terms, 1L)
+  expect_equal(diag_parsed$terms[[1L]]$structure, "diag")
+  expect_equal(diag_parsed$terms[[1L]]$term_formula, ~ 1, ignore_formula_env = TRUE)
+  expect_equal(diag_parsed$fixed_formula, ~ 1, ignore_formula_env = TRUE)
+
+  cs_parsed <- BayesTools:::.bt_parse_random_effects(~ cs((x | g)))
+  expect_length(cs_parsed$terms, 1L)
+  expect_equal(cs_parsed$terms[[1L]]$structure, "cs")
+  expect_equal(cs_parsed$terms[[1L]]$term_formula, ~ x, ignore_formula_env = TRUE)
+  expect_equal(cs_parsed$fixed_formula, ~ 1, ignore_formula_env = TRUE)
+
+  named_diag <- BayesTools:::.bt_parse_random_effects(
+    ~ 1 + diag((1 | g), name = "diag_block")
+  )
+  expect_equal(named_diag$terms[[1L]]$block_name, "diag_block")
+  expect_equal(named_diag$terms[[1L]]$structure, "diag")
+  expect_equal(named_diag$fixed_formula, ~ 1, ignore_formula_env = TRUE)
+
+  named_cs <- BayesTools:::.bt_parse_random_effects(
+    ~ 1 + cs((x | g), name = "cs_block", hom = TRUE)
+  )
+  expect_equal(named_cs$terms[[1L]]$block_name, "cs_block")
+  expect_equal(named_cs$terms[[1L]]$structure, "cs")
+  expect_true(named_cs$terms[[1L]]$hom)
+  expect_equal(named_cs$fixed_formula, ~ 1, ignore_formula_env = TRUE)
+})
+
 test_that("random-effect formula lists retain component hierarchy", {
 
   df <- data.frame(

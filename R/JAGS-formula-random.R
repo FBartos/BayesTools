@@ -18,6 +18,41 @@
   stats::as.formula(call("~", rhs), env = env)
 }
 
+.bt_random_effect_normalize_special_term_parens <- function(x){
+
+  if(inherits(x, "formula")){
+    rhs_index <- if(length(x) == 3L) 3L else 2L
+    x[[rhs_index]] <- .bt_random_effect_normalize_special_term_parens(x[[rhs_index]])
+    return(x)
+  }
+  if(!is.call(x)){
+    return(x)
+  }
+
+  if(length(x) >= 2L){
+    for(i in seq.int(2L, length(x))){
+      x[[i]] <- .bt_random_effect_normalize_special_term_parens(x[[i]])
+    }
+  }
+  if(!is.symbol(x[[1L]]) ||
+     !as.character(x[[1L]]) %in% setdiff(.bt_random_effect_specials(), c("random", "re"))){
+    return(x)
+  }
+
+  args <- as.list(x)
+  term_position <- .bt_random_effect_unnamed_term_positions(args)
+  if(length(term_position) != 1L){
+    return(x)
+  }
+  term_arg <- .bt_random_effect_strip_group_parens(args[[term_position]])
+  if(!.bt_random_effect_is_bar_call(term_arg)){
+    return(x)
+  }
+
+  args[[term_position]] <- term_arg
+  as.call(args)
+}
+
 .bt_parse_random_effects <- function(formula, double_bar = "diag"){
 
   .bt_require_reformulas()
@@ -25,6 +60,7 @@
   if(!inherits(formula, "formula")){
     formula <- stats::as.formula(formula)
   }
+  parsed_formula <- .bt_random_effect_normalize_special_term_parens(formula)
 
   expand_method <- switch(
     double_bar,
@@ -33,11 +69,11 @@
     stop("'double_bar' must be either 'diag' or 'split'.", call. = FALSE)
   )
 
-  if(length(.bt_find_random_wrapper_calls(formula)) > 0L){
-    bars <- .bt_find_random_effect_calls_ordered(formula, expand_method)
+  if(length(.bt_find_random_wrapper_calls(parsed_formula)) > 0L){
+    bars <- .bt_find_random_effect_calls_ordered(parsed_formula, expand_method)
   }else{
     bars <- reformulas::findbars_x(
-      formula,
+      parsed_formula,
       specials = .bt_random_effect_specials(),
       default.special = NULL,
       expand_doublevert_method = expand_method
@@ -50,7 +86,7 @@
 
   out <- list(
     terms = terms,
-    fixed_formula = .bt_fixed_formula(formula),
+    fixed_formula = .bt_fixed_formula(parsed_formula),
     full_formula = formula,
     policy = list(double_bar = double_bar)
   )
