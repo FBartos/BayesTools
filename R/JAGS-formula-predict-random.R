@@ -223,15 +223,6 @@
                                                 new_levels = NULL){
 
   new_levels <- .bt_random_effect_new_levels_policy(random_term, new_levels)
-  if(.bt_random_effect_has_known_group_covariance(random_term) &&
-     isTRUE(new_levels$allow)){
-    stop(
-      "New random-effect levels for block '",
-      random_term$block_name,
-      "' are not supported with known group covariance.",
-      call. = FALSE
-    )
-  }
   prediction <- .bt_random_effect_prediction_data(
     random_term,
     data,

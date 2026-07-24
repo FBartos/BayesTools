@@ -7010,6 +7010,18 @@ test_that("JAGS_evaluate_formula rejects new levels for known group covariance",
     10 + 2 * c(.1, -.2, .1, .3),
     tolerance = 1e-12
   )
+  for(new_levels in c("zero", "sample")){
+    conditional_prediction <- JAGS_evaluate_formula(
+      fit = fit,
+      formula = random_effects$formula,
+      parameter = "mu",
+      data = df,
+      prior_list = formula_result$prior_list,
+      formula_target = "conditional",
+      new_levels = new_levels
+    )
+    expect_equal(conditional_prediction, prediction, tolerance = 1e-12)
+  }
 
   new_data <- data.frame(
     id = factor(c("a", "d"), levels = c("a", "b", "c", "d"))
