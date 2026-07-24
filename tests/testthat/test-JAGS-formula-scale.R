@@ -299,6 +299,12 @@ test_that("transform_scale_samples rejects incomplete centered interactions", {
     transform_scale_samples(posterior, zero_centered_scale),
     cbind(mu_intercept = 1, mu_x__xXx__z = 0.3)
   )
+
+  interaction_only <- posterior[, "mu_x__xXx__z", drop = FALSE]
+  expect_equal(
+    transform_scale_samples(interaction_only, formula_scale),
+    cbind(mu_x__xXx__z = 0.3)
+  )
 })
 
 test_that("transform_scale_samples handles indexed factor interactions", {

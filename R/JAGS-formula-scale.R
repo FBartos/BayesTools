@@ -92,6 +92,22 @@
     }
 
     source_unscaled <- term_unscaled[[source_name]]
+    has_returned_lower_order <- any(vapply(
+      setdiff(term_names, source_name),
+      function(target_name){
+        target_scaled <- term_scaled[[target_name]]
+        .unscale_ids_match(term_unscaled[[target_name]], source_unscaled) &&
+          length(target_scaled) < length(source_scaled) &&
+          .is_subset(target_scaled, source_scaled)
+      },
+      logical(1)
+    ))
+    if(!has_returned_lower_order){
+      # Transforming an interaction coefficient by itself is complete: the
+      # omitted lower-order coefficients are outside the requested output.
+      next
+    }
+
     missing_targets <- character()
     for(subset_size in 0:(length(source_scaled) - 1L)){
       target_sets <- if(subset_size == 0L){
