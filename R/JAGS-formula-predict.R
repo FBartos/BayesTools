@@ -89,8 +89,8 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   prior_list <- resolved_inputs$prior_list
   fitted_design <- resolved_inputs$fitted_design
 
-  if(!is.language(formula))
-    stop("'formula' must be a formula")
+  if(!inherits(formula, "formula"))
+    stop("'formula' must be a formula", call. = FALSE)
   formula_expressions <- .extract_expressions(formula)
   fitted_expressions <- fitted_design$transformed_terms
   if(length(formula_expressions) > 0L ||

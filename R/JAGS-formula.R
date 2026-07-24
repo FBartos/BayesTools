@@ -115,7 +115,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
 
   formula_input <- formula
   formula <- .bt_formula_random_formula(formula)
-  if(!is.language(formula))
+  if(!inherits(formula, "formula"))
     stop("'formula' must be a formula", call. = FALSE)
   resolved_random_terms <- if(inherits(formula_input, "BayesTools_random_effects")){
     formula_input$terms

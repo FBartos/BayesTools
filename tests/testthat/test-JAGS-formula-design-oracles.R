@@ -508,6 +508,39 @@ test_that("JAGS_formula validates JAGS parameter names", {
   )
 })
 
+test_that("formula interfaces reject bare language objects", {
+  prior_list <- list(
+    intercept = prior("normal", list(0, 1)),
+    x = prior("normal", list(0, 1))
+  )
+  data <- data.frame(x = c(-1, 0, 1))
+
+  for(invalid_formula in list(quote(x), quote(x + 1))){
+    expect_error(
+      JAGS_formula(invalid_formula, "mu", data, prior_list),
+      "'formula' must be a formula",
+      fixed = TRUE
+    )
+  }
+
+  posterior <- coda::mcmc(matrix(
+    c(0, 1),
+    nrow = 1,
+    dimnames = list(NULL, c("mu_intercept", "mu_x"))
+  ))
+  expect_error(
+    JAGS_evaluate_formula(
+      posterior,
+      quote(x + 1),
+      "mu",
+      data,
+      prior_list
+    ),
+    "'formula' must be a formula",
+    fixed = TRUE
+  )
+})
+
 test_that("JAGS_formula reserves the intercept predictor name", {
   expect_error(
     JAGS_formula(
