@@ -111,6 +111,13 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
 }
 .JAGS_marglik_parameter_values          <- function(samples, prior, parameter_names){
 
+  if(is.prior.ordered(prior)){
+    return(.bt_JAGS_marglik_compile_ordered_parameter_values(
+      prior = prior,
+      parameter_names = parameter_names
+    )(samples))
+  }
+
   if(is.prior.point(prior)){
     return(rep(prior$parameters[["location"]], length(parameter_names)))
   }
@@ -132,6 +139,102 @@ JAGS_marglik_parameters                <- function(samples, prior_list){
   values <- unname(unlist(samples[sample_names], use.names = FALSE))
 
   return(values)
+}
+.bt_JAGS_marglik_compile_ordered_parameter_values <- function(prior,
+                                                               parameter_names){
+
+  .prior_ordered_bridge_check(prior)
+  metadata <- .prior_ordered_metadata(prior)
+  expected_names <- .JAGS_prior_factor_names(metadata$parameter_name, prior)
+  if(!identical(unname(parameter_names), unname(expected_names))){
+    stop(
+      "Internal ordered prior parameter names do not match bound formula metadata.",
+      call. = FALSE
+    )
+  }
+
+  total_names <- .prior_ordered_total_monitor_names(
+    prior,
+    metadata$parameter_name
+  )
+  if(is.prior.point(prior$total)){
+    total_values <- rep(
+      prior$total$parameters[["location"]],
+      metadata$theta_dim
+    )
+    total_evaluator <- function(samples) total_values
+  }else{
+    total_prior <- prior$total
+    total_evaluator <- function(samples){
+      .JAGS_marglik_parameter_values(
+        samples = samples,
+        prior = total_prior,
+        parameter_names = total_names
+      )
+    }
+  }
+
+  allocation_evaluators <- lapply(metadata$allocations, function(record){
+    if(identical(record$spec$type, "fixed")){
+      weights <- record$spec$weights
+      return(function(samples) weights)
+    }
+
+    eta_names <- paste0(
+      .JAGS_prior_dirichlet_eta_name(record$node),
+      "[",
+      seq_len(record$dim),
+      "]"
+    )
+    function(samples){
+      eta <- .bt_JAGS_marglik_positive_auxiliary_values(
+        samples = samples,
+        parameter_names = eta_names,
+        missing_message = paste0(
+          "'samples' does not contain all monitored ordered Dirichlet ",
+          "allocation parameters."
+        ),
+        signal = TRUE
+      )
+      eta / sum(eta)
+    }
+  })
+
+  coefficient_plans <- lapply(seq_len(metadata$coefficient_dim), function(i){
+    slice <- metadata$slice_index[[i]]
+    allocations <- lapply(metadata$ordered_terms, function(factor_term){
+      record <- .prior_ordered_allocation_for_coefficient(
+        metadata,
+        factor_term,
+        slice
+      )
+      list(
+        key = record$key,
+        increment = metadata$coefficient_grid[[factor_term]][[i]]
+      )
+    })
+    list(slice = slice, allocations = allocations)
+  })
+
+  function(samples){
+    totals <- total_evaluator(samples)
+    allocations <- lapply(allocation_evaluators, function(evaluator){
+      evaluator(samples)
+    })
+    values <- numeric(length(coefficient_plans))
+
+    for(i in seq_along(coefficient_plans)){
+      plan <- coefficient_plans[[i]]
+      value <- totals[[plan$slice]]
+      for(allocation in plan$allocations){
+        value <- value *
+          allocations[[allocation$key]][[allocation$increment]]
+      }
+      values[[i]] <- value
+    }
+
+    values
+  }
 }
 .JAGS_marglik_parameters.vector         <- function(samples, prior, parameter_name){
 

@@ -394,6 +394,125 @@ test_that("compiled formula parameter evaluator matches design reconstruction", 
   )
 })
 
+test_that("ordered formula parameters are reconstructed from bridge coordinates", {
+
+  formula_data <- data.frame(
+    f = ordered(
+      c("low", "mid", "high", "low"),
+      levels = c("low", "mid", "high")
+    )
+  )
+  cases <- list(
+    fixed_allocation = list(
+      total = prior("normal", list(0, 1)),
+      allocation = c(.25, .75),
+      samples = c(mu_f_ordered_total = 2),
+      coefficients = c(.5, 1.5),
+      formula_value = c(0, .5, 2, 0)
+    ),
+    dirichlet_allocation = list(
+      total = prior("normal", list(0, 1)),
+      allocation = prior("dirichlet", list(alpha = c(2, 3))),
+      samples = c(
+        mu_f_ordered_total = 2,
+        "prior_par_eta_mu_f_ordered_alloc_f_1[1]" = 1,
+        "prior_par_eta_mu_f_ordered_alloc_f_1[2]" = 3
+      ),
+      coefficients = c(.5, 1.5),
+      formula_value = c(0, .5, 2, 0)
+    ),
+    point_total = list(
+      total = prior("point", list(4)),
+      allocation = c(.25, .75),
+      samples = numeric(),
+      coefficients = c(1, 3),
+      formula_value = c(0, 1, 4, 0)
+    )
+  )
+
+  for(case_name in names(cases)){
+    case <- cases[[case_name]]
+    formula_output <- JAGS_formula(
+      formula = ~ f,
+      parameter = "mu",
+      data = formula_data,
+      prior_list = list(
+        intercept = prior("point", list(0)),
+        f = prior_ordered(
+          total = case$total,
+          allocation = case$allocation
+        )
+      )
+    )
+    formula_prior_list <- list(mu = formula_output$prior_list)
+    formula_list <- list(mu = formula_output$formula)
+    formula_data_list <- list(mu = formula_output$data)
+    formula_design_list <- list(mu = formula_output$formula_design)
+    coefficient_names <- BayesTools:::.JAGS_prior_factor_names(
+      "mu_f",
+      formula_output$prior_list$mu_f
+    )
+
+    expect_false(
+      any(coefficient_names %in% names(case$samples)),
+      info = case_name
+    )
+
+    public_prior_parameters <- JAGS_marglik_parameters(
+      case$samples,
+      formula_output$prior_list
+    )
+    compiled_prior_parameters <-
+      BayesTools:::.bt_JAGS_bridge_compile_prior_list_evaluator(
+        formula_output$prior_list
+      )$parameters(case$samples)
+
+    expect_equal(
+      public_prior_parameters$mu_f,
+      case$coefficients,
+      tolerance = 1e-12,
+      info = case_name
+    )
+    expect_equal(
+      compiled_prior_parameters$mu_f,
+      case$coefficients,
+      tolerance = 1e-12,
+      info = case_name
+    )
+
+    public_formula_parameters <- JAGS_marglik_parameters_formula(
+      samples = case$samples,
+      formula_list = formula_list,
+      formula_data_list = formula_data_list,
+      formula_prior_list = formula_prior_list,
+      prior_list_parameters = list(),
+      formula_design_list = formula_design_list,
+      model_data = list()
+    )
+    compiled_formula_parameters <-
+      BayesTools:::.bt_JAGS_bridge_compile_formula_parameter_evaluator(
+        formula_list = formula_list,
+        formula_data_list = formula_data_list,
+        formula_prior_list = formula_prior_list,
+        formula_design_list = formula_design_list,
+        model_data = list()
+      )$parameters(case$samples, list())
+
+    expect_equal(
+      public_formula_parameters$mu,
+      case$formula_value,
+      tolerance = 1e-12,
+      info = case_name
+    )
+    expect_equal(
+      compiled_formula_parameters$mu,
+      case$formula_value,
+      tolerance = 1e-12,
+      info = case_name
+    )
+  }
+})
+
 test_that("formula parameter evaluators reject missing named multiply_by parameters", {
 
   formula_data <- data.frame(x = c(-1, 0, 2))

@@ -206,6 +206,13 @@
   force(prior_object)
   force(parameter_names)
 
+  if(is.prior.ordered(prior_object)){
+    return(.bt_JAGS_marglik_compile_ordered_parameter_values(
+      prior = prior_object,
+      parameter_names = parameter_names
+    ))
+  }
+
   if(is.prior.point(prior_object)){
     location <- prior_object$parameters[["location"]]
     return(function(samples) rep(location, length(parameter_names)))
