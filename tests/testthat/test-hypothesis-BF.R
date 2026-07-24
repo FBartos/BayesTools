@@ -676,6 +676,128 @@ test_that("hypothesis_BF evaluates transformed and non-syntactic quantities", {
 })
 
 
+test_that("hypothesis_BF rejects duplicate quantity names before evaluation", {
+
+  posterior <- data.frame(
+    first  = c(-1, 0, 1),
+    second = c(10, 11, 12),
+    check.names = FALSE
+  )
+  names(posterior) <- c("theta", "theta")
+
+  expect_error(
+    hypothesis_BF(
+      posterior  = posterior,
+      hypothesis = "theta > 0"
+    ),
+    "posterior.*duplicate quantity names.*theta"
+  )
+
+  posterior_matrix <- as.matrix(posterior)
+  expect_error(
+    hypothesis_BF(
+      posterior  = posterior_matrix,
+      hypothesis = "theta > 0"
+    ),
+    "posterior.*duplicate quantity names.*theta"
+  )
+
+  prior <- data.frame(
+    first  = c(-1, 0, 1),
+    second = c(10, 11, 12),
+    check.names = FALSE
+  )
+  names(prior) <- c("theta", "theta")
+
+  expect_error(
+    hypothesis_BF(
+      posterior  = data.frame(theta = c(-1, 0, 1)),
+      prior      = prior,
+      hypothesis = "theta > 0"
+    ),
+    "prior.*duplicate quantity names.*theta"
+  )
+
+  marginal_with_prior <- .hypothesis_marginal_posterior_for_test(
+    seq(-2, 2, length.out = 201),
+    .hypothesis_prior_density_for_test()
+  )
+  expect_s3_class(
+    hypothesis_BF(
+      posterior  = marginal_with_prior,
+      prior      = prior,
+      hypothesis = "theta = 0",
+      parameter  = "theta"
+    ),
+    "BayesTools_hypothesis_BF"
+  )
+
+  marginal <- list(
+    alternate = structure(
+      c(-1, 0, 1),
+      class = c("marginal_posterior.simple", "numeric")
+    ),
+    alternate = structure(
+      c(1, 2, 3),
+      class = c("marginal_posterior.simple", "numeric")
+    )
+  )
+  class(marginal) <- c(
+    "list", "marginal_posterior.factor", "marginal_posterior"
+  )
+  attr(marginal, "parameter") <- "mu"
+
+  expect_error(
+    hypothesis_BF(
+      posterior  = marginal,
+      hypothesis = "mu[alternate] > 0"
+    ),
+    "posterior.*duplicate quantity names.*alternate"
+  )
+})
+
+
+test_that("hypothesis_BF rejects non-finite posterior draws before computation", {
+
+  for(nonfinite in c(Inf, -Inf, NaN)){
+    expect_error(
+      hypothesis_BF(
+        posterior  = c(-1, nonfinite, 1),
+        hypothesis = "theta > 0",
+        parameter  = "theta"
+      ),
+      "Posterior draws must contain only finite values"
+    )
+  }
+
+  expect_error(
+    hypothesis_BF(
+      posterior = data.frame(
+        theta    = c(-1, 0, 1),
+        nuisance = c(0, Inf, 0)
+      ),
+      hypothesis = "theta > 0"
+    ),
+    "Posterior draws must contain only finite values"
+  )
+
+  marginal <- structure(
+    c(-1, -Inf, 1),
+    class = c(
+      "marginal_posterior.simple", "marginal_posterior", "numeric"
+    )
+  )
+  expect_error(
+    hypothesis_BF(
+      posterior  = marginal,
+      hypothesis = "theta > 0",
+      parameter  = "theta"
+    ),
+    "Posterior draws must contain only finite values"
+  )
+})
+
+
 test_that("hypothesis_BF evaluates explicit marginal posterior level comparisons", {
 
   context <- BayesTools:::.prior_density_context(

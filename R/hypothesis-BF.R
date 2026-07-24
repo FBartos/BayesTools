@@ -25,8 +25,10 @@
 #'
 #' @param posterior posterior draws, a \code{marginal_posterior}, a
 #' \code{marginal_inference} object, or a data frame/matrix of posterior draws.
-#' @param prior prior draws for numeric/data-frame inputs. Ignored when
-#' \code{posterior} already contains deterministic prior density information.
+#' Posterior draws must be finite and quantity names must be unique.
+#' @param prior prior draws for numeric/data-frame inputs. Quantity names in
+#' draw tables must be unique. Ignored when \code{posterior} already contains
+#' deterministic prior density information.
 #' @param hypothesis character vector with scalar hypothesis statements.
 #' @param parameter optional scalar quantity name for numeric vectors or
 #' \code{marginal_posterior} objects.
@@ -75,6 +77,7 @@ hypothesis_BF <- function(posterior, prior = NULL, hypothesis, parameter = NULL,
   check_char(columns, "columns", check_length = 0, allow_NA = FALSE)
   density_method <- .hypothesis_density_method(density_method)
   columns        <- .hypothesis_BF_output_columns(columns)
+  .hypothesis_validate_input_integrity(posterior, prior)
 
   if(!is.null(seed)){
     set.seed(seed)

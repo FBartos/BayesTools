@@ -1,3 +1,116 @@
+.hypothesis_validate_input_integrity <- function(posterior, prior) {
+
+  .hypothesis_validate_quantity_names(posterior, "posterior")
+  .hypothesis_validate_finite_posterior_draws(posterior)
+  uses_prior_input <- !inherits(posterior, "marginal_inference") &&
+    !.hypothesis_inherits_marginal_posterior(posterior) &&
+    (is.data.frame(posterior) || is.matrix(posterior) ||
+       is.numeric(posterior))
+  if(uses_prior_input){
+    .hypothesis_validate_quantity_names(prior, "prior")
+  }
+
+  invisible(TRUE)
+}
+
+
+.hypothesis_validate_quantity_names <- function(x, name) {
+
+  if(is.null(x)){
+    return(invisible(TRUE))
+  }
+
+  if(inherits(x, "marginal_inference")){
+    conditional <- x[["conditional"]]
+    if(is.list(conditional)){
+      .hypothesis_validate_quantity_name_vector(names(conditional), name)
+      for(i in seq_along(conditional)){
+        .hypothesis_validate_quantity_names(conditional[[i]], name)
+      }
+    }
+    return(invisible(TRUE))
+  }
+
+  if(is.data.frame(x)){
+    .hypothesis_validate_quantity_name_vector(names(x), name)
+    return(invisible(TRUE))
+  }
+
+  if(is.matrix(x)){
+    .hypothesis_validate_quantity_name_vector(colnames(x), name)
+    return(invisible(TRUE))
+  }
+
+  if(.hypothesis_inherits_marginal_posterior(x) && is.list(x)){
+    .hypothesis_validate_quantity_name_vector(names(x), name)
+  }
+
+  invisible(TRUE)
+}
+
+
+.hypothesis_validate_quantity_name_vector <- function(quantity_names, name) {
+
+  if(is.null(quantity_names) || !anyDuplicated(quantity_names)){
+    return(invisible(TRUE))
+  }
+
+  duplicate_names <- unique(quantity_names[duplicated(quantity_names)])
+  stop(
+    "The '", name, "' input must not contain duplicate quantity names ('",
+    paste(duplicate_names, collapse = "', '"), "').",
+    call. = FALSE
+  )
+}
+
+
+.hypothesis_validate_finite_posterior_draws <- function(posterior) {
+
+  if(inherits(posterior, "marginal_inference")){
+    conditional <- posterior[["conditional"]]
+    if(is.list(conditional)){
+      for(i in seq_along(conditional)){
+        .hypothesis_validate_finite_posterior_draws(conditional[[i]])
+      }
+    }
+    return(invisible(TRUE))
+  }
+
+  if(is.data.frame(posterior)){
+    has_nonfinite <- vapply(
+      posterior,
+      function(x) is.numeric(x) && any(!is.finite(x)),
+      logical(1)
+    )
+    if(any(has_nonfinite)){
+      stop("Posterior draws must contain only finite values.", call. = FALSE)
+    }
+    return(invisible(TRUE))
+  }
+
+  if(is.matrix(posterior)){
+    if(is.numeric(posterior) && any(!is.finite(posterior))){
+      stop("Posterior draws must contain only finite values.", call. = FALSE)
+    }
+    return(invisible(TRUE))
+  }
+
+  if(.hypothesis_inherits_marginal_posterior(posterior) &&
+     is.list(posterior)){
+    for(i in seq_along(posterior)){
+      .hypothesis_validate_finite_posterior_draws(posterior[[i]])
+    }
+    return(invisible(TRUE))
+  }
+
+  if(is.numeric(posterior) && any(!is.finite(posterior))){
+    stop("Posterior draws must contain only finite values.", call. = FALSE)
+  }
+
+  invisible(TRUE)
+}
+
+
 .as_hypothesis_quantities <- function(posterior, prior, parsed, parameter) {
 
   if(inherits(posterior, "marginal_inference")){

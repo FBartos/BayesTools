@@ -19,10 +19,12 @@ hypothesis_BF(
 }
 \arguments{
 \item{posterior}{posterior draws, a \code{marginal_posterior}, a
-\code{marginal_inference} object, or a data frame/matrix of posterior draws.}
+\code{marginal_inference} object, or a data frame/matrix of posterior draws.
+Posterior draws must be finite and quantity names must be unique.}
 
-\item{prior}{prior draws for numeric/data-frame inputs. Ignored when
-\code{posterior} already contains deterministic prior density information.}
+\item{prior}{prior draws for numeric/data-frame inputs. Quantity names in
+draw tables must be unique. Ignored when \code{posterior} already contains
+deterministic prior density information.}
 
 \item{hypothesis}{character vector with scalar hypothesis statements.}
 
