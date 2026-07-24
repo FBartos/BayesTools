@@ -388,6 +388,25 @@ test_that("selection backend spec and context helpers expose generic names and r
     selection_context_subset_rows(custom_context, c(3L, 1L))$draw_id,
     c(3L, 1L)
   )
+  custom_matrix_context <- list(
+    alpha = c(0.1, 0.2, 0.3),
+    draw_matrix = matrix(seq_len(6L), nrow = 3L),
+    row_fields = "draw_matrix"
+  )
+  expect_equal(
+    selection_context_validate(custom_matrix_context)$draw_matrix,
+    custom_matrix_context$draw_matrix
+  )
+  expect_error(
+    selection_context_validate(
+      within(custom_matrix_context, {
+        draw_matrix <- matrix(seq_len(4L), nrow = 2L)
+      }),
+      n_samples = 3L
+    ),
+    "must have either one row/value or 'n_samples' rows/values",
+    fixed = TRUE
+  )
 
   obs_subset <- selection_context_subset_observations(context, c(2L, 4L))
   expect_equal(obs_subset$obs_bin, c(2L, 2L))

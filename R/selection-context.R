@@ -53,7 +53,7 @@ selection_context_validate <- function(context, n_samples = NULL,
 
   out <- context
   n_bins <- .selection_context_n_bins(out)
-  out <- .selection_context_validate_row_fields(out)
+  out <- .selection_context_validate_row_fields(out, n_samples)
 
   if("omega" %in% names(out) || "omega" %in% required){
     if(is.null(out[["omega"]]) || !is.matrix(out[["omega"]]) ||
@@ -403,9 +403,21 @@ selection_row_arg <- function(x, n, name){
   return(row_fields)
 }
 
-.selection_context_validate_row_fields <- function(context){
+.selection_context_validate_row_fields <- function(context, n_samples){
 
-  .selection_context_declared_row_fields(context)
+  row_fields <- .selection_context_declared_row_fields(context)
+  for(field in row_fields){
+    value <- context[[field]]
+    field_rows <- if(is.matrix(value)) nrow(value) else length(value)
+    if(!field_rows %in% c(1L, n_samples)){
+      stop(
+        "Selection context row field '", field,
+        "' must have either one row/value or 'n_samples' rows/values.",
+        call. = FALSE
+      )
+    }
+  }
+
   return(context)
 }
 
@@ -906,7 +918,12 @@ selection_row_arg <- function(x, n, name){
       next
     }
     if(!is.null(context[[field]])){
-      counts <- c(counts, length(context[[field]]))
+      count <- if(is.matrix(context[[field]])){
+        nrow(context[[field]])
+      }else{
+        length(context[[field]])
+      }
+      counts <- c(counts, count)
     }
   }
   counts <- unique(counts[counts > 0L])
