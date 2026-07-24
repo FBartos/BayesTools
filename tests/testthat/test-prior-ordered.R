@@ -238,6 +238,25 @@ test_that("ordered allocation id sharing emits one shared allocation", {
   monitors <- JAGS_to_monitor(formula_info$prior_list)
   expect_equal(sum(monitors == "prior_par_eta_ordered_alloc_shape_f"), 1L)
 
+  formula_info_other <- JAGS_formula(
+    y ~ f,
+    "theta",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_ordered(prior("normal", list(0, 1)), id = "shape")
+    )
+  )
+  combined_priors <- c(formula_info$prior_list, formula_info_other$prior_list)
+  combined_syntax <- JAGS_add_priors("model{}", combined_priors)
+  expect_equal(
+    lengths(regmatches(
+      combined_syntax,
+      gregexpr("prior_par_eta_ordered_alloc_shape_f[1] ~", combined_syntax, fixed = TRUE)
+    )),
+    1L
+  )
+
   expect_error(
     JAGS_formula(
       y ~ f + x + f:x,
@@ -258,6 +277,33 @@ test_that("ordered allocation id sharing emits one shared allocation", {
         )
       )
     ),
+    "incompatible allocation specifications"
+  )
+
+  formula_info_incompatible <- JAGS_formula(
+    y ~ f,
+    "theta",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_ordered(
+        prior("normal", list(0, 1)),
+        allocation = prior("dirichlet", list(alpha = c(2, 3))),
+        id = "shape"
+      )
+    )
+  )
+  incompatible_priors <- c(formula_info$prior_list, formula_info_incompatible$prior_list)
+  expect_error(
+    JAGS_add_priors("model{}", incompatible_priors),
+    "incompatible allocation specifications"
+  )
+  expect_error(
+    JAGS_get_inits(incompatible_priors, chains = 1, seed = 1),
+    "incompatible allocation specifications"
+  )
+  expect_error(
+    JAGS_to_monitor(incompatible_priors),
     "incompatible allocation specifications"
   )
 })

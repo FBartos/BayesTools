@@ -20,6 +20,7 @@ JAGS_to_monitor             <- function(prior_list){
   if(is.prior(prior_list) | !all(sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
   .check_prior_list_unique_names(prior_list)
+  .bt_validate_ordered_shared_allocations(prior_list)
 
 
   # add the monitored parameters
