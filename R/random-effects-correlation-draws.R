@@ -10,7 +10,9 @@
 #'   `BayesTools_formula_design` object.
 #' @param posterior_samples posterior sample matrix, data frame, `mcmc`, or
 #'   `mcmc.list`. Samples must contain the canonical scalar correlation
-#'   coordinate unless it is fixed in `random_term` metadata.
+#'   coordinate unless it is fixed in `random_term` metadata. A one-coefficient
+#'   block needs no correlation coordinate and accepts a numeric draw-by-zero
+#'   matrix.
 #'
 #' @return A dense numeric array with dimensions
 #'   `draw x coefficient x coefficient`. Coefficient dimension names use the
@@ -54,7 +56,15 @@ random_effects_correlation_draws <- function(random_term, posterior_samples){
     stop("'random_term' must be compiled random-effect term metadata.",
          call. = FALSE)
   }
-  posterior <- .bt_random_effect_correlation_draws_posterior(posterior_samples)
+  one_column <- is.numeric(random_term$n_columns) &&
+    length(random_term$n_columns) == 1L &&
+    !is.na(random_term$n_columns) &&
+    is.finite(random_term$n_columns) &&
+    random_term$n_columns == 1L
+  posterior <- .bt_random_effect_correlation_draws_posterior(
+    posterior_samples,
+    allow_zero_columns = one_column
+  )
   context <- "Random-effect correlation reconstruction metadata"
   structure <- .bt_random_effect_structure(random_term, context = context)
   supported <- c("cs", "hcs", "ar1", "har", "car")
@@ -131,7 +141,8 @@ random_effects_correlation_draws <- function(random_term, posterior_samples){
 
 
 # Coerce and validate posterior samples used for correlation reconstruction.
-.bt_random_effect_correlation_draws_posterior <- function(posterior_samples){
+.bt_random_effect_correlation_draws_posterior <- function(
+    posterior_samples, allow_zero_columns = FALSE){
 
   supported <- is.matrix(posterior_samples) || is.data.frame(posterior_samples) ||
     inherits(posterior_samples, "mcmc") || inherits(posterior_samples, "mcmc.list")
@@ -143,6 +154,16 @@ random_effects_correlation_draws <- function(random_term, posterior_samples){
   }
 
   posterior <- as.matrix(posterior_samples)
+  if(isTRUE(allow_zero_columns) && ncol(posterior) == 0L){
+    if(!is.numeric(posterior)){
+      stop("'posterior_samples' must be numeric.", call. = FALSE)
+    }
+    if(nrow(posterior) < 1L){
+      stop("'posterior_samples' must contain at least one draw.", call. = FALSE)
+    }
+    return(posterior)
+  }
+
   .bt_random_effect_marginal_covariance_validate_posterior(posterior)
 }
 

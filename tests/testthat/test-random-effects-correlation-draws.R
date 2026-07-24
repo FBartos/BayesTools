@@ -103,6 +103,29 @@ test_that("fixed transformed rho and one-column blocks are reconstructed", {
   scalar <- random_effects_correlation_draws(term, posterior)
   expect_equal(dim(scalar), c(2L, 1L, 1L))
   expect_equal(as.vector(scalar), c(1, 1), tolerance = 0)
+
+  zero_column_posterior <- matrix(
+    numeric(),
+    nrow = 2L,
+    ncol = 0L,
+    dimnames = list(c("draw_1", "draw_2"), NULL)
+  )
+  scalar <- random_effects_correlation_draws(term, zero_column_posterior)
+  expect_equal(dim(scalar), c(2L, 1L, 1L))
+  expect_equal(as.vector(scalar), c(1, 1), tolerance = 0)
+  expect_equal(dimnames(scalar), list(
+    draw = c("draw_1", "draw_2"),
+    row = "intercept",
+    column = "intercept"
+  ))
+
+  term$n_columns <- 2L
+  term$column_names <- c("intercept", "slope")
+  expect_error(
+    random_effects_correlation_draws(term, zero_column_posterior),
+    "'posterior_samples' must have non-empty column names",
+    fixed = TRUE
+  )
 })
 
 test_that("correlation reconstruction validates support and compact CAR metadata", {
