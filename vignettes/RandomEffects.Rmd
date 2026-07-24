@@ -253,8 +253,16 @@ compare_nested_estimates <- function(lme4_model, bayes_model) {
 
 compare_recipe_estimates <- function(lme4_model, bayes_model) {
 
-  lme4_vc <- lme4::VarCorr(lme4_model)[["replicate"]]
-  lme4_sd <- attr(lme4_vc, "stddev")
+  lme4_vc <- lme4::VarCorr(lme4_model)
+  lme4_sd_for <- function(term) {
+    for (group in names(lme4_vc)) {
+      group_sd <- attr(lme4_vc[[group]], "stddev")
+      if (term %in% names(group_sd)) {
+        return(group_sd[[term]])
+      }
+    }
+    NA_real_
+  }
   lme4_fixed <- lme4::fixef(lme4_model)
   lme4_estimates <- c(
     "intercept"                  = lme4_fixed[["(Intercept)"]],
@@ -262,8 +270,8 @@ compare_recipe_estimates <- function(lme4_model, bayes_model) {
     "recipe[B]"                  = lme4_fixed[["recipeB"]],
     "recipe[C]"                  = lme4_fixed[["recipeC"]],
     "sigma"                      = stats::sigma(lme4_model),
-    "sd(recipe[B]|replicate)"    = lme4_sd[["recipeB"]],
-    "sd(recipe[C]|replicate)"    = lme4_sd[["recipeC"]]
+    "sd(recipe[B]|replicate)"    = lme4_sd_for("recipeB"),
+    "sd(recipe[C]|replicate)"    = lme4_sd_for("recipeC")
   )
 
   bayes_samples <- JAGS_estimates_table(
@@ -710,7 +718,7 @@ cake$recipeB <- as.numeric(cake$recipe == "B")
 cake$recipeC <- as.numeric(cake$recipe == "C")
 
 lme4_recipe <- suppressMessages(lme4::lmer(
-  angle_z ~ temp_s + recipe + (0 + recipeB + recipeC | replicate),
+  angle_z ~ temp_s + recipe + (0 + recipeB + recipeC || replicate),
   data = cake, REML = FALSE,
   control = lme4::lmerControl(check.conv.singular = "ignore")
 ))
