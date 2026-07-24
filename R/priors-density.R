@@ -729,7 +729,7 @@ density.prior <- function(x,
 
     class(out) <- c("density", "density.prior", if(is.prior.PET(x)) "density.prior.PET" else if(is.prior.PEESE(x)) "density.prior.PEESE")
     attr(out, "x_range") <- range(x_seq)
-    attr(out, "y_range") <- range(y_med)
+    attr(out, "y_range") <- range(out$y, out$y_lCI, out$y_uCI)
   }
 
   return(out)

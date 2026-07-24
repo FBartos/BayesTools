@@ -826,6 +826,45 @@ test_that("PET-PEESE prior plot data uses deterministic linear-combination summa
   expect_equal(plot_data$y, c(0, 0, 0), tolerance = 1e-8)
   expect_equal(plot_data$y_lCI, stats::qnorm(.025) * c(0, 0.5, 1), tolerance = 0.02)
   expect_equal(plot_data$y_uCI, stats::qnorm(.975) * c(0, 0.5, 1), tolerance = 0.02)
+  expect_equal(
+    attr(plot_data, "y_range"),
+    range(plot_data$y, plot_data$y_lCI, plot_data$y_uCI)
+  )
+})
+
+test_that("PET-PEESE public prior plots include uncertainty ribbons in y limits", {
+
+  pet_prior <- prior_PET(
+    "normal",
+    list(0, 1),
+    truncation = list(-Inf, Inf)
+  )
+  mu_prior <- prior("spike", list(0))
+
+  list_plot <- plot_prior_list(
+    prior_list = list(pet_prior),
+    prior_list_mu = list(mu_prior),
+    plot_type = "ggplot",
+    xlim = c(0, 1),
+    n_points = 3
+  )
+  list_ribbon <- list_plot$layers[[1]]$data$y
+  list_limits <- list_plot$scales$get_scales("y")$limits
+
+  expect_lte(min(list_limits), min(list_ribbon))
+  expect_gte(max(list_limits), max(list_ribbon))
+
+  single_plot <- plot(
+    pet_prior,
+    plot_type = "ggplot",
+    xlim = c(0, 1),
+    n_points = 3
+  )
+  single_ribbon <- single_plot$layers[[1]]$data$y
+  single_limits <- single_plot$scales$get_scales("y")$limits
+
+  expect_lte(min(single_limits), min(single_ribbon))
+  expect_gte(max(single_limits), max(single_ribbon))
 })
 
 test_that("plot_prior_list keeps retained components paired with their weights", {
@@ -1606,6 +1645,10 @@ test_that("PET-PEESE prior plot data falls back to samples for custom transforma
   expect_equal(dim(plot_data$samples), c(100, 3))
   expect_true(all(plot_data$y_lCI <= plot_data$y))
   expect_true(all(plot_data$y <= plot_data$y_uCI))
+  expect_equal(
+    attr(plot_data, "y_range"),
+    range(plot_data$y, plot_data$y_lCI, plot_data$y_uCI)
+  )
 })
 
 test_that("PET-PEESE posterior plot data does not recycle coefficient rows", {
@@ -1666,6 +1709,10 @@ test_that("PET-PEESE posterior plot data honors negative effect direction", {
   expect_equal(plot_data$y, expected_quantiles[1,])
   expect_equal(plot_data$y_lCI, expected_quantiles[2,])
   expect_equal(plot_data$y_uCI, expected_quantiles[3,])
+  expect_equal(
+    attr(plot_data, "y_range"),
+    range(plot_data$y, plot_data$y_lCI, plot_data$y_uCI)
+  )
 
   intercept_fallback <- BayesTools:::.plot_data_samples.PETPEESE(
     samples = list(mu_intercept = samples$mu, PET = samples$PET, PEESE = samples$PEESE),

@@ -90,7 +90,7 @@
 
   class(out) <- c("density", "density.prior", "density.prior.PETPEESE")
   attr(out, "x_range") <- range(x_seq)
-  attr(out, "y_range") <- range(out$y)
+  attr(out, "y_range") <- range(out$y, out$y_lCI, out$y_uCI)
 
   return(out)
 }
@@ -669,7 +669,7 @@
 
   class(out) <- c("density", "density.prior", "density.prior.PETPEESE")
   attr(out, "x_range") <- range(x_seq)
-  attr(out, "y_range") <- range(summary$median)
+  attr(out, "y_range") <- range(out$y, out$y_lCI, out$y_uCI)
 
   return(out)
 }
