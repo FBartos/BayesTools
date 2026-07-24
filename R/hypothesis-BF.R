@@ -42,7 +42,10 @@
 #' attributes and errors if no valid precomputed source is available. KDE
 #' point-null tests use boundary reflection when exact support metadata is
 #' attached to the marginal posterior or to a matched \code{posterior_density}
-#' attribute; numeric and data-frame expression tests use standard sample KDE.
+#' attribute; numeric and data-frame expression tests use standard Gaussian
+#' sample KDE. Finite sample and KDE evaluation ranges are not treated as exact
+#' support, so finite point hypotheses outside those ranges use kernel-tail
+#' density estimates.
 #' @param columns output columns. \code{"default"} returns \code{Alternative},
 #' \code{Null}, \code{BF}, and \code{BF_error}. \code{"all"} also returns
 #' \code{prior}, \code{posterior}, and \code{method} columns. The

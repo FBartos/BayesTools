@@ -136,23 +136,27 @@
       side[["expr"]],
       quantity[["posterior_draws"]]
     )
-    if(!is.null(quantity[["prior_density"]]) &&
-       .hypothesis_expression_is_parameter(side[["expr"]], quantity[["parameter"]])){
-      prior_value <- .hypothesis_prior_density_height(
-        quantity[["prior_density"]],
-        side[["value"]]
-      )
-    }else{
-      prior <- .hypothesis_eval_expression(
-        side[["expr"]],
-        .hypothesis_prior_draws(quantity)
-      )
-      prior_value <- .hypothesis_draw_density_height(
-        prior,
-        side[["value"]],
-        "prior",
-        density_method
-      )
+    prior_value <- .hypothesis_prior_object_density_height(quantity, side)
+    if(is.null(prior_value)){
+      if(!is.null(quantity[["prior_density"]]) &&
+         .hypothesis_expression_is_parameter(side[["expr"]],
+                                             quantity[["parameter"]])){
+        prior_value <- .hypothesis_prior_density_height(
+          quantity[["prior_density"]],
+          side[["value"]]
+        )
+      }else{
+        prior <- .hypothesis_eval_expression(
+          side[["expr"]],
+          .hypothesis_prior_draws(quantity)
+        )
+        prior_value <- .hypothesis_draw_density_height(
+          prior,
+          side[["value"]],
+          "prior",
+          density_method
+        )
+      }
     }
     .hypothesis_check_prior_density(prior_value, side[["label"]])
     posterior_value <- .hypothesis_draw_density_height(

@@ -25,8 +25,10 @@ approximated via a normal distribution (rather than kernel density). Defaults to
 
 \item{density_method}{density source for the posterior ordinate. \code{"KDE"}
 computes a kernel density estimate, using boundary reflection when exact
-posterior-support metadata is available. \code{"precomputed"} requires a
-valid \code{posterior_ordinate} attribute when present, or otherwise a valid
+posterior-support metadata is available. Finite sample and KDE evaluation
+ranges are not treated as exact support; Gaussian kernel tails are evaluated
+at finite null values. \code{"precomputed"} requires a valid
+\code{posterior_ordinate} attribute when present, or otherwise a valid
 \code{posterior_density} attribute.}
 }
 \value{

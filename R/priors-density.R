@@ -900,6 +900,31 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
 
 
 # helper functions
+.density_kde_gaussian_height <- function(x, value, bw,
+                                         bounds = c(-Inf, Inf)){
+
+  if(length(x) == 0L || length(value) != 1L || !is.finite(value) ||
+     length(bw) != 1L || !is.finite(bw) || bw <= 0){
+    return(NA_real_)
+  }
+  if(value < bounds[1L] || value > bounds[2L]){
+    return(0)
+  }
+
+  height <- mean(stats::dnorm(value, mean = x, sd = bw))
+  if(is.finite(bounds[1L])){
+    height <- height +
+      mean(stats::dnorm(value, mean = 2 * bounds[1L] - x, sd = bw))
+  }
+  if(is.finite(bounds[2L])){
+    height <- height +
+      mean(stats::dnorm(value, mean = 2 * bounds[2L] - x, sd = bw))
+  }
+
+  height
+}
+
+
 .density_kde_boundary       <- function(x, n, from = NULL, to = NULL, bounds = c(-Inf, Inf), na.rm = FALSE, ...){
 
   if(!is.numeric(bounds) || length(bounds) != 2L || anyNA(bounds)){

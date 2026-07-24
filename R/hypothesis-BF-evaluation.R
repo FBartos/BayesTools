@@ -126,6 +126,28 @@
 }
 
 
+.hypothesis_prior_object_density_height <- function(quantity, side) {
+
+  prior_object <- quantity[["prior_object"]]
+  if(is.null(prior_object) || !is.prior.simple(prior_object) ||
+     is.prior.point(prior_object) || is.prior.discrete(prior_object) ||
+     !.hypothesis_expression_is_parameter(side[["expr"]],
+                                          quantity[["parameter"]])){
+    return(NULL)
+  }
+
+  height <- tryCatch(
+    pdf(prior_object, side[["value"]]),
+    error = function(e) NULL
+  )
+  if(is.null(height) || !is.numeric(height) || length(height) != 1L){
+    return(NULL)
+  }
+
+  as.numeric(height)
+}
+
+
 .hypothesis_simple_parameter_comparison <- function(side, parameter) {
 
   if(is.null(parameter) || is.null(side[["condition"]])){
@@ -301,20 +323,26 @@
   .hypothesis_warn_point_draw_cluster(samples, value, label)
 
   if(value < min(samples) || value > max(samples)){
-    if(label == "prior"){
-      stop("Prior samples do not span the point hypothesis.", call. = FALSE)
-    }
-    return(0)
+    warning(
+      "The ", label, " samples do not span the point hypothesis. The Gaussian ",
+      "KDE height is estimated from kernel tails.",
+      call. = FALSE
+    )
   }
 
   density <- stats::density(samples)
   height <- stats::approx(
     density[["x"]],
     density[["y"]],
-    xout  = value,
-    yleft = 0,
-    yright = 0
+    xout = value
   )[["y"]]
+  if(is.na(height)){
+    height <- .density_kde_gaussian_height(
+      x     = samples,
+      value = value,
+      bw    = density[["bw"]]
+    )
+  }
 
   if(!is.finite(height) || height < 0){
     stop("Could not estimate ", label, " density at the point hypothesis.",

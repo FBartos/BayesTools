@@ -11,8 +11,10 @@
 #' @param silent whether warnings should be returned silently. Defaults to \code{FALSE}
 #' @param density_method density source for the posterior ordinate. \code{"KDE"}
 #' computes a kernel density estimate, using boundary reflection when exact
-#' posterior-support metadata is available. \code{"precomputed"} requires a
-#' valid \code{posterior_ordinate} attribute when present, or otherwise a valid
+#' posterior-support metadata is available. Finite sample and KDE evaluation
+#' ranges are not treated as exact support; Gaussian kernel tails are evaluated
+#' at finite null values. \code{"precomputed"} requires a valid
+#' \code{posterior_ordinate} attribute when present, or otherwise a valid
 #' \code{posterior_density} attribute.
 #'
 #' @details Marginal posterior vectors may carry a \code{posterior_ordinate}
@@ -203,7 +205,10 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   if(is.null(stored_posterior_ordinate) &&
      (null_hypothesis < posterior_range[1] || null_hypothesis > posterior_range[2]) &&
      !isTRUE(null_at_support_boundary)){
-    warnings <- c(warnings, "Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.")
+    warnings <- c(
+      warnings,
+      "Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable."
+    )
   }
 
   kde_height <- function(support = NULL){
@@ -402,27 +407,34 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
       height <- stats::approx(
         density_posterior$x,
         density_posterior$y,
-        xout  = null_hypothesis,
-        yleft = 0,
-        yright = 0
+        xout = null_hypothesis
       )[["y"]]
+      if(is.na(height)){
+        height <- .density_kde_gaussian_height(
+          x      = sample_values,
+          value  = null_hypothesis,
+          bw     = density_posterior$bw,
+          bounds = support_bounds
+        )
+      }
       attr(height, "boundary_reflection") <- isTRUE(attr(density_posterior, "boundary_reflection"))
       attr(height, "posterior_support_bounds") <- support_bounds
       return(height)
     }
   }
 
-  if(null_hypothesis < min(sample_values) || null_hypothesis > max(sample_values)){
-    height <- 0
-  }else{
-    density_posterior <- stats::density(sample_values)
-    height <- stats::approx(
-      density_posterior$x,
-      density_posterior$y,
-      xout   = null_hypothesis,
-      yleft  = 0,
-      yright = 0
-    )[["y"]]
+  density_posterior <- stats::density(sample_values)
+  height <- stats::approx(
+    density_posterior$x,
+    density_posterior$y,
+    xout = null_hypothesis
+  )[["y"]]
+  if(is.na(height)){
+    height <- .density_kde_gaussian_height(
+      x     = sample_values,
+      value = null_hypothesis,
+      bw    = density_posterior$bw
+    )
   }
 
   if(!is.null(support_info[["warning"]])){

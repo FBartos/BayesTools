@@ -115,6 +115,112 @@ test_that("hypothesis_BF warns for exact point masses in raw point-null draws", 
 })
 
 
+test_that("hypothesis_BF KDEs retain Gaussian tails beyond sample grids", {
+
+  posterior <- seq(-1, 1, length.out = 101)
+  prior     <- seq(-1.2, 1.2, length.out = 101)
+  null      <- 3
+
+  posterior_bw <- stats::density(posterior)[["bw"]]
+  prior_bw     <- stats::density(prior)[["bw"]]
+  expected_posterior <- mean(stats::dnorm(
+    null,
+    mean = posterior,
+    sd   = posterior_bw
+  ))
+  expected_prior <- mean(stats::dnorm(
+    null,
+    mean = prior,
+    sd   = prior_bw
+  ))
+
+  expect_warning(
+    posterior_height <- BayesTools:::.hypothesis_sample_density_height(
+      posterior, null, "posterior"
+    ),
+    "posterior samples do not span"
+  )
+  expect_warning(
+    prior_height <- BayesTools:::.hypothesis_sample_density_height(
+      prior, null, "prior"
+    ),
+    "prior samples do not span"
+  )
+  expect_equal(posterior_height, expected_posterior, tolerance = 1e-12)
+  expect_equal(prior_height, expected_prior, tolerance = 1e-12)
+  expect_gt(posterior_height, 0)
+  expect_gt(prior_height, 0)
+
+  out <- suppressWarnings(hypothesis_BF(
+    posterior  = posterior,
+    prior      = prior,
+    hypothesis = "theta = 3",
+    parameter  = "theta",
+    columns    = "all"
+  ))
+  expect_equal(out[["posterior"]], expected_posterior, tolerance = 1e-12)
+  expect_equal(out[["prior"]], expected_prior, tolerance = 1e-12)
+  expect_equal(
+    attr(out, "raw_BF"),
+    expected_prior / expected_posterior,
+    tolerance = 1e-12
+  )
+  expect_true(is.finite(attr(out, "raw_BF")))
+})
+
+
+test_that("hypothesis_BF marginal KDEs retain tails beyond evaluation grids", {
+
+  prior_density <- .hypothesis_prior_density_for_test()
+  posterior_samples <- seq(-1, 1, length.out = 101)
+  posterior <- .hypothesis_marginal_posterior_for_test(
+    posterior_samples,
+    prior_density
+  )
+  null <- 2
+
+  posterior_bw <- stats::density(posterior_samples)[["bw"]]
+  expected_height <- mean(stats::dnorm(
+    null,
+    mean = posterior_samples,
+    sd   = posterior_bw
+  ))
+  expect_gt(null, max(stats::density(posterior_samples)[["x"]]))
+
+  height <- BayesTools:::.Savage_Dickey_BF.kd(posterior, null)
+  expect_equal(height, expected_height, tolerance = 1e-12)
+  expect_gt(height, 0)
+
+  supported_samples <- seq(.01, 1, length.out = 101)
+  supported_bw <- stats::density(supported_samples)[["bw"]]
+  expected_supported_height <-
+    mean(stats::dnorm(null, mean = supported_samples, sd = supported_bw)) +
+    mean(stats::dnorm(null, mean = -supported_samples, sd = supported_bw))
+  supported_height <- BayesTools:::.Savage_Dickey_BF.kd(
+    supported_samples,
+    null,
+    support = c(0, Inf)
+  )
+  expect_equal(
+    as.numeric(supported_height),
+    expected_supported_height,
+    tolerance = 1e-12
+  )
+  expect_gt(supported_height, 0)
+  expect_true(attr(supported_height, "boundary_reflection"))
+
+  out <- hypothesis_BF(
+    posterior  = posterior,
+    hypothesis = "theta = 2",
+    parameter  = "theta",
+    columns    = "all"
+  )
+  expect_equal(out[["posterior"]], expected_height, tolerance = 1e-12)
+  expect_true(is.finite(attr(out, "raw_BF")))
+  expect_match(attr(out, "warnings"), "Posterior samples do not span")
+})
+
+
 test_that("hypothesis_BF rejects prior point mass metadata for point nulls", {
 
   prior_density <- BayesTools:::.prior_linear_combination_density(
@@ -424,6 +530,31 @@ test_that("hypothesis_BF accepts scalar BayesTools prior objects", {
     out[["prior"]] / out[["posterior"]],
     tolerance = 1e-12
   )
+})
+
+
+test_that("hypothesis_BF uses exact scalar prior density beyond its grid", {
+
+  theta_prior <- prior("normal", list(mean = 0, sd = 1))
+  prior_grid <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = theta_prior),
+    weights    = c(theta = 1)
+  )
+  expect_gt(4, max(prior_grid[["density"]][["x"]]))
+
+  posterior <- seq(3.5, 4.5, length.out = 401)
+  out <- hypothesis_BF(
+    posterior  = posterior,
+    prior      = theta_prior,
+    hypothesis = "theta = 4",
+    parameter  = "theta",
+    seed       = 14,
+    columns    = "all"
+  )
+
+  expect_equal(out[["prior"]], stats::dnorm(4), tolerance = 1e-15)
+  expect_gt(out[["posterior"]], 0)
+  expect_true(is.finite(attr(out, "raw_BF")))
 })
 
 
