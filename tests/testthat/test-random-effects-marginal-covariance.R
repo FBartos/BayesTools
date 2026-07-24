@@ -848,6 +848,23 @@ test_that("us covariance can reconstruct LKJ primitive samples", {
   )
 
   expect_equal(.re_cov_first(out), expected, tolerance = 1e-12)
+
+  duplicated_result <- result
+  duplicated_names <- random_term$correlation$primitive_names
+  duplicated_names[2L] <- duplicated_names[1L]
+  duplicated_correlation <-
+    duplicated_result$formula_design$random_effects[[1L]]$correlation
+  duplicated_correlation$primitive_names <- duplicated_names
+  names(duplicated_correlation$primitive_bounds$lb) <- duplicated_names
+  names(duplicated_correlation$primitive_bounds$ub) <- duplicated_names
+  duplicated_result$formula_design$random_effects[[1L]]$correlation <-
+    duplicated_correlation
+
+  expect_error(
+    .re_cov_output(duplicated_result, posterior),
+    "must define unique 'random_term$correlation$primitive_names'",
+    fixed = TRUE
+  )
 })
 
 test_that("cs covariance uses scalar-rho compound symmetry", {

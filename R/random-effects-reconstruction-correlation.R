@@ -523,6 +523,14 @@
       call. = FALSE
     )
   }
+  if(anyDuplicated(primitive_names)){
+    stop(
+      context,
+      .bt_random_effect_metadata_block_detail(random_term),
+      " must define unique 'random_term$correlation$primitive_names'.",
+      call. = FALSE
+    )
+  }
 
   primitive_bounds <- correlation$primitive_bounds
   if(!is.list(primitive_bounds) ||
