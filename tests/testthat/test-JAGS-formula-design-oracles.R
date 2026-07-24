@@ -2422,6 +2422,24 @@ test_that("prior_random rejects unsupported and ignored production settings", {
     "must not contain missing values",
     fixed = TRUE
   )
+  explicit_na_id <- factor(
+    c("b", NA, "b", "c", "a", "c"),
+    levels = c("a", "b", "c", NA),
+    exclude = NULL
+  )
+  expect_false(anyNA(explicit_na_id))
+  expect_true(anyNA(levels(explicit_na_id)))
+  expect_error(
+    JAGS_formula(
+      formula = ~ 1 + diag(1 | id),
+      parameter = "mu",
+      data = transform(df, id = explicit_na_id),
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(id = random_block(sd = sd_prior))
+    ),
+    "must not contain missing values",
+    fixed = TRUE
+  )
   expect_error(
     JAGS_formula(
       formula = ~ 1 + random(1 | group_as_data_frame(id), name = "bad_group", covariance = "diag"),

@@ -885,7 +885,7 @@
       call. = FALSE
     )
   }
-  if(anyNA(value)){
+  if(anyNA(value) || (is.factor(value) && anyNA(levels(value)))){
     stop(
       "Random-effect grouping expression '",
       term$group_label,
