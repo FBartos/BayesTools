@@ -78,3 +78,22 @@ test_that("JAGS autofit settings reject missing and non-finite controls", {
     "'max_time:unit'"
   )
 })
+
+test_that("JAGS_extend validates runtime controls before extension", {
+  fit <- structure(list(), class = "BayesTools_fit")
+  invalid <- list(
+    parallel = NA,
+    cores = Inf,
+    silent = NA,
+    seed = NaN
+  )
+
+  for(name in names(invalid)){
+    arguments <- list(fit = fit)
+    arguments[[name]] <- invalid[[name]]
+    expect_error(
+      do.call(JAGS_extend, arguments),
+      paste0("'", name, "'")
+    )
+  }
+})

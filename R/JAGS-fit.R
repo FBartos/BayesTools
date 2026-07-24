@@ -490,6 +490,11 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   if(!inherits(fit, "BayesTools_fit"))
     stop("'fit' must be a 'BayesTools_fit'")
 
+  check_bool(parallel, "parallel", allow_NA = FALSE)
+  check_int(cores, "cores", lower = 1, allow_NULL = TRUE, allow_NA = FALSE)
+  check_bool(silent, "silent", allow_NA = FALSE)
+  check_int(seed, "seed", allow_NULL = TRUE, allow_NA = FALSE)
+
   # extract fitting information
   prior_list        <- attr(fit, "prior_list")
   model_syntax      <- attr(fit, "model_syntax")
