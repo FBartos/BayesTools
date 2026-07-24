@@ -355,6 +355,9 @@ prior_ordered <- function(total,
 
   check_char(contrast, "contrast", allow_values = .prior_ordered_contrast_values)
   check_char(id, "id", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
+  if(!is.null(id) && any(!nzchar(trimws(id)))){
+    stop("The 'id' argument cannot contain empty strings.", call. = FALSE)
+  }
   .check_prior_weight(prior_weights)
   .prior_ordered_check_total(total)
 

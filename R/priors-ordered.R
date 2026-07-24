@@ -244,6 +244,7 @@
 .bt_validate_ordered_shared_allocations <- function(prior_list){
 
   registry <- list()
+  node_registry <- list()
   for(i in seq_along(prior_list)){
     prior <- prior_list[[i]]
     if(!is.prior.ordered(prior)){
@@ -252,6 +253,33 @@
     metadata <- .prior_ordered_metadata(prior)
     for(record in metadata$allocations){
       signature <- .prior_ordered_allocation_signature(record)
+      if(!is.null(node_registry[[record$node]]) &&
+         !identical(node_registry[[record$node]]$key, record$key)){
+        previous_record <- node_registry[[record$node]]
+        previous_label <- if(is.null(previous_record$id)){
+          paste0("allocation key '", previous_record$key, "'")
+        }else{
+          paste0(
+            "allocation id '", previous_record$id,
+            "' for factor '", previous_record$factor, "'"
+          )
+        }
+        current_label <- if(is.null(record$id)){
+          paste0("allocation key '", record$key, "'")
+        }else{
+          paste0(
+            "allocation id '", record$id,
+            "' for factor '", record$factor, "'"
+          )
+        }
+        stop(
+          "Ordered ", previous_label, " and ", current_label,
+          " generate the same JAGS node '", record$node,
+          "'. Use identifiers that remain distinct after JAGS name normalization.",
+          call. = FALSE
+        )
+      }
+      node_registry[[record$node]] <- record
       if(!is.null(registry[[record$key]])){
         if(!identical(registry[[record$key]]$signature, signature)){
           allocation_label <- if(is.null(record$id)){

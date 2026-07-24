@@ -18,6 +18,14 @@ test_that("prior_ordered() validates constructor inputs", {
     "sum to one"
   )
   expect_error(
+    prior_ordered(prior("normal", list(0, 1)), id = ""),
+    "cannot contain empty strings"
+  )
+  expect_error(
+    prior_ordered(prior("normal", list(0, 1)), id = "  "),
+    "cannot contain empty strings"
+  )
+  expect_error(
     prior_ordered(prior("normal", list(0, 1)), allocation = prior("normal", list(0, 1))),
     "Dirichlet"
   )
@@ -305,6 +313,33 @@ test_that("ordered allocation id sharing emits one shared allocation", {
   expect_error(
     JAGS_to_monitor(incompatible_priors),
     "incompatible allocation specifications"
+  )
+
+  formula_info_collision_a <- JAGS_formula(
+    y ~ f,
+    "phi",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_ordered(prior("normal", list(0, 1)), id = "shape-a")
+    )
+  )
+  formula_info_collision_b <- JAGS_formula(
+    y ~ f,
+    "theta",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_ordered(prior("normal", list(0, 1)), id = "shape a")
+    )
+  )
+  colliding_priors <- c(
+    formula_info_collision_a$prior_list,
+    formula_info_collision_b$prior_list
+  )
+  expect_error(
+    JAGS_add_priors("model{}", colliding_priors),
+    "generate the same JAGS node"
   )
 })
 
