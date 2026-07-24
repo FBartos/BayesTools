@@ -53,6 +53,8 @@
 #'
 #' Formula random effects require \code{prior_random}. Random-effect SD priors in
 #' \code{prior_list} using \code{"term|group"} names are no longer supported.
+#' Continuous fixed-effect terms must expand to one design-matrix column.
+#' Matrix-valued continuous predictors are not currently supported.
 #'
 #' @examples
 #' # simulate data
@@ -352,8 +354,18 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     if(model_terms_type[i] == "continuous"){
 
       # continuous variables or interactions of continuous variables are simple predictors
+      term_columns <- which(terms_indexes == i)
+      if(length(term_columns) != 1L){
+        stop(
+          "Continuous formula term '",
+          gsub("__xXx__", ":", model_terms[i], fixed = TRUE),
+          "' expands to ", length(term_columns),
+          " design-matrix columns; matrix-valued continuous terms are not supported.",
+          call. = FALSE
+        )
+      }
       data_name <- paste0(parameter, "_data_", model_terms[i])
-      JAGS_data[[data_name]] <- model_matrix[,terms_indexes == i]
+      JAGS_data[[data_name]] <- model_matrix[, term_columns]
       jags_data_names[[model_terms[i]]] <- data_name
 
       formula_syntax <- c(formula_syntax, paste0(

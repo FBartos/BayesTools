@@ -423,6 +423,24 @@ test_that("JAGS_formula handles character and interaction-only factor predictors
   )
 })
 
+test_that("JAGS_formula rejects matrix-valued continuous predictors", {
+  data <- data.frame(row = seq_len(3))
+  data$m <- I(matrix(seq_len(6), nrow = 3))
+
+  expect_error(
+    JAGS_formula(
+      ~ m,
+      "mu",
+      data,
+      list(
+        intercept = prior("normal", list(0, 1)),
+        m = prior("normal", list(0, 1))
+      )
+    ),
+    "term 'm' expands to 2 design-matrix columns"
+  )
+})
+
 test_that("JAGS_evaluate_formula resolves interaction-only continuous predictors", {
   fitted_data <- data.frame(
     x = c(-2, -1, 1, 2),
