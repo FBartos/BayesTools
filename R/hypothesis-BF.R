@@ -34,7 +34,7 @@
 #' \code{marginal_posterior} objects.
 #' @param logBF whether to display the Bayes factor on the log scale.
 #' @param BF01 whether to display the inverse Bayes factor.
-#' @param seed optional seed used only by downstream helpers that sample.
+#' @param seed optional finite seed used only by downstream helpers that sample.
 #' @param density_method posterior density source for point-null tests.
 #' \code{"KDE"} uses kernel density estimates. \code{"normal"} uses a normal
 #' approximation to the posterior density at the null. \code{"precomputed"}
@@ -77,6 +77,9 @@ hypothesis_BF <- function(posterior, prior = NULL, hypothesis, parameter = NULL,
   check_bool(BF01, "BF01", allow_NA = FALSE)
   check_real(seed, "seed", check_length = 1, allow_NULL = TRUE,
              allow_NA = FALSE)
+  if(!is.null(seed) && !is.finite(seed)){
+    stop("'seed' must be finite.", call. = FALSE)
+  }
   check_char(columns, "columns", check_length = 0, allow_NA = FALSE)
   density_method <- .hypothesis_density_method(density_method)
   columns        <- .hypothesis_BF_output_columns(columns)

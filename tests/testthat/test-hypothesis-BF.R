@@ -47,6 +47,29 @@ skip_if_not_test_profile("unit")
 }
 
 
+test_that("hypothesis_BF requires a finite seed", {
+
+  arguments <- list(
+    posterior = c(-2, -1, 1, 2),
+    prior = c(-2, -1, 1, 2),
+    hypothesis = "theta > 0",
+    parameter = "theta"
+  )
+
+  for(seed in c(Inf, -Inf)){
+    expect_error(
+      do.call(hypothesis_BF, c(arguments, list(seed = seed))),
+      "'seed' must be finite.",
+      fixed = TRUE
+    )
+  }
+  expect_s3_class(
+    do.call(hypothesis_BF, c(arguments, list(seed = 1.5))),
+    "BayesTools_hypothesis_BF"
+  )
+})
+
+
 test_that("hypothesis_BF computes point-null Savage-Dickey from numeric draws", {
 
   set.seed(1)

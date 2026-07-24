@@ -35,7 +35,7 @@ deterministic prior density information.}
 
 \item{BF01}{whether to display the inverse Bayes factor.}
 
-\item{seed}{optional seed used only by downstream helpers that sample.}
+\item{seed}{optional finite seed used only by downstream helpers that sample.}
 
 \item{density_method}{posterior density source for point-null tests.
 \code{"KDE"} uses kernel density estimates. \code{"normal"} uses a normal
