@@ -635,6 +635,123 @@ quant.prior <- function(x, p, ...){
     .prior_simple_base_p(prior, prior$truncation[["upper"]], lower.tail = FALSE)
 }
 
+.prior_normal_logdiffexp <- function(log_x, log_y){
+
+  if(length(log_x) == 0 || length(log_y) == 0){
+    return(numeric(0))
+  }
+
+  n     <- max(length(log_x), length(log_y))
+  log_x <- rep(log_x, length.out = n)
+  log_y <- rep(log_y, length.out = n)
+
+  log_difference <- rep(NA_real_, n)
+  both_zero      <- is.infinite(log_x) & log_x < 0 &
+    is.infinite(log_y) & log_y < 0
+  log_difference[both_zero] <- -Inf
+
+  known <- !is.na(log_x) & !is.na(log_y) & !both_zero
+  if(any(known)){
+    delta      <- pmin(log_y[known] - log_x[known], 0)
+    correction <- numeric(length(delta))
+    far_apart  <- delta < log(.5)
+
+    correction[far_apart]  <- log1p(-exp(delta[far_apart]))
+    correction[!far_apart] <- log(-expm1(delta[!far_apart]))
+    log_difference[known]   <- log_x[known] + correction
+  }
+
+  log_difference
+}
+
+.prior_normal_logaddexp <- function(log_x, log_y){
+
+  if(length(log_x) == 0 || length(log_y) == 0){
+    return(numeric(0))
+  }
+
+  n     <- max(length(log_x), length(log_y))
+  log_x <- rep(log_x, length.out = n)
+  log_y <- rep(log_y, length.out = n)
+
+  log_sum       <- rep(NA_real_, n)
+  both_zero     <- is.infinite(log_x) & log_x < 0 &
+    is.infinite(log_y) & log_y < 0
+  log_sum[both_zero] <- -Inf
+
+  known <- !is.na(log_x) & !is.na(log_y) & !both_zero
+  if(any(known)){
+    larger         <- pmax(log_x[known], log_y[known])
+    smaller        <- pmin(log_x[known], log_y[known])
+    log_sum[known] <- larger + log1p(exp(smaller - larger))
+  }
+
+  log_sum
+}
+
+.prior_normal_log_interval_mass <- function(prior, lower, upper){
+
+  if(length(lower) == 0 || length(upper) == 0){
+    return(numeric(0))
+  }
+
+  n     <- max(length(lower), length(upper))
+  lower <- rep(lower, length.out = n)
+  upper <- rep(upper, length.out = n)
+
+  log_mass    <- rep(NA_real_, n)
+  known       <- !is.na(lower) & !is.na(upper)
+  use_survival <- known & lower >= prior$parameters[["mean"]]
+
+  if(any(use_survival)){
+    log_lower <- stats::pnorm(
+      lower[use_survival],
+      mean       = prior$parameters[["mean"]],
+      sd         = prior$parameters[["sd"]],
+      lower.tail = FALSE,
+      log.p      = TRUE
+    )
+    log_upper <- stats::pnorm(
+      upper[use_survival],
+      mean       = prior$parameters[["mean"]],
+      sd         = prior$parameters[["sd"]],
+      lower.tail = FALSE,
+      log.p      = TRUE
+    )
+    log_mass[use_survival] <- .prior_normal_logdiffexp(log_lower, log_upper)
+  }
+
+  use_cdf <- known & !use_survival
+  if(any(use_cdf)){
+    log_upper <- stats::pnorm(
+      upper[use_cdf],
+      mean       = prior$parameters[["mean"]],
+      sd         = prior$parameters[["sd"]],
+      lower.tail = TRUE,
+      log.p      = TRUE
+    )
+    log_lower <- stats::pnorm(
+      lower[use_cdf],
+      mean       = prior$parameters[["mean"]],
+      sd         = prior$parameters[["sd"]],
+      lower.tail = TRUE,
+      log.p      = TRUE
+    )
+    log_mass[use_cdf] <- .prior_normal_logdiffexp(log_upper, log_lower)
+  }
+
+  log_mass
+}
+
+.prior_normal_log_C <- function(prior){
+
+  .prior_normal_log_interval_mass(
+    prior,
+    prior$truncation[["lower"]],
+    prior$truncation[["upper"]]
+  )
+}
+
 .prior_simple_cdf <- function(prior, q){
 
   if(.is_prior_default_range(prior)){
@@ -651,6 +768,19 @@ quant.prior <- function(x, p, ...){
   p[q_higher] <- 1
 
   if(any(q_inside)){
+    if(prior[["distribution"]] == "normal"){
+      p[q_inside] <- exp(
+        .prior_normal_log_interval_mass(
+          prior,
+          prior$truncation[["lower"]],
+          q[q_inside]
+        ) -
+          .prior_normal_log_C(prior)
+      )
+      p[q_inside] <- pmin(1, pmax(0, p[q_inside]))
+      return(p)
+    }
+
     p[q_inside] <- .prior_simple_base_p(prior, q[q_inside], lower.tail = TRUE)
 
     if(prior[["distribution"]] != "point"){
@@ -684,6 +814,19 @@ quant.prior <- function(x, p, ...){
   p[q_higher] <- 0
 
   if(any(q_inside)){
+    if(prior[["distribution"]] == "normal"){
+      p[q_inside] <- exp(
+        .prior_normal_log_interval_mass(
+          prior,
+          q[q_inside],
+          prior$truncation[["upper"]]
+        ) -
+          .prior_normal_log_C(prior)
+      )
+      p[q_inside] <- pmin(1, pmax(0, p[q_inside]))
+      return(p)
+    }
+
     p[q_inside] <- .prior_simple_base_p(prior, q[q_inside], lower.tail = FALSE)
 
     if(prior[["distribution"]] != "point"){
@@ -710,7 +853,11 @@ quant.prior <- function(x, p, ...){
   log_lik[x < prior$truncation[["lower"]] | x > prior$truncation[["upper"]]] <- -Inf
 
   if(prior[["distribution"]] != "point"){
-    log_lik <- log_lik - log(.prior_C(prior))
+    if(prior[["distribution"]] == "normal"){
+      log_lik <- log_lik - .prior_normal_log_C(prior)
+    }else{
+      log_lik <- log_lik - log(.prior_C(prior))
+    }
   }
 
   return(log_lik)
@@ -720,6 +867,10 @@ quant.prior <- function(x, p, ...){
 
   if(.is_prior_default_range(prior)){
     return(.prior_simple_base_d(prior, x, log = FALSE))
+  }
+
+  if(prior[["distribution"]] == "normal"){
+    return(exp(.prior_simple_lpdf(prior, x)))
   }
 
   lik <- .prior_simple_base_d(prior, x, log = FALSE)
@@ -742,6 +893,64 @@ quant.prior <- function(x, p, ...){
     discrete <- .prior_simple_truncated_discrete(prior)
     cdf      <- cumsum(discrete[["prob"]])
     return(vapply(p, function(p_i) discrete[["support"]][which(cdf >= p_i)[1]], numeric(1)))
+  }
+
+  if(prior[["distribution"]] == "normal"){
+    q            <- rep(NA_real_, length(p))
+    p_known      <- !is.na(p)
+    p_lower      <- p_known & p == 0
+    p_upper      <- p_known & p == 1
+    p_inside     <- p_known & p > 0 & p < 1
+    lower        <- prior$truncation[["lower"]]
+    upper        <- prior$truncation[["upper"]]
+    log_C        <- .prior_normal_log_C(prior)
+
+    q[p_lower] <- lower
+    q[p_upper] <- upper
+
+    if(any(p_inside)){
+      if(lower >= prior$parameters[["mean"]]){
+        log_S2 <- stats::pnorm(
+          upper,
+          mean       = prior$parameters[["mean"]],
+          sd         = prior$parameters[["sd"]],
+          lower.tail = FALSE,
+          log.p      = TRUE
+        )
+        log_target <- .prior_normal_logaddexp(
+          log_S2,
+          log1p(-p[p_inside]) + log_C
+        )
+        q[p_inside] <- stats::qnorm(
+          p          = pmin(log_target, 0),
+          mean       = prior$parameters[["mean"]],
+          sd         = prior$parameters[["sd"]],
+          lower.tail = FALSE,
+          log.p      = TRUE
+        )
+      }else{
+        log_F1 <- stats::pnorm(
+          lower,
+          mean       = prior$parameters[["mean"]],
+          sd         = prior$parameters[["sd"]],
+          lower.tail = TRUE,
+          log.p      = TRUE
+        )
+        log_target <- .prior_normal_logaddexp(
+          log_F1,
+          log(p[p_inside]) + log_C
+        )
+        q[p_inside] <- stats::qnorm(
+          p          = pmin(log_target, 0),
+          mean       = prior$parameters[["mean"]],
+          sd         = prior$parameters[["sd"]],
+          lower.tail = TRUE,
+          log.p      = TRUE
+        )
+      }
+    }
+
+    return(pmax(lower, pmin(upper, q)))
   }
 
   C1 <- .prior_C1(prior)

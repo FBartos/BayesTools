@@ -770,6 +770,53 @@ test_that("quant() handles truncated priors with optimization", {
 })
 
 
+test_that("extreme finite truncated normal methods remain tail-stable", {
+  p_left  <- prior("normal", list(0, 1), truncation = list(-40, -39))
+  p_right <- prior("normal", list(0, 1), truncation = list(39, 40))
+  probs   <- c(0, .01, .25, .5, .75, .99, 1)
+
+  q_left  <- quant(p_left, probs)
+  q_right <- quant(p_right, probs)
+
+  expect_true(all(is.finite(q_left)))
+  expect_true(all(is.finite(q_right)))
+  expect_true(all(diff(q_left) > 0))
+  expect_true(all(diff(q_right) > 0))
+  expect_equal(q_left[c(1, length(q_left))], c(-40, -39))
+  expect_equal(q_right[c(1, length(q_right))], c(39, 40))
+  expect_equal(q_left, -rev(q_right), tolerance = 1e-12)
+
+  expect_equal(cdf(p_left, q_left), probs, tolerance = 1e-10)
+  expect_equal(cdf(p_right, q_right), probs, tolerance = 1e-10)
+  expect_equal(ccdf(p_left, q_left), 1 - probs, tolerance = 1e-10)
+  expect_equal(ccdf(p_right, q_right), 1 - probs, tolerance = 1e-10)
+
+  x_left    <- c(-40, -39.5, -39)
+  x_right   <- c(39, 39.5, 40)
+  pdf_left  <- pdf(p_left, x_left)
+  pdf_right <- pdf(p_right, x_right)
+
+  expect_true(all(is.finite(pdf_left)))
+  expect_true(all(is.finite(pdf_right)))
+  expect_true(all(pdf_left > 0))
+  expect_true(all(pdf_right > 0))
+  expect_equal(pdf_left, rev(pdf_right), tolerance = 1e-12)
+  expect_equal(log(pdf_left), lpdf(p_left, x_left), tolerance = 1e-12)
+  expect_equal(log(pdf_right), lpdf(p_right, x_right), tolerance = 1e-12)
+
+  expect_equal(
+    stats::integrate(function(x) pdf(p_left, x), -40, -39)$value,
+    1,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    stats::integrate(function(x) pdf(p_right, x), 39, 40)$value,
+    1,
+    tolerance = 1e-10
+  )
+})
+
+
 # ============================================================================ #
 # SECTION: Multivariate distribution functions (mcdf, mccdf, mlpdf, mquant)
 # ============================================================================ #
