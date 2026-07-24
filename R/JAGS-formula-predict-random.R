@@ -154,6 +154,10 @@
   }
   selected_terms <- fitted_terms[match(selected_names, fitted_names)]
   modes <- vapply(selected_terms, .bt_random_effect_term_compile_mode, character(1))
+  if(is.null(formula_target)){
+    return(selected_terms[modes == "sampled"])
+  }
+
   marginalized <- selected_names[modes == "marginalized"]
   if(length(marginalized) > 0L){
     stop(
