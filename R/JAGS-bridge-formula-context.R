@@ -440,7 +440,10 @@
     mismatches <- c(mismatches, paste0("formula prior names differ for parameter '", parameter, "'"))
   }else{
     for(prior_name in names(fitted$prior_list)){
-      if(!.bt_JAGS_bridge_metadata_equal(fitted$prior_list[[prior_name]], rebuilt$prior_list[[prior_name]])){
+      if(!.bt_JAGS_bridge_formula_prior_metadata_equal(
+        fitted$prior_list[[prior_name]],
+        rebuilt$prior_list[[prior_name]]
+      )){
         mismatches <- c(mismatches, paste0("formula prior metadata differ for parameter '", parameter, "', prior '", prior_name, "'"))
         break
       }
@@ -460,6 +463,15 @@
   }
 
   mismatches
+}
+
+.bt_JAGS_bridge_formula_prior_metadata_equal <- function(x, y){
+
+  .bt_JAGS_bridge_metadata_equal(x, y) &&
+    .bt_JAGS_bridge_metadata_equal(
+      attr(x, "multiply_by", exact = TRUE),
+      attr(y, "multiply_by", exact = TRUE)
+    )
 }
 
 .bt_JAGS_bridge_formula_design_update_source_values <- function(fitted_formula_design,

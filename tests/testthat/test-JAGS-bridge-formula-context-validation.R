@@ -153,3 +153,84 @@ test_that("bridge formula name errors retain fitted-design mismatch context", {
     fixed = TRUE
   )
 })
+
+.bridge_formula_prior_context <- function(multiply_by = NULL){
+
+  formula_data <- data.frame(x = c(-1, 0, 1))
+  formula_priors <- list(
+    intercept = prior("normal", list(0, 1)),
+    x = prior("normal", list(0, 1))
+  )
+  if(!is.null(multiply_by)){
+    attr(formula_priors$x, "multiply_by") <- multiply_by
+  }
+  formula_output <- JAGS_formula(
+    formula = ~ 1 + x,
+    parameter = "mu",
+    data = formula_data,
+    prior_list = formula_priors
+  )
+
+  list(
+    design = formula_output$formula_design,
+    inputs = list(
+      formula_list = list(mu = formula_output$formula),
+      formula_data_list = list(mu = formula_data),
+      formula_prior_list = list(mu = formula_priors),
+      formula_scale_list = NULL,
+      formula_random_prior_list = NULL,
+      formula_random_effects_compile_list = NULL
+    )
+  )
+}
+
+test_that("bridge formula context compares semantic prior multiplier metadata", {
+
+  multiplier_cases <- list(
+    added = list(fitted = NULL, supplied = "sigma"),
+    removed = list(fitted = "sigma", supplied = NULL),
+    changed_name = list(fitted = "sigma", supplied = "tau"),
+    changed_value = list(fitted = 2, supplied = 3)
+  )
+
+  for(case in names(multiplier_cases)){
+    fitted <- .bridge_formula_prior_context(
+      multiplier_cases[[case]]$fitted
+    )
+    supplied <- .bridge_formula_prior_context(
+      multiplier_cases[[case]]$supplied
+    )
+
+    expect_error(
+      .bridge_formula_validation_context(
+        supplied$inputs,
+        fitted_design = list(mu = fitted$design)
+      ),
+      paste0(
+        "formula prior metadata differ for parameter 'mu', ",
+        "prior 'mu_x'"
+      ),
+      fixed = TRUE,
+      info = case
+    )
+  }
+})
+
+test_that("bridge formula context ignores nonsemantic prior attributes", {
+
+  fitted <- .bridge_formula_prior_context("sigma")
+  supplied <- .bridge_formula_prior_context("sigma")
+  attr(fitted$design$prior_list$mu_x, "bridge_note") <- "fitted only"
+  attr(supplied$inputs$formula_prior_list$mu$x, "bridge_note") <- "supplied only"
+
+  expect_silent(
+    context <- .bridge_formula_validation_context(
+      supplied$inputs,
+      fitted_design = list(mu = fitted$design)
+    )
+  )
+  expect_s3_class(
+    context$formula_design_list$mu,
+    "BayesTools_formula_design"
+  )
+})
