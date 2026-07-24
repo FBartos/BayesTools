@@ -115,6 +115,42 @@ test_that("formula prediction validates parameter names and seeds", {
   )
 })
 
+test_that("formula prediction rejects ambiguous posterior column names", {
+  result <- .formula_prediction_result()
+  fit <- .formula_prediction_fit(result)
+  posterior <- as.matrix(fit)
+  coefficient_name <- "mu__xREx__id_xRE_COEFx[1,1]"
+  duplicate <- posterior[, coefficient_name, drop = FALSE] + 100
+  colnames(duplicate) <- coefficient_name
+  duplicate_fit <- coda::mcmc(cbind(duplicate, posterior))
+  attr(duplicate_fit, "formula_design") <- list(mu = result$formula_design)
+
+  expect_error(
+    JAGS_evaluate_formula(
+      fit = duplicate_fit,
+      parameter = "mu",
+      formula_target = "conditional"
+    ),
+    paste0(
+      "Posterior samples used by JAGS_evaluate_formula() must have unique ",
+      "column names. Duplicated column(s): '", coefficient_name, "'."
+    ),
+    fixed = TRUE
+  )
+
+  incomplete_fit <- fit
+  colnames(incomplete_fit)[1L] <- ""
+  expect_error(
+    JAGS_evaluate_formula(
+      fit = incomplete_fit,
+      parameter = "mu",
+      formula_target = "conditional"
+    ),
+    "Posterior samples used by JAGS_evaluate_formula() must have non-empty column names.",
+    fixed = TRUE
+  )
+})
+
 test_that("formula design metadata preserves scaling during prediction", {
 
   df <- data.frame(

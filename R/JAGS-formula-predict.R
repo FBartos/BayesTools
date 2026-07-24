@@ -110,6 +110,7 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
 
   # extract the posterior distribution
   posterior <- as.matrix(.fit_to_posterior(fit))
+  .bt_JAGS_evaluate_formula_validate_posterior_names(posterior)
 
   # remove the specified response (would crash the model.frame if not included)
   formula <- .remove_response(formula)
@@ -484,6 +485,34 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   }
 
   formula_target
+}
+
+.bt_JAGS_evaluate_formula_validate_posterior_names <- function(posterior){
+
+  posterior_names <- colnames(posterior)
+  if(is.null(posterior_names) || length(posterior_names) != ncol(posterior) ||
+     anyNA(posterior_names) || any(!nzchar(posterior_names))){
+    stop(
+      "Posterior samples used by JAGS_evaluate_formula() must have non-empty column names.",
+      call. = FALSE
+    )
+  }
+  if(anyDuplicated(posterior_names)){
+    duplicated_names <- unique(posterior_names[duplicated(posterior_names)])
+    stop(
+      "Posterior samples used by JAGS_evaluate_formula() must have unique ",
+      "column names. Duplicated column(s): ",
+      paste0(
+        "'", duplicated_names[seq_len(min(4L, length(duplicated_names)))], "'",
+        collapse = ", "
+      ),
+      if(length(duplicated_names) > 4L) ", ..." else "",
+      ".",
+      call. = FALSE
+    )
+  }
+
+  invisible(NULL)
 }
 
 .bt_JAGS_evaluate_formula_design <- function(fit, parameter){
