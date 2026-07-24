@@ -102,26 +102,30 @@ double quantile(double p, double shape, double scale, bool lower_tail, bool log_
     return quiet_nan();
   }
 
-  double prob = log_p ? std::exp(p) : p;
-  if(std::isnan(prob) || prob < 0.0 || prob > 1.0){
+  if(std::isnan(p) || (log_p ? p > 0.0 : p < 0.0 || p > 1.0)){
     return quiet_nan();
   }
 
+  bool zero_probability = log_p ?
+    p == -std::numeric_limits<double>::infinity() :
+    p == 0.0;
+  bool unit_probability = log_p ? p == 0.0 : p == 1.0;
+
   if(lower_tail){
-    if(prob == 0.0){
+    if(zero_probability){
       return 0.0;
     }
-    if(prob == 1.0){
+    if(unit_probability){
       return std::numeric_limits<double>::infinity();
     }
     double gamma_q = qgamma(p, shape, 1.0 / scale, false, log_p);
     return 1.0 / gamma_q;
   }
 
-  if(prob == 0.0){
+  if(zero_probability){
     return std::numeric_limits<double>::infinity();
   }
-  if(prob == 1.0){
+  if(unit_probability){
     return 0.0;
   }
   double gamma_q = qgamma(p, shape, 1.0 / scale, true, log_p);

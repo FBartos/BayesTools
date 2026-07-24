@@ -224,6 +224,116 @@ test_that("inverse-moment prior density, distribution, and quantiles match refer
   )
 })
 
+test_that("native quantiles preserve extreme finite log probabilities", {
+  log_probs <- c(-746, -1000)
+
+  invgamma_lower <- BayesTools:::.qinvgamma_prior(
+    log_probs, shape = 3, scale = 2, log.p = TRUE
+  )
+  invgamma_upper <- BayesTools:::.qinvgamma_prior(
+    log_probs, shape = 3, scale = 2, lower.tail = FALSE, log.p = TRUE
+  )
+  expect_equal(
+    invgamma_lower,
+    1 / stats::qgamma(
+      log_probs, shape = 3, scale = 1 / 2,
+      lower.tail = FALSE, log.p = TRUE
+    ),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    invgamma_upper,
+    1 / stats::qgamma(
+      log_probs, shape = 3, scale = 1 / 2,
+      lower.tail = TRUE, log.p = TRUE
+    ),
+    tolerance = 1e-12
+  )
+
+  location <- 0.25
+  tau <- 0.5
+  order <- 1
+  df <- 3
+  moment_distance <- sqrt(
+    tau * stats::qchisq(
+      log_probs + log(2), 2 * order + 1,
+      lower.tail = FALSE, log.p = TRUE
+    )
+  )
+  invmoment_scale <- stats::qgamma(
+    log_probs + log(2), df / (2 * order), log.p = TRUE
+  )
+  invmoment_distance <- sqrt(tau / invmoment_scale^(1 / order))
+
+  expect_equal(
+    BayesTools:::.qmoment_prior(
+      log_probs, location, tau, order, log.p = TRUE
+    ),
+    location - moment_distance,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    BayesTools:::.qmoment_prior(
+      log_probs, location, tau, order,
+      lower.tail = FALSE, log.p = TRUE
+    ),
+    location + moment_distance,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    BayesTools:::.qinvmoment_prior(
+      log_probs, location, tau, order, df, log.p = TRUE
+    ),
+    location - invmoment_distance,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    BayesTools:::.qinvmoment_prior(
+      log_probs, location, tau, order, df,
+      lower.tail = FALSE, log.p = TRUE
+    ),
+    location + invmoment_distance,
+    tolerance = 1e-12
+  )
+
+  near_unit_log_prob <- -1e-300
+  log_complement <- log(-expm1(near_unit_log_prob))
+  moment_upper_distance <- sqrt(
+    tau * stats::qchisq(
+      log_complement + log(2), 2 * order + 1,
+      lower.tail = FALSE, log.p = TRUE
+    )
+  )
+  invmoment_upper_scale <- stats::qgamma(
+    log_complement + log(2), df / (2 * order), log.p = TRUE
+  )
+
+  expect_equal(
+    BayesTools:::.qinvgamma_prior(
+      near_unit_log_prob, shape = 3, scale = 2, log.p = TRUE
+    ),
+    1 / stats::qgamma(
+      near_unit_log_prob, shape = 3, scale = 1 / 2,
+      lower.tail = FALSE, log.p = TRUE
+    ),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    BayesTools:::.qmoment_prior(
+      near_unit_log_prob, location, tau, order, log.p = TRUE
+    ),
+    location + moment_upper_distance,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    BayesTools:::.qinvmoment_prior(
+      near_unit_log_prob, location, tau, order, df, log.p = TRUE
+    ),
+    location + sqrt(tau / invmoment_upper_scale^(1 / order)),
+    tolerance = 1e-12
+  )
+})
+
 test_that("nonlocal priors report analytic moments and finite random draws", {
   p_moment <- prior("moment", list(mode = .5, location = .25))
   p_invmoment <- prior("invmoment", list(mode = .5, df = 3, location = .25))

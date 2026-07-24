@@ -237,51 +237,58 @@ double moment_quantile(double p, double location, double tau, double order,
   if(!valid_common_parameters(location, tau, order)){
     return quiet_nan();
   }
-  double prob = log_p ? std::exp(p) : p;
-  if(std::isnan(prob) || prob < 0.0 || prob > 1.0){
+  if(std::isnan(p) || (log_p ? p > 0.0 : p < 0.0 || p > 1.0)){
     return quiet_nan();
   }
 
+  bool zero_probability = log_p ?
+    p == -std::numeric_limits<double>::infinity() :
+    p == 0.0;
+  bool unit_probability = log_p ? p == 0.0 : p == 1.0;
+  double half_probability = log_p ? log_half() : 0.5;
+
   if(!lower_tail){
-    if(prob == 0.0){
+    if(zero_probability){
       return std::numeric_limits<double>::infinity();
     }
-    if(prob == 1.0){
+    if(unit_probability){
       return -std::numeric_limits<double>::infinity();
     }
-    if(prob == 0.5){
+    if(p == half_probability){
       return location;
     }
-    if(prob < 0.5){
-      double p_tail = log_p ? p + std::log(2.0) : 2.0 * prob;
+    if(p < half_probability){
+      double p_tail = log_p ? p + std::log(2.0) : 2.0 * p;
       double z = qchisq(p_tail, 2.0 * order + 1.0, false, log_p);
       return location + std::sqrt(tau * z);
     }
 
-    double lower_prob = 1.0 - prob;
-    double p_tail = log_p ? log1mexp(p) + std::log(2.0) : 2.0 * lower_prob;
+    double p_tail = log_p ?
+      log1mexp(p) + std::log(2.0) :
+      2.0 * (1.0 - p);
     double z = qchisq(p_tail, 2.0 * order + 1.0, false, log_p);
     return location - std::sqrt(tau * z);
   }
 
-  if(prob == 0.0){
+  if(zero_probability){
     return -std::numeric_limits<double>::infinity();
   }
-  if(prob == 1.0){
+  if(unit_probability){
     return std::numeric_limits<double>::infinity();
   }
-  if(prob == 0.5){
+  if(p == half_probability){
     return location;
   }
 
-  if(prob < 0.5){
-    double p_tail = log_p ? p + std::log(2.0) : 2.0 * prob;
+  if(p < half_probability){
+    double p_tail = log_p ? p + std::log(2.0) : 2.0 * p;
     double z = qchisq(p_tail, 2.0 * order + 1.0, false, log_p);
     return location - std::sqrt(tau * z);
   }
 
-  double upper_prob = 1.0 - prob;
-  double p_tail = log_p ? log1mexp(p) + std::log(2.0) : 2.0 * upper_prob;
+  double p_tail = log_p ?
+    log1mexp(p) + std::log(2.0) :
+    2.0 * (1.0 - p);
   double z = qchisq(p_tail, 2.0 * order + 1.0, false, log_p);
   return location + std::sqrt(tau * z);
 }
@@ -292,53 +299,59 @@ double invmoment_quantile(double p, double location, double tau, double order,
   if(!valid_invmoment_parameters(location, tau, order, df)){
     return quiet_nan();
   }
-  double prob = log_p ? std::exp(p) : p;
-  if(std::isnan(prob) || prob < 0.0 || prob > 1.0){
+  if(std::isnan(p) || (log_p ? p > 0.0 : p < 0.0 || p > 1.0)){
     return quiet_nan();
   }
 
   double shape = df / (2.0 * order);
+  bool zero_probability = log_p ?
+    p == -std::numeric_limits<double>::infinity() :
+    p == 0.0;
+  bool unit_probability = log_p ? p == 0.0 : p == 1.0;
+  double half_probability = log_p ? log_half() : 0.5;
 
   if(!lower_tail){
-    if(prob == 0.0){
+    if(zero_probability){
       return std::numeric_limits<double>::infinity();
     }
-    if(prob == 1.0){
+    if(unit_probability){
       return -std::numeric_limits<double>::infinity();
     }
-    if(prob == 0.5){
+    if(p == half_probability){
       return location;
     }
-    if(prob < 0.5){
-      double p_tail = log_p ? p + std::log(2.0) : 2.0 * prob;
+    if(p < half_probability){
+      double p_tail = log_p ? p + std::log(2.0) : 2.0 * p;
       double s = qgamma(p_tail, shape, 1.0, true, log_p);
       return location + std::sqrt(tau / std::pow(s, 1.0 / order));
     }
 
-    double lower_prob = 1.0 - prob;
-    double p_tail = log_p ? log1mexp(p) + std::log(2.0) : 2.0 * lower_prob;
+    double p_tail = log_p ?
+      log1mexp(p) + std::log(2.0) :
+      2.0 * (1.0 - p);
     double s = qgamma(p_tail, shape, 1.0, true, log_p);
     return location - std::sqrt(tau / std::pow(s, 1.0 / order));
   }
 
-  if(prob == 0.0){
+  if(zero_probability){
     return -std::numeric_limits<double>::infinity();
   }
-  if(prob == 1.0){
+  if(unit_probability){
     return std::numeric_limits<double>::infinity();
   }
-  if(prob == 0.5){
+  if(p == half_probability){
     return location;
   }
 
-  if(prob < 0.5){
-    double p_tail = log_p ? p + std::log(2.0) : 2.0 * prob;
+  if(p < half_probability){
+    double p_tail = log_p ? p + std::log(2.0) : 2.0 * p;
     double s = qgamma(p_tail, shape, 1.0, true, log_p);
     return location - std::sqrt(tau / std::pow(s, 1.0 / order));
   }
 
-  double upper_prob = 1.0 - prob;
-  double p_tail = log_p ? log1mexp(p) + std::log(2.0) : 2.0 * upper_prob;
+  double p_tail = log_p ?
+    log1mexp(p) + std::log(2.0) :
+    2.0 * (1.0 - p);
   double s = qgamma(p_tail, shape, 1.0, true, log_p);
   return location + std::sqrt(tau / std::pow(s, 1.0 / order));
 }
