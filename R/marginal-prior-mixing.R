@@ -19,10 +19,9 @@
   prior_weights <- prior_weights[,1]
 
   # set seed only once at the beginning -- not in the individual draws as the priors will end up completely correlated
-  if(is.null(seed)){
-    seed <- sample(.Machine$integer.max, 1)
+  if(!is.null(seed)){
+    set.seed(seed)
   }
-  set.seed(seed)
 
   ### adapted from 'mix_posteriors'
   parameters <- names(prior_list)
@@ -336,12 +335,12 @@
 
     }else{
 
-      # keep the same seed across levels
-      if(is.null(seed)){
-        seed <- sample(666666, 1)
+      # use one RNG stream across levels so coefficients are reproducible but independent
+      if(!is.null(seed)){
+        set.seed(seed)
       }
 
-      samples <- lapply(1:levels, function(i) .mix_priors.simple(priors, paste0(parameter, "[", i, "]"), seed, n_samples))
+      samples <- lapply(1:levels, function(i) .mix_priors.simple(priors, paste0(parameter, "[", i, "]"), NULL, n_samples))
 
       sample_ind <- attr(samples[[1]], "sample_ind")
       models_ind <- attr(samples[[1]], "models_ind")
@@ -371,12 +370,12 @@
 
     }else{
 
-      # keep the same seed across levels
-      if(is.null(seed)){
-        seed <- sample(666666, 1)
+      # use one RNG stream across levels so coefficients are reproducible but independent
+      if(!is.null(seed)){
+        set.seed(seed)
       }
 
-      samples <- lapply(1:levels, function(i) .mix_priors.simple(priors, paste0(parameter, "[", i, "]"), seed, n_samples))
+      samples <- lapply(1:levels, function(i) .mix_priors.simple(priors, paste0(parameter, "[", i, "]"), NULL, n_samples))
 
       sample_ind <- attr(samples[[1]], "sample_ind")
       models_ind <- attr(samples[[1]], "models_ind")
@@ -528,10 +527,9 @@
   )
 
   # set seed only once at the beginning -- not in the individual draws as the priors will end up completely correlated
-  if(is.null(seed)){
-    seed <- sample(.Machine$integer.max, 1)
+  if(!is.null(seed)){
+    set.seed(seed)
   }
-  set.seed(seed)
 
   # adapted from 'as_mixed_posteriors'
   parameters <- names(prior_list)
@@ -798,7 +796,11 @@
 
     }else{
 
-      samples <- lapply(1:levels, function(i) .as_mixed_priors.simple(prior, paste0(parameter, "[", i, "]"), seed, n_samples))
+      if(!is.null(seed)){
+        set.seed(seed)
+      }
+
+      samples <- lapply(1:levels, function(i) .as_mixed_priors.simple(prior, paste0(parameter, "[", i, "]"), NULL, n_samples))
       samples <- do.call(cbind, samples)
 
     }
@@ -820,7 +822,11 @@
 
     }else{
 
-      samples <- lapply(1:levels, function(i) .as_mixed_priors.simple(prior, paste0(parameter, "[", i, "]"), seed, n_samples))
+      if(!is.null(seed)){
+        set.seed(seed)
+      }
+
+      samples <- lapply(1:levels, function(i) .as_mixed_priors.simple(prior, paste0(parameter, "[", i, "]"), NULL, n_samples))
       samples <- do.call(cbind, samples)
 
     }
@@ -985,7 +991,7 @@
   check_real(seed, "seed", allow_NULL = TRUE)
   check_int(n_samples, "n_samples")
 
-  # do not set seed when sampling multiple prior for the same model -- they will end up completely correlated
+  # set the optional seed once and let nested samplers continue the same stream
   if(!is.null(seed)){
     set.seed(seed)
   }
@@ -997,11 +1003,11 @@
 
   if(is.prior.factor(prior_variable)){
 
-    samples <- .as_mixed_priors.factor(prior_variable, parameter, seed, n_samples)
+    samples <- .as_mixed_priors.factor(prior_variable, parameter, NULL, n_samples)
 
   }else if(is.prior.simple(prior_variable)){
 
-    samples <- .as_mixed_priors.simple(prior_variable, parameter, seed, n_samples)
+    samples <- .as_mixed_priors.simple(prior_variable, parameter, NULL, n_samples)
 
   }
 

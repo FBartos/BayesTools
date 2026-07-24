@@ -31,6 +31,7 @@ bayestools_test_profile_contexts <- list(
     "JAGS-structured-rho-support",
     "JAGS-random-effect-scaling",
     "marginal-inference-conditioning",
+    "marginal-prior-rng",
     "marginal-prior-samplers",
     "model-averaging-edge-cases",
     "model-averaging-plots-edge-cases",
