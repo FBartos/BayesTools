@@ -227,13 +227,23 @@ plot.prior <- function(x, plot_type = "base",
     }else{
       paste0(par_name, "[", figure, "]")
     }
-    plots[[figure]] <- .plot.prior.simple(
-      x = x,
-      plot_type = plot_type,
-      plot_data = plot_data[[figure]],
-      par_name = component_name,
-      ...
-    )
+    if(inherits(plot_data[[figure]], "density.prior.point")){
+      plots[[figure]] <- .plot.prior.point(
+        x = x,
+        plot_type = plot_type,
+        plot_data = plot_data[[figure]],
+        par_name = component_name,
+        ...
+      )
+    }else{
+      plots[[figure]] <- .plot.prior.simple(
+        x = x,
+        plot_type = plot_type,
+        plot_data = plot_data[[figure]],
+        par_name = component_name,
+        ...
+      )
+    }
   }
 
   if(plot_type == "ggplot" && length(plots_ind) == 1L){

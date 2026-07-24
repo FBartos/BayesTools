@@ -854,7 +854,63 @@ test_that("ordered sampled densities transform components and preserve cumulativ
     transformation = "exp"
   )
   expect_s3_class(plot_exp, "ggplot")
+  expect_s3_class(plot_exp$layers[[1]]$geom, "GeomSegment")
   expect_equal(NROW(plot_exp$layers[[1]]$data), 1)
   expect_equal(plot_exp$layers[[1]]$data$x, 1)
-  expect_equal(plot_exp$layers[[1]]$data$y, 1)
+  expect_equal(plot_exp$layers[[1]]$data$xend, 1)
+  expect_equal(plot_exp$layers[[1]]$data$yend, 1)
+})
+
+test_that("ordered cumulative atoms contribute to direct and transformed plot ranges", {
+  p <- prior_ordered(
+    prior("normal", list(10, 1)),
+    allocation = c(.25, .75),
+    contrast = "cumulative"
+  )
+  attr(p, "levels") <- 3
+
+  density_direct <- density(p, n_points = 31)
+  expect_s3_class(density_direct[[1]], "density.prior.point")
+  expect_equal(density_direct[[1]]$x, 0)
+  expect_equal(min(attr(density_direct[[1]], "x_range")), 0)
+  expect_equal(min(attr(density_direct, "x_range")), 0)
+
+  plot_direct <- plot(
+    p,
+    plot_type = "ggplot",
+    show_figures = 1,
+    n_points = 31
+  )
+  expect_s3_class(plot_direct$layers[[1]]$geom, "GeomSegment")
+  expect_equal(plot_direct$layers[[1]]$data$x, 0)
+  direct_limits <- plot_direct$scales$get_scales("x")$limits
+  expect_lte(min(direct_limits), 0)
+  expect_gte(max(direct_limits), 0)
+
+  set.seed(7402)
+  density_exp <- density(
+    p,
+    n_points = 31,
+    n_samples = 2000,
+    transformation = "exp"
+  )
+  expect_s3_class(density_exp[[1]], "density.prior.point")
+  expect_equal(density_exp[[1]]$x, 1)
+  expect_equal(min(attr(density_exp[[1]], "x_range")), 1)
+  expect_equal(min(attr(density_exp, "x_range")), 1)
+
+  set.seed(7402)
+  plot_exp <- plot(
+    p,
+    plot_type = "ggplot",
+    show_figures = 1,
+    n_points = 31,
+    n_samples = 2000,
+    transformation = "exp"
+  )
+  expect_s3_class(plot_exp$layers[[1]]$geom, "GeomSegment")
+  expect_equal(plot_exp$layers[[1]]$data$x, 1)
+  exp_limits <- plot_exp$scales$get_scales("x")$limits
+  expect_lte(min(exp_limits), 1)
+  expect_gte(max(exp_limits), 1)
 })

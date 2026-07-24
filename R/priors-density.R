@@ -285,6 +285,9 @@ density.prior <- function(x,
       attr(out[[i]], "y_range") <- range(y_values)
     }
 
+    if(inherits(out[[i]], "density.prior.point")){
+      attr(out[[i]], "x_range") <- range(c(attr(out[[i]], "x_range"), out[[i]]$x), na.rm = TRUE)
+    }
     class(out[[i]]) <- c("density.prior.ordered_component", class(out[[i]]))
     attr(out[[i]], "component") <- i
     attr(out[[i]], "component_name") <- names(out)[i]
@@ -363,6 +366,9 @@ density.prior <- function(x,
   }
 
   for(i in seq_along(densities)){
+    if(inherits(densities[[i]], "density.prior.point")){
+      attr(densities[[i]], "x_range") <- range(c(attr(densities[[i]], "x_range"), densities[[i]]$x), na.rm = TRUE)
+    }
     attr(densities[[i]], "component") <- i
     attr(densities[[i]], "component_name") <- names(densities)[i]
     class(densities[[i]]) <- c("density.prior.ordered_component", class(densities[[i]]))
