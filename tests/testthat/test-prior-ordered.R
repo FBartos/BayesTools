@@ -406,4 +406,21 @@ test_that("ordered densities are direct when supported and bridge sampling stops
     JAGS_bridgesampling_posterior(samples, formula_info$prior_list),
     "only available when 'total' is a simple scalar prior"
   )
+
+  formula_info$prior_list$mu_f$total <- prior("normal", list(0, expression(sigma)))
+  expect_error(
+    JAGS_bridgesampling_posterior(samples, formula_info$prior_list),
+    "does not support parameter expressions in 'total'"
+  )
+
+  formula_info$prior_list$mu_f$total <- prior("bernoulli", list(.5))
+  expect_error(
+    JAGS_bridgesampling_posterior(samples, formula_info$prior_list),
+    "requires a continuous or point-valued 'total' prior"
+  )
+
+  formula_info$prior_list$mu_f$total <- prior("point", list(1))
+  expect_no_error(
+    JAGS_bridgesampling_posterior(samples, formula_info$prior_list)
+  )
 })

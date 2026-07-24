@@ -461,6 +461,12 @@
 
 .prior_ordered_bridge_check <- function(prior){
 
+  if(.is_prior_expression(prior$total)){
+    stop(
+      "Bridge sampling for prior_ordered() does not support parameter expressions in 'total'.",
+      call. = FALSE
+    )
+  }
   if(is.prior.mixture(prior$total) || is.prior.spike_and_slab(prior$total)){
     stop(
       "Bridge sampling for prior_ordered() is only available when 'total' is a simple scalar prior.",
@@ -471,6 +477,12 @@
      is.prior.factor(prior$total) || is.prior.simplex(prior$total)){
     stop(
       "Bridge sampling for prior_ordered() requires a simple scalar 'total' prior.",
+      call. = FALSE
+    )
+  }
+  if(is.prior.discrete(prior$total)){
+    stop(
+      "Bridge sampling for prior_ordered() requires a continuous or point-valued 'total' prior.",
       call. = FALSE
     )
   }
