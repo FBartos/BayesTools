@@ -19,7 +19,7 @@
     return(data)
   }
 
-  scaled_predictors <- sub(paste0("^", parameter, "_"), "", names(param_scale))
+  scaled_predictors <- .formula_scale_strip_prefix(names(param_scale), parameter)
   continuous_predictors <- unique(c(continuous_predictors, scaled_predictors))
   if(length(continuous_predictors) == 0L){
     return(data)

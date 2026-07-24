@@ -1,10 +1,29 @@
+.formula_scale_matches_prefix <- function(x, prefix, separator = "_"){
+
+  stem <- paste0(prefix, separator)
+  !is.na(x) & startsWith(x, stem)
+}
+
+
+.formula_scale_strip_prefix <- function(x, prefix, separator = "_"){
+
+  matched <- .formula_scale_matches_prefix(x, prefix, separator)
+  if(any(matched)){
+    stem_length <- nchar(paste0(prefix, separator))
+    x[matched] <- substring(x[matched], stem_length + 1L)
+  }
+
+  x
+}
+
+
 # Helper: Parse a term name into its component variable names
 # e.g., "mu_x1__xXx__x2" with prefix "mu" -> c("x1", "x2")
 # e.g., "mu_intercept" -> character(0) (intercept has no components)
 # e.g., "mu_x1" -> c("x1")
 .parse_term_components <- function(term_name, prefix) {
   # Remove prefix
-  term_part <- sub(paste0("^", prefix, "_"), "", term_name)
+  term_part <- .formula_scale_strip_prefix(term_name, prefix)
 
   # Check if it's the intercept
   if (term_part == "intercept") {
@@ -27,7 +46,7 @@
 # de-standardization.
 .parse_unscale_term_structure <- function(term_name, prefix, scaled_vars) {
 
-  term_part <- sub(paste0("^", prefix, "_"), "", term_name)
+  term_part <- .formula_scale_strip_prefix(term_name, prefix)
 
   if (term_part == "intercept") {
     return(list(
@@ -239,7 +258,7 @@
   if(length(scaled_terms) == 0)
     return(invisible(NULL))
 
-  scaled_vars <- sub(paste0("^", prefix, "_"), "", scaled_terms)
+  scaled_vars <- .formula_scale_strip_prefix(scaled_terms, prefix)
   term_components <- unique(unlist(lapply(term_names, .parse_term_components, prefix = prefix), use.names = FALSE))
   random_scaled_vars <- .formula_scale_random_scaled_vars(
     formula_scale,
@@ -283,7 +302,7 @@
   if(is.null(scaled_vars)){
     prefix <- attr(formula_scale, "parameter")
     if(!is.null(prefix) && length(prefix) == 1L && !is.na(prefix) && nzchar(prefix)){
-      scaled_vars <- sub(paste0("^", prefix, "_"), "", names(formula_scale))
+      scaled_vars <- .formula_scale_strip_prefix(names(formula_scale), prefix)
     }else{
       scaled_vars <- names(formula_scale)
     }
@@ -392,7 +411,7 @@
   rownames(M) <- colnames(M) <- term_names
 
   # Extract the variable names that are scaled (without prefix)
-  scaled_vars <- sub(paste0("^", prefix, "_"), "", names(formula_scale))
+  scaled_vars <- .formula_scale_strip_prefix(names(formula_scale), prefix)
 
   # Parse all terms into their scaled components and unscaled identity.
   term_structure <- lapply(
@@ -495,7 +514,9 @@
   matched_prefix <- FALSE
   for (param_name in names(formula_scale)) {
     param_scale <- formula_scale[[param_name]]
-    affected_cols <- grep(paste0("^", param_name, "_"), colnames(posterior), value = TRUE)
+    affected_cols <- colnames(posterior)[
+      .formula_scale_matches_prefix(colnames(posterior), param_name)
+    ]
     if(length(affected_cols) == 0)
       next
 
@@ -530,17 +551,26 @@
   intercept_col <- paste0(prefix, "_intercept")
 
   # Identify which columns are affected by the transformation
-  affected_cols <- grep(paste0("^", prefix, "_"), colnames(posterior), value = TRUE)
+  affected_cols <- colnames(posterior)[
+    .formula_scale_matches_prefix(colnames(posterior), prefix)
+  ]
   if (length(affected_cols) > 0) {
     posterior <- .materialize_formula_scale_point_terms(
       posterior = posterior,
       formula_scale = formula_scale,
       prefix = prefix
     )
-    affected_cols <- grep(paste0("^", prefix, "_"), colnames(posterior), value = TRUE)
+    affected_cols <- colnames(posterior)[
+      .formula_scale_matches_prefix(colnames(posterior), prefix)
+    ]
   }
-  random_sd_cols  <- grep(paste0("^", prefix, "__xREx__"), affected_cols, value = TRUE)
-  random_aux_cols <- grep(paste0("^", prefix, "__(xRE_ALLOCx|xRE_SUMMARY__)"), affected_cols, value = TRUE)
+  random_sd_cols <- affected_cols[
+    .formula_scale_matches_prefix(affected_cols, prefix, "__xREx__")
+  ]
+  random_aux_cols <- affected_cols[
+    .formula_scale_matches_prefix(affected_cols, prefix, "__xRE_ALLOCx") |
+      .formula_scale_matches_prefix(affected_cols, prefix, "__xRE_SUMMARY__")
+  ]
   fixed_cols      <- setdiff(affected_cols, c(random_sd_cols, random_aux_cols))
 
   if (length(affected_cols) == 0) {

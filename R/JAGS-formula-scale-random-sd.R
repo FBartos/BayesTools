@@ -321,7 +321,7 @@
 
 .random_sd_term_map <- function(random_sd_cols, formula_scale, prefix){
 
-  scaled_vars <- sub(paste0("^", prefix, "_"), "", names(formula_scale))
+  scaled_vars <- .formula_scale_strip_prefix(names(formula_scale), prefix)
   sd_leaves <- attr(formula_scale, "random_effect_sd_leaves")
   if(!is.null(sd_leaves) && length(sd_leaves) > 0){
     descriptor_terms <- do.call(
@@ -351,7 +351,11 @@
   names(possible_terms) <- possible_terms
 
   term_map <- vapply(random_sd_cols, function(col){
-    rest <- sub(paste0("^", prefix, "__xREx__"), "", sub("\\[[^]]+\\]$", "", col))
+    rest <- .formula_scale_strip_prefix(
+      sub("\\[[^]]+\\]$", "", col),
+      prefix,
+      "__xREx__"
+    )
     candidates <- possible_terms[vapply(possible_terms, function(term){
       endsWith(rest, paste0("_", term))
     }, logical(1))]
@@ -372,7 +376,7 @@
     return(NULL)
   }
 
-  scaled_vars <- sub(paste0("^", prefix, "_"), "", names(formula_scale))
+  scaled_vars <- .formula_scale_strip_prefix(names(formula_scale), prefix)
   groups <- list()
   leaf_keys <- names(sd_leaves)
   if(is.null(leaf_keys)){
@@ -584,7 +588,7 @@
 .random_sd_group_key <- function(col, term_map, prefix){
 
   base_col <- sub("\\[[^]]+\\]$", "", col)
-  rest <- sub(paste0("^", prefix, "__xREx__"), "", base_col)
+  rest <- .formula_scale_strip_prefix(base_col, prefix, "__xREx__")
   term <- unname(term_map[[col]])
   term_core <- gsub("\\[[^]]+\\]", "", term)
   .random_sd_strip_term_suffix(rest, term_core)
@@ -623,7 +627,7 @@
     return(character())
   }
 
-  required <- sub(paste0("^", prefix, "__xREx__"), "", required)
+  required <- .formula_scale_strip_prefix(required, prefix, "__xREx__")
   required <- sub("^__xREx__", "", required)
   unique(required)
 }

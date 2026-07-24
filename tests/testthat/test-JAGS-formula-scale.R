@@ -570,6 +570,32 @@ test_that("transform_scale_samples validates malformed formula_scale metadata", 
   )
 })
 
+test_that("transform_scale_samples treats parameter prefixes literally", {
+
+  posterior <- matrix(
+    c(10, 2, 100, 20),
+    nrow = 1,
+    dimnames = list(
+      NULL,
+      c("mu.x_intercept", "mu.x_x", "muAx_intercept", "muAx_x")
+    )
+  )
+  formula_scale <- list(
+    "mu.x" = list(
+      "mu.x_x" = list(mean = 5, sd = 2)
+    )
+  )
+
+  expect_equal(
+    transform_scale_samples(posterior, formula_scale),
+    matrix(
+      c(5, 1, 100, 20),
+      nrow = 1,
+      dimnames = dimnames(posterior)
+    )
+  )
+})
+
 test_that("transform_scale_samples warns when formula_scale prefix is unused", {
 
   posterior <- cbind(
