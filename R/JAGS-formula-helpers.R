@@ -199,6 +199,41 @@
 
   return(default_prior)
 }
+.bt_formula_prior_is_factor <- function(x){
+
+  is.prior.factor(x) ||
+    inherits(x, "prior.factor_mixture") ||
+    inherits(x, "prior.factor_spike_and_slab")
+}
+.bt_validate_formula_term_priors <- function(prior_list, model_terms,
+                                             model_terms_type){
+
+  for(model_term in model_terms){
+    this_prior <- prior_list[[model_term]]
+    term_type <- model_terms_type[[model_term]]
+    factor_prior <- .bt_formula_prior_is_factor(this_prior)
+
+    if(identical(term_type, "factor") && !factor_prior){
+      stop(
+        "Unsupported prior distribution defined for '", model_term,
+        "' factor variable. See '?prior_factor' for details.",
+        call. = FALSE
+      )
+    }
+    if(identical(term_type, "continuous") &&
+       (factor_prior || is.prior.discrete(this_prior) ||
+        is.prior.PET(this_prior) || is.prior.PEESE(this_prior) ||
+        is.prior.weightfunction(this_prior))){
+      stop(
+        "Unsupported prior distribution defined for '", model_term,
+        "' continuous variable. See '?prior' for details.",
+        call. = FALSE
+      )
+    }
+  }
+
+  invisible(TRUE)
+}
 .remove_grouping_factor <- function(formula){
   return(trimws(sub("\\|.*$", "", formula)))
 }

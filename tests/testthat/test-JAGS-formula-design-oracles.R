@@ -541,6 +541,53 @@ test_that("formula interfaces reject bare language objects", {
   )
 })
 
+test_that("JAGS_formula validates prior classes for every model term", {
+  data <- data.frame(
+    x = c(-1, 0, 1, 2),
+    z = c(2, 1, 0, -1),
+    g = factor(c("a", "b", "a", "b"))
+  )
+
+  expect_error(
+    JAGS_formula(
+      ~ x:g,
+      "mu",
+      data,
+      list(
+        intercept = prior("normal", list(0, 1)),
+        "x:g" = prior("normal", list(0, 1))
+      )
+    ),
+    "Unsupported prior distribution defined for 'x:g' factor variable",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_formula(
+      ~ x:z,
+      "mu",
+      data,
+      list(
+        intercept = prior("normal", list(0, 1)),
+        "x:z" = prior_factor("normal", list(0, 1), contrast = "treatment")
+      )
+    ),
+    "Unsupported prior distribution defined for 'x:z' continuous variable",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_formula(
+      ~ 1,
+      "mu",
+      data,
+      list(
+        intercept = prior_factor("normal", list(0, 1), contrast = "treatment")
+      )
+    ),
+    "Unsupported prior distribution defined for 'intercept' continuous variable",
+    fixed = TRUE
+  )
+})
+
 test_that("JAGS_formula reserves the intercept predictor name", {
   expect_error(
     JAGS_formula(

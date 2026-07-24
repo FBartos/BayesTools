@@ -274,7 +274,12 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   # check that all predictors have a prior distribution
   check_list(prior_list, "prior_list", check_names = model_terms, allow_other = FALSE, all_objects = TRUE)
 
-  # check the prior distribution for each predictor
+  .bt_validate_formula_term_priors(
+    prior_list = prior_list,
+    model_terms = model_terms,
+    model_terms_type = model_terms_type
+  )
+
   data <- .bt_apply_factor_prior_contrasts(
     data = data,
     predictors_type = predictors_type,
@@ -283,18 +288,6 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     prior_list = prior_list
   )
   scale_info <- list()
-  if(any(predictors_type == "continuous")){
-
-    for(continuous in names(predictors_type[predictors_type == "continuous"])){
-
-      # select the corresponding prior for the variable
-      this_prior <- prior_list[[continuous]]
-
-      if(is.prior.factor(this_prior)|| is.prior.discrete(this_prior) || is.prior.PET(this_prior) || is.prior.PEESE(this_prior) || is.prior.weightfunction(this_prior)){
-        stop(paste0("Unsupported prior distribution defined for '", continuous, "' continuous variable. See '?prior' for details."))
-      }
-    }
-  }
 
   random_effect_unscaled_data <- data
 
