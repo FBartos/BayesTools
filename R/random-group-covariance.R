@@ -197,14 +197,24 @@ print.random_group_covariance <- function(x, ...){
     block_name = block_name
   )
   chol_kernel <- chol(kernel)
+  precision <- chol2inv(chol_kernel)
+  log_det <- 2 * sum(log(diag(chol_kernel)))
+  if(any(!is.finite(precision)) || !is.finite(log_det)){
+    stop(
+      "Known group covariance for random-effect block '",
+      block_name,
+      "' must produce finite precision and log-determinant metadata after scaling.",
+      call. = FALSE
+    )
+  }
 
   out <- list(
     type = "known",
     scale = x$scale,
     levels = group_levels,
     kernel = kernel,
-    precision = chol2inv(chol_kernel),
-    log_det = 2 * sum(log(diag(chol_kernel))),
+    precision = precision,
+    log_det = log_det,
     dropped_levels = dropped_levels
   )
   class(out) <- c("random_group_covariance_kernel", "list")

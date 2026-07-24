@@ -1857,6 +1857,8 @@ test_that("random group covariance constructor validates and scales kernels", {
   expect_equal(prepared_none$levels, c("a", "b"))
   expect_equal(prepared_none$dropped_levels, "extra")
   expect_equal(prepared_none$kernel, K[c("a", "b"), c("a", "b")])
+  expect_true(all(is.finite(prepared_none$precision)))
+  expect_true(is.finite(prepared_none$log_det))
 
   K2 <- matrix(
     c(4, 1, 1, 9),
@@ -1906,6 +1908,18 @@ test_that("random group covariance constructor validates and scales kernels", {
       block_name = "id"
     ),
     "positive definite",
+    fixed = TRUE
+  )
+
+  nonfinite_precision <- diag(c(1e-310, 1))
+  dimnames(nonfinite_precision) <- list(c("a", "b"), c("a", "b"))
+  expect_error(
+    BayesTools:::.bt_prepare_group_covariance_kernel(
+      random_group_covariance(nonfinite_precision, scale = "none"),
+      group_levels = c("a", "b"),
+      block_name = "id"
+    ),
+    "finite precision and log-determinant metadata",
     fixed = TRUE
   )
 
