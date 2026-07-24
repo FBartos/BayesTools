@@ -134,6 +134,48 @@ test_that("BayesTools contrasts resolve without search-path lookup", {
   expect_identical(prediction$group_levels, random_term$group_levels)
 })
 
+test_that("factor contrast priors agree across main effects and interactions", {
+  data <- data.frame(
+    x = rep(c(-1, 1), 3),
+    group = factor(
+      rep(c("a", "b", "c"), each = 2),
+      levels = c("a", "b", "c")
+    )
+  )
+
+  expect_error(
+    JAGS_formula(
+      ~ x * group,
+      parameter = "mu",
+      data = data,
+      prior_list = list(
+        intercept = prior("normal", list(0, 1)),
+        x = prior("normal", list(0, 1)),
+        group = prior_factor("normal", list(0, 1), contrast = "treatment"),
+        "x:group" = prior_factor("normal", list(0, 1), contrast = "independent")
+      )
+    ),
+    "conflicting contrast priors across formula terms",
+    fixed = TRUE
+  )
+
+  expect_error(
+    JAGS_formula(
+      ~ x * group,
+      parameter = "mu",
+      data = data,
+      prior_list = list(
+        intercept = prior("normal", list(0, 1)),
+        x = prior("normal", list(0, 1)),
+        group = prior_factor("normal", list(0, 1), contrast = "independent"),
+        "x:group" = prior_factor("normal", list(0, 1), contrast = "treatment")
+      )
+    ),
+    "conflicting contrast priors across formula terms",
+    fixed = TRUE
+  )
+})
+
 .jags_formula_oracle_expected_data <- function(data, factor_contrasts = list(),
                                                formula_scale = NULL) {
   out <- data

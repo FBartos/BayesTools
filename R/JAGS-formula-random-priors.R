@@ -12,42 +12,50 @@
   }
 
   for(factor_name in factor_predictors){
-    contrast_name <- NULL
+    direct_contrast <- NULL
 
     if(factor_name %in% names(prior_list)){
-      contrast_name <- .factor_object_contrast_name(prior_list[[factor_name]])
-      if(is.null(contrast_name) && isTRUE(validate_direct_factor_prior)){
+      direct_contrast <- .factor_object_contrast_name(prior_list[[factor_name]])
+      if(is.null(direct_contrast) && isTRUE(validate_direct_factor_prior)){
         stop(paste0("Unsupported prior distribution defined for '", factor_name, "' factor variable. See '?prior_factor' for details."), call. = FALSE)
       }
     }
 
-    if(is.null(contrast_name)){
-      factor_terms <- model_terms[
-        model_terms_type == "factor" &
-          vapply(model_terms, function(term){
-            factor_name %in% .bt_random_effect_term_components(term)
-          }, logical(1))
+    factor_terms <- model_terms[
+      model_terms_type == "factor" &
+        vapply(model_terms, function(term){
+          factor_name %in% .bt_random_effect_term_components(term)
+        }, logical(1))
+    ]
+    if(!is.null(direct_contrast)){
+      factor_terms <- factor_terms[
+        vapply(factor_terms, function(term){
+          components <- .bt_random_effect_term_components(term)
+          sum(components %in% factor_predictors) == 1L
+        }, logical(1))
       ]
-      factor_term_contrasts <- vapply(factor_terms, function(term){
-        if(term %in% names(prior_list)){
-          contrast <- .factor_object_contrast_name(prior_list[[term]])
-          if(is.null(contrast)) NA_character_ else contrast
-        }else{
-          NA_character_
-        }
-      }, character(1))
-      factor_term_contrasts <- unique(factor_term_contrasts[!is.na(factor_term_contrasts)])
-
-      if(length(factor_term_contrasts) == 1L){
-        contrast_name <- factor_term_contrasts
-      }else if(length(factor_term_contrasts) > 1L){
-        stop(
-          context, " '", factor_name,
-          "' has conflicting contrast priors across formula terms.",
-          call. = FALSE
-        )
-      }
     }
+    factor_term_contrasts <- vapply(factor_terms, function(term){
+      if(term %in% names(prior_list)){
+        contrast <- .factor_object_contrast_name(prior_list[[term]])
+        if(is.null(contrast)) NA_character_ else contrast
+      }else{
+        NA_character_
+      }
+    }, character(1))
+    contrast_names <- unique(c(
+      direct_contrast,
+      factor_term_contrasts[!is.na(factor_term_contrasts)]
+    ))
+
+    if(length(contrast_names) > 1L){
+      stop(
+        context, " '", factor_name,
+        "' has conflicting contrast priors across formula terms.",
+        call. = FALSE
+      )
+    }
+    contrast_name <- if(length(contrast_names) == 1L) contrast_names else NULL
 
     if(!is.factor(data[[factor_name]])){
       data[[factor_name]] <- factor(data[[factor_name]])
