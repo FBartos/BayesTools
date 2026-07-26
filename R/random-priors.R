@@ -286,15 +286,24 @@ prior_random <- function(..., sd = NULL, covariance = NULL, cor = NULL,
 #'   `random_variance_allocation()`, optional random-effect block names targeted
 #'   by the shared allocation. If `NULL`, the allocation targets all remaining
 #'   unallocated random-effect blocks at resolution time.
+#' @param contrasts for `random_block()`, an optional named character vector
+#'   mapping factor predictors in that block to contrast families. Accepted
+#'   values are `"treatment"`, `"independent"`, `"orthonormal"`,
+#'   `"meandif"`, `"cumulative"`, and `"cumulative_levels"` (with or without
+#'   the `contr.` prefix). Random-block contrasts are resolved independently of
+#'   the fixed-effect design. Correlation structures with a structure-defined
+#'   level basis do not accept this argument.
 #' @export
 random_block <- function(sd = NULL, covariance = NULL, cor = NULL, rho = NULL,
                          monitor = NULL, new_levels = NULL, terms = NULL,
+                         contrasts = NULL,
                          sd_source = NULL,
                          parameterization = NULL){
 
   .bt_check_random_sd_prior(sd, allow_NULL = TRUE)
   .bt_check_random_sd_source(sd_source, allow_NULL = TRUE)
   .bt_check_random_block_terms(terms)
+  contrasts <- .bt_random_contrasts_normalize(contrasts)
 
   if(is.null(covariance)){
     covariance <- if(is.null(cor) && is.null(rho)){
@@ -335,6 +344,7 @@ random_block <- function(sd = NULL, covariance = NULL, cor = NULL, rho = NULL,
     new_levels = new_levels,
     parameterization = parameterization,
     terms      = terms,
+    contrasts  = contrasts,
     sd_source  = sd_source
   )
   class(out) <- c("random_block", "list")
@@ -701,6 +711,7 @@ is.prior_random <- function(x){
       stop("Random-effect block override '", names(blocks)[i], "' must be created with random_block().", call. = FALSE)
     }
     .bt_check_random_block_terms(blocks[[i]]$terms)
+    .bt_random_contrasts_normalize(blocks[[i]]$contrasts)
     .bt_check_random_parameterization(
       blocks[[i]]$parameterization,
       allow_NULL = TRUE
@@ -742,6 +753,52 @@ is.prior_random <- function(x){
   }
 
   invisible(TRUE)
+}
+
+.bt_random_contrasts_normalize <- function(contrasts){
+
+  if(is.null(contrasts)){
+    return(NULL)
+  }
+  check_char(
+    contrasts,
+    "contrasts",
+    check_length = 0,
+    allow_NA = FALSE
+  )
+  contrast_names <- names(contrasts)
+  if(is.null(contrast_names) || any(!nzchar(contrast_names))){
+    stop("Random-block 'contrasts' must be a named character vector.", call. = FALSE)
+  }
+  if(anyDuplicated(contrast_names)){
+    stop("Random-block contrast predictor names must be unique.", call. = FALSE)
+  }
+  supported <- c(
+    treatment = "contr.treatment",
+    dummy = "contr.treatment",
+    independent = "contr.independent",
+    orthonormal = "contr.orthonormal",
+    meandif = "contr.meandif",
+    cumulative = "contr.ordered_cumulative",
+    cumulative_levels = "contr.ordered_cumulative_levels",
+    "contr.treatment" = "contr.treatment",
+    "contr.independent" = "contr.independent",
+    "contr.orthonormal" = "contr.orthonormal",
+    "contr.meandif" = "contr.meandif",
+    "contr.ordered_cumulative" = "contr.ordered_cumulative",
+    "contr.ordered_cumulative_levels" = "contr.ordered_cumulative_levels"
+  )
+  unknown <- unique(contrasts[!contrasts %in% names(supported)])
+  if(length(unknown) > 0L){
+    stop(
+      "Unknown random-block contrast value(s): ",
+      paste0("'", unknown, "'", collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+
+  stats::setNames(unname(supported[contrasts]), contrast_names)
 }
 
 .bt_check_random_sd_prior <- function(x, allow_NULL = FALSE){
@@ -1219,6 +1276,7 @@ is.prior_random <- function(x){
     new_levels = prior_random$new_levels,
     parameterization = prior_random$parameterization,
     terms      = NULL,
+    contrasts  = NULL,
     sd_source  = NULL
   )
 
@@ -1228,6 +1286,8 @@ is.prior_random <- function(x){
       if(!is.null(override[[field]])){
         if(identical(field, "covariance")){
           block[[field]] <- .bt_random_merge_covariance(block[[field]], override[[field]])
+        }else if(identical(field, "contrasts")){
+          block[[field]] <- .bt_random_contrasts_normalize(override[[field]])
         }else if(identical(field, "sd_source")){
           block[[field]] <- override[[field]]
           block$sd <- NULL

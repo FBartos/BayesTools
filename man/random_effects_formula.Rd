@@ -40,5 +40,5 @@ terms support variables, \code{:} interactions, and \code{/} nesting. Grouping
 interactions follow base-R/lme4 lexicographic tuple order, and the fitted
 tuple-to-index map is stored for replay.
 Categorical predictor and grouping levels must not contain BayesTools'
-reserved internal tokens, such as \code{__xXx__}.
+reserved internal tokens, such as \verb{__xXx__}.
 }

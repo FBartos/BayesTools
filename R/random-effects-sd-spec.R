@@ -331,7 +331,11 @@
     sd_parameter_names <- paste0(parameter, "_", model_term, "[", seq_along(columns), "]")
     prior <- .bt_random_effect_set_factor_prior_class(prior, prior_type)
 
-  }else if(contrast %in% c("contr.treatment", "contr.independent")){
+  }else if(contrast %in% c(
+    "contr.treatment",
+    "contr.independent",
+    "contr.mixed"
+  )){
     if(identical(contrast, "contr.treatment")){
       prior_type <- "prior.treatment"
       attr(prior, "levels") <- length(columns) + 1L
@@ -632,7 +636,11 @@
           model_term %in% names(prior_list) &&
           is.prior.ordered(prior_list[[model_term]])
         if(random_structure %in% c("cs", "hcs", "ar1", "car", "har") ||
-           contrast %in% c("contr.treatment", "contr.independent")){
+           contrast %in% c(
+             "contr.treatment",
+             "contr.independent",
+             "contr.mixed"
+           )){
           leaf_term_labels <- .bt_random_effect_factor_sd_leaf_terms(
             model_term = model_term,
             columns = columns,

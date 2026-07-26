@@ -324,6 +324,16 @@
   )
 
   block_prior <- .bt_random_prior_for_block(prior_random, random_term$block_name)
+  if(random_structure %in% c("cs", "hcs", "ar1", "car", "har") &&
+     length(block_prior$contrasts) > 0L){
+    stop(
+      "Random-effect block '", random_term$block_name,
+      "' uses structure '", random_structure,
+      "', whose level basis is defined by the covariance structure; ",
+      "random_block(contrasts = ...) is not supported for this block.",
+      call. = FALSE
+    )
+  }
   if(is.null(sd_binding) && !is.null(block_prior$sd_source)){
     sd_binding <- .bt_random_sd_binding(
       source = block_prior$sd_source,
@@ -387,7 +397,8 @@
     predictors_type = predictors_type,
     model_terms = model_terms,
     model_terms_type = model_terms_type,
-    prior_list = prior_list
+    prior_list = prior_list,
+    contrast_overrides = block_prior$contrasts
   )
 
   # get the design matrix. For no-intercept random formulas, add an intercept
@@ -414,6 +425,26 @@
   })
   names(random_xlevels) <- random_factor_predictors
   random_xlevels <- random_xlevels[!vapply(random_xlevels, is.null, logical(1))]
+  structure_owned_basis <- random_structure %in% c(
+    "cs", "hcs", "ar1", "car", "har"
+  )
+  random_contrast_matrices <- if(isTRUE(structure_owned_basis)){
+    lapply(random_xlevels, function(level_names){
+      out <- diag(length(level_names))
+      dimnames(out) <- list(level_names, level_names)
+      out
+    })
+  }else{
+    .bt_concrete_factor_contrasts(
+      model_frame,
+      names(random_xlevels),
+      context = paste0(
+        "Random-effect design for block '",
+        random_term$block_name,
+        "'"
+      )
+    )
+  }
 
   # check whether intercept is unique parameter
   if(sum(grepl("intercept", names(prior_list))) > 1)
@@ -982,6 +1013,12 @@
   random_term$raw_column_names <- raw_column_names
   random_term$column_names     <- column_names
   random_term$contrasts        <- attr(model_matrix, "contrasts")
+  random_term$contrast_matrices <- random_contrast_matrices
+  random_term$contrast_owner   <- if(isTRUE(structure_owned_basis)){
+    "structure"
+  }else{
+    "random_block"
+  }
   random_term$xlevels          <- random_xlevels
   random_term$assign           <- attr(model_matrix, "assign")
   random_term$model_terms      <- model_terms

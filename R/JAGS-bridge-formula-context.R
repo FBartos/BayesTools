@@ -435,6 +435,10 @@
     mismatches <- c(mismatches, paste0("fixed-effect model term assignments differ for parameter '", parameter, "'"))
   }
   if(!.bt_JAGS_bridge_metadata_equal(fitted$contrasts, rebuilt$contrasts) ||
+     !.bt_JAGS_bridge_metadata_equal(
+       fitted$contrast_matrices,
+       rebuilt$contrast_matrices
+     ) ||
      !.bt_JAGS_bridge_metadata_equal(fitted$xlevels, rebuilt$xlevels)){
     mismatches <- c(mismatches, paste0("factor contrasts or levels differ for parameter '", parameter, "'"))
   }

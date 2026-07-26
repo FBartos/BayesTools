@@ -303,6 +303,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     model_terms_type = model_terms_type
   )
 
+  formula_source_data <- data
   data <- .bt_apply_factor_prior_contrasts(
     data = data,
     predictors_type = predictors_type,
@@ -312,7 +313,8 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   )
   scale_info <- list()
 
-  random_effect_unscaled_data <- data
+  random_effect_unscaled_data <- formula_source_data
+  random_effect_scaled_data <- random_effect_unscaled_data
 
   # standardize continuous predictors if requested. This includes predictors
   # used only inside random-effect terms, excluding CAR time coordinates.
@@ -329,6 +331,10 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
         stop(paste0("Cannot standardize predictor '", continuous, "' because its standard deviation must be positive and finite."), call. = FALSE)
       }
       data[, continuous] <- (data[, continuous] - scale_info[[continuous]]$mean) / scale_info[[continuous]]$sd
+      random_effect_scaled_data[, continuous] <- (
+        random_effect_scaled_data[, continuous] -
+          scale_info[[continuous]]$mean
+      ) / scale_info[[continuous]]$sd
     }
   }
 
@@ -543,7 +549,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   }
   compiled_random_effects <- parsed_random_effects
   for(random_i in seq_along(parsed_random_effects)){
-    random_effect_data <- data
+    random_effect_data <- random_effect_scaled_data
     random_structure <- .bt_random_effect_structure(parsed_random_effects[[random_i]])
     if(random_structure %in% c("cs", "hcs", "ar1", "car", "har")){
       random_effect_data <- random_effect_unscaled_data

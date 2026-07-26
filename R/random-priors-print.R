@@ -224,6 +224,20 @@
       }
     }
   }
+  if(!is.null(x$contrasts)){
+    lines <- c(
+      lines,
+      paste0(
+        "contrasts: ",
+        paste0(
+          names(x$contrasts),
+          "=",
+          sub("^contr\\.", "", x$contrasts),
+          collapse = ", "
+        )
+      )
+    )
+  }
   if(!is.null(x$monitor)){
     lines <- c(lines, .bt_format_random_monitor_settings(x$monitor))
   }

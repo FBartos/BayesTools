@@ -945,11 +945,25 @@
     }
   }
 
-  contrasts <- random_term$contrasts
-  if(!is.null(contrasts) && length(contrasts) > 0L){
-    for(factor_name in names(contrasts)){
-      if(factor_name %in% names(prediction_data) && is.factor(prediction_data[[factor_name]])){
-        stats::contrasts(prediction_data[[factor_name]]) <- contrasts[[factor_name]]
+  contrast_owner <- random_term$contrast_owner
+  contrast_matrices <- random_term$contrast_matrices
+  if(is.null(contrast_owner) ||
+     !contrast_owner %in% c("random_block", "structure") ||
+     is.null(contrast_matrices)){
+    stop(
+      "Random-effect prediction metadata for block '",
+      random_term$block_name,
+      "' is missing its owner-scoped concrete factor basis. Refit the model ",
+      "with this version of BayesTools.",
+      call. = FALSE
+    )
+  }
+  if(identical(contrast_owner, "random_block")){
+    for(factor_name in names(contrast_matrices)){
+      if(factor_name %in% names(prediction_data) &&
+         is.factor(prediction_data[[factor_name]])){
+        stats::contrasts(prediction_data[[factor_name]]) <-
+          contrast_matrices[[factor_name]]
       }
     }
   }
@@ -963,6 +977,7 @@
     block_name = random_term$block_name
   )
   model_matrix <- random_design$model_matrix
+  attr(model_matrix, "contrasts") <- random_term$contrasts
   colnames(model_matrix) <- gsub(":", "__xXx__", colnames(model_matrix))
 
   if(!identical(colnames(model_matrix), random_term$column_names)){

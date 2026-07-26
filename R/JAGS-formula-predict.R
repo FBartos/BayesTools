@@ -450,26 +450,27 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
     !is.null(this_prior) && is.prior.ordered(this_prior)
   }
 
-  fitted_contrast <- fitted_design$contrasts[[predictor]]
-  if(is.null(fitted_contrast) && !is.null(this_prior)){
+  fitted_contrast <- fitted_design$contrast_matrices[[predictor]]
+  if(is.null(fitted_contrast) && is.null(fitted_design) && !is.null(this_prior)){
     factor_contrasts <- attr(this_prior, "factor_contrasts", exact = TRUE)
-    if(!is.null(factor_contrasts) && predictor %in% names(factor_contrasts)){
-      fitted_contrast <- factor_contrasts[[predictor]]
-    }else if(is.prior.orthonormal(this_prior)){
-      fitted_contrast <- "contr.orthonormal"
-    }else if(is.prior.meandif(this_prior)){
-      fitted_contrast <- "contr.meandif"
-    }else if(is.prior.independent(this_prior)){
-      fitted_contrast <- "contr.independent"
-    }else if(is.prior.treatment(this_prior)){
-      fitted_contrast <- "contr.treatment"
-    }else if(is.prior.ordered(this_prior)){
-      fitted_contrast <- .prior_ordered_contrast_name(this_prior$contrast)
+    contrast_name <- if(
+      !is.null(factor_contrasts) &&
+      predictor %in% names(factor_contrasts)
+    ){
+      factor_contrasts[[predictor]]
+    }else{
+      .factor_object_contrast_name(this_prior)
+    }
+    if(!is.null(contrast_name)){
+      fitted_contrast <- .factor_contrast_matrix(
+        fitted_levels,
+        contrast_name
+      )
     }
   }
   if(is.null(fitted_contrast)){
     stop(
-      "Could not recover the fitted contrast for factor predictor '",
+      "Could not recover the concrete fitted contrast matrix for factor predictor '",
       predictor, "'. Supply fit metadata created by JAGS_formula().",
       call. = FALSE
     )

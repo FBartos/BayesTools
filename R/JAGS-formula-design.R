@@ -25,7 +25,7 @@
 
 .bt_formula_design_schema_version <- function(){
 
-  1L
+  2L
 }
 
 .bt_formula_design_stored_data_scale <- function(){
@@ -35,6 +35,43 @@
     model_frame = "model",
     model_matrix = "model"
   )
+}
+
+.bt_formula_design_contrast_schema_valid <- function(design){
+
+  valid_owner <- function(xlevels, contrast_matrices){
+    if(is.null(xlevels)){
+      xlevels <- list()
+    }
+    if(length(xlevels) == 0L &&
+       is.list(contrast_matrices) &&
+       length(contrast_matrices) == 0L){
+      return(TRUE)
+    }
+    if(is.null(contrast_matrices) || !is.list(contrast_matrices) ||
+       !identical(names(contrast_matrices), names(xlevels))){
+      return(FALSE)
+    }
+    all(vapply(names(xlevels), function(factor_name){
+      contrast_matrix <- contrast_matrices[[factor_name]]
+      is.matrix(contrast_matrix) &&
+        is.numeric(contrast_matrix) &&
+        nrow(contrast_matrix) == length(xlevels[[factor_name]]) &&
+        all(is.finite(contrast_matrix))
+    }, logical(1)))
+  }
+
+  if(!valid_owner(design$xlevels, design$contrast_matrices)){
+    return(FALSE)
+  }
+  random_effects <- design$random_effects
+  if(is.null(random_effects)){
+    random_effects <- list()
+  }
+  all(vapply(random_effects, function(random_term){
+    random_term$contrast_owner %in% c("random_block", "structure") &&
+      valid_owner(random_term$xlevels, random_term$contrast_matrices)
+  }, logical(1)))
 }
 
 .bt_validate_formula_design_replay_schema <- function(
@@ -50,7 +87,8 @@
       design$stored_data_scale,
       .bt_formula_design_stored_data_scale()
     ) &&
-    is.data.frame(design$source_data)
+    is.data.frame(design$source_data) &&
+    .bt_formula_design_contrast_schema_valid(design)
   if(!isTRUE(valid_schema)){
     stop(
       context,
@@ -100,6 +138,11 @@
   })
   names(xlevels) <- factor_predictors
   xlevels <- xlevels[!vapply(xlevels, is.null, logical(1))]
+  contrast_matrices <- .bt_concrete_factor_contrasts(
+    model_frame,
+    names(xlevels),
+    context = paste0("Fixed-effect design for parameter '", parameter, "'")
+  )
 
   if(is.null(random_effects_compile)){
     random_effects_compile <- .bt_random_effects_compile_resolved(
@@ -123,6 +166,7 @@
     assign             = attr(model_matrix, "assign"),
     terms              = formula_terms,
     contrasts          = attr(model_matrix, "contrasts"),
+    contrast_matrices  = contrast_matrices,
     xlevels            = xlevels,
     predictors         = predictors,
     predictor_types    = predictors_type,

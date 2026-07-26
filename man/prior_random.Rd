@@ -32,6 +32,7 @@ random_block(
   monitor = NULL,
   new_levels = NULL,
   terms = NULL,
+  contrasts = NULL,
   sd_source = NULL,
   parameterization = NULL
 )
@@ -44,6 +45,7 @@ random_term(
   monitor = NULL,
   new_levels = NULL,
   terms = NULL,
+  contrasts = NULL,
   sd_source = NULL,
   parameterization = NULL
 )
@@ -116,6 +118,14 @@ as \code{"intercept"} or a slope term label. For
 \code{random_variance_allocation()}, optional random-effect block names targeted
 by the shared allocation. If \code{NULL}, the allocation targets all remaining
 unallocated random-effect blocks at resolution time.}
+
+\item{contrasts}{for \code{random_block()}, an optional named character vector
+mapping factor predictors in that block to contrast families. Accepted
+values are \code{"treatment"}, \code{"independent"}, \code{"orthonormal"},
+\code{"meandif"}, \code{"cumulative"}, and \code{"cumulative_levels"} (with or without
+the \code{contr.} prefix). Random-block contrasts are resolved independently of
+the fixed-effect design. Correlation structures with a structure-defined
+level basis do not accept this argument.}
 
 \item{sd_source}{for \code{random_block()}, optional external random-effect SD
 source created with \code{random_sd_source()}. A block-local \code{sd_source}

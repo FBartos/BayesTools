@@ -4,11 +4,31 @@
                                              model_terms_type,
                                              prior_list,
                                              context = "Factor predictor",
-                                             validate_direct_factor_prior = TRUE){
+                                             validate_direct_factor_prior = TRUE,
+                                             contrast_overrides = NULL){
 
   factor_predictors <- names(predictors_type)[predictors_type == "factor"]
   if(length(factor_predictors) == 0L){
+    if(length(contrast_overrides) > 0L){
+      stop(
+        context,
+        " contrast overrides reference predictors that are not factors: ",
+        paste(names(contrast_overrides), collapse = ", "),
+        ".",
+        call. = FALSE
+      )
+    }
     return(data)
+  }
+  unknown_overrides <- setdiff(names(contrast_overrides), factor_predictors)
+  if(length(unknown_overrides) > 0L){
+    stop(
+      context,
+      " contrast overrides reference predictors outside this design: ",
+      paste0("'", unknown_overrides, "'", collapse = ", "),
+      ".",
+      call. = FALSE
+    )
   }
 
   for(factor_name in factor_predictors){
@@ -17,13 +37,14 @@
       factor_name,
       context = context
     )
-    direct_contrast <- NULL
+    direct_contrast <- contrast_overrides[[factor_name]]
 
     if(factor_name %in% names(prior_list)){
-      direct_contrast <- .factor_object_contrast_name(prior_list[[factor_name]])
-      if(is.null(direct_contrast) && isTRUE(validate_direct_factor_prior)){
+      prior_contrast <- .factor_object_contrast_name(prior_list[[factor_name]])
+      if(is.null(prior_contrast) && isTRUE(validate_direct_factor_prior)){
         stop(paste0("Unsupported prior distribution defined for '", factor_name, "' factor variable. See '?prior_factor' for details."), call. = FALSE)
       }
+      direct_contrast <- c(direct_contrast, prior_contrast)
     }
 
     factor_terms <- model_terms[
@@ -83,7 +104,8 @@
                                                            predictors_type,
                                                            model_terms,
                                                            model_terms_type,
-                                                           prior_list){
+                                                           prior_list,
+                                                           contrast_overrides = NULL){
 
   .bt_apply_factor_prior_contrasts(
     data = data,
@@ -92,7 +114,8 @@
     model_terms_type = model_terms_type,
     prior_list = prior_list,
     context = "Random-effect factor predictor",
-    validate_direct_factor_prior = FALSE
+    validate_direct_factor_prior = FALSE,
+    contrast_overrides = contrast_overrides
   )
 }
 
@@ -134,11 +157,7 @@
     }
   }
 
-  stop(
-    "Random-effect factor interaction '", model_term,
-    "' uses mixed factor contrast families, which is not supported.",
-    call. = FALSE
-  )
+  "contr.mixed"
 }
 
 .bt_random_term_structure <- function(random_term, prior_random = NULL){

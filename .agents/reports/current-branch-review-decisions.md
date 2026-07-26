@@ -29,7 +29,7 @@ mean **implemented**.
 | D15 | Resolved by NF05/NF06 | No remaining decision |
 | D16 | Partially implemented | General one-sided weight-function marginals remain unimplemented |
 | D17 | Decision confirmed; implementation pending | Canonicalize formula `prior_none()` to a point mass at zero |
-| D18 | Decision confirmed; implementation pending | Separate fixed/random-block contrast scopes and retain the current bases |
+| D18 | Implemented and verified | No remaining work |
 | D19 | Decision confirmed; implementation pending | Introduce and adopt a canonical, documented parameter registry |
 | D20 | Decision confirmed; implementation pending | Introduce a scalar, scale-explicit marginal-likelihood result contract |
 | D21 | Partially implemented | Add the vignette manifest and consolidate real fitting; D30 covers paths |
@@ -782,7 +782,7 @@ and use a deterministic Helmert/QR-based orthonormal basis for new schemas.
 Decision: contrasts should be per-factor specific. We should prbl keep the info in interaction meta-data for cases when handled separatelly later.
 Are there any changes that we need to make? I need more info for decision.
 
-**Audit status: decision confirmed; implementation pending.**
+**Audit status: implemented and verified.**
 
 **Review response.** I understand "per-factor specific" to mean that one factor
 uses one contrast family consistently wherever it occurs, while different
@@ -868,6 +868,19 @@ unchanged for this release. A deterministic replacement can be considered later
 as a separately reviewed statistical parameterization change.
 
 Decision: agree
+
+**Implementation outcome.** Fixed effects and each random-effect block now
+resolve factor contrasts from independent data copies. `random_block()` accepts
+a named `contrasts` map for block-local choices; interactions may combine
+different per-factor families, while CS/HCS/AR1/CAR/HAR blocks reject overrides
+because their level basis is structure-defined. Formula-design schema version 2
+stores the exact fixed and random concrete matrices plus each random basis
+owner, and prediction and bridge replay require and compare that metadata.
+The existing eigendecomposition-based `contr.orthonormal()` and
+`contr.meandif()` implementations are unchanged. Focused formula tests passed
+1,429 assertions, the ordered-factor regression tests passed 152 assertions,
+and the complete unit profile passed 7,825 assertions with no failures or
+warnings.
 
 ## D19. Random-effect summary ownership and labels
 

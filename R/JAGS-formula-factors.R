@@ -167,6 +167,53 @@
   )
 }
 
+.bt_concrete_factor_contrasts <- function(data, factor_names,
+                                          context = "Factor design"){
+
+  if(length(factor_names) == 0L){
+    return(list())
+  }
+  out <- lapply(factor_names, function(factor_name){
+    if(!factor_name %in% names(data) || !is.factor(data[[factor_name]])){
+      stop(
+        context, " is missing fitted factor metadata for '",
+        factor_name, "'.",
+        call. = FALSE
+      )
+    }
+    contrast_matrix <- tryCatch(
+      stats::contrasts(data[[factor_name]], contrasts = TRUE),
+      error = function(e){
+        stop(
+          context, " could not resolve the concrete contrast matrix for '",
+          factor_name, "': ", conditionMessage(e),
+          call. = FALSE
+        )
+      }
+    )
+    if(is.null(contrast_matrix)){
+      stop(
+        context, " has no concrete contrast matrix for '",
+        factor_name, "'.",
+        call. = FALSE
+      )
+    }
+    contrast_matrix <- as.matrix(contrast_matrix)
+    if(nrow(contrast_matrix) != nlevels(data[[factor_name]]) ||
+       any(!is.finite(contrast_matrix))){
+      stop(
+        context, " has an invalid concrete contrast matrix for '",
+        factor_name, "'.",
+        call. = FALSE
+      )
+    }
+    contrast_matrix
+  })
+  names(out) <- factor_names
+
+  out
+}
+
 .bt_model_matrix <- function(model_frame, formula, data = model_frame){
 
   factor_names <- names(model_frame)[vapply(model_frame, is.factor, logical(1))]

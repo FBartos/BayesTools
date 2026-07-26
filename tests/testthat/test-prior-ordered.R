@@ -407,7 +407,7 @@ test_that("multi-slice ordered expression totals omit initialization", {
   )))
 })
 
-test_that("ordered fixed contrasts propagate to random slope designs", {
+test_that("ordered random slope contrasts are specified independently", {
   df <- data.frame(
     y = seq_len(12),
     f = ordered(rep(c("low", "mid", "high"), 4), levels = c("low", "mid", "high")),
@@ -423,7 +423,10 @@ test_that("ordered fixed contrasts propagate to random slope designs", {
       f = prior_ordered(prior("normal", list(0, 1)))
     ),
     prior_random = prior_random(
-      id = random_block(sd = prior("normal", list(0, 1), list(0, Inf)))
+      id = random_block(
+        sd = prior("normal", list(0, 1), list(0, Inf)),
+        contrasts = c(f = "cumulative")
+      )
     )
   )
 

@@ -104,7 +104,7 @@ test_that("JAGS_formula stores exact fitted formula design metadata", {
   design <- result$formula_design
 
   expect_s3_class(design, "BayesTools_formula_design")
-  expect_identical(design$schema_version, 1L)
+  expect_identical(design$schema_version, 2L)
   expect_identical(
     design$stored_data_scale,
     c(
@@ -122,6 +122,10 @@ test_that("JAGS_formula stores exact fitted formula design metadata", {
   expect_equal(design$assign, attr(design$model_matrix, "assign"))
   expect_equal(attr(design$terms, "term.labels"), c("x", "x2", "f"))
   expect_equal(design$contrasts$f, "contr.treatment")
+  expect_equal(
+    design$contrast_matrices$f,
+    stats::contr.treatment(c("a", "b"))
+  )
   expect_equal(design$xlevels$f, c("a", "b"))
   expect_equal(design$predictors, c("x", "x2", "f"))
   expect_equal(design$predictor_types, c(x = "continuous", x2 = "continuous", f = "factor"))

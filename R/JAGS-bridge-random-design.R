@@ -277,6 +277,17 @@
       block = block
     )
   }
+  if(!identical(fitted$contrast_owner, rebuilt$contrast_owner) ||
+     !.bt_JAGS_bridge_metadata_equal(
+       fitted$contrast_matrices,
+       rebuilt$contrast_matrices
+     )){
+    .bt_JAGS_bridge_random_design_mismatch(
+      parameter,
+      "random-effect factor basis owner or concrete matrices differ",
+      block = block
+    )
+  }
   if(!identical(dim(fitted$model_matrix), dim(rebuilt$model_matrix)) ||
      !identical(colnames(fitted$model_matrix), colnames(rebuilt$model_matrix))){
     .bt_JAGS_bridge_random_design_mismatch(

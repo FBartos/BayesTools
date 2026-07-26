@@ -10907,19 +10907,159 @@ test_that("diag random-effect syntax handles slope-only and factor-slope designs
   mixed_contrast_df <- interaction_df
   stats::contrasts(mixed_contrast_df$f) <- "contr.treatment"
   stats::contrasts(mixed_contrast_df$g) <- "contr.orthonormal"
-  expect_error(
-    JAGS_formula(
-      formula = ~ 1 + diag(0 + f:g | id),
-      parameter = "mu",
-      data = mixed_contrast_df,
-      prior_list = list(
-        intercept = prior("normal", list(0, 1))
-      ),
-      prior_random = prior_random(
-        id = random_block(sd = prior("gamma", list(2, 2)))
+  mixed_contrast_result <- JAGS_formula(
+    formula = ~ 1 + diag(0 + f:g | id),
+    parameter = "mu",
+    data = mixed_contrast_df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1))
+    ),
+    prior_random = prior_random(
+      id = random_block(sd = prior("gamma", list(2, 2)))
+    )
+  )
+  expected_mixed <- stats::model.matrix(
+    ~ f:g,
+    data = mixed_contrast_df
+  )[, -1, drop = FALSE]
+  mixed_term <- mixed_contrast_result$formula_design$random_effects[[1L]]
+  expect_equal(
+    as.vector(mixed_term$model_matrix),
+    as.vector(expected_mixed),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    mixed_term$contrast_matrices$f,
+    stats::contrasts(mixed_contrast_df$f)
+  )
+  expect_equal(
+    mixed_term$contrast_matrices$g,
+    stats::contrasts(mixed_contrast_df$g)
+  )
+})
+
+test_that("fixed and random blocks own independent concrete factor bases", {
+
+  data <- data.frame(
+    f = factor(rep(c("a", "b", "c"), 4)),
+    id_treatment = factor(rep(c("s1", "s2", "s3", "s4"), each = 3)),
+    id_meandif = factor(rep(c("q1", "q2", "q3"), 4))
+  )
+  result <- JAGS_formula(
+    formula = ~ f +
+      diag(0 + f | id_treatment) +
+      diag(0 + f | id_meandif),
+    parameter = "mu",
+    data = data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_factor(
+        "mnormal",
+        list(0, 1),
+        contrast = "orthonormal"
       )
     ),
-    "mixed factor contrast families",
+    prior_random = prior_random(
+      id_treatment = random_block(
+        sd = prior("gamma", list(2, 2)),
+        contrasts = c(f = "treatment")
+      ),
+      id_meandif = random_block(
+        sd = prior("gamma", list(2, 2)),
+        contrasts = c(f = "meandif")
+      )
+    )
+  )
+
+  fixed_matrix <- contr.orthonormal(levels(data$f))
+  treatment_matrix <- stats::contr.treatment(levels(data$f))
+  meandif_matrix <- contr.meandif(levels(data$f))
+  treatment_term <- result$formula_design$random_effects[[1L]]
+  meandif_term <- result$formula_design$random_effects[[2L]]
+
+  expect_identical(result$formula_design$schema_version, 2L)
+  expect_equal(result$formula_design$contrast_matrices$f, fixed_matrix)
+  expect_equal(treatment_term$contrast_matrices$f, treatment_matrix)
+  expect_equal(meandif_term$contrast_matrices$f, meandif_matrix)
+  expect_identical(treatment_term$contrast_owner, "random_block")
+  expect_identical(meandif_term$contrast_owner, "random_block")
+  expect_false(isTRUE(all.equal(fixed_matrix, treatment_matrix)))
+  expect_false(isTRUE(all.equal(fixed_matrix, meandif_matrix)))
+
+  treatment_prediction <- .bt_random_effect_prediction_data(
+    treatment_term,
+    data
+  )
+  meandif_prediction <- .bt_random_effect_prediction_data(
+    meandif_term,
+    data
+  )
+  expect_equal(
+    treatment_prediction$model_matrix,
+    treatment_term$model_matrix
+  )
+  expect_equal(
+    meandif_prediction$model_matrix,
+    meandif_term$model_matrix
+  )
+
+  missing_basis <- treatment_term
+  missing_basis$contrast_matrices <- NULL
+  expect_error(
+    .bt_random_effect_prediction_data(missing_basis, data),
+    "missing its owner-scoped concrete factor basis",
+    fixed = TRUE
+  )
+})
+
+test_that("random-block contrast specifications validate their design scope", {
+
+  expect_error(
+    random_block(contrasts = "treatment"),
+    "must be a named character vector",
+    fixed = TRUE
+  )
+  expect_error(
+    random_block(contrasts = c(f = "sum")),
+    "Unknown random-block contrast value",
+    fixed = TRUE
+  )
+
+  data <- data.frame(
+    f = factor(rep(c("a", "b", "c"), 2)),
+    id = factor(rep(c("s1", "s2"), each = 3))
+  )
+  expect_error(
+    JAGS_formula(
+      ~ 1 + diag(0 + f | id),
+      parameter = "mu",
+      data = data,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(
+        id = random_block(
+          sd = prior("gamma", list(2, 2)),
+          contrasts = c(unknown = "treatment")
+        )
+      )
+    ),
+    "contrast overrides reference predictors outside this design",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_formula(
+      ~ 1 + cs(f | id),
+      parameter = "mu",
+      data = data,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(
+        id = random_block(
+          sd = prior("gamma", list(2, 2)),
+          rho = prior("normal", list(0, 0.5)),
+          contrasts = c(f = "orthonormal")
+        )
+      )
+    ),
+    "level basis is defined by the covariance structure",
     fixed = TRUE
   )
 })
