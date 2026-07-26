@@ -181,16 +181,7 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
 
 .bt_JAGS_marglik_source_data_equal <- function(x, y){
 
-  if(identical(x, y)){
-    return(TRUE)
-  }
-
-  isTRUE(all.equal(
-    x,
-    y,
-    check.attributes = FALSE,
-    tolerance = 1e-12
-  ))
+  identical(x, y)
 }
 
 .bt_JAGS_formula_design_can_reconstruct <- function(design){

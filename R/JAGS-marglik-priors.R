@@ -500,12 +500,7 @@ JAGS_marglik_priors_formula <- function(samples, formula_prior_list){
     structure = structure
   )
   bounds_values <- as.numeric(bounds[c("lower", "upper")])
-  if(!isTRUE(all.equal(
-    bounds_values,
-    as.numeric(exact_bounds),
-    tolerance = 1e-12,
-    check.attributes = FALSE
-  ))){
+  if(!identical(bounds_values, as.numeric(exact_bounds))){
     stop(
       context,
       .bt_random_effect_metadata_block_detail(random_term),

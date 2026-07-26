@@ -4,7 +4,12 @@
                                                       parameter_stem = NULL,
                                                       column_coordinates = NULL,
                                                       n_groups = NULL,
-                                                      tolerance = sqrt(.Machine$double.eps)){
+                                                      exact_indicator = FALSE){
+
+  check_bool(exact_indicator, "exact_indicator", allow_NA = FALSE)
+  if(!isTRUE(exact_indicator)){
+    return(NULL)
+  }
 
   if(!is.matrix(model_matrix) || !is.numeric(model_matrix) ||
      nrow(model_matrix) < 1L || ncol(model_matrix) < 1L){
@@ -23,11 +28,6 @@
       call. = FALSE
     )
   }
-  if(!is.numeric(tolerance) || length(tolerance) != 1L ||
-     is.na(tolerance) || !is.finite(tolerance) || tolerance < 0){
-    stop("'tolerance' must be a finite non-negative numeric scalar.", call. = FALSE)
-  }
-
   structure <- .bt_random_effect_structured_local_normalize_structure(structure)
   group_map <- as.integer(group_map)
   if(is.null(n_groups)){
@@ -40,7 +40,13 @@
     stop("Structured random-effect group map exceeds 'n_groups'.", call. = FALSE)
   }
 
-  nonzero <- abs(model_matrix) > tolerance
+  if(any(!model_matrix %in% c(0, 1))){
+    stop(
+      "A design declared as an exact indicator matrix contains a non-binary value.",
+      call. = FALSE
+    )
+  }
+  nonzero <- model_matrix == 1
   if(any(rowSums(nonzero) != 1L)){
     stop(
       "Group-local structured compilation requires exactly one non-zero design value per row.",
@@ -49,7 +55,7 @@
   }
   row_column <- max.col(nonzero, ties.method = "first")
   selected   <- model_matrix[cbind(seq_len(nrow(model_matrix)), row_column)]
-  if(any(abs(selected - 1) > tolerance)){
+  if(any(selected != 1)){
     stop(
       "Group-local structured compilation requires the non-zero design value in every row to equal one.",
       call. = FALSE

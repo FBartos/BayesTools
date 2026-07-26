@@ -285,12 +285,10 @@
       block = block
     )
   }
-  if(!isTRUE(all.equal(
+  if(!identical(
     unname(fitted$model_matrix),
-    unname(rebuilt$model_matrix),
-    tolerance = 1e-12,
-    check.attributes = FALSE
-  ))){
+    unname(rebuilt$model_matrix)
+  )){
     .bt_JAGS_bridge_random_design_mismatch(
       parameter,
       "random-effect model matrix values differ",
@@ -348,7 +346,11 @@
   if(!identical(fitted$parameterization_requested,
                 rebuilt$parameterization_requested) ||
      !identical(fitted$parameterization_resolved,
-                rebuilt$parameterization_resolved)){
+                rebuilt$parameterization_resolved) ||
+     !identical(fitted$parameterization_reason,
+                rebuilt$parameterization_reason) ||
+     !identical(fitted$parameterization_policy,
+                rebuilt$parameterization_policy)){
     .bt_JAGS_bridge_random_design_mismatch(
       parameter,
       "random-effect parameterization differs",
@@ -595,7 +597,7 @@
 
 .bt_JAGS_bridge_metadata_equal <- function(x, y){
 
-  isTRUE(all.equal(x, y, tolerance = 1e-12, check.attributes = FALSE))
+  identical(x, y)
 }
 
 .bt_JAGS_bridge_random_design_mismatch <- function(parameter, detail,

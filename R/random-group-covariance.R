@@ -29,10 +29,12 @@ random_group_covariance <- function(covariance,
     covariance,
     name = "covariance"
   )
+  triangle_source <- attr(covariance, "triangle_source", exact = TRUE)
 
   out <- list(
     covariance = covariance,
-    scale = scale
+    scale = scale,
+    triangle_source = triangle_source
   )
   class(out) <- c("random_group_covariance", "list")
   out
@@ -143,6 +145,25 @@ print.random_group_covariance <- function(x, ...){
 
   storage.mode(covariance) <- "double"
   dimnames(covariance) <- list(row_names, column_names)
+  lower_values <- covariance[lower.tri(covariance)]
+  upper_values <- covariance[upper.tri(covariance)]
+  lower_supplied <- any(lower_values != 0)
+  upper_supplied <- any(upper_values != 0)
+  triangle_source <- "complete"
+  if(lower_supplied && !upper_supplied){
+    covariance[upper.tri(covariance)] <- t(covariance)[upper.tri(covariance)]
+    triangle_source <- "lower"
+  }else if(upper_supplied && !lower_supplied){
+    covariance[lower.tri(covariance)] <- t(covariance)[lower.tri(covariance)]
+    triangle_source <- "upper"
+  }else if(!isTRUE(all(covariance == t(covariance)))){
+    stop(
+      "'", name,
+      "' must be exactly symmetric, or supply values in only one triangle.",
+      call. = FALSE
+    )
+  }
+  attr(covariance, "triangle_source") <- triangle_source
   covariance
 }
 
@@ -265,7 +286,7 @@ print.random_group_covariance <- function(x, ...){
 
 .bt_random_group_covariance_validate_kernel <- function(kernel, block_name){
 
-  if(!isTRUE(all.equal(kernel, t(kernel), tolerance = 1e-10, check.attributes = FALSE))){
+  if(!isTRUE(all(kernel == t(kernel)))){
     stop(
       "Known group covariance for random-effect block '",
       block_name,
@@ -273,7 +294,6 @@ print.random_group_covariance <- function(x, ...){
       call. = FALSE
     )
   }
-  kernel <- (kernel + t(kernel)) / 2
   chol_result <- tryCatch(
     chol(kernel),
     error = function(e) NULL

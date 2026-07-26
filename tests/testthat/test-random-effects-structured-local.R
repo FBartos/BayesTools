@@ -11,6 +11,7 @@ test_that("structured local layout keeps only observed group-column cells", {
     model_matrix = model_matrix,
     group_map = group_map,
     structure = "CS",
+    exact_indicator = TRUE,
     parameter_stem = "mu__xREx__study"
   )
 
@@ -40,6 +41,7 @@ test_that("structured local latent names require unique character metadata", {
     model_matrix = model_matrix,
     group_map = c(1L, 1L, 2L),
     structure = "cs",
+    exact_indicator = TRUE,
     parameter_stem = "mu__xREx__id"
   )
   random_term <- list(
@@ -84,10 +86,17 @@ test_that("structured local layout rejects non-one-hot and malformed mappings", 
 
   model_matrix <- rbind(c(1, 0, 0), c(0, 1, 0), c(0, 0, 1))
 
+  expect_null(BayesTools:::.bt_random_effect_structured_local_layout(
+    model_matrix = model_matrix,
+    group_map = c(1L, 1L, 2L),
+    structure = "cs"
+  ))
+
   skipped <- BayesTools:::.bt_random_effect_structured_local_layout(
     model_matrix = model_matrix,
     group_map = c(1L, 3L, 3L),
     structure = "cs",
+    exact_indicator = TRUE,
     n_groups = 3L
   )
   expect_false(skipped$all_groups_observed)
@@ -96,7 +105,8 @@ test_that("structured local layout rejects non-one-hot and malformed mappings", 
     BayesTools:::.bt_random_effect_structured_local_layout(
       model_matrix = rbind(c(1, 1, 0), model_matrix[-1L, ]),
       group_map = c(1L, 1L, 2L),
-      structure = "cs"
+      structure = "cs",
+      exact_indicator = TRUE
     ),
     "exactly one non-zero",
     fixed = TRUE
@@ -105,16 +115,31 @@ test_that("structured local layout rejects non-one-hot and malformed mappings", 
     BayesTools:::.bt_random_effect_structured_local_layout(
       model_matrix = rbind(c(2, 0, 0), model_matrix[-1L, ]),
       group_map = c(1L, 1L, 2L),
-      structure = "cs"
+      structure = "cs",
+      exact_indicator = TRUE
     ),
-    "equal one",
+    "non-binary",
+    fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.bt_random_effect_structured_local_layout(
+      model_matrix = rbind(
+        c(1 + .Machine$double.eps, 0, 0),
+        model_matrix[-1L, ]
+      ),
+      group_map = c(1L, 1L, 2L),
+      structure = "cs",
+      exact_indicator = TRUE
+    ),
+    "non-binary",
     fixed = TRUE
   )
   expect_error(
     BayesTools:::.bt_random_effect_structured_local_layout(
       model_matrix = model_matrix,
       group_map = c(1L, 1L),
-      structure = "cs"
+      structure = "cs",
+      exact_indicator = TRUE
     ),
     "one positive integer per model-matrix row",
     fixed = TRUE
@@ -263,7 +288,8 @@ test_that("layout Cholesky blocks follow group-specific principal subsets", {
   layout <- BayesTools:::.bt_random_effect_structured_local_layout(
     model_matrix = model_matrix,
     group_map = group_map,
-    structure = "ar1"
+    structure = "ar1",
+    exact_indicator = TRUE
   )
   blocks <- BayesTools:::.bt_random_effect_structured_local_cholesky_blocks(
     layout = layout,
@@ -696,7 +722,8 @@ test_that("group-local complexity guard fails before oversized syntax emission",
   layout <- BayesTools:::.bt_random_effect_structured_local_layout(
     model_matrix = model_matrix,
     group_map = group_map,
-    structure = "cs"
+    structure = "cs",
+    exact_indicator = TRUE
   )
   monitor <- random_monitor()
 

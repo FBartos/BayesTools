@@ -425,10 +425,10 @@
   if(any(distance_matrix < 0)){
     stop("CAR distance matrix cannot contain negative distances.", call. = FALSE)
   }
-  if(!isTRUE(all.equal(distance_matrix, t(distance_matrix), tolerance = 1e-12))){
+  if(!isTRUE(all(distance_matrix == t(distance_matrix)))){
     stop("CAR distance matrix must be symmetric.", call. = FALSE)
   }
-  if(any(abs(diag(distance_matrix)) > 1e-12)){
+  if(any(diag(distance_matrix) != 0)){
     stop("CAR distance matrix must have a zero diagonal.", call. = FALSE)
   }
   if(K > 1L && any(distance_matrix[row(distance_matrix) != col(distance_matrix)] <= 0)){

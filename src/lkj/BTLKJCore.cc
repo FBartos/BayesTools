@@ -78,8 +78,12 @@ void fill_alpha(double *alpha, unsigned int K, double eta)
 
 double sqrt_one_minus_square(double x)
 {
-  double value = 1.0 - x * x;
-  if(value < 0.0 && value > -1e-14){
+  double square = x * x;
+  double value = 1.0 - square;
+  double roundoff_bound =
+    4.0 * std::numeric_limits<double>::epsilon() *
+    std::max(1.0, std::fabs(square));
+  if(value < 0.0 && value >= -roundoff_bound){
     value = 0.0;
   }
   return std::sqrt(value);

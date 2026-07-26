@@ -49,6 +49,17 @@ test_that("LKJ primitive helpers enforce open u support before native transforms
   expect_true(all(is.finite(as.vector(near_lower))))
   expect_true(all(is.finite(as.vector(near_upper))))
 
+  extreme_u <- rep(
+    c(.Machine$double.eps, 1 - .Machine$double.eps),
+    length.out = BayesTools:::.bt_lkj_cholesky_n_pairs(8L)
+  )
+  extreme_L <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(extreme_u, K = 8L)
+  extreme_R <- BayesTools:::.bt_lkj_cholesky_cpc_u_to_R(extreme_u, K = 8L)
+  expect_true(all(is.finite(extreme_L)))
+  expect_true(all(diag(extreme_L) >= 0))
+  expect_identical(extreme_R, t(extreme_R))
+  expect_equal(diag(extreme_R), rep(1, 8L), tolerance = 32 * .Machine$double.eps)
+
   for(value in c(0, 1, NA_real_, Inf, -Inf)){
     expect_error(
       BayesTools:::.bt_lkj_cholesky_cpc_u_to_L(value, K = 2),

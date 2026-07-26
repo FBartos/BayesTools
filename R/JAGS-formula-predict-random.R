@@ -837,8 +837,33 @@
   if(n_groups == 0L){
     return(matrix(numeric(), nrow = 0L, ncol = ncol(covariance)))
   }
+  if(!is.matrix(covariance) || !is.numeric(covariance) ||
+     nrow(covariance) != ncol(covariance) ||
+     any(!is.finite(covariance))){
+    stop("Random-effect prediction covariance must be a finite numeric square matrix.",
+         call. = FALSE)
+  }
+  if(!isTRUE(all(covariance == t(covariance)))){
+    stop("Random-effect prediction covariance must be exactly symmetric.",
+         call. = FALSE)
+  }
   decomposition <- eigen(covariance, symmetric = TRUE)
-  values <- pmax(decomposition$values, 0)
+  covariance_scale <- max(1, norm(covariance, type = "I"))
+  eigen_tolerance <- 8 * nrow(covariance) * .Machine$double.eps *
+    covariance_scale
+  minimum_eigenvalue <- min(decomposition$values)
+  if(minimum_eigenvalue < -eigen_tolerance){
+    stop(
+      "Random-effect prediction covariance is materially indefinite: minimum ",
+      "eigenvalue ", format(minimum_eigenvalue, digits = 17),
+      " is below the roundoff bound -",
+      format(eigen_tolerance, digits = 17), ".",
+      call. = FALSE
+    )
+  }
+  values <- decomposition$values
+  corrected <- values < 0
+  values[corrected] <- 0
   transform <- decomposition$vectors %*%
     (sqrt(values) * t(decomposition$vectors))
   z <- matrix(
@@ -847,7 +872,15 @@
     ncol = ncol(covariance)
   )
 
-  z %*% transform
+  out <- z %*% transform
+  if(any(corrected)){
+    attr(out, "covariance_eigen_correction") <- list(
+      minimum_eigenvalue = minimum_eigenvalue,
+      tolerance = eigen_tolerance,
+      maximum_correction = max(-decomposition$values[corrected])
+    )
+  }
+  out
 }
 
 .bt_random_effect_prediction_data <- function(random_term, data,

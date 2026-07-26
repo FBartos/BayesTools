@@ -126,8 +126,10 @@
 #' `"auto"` lets the backend choose a supported representation from the
 #' resolved block design. Its deterministic heuristic uses within-group
 #' replication and design conditioning; it does not inspect outcome-specific
-#' likelihood curvature. The choice does not change the SD, allocation, or
-#' correlation priors. Block-specific values supplied through `random_block()`
+#' likelihood curvature. The resolved choice, reason, and tuning thresholds are
+#' stored in fitted random-effect metadata; those thresholds are computational
+#' tuning defaults, not statistical assumptions. The choice does not change the
+#' SD, allocation, or correlation priors. Block-specific values supplied through `random_block()`
 #' override the top-level default. Explicit `"centered"` compilation requires
 #' strictly positive backend-owned SD coordinates and therefore rejects
 #' point-mass-at-zero scales, inclusion-gated variance allocations, and external

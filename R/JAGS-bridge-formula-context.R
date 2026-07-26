@@ -418,12 +418,10 @@
   if(!identical(dim(fitted$model_matrix), dim(rebuilt$model_matrix)) ||
      !identical(colnames(fitted$model_matrix), colnames(rebuilt$model_matrix))){
     mismatches <- c(mismatches, paste0("fixed-effect model matrix shape or columns differ for parameter '", parameter, "'"))
-  }else if(!isTRUE(all.equal(
+  }else if(!identical(
     unname(fitted$model_matrix),
-    unname(rebuilt$model_matrix),
-    tolerance = 1e-12,
-    check.attributes = FALSE
-  ))){
+    unname(rebuilt$model_matrix)
+  )){
     mismatches <- c(mismatches, paste0("fixed-effect model matrix values differ for parameter '", parameter, "'"))
   }
   if(!identical(fitted$assign, rebuilt$assign)){
@@ -467,11 +465,25 @@
 
 .bt_JAGS_bridge_formula_prior_metadata_equal <- function(x, y){
 
-  .bt_JAGS_bridge_metadata_equal(x, y) &&
-    .bt_JAGS_bridge_metadata_equal(
-      attr(x, "multiply_by", exact = TRUE),
-      attr(y, "multiply_by", exact = TRUE)
-    )
+  semantic_attributes <- c(
+    "class", "names", "multiply_by", "levels", "level_names",
+    "interaction", "interaction_terms", "term_components", "factor_terms",
+    "factor_contrasts", "factor_design", "factor_cell_names",
+    "ordered_metadata", "random_factor", "random_grouping_factor",
+    "random_allocation", "random_allocation_terms",
+    "random_allocation_parent", "random_allocation_inclusion", "K",
+    "components", "prior_weights", "model_prior_weights",
+    "inclusion_prior", "component"
+  )
+  prior_core <- function(prior){
+    prior_attributes <- attributes(prior)
+    attributes(prior) <- prior_attributes[
+      intersect(names(prior_attributes), semantic_attributes)
+    ]
+    prior
+  }
+
+  identical(prior_core(x), prior_core(y))
 }
 
 .bt_JAGS_bridge_formula_design_update_source_values <- function(fitted_formula_design,

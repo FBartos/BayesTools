@@ -1895,8 +1895,46 @@ test_that("random group covariance constructor validates and scales kernels", {
   )
   none <- random_group_covariance(K, scale = "none")
   expect_s3_class(none, "random_group_covariance")
-  expect_equal(none$covariance, K)
+  expect_equal(none$covariance, K, ignore_attr = TRUE)
   expect_equal(none$scale, "none")
+  expect_identical(none$triangle_source, "complete")
+
+  lower <- matrix(
+    c(2, .4, 0, 3),
+    nrow = 2,
+    dimnames = list(c("a", "b"), c("a", "b"))
+  )
+  lower_covariance <- random_group_covariance(lower, scale = "none")
+  expect_identical(lower_covariance$triangle_source, "lower")
+  expect_equal(
+    lower_covariance$covariance,
+    matrix(
+      c(2, .4, .4, 3),
+      nrow = 2,
+      dimnames = dimnames(lower)
+    ),
+    ignore_attr = TRUE
+  )
+
+  upper <- t(lower)
+  upper_covariance <- random_group_covariance(upper, scale = "none")
+  expect_identical(upper_covariance$triangle_source, "upper")
+  expect_equal(
+    upper_covariance$covariance,
+    lower_covariance$covariance,
+    ignore_attr = TRUE
+  )
+
+  asymmetric <- matrix(
+    c(2, .4, .4 + .Machine$double.eps, 3),
+    nrow = 2,
+    dimnames = dimnames(lower)
+  )
+  expect_error(
+    random_group_covariance(asymmetric, scale = "none"),
+    "must be exactly symmetric",
+    fixed = TRUE
+  )
 
   prepared_none <- BayesTools:::.bt_prepare_group_covariance_kernel(
     none,

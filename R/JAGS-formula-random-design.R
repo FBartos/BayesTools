@@ -513,6 +513,7 @@
       structure = random_structure,
       parameter_stem = parameter,
       n_groups = n_id,
+      exact_indicator = isTRUE(random_design$exact_indicator),
       column_coordinates = if(identical(random_structure, "car")){
         car_metadata$time_values
       }else{
@@ -1011,6 +1012,7 @@
   random_term$parameterization_requested <- parameterization$requested
   random_term$parameterization_resolved  <- parameterization$resolved
   random_term$parameterization_reason    <- parameterization$reason
+  random_term$parameterization_policy    <- parameterization$policy
   random_term$latent_layout <- latent_layout
   attr(random_term, "random_block") <- random_term$block_name
   attr(random_term, "compile_mode") <- compile_mode

@@ -1,5 +1,14 @@
 # Internal random-effect parameterization policy helpers.
 
+.bt_random_effect_auto_parameterization_policy <- function(){
+
+  list(
+    max_columns = 8L,
+    min_effective_n = 5,
+    min_rcond = 1e-4
+  )
+}
+
 .bt_random_effect_parameterization_requested <- function(block_prior){
 
   parameterization <- block_prior$parameterization
@@ -87,9 +96,9 @@
 
 .bt_random_effect_auto_centered_design <- function(model_matrix, group_map,
                                                    n_groups = max(group_map),
-                                                   max_columns = 8L,
-                                                   min_effective_n = 5,
-                                                   min_rcond = 1e-4){
+                                                   max_columns = .bt_random_effect_auto_parameterization_policy()$max_columns,
+                                                   min_effective_n = .bt_random_effect_auto_parameterization_policy()$min_effective_n,
+                                                   min_rcond = .bt_random_effect_auto_parameterization_policy()$min_rcond){
 
   K <- ncol(model_matrix)
   if(K > max_columns){
@@ -135,11 +144,13 @@
                                                        block_name = NULL){
 
   requested <- .bt_random_effect_parameterization_requested(block_prior)
+  policy <- .bt_random_effect_auto_parameterization_policy()
   if(!identical(compile_mode, "sampled")){
     return(list(
       requested = requested,
       resolved = "marginalized",
-      reason = "random effect is analytically marginalized"
+      reason = "random effect is analytically marginalized",
+      policy = policy
     ))
   }
 
@@ -161,32 +172,39 @@
     return(list(
       requested = requested,
       resolved = "noncentered",
-      reason = "explicit noncentered parameterization"
+      reason = "explicit noncentered parameterization",
+      policy = policy
     ))
   }
   if(identical(requested, "centered")){
     return(list(
       requested = requested,
       resolved = "centered",
-      reason = "explicit centered parameterization"
+      reason = "explicit centered parameterization",
+      policy = policy
     ))
   }
   if(!isTRUE(eligibility$ok)){
     return(list(
       requested = requested,
       resolved = "noncentered",
-      reason = eligibility$reason
+      reason = eligibility$reason,
+      policy = policy
     ))
   }
 
   design <- .bt_random_effect_auto_centered_design(
     model_matrix = model_matrix,
     group_map = group_map,
-    n_groups = n_groups
+    n_groups = n_groups,
+    max_columns = policy$max_columns,
+    min_effective_n = policy$min_effective_n,
+    min_rcond = policy$min_rcond
   )
   list(
     requested = requested,
     resolved = if(isTRUE(design$ok)) "centered" else "noncentered",
-    reason = design$reason
+    reason = design$reason,
+    policy = policy
   )
 }

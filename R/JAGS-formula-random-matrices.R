@@ -47,7 +47,8 @@
 
   list(
     model_frame = model_frame,
-    model_matrix = model_matrix
+    model_matrix = model_matrix,
+    exact_indicator = structure %in% c("cs", "hcs", "ar1", "har")
   )
 }
 
@@ -293,6 +294,7 @@
   list(
     model_frame = model_frame,
     model_matrix = model_matrix,
+    exact_indicator = TRUE,
     car = list(
       time_variable = time_name,
       time_values = car_time_values

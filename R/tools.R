@@ -203,6 +203,92 @@ check_list   <- function(x, name = deparse(substitute(x)), check_length = 0, che
   }
 }
 
+.representable_interior_value <- function(value, direction){
+
+  if(!is.numeric(value) || length(value) != 1L || !is.finite(value) ||
+     !direction %in% c(-1, 1)){
+    stop("A finite scalar and an interior direction of -1 or 1 are required.",
+         call. = FALSE)
+  }
+  smallest <- .Machine$double.xmin * .Machine$double.eps
+  step <- max(abs(value) * .Machine$double.eps, smallest)
+  candidate <- value + direction * step
+  while(candidate == value && is.finite(step)){
+    step <- step * 2
+    candidate <- value + direction * step
+  }
+  if(!is.finite(candidate) || candidate == value){
+    stop("Could not construct a representable value inside the plotting support.",
+         call. = FALSE)
+  }
+  candidate
+}
+
+.simplex_roundoff_bound <- function(x){
+
+  n <- length(x)
+  magnitude <- max(1, sum(abs(x)))
+  gamma_n <- n * .Machine$double.eps /
+    (1 - n * .Machine$double.eps)
+
+  8 * gamma_n * magnitude
+}
+
+.canonicalize_simplex <- function(x, name = "x", diagnostics = FALSE){
+
+  was_matrix <- is.matrix(x)
+  if(!was_matrix){
+    original_names <- names(x)
+    x <- matrix(x, nrow = 1L)
+  }else{
+    original_dimnames <- dimnames(x)
+  }
+
+  if(!is.numeric(x) || ncol(x) < 1L || any(!is.finite(x))){
+    stop("The '", name, "' simplex values must be finite numeric values.", call. = FALSE)
+  }
+  if(any(x < 0)){
+    stop("The '", name, "' simplex values must be non-negative.", call. = FALSE)
+  }
+
+  original_sums <- rowSums(x)
+  bounds <- apply(x, 1L, .simplex_roundoff_bound)
+  invalid <- abs(original_sums - 1) > bounds
+  if(any(invalid)){
+    stop(
+      "The '", name, "' simplex values must sum to one; row ",
+      which(invalid)[1L], " differs by ",
+      format(abs(original_sums[invalid][1L] - 1), digits = 17),
+      ", exceeding the roundoff bound ",
+      format(bounds[invalid][1L], digits = 17), ".",
+      call. = FALSE
+    )
+  }
+
+  canonical <- x / original_sums
+  correction <- apply(abs(canonical - x), 1L, max)
+
+  if(was_matrix){
+    dimnames(canonical) <- original_dimnames
+  }else{
+    canonical <- as.numeric(canonical)
+    names(canonical) <- original_names
+  }
+
+  if(!diagnostics){
+    return(canonical)
+  }
+
+  list(
+    values = canonical,
+    diagnostics = list(
+      original_sum = original_sums,
+      roundoff_bound = bounds,
+      max_correction = max(correction)
+    )
+  )
+}
+
 # check transformation argument
 .check_transformation_input <- function(transformation, transformation_arguments, transformation_settings){
 

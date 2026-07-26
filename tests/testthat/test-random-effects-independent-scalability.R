@@ -456,3 +456,37 @@ test_that("large independent blocks remain linear in coefficient count", {
   expect_true(all(is.finite(c(contribution, covariance$samples,
                               sampled, marglik))))
 })
+
+test_that("prediction covariance clamps only roundoff-sized negative eigenvalues", {
+
+  roundoff_indefinite <- diag(c(1, -.Machine$double.eps))
+  set.seed(42)
+  draws <- BayesTools:::.bt_random_effect_mvn_group_draws(
+    roundoff_indefinite,
+    n_groups = 5L
+  )
+  correction <- attr(draws, "covariance_eigen_correction", exact = TRUE)
+
+  expect_identical(dim(draws), c(5L, 2L))
+  expect_identical(draws[, 2L], rep(0, 5L))
+  expect_equal(correction$minimum_eigenvalue, -.Machine$double.eps)
+  expect_lte(correction$maximum_correction, correction$tolerance)
+
+  expect_error(
+    BayesTools:::.bt_random_effect_mvn_group_draws(
+      diag(c(1, -1e-6)),
+      n_groups = 1L
+    ),
+    "materially indefinite",
+    fixed = TRUE
+  )
+  asymmetric <- matrix(c(1, .1, .1 + .Machine$double.eps, 1), nrow = 2L)
+  expect_error(
+    BayesTools:::.bt_random_effect_mvn_group_draws(
+      asymmetric,
+      n_groups = 1L
+    ),
+    "exactly symmetric",
+    fixed = TRUE
+  )
+})

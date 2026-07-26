@@ -603,15 +603,26 @@
       "'."
     )
   }
-  row_sums <- rowSums(weights)
-  if(any(!is.finite(row_sums) | abs(row_sums - 1) > 1e-8)){
+  canonical <- tryCatch(
+    .canonicalize_simplex(
+      weights,
+      name = paste0("Dirichlet allocation samples for '", parameter_name, "'"),
+      diagnostics = TRUE
+    ),
+    error = function(e) e
+  )
+  if(inherits(canonical, "error")){
     .bt_random_effect_allocation_out_of_support(
       "Random-effect Dirichlet allocation samples for '",
-      parameter_name,
-      "' must sum to one."
+      parameter_name, "' are not on the simplex: ",
+      conditionMessage(canonical)
     )
   }
 
+  weights <- canonical$values
+  if(canonical$diagnostics$max_correction > 0){
+    attr(weights, "simplex_canonicalization") <- canonical$diagnostics
+  }
   weights
 }
 

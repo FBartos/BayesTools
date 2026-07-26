@@ -174,11 +174,19 @@ test_that("auto parameterization uses deterministic design diagnostics", {
   weak_term        <- weak_result$formula_design$random_effects[[1L]]
 
   expect_identical(informative_term$parameterization_resolved, "centered")
+  expect_identical(
+    informative_term$parameterization_policy,
+    BayesTools:::.bt_random_effect_auto_parameterization_policy()
+  )
   expect_match(
     informative_term$parameterization_reason,
     "replication and conditioning"
   )
   expect_identical(weak_term$parameterization_resolved, "noncentered")
+  expect_identical(
+    weak_term$parameterization_policy,
+    BayesTools:::.bt_random_effect_auto_parameterization_policy()
+  )
   expect_identical(
     weak_term$parameterization_reason,
     "insufficient within-group information"
