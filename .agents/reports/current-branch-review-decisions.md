@@ -19,7 +19,7 @@ mean **implemented**.
 | D05 | Decision confirmed; implementation pending | Remove bridge-replay callback grafting and legacy source fallbacks |
 | D06 | Decision confirmed; implementation pending | Add the explicit fitted-row-index contract for posterior row sources |
 | D07 | Decision confirmed; implementation pending | Add joint marginal draws under known group covariance |
-| D08 | Partially implemented | Extend reserved-token rejection to categorical/group labels, not only identifiers |
+| D08 | Implemented and verified | No remaining work |
 | D09 | Decision confirmed; implementation pending | Add a configurable 16 GiB hard ceiling on estimated peak allocation |
 | D10 | Resolved by NF10/NF18 | Remaining CAR representability issue is isolated as D31 |
 | D11 | Partially implemented | Time budget already resets; remove `seed` and preserve the last valid fit on error |
@@ -388,7 +388,7 @@ requires a migration policy for serialized metadata.
 
 Decision: rejected user supplied reserved internal phrases such as "__xXx__"
 
-**Audit status: partially implemented.**
+**Audit status: implemented and verified.**
 
 **Review response.** The reserved-token validator is already applied to data
 column names, random block/allocation/source names, and several prior/parameter
@@ -405,6 +405,17 @@ categorical label that participates in fixed/random design or grouping metadata,
 as well as in identifiers. The error should report the variable and offending
 level. This extends the chosen restriction; it does not require a reversible
 encoding or a migration layer.
+
+**Implementation outcome.** A shared categorical-level validator now rejects
+every BayesTools internal token in fixed-factor levels, random-slope factor
+levels, and random grouping levels. It checks unused fitted factor levels as
+well as observed character values, reports the variable, token, and offending
+level, and runs during both model construction and prediction replay. Stored
+fixed/random factor and grouping metadata are also validated during replay, so
+older fitted objects cannot silently reintroduce an ambiguous label. The
+documentation now states the restriction. Focused formula and prediction tests
+passed 1,513 assertions, and the complete unit profile passed 7,786 assertions
+with no failures or warnings.
 
 ## D09. Dense random-design architecture
 

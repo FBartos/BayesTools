@@ -217,6 +217,16 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
         prior_list = prior_list_formula,
         fitted_design = fitted_design
       )
+      .bt_validate_categorical_level_names(
+        factor_metadata$levels,
+        factor,
+        context = "Fitted factor metadata"
+      )
+      .bt_validate_categorical_values(
+        data[[factor]],
+        factor,
+        context = "Factor predictor"
+      )
       observed_levels <- unique(as.character(data[[factor]]))
       observed_levels <- observed_levels[!is.na(observed_levels)]
       if(any(!observed_levels %in% factor_metadata$levels)){

@@ -711,6 +711,44 @@
   invisible(TRUE)
 }
 
+.bt_validate_categorical_level_names <- function(level_names, variable_name,
+                                                 context = "Categorical variable"){
+
+  level_names <- unique(as.character(level_names))
+  level_names <- level_names[!is.na(level_names)]
+  for(reserved_term in .bt_random_effect_reserved_terms()){
+    offending <- level_names[
+      grepl(reserved_term, level_names, fixed = TRUE)
+    ]
+    if(length(offending) > 0L){
+      stop(
+        context, " '", variable_name,
+        "' contains the internally reserved token '", reserved_term,
+        "' in level '", offending[[1L]],
+        "'. Rename the level before fitting or prediction.",
+        call. = FALSE
+      )
+    }
+  }
+
+  invisible(TRUE)
+}
+
+.bt_validate_categorical_values <- function(value, variable_name,
+                                            context = "Categorical variable"){
+
+  level_names <- if(is.factor(value)){
+    levels(value)
+  }else{
+    unique(as.character(value))
+  }
+  .bt_validate_categorical_level_names(
+    level_names,
+    variable_name,
+    context = context
+  )
+}
+
 .bt_fixed_formula <- function(formula){
 
   .bt_require_reformulas()
@@ -964,7 +1002,17 @@
   }
 
   component_values <- lapply(component_names, function(component_name){
-    .bt_validate_random_group_values(data[[component_name]], term, data)
+    value <- .bt_validate_random_group_values(
+      data[[component_name]],
+      term,
+      data
+    )
+    .bt_validate_categorical_values(
+      value,
+      component_name,
+      context = "Random-effect grouping variable"
+    )
+    value
   })
   names(component_values) <- component_names
   tuple_values <- do.call(cbind, lapply(component_values, as.character))

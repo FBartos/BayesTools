@@ -20,6 +20,8 @@
 #' terms support variables, `:` interactions, and `/` nesting. Grouping
 #' interactions follow base-R/lme4 lexicographic tuple order, and the fitted
 #' tuple-to-index map is stored for replay.
+#' Categorical predictor and grouping levels must not contain BayesTools'
+#' reserved internal tokens, such as `__xXx__`.
 #'
 #' @param random a formula or non-empty list of formulas.
 #' @param envir environment used for the returned formula.

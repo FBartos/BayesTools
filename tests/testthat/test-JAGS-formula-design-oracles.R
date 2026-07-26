@@ -840,6 +840,128 @@ test_that("JAGS_formula validates JAGS parameter names", {
   )
 })
 
+test_that("formula interfaces reject reserved tokens in categorical levels", {
+  factor_prior <- prior_factor(
+    "normal",
+    list(0, 1),
+    contrast = "treatment"
+  )
+  fixed_priors <- list(
+    intercept = prior("normal", list(0, 1)),
+    f = factor_prior
+  )
+
+  for(f in list(
+    factor(c("a", "b__xXx__c")),
+    c("a", "b__xXx__c"),
+    factor("a", levels = c("a", "unused__xXx__level"))
+  )){
+    expect_error(
+      JAGS_formula(
+        ~ f,
+        "mu",
+        data.frame(f = f),
+        fixed_priors
+      ),
+      "Factor predictor 'f' contains the internally reserved token '__xXx__'",
+      fixed = TRUE
+    )
+  }
+
+  valid_fixed <- JAGS_formula(
+    ~ f,
+    "mu",
+    data.frame(f = factor(c("a", "b"))),
+    fixed_priors
+  )
+  fixed_posterior <- coda::mcmc(matrix(
+    c(0, 0),
+    nrow = 1L,
+    dimnames = list(NULL, c("mu_intercept", "mu_f"))
+  ))
+  expect_error(
+    JAGS_evaluate_formula(
+      fixed_posterior,
+      ~ f,
+      "mu",
+      data.frame(f = "bad__xXx__level"),
+      valid_fixed$prior_list
+    ),
+    "Factor predictor 'f' contains the internally reserved token '__xXx__'",
+    fixed = TRUE
+  )
+
+  sd_prior <- prior(
+    "normal",
+    list(0, 1),
+    truncation = list(lower = 0, upper = Inf)
+  )
+  expect_error(
+    JAGS_formula(
+      ~ 1 + diag(0 + f | id),
+      "mu",
+      data.frame(
+        f = factor(c("a", "b__xRE_SUMMARY__c")),
+        id = factor(c("one", "two"))
+      ),
+      list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(
+        id = random_block(sd = sd_prior)
+      )
+    ),
+    paste0(
+      "Random-effect factor predictor 'f' contains the internally reserved ",
+      "token '__xRE_SUMMARY__'"
+    ),
+    fixed = TRUE
+  )
+
+  valid_random <- JAGS_formula(
+    ~ 1 + diag(0 + f | id),
+    "mu",
+    data.frame(
+      f = factor(c("a", "b")),
+      id = factor(c("one", "two"))
+    ),
+    list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(sd = sd_prior)
+    )
+  )
+  expect_error(
+    BayesTools:::.bt_random_effect_prediction_data(
+      valid_random$formula_design$random_effects[[1L]],
+      data.frame(
+        f = "bad__xXx__level",
+        id = "one"
+      ),
+      allow_new_groups = TRUE
+    ),
+    paste0(
+      "Random-effect factor predictor 'f' contains the internally reserved ",
+      "token '__xXx__'"
+    ),
+    fixed = TRUE
+  )
+
+  expect_error(
+    JAGS_formula(
+      ~ 1 + diag(1 | id),
+      "mu",
+      data.frame(id = factor(c("one", "two__xREx__group"))),
+      list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(
+        id = random_block(sd = sd_prior)
+      )
+    ),
+    paste0(
+      "Random-effect grouping variable 'id' contains the internally reserved ",
+      "token '__xREx__' in level 'two__xREx__group'"
+    ),
+    fixed = TRUE
+  )
+})
+
 test_that("formula interfaces reject bare language objects", {
   prior_list <- list(
     intercept = prior("normal", list(0, 1)),

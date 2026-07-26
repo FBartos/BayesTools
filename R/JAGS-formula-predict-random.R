@@ -900,6 +900,11 @@
   factor_levels <- random_term$xlevels
   if(!is.null(factor_levels) && length(factor_levels) > 0L){
     for(factor_name in names(factor_levels)){
+      .bt_validate_categorical_level_names(
+        factor_levels[[factor_name]],
+        factor_name,
+        context = "Fitted random-effect factor metadata"
+      )
       if(!factor_name %in% names(prediction_data)){
         stop(
           "The '", factor_name,
@@ -907,6 +912,11 @@
           call. = FALSE
         )
       }
+      .bt_validate_categorical_values(
+        prediction_data[[factor_name]],
+        factor_name,
+        context = "Random-effect factor predictor"
+      )
       if(is.factor(prediction_data[[factor_name]])){
         observed_levels <- unique(as.character(prediction_data[[factor_name]]))
         if(!all(observed_levels %in% factor_levels[[factor_name]])){
@@ -993,6 +1003,15 @@
       "' do not match the fitted formula.",
       call. = FALSE
     )
+  }
+  if(!is.null(random_term$group_component_levels)){
+    for(component_name in names(random_term$group_component_levels)){
+      .bt_validate_categorical_level_names(
+        random_term$group_component_levels[[component_name]],
+        component_name,
+        context = "Fitted random-effect grouping metadata"
+      )
+    }
   }
 
   group_levels <- random_term$group_levels

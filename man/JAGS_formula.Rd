@@ -96,6 +96,8 @@ Random-effect predictors likewise support literal data-column names and
 formula operators, but not inline transformations or arbitrary calls.
 Create transformed random slopes as explicit data columns. Grouping terms
 support variables, \code{:} interactions, and \code{/} nesting.
+Categorical predictor and grouping levels must not contain BayesTools'
+reserved internal tokens, such as \code{__xXx__}.
 The predictor name \code{intercept} is reserved for the formula intercept.
 }
 \examples{

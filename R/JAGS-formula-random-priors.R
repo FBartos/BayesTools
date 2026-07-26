@@ -12,6 +12,11 @@
   }
 
   for(factor_name in factor_predictors){
+    .bt_validate_categorical_values(
+      data[[factor_name]],
+      factor_name,
+      context = context
+    )
     direct_contrast <- NULL
 
     if(factor_name %in% names(prior_list)){
