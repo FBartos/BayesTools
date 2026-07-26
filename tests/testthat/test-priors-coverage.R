@@ -49,6 +49,36 @@ test_that("prior_factor() requires multivariate prior for orthonormal/meandif co
                "contrasts require multivariate prior")
 })
 
+test_that("mean-difference and orthonormal factor priors require exact zero centering", {
+  for(contrast in c("meandif", "orthonormal")){
+    expect_error(
+      prior_factor("mnormal", list(mean = 1e-12, sd = 1), contrast = contrast),
+      "centered exactly at zero",
+      fixed = TRUE
+    )
+    expect_error(
+      prior_factor("mt", list(location = -1, scale = 1, df = 3), contrast = contrast),
+      "centered exactly at zero",
+      fixed = TRUE
+    )
+    expect_error(
+      prior_factor("point", list(location = 1), contrast = contrast),
+      "centered exactly at zero",
+      fixed = TRUE
+    )
+  }
+
+  expect_no_error(
+    prior_factor("mnormal", list(mean = 0, sd = 1), contrast = "orthonormal")
+  )
+  expect_no_error(
+    prior_factor("normal", list(mean = 1, sd = 1), contrast = "treatment")
+  )
+  expect_no_error(
+    prior_factor("point", list(location = 1), contrast = "independent")
+  )
+})
+
 
 test_that("prior_factor() requires univariate prior for treatment contrast", {
   expect_error(prior_factor("mnormal", list(0, 1, 2), contrast = "treatment"),

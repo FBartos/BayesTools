@@ -1501,7 +1501,15 @@ explicit level-space API that accepts a named, sum-to-zero level vector and
 transforms it through the stored concrete basis. Do not overload a scalar
 coordinate-space location.
 
-**Audit status: decision confirmed; implementation pending.**
+**Audit status: implemented.**
+
+**Implementation outcome.** `prior_factor()` now requires the mean/location of
+mean-difference and orthonormal priors to be numeric, finite, scalar, and
+exactly zero. Formula validation repeats the recursive check for mixtures and
+spike-and-slab priors, which also protects against manually modified or
+serialized prior objects. Nonzero treatment and independent factor priors
+remain valid. Targeted tests passed 1,575 assertions, and the complete unit
+profile passed 7,730 assertions with no failures or warnings.
 
 **Recommendation:** reject nonzero locations now. This makes construction,
 formula fitting, density, and transformed sampling obey the same centered

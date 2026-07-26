@@ -77,12 +77,13 @@ across factor levels. In contrast to \code{"orthonormal"}, the marginal distribu
 are identical regardless of the number of factor levels and the specified prior
 distribution corresponds to the difference from grand mean for each factor level.
 Only supports \code{distribution = "mnormal"} and \code{distribution = "mt"}
-which generates the corresponding multivariate normal/t distributions.}
+which generates the corresponding multivariate normal/t distributions. The
+distribution must be centered exactly at zero.}
 \item{\code{"orthonormal"}}{for contrast centered around the grand mean
 with equal marginal distributions, making the prior distribution exchangeable
 across factor levels. Only supports \code{distribution = "mnormal"} and
 \code{distribution = "mt"} which generates the corresponding multivariate normal/t
-distributions.}
+distributions. The distribution must be centered exactly at zero.}
 \item{\code{"treatment"}}{for contrasts using the first level as a comparison
 group and setting equal prior distribution on differences between the individual
 factor levels and the comparison level.}

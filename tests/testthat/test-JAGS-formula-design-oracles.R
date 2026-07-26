@@ -920,6 +920,29 @@ test_that("JAGS_formula validates prior classes for every model term", {
   )
 })
 
+test_that("JAGS_formula revalidates centered factor-prior metadata", {
+  invalid_prior <- prior_factor(
+    "mnormal",
+    list(mean = 0, sd = 1),
+    contrast = "orthonormal"
+  )
+  invalid_prior$parameters$mean <- 0.25
+
+  expect_error(
+    JAGS_formula(
+      ~ g,
+      "mu",
+      data.frame(g = factor(c("a", "b", "a"))),
+      list(
+        intercept = prior("normal", list(0, 1)),
+        g = invalid_prior
+      )
+    ),
+    "prior_list[[\"g\"]]' mean-difference or orthonormal factor prior must be centered exactly at zero",
+    fixed = TRUE
+  )
+})
+
 test_that("JAGS_formula reserves the intercept predictor name", {
   expect_error(
     JAGS_formula(

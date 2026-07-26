@@ -414,6 +414,43 @@ is.prior.mixture         <- function(x){
   inherits(x, "prior.mixture")
 }
 
+.validate_centered_factor_prior <- function(prior, name = "prior"){
+
+  if(is.prior.mixture(prior)){
+    for(i in seq_along(prior)){
+      .validate_centered_factor_prior(
+        prior[[i]],
+        paste0(name, "[[", i, "]]")
+      )
+    }
+    return(invisible(TRUE))
+  }
+
+  if(!is.prior.orthonormal(prior) && !is.prior.meandif(prior)){
+    return(invisible(TRUE))
+  }
+
+  center_name <- switch(
+    prior[["distribution"]],
+    "mnormal" = "mean",
+    "mt"      = "location",
+    "mpoint"  = "location",
+    NULL
+  )
+  center <- if(is.null(center_name)) NULL else prior[["parameters"]][[center_name]]
+
+  if(!is.numeric(center) || length(center) != 1L ||
+     is.na(center) || !is.finite(center) || center != 0){
+    stop(
+      "The '", name, "' mean-difference or orthonormal factor prior must ",
+      "be centered exactly at zero.",
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
 .check_prior <- function(prior, name = "prior", allow_expressions = FALSE){
 
   if(!is.prior(prior))

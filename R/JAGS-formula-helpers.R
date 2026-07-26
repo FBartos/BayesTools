@@ -213,6 +213,12 @@
     term_type <- model_terms_type[[model_term]]
     factor_prior <- .bt_formula_prior_is_factor(this_prior)
 
+    if(factor_prior){
+      .validate_centered_factor_prior(
+        this_prior,
+        paste0("prior_list[[\"", model_term, "\"]]")
+      )
+    }
     if(identical(term_type, "factor") && !factor_prior){
       stop(
         "Unsupported prior distribution defined for '", model_term,

@@ -230,12 +230,13 @@ prior_PEESE <- function(distribution, parameters, truncation = list(lower = 0, u
 #'   are identical regardless of the number of factor levels and the specified prior
 #'   distribution corresponds to the difference from grand mean for each factor level.
 #'   Only supports \code{distribution = "mnormal"} and \code{distribution = "mt"}
-#'   which generates the corresponding multivariate normal/t distributions.}
+#'   which generates the corresponding multivariate normal/t distributions. The
+#'   distribution must be centered exactly at zero.}
 #'   \item{\code{"orthonormal"}}{for contrast centered around the grand mean
 #'   with equal marginal distributions, making the prior distribution exchangeable
 #'   across factor levels. Only supports \code{distribution = "mnormal"} and
 #'   \code{distribution = "mt"} which generates the corresponding multivariate normal/t
-#'   distributions.}
+#'   distributions. The distribution must be centered exactly at zero.}
 #'   \item{\code{"treatment"}}{for contrasts using the first level as a comparison
 #'   group and setting equal prior distribution on differences between the individual
 #'   factor levels and the comparison level.}
@@ -289,6 +290,7 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
       stop(paste0("'", contrast,"' contrasts do not support truncation."))
 
     class(output) <- c(class(output), "prior.factor", paste0("prior.", contrast))
+    .validate_centered_factor_prior(output)
 
   }else if(contrast %in% c("treatment", "dummy")){
 
