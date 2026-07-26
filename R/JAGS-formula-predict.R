@@ -18,6 +18,8 @@
 #' Replaying a fitted formula that contains them produces an error rather than
 #' silently omitting their contribution. An explicit expression-free formula
 #' can still be supplied to evaluate a selected subset of the fitted formula.
+#' Inline transformations, offsets, dot expansion, and arbitrary calls are not
+#' supported. Create transformed predictors as explicit columns in \code{data}.
 #'
 #' @param fit model fitted with either \link[runjags]{runjags} posterior
 #' samples obtained with \link[rjags]{rjags-package}
@@ -114,6 +116,7 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
 
   # remove the specified response (would crash the model.frame if not included)
   formula <- .remove_response(formula)
+  .bt_validate_formula_replay_grammar(formula)
   formula_has_random <- .has_random_effects(formula)
   fitted_has_random <- !is.null(fitted_design) &&
     .bt_formula_design_has_any_random_effects(fitted_design)

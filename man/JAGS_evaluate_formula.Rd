@@ -69,6 +69,8 @@ Literal \code{expression()} terms cannot be reconstructed automatically.
 Replaying a fitted formula that contains them produces an error rather than
 silently omitting their contribution. An explicit expression-free formula
 can still be supplied to evaluate a selected subset of the fitted formula.
+Inline transformations, offsets, dot expansion, and arbitrary calls are not
+supported. Create transformed predictors as explicit columns in \code{data}.
 }
 \seealso{
 \code{\link[=JAGS_fit]{JAGS_fit()}} \code{\link[=JAGS_formula]{JAGS_formula()}}

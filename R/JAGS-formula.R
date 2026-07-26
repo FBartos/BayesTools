@@ -59,6 +59,11 @@
 #' \code{prior_list} using \code{"term|group"} names are no longer supported.
 #' Continuous fixed-effect terms must expand to one design-matrix column.
 #' Matrix-valued continuous predictors are not currently supported.
+#' Fixed formulas support literal data-column names and standard formula
+#' operators. Dot expansion, \code{offset()}, inline transformations, and
+#' arbitrary calls are rejected; create explicit data columns for transformed
+#' predictors. The BayesTools \code{expression(...)} facility remains available
+#' for literal JAGS-scale additions.
 #' The predictor name \code{intercept} is reserved for the formula intercept.
 #'
 #' @examples
@@ -141,6 +146,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   # remove the specified response
   formula <- .remove_response(formula)
   formula <- .bt_formula_preserve_random_terms(formula, resolved_random_terms)
+  .bt_validate_formula_replay_grammar(formula)
   # store log(intercept) attribute (for models relying on mu = log(intercept) + sum(beta_i * x_i) trick
   # exp(mu) = intercept * exp(sum(beta_i * x_i)) (e.g., Poisson regression / regression with log link etc...)
   log_intercept  <- isTRUE(attr(formula, "log(intercept)"))

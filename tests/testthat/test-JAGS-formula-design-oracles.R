@@ -1015,6 +1015,77 @@ test_that("JAGS_formula canonicalizes prior_none to a zero point prior", {
   )
 })
 
+test_that("fixed formulas reject unsupported calls before data lookup", {
+  data <- data.frame(x = c(-1, 0, 1), z = c(1, 0, -1))
+  priors <- list(
+    intercept = prior("normal", list(0, 1)),
+    x = prior("normal", list(0, 1)),
+    z = prior("normal", list(0, 1)),
+    "x:z" = prior("normal", list(0, 1))
+  )
+  invalid_formulas <- list(
+    ~ .,
+    ~ I(x^2),
+    ~ stats::poly(x, 2),
+    ~ scale(x),
+    ~ offset(z),
+    ~ custom_transform(x)
+  )
+  offending <- c(
+    ".",
+    "I(x^2)",
+    "stats::poly(x, 2)",
+    "scale(x)",
+    "offset(z)",
+    "custom_transform(x)"
+  )
+
+  for(i in seq_along(invalid_formulas)){
+    expect_error(
+      JAGS_formula(
+        invalid_formulas[[i]],
+        "mu",
+        data,
+        priors
+      ),
+      offending[[i]],
+      fixed = TRUE
+    )
+  }
+
+  expect_no_error(
+    JAGS_formula(
+      ~ x * z + expression(2),
+      "mu",
+      data,
+      priors
+    )
+  )
+
+  valid_result <- JAGS_formula(
+    ~ x,
+    "mu",
+    data,
+    priors[c("intercept", "x")]
+  )
+  fit <- coda::mcmc(matrix(
+    c(0, 1),
+    nrow = 1,
+    dimnames = list(NULL, c("mu_intercept", "mu_x"))
+  ))
+  expect_error(
+    JAGS_evaluate_formula(
+      fit,
+      ~ I(x^2),
+      "mu",
+      data,
+      valid_result$prior_list
+    ),
+    "Unsupported fixed-formula call 'I(x^2)'",
+    fixed = TRUE
+  )
+})
+
 test_that("log-intercept formulas require recursively positive prior support", {
   data <- data.frame(x = c(-1, 0, 1))
   log_formula <- ~ x

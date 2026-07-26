@@ -14,6 +14,9 @@
 
   for(parameter in names(formula_prior_list)){
     formula_parameter <- if(!is.null(formula_list)) formula_list[[parameter]] else NULL
+    if(!is.null(formula_parameter)){
+      .bt_validate_formula_replay_grammar(formula_parameter)
+    }
     formula_data <- if(!is.null(formula_data_list)) formula_data_list[[parameter]] else NULL
     log_intercept <- if(!is.null(formula_parameter)){
       isTRUE(attr(formula_parameter, "log(intercept)"))

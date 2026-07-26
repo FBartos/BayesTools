@@ -108,7 +108,7 @@ with a precise error.
 
 Decision: reject unsoported calls early, in later versions we might fully implement this but it would be a large change right now
 
-**Audit status: decision confirmed; implementation pending.**
+**Audit status: implemented.**
 
 **Review response.** Instruction understood. The current fixed-formula path
 still reaches `terms()`, literal-variable checks, or `model.frame()` before it
@@ -124,6 +124,16 @@ reconstruction. It should explicitly reject at least:
 BayesTools' existing explicit `expression(...)` facility is a separate supported
 feature and should continue to use its current validation path. Errors should
 identify the offending call and state the supported alternative.
+
+**Implementation outcome.** Formula construction, prediction replay, public
+marginal reconstruction, and compiled bridge reconstruction now share an early
+fixed-formula grammar validator. It rejects dot expansion, offsets, inline and
+namespace-qualified transformations, and arbitrary calls with the offending
+expression and a supported alternative. Literal columns, standard formula
+operators, and `expression(...)` remain supported. The pass also fixed a
+pre-existing crash when the expression walker encountered namespace-qualified
+call heads. Focused tests passed 1,459 assertions, and the complete unit profile
+passed 7,765 assertions with no failures or warnings.
 
 ## D03. Positive support for log-intercept priors
 

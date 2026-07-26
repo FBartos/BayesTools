@@ -30,6 +30,9 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
   for(parameter in names(formula_prior_list)){
     # check for log(intercept) attribute on the formula
     formula_parameter <- if(!is.null(formula_list)) formula_list[[parameter]] else NULL
+    if(!is.null(formula_parameter)){
+      .bt_validate_formula_replay_grammar(formula_parameter)
+    }
     log_intercept <- if(!is.null(formula_parameter)) isTRUE(attr(formula_parameter, "log(intercept)")) else FALSE
     parameter_prior_list <- formula_prior_list[[parameter]]
     design <- if(!is.null(formula_design_list)) formula_design_list[[parameter]] else NULL

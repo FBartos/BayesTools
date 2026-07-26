@@ -39,6 +39,75 @@
 .bt_formula_rhs <- function(formula){
   formula[[.bt_formula_rhs_index(formula)]]
 }
+.bt_validate_fixed_formula_grammar <- function(formula){
+
+  validate_expression <- function(expression){
+    if(is.symbol(expression)){
+      if(identical(as.character(expression), ".")){
+        stop(
+          "Unsupported fixed-formula term '.'. Dot expansion is not supported; ",
+          "list each data-frame column explicitly.",
+          call. = FALSE
+        )
+      }
+      return(invisible(TRUE))
+    }
+    if(is.numeric(expression) && length(expression) == 1L &&
+       is.finite(expression) && expression %in% c(0, 1)){
+      return(invisible(TRUE))
+    }
+    if(is.call(expression)){
+      call_name <- if(is.symbol(expression[[1L]])){
+        as.character(expression[[1L]])
+      }else{
+        ""
+      }
+      if(call_name %in% c("+", "-", "*", ":", "/", "^", "(")){
+        for(argument in as.list(expression)[-1L]){
+          validate_expression(argument)
+        }
+        return(invisible(TRUE))
+      }
+
+      expression_label <- .bt_deparse_expr(expression)
+      if(identical(call_name, "offset")){
+        stop(
+          "Unsupported fixed-formula call '", expression_label,
+          "'. offset() is not supported; use expression(...) for an explicit ",
+          "JAGS-scale offset.",
+          call. = FALSE
+        )
+      }
+      stop(
+        "Unsupported fixed-formula call '", expression_label,
+        "'. Create the transformed value as a data-frame column and reference ",
+        "that column by name.",
+        call. = FALSE
+      )
+    }
+
+    stop(
+      "Unsupported fixed-formula expression '",
+      .bt_deparse_expr(expression),
+      "'. Use literal data-frame column names.",
+      call. = FALSE
+    )
+  }
+
+  validate_expression(.bt_formula_rhs(formula))
+  invisible(TRUE)
+}
+.bt_validate_formula_replay_grammar <- function(formula){
+
+  if(!inherits(formula, "formula")){
+    stop("'formula' must be a formula.", call. = FALSE)
+  }
+
+  validation_formula <- .remove_response(formula)
+  validation_formula <- .remove_expressions(validation_formula)
+  validation_formula <- .remove_random_effects(validation_formula)
+  .bt_validate_fixed_formula_grammar(validation_formula)
+}
 .bt_is_expression_call <- function(x){
   is.call(x) && identical(as.character(x[[1L]]), "expression")
 }
@@ -70,7 +139,7 @@
   }
 
   if(is.call(x)){
-    call_name <- as.character(x[[1L]])
+    call_name <- if(is.symbol(x[[1L]])) as.character(x[[1L]]) else ""
     if(call_name == "+" && length(x) == 3L){
       lhs <- .bt_remove_expression_terms(x[[2L]])
       rhs <- .bt_remove_expression_terms(x[[3L]])

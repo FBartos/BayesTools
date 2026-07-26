@@ -858,6 +858,36 @@ test_that("formula reconstruction rejects unknown priors instead of returning ze
   )
 })
 
+test_that("formula reconstruction rejects unsupported fixed-formula calls", {
+  invalid_formula <- ~ I(x^2)
+  formula_prior_list <- list(
+    mu = list(mu_intercept = prior("point", list(0)))
+  )
+
+  expect_error(
+    JAGS_marglik_parameters_formula(
+      samples = numeric(),
+      formula_list = list(mu = invalid_formula),
+      formula_data_list = list(mu = list(N_mu = 2)),
+      formula_prior_list = formula_prior_list,
+      prior_list_parameters = list()
+    ),
+    "Unsupported fixed-formula call 'I(x^2)'",
+    fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.bt_JAGS_bridge_compile_formula_parameter_evaluator(
+      formula_list = list(mu = invalid_formula),
+      formula_data_list = list(mu = list(N_mu = 2)),
+      formula_prior_list = formula_prior_list,
+      formula_design_list = NULL,
+      model_data = list()
+    ),
+    "Unsupported fixed-formula call 'I(x^2)'",
+    fixed = TRUE
+  )
+})
+
 test_that("compiled formula parameter evaluator matches legacy fallback reconstruction", {
 
   samples <- c(

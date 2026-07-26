@@ -87,6 +87,11 @@ Formula random effects require \code{prior_random}. Random-effect SD priors in
 \code{prior_list} using \code{"term|group"} names are no longer supported.
 Continuous fixed-effect terms must expand to one design-matrix column.
 Matrix-valued continuous predictors are not currently supported.
+Fixed formulas support literal data-column names and standard formula
+operators. Dot expansion, \code{offset()}, inline transformations, and
+arbitrary calls are rejected; create explicit data columns for transformed
+predictors. The BayesTools \code{expression(...)} facility remains available
+for literal JAGS-scale additions.
 The predictor name \code{intercept} is reserved for the formula intercept.
 }
 \examples{
