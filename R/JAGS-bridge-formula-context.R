@@ -34,13 +34,24 @@
   )
   has_fitted_formula_design <- length(fitted_formula_design) > 0L
 
-  if(!formula_input_supplied){
-    if(has_fitted_formula_design){
-      return(.bt_JAGS_bridge_formula_context_from_design(
-        fitted_formula_design
-      ))
+  if(!has_fitted_formula_design){
+    if(formula_input_supplied){
+      stop(
+        "JAGS_bridgesampling() cannot reconstruct formula parameters because ",
+        "the fitted formula-design metadata are missing. Refit the model with ",
+        "this version of BayesTools; supplied formula inputs cannot replace ",
+        "fitted replay metadata.",
+        call. = FALSE
+      )
     }
     return(.bt_JAGS_bridge_empty_formula_context())
+  }
+
+  fitted_context <- .bt_JAGS_bridge_formula_context_from_design(
+    fitted_formula_design
+  )
+  if(!formula_input_supplied){
+    return(fitted_context)
   }
 
   rebuildability <- tryCatch(.bt_JAGS_bridge_formula_inputs_rebuildability(
@@ -49,22 +60,15 @@
     formula_prior_list = formula_prior_list,
     formula_scale_list = formula_scale_list,
     formula_random_prior_list = formula_random_prior_list,
-    formula_random_effects_compile_list = formula_random_effects_compile_list,
-    has_fitted_formula_design = has_fitted_formula_design
+    formula_random_effects_compile_list = formula_random_effects_compile_list
   ), error = function(e){
-    if(has_fitted_formula_design){
-      return(list(
-        rebuildable = FALSE,
-        detail = conditionMessage(e)
-      ))
-    }
-    stop(conditionMessage(e), call. = FALSE)
+    list(
+      rebuildable = FALSE,
+      detail = conditionMessage(e)
+    )
   })
   if(!isTRUE(rebuildability$rebuildable)){
-    if(has_fitted_formula_design){
-      .bt_JAGS_bridge_stop_formula_mismatch(rebuildability$detail)
-    }
-    stop(rebuildability$detail, call. = FALSE)
+    .bt_JAGS_bridge_stop_formula_mismatch(rebuildability$detail)
   }
 
   rebuilt_context <- tryCatch(.bt_JAGS_bridge_rebuild_formula_context(
@@ -79,32 +83,19 @@
     e
   })
   if(inherits(rebuilt_context, "error")){
-    if(has_fitted_formula_design){
-      .bt_JAGS_bridge_stop_formula_mismatch(
-        paste0("formula inputs could not be rebuilt: ", conditionMessage(rebuilt_context))
-      )
-    }
-    stop(conditionMessage(rebuilt_context), call. = FALSE)
+    .bt_JAGS_bridge_stop_formula_mismatch(
+      paste0("formula inputs could not be rebuilt: ", conditionMessage(rebuilt_context))
+    )
   }
-  if(has_fitted_formula_design){
-    mismatches <- .bt_JAGS_bridge_formula_design_mismatches(
-      fitted_formula_design = fitted_formula_design,
-      rebuilt_formula_design = rebuilt_context$formula_design_list
-    )
-    if(length(mismatches) > 0L){
-      .bt_JAGS_bridge_stop_formula_mismatch(mismatches)
-    }
-    fitted_formula_design <- .bt_JAGS_bridge_formula_design_update_source_values(
-      fitted_formula_design = fitted_formula_design,
-      rebuilt_formula_design = rebuilt_context$formula_design_list
-    )
-    return(.bt_JAGS_bridge_formula_context_from_design(
-      fitted_formula_design,
-      formula_data_list = rebuilt_context$formula_data_list
-    ))
+  mismatches <- .bt_JAGS_bridge_formula_design_mismatches(
+    fitted_formula_design = fitted_formula_design,
+    rebuilt_formula_design = rebuilt_context$formula_design_list
+  )
+  if(length(mismatches) > 0L){
+    .bt_JAGS_bridge_stop_formula_mismatch(mismatches)
   }
 
-  rebuilt_context
+  fitted_context
 }
 
 .bt_JAGS_bridge_formula_inputs_rebuildability <- function(formula_list,
@@ -112,16 +103,13 @@
                                                           formula_prior_list,
                                                           formula_scale_list,
                                                           formula_random_prior_list,
-                                                          formula_random_effects_compile_list = NULL,
-                                                          has_fitted_formula_design = FALSE){
+                                                          formula_random_effects_compile_list = NULL){
 
   if(is.null(formula_list) || is.null(formula_data_list) || is.null(formula_prior_list)){
-    detail <- if(has_fitted_formula_design){
-      "formula-related inputs are incomplete"
-    }else{
-      "When supplying formula-related inputs to JAGS_bridgesampling(), provide 'formula_list', 'formula_data_list', and 'formula_prior_list'."
-    }
-    return(list(rebuildable = FALSE, detail = detail))
+    return(list(
+      rebuildable = FALSE,
+      detail = "formula-related inputs are incomplete"
+    ))
   }
 
   check_list(formula_list, "formula_list", allow_NULL = FALSE)
@@ -153,17 +141,10 @@
     if(.has_random_effects(formula_list[[parameter]]) &&
        (is.null(formula_random_prior_list) || is.null(formula_random_prior_list[[parameter]]))){
       detail <- paste0(
-        "JAGS_bridgesampling() requires 'formula_random_prior_list' with a prior_random() object for formula random effects in parameter '",
+        "formula random effects for parameter '",
         parameter,
-        "'. Legacy random-effect priors in 'formula_prior_list' are not bridge-sampling ready."
+        "' cannot be rebuilt without a matching 'formula_random_prior_list' entry"
       )
-      if(has_fitted_formula_design){
-        detail <- paste0(
-          "formula random effects for parameter '",
-          parameter,
-          "' cannot be rebuilt without a matching 'formula_random_prior_list' entry"
-        )
-      }
       return(list(rebuildable = FALSE, detail = detail))
     }
   }
@@ -445,6 +426,11 @@
   if(!.bt_JAGS_bridge_metadata_equal(fitted$formula_scale, rebuilt$formula_scale)){
     mismatches <- c(mismatches, paste0("formula scaling metadata differ for parameter '", parameter, "'"))
   }
+  if(!identical(fitted$source_data, rebuilt$source_data)){
+    mismatches <- c(mismatches, paste0(
+      "original formula source data differ for parameter '", parameter, "'"
+    ))
+  }
   if(!identical(names(fitted$prior_list), names(rebuilt$prior_list))){
     mismatches <- c(mismatches, paste0("formula prior names differ for parameter '", parameter, "'"))
   }else{
@@ -495,102 +481,6 @@
   }
 
   identical(prior_core(x), prior_core(y))
-}
-
-.bt_JAGS_bridge_formula_design_update_source_values <- function(fitted_formula_design,
-                                                                rebuilt_formula_design){
-
-  fitted_formula_design <- .bt_JAGS_bridge_formula_design_list(fitted_formula_design)
-  rebuilt_formula_design <- .bt_JAGS_bridge_formula_design_list(rebuilt_formula_design)
-  for(parameter in intersect(names(fitted_formula_design), names(rebuilt_formula_design))){
-    fitted <- fitted_formula_design[[parameter]]
-    rebuilt <- rebuilt_formula_design[[parameter]]
-    if(!.bt_formula_design_has_any_random_effects(fitted) ||
-       !.bt_formula_design_has_any_random_effects(rebuilt)){
-      next
-    }
-    fitted_random_effects <- .bt_formula_design_random_effects(fitted)
-    rebuilt_random_effects <- .bt_formula_design_random_effects(rebuilt)
-    fitted_blocks <- .bt_JAGS_bridge_random_block_names(fitted_random_effects)
-    rebuilt_blocks <- .bt_JAGS_bridge_random_block_names(rebuilt_random_effects)
-    for(block in intersect(fitted_blocks, rebuilt_blocks)){
-      fitted_i <- match(block, fitted_blocks)
-      rebuilt_i <- match(block, rebuilt_blocks)
-      fitted_random_effects[[fitted_i]] <- .bt_JAGS_bridge_random_term_update_source_values(
-        fitted = fitted_random_effects[[fitted_i]],
-        rebuilt = rebuilt_random_effects[[rebuilt_i]]
-      )
-    }
-    fitted <- .bt_formula_design_set_random_effects(
-      fitted,
-      fitted_random_effects
-    )
-    fitted_formula_design[[parameter]] <- fitted
-  }
-
-  fitted_formula_design
-}
-
-.bt_JAGS_bridge_random_term_update_source_values <- function(fitted, rebuilt){
-
-  if(!.bt_random_effect_has_row_indexed_external_sd(fitted) ||
-     !.bt_random_effect_has_row_indexed_external_sd(rebuilt)){
-    return(fitted)
-  }
-
-  fitted_source <- .bt_random_effect_row_indexed_source(fitted)
-  rebuilt_source <- .bt_random_effect_row_indexed_source(rebuilt)
-  if(!.bt_JAGS_bridge_parameter_sources_same(fitted_source, rebuilt_source)){
-    return(fitted)
-  }
-
-  values <- .bt_parameter_source_values_function(rebuilt_source)
-  if(is.null(values)){
-    return(fitted)
-  }
-
-  if(!is.null(fitted$sd_binding)){
-    fitted$sd_binding$source <- .bt_JAGS_bridge_parameter_source_set_values(
-      source = fitted$sd_binding$source,
-      values = values
-    )
-    if(length(fitted$sd_binding$allocations) > 0L){
-      for(allocation_i in seq_along(fitted$sd_binding$allocations)){
-        if(!is.null(fitted$sd_binding$allocations[[allocation_i]]$source)){
-          fitted$sd_binding$allocations[[allocation_i]]$source <- .bt_JAGS_bridge_parameter_source_set_values(
-            source = fitted$sd_binding$allocations[[allocation_i]]$source,
-            values = values
-          )
-        }
-      }
-    }
-  }
-
-  fitted
-}
-
-.bt_JAGS_bridge_parameter_sources_same <- function(x, y){
-
-  identical(x$name, y$name) &&
-    identical(x$shape, y$shape)
-}
-
-.bt_JAGS_bridge_parameter_source_set_values <- function(source, values){
-
-  if(is.null(source)){
-    return(NULL)
-  }
-  .bt_check_parameter_source_values_function(values, "values")
-
-  if(inherits(source, "random_sd_source")){
-    .bt_check_random_sd_source(source)
-    source$source$values <- values
-    return(source)
-  }
-  .bt_check_parameter_source(source)
-  source$values <- values
-
-  source
 }
 
 .bt_JAGS_bridge_formulas_equal <- function(x, y){

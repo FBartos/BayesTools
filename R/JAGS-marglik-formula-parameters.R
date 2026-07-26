@@ -117,42 +117,49 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
                                                    formula_data,
                                                    design){
 
+  if(inherits(design, "BayesTools_formula_design") &&
+     is.data.frame(design$source_data)){
+    out <- as.list(design$source_data)
+    .bt_JAGS_marglik_verify_source_data(out, formula_data)
+    .bt_JAGS_marglik_verify_source_data(out, model_data)
+    return(out)
+  }
+
   out <- list()
   out <- .bt_JAGS_marglik_merge_source_data(out, formula_data)
   out <- .bt_JAGS_marglik_merge_source_data(out, model_data)
-  if(inherits(design, "BayesTools_formula_design") &&
-     !is.null(design$source_data)){
-    out <- .bt_JAGS_marglik_fill_source_data(out, design$source_data)
-  }
 
   out
 }
 
-.bt_JAGS_marglik_fill_source_data <- function(out, data){
+.bt_JAGS_marglik_verify_source_data <- function(fitted, supplied){
 
-  if(is.null(data)){
-    return(out)
+  if(is.null(supplied)){
+    return(invisible(TRUE))
   }
-  data_list <- if(is.data.frame(data)){
-    as.list(data)
-  }else if(is.list(data)){
-    data
+  supplied <- if(is.data.frame(supplied)){
+    as.list(supplied)
+  }else if(is.list(supplied)){
+    supplied
   }else{
-    return(out)
+    return(invisible(TRUE))
   }
-  data_names <- names(data_list)
-  if(is.null(data_names)){
-    return(out)
+  overlap <- intersect(names(fitted), names(supplied))
+  for(name in overlap){
+    if(!.bt_JAGS_marglik_source_data_equal(
+      fitted[[name]],
+      supplied[[name]]
+    )){
+      stop(
+        "JAGS_bridgesampling() row-indexed source reconstruction received ",
+        "data for variable '", name, "' that conflict with the fitted source ",
+        "snapshot. Refit the model if the source data have changed.",
+        call. = FALSE
+      )
+    }
   }
-  keep <- !is.na(data_names) & nzchar(data_names)
-  if(!any(keep)){
-    return(out)
-  }
-  data_list <- data_list[keep]
-  missing <- setdiff(names(data_list), names(out))
-  out[missing] <- data_list[missing]
 
-  out
+  invisible(TRUE)
 }
 
 .bt_JAGS_marglik_merge_source_data <- function(out, data){

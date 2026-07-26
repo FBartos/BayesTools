@@ -43,11 +43,14 @@ metadata.}
 \item{formula_list}{named list of formulas to be added to the model
 (names correspond to the parameter name created by each of the formula). For
 \code{BayesTools_fit} objects with stored formula-design metadata, formula
-inputs can usually be omitted; if supplied, they are rebuilt only to check
-consistency with the fitted design.}
+inputs can be omitted; if supplied, they are rebuilt only to check exact
+consistency with the fitted design and never replace fitted replay metadata.
+Fits without versioned formula-design metadata must be refitted.}
 
 \item{formula_data_list}{named list of data frames containing data for each formula
-(names of the lists correspond to the parameter name created by each of the formula)}
+(names of the lists correspond to the parameter name created by each
+formula). When supplied for a fitted formula, these data must exactly match
+the fitted original-scale formula source snapshot.}
 
 \item{formula_prior_list}{named list of named lists of prior distributions
 (names of the lists correspond to the parameter name created by each of the formula and
@@ -82,7 +85,8 @@ random effects requires the \code{prior_random()} interface because the
 stochastic bridge coordinates are the standardized latent effects and
 correlation primitives. For \code{BayesTools_fit} objects with stored
 formula-design metadata, this can be omitted unless formula inputs are being
-supplied for a consistency check.}
+supplied for a strict consistency check. Supplied callbacks never replace
+callbacks stored in the fitted formula design.}
 
 \item{formula_random_effects_compile_list}{optional named list of
 \code{random_effects_compile()} objects. When formula inputs are supplied for
@@ -122,8 +126,11 @@ Row-shaped external random-effect SD sources, such as
 bridge sampling. Supply them either as posterior columns named
 \code{tau[1]}, ..., \code{tau[n]} with non-negative lower bounds in \code{add_bounds}, or
 as \code{parameter_source("tau", shape = "row", values = function(parameters, data, n_rows) ...)}. The \code{values} function is evaluated from the named
-\code{parameters} object and row-aligned data; it must return finite,
-non-negative row values on the support of the model.
+\code{parameters} object and the original-scale formula data stored at fit time;
+it must return finite, non-negative row values on the support of the model.
+Any callback data must therefore be included in \code{formula_data_list} when
+fitting. Data supplied only to \code{JAGS_bridgesampling()} do not extend or
+replace the fitted source snapshot.
 
 When \code{bridge_context = TRUE}, the callback receives an object of class
 \code{BayesTools_bridge_context} with fields \code{state}, \code{state_matrix}, \code{nodes},

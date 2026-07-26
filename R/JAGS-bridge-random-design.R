@@ -548,7 +548,7 @@
     names(source),
     c(
       "name", "shape", "kind", "owned",
-      "total_name", "total_suffix", "source"
+      "total_name", "total_suffix", "source", "values"
     )
   )]
   if(!is.null(source$source)){

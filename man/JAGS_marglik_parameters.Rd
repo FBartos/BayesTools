@@ -25,11 +25,14 @@ function}
 \item{formula_list}{named list of formulas to be added to the model
 (names correspond to the parameter name created by each of the formula). For
 \code{BayesTools_fit} objects with stored formula-design metadata, formula
-inputs can usually be omitted; if supplied, they are rebuilt only to check
-consistency with the fitted design.}
+inputs can be omitted; if supplied, they are rebuilt only to check exact
+consistency with the fitted design and never replace fitted replay metadata.
+Fits without versioned formula-design metadata must be refitted.}
 
 \item{formula_data_list}{named list of data frames containing data for each formula
-(names of the lists correspond to the parameter name created by each of the formula)}
+(names of the lists correspond to the parameter name created by each
+formula). When supplied for a fitted formula, these data must exactly match
+the fitted original-scale formula source snapshot.}
 
 \item{formula_prior_list}{named list of named lists of prior distributions
 (names of the lists correspond to the parameter name created by each of the formula and

@@ -22,10 +22,13 @@
 #' @param formula_list named list of formulas to be added to the model
 #' (names correspond to the parameter name created by each of the formula). For
 #' \code{BayesTools_fit} objects with stored formula-design metadata, formula
-#' inputs can usually be omitted; if supplied, they are rebuilt only to check
-#' consistency with the fitted design.
+#' inputs can be omitted; if supplied, they are rebuilt only to check exact
+#' consistency with the fitted design and never replace fitted replay metadata.
+#' Fits without versioned formula-design metadata must be refitted.
 #' @param formula_data_list named list of data frames containing data for each formula
-#' (names of the lists correspond to the parameter name created by each of the formula)
+#' (names of the lists correspond to the parameter name created by each
+#' formula). When supplied for a fitted formula, these data must exactly match
+#' the fitted original-scale formula source snapshot.
 #' @param formula_prior_list named list of named lists of prior distributions
 #' (names of the lists correspond to the parameter name created by each of the formula and
 #' the names of the prior distribution correspond to the parameter names) of parameters specified
@@ -61,7 +64,8 @@
 #' stochastic bridge coordinates are the standardized latent effects and
 #' correlation primitives. For \code{BayesTools_fit} objects with stored
 #' formula-design metadata, this can be omitted unless formula inputs are being
-#' supplied for a consistency check.
+#' supplied for a strict consistency check. Supplied callbacks never replace
+#' callbacks stored in the fitted formula design.
 #' @param formula_random_effects_compile_list optional named list of
 #' `random_effects_compile()` objects. When formula inputs are supplied for
 #' bridge-sampling rebuild/validation, this must match the fitted
@@ -79,8 +83,11 @@
 #' `tau[1]`, ..., `tau[n]` with non-negative lower bounds in `add_bounds`, or
 #' as `parameter_source("tau", shape = "row", values = function(parameters,
 #' data, n_rows) ...)`. The `values` function is evaluated from the named
-#' `parameters` object and row-aligned data; it must return finite,
-#' non-negative row values on the support of the model.
+#' `parameters` object and the original-scale formula data stored at fit time;
+#' it must return finite, non-negative row values on the support of the model.
+#' Any callback data must therefore be included in `formula_data_list` when
+#' fitting. Data supplied only to `JAGS_bridgesampling()` do not extend or
+#' replace the fitted source snapshot.
 #'
 #' When `bridge_context = TRUE`, the callback receives an object of class
 #' `BayesTools_bridge_context` with fields `state`, `state_matrix`, `nodes`,

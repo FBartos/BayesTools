@@ -550,6 +550,7 @@ test_that("JAGS marglik with formula works", {
   set.seed(1)
   model   <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
   samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 5000, quiet = TRUE, progress.bar = "none")
+  attr(samples, "formula_design") <- list(mu = formula_result$formula_design)
 
   # Compute marginal likelihood using formula interface
   marglik <- JAGS_bridgesampling(
@@ -599,6 +600,7 @@ test_that("JAGS marglik with exp(intercept) formula works", {
   set.seed(1)
   model   <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
   samples <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 5000, quiet = TRUE, progress.bar = "none")
+  attr(samples, "formula_design") <- list(mu = formula_result$formula_design)
 
   # Compute marginal likelihood using formula interface
   marglik <- JAGS_bridgesampling(
@@ -897,7 +899,7 @@ test_that("JAGS bridgesampling errors on fitted/rebuilt random design mismatches
       formula_random_prior_list = list(mu = fixture$prior_random_list),
       maxiter = 10
     ),
-    "group levels",
+    "original formula source data differ",
     fixed = TRUE
   )
 })
@@ -959,6 +961,7 @@ test_that("JAGS bridgesampling supports formula random effects through prior_ran
     quiet = TRUE,
     progress.bar = "none"
   )
+  attr(samples, "formula_design") <- list(mu = formula_result$formula_design)
 
   marglik <- JAGS_bridgesampling(
     fit = samples,
@@ -1031,6 +1034,7 @@ test_that("JAGS bridgesampling supports continuous-time CAR formula random effec
     quiet = TRUE,
     progress.bar = "none"
   )
+  attr(samples, "formula_design") <- list(mu = formula_result$formula_design)
 
   marglik <- JAGS_bridgesampling(
     fit = samples,
@@ -1105,6 +1109,7 @@ test_that("JAGS bridgesampling supports Dirichlet variance-allocation random eff
     quiet = TRUE,
     progress.bar = "none"
   )
+  attr(samples, "formula_design") <- list(mu = formula_result$formula_design)
 
   marglik <- JAGS_bridgesampling(
     fit = samples,
@@ -1219,20 +1224,21 @@ test_that("JAGS bridgesampling reconstructs row-indexed external SD sources from
 
   graft_samples <- samples
   attr(graft_samples, "formula_design") <- list(mu = no_values_formula_result$formula_design)
-  graft_marglik <- JAGS_bridgesampling(
-    fit = graft_samples,
-    log_posterior = STANDARD_LOG_POSTERIOR,
-    data = list(),
-    prior_list = NULL,
-    formula_list = list(mu = formula),
-    formula_data_list = list(mu = df_test),
-    formula_prior_list = list(mu = prior_list),
-    formula_random_prior_list = list(mu = prior_random_list),
-    maxiter = 1000
+  expect_error(
+    JAGS_bridgesampling(
+      fit = graft_samples,
+      log_posterior = STANDARD_LOG_POSTERIOR,
+      data = list(),
+      prior_list = NULL,
+      formula_list = list(mu = formula),
+      formula_data_list = list(mu = df_test),
+      formula_prior_list = list(mu = prior_list),
+      formula_random_prior_list = list(mu = prior_random_list),
+      maxiter = 1000
+    ),
+    "scale/allocation metadata differ",
+    fixed = TRUE
   )
-
-  expect_s3_class(graft_marglik, "bridge")
-  expect_equal(graft_marglik$logml, 0, tolerance = 0.08)
 })
 
 test_that("JAGS bridgesampling gives unit marglik for prior-only random-effect settings", {

@@ -3719,9 +3719,21 @@ test_that("parameter and random SD sources validate simple external references",
     )
   )
   expect_equal(source_data$raw_x, c(1, 2))
-  expect_equal(source_data$formula_only, c(3, 4))
   expect_equal(source_data$source_only, c(5, 6))
+  expect_false("formula_only" %in% names(source_data))
   expect_false("design_only" %in% names(source_data))
+  expect_error(
+    BayesTools:::.bt_JAGS_marglik_parameter_source_data(
+      model_data = list(raw_x = c(9, 9)),
+      formula_data = NULL,
+      design = structure(
+        list(source_data = data.frame(raw_x = c(1, 2))),
+        class = "BayesTools_formula_design"
+      )
+    ),
+    "conflict with the fitted source snapshot",
+    fixed = TRUE
+  )
   expect_error(
     BayesTools:::.bt_JAGS_marglik_parameter_source_data(
       model_data = list(raw_x = c(9, 9)),
@@ -4898,12 +4910,16 @@ test_that("external variance allocation sources generate scalar and row-indexed 
       weights = prior("dirichlet", list(alpha = c(2, 3)))
     )
   )
+  row_values_data <- transform(
+    df,
+    tau_factor = c(1, 2, 3, 4)
+  )
   row_values_result <- JAGS_formula(
     formula = ~ 1 +
       random(1 | study, name = "study", covariance = "diag") +
       random(1 | drug, name = "drug", covariance = "diag"),
     parameter = "mu",
-    data = df,
+    data = row_values_data,
     prior_list = fixed_priors,
     prior_random = value_prior_random
   )
@@ -4971,14 +4987,15 @@ test_that("external variance allocation sources generate scalar and row-indexed 
     bridge_preflight_fit
   )
   bridge_preflight_fit <- coda::mcmc(bridge_preflight_fit)
-  attr(bridge_preflight_fit, "formula_design") <- list(mu = row_result$formula_design)
-  raw_formula_data <- transform(df, tau_factor = c(1, 2, 3, 4))
+  attr(bridge_preflight_fit, "formula_design") <- list(
+    mu = row_values_result$formula_design
+  )
   bridge_value_context <- BayesTools:::.bt_JAGS_bridge_formula_context(
     fit = bridge_preflight_fit,
     formula_list = list(mu = ~ 1 +
       random(1 | study, name = "study", covariance = "diag") +
       random(1 | drug, name = "drug", covariance = "diag")),
-    formula_data_list = list(mu = raw_formula_data),
+    formula_data_list = list(mu = row_values_data),
     formula_prior_list = list(mu = fixed_priors),
     formula_scale_list = NULL,
     formula_random_prior_list = list(mu = value_prior_random)
@@ -4988,12 +5005,12 @@ test_that("external variance allocation sources generate scalar and row-indexed 
       bridge_value_context$formula_design_list$mu$random_effects[[1]]
     )
   ))
-  expect_equal(bridge_value_context$formula_data_list$mu$tau_factor, c(1, 2, 3, 4))
+  expect_null(bridge_value_context$formula_data_list)
   expect_equal(
     JAGS_marglik_parameters_formula(
       samples = row_value_samples,
       formula_list = bridge_value_context$formula_list,
-      formula_data_list = bridge_value_context$formula_data_list,
+      formula_data_list = NULL,
       formula_prior_list = bridge_value_context$formula_prior_list,
       prior_list_parameters = list(total_tau = 2),
       formula_design_list = bridge_value_context$formula_design_list
@@ -5137,9 +5154,13 @@ test_that("external variance allocation sources generate scalar and row-indexed 
     "must return a numeric vector of length 4",
     fixed = TRUE
   )
+  missing_source_fit <- bridge_preflight_fit
+  attr(missing_source_fit, "formula_design") <- list(
+    mu = row_result$formula_design
+  )
   expect_error(
     JAGS_bridgesampling(
-      fit = bridge_preflight_fit,
+      fit = missing_source_fit,
       log_posterior = function(parameters, data) 0,
       data = list()
     ),
@@ -7358,7 +7379,7 @@ test_that("random-effect formulas are guarded in fixed-only downstream evaluator
         id = random_block(sd = prior("gamma", list(2, 2)))
       ))
     ),
-    "requires posterior samples of standardized latent random effects",
+    "supplied formula inputs cannot replace fitted replay metadata",
     fixed = TRUE
   )
   expect_error(

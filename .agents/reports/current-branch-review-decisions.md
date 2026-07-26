@@ -16,7 +16,7 @@ mean **implemented**.
 | D02 | Decision confirmed; implementation pending | Add an early supported-formula grammar check |
 | D03 | Decision confirmed; implementation pending | Add recursive strict-positive prior-support validation |
 | D04 | Implemented and verified | Reject callbacks that depend on formula outputs with sampled random effects |
-| D05 | Decision confirmed; implementation pending | Remove bridge-replay callback grafting and legacy source fallbacks |
+| D05 | Implemented and verified | Remove bridge-replay callback grafting and legacy source fallbacks |
 | D06 | Decision confirmed; implementation pending | Add the explicit fitted-row-index contract for posterior row sources |
 | D07 | Decision confirmed; implementation pending | Add joint marginal draws under known group covariance |
 | D08 | Implemented and verified | No remaining work |
@@ -271,6 +271,18 @@ authority. Supplied formula data may be used only to verify exact replay inputs,
 not to replace executable source semantics. A fit missing required source
 metadata should fail with a clear refit instruction. Remove the callback-graft
 and legacy rebuild fallbacks rather than retaining a compatibility mode.
+
+**Implementation outcome.** Bridge formula replay now requires versioned fitted
+formula-design metadata. Supplied formula inputs are used only for strict
+comparison and the returned execution context always uses the fitted design,
+source snapshot, and callback. Original source data and callback functions are
+part of replay comparison; conflicts are rejected. Callback data are read only
+from the fitted original-scale formula snapshot, while overlapping bridge data
+are equality-checked and unrelated bridge data cannot become new callback
+inputs. The callback-graft helpers and missing-design rebuild fallback were
+removed. The complete unit profile passed 7,837 assertions, and the targeted
+real-JAGS marginal-likelihood suite passed 6,203 assertions, with no failures
+or warnings.
 
 ## D06. Prediction row identity beyond simple subsets
 

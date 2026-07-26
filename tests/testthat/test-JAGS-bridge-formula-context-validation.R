@@ -12,12 +12,27 @@ skip_if_not_test_profile("unit")
   )
 }
 
+.bridge_formula_validation_design <- function(){
+
+  formula_data <- data.frame(.row = 1)
+  out <- lapply(c("mu", "sigma"), function(parameter){
+    JAGS_formula(
+      formula = ~ 1,
+      parameter = parameter,
+      data = formula_data,
+      prior_list = list(intercept = prior("point", list(0)))
+    )$formula_design
+  })
+  stats::setNames(out, c("mu", "sigma"))
+}
+
 .bridge_formula_validation_context <- function(inputs, fitted_design = NULL){
 
   fit <- list()
-  if(!is.null(fitted_design)){
-    attr(fit, "formula_design") <- fitted_design
+  if(is.null(fitted_design)){
+    fitted_design <- .bridge_formula_validation_design()
   }
+  attr(fit, "formula_design") <- fitted_design
 
   do.call(
     BayesTools:::.bt_JAGS_bridge_formula_context,
@@ -126,7 +141,7 @@ test_that("bridge formula inputs preserve empty optional lists", {
 
   rebuildability <- do.call(
     BayesTools:::.bt_JAGS_bridge_formula_inputs_rebuildability,
-    c(inputs, list(has_fitted_formula_design = FALSE))
+    inputs
   )
 
   expect_identical(
@@ -141,14 +156,27 @@ test_that("bridge formula name errors retain fitted-design mismatch context", {
   names(inputs$formula_prior_list) <- c("mu", "mu")
 
   expect_error(
-    .bridge_formula_validation_context(
-      inputs,
-      fitted_design = list(mu = list())
-    ),
+    .bridge_formula_validation_context(inputs),
     paste0(
       "JAGS_bridgesampling() supplied formula-related inputs do not fully ",
       "match the fitted formula design. First mismatch: The ",
       "'formula_prior_list' argument must not contain duplicate names"
+    ),
+    fixed = TRUE
+  )
+})
+
+test_that("bridge formula inputs cannot replace missing fitted metadata", {
+
+  expect_error(
+    do.call(
+      BayesTools:::.bt_JAGS_bridge_formula_context,
+      c(list(fit = list()), .bridge_formula_validation_inputs())
+    ),
+    paste0(
+      "the fitted formula-design metadata are missing. Refit the model with ",
+      "this version of BayesTools; supplied formula inputs cannot replace ",
+      "fitted replay metadata."
     ),
     fixed = TRUE
   )
@@ -232,5 +260,83 @@ test_that("bridge formula context ignores nonsemantic prior attributes", {
   expect_s3_class(
     context$formula_design_list$mu,
     "BayesTools_formula_design"
+  )
+})
+
+test_that("bridge formula context treats fitted source semantics as authoritative", {
+
+  formula_data <- data.frame(
+    id = factor(c("a", "b", "a"), levels = c("a", "b")),
+    tau_factor = c(1, 2, 3)
+  )
+  fitted_source <- parameter_source(
+    "tau",
+    shape = "row",
+    values = function(parameters, data, n_rows){
+      data$tau_factor[seq_len(n_rows)]
+    }
+  )
+  fitted_prior_random <- prior_random(
+    id = random_block(sd_source = random_sd_source(fitted_source))
+  )
+  formula_priors <- list(intercept = prior("normal", list(0, 1)))
+  formula <- ~ 1 + random(1 | id, name = "id", covariance = "diag")
+  fitted <- JAGS_formula(
+    formula = formula,
+    parameter = "mu",
+    data = formula_data,
+    prior_list = formula_priors,
+    prior_random = fitted_prior_random
+  )
+  fit <- list()
+  attr(fit, "formula_design") <- list(mu = fitted$formula_design)
+  context_args <- list(
+    fit = fit,
+    formula_list = list(mu = formula),
+    formula_data_list = list(mu = formula_data),
+    formula_prior_list = list(mu = formula_priors),
+    formula_scale_list = NULL,
+    formula_random_prior_list = list(mu = fitted_prior_random)
+  )
+
+  context <- do.call(
+    BayesTools:::.bt_JAGS_bridge_formula_context,
+    context_args
+  )
+  expect_identical(
+    context$formula_design_list$mu,
+    fitted$formula_design
+  )
+  expect_null(context$formula_data_list)
+
+  changed_callback <- parameter_source(
+    "tau",
+    shape = "row",
+    values = function(parameters, data, n_rows){
+      2 * data$tau_factor[seq_len(n_rows)]
+    }
+  )
+  callback_args <- context_args
+  callback_args$formula_random_prior_list <- list(mu = prior_random(
+    id = random_block(sd_source = random_sd_source(changed_callback))
+  ))
+  expect_error(
+    do.call(
+      BayesTools:::.bt_JAGS_bridge_formula_context,
+      callback_args
+    ),
+    "scale/allocation metadata differ",
+    fixed = TRUE
+  )
+
+  source_data_args <- context_args
+  source_data_args$formula_data_list$mu$tau_factor <- c(3, 2, 1)
+  expect_error(
+    do.call(
+      BayesTools:::.bt_JAGS_bridge_formula_context,
+      source_data_args
+    ),
+    "original formula source data differ for parameter 'mu'",
+    fixed = TRUE
   )
 })
