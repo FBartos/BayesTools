@@ -1,36 +1,36 @@
-                                Mean    SD 0.025   0.5 0.975 Inclusion BF
-(mu) intercept                 0.614 0.048 0.514 0.613 0.709          Inf
-(mu) x_cont1[-1SD]             0.431 0.065 0.306 0.430 0.563          Inf
-(mu) x_cont1[0SD]              0.614 0.047 0.517 0.613 0.711          Inf
-(mu) x_cont1[1SD]              0.797 0.061 0.680 0.798 0.911          Inf
-(mu) x_fac2t[A]                0.613 0.056 0.500 0.615 0.716          Inf
-(mu) x_fac2t[B]                0.620 0.056 0.512 0.619 0.731          Inf
-(mu) x_fac3md[A]               0.768 0.076 0.625 0.765 0.915          Inf
-(mu) x_fac3md[B]               0.519 0.079 0.355 0.523 0.673          Inf
-(mu) x_fac3md[C]               0.551 0.076 0.403 0.552 0.692          Inf
-(mu) x_cont1:x_fac3md[-1SD, A] 0.557 0.106 0.349 0.555 0.771          Inf
-(mu) x_cont1:x_fac3md[0SD, A]  0.769 0.076 0.633 0.767 0.916          Inf
-(mu) x_cont1:x_fac3md[1SD, A]  0.982 0.096 0.791 0.982 1.163          Inf
-(mu) x_cont1:x_fac3md[-1SD, B] 0.374 0.114 0.150 0.375 0.587          Inf
-(mu) x_cont1:x_fac3md[0SD, B]  0.518 0.079 0.353 0.521 0.673          Inf
-(mu) x_cont1:x_fac3md[1SD, B]  0.662 0.101 0.454 0.662 0.858          Inf
-(mu) x_cont1:x_fac3md[-1SD, C] 0.373 0.104 0.176 0.375 0.571        8.550
-(mu) x_cont1:x_fac3md[0SD, C]  0.550 0.077 0.399 0.551 0.694          Inf
-(mu) x_cont1:x_fac3md[1SD, C]  0.727 0.108 0.515 0.724 0.938          Inf
-[0;31mmu_intercept: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
-[0;31mmu_x_cont1[-1SD]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
-[0;31mmu_x_cont1[0SD]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
-[0;31mmu_x_cont1[1SD]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
-[0;31mmu_x_fac2t[A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
-[0;31mmu_x_fac2t[B]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
-[0;31mmu_x_fac3md[A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
-[0;31mmu_x_fac3md[B]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
-[0;31mmu_x_fac3md[C]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
-[0;31mmu_x_cont1__xXx__x_fac3md[-1SD, A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
-[0;31mmu_x_cont1__xXx__x_fac3md[0SD, A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
-[0;31mmu_x_cont1__xXx__x_fac3md[1SD, A]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
-[0;31mmu_x_cont1__xXx__x_fac3md[-1SD, B]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
-[0;31mmu_x_cont1__xXx__x_fac3md[0SD, B]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
-[0;31mmu_x_cont1__xXx__x_fac3md[1SD, B]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
-[0;31mmu_x_cont1__xXx__x_fac3md[0SD, C]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
-[0;31mmu_x_cont1__xXx__x_fac3md[1SD, C]: Posterior samples do not span both sides of the null hypothesis. The Savage-Dickey density ratio is likely to be overestimated.[0m
+                                Mean    SD 0.025   0.5 0.975  Inclusion BF
+(mu) intercept                 0.615 0.046 0.523 0.616 0.704           Inf
+(mu) x_cont1[-1SD]             0.429 0.064 0.295 0.430 0.556 1.341640e+107
+(mu) x_cont1[0SD]              0.614 0.047 0.521 0.615 0.704           Inf
+(mu) x_cont1[1SD]              0.799 0.062 0.671 0.799 0.922           Inf
+(mu) x_fac2t[A]                0.614 0.054 0.503 0.615 0.717           Inf
+(mu) x_fac2t[B]                0.621 0.053 0.514 0.620 0.722           Inf
+(mu) x_fac3md[A]               0.769 0.073 0.632 0.768 0.920           Inf
+(mu) x_fac3md[B]               0.518 0.078 0.373 0.519 0.662 8.685878e+105
+(mu) x_fac3md[C]               0.552 0.075 0.411 0.552 0.697 1.092739e+165
+(mu) x_cont1:x_fac3md[-1SD, A] 0.558 0.106 0.358 0.560 0.763  3.423170e+04
+(mu) x_cont1:x_fac3md[0SD, A]  0.770 0.073 0.629 0.770 0.920           Inf
+(mu) x_cont1:x_fac3md[1SD, A]  0.982 0.094 0.805 0.982 1.180           Inf
+(mu) x_cont1:x_fac3md[-1SD, B] 0.367 0.110 0.153 0.368 0.584  6.318400e+04
+(mu) x_cont1:x_fac3md[0SD, B]  0.518 0.078 0.370 0.520 0.661 1.104270e+105
+(mu) x_cont1:x_fac3md[1SD, B]  0.668 0.105 0.458 0.665 0.871  4.352770e+95
+(mu) x_cont1:x_fac3md[-1SD, C] 0.372 0.104 0.154 0.368 0.583  1.335740e+04
+(mu) x_cont1:x_fac3md[0SD, C]  0.552 0.075 0.411 0.553 0.703 2.463576e+164
+(mu) x_cont1:x_fac3md[1SD, C]  0.733 0.107 0.534 0.731 0.939 6.542795e+137
+[0;31mmu_intercept: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
+[0;31mmu_x_cont1[-1SD]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
+[0;31mmu_x_cont1[0SD]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
+[0;31mmu_x_cont1[1SD]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
+[0;31mmu_x_fac2t[A]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
+[0;31mmu_x_fac2t[B]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
+[0;31mmu_x_fac3md[A]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
+[0;31mmu_x_fac3md[B]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
+[0;31mmu_x_fac3md[C]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
+[0;31mmu_x_cont1__xXx__x_fac3md[-1SD, A]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
+[0;31mmu_x_cont1__xXx__x_fac3md[0SD, A]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
+[0;31mmu_x_cont1__xXx__x_fac3md[1SD, A]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
+[0;31mmu_x_cont1__xXx__x_fac3md[0SD, B]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
+[0;31mmu_x_cont1__xXx__x_fac3md[1SD, B]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
+[0;31mmu_x_cont1__xXx__x_fac3md[-1SD, C]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
+[0;31mmu_x_cont1__xXx__x_fac3md[0SD, C]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m
+[0;31mmu_x_cont1__xXx__x_fac3md[1SD, C]: Posterior samples do not span both sides of the null hypothesis. The posterior KDE height is estimated from Gaussian kernel tails and may be unstable.[0m

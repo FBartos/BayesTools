@@ -583,14 +583,14 @@ test_that("Summary table advanced features work correctly", {
     "sigma"
   )
   expected_formula_values <- summary_values(
-    "(mu) intercept"        = c( 0.025, 0.106, -0.174,  0.028,  0.246),
-    "(mu) x_cont1"          = c( 0.363, 0.126,  0.122,  0.359,  0.612),
-    "(mu) x_cont2"          = c(-0.032, 0.110, -0.234, -0.030,  0.180),
-    "(mu) x_cont1:x_cont2"  = c(-0.378, 0.150, -0.684, -0.375, -0.101),
-    "sigma"                 = c( 1.044, 0.075,  0.913,  1.038,  1.202)
+    "(mu) intercept"        = c( 0.035, 0.104, -0.178,  0.040,  0.243),
+    "(mu) x_cont1"          = c( 0.361, 0.123,  0.124,  0.365,  0.587),
+    "(mu) x_cont2"          = c(-0.029, 0.109, -0.241, -0.028,  0.190),
+    "(mu) x_cont1:x_cont2"  = c(-0.391, 0.149, -0.685, -0.390, -0.104),
+    "sigma"                 = c( 1.040, 0.077,  0.905,  1.033,  1.203)
   )
   expected_transform_values <- expected_formula_values
-  expected_transform_values["(mu) intercept", ] <- c(1.032, 0.110, 0.841, 1.029, 1.278)
+  expected_transform_values["(mu) intercept", ] <- c(1.041, 0.109, 0.837, 1.040, 1.276)
 
   expect_summary_row_order(runjags_summary_prefix_true, expected_formula_rows_prefixed)
   expect_summary_row_order(runjags_summary_prefix_false, expected_formula_rows_unprefixed)
@@ -703,10 +703,10 @@ test_that("Summary table advanced features work correctly", {
   expected_dual_rows <- c("(mu) intercept", "(mu) x_mu", "(log_sigma) intercept", "(log_sigma) x_sigma")
   expected_log_sigma_rows <- c("(log_sigma) intercept", "(log_sigma) x_sigma")
   expected_dual_values <- summary_values(
-    "(mu) intercept"        = c( 2.498, 0.008,  2.483,  2.498,  2.514),
-    "(mu) x_mu"             = c( 0.631, 0.008,  0.615,  0.631,  0.646),
-    "(log_sigma) intercept" = c( 0.285, 0.007,  0.273,  0.285,  0.298),
-    "(log_sigma) x_sigma"   = c(-0.322, 0.024, -0.370, -0.322, -0.273)
+    "(mu) intercept"        = c( 2.498, 0.008,  2.482,  2.498,  2.514),
+    "(mu) x_mu"             = c( 0.631, 0.008,  0.617,  0.631,  0.646),
+    "(log_sigma) intercept" = c( 0.285, 0.006,  0.273,  0.285,  0.298),
+    "(log_sigma) x_sigma"   = c(-0.324, 0.024, -0.370, -0.325, -0.280)
   )
   expect_summary_row_order(runjags_summary_removal_01, expected_dual_rows)
   expect_summary_row_order(runjags_summary_removal_02, expected_log_sigma_rows)
