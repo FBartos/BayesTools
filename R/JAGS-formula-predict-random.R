@@ -253,6 +253,19 @@
   group_map <- prediction$group_map
   n_rows <- nrow(model_matrix)
   n_draws <- nrow(posterior)
+  .bt_random_effect_check_memory(
+    estimate = .bt_random_effect_output_memory_estimate(
+      operation = "conditional random-effect prediction",
+      n_rows = n_rows,
+      n_draws = n_draws
+    ),
+    block_name = random_term$block_name,
+    alternative = paste0(
+      "Reduce the number of prediction rows or posterior draws, or select ",
+      "fewer random-effect blocks. Raise the option (or set it to Inf) only ",
+      "after verifying the operation's memory budget."
+    )
+  )
   output <- matrix(0, nrow = n_rows, ncol = n_draws)
   fitted_n_groups <- length(random_term$group_levels)
   new_row <- group_map > fitted_n_groups
@@ -1065,6 +1078,24 @@
       }
     }
   }
+
+  .bt_random_effect_check_memory(
+    estimate = .bt_random_effect_design_memory_estimate(
+      n_rows = nrow(prediction_data),
+      n_columns = random_term$n_columns,
+      n_groups = random_term$n_groups +
+        if(isTRUE(allow_new_groups)) nrow(prediction_data) else 0L,
+      monitor_policy = random_term$monitor,
+      structure = random_structure,
+      compile_mode = random_term$compile_mode
+    ),
+    block_name = random_term$block_name,
+    alternative = paste0(
+      "Reduce the number of prediction rows or random-effect columns, or ",
+      "request fewer random-effect blocks. Raise the option (or set it to ",
+      "Inf) only after verifying the operation's memory budget."
+    )
+  )
 
   random_design <- .bt_random_effect_design_matrix(
     random_term$term_formula,

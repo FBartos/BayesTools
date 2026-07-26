@@ -20,7 +20,7 @@ mean **implemented**.
 | D06 | Implemented and verified | No remaining work |
 | D07 | Implemented and verified | No remaining work |
 | D08 | Implemented and verified | No remaining work |
-| D09 | Decision confirmed; implementation pending | Add a configurable 16 GiB hard ceiling on estimated peak allocation |
+| D09 | Implemented and verified | No remaining work for the confirmed guard; sparse construction remains a future architectural improvement |
 | D10 | Resolved by NF10/NF18 | Remaining CAR representability issue is isolated as D31 |
 | D11 | Partially implemented | Time budget already resets; remove `seed` and preserve the last valid fit on error |
 | D12 | Decision confirmed; implementation pending | Add three-state diagnostics and explicit downstream monitor selection |
@@ -537,6 +537,34 @@ ceiling. If a warning-only policy was intended, specify that explicitly; I do
 not recommend it.
 
 decision: ok, make sure there is a package option to change this
+
+**Audit status: implemented and verified.**
+
+**Implementation record.** Random-effect operations now use the package option
+`BayesTools.random_effects_memory_limit_bytes`, measured in bytes and defaulting
+to `16 * 1024^3` (16 GiB). A positive finite value changes the hard ceiling;
+`Inf` explicitly disables the guard. Invalid, missing, zero, and negative
+values are rejected.
+
+Formula construction determines random-design width from a one-row prototype
+(or directly from unique CAR time coordinates) and checks the estimate before
+constructing the full dense matrix. The conservative design estimate includes
+four simultaneous design-sized payloads for construction/copy/serialization,
+row maps, sampled group state and requested monitor state, and covariance
+working matrices. Prediction design construction uses the same guard. Separate
+output guards cover conditional and marginal samples and dense or diagonal
+marginal covariance; the dense covariance estimate includes the full
+`draw x row x row` payload and a three-copy peak working set.
+
+Errors report the block, dimensions, primary payload, conservative peak
+estimate, configured ceiling, and a concrete lower-memory alternative. They
+also state that passing the deterministic guard cannot promise allocation
+success. Package documentation explains the option and the role of `Inf`.
+Tests verify the default and validation contract, exact payload accounting,
+pre-allocation stopping before the full design constructor, the `Inf` override,
+public dense-covariance rejection, and the diagonal alternative. Invalid CAR
+formulas continue to produce their canonical grammar/type errors. The complete
+unit profile passed 7,871 assertions with no failures or warnings.
 
 ## D10. Correlation and kernel boundary policy
 

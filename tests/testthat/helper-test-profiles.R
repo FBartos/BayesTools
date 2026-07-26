@@ -50,6 +50,7 @@ bayestools_test_profile_contexts <- list(
     "random-effects-correlation-draws",
     "random-effects-independent-scalability",
     "random-effects-marginal-covariance",
+    "random-effects-memory",
     "random-effects-structured-local",
     "random-effects-summary-posterior",
     "selection-kernels",

@@ -401,13 +401,43 @@
     contrast_overrides = block_prior$contrasts
   )
 
+  preserve_no_intercept_contrasts <- !random_structure %in% c(
+    "cs", "hcs", "ar1", "car", "har"
+  )
+  design_preflight <- .bt_random_effect_design_preflight(
+    formula = formula,
+    data = data,
+    preserve_no_intercept_contrasts = preserve_no_intercept_contrasts,
+    structure = random_structure,
+    block_name = random_term$block_name
+  )
+  if(!is.null(design_preflight$n_columns)){
+    .bt_random_effect_check_memory(
+      estimate = .bt_random_effect_design_memory_estimate(
+        n_rows = design_preflight$n_rows,
+        n_columns = design_preflight$n_columns,
+        n_groups = length(grouping_factor_levels),
+        monitor_policy = monitor_policy,
+        structure = random_structure,
+        compile_mode = compile_mode
+      ),
+      block_name = random_term$block_name,
+      alternative = paste0(
+        "Reduce the number of rows or random-effect columns, simplify the ",
+        "random-effect design, or use a sparse/indexed representation. Raise ",
+        "the option (or set it to Inf) only after verifying the operation's ",
+        "memory budget."
+      )
+    )
+  }
+
   # get the design matrix. For no-intercept random formulas, add an intercept
   # while constructing the matrix and drop it afterwards. This preserves
   # BayesTools factor-prior contrasts instead of forcing raw level indicators.
   random_design <- .bt_random_effect_design_matrix(
     formula,
     data,
-    preserve_no_intercept_contrasts = !random_structure %in% c("cs", "hcs", "ar1", "car", "har"),
+    preserve_no_intercept_contrasts = preserve_no_intercept_contrasts,
     structure = random_structure,
     block_name = random_term$block_name
   )

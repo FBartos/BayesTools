@@ -463,6 +463,30 @@ random_effects_marginal_variance_factors <- function(
       random_term = random_term,
       data = data
     )
+    .bt_random_effect_check_memory(
+      estimate = .bt_random_effect_output_memory_estimate(
+        operation = "random-effect marginal covariance",
+        n_rows = nrow(block_data$model_matrix),
+        n_draws = nrow(posterior),
+        covariance = TRUE,
+        diagonal_only = diagonal_only
+      ),
+      block_name = random_term$block_name,
+      alternative = if(isTRUE(diagonal_only)){
+        paste0(
+          "Reduce the number of rows, posterior draws, or selected blocks. ",
+          "Raise the option (or set it to Inf) only after verifying the ",
+          "operation's memory budget."
+        )
+      }else{
+        paste0(
+          "Use diagonal_only = TRUE when only marginal variances are needed, ",
+          "or reduce the number of rows, posterior draws, or selected blocks. ",
+          "Raise the option (or set it to Inf) only after verifying the ",
+          "operation's memory budget."
+        )
+      }
+    )
     prediction_rows <- if(.bt_random_effect_has_row_indexed_external_sd(random_term)){
       .bt_random_effect_prediction_fitted_rows(
         random_term = random_term,
