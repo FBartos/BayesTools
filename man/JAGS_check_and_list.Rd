@@ -48,7 +48,7 @@ defaults to \code{chains}}
 
 \item{silent}{whether the function should proceed silently, defaults to \code{TRUE}}
 
-\item{seed}{seed for random number generation}
+\item{seed}{seed for random number generation by \code{JAGS_fit()}.}
 
 \item{check_mins}{named list of minimal values for which
 should some input be checked. Defaults to:

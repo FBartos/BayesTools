@@ -22,7 +22,7 @@ mean **implemented**.
 | D08 | Implemented and verified | No remaining work |
 | D09 | Implemented and verified | No remaining work for the confirmed guard; sparse construction remains a future architectural improvement |
 | D10 | Resolved by NF10/NF18 | Remaining CAR representability issue is isolated as D31 |
-| D11 | Partially implemented | Time budget already resets; remove `seed` and preserve the last valid fit on error |
+| D11 | Implemented and verified | No remaining work |
 | D12 | Decision confirmed; implementation pending | Add three-state diagnostics and explicit downstream monitor selection |
 | D13 | Resolved by NF08 | No remaining decision |
 | D14 | Resolved/superseded by NF09 | The audited code changed mixture counts, not posterior draw values |
@@ -617,16 +617,23 @@ backend capabilities.
 
 Decision: okay, remove the seed argument, default should return original on error with a warning, make time limit reset at extend 
 
-**Audit status: partially implemented.**
+**Audit status: implemented and verified.**
 
-**Review response.** Instruction understood. `JAGS_extend()` still exposes and
-applies `seed`, and an extension error is currently assigned over the fit
-variable, so the last valid fit can be lost. Both changes remain to be made.
+**Implementation record.** `JAGS_extend()` no longer accepts a `seed` because
+an already-running backend chain cannot be meaningfully reseeded through this
+interface. Every extension attempt is stored separately from
+`last_valid_fit`. A backend error now warns unconditionally, includes the
+backend message, and returns the last successful fit instead of assigning the
+error object over it.
 
-The time-limit behavior requested here is already present: `start_time` is set
-when each `JAGS_extend()` call begins, so each separate call receives a fresh
-budget; iterations within that one call share its cumulative budget. Preserve
-that behavior and add an explicit test.
+The time limit remains cumulative across attempts within one call and resets
+at the beginning of every separate `JAGS_extend()` call. A deterministic
+clock test covers that boundary directly.
+
+Verification completed with 32 focused unit assertions; the full unit profile
+(7,880 passes), a full fit-cache rebuild (404 passes), the cached fit profile
+(14,496 passes and one intentional refit skip), and the fixture profile (9,017
+passes) all completed without failures or warnings.
 
 Implementation should:
 

@@ -84,8 +84,7 @@ test_that("JAGS_extend validates runtime controls before extension", {
   invalid <- list(
     parallel = NA,
     cores = Inf,
-    silent = NA,
-    seed = NaN
+    silent = NA
   )
 
   for(name in names(invalid)){
@@ -96,4 +95,94 @@ test_that("JAGS_extend validates runtime controls before extension", {
       paste0("'", name, "'")
     )
   }
+})
+
+.jags_extend_test_fit <- function(){
+
+  fit <- structure(
+    list(),
+    class = c("runjags", "BayesTools_fit")
+  )
+  attr(fit, "prior_list") <- list()
+  attr(fit, "model_syntax") <- "model{}"
+  attr(fit, "required_packages") <- character()
+  attr(fit, "jags_modules") <- character()
+  attr(fit, "add_parameters") <- character()
+  fit
+}
+
+.jags_extend_test_control <- function(max_time = list(time = 60, unit = "secs")){
+  list(
+    max_Rhat = NULL,
+    min_ESS = NULL,
+    max_error = NULL,
+    max_SD_error = NULL,
+    max_time = max_time,
+    sample_extend = 1,
+    restarts = 1,
+    max_extend = 1,
+    check_indicators = FALSE
+  )
+}
+
+test_that("JAGS_extend preserves the last valid fit after a backend error", {
+
+  skip_if_not_installed("runjags")
+  fit <- .jags_extend_test_fit()
+  testthat::local_mocked_bindings(
+    extend.jags = function(...){
+      stop("backend exploded")
+    },
+    .package = "runjags"
+  )
+
+  expect_false("seed" %in% names(formals(JAGS_extend)))
+  expect_warning(
+    result <- JAGS_extend(
+      fit,
+      autofit_control = .jags_extend_test_control()
+    ),
+    "returning the last valid fit.*backend exploded"
+  )
+  expect_identical(result, fit)
+})
+
+test_that("JAGS_extend resets its time budget for every call", {
+
+  skip_if_not_installed("runjags")
+  fit <- .jags_extend_test_fit()
+  extension_calls <- 0L
+  clock_calls <- 0L
+  clock_values <- as.POSIXct(
+    c(
+      "2026-01-01 00:00:00",
+      "2026-01-01 00:00:01",
+      "2026-01-01 01:00:00",
+      "2026-01-01 01:00:01"
+    ),
+    tz = "UTC"
+  )
+  testthat::local_mocked_bindings(
+    extend.jags = function(runjags.object, ...){
+      extension_calls <<- extension_calls + 1L
+      runjags.object
+    },
+    .package = "runjags"
+  )
+  testthat::local_mocked_bindings(
+    .bt_jags_extend_time = function(){
+      clock_calls <<- clock_calls + 1L
+      clock_values[[clock_calls]]
+    },
+    JAGS_check_convergence = function(...) TRUE,
+    .package = "BayesTools"
+  )
+
+  control <- .jags_extend_test_control(
+    max_time = list(time = 2, unit = "secs")
+  )
+  expect_silent(JAGS_extend(fit, autofit_control = control))
+  expect_silent(JAGS_extend(fit, autofit_control = control))
+  expect_equal(extension_calls, 2L)
+  expect_equal(clock_calls, 4L)
 })

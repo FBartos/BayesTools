@@ -41,8 +41,7 @@ JAGS_extend(
     max_extend = 10, check_indicators = FALSE),
   parallel = FALSE,
   cores = NULL,
-  silent = TRUE,
-  seed = NULL
+  silent = TRUE
 )
 }
 \arguments{
@@ -120,7 +119,7 @@ defaults to \code{chains}}
 
 \item{silent}{whether the function should proceed silently, defaults to \code{TRUE}}
 
-\item{seed}{seed for random number generation}
+\item{seed}{seed for random number generation by \code{JAGS_fit()}.}
 
 \item{add_parameters}{vector of additional parameter names that should be used
 monitored but were not specified in the \code{prior_list}}
@@ -139,6 +138,8 @@ extended}
 }
 \value{
 \code{JAGS_fit} returns an object of class 'runjags' and 'BayesTools_fit'.
+\code{JAGS_extend} continues the backend random-number generator state of the
+existing chains; it does not reseed them.
 }
 \description{
 A wrapper around

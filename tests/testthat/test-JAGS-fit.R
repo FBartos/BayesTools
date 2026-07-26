@@ -369,8 +369,7 @@ test_that("JAGS_extend works correctly", {
   fit_extended <- JAGS_extend(
     fit_simple,
     autofit_control = extend_control,
-    silent = TRUE,
-    seed = 1
+    silent = TRUE
   )
 
   # Test extending a fitted model with parallel
@@ -379,8 +378,7 @@ test_that("JAGS_extend works correctly", {
     autofit_control = extend_control,
     parallel = TRUE,
     cores = 2,
-    silent = TRUE,
-    seed = 1
+    silent = TRUE
   )
 
   # Check that the extended fit is still a BayesTools_fit

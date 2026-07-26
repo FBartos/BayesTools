@@ -59,7 +59,7 @@
 #' @param cores number of cores used for multithreading if \code{parallel = TRUE},
 #'  defaults to \code{chains}
 #' @param silent whether the function should proceed silently, defaults to \code{TRUE}
-#' @param seed seed for random number generation
+#' @param seed seed for random number generation by \code{JAGS_fit()}.
 #' @param add_parameters vector of additional parameter names that should be used
 #' monitored but were not specified in the \code{prior_list}
 #' @param required_packages character vector specifying list of packages containing
@@ -96,6 +96,8 @@
 #' }
 #'
 #' @return \code{JAGS_fit} returns an object of class 'runjags' and 'BayesTools_fit'.
+#' \code{JAGS_extend} continues the backend random-number generator state of the
+#' existing chains; it does not reseed them.
 #'
 #' @seealso [JAGS_check_convergence()]
 #'
@@ -485,7 +487,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 
 #' @rdname JAGS_fit
 JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE),
-                        parallel = FALSE, cores = NULL, silent = TRUE, seed = NULL){
+                        parallel = FALSE, cores = NULL, silent = TRUE){
 
   if(!inherits(fit, "BayesTools_fit"))
     stop("'fit' must be a 'BayesTools_fit'")
@@ -493,7 +495,6 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   check_bool(parallel, "parallel", allow_NA = FALSE)
   check_int(cores, "cores", lower = 1, allow_NULL = TRUE, allow_NA = FALSE)
   check_bool(silent, "silent", allow_NA = FALSE)
-  check_int(seed, "seed", allow_NULL = TRUE, allow_NA = FALSE)
 
   # extract fitting information
   prior_list        <- attr(fit, "prior_list")
@@ -538,10 +539,6 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   }
 
 
-  if(!is.null(seed)){
-    set.seed(seed)
-  }
-
   # set silent mode
   if(silent){
     user_silent.jags    <- runjags::runjags.getOption("silent.jags")
@@ -550,20 +547,21 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     runjags::runjags.options(silent.jags = TRUE, silent.runjags = TRUE)
   }
 
-  start_time <- Sys.time()
-  itteration <- 0
+  start_time <- .bt_jags_extend_time()
+  iteration  <- 0
   converged  <- FALSE
+  last_valid_fit <- fit
 
   while(!converged){
 
-    if(!is.null(autofit_control[["max_time"]]) && difftime(Sys.time(), start_time, units = autofit_control[["max_time"]][["unit"]]) > autofit_control[["max_time"]][["time"]]){
+    if(!is.null(autofit_control[["max_time"]]) && difftime(.bt_jags_extend_time(), start_time, units = autofit_control[["max_time"]][["unit"]]) > autofit_control[["max_time"]][["time"]]){
       if(!silent){
         attr(fit, "warning") <- "The automatic model fitting was terminated due to the 'max_time' constraint."
         warning(attr(fit, "warning"), immediate. = TRUE)
       }
       break
     }
-    if(!is.null(autofit_control[["max_extend"]]) && itteration >= autofit_control[["max_extend"]]){
+    if(!is.null(autofit_control[["max_extend"]]) && iteration >= autofit_control[["max_extend"]]){
       if(!silent){
         attr(fit, "warning") <- "The automatic model fitting was terminated due to the 'max_extend' constraint."
         warning(attr(fit, "warning"), immediate. = TRUE)
@@ -571,20 +569,32 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
       break
     }
 
-    fit <- tryCatch(do.call(runjags::extend.jags, refit_call), error = function(e)e)
+    extension <- tryCatch(
+      do.call(runjags::extend.jags, refit_call),
+      error = function(e) e
+    )
 
-    if(inherits(fit, "error")){
-      if(!silent)
-        warning(paste0("The model estimation failed with the following error: ", fit$message), immediate. = TRUE)
-
+    if(inherits(extension, "error")){
+      warning(
+        paste0(
+          "The model extension failed; returning the last valid fit. ",
+          "Backend error: ",
+          conditionMessage(extension)
+        ),
+        call. = FALSE,
+        immediate. = TRUE
+      )
+      fit <- last_valid_fit
       break
     }
 
+    fit <- extension
+    last_valid_fit <- fit
     converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], add_parameters = add_parameters, check_indicators = autofit_control[["check_indicators"]], fail_fast = TRUE)
 
     # update the refit call
     if(!converged){
-      itteration <- itteration + 1
+      iteration <- iteration + 1
       refit_call$runjags.object <- fit
     }
   }
@@ -602,7 +612,11 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
     attr(fit, "formula_design") <- formula_design
   }
 
-  class(fit) <- c(class(fit), "BayesTools_fit")
+  class(fit) <- unique(c(class(fit), "BayesTools_fit"))
 
   return(fit)
+}
+
+.bt_jags_extend_time <- function(){
+  Sys.time()
 }
