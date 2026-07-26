@@ -6,11 +6,23 @@
 \alias{models_inference}
 \title{Compute posterior probabilities and inclusion Bayes factors}
 \usage{
-compute_inference(prior_weights, margliks, is_null = NULL, conditional = FALSE)
+compute_inference(
+  prior_weights,
+  margliks,
+  is_null = NULL,
+  conditional = FALSE,
+  on_failure = c("error", "drop", "zero")
+)
 
-ensemble_inference(model_list, parameters, is_null_list, conditional = FALSE)
+ensemble_inference(
+  model_list,
+  parameters,
+  is_null_list,
+  conditional = FALSE,
+  on_failure = c("error", "drop", "zero")
+)
 
-models_inference(model_list)
+models_inference(model_list, on_failure = c("error", "drop", "zero"))
 }
 \arguments{
 \item{prior_weights}{vector of prior model odds}
@@ -24,6 +36,12 @@ when no models are null)}
 
 \item{conditional}{whether prior and posterior model probabilities should
 be returned only for the conditional model. Defaults to \code{FALSE}}
+
+\item{on_failure}{policy for missing marginal likelihoods in models with
+positive prior probability. \code{"error"} aborts (the default),
+\code{"drop"} removes failed models from the prior model space and
+renormalizes, and \code{"zero"} explicitly assigns the failed models zero
+evidence. Non-default policies emit a warning and return audit metadata.}
 
 \item{model_list}{list of models, each of which contains marginal
 likelihood estimated with bridge sampling \code{marglik} and prior model

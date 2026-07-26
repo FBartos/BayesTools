@@ -10,7 +10,8 @@ mix_posteriors(
   is_null_list,
   conditional = FALSE,
   seed = NULL,
-  n_samples = 10000
+  n_samples = 10000,
+  on_failure = c("error", "drop", "zero")
 )
 }
 \arguments{
@@ -35,6 +36,12 @@ model averaging. Defaults to \code{NULL}.}
 
 \item{n_samples}{number of samples to be drawn for the model-averaged
 posterior distribution}
+
+\item{on_failure}{policy for missing marginal likelihoods in models with
+positive prior probability. \code{"error"} aborts (the default),
+\code{"drop"} removes failed models from the prior model space and
+renormalizes, and \code{"zero"} explicitly assigns the failed models zero
+evidence. Non-default policies emit a warning and return audit metadata.}
 }
 \value{
 \code{mix_posteriors} returns a named list of mixed posterior

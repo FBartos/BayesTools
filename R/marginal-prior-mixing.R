@@ -22,6 +22,7 @@
   if(!is.null(seed)){
     set.seed(seed)
   }
+  sample_counts <- .prior_mixture_sample_counts(prior_weights, n_samples)
 
   ### adapted from 'mix_posteriors'
   parameters <- names(prior_list)
@@ -43,7 +44,9 @@
         }
       }
 
-      out[[temp_parameter]] <- .mix_priors.weightfunction(temp_priors, temp_parameter, NULL, n_samples)
+      out[[temp_parameter]] <- .mix_priors.weightfunction(
+        temp_priors, temp_parameter, NULL, n_samples, sample_counts
+      )
 
     }else if(any(sapply(temp_priors, is.prior.factor)) && all(sapply(temp_priors, is.prior.factor) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.null))){
       # factor priors
@@ -55,7 +58,9 @@
         }
       }
 
-      out[[temp_parameter]] <- .mix_priors.factor(temp_priors, temp_parameter, NULL, n_samples)
+      out[[temp_parameter]] <- .mix_priors.factor(
+        temp_priors, temp_parameter, NULL, n_samples, sample_counts
+      )
 
     }else if(any(sapply(temp_priors, is.prior.vector)) && all(sapply(temp_priors, is.prior.vector) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.null))){
       # vector priors:
@@ -67,7 +72,9 @@
         }
       }
 
-      out[[temp_parameter]] <- .mix_priors.vector(temp_priors, temp_parameter, NULL, n_samples)
+      out[[temp_parameter]] <- .mix_priors.vector(
+        temp_priors, temp_parameter, NULL, n_samples, sample_counts
+      )
 
     }else if(all(sapply(temp_priors, is.prior.simple) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.null))){
       # simple priors:
@@ -79,7 +86,9 @@
         }
       }
 
-      out[[temp_parameter]] <- .mix_priors.simple(temp_priors, temp_parameter, NULL, n_samples)
+      out[[temp_parameter]] <- .mix_priors.simple(
+        temp_priors, temp_parameter, NULL, n_samples, sample_counts
+      )
 
     }else{
       stop("The posterior samples cannot be mixed: unsupported mixture of prior distributions.")
@@ -94,7 +103,8 @@
 
   return(out)
 }
-.mix_priors.simple         <- function(priors, parameter, seed = NULL, n_samples = 10000){
+.mix_priors.simple <- function(priors, parameter, seed = NULL, n_samples = 10000,
+                               sample_counts = NULL){
 
   # check input
   check_list(priors, "priors")
@@ -119,7 +129,9 @@
   models_ind <- NULL
 
   # mix samples
-  sample_counts <- .prior_mixture_sample_counts(prior_probs, n_samples)
+  if(is.null(sample_counts)){
+    sample_counts <- .prior_mixture_sample_counts(prior_probs, n_samples)
+  }
   for(i in seq_along(priors)[sample_counts > 0]){
 
     # sample indexes
@@ -143,11 +155,21 @@
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- priors
   samples <- .posterior_support_set_from_prior_list(samples, priors)
+  samples <- .posterior_atoms_set(
+    samples,
+    .posterior_atoms_from_priors(
+      priors, prior_probs,
+      n_columns = 1L,
+      column_names = parameter,
+      source = "prior_model_probabilities"
+    )
+  )
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.simple")
 
   return(samples)
 }
-.mix_priors.vector         <- function(priors, parameter, seed = NULL, n_samples = 10000){
+.mix_priors.vector <- function(priors, parameter, seed = NULL, n_samples = 10000,
+                               sample_counts = NULL){
 
   # check input
   check_list(priors, "priors")
@@ -176,7 +198,9 @@
   models_ind <- NULL
 
   # mix samples
-  sample_counts <- .prior_mixture_sample_counts(prior_probs, n_samples)
+  if(is.null(sample_counts)){
+    sample_counts <- .prior_mixture_sample_counts(prior_probs, n_samples)
+  }
   for(i in seq_along(priors)[sample_counts > 0]){
 
     # sample indexes
@@ -207,11 +231,21 @@
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- priors
   samples <- .posterior_support_set_columns_from_prior_list(samples, priors)
+  samples <- .posterior_atoms_set(
+    samples,
+    .posterior_atoms_from_priors(
+      priors, prior_probs,
+      n_columns = K,
+      column_names = colnames(samples),
+      source = "prior_model_probabilities"
+    )
+  )
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.vector")
 
   return(samples)
 }
-.mix_priors.factor         <- function(priors, parameter, seed = NULL, n_samples = 10000){
+.mix_priors.factor <- function(priors, parameter, seed = NULL, n_samples = 10000,
+                               sample_counts = NULL){
 
   # check input
   check_list(priors, "priors")
@@ -271,11 +305,16 @@
   }
   priors_info <- priors_info[[1]]
 
-  if(priors_info[["ordered"]]){
+  # Draw the model allocation once. All coefficients of a factor must use the
+  # same model assignment so their rows remain joint draws.
+  if(!is.null(seed)){
+    set.seed(seed)
+  }
+  if(is.null(sample_counts)){
+    sample_counts <- .prior_mixture_sample_counts(prior_probs, n_samples)
+  }
 
-    if(!is.null(seed)){
-      set.seed(seed)
-    }
+  if(priors_info[["ordered"]]){
 
     ordered_prior <- priors[[which(vapply(priors, is.prior.ordered, logical(1)))[1]]]
     coefficient_names <- .JAGS_prior_factor_names(parameter, ordered_prior)
@@ -283,7 +322,6 @@
     sample_ind <- NULL
     models_ind <- NULL
 
-    sample_counts <- .prior_mixture_sample_counts(prior_probs, n_samples)
     for(i in seq_along(priors)[sample_counts > 0]){
 
       temp_ind <- seq_len(sample_counts[i])
@@ -330,7 +368,9 @@
 
     if(levels == 1){
 
-      samples <- .mix_priors.simple(priors, parameter, seed, n_samples)
+      samples <- .mix_priors.simple(
+        priors, parameter, NULL, n_samples, sample_counts
+      )
 
       sample_ind <- attr(samples, "sample_ind")
       models_ind <- attr(samples, "models_ind")
@@ -339,12 +379,9 @@
 
     }else{
 
-      # use one RNG stream across levels so coefficients are reproducible but independent
-      if(!is.null(seed)){
-        set.seed(seed)
-      }
-
-      samples <- lapply(1:levels, function(i) .mix_priors.simple(priors, paste0(parameter, "[", i, "]"), NULL, n_samples))
+      samples <- lapply(1:levels, function(i) .mix_priors.simple(
+        priors, paste0(parameter, "[", i, "]"), NULL, n_samples, sample_counts
+      ))
 
       sample_ind <- attr(samples[[1]], "sample_ind")
       models_ind <- attr(samples[[1]], "models_ind")
@@ -365,7 +402,9 @@
 
     if(levels == 1){
 
-      samples <- .mix_priors.simple(priors, parameter, seed, n_samples)
+      samples <- .mix_priors.simple(
+        priors, parameter, NULL, n_samples, sample_counts
+      )
 
       sample_ind <- attr(samples, "sample_ind")
       models_ind <- attr(samples, "models_ind")
@@ -374,12 +413,9 @@
 
     }else{
 
-      # use one RNG stream across levels so coefficients are reproducible but independent
-      if(!is.null(seed)){
-        set.seed(seed)
-      }
-
-      samples <- lapply(1:levels, function(i) .mix_priors.simple(priors, paste0(parameter, "[", i, "]"), NULL, n_samples))
+      samples <- lapply(1:levels, function(i) .mix_priors.simple(
+        priors, paste0(parameter, "[", i, "]"), NULL, n_samples, sample_counts
+      ))
 
       sample_ind <- attr(samples[[1]], "sample_ind")
       models_ind <- attr(samples[[1]], "models_ind")
@@ -404,7 +440,9 @@
       }
     }
 
-    samples <- .mix_priors.vector(priors, parameter, seed, n_samples)
+    samples <- .mix_priors.vector(
+      priors, parameter, NULL, n_samples, sample_counts
+    )
     class(samples) <- c(class(samples), "mixed_posteriors.factor")
 
   }
@@ -438,6 +476,16 @@
     }
   }
 
+  samples <- .posterior_atoms_set(
+    samples,
+    .posterior_atoms_from_priors(
+      priors, prior_probs,
+      n_columns = ncol(samples),
+      column_names = colnames(samples),
+      source = "prior_model_probabilities"
+    )
+  )
+
   return(samples)
 }
 
@@ -446,7 +494,9 @@
   .mixture_sample_counts(prior_probs, n_samples)
 }
 
-.mix_priors.weightfunction <- function(priors, parameter, seed = NULL, n_samples = 10000){
+.mix_priors.weightfunction <- function(
+    priors, parameter, seed = NULL, n_samples = 10000,
+    sample_counts = NULL){
 
   # check input
   check_list(priors, "priors")
@@ -477,7 +527,9 @@
   models_ind <- NULL
 
   # mix samples
-  sample_counts <- .prior_mixture_sample_counts(prior_probs, n_samples)
+  if(is.null(sample_counts)){
+    sample_counts <- .prior_mixture_sample_counts(prior_probs, n_samples)
+  }
   for(i in seq_along(priors)[sample_counts > 0]){
 
     # sample indexes
@@ -509,6 +561,16 @@
   attr(samples, "prior_list") <- priors
   samples <- .weightfunction_set_omega_context(samples, omega_info)
   samples <- .posterior_support_set_weightfunction_columns(samples, priors, omega_info)
+  samples <- .posterior_atoms_set(
+    samples,
+    .posterior_atoms_from_priors(
+      priors, prior_probs,
+      n_columns = ncol(samples),
+      column_names = colnames(samples),
+      source = "prior_model_probabilities",
+      null_location = 1
+    )
+  )
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.weightfunction")
 
   return(samples)
@@ -650,6 +712,11 @@
         attributes(out[[parameters[p]]]) <- c(attributes(out[[parameters[p]]])[!names(attributes(out[[parameters[p]]])) %in% c("dimnames")], temp[!names(temp) %in% c("dim")])
         attr(out[[parameters[p]]], "models_ind") <- attr(out[[parameters[p]]], "models_ind")[conditioning_samples]
       }
+      out[[parameters[p]]] <- .posterior_atoms_refresh_from_prior(
+        out[[parameters[p]]],
+        prior_list[[parameters[p]]],
+        parameters[p]
+      )
     }
 
     # put a check whether all samples were conditional
@@ -687,6 +754,15 @@
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- prior
   samples <- .posterior_support_set_from_prior_list(samples, prior)
+  samples <- .posterior_atoms_set(
+    samples,
+    .posterior_atoms_from_priors(
+      prior, 1,
+      n_columns = 1L,
+      column_names = parameter,
+      source = "single_prior_structure"
+    )
+  )
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.simple")
 
   return(samples)
@@ -723,6 +799,15 @@
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- prior
   samples <- .posterior_support_set_columns_from_prior_list(samples, prior)
+  samples <- .posterior_atoms_set(
+    samples,
+    .posterior_atoms_from_priors(
+      prior, 1,
+      n_columns = K,
+      column_names = colnames(samples),
+      source = "single_prior_structure"
+    )
+  )
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.vector")
 
   return(samples)
@@ -877,6 +962,16 @@
     }
   }
 
+  samples <- .posterior_atoms_set(
+    samples,
+    .posterior_atoms_from_priors(
+      prior, 1,
+      n_columns = ncol(samples),
+      column_names = colnames(samples),
+      source = "single_prior_structure"
+    )
+  )
+
   return(samples)
 }
 .as_mixed_priors.weightfunction <- function(prior, parameter, seed = NULL, n_samples = 10000){
@@ -909,6 +1004,16 @@
   omega_info <- .weightfunction_mapping_info(list(prior))
   samples <- .weightfunction_set_omega_context(samples, omega_info)
   samples <- .posterior_support_set_weightfunction_columns(samples, prior, omega_info)
+  samples <- .posterior_atoms_set(
+    samples,
+    .posterior_atoms_from_priors(
+      prior, 1,
+      n_columns = ncol(samples),
+      column_names = colnames(samples),
+      source = "single_prior_structure",
+      null_location = 1
+    )
+  )
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.weightfunction")
 
   return(samples)
@@ -1027,6 +1132,16 @@
   }else{
     samples <- .posterior_support_set_from_prior_list(samples, prior)
   }
+  samples <- .posterior_atoms_set(
+    samples,
+    .posterior_atoms_from_indicator(
+      prior = prior,
+      indicator = inclusion,
+      n_columns = if(is.null(dim(samples))) 1L else ncol(samples),
+      column_names = if(is.null(dim(samples))) parameter else colnames(samples),
+      spike_and_slab = TRUE
+    )
+  )
 
   return(samples)
 }
@@ -1077,6 +1192,15 @@
   # append classes and priors
   class(samples) <- c(class(samples), "mixed_posteriors.mixture")
   attr(samples, "prior_list") <- prior
+  samples <- .posterior_atoms_set(
+    samples,
+    .posterior_atoms_from_indicator(
+      prior = prior,
+      indicator = attr(samples, "models_ind"),
+      n_columns = if(is.null(dim(samples))) 1L else ncol(samples),
+      column_names = if(is.null(dim(samples))) parameter else colnames(samples)
+    )
+  )
 
   return(samples)
 }

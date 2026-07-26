@@ -24,7 +24,10 @@
 #'
 #' @name mix_posteriors
 #' @export
-mix_posteriors <- function(model_list, parameters, is_null_list, conditional = FALSE, seed = NULL, n_samples = 10000){
+mix_posteriors <- function(model_list, parameters, is_null_list,
+                           conditional = FALSE, seed = NULL,
+                           n_samples = 10000,
+                           on_failure = c("error", "drop", "zero")){
 
   # check input
   check_list(model_list, "model_list")
@@ -32,6 +35,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   check_list(is_null_list, "is_null_list", check_length = length(parameters))
   check_real(seed, "seed", allow_NULL = TRUE)
   check_int(n_samples, "n_samples")
+  on_failure <- match.arg(on_failure)
   sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("fit", "marglik", "prior_weights"), all_objects = TRUE, allow_other = TRUE))
   if(!all(sapply(model_list, function(m) inherits(m[["fit"]], what = "runjags")) | sapply(model_list, function(m)inherits(m[["fit"]], what = "stanfit")) | sapply(model_list, function(m)inherits(m[["fit"]], what = "null_model"))))
     stop("model_list:fit must contain 'runjags' or 'rstan' models")
@@ -49,7 +53,13 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   formula_priors <- lapply(model_list, function(m) m[["formula_priors"]])
   prior_weights  <- sapply(model_list, function(m) m[["prior_weights"]])
 
-  inference  <- ensemble_inference(model_list, parameters, is_null_list, conditional)
+  inference <- ensemble_inference(
+    model_list,
+    parameters,
+    is_null_list,
+    conditional,
+    on_failure = on_failure
+  )
 
   # Use one shared sampling seed so formula terms are drawn from aligned
   # posterior rows across parameters.
@@ -114,7 +124,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
     }else if(any(sapply(temp_priors, is.prior.vector)) && all(sapply(temp_priors, is.prior.vector) | sapply(temp_priors, is.prior.point) | sapply(temp_priors, is.null))){
       # vector priors:
 
-      .mix_posteriors_validate_simplex_priors(
+      temp_priors <- .mix_posteriors_validate_simplex_priors(
         temp_priors,
         temp_parameter,
         temp_inference$prior_probs,
@@ -172,28 +182,42 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   is.prior.simplex(prior) && identical(prior[["distribution"]], "dirichlet")
 }
 
-.mix_posteriors_is_simplex_point <- function(prior, K){
+.mix_posteriors_canonicalize_simplex_point <- function(prior, K){
 
   if(!is.prior.point(prior)){
-    return(FALSE)
+    return(NULL)
   }
 
   location <- prior$parameters[["location"]]
   if(is.numeric(location) && length(location) == 1L){
     location <- rep(location, K)
   }
-  is.numeric(location) &&
-    length(location) == K &&
-    all(is.finite(location)) &&
-    all(location >= 0) &&
-    isTRUE(all.equal(sum(location), 1, tolerance = 1e-8))
+  if(!is.numeric(location) || length(location) != K){
+    return(NULL)
+  }
+
+  canonical <- tryCatch(
+    .canonicalize_simplex(
+      location,
+      name = "point-prior location",
+      diagnostics = TRUE
+    ),
+    error = function(e) NULL
+  )
+  if(is.null(canonical)){
+    return(NULL)
+  }
+
+  prior$parameters[["location"]] <- canonical$values
+  attr(prior, "simplex_canonicalization") <- canonical$diagnostics
+  prior
 }
 
 .mix_posteriors_validate_simplex_priors <- function(priors, parameter, prior_probs, post_probs){
 
   simplex <- vapply(priors, .mix_posteriors_is_dirichlet_simplex, logical(1))
   if(!any(simplex)){
-    return(invisible(NULL))
+    return(priors)
   }
 
   K <- unique(vapply(priors[simplex], function(prior){
@@ -219,13 +243,14 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
     )
   }
 
-  compatible <- vapply(priors, function(prior){
+  canonical_points <- lapply(priors, function(prior){
     if(is.null(prior)){
-      return(TRUE)
+      return(NULL)
     }
-    .mix_posteriors_is_dirichlet_simplex(prior) ||
-      .mix_posteriors_is_simplex_point(prior, K)
-  }, logical(1))
+    .mix_posteriors_canonicalize_simplex_point(prior, K)
+  })
+  valid_point <- !vapply(canonical_points, is.null, logical(1))
+  compatible <- missing | simplex | valid_point
 
   if(any(!compatible & contributing)){
     stop(
@@ -236,7 +261,11 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
     )
   }
 
-  invisible(NULL)
+  for(i in which(valid_point)){
+    priors[[i]] <- canonical_points[[i]]
+  }
+
+  priors
 }
 
 .mix_posteriors.simple         <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000){
@@ -330,6 +359,15 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   attr(samples, "interaction")       <- if(length(priors_info) == 0) FALSE else priors_info[["interaction"]]
   attr(samples, "interaction_terms") <- priors_info[["interaction_terms"]]
   samples <- .posterior_support_set_from_prior_list(samples, priors)
+  samples <- .posterior_atoms_set(
+    samples,
+    .posterior_atoms_from_priors(
+      priors,
+      post_probs,
+      n_columns = 1L,
+      column_names = parameter
+    )
+  )
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.simple")
 
   return(samples)
@@ -414,6 +452,15 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- priors
   samples <- .posterior_support_set_columns_from_prior_list(samples, priors)
+  samples <- .posterior_atoms_set(
+    samples,
+    .posterior_atoms_from_priors(
+      priors,
+      post_probs,
+      n_columns = K,
+      column_names = colnames(samples)
+    )
+  )
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.vector")
 
   return(samples)
@@ -660,6 +707,16 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
     }
   }
 
+  samples <- .posterior_atoms_set(
+    samples,
+    .posterior_atoms_from_priors(
+      priors,
+      post_probs,
+      n_columns = ncol(samples),
+      column_names = colnames(samples)
+    )
+  )
+
   return(samples)
 }
 .mix_posteriors.weightfunction <- function(fits, priors, parameter, post_probs, seed = NULL, n_samples = 10000){
@@ -736,6 +793,16 @@ mix_posteriors <- function(model_list, parameters, is_null_list, conditional = F
     samples,
     priors,
     .weightfunction_mapping_info(priors)
+  )
+  samples <- .posterior_atoms_set(
+    samples,
+    .posterior_atoms_from_priors(
+      priors,
+      post_probs,
+      n_columns = ncol(samples),
+      column_names = colnames(samples),
+      null_location = 1
+    )
   )
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.weightfunction")
 

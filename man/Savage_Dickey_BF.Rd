@@ -29,7 +29,12 @@ posterior-support metadata is available. Finite sample and KDE evaluation
 ranges are not treated as exact support; Gaussian kernel tails are evaluated
 at finite null values. \code{"precomputed"} requires a valid
 \code{posterior_ordinate} attribute when present, or otherwise a valid
-\code{posterior_density} attribute.}
+\code{posterior_density} attribute.
+Posterior atom status must be declared through package-generated
+\code{posterior_atoms} metadata, \code{posterior_atom_attribute()}, or a
+posterior-density attribute that explicitly declares point masses. An
+ordinary Savage-Dickey density ratio is rejected when atom status is unknown
+or when any positive atom is located exactly at the null.}
 }
 \value{
 \code{Savage_Dickey_BF} returns a Bayes factor.

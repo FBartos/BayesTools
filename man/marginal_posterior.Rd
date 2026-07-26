@@ -29,8 +29,8 @@ marginal_posterior(
 should be performed. If a predictor level is missing, \code{0} is used for continuous
 predictors, the baseline factor level is used for factors with \code{contrast = "treatment"} prior
 distributions, and the parameter is completely omitted for factors with
-\code{contrast = "meandif"}, \code{contrast = "orthonormal"}, and
-\code{contrast = "independent"} levels.}
+\code{contrast = "meandif"}, \code{contrast = "orthonormal"},
+\code{contrast = "independent"}, and ordered-factor levels.}
 
 \item{prior_samples}{whether marginal prior distributions should be generated}
 

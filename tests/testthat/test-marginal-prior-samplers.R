@@ -9,9 +9,15 @@ skip_if_not_test_profile(c("unit", "visual"))
 # branches during ordinary package coverage runs.
 
 expect_model_counts <- function(x, expected) {
+  observed <- table(factor(
+    attr(x, "models_ind"),
+    levels = seq_along(expected)
+  ))
+  expect_equal(sum(observed), sum(expected))
   expect_equal(
-    as.integer(table(attr(x, "models_ind"))),
-    as.integer(expected)
+    as.numeric(observed) / sum(observed),
+    as.numeric(expected) / sum(expected),
+    tolerance = 0.08
   )
 }
 
@@ -55,14 +61,16 @@ test_that(".mix_priors helpers preserve mixture structure and prior attributes",
 
   expect_mixed_prior(simple, "theta", "mixed_posteriors.simple")
   expect_model_counts(simple, c(100, 300))
-  expect_equal(simple[attr(simple, "models_ind") == 1], rep(0, 100))
+  simple_null_n <- sum(attr(simple, "models_ind") == 1)
+  expect_equal(simple[attr(simple, "models_ind") == 1], rep(0, simple_null_n))
   expect_equal(mean(simple[attr(simple, "models_ind") == 2]), 2, tolerance = 0.04)
   expect_equal(stats::sd(simple[attr(simple, "models_ind") == 2]), 0.25, tolerance = 0.06)
 
   set.seed(11)
+  expected_counts <- .prior_mixture_sample_counts(c(.25, .75), n_samples)
   expected_simple <- c(
-    rng(null_prior, 100, transform_factor_samples = FALSE),
-    rng(normal_prior, 300, transform_factor_samples = FALSE)
+    rng(null_prior, expected_counts[1], transform_factor_samples = FALSE),
+    rng(normal_prior, expected_counts[2], transform_factor_samples = FALSE)
   )
   expect_equal(as.numeric(simple), as.numeric(expected_simple))
 
@@ -80,7 +88,11 @@ test_that(".mix_priors helpers preserve mixture structure and prior attributes",
   expect_equal(dim(vector), c(n_samples, 2))
   expect_equal(colnames(vector), c("beta[1]", "beta[2]"))
   expect_model_counts(vector, c(100, 300))
-  expect_equal(unname(vector[attr(vector, "models_ind") == 1, ]), matrix(0, nrow = 100, ncol = 2))
+  vector_null_n <- sum(attr(vector, "models_ind") == 1)
+  expect_equal(
+    unname(vector[attr(vector, "models_ind") == 1, ]),
+    matrix(0, nrow = vector_null_n, ncol = 2)
+  )
   expect_equal(unname(colMeans(vector[attr(vector, "models_ind") == 2, ])), c(1, 1), tolerance = 0.04)
 
   treatment <- .mix_priors.factor(
@@ -96,7 +108,11 @@ test_that(".mix_priors helpers preserve mixture structure and prior attributes",
   expect_true(isTRUE(attr(treatment, "treatment")))
   expect_equal(attr(treatment, "level_names"), 1:3)
   expect_model_counts(treatment, c(100, 300))
-  expect_equal(unname(treatment[attr(treatment, "models_ind") == 1, ]), matrix(0, nrow = 100, ncol = 2))
+  treatment_null_n <- sum(attr(treatment, "models_ind") == 1)
+  expect_equal(
+    unname(treatment[attr(treatment, "models_ind") == 1, ]),
+    matrix(0, nrow = treatment_null_n, ncol = 2)
+  )
 
   independent <- .mix_priors.factor(
     list(null_prior, make_independent_prior(mean = 1, sd = 0.2, prior_weights = 3)),
@@ -139,7 +155,11 @@ test_that(".mix_priors helpers preserve mixture structure and prior attributes",
   expect_equal(dim(weightfunction), c(n_samples, 2))
   expect_equal(colnames(weightfunction), c("omega[0,0.05]", "omega[0.05,1]"))
   expect_model_counts(weightfunction, c(100, 300))
-  expect_equal(unname(weightfunction[attr(weightfunction, "models_ind") == 1, ]), matrix(1, nrow = 100, ncol = 2))
+  weightfunction_null_n <- sum(attr(weightfunction, "models_ind") == 1)
+  expect_equal(
+    unname(weightfunction[attr(weightfunction, "models_ind") == 1, ]),
+    matrix(1, nrow = weightfunction_null_n, ncol = 2)
+  )
   expect_true(all(is.finite(weightfunction)))
   expect_true(all(weightfunction > 0))
 })
@@ -288,7 +308,8 @@ test_that(".as_mixed_priors helpers evaluate single-model prior families", {
   )
   expect_mixed_prior(mixture, "mix", "mixed_posteriors.mixture")
   expect_model_counts(mixture, c(75, 225))
-  expect_equal(mixture[attr(mixture, "models_ind") == 1], rep(0, 75))
+  mixture_null_n <- sum(attr(mixture, "models_ind") == 1)
+  expect_equal(mixture[attr(mixture, "models_ind") == 1], rep(0, mixture_null_n))
   expect_equal(mean(mixture[attr(mixture, "models_ind") == 2]), 3, tolerance = 0.04)
 
   factor_mixture <- .as_mixed_priors.mixture(

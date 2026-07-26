@@ -17,12 +17,14 @@ test_that("factor prior samplers use one RNG stream across coefficients", {
     priors <- list(null_prior, factor_prior)
 
     set.seed(611)
+    expected_counts <- .prior_mixture_sample_counts(c(.25, .75), n_samples)
     expected_mixture <- lapply(seq_len(n_coefficients), function(i){
       .mix_priors.simple(
         priors,
         paste0("fac[", i, "]"),
         seed = NULL,
-        n_samples = n_samples
+        n_samples = n_samples,
+        sample_counts = expected_counts
       )
     })
     expected_mixture <- do.call(cbind, lapply(expected_mixture, as.numeric))

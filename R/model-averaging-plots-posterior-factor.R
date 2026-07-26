@@ -18,54 +18,132 @@
   # extract the relevant data
   prior_list <- attr(samples, "prior_list")
   models_ind <- attr(samples, "models_ind")
+  posterior_atoms <- .posterior_atoms_for_column(
+    .posterior_atoms_get(samples),
+    parameter
+  )
+  posterior_atom_metadata <- .posterior_atoms_get(samples)
   samples    <- samples[,parameter]
   n_samples_total <- length(samples)
   if (!(is.prior.mixture(prior_list) || is.prior.spike_and_slab(prior_list)) && is.prior(prior_list))
     prior_list <- list(prior_list)
 
-  # replace prior_none with spike(1)
-  for (i in seq_along(prior_list)) {
-    if (is.prior.none(prior_list[[i]])) {
-      temp_weight <- prior_list[[i]][["prior_weights"]]
-      prior_list[[i]] <- prior("spike", parameters = list(location = 1))
-      prior_list[[i]][["prior_weights"]] <- temp_weight
+  context <- .weightfunction_prior_list_context(prior_list)
+  parameter_ind <- match(parameter, context$omega_names)
+  components <- NULL
+  continuous_component_mass <- NULL
+
+  if(!is.na(parameter_ind)){
+    components <- .weightfunction_prior_marginal_components(
+      context,
+      parameter_ind
+    )
+
+    component_probabilities <- if(!is.null(posterior_atom_metadata)){
+      posterior_atom_metadata$component_probabilities
+    }else{
+      NULL
     }
-  }
+    if(!is.null(component_probabilities) &&
+       length(component_probabilities) == length(components)){
+      component_probabilities <- component_probabilities /
+        sum(component_probabilities)
+      for(i in seq_along(components)){
+        components[[i]]$weight <- component_probabilities[i]
+      }
+    }else if(length(models_ind) == n_samples_total &&
+             length(components) > 0L &&
+             all(models_ind %in% seq_along(components))){
+      component_probabilities <- tabulate(
+        models_ind,
+        nbins = length(components)
+      ) / n_samples_total
+      for(i in seq_along(components)){
+        components[[i]]$weight <- component_probabilities[i]
+      }
+    }
 
-  # deal with spikes
-  samples_is_1 <- abs(samples - 1) < 1e-6
-
-  if(any(samples_is_1)){
-    x_points <- 1
-    y_points <- mean(samples_is_1)
-
-    # remove the used samples so they are not re-used in density
-    # (since they might be forced to one even in non-null models due to cummulativness)
-    models_ind <- models_ind[!samples_is_1]
-    samples    <- samples[!samples_is_1]
-
-  }else{
-    x_points <- NULL
-    y_points <- NULL
+    point_components <- vapply(
+      components,
+      function(component) identical(component$type, "point"),
+      logical(1)
+    )
+    if(any(point_components)){
+      point_locations <- vapply(
+        components[point_components],
+        `[[`,
+        numeric(1),
+        "location"
+      )
+      point_masses <- vapply(
+        components[point_components],
+        `[[`,
+        numeric(1),
+        "weight"
+      )
+      point_keys <- sprintf("%a", point_locations)
+      x_points <- unname(vapply(
+        split(point_locations, point_keys),
+        function(x) x[1L],
+        numeric(1)
+      ))
+      y_points <- unname(vapply(
+        split(point_masses, point_keys),
+        sum,
+        numeric(1)
+      ))
+    }
+    continuous_component_mass <- sum(vapply(
+      components[!point_components],
+      `[[`,
+      numeric(1),
+      "weight"
+    ))
+  }else if(!is.null(posterior_atoms) &&
+           nrow(posterior_atoms$locations) > 0L){
+    # Retain explicit atom metadata for nonstandard legacy weight names.
+    x_points <- posterior_atoms$locations[, 1L]
+    y_points <- posterior_atoms$mass
   }
 
   # deal with the densities
-  if (!all(sapply(prior_list, \(x) is.prior.point(x) || is.prior.none(x)))) {
+  has_continuous_component <- if(is.null(components)){
+    !all(sapply(prior_list, \(x) is.prior.point(x) || is.prior.none(x)))
+  }else{
+    any(vapply(
+      components,
+      function(component) !identical(component$type, "point"),
+      logical(1)
+    ))
+  }
+  if(has_continuous_component){
 
-    samples_density   <- samples[models_ind %in% which(!sapply(prior_list, is.prior.point))]
+    if(is.null(components)){
+      continuous_components <- which(!sapply(prior_list, is.prior.point))
+    }else{
+      continuous_components <- which(vapply(
+        components,
+        function(component) !identical(component$type, "point"),
+        logical(1)
+      ))
+    }
+    samples_density <- samples[models_ind %in% continuous_components]
 
     if(length(samples_density) > 0){
 
       # Use component support for reflection and a display range for evaluation.
-      context <- .weightfunction_prior_list_context(prior_list)
-      parameter_ind <- match(parameter, context$omega_names)
       if(is.na(parameter_ind)){
         density_bounds <- c(-Inf, Inf)
         density_range <- range(c(0, 1, samples_density), finite = TRUE)
       }else{
-        components <- .weightfunction_prior_marginal_components(context, parameter_ind)
-        density_bounds <- .density.prior_weightfunction_components_bounds(components)
-        density_range <- .weightfunction_components_range(components, samples = samples_density)
+        density_components <- components[continuous_components]
+        density_bounds <- .density.prior_weightfunction_components_bounds(
+          density_components
+        )
+        density_range <- .weightfunction_components_range(
+          density_components,
+          samples = samples_density
+        )
       }
 
       # get the density estimate
@@ -77,7 +155,12 @@
         bounds = density_bounds
       )
       x_den <- density_continuous$x
-      y_den <- density_continuous$y * (length(samples_density) / n_samples_total)
+      density_mass <- if(is.null(continuous_component_mass)){
+        length(samples_density) / n_samples_total
+      }else{
+        continuous_component_mass
+      }
+      y_den <- density_continuous$y * density_mass
       boundary_reflection <- isTRUE(attr(density_continuous, "boundary_reflection"))
 
       if(boundary_reflection){

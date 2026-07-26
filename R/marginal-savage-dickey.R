@@ -16,6 +16,11 @@
 #' at finite null values. \code{"precomputed"} requires a valid
 #' \code{posterior_ordinate} attribute when present, or otherwise a valid
 #' \code{posterior_density} attribute.
+#' Posterior atom status must be declared through package-generated
+#' \code{posterior_atoms} metadata, \code{posterior_atom_attribute()}, or a
+#' posterior-density attribute that explicitly declares point masses. An
+#' ordinary Savage-Dickey density ratio is rejected when atom status is unknown
+#' or when any positive atom is located exactly at the null.
 #'
 #' @details Marginal posterior vectors may carry a \code{posterior_ordinate}
 #' attribute with exact \code{value} and \code{ordinate} entries. When
@@ -92,6 +97,7 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   posterior_density_boundary_reflection <- FALSE
   posterior_density_support_bounds <- NULL
   posterior_density_fallback_warnings <- NULL
+  kde_extrapolation_warning_emitted <- FALSE
   BF_error_percent <- NA_real_
   posterior_ordinate_status <- NULL
   posterior_density_status <- NULL
@@ -145,22 +151,30 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     )
   }
 
-  if(mean(posterior == null_hypothesis) > 0.05){
+  posterior_atoms <- .posterior_atoms_get(posterior)
+  if(is.null(posterior_atoms)){
     stop(
-      "There is a considerable cluster of posterior samples at the exact null hypothesis value. The Savage-Dickey density ratio is invalid.",
+      "Posterior atom status is unknown. Savage-Dickey evaluation requires an ",
+      "explicit atom/no-atom declaration; attach posterior_atom_attribute() ",
+      "metadata or use a BayesTools posterior producer that records it.",
       call. = FALSE
     )
   }
-  if(!is.null(stored_posterior_density) && nrow(stored_posterior_density[["point_masses"]]) > 0L){
-    point_masses <- stored_posterior_density[["point_masses"]]
-    point_tol <- sqrt(.Machine$double.eps) * max(1, abs(null_hypothesis))
-    null_point_mass <- sum(point_masses[["mass"]][abs(point_masses[["x"]] - null_hypothesis) <= point_tol])
-    if(null_point_mass > 0){
-      stop(
-        "Stored posterior density contains a point mass at the exact null hypothesis value. The Savage-Dickey density ratio is invalid.",
-        call. = FALSE
-      )
-    }
+  if(ncol(posterior_atoms$locations) != 1L){
+    stop("Posterior atom metadata do not describe a scalar marginal posterior.",
+         call. = FALSE)
+  }
+  null_point_mass <- sum(
+    posterior_atoms$mass[
+      posterior_atoms$locations[, 1L] == null_hypothesis
+    ]
+  )
+  if(null_point_mass > 0){
+    stop(
+      "The posterior contains a declared point mass at the exact null ",
+      "hypothesis value. The ordinary Savage-Dickey density ratio is invalid.",
+      call. = FALSE
+    )
   }
   if(.prior_linear_density_point_mass(prior, null_hypothesis) > 0){
     stop(
@@ -190,8 +204,10 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   }
   null_at_support_boundary <- FALSE
   if(!is.null(posterior_support_bounds)){
-    boundary_tol <- sqrt(.Machine$double.eps) * max(1, abs(null_hypothesis), abs(posterior_support_bounds[is.finite(posterior_support_bounds)]))
-    null_at_support_boundary <- any(is.finite(posterior_support_bounds) & abs(null_hypothesis - posterior_support_bounds) <= boundary_tol)
+    null_at_support_boundary <- any(
+      is.finite(posterior_support_bounds) &
+        null_hypothesis == posterior_support_bounds
+    )
   }
   if(!is.null(stored_posterior_density) && is.null(stored_posterior_ordinate)){
     posterior_range <- range(stored_posterior_density[["x"]], finite = TRUE)
@@ -215,8 +231,12 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
     height <- .Savage_Dickey_BF.kd(
       samples         = posterior,
       null_hypothesis = null_hypothesis,
-      support         = support
+      support         = support,
+      warn_extrapolation = !silent
     )
+    if(!is.null(attr(height, "kde_extrapolation", exact = TRUE))){
+      kde_extrapolation_warning_emitted <<- !silent
+    }
     support_warning <- attr(height, "posterior_support_warning", exact = TRUE)
     if(!is.null(support_warning)){
       warnings <<- c(warnings, support_warning)
@@ -300,7 +320,16 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   }
 
   if(!silent && !is.null(warnings)){
-    sapply(warnings, warning, call. = FALSE)
+    warnings_to_emit <- warnings
+    if(isTRUE(kde_extrapolation_warning_emitted)){
+      warnings_to_emit <- warnings_to_emit[
+        warnings_to_emit != paste0(
+          "Posterior samples do not span both sides of the null hypothesis. ",
+          "The posterior KDE height is estimated from Gaussian kernel tails and may be unstable."
+        )
+      ]
+    }
+    lapply(warnings_to_emit, warning, call. = FALSE)
   }
 
   BF <- exp(log(prior_height) - log(posterior_height))
@@ -375,7 +404,8 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
        warnings = support_warnings)
 }
 
-.Savage_Dickey_BF.kd     <- function(samples, null_hypothesis, support = NULL){
+.Savage_Dickey_BF.kd     <- function(samples, null_hypothesis, support = NULL,
+                                     warn_extrapolation = TRUE){
 
   sample_values <- as.numeric(samples)
   sample_values <- sample_values[is.finite(sample_values)]
@@ -416,6 +446,15 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
           bw     = density_posterior$bw,
           bounds = support_bounds
         )
+        if(isTRUE(warn_extrapolation)){
+          warning(
+            "Posterior samples do not span both sides of the null hypothesis. ",
+            "The posterior KDE height is estimated from Gaussian kernel tails ",
+            "and may be unstable.",
+            call. = FALSE,
+            immediate. = TRUE
+          )
+        }
       }
       attr(height, "boundary_reflection") <- isTRUE(attr(density_posterior, "boundary_reflection"))
       attr(height, "posterior_support_bounds") <- support_bounds
@@ -435,6 +474,15 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
       value = null_hypothesis,
       bw    = density_posterior$bw
     )
+    if(isTRUE(warn_extrapolation)){
+      warning(
+        "Posterior samples do not span both sides of the null hypothesis. ",
+        "The posterior KDE height is estimated from Gaussian kernel tails ",
+        "and may be unstable.",
+        call. = FALSE,
+        immediate. = TRUE
+      )
+    }
   }
 
   if(!is.null(support_info[["warning"]])){

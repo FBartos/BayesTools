@@ -8,6 +8,7 @@ skip_if_not_test_profile("unit")
 
   class(samples) <- c("marginal_posterior.simple", "marginal_posterior", class(samples))
   attr(samples, "prior_density") <- prior_density
+  attr(samples, "posterior_atoms") <- posterior_atom_attribute()
 
   samples
 }
@@ -169,8 +170,12 @@ test_that("hypothesis_BF KDEs retain Gaussian tails beyond sample grids", {
     ),
     "prior samples do not span"
   )
-  expect_equal(posterior_height, expected_posterior, tolerance = 1e-12)
-  expect_equal(prior_height, expected_prior, tolerance = 1e-12)
+  expect_equal(posterior_height, expected_posterior, tolerance = 1e-12,
+               ignore_attr = TRUE)
+  expect_equal(prior_height, expected_prior, tolerance = 1e-12,
+               ignore_attr = TRUE)
+  expect_true(is.list(attr(posterior_height, "kde_extrapolation")))
+  expect_true(is.list(attr(prior_height, "kde_extrapolation")))
   expect_gt(posterior_height, 0)
   expect_gt(prior_height, 0)
 
@@ -181,8 +186,10 @@ test_that("hypothesis_BF KDEs retain Gaussian tails beyond sample grids", {
     parameter  = "theta",
     columns    = "all"
   ))
-  expect_equal(out[["posterior"]], expected_posterior, tolerance = 1e-12)
-  expect_equal(out[["prior"]], expected_prior, tolerance = 1e-12)
+  expect_equal(out[["posterior"]], expected_posterior, tolerance = 1e-12,
+               ignore_attr = TRUE)
+  expect_equal(out[["prior"]], expected_prior, tolerance = 1e-12,
+               ignore_attr = TRUE)
   expect_equal(
     attr(out, "raw_BF"),
     expected_prior / expected_posterior,
@@ -210,8 +217,12 @@ test_that("hypothesis_BF marginal KDEs retain tails beyond evaluation grids", {
   ))
   expect_gt(null, max(stats::density(posterior_samples)[["x"]]))
 
-  height <- BayesTools:::.Savage_Dickey_BF.kd(posterior, null)
-  expect_equal(height, expected_height, tolerance = 1e-12)
+  expect_warning(
+    height <- BayesTools:::.Savage_Dickey_BF.kd(posterior, null),
+    "Gaussian kernel tails"
+  )
+  expect_equal(height, expected_height, tolerance = 1e-12,
+               ignore_attr = TRUE)
   expect_gt(height, 0)
 
   supported_samples <- seq(.01, 1, length.out = 101)
@@ -219,10 +230,13 @@ test_that("hypothesis_BF marginal KDEs retain tails beyond evaluation grids", {
   expected_supported_height <-
     mean(stats::dnorm(null, mean = supported_samples, sd = supported_bw)) +
     mean(stats::dnorm(null, mean = -supported_samples, sd = supported_bw))
-  supported_height <- BayesTools:::.Savage_Dickey_BF.kd(
-    supported_samples,
-    null,
-    support = c(0, Inf)
+  expect_warning(
+    supported_height <- BayesTools:::.Savage_Dickey_BF.kd(
+      supported_samples,
+      null,
+      support = c(0, Inf)
+    ),
+    "Gaussian kernel tails"
   )
   expect_equal(
     as.numeric(supported_height),

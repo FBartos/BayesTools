@@ -4,7 +4,13 @@
 \alias{inclusion_BF}
 \title{Compute inclusion Bayes factors}
 \usage{
-inclusion_BF(prior_probs, post_probs, margliks, is_null)
+inclusion_BF(
+  prior_probs,
+  post_probs,
+  margliks,
+  is_null,
+  on_failure = c("error", "drop", "zero")
+)
 }
 \arguments{
 \item{prior_probs}{vector of prior model probabilities summing to one.}
@@ -17,6 +23,9 @@ inclusion_BF(prior_probs, post_probs, margliks, is_null)
 to the null or alternative hypothesis (or an integer vector indexing models
 corresponding to the null hypothesis; use \code{0} or \code{integer(0)}
 when no models are null)}
+
+\item{on_failure}{policy for missing marginal likelihoods in models with
+positive prior probability. See \code{\link[=compute_inference]{compute_inference()}}.}
 }
 \value{
 \code{inclusion_BF} returns a Bayes factor.

@@ -528,6 +528,20 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
             output_transformation_arguments = transformation_arguments
           )
         )
+        intercept_atoms <- .posterior_atoms_formula(
+          samples,
+          prior_list,
+          prior_weights,
+          transformation = transformation,
+          transformation_arguments = transformation_arguments,
+          column_name = "intercept"
+        )
+        if(!is.null(intercept_atoms)){
+          marginal_posterior_samples[["intercept"]] <- .posterior_atoms_set(
+            marginal_posterior_samples[["intercept"]],
+            intercept_atoms
+          )
+        }
 
       }else{
 
@@ -545,6 +559,21 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
               output_transformation_arguments = transformation_arguments
             )
           )
+          level_atoms <- .posterior_atoms_formula(
+            samples,
+            prior_list,
+            prior_weights,
+            transformation = transformation,
+            transformation_arguments = transformation_arguments,
+            column_name = level_names[lvl]
+          )
+          if(!is.null(level_atoms)){
+            marginal_posterior_samples[[level_names[lvl]]] <-
+              .posterior_atoms_set(
+                marginal_posterior_samples[[level_names[lvl]]],
+                level_atoms
+              )
+          }
         }
       }
 
@@ -627,6 +656,7 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       # transform factor levels
       marginal_posterior_samples <- transform_factor_samples(samples)
       marginal_posterior_samples <- transform_treatment_samples(marginal_posterior_samples)[[parameter]]
+      marginal_factor_atoms <- .posterior_atoms_get(marginal_posterior_samples)
       attr(marginal_posterior_samples, "posterior_density") <- NULL
       attr(marginal_posterior_samples, "posterior_ordinate") <- NULL
       marginal_factor_metadata <- marginal_posterior_samples
@@ -702,6 +732,23 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           temp_marginal_posterior_samples,
           temp_support
         )
+        if(!is.null(marginal_factor_atoms)){
+          temp_atoms <- .posterior_atoms_for_column(
+            marginal_factor_atoms,
+            lvl_i
+          )
+          if(!is.null(transformation)){
+            temp_atoms <- .posterior_atoms_transform(
+              temp_atoms,
+              transformation,
+              transformation_arguments
+            )
+          }
+          temp_marginal_posterior_samples <- .posterior_atoms_set(
+            temp_marginal_posterior_samples,
+            temp_atoms
+          )
+        }
         if(is.null(transformation)){
           posterior_density <- .posterior_density_from_sources(
             sources          = posterior_density_sources,
@@ -771,9 +818,20 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
 
       # apply transformations
       if(!is.null(transformation)){
+        marginal_atoms <- .posterior_atoms_get(marginal_posterior_samples)
         marginal_posterior_samples <- .density.prior_transformation_x(marginal_posterior_samples, transformation, transformation_arguments)
         attr(marginal_posterior_samples, "posterior_density") <- NULL
         attr(marginal_posterior_samples, "posterior_ordinate") <- NULL
+        if(!is.null(marginal_atoms)){
+          marginal_posterior_samples <- .posterior_atoms_set(
+            marginal_posterior_samples,
+            .posterior_atoms_transform(
+              marginal_atoms,
+              transformation,
+              transformation_arguments
+            )
+          )
+        }
         marginal_support <- .posterior_support_transform(
           marginal_support,
           transformation,

@@ -440,9 +440,7 @@ posterior_ordinate_has_value <- function(ordinate, value){
     return(numeric())
   }
 
-  tolerance <- sqrt(.Machine$double.eps) *
-    pmax(1, abs(values[-1L]), abs(values[-length(values)]))
-  duplicated <- abs(diff(values)) <= tolerance
+  duplicated <- diff(values) == 0
 
   return(unique(values[-1L][duplicated]))
 }

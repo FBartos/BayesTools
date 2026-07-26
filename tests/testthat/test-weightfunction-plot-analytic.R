@@ -98,7 +98,7 @@ test_that("mixed omega prior components preserve total probability mass", {
   }
 })
 
-test_that("posterior omega parameter densities are scaled by all samples", {
+test_that("posterior omega parameters use recorded component probabilities", {
 
   prior_list <- list(
     prior_none(prior_weights = 3),
@@ -112,6 +112,15 @@ test_that("posterior omega parameter densities are scaled by all samples", {
   colnames(samples) <- "omega[0.05,1]"
   attr(samples, "prior_list") <- prior_list
   attr(samples, "models_ind") <- c(rep(1, 3000), rep(2, 1000))
+  attr(samples, "posterior_atoms") <-
+    BayesTools:::.posterior_atoms_from_priors(
+      prior_list,
+      probabilities = c(.6, .4),
+      n_columns = 1L,
+      column_names = colnames(samples),
+      source = "test_model_probabilities",
+      null_location = 1
+    )
 
   plot_data <- .plot_data_samples.weightparameter(
     list(omega = samples),
@@ -121,9 +130,43 @@ test_that("posterior omega parameter densities are scaled by all samples", {
 
   density_mass <- sum(diff(plot_data$density$x) * (head(plot_data$density$y, -1) + tail(plot_data$density$y, -1)) / 2)
 
-  expect_equal(plot_data$points1$y, .75)
-  expect_gt(density_mass, .20)
-  expect_lt(density_mass, .30)
+  expect_equal(plot_data$points1$y, .6)
+  expect_gt(density_mass, .35)
+  expect_lt(density_mass, .45)
+})
+
+test_that("structurally fixed omega coordinates remain declared point masses", {
+
+  weight_prior <- prior_weightfunction(
+    "one-sided",
+    c(.05),
+    wf_independent(prior("beta", list(1, 1)))
+  )
+  samples <- cbind(
+    "omega[0,0.05]" = rep(1, 100),
+    "omega[0.05,1]" = seq(.005, .995, length.out = 100)
+  )
+  attr(samples, "prior_list") <- weight_prior
+  attr(samples, "models_ind") <- rep(1, nrow(samples))
+  attr(samples, "posterior_atoms") <-
+    BayesTools:::.posterior_atoms_from_priors(
+      weight_prior,
+      probabilities = 1,
+      n_columns = ncol(samples),
+      column_names = colnames(samples),
+      source = "single_model_structure",
+      null_location = 1
+    )
+
+  plot_data <- .plot_data_samples.weightparameter(
+    list(omega = samples),
+    parameter = "omega[0,0.05]",
+    n_points = 512
+  )
+
+  expect_null(plot_data$density)
+  expect_equal(plot_data$points1$x, 1)
+  expect_equal(plot_data$points1$y, 1)
 })
 
 test_that("conditional bias posteriors zero null bias prior weights", {

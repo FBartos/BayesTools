@@ -577,7 +577,7 @@ test_that("conditional PET/PEESE prior overlays do not reintroduce excluded bias
   )
 })
 
-test_that("omega posterior KDE excludes exact one samples and reflects bounded support", {
+test_that("omega posterior KDE does not infer spikes from exact sample values", {
   continuous_samples <- seq(.005, .995, length.out = 75)
   omega_samples <- cbind(
     "omega[0,0.05]" = rep(1, 100),
@@ -591,6 +591,7 @@ test_that("omega posterior KDE excludes exact one samples and reflects bounded s
     )
   )
   attr(omega_samples, "models_ind") <- rep(1, nrow(omega_samples))
+  attr(omega_samples, "posterior_atoms") <- posterior_atom_attribute()
 
   plot_data <- BayesTools:::.plot_data_samples.weightparameter(
     samples = list(omega = omega_samples),
@@ -598,10 +599,9 @@ test_that("omega posterior KDE excludes exact one samples and reflects bounded s
     n_points = 512
   )
 
-  expect_equal(plot_data$points1$x, 1)
-  expect_equal(plot_data$points1$y, .25)
-  expect_false(any(plot_data$density$samples == 1))
-  expect_equal(plot_data$density$samples, continuous_samples)
+  expect_null(plot_data$points1)
+  expect_true(any(plot_data$density$samples == 1))
+  expect_equal(plot_data$density$samples, omega_samples[, "omega[0.05,1]"])
   expect_equal(range(plot_data$density$x), c(0, 1))
   expect_equal(plot_data$density$x[1:2], c(0, 0), tolerance = 1e-12)
   expect_equal(plot_data$density$y[1], 0)
@@ -609,7 +609,7 @@ test_that("omega posterior KDE excludes exact one samples and reflects bounded s
   expect_equal(tail(plot_data$density$x, 2), c(1, 1), tolerance = 1e-12)
   expect_gt(tail(plot_data$density$y, 2)[1], 0)
   expect_equal(tail(plot_data$density$y, 1), 0)
-  expect_equal(.model_plot_density_mass(plot_data$density), .75, tolerance = .03)
+  expect_equal(.model_plot_density_mass(plot_data$density), 1, tolerance = .03)
   expect_true(isTRUE(attr(plot_data$density, "boundary_reflection")))
 })
 
@@ -654,6 +654,16 @@ test_that("omega prior and posterior curves integrate their continuous masses", 
   omega_samples[models_ind == 3, parameter] <- seq(.995, .005, length.out = sum(models_ind == 3))
   attr(omega_samples, "prior_list") <- prior_list$bias
   attr(omega_samples, "models_ind") <- models_ind
+  attr(omega_samples, "posterior_atoms") <-
+    BayesTools:::.posterior_atoms_from_priors(
+      prior_list$bias,
+      as.numeric(table(factor(models_ind, levels = seq_along(prior_list$bias)))) /
+        length(models_ind),
+      n_columns = ncol(omega_samples),
+      column_names = colnames(omega_samples),
+      source = "test_model_probabilities",
+      null_location = 1
+    )
 
   posterior_data <- BayesTools:::.plot_data_samples.weightparameter(
     samples = list(bias = omega_samples),

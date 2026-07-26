@@ -7,6 +7,8 @@
 #' @param prior_probs vector of prior model probabilities summing to one.
 #' @param post_probs vector of posterior model probabilities summing to one.
 #' @param margliks vector of marginal likelihoods.
+#' @param on_failure policy for missing marginal likelihoods in models with
+#' positive prior probability. See [compute_inference()].
 #' @param is_null logical vector of indicators whether the model corresponds
 #' to the null or alternative hypothesis (or an integer vector indexing models
 #' corresponding to the null hypothesis; use \code{0} or \code{integer(0)}
@@ -21,13 +23,20 @@
 #' @return \code{inclusion_BF} returns a Bayes factor.
 #'
 #' @export
-inclusion_BF         <- function(prior_probs, post_probs, margliks, is_null){
+inclusion_BF <- function(prior_probs, post_probs, margliks, is_null,
+                         on_failure = c("error", "drop", "zero")){
 
+  on_failure <- match.arg(on_failure)
 
   is_null <- .model_averaging_is_null(is_null, length(prior_probs))
 
   if(!missing(prior_probs) && !missing(margliks)){
-    return(.inclusion_BF.margliks(prior_probs = prior_probs, margliks = margliks, is_null = is_null))
+    return(.inclusion_BF.margliks(
+      prior_probs = prior_probs,
+      margliks     = margliks,
+      is_null      = is_null,
+      on_failure  = on_failure
+    ))
   }else if(!missing(prior_probs) && !missing(post_probs)){
     return(.inclusion_BF.probs(prior_probs = prior_probs, post_probs = post_probs, is_null = is_null))
   }else{
@@ -86,19 +95,27 @@ inclusion_BF         <- function(prior_probs, post_probs, margliks, is_null){
 
   return(exp(log_BF))
 }
-.inclusion_BF.margliks <- function(prior_probs, margliks, is_null){
+.inclusion_BF.margliks <- function(
+    prior_probs, margliks, is_null,
+    on_failure = c("error", "drop", "zero")){
 
   .inclusion_BF_check_probs(prior_probs, "prior_probs")
   check_real(margliks,  "margliks", check_length = length(prior_probs))
+  on_failure <- match.arg(on_failure)
+
+  prepared <- .model_averaging_prepare_margliks(
+    margliks,
+    prior_probs,
+    on_failure = on_failure
+  )
+  margliks <- prepared$margliks
+  prior_probs <- prepared$prior_probs
 
   prior_alt  <- sum(prior_probs[!is_null])
   prior_null <- sum(prior_probs[is_null])
-
   if(prior_alt == 0 || prior_null == 0){
     return(NA_real_)
   }
-
-  margliks <- .model_averaging_margliks(margliks, prior_probs)
 
   active <- prior_probs > 0 & is.finite(margliks)
   if(!any(active & !is_null)){
@@ -244,37 +261,17 @@ weightfunctions_mapping <- function(prior_list, cuts_only = FALSE, one_sided = F
   })
 }
 
-.weightfunction_unique_cuts <- function(cuts, tolerance = sqrt(.Machine$double.eps)){
+.weightfunction_unique_cuts <- function(cuts){
 
-  cuts <- sort(cuts)
-  if(length(cuts) <= 1L){
-    return(cuts)
-  }
-
-  out <- cuts[1L]
-  for(cut in cuts[-1L]){
-    if(abs(cut - out[length(out)]) <= tolerance){
-      if(abs(cut) <= tolerance || abs(out[length(out)]) <= tolerance){
-        out[length(out)] <- 0
-      }else if(abs(cut - 1) <= tolerance || abs(out[length(out)] - 1) <= tolerance){
-        out[length(out)] <- 1
-      }else{
-        out[length(out)] <- min(cut, out[length(out)])
-      }
-    }else{
-      out <- c(out, cut)
-    }
-  }
-
-  out
+  sort(unique(cuts))
 }
 
-.weightfunction_global_bin_indices <- function(global_cuts, expansion, tolerance = sqrt(.Machine$double.eps)){
+.weightfunction_global_bin_indices <- function(global_cuts, expansion){
 
   vapply(seq_len(length(global_cuts) - 1L), function(i){
     ind <- which(
-      global_cuts[i] >= expansion$lower - tolerance &
-        global_cuts[i + 1L] <= expansion$upper + tolerance
+      global_cuts[i] >= expansion$lower &
+        global_cuts[i + 1L] <= expansion$upper
     )
     if(length(ind) != 1L){
       stop("Could not map global weightfunction bin to a local bin.", call. = FALSE)

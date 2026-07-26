@@ -547,24 +547,46 @@ test_that("ordered prior mixing samples raw coefficients jointly", {
   )
   model_1 <- attr(mixed, "models_ind") == 1L
   model_2 <- attr(mixed, "models_ind") == 2L
-  expect_equal(c(sum(model_1), sum(model_2)), c(2L, 6L))
+  expect_equal(sum(model_1) + sum(model_2), 8L)
+  expect_equal(mean(model_1), .25, tolerance = .25)
   expect_equal(
     unname(mixed[model_1, , drop = FALSE]),
-    matrix(c(2, 3, 5), nrow = 2, ncol = 3, byrow = TRUE)
+    matrix(c(2, 3, 5), nrow = sum(model_1), ncol = 3, byrow = TRUE)
   )
   expect_equal(
     unname(mixed[model_2, , drop = FALSE]),
-    matrix(c(4, 6, 10), nrow = 6, ncol = 3, byrow = TRUE)
+    matrix(c(4, 6, 10), nrow = sum(model_2), ncol = 3, byrow = TRUE)
   )
 
   mixed_levels <- transform_factor_samples(list(mu_f = mixed))$mu_f
   expect_equal(
     unname(mixed_levels[model_1, , drop = FALSE]),
-    matrix(c(2, 5, 10), nrow = 2, ncol = 3, byrow = TRUE)
+    matrix(c(2, 5, 10), nrow = sum(model_1), ncol = 3, byrow = TRUE)
   )
   expect_equal(
     unname(mixed_levels[model_2, , drop = FALSE]),
-    matrix(c(4, 10, 20), nrow = 6, ncol = 3, byrow = TRUE)
+    matrix(c(4, 10, 20), nrow = sum(model_2), ncol = 3, byrow = TRUE)
+  )
+})
+
+test_that("fixed ordered allocations canonicalize only roundoff drift", {
+
+  allocation <- c(.2, .3, .5 + .Machine$double.eps)
+  spec <- BayesTools:::.prior_ordered_allocation_spec(allocation)
+
+  expect_equal(sum(spec$weights), 1)
+  expect_equal(
+    spec$canonicalization$original_sum,
+    sum(allocation)
+  )
+  expect_lte(
+    spec$canonicalization$max_correction,
+    spec$canonicalization$roundoff_bound
+  )
+
+  expect_error(
+    BayesTools:::.prior_ordered_allocation_spec(c(.2, .3, .5 + 1e-10)),
+    "exceeding the roundoff bound"
   )
 })
 

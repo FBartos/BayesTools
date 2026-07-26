@@ -26,8 +26,7 @@
 
   point_masses <- posterior_density[["point_masses"]]
   if(!is.null(point_masses) && nrow(point_masses) > 0L){
-    point_tol <- sqrt(.Machine$double.eps) * max(1, abs(null_hypothesis))
-    if(any(abs(point_masses[["x"]] - null_hypothesis) <= point_tol)){
+    if(any(point_masses[["x"]] == null_hypothesis)){
       return(TRUE)
     }
   }

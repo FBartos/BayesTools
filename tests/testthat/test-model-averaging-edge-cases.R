@@ -76,6 +76,24 @@ source(testthat::test_path("common-functions.R"))
   )
 }
 
+.mock_point_mixing_model <- function(location, logml, prior_weight = 1) {
+  posterior <- cbind(
+    theta = rep(location, 20),
+    beta = seq_len(20)
+  )
+  list(
+    fit = .mock_runjags_fit_for_mixing(
+      posterior,
+      prior_list = list(
+        theta = prior("point", list(location = location)),
+        beta = prior("normal", list(0, 1))
+      )
+    ),
+    marglik = .mock_bridge(logml),
+    prior_weights = prior_weight
+  )
+}
+
 .mock_simplex_mixing_model <- function(prior_list, logml = 0, prior_weight = 1) {
   w1 <- seq(.1, .9, length.out = 20)
   posterior <- cbind(
@@ -424,7 +442,7 @@ test_that("extreme finite prior weights work across model-averaging entry points
   )
 })
 
-test_that("model averaging rejects invalid or unavailable positive-prior marginal likelihoods", {
+test_that("model averaging distinguishes failures from zero evidence", {
 
   expect_error(
     compute_inference(c(1, 1), c(Inf, 0), is_null = c(TRUE, FALSE)),
@@ -433,16 +451,52 @@ test_that("model averaging rejects invalid or unavailable positive-prior margina
   )
   expect_error(
     compute_inference(c(1, 0), c(NA_real_, 1000), is_null = c(TRUE, FALSE)),
-    "No finite marginal likelihoods are available for models with positive prior probability.",
-    fixed = TRUE
+    class = "BayesTools_marglik_failure"
   )
 
-  inference <- compute_inference(
-    prior_weights = c(1, 1, 0),
-    margliks = c(NA_real_, 0, 1000),
-    is_null = c(TRUE, FALSE, FALSE)
+  expect_error(
+    compute_inference(
+      prior_weights = c(1, 1, 0),
+      margliks = c(NA_real_, 0, 1000),
+      is_null = c(TRUE, FALSE, FALSE)
+    ),
+    class = "BayesTools_marglik_failure"
   )
-  expect_equal(inference$post_probs, c(0, 1, 0), tolerance = 1e-12)
+
+  dropped <- NULL
+  expect_warning(
+    dropped <- compute_inference(
+      prior_weights = c(1, 1, 0),
+      margliks = c(NA_real_, 0, 1000),
+      is_null = c(TRUE, FALSE, FALSE),
+      on_failure = "drop"
+    ),
+    "Dropped model"
+  )
+  expect_equal(dropped$prior_probs, c(0, 1, 0))
+  expect_equal(dropped$post_probs, c(0, 1, 0), tolerance = 1e-12)
+  expect_equal(attr(dropped, "marglik_failure")$model, 1)
+
+  zeroed <- NULL
+  expect_warning(
+    zeroed <- compute_inference(
+      prior_weights = c(1, 1, 0),
+      margliks = c(NA_real_, 0, 1000),
+      is_null = c(TRUE, FALSE, FALSE),
+      on_failure = "zero"
+    ),
+    "zero evidence"
+  )
+  expect_equal(zeroed$prior_probs, c(.5, .5, 0))
+  expect_equal(zeroed$post_probs, c(0, 1, 0), tolerance = 1e-12)
+  expect_equal(attr(zeroed, "marglik_failure")$policy, "zero")
+
+  ignored <- compute_inference(
+    prior_weights = c(1, 0),
+    margliks = c(0, NA_real_),
+    is_null = c(TRUE, FALSE)
+  )
+  expect_equal(ignored$post_probs, c(1, 0))
 })
 
 test_that("model averaging rejects malformed prior weights at each public entry point", {
@@ -502,13 +556,44 @@ test_that("model averaging rejects malformed prior weights at each public entry 
   )
 })
 
-test_that("mixture sample counts are deterministic, exact length, and retain positive components", {
-  counts <- BayesTools:::.posterior_mixture_sample_counts(c(.999, .001), 1000)
+test_that("mixture sample counts are categorical and may omit rare components", {
 
+  set.seed(20260726)
+  counts <- BayesTools:::.posterior_mixture_sample_counts(c(.75, .25), 1000)
   expect_equal(sum(counts), 1000)
-  expect_equal(counts, c(999L, 1L))
-  expect_equal(BayesTools:::.posterior_mixture_sample_counts(c(1, 3), 400), c(100L, 300L))
-  expect_equal(BayesTools:::.posterior_mixture_sample_counts(c(.9999, .0001), 1000), c(999L, 1L))
+  expect_equal(counts / 1000, c(.75, .25), tolerance = .04)
+
+  set.seed(20260726)
+  rare <- BayesTools:::.posterior_mixture_sample_counts(c(1 - 1e-12, 1e-12), 1000)
+  expect_equal(rare, c(1000L, 0L))
+
+  set.seed(20260726)
+  repeated <- replicate(
+    1000,
+    BayesTools:::.posterior_mixture_sample_counts(c(.7, .3), 20)[2]
+  )
+  expect_equal(mean(repeated), 6, tolerance = .2)
+  expect_gt(stats::var(repeated), 0)
+})
+
+test_that("mixed posterior atom metadata retains unsampled rare components", {
+
+  mixed <- mix_posteriors(
+    model_list = list(
+      .mock_mixing_model(offset = 100, logml = 0),
+      .mock_point_mixing_model(location = 0, logml = log(1e-20))
+    ),
+    parameters = "theta",
+    is_null_list = list(theta = c(FALSE, FALSE)),
+    seed = 20260726,
+    n_samples = 1000
+  )
+  atoms <- attr(mixed$theta, "posterior_atoms", exact = TRUE)
+
+  expect_false(any(attr(mixed$theta, "models_ind") == 2L))
+  expect_equal(atoms$locations[, 1L], 0)
+  expect_gt(atoms$mass, 0)
+  expect_equal(atoms$mass, atoms$component_probabilities[2L])
 })
 
 test_that("mix_posteriors preserves model and sample alignment across parameters", {
@@ -531,13 +616,10 @@ test_that("mix_posteriors preserves model and sample alignment across parameters
     n_samples    = 12
   )
 
-  expected_models <- c(rep(1L, 3L), rep(2L, 6L), rep(3L, 3L))
-
-  expect_equal(attr(mixed$theta, "models_ind"), expected_models)
-  expect_equal(attr(mixed$beta, "models_ind"), expected_models)
+  expect_equal(attr(mixed$theta, "models_ind"), attr(mixed$beta, "models_ind"))
   expect_equal(attr(mixed$theta, "sample_ind"), attr(mixed$beta, "sample_ind"))
   expect_equal(as.numeric(mixed$beta - mixed$theta), rep(100, 12))
-  expect_equal(as.integer(table(factor(attr(mixed$theta, "models_ind"), levels = 1:3))), c(3L, 6L, 3L))
+  expect_equal(length(attr(mixed$theta, "models_ind")), 12)
 
   sample_ind <- attr(mixed$theta, "sample_ind")
   for(model_i in seq_along(model_list)){
@@ -567,7 +649,7 @@ test_that("conditional mix_posteriors excludes null models from samples and prio
     n_samples    = 8
   )
 
-  expect_equal(as.integer(table(factor(attr(mixed$theta, "models_ind"), levels = 1:3))), c(0L, 5L, 3L))
+  expect_equal(length(attr(mixed$theta, "models_ind")), 8)
   expect_false(any(attr(mixed$theta, "models_ind") == 1L))
   expect_equal(attr(mixed$theta, "sample_ind"), attr(mixed$theta, "sample_ind")[attr(mixed$theta, "models_ind") != 1L])
 
@@ -1055,4 +1137,52 @@ test_that("weightfunctions_mapping handles mixed prior list", {
   )
   test_reference_text(wf_mapping_info, "weightfunctions_mapping_info.txt")
 
+})
+
+test_that("weightfunction mappings preserve distinct representable cuts", {
+
+  lower_cut <- .05
+  upper_cut <- .05 + 5e-13
+  first <- prior_weightfunction(
+    "one-sided",
+    lower_cut,
+    wf_fixed(c(1, .5))
+  )
+  second <- prior_weightfunction(
+    "one-sided",
+    upper_cut,
+    wf_fixed(c(1, .25))
+  )
+
+  cuts <- weightfunctions_mapping(
+    list(first, second),
+    cuts_only = TRUE
+  )
+  expect_equal(cuts, c(0, lower_cut, upper_cut, 1))
+  expect_equal(diff(cuts)[2L], upper_cut - lower_cut)
+})
+
+test_that("selection step bins use exact (lower, upper] boundaries", {
+
+  cuts <- c(0, .05, 1)
+  probabilities <- c(.05 - 5e-13, .05, .05 + 5e-13)
+  bins <- vapply(probabilities, function(probability){
+    .selection_native_step_bin_from_z(
+      stats::qnorm(probability, lower.tail = FALSE),
+      cuts
+    )
+  }, integer(1))
+
+  evaluated <- stats::pnorm(
+    stats::qnorm(probabilities, lower.tail = FALSE),
+    lower.tail = FALSE
+  )
+  expected <- findInterval(
+    evaluated,
+    cuts,
+    rightmost.closed = TRUE,
+    left.open = TRUE
+  )
+  expect_equal(bins, expected)
+  expect_equal(bins[c(1L, 3L)], c(1L, 2L))
 })

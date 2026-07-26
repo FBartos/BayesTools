@@ -411,7 +411,7 @@
 }
 .petpeese_prior_sum_has_atom <- function(mu_component, bias_component, scale){
 
-  if(abs(scale) <= .prior_linear_density_zero_tol()){
+  if(scale == 0){
     return(mu_component$type == "atom")
   }
 
@@ -439,7 +439,7 @@
 }
 .petpeese_prior_sum_quantile <- function(mu_component, bias_component, scale, p){
 
-  if(abs(scale) <= .prior_linear_density_zero_tol()){
+  if(scale == 0){
     return(.petpeese_prior_component_quantile(mu_component, p))
   }
 
@@ -487,7 +487,7 @@
 }
 .petpeese_prior_sum_cdf <- function(mu_component, bias_component, scale, q){
 
-  if(abs(scale) <= .prior_linear_density_zero_tol()){
+  if(scale == 0){
     return(.petpeese_prior_component_cdf(mu_component, q))
   }
 
@@ -579,7 +579,7 @@
   for(mu_component in model$mu){
     mu_range <- .petpeese_prior_component_range(mu_component, tail_prob)
     for(bias_component in model$bias){
-      if(abs(scale) <= .prior_linear_density_zero_tol()){
+      if(scale == 0){
         ranges[[length(ranges) + 1L]] <- mu_range
       }else{
         bias_range <- .petpeese_prior_component_range(bias_component, tail_prob)

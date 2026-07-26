@@ -369,8 +369,7 @@
     return(NULL)
   }
 
-  tolerance <- sqrt(.Machine$double.eps) * max(1, abs(null_hypothesis))
-  index <- which(abs(x - null_hypothesis) <= tolerance)
+  index <- which(x == null_hypothesis)
   if(length(index) != 1L){
     return(NULL)
   }

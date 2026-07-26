@@ -511,7 +511,11 @@ test_that("point(1) weightfunction null components are handled explicitly", {
   )
 
   expect_equal(colnames(mixed), c("omega[0,0.05]", "omega[0.05,1]"))
-  expect_equal(unname(mixed[attr(mixed, "models_ind") == 1, ]), matrix(1, nrow = 10, ncol = 2))
+  null_n <- sum(attr(mixed, "models_ind") == 1)
+  expect_equal(
+    unname(mixed[attr(mixed, "models_ind") == 1, ]),
+    matrix(1, nrow = null_n, ncol = 2)
+  )
   expect_error(
     .mix_priors.weightfunction(
       list(prior("point", list(.5), prior_weights = 1), wf),
@@ -522,7 +526,7 @@ test_that("point(1) weightfunction null components are handled explicitly", {
   )
 })
 
-test_that("weightfunction prior mixing retains tiny positive components", {
+test_that("weightfunction prior mixing samples tiny positive components exactly", {
 
   dominant <- prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .5)), prior_weights = 999)
   tiny     <- prior_weightfunction("one-sided", c(.05), wf_fixed(c(1, .2)), prior_weights = 1)
@@ -534,8 +538,15 @@ test_that("weightfunction prior mixing retains tiny positive components", {
     n_samples = 1000
   )
 
-  expect_true(2 %in% attr(mixed, "models_ind"))
-  expect_equal(unname(mixed[attr(mixed, "models_ind") == 2, "omega[0.05,1]"]), .2)
+  set.seed(4)
+  expected_counts <- .prior_mixture_sample_counts(c(.999, .001), 1000)
+  expect_equal(sum(attr(mixed, "models_ind") == 2), expected_counts[2])
+  if(expected_counts[2] > 0){
+    expect_equal(
+      unname(mixed[attr(mixed, "models_ind") == 2, "omega[0.05,1]"]),
+      rep(.2, expected_counts[2])
+    )
+  }
 })
 
 test_that("omega diagnostics reject bias mixtures without weightfunctions", {

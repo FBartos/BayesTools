@@ -51,7 +51,7 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   )
 
   # extract the samples
-  model_samples <- suppressWarnings(coda::as.mcmc(model))
+  model_samples <- .extract_posterior_samples(model, as_list = FALSE)
   if(!is.matrix(model_samples)){
     # deal with automatic coercion into a vector in case of a single predictor
     model_samples <- matrix(model_samples, ncol = 1)
@@ -251,6 +251,16 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   attr(samples, "interaction")       <- if(length(prior_info) == 0) FALSE else prior_info[["interaction"]]
   attr(samples, "interaction_terms") <- prior_info[["interaction_terms"]]
   samples <- .posterior_support_set_from_prior_list(samples, prior)
+  samples <- .posterior_atoms_set(
+    samples,
+    .posterior_atoms_from_priors(
+      prior,
+      1,
+      n_columns = 1L,
+      column_names = parameter,
+      source = "single_model_structure"
+    )
+  )
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.simple")
 
   return(samples)
@@ -279,6 +289,16 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   attr(samples, "parameter")  <- parameter
   attr(samples, "prior_list") <- prior
   samples <- .posterior_support_set_columns_from_prior_list(samples, prior)
+  samples <- .posterior_atoms_set(
+    samples,
+    .posterior_atoms_from_priors(
+      prior,
+      1,
+      n_columns = K,
+      column_names = colnames(samples),
+      source = "single_model_structure"
+    )
+  )
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.vector")
 
   return(samples)
@@ -406,6 +426,17 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     }
   }
 
+  samples <- .posterior_atoms_set(
+    samples,
+    .posterior_atoms_from_priors(
+      prior,
+      1,
+      n_columns = ncol(samples),
+      column_names = colnames(samples),
+      source = "single_model_structure"
+    )
+  )
+
   return(samples)
 }
 .as_mixed_posteriors.weightfunction <- function(model_samples, prior, parameter){
@@ -431,6 +462,17 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   attr(samples, "prior_list") <- prior
   samples <- .weightfunction_set_omega_context(samples, omega_info)
   samples <- .posterior_support_set_weightfunction_columns(samples, prior, omega_info)
+  samples <- .posterior_atoms_set(
+    samples,
+    .posterior_atoms_from_priors(
+      prior,
+      1,
+      n_columns = ncol(samples),
+      column_names = colnames(samples),
+      source = "single_model_structure",
+      null_location = 1
+    )
+  )
   class(samples) <- c("mixed_posteriors", "mixed_posteriors.weightfunction")
 
   return(samples)
@@ -556,6 +598,16 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
   }else{
     samples <- .posterior_support_set_from_prior_list(samples, prior)
   }
+  samples <- .posterior_atoms_set(
+    samples,
+    .posterior_atoms_from_indicator(
+      prior = prior,
+      indicator = attr(samples, "models_ind"),
+      n_columns = if(is.null(dim(samples))) 1L else ncol(samples),
+      column_names = if(is.null(dim(samples))) parameter else colnames(samples),
+      spike_and_slab = TRUE
+    )
+  )
 
   return(samples)
 }
@@ -685,6 +737,15 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
   class(samples) <- c("mixed_posteriors.mixture", class(samples))
   attr(samples, "prior_list") <- prior
+  samples <- .posterior_atoms_set(
+    samples,
+    .posterior_atoms_from_indicator(
+      prior = prior,
+      indicator = attr(samples, "models_ind"),
+      n_columns = if(is.null(dim(samples))) 1L else ncol(samples),
+      column_names = if(is.null(dim(samples))) parameter else colnames(samples)
+    )
+  )
 
   return(samples)
 }

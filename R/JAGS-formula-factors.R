@@ -488,17 +488,28 @@
     cell_names = design_info[["cell_names"]]
   )
 
+  posterior_atoms <- .posterior_atoms_get(coefficient_samples)
   old_attributes <- attributes(coefficient_samples)
   old_class <- class(coefficient_samples)
   old_attributes <- old_attributes[
     !names(old_attributes) %in% c(
       "dim", "dimnames", "names", "class", "level_names",
-      "posterior_support"
+      "posterior_support", "posterior_atoms"
     )
   ]
   attributes(transformed_samples) <- c(attributes(transformed_samples), old_attributes)
   attr(transformed_samples, "level_names")       <- design_info[["cell_names"]]
   attr(transformed_samples, "factor_cell_names") <- design_info[["cell_names"]]
+  if(!is.null(posterior_atoms)){
+    transformed_samples <- .posterior_atoms_set(
+      transformed_samples,
+      .posterior_atoms_linear_transform(
+        posterior_atoms,
+        design,
+        column_names = colnames(transformed_samples)
+      )
+    )
+  }
   class(transformed_samples) <- unique(c(old_class, class(transformed_samples), transformed_class))
 
   return(transformed_samples)

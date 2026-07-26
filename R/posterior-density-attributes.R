@@ -203,7 +203,8 @@
     )
     out <- out[order(out[["x"]]), , drop = FALSE]
   }
-  if(nrow(out) > 0L && sum(out[["mass"]]) > 1 + sqrt(.Machine$double.eps)){
+  mass_bound <- .Machine$double.eps * max(8, nrow(out))
+  if(nrow(out) > 0L && sum(out[["mass"]]) > 1 + mass_bound){
     return(NULL)
   }
   rownames(out) <- NULL
@@ -305,8 +306,7 @@
       next
     }
     values <- suppressWarnings(as.numeric(diagnostic_list[[name]]))
-    tolerance <- sqrt(.Machine$double.eps) * max(1, abs(null_hypothesis))
-    index <- which(is.finite(values) & abs(values - null_hypothesis) <= tolerance)
+    index <- which(is.finite(values) & values == null_hypothesis)
     if(length(index) != 1L){
       return(NA_integer_)
     }

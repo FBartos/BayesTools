@@ -192,9 +192,24 @@
 }
 .plot_data_samples_density_range <- function(bounds, transformation = NULL){
 
-  offset <- if(!is.null(transformation)) 1e-5 else 0
-  from <- if(!is.infinite(bounds[1])) bounds[1] + offset else NULL
-  to   <- if(!is.infinite(bounds[2])) bounds[2] - offset else NULL
+  from <- if(!is.infinite(bounds[1])){
+    if(is.null(transformation)){
+      bounds[1]
+    }else{
+      .representable_interior_value(bounds[1], 1)
+    }
+  }else{
+    NULL
+  }
+  to <- if(!is.infinite(bounds[2])){
+    if(is.null(transformation)){
+      bounds[2]
+    }else{
+      .representable_interior_value(bounds[2], -1)
+    }
+  }else{
+    NULL
+  }
 
   if(!is.null(from) && !is.null(to) && from >= to){
     from <- bounds[1]

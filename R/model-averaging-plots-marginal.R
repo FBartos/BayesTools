@@ -329,7 +329,7 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
   }
 
   points <- prior_density$points
-  points <- points[points$p > .prior_linear_density_zero_tol(), , drop = FALSE]
+  points <- points[points$p > 0, , drop = FALSE]
   if(nrow(points) == 0){
     return(numeric())
   }

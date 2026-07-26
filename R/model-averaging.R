@@ -26,6 +26,11 @@
 #' when no models are null)
 #' @param conditional whether prior and posterior model probabilities should
 #' be returned only for the conditional model. Defaults to \code{FALSE}
+#' @param on_failure policy for missing marginal likelihoods in models with
+#' positive prior probability. \code{"error"} aborts (the default),
+#' \code{"drop"} removes failed models from the prior model space and
+#' renormalizes, and \code{"zero"} explicitly assigns the failed models zero
+#' evidence. Non-default policies emit a warning and return audit metadata.
 #'
 #'
 #' @return \code{compute_inference} returns a named list of prior probabilities,
@@ -43,23 +48,36 @@
 NULL
 
 #' @rdname ensemble_inference
-compute_inference <- function(prior_weights, margliks, is_null = NULL, conditional = FALSE){
+compute_inference <- function(prior_weights, margliks, is_null = NULL,
+                              conditional = FALSE,
+                              on_failure = c("error", "drop", "zero")){
 
   check_real(prior_weights, "prior_weights", lower = 0, check_length = 0)
   check_real(margliks,   "margliks", check_length = length(prior_weights))
   check_bool(conditional, "conditional", allow_NA = FALSE)
+  on_failure <- match.arg(on_failure)
   is_null <- .model_averaging_is_null(is_null, length(prior_weights))
 
   prior_probs <- .model_averaging_prior_probs(prior_weights)
-  margliks    <- .model_averaging_margliks(margliks, prior_probs)
+  prepared    <- .model_averaging_prepare_margliks(
+    margliks,
+    prior_probs,
+    on_failure = on_failure
+  )
+  margliks    <- prepared$margliks
+  prior_probs <- prepared$prior_probs
   post_probs  <- .model_averaging_post_probs(margliks, prior_probs)
-  BF          <- inclusion_BF(prior_probs = prior_probs, margliks = margliks, is_null = is_null)
+  BF          <- .inclusion_BF.margliks(
+    prior_probs = prior_probs,
+    margliks     = margliks,
+    is_null      = is_null,
+    on_failure  = "error"
+  )
 
   if(conditional){
     if(all(is_null))
       stop("Conditional inference requires at least one non-null model.", call. = FALSE)
-    prior_probs <- .model_averaging_prior_probs(ifelse(is_null, 0, prior_weights))
-    margliks    <- .model_averaging_margliks(margliks, prior_probs)
+    prior_probs <- .model_averaging_prior_probs(ifelse(is_null, 0, prior_probs))
     post_probs  <- .model_averaging_post_probs(margliks, prior_probs)
   }
 
@@ -71,6 +89,7 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL, condition
 
   attr(output, "is_null")     <- is_null
   attr(output, "conditional") <- conditional
+  attr(output, "marglik_failure") <- prepared$audit
   class(output) <- c(class(output), "inference")
 
   return(output)
@@ -89,19 +108,83 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL, condition
   scaled_weights / sum(scaled_weights)
 }
 
-.model_averaging_margliks <- function(margliks, prior_probs){
+.model_averaging_prepare_margliks <- function(
+    margliks, prior_probs, on_failure = c("error", "drop", "zero")){
+
+  on_failure <- match.arg(on_failure)
 
   if(any(is.infinite(margliks) & margliks > 0 & prior_probs > 0, na.rm = TRUE)){
     stop("Infinite positive marginal likelihoods are not supported.", call. = FALSE)
   }
 
+  failed <- is.na(margliks) & prior_probs > 0
+  audit <- NULL
+  if(any(failed)){
+    failed_models <- which(failed)
+    audit <- data.frame(
+      model = failed_models,
+      original_prior_prob = prior_probs[failed_models],
+      policy = rep(on_failure, length(failed_models)),
+      stringsAsFactors = FALSE
+    )
+
+    if(identical(on_failure, "error")){
+      condition <- errorCondition(
+        message = paste0(
+          "Marginal-likelihood computation failed for positive-prior-probability ",
+          "model(s): ",
+          paste(failed_models, collapse = ", "),
+          ". Set 'on_failure' explicitly only when dropping models or assigning ",
+          "zero evidence is scientifically intended."
+        ),
+        call = NULL,
+        class = "BayesTools_marglik_failure",
+        models = failed_models,
+        prior_probs = prior_probs[failed_models]
+      )
+      stop(condition)
+    }
+
+    if(identical(on_failure, "drop")){
+      prior_probs[failed] <- 0
+      prior_probs <- prior_probs / sum(prior_probs)
+      warning_message <- paste0(
+        "Dropped model(s) ",
+        paste(failed_models, collapse = ", "),
+        " after marginal-likelihood failure and renormalized the prior model space."
+      )
+    }else{
+      warning_message <- paste0(
+        "Assigned zero evidence to model(s) ",
+        paste(failed_models, collapse = ", "),
+        " after marginal-likelihood failure by explicit request."
+      )
+    }
+    warning(warning_message, call. = FALSE, immediate. = TRUE)
+  }
+
+  # Missing values from zero-prior-probability models cannot affect inference.
+  # Convert them only after the positive-probability failure policy is resolved.
   margliks[is.na(margliks)] <- -Inf
 
   if(!any(is.finite(margliks) & prior_probs > 0)){
     stop("No finite marginal likelihoods are available for models with positive prior probability.", call. = FALSE)
   }
 
-  margliks
+  list(
+    margliks = margliks,
+    prior_probs = prior_probs,
+    audit = audit
+  )
+}
+
+.model_averaging_margliks <- function(margliks, prior_probs){
+
+  .model_averaging_prepare_margliks(
+    margliks,
+    prior_probs,
+    on_failure = "error"
+  )$margliks
 }
 
 .model_averaging_post_probs <- function(margliks, prior_probs){
@@ -114,7 +197,7 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL, condition
   .mixture_sample_counts(post_probs, n_samples)
 }
 
-.mixture_sample_counts <- function(probs, n_samples, preserve_positive = TRUE){
+.mixture_sample_counts <- function(probs, n_samples){
 
   probs <- as.numeric(probs)
   if(length(probs) == 0L){
@@ -133,44 +216,27 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL, condition
     stop("At least one mixture probability must be positive.", call. = FALSE)
   }
 
-  probs <- probs / sum(probs)
-  raw_counts <- probs * n_samples
-  counts <- floor(raw_counts)
-
-  remaining <- n_samples - sum(counts)
-  if(remaining > 0L){
-    add_order <- order(-(raw_counts - counts), -probs, seq_along(probs))
-    counts[add_order[seq_len(remaining)]] <- counts[add_order[seq_len(remaining)]] + 1L
+  if(n_samples == 0L){
+    return(integer(length(probs)))
   }
 
-  if(preserve_positive && n_samples > 0L){
-    positive <- probs > 0
-    missing <- which(positive & counts == 0L)
-    if(length(missing) > 0L && sum(positive) <= n_samples){
-      for(m in missing){
-        donors <- which(counts > 1L)
-        if(length(donors) == 0L){
-          break
-        }
-
-        donor_cost <- abs((counts[donors] - 1L) - raw_counts[donors]) - abs(counts[donors] - raw_counts[donors])
-        donor <- donors[order(donor_cost, -counts[donors], -probs[donors], donors)[1L]]
-        counts[donor] <- counts[donor] - 1L
-        counts[m] <- 1L
-      }
-    }
-  }
-
-  as.integer(counts)
+  as.integer(stats::rmultinom(
+    n = 1L,
+    size = n_samples,
+    prob = probs
+  )[, 1L])
 }
 
 #' @rdname ensemble_inference
-ensemble_inference <- function(model_list, parameters, is_null_list, conditional = FALSE){
+ensemble_inference <- function(model_list, parameters, is_null_list,
+                               conditional = FALSE,
+                               on_failure = c("error", "drop", "zero")){
 
   # check input
   check_list(model_list, "model_list")
   check_char(parameters, "parameters", check_length = FALSE)
   check_list(is_null_list, "is_null_list", check_length = length(parameters))
+  on_failure <- match.arg(on_failure)
   sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("marglik", "prior_weights"), all_objects = TRUE, allow_other = TRUE))
   if(!all(sapply(model_list, function(m)inherits(m[["marglik"]], what = "bridge"))))
     stop("model_list:marglik must contain 'bridgesampling' marginal likelihoods")
@@ -186,7 +252,13 @@ ensemble_inference <- function(model_list, parameters, is_null_list, conditional
   for(p in seq_along(parameters)){
 
     # prepare parameter specific values
-    out[[parameters[p]]] <- compute_inference(prior_weights = prior_weights, margliks = margliks, is_null = is_null_list[[p]], conditional = conditional)
+    out[[parameters[p]]] <- compute_inference(
+      prior_weights = prior_weights,
+      margliks       = margliks,
+      is_null        = is_null_list[[p]],
+      conditional    = conditional,
+      on_failure     = on_failure
+    )
 
     # add parameter names
     parameter_name    <- parameters[p]
@@ -206,8 +278,10 @@ ensemble_inference <- function(model_list, parameters, is_null_list, conditional
 }
 
 #' @rdname ensemble_inference
-models_inference   <- function(model_list){
+models_inference <- function(model_list,
+                             on_failure = c("error", "drop", "zero")){
 
+  on_failure <- match.arg(on_failure)
   sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("marglik", "prior_weights"), all_objects = TRUE, allow_other = TRUE))
   if(!all(sapply(model_list, function(m)inherits(m[["marglik"]], what = "bridge"))))
     stop("model_list:marglik must contain 'bridgesampling' marginal likelihoods")
@@ -216,7 +290,13 @@ models_inference   <- function(model_list){
   margliks    <- sapply(model_list, function(model)model[["marglik"]][["logml"]])
   prior_weights  <- sapply(model_list, function(model)model[["prior_weights"]])
   prior_probs <- .model_averaging_prior_probs(prior_weights)
-  margliks    <- .model_averaging_margliks(margliks, prior_probs)
+  prepared    <- .model_averaging_prepare_margliks(
+    margliks,
+    prior_probs,
+    on_failure = on_failure
+  )
+  margliks    <- prepared$margliks
+  prior_probs <- prepared$prior_probs
   post_probs  <- .model_averaging_post_probs(margliks, prior_probs)
   incl_BF     <- sapply(seq_along(model_list), function(i){
     is_null <- rep(TRUE, length(model_list))
@@ -234,5 +314,6 @@ models_inference   <- function(model_list){
     )
   }
 
+  attr(model_list, "marglik_failure") <- prepared$audit
   return(model_list)
 }
