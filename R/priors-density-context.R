@@ -64,7 +64,7 @@
 
     if(transform$log_intercept &&
        transform$intercept %in% cols &&
-       abs(weights[[transform$intercept]]) > .prior_linear_density_zero_tol()){
+       weights[[transform$intercept]] != 0){
       stop(
         "Linear-combination prior densities with log-intercept scaling are only available ",
         "for the transformed intercept coefficient itself.",
@@ -85,7 +85,7 @@
     out[remaining] <- out[remaining] + weights[remaining]
   }
 
-  out[abs(out) > .prior_linear_density_zero_tol()]
+  out[out != 0]
 }
 
 .prior_density_context_density <- function(context, weights,
@@ -412,47 +412,71 @@
 .prior_density_from_context <- function(context, weights,
                                         source_transforms = NULL,
                                         output_transformation = NULL,
-                                        output_transformation_arguments = NULL){
+                                        output_transformation_arguments = NULL,
+                                        .record_evaluation = TRUE){
 
   if(inherits(context, "prior_density_context")){
-    return(.prior_density_context_density(
+    out <- .prior_density_context_density(
       context                         = context,
       weights                         = weights,
       source_transforms               = source_transforms,
       output_transformation           = output_transformation,
       output_transformation_arguments = output_transformation_arguments
-    ))
-  }
-
-  if(inherits(context, "prior_density_model_mixture_context")){
+    )
+  }else if(inherits(context, "prior_density_model_mixture_context")){
     if(!is.null(source_transforms)){
       stop("Source transformations are not supported for model-list prior mixtures.", call. = FALSE)
     }
-    return(.prior_density_model_mixture_density(
+    out <- .prior_density_model_mixture_density(
       context                         = context,
       weights                         = weights,
       output_transformation           = output_transformation,
       output_transformation_arguments = output_transformation_arguments
-    ))
-  }
-
-  if(inherits(context, "prior_density_conditional_context")){
-    return(.prior_density_conditional_context_density(
+    )
+  }else if(inherits(context, "prior_density_conditional_context")){
+    out <- .prior_density_conditional_context_density(
       context                         = context,
       weights                         = weights,
       source_transforms               = source_transforms,
       output_transformation           = output_transformation,
       output_transformation_arguments = output_transformation_arguments
-    ))
+    )
+  }else{
+    stop("Unknown prior density context.", call. = FALSE)
   }
 
-  stop("Unknown prior density context.", call. = FALSE)
+  if(isTRUE(.record_evaluation)){
+    attr(out, "adaptive_evaluation") <- list(
+      kind = "density_context",
+      arguments = list(
+        context = context,
+        weights = weights,
+        source_transforms = source_transforms,
+        output_transformation = output_transformation,
+        output_transformation_arguments = output_transformation_arguments
+      )
+    )
+    attr(out, "numerical_diagnostics") <- list(
+      n_grid = context$n_grid,
+      tail_probability_per_source = context$tail_prob,
+      intended_captured_probability_per_continuous_source =
+        max(0, 1 - 2 * context$tail_prob),
+      numerical_range = .prior_linear_density_range(out),
+      grid_normalization =
+        attr(out, "grid_normalization", exact = TRUE),
+      fft_clipping =
+        attr(out, "fft_clipping", exact = TRUE),
+      adaptive_evaluation = TRUE
+    )
+  }
+  out
 }
 
 .prior_density_from_context_rows <- function(context, weights,
-                                             source_transforms = NULL,
-                                             output_transformation = NULL,
-                                             output_transformation_arguments = NULL){
+                                              source_transforms = NULL,
+                                              output_transformation = NULL,
+                                              output_transformation_arguments = NULL,
+                                              .record_evaluation = TRUE){
 
   if(is.null(dim(weights))){
     return(.prior_density_from_context(
@@ -460,7 +484,8 @@
       weights                         = weights,
       source_transforms               = source_transforms,
       output_transformation           = output_transformation,
-      output_transformation_arguments = output_transformation_arguments
+      output_transformation_arguments = output_transformation_arguments,
+      .record_evaluation              = .record_evaluation
     ))
   }
 
@@ -474,11 +499,14 @@
       weights                         = weights[1, ],
       source_transforms               = source_transforms,
       output_transformation           = output_transformation,
-      output_transformation_arguments = output_transformation_arguments
+      output_transformation_arguments = output_transformation_arguments,
+      .record_evaluation              = .record_evaluation
     ))
   }
 
-  row_keys <- apply(signif(weights, 15), 1, paste0, collapse = "\r")
+  row_keys <- apply(weights, 1, function(row){
+    paste(sprintf("%a", row), collapse = "\r")
+  })
   unique_keys <- unique(row_keys)
   row_counts <- tabulate(match(row_keys, unique_keys), nbins = length(unique_keys))
   row_indices <- match(unique_keys, row_keys)
@@ -489,7 +517,8 @@
       weights                         = weights[row_i, ],
       source_transforms               = source_transforms,
       output_transformation           = output_transformation,
-      output_transformation_arguments = output_transformation_arguments
+      output_transformation_arguments = output_transformation_arguments,
+      .record_evaluation              = FALSE
     )
   })
 
@@ -503,12 +532,37 @@
     dx <- NA_real_
   }
 
-  .prior_linear_density_mix(
+  out <- .prior_linear_density_mix(
     dists   = dists,
     weights = row_counts,
     dx      = dx,
     n_grid  = if(!is.null(context$n_grid)) context$n_grid else NULL
   )
+  if(isTRUE(.record_evaluation)){
+    attr(out, "adaptive_evaluation") <- list(
+      kind = "density_context_rows",
+      arguments = list(
+        context = context,
+        weights = weights,
+        source_transforms = source_transforms,
+        output_transformation = output_transformation,
+        output_transformation_arguments = output_transformation_arguments
+      )
+    )
+    attr(out, "numerical_diagnostics") <- list(
+      n_grid = context$n_grid,
+      tail_probability_per_source = context$tail_prob,
+      intended_captured_probability_per_continuous_source =
+        max(0, 1 - 2 * context$tail_prob),
+      numerical_range = .prior_linear_density_range(out),
+      grid_normalization =
+        attr(out, "grid_normalization", exact = TRUE),
+      fft_clipping =
+        attr(out, "fft_clipping", exact = TRUE),
+      adaptive_evaluation = TRUE
+    )
+  }
+  out
 }
 
 .prior_density_coefficient_weights <- function(column_names, parameter){

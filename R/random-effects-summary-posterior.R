@@ -301,6 +301,90 @@ random_effects_summary_posterior <- function(
                                                                     transform,
                                                                     n_grid){
 
+  density_evaluator <- function(x){
+    out <- numeric(length(x))
+    outside <- !is.finite(x) | x < 0
+
+    if(identical(transform, "sqrt")){
+      upper_support <- sqrt(scale)
+      outside <- outside | x > upper_support
+      interior <- !outside & x > 0 & x < upper_support
+      out[interior] <- stats::dbeta(
+        x[interior]^2 / scale,
+        alpha,
+        beta
+      ) * (2 * x[interior] / scale)
+
+      at_lower <- !outside & x == 0
+      if(any(at_lower)){
+        lower_power <- 2 * alpha - 1
+        out[at_lower] <- if(lower_power < 0){
+          Inf
+        }else if(lower_power == 0){
+          2 * scale^(-alpha) / beta(alpha, beta)
+        }else{
+          0
+        }
+      }
+
+      at_upper <- !outside & x == upper_support
+      if(any(at_upper)){
+        out[at_upper] <- if(beta < 1){
+          Inf
+        }else if(beta == 1){
+          2 * alpha / upper_support
+        }else{
+          0
+        }
+      }
+    }else{
+      upper_support <- scale
+      outside <- outside | x > upper_support
+      interior <- !outside & x > 0 & x < upper_support
+      out[interior] <- stats::dbeta(
+        x[interior] / scale,
+        alpha,
+        beta
+      ) / scale
+
+      at_lower <- !outside & x == 0
+      if(any(at_lower)){
+        out[at_lower] <- if(alpha < 1){
+          Inf
+        }else if(alpha == 1){
+          beta / scale
+        }else{
+          0
+        }
+      }
+
+      at_upper <- !outside & x == upper_support
+      if(any(at_upper)){
+        out[at_upper] <- if(beta < 1){
+          Inf
+        }else if(beta == 1){
+          alpha / scale
+        }else{
+          0
+        }
+      }
+    }
+
+    out[outside] <- 0
+    out
+  }
+
+  cdf_evaluator <- function(x){
+    if(identical(transform, "sqrt")){
+      out <- stats::pbeta(x^2 / scale, alpha, beta)
+      out[x <= 0] <- 0
+      out[x >= sqrt(scale)] <- 1
+      out
+    }else{
+      stats::pbeta(x / scale, alpha, beta)
+    }
+  }
+
   tail_prob <- .prior_linear_density_tail_prob()
   if(identical(transform, "sqrt")){
     support <- c(0, sqrt(scale))
@@ -313,8 +397,10 @@ random_effects_summary_posterior <- function(
   }
 
   if(!is.finite(lower) || !is.finite(upper) || lower >= upper){
-    lower <- support[1] + sqrt(.Machine$double.eps) * max(1, support[2])
-    upper <- support[2] - sqrt(.Machine$double.eps) * max(1, support[2])
+    stop(
+      "Could not construct a finite plotting grid for the scaled-Beta prior.",
+      call. = FALSE
+    )
   }
 
   x <- seq(lower, upper, length.out = n_grid)
@@ -322,13 +408,13 @@ random_effects_summary_posterior <- function(
     x <- sort(unique(c(x, 1)))
   }
 
-  if(identical(transform, "sqrt")){
-    w <- x^2 / scale
-    y <- stats::dbeta(w, alpha, beta) * (2 * x / scale)
-  }else{
-    y <- stats::dbeta(x / scale, alpha, beta) / scale
+  y <- density_evaluator(x)
+  if(anyNA(y) || any(!is.finite(y))){
+    stop(
+      "The scaled-Beta plotting grid includes a singular support boundary.",
+      call. = FALSE
+    )
   }
-  y[!is.finite(y)] <- 0
 
   out <- list(
     density = list(
@@ -341,5 +427,10 @@ random_effects_summary_posterior <- function(
   )
   class(out) <- c("prior_linear_density", "prior_density")
   attr(out, "support") <- support
+  attr(out, "density_evaluator") <- density_evaluator
+  attr(out, "cdf_evaluator") <- cdf_evaluator
+  attr(out, "singular_boundaries") <- support[
+    is.infinite(density_evaluator(support))
+  ]
   out
 }

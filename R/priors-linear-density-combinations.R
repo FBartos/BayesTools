@@ -60,7 +60,7 @@
   }
 
   weights <- weights[is.finite(weights)]
-  weights <- weights[abs(weights) > .prior_linear_density_zero_tol()]
+  weights <- weights[weights != 0]
   if(length(weights) == 0){
     return(active)
   }
@@ -110,7 +110,7 @@
 
     columns <- .prior_linear_prior_columns(parameter, prior)
     present <- intersect(columns, names(weights))
-    present <- present[abs(weights[present]) > .prior_linear_density_zero_tol()]
+    present <- present[weights[present] != 0]
     if(length(present) == 0){
       next
     }
@@ -125,7 +125,7 @@
     matched[present] <- TRUE
   }
 
-  unmatched <- names(weights)[abs(weights) > .prior_linear_density_zero_tol() & !matched]
+  unmatched <- names(weights)[weights != 0 & !matched]
   if(length(unmatched) > 0){
     stop(
       "No prior distribution was found for coefficient column(s): '",
@@ -141,7 +141,7 @@
 
   source_transform <- .prior_linear_source_transform(source_transform)
 
-  if(abs(weight) <= .prior_linear_density_zero_tol() || is.prior.none(prior)){
+  if(weight == 0 || is.prior.none(prior)){
     return(c(0, 0))
   }
 
@@ -193,7 +193,7 @@
   weights <- as.numeric(weights)
   norm_weight <- sqrt(sum(weights^2))
 
-  if(norm_weight <= .prior_linear_density_zero_tol()){
+  if(norm_weight == 0){
     return(prior("point", list(location = 0)))
   }
 
@@ -273,7 +273,7 @@
 
   source_transform <- .prior_linear_source_transform(source_transform)
 
-  if(abs(weight) <= .prior_linear_density_zero_tol() || is.prior.none(prior)){
+  if(weight == 0 || is.prior.none(prior)){
     return(.prior_linear_density_point(0))
   }
 
@@ -306,7 +306,7 @@
   }
 
   x_range <- .prior_linear_scalar_range(prior, weight, tail_prob, source_transform)
-  if(isTRUE(all.equal(x_range[1], x_range[2]))){
+  if(x_range[1] == x_range[2]){
     return(.prior_linear_density_point(x_range[1]))
   }
 
@@ -323,7 +323,13 @@
     y <- mpdf(prior, source_x) / abs(weight)
   }
 
-  y[!is.finite(y)] <- 0
+  if(any(!is.finite(y))){
+    stop(
+      "A continuous prior component produced a non-finite density on its ",
+      "numerical grid; the value cannot be replaced by zero faithfully.",
+      call. = FALSE
+    )
+  }
   area <- sum(y) * (x[2] - x[1])
   if(!is.finite(area) || area <= 0){
     stop("A continuous prior component evaluated to zero mass on its grid.", call. = FALSE)
@@ -415,16 +421,20 @@
     x_new <- .density.prior_transformation_x(x_old, transformation, transformation_arguments)
     y_new <- .density.prior_transformation_y(x_new, y_old, transformation, transformation_arguments)
 
-    keep <- is.finite(x_new) & is.finite(y_new)
-    x_new <- x_new[keep]
-    y_new <- y_new[keep]
+    if(any(!is.finite(x_new)) || any(!is.finite(y_new))){
+      stop(
+        "The requested prior-density transformation produced non-finite ",
+        "grid values.",
+        call. = FALSE
+      )
+    }
 
     if(length(x_new) >= 2){
       ord <- order(x_new)
       x_new <- x_new[ord]
       y_new <- y_new[ord]
 
-      keep <- c(TRUE, diff(x_new) > .prior_linear_density_zero_tol() * pmax(1, abs(x_new[-length(x_new)])))
+      keep <- c(TRUE, diff(x_new) > .prior_linear_density_grid_tol() * pmax(1, abs(x_new[-length(x_new)])))
       x_new <- x_new[keep]
       y_new <- y_new[keep]
 
@@ -443,7 +453,13 @@
   points <- dist$points
   if(!is.null(points) && nrow(points) > 0){
     points$x <- .density.prior_transformation_x(points$x, transformation, transformation_arguments)
-    points <- points[is.finite(points$x), , drop = FALSE]
+    if(any(!is.finite(points$x))){
+      stop(
+        "The requested prior-density transformation produced a non-finite ",
+        "point-mass location.",
+        call. = FALSE
+      )
+    }
   }
 
   if(length(densities) == 0){
@@ -479,7 +495,7 @@
 
     columns <- .prior_linear_prior_columns(parameter, prior)
     present <- intersect(columns, names(additive_weights))
-    present <- present[abs(additive_weights[present]) > .prior_linear_density_zero_tol()]
+    present <- present[additive_weights[present] != 0]
     if(length(present) == 0){
       next
     }
@@ -529,7 +545,7 @@
                                                        source_transforms = NULL){
 
   weights <- weights[is.finite(weights)]
-  weights <- weights[abs(weights) > .prior_linear_density_zero_tol()]
+  weights <- weights[weights != 0]
 
   if(length(weights) == 0){
     return(.prior_linear_density_point(0))
@@ -579,7 +595,8 @@
                                               tail_prob = .prior_linear_density_tail_prob(),
                                               source_transforms = NULL,
                                               output_transformation = NULL,
-                                              output_transformation_arguments = NULL){
+                                              output_transformation_arguments = NULL,
+                                              .record_evaluation = TRUE){
 
   check_list(prior_list, "prior_list")
   if(is.null(weights) || length(weights) == 0){
@@ -593,7 +610,7 @@
   check_int(n_grid, "n_grid", lower = 16)
   check_real(tail_prob, "tail_prob", lower = 0, upper = 0.5, allow_bound = FALSE)
 
-  weights <- weights[abs(weights) > .prior_linear_density_zero_tol()]
+  weights <- weights[weights != 0]
 
   if(length(weights) == 0){
     dist <- .prior_linear_density_point(0)
@@ -618,6 +635,7 @@
       source_transforms  = source_transforms
     )
   )
+  singular_density_points <- numeric()
 
   if(length(split$product_groups) > 0){
     for(product_group in split$product_groups){
@@ -653,6 +671,10 @@
         tail_prob          = tail_prob,
         source_transforms  = source_transforms
       )
+      if(.prior_linear_density_grid_height(linear_dist, 0) > 0 &&
+         .prior_linear_density_grid_height(multiplier_dist, 0) > 0){
+        singular_density_points <- c(singular_density_points, 0)
+      }
 
       components[[length(components) + 1L]] <- .prior_linear_density_product(
         linear_dist,
@@ -666,7 +688,134 @@
   dist <- .prior_linear_density_transform(dist, output_transformation,
                                           output_transformation_arguments, n_grid)
   attr(dist, "weights") <- weights
+  if(length(singular_density_points) > 0L){
+    attr(dist, "singular_density_points") <-
+      sort(unique(singular_density_points))
+  }
+  if(isTRUE(.record_evaluation)){
+    attr(dist, "adaptive_evaluation") <- list(
+      kind = "linear_combination",
+      arguments = list(
+        prior_list = prior_list,
+        weights = weights,
+        n_grid = n_grid,
+        tail_prob = tail_prob,
+        source_transforms = source_transforms,
+        output_transformation = output_transformation,
+        output_transformation_arguments = output_transformation_arguments
+      )
+    )
+    attr(dist, "numerical_diagnostics") <- list(
+      n_grid = n_grid,
+      tail_probability_per_source = tail_prob,
+      intended_captured_probability_per_continuous_source =
+        max(0, 1 - 2 * tail_prob),
+      numerical_range = .prior_linear_density_range(dist),
+      grid_normalization =
+        attr(dist, "grid_normalization", exact = TRUE),
+      fft_clipping =
+        attr(dist, "fft_clipping", exact = TRUE),
+      adaptive_evaluation = TRUE
+    )
+  }
+
+  if(length(weights) == 1L && is.null(output_transformation)){
+    parameter <- names(weights)
+    scalar_prior <- if(length(parameter) == 1L) prior_list[[parameter]] else NULL
+    source_transform <- source_transforms[parameter]
+    if(is.prior.simple(scalar_prior) &&
+       !is.prior.mixture(scalar_prior) &&
+       !is.prior.spike_and_slab(scalar_prior) &&
+       !is.prior.point(scalar_prior) &&
+       !is.prior.discrete(scalar_prior) &&
+       is.null(attr(scalar_prior, "multiply_by", exact = TRUE)) &&
+       (length(source_transform) == 0L || is.na(source_transform))){
+      weight <- unname(weights[[1L]])
+      attr(dist, "density_evaluator") <- local({
+        prior_value <- scalar_prior
+        weight_value <- weight
+        function(value){
+          mpdf(prior_value, value / weight_value) / abs(weight_value)
+        }
+      })
+    }
+  }
   return(dist)
+}
+
+.prior_linear_density_refinement_tolerance <- function(){
+
+  list(relative = 1e-4, absolute = 1e-12)
+}
+
+.prior_linear_density_grid_height <- function(x, value){
+
+  height <- 0
+  if(!is.null(x$density) &&
+     value >= min(x$density$x) && value <= max(x$density$x)){
+    height <- stats::approx(
+      x$density$x,
+      x$density$y * x$density$mass,
+      xout = value,
+      yleft = 0,
+      yright = 0
+    )$y
+  }
+  height
+}
+
+.prior_linear_density_refinements <- function(x, max_refinements = 4L){
+
+  context <- attr(x, "adaptive_evaluation", exact = TRUE)
+  if(is.null(context) ||
+     !context$kind %in%
+       c("linear_combination", "density_context", "density_context_rows")){
+    return(list())
+  }
+
+  arguments <- context$arguments
+  refinements <- vector("list", max_refinements)
+  for(i in seq_len(max_refinements)){
+    if(identical(context$kind, "linear_combination")){
+      arguments$n_grid <- min(
+        max(as.integer(arguments$n_grid) * 2L, 4096L),
+        32768L
+      )
+      arguments$tail_prob <- max(arguments$tail_prob / 1000, 1e-12)
+    }else{
+      arguments$context$n_grid <- min(
+        max(as.integer(arguments$context$n_grid) * 2L, 4096L),
+        32768L
+      )
+      arguments$context$tail_prob <- max(
+        arguments$context$tail_prob / 1000,
+        1e-12
+      )
+    }
+    refined_arguments <- arguments
+    refined_arguments$.record_evaluation <- FALSE
+    refinements[[i]] <- if(identical(context$kind, "linear_combination")){
+      do.call(.prior_linear_combination_density, refined_arguments)
+    }else if(identical(context$kind, "density_context_rows")){
+      do.call(.prior_density_from_context_rows, refined_arguments)
+    }else{
+      do.call(.prior_density_from_context, refined_arguments)
+    }
+    attr(refinements[[i]], "refinement_settings") <- list(
+      n_grid = if(identical(context$kind, "linear_combination")){
+        arguments$n_grid
+      }else{
+        arguments$context$n_grid
+      },
+      tail_prob = if(identical(context$kind, "linear_combination")){
+        arguments$tail_prob
+      }else{
+        arguments$context$tail_prob
+      }
+    )
+  }
+
+  refinements
 }
 
 .prior_linear_density_to_plot_data <- function(x, n_points = 1000, x_range = NULL,
@@ -692,7 +841,7 @@
 
   out <- list()
 
-  if(!is.null(dist$density) && dist$density$mass > .prior_linear_density_zero_tol()){
+  if(!is.null(dist$density) && dist$density$mass > 0){
     if(is.null(x_range)){
       x_den <- seq(min(dist$density$x), max(dist$density$x), length.out = n_points)
     }else{
@@ -725,7 +874,7 @@
 
   points <- dist$points
   if(!is.null(points) && nrow(points) > 0){
-    points <- points[points$p > .prior_linear_density_zero_tol(), , drop = FALSE]
+    points <- points[points$p > 0, , drop = FALSE]
     if(!is.null(x_range)){
       points <- points[points$x >= min(x_range) & points$x <= max(x_range), , drop = FALSE]
     }
@@ -761,18 +910,82 @@
     stop("'x' must be a prior linear density object.", call. = FALSE)
   }
 
-  height <- 0
-  if(!is.null(x$density) && value >= min(x$density$x) && value <= max(x$density$x)){
-    height <- height + stats::approx(
-      x$density$x,
-      x$density$y * x$density$mass,
-      xout = value,
-      yleft = 0,
-      yright = 0
-    )$y
+  singular_points <- attr(x, "singular_density_points", exact = TRUE)
+  if(length(value) == 1L && value %in% singular_points){
+    return(Inf)
   }
 
-  height
+  evaluator <- attr(x, "density_evaluator", exact = TRUE)
+  if(is.function(evaluator)){
+    height <- evaluator(value)
+    if(!is.numeric(height) || length(height) != length(value) || anyNA(height)){
+      stop("The analytic prior density evaluator returned invalid values.", call. = FALSE)
+    }
+    return(height)
+  }
+
+  if(length(value) != 1L || !is.finite(value)){
+    stop("Adaptive prior-density evaluation requires one finite ordinate.",
+         call. = FALSE)
+  }
+
+  height <- .prior_linear_density_grid_height(x, value)
+  refinements <- .prior_linear_density_refinements(x)
+  if(length(refinements) == 0L){
+    if(!is.null(x$density) &&
+       (value < min(x$density$x) || value > max(x$density$x))){
+      stop(
+        "The requested ordinate is outside the numerical approximation range, ",
+        "and the density has no provenance for adaptive extension.",
+        call. = FALSE
+      )
+    }
+    return(height)
+  }
+
+  tolerance <- .prior_linear_density_refinement_tolerance()
+  previous <- height
+  for(i in seq_along(refinements)){
+    refined <- refinements[[i]]
+    current <- .prior_linear_density_grid_height(refined, value)
+    change <- abs(current - previous)
+    bound <- tolerance$absolute +
+      tolerance$relative * max(abs(current), abs(previous))
+    inside <- !is.null(refined$density) &&
+      value >= min(refined$density$x) &&
+      value <= max(refined$density$x)
+    if(isTRUE(inside) && is.finite(current) && change <= bound){
+      settings <- attr(refined, "refinement_settings", exact = TRUE)
+      attr(current, "adaptive_evaluation") <- c(
+        settings,
+        list(
+          refinements = i,
+          absolute_change = change,
+          error_bound = bound,
+          numerical_range = .prior_linear_density_range(refined),
+          converged = TRUE
+        )
+      )
+      return(current)
+    }
+    previous <- current
+  }
+
+  final_range <- .prior_linear_density_range(
+    refinements[[length(refinements)]]
+  )
+  if(value < final_range[1L] || value > final_range[2L]){
+    stop(
+      "The requested ordinate remains outside the numerical approximation ",
+      "range after adaptive extension.",
+      call. = FALSE
+    )
+  }
+  stop(
+    "Adaptive prior-density evaluation did not converge within the documented ",
+    "grid-refinement error criterion.",
+    call. = FALSE
+  )
 }
 
 .prior_linear_density_point_mass <- function(x, value){
@@ -781,5 +994,5 @@
     return(0)
   }
 
-  sum(x$points$p[abs(x$points$x - value) <= .prior_linear_density_zero_tol()])
+  sum(x$points$p[x$points$x == value])
 }

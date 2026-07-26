@@ -385,7 +385,7 @@ density.prior <- function(x,
 
 .density.prior.ordered_scaled_total   <- function(total, scale, x_seq, n_points){
 
-  if(isTRUE(all.equal(scale, 0))){
+  if(scale == 0){
     return(.density.prior.point(
       prior("point", list(location = 0)),
       x_seq,
@@ -415,27 +415,90 @@ density.prior <- function(x,
 
 .density.prior.ordered_dirichlet_product <- function(total, alpha1, alpha2, x_seq, n_points){
 
-  y <- vapply(x_seq, function(x_value){
-    value <- tryCatch({
+  rel_tol <- 1e-7
+  abs_tol <- 1e-10
+  quadrature <- vector("list", length(x_seq))
+  y <- vapply(seq_along(x_seq), function(i){
+    x_value <- x_seq[i]
+    density_at_zero <- if(x_value == 0) pdf(total, 0) else NA_real_
+
+    if(x_value == 0 && is.finite(density_at_zero) && density_at_zero > 0){
+      if(alpha1 <= 1){
+        quadrature[[i]] <<- list(
+          value = Inf,
+          abs.error = 0,
+          message = "analytic singular boundary"
+        )
+        return(Inf)
+      }
+      value <- density_at_zero * (alpha1 + alpha2 - 1) / (alpha1 - 1)
+      quadrature[[i]] <<- list(
+        value = value,
+        abs.error = 0,
+        message = "analytic boundary"
+      )
+      return(value)
+    }
+
+    integration <- tryCatch(
       stats::integrate(
-        function(c_value){
-          pdf(total, x_value / c_value) *
-            stats::dbeta(c_value, shape1 = alpha1, shape2 = alpha2) /
-            abs(c_value)
+        function(logit_c){
+          c_value <- stats::plogis(logit_c)
+          out <- numeric(length(c_value))
+          interior <- c_value > 0 & c_value < 1
+          if(any(interior)){
+            log_integrand <- lpdf(total, x_value / c_value[interior]) +
+              stats::dbeta(
+                c_value[interior],
+                shape1 = alpha1,
+                shape2 = alpha2,
+                log = TRUE
+              ) +
+              log1p(-c_value[interior])
+            out[interior] <- exp(log_integrand)
+          }
+          out
         },
-        lower = .Machine$double.eps,
-        upper = 1,
-        subdivisions = 100L,
-        rel.tol = 1e-5
-      )$value
-    }, error = function(e){
-      NA_real_
-    })
-    value
+        lower = -Inf,
+        upper = Inf,
+        subdivisions = 500L,
+        rel.tol = rel_tol,
+        abs.tol = abs_tol,
+        stop.on.error = FALSE
+      ),
+      error = function(e) e
+    )
+    if(inherits(integration, "error") ||
+       !identical(integration$message, "OK") ||
+       !is.finite(integration$value) ||
+       !is.finite(integration$abs.error) ||
+       integration$abs.error > max(abs_tol, rel_tol * abs(integration$value))){
+      detail <- if(inherits(integration, "error")){
+        conditionMessage(integration)
+      }else{
+        paste0(
+          integration$message,
+          "; absolute error ",
+          format(integration$abs.error, digits = 6)
+        )
+      }
+      stop(
+        "Ordered-prior product density quadrature failed at x = ",
+        format(x_value, digits = 17), ": ", detail, ".",
+        call. = FALSE
+      )
+    }
+    quadrature[[i]] <<- list(
+      value = integration$value,
+      abs.error = integration$abs.error,
+      message = integration$message
+    )
+    integration$value
   }, numeric(1))
 
-  if(anyNA(y) || any(!is.finite(y))){
-    return(NULL)
+  if(anyNA(y)){
+    stop("Ordered-prior product density quadrature returned missing values.",
+         call. = FALSE)
   }
 
   out <- list(
@@ -449,6 +512,11 @@ density.prior <- function(x,
   class(out) <- c("density", "density.prior", "density.prior.simple")
   attr(out, "x_range") <- range(x_seq)
   attr(out, "y_range") <- c(0, max(y, na.rm = TRUE))
+  attr(out, "quadrature") <- quadrature
+  attr(out, "quadrature_tolerance") <- c(
+    relative = rel_tol,
+    absolute = abs_tol
+  )
   out
 }
 
@@ -924,6 +992,21 @@ range.prior  <- function(x, quantiles = NULL, ..., na.rm = FALSE){
   if(is.finite(bounds[2L])){
     height <- height +
       mean(stats::dnorm(value, mean = 2 * bounds[2L] - x, sd = bw))
+  }
+
+  sample_range <- range(x)
+  if(value < sample_range[1L] || value > sample_range[2L]){
+    attr(height, "kde_extrapolation") <- list(
+      value = value,
+      sample_range = sample_range,
+      bandwidth = bw,
+      distance_bandwidths = if(value < sample_range[1L]){
+        (sample_range[1L] - value) / bw
+      }else{
+        (value - sample_range[2L]) / bw
+      },
+      boundary_reflection = any(is.finite(bounds))
+    )
   }
 
   height

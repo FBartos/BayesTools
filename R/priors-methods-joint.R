@@ -1164,7 +1164,11 @@ quant.prior <- function(x, p, ...){
     if(anyNA(row)){
       return(NA_real_)
     }
-    if(any(row < 0 | row > 1) || !isTRUE(all.equal(sum(row), 1, tolerance = 1e-8))){
+    row <- tryCatch(
+      .canonicalize_simplex(row, "x"),
+      error = function(e) NULL
+    )
+    if(is.null(row) || any(row > 1)){
       return(-Inf)
     }
     zero <- row == 0

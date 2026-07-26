@@ -172,7 +172,7 @@ plot_transformed_prior <- function(prior_list, column_names, formula_scale = NUL
   }
 
   transformed_weights <- .prior_density_context_standardized_weights(context, weights)
-  weights <- weights[abs(weights) > .prior_linear_density_zero_tol()]
+  weights <- weights[weights != 0]
 
   all_names <- union(names(weights), names(transformed_weights))
   raw <- rep(0, length(all_names))
@@ -181,7 +181,7 @@ plot_transformed_prior <- function(prior_list, column_names, formula_scale = NUL
   raw[names(weights)] <- weights
   transformed[names(transformed_weights)] <- transformed_weights
 
-  isTRUE(all.equal(raw, transformed, tolerance = .prior_linear_density_zero_tol()))
+  identical(raw, transformed)
 }
 
 .prior_factor_level_weight_matrix <- function(sample_metadata, parameter, samples = NULL){

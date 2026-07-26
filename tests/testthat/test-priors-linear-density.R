@@ -24,6 +24,42 @@ test_that("linear prior density matches analytic normal sums", {
   expect_equal(density$density$mass, 1, tolerance = 1e-8)
 })
 
+test_that("linear prior ordinates adapt across center and omitted tails", {
+
+  density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(
+      x = prior("normal", list(0, 1)),
+      y = prior("normal", list(0, 1))
+    ),
+    weights   = c(x = 1, y = 1),
+    n_grid    = 512,
+    tail_prob = 1e-3
+  )
+
+  center <- BayesTools:::.prior_linear_density_height(density, 0)
+  tail <- BayesTools:::.prior_linear_density_height(density, 8)
+  expect_lt(
+    abs(as.numeric(center) / stats::dnorm(0, sd = sqrt(2)) - 1),
+    1e-4
+  )
+  expect_lt(
+    abs(as.numeric(tail) / stats::dnorm(8, sd = sqrt(2)) - 1),
+    1e-4
+  )
+  expect_true(isTRUE(attr(center, "adaptive_evaluation")$converged))
+  expect_true(isTRUE(attr(tail, "adaptive_evaluation")$converged))
+  expect_gt(attr(tail, "adaptive_evaluation")$refinements, 0)
+
+  diagnostics <- attr(density, "numerical_diagnostics", exact = TRUE)
+  expect_equal(diagnostics$tail_probability_per_source, 1e-3)
+  expect_equal(
+    diagnostics$intended_captured_probability_per_continuous_source,
+    .998
+  )
+  expect_true(is.list(diagnostics$grid_normalization))
+  expect_true(is.list(diagnostics$fft_clipping))
+})
+
 test_that("linear prior density handles multiply_by products and point mass", {
 
   priors <- list(
@@ -79,6 +115,35 @@ test_that("linear prior density treats zero-weight combinations as point priors"
   )
   expect_equal(BayesTools:::.prior_linear_density_point_mass(context_density, 0), 1)
   expect_null(context_density$density)
+})
+
+test_that("linear prior density preserves every finite nonzero coefficient", {
+
+  priors <- list(beta = prior("normal", list(0, 1)))
+  tiny_weight <- .Machine$double.eps
+
+  density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = priors,
+    weights    = c(beta = tiny_weight),
+    n_grid     = 256
+  )
+
+  expect_false(is.null(density$density))
+  expect_equal(
+    BayesTools:::.prior_linear_density_point_mass(density, 0),
+    0
+  )
+  expect_equal(
+    range(density$density$x) / tiny_weight,
+    stats::qnorm(c(1e-4, 1 - 1e-4)),
+    tolerance = 1e-8
+  )
+
+  support <- BayesTools:::.posterior_support_from_prior_list_weights(
+    priors,
+    c(beta = tiny_weight)
+  )
+  expect_equal(support$bounds, c(-Inf, Inf))
 })
 
 
@@ -156,6 +221,27 @@ test_that("row-wise prior densities mix row predictions, not averaged weights", 
 
   expect_equal(density_second_moment(row_density), mean(c(1^2, 2^2)), tolerance = .08)
   expect_equal(density_second_moment(averaged_density), 1.5^2, tolerance = .08)
+})
+
+test_that("row-wise prior densities preserve bitwise-distinct design rows", {
+
+  context <- BayesTools:::.prior_density_context(
+    prior_list = list(beta = prior("point", list(location = 1))),
+    column_names = "beta",
+    n_grid = 64
+  )
+  nearby <- 1 + .Machine$double.eps
+  density <- BayesTools:::.prior_density_from_context_rows(
+    context,
+    weights = matrix(
+      c(1, nearby),
+      ncol = 1,
+      dimnames = list(NULL, "beta")
+    )
+  )
+
+  expect_identical(density$points$x, c(1, nearby))
+  expect_equal(density$points$p, c(.5, .5))
 })
 
 test_that("plot_transformed_prior exposes transformed prior plotting as a public wrapper", {

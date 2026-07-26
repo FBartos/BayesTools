@@ -85,11 +85,17 @@
   if(any(allocation < 0)){
     stop(paste0("The '", name, "' fixed allocation must be non-negative."), call. = FALSE)
   }
-  if(!isTRUE(all.equal(sum(allocation), 1, tolerance = sqrt(.Machine$double.eps)))){
-    stop(paste0("The '", name, "' fixed allocation must sum to one."), call. = FALSE)
-  }
+  canonical <- .canonicalize_simplex(
+    allocation,
+    name = paste0(name, " fixed allocation"),
+    diagnostics = TRUE
+  )
 
-  list(type = "fixed", weights = as.numeric(allocation))
+  list(
+    type = "fixed",
+    weights = canonical$values,
+    canonicalization = canonical$diagnostics
+  )
 }
 
 .prior_ordered_allocation_for_factor <- function(allocation, factor_term, n_ordered_factors){

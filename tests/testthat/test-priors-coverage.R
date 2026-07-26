@@ -381,6 +381,14 @@ test_that("Dirichlet simplex priors expose joint, marginal, JAGS, and bridge API
     sum((c(2, 3, 5) - 1) * log(x))
   expect_equal(lpdf(p, x), expected_lpdf, tolerance = 1e-12)
   expect_equal(pdf(p, x), exp(expected_lpdf), tolerance = 1e-12)
+  roundoff_x <- c(.2, .3, .5 + .Machine$double.eps)
+  canonical_x <- roundoff_x / sum(roundoff_x)
+  expect_equal(
+    lpdf(p, roundoff_x),
+    lpdf(p, canonical_x),
+    tolerance = 1e-12
+  )
+  expect_equal(lpdf(p, c(.2, .3, .5 + 1e-10)), -Inf)
   expect_equal(lpdf(p, c(.2, .3, .4)), -Inf)
   expect_equal(lpdf(p, c(.2, -.3, 1.1)), -Inf)
 
@@ -436,7 +444,10 @@ test_that("Dirichlet simplex priors expose joint, marginal, JAGS, and bridge API
   expect_equal(JAGS_to_monitor(list(w = p)), c("w", "prior_par_eta_w"))
 
   tiny <- prior("dirichlet", list(alpha = c(1e-300, 1e-300)))
-  tiny_inits <- JAGS_get_inits(list(w = tiny), chains = 1, seed = 1)[[1]]
+  expect_warning(
+    tiny_inits <- JAGS_get_inits(list(w = tiny), chains = 1, seed = 1)[[1]],
+    "deterministic, order-one rescaling"
+  )
   expect_true(all(is.finite(tiny_inits$prior_par_eta_w)))
   expect_true(all(tiny_inits$prior_par_eta_w > 0))
 

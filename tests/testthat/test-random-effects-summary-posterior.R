@@ -209,10 +209,49 @@ test_that("random-effect summary posterior handles singular Dirichlet boundaries
   expect_true(all(is.finite(prior_density$density$x)))
   expect_true(all(is.finite(prior_density$density$y)))
   expect_true(min(prior_density$density$x) > 0)
+  expect_identical(
+    BayesTools:::.prior_linear_density_height(prior_density, 0),
+    Inf
+  )
+  expect_equal(
+    BayesTools:::.prior_linear_density_height(prior_density, 1),
+    stats::dbeta(.5, .5, 2) / 2,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    attr(prior_density, "singular_boundaries", exact = TRUE),
+    0
+  )
 
   prior_plot_data <- BayesTools:::.prior_linear_density_to_plot_data(
     prior_density,
     n_points = 32
   )
   expect_true(all(is.finite(prior_plot_data$density$y)))
+})
+
+test_that("scaled-Beta analytic evaluators preserve square-root endpoint limits", {
+
+  prior_density <- BayesTools:::.bt_random_effect_summary_posterior_scaled_beta_density(
+    alpha = .5,
+    beta = 1,
+    scale = 4,
+    transform = "sqrt",
+    n_grid = 64
+  )
+
+  expect_equal(
+    BayesTools:::.prior_linear_density_height(prior_density, 0),
+    1 / sqrt(4),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    BayesTools:::.prior_linear_density_height(prior_density, 2),
+    2 * .5 / 2,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    BayesTools:::.prior_linear_density_height(prior_density, -1),
+    0
+  )
 })

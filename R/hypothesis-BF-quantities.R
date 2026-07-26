@@ -732,8 +732,7 @@
     return(character())
   }
 
-  names(weights)[is.finite(weights) &
-                   abs(weights) > .prior_linear_density_zero_tol()]
+  names(weights)[is.finite(weights) & weights != 0]
 }
 
 
@@ -920,8 +919,7 @@
 
   samples <- as.matrix(samples)
   weights <- .hypothesis_prepare_level_weights(weights)
-  nonzero_columns <- colnames(weights)[colSums(abs(weights), na.rm = TRUE) >
-                                          .prior_linear_density_zero_tol()]
+  nonzero_columns <- colnames(weights)[colSums(abs(weights), na.rm = TRUE) > 0]
   missing <- setdiff(nonzero_columns, colnames(samples))
   if(length(missing) > 0L){
     stop("Linear prior weights reference columns not available in the joint ",

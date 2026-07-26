@@ -220,32 +220,67 @@
          call. = FALSE)
   }
 
-  prob <- 0
-  if(!is.null(prior_density[["density"]])){
-    density <- prior_density[["density"]]
-    x <- density[["x"]]
-    y <- density[["y"]] * density[["mass"]]
-    draws <- data.frame(x, check.names = FALSE)
-    names(draws) <- parameter
-    inside <- .hypothesis_eval_condition(side[["condition"]], draws)
-    if(length(x) > 1L){
-      prob <- prob + .hypothesis_trapz(x, y * as.numeric(inside))
+  evaluate_probability <- function(density_object){
+    prob <- 0
+    if(!is.null(density_object[["density"]])){
+      density <- density_object[["density"]]
+      x <- density[["x"]]
+      y <- density[["y"]] * density[["mass"]]
+      draws <- data.frame(x, check.names = FALSE)
+      names(draws) <- parameter
+      inside <- .hypothesis_eval_condition(side[["condition"]], draws)
+      if(length(x) > 1L){
+        prob <- prob + .hypothesis_trapz(x, y * as.numeric(inside))
+      }
+    }
+
+    points <- density_object[["points"]]
+    if(!is.null(points) && nrow(points) > 0L){
+      draws <- data.frame(points[["x"]], check.names = FALSE)
+      names(draws) <- parameter
+      inside <- .hypothesis_eval_condition(side[["condition"]], draws)
+      prob <- prob + sum(points[["p"]][inside])
+    }
+    prob
+  }
+
+  prob <- evaluate_probability(prior_density)
+  refinements <- .prior_linear_density_refinements(prior_density)
+  if(length(refinements) > 0L){
+    tolerance <- .prior_linear_density_refinement_tolerance()
+    previous <- prob
+    converged <- FALSE
+    for(i in seq_along(refinements)){
+      current <- evaluate_probability(refinements[[i]])
+      change <- abs(current - previous)
+      bound <- tolerance$absolute +
+        tolerance$relative * max(abs(current), abs(previous))
+      if(is.finite(current) && change <= bound){
+        prob <- current
+        converged <- TRUE
+        break
+      }
+      previous <- current
+    }
+    if(!converged){
+      stop(
+        "Adaptive prior-probability evaluation did not converge within the ",
+        "documented grid-refinement error criterion.",
+        call. = FALSE
+      )
     }
   }
 
-  points <- prior_density[["points"]]
-  if(!is.null(points) && nrow(points) > 0L){
-    draws <- data.frame(points[["x"]], check.names = FALSE)
-    names(draws) <- parameter
-    inside <- .hypothesis_eval_condition(side[["condition"]], draws)
-    prob <- prob + sum(points[["p"]][inside])
+  probability_bound <- 16 * .Machine$double.eps * max(1, abs(prob))
+  if(!is.finite(prob) || prob < -probability_bound ||
+     prob > 1 + probability_bound){
+    stop("Computed prior probability lies materially outside [0, 1].",
+         call. = FALSE)
   }
-
   prob <- max(0, min(1, prob))
 
   return(prob)
 }
-
 
 .hypothesis_prior_draws <- function(quantity) {
 
@@ -326,7 +361,8 @@
     warning(
       "The ", label, " samples do not span the point hypothesis. The Gaussian ",
       "KDE height is estimated from kernel tails.",
-      call. = FALSE
+      call. = FALSE,
+      immediate. = TRUE
     )
   }
 

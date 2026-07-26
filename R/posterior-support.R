@@ -271,26 +271,21 @@
   support$bounds
 }
 
-.posterior_support_bounds_contains_value <- function(bounds, value,
-                                                     tolerance = sqrt(.Machine$double.eps)){
+.posterior_support_bounds_contains_value <- function(bounds, value){
 
   bounds <- .posterior_support_parse_bounds(bounds)
   if(is.null(bounds) || length(value) != 1L || !is.finite(value)){
     return(NA)
   }
 
-  scale <- max(1, abs(value), abs(bounds[is.finite(bounds)]))
-  tol <- tolerance * scale
-
-  lower_contains <- !is.finite(bounds[1]) || value >= bounds[1] - tol
-  upper_contains <- !is.finite(bounds[2]) || value <= bounds[2] + tol
+  lower_contains <- !is.finite(bounds[1]) || value >= bounds[1]
+  upper_contains <- !is.finite(bounds[2]) || value <= bounds[2]
 
   lower_contains && upper_contains
 }
 
 .posterior_support_contains_value <- function(support, value,
-                                              exact_only = TRUE,
-                                              tolerance = sqrt(.Machine$double.eps)){
+                                              exact_only = TRUE){
 
   support <- .posterior_support_from_attribute(support)
   if(is.null(support)){
@@ -305,28 +300,23 @@
     if(length(points) == 0L || length(value) != 1L || !is.finite(value)){
       return(NA)
     }
-    scale <- max(1, abs(value), abs(points))
-    tol <- tolerance * scale
-    return(any(abs(points - value) <= tol))
+    return(any(points == value))
   }
 
   .posterior_support_bounds_contains_value(
     support$bounds,
-    value     = value,
-    tolerance = tolerance
+    value = value
   )
 }
 
 .posterior_support_excludes_value <- function(support, value,
-                                              exact_only = TRUE,
-                                              tolerance = sqrt(.Machine$double.eps)){
+                                              exact_only = TRUE){
 
   identical(
     .posterior_support_contains_value(
       support,
       value      = value,
-      exact_only = exact_only,
-      tolerance  = tolerance
+      exact_only = exact_only
     ),
     FALSE
   )
@@ -343,9 +333,7 @@
 
   for(i in 2:nrow(bounds)){
     if(is.finite(current_upper) && is.finite(bounds[i, 1])){
-      scale <- max(1, abs(current_upper), abs(bounds[i, 1]))
-      tol <- sqrt(.Machine$double.eps) * scale
-      if(bounds[i, 1] > current_upper + tol){
+      if(bounds[i, 1] > current_upper){
         return(FALSE)
       }
     }else if(is.infinite(current_upper) && current_upper < 0 &&
@@ -442,7 +430,7 @@
     return(NULL)
   }
 
-  if(abs(weight) <= .prior_linear_density_zero_tol()){
+  if(weight == 0){
     return(.posterior_support_new(c(0, 0), points = 0, source = source,
                                   type = "points"))
   }
@@ -514,7 +502,7 @@
       name    = "b",
       default = 1
     )
-    if(!is.finite(b) || abs(b) <= .prior_linear_density_zero_tol()){
+    if(!is.finite(b) || b == 0){
       return(FALSE)
     }
   }
@@ -901,7 +889,7 @@
     return(NULL)
   }
   weights <- weights[is.finite(weights)]
-  weights <- weights[abs(weights) > .prior_linear_density_zero_tol()]
+  weights <- weights[weights != 0]
   if(length(weights) == 0L){
     return(.posterior_support_new(c(0, 0), points = 0, source = source,
                                   type = "points"))

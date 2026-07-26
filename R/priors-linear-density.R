@@ -10,7 +10,7 @@
   1024L
 }
 
-.prior_linear_density_zero_tol <- function(){
+.prior_linear_density_grid_tol <- function(){
   sqrt(.Machine$double.eps)
 }
 .prior_linear_source_transform <- function(source_transform){
@@ -67,7 +67,27 @@
     inverse = TRUE
   ) / n_fft
 
-  pmax(Re(out[seq_len(n)]), 0)
+  out <- Re(out[seq_len(n)])
+  error_bound <- 64 * .Machine$double.eps * max(1, log2(n_fft)) *
+    max(1, max(abs(out)))
+  minimum <- min(out)
+  if(minimum < -error_bound){
+    stop(
+      "FFT convolution produced a negative density value beyond its ",
+      "floating-point error bound.",
+      call. = FALSE
+    )
+  }
+  negative <- out < 0
+  diagnostics <- list(
+    error_bound = error_bound,
+    minimum_unclipped_value = minimum,
+    clipped_negative_sum = sum(-out[negative]),
+    clipped_value_count = sum(negative)
+  )
+  out[negative] <- 0
+  attr(out, "fft_clipping") <- diagnostics
+  out
 }
 
 .prior_linear_density_aggregate_points <- function(points, dx){
@@ -81,16 +101,12 @@
     return(.prior_linear_density_empty_points())
   }
 
-  if(is.finite(dx) && dx > 0){
-    key <- as.character(round(points$x / dx))
-  }else{
-    key <- format(signif(points$x, 14), scientific = FALSE)
-  }
+  key <- sprintf("%a", points$x)
 
   split_points <- split(points, key)
   out <- do.call(rbind, lapply(split_points, function(p){
     data.frame(
-      x = stats::weighted.mean(p$x, p$p),
+      x = p$x[1L],
       p = sum(p$p)
     )
   }))
@@ -110,6 +126,7 @@
   }, logical(1))]
 
   density <- NULL
+  grid_normalization <- NULL
   if(length(densities) > 0){
     x_min <- min(vapply(densities, function(d) min(d$x), numeric(1)))
     x_max <- max(vapply(densities, function(d) max(d$x), numeric(1)))
@@ -121,7 +138,7 @@
       dx <- (x_max - x_min) / max(1, n_grid - 1)
     }
 
-    if(!is.finite(dx) || dx <= 0 || isTRUE(all.equal(x_min, x_max))){
+    if(!is.finite(dx) || dx <= 0 || x_min == x_max){
       x <- x_min
       y_mass <- sum(vapply(densities, function(d) d$mass, numeric(1)))
     }else{
@@ -139,6 +156,11 @@
     area <- if(length(x) > 1) sum(y_mass) * (x[2] - x[1]) else density_mass
     if(is.finite(area) && area > 0 && density_mass > 0){
       y <- y_mass / area
+      grid_normalization <- list(
+        captured_numerical_mass = area,
+        target_continuous_mass = density_mass,
+        normalization_factor = density_mass / area
+      )
     }else{
       y <- y_mass
     }
@@ -156,6 +178,9 @@
     n_grid  = if(is.null(n_grid)) length(if(!is.null(density)) density$x else points$x) else n_grid
   )
   class(out) <- c("prior_linear_density", "prior_density")
+  if(!is.null(grid_normalization)){
+    attr(out, "grid_normalization") <- grid_normalization
+  }
   return(.prior_linear_density_normalize(out))
 }
 
@@ -173,7 +198,12 @@
   }
 
   if(!is.null(lhs$density) && !is.null(rhs$density)){
-    y <- .prior_linear_density_fft_convolve(lhs$density$y, rhs$density$y) * dx
+    y <- .prior_linear_density_fft_convolve(lhs$density$y, rhs$density$y)
+    fft_clipping <- attr(y, "fft_clipping", exact = TRUE)
+    y <- as.numeric(y) * dx
+    if(!is.null(fft_clipping)){
+      fft_clipping$clipped_negative_mass <- fft_clipping$clipped_negative_sum * dx
+    }
     area <- sum(y) * dx
     if(is.finite(area) && area > 0){
       y <- y / area
@@ -206,8 +236,23 @@
     }
   }
 
-  .prior_linear_density_coalesce(densities = densities, points = points, dx = dx,
-                                 n_grid = max(lhs$n_grid, rhs$n_grid))
+  out <- .prior_linear_density_coalesce(
+    densities = densities,
+    points = points,
+    dx = dx,
+    n_grid = max(lhs$n_grid, rhs$n_grid)
+  )
+  inherited_clipping <- c(
+    attr(lhs, "fft_clipping", exact = TRUE),
+    attr(rhs, "fft_clipping", exact = TRUE)
+  )
+  if(exists("fft_clipping", inherits = FALSE) && !is.null(fft_clipping)){
+    inherited_clipping <- c(inherited_clipping, list(fft_clipping))
+  }
+  if(length(inherited_clipping) > 0L){
+    attr(out, "fft_clipping") <- inherited_clipping
+  }
+  out
 }
 
 .prior_linear_density_mix <- function(dists, weights, dx, n_grid = NULL){
@@ -244,7 +289,7 @@
     values <- c(values, range(dist$density$x, finite = TRUE))
   }
   if(!is.null(dist$points) && nrow(dist$points) > 0){
-    values <- c(values, dist$points$x[dist$points$p > .prior_linear_density_zero_tol()])
+    values <- c(values, dist$points$x[dist$points$p > 0])
   }
   values <- values[is.finite(values)]
 
@@ -319,7 +364,7 @@
 
 .prior_linear_density_scaled <- function(dist, scale, mass = 1, dx = NA_real_, n_grid = NULL){
 
-  if(abs(scale) <= .prior_linear_density_zero_tol()){
+  if(scale == 0){
     out <- .prior_linear_density_point(0)
     out$points$p <- mass
     return(out)
@@ -434,7 +479,7 @@
 
   if(!is.null(lhs$density) && !is.null(rhs$density)){
     z_range <- .prior_linear_density_product_range(lhs, rhs)
-    if(isTRUE(all.equal(z_range[1], z_range[2]))){
+    if(z_range[1] == z_range[2]){
       points <- rbind(points, data.frame(
         x = z_range[1],
         p = lhs$density$mass * rhs$density$mass
@@ -446,7 +491,7 @@
       x <- lhs$density$x
       fx <- lhs$density$y
       dx_x <- .prior_linear_density_dx(lhs)
-      zero_tol <- .prior_linear_density_zero_tol() * max(1, max(abs(x), na.rm = TRUE))
+      zero_tol <- .prior_linear_density_grid_tol() * max(1, max(abs(x), na.rm = TRUE))
       keep <- is.finite(x) & is.finite(fx) & fx > 0 & abs(x) > zero_tol
       x <- x[keep]
       fx <- fx[keep]
@@ -470,7 +515,12 @@
         }
       }
 
-      y[!is.finite(y)] <- 0
+      if(any(!is.finite(y))){
+        stop(
+          "Product-density quadrature produced non-finite values.",
+          call. = FALSE
+        )
+      }
       area <- sum(y) * dx
       if(is.finite(area) && area > 0){
         y <- y / area
