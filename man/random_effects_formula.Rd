@@ -32,4 +32,11 @@ summary metadata. Missing names are replaced by \code{"Component 1"},
 random-effect terms inside a list entry are auto-named from the component
 label. Explicit \verb{name =} arguments define the final random-effect block name
 and are the names targeted by \code{prior_random()} block overrides.
+
+Random-effect predictors must be literal data-column names combined with
+standard formula operators. Inline transformations and arbitrary calls are
+rejected; create transformed predictors as explicit columns first. Grouping
+terms support variables, \code{:} interactions, and \code{/} nesting. Grouping
+interactions follow base-R/lme4 lexicographic tuple order, and the fitted
+tuple-to-index map is stored for replay.
 }

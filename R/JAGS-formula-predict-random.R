@@ -963,18 +963,46 @@
     )
   }
 
-  grouping_values <- .bt_random_group_values(random_term, group_data)
-  if(length(grouping_values) != nrow(model_matrix)){
+  grouping_observations <- .bt_random_group_observations(
+    random_term,
+    group_data
+  )
+  if(nrow(grouping_observations$tuple_values) != nrow(model_matrix)){
     stop(
       "Random-effect grouping data for block '", random_term$block_name,
       "' must have one value per prediction row.",
       call. = FALSE
     )
   }
+  if(is.null(random_term$group_components) ||
+     is.null(random_term$group_tuple_keys) ||
+     is.null(random_term$group_tuple_index)){
+    stop(
+      "Random-effect prediction metadata for block '", random_term$block_name,
+      "' is missing the fitted grouping tuple map. Refit the model with this ",
+      "version of BayesTools.",
+      call. = FALSE
+    )
+  }
+  if(!identical(
+    unname(grouping_observations$component_names),
+    unname(random_term$group_components)
+  )){
+    stop(
+      "Random-effect grouping components for block '", random_term$block_name,
+      "' do not match the fitted formula.",
+      call. = FALSE
+    )
+  }
+
   group_levels <- random_term$group_levels
-  group_map <- match(as.character(grouping_values), group_levels)
+  group_tuple_keys <- random_term$group_tuple_keys
+  group_tuple_index <- random_term$group_tuple_index
+  group_map <- unname(group_tuple_index[grouping_observations$tuple_keys])
   if(any(is.na(group_map))){
-    new_groups <- unique(as.character(grouping_values)[is.na(group_map)])
+    new_keys <- unique(grouping_observations$tuple_keys[is.na(group_map)])
+    new_rows <- match(new_keys, grouping_observations$tuple_keys)
+    new_groups <- grouping_observations$display_labels[new_rows]
     if(.bt_random_effect_has_known_group_covariance(random_term)){
       stop(
         "New random-effect level(s) for block '", random_term$block_name,
@@ -985,12 +1013,30 @@
       )
     }
     if(isTRUE(allow_new_groups)){
+      new_groups <- .bt_random_group_unique_labels(
+        new_groups,
+        new_keys,
+        existing = group_levels
+      )
       group_levels <- c(group_levels, new_groups)
-      group_map <- match(as.character(grouping_values), group_levels)
+      new_indices <- seq.int(
+        length(group_tuple_keys) + 1L,
+        length(group_tuple_keys) + length(new_keys)
+      )
+      group_tuple_keys <- c(group_tuple_keys, new_keys)
+      group_tuple_index <- c(
+        group_tuple_index,
+        stats::setNames(new_indices, new_keys)
+      )
+      group_map <- unname(
+        group_tuple_index[grouping_observations$tuple_keys]
+      )
       return(list(
         model_matrix = model_matrix,
         group_map = group_map,
-        group_levels = group_levels
+        group_levels = group_levels,
+        group_tuple_keys = group_tuple_keys,
+        group_tuple_index = group_tuple_index
       ))
     }
     stop(
@@ -1005,7 +1051,9 @@
   list(
     model_matrix = model_matrix,
     group_map = group_map,
-    group_levels = group_levels
+    group_levels = group_levels,
+    group_tuple_keys = group_tuple_keys,
+    group_tuple_index = group_tuple_index
   )
 }
 

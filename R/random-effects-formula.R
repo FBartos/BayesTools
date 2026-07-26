@@ -14,6 +14,13 @@
 #' label. Explicit `name =` arguments define the final random-effect block name
 #' and are the names targeted by `prior_random()` block overrides.
 #'
+#' Random-effect predictors must be literal data-column names combined with
+#' standard formula operators. Inline transformations and arbitrary calls are
+#' rejected; create transformed predictors as explicit columns first. Grouping
+#' terms support variables, `:` interactions, and `/` nesting. Grouping
+#' interactions follow base-R/lme4 lexicographic tuple order, and the fitted
+#' tuple-to-index map is stored for replay.
+#'
 #' @param random a formula or non-empty list of formulas.
 #' @param envir environment used for the returned formula.
 #' @param group_covariance optional known group covariance. Use one

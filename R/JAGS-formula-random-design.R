@@ -273,9 +273,9 @@
 
   # extract the grouping factor information
   grouping_factor <- random_term$group_label
-  grouping_values <- .bt_random_group_values(random_term, group_data)
-  grouping_factor_levels <- levels(as.factor(grouping_values))
-  grouping_mapping       <- as.numeric(factor(grouping_values, levels = grouping_factor_levels))
+  grouping_metadata <- .bt_random_group_metadata(random_term, group_data)
+  grouping_factor_levels <- grouping_metadata$levels
+  grouping_mapping <- grouping_metadata$map
 
   formula <- random_term$term_formula
   random_structure <- .bt_random_term_structure(random_term, prior_random)
@@ -988,6 +988,12 @@
   random_term$model_terms_type <- model_terms_type
   random_term$group_levels     <- grouping_factor_levels
   random_term$group_map        <- grouping_mapping
+  random_term$group_components <- grouping_metadata$components
+  random_term$group_component_levels <- grouping_metadata$component_levels
+  random_term$group_tuples     <- grouping_metadata$tuples
+  random_term$group_labels     <- grouping_metadata$labels
+  random_term$group_tuple_keys <- grouping_metadata$tuple_keys
+  random_term$group_tuple_index <- grouping_metadata$tuple_index
   random_term$n_groups         <- n_id
   random_term$n_columns        <- n_par
   random_term$prior_terms      <- original_prior_names

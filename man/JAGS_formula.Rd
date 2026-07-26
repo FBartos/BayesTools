@@ -92,6 +92,10 @@ operators. Dot expansion, \code{offset()}, inline transformations, and
 arbitrary calls are rejected; create explicit data columns for transformed
 predictors. The BayesTools \code{expression(...)} facility remains available
 for literal JAGS-scale additions.
+Random-effect predictors likewise support literal data-column names and
+formula operators, but not inline transformations or arbitrary calls.
+Create transformed random slopes as explicit data columns. Grouping terms
+support variables, \code{:} interactions, and \code{/} nesting.
 The predictor name \code{intercept} is reserved for the formula intercept.
 }
 \examples{

@@ -249,7 +249,10 @@
   }
 
   stop(
-    "Random-effect grouping expressions must be variables, ':' interactions, or '/' nested grouping.",
+    "Unsupported random-effect grouping expression '",
+    .bt_deparse_expr(expr),
+    "'. Random-effect grouping expressions must be variables, ':' interactions, or '/' ",
+    "nested grouping. Create an explicit data column for other groupings.",
     call. = FALSE
   )
 }
@@ -269,6 +272,44 @@
   }
 
   FALSE
+}
+
+.bt_random_effect_validate_predictor_expr <- function(expr, block_name){
+
+  validate_expression <- function(expression){
+    if(is.symbol(expression)){
+      return(invisible(TRUE))
+    }
+    if(is.numeric(expression) && length(expression) == 1L &&
+       is.finite(expression) && expression %in% c(0, 1)){
+      return(invisible(TRUE))
+    }
+    if(is.call(expression)){
+      call_name <- if(is.symbol(expression[[1L]])){
+        as.character(expression[[1L]])
+      }else{
+        ""
+      }
+      if(call_name %in% c("+", "-", "*", ":", "/", "^", "(")){
+        for(argument in as.list(expression)[-1L]){
+          validate_expression(argument)
+        }
+        return(invisible(TRUE))
+      }
+    }
+
+    stop(
+      "Unsupported random-effect predictor call '",
+      .bt_deparse_expr(expression),
+      "' in block '", block_name,
+      "'. Create the transformed predictor as an explicit data column and ",
+      "reference that column by name.",
+      call. = FALSE
+    )
+  }
+
+  validate_expression(expr)
+  invisible(TRUE)
 }
 
 .bt_find_random_wrapper_calls <- function(x){
@@ -395,6 +436,7 @@
     block_name <- group_label
   }
   block_name <- .bt_random_effect_sanitize_name(block_name)
+  .bt_random_effect_validate_predictor_expr(expr, block_name)
 
   term <- list(
     id = paste0("random_", index),
@@ -864,7 +906,160 @@
     eval(component, envir = data, enclos = env)
   })
 
-  do.call(interaction, c(values, list(drop = TRUE, sep = ":")))
+  do.call(interaction, c(values, list(
+    drop = TRUE,
+    sep = ":",
+    lex.order = TRUE
+  )))
+}
+
+.bt_random_group_component_names <- function(term){
+
+  components <- .bt_random_group_colon_terms(term$group_expr)
+  component_names <- vapply(components, function(component){
+    if(!is.symbol(component)){
+      stop(
+        "Random-effect grouping metadata for block '", term$block_name,
+        "' contains a non-variable interaction component.",
+        call. = FALSE
+      )
+    }
+    as.character(component)
+  }, character(1))
+  if(anyDuplicated(component_names)){
+    stop(
+      "Random-effect grouping expression '", term$group_label,
+      "' repeats a grouping variable.",
+      call. = FALSE
+    )
+  }
+
+  component_names
+}
+
+.bt_random_group_tuple_key <- function(values){
+
+  values <- enc2utf8(as.character(values))
+  encoded <- paste0(
+    nchar(values, type = "bytes"),
+    ":",
+    values
+  )
+  paste(encoded, collapse = "|")
+}
+
+.bt_random_group_observations <- function(term, data){
+
+  component_names <- .bt_random_group_component_names(term)
+  missing_components <- component_names[!component_names %in% colnames(data)]
+  if(length(missing_components) > 0L){
+    stop(
+      "The ",
+      paste0("'", missing_components, "'", collapse = ", "),
+      " random-effect grouping variable",
+      if(length(missing_components) > 1L) "s are" else " is",
+      " missing in the data set.",
+      call. = FALSE
+    )
+  }
+
+  component_values <- lapply(component_names, function(component_name){
+    .bt_validate_random_group_values(data[[component_name]], term, data)
+  })
+  names(component_values) <- component_names
+  tuple_values <- do.call(cbind, lapply(component_values, as.character))
+  if(length(component_names) == 1L){
+    tuple_values <- matrix(
+      tuple_values,
+      ncol = 1L,
+      dimnames = list(NULL, component_names)
+    )
+  }else{
+    colnames(tuple_values) <- component_names
+  }
+  tuple_keys <- apply(tuple_values, 1L, .bt_random_group_tuple_key)
+  display_labels <- apply(tuple_values, 1L, paste, collapse = ":")
+
+  list(
+    component_names = component_names,
+    component_values = component_values,
+    component_levels = lapply(component_values, function(value){
+      levels(as.factor(value))
+    }),
+    tuple_values = tuple_values,
+    tuple_keys = unname(tuple_keys),
+    display_labels = unname(display_labels)
+  )
+}
+
+.bt_random_group_metadata <- function(term, data){
+
+  observations <- .bt_random_group_observations(term, data)
+  if(length(observations$component_names) == 1L){
+    group_tuples <- matrix(
+      observations$component_levels[[1L]],
+      ncol = 1L,
+      dimnames = list(NULL, observations$component_names)
+    )
+    group_tuple_keys <- apply(group_tuples, 1L, .bt_random_group_tuple_key)
+  }else{
+    first_rows <- which(!duplicated(observations$tuple_keys))
+    component_codes <- vapply(
+      seq_along(observations$component_names),
+      function(i){
+        match(
+          observations$tuple_values[, i],
+          observations$component_levels[[i]]
+        )
+      },
+      integer(nrow(observations$tuple_values))
+    )
+    tuple_order <- do.call(
+      order,
+      as.data.frame(component_codes[first_rows, , drop = FALSE])
+    )
+    first_rows <- first_rows[tuple_order]
+    group_tuples <- observations$tuple_values[first_rows, , drop = FALSE]
+    group_tuple_keys <- observations$tuple_keys[first_rows]
+  }
+  group_tuple_index <- stats::setNames(
+    seq_along(group_tuple_keys),
+    group_tuple_keys
+  )
+  group_map <- unname(group_tuple_index[observations$tuple_keys])
+  group_labels <- apply(group_tuples, 1L, paste, collapse = ":")
+  group_levels <- .bt_random_group_unique_labels(
+    group_labels,
+    group_tuple_keys
+  )
+
+  list(
+    values = group_levels[group_map],
+    levels = group_levels,
+    map = group_map,
+    components = observations$component_names,
+    component_levels = observations$component_levels,
+    tuples = group_tuples,
+    labels = unname(group_labels),
+    tuple_keys = unname(group_tuple_keys),
+    tuple_index = group_tuple_index
+  )
+}
+
+.bt_random_group_unique_labels <- function(labels, tuple_keys,
+                                           existing = character()){
+
+  combined <- c(existing, labels)
+  duplicate_labels <- duplicated(combined) |
+    duplicated(combined, fromLast = TRUE)
+  duplicate_labels <- tail(duplicate_labels, length(labels))
+  labels[duplicate_labels] <- paste0(
+    labels[duplicate_labels],
+    " [",
+    tuple_keys[duplicate_labels],
+    "]"
+  )
+  labels
 }
 
 .bt_validate_random_group_values <- function(value, term, data){

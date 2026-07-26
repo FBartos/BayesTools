@@ -37,7 +37,7 @@ mean **implemented**.
 | D23 | Decision confirmed; implementation pending | Remove unversioned `model_frame` replay fallback |
 | D24 | Decision confirmed; implementation pending | Keep raw latent/group coefficients internal and add a transformed extractor if needed |
 | D25 | Partially implemented; implementation pending | Preserve atoms in the ordered sampled-density fallback |
-| D26 | Decision confirmed; implementation pending | Reject transformations and adopt base-R/lme4 grouping-interaction ordering |
+| D26 | Implemented and verified | No remaining work |
 | D27 | Decision confirmed; implementation pending | Implement and document the proposed restricted grammar |
 | D28 | Decision confirmed; implementation pending | Honor the existing subset arguments |
 | D29 | Decision confirmed; implementation pending | Apply the agreed long-term stochastic-reference policy |
@@ -1200,7 +1200,7 @@ package-specific ordering. Any ordering change needs a metadata migration.
 
 Decision: reject transformations for now, lets make sure we can use the basics for now correctly. add a proper error messages for anything we cannot handle
 
-**Audit status: decision confirmed; implementation pending.**
+**Audit status: implemented and verified.**
 
 **Review response.** Instruction understood for transformations. Generic random
 slopes currently derive `predictors` from deparsed `terms()` variables, so an
@@ -1240,6 +1240,20 @@ the order again.
 ordering with no legacy migration.
 
 decision: agree
+
+**Implementation outcome.** Random-slope formulas now reject inline
+transformations and identify the offending expression while directing callers
+to create an explicit data column. Grouping interactions use the lexicographic
+component ordering produced by base R with `lex.order = TRUE` and by lme4.
+Compiled metadata persists the grouping components, their fitted levels, the
+concrete component tuples, collision-free length-prefixed tuple keys, and the
+tuple-to-index map. Prediction reconstructs the same tuple keys and refuses
+older fitted objects that lack this metadata, so no ambiguous migration path
+remains. Display labels are retained separately and disambiguated when distinct
+tuples render to the same colon-joined text. Tests cover reordered prediction
+rows and a deliberate display-label collision that the old `interaction()`
+encoding collapsed. Focused random-formula tests passed 1,506 assertions.
+The complete unit profile passed 7,779 assertions with no failures or warnings.
 
 ## D27. Hypothesis grammar boundaries
 

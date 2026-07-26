@@ -1086,6 +1086,110 @@ test_that("fixed formulas reject unsupported calls before data lookup", {
   )
 })
 
+test_that("random formulas reject transformations and persist tuple ordering", {
+  for(random_formula in list(
+    ~ 1 + diag(1 + I(x^2) | g1),
+    ~ 1 + diag(1 + scale(x) | g1),
+    ~ 1 + diag(1 + custom_transform(x) | g1)
+  )){
+    expect_error(
+      BayesTools:::.bt_parse_random_effects(random_formula),
+      "Create the transformed predictor as an explicit data column",
+      fixed = TRUE
+    )
+  }
+
+  data <- data.frame(
+    x = rep(c(-1, 1), 4),
+    g1 = factor(rep(c("b", "a", "b", "a"), 2), levels = c("a", "b")),
+    g2 = factor(rep(c("y", "y", "x", "x"), 2), levels = c("x", "y"))
+  )
+  sd_prior <- prior(
+    "normal",
+    list(0, 1),
+    truncation = list(lower = 0, upper = Inf)
+  )
+  result <- JAGS_formula(
+    ~ 1 + diag(1 + x | g1:g2),
+    "mu",
+    data,
+    list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      g1_g2 = random_block(sd = sd_prior)
+    )
+  )
+  random_term <- result$formula_design$random_effects[[1L]]
+  expected_group <- interaction(
+    data$g1,
+    data$g2,
+    drop = TRUE,
+    sep = ":",
+    lex.order = TRUE
+  )
+
+  expect_identical(random_term$group_levels, levels(expected_group))
+  expect_identical(random_term$group_map, as.integer(expected_group))
+  expect_identical(random_term$group_components, c("g1", "g2"))
+  expect_identical(
+    random_term$group_tuples,
+    matrix(
+      c("a", "x", "a", "y", "b", "x", "b", "y"),
+      ncol = 2,
+      byrow = TRUE,
+      dimnames = list(NULL, c("g1", "g2"))
+    )
+  )
+  expect_identical(
+    unname(random_term$group_tuple_index[random_term$group_tuple_keys]),
+    seq_along(random_term$group_tuple_keys)
+  )
+
+  shuffled <- data[c(4, 1, 3, 2), , drop = FALSE]
+  prediction <- BayesTools:::.bt_random_effect_prediction_data(
+    random_term,
+    shuffled,
+    group_data = shuffled
+  )
+  expected_shuffled <- interaction(
+    shuffled$g1,
+    shuffled$g2,
+    drop = TRUE,
+    sep = ":",
+    lex.order = TRUE
+  )
+  expect_identical(
+    prediction$group_map,
+    match(as.character(expected_shuffled), random_term$group_levels)
+  )
+
+  collision_data <- data.frame(
+    g1 = factor(c("a", "a:b"), levels = c("a", "a:b")),
+    g2 = factor(c("b:c", "c"), levels = c("b:c", "c"))
+  )
+  collision_result <- JAGS_formula(
+    ~ 1 + diag(1 | g1:g2),
+    "mu",
+    collision_data,
+    list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      g1_g2 = random_block(sd = sd_prior)
+    )
+  )
+  collision_term <- collision_result$formula_design$random_effects[[1L]]
+  expect_identical(collision_term$n_groups, 2L)
+  expect_true(anyDuplicated(collision_term$group_labels) > 0L)
+  expect_false(anyDuplicated(collision_term$group_tuple_keys) > 0L)
+  expect_false(anyDuplicated(collision_term$group_levels) > 0L)
+  expect_identical(
+    BayesTools:::.bt_random_group_unique_labels(
+      "a:b:c",
+      "3:a:b|1:c",
+      existing = "a:b:c"
+    ),
+    "a:b:c [3:a:b|1:c]"
+  )
+})
+
 test_that("log-intercept formulas require recursively positive prior support", {
   data <- data.frame(x = c(-1, 0, 1))
   log_formula <- ~ x
