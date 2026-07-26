@@ -1073,7 +1073,7 @@
     for(factor_name in names(contrast_matrices)){
       if(factor_name %in% names(prediction_data) &&
          is.factor(prediction_data[[factor_name]])){
-        stats::contrasts(prediction_data[[factor_name]]) <-
+        attr(prediction_data[[factor_name]], "contrasts") <-
           contrast_matrices[[factor_name]]
       }
     }

@@ -261,7 +261,7 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
       }else{
         factor(data[[factor]], levels = factor_metadata$levels)
       }
-      stats::contrasts(data[[factor]]) <- factor_metadata$contrast
+      attr(data[[factor]], "contrasts") <- factor_metadata$contrast
     }
   }
   if(any(predictors_type == "continuous")){

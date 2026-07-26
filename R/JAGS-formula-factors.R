@@ -235,13 +235,25 @@
     is.character(contrast) && length(contrast) > 0L &&
       contrast[[1L]] %in% supported_contrasts
   }, logical(1))]
-  contrasts_arg <- lapply(resolved_names, function(factor_name){
+  concrete_names <- factor_names[vapply(
+    symbolic_contrasts,
+    is.matrix,
+    logical(1)
+  )]
+  contrast_names <- factor_names[
+    factor_names %in% c(resolved_names, concrete_names)
+  ]
+  contrasts_arg <- lapply(contrast_names, function(factor_name){
+    contrast <- symbolic_contrasts[[factor_name]]
+    if(is.matrix(contrast)){
+      return(contrast)
+    }
     .factor_contrast_matrix(
       levels(model_frame[[factor_name]]),
-      symbolic_contrasts[[factor_name]][[1L]]
+      contrast[[1L]]
     )
   })
-  names(contrasts_arg) <- resolved_names
+  names(contrasts_arg) <- contrast_names
 
   model_matrix <- stats::model.matrix(
     model_frame,
@@ -422,7 +434,8 @@
         rep(levels(data[[predictor]])[1], nrow(cell_grid))
       }
       grid_data[[predictor]] <- factor(predictor_values, levels = levels(data[[predictor]]))
-      stats::contrasts(grid_data[[predictor]]) <- attr(data[[predictor]], "contrasts")
+      attr(grid_data[[predictor]], "contrasts") <-
+        attr(data[[predictor]], "contrasts")
     }else{
       grid_data[[predictor]] <- if(predictor %in% term_components) 1 else 0
     }

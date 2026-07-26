@@ -1791,6 +1791,35 @@ test_that("JAGS_evaluate_formula matches lm predictions for factors and no-inter
   )
 })
 
+test_that("concrete full-rank factor contrasts survive neutral intercept replay", {
+
+  data <- data.frame(
+    group = factor(c("a", "b", "a"), levels = c("a", "b"))
+  )
+  attr(data$group, "contrasts") <- contr.independent(2L)
+  formula <- ~ group
+  model_frame <- stats::model.frame(formula, data = data)
+
+  model_matrix <- BayesTools:::.bt_model_matrix(
+    model_frame = model_frame,
+    formula = formula,
+    data = data
+  )
+
+  expect_equal(
+    as.vector(model_matrix),
+    as.vector(cbind(
+      1,
+      contr.independent(2L)[c(1L, 2L, 1L), , drop = FALSE]
+    ))
+  )
+  expect_identical(dim(model_matrix), c(3L, 3L))
+  expect_equal(
+    attr(model_matrix, "assign"),
+    c(0L, 1L, 1L)
+  )
+})
+
 test_that("JAGS_evaluate_formula has stable semantics for aliased rank-deficient designs", {
 
   data <- bayestools_oracle_formula_design_data()
