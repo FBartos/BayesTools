@@ -46,6 +46,8 @@
                                                           formula_target = NULL,
                                                           blocks = NULL,
                                                           new_levels = NULL,
+                                                          fitted_rows = NULL,
+                                                          data_supplied = FALSE,
                                                           replay_fitted_formula = FALSE){
 
   fitted_design <- .bt_JAGS_evaluate_formula_design(fit, parameter)
@@ -112,7 +114,9 @@
       group_data = data,
       posterior = posterior,
       prior_list = prior_list,
-      new_levels = new_levels
+      new_levels = new_levels,
+      fitted_rows = fitted_rows,
+      data_supplied = data_supplied
     )
   }
 
@@ -233,7 +237,9 @@
 .bt_JAGS_evaluate_random_effect_term <- function(random_term, data, posterior,
                                                 prior_list,
                                                 group_data = data,
-                                                new_levels = NULL){
+                                                new_levels = NULL,
+                                                fitted_rows = NULL,
+                                                data_supplied = FALSE){
 
   new_levels <- .bt_random_effect_new_levels_policy(random_term, new_levels)
   prediction <- .bt_random_effect_prediction_data(
@@ -250,6 +256,18 @@
   output <- matrix(0, nrow = n_rows, ncol = n_draws)
   fitted_n_groups <- length(random_term$group_levels)
   new_row <- group_map > fitted_n_groups
+  prediction_rows <- if(.bt_random_effect_has_row_indexed_external_sd(random_term)){
+    .bt_random_effect_prediction_fitted_rows(
+      random_term = random_term,
+      n_rows = n_rows,
+      data_supplied = data_supplied,
+      fitted_rows = fitted_rows,
+      new_row = new_row,
+      context = "JAGS_evaluate_formula()"
+    )
+  }else{
+    NULL
+  }
 
   if(any(!new_row)){
     existing_rows <- which(!new_row)
@@ -260,7 +278,11 @@
       posterior = posterior,
       prior_list = prior_list,
       group_data = group_data[existing_rows, , drop = FALSE],
-      prediction_rows = existing_rows
+      prediction_rows = if(is.null(prediction_rows)){
+        existing_rows
+      }else{
+        prediction_rows[existing_rows]
+      }
     )
   }
   if(any(new_row) && identical(new_levels$method, "sample")){
@@ -383,7 +405,8 @@
                                                         rows = seq_len(nrow(model_matrix)),
                                                         posterior,
                                                         prior_list,
-                                                        source_data){
+                                                        source_data,
+                                                        prediction_rows = NULL){
 
   n_draws <- nrow(posterior)
   n_rows <- nrow(model_matrix)
@@ -401,7 +424,8 @@
       rows = rows,
       posterior = posterior,
       prior_list = prior_list,
-      source_data = source_data
+      source_data = source_data,
+      prediction_rows = prediction_rows
     ))
   }
   if(.bt_random_effect_has_known_group_covariance(random_term)){
@@ -681,7 +705,8 @@
     rows,
     posterior,
     prior_list,
-    source_data){
+    source_data,
+    prediction_rows = NULL){
 
   n_draws <- nrow(posterior)
   n_rows <- nrow(model_matrix)
@@ -693,6 +718,7 @@
     n_rows = n_rows,
     posterior = posterior,
     data = source_data,
+    prediction_rows = prediction_rows,
     context = "Prediction"
   )
   .bt_random_effect_marginal_covariance_validate_draw_matrix(

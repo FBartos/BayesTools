@@ -544,7 +544,7 @@ test_that("row-indexed new-level sampling rejects invalid scale draws", {
   }
 })
 
-test_that("row-indexed posterior sources retain mixed prediction-row positions", {
+test_that("posterior-indexed row sources require explicit fitted-row identity", {
 
   df <- .formula_prediction_data()
   result <- JAGS_formula(
@@ -564,58 +564,131 @@ test_that("row-indexed posterior sources retain mixed prediction-row positions",
     n_groups = random_term$n_groups,
     n_columns = random_term$n_columns
   ))
-  mixed_data <- data.frame(
-    id = factor(c("new", "b"), levels = c("a", "b", "new"))
-  )
-
-  zero_posterior <- matrix(
-    c(0, 10, 1, 3),
+  posterior <- matrix(
+    c(0, 2, 4, 6, 8, 1, 3),
     nrow = 1L,
     dimnames = list(NULL, c(
       "mu_intercept",
-      "tau[2]",
+      paste0("tau[", seq_len(nrow(df)), "]"),
       latent_names
     ))
   )
-  zero_fit <- coda::mcmc(zero_posterior)
-  attr(zero_fit, "formula_design") <- list(mu = result$formula_design)
-  zero_prediction <- JAGS_evaluate_formula(
-    fit = zero_fit,
-    parameter = "mu",
-    data = mixed_data,
-    prior_list = result$prior_list,
-    formula_target = "conditional",
-    new_levels = "zero"
-  )
-  expect_equal(unname(drop(zero_prediction)), c(0, 30), tolerance = 1e-12)
+  fit <- coda::mcmc(posterior)
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+  reordered_data <- df[c(4, 2, 2), , drop = FALSE]
 
-  sample_posterior <- matrix(
-    c(0, 2, 10, 1, 3),
-    nrow = 1L,
-    dimnames = list(NULL, c(
-      "mu_intercept",
-      "tau[1]",
-      "tau[2]",
-      latent_names
-    ))
+  expect_error(
+    JAGS_evaluate_formula(
+      fit = fit,
+      parameter = "mu",
+      data = reordered_data,
+      prior_list = result$prior_list,
+      formula_target = "conditional"
+    ),
+    "requires an explicit 'fitted_rows' mapping",
+    fixed = TRUE
   )
-  sample_fit <- coda::mcmc(sample_posterior)
-  attr(sample_fit, "formula_design") <- list(mu = result$formula_design)
-  set.seed(943)
-  expected_new <- 2 * stats::rnorm(1L)
-  set.seed(943)
-  sample_prediction <- JAGS_evaluate_formula(
-    fit = sample_fit,
+  prediction <- JAGS_evaluate_formula(
+    fit = fit,
     parameter = "mu",
-    data = mixed_data,
+    data = reordered_data,
     prior_list = result$prior_list,
     formula_target = "conditional",
-    new_levels = "sample"
+    fitted_rows = c(4, 2, 2)
+  )
+  expect_equal(unname(drop(prediction)), c(24, 4, 4), tolerance = 1e-12)
+  structured_prediction <- JAGS_predict_formula(
+    fit = fit,
+    parameter = "mu",
+    data = reordered_data,
+    prior_list = result$prior_list,
+    formula_target = "conditional",
+    fitted_rows = c(4, 2, 2)
   )
   expect_equal(
-    unname(drop(sample_prediction)),
-    c(expected_new, 30),
+    unname(drop(structured_prediction$value)),
+    unname(drop(prediction)),
     tolerance = 1e-12
+  )
+  marginal_prediction <- JAGS_predict_formula(
+    fit = fit,
+    parameter = "mu",
+    data = reordered_data,
+    prior_list = result$prior_list,
+    formula_target = "marginal",
+    marginal_method = "covariance",
+    fitted_rows = c(4, 2, 2)
+  )
+  expect_equal(
+    unname(marginal_prediction$vcov$samples[1L, , ]),
+    matrix(c(
+      64, 0, 0,
+      0, 16, 16,
+      0, 16, 16
+    ), nrow = 3L, byrow = TRUE)
+  )
+
+  expect_error(
+    JAGS_evaluate_formula(
+      fit = fit,
+      parameter = "mu",
+      data = reordered_data[1, , drop = FALSE],
+      prior_list = result$prior_list,
+      formula_target = "conditional",
+      fitted_rows = 5L
+    ),
+    "equal or lower than 4",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_evaluate_formula(
+      fit = fit,
+      parameter = "mu",
+      data = reordered_data,
+      prior_list = result$prior_list,
+      formula_target = "conditional",
+      fitted_rows = c(4L, 2L)
+    ),
+    "must have length '3'",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_evaluate_formula(
+      fit = fit,
+      parameter = "mu",
+      data = reordered_data,
+      prior_list = result$prior_list,
+      formula_target = "conditional",
+      fitted_rows = c(4, 2, 1.5)
+    ),
+    "must be an integer vector",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_evaluate_formula(
+      fit = fit,
+      parameter = "mu",
+      formula_target = "conditional",
+      fitted_rows = seq_len(nrow(df))
+    ),
+    "'fitted_rows' can be supplied only with 'data'",
+    fixed = TRUE
+  )
+  new_data <- data.frame(
+    id = factor("new", levels = c("a", "b", "new"))
+  )
+  expect_error(
+    JAGS_evaluate_formula(
+      fit = fit,
+      parameter = "mu",
+      data = new_data,
+      prior_list = result$prior_list,
+      formula_target = "conditional",
+      new_levels = "zero",
+      fitted_rows = 1L
+    ),
+    "cannot evaluate new observation rows",
+    fixed = TRUE
   )
 })
 

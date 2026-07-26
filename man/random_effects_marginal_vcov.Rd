@@ -13,6 +13,7 @@ random_effects_marginal_vcov(
   blocks = NULL,
   new_levels = NULL,
   diagonal_only = FALSE,
+  fitted_rows = NULL,
   ...
 )
 }
@@ -25,9 +26,7 @@ one formula design.}
 
 \item{data}{optional data frame defining the observation rows. When \code{NULL},
 the fitted formula design rows are used. New random-effect grouping levels
-require an explicit \code{new_levels} policy unless allowed by block metadata.
-Row-indexed external SD sources require a reconstructing
-\code{parameter_source(..., values = ...)} function when \code{data} is supplied.}
+require an explicit \code{new_levels} policy unless allowed by block metadata.}
 
 \item{posterior_samples}{optional posterior sample matrix, data frame,
 \code{mcmc}, or \code{mcmc.list}. When \code{NULL}, samples are extracted from \code{fit}.}
@@ -47,6 +46,12 @@ unseen grouping levels as independent draws from the block covariance \code{G}.}
 \item{diagonal_only}{whether to return only observation-level marginal
 variances. This avoids allocating a \verb{draw x row x row} array when callers
 need only \verb{diag(Z G Z')}.}
+
+\item{fitted_rows}{optional integer vector mapping supplied prediction rows
+to fitted observation indices. It is required whenever \code{data} is supplied
+and a selected block uses a posterior-indexed row source. Reordering and
+duplicate indices are supported. Callback-computed row sources do not use
+this mapping.}
 
 \item{...}{reserved for future extensions. Unused arguments are rejected.}
 }

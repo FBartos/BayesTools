@@ -10,8 +10,10 @@
 #' \code{random_sd_source("tau", shape = "row")}, are evaluated from latent
 #' random effects only. Model generation automatically monitors the required
 #' latent effects for these blocks. The posterior samples must either contain
-#' source columns named \code{tau[1]}, ..., \code{tau[nrow(data)]} aligned to
-#' the supplied prediction rows, or the source must provide a
+#' source columns named \code{tau[1]}, ..., \code{tau[N]}. When prediction
+#' \code{data} are supplied, \code{fitted_rows} must explicitly map each
+#' prediction row to its fitted observation index. Alternatively, the source
+#' must provide a
 #' \code{parameter_source()} \code{values} function for reconstructing row-wise
 #' source values from the posterior samples and supplied prediction data.
 #' Literal \code{expression()} terms cannot be reconstructed automatically.
@@ -32,6 +34,11 @@
 #' @param data data.frame containing predictors included in the formula. If
 #' `NULL`, versioned original-scale fitted source data from `formula_design`
 #' metadata are used. Fits without that metadata must be refitted.
+#' @param fitted_rows optional integer vector mapping supplied prediction rows
+#' to fitted observation indices. It is required whenever `data` is supplied
+#' and a selected random-effect block uses a posterior-indexed row source.
+#' Reordering and duplicate indices are supported. Callback-computed row
+#' sources do not use this mapping.
 #' @param prior_list named list of prior distribution of parameters specified
 #' within the \code{formula}. If `NULL`, fitted priors from `formula_design`
 #' metadata are used.
@@ -54,10 +61,14 @@
 JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
                                   data = NULL, prior_list = NULL,
                                   formula_target = NULL, blocks = NULL,
-                                  new_levels = NULL){
+                                  new_levels = NULL, fitted_rows = NULL){
 
   check_char(parameter, "parameter", allow_NA = FALSE)
   .bt_check_jags_node_name(parameter, "parameter")
+  data_supplied <- !is.null(data)
+  if(!is.null(fitted_rows) && !data_supplied){
+    stop("'fitted_rows' can be supplied only with 'data'.", call. = FALSE)
+  }
   formula_target <- .bt_formula_prediction_target(
     formula_target,
     allow_marginal = FALSE,
@@ -107,6 +118,15 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   }
   if(!is.data.frame(data))
     stop("'data' must be a data.frame")
+  if(!is.null(fitted_rows)){
+    check_int(
+      fitted_rows,
+      "fitted_rows",
+      lower = 1L,
+      check_length = nrow(data),
+      allow_NA = FALSE
+    )
+  }
   check_list(prior_list, "prior_list")
   if(any(!sapply(prior_list, is.prior)))
     stop("'prior_list' must be a list of priors.")
@@ -142,6 +162,8 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
       formula_target = formula_target,
       blocks = blocks,
       new_levels = new_levels,
+      fitted_rows = fitted_rows,
+      data_supplied = data_supplied,
       replay_fitted_formula = replay_fitted_formula
     ))
   }

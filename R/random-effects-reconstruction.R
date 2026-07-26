@@ -891,6 +891,59 @@
   )
 }
 
+.bt_random_effect_prediction_fitted_rows <- function(
+    random_term,
+    n_rows,
+    data_supplied,
+    fitted_rows = NULL,
+    new_row = NULL,
+    context = "Prediction"){
+
+  source <- .bt_random_effect_row_indexed_source(random_term)
+  if(.bt_parameter_source_has_values(source$source)){
+    return(NULL)
+  }
+
+  if(isTRUE(data_supplied) && is.null(fitted_rows)){
+    stop(
+      context, " with posterior-indexed row source '",
+      .bt_random_effect_external_sd_source_label(random_term),
+      "' for block '", random_term$block_name,
+      "' requires an explicit 'fitted_rows' mapping whenever 'data' is supplied.",
+      call. = FALSE
+    )
+  }
+  if(is.null(fitted_rows)){
+    fitted_rows <- seq_len(n_rows)
+  }
+
+  fitted_n_rows <- nrow(random_term$model_matrix)
+  check_int(
+    fitted_rows,
+    "fitted_rows",
+    lower = 1L,
+    upper = fitted_n_rows,
+    check_length = n_rows,
+    allow_NA = FALSE,
+    call = paste0(context, ": ")
+  )
+  fitted_rows <- as.integer(fitted_rows)
+
+  if(!is.null(new_row) && any(new_row)){
+    stop(
+      context, " with posterior-indexed row source '",
+      .bt_random_effect_external_sd_source_label(random_term),
+      "' for block '", random_term$block_name,
+      "' cannot evaluate new observation rows. Supply a ",
+      "parameter_source(..., values = ...) callback to compute the source ",
+      "for arbitrary prediction rows.",
+      call. = FALSE
+    )
+  }
+
+  fitted_rows
+}
+
 .bt_random_effect_row_indexed_source <- function(random_term){
 
   binding <- random_term$sd_binding

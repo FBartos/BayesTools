@@ -8594,7 +8594,8 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
       random(1 | drug, name = "drug", covariance = "diag"),
     parameter = "mu",
     data = df,
-    prior_list = formula_result$prior_list
+    prior_list = formula_result$prior_list,
+    fitted_rows = seq_len(nrow(df))
   )
   expect_equal(
     unname(drop(prediction)),
@@ -8634,7 +8635,8 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
       random(1 | drug, name = "drug", covariance = "diag"),
     parameter = "mu",
     data = df,
-    prior_list = formula_result$prior_list
+    prior_list = formula_result$prior_list,
+    fitted_rows = seq_len(nrow(df))
   )
   expect_equal(dim(multi_prediction), c(4L, 2L))
   expect_equal(
@@ -8663,7 +8665,7 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
   new_posterior <- posterior[, c(
     "mu_intercept",
     "tau[1]",
-    "tau[2]",
+    "tau[4]",
     "prior_par_eta_mu__xRE_ALLOCx_allocation__weight[1]",
     "prior_par_eta_mu__xRE_ALLOCx_allocation__weight[2]",
     "mu__xREx__study_xRE_Zx[1,1]",
@@ -8671,8 +8673,8 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
     "mu__xREx__drug_xRE_Zx[1,1]",
     "mu__xREx__drug_xRE_Zx[2,1]"
   ), drop = FALSE]
-  new_posterior[, "tau[1]"] <- 10
-  new_posterior[, "tau[2]"] <- 20
+  new_posterior[, "tau[1]"] <- 20
+  new_posterior[, "tau[4]"] <- 10
   new_fit <- coda::mcmc(new_posterior)
   attr(new_fit, "formula_design") <- list(mu = formula_result$formula_design)
   new_prediction <- JAGS_evaluate_formula(
@@ -8682,7 +8684,8 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
       random(1 | drug, name = "drug", covariance = "diag"),
     parameter = "mu",
     data = newdata,
-    prior_list = formula_result$prior_list
+    prior_list = formula_result$prior_list,
+    fitted_rows = c(4L, 1L)
   )
   expect_equal(
     unname(drop(new_prediction)),
@@ -8743,7 +8746,8 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
       random(1 + x | study, name = "study", covariance = "diag"),
     parameter = "mu",
     data = sd_component_df,
-    prior_list = sd_component_result$prior_list
+    prior_list = sd_component_result$prior_list,
+    fitted_rows = seq_len(nrow(sd_component_df))
   )
   expect_equal(
     unname(drop(sd_component_prediction)),
@@ -8768,7 +8772,8 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
         random(1 | drug, name = "drug", covariance = "diag"),
       parameter = "mu",
       data = df[1:2, , drop = FALSE],
-      prior_list = formula_result$prior_list
+      prior_list = formula_result$prior_list,
+      fitted_rows = 1:2
     ),
     "missing values for prediction row(s): 2",
     fixed = TRUE
@@ -8795,7 +8800,8 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
         random(1 | drug, name = "drug", covariance = "diag"),
       parameter = "mu",
       data = df[1, , drop = FALSE],
-      prior_list = formula_result$prior_list
+      prior_list = formula_result$prior_list,
+      fitted_rows = 1L
     ),
     "missing values for prediction row(s): 1",
     fixed = TRUE
@@ -8832,7 +8838,8 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
         random(1 | drug, name = "drug", covariance = "diag"),
       parameter = "mu",
       data = df,
-      prior_list = formula_result$prior_list
+      prior_list = formula_result$prior_list,
+      fitted_rows = seq_len(nrow(df))
     ),
     "cannot be reconstructed from the posterior samples",
     fixed = TRUE
@@ -8907,7 +8914,8 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
       random(1 | study, name = "study", covariance = "diag"),
     parameter = "mu",
     data = nested_df,
-    prior_list = nested_result$prior_list
+    prior_list = nested_result$prior_list,
+    fitted_rows = seq_len(nrow(nested_df))
   )
   expect_equal(
     unname(drop(nested_prediction)),
@@ -8961,8 +8969,8 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
     dimnames = list(NULL, c(
       "mu_intercept",
       "mu_x",
-      "tau[1]",
       "tau[2]",
+      "tau[4]",
       "mu__xRE_ALLOCx_allocation__weight[1]",
       "mu__xRE_ALLOCx_allocation__weight[2]",
       "mu__xREx__study_xRE_Zx[1,1]",
@@ -8983,7 +8991,8 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
       random(1 | drug, name = "drug", covariance = "diag"),
     parameter = "mu",
     data = slope_newdata,
-    prior_list = slope_result$prior_list
+    prior_list = slope_result$prior_list,
+    fitted_rows = c(2L, 4L)
   )
   scaled_x <- (slope_newdata$x - slope_result$formula_scale$mu_x$mean) /
     slope_result$formula_scale$mu_x$sd
@@ -9121,7 +9130,8 @@ test_that("JAGS_evaluate_formula reconstructs row-indexed external SD random eff
       random(1 | drug, name = "drug", covariance = "diag"),
     parameter = "mu",
     data = cs_df[1:2, , drop = FALSE],
-    prior_list = cs_result$prior_list
+    prior_list = cs_result$prior_list,
+    fitted_rows = 1:2
   )
   expect_equal(
     unname(drop(cs_prediction)),

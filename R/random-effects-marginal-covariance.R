@@ -13,8 +13,11 @@
 #' @param data optional data frame defining the observation rows. When `NULL`,
 #'   the fitted formula design rows are used. New random-effect grouping levels
 #'   require an explicit `new_levels` policy unless allowed by block metadata.
-#'   Row-indexed external SD sources require a reconstructing
-#'   `parameter_source(..., values = ...)` function when `data` is supplied.
+#' @param fitted_rows optional integer vector mapping supplied prediction rows
+#'   to fitted observation indices. It is required whenever `data` is supplied
+#'   and a selected block uses a posterior-indexed row source. Reordering and
+#'   duplicate indices are supported. Callback-computed row sources do not use
+#'   this mapping.
 #' @param posterior_samples optional posterior sample matrix, data frame,
 #'   `mcmc`, or `mcmc.list`. When `NULL`, samples are extracted from `fit`.
 #' @param prior_list optional named prior list used to materialize fixed point
@@ -49,7 +52,7 @@
 random_effects_marginal_vcov <- function(
     fit, parameter = NULL, data = NULL, posterior_samples = NULL,
     prior_list = NULL, blocks = NULL, new_levels = NULL,
-    diagonal_only = FALSE, ...){
+    diagonal_only = FALSE, fitted_rows = NULL, ...){
 
   dots <- list(...)
   if(length(dots) > 0L){
@@ -71,6 +74,18 @@ random_effects_marginal_vcov <- function(
   check_bool(diagonal_only, "diagonal_only", allow_NA = FALSE)
   if(!is.null(data) && !is.data.frame(data)){
     stop("'data' must be a data.frame.", call. = FALSE)
+  }
+  if(!is.null(fitted_rows) && is.null(data)){
+    stop("'fitted_rows' can be supplied only with 'data'.", call. = FALSE)
+  }
+  if(!is.null(fitted_rows)){
+    check_int(
+      fitted_rows,
+      "fitted_rows",
+      lower = 1L,
+      check_length = nrow(data),
+      allow_NA = FALSE
+    )
   }
   if(!is.null(new_levels)){
     new_levels <- .bt_random_new_levels_resolve(new_levels)
@@ -97,6 +112,7 @@ random_effects_marginal_vcov <- function(
     data = data,
     blocks = blocks,
     new_levels = new_levels,
+    fitted_rows = fitted_rows,
     diagonal_only = diagonal_only
   )
 }
@@ -422,6 +438,7 @@ random_effects_marginal_variance_factors <- function(
                                                           data = NULL,
                                                           blocks = NULL,
                                                           new_levels = NULL,
+                                                          fitted_rows = NULL,
                                                           diagonal_only = FALSE){
 
   selected <- .bt_random_effect_marginal_covariance_terms(
@@ -446,6 +463,18 @@ random_effects_marginal_variance_factors <- function(
       random_term = random_term,
       data = data
     )
+    prediction_rows <- if(.bt_random_effect_has_row_indexed_external_sd(random_term)){
+      .bt_random_effect_prediction_fitted_rows(
+        random_term = random_term,
+        n_rows = nrow(block_data$model_matrix),
+        data_supplied = block_data$data_supplied,
+        fitted_rows = fitted_rows,
+        new_row = block_data$group_map > random_term$n_groups,
+        context = "Random-effect marginal covariance"
+      )
+    }else{
+      NULL
+    }
     new_level_info <- .bt_random_effect_marginal_covariance_new_level_info(
       random_term = random_term,
       block_data = block_data,
@@ -456,7 +485,7 @@ random_effects_marginal_variance_factors <- function(
       model_matrix = block_data$model_matrix,
       group_map = block_data$group_map,
       source_data = block_data$source_data,
-      data_supplied = block_data$data_supplied,
+      prediction_rows = prediction_rows,
       posterior = posterior,
       prior_list = prior_list,
       diagonal_only = diagonal_only
@@ -1003,7 +1032,7 @@ random_effects_marginal_variance_factors <- function(
     model_matrix,
     group_map,
     source_data,
-    data_supplied,
+    prediction_rows,
     posterior,
     prior_list,
     diagonal_only = FALSE){
@@ -1014,7 +1043,7 @@ random_effects_marginal_variance_factors <- function(
       model_matrix = model_matrix,
       group_map = group_map,
       source_data = source_data,
-      data_supplied = data_supplied,
+      prediction_rows = prediction_rows,
       posterior = posterior,
       prior_list = prior_list,
       diagonal_only = diagonal_only
@@ -1204,7 +1233,7 @@ random_effects_marginal_variance_factors <- function(
     model_matrix,
     group_map,
     source_data,
-    data_supplied,
+    prediction_rows,
     posterior,
     prior_list,
     diagonal_only = FALSE){
@@ -1213,25 +1242,12 @@ random_effects_marginal_variance_factors <- function(
   n_rows <- nrow(model_matrix)
   n_columns <- ncol(model_matrix)
 
-  if(isTRUE(data_supplied)){
-    source <- .bt_random_effect_row_indexed_source(random_term)
-    if(!.bt_parameter_source_has_values(source$source)){
-      stop(
-        "Random-effect marginal covariance with row-indexed external SD source '",
-        .bt_random_effect_external_sd_source_label(random_term),
-        "' for block '",
-        random_term$block_name,
-        "' requires a parameter_source(..., values = ...) function when 'data' is supplied.",
-        call. = FALSE
-      )
-    }
-  }
-
   source_draws <- .bt_random_effect_row_indexed_source_draws(
     random_term = random_term,
     n_rows = n_rows,
     posterior = posterior,
     data = source_data,
+    prediction_rows = prediction_rows,
     context = "Random-effect marginal covariance"
   )
   .bt_random_effect_marginal_covariance_validate_draw_matrix(

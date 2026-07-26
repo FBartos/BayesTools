@@ -12,7 +12,8 @@ JAGS_evaluate_formula(
   prior_list = NULL,
   formula_target = NULL,
   blocks = NULL,
-  new_levels = NULL
+  new_levels = NULL,
+  fitted_rows = NULL
 )
 }
 \arguments{
@@ -46,6 +47,12 @@ explicitly generated random-effect contributions.}
 \item{new_levels}{optional new-level policy used only with
 \code{formula_target = "conditional"}. Use a \code{random_new_levels()} object or one
 of \code{"error"}, \code{"zero"}, or \code{"sample"}.}
+
+\item{fitted_rows}{optional integer vector mapping supplied prediction rows
+to fitted observation indices. It is required whenever \code{data} is supplied
+and a selected random-effect block uses a posterior-indexed row source.
+Reordering and duplicate indices are supported. Callback-computed row
+sources do not use this mapping.}
 }
 \value{
 \code{JAGS_evaluate_formula} returns a matrix of the evaluated posterior samples on
@@ -62,8 +69,10 @@ Row-indexed external random-effect SD sources, such as
 \code{random_sd_source("tau", shape = "row")}, are evaluated from latent
 random effects only. Model generation automatically monitors the required
 latent effects for these blocks. The posterior samples must either contain
-source columns named \code{tau[1]}, ..., \code{tau[nrow(data)]} aligned to
-the supplied prediction rows, or the source must provide a
+source columns named \code{tau[1]}, ..., \code{tau[N]}. When prediction
+\code{data} are supplied, \code{fitted_rows} must explicitly map each
+prediction row to its fitted observation index. Alternatively, the source
+must provide a
 \code{parameter_source()} \code{values} function for reconstructing row-wise
 source values from the posterior samples and supplied prediction data.
 Literal \code{expression()} terms cannot be reconstructed automatically.

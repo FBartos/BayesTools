@@ -46,7 +46,8 @@ skip_if_not_test_profile("unit")
 }
 
 .re_cov_output <- function(result, posterior, data = NULL, blocks = NULL,
-                           new_levels = NULL, diagonal_only = FALSE){
+                           new_levels = NULL, diagonal_only = FALSE,
+                           fitted_rows = NULL){
   random_effects_marginal_vcov(
     result$formula_design,
     data = data,
@@ -54,6 +55,7 @@ skip_if_not_test_profile("unit")
     prior_list = result$prior_list,
     blocks = blocks,
     new_levels = new_levels,
+    fitted_rows = fitted_rows,
     diagonal_only = diagonal_only
   )
 }
@@ -1239,7 +1241,35 @@ test_that("row-varying direct SD sources weight rows inside groups", {
   expect_equal(unname(diagonal$samples), .re_cov_dense_diagonal(out))
   expect_error(
     .re_cov_output(result, posterior, data = df),
-    "requires a parameter_source(..., values = ...) function when 'data' is supplied",
+    "requires an explicit 'fitted_rows' mapping",
+    fixed = TRUE
+  )
+  reordered <- .re_cov_output(
+    result,
+    posterior,
+    data = df[c(4, 2, 2), , drop = FALSE],
+    fitted_rows = c(4, 2, 2)
+  )
+  expected_reordered_1 <- .re_cov_expand(
+    matrix(tau_1[c(4, 2, 2)], ncol = 1L),
+    c(2L, 1L, 1L),
+    matrix(1, 1L, 1L)
+  )
+  expected_reordered_2 <- .re_cov_expand(
+    matrix(tau_2[c(4, 2, 2)], ncol = 1L),
+    c(2L, 1L, 1L),
+    matrix(1, 1L, 1L)
+  )
+  expect_equal(unname(reordered$samples[1, , ]), expected_reordered_1)
+  expect_equal(unname(reordered$samples[2, , ]), expected_reordered_2)
+  expect_error(
+    .re_cov_output(
+      result,
+      posterior,
+      data = df[1, , drop = FALSE],
+      fitted_rows = 5L
+    ),
+    "equal or lower than 4",
     fixed = TRUE
   )
 })

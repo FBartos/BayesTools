@@ -17,7 +17,7 @@ mean **implemented**.
 | D03 | Decision confirmed; implementation pending | Add recursive strict-positive prior-support validation |
 | D04 | Implemented and verified | Reject callbacks that depend on formula outputs with sampled random effects |
 | D05 | Implemented and verified | Remove bridge-replay callback grafting and legacy source fallbacks |
-| D06 | Decision confirmed; implementation pending | Add the explicit fitted-row-index contract for posterior row sources |
+| D06 | Implemented and verified | No remaining work |
 | D07 | Decision confirmed; implementation pending | Add joint marginal draws under known group covariance |
 | D08 | Implemented and verified | No remaining work |
 | D09 | Decision confirmed; implementation pending | Add a configurable 16 GiB hard ceiling on estimated peak allocation |
@@ -185,7 +185,7 @@ recommended.
 
 Decision: please add a bit more information -- an actual example -- so I understand the impact and potential issues
 
-**Audit status: decision confirmed; implementation pending.**
+**Audit status: implemented and verified.**
 
 **Concrete example.** Suppose `formula_list` contains two modeled parameters,
 `mu` and `log_sigma`, and both have sampled random effects. A row-source callback
@@ -367,6 +367,26 @@ genuinely new observation has no fitted `tau[i]` at all.
 a user-defined stable observation-key API instead.
 
 Decision: ok
+
+**Implementation record.** `JAGS_evaluate_formula()`,
+`JAGS_predict_formula()`, and `random_effects_marginal_vcov()` now accept
+`fitted_rows`. For selected posterior-indexed row sources, supplied prediction
+data require one validated integer index per prediction row, bounded by the
+fitted observation count. Reordering and deliberate duplication are supported;
+no identity is inferred from values, row names, factor levels, or grouping
+levels. Unchanged fitted data still use `seq_len(N)` when `data` is omitted.
+Rows with new grouping levels are rejected even under `"zero"` or `"sample"`
+new-level policies because they cannot have a fitted row-specific posterior
+source. Callback-computed row sources bypass the mapping and continue to
+evaluate arbitrary supplied rows.
+
+The mapping is applied consistently to conditional reconstruction, marginal
+covariance, and marginal sampling. Public documentation and design oracles were
+updated. Tests cover omitted, reordered, duplicated, out-of-range,
+wrong-length, and non-integer mappings; use without `data`; public structured
+prediction pass-through; marginal covariance; new-row rejection; and callback
+sources. The affected suites passed 1,678 assertions, and the complete
+unit profile passed 7,847 assertions with no failures or warnings.
 
 ## D07. Marginal sampling with known group covariance
 

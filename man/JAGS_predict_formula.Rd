@@ -15,7 +15,8 @@ JAGS_predict_formula(
   new_levels = NULL,
   marginal_method = c("covariance", "sample"),
   seed = NULL,
-  components = FALSE
+  components = FALSE,
+  fitted_rows = NULL
 )
 }
 \arguments{
@@ -49,6 +50,11 @@ random-effect draws.}
 \item{seed}{optional random seed used when random-effect draws are simulated.}
 
 \item{components}{whether to include component matrices where available.}
+
+\item{fitted_rows}{optional integer vector mapping supplied prediction rows
+to fitted observation indices. It is required for selected
+posterior-indexed row sources. Reordering and duplicate indices are
+supported; callback-computed row sources do not use it.}
 }
 \value{
 A list of class \code{BayesTools_formula_prediction} with fields \code{value},

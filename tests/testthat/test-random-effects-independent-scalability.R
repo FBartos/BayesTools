@@ -334,7 +334,7 @@ test_that("row-indexed independent reconstruction streams scalar and column allo
       model_matrix = random_term$model_matrix,
       group_map = random_term$group_map,
       source_data = data,
-      data_supplied = FALSE,
+      prediction_rows = seq_len(nrow(data)),
       posterior = posterior,
       prior_list = specification$prior_list
     )
@@ -430,7 +430,7 @@ test_that("large independent blocks remain linear in coefficient count", {
     model_matrix = model_matrix,
     group_map = random_term$group_map,
     source_data = NULL,
-    data_supplied = FALSE,
+    prediction_rows = NULL,
     posterior = posterior,
     prior_list = list()
   )

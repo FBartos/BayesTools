@@ -12,6 +12,10 @@
 #' @param formula optional formula. If `NULL`, the fitted formula for
 #' `parameter` is used.
 #' @param data optional prediction data. If `NULL`, fitted source data are used.
+#' @param fitted_rows optional integer vector mapping supplied prediction rows
+#' to fitted observation indices. It is required for selected
+#' posterior-indexed row sources. Reordering and duplicate indices are
+#' supported; callback-computed row sources do not use it.
 #' @param prior_list optional named prior list. If `NULL`, fitted priors are
 #' used.
 #' @param formula_target prediction target: `"conditional"`, `"fixed"`, or
@@ -37,10 +41,23 @@ JAGS_predict_formula <- function(fit, parameter, formula = NULL, data = NULL,
                                  formula_target = c("conditional", "fixed", "marginal"),
                                  blocks = NULL, new_levels = NULL,
                                  marginal_method = c("covariance", "sample"),
-                                 seed = NULL, components = FALSE){
+                                 seed = NULL, components = FALSE,
+                                 fitted_rows = NULL){
 
   check_char(parameter, "parameter", allow_NA = FALSE)
   .bt_check_jags_node_name(parameter, "parameter")
+  if(!is.null(fitted_rows) && is.null(data)){
+    stop("'fitted_rows' can be supplied only with 'data'.", call. = FALSE)
+  }
+  if(!is.null(fitted_rows) && is.data.frame(data)){
+    check_int(
+      fitted_rows,
+      "fitted_rows",
+      lower = 1L,
+      check_length = nrow(data),
+      allow_NA = FALSE
+    )
+  }
   marginal_method_supplied <- !missing(marginal_method)
   formula_target <- match.arg(formula_target)
   marginal_method <- match.arg(marginal_method)
@@ -120,7 +137,8 @@ JAGS_predict_formula <- function(fit, parameter, formula = NULL, data = NULL,
       prior_list = prior_list,
       formula_target = "conditional",
       blocks = blocks,
-      new_levels = new_levels
+      new_levels = new_levels,
+      fitted_rows = fitted_rows
     )
     random <- value - fixed
     return(.bt_formula_prediction_object(
@@ -165,7 +183,8 @@ JAGS_predict_formula <- function(fit, parameter, formula = NULL, data = NULL,
       posterior_samples = posterior,
       prior_list = prior_list,
       blocks = blocks,
-      new_levels = new_levels
+      new_levels = new_levels,
+      fitted_rows = fitted_rows
     )
     return(.bt_formula_prediction_object(
       value = fixed,
@@ -191,7 +210,8 @@ JAGS_predict_formula <- function(fit, parameter, formula = NULL, data = NULL,
     prior_list = prior_list,
     data = data,
     blocks = blocks,
-    new_levels = new_levels
+    new_levels = new_levels,
+    fitted_rows = fitted_rows
   )
   value <- fixed + random
   .bt_formula_prediction_object(
@@ -272,7 +292,8 @@ JAGS_predict_formula <- function(fit, parameter, formula = NULL, data = NULL,
 
 .bt_random_effects_marginal_sample <- function(design, posterior, prior_list,
                                                data = NULL, blocks = NULL,
-                                               new_levels = NULL){
+                                               new_levels = NULL,
+                                               fitted_rows = NULL){
 
   selected <- .bt_random_effect_marginal_covariance_terms(
     design = design,
@@ -290,6 +311,18 @@ JAGS_predict_formula <- function(fit, parameter, formula = NULL, data = NULL,
       data = data
     )
     new_row <- block_data$group_map > random_term$n_groups
+    prediction_rows <- if(.bt_random_effect_has_row_indexed_external_sd(random_term)){
+      .bt_random_effect_prediction_fitted_rows(
+        random_term = random_term,
+        n_rows = nrow(block_data$model_matrix),
+        data_supplied = block_data$data_supplied,
+        fitted_rows = fitted_rows,
+        new_row = new_row,
+        context = "Marginal random-effect prediction"
+      )
+    }else{
+      NULL
+    }
     if(any(new_row) && !isTRUE(block_new_levels$allow)){
       new_groups <- block_data$group_levels[unique(block_data$group_map[new_row])]
       stop(
@@ -311,7 +344,8 @@ JAGS_predict_formula <- function(fit, parameter, formula = NULL, data = NULL,
       rows = rows,
       posterior = posterior,
       prior_list = prior_list,
-      source_data = block_data$source_data
+      source_data = block_data$source_data,
+      prediction_rows = prediction_rows
     )
     if(is.null(output)){
       output <- contribution
