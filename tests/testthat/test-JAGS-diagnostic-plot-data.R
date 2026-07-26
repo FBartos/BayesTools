@@ -89,6 +89,58 @@ test_that("diagnostic plot data preserves chain, iteration, and transformations"
   expect_equal(attr(autocorrelation_data$theta[[1]], "x_range"), c(0, 3))
 })
 
+test_that("sampled diagnostic plots reject degenerate inputs clearly", {
+
+  constant <- matrix(
+    1,
+    nrow = 4,
+    ncol = 1,
+    dimnames = list(NULL, "theta")
+  )
+  attr(constant, "chain") <- rep(1:2, each = 2)
+  attr(constant, "prior") <- prior("normal", list(0, 1))
+
+  expect_error(
+    .diagnostics_plot_data_density(
+      constant,
+      n_points = 32,
+      xlim = NULL
+    ),
+    "Density diagnostics.*not assessable.*constant"
+  )
+  expect_error(
+    .diagnostics_plot_data_autocorrelation(
+      constant,
+      n_points = 10,
+      lags = 1
+    ),
+    "Autocorrelation diagnostics.*not assessable.*constant"
+  )
+
+  too_short <- constant[1:2, , drop = FALSE]
+  attr(too_short, "chain") <- 1:2
+  attr(too_short, "prior") <- attr(constant, "prior")
+  expect_error(
+    .diagnostics_plot_data_density(
+      too_short,
+      n_points = 32,
+      xlim = NULL
+    ),
+    "require at least two finite posterior samples"
+  )
+
+  empty <- matrix(numeric(), nrow = 0L, ncol = 0L)
+  attr(empty, "chain") <- integer()
+  expect_error(
+    .diagnostics_plot_data_autocorrelation(
+      empty,
+      n_points = 10,
+      lags = 1
+    ),
+    "require at least one parameter"
+  )
+})
+
 test_that("diagnostic density plot data reflects bounded prior support", {
   chain_1 <- cbind(theta = seq(.005, .995, length.out = 400))
   chain_2 <- cbind(theta = rev(chain_1[, "theta"]))

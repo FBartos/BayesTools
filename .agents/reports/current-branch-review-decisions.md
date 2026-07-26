@@ -23,7 +23,7 @@ mean **implemented**.
 | D09 | Implemented and verified | No remaining work for the confirmed guard; sparse construction remains a future architectural improvement |
 | D10 | Resolved by NF10/NF18 | Remaining CAR representability issue is isolated as D31 |
 | D11 | Implemented and verified | No remaining work |
-| D12 | Decision confirmed; implementation pending | Add three-state diagnostics and explicit downstream monitor selection |
+| D12 | Implemented and verified | No remaining work |
 | D13 | Resolved by NF08 | No remaining decision |
 | D14 | Resolved/superseded by NF09 | The audited code changed mixture counts, not posterior draw values |
 | D15 | Resolved by NF05/NF06 | No remaining decision |
@@ -257,7 +257,7 @@ remain supported through an explicit compatibility mode.
 
 Decision: please remove all of these compatibility layers and simplify the code if possible
 
-**Audit status: decision confirmed; implementation pending.**
+**Audit status: implemented and verified.**
 
 **Review response.** Instruction understood, including the earlier instruction
 that this release need not preserve backward compatibility. Current code already
@@ -708,6 +708,33 @@ metadata proves `structural_constant`; otherwise they are `not_assessable` and
 fail by default. A misspelled requested name must error. An explicitly empty
 selection should return an empty diagnostic result without claiming global
 convergence.
+
+**Implementation record.** `JAGS_check_convergence()` now returns its existing
+logical decision for nonempty selections and attaches a classed per-parameter
+diagnostic table. Requested parameters are classified as `assessable`,
+`structural_constant`, or `not_assessable`; eligible omitted parameters are
+`not_requested`. Only point-prior metadata (including a one-component point
+mixture) can establish `structural_constant`. A sampled chain that happens to be
+constant is therefore never silently accepted.
+
+The new `monitor` argument accepts concrete posterior names or a base name that
+selects all indexed elements. Unknown names error, `character()` returns
+`logical(0)` with an empty diagnostic table, and `allow_not_assessable = TRUE`
+is the explicit opt-in for ignoring an undefined requested diagnostic.
+`autofit_control` exposes the same monitor and opt-in policy, except that it
+rejects an empty monitor because no convergence decision could drive extension.
+
+R-hat with one chain, non-finite diagnostic output, stuck sampled chains, and
+too-short inputs now become `not_assessable` instead of being replaced by
+passing values. Density and autocorrelation helpers give concise errors for
+empty, too-short, or constant posterior input rather than leaking low-level
+kernel/range errors.
+
+Verification completed with 201 focused unit assertions and 98 real-JAGS edge
+assertions. The full unit profile (7,913 passes and seven profile skips), fit
+cache rebuild (404 passes), cached fit profile (14,498 passes and one intentional
+refit skip), and fixture profile (9,017 passes) completed without failures or
+warnings.
 
 ## D13. Failed marginal-likelihood models
 

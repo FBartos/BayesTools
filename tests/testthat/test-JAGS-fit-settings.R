@@ -47,7 +47,9 @@ test_that("JAGS autofit settings reject missing and non-finite controls", {
     sample_extend = 1000,
     restarts = 10,
     max_extend = 10,
-    check_indicators = FALSE
+    check_indicators = FALSE,
+    monitor = c("mu", "sigma"),
+    allow_not_assessable = FALSE
   )
   invalid <- list(
     max_Rhat = Inf,
@@ -58,7 +60,9 @@ test_that("JAGS autofit settings reject missing and non-finite controls", {
     sample_extend = Inf,
     restarts = NA_real_,
     max_extend = Inf,
-    check_indicators = NA
+    check_indicators = NA,
+    monitor = NA_character_,
+    allow_not_assessable = NA
   )
 
   expect_silent(JAGS_check_and_list_autofit_settings(valid))
@@ -76,6 +80,13 @@ test_that("JAGS autofit settings reject missing and non-finite controls", {
   expect_error(
     JAGS_check_and_list_autofit_settings(invalid_unit),
     "'max_time:unit'"
+  )
+
+  empty_monitor <- valid
+  empty_monitor$monitor <- character()
+  expect_error(
+    JAGS_check_and_list_autofit_settings(empty_monitor),
+    "'monitor' argument must select at least one parameter"
   )
 })
 
@@ -185,4 +196,31 @@ test_that("JAGS_extend resets its time budget for every call", {
   expect_silent(JAGS_extend(fit, autofit_control = control))
   expect_equal(extension_calls, 2L)
   expect_equal(clock_calls, 4L)
+})
+
+test_that("JAGS_extend forwards explicit convergence monitor policy", {
+
+  skip_if_not_installed("runjags")
+  fit <- .jags_extend_test_fit()
+  convergence_arguments <- NULL
+  testthat::local_mocked_bindings(
+    extend.jags = function(runjags.object, ...){
+      runjags.object
+    },
+    .package = "runjags"
+  )
+  testthat::local_mocked_bindings(
+    JAGS_check_convergence = function(...){
+      convergence_arguments <<- list(...)
+      TRUE
+    },
+    .package = "BayesTools"
+  )
+
+  control <- .jags_extend_test_control()
+  control$monitor <- "mu"
+  control$allow_not_assessable <- TRUE
+  expect_silent(JAGS_extend(fit, autofit_control = control))
+  expect_identical(convergence_arguments$monitor, "mu")
+  expect_true(convergence_arguments$allow_not_assessable)
 })

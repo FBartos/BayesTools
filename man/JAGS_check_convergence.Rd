@@ -13,7 +13,9 @@ JAGS_check_convergence(
   max_SD_error = 0.05,
   add_parameters = NULL,
   fail_fast = FALSE,
-  check_indicators = FALSE
+  check_indicators = FALSE,
+  monitor = NULL,
+  allow_not_assessable = FALSE
 )
 }
 \arguments{
@@ -39,11 +41,22 @@ deviation of the parameters. Defaults to \code{0.05}.}
 
 \item{check_indicators}{whether model indicator variables should be included
 in convergence checks. Defaults to \code{FALSE}.}
+
+\item{monitor}{optional character vector selecting parameters for convergence
+checks. A base name selects all of its indexed elements. \code{NULL} selects
+every eligible parameter; \code{character()} requests no parameters.}
+
+\item{allow_not_assessable}{whether requested sampled parameters with
+undefined diagnostics may be ignored. Defaults to \code{FALSE}.}
 }
 \value{
-\code{JAGS_check_convergence} returns a boolean
-indicating whether the model converged or not, with an
-attribute 'errors' carrying the failed convergence checks (if any).
+\code{JAGS_check_convergence} returns a boolean indicating whether
+all requested, assessable parameters satisfy the enabled criteria. An
+explicitly empty \code{monitor} returns \code{logical(0)} rather than
+claiming convergence. The \code{diagnostics} attribute contains one row per
+available parameter and classifies it as \code{"assessable"},
+\code{"structural_constant"}, \code{"not_assessable"}, or
+\code{"not_requested"}. The \code{errors} attribute carries failed checks.
 }
 \description{
 Checks whether the supplied \link[runjags]{runjags-package} model

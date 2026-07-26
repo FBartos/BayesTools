@@ -54,6 +54,11 @@
 #'   fails to initialize. Defaults to \code{10}.}
 #'   \item{check_indicators}{whether model indicator variables should be included
 #'   in convergence checks. Defaults to \code{FALSE}.}
+#'   \item{monitor}{optional character vector selecting parameters for
+#'   convergence checks. Base names select all indexed elements. Defaults to
+#'   \code{NULL}, which checks every eligible parameter.}
+#'   \item{allow_not_assessable}{whether undefined diagnostics for requested
+#'   sampled parameters may be ignored. Defaults to \code{FALSE}.}
 #' }
 #' @param parallel whether the chains should be run in parallel \code{FALSE}
 #' @param cores number of cores used for multithreading if \code{parallel = TRUE},
@@ -108,7 +113,7 @@ NULL
 #' @rdname JAGS_fit
 JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL, formula_scale_list = NULL, formula_random_prior_list = NULL, formula_random_effects_compile_list = NULL,
                      chains = 4, adapt = 500, burnin = 1000, sample = 4000, thin = 1,
-                     autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE),
+                     autofit = FALSE, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE, monitor = NULL, allow_not_assessable = FALSE),
                      parallel = FALSE, cores = chains, silent = TRUE, seed = NULL,
                      add_parameters = NULL, required_packages = NULL, jags_modules = NULL, ...){
 
@@ -308,7 +313,19 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 
   if(autofit && !inherits(fit, "error")){
 
-    converged  <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], add_parameters = add_parameters, check_indicators = autofit_control[["check_indicators"]], fail_fast = TRUE)
+    converged <- JAGS_check_convergence(
+      fit = fit,
+      prior_list = prior_list,
+      max_Rhat = autofit_control[["max_Rhat"]],
+      min_ESS = autofit_control[["min_ESS"]],
+      max_error = autofit_control[["max_error"]],
+      max_SD_error = autofit_control[["max_SD_error"]],
+      add_parameters = add_parameters,
+      fail_fast = TRUE,
+      check_indicators = autofit_control[["check_indicators"]],
+      monitor = autofit_control[["monitor"]],
+      allow_not_assessable = autofit_control[["allow_not_assessable"]]
+    )
     itteration <- 1
 
     if(!converged && isTRUE(dots[["is_JASP"]]))
@@ -341,7 +358,19 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 
       fit <- runjags::add.summary(fit)
 
-      converged  <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], add_parameters = add_parameters, check_indicators = autofit_control[["check_indicators"]], fail_fast = TRUE)
+      converged <- JAGS_check_convergence(
+        fit = fit,
+        prior_list = prior_list,
+        max_Rhat = autofit_control[["max_Rhat"]],
+        min_ESS = autofit_control[["min_ESS"]],
+        max_error = autofit_control[["max_error"]],
+        max_SD_error = autofit_control[["max_SD_error"]],
+        add_parameters = add_parameters,
+        fail_fast = TRUE,
+        check_indicators = autofit_control[["check_indicators"]],
+        monitor = autofit_control[["monitor"]],
+        allow_not_assessable = autofit_control[["allow_not_assessable"]]
+      )
       itteration <- itteration + 1
 
       if(isTRUE(dots[["is_JASP"]]))
@@ -486,7 +515,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
 }
 
 #' @rdname JAGS_fit
-JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE),
+JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error = 0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10, max_extend = 10, check_indicators = FALSE, monitor = NULL, allow_not_assessable = FALSE),
                         parallel = FALSE, cores = NULL, silent = TRUE){
 
   if(!inherits(fit, "BayesTools_fit"))
@@ -590,7 +619,19 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
 
     fit <- extension
     last_valid_fit <- fit
-    converged <- JAGS_check_convergence(fit, prior_list, autofit_control[["max_Rhat"]], autofit_control[["min_ESS"]], autofit_control[["max_error"]], autofit_control[["max_SD_error"]], add_parameters = add_parameters, check_indicators = autofit_control[["check_indicators"]], fail_fast = TRUE)
+    converged <- JAGS_check_convergence(
+      fit = fit,
+      prior_list = prior_list,
+      max_Rhat = autofit_control[["max_Rhat"]],
+      min_ESS = autofit_control[["min_ESS"]],
+      max_error = autofit_control[["max_error"]],
+      max_SD_error = autofit_control[["max_SD_error"]],
+      add_parameters = add_parameters,
+      fail_fast = TRUE,
+      check_indicators = autofit_control[["check_indicators"]],
+      monitor = autofit_control[["monitor"]],
+      allow_not_assessable = autofit_control[["allow_not_assessable"]]
+    )
 
     # update the refit call
     if(!converged){

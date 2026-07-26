@@ -23,7 +23,8 @@ JAGS_fit(
   autofit = FALSE,
   autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error =
     0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10,
-    max_extend = 10, check_indicators = FALSE),
+    max_extend = 10, check_indicators = FALSE, monitor = NULL, allow_not_assessable =
+    FALSE),
   parallel = FALSE,
   cores = chains,
   silent = TRUE,
@@ -38,7 +39,8 @@ JAGS_extend(
   fit,
   autofit_control = list(max_Rhat = 1.05, min_ESS = 500, max_error = 0.01, max_SD_error =
     0.05, max_time = list(time = 60, unit = "mins"), sample_extend = 1000, restarts = 10,
-    max_extend = 10, check_indicators = FALSE),
+    max_extend = 10, check_indicators = FALSE, monitor = NULL, allow_not_assessable =
+    FALSE),
   parallel = FALSE,
   cores = NULL,
   silent = TRUE
@@ -110,6 +112,11 @@ need to correspond to \code{units} passed to \link[base]{difftime} function.}
 fails to initialize. Defaults to \code{10}.}
 \item{check_indicators}{whether model indicator variables should be included
 in convergence checks. Defaults to \code{FALSE}.}
+\item{monitor}{optional character vector selecting parameters for
+convergence checks. Base names select all indexed elements. Defaults to
+\code{NULL}, which checks every eligible parameter.}
+\item{allow_not_assessable}{whether undefined diagnostics for requested
+sampled parameters may be ignored. Defaults to \code{FALSE}.}
 }}
 
 \item{parallel}{whether the chains should be run in parallel \code{FALSE}}

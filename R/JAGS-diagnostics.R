@@ -366,6 +366,11 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
 
   chain <- attr(plot_data, "chain")
   prior <- attr(plot_data, "prior")
+  .bt_diagnostics_validate_plot_data(
+    plot_data,
+    chain,
+    diagnostic = "Density"
+  )
 
   out   <- list()
 
@@ -587,6 +592,11 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
   chain <- attr(plot_data, "chain")
   iter  <- attr(plot_data, "iter")
   prior <- attr(plot_data, "prior")
+  .bt_diagnostics_validate_plot_data(
+    plot_data,
+    chain,
+    diagnostic = "Autocorrelation"
+  )
 
   out   <- list()
 
@@ -625,6 +635,49 @@ JAGS_diagnostics_autocorrelation <- function(fit, parameter, plot_type = "base",
   attr(out, "parameter_name") <- colnames(plot_data)
 
   return(out)
+}
+
+.bt_diagnostics_validate_plot_data <- function(
+    plot_data,
+    chain,
+    diagnostic){
+
+  if(ncol(plot_data) == 0L || nrow(plot_data) == 0L){
+    stop(
+      diagnostic,
+      " diagnostics require at least one parameter with posterior samples.",
+      call. = FALSE
+    )
+  }
+  if(length(chain) != nrow(plot_data)){
+    stop(
+      "Diagnostic chain metadata must identify every posterior sample.",
+      call. = FALSE
+    )
+  }
+  for(parameter in colnames(plot_data)){
+    for(chain_id in unique(chain)){
+      values <- plot_data[chain == chain_id, parameter]
+      finite_values <- values[is.finite(values)]
+      if(length(finite_values) < 2L){
+        stop(
+          diagnostic,
+          " diagnostics for '", parameter, "' in chain ", chain_id,
+          " require at least two finite posterior samples.",
+          call. = FALSE
+        )
+      }
+      if(length(unique(finite_values)) < 2L){
+        stop(
+          diagnostic,
+          " diagnostics for '", parameter, "' in chain ", chain_id,
+          " are not assessable because the posterior samples are constant.",
+          call. = FALSE
+        )
+      }
+    }
+  }
+  invisible(TRUE)
 }
 
 

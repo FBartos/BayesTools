@@ -873,9 +873,8 @@ test_that("JAGS_check_convergence ignores indicator variables unless requested",
 test_that("JAGS_check_convergence ignores add_parameters without priors", {
 
   set.seed(2)
-  mu_values <- rnorm(100)
-  chain_1 <- cbind(mu = mu_values, "aux[1]" = rep(0, 100))
-  chain_2 <- cbind(mu = mu_values, "aux[1]" = rep(1, 100))
+  chain_1 <- cbind(mu = rnorm(100), "aux[1]" = rep(0, 100))
+  chain_2 <- cbind(mu = rnorm(100), "aux[1]" = rep(1, 100))
   fit <- list(
     mcmc         = coda::mcmc.list(coda::mcmc(chain_1), coda::mcmc(chain_2)),
     summary.pars = list(mutate = NULL)
@@ -906,7 +905,7 @@ test_that("JAGS_check_convergence ignores add_parameters without priors", {
 })
 
 
-test_that("JAGS_check_convergence handles single chain (R-hat warning)", {
+test_that("JAGS_check_convergence marks single-chain R-hat as not assessable", {
 
   skip_if_not_installed("rjags")
   skip_on_cran()
@@ -928,11 +927,18 @@ test_that("JAGS_check_convergence handles single chain (R-hat warning)", {
     silent.jags = TRUE
   ))
 
-  # Should warn about single chain R-hat
-  expect_warning(
-    JAGS_check_convergence(fit, prior_list = prior_list, max_Rhat = 1.05),
-    "Only one chain was run"
+  convergence <- expect_silent(
+    JAGS_check_convergence(
+      fit,
+      prior_list = prior_list,
+      max_Rhat = 1.05,
+      min_ESS = NULL,
+      max_error = NULL,
+      max_SD_error = NULL
+    )
   )
+  expect_false(convergence)
+  expect_match(attr(convergence, "errors"), "R-hat.*not assessable")
 
 })
 

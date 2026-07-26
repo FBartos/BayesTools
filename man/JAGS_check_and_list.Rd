@@ -81,6 +81,11 @@ need to correspond to \code{units} passed to \link[base]{difftime} function.}
 fails to initialize. Defaults to \code{10}.}
 \item{check_indicators}{whether model indicator variables should be included
 in convergence checks. Defaults to \code{FALSE}.}
+\item{monitor}{optional character vector selecting parameters for
+convergence checks. Base names select all indexed elements. Defaults to
+\code{NULL}, which checks every eligible parameter.}
+\item{allow_not_assessable}{whether undefined diagnostics for requested
+sampled parameters may be ignored. Defaults to \code{FALSE}.}
 }}
 
 \item{skip_sample_extend}{whether \code{sample_extend}

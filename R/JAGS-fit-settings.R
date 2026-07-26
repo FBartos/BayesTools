@@ -59,9 +59,21 @@ JAGS_check_and_list_fit_settings     <- function(chains, adapt, burnin, sample, 
 #' @rdname JAGS_check_and_list
 JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_extend = FALSE, call = ""){
 
-  check_list(autofit_control, "autofit_control", check_names = c("max_Rhat", "min_ESS", "max_error", "max_SD_error",  "max_time", "sample_extend", "restarts", "max_extend", "check_indicators"), call = call)
+  check_list(
+    autofit_control,
+    "autofit_control",
+    check_names = c(
+      "max_Rhat", "min_ESS", "max_error", "max_SD_error", "max_time",
+      "sample_extend", "restarts", "max_extend", "check_indicators",
+      "monitor", "allow_not_assessable"
+    ),
+    call = call
+  )
   if(is.null(autofit_control[["check_indicators"]])){
     autofit_control[["check_indicators"]] <- FALSE
+  }
+  if(is.null(autofit_control[["allow_not_assessable"]])){
+    autofit_control[["allow_not_assessable"]] <- FALSE
   }
   check_real(autofit_control[["max_Rhat"]],     "max_Rhat",     lower = 1, allow_NULL = TRUE, allow_NA = FALSE, call = call)
   check_real(autofit_control[["min_ESS"]],      "min_ESS",      lower = 0, allow_NULL = TRUE, allow_NA = FALSE, call = call)
@@ -77,6 +89,31 @@ JAGS_check_and_list_autofit_settings <- function(autofit_control, skip_sample_ex
     }
   }
   check_bool(autofit_control[["check_indicators"]], "check_indicators", allow_NA = FALSE, call = call)
+  check_char(
+    autofit_control[["monitor"]],
+    "monitor",
+    check_length = 0,
+    allow_NULL = TRUE,
+    allow_NA = FALSE,
+    call = call
+  )
+  if(!is.null(autofit_control[["monitor"]]) &&
+     length(autofit_control[["monitor"]]) == 0L){
+    stop(
+      paste0(
+        call,
+        "The 'monitor' argument must select at least one parameter for ",
+        "automatic fitting."
+      ),
+      call. = FALSE
+    )
+  }
+  check_bool(
+    autofit_control[["allow_not_assessable"]],
+    "allow_not_assessable",
+    allow_NA = FALSE,
+    call = call
+  )
   check_list(autofit_control[["max_time"]],     "max_time", check_names = c("time", "unit"), check_length = 2, allow_NULL = TRUE, call = call)
   if(!is.null(autofit_control[["max_time"]])){
     if(is.null(names(autofit_control[["max_time"]]))){
