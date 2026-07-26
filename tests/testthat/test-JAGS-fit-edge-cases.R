@@ -752,6 +752,7 @@ test_that("JAGS_fit predicts row-indexed external SD random effects from latent 
     formula = formula,
     parameter = "mu",
     data = df,
+    fitted_rows = seq_len(nrow(df)),
     prior_list = attr(fit, "prior_list")
   )
 
