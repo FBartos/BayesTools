@@ -27,7 +27,7 @@ mean **implemented**.
 | D13 | Resolved by NF08 | No remaining decision |
 | D14 | Resolved/superseded by NF09 | The audited code changed mixture counts, not posterior draw values |
 | D15 | Resolved by NF05/NF06 | No remaining decision |
-| D16 | Partially implemented | General one-sided weight-function marginals remain unimplemented |
+| D16 | Implemented and verified | No remaining work |
 | D17 | Decision confirmed; implementation pending | Canonicalize formula `prior_none()` to a point mass at zero |
 | D18 | Implemented and verified | No remaining work |
 | D19 | Decision confirmed; implementation pending | Introduce and adopt a canonical, documented parameter registry |
@@ -831,7 +831,7 @@ validate it before computation.
 
 Decision: implement the missing marginal distribution
 
-**Audit status: partially implemented.**
+**Audit status: implemented and verified.**
 
 **Review response.** The monotone/cumulative one-sided weight-function marginal
 is already implemented and tested through the shared component representation,
@@ -846,6 +846,25 @@ can generate draws. The decision therefore means implementing and testing those
 general marginal CDF/probability/quantile paths, then removing the expected-error
 tests. Numerical inversion should use the same error-budget/provenance rules
 adopted under NF05/NF06.
+
+**Implementation record.** General one-sided density and distribution helpers
+now use analytic beta marginals for the expected-direction coordinates and
+adaptive quadrature for the transformed product-of-beta marginals in the
+unexpected direction. Support-boundary density limits are analytic, and upper
+tails are integrated directly rather than formed by subtracting a lower-tail
+probability from one.
+
+Quantiles invert the requested lower or upper tail directly and verify the
+achieved probability against a fixed error budget. Finite log-probabilities
+that underflow before inversion are rejected rather than silently mapped to a
+support boundary. General results carry a `numerical_provenance` attribute with
+the method, tolerances, quadrature errors, and root diagnostics.
+
+The focused distribution contract passed 127 assertions, including a
+closed-form uniform case, asymmetric Monte Carlo agreement, density/CDF
+derivative agreement, both probability tails, boundaries, and matrix
+broadcasting. The full unit profile passed 7,931 assertions with seven intended
+cross-profile skips and no failures or warnings.
 
 ## D17. Formula priors without reconstruction semantics
 

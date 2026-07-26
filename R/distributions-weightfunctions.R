@@ -22,6 +22,13 @@
 #' \code{p} are given as \code{log(p)}.
 #' @param lower.tail logical; if \code{TRUE} (default), probabilities
 #' are \eqn{P[X \le x]}, otherwise, \eqn{P[X > x]}.
+#' @details General one-sided marginals use analytic beta distributions for
+#' the expected-direction weights and adaptive quadrature for the
+#' product-of-beta representation of the unexpected-direction weights.
+#' Quantiles numerically invert the corresponding tail probability and verify
+#' the achieved probability against a fixed error budget. Results from the
+#' general parameterization carry a \code{numerical_provenance} attribute with
+#' the method, tolerances, and component-level diagnostics.
 #'
 #'
 #' @examples
@@ -276,44 +283,48 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
 #### density functions ####
 .mdone.sided_general   <- function(x, alpha1, alpha2, log){
 
-  stop("Not implemented")
-  # would require product of two beta-distributed variables, since the weights in the opposite direction
-  # start at the first cutoff modeled by the first alpha parameter
-  # https://math.stackexchange.com/questions/1073364/product-of-two-beta-distributed-random-variables
-  # https://www.dm.fct.unl.pt/sites/www.dm.fct.unl.pt/files/preprints/2012/7_12.pdf
-  # probably solvable with Meijer g-function
+  inputs <- .weightfunctions_general_inputs(
+    x,
+    alpha1,
+    alpha2,
+    value_name = "x"
+  )
+  x <- inputs$value
+  alpha1 <- inputs$alpha1
+  alpha2 <- inputs$alpha2
 
-  # # input check
-  # .weightfunctions_check_alpha(alpha1, "alpha1")
-  # .weightfunctions_check_alpha(alpha2, "alpha2")
-  #
-  # # transform to matrices for easier manipulation and checks
-  # if(length(x) == 1){
-  #   x <- rep(x, nrow(alpha1))
-  # }
-  # if(!is.matrix(alpha1)){
-  #   alpha1 <- matrix(alpha1, nrow = 1)
-  # }
-  # if(!is.matrix(alpha2)){
-  #   alpha2 <- matrix(alpha2, nrow = 1)
-  # }
-  #
-  # if(nrow(alpha1) != nrow(alpha2))
-  #   stop("Non matching dimensions of 'alpha1' and 'alpha2'.")
-  # if(nrow(alpha1) != length(x) & nrow(alpha1) != 1)
-  #   stop("Non matching dimensions of 'alpha' and 'x'.")
-  #
-  # if(nrow(alpha1) != length(x) & nrow(alpha1) == 1){
-  #   alpha1 <- do.call(rbind, lapply(1:length(x), function(i)alpha1))
-  #   alpha2 <- do.call(rbind, lapply(1:length(x), function(i)alpha2))
-  # }
-  #
-  #
-  # lik1 <- .mdone.sided_monotonic(x, alpha = alpha1, log = log)
-  # the side in the unexpected direction starts with the first step of alpha1, e.g., something like this:
-  # lik2 <- .dmone.sided_monotonic(x, alpha = alpha2, log = log) * beta(alpha[,1], t(apply(alpha[,-1], 1, sum)))
-  #
-  # return(cbind(lik2, lik1))
+  expected <- .weightfunctions_general_expected(
+    x,
+    alpha1,
+    operation = "density"
+  )
+  unexpected <- matrix(
+    NA_real_,
+    nrow = length(x),
+    ncol = ncol(alpha2) - 1L
+  )
+  quadrature <- vector("list", length(x) * ncol(unexpected))
+  dim(quadrature) <- dim(unexpected)
+
+  for(row in seq_along(x)){
+    shapes <- .weightfunctions_general_shapes(alpha1[row, ], alpha2[row, ])
+    for(component in seq_along(shapes)){
+      result <- .weightfunctions_general_density(
+        x[[row]],
+        shapes[[component]]
+      )
+      unexpected[row, component] <- result$value
+      quadrature[[row, component]] <- result$provenance
+    }
+  }
+
+  out <- cbind(expected, unexpected)
+  if(log){
+    out <- log(out)
+  }
+  attr(out, "numerical_provenance") <-
+    .weightfunctions_general_provenance("density", quadrature)
+  out
 }
 .mdone.sided_monotonic <- function(x, alpha, log){
 
@@ -455,29 +466,50 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
 #### marginal distribution functions ####
 .mpone.sided_general   <- function(q, alpha1, alpha2, lower.tail, log.p){
 
-  stop("Not implemented")
+  inputs <- .weightfunctions_general_inputs(
+    q,
+    alpha1,
+    alpha2,
+    value_name = "q"
+  )
+  q <- inputs$value
+  alpha1 <- inputs$alpha1
+  alpha2 <- inputs$alpha2
 
-  # # input check
-  # .weightfunctions_check_alpha(alpha1, "alpha1")
-  # .weightfunctions_check_alpha(alpha2, "alpha2")
-  #
-  #
-  # # transform to matrices for easier manipulation and checks
-  # if(!is.matrix(alpha1)){
-  #   alpha1 <- matrix(alpha1, nrow = 1)
-  # }
-  # if(!is.matrix(alpha2)){
-  #   alpha2 <- matrix(alpha2, nrow = 1)
-  # }
-  # if(length(q) == 1){
-  #   q <- rep(q, nrow(alpha1))
-  # }
-  #
-  # if(nrow(alpha1) != nrow(alpha2))
-  #   stop("Non matching dimensions of 'alpha1' and 'alpha2'.")
-  # if(nrow(alpha1) != length(q) & nrow(alpha1) != 1)
-  #   stop("Non matching dimensions of 'alpha' and 'q'.")
+  expected <- .weightfunctions_general_expected(
+    q,
+    alpha1,
+    operation = "distribution",
+    lower.tail = lower.tail
+  )
+  unexpected <- matrix(
+    NA_real_,
+    nrow = length(q),
+    ncol = ncol(alpha2) - 1L
+  )
+  quadrature <- vector("list", length(q) * ncol(unexpected))
+  dim(quadrature) <- dim(unexpected)
 
+  for(row in seq_along(q)){
+    shapes <- .weightfunctions_general_shapes(alpha1[row, ], alpha2[row, ])
+    for(component in seq_along(shapes)){
+      result <- .weightfunctions_general_probability(
+        q[[row]],
+        shapes[[component]],
+        lower.tail = lower.tail
+      )
+      unexpected[row, component] <- result$value
+      quadrature[[row, component]] <- result$provenance
+    }
+  }
+
+  out <- cbind(expected, unexpected)
+  if(log.p){
+    out <- log(out)
+  }
+  attr(out, "numerical_provenance") <-
+    .weightfunctions_general_provenance("distribution", quadrature)
+  out
 }
 .mpone.sided_monotonic <- function(q, alpha, lower.tail, log.p){
 
@@ -540,34 +572,56 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
 #### marginal quantile functions ####
 .mqone.sided_general   <- function(p, alpha1, alpha2, lower.tail, log.p){
 
-  stop("Not implemented")
+  inputs <- .weightfunctions_general_inputs(
+    p,
+    alpha1,
+    alpha2,
+    value_name = "p"
+  )
+  p <- inputs$value
+  alpha1 <- inputs$alpha1
+  alpha2 <- inputs$alpha2
 
-  # # input check
-  # .weightfunctions_check_alpha(alpha1, "alpha1")
-  # .weightfunctions_check_alpha(alpha2, "alpha2")
-  #
-  #
-  # # transform to matrices for easier manipulation and checks
-  # if(!is.matrix(alpha1)){
-  #   alpha1 <- matrix(alpha1, nrow = 1)
-  # }
-  # if(!is.matrix(alpha2)){
-  #   alpha2 <- matrix(alpha2, nrow = 1)
-  # }
-  # if(length(p) == 1){
-  #   p <- rep(p, nrow(alpha1))
-  # }
-  #
-  # if(nrow(alpha1) != nrow(alpha2))
-  #   stop("Non matching dimensions of 'alpha1' and 'alpha2'.")
-  # if(nrow(alpha1) != length(p) & nrow(alpha1) != 1)
-  #   stop("Non matching dimensions of 'alpha' and 'p'.")
-  #
-  # if(nrow(alpha1) != length(p) & nrow(alpha1) == 1){
-  #   alpha1 <- do.call(rbind, lapply(1:length(p), function(i)alpha1))
-  #   alpha2 <- do.call(rbind, lapply(1:length(p), function(i)alpha2))
-  # }
+  expected <- .weightfunctions_general_expected(
+    p,
+    alpha1,
+    operation = "quantile",
+    lower.tail = lower.tail,
+    log.p = log.p
+  )
+  probabilities <- if(log.p) exp(p) else p
+  if(log.p && any(is.finite(p) & probabilities == 0)){
+    stop(
+      "A finite log probability underflowed on the probability scale and ",
+      "cannot be inverted faithfully.",
+      call. = FALSE
+    )
+  }
+  unexpected <- matrix(
+    NA_real_,
+    nrow = length(p),
+    ncol = ncol(alpha2) - 1L
+  )
+  roots <- vector("list", length(p) * ncol(unexpected))
+  dim(roots) <- dim(unexpected)
 
+  for(row in seq_along(p)){
+    shapes <- .weightfunctions_general_shapes(alpha1[row, ], alpha2[row, ])
+    for(component in seq_along(shapes)){
+      result <- .weightfunctions_general_quantile(
+        probabilities[[row]],
+        shapes[[component]],
+        lower.tail = lower.tail
+      )
+      unexpected[row, component] <- result$value
+      roots[[row, component]] <- result$provenance
+    }
+  }
+
+  out <- cbind(expected, unexpected)
+  attr(out, "numerical_provenance") <-
+    .weightfunctions_general_provenance("quantile", roots)
+  out
 }
 .mqone.sided_monotonic <- function(p, alpha, lower.tail, log.p){
 
@@ -635,6 +689,377 @@ mqtwo.sided_fixed <- function(p, omega, lower.tail = TRUE, log.p = FALSE){
 }
 
 ### helper functions
+.weightfunctions_general_control <- function(){
+  list(
+    relative_tolerance = 1e-8,
+    absolute_tolerance = 1e-10,
+    subdivisions = 500L,
+    quantile_tolerance = 1e-9,
+    probability_tolerance = 5e-8
+  )
+}
+
+.weightfunctions_general_inputs <- function(
+    value,
+    alpha1,
+    alpha2,
+    value_name){
+
+  .weightfunctions_check_alpha(alpha1, "alpha1")
+  .weightfunctions_check_alpha(alpha2, "alpha2")
+  if(!is.matrix(alpha1)){
+    alpha1 <- matrix(alpha1, nrow = 1L)
+  }
+  if(!is.matrix(alpha2)){
+    alpha2 <- matrix(alpha2, nrow = 1L)
+  }
+  if(nrow(alpha1) != nrow(alpha2)){
+    stop(
+      "Non matching dimensions of 'alpha1' and 'alpha2'.",
+      call. = FALSE
+    )
+  }
+  if(length(value) == 1L){
+    value <- rep(value, nrow(alpha1))
+  }
+  if(nrow(alpha1) != length(value) && nrow(alpha1) != 1L){
+    stop(
+      "Non matching dimensions of 'alpha' and '", value_name, "'.",
+      call. = FALSE
+    )
+  }
+  if(nrow(alpha1) == 1L && length(value) > 1L){
+    alpha1 <- alpha1[rep.int(1L, length(value)), , drop = FALSE]
+    alpha2 <- alpha2[rep.int(1L, length(value)), , drop = FALSE]
+  }
+  list(value = value, alpha1 = alpha1, alpha2 = alpha2)
+}
+
+.weightfunctions_general_shapes <- function(alpha1, alpha2){
+
+  shape_A1 <- alpha1[[1L]]
+  shape_A2 <- sum(alpha1[-1L])
+  indices <- rev(seq.int(2L, length(alpha2)))
+  lapply(indices, function(index){
+    list(
+      A1 = shape_A1,
+      A2 = shape_A2,
+      B1 = sum(alpha2[index:length(alpha2)]),
+      B2 = sum(alpha2[seq_len(index - 1L)])
+    )
+  })
+}
+
+.weightfunctions_general_expected <- function(
+    value,
+    alpha,
+    operation,
+    lower.tail = TRUE,
+    log.p = FALSE){
+
+  output <- matrix(
+    NA_real_,
+    nrow = length(value),
+    ncol = ncol(alpha)
+  )
+  output[, 1L] <- switch(
+    operation,
+    density = dpoint(value, location = 1),
+    distribution = ppoint(
+      value,
+      location = 1,
+      lower.tail = lower.tail
+    ),
+    quantile = qpoint(
+      value,
+      location = 1,
+      lower.tail = lower.tail,
+      log.p = log.p
+    )
+  )
+  for(component in seq.int(2L, ncol(alpha))){
+    cumulative_index <- ncol(alpha) - component + 1L
+    shape1 <- rowSums(alpha[, seq_len(cumulative_index), drop = FALSE])
+    shape2 <- rowSums(alpha[, seq.int(
+      cumulative_index + 1L,
+      ncol(alpha)
+    ), drop = FALSE])
+    output[, component] <- switch(
+      operation,
+      density = stats::dbeta(value, shape1, shape2),
+      distribution = stats::pbeta(
+        value,
+        shape1,
+        shape2,
+        lower.tail = lower.tail
+      ),
+      quantile = stats::qbeta(
+        value,
+        shape1,
+        shape2,
+        lower.tail = lower.tail,
+        log.p = log.p
+      )
+    )
+  }
+  if(operation == "quantile"){
+    output[output == -Inf] <- 0
+    output[output == Inf] <- 1
+  }
+  output
+}
+
+.weightfunctions_general_integrate <- function(fun, context){
+
+  control <- .weightfunctions_general_control()
+  integration <- tryCatch(
+    stats::integrate(
+      fun,
+      lower = 0,
+      upper = 1,
+      subdivisions = control$subdivisions,
+      rel.tol = control$relative_tolerance,
+      abs.tol = control$absolute_tolerance,
+      stop.on.error = FALSE
+    ),
+    error = function(e) e
+  )
+  valid <- !inherits(integration, "error") &&
+    identical(integration$message, "OK") &&
+    is.finite(integration$value) &&
+    is.finite(integration$abs.error) &&
+    integration$abs.error <= max(
+      control$absolute_tolerance,
+      control$relative_tolerance * abs(integration$value)
+    )
+  if(!valid){
+    detail <- if(inherits(integration, "error")){
+      conditionMessage(integration)
+    }else{
+      paste0(
+        integration$message,
+        "; absolute error ",
+        format(integration$abs.error, digits = 6)
+      )
+    }
+    stop(
+      "General one-sided weight-function ", context,
+      " quadrature failed: ", detail, ".",
+      call. = FALSE
+    )
+  }
+  list(
+    value = integration$value,
+    provenance = list(
+      method = "adaptive quadrature",
+      absolute_error = integration$abs.error,
+      message = integration$message
+    )
+  )
+}
+
+.weightfunctions_general_density <- function(x, shapes){
+
+  if(x == 0){
+    exponent <- shapes$A1 + shapes$B1 - 1
+    value <- if(exponent < 0){
+      Inf
+    }else if(exponent > 0){
+      0
+    }else{
+      exp(
+        lbeta(shapes$A1, shapes$B1) -
+          lbeta(shapes$A1, shapes$A2) -
+          lbeta(shapes$B1, shapes$B2)
+      )
+    }
+    return(list(
+      value = value,
+      provenance = list(method = "analytic lower-boundary limit")
+    ))
+  }
+  if(x == 1){
+    U1 <- shapes$A2
+    U2 <- shapes$A1
+    V1 <- shapes$B2
+    V2 <- shapes$B1
+    minimum_shape <- min(U1, V1)
+    value <- if(minimum_shape < 1){
+      Inf
+    }else if(U1 == V1){
+      if(U1 == 1) Inf else 0
+    }else if(minimum_shape > 1){
+      0
+    }else if(U1 == 1){
+      exp(-lbeta(U1, U2)) * (V1 + V2 - 1) / (V1 - 1)
+    }else{
+      exp(-lbeta(V1, V2)) * (U1 + U2 - 1) / (U1 - 1)
+    }
+    return(list(
+      value = value,
+      provenance = list(method = "analytic upper-boundary limit")
+    ))
+  }
+
+  result <- .weightfunctions_general_integrate(
+    function(t){
+      out <- numeric(length(t))
+      interior <- t > 0 & t < 1
+      if(any(interior)){
+        A <- x * t[interior]
+        B <- (x - A) / (1 - A)
+        log_integrand <- stats::dbeta(
+          A,
+          shapes$A1,
+          shapes$A2,
+          log = TRUE
+        ) +
+          stats::dbeta(B, shapes$B1, shapes$B2, log = TRUE) -
+          log1p(-A) +
+          log(x)
+        out[interior] <- exp(log_integrand)
+      }
+      out
+    },
+    context = paste0("density at x = ", format(x, digits = 17))
+  )
+  result
+}
+
+.weightfunctions_general_probability <- function(q, shapes, lower.tail){
+
+  if(q == 0){
+    return(list(
+      value = if(lower.tail) 0 else 1,
+      provenance = list(method = "analytic support boundary")
+    ))
+  }
+  if(q == 1){
+    return(list(
+      value = if(lower.tail) 1 else 0,
+      provenance = list(method = "analytic support boundary")
+    ))
+  }
+
+  integral <- .weightfunctions_general_integrate(
+    function(t){
+      out <- numeric(length(t))
+      interior <- t > 0 & t < 1
+      if(any(interior)){
+        A <- q * t[interior]
+        B <- (q - A) / (1 - A)
+        conditional <- stats::pbeta(
+          B,
+          shapes$B1,
+          shapes$B2,
+          lower.tail = lower.tail
+        )
+        out[interior] <- q *
+          stats::dbeta(A, shapes$A1, shapes$A2) *
+          conditional
+      }
+      out
+    },
+    context = paste0(
+      if(lower.tail) "lower-tail" else "upper-tail",
+      " probability at q = ",
+      format(q, digits = 17)
+    )
+  )
+  if(!lower.tail){
+    tail_A <- stats::pbeta(
+      q,
+      shapes$A1,
+      shapes$A2,
+      lower.tail = FALSE
+    )
+    integral$value <- tail_A + integral$value
+    integral$provenance$analytic_tail_A <- tail_A
+  }
+  integral$value <- min(1, max(0, integral$value))
+  integral
+}
+
+.weightfunctions_general_quantile <- function(p, shapes, lower.tail){
+
+  boundary <- if(p == 0){
+    if(lower.tail) 0 else 1
+  }else if(p == 1){
+    if(lower.tail) 1 else 0
+  }else{
+    NULL
+  }
+  if(!is.null(boundary)){
+    return(list(
+      value = boundary,
+      provenance = list(method = "analytic probability boundary")
+    ))
+  }
+
+  control <- .weightfunctions_general_control()
+  probability_evaluations <- 0L
+  objective <- function(q){
+    probability_evaluations <<- probability_evaluations + 1L
+    .weightfunctions_general_probability(
+      q,
+      shapes,
+      lower.tail = lower.tail
+    )$value - p
+  }
+  root <- tryCatch(
+    stats::uniroot(
+      objective,
+      interval = c(0, 1),
+      tol = control$quantile_tolerance
+    ),
+    error = function(e) e
+  )
+  if(inherits(root, "error") || !is.finite(root$root)){
+    stop(
+      "General one-sided weight-function quantile inversion failed for p = ",
+      format(p, digits = 17), ": ",
+      if(inherits(root, "error")) conditionMessage(root) else
+        "the root was not finite",
+      ".",
+      call. = FALSE
+    )
+  }
+  achieved <- .weightfunctions_general_probability(
+    root$root,
+    shapes,
+    lower.tail = lower.tail
+  )$value
+  probability_error <- abs(achieved - p)
+  if(!is.finite(probability_error) ||
+     probability_error > control$probability_tolerance){
+    stop(
+      "General one-sided weight-function quantile inversion did not meet ",
+      "the probability error budget for p = ",
+      format(p, digits = 17), "; absolute error ",
+      format(probability_error, digits = 6), ".",
+      call. = FALSE
+    )
+  }
+  list(
+    value = root$root,
+    provenance = list(
+      method = "CDF root inversion",
+      iterations = root$iter,
+      probability_evaluations = probability_evaluations + 1L,
+      achieved_probability = achieved,
+      absolute_probability_error = probability_error
+    )
+  )
+}
+
+.weightfunctions_general_provenance <- function(operation, details){
+  list(
+    method = paste("general one-sided", operation),
+    control = .weightfunctions_general_control(),
+    details = details
+  )
+}
+
 .weightfunctions_one_sided_parameterization <- function(alpha, alpha1, alpha2){
   has_alpha  <- !is.null(alpha)
   has_alpha1 <- !is.null(alpha1)

@@ -109,6 +109,15 @@ and \code{rtwo.sided_fixed} generate random deviates.
 Marginal density, marginal distribution function,
 marginal quantile function and random generation for weight functions.
 }
+\details{
+General one-sided marginals use analytic beta distributions for
+the expected-direction weights and adaptive quadrature for the
+product-of-beta representation of the unexpected-direction weights.
+Quantiles numerically invert the corresponding tail probability and verify
+the achieved probability against a fixed error budget. Results from the
+general parameterization carry a \code{numerical_provenance} attribute with
+the method, tolerances, and component-level diagnostics.
+}
 \examples{
 # draw samples from a two-sided weight function
 rtwo.sided(10, alpha = c(1, 1))

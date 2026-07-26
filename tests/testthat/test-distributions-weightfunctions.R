@@ -60,6 +60,11 @@ skip_if_not_test_profile("unit")
   expect_equal(mqtwo.sided(q_seq, alpha = alpha), expected_quantile)
 }
 
+.without_numerical_provenance <- function(x){
+  attr(x, "numerical_provenance") <- NULL
+  x
+}
+
 test_that("monotone weightfunction marginal helpers use reference-first cumulative Dirichlet math", {
 
   q_seq <- seq(0, 1, .1)
@@ -149,11 +154,190 @@ test_that("fixed weightfunction helpers support non-negative relative weights", 
   expect_equal(mqone.sided_fixed(c(0, .5, 1), omega = omega), mqtwo.sided_fixed(c(0, .5, 1), omega = omega))
 })
 
-test_that("non-monotonic one-sided density, cdf, and quantile helpers remain explicit", {
+test_that("general one-sided marginals match the uniform analytic case", {
 
-  expect_error(mdone.sided(0.5, alpha1 = c(1, 1), alpha2 = c(1, 1)), "Not implemented")
-  expect_error(mpone.sided(0.5, alpha1 = c(1, 1), alpha2 = c(1, 1)), "Not implemented")
-  expect_error(mqone.sided(0.5, alpha1 = c(1, 1), alpha2 = c(1, 1)), "Not implemented")
+  q <- c(.1, .5, .9)
+  expected_density <- cbind(
+    dpoint(q, 1),
+    rep(1, length(q)),
+    -log1p(-q)
+  )
+  expected_cdf <- cbind(
+    ppoint(q, 1),
+    q,
+    q + (1 - q) * log1p(-q)
+  )
+
+  density <- mdone.sided(
+    q,
+    alpha1 = c(1, 1),
+    alpha2 = c(1, 1)
+  )
+  cdf <- mpone.sided(
+    q,
+    alpha1 = c(1, 1),
+    alpha2 = c(1, 1)
+  )
+  expect_equal(
+    .without_numerical_provenance(density),
+    expected_density,
+    tolerance = 1e-7
+  )
+  expect_equal(
+    .without_numerical_provenance(cdf),
+    unname(expected_cdf),
+    tolerance = 1e-7
+  )
+  expect_equal(
+    .without_numerical_provenance(mdone.sided(
+      q,
+      alpha1 = c(1, 1),
+      alpha2 = c(1, 1),
+      log = TRUE
+    )),
+    log(expected_density),
+    tolerance = 1e-7
+  )
+  expect_equal(
+    .without_numerical_provenance(mpone.sided(
+      q,
+      alpha1 = c(1, 1),
+      alpha2 = c(1, 1),
+      lower.tail = FALSE,
+      log.p = TRUE
+    )),
+    unname(log1p(-expected_cdf)),
+    tolerance = 1e-7
+  )
+  expect_equal(
+    .without_numerical_provenance(mdone.sided(
+      c(0, 1),
+      alpha1 = c(1, 1),
+      alpha2 = c(1, 1)
+    ))[, 3],
+    c(0, Inf)
+  )
+  expect_named(attr(density, "numerical_provenance"))
+  expect_named(attr(cdf, "numerical_provenance"))
+})
+
+test_that("general one-sided quantiles invert both probability tails", {
+
+  p <- c(.1, .5, .9)
+  lower <- mqone.sided(
+    p,
+    alpha1 = c(1, 1),
+    alpha2 = c(1, 1)
+  )
+  upper <- mqone.sided(
+    p,
+    alpha1 = c(1, 1),
+    alpha2 = c(1, 1),
+    lower.tail = FALSE
+  )
+
+  expect_equal(
+    .without_numerical_provenance(mpone.sided(
+      lower[, 3],
+      alpha1 = c(1, 1),
+      alpha2 = c(1, 1)
+    ))[, 3],
+    p,
+    tolerance = 5e-8
+  )
+  expect_equal(
+    .without_numerical_provenance(mpone.sided(
+      upper[, 3],
+      alpha1 = c(1, 1),
+      alpha2 = c(1, 1),
+      lower.tail = FALSE
+    ))[, 3],
+    p,
+    tolerance = 5e-8
+  )
+  expect_equal(
+    .without_numerical_provenance(mqone.sided(
+      c(0, 1),
+      alpha1 = c(1, 1),
+      alpha2 = c(1, 1)
+    )),
+    rbind(c(0, 0, 0), c(1, 1, 1))
+  )
+  expect_named(attr(lower, "numerical_provenance"))
+})
+
+test_that("general one-sided marginals agree with generated draws", {
+
+  set.seed(45)
+  samples <- rone.sided(
+    50000,
+    alpha1 = c(2, 3),
+    alpha2 = c(4, 2, 1)
+  )
+  q <- .65
+  probabilities <- mpone.sided(
+    q,
+    alpha1 = c(2, 3),
+    alpha2 = c(4, 2, 1)
+  )
+
+  expect_equal(
+    colMeans(samples <= q),
+    as.numeric(probabilities),
+    tolerance = .01
+  )
+})
+
+test_that("general density is the derivative of its distribution", {
+
+  q <- .4
+  h <- 1e-5
+  alpha1 <- c(.7, 2.3, 1.1)
+  alpha2 <- c(1.4, .8, 2.2)
+  density <- .without_numerical_provenance(mdone.sided(
+    q,
+    alpha1 = alpha1,
+    alpha2 = alpha2
+  ))
+  lower <- .without_numerical_provenance(mpone.sided(
+    q - h,
+    alpha1 = alpha1,
+    alpha2 = alpha2
+  ))
+  upper <- .without_numerical_provenance(mpone.sided(
+    q + h,
+    alpha1 = alpha1,
+    alpha2 = alpha2
+  ))
+
+  expect_equal(
+    density[, -(1:3), drop = FALSE],
+    (upper[, -(1:3), drop = FALSE] -
+       lower[, -(1:3), drop = FALSE]) / (2 * h),
+    tolerance = 2e-5
+  )
+})
+
+test_that("general quantiles reject unrepresentable finite log probabilities", {
+
+  expect_error(
+    mqone.sided(
+      -1000,
+      alpha1 = c(1, 1),
+      alpha2 = c(1, 1),
+      log.p = TRUE
+    ),
+    "underflowed.*cannot be inverted faithfully"
+  )
+  expect_equal(
+    .without_numerical_provenance(mqone.sided(
+      -Inf,
+      alpha1 = c(1, 1),
+      alpha2 = c(1, 1),
+      log.p = TRUE
+    )),
+    matrix(0, nrow = 1, ncol = 3)
+  )
 })
 
 test_that("one-sided weightfunction wrappers require exactly one public parameterization", {
@@ -225,6 +409,9 @@ test_that("weightfunction helper dimension checks happen after valid parameter c
   alpha1_mat <- matrix(c(1, 1, 2, 2), nrow = 2, byrow = TRUE)
   alpha2_mat <- matrix(c(1, 1, 2, 2, 3, 3), nrow = 3, byrow = TRUE)
   expect_error(rone.sided(5, alpha1 = alpha1_mat, alpha2 = alpha2_mat), "Non matching dimensions of 'alpha1' and 'alpha2'.")
+  expect_error(mdone.sided(.5, alpha1 = alpha1_mat, alpha2 = alpha2_mat), "Non matching dimensions of 'alpha1' and 'alpha2'.")
+  expect_error(mpone.sided(.5, alpha1 = alpha1_mat, alpha2 = alpha2_mat), "Non matching dimensions of 'alpha1' and 'alpha2'.")
+  expect_error(mqone.sided(.5, alpha1 = alpha1_mat, alpha2 = alpha2_mat), "Non matching dimensions of 'alpha1' and 'alpha2'.")
 })
 
 test_that("weightfunction helper matrix broadcasting works", {
@@ -241,6 +428,9 @@ test_that("weightfunction helper matrix broadcasting works", {
   expect_equal(nrow(rone.sided(2, alpha = matrix(c(1, 1, 2, 2), nrow = 2, byrow = TRUE))), 2)
   expect_equal(nrow(rone.sided_fixed(2, omega = matrix(c(1, .3, 1, .5), nrow = 2, byrow = TRUE))), 2)
   expect_equal(nrow(rone.sided(5, alpha1 = matrix(c(1, 1), nrow = 1), alpha2 = matrix(c(1, 1), nrow = 1))), 5)
+  expect_equal(dim(mdone.sided(c(.3, .7), alpha1 = c(1, 1), alpha2 = c(1, 1))), c(2, 3))
+  expect_equal(dim(mpone.sided(c(.3, .7), alpha1 = c(1, 1), alpha2 = c(1, 1))), c(2, 3))
+  expect_equal(dim(mqone.sided(c(.3, .7), alpha1 = c(1, 1), alpha2 = c(1, 1))), c(2, 3))
 })
 
 test_that("monotone weightfunction matrix parameters use row-specific beta shapes", {
