@@ -30,7 +30,8 @@
 #' will be log-transformed before computing the linear predictor.
 #' @param parameter name of the parameter created with the formula
 #' @param data data.frame containing predictors included in the formula. If
-#' `NULL`, fitted source data from `formula_design` metadata are used.
+#' `NULL`, versioned original-scale fitted source data from `formula_design`
+#' metadata are used. Fits without that metadata must be refitted.
 #' @param prior_list named list of prior distribution of parameters specified
 #' within the \code{formula}. If `NULL`, fitted priors from `formula_design`
 #' metadata are used.
@@ -549,6 +550,12 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   if(is.null(fitted_design)){
     fitted_design <- .bt_JAGS_evaluate_formula_design(fit, parameter)
   }
+  if(!is.null(fitted_design)){
+    .bt_validate_formula_design_replay_schema(
+      fitted_design,
+      context = "JAGS_evaluate_formula()"
+    )
+  }
 
   if(is.null(formula)){
     if(is.null(fitted_design)){
@@ -567,9 +574,6 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
       stop("'data' must be a data.frame.", call. = FALSE)
     }
     data <- fitted_design$source_data
-    if(is.null(data)){
-      data <- as.data.frame(fitted_design$model_frame)
-    }
   }
   if(is.null(prior_list)){
     fit_prior_list <- attr(fit, "prior_list", exact = TRUE)

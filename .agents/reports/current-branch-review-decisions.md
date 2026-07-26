@@ -34,7 +34,7 @@ mean **implemented**.
 | D20 | Decision confirmed; implementation pending | Introduce a scalar, scale-explicit marginal-likelihood result contract |
 | D21 | Partially implemented | Add the vignette manifest and consolidate real fitting; D30 covers paths |
 | D22 | Decision confirmed; implementation pending | Make `interval_level` derived output, not caller input |
-| D23 | Decision confirmed; implementation pending | Remove unversioned `model_frame` replay fallback |
+| D23 | Implemented and verified | No remaining work |
 | D24 | Decision confirmed; implementation pending | Keep raw latent/group coefficients internal and add a transformed extractor if needed |
 | D25 | Partially implemented; implementation pending | Preserve atoms in the ordered sampled-density fallback |
 | D26 | Implemented and verified | No remaining work |
@@ -1075,7 +1075,7 @@ with instructions to refit; do not infer scale from the absence of
 
 Decision: break backwards compatibility, do not add backwards handling
 
-**Audit status: decision confirmed; implementation pending.**
+**Audit status: implemented and verified.**
 
 **Review response.** Instruction understood. Prediction still falls back to
 `formula_design$model_frame` when `source_data` is absent, and tests explicitly
@@ -1083,6 +1083,16 @@ exercise that legacy path. Remove the fallback and its tests. A design without
 the new versioned `source_data`/scale metadata must stop with a concise
 instruction to refit under the current BayesTools version; it must never infer
 scale from field absence.
+
+**Implementation outcome.** Formula designs now store a schema version and an
+explicit scale declaration for `source_data`, `model_frame`, and
+`model_matrix`. Prediction and bridge replay validate that schema and require
+the original-scale `source_data`; a missing, unversioned, or unsupported schema
+stops with an instruction to refit. The `model_frame` fallback has been removed,
+so a model-scale frame can no longer be mistaken for original-scale prediction
+data and scaled twice. Focused prediction and bridge tests passed 1,572
+assertions, and the complete unit profile passed 7,791 assertions with no
+failures or warnings.
 
 ## D24. Scale of monitored group-specific coefficients
 

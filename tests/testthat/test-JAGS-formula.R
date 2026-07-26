@@ -104,6 +104,15 @@ test_that("JAGS_formula stores exact fitted formula design metadata", {
   design <- result$formula_design
 
   expect_s3_class(design, "BayesTools_formula_design")
+  expect_identical(design$schema_version, 1L)
+  expect_identical(
+    design$stored_data_scale,
+    c(
+      source_data = "original",
+      model_frame = "model",
+      model_matrix = "model"
+    )
+  )
   expect_identical(design$parameter, "mu")
   expect_equal(design$formula, ~ x + x2 + f, ignore_formula_env = TRUE)
   expect_equal(nrow(design$model_frame), nrow(df))

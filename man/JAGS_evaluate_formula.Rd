@@ -28,7 +28,8 @@ will be log-transformed before computing the linear predictor.}
 \item{parameter}{name of the parameter created with the formula}
 
 \item{data}{data.frame containing predictors included in the formula. If
-\code{NULL}, fitted source data from \code{formula_design} metadata are used.}
+\code{NULL}, versioned original-scale fitted source data from \code{formula_design}
+metadata are used. Fits without that metadata must be refitted.}
 
 \item{prior_list}{named list of prior distribution of parameters specified
 within the \code{formula}. If \code{NULL}, fitted priors from \code{formula_design}

@@ -115,6 +115,56 @@ test_that("formula prediction validates parameter names and seeds", {
   )
 })
 
+test_that("formula replay rejects unversioned source-data metadata", {
+  result <- .formula_prediction_result()
+  fit <- .formula_prediction_fit(result)
+  expect_identical(result$formula_design$schema_version, 1L)
+  expect_identical(
+    result$formula_design$stored_data_scale,
+    c(
+      source_data = "original",
+      model_frame = "model",
+      model_matrix = "model"
+    )
+  )
+  legacy_design <- result$formula_design
+  legacy_design$schema_version <- NULL
+  legacy_design$stored_data_scale <- NULL
+  legacy_design$source_data <- NULL
+  attr(fit, "formula_design") <- list(mu = legacy_design)
+
+  expect_false(is.null(legacy_design$model_frame))
+  expect_error(
+    JAGS_evaluate_formula(
+      fit,
+      parameter = "mu",
+      formula_target = "fixed"
+    ),
+    paste0(
+      "JAGS_evaluate_formula() cannot replay this fitted formula because its ",
+      "versioned original-scale source data metadata are missing or unsupported. ",
+      "Refit the model with this version of BayesTools."
+    ),
+    fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.bt_JAGS_bridge_formula_context(
+      fit = fit,
+      formula_list = NULL,
+      formula_data_list = NULL,
+      formula_prior_list = NULL,
+      formula_scale_list = NULL,
+      formula_random_prior_list = NULL
+    ),
+    paste0(
+      "JAGS_bridgesampling() cannot replay this fitted formula because its ",
+      "versioned original-scale source data metadata are missing or unsupported. ",
+      "Refit the model with this version of BayesTools."
+    ),
+    fixed = TRUE
+  )
+})
+
 test_that("formula prediction rejects ambiguous posterior column names", {
   result <- .formula_prediction_result()
   fit <- .formula_prediction_fit(result)

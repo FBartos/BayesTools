@@ -236,6 +236,13 @@
 .bt_JAGS_bridge_formula_context_from_design <- function(formula_design_list,
                                                        formula_data_list = NULL){
 
+  for(design in formula_design_list){
+    .bt_validate_formula_design_replay_schema(
+      design,
+      context = "JAGS_bridgesampling()"
+    )
+  }
+
   list(
     formula_design_list = formula_design_list,
     formula_list        = .bt_JAGS_bridge_formula_list_from_design(formula_design_list),

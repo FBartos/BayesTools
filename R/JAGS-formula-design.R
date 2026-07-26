@@ -23,6 +23,47 @@
   point_terms
 }
 
+.bt_formula_design_schema_version <- function(){
+
+  1L
+}
+
+.bt_formula_design_stored_data_scale <- function(){
+
+  c(
+    source_data = "original",
+    model_frame = "model",
+    model_matrix = "model"
+  )
+}
+
+.bt_validate_formula_design_replay_schema <- function(
+    design,
+    context = "Formula replay"){
+
+  valid_schema <- inherits(design, "BayesTools_formula_design") &&
+    identical(
+      design$schema_version,
+      .bt_formula_design_schema_version()
+    ) &&
+    identical(
+      design$stored_data_scale,
+      .bt_formula_design_stored_data_scale()
+    ) &&
+    is.data.frame(design$source_data)
+  if(!isTRUE(valid_schema)){
+    stop(
+      context,
+      " cannot replay this fitted formula because its versioned original-scale ",
+      "source data metadata are missing or unsupported. Refit the model with ",
+      "this version of BayesTools.",
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
 .JAGS_formula_design_object <- function(parameter, formula, log_intercept,
                                         model_frame, source_data, model_matrix,
                                         raw_column_names, column_names,
@@ -69,6 +110,8 @@
   }
 
   out <- list(
+    schema_version     = .bt_formula_design_schema_version(),
+    stored_data_scale = .bt_formula_design_stored_data_scale(),
     parameter          = parameter,
     formula            = formula_output,
     log_intercept      = isTRUE(log_intercept),
