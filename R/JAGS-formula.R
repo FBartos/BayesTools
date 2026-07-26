@@ -32,7 +32,8 @@
 #'     default.}
 #' }
 #' These default priors allow for more concise specification when many predictors
-#' share the same prior distribution.
+#' share the same prior distribution. For continuous formula terms,
+#' \code{prior_none()} is canonicalized to a point prior at zero.
 #' @param formula_scale named list specifying whether to standardize continuous predictors.
 #' If \code{NULL} (default), no standardization is applied. If a named list is provided,
 #' continuous predictors with \code{TRUE} values will be standardized (mean-centered and
@@ -270,6 +271,12 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
         }
       }
     }
+  }
+
+  for(term in intersect(model_terms, names(prior_list))){
+    prior_list[[term]] <- .JAGS_formula_canonicalize_none_prior(
+      prior_list[[term]]
+    )
   }
 
   # check that all predictors have a prior distribution

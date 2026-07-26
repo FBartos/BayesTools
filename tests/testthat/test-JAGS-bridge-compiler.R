@@ -805,6 +805,59 @@ test_that("formula replay rejects invalid log-intercept prior support", {
   )
 })
 
+test_that("formula reconstruction rejects unknown priors instead of returning zero", {
+  formula_output <- JAGS_formula(
+    ~ x,
+    "mu",
+    data.frame(x = c(1, 2)),
+    list(
+      intercept = prior("point", list(1)),
+      x = prior("normal", list(0, 1))
+    )
+  )
+  unsupported_prior <- structure(
+    list(distribution = "unsupported", prior_weights = 1),
+    class = c("prior", "prior.unsupported")
+  )
+  formula_output$prior_list$mu_x <- unsupported_prior
+  formula_prior_list <- list(mu = formula_output$prior_list)
+
+  expect_error(
+    JAGS_marglik_parameters_formula(
+      samples = c(mu_x = 2),
+      formula_list = list(mu = formula_output$formula),
+      formula_data_list = list(mu = formula_output$data),
+      formula_prior_list = formula_prior_list,
+      prior_list_parameters = list(),
+      formula_design_list = list(mu = formula_output$formula_design)
+    ),
+    "Unsupported formula reconstruction prior for 'mu_x'",
+    fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.bt_JAGS_bridge_compile_formula_parameter_evaluator(
+      formula_list = list(mu = formula_output$formula),
+      formula_data_list = list(mu = formula_output$data),
+      formula_prior_list = formula_prior_list,
+      formula_design_list = list(mu = formula_output$formula_design),
+      model_data = list()
+    ),
+    "Unsupported formula reconstruction prior for 'mu_x'",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_marglik_parameters_formula(
+      samples = c(mu_x = 2),
+      formula_list = list(mu = formula_output$formula),
+      formula_data_list = list(mu = formula_output$data),
+      formula_prior_list = formula_prior_list,
+      prior_list_parameters = list()
+    ),
+    "Unsupported formula reconstruction prior for 'mu_x'",
+    fixed = TRUE
+  )
+})
+
 test_that("compiled formula parameter evaluator matches legacy fallback reconstruction", {
 
   samples <- c(

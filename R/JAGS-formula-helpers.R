@@ -199,6 +199,25 @@
 
   return(default_prior)
 }
+.JAGS_formula_canonicalize_none_prior <- function(prior_object){
+
+  if(!is.prior.none(prior_object)){
+    return(prior_object)
+  }
+
+  output <- prior(
+    "point",
+    list(location = 0),
+    prior_weights = .prior_model_weight(prior_object)
+  )
+  prior_attributes <- attributes(prior_object)
+  metadata_names <- setdiff(names(prior_attributes), c("names", "class"))
+  for(metadata_name in metadata_names){
+    attr(output, metadata_name) <- prior_attributes[[metadata_name]]
+  }
+
+  output
+}
 .bt_formula_prior_is_factor <- function(x){
 
   is.prior.factor(x) ||
@@ -239,6 +258,21 @@
   }
 
   invisible(TRUE)
+}
+.bt_validate_formula_reconstruction_prior <- function(prior_object,
+                                                       prior_name){
+
+  if(is.prior.point(prior_object) ||
+     is.prior.factor(prior_object) ||
+     is.prior.simple(prior_object)){
+    return(invisible(TRUE))
+  }
+
+  stop(
+    "Unsupported formula reconstruction prior for '", prior_name,
+    "'. Formula metadata must contain a canonical simple or factor prior.",
+    call. = FALSE
+  )
 }
 .bt_validate_formula_log_intercept_prior <- function(prior_list,
                                                       parameter = NULL){

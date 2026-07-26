@@ -214,6 +214,10 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
   intercept_name <- paste0(parameter, "_intercept")
   if(intercept_name %in% names(formula_prior_list)){
     intercept_prior <- formula_prior_list[[intercept_name]]
+    .bt_validate_formula_reconstruction_prior(
+      intercept_prior,
+      intercept_name
+    )
     intercept_value <- .JAGS_marglik_parameter_values(
       samples,
       intercept_prior,
@@ -231,6 +235,7 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
   remaining_terms <- setdiff(names(formula_prior_list), intercept_name)
   for(term in remaining_terms){
     term_prior <- formula_prior_list[[term]]
+    .bt_validate_formula_reconstruction_prior(term_prior, term)
     model_term <- sub(paste0("^", parameter, "_"), "", term)
     columns <- .bt_JAGS_formula_design_term_columns(design, model_term)
     term_data <- design$model_matrix[, columns, drop = FALSE]
@@ -262,6 +267,12 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
     }else if(is.prior.simple(term_prior)){
       term_value <- .JAGS_marglik_parameter_values(samples, term_prior, term)
       output <- output + multiply_by * term_value * as.vector(term_data)
+    }else{
+      stop(
+        "Internal formula reconstruction prior dispatch failed for '",
+        term, "'.",
+        call. = FALSE
+      )
     }
   }
 
@@ -1195,6 +1206,10 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
   if(sum(formula_terms == paste0(parameter, "_intercept")) == 1){
 
     intercept_prior <- formula_prior_list[[paste0(parameter, "_intercept")]]
+    .bt_validate_formula_reconstruction_prior(
+      intercept_prior,
+      paste0(parameter, "_intercept")
+    )
     multiply_by <- .bt_JAGS_marglik_prior_multiply_by(
       intercept_prior,
       prior_list_parameters
@@ -1215,6 +1230,10 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
   if(length(remaining_terms) > 0){
     for(term in remaining_terms){
 
+      .bt_validate_formula_reconstruction_prior(
+        formula_prior_list[[term]],
+        term
+      )
       multiply_by <- .bt_JAGS_marglik_prior_multiply_by(
         formula_prior_list[[term]],
         prior_list_parameters
@@ -1249,6 +1268,12 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
         term_value <- .JAGS_marglik_parameter_values(samples, formula_prior_list[[term]], term)
         output     <- output + multiply_by * term_value * formula_data_list[[term]]
 
+      }else{
+        stop(
+          "Internal formula reconstruction prior dispatch failed for '",
+          term, "'.",
+          call. = FALSE
+        )
       }
 
     }

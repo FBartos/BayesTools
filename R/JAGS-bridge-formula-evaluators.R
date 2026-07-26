@@ -258,6 +258,10 @@
                                                            log_intercept){
 
   force(log_intercept)
+  .bt_validate_formula_reconstruction_prior(
+    prior_object,
+    parameter_name
+  )
   value_evaluator <- .bt_JAGS_bridge_compile_parameter_values(
     prior_object = prior_object,
     parameter_names = parameter_name
@@ -283,7 +287,7 @@
   force(term_prior)
   force(term_data)
 
-  n_rows <- nrow(term_data)
+  .bt_validate_formula_reconstruction_prior(term_prior, term_name)
   multiply_by_evaluator <- .bt_JAGS_bridge_compile_prior_multiply_by(term_prior)
 
   if(is.prior.point(term_prior) && !is.prior.factor(term_prior)){
@@ -360,8 +364,10 @@
     ))
   }
 
-  list(
-    value = function(samples, prior_list_parameters) rep(0, n_rows)
+  stop(
+    "Internal formula reconstruction prior dispatch failed for '",
+    term_name, "'.",
+    call. = FALSE
   )
 }
 

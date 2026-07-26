@@ -46,7 +46,8 @@ object; in that case it is evaluated only if a missing factor term needs the
 default.}
 }
 These default priors allow for more concise specification when many predictors
-share the same prior distribution.}
+share the same prior distribution. For continuous formula terms,
+\code{prior_none()} is canonicalized to a point prior at zero.}
 
 \item{formula_scale}{named list specifying whether to standardize continuous predictors.
 If \code{NULL} (default), no standardization is applied. If a named list is provided,

@@ -725,7 +725,7 @@ zero for an unknown prior class.
 
 Decision: make formulas treat prior_none as spike(0) consistently
 
-**Audit status: decision confirmed; implementation pending.**
+**Audit status: implemented.**
 
 **Review response.** Instruction understood. Canonicalize formula
 `prior_none()` to `prior("point", list(location = 0))` during formula
@@ -734,6 +734,13 @@ derived. Replay and reconstruction should then see only the canonical point
 prior. Also remove the current unknown-prior fallback that can silently
 contribute zero: an unrecognized fixed-prior class must produce an internal
 contract error rather than being treated as another spelling of `prior_none()`.
+
+**Implementation outcome.** Direct and default continuous `prior_none()` formula
+entries are now replaced by point-zero priors before formula validation and
+metadata construction, while retaining their model prior weights. Public and
+compiled reconstruction now reject noncanonical prior classes instead of
+silently omitting their terms. Focused tests passed 1,449 assertions, and the
+complete unit profile passed 7,755 assertions with no failures or warnings.
 
 ## D18. Contrast bases and serialized factor metadata
 

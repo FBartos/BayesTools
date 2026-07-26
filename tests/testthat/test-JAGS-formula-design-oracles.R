@@ -973,6 +973,48 @@ test_that("JAGS_formula uses a neutral point for log intercepts without an inter
   expect_match(result$formula_syntax, "log\\(mu_intercept\\)", fixed = FALSE)
 })
 
+test_that("JAGS_formula canonicalizes prior_none to a zero point prior", {
+  data <- data.frame(x = c(-1, 0, 1))
+  result <- JAGS_formula(
+    ~ x,
+    "mu",
+    data,
+    list(
+      intercept = prior_none(prior_weights = 2),
+      x = prior_none(prior_weights = 3)
+    )
+  )
+
+  expect_true(is.prior.point(result$prior_list$mu_intercept))
+  expect_true(is.prior.point(result$prior_list$mu_x))
+  expect_identical(result$prior_list$mu_intercept$parameters$location, 0)
+  expect_identical(result$prior_list$mu_x$parameters$location, 0)
+  expect_identical(.prior_model_weight(result$prior_list$mu_intercept), 2)
+  expect_identical(.prior_model_weight(result$prior_list$mu_x), 3)
+
+  default_result <- JAGS_formula(
+    ~ x,
+    "mu",
+    data,
+    list("__default_continuous" = prior_none())
+  )
+  expect_true(is.prior.point(default_result$prior_list$mu_intercept))
+  expect_true(is.prior.point(default_result$prior_list$mu_x))
+
+  log_formula <- ~ 1
+  attr(log_formula, "log(intercept)") <- TRUE
+  expect_error(
+    JAGS_formula(
+      log_formula,
+      "mu",
+      data,
+      list(intercept = prior_none())
+    ),
+    "must have strictly positive support",
+    fixed = TRUE
+  )
+})
+
 test_that("log-intercept formulas require recursively positive prior support", {
   data <- data.frame(x = c(-1, 0, 1))
   log_formula <- ~ x
