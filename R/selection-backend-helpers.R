@@ -319,8 +319,14 @@
     return()
   }else if(prior$weights$type == "cumulative"){
     eta_name <- if(is.null(component_id)) "eta" else paste0("eta_component_", component_id)
-    eta_init <- stats::rgamma(length(prior$weights[["alpha"]]), shape = prior$weights[["alpha"]], rate = 1)
-    eta_init[!is.finite(eta_init) | eta_init <= 0] <- .Machine$double.xmin
+    eta_init <- .JAGS_positive_gamma_initialization(
+      shape = prior$weights[["alpha"]],
+      label = if(is.null(component_id)){
+        "cumulative weight function"
+      }else{
+        paste0("cumulative weight-function component '", component_id, "'")
+      }
+    )
     init[[eta_name]] <- eta_init
   }
 

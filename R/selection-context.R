@@ -797,10 +797,6 @@ selection_row_arg <- function(x, n, name){
 .selection_native_step_bin_from_z <- function(z, p_cuts){
 
   p_value <- stats::pnorm(z, lower.tail = FALSE)
-  close <- vapply(p_cuts, function(cut) abs(p_value - cut) <= 1e-12, logical(1))
-  if(any(close)){
-    p_value <- p_cuts[which(close)[1L]]
-  }
   bin <- findInterval(p_value, p_cuts, rightmost.closed = TRUE, left.open = TRUE)
   bin <- pmin(pmax(bin, 1L), length(p_cuts) - 1L)
 

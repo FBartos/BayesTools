@@ -139,6 +139,53 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 
   return(init)
 }
+.JAGS_positive_gamma_initialization <- function(shape, label){
+
+  shape <- as.numeric(shape)
+  if(length(shape) == 0L || any(!is.finite(shape)) || any(shape <= 0)){
+    stop("Gamma initialization shapes must be finite and positive.",
+         call. = FALSE)
+  }
+
+  values <- stats::rgamma(length(shape), shape = shape, rate = 1)
+  invalid <- !is.finite(values) | values <= 0
+  if(!any(invalid)){
+    return(values)
+  }
+
+  warning(
+    "RNG initialization failed for ", label,
+    "; attempting a deterministic, order-one rescaling of the distribution medians.",
+    call. = FALSE,
+    immediate. = TRUE
+  )
+  medians <- stats::qgamma(0.5, shape = shape, rate = 1)
+  if(all(medians == 0) && length(unique(shape)) == 1L){
+    # Equal shapes have equal medians. Their common magnitude is immaterial to
+    # the normalized simplex, so an order-one vector represents the exact
+    # median proportions even when the common median underflows.
+    medians[] <- 1
+  }
+  if(any(!is.finite(medians)) || any(medians <= 0)){
+    stop(
+      "RNG initialization failed for ", label,
+      ", and the distribution medians are not representable as strictly ",
+      "positive finite values.",
+      call. = FALSE
+    )
+  }
+  medians <- medians / max(medians)
+  if(any(!is.finite(medians)) || any(medians <= 0)){
+    stop(
+      "The median fallback for ", label,
+      " could not be rescaled to a strictly positive interior state.",
+      call. = FALSE
+    )
+  }
+
+  medians
+}
+
 .JAGS_init.vector          <- function(prior, parameter_name){
 
   .check_prior(prior, allow_expressions = TRUE)
@@ -161,12 +208,13 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
 
 
     if(prior[["distribution"]] == "dirichlet"){
-      eta_init <- stats::rgamma(
-        prior$parameters[["K"]],
-        shape = prior$parameters[["alpha"]],
-        rate = 1
+      eta_init <- .JAGS_positive_gamma_initialization(
+        shape = rep(
+          prior$parameters[["alpha"]],
+          length.out = prior$parameters[["K"]]
+        ),
+        label = paste0("Dirichlet prior '", parameter_name, "'")
       )
-      eta_init[!is.finite(eta_init) | eta_init <= 0] <- .Machine$double.xmin
       init[[.JAGS_prior_dirichlet_eta_name(parameter_name)]] <- eta_init
     }else if(prior[["distribution"]] == "mt"){
       init[[paste0("prior_par_s_", parameter_name)]] <- rng(prior("gamma", list(shape = prior$parameters[["df"]]/2, rate = prior$parameters[["df"]]/2)), 1)
@@ -230,12 +278,10 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
     if(record$key %in% emitted_allocations || record$key %in% emitted_now){
       next
     }
-    eta_init <- stats::rgamma(
-      record$dim,
-      shape = record$spec$alpha,
-      rate = 1
+    eta_init <- .JAGS_positive_gamma_initialization(
+      shape = rep(record$spec$alpha, length.out = record$dim),
+      label = paste0("ordered allocation '", record$node, "'")
     )
-    eta_init[!is.finite(eta_init) | eta_init <= 0] <- .Machine$double.xmin
     init[[.JAGS_prior_dirichlet_eta_name(record$node)]] <- eta_init
     emitted_now <- c(emitted_now, record$key)
   }
@@ -305,8 +351,10 @@ JAGS_get_inits            <- function(prior_list, chains, seed){
     return()
   }else if(prior$weights$type == "cumulative"){
     eta_name <- paste0("eta_component_", component_id)
-    eta_init <- stats::rgamma(length(prior$weights[["alpha"]]), shape = prior$weights[["alpha"]], rate = 1)
-    eta_init[!is.finite(eta_init) | eta_init <= 0] <- .Machine$double.xmin
+    eta_init <- .JAGS_positive_gamma_initialization(
+      shape = prior$weights[["alpha"]],
+      label = paste0("cumulative weight-function component '", component_id, "'")
+    )
     init[[eta_name]] <- eta_init
   }
 
