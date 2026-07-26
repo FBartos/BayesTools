@@ -13,8 +13,8 @@ mean **implemented**.
 | Case | Current status | What remains |
 |---|---|---|
 | D01 | Implemented and verified | No behavior change; retain and document BayesTools no-intercept semantics |
-| D02 | Decision confirmed; implementation pending | Add an early supported-formula grammar check |
-| D03 | Decision confirmed; implementation pending | Add recursive strict-positive prior-support validation |
+| D02 | Implemented and verified | No remaining work |
+| D03 | Implemented and verified | No remaining work |
 | D04 | Implemented and verified | Reject callbacks that depend on formula outputs with sampled random effects |
 | D05 | Implemented and verified | Remove bridge-replay callback grafting and legacy source fallbacks |
 | D06 | Implemented and verified | No remaining work |
@@ -28,7 +28,7 @@ mean **implemented**.
 | D14 | Resolved/superseded by NF09 | The audited code changed mixture counts, not posterior draw values |
 | D15 | Resolved by NF05/NF06 | No remaining decision |
 | D16 | Implemented and verified | No remaining work |
-| D17 | Decision confirmed; implementation pending | Canonicalize formula `prior_none()` to a point mass at zero |
+| D17 | Implemented and verified | No remaining work |
 | D18 | Implemented and verified | No remaining work |
 | D19 | Decision confirmed; implementation pending | Introduce and adopt a canonical, documented parameter registry |
 | D20 | Decision confirmed; implementation pending | Introduce a scalar, scale-explicit marginal-likelihood result contract |
@@ -43,7 +43,7 @@ mean **implemented**.
 | D29 | Decision confirmed; implementation pending | Apply the agreed long-term stochastic-reference policy |
 | D30 | Decision confirmed; implementation pending | Shorten the 50 nonportable snapshot paths |
 | D31 | Decision confirmed; implementation pending | Use stable CAR recurrences and reject only unrepresentable innovations |
-| D32 | Decision confirmed; implementation pending | Reject nonzero `meandif`/`orthonormal` locations |
+| D32 | Implemented and verified | No remaining work |
 
 ## Maintainer decisions after the second pass
 
@@ -108,7 +108,7 @@ with a precise error.
 
 Decision: reject unsoported calls early, in later versions we might fully implement this but it would be a large change right now
 
-**Audit status: implemented.**
+**Audit status: implemented and verified.**
 
 **Review response.** Instruction understood. The current fixed-formula path
 still reaches `terms()`, literal-variable checks, or `model.frame()` before it
@@ -150,7 +150,7 @@ but is an intentional compatibility break.
 
 Decision: add the required support check
 
-**Audit status: implemented.**
+**Audit status: implemented and verified.**
 
 **Review response.** Instruction understood. The current prior-class validator
 does not prove strict positivity for `log(intercept)`, so an untruncated normal
@@ -883,7 +883,7 @@ zero for an unknown prior class.
 
 Decision: make formulas treat prior_none as spike(0) consistently
 
-**Audit status: implemented.**
+**Audit status: implemented and verified.**
 
 **Review response.** Instruction understood. Canonicalize formula
 `prior_none()` to `prior("point", list(location = 0))` during formula
@@ -1729,7 +1729,7 @@ explicit level-space API that accepts a named, sum-to-zero level vector and
 transforms it through the stored concrete basis. Do not overload a scalar
 coordinate-space location.
 
-**Audit status: implemented.**
+**Audit status: implemented and verified.**
 
 **Implementation outcome.** `prior_factor()` now requires the mean/location of
 mean-difference and orthonormal priors to be numeric, finite, scalar, and
