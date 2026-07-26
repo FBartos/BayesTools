@@ -27,7 +27,9 @@
 #' @param marginal_method marginal representation used only with
 #' `formula_target = "marginal"`: `"covariance"` returns fixed means plus
 #' marginal random-effect covariance; `"sample"` returns materialized
-#' random-effect draws.
+#' random-effect draws. For known group covariance, `"sample"` jointly draws
+#' the requested fitted levels from the corresponding covariance submatrix;
+#' new levels remain unsupported.
 #' @param seed optional random seed used when random-effect draws are simulated.
 #' @param components whether to include component matrices where available.
 #'

@@ -429,12 +429,14 @@
     ))
   }
   if(.bt_random_effect_has_known_group_covariance(random_term)){
-    stop(
-      "Sampling new random-effect levels for block '",
-      random_term$block_name,
-      "' is not supported with known group covariance.",
-      call. = FALSE
-    )
+    return(.bt_random_effect_group_contribution_sample_known_group_covariance(
+      random_term = random_term,
+      model_matrix = model_matrix,
+      group_map = group_map,
+      rows = rows,
+      posterior = posterior,
+      prior_list = prior_list
+    ))
   }
 
   sd_draws <- .bt_random_effect_sd_draws(
@@ -518,6 +520,76 @@
         effects[group_index, , drop = FALSE]
     )
   }
+
+  output
+}
+
+.bt_random_effect_group_contribution_sample_known_group_covariance <- function(
+    random_term,
+    model_matrix,
+    group_map,
+    rows,
+    posterior,
+    prior_list){
+
+  n_draws <- nrow(posterior)
+  n_rows <- nrow(model_matrix)
+  output <- matrix(0, nrow = n_rows, ncol = n_draws)
+  if(ncol(model_matrix) != 1L){
+    stop(
+      "Random-effect prediction for block '", random_term$block_name,
+      "' with known group covariance supports one random-effect column only.",
+      call. = FALSE
+    )
+  }
+
+  group_covariance <- .bt_random_effect_known_group_covariance(
+    random_term,
+    context = "Random-effect prediction"
+  )
+  if(any(group_map[rows] > length(group_covariance$levels))){
+    stop(
+      "Random-effect prediction for block '", random_term$block_name,
+      "' cannot sample new levels with known group covariance.",
+      call. = FALSE
+    )
+  }
+  sd_draws <- .bt_random_effect_sd_draws(
+    random_term = random_term,
+    n_columns = 1L,
+    posterior = posterior,
+    prior_list = prior_list
+  )
+  if(is.null(sd_draws)){
+    .bt_random_effect_marginal_covariance_missing_sd_stop(
+      random_term = random_term,
+      n_columns = 1L
+    )
+  }
+  .bt_random_effect_marginal_covariance_validate_draw_matrix(
+    draws = sd_draws,
+    n_draws = n_draws,
+    n_columns = 1L,
+    label = "SD",
+    random_term = random_term,
+    nonnegative = TRUE,
+    context = "Random-effect prediction"
+  )
+
+  groups <- sort(unique(group_map[rows]))
+  group_index <- match(group_map[rows], groups)
+  kernel <- group_covariance$kernel[groups, groups, drop = FALSE]
+  group_effects <- .bt_random_effect_mvn_group_draws(
+    covariance = kernel,
+    n_groups = n_draws
+  )
+  group_effects <- group_effects * sd_draws[, 1L]
+  output[rows, ] <- t(group_effects[, group_index, drop = FALSE]) *
+    matrix(
+      model_matrix[rows, 1L],
+      nrow = length(rows),
+      ncol = n_draws
+    )
 
   output
 }

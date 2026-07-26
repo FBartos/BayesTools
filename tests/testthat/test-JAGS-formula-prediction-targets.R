@@ -1100,3 +1100,98 @@ test_that("marginal target includes marginalized random-effect blocks", {
   expect_equal(prediction$vcov$metadata$included_blocks, "id")
   expect_equal(prediction$vcov$metadata$blocks$id$compile_mode, "marginalized")
 })
+
+test_that("marginal sampling draws fitted levels jointly under known covariance", {
+
+  df <- data.frame(
+    id = factor(c("b", "a", "c", "b"), levels = c("b", "a", "c"))
+  )
+  K <- matrix(
+    c(
+      4, 1, 0.5,
+      1, 9, 2,
+      0.5, 2, 16
+    ),
+    nrow = 3L,
+    byrow = TRUE,
+    dimnames = list(c("a", "b", "c"), c("a", "b", "c"))
+  )
+  formula <- random_effects_formula(
+    ~ 1 | id,
+    group_covariance = random_group_covariance(K, scale = "none")
+  )
+  result <- JAGS_formula(
+    formula = formula,
+    parameter = "mu",
+    data = df,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(sd = .formula_prediction_sd_prior())
+    ),
+    random_effects_compile = random_effects_compile(marginalized = "id")
+  )
+  random_term <- result$formula_design$random_effects[[1L]]
+  posterior <- matrix(
+    c(
+      10, 0.5,
+      20, 2
+    ),
+    nrow = 2L,
+    byrow = TRUE,
+    dimnames = list(NULL, c(
+      "mu_intercept",
+      random_term$sd_parameter_names
+    ))
+  )
+  fit <- coda::mcmc(posterior)
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+  new_data <- df[c(3, 1, 4), , drop = FALSE]
+  group_map <- match(as.character(new_data$id), random_term$group_levels)
+  groups <- sort(unique(group_map))
+
+  set.seed(904)
+  group_effects <- BayesTools:::.bt_random_effect_mvn_group_draws(
+    covariance =
+      random_term$group_covariance$kernel[groups, groups, drop = FALSE],
+    n_groups = nrow(posterior)
+  )
+  group_effects <- group_effects * posterior[, random_term$sd_parameter_names]
+  expected_random <- t(group_effects[, match(group_map, groups), drop = FALSE])
+  prediction <- JAGS_predict_formula(
+    fit = fit,
+    parameter = "mu",
+    data = new_data,
+    prior_list = result$prior_list,
+    formula_target = "marginal",
+    marginal_method = "sample",
+    seed = 904
+  )
+
+  expect_equal(
+    unname(prediction$mean),
+    cbind(rep(10, nrow(new_data)), rep(20, nrow(new_data)))
+  )
+  expect_equal(
+    unname(drop(prediction$random)),
+    expected_random,
+    tolerance = 1e-12
+  )
+  expect_equal(prediction$random[2L, ], prediction$random[3L, ])
+
+  new_level_data <- data.frame(
+    id = factor("d", levels = c("a", "b", "c", "d"))
+  )
+  expect_error(
+    JAGS_predict_formula(
+      fit = fit,
+      parameter = "mu",
+      data = new_level_data,
+      prior_list = result$prior_list,
+      formula_target = "marginal",
+      marginal_method = "sample",
+      new_levels = "sample"
+    ),
+    "known group covariance",
+    fixed = TRUE
+  )
+})

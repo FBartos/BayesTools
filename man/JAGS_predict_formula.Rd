@@ -45,7 +45,9 @@ or \code{"sample"}.}
 \item{marginal_method}{marginal representation used only with
 \code{formula_target = "marginal"}: \code{"covariance"} returns fixed means plus
 marginal random-effect covariance; \code{"sample"} returns materialized
-random-effect draws.}
+random-effect draws. For known group covariance, \code{"sample"} jointly draws
+the requested fitted levels from the corresponding covariance submatrix;
+new levels remain unsupported.}
 
 \item{seed}{optional random seed used when random-effect draws are simulated.}
 

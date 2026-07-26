@@ -18,7 +18,7 @@ mean **implemented**.
 | D04 | Implemented and verified | Reject callbacks that depend on formula outputs with sampled random effects |
 | D05 | Implemented and verified | Remove bridge-replay callback grafting and legacy source fallbacks |
 | D06 | Implemented and verified | No remaining work |
-| D07 | Decision confirmed; implementation pending | Add joint marginal draws under known group covariance |
+| D07 | Implemented and verified | No remaining work |
 | D08 | Implemented and verified | No remaining work |
 | D09 | Decision confirmed; implementation pending | Add a configurable 16 GiB hard ceiling on estimated peak allocation |
 | D10 | Resolved by NF10/NF18 | Remaining CAR representability issue is isolated as D31 |
@@ -404,7 +404,7 @@ reject this combination earlier and document the limitation accurately.
 
 Decision: implement 
 
-**Audit status: decision confirmed; implementation pending.**
+**Audit status: implemented and verified.**
 
 **Review response.** Instruction understood. The sample method still stops as
 soon as a known group covariance is present, including when every requested
@@ -413,6 +413,20 @@ effects from the covariance implied by the fitted-level subset of the known
 group covariance and the coefficient covariance (the separable/Kronecker
 construction), then apply the requested design rows. New-level validation
 remains a separate question and must not be used to reject fitted levels.
+
+**Implementation record.** Marginal sampling now selects the requested fitted
+group indices, draws all selected group effects jointly from the corresponding
+stored covariance submatrix, scales each posterior draw by its sampled SD, and
+maps repeated observation groups back to the same group draw. The fixed
+known-covariance kernel is decomposed once per prediction rather than once per
+posterior draw. This matches the package's currently supported
+known-covariance model class, which is restricted at formula construction to a
+single random-intercept column. New group levels remain rejected independently
+of the marginal sampling method. Public documentation describes the supported
+behavior. Tests cover reordered fitted levels, repeated observations,
+draw-specific SDs, marginalized compilation, deterministic seeded output, and
+new-level rejection. The complete unit profile passed 7,851 assertions with no
+failures or warnings.
 
 ## D08. Collision-free random-effect identifiers
 
