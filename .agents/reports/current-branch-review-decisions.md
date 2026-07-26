@@ -15,7 +15,7 @@ mean **implemented**.
 | D01 | Implemented and verified | No behavior change; retain and document BayesTools no-intercept semantics |
 | D02 | Decision confirmed; implementation pending | Add an early supported-formula grammar check |
 | D03 | Decision confirmed; implementation pending | Add recursive strict-positive prior-support validation |
-| D04 | Decision confirmed; implementation pending | Reject callbacks that depend on formula outputs with sampled random effects |
+| D04 | Implemented and verified | Reject callbacks that depend on formula outputs with sampled random effects |
 | D05 | Decision confirmed; implementation pending | Remove bridge-replay callback grafting and legacy source fallbacks |
 | D06 | Decision confirmed; implementation pending | Add the explicit fitted-row-index contract for posterior row sources |
 | D07 | Decision confirmed; implementation pending | Add joint marginal draws under known group covariance |
@@ -229,6 +229,16 @@ random contributions. The error should name both the source and the dependent
 formula parameter. Callbacks may still consume ordinary posterior/prior
 parameters and formula outputs that are fully deterministic at reconstruction
 time. No dependency graph or order-dependent fallback should remain.
+
+**Implementation outcome.** Parameter lists passed to row-source callbacks now
+exclude formula outputs with sampled random contributions and guard named
+access through `$`, `[[`, and `[`. Attempted access fails with an error naming
+both the source and formula parameter. The rule is applied consistently in
+public marginal reconstruction, compiled bridge reconstruction, and bridge
+diagnostic context reconstruction; ordinary parameters and deterministic
+formula outputs remain available. Focused reconstruction tests passed 1,503
+assertions, and the complete unit profile passed 7,831 assertions with no
+failures or warnings.
 
 ## D05. Authority of fitted versus supplied row-source data
 

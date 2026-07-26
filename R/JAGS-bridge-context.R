@@ -379,6 +379,27 @@
     formula_prior_parameters = formula_prior_parameters,
     formula_parameters = formula_parameters
   )
+  sampled_random_parameters <- vapply(
+    seq_along(formula_design_list),
+    function(parameter_i){
+      design <- formula_design_list[[parameter_i]]
+      if(!.bt_formula_design_has_sampled_random_effects(design)){
+        return(NA_character_)
+      }
+      .bt_JAGS_bridge_design_parameter_name(
+        design,
+        fallback = parameter_names[[parameter_i]]
+      )
+    },
+    character(1)
+  )
+  sampled_random_parameters <- unique(stats::na.omit(
+    sampled_random_parameters
+  ))
+  source_parameters <- .bt_parameter_source_forbid_formula_parameters(
+    source_parameters,
+    sampled_random_parameters
+  )
 
   for(parameter_i in seq_along(formula_design_list)){
     design <- formula_design_list[[parameter_i]]

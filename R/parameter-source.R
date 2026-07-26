@@ -312,9 +312,107 @@ random_sd_source <- function(source, shape = c("scalar", "row")){
       stop("'parameters' must be a list.", call. = FALSE)
     }
     out[names(parameters)] <- parameters
+    forbidden <- attr(
+      parameters,
+      "forbidden_formula_parameters",
+      exact = TRUE
+    )
+    if(length(forbidden) > 0L){
+      attr(out, "forbidden_formula_parameters") <- forbidden
+    }
   }
 
   out
+}
+
+.bt_parameter_source_forbid_formula_parameters <- function(
+    parameters,
+    forbidden){
+
+  if(!is.list(parameters)){
+    stop("'parameters' must be a list.", call. = FALSE)
+  }
+  if(length(forbidden) == 0L){
+    return(parameters)
+  }
+  check_char(
+    forbidden,
+    "forbidden",
+    check_length = 0,
+    allow_NA = FALSE
+  )
+  attr(parameters, "forbidden_formula_parameters") <- unique(forbidden)
+
+  parameters
+}
+
+.bt_parameter_source_guard_parameters <- function(parameters, source){
+
+  forbidden <- attr(
+    parameters,
+    "forbidden_formula_parameters",
+    exact = TRUE
+  )
+  if(length(forbidden) == 0L){
+    return(parameters)
+  }
+  parameter_names <- names(parameters)
+  if(is.null(parameter_names)){
+    parameter_names <- rep("", length(parameters))
+  }
+  out <- parameters[!parameter_names %in% forbidden]
+  attr(out, "forbidden_formula_parameters") <- forbidden
+  attr(out, "parameter_source_label") <- .bt_parameter_source_label(source)
+  class(out) <- c("BayesTools_parameter_source_parameters", "list")
+
+  out
+}
+
+.bt_parameter_source_guard_access <- function(x, name){
+
+  if(!is.character(name) || length(name) != 1L || is.na(name)){
+    return(invisible(TRUE))
+  }
+  forbidden <- attr(x, "forbidden_formula_parameters", exact = TRUE)
+  if(name %in% forbidden){
+    stop(
+      "Parameter source callback for source '",
+      attr(x, "parameter_source_label", exact = TRUE),
+      "' cannot consume formula parameter '", name,
+      "' because it has sampled random contributions.",
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
+#' @export
+`$.BayesTools_parameter_source_parameters` <- function(x, name){
+
+  .bt_parameter_source_guard_access(x, name)
+  .subset2(unclass(x), name)
+}
+
+#' @export
+`[[.BayesTools_parameter_source_parameters` <- function(x, i, ...){
+
+  .bt_parameter_source_guard_access(x, i)
+  unclass(x)[[i, ...]]
+}
+
+#' @export
+`[.BayesTools_parameter_source_parameters` <- function(x, i, ...){
+
+  if(!missing(i) && is.character(i)){
+    for(name in i){
+      .bt_parameter_source_guard_access(x, name)
+    }
+  }
+  if(missing(i)){
+    return(do.call(`[`, c(list(unclass(x)), list(...))))
+  }
+  do.call(`[`, c(list(unclass(x), i), list(...)))
 }
 
 .bt_parameter_source_value_draws <- function(source, n_rows, posterior,
@@ -338,6 +436,10 @@ random_sd_source <- function(source, shape = c("scalar", "row")){
       posterior = posterior,
       draw = draw,
       parameters = parameters
+    )
+    draw_parameters <- .bt_parameter_source_guard_parameters(
+      draw_parameters,
+      source
     )
     values <- tryCatch(
       values_function(

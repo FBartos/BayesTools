@@ -70,6 +70,10 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
         prior_list_parameters = prior_list_parameters,
         formula_parameters = parameters
       )
+      source_parameters <- .bt_parameter_source_forbid_formula_parameters(
+        source_parameters,
+        unique(random_parameters)
+      )
       source_formula_data <- if(!is.null(formula_data_list)){
         formula_data_list[[parameter]]
       }else{
@@ -882,6 +886,10 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
       posterior = posterior,
       draw = draw,
       parameters = parameters
+    )
+    draw_parameters <- .bt_parameter_source_guard_parameters(
+      draw_parameters,
+      source_parameter
     )
     values <- tryCatch(
       values_function(

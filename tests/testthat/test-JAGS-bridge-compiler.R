@@ -1282,6 +1282,94 @@ test_that("compiled row sources receive natural formula-prior parameters", {
   expect_equal(parameters$mu, 10 + expected_random, tolerance = 1e-12)
 })
 
+test_that("row-source callbacks reject sampled random formula dependencies", {
+
+  formula_data <- data.frame(
+    id = factor(c("a", "b", "a"), levels = c("a", "b"))
+  )
+  dependent_source <- parameter_source(
+    "tau",
+    shape = "row",
+    values = function(parameters, data, n_rows){
+      exp(parameters$log_sigma)
+    }
+  )
+  mu_output <- JAGS_formula(
+    formula = ~ 1 + random(1 | id, name = "id", covariance = "diag"),
+    parameter = "mu",
+    data = formula_data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(sd_source = random_sd_source(dependent_source))
+    )
+  )
+  log_sigma_output <- JAGS_formula(
+    formula = ~ 1 + random(1 | id, name = "id", covariance = "diag"),
+    parameter = "log_sigma",
+    data = formula_data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(sd = prior("gamma", list(2, 1)))
+    )
+  )
+  formula_list <- list(
+    mu = mu_output$formula,
+    log_sigma = log_sigma_output$formula
+  )
+  formula_data_list <- list(
+    mu = mu_output$data,
+    log_sigma = log_sigma_output$data
+  )
+  formula_prior_list <- list(
+    mu = mu_output$prior_list,
+    log_sigma = log_sigma_output$prior_list
+  )
+  formula_design_list <- list(
+    mu = mu_output$formula_design,
+    log_sigma = log_sigma_output$formula_design
+  )
+  samples <- c(
+    "mu_intercept" = 0,
+    "mu__xREx__id_xRE_Zx[1,1]" = 0.1,
+    "mu__xREx__id_xRE_Zx[2,1]" = 0.2,
+    "log_sigma_intercept" = 0,
+    "log_sigma__xREx__id_intercept" = 1,
+    "log_sigma__xREx__id_xRE_Zx[1,1]" = 0.3,
+    "log_sigma__xREx__id_xRE_Zx[2,1]" = 0.4
+  )
+  dependency_error <- "source 'tau\\[row\\]'.*formula parameter 'log_sigma'"
+
+  expect_error(
+    JAGS_marglik_parameters_formula(
+      samples = samples,
+      formula_list = formula_list,
+      formula_data_list = formula_data_list,
+      formula_prior_list = formula_prior_list,
+      prior_list_parameters = list(),
+      formula_design_list = formula_design_list,
+      model_data = list()
+    ),
+    dependency_error,
+    perl = TRUE
+  )
+
+  compiled <- BayesTools:::.bt_JAGS_bridge_compile_formula_parameter_evaluator(
+    formula_list = formula_list,
+    formula_data_list = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    formula_design_list = formula_design_list,
+    model_data = list()
+  )
+  expect_error(
+    compiled$parameters(
+      BayesTools:::.bt_JAGS_bridge_cache_posterior_row(samples, TRUE),
+      list()
+    ),
+    dependency_error,
+    perl = TRUE
+  )
+})
+
 test_that("bridge posterior-row cache preserves random-effect helper fallback shape", {
 
   samples <- c("z[1,1]" = .1, "z[1,2]" = .2)

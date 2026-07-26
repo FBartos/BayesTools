@@ -3592,6 +3592,81 @@ test_that("parameter and random SD sources validate simple external references",
     ),
     tolerance = 1e-12
   )
+  dependent_parameters <- BayesTools:::.bt_parameter_source_forbid_formula_parameters(
+    list(theta = 2, deterministic_formula = 3, log_sigma = 4),
+    "log_sigma"
+  )
+  allowed_source <- parameter_source(
+    "allowed",
+    shape = "row",
+    values = function(parameters, data, n_rows){
+      rep(parameters$theta + parameters[["deterministic_formula"]], n_rows)
+    }
+  )
+  expect_equal(
+    BayesTools:::.bt_parameter_source_value_draws(
+      source = allowed_source,
+      n_rows = 2,
+      posterior = source_posterior,
+      parameters = dependent_parameters
+    ),
+    matrix(
+      rep(5, 4),
+      nrow = 2,
+      dimnames = list(NULL, c("allowed[1]", "allowed[2]"))
+    )
+  )
+  forbidden_dollar_source <- parameter_source(
+    "forbidden_dollar",
+    shape = "row",
+    values = function(parameters, data, n_rows){
+      rep(parameters$log_sigma, n_rows)
+    }
+  )
+  expect_error(
+    BayesTools:::.bt_parameter_source_value_draws(
+      source = forbidden_dollar_source,
+      n_rows = 2,
+      posterior = source_posterior,
+      parameters = dependent_parameters
+    ),
+    "source 'forbidden_dollar\\[row\\]'.*formula parameter 'log_sigma'",
+    perl = TRUE
+  )
+  forbidden_bracket_source <- parameter_source(
+    "forbidden_bracket",
+    shape = "row",
+    values = function(parameters, data, n_rows){
+      rep(parameters[["log_sigma"]], n_rows)
+    }
+  )
+  expect_error(
+    BayesTools:::.bt_parameter_source_value_draws(
+      source = forbidden_bracket_source,
+      n_rows = 2,
+      posterior = source_posterior,
+      parameters = dependent_parameters
+    ),
+    "source 'forbidden_bracket\\[row\\]'.*formula parameter 'log_sigma'",
+    perl = TRUE
+  )
+  forbidden_subset_source <- parameter_source(
+    "forbidden_subset",
+    shape = "row",
+    values = function(parameters, data, n_rows){
+      rep(parameters["log_sigma"][[1]], n_rows)
+    }
+  )
+  expect_error(
+    BayesTools:::.bt_parameter_source_value_draws(
+      source = forbidden_subset_source,
+      n_rows = 2,
+      posterior = source_posterior,
+      parameters = dependent_parameters
+    ),
+    "source 'forbidden_subset\\[row\\]'.*formula parameter 'log_sigma'",
+    perl = TRUE
+  )
   expect_error(
     BayesTools:::.bt_parameter_source_value_draws(
       source = parameter_source("tau", shape = "row", values = function(parameters, data, n_rows) "bad"),

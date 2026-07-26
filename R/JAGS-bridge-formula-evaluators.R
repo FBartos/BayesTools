@@ -87,6 +87,10 @@
             source_base = source_base,
             formula_parameters = parameters
           )
+          source_parameters <- .bt_parameter_source_forbid_formula_parameters(
+            source_parameters,
+            names(random_plans)
+          )
           parameters[[random_plan$parameter]] <- parameters[[random_plan$parameter]] +
             .bt_JAGS_marglik_random_effects_value(
               samples = samples,
