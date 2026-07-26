@@ -33,7 +33,7 @@ mean **implemented**.
 | D19 | Decision confirmed; implementation pending | Introduce and adopt a canonical, documented parameter registry |
 | D20 | Decision confirmed; implementation pending | Introduce a scalar, scale-explicit marginal-likelihood result contract |
 | D21 | Partially implemented | Add the vignette manifest and consolidate real fitting; D30 covers paths |
-| D22 | Decision confirmed; implementation pending | Make `interval_level` derived output, not caller input |
+| D22 | Implemented and verified | No remaining work |
 | D23 | Implemented and verified | No remaining work |
 | D24 | Decision confirmed; implementation pending | Keep raw latent/group coefficients internal and add a transformed extractor if needed |
 | D25 | Partially implemented; implementation pending | Preserve atoms in the ordered sampled-density fallback |
@@ -1006,7 +1006,7 @@ override flag for deliberately custom wording.
 
 Decision: I need more information/example, I do not follow
 
-**Audit status: decision confirmed; implementation pending.**
+**Audit status: implemented and verified.**
 
 **Concrete example.** Suppose columns named `0.025` and `0.975` contain the
 2.5% and 97.5% posterior quantiles. They therefore display a 95% equal-tail
@@ -1056,6 +1056,15 @@ mislabeling path without losing valid information.
 **Remaining decision:** confirm removal of caller-supplied `interval_level`.
 
 decision: agree
+
+**Implementation outcome.** `interpret_records()` now rejects
+`interval_level` in source schemas, interpretation plans, and direct record
+inputs. Normalized estimate records derive the field exclusively as
+`upper_prob - lower_prob` when both endpoint probabilities are finite;
+otherwise the field is `NA` and generated prose uses the unnumbered
+`"uncertainty interval"` label. Focused interpretation tests passed 138
+assertions, and the complete unit profile passed 7,808 assertions with no
+failures or warnings.
 
 ## D23. Replay of legacy scaled formula designs
 

@@ -226,7 +226,10 @@ interpret2                <- function(specification, method = NULL){
 #' \code{BF}, \code{central}, \code{lower}, \code{upper}, and metadata such as
 #' \code{BF_orientation}, \code{BF_scale}, \code{BF_name},
 #' \code{BF_bound_operator}, \code{lower_prob}, \code{upper_prob},
-#' \code{interval_level}, \code{units}, and \code{conditioning}.
+#' \code{units}, and \code{conditioning}. \code{interval_level} is not accepted
+#' as input; normalized estimate records derive it from
+#' \code{upper_prob - lower_prob}, or retain \code{NA} when endpoint
+#' probabilities are unknown.
 #' @param plan ordered list specifying which records to create. Plan items can
 #' have \code{kind = "evidence"}, \code{"estimate"}, \code{"pair"},
 #' \code{"test_estimate"}, \code{"for_each"}, \code{"header"}, \code{"note"},
@@ -265,6 +268,7 @@ interpret_records <- function(sources, plan, output = c("records", "text"),
     stop("The 'sources' argument must be a named list.", call. = FALSE)
   }
 
+  .interpret_reject_interval_level_input(plan, "plan")
   sources <- .interpret_prepare_sources(sources)
   plan    <- .interpret_expand_plan(plan, sources, missing)
 
@@ -300,6 +304,35 @@ interpret_tables <- function(sources, spec, ...){
   interpret_records(sources = sources, plan = spec, ...)
 }
 
+.interpret_reject_interval_level_input <- function(x, path){
+
+  if(!is.list(x)){
+    return(invisible(TRUE))
+  }
+  object_names <- names(x)
+  if(!is.null(object_names) && "interval_level" %in% object_names){
+    stop(
+      "'interval_level' is derived output and cannot be supplied in ",
+      path,
+      ". Supply 'lower_prob' and 'upper_prob' instead.",
+      call. = FALSE
+    )
+  }
+  for(i in seq_along(x)){
+    child_name <- if(!is.null(object_names) && nzchar(object_names[[i]])){
+      object_names[[i]]
+    }else{
+      as.character(i)
+    }
+    .interpret_reject_interval_level_input(
+      x[[i]],
+      paste0(path, ":", child_name)
+    )
+  }
+
+  invisible(TRUE)
+}
+
 .interpret_prepare_sources <- function(sources){
 
   out <- vector("list", length(sources))
@@ -328,6 +361,33 @@ interpret_tables <- function(sources, spec, ...){
     }
     if(length(schema) > 0){
       check_list(schema, paste0("sources:", source_name, ":schema"), check_length = 0)
+    }
+    .interpret_reject_interval_level_input(
+      schema,
+      paste0("sources:", source_name, ":schema")
+    )
+    if(identical(type, "record")){
+      .interpret_reject_interval_level_input(
+        source[["data"]],
+        paste0("sources:", source_name, ":data")
+      )
+    }else if(identical(type, "records")){
+      records_data <- source[["data"]]
+      if(inherits(records_data, "data.frame")){
+        if("interval_level" %in% colnames(records_data)){
+          stop(
+            "'interval_level' is derived output and cannot be supplied in ",
+            "sources:", source_name,
+            ":data. Supply 'lower_prob' and 'upper_prob' instead.",
+            call. = FALSE
+          )
+        }
+      }else{
+        .interpret_reject_interval_level_input(
+          records_data,
+          paste0("sources:", source_name, ":data")
+        )
+      }
     }
 
     out[[source_name]] <- list(
@@ -998,9 +1058,8 @@ interpret_tables <- function(sources, spec, ...){
     upper_prob <- suppressWarnings(as.numeric(upper))
   }
 
-  interval_level <- .interpret_or(ref[["interval_level"]], schema[["interval_level"]])
-  if(is.null(interval_level) &&
-     length(lower_prob) == 1L && is.finite(lower_prob) &&
+  interval_level <- NA_real_
+  if(length(lower_prob) == 1L && is.finite(lower_prob) &&
      length(upper_prob) == 1L && is.finite(upper_prob)){
     interval_level <- upper_prob - lower_prob
   }
@@ -1010,7 +1069,7 @@ interpret_tables <- function(sources, spec, ...){
     upper          = upper,
     lower_prob     = if(is.null(lower_prob)) NA_real_ else as.numeric(lower_prob),
     upper_prob     = if(is.null(upper_prob)) NA_real_ else as.numeric(upper_prob),
-    interval_level = if(is.null(interval_level)) NA_real_ else as.numeric(interval_level)
+    interval_level = as.numeric(interval_level)
   )
 }
 
@@ -1082,6 +1141,16 @@ interpret_tables <- function(sources, spec, ...){
   record[["row"]]     <- .interpret_fill(record[["row"]], row)
   record[["order"]]   <- .interpret_fill(record[["order"]], item[["order"]])
   record[["record_id"]] <- .interpret_fill(record[["record_id"]], .interpret_record_id(record))
+  record[["interval_level"]] <- if(
+    length(record[["lower_prob"]]) == 1L &&
+    is.finite(record[["lower_prob"]]) &&
+    length(record[["upper_prob"]]) == 1L &&
+    is.finite(record[["upper_prob"]])
+  ){
+    record[["upper_prob"]] - record[["lower_prob"]]
+  }else{
+    NA_real_
+  }
 
   record
 }

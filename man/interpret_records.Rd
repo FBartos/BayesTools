@@ -25,7 +25,10 @@ Supported source types are \code{"table"}, \code{"record"}, and
 \code{BF}, \code{central}, \code{lower}, \code{upper}, and metadata such as
 \code{BF_orientation}, \code{BF_scale}, \code{BF_name},
 \code{BF_bound_operator}, \code{lower_prob}, \code{upper_prob},
-\code{interval_level}, \code{units}, and \code{conditioning}.}
+\code{units}, and \code{conditioning}. \code{interval_level} is not accepted
+as input; normalized estimate records derive it from
+\code{upper_prob - lower_prob}, or retain \code{NA} when endpoint
+probabilities are unknown.}
 
 \item{plan}{ordered list specifying which records to create. Plan items can
 have \code{kind = "evidence"}, \code{"estimate"}, \code{"pair"},
