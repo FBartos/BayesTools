@@ -18,6 +18,11 @@ can be misleading.
 including the corresponding prior parameterization, or explicitly reject and
 document no-intercept factor formulas until that parameterization is supported.
 
+Decision: we have a consistent and specific handling of no intercept models "-1" or "0" in BayesToosls
+- intercept is actually set to 0 via a prior distribution which allows consistent model comprisons and modeling
+this indeed deviates from R standard formula interface but it is needed for simple Bayesian modeling
+you can improve the documentation but do not change the behavior (if you see anything inconsistent with this handling, raise a new issue)
+
 ## D02. Formula calls, offsets, dot expansion, and environments
 
 **Issue.** Formula replay is based mainly on literal column names. Calls such as
@@ -32,6 +37,8 @@ replay path with explicit offset handling and a documented environment policy.
 The smaller alternative is to reject unsupported calls and dot expansion early
 with a precise error.
 
+Decision: reject unsoported calls early, in later versions we might fully implement this but it would be a large change right now
+
 ## D03. Positive support for log-intercept priors
 
 **Issue.** A formula with `log(intercept)` can accept an explicit prior whose
@@ -44,6 +51,8 @@ normalization may not describe a valid target.
 **Suggested change.** Require strictly positive support recursively across
 simple, mixture, spike-and-slab, and point priors. This is mathematically safer
 but is an intentional compatibility break.
+
+Decision: add the required support check
 
 ## D04. Cross-formula random-source dependencies
 
@@ -60,6 +69,8 @@ reconstruction. A smaller policy is to reject callbacks that depend on formula
 outputs with sampled random effects. Documenting order dependence alone is not
 recommended.
 
+Decision: please add a bit more information -- an actual example -- so I understand the impact and potential issues
+
 ## D05. Authority of fitted versus supplied row-source data
 
 **Issue.** During bridge reconstruction, supplied formula data and callbacks can
@@ -75,6 +86,8 @@ reject conflicting supplied values, and only graft a supplied callback when the
 fitted callback is absent. Decide whether older fits without source snapshots
 remain supported through an explicit compatibility mode.
 
+Decision: please remove all of these compatibility layers and simplify the code if possible
+
 ## D06. Prediction row identity beyond simple subsets
 
 **Issue.** Mixed fitted/new prediction rows now preserve their original row
@@ -88,6 +101,8 @@ scales to the wrong observations.
 **Suggested change.** Store and require stable observation keys for row-indexed
 sources, or restrict them to unchanged/subsetted fitted rows and reject
 ambiguous prediction data.
+
+Decision: please add a bit more information -- an actual example -- so I understand the impact and potential issues
 
 ## D07. Marginal sampling with known group covariance
 
@@ -103,6 +118,8 @@ levels.
 of the known group covariance combined with coefficient covariance. Otherwise,
 reject this combination earlier and document the limitation accurately.
 
+Decision: implement 
+
 ## D08. Collision-free random-effect identifiers
 
 **Issue.** Grouping interactions are encoded with `:` and some internal names
@@ -116,6 +133,8 @@ and name-based summaries can also become ambiguous.
 use a length-prefixed or otherwise reversible encoding. Rejecting reserved
 characters is simpler but unnecessarily restricts valid factor levels and still
 requires a migration policy for serialized metadata.
+
+Decision: rejected user supplied reserved internal phrases such as "__xXx__"
 
 ## D09. Dense random-design architecture
 
@@ -131,6 +150,8 @@ the scalable structured representation.
 dense matrices only for explicitly requested small outputs. This is an
 architectural change and should include performance budgets and compatibility
 tests for stored designs.
+
+Decision: can we calculatate the required space before hand? if so, can we check against the allocable space and stop if we know it would overflow with an informative message?
 
 ## D10. Correlation and kernel boundary policy
 
@@ -153,6 +174,10 @@ near-coincident CAR coordinates should be rejected or handled by a stable
 latent-only transform. Apply the policy consistently to constructors, JAGS
 syntax, initialization, reconstruction, and marginal covariance.
 
+Decision: I think most of this was solved separatelly in:
+\R-Packages\BayesTools\.agents\reports\numerical-fidelity-decisions.md
+if there are any pieces remaining, bring them up as a new issue
+
 ## D11. Fit retry and extension semantics
 
 **Issue.** Retryable error classes, total time budgets, and whether an extension
@@ -168,6 +193,8 @@ reproducibility than the backend can provide.
 budget; preserve the last valid fit on extension failure unless strict mode is
 requested. Deprecate or precisely document extension seeding according to
 backend capabilities.
+
+Decision: okay, remove the seed argument, default should return original on error with a warning, make time limit reset at extend 
 
 ## D12. Undefined convergence diagnostics
 
@@ -185,6 +212,8 @@ into ignoring that diagnostic. Define the same result for degenerate density,
 autocorrelation, and empty-monitor inputs instead of exposing low-level
 bandwidth, range, or subscript errors.
 
+Decision: this is desired behavior in some paths (i.e., spike parameters etc..), please provide a brief example which cases are bad and what would change based on the suggestions
+
 ## D13. Failed marginal-likelihood models
 
 **Issue.** Some model-averaging paths convert failed or non-finite marginal
@@ -198,6 +227,8 @@ can silently alter model probabilities and Bayes factors.
 the caller choose between dropping failed models, aborting, or explicitly
 treating them as zero-evidence models.
 
+Decision: wasn't this addressed elsewhere?
+
 ## D14. Positivity-preserving posterior sampling
 
 **Issue.** `preserve_positive`-style fallbacks can alter sampled values to keep
@@ -210,6 +241,8 @@ transformation rather than the represented distribution.
 **Suggested change.** Make any correction strategy explicit and opt-in. The
 default should use a support-respecting sampler or fail with a diagnostic that
 identifies the approximation and invalid-draw rate.
+
+Decision: I need an example where this could have happened so I can decide on policy
 
 ## D15. Deterministic finite-grid prior tails
 
@@ -229,6 +262,10 @@ recompute or extend the grid at the queried value where possible. When that
 provenance is unavailable, reject the query with an explicit "outside numerical
 approximation range" error; do not silently assign zero or invent KDE tails.
 
+Decision: I think this was solved separatelly in:
+\R-Packages\BayesTools\.agents\reports\numerical-fidelity-decisions.md
+if there are any pieces remaining, bring them up as a new issue
+
 ## D16. One-sided weight-function marginal inference
 
 **Issue.** Some exported marginal-inference paths do not implement one-sided
@@ -240,6 +277,8 @@ inference or derived hypotheses.
 **Suggested change.** Either implement the missing marginal distribution or
 declare the combination unsupported in the exported function documentation and
 validate it before computation.
+
+Decision: implement the missing marginal distribution
 
 ## D17. Formula priors without reconstruction semantics
 
@@ -255,6 +294,8 @@ syntax still references.
 external, require and validate the external node; otherwise reject it during
 `JAGS_formula()` construction. Reconstruction should never silently substitute
 zero for an unknown prior class.
+
+Decision: make formulas treat prior_none as spike(0) consistently
 
 ## D18. Contrast bases and serialized factor metadata
 
@@ -272,6 +313,9 @@ platform.
 term-specific. Introduce a metadata schema version and explicit legacy migration,
 and use a deterministic Helmert/QR-based orthonormal basis for new schemas.
 
+Decision: contrasts should be per-factor specific. We should prbl keep the info in interaction meta-data for cases when handled separatelly later.
+Are there any changes that we need to make? I need more info for decision.
+
 ## D19. Random-effect summary ownership and labels
 
 **Issue.** Raw monitor names, semantic random-block names, factor level labels,
@@ -286,6 +330,11 @@ displayed with ambiguous labels.
 metadata and make summaries/filtering consume it. Keep string heuristics only as
 an explicitly tested legacy fallback.
 
+Decision: okay, I see the potential issues, please create the registry infrastructure and 
+fully switch the package to it. Make sure that there is a documetnation object for downstream packages that 
+they can read to undetstand how it works if needed. Make breaking changes, we will update the downstream packages appropriatelly. 
+Do not care about backwards compatibility. Update the tests accrodingly.
+
 ## D20. Marginal-likelihood computation contract
 
 **Issue.** Documentation and implementation do not fully define the reported
@@ -298,6 +347,8 @@ results whose aggregation depends on incidental vector behavior.
 **Suggested change.** Document and encode the scale in the returned object,
 define deterministic aggregation and diagnostics across repetitions/chains, and
 return all repetition-level results alongside the selected summary.
+
+Decision: proceed
 
 ## D21. Cache and test-layout policy
 
@@ -316,6 +367,9 @@ dependencies, decide whether the single-fit-file rule remains mandatory, shorten
 snapshot naming/layout, and explicitly list which `.StatsVault` coordination
 files are tracked versus ignored.
 
+Decision: proceed with the cache manisfest changes etc, make sure that CI behaves the same as local runs.
+everything about .StatsVault should be local only (noone outside of this machine should know about it)
+
 ## D22. Explicit summary schema labels
 
 **Issue.** Explicit summary schemas can override interval labels independently
@@ -328,6 +382,8 @@ the values it displays.
 **Suggested change.** Either derive labels exclusively from interval metadata,
 or validate user-supplied labels against that metadata and require an explicit
 override flag for deliberately custom wording.
+
+Decision: I need more information/example, I do not follow
 
 ## D23. Replay of legacy scaled formula designs
 
@@ -344,6 +400,8 @@ every stored data field. For unversioned designs, either provide an explicit
 migration rule that treats `model_frame` as model-scale data or reject replay
 with instructions to refit; do not infer scale from the absence of
 `source_data`.
+
+Decision: break backwards compatibility, do not add backwards handling
 
 ## D24. Scale of monitored group-specific coefficients
 
@@ -362,6 +420,9 @@ unscaling matrix independently within every group and version any affected
 table/sample schema. Otherwise, keep them explicitly labeled as standardized
 and exclude them from APIs that promise original-scale coefficients.
 
+Decision: I think we implemented somewhat different hadnling of those two (i.e., the random effects need to be scaled differently and might not be scaled if fixed are?)
+please examine these differences first and provide more background info
+
 ## D25. Ordered priors with both atoms and continuous mass
 
 **Issue.** For an ordered total prior that mixes point and continuous
@@ -376,6 +437,8 @@ mass, particularly for spike-and-slab totals.
 and atoms separately for every level, and teach plotting and marginal-inference
 consumers to preserve both parts. Until that schema exists, reject mixed-measure
 ordered density requests rather than smoothing the atoms.
+
+Decision: implement this proper handling
 
 ## D26. Random-formula transformation and grouping semantics
 
@@ -392,6 +455,8 @@ shared `model.frame()`-based implementation with explicit environments and
 base-compatible interaction ordering, or reject transformations and document a
 package-specific ordering. Any ordering change needs a metadata migration.
 
+Decision: reject transformations for now, lets make sure we can use the basics for now correctly. add a proper error messages for anything we cannot handle
+
 ## D27. Hypothesis grammar boundaries
 
 **Issue.** The hypothesis language does not define whether a complete relation
@@ -406,6 +471,8 @@ rejected, or diagnosed differently depending on superficial spelling.
 parenthesized and negated relations are supported, and make escaped identifiers
 take precedence over reserved literal tokens while retaining strict rejection
 of unescaped constants where they are not meaningful.
+
+Decision: examine what is feasible to implement, add checks for unspupported expressions, and improve documentation
 
 ## D28. Structured-local subset contract
 
@@ -422,6 +489,8 @@ current implementation does not honor.
 stored local group/column indices, including zero-size requests, or remove the
 dimension arguments and expose a separate explicit full-layout method. Add
 schema tests before relying on either behavior.
+
+Decision: what is the prefered solution and the consequences?
 
 ## D29. Exact references for stochastic fit outputs
 
@@ -447,6 +516,8 @@ the current exact-snapshot policy is intentional, explicitly approve
 regenerating and reviewing the 70 affected text references and 147 affected SVG
 files from the validated cache as one controlled update.
 
+okay, I will examine and decide before running the full change implementations
+
 ## D30. Portable source-package paths for visual snapshots
 
 **Issue.** `R CMD check --as-cran` reports 50 visual snapshot paths longer
@@ -467,3 +538,5 @@ distributed source package. If they are, shorten the 50 snapshot labels and
 filenames in a controlled visual-only update. If they are only CI/development
 artifacts, exclude `tests/testthat/_snaps` in `.Rbuildignore` while keeping the
 files in Git and running visual profiles from repository checkouts.
+
+Decision: showten paths as needed
