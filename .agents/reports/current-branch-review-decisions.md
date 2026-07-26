@@ -140,7 +140,7 @@ but is an intentional compatibility break.
 
 Decision: add the required support check
 
-**Audit status: decision confirmed; implementation pending.**
+**Audit status: implemented.**
 
 **Review response.** Instruction understood. The current prior-class validator
 does not prove strict positivity for `log(intercept)`, so an untruncated normal
@@ -149,6 +149,14 @@ spike-and-slab, and point priors. Every component with nonzero prior probability
 must have support strictly inside `(0, Inf)`; a point mass at zero is invalid.
 The same validation must be used by formula construction and replay/bridge
 compilation so the target cannot differ between fitting and reconstruction.
+
+**Implementation outcome.** Formula construction, prediction replay, public
+marginal reconstruction, and compiled bridge reconstruction now share a
+recursive strict-positive-support validator. Continuous priors truncated at
+zero are accepted because they have no atom there; point and discrete priors
+must exclude zero. Spike-and-slab priors are accepted only when inclusion is
+fixed at one. Focused tests passed 1,437 assertions, and the complete unit
+profile passed 7,743 assertions with no failures or warnings.
 
 ## D04. Cross-formula random-source dependencies
 

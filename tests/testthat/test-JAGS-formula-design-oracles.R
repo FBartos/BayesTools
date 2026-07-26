@@ -973,6 +973,93 @@ test_that("JAGS_formula uses a neutral point for log intercepts without an inter
   expect_match(result$formula_syntax, "log\\(mu_intercept\\)", fixed = FALSE)
 })
 
+test_that("log-intercept formulas require recursively positive prior support", {
+  data <- data.frame(x = c(-1, 0, 1))
+  log_formula <- ~ x
+  attr(log_formula, "log(intercept)") <- TRUE
+
+  invalid_priors <- list(
+    prior("normal", list(0, 1)),
+    prior("point", list(0)),
+    prior("bernoulli", list(0.5)),
+    prior_mixture(list(
+      prior("gamma", list(2, 1)),
+      prior("point", list(0))
+    )),
+    prior_spike_and_slab(prior("gamma", list(2, 1)))
+  )
+  for(intercept_prior in invalid_priors){
+    expect_error(
+      JAGS_formula(
+        log_formula,
+        "mu",
+        data,
+        list(
+          intercept = intercept_prior,
+          x = prior("normal", list(0, 1))
+        )
+      ),
+      "must have strictly positive support",
+      fixed = TRUE
+    )
+  }
+
+  valid_priors <- list(
+    prior("gamma", list(2, 1)),
+    prior("normal", list(0, 1), truncation = list(lower = 0, upper = Inf)),
+    prior("point", list(1)),
+    prior_mixture(list(
+      prior("gamma", list(2, 1)),
+      prior("lognormal", list(0, 1))
+    )),
+    prior_spike_and_slab(
+      prior("gamma", list(2, 1)),
+      prior_inclusion = prior("point", list(1))
+    )
+  )
+  for(intercept_prior in valid_priors){
+    expect_no_error(
+      JAGS_formula(
+        log_formula,
+        "mu",
+        data,
+        list(
+          intercept = intercept_prior,
+          x = prior("normal", list(0, 1))
+        )
+      )
+    )
+  }
+
+  fitted <- coda::mcmc(matrix(
+    c(1, 0),
+    nrow = 1,
+    dimnames = list(NULL, c("mu_intercept", "mu_x"))
+  ))
+  invalid_replay_priors <- JAGS_formula(
+    log_formula,
+    "mu",
+    data,
+    list(
+      intercept = prior("point", list(1)),
+      x = prior("normal", list(0, 1))
+    )
+  )$prior_list
+  invalid_replay_priors$mu_intercept <- prior("point", list(0))
+  attr(invalid_replay_priors$mu_intercept, "parameter") <- "mu"
+  expect_error(
+    JAGS_evaluate_formula(
+      fitted,
+      log_formula,
+      "mu",
+      data,
+      invalid_replay_priors
+    ),
+    "must have strictly positive support",
+    fixed = TRUE
+  )
+})
+
 test_that("transform_prior_samples validates counts and seeds before sampling", {
   expect_error(
     transform_prior_samples(NULL, n_samples = NA_real_),

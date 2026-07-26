@@ -459,7 +459,7 @@ test_that("log(intercept) attribute works for specifying log(int) + sum(beta_i *
 
   # Test 1: Basic -1 formula functionality
   prior_list_basic <- list(
-    "intercept" = prior("normal", list(0, 1)),
+    "intercept" = prior("gamma", list(2, 1)),
     "x_fac3md"  = prior_factor("mnormal", contrast = "meandif", list(0, 1))
   )
 
@@ -475,7 +475,7 @@ test_that("log(intercept) attribute works for specifying log(int) + sum(beta_i *
                                data = df_test[, "x_fac3md", drop = FALSE],
                                prior_list = prior_list_basic)
 
-  # generates normal intercept
+  # generates an ordinary intercept
   expect_equal(
     result_basic[["formula_syntax"]],
     "for(i in 1:N_mu){\n  mu[i] = mu_intercept + inprod(mu_x_fac3md, mu_data_x_fac3md[i,])\n}\n"

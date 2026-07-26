@@ -774,6 +774,37 @@ test_that("compiled formula parameter evaluator preserves log-intercept reconstr
   )
 })
 
+test_that("formula replay rejects invalid log-intercept prior support", {
+  formula_obj <- ~ 1
+  attr(formula_obj, "log(intercept)") <- TRUE
+  formula_prior_list <- list(
+    mu = list(mu_intercept = prior("point", list(0)))
+  )
+
+  expect_error(
+    JAGS_marglik_parameters_formula(
+      samples = c(mu_intercept = 0),
+      formula_list = list(mu = formula_obj),
+      formula_data_list = list(mu = list(N_mu = 1)),
+      formula_prior_list = formula_prior_list,
+      prior_list_parameters = list()
+    ),
+    "must have strictly positive support",
+    fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.bt_JAGS_bridge_compile_formula_parameter_evaluator(
+      formula_list = list(mu = formula_obj),
+      formula_data_list = list(mu = list(N_mu = 1)),
+      formula_prior_list = formula_prior_list,
+      formula_design_list = NULL,
+      model_data = list()
+    ),
+    "must have strictly positive support",
+    fixed = TRUE
+  )
+})
+
 test_that("compiled formula parameter evaluator matches legacy fallback reconstruction", {
 
   samples <- c(

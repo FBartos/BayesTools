@@ -451,6 +451,99 @@ is.prior.mixture         <- function(x){
   invisible(TRUE)
 }
 
+.validate_strictly_positive_prior <- function(prior, name = "prior"){
+
+  fail <- function(component = name){
+    stop(
+      "The '", component, "' prior used by log(intercept) must have ",
+      "strictly positive support.",
+      call. = FALSE
+    )
+  }
+
+  if(is.prior.none(prior)){
+    fail()
+  }
+
+  if(is.prior.spike_and_slab(prior)){
+    inclusion_prior <- .get_spike_and_slab_inclusion(prior)
+    inclusion_fixed_one <- is.prior.point(inclusion_prior) &&
+      is.numeric(inclusion_prior$parameters[["location"]]) &&
+      length(inclusion_prior$parameters[["location"]]) == 1L &&
+      is.finite(inclusion_prior$parameters[["location"]]) &&
+      inclusion_prior$parameters[["location"]] == 1
+    if(!inclusion_fixed_one){
+      fail(paste0(name, " spike component"))
+    }
+    .validate_strictly_positive_prior(
+      .get_spike_and_slab_variable(prior),
+      paste0(name, " slab component")
+    )
+    return(invisible(TRUE))
+  }
+
+  if(is.prior.mixture(prior)){
+    weights <- attr(prior, "prior_weights", exact = TRUE)
+    component_indices <- if(is.numeric(weights) &&
+                            length(weights) == length(prior) &&
+                            all(is.finite(weights)) &&
+                            all(weights >= 0)){
+      which(weights > 0)
+    }else{
+      seq_along(prior)
+    }
+    if(length(component_indices) == 0L){
+      fail()
+    }
+    for(i in component_indices){
+      .validate_strictly_positive_prior(
+        prior[[i]],
+        paste0(name, "[[", i, "]]")
+      )
+    }
+    return(invisible(TRUE))
+  }
+
+  if(is.prior.point(prior) && !is.prior.vector(prior)){
+    location <- prior$parameters[["location"]]
+    if(!is.numeric(location) || length(location) != 1L ||
+       is.na(location) || !is.finite(location) || location <= 0){
+      fail()
+    }
+    return(invisible(TRUE))
+  }
+
+  if(is.prior.discrete(prior)){
+    if(!identical(prior[["distribution"]], "bernoulli")){
+      fail()
+    }
+    probability <- prior$parameters[["probability"]]
+    excludes_zero <- is.numeric(prior$truncation[["lower"]]) &&
+      length(prior$truncation[["lower"]]) == 1L &&
+      is.finite(prior$truncation[["lower"]]) &&
+      prior$truncation[["lower"]] > 0
+    fixed_one <- is.numeric(probability) && length(probability) == 1L &&
+      is.finite(probability) && probability == 1
+    if(!excludes_zero && !fixed_one){
+      fail()
+    }
+    return(invisible(TRUE))
+  }
+
+  if(is.prior.simple(prior) && !is.prior.vector(prior)){
+    lower <- prior$truncation[["lower"]]
+    upper <- prior$truncation[["upper"]]
+    if(!is.numeric(lower) || length(lower) != 1L || is.na(lower) ||
+       !is.numeric(upper) || length(upper) != 1L || is.na(upper) ||
+       lower < 0 || upper <= 0){
+      fail()
+    }
+    return(invisible(TRUE))
+  }
+
+  fail()
+}
+
 .check_prior <- function(prior, name = "prior", allow_expressions = FALSE){
 
   if(!is.prior(prior))

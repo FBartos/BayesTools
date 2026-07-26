@@ -21,7 +21,8 @@ by \code{\link[=random_effects_formula]{random_effects_formula()}}. If the formu
 automatically converted to include an intercept with a spike(0) prior.
 The formula can also have a \code{"log(intercept)"} attribute set to \code{TRUE}
 to generate syntax of the form \code{log(intercept) + sum(beta_i * x_i)}, which
-is useful for parameters that must be positive (e.g., standard deviation).}
+is useful for parameters that must be positive (e.g., standard deviation).
+In that case, the intercept prior must have strictly positive support.}
 
 \item{parameter}{valid unindexed JAGS node name of the parameter to be
 created with the formula}

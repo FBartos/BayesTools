@@ -11,6 +11,7 @@
 #' The formula can also have a \code{"log(intercept)"} attribute set to \code{TRUE}
 #' to generate syntax of the form \code{log(intercept) + sum(beta_i * x_i)}, which
 #' is useful for parameters that must be positive (e.g., standard deviation).
+#' In that case, the intercept prior must have strictly positive support.
 #' @param parameter valid unindexed JAGS node name of the parameter to be
 #' created with the formula
 #' @param data data.frame containing predictors included in the formula
@@ -274,6 +275,9 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   # check that all predictors have a prior distribution
   check_list(prior_list, "prior_list", check_names = model_terms, allow_other = FALSE, all_objects = TRUE)
 
+  if(log_intercept){
+    .bt_validate_formula_log_intercept_prior(prior_list)
+  }
   .bt_validate_formula_term_priors(
     prior_list = prior_list,
     model_terms = model_terms,

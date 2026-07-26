@@ -240,6 +240,31 @@
 
   invisible(TRUE)
 }
+.bt_validate_formula_log_intercept_prior <- function(prior_list,
+                                                      parameter = NULL){
+
+  intercept_name <- if(is.null(parameter)){
+    "intercept"
+  }else{
+    paste0(parameter, "_intercept")
+  }
+  if(!intercept_name %in% names(prior_list)){
+    stop(
+      "A formula using log(intercept) must define a prior for '",
+      intercept_name, "'.",
+      call. = FALSE
+    )
+  }
+
+  .validate_strictly_positive_prior(
+    prior_list[[intercept_name]],
+    if(is.null(parameter)){
+      "prior_list[[\"intercept\"]]"
+    }else{
+      paste0("formula_prior_list[[\"", intercept_name, "\"]]")
+    }
+  )
+}
 .remove_grouping_factor <- function(formula){
   return(trimws(sub("\\|.*$", "", formula)))
 }

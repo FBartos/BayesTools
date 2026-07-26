@@ -178,6 +178,9 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
   missing_terms <- model_terms[!model_terms %in% names(prior_list_formula)]
   if(length(missing_terms) > 0L)
     stop(paste0("The prior distribution for the ", paste0("'", missing_terms, "'", collapse = ", ")," term is missing in the prior_list."))
+  if(log_intercept){
+    .bt_validate_formula_log_intercept_prior(prior_list_formula)
+  }
 
   # obtain predictors characteristics -- based on prior distributions used to fit the original model
   # (i.e., do not truest the supplied data -- probably passed by the user)

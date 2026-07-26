@@ -22,6 +22,13 @@
     }
     parameter_prior_list <- formula_prior_list[[parameter]]
     design <- if(!is.null(formula_design_list)) formula_design_list[[parameter]] else NULL
+    log_intercept <- isTRUE(log_intercept) || isTRUE(design$log_intercept)
+    if(log_intercept){
+      .bt_validate_formula_log_intercept_prior(
+        parameter_prior_list,
+        parameter = parameter
+      )
+    }
 
     if(.bt_formula_design_has_any_random_effects(design)){
       fixed_prior_list <- .bt_JAGS_marglik_formula_fixed_priors(
