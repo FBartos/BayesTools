@@ -1,5 +1,7 @@
 .bt_random_effect_latent_names <- function(random_term, n_groups, n_columns){
 
+  check_int(n_groups, "n_groups", lower = 0, allow_NA = FALSE)
+  check_int(n_columns, "n_columns", lower = 0, allow_NA = FALSE)
   layout <- random_term$latent_layout
   if(inherits(layout, "BayesTools_random_effect_structured_local_layout")){
     node_names <- layout$node_names
@@ -16,7 +18,33 @@
         call. = FALSE
       )
     }
-    return(node_names)
+    local_group <- layout$local_group
+    local_column <- layout$local_column
+    valid_local_indices <- is.numeric(local_group) &&
+      is.numeric(local_column) &&
+      length(local_group) == layout$n_local &&
+      length(local_column) == layout$n_local &&
+      !anyNA(local_group) &&
+      !anyNA(local_column) &&
+      all(is.finite(local_group)) &&
+      all(is.finite(local_column)) &&
+      all(local_group == as.integer(local_group)) &&
+      all(local_column == as.integer(local_column)) &&
+      all(local_group >= 1L) &&
+      all(local_column >= 1L) &&
+      all(local_group <= layout$n_groups) &&
+      all(local_column <= layout$global_n_columns)
+    if(!isTRUE(valid_local_indices)){
+      stop(
+        "Random-effect local latent metadata",
+        .bt_random_effect_metadata_block_detail(random_term),
+        " must contain one positive group and column index per local latent ",
+        "cell within the stored dimensions.",
+        call. = FALSE
+      )
+    }
+    keep <- local_group <= n_groups & local_column <= n_columns
+    return(node_names[keep])
   }
 
   outer(

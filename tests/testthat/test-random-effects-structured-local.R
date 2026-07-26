@@ -57,6 +57,46 @@ test_that("structured local latent names require unique character metadata", {
     ),
     layout$node_names
   )
+  expect_identical(
+    BayesTools:::.bt_random_effect_latent_names(
+      random_term = random_term,
+      n_groups = 1L,
+      n_columns = 1L
+    ),
+    layout$node_names[1L]
+  )
+  expect_identical(
+    BayesTools:::.bt_random_effect_latent_names(
+      random_term = random_term,
+      n_groups = 1L,
+      n_columns = 2L
+    ),
+    layout$node_names[1:2]
+  )
+  expect_identical(
+    BayesTools:::.bt_random_effect_latent_names(
+      random_term = random_term,
+      n_groups = 2L,
+      n_columns = 2L
+    ),
+    layout$node_names[1:2]
+  )
+  expect_identical(
+    BayesTools:::.bt_random_effect_latent_names(
+      random_term = random_term,
+      n_groups = 0L,
+      n_columns = layout$global_n_columns
+    ),
+    character()
+  )
+  expect_identical(
+    BayesTools:::.bt_random_effect_latent_names(
+      random_term = random_term,
+      n_groups = layout$n_groups,
+      n_columns = 0L
+    ),
+    character()
+  )
 
   malformed_names <- list(
     non_character = seq_along(layout$node_names),
@@ -76,6 +116,47 @@ test_that("structured local latent names require unique character metadata", {
       paste0(
         "Random-effect local latent metadata for block 'id' must contain one ",
         "unique, non-missing, non-empty character node name per local latent cell."
+      ),
+      fixed = TRUE
+    )
+  }
+
+  malformed_indices <- list(
+    group_length = list(
+      local_group = layout$local_group[-1L],
+      local_column = layout$local_column
+    ),
+    column_length = list(
+      local_group = layout$local_group,
+      local_column = layout$local_column[-1L]
+    ),
+    zero_group = list(
+      local_group = replace(layout$local_group, 1L, 0L),
+      local_column = layout$local_column
+    ),
+    oversized_column = list(
+      local_group = layout$local_group,
+      local_column = replace(
+        layout$local_column,
+        1L,
+        layout$global_n_columns + 1L
+      )
+    )
+  )
+  for(indices in malformed_indices){
+    malformed_term <- random_term
+    malformed_term$latent_layout$local_group <- indices$local_group
+    malformed_term$latent_layout$local_column <- indices$local_column
+    expect_error(
+      BayesTools:::.bt_random_effect_latent_names(
+        random_term = malformed_term,
+        n_groups = layout$n_groups,
+        n_columns = layout$global_n_columns
+      ),
+      paste0(
+        "Random-effect local latent metadata for block 'id' must contain one ",
+        "positive group and column index per local latent cell within the ",
+        "stored dimensions."
       ),
       fixed = TRUE
     )

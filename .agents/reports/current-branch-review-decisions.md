@@ -39,7 +39,7 @@ mean **implemented**.
 | D25 | Partially implemented; implementation pending | Preserve atoms in the ordered sampled-density fallback |
 | D26 | Implemented and verified | No remaining work |
 | D27 | Decision confirmed; implementation pending | Implement and document the proposed restricted grammar |
-| D28 | Decision confirmed; implementation pending | Honor the existing subset arguments |
+| D28 | Implemented and verified | No remaining work |
 | D29 | Decision confirmed; implementation pending | Apply the agreed long-term stochastic-reference policy |
 | D30 | Decision confirmed; implementation pending | Shorten the 50 nonportable snapshot paths |
 | D31 | Decision confirmed; implementation pending | Use stable CAR recurrences and reject only unrepresentable innovations |
@@ -1349,7 +1349,7 @@ schema tests before relying on either behavior.
 
 Decision: what is the prefered solution and the consequences?
 
-**Audit status: decision confirmed; implementation pending.**
+**Audit status: implemented and verified.**
 
 **Review response.** Prefer honoring the existing `n_groups` and `n_columns`
 arguments. Structured-local layout already records the global group and column
@@ -1379,6 +1379,15 @@ corrections caused by enforcing the existing contract are preferable.
 **Second-pass response.** Instruction understood. Honor `n_groups` and
 `n_columns` consistently, including zero-size requests, and correct callers
 that previously relied on the arguments being ignored.
+
+**Implementation outcome.** Structured-local latent-name extraction now
+validates scalar non-negative `n_groups` and `n_columns`, validates that every
+stored local latent cell has an in-range integer group and column index, and
+returns only nodes satisfying both requested prefix bounds. A zero bound returns
+`character()`, matching the dense-layout contract. Existing full-dimension
+callers continue to receive the complete stored layout. Focused structured,
+reconstruction, and bridge tests passed 331 assertions, and the complete unit
+profile passed 7,800 assertions with no failures or warnings.
 
 ## D29. Exact references for stochastic fit outputs
 
