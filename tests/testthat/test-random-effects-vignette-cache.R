@@ -1,9 +1,18 @@
 skip_if_not_test_profile("unit")
 
+cache_helper <- testthat::test_path(
+  "..", "..", "vignettes", "random-effects-vignette-cache.R"
+)
+skip_if_not(
+  file.exists(cache_helper),
+  paste0(
+    "Repository vignette cache sources are not available in this ",
+    "installed-package test context."
+  )
+)
+
 source(
-  testthat::test_path(
-    "..", "..", "vignettes", "random-effects-vignette-cache.R"
-  ),
+  cache_helper,
   local = TRUE
 )
 
