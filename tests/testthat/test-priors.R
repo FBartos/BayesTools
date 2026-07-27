@@ -322,7 +322,7 @@ test_that("Prior mixture distributions work", {
   p6 <- prior_mixture(
     list(
       prior_none(),
-      prior("spike", list(1)),
+      prior("spike", list(0)),
       prior_factor("mnormal", list(0, 1),  contrast = "orthonormal")
     ), components = c("a", "b", "c")
   )
