@@ -2,8 +2,24 @@
 
 .hypothesis_expression_key <- function(text) {
 
-  paste(deparse(.hypothesis_parse_expression(text), width.cutoff = 500L),
-        collapse = "")
+  .hypothesis_expression_ast_key(.hypothesis_parse_expression(text))
+}
+
+.hypothesis_expression_ast_key <- function(expr){
+
+  canonicalize <- function(node){
+    if(identical(.hypothesis_call_name(node), "(")){
+      return(canonicalize(node[[2L]]))
+    }
+    if(!is.call(node)){
+      return(node)
+    }
+    as.call(c(
+      list(node[[1L]]),
+      lapply(as.list(node[-1L]), canonicalize)
+    ))
+  }
+  .hypothesis_expression_text(canonicalize(expr))
 }
 
 
@@ -13,7 +29,13 @@
     return(NA_character_)
   }
 
-  fun <- as.character(expr[[1L]])
+  fun <- .hypothesis_call_name(expr)
+  if(is.null(fun)){
+    return(NA_character_)
+  }
+  if(fun == "("){
+    return(.hypothesis_region_scalar_expressions(expr[[2L]]))
+  }
   if(fun %in% c("&", "|")){
     return(unlist(lapply(as.list(expr[-1L]),
                          .hypothesis_region_scalar_expressions),
@@ -29,10 +51,10 @@
     rhs_symbols <- .hypothesis_expression_symbols(rhs)
 
     if(length(lhs_symbols) > 0L && length(rhs_symbols) == 0L){
-      return(paste(deparse(lhs, width.cutoff = 500L), collapse = ""))
+      return(.hypothesis_expression_ast_key(lhs))
     }
     if(length(lhs_symbols) == 0L && length(rhs_symbols) > 0L){
-      return(paste(deparse(rhs, width.cutoff = 500L), collapse = ""))
+      return(.hypothesis_expression_ast_key(rhs))
     }
   }
 
@@ -44,7 +66,7 @@
 
   expr <- .hypothesis_parse_expression(expr_text)
   if(is.name(expr)){
-    return(as.character(expr))
+    return(.hypothesis_decode_escaped_constant(as.character(expr)))
   }
 
   return(NULL)
@@ -155,6 +177,7 @@
   }
 
   expr <- .hypothesis_parse_expression(side[["condition"]])
+  expr <- .hypothesis_unwrap_parentheses(expr)
   if(!is.call(expr)){
     return(NULL)
   }
@@ -305,7 +328,7 @@
          paste(missing, collapse = "', '"), "'.", call. = FALSE)
   }
 
-  env <- list2env(as.list(draws), parent = .hypothesis_eval_parent())
+  env <- .hypothesis_draw_environment(draws)
   values <- eval(expr, envir = env)
   check_real(values, "hypothesis expression", check_length = 0,
              allow_NA = FALSE)
@@ -329,7 +352,7 @@
          paste(missing, collapse = "', '"), "'.", call. = FALSE)
   }
 
-  env <- list2env(as.list(draws), parent = .hypothesis_eval_parent())
+  env <- .hypothesis_draw_environment(draws)
   values <- eval(expr, envir = env)
   if(!is.logical(values)){
     stop("Region hypothesis must evaluate to logical values.", call. = FALSE)
@@ -339,6 +362,18 @@
   }
 
   return(values)
+}
+
+.hypothesis_draw_environment <- function(draws){
+
+  values <- as.list(draws)
+  for(name in intersect(
+    names(values),
+    .hypothesis_escaped_constant_names()
+  )){
+    values[[.hypothesis_escaped_constant_symbol(name)]] <- values[[name]]
+  }
+  list2env(values, parent = .hypothesis_eval_parent())
 }
 
 

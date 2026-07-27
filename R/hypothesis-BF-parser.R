@@ -313,75 +313,156 @@ hypothesis_normalize_level_references <- function(text){
     stop("Empty hypothesis side.", call. = FALSE)
   }
 
-  if(.hypothesis_has_boolean(side)){
-    expr <- .hypothesis_parse_expression(side)
-    if(.hypothesis_condition_has_equality(expr)){
-      stop("Equality constraints cannot be combined with '&' or '|'.",
-           call. = FALSE)
+  relation <- if(.hypothesis_has_boolean(side)){
+    NULL
+  }else{
+    .hypothesis_find_relation(side)
+  }
+  if(!is.null(relation) &&
+     relation[["operator"]] %in% c("=", "==", "!=")){
+    return(.hypothesis_parse_point_side(side, relation))
+  }
+
+  expr <- .hypothesis_parse_expression(side)
+  if(.hypothesis_condition_has_equality(expr)){
+    if(.hypothesis_region_has_negated_equality(expr)){
+      stop(
+        "Point equalities cannot be negated. Use an explicit point ",
+        "hypothesis or its top-level '!=' complement.",
+        call. = FALSE
+      )
     }
-    .hypothesis_validate_expression(expr, condition = TRUE)
+    stop(
+      "Equality constraints cannot be combined with '&' or '|', and point ",
+      "equalities cannot be parenthesized inside a region expression.",
+      call. = FALSE
+    )
+  }
+  .hypothesis_validate_expression(expr, condition = TRUE)
+
+  simple_expr <- .hypothesis_unwrap_parentheses(expr)
+  simple_fun <- .hypothesis_call_name(simple_expr)
+  if(!is.null(simple_fun) &&
+     simple_fun %in% c("<", "<=", ">", ">=")){
+    lhs_expr <- simple_expr[[2L]]
+    rhs_expr <- simple_expr[[3L]]
+    lhs <- .hypothesis_expression_text(lhs_expr)
+    rhs <- .hypothesis_expression_text(rhs_expr)
+    rhs_symbols <- .hypothesis_expression_symbols(rhs_expr)
     return(list(
       type      = "region",
       label     = .hypothesis_display_text(side),
       condition = side,
-      simple    = FALSE
+      expr      = lhs,
+      value     = if(length(rhs_symbols) == 0L){
+        .hypothesis_parse_number(rhs)
+      }else{
+        NULL
+      },
+      operator  = simple_fun,
+      rhs       = rhs,
+      simple    = TRUE
     ))
   }
 
-  relation <- .hypothesis_find_relation(side)
-  if(is.null(relation)){
-    stop("Hypothesis side must contain one relation operator.", call. = FALSE)
-  }
+  list(
+    type      = "region",
+    label     = .hypothesis_display_text(side),
+    condition = side,
+    simple    = FALSE
+  )
+}
+
+.hypothesis_parse_point_side <- function(side, relation){
 
   lhs <- trimws(substr(side, 1L, relation[["start"]] - 1L))
   rhs <- trimws(substr(side, relation[["end"]] + 1L, nchar(side)))
-  op  <- relation[["operator"]]
-
+  op <- relation[["operator"]]
   if(!nzchar(lhs) || !nzchar(rhs)){
-    stop("Hypothesis relation must have both left and right sides.",
-         call. = FALSE)
+    stop(
+      "Point hypothesis relation must have both left and right sides.",
+      call. = FALSE
+    )
   }
 
-  if(op %in% c("=", "==")){
-    .hypothesis_validate_expression(.hypothesis_parse_expression(lhs),
-                                    condition = FALSE)
-    value <- .hypothesis_parse_number(rhs)
-    return(list(
-      type  = "point",
-      label = paste(.hypothesis_display_text(lhs), "=", .hypothesis_display_text(rhs)),
-      expr  = lhs,
-      value = value
-    ))
-  }
-  if(op == "!="){
-    .hypothesis_validate_expression(.hypothesis_parse_expression(lhs),
-                                    condition = FALSE)
-    value <- .hypothesis_parse_number(rhs)
-    return(list(
-      type  = "not_point",
-      label = paste(.hypothesis_display_text(lhs), "!=", .hypothesis_display_text(rhs)),
-      expr  = lhs,
-      value = value
-    ))
-  }
+  .hypothesis_validate_expression(
+    .hypothesis_parse_expression(lhs),
+    condition = FALSE
+  )
+  value <- .hypothesis_parse_point_value(rhs)
+  list(
+    type  = if(op == "!=") "not_point" else "point",
+    label = paste(
+      .hypothesis_display_text(lhs),
+      if(op == "!=") "!=" else "=",
+      .hypothesis_display_text(rhs)
+    ),
+    expr  = lhs,
+    value = value
+  )
+}
 
-  .hypothesis_validate_expression(.hypothesis_parse_expression(lhs),
-                                  condition = FALSE)
-  .hypothesis_validate_expression(.hypothesis_parse_expression(rhs),
-                                  condition = FALSE)
-  condition <- paste(lhs, op, rhs)
-  .hypothesis_validate_expression(.hypothesis_parse_expression(condition),
-                                  condition = TRUE)
-  rhs_symbols <- .hypothesis_expression_symbols(.hypothesis_parse_expression(rhs))
-  return(list(
-    type      = "region",
-    label     = .hypothesis_display_text(condition),
-    condition = condition,
-    expr      = lhs,
-    value     = if(length(rhs_symbols) == 0L) .hypothesis_parse_number(rhs) else NULL,
-    operator  = op,
-    rhs       = rhs,
-    simple    = TRUE
+.hypothesis_unwrap_parentheses <- function(expr){
+
+  while(identical(.hypothesis_call_name(expr), "(")){
+    expr <- expr[[2L]]
+  }
+  expr
+}
+
+.hypothesis_call_name <- function(expr){
+
+  if(!is.call(expr) || !is.name(expr[[1L]])){
+    return(NULL)
+  }
+  as.character(expr[[1L]])
+}
+
+.hypothesis_expression_text <- function(expr){
+
+  if(is.name(expr)){
+    name <- .hypothesis_decode_escaped_constant(as.character(expr))
+    if(name %in% .hypothesis_escaped_constant_names() ||
+       !identical(make.names(name), name)){
+      name <- gsub("`", "\\`", name, fixed = TRUE)
+      return(paste0("`", name, "`"))
+    }
+    return(name)
+  }
+  expr <- .hypothesis_restore_escaped_constants(expr)
+  paste(deparse(expr, width.cutoff = 500L), collapse = "")
+}
+
+.hypothesis_restore_escaped_constants <- function(expr){
+
+  if(is.name(expr)){
+    return(as.name(
+      .hypothesis_decode_escaped_constant(as.character(expr))
+    ))
+  }
+  if(!is.call(expr)){
+    return(expr)
+  }
+  as.call(lapply(as.list(expr), .hypothesis_restore_escaped_constants))
+}
+
+.hypothesis_region_has_negated_equality <- function(expr, negated = FALSE){
+
+  if(!is.call(expr)){
+    return(FALSE)
+  }
+  fun <- .hypothesis_call_name(expr)
+  if(identical(fun, "!")){
+    return(.hypothesis_region_has_negated_equality(expr[[2L]], TRUE))
+  }
+  if(!is.null(fun) && fun %in% c("=", "==", "!=")){
+    return(negated)
+  }
+  any(vapply(
+    as.list(expr[-1L]),
+    .hypothesis_region_has_negated_equality,
+    logical(1),
+    negated = negated
   ))
 }
 
@@ -530,6 +611,7 @@ hypothesis_normalize_level_references <- function(text){
     stop("Right side of a point/one-sided hypothesis must be a numeric value.",
          call. = FALSE)
   }
+  .hypothesis_validate_expression(expr, condition = FALSE)
 
   value <- eval(expr, envir = .hypothesis_eval_parent())
   check_real(value, "hypothesis value", check_length = 1, allow_NA = FALSE)
@@ -540,10 +622,78 @@ hypothesis_normalize_level_references <- function(text){
   return(value)
 }
 
+.hypothesis_parse_point_value <- function(text){
+
+  expr <- .hypothesis_parse_expression(text)
+  numeric_literal <- function(x){
+    (is.numeric(x) || is.integer(x)) && length(x) == 1L && is.finite(x)
+  }
+  valid_literal <- function(x){
+    if(numeric_literal(x)){
+      return(TRUE)
+    }
+    fun <- .hypothesis_call_name(x)
+    if(!is.null(fun) && fun %in% c("+", "-") &&
+       length(x) == 2L){
+      return(numeric_literal(x[[2L]]))
+    }
+    FALSE
+  }
+  if(!valid_literal(expr)){
+    stop(
+      "The right side of a point hypothesis must be a numeric value written ",
+      "as one finite literal with an optional unary sign.",
+      call. = FALSE
+    )
+  }
+
+  value <- eval(expr, envir = .hypothesis_eval_parent())
+  if(!is.numeric(value) || length(value) != 1L || !is.finite(value)){
+    stop("Point hypothesis value must be finite.", call. = FALSE)
+  }
+  as.numeric(value)
+}
+
+.hypothesis_escaped_constant_names <- function(){
+  c("Inf", "NaN", "NA", "TRUE", "FALSE")
+}
+
+.hypothesis_escaped_constant_symbol <- function(name){
+  paste0(".BayesTools_escaped_constant_", name)
+}
+
+.hypothesis_protect_escaped_constants <- function(text){
+
+  for(name in .hypothesis_escaped_constant_names()){
+    text <- gsub(
+      paste0("`", name, "`"),
+      .hypothesis_escaped_constant_symbol(name),
+      text,
+      fixed = TRUE
+    )
+  }
+  text
+}
+
+.hypothesis_decode_escaped_constant <- function(name){
+
+  symbols <- vapply(
+    .hypothesis_escaped_constant_names(),
+    .hypothesis_escaped_constant_symbol,
+    character(1)
+  )
+  index <- match(name, symbols)
+  if(is.na(index)){
+    return(name)
+  }
+  .hypothesis_escaped_constant_names()[[index]]
+}
+
 
 .hypothesis_parse_expression <- function(text) {
 
-  parsed <- tryCatch(parse(text = text, keep.source = FALSE),
+  protected_text <- .hypothesis_protect_escaped_constants(text)
+  parsed <- tryCatch(parse(text = protected_text, keep.source = FALSE),
                      error = function(e)e)
   if(inherits(parsed, "error") || length(parsed) != 1L){
     stop("Could not parse hypothesis expression '", text, "'.", call. = FALSE)
@@ -565,21 +715,39 @@ hypothesis_normalize_level_references <- function(text){
 
 .hypothesis_validate_expression <- function(expr, condition) {
 
+  if(condition){
+    .hypothesis_validate_region(expr)
+  }else{
+    .hypothesis_validate_arithmetic(expr)
+  }
+
+  return(invisible(TRUE))
+}
+
+.hypothesis_validate_arithmetic <- function(expr){
+
   if(is.numeric(expr) || is.integer(expr)){
-    return(invisible(TRUE))
-  }
-  if(is.logical(expr)){
-    return(invisible(TRUE))
-  }
-  if(is.name(expr)){
-    name <- as.character(expr)
-    if(name %in% c("Inf", "NaN", "NA", "TRUE", "FALSE")){
-      return(invisible(TRUE))
+    if(length(expr) != 1L || !is.finite(expr)){
+      stop(
+        "Hypothesis arithmetic requires finite numeric literals.",
+        call. = FALSE
+      )
     }
     return(invisible(TRUE))
   }
+  if(is.logical(expr)){
+    literal <- paste(deparse(expr, width.cutoff = 500L), collapse = "")
+    stop(
+      "Unescaped reserved literal '", literal,
+      "' is not a hypothesis parameter or finite numeric value.",
+      call. = FALSE
+    )
+  }
+  if(is.name(expr)){
+    return(invisible(TRUE))
+  }
   if(!is.call(expr)){
-    stop("Unsupported hypothesis expression.", call. = FALSE)
+    stop("Unsupported hypothesis arithmetic expression.", call. = FALSE)
   }
 
   call_head <- expr[[1L]]
@@ -589,27 +757,116 @@ hypothesis_normalize_level_references <- function(text){
          call. = FALSE)
   }
   fun <- as.character(call_head)
-  allowed_arithmetic <- c("(", "+", "-", "*", "/", "^")
-  allowed_functions  <- c("abs", "exp", "log", "sqrt", "plogis", "qlogis")
-  allowed_condition  <- c("<", "<=", ">", ">=", "&", "|", "!")
-  allowed <- c(allowed_arithmetic, allowed_functions)
-  if(condition){
-    allowed <- c(allowed, allowed_condition)
-  }
-
-  if(!fun %in% allowed){
+  allowed_functions <- c("abs", "exp", "log", "sqrt", "plogis", "qlogis")
+  if(!fun %in% c("(", "+", "-", "*", "/", "^", allowed_functions)){
     stop("Unsupported hypothesis expression operator or function '", fun, "'.",
          call. = FALSE)
   }
-  if(length(expr) == 1L){
-    stop("Hypothesis expression call '", fun,
-         "' requires at least one argument.", call. = FALSE)
+
+  n_arguments <- length(expr) - 1L
+  valid_arity <- switch(
+    fun,
+    "(" = n_arguments == 1L,
+    "+" = n_arguments %in% c(1L, 2L),
+    "-" = n_arguments %in% c(1L, 2L),
+    "*" = n_arguments == 2L,
+    "/" = n_arguments == 2L,
+    "^" = n_arguments == 2L,
+    n_arguments == 1L
+  )
+  if(!valid_arity){
+    if(n_arguments == 0L){
+      stop(
+        "Hypothesis expression call '", fun,
+        "' requires at least one argument.",
+        call. = FALSE
+      )
+    }
+    stop(
+      "Hypothesis expression call '", fun,
+      "' has an unsupported number of arguments.",
+      call. = FALSE
+    )
   }
   for(i in seq.int(2L, length(expr))){
-    .hypothesis_validate_expression(expr[[i]], condition = condition)
+    .hypothesis_validate_arithmetic(expr[[i]])
   }
 
-  return(invisible(TRUE))
+  if(length(.hypothesis_expression_symbols(expr)) == 0L){
+    value <- tryCatch(
+      suppressWarnings(eval(expr, envir = .hypothesis_eval_parent())),
+      error = function(e) NULL
+    )
+    if(is.null(value) || !is.numeric(value) || length(value) != 1L ||
+       !is.finite(value)){
+      stop(
+        "Constant hypothesis arithmetic must evaluate to one finite numeric ",
+        "value.",
+        call. = FALSE
+      )
+    }
+  }
+
+  invisible(TRUE)
+}
+
+.hypothesis_validate_region <- function(expr){
+
+  if(!is.call(expr)){
+    stop(
+      "A region hypothesis must be a comparison, optionally parenthesized, ",
+      "negated, or combined with '&' or '|'.",
+      call. = FALSE
+    )
+  }
+  call_head <- expr[[1L]]
+  if(!is.name(call_head)){
+    stop("Unsupported region hypothesis expression.", call. = FALSE)
+  }
+  fun <- as.character(call_head)
+  n_arguments <- length(expr) - 1L
+
+  if(fun == "("){
+    if(n_arguments != 1L){
+      stop("Parenthesized regions require exactly one expression.",
+           call. = FALSE)
+    }
+    .hypothesis_validate_region(expr[[2L]])
+    return(invisible(TRUE))
+  }
+  if(fun == "!"){
+    if(n_arguments != 1L){
+      stop("Region negation requires exactly one region.", call. = FALSE)
+    }
+    .hypothesis_validate_region(expr[[2L]])
+    return(invisible(TRUE))
+  }
+  if(fun %in% c("&", "|")){
+    if(n_arguments != 2L){
+      stop(
+        "Region boolean operators require exactly two region expressions.",
+        call. = FALSE
+      )
+    }
+    .hypothesis_validate_region(expr[[2L]])
+    .hypothesis_validate_region(expr[[3L]])
+    return(invisible(TRUE))
+  }
+  if(fun %in% c("<", "<=", ">", ">=")){
+    if(n_arguments != 2L){
+      stop("Region relations require exactly two arithmetic expressions.",
+           call. = FALSE)
+    }
+    .hypothesis_validate_arithmetic(expr[[2L]])
+    .hypothesis_validate_arithmetic(expr[[3L]])
+    return(invisible(TRUE))
+  }
+
+  stop(
+    "Unsupported region operator '", fun,
+    "'. Use '<', '<=', '>', or '>=' and combine regions with '&', '|', or '!'.",
+    call. = FALSE
+  )
 }
 
 
@@ -618,8 +875,8 @@ hypothesis_normalize_level_references <- function(text){
   if(!is.call(expr)){
     return(FALSE)
   }
-  fun <- as.character(expr[[1L]])
-  if(fun %in% c("=", "==", "!=")){
+  fun <- .hypothesis_call_name(expr)
+  if(!is.null(fun) && fun %in% c("=", "==", "!=")){
     return(TRUE)
   }
 
@@ -630,14 +887,17 @@ hypothesis_normalize_level_references <- function(text){
 
 .hypothesis_expression_symbols <- function(expr) {
 
-  names <- all.names(expr, functions = TRUE, unique = TRUE)
-  blocked <- c(
-    "(", "+", "-", "*", "/", "^", "<", "<=", ">", ">=", "=", "==", "!=",
-    "&", "|", "!", "abs", "exp", "log", "sqrt", "plogis", "qlogis",
-    "Inf", "NaN", "NA", "TRUE", "FALSE"
-  )
+  collect <- function(node){
+    if(is.name(node)){
+      return(.hypothesis_decode_escaped_constant(as.character(node)))
+    }
+    if(!is.call(node) || length(node) == 1L){
+      return(character())
+    }
+    unlist(lapply(as.list(node[-1L]), collect), use.names = FALSE)
+  }
 
-  return(setdiff(names, blocked))
+  unique(collect(expr))
 }
 
 

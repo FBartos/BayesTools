@@ -81,7 +81,10 @@
     return(FALSE)
   }
 
-  identical(point_side[["expr"]], other_side[["expr"]]) &&
+  identical(
+    .hypothesis_expression_key(point_side[["expr"]]),
+    .hypothesis_expression_key(other_side[["expr"]])
+  ) &&
     isTRUE(all.equal(point_side[["value"]], other_side[["value"]]))
 }
 

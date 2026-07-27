@@ -26,7 +26,8 @@ Posterior draws must be finite and quantity names must be unique.}
 draw tables must be unique. Ignored when \code{posterior} already contains
 deterministic prior density information.}
 
-\item{hypothesis}{character vector with scalar hypothesis statements.}
+\item{hypothesis}{character vector with scalar hypothesis statements written
+in the restricted grammar described in Details.}
 
 \item{parameter}{optional scalar quantity name for numeric vectors or
 \code{marginal_posterior} objects.}
@@ -83,4 +84,50 @@ attributes are accepted as marginal posterior inputs; parent-level
 \code{posterior_density}, \code{posterior_densities},
 \code{posterior_ordinate}, or \code{posterior_ordinates} metadata on a
 marginal-posterior list is reused for matching level hypotheses.
+}
+\details{
+The hypothesis language deliberately accepts only a small,
+non-programmable subset of R expressions:
+
+\preformatted{
+hypothesis := statement [ "vs" statement ]
+statement  := point | region
+point      := arithmetic ( "=" | "==" | "!=" ) finite_number
+region     := relation
+            | "(" region ")"
+            | "!" region
+            | region ( "&" | "|" ) region
+relation   := arithmetic ( "<" | "<=" | ">" | ">=" ) arithmetic
+}
+
+Arithmetic expressions may contain parameter identifiers, finite numeric
+literals, parentheses, \code{+}, \code{-}, \code{*}, \code{/}, \code{^},
+and the one-argument functions \code{abs()}, \code{exp()}, \code{log()},
+\code{sqrt()}, \code{plogis()}, and \code{qlogis()}. Every constant
+arithmetic subexpression must evaluate to one finite number. Point values
+are stricter: the right side must be one finite numeric literal, optionally
+preceded by one unary sign.
+
+Equality defines a point hypothesis and may appear only as the top-level
+relation of a statement. It cannot be parenthesized inside, negated, or
+combined as a region. Region relations may be parenthesized, negated, and
+combined with the element-wise operators \code{&} and \code{|};
+\code{&&} and \code{||} are not supported. Backticks permit
+non-syntactic parameter names. In particular, escaped identifiers such as
+\code{`Inf`} refer to parameters, while unescaped \code{Inf}, \code{NaN},
+\code{NA}, \code{TRUE}, and \code{FALSE} are reserved literals and are
+rejected.
+
+\tabular{lll}{
+\strong{Form} \tab \strong{Status} \tab \strong{Reason} \cr
+\code{theta = -0.5} \tab accepted \tab point with a finite literal \cr
+\code{(theta > 0)} \tab accepted \tab parenthesized region \cr
+\code{!(theta > 0)} \tab accepted \tab negated region \cr
+\code{theta > 0 & abs(phi) < 2} \tab accepted \tab combined regions \cr
+\code{`Inf` > 0} \tab accepted \tab escaped parameter identifier \cr
+\code{!(theta == 0)} \tab rejected \tab point equalities cannot be negated \cr
+\code{theta = 1 + 1} \tab rejected \tab point value is not one literal \cr
+\code{theta > 0 && phi < 1} \tab rejected \tab scalar boolean operator \cr
+\code{sin(theta) > 0} \tab rejected \tab function outside the whitelist
+}
 }

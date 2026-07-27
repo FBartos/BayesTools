@@ -38,7 +38,7 @@ mean **implemented**.
 | D24 | Implemented and verified | No remaining work |
 | D25 | Implemented and verified | No remaining work |
 | D26 | Implemented and verified | No remaining work |
-| D27 | Decision confirmed; implementation pending | Implement and document the proposed restricted grammar |
+| D27 | Implemented and verified | No remaining work |
 | D28 | Implemented and verified | No remaining work |
 | D29 | Decision confirmed; implementation pending | Apply the agreed long-term stochastic-reference policy |
 | D30 | Decision confirmed; implementation pending | Shorten the 50 nonportable snapshot paths |
@@ -1578,6 +1578,29 @@ accepted/rejected example table and adversarial tests for every production.
 **Second-pass response.** Instruction understood as approval of the proposed
 restricted grammar, precise rejection of unsupported expressions, preservation
 of escaped identifiers, documentation examples, and adversarial tests.
+
+**Implementation outcome.** Hypothesis parsing now follows the documented
+point/region grammar. Region relations can be parenthesized, negated, and
+combined with element-wise `&` and `|`; point equality remains a top-level
+statement and rejects nesting or negation with precise diagnostics. Arithmetic
+is limited to finite literals, named quantities, the documented operators, and
+the one-argument function whitelist. Point values require exactly one finite
+literal with at most one unary sign, and constant arithmetic that produces a
+non-finite value is rejected before hypothesis evaluation.
+
+Escaped identifiers matching R constants are protected through parsing and
+evaluation, so names such as `` `Inf` `` and `` `NA` `` resolve to posterior
+columns while the corresponding unescaped constants remain invalid. Implicit
+region complements preserve non-syntactic level references and escaped names.
+Canonical expression comparison makes redundant arithmetic parentheses
+irrelevant to explicit point complements and point-versus-region compatibility.
+Function names are excluded only when they occupy a call-head position, so
+quantities named `abs`, `log`, or another whitelisted function remain valid
+operands.
+The public help page includes the formal grammar and accepted/rejected examples.
+Focused parser and hypothesis tests passed 298 assertions. The complete unit
+profile passed 8,104 assertions with no failures or warnings (seven expected
+profile skips).
 
 ## D28. Structured-local subset contract
 
