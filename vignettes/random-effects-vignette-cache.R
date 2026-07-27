@@ -128,6 +128,30 @@ random_effects_vignette_cache_names <- function(){
   )
 }
 
+.random_effects_vignette_serialization_roundtrip <- function(value){
+  unserialize(serialize(value, NULL, version = 3, xdr = TRUE))
+}
+
+.random_effects_vignette_canonicalize_models <- function(models){
+  canonical <- .random_effects_vignette_serialization_roundtrip(models)
+  .random_effects_vignette_validate_models_or_stop(canonical)
+  rehydrated <- .random_effects_vignette_serialization_roundtrip(canonical)
+  .random_effects_vignette_validate_models_or_stop(rehydrated)
+  if(!identical(
+    .random_effects_vignette_model_hashes(canonical),
+    .random_effects_vignette_model_hashes(rehydrated)
+  )){
+    stop(
+      paste0(
+        "Cannot write RandomEffects cache: fitted model payloads do not have ",
+        "a stable serialized representation."
+      ),
+      call. = FALSE
+    )
+  }
+  canonical
+}
+
 .random_effects_vignette_model_hashes <- function(models){
   model_names <- random_effects_vignette_cache_names()
   hashes <- vapply(
@@ -1598,6 +1622,7 @@ write_random_effects_vignette_cache <- function(
     )
   }
   .random_effects_vignette_validate_models_or_stop(models)
+  models <- .random_effects_vignette_canonicalize_models(models)
   if(is.null(producer)){
     producer <- .random_effects_vignette_producer()
   }

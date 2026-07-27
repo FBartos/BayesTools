@@ -277,6 +277,104 @@ test_that("writer installs one strict manifest envelope", {
   expect_identical(loaded$cache, models)
 })
 
+test_that("writer canonicalizes models before payload hashing", {
+  cache_file <- file.path(withr::local_tempdir(), "models", "RandomEffects.RDS")
+  dependencies <- .random_effects_test_dependencies()
+  implementation <- .random_effects_test_implementation(dependencies)
+  producer <- .random_effects_test_producer()
+  models <- .random_effects_test_models()
+  live_environment <- new.env(parent = emptyenv())
+  live_environment$value <- 1
+  attr(models[[1L]], "live_environment") <- live_environment
+  generation <- begin_random_effects_vignette_cache_regeneration(
+    envir = new.env(parent = emptyenv()),
+    dependency_state = dependencies,
+    implementation_state = implementation
+  )
+
+  helper_environment <- environment(write_random_effects_vignette_cache)
+  original_atomic_write <- get(
+    ".random_effects_vignette_atomic_write",
+    envir = helper_environment,
+    inherits = FALSE
+  )
+  on.exit(assign(
+    ".random_effects_vignette_atomic_write",
+    original_atomic_write,
+    envir = helper_environment
+  ), add = TRUE)
+
+  captured_envelope <- NULL
+  assign(
+    ".random_effects_vignette_atomic_write",
+    function(envelope, cache_file, dependency_state, ...){
+      captured_envelope <<- envelope
+      list(valid = TRUE)
+    },
+    envir = helper_environment
+  )
+
+  written <- write_random_effects_vignette_cache(
+    models = models,
+    cache_file = cache_file,
+    generation = generation,
+    dependency_state = dependencies,
+    implementation_state = implementation,
+    producer = producer
+  )
+
+  expect_true(written$valid)
+  expect_false(identical(
+    attr(captured_envelope$models[[1L]], "live_environment"),
+    live_environment
+  ))
+  expect_identical(
+    captured_envelope$manifest$model_hashes,
+    .random_effects_vignette_model_hashes(captured_envelope$models)
+  )
+
+  dir.create(dirname(cache_file), recursive = TRUE)
+  saveRDS(captured_envelope, cache_file, version = 3)
+  expect_true(validate_random_effects_vignette_cache(
+    cache_file,
+    dependency_state = dependencies
+  )$valid)
+})
+
+test_that("canonicalization rejects payloads that do not stabilize", {
+  models <- .random_effects_test_models()
+  helper_environment <- environment(
+    .random_effects_vignette_canonicalize_models
+  )
+  original_roundtrip <- get(
+    ".random_effects_vignette_serialization_roundtrip",
+    envir = helper_environment,
+    inherits = FALSE
+  )
+  on.exit(assign(
+    ".random_effects_vignette_serialization_roundtrip",
+    original_roundtrip,
+    envir = helper_environment
+  ), add = TRUE)
+
+  roundtrip_count <- 0L
+  assign(
+    ".random_effects_vignette_serialization_roundtrip",
+    function(value){
+      roundtrip_count <<- roundtrip_count + 1L
+      value[[1L]]$serialization_generation <- roundtrip_count
+      value
+    },
+    envir = helper_environment
+  )
+
+  expect_error(
+    .random_effects_vignette_canonicalize_models(models),
+    "fitted model payloads do not have a stable serialized representation",
+    fixed = TRUE
+  )
+})
+
 test_that("missing and legacy caches are graceful but never loadable", {
   cache_root <- withr::local_tempdir()
   cache_file <- file.path(cache_root, "models", "RandomEffects.RDS")
