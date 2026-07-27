@@ -360,6 +360,251 @@ test_that("local CAR recurrence retains irregular numeric time gaps", {
   )
 })
 
+test_that("CAR transitions preserve representable boundary innovations", {
+
+  rho_upper <- 1 - .Machine$double.eps / 2
+  upper_transition <- BayesTools:::.bt_random_effect_markov_transition(
+    rho = rho_upper,
+    left_coordinate = 0,
+    right_coordinate = 0.5
+  )
+  expect_identical(upper_transition$log_phi, 0.5 * log(rho_upper))
+  expect_identical(
+    upper_transition$innovation_variance,
+    -expm1(2 * upper_transition$log_phi)
+  )
+  expect_gt(upper_transition$innovation_variance, 0)
+
+  upper_L <- BayesTools:::.bt_random_effect_structured_subset_cholesky(
+    structure = "car",
+    columns = 1:2,
+    rho = rho_upper,
+    global_n_columns = 2L,
+    column_coordinates = c(0, 0.5)
+  )
+  expect_identical(
+    upper_L[2L, 2L],
+    sqrt(upper_transition$innovation_variance)
+  )
+  expect_gt(upper_L[2L, 2L], 0)
+  expect_identical(
+    BayesTools:::.bt_random_effect_structured_subset_transform(
+      structure = "car",
+      columns = 1:2,
+      latent = c(0, 1),
+      rho = rho_upper,
+      global_n_columns = 2L,
+      column_coordinates = c(0, 0.5)
+    ),
+    c(0, sqrt(upper_transition$innovation_variance))
+  )
+
+  tiny_transition <- BayesTools:::.bt_random_effect_markov_transition(
+    rho = 0.5,
+    left_coordinate = 0,
+    right_coordinate = 1e-320
+  )
+  expect_gt(tiny_transition$innovation_variance, 0)
+  expect_identical(
+    tiny_transition$innovation_variance,
+    -expm1(2 * tiny_transition$log_phi)
+  )
+  tiny_L <- BayesTools:::.bt_random_effect_structured_subset_cholesky(
+    structure = "car",
+    columns = 1:2,
+    rho = 0.5,
+    global_n_columns = 2L,
+    column_coordinates = c(0, 1e-320)
+  )
+  expect_identical(
+    tiny_L[2L, 2L],
+    sqrt(tiny_transition$innovation_variance)
+  )
+  expect_gt(tiny_L[2L, 2L], 0)
+
+  zero_transition <- BayesTools:::.bt_random_effect_markov_transition(
+    rho = 0,
+    left_coordinate = -2,
+    right_coordinate = 3
+  )
+  expect_identical(
+    zero_transition,
+    list(log_phi = -Inf, phi = 0, innovation_variance = 1)
+  )
+})
+
+test_that("CAR transition operation order and failures are explicit", {
+
+  smallest <- .Machine$double.xmin * .Machine$double.eps
+  transition <- BayesTools:::.bt_random_effect_markov_transition(
+    rho = 0.5,
+    left_coordinate = 0,
+    right_coordinate = smallest
+  )
+  expect_identical(transition$log_phi, smallest * log(0.5))
+  expect_identical(
+    transition$innovation_variance,
+    -expm1(2 * transition$log_phi)
+  )
+  expect_gt(
+    transition$innovation_variance,
+    -expm1(2 * smallest * log(0.5))
+  )
+
+  error_message <- tryCatch(
+    BayesTools:::.bt_random_effect_markov_transition(
+      rho = 0.9,
+      left_coordinate = 0,
+      right_coordinate = smallest
+    ),
+    error = function(error) conditionMessage(error)
+  )
+  smallest_label <- format(
+    smallest,
+    digits = 17L,
+    scientific = TRUE,
+    trim = TRUE
+  )
+  rho_label <- format(
+    0.9,
+    digits = 17L,
+    scientific = TRUE,
+    trim = TRUE
+  )
+  expect_match(
+    error_message,
+    "from coordinate 0.0000000000000000e+00",
+    fixed = TRUE
+  )
+  expect_match(error_message, paste0("to ", smallest_label), fixed = TRUE)
+  expect_match(error_message, paste0("rho = ", rho_label), fixed = TRUE)
+  expect_match(error_message, paste0("gap = ", smallest_label), fixed = TRUE)
+  expect_match(
+    error_message,
+    "non-positive or non-finite innovation variance",
+    fixed = TRUE
+  )
+  expect_match(
+    error_message,
+    "requested coordinate/time resolution is not representable",
+    fixed = TRUE
+  )
+})
+
+test_that("stable CAR recurrence is shared by reconstruction and prediction", {
+
+  rho <- 1 - .Machine$double.eps / 2
+  coordinates <- c(0, 0.5)
+  data <- data.frame(
+    time = coordinates,
+    id = factor(c("old", "old"))
+  )
+  sd_prior <- prior(
+    "normal",
+    list(mean = 0, sd = 1),
+    truncation = list(lower = 0, upper = Inf)
+  )
+  result <- JAGS_formula(
+    formula = ~ 1 + car(time | id),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(
+        sd = sd_prior,
+        rho = prior("normal", list(mean = 0, sd = 0.5))
+      )
+    )
+  )
+  random_term <- result$formula_design$random_effects[[1L]]
+  latent_names <- as.vector(
+    BayesTools:::.bt_random_effect_latent_names(
+      random_term = random_term,
+      n_groups = 1L,
+      n_columns = 2L
+    )
+  )
+  posterior_values <- c(0, 1, rho, 0, 1)
+  names(posterior_values) <- c(
+    "mu_intercept",
+    unique(random_term$sd_parameter_names),
+    random_term$correlation$rho_name,
+    latent_names
+  )
+  posterior <- matrix(
+    posterior_values,
+    nrow = 1L,
+    dimnames = list(NULL, names(posterior_values))
+  )
+  transition <- BayesTools:::.bt_random_effect_markov_transition(
+    rho = rho,
+    left_coordinate = coordinates[1L],
+    right_coordinate = coordinates[2L]
+  )
+  expect_identical(
+    unname(BayesTools:::.bt_random_effect_rho_draws(
+      random_term = random_term,
+      posterior = posterior
+    )),
+    unname(rho)
+  )
+
+  reconstructed <- BayesTools:::.bt_random_effect_structured_dense_contribution(
+    random_term = random_term,
+    model_matrix = random_term$model_matrix,
+    group_map = random_term$group_map,
+    posterior = posterior,
+    scale_draws = matrix(1, nrow = 1L, ncol = 2L)
+  )
+  expect_equal(
+    unname(drop(reconstructed)),
+    c(0, sqrt(transition$innovation_variance)),
+    tolerance = 0
+  )
+
+  fit <- coda::mcmc(posterior)
+  attr(fit, "formula_design") <- list(mu = result$formula_design)
+  new_data <- data.frame(
+    time = coordinates,
+    id = factor(c("new", "new"), levels = c("old", "new"))
+  )
+  set.seed(742)
+  prediction <- JAGS_evaluate_formula(
+    fit = fit,
+    parameter = "mu",
+    data = new_data,
+    prior_list = result$prior_list,
+    formula_target = "conditional",
+    new_levels = "sample"
+  )
+  set.seed(742)
+  latent <- stats::rnorm(2L)
+  expected_prediction <- c(
+    latent[1L],
+    transition$phi * latent[1L] +
+      sqrt(transition$innovation_variance) * latent[2L]
+  )
+  expect_equal(
+    unname(drop(prediction)),
+    expected_prediction,
+    tolerance = 0
+  )
+
+  bridge <- BayesTools:::.bt_random_effect_markov_conditional_unit_draw(
+    observed_columns = 1L,
+    missing_columns = 2L,
+    observed_unit = 0,
+    rho = rho,
+    column_coordinates = coordinates,
+    innovations = 1
+  )
+  expect_equal(
+    unname(bridge),
+    sqrt(transition$innovation_variance),
+    tolerance = 0
+  )
+})
+
 test_that("layout Cholesky blocks follow group-specific principal subsets", {
 
   model_matrix <- matrix(0, nrow = 7L, ncol = 6L)
@@ -516,6 +761,46 @@ test_that("structured conditional recurrences match exact Gaussian conditioning"
       info = structure
     )
   }
+})
+
+test_that("CAR bridge variance is evaluated ratio-first", {
+
+  coordinates <- c(0, 1e-320, 2e-320)
+  left_transition <- BayesTools:::.bt_random_effect_markov_transition(
+    rho = 0.5,
+    left_coordinate = coordinates[1L],
+    right_coordinate = coordinates[2L]
+  )
+  right_transition <- BayesTools:::.bt_random_effect_markov_transition(
+    rho = 0.5,
+    left_coordinate = coordinates[2L],
+    right_coordinate = coordinates[3L]
+  )
+  span_transition <- BayesTools:::.bt_random_effect_markov_transition(
+    rho = 0.5,
+    left_coordinate = coordinates[1L],
+    right_coordinate = coordinates[3L]
+  )
+  multiply_first <-
+    left_transition$innovation_variance *
+      right_transition$innovation_variance /
+      span_transition$innovation_variance
+  expected_variance <-
+    left_transition$innovation_variance *
+      (right_transition$innovation_variance /
+         span_transition$innovation_variance)
+  expect_identical(multiply_first, 0)
+  expect_gt(expected_variance, 0)
+
+  draw <- BayesTools:::.bt_random_effect_markov_conditional_unit_draw(
+    observed_columns = c(1L, 3L),
+    missing_columns = 2L,
+    observed_unit = c(0, 0),
+    rho = 0.5,
+    column_coordinates = coordinates,
+    innovations = 1
+  )
+  expect_equal(unname(draw), sqrt(expected_variance), tolerance = 0)
 })
 
 test_that("structured conditional wrapper preserves innovation and SD semantics", {
@@ -942,5 +1227,27 @@ test_that("row-indexed HAR and CAR use the compact structured projection", {
       grepl("inprod(", result$formula_syntax, fixed = TRUE),
       info = structure
     )
+    if(identical(structure, "car")){
+      expect_match(
+        result$formula_syntax,
+        "mu__xREx__id_xRE_CAR_LOG_PHIX[",
+        fixed = TRUE
+      )
+      expect_match(
+        result$formula_syntax,
+        " <- pexp(-2 * mu__xREx__id_xRE_CAR_LOG_PHIX[",
+        fixed = TRUE
+      )
+      expect_false(grepl(
+        "pow(mu__xREx__id_rho",
+        result$formula_syntax,
+        fixed = TRUE
+      ))
+      expect_false(grepl(
+        "1 - pow(mu__xREx__id_xRE_CAR_PHIX",
+        result$formula_syntax,
+        fixed = TRUE
+      ))
+    }
   }
 })

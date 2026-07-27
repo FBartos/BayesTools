@@ -632,7 +632,17 @@
     context = "Random-effect prediction metadata"
   )
   column_coordinates <- if(identical(structure, "car")){
-    random_term$car$time_values
+    correlation <- .bt_random_effect_correlation_metadata(
+      random_term = random_term,
+      structure = structure,
+      context = "Random-effect prediction metadata"
+    )
+    .bt_random_effect_car_time_values(
+      random_term = random_term,
+      correlation = correlation,
+      n_columns = n_columns,
+      context = "Random-effect prediction metadata"
+    )
   }else{
     seq_len(n_columns)
   }
@@ -666,6 +676,7 @@
 
   group_rows    <- group_rows[nonempty]
   group_columns <- group_columns[nonempty]
+  active_groups <- groups[nonempty]
   subset_keys   <- vapply(group_columns, paste, collapse = ",", character(1))
   unique_keys   <- unique(subset_keys)
   subset_groups <- lapply(unique_keys, function(key) which(subset_keys == key))
@@ -685,12 +696,19 @@
       effects <- matrix(NA_real_, nrow = length(group_index),
                         ncol = length(columns))
       for(index in seq_along(group_index)){
+        group_position <- group_index[index]
         effects[index, ] <- .bt_random_effect_prediction_structured_subset_transform(
           structure = structure,
           columns = columns,
           latent = z[index, ],
           rho = rho_draws[draw],
-          coordinates = coordinates
+          coordinates = coordinates,
+          context = paste0(
+            "Random-effect new-group prediction",
+            .bt_random_effect_metadata_block_detail(random_term),
+            ", posterior draw ", draw,
+            ", group ", active_groups[group_position]
+          )
         )
       }
       effects <- sweep(
@@ -771,7 +789,8 @@
     columns,
     latent,
     rho,
-    coordinates){
+    coordinates,
+    context = NULL){
 
   .bt_random_effect_structured_subset_transform(
     structure = structure,
@@ -779,7 +798,8 @@
     latent = latent,
     rho = rho,
     global_n_columns = length(coordinates),
-    column_coordinates = coordinates
+    column_coordinates = coordinates,
+    context = context
   )
 }
 

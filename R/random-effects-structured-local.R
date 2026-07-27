@@ -225,10 +225,110 @@
   invisible(TRUE)
 }
 
+# Format the caller identity attached to structured Markov numerical failures.
+.bt_random_effect_markov_error_label <- function(context, operation){
+
+  if(is.null(context)){
+    return(paste0("Structured Markov ", operation))
+  }
+  if(!is.character(context) || length(context) != 1L ||
+     is.na(context) || !nzchar(context)){
+    stop("'context' must be NULL or one non-empty string.", call. = FALSE)
+  }
+
+  paste0(context, ": structured Markov ", operation)
+}
+
+# Return a stable Markov transition over one increasing coordinate interval.
+.bt_random_effect_markov_transition <- function(
+    rho, left_coordinate, right_coordinate, context = NULL){
+
+  if(!is.numeric(rho) || length(rho) != 1L || !is.finite(rho)){
+    stop("'rho' must be one finite numeric value.", call. = FALSE)
+  }
+  if(!is.numeric(left_coordinate) || length(left_coordinate) != 1L ||
+     !is.finite(left_coordinate) ||
+     !is.numeric(right_coordinate) || length(right_coordinate) != 1L ||
+     !is.finite(right_coordinate)){
+    stop(
+      "Structured Markov transition coordinates must be finite numeric values.",
+      call. = FALSE
+    )
+  }
+  error_label <- .bt_random_effect_markov_error_label(
+    context,
+    operation = "transition"
+  )
+
+  gap <- right_coordinate - left_coordinate
+  transition_values <- format(
+    c(left_coordinate, right_coordinate, gap, rho),
+    digits = 17L,
+    scientific = TRUE,
+    trim = TRUE
+  )
+  if(!is.finite(gap) || gap <= 0){
+    stop(
+      error_label, " from coordinate ",
+      transition_values[1L], " to ", transition_values[2L],
+      " has a non-positive or non-finite gap (rho = ",
+      transition_values[4L], ", gap = ",
+      transition_values[3L], ").",
+      call. = FALSE
+    )
+  }
+  if(rho == 0){
+    return(list(
+      log_phi = -Inf,
+      phi = 0,
+      innovation_variance = 1
+    ))
+  }
+
+  if(rho > 0){
+    log_phi <- gap * base::log(rho)
+    phi <- base::exp(log_phi)
+  }else{
+    if(gap != floor(gap)){
+      stop(
+        error_label, " with a negative correlation requires an integer ",
+        "coordinate gap; transition from coordinate ",
+        transition_values[1L], " to ",
+        transition_values[2L], " has rho = ", transition_values[4L],
+        " and gap = ", transition_values[3L], ".",
+        call. = FALSE
+      )
+    }
+    log_phi <- gap * base::log(-rho)
+    phi <- base::exp(log_phi)
+    if(gap %% 2 != 0){
+      phi <- -phi
+    }
+  }
+  innovation_variance <- -base::expm1(2 * log_phi)
+  if(!is.finite(innovation_variance) || innovation_variance <= 0){
+    stop(
+      error_label, " from coordinate ",
+      transition_values[1L], " to ", transition_values[2L],
+      " has a non-positive or non-finite innovation variance (rho = ",
+      transition_values[4L], ", gap = ",
+      transition_values[3L], "). The requested coordinate/time resolution ",
+      "is not representable for this rho.",
+      call. = FALSE
+    )
+  }
+
+  list(
+    log_phi = log_phi,
+    phi = phi,
+    innovation_variance = innovation_variance
+  )
+}
+
 # Exact Cholesky factor for a principal structured-correlation block.
 .bt_random_effect_structured_subset_cholesky <- function(
     structure, columns, rho, global_n_columns,
-    column_coordinates = NULL){
+    column_coordinates = NULL, context = NULL){
 
   structure <- .bt_random_effect_structured_local_normalize_structure(structure)
   check_int(global_n_columns, "global_n_columns", lower = 1, allow_NA = FALSE)
@@ -272,14 +372,15 @@
 
   .bt_random_effect_markov_subset_cholesky(
     coordinates = coordinates,
-    rho = rho
+    rho = rho,
+    context = context
   )
 }
 
 # Exact principal structured-correlation block without global materialization.
 .bt_random_effect_structured_subset_correlation <- function(
     structure, columns, rho, global_n_columns,
-    column_coordinates = NULL){
+    column_coordinates = NULL, context = NULL){
 
   structure <- .bt_random_effect_structured_local_normalize_structure(structure)
   check_int(global_n_columns, "global_n_columns", lower = 1, allow_NA = FALSE)
@@ -305,13 +406,29 @@
     n_columns = global_n_columns,
     column_coordinates = column_coordinates
   )[columns]
-  rho^abs(outer(coordinates, coordinates, "-"))
+  coordinate_order <- order(coordinates)
+  sorted_correlation <- tcrossprod(
+    .bt_random_effect_markov_subset_cholesky(
+      coordinates = coordinates[coordinate_order],
+      rho = rho,
+      context = context
+    )
+  )
+  original_order <- order(coordinate_order)
+  correlation <- sorted_correlation[
+    original_order,
+    original_order,
+    drop = FALSE
+  ]
+  diag(correlation) <- 1
+
+  correlation
 }
 
 # Apply a principal structured Cholesky factor without materializing it.
 .bt_random_effect_structured_subset_transform <- function(
     structure, columns, latent, rho, global_n_columns,
-    column_coordinates = NULL){
+    column_coordinates = NULL, context = NULL){
 
   structure <- .bt_random_effect_structured_local_normalize_structure(structure)
   check_int(global_n_columns, "global_n_columns", lower = 1, allow_NA = FALSE)
@@ -366,11 +483,15 @@
     return(out)
   }
 
-  gaps <- diff(coordinates)
   for(index in 2:length(columns)){
-    phi <- rho^gaps[index - 1L]
-    out[index] <- phi * out[index - 1L] +
-      sqrt(1 - phi^2) * latent[index]
+    transition <- .bt_random_effect_markov_transition(
+      rho = rho,
+      left_coordinate = coordinates[index - 1L],
+      right_coordinate = coordinates[index],
+      context = context
+    )
+    out[index] <- transition$phi * out[index - 1L] +
+      sqrt(transition$innovation_variance) * latent[index]
   }
 
   out
@@ -405,7 +526,8 @@
 }
 
 # Markov Cholesky recurrence for irregular AR1/CAR principal blocks.
-.bt_random_effect_markov_subset_cholesky <- function(coordinates, rho){
+.bt_random_effect_markov_subset_cholesky <- function(
+    coordinates, rho, context = NULL){
 
   n_columns <- length(coordinates)
   L <- matrix(0, nrow = n_columns, ncol = n_columns)
@@ -414,11 +536,15 @@
     return(L)
   }
 
-  gaps <- diff(coordinates)
   for(row in 2:n_columns){
-    phi <- rho^gaps[row - 1L]
-    L[row, ] <- phi * L[row - 1L, ]
-    L[row, row] <- sqrt(1 - phi^2)
+    transition <- .bt_random_effect_markov_transition(
+      rho = rho,
+      left_coordinate = coordinates[row - 1L],
+      right_coordinate = coordinates[row],
+      context = context
+    )
+    L[row, ] <- transition$phi * L[row - 1L, ]
+    L[row, row] <- sqrt(transition$innovation_variance)
   }
 
   L

@@ -42,7 +42,7 @@ mean **implemented**.
 | D28 | Implemented and verified | No remaining work |
 | D29 | Implemented and verified | No remaining work |
 | D30 | Implemented and verified | No remaining work |
-| D31 | Decision confirmed; implementation pending | Use stable CAR recurrences and reject only unrepresentable innovations |
+| D31 | Implemented and verified | No remaining work |
 | D32 | Implemented and verified | No remaining work |
 
 ## Maintainer decisions after the second pass
@@ -1814,7 +1814,7 @@ support-derived representability check fails. This preserves more valid models
 than an arbitrary coordinate-separation tolerance while remaining
 mathematically faithful.
 
-**Audit status: decision confirmed; implementation pending.**
+**Audit status: implemented and verified.**
 
 **Decision:** ok
 
@@ -1823,6 +1823,43 @@ log-transition/recurrence implementation and its representability failure rule.
 Do not add epsilons, coordinate jitter, or implicit time rescaling. Apply the
 same transition calculation to syntax, native/backend evaluation,
 reconstruction, prediction, and covariance paths.
+
+**Implementation outcome.** CAR transitions now materialize
+`log_phi = gap * log(rho)` and retain the innovation variance independently of
+the rounded `phi`. R paths use `-expm1(2 * log_phi)`; generated JAGS uses the
+algebraically identical and backend-stable `pexp(-2 * log_phi, 1)`. The latter
+was checked against R through the subnormal boundary on JAGS 4.3.1. Rho zero is
+handled exactly as an independent transition. Negative-rho AR/HAR recurrences
+retain their integer-gap parity.
+
+Reconstruction, new-level prediction, bridge replay, conditional Markov
+bridges, Cholesky factors, exported correlation draws, and marginal covariance
+now share the recurrence and canonical CAR coordinates. Conditional bridge
+variance is evaluated ratio-first, and marginal covariance is formed
+factor-first as `tcrossprod(Z %*% L)` (or its rowwise diagonal) so a
+representable contrast variance is not lost through a rounded dense
+correlation matrix. Centered CAR syntax uses sequential conditional normals
+instead of `dmnorm.vcov`; the obsolete dense CAR Cholesky compiler now rejects
+CAR explicitly.
+
+Compilation validates the upper rho support and both endpoints of centered SD
+support using the exact arithmetic emitted to JAGS. A transition is rejected
+only when its stable innovation or required centered precision is
+non-representable; errors identify the block/path, draw or group where
+available, rho, canonical coordinates, and gap. Supports approaching zero or
+infinity are therefore rejected for centered CAR when JAGS precision cannot
+represent them. No epsilon, variance clamp, coordinate jitter, or implicit time
+rescaling is used.
+
+Adversarial tests cover the representable upper-rho/gap-0.5 case, subnormal and
+minimum-positive gaps, exact operation order, rho zero, negative parity,
+ratio-first bridges, factor-first full/diagonal covariance, coordinate
+conflicts, all generated-JAGS layouts, Fisher-z parity, prior-support
+boundaries, and a real centered-CAR JAGS sample. The final focused unit pass
+completed 2,115 assertions with no failures, warnings, or skips; the isolated
+real-JAGS check completed eight assertions. The fit, fixture, and fitted-visual
+profiles remain part of the final cache refresh because generated CAR syntax
+changed.
 
 ## D32. Nonzero locations in mean-difference and orthonormal factor priors
 

@@ -1,5 +1,64 @@
 # Direct linear-time compilers for structured random-effect transforms.
 
+.bt_JAGS_car_transition_names <- function(parameter){
+
+  list(
+    log_phi = paste0(parameter, "_xRE_CAR_LOG_PHIX"),
+    phi = paste0(parameter, "_xRE_CAR_PHIX"),
+    innovation_var = paste0(parameter, "_xRE_CAR_INNOV_VARx")
+  )
+}
+
+.bt_JAGS_car_transition_syntax <- function(parameter, rho_name, gap, index){
+
+  if(!is.numeric(gap) || length(gap) != 1L || is.na(gap) ||
+     !is.finite(gap) || gap <= 0){
+    stop("CAR transition gaps must be finite and strictly positive.",
+         call. = FALSE)
+  }
+  if(length(index) == 0L || any(is.na(index))){
+    stop("CAR transition indices must be non-missing.", call. = FALSE)
+  }
+
+  names <- .bt_JAGS_car_transition_names(parameter)
+  index <- paste(index, collapse = ",")
+  log_phi <- paste0(names$log_phi, "[", index, "]")
+  phi <- paste0(names$phi, "[", index, "]")
+  innovation_var <- paste0(names$innovation_var, "[", index, "]")
+
+  list(
+    syntax = c(
+      paste0(
+        log_phi, " <- ", .bt_JAGS_numeric_literal(gap),
+        " * log(", rho_name, ")"
+      ),
+      paste0(phi, " <- exp(", log_phi, ")"),
+      paste0(
+        innovation_var, " <- pexp(-2 * ", log_phi, ", 1)"
+      )
+    ),
+    log_phi = log_phi,
+    phi = phi,
+    innovation_var = innovation_var
+  )
+}
+
+.bt_JAGS_car_time_gaps <- function(car_time_values, K){
+
+  if(!is.numeric(car_time_values) || length(car_time_values) != K ||
+     any(is.na(car_time_values)) || any(!is.finite(car_time_values))){
+    stop("CAR time coordinates must be finite and match its design columns.",
+         call. = FALSE)
+  }
+
+  gaps <- diff(car_time_values)
+  if(any(gaps <= 0)){
+    stop("CAR time coordinates must be strictly increasing.", call. = FALSE)
+  }
+
+  gaps
+}
+
 .bt_JAGS_structured_dense_transform <- function(parameter, structure, K,
                                                 n_groups, rho_name,
                                                 sd_name,
@@ -56,27 +115,41 @@
       " }\n"
     ))
   }else{
-    gap <- if(identical(structure, "car")){
-      diff(car_time_values)
+    if(identical(structure, "car")){
+      gaps <- .bt_JAGS_car_time_gaps(car_time_values, K)
+      transition_names <- .bt_JAGS_car_transition_names(parameter)
+      for(i in 2:K){
+        transition <- .bt_JAGS_car_transition_syntax(
+          parameter = parameter,
+          rho_name = rho_name,
+          gap = gaps[i - 1L],
+          index = i
+        )
+        syntax <- c(syntax, paste0(transition$syntax, "\n"))
+      }
+      phi_name <- transition_names$phi
+      innovation_name <- transition_names$innovation_var
+      innovation_expression <- paste0(
+        "sqrt(", innovation_name, "[i])"
+      )
     }else{
-      rep(1, K - 1L)
-    }
-    phi_name <- paste0(parameter, "_xRE_AR_PHIX")
-    innovation_name <- paste0(parameter, "_xRE_AR_INNOVx")
-    for(i in 2:K){
-      syntax <- c(syntax, paste0(
-        phi_name, "[", i, "] <- pow(", rho_name, ", ",
-        .bt_JAGS_numeric_literal(gap[i - 1L]), ")\n",
-        innovation_name, "[", i, "] <- sqrt(1 - pow(",
-        phi_name, "[", i, "], 2))\n"
-      ))
+      phi_name <- paste0(parameter, "_xRE_AR_PHIX")
+      innovation_name <- paste0(parameter, "_xRE_AR_INNOVx")
+      for(i in 2:K){
+        syntax <- c(syntax, paste0(
+          phi_name, "[", i, "] <- pow(", rho_name, ", 1)\n",
+          innovation_name, "[", i, "] <- sqrt(1 - pow(",
+          phi_name, "[", i, "], 2))\n"
+        ))
+      }
+      innovation_expression <- paste0(innovation_name, "[i]")
     }
     syntax <- c(syntax, paste0(
       " for(g in 1:", n_groups, "){\n",
       "   ", unit_name, "[g,1] <- ", z_name, "[g,1]\n",
       "   for(i in 2:", K, "){\n",
       "     ", unit_name, "[g,i] <- ", phi_name, "[i] * ",
-      unit_name, "[g,i - 1] + ", innovation_name, "[i] * ", z_name,
+      unit_name, "[g,i - 1] + ", innovation_expression, " * ", z_name,
       "[g,i]\n",
       "   }\n",
       if(isTRUE(row_indexed_external_sd)) "" else paste0(
@@ -172,6 +245,24 @@
             ",", column, "]"
           ))
         }
+      }else if(identical(layout$structure, "car")){
+        gap <- coordinates[local] - coordinates[local - 1L]
+        transition <- .bt_JAGS_car_transition_syntax(
+          parameter = parameter,
+          rho_name = rho_name,
+          gap = gap,
+          index = c(group, column)
+        )
+        syntax <- c(
+          syntax,
+          transition$syntax,
+          paste0(
+            unit_name, "[", group, ",", column, "] <- ",
+            transition$phi, " * ", unit_name, "[", group, ",", previous,
+            "] + sqrt(", transition$innovation_var, ") * ", z_name, "[",
+            group, ",", column, "]"
+          )
+        )
       }else{
         gap <- coordinates[local] - coordinates[local - 1L]
         phi <- paste0(
@@ -208,6 +299,54 @@
     "   }\n",
     " }\n"
   )
+}
+
+.bt_JAGS_centered_car_random <- function(parameter, K, n_groups, sd_name,
+                                         rho_name, car_time_values){
+
+  if(K == 1L){
+    return(.bt_JAGS_centered_independent_random(
+      parameter = parameter,
+      K = K,
+      n_groups = n_groups,
+      sd_name = sd_name
+    ))
+  }
+
+  coef_name <- paste0(parameter, "_xRE_COEFx")
+  z_name <- paste0(parameter, "_xRE_Zx")
+  gaps <- .bt_JAGS_car_time_gaps(car_time_values, K)
+  transition_names <- .bt_JAGS_car_transition_names(parameter)
+  syntax <- character()
+
+  for(i in 2:K){
+    transition <- .bt_JAGS_car_transition_syntax(
+      parameter = parameter,
+      rho_name = rho_name,
+      gap = gaps[i - 1L],
+      index = i
+    )
+    syntax <- c(syntax, transition$syntax)
+  }
+
+  syntax <- c(syntax, paste0(
+    " for(g in 1:", n_groups, "){\n",
+    "   ", coef_name, "[g,1] ~ dnorm(0, pow(", sd_name, "[1], -2))\n",
+    "   ", z_name, "[g,1] <- ", coef_name, "[g,1] / ", sd_name, "[1]\n",
+    "   for(i in 2:", K, "){\n",
+    "     ", coef_name, "[g,i] ~ dnorm(", sd_name, "[i] * ",
+    transition_names$phi, "[i] * ", coef_name, "[g,i - 1] / ",
+    sd_name, "[i - 1], pow(", sd_name, "[i], -2) / ",
+    transition_names$innovation_var, "[i])\n",
+    "     ", z_name, "[g,i] <- (", coef_name, "[g,i] / ", sd_name,
+    "[i] - ", transition_names$phi, "[i] * ", coef_name,
+    "[g,i - 1] / ", sd_name, "[i - 1]) / sqrt(",
+    transition_names$innovation_var, "[i])\n",
+    "   }\n",
+    " }\n"
+  ))
+
+  paste0(paste(syntax, collapse = "\n"), "\n")
 }
 
 .bt_JAGS_centered_correlated_random <- function(parameter, K, n_groups,

@@ -212,7 +212,12 @@
   check_bool(include_correlation, "include_correlation", allow_NA = FALSE)
   check_bool(require_rho, "require_rho", allow_NA = FALSE)
   if(identical(structure, "car")){
-    distance_matrix <- .bt_random_effect_validate_car_distance_matrix(distance_matrix, K)
+    stop(
+      "Dense CAR Cholesky compilation is unsupported. Use the CAR Markov ",
+      "compiler; use .bt_JAGS_structured_corr_direct() only when derived ",
+      "dense correlation nodes are required.",
+      call. = FALSE
+    )
   }
 
   L_name <- paste0(node_prefix, "_xRE_CORx_L")
@@ -269,8 +274,6 @@
         "1"
       }else if(structure %in% c("cs", "hcs")){
         rho_name
-      }else if(identical(structure, "car")){
-        paste0("pow(", rho_name, ", ", .bt_JAGS_numeric_literal(distance_matrix[row, column]), ")")
       }else{
         paste0("pow(", rho_name, ", ", abs(row - column), ")")
       }
@@ -316,7 +319,7 @@
       sample_fixed = rho_info$sample_fixed,
       rho_scale = rho_info$rho_scale,
       bounds = rho_info$bounds,
-      distance_matrix = if(identical(structure, "car")) distance_matrix else NULL,
+      distance_matrix = NULL,
       cholesky_name = L_name,
       correlation_name = if(include_correlation) R_name else NULL
     )
@@ -393,9 +396,9 @@
         }else if(structure %in% c("cs", "hcs")){
           rho_name
         }else if(identical(structure, "car")){
-          paste0(
-            "pow(", rho_name, ", ",
-            .bt_JAGS_numeric_literal(distance_matrix[row, column]), ")"
+          .bt_JAGS_car_correlation_expression(
+            rho_name,
+            distance_matrix[row, column]
           )
         }else{
           paste0("pow(", rho_name, ", ", abs(row - column), ")")
@@ -477,6 +480,228 @@
   )
 }
 
+.bt_JAGS_car_correlation_expression <- function(rho_name, distance){
+
+  paste0(
+    "exp(", .bt_JAGS_numeric_literal(distance), " * log(", rho_name, "))"
+  )
+}
+
+.bt_random_effect_car_rho_support_upper <- function(rho_prior, rho_scale,
+                                                    bounds,
+                                                    context = "CAR rho prior"){
+
+  support <- .posterior_support_from_prior(rho_prior)
+  if(is.null(support) || !is.numeric(support$bounds) ||
+     length(support$bounds) != 2L ||
+     any(is.na(support$bounds))){
+    stop(
+      context,
+      " does not expose an upper support bound for JAGS innovation validation.",
+      call. = FALSE
+    )
+  }
+
+  sample_upper <- support$bounds[[2L]]
+  interior <- .bt_random_effect_representable_rho_bounds(
+    bounds,
+    structure = "car"
+  )
+  if(identical(rho_scale, "fisher_z")){
+    rho_upper <- tanh(sample_upper)
+    rho_upper <- max(
+      interior[["lower"]],
+      min(interior[["upper"]], rho_upper)
+    )
+  }else if(identical(rho_scale, "logit")){
+    rho_upper <- interior[["lower"]] +
+      (interior[["upper"]] - interior[["lower"]]) *
+      stats::plogis(sample_upper)
+  }else if(identical(rho_scale, "rho")){
+    rho_upper <- min(interior[["upper"]], sample_upper)
+  }else{
+    stop(context, " uses an unsupported rho scale.", call. = FALSE)
+  }
+
+  if(!is.numeric(rho_upper) || length(rho_upper) != 1L ||
+     is.na(rho_upper) || !is.finite(rho_upper) ||
+     rho_upper < bounds[["lower"]] || rho_upper >= bounds[["upper"]]){
+    stop(
+      context,
+      " does not have a usable upper support bound after transformation.",
+      call. = FALSE
+    )
+  }
+
+  rho_upper
+}
+
+.bt_random_effect_car_centered_sd_support <- function(
+    sd_prior, context = "Centered CAR SD prior"){
+
+  support <- .posterior_support_from_prior(sd_prior)
+  if(is.null(support) || !is.numeric(support$bounds) ||
+     length(support$bounds) != 2L || any(is.na(support$bounds))){
+    stop(
+      context,
+      " does not expose support bounds for JAGS precision validation.",
+      call. = FALSE
+    )
+  }
+
+  sd_support <- c(
+    lower = support$bounds[[1L]],
+    upper = support$bounds[[2L]]
+  )
+  if(sd_support[["lower"]] < 0 || sd_support[["upper"]] <= 0 ||
+     sd_support[["lower"]] > sd_support[["upper"]]){
+    stop(context, " does not have valid non-negative SD support.",
+         call. = FALSE)
+  }
+
+  sd_support
+}
+
+.bt_random_effect_validate_car_jags_innovation_support <- function(
+    coordinate_sets, rho_prior, rho_scale, bounds, block_name,
+    centered = FALSE, sd_prior = NULL){
+
+  if(is.numeric(coordinate_sets)){
+    coordinate_sets <- list(coordinate_sets)
+  }
+  if(!is.list(coordinate_sets)){
+    stop("CAR coordinate sets must be supplied as a list.", call. = FALSE)
+  }
+  check_bool(centered, "centered", allow_NA = FALSE)
+
+  rho_upper <- .bt_random_effect_car_rho_support_upper(
+    rho_prior = rho_prior,
+    rho_scale = rho_scale,
+    bounds = bounds,
+    context = paste0("CAR random-effect block '", block_name, "' rho prior")
+  )
+  centered_sd_support <- if(isTRUE(centered)){
+    .bt_random_effect_car_centered_sd_support(
+      sd_prior,
+      context = paste0(
+        "CAR random-effect block '", block_name, "' centered SD prior"
+      )
+    )
+  }else{
+    NULL
+  }
+  if(!is.null(centered_sd_support)){
+    initial_precision <- centered_sd_support ^ -2
+    invalid_initial_precision <- !is.finite(initial_precision) |
+      initial_precision <= 0
+    if(any(invalid_initial_precision)){
+      endpoint <- which(invalid_initial_precision)[1L]
+      stop(
+        "CAR random-effect block '", block_name,
+        "' has an unrepresentable initial JAGS precision at the ",
+        names(centered_sd_support)[endpoint],
+        " centered SD support ",
+        format(
+          centered_sd_support[endpoint],
+          digits = 17,
+          scientific = TRUE
+        ),
+        ". The emitted initial precision pow(sd, -2) is non-finite or ",
+        "non-positive. Centered CAR SD support endpoints must both be ",
+        "representable; supports approaching zero or infinity are not ",
+        "representable by the JAGS backend.",
+        call. = FALSE
+      )
+    }
+  }
+
+  for(set in seq_along(coordinate_sets)){
+    coordinates <- coordinate_sets[[set]]
+    if(!is.numeric(coordinates) || any(is.na(coordinates)) ||
+       any(!is.finite(coordinates))){
+      stop("CAR time coordinates must contain only finite values.",
+           call. = FALSE)
+    }
+    if(length(coordinates) < 2L){
+      next
+    }
+    gaps <- diff(coordinates)
+    if(any(!is.finite(gaps)) || any(gaps <= 0)){
+      stop("CAR time coordinates must be strictly increasing with finite gaps.",
+           call. = FALSE)
+    }
+
+    log_phi <- gaps * log(rho_upper)
+    innovation_var <- stats::pexp(-2 * log_phi, rate = 1)
+    invalid_innovation <- is.na(log_phi) | is.nan(log_phi) |
+      !is.finite(innovation_var) | innovation_var <= 0
+    centered_precision <- if(!is.null(centered_sd_support)){
+      precision <- vapply(
+        centered_sd_support,
+        function(sd_endpoint){
+          sd_endpoint ^ -2 / innovation_var
+        },
+        numeric(length(innovation_var))
+      )
+      dim(precision) <- c(
+        length(innovation_var),
+        length(centered_sd_support)
+      )
+      dimnames(precision) <- list(NULL, names(centered_sd_support))
+      precision
+    }else{
+      NULL
+    }
+    invalid_precision <- if(!is.null(centered_precision)){
+      !is.finite(centered_precision) | centered_precision <= 0
+    }else{
+      matrix(
+        FALSE,
+        nrow = length(innovation_var),
+        ncol = 0L
+      )
+    }
+    if(any(invalid_innovation) || any(invalid_precision)){
+      if(any(invalid_innovation)){
+        transition <- which(invalid_innovation)[1L]
+        reason <- "The stable innovation variance is zero or non-finite."
+      }else{
+        invalid_index <- which(invalid_precision, arr.ind = TRUE)[1L, ]
+        transition <- invalid_index[[1L]]
+        endpoint <- invalid_index[[2L]]
+        reason <- paste0(
+          "At the ", names(centered_sd_support)[endpoint],
+          " centered SD support ",
+          format(
+            centered_sd_support[endpoint],
+            digits = 17,
+            scientific = TRUE
+          ),
+          ", the emitted conditional-normal precision ",
+          "pow(sd, -2) / innovation_var is non-finite or non-positive."
+        )
+      }
+      stop(
+        "CAR random-effect block '", block_name,
+        "' has an unrepresentable JAGS innovation between time coordinates ",
+        format(coordinates[transition], digits = 17, scientific = TRUE),
+        " and ",
+        format(coordinates[transition + 1L], digits = 17, scientific = TRUE),
+        " (gap = ",
+        format(gaps[transition], digits = 17, scientific = TRUE),
+        ") at the upper rho support ",
+        format(rho_upper, digits = 17, scientific = TRUE),
+        ". ", reason, " ",
+        "Change the coordinate resolution or restrict the rho support explicitly; ",
+        "BayesTools does not add epsilon, jitter coordinates, or rescale CAR time.",
+        call. = FALSE
+      )
+    }
+  }
+
+  invisible(NULL)
+}
+
 .bt_JAGS_cholesky_crossprod_sum <- function(L_name, row, column, n_terms){
 
   if(n_terms < 1L){
@@ -537,8 +762,8 @@
     syntax <- c(syntax, paste0(
       rho_name, " <- max(",
       .bt_JAGS_numeric_literal(interior_bounds[["lower"]]), ", min(",
-      .bt_JAGS_numeric_literal(interior_bounds[["upper"]]), ", 2 * ilogit(2 * ",
-      sample_name, ") - 1))"
+      .bt_JAGS_numeric_literal(interior_bounds[["upper"]]), ", tanh(",
+      sample_name, ")))"
     ))
     monitor <- rho_name
   }else if(identical(rho_scale, "logit")){

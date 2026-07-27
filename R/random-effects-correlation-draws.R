@@ -119,6 +119,37 @@ random_effects_correlation_draws <- function(random_term, posterior_samples){
     out_of_support = "error",
     context = context
   )
+  if(identical(structure, "car")){
+    time_values <- .bt_random_effect_car_time_values(
+      random_term = random_term,
+      correlation = correlation,
+      n_columns = n_columns,
+      context = context
+    )
+    out <- array(
+      NA_real_,
+      dim = c(length(rho), n_columns, n_columns),
+      dimnames = output_dimnames
+    )
+    columns <- seq_len(n_columns)
+    for(draw in seq_along(rho)){
+      transition_context <- paste0(
+        "Random-effect correlation reconstruction",
+        .bt_random_effect_metadata_block_detail(random_term),
+        ", posterior draw ", draw
+      )
+      out[draw, , ] <- .bt_random_effect_structured_subset_correlation(
+        structure = structure,
+        columns = columns,
+        rho = rho[draw],
+        global_n_columns = n_columns,
+        column_coordinates = time_values,
+        context = transition_context
+      )
+    }
+    return(out)
+  }
+
   distance <- .bt_random_effect_correlation_draws_distance(
     random_term = random_term,
     correlation = correlation,
@@ -213,14 +244,40 @@ random_effects_correlation_draws <- function(random_term, posterior_samples){
     return(abs(outer(seq_len(n_columns), seq_len(n_columns), "-")))
   }
 
-  time_values <- correlation$time_values
-  if(is.null(time_values) && is.list(random_term$car)){
-    time_values <- random_term$car$time_values
+  time_values <- .bt_random_effect_car_time_values(
+    random_term = random_term,
+    correlation = correlation,
+    n_columns = n_columns,
+    context = context
+  )
+
+  .bt_random_effect_validate_car_distance_matrix(
+    abs(outer(time_values, time_values, "-")),
+    n_columns
+  )
+}
+
+
+# Reconcile the duplicated compact CAR coordinate metadata.
+.bt_random_effect_car_time_values <- function(
+    random_term, correlation, n_columns, context){
+
+  correlation_time <- if(is.list(correlation)){
+    correlation$time_values
+  }else{
+    NULL
   }
-  valid_time <- is.numeric(time_values) && length(time_values) == n_columns &&
-    !anyNA(time_values) && all(is.finite(time_values)) &&
-    !anyDuplicated(time_values) && all(diff(time_values) > 0)
-  if(!isTRUE(valid_time)){
+  car_time <- if(is.list(random_term$car)){
+    random_term$car$time_values
+  }else{
+    NULL
+  }
+  copies <- list(
+    "random_term$correlation$time_values" = correlation_time,
+    "random_term$car$time_values" = car_time
+  )
+  present <- !vapply(copies, is.null, logical(1))
+  if(!any(present)){
     stop(
       context,
       .bt_random_effect_metadata_block_detail(random_term),
@@ -229,8 +286,37 @@ random_effects_correlation_draws <- function(random_term, posterior_samples){
     )
   }
 
-  .bt_random_effect_validate_car_distance_matrix(
-    abs(outer(time_values, time_values, "-")),
-    n_columns
-  )
+  for(field in names(copies)[present]){
+    time_values <- copies[[field]]
+    valid_time <- is.numeric(time_values) &&
+      length(time_values) == n_columns &&
+      !anyNA(time_values) &&
+      all(is.finite(time_values)) &&
+      !anyDuplicated(time_values) &&
+      all(diff(time_values) > 0)
+    if(!isTRUE(valid_time)){
+      stop(
+        context,
+        .bt_random_effect_metadata_block_detail(random_term),
+        " is missing canonical ordered CAR time coordinates in '",
+        field,
+        "'. Coordinates must be finite, unique, and strictly increasing.",
+        call. = FALSE
+      )
+    }
+  }
+
+  if(all(present) &&
+     !identical(as.numeric(correlation_time), as.numeric(car_time))){
+    stop(
+      context,
+      .bt_random_effect_metadata_block_detail(random_term),
+      " contains conflicting canonical CAR time coordinates in ",
+      "'random_term$correlation$time_values' and ",
+      "'random_term$car$time_values'.",
+      call. = FALSE
+    )
+  }
+
+  as.numeric(copies[[which(present)[1L]]])
 }

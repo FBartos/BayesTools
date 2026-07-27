@@ -924,6 +924,180 @@ test_that("car covariance uses continuous-time distances", {
   )
 })
 
+test_that("car one-hot covariance routes through the stable factor", {
+
+  result <- .re_cov_formula(
+    formula = ~ 1 + car(time | id),
+    data = .re_cov_structured_data(),
+    prior_random = prior_random(
+      id = random_block(
+        sd = .re_cov_sd_prior(),
+        rho = prior("normal", list(0, 0.5))
+      )
+    )
+  )
+  random_term <- .re_cov_term(result, "id")
+  posterior <- .re_cov_posterior(c(
+    .re_cov_sd_values(random_term, 2),
+    .re_cov_rho_sample(random_term, 0.5)
+  ))
+  outputs <- testthat::with_mocked_bindings(
+    list(
+      full = .re_cov_output(result, posterior),
+      diagonal = .re_cov_output(
+        result,
+        posterior,
+        diagonal_only = TRUE
+      )
+    ),
+    .bt_random_effect_marginal_variance_one_sparse = function(...) {
+      stop("one-sparse shortcut must not be used", call. = FALSE)
+    },
+    .bt_random_effect_marginal_covariance_structured_one_hot = function(...) {
+      stop("one-hot shortcut must not be used", call. = FALSE)
+    },
+    .bt_random_effect_marginal_covariance_correlation_draws = function(...) {
+      stop("dense correlation reconstruction must not be used", call. = FALSE)
+    },
+    .package = "BayesTools"
+  )
+  expected <- .re_cov_expand(
+    random_term$model_matrix,
+    random_term$group_map,
+    .re_cov_car_correlation(c(0, 2, 5), 0.5) * 2^2
+  )
+
+  expect_equal(.re_cov_first(outputs$full), expected, tolerance = 1e-12)
+  expect_equal(
+    unname(outputs$diagonal$samples),
+    .re_cov_dense_diagonal(outputs$full),
+    tolerance = 1e-12
+  )
+})
+
+test_that("car covariance preserves upper-rho half-gap contrast variance", {
+
+  result <- .re_cov_formula(
+    formula = ~ 1 + car(time | id),
+    data = data.frame(
+      id = factor(c("a", "a")),
+      time = c(1, 1.5)
+    ),
+    prior_random = prior_random(
+      id = random_block(
+        sd = .re_cov_sd_prior(),
+        rho = prior("normal", list(0, 0.5))
+      )
+    )
+  )
+  random_term <- .re_cov_term(result, "id")
+  random_term$model_matrix <- matrix(
+    c(1, -1),
+    nrow = 1L,
+    dimnames = list("contrast", random_term$column_names)
+  )
+  random_term$group_map <- 1L
+  result$formula_design$random_effects[[1L]] <- random_term
+
+  rho <- 1 - .Machine$double.eps / 2
+  posterior <- .re_cov_posterior(c(
+    .re_cov_sd_values(random_term, 1),
+    .re_cov_rho_sample(random_term, rho)
+  ))
+  outputs <- testthat::with_mocked_bindings(
+    list(
+      full = .re_cov_output(result, posterior),
+      diagonal = .re_cov_output(
+        result,
+        posterior,
+        diagonal_only = TRUE
+      )
+    ),
+    .bt_random_effect_marginal_covariance_correlation_draws = function(...) {
+      stop("dense correlation reconstruction must not be used", call. = FALSE)
+    },
+    .bt_random_effect_marginal_variance_one_sparse = function(...) {
+      stop("one-sparse shortcut must not be used", call. = FALSE)
+    },
+    .bt_random_effect_marginal_covariance_structured_one_hot = function(...) {
+      stop("one-hot shortcut must not be used", call. = FALSE)
+    },
+    .package = "BayesTools"
+  )
+  log_phi <- 0.5 * log(rho)
+  expected <- (1 - exp(log_phi))^2 - expm1(2 * log_phi)
+
+  expect_identical(dim(outputs$full$samples), c(1L, 1L, 1L))
+  expect_identical(dim(outputs$diagonal$samples), c(1L, 1L))
+  expect_gt(outputs$full$samples[1L, 1L, 1L], 0)
+  expect_gt(outputs$diagonal$samples[1L, 1L], 0)
+  expect_equal(
+    unname(outputs$full$samples[1L, 1L, 1L]) / expected,
+    1,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    unname(outputs$diagonal$samples[1L, 1L]) / expected,
+    1,
+    tolerance = 1e-12
+  )
+})
+
+test_that("car covariance validates every compact coordinate copy", {
+
+  result <- .re_cov_formula(
+    formula = ~ 1 + car(time | id),
+    data = .re_cov_structured_data(),
+    prior_random = prior_random(
+      id = random_block(
+        sd = .re_cov_sd_prior(),
+        rho = prior("normal", list(0, 0.5))
+      )
+    )
+  )
+  random_term <- .re_cov_term(result, "id")
+  posterior <- .re_cov_posterior(c(
+    .re_cov_sd_values(random_term, 1),
+    .re_cov_rho_sample(random_term, 0.5)
+  ))
+  with_coordinates <- function(correlation_time, car_time){
+    modified <- result
+    modified$formula_design$random_effects[[1L]]$correlation$time_values <-
+      correlation_time
+    modified$formula_design$random_effects[[1L]]$car$time_values <- car_time
+    modified
+  }
+
+  duplicate <- with_coordinates(c(0, 0, 5), c(0, 0, 5))
+  expect_error(
+    .re_cov_output(duplicate, posterior, diagonal_only = TRUE),
+    "finite, unique, and strictly increasing",
+    fixed = TRUE
+  )
+
+  unordered <- with_coordinates(c(0, 5, 2), c(0, 5, 2))
+  expect_error(
+    .re_cov_output(unordered, posterior),
+    "finite, unique, and strictly increasing",
+    fixed = TRUE
+  )
+
+  conflicting <- with_coordinates(c(0, 2, 5), c(0, 3, 5))
+  expect_error(
+    .re_cov_output(conflicting, posterior),
+    "conflicting canonical CAR time coordinates",
+    fixed = TRUE
+  )
+
+  nonfinite_group <- result
+  nonfinite_group$formula_design$random_effects[[1L]]$group_map[1L] <- Inf
+  expect_error(
+    .re_cov_output(nonfinite_group, posterior),
+    "valid 'random_term$group_map'",
+    fixed = TRUE
+  )
+})
+
 test_that("structured covariance uses fitted column order for supplied data", {
 
   result <- .re_cov_formula(

@@ -175,13 +175,244 @@ test_that("structured random-effect JAGS literals are locale independent", {
     fixed = TRUE
   ))
   expect_true(grepl(
-    "pow(mu__xREx__id_rho, 0.5)",
+    paste0(
+      "mu__xREx__id_xRE_CAR_LOG_PHIX[2] <- ",
+      "0.5 * log(mu__xREx__id_rho)"
+    ),
     result$formula_syntax,
     fixed = TRUE
   ))
   expect_true(grepl(
-    "pow(mu__xREx__id_rho, 1.5)",
+    paste0(
+      "mu__xREx__id_xRE_CAR_LOG_PHIX[3] <- ",
+      "1.5 * log(mu__xREx__id_rho)"
+    ),
     result$formula_syntax,
     fixed = TRUE
   ))
+  expect_match(
+    result$formula_syntax,
+    paste0(
+      "mu__xREx__id_xRE_CAR_INNOV_VARx[2] <- ",
+      "pexp(-2 * mu__xREx__id_xRE_CAR_LOG_PHIX[2], 1)"
+    ),
+    fixed = TRUE
+  )
+  expect_false(grepl(
+    "pow(mu__xREx__id_rho",
+    result$formula_syntax,
+    fixed = TRUE
+  ))
+})
+
+test_that("CAR innovation validation follows rho support and parameterization", {
+
+  data <- data.frame(
+    time = rep(c(0, 1e-320), 2L),
+    id = factor(rep(c("a", "b"), each = 2L))
+  )
+  compile <- function(rho, parameterization = "noncentered",
+                      sd = prior("point", list(location = 1)),
+                      time_gap = 1e-320){
+    compile_data <- data
+    compile_data$time <- rep(c(0, time_gap), 2L)
+    JAGS_formula(
+      formula = ~ 1 + car(0 + time | id),
+      parameter = "mu",
+      data = compile_data,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(
+        id = random_block(
+          sd = sd,
+          covariance = random_covariance(
+            rho = rho,
+            rho_scale = "rho"
+          ),
+          parameterization = parameterization
+        )
+      )
+    )
+  }
+
+  expect_error(
+    compile(prior("uniform", list(0, 1))),
+    "stable innovation variance is zero or non-finite",
+    fixed = TRUE
+  )
+  expect_error(
+    compile(prior_mixture(list(
+      prior("uniform", list(0, 0.25)),
+      prior("uniform", list(0.9, 1))
+    ))),
+    "stable innovation variance is zero or non-finite",
+    fixed = TRUE
+  )
+
+  noncentered <- compile(prior("point", list(location = 0.5)))
+  expect_match(
+    noncentered$formula_syntax,
+    "pexp(-2 * mu__xREx__id_xRE_CAR_LOG_PHIX[2], 1)",
+    fixed = TRUE
+  )
+  expect_error(
+    compile(
+      prior("point", list(location = 0.5)),
+      parameterization = "centered"
+    ),
+    "emitted conditional-normal precision"
+  )
+  expect_error(
+    compile(
+      prior("point", list(location = 0.5)),
+      parameterization = "centered",
+      sd = prior("point", list(location = 0.5))
+    ),
+    "emitted conditional-normal precision"
+  )
+  expect_no_error(
+    compile(
+      prior("point", list(location = 0.5)),
+      parameterization = "centered",
+      sd = prior("point", list(location = 1e8))
+    )
+  )
+  expect_error(
+    compile(
+      prior("point", list(location = 0.5)),
+      parameterization = "centered",
+      sd = prior(
+        "normal",
+        list(0, 1),
+        truncation = list(lower = 0, upper = Inf)
+      )
+    ),
+    "lower centered SD support"
+  )
+
+  equality_q <- 1 / .Machine$double.xmax
+  equality_gap <- stats::qexp(equality_q) / (-2 * log(0.5))
+  equality_log_phi <- equality_gap * log(0.5)
+  expect_identical(
+    stats::pexp(-2 * equality_log_phi, rate = 1),
+    equality_q
+  )
+  expect_true(is.infinite(1 / equality_q))
+  expect_error(
+    compile(
+      prior("point", list(location = 0.5)),
+      parameterization = "centered",
+      time_gap = equality_gap
+    ),
+    "emitted conditional-normal precision"
+  )
+
+  bounded_q <- 2 / .Machine$double.xmax
+  bounded_gap <- stats::qexp(bounded_q) / (-2 * log(0.5))
+  bounded_log_phi <- bounded_gap * log(0.5)
+  expect_identical(
+    stats::pexp(-2 * bounded_log_phi, rate = 1),
+    bounded_q
+  )
+  expect_error(
+    compile(
+      prior("point", list(location = 0.5)),
+      parameterization = "centered",
+      sd = prior("uniform", list(0.5, 1)),
+      time_gap = bounded_gap
+    ),
+    "lower centered SD support"
+  )
+
+  representable_q <- 0.5 / .Machine$double.xmax
+  representable_gap <- stats::qexp(representable_q) / (-2 * log(0.5))
+  representable_log_phi <- representable_gap * log(0.5)
+  expect_identical(
+    stats::pexp(-2 * representable_log_phi, rate = 1),
+    representable_q
+  )
+  expect_true(is.finite(2 ^ -2 / representable_q))
+  expect_no_error(
+    compile(
+      prior("point", list(location = 0.5)),
+      parameterization = "centered",
+      sd = prior("point", list(location = 2)),
+      time_gap = representable_gap
+    )
+  )
+
+  expect_error(
+    compile(
+      prior("point", list(location = 0)),
+      parameterization = "centered",
+      sd = prior("point", list(location = 1e-200))
+    ),
+    "unrepresentable initial JAGS precision"
+  )
+
+  independent <- compile(
+    prior("point", list(location = 0)),
+    parameterization = "centered"
+  )
+  expect_match(
+    independent$formula_syntax,
+    "mu__xREx__id_xRE_CAR_LOG_PHIX[2] <- ",
+    fixed = TRUE
+  )
+  expect_match(
+    independent$formula_syntax,
+    " * log(mu__xREx__id_rho)",
+    fixed = TRUE
+  )
+  expect_false(grepl(
+    "dmnorm.vcov",
+    independent$formula_syntax,
+    fixed = TRUE
+  ))
+  expect_false(
+    "mu__xREx__id_rho" %in% independent$add_parameters
+  )
+})
+
+test_that("CAR Fisher-z syntax matches reconstruction at small positive values", {
+
+  z <- 2 ^ -54
+  data <- data.frame(
+    time = rep(c(0, 0.5, 2), 2L),
+    id = factor(rep(c("a", "b"), each = 3L))
+  )
+  result <- JAGS_formula(
+    formula = ~ 1 + car(0 + time | id),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("point", list(location = 1)),
+        rho = prior("point", list(location = z))
+      )
+    )
+  )
+  random_term <- result$formula_design$random_effects[[1L]]
+
+  expect_match(
+    result$formula_syntax,
+    paste0(
+      "mu__xREx__id_rho <- max(0, ",
+      "min(0.99999999999999989, tanh(mu__xREx__id_rho_z)))"
+    ),
+    fixed = TRUE
+  )
+  reconstructed <- BayesTools:::.bt_random_effect_transform_rho(
+    z,
+    random_term$correlation,
+    random_term = random_term
+  )
+  support_upper <- BayesTools:::.bt_random_effect_car_rho_support_upper(
+    rho_prior = result$prior_list$mu__xREx__id_rho_z,
+    rho_scale = random_term$correlation$rho_scale,
+    bounds = random_term$correlation$bounds
+  )
+  expect_equal(support_upper, reconstructed, tolerance = 0)
+  expect_equal(reconstructed, tanh(z), tolerance = 0)
+  expect_gt(reconstructed, 0)
 })

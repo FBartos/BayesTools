@@ -784,7 +784,9 @@
   }else if(random_structure %in% c("cs", "hcs", "ar1", "car", "har")){
     block_prior <- .bt_random_prior_for_block(prior_random, random_term$block_name)
     centered_structure <- identical(parameterization$resolved, "centered")
-    corr_module <- if(isTRUE(centered_structure)){
+    centered_dense_structure <- isTRUE(centered_structure) &&
+      !identical(random_structure, "car")
+    corr_module <- if(isTRUE(centered_dense_structure)){
       .bt_JAGS_structured_corr_cholesky(
         node_prefix = parameter,
         prior_prefix = parameter_suffix,
@@ -811,6 +813,29 @@
         distance_matrix = NULL
       )
     }
+    if(identical(random_structure, "car") && n_par > 1L){
+      car_coordinate_sets <- if(isTRUE(group_local)){
+        latent_layout$group_coordinates
+      }else{
+        list(car_metadata$time_values)
+      }
+      .bt_random_effect_validate_car_jags_innovation_support(
+        coordinate_sets = car_coordinate_sets,
+        rho_prior = corr_module$prior_list[[1L]],
+        rho_scale = corr_module$bridge$rho_scale,
+        bounds = corr_module$bridge$bounds,
+        block_name = random_term$block_name,
+        centered = isTRUE(centered_structure),
+        sd_prior = if(
+          isTRUE(centered_structure) &&
+          length(sd_spec$prior_list) == 1L
+        ){
+          sd_spec$prior_list[[1L]]
+        }else{
+          NULL
+        }
+      )
+    }
     random_syntax <- c(random_syntax, corr_module$syntax)
     for(corr_prior_name in names(corr_module$prior_list)){
       corr_module$prior_list[[corr_prior_name]] <- .bt_random_effect_set_prior_metadata(
@@ -825,7 +850,14 @@
     new_prior_list <- c(new_prior_list, corr_module$prior_list)
     correlation_monitors <- corr_module$monitor
     if(isTRUE(centered_structure)){
-      correlation_monitors <- corr_module$rho_name
+      correlation_monitors <- if(
+        !is.null(corr_module$rho_name) &&
+        corr_module$rho_name %in% corr_module$monitor
+      ){
+        corr_module$rho_name
+      }else{
+        character()
+      }
     }
     add_parameters <- c(add_parameters, correlation_monitors)
     correlation_metadata <- corr_module$bridge
@@ -840,6 +872,16 @@
         rho_name = corr_module$rho_name,
         sd_name = paste0(parameter, "_xRE_STDx"),
         row_indexed_external_sd = row_indexed_external_sd
+      ))
+    }else if(isTRUE(sampled_random_effect) && isTRUE(centered_structure) &&
+             identical(random_structure, "car")){
+      random_syntax <- c(random_syntax, .bt_JAGS_centered_car_random(
+        parameter = parameter,
+        K = n_par,
+        n_groups = n_id,
+        sd_name = paste0(parameter, "_xRE_STDx"),
+        rho_name = corr_module$rho_name,
+        car_time_values = car_metadata$time_values
       ))
     }else if(isTRUE(sampled_random_effect) && isTRUE(centered_structure)){
       correlation_expression <- function(row, column){

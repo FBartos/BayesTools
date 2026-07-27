@@ -140,7 +140,17 @@
     context = "Random-effect posterior reconstruction metadata"
   )
   column_coordinates <- if(identical(structure, "car")){
-    random_term$car$time_values
+    correlation <- .bt_random_effect_correlation_metadata(
+      random_term = random_term,
+      structure = structure,
+      context = "Random-effect posterior reconstruction metadata"
+    )
+    .bt_random_effect_car_time_values(
+      random_term = random_term,
+      correlation = correlation,
+      n_columns = n_columns,
+      context = "Random-effect posterior reconstruction metadata"
+    )
   }else{
     seq_len(n_columns)
   }
@@ -163,13 +173,19 @@
     for(group_name in names(rows_by_group)){
       group <- as.integer(group_name)
       rows  <- rows_by_group[[group_name]]
+      transition_context <- paste0(
+        "Random-effect posterior reconstruction",
+        .bt_random_effect_metadata_block_detail(random_term),
+        ", posterior draw ", draw, ", group ", group
+      )
       unit <- .bt_random_effect_structured_subset_transform(
         structure = structure,
         columns = seq_len(n_columns),
         latent = as.numeric(posterior[draw, z_names[group, ]]),
         rho = rho[draw],
         global_n_columns = n_columns,
-        column_coordinates = coordinates
+        column_coordinates = coordinates,
+        context = transition_context
       )
       out[rows, draw] <- unit[row_column[rows]] *
         scale_draws[draw, row_column[rows]]
@@ -233,6 +249,11 @@
     group_coefficients <- vector("list", layout$n_groups)
     for(group in seq_len(layout$n_groups)){
       observed_columns <- layout$group_columns[[group]]
+      transition_context <- paste0(
+        "Random-effect posterior reconstruction",
+        .bt_random_effect_metadata_block_detail(random_term),
+        ", posterior draw ", draw, ", group ", group
+      )
       names <- .bt_random_effect_structured_local_node_names(
         parameter_stem = random_term$parameter_stem,
         group = rep(group, length(observed_columns)),
@@ -244,7 +265,8 @@
         latent = as.numeric(posterior[draw, names]),
         rho = rho[draw],
         global_n_columns = layout$global_n_columns,
-        column_coordinates = layout$column_coordinates
+        column_coordinates = layout$column_coordinates,
+        context = transition_context
       )
       observed_coefficients <- unit * scale_draws[draw, observed_columns]
       requested_columns <- unique(row_column[group_map == group])
@@ -259,7 +281,8 @@
           sd = scale_draws[draw, ],
           rho = rho[draw],
           global_n_columns = layout$global_n_columns,
-          column_coordinates = layout$column_coordinates
+          column_coordinates = layout$column_coordinates,
+          context = transition_context
         ))
       }
       group_coefficients[[group]] <- values
@@ -274,7 +297,7 @@
 
 .bt_random_effect_structured_local_conditional_draw <- function(
     structure, observed_columns, missing_columns, observed_unit,
-    sd, rho, global_n_columns, column_coordinates){
+    sd, rho, global_n_columns, column_coordinates, context = NULL){
 
   structure <- .bt_random_effect_structured_local_normalize_structure(structure)
   check_int(global_n_columns, "global_n_columns", lower = 1, allow_NA = FALSE)
@@ -326,7 +349,8 @@
       observed_unit = observed_unit,
       rho = rho,
       column_coordinates = coordinates,
-      innovations = innovations
+      innovations = innovations,
+      context = context
     )
   }
 
@@ -372,7 +396,7 @@
 # Sample AR1/HAR/CAR missing coordinates through exact Gaussian Markov bridges.
 .bt_random_effect_markov_conditional_unit_draw <- function(
     observed_columns, missing_columns, observed_unit, rho,
-    column_coordinates, innovations){
+    column_coordinates, innovations, context = NULL){
 
   columns <- c(observed_columns, missing_columns)
   coordinates <- column_coordinates[columns]
@@ -397,7 +421,9 @@
     for(position in seq.int(first_observed - 1L, 1L)){
       transition <- .bt_random_effect_markov_transition(
         rho = rho,
-        gap = ordered_coordinates[position + 1L] - ordered_coordinates[position]
+        left_coordinate = ordered_coordinates[position],
+        right_coordinate = ordered_coordinates[position + 1L],
+        context = context
       )
       values[position] <- transition$phi * values[position + 1L] +
         sqrt(transition$innovation_variance) *
@@ -416,27 +442,66 @@
       for(position in seq.int(left + 1L, right - 1L)){
         left_transition <- .bt_random_effect_markov_transition(
           rho = rho,
-          gap = ordered_coordinates[position] - ordered_coordinates[current]
+          left_coordinate = ordered_coordinates[current],
+          right_coordinate = ordered_coordinates[position],
+          context = context
         )
         right_transition <- .bt_random_effect_markov_transition(
           rho = rho,
-          gap = ordered_coordinates[right] - ordered_coordinates[position]
+          left_coordinate = ordered_coordinates[position],
+          right_coordinate = ordered_coordinates[right],
+          context = context
         )
         span_transition <- .bt_random_effect_markov_transition(
           rho = rho,
-          gap = ordered_coordinates[right] - ordered_coordinates[current]
+          left_coordinate = ordered_coordinates[current],
+          right_coordinate = ordered_coordinates[right],
+          context = context
         )
+        right_ratio <- right_transition$innovation_variance /
+          span_transition$innovation_variance
+        left_ratio <- left_transition$innovation_variance /
+          span_transition$innovation_variance
         conditional_mean <-
-          left_transition$phi * right_transition$innovation_variance /
-            span_transition$innovation_variance * values[current] +
-          right_transition$phi * left_transition$innovation_variance /
-            span_transition$innovation_variance * values[right]
+          left_transition$phi * right_ratio * values[current] +
+          right_transition$phi * left_ratio * values[right]
         conditional_variance <-
-          left_transition$innovation_variance *
-            right_transition$innovation_variance /
-            span_transition$innovation_variance
+          left_transition$innovation_variance * right_ratio
+        if(!is.finite(conditional_variance) || conditional_variance <= 0){
+          bridge_values <- format(
+            c(
+              ordered_coordinates[current],
+              ordered_coordinates[position],
+              ordered_coordinates[right],
+              ordered_coordinates[position] - ordered_coordinates[current],
+              ordered_coordinates[right] - ordered_coordinates[position],
+              ordered_coordinates[right] - ordered_coordinates[current],
+              rho
+            ),
+            digits = 17L,
+            scientific = TRUE,
+            trim = TRUE
+          )
+          error_label <- .bt_random_effect_markov_error_label(
+            context,
+            operation = "bridge"
+          )
+          stop(
+            error_label, " at coordinate ", bridge_values[2L],
+            " between coordinates ", bridge_values[1L], " and ",
+            bridge_values[3L],
+            " has a non-positive or non-finite conditional variance ",
+            "(rho = ", bridge_values[7L],
+            ", left gap = ", bridge_values[4L],
+            ", right gap = ", bridge_values[5L],
+            ", span gap = ", bridge_values[6L],
+            "). The requested coordinate/time resolution is not ",
+            "representable for this rho.",
+            call. = FALSE
+          )
+        }
         values[position] <- conditional_mean +
-          sqrt(max(conditional_variance, 0)) *
+          sqrt(conditional_variance) *
           innovations_by_column[[as.character(ordered_columns[position])]]
         current <- position
       }
@@ -448,7 +513,9 @@
     for(position in seq.int(last_observed + 1L, length(ordered_columns))){
       transition <- .bt_random_effect_markov_transition(
         rho = rho,
-        gap = ordered_coordinates[position] - ordered_coordinates[position - 1L]
+        left_coordinate = ordered_coordinates[position - 1L],
+        right_coordinate = ordered_coordinates[position],
+        context = context
       )
       values[position] <- transition$phi * values[position - 1L] +
         sqrt(transition$innovation_variance) *
@@ -457,24 +524,6 @@
   }
 
   values[match(missing_columns, ordered_columns)]
-}
-
-# Return a numerically stable Markov transition over one positive coordinate gap.
-.bt_random_effect_markov_transition <- function(rho, gap){
-
-  if(!is.numeric(gap) || length(gap) != 1L || !is.finite(gap) || gap <= 0){
-    stop("Structured Markov transition gaps must be positive and finite.",
-         call. = FALSE)
-  }
-  absolute_rho <- abs(rho)
-  if(absolute_rho == 0){
-    return(list(phi = 0, innovation_variance = 1))
-  }
-
-  list(
-    phi = rho^gap,
-    innovation_variance = max(-expm1(2 * gap * log(absolute_rho)), 0)
-  )
 }
 
 .bt_random_effect_row_indexed_contribution_from_latent <- function(

@@ -313,7 +313,11 @@ test_that("centered scalar structures materialize covariance only internally", {
       prior_list = list(intercept = prior("normal", list(0, 1))),
       prior_random = prior_random(
         study = random_block(
-          sd = .parameterization_sd_prior(),
+          sd = if(identical(structure, "car")){
+            prior("point", list(location = 1))
+          }else{
+            .parameterization_sd_prior()
+          },
           rho = prior("normal", list(0, 0.5)),
           monitor = random_monitor(correlation = FALSE),
           parameterization = "centered"
@@ -324,8 +328,44 @@ test_that("centered scalar structures materialize covariance only internally", {
 
     expect_identical(term$parameterization_resolved, "centered",
                      info = structure)
-    expect_match(result$formula_syntax, "~ dmnorm.vcov", fixed = TRUE,
-                 info = structure)
+    if(identical(structure, "car")){
+      expect_false(grepl("~ dmnorm.vcov", result$formula_syntax, fixed = TRUE),
+                   info = structure)
+      expect_false(grepl("_xRE_COVx", result$formula_syntax, fixed = TRUE),
+                   info = structure)
+      expect_false(grepl("_xRE_CORx_R", result$formula_syntax, fixed = TRUE),
+                   info = structure)
+      expect_match(
+        result$formula_syntax,
+        paste0(
+          "mu__xREx__study_xRE_CAR_INNOV_VARx[2] <- ",
+          "pexp(-2 * mu__xREx__study_xRE_CAR_LOG_PHIX[2], 1)"
+        ),
+        fixed = TRUE,
+        info = structure
+      )
+      expect_match(
+        result$formula_syntax,
+        paste0(
+          "mu__xREx__study_xRE_COEFx[g,i] ~ dnorm(",
+          "mu__xREx__study_xRE_STDx[i] * ",
+          "mu__xREx__study_xRE_CAR_PHIX[i]"
+        ),
+        fixed = TRUE,
+        info = structure
+      )
+      expect_false(
+        grepl(
+          "pow(mu__xREx__study_rho",
+          result$formula_syntax,
+          fixed = TRUE
+        ),
+        info = structure
+      )
+    }else{
+      expect_match(result$formula_syntax, "~ dmnorm.vcov", fixed = TRUE,
+                   info = structure)
+    }
     expect_false(any(grepl("_xRE_CORx_L", result$add_parameters, fixed = TRUE)),
                  info = structure)
     expect_false(any(grepl("_xRE_CORx_R", result$add_parameters, fixed = TRUE)),

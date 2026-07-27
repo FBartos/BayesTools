@@ -539,7 +539,12 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
       latent = unname(samples[names]),
       rho = rho,
       global_n_columns = layout$global_n_columns,
-      column_coordinates = layout$column_coordinates
+      column_coordinates = layout$column_coordinates,
+      context = paste0(
+        "Bridge-sampling random-effect reconstruction",
+        .bt_random_effect_metadata_block_detail(random_term),
+        ", group ", group
+      )
     )
     coefficients[[group]] <- unit * sd_values[columns]
   }

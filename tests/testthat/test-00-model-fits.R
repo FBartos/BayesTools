@@ -5054,6 +5054,100 @@ test_that("JAGS bridgesampling supports continuous-time CAR formula random effec
   expect_equal(marglik$logml, 0, tolerance = 0.08)
 })
 
+test_that("centered continuous-time CAR syntax samples sequential conditionals", {
+
+  skip_if_not_installed("rjags")
+
+  df_test <- data.frame(
+    time = c(0, 0.5, 2, 0, 0.5, 2),
+    id = factor(c("a", "a", "a", "b", "b", "b"), levels = c("a", "b"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + car(0 + time | id),
+    parameter = "mu",
+    data = df_test,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("point", list(location = 1)),
+        rho = prior("normal", list(0, 0.5)),
+        monitor = random_monitor(coefficients = TRUE),
+        parameterization = "centered"
+      )
+    )
+  )
+
+  expect_false(grepl(
+    "dmnorm.vcov",
+    formula_result$formula_syntax,
+    fixed = TRUE
+  ))
+  expect_match(
+    formula_result$formula_syntax,
+    "pexp(-2 * mu__xREx__id_xRE_CAR_LOG_PHIX[2], 1)",
+    fixed = TRUE
+  )
+
+  model_syntax <- JAGS_add_priors(
+    paste0("model{\n", formula_result$formula_syntax, "\n}"),
+    formula_result$prior_list
+  )
+  monitor <- unique(c(
+    JAGS_to_monitor(formula_result$prior_list),
+    formula_result$add_parameters,
+    "mu__xREx__id_xRE_CAR_PHIX",
+    "mu__xREx__id_xRE_CAR_INNOV_VARx"
+  ))
+  model <- rjags::jags.model(
+    file = textConnection(model_syntax),
+    data = formula_result$data,
+    inits = JAGS_get_inits(formula_result$prior_list, chains = 1, seed = 31),
+    n.chains = 1,
+    n.adapt = 100,
+    quiet = TRUE
+  )
+  samples <- rjags::coda.samples(
+    model = model,
+    variable.names = monitor,
+    n.iter = 250,
+    quiet = TRUE,
+    progress.bar = "none"
+  )
+  draws <- as.matrix(samples[[1L]])
+  coefficient_columns <- grep(
+    "mu__xREx__id_xRE_COEFx[",
+    colnames(draws),
+    fixed = TRUE
+  )
+  transition_columns <- c(
+    grep(
+      "mu__xREx__id_xRE_CAR_PHIX[",
+      colnames(draws),
+      fixed = TRUE
+    ),
+    grep(
+      "mu__xREx__id_xRE_CAR_INNOV_VARx[",
+      colnames(draws),
+      fixed = TRUE
+    )
+  )
+
+  expect_length(coefficient_columns, 6L)
+  expect_length(transition_columns, 4L)
+  expect_true(all(is.finite(draws[, coefficient_columns, drop = FALSE])))
+  expect_true(all(is.finite(draws[, transition_columns, drop = FALSE])))
+  expect_true(all(apply(
+    draws[, coefficient_columns, drop = FALSE],
+    2L,
+    stats::sd
+  ) > 0))
+  expect_true(all(apply(
+    draws[, transition_columns, drop = FALSE],
+    2L,
+    stats::sd
+  ) > 0))
+})
+
 test_that("JAGS bridgesampling supports Dirichlet variance-allocation random effects", {
 
   skip_if_not_installed("rjags")

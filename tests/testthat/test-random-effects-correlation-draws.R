@@ -75,10 +75,25 @@ test_that("scalar structured correlation draws use compiled metadata", {
     }
 
     expect_equal(dim(actual), c(2L, 3L, 3L), info = structure)
-    expect_equal(unname(actual[1L, , ]), rho[[1L]]^distance, tolerance = 0,
-                 info = structure)
-    expect_equal(unname(actual[2L, , ]), rho[[2L]]^distance, tolerance = 0,
-                 info = structure)
+    for(draw in seq_along(rho)){
+      expected <- if(identical(structure, "car")){
+        BayesTools:::.bt_random_effect_structured_subset_correlation(
+          structure = structure,
+          columns = seq_len(3L),
+          rho = rho[draw],
+          global_n_columns = 3L,
+          column_coordinates = c(0, 0.5, 2)
+        )
+      }else{
+        rho[[draw]]^distance
+      }
+      expect_equal(
+        unname(actual[draw, , ]),
+        expected,
+        tolerance = 0,
+        info = paste(structure, "draw", draw)
+      )
+    }
     expect_equal(dimnames(actual)[[2L]], term$column_names, info = structure)
     expect_null(term$correlation$distance_matrix, info = structure)
   }
@@ -181,6 +196,198 @@ test_that("correlation reconstruction validates support and compact CAR metadata
   expect_error(
     random_effects_correlation_draws(unsupported, invalid_rho),
     "supports only scalar CS, HCS, AR1, HAR, and CAR",
+    fixed = TRUE
+  )
+})
+
+test_that("CAR correlation factors report canonical failing transitions", {
+
+  smallest <- .Machine$double.xmin * .Machine$double.eps
+  coordinates <- c(smallest, 2 * smallest, 1)
+  rho <- 0.9
+  random_term <- .correlation_draws_term("car")
+  random_term$correlation$time_values <- coordinates
+  random_term$car$time_values <- coordinates
+  posterior <- matrix(
+    rho,
+    nrow = 1L,
+    dimnames = list(NULL, random_term$correlation$rho_name)
+  )
+  distance <- abs(outer(coordinates, coordinates, "-"))
+  latent_names <- as.vector(
+    BayesTools:::.bt_random_effect_latent_names(
+      random_term = random_term,
+      n_groups = length(random_term$group_levels),
+      n_columns = 3L
+    )
+  )
+  reconstruction_values <- c(rho, rep(0, length(latent_names)))
+  names(reconstruction_values) <- c(
+    random_term$correlation$rho_name,
+    latent_names
+  )
+  reconstruction_posterior <- matrix(
+    reconstruction_values,
+    nrow = 1L,
+    dimnames = list(NULL, names(reconstruction_values))
+  )
+
+  error_messages <- c(
+    exported = tryCatch(
+      random_effects_correlation_draws(random_term, posterior),
+      error = function(error) conditionMessage(error)
+    ),
+    cholesky = tryCatch(
+      BayesTools:::.bt_random_effect_cholesky_draws(
+        random_term = random_term,
+        n_columns = 3L,
+        posterior = posterior
+      ),
+      error = function(error) conditionMessage(error)
+    ),
+    dense_reconstruction = tryCatch(
+      BayesTools:::.bt_random_effect_structured_dense_contribution(
+        random_term = random_term,
+        model_matrix = random_term$model_matrix,
+        group_map = random_term$group_map,
+        posterior = reconstruction_posterior,
+        scale_draws = matrix(1, nrow = 1L, ncol = 3L)
+      ),
+      error = function(error) conditionMessage(error)
+    ),
+    internal = tryCatch(
+      BayesTools:::.bt_random_effect_structured_correlation_matrix(
+        structure = "car",
+        K = 3L,
+        rho = rho,
+        distance_matrix = distance,
+        column_coordinates = coordinates,
+        context = "Internal CAR correlation reconstruction"
+      ),
+      error = function(error) conditionMessage(error)
+    )
+  )
+  expected_context <- c(
+    exported = paste0(
+      "Random-effect correlation reconstruction for block 'id', ",
+      "posterior draw 1"
+    ),
+    cholesky = paste0(
+      "Random-effect Cholesky reconstruction for block 'id', ",
+      "posterior draw 1"
+    ),
+    dense_reconstruction = paste0(
+      "Random-effect posterior reconstruction for block 'id', ",
+      "posterior draw 1, group 1"
+    ),
+    internal = "Internal CAR correlation reconstruction"
+  )
+  labels <- format(
+    c(coordinates[1L], coordinates[2L], rho, smallest),
+    digits = 17L,
+    scientific = TRUE,
+    trim = TRUE
+  )
+
+  for(path in names(error_messages)){
+    error_message <- error_messages[[path]]
+    expect_match(
+      error_message,
+      expected_context[[path]],
+      fixed = TRUE,
+      info = path
+    )
+    expect_match(
+      error_message,
+      paste0("from coordinate ", labels[1L], " to ", labels[2L]),
+      fixed = TRUE,
+      info = path
+    )
+    expect_match(
+      error_message,
+      paste0("rho = ", labels[3L]),
+      fixed = TRUE,
+      info = path
+    )
+    expect_match(
+      error_message,
+      paste0("gap = ", labels[4L]),
+      fixed = TRUE,
+      info = path
+    )
+    expect_false(
+      grepl(
+        "from coordinate 0.0000000000000000e+00",
+        error_message,
+        fixed = TRUE
+      ),
+      info = path
+    )
+    expect_match(
+      error_message,
+      "requested coordinate/time resolution is not representable",
+      fixed = TRUE,
+      info = path
+    )
+  }
+})
+
+test_that("dense CAR correlation APIs are reconstructed from stable factors", {
+
+  coordinates <- c(4, 4.5, 6)
+  distance <- abs(outer(coordinates, coordinates, "-"))
+  rho <- 1 - .Machine$double.eps / 2
+  random_term <- .correlation_draws_term("car")
+  random_term$correlation$time_values <- coordinates
+  random_term$car$time_values <- coordinates
+  posterior <- matrix(
+    rho,
+    nrow = 1L,
+    dimnames = list(NULL, random_term$correlation$rho_name)
+  )
+
+  L <- BayesTools:::.bt_random_effect_structured_subset_cholesky(
+    structure = "car",
+    columns = seq_len(3L),
+    rho = rho,
+    global_n_columns = 3L,
+    column_coordinates = coordinates
+  )
+  expected <- tcrossprod(L)
+  diag(expected) <- 1
+  exported <- random_effects_correlation_draws(random_term, posterior)
+  internal <- BayesTools:::.bt_random_effect_structured_correlation_matrix(
+    structure = "car",
+    K = 3L,
+    rho = rho,
+    distance_matrix = distance,
+    column_coordinates = coordinates
+  )
+
+  expect_equal(unname(exported[1L, , ]), expected, tolerance = 0)
+  expect_equal(internal, expected, tolerance = 0)
+  expect_identical(exported[1L, 1L, 2L], 1)
+  expect_gt(L[2L, 2L], 0)
+
+  expect_error(
+    BayesTools:::.bt_random_effect_structured_correlation_matrix(
+      structure = "car",
+      K = 3L,
+      rho = rho,
+      distance_matrix = distance
+    ),
+    "a distance matrix alone cannot preserve the original coordinate values",
+    fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.bt_random_effect_structured_correlation_matrix(
+      structure = "car",
+      K = 3L,
+      rho = rho,
+      distance_matrix = distance + diag(3L),
+      column_coordinates = coordinates
+    ),
+    "zero diagonal",
     fixed = TRUE
   )
 })

@@ -961,8 +961,10 @@ random_effects_marginal_variance_factors <- function(
     )
   }
   if(!is.numeric(group_map) || length(group_map) != nrow(model_matrix) ||
-     anyNA(group_map) || any(group_map != as.integer(group_map)) ||
-     any(group_map < 1L) || any(group_map > length(group_levels))){
+     anyNA(group_map) || any(!is.finite(group_map)) ||
+     any(group_map < 1L) || any(group_map > .Machine$integer.max) ||
+     any(group_map != floor(group_map)) ||
+     any(group_map > length(group_levels))){
     stop(
       "Random-effect marginal covariance metadata for block '",
       random_term$block_name,
@@ -1117,6 +1119,17 @@ random_effects_marginal_variance_factors <- function(
       group_map = group_map,
       n_draws = nrow(posterior),
       column_scale_draws = sd_draws,
+      diagonal_only = diagonal_only
+    ))
+  }
+  if(identical(structure, "car")){
+    return(.bt_random_effect_marginal_covariance_car(
+      random_term = random_term,
+      model_matrix = model_matrix,
+      group_map = group_map,
+      posterior = posterior,
+      row_weights = NULL,
+      column_weights = sd_draws,
       diagonal_only = diagonal_only
     ))
   }
@@ -1337,6 +1350,17 @@ random_effects_marginal_variance_factors <- function(
       diagonal_only = diagonal_only
     ))
   }
+  if(identical(structure, "car")){
+    return(.bt_random_effect_marginal_covariance_car(
+      random_term = random_term,
+      model_matrix = model_matrix,
+      group_map = group_map,
+      posterior = posterior,
+      row_weights = row_weights,
+      column_weights = column_weights,
+      diagonal_only = diagonal_only
+    ))
+  }
 
   if(isTRUE(diagonal_only)){
     one_sparse <- .bt_random_effect_marginal_covariance_one_sparse_columns(
@@ -1474,16 +1498,119 @@ random_effects_marginal_variance_factors <- function(
     row_weights = NULL,
     column_weights = NULL){
 
-  n_draws  <- dim(cholesky)[1L]
-  n_rows   <- nrow(model_matrix)
+  .bt_random_effect_marginal_covariance_cholesky(
+    random_term = random_term,
+    model_matrix = model_matrix,
+    group_map = NULL,
+    cholesky = cholesky,
+    row_weights = row_weights,
+    column_weights = column_weights,
+    diagonal_only = TRUE
+  )
+}
+
+.bt_random_effect_marginal_covariance_car <- function(
+    random_term,
+    model_matrix,
+    group_map,
+    posterior,
+    row_weights = NULL,
+    column_weights = NULL,
+    diagonal_only = FALSE){
+
   n_columns <- ncol(model_matrix)
-  if(!is.array(cholesky) || length(dim(cholesky)) != 3L ||
-     !identical(dim(cholesky), c(n_draws, n_columns, n_columns)) ||
-     any(!is.finite(cholesky))){
+  correlation <- .bt_random_effect_correlation_metadata(
+    random_term = random_term,
+    structure = "car",
+    context = "Random-effect marginal covariance metadata"
+  )
+  .bt_random_effect_car_time_values(
+    random_term = random_term,
+    correlation = correlation,
+    n_columns = n_columns,
+    context = "Random-effect marginal covariance metadata"
+  )
+  cholesky <- .bt_random_effect_cholesky_draws(
+    random_term = random_term,
+    n_columns = n_columns,
+    posterior = posterior
+  )
+  if(is.null(cholesky)){
+    .bt_random_effect_marginal_covariance_missing_correlation_stop(
+      random_term = random_term,
+      n_columns = n_columns,
+      posterior = posterior
+    )
+  }
+
+  .bt_random_effect_marginal_covariance_cholesky(
+    random_term = random_term,
+    model_matrix = model_matrix,
+    group_map = group_map,
+    cholesky = cholesky,
+    row_weights = row_weights,
+    column_weights = column_weights,
+    diagonal_only = diagonal_only
+  )
+}
+
+.bt_random_effect_marginal_covariance_cholesky <- function(
+    random_term,
+    model_matrix,
+    group_map,
+    cholesky,
+    row_weights = NULL,
+    column_weights = NULL,
+    diagonal_only = FALSE){
+
+  cholesky_dim <- dim(cholesky)
+  n_rows <- nrow(model_matrix)
+  n_columns <- ncol(model_matrix)
+  valid_cholesky <- is.array(cholesky) &&
+    length(cholesky_dim) == 3L &&
+    cholesky_dim[2L] == n_columns &&
+    cholesky_dim[3L] == n_columns &&
+    all(is.finite(cholesky))
+  if(!isTRUE(valid_cholesky)){
     stop(
       "Random-effect marginal covariance Cholesky draws for block '",
       random_term$block_name,
       "' do not match the expected dimensions.",
+      call. = FALSE
+    )
+  }
+  n_draws <- cholesky_dim[1L]
+  if(!is.null(row_weights) &&
+     (!is.matrix(row_weights) || !is.numeric(row_weights) ||
+      !identical(dim(row_weights), c(n_draws, n_rows)) ||
+      any(!is.finite(row_weights)))){
+    stop(
+      "Random-effect marginal covariance row weights for block '",
+      random_term$block_name,
+      "' do not match the expected dimensions.",
+      call. = FALSE
+    )
+  }
+  if(!is.null(column_weights) &&
+     (!is.matrix(column_weights) || !is.numeric(column_weights) ||
+      !identical(dim(column_weights), c(n_draws, n_columns)) ||
+      any(!is.finite(column_weights)))){
+    stop(
+      "Random-effect marginal covariance column weights for block '",
+      random_term$block_name,
+      "' do not match the expected dimensions.",
+      call. = FALSE
+    )
+  }
+  if(!isTRUE(diagonal_only) &&
+     (!is.numeric(group_map) || length(group_map) != n_rows ||
+      anyNA(group_map) || any(!is.finite(group_map)) ||
+      any(group_map < 1L) || any(group_map > .Machine$integer.max) ||
+      any(group_map != floor(group_map)))){
+    stop(
+      "Random-effect marginal covariance group map for block '",
+      random_term$block_name,
+      "' does not match the Cholesky expansion.",
       call. = FALSE
     )
   }
@@ -1492,31 +1619,61 @@ random_effects_marginal_variance_factors <- function(
   if(is.null(row_names)){
     row_names <- as.character(seq_len(n_rows))
   }
-  samples <- matrix(
-    0,
-    nrow = n_draws,
-    ncol = n_rows,
-    dimnames = list(draw = NULL, row = row_names)
-  )
-  for(draw in seq_len(n_draws)){
-    Z <- model_matrix
-    if(!is.null(row_weights)){
-      Z <- Z * row_weights[draw, ]
+  if(isTRUE(diagonal_only)){
+    samples <- matrix(
+      0,
+      nrow = n_draws,
+      ncol = n_rows,
+      dimnames = list(draw = NULL, row = row_names)
+    )
+    for(draw in seq_len(n_draws)){
+      Z <- model_matrix
+      if(!is.null(row_weights)){
+        Z <- Z * row_weights[draw, ]
+      }
+      if(!is.null(column_weights)){
+        Z <- sweep(
+          Z,
+          MARGIN = 2L,
+          STATS = column_weights[draw, ],
+          FUN = "*"
+        )
+      }
+      samples[draw, ] <- rowSums((Z %*% cholesky[draw, , ])^2)
     }
-    if(!is.null(column_weights)){
-      Z <- sweep(
-        Z,
-        MARGIN = 2L,
-        STATS = column_weights[draw, ],
-        FUN = "*"
-      )
-    }
-    samples[draw, ] <- rowSums((Z %*% cholesky[draw, , ])^2)
+    return(list(
+      samples = samples,
+      sample_dim = c(n_draws, n_rows)
+    ))
   }
 
+  samples <- array(
+    0,
+    dim = c(n_draws, n_rows, n_rows),
+    dimnames = list(draw = NULL, row = row_names, column = row_names)
+  )
+  rows_by_group <- split(seq_len(n_rows), group_map)
+  for(draw in seq_len(n_draws)){
+    for(rows in rows_by_group){
+      Z <- model_matrix[rows, , drop = FALSE]
+      if(!is.null(row_weights)){
+        Z <- Z * row_weights[draw, rows]
+      }
+      if(!is.null(column_weights)){
+        Z <- sweep(
+          Z,
+          MARGIN = 2L,
+          STATS = column_weights[draw, ],
+          FUN = "*"
+        )
+      }
+      ZL <- Z %*% cholesky[draw, , ]
+      samples[draw, rows, rows] <- tcrossprod(ZL)
+    }
+  }
   list(
     samples = samples,
-    sample_dim = c(n_draws, n_rows)
+    sample_dim = c(n_draws, n_rows, n_rows)
   )
 }
 
@@ -1586,16 +1743,17 @@ random_effects_marginal_variance_factors <- function(
   exponent <- if(structure %in% c("cs", "hcs")){
     outer(row_column, row_column, "!=") * 1
   }else if(identical(structure, "car")){
-    time_values <- random_term$car$time_values
-    if(!is.numeric(time_values) || length(time_values) != ncol(model_matrix) ||
-       any(!is.finite(time_values))){
-      stop(
-        "Random-effect marginal covariance metadata for CAR block '",
-        random_term$block_name,
-        "' are missing canonical time coordinates.",
-        call. = FALSE
-      )
-    }
+    correlation <- .bt_random_effect_correlation_metadata(
+      random_term = random_term,
+      structure = structure,
+      context = "Random-effect marginal covariance metadata"
+    )
+    time_values <- .bt_random_effect_car_time_values(
+      random_term = random_term,
+      correlation = correlation,
+      n_columns = ncol(model_matrix),
+      context = "Random-effect marginal covariance metadata"
+    )
     abs(outer(time_values[row_column], time_values[row_column], "-"))
   }else{
     abs(outer(row_column, row_column, "-"))

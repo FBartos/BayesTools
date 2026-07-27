@@ -25,26 +25,30 @@
       out_of_support = "error"
     )
     column_coordinates <- if(identical(structure, "car")){
-      distance_matrix <- .bt_random_effect_correlation_draws_distance(
+      .bt_random_effect_car_time_values(
         random_term = random_term,
         correlation = correlation,
-        structure = structure,
         n_columns = n_columns,
         context = "Random-effect posterior reconstruction metadata"
       )
-      distance_matrix[1L, ]
     }else{
       NULL
     }
     columns <- seq_len(n_columns)
     out <- array(NA_real_, dim = c(nrow(posterior), n_columns, n_columns))
     for(draw in seq_len(nrow(posterior))){
+      transition_context <- paste0(
+        "Random-effect Cholesky reconstruction",
+        .bt_random_effect_metadata_block_detail(random_term),
+        ", posterior draw ", draw
+      )
       out[draw, , ] <- .bt_random_effect_structured_subset_cholesky(
         structure = structure,
         columns = columns,
         rho = rho[draw],
         global_n_columns = n_columns,
-        column_coordinates = column_coordinates
+        column_coordinates = column_coordinates,
+        context = transition_context
       )
     }
     return(out)
@@ -453,22 +457,58 @@
   identical(structure, "car")
 }
 
-.bt_random_effect_structured_correlation_matrix <- function(structure, K, rho,
-                                                           distance_matrix = NULL){
+.bt_random_effect_structured_correlation_matrix <- function(
+    structure, K, rho, distance_matrix = NULL, column_coordinates = NULL,
+    context = NULL){
 
-  R <- matrix(NA_real_, nrow = K, ncol = K)
   if(identical(structure, "car")){
-    distance_matrix <- .bt_random_effect_validate_car_distance_matrix(distance_matrix, K)
+    if(is.null(column_coordinates)){
+      stop(
+        "CAR correlation reconstruction requires canonical column coordinates; ",
+        "a distance matrix alone cannot preserve the original coordinate values.",
+        call. = FALSE
+      )
+    }
+    column_coordinates <- .bt_random_effect_structured_local_coordinates(
+      structure = structure,
+      n_columns = K,
+      column_coordinates = column_coordinates
+    )
+    if(!is.null(distance_matrix)){
+      distance_matrix <- .bt_random_effect_validate_car_distance_matrix(
+        distance_matrix,
+        K
+      )
+      reconstructed_distance <- abs(outer(
+        column_coordinates,
+        column_coordinates,
+        "-"
+      ))
+      if(!isTRUE(all(reconstructed_distance == distance_matrix))){
+        stop(
+          "CAR distance matrix conflicts with canonical column coordinates.",
+          call. = FALSE
+        )
+      }
+    }
+
+    return(.bt_random_effect_structured_subset_correlation(
+      structure = structure,
+      columns = seq_len(K),
+      rho = rho,
+      global_n_columns = K,
+      column_coordinates = column_coordinates,
+      context = context
+    ))
   }
 
+  R <- matrix(NA_real_, nrow = K, ncol = K)
   for(row in seq_len(K)){
     for(column in seq_len(K)){
       R[row, column] <- if(row == column){
         1
       }else if(structure %in% c("cs", "hcs")){
         rho
-      }else if(identical(structure, "car")){
-        rho^distance_matrix[row, column]
       }else{
         rho^abs(row - column)
       }

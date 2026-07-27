@@ -750,7 +750,7 @@ test_that("structured new-level sampling uses only requested column subsets", {
       stop("global correlation materialized", call. = FALSE)
     },
     .bt_random_effect_prediction_structured_subset_transform = function(
-        structure, columns, latent, rho, coordinates){
+        structure, columns, latent, rho, coordinates, context = NULL){
 
       requested_columns[[length(requested_columns) + 1L]] <<- columns
       prediction_subset_transform(
@@ -758,7 +758,8 @@ test_that("structured new-level sampling uses only requested column subsets", {
         columns = columns,
         latent = latent,
         rho = rho,
-        coordinates = coordinates
+        coordinates = coordinates,
+        context = context
       )
     },
     .package = "BayesTools"
@@ -844,7 +845,7 @@ test_that("structured new-level subset sampling covers HCS, AR1, HAR, and CAR", 
       stop("global correlation materialized", call. = FALSE)
     },
     .bt_random_effect_prediction_structured_subset_transform = function(
-        structure, columns, latent, rho, coordinates){
+        structure, columns, latent, rho, coordinates, context = NULL){
 
       subset_calls <<- c(subset_calls, structure)
       prediction_subset_transform(
@@ -852,7 +853,8 @@ test_that("structured new-level subset sampling covers HCS, AR1, HAR, and CAR", 
         columns = columns,
         latent = latent,
         rho = rho,
-        coordinates = coordinates
+        coordinates = coordinates,
+        context = context
       )
     },
     .package = "BayesTools"

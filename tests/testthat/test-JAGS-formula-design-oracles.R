@@ -12040,9 +12040,53 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     "mu__xREx__id_rho <- max(0, min(0.99999999999999989",
     fixed = TRUE
   )
-  expect_match(car_result$formula_syntax, "2 * ilogit(2 * mu__xREx__id_rho_z) - 1))", fixed = TRUE)
-  expect_match(car_result$formula_syntax, "pow(mu__xREx__id_rho, 0.5)", fixed = TRUE)
-  expect_match(car_result$formula_syntax, "pow(mu__xREx__id_rho, 1.5)", fixed = TRUE)
+  expect_match(
+    car_result$formula_syntax,
+    "tanh(mu__xREx__id_rho_z)))",
+    fixed = TRUE
+  )
+  expect_match(
+    car_result$formula_syntax,
+    paste0(
+      "mu__xREx__id_xRE_CAR_LOG_PHIX[2] <- ",
+      "0.5 * log(mu__xREx__id_rho)"
+    ),
+    fixed = TRUE
+  )
+  expect_match(
+    car_result$formula_syntax,
+    paste0(
+      "mu__xREx__id_xRE_CAR_LOG_PHIX[3] <- ",
+      "1.5 * log(mu__xREx__id_rho)"
+    ),
+    fixed = TRUE
+  )
+  expect_match(
+    car_result$formula_syntax,
+    paste0(
+      "mu__xREx__id_xRE_CAR_PHIX[2] <- ",
+      "exp(mu__xREx__id_xRE_CAR_LOG_PHIX[2])"
+    ),
+    fixed = TRUE
+  )
+  expect_match(
+    car_result$formula_syntax,
+    paste0(
+      "mu__xREx__id_xRE_CAR_INNOV_VARx[2] <- ",
+      "pexp(-2 * mu__xREx__id_xRE_CAR_LOG_PHIX[2], 1)"
+    ),
+    fixed = TRUE
+  )
+  expect_false(grepl(
+    "pow(mu__xREx__id_rho",
+    car_result$formula_syntax,
+    fixed = TRUE
+  ))
+  expect_false(grepl(
+    "1 - pow(mu__xREx__id_xRE_CAR_PHIX",
+    car_result$formula_syntax,
+    fixed = TRUE
+  ))
 
   car_independent <- JAGS_formula(
     formula = ~ 1 + car(0 + time | id),
@@ -12333,7 +12377,20 @@ test_that("structured correlation Cholesky syntax exposes intended covariance pa
   expect_match(ar_module$syntax, "mu__xREx__id_xRE_CORx_L[4,4] <- sqrt", fixed = TRUE)
 
   car_distance <- abs(outer(c(0, 1.5, 3), c(0, 1.5, 3), "-"))
-  car_module <- BayesTools:::.bt_JAGS_structured_corr_cholesky(
+  expect_error(
+    BayesTools:::.bt_JAGS_structured_corr_cholesky(
+      node_prefix = "mu__xREx__id",
+      prior_prefix = "_xREx__id",
+      K = 3,
+      structure = "car",
+      block_prior = block_prior,
+      include_correlation = TRUE,
+      distance_matrix = car_distance
+    ),
+    "Dense CAR Cholesky compilation is unsupported",
+    fixed = TRUE
+  )
+  car_module <- BayesTools:::.bt_JAGS_structured_corr_direct(
     node_prefix = "mu__xREx__id",
     prior_prefix = "_xREx__id",
     K = 3,
@@ -12342,8 +12399,29 @@ test_that("structured correlation Cholesky syntax exposes intended covariance pa
     include_correlation = TRUE,
     distance_matrix = car_distance
   )
-  expect_match(car_module$syntax, "mu__xREx__id_xRE_CORx_R[1,2] <- pow(mu__xREx__id_rho, 1.5)", fixed = TRUE)
-  expect_match(car_module$syntax, "mu__xREx__id_xRE_CORx_R[1,3] <- pow(mu__xREx__id_rho, 3)", fixed = TRUE)
+  expect_match(
+    car_module$syntax,
+    paste0(
+      "mu__xREx__id_xRE_CORx_R[1,2] <- ",
+      "exp(1.5 * log(mu__xREx__id_rho))"
+    ),
+    fixed = TRUE
+  )
+  expect_match(
+    car_module$syntax,
+    paste0(
+      "mu__xREx__id_xRE_CORx_R[1,3] <- ",
+      "exp(3 * log(mu__xREx__id_rho))"
+    ),
+    fixed = TRUE
+  )
+  expect_false(grepl(
+    "pow(mu__xREx__id_rho",
+    car_module$syntax,
+    fixed = TRUE
+  ))
+  expect_false(grepl("_xRE_CORx_L", car_module$syntax, fixed = TRUE))
+  expect_null(car_module$cholesky_name)
   expect_equal(car_module$prior_list$`_xREx__id_rho_z`$truncation$lower, 0)
   expect_equal(car_module$bridge$bounds, c(lower = 0, upper = 1))
   expect_equal(car_module$bridge$distance_matrix, car_distance)
