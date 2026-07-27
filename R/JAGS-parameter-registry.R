@@ -425,16 +425,15 @@ JAGS_parameter_registry_schema <- function(){
     }
   }
   if(is.null(random_term)){
-    if(nzchar(formula_parameter)){
-      prefix <- paste0(formula_parameter, "_")
-      if(startsWith(canonical_name, prefix)){
-        return(paste0(
-          "(", formula_parameter, ") ",
-          substring(canonical_name, nchar(prefix) + 1L)
-        ))
-      }
-    }
-    return(canonical_name)
+    return(format_parameter_names(
+      canonical_name,
+      formula_parameters = if(nzchar(formula_parameter)){
+        formula_parameter
+      }else{
+        NULL
+      },
+      formula_prefix = TRUE
+    ))
   }
 
   names <- canonical_name

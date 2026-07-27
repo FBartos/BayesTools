@@ -94,6 +94,39 @@ test_that("fitted registry classifies concrete random coordinates exactly", {
   )
 })
 
+test_that("registry display labels do not overwrite fixed scale formatting", {
+
+  interaction_prior <- prior("normal", list(0, 1))
+  attr(interaction_prior, "parameter") <- "mu"
+  log_intercept_prior <- prior("normal", list(0, 1))
+  attr(log_intercept_prior, "parameter") <- "log_sigma"
+  prior_list <- list(
+    mu_x__xXx__z = interaction_prior,
+    log_sigma_intercept = log_intercept_prior
+  )
+  canonical_names <- names(prior_list)
+  registry <- build_test_parameter_registry(
+    columns = canonical_names,
+    prior_list = prior_list
+  )
+
+  expect_identical(
+    registry$display_label,
+    c("(mu) x:z", "(log_sigma) intercept")
+  )
+
+  formatted_names <- c("(mu) x:z", "(log_sigma) exp(intercept)")
+  expect_identical(
+    BayesTools:::.bt_random_effect_summary_display_names(
+      names = formatted_names,
+      raw_names = canonical_names,
+      prior_list = prior_list,
+      parameter_registry = registry
+    ),
+    formatted_names
+  )
+})
+
 test_that("registry accessor rejects unversioned and malformed fitted objects", {
 
   samples <- coda::mcmc(matrix(

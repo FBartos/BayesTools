@@ -342,6 +342,9 @@
   .bt_validate_parameter_registry(parameter_registry)
   registry_rows <- match(raw_names, parameter_registry$canonical_name)
   registered <- !is.na(registry_rows)
+  registered[registered] <- nzchar(
+    parameter_registry$random_block[registry_rows[registered]]
+  )
   if(any(registered)){
     labels <- parameter_registry$display_label[registry_rows[registered]]
     if(!isTRUE(formula_prefix)){
