@@ -15,6 +15,12 @@
 #' to account for predictor standardization using a combinatorial approach that
 #' correctly handles interactions of any order.
 #'
+#' Internal standardized random-effect coordinates (latent \code{xRE_Zx}
+#' columns and realized \code{xRE_COEFx} columns) are omitted from the returned
+#' matrix. They do not have the same transformation as fixed coefficients or
+#' random-effect covariance summaries and must not be presented as
+#' original-scale coefficients.
+#'
 #' For a k-way interaction between standardized predictors, the expansion of
 #' \eqn{\prod_{i} (x_i - \mu_i)/\sigma_i} contributes to all lower-order terms.
 #' The contribution to a target term T from a source term S (where T is a subset
@@ -33,8 +39,9 @@
 #' @export
 transform_scale_samples <- function(fit, formula_scale = NULL){
 
+  parameter_registry <- NULL
   if(inherits(fit, "BayesTools_fit")){
-    JAGS_parameter_registry(fit)
+    parameter_registry <- JAGS_parameter_registry(fit)
   }
 
   # extract formula_scale from fit if available
@@ -60,8 +67,44 @@ transform_scale_samples <- function(fit, formula_scale = NULL){
 
   # Apply the combinatorial unscaling transformation
   posterior <- .apply_unscale_transform(posterior, formula_scale)
+  posterior <- .bt_remove_internal_random_coordinates(
+    posterior = posterior,
+    parameter_registry = parameter_registry
+  )
 
   return(posterior)
+}
+
+.bt_remove_internal_random_coordinates <- function(posterior,
+                                                   parameter_registry = NULL){
+
+  posterior <- as.matrix(posterior)
+  column_names <- colnames(posterior)
+  if(is.null(column_names) || length(column_names) == 0L){
+    return(posterior)
+  }
+
+  remove <- grepl(
+    "_xRE_(?:GROUP_Z|UNIT_COEF|COEF|Z)x(?:\\[|$)",
+    column_names,
+    perl = TRUE
+  )
+
+  if(!is.null(parameter_registry)){
+    .bt_validate_parameter_registry(parameter_registry)
+    registry_rows <- match(
+      column_names,
+      parameter_registry$canonical_name
+    )
+    registered <- !is.na(registry_rows)
+    remove[registered] <- parameter_registry$internal[registry_rows[registered]] &
+      parameter_registry$role[registry_rows[registered]] %in% c(
+        "random_latent",
+        "random_group_coefficient"
+      )
+  }
+
+  posterior[, !remove, drop = FALSE]
 }
 
 

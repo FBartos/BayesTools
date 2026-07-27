@@ -354,3 +354,80 @@ test_that("JAGS_estimates_table keeps fixed and random scaled slope transforms t
     tolerance = 1e-12
   )
 })
+
+test_that("original-scale accessors exclude internal random coordinates", {
+
+  skip_if_not_installed("runjags")
+
+  df <- data.frame(
+    x = c(1, 2, 3, 4),
+    id = factor(c("a", "a", "b", "b"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + x + diag(1 + x | id),
+    parameter = "mu",
+    data = df,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1))
+    ),
+    formula_scale = list(x = TRUE),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("gamma", list(2, 2)),
+        monitor = random_monitor(
+          latent = TRUE,
+          coefficients = TRUE,
+          correlation = FALSE
+        )
+      )
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1]]
+  internal_names <- c(
+    "mu__xREx__id_xRE_Zx[1,1]",
+    "mu__xREx__id_xRE_COEFx[1,1]"
+  )
+  posterior_names <- c(
+    "mu_intercept",
+    "mu_x",
+    random_term$sd_parameter_names,
+    internal_names
+  )
+  posterior <- matrix(
+    rep(seq_along(posterior_names), each = 3L),
+    nrow = 3L,
+    dimnames = list(NULL, posterior_names)
+  )
+  fit <- make_random_scale_table_fit(formula_result, posterior)
+
+  transformed_fit <- transform_scale_samples(fit)
+  expect_false(any(internal_names %in% colnames(transformed_fit)))
+  expect_true(all(c("mu_intercept", "mu_x") %in% colnames(transformed_fit)))
+
+  transformed_matrix <- transform_scale_samples(
+    posterior,
+    list(mu = formula_result$formula_scale)
+  )
+  expect_false(any(internal_names %in% colnames(transformed_matrix)))
+
+  raw_fitted <- JAGS_estimates_table(
+    fit,
+    transform_scaled = FALSE,
+    random_effects_summary = "raw",
+    remove_diagnostics = TRUE,
+    return_samples = TRUE
+  )
+  expect_true(any(grepl("z\\(", colnames(raw_fitted))))
+  expect_true(any(grepl("coef\\(", colnames(raw_fitted))))
+
+  raw_original <- JAGS_estimates_table(
+    fit,
+    transform_scaled = TRUE,
+    random_effects_summary = "raw",
+    remove_diagnostics = TRUE,
+    return_samples = TRUE
+  )
+  expect_false(any(grepl("z\\(", colnames(raw_original))))
+  expect_false(any(grepl("coef\\(", colnames(raw_original))))
+})

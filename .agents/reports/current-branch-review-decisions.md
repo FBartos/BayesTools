@@ -490,7 +490,7 @@ tests for stored designs.
 
 Decision: can we calculatate the required space before hand? if so, can we check against the allocable space and stop if we know it would overflow with an informative message?
 
-**Audit status: decision confirmed; implementation pending.**
+**Audit status: implemented and verified.**
 
 **Review response.** We can calculate a useful pre-allocation budget, but we
 cannot reliably query the exact amount that R and JAGS will be able to allocate.
@@ -1371,6 +1371,16 @@ excluded from APIs that promise original-scale coefficients. Their registry
 entries must state that scale explicitly. A public group-specific coefficient
 API, if retained or added, must return a separate object after applying the
 blockwise coefficient transform and label it `scale = "original"`.
+
+**Implementation outcome.** `transform_scale_samples()` now removes internal
+latent (`xRE_Zx`) and realized group-coefficient (`xRE_COEFx`) coordinates from
+its original-scale result, using the fitted parameter registry when a
+BayesTools fit is supplied and the reserved internal coordinate markers for
+matrix inputs. `JAGS_estimates_table(..., transform_scaled = TRUE)` applies the
+same boundary even in `random_effects_summary = "raw"` mode. Raw reporting
+without scale transformation remains available and is documented as fitted
+scale; semantic SD and correlation summaries continue to use their separate
+covariance-aware transformation.
 
 ## D25. Ordered priors with both atoms and continuous mass
 

@@ -41,11 +41,15 @@
 #' parameters with semantic SD, rho/correlation, true variance-fraction, and
 #' mean-variance SD-component variance-ratio summaries. \code{"full"} also
 #' includes heterogeneous SD multipliers.
-#' \code{"raw"} keeps the historical raw monitored parameters, and
+#' \code{"raw"} keeps the historical raw monitored parameters on their fitted
+#' scale, and
 #' \code{"none"} removes random-effect parameters from the table. When used
 #' together with \code{transform_scaled = TRUE}, SD and correlation summaries
 #' for formula random effects are computed after applying the original-scale
-#' formula transformation.
+#' formula transformation. Internal latent and realized group-coefficient
+#' coordinates are omitted when \code{transform_scaled = TRUE}, including in
+#' \code{"raw"} mode, because those coordinates remain on the fitted
+#' standardized scale.
 #' @param random_effects_metadata whether to add random-effect metadata columns
 #' to JAGS estimates tables. When \code{TRUE}, the table includes the
 #' user-facing random-effect name, grouping label, and covariance structure
@@ -301,6 +305,10 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   # transformations, while fixed effects still retain all interaction columns.
   if(transform_scaled && !is.null(formula_scale) && length(formula_scale) > 0){
     model_samples <- transform_scale_samples(model_samples, formula_scale)
+    model_samples <- .bt_remove_internal_random_coordinates(
+      posterior = model_samples,
+      parameter_registry = parameter_registry
+    )
   }
 
   model_samples <- .materialize_missing_point_prior_samples(model_samples, prior_list)

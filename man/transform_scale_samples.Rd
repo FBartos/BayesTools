@@ -29,6 +29,12 @@ The function transforms regression coefficients and intercepts
 to account for predictor standardization using a combinatorial approach that
 correctly handles interactions of any order.
 
+Internal standardized random-effect coordinates (latent \code{xRE_Zx}
+columns and realized \code{xRE_COEFx} columns) are omitted from the returned
+matrix. They do not have the same transformation as fixed coefficients or
+random-effect covariance summaries and must not be presented as
+original-scale coefficients.
+
 For a k-way interaction between standardized predictors, the expansion of
 \eqn{\prod_{i} (x_i - \mu_i)/\sigma_i} contributes to all lower-order terms.
 The contribution to a target term T from a source term S (where T is a subset

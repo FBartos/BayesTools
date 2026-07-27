@@ -267,11 +267,15 @@ tables. \code{"standard"} replaces raw random-effect implementation
 parameters with semantic SD, rho/correlation, true variance-fraction, and
 mean-variance SD-component variance-ratio summaries. \code{"full"} also
 includes heterogeneous SD multipliers.
-\code{"raw"} keeps the historical raw monitored parameters, and
+\code{"raw"} keeps the historical raw monitored parameters on their fitted
+scale, and
 \code{"none"} removes random-effect parameters from the table. When used
 together with \code{transform_scaled = TRUE}, SD and correlation summaries
 for formula random effects are computed after applying the original-scale
-formula transformation.}
+formula transformation. Internal latent and realized group-coefficient
+coordinates are omitted when \code{transform_scaled = TRUE}, including in
+\code{"raw"} mode, because those coordinates remain on the fitted
+standardized scale.}
 
 \item{random_effects_metadata}{whether to add random-effect metadata columns
 to JAGS estimates tables. When \code{TRUE}, the table includes the
