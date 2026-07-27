@@ -2208,6 +2208,7 @@ test_that("factor posterior plot data aggregates duplicate point-mass models", {
   class(fit) <- c("mcmc", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
+  fit <- attach_test_parameter_registry(fit)
 
   samples <- as_mixed_posteriors(
     fit,
@@ -2254,6 +2255,7 @@ test_that("factor posterior plot data aggregates duplicate point-mass models", {
   class(fit) <- c("BayesTools_fit", class(fit))
   attr(fit, "prior_list") <- prior_list
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
+  fit <- attach_test_parameter_registry(fit)
 
   samples <- as_mixed_posteriors(
     fit,

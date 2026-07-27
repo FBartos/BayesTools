@@ -236,6 +236,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     stop("'fit' must be a runjags fit")
   if(!inherits(fit, "BayesTools_fit"))
     stop("'fit' must be a BayesTools fit")
+  parameter_registry <- JAGS_parameter_registry(fit)
   prior_list <- attr(fit, "prior_list")
   check_list(prior_list, "prior_list")
   if(!all(sapply(prior_list, is.prior)))
@@ -288,6 +289,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     model_samples = model_samples,
     prior_list = prior_list,
     formula_design = attr(fit, "formula_design"),
+    parameter_registry = parameter_registry,
     mode = random_effects_summary,
     formula_scale = if(transform_scaled) formula_scale else NULL
   )
@@ -336,7 +338,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   model_samples <- .bt_JAGS_estimates_filter_raw_random_columns(
     model_samples = model_samples,
     prior_list = prior_list,
-    formula_design = attr(fit, "formula_design"),
+    parameter_registry = parameter_registry,
     remove_parameters = remove_parameters,
     remove_formulas = remove_formulas,
     keep_parameters = keep_parameters,
@@ -619,7 +621,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       raw_names = raw_parameter_names,
       prior_list = prior_list,
       formula_prefix = formula_prefix,
-      formula_design = attr(fit, "formula_design")
+      parameter_registry = parameter_registry
     )
   }
 
@@ -644,7 +646,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
         table = empty_table,
         parameter_names = character(),
         prior_list = prior_list,
-        formula_design = attr(fit, "formula_design")
+        parameter_registry = parameter_registry
       )
     }
     return(empty_table)
@@ -674,7 +676,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       table = runjags_summary,
       parameter_names = parameter_names,
       prior_list = prior_list,
-      formula_design = attr(fit, "formula_design")
+      parameter_registry = parameter_registry
     )
   }
 
@@ -683,6 +685,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
 
 .bt_JAGS_estimates_filter_raw_random_columns <- function(model_samples,
                                                          prior_list,
+                                                         parameter_registry = NULL,
                                                          formula_design = NULL,
                                                          remove_parameters = NULL,
                                                          remove_formulas = NULL,
@@ -693,9 +696,16 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
                                                          remove_random_structures = NULL,
                                                          keep_random_structures = NULL){
 
+  if(is.null(parameter_registry)){
+    parameter_registry <- .bt_build_parameter_registry(
+      columns = colnames(model_samples),
+      prior_list = prior_list,
+      formula_design = formula_design
+    )
+  }
   model_samples <- .bt_random_effect_summary_filter_raw_columns(
     model_samples = model_samples,
-    formula_design = formula_design,
+    parameter_registry = parameter_registry,
     remove_random_effects = remove_random_effects,
     keep_random_effects = keep_random_effects,
     remove_random_structures = remove_random_structures,
@@ -706,8 +716,14 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   if(length(column_names) == 0L){
     return(model_samples)
   }
-  random_design <- .bt_random_effect_summary_designs(formula_design)
-  if(length(random_design) == 0L){
+  .bt_validate_parameter_registry(parameter_registry)
+  registry_rows <- match(column_names, parameter_registry$canonical_name)
+  registered <- !is.na(registry_rows)
+  row_roles <- rep("", length(column_names))
+  row_roles[registered] <- parameter_registry$role[registry_rows[registered]]
+  raw_random <- registered &
+    (startsWith(row_roles, "random_") | row_roles == "allocation")
+  if(!any(raw_random)){
     return(model_samples)
   }
 
@@ -722,33 +738,29 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
     column_names = column_names,
     prior_list = prior_list
   )
-  random_terms <- .bt_random_effect_summary_random_terms(random_design)
   remove_columns <- rep(FALSE, length(column_names))
+  random_blocks <- unique(
+    parameter_registry$random_block[registry_rows[raw_random]]
+  )
 
-  for(design in random_design){
-    formula_parameter <- design$parameter
-    remove_formula <- length(formula_parameter) == 1L &&
-      formula_parameter %in% remove_formulas
-    keep_formula <- length(formula_parameter) == 1L &&
-      formula_parameter %in% keep_formulas
-
-    for(random_term in design$random_effects){
-      term_columns <- vapply(
-        column_names,
-        .bt_random_effect_summary_raw_parameter_matches,
-        logical(1),
-        random_term = random_term,
-        random_terms = random_terms
-      )
+  for(random_block in random_blocks){
+      term_columns <- raw_random &
+        parameter_registry$random_block[registry_rows] == random_block
       if(!any(term_columns)){
         next
       }
+      formula_parameter <- unique(
+        parameter_registry$formula_parameter[registry_rows[term_columns]]
+      )
+      formula_parameter <- formula_parameter[nzchar(formula_parameter)]
+      remove_formula <- any(formula_parameter %in% remove_formulas)
+      keep_formula <- any(formula_parameter %in% keep_formulas)
 
       if(remove_formula || .bt_JAGS_estimates_random_alias_has_all(remove_aliases)){
         remove_columns <- remove_columns | term_columns
       }else if(.bt_JAGS_estimates_random_alias_has_correlation(remove_aliases)){
         remove_columns <- remove_columns |
-          (term_columns & .bt_JAGS_estimates_raw_random_correlation_columns(column_names))
+          (term_columns & row_roles == "random_correlation")
       }
 
       if(keep_active){
@@ -758,21 +770,34 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
         }
         if(.bt_JAGS_estimates_random_alias_has_correlation(keep_aliases)){
           keep_columns <- keep_columns |
-            (term_columns & .bt_JAGS_estimates_raw_random_correlation_columns(column_names))
+            (term_columns & row_roles == "random_correlation")
         }
         if(!is.null(keep_random_effects) || !is.null(keep_random_structures)){
-          term_matches <- .bt_random_effect_summary_term_filter_matches(
-            random_term = random_term,
-            random_effects = keep_random_effects,
-            random_structures = keep_random_structures
-          )
+          term_matches <- TRUE
+          if(!is.null(keep_random_effects)){
+            term_registry_rows <- registry_rows[term_columns]
+            term_matches <- term_matches &&
+              (random_block %in% keep_random_effects ||
+                 any(parameter_registry$random_name[
+                   term_registry_rows
+                 ] %in% keep_random_effects) ||
+                 any(parameter_registry$random_grouping[
+                   term_registry_rows
+                 ] %in% keep_random_effects))
+          }
+          if(!is.null(keep_random_structures)){
+            term_matches <- term_matches && any(
+              parameter_registry$random_structure[
+                registry_rows[term_columns]
+              ] %in% keep_random_structures
+            )
+          }
           if(term_matches){
             keep_columns <- keep_columns | term_columns
           }
         }
         remove_columns <- remove_columns | (term_columns & !keep_columns)
       }
-    }
   }
 
   model_samples[, !remove_columns, drop = FALSE]

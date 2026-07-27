@@ -9984,6 +9984,7 @@ test_that("JAGS_estimates_table backtransforms random-effect correlations", {
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
+  fit <- attach_test_parameter_registry(fit)
 
   scaled_samples <- JAGS_estimates_table(
     fit,

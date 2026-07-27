@@ -15,7 +15,7 @@ make_random_scale_table_fit <- function(formula_result, posterior){
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
   attr(fit, "formula_scale") <- list(mu = formula_result$formula_scale)
 
-  fit
+  attach_test_parameter_registry(fit)
 }
 
 test_that("JAGS_estimates_table suppresses fixed warnings for random-only scaled slopes", {

@@ -1,6 +1,15 @@
 .bt_random_effect_summary_metadata_table <- function(parameter_names,
                                                      prior_list,
+                                                     parameter_registry = NULL,
                                                      formula_design = NULL){
+
+  if(is.null(parameter_registry)){
+    parameter_registry <- .bt_build_parameter_registry(
+      columns = parameter_names,
+      prior_list = prior_list,
+      formula_design = formula_design
+    )
+  }
 
   n_parameters <- length(parameter_names)
   out <- data.frame(
@@ -19,7 +28,7 @@
     metadata <- .bt_random_effect_summary_metadata_for_parameter(
       parameter_name = parameter_names[i],
       prior_list = prior_list,
-      formula_design = formula_design
+      parameter_registry = parameter_registry
     )
     out[i, ] <- metadata
   }
@@ -30,11 +39,13 @@
 .bt_random_effect_summary_add_metadata_columns <- function(table,
                                                           parameter_names,
                                                           prior_list,
+                                                          parameter_registry = NULL,
                                                           formula_design = NULL){
 
   metadata <- .bt_random_effect_summary_metadata_table(
     parameter_names = parameter_names,
     prior_list = prior_list,
+    parameter_registry = parameter_registry,
     formula_design = formula_design
   )
   for(i in rev(seq_len(ncol(metadata)))){
@@ -53,6 +64,7 @@
 
 .bt_random_effect_summary_metadata_for_parameter <- function(parameter_name,
                                                             prior_list,
+                                                            parameter_registry = NULL,
                                                             formula_design = NULL){
 
   prior <- .bt_random_effect_summary_prior_for_column(parameter_name, prior_list)
@@ -71,6 +83,7 @@
 
   raw_metadata <- .bt_random_effect_summary_raw_metadata_for_parameter(
     parameter_name = parameter_name,
+    parameter_registry = parameter_registry,
     formula_design = formula_design
   )
   c(
@@ -99,30 +112,32 @@
 }
 
 .bt_random_effect_summary_raw_metadata_for_parameter <- function(parameter_name,
+                                                                parameter_registry = NULL,
                                                                 formula_design = NULL){
 
   out <- list(name = "", grouping = "", structure = "")
-  random_design <- .bt_random_effect_summary_designs(formula_design)
-  if(length(random_design) == 0L){
+  if(is.null(parameter_registry)){
+    parameter_registry <- .bt_build_parameter_registry(
+      columns = parameter_name,
+      formula_design = formula_design
+    )
+  }
+  .bt_validate_parameter_registry(parameter_registry)
+  row <- match(parameter_name, parameter_registry$canonical_name)
+  if(is.na(row)){
+    return(out)
+  }
+  registry_row <- parameter_registry[row, , drop = FALSE]
+  if(!startsWith(registry_row$role, "random_") &&
+     !identical(registry_row$role, "allocation")){
     return(out)
   }
 
-  random_terms <- .bt_random_effect_summary_random_terms(random_design)
-  for(random_term in random_terms){
-    if(.bt_random_effect_summary_raw_parameter_matches(
-      parameter_name = parameter_name,
-      random_term = random_term,
-      random_terms = random_terms
-    )){
-      return(list(
-        name = .bt_random_effect_public_name(random_term),
-        grouping = .bt_random_effect_summary_group_label(random_term),
-        structure = .bt_random_effect_summary_term_structure(random_term)
-      ))
-    }
-  }
-
-  out
+  list(
+    name = registry_row$random_name,
+    grouping = registry_row$random_grouping,
+    structure = registry_row$random_structure
+  )
 }
 
 .bt_random_effect_summary_random_terms <- function(random_design){
@@ -135,54 +150,8 @@
   random_terms
 }
 
-.bt_random_effect_summary_raw_parameter_owner_stem <- function(parameter_name,
-                                                               random_terms){
-
-  if(length(parameter_name) != 1L || is.na(parameter_name)){
-    return(NA_character_)
-  }
-
-  stems <- vapply(random_terms, function(random_term){
-    stem <- random_term$parameter_stem
-    if(is.null(stem) || length(stem) != 1L || is.na(stem) || !nzchar(stem)){
-      return(NA_character_)
-    }
-    as.character(stem)
-  }, character(1))
-  stems <- stems[!is.na(stems)]
-  if(length(stems) == 0L){
-    return(NA_character_)
-  }
-
-  matching_stems <- stems[
-    startsWith(parameter_name, paste0(stems, "_"))
-  ]
-  if(length(matching_stems) == 0L){
-    return(NA_character_)
-  }
-
-  matching_stems[which.max(nchar(matching_stems))]
-}
-
-.bt_random_effect_summary_raw_parameter_matches <- function(parameter_name,
-                                                           random_term,
-                                                           random_terms){
-
-  stem <- random_term$parameter_stem
-  if(is.null(stem) || length(stem) != 1L || is.na(stem) || !nzchar(stem)){
-    return(FALSE)
-  }
-
-  identical(
-    as.character(stem),
-    .bt_random_effect_summary_raw_parameter_owner_stem(
-      parameter_name = parameter_name,
-      random_terms = random_terms
-    )
-  )
-}
-
 .bt_random_effect_summary_filter_raw_columns <- function(model_samples,
+                                                         parameter_registry = NULL,
                                                          formula_design = NULL,
                                                          remove_random_effects = NULL,
                                                          keep_random_effects = NULL,
@@ -194,46 +163,58 @@
     return(model_samples)
   }
 
-  random_design <- .bt_random_effect_summary_designs(formula_design)
-  if(length(random_design) == 0L){
-    return(model_samples)
-  }
-
-  random_terms <- .bt_random_effect_summary_random_terms(random_design)
-  remove_columns <- rep(FALSE, length(column_names))
-  for(random_term in random_terms){
-    term_columns <- vapply(
-      column_names,
-      .bt_random_effect_summary_raw_parameter_matches,
-      logical(1),
-      random_term = random_term,
-      random_terms = random_terms
+  if(is.null(parameter_registry)){
+    parameter_registry <- .bt_build_parameter_registry(
+      columns = column_names,
+      formula_design = formula_design
     )
+  }
+  .bt_validate_parameter_registry(parameter_registry)
+  registry_rows <- match(column_names, parameter_registry$canonical_name)
+  registered <- !is.na(registry_rows)
+  row_role <- rep("", length(column_names))
+  row_block <- rep("", length(column_names))
+  row_name <- rep("", length(column_names))
+  row_grouping <- rep("", length(column_names))
+  row_structure <- rep("", length(column_names))
+  row_role[registered] <- parameter_registry$role[registry_rows[registered]]
+  row_block[registered] <- parameter_registry$random_block[registry_rows[registered]]
+  row_name[registered] <- parameter_registry$random_name[registry_rows[registered]]
+  row_grouping[registered] <- parameter_registry$random_grouping[registry_rows[registered]]
+  row_structure[registered] <- parameter_registry$random_structure[registry_rows[registered]]
+  random_columns <- registered &
+    (startsWith(row_role, "random_") | row_role == "allocation")
+  remove_columns <- rep(FALSE, length(column_names))
+  blocks <- unique(row_block[random_columns])
+  for(block in blocks){
+    term_columns <- random_columns & row_block == block
     if(!any(term_columns)){
       next
     }
     if(!is.null(remove_random_effects)){
-      term_matches_remove_effect <- .bt_random_effect_summary_term_filter_matches(
-        random_term = random_term,
-        random_effects = remove_random_effects,
-        random_structures = NULL
-      )
+      term_matches_remove_effect <- block %in% remove_random_effects ||
+        any(row_name[term_columns] %in% remove_random_effects) ||
+        any(row_grouping[term_columns] %in% remove_random_effects)
       remove_columns <- remove_columns | (term_columns & term_matches_remove_effect)
     }
     if(!is.null(remove_random_structures)){
-      term_matches_remove_structure <- .bt_random_effect_summary_term_filter_matches(
-        random_term = random_term,
-        random_effects = NULL,
-        random_structures = remove_random_structures
+      term_matches_remove_structure <- any(
+        row_structure[term_columns] %in% remove_random_structures
       )
       remove_columns <- remove_columns | (term_columns & term_matches_remove_structure)
     }
     if(!is.null(keep_random_effects) || !is.null(keep_random_structures)){
-      term_matches <- .bt_random_effect_summary_term_filter_matches(
-        random_term = random_term,
-        random_effects = keep_random_effects,
-        random_structures = keep_random_structures
-      )
+      term_matches <- TRUE
+      if(!is.null(keep_random_effects)){
+        term_matches <- term_matches &&
+          (any(row_block[term_columns] %in% keep_random_effects) ||
+             any(row_name[term_columns] %in% keep_random_effects) ||
+             any(row_grouping[term_columns] %in% keep_random_effects))
+      }
+      if(!is.null(keep_random_structures)){
+        term_matches <- term_matches &&
+          any(row_structure[term_columns] %in% keep_random_structures)
+      }
       remove_columns <- remove_columns | (term_columns & !term_matches)
     }
   }
@@ -271,7 +252,7 @@
 }
 
 .bt_random_effect_summary_remove_raw <- function(model_samples, prior_list,
-                                                 random_design){
+                                                 parameter_registry){
 
   raw_prior_names <- names(prior_list)[vapply(
     prior_list,
@@ -279,33 +260,16 @@
     logical(1)
   )]
 
-  raw_prefixes <- character()
-  for(design in random_design){
-    for(random_term in design$random_effects){
-      raw_prefixes <- c(
-        raw_prefixes,
-        paste0(random_term$parameter_stem, "_")
-      )
-    }
-  }
-  raw_prefixes <- unique(raw_prefixes)
-
-  raw_cols <- .bt_random_effect_summary_parameter_columns(
+  .bt_validate_parameter_registry(parameter_registry)
+  registry_rows <- match(
     colnames(model_samples),
-    raw_prior_names
+    parameter_registry$canonical_name
   )
-  allocation_indicator_names <- .bt_random_variance_allocation_inclusion_indicator_names(
-    random_design
-  )
-  if(length(allocation_indicator_names) > 0L){
-    raw_cols <- raw_cols | colnames(model_samples) %in% allocation_indicator_names
-  }
-  if(length(raw_prefixes) > 0L){
-    raw_cols <- raw_cols | Reduce(
-      "|",
-      lapply(raw_prefixes, function(prefix) startsWith(colnames(model_samples), prefix))
-    )
-  }
+  registered <- !is.na(registry_rows)
+  roles <- rep("", ncol(model_samples))
+  roles[registered] <- parameter_registry$role[registry_rows[registered]]
+  raw_cols <- registered &
+    (startsWith(roles, "random_") | roles == "allocation")
 
   if(any(raw_cols)){
     model_samples <- model_samples[, !raw_cols, drop = FALSE]
@@ -345,10 +309,18 @@
 .bt_random_effect_summary_display_names <- function(names, raw_names,
                                                     prior_list,
                                                     formula_prefix = TRUE,
+                                                    parameter_registry = NULL,
                                                     formula_design = NULL){
 
   if(length(raw_names) == 0L){
     return(names)
+  }
+  if(is.null(parameter_registry)){
+    parameter_registry <- .bt_build_parameter_registry(
+      columns = raw_names,
+      prior_list = prior_list,
+      formula_design = formula_design
+    )
   }
 
   if(length(prior_list) > 0L){
@@ -367,13 +339,18 @@
     }
   }
 
-  .bt_random_effect_summary_raw_display_names(
-    names = names,
-    raw_names = raw_names,
-    prior_list = prior_list,
-    formula_prefix = formula_prefix,
-    formula_design = formula_design
-  )
+  .bt_validate_parameter_registry(parameter_registry)
+  registry_rows <- match(raw_names, parameter_registry$canonical_name)
+  registered <- !is.na(registry_rows)
+  if(any(registered)){
+    labels <- parameter_registry$display_label[registry_rows[registered]]
+    if(!isTRUE(formula_prefix)){
+      labels <- sub("^\\([^)]*\\) ", "", labels)
+    }
+    names[registered] <- labels
+  }
+
+  names
 }
 
 .bt_random_effect_summary_formula_prefix <- function(parameter, formula_prefix){

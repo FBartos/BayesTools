@@ -33,6 +33,7 @@ random_effects_summary_posterior <- function(
   if(!inherits(fit, "runjags") || !inherits(fit, "BayesTools_fit")){
     stop("'fit' must be a BayesTools JAGS fit.", call. = FALSE)
   }
+  parameter_registry <- JAGS_parameter_registry(fit)
   summary <- .bt_random_effect_summary_posterior_type(summary)
   check_char(allocation, "allocation", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
   check_char(component, "component", check_length = 0, allow_NULL = TRUE, allow_NA = FALSE)
@@ -51,6 +52,7 @@ random_effects_summary_posterior <- function(
     model_samples = model_samples,
     prior_list = prior_list,
     formula_design = attr(fit, "formula_design", exact = TRUE),
+    parameter_registry = parameter_registry,
     mode = summary_mode
   )
 
@@ -105,7 +107,8 @@ random_effects_summary_posterior <- function(
     names = raw_names,
     raw_names = raw_names,
     prior_list = summary_priors,
-    formula_prefix = TRUE
+    formula_prefix = TRUE,
+    parameter_registry = parameter_registry
   )
   display_names <- make.unique(display_names)
 

@@ -25,6 +25,7 @@ bayestools_test_profile_contexts <- list(
     "JAGS-indexed-parameters",
     "JAGS-lkj-cholesky",
     "JAGS-marginal-distributions",
+    "JAGS-parameter-registry",
     "JAGS-posterior-extraction",
     "JAGS-random-effects-compile",
     "JAGS-selection-inits",

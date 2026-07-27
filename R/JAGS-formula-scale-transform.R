@@ -33,6 +33,10 @@
 #' @export
 transform_scale_samples <- function(fit, formula_scale = NULL){
 
+  if(inherits(fit, "BayesTools_fit")){
+    JAGS_parameter_registry(fit)
+  }
+
   # extract formula_scale from fit if available
   if(is.null(formula_scale) && !is.null(attr(fit, "formula_scale"))){
     formula_scale <- attr(fit, "formula_scale")

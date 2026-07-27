@@ -29,6 +29,26 @@ Sys.setenv(BAYESTOOLS_TEST_FILES_DIR = test_files_dir)
 
 # Use skip_if_no_fits() for tests that need pre-fitted models.
 
+attach_test_parameter_registry <- function(fit, monitor_names = NULL) {
+  BayesTools:::.bt_attach_parameter_registry(
+    fit,
+    monitor_names = monitor_names
+  )
+}
+
+build_test_parameter_registry <- function(columns, monitor_names = columns,
+                                          prior_list = NULL,
+                                          formula_design = NULL,
+                                          formula_scale = NULL) {
+  BayesTools:::.bt_build_parameter_registry(
+    columns = columns,
+    monitor_names = monitor_names,
+    prior_list = prior_list,
+    formula_design = formula_design,
+    formula_scale = formula_scale
+  )
+}
+
 # ============================================================================ #
 # HELPER FUNCTIONS: Reference File Testing
 # ============================================================================ #

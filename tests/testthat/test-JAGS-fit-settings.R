@@ -119,6 +119,7 @@ test_that("JAGS_extend validates runtime controls before extension", {
   attr(fit, "required_packages") <- character()
   attr(fit, "jags_modules") <- character()
   attr(fit, "add_parameters") <- character()
+  attr(fit, "parameter_registry") <- build_test_parameter_registry(character())
   fit
 }
 

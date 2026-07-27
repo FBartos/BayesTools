@@ -2,10 +2,20 @@
 
 .bt_random_effect_summary_samples <- function(model_samples, prior_list,
                                               formula_design = NULL,
+                                              parameter_registry = NULL,
                                               mode = c("standard", "full", "raw", "none"),
                                               formula_scale = NULL){
 
   mode <- match.arg(mode)
+  if(is.null(parameter_registry)){
+    parameter_registry <- .bt_build_parameter_registry(
+      columns = colnames(model_samples),
+      prior_list = prior_list,
+      formula_design = formula_design,
+      formula_scale = formula_scale
+    )
+  }
+  .bt_validate_parameter_registry(parameter_registry)
   if(is.null(formula_design) || length(formula_design) == 0L || identical(mode, "raw")){
     return(list(model_samples = model_samples, prior_list = prior_list))
   }
@@ -34,7 +44,7 @@
   .bt_random_effect_summary_remove_raw(
     model_samples = model_samples,
     prior_list = prior_list,
-    random_design = random_design
+    parameter_registry = parameter_registry
   )
 }
 

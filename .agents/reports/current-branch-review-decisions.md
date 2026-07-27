@@ -30,7 +30,7 @@ mean **implemented**.
 | D16 | Implemented and verified | No remaining work |
 | D17 | Implemented and verified | No remaining work |
 | D18 | Implemented and verified | No remaining work |
-| D19 | Decision confirmed; implementation pending | Introduce and adopt a canonical, documented parameter registry |
+| D19 | Implemented and verified | No remaining work |
 | D20 | Decision confirmed; implementation pending | Introduce a scalar, scale-explicit marginal-likelihood result contract |
 | D21 | Partially implemented | Add the vignette manifest and consolidate real fitting; D30 covers paths |
 | D22 | Implemented and verified | No remaining work |
@@ -300,7 +300,7 @@ ambiguous prediction data.
 
 Decision: please add a bit more information -- an actual example -- so I understand the impact and potential issues
 
-**Audit status: decision confirmed; implementation pending.**
+**Audit status: implemented and verified.**
 
 **Concrete example.** Assume a fitted model has a row-indexed posterior source
 with columns `tau[1]`, ..., `tau[4]`, corresponding to fitted observations
@@ -1057,6 +1057,28 @@ code to inspect an internal attribute by convention. Remove heuristic fallback
 paths and reject fits without the new registry with a refit message. Tests should
 assert registry completeness/uniqueness and compare every consumer against the
 same registry.
+
+**Implementation outcome.** Every successful `JAGS_fit()` now stores a
+versioned `BayesTools_parameter_registry` with one unique row per concrete
+sampled or structural parameter coordinate. The registry records its owning
+formula and random block, public random name and grouping, semantic role,
+term/column/index/dimensions, fitted scale, monitor status, display label, and
+whether the coordinate is internal. `JAGS_parameter_registry()` validates and
+returns the fitted registry; `JAGS_parameter_registry_schema()` documents the
+contract for downstream packages. Fits without the current schema fail with an
+explicit refit instruction, and `JAGS_extend()` preserves the validated
+registry.
+
+Random-summary ownership, raw-column filtering, metadata columns, and display
+labels now use exact registry rows. The former longest-prefix ownership
+heuristic was removed. Matrix-level internal helpers may construct the same
+registry from explicit current formula metadata, but fitted-object APIs do not
+reconstruct missing serialized metadata. Raw latent and realized group
+coefficients are registered as internal `unit_latent` and
+`fitted_standardized` coordinates, respectively. A real-JAGS smoke fit
+confirmed registry attachment and table consumption. The complete unit profile,
+including 23 new registry-contract and collision assertions, passed 7,954
+assertions with no failures or warnings.
 
 ## D20. Marginal-likelihood computation contract
 

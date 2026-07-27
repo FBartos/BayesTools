@@ -239,7 +239,7 @@ test_that("indicator BF diagnostics use indicator MCSE and handle boundaries", {
     )
   )
 
-  fit
+  attach_test_parameter_registry(fit)
 }
 
 
@@ -426,7 +426,7 @@ test_that("update preserves relative BF MC error percentage across BF scales", {
     theta = prior("normal", list(0, 1)),
     beta  = prior("mnormal", list(mean = 0, sd = 1, K = 1))
   )
-  fit
+  attach_test_parameter_registry(fit)
 }
 
 .expect_runjags_estimate_values_for_test <- function(table, samples, probs) {
@@ -503,16 +503,31 @@ test_that("raw random-effect correlation aliases include logit-scale rho columns
     mu = structure(
       list(
         parameter = "mu",
-        random_effects = list(list(parameter_stem = "mu__xREx__id"))
+        random_effects = list(list(
+          parameter_stem = "mu__xREx__id",
+          parameter = "mu",
+          block_name = "id",
+          group_label = "id",
+          has_explicit_name = TRUE,
+          structure = "diag",
+          column_names = "sd",
+          sd_parameter_names = "mu__xREx__id_sd",
+          group_levels = "a"
+        ))
       ),
       class = c("BayesTools_formula_design", "list")
     )
   )
 
+  parameter_registry <- build_test_parameter_registry(
+    columns = colnames(samples),
+    formula_design = formula_design
+  )
+
   removed <- BayesTools:::.bt_JAGS_estimates_filter_raw_random_columns(
     model_samples = samples,
     prior_list = list(),
-    formula_design = formula_design,
+    parameter_registry = parameter_registry,
     remove_parameters = "random_correlation"
   )
   expect_true("mu__xREx__id_sd" %in% colnames(removed))
@@ -523,7 +538,7 @@ test_that("raw random-effect correlation aliases include logit-scale rho columns
   kept <- BayesTools:::.bt_JAGS_estimates_filter_raw_random_columns(
     model_samples = samples,
     prior_list = list(),
-    formula_design = formula_design,
+    parameter_registry = parameter_registry,
     keep_parameters = "random_correlation"
   )
   expect_true("mu_intercept" %in% colnames(kept))
@@ -565,18 +580,39 @@ test_that("raw random-effect monitors respect formula filters", {
     mu = structure(
       list(
         parameter = "mu",
-        random_effects = list(list(parameter_stem = "mu__xREx__id"))
+        random_effects = list(list(
+          parameter_stem = "mu__xREx__id",
+          parameter = "mu",
+          block_name = "id",
+          group_label = "id",
+          has_explicit_name = TRUE,
+          structure = "diag",
+          column_names = "sd",
+          sd_parameter_names = "mu__xREx__id_sd",
+          group_levels = "a"
+        ))
       ),
       class = c("BayesTools_formula_design", "list")
     ),
     log_sigma = structure(
       list(
         parameter = "log_sigma",
-        random_effects = list(list(parameter_stem = "log_sigma__xREx__site"))
+        random_effects = list(list(
+          parameter_stem = "log_sigma__xREx__site",
+          parameter = "log_sigma",
+          block_name = "site",
+          group_label = "site",
+          has_explicit_name = TRUE,
+          structure = "diag",
+          column_names = "sd",
+          sd_parameter_names = "log_sigma__xREx__site_sd",
+          group_levels = "a"
+        ))
       ),
       class = c("BayesTools_formula_design", "list")
     )
   )
+  fit <- attach_test_parameter_registry(fit)
 
   removed <- suppressWarnings(runjags_estimates_table(
     fit,
@@ -594,11 +630,11 @@ test_that("raw random-effect monitors respect formula filters", {
   ))
 
   expect_equal(ncol(removed), 2L)
-  expect_false(any(grepl("__id_", colnames(removed), fixed = TRUE)))
-  expect_true(any(grepl("__site_", colnames(removed), fixed = TRUE)))
+  expect_false(any(startsWith(colnames(removed), "(mu) ")))
+  expect_true(any(startsWith(colnames(removed), "(log_sigma) ")))
   expect_equal(ncol(kept), 2L)
-  expect_false(any(grepl("__id_", colnames(kept), fixed = TRUE)))
-  expect_true(any(grepl("__site_", colnames(kept), fixed = TRUE)))
+  expect_false(any(startsWith(colnames(kept), "(mu) ")))
+  expect_true(any(startsWith(colnames(kept), "(log_sigma) ")))
 })
 
 
@@ -606,17 +642,25 @@ test_that("raw random-effect columns use their longest matching parameter stem",
 
   short_term <- list(
     parameter_stem = "mu__xREx__a",
+    parameter = "mu",
     block_name = "a",
     group_label = "group_a",
     has_explicit_name = TRUE,
-    structure = "diag"
+    structure = "diag",
+    column_names = "intercept",
+    sd_parameter_names = "mu__xREx__a_intercept",
+    group_levels = "a"
   )
   long_term <- list(
     parameter_stem = "mu__xREx__a_b",
+    parameter = "mu",
     block_name = "a_b",
     group_label = "group_a_b",
     has_explicit_name = TRUE,
-    structure = "diag"
+    structure = "diag",
+    column_names = "intercept",
+    sd_parameter_names = "mu__xREx__a_b_intercept",
+    group_levels = "a"
   )
   formula_design <- list(
     mu = structure(
@@ -634,14 +678,18 @@ test_that("raw random-effect columns use their longest matching parameter stem",
     nrow = 2L,
     dimnames = list(NULL, c("mu_intercept", short_column, long_column))
   )
+  parameter_registry <- build_test_parameter_registry(
+    columns = colnames(samples),
+    formula_design = formula_design
+  )
 
   short_metadata <- BayesTools:::.bt_random_effect_summary_raw_metadata_for_parameter(
     parameter_name = short_column,
-    formula_design = formula_design
+    parameter_registry = parameter_registry
   )
   long_metadata <- BayesTools:::.bt_random_effect_summary_raw_metadata_for_parameter(
     parameter_name = long_column,
-    formula_design = formula_design
+    parameter_registry = parameter_registry
   )
   expect_equal(
     short_metadata,
@@ -654,7 +702,7 @@ test_that("raw random-effect columns use their longest matching parameter stem",
 
   removed_short <- BayesTools:::.bt_random_effect_summary_filter_raw_columns(
     model_samples = samples,
-    formula_design = formula_design,
+    parameter_registry = parameter_registry,
     remove_random_effects = "a"
   )
   expect_identical(
@@ -664,7 +712,7 @@ test_that("raw random-effect columns use their longest matching parameter stem",
 
   removed_long <- BayesTools:::.bt_random_effect_summary_filter_raw_columns(
     model_samples = samples,
-    formula_design = formula_design,
+    parameter_registry = parameter_registry,
     remove_random_effects = "a_b"
   )
   expect_identical(
@@ -674,7 +722,7 @@ test_that("raw random-effect columns use their longest matching parameter stem",
 
   kept_short <- BayesTools:::.bt_random_effect_summary_filter_raw_columns(
     model_samples = samples,
-    formula_design = formula_design,
+    parameter_registry = parameter_registry,
     keep_random_effects = "a"
   )
   expect_identical(
@@ -684,7 +732,7 @@ test_that("raw random-effect columns use their longest matching parameter stem",
 
   kept_long <- BayesTools:::.bt_random_effect_summary_filter_raw_columns(
     model_samples = samples,
-    formula_design = formula_design,
+    parameter_registry = parameter_registry,
     keep_random_effects = "a_b"
   )
   expect_identical(
@@ -695,7 +743,7 @@ test_that("raw random-effect columns use their longest matching parameter stem",
   kept_long_for_table <- BayesTools:::.bt_JAGS_estimates_filter_raw_random_columns(
     model_samples = samples,
     prior_list = list(),
-    formula_design = formula_design,
+    parameter_registry = parameter_registry,
     keep_parameters = "intercept",
     keep_random_effects = "a_b"
   )
@@ -714,10 +762,21 @@ test_that("raw logit-scale correlations use correlation display labels", {
       parameter = "mu",
       random_effects = list(list(
         parameter_stem = "mu__xREx__id",
-        block_name = "id"
+        parameter = "mu",
+        block_name = "id",
+        group_label = "id",
+        has_explicit_name = TRUE,
+        structure = "diag",
+        column_names = "intercept",
+        sd_parameter_names = character(),
+        group_levels = "a"
       ))
     ),
     class = c("BayesTools_formula_design", "list")
+  )
+  parameter_registry <- build_test_parameter_registry(
+    columns = raw_name,
+    formula_design = list(mu = formula_design)
   )
 
   display_name <- BayesTools:::.bt_random_effect_summary_display_names(
@@ -725,7 +784,7 @@ test_that("raw logit-scale correlations use correlation display labels", {
     raw_names = raw_name,
     prior_list = list(),
     formula_prefix = TRUE,
-    formula_design = formula_design
+    parameter_registry = parameter_registry
   )
 
   expect_identical(display_name, "(mu) rho_logit(id)")

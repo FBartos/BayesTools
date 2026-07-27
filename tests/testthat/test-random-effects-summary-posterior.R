@@ -45,7 +45,7 @@ skip_if_not_test_profile("unit")
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
 
-  fit
+  attach_test_parameter_registry(fit)
 }
 
 .random_effects_total_variance_allocation_fit <- function(){
@@ -93,7 +93,7 @@ skip_if_not_test_profile("unit")
   attr(fit, "prior_list") <- formula_result$prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
 
-  fit
+  attach_test_parameter_registry(fit)
 }
 
 test_that("random-effect summary posterior extracts mean-variance ratios", {
