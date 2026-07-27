@@ -45,7 +45,7 @@ make_adversarial_indicator_fit <- function(indicator = c(rep(1, 9900), rep(0, 10
     )
   )
 
-  fit
+  attach_test_parameter_registry(fit)
 }
 
 make_point_vector_fit <- function(){
@@ -65,7 +65,7 @@ make_point_vector_fit <- function(){
     sigma = prior("gamma", list(2, 2))
   )
 
-  fit
+  attach_test_parameter_registry(fit)
 }
 
 make_random_summary_fit <- function(formula, data, prior_random_list,
@@ -100,7 +100,7 @@ make_random_summary_fit <- function(formula, data, prior_random_list,
   attr(fit, "prior_list") <- prior_list
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
 
-  fit
+  attach_test_parameter_registry(fit)
 }
 
 make_raw_random_summary_fit <- function(){
@@ -234,7 +234,7 @@ make_row_indexed_external_random_summary_fit <- function(){
   )
   attr(fit, "formula_design") <- list(mu = formula_result$formula_design)
 
-  fit
+  attach_test_parameter_registry(fit)
 }
 
 expect_summary_row_order <- function(table, rows) {

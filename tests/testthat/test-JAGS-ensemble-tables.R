@@ -92,10 +92,11 @@ source(testthat::test_path("common-functions.R"))
   expect_equal(table$models, unname(vapply(inference[parameters], function(x) sum(!attr(x, "is_null")), numeric(1))))
   expect_equal(attr(table, "n_models"), unname(vapply(inference[parameters], function(x) length(attr(x, "is_null")), integer(1))))
 
-  for (parameter in parameters) {
+  for (i in seq_along(parameters)) {
+    parameter <- parameters[[i]]
     is_null <- attr(inference[[parameter]], "is_null")
     expected_is_null <- BayesTools:::.model_averaging_is_null(
-      is_null_list[[parameter]],
+      is_null_list[[i]],
       length(is_null)
     )
     parameter_name <- attr(inference[[parameter]], "parameter_name")
@@ -604,7 +605,7 @@ test_that("Simplified interpret2 function", {
 
   expect_equal(
     interpret2(information, "RoBMA"),
-    "RoBMA found moderate evidence in favor of the Effect, BF10 = 3.50, with mean model-averaged estimate mu = 0.300 kg, 95% CI [0.007,  0.593]."
+    "RoBMA found moderate evidence in favor of the Effect, BF10 = 3.50, with mean model-averaged estimate mu = 0.300 kg, 95% CI [0.007, 0.593]."
   )
 
 })
