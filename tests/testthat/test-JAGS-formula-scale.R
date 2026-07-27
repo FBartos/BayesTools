@@ -1075,8 +1075,8 @@ test_that("runjags_estimates_table transform_scaled with return_samples works", 
   # beta_x1_orig = beta_x1_z/sd_x1 - beta_int_orig * mean_x2
   expected_x1 <- samples_scaled[, "(mu) x_cont1"] / sd_x_cont1 - unscaled_int * mean_x_cont2
   expect_equal(
-    samples_unscaled[, "(mu) x_cont1"],
-    expected_x1,
+    as.numeric(samples_unscaled[, "(mu) x_cont1"]),
+    as.numeric(expected_x1),
     tolerance = 1e-10
   )
 })
