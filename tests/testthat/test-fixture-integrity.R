@@ -208,7 +208,14 @@ test_that("fixture artifact validators reject malformed temporary RDS payloads",
     class = "expectation_failure"
   )
 
-  malformed_marglik <- structure(list(logml = NA_real_), class = "bridge")
+  malformed_marglik <- structure(
+    list(
+      schema_version = 1L,
+      logml = NA_real_,
+      scale = "natural_log"
+    ),
+    class = c("BayesTools_marglik", "list")
+  )
   saveRDS(malformed_marglik, malformed_marglik_file)
   expect_error(
     expect_marglik_object(readRDS(malformed_marglik_file)),

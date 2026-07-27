@@ -229,24 +229,24 @@
 }
 
 
-#' @title Create a 'bridgesampling' object
+#' @title Create a BayesTools marginal-likelihood object
 #'
-#' @description prepares a 'bridgesampling' object with a given
-#' log marginal likelihood.
+#' @description Creates a marginal-likelihood result from a supplied scalar
+#' natural-log marginal likelihood. This is useful for analytically known or
+#' deliberately zero-evidence models that were not evaluated by bridge
+#' sampling.
 #'
-#' @param logml log marginal likelihood. Defaults to \code{-Inf}.
+#' @param logml scalar natural-log marginal likelihood. Defaults to \code{-Inf},
+#' representing zero marginal likelihood.
 #'
 #'
-#' @return \code{JAGS_bridgesampling} returns an object of class 'bridge'.
+#' @return A `BayesTools_marglik` object with the `"supplied_scalar"`
+#' aggregation rule and no repetition rows.
 #'
 #' @export
 bridgesampling_object <- function(logml = -Inf){
 
-  marglik        <- list()
-  marglik$logml  <- logml
-  class(marglik) <- "bridge"
-
-  return(marglik)
+  .bt_marglik_manual_result(logml)
 }
 
 

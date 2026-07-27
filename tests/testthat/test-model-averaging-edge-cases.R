@@ -40,7 +40,7 @@ source(testthat::test_path("common-functions.R"))
 }
 
 .mock_bridge <- function(logml) {
-  structure(list(logml = logml), class = "bridge")
+  bridgesampling_object(logml)
 }
 
 .mock_runjags_fit_for_mixing <- function(samples, prior_list) {
@@ -552,6 +552,35 @@ test_that("model averaging rejects malformed prior weights at each public entry 
       n_samples    = 4
     ),
     "not available in any model prior list",
+    fixed = TRUE
+  )
+})
+
+test_that("model-list inference requires the BayesTools marginal-likelihood contract", {
+
+  legacy_bridge <- structure(list(logml = 0), class = "bridge")
+
+  expect_error(
+    models_inference(list(list(
+      marglik = legacy_bridge,
+      prior_weights = 1
+    ))),
+    "must be a 'BayesTools_marglik' object",
+    fixed = TRUE
+  )
+  expect_error(
+    models_inference(list(list(
+      marglik = structure(
+        list(
+          schema_version = 1L,
+          logml = c(0, 1),
+          scale = "natural_log"
+        ),
+        class = c("BayesTools_marglik", "list")
+      ),
+      prior_weights = 1
+    ))),
+    "must be one natural-log marginal likelihood",
     fixed = TRUE
   )
 })

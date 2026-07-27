@@ -2,17 +2,21 @@
 % Please edit documentation in R/JAGS-bridge-posterior.R
 \name{bridgesampling_object}
 \alias{bridgesampling_object}
-\title{Create a 'bridgesampling' object}
+\title{Create a BayesTools marginal-likelihood object}
 \usage{
 bridgesampling_object(logml = -Inf)
 }
 \arguments{
-\item{logml}{log marginal likelihood. Defaults to \code{-Inf}.}
+\item{logml}{scalar natural-log marginal likelihood. Defaults to \code{-Inf},
+representing zero marginal likelihood.}
 }
 \value{
-\code{JAGS_bridgesampling} returns an object of class 'bridge'.
+A \code{BayesTools_marglik} object with the \code{"supplied_scalar"}
+aggregation rule and no repetition rows.
 }
 \description{
-prepares a 'bridgesampling' object with a given
-log marginal likelihood.
+Creates a marginal-likelihood result from a supplied scalar
+natural-log marginal likelihood. This is useful for analytically known or
+deliberately zero-evidence models that were not evaluated by bridge
+sampling.
 }

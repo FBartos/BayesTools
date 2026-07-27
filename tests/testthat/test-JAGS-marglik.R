@@ -122,7 +122,7 @@ expect_formula_random_prior_only_bridge <- function(formula, data, prior_list,
     maxiter = maxiter
   )
 
-  expect_s3_class(marglik, "bridge")
+  expect_s3_class(marglik, "BayesTools_marglik")
   expect_equal(marglik$logml, 0, tolerance = tolerance)
 
   invisible(list(
@@ -515,7 +515,7 @@ test_that("bridge sampling object function works",{
 
   expect_equal(marglik0$logml, -Inf)
   expect_equal(marglik1$logml, 1)
-  expect_s3_class(marglik0, "bridge")
+  expect_s3_class(marglik0, "BayesTools_marglik")
 
 })
 
@@ -724,7 +724,7 @@ test_that("JAGS bridgesampling passes requested bridge context to callback", {
     maxiter = 1000
   )
 
-  expect_s3_class(marglik, "bridge")
+  expect_s3_class(marglik, "BayesTools_marglik")
   expect_s3_class(seen$context, "BayesTools_bridge_context")
   expect_equal(seen$context$nodes[["mu"]], seen$mu)
 })
@@ -975,7 +975,7 @@ test_that("JAGS bridgesampling supports formula random effects through prior_ran
     maxiter = 1000
   )
 
-  expect_s3_class(marglik, "bridge")
+  expect_s3_class(marglik, "BayesTools_marglik")
   expect_equal(marglik$logml, 0, tolerance = 0.08)
 })
 
@@ -1048,7 +1048,7 @@ test_that("JAGS bridgesampling supports continuous-time CAR formula random effec
     maxiter = 1000
   )
 
-  expect_s3_class(marglik, "bridge")
+  expect_s3_class(marglik, "BayesTools_marglik")
   expect_equal(marglik$logml, 0, tolerance = 0.08)
 })
 
@@ -1123,7 +1123,7 @@ test_that("JAGS bridgesampling supports Dirichlet variance-allocation random eff
     maxiter = 1000
   )
 
-  expect_s3_class(marglik, "bridge")
+  expect_s3_class(marglik, "BayesTools_marglik")
   expect_equal(marglik$logml, 0, tolerance = 0.08)
 })
 
@@ -1219,7 +1219,7 @@ test_that("JAGS bridgesampling reconstructs row-indexed external SD sources from
     maxiter = 1000
   )
 
-  expect_s3_class(marglik, "bridge")
+  expect_s3_class(marglik, "BayesTools_marglik")
   expect_equal(marglik$logml, 0, tolerance = 0.08)
 
   graft_samples <- samples
@@ -1770,12 +1770,12 @@ test_that(".fit_to_posterior handles different input types", {
   # mcmc.list (rjags::coda.samples)
   samples_mcmc_list <- rjags::coda.samples(model = model, variable.names = monitor, n.iter = 100, quiet = TRUE, progress.bar = "none")
   marglik <- JAGS_bridgesampling(samples_mcmc_list, prior_list = prior_list, data = list(), log_posterior = log_posterior)
-  expect_s3_class(marglik, "bridge")
+  expect_s3_class(marglik, "BayesTools_marglik")
 
   # mcmc (coda::as.mcmc)
   samples_mcmc <- coda::as.mcmc(samples_mcmc_list[[1]])
   marglik_mcmc <- JAGS_bridgesampling(samples_mcmc, prior_list = prior_list, data = list(), log_posterior = log_posterior)
-  expect_s3_class(marglik_mcmc, "bridge")
+  expect_s3_class(marglik_mcmc, "BayesTools_marglik")
 
   # Error for unsupported input
   expect_error(JAGS_bridgesampling("bad_input", prior_list = prior_list, data = list(), log_posterior = log_posterior), "not implemented")
@@ -1797,7 +1797,7 @@ test_that(".fit_to_posterior handles jags.samples output", {
   model <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
   samples_jags <- rjags::jags.samples(model = model, variable.names = monitor, n.iter = 100, progress.bar = "none")
   marglik_jags <- JAGS_bridgesampling(samples_jags, prior_list = prior_list, data = list(), log_posterior = log_posterior)
-  expect_s3_class(marglik_jags, "bridge")
+  expect_s3_class(marglik_jags, "BayesTools_marglik")
 
 })
 
@@ -1816,7 +1816,7 @@ test_that(".fit_to_posterior handles vector parameters in jags.samples", {
   model <- rjags::jags.model(file = textConnection(model_syntax), inits = inits, n.chains = 2, quiet = TRUE)
   samples_jags <- rjags::jags.samples(model = model, variable.names = monitor, n.iter = 100, progress.bar = "none")
   marglik_jags <- JAGS_bridgesampling(samples_jags, prior_list = prior_list, data = list(), log_posterior = log_posterior)
-  expect_s3_class(marglik_jags, "bridge")
+  expect_s3_class(marglik_jags, "BayesTools_marglik")
 
 })
 
@@ -1845,7 +1845,7 @@ test_that("JAGS_bridgesampling handles runjags output", {
   ))
 
   marglik <- JAGS_bridgesampling(fit, prior_list = prior_list, data = list(), log_posterior = log_posterior)
-  expect_s3_class(marglik, "bridge")
+  expect_s3_class(marglik, "BayesTools_marglik")
   expect_equal(marglik$logml, 0, tolerance = 0.1)
 
 })

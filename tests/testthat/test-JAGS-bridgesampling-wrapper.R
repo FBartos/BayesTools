@@ -17,13 +17,15 @@ skip_if_not_test_profile("unit")
   structure(
     list(
       logml = seq_len(repetitions),
-      niter = niter
+      niter = niter,
+      mcse_logml = rep.int(0.05, repetitions),
+      method = "normal"
     ),
     class = "bridge_list"
   )
 }
 
-test_that("JAGS_bridgesampling preserves repeated bridge estimates", {
+test_that("JAGS_bridgesampling aggregates repeated bridge estimates explicitly", {
 
   testthat::local_mocked_bindings(
     bridge_sampler = .mock_bridge_sampler,
@@ -45,12 +47,21 @@ test_that("JAGS_bridgesampling preserves repeated bridge estimates", {
     maxiter = 1000
   )
 
-  expect_s3_class(result, "bridge_list")
-  expect_length(result[["logml"]], 2L)
-  expect_length(result[["niter"]], 2L)
-  expect_true(all(is.finite(result[["logml"]])))
-  expect_true(all(result[["niter"]] <= 1000L))
-  expect_null(attr(result, "warning"))
+  expect_s3_class(result, "BayesTools_marglik")
+  expect_identical(result[["scale"]], "natural_log")
+  expect_equal(result[["logml"]], 1.5)
+  expect_identical(result[["aggregation"]][["rule"]], "median_finite_logml")
+  expect_identical(result[["aggregation"]][["n_included"]], 2L)
+  expect_identical(result[["aggregation"]][["n_failed"]], 0L)
+  expect_identical(result[["repetitions"]][["logml"]], c(1, 2))
+  expect_identical(result[["repetitions"]][["niter"]], c(7, 7))
+  expect_identical(result[["repetitions"]][["mcse"]], c(0.05, 0.05))
+  expect_true(all(result[["repetitions"]][["success"]]))
+  expect_true(all(result[["repetitions"]][["within_maxiter"]]))
+  expect_identical(result[["repetitions"]][["method"]], c("normal", "normal"))
+  expect_identical(result[["repetitions"]][["n_chains"]], c(1L, 1L))
+  expect_identical(result[["repetitions"]][["n_draws"]], c(20L, 20L))
+  expect_s3_class(result[["diagnostics"]][["upstream"]], "bridge_list")
 })
 
 test_that("JAGS_bridgesampling checks repeated iteration limits collectively", {
@@ -75,11 +86,11 @@ test_that("JAGS_bridgesampling checks repeated iteration limits collectively", {
     maxiter = 1
   )
 
-  expect_s3_class(result, "bridge_list")
-  expect_length(result[["niter"]], 2L)
-  expect_true(any(result[["niter"]] > 1L))
+  expect_s3_class(result, "BayesTools_marglik")
+  expect_true(any(!result[["repetitions"]][["within_maxiter"]]))
+  expect_false(result[["repetitions"]][["success"]][[1L]])
   expect_identical(
-    attr(result, "warning"),
+    result[["repetitions"]][["warning"]][[1L]],
     paste(
       "Marginal likelihood could not be estimated within the maximum number",
       "of iterations and might be more variable than usual."
@@ -95,6 +106,26 @@ test_that("JAGS_bridgesampling validates the log-posterior callback eagerly", {
       log_posterior = 1
     ),
     "'log_posterior' must be a function.",
+    fixed = TRUE
+  )
+})
+
+test_that("BayesTools fits require the canonical registry for bridge replay", {
+
+  fit <- coda::as.mcmc(matrix(
+    seq_len(20),
+    ncol = 1,
+    dimnames = list(NULL, "mu")
+  ))
+  class(fit) <- c("BayesTools_fit", class(fit))
+
+  expect_error(
+    JAGS_bridgesampling(
+      fit = fit,
+      log_posterior = function(parameters, data) 0,
+      prior_list = list(mu = prior("normal", list(0, 1)))
+    ),
+    "Refit the model with the current BayesTools version.",
     fixed = TRUE
   )
 })
@@ -136,7 +167,12 @@ test_that("global log-posterior callbacks survive a PSOCK round trip", {
         arguments[["log_posterior"]]
       )
       structure(
-        list(logml = unlist(worker_value), niter = 1L),
+        list(
+          logml = unlist(worker_value),
+          niter = 1L,
+          mcse_logml = 0.01,
+          method = "normal"
+        ),
         class = "bridge"
       )
     },
@@ -194,6 +230,102 @@ test_that("global log-posterior callbacks survive a PSOCK round trip", {
   result <- eval(bridge_call, envir = .GlobalEnv)
 
   expect_false(inherits(result, "error"))
+  expect_s3_class(result, "BayesTools_marglik")
   expect_equal(result[["logml"]], 3)
-  expect_identical(result[["niter"]], 1L)
+  expect_identical(result[["repetitions"]][["niter"]], 1)
+  expect_identical(result[["diagnostics"]][["chains"]][["count"]], 1L)
+})
+
+test_that("JAGS_bridgesampling aborts on non-finite repetitions by default", {
+
+  testthat::local_mocked_bindings(
+    bridge_sampler = function(...){
+      structure(
+        list(
+          logml = c(-10, NA_real_, -12),
+          niter = c(4L, 1000L, 5L),
+          mcse_logml = c(0.1, NA_real_, 0.2),
+          method = "warp3"
+        ),
+        class = "bridge_list"
+      )
+    },
+    .package = "bridgesampling"
+  )
+  posterior <- coda::as.mcmc(matrix(
+    seq_len(20),
+    ncol = 1,
+    dimnames = list(NULL, "mu")
+  ))
+
+  expect_error(
+    JAGS_bridgesampling(
+      fit = posterior,
+      log_posterior = function(parameters, data) 0,
+      data = list(),
+      prior_list = list(mu = prior("normal", list(0, 1)))
+    ),
+    class = "BayesTools_marglik_repetition_failure"
+  )
+})
+
+test_that("explicit drop policy records non-finite repetitions", {
+
+  testthat::local_mocked_bindings(
+    bridge_sampler = function(...){
+      warning("upstream diagnostic")
+      structure(
+        list(
+          logml = c(-10, Inf, -14),
+          niter = c(4L, 1000L, 5L),
+          mcse_logml = c(0.1, NA_real_, 0.2),
+          method = "warp3"
+        ),
+        class = "bridge_list"
+      )
+    },
+    .package = "bridgesampling"
+  )
+  posterior <- coda::as.mcmc(matrix(
+    seq_len(20),
+    ncol = 1,
+    dimnames = list(NULL, "mu")
+  ))
+
+  expect_warning(
+    result <- JAGS_bridgesampling(
+      fit = posterior,
+      log_posterior = function(parameters, data) 0,
+      data = list(),
+      prior_list = list(mu = prior("normal", list(0, 1))),
+      nonfinite = "drop"
+    ),
+    "Dropped non-finite bridge-sampling repetition\\(s\\) 2"
+  )
+
+  expect_equal(result[["logml"]], -12)
+  expect_identical(result[["aggregation"]][["n_included"]], 2L)
+  expect_identical(result[["aggregation"]][["n_failed"]], 1L)
+  expect_false(result[["repetitions"]][["finite"]][[2L]])
+  expect_match(
+    result[["repetitions"]][["error"]][[2L]],
+    "non-finite log marginal likelihood",
+    fixed = TRUE
+  )
+  expect_identical(
+    result[["diagnostics"]][["upstream_warnings"]],
+    "upstream diagnostic"
+  )
+})
+
+test_that("manual marginal-likelihood objects declare their scale", {
+
+  result <- bridgesampling_object(-Inf)
+
+  expect_s3_class(result, "BayesTools_marglik")
+  expect_identical(result[["scale"]], "natural_log")
+  expect_identical(result[["aggregation"]][["rule"]], "supplied_scalar")
+  expect_equal(nrow(result[["repetitions"]]), 0L)
+  expect_error(bridgesampling_object(Inf), "may only be infinite when it is -Inf")
+  expect_error(bridgesampling_object(c(1, 2)), "one numeric")
 })

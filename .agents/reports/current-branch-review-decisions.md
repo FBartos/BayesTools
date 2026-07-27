@@ -1095,7 +1095,7 @@ return all repetition-level results alongside the selected summary.
 
 Decision: proceed
 
-**Audit status: decision confirmed; implementation pending.**
+**Audit status: implemented and verified.**
 
 **Review response.** Instruction understood. `JAGS_bridgesampling()` currently
 returns the upstream `bridge`/`bridge_list` object directly, while downstream
@@ -1118,6 +1118,31 @@ failure policy; an explicit drop policy may aggregate the remaining finite
 repetitions and must record what was dropped. Model averaging and hypothesis
 code should accept only the new scalar contract, never incidental vector
 coercion.
+
+**Implementation outcome.** `JAGS_bridgesampling()` now returns a versioned
+`BayesTools_marglik` object whose scalar `logml` is explicitly declared to use
+the natural-log scale. The object stores one typed diagnostic row per bridge
+repetition, including the original log estimate, iterations, bridge MCSE,
+finite/success and iteration-limit status, warning/error detail, method, and
+input chain/draw counts. It retains the untouched upstream result and captured
+upstream warnings under `diagnostics`.
+
+Finite repetition estimates are aggregated deterministically with the median
+of the repetition-level log marginal likelihoods. Any non-finite repetition
+raises a typed error by default; `nonfinite = "drop"` is the only opt-in
+alternative, emits a warning, and records included/failed counts and the
+excluded rows. Complete upstream failures now stop with context rather than
+returning an error object as if it were a result.
+
+`bridgesampling_object()` constructs the same explicit scalar contract for
+analytically supplied values. Ensemble and posterior-mixture APIs reject legacy
+upstream `bridge` objects, validate the BayesTools schema and scale, and use a
+local stable log-weight normalization rather than passing possibly
+vector-valued fields back to `bridgesampling::post_prob()`. Bridge replay of a
+`BayesTools_fit` also requires the canonical D19 parameter registry. The
+focused bridge-result tests passed 40 assertions, adversarial model-averaging
+tests passed 187 assertions, and the complete unit profile passed 7,982
+assertions with no failures or warnings.
 
 ## D21. Cache and test-layout policy
 

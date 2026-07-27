@@ -657,7 +657,7 @@ test_that("public posterior mixing preserves ordered coefficient rows and metada
     attr(model_fit, "prior_list") <- list(mu_f = prior)
     list(
       fit = model_fit,
-      marglik = structure(list(logml = 0), class = "bridge"),
+      marglik = bridgesampling_object(0),
       prior_weights = 1
     )
   }

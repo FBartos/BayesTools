@@ -968,11 +968,11 @@ test_that("posterior plot functions (treatment) work", {
 
   fit0 <- readRDS(file.path(temp_fits_dir, "fit_factor_treatment.RDS"))
   # Create dummy marginal likelihood since this model doesn't have one
-  marglik0 <- structure(list(logml = -10), class = "bridge")
+  marglik0 <- bridgesampling_object(-10)
 
   # Create a second model with different prior for comparison
   fit1 <- readRDS(file.path(temp_fits_dir, "fit_factor_treatment.RDS"))
-  marglik1 <- structure(list(logml = -12), class = "bridge")
+  marglik1 <- bridgesampling_object(-12)
 
   # mix posteriors
   models <- list(
@@ -1018,11 +1018,11 @@ test_that("posterior plot functions (independent) work", {
 
   fit0 <- readRDS(file.path(temp_fits_dir, "fit_factor_independent.RDS"))
   # Create dummy marginal likelihood since this model doesn't have one
-  marglik0 <- structure(list(logml = -15), class = "bridge")
+  marglik0 <- bridgesampling_object(-15)
 
   # Create a second model with different prior for comparison
   fit1 <- readRDS(file.path(temp_fits_dir, "fit_factor_independent.RDS"))
-  marglik1 <- structure(list(logml = -17), class = "bridge")
+  marglik1 <- bridgesampling_object(-17)
 
   # mix posteriors
   models <- list(
@@ -1070,11 +1070,11 @@ test_that("posterior plot functions (meandif) work", {
 
   fit0 <- readRDS(file.path(temp_fits_dir, "fit_factor_meandif.RDS"))
   # Create dummy marginal likelihood since this model doesn't have one
-  marglik0 <- structure(list(logml = -20), class = "bridge")
+  marglik0 <- bridgesampling_object(-20)
 
   # Create a second model with different prior for comparison
   fit1 <- readRDS(file.path(temp_fits_dir, "fit_factor_meandif.RDS"))
-  marglik1 <- structure(list(logml = -22), class = "bridge")
+  marglik1 <- bridgesampling_object(-22)
 
   # mix posteriors
   models <- list(

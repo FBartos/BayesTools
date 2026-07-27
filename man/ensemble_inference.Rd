@@ -27,7 +27,7 @@ models_inference(model_list, on_failure = c("error", "drop", "zero"))
 \arguments{
 \item{prior_weights}{vector of prior model odds}
 
-\item{margliks}{vector of marginal likelihoods}
+\item{margliks}{vector of natural-log marginal likelihoods}
 
 \item{is_null}{logical vector of indicators specifying whether the model corresponds
 to the null or alternative hypothesis (or an integer vector indexing models

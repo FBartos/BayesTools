@@ -20,6 +20,7 @@ JAGS_bridgesampling(
   bridge_context = FALSE,
   maxiter = 10000,
   silent = TRUE,
+  nonfinite = c("error", "drop"),
   ...
 )
 }
@@ -106,11 +107,20 @@ original MCMC posterior row.}
 
 \item{silent}{whether the progress should be printed, defaults to \code{TRUE}}
 
+\item{nonfinite}{handling of non-finite repetition-level log marginal
+likelihoods. The default, \code{"error"}, aborts. \code{"drop"} aggregates only the
+remaining finite repetitions, emits a warning, and records every excluded
+repetition in the returned diagnostics.}
+
 \item{...}{additional argument to the \link[bridgesampling]{bridge_sampler}
 and \code{log_posterior} function}
 }
 \value{
-\code{JAGS_bridgesampling} returns an object of class 'bridge'.
+A \code{BayesTools_marglik} object. \code{logml} is one scalar natural-log
+marginal likelihood, aggregated as the median of finite repetition-level
+log marginal likelihoods. \code{repetitions} contains one diagnostic row per
+bridge repetition, \code{aggregation} records the aggregation and failure policy,
+and \code{diagnostics$upstream} retains the original \code{bridgesampling} result.
 }
 \description{
 A wrapper around

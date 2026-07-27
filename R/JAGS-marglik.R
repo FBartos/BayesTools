@@ -74,6 +74,10 @@
 #' @param maxiter maximum number of iterations for the
 #' \link[bridgesampling]{bridge_sampler}
 #' @param silent whether the progress should be printed, defaults to \code{TRUE}
+#' @param nonfinite handling of non-finite repetition-level log marginal
+#' likelihoods. The default, `"error"`, aborts. `"drop"` aggregates only the
+#' remaining finite repetitions, emits a warning, and records every excluded
+#' repetition in the returned diagnostics.
 #' @param ... additional argument to the \link[bridgesampling]{bridge_sampler}
 #' and \code{log_posterior} function
 #'
@@ -136,7 +140,11 @@
 #' # get marginal likelihoods
 #' marglik <- JAGS_bridgesampling(fit, log_posterior, data, priors_list)
 #' }
-#' @return \code{JAGS_bridgesampling} returns an object of class 'bridge'.
+#' @return A `BayesTools_marglik` object. `logml` is one scalar natural-log
+#' marginal likelihood, aggregated as the median of finite repetition-level
+#' log marginal likelihoods. `repetitions` contains one diagnostic row per
+#' bridge repetition, `aggregation` records the aggregation and failure policy,
+#' and `diagnostics$upstream` retains the original `bridgesampling` result.
 #'
 #' @export
 JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL, formula_scale_list = NULL,
@@ -144,15 +152,20 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
                                 formula_random_prior_list = NULL,
                                 formula_random_effects_compile_list = NULL,
                                 bridge_context = FALSE,
-                                maxiter = 10000, silent = TRUE, ...){
+                                maxiter = 10000, silent = TRUE,
+                                nonfinite = c("error", "drop"), ...){
 
   ### check input
   check_bool(bridge_context, "bridge_context", allow_NA = FALSE)
   check_bool(silent, "silent")
   check_int(maxiter, "maxiter", lower = 1)
+  nonfinite <- match.arg(nonfinite)
   log_posterior <- force(log_posterior)
   if(!is.function(log_posterior)){
     stop("'log_posterior' must be a function.", call. = FALSE)
+  }
+  if(inherits(fit, "BayesTools_fit")){
+    JAGS_parameter_registry(fit)
   }
 
   formula_context <- .bt_JAGS_bridge_formula_context(
@@ -188,6 +201,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
 
   # extract the posterior distribution
   posterior <- .fit_to_posterior(fit)
+  chain_metadata <- .bt_JAGS_bridge_chain_metadata(fit, posterior)
 
   if(length(formula_prior_list) > 0L){
     all_prior_list <- c(prior_list, do.call(c, unname(formula_prior_list)))
@@ -322,7 +336,8 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
 
 
   ### perform bridgesampling
-  marglik <- tryCatch(suppressWarnings(bridgesampling::bridge_sampler(
+  upstream_warnings <- character()
+  marglik <- tryCatch(withCallingHandlers(bridgesampling::bridge_sampler(
       samples            = bridgesampling_posterior,
       data               = data,
       log_posterior      = full_log_posterior,
@@ -340,15 +355,38 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
       formula_data_list  = formula_data_list,
       formula_prior_list = formula_prior_list,
       ...
-  )), error = function(e)e)
+  ), warning = function(w){
+    upstream_warnings <<- c(upstream_warnings, conditionMessage(w))
+    invokeRestart("muffleWarning")
+  }), error = function(e)e)
 
-  # add a warning attribute and call the warning if not silent
-  if(!inherits(marglik, "error") &&
-     any(marglik[["niter"]] > maxiter, na.rm = TRUE)){
-    attr(marglik, "warning") <- "Marginal likelihood could not be estimated within the maximum number of iterations and might be more variable than usual."
-    if(!silent)
-      warning(attr(marglik, "warning"), immediate. = TRUE)
+  if(inherits(marglik, "error")){
+    stop(
+      "Bridge sampling failed: ",
+      conditionMessage(marglik),
+      call. = FALSE
+    )
   }
 
-  return(marglik)
+  result <- .bt_marglik_from_upstream(
+    upstream = marglik,
+    maxiter = maxiter,
+    nonfinite = nonfinite,
+    chain_metadata = chain_metadata,
+    upstream_warnings = upstream_warnings
+  )
+
+  maxiter_warning <- result[["repetitions"]][["within_maxiter"]]
+  if(!silent && any(!maxiter_warning)){
+    warning(
+      paste(
+        "Marginal likelihood could not be estimated within the maximum number",
+        "of iterations and might be more variable than usual."
+      ),
+      call. = FALSE,
+      immediate. = TRUE
+    )
+  }
+
+  return(result)
 }

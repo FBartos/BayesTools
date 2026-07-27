@@ -95,7 +95,7 @@ test_that("BayesTools JAGS module samples nonlocal priors", {
       prior_list = prior_list,
       maxiter = 2000
     )
-    expect_s3_class(marglik, "bridge")
+    expect_s3_class(marglik, "BayesTools_marglik")
     expect_equal(marglik$logml, 0, tolerance = .08)
   }
 })

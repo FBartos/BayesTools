@@ -1088,7 +1088,7 @@ test_that("ensemble_estimates_table with transform_scaled unscales coefficients"
 
   # Load pre-fitted models
   fit_auto     <- readRDS(file.path(temp_fits_dir, "fit_formula_auto_scaled.RDS"))
-  marglik_auto <- structure(list(logml = -20), class = "bridge")
+  marglik_auto <- bridgesampling_object(-20)
 
   formula_scale <- attr(fit_auto, "formula_scale")
 

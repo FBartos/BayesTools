@@ -19,7 +19,7 @@
 #' corresponding to the null hypothesis; use \code{0} or \code{integer(0)}
 #' when no models are null)
 #' @param prior_weights vector of prior model odds
-#' @param margliks vector of marginal likelihoods
+#' @param margliks vector of natural-log marginal likelihoods
 #' @param is_null logical vector of indicators specifying whether the model corresponds
 #' to the null or alternative hypothesis (or an integer vector indexing models
 #' corresponding to the null hypothesis; use \code{0} or \code{integer(0)}
@@ -189,7 +189,22 @@ compute_inference <- function(prior_weights, margliks, is_null = NULL,
 
 .model_averaging_post_probs <- function(margliks, prior_probs){
 
-  unname(bridgesampling::post_prob(margliks, prior_prob = prior_probs))
+  log_weights <- rep(-Inf, length(margliks))
+  active <- prior_probs > 0 & is.finite(margliks)
+  log_weights[active] <- log(prior_probs[active]) + margliks[active]
+  normalizer <- max(log_weights)
+  weights <- exp(log_weights - normalizer)
+  unname(weights / sum(weights))
+}
+
+.model_averaging_marglik_values <- function(model_list){
+
+  vapply(seq_along(model_list), function(i){
+    .bt_marglik_value(
+      model_list[[i]][["marglik"]],
+      paste0("model_list[[", i, "]]$marglik")
+    )
+  }, numeric(1))
 }
 
 .posterior_mixture_sample_counts <- function(post_probs, n_samples){
@@ -238,13 +253,11 @@ ensemble_inference <- function(model_list, parameters, is_null_list,
   check_list(is_null_list, "is_null_list", check_length = length(parameters))
   on_failure <- match.arg(on_failure)
   sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("marglik", "prior_weights"), all_objects = TRUE, allow_other = TRUE))
-  if(!all(sapply(model_list, function(m)inherits(m[["marglik"]], what = "bridge"))))
-    stop("model_list:marglik must contain 'bridgesampling' marginal likelihoods")
   sapply(model_list, function(m)check_real(m[["prior_weights"]], "model_list:prior_weights", lower = 0))
 
 
   # extract the object
-  margliks      <- sapply(model_list, function(m) m[["marglik"]][["logml"]])
+  margliks      <- .model_averaging_marglik_values(model_list)
   prior_weights <- sapply(model_list, function(m) m[["prior_weights"]])
 
   out <- list()
@@ -283,11 +296,9 @@ models_inference <- function(model_list,
 
   on_failure <- match.arg(on_failure)
   sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("marglik", "prior_weights"), all_objects = TRUE, allow_other = TRUE))
-  if(!all(sapply(model_list, function(m)inherits(m[["marglik"]], what = "bridge"))))
-    stop("model_list:marglik must contain 'bridgesampling' marginal likelihoods")
   sapply(model_list, function(m)check_real(m[["prior_weights"]], "model_list:prior_weights", lower = 0))
 
-  margliks    <- sapply(model_list, function(model)model[["marglik"]][["logml"]])
+  margliks    <- .model_averaging_marglik_values(model_list)
   prior_weights  <- sapply(model_list, function(model)model[["prior_weights"]])
   prior_probs <- .model_averaging_prior_probs(prior_weights)
   prepared    <- .model_averaging_prepare_margliks(

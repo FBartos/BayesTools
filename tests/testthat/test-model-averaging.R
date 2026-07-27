@@ -173,10 +173,7 @@ test_that("mix_posteriors handles vector priors", {
   fit_vector_mnormal <- readRDS(file.path(temp_fits_dir, "fit_vector_mnormal.RDS"))
 
   # Create a mock marglik for testing (we only need the structure)
-  mock_marglik <- structure(
-    list(logml = -100, niter = 1000, method = "warp3"),
-    class = "bridge"
-  )
+  mock_marglik <- bridgesampling_object(-100)
 
   models_vector <- list(
     list(fit = fit_vector_mnormal, marglik = mock_marglik, prior_weights = 1),
@@ -295,10 +292,7 @@ test_that("mix_posteriors respects seed across prior types", {
   )
 
   fit_vector_mnormal <- readRDS(file.path(temp_fits_dir, "fit_vector_mnormal.RDS"))
-  mock_marglik <- structure(
-    list(logml = -100, niter = 1000, method = "warp3"),
-    class = "bridge"
-  )
+  mock_marglik <- bridgesampling_object(-100)
   models_vector <- list(
     list(fit = fit_vector_mnormal, marglik = mock_marglik, prior_weights = 1),
     list(fit = fit_vector_mnormal, marglik = mock_marglik, prior_weights = 1)

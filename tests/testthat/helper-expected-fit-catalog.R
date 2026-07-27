@@ -1752,7 +1752,8 @@ expect_marglik_file_present_or_absent <- function(model_name, catalog = bayestoo
 }
 
 expect_marglik_object <- function(marglik) {
-  testthat::expect_s3_class(marglik, "bridge")
+  testthat::expect_s3_class(marglik, "BayesTools_marglik")
+  testthat::expect_identical(marglik$scale, "natural_log")
   testthat::expect_true("logml" %in% names(marglik))
   testthat::expect_type(marglik$logml, "double")
   testthat::expect_length(marglik$logml, 1L)

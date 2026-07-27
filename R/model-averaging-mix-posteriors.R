@@ -39,8 +39,6 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   sapply(model_list, function(m)check_list(m, "model_list:model", check_names = c("fit", "marglik", "prior_weights"), all_objects = TRUE, allow_other = TRUE))
   if(!all(sapply(model_list, function(m) inherits(m[["fit"]], what = "runjags")) | sapply(model_list, function(m)inherits(m[["fit"]], what = "stanfit")) | sapply(model_list, function(m)inherits(m[["fit"]], what = "null_model"))))
     stop("model_list:fit must contain 'runjags' or 'rstan' models")
-  if(!all(sapply(model_list, function(m) inherits(m[["marglik"]], what = "bridge"))))
-    stop("model_list:marglik must contain 'bridgesampling' marginal likelihoods")
   if(!all(unlist(sapply(model_list, function(m) sapply(attr(m[["fit"]], "prior_list"), function(p) is.prior(p))))))
     stop("model_list:priors must contain 'BayesTools' priors")
   sapply(model_list, function(m) check_real(m[["prior_weights"]], "model_list:prior_weights", lower = 0))
@@ -48,7 +46,7 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
   # extract the object
   fits           <- lapply(model_list, function(m) m[["fit"]])
-  margliks       <- sapply(model_list, function(m) m[["marglik"]][["logml"]])
+  margliks       <- .model_averaging_marglik_values(model_list)
   priors         <- lapply(model_list, function(m) attr(m[["fit"]], "prior_list"))
   formula_priors <- lapply(model_list, function(m) m[["formula_priors"]])
   prior_weights  <- sapply(model_list, function(m) m[["prior_weights"]])
