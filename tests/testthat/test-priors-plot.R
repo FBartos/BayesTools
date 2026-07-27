@@ -178,7 +178,7 @@ test_that("Prior plot (PET-PEESE) function works", {
 
   decreasing_arguments <- list(a = 2, b = -3)
   vdiffr::expect_doppelganger(
-    "priors-plot-PETPEESE-decreasing-transformation-base",
+    "PETPEESE-decreasing-transformation-base",
     function(){
       plot(
         p6,
@@ -188,7 +188,7 @@ test_that("Prior plot (PET-PEESE) function works", {
     }
   )
   vdiffr::expect_doppelganger(
-    "priors-plot-PETPEESE-decreasing-transformation-ggplot",
+    "PETPEESE-decreasing-transformation-ggplot",
     plot(
       p6,
       plot_type = "ggplot",

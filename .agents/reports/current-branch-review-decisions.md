@@ -41,7 +41,7 @@ mean **implemented**.
 | D27 | Implemented and verified | No remaining work |
 | D28 | Implemented and verified | No remaining work |
 | D29 | Implemented and verified | No remaining work |
-| D30 | Decision confirmed; implementation pending | Shorten the 50 nonportable snapshot paths |
+| D30 | Implemented and verified | No remaining work |
 | D31 | Decision confirmed; implementation pending | Use stable CAR recurrences and reject only unrepresentable innovations |
 | D32 | Implemented and verified | No remaining work |
 
@@ -1758,15 +1758,23 @@ files in Git and running visual profiles from repository checkouts.
 
 Decision: showten paths as needed
 
-**Audit status: decision confirmed; implementation pending.**
+**Audit status: implemented and verified.**
 
-**Review response.** Instruction understood. The current source tree still has
-50 snapshot paths that exceed the portable 100-byte tar path limit once the
-`BayesTools/` package-directory prefix is included. Keep visual snapshots in the
-source package and shorten those labels/files in a visual-only change. Use a
-deterministic abbreviation map, update each `expect_doppelganger()` label and
-matching SVG together, verify that no prefixed tar path exceeds 100 bytes, and
-run both visual profiles.
+**Implementation status.** Visual snapshots remain part of the source package.
+The 50 paths over the limit and the three paths exactly at the fragile
+100-byte boundary were renamed together with their `expect_doppelganger()`
+labels. The deterministic mapping removes redundant context prefixes while
+preserving descriptive suffixes. All 530 snapshot paths are now unique under a
+case-insensitive comparison, the longest `BayesTools/`-prefixed archive path is
+99 bytes, and a unit regression enforces both invariants for future snapshots.
+
+The focused portability test passed four assertions. The visual profile reached
+802 passing comparisons, including the applicable renamed snapshots, before
+three unrelated pre-existing failures: two cached fitted objects predate the
+canonical parameter registry, and one visual prior fixture still uses the
+nonzero orthonormal location rejected by D32. The cache failures require the
+planned final fit refresh; the D32 fixture is corrected separately before final
+visual verification.
 
 ## D31. CAR gaps that are positive but not representable in `rho^gap`
 

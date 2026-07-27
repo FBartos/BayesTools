@@ -112,7 +112,7 @@ test_that("plot_prior_list handles orthonormal priors", {
   )
 
   # Base plot with transformation
-  vdiffr::expect_doppelganger("plot-prior-list-orthonormal-spike-and-slab", function() {
+  vdiffr::expect_doppelganger("prior-list-orthonormal-spike-and-slab", function() {
     suppressMessages(plot_prior_list(prior_list2, transformation = "exp", transformation_settings = TRUE, xlim = c(0.01, 5)))
   })
 
@@ -858,7 +858,7 @@ test_that("transform_scaled visual: conditional mixture prior removes spike", {
     0
   )
 
-  vdiffr::expect_doppelganger("transform-scaled-conditional-mixture-prior", function() {
+  vdiffr::expect_doppelganger("ts-conditional-mixture-prior", function() {
     oldpar <- graphics::par(no.readonly = TRUE)
     on.exit(graphics::par(mfrow = oldpar[["mfrow"]]))
     par(mfrow = c(1, 2))
