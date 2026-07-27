@@ -29,6 +29,79 @@ REFERENCE_DIR <<- testthat::test_path("..", "results", "JAGS-marginal-distributi
 # Load common test helpers
 source(testthat::test_path("common-functions.R"))
 
+.expect_marginal_table_current_inputs <- function(table, samples, inference,
+                                                  parameters,
+                                                  probs = c(0.025, 0.5, 0.975)){
+
+  draw_groups <- list()
+  inference_groups <- list()
+  for(parameter in parameters){
+    parameter_samples <- samples[[parameter]]
+    parameter_inference <- inference[[parameter]]
+    if(is.list(parameter_samples)){
+      parameter_draws <- lapply(parameter_samples, as.numeric)
+    }else{
+      parameter_draws <- list(as.numeric(parameter_samples))
+    }
+    if(is.list(parameter_samples) && length(parameter_samples) > 1L){
+      parameter_inferences <- lapply(
+        seq_along(parameter_draws),
+        function(i) parameter_inference[[i]]
+      )
+    }else{
+      parameter_inferences <- list(parameter_inference[[1L]])
+    }
+    draw_groups <- c(draw_groups, parameter_draws)
+    inference_groups <- c(inference_groups, parameter_inferences)
+  }
+
+  estimate_names <- c("Mean", "SD", as.character(probs))
+  expected_estimates <- t(vapply(draw_groups, function(draws){
+    c(
+      Mean = mean(draws),
+      SD = stats::sd(draws),
+      vapply(
+        probs,
+        function(prob) unname(stats::quantile(draws, probs = prob)),
+        numeric(1)
+      )
+    )
+  }, numeric(length(estimate_names))))
+  colnames(expected_estimates) <- estimate_names
+
+  expect_equal(
+    unname(as.matrix(table[, estimate_names, drop = FALSE])),
+    unname(expected_estimates),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    as.numeric(table$inclusion_BF),
+    vapply(inference_groups, as.numeric, numeric(1)),
+    tolerance = 1e-12
+  )
+
+  expected_BF_errors <- vapply(inference_groups, function(x){
+    error <- attr(x, "BF_error_percent")
+    if(is.null(error)){
+      return(NA_real_)
+    }
+    error <- as.numeric(error)[1L]
+    if(!is.finite(error) || error < 0){
+      return(NA_real_)
+    }
+    error
+  }, numeric(1))
+  if("BF_error_percent" %in% names(table)){
+    expect_equal(
+      as.numeric(table$BF_error_percent),
+      expected_BF_errors,
+      tolerance = 1e-12
+    )
+  }else{
+    expect_false(any(is.finite(expected_BF_errors)))
+  }
+}
+
 .plot_prior_density_for_test <- function(x, main = "", xlim = NULL, ylim = NULL, add = FALSE,
                                          lty = 1, col = graphics::par("fg"), ...){
   prior_density <- attr(x, "prior_density")
@@ -3640,10 +3713,28 @@ test_that("Marginal distribution prior and posterior functions work", {
   # the previous BFs were based on model-averaged posteriors so they won't match
 
   # test summary table
-  test_reference_table(
-    marginal_estimates_table(out$conditional, out$inference, parameters = c("mu_intercept", "mu_x_cont1", "mu_x_fac2t", "mu_x_fac3md", "mu_x_cont1__xXx__x_fac3md")),
+  marginal_parameters <- c(
+    "mu_intercept",
+    "mu_x_cont1",
+    "mu_x_fac2t",
+    "mu_x_fac3md",
+    "mu_x_cont1__xXx__x_fac3md"
+  )
+  marginal_table <- marginal_estimates_table(
+    out$conditional,
+    out$inference,
+    parameters = marginal_parameters
+  )
+  test_reference_table_stochastic(
+    marginal_table,
     "marginal_estimates_table_model_avg.txt",
     info_msg = "marginal_estimates_table for model averaging"
+  )
+  .expect_marginal_table_current_inputs(
+    table = marginal_table,
+    samples = out$conditional,
+    inference = out$inference,
+    parameters = marginal_parameters
   )
 
   # plots
@@ -4173,11 +4264,28 @@ test_that("Marginal distributions with spike and slab and mixture priors work", 
   # the previous BFs were based on model-averaged posteriors so they won't match
 
   # test summary table (note that these differ from the first set of tests because of the different model settings)
-  test_reference_table_numeric(
-    marginal_estimates_table(out$conditional, out$inference, parameters = c("mu_intercept", "mu_x_cont1", "mu_x_fac2t", "mu_x_fac3md", "mu_x_cont1__xXx__x_fac3md")),
+  marginal_parameters <- c(
+    "mu_intercept",
+    "mu_x_cont1",
+    "mu_x_fac2t",
+    "mu_x_fac3md",
+    "mu_x_cont1__xXx__x_fac3md"
+  )
+  marginal_table <- marginal_estimates_table(
+    out$conditional,
+    out$inference,
+    parameters = marginal_parameters
+  )
+  test_reference_table_stochastic(
+    marginal_table,
     "marginal_estimates_table_spike_slab.txt",
-    tolerance = 1e-2,
     info_msg = "marginal_estimates_table for spike-and-slab"
+  )
+  .expect_marginal_table_current_inputs(
+    table = marginal_table,
+    samples = out$conditional,
+    inference = out$inference,
+    parameters = marginal_parameters
   )
 
   # plots

@@ -1,4 +1,4 @@
-skip_if_not_test_profile("fixture")
+skip_if_not_test_profile("unit")
 
 # ============================================================================ #
 # TEST FILE: Summary Tables
@@ -10,21 +10,135 @@ skip_if_not_test_profile("fixture")
 #   model_summary_table, and print methods.
 #
 # DEPENDENCIES:
-#   - rjags, bridgesampling: For tests using pre-fitted models
-#   - common-functions.R: temp_fits_dir, test_reference_table
+#   - common-functions.R: deterministic registry and reference helpers
 #
 # SKIP CONDITIONS:
-#   - skip_if_no_fits(): Pre-fitted models required for most tests
-#   - skip_if_not_installed("rjags"), skip_if_not_installed("bridgesampling")
+#   - runjags: One in-memory runjags summary transformation test
 #
 # MODELS/FIXTURES:
-#   - fit_summary*, fit_simple_normal, fit_simple_spike, fit_orthonormal_*
+#   - Fixed in-memory posterior, inference, prior, and diagnostics objects
 #
 # TAGS: @evaluation, @summary-tables
 # ============================================================================ #
 
 REFERENCE_DIR <<- testthat::test_path("..", "results", "summary-tables")
 source(testthat::test_path("common-functions.R"))
+
+.summary_table_fixed_samples <- function(target_mean, probabilities,
+                                         quantiles, bounds){
+
+  # With 201 ordered values, the probabilities used below are exact order
+  # statistics. Mixing linear and step interpolation changes the mean without
+  # moving those quantiles or introducing random input.
+  n_samples <- 201L
+  knots <- c(0, probabilities, 1)
+  knot_indices <- 1L + as.integer(knots * (n_samples - 1L))
+  knot_values <- c(bounds[1L], quantiles, bounds[2L])
+  linear <- stats::approx(
+    x = knot_indices,
+    y = knot_values,
+    xout = seq_len(n_samples)
+  )$y
+  lower_step <- vapply(seq_len(n_samples), function(i){
+    knot_values[max(which(knot_indices <= i))]
+  }, numeric(1))
+  upper_step <- vapply(seq_len(n_samples), function(i){
+    knot_values[min(which(knot_indices >= i))]
+  }, numeric(1))
+  step <- if(target_mean < mean(linear)) lower_step else upper_step
+  weight <- (target_mean - mean(linear)) / (mean(step) - mean(linear))
+  if(!is.finite(weight) || weight < 0 || weight > 1){
+    stop("Fixed summary samples cannot attain the requested mean.", call. = FALSE)
+  }
+
+  linear + weight * (step - linear)
+}
+
+.summary_table_ensemble_inference_for_test <- function(){
+
+  models <- list(
+    list(
+      marglik = BayesTools:::.bt_marglik_manual_result(0),
+      prior_weights = 1
+    ),
+    list(
+      marglik = BayesTools:::.bt_marglik_manual_result(log(1.68)),
+      prior_weights = 1
+    )
+  )
+  ensemble_inference(
+    model_list = models,
+    parameters = c("m", "omega"),
+    is_null_list = list(m = c(FALSE, FALSE), omega = c(TRUE, FALSE))
+  )
+}
+
+.summary_table_fit_summary_for_test <- function(MCMC_error, MCMC_SD_error,
+                                                ESS, R_hat){
+
+  out <- data.frame(
+    MCMC_error = MCMC_error,
+    MCMC_SD_error = MCMC_SD_error,
+    ESS = ESS,
+    R_hat = R_hat
+  )
+  class(out) <- c(
+    "BayesTools_table",
+    "BayesTools_runjags_summary",
+    class(out)
+  )
+
+  out
+}
+
+.summary_table_models_for_test <- function(){
+
+  s_prior <- prior(
+    "normal",
+    list(0, 1),
+    truncation = list(lower = 0, upper = Inf)
+  )
+  prior_lists <- list(
+    list(m = prior("normal", list(0, 1)), s = s_prior),
+    list(m = prior("point", list(0)), s = s_prior)
+  )
+  fits <- lapply(prior_lists, function(prior_list){
+    fit <- list()
+    attr(fit, "prior_list") <- prior_list
+    fit
+  })
+  marglik_ratio <- 11.633
+  margliks <- c(-29.482 - log(marglik_ratio), -29.482)
+  margliks <- lapply(
+    margliks,
+    BayesTools:::.bt_marglik_manual_result
+  )
+
+  models_inference(list(
+    list(
+      fit = fits[[1L]],
+      marglik = margliks[[1L]],
+      prior_weights = 1,
+      fit_summary = .summary_table_fit_summary_for_test(
+        MCMC_error = 0.00211,
+        MCMC_SD_error = 0.045,
+        ESS = 491,
+        R_hat = 1.010
+      )
+    ),
+    list(
+      fit = fits[[2L]],
+      marglik = margliks[[2L]],
+      prior_weights = 1,
+      fit_summary = .summary_table_fit_summary_for_test(
+        MCMC_error = 0.00207,
+        MCMC_SD_error = 0.047,
+        ESS = 455,
+        R_hat = 1.002
+      )
+    )
+  ))
+}
 
 test_that("Stan transformed summaries are recomputed from transformed draws", {
 
@@ -66,29 +180,24 @@ test_that("update.BayesTools_table remove_parameters removes matching rows", {
 # ============================================================================ #
 test_that("ensemble_estimates_table handles matrix posteriors", {
 
-  skip_if_no_fits()
-  skip_if_not_installed("rjags")
-  skip_if_not_installed("bridgesampling")
-
-  # Load fits with margliks for creating mixed posteriors
-  fit_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
-  marglik_summary0 <- readRDS(file.path(temp_marglik_dir, "fit_summary0.RDS"))
-
-  fit_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1.RDS"))
-  marglik_summary1 <- readRDS(file.path(temp_marglik_dir, "fit_summary1.RDS"))
-
-  models <- list(
-    list(fit = fit_summary0, marglik = marglik_summary0, prior_weights = 1),
-    list(fit = fit_summary1, marglik = marglik_summary1, prior_weights = 1)
+  probabilities <- c(0.025, 0.1, 0.5, 0.9, 0.975)
+  m_samples <- .summary_table_fixed_samples(
+    target_mean = 0.172,
+    probabilities = probabilities,
+    quantiles = c(-0.221, -0.107, 0.179, 0.427, 0.587),
+    bounds = c(-0.3, 0.65)
   )
-
-  mixed_posteriors <- mix_posteriors(
-    model_list = models,
-    parameters = c("m", "omega"),
-    is_null_list = list("m" = c(FALSE, FALSE), "omega" = c(TRUE, FALSE)),
-    seed = 1,
-    n_samples = 1000
+  omega_samples <- cbind(
+    "omega[0,0.05]" = rep(1, length(m_samples)),
+    "omega[0.05,1]" = .summary_table_fixed_samples(
+      target_mean = 0.677,
+      probabilities = probabilities,
+      quantiles = c(0.022, 0.134, 0.804, 1, 1),
+      bounds = c(0, 1)
+    )
   )
+  mixed_posteriors <- list(m = m_samples, omega = omega_samples)
+  class(mixed_posteriors) <- "mixed_posteriors"
 
   # Test basic table creation
   estimates_table <- ensemble_estimates_table(
@@ -110,40 +219,45 @@ test_that("ensemble_estimates_table handles matrix posteriors", {
 })
 
 
-test_that("ensemble_estimates_table handles transform_factors", {
+test_that("ensemble_estimates_table handles transformed factor posteriors", {
 
-  skip_if_not_installed("rjags")
-  skip_on_cran()
-  skip_if_no_fits()
-
-  # Load orthonormal models with marginal likelihoods
-  fit_orthonormal_0 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_0.RDS"))
-  marglik_orthonormal_0 <- readRDS(file.path(temp_marglik_dir, "fit_orthonormal_0.RDS"))
-
-  fit_orthonormal_1 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_1.RDS"))
-  marglik_orthonormal_1 <- readRDS(file.path(temp_marglik_dir, "fit_orthonormal_1.RDS"))
-
-  models <- list(
-    list(fit = fit_orthonormal_0, marglik = marglik_orthonormal_0, prior_weights = 1),
-    list(fit = fit_orthonormal_1, marglik = marglik_orthonormal_1, prior_weights = 1)
+  probabilities <- c(0.025, 0.5, 0.975)
+  factor_samples <- cbind(
+    "mu_x_fac3o[dif: A]" = .summary_table_fixed_samples(
+      target_mean = 0.023,
+      probabilities = probabilities,
+      quantiles = c(-0.185, 0.019, 0.220),
+      bounds = c(-0.25, 0.30)
+    ),
+    "mu_x_fac3o[dif: B]" = .summary_table_fixed_samples(
+      target_mean = -0.305,
+      probabilities = probabilities,
+      quantiles = c(-0.520, -0.320, 0),
+      bounds = c(-0.6, 0)
+    ),
+    "mu_x_fac3o[dif: C]" = .summary_table_fixed_samples(
+      target_mean = 0.282,
+      probabilities = probabilities,
+      quantiles = c(0, 0.289, 0.509),
+      bounds = c(0, 0.6)
+    )
   )
-
-  # Get factor parameter names from the model
-  prior_list <- attr(fit_orthonormal_1, "prior_list")
-  factor_params <- names(prior_list)[sapply(prior_list, is.prior.factor)]
-
-  mixed_posteriors <- mix_posteriors(
-    model_list = models,
-    parameters = factor_params,
-    is_null_list = setNames(list(c(TRUE, FALSE)), factor_params),
-    seed = 1,
-    n_samples = 1000
+  class(factor_samples) <- c(
+    "mixed_posteriors",
+    "mixed_posteriors.factor",
+    "mixed_posteriors.vector",
+    "mixed_posteriors.formula",
+    "mixed_posteriors.orthonormal_transformed",
+    class(factor_samples)
   )
+  attr(factor_samples, "formula_parameter") <- "mu"
+  mixed_posteriors <- list(mu_x_fac3o = factor_samples)
+  class(mixed_posteriors) <- "mixed_posteriors"
 
   # Test with transform_factors = TRUE
   estimates_table_transform <- ensemble_estimates_table(
     mixed_posteriors,
-    parameters = factor_params,
+    parameters = "mu_x_fac3o",
     transform_factors = TRUE
   )
 
@@ -261,6 +375,10 @@ test_that("runjags_estimates_table unscales before parameter filtering", {
   class(fit) <- c("runjags", "BayesTools_fit")
   attr(fit, "prior_list") <- prior_list
   attr(fit, "formula_scale") <- list(mu = list(mu_x = list(mean = 10, sd = 2)))
+  fit <- attach_test_parameter_registry(
+    fit,
+    monitor_names = colnames(posterior)
+  )
 
   samples <- suppressWarnings(runjags_estimates_table(
     fit,
@@ -278,37 +396,32 @@ test_that("runjags_estimates_table unscales before parameter filtering", {
 
 test_that("ensemble_estimates_table handles formula posteriors", {
 
-  skip_if_not_installed("rjags")
-  skip_on_cran()
-  skip_if_no_fits()
-
-  # Use orthonormal models (have formulas and marginal likelihoods)
-  fit_formula <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_0.RDS"))
-  marglik_formula <- readRDS(file.path(temp_marglik_dir, "fit_orthonormal_0.RDS"))
-
-  fit_formula2 <- readRDS(file.path(temp_fits_dir, "fit_orthonormal_1.RDS"))
-  marglik_formula2 <- readRDS(file.path(temp_marglik_dir, "fit_orthonormal_1.RDS"))
-
-  models <- list(
-    list(fit = fit_formula, marglik = marglik_formula, prior_weights = 1),
-    list(fit = fit_formula2, marglik = marglik_formula2, prior_weights = 1)
+  probabilities <- c(0.025, 0.5, 0.975)
+  intercept_samples <- .summary_table_fixed_samples(
+    target_mean = 0.514,
+    probabilities = probabilities,
+    quantiles = c(0.355, 0.512, 0.678),
+    bounds = c(0.3, 0.75)
   )
-
-  prior_list <- attr(fit_formula, "prior_list")
-  params <- names(prior_list)[!sapply(prior_list, is.null)]
-
-  is_null_list <- setNames(
-    lapply(params, function(p) c(FALSE, FALSE)),
-    params
+  class(intercept_samples) <- c(
+    "mixed_posteriors",
+    "mixed_posteriors.vector",
+    "mixed_posteriors.formula",
+    class(intercept_samples)
   )
-
-  mixed_posteriors <- mix_posteriors(
-    model_list = models,
-    parameters = params,
-    is_null_list = is_null_list,
-    seed = 1,
-    n_samples = 1000
+  attr(intercept_samples, "formula_parameter") <- "mu"
+  sigma_samples <- .summary_table_fixed_samples(
+    target_mean = 0.887,
+    probabilities = probabilities,
+    quantiles = c(0.783, 0.885, 1.004),
+    bounds = c(0.7, 1.1)
   )
+  mixed_posteriors <- list(
+    mu_intercept = intercept_samples,
+    sigma = sigma_samples
+  )
+  class(mixed_posteriors) <- "mixed_posteriors"
+  params <- names(mixed_posteriors)
 
   # Test with formula_prefix = TRUE
   estimates_prefix_true <- ensemble_estimates_table(
@@ -335,26 +448,7 @@ test_that("ensemble_estimates_table handles formula posteriors", {
 # ============================================================================ #
 test_that("ensemble_inference_table handles multiple parameters", {
 
-  skip_if_not_installed("rjags")
-  skip_on_cran()
-  skip_if_no_fits()
-
-  fit_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
-  marglik_summary0 <- readRDS(file.path(temp_marglik_dir, "fit_summary0.RDS"))
-
-  fit_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1.RDS"))
-  marglik_summary1 <- readRDS(file.path(temp_marglik_dir, "fit_summary1.RDS"))
-
-  models <- list(
-    list(fit = fit_summary0, marglik = marglik_summary0, prior_weights = 1),
-    list(fit = fit_summary1, marglik = marglik_summary1, prior_weights = 1)
-  )
-
-  inference <- ensemble_inference(
-    model_list = models,
-    parameters = c("m", "omega"),
-    is_null_list = list("m" = c(FALSE, FALSE), "omega" = c(TRUE, FALSE))
-  )
+  inference <- .summary_table_ensemble_inference_for_test()
 
   # Basic table
   inference_table <- ensemble_inference_table(inference, names(inference))
@@ -380,22 +474,7 @@ test_that("ensemble_inference_table handles multiple parameters", {
 # ============================================================================ #
 test_that("ensemble_summary_table handles different model configurations", {
 
-  skip_if_not_installed("rjags")
-  skip_on_cran()
-  skip_if_no_fits()
-
-  # Use models with and without spike-at-zero to test remove_spike_0
-  fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
-  marglik_simple_normal <- readRDS(file.path(temp_marglik_dir, "fit_simple_normal.RDS"))
-
-  fit_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike.RDS"))
-  marglik_simple_spike <- readRDS(file.path(temp_marglik_dir, "fit_simple_spike.RDS"))
-
-  models <- list(
-    list(fit = fit_simple_normal, marglik = marglik_simple_normal, prior_weights = 1, fit_summary = runjags_estimates_table(fit_simple_normal)),
-    list(fit = fit_simple_spike, marglik = marglik_simple_spike, prior_weights = 1, fit_summary = runjags_estimates_table(fit_simple_spike))
-  )
-  models <- models_inference(models)
+  models <- .summary_table_models_for_test()
 
   # Test summary table
   summary_table <- ensemble_summary_table(models, c("m", "s"))
@@ -418,21 +497,7 @@ test_that("ensemble_summary_table handles different model configurations", {
 
 test_that("ensemble_summary_table handles parameters as list", {
 
-  skip_if_not_installed("rjags")
-  skip_on_cran()
-  skip_if_no_fits()
-
-  fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
-  marglik_simple_normal <- readRDS(file.path(temp_marglik_dir, "fit_simple_normal.RDS"))
-
-  fit_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike.RDS"))
-  marglik_simple_spike <- readRDS(file.path(temp_marglik_dir, "fit_simple_spike.RDS"))
-
-  models <- list(
-    list(fit = fit_simple_normal, marglik = marglik_simple_normal, prior_weights = 1, fit_summary = runjags_estimates_table(fit_simple_normal)),
-    list(fit = fit_simple_spike, marglik = marglik_simple_spike, prior_weights = 1, fit_summary = runjags_estimates_table(fit_simple_spike))
-  )
-  models <- models_inference(models)
+  models <- .summary_table_models_for_test()
 
   # Test with parameters supplied as a list
   pars <- list("m" = "m", "renamed 2" = "s")
@@ -444,22 +509,7 @@ test_that("ensemble_summary_table handles parameters as list", {
 
 test_that("ensemble_diagnostics_table handles different configurations", {
 
-  skip_if_not_installed("rjags")
-  skip_on_cran()
-  skip_if_no_fits()
-
-  # Use models with and without spike-at-zero to test remove_spike_0
-  fit_simple_normal <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
-  marglik_simple_normal <- readRDS(file.path(temp_marglik_dir, "fit_simple_normal.RDS"))
-
-  fit_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike.RDS"))
-  marglik_simple_spike <- readRDS(file.path(temp_marglik_dir, "fit_simple_spike.RDS"))
-
-  models <- list(
-    list(fit = fit_simple_normal, marglik = marglik_simple_normal, prior_weights = 1, fit_summary = runjags_estimates_table(fit_simple_normal)),
-    list(fit = fit_simple_spike, marglik = marglik_simple_spike, prior_weights = 1, fit_summary = runjags_estimates_table(fit_simple_spike))
-  )
-  models <- models_inference(models)
+  models <- .summary_table_models_for_test()
 
   # Test diagnostics table
   diagnostics_table <- ensemble_diagnostics_table(models, c("m", "s"))
@@ -481,13 +531,11 @@ test_that("ensemble_diagnostics_table handles different configurations", {
 # ============================================================================ #
 test_that("marginal_estimates_table handles various inputs", {
 
-  skip_if_not_installed("rjags")
-  skip_on_cran()
-
-  # Create sample data for marginal inference testing
-  set.seed(1)
+  # Use a fixed quantile grid rather than a seeded stochastic realization so
+  # the exact presentation references remain deterministic numerical oracles.
+  probability_grid <- (seq_len(1001L) - 0.5) / 1001
   samples <- list(
-    mu = rnorm(1000, 0, 1)
+    mu = stats::qnorm(probability_grid)
   )
 
   inference <- list(
@@ -573,33 +621,19 @@ test_that("marginal_estimates_table reports Savage-Dickey BF error attributes", 
 # ============================================================================ #
 test_that("model_summary_table handles various configurations", {
 
-  skip_if_not_installed("rjags")
-  skip_on_cran()
-  skip_if_no_fits()
-
-  # Use model with spike-at-zero to test remove_spike_0
-  fit_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike.RDS"))
-  marglik_simple_spike <- readRDS(file.path(temp_marglik_dir, "fit_simple_spike.RDS"))
-
-  model <- list(
-    fit = fit_simple_spike,
-    marglik = marglik_simple_spike,
-    prior_weights = 1,
-    fit_summary = runjags_estimates_table(fit_simple_spike)
-  )
-  model_list <- list(model)
-  model_list <- models_inference(model_list)
+  model <- .summary_table_models_for_test()[[2L]]
+  model <- models_inference(list(model))[[1L]]
 
   # Basic model summary
-  summary_table <- model_summary_table(model_list[[1]])
+  summary_table <- model_summary_table(model)
   test_reference_table(summary_table, "model_summary_basic.txt")
 
   # With short_name
-  summary_short <- model_summary_table(model_list[[1]], short_name = TRUE)
+  summary_short <- model_summary_table(model, short_name = TRUE)
   test_reference_table(summary_short, "model_summary_short_name.txt")
 
   # With remove_spike_0 (should remove 'm' which has spike at zero)
-  summary_no_spike <- model_summary_table(model_list[[1]], remove_spike_0 = TRUE)
+  summary_no_spike <- model_summary_table(model, remove_spike_0 = TRUE)
   test_reference_table(summary_no_spike, "model_summary_no_spike.txt")
 
 })
@@ -610,27 +644,7 @@ test_that("model_summary_table handles various configurations", {
 # ============================================================================ #
 test_that("update.BayesTools_table works correctly", {
 
-  skip_if_not_installed("rjags")
-  skip_on_cran()
-  skip_if_no_fits()
-
-  fit_summary0 <- readRDS(file.path(temp_fits_dir, "fit_summary0.RDS"))
-  marglik_summary0 <- readRDS(file.path(temp_marglik_dir, "fit_summary0.RDS"))
-
-  fit_summary1 <- readRDS(file.path(temp_fits_dir, "fit_summary1.RDS"))
-  marglik_summary1 <- readRDS(file.path(temp_marglik_dir, "fit_summary1.RDS"))
-
-  models <- list(
-    list(fit = fit_summary0, marglik = marglik_summary0, prior_weights = 1, fit_summary = runjags_estimates_table(fit_summary0)),
-    list(fit = fit_summary1, marglik = marglik_summary1, prior_weights = 1, fit_summary = runjags_estimates_table(fit_summary1))
-  )
-  models <- models_inference(models)
-
-  inference <- ensemble_inference(
-    model_list = models,
-    parameters = c("m", "omega"),
-    is_null_list = list("m" = c(FALSE, FALSE), "omega" = c(TRUE, FALSE))
-  )
+  inference <- .summary_table_ensemble_inference_for_test()
 
   # Create inference table
   inference_table <- ensemble_inference_table(inference, names(inference))

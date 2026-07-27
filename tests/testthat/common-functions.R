@@ -105,7 +105,12 @@ parse_numeric_table_lines <- function(lines) {
   })
   value_widths <- lengths(row_values)
   if (length(unique(value_widths)) != 1L) {
-    stop("Parsed numeric table rows have inconsistent widths.", call. = FALSE)
+    data_width <- max(value_widths)
+    candidate_rows <- which(is_row)
+    keep <- value_widths == data_width
+    is_row[candidate_rows[!keep]] <- FALSE
+    row_data <- row_data[keep, , drop = FALSE]
+    row_values <- row_values[keep]
   }
   values <- do.call(rbind, row_values)
   colnames(values) <- paste0("V", seq_len(ncol(values)))
@@ -121,8 +126,101 @@ normalize_reference_non_table_lines <- function(lines) {
   gsub("\\s+", " ", trimws(lines))
 }
 
-test_reference_table_numeric <- function(table, filename, tolerance = 1e-2,
-                                         info_msg = NULL, print_dir = REFERENCE_DIR) {
+stochastic_reference_value_classes <- function(values) {
+
+  classes <- matrix("finite", nrow = nrow(values), ncol = ncol(values))
+  classes[is.infinite(values) & values > 0] <- "positive_infinity"
+  classes[is.infinite(values) & values < 0] <- "negative_infinity"
+  classes[is.na(values)] <- "missing"
+  classes[is.nan(values)] <- "not_a_number"
+  dimnames(classes) <- dimnames(values)
+  classes
+}
+
+stochastic_reference_non_table_lines <- function(lines) {
+
+  lines <- normalize_reference_non_table_lines(lines)
+  lines <- gsub(
+    "based on [0-9][0-9,]* samples",
+    "based on <sample-count> samples",
+    lines,
+    perl = TRUE
+  )
+  sub(
+    paste0(
+      "^(log\\(marglik\\)\\s+)",
+      "(<?[-+]?[0-9]*\\.?[0-9]+(?:[eE][-+]?[0-9]+)?)",
+      "(\\s+.*)?$"
+    ),
+    "\\1<finite>\\3",
+    lines,
+    perl = TRUE
+  )
+}
+
+stochastic_reference_signature <- function(lines) {
+
+  parsed <- parse_numeric_table_lines(lines)
+  list(
+    row_layout = parsed$is_row,
+    row_labels = unname(parsed$labels),
+    value_classes = unname(stochastic_reference_value_classes(parsed$values)),
+    non_table_lines = stochastic_reference_non_table_lines(
+      lines[!parsed$is_row]
+    )
+  )
+}
+
+expect_stochastic_table_invariants <- function(table, info_msg = NULL) {
+
+  for (name in names(table)) {
+    values <- table[[name]]
+    if (!is.numeric(values)) {
+      next
+    }
+    expect_false(any(is.nan(values)), info = info_msg)
+
+    if (name %in% c(
+      "SD", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat",
+      "BF_error", "BF_error_percent", "max_MCMC_error",
+      "max_MCMC_SD_error", "min_ESS", "max_R_hat"
+    )) {
+      expect_true(
+        all(is.na(values) | values >= 0),
+        info = info_msg
+      )
+    }
+    if (name %in% c("prior_prob", "post_prob")) {
+      expect_true(
+        all(is.na(values) | (values >= 0 & values <= 1)),
+        info = info_msg
+      )
+    }
+  }
+
+  probabilities <- suppressWarnings(as.numeric(names(table)))
+  quantile_columns <- which(
+    is.finite(probabilities) & probabilities >= 0 & probabilities <= 1
+  )
+  if (length(quantile_columns) > 1L) {
+    quantile_columns <- quantile_columns[order(probabilities[quantile_columns])]
+    quantiles <- as.matrix(table[, quantile_columns, drop = FALSE])
+    for (i in seq_len(nrow(quantiles))) {
+      finite <- is.finite(quantiles[i, ])
+      if (sum(finite) > 1L) {
+        expect_true(
+          all(diff(quantiles[i, finite]) >= 0),
+          info = info_msg
+        )
+      }
+    }
+  }
+
+  invisible(TRUE)
+}
+
+test_reference_table_stochastic <- function(table, filename, info_msg = NULL,
+                                            print_dir = REFERENCE_DIR) {
   if (GENERATE_REFERENCE_FILES) {
     test_reference_table(table, filename, info_msg = info_msg, print_dir = print_dir)
   } else {
@@ -131,16 +229,12 @@ test_reference_table_numeric <- function(table, filename, tolerance = 1e-2,
       expected_output <- readLines(ref_file, warn = FALSE)
       actual_output   <- capture_output_lines(table, print = TRUE, width = 150)
 
-      expected_table <- parse_numeric_table_lines(expected_output)
-      actual_table   <- parse_numeric_table_lines(actual_output)
-
-      expect_equal(actual_table$labels, expected_table$labels, info = info_msg)
-      expect_equal(actual_table$values, expected_table$values, tolerance = tolerance, info = info_msg)
       expect_equal(
-        normalize_reference_non_table_lines(actual_output[!actual_table$is_row]),
-        normalize_reference_non_table_lines(expected_output[!expected_table$is_row]),
+        stochastic_reference_signature(actual_output),
+        stochastic_reference_signature(expected_output),
         info = info_msg
       )
+      expect_stochastic_table_invariants(table, info_msg = info_msg)
     } else {
       skip(paste("Reference file", filename, "not found."))
     }

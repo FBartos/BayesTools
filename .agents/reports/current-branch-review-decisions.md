@@ -40,7 +40,7 @@ mean **implemented**.
 | D26 | Implemented and verified | No remaining work |
 | D27 | Implemented and verified | No remaining work |
 | D28 | Implemented and verified | No remaining work |
-| D29 | Decision confirmed; implementation pending | Apply the agreed long-term stochastic-reference policy |
+| D29 | Implemented and verified | No remaining work |
 | D30 | Decision confirmed; implementation pending | Shorten the 50 nonportable snapshot paths |
 | D31 | Decision confirmed; implementation pending | Use stable CAR recurrences and reject only unrepresentable innovations |
 | D32 | Implemented and verified | No remaining work |
@@ -1715,6 +1715,25 @@ long-term split: exact references for deterministic schema/format/geometry;
 tolerance or invariant tests for stochastic statistics; and controlled,
 versioned handling of fitted stochastic plots. The already-refreshed references
 remain the current branch baseline while those test-policy changes are made.
+
+**Implementation status: implemented and verified.** Cache-derived tables now
+compare exact presentation structure, row labels, finite/missing value classes,
+and numerical invariants without treating one Monte Carlo realization as a
+golden numerical oracle. Their sampled statistics are additionally checked
+against the current posterior draws, current marginal-inference objects, or
+current probability/Bayes-factor algebra. Summary-table presentation tests that
+do not require fitting now use deterministic in-memory inputs and run in the
+unit profile. Exact references remain only for deterministic formatting,
+empty/adversarial outputs, and fixed mock-model algebra. Obsolete reference
+files with no remaining test consumer were removed.
+
+Fitted visual snapshots remain exact but are guarded by the versioned,
+validated fit cache; a unit policy test covers every fitted visual suite. The
+fixed numeric-golden tolerance helper was removed. Focused policy and summary
+tests passed, and the complete unit profile passed 8,104 assertions with seven
+expected profile skips and no failures or warnings. The refreshed fit,
+fixture, and visual-fixture lanes remain part of the final cross-case
+verification after D31 changes generated CAR syntax.
 
 ## D30. Portable source-package paths for visual snapshots
 

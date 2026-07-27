@@ -94,7 +94,12 @@ source(testthat::test_path("common-functions.R"))
 
   for (parameter in parameters) {
     is_null <- attr(inference[[parameter]], "is_null")
+    expected_is_null <- BayesTools:::.model_averaging_is_null(
+      is_null_list[[parameter]],
+      length(is_null)
+    )
     parameter_name <- attr(inference[[parameter]], "parameter_name")
+    expect_identical(is_null, expected_is_null)
     expect_equal(sum(inference[[parameter]]$prior_probs), 1, tolerance = 1e-12)
     expect_equal(sum(inference[[parameter]]$post_probs), 1, tolerance = 1e-12)
     expect_equal(table[parameter_name, "prior_prob"], sum(inference[[parameter]]$prior_probs[!is_null]), tolerance = 1e-12)
@@ -278,27 +283,30 @@ test_that("Summary table advanced features work correctly", {
     fixed = TRUE
   )
 
-  # Check content with reference files
-  test_reference_table(estimates_table, "simple_ensemble_estimates.txt")
-  test_reference_table(inference_table, "simple_ensemble_inference.txt")
-  test_reference_table(summary_table, "simple_ensemble_summary.txt")
-  test_reference_table(diagnostics_table, "simple_ensemble_diagnostics.txt")
-
   # Test remove_column on diagnostics table
   diagnostics_table.trimmed <- remove_column(diagnostics_table, 2)
   diagnostics_table.trimmed <- remove_column(diagnostics_table.trimmed, 2)
-  test_reference_table(diagnostics_table.trimmed, "simple_ensemble_diagnostics_trimmed.txt")
+  expect_equal(
+    as.data.frame(diagnostics_table.trimmed),
+    as.data.frame(diagnostics_table[, colnames(diagnostics_table.trimmed)]),
+    ignore_attr = TRUE
+  )
+  expect_equal(
+    attr(diagnostics_table.trimmed, "type"),
+    c("integer", "max_MCMC_error", "max_MCMC_SD_error", "min_ESS", "max_R_hat")
+  )
+  expect_false(attr(diagnostics_table.trimmed, "rownames"))
 
   # Test that trimmed diagnostics table matches empty table structure
   ensemble_diagnostics_empty <- ensemble_diagnostics_empty_table()
   expect_equal(colnames(ensemble_diagnostics_empty), colnames(diagnostics_table.trimmed))
   expect_equal(capture_output_lines(ensemble_diagnostics_empty, width = 150)[1], capture_output_lines(diagnostics_table.trimmed, width = 150)[1])
 
-  # # Test interpret
+  # Test interpret
   inference_for_interpret <- inference
   inference_for_interpret[["m"]][["BF"]] <- 100
   interpretation_samples <- list(m = as.numeric(mixed_posteriors[["m"]]))
-  interpretation <- interpret(inference_for_interpret, interpretation_samples, list(
+  interpretation_specification <- list(
     list(
       inference         = "m",
       samples           = "m",
@@ -307,13 +315,30 @@ test_that("Summary table advanced features work correctly", {
       samples_name      = "y",
       samples_units     = NULL
     )
-  ), "Test")
+  )
+  interpretation <- interpret(
+    inference_for_interpret,
+    interpretation_samples,
+    interpretation_specification,
+    "Test"
+  )
 
-  test_reference_text(interpretation, "simple_interpretation.txt")
+  expect_identical(
+    interpretation,
+    interpret2(list(list(
+      inference_name       = "effect",
+      inference_BF_name    = "BF_10",
+      inference_BF         = inference_for_interpret$m$BF,
+      estimate_name        = "y",
+      estimate_samples     = interpretation_samples$m,
+      estimate_units       = NULL,
+      estimate_conditional = FALSE
+    )), "Test")
+  )
 
   # Test interpret 2 (modified inference)
   inference[["m"]][["BF"]] <- 1/5
-  interpretation2 <- interpret(inference, interpretation_samples, list(
+  interpretation2_specification <- list(
     list(
       inference           = "m",
       samples             = "m",
@@ -328,9 +353,33 @@ test_that("Summary table advanced features work correctly", {
       inference_name      = "bias",
       inference_BF_name   = "BF_pb"
     )
-  ), "Test2")
+  )
+  interpretation2 <- interpret(
+    inference,
+    interpretation_samples,
+    interpretation2_specification,
+    "Test2"
+  )
 
-  test_reference_text(interpretation2, "simple_interpretation2.txt")
+  expect_identical(
+    interpretation2,
+    interpret2(list(
+      list(
+        inference_name       = "effect",
+        inference_BF_name    = "BF_10",
+        inference_BF         = inference$m$BF,
+        estimate_name        = "y",
+        estimate_samples     = interpretation_samples$m,
+        estimate_units       = "mm",
+        estimate_conditional = TRUE
+      ),
+      list(
+        inference_name    = "bias",
+        inference_BF_name = "BF_pb",
+        inference_BF      = inference$omega$BF
+      )
+    ), "Test2")
+  )
 
 
   # 2. Complex models (Formula)
@@ -382,11 +431,6 @@ test_that("Summary table advanced features work correctly", {
   .expect_ensemble_inference_semantics(inference_table_complex, inference_complex, parameters_complex, is_null_list_complex)
   .expect_ensemble_model_table_semantics(summary_table_complex, diagnostics_table_complex, models_complex, parameters_complex)
 
-  test_reference_table(estimates_table_complex, "complex_ensemble_estimates.txt")
-  test_reference_table(inference_table_complex, "complex_ensemble_inference.txt")
-  test_reference_table(summary_table_complex, "complex_ensemble_summary.txt")
-  test_reference_table(diagnostics_table_complex, "complex_ensemble_diagnostics.txt")
-
   # 3. Simple Spike vs Normal (Model Averaging)
   # -------------------------------------------------------------- #
   fit_simple_spike <- readRDS(file.path(temp_fits_dir, "fit_simple_spike.RDS"))
@@ -421,10 +465,6 @@ test_that("Summary table advanced features work correctly", {
   .expect_ensemble_estimates_semantics(estimates_simple_ma, mixed_posteriors_simple_ma, c("m", "s"), c(.025, .975))
   .expect_ensemble_inference_semantics(inference_simple_ma_table, inference_simple_ma, c("m", "s"), list("m" = 1, "s" = 0))
 
-  test_reference_table(estimates_simple_ma, "simple_ma_estimates.txt")
-  test_reference_table(inference_simple_ma_table, "simple_ma_inference.txt")
-
-
   # 4. Fixed Weightfunctions
   # -------------------------------------------------------------- #
   # Re-using summary models 0-2 and adding a fixed weightfunction model
@@ -458,9 +498,6 @@ test_that("Summary table advanced features work correctly", {
 
   .expect_ensemble_estimates_semantics(estimates_fixed_wf, mixed_posteriors_fixed_wf, c("m", "omega"), c(.025, .975))
   .expect_ensemble_inference_semantics(inference_fixed_wf_table, inference_fixed_wf, c("m", "omega"), list("m" = 0, "omega" = 1))
-
-  test_reference_table(estimates_fixed_wf, "fixed_wf_estimates.txt")
-  test_reference_table(inference_fixed_wf_table, "fixed_wf_inference.txt")
 
   # 5. Interactions
   # -------------------------------------------------------------- #
@@ -506,7 +543,8 @@ test_that("Summary table advanced features work correctly", {
   .expect_ensemble_inference_semantics(inference_interaction_table, inference_interaction, parameters_int, is_null_list_int)
   .expect_ensemble_model_table_semantics(summary_interaction_table, diagnostics_interaction_table, models_interaction, parameters_int)
 
-  test_reference_table(estimates_interaction, "interaction_ensemble_estimates.txt")
+  # These two references are deterministic: the models use explicit mock
+  # log marginal likelihoods of -22 and -20 above.
   test_reference_table(inference_interaction_table, "interaction_ensemble_inference.txt")
   test_reference_table(summary_interaction_table, "interaction_ensemble_summary.txt")
 
@@ -545,22 +583,20 @@ test_that("Summary table advanced features work correctly", {
   .expect_ensemble_estimates_semantics(estimates_spike_factors, mixed_posteriors_spike_factors, c("mu_x_fac3md"), c(.025, .975))
   .expect_ensemble_inference_semantics(inference_spike_factors_table, inference_spike_factors, c("mu_x_fac3md"), list("mu_x_fac3md" = c(TRUE, FALSE)))
 
-  test_reference_table(estimates_spike_factors, "spike_factors_estimates.txt")
-  test_reference_table(inference_spike_factors_table, "spike_factors_inference.txt")
-
 })
 
 
 test_that("Simplified interpret2 function", {
 
-  set.seed(1)
+  probability_grid <- (seq_len(1001L) - 0.5) / 1001
+  estimate_samples <- 0.3 + 0.15 * stats::qnorm(probability_grid)
   information <- list(
     list(
       inference_name        = "Effect",
       inference_BF_name     = "BF10",
       inference_BF          = 3.5,
       estimate_name         = "mu",
-      estimate_samples      = rnorm(1000, 0.3, 0.15),
+      estimate_samples      = estimate_samples,
       estimate_units        = "kg",
       estimate_conditional  = FALSE
     )
@@ -568,7 +604,7 @@ test_that("Simplified interpret2 function", {
 
   expect_equal(
     interpret2(information, "RoBMA"),
-    "RoBMA found moderate evidence in favor of the Effect, BF10 = 3.50, with mean model-averaged estimate mu = 0.298 kg, 95% CI [-0.020,  0.601]."
+    "RoBMA found moderate evidence in favor of the Effect, BF10 = 3.50, with mean model-averaged estimate mu = 0.300 kg, 95% CI [0.007,  0.593]."
   )
 
 })
@@ -584,37 +620,67 @@ test_that("as_mixed_posteriors works with ensemble tables", {
   # 1. Complex Mixed Model
   fit_complex_mixed <- readRDS(file.path(temp_fits_dir, "fit_complex_mixed.RDS"))
 
+  parameters_complex <- names(attr(fit_complex_mixed, "prior_list"))
   mixed_posteriors_complex <- as_mixed_posteriors(
-    mode       = fit_complex_mixed,
-    parameters = names(attr(fit_complex_mixed, "prior_list"))
+    model      = fit_complex_mixed,
+    parameters = parameters_complex
   )
 
   # Generate estimates table
   estimates_table_complex <- ensemble_estimates_table(
     mixed_posteriors_complex,
-    parameters = names(attr(fit_complex_mixed, "prior_list")),
+    parameters = parameters_complex,
     probs = c(.025, 0.95)
   )
 
-  test_reference_table(estimates_table_complex, "as_mixed_posteriors_complex_estimates.txt")
+  expect_s3_class(mixed_posteriors_complex, "mixed_posteriors")
+  expect_named(mixed_posteriors_complex, parameters_complex)
+  expect_identical(attr(mixed_posteriors_complex, "prior_list"), attr(fit_complex_mixed, "prior_list"))
+  current_samples_complex <- suppressWarnings(coda::as.mcmc(fit_complex_mixed))
+  expect_true(all(vapply(
+    mixed_posteriors_complex,
+    function(x) NROW(x) == NROW(current_samples_complex),
+    logical(1)
+  )))
+  .expect_ensemble_estimates_semantics(
+    estimates_table_complex,
+    mixed_posteriors_complex,
+    parameters_complex,
+    c(.025, 0.95)
+  )
 
 
   # 2. Simple Formula Mixed Model
   fit_simple_formula_mixed <- readRDS(file.path(temp_fits_dir, "fit_simple_formula_mixed.RDS"))
 
+  parameters_simple <- names(attr(fit_simple_formula_mixed, "prior_list"))
   mixed_posteriors_simple <- as_mixed_posteriors(
-    mode       = fit_simple_formula_mixed,
-    parameters = names(attr(fit_simple_formula_mixed, "prior_list"))
+    model      = fit_simple_formula_mixed,
+    parameters = parameters_simple
   )
 
   # Generate estimates table
   estimates_table_simple <- ensemble_estimates_table(
     mixed_posteriors_simple,
-    parameters = names(attr(fit_simple_formula_mixed, "prior_list")),
+    parameters = parameters_simple,
     probs = c(.025, 0.95)
   )
 
-  test_reference_table(estimates_table_simple, "as_mixed_posteriors_simple_estimates.txt")
+  expect_s3_class(mixed_posteriors_simple, "mixed_posteriors")
+  expect_named(mixed_posteriors_simple, parameters_simple)
+  expect_identical(attr(mixed_posteriors_simple, "prior_list"), attr(fit_simple_formula_mixed, "prior_list"))
+  current_samples_simple <- suppressWarnings(coda::as.mcmc(fit_simple_formula_mixed))
+  expect_true(all(vapply(
+    mixed_posteriors_simple,
+    function(x) NROW(x) == NROW(current_samples_simple),
+    logical(1)
+  )))
+  .expect_ensemble_estimates_semantics(
+    estimates_table_simple,
+    mixed_posteriors_simple,
+    parameters_simple,
+    c(.025, 0.95)
+  )
 
 })
 

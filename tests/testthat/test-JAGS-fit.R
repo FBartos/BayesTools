@@ -328,14 +328,53 @@ test_that("runjags_estimates_table works with fitted models", {
   skip_if_no_fits()
 
   fit_simple <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
+  fit_draws <- do.call(rbind, lapply(fit_simple$mcmc, as.matrix))
+  expect_estimates_from_fit <- function(table){
+    parameters <- attr(table, "parameters")
+    probs <- c(0.025, 0.5, 0.975)
+    estimate_names <- c("Mean", "SD", as.character(probs))
+    expected <- t(vapply(parameters, function(parameter){
+      draws <- fit_draws[, parameter]
+      c(
+        Mean = mean(draws, na.rm = TRUE),
+        SD = stats::sd(draws, na.rm = TRUE),
+        vapply(
+          probs,
+          function(prob) unname(stats::quantile(
+            draws,
+            probs = prob,
+            na.rm = TRUE
+          )),
+          numeric(1)
+        )
+      )
+    }, numeric(length(estimate_names))))
+    colnames(expected) <- estimate_names
+
+    expect_equal(
+      unname(as.matrix(table[, estimate_names, drop = FALSE])),
+      unname(expected),
+      tolerance = 1e-12
+    )
+  }
 
   # Test basic estimates table
   estimates_table <- runjags_estimates_table(fit_simple)
-  test_reference_table(estimates_table, "runjags_estimates_simple.txt")
+  test_reference_table_stochastic(
+    estimates_table,
+    "runjags_estimates_simple.txt"
+  )
+  expect_identical(attr(estimates_table, "parameters"), c("m", "s"))
+  expect_estimates_from_fit(estimates_table)
 
   # Test without specific parameters
   estimates_table_param <- runjags_estimates_table(fit_simple, remove_parameters = "m")
-  test_reference_table(estimates_table_param, "runjags_estimates_param_m.txt")
+  test_reference_table_stochastic(
+    estimates_table_param,
+    "runjags_estimates_param_m.txt"
+  )
+  expect_identical(attr(estimates_table_param, "parameters"), "s")
+  expect_estimates_from_fit(estimates_table_param)
 
 })
 

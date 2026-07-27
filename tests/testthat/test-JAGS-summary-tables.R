@@ -241,23 +241,36 @@ expect_summary_row_order <- function(table, rows) {
   expect_equal(rownames(table), rows)
 }
 
-expect_summary_values <- function(table, expected, tolerance = 5e-3) {
-  missing_rows <- setdiff(rownames(expected), rownames(table))
-  missing_cols <- setdiff(colnames(expected), colnames(table))
+expect_summary_matches_samples <- function(table, samples,
+                                           probs = c(0.025, 0.5, 0.975),
+                                           tolerance = 1e-12) {
 
-  expect_equal(missing_rows, character())
-  expect_equal(missing_cols, character())
+  samples <- as.matrix(samples)
+  estimate_columns <- c("Mean", "SD", as.character(probs))
 
-  actual_values <- as.matrix(table[rownames(expected), colnames(expected), drop = FALSE])
-  storage.mode(actual_values) <- "numeric"
+  expect_equal(rownames(table), colnames(samples))
+  expect_true(all(estimate_columns %in% colnames(table)))
 
-  expect_equal(unname(actual_values), unname(expected), tolerance = tolerance)
-}
+  quantiles <- lapply(probs, function(prob) {
+    apply(samples, 2, stats::quantile, probs = prob, na.rm = TRUE, names = FALSE)
+  })
+  quantiles <- do.call(cbind, quantiles)
+  colnames(quantiles) <- as.character(probs)
 
-summary_values <- function(..., columns = c("Mean", "SD", "0.025", "0.5", "0.975")) {
-  values <- rbind(...)
-  colnames(values) <- columns
-  values
+  expected <- cbind(
+    "Mean" = apply(samples, 2, mean, na.rm = TRUE),
+    "SD" = apply(samples, 2, stats::sd, na.rm = TRUE),
+    quantiles
+  )
+  rownames(expected) <- colnames(samples)
+
+  inclusion_rows <- grepl(" (inclusion", rownames(expected), fixed = TRUE)
+  expected[inclusion_rows, setdiff(estimate_columns, "Mean")] <- NA_real_
+
+  actual <- as.matrix(table[, estimate_columns, drop = FALSE])
+  storage.mode(actual) <- "numeric"
+
+  expect_equal(actual, expected, tolerance = tolerance)
 }
 
 # ============================================================================ #
@@ -542,6 +555,79 @@ test_that("Summary table advanced features work correctly", {
     runjags_summary_complex3 <- runjags_estimates_table(fit_complex_mixed, conditional = TRUE)
   }
 
+  # Recompute the estimate columns from the same current posterior draws. The
+  # fixture cache is stochastic, so these algebraic checks replace cached
+  # point estimates while retaining exact schema checks below.
+  runjags_samples_transform <- runjags_estimates_table(
+    fit_complex,
+    transformations = list("mu_intercept" = list(fun = exp)),
+    return_samples = TRUE
+  )
+  runjags_samples_prefix_true <- runjags_estimates_table(
+    fit_complex,
+    formula_prefix = TRUE,
+    return_samples = TRUE
+  )
+  runjags_samples_prefix_false <- runjags_estimates_table(
+    fit_complex,
+    formula_prefix = FALSE,
+    return_samples = TRUE
+  )
+  runjags_samples_conditional <- runjags_estimates_table(
+    fit_complex,
+    conditional = TRUE,
+    return_samples = TRUE
+  )
+  runjags_samples_unconditional <- runjags_estimates_table(
+    fit_complex,
+    conditional = FALSE,
+    return_samples = TRUE
+  )
+  runjags_samples_factor <- runjags_estimates_table(
+    fit_factor,
+    return_samples = TRUE
+  )
+  runjags_samples_spike <- runjags_estimates_table(
+    fit_spike,
+    return_samples = TRUE
+  )
+  runjags_samples_orthonormal <- suppressMessages(runjags_estimates_table(
+    fit_orthonormal,
+    transform_factors = TRUE,
+    return_samples = TRUE
+  ))
+  runjags_samples_orthonormal2 <- suppressMessages(runjags_estimates_table(
+    fit_orthonormal,
+    transform_factors = TRUE,
+    transformations = list("p1" = list(fun = exp)),
+    return_samples = TRUE
+  ))
+  runjags_samples_custom_transform <- suppressMessages(runjags_estimates_table(
+    fit_factor,
+    transform_factors = FALSE,
+    transformations = list("mu_x_fac3t[2]" = list(fun = exp)),
+    return_samples = TRUE
+  ))
+  runjags_samples_remove_inclusion <- suppressMessages(runjags_estimates_table(
+    fit_spike,
+    transform_factors = TRUE,
+    conditional = TRUE,
+    remove_inclusion = TRUE,
+    return_samples = TRUE
+  ))
+  if (has_complex_optional_fits) {
+    runjags_samples_complex2 <- runjags_estimates_table(
+      fit_complex_bias,
+      conditional = TRUE,
+      return_samples = TRUE
+    )
+    runjags_samples_complex3 <- runjags_estimates_table(
+      fit_complex_mixed,
+      conditional = TRUE,
+      return_samples = TRUE
+    )
+  }
+
   # Test basic properties
   expect_s3_class(runjags_summary_transform, "BayesTools_table")
   expect_s3_class(runjags_summary_prefix_true, "BayesTools_table")
@@ -582,94 +668,98 @@ test_that("Summary table advanced features work correctly", {
     "x_cont1:x_cont2",
     "sigma"
   )
-  expected_formula_values <- summary_values(
-    "(mu) intercept"        = c( 0.035, 0.104, -0.178,  0.040,  0.243),
-    "(mu) x_cont1"          = c( 0.361, 0.123,  0.124,  0.365,  0.587),
-    "(mu) x_cont2"          = c(-0.029, 0.109, -0.241, -0.028,  0.190),
-    "(mu) x_cont1:x_cont2"  = c(-0.391, 0.149, -0.685, -0.390, -0.104),
-    "sigma"                 = c( 1.040, 0.077,  0.905,  1.033,  1.203)
-  )
-  expected_transform_values <- expected_formula_values
-  expected_transform_values["(mu) intercept", ] <- c(1.041, 0.109, 0.837, 1.040, 1.276)
 
   expect_summary_row_order(runjags_summary_prefix_true, expected_formula_rows_prefixed)
   expect_summary_row_order(runjags_summary_prefix_false, expected_formula_rows_unprefixed)
   expect_summary_row_order(runjags_summary_transform, expected_formula_rows_prefixed)
-  expect_summary_values(runjags_summary_prefix_true, expected_formula_values)
-  expect_summary_values(runjags_summary_transform, expected_transform_values)
+  expect_summary_matches_samples(runjags_summary_prefix_true, runjags_samples_prefix_true)
+  expect_summary_matches_samples(runjags_summary_prefix_false, runjags_samples_prefix_false)
+  expect_summary_matches_samples(runjags_summary_transform, runjags_samples_transform)
   expect_equal(attr(runjags_summary_prefix_true, "parameters"),
                c("mu_intercept", "mu_x_cont1", "mu_x_cont2", "mu_x_cont1__xXx__x_cont2", "sigma"))
 
   expect_equal(colnames(runjags_summary_conditional), c("Mean", "SD", "0.025", "0.5", "0.975"))
   expect_equal(attr(runjags_summary_conditional, "type"), rep("estimate", 5))
-  expect_summary_values(runjags_summary_conditional, expected_formula_values)
+  expect_summary_matches_samples(runjags_summary_conditional, runjags_samples_conditional)
   expect_true(all(c("MCMC_error", "MCMC_SD_error", "ESS", "R_hat") %in% colnames(runjags_summary_unconditional)))
   expect_equal(attr(runjags_summary_unconditional, "type"),
                c(rep("estimate", 5), "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
+  expect_summary_matches_samples(runjags_summary_unconditional, runjags_samples_unconditional)
 
   expect_summary_row_order(runjags_summary_factor, "p1[2]")
-  expect_summary_values(runjags_summary_factor, summary_values("p1[2]" = c(0.497, 0.291, 0.022, 0.491, 0.973)))
+  expect_summary_matches_samples(runjags_summary_factor, runjags_samples_factor)
 
   expect_summary_row_order(runjags_summary_spike, c("beta (inclusion)", "beta[1]", "beta[2]"))
-  expect_summary_values(
-    runjags_summary_spike,
-    summary_values(
-      "beta[1]" = c(0.034, 0.747, -1.569, 0.000, 1.759),
-      "beta[2]" = c(0.005, 0.721, -1.680, 0.000, 1.639)
-    )
-  )
-  expect_equal(as.numeric(runjags_summary_spike["beta (inclusion)", "Mean"]), 0.527, tolerance = 5e-3)
+  expect_summary_matches_samples(runjags_summary_spike, runjags_samples_spike)
   expect_equal(rownames(runjags_inference_spike), "beta")
-  expect_equal(as.numeric(runjags_inference_spike["beta", "prior_prob"]), 0.5)
-  expect_equal(as.numeric(runjags_inference_spike["beta", "post_prob"]),
-               as.numeric(runjags_summary_spike["beta (inclusion)", "Mean"]), tolerance = 5e-3)
-  expect_equal(as.numeric(runjags_inference_spike["beta", "inclusion_BF"]), 1.114, tolerance = 5e-3)
+  spike_prior_prob <- as.numeric(runjags_inference_spike["beta", "prior_prob"])
+  spike_post_prob <- as.numeric(runjags_inference_spike["beta", "post_prob"])
+  expected_spike_BF <- (spike_post_prob / (1 - spike_post_prob)) /
+    (spike_prior_prob / (1 - spike_prior_prob))
+  expect_equal(spike_prior_prob, 0.5)
+  expect_true(spike_post_prob >= 0 && spike_post_prob <= 1)
+  expect_equal(
+    spike_post_prob,
+    as.numeric(runjags_summary_spike["beta (inclusion)", "Mean"]),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    as.numeric(runjags_inference_spike["beta", "inclusion_BF"]),
+    expected_spike_BF,
+    tolerance = 1e-12
+  )
 
   expect_summary_row_order(runjags_summary_orthonormal, c("p1[dif: 1]", "p1[dif: 2]", "p1[dif: 3]"))
-  expect_summary_values(
-    runjags_summary_orthonormal,
-    summary_values(
-      "p1[dif: 1]" = c( 0.041, 0.818, -1.631,  0.060, 1.605),
-      "p1[dif: 2]" = c(-0.033, 0.796, -1.612, -0.029, 1.527),
-      "p1[dif: 3]" = c(-0.008, 0.811, -1.550, -0.009, 1.564)
-    )
-  )
-  expect_equal(sum(runjags_summary_orthonormal[,"Mean"]), 0, tolerance = 1e-12)
+  expect_summary_matches_samples(runjags_summary_orthonormal, runjags_samples_orthonormal)
+  expect_summary_matches_samples(runjags_summary_orthonormal2, runjags_samples_orthonormal2)
+  expect_equal(sum(as.numeric(runjags_summary_orthonormal[,"Mean"])), 0, tolerance = 1e-12)
 
   expect_summary_row_order(runjags_summary_remove_inclusion, c("beta[dif: 1]", "beta[dif: 2]", "beta[dif: 3]"))
   expect_false(any(grepl("inclusion", rownames(runjags_summary_remove_inclusion), fixed = TRUE)))
   expect_equal(colnames(runjags_summary_remove_inclusion), c("Mean", "SD", "0.025", "0.5", "0.975"))
+  expect_summary_matches_samples(runjags_summary_custom_transform, runjags_samples_custom_transform)
+  expect_summary_matches_samples(runjags_summary_remove_inclusion, runjags_samples_remove_inclusion)
 
-  test_reference_table(runjags_summary_transform, "advanced_transform.txt", "Transform table mismatch")
-  test_reference_table(runjags_summary_prefix_true, "advanced_formula_prefix_true.txt", "Formula prefix true table mismatch")
-  test_reference_table(runjags_summary_prefix_false, "advanced_formula_prefix_false.txt", "Formula prefix false table mismatch")
-  test_reference_table(runjags_summary_conditional, "advanced_conditional.txt", "Conditional table mismatch")
-  test_reference_table(runjags_summary_unconditional, "advanced_unconditional.txt", "Unconditional table mismatch")
-  test_reference_table(runjags_summary_factor, "advanced_factor_treatment.txt", "Factor treatment table mismatch")
-  test_reference_table(runjags_summary_spike, "advanced_spike_slab_estimates.txt", "Spike slab estimates table mismatch")
-  test_reference_table(runjags_inference_spike, "advanced_spike_slab_inference.txt", "Spike slab inference table mismatch")
-  test_reference_table(runjags_summary_orthonormal, "advanced_orthonormal_transform.txt", "Orthonormal transform table mismatch")
-  test_reference_table(runjags_summary_orthonormal2, "advanced_orthonormal_transform2.txt", "Orthonormal transform2 table mismatch")
-  test_reference_table(runjags_summary_custom_transform, "advanced_custom_transform.txt", "Custom transform table mismatch")
-  test_reference_table(runjags_summary_remove_inclusion, "advanced_remove_inclusion.txt", "Remove inclusion table mismatch")
+  test_reference_table_stochastic(runjags_summary_transform, "advanced_transform.txt", "Transform table mismatch")
+  test_reference_table_stochastic(runjags_summary_prefix_true, "advanced_formula_prefix_true.txt", "Formula prefix true table mismatch")
+  test_reference_table_stochastic(runjags_summary_prefix_false, "advanced_formula_prefix_false.txt", "Formula prefix false table mismatch")
+  test_reference_table_stochastic(runjags_summary_conditional, "advanced_conditional.txt", "Conditional table mismatch")
+  test_reference_table_stochastic(runjags_summary_unconditional, "advanced_unconditional.txt", "Unconditional table mismatch")
+  test_reference_table_stochastic(runjags_summary_factor, "advanced_factor_treatment.txt", "Factor treatment table mismatch")
+  test_reference_table_stochastic(runjags_summary_spike, "advanced_spike_slab_estimates.txt", "Spike slab estimates table mismatch")
+  test_reference_table_stochastic(runjags_inference_spike, "advanced_spike_slab_inference.txt", "Spike slab inference table mismatch")
+  test_reference_table_stochastic(runjags_summary_orthonormal, "advanced_orthonormal_transform.txt", "Orthonormal transform table mismatch")
+  test_reference_table_stochastic(runjags_summary_orthonormal2, "advanced_orthonormal_transform2.txt", "Orthonormal transform2 table mismatch")
+  test_reference_table_stochastic(runjags_summary_custom_transform, "advanced_custom_transform.txt", "Custom transform table mismatch")
+  test_reference_table_stochastic(runjags_summary_remove_inclusion, "advanced_remove_inclusion.txt", "Remove inclusion table mismatch")
   if (has_complex_optional_fits) {
     expect_summary_row_order(
       runjags_summary_complex2,
       c("mu", "bias (inclusion)", "omega[0,0.025]", "omega[0.025,0.05]",
         "omega[0.05,0.975]", "omega[0.975,1]", "PET", "PEESE")
     )
-    expect_summary_values(
-      runjags_summary_complex2,
-      summary_values(
-        "mu"                = c(1.024, 0.631, 0.208, 0.894, 2.639),
-        "omega[0,0.025]"   = c(1.000, 0.000, 1.000, 1.000, 1.000),
-        "PET"               = c(0.816, 0.659, 0.063, 0.583, 2.295),
-        "PEESE"             = c(1.434, 1.318, 0.031, 1.043, 4.889)
+    expect_summary_matches_samples(runjags_summary_complex2, runjags_samples_complex2)
+
+    pet_sample_count <- sum(!is.na(runjags_samples_complex2[, "PET"]))
+    conditional_warnings <- attr(runjags_summary_complex2, "warnings")
+    if (is.null(conditional_warnings)) {
+      conditional_warnings <- character()
+    }
+    if (pet_sample_count == 0) {
+      expected_pet_warning <- paste0(
+        "Conditional summary for PET parameter could not be computed ",
+        "due to no posterior samples."
       )
-    )
-    expect_equal(as.numeric(runjags_summary_complex2["bias (inclusion)", "Mean"]), 0.526, tolerance = 5e-3)
-    expect_true(any(grepl("Conditional summary for PET is based on 79 samples.",
-                          attr(runjags_summary_complex2, "warnings"), fixed = TRUE)))
+      expect_true(expected_pet_warning %in% conditional_warnings)
+    } else if (pet_sample_count <= 500) {
+      expected_pet_warning <- sprintf(
+        "Conditional summary for PET is based on %i samples.",
+        pet_sample_count
+      )
+      expect_true(expected_pet_warning %in% conditional_warnings)
+    } else {
+      expect_false(any(startsWith(conditional_warnings, "Conditional summary for PET")))
+    }
 
     expect_summary_row_order(
       runjags_summary_complex3,
@@ -682,15 +772,15 @@ test_that("Summary table advanced features work correctly", {
         "omega[0,0.025]", "omega[0.025,0.05]", "omega[0.05,0.975]",
         "omega[0.975,1]", "PET")
     )
-    expect_equal(as.numeric(runjags_summary_complex3["(mu) x_cont1 (inclusion)", "Mean"]), 1)
+    expect_summary_matches_samples(runjags_summary_complex3, runjags_samples_complex3)
     expect_equal(
       sum(as.numeric(runjags_summary_complex3[c("sigma (inclusion: normal)", "sigma (inclusion: lognormal)"), "Mean"])),
       1,
-      tolerance = 5e-3
+      tolerance = 1e-12
     )
 
-    test_reference_table(runjags_summary_complex2, "runjags_summary_complex2.txt", "Custom probs table mismatch")
-    test_reference_table(runjags_summary_complex3, "runjags_summary_complex3.txt", "Custom probs table mismatch")
+    test_reference_table_stochastic(runjags_summary_complex2, "runjags_summary_complex2.txt", "Custom probs table mismatch")
+    test_reference_table_stochastic(runjags_summary_complex3, "runjags_summary_complex3.txt", "Custom probs table mismatch")
   }
 
   # Removal of formula and parameter names
@@ -699,25 +789,31 @@ test_that("Summary table advanced features work correctly", {
   runjags_summary_removal_01 <- JAGS_estimates_table(fit_dual_param)
   runjags_summary_removal_02 <- JAGS_estimates_table(fit_dual_param, remove_formulas = "mu")
   runjags_summary_removal_03 <- JAGS_estimates_table(fit_dual_param, keep_formulas = "log_sigma")
+  runjags_samples_removal_01 <- JAGS_estimates_table(fit_dual_param, return_samples = TRUE)
+  runjags_samples_removal_02 <- JAGS_estimates_table(
+    fit_dual_param,
+    remove_formulas = "mu",
+    return_samples = TRUE
+  )
+  runjags_samples_removal_03 <- JAGS_estimates_table(
+    fit_dual_param,
+    keep_formulas = "log_sigma",
+    return_samples = TRUE
+  )
 
   expected_dual_rows <- c("(mu) intercept", "(mu) x_mu", "(log_sigma) intercept", "(log_sigma) x_sigma")
   expected_log_sigma_rows <- c("(log_sigma) intercept", "(log_sigma) x_sigma")
-  expected_dual_values <- summary_values(
-    "(mu) intercept"        = c( 2.498, 0.008,  2.482,  2.498,  2.514),
-    "(mu) x_mu"             = c( 0.631, 0.008,  0.617,  0.631,  0.646),
-    "(log_sigma) intercept" = c( 0.285, 0.006,  0.273,  0.285,  0.298),
-    "(log_sigma) x_sigma"   = c(-0.324, 0.024, -0.370, -0.325, -0.280)
-  )
   expect_summary_row_order(runjags_summary_removal_01, expected_dual_rows)
   expect_summary_row_order(runjags_summary_removal_02, expected_log_sigma_rows)
   expect_summary_row_order(runjags_summary_removal_03, expected_log_sigma_rows)
-  expect_summary_values(runjags_summary_removal_01, expected_dual_values)
-  expect_summary_values(runjags_summary_removal_02, expected_dual_values[expected_log_sigma_rows,, drop = FALSE])
+  expect_summary_matches_samples(runjags_summary_removal_01, runjags_samples_removal_01)
+  expect_summary_matches_samples(runjags_summary_removal_02, runjags_samples_removal_02)
+  expect_summary_matches_samples(runjags_summary_removal_03, runjags_samples_removal_03)
   expect_equal(runjags_summary_removal_02, runjags_summary_removal_03, ignore_attr = TRUE)
 
-  test_reference_table(runjags_summary_removal_01, "summary_parameter_or_formula_removal01.txt", "Parameter/formula removal")
-  test_reference_table(runjags_summary_removal_02, "summary_parameter_or_formula_removal02.txt", "Parameter/formula removal")
-  test_reference_table(runjags_summary_removal_03, "summary_parameter_or_formula_removal03.txt", "Parameter/formula removal")
+  test_reference_table_stochastic(runjags_summary_removal_01, "summary_parameter_or_formula_removal01.txt", "Parameter/formula removal")
+  test_reference_table_stochastic(runjags_summary_removal_02, "summary_parameter_or_formula_removal02.txt", "Parameter/formula removal")
+  test_reference_table_stochastic(runjags_summary_removal_03, "summary_parameter_or_formula_removal03.txt", "Parameter/formula removal")
   if (has_complex_optional_fits) {
     runjags_summary_removal_04 <- JAGS_estimates_table(fit_complex_mixed)
     runjags_summary_removal_05 <- JAGS_estimates_table(fit_complex_mixed, remove_parameters = TRUE)
@@ -732,12 +828,12 @@ test_that("Summary table advanced features work correctly", {
     expect_false(any(grepl("^sigma", rownames(runjags_summary_removal_08))))
     expect_false(any(grepl("^\\(mu\\)", rownames(runjags_summary_removal_09))))
 
-    test_reference_table(runjags_summary_removal_04, "summary_parameter_or_formula_removal04.txt", "Parameter/formula removal")
-    test_reference_table(runjags_summary_removal_05, "summary_parameter_or_formula_removal05.txt", "Parameter/formula removal")
-    test_reference_table(runjags_summary_removal_06, "summary_parameter_or_formula_removal06.txt", "Parameter/formula removal")
-    test_reference_table(runjags_summary_removal_07, "summary_parameter_or_formula_removal07.txt", "Parameter/formula removal")
-    test_reference_table(runjags_summary_removal_08, "summary_parameter_or_formula_removal08.txt", "Parameter/formula removal")
-    test_reference_table(runjags_summary_removal_09, "summary_parameter_or_formula_removal09.txt", "Parameter/formula removal")
+    test_reference_table_stochastic(runjags_summary_removal_04, "summary_parameter_or_formula_removal04.txt", "Parameter/formula removal")
+    test_reference_table_stochastic(runjags_summary_removal_05, "summary_parameter_or_formula_removal05.txt", "Parameter/formula removal")
+    test_reference_table_stochastic(runjags_summary_removal_06, "summary_parameter_or_formula_removal06.txt", "Parameter/formula removal")
+    test_reference_table_stochastic(runjags_summary_removal_07, "summary_parameter_or_formula_removal07.txt", "Parameter/formula removal")
+    test_reference_table_stochastic(runjags_summary_removal_08, "summary_parameter_or_formula_removal08.txt", "Parameter/formula removal")
+    test_reference_table_stochastic(runjags_summary_removal_09, "summary_parameter_or_formula_removal09.txt", "Parameter/formula removal")
   }
 
   # Custom probs
@@ -752,34 +848,35 @@ test_that("Summary table advanced features work correctly", {
                c("Mean", "SD", "0.5", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
   expect_equal(colnames(runjags_summary_probs_03),
                c("Mean", "SD", "0.25", "0.2", "0.99", "MCMC_error", "MCMC_SD_error", "ESS", "R_hat"))
-  expect_summary_values(
+  expect_summary_matches_samples(runjags_summary_probs_01, runjags_samples_removal_01)
+  expect_summary_matches_samples(
     runjags_summary_probs_02,
-    summary_values(
-      "(mu) intercept"        = c( 2.498, 0.008,  2.498),
-      "(mu) x_mu"             = c( 0.631, 0.008,  0.631),
-      "(log_sigma) intercept" = c( 0.285, 0.006,  0.285),
-      "(log_sigma) x_sigma"   = c(-0.324, 0.024, -0.325),
-      columns = c("Mean", "SD", "0.5")
-    )
+    runjags_samples_removal_01,
+    probs = 0.5
+  )
+  expect_summary_matches_samples(
+    runjags_summary_probs_03,
+    runjags_samples_removal_01,
+    probs = c(0.25, 0.20, 0.99)
   )
 
-  test_reference_table(runjags_summary_probs_01, "summary_parameter_probs1.txt", "Parameter/formula removal")
-  test_reference_table(runjags_summary_probs_02, "summary_parameter_probs2.txt", "Parameter/formula removal")
-  test_reference_table(runjags_summary_probs_03, "summary_parameter_probs3.txt", "Parameter/formula removal")
+  test_reference_table_stochastic(runjags_summary_probs_01, "summary_parameter_probs1.txt", "Parameter/formula removal")
+  test_reference_table_stochastic(runjags_summary_probs_02, "summary_parameter_probs2.txt", "Parameter/formula removal")
+  test_reference_table_stochastic(runjags_summary_probs_03, "summary_parameter_probs3.txt", "Parameter/formula removal")
 
   # Remove diagnostics
   runjags_remove_diagnostics <- JAGS_estimates_table(fit_dual_param, remove_diagnostics = TRUE)
   expect_summary_row_order(runjags_remove_diagnostics, expected_dual_rows)
   expect_equal(colnames(runjags_remove_diagnostics), c("Mean", "SD", "0.025", "0.5", "0.975"))
-  expect_summary_values(runjags_remove_diagnostics, expected_dual_values)
-  test_reference_table(runjags_remove_diagnostics, "runjags_remove_diagnostics.txt", "Diagnostics removal")
+  expect_summary_matches_samples(runjags_remove_diagnostics, runjags_samples_removal_01)
+  test_reference_table_stochastic(runjags_remove_diagnostics, "runjags_remove_diagnostics.txt", "Diagnostics removal")
 
   # Selected diagnostics
   runjags_selected_diagnostics <- JAGS_estimates_table(fit_dual_param, diagnostic_columns = c("ESS", "R_hat"))
   expect_summary_row_order(runjags_selected_diagnostics, expected_dual_rows)
   expect_equal(colnames(runjags_selected_diagnostics), c("Mean", "SD", "0.025", "0.5", "0.975", "ESS", "R_hat"))
   expect_equal(attr(runjags_selected_diagnostics, "type"), c(rep("estimate", 5), "ESS", "R_hat"))
-  expect_summary_values(runjags_selected_diagnostics, expected_dual_values)
+  expect_summary_matches_samples(runjags_selected_diagnostics, runjags_samples_removal_01)
 
   old_options <- options(BayesTools.JAGS_estimates_diagnostic_columns = "ESS")
   on.exit(options(old_options), add = TRUE)
@@ -787,6 +884,7 @@ test_that("Summary table advanced features work correctly", {
   runjags_option_diagnostics <- JAGS_estimates_table(fit_dual_param)
   expect_equal(colnames(runjags_option_diagnostics), c("Mean", "SD", "0.025", "0.5", "0.975", "ESS"))
   expect_equal(attr(runjags_option_diagnostics, "type"), c(rep("estimate", 5), "ESS"))
+  expect_summary_matches_samples(runjags_option_diagnostics, runjags_samples_removal_01)
 })
 
 test_that("runjags_estimates_table materializes vector point priors with indexed names", {
@@ -891,14 +989,19 @@ test_that("Summary tables for all saved models", {
              fit_summary = runjags_estimates_table(fit))
       )
       model_list <- models_inference(model_list)
-      model_summary <- model_summary_table(model_list[[1]])
-      test_reference_table(model_summary, paste0(model_name, "_model_summary.txt"),
-                       paste0("Model summary mismatch for ", model_name))
+      model_summary_model <- model_list[[1]]
+      model_summary_model[["inference"]][["marglik"]] <- -1
+      model_summary <- model_summary_table(model_summary_model)
+      test_reference_table_stochastic(
+        model_summary,
+        paste0(model_name, "_model_summary.txt"),
+        paste0("Model summary mismatch for ", model_name)
+      )
     }
 
     # Process runjags estimates table
     runjags_summary <- runjags_estimates_table(fit)
-    test_reference_table_numeric(
+    test_reference_table_stochastic(
       runjags_summary,
       paste0(model_name, "_runjags_estimates.txt"),
       info_msg = paste0("Runjags estimates mismatch for ", model_name)
@@ -921,25 +1024,25 @@ test_that("runjags_estimates_table with conditional=TRUE on various prior types"
   # Test with publication bias priors
   fit_pub_bias <- readRDS(file.path(temp_fits_dir, "fit_simple_pub_bias.RDS"))
   runjags_pub_bias_conditional <- runjags_estimates_table(fit_pub_bias, conditional = TRUE)
-  test_reference_table(runjags_pub_bias_conditional, "runjags_pub_bias_conditional.txt")
+  test_reference_table_stochastic(runjags_pub_bias_conditional, "runjags_pub_bias_conditional.txt")
 
   # Test with factor priors
   fit_factor <- readRDS(file.path(temp_fits_dir, "fit_factor_orthonormal.RDS"))
   runjags_factor_conditional <- runjags_estimates_table(fit_factor, conditional = TRUE)
-  test_reference_table(runjags_factor_conditional, "runjags_factor_conditional.txt")
+  test_reference_table_stochastic(runjags_factor_conditional, "runjags_factor_conditional.txt")
 
   runjags_factor_conditional_transformed <- runjags_estimates_table(fit_factor, conditional = TRUE, transform_factors = TRUE)
-  test_reference_table(runjags_factor_conditional_transformed, "runjags_factor_conditional_transformed.txt")
+  test_reference_table_stochastic(runjags_factor_conditional_transformed, "runjags_factor_conditional_transformed.txt")
 
   # Test with mixture priors
   fit_mixture <- readRDS(file.path(temp_fits_dir, "fit_mixture_simple.RDS"))
   runjags_mixture_conditional <- runjags_estimates_table(fit_mixture, conditional = TRUE)
-  test_reference_table(runjags_mixture_conditional, "runjags_mixture_conditional.txt")
+  test_reference_table_stochastic(runjags_mixture_conditional, "runjags_mixture_conditional.txt")
 
   # Test with spike and slab priors
   fit_spike_slab <- readRDS(file.path(temp_fits_dir, "fit_spike_slab_simple.RDS"))
   runjags_spike_slab_conditional <- runjags_estimates_table(fit_spike_slab, conditional = TRUE)
-  test_reference_table(runjags_spike_slab_conditional, "runjags_spike_slab_conditional.txt")
+  test_reference_table_stochastic(runjags_spike_slab_conditional, "runjags_spike_slab_conditional.txt")
 
 })
 
@@ -957,7 +1060,7 @@ test_that("runjags_inference_table with mixture priors", {
   # Test with mixture priors
   fit_mixture <- readRDS(file.path(temp_fits_dir, "fit_mixture_simple.RDS"))
   runjags_mixture_inference <- runjags_inference_table(fit_mixture)
-  test_reference_table(runjags_mixture_inference, "runjags_mixture_inference.txt")
+  test_reference_table_stochastic(runjags_mixture_inference, "runjags_mixture_inference.txt")
 
   runjags_mixture_inference_diagnostics <- runjags_inference_table(fit_mixture, BF_diagnostics = TRUE)
   expect_equal(attr(runjags_mixture_inference_diagnostics, "type"), c("prior_prob", "post_prob", "inclusion_BF", "ESS", "MCMC_error", "BF_error"))
@@ -983,7 +1086,7 @@ test_that("runjags_inference_table with mixture priors", {
   # Test with mixture containing spike
   fit_mixture_spike <- readRDS(file.path(temp_fits_dir, "fit_mixture_spike.RDS"))
   runjags_mixture_spike_inference <- runjags_inference_table(fit_mixture_spike)
-  test_reference_table(runjags_mixture_spike_inference, "runjags_mixture_spike_inference.txt")
+  test_reference_table_stochastic(runjags_mixture_spike_inference, "runjags_mixture_spike_inference.txt")
 
   # Test component-specific product-space diagnostics
   fit_components <- readRDS(file.path(temp_fits_dir, "fit_mixture_components.RDS"))
@@ -1011,12 +1114,12 @@ test_that("runjags_inference_table with formula priors", {
   # Test with formula + mixture priors (mixture on factor predictor)
   fit_formula_mixture <- readRDS(file.path(temp_fits_dir, "fit_formula_factor_mixture.RDS"))
   runjags_formula_mixture_inference <- runjags_inference_table(fit_formula_mixture)
-  test_reference_table(runjags_formula_mixture_inference, "runjags_formula_mixture_inference.txt")
+  test_reference_table_stochastic(runjags_formula_mixture_inference, "runjags_formula_mixture_inference.txt")
 
   # Test with joint complex model (formula + mixture + spike-and-slab)
   fit_joint <- readRDS(file.path(temp_fits_dir, "fit_joint_complex.RDS"))
   runjags_joint_inference <- runjags_inference_table(fit_joint)
-  test_reference_table(runjags_joint_inference, "runjags_joint_complex_inference.txt")
+  test_reference_table_stochastic(runjags_joint_inference, "runjags_joint_complex_inference.txt")
 
 })
 
@@ -1069,12 +1172,21 @@ test_that("stan_estimates_table works with stored fit", {
   stan_fit_file <- testthat::test_path("..", "results", "fits", "fit_RoBTT.RDS")
 
   fit_stan <- readRDS(stan_fit_file)
+  stan_samples <- BayesTools:::.extract_stan(fit_stan, drop = FALSE)
 
   # Test basic stan_estimates_table
   stan_summary <- stan_estimates_table(fit_stan)
-  test_reference_table(stan_summary, "stan_estimates_basic.txt")
+  test_reference_table_stochastic(stan_summary, "stan_estimates_basic.txt")
+  stan_samples <- stan_samples[
+    , attr(stan_summary, "parameters"),
+    drop = FALSE
+  ]
+  expect_summary_matches_samples(stan_summary, stan_samples)
 
   stan_summary2 <- stan_estimates_table(fit_stan, transformations = list("mu" = list(fun = exp)))
-  test_reference_table(stan_summary2, "stan_estimates_basic2.txt")
+  test_reference_table_stochastic(stan_summary2, "stan_estimates_basic2.txt")
+  transformed_stan_samples <- stan_samples
+  transformed_stan_samples[, "mu"] <- exp(transformed_stan_samples[, "mu"])
+  expect_summary_matches_samples(stan_summary2, transformed_stan_samples)
 
 })
