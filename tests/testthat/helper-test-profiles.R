@@ -54,6 +54,7 @@ bayestools_test_profile_contexts <- list(
     "random-effects-memory",
     "random-effects-structured-local",
     "random-effects-summary-posterior",
+    "random-effects-vignette-cache",
     "selection-kernels",
     "summary-tables-helpers",
     "test-layout-policy",

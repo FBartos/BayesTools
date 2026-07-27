@@ -97,11 +97,14 @@
   files <- c(files, loaded_dll)
   files <- files[file.exists(files)]
 
-  return(sort(unique(normalizePath(
-    files,
-    winslash = "/",
-    mustWork = TRUE
-  ))))
+  return(sort(
+    unique(normalizePath(
+      files,
+      winslash = "/",
+      mustWork = TRUE
+    )),
+    method = "radix"
+  ))
 }
 
 

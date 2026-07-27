@@ -76,6 +76,18 @@ suppressPackageStartupMessages({
 list2env(random_effects_models[random_effects_cache_names], envir = knitr::knit_global())
 ```
 
+```{r begin-random-effects-cache-regeneration, include = FALSE, eval = FALSE, purl = FALSE}
+# Evaluate this chunk before any of the regeneration chunks below. Reloading
+# from the project makes the source tree and loaded fitting implementation
+# verifiable. The checkpoint clears cache-loaded fits and is single-use; it
+# cannot establish the origin of objects manually substituted afterward.
+pkgload::load_all("..", quiet = TRUE)
+random_effects_cache_generation <- begin_random_effects_vignette_cache_regeneration(
+  envir = knitr::knit_global(),
+  cache_file = random_effects_cache_file
+)
+```
+
 ```{r comparison-helpers, include = FALSE, purl = FALSE}
 compare_estimates <- function(lme4_model, stan_model, bayes_model,
                               slope_name, transform_scaled) {
@@ -1123,12 +1135,16 @@ compare_crossed_estimates(
 ```
 
 ```{r save-precomputed-random-effects, include = FALSE, eval = FALSE, purl = FALSE}
-# Regenerate the cache by evaluating the non-evaluated fit chunks above, then
-# run this chunk from the vignette directory.
-dir.create(file.path("..", "models"), showWarnings = FALSE)
-saveRDS(
-  mget(random_effects_cache_names, envir = knitr::knit_global()),
-  random_effects_cache_file
+# Regenerate by evaluating the begin/reload chunk, every non-evaluated fit
+# chunk above exactly once, and then this chunk from the vignette directory.
+write_random_effects_vignette_cache(
+  models = mget(
+    random_effects_cache_names,
+    envir = knitr::knit_global(),
+    inherits = FALSE
+  ),
+  cache_file = random_effects_cache_file,
+  generation = random_effects_cache_generation
 )
 ```
 
