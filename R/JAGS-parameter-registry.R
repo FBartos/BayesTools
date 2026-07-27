@@ -1,6 +1,6 @@
 # Canonical fitted-parameter registry.
 
-.bt_parameter_registry_version <- 1L
+.bt_parameter_registry_version <- 2L
 
 .bt_parameter_registry_columns <- c(
   "canonical_name",
@@ -62,10 +62,13 @@
 #' their fitted dimensions are stored in `dimensions` (for example, `"3x2"`).
 #' Empty strings mean that a field does not apply.
 #'
-#' Raw random-effect latent variables and realized group coefficients have
-#' `internal = TRUE`. Their `fitted_scale` is respectively `"unit_latent"` and
-#' `"fitted_standardized"`; they must not be presented as original-scale
-#' coefficients.
+#' Raw random-effect latent variables, realized group coefficients, and
+#' spike-and-slab implementation coordinates have `internal = TRUE`. Latent
+#' and realized coefficients use the `"unit_latent"` and
+#' `"fitted_standardized"` scales, respectively. Spike-and-slab component
+#' indicators and inclusion probabilities are `"unitless"`, while their slab
+#' SD variables use `"fitted_covariance"`. These coordinates must not be
+#' presented as original-scale coefficients.
 #'
 #' @param fit a fitted object created by [JAGS_fit()].
 #'
@@ -285,6 +288,10 @@ JAGS_parameter_registry_schema <- function(){
   if(length(random_terms) == 0L){
     return(NULL)
   }
+
+  # Resolve concrete random-effect parameters before generated auxiliary
+  # suffixes. This preserves exact ownership when a legitimate SD parameter
+  # itself ends in "_variable", "_indicator", or "_inclusion".
   for(random_term in random_terms){
     family <- .bt_parameter_registry_random_family(random_term)
     match <- match(base_name, family$base)
@@ -294,12 +301,39 @@ JAGS_parameter_registry_schema <- function(){
         role = family$role[match]
       ))
     }
-    sd_names <- unique(random_term$sd_parameter_names)
-    sd_names <- sd_names[!is.na(sd_names)]
+    sd_names <- unique(.bt_parameter_registry_base(
+      random_term$sd_parameter_names
+    ))
+    sd_names <- sd_names[!is.na(sd_names) & nzchar(sd_names)]
     if(base_name %in% sd_names){
       return(list(random_term = random_term, role = "random_sd"))
     }
   }
+
+  auxiliary_roles <- c(
+    "_indicator" = "random_inclusion_indicator",
+    "_inclusion" = "random_inclusion_probability",
+    "_variable" = "random_sd_variable"
+  )
+  for(suffix in names(auxiliary_roles)){
+    if(!endsWith(base_name, suffix)){
+      next
+    }
+    owner_name <- substr(base_name, 1L, nchar(base_name) - nchar(suffix))
+    for(random_term in random_terms){
+      sd_names <- unique(.bt_parameter_registry_base(
+        random_term$sd_parameter_names
+      ))
+      sd_names <- sd_names[!is.na(sd_names) & nzchar(sd_names)]
+      if(owner_name %in% sd_names){
+        return(list(
+          random_term = random_term,
+          role = unname(auxiliary_roles[[suffix]])
+        ))
+      }
+    }
+  }
+
   NULL
 }
 
@@ -375,9 +409,22 @@ JAGS_parameter_registry_schema <- function(){
      index[2L] >= 1L && index[2L] <= length(column_names)){
     out$column <- column_names[index[2L]]
   }
-  if(identical(role, "random_sd")){
+  if(role %in% c("random_sd", "random_sd_variable")){
     sd_names <- random_term$sd_parameter_names
-    sd_match <- match(.bt_parameter_registry_base(canonical_name), sd_names)
+    sd_name <- canonical_name
+    if(identical(role, "random_sd_variable")){
+      sd_name <- sub("_variable(?=\\[|$)", "", sd_name, perl = TRUE)
+    }
+    sd_match <- match(sd_name, sd_names)
+    if(is.na(sd_match)){
+      sd_base <- .bt_parameter_registry_base(sd_name)
+      base_matches <- which(
+        .bt_parameter_registry_base(sd_names) == sd_base
+      )
+      if(length(base_matches) == 1L){
+        sd_match <- base_matches
+      }
+    }
     if(!is.na(sd_match) && sd_match <= length(column_names)){
       out$column <- column_names[sd_match]
     }
@@ -397,10 +444,12 @@ JAGS_parameter_registry_schema <- function(){
   if(identical(role, "random_group_coefficient")){
     return("fitted_standardized")
   }
-  if(role %in% c("random_sd", "random_correlation")){
+  if(role %in% c("random_sd", "random_sd_variable",
+                 "random_correlation")){
     return("fitted_covariance")
   }
-  if(identical(role, "allocation")){
+  if(role %in% c("allocation", "random_inclusion_indicator",
+                 "random_inclusion_probability")){
     return("unitless")
   }
   if(nzchar(formula_parameter) &&
@@ -618,7 +667,10 @@ JAGS_parameter_registry_schema <- function(){
       role %in% c(
         "random_latent",
         "random_group_coefficient",
-        "random_correlation"
+        "random_correlation",
+        "random_inclusion_indicator",
+        "random_inclusion_probability",
+        "random_sd_variable"
       )
     )
   }

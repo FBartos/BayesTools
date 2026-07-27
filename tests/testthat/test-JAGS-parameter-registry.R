@@ -59,7 +59,7 @@ test_that("fitted registry classifies concrete random coordinates exactly", {
   )
 
   expect_s3_class(registry, "BayesTools_parameter_registry")
-  expect_identical(attr(registry, "schema_version"), 1L)
+  expect_identical(attr(registry, "schema_version"), 2L)
   expect_identical(registry$canonical_name, columns)
   expect_identical(anyDuplicated(registry$canonical_name), 0L)
   expect_identical(
@@ -91,6 +91,96 @@ test_that("fitted registry classifies concrete random coordinates exactly", {
       "(mu) z(id[a], x)",
       "(mu) coef(id[a], x)"
     )
+  )
+})
+
+test_that("registry owns random SD spike-and-slab auxiliaries", {
+
+  data <- data.frame(
+    x_fac3 = factor(
+      c("A", "B", "C", "A", "B", "C"),
+      levels = c("A", "B", "C")
+    ),
+    id = factor(c("one", "one", "one", "two", "two", "two"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ -1 + x_fac3 + (x_fac3 - 1 || id),
+    parameter = "mu",
+    data = data,
+    prior_list = list(
+      x_fac3 = prior_factor(
+        "normal",
+        list(0, 1),
+        contrast = "independent"
+      )
+    ),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior_spike_and_slab(
+          prior("normal", list(0, 1), list(0, 1))
+        )
+      )
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  sd_names <- random_term$sd_parameter_names
+  sd_base <- unique(BayesTools:::.bt_parameter_registry_base(sd_names))
+  expect_length(sd_base, 1L)
+
+  columns <- c(
+    paste0(sd_base, "_indicator"),
+    paste0(sd_base, "_inclusion"),
+    sd_names,
+    paste0(sd_base, "_variable[", seq_along(sd_names), "]")
+  )
+  registry <- build_test_parameter_registry(
+    columns = columns,
+    monitor_names = c(
+      paste0(sd_base, "_indicator"),
+      paste0(sd_base, "_inclusion"),
+      sd_base,
+      paste0(sd_base, "_variable")
+    ),
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design)
+  )
+  registry <- registry[
+    match(columns, registry$canonical_name),
+    ,
+    drop = FALSE
+  ]
+
+  expect_identical(
+    registry$role,
+    c(
+      "random_inclusion_indicator",
+      "random_inclusion_probability",
+      "random_sd",
+      "random_sd",
+      "random_sd_variable",
+      "random_sd_variable"
+    )
+  )
+  expect_identical(registry$random_block, rep("id", length(columns)))
+  expect_identical(registry$formula_parameter, rep("mu", length(columns)))
+  expect_identical(
+    registry$fitted_scale,
+    c(
+      "unitless",
+      "unitless",
+      "fitted_covariance",
+      "fitted_covariance",
+      "fitted_covariance",
+      "fitted_covariance"
+    )
+  )
+  expect_identical(
+    registry$column,
+    c("", "", "x_fac3B", "x_fac3C", "x_fac3B", "x_fac3C")
+  )
+  expect_identical(
+    registry$internal,
+    c(TRUE, TRUE, FALSE, FALSE, TRUE, TRUE)
   )
 })
 

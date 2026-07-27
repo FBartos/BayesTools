@@ -31,8 +31,11 @@ Matrix/vector indices are stored as comma-separated text in \code{index}, and
 their fitted dimensions are stored in \code{dimensions} (for example, \code{"3x2"}).
 Empty strings mean that a field does not apply.
 
-Raw random-effect latent variables and realized group coefficients have
-\code{internal = TRUE}. Their \code{fitted_scale} is respectively \code{"unit_latent"} and
-\code{"fitted_standardized"}; they must not be presented as original-scale
-coefficients.
+Raw random-effect latent variables, realized group coefficients, and
+spike-and-slab implementation coordinates have \code{internal = TRUE}. Latent
+and realized coefficients use the \code{"unit_latent"} and
+\code{"fitted_standardized"} scales, respectively. Spike-and-slab component
+indicators and inclusion probabilities are \code{"unitless"}, while their slab
+SD variables use \code{"fitted_covariance"}. These coordinates must not be
+presented as original-scale coefficients.
 }

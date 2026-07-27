@@ -937,6 +937,17 @@ test_that("runjags_estimates_table preserves point-factor and random-SD inclusio
   raw_inclusion <- "(mu) _xREx__id_x_fac3 (inclusion)"
   expect_true(random_inclusion %in% rownames(random_table))
   expect_true(raw_inclusion %in% rownames(raw_random_table))
+  expect_true(all(
+    c(
+      "(mu) sd(x_fac3[B] | id)",
+      "(mu) sd(x_fac3[C] | id)"
+    ) %in% rownames(random_table)
+  ))
+  expect_false(any(grepl(
+    "_(?:indicator|inclusion|variable)",
+    rownames(random_table),
+    perl = TRUE
+  )))
   expect_equal(
     as.numeric(random_table[random_inclusion, "Mean"]),
     as.numeric(raw_random_table[raw_inclusion, "Mean"])
@@ -950,6 +961,15 @@ test_that("runjags_estimates_table preserves point-factor and random-SD inclusio
   )
   expect_false(random_inclusion %in% rownames(no_inclusion_table))
   expect_false(any(grepl(" (inclusion", rownames(no_inclusion_table), fixed = TRUE)))
+
+  no_random_table <- runjags_estimates_table(
+    fit_random_factor,
+    random_effects_summary = "none"
+  )
+  expect_false(any(grepl(
+    "sd\\(|inclusion|_xREx__",
+    rownames(no_random_table)
+  )))
 })
 
 # ============================================================================ #
