@@ -450,9 +450,11 @@
   }
 
   if(!is.null(lhs$density) && !is.null(rhs$points) && nrow(rhs$points) > 0){
+    lhs_continuous <- lhs
+    lhs_continuous$points <- .prior_linear_density_empty_points()
     for(i in seq_len(nrow(rhs$points))){
-      scaled <- .prior_linear_density_scaled(lhs, rhs$points$x[i],
-                                             mass = rhs$points$p[i],
+      scaled <- .prior_linear_density_scaled(lhs_continuous, rhs$points$x[i],
+                                             mass = lhs$density$mass * rhs$points$p[i],
                                              n_grid = n_grid)
       if(!is.null(scaled$density)){
         densities[[length(densities) + 1L]] <- scaled$density
@@ -464,9 +466,11 @@
   }
 
   if(!is.null(rhs$density) && !is.null(lhs$points) && nrow(lhs$points) > 0){
+    rhs_continuous <- rhs
+    rhs_continuous$points <- .prior_linear_density_empty_points()
     for(i in seq_len(nrow(lhs$points))){
-      scaled <- .prior_linear_density_scaled(rhs, lhs$points$x[i],
-                                             mass = lhs$points$p[i],
+      scaled <- .prior_linear_density_scaled(rhs_continuous, lhs$points$x[i],
+                                             mass = rhs$density$mass * lhs$points$p[i],
                                              n_grid = n_grid)
       if(!is.null(scaled$density)){
         densities[[length(densities) + 1L]] <- scaled$density

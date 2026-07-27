@@ -84,6 +84,54 @@ test_that("linear prior density handles multiply_by products and point mass", {
   expect_gt(BayesTools:::.prior_linear_density_height(density, 0), 0)
 })
 
+test_that("product densities count each mixed-measure component once", {
+
+  make_dist <- function(inclusion){
+    p <- prior_spike_and_slab(
+      prior("normal", list(0, 1)),
+      prior("spike", list(inclusion))
+    )
+    BayesTools:::.prior_linear_group_distribution(
+      group = list(
+        prior = p,
+        weights = c(x = 1),
+        indices = 1L
+      ),
+      dx = .02,
+      tail_prob = 1e-4,
+      source_transforms = c(x = NA_character_),
+      n_grid = 256
+    )
+  }
+
+  lhs <- make_dist(.5)
+  rhs <- make_dist(.75)
+  product <- BayesTools:::.prior_linear_density_product(
+    lhs,
+    rhs,
+    n_grid = 256
+  )
+
+  expect_equal(
+    BayesTools:::.prior_linear_density_point_mass(product, 0),
+    1 - .5 * .75,
+    tolerance = 1e-12
+  )
+  expect_equal(product$density$mass, .5 * .75, tolerance = 1e-12)
+
+  scaled <- BayesTools:::.prior_linear_density_product(
+    lhs,
+    BayesTools:::.prior_linear_density_point(.25),
+    n_grid = 256
+  )
+  expect_equal(
+    BayesTools:::.prior_linear_density_point_mass(scaled, 0),
+    .5,
+    tolerance = 1e-12
+  )
+  expect_equal(scaled$density$mass, .5, tolerance = 1e-12)
+})
+
 test_that("linear prior density treats zero-weight combinations as point priors", {
 
   priors <- list(beta = prior("normal", list(0, 1)))
