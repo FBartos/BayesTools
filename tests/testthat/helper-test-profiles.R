@@ -56,6 +56,7 @@ bayestools_test_profile_contexts <- list(
     "random-effects-summary-posterior",
     "selection-kernels",
     "summary-tables-helpers",
+    "test-layout-policy",
     "tools-evaluation",
     "tools-input",
     "weightfunction-plot-analytic",
@@ -91,12 +92,7 @@ bayestools_test_profile_contexts <- list(
   ),
   fit = c(
     "00-model-fits",
-    "fixture-integrity",
-    "JAGS-fit-edge-cases",
-    "JAGS-fit-lm-oracles",
-    "JAGS-lkj-cholesky-fit",
-    "JAGS-nonlocal-fit",
-    "JAGS-marglik"
+    "fixture-integrity"
   )
 )
 

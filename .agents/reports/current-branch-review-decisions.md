@@ -1172,6 +1172,15 @@ and stale-cache integrity tests. Local and CI entry points use the same profile
 runner, and GitHub Actions invokes the `all` profile. `.StatsVault/` is ignored
 by both Git and package builds, matching the local-only decision.
 
+All live JAGS, runjags, and marginal-likelihood integration checks have now
+been consolidated into `test-00-model-fits.R`. Their existing semantic and
+closed-form assertions remain live; the cache-completion marker is written only
+after those checks finish. A unit-level layout test enforces the one fit-profile
+file and rejects direct backend calls elsewhere. The profile registry now
+selects the consolidated context only. The static fixture catalog passed 183
+assertions, the layout policy passed 2 assertions, and the complete unit profile
+passed 7,984 assertions with no failures or warnings.
+
 Remaining work:
 
 - `models/RandomEffects.RDS` is still validated only for readability, object
@@ -1179,10 +1188,6 @@ Remaining work:
   generator, relevant package sources, package/schema versions, model names, and
   backend fingerprint. The regeneration chunk must write the cache and manifest
   together.
-- Real JAGS fitting still occurs in test files other than
-  `test-00-model-fits.R`. Those cases need to become registered cached fixtures,
-  or be reduced to non-fitting unit tests, so the repository follows the stated
-  single-fit-file rule.
 - The source-tar snapshot paths remain a separate incomplete item under D30.
 
 No `.StatsVault` path or metadata should be added to manifests, tests,

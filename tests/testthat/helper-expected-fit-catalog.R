@@ -53,6 +53,9 @@ bayestools_optional_fit_requirements <- function() {
   matches <- list()
 
   walk <- function(x) {
+    if(missing(x)){
+      return(invisible(NULL))
+    }
     if (is.expression(x)) {
       for (item in as.list(x)) {
         walk(item)
