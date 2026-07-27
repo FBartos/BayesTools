@@ -12,16 +12,16 @@ mean **implemented**.
 
 | Case | Current status | What remains |
 |---|---|---|
-| D01 | Implemented and verified | No behavior change; retain and document BayesTools no-intercept semantics |
+| D01 | Implemented and verified | No remaining work; documented BayesTools no-intercept semantics retained |
 | D02 | Implemented and verified | No remaining work |
 | D03 | Implemented and verified | No remaining work |
-| D04 | Implemented and verified | Reject callbacks that depend on formula outputs with sampled random effects |
-| D05 | Implemented and verified | Remove bridge-replay callback grafting and legacy source fallbacks |
+| D04 | Implemented and verified | No remaining work; sampled-random formula callback dependencies are rejected |
+| D05 | Implemented and verified | No remaining work; callback grafting and legacy source fallbacks are removed |
 | D06 | Implemented and verified | No remaining work |
 | D07 | Implemented and verified | No remaining work |
 | D08 | Implemented and verified | No remaining work |
 | D09 | Implemented and verified | No remaining work for the confirmed guard; sparse construction remains a future architectural improvement |
-| D10 | Resolved by NF10/NF18 | Remaining CAR representability issue is isolated as D31 |
+| D10 | Resolved by NF10/NF18 | The separate CAR representability issue is implemented and verified under D31 |
 | D11 | Implemented and verified | No remaining work |
 | D12 | Implemented and verified | No remaining work |
 | D13 | Resolved by NF08 | No remaining decision |
@@ -32,7 +32,7 @@ mean **implemented**.
 | D18 | Implemented and verified | No remaining work |
 | D19 | Implemented and verified | No remaining work |
 | D20 | Implemented and verified | No remaining work |
-| D21 | Partially implemented | Add the vignette manifest and consolidate real fitting; D30 covers paths |
+| D21 | Implemented and verified | No remaining work |
 | D22 | Implemented and verified | No remaining work |
 | D23 | Implemented and verified | No remaining work |
 | D24 | Implemented and verified | No remaining work |
@@ -44,6 +44,10 @@ mean **implemented**.
 | D30 | Implemented and verified | No remaining work |
 | D31 | Implemented and verified | No remaining work |
 | D32 | Implemented and verified | No remaining work |
+
+All D01-D32 decisions are now closed on this branch. The architectural
+possibilities noted for future APIs or sparse implementations are not required
+by the approved cases and do not represent release blockers.
 
 ## Maintainer decisions after the second pass
 
@@ -591,13 +595,15 @@ Decision: I think most of this was solved separatelly in:
 \R-Packages\BayesTools\.agents\reports\numerical-fidelity-decisions.md
 if there are any pieces remaining, bring them up as a new issue
 
-**Audit status: resolved by NF10 and NF18, except for new D31.**
+**Audit status: resolved by NF10 and NF18; D31 is separately implemented and
+verified.**
 
 **Review response.** The covariance symmetry/canonicalization and
 support-derived roundoff policies are now covered by NF10 and NF18. The
 near-coincident CAR-coordinate case is still distinct: it concerns loss of a
 positive time gap inside `rho^gap`, not repair of a user covariance matrix. It
-is therefore isolated as D31 at the end of this document, as requested.
+was therefore isolated and resolved as D31 at the end of this document, as
+requested.
 
 ## D11. Fit retry and extension semantics
 
@@ -665,7 +671,7 @@ bandwidth, range, or subscript errors.
 
 Decision: this is desired behavior in some paths (i.e., spike parameters etc..), please provide a brief example which cases are bad and what would change based on the suggestions
 
-**Audit status: decision confirmed; implementation pending.**
+**Audit status: implemented and verified.**
 
 **Desired undefined case.** A structural point/spike parameter is fixed in every
 iteration. Its between- and within-chain variances are zero, so R-hat or ESS can
@@ -1038,7 +1044,7 @@ fully switch the package to it. Make sure that there is a documetnation object f
 they can read to undetstand how it works if needed. Make breaking changes, we will update the downstream packages appropriatelly. 
 Do not care about backwards compatibility. Update the tests accrodingly.
 
-**Audit status: decision confirmed; implementation pending.**
+**Audit status: implemented and verified.**
 
 **Review response.** Instruction understood. No canonical registry exists yet;
 random-effect summaries still contain string-prefix ownership heuristics.
@@ -1079,6 +1085,18 @@ coefficients are registered as internal `unit_latent` and
 confirmed registry attachment and table consumption. The complete unit profile,
 including 23 new registry-contract and collision assertions, passed 7,954
 assertions with no failures or warnings.
+
+Final fixture verification exposed one additional ownership boundary:
+spike-and-slab auxiliary monitors for random-effect SDs were initially
+registered as ordinary SD parameters. Registry schema version 2 now classifies
+the exact indicator, inclusion-probability, and slab-variable coordinates
+before suffix matching, maps indexed slab variables to their random-design
+columns, and marks all three roles internal. Standard estimates tables therefore
+hide these implementation coordinates while raw/internal access remains
+explicit. All 73 regenerated fits validated registry schema version 2. The
+complete unit, real-fit, and fixture profiles passed 8,430, 14,933, and 10,780
+assertions respectively (seven unit and one fixture profile skips), without
+failures or warnings.
 
 ## D20. Marginal-likelihood computation contract
 
@@ -1164,7 +1182,7 @@ files are tracked versus ignored.
 Decision: proceed with the cache manisfest changes etc, make sure that CI behaves the same as local runs.
 everything about .StatsVault should be local only (noone outside of this machine should know about it)
 
-**Audit status: partially implemented.**
+**Audit status: implemented and verified.**
 
 **Review response.** The test fit cache now has versioned completion metadata,
 required-artifact declarations, registry hashes, source/function fingerprints,
@@ -1181,17 +1199,28 @@ selects the consolidated context only. The static fixture catalog passed 183
 assertions, the layout policy passed 2 assertions, and the complete unit profile
 passed 7,984 assertions with no failures or warnings.
 
-Remaining work:
+The RandomEffects vignette cache now uses a strict versioned envelope. Its
+manifest records the cache and model schemas, per-model SHA-256 payload hashes,
+generator and package-source fingerprints, dataset and package dependencies,
+the fitting-backend/runtime producer identity, and one generation fingerprint.
+Regeneration begins from a dependency checkpoint, refuses source or backend
+changes during fitting, and installs the candidate through a recoverable
+new/backup/journal transaction only after complete validation.
 
-- `models/RandomEffects.RDS` is still validated only for readability, object
-  names, and classes. Its helper needs a manifest derived from the vignette
-  generator, relevant package sources, package/schema versions, model names, and
-  backend fingerprint. The regeneration chunk must write the cache and manifest
-  together.
-- The source-tar snapshot paths remain a separate incomplete item under D30.
+Fresh `runjags` and `rstan` objects contain transient backend state that
+normalizes during their first serialization. The writer therefore
+canonicalizes the complete model graph before hashing and requires a second
+serialization to be hash-stable. This defines integrity over the representation
+that readers actually receive without weakening tamper detection. Adversarial
+tests cover source, dependency, schema, model, producer, payload, transaction,
+recovery, and serialization-instability failures.
 
-No `.StatsVault` path or metadata should be added to manifests, tests,
-documentation, or CI.
+All 13 vignette models were regenerated under the final implementation. The
+installed cache validates its exact names, order, classes, current provenance,
+stable payload hashes, and absence of transaction sidecars. The complete
+`RandomEffects.Rmd` rendered successfully from that cache. D30 separately
+completed the source-tar snapshot-path work. No `.StatsVault` path or metadata
+was added to manifests, tests, documentation, or CI.
 
 ## D22. Explicit summary schema labels
 
@@ -1325,7 +1354,7 @@ and exclude them from APIs that promise original-scale coefficients.
 Decision: I think we implemented somewhat different hadnling of those two (i.e., the random effects need to be scaled differently and might not be scaled if fixed are?)
 please examine these differences first and provide more background info
 
-**Audit status: decision confirmed; implementation pending.**
+**Audit status: implemented and verified.**
 
 **Background.** Yes, fixed coefficients and random-effect distribution
 parameters require different transformations:
@@ -1381,6 +1410,11 @@ same boundary even in `random_effects_summary = "raw"` mode. Raw reporting
 without scale transformation remains available and is documented as fitted
 scale; semantic SD and correlation summaries continue to use their separate
 covariance-aware transformation.
+
+Focused transformation tests compare posterior draws by numeric value while
+allowing intentional class/attribute changes at this public boundary. The final
+fixture profile passed 10,780 assertions with one expected profile skip and no
+failures or warnings.
 
 ## D25. Ordered priors with both atoms and continuous mass
 
@@ -1541,7 +1575,7 @@ of unescaped constants where they are not meaningful.
 
 Decision: examine what is feasible to implement, add checks for unspupported expressions, and improve documentation
 
-**Audit status: decision confirmed; implementation pending.**
+**Audit status: implemented and verified.**
 
 **Review response.** All requested boundaries are feasible without evaluating
 arbitrary R code. The current whitelist already limits arithmetic/functions,
@@ -1686,7 +1720,7 @@ files from the validated cache as one controlled update.
 
 Decision: okay, I will examine and decide before running the full change implementations
 
-**Audit status: decision confirmed; implementation pending.**
+**Audit status: implemented and verified.**
 
 **Review response.** During the numerical-fidelity implementation, the validated
 fit/marginal-likelihood cache, text references, and fitted-object visual
@@ -1705,8 +1739,8 @@ problem; it does not decide the architecture for future releases.
   morphology/invariant tests or an explicitly approved controlled snapshot
   refresh.
 
-The maintainer decision is still needed before changing the present exact
-stochastic-reference policy.
+The maintainer decision recorded below approves changing the exact
+stochastic-reference policy along these lines.
 
 **Maintainer follow-up:** ok, agree
 
@@ -1714,7 +1748,7 @@ stochastic-reference policy.
 long-term split: exact references for deterministic schema/format/geometry;
 tolerance or invariant tests for stochastic statistics; and controlled,
 versioned handling of fitted stochastic plots. The already-refreshed references
-remain the current branch baseline while those test-policy changes are made.
+served as the transition baseline for the test-policy implementation below.
 
 **Implementation status: implemented and verified.** Cache-derived tables now
 compare exact presentation structure, row labels, finite/missing value classes,
@@ -1732,8 +1766,11 @@ validated fit cache; a unit policy test covers every fitted visual suite. The
 fixed numeric-golden tolerance helper was removed. Focused policy and summary
 tests passed, and the complete unit profile passed 8,104 assertions with seven
 expected profile skips and no failures or warnings. The refreshed fit,
-fixture, and visual-fixture lanes remain part of the final cross-case
-verification after D31 changes generated CAR syntax.
+fixture, and visual-fixture lanes subsequently passed the final cross-case
+verification after the D31 generated-CAR changes: 14,933 real-fit assertions,
+10,780 fixture assertions with one expected skip, and 662 fitted-visual
+assertions with 26 expected skips, without failures or warnings. The pure visual
+profile separately passed 810 assertions with 11 expected skips.
 
 ## D30. Portable source-package paths for visual snapshots
 
@@ -1768,13 +1805,12 @@ preserving descriptive suffixes. All 530 snapshot paths are now unique under a
 case-insensitive comparison, the longest `BayesTools/`-prefixed archive path is
 99 bytes, and a unit regression enforces both invariants for future snapshots.
 
-The focused portability test passed four assertions. The visual profile reached
-802 passing comparisons, including the applicable renamed snapshots, before
-three unrelated pre-existing failures: two cached fitted objects predate the
-canonical parameter registry, and one visual prior fixture still uses the
-nonzero orthonormal location rejected by D32. The cache failures require the
-planned final fit refresh; the D32 fixture is corrected separately before final
-visual verification.
+The focused portability test passed four assertions. After correcting the D32
+visual fixture, attaching registries to scaled synthetic fits, and refreshing
+fitted objects under registry schema version 2, the complete pure visual profile
+passed 810 comparisons with 11 expected profile skips. The fitted-object visual
+profile passed 662 comparisons with 26 expected profile skips. Neither lane
+reported failures or warnings.
 
 ## D31. CAR gaps that are positive but not representable in `rho^gap`
 
@@ -1857,9 +1893,16 @@ ratio-first bridges, factor-first full/diagonal covariance, coordinate
 conflicts, all generated-JAGS layouts, Fisher-z parity, prior-support
 boundaries, and a real centered-CAR JAGS sample. The final focused unit pass
 completed 2,115 assertions with no failures, warnings, or skips; the isolated
-real-JAGS check completed eight assertions. The fit, fixture, and fitted-visual
-profiles remain part of the final cache refresh because generated CAR syntax
-changed.
+real-JAGS check completed eight assertions.
+
+A final one-column audit found that centered CAR blocks without a rho transition
+still need the same SD-support precision check. They now validate both centered
+SD support endpoints while keeping the single-column model rho-free; the
+focused follow-up passed 1,761 assertions. The final cross-case verification
+completed the unit profile with 8,430 passes and seven expected skips, the
+real-fit profile with 14,933 passes, the fixture profile with 10,780 passes and
+one expected skip, and the fitted-object visual profile with 662 passes and 26
+expected skips, all without failures or warnings.
 
 ## D32. Nonzero locations in mean-difference and orthonormal factor priors
 
