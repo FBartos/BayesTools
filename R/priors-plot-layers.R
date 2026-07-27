@@ -92,6 +92,28 @@ lines.prior <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     return(invisible())
   }
 
+  if(is.prior.ordered(x)){
+    selected <- if(is.null(show_parameter)){
+      seq_along(plot_data)
+    }else{
+      show_parameter
+    }
+    for(i in selected){
+      if(inherits(plot_data[[i]], "density.prior.mixed_measure")){
+        .lines_prior_mixed_measure(
+          plot_data[[i]],
+          scale_y2 = scale_y2,
+          ...
+        )
+      }else if(inherits(plot_data[[i]], "density.prior.point")){
+        .lines.prior.point(plot_data[[i]], scale_y2 = scale_y2, ...)
+      }else{
+        .lines.prior.simple(plot_data[[i]], ...)
+      }
+    }
+    return(invisible())
+  }
+
   # plot orthonormal and meandif plots
   if(is.prior.orthonormal(x) | is.prior.meandif(x)){
     .lines.prior.orthonormal_or_meandif(plot_data, ...)
@@ -197,6 +219,38 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
     return(geom)
   }
 
+  if(is.prior.ordered(x)){
+    selected <- if(is.null(show_parameter)){
+      seq_along(plot_data)
+    }else{
+      show_parameter
+    }
+    geom <- list()
+    for(i in selected){
+      component_geom <- if(inherits(
+        plot_data[[i]],
+        "density.prior.mixed_measure"
+      )){
+        .geom_prior_mixed_measure(
+          plot_data[[i]],
+          scale_y2 = scale_y2,
+          ...
+        )
+      }else if(inherits(plot_data[[i]], "density.prior.point")){
+        list(.geom_prior.point(
+          plot_data[[i]],
+          scale_y2 = scale_y2,
+          ...
+        ))
+      }else{
+        list(.geom_prior.simple(plot_data[[i]], ...))
+      }
+      geom <- c(geom, component_geom)
+    }
+    geom <- geom[!vapply(geom, is.null, logical(1))]
+    return(geom)
+  }
+
 
   # plot orthonormal and meandif prior
   if(is.prior.orthonormal(x) | is.prior.meandif(x)){
@@ -265,6 +319,25 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
       y0 = 0,
       y1 = plot_data$y[plot_data$y != 0] * scale_y2,
       lwd = 2*lwd, lty = lty, col = col)
+  }
+
+  return(invisible())
+}
+.lines_prior_mixed_measure   <- function(plot_data, scale_y2 = 1, ...){
+
+  if(!is.null(plot_data$continuous)){
+    continuous <- list(
+      x = plot_data$continuous$x,
+      y = plot_data$continuous$density
+    )
+    .lines.prior.simple(continuous, ...)
+  }
+  if(!is.null(plot_data$atoms) && nrow(plot_data$atoms) > 0L){
+    atoms <- list(
+      x = plot_data$atoms$location,
+      y = plot_data$atoms$mass
+    )
+    .lines.prior.point(atoms, scale_y2 = scale_y2, ...)
   }
 
   return(invisible())
@@ -415,6 +488,30 @@ geom_prior  <- function(x, xlim = NULL, x_seq = NULL, x_range_quant = NULL, n_po
   }
 
   return(geom)
+}
+.geom_prior_mixed_measure    <- function(plot_data, scale_y2 = 1, ...){
+
+  geom <- list()
+  if(!is.null(plot_data$continuous)){
+    continuous <- list(
+      x = plot_data$continuous$x,
+      y = plot_data$continuous$density
+    )
+    geom[[length(geom) + 1L]] <- .geom_prior.simple(continuous, ...)
+  }
+  if(!is.null(plot_data$atoms) && nrow(plot_data$atoms) > 0L){
+    atoms <- list(
+      x = plot_data$atoms$location,
+      y = plot_data$atoms$mass
+    )
+    geom[[length(geom) + 1L]] <- .geom_prior.point(
+      atoms,
+      scale_y2 = scale_y2,
+      ...
+    )
+  }
+
+  geom[!vapply(geom, is.null, logical(1))]
 }
 .geom_prior.weightfunction   <- function(plot_data, rescale_x, ...){
 

@@ -91,7 +91,10 @@ parameter that needs to be transformed.}
 \code{plot.prior} returns either \code{NULL} or
 an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
 Dirichlet simplex priors are plotted as one beta marginal per coordinate;
-the ggplot method returns a list unless a single figure is selected.
+the ggplot method returns a list unless a single figure is selected. For an
+ordered level with mixed probability measure, the continuous density and
+exact probability-mass arrows are drawn together without rescaling either
+component.
 }
 \description{
 Plots a prior object

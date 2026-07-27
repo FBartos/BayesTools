@@ -331,6 +331,53 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
   )
 }
 
+.posterior_atoms_from_ordered_total <- function(
+    prior, n_columns, column_names = NULL, indicator = NULL,
+    source = "ordered_total_structure"){
+
+  if(!is.prior.ordered(prior) || !is.prior.spike_and_slab(prior$total)){
+    return(NULL)
+  }
+  prior <- .prior_ordered_default_bound(prior)
+  metadata <- .prior_ordered_metadata(prior)
+  if(metadata$theta_dim != 1L){
+    return(NULL)
+  }
+
+  if(is.null(indicator)){
+    inclusion_mass <- mean(.get_spike_and_slab_inclusion(prior$total))
+  }else{
+    indicator <- as.integer(indicator)
+    if(length(indicator) == 0L || anyNA(indicator) ||
+       any(!indicator %in% c(0L, 1L))){
+      stop(
+        "Ordered-total posterior indicators must contain only zero and one.",
+        call. = FALSE
+      )
+    }
+    inclusion_mass <- mean(indicator == 1L)
+  }
+  exclusion_mass <- 1 - inclusion_mass
+  locations <- if(exclusion_mass > 0){
+    matrix(0, nrow = 1L, ncol = n_columns)
+  }else{
+    matrix(numeric(), nrow = 0L, ncol = n_columns)
+  }
+  masses <- if(exclusion_mass > 0) exclusion_mass else numeric()
+
+  .posterior_atoms_new(
+    locations = locations,
+    mass = masses,
+    column_names = column_names,
+    source = source,
+    declared = TRUE,
+    component_probabilities = c(
+      excluded = exclusion_mass,
+      included = inclusion_mass
+    )
+  )
+}
+
 .posterior_atoms_refresh_from_prior <- function(samples, prior,
                                                 parameter = NULL){
 
@@ -373,6 +420,16 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
 .posterior_atoms_component_prior <- function(prior_entry, component,
                                              model_mixture){
 
+  if(is.prior.ordered(prior_entry)){
+    if(is.prior.spike_and_slab(prior_entry$total)){
+      excluded_component <- if(model_mixture) 1L else 0L
+      if(component == excluded_component){
+        return(prior("point", list(location = 0)))
+      }
+    }
+    return(NULL)
+  }
+
   if(model_mixture){
     if(is.prior(prior_entry)){
       return(prior_entry)
@@ -412,6 +469,14 @@ posterior_atom_attribute <- function(point_masses = NULL, source = "user"){
 
   if(inherits(samples, "as_mixed_posteriors")){
     indicators <- lapply(parameter_names, function(parameter){
+      ordered_indicator <- attr(
+        samples[[parameter]],
+        "ordered_total_indicator",
+        exact = TRUE
+      )
+      if(!is.null(ordered_indicator)){
+        return(as.integer(ordered_indicator))
+      }
       indicator <- attr(samples[[parameter]], "models_ind", exact = TRUE)
       if(is.null(indicator)){
         return(rep(1L, NROW(samples[[parameter]])))

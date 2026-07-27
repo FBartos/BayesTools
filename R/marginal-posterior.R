@@ -660,6 +660,11 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
       attr(marginal_posterior_samples, "posterior_density") <- NULL
       attr(marginal_posterior_samples, "posterior_ordinate") <- NULL
       marginal_factor_metadata <- marginal_posterior_samples
+      factor_weights <- .prior_factor_level_weight_matrix(
+        sample_metadata = marginal_factor_metadata,
+        parameter       = parameter,
+        samples         = samples
+      )
       marginal_factor_support <- attr(marginal_factor_metadata, "posterior_support", exact = TRUE)
       marginal_factor_support <- .marginal_posterior_support_for_context(
         marginal_factor_support,
@@ -677,11 +682,6 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           n_samples  = n_samples,
           allow_failure = TRUE,
           condition_source = parameter_samples
-        )
-        factor_weights <- .prior_factor_level_weight_matrix(
-          sample_metadata = marginal_factor_metadata,
-          parameter       = parameter,
-          samples         = samples
         )
       }
 
@@ -732,11 +732,23 @@ marginal_posterior <- function(samples, parameter, formula = NULL, at = NULL, pr
           temp_marginal_posterior_samples,
           temp_support
         )
-        if(!is.null(marginal_factor_atoms)){
-          temp_atoms <- .posterior_atoms_for_column(
-            marginal_factor_atoms,
-            lvl_i
-          )
+        zero_design <- lvl_i <= nrow(factor_weights) &&
+          all(factor_weights[lvl_i, ] == 0)
+        if(zero_design || !is.null(marginal_factor_atoms)){
+          temp_atoms <- if(zero_design){
+            .posterior_atoms_new(
+              locations = matrix(0, nrow = 1L, ncol = 1L),
+              mass = 1,
+              column_names = colnames(marginal_posterior_samples)[lvl_i],
+              source = "zero_factor_design",
+              declared = TRUE
+            )
+          }else{
+            .posterior_atoms_for_column(
+              marginal_factor_atoms,
+              lvl_i
+            )
+          }
           if(!is.null(transformation)){
             temp_atoms <- .posterior_atoms_transform(
               temp_atoms,

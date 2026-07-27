@@ -78,7 +78,11 @@ for endpoints of truncated distributions}
 \value{
 \code{density.prior} returns an object of class 'density'. For
 Dirichlet simplex priors it returns a named list of beta-marginal density
-objects, one for each simplex coordinate.
+objects, one for each simplex coordinate. Ordered priors return one component
+per factor level. When a level has both discrete and continuous probability,
+its \code{atoms} table stores exact \code{location} and \code{mass} values,
+while its \code{continuous} table stores a density already weighted to
+integrate to the remaining continuous mass.
 }
 \description{
 Computes density of a prior

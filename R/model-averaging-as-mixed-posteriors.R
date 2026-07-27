@@ -332,6 +332,22 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
 
     coefficient_names <- .JAGS_prior_factor_names(parameter, prior)
     samples <- model_samples[, coefficient_names, drop = FALSE]
+    ordered_total_indicator <- NULL
+    if(is.prior.spike_and_slab(prior$total)){
+      indicator_name <- paste0(
+        .prior_ordered_total_name(parameter),
+        "_indicator"
+      )
+      if(!indicator_name %in% colnames(model_samples)){
+        stop(
+          "The fitted samples for ordered factor '", parameter,
+          "' do not contain the required total-prior indicator '",
+          indicator_name, "'. Refit the model with this package version.",
+          call. = FALSE
+        )
+      }
+      ordered_total_indicator <- model_samples[, indicator_name]
+    }
 
     rownames(samples) <- NULL
     colnames(samples) <- coefficient_names
@@ -339,6 +355,10 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     attr(samples, "models_ind") <- rep(1, nrow(samples))
     attr(samples, "parameter")  <- parameter
     attr(samples, "prior_list") <- prior
+    if(!is.null(ordered_total_indicator)){
+      attr(samples, "ordered_total_indicator") <-
+        as.integer(ordered_total_indicator)
+    }
     class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
 
   }else if(prior_info[["treatment"]]){
@@ -426,15 +446,30 @@ as_mixed_posteriors <- function(model, parameters, conditional = NULL, condition
     }
   }
 
+  ordered_atoms <- .posterior_atoms_from_ordered_total(
+    prior,
+    n_columns = ncol(samples),
+    column_names = colnames(samples),
+    indicator = if(prior_info[["ordered"]]){
+      attr(samples, "ordered_total_indicator", exact = TRUE)
+    }else{
+      NULL
+    },
+    source = "ordered_total_posterior_indicator"
+  )
   samples <- .posterior_atoms_set(
     samples,
-    .posterior_atoms_from_priors(
-      prior,
-      1,
-      n_columns = ncol(samples),
-      column_names = colnames(samples),
-      source = "single_model_structure"
-    )
+    if(is.null(ordered_atoms)){
+      .posterior_atoms_from_priors(
+        prior,
+        1,
+        n_columns = ncol(samples),
+        column_names = colnames(samples),
+        source = "single_model_structure"
+      )
+    }else{
+      ordered_atoms
+    }
   )
 
   return(samples)

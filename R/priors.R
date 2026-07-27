@@ -341,9 +341,11 @@ prior_factor <- function(distribution, parameters, truncation = list(lower = -In
 #' @inheritParams prior
 #'
 #' @details Spike-and-slab or mixture behavior belongs on \code{total}; e.g.,
-#' \code{prior_ordered(prior_spike_and_slab(...))}. Bridge sampling is available
-#' only when \code{total} is a simple scalar prior and \code{allocation} is fixed
-#' or a simple Dirichlet allocation.
+#' \code{prior_ordered(prior_spike_and_slab(...))}. Ordered density methods
+#' preserve point masses and continuous probability separately for each level;
+#' point masses are not included in a kernel density estimate. Bridge sampling
+#' is available only when \code{total} is a simple scalar prior and
+#' \code{allocation} is fixed or a simple Dirichlet allocation.
 #'
 #' @return return an object of class 'prior'.
 #'

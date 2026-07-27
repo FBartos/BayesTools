@@ -39,7 +39,10 @@
 #' @return \code{plot.prior} returns either \code{NULL} or
 #' an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.
 #' Dirichlet simplex priors are plotted as one beta marginal per coordinate;
-#' the ggplot method returns a list unless a single figure is selected.
+#' the ggplot method returns a list unless a single figure is selected. For an
+#' ordered level with mixed probability measure, the continuous density and
+#' exact probability-mass arrows are drawn together without rescaling either
+#' component.
 #'
 #' @seealso [prior()] [lines.prior()]  [geom_prior()]
 #' @rdname plot.prior
@@ -227,7 +230,15 @@ plot.prior <- function(x, plot_type = "base",
     }else{
       paste0(par_name, "[", figure, "]")
     }
-    if(inherits(plot_data[[figure]], "density.prior.point")){
+    if(inherits(plot_data[[figure]], "density.prior.mixed_measure")){
+      plots[[figure]] <- .plot_prior_mixed_measure(
+        x = x,
+        plot_type = plot_type,
+        plot_data = plot_data[[figure]],
+        par_name = component_name,
+        ...
+      )
+    }else if(inherits(plot_data[[figure]], "density.prior.point")){
       plots[[figure]] <- .plot.prior.point(
         x = x,
         plot_type = plot_type,
@@ -251,6 +262,43 @@ plot.prior <- function(x, plot_type = "base",
   }
 
   return(plots)
+}
+
+.plot_prior_mixed_measure  <- function(x, plot_type, plot_data,
+                                      par_name = NULL, ...){
+
+  dots <- list(...)
+  xlim <- attr(plot_data, "x_range")
+  ylim <- attr(plot_data, "y_range")
+
+  short_name <- if(is.null(dots[["short_name"]])) FALSE else dots[["short_name"]]
+  parameter_names <- if(is.null(dots[["parameter_names"]])) FALSE else dots[["parameter_names"]]
+  prior_label <- .plot.prior_label(x, plot_data, short_name, parameter_names)
+
+  main <- ""
+  xlab <- bquote(
+    .(if(!is.null(par_name)) bquote(.(par_name)~"~"))~.(prior_label)
+  )
+  ylab <- "Density / probability mass"
+
+  if(is.null(dots[["main"]])) dots$main <- main
+  if(is.null(dots[["xlab"]])) dots$xlab <- xlab
+  if(is.null(dots[["ylab"]])) dots$ylab <- ylab
+  if(is.null(dots[["xlim"]])) dots$xlim <- xlim
+  if(is.null(dots[["ylim"]])) dots$ylim <- ylim
+
+  if(plot_type == "base"){
+    .plot.prior_empty("simple", dots)
+    .lines_prior_mixed_measure(plot_data, ...)
+    return(invisible())
+  }
+
+  plot <- .ggplot.prior_empty("simple", dots)
+  geoms <- .geom_prior_mixed_measure(plot_data, ...)
+  if(length(geoms) > 0L){
+    plot <- plot + geoms
+  }
+  plot
 }
 
 .plot.prior.point          <- function(x, plot_type, plot_data, par_name = NULL, ...){

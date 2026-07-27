@@ -47,7 +47,11 @@
 #'
 #' @return \code{density.prior} returns an object of class 'density'. For
 #' Dirichlet simplex priors it returns a named list of beta-marginal density
-#' objects, one for each simplex coordinate.
+#' objects, one for each simplex coordinate. Ordered priors return one component
+#' per factor level. When a level has both discrete and continuous probability,
+#' its \code{atoms} table stores exact \code{location} and \code{mass} values,
+#' while its \code{continuous} table stores a density already weighted to
+#' integrate to the remaining continuous mass.
 #'
 #' @details Sample-based density estimates for continuous priors with finite
 #' support use boundary-reflected kernel density estimates. The plotting range
@@ -227,6 +231,20 @@ density.prior <- function(x,
 
 .density.prior.ordered                <- function(x, x_seq, x_range, n_points, n_samples, force_samples, transformation, transformation_arguments, truncate_end){
 
+  mixed <- .density.prior.ordered_mixed(
+    x = x,
+    x_seq = x_seq,
+    x_range = x_range,
+    n_points = n_points,
+    n_samples = n_samples,
+    force_samples = force_samples,
+    transformation = transformation,
+    transformation_arguments = transformation_arguments
+  )
+  if(!is.null(mixed)){
+    return(mixed)
+  }
+
   if(!force_samples && is.null(transformation)){
     direct <- .density.prior.ordered_direct(x, x_seq, n_points, transformation, transformation_arguments, truncate_end)
     if(!is.null(direct)){
@@ -298,6 +316,262 @@ density.prior <- function(x,
   attr(out, "parameter_name") <- names(out)
   class(out) <- c("density.prior.ordered", "list")
 
+  out
+}
+
+.density.prior.ordered_mixed <- function(x, x_seq, x_range, n_points,
+                                         n_samples, force_samples,
+                                         transformation,
+                                         transformation_arguments){
+
+  x <- .prior_ordered_default_bound(x)
+  target_dx <- diff(range(x_seq)) / max(1, length(x_seq) - 1L)
+  if(!is.finite(target_dx) || target_dx <= 0){
+    target_dx <- NA_real_
+  }
+  total <- .prior_ordered_total_linear_distribution(
+    total = x$total,
+    dx = target_dx,
+    n_grid = n_points,
+    tail_prob = .prior_linear_density_tail_prob()
+  )
+  if(is.null(total) || is.null(total$density) ||
+     is.null(total$points) || nrow(total$points) == 0L){
+    return(NULL)
+  }
+
+  metadata <- .prior_ordered_metadata(x)
+  if(length(metadata$ordered_terms) != 1L ||
+     metadata$theta_dim != 1L ||
+     length(metadata$allocations) != 1L){
+    stop(
+      "Mixed-measure ordered densities currently require one ordered term ",
+      "and one scalar total. Split the interaction into explicitly named ",
+      "terms before requesting its density.",
+      call. = FALSE
+    )
+  }
+
+  design_info <- .factor_term_design_from_metadata(x)
+  level_names <- design_info[["cell_names"]]
+  component_names <- .factor_contrast_parameter_names(
+    parameter = metadata$parameter_name,
+    level_names = .factor_level_list(x),
+    cell_names = level_names
+  )
+  weights <- design_info$design
+  colnames(weights) <- .JAGS_prior_factor_names(metadata$parameter_name, x)
+
+  samples <- NULL
+  if(force_samples){
+    samples <- rng(x, n_samples, transform_factor_samples = TRUE)
+    if(!is.matrix(samples)){
+      samples <- matrix(samples, ncol = 1L)
+    }
+  }
+
+  densities <- vector("list", nrow(weights))
+  names(densities) <- component_names
+  for(i in seq_len(nrow(weights))){
+    dist <- .prior_ordered_linear_distribution(
+      ordered_prior = x,
+      weights = weights[i, ],
+      indices = seq_len(ncol(weights)),
+      dx = target_dx,
+      n_grid = n_points,
+      tail_prob = .prior_linear_density_tail_prob()
+    )
+    dist <- .density.prior.ordered_regrid_mixed(dist, x_seq)
+    if(!is.null(transformation)){
+      dist <- .prior_linear_density_transform(
+        dist,
+        transformation,
+        transformation_arguments,
+        n_grid = n_points
+      )
+    }
+    component_samples <- if(is.null(samples)){
+      NULL
+    }else{
+      values <- samples[, i]
+      if(!is.null(transformation)){
+        values <- .density.prior_transformation_x(
+          values,
+          transformation,
+          transformation_arguments
+        )
+      }
+      values
+    }
+    densities[[i]] <- .density.prior.ordered_mixed_component(
+      dist = dist,
+      prior = x,
+      n_points = n_points,
+      samples = component_samples,
+      component = i,
+      component_name = component_names[[i]],
+      x_range = x_range,
+      transformation = transformation,
+      transformation_arguments = transformation_arguments
+    )
+  }
+
+  attr(densities, "x_range") <- range(unlist(lapply(
+    densities,
+    attr,
+    which = "x_range"
+  )), na.rm = TRUE)
+  attr(densities, "y_range") <- range(unlist(lapply(
+    densities,
+    attr,
+    which = "y_range"
+  )), na.rm = TRUE)
+  attr(densities, "parameter_name") <- names(densities)
+  attr(densities, "method") <- "analytic_mixed_measure"
+  attr(densities, "measure_schema_version") <- 1L
+  class(densities) <- c("density.prior.ordered", "list")
+  densities
+}
+
+.density.prior.ordered_regrid_mixed <- function(dist, x_seq){
+
+  if(is.null(dist$density) || dist$density$mass <= 0){
+    return(dist)
+  }
+  y <- stats::approx(
+    dist$density$x,
+    dist$density$y,
+    xout = x_seq,
+    yleft = 0,
+    yright = 0
+  )$y
+  area <- .density.prior.ordered_curve_integral(x_seq, y)
+  if(!is.finite(area) || area <= 0){
+    stop(
+      "The continuous part of an ordered mixed-measure prior has no ",
+      "numerical mass on the requested density grid.",
+      call. = FALSE
+    )
+  }
+  dist$density$x <- x_seq
+  dist$density$y <- y / area
+  dist$n_grid <- length(x_seq)
+  attr(dist, "ordered_grid_diagnostics") <- list(
+    captured_continuous_shape_integral = area
+  )
+  dist
+}
+
+.density.prior.ordered_curve_integral <- function(x, y){
+
+  if(length(x) < 2L || length(y) != length(x)){
+    return(0)
+  }
+  sum(diff(x) * (head(y, -1L) + tail(y, -1L)) / 2)
+}
+
+.density.prior.ordered_mixed_component <- function(
+    dist, prior, n_points, samples, component, component_name,
+    x_range, transformation, transformation_arguments){
+
+  atoms <- data.frame(location = numeric(), mass = numeric())
+  if(!is.null(dist$points) && nrow(dist$points) > 0L){
+    atoms <- data.frame(
+      location = dist$points$x,
+      mass = dist$points$p
+    )
+  }
+  continuous <- NULL
+  x_values <- numeric()
+  y_values <- numeric()
+  if(!is.null(dist$density) && dist$density$mass > 0){
+    y_values <- dist$density$y * dist$density$mass
+    continuous <- data.frame(
+      x = dist$density$x,
+      density = y_values
+    )
+    attr(continuous, "mass") <- dist$density$mass
+    x_values <- continuous$x
+  }
+  if(length(x_values) == 0L){
+    x_values <- atoms$location
+    y_values <- atoms$mass
+  }
+
+  atom_mass <- sum(atoms$mass)
+  continuous_mass <- if(is.null(continuous)) 0 else attr(continuous, "mass")
+  continuous_integral <- if(is.null(continuous)){
+    0
+  }else{
+    .density.prior.ordered_curve_integral(
+      continuous$x,
+      continuous$density
+    )
+  }
+  mass_bound <- 128 * .Machine$double.eps
+  if(abs(atom_mass + continuous_mass - 1) > mass_bound ||
+     abs(continuous_integral - continuous_mass) > 1e-10){
+    stop(
+      "The ordered mixed-measure density did not preserve unit probability ",
+      "mass.",
+      call. = FALSE
+    )
+  }
+
+  transformed_range <- x_range
+  if(!is.null(transformation)){
+    transformed_range <- .density.prior_transformation_x(
+      transformed_range,
+      transformation,
+      transformation_arguments
+    )
+  }
+  component_range <- range(c(
+    transformed_range,
+    atoms$location,
+    if(is.null(continuous)) numeric() else continuous$x
+  ), na.rm = TRUE)
+  y_max <- max(c(0, atoms$mass, y_values), na.rm = TRUE)
+  out <- list(
+    call = call("density", print(prior, silent = TRUE)),
+    bw = NULL,
+    n = n_points,
+    x = x_values,
+    y = y_values,
+    samples = samples,
+    atoms = atoms,
+    continuous = continuous,
+    diagnostics = list(
+      method = "analytic_components",
+      atom_mass = atom_mass,
+      continuous_mass = continuous_mass,
+      continuous_integral = continuous_integral,
+      grid = attr(dist, "ordered_grid_diagnostics", exact = TRUE),
+      numerical = attr(dist, "numerical_diagnostics", exact = TRUE),
+      ordered_measure = attr(dist, "ordered_measure", exact = TRUE)
+    ),
+    transformation = list(
+      name = transformation,
+      arguments = transformation_arguments
+    )
+  )
+  component_class <- if(is.null(continuous)){
+    "density.prior.point"
+  }else{
+    "density.prior.simple"
+  }
+  class(out) <- c(
+    "density.prior.ordered_component",
+    "density.prior.mixed_measure",
+    "density",
+    "density.prior",
+    component_class
+  )
+  attr(out, "x_range") <- component_range
+  attr(out, "y_range") <- c(0, y_max)
+  attr(out, "component") <- component
+  attr(out, "component_name") <- component_name
+  attr(out, "measure_schema_version") <- 1L
   out
 }
 

@@ -624,15 +624,39 @@
   prior <- .prior_ordered_default_bound(prior)
   metadata <- .prior_ordered_metadata(prior)
 
-  theta <- if(metadata$theta_dim == 1L){
-    matrix(rng(prior$total, n), nrow = n, ncol = 1L)
-  }else{
-    do.call(cbind, replicate(metadata$theta_dim, rng(prior$total, n), simplify = FALSE))
+  theta_draws <- replicate(
+    metadata$theta_dim,
+    rng(prior$total, n),
+    simplify = FALSE
+  )
+  theta <- do.call(cbind, lapply(theta_draws, as.numeric))
+  total_indicators <- lapply(theta_draws, function(draws){
+    attr(draws, "inclusion", exact = TRUE)
+  })
+  total_components <- lapply(theta_draws, function(draws){
+    attr(draws, "components", exact = TRUE)
+  })
+  attach_total_component_metadata <- function(out){
+    if(all(vapply(total_indicators, function(x) !is.null(x), logical(1)))){
+      indicator <- do.call(cbind, total_indicators)
+      if(ncol(indicator) == 1L){
+        indicator <- as.integer(indicator[, 1L])
+      }
+      attr(out, "ordered_total_indicator") <- indicator
+    }
+    if(all(vapply(total_components, function(x) !is.null(x), logical(1)))){
+      component <- do.call(cbind, total_components)
+      if(ncol(component) == 1L){
+        component <- as.integer(component[, 1L])
+      }
+      attr(out, "ordered_total_component") <- component
+    }
+    out
   }
 
   if(quantity == "total"){
     colnames(theta) <- if(metadata$theta_dim == 1L) "total" else paste0("total[", seq_len(metadata$theta_dim), "]")
-    return(theta)
+    return(attach_total_component_metadata(theta))
   }
 
   allocation_samples <- list()
@@ -663,6 +687,7 @@
     coefficients[, coefficient_i] <- value
   }
   colnames(coefficients) <- .JAGS_prior_factor_names(metadata$parameter_name, prior)
+  coefficients <- attach_total_component_metadata(coefficients)
 
   if(quantity %in% c("coefficient", "increment") || !transform_factor_samples){
     return(coefficients)

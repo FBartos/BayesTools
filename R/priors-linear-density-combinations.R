@@ -237,6 +237,15 @@
     return(c(0, 0))
   }
 
+  if(is.prior.ordered(prior)){
+    return(.prior_ordered_linear_range(
+      ordered_prior = prior,
+      weights = weights,
+      indices = group$indices,
+      tail_prob = tail_prob
+    ))
+  }
+
   if(is.prior.spike_and_slab(prior)){
     variable_prior <- .get_spike_and_slab_variable(prior)
     variable_group <- group
@@ -353,6 +362,17 @@
     return(.prior_linear_density_point(0))
   }
 
+  if(is.prior.ordered(prior)){
+    return(.prior_ordered_linear_distribution(
+      ordered_prior = prior,
+      weights = weights,
+      indices = group$indices,
+      dx = dx,
+      n_grid = n_grid,
+      tail_prob = tail_prob
+    ))
+  }
+
   if(is.prior.spike_and_slab(prior)){
     variable_prior  <- .get_spike_and_slab_variable(prior)
     inclusion_prior <- .get_spike_and_slab_inclusion(prior)
@@ -406,6 +426,178 @@
   }
 
   dist
+}
+
+.prior_ordered_total_linear_distribution <- function(total, dx, n_grid,
+                                                      tail_prob){
+
+  total_group <- list(
+    prior = total,
+    weights = c(.ordered_total = 1),
+    indices = 1L
+  )
+  .prior_linear_group_distribution(
+    group = total_group,
+    dx = dx,
+    tail_prob = tail_prob,
+    source_transforms = c(.ordered_total = NA_character_),
+    n_grid = n_grid
+  )
+}
+
+.prior_ordered_linear_range <- function(ordered_prior, weights, indices,
+                                        tail_prob){
+
+  ordered_prior <- .prior_ordered_default_bound(ordered_prior)
+  total_group <- list(
+    prior = ordered_prior$total,
+    weights = c(.ordered_total = 1),
+    indices = 1L
+  )
+  total_range <- .prior_linear_group_range(
+    total_group,
+    tail_prob = tail_prob,
+    source_transforms = c(.ordered_total = NA_character_)
+  )
+  scale <- max(c(1, abs(weights), diff(total_range)), na.rm = TRUE)
+  n_grid <- .prior_linear_density_default_grid()
+  multiplier <- .prior_ordered_linear_multiplier(
+    ordered_prior = ordered_prior,
+    weights = weights,
+    indices = indices,
+    dx = scale / max(1, n_grid - 1L),
+    n_grid = n_grid,
+    tail_prob = tail_prob
+  )
+  multiplier_range <- .prior_linear_density_range(multiplier)
+  products <- as.vector(outer(total_range, multiplier_range, `*`))
+  products <- products[is.finite(products)]
+  if(length(products) == 0L){
+    return(c(0, 0))
+  }
+  range(products)
+}
+
+.prior_ordered_linear_multiplier <- function(ordered_prior, weights, indices,
+                                             dx, n_grid, tail_prob){
+
+  ordered_prior <- .prior_ordered_default_bound(ordered_prior)
+  metadata <- .prior_ordered_metadata(ordered_prior)
+  if(length(metadata$ordered_terms) != 1L ||
+     metadata$theta_dim != 1L ||
+     length(metadata$allocations) != 1L){
+    stop(
+      "Mixed-measure ordered densities currently require one ordered term ",
+      "and one scalar total. Split the interaction into explicitly named ",
+      "terms before requesting its marginal density.",
+      call. = FALSE
+    )
+  }
+
+  coefficient_weights <- numeric(metadata$coefficient_dim)
+  coefficient_weights[indices] <- weights
+  record <- metadata$allocations[[1L]]
+  increments <- metadata$coefficient_grid[[metadata$ordered_terms[[1L]]]]
+  allocation_weights <- numeric(length(record$spec$weights))
+  if(identical(record$spec$type, "dirichlet")){
+    allocation_weights <- numeric(length(record$spec$alpha))
+  }
+  for(i in seq_along(coefficient_weights)){
+    allocation_weights[increments[[i]]] <-
+      allocation_weights[increments[[i]]] + coefficient_weights[[i]]
+  }
+
+  if(identical(record$spec$type, "fixed")){
+    scale <- sum(allocation_weights * record$spec$weights)
+    return(.prior_linear_density_point(scale))
+  }
+  if(!identical(record$spec$type, "dirichlet")){
+    stop("Unsupported ordered allocation specification.", call. = FALSE)
+  }
+
+  unique_weights <- unique(allocation_weights)
+  if(length(unique_weights) == 1L){
+    return(.prior_linear_density_point(unique_weights[[1L]]))
+  }
+
+  nonzero <- allocation_weights != 0
+  nonzero_values <- unique(allocation_weights[nonzero])
+  if(length(nonzero_values) != 1L){
+    stop(
+      "This ordered-prior linear combination is not a level or a single ",
+      "allocation subset, so its Dirichlet multiplier has no beta reduction. ",
+      "Request factor-level marginals instead.",
+      call. = FALSE
+    )
+  }
+
+  scale <- nonzero_values[[1L]]
+  alpha_selected <- sum(record$spec$alpha[nonzero])
+  alpha_remaining <- sum(record$spec$alpha[!nonzero])
+  if(alpha_selected == 0){
+    return(.prior_linear_density_point(0))
+  }
+  if(alpha_remaining == 0){
+    return(.prior_linear_density_point(scale))
+  }
+
+  beta_prior <- prior(
+    "beta",
+    list(alpha = alpha_selected, beta = alpha_remaining)
+  )
+  beta_group <- list(
+    prior = beta_prior,
+    weights = c(.ordered_allocation = scale),
+    indices = 1L
+  )
+  .prior_linear_group_distribution(
+    group = beta_group,
+    dx = dx,
+    tail_prob = tail_prob,
+    source_transforms = c(.ordered_allocation = NA_character_),
+    n_grid = n_grid
+  )
+}
+
+.prior_ordered_linear_distribution <- function(ordered_prior, weights, indices,
+                                               dx = NA_real_, n_grid = NULL,
+                                               tail_prob = .prior_linear_density_tail_prob()){
+
+  if(is.null(n_grid)){
+    n_grid <- .prior_linear_density_default_grid()
+  }
+  multiplier <- .prior_ordered_linear_multiplier(
+    ordered_prior = ordered_prior,
+    weights = weights,
+    indices = indices,
+    dx = dx,
+    n_grid = n_grid,
+    tail_prob = tail_prob
+  )
+  total <- .prior_ordered_total_linear_distribution(
+    total = ordered_prior$total,
+    dx = dx,
+    n_grid = n_grid,
+    tail_prob = tail_prob
+  )
+
+  out <- .prior_linear_density_product(
+    total,
+    multiplier,
+    n_grid = n_grid
+  )
+  attr(out, "ordered_measure") <- list(
+    method = "analytic_components",
+    total = ordered_prior$total,
+    allocation = .prior_ordered_metadata(
+      .prior_ordered_default_bound(ordered_prior)
+    )$allocations[[1L]]$spec,
+    coefficient_weights = stats::setNames(
+      as.numeric(weights),
+      names(weights)
+    )
+  )
+  out
 }
 
 .prior_linear_density_transform <- function(dist, transformation, transformation_arguments = NULL, n_grid = NULL){

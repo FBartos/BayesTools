@@ -857,6 +857,11 @@
       transform_factor_samples = FALSE,
       quantity = "coefficient"
     )
+    ordered_total_indicator <- attr(
+      samples,
+      "ordered_total_indicator",
+      exact = TRUE
+    )
     if(!is.matrix(samples)){
       samples <- matrix(samples, nrow = n_samples)
     }
@@ -874,6 +879,9 @@
     attr(samples, "models_ind") <- FALSE
     attr(samples, "parameter")  <- parameter
     attr(samples, "prior_list") <- prior
+    if(!is.null(ordered_total_indicator)){
+      attr(samples, "ordered_total_indicator") <- ordered_total_indicator
+    }
     class(samples) <- c("mixed_posteriors", "mixed_posteriors.factor", "mixed_posteriors.vector")
 
   }else if(prior_info[["treatment"]]){
@@ -962,14 +970,24 @@
     }
   }
 
+  ordered_atoms <- .posterior_atoms_from_ordered_total(
+    prior,
+    n_columns = ncol(samples),
+    column_names = colnames(samples),
+    source = "ordered_total_prior"
+  )
   samples <- .posterior_atoms_set(
     samples,
-    .posterior_atoms_from_priors(
-      prior, 1,
-      n_columns = ncol(samples),
-      column_names = colnames(samples),
-      source = "single_prior_structure"
-    )
+    if(is.null(ordered_atoms)){
+      .posterior_atoms_from_priors(
+        prior, 1,
+        n_columns = ncol(samples),
+        column_names = colnames(samples),
+        source = "single_prior_structure"
+      )
+    }else{
+      ordered_atoms
+    }
   )
 
   return(samples)

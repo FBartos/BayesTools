@@ -31,12 +31,12 @@ mean **implemented**.
 | D17 | Implemented and verified | No remaining work |
 | D18 | Implemented and verified | No remaining work |
 | D19 | Implemented and verified | No remaining work |
-| D20 | Decision confirmed; implementation pending | Introduce a scalar, scale-explicit marginal-likelihood result contract |
+| D20 | Implemented and verified | No remaining work |
 | D21 | Partially implemented | Add the vignette manifest and consolidate real fitting; D30 covers paths |
 | D22 | Implemented and verified | No remaining work |
 | D23 | Implemented and verified | No remaining work |
-| D24 | Decision confirmed; implementation pending | Keep raw latent/group coefficients internal and add a transformed extractor if needed |
-| D25 | Partially implemented; implementation pending | Preserve atoms in the ordered sampled-density fallback |
+| D24 | Implemented and verified | No remaining work |
+| D25 | Implemented and verified | No remaining work |
 | D26 | Implemented and verified | No remaining work |
 | D27 | Decision confirmed; implementation pending | Implement and document the proposed restricted grammar |
 | D28 | Implemented and verified | No remaining work |
@@ -1399,7 +1399,7 @@ ordered density requests rather than smoothing the atoms.
 
 Decision: implement this proper handling
 
-**Audit status: partially implemented; implementation pending.**
+**Audit status: implemented and verified.**
 
 **Review response.** The general posterior-atom infrastructure can already
 store atoms, linearly transform them into factor-level coordinates, and let
@@ -1424,6 +1424,33 @@ allocation map where possible; otherwise use exact component/model indicators,
 not equality-with-tolerance on sampled values. Plotting and marginal-inference
 consumers must render/summarize both parts without renormalizing either part to
 one.
+
+**Implementation outcome.** Ordered totals with both point and continuous
+components now produce a versioned mixed-measure object for every factor level.
+Each component has an analytically coalesced `atoms` table, a continuous curve
+weighted by its remaining probability, exact mass diagnostics, and
+transformation provenance. Fixed allocations are handled by exact scaling;
+Dirichlet level allocations use their beta marginal. A requested Dirichlet
+linear combination that is not a factor level or reducible allocation subset
+now stops rather than substituting a sampled approximation.
+
+Prior and posterior sampling retain the ordered-total component indicator.
+Spike-and-slab posterior atoms are computed from the monitored indicator, not
+from equality or tolerance comparisons on coefficient values. Both direct
+factor marginals and formula-based marginals preserve those atoms, including
+the structurally constant cumulative baseline. Ordered plots, `lines.prior()`,
+and `geom_prior()` render the continuous curve and atom arrows together without
+renormalizing either measure component.
+
+During implementation, a pre-existing generic product-density error was found:
+point-point products were counted explicitly and then counted again while the
+continuous-point branch rescaled the full mixed distribution. That defect was
+fixed separately in commit `868a482`; adversarial tests now verify the exact
+atom and continuous masses for mixed-by-mixed and mixed-by-point products.
+
+The focused ordered-prior suite passed 211 assertions. The complete unit
+profile passed 8,054 assertions with no failures or warnings (seven expected
+profile skips).
 
 ## D26. Random-formula transformation and grouping semantics
 

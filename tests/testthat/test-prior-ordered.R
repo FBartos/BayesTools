@@ -1013,3 +1013,219 @@ test_that("ordered cumulative atoms contribute to direct and transformed plot ra
   expect_lte(min(exp_limits), 1)
   expect_gte(max(exp_limits), 1)
 })
+
+test_that("ordered mixed-measure densities preserve atoms and continuous mass", {
+  total <- prior_spike_and_slab(
+    prior("normal", list(0, 1)),
+    prior_inclusion = prior("spike", list(.5))
+  )
+  fixed <- prior_ordered(
+    total,
+    allocation = c(.25, .75),
+    contrast = "cumulative"
+  )
+  attr(fixed, "levels") <- 3
+
+  density_fixed <- density(fixed, n_points = 201)
+  expect_equal(attr(density_fixed, "method"), "analytic_mixed_measure")
+  expect_equal(attr(density_fixed, "measure_schema_version"), 1L)
+  expect_true(all(vapply(
+    density_fixed,
+    inherits,
+    logical(1),
+    what = "density.prior.mixed_measure"
+  )))
+
+  expect_equal(density_fixed[[1]]$atoms, data.frame(location = 0, mass = 1))
+  expect_null(density_fixed[[1]]$continuous)
+  for(i in 2:3){
+    expect_equal(
+      density_fixed[[i]]$atoms,
+      data.frame(location = 0, mass = .5)
+    )
+    expect_equal(attr(density_fixed[[i]]$continuous, "mass"), .5)
+    expect_equal(
+      BayesTools:::.density.prior.ordered_curve_integral(
+        density_fixed[[i]]$continuous$x,
+        density_fixed[[i]]$continuous$density
+      ),
+      .5,
+      tolerance = 1e-10
+    )
+    expect_equal(density_fixed[[i]]$diagnostics$atom_mass, .5)
+    expect_equal(density_fixed[[i]]$diagnostics$continuous_mass, .5)
+    expect_equal(
+      density_fixed[[i]]$diagnostics$method,
+      "analytic_components"
+    )
+  }
+
+  density_exp <- density(
+    fixed,
+    n_points = 201,
+    transformation = "exp"
+  )
+  expect_equal(density_exp[[2]]$atoms, data.frame(location = 1, mass = .5))
+  expect_equal(attr(density_exp[[2]]$continuous, "mass"), .5)
+  expect_equal(density_exp[[2]]$transformation$name, "exp")
+  expect_true(all(density_exp[[2]]$continuous$x > 0))
+
+  random_allocation <- prior_ordered(
+    total,
+    allocation = prior("dirichlet", list(alpha = c(2, 3))),
+    contrast = "cumulative"
+  )
+  attr(random_allocation, "levels") <- 3
+  density_random <- density(random_allocation, n_points = 201)
+  expect_equal(density_random[[2]]$atoms$mass, .5)
+  expect_equal(density_random[[3]]$atoms$mass, .5)
+  expect_equal(attr(density_random[[2]]$continuous, "mass"), .5)
+  expect_equal(attr(density_random[[3]]$continuous, "mass"), .5)
+
+  plot_middle <- plot(
+    fixed,
+    plot_type = "ggplot",
+    show_figures = 2,
+    n_points = 201
+  )
+  geom_classes <- vapply(
+    plot_middle$layers,
+    function(layer) class(layer$geom)[1L],
+    character(1)
+  )
+  expect_true("GeomLine" %in% geom_classes)
+  expect_true("GeomSegment" %in% geom_classes)
+  point_layer <- plot_middle$layers[[which(geom_classes == "GeomSegment")[1L]]]
+  expect_equal(point_layer$data$x, 0)
+  expect_equal(point_layer$data$yend, .5)
+
+  layer_geoms <- geom_prior(fixed, show_parameter = 2, n_points = 201)
+  expect_equal(
+    vapply(layer_geoms, function(layer) class(layer$geom)[1L], character(1)),
+    c("GeomLine", "GeomSegment")
+  )
+})
+
+test_that("ordered mixed measures propagate through marginal inference", {
+  df <- data.frame(
+    y = seq_len(6),
+    f = ordered(
+      rep(c("low", "mid", "high"), 2),
+      levels = c("low", "mid", "high")
+    )
+  )
+  formula_info <- JAGS_formula(
+    y ~ 0 + f,
+    "mu",
+    data = df,
+    prior_list = list(
+      f = prior_ordered(
+        prior_spike_and_slab(
+          prior("normal", list(0, 1)),
+          prior_inclusion = prior("spike", list(.5))
+        ),
+        allocation = c(.25, .75),
+        contrast = "cumulative"
+      )
+    )
+  )
+  posterior <- cbind(
+    "mu_f[1]" = c(0, .1, .2, 0),
+    "mu_f[2]" = c(0, .2, .3, 0),
+    "mu_f_ordered_total_indicator" = c(0, 1, 1, 0)
+  )
+  fit <- coda::mcmc(posterior)
+  class(fit) <- c("mcmc", "BayesTools_fit")
+  attr(fit, "prior_list") <- formula_info$prior_list
+
+  samples <- as_mixed_posteriors(fit, parameters = "mu_f")
+  coefficient_atoms <- BayesTools:::.posterior_atoms_get(samples$mu_f)
+  expect_equal(coefficient_atoms$locations, matrix(
+    0,
+    nrow = 1,
+    ncol = 2,
+    dimnames = list(NULL, c("mu_f[1]", "mu_f[2]"))
+  ))
+  expect_equal(coefficient_atoms$mass, .5)
+  expect_equal(
+    attr(samples$mu_f, "ordered_total_indicator"),
+    c(0L, 1L, 1L, 0L)
+  )
+
+  for(use_formula in c(FALSE, TRUE)){
+    marginal <- marginal_posterior(
+      samples,
+      parameter = "mu_f",
+      formula = if(use_formula) ~ 0 + f else NULL,
+      use_formula = use_formula,
+      prior_samples = TRUE,
+      n_samples = 128
+    )
+    expected_mass <- c(low = 1, mid = .5, high = .5)
+    for(level in names(expected_mass)){
+      prior_density <- attr(marginal[[level]], "prior_density")
+      expect_equal(
+        BayesTools:::.prior_linear_density_point_mass(prior_density, 0),
+        expected_mass[[level]],
+        tolerance = 1e-12
+      )
+      if(expected_mass[[level]] < 1){
+        expect_equal(
+          prior_density$density$mass,
+          1 - expected_mass[[level]],
+          tolerance = 1e-12
+        )
+      }
+      posterior_atoms <- BayesTools:::.posterior_atoms_get(
+        marginal[[level]]
+      )
+      expect_equal(posterior_atoms$mass, expected_mass[[level]])
+      expect_equal(unname(posterior_atoms$locations[, 1L]), 0)
+    }
+  }
+
+  prior_samples <- BayesTools:::.as_mixed_priors.factor(
+    formula_info$prior_list$mu_f,
+    parameter = "mu_f",
+    seed = 991,
+    n_samples = 50
+  )
+  expect_length(attr(prior_samples, "ordered_total_indicator"), 50)
+  expect_equal(
+    BayesTools:::.posterior_atoms_get(prior_samples)$mass,
+    .5
+  )
+
+  expect_error(
+    BayesTools:::.as_mixed_posteriors.factor(
+      posterior[, c("mu_f[1]", "mu_f[2]"), drop = FALSE],
+      formula_info$prior_list$mu_f,
+      "mu_f"
+    ),
+    "required total-prior indicator"
+  )
+})
+
+test_that("ordered Dirichlet marginals reject non-level combinations", {
+  p <- prior_ordered(
+    prior_spike_and_slab(
+      prior("normal", list(0, 1)),
+      prior_inclusion = prior("spike", list(.5))
+    ),
+    allocation = prior("dirichlet", list(alpha = c(2, 3))),
+    contrast = "cumulative"
+  )
+  attr(p, "levels") <- 3
+  p <- BayesTools:::.prior_ordered_default_bound(p, "mu_f")
+
+  expect_error(
+    BayesTools:::.prior_ordered_linear_distribution(
+      p,
+      weights = c(1, 2),
+      indices = 1:2,
+      dx = .01,
+      n_grid = 128
+    ),
+    "not a level or a single allocation subset"
+  )
+})
