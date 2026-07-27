@@ -562,6 +562,41 @@
   sd_support
 }
 
+.bt_random_effect_validate_car_centered_initial_precision <- function(
+    sd_prior, block_name){
+
+  centered_sd_support <- .bt_random_effect_car_centered_sd_support(
+    sd_prior,
+    context = paste0(
+      "CAR random-effect block '", block_name, "' centered SD prior"
+    )
+  )
+  initial_precision <- centered_sd_support ^ -2
+  invalid_initial_precision <- !is.finite(initial_precision) |
+    initial_precision <= 0
+  if(any(invalid_initial_precision)){
+    endpoint <- which(invalid_initial_precision)[1L]
+    stop(
+      "CAR random-effect block '", block_name,
+      "' has an unrepresentable initial JAGS precision at the ",
+      names(centered_sd_support)[endpoint],
+      " centered SD support ",
+      format(
+        centered_sd_support[endpoint],
+        digits = 17,
+        scientific = TRUE
+      ),
+      ". The emitted initial precision pow(sd, -2) is non-finite or ",
+      "non-positive. Centered CAR SD support endpoints must both be ",
+      "representable; supports approaching zero or infinity are not ",
+      "representable by the JAGS backend.",
+      call. = FALSE
+    )
+  }
+
+  centered_sd_support
+}
+
 .bt_random_effect_validate_car_jags_innovation_support <- function(
     coordinate_sets, rho_prior, rho_scale, bounds, block_name,
     centered = FALSE, sd_prior = NULL){
@@ -581,38 +616,12 @@
     context = paste0("CAR random-effect block '", block_name, "' rho prior")
   )
   centered_sd_support <- if(isTRUE(centered)){
-    .bt_random_effect_car_centered_sd_support(
-      sd_prior,
-      context = paste0(
-        "CAR random-effect block '", block_name, "' centered SD prior"
-      )
+    .bt_random_effect_validate_car_centered_initial_precision(
+      sd_prior = sd_prior,
+      block_name = block_name
     )
   }else{
     NULL
-  }
-  if(!is.null(centered_sd_support)){
-    initial_precision <- centered_sd_support ^ -2
-    invalid_initial_precision <- !is.finite(initial_precision) |
-      initial_precision <= 0
-    if(any(invalid_initial_precision)){
-      endpoint <- which(invalid_initial_precision)[1L]
-      stop(
-        "CAR random-effect block '", block_name,
-        "' has an unrepresentable initial JAGS precision at the ",
-        names(centered_sd_support)[endpoint],
-        " centered SD support ",
-        format(
-          centered_sd_support[endpoint],
-          digits = 17,
-          scientific = TRUE
-        ),
-        ". The emitted initial precision pow(sd, -2) is non-finite or ",
-        "non-positive. Centered CAR SD support endpoints must both be ",
-        "representable; supports approaching zero or infinity are not ",
-        "representable by the JAGS backend.",
-        call. = FALSE
-      )
-    }
   }
 
   for(set in seq_along(coordinate_sets)){

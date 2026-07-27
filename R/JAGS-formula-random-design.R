@@ -794,7 +794,7 @@
         structure = random_structure,
         block_prior = block_prior,
         include_correlation = TRUE,
-        require_rho = TRUE,
+        require_rho = n_par > 1L,
         distance_matrix = if(identical(random_structure, "car")){
           abs(outer(car_metadata$time_values, car_metadata$time_values, "-"))
         }else{
@@ -809,8 +809,23 @@
         structure = random_structure,
         block_prior = block_prior,
         include_correlation = FALSE,
-        require_rho = TRUE,
+        require_rho = n_par > 1L,
         distance_matrix = NULL
+      )
+    }
+    centered_sd_prior <- if(
+      isTRUE(centered_structure) &&
+      length(sd_spec$prior_list) == 1L
+    ){
+      sd_spec$prior_list[[1L]]
+    }else{
+      NULL
+    }
+    if(identical(random_structure, "car") && n_par == 1L &&
+       isTRUE(centered_structure)){
+      .bt_random_effect_validate_car_centered_initial_precision(
+        sd_prior = centered_sd_prior,
+        block_name = random_term$block_name
       )
     }
     if(identical(random_structure, "car") && n_par > 1L){
@@ -826,14 +841,7 @@
         bounds = corr_module$bridge$bounds,
         block_name = random_term$block_name,
         centered = isTRUE(centered_structure),
-        sd_prior = if(
-          isTRUE(centered_structure) &&
-          length(sd_spec$prior_list) == 1L
-        ){
-          sd_spec$prior_list[[1L]]
-        }else{
-          NULL
-        }
+        sd_prior = centered_sd_prior
       )
     }
     random_syntax <- c(random_syntax, corr_module$syntax)

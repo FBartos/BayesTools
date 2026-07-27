@@ -373,6 +373,61 @@ test_that("CAR innovation validation follows rho support and parameterization", 
   )
 })
 
+test_that("single-coordinate centered CAR validates initial precision without rho", {
+
+  data <- data.frame(
+    time = c(0, 0),
+    id = factor(c("a", "b"), levels = c("a", "b"))
+  )
+  compile <- function(sd){
+    JAGS_formula(
+      formula = ~ 1 + car(0 + time | id),
+      parameter = "mu",
+      data = data,
+      prior_list = list(intercept = prior("normal", list(0, 1))),
+      prior_random = prior_random(
+        id = random_block(
+          sd = sd,
+          parameterization = "centered"
+        )
+      )
+    )
+  }
+
+  expect_error(
+    compile(prior("point", list(location = 1e-200))),
+    "unrepresentable initial JAGS precision",
+    fixed = TRUE
+  )
+  expect_error(
+    compile(prior(
+      "normal",
+      list(0, 1),
+      truncation = list(lower = 0, upper = Inf)
+    )),
+    "lower centered SD support",
+    fixed = TRUE
+  )
+
+  result <- NULL
+  expect_no_error(
+    result <- compile(prior("point", list(location = 1)))
+  )
+  expect_false(any(grepl(
+    "_rho",
+    names(result$prior_list),
+    fixed = TRUE
+  )))
+  expect_match(
+    result$formula_syntax,
+    paste0(
+      "mu__xREx__id_xRE_COEFx[g,i] ~ dnorm(0, ",
+      "pow(mu__xREx__id_xRE_STDx[i], -2))"
+    ),
+    fixed = TRUE
+  )
+})
+
 test_that("CAR Fisher-z syntax matches reconstruction at small positive values", {
 
   z <- 2 ^ -54
