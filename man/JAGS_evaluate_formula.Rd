@@ -75,10 +75,10 @@ prediction row to its fitted observation index. Alternatively, the source
 must provide a
 \code{parameter_source()} \code{values} function for reconstructing row-wise
 source values from the posterior samples and supplied prediction data.
-Literal \code{expression()} terms cannot be reconstructed automatically.
-Replaying a fitted formula that contains them produces an error rather than
-silently omitting their contribution. An explicit expression-free formula
-can still be supplied to evaluate a selected subset of the fitted formula.
+Literal \code{expression()} terms are evaluated against the prediction data
+using JAGS-style row indexing through \code{i}. Replaying a fitted formula
+restores the stored \code{transformed_terms}. Supply an explicit
+expression-free formula to evaluate a selected subset without those offsets.
 Inline transformations, offsets, dot expansion, and arbitrary calls are not
 supported. Create transformed predictors as explicit columns in \code{data}.
 }

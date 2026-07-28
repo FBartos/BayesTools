@@ -34,7 +34,9 @@ Posterior atom status must be declared through package-generated
 \code{posterior_atoms} metadata, \code{posterior_atom_attribute()}, or a
 posterior-density attribute that explicitly declares point masses. An
 ordinary Savage-Dickey density ratio is rejected when atom status is unknown
-or when any positive atom is located exactly at the null.}
+or when any positive atom is located exactly at the null. Declared atoms at
+other locations are removed from the continuous posterior ordinate and the
+resulting density is scaled by the remaining continuous mass.}
 }
 \value{
 \code{Savage_Dickey_BF} returns a Bayes factor.
