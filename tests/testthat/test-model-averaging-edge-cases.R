@@ -1227,6 +1227,7 @@ test_that("weightfunction mappings preserve distinct representable cuts", {
 
 test_that("selection step bins use exact (lower, upper] boundaries", {
 
+  # Intentionally no snap/coalesce near cut endpoints (IEEE-exact bin edges).
   cuts <- c(0, .05, 1)
   probabilities <- c(.05 - 5e-13, .05, .05 + 5e-13)
   bins <- vapply(probabilities, function(probability){

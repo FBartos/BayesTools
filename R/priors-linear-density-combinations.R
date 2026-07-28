@@ -1186,5 +1186,7 @@
     return(0)
   }
 
+  # Exact IEEE equality by design: point locations are not snapped or
+  # coalesced to nearby grid / cut values.
   sum(x$points$p[x$points$x == value])
 }

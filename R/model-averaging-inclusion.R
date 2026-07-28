@@ -263,6 +263,8 @@ weightfunctions_mapping <- function(prior_list, cuts_only = FALSE, one_sided = F
 
 .weightfunction_unique_cuts <- function(cuts){
 
+  # Exact unique() / sort only: nearby floating-point cut values are not
+  # coalesced. Boundary binning elsewhere also uses exact cut endpoints.
   sort(unique(cuts))
 }
 
