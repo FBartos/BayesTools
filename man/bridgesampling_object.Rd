@@ -8,7 +8,11 @@ bridgesampling_object(logml = -Inf)
 }
 \arguments{
 \item{logml}{scalar natural-log marginal likelihood. Defaults to \code{-Inf},
-representing zero marginal likelihood.}
+representing intentional zero evidence (posterior model probability zero
+under model averaging). Use \code{NA} only when a marginal-likelihood
+computation failed and the ensemble \code{on_failure} policy should apply;
+do not store failed bridge-sampling attempts as \code{-Inf} unless zero
+evidence is scientifically intended.}
 }
 \value{
 A \code{BayesTools_marglik} object with the \code{"supplied_scalar"}

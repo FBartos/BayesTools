@@ -37,11 +37,16 @@ when no models are null)}
 \item{conditional}{whether prior and posterior model probabilities should
 be returned only for the conditional model. Defaults to \code{FALSE}}
 
-\item{on_failure}{policy for missing marginal likelihoods in models with
-positive prior probability. \code{"error"} aborts (the default),
+\item{on_failure}{policy for missing (\code{NA}) marginal likelihoods in
+models with positive prior probability. \code{"error"} aborts (the default),
 \code{"drop"} removes failed models from the prior model space and
 renormalizes, and \code{"zero"} explicitly assigns the failed models zero
-evidence. Non-default policies emit a warning and return audit metadata.}
+evidence. Non-default policies emit a warning and return audit metadata.
+Only \code{NA} is treated as a computation failure under this policy.
+A finite failure must be reported as \code{NA}; by contrast,
+\code{-Inf} is an intentional zero-evidence shortcut (for example via
+\code{\link{bridgesampling_object}()}) and quietly receives posterior
+model probability zero without consulting \code{on_failure}.}
 
 \item{model_list}{list of models, each of which contains marginal
 likelihood estimated with bridge sampling \code{marglik} and prior model

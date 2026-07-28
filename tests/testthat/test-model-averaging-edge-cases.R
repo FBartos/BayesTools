@@ -497,6 +497,15 @@ test_that("model averaging distinguishes failures from zero evidence", {
     is_null = c(TRUE, FALSE)
   )
   expect_equal(ignored$post_probs, c(1, 0))
+
+  # -Inf is an intentional zero-evidence shortcut, not an on_failure trigger.
+  zero_evidence <- compute_inference(
+    prior_weights = c(1, 1),
+    margliks = c(0, -Inf),
+    is_null = c(TRUE, FALSE)
+  )
+  expect_equal(zero_evidence$post_probs, c(1, 0))
+  expect_null(attr(zero_evidence, "marglik_failure"))
 })
 
 test_that("model averaging rejects malformed prior weights at each public entry point", {
