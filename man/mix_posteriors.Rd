@@ -64,6 +64,15 @@ parameters are not filled with an implicit spike at zero because the all-zero
 vector is off the simplex. Every model with positive prior or posterior
 probability must provide an explicit compatible simplex prior or point prior
 on the simplex.
+
+Mixture draws are aligned across parameters by restarting from one shared
+sampling seed and requiring identical posterior model probabilities for every
+requested parameter. That holds for unconditional averaging even when
+\code{is_null_list} differs by parameter. Conditional averaging
+(\code{conditional = TRUE}) with different null indicators per parameter
+produces different \code{post_probs} and therefore different mixture
+allocations; \code{mix_posteriors()} hard-errors in that case. Mix each
+conditional parameter in a separate call instead.
 }
 \seealso{
 \link{ensemble_inference} \link{BayesTools_ensemble_tables} \link{as_mixed_posteriors}

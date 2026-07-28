@@ -699,6 +699,31 @@ test_that("conditional mix_posteriors excludes null models from samples and prio
   )
 })
 
+test_that("conditional mix_posteriors hard-fails when post_probs differ across parameters", {
+
+  model_list <- list(
+    .mock_mixing_model(offset = 100, logml = log(1)),
+    .mock_mixing_model(offset = 200, logml = log(2)),
+    .mock_mixing_model(offset = 300, logml = log(1))
+  )
+
+  expect_error(
+    mix_posteriors(
+      model_list   = model_list,
+      parameters   = c("theta", "beta"),
+      is_null_list = list(
+        theta = c(TRUE, FALSE, FALSE),
+        beta  = c(FALSE, TRUE, FALSE)
+      ),
+      conditional  = TRUE,
+      seed         = 20260504,
+      n_samples    = 8
+    ),
+    "identical posterior model probabilities",
+    fixed = TRUE
+  )
+})
+
 test_that("mix_posteriors rejects implicit and scalar simplex nulls", {
 
   simplex_model <- .mock_simplex_mixing_model(

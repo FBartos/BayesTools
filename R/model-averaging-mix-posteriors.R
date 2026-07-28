@@ -11,6 +11,15 @@
 #' probability must provide an explicit compatible simplex prior or point prior
 #' on the simplex.
 #'
+#' Mixture draws are aligned across parameters by restarting from one shared
+#' sampling seed and requiring identical posterior model probabilities for every
+#' requested parameter. That holds for unconditional averaging even when
+#' \code{is_null_list} differs by parameter. Conditional averaging
+#' (\code{conditional = TRUE}) with different null indicators per parameter
+#' produces different \code{post_probs} and therefore different mixture
+#' allocations; \code{mix_posteriors()} hard-errors in that case. Mix each
+#' conditional parameter in a separate call instead.
+#'
 #' @param seed integer specifying seed for sampling posteriors for
 #' model averaging. Defaults to \code{NULL}.
 #' @param n_samples number of samples to be drawn for the model-averaged
@@ -67,6 +76,8 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
   }else{
     common_sample_seed <- sample(.Machine$integer.max, 1)
   }
+
+  .mix_posteriors_assert_aligned_post_probs(inference, parameters)
 
   out <- list()
 
@@ -174,6 +185,30 @@ mix_posteriors <- function(model_list, parameters, is_null_list,
 
   class(out) <- c(class(out), "mixed_posteriors")
   return(out)
+}
+
+.mix_posteriors_assert_aligned_post_probs <- function(inference, parameters){
+
+  if(length(parameters) <= 1L){
+    return(invisible(TRUE))
+  }
+
+  reference <- as.numeric(inference[[parameters[[1L]]]][["post_probs"]])
+  for(parameter in parameters[-1L]){
+    other <- as.numeric(inference[[parameter]][["post_probs"]])
+    if(!isTRUE(all.equal(reference, other, tolerance = 0, check.attributes = FALSE))){
+      stop(
+        "mix_posteriors() requires identical posterior model probabilities ",
+        "across parameters so mixture draws stay aligned. Differing ",
+        "post_probs usually arise from conditional = TRUE with different ",
+        "null indicators per parameter. Mix each conditional parameter ",
+        "separately, or use unconditional averaging.",
+        call. = FALSE
+      )
+    }
+  }
+
+  invisible(TRUE)
 }
 
 .mix_posteriors_is_dirichlet_simplex <- function(prior){
