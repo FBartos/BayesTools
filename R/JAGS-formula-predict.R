@@ -16,10 +16,10 @@
 #' must provide a
 #' \code{parameter_source()} \code{values} function for reconstructing row-wise
 #' source values from the posterior samples and supplied prediction data.
-#' Literal \code{expression()} terms cannot be reconstructed automatically.
-#' Replaying a fitted formula that contains them produces an error rather than
-#' silently omitting their contribution. An explicit expression-free formula
-#' can still be supplied to evaluate a selected subset of the fitted formula.
+#' Literal \code{expression()} terms are evaluated against the prediction data
+#' using JAGS-style row indexing through \code{i}. Replaying a fitted formula
+#' restores the stored \code{transformed_terms}. Supply an explicit
+#' expression-free formula to evaluate a selected subset without those offsets.
 #' Inline transformations, offsets, dot expansion, and arbitrary calls are not
 #' supported. Create transformed predictors as explicit columns in \code{data}.
 #'
@@ -106,16 +106,12 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
 
   if(!inherits(formula, "formula"))
     stop("'formula' must be a formula", call. = FALSE)
-  formula_expressions <- .extract_expressions(formula)
-  fitted_expressions <- fitted_design$transformed_terms
-  if(length(formula_expressions) > 0L ||
-     (replay_fitted_formula && length(fitted_expressions) > 0L)){
-    stop(
-      "JAGS_evaluate_formula() cannot evaluate literal expression() terms. ",
-      "Supply an explicit expression-free formula to evaluate a selected subset.",
-      call. = FALSE
-    )
-  }
+  expressions_to_eval <- .bt_resolve_formula_expression_terms(
+    formula = formula,
+    fitted_design = fitted_design,
+    replay_fitted_formula = replay_fitted_formula
+  )
+  formula <- .remove_expressions(formula)
   if(!is.data.frame(data))
     stop("'data' must be a data.frame")
   if(!is.null(fitted_rows)){
@@ -164,7 +160,8 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
       new_levels = new_levels,
       fitted_rows = fitted_rows,
       data_supplied = data_supplied,
-      replay_fitted_formula = replay_fitted_formula
+      replay_fitted_formula = replay_fitted_formula,
+      expressions_to_eval = expressions_to_eval
     ))
   }
   if(is.null(formula_target) &&
@@ -353,6 +350,18 @@ JAGS_evaluate_formula <- function(fit, formula = NULL, parameter,
 
     output <- output + temp_multiply_by * (temp_data %*% t(temp_posterior))
 
+  }
+
+  if(length(expressions_to_eval) > 0L){
+    output <- output + .bt_formula_expression_contribution_matrix(
+      expressions = expressions_to_eval,
+      data = data,
+      n_rows = nrow(data),
+      n_draws = nrow(posterior),
+      context = paste0(
+        "JAGS_evaluate_formula() for parameter '", parameter, "'"
+      )
+    )
   }
 
   return(output)

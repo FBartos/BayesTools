@@ -431,6 +431,11 @@
       "original formula source data differ for parameter '", parameter, "'"
     ))
   }
+  if(!identical(fitted$transformed_terms, rebuilt$transformed_terms)){
+    mismatches <- c(mismatches, paste0(
+      "literal expression() terms differ for parameter '", parameter, "'"
+    ))
+  }
   if(!identical(names(fitted$prior_list), names(rebuilt$prior_list))){
     mismatches <- c(mismatches, paste0("formula prior names differ for parameter '", parameter, "'"))
   }else{

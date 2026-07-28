@@ -240,6 +240,24 @@
     )
   })
 
+  expression_values <- NULL
+  expressions <- design$transformed_terms
+  if(length(expressions) > 0L){
+    expression_data <- if(is.data.frame(design$source_data)){
+      design$source_data
+    }else{
+      NULL
+    }
+    expression_values <- .bt_formula_expression_row_values(
+      expressions = expressions,
+      data = expression_data,
+      n_rows = n_rows,
+      context = paste0(
+        "Bridge reconstruction for parameter '", parameter, "'"
+      )
+    )
+  }
+
   list(
     value = function(samples, prior_list_parameters){
       output <- rep(0, n_rows)
@@ -254,6 +272,9 @@
           samples = samples,
           prior_list_parameters = prior_list_parameters
         )
+      }
+      if(!is.null(expression_values)){
+        output <- output + expression_values
       }
       as.vector(output)
     }

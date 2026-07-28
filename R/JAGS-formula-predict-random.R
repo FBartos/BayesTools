@@ -48,7 +48,8 @@
                                                           new_levels = NULL,
                                                           fitted_rows = NULL,
                                                           data_supplied = FALSE,
-                                                          replay_fitted_formula = FALSE){
+                                                          replay_fitted_formula = FALSE,
+                                                          expressions_to_eval = list()){
 
   fitted_design <- .bt_JAGS_evaluate_formula_design(fit, parameter)
   if(is.null(fitted_design)){
@@ -87,7 +88,7 @@
     replay_fitted_formula = replay_fitted_formula
   )
 
-  fixed_formula <- .remove_random_effects(formula)
+  fixed_formula <- .remove_expressions(.remove_random_effects(formula))
   output <- JAGS_evaluate_formula(
     fit = fit,
     formula = fixed_formula,
@@ -117,6 +118,17 @@
       new_levels = new_levels,
       fitted_rows = fitted_rows,
       data_supplied = data_supplied
+    )
+  }
+  if(length(expressions_to_eval) > 0L){
+    output <- output + .bt_formula_expression_contribution_matrix(
+      expressions = expressions_to_eval,
+      data = data,
+      n_rows = nrow(data),
+      n_draws = nrow(posterior),
+      context = paste0(
+        "JAGS_evaluate_formula() for parameter '", parameter, "'"
+      )
     )
   }
 

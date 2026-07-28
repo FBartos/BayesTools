@@ -290,6 +290,24 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
     }
   }
 
+  expressions <- design$transformed_terms
+  if(length(expressions) > 0L){
+    expression_data <- if(is.data.frame(design$source_data)){
+      design$source_data
+    }else{
+      NULL
+    }
+    output <- output + .bt_formula_expression_row_values(
+      expressions = expressions,
+      data = expression_data,
+      n_rows = nrow(design$model_matrix),
+      context = paste0(
+        "Bridge/marginal-likelihood reconstruction for parameter '",
+        parameter, "'"
+      )
+    )
+  }
+
   as.vector(output)
 }
 

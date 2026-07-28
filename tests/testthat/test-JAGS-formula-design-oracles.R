@@ -1574,7 +1574,7 @@ test_that("formula expression terms are parsed structurally", {
   )
 })
 
-test_that("JAGS_evaluate_formula does not silently omit literal expressions", {
+test_that("JAGS_evaluate_formula includes literal expression contributions", {
   formula_result <- JAGS_formula(
     ~ x + expression(z[i]),
     "mu",
@@ -1591,19 +1591,19 @@ test_that("JAGS_evaluate_formula does not silently omit literal expressions", {
   ))
   attr(posterior, "formula_design") <- list(mu = formula_result$formula_design)
 
-  expect_error(
-    JAGS_evaluate_formula(posterior, formula = NULL, parameter = "mu"),
-    "cannot evaluate literal expression\\(\\) terms"
+  expect_equal(
+    unname(drop(JAGS_evaluate_formula(posterior, formula = NULL, parameter = "mu"))),
+    c(1 + 2 * 1 + 10, 1 + 2 * 2 + 20)
   )
-  expect_error(
-    JAGS_evaluate_formula(
+  expect_equal(
+    unname(drop(JAGS_evaluate_formula(
       posterior,
       ~ x + expression(z[i]),
       "mu",
       data.frame(x = 3, z = 30),
       formula_result$prior_list
-    ),
-    "cannot evaluate literal expression\\(\\) terms"
+    ))),
+    1 + 2 * 3 + 30
   )
   expect_equal(
     unname(JAGS_evaluate_formula(
@@ -1614,6 +1614,59 @@ test_that("JAGS_evaluate_formula does not silently omit literal expressions", {
       formula_result$prior_list
     )),
     matrix(7, nrow = 1)
+  )
+})
+
+test_that("formula design reconstruction includes expression offsets for marglik", {
+  formula_result <- JAGS_formula(
+    ~ x + expression(z[i]),
+    "mu",
+    data.frame(x = c(1, 2), z = c(10, 20)),
+    list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1))
+    )
+  )
+  samples <- list(
+    mu_intercept = 1,
+    mu_x = 2
+  )
+  reconstructed <- BayesTools:::.bt_JAGS_marglik_parameters_formula_design(
+    samples = samples,
+    design = formula_result$formula_design,
+    formula_prior_list = formula_result$prior_list,
+    prior_list_parameters = list(),
+    log_intercept = FALSE
+  )
+  expect_equal(unname(reconstructed), c(1 + 2 * 1 + 10, 1 + 2 * 2 + 20))
+
+  bridge_plan <- BayesTools:::.bt_JAGS_bridge_compile_formula_design_plan(
+    design = formula_result$formula_design,
+    formula_prior_list = formula_result$prior_list,
+    log_intercept = FALSE
+  )
+  expect_equal(
+    unname(bridge_plan$value(samples = samples, prior_list_parameters = list())),
+    c(1 + 2 * 1 + 10, 1 + 2 * 2 + 20)
+  )
+})
+
+test_that("formula expression helpers reject non-finite or wrong-length results", {
+  expect_error(
+    suppressWarnings(BayesTools:::.bt_formula_expression_row_values(
+      expressions = list("log(-1)"),
+      data = data.frame(x = 1),
+      n_rows = 1L
+    )),
+    "non-finite"
+  )
+  expect_error(
+    BayesTools:::.bt_formula_expression_row_values(
+      expressions = list("c(1, 2)"),
+      data = data.frame(x = 1),
+      n_rows = 1L
+    ),
+    "length 1 or 1"
   )
 })
 

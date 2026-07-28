@@ -133,6 +133,113 @@
 
   list()
 }
+.bt_formula_expression_row_values <- function(expressions, data, n_rows,
+                                              context = "Formula expression"){
+
+  if(length(expressions) == 0L){
+    return(rep.int(0, n_rows))
+  }
+  check_int(n_rows, "n_rows", lower = 0, allow_NA = FALSE)
+  if(n_rows == 0L){
+    return(numeric())
+  }
+  if(is.null(data)){
+    stop(context, " evaluation requires source data.", call. = FALSE)
+  }
+  env_data <- if(is.data.frame(data)){
+    as.list(data)
+  }else if(is.list(data)){
+    data
+  }else{
+    stop(context, " source data must be a data.frame or named list.", call. = FALSE)
+  }
+  if("i" %in% names(env_data)){
+    stop(
+      context,
+      " source data cannot contain a column named 'i' because it is reserved ",
+      "for JAGS-style row indexing inside expression() terms.",
+      call. = FALSE
+    )
+  }
+  env_data[["i"]] <- seq_len(n_rows)
+
+  total <- rep.int(0, n_rows)
+  for(expression_body in expressions){
+    expression_label <- if(is.character(expression_body)){
+      paste(expression_body, collapse = " ")
+    }else{
+      paste(deparse(expression_body), collapse = " ")
+    }
+    expression_label <- .clean_from_expression(
+      paste0("expression(", expression_label, ")")
+    )
+    value <- tryCatch(
+      eval(
+        parse(text = expression_label),
+        envir = list2env(env_data, parent = baseenv())
+      ),
+      error = function(e) e
+    )
+    if(inherits(value, "error")){
+      stop(
+        context, " '", expression_label, "' could not be evaluated: ",
+        conditionMessage(value),
+        call. = FALSE
+      )
+    }
+    value <- as.numeric(value)
+    if(length(value) == 1L){
+      value <- rep.int(value, n_rows)
+    }
+    if(length(value) != n_rows){
+      stop(
+        context, " '", expression_label,
+        "' must evaluate to length 1 or ", n_rows, ".",
+        call. = FALSE
+      )
+    }
+    if(any(!is.finite(value))){
+      stop(
+        context, " '", expression_label,
+        "' produced non-finite values.",
+        call. = FALSE
+      )
+    }
+    total <- total + value
+  }
+
+  total
+}
+
+.bt_formula_expression_contribution_matrix <- function(expressions, data,
+                                                       n_rows, n_draws,
+                                                       context = "Formula expression"){
+
+  values <- .bt_formula_expression_row_values(
+    expressions = expressions,
+    data = data,
+    n_rows = n_rows,
+    context = context
+  )
+  matrix(values, nrow = n_rows, ncol = n_draws)
+}
+
+.bt_resolve_formula_expression_terms <- function(formula, fitted_design,
+                                                 replay_fitted_formula){
+
+  if(isTRUE(replay_fitted_formula)){
+    terms <- fitted_design$transformed_terms
+    if(is.null(terms)){
+      return(list())
+    }
+    return(terms)
+  }
+  if(is.null(formula)){
+    return(list())
+  }
+  .extract_expressions(formula)
+}
+
 .bt_remove_expression_terms <- function(x){
   if(.bt_is_expression_call(x)){
     return(NULL)
