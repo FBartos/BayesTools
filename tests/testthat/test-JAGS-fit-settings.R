@@ -159,6 +159,57 @@ test_that("JAGS_extend preserves the last valid fit after a backend error", {
   expect_identical(result, fit)
 })
 
+test_that("JAGS_fit autofit preserves the last valid fit after a backend error", {
+
+  skip_if_not_installed("runjags")
+  initial_fit <- structure(
+    list(mcmc = list(matrix(0, nrow = 2, ncol = 1, dimnames = list(NULL, "mu")))),
+    class = "runjags"
+  )
+  testthat::local_mocked_bindings(
+    run.jags = function(...) initial_fit,
+    extend.jags = function(...) stop("backend exploded"),
+    add.summary = function(x, ...) x,
+    .package = "runjags"
+  )
+  testthat::local_mocked_bindings(
+    JAGS_check_convergence = function(...) FALSE,
+    .JAGS_require_packages = function(...) invisible(NULL),
+    .JAGS_load_modules = function(...) invisible(NULL),
+    .bt_attach_parameter_registry = function(fit, ...) fit,
+    .package = "BayesTools"
+  )
+
+  expect_warning(
+    result <- JAGS_fit(
+      model_syntax = "model{ mu ~ dnorm(0, 1) }",
+      prior_list = list(mu = prior("normal", list(0, 1))),
+      chains = 1,
+      adapt = 50,
+      burnin = 50,
+      sample = 100,
+      autofit = TRUE,
+      autofit_control = list(
+        max_Rhat = NULL,
+        min_ESS = NULL,
+        max_error = NULL,
+        max_SD_error = NULL,
+        max_time = list(time = 60, unit = "secs"),
+        sample_extend = 1,
+        restarts = 1,
+        max_extend = 1,
+        check_indicators = FALSE
+      ),
+      silent = TRUE,
+      seed = 1
+    ),
+    "returning the last valid fit.*backend exploded"
+  )
+  expect_s3_class(result, "BayesTools_fit")
+  expect_false(inherits(result, "error"))
+  expect_identical(result$mcmc, initial_fit$mcmc)
+})
+
 test_that("JAGS_extend resets its time budget for every call", {
 
   skip_if_not_installed("runjags")

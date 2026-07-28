@@ -327,6 +327,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
       allow_not_assessable = autofit_control[["allow_not_assessable"]]
     )
     itteration <- 1
+    last_valid_fit <- fit
 
     if(!converged && isTRUE(dots[["is_JASP"]]))
       .JASP_progress_bar_start(n = if (!is.null(autofit_control[["max_extend"]])) autofit_control[["max_extend"]] else 10, label = paste0(if(!is.null(dots[["is_JASP_prefix"]])) paste0(dots[["is_JASP_prefix"]], ": "), "Extending the model (autofit)"))
@@ -348,15 +349,27 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
         break
       }
 
-      fit <- tryCatch(runjags::extend.jags(fit, sample = autofit_control[["sample_extend"]]), error = function(e)e)
+      extension <- tryCatch(
+        runjags::extend.jags(fit, sample = autofit_control[["sample_extend"]]),
+        error = function(e) e
+      )
 
-      if(inherits(fit, "error")){
-        if(!silent)
-          warning(paste0("The model estimation failed with the following error: ", fit$message), immediate. = TRUE)
+      if(inherits(extension, "error")){
+        warning(
+          paste0(
+            "The model extension failed; returning the last valid fit. ",
+            "Backend error: ",
+            conditionMessage(extension)
+          ),
+          call. = FALSE,
+          immediate. = TRUE
+        )
+        fit <- last_valid_fit
         break
       }
 
-      fit <- runjags::add.summary(fit)
+      fit <- runjags::add.summary(extension)
+      last_valid_fit <- fit
 
       converged <- JAGS_check_convergence(
         fit = fit,
