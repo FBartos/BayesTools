@@ -20,11 +20,13 @@ loop.}
 \item{values}{optional function for R-side reconstruction of row-shaped
 sources. When supplied with \code{shape = "row"}, it must accept named
 arguments \code{parameters}, \code{data}, and \code{n_rows}, or include \code{...}, and return
-a numeric vector of length \code{n_rows}. This is used by prediction and bridge-sampling
-reconstruction when the row-shaped source is not present as explicit
-posterior columns. For formula bridge reconstruction, \code{data} contains raw
-row-aligned formula/model data rather than standardized design matrices.
-Scalar sources do not accept \code{values}.}
+a numeric vector of length \code{n_rows}. Prediction and bridge-sampling
+reconstruction use posterior columns named \code{name[1]}, ..., \code{name[N]} when
+present; supply \code{values} when those columns are absent or when prediction
+needs source values for arbitrary new rows (missing \code{values} then errors).
+For formula bridge reconstruction, \code{data} contains raw row-aligned
+formula/model data rather than standardized design matrices. Scalar sources
+do not accept \code{values}.}
 
 \item{source}{JAGS node name or \code{parameter_source()} object. When \code{source}
 is a \code{parameter_source()} object, \code{shape} must not be supplied separately;
@@ -43,4 +45,11 @@ model component may reference without creating or owning a prior for it.
 SD source. It is intended for variance allocations that should use an
 already-defined JAGS node, such as scalar \code{tau} or row-shaped \code{tau}, instead
 of creating a prior-owned total SD parameter.
+}
+\details{
+Access control for formula bridge/prediction callbacks only guards
+named lookup of forbidden formula parameters on the stamped \code{parameters}
+list (\code{$} / \code{[[} / \code{[}). It is not a sandbox: callbacks may still close over
+external state, and a raw node name without \code{values} remains valid whenever
+the corresponding posterior columns (or non-new-row fitted mapping) suffice.
 }

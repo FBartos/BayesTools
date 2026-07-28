@@ -12,11 +12,19 @@
 #' @param values optional function for R-side reconstruction of row-shaped
 #'   sources. When supplied with `shape = "row"`, it must accept named
 #'   arguments `parameters`, `data`, and `n_rows`, or include `...`, and return
-#'   a numeric vector of length `n_rows`. This is used by prediction and bridge-sampling
-#'   reconstruction when the row-shaped source is not present as explicit
-#'   posterior columns. For formula bridge reconstruction, `data` contains raw
-#'   row-aligned formula/model data rather than standardized design matrices.
-#'   Scalar sources do not accept `values`.
+#'   a numeric vector of length `n_rows`. Prediction and bridge-sampling
+#'   reconstruction use posterior columns named `name[1]`, ..., `name[N]` when
+#'   present; supply `values` when those columns are absent or when prediction
+#'   needs source values for arbitrary new rows (missing `values` then errors).
+#'   For formula bridge reconstruction, `data` contains raw row-aligned
+#'   formula/model data rather than standardized design matrices. Scalar sources
+#'   do not accept `values`.
+#'
+#' @details Access control for formula bridge/prediction callbacks only guards
+#' named lookup of forbidden formula parameters on the stamped `parameters`
+#' list (`$` / `[[` / `[`). It is not a sandbox: callbacks may still close over
+#' external state, and a raw node name without `values` remains valid whenever
+#' the corresponding posterior columns (or non-new-row fitted mapping) suffice.
 #'
 #' @return A list-like `parameter_source` object.
 #' @export
