@@ -20,7 +20,9 @@
 #' \code{posterior_atoms} metadata, \code{posterior_atom_attribute()}, or a
 #' posterior-density attribute that explicitly declares point masses. An
 #' ordinary Savage-Dickey density ratio is rejected when atom status is unknown
-#' or when any positive atom is located exactly at the null.
+#' or when any positive atom is located exactly at the null. Declared atoms at
+#' other locations are removed from the continuous posterior ordinate and the
+#' resulting density is scaled by the remaining continuous mass.
 #'
 #' @details Marginal posterior vectors may carry a \code{posterior_ordinate}
 #' attribute with exact \code{value} and \code{ordinate} entries. When
@@ -182,6 +184,12 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
       call. = FALSE
     )
   }
+  continuous_posterior <- .Savage_Dickey_BF.continuous_posterior(
+    posterior = posterior,
+    posterior_atoms = posterior_atoms
+  )
+  continuous_samples <- continuous_posterior$samples
+  continuous_mass <- continuous_posterior$continuous_mass
 
   prior_range <- range(c(
     if(!is.null(prior$density)) prior$density$x else NULL,
@@ -190,7 +198,11 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   if(null_hypothesis < prior_range[1] || null_hypothesis > prior_range[2]){
     warnings <- c(warnings, "Prior density does not span both sides of the null hypothesis. Check whether the prior distribution contains the null hypothesis in the first place. The Savage-Dickey density ratio is likely to be invalid.")
   }
-  posterior_range <- range(posterior)
+  posterior_range <- if(length(continuous_samples) > 0L){
+    range(continuous_samples)
+  }else{
+    range(posterior)
+  }
   posterior_support_bounds <- .posterior_support_bounds(
     posterior,
     interval_only = TRUE
@@ -228,12 +240,19 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   }
 
   kde_height <- function(support = NULL){
+    if(continuous_mass <= 0 || length(continuous_samples) == 0L){
+      height <- 0
+      attr(height, "continuous_mass") <- continuous_mass
+      return(height)
+    }
     height <- .Savage_Dickey_BF.kd(
-      samples         = posterior,
+      samples         = continuous_samples,
       null_hypothesis = null_hypothesis,
       support         = support,
       warn_extrapolation = !silent
     )
+    height <- height * continuous_mass
+    attr(height, "continuous_mass") <- continuous_mass
     if(!is.null(attr(height, "kde_extrapolation", exact = TRUE))){
       kde_extrapolation_warning_emitted <<- !silent
     }
@@ -255,7 +274,14 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
   }
 
   if(normal_approximation){
-    posterior_height <- .Savage_Dickey_BF.normal(posterior, null_hypothesis)
+    if(continuous_mass <= 0 || length(continuous_samples) == 0L){
+      posterior_height <- 0
+    }else{
+      posterior_height <- .Savage_Dickey_BF.normal(
+        continuous_samples,
+        null_hypothesis
+      ) * continuous_mass
+    }
   }else if(!is.null(stored_posterior_ordinate)){
     support_exclusion <- .Savage_Dickey_BF.support_exclusion(
       posterior,
@@ -354,6 +380,47 @@ Savage_Dickey_BF <- function(posterior, null_hypothesis = 0, normal_approximatio
 
   return(BF)
 }
+
+.Savage_Dickey_BF.continuous_posterior <- function(posterior, posterior_atoms){
+
+  sample_values <- as.numeric(posterior)
+  finite <- is.finite(sample_values)
+  sample_values <- sample_values[finite]
+  atom_mass <- sum(posterior_atoms$mass)
+  if(!is.finite(atom_mass) || atom_mass < 0 || atom_mass > 1){
+    stop("Posterior atom masses must form a finite probability in [0, 1].",
+         call. = FALSE)
+  }
+  continuous_mass <- 1 - atom_mass
+  atom_locations <- posterior_atoms$locations[, 1L]
+  keep <- rep(TRUE, length(sample_values))
+  if(length(atom_locations) > 0L && atom_mass > 0){
+    for(location in atom_locations){
+      keep <- keep & sample_values != location
+    }
+  }
+  continuous_samples <- sample_values[keep]
+  # Preserve support and density metadata used by KDE / boundary reflection.
+  for(attribute_name in c(
+    "posterior_support",
+    "posterior_density",
+    "posterior_ordinate",
+    "prior_density",
+    "prior_list"
+  )){
+    attribute_value <- attr(posterior, attribute_name, exact = TRUE)
+    if(!is.null(attribute_value)){
+      attr(continuous_samples, attribute_name) <- attribute_value
+    }
+  }
+
+  list(
+    samples = continuous_samples,
+    continuous_mass = continuous_mass,
+    atom_mass = atom_mass
+  )
+}
+
 .Savage_Dickey_BF.normal <- function(samples, null_hypothesis){
 
   height <- stats::dnorm(null_hypothesis, mean = mean(samples), sd = stats::sd(samples))

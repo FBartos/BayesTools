@@ -2418,10 +2418,65 @@ test_that("Savage_Dickey_BF uses declarations rather than posterior-null cluster
     Savage_Dickey_BF(
       posterior_with_stored_point,
       null_hypothesis = 0,
-      density_method  = "precomputed"
+      density_method = "precomputed"
     ),
     "declared point mass"
   )
+})
+
+test_that("Savage_Dickey_BF excludes off-null atoms from the continuous ordinate", {
+
+  continuous_prior <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(mean = 0, sd = 1))),
+    weights    = c(theta = 1),
+    n_grid     = 1024
+  )
+  continuous_draws <- stats::rnorm(800, mean = 0, sd = 1)
+  spike_draws <- rep(2, 200)
+  posterior <- .marginal_posterior_with_prior_density_for_test(
+    c(continuous_draws, spike_draws),
+    continuous_prior
+  )
+  attr(posterior, "posterior_atoms") <- posterior_atom_attribute(
+    list(location = 2, mass = 0.2)
+  )
+
+  expect_error(
+    Savage_Dickey_BF(
+      posterior,
+      null_hypothesis = 2,
+      normal_approximation = TRUE,
+      silent = TRUE
+    ),
+    "declared point mass"
+  )
+
+  with_atoms <- Savage_Dickey_BF(
+    posterior,
+    null_hypothesis = 0,
+    normal_approximation = TRUE,
+    silent = TRUE
+  )
+  continuous_only <- .marginal_posterior_with_prior_density_for_test(
+    continuous_draws,
+    continuous_prior
+  )
+  expected <- Savage_Dickey_BF(
+    continuous_only,
+    null_hypothesis = 0,
+    normal_approximation = TRUE,
+    silent = TRUE
+  )
+  # Continuous-only BF uses density of continuous draws; mixed BF scales that
+  # continuous ordinate by continuous mass 0.8, so BF is larger by 1/0.8.
+  expect_equal(as.numeric(with_atoms), as.numeric(expected) / 0.8, tolerance = 1e-10)
+
+  continuous_info <- BayesTools:::.Savage_Dickey_BF.continuous_posterior(
+    posterior,
+    attr(posterior, "posterior_atoms")
+  )
+  expect_equal(continuous_info$continuous_mass, 0.8)
+  expect_false(any(continuous_info$samples == 2))
 })
 
 test_that("Savage_Dickey_BF diagnoses zero prior density at point null", {
