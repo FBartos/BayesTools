@@ -17,7 +17,7 @@ vignette: >
 ```{r setup, include = FALSE}
 source("random-effects-vignette-cache.R")
 required_packages <- c("lme4", "rstanarm", "runjags", "rjags")
-random_effects_cache_file <- file.path("..", "models", "RandomEffects.RDS")
+random_effects_cache_file <- "RandomEffects.RDS"
 random_effects_cache_names <- random_effects_vignette_cache_names()
 missing_packages <- required_packages[
   !vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)
@@ -26,6 +26,18 @@ random_effects_cache <- validate_random_effects_vignette_cache(
   random_effects_cache_file,
   load = TRUE
 )
+if(!file.exists(random_effects_cache_file)){
+  stop(
+    "Missing required vignette cache: vignettes/RandomEffects.RDS.",
+    call. = FALSE
+  )
+}
+if(length(missing_packages) == 0L && !isTRUE(random_effects_cache$valid)){
+  stop(
+    format_random_effects_vignette_cache_error(random_effects_cache),
+    call. = FALSE
+  )
+}
 random_effects_models <- random_effects_cache$cache
 can_evaluate <- length(missing_packages) == 0L && isTRUE(random_effects_cache$valid)
 options(width = 140)
@@ -51,11 +63,6 @@ pre code {
 if(length(missing_packages) > 0L){
   cat("The random-effects vignette requires optional packages: ",
       paste(missing_packages, collapse = ", "), ".\n", sep = "")
-}
-if(!file.exists(random_effects_cache_file)){
-  cat("The random-effects vignette requires the precomputed model cache at ../models/RandomEffects.RDS.\n")
-}else if(!isTRUE(random_effects_cache$valid)){
-  cat(format_random_effects_vignette_cache_error(random_effects_cache), "\n", sep = "")
 }
 ```
 

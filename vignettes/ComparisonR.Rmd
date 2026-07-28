@@ -14,18 +14,34 @@ vignette: >
 ---
 
 
-```{r setup, include = FALSE}
-is_check <- ("CheckExEnv" %in% search()) ||
-             any(c("_R_CHECK_TIMINGS_", "_R_CHECK_LICENSE_") %in% names(Sys.getenv()))
+```{r setup, include = FALSE, purl = FALSE}
+source("precomputed-vignette-cache.R")
+comparison_cache <- load_precomputed_vignette_cache(
+  "ComparisonR",
+  cache_file = "ComparisonR.RDS",
+  project_root = ".."
+)
+invisible(list2env(
+  comparison_cache,
+  envir = knitr::knit_global()
+))
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment  = "#>",
-  eval     = !is_check,
+  eval     = TRUE,
   dev      = "png"
 )
 if(.Platform$OS.type == "windows"){
   knitr::opts_chunk$set(dev.args = list(type = "cairo"))
 }
+```
+
+```{r begin-comparison-cache-regeneration, include = FALSE, eval = FALSE, purl = TRUE}
+# From the project root, extract this vignette with knitr::purl(), then
+# evaluate the extracted script from the vignettes directory.
+pkgload::load_all("..", quiet = TRUE)
+source("precomputed-vignette-cache.R")
+comparison_cache_file <- "ComparisonR.RDS"
 ```
 
 BayesTools R package allows package developers and users to conveniently specify a wide variety of models. In this vignette, I show how to reproduce some commonly used models and compare the results to output from other, more specialized, R packages.
@@ -124,7 +140,7 @@ ttest_data <- list(
 
 Then, I pass the arguments into the `JAGS_fit()` function that wraps around the runjags R package [@runjags], specifying the prior distributions, preparing the starting values, etc...
 
-```{r} 
+```{r fit-comparison-models, eval = FALSE, purl = TRUE} 
 ttest_model_H0 <- JAGS_fit(
   model_syntax = ttest_model,
   data         = ttest_data,
@@ -146,7 +162,7 @@ I can print the estimated model summary with `runjags_estimates_table()` functio
 runjags_estimates_table(ttest_model_Hp)
 ```
 
-To compute the Bayes factor in favor of $\mathcal{H}_+$ over $\mathcal{H}_0$, I need to first obtain the marginal likelihoods. The only additional step is specifying an R function that returns the log likelihood of the model. Here, instead of writing out the loops, I take advantage of the fact that summation on the log scale equals to multiplication on the original scale.
+To compute the Bayes factor in favor of $\mathcal{H}_0$ over $\mathcal{H}_+$, I need to first obtain the marginal likelihoods. The only additional step is specifying an R function that returns the log likelihood of the model. Here, instead of writing out the loops, I take advantage of the fact that summation on the log scale equals to multiplication on the original scale.
 
 ```{r}
 log_posterior <- function(parameters, data){
@@ -168,7 +184,7 @@ log_posterior <- function(parameters, data){
 
 The function requires two arguments, `parameters` and `data`, both of which are forwarded to it via the `JAGS_bridgesampling` function that wraps around the bridge sampling R package [@bridgesampling], specifying the marginal likelihood for prior distributions and taking care of all required transformations etc...
 
-```{r}
+```{r bridge-comparison-models, eval = FALSE, purl = TRUE}
 marglik_model_H0 <- JAGS_bridgesampling(
   fit           = ttest_model_H0,
   log_posterior = log_posterior,
@@ -184,10 +200,12 @@ marglik_model_Hp <- JAGS_bridgesampling(
 )
 ```
 
-To obtain the resulting Bayes factor in favor of the null hypothesis, I can use the `bf()` function from the bridgesampling R package
+`JAGS_bridgesampling()` returns each marginal likelihood on the natural-log scale. The log Bayes factor in favor of the null hypothesis is therefore the difference between the two log marginal likelihoods; exponentiating returns the Bayes factor on its ordinary ratio scale.
 
 ```{r}
-bridgesampling::bf(marglik_model_H0, marglik_model_Hp)
+log_BF_0plus <- marglik_model_H0$logml - marglik_model_Hp$logml
+BF_0plus <- exp(log_BF_0plus)
+BF_0plus
 ```
 
 or specify a BayesTools model ensemble object that can be further inspected by a variety of functions.
@@ -212,6 +230,19 @@ BayesFactor_ttest
 
 This is of course a trivial example, however, it showcases flexibility of the BayesTools package. The prior distribution on the standardized effect size parameter $\delta$ can be changed to any of the multitude of supported distributions without effecting rest of the code, allowing users and package developers to specify more customized tests.
 
+```{r save-comparison-cache, include = FALSE, eval = FALSE, purl = TRUE}
+write_precomputed_vignette_cache(
+  objects = list(
+    ttest_model_H0 = ttest_model_H0,
+    ttest_model_Hp = ttest_model_Hp,
+    marglik_model_H0 = marglik_model_H0,
+    marglik_model_Hp = marglik_model_Hp
+  ),
+  vignette = "ComparisonR",
+  cache_file = comparison_cache_file,
+  project_root = ".."
+)
+```
 
 
 ## Footnotes

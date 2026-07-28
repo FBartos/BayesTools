@@ -47,6 +47,7 @@ bayestools_test_profile_contexts <- list(
     "priors-plot-data",
     "priors-print",
     "priors-tools",
+    "precomputed-vignette-cache",
     "random-parameterization",
     "random-effects-correlation-draws",
     "random-effects-independent-scalability",

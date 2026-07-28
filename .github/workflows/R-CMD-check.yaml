@@ -157,16 +157,22 @@ jobs:
           devtools::install()
         shell: Rscript {0}
 
-      - name: Render RandomEffects vignette
-        if: runner.os != 'Windows'
+      - name: Render package vignettes
         run: |
-          source(file.path("vignettes", "random-effects-vignette-cache.R"))
-          stop_if_invalid_random_effects_vignette_cache()
-          rmarkdown::render(
-            "vignettes/RandomEffects.Rmd",
-            output_dir = tempdir(),
-            envir = new.env(parent = globalenv()),
-            quiet = TRUE)
+          vignette_files <- sort(list.files(
+            "vignettes",
+            pattern = "\\.Rmd$",
+            full.names = TRUE
+          ))
+          for (vignette_file in vignette_files) {
+            message("Rendering ", basename(vignette_file))
+            rmarkdown::render(
+              vignette_file,
+              output_dir = tempdir(),
+              envir = new.env(parent = globalenv()),
+              quiet = TRUE
+            )
+          }
         shell: Rscript {0}
 
       - name: Check
@@ -180,8 +186,7 @@ jobs:
         run: |
           options(crayon.enabled = TRUE)
           rcmdcheck::rcmdcheck(
-            args        = c("--no-manual", "--as-cran", "--ignore-vignettes"),
-            build_args  = c("--no-build-vignettes"),
+            args        = c("--no-manual", "--as-cran"),
             error_on    = "warning",
             check_dir   = "check")
         shell: Rscript {0}
@@ -199,8 +204,7 @@ jobs:
         run: |
           options(crayon.enabled = TRUE)
           rcmdcheck::rcmdcheck(
-            args        = c("--no-manual", "--as-cran", "--ignore-vignettes"),
-            build_args  = c("--no-build-vignettes"),
+            args        = c("--no-manual", "--as-cran"),
             error_on    = "warning",
             check_dir   = "check")
         shell: Rscript {0}

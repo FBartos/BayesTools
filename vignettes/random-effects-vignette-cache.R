@@ -173,6 +173,19 @@ random_effects_vignette_cache_names <- function(){
   .random_effects_vignette_md5_raw(charToRaw(enc2utf8(text)))
 }
 
+.random_effects_vignette_description_md5 <- function(path){
+  description <- read.dcf(path, all = TRUE)
+  description[c("Author", "Built", "Packaged")] <- NULL
+  description <- description[order(names(description), method = "radix")]
+  values <- vapply(description, function(value){
+    gsub("[[:space:]]+", " ", trimws(value))
+  }, character(1))
+  text <- paste(names(values), values, sep = ": ", collapse = "\n")
+  .random_effects_vignette_md5_raw(
+    charToRaw(enc2utf8(paste0(text, "\n")))
+  )
+}
+
 .random_effects_vignette_project_root <- function(cache_file, project_root = NULL){
   if(is.null(project_root)){
     project_root <- file.path(dirname(cache_file), "..")
@@ -203,7 +216,12 @@ random_effects_vignette_cache_names <- function(){
   source_order <- order(enc2utf8(labels), method = "radix")
   paths <- paths[source_order]
   labels <- labels[source_order]
-  hashes <- vapply(paths, .random_effects_vignette_text_md5, character(1))
+  hashes <- vapply(seq_along(paths), function(index){
+    if(identical(labels[[index]], "DESCRIPTION")){
+      return(.random_effects_vignette_description_md5(paths[[index]]))
+    }
+    .random_effects_vignette_text_md5(paths[[index]])
+  }, character(1))
   stats::setNames(unname(hashes), labels)
 }
 
@@ -324,7 +342,7 @@ random_effects_vignette_cache_names <- function(){
 }
 
 random_effects_vignette_dependency_state <- function(
-    cache_file = file.path("models", "RandomEffects.RDS"),
+    cache_file = file.path("vignettes", "RandomEffects.RDS"),
     project_root = NULL){
   project_root <- .random_effects_vignette_project_root(cache_file, project_root)
   list(
@@ -420,7 +438,7 @@ random_effects_vignette_dependency_state <- function(
 
 .random_effects_vignette_current_implementation <- function(
     dependencies,
-    cache_file = file.path("models", "RandomEffects.RDS"),
+    cache_file = file.path("vignettes", "RandomEffects.RDS"),
     project_root = NULL){
   project_root <- .random_effects_vignette_project_root(
     cache_file,
@@ -755,7 +773,7 @@ random_effects_vignette_dependency_state <- function(
 }
 
 validate_random_effects_vignette_cache <- function(
-    cache_file = file.path("models", "RandomEffects.RDS"),
+    cache_file = file.path("vignettes", "RandomEffects.RDS"),
     load = FALSE,
     dependency_state = NULL,
     project_root = NULL){
@@ -961,7 +979,7 @@ format_random_effects_vignette_cache_error <- function(status){
 }
 
 stop_if_invalid_random_effects_vignette_cache <- function(
-    cache_file = file.path("models", "RandomEffects.RDS"),
+    cache_file = file.path("vignettes", "RandomEffects.RDS"),
     dependency_state = NULL,
     project_root = NULL){
   status <- validate_random_effects_vignette_cache(
@@ -977,7 +995,7 @@ stop_if_invalid_random_effects_vignette_cache <- function(
 
 begin_random_effects_vignette_cache_regeneration <- function(
     envir = parent.frame(),
-    cache_file = file.path("models", "RandomEffects.RDS"),
+    cache_file = file.path("vignettes", "RandomEffects.RDS"),
     dependency_state = NULL,
     implementation_state = NULL,
     project_root = NULL){
@@ -1243,7 +1261,7 @@ begin_random_effects_vignette_cache_regeneration <- function(
 }
 
 recover_random_effects_vignette_cache <- function(
-    cache_file = file.path("models", "RandomEffects.RDS"),
+    cache_file = file.path("vignettes", "RandomEffects.RDS"),
     .platform = .Platform$OS.type){
   paths <- .random_effects_vignette_transaction_paths(cache_file)
   if(!file.exists(paths$journal)){
@@ -1376,7 +1394,7 @@ recover_random_effects_vignette_cache <- function(
   paths <- .random_effects_vignette_transaction_paths(cache_file)
 
   preparation_error <- tryCatch({
-    saveRDS(envelope, paths$new, version = 3)
+    saveRDS(envelope, paths$new, version = 3, compress = "xz")
     if(!file.exists(paths$new)){
       stop("Could not write the regenerated RandomEffects cache.", call. = FALSE)
     }
@@ -1500,7 +1518,7 @@ recover_random_effects_vignette_cache <- function(
 
 write_random_effects_vignette_cache <- function(
     models,
-    cache_file = file.path("models", "RandomEffects.RDS"),
+    cache_file = file.path("vignettes", "RandomEffects.RDS"),
     generation,
     dependency_state = NULL,
     implementation_state = NULL,

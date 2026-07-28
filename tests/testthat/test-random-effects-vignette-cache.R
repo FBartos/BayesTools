@@ -747,7 +747,7 @@ test_that("loaded BayesTools implementation must match the current source", {
   )
   current <- .random_effects_vignette_current_implementation(
     dependencies = dependencies,
-    cache_file = file.path(project_root, "models", "RandomEffects.RDS"),
+    cache_file = file.path(project_root, "vignettes", "RandomEffects.RDS"),
     project_root = project_root
   )
   expect_null(
@@ -793,7 +793,7 @@ test_that("loaded BayesTools implementation must match the current source", {
   expect_error(
     .random_effects_vignette_current_implementation(
       dependencies = dependencies,
-      cache_file = file.path(project_root, "models", "RandomEffects.RDS"),
+      cache_file = file.path(project_root, "vignettes", "RandomEffects.RDS"),
       project_root = project_root
     ),
     "changed after the namespace was loaded"
@@ -1264,12 +1264,58 @@ test_that("text fingerprints normalize line endings and use relative labels", {
     encoding = "UTF-8"
   )
   expect_true("^models($|/)" %in% buildignore)
+  expect_true(file.exists(file.path(
+    project_root,
+    "vignettes",
+    "RandomEffects.RDS"
+  )))
+  expect_false(any(grepl(
+    "RandomEffects\\.RDS",
+    buildignore
+  )))
+  expect_false("^vignettes($|/)" %in% buildignore)
   expect_true("^src/Makevars$" %in% buildignore)
+})
+
+test_that("DESCRIPTION fingerprints ignore only build-time normalization", {
+  description_root <- withr::local_tempdir()
+  source_description <- file.path(description_root, "source")
+  staged_description <- file.path(description_root, "staged")
+  writeLines(c(
+    "Package: BayesTools",
+    "Version: 0.3.1.7",
+    "Authors@R: person(\"A\", \"Developer\", role = c(\"aut\", \"cre\"))",
+    "Depends:",
+    "    R (>= 4.3.0),",
+    "    stats"
+  ), source_description, useBytes = TRUE)
+  writeLines(c(
+    "Package: BayesTools",
+    "Version: 0.3.1.7",
+    "Authors@R: person(\"A\", \"Developer\", role = c(\"aut\", \"cre\"))",
+    "Depends: R (>= 4.3.0), stats",
+    "Packaged: 2026-07-27 17:02:42 UTC; builder",
+    "Author: A Developer [aut, cre]"
+  ), staged_description, useBytes = TRUE)
+
+  expect_identical(
+    .random_effects_vignette_description_md5(source_description),
+    .random_effects_vignette_description_md5(staged_description)
+  )
+
+  staged <- readLines(staged_description, warn = FALSE)
+  staged[staged == "Version: 0.3.1.7"] <- "Version: 0.3.1.8"
+  writeLines(staged, staged_description, useBytes = TRUE)
+  expect_false(identical(
+    .random_effects_vignette_description_md5(source_description),
+    .random_effects_vignette_description_md5(staged_description)
+  ))
 })
 
 test_that("vignette statically uses guarded regeneration and exact seeds", {
   rmd_file <- testthat::test_path("..", "..", "vignettes", "RandomEffects.Rmd")
   lines <- readLines(rmd_file, warn = FALSE, encoding = "UTF-8")
+  setup_chunk <- .random_effects_test_chunk(lines, "setup")
   begin_chunk <- .random_effects_test_chunk(
     lines,
     "begin-random-effects-cache-regeneration"
@@ -1279,6 +1325,11 @@ test_that("vignette statically uses guarded regeneration and exact seeds", {
     "save-precomputed-random-effects"
   )
 
+  expect_match(setup_chunk, "Missing required vignette cache")
+  expect_match(
+    setup_chunk,
+    "format_random_effects_vignette_cache_error\\("
+  )
   expect_match(
     begin_chunk,
     "begin_random_effects_vignette_cache_regeneration\\("
