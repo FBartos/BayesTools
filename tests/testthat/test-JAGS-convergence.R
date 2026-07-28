@@ -241,6 +241,26 @@ test_that("empty convergence selections do not claim convergence", {
   expect_equal(nrow(attr(result, "diagnostics")), 0L)
 })
 
+test_that("empty available convergence parameters are vacuously TRUE", {
+
+  set.seed(44)
+  chain_1 <- cbind(mu = rnorm(20))
+  chain_2 <- cbind(mu = rnorm(20))
+  # Drop every sample column via add_parameters removal with no structural priors.
+  result <- JAGS_check_convergence(
+    .mock_convergence_fit(chain_1, chain_2),
+    prior_list = list(),
+    add_parameters = "mu",
+    max_Rhat = 1.05,
+    min_ESS = NULL,
+    max_error = NULL,
+    max_SD_error = NULL
+  )
+
+  expect_true(result)
+  expect_equal(nrow(attr(result, "diagnostics")), 0L)
+})
+
 test_that("not-assessable diagnostics require an explicit opt-in to ignore", {
 
   constant_chain <- matrix(

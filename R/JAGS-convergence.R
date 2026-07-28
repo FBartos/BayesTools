@@ -49,10 +49,13 @@
 #' @return \code{JAGS_check_convergence} returns a boolean indicating whether
 #' all requested, assessable parameters satisfy the enabled criteria. An
 #' explicitly empty \code{monitor} returns \code{logical(0)} rather than
-#' claiming convergence. The \code{diagnostics} attribute contains one row per
-#' available parameter and classifies it as \code{"assessable"},
-#' \code{"structural_constant"}, \code{"not_assessable"}, or
-#' \code{"not_requested"}. The \code{errors} attribute carries failed checks.
+#' claiming convergence. When no parameters remain available after cleaning
+#' (empty sample columns and no structural priors), the function returns
+#' \code{TRUE}: there is nothing assessable, which is treated as vacuously
+#' satisfied rather than as an empty selection. The \code{diagnostics}
+#' attribute contains one row per available parameter and classifies it as
+#' \code{"assessable"}, \code{"structural_constant"}, \code{"not_assessable"},
+#' or \code{"not_requested"}. The \code{errors} attribute carries failed checks.
 #'
 #' @seealso [JAGS_fit()]
 #' @export
