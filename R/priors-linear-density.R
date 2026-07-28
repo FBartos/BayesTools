@@ -36,7 +36,7 @@
   return(.prior_linear_density_normalize(out))
 }
 
-.prior_linear_density_normalize <- function(dist){
+.prior_linear_density_normalize <- function(dist, warn = FALSE){
 
   point_mass <- if(!is.null(dist$points) && nrow(dist$points) > 0) sum(dist$points$p) else 0
   density_mass <- if(!is.null(dist$density)) dist$density$mass else 0
@@ -44,6 +44,17 @@
 
   if(!is.finite(total_mass) || total_mass <= 0){
     stop("The computed prior density has zero total mass.", call. = FALSE)
+  }
+
+  # Intermediate mixture / product pieces may intentionally carry partial mass.
+  # Callers of finished densities should pass warn = TRUE.
+  if(isTRUE(warn) && abs(total_mass - 1) > 1e-6){
+    warning(
+      "Computed prior density mass was ",
+      format(total_mass, digits = 8),
+      "; renormalizing to 1.",
+      call. = FALSE
+    )
   }
 
   if(!is.null(dist$density)){

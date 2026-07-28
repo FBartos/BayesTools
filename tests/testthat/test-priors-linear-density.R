@@ -1,5 +1,41 @@
 skip_if_not_test_profile("unit")
 
+test_that("linear density normalize warns only for large mass deviation", {
+
+  quiet <- BayesTools:::.prior_linear_density_normalize(list(
+    density = list(x = 0:1, y = c(1, 1), mass = 1 + 1e-8),
+    points = NULL
+  ), warn = TRUE)
+  expect_equal(quiet$density$mass, 1, tolerance = 1e-12)
+
+  # Intermediate partial masses stay quiet by default.
+  expect_silent(
+    BayesTools:::.prior_linear_density_normalize(list(
+      density = list(x = 0:1, y = c(1, 1), mass = 0.5),
+      points = NULL
+    ))
+  )
+
+  expect_warning(
+    noisy <- BayesTools:::.prior_linear_density_normalize(list(
+      density = list(x = 0:1, y = c(1, 1), mass = 2.5),
+      points = data.frame(x = 0.5, p = 0.5)
+    ), warn = TRUE),
+    "renormalizing to 1",
+    fixed = TRUE
+  )
+  expect_equal(noisy$density$mass + sum(noisy$points$p), 1, tolerance = 1e-12)
+
+  expect_error(
+    BayesTools:::.prior_linear_density_normalize(list(
+      density = list(x = 0:1, y = c(0, 0), mass = 0),
+      points = NULL
+    )),
+    "zero total mass",
+    fixed = TRUE
+  )
+})
+
 test_that("linear prior density matches analytic normal sums", {
 
   density <- BayesTools:::.prior_linear_combination_density(

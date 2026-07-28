@@ -668,7 +668,7 @@
     n_grid  = if(is.null(n_grid)) dist$n_grid else n_grid
   )
   class(out) <- c("prior_linear_density", "prior_density")
-  .prior_linear_density_normalize(out)
+  .prior_linear_density_normalize(out, warn = TRUE)
 }
 
 .prior_linear_split_multiply_groups <- function(prior_list, weights){
@@ -932,7 +932,7 @@
       })
     }
   }
-  return(dist)
+  return(.prior_linear_density_normalize(dist, warn = TRUE))
 }
 
 .prior_linear_density_refinement_tolerance <- function(){
