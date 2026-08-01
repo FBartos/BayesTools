@@ -65,6 +65,9 @@ NULL
   if(length(n) > 1L){
     return(length(n))
   }
+  if(length(n) == 1L && !is.numeric(n) && minimum <= 1L){
+    return(1L)
+  }
   if(!is.numeric(n) || length(n) != 1L){
     stop("Not enough degrees of freedom to define contrasts.", call. = FALSE)
   }

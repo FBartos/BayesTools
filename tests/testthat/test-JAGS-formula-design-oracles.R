@@ -162,9 +162,14 @@ test_that("BayesTools contrasts accept scalar level counts and validate inputs",
 
   expect_equal(contr.independent(1), matrix(1, 1, 1))
   expect_equal(contr.ordered_cumulative_levels(1), matrix(1, 1, 1))
+  expect_equal(contr.independent("level"), matrix(1, 1, 1))
+  expect_equal(contr.ordered_cumulative_levels("level"), matrix(1, 1, 1))
   expect_error(contr.orthonormal(1), "Not enough degrees of freedom")
   expect_error(contr.meandif(1), "Not enough degrees of freedom")
   expect_error(contr.ordered_cumulative(1), "Not enough degrees of freedom")
+  expect_error(contr.orthonormal("level"), "Not enough degrees of freedom")
+  expect_error(contr.meandif("level"), "Not enough degrees of freedom")
+  expect_error(contr.ordered_cumulative("level"), "Not enough degrees of freedom")
 
   expect_error(contr.orthonormal(NA_real_), "cannot contain NA")
   expect_error(contr.orthonormal(Inf), "finite values")
