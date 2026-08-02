@@ -1,5 +1,6 @@
 # version 0.3.1
 ### Features
+- adds a versioned `hypothesis_parse()` syntax tree with stable rendering, exact symbol discovery and rewriting, parameter-catalog resolution, and direct `hypothesis_BF()` consumption without reparsing expression text
 - adds a cached metadata-only `parameter_catalog()` with versioned quantity and alias tables, classed exact resolution, validated provider extensions, and deferred `parameter_draws()` extraction for registry coordinates and declared random-effect summaries
 - adds versioned `JAGS_draw_geometry()` metadata and registry-based `JAGS_materialize_draws()` reconstruction, including exact structural point-prior values, preserved chain timing, valid zero-column public draws, and a private deterministic backend anchor for models with no ordinary monitor
 - adds an injective UTF-8 `JAGS_parameter_encode()` / `JAGS_parameter_decode()` semantic identifier, a persisted formula name map, and a single `JAGS_fit_contract()` compatibility profile so downstream packages can consume formula and fitted metadata without parsing established JAGS column names

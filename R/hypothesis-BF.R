@@ -30,7 +30,8 @@
 #' draw tables must be unique. Ignored when \code{posterior} already contains
 #' deterministic prior density information.
 #' @param hypothesis character vector with scalar hypothesis statements written
-#' in the restricted grammar described in Details.
+#' in the restricted grammar described in Details, or a validated object from
+#' [hypothesis_parse()].
 #' @param parameter optional scalar quantity name for numeric vectors or
 #' \code{marginal_posterior} objects.
 #' @param logBF whether to display the Bayes factor on the log scale.
@@ -116,7 +117,12 @@ hypothesis_BF <- function(posterior, prior = NULL, hypothesis, parameter = NULL,
                           density_method = c("KDE", "normal", "precomputed"),
                           columns = "default", ...) {
 
-  check_char(hypothesis, "hypothesis", check_length = 0, allow_NA = FALSE)
+  hypothesis_ast <- if(inherits(hypothesis, "BayesTools_hypothesis_ast")){
+    .bt_validate_hypothesis_ast(hypothesis)
+    hypothesis
+  }else{
+    hypothesis_parse(hypothesis)
+  }
   check_char(parameter, "parameter", check_length = 1, allow_NULL = TRUE,
              allow_NA = FALSE)
   check_bool(logBF, "logBF", allow_NA = FALSE)
@@ -135,7 +141,7 @@ hypothesis_BF <- function(posterior, prior = NULL, hypothesis, parameter = NULL,
     set.seed(seed)
   }
 
-  parsed <- lapply(hypothesis, .parse_hypothesis_BF)
+  parsed <- .bt_hypothesis_ast_legacy(hypothesis_ast)
   quantities <- .as_hypothesis_quantities(
     posterior  = posterior,
     prior      = prior,
@@ -171,6 +177,7 @@ hypothesis_BF <- function(posterior, prior = NULL, hypothesis, parameter = NULL,
 
   attr(out, "raw_BF")   <- raw_BF
   attr(out, "parsed")   <- parsed
+  attr(out, "hypothesis_ast") <- hypothesis_ast
   attr(out, "logBF")    <- logBF
   attr(out, "BF01")     <- BF01
   attr(out, "type")      <- .hypothesis_BF_table_types(colnames(out))

@@ -9,6 +9,7 @@ bayestools_test_profile_contexts <- list(
     "distributions-weightfunctions",
     "factor-interaction-coefficients",
     "fixture-catalog-static",
+    "hypothesis-ast",
     "hypothesis-BF",
     "hypothesis-BF-parser-adversarial",
     "interpret",

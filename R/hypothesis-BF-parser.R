@@ -25,16 +25,17 @@ hypothesis_parse_point_reference <- function(hypothesis,
   check_char(hypothesis, "hypothesis", check_length = 0, allow_NA = FALSE)
   check_bool(allow_compound, "allow_compound", allow_NA = FALSE)
 
+  ast <- hypothesis_parse(hypothesis)
   rows <- list()
-  for(i in seq_along(hypothesis)){
-    parsed <- .parse_hypothesis_BF(hypothesis[[i]])
-    side_names <- if(isTRUE(parsed[["explicit"]])) c("left", "right") else "left"
+  for(i in seq_along(ast$statements)){
+    statement <- ast$statements[[i]]
+    side_names <- if(isTRUE(statement$explicit)) c("left", "right") else "left"
     for(side_name in side_names){
-      side <- parsed[[side_name]]
+      side <- statement[[side_name]]
       if(!side[["type"]] %in% c("point", "not_point")){
         next
       }
-      row <- .hypothesis_point_reference_row(
+      row <- .bt_hypothesis_point_reference_row(
         hypothesis = hypothesis[[i]],
         side_name  = side_name,
         side       = side
@@ -69,18 +70,27 @@ hypothesis_parse_level_reference <- function(text){
 
   rows <- lapply(text, function(text_i){
     normalized <- .hypothesis_normalize_level_references(text_i)
-    symbol <- tryCatch(
-      .hypothesis_direct_symbol(normalized),
+    node <- tryCatch(
+      .bt_hypothesis_ast_node(.hypothesis_parse_expression(normalized)),
       error = function(e) NULL
     )
-    ref <- .hypothesis_parse_level_symbol(symbol)
+    symbol <- if(is.null(node)){
+      NULL
+    }else if(identical(node$type, "symbol")){
+      node$name
+    }else if(identical(node$type, "level_reference")){
+      paste0(node$parameter, "[", node$level, "]")
+    }else{
+      NULL
+    }
+    direct <- !is.null(node) && identical(node$type, "level_reference")
 
     data.frame(
       input     = text_i,
       symbol    = if(is.null(symbol)) NA_character_ else symbol,
-      parameter = ref[["parameter"]],
-      level     = ref[["level"]],
-      direct    = !is.null(symbol) && isTRUE(ref[["direct"]]),
+      parameter = if(direct) node$parameter else NA_character_,
+      level     = if(direct) node$level else NA_character_,
+      direct    = direct,
       stringsAsFactors = FALSE
     )
   })
@@ -117,33 +127,6 @@ hypothesis_normalize_level_references <- function(text){
     value      = numeric(),
     operator   = character(),
     direct     = logical(),
-    stringsAsFactors = FALSE
-  )
-}
-
-
-.hypothesis_point_reference_row <- function(hypothesis, side_name, side){
-
-  symbol <- .hypothesis_direct_symbol(side[["expr"]])
-  ref <- .hypothesis_parse_level_symbol(symbol)
-  direct <- !is.null(symbol)
-  parameter <- if(isTRUE(ref[["direct"]])){
-    ref[["parameter"]]
-  }else if(direct){
-    symbol
-  }else{
-    NA_character_
-  }
-
-  data.frame(
-    hypothesis = hypothesis,
-    side       = side_name,
-    symbol     = if(is.null(symbol)) NA_character_ else symbol,
-    parameter  = parameter,
-    level      = ref[["level"]],
-    value      = side[["value"]],
-    operator   = if(identical(side[["type"]], "point")) "=" else "!=",
-    direct     = direct,
     stringsAsFactors = FALSE
   )
 }
@@ -353,7 +336,9 @@ hypothesis_normalize_level_references <- function(text){
       type      = "region",
       label     = .hypothesis_display_text(side),
       condition = side,
+      condition_expression = expr,
       expr      = lhs,
+      expression = lhs_expr,
       value     = if(length(rhs_symbols) == 0L){
         .hypothesis_parse_number(rhs)
       }else{
@@ -361,6 +346,7 @@ hypothesis_normalize_level_references <- function(text){
       },
       operator  = simple_fun,
       rhs       = rhs,
+      rhs_expression = rhs_expr,
       simple    = TRUE
     ))
   }
@@ -369,7 +355,46 @@ hypothesis_normalize_level_references <- function(text){
     type      = "region",
     label     = .hypothesis_display_text(side),
     condition = side,
+    condition_expression = expr,
     simple    = FALSE
+  )
+}
+
+
+.bt_hypothesis_point_reference_row <- function(hypothesis, side_name, side){
+
+  node <- side$expression
+  direct <- node$type %in% c("symbol", "level_reference")
+  symbol <- if(!direct){
+    NA_character_
+  }else if(identical(node$type, "level_reference")){
+    paste0(node$parameter, "[", node$level, "]")
+  }else{
+    node$name
+  }
+  parameter <- if(!direct){
+    NA_character_
+  }else if(identical(node$type, "level_reference")){
+    node$parameter
+  }else{
+    node$name
+  }
+  level <- if(identical(node$type, "level_reference")){
+    node$level
+  }else{
+    NA_character_
+  }
+
+  data.frame(
+    hypothesis = hypothesis,
+    side = side_name,
+    symbol = symbol,
+    parameter = parameter,
+    level = level,
+    value = side$value,
+    operator = if(identical(side$type, "point")) "=" else "!=",
+    direct = direct,
+    stringsAsFactors = FALSE
   )
 }
 
@@ -385,10 +410,8 @@ hypothesis_normalize_level_references <- function(text){
     )
   }
 
-  .hypothesis_validate_expression(
-    .hypothesis_parse_expression(lhs),
-    condition = FALSE
-  )
+  expression <- .hypothesis_parse_expression(lhs)
+  .hypothesis_validate_expression(expression, condition = FALSE)
   value <- .hypothesis_parse_point_value(rhs)
   list(
     type  = if(op == "!=") "not_point" else "point",
@@ -398,6 +421,7 @@ hypothesis_normalize_level_references <- function(text){
       .hypothesis_display_text(rhs)
     ),
     expr  = lhs,
+    expression = expression,
     value = value
   )
 }
@@ -500,22 +524,35 @@ hypothesis_normalize_level_references <- function(text){
       "<=" = ">"
     )
     condition <- paste(side[["expr"]], complement, side[["rhs"]])
+    condition_expression <- as.call(list(
+      as.name(complement),
+      side[["expression"]],
+      side[["rhs_expression"]]
+    ))
     return(list(
       type      = "region",
       label     = .hypothesis_display_text(condition),
       condition = condition,
+      condition_expression = condition_expression,
       expr      = side[["expr"]],
+      expression = side[["expression"]],
       value     = side[["value"]],
       operator  = complement,
       rhs       = side[["rhs"]],
+      rhs_expression = side[["rhs_expression"]],
       simple    = TRUE
     ))
   }
 
+  condition_expression <- as.call(list(
+    as.name("!"),
+    as.call(list(as.name("("), side[["condition_expression"]]))
+  ))
   return(list(
     type       = "region",
     label      = paste0("not (", side[["label"]], ")"),
     condition  = side[["condition"]],
+    condition_expression = condition_expression,
     complement = TRUE,
     simple     = FALSE
   ))
@@ -691,6 +728,15 @@ hypothesis_normalize_level_references <- function(text){
 
 
 .hypothesis_parse_expression <- function(text) {
+
+  if(is.name(text) || is.call(text) || is.numeric(text) || is.integer(text) ||
+     is.logical(text)){
+    return(text)
+  }
+  if(!is.character(text) || length(text) != 1L || is.na(text)){
+    stop("Hypothesis expression must be scalar text or a parsed language object.",
+         call. = FALSE)
+  }
 
   protected_text <- .hypothesis_protect_escaped_constants(text)
   parsed <- tryCatch(parse(text = protected_text, keep.source = FALSE),

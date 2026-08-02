@@ -27,7 +27,8 @@ draw tables must be unique. Ignored when \code{posterior} already contains
 deterministic prior density information.}
 
 \item{hypothesis}{character vector with scalar hypothesis statements written
-in the restricted grammar described in Details.}
+in the restricted grammar described in Details, or a validated object from
+\code{\link[=hypothesis_parse]{hypothesis_parse()}}.}
 
 \item{parameter}{optional scalar quantity name for numeric vectors or
 \code{marginal_posterior} objects.}
