@@ -20,9 +20,7 @@ check/
 /src/*.so
 /src/**/*.so
 
-# bulky local caches, PDFs, query caches, and contribution artifacts ignored.
-
-CLAUDE.md
+# Bulky local caches and generated tool state.
 /.dev/lme4
 .positai
 .StatsVault/

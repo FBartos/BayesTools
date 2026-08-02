@@ -1,101 +1,205 @@
-## Project Map
+# AGENTS.md
 
-BayesTools is an R package for Bayesian analyses, JAGS model automation, and Bayesian model averaging.
+Guidance for coding assistants working in BayesTools. Be extremely concise.
 
-- Priors: `R/priors.R` defines the core `prior` S3 class. Distribution implementations live in `R/distributions-*.R` and must provide the relevant `rng`, `quant`, `cdf`, and `pdf` behavior.
-- JAGS integration: `R/JAGS-fit.R` wraps fitting through `runjags::run.jags`; `R/JAGS-formula.R` handles formula parsing, data preparation, prior assignment, generated syntax, and initialization.
-- Model averaging: `R/model-averaging.R` computes posterior model probabilities, ensemble inference, and Bayes factors, with marginal likelihoods from `bridgesampling`.
-- Summary and interpretation tables: `R/summary-tables.R`, `R/model-averaging.R`, and `R/interpret.R` define user-facing summaries and verbal interpretations.
-- Validation helpers: `R/tools.R` centralizes input checking.
+## Package Overview
 
-## Coding Rules
+BayesTools provides reusable Bayesian infrastructure for prior specification,
+JAGS model generation and fitting, marginal likelihoods, model averaging,
+posterior summaries, diagnostics, and interpretation.
 
-- Read the existing implementation and tests before changing behavior. Match local style and keep edits scoped.
-- Use `snake_case` for functions, variables, and files. Use dots only where S3 dispatch or existing API style requires them.
-- Prefer explicit assignment with `<-`; do not introduce pipe-heavy code.
-- Use the internal validation helpers in `R/tools.R` for standard user-input checks, including `check_bool()`, `check_char()`, `check_int()`, `check_real()`, and `check_list()`. Do not use `stopifnot()` for exported/user-facing validation.
-- Use clear `stop()`, `warning()`, and `message()` calls. For user-facing errors, prefer concise messages and `call. = FALSE` where it fits existing style.
-- Add or update roxygen2 documentation for exported functions.
-- Avoid `setwd()`, absolute local paths, hardcoded credentials, and hidden side effects.
-- Qualify non-base package functions in examples and snippets when clarity matters.
-- Prefer base data structures and type-stable helpers such as `vapply()` unless the surrounding code establishes a different pattern.
+- Backend: JAGS through `runjags`/`rjags`, with focused native distributions
+  and numerical kernels.
+- Estimation: ordinary and formula-generated JAGS models, plus bridge sampling
+  for marginal likelihoods.
+- Consumers: packages such as RoBMA depend on BayesTools' stable metadata and
+  numerical contracts.
+- System requirement: JAGS 4.3.0 or newer.
 
-## Testing
+## Numerical and Engineering Guardrails
 
-Always run tests with LLM-oriented reporting. Prefer `Rscript tools/test-profile.R <profile>`; the runner sets `AGENT=1` and uses `testthat::LlmReporter$new()`. For ad hoc `devtools::test()` calls, set `Sys.setenv(AGENT = "1")` and pass `reporter = testthat::LlmReporter$new()`.
+### Numerical Faithfulness
 
-Test profiles:
+- Correct inference-changing numerical errors; do not pursue arbitrary
+  machine-level perfection.
+- Implement the statistical model as specified. Never silently alter user
+  inputs or computed values with epsilons, clamping, covariance repair, or
+  similar heuristics.
+- Invalid inputs must fail clearly. Mathematically valid boundary cases must
+  retain their defined behavior.
+- Prefer established implementations from base R, JAGS, or standard numerical
+  libraries.
+- Support statistically meaningful extreme cases. Do not promise correctness
+  for every representable binary64 input unless the public API requires it.
+- Base numerical warnings on structural or provenance information where
+  possible. Do not infer prior-density behavior from posterior samples,
+  numerical grids, or KDE output.
+- Use independent references, analytic identities, or human-verified results
+  for numerical tests. Do not test an implementation against the same
+  unverified calculation.
 
-- `unit`: `Rscript tools/test-profile.R unit` for fast package-critical tests, without real JAGS fitting or visual snapshots.
-- `fixture`: `Rscript tools/test-profile.R fixture` for cached model fits, tables, and reference outputs.
-- `visual`: `Rscript tools/test-profile.R visual` for pure vdiffr plot tests.
-- `visual-fixture`: `Rscript tools/test-profile.R visual-fixture` for visual tests that load cached JAGS fits.
-- `fit`: `Rscript tools/test-profile.R fit` for slow fitting and marginal-likelihood tests. It refreshes cached fits by default; set `BAYESTOOLS_TEST_SKIP_REFIT=TRUE` only to reuse a validated cache intentionally.
-- `all`: `Rscript tools/test-profile.R all` for full developer verification.
+### Complexity Budget
 
-Profile policy:
+- Prefer the smallest boring implementation that solves the observed problem.
+- Do not add general exact-arithmetic, arbitrary-precision, or binary64
+  emulation subsystems.
+- Native C/C++ is justified only by JAGS integration, statistical correctness,
+  or a substantial measured performance benefit.
+- Before adding native code, abstractions, or source files, verify that existing
+  R, JAGS, or package infrastructure cannot solve the problem cleanly.
+- Avoid parallel implementations, duplicated numerical paths, speculative
+  extensibility, and abstractions serving one simple call site.
+- Generic Bayesian functionality belongs in BayesTools. Analysis-specific
+  integration belongs in the downstream package that owns that analysis.
+- Remove machinery superseded by the current change when it is in scope. Do not
+  remove unrelated existing code without maintainer approval.
 
-- GitHub Actions test workflows should run the `all` profile by default, including coverage.
-- Local iteration may still use narrower profiles when that is the right feedback loop.
-- For JAGS fitting, generated syntax, marginal likelihoods, or `test-00-model-fits.R`, run `unit`, then `fit`, then `fixture`; add `visual-fixture` if fitted-object plots can change.
-- For formula parsing, scaling, design matrices, or contrasts, run `unit` and `fit`; add `fixture` if cached objects or reference outputs are affected.
-- For fixture registries, cached fits, reference files, or fixture helpers, run `unit`, `fit`, and `fixture`.
-- For pure plotting changes, run `unit` and `visual`.
-- For plotting changes that load cached JAGS fits, run `unit`, `fit`, and `visual-fixture`; run `fixture` too when tables or fixture metadata are affected.
+### Compatibility and Release Notes
 
-Coverage-guided adversarial testing:
+- During development of an unreleased patch, do not preserve compatibility with
+  earlier iterations of that same unreleased code. Replace inferior architecture
+  instead of adding migrations, deprecated aliases, schema adapters, or
+  compatibility layers.
+- For functionality present in a released version, prefer backward-compatible
+  changes.
+- If released architecture prevents a clean solution or appears short-sighted,
+  ask the maintainer whether to preserve compatibility or make a breaking
+  change. Never assume either choice.
+- When feature implementation on a branch is complete, increment the
+  development version in `DESCRIPTION` and update `NEWS.md` in the same feature
+  change.
+- Write `NEWS.md` for the final branch state that will be squashed into the
+  future release. Do not describe intermediate revisions of unreleased
+  features.
 
-- When a PR or branch has Codecov results, use coverage programmatically to identify weak spots before adding tests. For public GitHub PRs, query Codecov's API for PR metadata, resolve the head SHA from the GitHub PR API, then fetch the line report with `https://api.codecov.io/api/v2/github/<owner>/repos/<repo>/report/?sha=<sha>&path=R/`. Reduce the report to missed files and missed line clusters; do not print raw coverage payloads.
-- Treat missed lines as leads, not goals. Inspect the implementation and existing tests around the missed clusters, then add adversarial tests that assert boundary behavior, error handling, fallback paths, transformations, or invariants. Avoid tests that only execute lines without checking behavior.
-- After adding coverage-guided tests, run the relevant test profile first, usually `Rscript tools/test-profile.R unit` for pure helper and validation tests. Add `fit`, `fixture`, or visual profiles according to the profile policy above.
-- After implementation is complete and after any maintainer-requested commits are finished, check local coverage with `covr` when practical. Prefer a targeted run for the affected test files to avoid flooding the session and to avoid unrelated snapshot noise, for example:
+### Testing Budget
 
-```powershell
-Rscript -e "Sys.setenv(AGENT='1', BAYESTOOLS_TEST_PROFILE='unit', BAYESTOOLS_TEST_SKIP_REFIT='TRUE'); cov <- covr::package_coverage(type='none', code=c('testthat::test_file(system.file(\"tests\", \"testthat\", \"test-interpret.R\", package=\"BayesTools\"), reporter=testthat::LlmReporter$new())', 'testthat::test_file(system.file(\"tests\", \"testthat\", \"test-JAGS-posterior-extraction.R\", package=\"BayesTools\"), reporter=testthat::LlmReporter$new())'), quiet=TRUE); print(covr::percent_coverage(cov)); covr::report(cov, file='coverage/index.html')"
-```
+- Add the smallest high-information regression test proving correctness. Do not
+  add tests merely to increase coverage.
+- Keep the routine non-refit suite within a 15-minute target on the reference
+  machine. Expensive fitting is a separate verification lane.
+- Stop an expensive fitting or numerical-certification run approaching two
+  hours. Split it into independently runnable pieces and retain cases with a
+  high evidence-to-runtime ratio.
+- Prefer focused tests during development. Do not repeatedly run the full suite
+  without a concrete reason.
+- Preserve human-verified `vdiffr` snapshots. Never replace meaningful visual
+  comparisons with superficial render-only assertions.
+- Do not weaken, skip, regenerate, or loosen an existing regression expectation
+  merely to make a changed implementation pass.
 
-- For full local coverage, use `covr::package_coverage(type = "tests")` with the same `AGENT` and `BAYESTOOLS_TEST_PROFILE` environment variables, but expect it to be slower and more fragile than the profile runner. If local `covr` fails for reasons unrelated to the changed tests, report the failure and rely on CI/Codecov for the final coverage delta.
+### Engineering Behavior
 
-Test authoring rules:
+- Before non-trivial work, state consequential assumptions and success
+  criteria. Do not narrate obvious assumptions.
+- Use a short visible plan for multi-step work; revise it when evidence changes.
+- When requirements, code, tests, or documentation conflict, name the conflict
+  and seek or record a decision instead of guessing.
+- Push back with concrete correctness, complexity, maintenance, or runtime
+  costs. Propose the simpler alternative and follow the maintainer's decision.
+- Establish a simple correct implementation or reference before optimizing.
+  Preserve behavior while optimizing and measure performance claims.
+- Distinguish dead code introduced by the current change from unrelated
+  existing code. Remove the former; do not remove the latter without approval.
+- State uncertainty, verification performed, and verification omitted. Never
+  present incomplete evidence as completion.
 
-- This package uses testthat edition 3; do not add `context()`.
-- Shared helpers live in `tests/testthat/common-functions.R`.
-- Add `skip_if_not_test_profile()` at the top of every new `test-*.R` file.
-- Only `tests/testthat/test-00-model-fits.R` may fit models or compute marginal likelihoods for cached fixtures. Other tests should load cached fits.
-- Do not modify the `GENERATE_REFERENCE_FILES` flag unless the maintainer explicitly asks.
-- Reuse existing cached models whenever possible. Inspect `test-00-model-fits.R` and the model registry before creating new fixtures.
+### Change Discipline
 
-## Common Changes
+- Keep changes focused and reviewable. Commit related code, tests, and
+  documentation together when the maintainer requests a commit.
+- Do not refactor unrelated code while fixing a numerical issue.
+- For ambiguous statistical or architectural choices, stop and record the
+  issue, impact, alternatives, and recommendation. If the choice must remain
+  pending, create `.agents/instructions-decisions.md`; remove the entry, and the
+  file when empty, after the maintainer decides.
+- Before finishing, review changed files for unnecessary abstractions,
+  compatibility layers, tests, native code, and unrelated edits.
+- Do not run Git operations, including status, diff, add, commit, branch,
+  checkout, merge, rebase, reset, tag, push, or pull, unless the maintainer
+  explicitly asks for that Git operation in the current turn.
+- Keep only durable, cross-task guidance in `AGENTS.md` and
+  `.agents/instructions/`. Do not retain completed plans, prompts, transcripts,
+  generic engineering boilerplate, scratch files, or resolved decision logs.
+- Add a guide only for stable subsystem rules. Preserve any still-valid unique
+  rule before deleting an obsolete guide.
 
-Adding a prior:
+## Detailed Instructions
 
-1. Add the distribution path to `prior()` in `R/priors.R`.
-2. Implement the distribution methods in the relevant `R/distributions-*.R` file.
-3. Add plotting support if required.
-4. Add tests using the existing prior-testing helpers in `tests/testthat/test-priors.R`.
+Read only the guide relevant to the files being changed:
 
-Changing JAGS fitting:
+- [testing.md](.agents/instructions/testing.md): test profiles, cached fits,
+  reference output, coverage, and visual regression.
+- [priors.md](.agents/instructions/priors.md): prior implementation and the
+  structural prior-density ordinate contract.
+- [jags-formula.md](.agents/instructions/jags-formula.md): generated syntax,
+  formula scaling, random effects, fitted metadata, and marginal likelihoods.
+- [plotting.md](.agents/instructions/plotting.md): plot-data/rendering separation
+  and visual verification.
+- [vignettes.md](.agents/instructions/vignettes.md): vignette caching,
+  regeneration, style, and citations.
 
-1. Edit `R/JAGS-fit.R` for general fitting logic or `R/JAGS-formula.R` for formula handling.
-2. Run `Rscript tools/test-profile.R unit`.
-3. Run `Rscript tools/test-profile.R fit` to rebuild and verify fit fixtures.
-4. Run `Rscript tools/test-profile.R fixture`; add `visual-fixture` when relevant.
+Do not load all guides by default. Before changing an instruction, verify every
+referenced file and function against the current tree. Create
+`.agents/instructions-decisions.md` only while a real maintainer choice remains
+unresolved.
 
-## Vignettes
+## R Code Style
 
-Vignettes live in `vignettes/*.Rmd` and use precomputed model objects to avoid CRAN timeouts.
+- Read the existing implementation and tests before changing behavior. Match
+  local style and keep edits scoped.
+- Use `snake_case` for new ordinary functions, arguments, variables, and files.
+  Preserve established families such as `JAGS-*.R`; use dots only for S3
+  dispatch or an established public API.
+- Use `<-` assignment, two-space indentation, and `TRUE`/`FALSE`.
+- Do not introduce pipe-heavy code. Name intermediate results when that makes
+  control flow clearer.
+- Prefer base data structures, `vapply()` for type-stable atomic iteration, and
+  explicit loops when they are clearer than forced vectorization.
+- Use the validators in `R/tools.R`, including `check_bool()`, `check_char()`,
+  `check_int()`, `check_real()`, and `check_list()`. Do not use `stopifnot()` for
+  exported or user-facing validation.
+- Use concise `stop()`, `warning()`, and `message()` calls. Prefer
+  `call. = FALSE` for user-facing conditions where it fits existing style.
+- Qualify non-base calls in scripts and examples when clarity matters. Follow
+  the established namespace-import style in package source.
+- Align adjacent assignments and named arguments when it improves readability;
+  do not reformat unrelated code.
+- Leave a blank line after an opening brace in function definitions.
+- Never call `setwd()` in package code or use absolute local paths, hardcoded
+  credentials, or hidden writes to user directories.
 
-- Use relative paths such as `../inst/REFERENCES.bib`, `../inst/apa.csl`, and `../models/...`.
-- Do not use absolute paths.
-- Preserve the three-part pattern: setup/check detection, hidden loading of precomputed models, and a hidden `eval = FALSE` chunk documenting how models are regenerated.
-- Do not set model-regeneration chunks to `eval = TRUE` unless intentionally refreshing cached vignette models.
-- Use fixed seeds in documented model-generation code.
-- Keep prose concise, direct, and scientifically precise. Preserve references, results, mathematical notation, argument names, function names, parameter names, and defined abbreviations.
+## Architecture
 
+- Priors and density algebra: `R/priors*.R`, `R/distributions-*.R`, and
+  `R/prior-density-ordinate.R`.
+- JAGS runtime, formulas, and bridge sampling: `R/JAGS-*.R`.
+- Random-effect contracts: `R/random-effects-*.R` and
+  `R/random-group-covariance.R`.
+- Marginal inference and model averaging: `R/marginal-*.R` and
+  `R/model-averaging*.R`.
+- Summaries and validation: `R/summary-tables*.R`, `R/interpret.R`, and
+  `R/tools.R`.
 
-## Repository Hygiene
+`JAGS_parameter_registry()` is the authoritative mapping from posterior columns
+to semantic roles, formula terms, fitted scales, and display labels. Downstream
+code must use the registry or its accessors instead of parsing JAGS names or
+fitted-object internals.
 
-- Agent and workspace coordination files should be committed so the same Codex setup works across development machines.
-- Agent-only files must stay out of R source packages through `.Rbuildignore`.
-- Keep CI workflows in `.github/workflows/`; do not use `.github/` as the place for agent instructions.
-- Do not run Git operations, including status, diff, add, commit, branch, checkout, merge, rebase, reset, tag, push, or pull, unless the maintainer explicitly asks for that Git operation in the current turn.
+Native JAGS distributions live in `src/distributions/`; shared kernels are in
+`src/invgamma/`, `src/lkj/`, and `src/nonlocal/`; registrations are in
+`src/BayesTools.cc` and `src/init.c`. Update registration and `Makevars*` files
+when adding native sources.
+
+## Documentation and CRAN
+
+- Add or update roxygen2 documentation for exported functions. Use
+  `\insertCite{key}{BayesTools}` for package documentation; vignettes use
+  Pandoc citations.
+- Keep dependencies minimal; prefer base R or existing imports.
+- Use `skip_on_cran()` for computationally intensive tests.
+- Never regenerate reference output or visual snapshots without maintainer
+  review.
+- Commit durable agent instructions. Keep `AGENTS.md` and
+  `.agents/instructions/` excluded through `.Rbuildignore`; keep CI workflows
+  under `.github/workflows/`.
