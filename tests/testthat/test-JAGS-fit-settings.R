@@ -178,6 +178,7 @@ test_that("JAGS_fit autofit preserves the last valid fit after a backend error",
     .JAGS_load_modules = function(...) invisible(NULL),
     .bt_attach_parameter_registry = function(fit, ...) fit,
     .bt_attach_draw_geometry = function(fit, ...) fit,
+    .bt_attach_parameter_catalog = function(fit, ...) fit,
     .package = "BayesTools"
   )
 

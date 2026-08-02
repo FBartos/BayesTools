@@ -423,6 +423,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     monitor_names = model_call$monitor
   )
   fit <- .bt_attach_draw_geometry(fit)
+  fit <- .bt_attach_parameter_catalog(fit)
   fit <- .bt_attach_fit_contract(fit)
 
   return(fit)
@@ -557,6 +558,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   parameter_registry <- JAGS_parameter_registry(fit)
   fit_contract       <- attr(fit, "fit_contract", exact = TRUE)
   draw_geometry      <- attr(fit, "draw_geometry", exact = TRUE)
+  parameter_catalog  <- attr(fit, "parameter_catalog", exact = TRUE)
   backend_anchor     <- attr(fit, "backend_anchor", exact = TRUE)
 
   # extract fitting information
@@ -692,6 +694,14 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   attr(fit, "parameter_registry") <- parameter_registry
   if(!is.null(fit_contract)){
     fit <- .bt_attach_draw_geometry(fit)
+    if(is.null(parameter_catalog)){
+      stop(
+        "The fitted object has missing parameter-catalog metadata. Refit the model with this version of BayesTools.",
+        call. = FALSE
+      )
+    }
+    .bt_validate_parameter_catalog(parameter_catalog)
+    attr(fit, "parameter_catalog") <- parameter_catalog
     fit <- .bt_attach_fit_contract(fit)
   }else if(!is.null(draw_geometry)){
     attr(fit, "draw_geometry") <- draw_geometry

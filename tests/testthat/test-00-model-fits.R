@@ -6078,6 +6078,13 @@ test_that("fully structural fits retain deterministic draw geometry", {
   expect_identical(registry$monitor_status[registry$name == "theta"], "structural")
   expect_identical(registry$fixed_value[registry$name == "theta"], 0)
 
+  catalog <- parameter_catalog(fit)
+  expect_false(.bt_backend_anchor_name %in% catalog$quantities$canonical_name)
+  theta <- catalog$quantities[catalog$quantities$canonical_name == "theta", ]
+  expect_identical(theta$status, "structural")
+  expect_identical(theta$fixed_value, 0)
+  expect_identical(JAGS_fit_contract(fit)$parameter_catalog_version, 1L)
+
   geometry <- JAGS_draw_geometry(fit)
   expect_identical(geometry$chains$iterations, c(100L, 100L))
   expect_identical(geometry$total_draws, 200L)
@@ -6109,6 +6116,7 @@ test_that("fully structural fits retain deterministic draw geometry", {
   expect_identical(extended_geometry$chains$iterations, c(200L, 200L))
   expect_identical(extended_geometry$total_draws, 400L)
   expect_identical(extended_geometry$chains$end, c(400L, 400L))
+  expect_identical(parameter_catalog(extended), catalog)
 })
 
 # ============================================================================ #

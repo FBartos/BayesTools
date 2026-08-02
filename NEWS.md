@@ -1,5 +1,6 @@
 # version 0.3.1
 ### Features
+- adds a cached metadata-only `parameter_catalog()` with versioned quantity and alias tables, classed exact resolution, validated provider extensions, and deferred `parameter_draws()` extraction for registry coordinates and declared random-effect summaries
 - adds versioned `JAGS_draw_geometry()` metadata and registry-based `JAGS_materialize_draws()` reconstruction, including exact structural point-prior values, preserved chain timing, valid zero-column public draws, and a private deterministic backend anchor for models with no ordinary monitor
 - adds an injective UTF-8 `JAGS_parameter_encode()` / `JAGS_parameter_decode()` semantic identifier, a persisted formula name map, and a single `JAGS_fit_contract()` compatibility profile so downstream packages can consume formula and fitted metadata without parsing established JAGS column names
 - adds `prior_density_ordinate()` for exact-value structural classification of scalar prior and induced `prior_linear_density` ordinates, including continuous limits, point masses, deterministic mixtures, analytic normal combinations, and supported named transformations
