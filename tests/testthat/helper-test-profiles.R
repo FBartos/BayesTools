@@ -38,6 +38,7 @@ bayestools_test_profile_contexts <- list(
     "model-averaging-edge-cases",
     "model-averaging-plots-edge-cases",
     "native-registration",
+    "prior-density-ordinate",
     "prior-ordered",
     "priors-coverage",
     "priors-density-numeric",

@@ -606,6 +606,33 @@
     return(dist)
   }
 
+  if(is.character(transformation) && length(transformation) == 1L &&
+     transformation %in% c("lin", "exp_lin") &&
+     (is.null(transformation_arguments) || is.list(transformation_arguments))){
+    a <- if(is.null(transformation_arguments[["a"]])){
+      0
+    }else{
+      transformation_arguments[["a"]]
+    }
+    b <- if(is.null(transformation_arguments[["b"]])){
+      1
+    }else{
+      transformation_arguments[["b"]]
+    }
+    if(is.numeric(a) && length(a) == 1L && is.finite(a) &&
+       is.numeric(b) && length(b) == 1L && is.finite(b) && b == 0){
+      location <- if(identical(transformation, "lin")) a else exp(a)
+      if(!is.finite(location) || location == 0 &&
+         identical(transformation, "exp_lin")){
+        stop(
+          "The constant prior-density transformation is not representable.",
+          call. = FALSE
+        )
+      }
+      return(.prior_linear_density_point(location))
+    }
+  }
+
   densities <- list()
   if(!is.null(dist$density) && dist$density$mass > 0){
     x_old <- dist$density$x
