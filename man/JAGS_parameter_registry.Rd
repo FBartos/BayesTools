@@ -30,6 +30,8 @@ current registry schema. Registry rows are unique by \code{canonical_name}.
 Matrix/vector indices are stored as comma-separated text in \code{index}, and
 their fitted dimensions are stored in \code{dimensions} (for example, \code{"3x2"}).
 Empty strings mean that a field does not apply.
+Structural point-prior rows store the exact prior-specified value in
+\code{fixed_value}; sampled and unavailable rows store \code{NA_real_}.
 
 Raw random-effect latent variables, realized group coefficients, and
 spike-and-slab implementation coordinates have \code{internal = TRUE}. Latent

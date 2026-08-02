@@ -8,7 +8,7 @@ test_that("parameter registry schema is explicit and versioned", {
     c(
       "canonical_name", "monitor_name", "formula_parameter", "role",
       "random_block", "random_name", "term", "column", "index", "dimensions",
-      "fitted_scale", "monitor_status", "display_label",
+      "fitted_scale", "monitor_status", "fixed_value", "display_label",
       "random_grouping", "random_structure", "internal"
     )
   )
@@ -59,7 +59,7 @@ test_that("fitted registry classifies concrete random coordinates exactly", {
   )
 
   expect_s3_class(registry, "BayesTools_parameter_registry")
-  expect_identical(attr(registry, "schema_version"), 2L)
+  expect_identical(attr(registry, "schema_version"), 3L)
   expect_identical(registry$canonical_name, columns)
   expect_identical(anyDuplicated(registry$canonical_name), 0L)
   expect_identical(
@@ -260,8 +260,36 @@ test_that("structural point parameters are registered when JAGS omits them", {
   fixed <- registry[registry$canonical_name == "fixed", , drop = FALSE]
   expect_equal(nrow(fixed), 1L)
   expect_identical(fixed$monitor_status, "structural")
+  expect_identical(fixed$fixed_value, 0)
   expect_identical(fixed$role, "parameter")
   expect_false(fixed$internal)
+})
+
+test_that("structural registry coordinates retain exact scalar and vector values", {
+
+  factor_prior <- prior_factor(
+    "point",
+    list(location = -2),
+    contrast = "treatment"
+  )
+  attr(factor_prior, "levels") <- 3L
+  registry <- build_test_parameter_registry(
+    columns = "theta",
+    prior_list = list(
+      theta = prior("normal", list(0, 1)),
+      scalar = prior("point", list(3.5)),
+      vector = prior("mpoint", list(location = 2, K = 3)),
+      factor = factor_prior
+    )
+  )
+
+  structural <- registry[registry$monitor_status == "structural", ]
+  expect_identical(
+    structural$canonical_name,
+    c("scalar", "vector[1]", "vector[2]", "vector[3]", "factor[1]", "factor[2]")
+  )
+  expect_identical(structural$fixed_value, c(3.5, 2, 2, 2, -2, -2))
+  expect_true(all(is.na(registry$fixed_value[registry$monitor_status == "sampled"])))
 })
 
 test_that("registry prevents prefix-related random-block ownership collisions", {

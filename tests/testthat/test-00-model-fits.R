@@ -6052,6 +6052,65 @@ test_that("BayesTools JAGS module samples nonlocal priors", {
   }
 })
 
+test_that("fully structural fits retain deterministic draw geometry", {
+
+  skip_if_not_installed("runjags")
+  skip_if_not_installed("rjags")
+  skip_on_cran()
+
+  fit <- JAGS_fit(
+    model_syntax = "model{}",
+    prior_list = list(theta = prior("point", list(0))),
+    chains = 2,
+    adapt = 100,
+    burnin = 100,
+    sample = 100,
+    silent = TRUE,
+    seed = 1
+  )
+
+  registry <- JAGS_parameter_registry(fit)
+  expect_identical(
+    registry$role[registry$name == .bt_backend_anchor_name],
+    "backend_anchor"
+  )
+  expect_true(registry$internal[registry$name == .bt_backend_anchor_name])
+  expect_identical(registry$monitor_status[registry$name == "theta"], "structural")
+  expect_identical(registry$fixed_value[registry$name == "theta"], 0)
+
+  geometry <- JAGS_draw_geometry(fit)
+  expect_identical(geometry$chains$iterations, c(100L, 100L))
+  expect_identical(geometry$total_draws, 200L)
+
+  draws <- JAGS_materialize_draws(fit)
+  expect_identical(colnames(draws[[1L]]), "theta")
+  expect_identical(as.numeric(draws[[1L]][, "theta"]), rep(0, 100))
+  expect_false(.bt_backend_anchor_name %in% colnames(draws[[1L]]))
+
+  empty_draws <- JAGS_materialize_draws(fit, character())
+  expect_identical(dim(empty_draws[[1L]]), c(100L, 0L))
+  expect_identical(attr(empty_draws[[1L]], "mcpar"), c(201, 300, 1))
+
+  extended <- JAGS_extend(
+    fit,
+    autofit_control = list(
+      max_Rhat = NULL,
+      min_ESS = NULL,
+      max_error = NULL,
+      max_SD_error = NULL,
+      max_time = list(time = 30, unit = "secs"),
+      sample_extend = 100,
+      restarts = 1,
+      max_extend = 1
+    ),
+    silent = TRUE
+  )
+  extended_geometry <- JAGS_draw_geometry(extended)
+  expect_identical(extended_geometry$chains$iterations, c(200L, 200L))
+  expect_identical(extended_geometry$total_draws, 400L)
+  expect_identical(extended_geometry$chains$end, c(400L, 400L))
+})
+
 # ============================================================================ #
 # SAVE MODEL REGISTRY
 # ============================================================================ #

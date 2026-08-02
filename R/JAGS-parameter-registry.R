@@ -1,6 +1,6 @@
 # Canonical fitted-parameter registry.
 
-.bt_parameter_registry_version <- 2L
+.bt_parameter_registry_version <- 3L
 
 .bt_parameter_registry_columns <- c(
   "canonical_name",
@@ -15,6 +15,7 @@
   "dimensions",
   "fitted_scale",
   "monitor_status",
+  "fixed_value",
   "display_label",
   "random_grouping",
   "random_structure",
@@ -36,6 +37,7 @@
     dimensions = character(),
     fitted_scale = character(),
     monitor_status = character(),
+    fixed_value = numeric(),
     display_label = character(),
     random_grouping = character(),
     random_structure = character(),
@@ -61,6 +63,8 @@
 #' Matrix/vector indices are stored as comma-separated text in `index`, and
 #' their fitted dimensions are stored in `dimensions` (for example, `"3x2"`).
 #' Empty strings mean that a field does not apply.
+#' Structural point-prior rows store the exact prior-specified value in
+#' `fixed_value`; sampled and unavailable rows store `NA_real_`.
 #'
 #' Raw random-effect latent variables, realized group coefficients, and
 #' spike-and-slab implementation coordinates have `internal = TRUE`. Latent
@@ -109,7 +113,9 @@ JAGS_parameter_registry_schema <- function(){
   data.frame(
     field = .bt_parameter_registry_columns,
     type = c(
-      rep("character", 15L),
+      rep("character", 12L),
+      "numeric",
+      rep("character", 3L),
       "logical"
     ),
     description = c(
@@ -125,6 +131,7 @@ JAGS_parameter_registry_schema <- function(){
       "Fitted array dimensions joined by 'x'.",
       "Coordinate scale used by the fitted monitor.",
       "Whether the row is sampled, structural, or requested but unavailable.",
+      "Exact prior-specified value for a structural coordinate; otherwise NA.",
       "Default unambiguous user-facing label.",
       "Random grouping-variable label.",
       "Random covariance structure.",
@@ -175,6 +182,15 @@ JAGS_parameter_registry_schema <- function(){
     stop(
       "The fitted parameter registry contains an undefined 'internal' flag. ",
       "Refit the model with the current BayesTools version.",
+      call. = FALSE
+    )
+  }
+  if(!is.numeric(registry$fixed_value) ||
+     any(!registry$monitor_status %in% c("sampled", "structural", "unavailable")) ||
+     any(!is.na(registry$fixed_value[registry$monitor_status != "structural"])) ||
+     any(!is.finite(registry$fixed_value[registry$monitor_status == "structural"]))){
+    stop(
+      "The fitted parameter registry contains malformed structural fixed values. Refit the model with the current BayesTools version.",
       call. = FALSE
     )
   }
@@ -311,6 +327,23 @@ JAGS_parameter_registry_schema <- function(){
     return(NULL)
   }
   prior_list[[match]]
+}
+
+.bt_parameter_registry_point_values <- function(parameter, prior){
+
+  if(is.null(prior) || !is.prior.point(prior)){
+    return(stats::setNames(numeric(), character()))
+  }
+  parameter_names <- if(is.prior.vector(prior) || is.prior.factor(prior)){
+    .JAGS_prior_factor_names(parameter, prior)
+  }else{
+    parameter
+  }
+  values <- rep(
+    prior[["parameters"]][["location"]],
+    length.out = length(parameter_names)
+  )
+  stats::setNames(as.numeric(values), parameter_names)
 }
 
 .bt_parameter_registry_term_owner <- function(base_name, random_terms){
@@ -565,7 +598,8 @@ JAGS_parameter_registry_schema <- function(){
 .bt_build_parameter_registry <- function(columns, monitor_names = columns,
                                          prior_list = NULL,
                                          formula_design = NULL,
-                                         formula_scale = NULL){
+                                         formula_scale = NULL,
+                                         backend_anchor = NULL){
 
   if(is.null(columns)){
     columns <- character()
@@ -581,7 +615,7 @@ JAGS_parameter_registry_schema <- function(){
       if(is.prior.point(prior)){
         structural <- c(
           structural,
-          if(is.prior.factor(prior)){
+          if(is.prior.factor(prior) || is.prior.vector(prior)){
             .JAGS_prior_factor_names(parameter, prior)
           }else{
             parameter
@@ -665,6 +699,17 @@ JAGS_parameter_registry_schema <- function(){
     }else{
       "structural"
     }
+    fixed_value <- NA_real_
+    if(identical(monitor_status, "structural") && !is.null(prior)){
+      prior_values <- .bt_parameter_registry_point_values(base_name, prior)
+      value_match <- match(canonical_name, names(prior_values))
+      if(!is.na(value_match)){
+        fixed_value <- unname(prior_values[value_match])
+      }
+    }
+    if(!is.null(backend_anchor) && identical(canonical_name, backend_anchor)){
+      role <- "backend_anchor"
+    }
     random_block <- if(is.null(random_term)){
       if(is.null(prior)) "" else .bt_random_effect_prior_effect(prior)
     }else{
@@ -699,6 +744,7 @@ JAGS_parameter_registry_schema <- function(){
       .bt_parameter_registry_dimensions(base_name, columns),
       .bt_parameter_registry_scale(role, formula_parameter, formula_scale),
       monitor_status,
+      fixed_value,
       .bt_parameter_registry_display(
         canonical_name,
         prior,
@@ -709,6 +755,7 @@ JAGS_parameter_registry_schema <- function(){
       grouping,
       structure,
       role %in% c(
+        "backend_anchor",
         "random_latent",
         "random_group_coefficient",
         "random_correlation",
@@ -745,7 +792,8 @@ JAGS_parameter_registry_schema <- function(){
     monitor_names = monitor_names,
     prior_list = attr(fit, "prior_list", exact = TRUE),
     formula_design = attr(fit, "formula_design", exact = TRUE),
-    formula_scale = attr(fit, "formula_scale", exact = TRUE)
+    formula_scale = attr(fit, "formula_scale", exact = TRUE),
+    backend_anchor = attr(fit, "backend_anchor", exact = TRUE)
   )
   fit
 }

@@ -221,12 +221,22 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   prior_list <- .complete_factor_metadata_prior_list(prior_list)
   .bt_validate_jags_add_parameters(add_parameters, prior_list)
 
+  backend_monitor <- .bt_add_backend_anchor(
+    model_syntax = model_syntax,
+    data = data,
+    prior_list = prior_list,
+    add_parameters = add_parameters,
+    monitor = c(JAGS_to_monitor(prior_list), add_parameters)
+  )
+  model_syntax <- backend_monitor$model_syntax
+  backend_anchor <- backend_monitor$backend_anchor
+
   ### create the model call
   model_call <- list(
     model     = JAGS_add_priors(syntax = model_syntax, prior_list = prior_list),
     data      = data,
     inits     = JAGS_get_inits(prior_list, chains = chains, seed = seed),
-    monitor   = c(JAGS_to_monitor(prior_list), add_parameters),
+    monitor   = backend_monitor$monitor,
     n.chains  = chains,
     adapt     = adapt,
     burnin    = burnin,
@@ -397,6 +407,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
   attr(fit, "add_parameters") <- add_parameters
   attr(fit, "required_packages") <- required_packages
   attr(fit, "jags_modules") <- jags_modules
+  attr(fit, "backend_anchor") <- backend_anchor
   if(!is.null(formula_scale_info)){
     # Keep formula_scale as a nested list keyed by parameter name
     # Each element contains the scaling info for that parameter's predictors
@@ -411,6 +422,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     fit,
     monitor_names = model_call$monitor
   )
+  fit <- .bt_attach_draw_geometry(fit)
   fit <- .bt_attach_fit_contract(fit)
 
   return(fit)
@@ -544,6 +556,8 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   check_bool(silent, "silent", allow_NA = FALSE)
   parameter_registry <- JAGS_parameter_registry(fit)
   fit_contract       <- attr(fit, "fit_contract", exact = TRUE)
+  draw_geometry      <- attr(fit, "draw_geometry", exact = TRUE)
+  backend_anchor     <- attr(fit, "backend_anchor", exact = TRUE)
 
   # extract fitting information
   prior_list        <- attr(fit, "prior_list")
@@ -666,6 +680,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   attr(fit, "add_parameters") <- add_parameters
   attr(fit, "required_packages") <- required_packages
   attr(fit, "jags_modules") <- jags_modules
+  attr(fit, "backend_anchor") <- backend_anchor
   if(!is.null(formula_scale)){
     attr(fit, "formula_scale") <- formula_scale
   }
@@ -676,7 +691,10 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   class(fit) <- unique(c(class(fit), "BayesTools_fit"))
   attr(fit, "parameter_registry") <- parameter_registry
   if(!is.null(fit_contract)){
+    fit <- .bt_attach_draw_geometry(fit)
     fit <- .bt_attach_fit_contract(fit)
+  }else if(!is.null(draw_geometry)){
+    attr(fit, "draw_geometry") <- draw_geometry
   }
 
   return(fit)
