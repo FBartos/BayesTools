@@ -11171,7 +11171,7 @@ test_that("fixed and random blocks own independent concrete factor bases", {
   treatment_term <- result$formula_design$random_effects[[1L]]
   meandif_term <- result$formula_design$random_effects[[2L]]
 
-  expect_identical(result$formula_design$schema_version, 2L)
+  expect_identical(result$formula_design$schema_version, 3L)
   expect_equal(result$formula_design$contrast_matrices$f, fixed_matrix)
   expect_equal(treatment_term$contrast_matrices$f, treatment_matrix)
   expect_equal(meandif_term$contrast_matrices$f, meandif_matrix)

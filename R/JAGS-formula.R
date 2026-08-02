@@ -351,6 +351,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   model_matrix <- .bt_model_matrix(model_frame, formula = formula, data = data)
   .bt_validate_model_matrix_finite(model_matrix, "Formula")
   raw_column_names <- colnames(model_matrix)
+  semantic_model_terms <- model_terms
 
   # check whether intercept is unique parameter
   if(sum(grepl("intercept", names(prior_list))) > 1)
@@ -655,6 +656,75 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   design_formula <- formula
   attr(design_formula, "log(intercept)") <- NULL
 
+  fixed_jags_names <- paste0(parameter, "_", model_terms)
+  fixed_name_map <- .bt_formula_name_map(
+    jags_name = fixed_jags_names,
+    kind = rep("fixed", length(fixed_jags_names)),
+    formula_parameter = rep(parameter, length(fixed_jags_names)),
+    term = semantic_model_terms,
+    role = rep("coefficient", length(fixed_jags_names))
+  )
+  generated_names <- unique(.bt_parameter_registry_base(
+    c(names(prior_list), JAGS_to_monitor(prior_list), add_parameters)
+  ))
+  generated_names <- generated_names[nzchar(generated_names)]
+  random_names <- setdiff(generated_names, fixed_jags_names)
+  random_name_map <- .bt_formula_name_map_empty()
+  if(length(random_names) > 0L){
+    random_terms <- rep("", length(random_names))
+    random_roles <- random_names
+    random_kinds <- rep("generated", length(random_names))
+    for(i in seq_along(random_names)){
+      matches <- vapply(compiled_random_effects, function(random_term){
+        is.character(random_term$parameter_stem) &&
+          length(random_term$parameter_stem) == 1L &&
+          startsWith(random_names[i], random_term$parameter_stem)
+      }, logical(1))
+      if(sum(matches) == 1L){
+        random_term <- compiled_random_effects[[which(matches)]]
+        random_kinds[i] <- "random"
+        random_terms[i] <- random_term$block_name
+        random_roles[i] <- substring(
+          random_names[i],
+          nchar(random_term$parameter_stem) + 1L
+        )
+      }else{
+        fixed_matches <- which(vapply(fixed_jags_names, function(fixed_name){
+          startsWith(random_names[i], paste0(fixed_name, "_"))
+        }, logical(1)))
+        if(length(fixed_matches) > 0L){
+          fixed_match <- fixed_matches[which.max(nchar(
+            fixed_jags_names[fixed_matches]
+          ))]
+          random_kinds[i] <- "fixed_auxiliary"
+          random_terms[i] <- semantic_model_terms[fixed_match]
+          random_roles[i] <- substring(
+            random_names[i],
+            nchar(fixed_jags_names[fixed_match]) + 1L
+          )
+        }
+      }
+    }
+    random_name_map <- .bt_formula_name_map(
+      jags_name = random_names,
+      kind = random_kinds,
+      formula_parameter = rep(parameter, length(random_names)),
+      term = random_terms,
+      role = random_roles
+    )
+  }
+  formula_output_map <- .bt_formula_name_map(
+    jags_name = parameter,
+    kind = "formula_output",
+    formula_parameter = parameter,
+    term = "",
+    role = "linear_predictor"
+  )
+  name_map <- rbind(fixed_name_map, random_name_map, formula_output_map)
+  class(name_map) <- c("BayesTools_formula_name_map", "data.frame")
+  attr(name_map, "schema_version") <- .bt_formula_name_map_version
+  .bt_validate_formula_name_map(name_map)
+
   output$formula_design <- .JAGS_formula_design_object(
     parameter         = parameter,
     formula           = design_formula,
@@ -674,6 +744,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     random_effects    = compiled_random_effects,
     random_effects_compile = random_effects_compile,
     jags_data_names   = jags_data_names,
+    name_map          = name_map,
     random_allocations = random_sd_binding_context$allocations,
     random_effects_interface = random_effects_interface
   )

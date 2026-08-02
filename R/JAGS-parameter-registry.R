@@ -227,6 +227,36 @@ JAGS_parameter_registry_schema <- function(){
   .bt_random_effect_summary_random_terms(random_design)
 }
 
+.bt_parameter_registry_name_map <- function(formula_design){
+
+  if(is.null(formula_design) || length(formula_design) == 0L){
+    return(.bt_formula_name_map_empty())
+  }
+  has_map <- vapply(formula_design, function(design){
+    !is.null(design$name_map)
+  }, logical(1))
+  if(!any(has_map)){
+    return(.bt_formula_name_map_empty())
+  }
+  maps <- lapply(formula_design[has_map], function(design){
+    map <- design$name_map
+    .bt_validate_formula_name_map(map)
+    map
+  })
+  out <- do.call(rbind, unname(maps))
+  rownames(out) <- NULL
+  class(out) <- c("BayesTools_formula_name_map", "data.frame")
+  attr(out, "schema_version") <- .bt_formula_name_map_version
+  if(anyDuplicated(out$jags_name)){
+    stop(
+      "Formula name maps contain a duplicate JAGS base name. Refit the model after resolving the generated-name collision.",
+      call. = FALSE
+    )
+  }
+  .bt_validate_formula_name_map(out)
+  out
+}
+
 .bt_parameter_registry_random_family <- function(random_term){
 
   stem <- random_term$parameter_stem
@@ -361,7 +391,12 @@ JAGS_parameter_registry_schema <- function(){
   "parameter"
 }
 
-.bt_parameter_registry_formula_parameter <- function(prior, random_term){
+.bt_parameter_registry_formula_parameter <- function(prior, random_term,
+                                                      name_map_row = NULL){
+
+  if(!is.null(name_map_row) && nrow(name_map_row) == 1L){
+    return(name_map_row$formula_parameter)
+  }
 
   if(!is.null(random_term) &&
      !is.null(random_term$parameter) &&
@@ -384,12 +419,16 @@ JAGS_parameter_registry_schema <- function(){
 }
 
 .bt_parameter_registry_coordinate <- function(canonical_name, random_term,
-                                              role){
+                                              role, name_map_row = NULL){
 
   out <- list(term = "", column = "")
   if(is.null(random_term)){
     if(identical(role, "fixed_coefficient")){
-      out$term <- .bt_parameter_registry_base(canonical_name)
+      out$term <- if(!is.null(name_map_row) && nrow(name_map_row) == 1L){
+        name_map_row$term
+      }else{
+        .bt_parameter_registry_base(canonical_name)
+      }
       out$column <- canonical_name
     }
     return(out)
@@ -557,6 +596,7 @@ JAGS_parameter_registry_schema <- function(){
   }
 
   random_terms <- .bt_parameter_registry_random_terms(formula_design)
+  name_map <- .bt_parameter_registry_name_map(formula_design)
   allocation_indicators <-
     .bt_random_variance_allocation_inclusion_indicator_names(formula_design)
   bases <- .bt_parameter_registry_base(canonical_names)
@@ -566,6 +606,7 @@ JAGS_parameter_registry_schema <- function(){
   for(i in seq_along(canonical_names)){
     canonical_name <- canonical_names[i]
     base_name <- bases[i]
+    name_map_row <- name_map[name_map$jags_name == base_name, , drop = FALSE]
     prior <- .bt_parameter_registry_prior_owner(base_name, prior_list)
     owner <- .bt_parameter_registry_term_owner(base_name, random_terms)
     random_term <- if(is.null(owner)) NULL else owner$random_term
@@ -595,14 +636,17 @@ JAGS_parameter_registry_schema <- function(){
 
     formula_parameter <- .bt_parameter_registry_formula_parameter(
       prior,
-      random_term
+      random_term,
+      name_map_row
     )
     coordinate <- .bt_parameter_registry_coordinate(
       canonical_name,
       random_term,
-      role
+      role,
+      name_map_row
     )
-    if(identical(role, "fixed_coefficient") && nzchar(formula_parameter)){
+    if(identical(role, "fixed_coefficient") && nzchar(formula_parameter) &&
+       nrow(name_map_row) == 0L){
       formula_prefix <- paste0(formula_parameter, "_")
       if(startsWith(coordinate$term, formula_prefix)){
         coordinate$term <- substring(

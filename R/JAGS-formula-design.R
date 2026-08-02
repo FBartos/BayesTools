@@ -25,7 +25,7 @@
 
 .bt_formula_design_schema_version <- function(){
 
-  2L
+  3L
 }
 
 .bt_formula_design_stored_data_scale <- function(){
@@ -111,6 +111,7 @@
                                         expressions, random_effects,
                                         random_effects_compile = NULL,
                                         jags_data_names,
+                                        name_map,
                                         random_allocations = list(),
                                         random_effects_interface = NULL){
 
@@ -181,6 +182,7 @@
     random_effects     = random_effects,
     random_effects_compile = random_effects_compile,
     jags_data_names    = jags_data_names,
+    name_map           = name_map,
     random_allocations = random_allocations,
     random_effects_interface = random_effects_interface
   )

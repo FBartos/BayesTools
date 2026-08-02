@@ -411,6 +411,7 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     fit,
     monitor_names = model_call$monitor
   )
+  fit <- .bt_attach_fit_contract(fit)
 
   return(fit)
 }
@@ -542,6 +543,7 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   check_int(cores, "cores", lower = 1, allow_NULL = TRUE, allow_NA = FALSE)
   check_bool(silent, "silent", allow_NA = FALSE)
   parameter_registry <- JAGS_parameter_registry(fit)
+  fit_contract       <- attr(fit, "fit_contract", exact = TRUE)
 
   # extract fitting information
   prior_list        <- attr(fit, "prior_list")
@@ -673,6 +675,9 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
 
   class(fit) <- unique(c(class(fit), "BayesTools_fit"))
   attr(fit, "parameter_registry") <- parameter_registry
+  if(!is.null(fit_contract)){
+    fit <- .bt_attach_fit_contract(fit)
+  }
 
   return(fit)
 }
