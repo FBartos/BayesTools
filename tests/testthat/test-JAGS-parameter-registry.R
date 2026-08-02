@@ -263,6 +263,22 @@ test_that("structural point parameters are registered when JAGS omits them", {
   expect_identical(fixed$fixed_value, 0)
   expect_identical(fixed$role, "parameter")
   expect_false(fixed$internal)
+
+  monitored <- build_test_parameter_registry(
+    columns = c("theta", "fixed"),
+    monitor_names = c("theta", "fixed"),
+    prior_list = list(
+      theta = prior("normal", list(0, 1)),
+      fixed = prior("point", list(0))
+    )
+  )
+  fixed_monitored <- monitored[
+    monitored$canonical_name == "fixed",
+    ,
+    drop = FALSE
+  ]
+  expect_identical(fixed_monitored$monitor_status, "structural")
+  expect_identical(fixed_monitored$fixed_value, 0)
 })
 
 test_that("structural registry coordinates retain exact scalar and vector values", {

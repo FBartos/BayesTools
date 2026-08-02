@@ -6070,13 +6070,15 @@ test_that("fully structural fits retain deterministic draw geometry", {
   )
 
   registry <- JAGS_parameter_registry(fit)
+  expect_false(.bt_backend_anchor_name %in% registry$canonical_name)
   expect_identical(
-    registry$role[registry$name == .bt_backend_anchor_name],
-    "backend_anchor"
+    registry$monitor_status[registry$canonical_name == "theta"],
+    "structural"
   )
-  expect_true(registry$internal[registry$name == .bt_backend_anchor_name])
-  expect_identical(registry$monitor_status[registry$name == "theta"], "structural")
-  expect_identical(registry$fixed_value[registry$name == "theta"], 0)
+  expect_identical(
+    registry$fixed_value[registry$canonical_name == "theta"],
+    0
+  )
 
   catalog <- parameter_catalog(fit)
   expect_false(.bt_backend_anchor_name %in% catalog$quantities$canonical_name)

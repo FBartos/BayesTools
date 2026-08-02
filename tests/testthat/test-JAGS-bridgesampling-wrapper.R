@@ -110,6 +110,39 @@ test_that("JAGS_bridgesampling validates the log-posterior callback eagerly", {
   )
 })
 
+test_that("JAGS_bridgesampling evaluates fixed scalar and vector models exactly", {
+
+  posterior <- coda::as.mcmc(matrix(
+    rep(c(0.25, 2, 2), each = 20),
+    nrow = 20,
+    dimnames = list(NULL, c("mu", "beta[1]", "beta[2]"))
+  ))
+  prior_list <- list(
+    mu   = prior("point", list(0.25)),
+    beta = prior("mpoint", list(2, 2))
+  )
+
+  result <- JAGS_bridgesampling(
+    fit = posterior,
+    log_posterior = function(parameters, data){
+      data[["offset"]] + parameters[["mu"]] + sum(parameters[["beta"]])
+    },
+    data = list(offset = -10),
+    prior_list = prior_list
+  )
+
+  expect_s3_class(result, "BayesTools_marglik")
+  expect_equal(result[["logml"]], -5.75)
+  expect_identical(
+    result[["aggregation"]][["rule"]],
+    "exact_zero_dimensional"
+  )
+  expect_identical(result[["aggregation"]][["n_repetitions"]], 0L)
+  expect_null(result[["diagnostics"]][["upstream"]])
+  expect_identical(result[["diagnostics"]][["chains"]][["count"]], 1L)
+  expect_identical(result[["diagnostics"]][["chains"]][["draws"]], 20L)
+})
+
 test_that("BayesTools fits require the canonical registry for bridge replay", {
 
   fit <- coda::as.mcmc(matrix(

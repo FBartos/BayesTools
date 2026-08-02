@@ -328,6 +328,14 @@ test_that("exchangeable vector priors expose exact numeric and JAGS APIs", {
   expect_true(all(is.nan(mean(p_mcauchy))))
 
   expect_equal(JAGS_to_monitor(list(theta = p_mnormal, beta = p_mt)), c("theta", "beta"))
+  expect_equal(
+    JAGS_to_monitor(list(
+      fixed_scalar = prior("point", list(0)),
+      fixed_vector = prior("mpoint", list(1, 2)),
+      fixed_factor = prior_factor("point", list(0), contrast = "treatment")
+    )),
+    c("fixed_scalar", "fixed_vector", "fixed_factor")
+  )
 
   syntax_mnormal <- JAGS_add_priors("model{}", list(theta = p_mnormal))
   expect_match(syntax_mnormal, "prior_par1_theta = rep(1,3)", fixed = TRUE)

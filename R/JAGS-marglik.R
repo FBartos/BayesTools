@@ -93,6 +93,12 @@
 #' fitting. Data supplied only to `JAGS_bridgesampling()` do not extend or
 #' replace the fitted source snapshot.
 #'
+#' If every bridge coordinate is fixed by a point prior,
+#' `JAGS_bridgesampling()` evaluates `log_posterior` once at the reconstructed
+#' fixed parameter values. The returned marginal likelihood is exact and uses
+#' the aggregation rule `"exact_zero_dimensional"`; no bridge repetitions are
+#' performed.
+#'
 #' When `bridge_context = TRUE`, the callback receives an object of class
 #' `BayesTools_bridge_context` with fields `state`, `state_matrix`, `nodes`,
 #' `prior_parameters`, `formula_prior_parameters`, `formula_parameters`,
@@ -239,9 +245,6 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     formula_design_list = formula_design_list,
     bridgesampling_posterior = bridgesampling_posterior
   )
-  if(ncol(bridgesampling_posterior) == 0)
-    stop("Bridge sampling cannot proceed without any estimated parameter")
-
   bridge_prior_evaluators <- .bt_JAGS_bridge_compile_model_prior_evaluators(
     prior_list = prior_list,
     formula_prior_list = formula_prior_list
@@ -332,6 +335,24 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     )
 
     return(marglik)
+  }
+
+  if(ncol(bridgesampling_posterior) == 0L){
+    logml <- full_log_posterior(
+      samples.row = numeric(),
+      data = data,
+      bridge_prior_evaluator = bridge_prior_evaluator,
+      bridge_formula_prior_evaluator = bridge_formula_prior_evaluator,
+      bridge_formula_random_prior_evaluator = bridge_formula_random_prior_evaluator,
+      bridge_formula_parameter_evaluator = bridge_formula_parameter_evaluator,
+      add_parameters = add_parameters,
+      bridge_context = bridge_context,
+      formula_design_list = formula_design_list,
+      formula_data_list = formula_data_list,
+      formula_prior_list = formula_prior_list,
+      ...
+    )
+    return(.bt_marglik_exact_result(logml, chain_metadata))
   }
 
 

@@ -694,7 +694,9 @@ JAGS_parameter_registry_schema <- function(){
         monitor_names == base_name
     ]
     monitor_name <- if(length(requested) > 0L) requested[1L] else base_name
-    monitor_status <- if(canonical_name %in% columns){
+    monitor_status <- if(!is.null(prior) && is.prior.point(prior)){
+      "structural"
+    }else if(canonical_name %in% columns){
       "sampled"
     }else{
       "structural"

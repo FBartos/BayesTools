@@ -277,12 +277,21 @@ test_that("JAGS_to_monitor generates correct monitor strings", {
   )
 
   monitor_point <- JAGS_to_monitor(priors_with_point)
-  expect_equal(sort(monitor_point), "mu")
-  expect_false("fixed" %in% monitor_point)
+  expect_equal(sort(monitor_point), c("fixed", "mu"))
   test_reference_text(paste(sort(monitor_point), collapse = ", "), "JAGS_to_monitor_point.txt")
 
   monitor_point_only <- JAGS_to_monitor(list(fixed = prior("point", list(0))))
-  expect_equal(monitor_point_only, "")
+  expect_equal(monitor_point_only, "fixed")
+
+  monitor_mpoint <- JAGS_to_monitor(list(
+    fixed_vector = prior("mpoint", list(1, 2))
+  ))
+  expect_equal(monitor_mpoint, "fixed_vector")
+
+  monitor_factor_point <- JAGS_to_monitor(list(
+    fixed_factor = prior_factor("point", list(0), contrast = "treatment")
+  ))
+  expect_equal(monitor_factor_point, "fixed_factor")
 
   # Test with factor priors
   priors_factor <- list(

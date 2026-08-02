@@ -26,6 +26,8 @@
 - adds a `RandomEffects` vignette comparing BayesTools formula random effects with lme4 and rstanarm examples
 
 ### Changes
+- deterministic scalar, multivariate, and factor point-prior parameters are now monitored and retained as structural posterior columns
+- `JAGS_bridgesampling()` now evaluates zero-dimensional fixed-parameter models exactly instead of requiring an artificial sampled parameter
 - `JAGS_fit()` and `JAGS_extend()` now carry generated `add_parameters`, `required_packages`, and `jags_modules` metadata so formula-generated monitors and JAGS modules remain available during fitting, extension, convergence checks, and parallel execution
 - `JAGS_estimates_table(transform_scaled = TRUE)` now derives formula random-effect SD and correlation summaries on the transformed original scale when fitted formula-scale metadata are available
 - `JAGS_evaluate_formula()` can evaluate fitted random-effect formulas for existing grouping levels when latent random effects or group-level coefficients were monitored

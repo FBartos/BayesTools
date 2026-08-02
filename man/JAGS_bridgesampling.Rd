@@ -142,6 +142,12 @@ Any callback data must therefore be included in \code{formula_data_list} when
 fitting. Data supplied only to \code{JAGS_bridgesampling()} do not extend or
 replace the fitted source snapshot.
 
+If every bridge coordinate is fixed by a point prior,
+\code{JAGS_bridgesampling()} evaluates \code{log_posterior} once at the reconstructed
+fixed parameter values. The returned marginal likelihood is exact and uses
+the aggregation rule \code{"exact_zero_dimensional"}; no bridge repetitions are
+performed.
+
 When \code{bridge_context = TRUE}, the callback receives an object of class
 \code{BayesTools_bridge_context} with fields \code{state}, \code{state_matrix}, \code{nodes},
 \code{prior_parameters}, \code{formula_prior_parameters}, \code{formula_parameters},

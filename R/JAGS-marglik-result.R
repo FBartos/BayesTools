@@ -57,6 +57,20 @@
   out
 }
 
+.bt_marglik_exact_result <- function(logml, chain_metadata){
+
+  out <- .bt_marglik_manual_result(logml)
+  out[["aggregation"]] <- list(
+    rule = "exact_zero_dimensional",
+    nonfinite_policy = "not_applicable",
+    n_repetitions = 0L,
+    n_included = 1L,
+    n_failed = 0L
+  )
+  out[["diagnostics"]][["chains"]] <- chain_metadata
+  out
+}
+
 .bt_marglik_repetition_field <- function(x, n_repetitions, name,
                                          missing = NA_real_){
 

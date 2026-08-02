@@ -83,11 +83,7 @@ JAGS_to_monitor             <- function(prior_list){
     stop("improper prior provided")
   check_char(parameter_name, "parameter_name")
 
-  if(prior[["distribution"]] %in% c("point", "mpoint")){
-    monitor <- character()
-  }else{
-    monitor <- parameter_name
-  }
+  monitor <- parameter_name
 
   return(monitor)
 }

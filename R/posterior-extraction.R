@@ -577,7 +577,11 @@ NULL
 #' @return updated model_samples matrix
 .transform_factor_contrasts <- function(model_samples, prior_list, transform_factors = FALSE, transformations = NULL) {
 
-  factor_parameters <- names(prior_list)[sapply(prior_list, function(x) is.prior.orthonormal(x) | is.prior.meandif(x) | is.prior.ordered(x))]
+  factor_parameters <- names(prior_list)[vapply(
+    prior_list,
+    function(x) is.prior.orthonormal(x) | is.prior.meandif(x) | is.prior.ordered(x),
+    logical(1)
+  )]
 
   if (!transform_factors || length(factor_parameters) == 0) {
     return(model_samples)
