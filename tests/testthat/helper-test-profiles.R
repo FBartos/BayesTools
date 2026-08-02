@@ -22,6 +22,7 @@ bayestools_test_profile_contexts <- list(
     "JAGS-draw-geometry",
     "JAGS-fit-contract",
     "JAGS-fit-settings",
+    "JAGS-formula-coefficient-density",
     "JAGS-formula-default-priors",
     "JAGS-formula-design-oracles",
     "JAGS-formula-prediction-targets",

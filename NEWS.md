@@ -1,5 +1,6 @@
 # version 0.3.1
 ### Features
+- adds `JAGS_formula_coefficient_transform()` and `JAGS_formula_prior_density()` for versioned fitted-to-original coefficient maps and exact induced prior measures, including structural point values, interactions, log-intercept Jacobians, and model-mixture atoms
 - adds a versioned `hypothesis_parse()` syntax tree with stable rendering, exact symbol discovery and rewriting, parameter-catalog resolution, and direct `hypothesis_BF()` consumption without reparsing expression text
 - adds a cached metadata-only `parameter_catalog()` with versioned quantity and alias tables, classed exact resolution, validated provider extensions, and deferred `parameter_draws()` extraction for registry coordinates and declared random-effect summaries
 - adds versioned `JAGS_draw_geometry()` metadata and registry-based `JAGS_materialize_draws()` reconstruction, including exact structural point-prior values, preserved chain timing, valid zero-column public draws, and a private deterministic backend anchor for models with no ordinary monitor

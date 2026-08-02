@@ -1967,16 +1967,6 @@ prior_density_ordinate <- function(x, value){
   }
 
   if(inherits(context, "prior_density_model_mixture_context")){
-    if(!is.null(source_transforms)){
-      return(.prior_density_ordinate_result(
-        value       = value,
-        behavior    = "unknown",
-        log_density = NA_real_,
-        exact       = FALSE,
-        method      = "unsupported_provenance",
-        provenance  = list(kind = "density_context_model_mixture")
-      ))
-    }
     component_classifier <- function(source_value){
       results <- lapply(seq_along(context$model_weights), function(model_i){
         model_prior_list <- lapply(context$prior_list, function(parameter_priors){
@@ -1990,7 +1980,7 @@ prior_density_ordinate <- function(x, value){
         .prior_density_ordinate_linear_base(
           model_prior_list,
           weights,
-          NULL,
+          source_transforms,
           source_value
         )
       })

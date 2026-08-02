@@ -19,10 +19,15 @@
       if(length(affected_cols) == 0){
         next
       }
+      coefficient_transform <- .bt_formula_coefficient_transform(
+        source_names = affected_cols,
+        formula_scale = formula_scale[[param_name]],
+        parameter = param_name
+      )
       transforms[[param_name]] <- list(
-        columns       = affected_cols,
-        matrix        = .build_unscale_matrix(affected_cols, formula_scale[[param_name]], param_name),
-        log_intercept = isTRUE(attr(formula_scale[[param_name]], "log_intercept")),
+        columns       = coefficient_transform$source_names,
+        matrix        = coefficient_transform$matrix,
+        log_intercept = any(coefficient_transform$source_transforms == "log"),
         intercept     = paste0(param_name, "_intercept")
       )
     }
@@ -257,6 +262,7 @@
 }
 
 .prior_density_model_mixture_density <- function(context, weights,
+                                                  source_transforms = NULL,
                                                   output_transformation = NULL,
                                                   output_transformation_arguments = NULL){
 
@@ -284,7 +290,8 @@
       prior_list = model_prior_list,
       weights    = weights,
       n_grid     = context$n_grid,
-      tail_prob  = context$tail_prob
+      tail_prob  = context$tail_prob,
+      source_transforms = source_transforms
     )
   }
 
@@ -424,12 +431,10 @@
       output_transformation_arguments = output_transformation_arguments
     )
   }else if(inherits(context, "prior_density_model_mixture_context")){
-    if(!is.null(source_transforms)){
-      stop("Source transformations are not supported for model-list prior mixtures.", call. = FALSE)
-    }
     out <- .prior_density_model_mixture_density(
       context                         = context,
       weights                         = weights,
+      source_transforms               = source_transforms,
       output_transformation           = output_transformation,
       output_transformation_arguments = output_transformation_arguments
     )

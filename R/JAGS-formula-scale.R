@@ -546,10 +546,6 @@
     return(posterior)
   }
 
-  # Check if this parameter uses log(intercept)
-  log_intercept <- isTRUE(attr(formula_scale, "log_intercept"))
-  intercept_col <- paste0(prefix, "_intercept")
-
   # Identify which columns are affected by the transformation
   affected_cols <- colnames(posterior)[
     .formula_scale_matches_prefix(colnames(posterior), prefix)
@@ -581,23 +577,16 @@
     .warn_unused_formula_scale_terms(fixed_cols, formula_scale, prefix)
   }
 
-  # For log(intercept): transform to log scale before unscaling, then exp() back
-  # This works because: log_sigma = log(intercept) + beta * x_z
-  # is equivalent to: log_sigma = log_int + beta * x_z (standard additive form)
-  # where log_int = log(intercept)
-  if (length(fixed_cols) > 0 && log_intercept && intercept_col %in% colnames(posterior)) {
-    posterior[, intercept_col] <- log(posterior[, intercept_col])
-  }
-
-  # Build and apply standard transformation matrix
   if(length(fixed_cols) > 0){
-    M <- .build_unscale_matrix(fixed_cols, formula_scale, prefix)
-    posterior[, fixed_cols] <- posterior[, fixed_cols, drop = FALSE] %*% t(M)
-  }
-
-  # Transform intercept back from log scale
-  if (length(fixed_cols) > 0 && log_intercept && intercept_col %in% colnames(posterior)) {
-    posterior[, intercept_col] <- exp(posterior[, intercept_col])
+    transform <- .bt_formula_coefficient_transform(
+      source_names = fixed_cols,
+      formula_scale = formula_scale,
+      parameter = prefix
+    )
+    posterior <- .bt_apply_formula_coefficient_transform(
+      posterior,
+      transform
+    )
   }
 
   posterior <- .apply_random_sd_unscale(posterior, random_sd_cols, formula_scale, prefix)
