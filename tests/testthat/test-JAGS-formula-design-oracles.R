@@ -1547,12 +1547,46 @@ test_that("formula expression terms are parsed structurally", {
   expect_equal(.remove_expressions(~ z + expression(log(x))), formula(~ z), ignore_formula_env = TRUE)
 
   expression_result <- JAGS_formula(
-    y ~ expression(log(x)),
+    y ~ expression(sqrt(abs(log(x[i]))) + exp(0)),
     "mu",
     data.frame(x = c(1, 2, 3)),
     list(intercept = prior("normal", list(0, 1)))
   )
-  expect_equal(expression_result$formula_design$transformed_terms, list("log(x)"))
+  expect_equal(
+    expression_result$formula_design$transformed_terms,
+    list("sqrt(abs(log(x[i]))) + exp(0)")
+  )
+
+  expect_error(
+    JAGS_formula(
+      ~ expression(step(x[i])),
+      "mu",
+      data.frame(x = c(-1, 1)),
+      list(intercept = prior("normal", list(0, 1)))
+    ),
+    "is not replayable: unsupported call 'step'",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_formula(
+      ~ expression(theta),
+      "mu",
+      data.frame(x = c(-1, 1)),
+      list(intercept = prior("normal", list(0, 1)))
+    ),
+    "is not replayable: unknown data symbol 'theta'",
+    fixed = TRUE
+  )
+  expect_error(
+    JAGS_formula(
+      ~ expression(log(i)),
+      "mu",
+      data.frame(i = c(1, 2)),
+      list(intercept = prior("normal", list(0, 1)))
+    ),
+    "cannot contain a column named 'i'",
+    fixed = TRUE
+  )
 
   expect_error(
     JAGS_formula(
@@ -1667,11 +1701,20 @@ test_that("formula expression helpers reject non-finite or wrong-length results"
   )
   expect_error(
     BayesTools:::.bt_formula_expression_row_values(
-      expressions = list("c(1, 2)"),
-      data = data.frame(x = 1),
+      expressions = list("x"),
+      data = data.frame(x = c(1, 2)),
       n_rows = 1L
     ),
     "length 1 or 1"
+  )
+  expect_error(
+    BayesTools:::.bt_formula_expression_row_values(
+      expressions = list("system('echo unsafe')"),
+      data = data.frame(x = 1),
+      n_rows = 1L
+    ),
+    "is not replayable: unsupported call 'system'",
+    fixed = TRUE
   )
 })
 

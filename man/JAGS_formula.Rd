@@ -90,8 +90,12 @@ Matrix-valued continuous predictors are not currently supported.
 Fixed formulas support literal data-column names and standard formula
 operators. Dot expansion, \code{offset()}, inline transformations, and
 arbitrary calls are rejected; create explicit data columns for transformed
-predictors. The BayesTools \code{expression(...)} facility remains available
-for literal JAGS-scale additions.
+predictors. The BayesTools \code{expression(...)} facility accepts only
+finite numeric constants, data-column symbols, JAGS-style \code{i} indexing,
+arithmetic operators, and \code{abs()}, \code{exp()}, \code{log()}, or
+\code{sqrt()}. This replayable subset is evaluated identically during
+prediction and marginal-likelihood reconstruction. Posterior-dependent
+expression terms are not supported.
 Random-effect predictors likewise support literal data-column names and
 formula operators, but not inline transformations or arbitrary calls.
 Create transformed random slopes as explicit data columns. Grouping terms

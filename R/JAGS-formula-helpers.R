@@ -133,6 +133,116 @@
 
   list()
 }
+.bt_formula_expression_label <- function(expression_body){
+
+  if(is.character(expression_body)){
+    return(paste(expression_body, collapse = " "))
+  }
+  paste(deparse(expression_body), collapse = " ")
+}
+.bt_formula_expression_stop <- function(expression_label, detail = NULL){
+
+  stop(
+    "expression() term '", expression_label, "' is not replayable",
+    if(is.null(detail)) "." else paste0(": ", detail, "."),
+    " Use numeric constants, data columns, 'i' row indexing, arithmetic ",
+    "operators, or abs(), exp(), log(), and sqrt(). Create other transformed ",
+    "values as data columns; posterior-dependent expression terms are not ",
+    "supported.",
+    call. = FALSE
+  )
+}
+.bt_validate_formula_expression_node <- function(node, data_names,
+                                                 expression_label){
+
+  if(is.numeric(node) && length(node) == 1L && is.finite(node)){
+    return(invisible(TRUE))
+  }
+  if(is.symbol(node)){
+    symbol <- as.character(node)
+    if(symbol %in% c(data_names, "i")){
+      return(invisible(TRUE))
+    }
+    .bt_formula_expression_stop(
+      expression_label,
+      paste0("unknown data symbol '", symbol, "'")
+    )
+  }
+  if(!is.call(node) || !is.symbol(node[[1L]])){
+    .bt_formula_expression_stop(expression_label, "unsupported syntax")
+  }
+
+  call_name <- as.character(node[[1L]])
+  arguments <- as.list(node)[-1L]
+  valid_arity <- switch(
+    call_name,
+    "(" = length(arguments) == 1L,
+    "+" = length(arguments) %in% c(1L, 2L),
+    "-" = length(arguments) %in% c(1L, 2L),
+    "*" = length(arguments) == 2L,
+    "/" = length(arguments) == 2L,
+    "^" = length(arguments) == 2L,
+    "[" = length(arguments) >= 2L,
+    "abs" = length(arguments) == 1L,
+    "exp" = length(arguments) == 1L,
+    "log" = length(arguments) == 1L,
+    "sqrt" = length(arguments) == 1L,
+    FALSE
+  )
+  if(!isTRUE(valid_arity)){
+    .bt_formula_expression_stop(
+      expression_label,
+      paste0("unsupported call '", call_name, "'")
+    )
+  }
+  for(argument in arguments){
+    .bt_validate_formula_expression_node(
+      argument,
+      data_names,
+      expression_label
+    )
+  }
+  invisible(TRUE)
+}
+.bt_parse_formula_expression <- function(expression_body, data_names){
+
+  expression_label <- .bt_formula_expression_label(expression_body)
+  parsed <- tryCatch(
+    parse(text = expression_label),
+    error = function(e) e
+  )
+  if(inherits(parsed, "error") || length(parsed) != 1L){
+    .bt_formula_expression_stop(expression_label, "invalid expression syntax")
+  }
+  .bt_validate_formula_expression_node(
+    parsed[[1L]],
+    data_names,
+    expression_label
+  )
+  parsed[[1L]]
+}
+.bt_validate_formula_expressions <- function(expressions, data){
+
+  if(length(expressions) == 0L){
+    return(invisible(TRUE))
+  }
+  data_names <- names(data)
+  if(is.null(data_names) || any(!nzchar(data_names)) || anyDuplicated(data_names)){
+    stop("Formula expression source data must have unique, nonempty names.",
+         call. = FALSE)
+  }
+  if("i" %in% data_names){
+    stop(
+      "Formula expression source data cannot contain a column named 'i' ",
+      "because it is reserved for JAGS-style row indexing.",
+      call. = FALSE
+    )
+  }
+  for(expression_body in expressions){
+    .bt_parse_formula_expression(expression_body, data_names)
+  }
+  invisible(TRUE)
+}
 .bt_formula_expression_row_values <- function(expressions, data, n_rows,
                                               context = "Formula expression"){
 
@@ -165,17 +275,14 @@
 
   total <- rep.int(0, n_rows)
   for(expression_body in expressions){
-    expression_label <- if(is.character(expression_body)){
-      paste(expression_body, collapse = " ")
-    }else{
-      paste(deparse(expression_body), collapse = " ")
-    }
+    expression_label <- .bt_formula_expression_label(expression_body)
     expression_label <- .clean_from_expression(
       paste0("expression(", expression_label, ")")
     )
+    parsed <- .bt_parse_formula_expression(expression_label, names(env_data))
     value <- tryCatch(
       eval(
-        parse(text = expression_label),
+        parsed,
         envir = list2env(env_data, parent = baseenv())
       ),
       error = function(e) e

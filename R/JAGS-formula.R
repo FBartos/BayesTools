@@ -62,8 +62,12 @@
 #' Fixed formulas support literal data-column names and standard formula
 #' operators. Dot expansion, \code{offset()}, inline transformations, and
 #' arbitrary calls are rejected; create explicit data columns for transformed
-#' predictors. The BayesTools \code{expression(...)} facility remains available
-#' for literal JAGS-scale additions.
+#' predictors. The BayesTools \code{expression(...)} facility accepts only
+#' finite numeric constants, data-column symbols, JAGS-style \code{i} indexing,
+#' arithmetic operators, and \code{abs()}, \code{exp()}, \code{log()}, or
+#' \code{sqrt()}. This replayable subset is evaluated identically during
+#' prediction and marginal-likelihood reconstruction. Posterior-dependent
+#' expression terms are not supported.
 #' Random-effect predictors likewise support literal data-column names and
 #' formula operators, but not inline transformations or arbitrary calls.
 #' Create transformed random slopes as explicit data columns. Grouping terms
@@ -158,6 +162,7 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   log_intercept  <- isTRUE(attr(formula, "log(intercept)"))
   # store expressions (included later as the literal character input)
   expressions    <- .extract_expressions(formula)
+  .bt_validate_formula_expressions(expressions, data)
   # store random effects (included later via a formula interface)
   parsed_random_effects <- .bt_formula_random_terms(formula)
   .bt_validate_random_effect_block_names(parsed_random_effects, prior_random)
