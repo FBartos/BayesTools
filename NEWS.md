@@ -28,6 +28,7 @@
 - adds a `RandomEffects` vignette comparing BayesTools formula random effects with lme4 and rstanarm examples
 
 ### Changes
+- `as_marginal_inference(compute_BF = FALSE)` now returns averaged and conditional marginal posteriors without computing inclusion Bayes factors
 - deterministic scalar, multivariate, and factor point-prior parameters are now monitored and retained as structural posterior columns
 - `JAGS_bridgesampling()` now evaluates zero-dimensional fixed-parameter models exactly instead of requiring an artificial sampled parameter
 - `JAGS_fit()` and `JAGS_extend()` now carry generated `add_parameters`, `required_packages`, and `jags_modules` metadata so formula-generated monitors and JAGS modules remain available during fitting, extension, convergence checks, and parallel execution

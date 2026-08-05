@@ -17,7 +17,8 @@ as_marginal_inference(
   n_samples = 10000,
   silent = FALSE,
   force_plots = FALSE,
-  density_method = "KDE"
+  density_method = "KDE",
+  compute_BF = TRUE
 )
 }
 \arguments{
@@ -56,6 +57,10 @@ factors. Currently only \code{"KDE"} is supported by
 \code{marginal_inference()} and \code{as_marginal_inference()} because
 generic model-averaged marginal posteriors do not have a well-defined
 precomputed density source.}
+
+\item{compute_BF}{whether to compute inclusion Bayes factors. When
+\code{FALSE}, the averaged and conditional marginal posteriors are returned
+and the \code{inference} list is empty.}
 }
 \value{
 \code{as_marginal_inference} returns an object of class 'marginal_inference'.

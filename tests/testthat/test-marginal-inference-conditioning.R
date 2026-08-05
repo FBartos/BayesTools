@@ -316,6 +316,26 @@ test_that("as_marginal_inference rejects precomputed marginal-inference BFs", {
   expect_equal(attr(inference, "density_method"), "KDE")
 })
 
+test_that("as_marginal_inference can return marginals without Bayes factors", {
+
+  prior_list <- list(theta = prior("point", list(0)))
+  fit <- .mock_marginal_fit(cbind(theta = rep(0, 20)), prior_list)
+
+  inference <- as_marginal_inference(
+    model                = fit,
+    marginal_parameters = "theta",
+    parameters          = "theta",
+    conditional_list    = list(theta = NULL),
+    conditional_rule    = "AND",
+    formula             = NULL,
+    compute_BF          = FALSE
+  )
+
+  expect_equal(as.numeric(inference[["averaged"]][["theta"]]), rep(0, 20))
+  expect_equal(as.numeric(inference[["conditional"]][["theta"]]), rep(0, 20))
+  expect_length(inference[["inference"]], 0L)
+})
+
 test_that("as_marginal_inference does not consume raw stored posterior ordinates", {
 
   prior_list <- list(theta = prior("normal", list(0, 1)))

@@ -126,6 +126,9 @@ marginal_inference <- function(model_list, marginal_parameters, parameters, is_n
 #' @param parameters all parameters included in the model_list that are
 #' relevant for the formula (all of which need to have specification of
 #' \code{is_null_list})
+#' @param compute_BF whether to compute inclusion Bayes factors. When
+#' \code{FALSE}, the averaged and conditional marginal posteriors are returned
+#' and the \code{inference} list is empty.
 #' @inheritParams as_mixed_posteriors
 #' @inheritParams marginal_inference
 #' @inheritParams Savage_Dickey_BF
@@ -146,7 +149,7 @@ marginal_inference <- function(model_list, marginal_parameters, parameters, is_n
 as_marginal_inference <- function(model, marginal_parameters, parameters, conditional_list, conditional_rule, formula,
                                   null_hypothesis = 0, normal_approximation = FALSE,
                                   n_samples = 10000, silent = FALSE, force_plots = FALSE,
-                                  density_method = "KDE"){
+                                  density_method = "KDE", compute_BF = TRUE){
 
   # check input (majority of the checks performed within mix_posteriors)
   # check input
@@ -156,6 +159,7 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
   check_char(marginal_parameters, "marginal_parameters", check_length = FALSE)
   check_list(conditional_list, "conditional_list", check_length = length(marginal_parameters))
   check_char(conditional_rule, "conditional_rule")
+  check_bool(compute_BF, "compute_BF")
   density_method <- .marginal_inference_density_method(density_method)
 
   priors <- attr(model, "prior_list")
@@ -211,14 +215,16 @@ as_marginal_inference <- function(model, marginal_parameters, parameters, condit
       next
     }
 
-    # and inclusion Bayes factor
-    out[["inference"]][[marginal_parameters[i]]] <- Savage_Dickey_BF(
-      posterior            = out[["conditional"]][[marginal_parameters[i]]],
-      null_hypothesis      = null_hypothesis,
-      normal_approximation = normal_approximation,
-      silent               = silent,
-      density_method       = density_method
-    )
+    if(compute_BF){
+      # and inclusion Bayes factor
+      out[["inference"]][[marginal_parameters[i]]] <- Savage_Dickey_BF(
+        posterior            = out[["conditional"]][[marginal_parameters[i]]],
+        null_hypothesis      = null_hypothesis,
+        normal_approximation = normal_approximation,
+        silent               = silent,
+        density_method       = density_method
+      )
+    }
   }
 
   attr(out, "null_hypothesis")      <- null_hypothesis
