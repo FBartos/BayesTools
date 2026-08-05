@@ -356,6 +356,15 @@ test_that("declared variance allocations have metadata-only catalog rows", {
       "mu__xRE_ALLOCx_allocation__weight[2]"
     ) %in% key$dependencies)
   }, logical(1))))
+  study_fraction <- parameter_catalog_resolve(
+    catalog,
+    alias = "var_frac(allocation: study)",
+    namespace = "mu"
+  )
+  expect_identical(
+    study_fraction$quantities$canonical_name,
+    fractions$canonical_name[fractions$component == "study"]
+  )
 })
 
 test_that("malformed catalogs and stale selections fail closed", {

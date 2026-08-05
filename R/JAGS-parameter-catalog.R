@@ -500,9 +500,24 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
   rows <- vector("list", nrow(public))
   for(i in seq_len(nrow(public))){
     quantity <- public[i, , drop = FALSE]
+    semantic_label <- character()
+    if(startsWith(quantity$role, "random_") &&
+       !is.na(quantity$formula_parameter)){
+      prefix <- .bt_random_effect_summary_formula_prefix(
+        quantity$formula_parameter,
+        TRUE
+      )
+      if(nzchar(prefix) && startsWith(quantity$display_label, prefix)){
+        semantic_label <- substring(
+          quantity$display_label,
+          nchar(prefix) + 1L
+        )
+      }
+    }
     values <- unique(c(
       quantity$canonical_name,
       quantity$display_label,
+      semantic_label,
       quantity$term,
       quantity$component,
       if(identical(quantity$role, "fixed_coefficient") &&
