@@ -52,6 +52,78 @@ test_that("parameter catalog construction is metadata-only and versioned", {
   expect_identical(fixed$extraction_key[[1L]]$dependencies, "fixed")
 })
 
+test_that("factor catalog components preserve fitted level identities", {
+
+  data <- data.frame(f = factor(c("a", "b", "c")))
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + f,
+    parameter = "mu",
+    data = data,
+    prior_list = list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_factor("normal", list(0, 1), contrast = "treatment")
+    )
+  )
+  registry <- .bt_build_parameter_registry(
+    columns = c("mu_intercept", "mu_f[1]", "mu_f[2]"),
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design)
+  )
+  catalog <- .bt_build_parameter_catalog(
+    registry = registry,
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design)
+  )
+
+  factor_rows <- catalog$quantities[
+    catalog$quantities$canonical_name %in% c("mu_f[1]", "mu_f[2]"),
+    ,
+    drop = FALSE
+  ]
+  expect_identical(factor_rows$component, c("b", "c"))
+  expect_identical(
+    parameter_catalog_resolve(
+      catalog,
+      alias = "f",
+      namespace = "mu",
+      component = "b"
+    )$quantities$canonical_name,
+    "mu_f[1]"
+  )
+  expect_identical(
+    parameter_catalog_resolve(
+      catalog,
+      alias = "f[c]",
+      namespace = "mu"
+    )$quantities$canonical_name,
+    "mu_f[2]"
+  )
+
+  resolved <- hypothesis_resolve(
+    hypothesis_parse("f[b] > f[c]"),
+    catalog,
+    namespace = "mu"
+  )
+  occurrence_map <- unique(resolved$occurrences[
+    c("symbol", "canonical_name", "component")
+  ])
+  expect_identical(
+    occurrence_map$canonical_name,
+    c("mu_f[1]", "mu_f[2]")
+  )
+  expect_identical(occurrence_map$component, c("b", "c"))
+  expect_error(
+    hypothesis_resolve(
+      hypothesis_parse("f[b] > 0"),
+      catalog,
+      namespace = "mu",
+      component = "c"
+    ),
+    "does not match the requested catalog component",
+    fixed = TRUE
+  )
+})
+
 test_that("catalog extensions preserve ambiguity until filtered", {
 
   registry <- .bt_build_parameter_registry(

@@ -38,6 +38,7 @@
 - `as_marginal_inference()` conditional marginal summaries use active-subset conditioning: each marginal level conditions only on requested parameters with nonzero weight in that level's linear combination, and levels with no active requested conditionals use the fully averaged context
 
 ### Fixes
+- resolves level-qualified hypothesis symbols through semantic catalog components, including multiple factor levels in the same hypothesis, instead of dropping the level and reporting the factor term as ambiguous
 - fixes bridge-sampling bound validation by requiring named lower and upper bounds that match `add_parameters`
 - hardens JAGS build discovery by adding non-default Unix rpath flags, enforcing JAGS >= 4.3.0 when the version is discoverable, removing unused JAGS major-version compile defines, and making Windows JAGS root detection robust to spaces and semantic version ordering
 - hardens fixture test infrastructure by routing hypothesis bridge comparisons through shared cache-currency validation, registering indexed JAGS parameter tests in the unit profile, and expanding random-effect source/function hashes that invalidate fitted-model caches

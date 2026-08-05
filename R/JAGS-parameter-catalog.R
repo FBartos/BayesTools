@@ -18,8 +18,11 @@
 #' @description
 #' `parameter_catalog()` returns the versioned semantic catalog cached on a
 #' fitted object. The catalog contains only metadata: selectable quantities,
-#' exact aliases, and serializable extraction keys. Constructing or resolving
-#' it never accesses posterior draws.
+#' exact aliases, and serializable extraction keys. Fixed factor coefficients
+#' use their fitted level labels as catalog components, so both `term[level]`
+#' and `term` plus `component = "level"` resolve without parsing backend
+#' coordinate names. Constructing or resolving the catalog never accesses
+#' posterior draws.
 #'
 #' `parameter_catalog_extend()` adds plain-data quantities and aliases owned by
 #' another provider. `parameter_catalog_resolve()` applies optional namespace
@@ -393,9 +396,63 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
   out
 }
 
-.bt_parameter_catalog_registry_quantities <- function(registry){
+.bt_parameter_catalog_factor_components <- function(prior){
+
+  if(!is.prior.treatment(prior) && !is.prior.independent(prior)){
+    return(character())
+  }
+  level_names <- .factor_level_list(prior)
+  if(is.null(level_names) || length(level_names) == 0L){
+    return(character())
+  }
+  n_components <- .get_prior_factor_levels(prior)
+  if(length(n_components) != 1L || is.na(n_components)){
+    return(character())
+  }
+  if(is.prior.treatment(prior)){
+    if(length(level_names) == 1L){
+      level_names[[1L]] <- level_names[[1L]][-1L]
+    }else if(prod(lengths(level_names)) != n_components){
+      level_names <- lapply(level_names, function(levels) levels[-1L])
+    }
+  }
+  components <- .factor_cell_labels(level_names)
+  if(length(components) != n_components){
+    return(character())
+  }
+  components
+}
+
+.bt_parameter_catalog_registry_component <- function(row, prior_list){
+
+  component <- row$column
+  if(!identical(row$role, "fixed_coefficient")){
+    return(component)
+  }
+  base_name <- .bt_parameter_registry_base(row$canonical_name)
+  prior <- .bt_parameter_registry_prior_owner(base_name, prior_list)
+  if(is.null(prior)){
+    return(component)
+  }
+  semantic_components <- .bt_parameter_catalog_factor_components(prior)
+  if(length(semantic_components) == 0L){
+    return(component)
+  }
+  coordinates <- .JAGS_prior_factor_names(base_name, prior)
+  coordinate <- match(row$canonical_name, coordinates)
+  if(is.na(coordinate)){
+    return(component)
+  }
+  semantic_components[coordinate]
+}
+
+.bt_parameter_catalog_registry_quantities <- function(registry,
+                                                      prior_list = NULL){
 
   out <- .bt_parameter_catalog_empty_quantities()
+  if(is.null(prior_list)){
+    prior_list <- list()
+  }
   keep <- registry$role != "backend_anchor"
   registry <- registry[keep, , drop = FALSE]
   if(nrow(registry) == 0L){
@@ -415,7 +472,7 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
       role = row$role,
       formula_parameter = row$formula_parameter,
       term = row$term,
-      component = row$column,
+      component = .bt_parameter_catalog_registry_component(row, prior_list),
       display_label = row$display_label,
       fitted_scale = row$fitted_scale,
       display_scale = row$fitted_scale,
@@ -447,7 +504,13 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
       quantity$canonical_name,
       quantity$display_label,
       quantity$term,
-      quantity$component
+      quantity$component,
+      if(identical(quantity$role, "fixed_coefficient") &&
+         nzchar(quantity$term) && nzchar(quantity$component)){
+        paste0(quantity$term, "[", quantity$component, "]")
+      }else{
+        character()
+      }
     ))
     values <- values[!is.na(values) & nzchar(values)]
     rows[[i]] <- data.frame(
@@ -850,7 +913,7 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
                                         formula_scale = NULL){
 
   .bt_validate_parameter_registry(registry)
-  base <- .bt_parameter_catalog_registry_quantities(registry)
+  base <- .bt_parameter_catalog_registry_quantities(registry, prior_list)
   derived <- .bt_parameter_catalog_random_definitions(
     registry = registry,
     prior_list = prior_list,

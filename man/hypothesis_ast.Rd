@@ -35,7 +35,9 @@ hypothesis_resolve(ast, catalog, namespace = NULL, component = NULL)
 
 \item{namespace}{optional exact catalog namespace filter.}
 
-\item{component}{optional exact catalog component filter.}
+\item{component}{optional exact catalog component filter for unqualified
+symbols. A level-qualified symbol such as \code{term[level]} supplies its own
+per-occurrence component and must agree with this value when both are used.}
 }
 \value{
 \code{hypothesis_parse()} and \code{hypothesis_rewrite()} return a

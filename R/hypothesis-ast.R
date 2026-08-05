@@ -22,7 +22,9 @@
 #' @param mapping named character vector from exact old roots to new roots.
 #' @param catalog a `BayesTools_parameter_catalog`.
 #' @param namespace optional exact catalog namespace filter.
-#' @param component optional exact catalog component filter.
+#' @param component optional exact catalog component filter for unqualified
+#'   symbols. A level-qualified symbol such as `term[level]` supplies its own
+#'   per-occurrence component and must agree with this value when both are used.
 #'
 #' @return `hypothesis_parse()` and `hypothesis_rewrite()` return a
 #' `BayesTools_hypothesis_ast`. `hypothesis_render()` returns character text.
@@ -251,11 +253,23 @@ hypothesis_resolve <- function(ast, catalog, namespace = NULL,
   }
   resolved <- vector("list", nrow(occurrences))
   for(i in seq_len(nrow(occurrences))){
+    occurrence_component <- component
+    if(!is.na(occurrences$level[i])){
+      if(!is.null(component) && !identical(component, occurrences$level[i])){
+        stop(
+          "The level in hypothesis symbol '", occurrences$symbol[i],
+          "' does not match the requested catalog component '", component,
+          "'.",
+          call. = FALSE
+        )
+      }
+      occurrence_component <- occurrences$level[i]
+    }
     selection <- parameter_catalog_resolve(
       catalog,
       alias = occurrences$parameter[i],
       namespace = namespace,
-      component = component
+      component = occurrence_component
     )
     quantity <- selection$quantities
     resolved[[i]] <- data.frame(
