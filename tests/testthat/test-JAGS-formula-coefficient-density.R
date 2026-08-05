@@ -104,6 +104,66 @@ test_that("formula coefficient transforms expose the sample transformation", {
   )
 })
 
+test_that("formula coefficient transforms exclude random-effect priors", {
+
+  data <- data.frame(
+    x = c(-1, 0, 1, -1, 0, 1),
+    id = factor(rep(c("a", "b"), each = 3L))
+  )
+  compile_policies <- list(
+    sampled = NULL,
+    marginalized = random_effects_compile(marginalized = "block")
+  )
+
+  for(policy in compile_policies){
+    formula_result <- JAGS_formula(
+      formula = ~ 1 + x +
+        random(1 | id, name = "block", covariance = "diag"),
+      parameter = "mu",
+      data = data,
+      prior_list = list(
+        intercept = prior("normal", list(0, 1)),
+        x = prior("normal", list(0, 1))
+      ),
+      formula_scale = TRUE,
+      prior_random = prior_random(
+        block = random_block(sd = prior("gamma", list(2, 2)))
+      ),
+      random_effects_compile = policy
+    )
+    all_prior_coordinates <- .formula_coefficient_source_names(formula_result)
+    expect_true(any(grepl("__xREx__", all_prior_coordinates, fixed = TRUE)))
+    fit <- .formula_coefficient_density_fit(
+      formula_result,
+      all_prior_coordinates
+    )
+
+    transform <- JAGS_formula_coefficient_transform(fit, "mu")
+    expect_identical(
+      transform$source_names,
+      c("mu_intercept", "mu_x")
+    )
+    expect_false(any(grepl("__xREx__", transform$source_names, fixed = TRUE)))
+
+    density <- JAGS_formula_prior_density(
+      fit,
+      parameter = "mu",
+      target = "mu_x"
+    )
+    ordinate <- prior_density_ordinate(density, 0)
+    expect_identical(ordinate$behavior, "regular")
+    expect_equal(
+      ordinate$log_density,
+      stats::dnorm(
+        0,
+        sd = abs(transform$matrix["mu_x", "mu_x"]),
+        log = TRUE
+      ),
+      tolerance = 1e-12
+    )
+  }
+})
+
 test_that("formula prior densities distinguish structural and dependent targets", {
 
   continuous_result <- JAGS_formula(

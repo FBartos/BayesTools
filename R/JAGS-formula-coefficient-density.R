@@ -220,7 +220,7 @@ JAGS_formula_prior_density <- function(
       reason = "unsupported_formula_priors"
     )
   }
-  expected <- unique(unlist(Map(
+  prior_coordinates <- unique(unlist(Map(
     .prior_linear_prior_columns,
     names(prior_list),
     prior_list
@@ -229,6 +229,7 @@ JAGS_formula_prior_density <- function(
     registry$role == "fixed_coefficient" & !registry$internal
   source_registry <- registry[rows, , drop = FALSE]
   actual <- source_registry$canonical_name
+  expected <- prior_coordinates[prior_coordinates %in% actual]
   if(length(expected) == 0L || !setequal(expected, actual)){
     .bt_formula_transform_stop(
       paste0("Formula coefficient sources for parameter '", parameter,
@@ -236,7 +237,8 @@ JAGS_formula_prior_density <- function(
       parameter = parameter,
       reason = "registry_source_mismatch",
       expected = expected,
-      registered = actual
+      registered = actual,
+      prior_coordinates = prior_coordinates
     )
   }
   source_registry <- source_registry[match(expected, actual), , drop = FALSE]
