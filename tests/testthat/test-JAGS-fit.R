@@ -398,8 +398,7 @@ test_that("JAGS_extend works correctly", {
   skip_if_no_fits()
 
   fit_simple <- readRDS(file.path(temp_fits_dir, "fit_simple_normal.RDS"))
-  formula_design <- list(mu = structure(list(parameter = "mu"), class = c("BayesTools_formula_design", "list")))
-  attr(fit_simple, "formula_design") <- formula_design
+  formula_design <- attr(fit_simple, "formula_design", exact = TRUE)
 
   # Test the extension mechanics without waiting on convergence precision targets.
   extend_control <- list(

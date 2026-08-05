@@ -137,6 +137,51 @@ test_that("JAGS_extend validates runtime controls before extension", {
   )
 }
 
+test_that("JAGS_extend rejects stale fitted metadata before backend work", {
+
+  stale_contract <- .bt_attach_fit_contract(.jags_extend_test_fit())
+  attr(stale_contract, "fit_contract")$formula_design_version <- 2L
+  package_calls <- 0L
+  testthat::local_mocked_bindings(
+    .JAGS_require_packages = function(...){
+      package_calls <<- package_calls + 1L
+    },
+    .package = "BayesTools"
+  )
+
+  expect_error(
+    JAGS_extend(
+      stale_contract,
+      autofit_control = .jags_extend_test_control()
+    ),
+    "missing or unsupported 'formula_design' metadata",
+    fixed = TRUE
+  )
+  expect_identical(package_calls, 0L)
+
+  formula_result <- JAGS_formula(
+    ~ 1,
+    "mu",
+    data.frame(row = 1:2),
+    list(intercept = prior("normal", list(0, 1)))
+  )
+  stale_design <- formula_result$formula_design
+  stale_design$schema_version <- 2L
+  actual_mismatch <- .jags_extend_test_fit()
+  attr(actual_mismatch, "formula_design") <- list(mu = stale_design)
+  actual_mismatch <- .bt_attach_fit_contract(actual_mismatch)
+
+  expect_error(
+    JAGS_extend(
+      actual_mismatch,
+      autofit_control = .jags_extend_test_control()
+    ),
+    "cannot replay this fitted formula",
+    fixed = TRUE
+  )
+  expect_identical(package_calls, 0L)
+})
+
 test_that("JAGS_extend preserves the last valid fit after a backend error", {
 
   skip_if_not_installed("runjags")

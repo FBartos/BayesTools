@@ -555,11 +555,43 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   check_bool(parallel, "parallel", allow_NA = FALSE)
   check_int(cores, "cores", lower = 1, allow_NULL = TRUE, allow_NA = FALSE)
   check_bool(silent, "silent", allow_NA = FALSE)
-  parameter_registry <- JAGS_parameter_registry(fit)
   fit_contract       <- attr(fit, "fit_contract", exact = TRUE)
   draw_geometry      <- attr(fit, "draw_geometry", exact = TRUE)
   parameter_catalog  <- attr(fit, "parameter_catalog", exact = TRUE)
   backend_anchor     <- attr(fit, "backend_anchor", exact = TRUE)
+  formula_design     <- attr(fit, "formula_design", exact = TRUE)
+
+  if(!is.null(fit_contract)){
+    JAGS_validate_fit_contract(
+      fit,
+      requires = .bt_fit_contract_components
+    )
+    if(!is.null(formula_design)){
+      if(!is.list(formula_design) || is.null(names(formula_design)) ||
+         any(!nzchar(names(formula_design))) || anyDuplicated(names(formula_design))){
+        stop(
+          "JAGS_extend() cannot preserve malformed formula-design metadata. Refit the model with this version of BayesTools.",
+          call. = FALSE
+        )
+      }
+      JAGS_formula_name_map(fit)
+      for(parameter in names(formula_design)){
+        .bt_validate_formula_design_replay_schema(
+          formula_design[[parameter]],
+          context = paste0("JAGS_extend() formula '", parameter, "'")
+        )
+      }
+    }
+    JAGS_draw_geometry(fit)
+    if(is.null(parameter_catalog)){
+      stop(
+        "The fitted object has missing parameter-catalog metadata. Refit the model with this version of BayesTools.",
+        call. = FALSE
+      )
+    }
+    .bt_validate_parameter_catalog(parameter_catalog)
+  }
+  parameter_registry <- JAGS_parameter_registry(fit)
 
   # extract fitting information
   prior_list        <- attr(fit, "prior_list")
@@ -568,7 +600,6 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   jags_modules      <- attr(fit, "jags_modules")
   add_parameters    <- attr(fit, "add_parameters")
   formula_scale     <- attr(fit, "formula_scale")
-  formula_design    <- attr(fit, "formula_design")
   prior_list        <- .complete_factor_metadata_prior_list(prior_list)
   if(is.null(add_parameters)){
     add_parameters <- character()
@@ -694,13 +725,6 @@ JAGS_extend <- function(fit, autofit_control = list(max_Rhat = 1.05, min_ESS = 5
   attr(fit, "parameter_registry") <- parameter_registry
   if(!is.null(fit_contract)){
     fit <- .bt_attach_draw_geometry(fit)
-    if(is.null(parameter_catalog)){
-      stop(
-        "The fitted object has missing parameter-catalog metadata. Refit the model with this version of BayesTools.",
-        call. = FALSE
-      )
-    }
-    .bt_validate_parameter_catalog(parameter_catalog)
     attr(fit, "parameter_catalog") <- parameter_catalog
     fit <- .bt_attach_fit_contract(fit)
   }else if(!is.null(draw_geometry)){
