@@ -1628,7 +1628,11 @@ prior_density_ordinate <- function(x, value){
         if(identical(family, "beta")) parameters$alpha - b else
           if(identical(family, "uniform")) 1 - b else NA_real_
   }else{
-    if(identical(family, "invgamma")) -(parameters$shape + b) else NA_real_
+    if(identical(family, "invgamma")){
+      -(parameters$shape + b) / b
+    }else{
+      NA_real_
+    }
   }
   if(is.na(exponent)) return("unknown")
   if(exponent > 0) "zero" else if(exponent < 0) "infinite" else "regular"

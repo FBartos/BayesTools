@@ -576,6 +576,60 @@ test_that("composed named-transform boundary limits use source provenance", {
     "infinite"
   )
 
+  inverse_gamma_power <- function(shape){
+    BayesTools:::.prior_linear_combination_density(
+      prior_list = list(x = prior(
+        "invgamma",
+        list(shape = shape, scale = 1),
+        truncation = list(lower = 0.01, upper = Inf)
+      )),
+      weights = c(x = -2),
+      source_transforms = c(x = "log"),
+      n_grid = 128,
+      output_transformation = "exp"
+    )
+  }
+  boundary_behaviors <- vapply(c(0.5, 2, 3), function(shape){
+    prior_density_ordinate(inverse_gamma_power(shape), 0)$behavior
+  }, character(1))
+  expect_identical(boundary_behaviors, c("infinite", "regular", "zero"))
+  expect_identical(
+    prior_density_ordinate(inverse_gamma_power(3), -1)$behavior,
+    "zero"
+  )
+
+  shape <- 3
+  scale <- 1
+  lower <- 0.01
+  power <- -2
+  density <- inverse_gamma_power(shape)
+  interior <- 0.25
+  source_value <- interior^(1 / power)
+  log_normalizer <- stats::pgamma(
+    1 / lower,
+    shape = shape,
+    rate = scale,
+    log.p = TRUE
+  )
+  expected_log_density <-
+    shape * log(scale) - lgamma(shape) -
+    (shape + 1) * log(source_value) - scale / source_value -
+    log_normalizer + log(abs(1 / power)) +
+    (1 / power - 1) * log(interior)
+  expect_equal(
+    prior_density_ordinate(density, interior)$log_density,
+    expected_log_density,
+    tolerance = 1e-12
+  )
+  expect_identical(
+    prior_density_ordinate(density, lower^power * (1 - 1e-12))$behavior,
+    "regular"
+  )
+  expect_identical(
+    prior_density_ordinate(density, lower^power + 1)$behavior,
+    "zero"
+  )
+
   lognormal_tanh <- BayesTools:::.prior_linear_combination_density(
     prior_list = list(x = prior("lognormal", list(0, 1))),
     weights = c(x = 1),
