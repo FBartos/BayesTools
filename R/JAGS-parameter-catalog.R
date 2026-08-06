@@ -500,8 +500,22 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
   rows <- vector("list", nrow(public))
   for(i in seq_len(nrow(public))){
     quantity <- public[i, , drop = FALSE]
+    shadowed_random_display <- startsWith(quantity$role, "random_") &&
+      !identical(quantity$status, "derived") &&
+      any(
+        startsWith(public$role, "random_") &
+          public$status == "derived" &
+          public$namespace == quantity$namespace &
+          public$display_label == quantity$display_label
+      )
+    display_aliases <- if(shadowed_random_display){
+      character()
+    }else{
+      quantity$display_label
+    }
     semantic_label <- character()
-    if(startsWith(quantity$role, "random_") &&
+    if(length(display_aliases) > 0L &&
+       startsWith(quantity$role, "random_") &&
        !is.na(quantity$formula_parameter)){
       prefix <- .bt_random_effect_summary_formula_prefix(
         quantity$formula_parameter,
@@ -516,7 +530,7 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
     }
     values <- unique(c(
       quantity$canonical_name,
-      quantity$display_label,
+      display_aliases,
       semantic_label,
       quantity$term,
       quantity$component,

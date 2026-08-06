@@ -348,6 +348,26 @@ test_that("declared variance allocations have metadata-only catalog rows", {
     derived$role,
     c("random_sd_total", "random_sd", "random_var_frac")
   )
+  study_sd_label <- "(mu) sd(intercept | study)"
+  study_sd <- parameter_catalog_resolve(
+    catalog,
+    alias = study_sd_label,
+    namespace = "mu"
+  )
+  expect_identical(study_sd$quantities$status, "derived")
+  sampled_study_sd <- catalog$quantities[
+    catalog$quantities$status == "sampled" &
+      catalog$quantities$display_label == study_sd_label,
+    ,
+    drop = FALSE
+  ]
+  expect_identical(nrow(sampled_study_sd), 1L)
+  sampled_selection <- parameter_catalog_resolve(
+    catalog,
+    alias = sampled_study_sd$canonical_name,
+    namespace = "mu"
+  )
+  expect_identical(sampled_selection$quantities$status, "sampled")
   fractions <- derived[derived$role == "random_var_frac", ]
   expect_identical(fractions$component, c("study", "drug"))
   expect_true(all(vapply(fractions$extraction_key, function(key){
