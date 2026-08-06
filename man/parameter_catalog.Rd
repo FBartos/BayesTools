@@ -56,11 +56,14 @@ descriptions. \code{parameter_catalog_resolve()} returns a
 \description{
 \code{parameter_catalog()} returns the versioned semantic catalog cached on a
 fitted object. The catalog contains only metadata: selectable quantities,
-exact aliases, and serializable extraction keys. Fixed factor coefficients
-use their fitted level labels as catalog components, so both \code{term[level]}
-and \code{term} plus \code{component = "level"} resolve without parsing backend
-coordinate names. Constructing or resolving the catalog never accesses
-posterior draws.
+exact aliases, and serializable extraction keys. Fixed factor terms expose
+every fitted level or interaction cell as a catalog component, so both
+\code{term[level]} and \code{term} plus \code{component = "level"} resolve without parsing
+backend coordinate names. Direct coordinates are reused; reference cells are
+structural zeroes; and contrast-coded cells are reconstructed from the
+persisted term-only design matrix. These are coefficient-level quantities,
+distinct from estimated marginal means based on full predictions.
+Constructing or resolving the catalog never accesses posterior draws.
 
 \code{parameter_catalog_extend()} adds plain-data quantities and aliases owned by
 another provider. \code{parameter_catalog_resolve()} applies optional namespace

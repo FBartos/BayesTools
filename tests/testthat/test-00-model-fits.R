@@ -6202,7 +6202,7 @@ test_that("fully structural fits retain deterministic draw geometry", {
   theta <- catalog$quantities[catalog$quantities$canonical_name == "theta", ]
   expect_identical(theta$status, "structural")
   expect_identical(theta$fixed_value, 0)
-  expect_identical(JAGS_fit_contract(fit)$parameter_catalog_version, 1L)
+  expect_identical(JAGS_fit_contract(fit)$parameter_catalog_version, 2L)
 
   geometry <- JAGS_draw_geometry(fit)
   expect_identical(geometry$chains$iterations, c(100L, 100L))

@@ -38,6 +38,7 @@
 - `as_marginal_inference()` conditional marginal summaries use active-subset conditioning: each marginal level conditions only on requested parameters with nonzero weight in that level's linear combination, and levels with no active requested conditionals use the fully averaged context
 
 ### Fixes
+- exposes every fitted factor level and interaction cell as a named coefficient-level catalog quantity, using direct coordinates, structural zeroes, or the persisted term-only contrast transformation for treatment, independent, mean-difference, orthonormal, and ordered encodings
 - preserves exact finite transformed-support endpoints through structural
   transformation provenance, avoiding round-trip misclassification for
   transformations such as negative powers of truncated positive priors

@@ -41,7 +41,7 @@ test_that("parameter catalog construction is metadata-only and versioned", {
     prior_list = prior_list
   ))
   expect_s3_class(catalog, "BayesTools_parameter_catalog")
-  expect_identical(catalog$schema_version, 1L)
+  expect_identical(catalog$schema_version, 2L)
   expect_identical(
     names(catalog$quantities),
     .bt_parameter_catalog_quantity_columns
@@ -112,6 +112,13 @@ test_that("factor catalog components preserve fitted level identities", {
     c("mu_f[1]", "mu_f[2]")
   )
   expect_identical(occurrence_map$component, c("b", "c"))
+  reference <- parameter_catalog_resolve(
+    catalog,
+    alias = "f[a]",
+    namespace = "mu"
+  )$quantities
+  expect_identical(reference$status, "structural")
+  expect_identical(reference$fixed_value, 0)
   expect_error(
     hypothesis_resolve(
       hypothesis_parse("f[b] > 0"),
@@ -122,6 +129,261 @@ test_that("factor catalog components preserve fitted level identities", {
     "does not match the requested catalog component",
     fixed = TRUE
   )
+})
+
+test_that("factor catalog quantities reconstruct fitted term-level cells", {
+
+  data <- data.frame(f = factor(c("a", "b", "c")))
+  build_fit <- function(factor_prior_input, values){
+    formula_result <- JAGS_formula(
+      ~ 1 + f,
+      "mu",
+      data,
+      list(
+        intercept = prior("normal", list(0, 1)),
+        f = factor_prior_input
+      )
+    )
+    factor_prior <- formula_result$prior_list$mu_f
+    coordinates <- .JAGS_prior_factor_names("mu_f", factor_prior)
+    chains <- coda::mcmc.list(coda::mcmc(
+      cbind(mu_intercept = 0, values),
+      start = 5L,
+      thin = 2L
+    ))
+    colnames(chains[[1L]]) <- c("mu_intercept", coordinates)
+    list(
+      fit = .parameter_catalog_test_fit(
+        chains,
+        prior_list = formula_result$prior_list,
+        formula_design = list(mu = formula_result$formula_design)
+      ),
+      prior = factor_prior
+    )
+  }
+
+  treatment <- build_fit(
+    prior_factor("normal", list(0, 1), contrast = "treatment"),
+    matrix(c(1, 10, 2, 20), ncol = 2L, byrow = TRUE)
+  )
+  treatment_catalog <- parameter_catalog(treatment$fit)
+  reference <- parameter_catalog_resolve(
+    treatment_catalog,
+    "f[a]",
+    namespace = "mu"
+  )
+  reference_draws <- parameter_draws(treatment$fit, reference)
+  expect_identical(as.numeric(reference_draws[[1L]][, 1L]), c(0, 0))
+  expect_identical(attr(reference_draws[[1L]], "mcpar"), c(5, 7, 2))
+  direct <- parameter_catalog_resolve(
+    treatment_catalog,
+    "f[b]",
+    namespace = "mu"
+  )
+  expect_identical(direct$quantities$canonical_name, "mu_f[1]")
+  expect_identical(
+    as.numeric(parameter_draws(treatment$fit, direct)[[1L]][, 1L]),
+    c(1, 2)
+  )
+
+  independent <- build_fit(
+    prior_factor("normal", list(0, 1), contrast = "independent"),
+    matrix(c(1, 10, 100, 2, 20, 200), ncol = 3L, byrow = TRUE)
+  )
+  independent_catalog <- parameter_catalog(independent$fit)
+  for(level_i in seq_along(levels(data$f))){
+    selection <- parameter_catalog_resolve(
+      independent_catalog,
+      paste0("f[", levels(data$f)[level_i], "]"),
+      namespace = "mu"
+    )
+    expect_identical(
+      selection$quantities$canonical_name,
+      paste0("mu_f[", level_i, "]")
+    )
+  }
+
+  for(contrast in c("orthonormal", "meandif")){
+    transformed <- build_fit(
+      prior_factor("mnormal", list(0, 1), contrast = contrast),
+      matrix(c(1, 10, 2, 20), ncol = 2L, byrow = TRUE)
+    )
+    design <- .factor_term_design_from_metadata(transformed$prior)$design
+    catalog <- parameter_catalog(transformed$fit)
+    for(level_i in seq_along(levels(data$f))){
+      selection <- parameter_catalog_resolve(
+        catalog,
+        paste0("f[", levels(data$f)[level_i], "]"),
+        namespace = "mu"
+      )
+      expect_identical(selection$quantities$status, "derived")
+      observed <- as.numeric(
+        parameter_draws(transformed$fit, selection)[[1L]][, 1L]
+      )
+      expected <- as.vector(
+        matrix(c(1, 10, 2, 20), ncol = 2L, byrow = TRUE) %*%
+          design[level_i, ]
+      )
+      expect_equal(observed, expected, info = contrast)
+    }
+  }
+
+  wrapped_priors <- list(
+    spike_and_slab = prior_spike_and_slab(
+      prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+    ),
+    mixture = prior_mixture(list(
+      prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+      prior_factor("mnormal", list(0, 2), contrast = "orthonormal")
+    ))
+  )
+  for(wrapper in names(wrapped_priors)){
+    transformed <- build_fit(
+      wrapped_priors[[wrapper]],
+      matrix(c(1, 10, 2, 20), ncol = 2L, byrow = TRUE)
+    )
+    catalog <- parameter_catalog(transformed$fit)
+    selections <- lapply(levels(data$f), function(level){
+      parameter_catalog_resolve(
+        catalog,
+        paste0("f[", level, "]"),
+        namespace = "mu"
+      )
+    })
+    expect_true(all(vapply(selections, function(selection){
+      identical(selection$quantities$status, "derived")
+    }, logical(1))), info = wrapper)
+  }
+
+  ordered <- build_fit(
+    prior_ordered(prior("normal", list(0, 1))),
+    matrix(c(1, 10, 2, 20), ncol = 2L, byrow = TRUE)
+  )
+  ordered_catalog <- parameter_catalog(ordered$fit)
+  expect_identical(
+    parameter_catalog_resolve(
+      ordered_catalog,
+      "f[a]",
+      namespace = "mu"
+    )$quantities$status,
+    "structural"
+  )
+  expect_identical(
+    parameter_catalog_resolve(
+      ordered_catalog,
+      "f[b]",
+      namespace = "mu"
+    )$quantities$canonical_name,
+    "mu_f[1]"
+  )
+  ordered_c <- parameter_catalog_resolve(
+    ordered_catalog,
+    "f[c]",
+    namespace = "mu"
+  )
+  expect_identical(ordered_c$quantities$status, "derived")
+  expect_identical(
+    as.numeric(parameter_draws(ordered$fit, ordered_c)[[1L]][, 1L]),
+    c(11, 22)
+  )
+
+  ordered_levels <- build_fit(
+    prior_ordered(
+      prior("normal", list(0, 1)),
+      contrast = "cumulative_levels"
+    ),
+    matrix(c(1, 10, 100, 2, 20, 200), ncol = 3L, byrow = TRUE)
+  )
+  ordered_levels_catalog <- parameter_catalog(ordered_levels$fit)
+  ordered_levels_b <- parameter_catalog_resolve(
+    ordered_levels_catalog,
+    "f[b]",
+    namespace = "mu"
+  )
+  ordered_levels_c <- parameter_catalog_resolve(
+    ordered_levels_catalog,
+    "f[c]",
+    namespace = "mu"
+  )
+  expect_identical(
+    as.numeric(
+      parameter_draws(ordered_levels$fit, ordered_levels_b)[[1L]][, 1L]
+    ),
+    c(11, 22)
+  )
+  expect_identical(
+    as.numeric(
+      parameter_draws(ordered_levels$fit, ordered_levels_c)[[1L]][, 1L]
+    ),
+    c(111, 222)
+  )
+})
+
+test_that("factor interaction cells use only their persisted term design", {
+
+  data <- data.frame(
+    f = factor(c("a", "b", "c", "a", "b", "c")),
+    g = factor(c("u", "v", "u", "v", "u", "v"))
+  )
+  formula_result <- JAGS_formula(
+    ~ f * g,
+    "mu",
+    data,
+    list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_factor("mnormal", list(0, 1), contrast = "orthonormal"),
+      g = prior_factor("normal", list(0, 1), contrast = "treatment"),
+      "f:g" = prior_factor("mnormal", list(0, 1), contrast = "orthonormal")
+    )
+  )
+  coordinates <- unlist(lapply(names(formula_result$prior_list), function(name){
+    prior <- formula_result$prior_list[[name]]
+    if(is.prior.factor(prior)){
+      .JAGS_prior_factor_names(name, prior)
+    }else{
+      name
+    }
+  }), use.names = FALSE)
+  registry <- .bt_build_parameter_registry(
+    columns = coordinates,
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design)
+  )
+  catalog <- .bt_build_parameter_catalog(
+    registry,
+    formula_result$prior_list,
+    list(mu = formula_result$formula_design)
+  )
+
+  structural <- parameter_catalog_resolve(
+    catalog,
+    "f:g",
+    namespace = "mu",
+    component = "f=a, g=u"
+  )$quantities
+  expect_identical(structural$status, "structural")
+  expect_identical(structural$fixed_value, 0)
+
+  derived <- parameter_catalog_resolve(
+    catalog,
+    "f:g",
+    namespace = "mu",
+    component = "f=b, g=v"
+  )$quantities
+  expect_identical(derived$status, "derived")
+  expect_setequal(
+    derived$extraction_key[[1L]]$dependencies,
+    c("mu_f__xXx__g[1]", "mu_f__xXx__g[2]")
+  )
+  expect_false(any(c("mu_intercept", "mu_f[1]", "mu_g") %in%
+                     derived$extraction_key[[1L]]$dependencies))
+
+  resolved <- hypothesis_resolve(
+    hypothesis_parse("`f:g[f=b, g=v]` > 0"),
+    catalog,
+    namespace = "mu"
+  )
+  expect_identical(unique(resolved$occurrences$component), "f=b, g=v")
 })
 
 test_that("catalog extensions preserve ambiguity until filtered", {
@@ -394,7 +656,7 @@ test_that("malformed catalogs and stale selections fail closed", {
   selection <- parameter_catalog_resolve(catalog, "theta")
 
   broken <- catalog
-  broken$schema_version <- 2L
+  broken$schema_version <- 3L
   expect_error(
     .bt_validate_parameter_catalog(broken),
     "Refit or rebuild"
