@@ -55,7 +55,7 @@ provenance-derived endpoint enclosures (for example, adjacent representable
 values), not a global epsilon or general support clamping. Add exact lower and
 upper endpoint tests for increasing and decreasing transforms.
 
-**Decision:** pending
+**Decision:** OK
 
 ### PF02 - Accepted unindexed expression columns generate invalid scalar JAGS nodes
 
@@ -104,7 +104,25 @@ prove equivalent shape semantics for two expression languages. Add a live
 compile/fit test for bare-column, explicitly indexed, constant, and mixed
 random-effect formulas.
 
-**Decision:** pending
+**Decision:** Complete expression replay across fitting, fixed- and
+random-effect prediction, and marginal-likelihood/bridge reconstruction.
+Supported expressions may use numeric constants, `i`, the existing arithmetic
+and function subset, row-aligned formula/model data, and sampled scalar or
+one-dimensional indexed parameters whose values are available in posterior
+draws and bridge coordinates. Persist the parsed expression plus its classified
+data and parameter dependencies in the formula design, retain any
+expression-only model data needed for replay, and use one shared evaluator in
+all R-side paths. Do not rewrite bare data symbols to indexed symbols: this is
+literal JAGS syntax, so advanced users remain responsible for writing `x` or
+`x[i]` as appropriate.
+
+Reject expressions at the earliest context-aware entry point when a dependency
+cannot be reconstructed outside JAGS, such as an unowned derived node or a
+cross-formula output whose defining graph is unavailable. A literal being valid
+inside the fitted JAGS graph alone does not make it a valid bridge coordinate.
+`parameter_source()` is not a replacement for formula expressions. Restore a
+live regression for `mu_id[mapping_id[i]]` and cover fitted/new-data prediction,
+coexistence with random effects, and bridge reconstruction.
 
 ### PF03 - `JAGS_extend()` validates metadata objects but not their relationships
 
@@ -137,7 +155,11 @@ registry coordinates to exist in the chains, and formula name maps to agree
 with the registry rows owned by each formula parameter. Keep the existing
 object-local validators as schema checks.
 
-**Decision:** pending
+**Decision:** Do not implement. BayesTools fits produced through the public
+constructors are trusted after their existing object-local schema and contract
+validation. Cross-object validation aimed at manually mutated or assembled fit
+metadata is outside the supported contract and would add maintenance cost
+without a reproduced failure through the public API.
 
 ### PF04 - Level-qualified hypotheses remain partial outside non-reference treatment coefficients
 
@@ -169,7 +191,17 @@ orthonormal, mean-difference, and ordered encodings. If derived level effects
 are intentionally out of scope, narrow the documentation and return an
 explicit contrast-aware unsupported error instead of a generic no-match error.
 
-**Decision:** pending
+**Decision:** Implement named coefficient/term-level factor quantities here;
+keep estimated-marginal-mean hypotheses in the existing
+`marginal_means()`/`as_marginal_inference()` path, where hypotheses operate on
+full predictions. Always expose fitted factor levels rather than backend
+coefficient indices. Include treatment reference levels as structural zeroes,
+independent levels directly, and mean-difference, orthonormal, and ordered
+contrasts by multiplying the fitted coefficients by the persisted contrast
+matrix to recover the named level coefficients. Apply the same rule to factor
+interactions: expose named factor cells using the persisted joint
+design/contrast transformation. These term-level quantities must not absorb the
+intercept or unrelated terms.
 
 ## Verification of the implemented fixes
 
