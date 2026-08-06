@@ -220,5 +220,7 @@ intercept or unrelated terms.
   compiled code, documentation, examples, tests, and vignette rebuilding all
   passed.
 
-No code changes for PF01-PF04 were made during this second review; they await
-maintainer approval.
+PF01, PF02, and PF04 were subsequently approved and implemented. PF03 was
+resolved as an explicit no-code scope decision. The implementation results,
+additional reproduced edge cases, final verification, and follow-up
+recommendations are recorded in `.agents/post-implementation-review.md`.
