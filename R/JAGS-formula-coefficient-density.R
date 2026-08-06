@@ -75,6 +75,7 @@ JAGS_formula_coefficient_transform <- function(
   .bt_formula_coefficient_transform(
     source_names = sources$source,
     formula_scale = design$formula_scale,
+    log_intercept = design$log_intercept,
     parameter = parameter,
     target_scale = target_scale,
     source_metadata = sources[, c("source", "monitor_status", "fixed_value"),
@@ -255,6 +256,7 @@ JAGS_formula_prior_density <- function(
 
 .bt_formula_coefficient_transform <- function(
     source_names, formula_scale, parameter, target_scale = "original",
+    log_intercept = FALSE,
     source_metadata = NULL,
     formula_design_version = .bt_formula_design_schema_version(),
     parameter_registry_version = .bt_parameter_registry_version){
@@ -287,9 +289,10 @@ JAGS_formula_prior_density <- function(
     rep("identity", length(source_names)),
     source_names
   )
-  log_intercept <- !is.null(formula_scale) &&
-    length(formula_scale) > 0L &&
-    isTRUE(attr(formula_scale, "log_intercept"))
+  log_intercept <- isTRUE(log_intercept) ||
+    (!is.null(formula_scale) &&
+       length(formula_scale) > 0L &&
+       isTRUE(attr(formula_scale, "log_intercept")))
   intercept <- paste0(parameter, "_intercept")
   if(log_intercept && intercept %in% source_names){
     source_transforms[[intercept]] <- "log"

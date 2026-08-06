@@ -311,6 +311,72 @@ test_that("log-intercept formula densities apply source and output Jacobians", {
   )
 })
 
+test_that("unscaled log-intercepts retain their positive-scale transform", {
+
+  log_formula <- ~ 1
+  attr(log_formula, "log(intercept)") <- TRUE
+  formula_result <- JAGS_formula(
+    formula = log_formula,
+    parameter = "log_tau",
+    data = data.frame(row = seq_len(3L)),
+    prior_list = list(
+      intercept = prior("gamma", list(2, 2))
+    ),
+    formula_scale = TRUE
+  )
+  expect_null(formula_result$formula_scale)
+  expect_true(formula_result$formula_design$log_intercept)
+
+  fit <- .formula_coefficient_density_fit(
+    formula_result,
+    "log_tau_intercept"
+  )
+  transform <- JAGS_formula_coefficient_transform(fit, "log_tau")
+
+  expect_identical(
+    transform$source_transforms,
+    c(log_tau_intercept = "log")
+  )
+  expect_identical(
+    transform$output_transforms,
+    c(log_tau_intercept = "exp")
+  )
+  expect_identical(
+    transform$matrix,
+    matrix(
+      1,
+      nrow = 1L,
+      dimnames = list("log_tau_intercept", "log_tau_intercept")
+    )
+  )
+
+  positive_draws <- matrix(
+    c(0.25, 1, 4),
+    ncol = 1L,
+    dimnames = list(NULL, "log_tau_intercept")
+  )
+  expect_equal(
+    .bt_apply_formula_coefficient_transform(positive_draws, transform),
+    positive_draws,
+    tolerance = 1e-14
+  )
+
+  density <- JAGS_formula_prior_density(
+    fit,
+    parameter = "log_tau",
+    target = "log_tau_intercept"
+  )
+  ordinate <- prior_density_ordinate(density, 1.5)
+  expect_identical(ordinate$behavior, "regular")
+  expect_identical(ordinate$method, "named_transform")
+  expect_true(ordinate$exact)
+  expect_equal(
+    ordinate$log_density,
+    stats::dgamma(1.5, shape = 2, rate = 2, log = TRUE),
+    tolerance = 1e-12
+  )
+})
+
 test_that("formula prior densities preserve model-mixture atoms and fail closed", {
 
   formula_result <- JAGS_formula(
