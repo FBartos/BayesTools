@@ -61,8 +61,11 @@ every fitted level or interaction cell as a catalog component, so both
 \code{term[level]} and \code{term} plus \code{component = "level"} resolve without parsing
 backend coordinate names. Direct coordinates are reused; reference cells are
 structural zeroes; and contrast-coded cells are reconstructed from the
-persisted term-only design matrix. These are coefficient-level quantities,
-distinct from estimated marginal means based on full predictions.
+persisted term-only design matrix. Ordinary level labels remain unchanged;
+syntax-sensitive characters are percent-escaped and ambiguous interaction
+tokens are quoted so that every component remains hypothesis-safe and
+injective. These are coefficient-level quantities, distinct from estimated
+marginal means based on full predictions.
 Constructing or resolving the catalog never accesses posterior draws.
 
 \code{parameter_catalog_extend()} adds plain-data quantities and aliases owned by

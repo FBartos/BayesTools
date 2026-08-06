@@ -23,8 +23,11 @@
 #' `term[level]` and `term` plus `component = "level"` resolve without parsing
 #' backend coordinate names. Direct coordinates are reused; reference cells are
 #' structural zeroes; and contrast-coded cells are reconstructed from the
-#' persisted term-only design matrix. These are coefficient-level quantities,
-#' distinct from estimated marginal means based on full predictions.
+#' persisted term-only design matrix. Ordinary level labels remain unchanged;
+#' syntax-sensitive characters are percent-escaped and ambiguous interaction
+#' tokens are quoted so that every component remains hypothesis-safe and
+#' injective. These are coefficient-level quantities, distinct from estimated
+#' marginal means based on full predictions.
 #' Constructing or resolving the catalog never accesses posterior draws.
 #'
 #' `parameter_catalog_extend()` adds plain-data quantities and aliases owned by
@@ -414,6 +417,82 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
   out
 }
 
+.bt_parameter_catalog_factor_component_token <- function(x){
+
+  replacements <- c(
+    "%" = "%25",
+    "[" = "%5B",
+    "]" = "%5D",
+    "`" = "%60",
+    "\\" = "%5C",
+    "\"" = "%22",
+    "\r" = "%0D",
+    "\n" = "%0A",
+    "\t" = "%09"
+  )
+  for(token in names(replacements)){
+    x <- gsub(token, replacements[[token]], x, fixed = TRUE)
+  }
+  reserved <- c(",", "=")
+  needs_quotes <- !nzchar(x) || any(vapply(reserved, function(token){
+    grepl(token, x, fixed = TRUE)
+  }, logical(1)))
+  if(needs_quotes){
+    encodeString(x, quote = "\"")
+  }else{
+    x
+  }
+}
+
+.bt_parameter_catalog_factor_cell_names <- function(design_info){
+
+  level_names <- design_info$level_names
+  if(is.null(level_names)){
+    return(design_info$cell_names)
+  }
+  if(length(level_names) == 1L){
+    cell_names <- vapply(
+      design_info$cell_names,
+      .bt_parameter_catalog_factor_component_token,
+      character(1)
+    )
+    if(anyDuplicated(cell_names)){
+      stop(
+        "Parameter catalog factor metadata do not identify factor levels uniquely.",
+        call. = FALSE
+      )
+    }
+    return(cell_names)
+  }
+  level_grid <- .factor_cell_grid(level_names)
+  if(nrow(level_grid) != length(design_info$cell_names) ||
+     is.null(names(level_grid)) || any(!nzchar(names(level_grid)))){
+    stop(
+      "Parameter catalog factor metadata do not identify every interaction cell.",
+      call. = FALSE
+    )
+  }
+  cell_names <- vapply(seq_len(nrow(level_grid)), function(cell){
+    terms <- vapply(seq_along(level_grid), function(term){
+      paste0(
+        .bt_parameter_catalog_factor_component_token(names(level_grid)[term]),
+        "=",
+        .bt_parameter_catalog_factor_component_token(
+          as.character(level_grid[[term]][cell])
+        )
+      )
+    }, character(1))
+    paste0(terms, collapse = ", ")
+  }, character(1))
+  if(anyDuplicated(cell_names)){
+    stop(
+      "Parameter catalog factor metadata do not identify interaction cells uniquely.",
+      call. = FALSE
+    )
+  }
+  cell_names
+}
+
 .bt_parameter_catalog_factor_components <- function(prior){
 
   if(!.bt_formula_prior_is_factor(prior)){
@@ -427,6 +506,7 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
     return(character())
   }
   design <- design_info$design
+  cell_names <- .bt_parameter_catalog_factor_cell_names(design_info)
   components <- rep.int("", ncol(design))
   for(coordinate in seq_len(ncol(design))){
     identity_row <- rep.int(0, ncol(design))
@@ -435,7 +515,7 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
       identical(unname(design[cell, ]), identity_row)
     }, logical(1)))
     if(length(matches) == 1L){
-      components[coordinate] <- design_info$cell_names[matches]
+      components[coordinate] <- cell_names[matches]
     }
   }
   components
@@ -462,6 +542,7 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
     coordinate_metadata <- registry[registry_rows, , drop = FALSE]
     design_info <- .factor_term_design_from_metadata(prior)
     design <- design_info$design
+    cell_names <- .bt_parameter_catalog_factor_cell_names(design_info)
     if(ncol(design) != length(coordinates) ||
        nrow(design) != length(design_info$cell_names)){
       stop(
@@ -478,7 +559,7 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
       design_info$cell_names
     )
     for(cell in seq_len(nrow(design))){
-      component <- design_info$cell_names[cell]
+      component <- cell_names[cell]
       if(component %in% direct_components){
         next
       }

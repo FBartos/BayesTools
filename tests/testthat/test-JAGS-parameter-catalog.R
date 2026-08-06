@@ -386,6 +386,131 @@ test_that("factor interaction cells use only their persisted term design", {
   expect_identical(unique(resolved$occurrences$component), "f=b, g=v")
 })
 
+test_that("factor interaction components quote ambiguous level delimiters", {
+
+  data <- expand.grid(
+    f = c("a", "a, g=v"),
+    g = c("u", "v, g=u"),
+    KEEP.OUT.ATTRS = FALSE,
+    stringsAsFactors = TRUE
+  )
+  formula_result <- JAGS_formula(
+    ~ f * g,
+    "mu",
+    data,
+    list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_factor("normal", list(0, 1), contrast = "treatment"),
+      g = prior_factor("normal", list(0, 1), contrast = "treatment"),
+      "f:g" = prior_factor(
+        "mnormal",
+        list(0, 1),
+        contrast = "orthonormal"
+      )
+    )
+  )
+  coordinates <- unlist(lapply(names(formula_result$prior_list), function(name){
+    prior <- formula_result$prior_list[[name]]
+    if(is.prior.factor(prior)){
+      .JAGS_prior_factor_names(name, prior)
+    }else{
+      name
+    }
+  }), use.names = FALSE)
+  registry <- .bt_build_parameter_registry(
+    columns = coordinates,
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design)
+  )
+  catalog <- .bt_build_parameter_catalog(
+    registry,
+    formula_result$prior_list,
+    list(mu = formula_result$formula_design)
+  )
+
+  first <- parameter_catalog_resolve(
+    catalog,
+    "f:g",
+    namespace = "mu",
+    component = "f=\"a, g=v\", g=u"
+  )
+  second <- parameter_catalog_resolve(
+    catalog,
+    "f:g",
+    namespace = "mu",
+    component = "f=a, g=\"v, g=u\""
+  )
+  expect_false(identical(first$quantity_id, second$quantity_id))
+  expect_identical(
+    first$quantities$component,
+    "f=\"a, g=v\", g=u"
+  )
+  expect_identical(
+    second$quantities$component,
+    "f=a, g=\"v, g=u\""
+  )
+  resolved <- hypothesis_resolve(
+    hypothesis_parse("`f:g[f=\"a, g=v\", g=u]` > 0"),
+    catalog,
+    namespace = "mu"
+  )
+  expect_identical(
+    unique(resolved$occurrences$quantity_id),
+    first$quantity_id
+  )
+})
+
+test_that("factor components escape hypothesis syntax characters", {
+
+  data <- data.frame(f = factor(c("", "a]b")))
+  formula_result <- JAGS_formula(
+    ~ 1 + f,
+    "mu",
+    data,
+    list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_factor("normal", list(0, 1), contrast = "treatment")
+    )
+  )
+  prior <- formula_result$prior_list$mu_f
+  coordinates <- c(
+    "mu_intercept",
+    .JAGS_prior_factor_names("mu_f", prior)
+  )
+  registry <- .bt_build_parameter_registry(
+    columns = coordinates,
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design)
+  )
+  catalog <- .bt_build_parameter_catalog(
+    registry,
+    formula_result$prior_list,
+    list(mu = formula_result$formula_design)
+  )
+
+  empty <- parameter_catalog_resolve(
+    catalog,
+    "f[\"\"]",
+    namespace = "mu"
+  )
+  bracket <- parameter_catalog_resolve(
+    catalog,
+    "f[a%5Db]",
+    namespace = "mu"
+  )
+  expect_identical(empty$quantities$component, "\"\"")
+  expect_identical(bracket$quantities$component, "a%5Db")
+  resolved <- hypothesis_resolve(
+    hypothesis_parse("`f[a%5Db]` > `f[\"\"]`"),
+    catalog,
+    namespace = "mu"
+  )
+  expect_setequal(
+    unique(resolved$occurrences$quantity_id),
+    c(empty$quantity_id, bracket$quantity_id)
+  )
+})
+
 test_that("catalog extensions preserve ambiguity until filtered", {
 
   registry <- .bt_build_parameter_registry(
