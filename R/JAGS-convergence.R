@@ -17,7 +17,9 @@
 #' @param check_indicators whether model indicator variables should be included
 #' in convergence checks. Binary indicators are checked as Bernoulli
 #' occupancies and categorical indicators are checked separately for every
-#' observed state. Defaults to \code{FALSE}.
+#' observed state. When \code{monitor} is supplied, eligible indicators are
+#' added to that selection. Auxiliary inclusion-probability coordinates remain
+#' excluded unless named explicitly in \code{monitor}. Defaults to \code{FALSE}.
 #' @param monitor optional character vector selecting parameters for convergence
 #' checks. A base name selects all of its indexed elements. \code{NULL} selects
 #' every eligible parameter; \code{character()} requests no parameters.
@@ -140,6 +142,14 @@ JAGS_check_convergence <- function(
       available_parameters,
       available_sources
     )
+    if(check_indicators){
+      selected_parameters <- unique(c(
+        selected_parameters,
+        targets$metadata$parameter[
+          targets$metadata$is_indicator & !targets$metadata$is_inclusion
+        ]
+      ))
+    }
   }
 
   if(length(available_parameters) == 0L){

@@ -53,7 +53,9 @@
 #'   \item{restarts}{number of times new initial values should be generated in case the model
 #'   fails to initialize. Defaults to \code{10}.}
 #'   \item{check_indicators}{whether model indicator variables should be included
-#'   in convergence checks. Defaults to \code{FALSE}.}
+#'   in convergence checks, including when \code{monitor} selects a narrower
+#'   parameter set. Auxiliary inclusion-probability coordinates remain excluded
+#'   unless requested explicitly. Defaults to \code{FALSE}.}
 #'   \item{monitor}{optional character vector selecting parameters for
 #'   convergence checks. Base names select all indexed elements. Defaults to
 #'   \code{NULL}, which checks every eligible parameter.}

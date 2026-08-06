@@ -333,6 +333,64 @@ test_that("explicit convergence monitors distinguish omitted parameters", {
   )
 })
 
+test_that("targeted convergence checks retain requested product-space indicators", {
+
+  set.seed(45)
+  chain_1 <- cbind(
+    mu = stats::rnorm(200),
+    mu_indicator = 0,
+    mu_inclusion = 0
+  )
+  chain_2 <- cbind(
+    mu = stats::rnorm(200),
+    mu_indicator = 1,
+    mu_inclusion = 1
+  )
+  fit <- .mock_convergence_fit(chain_1, chain_2)
+  priors <- list(mu = prior_spike_and_slab(
+    prior("normal", list(0, 1)),
+    prior_inclusion = prior("beta", list(1, 1))
+  ))
+
+  targeted <- JAGS_check_convergence(
+    fit,
+    prior_list = priors,
+    max_Rhat = 1.05,
+    min_ESS = NULL,
+    max_error = NULL,
+    max_SD_error = NULL,
+    check_indicators = TRUE,
+    monitor = "mu"
+  )
+
+  expect_false(targeted)
+  diagnostics <- attr(targeted, "diagnostics")
+  expect_equal(
+    setNames(diagnostics$state, diagnostics$parameter),
+    c(
+      mu = "assessable",
+      mu_indicator = "not_assessable",
+      mu_inclusion = "not_requested"
+    )
+  )
+
+  explicit_inclusion <- JAGS_check_convergence(
+    fit,
+    prior_list = priors,
+    max_Rhat = 1.05,
+    min_ESS = NULL,
+    max_error = NULL,
+    max_SD_error = NULL,
+    check_indicators = FALSE,
+    monitor = c("mu", "mu_inclusion")
+  )
+  expect_false(explicit_inclusion)
+  expect_equal(
+    attr(explicit_inclusion, "diagnostics")$state,
+    c("assessable", "not_requested", "not_assessable")
+  )
+})
+
 test_that("a base convergence monitor selects every indexed element", {
 
   chain_1 <- cbind(

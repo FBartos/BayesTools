@@ -42,7 +42,9 @@ deviation of the parameters. Defaults to \code{0.05}.}
 \item{check_indicators}{whether model indicator variables should be included
 in convergence checks. Binary indicators are checked as Bernoulli
 occupancies and categorical indicators are checked separately for every
-observed state. Defaults to \code{FALSE}.}
+observed state. When \code{monitor} is supplied, eligible indicators are
+added to that selection. Auxiliary inclusion-probability coordinates remain
+excluded unless named explicitly in \code{monitor}. Defaults to \code{FALSE}.}
 
 \item{monitor}{optional character vector selecting parameters for convergence
 checks. A base name selects all of its indexed elements. \code{NULL} selects
