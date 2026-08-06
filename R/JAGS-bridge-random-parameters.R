@@ -150,13 +150,15 @@
   if(length(formula_design_list) == 0L){
     return(list(
       parameters = character(),
-      bounds = list(lb = numeric(), ub = numeric())
+      bounds = list(lb = numeric(), ub = numeric()),
+      fixed_latent = numeric()
     ))
   }
 
   parameters <- character()
   lb <- numeric()
   ub <- numeric()
+  fixed_latent <- numeric()
 
   for(parameter in names(formula_design_list)){
     design <- formula_design_list[[parameter]]
@@ -184,6 +186,17 @@
         n_groups = n_groups,
         n_columns = n_columns
       ))
+      fixed_names <- .bt_JAGS_bridge_fixed_zero_random_latent_names(
+        random_term = random_term,
+        prior_list = design$prior_list
+      )
+      if(length(fixed_names) > 0L){
+        fixed_latent <- c(
+          fixed_latent,
+          stats::setNames(rep(0, length(fixed_names)), fixed_names)
+        )
+        z_names <- setdiff(z_names, fixed_names)
+      }
       parameters <- c(parameters, z_names)
       lb <- c(lb, stats::setNames(rep(-Inf, length(z_names)), z_names))
       ub <- c(ub, stats::setNames(rep( Inf, length(z_names)), z_names))
@@ -209,11 +222,95 @@
   parameters <- parameters[keep]
   lb <- lb[parameters]
   ub <- ub[parameters]
+  fixed_latent <- fixed_latent[!duplicated(names(fixed_latent))]
 
   list(
     parameters = parameters,
-    bounds = list(lb = lb, ub = ub)
+    bounds = list(lb = lb, ub = ub),
+    fixed_latent = fixed_latent
   )
+}
+
+.bt_JAGS_bridge_fixed_zero_random_latent_names <- function(random_term,
+                                                           prior_list){
+
+  if(!identical(.bt_random_effect_term_compile_mode(random_term), "sampled")){
+    return(character())
+  }
+  if(.bt_random_effect_has_row_indexed_external_sd(random_term)){
+    return(character())
+  }
+
+  n_columns <- random_term$n_columns
+  sd_names <- random_term$sd_parameter_names
+  if(!is.character(sd_names) || length(sd_names) != n_columns ||
+     anyNA(sd_names) || any(!nzchar(sd_names)) || !is.list(prior_list)){
+    return(character())
+  }
+  zero_columns <- vapply(
+    sd_names,
+    .bt_JAGS_bridge_is_fixed_zero_parameter,
+    logical(1),
+    prior_list = prior_list
+  )
+  if(!any(zero_columns)){
+    return(character())
+  }
+
+  structure <- .bt_JAGS_bridge_random_term_structure(random_term)
+  if(!all(zero_columns) && !structure %in% c("diag", "id")){
+    return(character())
+  }
+
+  z_names <- .bt_random_effect_latent_names(
+    random_term = random_term,
+    n_groups = random_term$n_groups,
+    n_columns = n_columns
+  )
+  if(all(zero_columns)){
+    return(as.vector(z_names))
+  }
+  if(is.matrix(z_names)){
+    return(as.vector(z_names[, zero_columns, drop = FALSE]))
+  }
+
+  layout <- random_term$latent_layout
+  if(inherits(layout, "BayesTools_random_effect_structured_local_layout")){
+    return(as.vector(z_names)[layout$local_column %in% which(zero_columns)])
+  }
+
+  character()
+}
+
+.bt_JAGS_bridge_is_fixed_zero_parameter <- function(parameter_name,
+                                                     prior_list){
+
+  prior_name <- sub("\\[[0-9]+\\]$", "", parameter_name)
+  if(!prior_name %in% names(prior_list)){
+    return(FALSE)
+  }
+  prior <- prior_list[[prior_name]]
+  if(!is.prior.point(prior)){
+    return(FALSE)
+  }
+
+  location <- prior$parameters[["location"]]
+  is.numeric(location) && length(location) == 1L &&
+    !is.na(location) && location == 0
+}
+
+.bt_JAGS_bridge_complete_fixed_random_latent <- function(samples,
+                                                         fixed_latent){
+
+  if(length(fixed_latent) == 0L){
+    return(samples)
+  }
+  missing <- setdiff(names(fixed_latent), names(samples))
+  if(length(missing) == 0L){
+    return(samples)
+  }
+
+  c(samples, fixed_latent[missing])
 }
 
 .bt_JAGS_bridge_merge_add_parameters <- function(add_parameters, add_bounds,

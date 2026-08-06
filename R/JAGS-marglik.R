@@ -251,7 +251,10 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   )
   bridge_prior_evaluator <- bridge_prior_evaluators$prior
   bridge_formula_prior_evaluator <- bridge_prior_evaluators$formula
-  bridge_formula_random_prior_evaluator <- .bt_JAGS_bridge_compile_formula_random_prior_evaluator(formula_design_list)
+  bridge_formula_random_prior_evaluator <- .bt_JAGS_bridge_compile_formula_random_prior_evaluator(
+    formula_design_list = formula_design_list,
+    omitted_latent = names(random_bridge_parameters$fixed_latent)
+  )
   bridge_formula_parameter_evaluator <- .bt_JAGS_bridge_compile_formula_parameter_evaluator(
     formula_list = formula_list,
     formula_data_list = formula_data_list,
@@ -268,12 +271,17 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
                                  bridge_formula_random_prior_evaluator,
                                  bridge_formula_parameter_evaluator,
                                  add_parameters,
+                                 fixed_random_latent,
                                  bridge_context,
                                  formula_design_list,
                                  formula_data_list,
                                  formula_prior_list,
                                  ...){
 
+    samples.row <- .bt_JAGS_bridge_complete_fixed_random_latent(
+      samples = samples.row,
+      fixed_latent = fixed_random_latent
+    )
     samples.row <- .bt_JAGS_bridge_cache_posterior_row(
       samples.row,
       bridge_formula_random_prior_evaluator$uses_posterior_row
@@ -346,6 +354,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
       bridge_formula_random_prior_evaluator = bridge_formula_random_prior_evaluator,
       bridge_formula_parameter_evaluator = bridge_formula_parameter_evaluator,
       add_parameters = add_parameters,
+      fixed_random_latent = random_bridge_parameters$fixed_latent,
       bridge_context = bridge_context,
       formula_design_list = formula_design_list,
       formula_data_list = formula_data_list,
@@ -371,6 +380,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
       silent             = silent,
       maxiter            = maxiter,
       add_parameters     = add_parameters,
+      fixed_random_latent = random_bridge_parameters$fixed_latent,
       bridge_context     = bridge_context,
       formula_design_list = formula_design_list,
       formula_data_list  = formula_data_list,

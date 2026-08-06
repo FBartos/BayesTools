@@ -534,7 +534,9 @@
   )
 }
 
-.bt_JAGS_bridge_compile_formula_random_prior_evaluator <- function(formula_design_list){
+.bt_JAGS_bridge_compile_formula_random_prior_evaluator <- function(
+    formula_design_list,
+    omitted_latent = character()){
 
   .bt_JAGS_bridge_check_no_allocation_inclusion(formula_design_list)
 
@@ -557,7 +559,10 @@
         )
         for(random_term in .bt_formula_design_random_effects(design)){
           evaluators[[length(evaluators) + 1L]] <-
-            .bt_JAGS_bridge_compile_random_effect_prior_evaluator(random_term)
+            .bt_JAGS_bridge_compile_random_effect_prior_evaluator(
+              random_term = random_term,
+              omitted_latent = omitted_latent
+            )
         }
       }
     }
@@ -579,9 +584,12 @@
   )
 }
 
-.bt_JAGS_bridge_compile_random_effect_prior_evaluator <- function(random_term){
+.bt_JAGS_bridge_compile_random_effect_prior_evaluator <- function(
+    random_term,
+    omitted_latent = character()){
 
   force(random_term)
+  force(omitted_latent)
 
   n_columns <- random_term$n_columns
   sampled_random_effect <- identical(
@@ -603,7 +611,11 @@
     log_prior = function(samples){
       marglik <- 0
       if(isTRUE(sampled_random_effect)){
-        marglik <- .bt_random_effect_latent_log_density(random_term, samples)
+        marglik <- .bt_JAGS_bridge_random_effect_latent_log_density(
+          random_term = random_term,
+          samples = samples,
+          omitted_latent = omitted_latent
+        )
       }
 
       scalar_rho_support <- scalar_rho_support_evaluator(samples)
@@ -622,6 +634,53 @@
       marglik
     }
   )
+}
+
+.bt_JAGS_bridge_random_effect_latent_log_density <- function(
+    random_term,
+    samples,
+    omitted_latent = character()){
+
+  z_names <- as.vector(.bt_random_effect_latent_names(
+    random_term = random_term,
+    n_groups = random_term$n_groups,
+    n_columns = random_term$n_columns
+  ))
+  active_names <- setdiff(z_names, omitted_latent)
+  if(length(active_names) == 0L){
+    return(0)
+  }
+  if(length(active_names) == length(z_names)){
+    return(.bt_random_effect_latent_log_density(random_term, samples))
+  }
+
+  structure <- .bt_JAGS_bridge_random_term_structure(random_term)
+  if(!structure %in% c("diag", "id") ||
+     .bt_random_effect_has_known_group_covariance(random_term)){
+    stop(
+      "Bridge sampling can omit only a complete correlated random-effect ",
+      "latent block or independent fixed-zero latent components.",
+      call. = FALSE
+    )
+  }
+  if(!all(active_names %in% names(samples))){
+    stop(
+      "Bridge samples are missing standardized latent random effects for block '",
+      random_term$block_name,
+      "'.",
+      call. = FALSE
+    )
+  }
+
+  z_values <- samples[active_names]
+  if(any(is.na(z_values))){
+    return(-Inf)
+  }
+  marglik <- sum(stats::dnorm(z_values, mean = 0, sd = 1, log = TRUE))
+  if(is.na(marglik)){
+    return(-Inf)
+  }
+  marglik
 }
 
 .bt_JAGS_bridge_compile_random_effect_scalar_rho_support <- function(random_term,
