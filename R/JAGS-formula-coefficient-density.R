@@ -149,7 +149,10 @@ JAGS_formula_prior_density <- function(
     )
   }
 
-  weights <- transform$matrix[target_i, ]
+  weights <- stats::setNames(
+    as.numeric(transform$matrix[target_i, , drop = FALSE]),
+    colnames(transform$matrix)
+  )
   weights <- weights[weights != 0]
   density_context <- .bt_formula_prior_density_context(
     fit,

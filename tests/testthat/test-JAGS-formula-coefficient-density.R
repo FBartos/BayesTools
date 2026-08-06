@@ -164,6 +164,39 @@ test_that("formula coefficient transforms exclude random-effect priors", {
   }
 })
 
+test_that("formula prior density names a single fixed source", {
+
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + random(1 | id, name = "block", covariance = "diag"),
+    parameter = "mu",
+    data = data.frame(id = factor(c("a", "a", "b", "b"))),
+    prior_list = list(
+      intercept = prior("normal", list(0, 2))
+    ),
+    prior_random = prior_random(
+      block = random_block(sd = prior("gamma", list(2, 2)))
+    )
+  )
+  all_prior_coordinates <- .formula_coefficient_source_names(formula_result)
+  fit <- .formula_coefficient_density_fit(
+    formula_result,
+    all_prior_coordinates
+  )
+
+  density <- JAGS_formula_prior_density(
+    fit,
+    parameter = "mu",
+    target = "mu_intercept"
+  )
+  ordinate <- prior_density_ordinate(density, 0)
+  expect_identical(ordinate$behavior, "regular")
+  expect_equal(
+    ordinate$log_density,
+    stats::dnorm(0, sd = 2, log = TRUE),
+    tolerance = 1e-12
+  )
+})
+
 test_that("formula prior densities distinguish structural and dependent targets", {
 
   continuous_result <- JAGS_formula(
