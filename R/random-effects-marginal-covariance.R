@@ -716,7 +716,8 @@ random_effects_marginal_variance_factors <- function(
   .bt_random_effect_marginal_covariance_validate_posterior(posterior)
 }
 
-.bt_random_effect_marginal_covariance_validate_posterior <- function(posterior){
+.bt_random_effect_marginal_covariance_validate_posterior <- function(
+    posterior, allow_zero_columns = FALSE){
 
   if(!is.matrix(posterior) || length(dim(posterior)) != 2L){
     stop("'posterior_samples' must be a two-dimensional sample matrix.", call. = FALSE)
@@ -727,21 +728,24 @@ random_effects_marginal_variance_factors <- function(
   if(nrow(posterior) < 1L){
     stop("'posterior_samples' must contain at least one draw.", call. = FALSE)
   }
-  posterior_names <- colnames(posterior)
-  if(is.null(posterior_names) || length(posterior_names) != ncol(posterior) ||
-     anyNA(posterior_names) || any(!nzchar(posterior_names))){
-    stop("'posterior_samples' must have non-empty column names.", call. = FALSE)
-  }
-  if(anyDuplicated(posterior_names)){
-    duplicated_names <- unique(posterior_names[duplicated(posterior_names)])
-    stop(
-      "'posterior_samples' column names must be unique. Duplicated column(s): ",
-      paste0("'", duplicated_names[seq_len(min(4L, length(duplicated_names)))], "'",
-             collapse = ", "),
-      if(length(duplicated_names) > 4L) ", ..." else "",
-      ".",
-      call. = FALSE
-    )
+  zero_columns_allowed <- isTRUE(allow_zero_columns) && ncol(posterior) == 0L
+  if(!zero_columns_allowed){
+    posterior_names <- colnames(posterior)
+    if(is.null(posterior_names) || length(posterior_names) != ncol(posterior) ||
+       anyNA(posterior_names) || any(!nzchar(posterior_names))){
+      stop("'posterior_samples' must have non-empty column names.", call. = FALSE)
+    }
+    if(anyDuplicated(posterior_names)){
+      duplicated_names <- unique(posterior_names[duplicated(posterior_names)])
+      stop(
+        "'posterior_samples' column names must be unique. Duplicated column(s): ",
+        paste0("'", duplicated_names[seq_len(min(4L, length(duplicated_names)))], "'",
+               collapse = ", "),
+        if(length(duplicated_names) > 4L) ", ..." else "",
+        ".",
+        call. = FALSE
+      )
+    }
   }
 
   if(is.null(attr(

@@ -185,17 +185,10 @@ random_effects_correlation_draws <- function(random_term, posterior_samples){
   }
 
   posterior <- as.matrix(posterior_samples)
-  if(isTRUE(allow_zero_columns) && ncol(posterior) == 0L){
-    if(!is.numeric(posterior)){
-      stop("'posterior_samples' must be numeric.", call. = FALSE)
-    }
-    if(nrow(posterior) < 1L){
-      stop("'posterior_samples' must contain at least one draw.", call. = FALSE)
-    }
-    return(posterior)
-  }
-
-  .bt_random_effect_marginal_covariance_validate_posterior(posterior)
+  .bt_random_effect_marginal_covariance_validate_posterior(
+    posterior,
+    allow_zero_columns = allow_zero_columns
+  )
 }
 
 

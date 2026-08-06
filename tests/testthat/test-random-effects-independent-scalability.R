@@ -169,6 +169,62 @@ test_that("latent reconstruction rejects duplicate posterior coordinates", {
   )
 })
 
+test_that("point-prior random scales support zero-dimensional bridge rows", {
+
+  data <- data.frame(
+    id = factor(c("a", "a", "b", "b"))
+  )
+  point_result <- JAGS_formula(
+    formula = ~ 1 + (1 | id),
+    parameter = "mu",
+    data = data,
+    prior_list = list(
+      intercept = prior("point", list(location = 0))
+    ),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("point", list(location = 0.2))
+      )
+    ),
+    random_effects_compile = random_effects_compile(marginalized = "id")
+  )
+  random_term <- point_result$formula_design$random_effects[[1L]]
+  posterior <- matrix(numeric(), nrow = 1L, ncol = 0L)
+
+  sd_draws <- .bt_random_effect_sd_draws(
+    random_term = random_term,
+    n_columns = random_term$n_columns,
+    posterior = posterior,
+    prior_list = point_result$prior_list
+  )
+  expect_equal(sd_draws, matrix(0.2, nrow = 1L, ncol = 1L))
+
+  context <- .bt_JAGS_bridge_context_random_block(
+    samples = numeric(),
+    random_term = random_term,
+    prior_list = point_result$prior_list,
+    formula_prior_parameters = list(),
+    data = data,
+    parameters = list()
+  )
+  expect_equal(unname(context$scale$column_sd), 0.2)
+
+  sampled_prior_list <- point_result$prior_list
+  sampled_prior_list[[random_term$sd_parameter_names[[1L]]]] <-
+    .independent_backend_sd_prior()
+  expect_null(.bt_random_effect_sd_draws(
+    random_term = random_term,
+    n_columns = random_term$n_columns,
+    posterior = posterior,
+    prior_list = sampled_prior_list
+  ))
+  expect_error(
+    .bt_random_effect_marginal_covariance_validate_posterior(posterior),
+    "must have non-empty column names",
+    fixed = TRUE
+  )
+})
+
 test_that("independent new-level sampling avoids identity and eigen matrices", {
   .independent_backend_mock_dense_helpers()
   fixture <- .independent_backend_fixture("diag")
