@@ -15,7 +15,9 @@
 #' (only allows removing last, fixed, omega element if omega is tracked manually).
 #' @param fail_fast whether the function should stop after the first failed convergence check.
 #' @param check_indicators whether model indicator variables should be included
-#' in convergence checks. Defaults to \code{FALSE}.
+#' in convergence checks. Binary indicators are checked as Bernoulli
+#' occupancies and categorical indicators are checked separately for every
+#' observed state. Defaults to \code{FALSE}.
 #' @param monitor optional character vector selecting parameters for convergence
 #' checks. A base name selects all of its indexed elements. \code{NULL} selects
 #' every eligible parameter; \code{character()} requests no parameters.
@@ -107,12 +109,14 @@ JAGS_check_convergence <- function(
   cleaned <- .remove_auxiliary_parameters(mcmc_samples, prior_list, remove_params)
   mcmc_samples <- cleaned$model_samples
 
-  sample_parameters <- colnames(mcmc_samples)
-  if(is.null(sample_parameters)){
-    sample_parameters <- character()
-  }
+  targets <- .bt_convergence_sample_targets(mcmc_samples, prior_list)
+  sample_parameters <- targets$metadata$parameter
   structural_parameters <- .bt_convergence_structural_parameters(prior_list)
   available_parameters <- unique(c(sample_parameters, structural_parameters))
+  available_sources <- c(
+    targets$metadata$source,
+    structural_parameters[!structural_parameters %in% sample_parameters]
+  )
 
   explicitly_empty <- !is.null(monitor) && length(monitor) == 0L
   if(explicitly_empty){
@@ -121,11 +125,10 @@ JAGS_check_convergence <- function(
     return(.bt_convergence_result(logical(), diagnostics, NULL))
   }
 
-  indicator_cols <- grepl("_indicator(\\[[^]]+\\])?$", colnames(mcmc_samples))
-  inclusion_cols <- grepl("_inclusion(\\[[^]]+\\])?$", colnames(mcmc_samples))
   if(is.null(monitor)){
-    selected_parameters <- sample_parameters[
-      !(inclusion_cols | (!check_indicators & indicator_cols))
+    selected_parameters <- targets$metadata$parameter[
+      !(targets$metadata$is_inclusion |
+          (!check_indicators & targets$metadata$is_indicator))
     ]
     selected_parameters <- unique(c(
       selected_parameters,
@@ -134,7 +137,8 @@ JAGS_check_convergence <- function(
   }else{
     selected_parameters <- .bt_convergence_resolve_monitor(
       monitor,
-      available_parameters
+      available_parameters,
+      available_sources
     )
   }
 
@@ -149,6 +153,10 @@ JAGS_check_convergence <- function(
   diagnostics[["state"]][selected_rows] <- "assessable"
   structural_rows <- diagnostics[["parameter"]] %in% structural_parameters &
     diagnostics[["parameter"]] %in% selected_parameters
+  structural_rows <- structural_rows |
+    diagnostics[["parameter"]] %in%
+      targets$metadata$parameter[targets$metadata$structural] &
+    diagnostics[["parameter"]] %in% selected_parameters
   diagnostics[["state"]][structural_rows] <- "structural_constant"
 
   sample_rows <- selected_rows[
@@ -159,7 +167,8 @@ JAGS_check_convergence <- function(
     chain_id <- rep.int(seq_along(chain_lengths), chain_lengths)
     for(row in sample_rows){
       parameter <- diagnostics[["parameter"]][[row]]
-      parameter_samples <- mcmc_samples[, parameter]
+      target_row <- match(parameter, targets$metadata$parameter)
+      parameter_samples <- targets$samples[[target_row]]
       parameter_diagnostics <- .bt_convergence_parameter_diagnostics(
         parameter_samples,
         chain_id = chain_id,
@@ -191,6 +200,149 @@ JAGS_check_convergence <- function(
   }
 
   .bt_convergence_result(length(fails) == 0L, diagnostics, fails)
+}
+
+.bt_convergence_sample_targets <- function(mcmc_samples, prior_list){
+
+  columns <- colnames(mcmc_samples)
+  if(is.null(columns)){
+    columns <- character()
+  }
+  supports <- .bt_convergence_indicator_supports(prior_list)
+  samples  <- list()
+  metadata <- list()
+
+  add_target <- function(parameter, source, values, is_indicator,
+                         is_inclusion, structural = FALSE){
+    samples[[length(samples) + 1L]] <<- values
+    metadata[[length(metadata) + 1L]] <<- data.frame(
+      parameter = parameter,
+      source = source,
+      is_indicator = is_indicator,
+      is_inclusion = is_inclusion,
+      structural = structural,
+      stringsAsFactors = FALSE
+    )
+  }
+
+  for(column in columns){
+    values       <- mcmc_samples[, column]
+    is_indicator <- grepl("_indicator(\\[[^]]+\\])?$", column)
+    is_inclusion <- grepl("_inclusion(\\[[^]]+\\])?$", column)
+    if(!is_indicator){
+      add_target(column, column, values, FALSE, is_inclusion)
+      next
+    }
+
+    if(any(!is.finite(values)) || any(values != round(values))){
+      stop(
+        "Model indicator '", column,
+        "' must contain finite integer states.",
+        call. = FALSE
+      )
+    }
+    support <- supports[[column]]
+    if(!is.null(support) && any(!values %in% support)){
+      stop(
+        "Model indicator '", column,
+        "' contains states outside its prior support.",
+        call. = FALSE
+      )
+    }
+    if(!is.null(support) && length(support) == 1L){
+      add_target(column, column, values, TRUE, FALSE, structural = TRUE)
+      next
+    }
+
+    observed <- sort(unique(values))
+    if(length(observed) <= 1L){
+      add_target(column, column, values, TRUE, FALSE)
+    }else if(length(observed) == 2L){
+      occupancy <- as.numeric(values == observed[[2L]])
+      add_target(column, column, occupancy, TRUE, FALSE)
+    }else{
+      for(state in observed){
+        state_label <- format(
+          state,
+          digits = 17,
+          scientific = FALSE,
+          trim = TRUE
+        )
+        parameter <- paste0(column, " (state ", state_label, ")")
+        occupancy <- as.numeric(values == state)
+        add_target(parameter, column, occupancy, TRUE, FALSE)
+      }
+    }
+  }
+
+  if(length(metadata) == 0L){
+    metadata <- data.frame(
+      parameter = character(),
+      source = character(),
+      is_indicator = logical(),
+      is_inclusion = logical(),
+      structural = logical(),
+      stringsAsFactors = FALSE
+    )
+  }else{
+    metadata <- do.call(rbind, metadata)
+    rownames(metadata) <- NULL
+  }
+
+  list(samples = samples, metadata = metadata)
+}
+
+.bt_convergence_indicator_supports <- function(prior_list){
+
+  supports <- list()
+  if(length(prior_list) == 0L){
+    return(supports)
+  }
+  prior_names <- names(prior_list)
+  if(is.null(prior_names)){
+    prior_names <- rep.int("", length(prior_list))
+  }
+
+  for(i in seq_along(prior_list)){
+    prior     <- prior_list[[i]]
+    parameter <- prior_names[[i]]
+    if(is.na(parameter) || !nzchar(parameter)){
+      next
+    }
+    if(is.prior.spike_and_slab(prior)){
+      inclusion <- .get_spike_and_slab_inclusion(prior)
+      supports[[paste0(parameter, "_indicator")]] <-
+        .bt_convergence_binary_indicator_support(inclusion)
+    }else if(is.prior.mixture(prior)){
+      indicator <- if(inherits(prior, "prior.bias_mixture")){
+        "bias_indicator"
+      }else{
+        paste0(parameter, "_indicator")
+      }
+      supports[[indicator]] <- seq_along(prior)
+    }else if(is.prior.factor(prior) && is.prior.ordered(prior)){
+      metadata <- .prior_ordered_metadata(prior)
+      if(is.prior.spike_and_slab(prior$total) && metadata$theta_dim > 1L){
+        inclusion <- .get_spike_and_slab_inclusion(prior$total)
+        total_name <- .prior_ordered_total_name(parameter)
+        supports[[paste0(total_name, "_indicator")]] <-
+          .bt_convergence_binary_indicator_support(inclusion)
+      }
+    }
+  }
+
+  supports
+}
+
+.bt_convergence_binary_indicator_support <- function(inclusion){
+
+  if(is.prior.point(inclusion)){
+    probability <- as.numeric(inclusion$parameters[["location"]])
+    if(probability %in% c(0, 1)){
+      return(probability)
+    }
+  }
+  c(0, 1)
 }
 
 .bt_convergence_is_structural_prior <- function(prior){
@@ -230,14 +382,17 @@ JAGS_check_convergence <- function(
   }), use.names = FALSE)
 }
 
-.bt_convergence_resolve_monitor <- function(monitor, available_parameters){
+.bt_convergence_resolve_monitor <- function(monitor, available_parameters,
+                                            available_sources = available_parameters){
 
   selected <- character()
   for(parameter in unique(monitor)){
     if(grepl("\\[", parameter, fixed = FALSE)){
-      matches <- available_parameters == parameter
+      matches <- available_sources == parameter |
+        available_parameters == parameter
     }else{
-      matches <- sub("\\[.*$", "", available_parameters) == parameter
+      matches <- sub("\\[.*$", "", available_sources) == parameter |
+        available_parameters == parameter
     }
     if(!any(matches)){
       stop(

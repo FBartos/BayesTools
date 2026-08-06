@@ -40,7 +40,9 @@ deviation of the parameters. Defaults to \code{0.05}.}
 \item{fail_fast}{whether the function should stop after the first failed convergence check.}
 
 \item{check_indicators}{whether model indicator variables should be included
-in convergence checks. Defaults to \code{FALSE}.}
+in convergence checks. Binary indicators are checked as Bernoulli
+occupancies and categorical indicators are checked separately for every
+observed state. Defaults to \code{FALSE}.}
 
 \item{monitor}{optional character vector selecting parameters for convergence
 checks. A base name selects all of its indexed elements. \code{NULL} selects

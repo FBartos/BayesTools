@@ -43,6 +43,7 @@
   transformation provenance, avoiding round-trip misclassification for
   transformations such as negative powers of truncated positive priors
 - corrects the zero-boundary exponent for negative powers of inverse-gamma variables, distinguishing infinite, finite nonzero, and zero transformed densities according to the inverse-gamma shape and power
+- makes optional model-indicator convergence checks label invariant by diagnosing binary state occupancy and each observed categorical state separately, while recognizing one-state indicators as structural only when the prior fixes their support
 - derives formula coefficient transforms from registry rows with the `fixed_coefficient` role, so sampled and marginalized random-effect priors no longer make mixed-formula coefficient transforms and prior densities fail with a source mismatch
 - makes `JAGS_extend()` validate the declared fit contract and every preserved metadata object before backend work, preventing stale formula designs from being relabeled as current after an early exit or extension
 - restores literal `expression()` formula terms that reference sampled scalar or one-dimensional indexed parameters, including individually monitored indexed coordinates, persisting their data and parameter dependencies for draw-aware fitted/new-data prediction and marginal-likelihood reconstruction while rejecting opaque JAGS-derived nodes that cannot be replayed
@@ -348,3 +349,4 @@
 
 ## version 0.0.0.9000
 - priors and related methods
+
