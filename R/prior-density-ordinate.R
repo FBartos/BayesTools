@@ -1638,6 +1638,19 @@ prior_density_ordinate <- function(x, value){
   if(exponent > 0) "zero" else if(exponent < 0) "infinite" else "regular"
 }
 
+.prior_density_ordinate_endpoint_matches <- function(output, value){
+
+  if(!is.finite(output) || !is.finite(value)){
+    return(FALSE)
+  }
+  if(output == value){
+    return(TRUE)
+  }
+
+  midpoint <- output / 2 + value / 2
+  midpoint == output || midpoint == value
+}
+
 .prior_density_ordinate_endpoint_source <- function(source_provenance,
                                                      transformation,
                                                      arguments, value){
@@ -1663,7 +1676,12 @@ prior_density_ordinate <- function(x, value){
       },
       tanh = tanh(source_values)
     )
-    matched <- which(is.finite(output_values) & output_values == value)
+    matched <- which(vapply(
+      output_values,
+      .prior_density_ordinate_endpoint_matches,
+      logical(1),
+      value = value
+    ))
     if(length(matched) > 0L){
       return(source_values[matched[1L]])
     }
@@ -1672,7 +1690,12 @@ prior_density_ordinate <- function(x, value){
   if(identical(transformation, "exp_lin")){
     source_values <- unname(support[is.finite(support) & support > 0])
     output_values <- exp(arguments$a) * source_values^arguments$b
-    matched <- which(is.finite(output_values) & output_values == value)
+    matched <- which(vapply(
+      output_values,
+      .prior_density_ordinate_endpoint_matches,
+      logical(1),
+      value = value
+    ))
     if(length(matched) > 0L){
       return(source_values[matched[1L]])
     }
@@ -1690,7 +1713,12 @@ prior_density_ordinate <- function(x, value){
       )
       output_values <- exp(source_provenance$offset) *
         original_values^source_provenance$scale
-      matched <- which(is.finite(output_values) & output_values == value)
+      matched <- which(vapply(
+        output_values,
+        .prior_density_ordinate_endpoint_matches,
+        logical(1),
+        value = value
+      ))
       if(length(matched) > 0L){
         return(
           source_provenance$offset + source_provenance$scale *
