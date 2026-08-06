@@ -630,6 +630,34 @@ test_that("composed named-transform boundary limits use source provenance", {
     "zero"
   )
 
+  bounded_power <- function(power){
+    BayesTools:::.prior_linear_combination_density(
+      prior_list = list(x = prior(
+        "lognormal",
+        list(0, 1),
+        truncation = list(lower = 0.01, upper = 2)
+      )),
+      weights = c(x = power),
+      source_transforms = c(x = "log"),
+      n_grid = 128,
+      output_transformation = "exp"
+    )
+  }
+  increasing <- bounded_power(2)
+  decreasing <- bounded_power(-2)
+  expect_identical(
+    vapply(c(0.01^2, 2^2), function(endpoint){
+      prior_density_ordinate(increasing, endpoint)$behavior
+    }, character(1)),
+    c("regular", "regular")
+  )
+  expect_identical(
+    vapply(c(2^-2, 0.01^-2), function(endpoint){
+      prior_density_ordinate(decreasing, endpoint)$behavior
+    }, character(1)),
+    c("regular", "regular")
+  )
+
   lognormal_tanh <- BayesTools:::.prior_linear_combination_density(
     prior_list = list(x = prior("lognormal", list(0, 1))),
     weights = c(x = 1),

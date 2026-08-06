@@ -1638,6 +1638,71 @@ prior_density_ordinate <- function(x, value){
   if(exponent > 0) "zero" else if(exponent < 0) "infinite" else "regular"
 }
 
+.prior_density_ordinate_endpoint_source <- function(source_provenance,
+                                                     transformation,
+                                                     arguments, value){
+
+  support <- .prior_density_ordinate_provenance_support(source_provenance)
+  if(is.null(support)){
+    return(NULL)
+  }
+
+  source_values <- unname(support[is.finite(support)])
+  if(length(source_values) > 0L){
+    output_values <- switch(
+      transformation,
+      lin = arguments$a + arguments$b * source_values,
+      exp = exp(source_values),
+      exp_lin = {
+        valid <- source_values > 0
+        output <- rep(NA_real_, length(source_values))
+        output[valid] <- exp(
+          arguments$a + arguments$b * log(source_values[valid])
+        )
+        output
+      },
+      tanh = tanh(source_values)
+    )
+    matched <- which(is.finite(output_values) & output_values == value)
+    if(length(matched) > 0L){
+      return(source_values[matched[1L]])
+    }
+  }
+
+  if(identical(transformation, "exp_lin")){
+    source_values <- unname(support[is.finite(support) & support > 0])
+    output_values <- exp(arguments$a) * source_values^arguments$b
+    matched <- which(is.finite(output_values) & output_values == value)
+    if(length(matched) > 0L){
+      return(source_values[matched[1L]])
+    }
+  }
+
+  if(identical(transformation, "exp") &&
+     identical(source_provenance$kind, "scalar_affine") &&
+     identical(source_provenance$source_transform, "log") &&
+     is.list(source_provenance$source)){
+    original_support <-
+      .prior_density_ordinate_provenance_support(source_provenance$source)
+    if(!is.null(original_support)){
+      original_values <- unname(
+        original_support[is.finite(original_support) & original_support > 0]
+      )
+      output_values <- exp(source_provenance$offset) *
+        original_values^source_provenance$scale
+      matched <- which(is.finite(output_values) & output_values == value)
+      if(length(matched) > 0L){
+        return(
+          source_provenance$offset + source_provenance$scale *
+            log(original_values[matched[1L]])
+        )
+      }
+    }
+  }
+
+  NULL
+}
+
 .prior_density_ordinate_named_transform <- function(classifier, source_provenance,
                                                     transformation, arguments,
                                                     value){
@@ -1687,7 +1752,15 @@ prior_density_ordinate <- function(x, value){
         provenance   = provenance
       ))
     }
-    source_value <- (value - arguments$a) / arguments$b
+    source_value <- .prior_density_ordinate_endpoint_source(
+      source_provenance,
+      transformation,
+      arguments,
+      value
+    )
+    if(is.null(source_value)){
+      source_value <- (value - arguments$a) / arguments$b
+    }
     if(!is.finite(source_value)){
       return(.prior_density_ordinate_result(
         value       = value,
@@ -1736,7 +1809,15 @@ prior_density_ordinate <- function(x, value){
         provenance  = provenance
       ))
     }
-    source_value <- log(value)
+    source_value <- .prior_density_ordinate_endpoint_source(
+      source_provenance,
+      transformation,
+      arguments,
+      value
+    )
+    if(is.null(source_value)){
+      source_value <- log(value)
+    }
     source <- classifier(source_value)
     return(.prior_density_ordinate_wrap(
       source,
@@ -1775,7 +1856,15 @@ prior_density_ordinate <- function(x, value){
         provenance  = provenance
       ))
     }
-    source_value <- atanh(value)
+    source_value <- .prior_density_ordinate_endpoint_source(
+      source_provenance,
+      transformation,
+      arguments,
+      value
+    )
+    if(is.null(source_value)){
+      source_value <- atanh(value)
+    }
     source <- classifier(source_value)
     return(.prior_density_ordinate_wrap(
       source,
@@ -1866,7 +1955,15 @@ prior_density_ordinate <- function(x, value){
       provenance  = provenance
     ))
   }
-  source_value <- exp((log(value) - arguments$a) / arguments$b)
+  source_value <- .prior_density_ordinate_endpoint_source(
+    source_provenance,
+    transformation,
+    arguments,
+    value
+  )
+  if(is.null(source_value)){
+    source_value <- exp((log(value) - arguments$a) / arguments$b)
+  }
   if(!is.finite(source_value) || source_value <= 0){
     return(.prior_density_ordinate_result(
       value       = value,
