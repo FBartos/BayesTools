@@ -1861,6 +1861,43 @@ test_that("formula expressions replay sampled indexed parameters", {
     "cannot reconstruct expression parameter 'theta'",
     fixed = TRUE
   )
+
+  sparse_specs <- BayesTools:::.bt_formula_expression_specs(
+    "theta[2]",
+    parameter_names = "theta"
+  )
+  expect_equal(
+    BayesTools:::.bt_formula_expression_contribution_matrix(
+      expressions = sparse_specs,
+      data = list(),
+      n_rows = 3L,
+      n_draws = 2L,
+      samples = matrix(
+        c(10, 20),
+        ncol = 1L,
+        dimnames = list(NULL, "theta[2]")
+      )
+    ),
+    matrix(c(10, 10, 10, 20, 20, 20), nrow = 3L)
+  )
+  expect_error(
+    BayesTools:::.bt_formula_expression_contribution_matrix(
+      expressions = BayesTools:::.bt_formula_expression_specs(
+        "theta[1]",
+        parameter_names = "theta"
+      ),
+      data = list(),
+      n_rows = 1L,
+      n_draws = 1L,
+      samples = matrix(
+        20,
+        ncol = 1L,
+        dimnames = list(NULL, "theta[2]")
+      )
+    ),
+    "produced non-finite values",
+    fixed = TRUE
+  )
 })
 
 test_that("sampled parameter expressions coexist with random-effect syntax", {

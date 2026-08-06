@@ -4683,6 +4683,49 @@ test_that("JAGS formula expressions replay sampled indexed parameters", {
     "unknown replay dependency 'theta'",
     fixed = TRUE
   )
+
+  sparse_fit <- JAGS_fit(
+    model_syntax = paste0(
+      "model{\n",
+      "theta[1] ~ dnorm(0, 1)\n",
+      "theta[2] ~ dnorm(0, 1)\n",
+      "for(i in 1:N){\n",
+      "  y[i] ~ dnorm(sparse_mu[i], 1)\n",
+      "}\n",
+      "}"
+    ),
+    data = list(y = model_data$y, N = model_data$N),
+    formula_list = list(sparse_mu = ~ expression(theta[2])),
+    formula_data_list = list(sparse_mu = formula_data),
+    formula_prior_list = list(
+      sparse_mu = list(intercept = prior("normal", list(0, 1)))
+    ),
+    add_parameters = "theta[2]",
+    chains = 1,
+    adapt = 100,
+    burnin = 100,
+    sample = 100,
+    seed = 42
+  )
+  sparse_posterior <- as.matrix(BayesTools:::.fit_to_posterior(sparse_fit))
+  expect_identical(
+    colnames(sparse_posterior),
+    c("sparse_mu_intercept", "theta[2]")
+  )
+  sparse_prediction <- JAGS_evaluate_formula(
+    sparse_fit,
+    parameter = "sparse_mu"
+  )
+  expect_equal(
+    unname(sparse_prediction),
+    matrix(
+      sparse_posterior[, "sparse_mu_intercept"] +
+        sparse_posterior[, "theta[2]"],
+      nrow = model_data$N,
+      ncol = nrow(sparse_posterior),
+      byrow = TRUE
+    )
+  )
 })
 
 test_that("JAGS marglik with exp(intercept) formula works", {

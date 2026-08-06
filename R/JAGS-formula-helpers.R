@@ -536,6 +536,25 @@
     .bt_parameter_registry_base(sample_names)
   unique(c(sample_roots, names(parameters)))
 }
+.bt_formula_expression_indexed_draws <- function(values, indices){
+
+  out <- list(
+    values = unname(as.matrix(values)),
+    indices = indices,
+    size = max(indices)
+  )
+  class(out) <- c("BayesTools_formula_expression_indexed_draws", "list")
+  out
+}
+.bt_formula_expression_parameter_value <- function(draws, draw){
+
+  if(inherits(draws, "BayesTools_formula_expression_indexed_draws")){
+    value <- rep.int(NA_real_, draws$size)
+    value[draws$indices] <- draws$values[draw, ]
+    return(value)
+  }
+  unname(draws[draw, ])
+}
 .bt_formula_expression_resolve_specs <- function(expressions, data, samples,
                                                  parameters = NULL){
 
@@ -619,12 +638,7 @@
     }
     if(!is.null(indexed)){
       indices <- .JAGS_indexed_parameter_indices(colnames(indexed), parameter)
-      if(!identical(indices, seq_len(ncol(indexed)))){
-        stop(context, " indexed expression parameter '", parameter,
-             "' must contain contiguous coordinates starting at one.",
-             call. = FALSE)
-      }
-      return(unname(indexed))
+      return(.bt_formula_expression_indexed_draws(indexed, indices))
     }
   }else{
     sample_names <- names(samples)
@@ -639,12 +653,10 @@
     }
     if(length(indexed) > 0L){
       indices <- .JAGS_indexed_parameter_indices(names(indexed), parameter)
-      if(!identical(indices, seq_along(indexed))){
-        stop(context, " indexed expression parameter '", parameter,
-             "' must contain contiguous coordinates starting at one.",
-             call. = FALSE)
-      }
-      return(matrix(unname(indexed), nrow = 1L))
+      return(.bt_formula_expression_indexed_draws(
+        matrix(unname(indexed), nrow = 1L),
+        indices
+      ))
     }
   }
   stop(
@@ -735,7 +747,7 @@
         n_draws = 1L,
         context = context
       )
-      unname(values[1L, ])
+      .bt_formula_expression_parameter_value(values, 1L)
     })
     names(parameter_values) <- spec$parameter_dependencies
     total <- total + .bt_formula_expression_eval(
@@ -800,7 +812,12 @@
     for(draw in seq_len(n_draws)){
       parameter_values <- lapply(
         spec$parameter_dependencies,
-        function(parameter) unname(parameter_draws[[parameter]][draw, ])
+        function(parameter){
+          .bt_formula_expression_parameter_value(
+            parameter_draws[[parameter]],
+            draw
+          )
+        }
       )
       names(parameter_values) <- spec$parameter_dependencies
       output[, draw] <- output[, draw] + .bt_formula_expression_eval(
