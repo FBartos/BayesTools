@@ -4568,6 +4568,123 @@ test_that("JAGS marglik with formula works", {
   expect_equal(marglik$logml, 0, tolerance = 1e-3)
 })
 
+test_that("JAGS formula expressions replay sampled indexed parameters", {
+
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("bridgesampling")
+
+  set.seed(41)
+  mapping_id <- rep(1:2, each = 4)
+  model_data <- list(
+    y = stats::rnorm(8, c(-0.5, 0.75)[mapping_id], 1),
+    mapping_id = mapping_id,
+    N = 8L
+  )
+  formula_data <- data.frame(row_id = seq_len(model_data$N))
+  prior_list <- list(
+    mu_id = prior_factor(
+      "normal",
+      list(0, 1),
+      contrast = "independent"
+    )
+  )
+  attr(prior_list$mu_id, "levels") <- 2L
+  formula <- ~ expression(mu_id[mapping_id[i]])
+  fit <- JAGS_fit(
+    model_syntax = paste0(
+      "model{\n",
+      "for(i in 1:N){\n",
+      "  y[i] ~ dnorm(mu[i], 1)\n",
+      "}\n",
+      "}"
+    ),
+    data = model_data,
+    prior_list = prior_list,
+    formula_list = list(mu = formula),
+    formula_data_list = list(mu = formula_data),
+    formula_prior_list = list(
+      mu = list(intercept = prior("point", list(0)))
+    ),
+    chains = 2,
+    adapt = 100,
+    burnin = 100,
+    sample = 300,
+    seed = 41
+  )
+  design <- JAGS_formula_design(fit, "mu")
+  expect_equal(design$expression_data$mapping_id, mapping_id)
+  expect_identical(
+    design$expression_specs[[1L]]$parameter_dependencies,
+    "mu_id"
+  )
+
+  posterior <- as.matrix(BayesTools:::.fit_to_posterior(fit))
+  expected <- t(posterior[, c("mu_id[1]", "mu_id[2]")][, mapping_id])
+  fitted_prediction <- JAGS_evaluate_formula(
+    fit,
+    formula = NULL,
+    parameter = "mu"
+  )
+  expect_equal(unname(fitted_prediction), unname(expected))
+
+  new_mapping <- c(2L, 1L, 2L)
+  new_prediction <- JAGS_evaluate_formula(
+    fit,
+    formula = formula,
+    parameter = "mu",
+    data = data.frame(
+      row_id = seq_along(new_mapping),
+      mapping_id = new_mapping
+    )
+  )
+  expect_equal(
+    unname(new_prediction),
+    unname(t(posterior[, c("mu_id[1]", "mu_id[2]")][, new_mapping]))
+  )
+
+  log_posterior <- function(parameters, data){
+    sum(stats::dnorm(data$y, parameters$mu, 1, log = TRUE))
+  }
+  marglik <- JAGS_bridgesampling(
+    fit,
+    log_posterior = log_posterior,
+    data = model_data,
+    maxiter = 1000
+  )
+  expect_true(is.finite(marglik$logml))
+  changed_data <- model_data
+  changed_data$mapping_id <- rev(changed_data$mapping_id)
+  expect_error(
+    JAGS_bridgesampling(
+      fit,
+      log_posterior = log_posterior,
+      data = changed_data,
+      maxiter = 100
+    ),
+    "conflict with the fitted source snapshot",
+    fixed = TRUE
+  )
+
+  expect_error(
+    JAGS_fit(
+      model_syntax = "model{ theta <- 0 }",
+      data = list(N = 2L),
+      prior_list = list(),
+      formula_list = list(mu = ~ expression(theta)),
+      formula_data_list = list(mu = data.frame(row_id = 1:2)),
+      formula_prior_list = list(
+        mu = list(intercept = prior("normal", list(0, 1)))
+      ),
+      chains = 1,
+      adapt = 50,
+      burnin = 50,
+      sample = 100
+    ),
+    "unknown replay dependency 'theta'",
+    fixed = TRUE
+  )
+})
+
 test_that("JAGS marglik with exp(intercept) formula works", {
 
   # Test marginal likelihood computation with formula interface

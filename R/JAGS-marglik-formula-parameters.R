@@ -36,6 +36,18 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
     log_intercept <- if(!is.null(formula_parameter)) isTRUE(attr(formula_parameter, "log(intercept)")) else FALSE
     parameter_prior_list <- formula_prior_list[[parameter]]
     design <- if(!is.null(formula_design_list)) formula_design_list[[parameter]] else NULL
+    if(length(design$expression_specs) > 0L ||
+       length(design$transformed_terms) > 0L){
+      .bt_JAGS_marglik_parameter_source_data(
+        model_data = model_data,
+        formula_data = if(!is.null(formula_data_list)){
+          formula_data_list[[parameter]]
+        }else{
+          NULL
+        },
+        design = design
+      )
+    }
     log_intercept <- isTRUE(log_intercept) || isTRUE(design$log_intercept)
     if(log_intercept){
       .bt_validate_formula_log_intercept_prior(
@@ -120,6 +132,10 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
   if(inherits(design, "BayesTools_formula_design") &&
      is.data.frame(design$source_data)){
     out <- as.list(design$source_data)
+    out <- .bt_JAGS_marglik_merge_source_data(
+      out,
+      design$expression_data
+    )
     .bt_JAGS_marglik_verify_source_data(out, formula_data)
     .bt_JAGS_marglik_verify_source_data(out, model_data)
     return(out)
@@ -290,13 +306,19 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
     }
   }
 
-  expressions <- design$transformed_terms
+  expressions <- design$expression_specs
+  if(is.null(expressions)){
+    expressions <- design$transformed_terms
+  }
   if(length(expressions) > 0L){
-    expression_data <- if(is.data.frame(design$source_data)){
-      design$source_data
-    }else{
-      NULL
-    }
+    expression_data <- .bt_formula_expression_merge_data(
+      design$source_data,
+      design$expression_data,
+      context = paste0(
+        "Bridge/marginal-likelihood reconstruction for parameter '",
+        parameter, "'"
+      )
+    )
     output <- output + .bt_formula_expression_row_values(
       expressions = expressions,
       data = expression_data,
@@ -304,7 +326,9 @@ JAGS_marglik_parameters_formula      <- function(samples, formula_list, formula_
       context = paste0(
         "Bridge/marginal-likelihood reconstruction for parameter '",
         parameter, "'"
-      )
+      ),
+      samples = samples,
+      parameters = prior_list_parameters
     )
   }
 

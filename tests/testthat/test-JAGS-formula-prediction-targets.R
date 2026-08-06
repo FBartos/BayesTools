@@ -118,11 +118,12 @@ test_that("formula prediction validates parameter names and seeds", {
 test_that("formula replay rejects unversioned source-data metadata", {
   result <- .formula_prediction_result()
   fit <- .formula_prediction_fit(result)
-  expect_identical(result$formula_design$schema_version, 3L)
+  expect_identical(result$formula_design$schema_version, 4L)
   expect_identical(
     result$formula_design$stored_data_scale,
     c(
       source_data = "original",
+      expression_data = "original",
       model_frame = "model",
       model_matrix = "model"
     )

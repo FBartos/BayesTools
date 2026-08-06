@@ -1567,14 +1567,34 @@ test_that("formula expression terms are parsed structurally", {
     "is not replayable: unsupported call 'step'",
     fixed = TRUE
   )
+  parameter_expression <- JAGS_formula(
+    ~ expression(theta),
+    "mu",
+    data.frame(x = c(-1, 1)),
+    list(intercept = prior("normal", list(0, 1)))
+  )
+  expect_identical(
+    parameter_expression$formula_design$expression_specs[[1L]]$unresolved_dependencies,
+    "theta"
+  )
   expect_error(
-    JAGS_formula(
-      ~ expression(theta),
-      "mu",
-      data.frame(x = c(-1, 1)),
-      list(intercept = prior("normal", list(0, 1)))
+    BayesTools:::.bt_formula_expression_finalize_design(
+      design = parameter_expression$formula_design,
+      formula_data = data.frame(x = c(-1, 1)),
+      model_data = list(),
+      parameter_names = character(),
+      forbidden_parameters = "mu",
+      context = "Test expression"
     ),
-    "is not replayable: unknown data symbol 'theta'",
+    "unknown replay dependency 'theta'",
+    fixed = TRUE
+  )
+  expect_error(
+    BayesTools:::.bt_formula_expression_specs(
+      "theta[i, 1]",
+      parameter_names = "theta"
+    ),
+    "sampled parameter 'theta' must use exactly one index",
     fixed = TRUE
   )
   expect_error(
@@ -1705,7 +1725,7 @@ test_that("formula expression helpers reject non-finite or wrong-length results"
       data = data.frame(x = c(1, 2)),
       n_rows = 1L
     ),
-    "length 1 or 1"
+    "must be scalar or have 1 rows"
   )
   expect_error(
     BayesTools:::.bt_formula_expression_row_values(
@@ -1714,6 +1734,161 @@ test_that("formula expression helpers reject non-finite or wrong-length results"
       n_rows = 1L
     ),
     "is not replayable: unsupported call 'system'",
+    fixed = TRUE
+  )
+})
+
+test_that("formula expressions replay sampled indexed parameters", {
+  data <- data.frame(
+    x = c(1, 2, 3),
+    mapping = c(1L, 2L, 1L)
+  )
+  formula_result <- JAGS_formula(
+    ~ x + expression(theta[mapping[i]]),
+    "mu",
+    data,
+    list(
+      intercept = prior("normal", list(0, 1)),
+      x = prior("normal", list(0, 1))
+    )
+  )
+  formula_result$formula_design <-
+    BayesTools:::.bt_formula_expression_finalize_design(
+      design = formula_result$formula_design,
+      formula_data = data,
+      model_data = list(),
+      parameter_names = "theta",
+      forbidden_parameters = "mu",
+      context = "Test expression"
+    )
+  expect_identical(
+    formula_result$formula_design$expression_specs[[1L]]$data_dependencies,
+    "mapping"
+  )
+  expect_identical(
+    formula_result$formula_design$expression_specs[[1L]]$parameter_dependencies,
+    "theta"
+  )
+  expect_equal(formula_result$data$mapping, data$mapping)
+
+  posterior <- coda::mcmc(matrix(
+    c(
+      1, 2, 10, 20,
+      -1, 0.5, 30, 40
+    ),
+    nrow = 2,
+    byrow = TRUE,
+    dimnames = list(
+      NULL,
+      c("mu_intercept", "mu_x", "theta[1]", "theta[2]")
+    )
+  ))
+  attr(posterior, "formula_design") <- list(
+    mu = formula_result$formula_design
+  )
+  prediction <- JAGS_evaluate_formula(
+    posterior,
+    formula = NULL,
+    parameter = "mu"
+  )
+  expect_equal(
+    unname(prediction),
+    matrix(
+      c(13, 25, 17, 29.5, 40, 30.5),
+      nrow = 3,
+      ncol = 2
+    )
+  )
+  new_prediction <- JAGS_evaluate_formula(
+    posterior,
+    formula = ~ x + expression(theta[mapping[i]]),
+    parameter = "mu",
+    data = data.frame(x = c(4, 5), mapping = c(2L, 1L)),
+    prior_list = formula_result$prior_list
+  )
+  expect_equal(
+    unname(new_prediction),
+    matrix(c(29, 21, 41, 31.5), nrow = 2, ncol = 2)
+  )
+  expect_error(
+    JAGS_evaluate_formula(
+      posterior,
+      formula = ~ x + expression(theta[mapping[i]]),
+      parameter = "mu",
+      data = data.frame(x = c(4, 5)),
+      prior_list = formula_result$prior_list
+    ),
+    "unknown replay dependency 'mapping'",
+    fixed = TRUE
+  )
+
+  reconstructed <- BayesTools:::.bt_JAGS_marglik_parameters_formula_design(
+    samples = list(
+      mu_intercept = 1,
+      mu_x = 2,
+      `theta[1]` = 10,
+      `theta[2]` = 20
+    ),
+    design = formula_result$formula_design,
+    formula_prior_list = formula_result$prior_list,
+    prior_list_parameters = list(theta = c(10, 20)),
+    log_intercept = FALSE
+  )
+  expect_equal(unname(reconstructed), c(13, 25, 17))
+
+  bridge_plan <- BayesTools:::.bt_JAGS_bridge_compile_formula_design_plan(
+    design = formula_result$formula_design,
+    formula_prior_list = formula_result$prior_list,
+    log_intercept = FALSE
+  )
+  expect_equal(
+    unname(bridge_plan$value(
+      samples = list(
+        mu_intercept = 1,
+        mu_x = 2,
+        `theta[1]` = 10,
+        `theta[2]` = 20
+      ),
+      prior_list_parameters = list(theta = c(10, 20))
+    )),
+    c(13, 25, 17)
+  )
+  expect_error(
+    bridge_plan$value(
+      samples = list(mu_intercept = 1, mu_x = 2),
+      prior_list_parameters = list()
+    ),
+    "cannot reconstruct expression parameter 'theta'",
+    fixed = TRUE
+  )
+})
+
+test_that("sampled parameter expressions coexist with random-effect syntax", {
+  sd_prior <- prior(
+    "normal",
+    list(0, 1),
+    truncation = list(lower = 0, upper = Inf)
+  )
+  formula_result <- JAGS_formula(
+    ~ expression(theta[mapping[i]]) + diag(1 | id),
+    "mu",
+    data.frame(
+      mapping = c(1L, 2L, 1L),
+      id = factor(c("a", "a", "b"))
+    ),
+    list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(sd = sd_prior)
+    )
+  )
+  expect_length(formula_result$formula_design$random_effects, 1L)
+  expect_identical(
+    formula_result$formula_design$expression_specs[[1L]]$unresolved_dependencies,
+    "theta"
+  )
+  expect_match(
+    formula_result$formula_syntax,
+    "theta[mapping[i]]",
     fixed = TRUE
   )
 })
@@ -11214,7 +11389,7 @@ test_that("fixed and random blocks own independent concrete factor bases", {
   treatment_term <- result$formula_design$random_effects[[1L]]
   meandif_term <- result$formula_design$random_effects[[2L]]
 
-  expect_identical(result$formula_design$schema_version, 3L)
+  expect_identical(result$formula_design$schema_version, 4L)
   expect_equal(result$formula_design$contrast_matrices$f, fixed_matrix)
   expect_equal(treatment_term$contrast_matrices$f, treatment_matrix)
   expect_equal(meandif_term$contrast_matrices$f, meandif_matrix)

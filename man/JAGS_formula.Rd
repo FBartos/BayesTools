@@ -90,12 +90,17 @@ Matrix-valued continuous predictors are not currently supported.
 Fixed formulas support literal data-column names and standard formula
 operators. Dot expansion, \code{offset()}, inline transformations, and
 arbitrary calls are rejected; create explicit data columns for transformed
-predictors. The BayesTools \code{expression(...)} facility accepts only
-finite numeric constants, data-column symbols, JAGS-style \code{i} indexing,
-arithmetic operators, and \code{abs()}, \code{exp()}, \code{log()}, or
-\code{sqrt()}. This replayable subset is evaluated identically during
-prediction and marginal-likelihood reconstruction. Posterior-dependent
-expression terms are not supported.
+predictors. The BayesTools \code{expression(...)} facility accepts finite
+numeric constants, formula or model data, JAGS-style \code{i} indexing,
+sampled scalar or one-dimensional indexed parameters, arithmetic operators,
+and \code{abs()}, \code{exp()}, \code{log()}, or \code{sqrt()}. Expressions
+retain literal JAGS indexing: users must write \code{x} or \code{x[i]} as
+required by the JAGS data shape. Their parsed syntax and dependencies are
+persisted and replayed draw by draw during prediction and marginal-
+likelihood reconstruction. Parameter dependencies must be owned by a prior
+or declared through \code{add_parameters}; opaque deterministic nodes and
+formula-output dependencies are rejected by \code{JAGS_fit()} because their
+defining JAGS graph is unavailable during replay.
 Random-effect predictors likewise support literal data-column names and
 formula operators, but not inline transformations or arbitrary calls.
 Create transformed random slopes as explicit data columns. Grouping terms

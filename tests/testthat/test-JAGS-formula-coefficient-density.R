@@ -55,7 +55,7 @@ test_that("formula coefficient transforms expose the sample transformation", {
 
   expect_s3_class(transform, "BayesTools_formula_coefficient_transform")
   expect_identical(transform$schema_version, 1L)
-  expect_identical(transform$formula_design_version, 3L)
+  expect_identical(transform$formula_design_version, 4L)
   expect_identical(transform$parameter_registry_version, 3L)
   expect_identical(transform$source_names, source_names)
   expect_identical(transform$target_names, source_names)

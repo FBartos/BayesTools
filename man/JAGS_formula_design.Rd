@@ -20,9 +20,10 @@ metadata is stored on \code{fit}.
 \description{
 Returns the fitted formula design metadata stored by
 \code{\link[=JAGS_fit]{JAGS_fit()}}. The design contains the processed formula, fitted model frame,
-exact model matrix used for JAGS data construction, JAGS-safe coefficient
-names, contrast and factor-level metadata, rank diagnostics, prior metadata,
-and formula-scale information.
+exact model matrix used for JAGS data construction, replayable expression
+syntax and dependencies, JAGS-safe coefficient names, contrast and factor-
+level metadata, rank diagnostics, prior metadata, and formula-scale
+information.
 }
 \seealso{
 \code{\link[=JAGS_fit]{JAGS_fit()}} \code{\link[=JAGS_formula]{JAGS_formula()}}

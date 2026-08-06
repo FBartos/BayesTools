@@ -145,28 +145,32 @@
   stop(
     "expression() term '", expression_label, "' is not replayable",
     if(is.null(detail)) "." else paste0(": ", detail, "."),
-    " Use numeric constants, data columns, 'i' row indexing, arithmetic ",
-    "operators, or abs(), exp(), log(), and sqrt(). Create other transformed ",
-    "values as data columns; posterior-dependent expression terms are not ",
-    "supported.",
+    " Use numeric constants, replayable data, 'i' row indexing, sampled scalar ",
+    "or one-dimensional indexed parameters, arithmetic operators, or abs(), ",
+    "exp(), log(), and sqrt().",
     call. = FALSE
   )
 }
-.bt_validate_formula_expression_node <- function(node, data_names,
-                                                 expression_label){
+.bt_validate_formula_expression_node <- function(node, expression_label){
 
   if(is.numeric(node) && length(node) == 1L && is.finite(node)){
     return(invisible(TRUE))
   }
   if(is.symbol(node)){
     symbol <- as.character(node)
-    if(symbol %in% c(data_names, "i")){
-      return(invisible(TRUE))
+    if(!identical(symbol, "i")){
+      valid_name <- tryCatch({
+        .bt_check_jags_node_name(symbol, "expression symbol")
+        TRUE
+      }, error = function(e) FALSE)
+      if(!isTRUE(valid_name)){
+        .bt_formula_expression_stop(
+          expression_label,
+          paste0("invalid JAGS symbol '", symbol, "'")
+        )
+      }
     }
-    .bt_formula_expression_stop(
-      expression_label,
-      paste0("unknown data symbol '", symbol, "'")
-    )
+    return(invisible(TRUE))
   }
   if(!is.call(node) || !is.symbol(node[[1L]])){
     .bt_formula_expression_stop(expression_label, "unsupported syntax")
@@ -198,13 +202,12 @@
   for(argument in arguments){
     .bt_validate_formula_expression_node(
       argument,
-      data_names,
       expression_label
     )
   }
   invisible(TRUE)
 }
-.bt_parse_formula_expression <- function(expression_body, data_names){
+.bt_parse_formula_expression <- function(expression_body){
 
   expression_label <- .bt_formula_expression_label(expression_body)
   parsed <- tryCatch(
@@ -216,15 +219,122 @@
   }
   .bt_validate_formula_expression_node(
     parsed[[1L]],
-    data_names,
     expression_label
   )
   parsed[[1L]]
 }
-.bt_validate_formula_expressions <- function(expressions, data){
+.bt_formula_expression_symbols <- function(node){
+
+  if(is.symbol(node)){
+    return(as.character(node))
+  }
+  if(!is.call(node)){
+    return(character())
+  }
+  unique(unlist(lapply(
+    as.list(node)[-1L],
+    .bt_formula_expression_symbols
+  ), use.names = FALSE))
+}
+.bt_validate_formula_expression_parameter_index <- function(node,
+                                                            parameter_names,
+                                                            expression_label){
+
+  if(!is.call(node)){
+    return(invisible(TRUE))
+  }
+  call_name <- if(is.symbol(node[[1L]])) as.character(node[[1L]]) else ""
+  arguments <- as.list(node)[-1L]
+  if(identical(call_name, "[") && is.symbol(arguments[[1L]]) &&
+     as.character(arguments[[1L]]) %in% parameter_names &&
+     length(arguments) != 2L){
+    .bt_formula_expression_stop(
+      expression_label,
+      paste0(
+        "sampled parameter '", as.character(arguments[[1L]]),
+        "' must use exactly one index"
+      )
+    )
+  }
+  for(argument in arguments){
+    .bt_validate_formula_expression_parameter_index(
+      argument,
+      parameter_names,
+      expression_label
+    )
+  }
+  invisible(TRUE)
+}
+.bt_formula_expression_specs <- function(expressions, data_names = character(),
+                                         parameter_names = character(),
+                                         allow_unresolved = FALSE){
+
+  lapply(expressions, function(expression_body){
+    label <- .bt_formula_expression_label(expression_body)
+    parsed <- .bt_parse_formula_expression(label)
+    dependencies <- setdiff(.bt_formula_expression_symbols(parsed), "i")
+    overlap <- intersect(
+      dependencies,
+      intersect(data_names, parameter_names)
+    )
+    if(length(overlap) > 0L){
+      .bt_formula_expression_stop(
+        label,
+        paste0(
+          "dependency ", paste0("'", overlap, "'", collapse = ", "),
+          " is both data and a parameter"
+        )
+      )
+    }
+    data_dependencies <- dependencies[dependencies %in% data_names]
+    parameter_dependencies <- dependencies[dependencies %in% parameter_names]
+    .bt_validate_formula_expression_parameter_index(
+      parsed,
+      parameter_dependencies,
+      label
+    )
+    unresolved_dependencies <- setdiff(
+      dependencies,
+      c(data_dependencies, parameter_dependencies)
+    )
+    if(length(unresolved_dependencies) > 0L && !isTRUE(allow_unresolved)){
+      .bt_formula_expression_stop(
+        label,
+        paste0(
+          "unknown replay dependency ",
+          paste0("'", unresolved_dependencies, "'", collapse = ", ")
+        )
+      )
+    }
+    list(
+      label = label,
+      parsed = parsed,
+      dependencies = dependencies,
+      data_dependencies = data_dependencies,
+      parameter_dependencies = parameter_dependencies,
+      unresolved_dependencies = unresolved_dependencies
+    )
+  })
+}
+.bt_formula_expression_specs_valid <- function(specs){
+
+  is.list(specs) && all(vapply(specs, function(spec){
+    is.list(spec) && is.character(spec$label) && length(spec$label) == 1L &&
+      (is.language(spec$parsed) ||
+       (is.numeric(spec$parsed) && length(spec$parsed) == 1L &&
+        is.finite(spec$parsed))) &&
+      is.character(spec$dependencies) &&
+      is.character(spec$data_dependencies) &&
+      is.character(spec$parameter_dependencies) &&
+      is.character(spec$unresolved_dependencies)
+  }, logical(1)))
+}
+.bt_validate_formula_expressions <- function(expressions, data,
+                                             parameter_names = character(),
+                                             allow_unresolved = FALSE){
 
   if(length(expressions) == 0L){
-    return(invisible(TRUE))
+    return(list())
   }
   data_names <- names(data)
   if(is.null(data_names) || any(!nzchar(data_names)) || anyDuplicated(data_names)){
@@ -238,13 +348,353 @@
       call. = FALSE
     )
   }
-  for(expression_body in expressions){
-    .bt_parse_formula_expression(expression_body, data_names)
+  .bt_formula_expression_specs(
+    expressions = expressions,
+    data_names = data_names,
+    parameter_names = parameter_names,
+    allow_unresolved = allow_unresolved
+  )
+}
+.bt_formula_expression_data_list <- function(data, context){
+
+  if(is.null(data)){
+    return(list())
+  }
+  if(is.data.frame(data)){
+    return(as.list(data))
+  }
+  if(is.list(data)){
+    return(data)
+  }
+  stop(context, " must be a data.frame or named list.", call. = FALSE)
+}
+.bt_formula_expression_validate_data_value <- function(value, name, n_rows,
+                                                       context){
+
+  if(!is.numeric(value) && !is.integer(value) && !is.logical(value)){
+    stop(context, " data dependency '", name, "' must be numeric or logical.",
+         call. = FALSE)
+  }
+  if(anyNA(value) || any(!is.finite(value))){
+    stop(context, " data dependency '", name, "' must be finite.", call. = FALSE)
+  }
+  dimensions <- dim(value)
+  row_aligned <- if(is.null(dimensions)){
+    length(value) %in% c(1L, n_rows)
+  }else{
+    length(dimensions) > 0L && dimensions[1L] == n_rows
+  }
+  if(!isTRUE(row_aligned)){
+    stop(
+      context, " data dependency '", name,
+      "' must be scalar or have ", n_rows, " rows.",
+      call. = FALSE
+    )
   }
   invisible(TRUE)
 }
-.bt_formula_expression_row_values <- function(expressions, data, n_rows,
+.bt_formula_expression_data <- function(specs, formula_data, model_data = NULL,
+                                        n_rows, context){
+
+  dependencies <- unique(unlist(lapply(
+    specs,
+    `[[`,
+    "data_dependencies"
+  ), use.names = FALSE))
+  if(length(dependencies) == 0L){
+    return(list())
+  }
+  formula_data <- .bt_formula_expression_data_list(formula_data, context)
+  model_data <- .bt_formula_expression_data_list(model_data, context)
+  overlap <- intersect(names(formula_data), names(model_data))
+  for(name in intersect(overlap, dependencies)){
+    if(!identical(formula_data[[name]], model_data[[name]])){
+      stop(
+        context, " received conflicting formula and model data for '", name,
+        "'.",
+        call. = FALSE
+      )
+    }
+  }
+  combined <- formula_data
+  combined[setdiff(names(model_data), names(combined))] <-
+    model_data[setdiff(names(model_data), names(combined))]
+  missing <- setdiff(dependencies, names(combined))
+  if(length(missing) > 0L){
+    stop(
+      context, " is missing data dependency ",
+      paste0("'", missing, "'", collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+  out <- combined[dependencies]
+  for(name in names(out)){
+    .bt_formula_expression_validate_data_value(
+      out[[name]],
+      name,
+      n_rows,
+      context
+    )
+  }
+  out
+}
+.bt_formula_expression_merge_data <- function(data, stored_data = NULL,
                                               context = "Formula expression"){
+
+  out <- .bt_formula_expression_data_list(data, context)
+  stored <- .bt_formula_expression_data_list(stored_data, context)
+  overlap <- intersect(names(out), names(stored))
+  for(name in overlap){
+    if(!identical(out[[name]], stored[[name]])){
+      stop(context, " received conflicting values for data dependency '", name,
+           "'.", call. = FALSE)
+    }
+  }
+  out[setdiff(names(stored), names(out))] <- stored[setdiff(names(stored), names(out))]
+  out
+}
+.bt_formula_expression_merge_jags_data <- function(generated, supplied,
+                                                   context){
+
+  if(is.null(generated)){
+    generated <- list()
+  }
+  if(is.null(supplied)){
+    supplied <- list()
+  }
+  overlap <- intersect(names(generated), names(supplied))
+  for(name in overlap){
+    if(!identical(generated[[name]], supplied[[name]])){
+      stop(context, " contains conflicting JAGS data named '", name, "'.",
+           call. = FALSE)
+    }
+  }
+  generated[setdiff(names(supplied), names(generated))] <-
+    supplied[setdiff(names(supplied), names(generated))]
+  generated
+}
+.bt_formula_expression_finalize_design <- function(design, formula_data,
+                                                   model_data,
+                                                   parameter_names,
+                                                   forbidden_parameters,
+                                                   context){
+
+  expressions <- design$transformed_terms
+  if(length(expressions) == 0L){
+    design$expression_specs <- list()
+    design$expression_data <- list()
+    return(design)
+  }
+  formula_data_list <- .bt_formula_expression_data_list(formula_data, context)
+  model_data_list <- .bt_formula_expression_data_list(model_data, context)
+  data_names <- unique(c(names(formula_data_list), names(model_data_list)))
+  parameter_names <- unique(.bt_parameter_registry_base(parameter_names))
+  specs <- .bt_formula_expression_specs(
+    expressions = expressions,
+    data_names = data_names,
+    parameter_names = parameter_names,
+    allow_unresolved = FALSE
+  )
+  expression_parameters <- unique(unlist(lapply(
+    specs,
+    `[[`,
+    "parameter_dependencies"
+  ), use.names = FALSE))
+  forbidden <- intersect(expression_parameters, forbidden_parameters)
+  if(length(forbidden) > 0L){
+    stop(
+      context, " cannot replay formula-output dependency ",
+      paste0("'", forbidden, "'", collapse = ", "),
+      "; cross-formula and self-referential expression dependencies are not ",
+      "supported.",
+      call. = FALSE
+    )
+  }
+  design$expression_specs <- specs
+  design$expression_data <- .bt_formula_expression_data(
+    specs = specs,
+    formula_data = formula_data_list,
+    model_data = model_data_list,
+    n_rows = nrow(design$source_data),
+    context = context
+  )
+  design
+}
+.bt_formula_expression_sample_names <- function(samples){
+
+  if(is.matrix(samples) || is.data.frame(samples)){
+    return(colnames(samples))
+  }
+  names(samples)
+}
+.bt_formula_expression_parameter_roots <- function(samples,
+                                                   parameters = NULL){
+
+  sample_names <- .bt_formula_expression_sample_names(samples)
+  sample_roots <- if(is.null(sample_names)) character() else
+    .bt_parameter_registry_base(sample_names)
+  unique(c(sample_roots, names(parameters)))
+}
+.bt_formula_expression_resolve_specs <- function(expressions, data, samples,
+                                                 parameters = NULL){
+
+  if(.bt_formula_expression_specs_valid(expressions)){
+    if(any(vapply(expressions, function(spec){
+      length(spec$unresolved_dependencies) > 0L
+    }, logical(1)))){
+      expressions <- vapply(expressions, `[[`, character(1), "label")
+    }else{
+      return(expressions)
+    }
+  }
+  data_names <- names(.bt_formula_expression_data_list(
+    data,
+    "Formula expression source data"
+  ))
+  .bt_formula_expression_specs(
+    expressions = expressions,
+    data_names = data_names,
+    parameter_names = .bt_formula_expression_parameter_roots(
+      samples,
+      parameters
+    ),
+    allow_unresolved = FALSE
+  )
+}
+.bt_formula_expression_validate_replay_data <- function(specs, data, n_rows,
+                                                        context){
+
+  dependencies <- unique(unlist(lapply(
+    specs,
+    `[[`,
+    "data_dependencies"
+  ), use.names = FALSE))
+  missing <- setdiff(dependencies, names(data))
+  if(length(missing) > 0L){
+    stop(
+      context, " is missing expression data dependency ",
+      paste0("'", missing, "'", collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+  for(name in dependencies){
+    .bt_formula_expression_validate_data_value(
+      data[[name]],
+      name,
+      n_rows,
+      context
+    )
+  }
+  invisible(TRUE)
+}
+.bt_formula_expression_parameter_draws <- function(samples, parameters,
+                                                   parameter, n_draws,
+                                                   context){
+
+  if(!is.null(parameters[[parameter]])){
+    if(n_draws != 1L){
+      stop(context, " internal parameter reconstruction requires one draw.",
+           call. = FALSE)
+    }
+    value <- parameters[[parameter]]
+    if(!is.numeric(value) || is.matrix(value) || length(dim(value)) > 1L){
+      stop(context, " parameter '", parameter,
+           "' must be scalar or one-dimensional.", call. = FALSE)
+    }
+    return(matrix(unname(value), nrow = 1L))
+  }
+
+  if(is.matrix(samples) || is.data.frame(samples)){
+    sample_names <- colnames(samples)
+    direct <- !is.null(sample_names) && parameter %in% sample_names
+    indexed <- JAGS_indexed_parameter_matrix(samples, parameter)
+    if(isTRUE(direct) && !is.null(indexed)){
+      stop(context, " parameter '", parameter,
+           "' has both scalar and indexed coordinates.", call. = FALSE)
+    }
+    if(isTRUE(direct)){
+      return(matrix(samples[, parameter], ncol = 1L))
+    }
+    if(!is.null(indexed)){
+      indices <- .JAGS_indexed_parameter_indices(colnames(indexed), parameter)
+      if(!identical(indices, seq_len(ncol(indexed)))){
+        stop(context, " indexed expression parameter '", parameter,
+             "' must contain contiguous coordinates starting at one.",
+             call. = FALSE)
+      }
+      return(unname(indexed))
+    }
+  }else{
+    sample_names <- names(samples)
+    direct <- !is.null(sample_names) && parameter %in% sample_names
+    indexed <- JAGS_indexed_parameter_vector(samples, parameter)
+    if(isTRUE(direct) && length(indexed) > 0L){
+      stop(context, " parameter '", parameter,
+           "' has both scalar and indexed coordinates.", call. = FALSE)
+    }
+    if(isTRUE(direct)){
+      return(matrix(samples[[parameter]], nrow = 1L))
+    }
+    if(length(indexed) > 0L){
+      indices <- .JAGS_indexed_parameter_indices(names(indexed), parameter)
+      if(!identical(indices, seq_along(indexed))){
+        stop(context, " indexed expression parameter '", parameter,
+             "' must contain contiguous coordinates starting at one.",
+             call. = FALSE)
+      }
+      return(matrix(unname(indexed), nrow = 1L))
+    }
+  }
+  stop(
+    context, " cannot reconstruct expression parameter '", parameter,
+    "' from posterior or bridge coordinates.",
+    call. = FALSE
+  )
+}
+.bt_formula_expression_eval <- function(spec, data, n_rows,
+                                        parameter_values = list(), context){
+
+  env_data <- data
+  env_data[["i"]] <- seq_len(n_rows)
+  env_data[names(parameter_values)] <- parameter_values
+  value <- tryCatch(
+    eval(spec$parsed, envir = list2env(env_data, parent = baseenv())),
+    error = function(e) e
+  )
+  if(inherits(value, "error")){
+    stop(
+      context, " '", spec$label, "' could not be evaluated: ",
+      conditionMessage(value),
+      call. = FALSE
+    )
+  }
+  if(!is.numeric(value) && !is.integer(value) && !is.logical(value)){
+    stop(context, " '", spec$label, "' must evaluate to numeric values.",
+         call. = FALSE)
+  }
+  value <- as.numeric(value)
+  if(length(value) == 1L){
+    value <- rep.int(value, n_rows)
+  }
+  if(length(value) != n_rows){
+    stop(
+      context, " '", spec$label,
+      "' must evaluate to length 1 or ", n_rows, ".",
+      call. = FALSE
+    )
+  }
+  if(any(!is.finite(value))){
+    stop(context, " '", spec$label, "' produced non-finite values.",
+         call. = FALSE)
+  }
+  value
+}
+.bt_formula_expression_row_values <- function(expressions, data, n_rows,
+                                              context = "Formula expression",
+                                              samples = NULL,
+                                              parameters = NULL){
 
   if(length(expressions) == 0L){
     return(rep.int(0, n_rows))
@@ -253,16 +703,7 @@
   if(n_rows == 0L){
     return(numeric())
   }
-  if(is.null(data)){
-    stop(context, " evaluation requires source data.", call. = FALSE)
-  }
-  env_data <- if(is.data.frame(data)){
-    as.list(data)
-  }else if(is.list(data)){
-    data
-  }else{
-    stop(context, " source data must be a data.frame or named list.", call. = FALSE)
-  }
+  env_data <- .bt_formula_expression_data_list(data, context)
   if("i" %in% names(env_data)){
     stop(
       context,
@@ -271,48 +712,39 @@
       call. = FALSE
     )
   }
-  env_data[["i"]] <- seq_len(n_rows)
+  specs <- .bt_formula_expression_resolve_specs(
+    expressions,
+    env_data,
+    samples,
+    parameters
+  )
+  .bt_formula_expression_validate_replay_data(
+    specs,
+    env_data,
+    n_rows,
+    context
+  )
 
   total <- rep.int(0, n_rows)
-  for(expression_body in expressions){
-    expression_label <- .bt_formula_expression_label(expression_body)
-    expression_label <- .clean_from_expression(
-      paste0("expression(", expression_label, ")")
+  for(spec in specs){
+    parameter_values <- lapply(spec$parameter_dependencies, function(parameter){
+      values <- .bt_formula_expression_parameter_draws(
+        samples,
+        parameters,
+        parameter,
+        n_draws = 1L,
+        context = context
+      )
+      unname(values[1L, ])
+    })
+    names(parameter_values) <- spec$parameter_dependencies
+    total <- total + .bt_formula_expression_eval(
+      spec,
+      env_data,
+      n_rows,
+      parameter_values,
+      context
     )
-    parsed <- .bt_parse_formula_expression(expression_label, names(env_data))
-    value <- tryCatch(
-      eval(
-        parsed,
-        envir = list2env(env_data, parent = baseenv())
-      ),
-      error = function(e) e
-    )
-    if(inherits(value, "error")){
-      stop(
-        context, " '", expression_label, "' could not be evaluated: ",
-        conditionMessage(value),
-        call. = FALSE
-      )
-    }
-    value <- as.numeric(value)
-    if(length(value) == 1L){
-      value <- rep.int(value, n_rows)
-    }
-    if(length(value) != n_rows){
-      stop(
-        context, " '", expression_label,
-        "' must evaluate to length 1 or ", n_rows, ".",
-        call. = FALSE
-      )
-    }
-    if(any(!is.finite(value))){
-      stop(
-        context, " '", expression_label,
-        "' produced non-finite values.",
-        call. = FALSE
-      )
-    }
-    total <- total + value
   }
 
   total
@@ -320,22 +752,77 @@
 
 .bt_formula_expression_contribution_matrix <- function(expressions, data,
                                                        n_rows, n_draws,
-                                                       context = "Formula expression"){
+                                                       context = "Formula expression",
+                                                       samples = NULL,
+                                                       parameters = NULL){
 
-  values <- .bt_formula_expression_row_values(
-    expressions = expressions,
-    data = data,
-    n_rows = n_rows,
-    context = context
+  env_data <- .bt_formula_expression_data_list(data, context)
+  specs <- .bt_formula_expression_resolve_specs(
+    expressions,
+    env_data,
+    samples,
+    parameters
   )
-  matrix(values, nrow = n_rows, ncol = n_draws)
+  .bt_formula_expression_validate_replay_data(
+    specs,
+    env_data,
+    n_rows,
+    context
+  )
+  parameter_names <- unique(unlist(lapply(
+    specs,
+    `[[`,
+    "parameter_dependencies"
+  ), use.names = FALSE))
+  parameter_draws <- lapply(parameter_names, function(parameter){
+    .bt_formula_expression_parameter_draws(
+      samples,
+      parameters,
+      parameter,
+      n_draws,
+      context
+    )
+  })
+  names(parameter_draws) <- parameter_names
+
+  output <- matrix(0, nrow = n_rows, ncol = n_draws)
+  for(spec in specs){
+    if(length(spec$parameter_dependencies) == 0L){
+      value <- .bt_formula_expression_eval(
+        spec,
+        env_data,
+        n_rows,
+        context = context
+      )
+      output <- output + matrix(value, nrow = n_rows, ncol = n_draws)
+      next
+    }
+    for(draw in seq_len(n_draws)){
+      parameter_values <- lapply(
+        spec$parameter_dependencies,
+        function(parameter) unname(parameter_draws[[parameter]][draw, ])
+      )
+      names(parameter_values) <- spec$parameter_dependencies
+      output[, draw] <- output[, draw] + .bt_formula_expression_eval(
+        spec,
+        env_data,
+        n_rows,
+        parameter_values,
+        context
+      )
+    }
+  }
+  output
 }
 
 .bt_resolve_formula_expression_terms <- function(formula, fitted_design,
                                                  replay_fitted_formula){
 
   if(isTRUE(replay_fitted_formula)){
-    terms <- fitted_design$transformed_terms
+    terms <- fitted_design$expression_specs
+    if(is.null(terms)){
+      terms <- fitted_design$transformed_terms
+    }
     if(is.null(terms)){
       return(list())
     }

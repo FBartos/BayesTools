@@ -25,6 +25,14 @@
     }
     parameter_prior_list <- formula_prior_list[[parameter]]
     design <- if(!is.null(formula_design_list)) formula_design_list[[parameter]] else NULL
+    if(length(design$expression_specs) > 0L ||
+       length(design$transformed_terms) > 0L){
+      .bt_JAGS_marglik_parameter_source_data(
+        model_data = model_data,
+        formula_data = formula_data,
+        design = design
+      )
+    }
     log_intercept <- isTRUE(log_intercept) || isTRUE(design$log_intercept)
     if(log_intercept){
       .bt_validate_formula_log_intercept_prior(
@@ -240,18 +248,15 @@
     )
   })
 
-  expression_values <- NULL
-  expressions <- design$transformed_terms
+  expressions <- design$expression_specs
+  if(is.null(expressions)){
+    expressions <- design$transformed_terms
+  }
+  expression_data <- NULL
   if(length(expressions) > 0L){
-    expression_data <- if(is.data.frame(design$source_data)){
-      design$source_data
-    }else{
-      NULL
-    }
-    expression_values <- .bt_formula_expression_row_values(
-      expressions = expressions,
-      data = expression_data,
-      n_rows = n_rows,
+    expression_data <- .bt_formula_expression_merge_data(
+      design$source_data,
+      design$expression_data,
       context = paste0(
         "Bridge reconstruction for parameter '", parameter, "'"
       )
@@ -273,8 +278,17 @@
           prior_list_parameters = prior_list_parameters
         )
       }
-      if(!is.null(expression_values)){
-        output <- output + expression_values
+      if(length(expressions) > 0L){
+        output <- output + .bt_formula_expression_row_values(
+          expressions = expressions,
+          data = expression_data,
+          n_rows = n_rows,
+          context = paste0(
+            "Bridge reconstruction for parameter '", parameter, "'"
+          ),
+          samples = samples,
+          parameters = prior_list_parameters
+        )
       }
       as.vector(output)
     }

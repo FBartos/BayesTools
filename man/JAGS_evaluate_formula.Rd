@@ -77,8 +77,10 @@ must provide a
 source values from the posterior samples and supplied prediction data.
 Literal \code{expression()} terms use the replayable subset documented by
 \code{\link[=JAGS_formula]{JAGS_formula()}} and are evaluated against prediction data using JAGS-style
-row indexing through \code{i}. Replaying a fitted formula restores the
-stored \code{transformed_terms}. Supply an explicit
+row indexing through \code{i}. Sampled parameter references are reconstructed
+separately for every posterior draw. Replaying a fitted formula restores the
+stored expression syntax, dependency classification, and fitted data
+snapshot. Supply an explicit
 expression-free formula to evaluate a selected subset without those offsets.
 Inline transformations, offsets, dot expansion, and arbitrary calls are not
 supported. Create transformed predictors as explicit columns in \code{data}.

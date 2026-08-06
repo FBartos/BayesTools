@@ -62,12 +62,17 @@
 #' Fixed formulas support literal data-column names and standard formula
 #' operators. Dot expansion, \code{offset()}, inline transformations, and
 #' arbitrary calls are rejected; create explicit data columns for transformed
-#' predictors. The BayesTools \code{expression(...)} facility accepts only
-#' finite numeric constants, data-column symbols, JAGS-style \code{i} indexing,
-#' arithmetic operators, and \code{abs()}, \code{exp()}, \code{log()}, or
-#' \code{sqrt()}. This replayable subset is evaluated identically during
-#' prediction and marginal-likelihood reconstruction. Posterior-dependent
-#' expression terms are not supported.
+#' predictors. The BayesTools \code{expression(...)} facility accepts finite
+#' numeric constants, formula or model data, JAGS-style \code{i} indexing,
+#' sampled scalar or one-dimensional indexed parameters, arithmetic operators,
+#' and \code{abs()}, \code{exp()}, \code{log()}, or \code{sqrt()}. Expressions
+#' retain literal JAGS indexing: users must write \code{x} or \code{x[i]} as
+#' required by the JAGS data shape. Their parsed syntax and dependencies are
+#' persisted and replayed draw by draw during prediction and marginal-
+#' likelihood reconstruction. Parameter dependencies must be owned by a prior
+#' or declared through \code{add_parameters}; opaque deterministic nodes and
+#' formula-output dependencies are rejected by \code{JAGS_fit()} because their
+#' defining JAGS graph is unavailable during replay.
 #' Random-effect predictors likewise support literal data-column names and
 #' formula operators, but not inline transformations or arbitrary calls.
 #' Create transformed random slopes as explicit data columns. Grouping terms
@@ -162,7 +167,11 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   log_intercept  <- isTRUE(attr(formula, "log(intercept)"))
   # store expressions (included later as the literal character input)
   expressions    <- .extract_expressions(formula)
-  .bt_validate_formula_expressions(expressions, data)
+  expression_specs <- .bt_validate_formula_expressions(
+    expressions,
+    data,
+    allow_unresolved = TRUE
+  )
   # store random effects (included later via a formula interface)
   parsed_random_effects <- .bt_formula_random_terms(formula)
   .bt_validate_random_effect_block_names(parsed_random_effects, prior_random)
@@ -309,6 +318,12 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   )
 
   formula_source_data <- data
+  expression_data <- .bt_formula_expression_data(
+    specs = expression_specs,
+    formula_data = formula_source_data,
+    n_rows = nrow(formula_source_data),
+    context = paste0("Formula expression for parameter '", parameter, "'")
+  )
   data <- .bt_apply_factor_prior_contrasts(
     data = data,
     predictors_type = predictors_type,
@@ -381,6 +396,11 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
   JAGS_data      <- list()
   jags_data_names <- list()
   JAGS_data[[paste0("N_", parameter)]] <- nrow(data)
+  JAGS_data <- .bt_formula_expression_merge_jags_data(
+    JAGS_data,
+    expression_data,
+    context = paste0("Formula expression for parameter '", parameter, "'")
+  )
 
   # add intercept and prepare the indexing vector
   if(has_intercept){
@@ -746,6 +766,8 @@ JAGS_formula <- function(formula, parameter, data, prior_list, formula_scale = N
     prior_list        = prior_list,
     formula_scale     = output$formula_scale,
     expressions       = expressions,
+    expression_specs  = expression_specs,
+    expression_data   = expression_data,
     random_effects    = compiled_random_effects,
     random_effects_compile = random_effects_compile,
     jags_data_names   = jags_data_names,

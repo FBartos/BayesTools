@@ -121,14 +121,22 @@
     )
   }
   if(length(expressions_to_eval) > 0L){
+    expression_data <- .bt_formula_expression_merge_data(
+      data,
+      if(!data_supplied) fitted_design$expression_data else NULL,
+      context = paste0(
+        "JAGS_evaluate_formula() for parameter '", parameter, "'"
+      )
+    )
     output <- output + .bt_formula_expression_contribution_matrix(
       expressions = expressions_to_eval,
-      data = data,
+      data = expression_data,
       n_rows = nrow(data),
       n_draws = nrow(posterior),
       context = paste0(
         "JAGS_evaluate_formula() for parameter '", parameter, "'"
-      )
+      ),
+      samples = posterior
     )
   }
 

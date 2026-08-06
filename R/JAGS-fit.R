@@ -183,9 +183,52 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
         random_effects_compile = if(!is.null(formula_random_effects_compile_list)) formula_random_effects_compile_list[[parameter]] else NULL)
     }
 
+    formula_prior_output <- do.call(c, unname(lapply(
+      formula_output,
+      function(output) output[["prior_list"]]
+    )))
+    formula_add_parameters <- unique(unlist(lapply(
+      formula_output,
+      function(output) output[["add_parameters"]]
+    )), use.names = FALSE)
+    combined_prior_list <- .complete_factor_metadata_prior_list(c(
+      formula_prior_output,
+      prior_list
+    ))
+    expression_parameter_names <- c(
+      JAGS_to_monitor(combined_prior_list),
+      add_parameters,
+      formula_add_parameters
+    )
+    for(parameter in names(formula_output)){
+      formula_output[[parameter]]$formula_design <-
+        .bt_formula_expression_finalize_design(
+          design = formula_output[[parameter]]$formula_design,
+          formula_data = formula_data_list[[parameter]],
+          model_data = data,
+          parameter_names = expression_parameter_names,
+          forbidden_parameters = names(formula_output),
+          context = paste0(
+            "JAGS_fit() expression for parameter '", parameter, "'"
+          )
+        )
+    }
+
     # merge with the rest of the input
-    prior_list     <- c(do.call(c, unname(lapply(formula_output, function(output) output[["prior_list"]]))), prior_list)
-    data           <- c(do.call(c, unname(lapply(formula_output, function(output) output[["data"]]))),       data)
+    prior_list <- combined_prior_list
+    formula_generated_data <- list()
+    for(parameter in names(formula_output)){
+      formula_generated_data <- .bt_formula_expression_merge_jags_data(
+        formula_generated_data,
+        formula_output[[parameter]][["data"]],
+        context = "JAGS_fit() formula data"
+      )
+    }
+    data <- .bt_formula_expression_merge_jags_data(
+      formula_generated_data,
+      data,
+      context = "JAGS_fit() model data"
+    )
     formula_syntax <- paste0(lapply(formula_output, function(output) output[["formula_syntax"]]), collapse = "")
 
     # collect formula_scale information
@@ -193,7 +236,6 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     formula_scale_info <- formula_scale_info[!sapply(formula_scale_info, is.null)]
     if(length(formula_scale_info) == 0) formula_scale_info <- NULL
     formula_design_info <- lapply(formula_output, function(output) output[["formula_design"]])
-    formula_add_parameters <- unique(unlist(lapply(formula_output, function(output) output[["add_parameters"]])), use.names = FALSE)
     formula_jags_modules <- unique(unlist(lapply(formula_output, function(output) output[["jags_modules"]])), use.names = FALSE)
     formula_required_packages <- unique(unlist(lapply(formula_output, function(output) output[["required_packages"]])), use.names = FALSE)
 
@@ -218,7 +260,9 @@ JAGS_fit <- function(model_syntax, data = NULL, prior_list = NULL, formula_list 
     jags_modules <- unique(c(jags_modules, "BayesTools"))
     required_packages <- unique(c(required_packages, "BayesTools"))
   }
-  prior_list <- .complete_factor_metadata_prior_list(prior_list)
+  if(is.null(formula_list)){
+    prior_list <- .complete_factor_metadata_prior_list(prior_list)
+  }
   .bt_validate_jags_add_parameters(add_parameters, prior_list)
 
   backend_monitor <- .bt_add_backend_anchor(

@@ -47,7 +47,7 @@ test_that("formula designs persist a validated semantic name map", {
   )
   map <- result$formula_design$name_map
 
-  expect_identical(result$formula_design$schema_version, 3L)
+  expect_identical(result$formula_design$schema_version, 4L)
   expect_s3_class(map, "BayesTools_formula_name_map")
   expect_identical(attr(map, "schema_version"), 1L)
   expect_setequal(map$jags_name, c("mu", "mu_intercept", "mu_x", "mu_f"))
@@ -73,7 +73,7 @@ test_that("formula designs persist a validated semantic name map", {
   expect_identical(JAGS_formula_name_map(fit, "mu"), map)
   expect_identical(
     JAGS_fit_contract(fit)$formula_design_version,
-    3L
+    4L
   )
   expect_silent(JAGS_validate_fit_contract(
     fit,

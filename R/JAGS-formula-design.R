@@ -25,13 +25,14 @@
 
 .bt_formula_design_schema_version <- function(){
 
-  3L
+  4L
 }
 
 .bt_formula_design_stored_data_scale <- function(){
 
   c(
     source_data = "original",
+    expression_data = "original",
     model_frame = "model",
     model_matrix = "model"
   )
@@ -88,6 +89,8 @@
       .bt_formula_design_stored_data_scale()
     ) &&
     is.data.frame(design$source_data) &&
+    is.list(design$expression_data) &&
+    .bt_formula_expression_specs_valid(design$expression_specs) &&
     .bt_formula_design_contrast_schema_valid(design)
   if(!isTRUE(valid_schema)){
     stop(
@@ -108,7 +111,8 @@
                                         predictors, predictors_type,
                                         model_terms, model_terms_type,
                                         prior_list, formula_scale,
-                                        expressions, random_effects,
+                                        expressions, expression_specs,
+                                        expression_data, random_effects,
                                         random_effects_compile = NULL,
                                         jags_data_names,
                                         name_map,
@@ -179,6 +183,8 @@
     qr_pivot           = qr_info$pivot,
     aliased            = aliased,
     transformed_terms  = expressions,
+    expression_specs   = expression_specs,
+    expression_data    = expression_data,
     random_effects     = random_effects,
     random_effects_compile = random_effects_compile,
     jags_data_names    = jags_data_names,
@@ -337,9 +343,10 @@
 #'
 #' @description Returns the fitted formula design metadata stored by
 #' [JAGS_fit()]. The design contains the processed formula, fitted model frame,
-#' exact model matrix used for JAGS data construction, JAGS-safe coefficient
-#' names, contrast and factor-level metadata, rank diagnostics, prior metadata,
-#' and formula-scale information.
+#' exact model matrix used for JAGS data construction, replayable expression
+#' syntax and dependencies, JAGS-safe coefficient names, contrast and factor-
+#' level metadata, rank diagnostics, prior metadata, and formula-scale
+#' information.
 #'
 #' @param fit a fitted object returned by [JAGS_fit()].
 #' @param parameter optional formula parameter name. If \code{NULL}, all stored
