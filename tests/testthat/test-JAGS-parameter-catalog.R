@@ -1,7 +1,8 @@
 skip_if_not_test_profile("unit")
 
 .parameter_catalog_test_fit <- function(chains, prior_list,
-                                        formula_design = NULL){
+                                        formula_design = NULL,
+                                        formula_scale = NULL){
 
   fit <- chains
   class(fit) <- c("BayesTools_fit", class(fit))
@@ -9,10 +10,14 @@ skip_if_not_test_profile("unit")
   if(!is.null(formula_design)){
     attr(fit, "formula_design") <- formula_design
   }
+  if(!is.null(formula_scale)){
+    attr(fit, "formula_scale") <- formula_scale
+  }
   attr(fit, "parameter_registry") <- .bt_build_parameter_registry(
     columns = colnames(chains[[1L]]),
     prior_list = prior_list,
-    formula_design = formula_design
+    formula_design = formula_design,
+    formula_scale = formula_scale
   )
   fit <- .bt_attach_draw_geometry(fit)
   fit <- .bt_attach_parameter_catalog(fit)
@@ -41,7 +46,7 @@ test_that("parameter catalog construction is metadata-only and versioned", {
     prior_list = prior_list
   ))
   expect_s3_class(catalog, "BayesTools_parameter_catalog")
-  expect_identical(catalog$schema_version, 2L)
+  expect_identical(catalog$schema_version, 3L)
   expect_identical(
     names(catalog$quantities),
     .bt_parameter_catalog_quantity_columns
@@ -81,6 +86,7 @@ test_that("factor catalog components preserve fitted level identities", {
     drop = FALSE
   ]
   expect_identical(factor_rows$component, c("b", "c"))
+  expect_identical(factor_rows$display_label, c("(mu) f[b]", "(mu) f[c]"))
   expect_identical(
     parameter_catalog_resolve(
       catalog,
@@ -119,6 +125,7 @@ test_that("factor catalog components preserve fitted level identities", {
   )$quantities
   expect_identical(reference$status, "structural")
   expect_identical(reference$fixed_value, 0)
+  expect_identical(reference$display_label, "(mu) f[a]")
   expect_error(
     hypothesis_resolve(
       hypothesis_parse("f[b] > 0"),
@@ -129,6 +136,64 @@ test_that("factor catalog components preserve fitted level identities", {
     "does not match the requested catalog component",
     fixed = TRUE
   )
+
+  incomplete <- registry[registry$canonical_name != "mu_f[2]", , drop = FALSE]
+  expect_error(
+    .bt_build_parameter_catalog(
+      registry = incomplete,
+      prior_list = formula_result$prior_list,
+      formula_design = list(mu = formula_result$formula_design)
+    ),
+    "factor coordinates are missing or malformed"
+  )
+})
+
+test_that("factor cell mapping is limited to fixed formula terms", {
+
+  ordinary <- prior_factor(
+    "mnormal",
+    list(0, 1),
+    contrast = "orthonormal"
+  )
+  attr(ordinary, "levels") <- 3L
+  ordinary_registry <- .bt_build_parameter_registry(
+    .JAGS_prior_factor_names("p1", ordinary),
+    prior_list = list(p1 = ordinary)
+  )
+  ordinary_catalog <- .bt_build_parameter_catalog(
+    ordinary_registry,
+    prior_list = list(p1 = ordinary)
+  )
+  expect_false(any(vapply(
+    ordinary_catalog$quantities$extraction_key,
+    function(key) identical(key$type, "factor_level"),
+    logical(1)
+  )))
+
+  data <- data.frame(
+    f = factor(c("a", "b", "c")),
+    id = factor(c("g1", "g2", "g1"))
+  )
+  formula_result <- JAGS_formula(
+    ~ 1 + (f || id),
+    "mu",
+    data,
+    list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(sd = prior("normal", list(0, 1), list(0, 1)))
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  random_registry <- .bt_build_parameter_registry(
+    c("mu_intercept", random_term$sd_parameter_names),
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design)
+  )
+  expect_silent(.bt_build_parameter_catalog(
+    random_registry,
+    formula_result$prior_list,
+    list(mu = formula_result$formula_design)
+  ))
 })
 
 test_that("factor catalog quantities reconstruct fitted term-level cells", {
@@ -511,6 +576,45 @@ test_that("factor components escape hypothesis syntax characters", {
   )
 })
 
+test_that("factor components preserve boundary whitespace", {
+
+  data <- data.frame(f = factor(c(" a", "a ")))
+  formula_result <- JAGS_formula(
+    ~ 1 + f,
+    "mu",
+    data,
+    list(
+      intercept = prior("normal", list(0, 1)),
+      f = prior_factor("normal", list(0, 1), contrast = "independent")
+    )
+  )
+  prior <- formula_result$prior_list$mu_f
+  registry <- .bt_build_parameter_registry(
+    columns = c("mu_intercept", .JAGS_prior_factor_names("mu_f", prior)),
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design)
+  )
+  catalog <- .bt_build_parameter_catalog(
+    registry,
+    formula_result$prior_list,
+    list(mu = formula_result$formula_design)
+  )
+
+  leading <- parameter_catalog_resolve(catalog, "f[\" a\"]", "mu")
+  trailing <- parameter_catalog_resolve(catalog, "f[\"a \"]", "mu")
+  expect_identical(leading$quantities$component, "\" a\"")
+  expect_identical(trailing$quantities$component, "\"a \"")
+  resolved <- hypothesis_resolve(
+    hypothesis_parse("\`f[\" a\"]\` > \`f[\"a \"]\`"),
+    catalog,
+    namespace = "mu"
+  )
+  expect_setequal(
+    unique(resolved$occurrences$quantity_id),
+    c(leading$quantity_id, trailing$quantity_id)
+  )
+})
+
 test_that("catalog extensions preserve ambiguity until filtered", {
 
   registry <- .bt_build_parameter_registry(
@@ -539,6 +643,16 @@ test_that("catalog extensions preserve ambiguity until filtered", {
     namespace = quantities$namespace,
     component = c("", ""),
     stringsAsFactors = FALSE
+  )
+
+  expect_error(
+    parameter_catalog_extend(
+      catalog,
+      quantities = location,
+      aliases = .bt_parameter_catalog_empty_aliases(),
+      provider = "BayesTools"
+    ),
+    "reserved"
   )
 
   extended <- parameter_catalog_extend(
@@ -663,13 +777,36 @@ test_that("random summaries are cataloged and extracted from declared dependenci
 
   catalog <- parameter_catalog(fit)
   derived <- catalog$quantities[catalog$quantities$status == "derived", ]
+  expect_identical(unique(derived$role), "random_correlation")
+  expect_false(any(catalog$quantities$internal))
+  correlation <- derived[1L, , drop = FALSE]
   expect_setequal(
-    derived$role,
-    c("random_sd", "random_correlation")
+    correlation$extraction_key[[1L]]$dependencies,
+    c(
+      paste0(cholesky, "[1,1]"),
+      paste0(cholesky, "[2,1]"),
+      paste0(cholesky, "[2,2]")
+    )
   )
-  sd_quantity <- derived[derived$role == "random_sd", , drop = FALSE][1L, ]
-  expect_false("mu_intercept" %in%
-                 sd_quantity$extraction_key[[1L]]$dependencies)
+  expect_false(any(c("mu_intercept", random_term$sd_parameter_names) %in%
+                     correlation$extraction_key[[1L]]$dependencies))
+
+  sd_label <- "(mu) sd(intercept | id)"
+  expect_identical(
+    sum(catalog$quantities$display_label == sd_label),
+    1L
+  )
+  sd_quantity <- parameter_catalog_resolve(
+    catalog,
+    sd_label,
+    namespace = "mu"
+  )$quantities
+  expect_identical(sd_quantity$status, "sampled")
+  sd_draws <- parameter_draws(
+    fit,
+    parameter_catalog_resolve(catalog, sd_label, namespace = "mu")
+  )
+  expect_identical(as.numeric(sd_draws[[1L]][, 1L]), c(1, 2, 3))
 
   observed <- NULL
   original <- .bt_parameter_draw_dependencies
@@ -682,13 +819,172 @@ test_that("random summaries are cataloged and extracted from declared dependenci
   )
   selection <- parameter_catalog_resolve(
     catalog,
-    sd_quantity$canonical_name
+    correlation$canonical_name
   )
   draws <- parameter_draws(fit, selection)
 
-  expect_identical(observed, sd_quantity$extraction_key[[1L]]$dependencies)
-  expect_identical(colnames(draws[[1L]]), sd_quantity$canonical_name)
-  expect_identical(as.numeric(draws[[1L]][, 1L]), c(1, 2, 3))
+  expect_identical(observed, correlation$extraction_key[[1L]]$dependencies)
+  expect_identical(colnames(draws[[1L]]), correlation$canonical_name)
+  expect_equal(as.numeric(draws[[1L]][, 1L]), c(0, .2, .4))
+})
+
+test_that("transformed random summaries hide fitted-scale implementation rows", {
+
+  data <- data.frame(
+    x = 1:4,
+    id = factor(c("a", "a", "b", "b"))
+  )
+  formula_result <- JAGS_formula(
+    ~ 1 + diag(0 + x | id),
+    "mu",
+    data,
+    list(intercept = prior("normal", list(0, 1))),
+    formula_scale = list(x = TRUE),
+    prior_random = prior_random(
+      id = random_block(sd = prior("gamma", list(2, 2)))
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  sd_name <- random_term$sd_parameter_names
+  values <- cbind(mu_intercept = 0, c(2, 4))
+  colnames(values)[2L] <- sd_name
+  fit <- .parameter_catalog_test_fit(
+    coda::mcmc.list(coda::mcmc(values)),
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design),
+    formula_scale = list(mu = formula_result$formula_scale)
+  )
+  catalog <- parameter_catalog(fit)
+
+  label <- "(mu) sd(x | id)"
+  quantity <- parameter_catalog_resolve(catalog, label, "mu")$quantities
+  expect_identical(quantity$status, "derived")
+  expect_identical(quantity$extraction_key[[1L]]$dependencies, sd_name)
+  expect_false(sd_name %in% catalog$quantities$canonical_name)
+  draws <- parameter_draws(
+    fit,
+    parameter_catalog_resolve(catalog, label, "mu")
+  )
+  expect_equal(
+    as.numeric(draws[[1L]][, 1L]),
+    c(2, 4) / stats::sd(data$x)
+  )
+})
+
+test_that("transformed correlations declare SD and Cholesky inputs", {
+
+  data <- data.frame(
+    x = 1:4,
+    id = factor(c("a", "a", "b", "b"))
+  )
+  formula_result <- JAGS_formula(
+    ~ 1 + us(1 + x | id),
+    "mu",
+    data,
+    list(intercept = prior("normal", list(0, 1))),
+    formula_scale = list(x = TRUE),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("gamma", list(2, 2)),
+        cor = prior_lkj()
+      )
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  cholesky <- random_term$correlation$cholesky_name
+  sd_values <- cbind(c(1, 2), c(2, 3))
+  rho <- c(.2, .4)
+  values <- cbind(
+    mu_intercept = 0,
+    sd_values,
+    1,
+    rho,
+    sqrt(1 - rho^2)
+  )
+  colnames(values) <- c(
+    "mu_intercept",
+    random_term$sd_parameter_names,
+    paste0(cholesky, "[1,1]"),
+    paste0(cholesky, "[2,1]"),
+    paste0(cholesky, "[2,2]")
+  )
+  fit <- .parameter_catalog_test_fit(
+    coda::mcmc.list(coda::mcmc(values)),
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design),
+    formula_scale = list(mu = formula_result$formula_scale)
+  )
+  catalog <- parameter_catalog(fit)
+  correlation <- catalog$quantities[
+    catalog$quantities$role == "random_correlation" &
+      catalog$quantities$status == "derived",
+    ,
+    drop = FALSE
+  ]
+  expect_identical(nrow(correlation), 1L)
+  expect_setequal(
+    correlation$extraction_key[[1L]]$dependencies,
+    colnames(values)[-1L]
+  )
+
+  mean_x <- mean(data$x)
+  sd_x <- stats::sd(data$x)
+  fitted_covariance <- rho * sd_values[, 1L] * sd_values[, 2L]
+  intercept_variance <- sd_values[, 1L]^2 +
+    (mean_x / sd_x)^2 * sd_values[, 2L]^2 -
+    2 * (mean_x / sd_x) * fitted_covariance
+  slope_variance <- sd_values[, 2L]^2 / sd_x^2
+  covariance <- fitted_covariance / sd_x -
+    mean_x * sd_values[, 2L]^2 / sd_x^2
+  expected <- covariance / sqrt(intercept_variance * slope_variance)
+  draws <- parameter_draws(
+    fit,
+    parameter_catalog_resolve(catalog, correlation$canonical_name)
+  )
+  expect_equal(as.numeric(draws[[1L]][, 1L]), expected)
+})
+
+test_that("identity random summaries preserve structural provenance", {
+
+  data <- data.frame(id = factor(c("a", "b")))
+  formula_result <- JAGS_formula(
+    ~ 1 + (1 | id),
+    "mu",
+    data,
+    list(intercept = prior("normal", list(0, 1))),
+    prior_random = prior_random(
+      id = random_block(sd = prior("point", list(location = 2)))
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  registry <- .bt_build_parameter_registry(
+    columns = c("mu_intercept", random_term$sd_parameter_names),
+    prior_list = formula_result$prior_list,
+    formula_design = list(mu = formula_result$formula_design)
+  )
+  catalog <- .bt_build_parameter_catalog(
+    registry,
+    formula_result$prior_list,
+    list(mu = formula_result$formula_design)
+  )
+
+  label <- "(mu) sd(intercept | id)"
+  quantity <- parameter_catalog_resolve(
+    catalog,
+    label,
+    namespace = "mu"
+  )$quantities
+  expect_identical(quantity$status, "structural")
+  expect_identical(quantity$fixed_value, 2)
+  expect_identical(sum(catalog$quantities$display_label == label), 1L)
+  expect_false(any(
+    catalog$quantities$role == "random_sd" &
+      catalog$quantities$status == "derived"
+  ))
+  expect_identical(
+    parameter_catalog_resolve(catalog, "intercept", "mu")$quantities$role,
+    "fixed_coefficient"
+  )
 })
 
 test_that("declared variance allocations have metadata-only catalog rows", {
@@ -731,9 +1027,13 @@ test_that("declared variance allocations have metadata-only catalog rows", {
   )
   derived <- catalog$quantities[catalog$quantities$status == "derived", ]
 
-  expect_setequal(
-    derived$role,
-    c("random_sd_total", "random_sd", "random_var_frac")
+  expect_identical(unique(derived$role), "random_var_frac")
+  expect_identical(
+    catalog$quantities$role[
+      catalog$quantities$canonical_name ==
+        "mu__xRE_ALLOCx_allocation__total_sd"
+    ],
+    "random_sd_total"
   )
   study_sd_label <- "(mu) sd(intercept | study)"
   study_sd <- parameter_catalog_resolve(
@@ -741,27 +1041,21 @@ test_that("declared variance allocations have metadata-only catalog rows", {
     alias = study_sd_label,
     namespace = "mu"
   )
-  expect_identical(study_sd$quantities$status, "derived")
-  sampled_study_sd <- catalog$quantities[
-    catalog$quantities$status == "sampled" &
-      catalog$quantities$display_label == study_sd_label,
-    ,
-    drop = FALSE
-  ]
-  expect_identical(nrow(sampled_study_sd), 1L)
-  sampled_selection <- parameter_catalog_resolve(
-    catalog,
-    alias = sampled_study_sd$canonical_name,
-    namespace = "mu"
+  expect_identical(study_sd$quantities$status, "sampled")
+  expect_identical(
+    sum(catalog$quantities$display_label == study_sd_label),
+    1L
   )
-  expect_identical(sampled_selection$quantities$status, "sampled")
   fractions <- derived[derived$role == "random_var_frac", ]
   expect_identical(fractions$component, c("study", "drug"))
   expect_true(all(vapply(fractions$extraction_key, function(key){
-    all(c(
-      "mu__xRE_ALLOCx_allocation__weight[1]",
-      "mu__xRE_ALLOCx_allocation__weight[2]"
-    ) %in% key$dependencies)
+    identical(
+      key$dependencies,
+      c(
+        "mu__xRE_ALLOCx_allocation__weight[1]",
+        "mu__xRE_ALLOCx_allocation__weight[2]"
+      )
+    )
   }, logical(1))))
   study_fraction <- parameter_catalog_resolve(
     catalog,
@@ -781,7 +1075,7 @@ test_that("malformed catalogs and stale selections fail closed", {
   selection <- parameter_catalog_resolve(catalog, "theta")
 
   broken <- catalog
-  broken$schema_version <- 3L
+  broken$schema_version <- 4L
   expect_error(
     .bt_validate_parameter_catalog(broken),
     "Refit or rebuild"
@@ -792,5 +1086,15 @@ test_that("malformed catalogs and stale selections fail closed", {
   expect_error(
     .bt_validate_parameter_selection(stale, catalog),
     "disagree"
+  )
+
+  spoofed <- catalog
+  spoofed$quantities$extraction_key[[1L]] <- list(
+    type = "bogus",
+    dependencies = "theta"
+  )
+  expect_error(
+    .bt_validate_parameter_catalog(spoofed),
+    "extraction keys are malformed"
   )
 })

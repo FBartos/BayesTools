@@ -1,6 +1,6 @@
 # Metadata-only semantic parameter catalog and deferred draw extraction.
 
-.bt_parameter_catalog_version <- 2L
+.bt_parameter_catalog_version <- 3L
 .bt_parameter_selection_version <- 1L
 
 .bt_parameter_catalog_quantity_columns <- c(
@@ -28,10 +28,16 @@
 #' tokens are quoted so that every component remains hypothesis-safe and
 #' injective. These are coefficient-level quantities, distinct from estimated
 #' marginal means based on full predictions.
+#' Identity random-effect summaries reuse their sampled or structural registry
+#' coordinate. Summaries requiring a scale or covariance transformation expose
+#' only the transformed quantity; their fitted-scale inputs and all other
+#' private implementation coordinates remain dependencies rather than public
+#' catalog rows.
 #' Constructing or resolving the catalog never accesses posterior draws.
 #'
 #' `parameter_catalog_extend()` adds plain-data quantities and aliases owned by
-#' another provider. `parameter_catalog_resolve()` applies optional namespace
+#' another provider; the `"BayesTools"` provider name is reserved for native
+#' quantities. `parameter_catalog_resolve()` applies optional namespace
 #' and component filters and returns a versioned selection only when the match
 #' is unique.
 #'
@@ -133,6 +139,10 @@ parameter_catalog_extend <- function(catalog, quantities, aliases,
   check_char(provider, "provider", check_length = 1L, allow_NA = FALSE)
   if(!grepl("^[A-Za-z][A-Za-z0-9.]*$", provider)){
     stop("'provider' must start with a letter and contain only letters, numbers, and dots.",
+         call. = FALSE)
+  }
+  if(identical(provider, "BayesTools")){
+    stop("'BayesTools' is reserved for quantities created by BayesTools.",
          call. = FALSE)
   }
   .bt_validate_parameter_catalog_tables(
@@ -428,13 +438,19 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
     "\"" = "%22",
     "\r" = "%0D",
     "\n" = "%0A",
-    "\t" = "%09"
+    "\t" = "%09",
+    "\f" = "%0C",
+    "\b" = "%08",
+    "\a" = "%07",
+    "\v" = "%0B"
   )
   for(token in names(replacements)){
     x <- gsub(token, replacements[[token]], x, fixed = TRUE)
   }
   reserved <- c(",", "=")
-  needs_quotes <- !nzchar(x) || any(vapply(reserved, function(token){
+  needs_quotes <- !nzchar(x) ||
+    grepl("^[[:space:]]|[[:space:]]$", x) ||
+    any(vapply(reserved, function(token){
     grepl(token, x, fixed = TRUE)
   }, logical(1)))
   if(needs_quotes){
@@ -493,74 +509,134 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
   cell_names
 }
 
-.bt_parameter_catalog_factor_components <- function(prior){
+.bt_parameter_catalog_empty_overrides <- function(){
 
-  if(!.bt_formula_prior_is_factor(prior)){
-    return(character())
-  }
-  design_info <- tryCatch(
-    .factor_term_design_from_metadata(prior),
-    error = function(e) NULL
+  data.frame(
+    canonical_name = character(),
+    role = character(),
+    term = character(),
+    component = character(),
+    display_label = character(),
+    display_scale = character(),
+    stringsAsFactors = FALSE
   )
-  if(is.null(design_info)){
-    return(character())
-  }
-  design <- design_info$design
-  cell_names <- .bt_parameter_catalog_factor_cell_names(design_info)
-  components <- rep.int("", ncol(design))
-  for(coordinate in seq_len(ncol(design))){
-    identity_row <- rep.int(0, ncol(design))
-    identity_row[coordinate] <- 1
-    matches <- which(vapply(seq_len(nrow(design)), function(cell){
-      identical(unname(design[cell, ]), identity_row)
-    }, logical(1)))
-    if(length(matches) == 1L){
-      components[coordinate] <- cell_names[matches]
-    }
-  }
-  components
 }
 
-.bt_parameter_catalog_factor_definitions <- function(registry, prior_list){
+.bt_parameter_catalog_factor_label <- function(formula_parameter, term,
+                                               component){
 
-  out <- .bt_parameter_catalog_empty_quantities()
+  paste0(
+    .bt_random_effect_summary_formula_prefix(formula_parameter, TRUE),
+    term,
+    "[",
+    component,
+    "]"
+  )
+}
+
+.bt_parameter_catalog_factor_map <- function(registry, prior_list){
+
+  out <- list(
+    direct = .bt_parameter_catalog_empty_overrides(),
+    derived = .bt_parameter_catalog_empty_quantities()
+  )
   if(length(prior_list) == 0L || is.null(names(prior_list))){
     return(out)
   }
-  rows <- list()
+  direct_rows <- list()
+  derived_rows <- list()
   for(parameter in names(prior_list)){
     prior <- prior_list[[parameter]]
-    if(!.bt_formula_prior_is_factor(prior)){
+    formula_factor <- .bt_formula_prior_is_factor(prior) &&
+      !is.null(attr(prior, "term_components", exact = TRUE)) &&
+      !isTRUE(attr(prior, "random_sd", exact = TRUE))
+    if(!formula_factor){
       next
     }
     coordinates <- .JAGS_prior_factor_names(parameter, prior)
     registry_rows <- match(coordinates, registry$canonical_name)
     if(anyNA(registry_rows) ||
        any(registry$role[registry_rows] != "fixed_coefficient")){
-      next
+      stop(
+        "Parameter catalog factor coordinates are missing or malformed for '",
+        parameter, "'. Refit the model with this version of BayesTools.",
+        call. = FALSE
+      )
     }
     coordinate_metadata <- registry[registry_rows, , drop = FALSE]
     design_info <- .factor_term_design_from_metadata(prior)
     design <- design_info$design
+    if(is.null(design_info$level_names)){
+      stop(
+        "Parameter catalog factor levels are missing for '", parameter,
+        "'. Refit the model with this version of BayesTools.",
+        call. = FALSE
+      )
+    }
     cell_names <- .bt_parameter_catalog_factor_cell_names(design_info)
     if(ncol(design) != length(coordinates) ||
-       nrow(design) != length(design_info$cell_names)){
+       nrow(design) != length(design_info$cell_names) ||
+       length(cell_names) != nrow(design) ||
+       any(!is.finite(design))){
       stop(
         "Parameter catalog factor metadata disagree with registry coordinates for '",
         parameter, "'. Refit the model with this version of BayesTools.",
         call. = FALSE
       )
     }
-    direct_components <- .bt_parameter_catalog_factor_components(prior)
-    direct_components <- direct_components[nzchar(direct_components)]
+    owner_fields <- c("formula_parameter", "term", "fitted_scale")
+    if(any(vapply(owner_fields, function(field){
+      length(unique(coordinate_metadata[[field]])) != 1L
+    }, logical(1)))){
+      stop(
+        "Parameter catalog factor coordinates have inconsistent ownership for '",
+        parameter, "'. Refit the model with this version of BayesTools.",
+        call. = FALSE
+      )
+    }
     semantic_names <- .factor_contrast_parameter_names(
       parameter,
       design_info$level_names,
       design_info$cell_names
     )
+    if(length(semantic_names) != nrow(design) ||
+       anyNA(semantic_names) || any(!nzchar(semantic_names)) ||
+       anyDuplicated(semantic_names)){
+      stop(
+        "Parameter catalog factor semantic names are malformed for '",
+        parameter, "'. Refit the model with this version of BayesTools.",
+        call. = FALSE
+      )
+    }
+    direct_cells <- rep.int(NA_integer_, length(coordinates))
+    for(coordinate in seq_along(coordinates)){
+      identity_row <- rep.int(0, ncol(design))
+      identity_row[coordinate] <- 1
+      matches <- which(vapply(seq_len(nrow(design)), function(cell){
+        identical(unname(design[cell, ]), identity_row)
+      }, logical(1)))
+      if(length(matches) == 1L){
+        direct_cells[coordinate] <- matches
+        metadata <- coordinate_metadata[coordinate, , drop = FALSE]
+        component <- cell_names[matches]
+        direct_rows[[length(direct_rows) + 1L]] <- data.frame(
+          canonical_name = coordinates[coordinate],
+          role = metadata$role,
+          term = metadata$term,
+          component = component,
+          display_label = .bt_parameter_catalog_factor_label(
+            metadata$formula_parameter,
+            metadata$term,
+            component
+          ),
+          display_scale = metadata$fitted_scale,
+          stringsAsFactors = FALSE
+        )
+      }
+    }
     for(cell in seq_len(nrow(design))){
       component <- cell_names[cell]
-      if(component %in% direct_components){
+      if(cell %in% direct_cells){
         next
       }
       nonzero <- which(design[cell, ] != 0)
@@ -587,7 +663,7 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
       }else{
         NA_real_
       }
-      rows[[length(rows) + 1L]] <- .bt_parameter_catalog_quantity(
+      derived_rows[[length(derived_rows) + 1L]] <- .bt_parameter_catalog_quantity(
         canonical_name = semantic_names[cell],
         namespace = if(nzchar(coordinate_metadata$formula_parameter[1L])){
           coordinate_metadata$formula_parameter[1L]
@@ -598,8 +674,10 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
         formula_parameter = coordinate_metadata$formula_parameter[1L],
         term = coordinate_metadata$term[1L],
         component = component,
-        display_label = paste0(
-          coordinate_metadata$display_label[1L], "[", component, "]"
+        display_label = .bt_parameter_catalog_factor_label(
+          coordinate_metadata$formula_parameter[1L],
+          coordinate_metadata$term[1L],
+          component
         ),
         fitted_scale = coordinate_metadata$fitted_scale[1L],
         display_scale = coordinate_metadata$fitted_scale[1L],
@@ -614,45 +692,30 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
       )
     }
   }
-  if(length(rows) == 0L){
-    return(out)
+  if(length(direct_rows) > 0L){
+    out$direct <- do.call(rbind, direct_rows)
+    rownames(out$direct) <- NULL
   }
-  out <- do.call(rbind, rows)
-  rownames(out) <- NULL
+  if(length(derived_rows) > 0L){
+    out$derived <- do.call(rbind, derived_rows)
+    rownames(out$derived) <- NULL
+  }
   out
 }
 
-.bt_parameter_catalog_registry_component <- function(row, prior_list){
-
-  component <- row$column
-  if(!identical(row$role, "fixed_coefficient")){
-    return(component)
-  }
-  base_name <- .bt_parameter_registry_base(row$canonical_name)
-  prior <- .bt_parameter_registry_prior_owner(base_name, prior_list)
-  if(is.null(prior)){
-    return(component)
-  }
-  semantic_components <- .bt_parameter_catalog_factor_components(prior)
-  if(length(semantic_components) == 0L){
-    return(component)
-  }
-  coordinates <- .JAGS_prior_factor_names(base_name, prior)
-  coordinate <- match(row$canonical_name, coordinates)
-  if(is.na(coordinate)){
-    return(component)
-  }
-  semantic_components[coordinate]
-}
-
-.bt_parameter_catalog_registry_quantities <- function(registry,
-                                                      prior_list = NULL){
+.bt_parameter_catalog_registry_quantities <- function(
+    registry, overrides = .bt_parameter_catalog_empty_overrides(),
+    suppress = character()){
 
   out <- .bt_parameter_catalog_empty_quantities()
-  if(is.null(prior_list)){
-    prior_list <- list()
+  if(anyDuplicated(overrides$canonical_name)){
+    stop(
+      "Parameter catalog direct semantic mappings are not unique. Refit the model with this version of BayesTools.",
+      call. = FALSE
+    )
   }
-  keep <- registry$role != "backend_anchor"
+  keep <- registry$role != "backend_anchor" & !registry$internal &
+    !registry$canonical_name %in% suppress
   registry <- registry[keep, , drop = FALSE]
   if(nrow(registry) == 0L){
     return(out)
@@ -660,6 +723,19 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
   rows <- vector("list", nrow(registry))
   for(i in seq_len(nrow(registry))){
     row <- registry[i, , drop = FALSE]
+    override <- match(row$canonical_name, overrides$canonical_name)
+    role <- row$role
+    term <- row$term
+    component <- row$column
+    display_label <- row$display_label
+    display_scale <- row$fitted_scale
+    if(!is.na(override)){
+      role <- overrides$role[override]
+      term <- overrides$term[override]
+      component <- overrides$component[override]
+      display_label <- overrides$display_label[override]
+      display_scale <- overrides$display_scale[override]
+    }
     namespace <- if(nzchar(row$formula_parameter)){
       row$formula_parameter
     }else{
@@ -668,16 +744,16 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
     rows[[i]] <- .bt_parameter_catalog_quantity(
       canonical_name = row$canonical_name,
       namespace = namespace,
-      role = row$role,
+      role = role,
       formula_parameter = row$formula_parameter,
-      term = row$term,
-      component = .bt_parameter_catalog_registry_component(row, prior_list),
-      display_label = row$display_label,
+      term = term,
+      component = component,
+      display_label = display_label,
       fitted_scale = row$fitted_scale,
-      display_scale = row$fitted_scale,
+      display_scale = display_scale,
       status = row$monitor_status,
       fixed_value = row$fixed_value,
-      internal = row$internal,
+      internal = FALSE,
       extraction_key = list(
         type = "registry",
         dependencies = row$canonical_name
@@ -699,22 +775,8 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
   rows <- vector("list", nrow(public))
   for(i in seq_len(nrow(public))){
     quantity <- public[i, , drop = FALSE]
-    shadowed_random_display <- startsWith(quantity$role, "random_") &&
-      !identical(quantity$status, "derived") &&
-      any(
-        startsWith(public$role, "random_") &
-          public$status == "derived" &
-          public$namespace == quantity$namespace &
-          public$display_label == quantity$display_label
-      )
-    display_aliases <- if(shadowed_random_display){
-      character()
-    }else{
-      quantity$display_label
-    }
     semantic_label <- character()
-    if(length(display_aliases) > 0L &&
-       startsWith(quantity$role, "random_") &&
+    if(startsWith(quantity$role, "random_") &&
        !is.na(quantity$formula_parameter)){
       prefix <- .bt_random_effect_summary_formula_prefix(
         quantity$formula_parameter,
@@ -729,10 +791,9 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
     }
     values <- unique(c(
       quantity$canonical_name,
-      display_aliases,
+      quantity$display_label,
       semantic_label,
       quantity$term,
-      quantity$component,
       if(identical(quantity$role, "fixed_coefficient") &&
          nzchar(quantity$term) && nzchar(quantity$component)){
         paste0(quantity$term, "[", quantity$component, "]")
@@ -755,40 +816,135 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
   out
 }
 
-.bt_parameter_catalog_character_values <- function(x){
+.bt_parameter_catalog_coordinates <- function(registry, names){
 
-  if(is.character(x)){
-    return(x[!is.na(x) & nzchar(x)])
-  }
-  if(!is.list(x) || length(x) == 0L){
+  names <- unique(names[!is.na(names) & nzchar(names)])
+  if(length(names) == 0L){
     return(character())
   }
-  unique(unlist(lapply(x, .bt_parameter_catalog_character_values),
-                use.names = FALSE))
+  bases <- .bt_parameter_registry_base(registry$canonical_name)
+  unique(registry$canonical_name[
+    registry$canonical_name %in% names |
+      registry$monitor_name %in% names |
+      bases %in% names
+  ])
 }
 
-.bt_parameter_catalog_dependencies <- function(registry, metadata = NULL,
-                                               formula_parameter = "",
-                                               random_block = ""){
+.bt_parameter_catalog_random_block_dependencies <- function(
+    registry, formula_parameter, random_block,
+    roles = c("random_sd", "random_correlation")){
 
-  available <- registry$monitor_status %in% c("sampled", "structural")
-  tokens <- .bt_parameter_catalog_character_values(metadata)
-  bases <- .bt_parameter_registry_base(registry$canonical_name)
-  token_match <- registry$canonical_name %in% tokens |
-    registry$monitor_name %in% tokens |
-    bases %in% tokens
-  block_match <- nzchar(random_block) &
-    registry$random_block == random_block &
-    (!nzchar(formula_parameter) |
-       registry$formula_parameter == formula_parameter)
-  unique(registry$canonical_name[available & (token_match | block_match)])
+  registry$canonical_name[
+    registry$formula_parameter == formula_parameter &
+      registry$random_block == random_block &
+      registry$role %in% roles
+  ]
+}
+
+.bt_parameter_catalog_allocation_names <- function(allocation){
+
+  if(is.null(allocation)){
+    return(character())
+  }
+  source_name <- if(is.null(allocation$source)){
+    character()
+  }else{
+    .bt_random_sd_binding_source_name(allocation$source)
+  }
+  factors <- c(allocation$factors, allocation$parent_factors)
+  factor_names <- unlist(lapply(factors, function(factor){
+    c(factor$weight_name, factor$inclusion_name)
+  }), use.names = FALSE)
+  inclusion_names <- unlist(lapply(allocation$inclusion, function(record){
+    record$indicator_name
+  }), use.names = FALSE)
+  unique(c(
+    allocation$weight_name,
+    allocation$total_name,
+    allocation$source_node,
+    source_name,
+    factor_names,
+    inclusion_names
+  ))
+}
+
+.bt_parameter_catalog_random_status <- function(
+    key, registry, prior_list, formula_design, formula_scale){
+
+  dependency_rows <- match(key$dependencies, registry$canonical_name)
+  if(anyNA(dependency_rows)){
+    stop(
+      "Parameter catalog random-summary dependencies are missing from the registry. Refit the model with this version of BayesTools.",
+      call. = FALSE
+    )
+  }
+  dependency_status <- registry$monitor_status[dependency_rows]
+  if(any(dependency_status == "unavailable")){
+    return(list(status = "unavailable", fixed_value = NA_real_))
+  }
+  if(any(dependency_status == "sampled")){
+    return(list(status = "derived", fixed_value = NA_real_))
+  }
+
+  values <- matrix(
+    registry$fixed_value[dependency_rows],
+    nrow = 1L,
+    dimnames = list(NULL, key$dependencies)
+  )
+  fit <- structure(
+    list(),
+    prior_list = prior_list,
+    formula_design = formula_design,
+    formula_scale = formula_scale
+  )
+  fixed_value <- tryCatch(
+    .bt_parameter_draw_random_summary(fit, key, values),
+    error = function(error) error
+  )
+  if(inherits(fixed_value, "error") || length(fixed_value) != 1L ||
+     !is.finite(fixed_value)){
+    stop(
+      "Parameter catalog could not evaluate a structural random summary from its declared dependencies. Refit the model with this version of BayesTools.",
+      call. = FALSE
+    )
+  }
+  list(status = "structural", fixed_value = as.numeric(fixed_value))
+}
+
+.bt_parameter_catalog_random_sd_is_direct <- function(
+    random_term, parameter, formula_scale){
+
+  if(is.null(formula_scale) || length(formula_scale) == 0L ||
+     is.null(formula_scale[[parameter]]) ||
+     length(formula_scale[[parameter]]) == 0L){
+    return(TRUE)
+  }
+  sd_names <- unique(random_term$sd_parameter_names)
+  sd_names <- sd_names[!is.na(sd_names)]
+  parameter_scale <- formula_scale[[parameter]]
+  column_groups <- .random_sd_column_unscale_groups(
+    random_sd_cols = sd_names,
+    formula_scale = parameter_scale,
+    prefix = parameter
+  )
+  term_map <- if(is.null(column_groups)){
+    .random_sd_term_map(sd_names, parameter_scale, parameter)
+  }else{
+    character()
+  }
+  (is.null(column_groups) || length(column_groups) == 0L) &&
+    length(term_map) == 0L
 }
 
 .bt_parameter_catalog_random_definitions <- function(registry, prior_list,
                                                      formula_design,
                                                      formula_scale = NULL){
 
-  out <- .bt_parameter_catalog_empty_quantities()
+  out <- list(
+    direct = .bt_parameter_catalog_empty_overrides(),
+    derived = .bt_parameter_catalog_empty_quantities(),
+    suppress = character()
+  )
   if(is.null(prior_list)){
     prior_list <- list()
   }
@@ -798,9 +954,32 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
   }
 
   rows <- list()
+  direct_rows <- list()
   used_names <- registry$canonical_name
+  add_direct <- function(source_name, role, parameter, label,
+                         term = "", component = "",
+                         display_scale = "original"){
+    source <- match(source_name, registry$canonical_name)
+    if(is.na(source) || isTRUE(registry$internal[source])){
+      return(FALSE)
+    }
+    direct_rows[[length(direct_rows) + 1L]] <<- data.frame(
+      canonical_name = source_name,
+      role = role,
+      term = term,
+      component = component,
+      display_label = paste0(
+        .bt_random_effect_summary_formula_prefix(parameter, TRUE),
+        label
+      ),
+      display_scale = display_scale,
+      stringsAsFactors = FALSE
+    )
+    TRUE
+  }
   add_definition <- function(raw_name, role, parameter, label,
-                             evaluator, metadata = NULL, block = "",
+                             evaluator, dependencies, metadata = NULL,
+                             block = "",
                              term = "", component = "",
                              fitted_scale = "fitted_covariance",
                              display_scale = "original"){
@@ -810,12 +989,7 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
     )
     used_names <<- c(used_names, canonical_name)
     namespace <- if(nzchar(parameter)) parameter else "model"
-    dependencies <- .bt_parameter_catalog_dependencies(
-      registry = registry,
-      metadata = metadata,
-      formula_parameter = parameter,
-      random_block = block
-    )
+    dependencies <- unique(dependencies)
     key <- c(
       list(
         type = "random_summary",
@@ -831,6 +1005,13 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
       .bt_random_effect_summary_formula_prefix(parameter, TRUE),
       label
     )
+    state <- .bt_parameter_catalog_random_status(
+      key = key,
+      registry = registry,
+      prior_list = prior_list,
+      formula_design = formula_design,
+      formula_scale = formula_scale
+    )
     rows[[length(rows) + 1L]] <<- .bt_parameter_catalog_quantity(
       canonical_name = canonical_name,
       namespace = namespace,
@@ -841,6 +1022,8 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
       display_label = display_label,
       fitted_scale = fitted_scale,
       display_scale = display_scale,
+      status = state$status,
+      fixed_value = state$fixed_value,
       extraction_key = key
     )
     invisible(NULL)
@@ -858,16 +1041,30 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
       type = "sd_total",
       parts = allocation
     )
-    add_definition(
-      raw_name = raw_name,
+    label <- paste0("sd_total(", allocation, ")")
+    if(!add_direct(
+      source_name = prior_name,
       role = "random_sd_total",
       parameter = parameter,
-      label = paste0("sd_total(", allocation, ")"),
-      evaluator = "sd_total",
-      metadata = list(prior_name = prior_name),
+      label = label,
       term = allocation,
       component = allocation
-    )
+    )){
+      add_definition(
+        raw_name = raw_name,
+        role = "random_sd_total",
+        parameter = parameter,
+        label = label,
+        evaluator = "sd_total",
+        dependencies = .bt_parameter_catalog_coordinates(
+          registry,
+          prior_name
+        ),
+        metadata = list(prior_name = prior_name),
+        term = allocation,
+        component = allocation
+      )
+    }
   }
 
   add_allocation <- function(allocation, parameter, random_term = NULL){
@@ -892,6 +1089,10 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
       allocation = allocation,
       random_term = random_term
     )
+    dependencies <- .bt_parameter_catalog_coordinates(
+      registry,
+      allocation$weight_name
+    )
     for(i in seq_len(K)){
       raw_name <- .bt_random_effect_summary_name(
         parameter = sub("__xRE_ALLOCx_.*$", "", allocation$weight_name),
@@ -905,6 +1106,7 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
         label = paste0(allocation_type$label, "(", allocation$label,
                        ": ", components[i], ")"),
         evaluator = "allocation",
+        dependencies = dependencies,
         metadata = c(metadata, list(index = i)),
         block = block,
         term = allocation$label,
@@ -926,6 +1128,7 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
           label = paste0("sd_mult(", allocation$label, ": ",
                          components[i], ")"),
           evaluator = "allocation",
+          dependencies = dependencies,
           metadata = c(metadata, list(index = K + i)),
           block = block,
           term = allocation$label,
@@ -945,6 +1148,10 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
           type = "inclusion",
           parts = c(allocation$label, component_label)
         )
+        inclusion_dependencies <- .bt_parameter_catalog_coordinates(
+          registry,
+          inclusion[[component_label]]$indicator_name
+        )
         add_definition(
           raw_name = raw_name,
           role = "random_inclusion",
@@ -952,6 +1159,7 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
           label = paste0("inclusion(", allocation$label, ": ",
                          component_label, ")"),
           evaluator = "allocation_inclusion",
+          dependencies = inclusion_dependencies,
           metadata = c(metadata, list(index = inclusion_i)),
           block = block,
           term = allocation$label,
@@ -982,27 +1190,62 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
           random_term,
           sd_names
         )
+        direct_sd <- .bt_parameter_catalog_random_sd_is_direct(
+          random_term = random_term,
+          parameter = parameter,
+          formula_scale = formula_scale
+        )
+        sd_dependencies <- unique(c(
+          .bt_parameter_catalog_coordinates(registry, sd_names),
+          .bt_parameter_catalog_random_block_dependencies(
+            registry,
+            formula_parameter = parameter,
+            random_block = block
+          ),
+          .bt_parameter_catalog_coordinates(
+            registry,
+            unlist(lapply(
+              random_term$sd_binding$allocations,
+              .bt_parameter_catalog_allocation_names
+            ), use.names = FALSE)
+          )
+        ))
         for(i in seq_along(sd_names)){
           raw_name <- .bt_random_effect_summary_name(
             parameter = parameter,
             type = "sd",
             parts = c(block, components[i])
           )
-          add_definition(
-            raw_name = raw_name,
+          label <- .bt_random_effect_sd_summary_label(
+            component = components[i],
+            group = group,
+            random_term = random_term
+          )
+          if(!direct_sd || !add_direct(
+            source_name = sd_names[i],
             role = "random_sd",
             parameter = parameter,
-            label = .bt_random_effect_sd_summary_label(
-              component = components[i],
-              group = group,
-              random_term = random_term
-            ),
-            evaluator = "sd",
-            metadata = c(term_metadata, list(index = i)),
-            block = block,
+            label = label,
             term = block,
             component = components[i]
-          )
+          )){
+            out$suppress <- unique(c(
+              out$suppress,
+              intersect(sd_names[i], registry$canonical_name)
+            ))
+            add_definition(
+              raw_name = raw_name,
+              role = "random_sd",
+              parameter = parameter,
+              label = label,
+              evaluator = "sd",
+              dependencies = sd_dependencies,
+              metadata = c(term_metadata, list(index = i)),
+              block = block,
+              term = block,
+              component = components[i]
+            )
+          }
         }
       }
 
@@ -1046,6 +1289,10 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
             parameter = parameter,
             label = label,
             evaluator = "inclusion",
+            dependencies = .bt_parameter_catalog_coordinates(
+              registry,
+              paste0(prior_name, "_indicator")
+            ),
             metadata = c(term_metadata, list(index = inclusion_i)),
             block = block,
             term = block,
@@ -1067,23 +1314,78 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
           type = "rho",
           parts = block
         )
-        add_definition(
-          raw_name = raw_name,
+        label <- paste0("rho(", group, ")")
+        rho_scale <- .bt_random_effect_rho_scale_metadata(
+          correlation,
+          random_term,
+          context = "Parameter catalog"
+        )
+        direct_rho <- identical(rho_scale, "rho") && add_direct(
+          source_name = correlation$rho_name,
           role = "random_correlation",
           parameter = parameter,
-          label = paste0("rho(", group, ")"),
-          evaluator = "rho",
-          metadata = term_metadata,
-          block = block,
+          label = label,
           term = block,
-          fitted_scale = "fitted_covariance",
           display_scale = "unitless"
         )
+        if(!direct_rho){
+          out$suppress <- unique(c(
+            out$suppress,
+            intersect(
+              c(correlation$rho_name, correlation$sample_name),
+              registry$canonical_name[!registry$internal]
+            )
+          ))
+          add_definition(
+            raw_name = raw_name,
+            role = "random_correlation",
+            parameter = parameter,
+            label = label,
+            evaluator = "rho",
+            dependencies = .bt_parameter_catalog_coordinates(
+              registry,
+              c(correlation$rho_name, correlation$sample_name)
+            ),
+            metadata = term_metadata,
+            block = block,
+            term = block,
+            fitted_scale = "fitted_covariance",
+            display_scale = "unitless"
+          )
+        }
       }
       if(!is.null(correlation) && identical(correlation$type, "lkj") &&
          random_term$n_columns > 1L){
         pairs <- utils::combn(seq_len(random_term$n_columns), 2L)
         components <- .bt_random_effect_summary_column_components(random_term)
+        scaled_correlation <- !.bt_parameter_catalog_random_sd_is_direct(
+          random_term = random_term,
+          parameter = parameter,
+          formula_scale = formula_scale
+        )
+        correlation_roles <- if(scaled_correlation){
+          c("random_sd", "random_correlation")
+        }else{
+          "random_correlation"
+        }
+        correlation_dependencies <- .bt_parameter_catalog_random_block_dependencies(
+          registry,
+          formula_parameter = parameter,
+          random_block = block,
+          roles = correlation_roles
+        )
+        if(scaled_correlation){
+          correlation_dependencies <- unique(c(
+            correlation_dependencies,
+            .bt_parameter_catalog_coordinates(
+              registry,
+              unlist(lapply(
+                random_term$sd_binding$allocations,
+                .bt_parameter_catalog_allocation_names
+              ), use.names = FALSE)
+            )
+          ))
+        }
         for(i in seq_len(ncol(pairs))){
           pair <- components[pairs[, i]]
           raw_name <- .bt_random_effect_summary_name(
@@ -1098,6 +1400,7 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
             label = paste0("cor(", pair[1L], ",", pair[2L],
                            " | ", group, ")"),
             evaluator = "correlation",
+            dependencies = correlation_dependencies,
             metadata = c(term_metadata, list(index = i)),
             block = block,
             term = block,
@@ -1128,11 +1431,14 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
     }
   }
 
-  if(length(rows) == 0L){
-    return(out)
+  if(length(direct_rows) > 0L){
+    out$direct <- do.call(rbind, direct_rows)
+    rownames(out$direct) <- NULL
   }
-  out <- do.call(rbind, rows)
-  rownames(out) <- NULL
+  if(length(rows) > 0L){
+    out$derived <- do.call(rbind, rows)
+    rownames(out$derived) <- NULL
+  }
   out
 }
 
@@ -1141,18 +1447,23 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
                                         formula_scale = NULL){
 
   .bt_validate_parameter_registry(registry)
-  base <- .bt_parameter_catalog_registry_quantities(registry, prior_list)
-  factor_levels <- .bt_parameter_catalog_factor_definitions(
+  factor_map <- .bt_parameter_catalog_factor_map(
     registry = registry,
     prior_list = prior_list
   )
-  derived <- .bt_parameter_catalog_random_definitions(
+  random_map <- .bt_parameter_catalog_random_definitions(
     registry = registry,
     prior_list = prior_list,
     formula_design = formula_design,
     formula_scale = formula_scale
   )
-  quantities <- rbind(base, factor_levels, derived)
+  overrides <- rbind(factor_map$direct, random_map$direct)
+  base <- .bt_parameter_catalog_registry_quantities(
+    registry = registry,
+    overrides = overrides,
+    suppress = random_map$suppress
+  )
+  quantities <- rbind(base, factor_map$derived, random_map$derived)
   rownames(quantities) <- NULL
   aliases <- .bt_parameter_catalog_aliases(quantities)
   .bt_parameter_catalog_new(quantities, aliases)
@@ -1171,6 +1482,60 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
     formula_scale = attr(fit, "formula_scale", exact = TRUE)
   )
   fit
+}
+
+.bt_parameter_catalog_valid_native_key <- function(key, quantity){
+
+  if(identical(key$type, "registry")){
+    return(
+      length(key$dependencies) == 1L &&
+        identical(key$dependencies, quantity$canonical_name)
+    )
+  }
+  if(identical(key$type, "factor_level")){
+    return(
+      is.numeric(key$weights) && !anyNA(key$weights) &&
+        all(is.finite(key$weights)) &&
+        length(key$weights) == length(key$dependencies)
+    )
+  }
+  if(!identical(key$type, "random_summary")){
+    return(FALSE)
+  }
+  scalar_character <- function(value, allow_empty = FALSE){
+    is.character(value) && length(value) == 1L && !is.na(value) &&
+      (allow_empty || nzchar(value))
+  }
+  evaluators <- c(
+    "sd_total", "sd", "inclusion", "rho", "correlation",
+    "allocation", "allocation_inclusion"
+  )
+  if(!scalar_character(key$evaluator) ||
+     !key$evaluator %in% evaluators ||
+     !scalar_character(key$formula_parameter, allow_empty = TRUE) ||
+     !scalar_character(key$random_block, allow_empty = TRUE) ||
+     !scalar_character(key$summary_name)){
+    return(FALSE)
+  }
+  if(identical(key$evaluator, "sd_total")){
+    return(scalar_character(key$prior_name))
+  }
+  if(key$evaluator %in% c("sd", "inclusion", "correlation")){
+    return(
+      is.numeric(key$index) && length(key$index) == 1L &&
+        !is.na(key$index) && key$index == as.integer(key$index) &&
+        key$index >= 1L
+    )
+  }
+  if(key$evaluator %in% c("allocation", "allocation_inclusion")){
+    return(
+      scalar_character(key$allocation_label) &&
+        is.numeric(key$index) && length(key$index) == 1L &&
+        !is.na(key$index) && key$index == as.integer(key$index) &&
+        key$index >= 1L
+    )
+  }
+  identical(key$evaluator, "rho")
 }
 
 .bt_validate_parameter_catalog_tables <- function(
@@ -1223,7 +1588,8 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
     stop("Parameter catalog aliases reference unknown quantity IDs. Refit or rebuild the catalog with this version of BayesTools.",
          call. = FALSE)
   }
-  valid_keys <- vapply(quantities$extraction_key, function(key){
+  valid_keys <- vapply(seq_len(nrow(quantities)), function(i){
+    key <- quantities$extraction_key[[i]]
     valid <- is.list(key) && is.character(key$type) && length(key$type) == 1L &&
       !is.na(key$type) && nzchar(key$type) &&
       is.character(key$dependencies) && !anyNA(key$dependencies) &&
@@ -1231,14 +1597,13 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
     if(!isTRUE(valid)){
       return(FALSE)
     }
-    if(identical(key$type, "factor_level")){
-      return(
-        is.numeric(key$weights) && !anyNA(key$weights) &&
-          all(is.finite(key$weights)) &&
-          length(key$weights) == length(key$dependencies)
-      )
+    if(!identical(quantities$provider[i], "BayesTools")){
+      return(TRUE)
     }
-    TRUE
+    .bt_parameter_catalog_valid_native_key(
+      key,
+      quantities[i, , drop = FALSE]
+    )
   }, logical(1))
   if(!all(valid_keys)){
     stop("Parameter catalog extraction keys are malformed. Refit or rebuild the catalog with this version of BayesTools.",
@@ -1378,6 +1743,37 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
   allocations[[which(matches)]]
 }
 
+.bt_parameter_catalog_complete_cholesky_triangle <- function(random_term,
+                                                             model_samples){
+
+  structure <- .bt_random_effect_summary_term_structure(random_term)
+  correlation <- .bt_random_effect_correlation_metadata(
+    random_term,
+    structure = structure,
+    context = "Parameter catalog"
+  )
+  if(is.null(correlation) || !identical(correlation$type, "lkj") ||
+     random_term$n_columns < 2L){
+    return(model_samples)
+  }
+  names <- .bt_random_effect_cholesky_names(
+    random_term,
+    random_term$n_columns
+  )
+  upper_names <- names[upper.tri(names)]
+  missing <- upper_names[!upper_names %in% colnames(model_samples)]
+  if(length(missing) == 0L){
+    return(model_samples)
+  }
+  zeroes <- matrix(
+    0,
+    nrow = nrow(model_samples),
+    ncol = length(missing),
+    dimnames = list(NULL, missing)
+  )
+  cbind(model_samples, zeroes)
+}
+
 .bt_parameter_draw_random_summary <- function(fit, key, model_samples){
 
   prior_list <- attr(fit, "prior_list", exact = TRUE)
@@ -1394,6 +1790,12 @@ parameter_draws.BayesTools_fit <- function(object, selection, ...){
     .bt_parameter_catalog_find_random_term(fit, key)
   }else{
     NULL
+  }
+  if(!is.null(random_term)){
+    model_samples <- .bt_parameter_catalog_complete_cholesky_triangle(
+      random_term,
+      model_samples
+    )
   }
   if(identical(evaluator, "sd")){
     summary <- .bt_random_effect_summary_sd_samples(

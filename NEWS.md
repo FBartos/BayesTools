@@ -39,7 +39,8 @@
 - `as_marginal_inference()` conditional marginal summaries use active-subset conditioning: each marginal level conditions only on requested parameters with nonzero weight in that level's linear combination, and levels with no active requested conditionals use the fully averaged context
 
 ### Fixes
-- exposes every fitted factor level and interaction cell as a named coefficient-level catalog quantity, using injective named-cell components, direct coordinates, structural zeroes, or the persisted term-only contrast transformation for treatment, independent, mean-difference, orthonormal, and ordered encodings
+- exposes every fitted factor level and interaction cell as a named coefficient-level catalog quantity, using injective named-cell components, semantic display labels, direct coordinates, structural zeroes, or the persisted term-only contrast transformation for treatment, independent, mean-difference, orthonormal, and ordered encodings; incomplete factor registries now fail closed and boundary whitespace remains resolvable
+- finalizes parameter-catalog schema 3 by reusing identity random-effect coordinates with their sampled or structural provenance, hiding transformed fitted-scale and private implementation rows, declaring only evaluator dependencies, validating native extraction recipes, and reserving the `BayesTools` provider namespace
 - preserves exact finite transformed-support endpoints through structural
   transformation provenance, avoiding round-trip misclassification for
   transformations such as negative powers of truncated positive priors
@@ -52,7 +53,7 @@
 - resolves level-qualified hypothesis symbols through semantic catalog components, including multiple factor levels in the same hypothesis, instead of dropping the level and reporting the factor term as ambiguous
 - fixes bridge-sampling bound validation by requiring named lower and upper bounds that match `add_parameters`
 - hardens JAGS build discovery by adding non-default Unix rpath flags, enforcing JAGS >= 4.3.0 when the version is discoverable, removing unused JAGS major-version compile defines, and making Windows JAGS root detection robust to spaces and semantic version ordering
-- hardens fixture test infrastructure by routing hypothesis bridge comparisons through shared cache-currency validation, registering indexed JAGS parameter tests in the unit profile, and expanding random-effect source/function hashes that invalidate fitted-model caches
+- hardens fixture test infrastructure by routing hypothesis bridge comparisons through shared cache-currency validation, registering indexed JAGS parameter tests in the unit profile, and expanding random-effect and fitted-metadata source hashes that invalidate fitted-model caches
 - resolves package-defined factor contrasts inside the namespace across fixed, random-effect, prediction, and marginal-posterior design matrices, so `BayesTools::` calls do not require attaching the package
 
 # version 0.3.0

@@ -66,10 +66,16 @@ syntax-sensitive characters are percent-escaped and ambiguous interaction
 tokens are quoted so that every component remains hypothesis-safe and
 injective. These are coefficient-level quantities, distinct from estimated
 marginal means based on full predictions.
+Identity random-effect summaries reuse their sampled or structural registry
+coordinate. Summaries requiring a scale or covariance transformation expose
+only the transformed quantity; their fitted-scale inputs and all other
+private implementation coordinates remain dependencies rather than public
+catalog rows.
 Constructing or resolving the catalog never accesses posterior draws.
 
 \code{parameter_catalog_extend()} adds plain-data quantities and aliases owned by
-another provider. \code{parameter_catalog_resolve()} applies optional namespace
+another provider; the \code{"BayesTools"} provider name is reserved for native
+quantities. \code{parameter_catalog_resolve()} applies optional namespace
 and component filters and returns a versioned selection only when the match
 is unique.
 
