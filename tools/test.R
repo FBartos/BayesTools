@@ -1,9 +1,19 @@
-args <- commandArgs(trailingOnly = TRUE)
-profile <- if(length(args) > 0L && nzchar(args[[1L]])) args[[1L]] else "all"
+cache_dir <- file.path(
+  "C:/R-Packages/temp",
+  paste0("BayesTools_test_files-", format(Sys.time(), "%Y%m%d-%H%M%S"))
+)
+dir.create(cache_dir, recursive = TRUE)
 
 Sys.setenv(
-  BAYESTOOLS_TEST_PROFILE = profile,
-  BAYESTOOLS_TEST_SKIP_REFIT = "false"
+  AGENT                       = "1",
+  BAYESTOOLS_TEST_PROFILE     = "all",
+  BAYESTOOLS_TEST_FILES_DIR   = normalizePath(cache_dir, winslash = "/"),
+  BAYESTOOLS_TEST_SKIP_REFIT  = "false",
+  NOT_CRAN                    = "true",
+  VDIFFR_RUN_TESTS            = "true"
 )
 
-source(file.path("tools", "test-profile.R"))
+devtools::test(
+  stop_on_failure = TRUE,
+  reporter = testthat::LlmReporter$new()
+)

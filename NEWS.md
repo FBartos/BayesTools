@@ -44,6 +44,10 @@
 - `as_marginal_inference()` conditional marginal summaries use active-subset conditioning: each marginal level conditions only on requested parameters with nonzero weight in that level's linear combination, and levels with no active requested conditionals use the fully averaged context
 
 ### Fixes
+- evaluates transformed prior density grids on the displayed plotting range,
+  including valid zero boundaries, and propagates that range to marginal-prior
+  plots instead of exponentiating user-facing axis limits as fitted-scale
+  coordinates
 - resolves one density-to-probability mapping from `ylim` and `ylim2` for the
   secondary axis and all point masses, and reuses it for base posterior and
   prior line overlays across fitted objects; out-of-range overlays warn instead

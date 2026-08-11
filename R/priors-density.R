@@ -117,8 +117,20 @@ density.prior <- function(x,
 
   # specify it on the transformed range if requested
   if(transformation_settings & !is.null(transformation)){
-    x_seq   <- .density.prior_transformation_inv_x(x_seq,   transformation, transformation_arguments)
-    x_range <- .density.prior_transformation_inv_x(x_range, transformation, transformation_arguments)
+    x_seq <- suppressWarnings(.density.prior_transformation_inv_x(
+      x_seq,
+      transformation,
+      transformation_arguments
+    ))
+    x_seq <- x_seq[is.finite(x_seq)]
+    if(length(x_seq) == 0L){
+      stop(
+        "The transformed plotting range does not contain values in the ",
+        "transformation domain.",
+        call. = FALSE
+      )
+    }
+    x_range <- range(x_seq)
   }
 
 

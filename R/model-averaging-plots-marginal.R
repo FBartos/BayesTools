@@ -48,6 +48,7 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
 
   plot_data <- .plot_data_marginal_samples(samples, parameter = parameter, prior = prior, n_points = n_points,
                                            transformation = transformation, transformation_arguments = transformation_arguments, transformation_settings = transformation_settings,
+                                           x_range = xlim,
                                            density_method = density_method)
 
 
@@ -121,6 +122,7 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
 }
 
 .plot_data_marginal_samples     <- function(samples, parameter, prior, n_points, transformation, transformation_arguments, transformation_settings,
+                                            x_range = NULL,
                                             density_method = c("KDE", "precomputed")){
 
   check_list(samples, "samples", check_names = parameter, allow_other = TRUE)
@@ -173,6 +175,7 @@ plot_marginal <- function(samples, parameter, plot_type = "base", prior = FALSE,
       out_den.prior <- .prior_linear_density_to_plot_data(
         prior_densities[[i]],
         n_points                  = n_points,
+        x_range                   = x_range,
         transformation            = transformation,
         transformation_arguments  = transformation_arguments,
         transformation_settings   = transformation_settings,

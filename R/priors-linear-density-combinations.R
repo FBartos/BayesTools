@@ -1053,52 +1053,114 @@
   check_real(x_range, "x_range", check_length = 2, allow_NULL = TRUE)
   .check_transformation_input(transformation, transformation_arguments, transformation_settings)
 
-  dist <- x
+  dist                <- x
+  transformed_x_range <- NULL
   if(!is.null(transformation) && transformation_settings && !is.null(x_range)){
-    x_range <- .density.prior_transformation_inv_x(x_range, transformation, transformation_arguments)
+    transformed_x_range <- x_range
+    x_range <- suppressWarnings(.density.prior_transformation_inv_x(
+      x_range,
+      transformation,
+      transformation_arguments
+    ))
   }
 
   out <- list()
 
   if(!is.null(dist$density) && dist$density$mass > 0){
-    if(is.null(x_range)){
-      x_den <- seq(min(dist$density$x), max(dist$density$x), length.out = n_points)
+    if(!is.null(transformed_x_range)){
+      x_den <- seq(transformed_x_range[1], transformed_x_range[2], length.out = n_points)
+      x_raw <- suppressWarnings(.density.prior_transformation_inv_x(
+        x_den,
+        transformation,
+        transformation_arguments
+      ))
+    }else if(is.null(x_range)){
+      x_raw <- seq(min(dist$density$x), max(dist$density$x), length.out = n_points)
     }else{
-      x_den <- seq(x_range[1], x_range[2], length.out = n_points)
+      x_raw <- seq(x_range[1], x_range[2], length.out = n_points)
     }
-    y_den <- stats::approx(dist$density$x, dist$density$y, xout = x_den, yleft = 0, yright = 0)$y
+
+    finite_raw <- is.finite(x_raw)
+    y_den      <- rep(NA_real_, length(x_raw))
+    evaluator  <- attr(dist, "density_evaluator", exact = TRUE)
+    if(any(finite_raw) && is.function(evaluator)){
+      evaluated <- evaluator(x_raw[finite_raw])
+      if(!is.numeric(evaluated) || length(evaluated) != sum(finite_raw) ||
+         anyNA(evaluated)){
+        stop("The analytic prior density evaluator returned invalid values.",
+             call. = FALSE)
+      }
+      y_den[finite_raw] <- evaluated
+    }else if(any(finite_raw)){
+      y_den[finite_raw] <- stats::approx(
+        dist$density$x,
+        dist$density$y,
+        xout   = x_raw[finite_raw],
+        yleft  = 0,
+        yright = 0
+      )$y
+    }
     y_den <- y_den * dist$density$mass
 
     if(!is.null(transformation)){
-      x_den <- .density.prior_transformation_x(x_den, transformation, transformation_arguments)
-      y_den <- .density.prior_transformation_y(x_den, y_den, transformation, transformation_arguments)
+      if(is.null(transformed_x_range)){
+        x_den <- .density.prior_transformation_x(
+          x_raw,
+          transformation,
+          transformation_arguments
+        )
+      }
+      y_transformed <- rep(NA_real_, length(y_den))
+      y_transformed[finite_raw] <- .density.prior_transformation_y(
+        x_den[finite_raw],
+        y_den[finite_raw],
+        transformation,
+        transformation_arguments
+      )
+      y_den <- y_transformed
+    }else{
+      x_den <- x_raw
     }
 
-    out_den <- list(
-      call    = call("density", "linear-combination prior"),
-      bw      = NULL,
-      n       = n_points,
-      x       = x_den,
-      y       = y_den,
-      samples = NULL
-    )
-    class(out_den) <- c("density", "density.prior", "density.prior.simple",
-                        if(factor) "density.prior.factor")
-    attr(out_den, "x_range") <- range(x_den)
-    attr(out_den, "y_range") <- c(0, max(y_den, 0, na.rm = TRUE))
-    if(!is.null(level)) attr(out_den, "level") <- level
-    if(!is.null(level_name)) attr(out_den, "level_name") <- level_name
-    out[["density"]] <- out_den
+    finite <- is.finite(x_den) & is.finite(y_den)
+    x_den  <- x_den[finite]
+    y_den  <- y_den[finite]
+
+    if(length(x_den) > 0L){
+      out_den <- list(
+        call    = call("density", "linear-combination prior"),
+        bw      = NULL,
+        n       = n_points,
+        x       = x_den,
+        y       = y_den,
+        samples = NULL
+      )
+      class(out_den) <- c("density", "density.prior", "density.prior.simple",
+                          if(factor) "density.prior.factor")
+      attr(out_den, "x_range") <- range(x_den)
+      attr(out_den, "y_range") <- c(0, max(y_den, 0, na.rm = TRUE))
+      if(!is.null(level)) attr(out_den, "level") <- level
+      if(!is.null(level_name)) attr(out_den, "level_name") <- level_name
+      out[["density"]] <- out_den
+    }
   }
 
   points <- dist$points
   if(!is.null(points) && nrow(points) > 0){
     points <- points[points$p > 0, , drop = FALSE]
-    if(!is.null(x_range)){
+    if(!is.null(x_range) && is.null(transformed_x_range)){
       points <- points[points$x >= min(x_range) & points$x <= max(x_range), , drop = FALSE]
     }
     if(nrow(points) > 0 && !is.null(transformation)){
       points$x <- .density.prior_transformation_x(points$x, transformation, transformation_arguments)
+    }
+    if(nrow(points) > 0 && !is.null(transformed_x_range)){
+      points <- points[
+        points$x >= min(transformed_x_range) &
+        points$x <= max(transformed_x_range),
+        ,
+        drop = FALSE
+      ]
     }
 
     for(i in seq_len(nrow(points))){

@@ -1196,6 +1196,81 @@ test_that("factor ggplot prior point layers use point plot data", {
   expect_equal(segment_data[["x"]], 0, tolerance = 1e-8)
 })
 
+test_that("transformed prior grids honor display-scale plotting ranges", {
+
+  normal_prior  <- prior("normal", list(0, 1))
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = normal_prior),
+    weights    = c(theta = 1),
+    n_grid     = 512
+  )
+  plot_data <- BayesTools:::.prior_linear_density_to_plot_data(
+    prior_density,
+    n_points                = 1001,
+    x_range                 = c(0, 4),
+    transformation          = "exp",
+    transformation_settings = TRUE
+  )
+  density_data <- plot_data[["density"]]
+  expected_x   <- seq(0, 4, length.out = 1001)[-1]
+
+  expect_equal(density_data[["x"]], expected_x)
+  expect_equal(
+    density_data[["y"]],
+    stats::dnorm(log(expected_x)) / expected_x,
+    tolerance = sqrt(.Machine$double.eps)
+  )
+  expect_true(all(is.finite(density_data[["x"]])))
+  expect_true(all(is.finite(density_data[["y"]])))
+
+  direct_density <- density(
+    normal_prior,
+    x_range                 = c(0, 4),
+    n_points                = 1001,
+    transformation          = "exp",
+    transformation_settings = TRUE
+  )
+  expect_equal(direct_density[["x"]], expected_x)
+  expect_equal(
+    direct_density[["y"]],
+    stats::dnorm(log(expected_x)) / expected_x,
+    tolerance = sqrt(.Machine$double.eps)
+  )
+})
+
+test_that("marginal prior grids receive the displayed plotting range", {
+
+  set.seed(1)
+  prior_density <- BayesTools:::.prior_linear_combination_density(
+    prior_list = list(theta = prior("normal", list(0, 1))),
+    weights    = c(theta = 1),
+    n_grid     = 512
+  )
+  posterior <- stats::rnorm(100)
+  class(posterior) <- c(
+    "marginal_posterior.simple",
+    "marginal_posterior",
+    class(posterior)
+  )
+  attr(posterior, "prior_density")   <- prior_density
+  attr(posterior, "posterior_atoms") <- posterior_atom_attribute()
+
+  plot <- plot_marginal(
+    samples                 = list(theta = posterior),
+    parameter               = "theta",
+    prior                   = TRUE,
+    n_points                = 101,
+    transformation          = "exp",
+    transformation_settings = TRUE,
+    xlim                    = c(0, 2),
+    plot_type               = "ggplot"
+  )
+  prior_data <- plot[["layers"]][[1]][["data"]]
+
+  expect_equal(prior_data[["x"]], seq(0, 2, length.out = 101)[-1])
+  expect_true(all(is.finite(prior_data[["y"]])))
+})
+
 test_that("factor plot data normalization preserves unnamed points", {
 
   density_data <- BayesTools:::.prior_linear_density_to_plot_data(
