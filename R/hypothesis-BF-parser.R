@@ -329,13 +329,28 @@ hypothesis_normalize_level_references <- function(text){
      simple_fun %in% c("<", "<=", ">", ">=")){
     lhs_expr <- simple_expr[[2L]]
     rhs_expr <- simple_expr[[3L]]
+    lhs_symbols <- .hypothesis_expression_symbols(lhs_expr)
+    rhs_symbols <- .hypothesis_expression_symbols(rhs_expr)
+    if(length(lhs_symbols) == 0L && length(rhs_symbols) > 0L){
+      simple_fun <- switch(
+        simple_fun,
+        ">"  = "<",
+        ">=" = "<=",
+        "<"  = ">",
+        "<=" = ">="
+      )
+      swap_expr <- lhs_expr
+      lhs_expr  <- rhs_expr
+      rhs_expr  <- swap_expr
+      expr <- as.call(list(as.name(simple_fun), lhs_expr, rhs_expr))
+      rhs_symbols <- character()
+    }
     lhs <- .hypothesis_expression_text(lhs_expr)
     rhs <- .hypothesis_expression_text(rhs_expr)
-    rhs_symbols <- .hypothesis_expression_symbols(rhs_expr)
     return(list(
       type      = "region",
       label     = .hypothesis_display_text(side),
-      condition = side,
+      condition = .hypothesis_expression_text(expr),
       condition_expression = expr,
       expr      = lhs,
       expression = lhs_expr,
@@ -410,15 +425,23 @@ hypothesis_normalize_level_references <- function(text){
     )
   }
 
-  expression <- .hypothesis_parse_expression(lhs)
-  .hypothesis_validate_expression(expression, condition = FALSE)
+  lhs_expression <- .hypothesis_parse_expression(lhs)
+  .hypothesis_validate_expression(lhs_expression, condition = FALSE)
   rhs_expression <- .hypothesis_parse_expression(rhs)
+  lhs_symbols <- .hypothesis_expression_symbols(lhs_expression)
   rhs_symbols <- .hypothesis_expression_symbols(rhs_expression)
   if(length(rhs_symbols) == 0L){
+    expression <- lhs_expression
     value <- .hypothesis_parse_point_value(rhs)
+  }else if(length(lhs_symbols) == 0L){
+    .hypothesis_validate_expression(rhs_expression, condition = FALSE)
+    expression <- rhs_expression
+    value <- .hypothesis_parse_point_value(lhs)
   }else{
     .hypothesis_validate_expression(rhs_expression, condition = FALSE)
-    expression <- as.call(list(as.name("-"), expression, rhs_expression))
+    expression <- as.call(list(
+      as.name("-"), lhs_expression, rhs_expression
+    ))
     value <- 0
   }
   list(
@@ -428,7 +451,7 @@ hypothesis_normalize_level_references <- function(text){
       if(op == "!=") "!=" else "=",
       .hypothesis_display_text(rhs)
     ),
-    expr  = lhs,
+    expr  = .hypothesis_expression_text(expression),
     expression = expression,
     value = value
   )

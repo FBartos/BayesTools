@@ -124,6 +124,52 @@ test_that("point hypotheses accept literals or symbolic right-hand sides", {
 })
 
 
+test_that("constant-left relations use the canonical scalar target", {
+
+  reversed <- hypothesis_parse("0 > theta vs 0 = theta")
+  expect_identical(
+    hypothesis_render(reversed),
+    "theta < 0 vs theta = 0"
+  )
+  expect_identical(
+    reversed$statements[[1L]]$left$label,
+    "0 > theta"
+  )
+  expect_identical(
+    reversed$statements[[1L]]$right$label,
+    "0 = theta"
+  )
+
+  point_reference <- hypothesis_parse_point_reference(
+    "0 > theta vs 0 = theta"
+  )
+  expect_true(point_reference[["direct"]])
+  expect_identical(point_reference[["symbol"]], "theta")
+
+  set.seed(10)
+  prior     <- stats::rnorm(2000)
+  posterior <- stats::rnorm(2000, mean = 0.3)
+  reversed_BF <- hypothesis_BF(
+    posterior      = posterior,
+    prior          = prior,
+    hypothesis     = "0 > theta vs 0 = theta",
+    parameter      = "theta",
+    density_method = "normal"
+  )
+  canonical_BF <- hypothesis_BF(
+    posterior      = posterior,
+    prior          = prior,
+    hypothesis     = "theta < 0 vs theta = 0",
+    parameter      = "theta",
+    density_method = "normal"
+  )
+  expect_equal(
+    attr(reversed_BF, "raw_BF"),
+    attr(canonical_BF, "raw_BF")
+  )
+})
+
+
 test_that("escaped reserved identifiers take precedence over R constants", {
 
   reserved <- c("Inf", "NaN", "NA", "TRUE", "FALSE")

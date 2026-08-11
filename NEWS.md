@@ -2,7 +2,9 @@
 ### Features
 - adds `hypothesis_level_contrast()` for certifying atom-free pairwise level
   contrasts with an exact joint-prior ordinate, and normalizes symbolic
-  point equalities such as `theta = phi` to a difference from zero
+  point equalities such as `theta = phi` to a difference from zero; constant-
+  left relations such as `0 > theta` and `0 = theta` are canonicalized to the
+  equivalent parameter-left forms
 - adds `JAGS_formula_coefficient_transform()` and `JAGS_formula_prior_density()` for versioned fitted-to-original coefficient maps and exact induced prior measures, including structural point values, interactions, log-intercept Jacobians, and model-mixture atoms
 - adds a versioned `hypothesis_parse()` syntax tree with stable rendering, exact symbol discovery and rewriting, parameter-catalog resolution, and direct `hypothesis_BF()` consumption without reparsing expression text
 - adds a cached metadata-only `parameter_catalog()` with versioned quantity and alias tables, classed exact resolution, validated provider extensions, and deferred `parameter_draws()` extraction for registry coordinates and declared random-effect summaries

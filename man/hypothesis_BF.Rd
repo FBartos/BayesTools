@@ -108,7 +108,9 @@ and the one-argument functions \code{abs()}, \code{exp()}, \code{log()},
 arithmetic subexpression must evaluate to one finite number. A point value
 may be one finite numeric literal, optionally preceded by one unary sign, or
 another parameter expression. Symbolic right-hand sides are normalized to a
-difference from zero.
+difference from zero. Relations with a constant on the left and a parameter
+expression on the right are normalized to the equivalent parameter-left
+form.
 
 Equality defines a point hypothesis and may appear only as the top-level
 relation of a statement. It cannot be parenthesized inside, negated, or
@@ -124,6 +126,7 @@ rejected.
 \strong{Form} \tab \strong{Status} \tab \strong{Reason} \cr
 \code{theta = -0.5} \tab accepted \tab point with a finite literal \cr
 \code{theta = phi} \tab accepted \tab normalized to \code{theta - phi = 0} \cr
+\code{0 > theta} \tab accepted \tab normalized to \code{theta < 0} \cr
 \code{(theta > 0)} \tab accepted \tab parenthesized region \cr
 \code{!(theta > 0)} \tab accepted \tab negated region \cr
 \code{theta > 0 & abs(phi) < 2} \tab accepted \tab combined regions \cr
