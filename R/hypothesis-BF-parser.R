@@ -412,7 +412,15 @@ hypothesis_normalize_level_references <- function(text){
 
   expression <- .hypothesis_parse_expression(lhs)
   .hypothesis_validate_expression(expression, condition = FALSE)
-  value <- .hypothesis_parse_point_value(rhs)
+  rhs_expression <- .hypothesis_parse_expression(rhs)
+  rhs_symbols <- .hypothesis_expression_symbols(rhs_expression)
+  if(length(rhs_symbols) == 0L){
+    value <- .hypothesis_parse_point_value(rhs)
+  }else{
+    .hypothesis_validate_expression(rhs_expression, condition = FALSE)
+    expression <- as.call(list(as.name("-"), expression, rhs_expression))
+    value <- 0
+  }
   list(
     type  = if(op == "!=") "not_point" else "point",
     label = paste(

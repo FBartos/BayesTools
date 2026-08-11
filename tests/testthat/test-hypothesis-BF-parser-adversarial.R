@@ -92,7 +92,7 @@ test_that("hypothesis parser implements the documented region grammar", {
 })
 
 
-test_that("point hypotheses require one finite literal with one optional sign", {
+test_that("point hypotheses accept literals or symbolic right-hand sides", {
 
   parsed <- lapply(
     c("theta = -0.5", "theta == +2", "theta != 3"),
@@ -103,11 +103,17 @@ test_that("point hypotheses require one finite literal with one optional sign", 
     c(-0.5, 2, 3)
   )
 
+  symbolic <- hypothesis_parse("theta = other")
+  expect_identical(
+    hypothesis_render(symbolic),
+    "theta - other = 0"
+  )
+  expect_identical(symbolic$statements[[1L]]$left$label, "theta = other")
+
   for(hypothesis in c(
     "theta = 1 + 1",
     "theta = --1",
-    "theta = Inf",
-    "theta = other"
+    "theta = Inf"
   )){
     expect_error(
       BayesTools:::.parse_hypothesis_BF(hypothesis),

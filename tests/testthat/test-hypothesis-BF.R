@@ -433,9 +433,8 @@ test_that("hypothesis parser helpers expose point and level references", {
     hypothesis_parse_point_reference("theta + 0 = 0", allow_compound = FALSE),
     "not a direct"
   )
-  expect_error(
-    hypothesis_parse_point_reference("theta = other"),
-    "numeric value"
+  expect_false(
+    hypothesis_parse_point_reference("theta = other")[["direct"]]
   )
 
   refs <- hypothesis_parse_level_reference(c("theta[ a ]", "theta"))
@@ -1136,6 +1135,131 @@ test_that("hypothesis_BF uses child precomputed density for explicit level point
   expect_equal(out[["posterior"]], 0.50, tolerance = 1e-12)
   expect_equal(as.numeric(out[["BF_error"]]), 3, tolerance = 1e-12)
   expect_equal(out[["method"]], "Savage-Dickey (precomputed)")
+})
+
+
+test_that("hypothesis_level_contrast compiles an exact atom-free contrast", {
+
+  context <- BayesTools:::.prior_density_context(
+    prior_list   = list(
+      alt  = prior("normal", list(mean = 0, sd = 1)),
+      rand = prior("normal", list(mean = 0, sd = 1))
+    ),
+    column_names = c("alt", "rand"),
+    n_grid       = 128
+  )
+  posterior <- list(
+    alternate = structure(
+      c(rep(1, 80), rep(-1, 20)),
+      class          = c("marginal_posterior.simple", "numeric"),
+      linear_weights = c(alt = 1, rand = 0),
+      posterior_atoms = posterior_atom_attribute()
+    ),
+    random = structure(
+      rep(0, 100),
+      class          = c("marginal_posterior.simple", "numeric"),
+      linear_weights = c(alt = 0, rand = 1),
+      posterior_atoms = posterior_atom_attribute()
+    )
+  )
+  class(posterior) <- c("list", "marginal_posterior.factor", "marginal_posterior")
+  attr(posterior, "parameter")             <- "mu_alloc"
+  attr(posterior, "prior_density_context") <- context
+
+  target <- hypothesis_level_contrast(
+    posterior  = posterior,
+    hypothesis = paste(
+      "mu_alloc[alternate] > mu_alloc[random] vs",
+      "mu_alloc[alternate] = mu_alloc[random]"
+    ),
+    parameter  = "mu_alloc"
+  )
+
+  expect_equal(as.numeric(target$posterior),
+               as.numeric(posterior$alternate - posterior$random))
+  expect_identical(target$weights, c(alt = 1, rand = -1))
+  expect_identical(
+    hypothesis_render(target$hypothesis),
+    paste(
+      ".BayesTools_level_contrast > 0 vs",
+      ".BayesTools_level_contrast = 0"
+    )
+  )
+  ordinate <- prior_density_ordinate(
+    attr(target$posterior, "prior_density", exact = TRUE),
+    0
+  )
+  expect_true(ordinate$exact)
+  expect_equal(ordinate$log_density, stats::dnorm(0, sd = sqrt(2), log = TRUE),
+               tolerance = 1e-8)
+  out <- hypothesis_BF(
+    posterior  = target$posterior,
+    hypothesis = target$hypothesis,
+    parameter  = target$parameter,
+    columns    = "all"
+  )
+  expect_true(is.finite(attr(out, "raw_BF")))
+  expect_identical(out$method, "transitive Savage-Dickey")
+
+  expect_error(
+    hypothesis_level_contrast(
+      posterior  = posterior,
+      hypothesis = paste(
+        "mu_alloc[alternate] > mu_alloc[random] vs",
+        "mu_alloc[alternate] + mu_alloc[random] = 0"
+      ),
+      parameter  = "mu_alloc"
+    ),
+    "same ordered level contrast|unscaled difference"
+  )
+  expect_error(
+    hypothesis_level_contrast(
+      posterior  = posterior,
+      hypothesis = paste(
+        "2 * mu_alloc[alternate] - mu_alloc[random] > 0 vs",
+        "2 * mu_alloc[alternate] - mu_alloc[random] = 0"
+      ),
+      parameter  = "mu_alloc"
+    ),
+    "unscaled difference"
+  )
+
+  posterior_with_baseline <- posterior
+  posterior_with_baseline$baseline <- structure(
+    rep(0, 100),
+    class           = c("marginal_posterior.simple", "numeric"),
+    linear_weights  = c(alt = 0, rand = 0),
+    posterior_atoms =
+    posterior_atom_attribute(
+      data.frame(x = 0, mass = 1)
+    )
+  )
+  baseline_target <- hypothesis_level_contrast(
+    posterior  = posterior_with_baseline,
+    hypothesis = paste(
+      "mu_alloc[random] > mu_alloc[baseline] vs",
+      "mu_alloc[random] = mu_alloc[baseline]"
+    ),
+    parameter  = "mu_alloc"
+  )
+  expect_equal(
+    as.vector(baseline_target$posterior),
+    as.vector(posterior$random)
+  )
+
+  posterior_without_declaration <- posterior
+  attr(posterior_without_declaration$alternate, "posterior_atoms") <- NULL
+  expect_error(
+    hypothesis_level_contrast(
+      posterior  = posterior_without_declaration,
+      hypothesis = paste(
+        "mu_alloc[alternate] > mu_alloc[random] vs",
+        "mu_alloc[alternate] = mu_alloc[random]"
+      ),
+      parameter  = "mu_alloc"
+    ),
+    "posterior-atom declarations"
+  )
 })
 
 test_that("hypothesis_BF uses parent precomputed metadata for level point nulls", {

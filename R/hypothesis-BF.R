@@ -75,9 +75,10 @@
 #' literals, parentheses, \code{+}, \code{-}, \code{*}, \code{/}, \code{^},
 #' and the one-argument functions \code{abs()}, \code{exp()}, \code{log()},
 #' \code{sqrt()}, \code{plogis()}, and \code{qlogis()}. Every constant
-#' arithmetic subexpression must evaluate to one finite number. Point values
-#' are stricter: the right side must be one finite numeric literal, optionally
-#' preceded by one unary sign.
+#' arithmetic subexpression must evaluate to one finite number. A point value
+#' may be one finite numeric literal, optionally preceded by one unary sign, or
+#' another parameter expression. Symbolic right-hand sides are normalized to a
+#' difference from zero.
 #'
 #' Equality defines a point hypothesis and may appear only as the top-level
 #' relation of a statement. It cannot be parenthesized inside, negated, or
@@ -92,12 +93,13 @@
 #' \tabular{lll}{
 #' \strong{Form} \tab \strong{Status} \tab \strong{Reason} \cr
 #' \code{theta = -0.5} \tab accepted \tab point with a finite literal \cr
+#' \code{theta = phi} \tab accepted \tab normalized to \code{theta - phi = 0} \cr
 #' \code{(theta > 0)} \tab accepted \tab parenthesized region \cr
 #' \code{!(theta > 0)} \tab accepted \tab negated region \cr
 #' \code{theta > 0 & abs(phi) < 2} \tab accepted \tab combined regions \cr
 #' \code{`Inf` > 0} \tab accepted \tab escaped parameter identifier \cr
 #' \code{!(theta == 0)} \tab rejected \tab point equalities cannot be negated \cr
-#' \code{theta = 1 + 1} \tab rejected \tab point value is not one literal \cr
+#' \code{theta = 1 + 1} \tab rejected \tab constant point value is not one literal \cr
 #' \code{theta > 0 && phi < 1} \tab rejected \tab scalar boolean operator \cr
 #' \code{sin(theta) > 0} \tab rejected \tab function outside the whitelist
 #' }
