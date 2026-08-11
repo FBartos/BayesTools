@@ -20,7 +20,8 @@ hypothesis_normalize_level_references(text)
 instead of rejected.}
 
 \item{text}{character vector with possible \code{parameter[level]}
-references.}
+references. Formula interaction names such as \code{factor:moderator[level]}
+may be supplied without backticks.}
 }
 \value{
 \code{hypothesis_parse_point_reference()} returns a data frame with

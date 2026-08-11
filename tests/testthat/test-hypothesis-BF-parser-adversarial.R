@@ -26,6 +26,16 @@ test_that("level-reference normalization preserves explicit escaping", {
   ))
   expect_equal(parsed[["parameter"]], rep("mu alloc", 3L))
   expect_equal(parsed[["level"]], c("level A", "a & b", "a vs b"))
+
+  interactions <- c("alloc:ablat[random]", "a:b:c[level]")
+  expect_equal(
+    hypothesis_normalize_level_references(interactions),
+    paste0("`", interactions, "`")
+  )
+  parsed_interactions <- hypothesis_parse_level_reference(interactions)
+  expect_true(all(parsed_interactions[["direct"]]))
+  expect_equal(parsed_interactions[["parameter"]], c("alloc:ablat", "a:b:c"))
+  expect_equal(parsed_interactions[["level"]], c("random", "level"))
 })
 
 

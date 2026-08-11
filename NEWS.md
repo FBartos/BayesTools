@@ -33,6 +33,8 @@
 - adds a `RandomEffects` vignette comparing BayesTools formula random effects with lme4 and rstanarm examples
 
 ### Changes
+- hypothesis parsing now accepts unquoted colon-separated formula interaction
+  level references such as `factor:moderator[level]`
 - `as_marginal_inference(compute_BF = FALSE)` now returns averaged and conditional marginal posteriors without computing inclusion Bayes factors
 - deterministic scalar, multivariate, and factor point-prior parameters are now monitored and retained as structural posterior columns
 - `JAGS_bridgesampling()` now evaluates zero-dimensional fixed-parameter models exactly instead of requiring an artificial sampled parameter

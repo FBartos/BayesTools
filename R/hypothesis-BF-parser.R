@@ -8,7 +8,8 @@
 #' \code{"theta + 0 = 0"} should be returned with \code{direct = FALSE}
 #' instead of rejected.
 #' @param text character vector with possible \code{parameter[level]}
-#' references.
+#' references. Formula interaction names such as \code{factor:moderator[level]}
+#' may be supplied without backticks.
 #'
 #' @return \code{hypothesis_parse_point_reference()} returns a data frame with
 #' columns \code{hypothesis}, \code{side}, \code{symbol}, \code{parameter},
@@ -217,7 +218,7 @@ hypothesis_normalize_level_references <- function(text){
   for(i in seq_along(pieces)){
     if(i %% 2L == 1L){
       pieces[[i]] <- gsub(
-        "\\b([A-Za-z.][A-Za-z0-9._]*)\\s*\\[\\s*([^\\]\\[]+)\\s*\\]",
+        "\\b([A-Za-z.][A-Za-z0-9._]*(?::[A-Za-z.][A-Za-z0-9._]*)*)\\s*\\[\\s*([^\\]\\[]+)\\s*\\]",
         "`\\1[\\2]`",
         pieces[[i]],
         perl = TRUE

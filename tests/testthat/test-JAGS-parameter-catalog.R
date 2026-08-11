@@ -444,7 +444,7 @@ test_that("factor interaction cells use only their persisted term design", {
                      derived$extraction_key[[1L]]$dependencies))
 
   resolved <- hypothesis_resolve(
-    hypothesis_parse("`f:g[f=b, g=v]` > 0"),
+    hypothesis_parse("f:g[f=b, g=v] > 0"),
     catalog,
     namespace = "mu"
   )
