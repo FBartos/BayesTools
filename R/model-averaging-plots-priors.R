@@ -136,7 +136,10 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   main      <- ""
   xlab      <- if(!is.null(par_name)) par_name else ""
 
-  if(is.null(scale_y2)) scale_y2  <- .get_scale_y2(plot_data, dots)
+  if(is.null(scale_y2) && plot_type == "base" && add){
+    scale_y2 <- .plot_scale_y2_current()
+  }
+  if(is.null(scale_y2)) scale_y2 <- .get_scale_y2(plot_data, dots)
 
   if(any(sapply(plot_data, inherits, what = "density.prior.simple")) & any(sapply(plot_data, inherits, what = "density.prior.point"))){
     type  <- "both"
@@ -173,6 +176,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
     if(!add){
       .plot.prior_empty(type, dots)
+      .plot_scale_y2_remember(if(type == "both") scale_y2 else NULL)
     }
 
     for(i in seq_along(plot_data)){
@@ -360,7 +364,10 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   main      <- ""
   xlab      <- if(!is.null(par_name)) par_name else ""
 
-  if(is.null(scale_y2)) scale_y2  <- .get_scale_y2(plot_data, dots)
+  if(is.null(scale_y2) && plot_type == "base" && add){
+    scale_y2 <- .plot_scale_y2_current()
+  }
+  if(is.null(scale_y2)) scale_y2 <- .get_scale_y2(plot_data, dots)
 
   if(any(sapply(plot_data, inherits, what = "density.prior.simple")) & any(sapply(plot_data, inherits, what = "density.prior.point"))){
     type  <- "both"
@@ -465,6 +472,7 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
     if(!add){
       .plot.prior_empty(type, dots)
+      .plot_scale_y2_remember(if(type == "both") scale_y2 else NULL)
     }
 
     # plot points

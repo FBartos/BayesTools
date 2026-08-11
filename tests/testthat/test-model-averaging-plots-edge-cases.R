@@ -396,6 +396,75 @@ test_that("posterior plot data separates spike mass from continuous samples", {
   expect_equal(sum(plot_data$density$y) * dx, .7, tolerance = .08)
 })
 
+test_that("posterior base overlays reuse the active probability scale", {
+
+  make_samples <- function(point_count, continuous){
+
+    theta <- c(rep(0, point_count), continuous)
+    attr(theta, "models_ind") <- c(
+      rep(1L, point_count),
+      rep(2L, length(continuous))
+    )
+    attr(theta, "prior_list") <- list(
+      prior("point", list(location = 0)),
+      prior("normal", list(mean = 0, sd = 1))
+    )
+    class(theta) <- c("mixed_posteriors.simple", "mixed_posteriors")
+
+    return(list(theta = theta))
+  }
+
+  base_samples <- make_samples(
+    point_count = 50,
+    continuous  = seq(-0.1, 0.1, length.out = 50)
+  )
+  overlay_samples <- make_samples(
+    point_count = 60,
+    continuous  = seq(-5, 5, length.out = 40)
+  )
+
+  scales <- numeric()
+  testthat::local_mocked_bindings(
+    .lines.prior.point = function(plot_data, scale_y2 = 1, ...){
+
+      scales <<- c(scales, scale_y2)
+      return(invisible(NULL))
+    },
+    .package = "BayesTools"
+  )
+
+  file <- tempfile(fileext = ".png")
+  grDevices::png(file)
+  on.exit({
+    grDevices::dev.off()
+    unlink(file)
+  }, add = TRUE)
+
+  plot_posterior(base_samples, "theta", prior = TRUE)
+  base_scale <- tail(scales, 1L)
+
+  overlay_data <- BayesTools:::.plot_data_samples.simple(
+    samples                  = overlay_samples,
+    parameter                = "theta",
+    n_points                 = 1000,
+    transformation           = NULL,
+    transformation_arguments = NULL,
+    transformation_settings  = FALSE
+  )
+  overlay_scale <- BayesTools:::.get_scale_y2(overlay_data)
+  expect_false(isTRUE(all.equal(base_scale, overlay_scale)))
+
+  plot_posterior(overlay_samples, "theta", add = TRUE)
+  expect_equal(tail(scales, 1L), base_scale, tolerance = 1e-12)
+
+  plot_posterior(overlay_samples, "theta", add = TRUE, scale_y2 = 7)
+  expect_equal(tail(scales, 1L), 7, tolerance = 1e-12)
+
+  graphics::plot(0, 0, xlim = c(-10, 10), ylim = c(0, 1))
+  plot_posterior(overlay_samples, "theta", add = TRUE)
+  expect_equal(tail(scales, 1L), overlay_scale, tolerance = 1e-12)
+})
+
 test_that("bounded posterior KDE reflects support and keeps spike mass separate", {
   theta <- c(rep(0, 20), seq(.005, .995, length.out = 80))
   attr(theta, "models_ind") <- c(rep(1, 20), rep(2, 80))

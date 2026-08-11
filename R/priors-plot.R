@@ -836,6 +836,57 @@ plot.prior <- function(x, plot_type = "base",
 
   return(scale_y2)
 }
+
+.plot_scale_y2_remember <- function(scale_y2){
+
+  device <- as.integer(grDevices::dev.cur())
+  if(device == 1L){
+    return(invisible(NULL))
+  }
+
+  states <- .BayesTools_private$plot_scale_y2_states
+  if(is.null(states)){
+    states <- list()
+  }
+  key <- as.character(device)
+
+  if(is.null(scale_y2)){
+    states[[key]] <- NULL
+  }else{
+    states[[key]] <- list(
+      scale_y2 = scale_y2,
+      usr      = unname(graphics::par("usr"))
+    )
+  }
+  .BayesTools_private$plot_scale_y2_states <- states
+
+  return(invisible(NULL))
+}
+
+.plot_scale_y2_current <- function(){
+
+  device <- as.integer(grDevices::dev.cur())
+  if(device == 1L){
+    return(NULL)
+  }
+
+  states <- .BayesTools_private$plot_scale_y2_states
+  state  <- states[[as.character(device)]]
+  if(is.null(state)){
+    return(NULL)
+  }
+
+  usr <- tryCatch(
+    unname(graphics::par("usr")),
+    error = function(error) NULL
+  )
+  if(!isTRUE(all.equal(usr, state[["usr"]], tolerance = 1e-12))){
+    .plot_scale_y2_remember(NULL)
+    return(NULL)
+  }
+
+  return(state[["scale_y2"]])
+}
 .transfer_dots       <- function(dots, ...){
 
   dots_main <- list(...)
