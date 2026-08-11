@@ -454,15 +454,148 @@ test_that("posterior base overlays reuse the active probability scale", {
   overlay_scale <- BayesTools:::.get_scale_y2(overlay_data)
   expect_false(isTRUE(all.equal(base_scale, overlay_scale)))
 
-  plot_posterior(overlay_samples, "theta", add = TRUE)
+  expect_warning(
+    plot_posterior(overlay_samples, "theta", add = TRUE),
+    "wider 'ylim2'"
+  )
   expect_equal(tail(scales, 1L), base_scale, tolerance = 1e-12)
 
   plot_posterior(overlay_samples, "theta", add = TRUE, scale_y2 = 7)
   expect_equal(tail(scales, 1L), 7, tolerance = 1e-12)
 
+  plot_posterior(
+    base_samples,
+    "theta",
+    prior = TRUE,
+    ylim  = c(0, 12.5),
+    ylim2 = c(0, 1)
+  )
+  explicit_scale <- tail(scales, 1L)
+  expect_equal(
+    explicit_scale,
+    BayesTools:::.plot_scale_y2_from_limits(c(0, 12.5), c(0, 1)),
+    tolerance = 1e-12
+  )
+  expect_no_warning(
+    plot_posterior(overlay_samples, "theta", add = TRUE)
+  )
+  expect_equal(tail(scales, 1L), explicit_scale, tolerance = 1e-12)
+
+  scale_state <- BayesTools:::.plot_scale_y2_state_current()
+  expect_equal(scale_state[["scale_y2"]], explicit_scale, tolerance = 1e-12)
+  expect_equal(scale_state[["ylim2"]], c(0, 1))
+
   graphics::plot(0, 0, xlim = c(-10, 10), ylim = c(0, 1))
   plot_posterior(overlay_samples, "theta", add = TRUE)
   expect_equal(tail(scales, 1L), overlay_scale, tolerance = 1e-12)
+})
+
+test_that("secondary-axis limits use one mapping for axes and point masses", {
+
+  theta <- c(rep(0, 50), seq(-1, 1, length.out = 50))
+  attr(theta, "models_ind") <- c(rep(1L, 50), rep(2L, 50))
+  attr(theta, "prior_list") <- list(
+    prior("point", list(location = 0)),
+    prior("normal", list(mean = 0, sd = 1))
+  )
+  class(theta) <- c("mixed_posteriors.simple", "mixed_posteriors")
+
+  plot_data <- BayesTools:::.plot_data_samples.simple(
+    samples                  = list(theta = theta),
+    parameter                = "theta",
+    n_points                 = 1000,
+    transformation           = NULL,
+    transformation_arguments = NULL,
+    transformation_settings  = FALSE
+  )
+
+  axis_type  <- NULL
+  axis_scale <- NULL
+  point_scale <- NULL
+  testthat::local_mocked_bindings(
+    .plot.prior_empty = function(type, dots, ...){
+
+      axis_type  <<- type
+      axis_scale <<- dots[[".scale_y2_resolved"]]
+      return(invisible(NULL))
+    },
+    .plot_scale_y2_remember = function(...) invisible(NULL),
+    .lines.prior.simple = function(...) invisible(NULL),
+    .lines.prior.point = function(plot_data, scale_y2 = 1, ...){
+
+      point_scale <<- scale_y2
+      return(invisible(NULL))
+    },
+    .package = "BayesTools"
+  )
+
+  BayesTools:::.plot_prior_list.both(
+    plot_data = plot_data,
+    plot_type = "base",
+    ylim      = c(0, 12.5),
+    ylim2     = c(0, 1)
+  )
+  expect_identical(axis_type, "both")
+  expect_equal(axis_scale, point_scale, tolerance = 1e-12)
+
+  BayesTools:::.plot_prior_list.both(
+    plot_data = plot_data["density"],
+    plot_type = "base",
+    ylim      = c(0, 12.5),
+    ylim2     = c(0, 1)
+  )
+  expect_identical(axis_type, "both")
+  expect_equal(
+    axis_scale,
+    BayesTools:::.plot_scale_y2_from_limits(c(0, 12.5), c(0, 1)),
+    tolerance = 1e-12
+  )
+
+  ggplot <- BayesTools:::.plot_prior_list.both(
+    plot_data = plot_data,
+    plot_type = "ggplot",
+    ylim      = c(0, 12.5),
+    ylim2     = c(0, 1)
+  )
+  ggplot_scale <- attr(ggplot, "scale_y2")
+  y_scale      <- ggplot$scales$get_scales("y")
+  point_yend <- unlist(lapply(ggplot$layers, function(layer){
+    if("yend" %in% names(layer$data)) layer$data$yend else NULL
+  }))
+  expect_equal(ggplot_scale, axis_scale, tolerance = 1e-12)
+  expect_equal(
+    y_scale$secondary.axis$breaks,
+    pretty(c(0, 1)) * ggplot_scale,
+    tolerance = 1e-12
+  )
+  expect_equal(
+    max(point_yend),
+    max(plot_data[["points1"]]$y) * ggplot_scale,
+    tolerance = 1e-12
+  )
+})
+
+test_that("prior line overlays reuse the active probability scale", {
+
+  point_scale <- NULL
+  testthat::local_mocked_bindings(
+    .plot_scale_y2_state_current = function(){
+      list(scale_y2 = 9, ylim2 = c(0, 1))
+    },
+    .lines.prior.simple = function(...) invisible(NULL),
+    .lines.prior.point = function(plot_data, scale_y2 = 1, ...){
+
+      point_scale <<- scale_y2
+      return(invisible(NULL))
+    },
+    .package = "BayesTools"
+  )
+
+  lines_prior_list(list(
+    prior("point", list(location = 0)),
+    prior("normal", list(mean = 0, sd = 1))
+  ))
+  expect_equal(point_scale, 9)
 })
 
 test_that("bounded posterior KDE reflects support and keeps spike mass separate", {

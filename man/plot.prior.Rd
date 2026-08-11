@@ -85,7 +85,9 @@ weightfunction is plotted.}
 specified. Only relevant if the prior corresponds to a mu
 parameter that needs to be transformed.}
 
-\item{...}{additional arguments}
+\item{...}{additional graphical arguments. For mixed continuous and point
+distributions, \code{ylim} controls the density axis, \code{ylim2} controls
+the probability-mass axis, and \code{ylab2} controls its label.}
 }
 \value{
 \code{plot.prior} returns either \code{NULL} or

@@ -11,7 +11,9 @@
 #' @param legend_title optional title for factor legends.
 #' @param legend_labels optional labels for factor legend levels.
 #' @param legend_position optional legend position for factor legends.
-#' @param ... additional arguments
+#' @param ... additional graphical arguments. For mixed continuous and point
+#' distributions, \code{ylim} controls the density axis, \code{ylim2} controls
+#' the probability-mass axis, and \code{ylab2} controls its label.
 #' @inheritParams density.prior
 #' @inheritParams plot.prior
 #'
@@ -136,24 +138,26 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   main      <- ""
   xlab      <- if(!is.null(par_name)) par_name else ""
 
-  if(is.null(scale_y2) && plot_type == "base" && add){
-    scale_y2 <- .plot_scale_y2_current()
-  }
-  if(is.null(scale_y2)) scale_y2 <- .get_scale_y2(plot_data, dots)
+  has_simple <- any(sapply(plot_data, inherits, what = "density.prior.simple"))
+  has_point  <- any(sapply(plot_data, inherits, what = "density.prior.point"))
 
-  if(any(sapply(plot_data, inherits, what = "density.prior.simple")) & any(sapply(plot_data, inherits, what = "density.prior.point"))){
+  if(has_simple && (has_point || !is.null(dots[["ylim2"]]))){
     type  <- "both"
     ylab  <- "Density"
     ylab2 <- "Probability"
     ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.simple")], attr, which = "y_range")))
-    ylim2 <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.point")],  attr, which = "y_range")))
-  }else if(any(sapply(plot_data, inherits, what = "density.prior.simple"))){
+    ylim2 <- if(has_point){
+      range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.point")], attr, which = "y_range")))
+    }else{
+      dots[["ylim2"]]
+    }
+  }else if(has_simple){
     type  <- "simple"
     ylab  <- "Density"
     ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.simple")], attr, which = "y_range")))
     ylab2 <- NULL
     ylim2 <- NULL
-  }else if(any(sapply(plot_data, inherits, what = "density.prior.point"))){
+  }else if(has_point){
     type  <- "point"
     ylab  <- "Probability"
     ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.point")],  attr, which = "y_range")))
@@ -171,12 +175,33 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   if(is.null(dots[["ylim"]]))  dots$ylim  <-  ylim
   if(is.null(dots[["ylim2"]])) dots$ylim2 <-  ylim2
 
+  scale_y2_supplied <- !is.null(scale_y2)
+  scale_y2_state    <- NULL
+  if(!scale_y2_supplied && plot_type == "base" && add){
+    scale_y2_state <- .plot_scale_y2_state_current()
+    if(!is.null(scale_y2_state)){
+      scale_y2 <- scale_y2_state[["scale_y2"]]
+    }
+  }
+  if(is.null(scale_y2)){
+    scale_y2 <- .plot_scale_y2_resolve(plot_data, dots)
+  }
+  if(type == "both"){
+    dots$.scale_y2_resolved <- scale_y2
+  }
+  if(!scale_y2_supplied && !is.null(scale_y2_state)){
+    .plot_point_mass_warn_outside(plot_data, scale_y2_state[["ylim2"]])
+  }
+
 
   if(plot_type == "base"){
 
     if(!add){
       .plot.prior_empty(type, dots)
-      .plot_scale_y2_remember(if(type == "both") scale_y2 else NULL)
+      .plot_scale_y2_remember(
+        if(type == "both") scale_y2 else NULL,
+        if(type == "both") dots[["ylim2"]] else NULL
+      )
     }
 
     for(i in seq_along(plot_data)){
@@ -364,24 +389,26 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   main      <- ""
   xlab      <- if(!is.null(par_name)) par_name else ""
 
-  if(is.null(scale_y2) && plot_type == "base" && add){
-    scale_y2 <- .plot_scale_y2_current()
-  }
-  if(is.null(scale_y2)) scale_y2 <- .get_scale_y2(plot_data, dots)
+  has_simple <- any(sapply(plot_data, inherits, what = "density.prior.simple"))
+  has_point  <- any(sapply(plot_data, inherits, what = "density.prior.point"))
 
-  if(any(sapply(plot_data, inherits, what = "density.prior.simple")) & any(sapply(plot_data, inherits, what = "density.prior.point"))){
+  if(has_simple && (has_point || !is.null(dots[["ylim2"]]))){
     type  <- "both"
     ylab  <- "Density"
     ylab2 <- "Probability"
     ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.simple")], attr, which = "y_range")))
-    ylim2 <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.point")],  attr, which = "y_range")))
-  }else if(any(sapply(plot_data, inherits, what = "density.prior.simple"))){
+    ylim2 <- if(has_point){
+      range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.point")], attr, which = "y_range")))
+    }else{
+      dots[["ylim2"]]
+    }
+  }else if(has_simple){
     type  <- "simple"
     ylab  <- "Density"
     ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.simple")], attr, which = "y_range")))
     ylab2 <- NULL
     ylim2 <- NULL
-  }else if(any(sapply(plot_data, inherits, what = "density.prior.point"))){
+  }else if(has_point){
     type  <- "point"
     ylab  <- "Probability"
     ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.point")],  attr, which = "y_range")))
@@ -398,6 +425,24 @@ plot_prior_list <- function(prior_list, plot_type = "base",
   if(is.null(dots[["xlim"]]))  dots$xlim  <-  xlim
   if(is.null(dots[["ylim"]]))  dots$ylim  <-  ylim
   if(is.null(dots[["ylim2"]])) dots$ylim2 <-  ylim2
+
+  scale_y2_supplied <- !is.null(scale_y2)
+  scale_y2_state    <- NULL
+  if(!scale_y2_supplied && plot_type == "base" && add){
+    scale_y2_state <- .plot_scale_y2_state_current()
+    if(!is.null(scale_y2_state)){
+      scale_y2 <- scale_y2_state[["scale_y2"]]
+    }
+  }
+  if(is.null(scale_y2)){
+    scale_y2 <- .plot_scale_y2_resolve(plot_data, dots)
+  }
+  if(type == "both"){
+    dots$.scale_y2_resolved <- scale_y2
+  }
+  if(!scale_y2_supplied && !is.null(scale_y2_state)){
+    .plot_point_mass_warn_outside(plot_data, scale_y2_state[["ylim2"]])
+  }
 
   # normalize factor component metadata before rendering
   plot_data_normalized <- .plot_prior_factor_normalize_data(plot_data)
@@ -472,7 +517,10 @@ plot_prior_list <- function(prior_list, plot_type = "base",
 
     if(!add){
       .plot.prior_empty(type, dots)
-      .plot_scale_y2_remember(if(type == "both") scale_y2 else NULL)
+      .plot_scale_y2_remember(
+        if(type == "both") scale_y2 else NULL,
+        if(type == "both") dots[["ylim2"]] else NULL
+      )
     }
 
     # plot points

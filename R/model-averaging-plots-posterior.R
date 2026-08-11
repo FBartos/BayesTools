@@ -32,7 +32,9 @@
 #' present and falls back to KDE otherwise. A precomputed density is treated as
 #' authoritative for atomic mass layers: atoms are drawn only from explicit
 #' \code{point_masses} metadata.
-#' @param ... additional arguments
+#' @param ... additional graphical arguments. For mixed continuous and point
+#' distributions, \code{ylim} controls the density axis, \code{ylim2} controls
+#' the probability-mass axis, and \code{ylab2} controls its label.
 #' @inheritParams density.prior
 #' @inheritParams plot.prior
 #'
@@ -47,6 +49,12 @@
 #' \code{density_method = "precomputed"}. If a stored density is used and
 #' sample-derived point masses are available, the plot layer uses only explicit
 #' \code{point_masses} from the stored density and warns when none are declared.
+#'
+#' For base plots, the initial call establishes the density-to-probability
+#' mapping. Calls with \code{add = TRUE} reuse that mapping so point masses from
+#' separate prior or posterior objects remain comparable. Point masses outside
+#' the active \code{ylim2} are clipped with a warning; redraw the initial plot
+#' with wider limits to display them.
 #'
 #' @return \code{plot_posterior} returns either \code{NULL} or
 #' an object of class 'ggplot' if plot_type is \code{plot_type = "ggplot"}.

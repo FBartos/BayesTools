@@ -97,6 +97,11 @@ regression. Use \code{"positive"} (default) for
 \description{
 Add list of prior objects to a plot
 }
+\details{
+For base plots, the default \code{scale_y2 = NULL} reuses the
+probability mapping established by the initial mixed-distribution plot.
+This keeps separately added prior and posterior point masses comparable.
+}
 \seealso{
 \code{\link[=plot_prior_list]{plot_prior_list()}} \code{\link[=geom_prior_list]{geom_prior_list()}}
 }

@@ -12,7 +12,9 @@
 #' @param show_figures which figures should be returned in case of
 #' multiple plots are generated. Useful when priors for the omega
 #' parameter are plotted and \code{individual = TRUE}.
-#' @param ... additional arguments
+#' @param ... additional graphical arguments. For mixed continuous and point
+#' distributions, \code{ylim} controls the density axis, \code{ylim2} controls
+#' the probability-mass axis, and \code{ylab2} controls its label.
 #' @inheritParams density.prior
 #'
 #' @examples
@@ -672,8 +674,11 @@ plot.prior <- function(x, plot_type = "base",
 
     ylim2    <- if(!is.null(dots[["ylim2"]]))     dots[["ylim2"]]     else ylim
     ylab2    <- if(!is.null(dots[["ylab2"]]))     dots[["ylab2"]]     else ""
-    scale_y2 <- if(!is.null(dots[["scale_y2"]]))  dots[["scale_y2"]]  else .plot.prior_settings()[["scale_y2"]]
-    scale_y2 <- scale_y2 * max(pretty(ylim)) / max(pretty(ylim2))
+    scale_y2 <- if(!is.null(dots[[".scale_y2_resolved"]])){
+      dots[[".scale_y2_resolved"]]
+    }else{
+      .plot_scale_y2_from_limits(ylim, ylim2, dots[["scale_y2"]])
+    }
 
     graphics::plot(NA, type = "n", bty  = "n", las = 1, xlab = xlab, ylab = ylab, main = main,
                    xlim = xlim, ylim = range(c(pretty(ylim), pretty(ylim2) * scale_y2)), axes = FALSE,
@@ -747,8 +752,11 @@ plot.prior <- function(x, plot_type = "base",
 
     ylim2    <- if(!is.null(dots[["ylim2"]]))     dots[["ylim2"]]     else ylim
     ylab2    <- if(!is.null(dots[["ylab2"]]))     dots[["ylab2"]]     else ""
-    scale_y2 <- if(!is.null(dots[["scale_y2"]]))  dots[["scale_y2"]]  else .plot.prior_settings()[["scale_y2"]]
-    scale_y2 <- scale_y2 * max(pretty(ylim)) / max(pretty(ylim2))
+    scale_y2 <- if(!is.null(dots[[".scale_y2_resolved"]])){
+      dots[[".scale_y2_resolved"]]
+    }else{
+      .plot_scale_y2_from_limits(ylim, ylim2, dots[["scale_y2"]])
+    }
 
     plot <- ggplot2::ggplot()
     plot <- plot + ggplot2::ggtitle(main)
@@ -816,28 +824,41 @@ plot.prior <- function(x, plot_type = "base",
   width     = 0.20
   ))
 }
-.get_scale_y2        <- function(plot_data, ...){
+.plot_scale_y2_from_limits <- function(ylim, ylim2, scale_y2 = NULL){
 
-  dots      <- list(...)
-
-  if(any(sapply(plot_data, inherits, what = "density.prior.simple")) & any(sapply(plot_data, inherits, what = "density.prior.point"))){
-
-    ylim  <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.simple")], attr, which = "y_range")))
-    ylim2 <- range(as.vector(sapply(plot_data[sapply(plot_data, inherits, what = "density.prior.point")],  attr, which = "y_range")))
-
-    scale_y2 <- if(!is.null(dots[["scale_y2"]]))  dots[["scale_y2"]]  else .plot.prior_settings()[["scale_y2"]]
-    scale_y2 <- scale_y2 * max(pretty(ylim)) / max(pretty(ylim2))
-
-  }else{
-
-    scale_y2 <- 1
-
+  if(is.null(scale_y2)){
+    scale_y2 <- .plot.prior_settings()[["scale_y2"]]
   }
 
-  return(scale_y2)
+  return(scale_y2 * max(pretty(ylim)) / max(pretty(ylim2)))
+}
+.plot_scale_y2_resolve <- function(plot_data, dots = list()){
+
+  is_simple <- sapply(plot_data, inherits, what = "density.prior.simple")
+  is_point  <- sapply(plot_data, inherits, what = "density.prior.point")
+
+  if(any(is_simple) && (any(is_point) || !is.null(dots[["ylim2"]]))){
+    ylim <- if(!is.null(dots[["ylim"]])){
+      dots[["ylim"]]
+    }else{
+      range(as.vector(sapply(plot_data[is_simple], attr, which = "y_range")))
+    }
+    ylim2 <- if(!is.null(dots[["ylim2"]])){
+      dots[["ylim2"]]
+    }else{
+      range(as.vector(sapply(plot_data[is_point], attr, which = "y_range")))
+    }
+    return(.plot_scale_y2_from_limits(ylim, ylim2, dots[["scale_y2"]]))
+  }
+
+  return(1)
+}
+.get_scale_y2        <- function(plot_data, ...){
+
+  return(.plot_scale_y2_resolve(plot_data, list(...)))
 }
 
-.plot_scale_y2_remember <- function(scale_y2){
+.plot_scale_y2_remember <- function(scale_y2, ylim2 = NULL){
 
   device <- as.integer(grDevices::dev.cur())
   if(device == 1L){
@@ -855,6 +876,7 @@ plot.prior <- function(x, plot_type = "base",
   }else{
     states[[key]] <- list(
       scale_y2 = scale_y2,
+      ylim2    = ylim2,
       usr      = unname(graphics::par("usr"))
     )
   }
@@ -863,7 +885,7 @@ plot.prior <- function(x, plot_type = "base",
   return(invisible(NULL))
 }
 
-.plot_scale_y2_current <- function(){
+.plot_scale_y2_state_current <- function(){
 
   device <- as.integer(grDevices::dev.cur())
   if(device == 1L){
@@ -885,7 +907,33 @@ plot.prior <- function(x, plot_type = "base",
     return(NULL)
   }
 
-  return(state[["scale_y2"]])
+  return(state)
+}
+.plot_point_mass_warn_outside <- function(plot_data, ylim2){
+
+  if(is.null(ylim2)){
+    return(invisible(NULL))
+  }
+
+  if(inherits(plot_data, "density.prior.point")){
+    plot_data <- list(plot_data)
+  }
+
+  is_point <- sapply(plot_data, inherits, what = "density.prior.point")
+  if(!any(is_point)){
+    return(invisible(NULL))
+  }
+
+  probabilities <- unlist(lapply(plot_data[is_point], function(x) x[["y"]]))
+  if(any(probabilities < min(ylim2) | probabilities > max(ylim2))){
+    warning(
+      "Point-mass probabilities outside the active secondary-axis limits ",
+      "will be clipped. Redraw the initial plot with a wider 'ylim2'.",
+      call. = FALSE
+    )
+  }
+
+  return(invisible(NULL))
 }
 .transfer_dots       <- function(dots, ...){
 
@@ -894,8 +942,10 @@ plot.prior <- function(x, plot_type = "base",
   dots$main      <- if(!is.null(dots_main[["main"]]))     dots_main[["main"]]
   dots$xlab      <- if(!is.null(dots_main[["xlab"]]))     dots_main[["xlab"]]
   dots$ylab      <- if(!is.null(dots_main[["ylab"]]))     dots_main[["ylab"]]
+  dots$ylab2     <- if(!is.null(dots_main[["ylab2"]]))    dots_main[["ylab2"]]
   dots$xlim      <- if(!is.null(dots_main[["xlim"]]))     dots_main[["xlim"]]
   dots$ylim      <- if(!is.null(dots_main[["ylim"]]))     dots_main[["ylim"]]
+  dots$ylim2     <- if(!is.null(dots_main[["ylim2"]]))    dots_main[["ylim2"]]
   dots$col.main  <- if(!is.null(dots_main[["col.main"]])) dots_main[["col.main"]]
   dots$cex.axis  <- if(!is.null(dots_main[["cex.axis"]])) dots_main[["cex.axis"]]
   dots$cex.lab   <- if(!is.null(dots_main[["cex.lab"]]))  dots_main[["cex.lab"]]

@@ -44,9 +44,10 @@
 - `as_marginal_inference()` conditional marginal summaries use active-subset conditioning: each marginal level conditions only on requested parameters with nonzero weight in that level's linear combination, and levels with no active requested conditionals use the fully averaged context
 
 ### Fixes
-- reuses the active base plot's density-to-probability scale when
-  `plot_posterior(..., add = TRUE)` overlays another mixed continuous-and-point
-  posterior, so spike heights remain comparable across fitted objects
+- resolves one density-to-probability mapping from `ylim` and `ylim2` for the
+  secondary axis and all point masses, and reuses it for base posterior and
+  prior line overlays across fitted objects; out-of-range overlays warn instead
+  of silently rescaling the active plot
 - exposes every fitted factor level and interaction cell as a named coefficient-level catalog quantity, using injective named-cell components, semantic display labels, direct coordinates, structural zeroes, or the persisted term-only contrast transformation for treatment, independent, mean-difference, orthonormal, and ordered encodings; incomplete factor registries now fail closed and boundary whitespace remains resolvable
 - finalizes parameter-catalog schema 3 by reusing identity random-effect coordinates with their sampled or structural provenance, hiding transformed fitted-scale and private implementation rows, declaring only evaluator dependencies, validating native extraction recipes, and reserving the `BayesTools` provider namespace
 - preserves exact finite transformed-support endpoints through structural

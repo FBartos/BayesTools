@@ -107,7 +107,9 @@ regression. Use \code{"positive"} (default) for
 
 \item{legend_position}{optional legend position for factor legends.}
 
-\item{...}{additional arguments}
+\item{...}{additional graphical arguments. For mixed continuous and point
+distributions, \code{ylim} controls the density axis, \code{ylim2} controls
+the probability-mass axis, and \code{ylab2} controls its label.}
 }
 \value{
 \code{plot_prior_list} returns either \code{NULL} or

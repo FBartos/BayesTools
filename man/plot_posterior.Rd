@@ -117,7 +117,9 @@ Supports \code{col}/\code{color}, \code{alpha}, \code{lwd}/\code{linewidth},
 
 \item{legend_position}{optional legend position for factor legends.}
 
-\item{...}{additional arguments}
+\item{...}{additional graphical arguments. For mixed continuous and point
+distributions, \code{ylim} controls the density axis, \code{ylim2} controls
+the probability-mass axis, and \code{ylab2} controls its label.}
 
 \item{density_method}{density source for continuous posterior curves.
 \code{"KDE"} computes a kernel density estimate. Plot methods with exact
@@ -145,6 +147,12 @@ with \code{x} and \code{y} coordinates. These densities are used only when
 \code{density_method = "precomputed"}. If a stored density is used and
 sample-derived point masses are available, the plot layer uses only explicit
 \code{point_masses} from the stored density and warns when none are declared.
+
+For base plots, the initial call establishes the density-to-probability
+mapping. Calls with \code{add = TRUE} reuse that mapping so point masses from
+separate prior or posterior objects remain comparable. Point masses outside
+the active \code{ylim2} are clipped with a warning; redraw the initial plot
+with wider limits to display them.
 }
 \seealso{
 \code{\link[=prior]{prior()}} \code{\link[=lines_prior_list]{lines_prior_list()}}  \code{\link[=geom_prior_list]{geom_prior_list()}}
