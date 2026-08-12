@@ -325,6 +325,48 @@ test_that("bridge callback dispatcher exposes context only when requested", {
     ),
     2
   )
+
+  nodes_context <- structure(
+    list(nodes = c(theta = .1)),
+    class = c(
+      "BayesTools_bridge_nodes_context",
+      "BayesTools_bridge_context",
+      "list"
+    )
+  )
+  expect_equal(
+    BayesTools:::.bt_JAGS_bridge_call_log_posterior(
+      log_posterior = function(parameters, data, bridge_context){
+        expect_s3_class(
+          bridge_context,
+          "BayesTools_bridge_nodes_context"
+        )
+        data$value
+      },
+      parameters = parameters,
+      data = list(value = 3),
+      context = nodes_context,
+      bridge_context = "nodes"
+    ),
+    3
+  )
+
+  expect_identical(
+    BayesTools:::.bt_JAGS_bridge_context_mode(FALSE),
+    "none"
+  )
+  expect_identical(
+    BayesTools:::.bt_JAGS_bridge_context_mode(TRUE),
+    "full"
+  )
+  expect_identical(
+    BayesTools:::.bt_JAGS_bridge_context_mode("nodes"),
+    "nodes"
+  )
+  expect_error(
+    BayesTools:::.bt_JAGS_bridge_context_mode("metadata"),
+    "must be FALSE, TRUE"
+  )
 })
 
 test_that("compiled random-effect prior evaluator matches public helper", {
@@ -1552,6 +1594,36 @@ test_that("bridge context exposes resolved formula allocation nodes", {
     formula_parameters$mu,
     tolerance = 1e-12
   )
+
+  context_arguments <- list(
+    samples = samples,
+    prior_parameters = prior_parameters,
+    formula_prior_parameters = formula_prior_parameters,
+    formula_parameters = formula_parameters
+  )
+  full_evaluator <- BayesTools:::.bt_JAGS_bridge_compile_context_evaluator(
+    mode = TRUE,
+    add_parameters = NULL,
+    formula_design_list = formula_design_list,
+    formula_data_list = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    model_data = list()
+  )
+  compiled_full <- do.call(full_evaluator$context, context_arguments)
+  expect_equal(compiled_full, context, tolerance = 0)
+
+  nodes_evaluator <- BayesTools:::.bt_JAGS_bridge_compile_context_evaluator(
+    mode = "nodes",
+    add_parameters = NULL,
+    formula_design_list = formula_design_list,
+    formula_data_list = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    model_data = list()
+  )
+  nodes_context <- do.call(nodes_evaluator$context, context_arguments)
+  expect_s3_class(nodes_context, "BayesTools_bridge_nodes_context")
+  expect_named(nodes_context, "nodes")
+  expect_identical(nodes_context$nodes, context$nodes)
 })
 
 test_that("bridge context exposes marginalized random blocks without latent draws", {
@@ -1666,6 +1738,22 @@ test_that("bridge context exposes marginalized random blocks without latent draw
     sqrt(3),
     tolerance = 1e-12
   )
+
+  nodes_evaluator <- BayesTools:::.bt_JAGS_bridge_compile_context_evaluator(
+    mode = "nodes",
+    add_parameters = NULL,
+    formula_design_list = formula_design_list,
+    formula_data_list = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    model_data = list()
+  )
+  nodes_context <- nodes_evaluator$context(
+    samples = samples,
+    prior_parameters = prior_parameters,
+    formula_prior_parameters = formula_prior_parameters,
+    formula_parameters = formula_parameters
+  )
+  expect_identical(nodes_context$nodes, context$nodes)
 })
 
 test_that("bridge context exposes row-indexed external SD source nodes", {
@@ -1775,6 +1863,22 @@ test_that("bridge context exposes row-indexed external SD source nodes", {
     sqrt(3 / 4),
     tolerance = 1e-12
   )
+
+  nodes_evaluator <- BayesTools:::.bt_JAGS_bridge_compile_context_evaluator(
+    mode = "nodes",
+    add_parameters = NULL,
+    formula_design_list = formula_design_list,
+    formula_data_list = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    model_data = list()
+  )
+  nodes_context <- nodes_evaluator$context(
+    samples = samples,
+    prior_parameters = prior_parameters,
+    formula_prior_parameters = formula_prior_parameters,
+    formula_parameters = formula_parameters
+  )
+  expect_identical(nodes_context$nodes, context$nodes)
 })
 
 test_that("compiled bridge prior evaluator rejects unsupported mixtures at setup", {

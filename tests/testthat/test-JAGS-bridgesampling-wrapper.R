@@ -64,6 +64,35 @@ test_that("JAGS_bridgesampling aggregates repeated bridge estimates explicitly",
   expect_s3_class(result[["diagnostics"]][["upstream"]], "bridge_list")
 })
 
+test_that("JAGS_bridgesampling forwards the requested core count", {
+
+  seen <- new.env(parent = emptyenv())
+  bridge_sampler <- function(...){
+    arguments <- list(...)
+    seen$cores <- arguments$cores
+    .mock_bridge_sampler(...)
+  }
+  testthat::local_mocked_bindings(
+    bridge_sampler = bridge_sampler,
+    .package = "bridgesampling"
+  )
+  posterior <- coda::as.mcmc(matrix(
+    seq_len(20),
+    ncol = 1,
+    dimnames = list(NULL, "mu")
+  ))
+
+  JAGS_bridgesampling(
+    fit = posterior,
+    log_posterior = function(parameters, data) 0,
+    data = list(),
+    prior_list = list(mu = prior("normal", list(0, 1))),
+    cores = 3L
+  )
+
+  expect_identical(seen$cores, 3L)
+})
+
 test_that("JAGS_bridgesampling checks repeated iteration limits collectively", {
 
   testthat::local_mocked_bindings(
@@ -124,11 +153,22 @@ test_that("JAGS_bridgesampling evaluates fixed scalar and vector models exactly"
 
   result <- JAGS_bridgesampling(
     fit = posterior,
-    log_posterior = function(parameters, data){
+    log_posterior = function(parameters, data, bridge_context){
+      expect_s3_class(
+        bridge_context,
+        "BayesTools_bridge_nodes_context"
+      )
+      expect_named(bridge_context, "nodes")
+      expect_equal(bridge_context$nodes[["mu"]], parameters[["mu"]])
+      expect_equal(
+        unname(bridge_context$nodes[c("beta[1]", "beta[2]")]),
+        parameters[["beta"]]
+      )
       data[["offset"]] + parameters[["mu"]] + sum(parameters[["beta"]])
     },
     data = list(offset = -10),
-    prior_list = prior_list
+    prior_list = prior_list,
+    bridge_context = "nodes"
   )
 
   expect_s3_class(result, "BayesTools_marglik")

@@ -54,10 +54,12 @@
 #' \code{add_parameters} is non-empty.
 #' @param bridge_context whether the \code{log_posterior} callback receives a
 #' read-only \code{bridge_context} argument. Defaults to \code{FALSE}, preserving
-#' the historical \code{log_posterior(parameters, data, ...)} call. The context
-#' contains the current independent bridge state and BayesTools-resolved
-#' deterministic formula/random-effect nodes; it is not necessarily an
-#' original MCMC posterior row.
+#' the historical \code{log_posterior(parameters, data, ...)} call. \code{TRUE}
+#' supplies the complete context. \code{"nodes"} supplies a lightweight context
+#' containing only its exact flat named \code{nodes} vector. A context contains
+#' the current independent bridge state and BayesTools-resolved deterministic
+#' formula/random-effect nodes; it is not necessarily an original MCMC
+#' posterior row.
 #' @param formula_random_prior_list optional named list of `prior_random()`
 #' objects for random effects in `formula_list`. Bridge sampling for formula
 #' random effects requires the `prior_random()` interface because the
@@ -73,6 +75,10 @@
 #' not be rebuilt as the same model.
 #' @param maxiter maximum number of iterations for the
 #' \link[bridgesampling]{bridge_sampler}
+#' @param cores number of cores used by \link[bridgesampling]{bridge_sampler}.
+#' Defaults to one. Parallel workers must be able to load every package used by
+#' \code{log_posterior}; these can be supplied through the upstream
+#' \code{packages} argument in \code{...}.
 #' @param silent whether the progress should be printed, defaults to \code{TRUE}
 #' @param nonfinite handling of non-finite repetition-level log marginal
 #' likelihoods. The default, `"error"`, aborts. `"drop"` aggregates only the
@@ -114,6 +120,12 @@
 #' formula parameter and block name, and contains `block_name`, `compile_mode`,
 #' `dimensions`, `levels`, `scale`, `allocation`, `correlation`, `covariance`,
 #' `latent`, and `nodes` fields.
+#'
+#' When `bridge_context = "nodes"`, the callback receives an object inheriting
+#' from `BayesTools_bridge_context` with only the `nodes` field. Its values and
+#' names are identical to the `nodes` field in the complete context for the
+#' same bridge state. Random-effect replay metadata that is invariant across
+#' states is compiled once before bridge sampling.
 #'
 #' @examples \dontrun{
 #' # simulate data
@@ -159,12 +171,13 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
                                 formula_random_effects_compile_list = NULL,
                                 bridge_context = FALSE,
                                 maxiter = 10000, silent = TRUE,
-                                nonfinite = c("error", "drop"), ...){
+                                nonfinite = c("error", "drop"), cores = 1, ...){
 
   ### check input
-  check_bool(bridge_context, "bridge_context", allow_NA = FALSE)
+  bridge_context <- .bt_JAGS_bridge_context_mode(bridge_context)
   check_bool(silent, "silent")
   check_int(maxiter, "maxiter", lower = 1)
+  check_int(cores, "cores", lower = 1)
   nonfinite <- match.arg(nonfinite)
   log_posterior <- force(log_posterior)
   if(!is.function(log_posterior)){
@@ -262,6 +275,14 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     formula_design_list = formula_design_list,
     model_data = data
   )
+  bridge_context_evaluator <- .bt_JAGS_bridge_compile_context_evaluator(
+    mode = bridge_context,
+    add_parameters = add_parameters,
+    formula_design_list = formula_design_list,
+    formula_data_list = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    model_data = data
+  )
 
 
   ### define the marglik function
@@ -273,9 +294,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
                                  add_parameters,
                                  fixed_random_latent,
                                  bridge_context,
-                                 formula_design_list,
-                                 formula_data_list,
-                                 formula_prior_list,
+                                 bridge_context_evaluator,
                                  ...){
 
     samples.row <- .bt_JAGS_bridge_complete_fixed_random_latent(
@@ -314,17 +333,12 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
         parameters <- c(parameters, samples.row[add_parameters])
       }
       context <- NULL
-      if(isTRUE(bridge_context)){
-        context <- .bt_JAGS_bridge_context(
+      if(!identical(bridge_context, "none")){
+        context <- bridge_context_evaluator$context(
           samples = samples.row,
           prior_parameters = prior_parameters,
           formula_prior_parameters = formula_prior_parameters,
-          formula_parameters = formula_parameters,
-          add_parameters = add_parameters,
-          formula_design_list = formula_design_list,
-          formula_data_list = formula_data_list,
-          formula_prior_list = formula_prior_list,
-          model_data = data
+          formula_parameters = formula_parameters
         )
       }
       list(parameters = parameters, context = context)
@@ -356,9 +370,7 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
       add_parameters = add_parameters,
       fixed_random_latent = random_bridge_parameters$fixed_latent,
       bridge_context = bridge_context,
-      formula_design_list = formula_design_list,
-      formula_data_list = formula_data_list,
-      formula_prior_list = formula_prior_list,
+      bridge_context_evaluator = bridge_context_evaluator,
       ...
     )
     return(.bt_marglik_exact_result(logml, chain_metadata))
@@ -379,12 +391,11 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
       ub                 = attr(bridgesampling_posterior, "ub"),
       silent             = silent,
       maxiter            = maxiter,
+      cores              = cores,
       add_parameters     = add_parameters,
       fixed_random_latent = random_bridge_parameters$fixed_latent,
       bridge_context     = bridge_context,
-      formula_design_list = formula_design_list,
-      formula_data_list  = formula_data_list,
-      formula_prior_list = formula_prior_list,
+      bridge_context_evaluator = bridge_context_evaluator,
       ...
   ), warning = function(w){
     upstream_warnings <<- c(upstream_warnings, conditionMessage(w))

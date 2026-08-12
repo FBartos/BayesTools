@@ -33,6 +33,10 @@
 - adds a `RandomEffects` vignette comparing BayesTools formula random effects with lme4 and rstanarm examples
 
 ### Changes
+- `JAGS_bridgesampling()` can pass an exact nodes-only bridge context, compiles
+  invariant random-effect replay metadata once while retaining the complete
+  context option, and forwards an explicit `cores` setting to
+  `bridgesampling::bridge_sampler()`
 - hypothesis parsing now accepts unquoted colon-separated formula interaction
   level references such as `factor:moderator[level]`
 - `as_marginal_inference(compute_BF = FALSE)` now returns averaged and conditional marginal posteriors without computing inclusion Bayes factors

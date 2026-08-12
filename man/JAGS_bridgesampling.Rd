@@ -21,6 +21,7 @@ JAGS_bridgesampling(
   maxiter = 10000,
   silent = TRUE,
   nonfinite = c("error", "drop"),
+  cores = 1,
   ...
 )
 }
@@ -97,10 +98,12 @@ not be rebuilt as the same model.}
 
 \item{bridge_context}{whether the \code{log_posterior} callback receives a
 read-only \code{bridge_context} argument. Defaults to \code{FALSE}, preserving
-the historical \code{log_posterior(parameters, data, ...)} call. The context
-contains the current independent bridge state and BayesTools-resolved
-deterministic formula/random-effect nodes; it is not necessarily an
-original MCMC posterior row.}
+the historical \code{log_posterior(parameters, data, ...)} call. \code{TRUE}
+supplies the complete context. \code{"nodes"} supplies a lightweight context
+containing only its exact flat named \code{nodes} vector. A context contains
+the current independent bridge state and BayesTools-resolved deterministic
+formula/random-effect nodes; it is not necessarily an original MCMC
+posterior row.}
 
 \item{maxiter}{maximum number of iterations for the
 \link[bridgesampling]{bridge_sampler}}
@@ -111,6 +114,11 @@ original MCMC posterior row.}
 likelihoods. The default, \code{"error"}, aborts. \code{"drop"} aggregates only the
 remaining finite repetitions, emits a warning, and records every excluded
 repetition in the returned diagnostics.}
+
+\item{cores}{number of cores used by \link[bridgesampling]{bridge_sampler}.
+Defaults to one. Parallel workers must be able to load every package used by
+\code{log_posterior}; these can be supplied through the upstream
+\code{packages} argument in \code{...}.}
 
 \item{...}{additional argument to the \link[bridgesampling]{bridge_sampler}
 and \code{log_posterior} function}
@@ -163,6 +171,12 @@ row-indexed SD source values where applicable. Each random block is keyed by
 formula parameter and block name, and contains \code{block_name}, \code{compile_mode},
 \code{dimensions}, \code{levels}, \code{scale}, \code{allocation}, \code{correlation}, \code{covariance},
 \code{latent}, and \code{nodes} fields.
+
+When \code{bridge_context = "nodes"}, the callback receives an object inheriting
+from \code{BayesTools_bridge_context} with only the \code{nodes} field. Its values and
+names are identical to the \code{nodes} field in the complete context for the
+same bridge state. Random-effect replay metadata that is invariant across
+states is compiled once before bridge sampling.
 }
 \examples{
 \dontrun{
