@@ -319,6 +319,20 @@
     random_effects <- random_effects[match(selected, block_names)]
     block_plans <- lapply(random_effects, function(random_term){
       row_indexed <- .bt_random_effect_has_row_indexed_external_sd(random_term)
+      structure <- .bt_random_effect_structure(
+        random_term,
+        context = "Bridge-only random-effect marginal covariance"
+      )
+      group_covariance <- if(
+        .bt_random_effect_has_known_group_covariance(random_term)
+      ){
+        .bt_random_effect_known_group_covariance(
+          random_term,
+          context = "Bridge-only random-effect marginal covariance"
+        )$kernel
+      }else{
+        NULL
+      }
       block_data <- .bt_random_effect_marginal_covariance_block_data(
         design = design,
         random_term = random_term,
@@ -337,6 +351,8 @@
       list(
         random_term = random_term,
         row_indexed = row_indexed,
+        structure = structure,
+        group_covariance = group_covariance,
         sd_evaluator = .bt_JAGS_bridge_compile_random_sd_evaluator(
           random_term = random_term,
           prior_list = formula_prior_list[[parameter]]
@@ -365,10 +381,10 @@
       blocks = block_plans,
       block_names = selected,
       structures = stats::setNames(vapply(
-        random_effects,
-        .bt_random_effect_structure,
+        block_plans,
+        `[[`,
         character(1),
-        context = "Bridge-only random-effect marginal covariance"
+        "structure"
       ), selected),
       row_blocks = row_blocks,
       row_names = row_names,
@@ -535,7 +551,8 @@
       random_term = random_term,
       posterior = posterior,
       column_scale = column_scale,
-      covariance = factor_covariance
+      covariance = factor_covariance,
+      structure = block_plan$structure
     )
     value <- list(
       type = "row_group",
@@ -559,11 +576,9 @@
       prior_list = prior_list
     )
   } else {
-    samples <- as.numeric(posterior[1L, ])
-    names(samples) <- colnames(posterior)
     matrix(
-      block_plan$sd_evaluator$values(
-        samples,
+      block_plan$sd_evaluator$posterior_values(
+        posterior,
         parameters = source_parameters
       ),
       nrow = 1L
@@ -588,19 +603,16 @@
     random_term = random_term,
     posterior = posterior,
     column_scale = as.numeric(sd_draws[1L, ]),
-    covariance = factor_covariance
+    covariance = factor_covariance,
+    structure = block_plan$structure
   )
 
-  if(.bt_random_effect_has_known_group_covariance(random_term)){
-    group_covariance <- .bt_random_effect_known_group_covariance(
-      random_term,
-      context = "Bridge-only random-effect marginal covariance"
-    )
+  if(!is.null(block_plan$group_covariance)){
     value <- list(
       type = "known_group",
       model_matrix = model_matrix,
       group_map = group_map,
-      group_covariance = group_covariance$kernel,
+      group_covariance = block_plan$group_covariance,
       coefficient_factor = coefficient$factor
     )
     if(factor_covariance){
@@ -622,13 +634,16 @@
 }
 
 .bt_JAGS_bridge_marginal_random_coefficient_geometry <- function(
-    random_term, posterior, column_scale, covariance = TRUE){
+    random_term, posterior, column_scale, covariance = TRUE,
+    structure = NULL){
 
   n_columns <- length(column_scale)
-  structure <- .bt_random_effect_structure(
-    random_term,
-    context = "Bridge-only random-effect marginal covariance"
-  )
+  if(is.null(structure)){
+    structure <- .bt_random_effect_structure(
+      random_term,
+      context = "Bridge-only random-effect marginal covariance"
+    )
+  }
   if(structure %in% c("diag", "id") || n_columns == 1L){
     factor <- diag(
       column_scale,

@@ -51,7 +51,9 @@
   covariance for known group kernels and row-specific external SD scales. Its
   nodes-only bridge context can omit the coefficient covariance already
   represented exactly by a supplied factor, while the complete generic context
-  and covariance-valued evaluator remain available.
+  and covariance-valued evaluator remain available. Sampled SD positions,
+  covariance structure, and known-group kernels are compiled once and reused
+  without changing source-parameter precedence or covariance reconstruction.
 - `JAGS_bridgesampling()` exposes `repetitions` and `method` alongside its
   existing bridge controls and always derives the effective sample size from
   the fitted chains.

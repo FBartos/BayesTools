@@ -239,6 +239,59 @@ test_that("marginalization removes exactly the selected latent coordinates", {
   expect_setequal(marginalized$omitted_latent, latent_names)
 })
 
+test_that("compiled bridge SD extraction safely reuses posterior positions", {
+
+  data <- data.frame(
+    id = factor(rep(c("a", "b"), each = 2L)),
+    x = rep(c(0, 1), 2L)
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + diag(1 + x | id),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("point", list(location = 0))),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("gamma", list(2, 2)),
+        terms = list(x = prior("gamma", list(3, 2)))
+      )
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  evaluator <- .bt_JAGS_bridge_compile_random_sd_evaluator(
+    random_term = random_term,
+    prior_list = formula_result$prior_list
+  )
+  sd_names <- random_term$sd_parameter_names
+  first <- matrix(
+    c(9, 0.3, 0.5),
+    nrow = 1L,
+    dimnames = list(NULL, c("unrelated", sd_names))
+  )
+  reordered <- matrix(
+    c(0.6, 8, 0.4),
+    nrow = 1L,
+    dimnames = list(NULL, c(sd_names[[2L]], "unrelated", sd_names[[1L]]))
+  )
+  override <- stats::setNames(list(0.7, 0.8), sd_names)
+
+  expect_equal(
+    evaluator$posterior_values(first),
+    c(0.3, 0.5),
+    tolerance = 0
+  )
+  expect_equal(
+    evaluator$posterior_values(reordered),
+    c(0.4, 0.6),
+    tolerance = 0
+  )
+  expect_equal(
+    evaluator$posterior_values(reordered, parameters = override),
+    c(0.7, 0.8),
+    tolerance = 0
+  )
+})
+
 test_that("bridge-only random marginalization requires a covariance context", {
 
   data <- data.frame(study = factor(c("a", "b")))

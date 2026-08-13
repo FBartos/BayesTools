@@ -955,7 +955,7 @@
     }
   }
 
-  list(values = function(samples, parameters = NULL){
+  values <- function(samples, parameters = NULL){
     check_ambiguity(samples)
     posterior <- .bt_JAGS_marglik_random_effect_posterior_row(samples)
     sd_draws <- tryCatch(
@@ -981,7 +981,55 @@
       )
     }
     unname(sd_draws[1L, ])
-  })
+  }
+
+  direct_names <- if(!isTRUE(binding$true_allocation)){
+    random_term$sd_parameter_names
+  }else{
+    NULL
+  }
+  direct_indices <- NULL
+  posterior_values <- function(posterior, parameters = NULL){
+    posterior_names <- colnames(posterior)
+    direct <- !is.null(direct_names) &&
+      length(direct_names) == random_term$n_columns &&
+      !anyNA(direct_names) && length(ambiguity) == 0L
+    if(direct){
+      if(is.list(parameters) &&
+         all(direct_names %in% names(parameters))){
+        parameter_values <- lapply(
+          parameters[direct_names],
+          as.numeric
+        )
+        if(all(lengths(parameter_values) == 1L)){
+          return(unname(as.numeric(unlist(parameter_values))))
+        }
+      }
+      direct <- !is.null(posterior_names)
+    }
+    if(direct){
+      indices_valid <- !is.null(direct_indices) &&
+        length(direct_indices) == length(direct_names) &&
+        all(direct_indices >= 1L) &&
+        all(direct_indices <= length(posterior_names)) &&
+        identical(posterior_names[direct_indices], direct_names)
+      if(!indices_valid){
+        direct_indices <<- match(direct_names, posterior_names)
+      }
+      if(!anyNA(direct_indices)){
+        return(unname(posterior[1L, direct_indices]))
+      }
+    }
+
+    samples <- as.numeric(posterior[1L, ])
+    names(samples) <- posterior_names
+    values(samples, parameters = parameters)
+  }
+
+  list(
+    values = values,
+    posterior_values = posterior_values
+  )
 }
 
 .bt_JAGS_bridge_compiled_parameter_draws <- function(
