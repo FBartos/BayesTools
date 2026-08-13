@@ -63,6 +63,11 @@
   before repeated bridge states are evaluated. Exact compound-symmetry and
   Markov Cholesky recurrences in this bridge hotspot are evaluated by a
   package-native kernel after the same R-level parameter and support checks.
+- The compact bridge factor-state contract now labels exact diagonal and
+  Markov coefficient structures. AR1, HAR, and CAR states expose their complete
+  coefficient scales, adjacent transitions, and innovation variances alongside
+  the unchanged full coefficient factor, allowing downstream exact linear-time
+  likelihood evaluation without removing the generic covariance contract.
 - `JAGS_bridgesampling()` exposes `repetitions` and `method` alongside its
   existing bridge controls and always derives the effective sample size from
   the fitted chains.

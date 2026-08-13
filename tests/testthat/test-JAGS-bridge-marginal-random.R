@@ -519,7 +519,11 @@ test_that("bridge marginal evaluator supports every implemented covariance struc
     evaluator <- .bt_JAGS_bridge_compile_marginal_random_evaluator(
       formula_design_list = list(mu = formula_result$formula_design),
       marginal_random_spec = list(
-        mu = list(blocks = "id", row_blocks = list(1:3, 4:6))
+        mu = list(
+          blocks = "id",
+          row_blocks = list(1:3, 4:6),
+          factor_state = TRUE
+        )
       ),
       formula_data_list = list(mu = data),
       formula_prior_list = list(mu = formula_result$prior_list),
@@ -539,6 +543,53 @@ test_that("bridge marginal evaluator supports every implemented covariance struc
       unname(reference),
       tolerance = 1e-12,
       info = structure
+    )
+    compact_value <- evaluator$covariance(
+      samples = values,
+      prior_parameters = list(),
+      formula_prior_parameters = list(mu = list()),
+      formula_parameters = list(mu = rep(0, nrow(data))),
+      factor_covariance = FALSE,
+      factor_state = TRUE
+    )$mu
+    compact_plan <- compact_value$factor_plans[[1L]]
+    compact_state <- compact_value$factor_states[[1L]]
+    expected_structure <- if(structure %in% c("ar1", "car", "har")){
+      "markov"
+    }else if(structure %in% c("diag", "id")){
+      "diagonal"
+    }else{
+      "dense"
+    }
+    expect_identical(
+      compact_plan$coefficient_structure,
+      expected_structure,
+      info = structure
+    )
+    if(identical(expected_structure, "markov")){
+      expect_identical(
+        names(compact_state),
+        c(
+          "coefficient_factor",
+          "coefficient_scale",
+          "markov_transition",
+          "markov_innovation_variance"
+        ),
+        info = structure
+      )
+      expect_equal(
+        compact_state$markov_transition^2 +
+          compact_state$markov_innovation_variance,
+        rep(1, length(compact_state$markov_transition)),
+        tolerance = 1e-15,
+        info = structure
+      )
+    }
+    expect_equal(
+      unname(.bridge_marginal_random_dense(compact_value)),
+      unname(reference),
+      tolerance = 1e-12,
+      info = paste(structure, "compact contract")
     )
   }
 })
@@ -769,7 +820,13 @@ test_that("bridge marginal evaluator supports known group covariance", {
   expect_true(is.environment(compact_value$contract_id))
   expect_identical(
     names(compact_value$factor_plans[[1L]]),
-    c("type", "model_matrix", "group_map", "group_covariance")
+    c(
+      "type",
+      "model_matrix",
+      "group_map",
+      "coefficient_structure",
+      "group_covariance"
+    )
   )
   expect_identical(
     names(compact_value$factor_states[[1L]]),

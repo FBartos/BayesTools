@@ -382,7 +382,19 @@
           "group"
         },
         model_matrix = block_data$model_matrix,
-        group_map = block_data$group_map
+        group_map = block_data$group_map,
+        coefficient_structure = if(
+          is.null(group_covariance) &&
+          structure %in% c("ar1", "car", "har") &&
+          ncol(block_data$model_matrix) > 1L
+        ){
+          "markov"
+        }else if(structure %in% c("diag", "id") ||
+                 ncol(block_data$model_matrix) == 1L){
+          "diagonal"
+        }else{
+          "dense"
+        }
       )
       if(!is.null(group_covariance)){
         factor_plan$group_covariance <- group_covariance
@@ -639,9 +651,13 @@
       structure = block_plan$structure,
       cholesky_evaluator = block_plan$coefficient_cholesky_evaluator
     )
-    value <- list(
-      coefficient_factor = coefficient$factor,
-      row_scale = row_scale
+    value <- .bt_JAGS_bridge_marginal_random_factor_value(
+      coefficient = coefficient,
+      row_scale = row_scale,
+      include_markov = identical(
+        block_plan$factor_plan$coefficient_structure,
+        "markov"
+      )
     )
     if(factor_covariance){
       value$coefficient_covariance <- coefficient$covariance
@@ -690,11 +706,31 @@
     cholesky_evaluator = block_plan$coefficient_cholesky_evaluator
   )
 
-  value <- list(
-    coefficient_factor = coefficient$factor
+  value <- .bt_JAGS_bridge_marginal_random_factor_value(
+    coefficient = coefficient,
+    include_markov = identical(
+      block_plan$factor_plan$coefficient_structure,
+      "markov"
+    )
   )
   if(factor_covariance){
     value$coefficient_covariance <- coefficient$covariance
+  }
+  value
+}
+
+.bt_JAGS_bridge_marginal_random_factor_value <- function(
+    coefficient, row_scale = NULL, include_markov = FALSE){
+
+  value <- list(coefficient_factor = coefficient$factor)
+  if(isTRUE(include_markov)){
+    value$coefficient_scale <- coefficient$scale
+    value$markov_transition <- coefficient$markov_transition
+    value$markov_innovation_variance <-
+      coefficient$markov_innovation_variance
+  }
+  if(!is.null(row_scale)){
+    value$row_scale <- row_scale
   }
   value
 }
@@ -739,7 +775,11 @@
       n_columns = n_columns,
       posterior = posterior
     )
-    cholesky <- cholesky_draws[1L, , ]
+    cholesky <- matrix(
+      cholesky_draws[1L, , ],
+      nrow = n_columns,
+      ncol = n_columns
+    )
     factor <- sweep(
       matrix(cholesky, nrow = n_columns, ncol = n_columns),
       MARGIN = 1L,
@@ -758,7 +798,24 @@
 
   list(
     covariance = if(isTRUE(covariance)) tcrossprod(factor) else NULL,
-    factor = factor
+    factor = factor,
+    scale = if(structure %in% c("ar1", "car", "har") &&
+               n_columns > 1L) column_scale else NULL,
+    markov_transition = if(
+      structure %in% c("ar1", "car", "har") && n_columns > 1L
+    ){
+      cholesky[cbind(2:n_columns, seq_len(n_columns - 1L))] /
+        diag(cholesky)[seq_len(n_columns - 1L)]
+    }else{
+      NULL
+    },
+    markov_innovation_variance = if(
+      structure %in% c("ar1", "car", "har") && n_columns > 1L
+    ){
+      diag(cholesky)[2:n_columns]^2
+    }else{
+      NULL
+    }
   )
 }
 
