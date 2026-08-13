@@ -203,7 +203,8 @@ BayesTools_load_JAGS_module <- function(quiet = TRUE, warn = TRUE){
     "BayesTools_invgamma_d",
     "BayesTools_invgamma_p",
     "BayesTools_invgamma_q",
-    "BayesTools_invgamma_r"
+    "BayesTools_invgamma_r",
+    "BayesTools_structured_cholesky"
   )
 }
 

@@ -807,11 +807,6 @@
       plan = rho_plan
     )[[1L]]
   }
-  transition_context <- paste0(
-    "Random-effect Cholesky reconstruction",
-    .bt_random_effect_metadata_block_detail(random_term),
-    ", posterior draw 1"
-  )
   force(random_term)
   force(n_columns)
   force(structure)
@@ -819,7 +814,6 @@
   force(coordinates)
   force(structure_bounds)
   force(fixed_rho)
-  force(transition_context)
 
   function(posterior){
     rho <- if(is.null(fixed_rho)){
@@ -847,27 +841,11 @@
       )
     }
 
-    out <- array(NA_real_, dim = c(nrow(posterior), n_columns, n_columns))
-    for(draw in seq_len(nrow(posterior))){
-      out[draw, , ] <- if(structure %in% c("cs", "hcs")){
-        .bt_random_effect_cs_subset_cholesky(n_columns, rho[draw])
-      }else{
-        .bt_random_effect_markov_subset_cholesky(
-          coordinates = coordinates,
-          rho = rho[draw],
-          context = if(draw == 1L){
-            transition_context
-          }else{
-            paste0(
-              "Random-effect Cholesky reconstruction",
-              .bt_random_effect_metadata_block_detail(random_term),
-              ", posterior draw ", draw
-            )
-          }
-        )
-      }
-    }
-    out
+    .bt_random_effect_native_structured_cholesky(
+      structure = structure,
+      rho = rho,
+      coordinates = coordinates
+    )
   }
 }
 

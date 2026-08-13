@@ -550,6 +550,18 @@
   L
 }
 
+.bt_random_effect_native_structured_cholesky <- function(
+    structure, rho, coordinates){
+
+  .Call(
+    "BayesTools_structured_cholesky",
+    as.numeric(rho),
+    as.numeric(coordinates),
+    structure %in% c("cs", "hcs"),
+    PACKAGE = "BayesTools"
+  )
+}
+
 # Return exact group-local Cholesky blocks for one scalar rho draw.
 .bt_random_effect_structured_local_cholesky_blocks <- function(layout, rho){
 

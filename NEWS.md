@@ -60,7 +60,9 @@
   validates each exact coefficient Cholesky factor once instead of rebuilding
   the same factor a second time for correlation validation, and compiles
   invariant scalar-correlation metadata, coordinates, and structural support
-  before repeated bridge states are evaluated.
+  before repeated bridge states are evaluated. Exact compound-symmetry and
+  Markov Cholesky recurrences in this bridge hotspot are evaluated by a
+  package-native kernel after the same R-level parameter and support checks.
 - `JAGS_bridgesampling()` exposes `repetitions` and `method` alongside its
   existing bridge controls and always derives the effective sample size from
   the fitted chains.

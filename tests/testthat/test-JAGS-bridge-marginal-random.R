@@ -605,6 +605,56 @@ test_that("compiled bridge correlation geometry preserves sampled rho", {
   )
 })
 
+test_that("native bridge Cholesky kernels reproduce analytic correlations", {
+
+  specifications <- list(
+    cs = list(
+      rho = c(-0.2, 0.6),
+      coordinates = seq_len(4L)
+    ),
+    ar1 = list(
+      rho = c(-0.4, 0.6),
+      coordinates = c(1, 2, 4, 7)
+    ),
+    car = list(
+      rho = c(0, 0.75),
+      coordinates = c(0, 0.5, 2, 5)
+    )
+  )
+  for(structure in names(specifications)){
+    specification <- specifications[[structure]]
+    actual <- .bt_random_effect_native_structured_cholesky(
+      structure = structure,
+      rho = specification$rho,
+      coordinates = specification$coordinates
+    )
+    distance <- if(identical(structure, "cs")){
+      1 - diag(length(specification$coordinates))
+    }else{
+      abs(outer(
+        specification$coordinates,
+        specification$coordinates,
+        "-"
+      ))
+    }
+
+    expect_identical(
+      dim(actual),
+      c(length(specification$rho), 4L, 4L),
+      info = structure
+    )
+    for(draw in seq_along(specification$rho)){
+      expected <- specification$rho[draw]^distance
+      expect_equal(
+        tcrossprod(actual[draw, , ]),
+        expected,
+        tolerance = 1e-14,
+        info = paste(structure, "draw", draw)
+      )
+    }
+  }
+})
+
 test_that("bridge coefficient geometry reconstructs a structured factor once", {
 
   data <- data.frame(
