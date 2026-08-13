@@ -1868,6 +1868,35 @@ random_effects_marginal_variance_factors <- function(
     )
   }
 
+  .bt_random_effect_marginal_covariance_validate_correlation_cholesky(
+    cholesky = cholesky,
+    random_term = random_term,
+    n_columns = n_columns,
+    posterior = posterior
+  )
+
+  out <- array(NA_real_, dim = dim(cholesky))
+  for(draw in seq_len(nrow(posterior))){
+    out[draw, , ] <- tcrossprod(cholesky[draw, , ])
+  }
+  if(any(!is.finite(out))){
+    stop(
+      "Random-effect marginal covariance correlation draws for block '",
+      random_term$block_name,
+      "' must define finite correlation matrices.",
+      call. = FALSE
+    )
+  }
+
+  out
+}
+
+.bt_random_effect_marginal_covariance_validate_correlation_cholesky <- function(
+    cholesky,
+    random_term,
+    n_columns,
+    posterior){
+
   if(!is.array(cholesky) || length(dim(cholesky)) != 3L ||
      !identical(dim(cholesky), c(nrow(posterior), n_columns, n_columns))){
     stop(
@@ -1886,21 +1915,17 @@ random_effects_marginal_variance_factors <- function(
     )
   }
 
-  out <- array(NA_real_, dim = dim(cholesky))
+  diagonal <- matrix(NA_real_, nrow = dim(cholesky)[1L], ncol = n_columns)
   for(draw in seq_len(nrow(posterior))){
-    out[draw, , ] <- tcrossprod(cholesky[draw, , ])
+    diagonal[draw, ] <- rowSums(cholesky[draw, , ]^2)
   }
-  if(any(!is.finite(out))){
+  if(any(!is.finite(diagonal))){
     stop(
       "Random-effect marginal covariance correlation draws for block '",
       random_term$block_name,
       "' must define finite correlation matrices.",
       call. = FALSE
     )
-  }
-  diagonal <- matrix(NA_real_, nrow = dim(out)[1L], ncol = n_columns)
-  for(column in seq_len(n_columns)){
-    diagonal[, column] <- out[, column, column]
   }
   if(any(abs(diagonal - 1) > sqrt(.Machine$double.eps))){
     stop(
@@ -1911,7 +1936,7 @@ random_effects_marginal_variance_factors <- function(
     )
   }
 
-  out
+  invisible(TRUE)
 }
 
 # Expand independent random effects through their weighted design directly.

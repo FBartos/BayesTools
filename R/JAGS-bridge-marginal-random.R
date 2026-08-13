@@ -709,16 +709,25 @@
       ncol = n_columns
     )
   }else{
-    .bt_random_effect_marginal_covariance_correlation_draws(
+    cholesky_draws <- .bt_random_effect_cholesky_draws(
       random_term = random_term,
       n_columns = n_columns,
       posterior = posterior
     )
-    cholesky <- .bt_random_effect_cholesky_draws(
+    if(is.null(cholesky_draws)){
+      .bt_random_effect_marginal_covariance_missing_correlation_stop(
+        random_term = random_term,
+        n_columns = n_columns,
+        posterior = posterior
+      )
+    }
+    .bt_random_effect_marginal_covariance_validate_correlation_cholesky(
+      cholesky = cholesky_draws,
       random_term = random_term,
       n_columns = n_columns,
       posterior = posterior
-    )[1L, , ]
+    )
+    cholesky <- cholesky_draws[1L, , ]
     factor <- sweep(
       matrix(cholesky, nrow = n_columns, ncol = n_columns),
       MARGIN = 1L,

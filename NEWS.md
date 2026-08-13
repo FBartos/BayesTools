@@ -56,6 +56,9 @@
   without changing source-parameter precedence or covariance reconstruction;
   an opt-in compact factor-state contract separates this invariant geometry
   from draw-varying factors while retaining the full context option.
+- Bridge evaluation of structured random-effect factors now reconstructs and
+  validates each exact coefficient Cholesky factor once instead of rebuilding
+  the same factor a second time for correlation validation.
 - `JAGS_bridgesampling()` exposes `repetitions` and `method` alongside its
   existing bridge controls and always derives the effective sample size from
   the fitted chains.

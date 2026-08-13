@@ -525,6 +525,62 @@ test_that("bridge marginal evaluator supports every implemented covariance struc
   }
 })
 
+test_that("bridge coefficient geometry reconstructs a structured factor once", {
+
+  data <- data.frame(
+    id = factor(rep(c("a", "b"), each = 3L)),
+    f = factor(rep(c("a", "b", "c"), 2L))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + cs(f | id),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("point", list(location = 0))),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("point", list(location = 0.4)),
+        rho = prior("point", list(location = 0.2))
+      )
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  posterior <- matrix(numeric(), nrow = 1L)
+  rho <- .bt_random_effect_rho_draws(
+    random_term = random_term,
+    posterior = posterior,
+    missing = "error",
+    out_of_support = "error"
+  )
+  reconstruct <- .bt_random_effect_cholesky_draws
+  reconstruction_count <- 0L
+  testthat::local_mocked_bindings(
+    .bt_random_effect_cholesky_draws = function(...){
+
+      reconstruction_count <<- reconstruction_count + 1L
+      reconstruct(...)
+    },
+    .package = "BayesTools"
+  )
+
+  actual <- .bt_JAGS_bridge_marginal_random_coefficient_geometry(
+    random_term = random_term,
+    posterior = posterior,
+    column_scale = rep(0.4, 3L),
+    covariance = TRUE,
+    structure = "cs"
+  )
+  expected_correlation <- matrix(rho, nrow = 3L, ncol = 3L)
+  diag(expected_correlation) <- 1
+
+  expect_identical(reconstruction_count, 1L)
+  expect_equal(
+    tcrossprod(actual$factor),
+    0.4^2 * expected_correlation,
+    tolerance = 1e-15
+  )
+  expect_equal(actual$covariance, tcrossprod(actual$factor), tolerance = 0)
+})
+
 test_that("bridge marginal evaluator supports known group covariance", {
 
   data <- data.frame(id = factor(c("b", "a", "c", "b")))
