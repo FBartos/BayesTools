@@ -392,6 +392,12 @@
         row_indexed = row_indexed,
         structure = structure,
         group_covariance = group_covariance,
+        coefficient_cholesky_evaluator =
+          .bt_JAGS_bridge_compile_marginal_random_cholesky_evaluator(
+            random_term = random_term,
+            n_columns = ncol(block_data$model_matrix),
+            structure = structure
+          ),
         sd_evaluator = .bt_JAGS_bridge_compile_random_sd_evaluator(
           random_term = random_term,
           prior_list = formula_prior_list[[parameter]]
@@ -630,7 +636,8 @@
       posterior = posterior,
       column_scale = column_scale,
       covariance = factor_covariance,
-      structure = block_plan$structure
+      structure = block_plan$structure,
+      cholesky_evaluator = block_plan$coefficient_cholesky_evaluator
     )
     value <- list(
       coefficient_factor = coefficient$factor,
@@ -679,7 +686,8 @@
     posterior = posterior,
     column_scale = as.numeric(sd_draws[1L, ]),
     covariance = factor_covariance,
-    structure = block_plan$structure
+    structure = block_plan$structure,
+    cholesky_evaluator = block_plan$coefficient_cholesky_evaluator
   )
 
   value <- list(
@@ -693,7 +701,7 @@
 
 .bt_JAGS_bridge_marginal_random_coefficient_geometry <- function(
     random_term, posterior, column_scale, covariance = TRUE,
-    structure = NULL){
+    structure = NULL, cholesky_evaluator = NULL){
 
   n_columns <- length(column_scale)
   if(is.null(structure)){
@@ -709,11 +717,15 @@
       ncol = n_columns
     )
   }else{
-    cholesky_draws <- .bt_random_effect_cholesky_draws(
-      random_term = random_term,
-      n_columns = n_columns,
-      posterior = posterior
-    )
+    cholesky_draws <- if(is.null(cholesky_evaluator)){
+      .bt_random_effect_cholesky_draws(
+        random_term = random_term,
+        n_columns = n_columns,
+        posterior = posterior
+      )
+    }else{
+      cholesky_evaluator(posterior)
+    }
     if(is.null(cholesky_draws)){
       .bt_random_effect_marginal_covariance_missing_correlation_stop(
         random_term = random_term,
@@ -748,6 +760,115 @@
     covariance = if(isTRUE(covariance)) tcrossprod(factor) else NULL,
     factor = factor
   )
+}
+
+.bt_JAGS_bridge_compile_marginal_random_cholesky_evaluator <- function(
+    random_term, n_columns, structure){
+
+  if(!structure %in% c("cs", "hcs", "ar1", "car", "har") ||
+     n_columns <= 1L){
+    return(NULL)
+  }
+
+  context <- "Random-effect posterior reconstruction metadata"
+  rho_plan <- .bt_random_effect_compile_rho_draw_plan(
+    random_term = random_term,
+    context = context
+  )
+  correlation <- rho_plan$correlation
+  coordinates <- if(identical(structure, "car")){
+    .bt_random_effect_car_time_values(
+      random_term = random_term,
+      correlation = correlation,
+      n_columns = n_columns,
+      context = context
+    )
+  }else{
+    seq_len(n_columns)
+  }
+  coordinates <- .bt_random_effect_structured_local_coordinates(
+    structure = structure,
+    n_columns = n_columns,
+    column_coordinates = coordinates
+  )
+  structure_bounds <- .bt_random_effect_structured_rho_bounds(
+    K = n_columns,
+    structure = structure
+  )
+  fixed_rho <- if(is.null(rho_plan$sample_fixed)){
+    NULL
+  }else{
+    .bt_random_effect_rho_draws(
+      random_term = random_term,
+      posterior = matrix(numeric(), nrow = 1L),
+      missing = "error",
+      out_of_support = "error",
+      context = context,
+      plan = rho_plan
+    )[[1L]]
+  }
+  transition_context <- paste0(
+    "Random-effect Cholesky reconstruction",
+    .bt_random_effect_metadata_block_detail(random_term),
+    ", posterior draw 1"
+  )
+  force(random_term)
+  force(n_columns)
+  force(structure)
+  force(rho_plan)
+  force(coordinates)
+  force(structure_bounds)
+  force(fixed_rho)
+  force(transition_context)
+
+  function(posterior){
+    rho <- if(is.null(fixed_rho)){
+      .bt_random_effect_rho_draws(
+        random_term = random_term,
+        posterior = posterior,
+        missing = "error",
+        out_of_support = "error",
+        context = context,
+        plan = rho_plan
+      )
+    }else{
+      rep(fixed_rho, nrow(posterior))
+    }
+    invalid <- .bt_random_effect_rho_outside_support(
+      rho,
+      bounds = structure_bounds,
+      structure = structure
+    )
+    if(any(invalid)){
+      .bt_random_effect_structured_local_check_rho(
+        structure = structure,
+        rho = rho[which(invalid)[1L]],
+        global_n_columns = n_columns
+      )
+    }
+
+    out <- array(NA_real_, dim = c(nrow(posterior), n_columns, n_columns))
+    for(draw in seq_len(nrow(posterior))){
+      out[draw, , ] <- if(structure %in% c("cs", "hcs")){
+        .bt_random_effect_cs_subset_cholesky(n_columns, rho[draw])
+      }else{
+        .bt_random_effect_markov_subset_cholesky(
+          coordinates = coordinates,
+          rho = rho[draw],
+          context = if(draw == 1L){
+            transition_context
+          }else{
+            paste0(
+              "Random-effect Cholesky reconstruction",
+              .bt_random_effect_metadata_block_detail(random_term),
+              ", posterior draw ", draw
+            )
+          }
+        )
+      }
+    }
+    out
+  }
 }
 
 .bt_JAGS_bridge_marginal_random_geometry_covariance <- function(geometry,

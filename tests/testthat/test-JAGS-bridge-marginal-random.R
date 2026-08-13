@@ -492,6 +492,24 @@ test_that("bridge marginal evaluator supports every implemented covariance struc
       posterior,
       allow_zero_columns = TRUE
     )
+    if(structure %in% c("cs", "hcs", "ar1", "har", "car")){
+      compiled_cholesky <-
+        .bt_JAGS_bridge_compile_marginal_random_cholesky_evaluator(
+          random_term = random_term,
+          n_columns = ncol(random_term$model_matrix),
+          structure = structure
+        )
+      expect_equal(
+        compiled_cholesky(posterior),
+        .bt_random_effect_cholesky_draws(
+          random_term = random_term,
+          n_columns = ncol(random_term$model_matrix),
+          posterior = posterior
+        ),
+        tolerance = 0,
+        info = paste(structure, "compiled Cholesky")
+      )
+    }
     reference <- .bt_random_effect_marginal_covariance_samples(
       design = formula_result$formula_design,
       posterior = posterior,
@@ -523,6 +541,68 @@ test_that("bridge marginal evaluator supports every implemented covariance struc
       info = structure
     )
   }
+})
+
+test_that("compiled bridge correlation geometry preserves sampled rho", {
+
+  data <- data.frame(
+    id = factor(rep(c("a", "b"), each = 4L)),
+    f = factor(rep(letters[1:4], 2L))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 + ar1(f | id),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("point", list(location = 0))),
+    prior_random = prior_random(
+      id = random_block(
+        sd = prior("point", list(location = 0.4)),
+        rho = prior("normal", list(mean = 0, sd = 0.5))
+      )
+    )
+  )
+  random_term <- formula_result$formula_design$random_effects[[1L]]
+  rho_name <- .bt_JAGS_bridge_scalar_rho_sample_name(
+    random_term$correlation,
+    random_term
+  )
+  posterior <- matrix(
+    c(-0.4, 0, 0.6),
+    ncol = 1L,
+    dimnames = list(NULL, rho_name)
+  )
+  compiled <- .bt_JAGS_bridge_compile_marginal_random_cholesky_evaluator(
+    random_term = random_term,
+    n_columns = 4L,
+    structure = "ar1"
+  )
+  rho_plan <- .bt_random_effect_compile_rho_draw_plan(random_term)
+
+  expect_equal(
+    compiled(posterior),
+    .bt_random_effect_cholesky_draws(
+      random_term = random_term,
+      n_columns = 4L,
+      posterior = posterior
+    ),
+    tolerance = 0
+  )
+  expect_equal(
+    .bt_random_effect_rho_draws(
+      random_term = random_term,
+      posterior = posterior,
+      missing = "error",
+      out_of_support = "error",
+      plan = rho_plan
+    ),
+    .bt_random_effect_rho_draws(
+      random_term = random_term,
+      posterior = posterior,
+      missing = "error",
+      out_of_support = "error"
+    ),
+    tolerance = 0
+  )
 })
 
 test_that("bridge coefficient geometry reconstructs a structured factor once", {

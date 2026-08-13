@@ -58,7 +58,9 @@
   from draw-varying factors while retaining the full context option.
 - Bridge evaluation of structured random-effect factors now reconstructs and
   validates each exact coefficient Cholesky factor once instead of rebuilding
-  the same factor a second time for correlation validation.
+  the same factor a second time for correlation validation, and compiles
+  invariant scalar-correlation metadata, coordinates, and structural support
+  before repeated bridge states are evaluated.
 - `JAGS_bridgesampling()` exposes `repetitions` and `method` alongside its
   existing bridge controls and always derives the effective sample size from
   the fitted chains.

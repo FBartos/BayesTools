@@ -84,10 +84,112 @@
 .bt_random_effect_rho_draws <- function(random_term, posterior,
                                         missing = c("null", "error"),
                                         out_of_support = c("null", "error"),
-                                        context = "Random-effect posterior reconstruction metadata"){
+                                        context = "Random-effect posterior reconstruction metadata",
+                                        plan = NULL){
 
   missing <- match.arg(missing)
   out_of_support <- match.arg(out_of_support)
+  if(is.null(plan)){
+    plan <- .bt_random_effect_compile_rho_draw_plan(
+      random_term = random_term,
+      context = context
+    )
+  }
+  structure   <- plan$structure
+  correlation <- plan$correlation
+  rho_scale   <- plan$rho_scale
+  if(!identical(rho_scale, "rho") &&
+     correlation$sample_name %in% colnames(posterior)){
+    sample_value <- posterior[, correlation$sample_name]
+    rho_source <- "sample"
+    rho <- .bt_random_effect_transform_rho(
+      sample_value,
+      correlation = correlation,
+      random_term = random_term,
+      context = context,
+      plan = plan
+    )
+  }else if(correlation$rho_name %in% colnames(posterior)){
+    sample_value <- NULL
+    rho_source <- "rho"
+    rho <- posterior[, correlation$rho_name]
+  }else if(correlation$sample_name %in% colnames(posterior)){
+    sample_value <- posterior[, correlation$sample_name]
+    rho_source <- "sample"
+    rho <- .bt_random_effect_transform_rho(
+      sample_value,
+      correlation = correlation,
+      random_term = random_term,
+      context = context,
+      plan = plan
+    )
+  }else{
+    sample_fixed <- plan$sample_fixed
+    if(is.null(sample_fixed)){
+      if(identical(missing, "error")){
+        .bt_random_effect_missing_rho_draws_stop(
+          random_term = random_term,
+          correlation = correlation,
+          context = context
+        )
+      }
+      return(NULL)
+    }
+    sample_value <- rep(sample_fixed, nrow(posterior))
+    rho_source <- "fixed_sample"
+    rho <- .bt_random_effect_transform_rho(
+      sample_value,
+      correlation = correlation,
+      random_term = random_term,
+      context = context,
+      plan = plan
+    )
+  }
+
+  bounds <- plan$bounds
+  if(rho_source %in% c("sample", "fixed_sample") &&
+     !identical(rho_scale, "rho")){
+    sample_bounds <- plan$sample_bounds
+    invalid_sample <- .bt_random_effect_rho_outside_support(
+      sample_value,
+      sample_bounds,
+      structure
+    )
+    if(any(invalid_sample)){
+      if(identical(out_of_support, "error")){
+        .bt_random_effect_rho_out_of_support_draw_stop(
+          random_term = random_term,
+          rho = rho,
+          invalid = invalid_sample,
+          bounds = bounds,
+          structure = structure,
+          context = context
+        )
+      }
+      return(NULL)
+    }
+  }
+  invalid <- .bt_random_effect_rho_outside_support(rho, bounds, structure)
+  if(any(invalid)){
+    if(identical(out_of_support, "error")){
+      .bt_random_effect_rho_out_of_support_draw_stop(
+        random_term = random_term,
+        rho = rho,
+        invalid = invalid,
+        bounds = bounds,
+        structure = structure,
+        context = context
+      )
+    }
+    return(NULL)
+  }
+
+  rho
+}
+
+.bt_random_effect_compile_rho_draw_plan <- function(
+    random_term,
+    context = "Random-effect posterior reconstruction metadata"){
 
   structure <- .bt_random_effect_structure(
     random_term,
@@ -130,102 +232,36 @@
     random_term,
     context = context
   )
-  if(!identical(rho_scale, "rho") &&
-     correlation$sample_name %in% colnames(posterior)){
-    sample_value <- posterior[, correlation$sample_name]
-    rho_source <- "sample"
-    rho <- .bt_random_effect_transform_rho(
-      sample_value,
-      correlation = correlation,
-      random_term = random_term,
-      context = context
-    )
-  }else if(correlation$rho_name %in% colnames(posterior)){
-    sample_value <- NULL
-    rho_source <- "rho"
-    rho <- posterior[, correlation$rho_name]
-  }else if(correlation$sample_name %in% colnames(posterior)){
-    sample_value <- posterior[, correlation$sample_name]
-    rho_source <- "sample"
-    rho <- .bt_random_effect_transform_rho(
-      sample_value,
-      correlation = correlation,
-      random_term = random_term,
-      context = context
-    )
-  }else{
-    sample_fixed <- .bt_random_effect_rho_fixed_sample_metadata(
-      correlation,
-      random_term,
-      context = context
-    )
-    if(is.null(sample_fixed)){
-      if(identical(missing, "error")){
-        .bt_random_effect_missing_rho_draws_stop(
-          random_term = random_term,
-          correlation = correlation,
-          context = context
-        )
-      }
-      return(NULL)
-    }
-    sample_value <- rep(sample_fixed, nrow(posterior))
-    rho_source <- "fixed_sample"
-    rho <- .bt_random_effect_transform_rho(
-      sample_value,
-      correlation = correlation,
-      random_term = random_term,
-      context = context
-    )
-  }
-
   bounds <- .bt_random_effect_rho_bounds_metadata(
     correlation,
     random_term,
     context = context
   )
-  if(rho_source %in% c("sample", "fixed_sample") &&
-     !identical(rho_scale, "rho")){
-    sample_bounds <- .bt_random_effect_rho_sample_bounds(
+  sample_fixed <- .bt_random_effect_rho_fixed_sample_metadata(
+    correlation,
+    random_term,
+    context = context
+  )
+  sample_bounds <- if(identical(rho_scale, "rho")){
+    NULL
+  }else{
+    .bt_random_effect_rho_sample_bounds(
       correlation = correlation,
       random_term = random_term,
       context = context
     )
-    invalid_sample <- .bt_random_effect_rho_outside_support(
-      sample_value,
-      sample_bounds,
-      structure
-    )
-    if(any(invalid_sample)){
-      if(identical(out_of_support, "error")){
-        .bt_random_effect_rho_out_of_support_draw_stop(
-          random_term = random_term,
-          rho = rho,
-          invalid = invalid_sample,
-          bounds = bounds,
-          structure = structure,
-          context = context
-        )
-      }
-      return(NULL)
-    }
   }
-  invalid <- .bt_random_effect_rho_outside_support(rho, bounds, structure)
-  if(any(invalid)){
-    if(identical(out_of_support, "error")){
-      .bt_random_effect_rho_out_of_support_draw_stop(
-        random_term = random_term,
-        rho = rho,
-        invalid = invalid,
-        bounds = bounds,
-        structure = structure,
-        context = context
-      )
-    }
-    return(NULL)
-  }
+  interior <- .bt_random_effect_representable_rho_bounds(bounds, structure)
 
-  rho
+  list(
+    structure = structure,
+    correlation = correlation,
+    rho_scale = rho_scale,
+    bounds = bounds,
+    sample_fixed = sample_fixed,
+    sample_bounds = sample_bounds,
+    interior = interior
+  )
 }
 
 .bt_random_effect_rho_sample_bounds <- function(correlation,
@@ -305,7 +341,8 @@
 
 .bt_random_effect_transform_rho <- function(value, correlation,
                                             random_term = NULL,
-                                            context = "Random-effect posterior reconstruction metadata"){
+                                            context = "Random-effect posterior reconstruction metadata",
+                                            plan = NULL){
 
   if(!is.numeric(value) || any(!is.finite(value))){
     stop(
@@ -316,10 +353,23 @@
     )
   }
 
-  rho_scale <- .bt_random_effect_rho_scale_metadata(correlation, random_term, context)
-  bounds <- .bt_random_effect_rho_bounds_metadata(correlation, random_term, context)
-  structure <- .bt_random_effect_structure(random_term, context = context)
-  interior <- .bt_random_effect_representable_rho_bounds(bounds, structure)
+  if(is.null(plan)){
+    rho_scale <- .bt_random_effect_rho_scale_metadata(
+      correlation,
+      random_term,
+      context
+    )
+    bounds <- .bt_random_effect_rho_bounds_metadata(
+      correlation,
+      random_term,
+      context
+    )
+    structure <- .bt_random_effect_structure(random_term, context = context)
+    interior <- .bt_random_effect_representable_rho_bounds(bounds, structure)
+  }else{
+    rho_scale <- plan$rho_scale
+    interior  <- plan$interior
+  }
   if(identical(rho_scale, "fisher_z")){
     return(pmax(interior[["lower"]], pmin(interior[["upper"]], tanh(value))))
   }
