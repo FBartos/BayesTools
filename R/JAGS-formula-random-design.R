@@ -621,7 +621,8 @@
     model_matrix = model_matrix,
     random_structure = random_structure,
     compile_mode = compile_mode,
-    row_indexed_external_sd = row_indexed_external_sd
+    row_indexed_external_sd = row_indexed_external_sd,
+    parameterization = parameterization$resolved
   )
   # step 1:
   if(isTRUE(sampled_random_effect) &&
@@ -631,11 +632,14 @@
     group_precision_name <- paste0(parameter, "_xRE_GROUP_PRECx")
     group_latent_name <- paste0(parameter, "_xRE_GROUP_Zx")
     random_syntax <- c(random_syntax, paste0(
-      " ", group_latent_name, "[1:", n_id, "] ~ dmnorm(",
+      " for(j in 1:", n_par, "){\n",
+      "   ", group_latent_name, "[1:", n_id, ",j] ~ dmnorm(",
       group_mean_name, "[1:", n_id, "], ",
       group_precision_name, "[1:", n_id, ",1:", n_id, "])\n",
-      " for(i in 1:", n_id, "){\n",
-      "   ", paste0(parameter, "_xRE_Zx"), "[i,1] = ", group_latent_name, "[i]\n",
+      "   for(i in 1:", n_id, "){\n",
+      "     ", paste0(parameter, "_xRE_Zx"), "[i,j] = ",
+      group_latent_name, "[i,j]\n",
+      "   }\n",
       " }\n"
     ))
     JAGS_data[[group_mean_name]] <- rep(0, n_id)

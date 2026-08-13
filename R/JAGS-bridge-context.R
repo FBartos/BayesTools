@@ -24,12 +24,12 @@
   }
   if(is.character(bridge_context) && length(bridge_context) == 1L &&
      !is.na(bridge_context) &&
-     bridge_context %in% c("none", "full", "nodes")){
+     bridge_context %in% c("none", "full", "nodes", "marginal")){
     return(bridge_context)
   }
 
   stop(
-    "'bridge_context' must be FALSE, TRUE, or one of 'none', 'full', and 'nodes'.",
+    "'bridge_context' must be FALSE, TRUE, or one of 'none', 'full', 'nodes', and 'marginal'.",
     call. = FALSE
   )
 }
@@ -38,7 +38,9 @@
                                                        formula_design_list,
                                                        formula_data_list,
                                                        formula_prior_list,
-                                                       model_data){
+                                                       model_data,
+                                                       marginal_random_evaluator = NULL,
+                                                       node_names = NULL){
 
   mode <- .bt_JAGS_bridge_context_mode(mode)
   if(identical(mode, "none")){
@@ -48,12 +50,30 @@
     ))
   }
 
+  random_node_names <- unique(unlist(lapply(formula_design_list, function(design){
+    random_effects <- .bt_formula_design_random_effects(design)
+    unlist(lapply(random_effects, `[[`, "sd_parameter_names"), use.names = FALSE)
+  }), use.names = FALSE))
+  random_node_names <- random_node_names[
+    !is.na(random_node_names) & nzchar(random_node_names)
+  ]
+  selected_random_only <- !is.null(node_names) &&
+    all(node_names %in% random_node_names)
   random_evaluator <- .bt_JAGS_bridge_compile_random_context_evaluator(
     formula_design_list = formula_design_list,
     formula_data_list = formula_data_list,
     formula_prior_list = formula_prior_list,
-    model_data = model_data
+    model_data = model_data,
+    node_names = if(selected_random_only) node_names else NULL
   )
+  if(is.null(marginal_random_evaluator)){
+    marginal_random_evaluator <- list(
+      active = FALSE,
+      covariance = function(samples, prior_parameters,
+                            formula_prior_parameters, formula_parameters,
+                            factor_covariance = TRUE) list()
+    )
+  }
   if(identical(mode, "full")){
     return(list(
       context = function(samples, prior_parameters,
@@ -68,7 +88,27 @@
           formula_data_list = formula_data_list,
           formula_prior_list = formula_prior_list,
           model_data = model_data,
-          random_context_evaluator = random_evaluator
+          random_context_evaluator = random_evaluator,
+          marginal_random_evaluator = marginal_random_evaluator
+        )
+      }
+    ))
+  }
+
+  if(identical(mode, "marginal")){
+    return(list(
+      context = function(samples, prior_parameters,
+                         formula_prior_parameters, formula_parameters){
+        .bt_JAGS_bridge_marginal_context(
+          samples = samples,
+          prior_parameters = prior_parameters,
+          formula_prior_parameters = formula_prior_parameters,
+          formula_parameters = formula_parameters,
+          add_parameters = add_parameters,
+          random_context_evaluator = random_evaluator,
+          marginal_random_evaluator = marginal_random_evaluator,
+          node_names = node_names,
+          random_only = selected_random_only
         )
       }
     ))
@@ -83,7 +123,9 @@
         formula_prior_parameters = formula_prior_parameters,
         formula_parameters = formula_parameters,
         add_parameters = add_parameters,
-        random_context_evaluator = random_evaluator
+        random_context_evaluator = random_evaluator,
+        node_names = node_names,
+        random_only = selected_random_only
       )
     }
   )
@@ -114,7 +156,8 @@
                                      formula_data_list,
                                      formula_prior_list,
                                      model_data,
-                                     random_context_evaluator = NULL){
+                                     random_context_evaluator = NULL,
+                                     marginal_random_evaluator = NULL){
 
   state <- .bt_JAGS_bridge_context_state(samples)
   state_matrix <- .bt_JAGS_bridge_context_state_matrix(samples)
@@ -142,6 +185,16 @@
     )
   }
   random_nodes <- .bt_JAGS_bridge_context_random_nodes(random)
+  marginalized_random <- if(is.null(marginal_random_evaluator)){
+    list()
+  }else{
+    marginal_random_evaluator$covariance(
+      samples = samples,
+      prior_parameters = prior_parameters,
+      formula_prior_parameters = formula_prior_parameters,
+      formula_parameters = formula_parameters
+    )
+  }
 
   nodes <- .bt_JAGS_bridge_context_nodes(
     state = state,
@@ -169,6 +222,7 @@
     formula_parameters = formula_parameters,
     add_parameters = add_parameter_values,
     random = random,
+    marginalized_random = marginalized_random,
     node_info = node_info,
     metadata = list(
       source = "JAGS_bridgesampling",
@@ -176,10 +230,52 @@
       node_names = names(nodes),
       node_info_names = node_info$name,
       formula_parameters = names(formula_parameters),
-      random_parameters = names(random)
+      random_parameters = names(random),
+      marginalized_random_parameters = names(marginalized_random)
     )
   )
   class(out) <- c("BayesTools_bridge_context", "list")
+  out
+}
+
+.bt_JAGS_bridge_marginal_context <- function(
+    samples,
+    prior_parameters,
+    formula_prior_parameters,
+    formula_parameters,
+    add_parameters,
+    random_context_evaluator,
+    marginal_random_evaluator,
+    node_names = NULL,
+    random_only = FALSE){
+
+  nodes_context <- .bt_JAGS_bridge_nodes_context(
+    samples = samples,
+    prior_parameters = prior_parameters,
+    formula_prior_parameters = formula_prior_parameters,
+    formula_parameters = formula_parameters,
+    add_parameters = add_parameters,
+    random_context_evaluator = random_context_evaluator,
+    node_names = node_names,
+    random_only = random_only
+  )
+  marginalized_random <- marginal_random_evaluator$covariance(
+    samples = samples,
+    prior_parameters = prior_parameters,
+    formula_prior_parameters = formula_prior_parameters,
+    formula_parameters = formula_parameters,
+    factor_covariance = FALSE
+  )
+
+  out <- list(
+    nodes = nodes_context$nodes,
+    marginalized_random = marginalized_random
+  )
+  class(out) <- c(
+    "BayesTools_bridge_marginal_context",
+    "BayesTools_bridge_context",
+    "list"
+  )
   out
 }
 
@@ -187,7 +283,9 @@
                                           formula_prior_parameters,
                                           formula_parameters,
                                           add_parameters,
-                                          random_context_evaluator){
+                                          random_context_evaluator,
+                                          node_names = NULL,
+                                          random_only = FALSE){
 
   state <- .bt_JAGS_bridge_context_state(samples)
   add_parameter_values <- .bt_JAGS_bridge_context_add_parameters(
@@ -200,6 +298,16 @@
     formula_prior_parameters = formula_prior_parameters,
     formula_parameters = formula_parameters
   )
+  if(isTRUE(random_only)){
+    nodes <- .bt_JAGS_bridge_select_nodes(random_nodes, node_names)
+    out <- list(nodes = nodes)
+    class(out) <- c(
+      "BayesTools_bridge_nodes_context",
+      "BayesTools_bridge_context",
+      "list"
+    )
+    return(out)
+  }
   nodes <- .bt_JAGS_bridge_context_nodes(
     state = state,
     prior_parameters = prior_parameters,
@@ -208,6 +316,7 @@
     add_parameter_values = add_parameter_values,
     random_nodes = random_nodes
   )
+  nodes <- .bt_JAGS_bridge_select_nodes(nodes, node_names)
 
   out <- list(nodes = nodes)
   class(out) <- c(
@@ -216,6 +325,22 @@
     "list"
   )
   out
+}
+
+.bt_JAGS_bridge_select_nodes <- function(nodes, node_names){
+
+  if(is.null(node_names)){
+    return(nodes)
+  }
+  missing <- setdiff(node_names, names(nodes))
+  if(length(missing) > 0L){
+    stop(
+      "Requested bridge context node(s) are unavailable: ",
+      paste(missing, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  nodes[node_names]
 }
 
 .bt_JAGS_bridge_context_state <- function(samples){
@@ -501,7 +626,8 @@
     formula_design_list,
     formula_data_list,
     formula_prior_list,
-    model_data){
+    model_data,
+    node_names = NULL){
 
   plans <- list()
   sampled_random_parameters <- character()
@@ -536,9 +662,28 @@
     if(is.null(parameter_prior_list)){
       parameter_prior_list <- list()
     }
+    random_terms <- .bt_formula_design_random_effects(design)
+    term_plans <- lapply(random_terms, function(random_term){
+      list(
+        random_term = random_term,
+        row_indexed = .bt_random_effect_has_row_indexed_external_sd(random_term),
+        allocation_parameters =
+          .bt_JAGS_marglik_random_effect_allocation_parameters(random_term),
+        sd_evaluator = .bt_JAGS_bridge_compile_random_sd_evaluator(
+          random_term = random_term,
+          prior_list = parameter_prior_list
+        )
+      )
+    })
+    if(!is.null(node_names)){
+      term_plans <- Filter(function(term_plan){
+        sd_names <- term_plan$random_term$sd_parameter_names
+        any(sd_names[!is.na(sd_names)] %in% node_names)
+      }, term_plans)
+    }
     plans[[length(plans) + 1L]] <- list(
       parameter = parameter,
-      random_terms = .bt_formula_design_random_effects(design),
+      term_plans = term_plans,
       prior_list = parameter_prior_list,
       source_data = .bt_JAGS_marglik_parameter_source_data(
         model_data = model_data,
@@ -580,7 +725,8 @@
       out <- list()
       for(plan in plans){
         parameter_random <- list()
-        for(random_term in plan$random_terms){
+        for(term_plan in plan$term_plans){
+          random_term <- term_plan$random_term
           parameter_random[[random_term$block_name]] <-
             .bt_JAGS_bridge_context_random_block(
               samples = samples,
@@ -589,7 +735,10 @@
               formula_prior_parameters = formula_prior_parameters,
               data = plan$source_data,
               parameters = parameter_sources,
-              posterior = posterior
+              posterior = posterior,
+              row_indexed = term_plan$row_indexed,
+              allocation_parameters = term_plan$allocation_parameters,
+              sd_evaluator = term_plan$sd_evaluator
             )
         }
         out[[plan$parameter]] <- parameter_random
@@ -610,7 +759,8 @@
       posterior <- .bt_JAGS_marglik_random_effect_posterior_row(samples)
       nodes <- numeric()
       for(plan in plans){
-        for(random_term in plan$random_terms){
+        for(term_plan in plan$term_plans){
+          random_term <- term_plan$random_term
           block <- .bt_JAGS_bridge_context_random_block_nodes(
             samples = samples,
             random_term = random_term,
@@ -618,7 +768,10 @@
             formula_prior_parameters = formula_prior_parameters,
             data = plan$source_data,
             parameters = parameter_sources,
-            posterior = posterior
+            posterior = posterior,
+            row_indexed = term_plan$row_indexed,
+            allocation_parameters = term_plan$allocation_parameters,
+            sd_evaluator = term_plan$sd_evaluator
           )
           nodes <- .bt_JAGS_bridge_merge_nodes(nodes, block$nodes)
           for(allocation in block$allocations){
@@ -643,12 +796,283 @@
   out
 }
 
+.bt_JAGS_bridge_compile_random_sd_evaluator <- function(random_term,
+                                                        prior_list){
+
+  binding <- random_term$sd_binding
+  if(is.null(binding)){
+    return(NULL)
+  }
+  .bt_check_random_sd_binding(binding)
+  if(.bt_random_effect_has_row_indexed_external_sd(random_term)){
+    return(NULL)
+  }
+
+  allocation_parameters <-
+    .bt_JAGS_marglik_random_effect_allocation_parameters(random_term)
+  ambiguity <- lapply(allocation_parameters, function(parameter_name){
+    prior <- prior_list[[parameter_name]]
+    if(is.null(prior) || !is.prior.simplex(prior) ||
+       !identical(prior$distribution, "dirichlet")){
+      return(NULL)
+    }
+    K <- prior$parameters[["K"]]
+    list(
+      weight = paste0(parameter_name, "[", seq_len(K), "]"),
+      eta = paste0(
+        .JAGS_prior_dirichlet_eta_name(parameter_name),
+        "[", seq_len(K), "]"
+      ),
+      parameter = parameter_name
+    )
+  })
+  ambiguity <- Filter(Negate(is.null), ambiguity)
+
+  check_ambiguity <- function(samples){
+    for(spec in ambiguity){
+      if(all(spec$weight %in% names(samples)) &&
+         all(spec$eta %in% names(samples))){
+        stop(
+          "Bridge samples contain both normalized Dirichlet allocation coordinates ",
+          "and auxiliary eta coordinates for parameter '",
+          spec$parameter,
+          "'. Use the auxiliary eta bridge coordinates only.",
+          call. = FALSE
+        )
+      }
+    }
+    invisible(TRUE)
+  }
+
+  evaluate <- if(isTRUE(binding$true_allocation)){
+    allocation <- binding$allocations[[1L]]
+    target <- .bt_random_effect_allocation_target_metadata(allocation)
+    .bt_random_effect_allocation_scale_metadata(allocation)
+    factors <- if(identical(target, "sd_component")){
+      .bt_random_effect_allocation_parent_factors_metadata(allocation)
+    }else{
+      .bt_random_effect_allocation_factors_metadata(allocation)
+    }
+    factor_plan <- .bt_random_effect_compile_allocation_factor_plan(factors)
+    source_name <- .bt_random_sd_binding_source_name(allocation$source)
+
+    if(identical(target, "sd_component")){
+      component <- .bt_check_random_sd_component_allocation(
+        allocation = allocation,
+        n_columns = random_term$n_columns,
+        context = "Bridge-sampling random-effect allocation metadata"
+      )
+      leaf_index <- component$leaf_index_by_column
+      n_targets <- component$n_targets
+      weight_name <- allocation$weight_name
+      scale <- allocation$scale
+    }
+
+    function(posterior, parameters = NULL){
+      base <- .bt_JAGS_bridge_compiled_parameter_draws(
+        parameter_name = source_name,
+        posterior = posterior,
+        prior_list = prior_list,
+        parameters = parameters
+      )
+      if(is.null(base)){
+        return(NULL)
+      }
+      base <- .bt_JAGS_bridge_compiled_allocation_factor_plan(
+        base = base,
+        factor_plan = factor_plan,
+        posterior = posterior,
+        prior_list = prior_list,
+        parameters = parameters
+      )
+      if(is.null(base)){
+        return(NULL)
+      }
+      if(!identical(target, "sd_component")){
+        return(matrix(
+          base,
+          nrow = nrow(posterior),
+          ncol = random_term$n_columns
+        ))
+      }
+
+      weights <- .bt_JAGS_bridge_compiled_dirichlet_draws(
+        parameter_name = weight_name,
+        posterior = posterior,
+        prior_list = prior_list,
+        parameters = parameters
+      )
+      if(is.null(weights)){
+        return(NULL)
+      }
+      if(ncol(weights) != n_targets){
+        stop(
+          "Random-effect allocation metadata for '", weight_name,
+          "' expected ", n_targets, " Dirichlet coordinate(s), but found ",
+          ncol(weights), ".",
+          call. = FALSE
+        )
+      }
+      out <- matrix(
+        NA_real_,
+        nrow = nrow(posterior),
+        ncol = random_term$n_columns
+      )
+      for(column in seq_len(random_term$n_columns)){
+        out[, column] <- base * .bt_random_effect_allocation_multiplier(
+          weights = weights[, leaf_index[column]],
+          scale = scale,
+          n_targets = n_targets
+        )
+      }
+      out
+    }
+  }else{
+    sd_names <- random_term$sd_parameter_names
+    function(posterior, parameters = NULL){
+      if(is.null(sd_names) || length(sd_names) != random_term$n_columns ||
+         any(is.na(sd_names))){
+        return(NULL)
+      }
+      out <- matrix(
+        NA_real_,
+        nrow = nrow(posterior),
+        ncol = random_term$n_columns
+      )
+      for(column in seq_len(random_term$n_columns)){
+        values <- .bt_JAGS_bridge_compiled_parameter_draws(
+          parameter_name = sd_names[column],
+          posterior = posterior,
+          prior_list = prior_list,
+          parameters = parameters
+        )
+        if(is.null(values)){
+          return(NULL)
+        }
+        out[, column] <- values
+      }
+      out
+    }
+  }
+
+  list(values = function(samples, parameters = NULL){
+    check_ambiguity(samples)
+    posterior <- .bt_JAGS_marglik_random_effect_posterior_row(samples)
+    sd_draws <- tryCatch(
+      evaluate(posterior, parameters),
+      error = function(e){
+        if(.bt_JAGS_marglik_random_effect_support_error(e)){
+          .bt_JAGS_marglik_out_of_support(conditionMessage(e))
+        }
+        stop(e)
+      }
+    )
+    if(is.null(sd_draws)){
+      .bt_JAGS_marglik_explain_random_effect_sd_missing(
+        samples,
+        random_term,
+        prior_list
+      )
+      stop(
+        "Random-effect SD metadata are incomplete for block '",
+        random_term$block_name,
+        "'.",
+        call. = FALSE
+      )
+    }
+    unname(sd_draws[1L, ])
+  })
+}
+
+.bt_JAGS_bridge_compiled_parameter_draws <- function(
+    parameter_name, posterior, prior_list, parameters = NULL){
+
+  if(is.list(parameters) && parameter_name %in% names(parameters)){
+    value <- as.numeric(parameters[[parameter_name]])
+    if(length(value) == 1L){
+      return(rep(value, nrow(posterior)))
+    }
+    if(length(value) == nrow(posterior)){
+      return(value)
+    }
+  }
+  .bt_random_effect_parameter_draws(
+    parameter_name = parameter_name,
+    posterior = posterior,
+    prior_list = prior_list
+  )
+}
+
+.bt_JAGS_bridge_compiled_dirichlet_draws <- function(
+    parameter_name, posterior, prior_list, parameters = NULL){
+
+  if(is.list(parameters) && parameter_name %in% names(parameters)){
+    value <- as.numeric(parameters[[parameter_name]])
+    return(matrix(value, nrow = nrow(posterior), ncol = length(value),
+                  byrow = TRUE))
+  }
+  .bt_random_effect_dirichlet_draws(
+    parameter_name = parameter_name,
+    posterior = posterior,
+    prior_list = prior_list
+  )
+}
+
+.bt_JAGS_bridge_compiled_allocation_factor_plan <- function(
+    base, factor_plan, posterior, prior_list, parameters = NULL){
+
+  if(length(factor_plan) == 0L){
+    return(base)
+  }
+  out <- base
+  for(factor in factor_plan){
+    weights <- .bt_JAGS_bridge_compiled_dirichlet_draws(
+      parameter_name = factor$weight_name,
+      posterior = posterior,
+      prior_list = prior_list,
+      parameters = parameters
+    )
+    if(is.null(weights)){
+      return(NULL)
+    }
+    if(ncol(weights) != factor$n_targets || factor$index > ncol(weights)){
+      stop(
+        "Random-effect allocation factor metadata for '",
+        factor$weight_name,
+        "' do not match the reconstructed Dirichlet coordinates.",
+        call. = FALSE
+      )
+    }
+    gate <- .bt_random_effect_allocation_gate_draws(
+      parameter_name = factor$inclusion_name,
+      posterior = posterior
+    )
+    if(is.null(gate)){
+      stop(
+        "Random-effect allocation inclusion samples are missing Bernoulli indicator '",
+        factor$inclusion_name,
+        "'.",
+        call. = FALSE
+      )
+    }
+    out <- out * .bt_random_effect_allocation_multiplier(
+      weights = weights[, factor$index],
+      scale = factor$scale,
+      n_targets = factor$n_targets
+    ) * gate
+  }
+  out
+}
+
 .bt_JAGS_bridge_context_random_block <- function(samples, random_term,
                                                  prior_list,
                                                  formula_prior_parameters,
                                                  data,
                                                  parameters,
-                                                 posterior = NULL){
+                                                 posterior = NULL,
+                                                 row_indexed = NULL,
+                                                 allocation_parameters = NULL,
+                                                 sd_evaluator = NULL){
 
   if(is.null(posterior)){
     posterior <- .bt_JAGS_marglik_random_effect_posterior_row(samples)
@@ -691,7 +1115,8 @@
     random_term = random_term,
     posterior = posterior,
     prior_list = prior_list,
-    formula_prior_parameters = formula_prior_parameters
+    formula_prior_parameters = formula_prior_parameters,
+    parameter_names = allocation_parameters
   )
   latent <- .bt_JAGS_bridge_context_random_latent(
     samples = samples,
@@ -753,7 +1178,10 @@
     nodes = nodes
   )
 
-  if(.bt_random_effect_has_row_indexed_external_sd(random_term)){
+  if(is.null(row_indexed)){
+    row_indexed <- .bt_random_effect_has_row_indexed_external_sd(random_term)
+  }
+  if(isTRUE(row_indexed)){
     source_draws <- .bt_JAGS_marglik_row_indexed_external_sd_source_draws(
       random_term = random_term,
       n_rows = nrow(random_term$model_matrix),
@@ -789,11 +1217,15 @@
     return(out)
   }
 
-  sd_values <- .bt_JAGS_marglik_random_effect_sd_values(
-    samples = samples,
-    random_term = random_term,
-    prior_list = prior_list
-  )
+  sd_values <- if(is.null(sd_evaluator)) {
+    .bt_JAGS_marglik_random_effect_sd_values(
+      samples = samples,
+      random_term = random_term,
+      prior_list = prior_list
+    )
+  } else {
+    sd_evaluator$values(samples, parameters = parameters)
+  }
   names(sd_values) <- column_names
   out$scale$type <- "column"
   out$scale$column_sd <- sd_values
@@ -818,19 +1250,19 @@
     formula_prior_parameters,
     data,
     parameters,
-    posterior = NULL){
+    posterior = NULL,
+    row_indexed = NULL,
+    allocation_parameters = NULL,
+    sd_evaluator = NULL){
 
   if(is.null(posterior)){
     posterior <- .bt_JAGS_marglik_random_effect_posterior_row(samples)
   }
-  allocation <- .bt_JAGS_bridge_context_random_allocation(
-    random_term = random_term,
-    posterior = posterior,
-    prior_list = prior_list,
-    formula_prior_parameters = formula_prior_parameters
-  )
 
-  if(.bt_random_effect_has_row_indexed_external_sd(random_term)){
+  if(is.null(row_indexed)){
+    row_indexed <- .bt_random_effect_has_row_indexed_external_sd(random_term)
+  }
+  if(isTRUE(row_indexed)){
     source_draws <- .bt_JAGS_marglik_row_indexed_external_sd_source_draws(
       random_term = random_term,
       n_rows = nrow(random_term$model_matrix),
@@ -842,18 +1274,25 @@
     nodes <- unname(source_draws[1L, ])
     names(nodes) <- colnames(source_draws)
   }else{
-    sd_values <- .bt_JAGS_marglik_random_effect_sd_values(
-      samples = samples,
-      random_term = random_term,
-      prior_list = prior_list
-    )
+    sd_values <- if(is.null(sd_evaluator)) {
+      .bt_JAGS_marglik_random_effect_sd_values(
+        samples = samples,
+        random_term = random_term,
+        prior_list = prior_list
+      )
+    } else {
+      sd_evaluator$values(samples, parameters = parameters)
+    }
     nodes <- .bt_JAGS_bridge_context_random_sd_nodes(
       random_term = random_term,
       sd_values = sd_values
     )
   }
 
-  list(nodes = nodes, allocations = allocation$weights)
+  # Normalized allocation parameters are already flattened from
+  # formula_prior_parameters by .bt_JAGS_bridge_context_nodes(). Replaying
+  # them here would reconstruct and merge the same exact nodes a second time.
+  list(nodes = nodes, allocations = list())
 }
 
 .bt_JAGS_bridge_context_random_rho <- function(random_term, posterior){
@@ -874,11 +1313,14 @@
 
 .bt_JAGS_bridge_context_random_allocation <- function(random_term, posterior,
                                                       prior_list,
-                                                      formula_prior_parameters){
+                                                      formula_prior_parameters,
+                                                      parameter_names = NULL){
 
-  parameter_names <- .bt_JAGS_marglik_random_effect_allocation_parameters(
-    random_term
-  )
+  if(is.null(parameter_names)){
+    parameter_names <- .bt_JAGS_marglik_random_effect_allocation_parameters(
+      random_term
+    )
+  }
   weights <- list()
   for(parameter_name in parameter_names){
     if(parameter_name %in% names(formula_prior_parameters)){

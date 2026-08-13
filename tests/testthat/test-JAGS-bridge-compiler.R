@@ -1624,6 +1624,40 @@ test_that("bridge context exposes resolved formula allocation nodes", {
   expect_s3_class(nodes_context, "BayesTools_bridge_nodes_context")
   expect_named(nodes_context, "nodes")
   expect_identical(nodes_context$nodes, context$nodes)
+
+  selected_names <- c(
+    formula_output$formula_design$random_effects[[2L]]$sd_parameter_names,
+    formula_output$formula_design$random_effects[[1L]]$sd_parameter_names
+  )
+  selected_evaluator <- BayesTools:::.bt_JAGS_bridge_compile_context_evaluator(
+    mode = "nodes",
+    add_parameters = NULL,
+    formula_design_list = formula_design_list,
+    formula_data_list = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    model_data = list(),
+    node_names = selected_names
+  )
+  selected_context <- do.call(selected_evaluator$context, context_arguments)
+  expect_identical(
+    selected_context$nodes,
+    context$nodes[selected_names]
+  )
+
+  missing_evaluator <- BayesTools:::.bt_JAGS_bridge_compile_context_evaluator(
+    mode = "nodes",
+    add_parameters = NULL,
+    formula_design_list = formula_design_list,
+    formula_data_list = formula_data_list,
+    formula_prior_list = formula_prior_list,
+    model_data = list(),
+    node_names = "absent_node"
+  )
+  expect_error(
+    do.call(missing_evaluator$context, context_arguments),
+    "Requested bridge context node(s) are unavailable: absent_node",
+    fixed = TRUE
+  )
 })
 
 test_that("bridge context exposes marginalized random blocks without latent draws", {

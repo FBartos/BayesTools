@@ -56,10 +56,18 @@
 #' read-only \code{bridge_context} argument. Defaults to \code{FALSE}, preserving
 #' the historical \code{log_posterior(parameters, data, ...)} call. \code{TRUE}
 #' supplies the complete context. \code{"nodes"} supplies a lightweight context
-#' containing only its exact flat named \code{nodes} vector. A context contains
+#' containing only its exact flat named \code{nodes} vector.
+#' \code{"marginal"} supplies those nodes plus exact observation-level
+#' covariance contributions for bridge-marginalized Gaussian random effects.
+#' A context contains
 #' the current independent bridge state and BayesTools-resolved deterministic
 #' formula/random-effect nodes; it is not necessarily an original MCMC
 #' posterior row.
+#' @param bridge_context_node_names optional character vector selecting an exact
+#' subset of the complete context's named `nodes` vector for
+#' `bridge_context = "nodes"` or `"marginal"`. The default, `NULL`, retains
+#' every node. The complete context cannot be subset. Missing requested names
+#' are errors.
 #' @param formula_random_prior_list optional named list of `prior_random()`
 #' objects for random effects in `formula_list`. Bridge sampling for formula
 #' random effects requires the `prior_random()` interface because the
@@ -73,8 +81,24 @@
 #' bridge-sampling rebuild/validation, this must match the fitted
 #' random-effect compilation policy; otherwise a fitted marginalized model would
 #' not be rebuilt as the same model.
+#' @param formula_random_effects_marginalize_list optional named list
+#' identifying fitted sampled formula random-effect blocks to integrate
+#' analytically only in the bridge target. Each formula-parameter entry can be
+#' a character vector of block names, which requests a dense covariance, or a
+#' named list with `blocks` and optional `row_blocks`. `row_blocks` must
+#' partition the formula rows and may not separate any structurally nonzero
+#' selected random-effect covariance; it requests the exact factorized block
+#' representation described below. Every selected Gaussian latent block is
+#' removed from the bridge coordinates and formula predictor. All SD,
+#' allocation, correlation, and other covariance parameters and their priors
+#' remain in the target. This requires `bridge_context = "marginal"` or the full
+#' context. The likelihood callback is responsible for adding the supplied
+#' covariance to its observation covariance.
 #' @param maxiter maximum number of iterations for the
 #' \link[bridgesampling]{bridge_sampler}
+#' @param repetitions number of independent bridge-sampling repetitions.
+#' @param method bridge transformation passed to
+#' \link[bridgesampling]{bridge_sampler}; either `"normal"` or `"warp3"`.
 #' @param cores number of cores used by \link[bridgesampling]{bridge_sampler}.
 #' Defaults to one. Parallel workers must be able to load every package used by
 #' \code{log_posterior}; these can be supplied through the upstream
@@ -85,7 +109,9 @@
 #' remaining finite repetitions, emits a warning, and records every excluded
 #' repetition in the returned diagnostics.
 #' @param ... additional argument to the \link[bridgesampling]{bridge_sampler}
-#' and \code{log_posterior} function
+#' and \code{log_posterior} function. The upstream-only `packages` argument is
+#' consumed by the sampler and is not forwarded to `log_posterior`, including
+#' for exact zero-dimensional evaluation.
 #'
 #' @details Row-shaped external random-effect SD sources, such as
 #' `random_sd_source("tau", shape = "row")`, must be reconstructable during
@@ -108,7 +134,8 @@
 #' When `bridge_context = TRUE`, the callback receives an object of class
 #' `BayesTools_bridge_context` with fields `state`, `state_matrix`, `nodes`,
 #' `prior_parameters`, `formula_prior_parameters`, `formula_parameters`,
-#' `add_parameters`, `random`, `node_info`, and `metadata`. The `state` field
+#' `add_parameters`, `random`, `marginalized_random`, `node_info`, and
+#' `metadata`. The `state` field
 #' contains the independent bridge coordinates. The `nodes` field is a flat
 #' named numeric vector that also includes deterministic BayesTools-resolved
 #' nodes such as normalized Dirichlet allocation weights reconstructed from
@@ -126,6 +153,19 @@
 #' names are identical to the `nodes` field in the complete context for the
 #' same bridge state. Random-effect replay metadata that is invariant across
 #' states is compiled once before bridge sampling.
+#'
+#' When `bridge_context = "marginal"`, the callback receives the same exact
+#' `nodes` vector plus `marginalized_random`. If `bridge_context_node_names` is
+#' supplied, `nodes` is the requested exact subset in the requested order. The latter is keyed by formula
+#' parameter and contains `representation`, `blocks`, `structures`, `row_names`,
+#' and `dimension`. Without `row_blocks`, `representation = "dense"` and the
+#' `covariance` field equals the sum of \eqn{ZGZ'} over exactly the requested
+#' random-effect blocks. With validated `row_blocks`,
+#' `representation = "factor"`; `row_blocks` gives the exact observation
+#' partition and `factors` contains dense, ordinary grouped
+#' \eqn{Z_b G_b Z_b'}, or known-group covariance factors. This avoids
+#' materializing zero cross-block entries. Both representations define the same
+#' covariance without approximation.
 #'
 #' @examples \dontrun{
 #' # simulate data
@@ -167,14 +207,35 @@
 #' @export
 JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NULL, formula_list = NULL, formula_data_list = NULL, formula_prior_list = NULL, formula_scale_list = NULL,
                                 add_parameters = NULL, add_bounds = NULL,
-                                formula_random_prior_list = NULL,
-                                formula_random_effects_compile_list = NULL,
-                                bridge_context = FALSE,
-                                maxiter = 10000, silent = TRUE,
-                                nonfinite = c("error", "drop"), cores = 1, ...){
+                                 formula_random_prior_list = NULL,
+                                 formula_random_effects_compile_list = NULL,
+                                 formula_random_effects_marginalize_list = NULL,
+                                 bridge_context = FALSE,
+                                 bridge_context_node_names = NULL,
+                                 repetitions = 1L,
+                                 method = c("normal", "warp3"),
+                                 maxiter = 10000, silent = TRUE,
+                                 nonfinite = c("error", "drop"), cores = 1, ...){
 
   ### check input
   bridge_context <- .bt_JAGS_bridge_context_mode(bridge_context)
+  if(!is.null(bridge_context_node_names)){
+    if(!is.character(bridge_context_node_names) ||
+       anyNA(bridge_context_node_names) ||
+       any(!nzchar(bridge_context_node_names)) ||
+       anyDuplicated(bridge_context_node_names)){
+      stop("'bridge_context_node_names' must be NULL or a unique character vector.",
+           call. = FALSE)
+    }
+    if(!bridge_context %in% c("nodes", "marginal")){
+      stop(
+        "'bridge_context_node_names' requires bridge_context = 'nodes' or 'marginal'.",
+        call. = FALSE
+      )
+    }
+  }
+  check_int(repetitions, "repetitions", lower = 1)
+  method <- match.arg(method)
   check_bool(silent, "silent")
   check_int(maxiter, "maxiter", lower = 1)
   check_int(cores, "cores", lower = 1)
@@ -201,6 +262,15 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   formula_data_list <- formula_context$formula_data_list
   formula_prior_list <- formula_context$formula_prior_list
   .bt_JAGS_bridge_check_no_allocation_inclusion(formula_design_list)
+  marginal_random_spec <- .bt_JAGS_bridge_marginal_random_spec(
+    formula_design_list = formula_design_list,
+    formula_random_effects_marginalize_list = formula_random_effects_marginalize_list,
+    bridge_context = bridge_context
+  )
+  bridge_formula_design_list <- .bt_JAGS_bridge_marginal_random_design_list(
+    formula_design_list = formula_design_list,
+    marginal_random_spec = marginal_random_spec
+  )
 
   if(is.null(prior_list)){
     prior_list <- .bt_JAGS_bridge_prior_list_from_fit(
@@ -232,7 +302,10 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     stop("Discrete or spike and slab priors are not supported with bridgesampling.")
 
   ### extract relevant variables and upper and lower bound
-  random_bridge_parameters <- .bt_JAGS_formula_random_bridge_parameters(formula_design_list)
+  random_bridge_parameters <- .bt_JAGS_formula_random_bridge_parameters(
+    formula_design_list = formula_design_list,
+    marginal_random_spec = marginal_random_spec
+  )
   if(length(random_bridge_parameters$parameters) > 0L){
     bridge_add <- .bt_JAGS_bridge_merge_add_parameters(
       add_parameters = add_parameters,
@@ -266,22 +339,31 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
   bridge_formula_prior_evaluator <- bridge_prior_evaluators$formula
   bridge_formula_random_prior_evaluator <- .bt_JAGS_bridge_compile_formula_random_prior_evaluator(
     formula_design_list = formula_design_list,
-    omitted_latent = names(random_bridge_parameters$fixed_latent)
+    omitted_latent = random_bridge_parameters$omitted_latent
   )
   bridge_formula_parameter_evaluator <- .bt_JAGS_bridge_compile_formula_parameter_evaluator(
     formula_list = formula_list,
     formula_data_list = formula_data_list,
     formula_prior_list = formula_prior_list,
+    formula_design_list = bridge_formula_design_list,
+    model_data = data
+  )
+  marginal_random_evaluator <- .bt_JAGS_bridge_compile_marginal_random_evaluator(
     formula_design_list = formula_design_list,
+    marginal_random_spec = marginal_random_spec,
+    formula_data_list = formula_data_list,
+    formula_prior_list = formula_prior_list,
     model_data = data
   )
   bridge_context_evaluator <- .bt_JAGS_bridge_compile_context_evaluator(
     mode = bridge_context,
     add_parameters = add_parameters,
-    formula_design_list = formula_design_list,
+    formula_design_list = bridge_formula_design_list,
     formula_data_list = formula_data_list,
     formula_prior_list = formula_prior_list,
-    model_data = data
+    model_data = data,
+    marginal_random_evaluator = marginal_random_evaluator,
+    node_names = bridge_context_node_names
   )
 
 
@@ -359,19 +441,65 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
     return(marglik)
   }
 
+  ordinary_bridge <- identical(bridge_context, "none") &&
+    length(formula_design_list) == 0L &&
+    length(formula_prior_list) == 0L &&
+    length(random_bridge_parameters$fixed_latent) == 0L &&
+    length(add_parameters) == 0L
+  if(ordinary_bridge){
+    # Non-formula models do not need formula reconstruction, random-effect
+    # replay, or bridge-context construction. Keep their original parameter
+    # target and evaluate only the compiled ordinary priors and likelihood.
+    full_log_posterior <- function(samples.row, data,
+                                   bridge_prior_evaluator,
+                                   bridge_formula_prior_evaluator,
+                                   bridge_formula_random_prior_evaluator,
+                                   bridge_formula_parameter_evaluator,
+                                   add_parameters,
+                                   fixed_random_latent,
+                                   bridge_context,
+                                   bridge_context_evaluator,
+                                   ...){
+
+      marglik <- bridge_prior_evaluator$log_prior(samples.row)
+      if(is.na(marglik)){
+        return(-Inf)
+      }
+      if(!is.finite(marglik)){
+        return(marglik)
+      }
+
+      parameters <- bridge_prior_evaluator$parameters(samples.row)
+      marglik <- marglik + log_posterior(
+        parameters = parameters,
+        data = data,
+        ...
+      )
+
+      marglik
+    }
+  }
+
   if(ncol(bridgesampling_posterior) == 0L){
-    logml <- full_log_posterior(
-      samples.row = numeric(),
-      data = data,
-      bridge_prior_evaluator = bridge_prior_evaluator,
-      bridge_formula_prior_evaluator = bridge_formula_prior_evaluator,
-      bridge_formula_random_prior_evaluator = bridge_formula_random_prior_evaluator,
-      bridge_formula_parameter_evaluator = bridge_formula_parameter_evaluator,
-      add_parameters = add_parameters,
-      fixed_random_latent = random_bridge_parameters$fixed_latent,
-      bridge_context = bridge_context,
-      bridge_context_evaluator = bridge_context_evaluator,
-      ...
+    callback_dots <- list(...)
+    callback_dots[["packages"]] <- NULL
+    logml <- do.call(
+      full_log_posterior,
+      c(
+        list(
+          samples.row = numeric(),
+          data = data,
+          bridge_prior_evaluator = bridge_prior_evaluator,
+          bridge_formula_prior_evaluator = bridge_formula_prior_evaluator,
+          bridge_formula_random_prior_evaluator = bridge_formula_random_prior_evaluator,
+          bridge_formula_parameter_evaluator = bridge_formula_parameter_evaluator,
+          add_parameters = add_parameters,
+          fixed_random_latent = random_bridge_parameters$fixed_latent,
+          bridge_context = bridge_context,
+          bridge_context_evaluator = bridge_context_evaluator
+        ),
+        callback_dots
+      )
     )
     return(.bt_marglik_exact_result(logml, chain_metadata))
   }
@@ -389,9 +517,12 @@ JAGS_bridgesampling <- function(fit, log_posterior, data = NULL, prior_list = NU
       bridge_formula_parameter_evaluator = bridge_formula_parameter_evaluator,
       lb                 = attr(bridgesampling_posterior, "lb"),
       ub                 = attr(bridgesampling_posterior, "ub"),
+      repetitions       = repetitions,
+      method             = method,
       silent             = silent,
       maxiter            = maxiter,
       cores              = cores,
+      use_neff           = TRUE,
       add_parameters     = add_parameters,
       fixed_random_latent = random_bridge_parameters$fixed_latent,
       bridge_context     = bridge_context,

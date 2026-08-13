@@ -205,12 +205,12 @@ test_that("known group covariance compiles as sampled random-intercept kernel", 
   )
   expect_match(
     result$formula_syntax,
-    "mu__xREx__study_xRE_GROUP_Zx[1:3] ~ dmnorm",
+    "mu__xREx__study_xRE_GROUP_Zx[1:3,j] ~ dmnorm",
     fixed = TRUE
   )
   expect_match(
     result$formula_syntax,
-    "mu__xREx__study_xRE_Zx[i,1] = mu__xREx__study_xRE_GROUP_Zx[i]",
+    "mu__xREx__study_xRE_Zx[i,j] = mu__xREx__study_xRE_GROUP_Zx[i,j]",
     fixed = TRUE
   )
   expect_false(grepl("mu__xREx__study_xRE_PRECx", result$formula_syntax, fixed = TRUE))
@@ -273,7 +273,7 @@ test_that("known group covariance compiles as marginalized random-intercept meta
   expect_false(any(grepl("mu__xREx__study_xRE_COEFx", result$add_parameters, fixed = TRUE)))
 })
 
-test_that("known group covariance rejects unsupported random-effect designs", {
+test_that("known group covariance supports exact noncentered random slopes", {
 
   data <- data.frame(
     study = factor(c("s2", "s1", "s3", "s2"), levels = c("s2", "s1", "s3")),
@@ -289,27 +289,66 @@ test_that("known group covariance rejects unsupported random-effect designs", {
     group_covariance = random_group_covariance(K, scale = "none")
   )
 
-  expect_error(
-    JAGS_formula(
-      formula = random_slope,
-      parameter = "mu",
-      data = data,
-      prior_list = list(intercept = prior("normal", list(0, 1))),
-      prior_random = prior_random(study = random_block(sd = .re_compile_sd_prior()))
-    ),
-    "random intercepts only",
+  slope_prior <- prior_random(
+    study = random_block(
+      sd = .re_compile_sd_prior(),
+      cor = prior_lkj(eta = 2, include_primitives = TRUE)
+    )
+  )
+  sampled_slope <- JAGS_formula(
+    formula = random_slope,
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = slope_prior
+  )
+  marginalized_slope <- JAGS_formula(
+    formula = random_slope,
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("normal", list(0, 1))),
+    prior_random = slope_prior,
+    random_effects_compile = random_effects_compile(marginalized = "study")
+  )
+
+  sampled_term <- sampled_slope$formula_design$random_effects[[1L]]
+  marginalized_term <- marginalized_slope$formula_design$random_effects[[1L]]
+  expect_equal(sampled_term$n_columns, 2L)
+  expect_identical(sampled_term$parameterization_resolved, "noncentered")
+  expect_s3_class(sampled_term$group_covariance, "random_group_covariance_kernel")
+  expect_match(
+    sampled_slope$formula_syntax,
+    "mu__xREx__study_xRE_GROUP_Zx[1:3,j] ~ dmnorm",
     fixed = TRUE
   )
+  expect_match(sampled_slope$formula_syntax, "for(j in 1:2)", fixed = TRUE)
+  expect_equal(marginalized_term$n_columns, 2L)
+  expect_identical(marginalized_term$compile_mode, "marginalized")
+  expect_s3_class(
+    marginalized_term$group_covariance,
+    "random_group_covariance_kernel"
+  )
+  expect_false(grepl(
+    "mu__xREx__study_xRE_GROUP_Zx",
+    marginalized_slope$formula_syntax,
+    fixed = TRUE
+  ))
+
   expect_error(
     JAGS_formula(
       formula = random_slope,
       parameter = "mu",
       data = data,
       prior_list = list(intercept = prior("normal", list(0, 1))),
-      prior_random = prior_random(study = random_block(sd = .re_compile_sd_prior())),
-      random_effects_compile = random_effects_compile(marginalized = "study")
+      prior_random = prior_random(
+        study = random_block(
+          sd = .re_compile_sd_prior(),
+          cor = prior_lkj(eta = 2, include_primitives = TRUE),
+          parameterization = "centered"
+        )
+      )
     ),
-    "random intercepts only",
+    "requires the exact noncentered parameterization",
     fixed = TRUE
   )
   expect_error(

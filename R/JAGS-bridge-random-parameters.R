@@ -145,13 +145,16 @@
   )
 }
 
-.bt_JAGS_formula_random_bridge_parameters <- function(formula_design_list){
+.bt_JAGS_formula_random_bridge_parameters <- function(
+    formula_design_list,
+    marginal_random_spec = list()){
 
   if(length(formula_design_list) == 0L){
     return(list(
       parameters = character(),
       bounds = list(lb = numeric(), ub = numeric()),
-      fixed_latent = numeric()
+      fixed_latent = numeric(),
+      omitted_latent = character()
     ))
   }
 
@@ -159,6 +162,10 @@
   lb <- numeric()
   ub <- numeric()
   fixed_latent <- numeric()
+  marginalized_latent <- .bt_JAGS_bridge_marginal_random_latent_names(
+    formula_design_list = formula_design_list,
+    marginal_random_spec = marginal_random_spec
+  )
 
   for(parameter in names(formula_design_list)){
     design <- formula_design_list[[parameter]]
@@ -179,6 +186,10 @@
       )
     }
     for(random_term in .bt_formula_design_sampled_random_effects(design)){
+      if(random_term$block_name %in%
+         marginal_random_spec[[parameter]]$blocks){
+        next
+      }
       n_groups <- random_term$n_groups
       n_columns <- random_term$n_columns
       z_names <- as.vector(.bt_random_effect_latent_names(
@@ -227,7 +238,8 @@
   list(
     parameters = parameters,
     bounds = list(lb = lb, ub = ub),
-    fixed_latent = fixed_latent
+    fixed_latent = fixed_latent,
+    omitted_latent = unique(c(names(fixed_latent), marginalized_latent))
   )
 }
 

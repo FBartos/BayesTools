@@ -33,10 +33,28 @@
 - adds a `RandomEffects` vignette comparing BayesTools formula random effects with lme4 and rstanarm examples
 
 ### Changes
+- `JAGS_bridgesampling()` bypasses formula reconstruction and bridge-context
+  replay for ordinary non-formula models while retaining their complete prior
+  and likelihood target.
 - `JAGS_bridgesampling()` can pass an exact nodes-only bridge context, compiles
-  invariant random-effect replay metadata once while retaining the complete
-  context option, and forwards an explicit `cores` setting to
+  invariant random-effect prior, replay, and SD-binding plans once, avoids
+  reconstructing allocation nodes already supplied by formula priors, retains
+  the complete context option, can select an exact named node subset without
+  flattening unrelated state, and forwards an explicit `cores` setting to
   `bridgesampling::bridge_sampler()`
+- `JAGS_bridgesampling()` can exactly integrate selected fitted sampled
+  Gaussian formula random-effect blocks during bridge evaluation. It removes
+  only their standardized latent coordinates, retains all covariance
+  parameters and priors, and supplies either the full draw-specific `ZGZ'`
+  covariance or a validated exact block-factor representation to the
+  likelihood callback. The factor contract includes full coefficient
+  covariance for known group kernels and row-specific external SD scales. Its
+  nodes-only bridge context can omit the coefficient covariance already
+  represented exactly by a supplied factor, while the complete generic context
+  and covariance-valued evaluator remain available.
+- `JAGS_bridgesampling()` exposes `repetitions` and `method` alongside its
+  existing bridge controls and always derives the effective sample size from
+  the fitted chains.
 - hypothesis parsing now accepts unquoted colon-separated formula interaction
   level references such as `factor:moderator[level]`
 - `as_marginal_inference(compute_BF = FALSE)` now returns averaged and conditional marginal posteriors without computing inclusion Bayes factors

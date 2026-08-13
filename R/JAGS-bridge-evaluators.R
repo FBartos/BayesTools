@@ -596,6 +596,10 @@
     .bt_random_effect_term_compile_mode(random_term),
     "sampled"
   )
+  latent_evaluator <- .bt_JAGS_bridge_compile_random_effect_latent_log_density(
+    random_term = random_term,
+    omitted_latent = omitted_latent
+  )
   structure <- .bt_JAGS_bridge_random_term_structure(random_term)
   scalar_rho_support_evaluator <- .bt_JAGS_bridge_compile_random_effect_scalar_rho_support(
     random_term = random_term,
@@ -611,11 +615,7 @@
     log_prior = function(samples){
       marglik <- 0
       if(isTRUE(sampled_random_effect)){
-        marglik <- .bt_JAGS_bridge_random_effect_latent_log_density(
-          random_term = random_term,
-          samples = samples,
-          omitted_latent = omitted_latent
-        )
+        marglik <- latent_evaluator(samples)
       }
 
       scalar_rho_support <- scalar_rho_support_evaluator(samples)
@@ -634,6 +634,76 @@
       marglik
     }
   )
+}
+
+.bt_JAGS_bridge_compile_random_effect_latent_log_density <- function(
+    random_term,
+    omitted_latent = character()){
+
+  z_names <- as.vector(.bt_random_effect_latent_names(
+    random_term = random_term,
+    n_groups = random_term$n_groups,
+    n_columns = random_term$n_columns
+  ))
+  active_names <- setdiff(z_names, omitted_latent)
+  if(length(active_names) == 0L){
+    return(function(samples) 0)
+  }
+
+  complete <- length(active_names) == length(z_names)
+  structure <- .bt_JAGS_bridge_random_term_structure(random_term)
+  known_group <- .bt_random_effect_has_known_group_covariance(random_term)
+  if(!complete && (!structure %in% c("diag", "id") || known_group)){
+    stop(
+      "Bridge sampling can omit only a complete correlated random-effect ",
+      "latent block or independent fixed-zero latent components.",
+      call. = FALSE
+    )
+  }
+  group_covariance <- if(known_group){
+    .bt_random_effect_known_group_covariance(
+      random_term,
+      context = "Bridge sampling"
+    )
+  }else{
+    NULL
+  }
+  n_groups <- random_term$n_groups
+  n_columns <- random_term$n_columns
+
+  function(samples){
+    if(!all(active_names %in% names(samples))){
+      stop(
+        "Bridge samples are missing standardized latent random effects for block '",
+        random_term$block_name,
+        "'.",
+        call. = FALSE
+      )
+    }
+    z_values <- samples[active_names]
+    if(any(is.na(z_values))){
+      return(-Inf)
+    }
+    if(!is.null(group_covariance)){
+      z_values <- matrix(
+        as.numeric(z_values),
+        nrow = n_groups,
+        ncol = n_columns
+      )
+      out <- 0
+      for(column in seq_len(n_columns)){
+        out <- out + .bt_mvn_zero_log_density(
+          z = z_values[, column],
+          precision = group_covariance$precision,
+          log_det = group_covariance$log_det
+        )
+      }
+      return(out)
+    }
+
+    out <- sum(stats::dnorm(z_values, mean = 0, sd = 1, log = TRUE))
+    if(is.na(out)) -Inf else out
+  }
 }
 
 .bt_JAGS_bridge_random_effect_latent_log_density <- function(

@@ -439,7 +439,8 @@ random_effects_marginal_variance_factors <- function(
                                                           blocks = NULL,
                                                           new_levels = NULL,
                                                           fitted_rows = NULL,
-                                                          diagonal_only = FALSE){
+                                                          diagonal_only = FALSE,
+                                                          parameters = NULL){
 
   selected <- .bt_random_effect_marginal_covariance_terms(
     design = design,
@@ -512,6 +513,7 @@ random_effects_marginal_variance_factors <- function(
       prediction_rows = prediction_rows,
       posterior = posterior,
       prior_list = prior_list,
+      parameters = parameters,
       diagonal_only = diagonal_only
     )
     if(any(new_level_info$row_mask) &&
@@ -1065,6 +1067,7 @@ random_effects_marginal_variance_factors <- function(
     prediction_rows,
     posterior,
     prior_list,
+    parameters = NULL,
     diagonal_only = FALSE){
 
   if(.bt_random_effect_has_row_indexed_external_sd(random_term)){
@@ -1076,6 +1079,7 @@ random_effects_marginal_variance_factors <- function(
       prediction_rows = prediction_rows,
       posterior = posterior,
       prior_list = prior_list,
+      parameters = parameters,
       diagonal_only = diagonal_only
     ))
   }
@@ -1220,14 +1224,7 @@ random_effects_marginal_variance_factors <- function(
 
   n_draws <- nrow(posterior)
   n_rows <- nrow(model_matrix)
-  if(ncol(model_matrix) != 1L){
-    stop(
-      "Random-effect marginal covariance for block '",
-      random_term$block_name,
-      "' with known group covariance supports one random-effect column only.",
-      call. = FALSE
-    )
-  }
+  n_columns <- ncol(model_matrix)
   group_covariance <- .bt_random_effect_known_group_covariance(
     random_term,
     context = "Random-effect marginal covariance"
@@ -1245,27 +1242,59 @@ random_effects_marginal_variance_factors <- function(
   if(is.null(row_names)){
     row_names <- as.character(seq_len(n_rows))
   }
-  if(isTRUE(diagonal_only)){
-    base_variance <- diag(group_covariance$kernel)[group_map] *
-      model_matrix[, 1L]^2
-    out <- tcrossprod(sd_draws[, 1L]^2, base_variance)
-    colnames(out) <- row_names
-    return(list(
-      samples = out,
-      sample_dim = c(n_draws, n_rows)
-    ))
+  structure <- .bt_random_effect_structure(
+    random_term,
+    context = "Random-effect marginal covariance metadata"
+  )
+  correlation <- if(structure %in% c("diag", "id") || n_columns == 1L){
+    NULL
+  }else{
+    .bt_random_effect_marginal_covariance_correlation_draws(
+      random_term = random_term,
+      n_columns = n_columns,
+      posterior = posterior
+    )
   }
-  base_covariance <- group_covariance$kernel[group_map, group_map, drop = FALSE] *
-    tcrossprod(model_matrix[, 1L])
-  out <- array(NA_real_, dim = c(n_draws, n_rows, n_rows))
-  dimnames(out) <- list(draw = NULL, row = row_names, column = row_names)
+  group_kernel <- group_covariance$kernel[group_map, group_map, drop = FALSE]
+  if(isTRUE(diagonal_only)){
+    out <- matrix(
+      NA_real_,
+      nrow = n_draws,
+      ncol = n_rows,
+      dimnames = list(draw = NULL, row = row_names)
+    )
+  }else{
+    out <- array(
+      NA_real_,
+      dim = c(n_draws, n_rows, n_rows),
+      dimnames = list(draw = NULL, row = row_names, column = row_names)
+    )
+  }
   for(draw in seq_len(n_draws)){
-    out[draw, , ] <- sd_draws[draw, 1L]^2 * base_covariance
+    coefficient_covariance <- if(is.null(correlation)){
+      diag(sd_draws[draw, ]^2, nrow = n_columns, ncol = n_columns)
+    }else{
+      correlation[draw, , ] * tcrossprod(sd_draws[draw, ])
+    }
+    design_covariance <- tcrossprod(
+      model_matrix %*% coefficient_covariance,
+      model_matrix
+    )
+    covariance <- group_kernel * design_covariance
+    if(isTRUE(diagonal_only)){
+      out[draw, ] <- diag(covariance)
+    }else{
+      out[draw, , ] <- covariance
+    }
   }
 
   list(
     samples = out,
-    sample_dim = c(n_draws, n_rows, n_rows)
+    sample_dim = if(isTRUE(diagonal_only)){
+      c(n_draws, n_rows)
+    }else{
+      c(n_draws, n_rows, n_rows)
+    }
   )
 }
 
@@ -1277,6 +1306,7 @@ random_effects_marginal_variance_factors <- function(
     prediction_rows,
     posterior,
     prior_list,
+    parameters = NULL,
     diagonal_only = FALSE){
 
   n_draws <- nrow(posterior)
@@ -1288,6 +1318,7 @@ random_effects_marginal_variance_factors <- function(
     n_rows = n_rows,
     posterior = posterior,
     data = source_data,
+    parameters = parameters,
     prediction_rows = prediction_rows,
     context = "Random-effect marginal covariance"
   )

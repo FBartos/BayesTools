@@ -95,9 +95,7 @@ test_that("fixed-zero random blocks leave the bridge target and dimension invari
         "add_parameters",
         "fixed_random_latent",
         "bridge_context",
-        "formula_design_list",
-        "formula_data_list",
-        "formula_prior_list"
+        "bridge_context_evaluator"
       )
       logml <- do.call(
         arguments$log_posterior,

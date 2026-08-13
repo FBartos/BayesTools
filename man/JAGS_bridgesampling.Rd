@@ -17,7 +17,11 @@ JAGS_bridgesampling(
   add_bounds = NULL,
   formula_random_prior_list = NULL,
   formula_random_effects_compile_list = NULL,
+  formula_random_effects_marginalize_list = NULL,
   bridge_context = FALSE,
+  bridge_context_node_names = NULL,
+  repetitions = 1L,
+  method = c("normal", "warp3"),
   maxiter = 10000,
   silent = TRUE,
   nonfinite = c("error", "drop"),
@@ -96,14 +100,42 @@ bridge-sampling rebuild/validation, this must match the fitted
 random-effect compilation policy; otherwise a fitted marginalized model would
 not be rebuilt as the same model.}
 
+\item{formula_random_effects_marginalize_list}{optional named list
+identifying fitted sampled formula random-effect blocks to integrate
+analytically only in the bridge target. Each formula-parameter entry can be
+a character vector of block names, which requests a dense covariance, or a
+named list with \code{blocks} and optional \code{row_blocks}. \code{row_blocks} must
+partition the formula rows and may not separate any structurally nonzero
+selected random-effect covariance; it requests the exact factorized block
+representation described below. Every selected Gaussian latent block is
+removed from the bridge coordinates and formula predictor. All SD,
+allocation, correlation, and other covariance parameters and their priors
+remain in the target. This requires \code{bridge_context = "marginal"} or the full
+context. The likelihood callback is responsible for adding the supplied
+covariance to its observation covariance.}
+
 \item{bridge_context}{whether the \code{log_posterior} callback receives a
 read-only \code{bridge_context} argument. Defaults to \code{FALSE}, preserving
 the historical \code{log_posterior(parameters, data, ...)} call. \code{TRUE}
 supplies the complete context. \code{"nodes"} supplies a lightweight context
-containing only its exact flat named \code{nodes} vector. A context contains
+containing only its exact flat named \code{nodes} vector.
+\code{"marginal"} supplies those nodes plus exact observation-level
+covariance contributions for bridge-marginalized Gaussian random effects.
+A context contains
 the current independent bridge state and BayesTools-resolved deterministic
 formula/random-effect nodes; it is not necessarily an original MCMC
 posterior row.}
+
+\item{bridge_context_node_names}{optional character vector selecting an exact
+subset of the complete context's named \code{nodes} vector for
+\code{bridge_context = "nodes"} or \code{"marginal"}. The default, \code{NULL}, retains
+every node. The complete context cannot be subset. Missing requested names
+are errors.}
+
+\item{repetitions}{number of independent bridge-sampling repetitions.}
+
+\item{method}{bridge transformation passed to
+\link[bridgesampling]{bridge_sampler}; either \code{"normal"} or \code{"warp3"}.}
 
 \item{maxiter}{maximum number of iterations for the
 \link[bridgesampling]{bridge_sampler}}
@@ -121,7 +153,9 @@ Defaults to one. Parallel workers must be able to load every package used by
 \code{packages} argument in \code{...}.}
 
 \item{...}{additional argument to the \link[bridgesampling]{bridge_sampler}
-and \code{log_posterior} function}
+and \code{log_posterior} function. The upstream-only \code{packages} argument is
+consumed by the sampler and is not forwarded to \code{log_posterior}, including
+for exact zero-dimensional evaluation.}
 }
 \value{
 A \code{BayesTools_marglik} object. \code{logml} is one scalar natural-log
@@ -159,7 +193,8 @@ performed.
 When \code{bridge_context = TRUE}, the callback receives an object of class
 \code{BayesTools_bridge_context} with fields \code{state}, \code{state_matrix}, \code{nodes},
 \code{prior_parameters}, \code{formula_prior_parameters}, \code{formula_parameters},
-\code{add_parameters}, \code{random}, \code{node_info}, and \code{metadata}. The \code{state} field
+\code{add_parameters}, \code{random}, \code{marginalized_random}, \code{node_info}, and
+\code{metadata}. The \code{state} field
 contains the independent bridge coordinates. The \code{nodes} field is a flat
 named numeric vector that also includes deterministic BayesTools-resolved
 nodes such as normalized Dirichlet allocation weights reconstructed from
@@ -177,6 +212,19 @@ from \code{BayesTools_bridge_context} with only the \code{nodes} field. Its valu
 names are identical to the \code{nodes} field in the complete context for the
 same bridge state. Random-effect replay metadata that is invariant across
 states is compiled once before bridge sampling.
+
+When \code{bridge_context = "marginal"}, the callback receives the same exact
+\code{nodes} vector plus \code{marginalized_random}. If \code{bridge_context_node_names} is
+supplied, \code{nodes} is the requested exact subset in the requested order. The latter is keyed by formula
+parameter and contains \code{representation}, \code{blocks}, \code{structures}, \code{row_names},
+and \code{dimension}. Without \code{row_blocks}, \code{representation = "dense"} and the
+\code{covariance} field equals the sum of \eqn{ZGZ'} over exactly the requested
+random-effect blocks. With validated \code{row_blocks},
+\code{representation = "factor"}; \code{row_blocks} gives the exact observation
+partition and \code{factors} contains dense, ordinary grouped
+\eqn{Z_b G_b Z_b'}, or known-group covariance factors. This avoids
+materializing zero cross-block entries. Both representations define the same
+covariance without approximation.
 }
 \examples{
 \dontrun{

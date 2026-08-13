@@ -64,12 +64,14 @@ test_that("JAGS_bridgesampling aggregates repeated bridge estimates explicitly",
   expect_s3_class(result[["diagnostics"]][["upstream"]], "bridge_list")
 })
 
-test_that("JAGS_bridgesampling forwards the requested core count", {
+test_that("JAGS_bridgesampling forwards bridge controls and fitted-chain neff", {
 
   seen <- new.env(parent = emptyenv())
   bridge_sampler <- function(...){
     arguments <- list(...)
-    seen$cores <- arguments$cores
+    seen$controls <- arguments[c(
+      "cores", "repetitions", "method", "maxiter", "silent", "use_neff"
+    )]
     .mock_bridge_sampler(...)
   }
   testthat::local_mocked_bindings(
@@ -87,10 +89,24 @@ test_that("JAGS_bridgesampling forwards the requested core count", {
     log_posterior = function(parameters, data) 0,
     data = list(),
     prior_list = list(mu = prior("normal", list(0, 1))),
-    cores = 3L
+    cores       = 3L,
+    repetitions = 4L,
+    method      = "warp3",
+    maxiter     = 2500L,
+    silent      = FALSE
   )
 
-  expect_identical(seen$cores, 3L)
+  expect_identical(
+    seen$controls,
+    list(
+      cores       = 3L,
+      repetitions = 4L,
+      method      = "warp3",
+      maxiter     = 2500L,
+      silent      = FALSE,
+      use_neff    = TRUE
+    )
+  )
 })
 
 test_that("JAGS_bridgesampling checks repeated iteration limits collectively", {
@@ -139,6 +155,55 @@ test_that("JAGS_bridgesampling validates the log-posterior callback eagerly", {
   )
 })
 
+test_that("JAGS_bridgesampling bypasses formula and context replay for ordinary models", {
+
+  seen <- new.env(parent = emptyenv())
+  testthat::local_mocked_bindings(
+    bridge_sampler = function(...){
+      arguments <- list(...)
+      callback <- arguments[["log_posterior"]]
+      required <- setdiff(names(formals(callback)), c("samples.row", "..."))
+      callback_arguments <- arguments[required]
+      callback_arguments[["samples.row"]] <- c(mu = 0.25, tau = 0.50)
+      value <- do.call(callback, callback_arguments)
+      structure(
+        list(
+          logml = value,
+          niter = 1L,
+          mcse_logml = 0.01,
+          method = "normal"
+        ),
+        class = "bridge"
+      )
+    },
+    .package = "bridgesampling"
+  )
+  posterior <- coda::as.mcmc(matrix(
+    rep(c(0.25, 0.50), each = 20L),
+    ncol = 2L,
+    dimnames = list(NULL, c("mu", "tau"))
+  ))
+  priors <- list(
+    mu  = prior("normal", list(0, 1)),
+    tau = prior("normal", list(0, 1), truncation = list(0, Inf))
+  )
+
+  result <- JAGS_bridgesampling(
+    fit = posterior,
+    log_posterior = function(parameters, data){
+      seen$parameters <- parameters
+      data$offset + parameters$mu - parameters$tau
+    },
+    data = list(offset = -2),
+    prior_list = priors,
+    bridge_context = FALSE
+  )
+
+  expect_identical(seen$parameters, list(mu = 0.25, tau = 0.50))
+  expected <- lpdf(priors$mu, 0.25) + lpdf(priors$tau, 0.50) - 2.25
+  expect_equal(result$logml, expected, tolerance = 0)
+})
+
 test_that("JAGS_bridgesampling evaluates fixed scalar and vector models exactly", {
 
   posterior <- coda::as.mcmc(matrix(
@@ -168,7 +233,8 @@ test_that("JAGS_bridgesampling evaluates fixed scalar and vector models exactly"
     },
     data = list(offset = -10),
     prior_list = prior_list,
-    bridge_context = "nodes"
+    bridge_context = "nodes",
+    packages = "BayesTools"
   )
 
   expect_s3_class(result, "BayesTools_marglik")

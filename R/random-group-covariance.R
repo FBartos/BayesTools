@@ -359,7 +359,8 @@ print.random_group_covariance <- function(x, ...){
                                                             model_matrix,
                                                             random_structure,
                                                             compile_mode,
-                                                            row_indexed_external_sd){
+                                                            row_indexed_external_sd,
+                                                            parameterization){
 
   group_covariance <- .bt_random_effect_group_covariance_input(random_term)
   if(is.null(group_covariance)){
@@ -372,7 +373,8 @@ print.random_group_covariance <- function(x, ...){
     model_matrix = model_matrix,
     random_structure = random_structure,
     compile_mode = compile_mode,
-    row_indexed_external_sd = row_indexed_external_sd
+    row_indexed_external_sd = row_indexed_external_sd,
+    parameterization = parameterization
   )
 
   .bt_prepare_group_covariance_kernel(
@@ -388,7 +390,8 @@ print.random_group_covariance <- function(x, ...){
     model_matrix,
     random_structure,
     compile_mode,
-    row_indexed_external_sd){
+    row_indexed_external_sd,
+    parameterization){
 
   if(!compile_mode %in% c("sampled", "marginalized")){
     stop(
@@ -406,20 +409,20 @@ print.random_group_covariance <- function(x, ...){
       call. = FALSE
     )
   }
-  if(n_columns != 1L){
+  if(n_columns > 1L && identical(parameterization, "centered")){
     stop(
       "Known group covariance for random-effect block '",
       random_term$block_name,
-      "' currently supports random intercepts only.",
+      "' with multiple random-effect columns requires the exact noncentered parameterization.",
       call. = FALSE
     )
   }
-  if(!is.matrix(model_matrix) || ncol(model_matrix) != 1L ||
-     !isTRUE(all(model_matrix[, 1L] == 1))){
+  if(!is.matrix(model_matrix) || ncol(model_matrix) != n_columns ||
+     any(!is.finite(model_matrix))){
     stop(
       "Known group covariance for random-effect block '",
       random_term$block_name,
-      "' currently supports random intercepts only.",
+      "' requires a finite random-effect model matrix.",
       call. = FALSE
     )
   }
@@ -459,23 +462,24 @@ print.random_group_covariance <- function(x, ...){
   }
 
   if(.bt_random_effect_has_known_group_covariance(random_term)){
-    if(n_columns != 1L){
-      stop(
-        "Known group covariance prior density for random-effect block '",
-        random_term$block_name,
-        "' supports one latent column only.",
-        call. = FALSE
-      )
-    }
     group_covariance <- .bt_random_effect_known_group_covariance(
       random_term,
       context = "Bridge sampling"
     )
-    return(.bt_mvn_zero_log_density(
-      z = as.numeric(z_values),
-      precision = group_covariance$precision,
-      log_det = group_covariance$log_det
-    ))
+    z_values <- matrix(
+      as.numeric(z_values),
+      nrow = n_groups,
+      ncol = n_columns
+    )
+    out <- 0
+    for(column in seq_len(n_columns)){
+      out <- out + .bt_mvn_zero_log_density(
+        z = z_values[, column],
+        precision = group_covariance$precision,
+        log_det = group_covariance$log_det
+      )
+    }
+    return(out)
   }
 
   marglik <- sum(stats::dnorm(z_values, mean = 0, sd = 1, log = TRUE))
