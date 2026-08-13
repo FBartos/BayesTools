@@ -74,6 +74,22 @@ skip_if_not_test_profile("unit")
   )))
 }
 
+test_that("single-coefficient correlation Cholesky draws retain dimensions", {
+
+  posterior <- matrix(0, nrow = 2L, ncol = 1L)
+  cholesky <- array(1, dim = c(2L, 1L, 1L))
+  random_term <- list(block_name = "study")
+
+  expect_no_error(
+    .bt_random_effect_marginal_covariance_validate_correlation_cholesky(
+      cholesky   = cholesky,
+      random_term = random_term,
+      n_columns  = 1L,
+      posterior  = posterior
+    )
+  )
+})
+
 .re_cov_expand <- function(model_matrix, group_map, G){
   out <- matrix(0, nrow(model_matrix), nrow(model_matrix))
   for(rows in split(seq_len(nrow(model_matrix)), group_map)){

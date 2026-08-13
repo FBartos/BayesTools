@@ -1917,7 +1917,12 @@ random_effects_marginal_variance_factors <- function(
 
   diagonal <- matrix(NA_real_, nrow = dim(cholesky)[1L], ncol = n_columns)
   for(draw in seq_len(nrow(posterior))){
-    diagonal[draw, ] <- rowSums(cholesky[draw, , ]^2)
+    draw_cholesky <- matrix(
+      cholesky[draw, , ],
+      nrow = n_columns,
+      ncol = n_columns
+    )
+    diagonal[draw, ] <- rowSums(draw_cholesky^2)
   }
   if(any(!is.finite(diagonal))){
     stop(

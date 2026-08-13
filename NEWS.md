@@ -79,6 +79,8 @@
 - `as_marginal_inference()` conditional marginal summaries use active-subset conditioning: each marginal level conditions only on requested parameters with nonzero weight in that level's linear combination, and levels with no active requested conditionals use the fully averaged context
 
 ### Fixes
+- preserves matrix dimensions while validating one-coefficient random-effect
+  correlation Cholesky draws.
 - evaluates transformed prior density grids on the displayed plotting range,
   including valid zero boundaries, and propagates that range to marginal-prior
   plots instead of exponentiating user-facing axis limits as fitted-scale
