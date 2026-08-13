@@ -53,7 +53,9 @@
   represented exactly by a supplied factor, while the complete generic context
   and covariance-valued evaluator remain available. Sampled SD positions,
   covariance structure, and known-group kernels are compiled once and reused
-  without changing source-parameter precedence or covariance reconstruction.
+  without changing source-parameter precedence or covariance reconstruction;
+  an opt-in compact factor-state contract separates this invariant geometry
+  from draw-varying factors while retaining the full context option.
 - `JAGS_bridgesampling()` exposes `repetitions` and `method` alongside its
   existing bridge controls and always derives the effective sample size from
   the fitted chains.

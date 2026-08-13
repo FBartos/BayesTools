@@ -35,21 +35,35 @@
     if(is.character(request) || is.null(request)){
       blocks <- request
       row_blocks <- NULL
+      factor_state <- FALSE
     }else if(is.list(request)){
       request_names <- names(request)
       if(is.null(request_names) || anyNA(request_names) ||
          any(!nzchar(request_names)) || anyDuplicated(request_names) ||
-         !all(request_names %in% c("blocks", "row_blocks")) ||
+         !all(request_names %in% c("blocks", "row_blocks", "factor_state")) ||
          !"blocks" %in% request_names){
         stop(
           "Bridge-marginalized random-effect request for formula parameter '",
           parameter,
-          "' must contain uniquely named 'blocks' and optional 'row_blocks' entries.",
+          "' must contain uniquely named 'blocks' and optional 'row_blocks' and 'factor_state' entries.",
           call. = FALSE
         )
       }
       blocks <- request$blocks
       row_blocks <- request$row_blocks
+      factor_state <- if(is.null(request$factor_state)){
+        FALSE
+      }else{
+        check_bool(
+          request$factor_state,
+          paste0(
+            "formula_random_effects_marginalize_list[['",
+            parameter,
+            "']]$factor_state"
+          )
+        )
+        request$factor_state
+      }
     }else{
       stop(
         "Bridge-marginalized random-effect request for formula parameter '",
@@ -136,10 +150,19 @@
         parameter = parameter
       )
     }
+    if(isTRUE(factor_state) && is.null(row_blocks)){
+      stop(
+        "Bridge-marginalized 'factor_state' requires exact 'row_blocks' for formula parameter '",
+        parameter,
+        "'.",
+        call. = FALSE
+      )
+    }
 
     out[[parameter]] <- list(
       blocks = blocks,
-      row_blocks = row_blocks
+      row_blocks = row_blocks,
+      factor_state = factor_state
     )
   }
 
@@ -306,7 +329,8 @@
       active = FALSE,
       covariance = function(samples, prior_parameters,
                             formula_prior_parameters, formula_parameters,
-                            factor_covariance = TRUE) list()
+                            factor_covariance = TRUE,
+                            factor_state = FALSE) list()
     ))
   }
 
@@ -314,6 +338,7 @@
     design <- formula_design_list[[parameter]]
     selected <- marginal_random_spec[[parameter]]$blocks
     row_blocks <- marginal_random_spec[[parameter]]$row_blocks
+    factor_state <- isTRUE(marginal_random_spec[[parameter]]$factor_state)
     random_effects <- .bt_formula_design_random_effects(design)
     block_names <- vapply(random_effects, `[[`, character(1), "block_name")
     random_effects <- random_effects[match(selected, block_names)]
@@ -348,6 +373,20 @@
       }else{
         NULL
       }
+      factor_plan <- list(
+        type = if(row_indexed){
+          "row_group"
+        }else if(!is.null(group_covariance)){
+          "known_group"
+        }else{
+          "group"
+        },
+        model_matrix = block_data$model_matrix,
+        group_map = block_data$group_map
+      )
+      if(!is.null(group_covariance)){
+        factor_plan$group_covariance <- group_covariance
+      }
       list(
         random_term = random_term,
         row_indexed = row_indexed,
@@ -368,7 +407,8 @@
           },
           design = design
         ),
-        prediction_rows = prediction_rows
+        prediction_rows = prediction_rows,
+        factor_plan = factor_plan
       )
     })
     names(block_plans) <- selected
@@ -379,6 +419,7 @@
     list(
       parameter = parameter,
       blocks = block_plans,
+      factor_plans = lapply(block_plans, `[[`, "factor_plan"),
       block_names = selected,
       structures = stats::setNames(vapply(
         block_plans,
@@ -387,8 +428,10 @@
         "structure"
       ), selected),
       row_blocks = row_blocks,
+      factor_state = factor_state,
       row_names = row_names,
-      prior_list = formula_prior_list[[parameter]]
+      prior_list = formula_prior_list[[parameter]],
+      contract_id = new.env(parent = emptyenv())
     )
   })
   names(plans) <- names(marginal_random_spec)
@@ -404,7 +447,8 @@
     active = TRUE,
     covariance = function(samples, prior_parameters,
                           formula_prior_parameters, formula_parameters,
-                          factor_covariance = TRUE){
+                          factor_covariance = TRUE,
+                          factor_state = FALSE){
       posterior <- .bt_JAGS_marglik_random_effect_posterior_row(samples)
       source_parameters <- .bt_JAGS_marglik_parameter_source_parameters(
         samples = samples,
@@ -421,7 +465,8 @@
           plan = plan,
           posterior = posterior,
           source_parameters = source_parameters,
-          factor_covariance = factor_covariance
+          factor_covariance = factor_covariance,
+          factor_state = factor_state
         )
         value <- c(
           covariance,
@@ -445,9 +490,29 @@
 }
 
 .bt_JAGS_bridge_marginal_random_covariance <- function(
-    plan, posterior, source_parameters, factor_covariance = TRUE){
+    plan, posterior, source_parameters, factor_covariance = TRUE,
+    factor_state = FALSE){
 
   factor_covariance <- isTRUE(factor_covariance) || is.null(plan$row_blocks)
+
+  if(isTRUE(factor_state) && isTRUE(plan$factor_state) &&
+     !is.null(plan$row_blocks)){
+    states <- lapply(
+      plan$blocks,
+      .bt_JAGS_bridge_marginal_random_factor_state,
+      posterior = posterior,
+      prior_list = plan$prior_list,
+      source_parameters = source_parameters,
+      factor_covariance = FALSE
+    )
+    return(list(
+      representation = "factor_state",
+      contract_id = plan$contract_id,
+      row_blocks = plan$row_blocks,
+      factor_plans = plan$factor_plans,
+      factor_states = states
+    ))
+  }
 
   geometries <- lapply(
     plan$blocks,
@@ -488,9 +553,22 @@
     block_plan, posterior, prior_list, source_parameters,
     factor_covariance = TRUE){
 
+  state <- .bt_JAGS_bridge_marginal_random_factor_state(
+    block_plan = block_plan,
+    posterior = posterior,
+    prior_list = prior_list,
+    source_parameters = source_parameters,
+    factor_covariance = factor_covariance
+  )
+  c(block_plan$factor_plan, state)
+}
+
+.bt_JAGS_bridge_marginal_random_factor_state <- function(
+    block_plan, posterior, prior_list, source_parameters,
+    factor_covariance = TRUE){
+
   random_term <- block_plan$random_term
   model_matrix <- block_plan$model_matrix
-  group_map <- block_plan$group_map
   if(isTRUE(block_plan$row_indexed)){
     source_draws <- .bt_random_effect_row_indexed_source_draws(
       random_term = random_term,
@@ -555,11 +633,8 @@
       structure = block_plan$structure
     )
     value <- list(
-      type = "row_group",
-      model_matrix = model_matrix,
-      group_map = group_map,
-      row_scale = row_scale,
-      coefficient_factor = coefficient$factor
+      coefficient_factor = coefficient$factor,
+      row_scale = row_scale
     )
     if(factor_covariance){
       value$coefficient_covariance <- coefficient$covariance
@@ -607,24 +682,7 @@
     structure = block_plan$structure
   )
 
-  if(!is.null(block_plan$group_covariance)){
-    value <- list(
-      type = "known_group",
-      model_matrix = model_matrix,
-      group_map = group_map,
-      group_covariance = block_plan$group_covariance,
-      coefficient_factor = coefficient$factor
-    )
-    if(factor_covariance){
-      value$coefficient_covariance <- coefficient$covariance
-    }
-    return(value)
-  }
-
   value <- list(
-    type = "group",
-    model_matrix = model_matrix,
-    group_map = group_map,
     coefficient_factor = coefficient$factor
   )
   if(factor_covariance){

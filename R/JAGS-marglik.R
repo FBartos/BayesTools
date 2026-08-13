@@ -88,7 +88,10 @@
 #' named list with `blocks` and optional `row_blocks`. `row_blocks` must
 #' partition the formula rows and may not separate any structurally nonzero
 #' selected random-effect covariance; it requests the exact factorized block
-#' representation described below. Every selected Gaussian latent block is
+#' representation described below. With `row_blocks`, `factor_state = TRUE`
+#' additionally requests a compact exact contract that separates invariant
+#' factor plans from draw-varying coefficient factors and row scales. Every
+#' selected Gaussian latent block is
 #' removed from the bridge coordinates and formula predictor. All SD,
 #' allocation, correlation, and other covariance parameters and their priors
 #' remain in the target. This requires `bridge_context = "marginal"` or the full
@@ -164,8 +167,12 @@
 #' `representation = "factor"`; `row_blocks` gives the exact observation
 #' partition and `factors` contains dense, ordinary grouped
 #' \eqn{Z_b G_b Z_b'}, or known-group covariance factors. This avoids
-#' materializing zero cross-block entries. Both representations define the same
-#' covariance without approximation.
+#' materializing zero cross-block entries. For requests with
+#' `factor_state = TRUE`, the marginal context instead reports
+#' `representation = "factor_state"`, with invariant `factor_plans` and
+#' draw-varying `factor_states`; the complete context and direct covariance
+#' evaluator retain the full representation. All representations define the
+#' same covariance without approximation.
 #'
 #' @examples \dontrun{
 #' # simulate data

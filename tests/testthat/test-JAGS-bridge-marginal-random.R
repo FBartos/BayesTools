@@ -27,6 +27,10 @@ skip_if_not_test_profile("unit")
 
 .bridge_marginal_random_dense <- function(x){
 
+  if(identical(x$representation, "factor_state")){
+    x$factors <- Map(c, x$factor_plans, x$factor_states)
+    x$representation <- "factor"
+  }
   if(identical(x$representation, "dense")){
     return(x$covariance)
   }
@@ -324,6 +328,22 @@ test_that("bridge-only random marginalization requires a covariance context", {
     ),
     "requires bridge_context"
   )
+
+  expect_error(
+    JAGS_bridgesampling(
+      fit = fit,
+      data = list(),
+      bridge_context = "marginal",
+      formula_random_effects_marginalize_list = list(
+        mu = list(
+          blocks = "study",
+          factor_state = TRUE
+        )
+      ),
+      log_posterior = function(parameters, data, bridge_context) 0
+    ),
+    "factor_state.*requires exact 'row_blocks'"
+  )
 })
 
 test_that("block covariance contract rejects separated random dependencies", {
@@ -529,7 +549,11 @@ test_that("bridge marginal evaluator supports known group covariance", {
   evaluator <- .bt_JAGS_bridge_compile_marginal_random_evaluator(
     formula_design_list = list(mu = formula_result$formula_design),
     marginal_random_spec = list(
-      mu = list(blocks = "id", row_blocks = list(seq_len(nrow(data))))
+      mu = list(
+        blocks = "id",
+        row_blocks = list(seq_len(nrow(data))),
+        factor_state = TRUE
+      )
     ),
     formula_data_list = list(mu = data),
     formula_prior_list = list(mu = formula_result$prior_list),
@@ -546,6 +570,30 @@ test_that("bridge marginal evaluator supports known group covariance", {
 
   expect_identical(actual_value$representation, "factor")
   expect_equal(unname(actual), unname(expected), tolerance = 1e-12)
+
+  compact_value <- evaluator$covariance(
+    samples = numeric(),
+    prior_parameters = list(),
+    formula_prior_parameters = list(mu = list()),
+    formula_parameters = list(mu = rep(0, nrow(data))),
+    factor_covariance = FALSE,
+    factor_state = TRUE
+  )$mu
+  expect_identical(compact_value$representation, "factor_state")
+  expect_true(is.environment(compact_value$contract_id))
+  expect_identical(
+    names(compact_value$factor_plans[[1L]]),
+    c("type", "model_matrix", "group_map", "group_covariance")
+  )
+  expect_identical(
+    names(compact_value$factor_states[[1L]]),
+    "coefficient_factor"
+  )
+  expect_equal(
+    unname(.bridge_marginal_random_dense(compact_value)),
+    unname(expected),
+    tolerance = 1e-12
+  )
 })
 
 test_that("known group covariance carries the full coefficient covariance", {
@@ -670,7 +718,11 @@ test_that("row-indexed external SD sources remain covariance factors", {
   evaluator <- .bt_JAGS_bridge_compile_marginal_random_evaluator(
     formula_design_list = list(mu = formula_result$formula_design),
     marginal_random_spec = list(
-      mu = list(blocks = "id", row_blocks = list(1:2, 3:4))
+      mu = list(
+        blocks = "id",
+        row_blocks = list(1:2, 3:4),
+        factor_state = TRUE
+      )
     ),
     formula_data_list = list(mu = data),
     formula_prior_list = list(mu = formula_result$prior_list),
@@ -688,6 +740,26 @@ test_that("row-indexed external SD sources remain covariance factors", {
   expect_equal(factor$row_scale, unname(values), tolerance = 0)
   expect_equal(
     unname(.bridge_marginal_random_dense(actual_value)),
+    unname(reference),
+    tolerance = 1e-12
+  )
+
+  compact_value <- evaluator$covariance(
+    samples = values,
+    prior_parameters = list(),
+    formula_prior_parameters = list(mu = list()),
+    formula_parameters = list(mu = rep(0, nrow(data))),
+    factor_covariance = FALSE,
+    factor_state = TRUE
+  )$mu
+  compact_state <- compact_value$factor_states[[1L]]
+  expect_identical(
+    names(compact_state),
+    c("coefficient_factor", "row_scale")
+  )
+  expect_equal(compact_state$row_scale, unname(values), tolerance = 0)
+  expect_equal(
+    unname(.bridge_marginal_random_dense(compact_value)),
     unname(reference),
     tolerance = 1e-12
   )

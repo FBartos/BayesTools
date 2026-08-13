@@ -71,7 +71,8 @@
       active = FALSE,
       covariance = function(samples, prior_parameters,
                             formula_prior_parameters, formula_parameters,
-                            factor_covariance = TRUE) list()
+                            factor_covariance = TRUE,
+                            factor_state = FALSE) list()
     )
   }
   if(identical(mode, "full")){
@@ -264,7 +265,8 @@
     prior_parameters = prior_parameters,
     formula_prior_parameters = formula_prior_parameters,
     formula_parameters = formula_parameters,
-    factor_covariance = FALSE
+    factor_covariance = FALSE,
+    factor_state = TRUE
   )
 
   out <- list(

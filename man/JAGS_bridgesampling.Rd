@@ -107,7 +107,10 @@ a character vector of block names, which requests a dense covariance, or a
 named list with \code{blocks} and optional \code{row_blocks}. \code{row_blocks} must
 partition the formula rows and may not separate any structurally nonzero
 selected random-effect covariance; it requests the exact factorized block
-representation described below. Every selected Gaussian latent block is
+representation described below. With \code{row_blocks}, \code{factor_state = TRUE}
+additionally requests a compact exact contract that separates invariant
+factor plans from draw-varying coefficient factors and row scales. Every
+selected Gaussian latent block is
 removed from the bridge coordinates and formula predictor. All SD,
 allocation, correlation, and other covariance parameters and their priors
 remain in the target. This requires \code{bridge_context = "marginal"} or the full
@@ -223,8 +226,12 @@ random-effect blocks. With validated \code{row_blocks},
 \code{representation = "factor"}; \code{row_blocks} gives the exact observation
 partition and \code{factors} contains dense, ordinary grouped
 \eqn{Z_b G_b Z_b'}, or known-group covariance factors. This avoids
-materializing zero cross-block entries. Both representations define the same
-covariance without approximation.
+materializing zero cross-block entries. For requests with
+\code{factor_state = TRUE}, the marginal context instead reports
+\code{representation = "factor_state"}, with invariant \code{factor_plans} and
+draw-varying \code{factor_states}; the complete context and direct covariance
+evaluator retain the full representation. All representations define the
+same covariance without approximation.
 }
 \examples{
 \dontrun{
