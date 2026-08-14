@@ -63,6 +63,9 @@
   before repeated bridge states are evaluated. Exact compound-symmetry and
   Markov Cholesky recurrences in this bridge hotspot are evaluated by a
   package-native kernel after the same R-level parameter and support checks.
+  The same compiled evaluator now serves posterior reconstruction, prediction,
+  covariance summaries, and plotting consumers; the pure-R subset recurrence
+  remains the exact reference and diagnostic fallback.
 - The compact bridge factor-state contract now labels exact diagonal and
   Markov coefficient structures. AR1, HAR, and CAR states expose their complete
   coefficient scales, adjacent transitions, and innovation variances alongside
