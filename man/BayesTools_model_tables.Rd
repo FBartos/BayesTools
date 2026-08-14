@@ -48,6 +48,7 @@ runjags_estimates_table(
   return_samples = FALSE,
   transform_scaled = FALSE,
   random_effects_summary = c("standard", "full", "raw", "none"),
+  random_effects_label = c("grouped", "component"),
   random_effects_metadata = FALSE,
   remove_random_effects = NULL,
   keep_random_effects = NULL,
@@ -91,6 +92,7 @@ JAGS_estimates_table(
   return_samples = FALSE,
   transform_scaled = FALSE,
   random_effects_summary = c("standard", "full", "raw", "none"),
+  random_effects_label = c("grouped", "component"),
   random_effects_metadata = FALSE,
   remove_random_effects = NULL,
   keep_random_effects = NULL,
@@ -276,6 +278,13 @@ formula transformation. Internal latent and realized group-coefficient
 coordinates are omitted when \code{transform_scaled = TRUE}, including in
 \code{"raw"} mode, because those coordinates remain on the fitted
 standardized scale.}
+
+\item{random_effects_label}{label style for semantic random-effect summaries.
+\code{"grouped"} reports conventional grouping labels such as
+\code{sd(intercept | study)}. \code{"component"} prefixes the
+random-effect name and omits the redundant grouping suffix, for example
+\code{study: sd(intercept)}. Defaults to \code{"grouped"}. Raw
+random-effect coordinates are unaffected.}
 
 \item{random_effects_metadata}{whether to add random-effect metadata columns
 to JAGS estimates tables. When \code{TRUE}, the table includes the

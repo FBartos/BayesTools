@@ -432,7 +432,8 @@
 }
 
 .bt_random_effect_summary_prior <- function(parameter, type, label,
-                                            block = NULL, grouping = NULL,
+                                             component_label = NULL,
+                                             block = NULL, grouping = NULL,
                                             structure = NULL,
                                             effect_label = NULL,
                                             allocation = NULL,
@@ -444,6 +445,9 @@
   attr(out, "parameter") <- parameter
   attr(out, "random_summary") <- type
   attr(out, "random_summary_label") <- label
+  if(!is.null(component_label)){
+    attr(out, "random_summary_component_label") <- component_label
+  }
   if(!is.null(block)){
     attr(out, "random_factor") <- block
   }

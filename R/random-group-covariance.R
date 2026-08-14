@@ -518,10 +518,23 @@ print.random_group_covariance <- function(x, ...){
 
 .bt_random_effect_sd_summary_label <- function(component, group, random_term){
 
+  paste0(
+    .bt_random_effect_sd_summary_prefix(random_term),
+    "(", component, " | ", group, ")"
+  )
+}
+
+.bt_random_effect_sd_component_summary_label <- function(component, random_term){
+
+  paste0(.bt_random_effect_sd_summary_prefix(random_term), "(", component, ")")
+}
+
+.bt_random_effect_sd_summary_prefix <- function(random_term){
+
   prefix <- if(.bt_random_effect_sd_is_multiplier(random_term)){
     "sd_multiplier"
   }else{
     "sd"
   }
-  paste0(prefix, "(", component, " | ", group, ")")
+  prefix
 }

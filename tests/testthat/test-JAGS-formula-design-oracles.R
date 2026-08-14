@@ -12163,8 +12163,16 @@ test_that("structured random-effect terms use level-indexed factor columns and s
     raw_names = colnames(hcs_summary$model_samples),
     prior_list = hcs_summary$prior_list
   )
+  hcs_component_display_names <- BayesTools:::.bt_random_effect_summary_display_names(
+    names = colnames(hcs_summary$model_samples),
+    raw_names = colnames(hcs_summary$model_samples),
+    prior_list = hcs_summary$prior_list,
+    random_effects_label = "component"
+  )
   expect_true("(mu) sd(f[a] | id)" %in% hcs_display_names)
   expect_false("(mu) sd(f[1] | id)" %in% hcs_display_names)
+  expect_true("(mu) id: sd(f[a])" %in% hcs_component_display_names)
+  expect_true("(mu) id: rho" %in% hcs_component_display_names)
   hcs_implicit_levels <- JAGS_formula(
     formula = ~ 1 + hcs(f | id),
     parameter = "mu",

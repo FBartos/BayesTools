@@ -24,6 +24,7 @@
 - adds `fit_backend_fingerprint()` for stable cache invalidation when fitted-model backend code or native binaries change
 - adds bridge-sampling support for formula random effects by using standardized latent random effects, scalar correlation coordinates, and LKJ primitive coordinates as bridge parameters
 - adds semantic random-effect summaries to `runjags_estimates_table()` / `JAGS_estimates_table()` through `random_effects_summary`, `random_effects_metadata`, `remove_random_effects`, `keep_random_effects`, `remove_random_structures`, and `keep_random_structures`
+- adds `random_effects_label = "component"` to random-effect estimates tables for labels such as `study: sd(intercept)`, using stored random-effect metadata while retaining grouped labels by default
 - adds random-effect parameter filter aliases such as `"random"`, `"random_sd"`, `"random_rho"`, `"random_correlation"`, `"random_variance_fraction"`, `"random_allocation"`, and `"random_sd_multiplier"` for estimates tables
 - adds compact print methods for the public random-effect specification helpers, LKJ priors, parameter sources, random-SD sources, and variance-allocation references
 - adds `prior_ordered()` for ordered-factor priors that separate a scalar total effect from fixed or Dirichlet allocations across cumulative level increments

@@ -273,13 +273,14 @@
     return(list(
       names = character(),
       labels = character(),
+      component_labels = character(),
       types = character(),
       components = character(),
       values = matrix(nrow = nrow(model_samples), ncol = 0L)
     ))
   }
 
-  names <- labels <- types <- components <- character()
+  names <- labels <- component_labels <- types <- components <- character()
   values <- list()
   display_group <- .bt_random_effect_summary_group_label(random_term)
 
@@ -306,6 +307,7 @@
         prior_name
       )
       labels <- c(labels, paste0(display_effect, " | ", display_group, " (inclusion)"))
+      component_labels <- c(component_labels, paste0(display_effect, " (inclusion)"))
       types <- c(types, "inclusion")
       components <- c(components, "alternative")
       values[[length(values) + 1L]] <- as.numeric(indicator %in% alternative_index)
@@ -329,6 +331,9 @@
         labels <- c(labels, paste0(
           display_effect, " | ", display_group, " (inclusion: ", component, ")"
         ))
+        component_labels <- c(component_labels, paste0(
+          display_effect, " (inclusion: ", component, ")"
+        ))
         types <- c(types, "inclusion")
         components <- c(components, component)
         values[[length(values) + 1L]] <- as.numeric(indicator %in% component_index)
@@ -346,6 +351,7 @@
   list(
     names = names,
     labels = labels,
+    component_labels = component_labels,
     types = types,
     components = components,
     values = value_matrix

@@ -307,11 +307,13 @@
 }
 
 .bt_random_effect_summary_display_names <- function(names, raw_names,
-                                                    prior_list,
-                                                    formula_prefix = TRUE,
-                                                    parameter_registry = NULL,
-                                                    formula_design = NULL){
+                                                     prior_list,
+                                                     formula_prefix = TRUE,
+                                                     random_effects_label = c("grouped", "component"),
+                                                     parameter_registry = NULL,
+                                                     formula_design = NULL){
 
+  random_effects_label <- match.arg(random_effects_label)
   if(length(raw_names) == 0L){
     return(names)
   }
@@ -323,15 +325,31 @@
     )
   }
 
+  component_labeled <- rep(FALSE, length(raw_names))
   if(length(prior_list) > 0L){
     for(i in seq_along(raw_names)){
       prior <- prior_list[[raw_names[i]]]
       if(is.null(prior)){
         next
       }
-      label <- attr(prior, "random_summary_label")
+      label <- attr(prior, "random_summary_label", exact = TRUE)
       if(is.null(label)){
         next
+      }
+      if(identical(random_effects_label, "component")){
+        component_label <- attr(
+          prior,
+          "random_summary_component_label",
+          exact = TRUE
+        )
+        random_name <- .bt_random_effect_prior_name(prior)
+        if(!is.null(component_label) && length(component_label) == 1L &&
+           !is.na(component_label) && nzchar(component_label) &&
+           length(random_name) == 1L && !is.na(random_name) &&
+           nzchar(random_name)){
+          label <- paste0(random_name, ": ", component_label)
+          component_labeled[i] <- TRUE
+        }
       }
       parameter <- attr(prior, "parameter")
       prefix <- .bt_random_effect_summary_formula_prefix(parameter, formula_prefix)
@@ -345,6 +363,7 @@
   registered[registered] <- nzchar(
     parameter_registry$random_block[registry_rows[registered]]
   )
+  registered <- registered & !component_labeled
   if(any(registered)){
     labels <- parameter_registry$display_label[registry_rows[registered]]
     if(!isTRUE(formula_prefix)){

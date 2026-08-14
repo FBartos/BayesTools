@@ -69,6 +69,7 @@
   used_names <- character()
 
   add_summary <- function(name, values, parameter, type, label,
+                          component_label = NULL,
                           block = NULL, grouping = NULL,
                           structure = NULL, effect_label = NULL,
                           allocation = NULL,
@@ -88,6 +89,7 @@
       parameter = parameter,
       type = type,
       label = label,
+      component_label = component_label,
       block = block,
       grouping = grouping,
       structure = structure,
@@ -144,6 +146,7 @@
         parameter = parameter,
         type = allocation_summary$types[i],
         label = allocation_summary$labels[i],
+        component_label = allocation_summary$labels[i],
         block = if(identical(allocation_target, "sd_component")) block else NULL,
         grouping = if(identical(allocation_target, "sd_component")) grouping else NULL,
         structure = if(identical(allocation_target, "sd_component") && !is.null(random_term)) {
@@ -169,6 +172,7 @@
         parameter = parameter,
         type = inclusion_summary$types[i],
         label = inclusion_summary$labels[i],
+        component_label = inclusion_summary$labels[i],
         allocation = allocation$label,
         allocation_metadata = allocation,
         allocation_index = inclusion_summary$indices[i],
@@ -213,6 +217,10 @@
             group = display_group,
             random_term = random_term
           ),
+          component_label = .bt_random_effect_sd_component_summary_label(
+            component = sd_summary$components[i],
+            random_term = random_term
+          ),
           block = random_term$block_name,
           grouping = random_term$group_label,
           structure = display_structure,
@@ -234,6 +242,7 @@
           parameter = parameter,
           type = inclusion_summary$types[i],
           label = inclusion_summary$labels[i],
+          component_label = inclusion_summary$component_labels[i],
           block = random_term$block_name,
           grouping = random_term$group_label,
           structure = display_structure,
@@ -254,6 +263,7 @@
           parameter = parameter,
           type = "rho",
           label = paste0("rho(", display_group, ")"),
+          component_label = "rho",
           block = random_term$block_name,
           grouping = random_term$group_label,
           structure = display_structure,
@@ -276,6 +286,7 @@
           parameter = parameter,
           type = "cor",
           label = paste0("cor(", correlation_summary$labels[i], " | ", display_group, ")"),
+          component_label = paste0("cor(", correlation_summary$labels[i], ")"),
           block = random_term$block_name,
           grouping = random_term$group_label,
           structure = display_structure,

@@ -50,6 +50,12 @@
 #' coordinates are omitted when \code{transform_scaled = TRUE}, including in
 #' \code{"raw"} mode, because those coordinates remain on the fitted
 #' standardized scale.
+#' @param random_effects_label label style for semantic random-effect summaries.
+#' \code{"grouped"} reports conventional grouping labels such as
+#' \code{sd(intercept | study)}. \code{"component"} prefixes the
+#' random-effect name and omits the redundant grouping suffix, for example
+#' \code{study: sd(intercept)}. Defaults to \code{"grouped"}. Raw
+#' random-effect coordinates are unaffected.
 #' @param random_effects_metadata whether to add random-effect metadata columns
 #' to JAGS estimates tables. When \code{TRUE}, the table includes the
 #' user-facing random-effect name, grouping label, and covariance structure
@@ -226,6 +232,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
                                      formula_prefix = TRUE, remove_inclusion = FALSE, remove_parameters = NULL, remove_formulas = NULL,
                                      keep_parameters = NULL, keep_formulas = NULL, return_samples = FALSE, transform_scaled = FALSE,
                                      random_effects_summary = c("standard", "full", "raw", "none"),
+                                     random_effects_label = c("grouped", "component"),
                                      random_effects_metadata = FALSE,
                                      remove_random_effects = NULL, keep_random_effects = NULL,
                                      remove_random_structures = NULL, keep_random_structures = NULL,
@@ -259,6 +266,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
   check_bool(formula_prefix, "formula_prefix")
   check_bool(transform_scaled, "transform_scaled")
   random_effects_summary <- match.arg(random_effects_summary)
+  random_effects_label <- match.arg(random_effects_label)
   check_bool(random_effects_metadata, "random_effects_metadata")
   check_bool(remove_diagnostics, "remove_diagnostics")
   diagnostic_columns <- .normalize_diagnostic_columns(diagnostic_columns, .JAGS_estimates_diagnostic_columns(), "diagnostic_columns")
@@ -629,6 +637,7 @@ runjags_estimates_table  <- function(fit, transformations = NULL, title = NULL, 
       raw_names = raw_parameter_names,
       prior_list = prior_list,
       formula_prefix = formula_prefix,
+      random_effects_label = random_effects_label,
       parameter_registry = parameter_registry
     )
   }

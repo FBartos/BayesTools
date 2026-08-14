@@ -400,6 +400,34 @@ test_that("keep_random_effects preserves selected random rows with keep_paramete
   expect_false(any(grepl("sd\\(intercept \\| site\\)", colnames(kept))))
 })
 
+test_that("random_effects_label selects grouped or component labels", {
+
+  skip_if_not_installed("runjags")
+
+  fit <- make_two_block_random_summary_fit()
+  grouped <- JAGS_estimates_table(
+    fit,
+    keep_parameters = "random_effects",
+    return_samples = TRUE
+  )
+  component <- JAGS_estimates_table(
+    fit,
+    keep_parameters = "random_effects",
+    random_effects_label = "component",
+    return_samples = TRUE
+  )
+
+  expect_identical(
+    colnames(grouped),
+    c("(mu) sd(intercept | id)", "(mu) sd(intercept | site)")
+  )
+  expect_identical(
+    colnames(component),
+    c("(mu) id: sd(intercept)", "(mu) site: sd(intercept)")
+  )
+})
+
+
 test_that("row-indexed external random SD summaries survive the public estimates wrapper", {
 
   skip_if_not_installed("runjags")
