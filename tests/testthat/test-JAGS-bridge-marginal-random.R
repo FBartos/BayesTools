@@ -46,6 +46,45 @@ skip_if_not_test_profile("unit")
   covariance
 }
 
+.bridge_structured_cholesky_reference <- function(
+    random_term, n_columns, posterior, structure){
+
+  context <- "Random-effect posterior reconstruction metadata"
+  correlation <- .bt_random_effect_correlation_metadata(
+    random_term,
+    structure = structure,
+    context = context
+  )
+  rho <- .bt_random_effect_rho_draws(
+    random_term = random_term,
+    posterior = posterior,
+    missing = "error",
+    out_of_support = "error"
+  )
+  column_coordinates <- if(identical(structure, "car")){
+    .bt_random_effect_car_time_values(
+      random_term = random_term,
+      correlation = correlation,
+      n_columns = n_columns,
+      context = context
+    )
+  }else{
+    NULL
+  }
+  out <- array(NA_real_, dim = c(nrow(posterior), n_columns, n_columns))
+  for(draw in seq_len(nrow(posterior))){
+    out[draw, , ] <- .bt_random_effect_structured_subset_cholesky(
+      structure = structure,
+      columns = seq_len(n_columns),
+      rho = rho[draw],
+      global_n_columns = n_columns,
+      column_coordinates = column_coordinates,
+      context = context
+    )
+  }
+  out
+}
+
 test_that("bridge-only random marginalization preserves the exact Gaussian target", {
 
   data <- data.frame(study = factor(c("a", "a", "b", "c")))
@@ -494,17 +533,18 @@ test_that("bridge marginal evaluator supports every implemented covariance struc
     )
     if(structure %in% c("cs", "hcs", "ar1", "har", "car")){
       compiled_cholesky <-
-        .bt_JAGS_bridge_compile_marginal_random_cholesky_evaluator(
+        .bt_random_effect_compile_structured_cholesky_evaluator(
           random_term = random_term,
           n_columns = ncol(random_term$model_matrix),
           structure = structure
         )
       expect_equal(
         compiled_cholesky(posterior),
-        .bt_random_effect_cholesky_draws(
+        .bridge_structured_cholesky_reference(
           random_term = random_term,
           n_columns = ncol(random_term$model_matrix),
-          posterior = posterior
+          posterior = posterior,
+          structure = structure
         ),
         tolerance = 0,
         info = paste(structure, "compiled Cholesky")
@@ -622,7 +662,7 @@ test_that("compiled bridge correlation geometry preserves sampled rho", {
     ncol = 1L,
     dimnames = list(NULL, rho_name)
   )
-  compiled <- .bt_JAGS_bridge_compile_marginal_random_cholesky_evaluator(
+  compiled <- .bt_random_effect_compile_structured_cholesky_evaluator(
     random_term = random_term,
     n_columns = 4L,
     structure = "ar1"
@@ -631,10 +671,11 @@ test_that("compiled bridge correlation geometry preserves sampled rho", {
 
   expect_equal(
     compiled(posterior),
-    .bt_random_effect_cholesky_draws(
+    .bridge_structured_cholesky_reference(
       random_term = random_term,
       n_columns = 4L,
-      posterior = posterior
+      posterior = posterior,
+      structure = "ar1"
     ),
     tolerance = 0
   )

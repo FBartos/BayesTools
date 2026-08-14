@@ -405,7 +405,7 @@
         structure = structure,
         group_covariance = group_covariance,
         coefficient_cholesky_evaluator =
-          .bt_JAGS_bridge_compile_marginal_random_cholesky_evaluator(
+          .bt_random_effect_compile_structured_cholesky_evaluator(
             random_term = random_term,
             n_columns = ncol(block_data$model_matrix),
             structure = structure
@@ -817,93 +817,6 @@
       NULL
     }
   )
-}
-
-.bt_JAGS_bridge_compile_marginal_random_cholesky_evaluator <- function(
-    random_term, n_columns, structure){
-
-  if(!structure %in% c("cs", "hcs", "ar1", "car", "har") ||
-     n_columns <= 1L){
-    return(NULL)
-  }
-
-  context <- "Random-effect posterior reconstruction metadata"
-  rho_plan <- .bt_random_effect_compile_rho_draw_plan(
-    random_term = random_term,
-    context = context
-  )
-  correlation <- rho_plan$correlation
-  coordinates <- if(identical(structure, "car")){
-    .bt_random_effect_car_time_values(
-      random_term = random_term,
-      correlation = correlation,
-      n_columns = n_columns,
-      context = context
-    )
-  }else{
-    seq_len(n_columns)
-  }
-  coordinates <- .bt_random_effect_structured_local_coordinates(
-    structure = structure,
-    n_columns = n_columns,
-    column_coordinates = coordinates
-  )
-  structure_bounds <- .bt_random_effect_structured_rho_bounds(
-    K = n_columns,
-    structure = structure
-  )
-  fixed_rho <- if(is.null(rho_plan$sample_fixed)){
-    NULL
-  }else{
-    .bt_random_effect_rho_draws(
-      random_term = random_term,
-      posterior = matrix(numeric(), nrow = 1L),
-      missing = "error",
-      out_of_support = "error",
-      context = context,
-      plan = rho_plan
-    )[[1L]]
-  }
-  force(random_term)
-  force(n_columns)
-  force(structure)
-  force(rho_plan)
-  force(coordinates)
-  force(structure_bounds)
-  force(fixed_rho)
-
-  function(posterior){
-    rho <- if(is.null(fixed_rho)){
-      .bt_random_effect_rho_draws(
-        random_term = random_term,
-        posterior = posterior,
-        missing = "error",
-        out_of_support = "error",
-        context = context,
-        plan = rho_plan
-      )
-    }else{
-      rep(fixed_rho, nrow(posterior))
-    }
-    invalid <- .bt_random_effect_rho_outside_support(
-      rho,
-      bounds = structure_bounds,
-      structure = structure
-    )
-    if(any(invalid)){
-      .bt_random_effect_structured_local_check_rho(
-        structure = structure,
-        rho = rho[which(invalid)[1L]],
-        global_n_columns = n_columns
-      )
-    }
-
-    .bt_random_effect_native_structured_cholesky(
-      structure = structure,
-      rho = rho,
-      coordinates = coordinates
-    )
-  }
 }
 
 .bt_JAGS_bridge_marginal_random_geometry_covariance <- function(geometry,

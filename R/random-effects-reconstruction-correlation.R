@@ -13,45 +13,12 @@
     return(out)
   }
   if(structure %in% c("cs", "hcs", "ar1", "car", "har")){
-    correlation <- .bt_random_effect_correlation_metadata(
+    cholesky_evaluator <- .bt_random_effect_compile_structured_cholesky_evaluator(
       random_term,
-      structure = structure,
-      context = "Random-effect posterior reconstruction metadata"
+      n_columns = n_columns,
+      structure = structure
     )
-    rho <- .bt_random_effect_rho_draws(
-      random_term = random_term,
-      posterior = posterior,
-      missing = "error",
-      out_of_support = "error"
-    )
-    column_coordinates <- if(identical(structure, "car")){
-      .bt_random_effect_car_time_values(
-        random_term = random_term,
-        correlation = correlation,
-        n_columns = n_columns,
-        context = "Random-effect posterior reconstruction metadata"
-      )
-    }else{
-      NULL
-    }
-    columns <- seq_len(n_columns)
-    out <- array(NA_real_, dim = c(nrow(posterior), n_columns, n_columns))
-    for(draw in seq_len(nrow(posterior))){
-      transition_context <- paste0(
-        "Random-effect Cholesky reconstruction",
-        .bt_random_effect_metadata_block_detail(random_term),
-        ", posterior draw ", draw
-      )
-      out[draw, , ] <- .bt_random_effect_structured_subset_cholesky(
-        structure = structure,
-        columns = columns,
-        rho = rho[draw],
-        global_n_columns = n_columns,
-        column_coordinates = column_coordinates,
-        context = transition_context
-      )
-    }
-    return(out)
+    return(cholesky_evaluator(posterior))
   }
 
   if(identical(structure, "us")){
@@ -79,6 +46,119 @@
   }
 
   NULL
+}
+
+.bt_random_effect_compile_structured_cholesky_evaluator <- function(
+    random_term, n_columns, structure = NULL){
+
+  if(is.null(structure)){
+    structure <- .bt_random_effect_structure(
+      random_term,
+      context = "Random-effect posterior reconstruction metadata"
+    )
+  }
+  if(!structure %in% c("cs", "hcs", "ar1", "car", "har") ||
+     n_columns <= 1L){
+    return(NULL)
+  }
+
+  context <- "Random-effect posterior reconstruction metadata"
+  rho_plan <- .bt_random_effect_compile_rho_draw_plan(
+    random_term = random_term,
+    context = context
+  )
+  correlation <- rho_plan$correlation
+  coordinates <- if(identical(structure, "car")){
+    .bt_random_effect_car_time_values(
+      random_term = random_term,
+      correlation = correlation,
+      n_columns = n_columns,
+      context = context
+    )
+  }else{
+    seq_len(n_columns)
+  }
+  coordinates <- .bt_random_effect_structured_local_coordinates(
+    structure = structure,
+    n_columns = n_columns,
+    column_coordinates = coordinates
+  )
+  structure_bounds <- .bt_random_effect_structured_rho_bounds(
+    K = n_columns,
+    structure = structure
+  )
+  fixed_rho <- if(is.null(rho_plan$sample_fixed)){
+    NULL
+  }else{
+    .bt_random_effect_rho_draws(
+      random_term = random_term,
+      posterior = matrix(numeric(), nrow = 1L),
+      missing = "error",
+      out_of_support = "error",
+      context = context,
+      plan = rho_plan
+    )[[1L]]
+  }
+  force(random_term)
+  force(n_columns)
+  force(structure)
+  force(rho_plan)
+  force(coordinates)
+  force(structure_bounds)
+  force(fixed_rho)
+
+  function(posterior){
+    rho <- if(is.null(fixed_rho)){
+      .bt_random_effect_rho_draws(
+        random_term = random_term,
+        posterior = posterior,
+        missing = "error",
+        out_of_support = "error",
+        context = context,
+        plan = rho_plan
+      )
+    }else{
+      rep(fixed_rho, nrow(posterior))
+    }
+    invalid <- .bt_random_effect_rho_outside_support(
+      rho,
+      bounds = structure_bounds,
+      structure = structure
+    )
+    if(any(invalid)){
+      .bt_random_effect_structured_local_check_rho(
+        structure = structure,
+        rho = rho[which(invalid)[1L]],
+        global_n_columns = n_columns
+      )
+    }
+
+    tryCatch(
+      .bt_random_effect_native_structured_cholesky(
+        structure = structure,
+        rho = rho,
+        coordinates = coordinates
+      ),
+      error = function(error){
+        for(draw in seq_len(nrow(posterior))){
+          transition_context <- paste0(
+            "Random-effect Cholesky reconstruction",
+            .bt_random_effect_metadata_block_detail(random_term),
+            ", posterior draw ", draw
+          )
+          .bt_random_effect_structured_subset_cholesky(
+            structure = structure,
+            columns = seq_len(n_columns),
+            rho = rho[draw],
+            global_n_columns = n_columns,
+            column_coordinates = coordinates,
+            context = transition_context
+          )
+        }
+        stop(conditionMessage(error), call. = FALSE)
+      }
+    )
+  }
 }
 
 .bt_random_effect_rho_draws <- function(random_term, posterior,
