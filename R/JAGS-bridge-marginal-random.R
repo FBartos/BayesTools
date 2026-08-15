@@ -468,9 +468,10 @@
                           factor_covariance = TRUE,
                           factor_state = FALSE){
       posterior <- .bt_JAGS_marglik_random_effect_posterior_row(samples)
-      source_parameters <- .bt_JAGS_marglik_parameter_source_parameters(
+      source_parameters <- .bt_JAGS_bridge_context_source_parameters(
         samples = samples,
-        prior_list_parameters = prior_parameters,
+        prior_parameters = prior_parameters,
+        formula_prior_parameters = formula_prior_parameters,
         formula_parameters = formula_parameters
       )
       source_parameters <- .bt_parameter_source_forbid_formula_parameters(

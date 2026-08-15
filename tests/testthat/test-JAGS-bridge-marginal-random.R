@@ -1048,3 +1048,77 @@ test_that("row-indexed external SD sources remain covariance factors", {
     tolerance = 1e-12
   )
 })
+
+test_that("marginal bridge covariance reuses natural allocation parameters", {
+
+  data <- data.frame(
+    study = factor(c("s1", "s1", "s2", "s2")),
+    drug = factor(c("a", "b", "a", "b"))
+  )
+  formula_result <- JAGS_formula(
+    formula = ~ 1 +
+      random(1 | study, name = "study", covariance = "diag") +
+      random(1 | drug, name = "drug", covariance = "diag"),
+    parameter = "mu",
+    data = data,
+    prior_list = list(intercept = prior("point", list(location = 0))),
+    prior_random = prior_random(
+      allocation = random_variance_allocation(
+        sd = prior("gamma", list(2, 2)),
+        weights = prior("dirichlet", list(alpha = c(2, 3)))
+      )
+    )
+  )
+  evaluator <- .bt_JAGS_bridge_compile_marginal_random_evaluator(
+    formula_design_list = list(mu = formula_result$formula_design),
+    marginal_random_spec = list(
+      mu = list(
+        blocks = c("study", "drug"),
+        row_blocks = list(seq_len(nrow(data))),
+        factor_state = TRUE
+      )
+    ),
+    formula_data_list = list(mu = data),
+    formula_prior_list = list(mu = formula_result$prior_list),
+    model_data = list()
+  )
+  weight_name <- "mu__xRE_ALLOCx_allocation__weight"
+  eta_names <- paste0("prior_par_eta_", weight_name, "[", 1:2, "]")
+  valid_samples <- c(
+    "mu__xRE_ALLOCx_allocation__total_sd" = 2,
+    stats::setNames(c(1, 3), eta_names)
+  )
+  formula_prior_evaluator <- .bt_JAGS_bridge_compile_formula_prior_evaluator(
+    list(mu = formula_result$prior_list)
+  )
+  formula_prior_parameters <- formula_prior_evaluator$parameters(valid_samples)
+  expected <- evaluator$covariance(
+    samples = valid_samples,
+    prior_parameters = list(),
+    formula_prior_parameters = list(),
+    formula_parameters = list(mu = rep(0, nrow(data)))
+  )$mu
+
+  replay_count <- 0L
+  testthat::local_mocked_bindings(
+    .bt_random_effect_dirichlet_draws = function(...){
+
+      replay_count <<- replay_count + 1L
+      stop("Dirichlet replay should not be used", call. = FALSE)
+    },
+    .package = "BayesTools"
+  )
+  actual <- evaluator$covariance(
+    samples = valid_samples,
+    prior_parameters = list(),
+    formula_prior_parameters = formula_prior_parameters,
+    formula_parameters = list(mu = rep(0, nrow(data)))
+  )$mu
+
+  expect_identical(replay_count, 0L)
+  expect_equal(
+    unname(.bridge_marginal_random_dense(actual)),
+    unname(.bridge_marginal_random_dense(expected)),
+    tolerance = 0
+  )
+})

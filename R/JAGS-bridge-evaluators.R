@@ -164,7 +164,7 @@
         if(is.null(value)){
           return(-Inf)
         }
-        lpdf(prior_object, value)
+        .prior_simple_lpdf(prior_object, value)
       },
       parameters = function(samples){
         value <- .bt_JAGS_marglik_invgamma_values(
@@ -194,7 +194,7 @@
 
   list(
     log_prior = function(samples){
-      lpdf(prior_object, samples[[parameter_name]])
+      .prior_simple_lpdf(prior_object, samples[[parameter_name]])
     },
     parameters = function(samples){
       parameter <- list()
