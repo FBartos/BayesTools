@@ -1,5 +1,8 @@
 # version 0.3.1
 ### Features
+- adds `JAGS_marglik_priors_rows()` for exact row-preserving prior-density
+  evaluation. Supported scalar and Dirichlet prior lists use a vectorized
+  evaluator, while other prior families retain the compiled scalar route.
 - adds `hypothesis_level_contrast()` for certifying atom-free pairwise level
   contrasts with an exact joint-prior ordinate, and normalizes symbolic
   point equalities such as `theta = phi` to a difference from zero; constant-

@@ -108,6 +108,79 @@ test_that("compiled bridge prior evaluators preserve positive support behavior",
   )
 })
 
+test_that("row prior evaluation preserves joint prior boundaries", {
+
+  prior_list <- list(
+    mu    = prior("normal", list(0, 1)),
+    sigma = prior("invgamma", list(3, 2), list(1, 3)),
+    w     = prior("dirichlet", list(alpha = c(2, 3)))
+  )
+  samples <- cbind(
+    mu = c(-.2, .4, .8),
+    sigma = c(1.2, 2.1, 1.6),
+    "prior_par_eta_w[1]" = c(1.2, 1.8, 2.1),
+    "prior_par_eta_w[2]" = c(2.4, 1.1, 3.2)
+  )
+  expected <- vapply(seq_len(nrow(samples)), function(i){
+    JAGS_marglik_priors(samples[i, ], prior_list)
+  }, numeric(1))
+
+  expect_equal(JAGS_marglik_priors_rows(samples, prior_list), expected)
+  expect_equal(
+    JAGS_marglik_priors_rows(samples[1L, ], prior_list),
+    expected[1L]
+  )
+
+  invalid <- samples
+  invalid[2L, "prior_par_eta_w[1]"] <- 0
+  invalid[3L, "sigma"] <- 0
+  invalid_density <- JAGS_marglik_priors_rows(invalid, prior_list)
+  expect_true(is.finite(invalid_density[1L]))
+  expect_equal(invalid_density[2L], -Inf)
+  expect_equal(invalid_density[3L], -Inf)
+})
+
+test_that("row prior evaluation retains an exact scalar fallback", {
+
+  prior_list <- list(
+    sigma = prior("invgamma", list(3, 2), list(1, 3)),
+    v     = prior("mnormal", list(0, 1, 2))
+  )
+  samples <- cbind(
+    sigma = c(1.2, 2.1),
+    "v[1]" = c(-.1, .3),
+    "v[2]" = c(.4, -.2)
+  )
+  expected <- vapply(seq_len(nrow(samples)), function(i){
+    JAGS_marglik_priors(samples[i, ], prior_list)
+  }, numeric(1))
+
+  expect_equal(JAGS_marglik_priors_rows(samples, prior_list), expected)
+  expect_equal(
+    JAGS_marglik_priors_rows(samples[, FALSE, drop = FALSE], list()),
+    numeric(nrow(samples))
+  )
+
+  theta_prior <- prior_factor(
+    "normal",
+    parameters = list(0, 1),
+    contrast   = "independent"
+  )
+  attr(theta_prior, "levels") <- 2L
+  factor_samples <- cbind(
+    "theta[1]" = c(-.2, .4),
+    "theta[2]" = c(.3, -.1)
+  )
+  factor_list <- list(theta = theta_prior)
+  factor_expected <- vapply(seq_len(nrow(factor_samples)), function(i){
+    JAGS_marglik_priors(factor_samples[i, ], factor_list)
+  }, numeric(1))
+  expect_equal(
+    JAGS_marglik_priors_rows(factor_samples, factor_list),
+    factor_expected
+  )
+})
+
 test_that("compiled formula prior evaluator matches public formula density helper", {
 
   formula_prior_list <- list(

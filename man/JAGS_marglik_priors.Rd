@@ -2,16 +2,20 @@
 % Please edit documentation in R/JAGS-marglik-priors.R
 \name{JAGS_marglik_priors}
 \alias{JAGS_marglik_priors}
+\alias{JAGS_marglik_priors_rows}
 \alias{JAGS_marglik_priors_formula}
 \title{Compute marginal likelihood for 'JAGS' priors}
 \usage{
 JAGS_marglik_priors(samples, prior_list)
 
+JAGS_marglik_priors_rows(samples, prior_list)
+
 JAGS_marglik_priors_formula(samples, formula_prior_list)
 }
 \arguments{
-\item{samples}{samples provided by bridgesampling
-function}
+\item{samples}{samples provided by the bridgesampling function. Supply one
+named posterior row to \code{JAGS_marglik_priors()} and a named matrix or data
+frame to \code{JAGS_marglik_priors_rows()}.}
 
 \item{prior_list}{named list of prior distributions
 (names correspond to the parameter names) of parameters not specified within the
@@ -28,9 +32,16 @@ within the \code{formula}}
 \value{
 \code{JAGS_marglik_priors} returns a numeric value
 of likelihood evaluated at the current posterior sample.
+\code{JAGS_marglik_priors_rows} returns one numeric value for every row of
+posterior samples.
 }
 \description{
 Computes marginal likelihood for the
 prior part of a 'JAGS' model within 'bridgesampling'
 function
+}
+\details{
+\code{JAGS_marglik_priors_rows()} preserves joint prior boundaries
+within each posterior row. In particular, auxiliary-gamma contributions for
+vector and Dirichlet priors are summed separately within each row.
 }

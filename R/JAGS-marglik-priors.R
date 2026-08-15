@@ -4,15 +4,23 @@
 #' prior part of a 'JAGS' model within 'bridgesampling'
 #' function
 #'
-#' @param samples samples provided by bridgesampling
-#' function
+#' @param samples samples provided by the bridgesampling function. Supply one
+#' named posterior row to `JAGS_marglik_priors()` and a named matrix or data
+#' frame to `JAGS_marglik_priors_rows()`.
+#'
+#' @details `JAGS_marglik_priors_rows()` preserves joint prior boundaries
+#' within each posterior row. In particular, auxiliary-gamma contributions for
+#' vector and Dirichlet priors are summed separately within each row.
 #'
 #' @inheritParams JAGS_bridgesampling
 #'
 #' @return \code{JAGS_marglik_priors} returns a numeric value
 #' of likelihood evaluated at the current posterior sample.
+#' \code{JAGS_marglik_priors_rows} returns one numeric value for every row of
+#' posterior samples.
 #'
 #' @export JAGS_marglik_priors
+#' @export JAGS_marglik_priors_rows
 #' @export JAGS_marglik_priors_formula
 #' @name JAGS_marglik_priors
 NULL
@@ -87,6 +95,140 @@ JAGS_marglik_priors                <- function(samples, prior_list){
   }
 
   return(marglik)
+}
+
+
+#' @rdname JAGS_marglik_priors
+JAGS_marglik_priors_rows <- function(samples, prior_list){
+
+  samples <- .bt_JAGS_marglik_prior_rows(samples)
+  evaluator <- .bt_JAGS_marglik_compile_prior_rows_evaluator(prior_list)
+  return(unname(evaluator(samples)))
+}
+
+
+.bt_JAGS_marglik_prior_rows <- function(samples){
+
+  if(is.null(dim(samples))){
+    if(is.null(names(samples)))
+      stop("'samples' must contain named posterior samples.", call. = FALSE)
+    samples <- matrix(
+      samples,
+      nrow     = 1L,
+      dimnames = list(NULL, names(samples))
+    )
+  }
+
+  if(!is.matrix(samples) && !is.data.frame(samples))
+    stop("'samples' must be a matrix or data frame.", call. = FALSE)
+  if(ncol(samples) > 0L && is.null(colnames(samples)))
+    stop("'samples' must contain named posterior samples.", call. = FALSE)
+
+  return(samples)
+}
+
+
+.bt_JAGS_marglik_compile_prior_rows_evaluator <- function(prior_list){
+
+  scalar_evaluator <- .bt_JAGS_bridge_compile_prior_list_evaluator(prior_list)
+  if(length(prior_list) == 0L){
+    return(function(samples) numeric(nrow(samples)))
+  }
+
+  evaluators <- Map(
+    .bt_JAGS_marglik_compile_prior_rows_component,
+    prior_list,
+    names(prior_list)
+  )
+  if(any(vapply(evaluators, is.null, logical(1)))){
+    return(function(samples){
+      vapply(seq_len(nrow(samples)), function(i){
+        scalar_evaluator$log_prior(samples[i, ])
+      }, numeric(1))
+    })
+  }
+
+  return(function(samples){
+    marglik <- numeric(nrow(samples))
+    for(evaluator in evaluators){
+      marglik <- marglik + evaluator(samples)
+    }
+    return(marglik)
+  })
+}
+
+
+.bt_JAGS_marglik_compile_prior_rows_component <- function(prior_object,
+                                                           parameter_name){
+
+  force(prior_object)
+  force(parameter_name)
+
+  if(is.prior.none(prior_object) || is.prior.point(prior_object)){
+    return(function(samples) numeric(nrow(samples)))
+  }
+
+  is_plain_simple <- is.prior.simple(prior_object) &&
+    !is.prior.factor(prior_object) &&
+    !is.prior.PET(prior_object) &&
+    !is.prior.PEESE(prior_object)
+  if(is_plain_simple &&
+     identical(prior_object[["distribution"]], "invgamma")){
+    return(function(samples){
+      if(parameter_name %in% colnames(samples)){
+        values <- samples[, parameter_name]
+      }else{
+        legacy_name <- paste0("inv_", parameter_name)
+        if(!legacy_name %in% colnames(samples))
+          stop("'samples' does not contain all monitored inverse-gamma prior parameters.", call. = FALSE)
+        values <- samples[, legacy_name]^-1
+      }
+
+      invalid   <- !is.finite(values) | values <= 0
+      marglik   <- rep(-Inf, nrow(samples))
+      supported <- !invalid
+      marglik[supported] <- lpdf(prior_object, values[supported])
+      return(marglik)
+    })
+  }
+
+  if(is_plain_simple){
+    return(function(samples){
+      if(!parameter_name %in% colnames(samples))
+        stop("'samples' does not contain all monitored prior parameters.", call. = FALSE)
+      return(lpdf(prior_object, samples[, parameter_name]))
+    })
+  }
+
+  if(is.prior.vector(prior_object) &&
+     identical(prior_object[["distribution"]], "dirichlet")){
+    alpha <- prior_object$parameters[["alpha"]]
+    eta_names <- paste0(
+      .JAGS_prior_dirichlet_eta_name(parameter_name),
+      "[", seq_along(alpha), "]"
+    )
+    return(function(samples){
+      if(!all(eta_names %in% colnames(samples)))
+        stop("'samples' does not contain all monitored Dirichlet prior parameters.", call. = FALSE)
+
+      marglik <- numeric(nrow(samples))
+      invalid <- logical(nrow(samples))
+      for(i in seq_along(alpha)){
+        eta      <- samples[, eta_names[i]]
+        invalid  <- invalid | !is.finite(eta) | eta <= 0
+        marglik <- marglik + stats::dgamma(
+          eta,
+          shape = alpha[i],
+          rate  = 1,
+          log   = TRUE
+        )
+      }
+      marglik[invalid] <- -Inf
+      return(marglik)
+    })
+  }
+
+  return(NULL)
 }
 
 
